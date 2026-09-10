@@ -64,6 +64,30 @@ export interface FoodLogDraft {
   at?: Date;
 }
 
+/**
+ * A meal that just finished, waiting to be offered as a log entry.
+ *
+ * Session-only and deliberately id-shaped: the prompt resolves the recipe and
+ * computes the figures itself when it opens, so this store never reaches the
+ * recipe store or the meal plan. Same posture `pendingFinishLeftoverId` keeps
+ * one store over, and the same reason it is not persisted — an offer nobody
+ * answered before the app closed is an offer that has expired.
+ */
+export interface PendingMealLog {
+  /** What to call it, captured now so a renamed recipe cannot rewrite the offer. */
+  label: string;
+  /** Which meal it was, when the moment knows. */
+  slot: MealSlot | null;
+  /** The dish, for its figures. Null for a leftover whose source no longer resolves. */
+  recipeId: string | null;
+  /** The planned meal this came from, or null for a leftover. */
+  mealPlanEntryId: string | null;
+  /** How much of the recipe the cooking made, so the figures match what was on the plate. */
+  scale: number;
+  /** The either/or answers that cooking used, so the figures match what went in. */
+  choices: string[];
+}
+
 /** What an edit may change. The instant and its day key are deliberately not on it. */
 export type FoodLogPatch = Partial<
   Pick<FoodLogEntry, 'label' | 'quantity' | 'grams' | 'nutrition' | 'slot'>
@@ -107,6 +131,19 @@ interface FoodLogStore {
    * the whole feature is arranged around.
    */
   removeEntry: (id: string) => void;
+
+  /**
+   * The meal a just-finished "Eat" step, or a just-emptied leftover, is
+   * offering to log. Null while there is nothing to ask about.
+   *
+   * Watched by `LogMealPrompt` (mounted in AppNavigator beside
+   * `FinishLeftoverPrompt`, since a completion can land from Today, Search, a
+   * bulk action or the widget rather than from any one screen). Cleared by the
+   * prompt's own answer, and by `uncompleteTask` when the tick that set it is
+   * taken back.
+   */
+  pendingMealLog: PendingMealLog | null;
+  setPendingMealLog: (pending: PendingMealLog | null) => void;
 }
 
 export const useFoodLogStore = create<FoodLogStore>((set, get) => ({
@@ -115,6 +152,7 @@ export const useFoodLogStore = create<FoodLogStore>((set, get) => ({
   rangeEnd: null,
   totalCount: 0,
   initialized: false,
+  pendingMealLog: null,
 
   initialize() {
     // The current logical day, because that is what a day view opens on and it
@@ -188,6 +226,10 @@ export const useFoodLogStore = create<FoodLogStore>((set, get) => ({
     const updated: FoodLogEntry = { ...entry, ...patch };
     dbUpdateFoodLogEntry(updated);
     set(s => ({ entries: s.entries.map(e => (e.id === id ? updated : e)) }));
+  },
+
+  setPendingMealLog(pending) {
+    set({ pendingMealLog: pending });
   },
 
   removeEntry(id) {

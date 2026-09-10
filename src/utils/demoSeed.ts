@@ -3193,7 +3193,10 @@ function seedMealPlanAndFridge(recipes: DemoRecipes, today: Date): void {
   const plan = (
     dayOffset: number,
     slot: MealSlot,
-    entry: { title: string; recipeId?: string; leftoverId?: string; cookTask?: boolean | null }
+    entry: {
+      title: string; recipeId?: string; leftoverId?: string;
+      cookTask?: boolean | null; logMeal?: boolean | null;
+    }
   ) =>
     planMeal({
       date: dayKeyOf(addDays(today, dayOffset)),
@@ -3202,6 +3205,7 @@ function seedMealPlanAndFridge(recipes: DemoRecipes, today: Date): void {
       recipeId: entry.recipeId ?? null,
       leftoverId: entry.leftoverId ?? null,
       cookTask: entry.cookTask ?? null,
+      logMeal: entry.logMeal ?? null,
     });
 
   // --- Nights already cooked ----------------------------------------------
@@ -3348,7 +3352,12 @@ function seedMealPlanAndFridge(recipes: DemoRecipes, today: Date): void {
 
   // Freeform — planning doesn't require a recipe, and a night that just says
   // "eating out" holds its place and counts like any other.
-  plan(2, 'dinner', { title: 'Eating out' });
+  // Deliberately opted out of the food log offer, and this is the one meal in
+  // the seed that says no. The per-meal answer is invisible until something
+  // uses it — a feature with no row in the seed reads as one the app hasn't
+  // got — and a night out is exactly the meal somebody would decline: the app
+  // has no idea what was on the plate, so counting it would be fiction.
+  plan(2, 'dinner', { title: 'Eating out', logMeal: false });
 
   // Eating the chilli that's in the fridge. Planning against a leftover
   // deliberately doesn't close it out — a pot feeds two dinners.

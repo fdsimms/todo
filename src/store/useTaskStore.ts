@@ -87,7 +87,7 @@ import {
 import { deleteGeneratedTaskQuietly, dropGeneratedTask, reconcileGeneratedTask } from './generatedTaskSync';
 import { generatedBy, generatedSourceOf, generatedTaskCountOf, generatorPausedForVacation, hasAnyGeneratedTask, liveGeneratedTask, liveGeneratedTasksOfKind } from '../utils/generatedTasks';
 import { CALENDAR_REVIEW_TITLE, calendarReviewDayKey, wantsCalendarReview } from '../utils/calendarReviewTasks';
-import { MOOD_LOG_TITLE, MOOD_NUDGE_TITLE, moodLogDayKey, moodNudgeNotes, wantsMoodNudge } from '../utils/moodTasks';
+import { MOOD_LOG_TITLE, MOOD_NUDGE_TITLE, moodLogDayKey, moodLogSourceId, moodNudgeNotes, wantsMoodNudge } from '../utils/moodTasks';
 import {
   WEIGH_IN_LINK_URL,
   WEIGH_IN_TITLE,
@@ -111,7 +111,7 @@ import {
 } from '../utils/weekendTasks';
 import { buildDayBuckets } from '../utils/calendarMonth';
 import { buildDayLoads } from '../utils/dayLoad';
-import { hasLogOnDay } from '../utils/moodLog';
+import { hasLogOnDay, hasLoggedSince } from '../utils/moodLog';
 import { useFoodLogStore } from './useFoodLogStore';
 import { useMoodStore } from './useMoodStore';
 import { eventsIn } from '../utils/calendarBusy';
@@ -142,11 +142,12 @@ import {
 import { getNextDueDate, getCurrentDayStart, getLogicalToday, getLogicalTomorrow, getTaskDayStart, getEffectiveTaskDate, dayKeyOf, dayKeyToDate, getDeadlineFromOffset, getDeadlineFromMonthDay, getReminderOffsetDate, getStreakOutcome, getNextSeriesDates, recurrenceAnchorDayFor, captureReminderOffset, reanchorReminderToWallClock } from '../utils/dateUtils';
 import { entriesForSlot, shiftDayKey } from '../utils/mealPlan';
 import { MEAL_SLOT_TASK_DAYS, completesMealSlot, mealSlotSourceId, mealSlotStepTimeSegments, mealSlotTaskDraft, parseMealSlotSource } from '../utils/mealSlotTasks';
+import { wantsMealLogPrompt } from '../utils/mealLog';
 import { quotaRunSpan, quotaTargetForInterval, quotaDueTimesAfter, isQuotaRunOver, quotaWeekStart } from '../utils/quotaSchedule';
 import { MIN_TARGET_COUNT, MAX_TARGET_COUNT, taskKindOf } from '../utils/taskKinds';
 import { nextStreakRecord } from '../utils/streakRecord';
 import { isNegativeTask, slipPatch, undoSlipPatch, cleanDayPatch } from '../utils/negativeHabits';
-import { isTaskVisible, isTaskNew, isTaskDeferred, isUpcomingToday, isHeldBack, isHiddenForVacation, isVisibleApartFromVacation, isTaskExpired, isTaskSweepable, isRecurrenceNotYetDue, isLiveRecurring, isMissableMealPlanTask, isInboxTask, isUnscheduledTask, isWaitingTask, isRelevantToGroupToday, groupRoster, hasNoDateSignal, isQuotaTask, isQuotaOnPace, quotaRidesOutTheDay, isMissed, sameTimeSegments, isCompletionOnTime, isCategoryScheduledDay } from '../utils/visibilityUtils';
+import { isTaskVisible, isTaskNew, isTaskDeferred, isUpcomingToday, isHeldBack, isHiddenForVacation, isVisibleApartFromVacation, isTaskExpired, isTaskSweepable, isRecurrenceNotYetDue, isLiveRecurring, isMissableMealPlanTask, isInboxTask, isUnscheduledTask, isWaitingTask, isRelevantToGroupToday, groupRoster, hasNoDateSignal, isQuotaTask, isQuotaOnPace, quotaRidesOutTheDay, isMissed, sameTimeSegments, isCompletionOnTime, isCategoryScheduledDay, currentTimeSegment, timeSegmentThreshold } from '../utils/visibilityUtils';
 import { retentionCutoff, selectPurgeableTaskIds } from '../utils/retention';
 import { categoryLabel } from '../utils/categoryLabel';
 import {
@@ -3792,6 +3793,34 @@ export const useTaskStore = create<TaskStore>((set, get) => ({
       }
     }
 
+    // ...and the same tick is the cheapest logging moment the app will ever
+    // have: the step that finished a meal-slot chain is literally "Eat", and
+    // the entry behind it already names the dish, the scale it was cooked at
+    // and the either/or answers that went into it.
+    //
+    // An offer, never a write — see mealLog.ts. A plan can diverge from
+    // reality (the dinner was cooked, then everyone went out), which is the
+    // same reason mealSlotDrift withholds the chain once it is under way.
+    // Never on a miss, matching the cook pairing above: a missed deadline did
+    // not feed anybody.
+    if (!missed && cookedEntryId) {
+      const loggable = dbGetMealPlanEntry(cookedEntryId);
+      if (
+        loggable &&
+        loggable.recipeId &&
+        wantsMealLogPrompt(loggable, useSettingsStore.getState().mealLogPrompt)
+      ) {
+        useFoodLogStore.getState().setPendingMealLog({
+          label: loggable.title,
+          slot: loggable.slot,
+          recipeId: loggable.recipeId,
+          mealPlanEntryId: loggable.id,
+          scale: loggable.recipeScale,
+          choices: loggable.recipeChoices,
+        });
+      }
+    }
+
     // Ticking a "Use up X" task off is the moment the user can say what
     // actually happened to the thing it's about — surfaced immediately as
     // that item's own resolve sheet (UseUpResolveSheet, mounted in
@@ -4041,6 +4070,11 @@ export const useTaskStore = create<TaskStore>((set, get) => ({
     // harmless, same reasoning the Use-up clears below rely on.
     if (uncookedEntryId && dbGetMealPlanEntry(uncookedEntryId)?.leftoverId) {
       useLeftoverStore.getState().setPendingFinishLeftover(null);
+    }
+    // Taking the tick back takes the offer back with it: the meal did not
+    // happen after all, so there is nothing to be asked about.
+    if (uncookedEntryId && useFoodLogStore.getState().pendingMealLog?.mealPlanEntryId === uncookedEntryId) {
+      useFoodLogStore.getState().setPendingMealLog(null);
     }
 
     // Un-ticking a "Use up X" task retracts whatever resolve prompt it just
@@ -6010,6 +6044,9 @@ export const useTaskStore = create<TaskStore>((set, get) => ({
    * Both are day-keyed with no source row, the position `calendarReview` is in,
    * so neither has a per-source stamp to decline onto and both use a
    * settings-level mark instead (`moodLogLastDayKey`, `moodNudgeLastDayKey`).
+   * `moodLogLastDayKey` holds the check-in's whole sourceId, not just the day —
+   * see `moodLogTimeSegments` and `moodLogSourceId` — so it still works as "the
+   * slot already decided" once a day can hold more than one.
    */
   checkMoodTasks() {
     const settings = useSettingsStore.getState();
@@ -6026,46 +6063,66 @@ export const useTaskStore = create<TaskStore>((set, get) => ({
     dueDate.setHours(12, 0, 0, 0);
 
     if (settings.moodLogTasks && settings.moodLogTaskCategory) {
-      // Clear yesterday's check-in before deciding today's — the same
-      // clear-first-create-second ordering checkCalendarReviewTasks uses. An
-      // unanswered check-in is a question about a day that has gone, not a
-      // task still owed.
+      const segments = settings.moodLogTimeSegments;
+      // The slot this pass is deciding: the segment the clock is currently
+      // in, or null for the any-time task an empty list still means. With
+      // segments configured, "before the first one's threshold" is a real
+      // third state (see noSlotYet below) — there's no day-one fallback the
+      // way the any-time case has.
+      const segment = segments.length > 0 ? currentTimeSegment(segments) : null;
+      const noSlotYet = segments.length > 0 && segment === null;
+      const sourceId = noSlotYet ? null : moodLogSourceId(todayKey, segment);
+
+      // Clear anything not for this exact slot — a previous day's check-in
+      // (the original rule), and, once segments are configured, an earlier
+      // segment's today, or everything today while nothing has opened yet.
+      // At most one check-in is ever live: an earlier segment's unanswered
+      // task is a question about a part of the day that's passed, not a task
+      // still owed, the same reasoning the day-to-day clear always used.
       liveGeneratedTasksOfKind(get().tasks, 'moodLog')
-        .filter(task => moodLogDayKey(task) !== todayKey)
+        .filter(task => moodLogDayKey(task) !== todayKey || task.generatedSourceId !== sourceId)
         .forEach(task => deleteGeneratedTaskQuietly(task.id));
 
       // Recorded before the "already logged" check below and unconditionally,
-      // for the reason calendarReviewLastDayKey is: a day already decided must
-      // not be re-diagnosed on every later sweep, or a check-in swiped away at
-      // breakfast comes straight back at lunch.
-      if (settings.moodLogLastDayKey !== todayKey) {
-        settings.setMoodLogLastDayKey(todayKey);
-        // Nothing to ask if the day is already logged. Someone who opened the
-        // sheet before the app got round to firing has answered the question,
-        // and a task asking it again is the app not listening.
-        if (!hasLogOnDay(logs, todayKey)) {
+      // for the reason calendarReviewLastDayKey is: a slot already decided
+      // must not be re-diagnosed on every later sweep, or a check-in swiped
+      // away at breakfast comes straight back at lunch. Comparing the whole
+      // sourceId rather than just the day is what makes a new segment's
+      // arrival reconsider, the same way a new day already did.
+      if (sourceId !== null && settings.moodLogLastDayKey !== sourceId) {
+        settings.setMoodLogLastDayKey(sourceId);
+        // Nothing to ask if this slot is already answered — someone who
+        // opened the sheet before the app got round to firing has answered
+        // the question, and a task asking it again is the app not listening.
+        // The any-time case asks "was the day logged at all"; a segment asks
+        // the narrower "was anything logged since this segment began" — an
+        // entry from this morning must not silence the evening check-in.
+        const answered = segment
+          ? hasLoggedSince(logs, timeSegmentThreshold(segment).toISOString())
+          : hasLogOnDay(logs, todayKey);
+        if (!answered) {
           reconcileGeneratedTask({
             kind: 'moodLog',
-            sourceId: todayKey,
+            sourceId,
             wanted: true,
             // The title never varies, so nothing to chase.
             drift: () => null,
             draft: () => ({
               title: MOOD_LOG_TITLE,
               dueDate: dueDate.toISOString(),
-              // Held back until a part of the day, if one is chosen — read
-              // once, here at creation, so changing the setting shapes the
-              // next check-in rather than reaching back to move the one
-              // already on today's list. Same rule checkCalendarReviewTasks
-              // states for calendarReviewTimeSegment.
-              timeSegments: settings.moodLogTimeSegment ? [settings.moodLogTimeSegment] : [],
+              // Held back until this segment, if one is chosen — read once,
+              // here at creation, so changing the setting shapes the next
+              // check-in rather than reaching back to move the one already on
+              // today's list. Same rule checkCalendarReviewTasks states for
+              // calendarReviewTimeSegment.
+              timeSegments: segment ? [segment] : [],
               category: settings.moodLogTaskCategory,
               // The row's link button opens the sheet that answers it. Without
               // this the only thing to do with a check-in is tick it, which
               // completes the task without logging anything — the question
               // marked answered and no answer recorded.
               linkUrl: 'dundundun://mood?log=1',
-              ...generatedBy('moodLog', todayKey),
+              ...generatedBy('moodLog', sourceId),
             }),
           });
         }

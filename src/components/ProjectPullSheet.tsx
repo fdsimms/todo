@@ -264,7 +264,7 @@ export function ProjectPullSheet({ visible, todaysTasks, scopeProjectIds, onClos
   const handleSkip = () => {
     if (!reviewTaskId) return;
     haptics.success();
-    completeTask(reviewTaskId);
+    completeTask(reviewTaskId, { completedAt: new Date().toISOString() });
     dismiss();
   };
 

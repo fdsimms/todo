@@ -4782,10 +4782,15 @@ describe('checkMoodTasks', () => {
 
   const settings = (overrides: Record<string, unknown> = {}) => ({
     dayResetTime: '00:00',
+    morningStart: '06:00',
+    afternoonStart: '12:00',
+    eveningStart: '18:00',
+    nightStart: '21:00',
     moodLogTasks: true,
     moodLogTaskCategory: 'Health',
     moodLogLastDayKey: null as string | null,
     setMoodLogLastDayKey: jest.fn(),
+    moodLogTimeSegments: [] as string[],
     moodNudgeTasks: false,
     moodNudgeTaskCategory: 'Health',
     moodNudgeAfterDays: 3,
@@ -4859,13 +4864,23 @@ describe('checkMoodTasks', () => {
       expect(tasksOfKind('moodLog')).toHaveLength(0);
     });
 
+    it('writes nothing yet when the chosen time of day has not arrived', () => {
+      useSettingsStore.getState.mockReturnValue(settings({ moodLogTimeSegments: ['evening'] }));
+
+      useTaskStore.getState().checkMoodTasks();
+
+      expect(tasksOfKind('moodLog')).toHaveLength(0);
+    });
+
     it('holds the check-in back until the chosen time of day, when one is set', () => {
-      useSettingsStore.getState.mockReturnValue(settings({ moodLogTimeSegment: 'evening' }));
+      useSettingsStore.getState.mockReturnValue(settings({ moodLogTimeSegments: ['evening'] }));
+      jest.setSystemTime(new Date(2026, 7, 25, 19, 0, 0));
 
       useTaskStore.getState().checkMoodTasks();
 
       const [check] = tasksOfKind('moodLog');
       expect(check.timeSegments).toEqual(['evening']);
+      expect(check.generatedSourceId).toBe(`${TODAY}:evening`);
     });
 
     it('carries no time-of-day hold-back by default', () => {
@@ -4919,6 +4934,82 @@ describe('checkMoodTasks', () => {
 
     it('writes nothing with no category to file it under', () => {
       useSettingsStore.getState.mockReturnValue(settings({ moodLogTaskCategory: null }));
+
+      useTaskStore.getState().checkMoodTasks();
+
+      expect(tasksOfKind('moodLog')).toHaveLength(0);
+    });
+  });
+
+  describe('several check-ins a day', () => {
+    // Morning 06:00, afternoon 12:00, evening 18:00, night 21:00 — the
+    // defaults settings() carries.
+    const morningAndEvening = () => settings({ moodLogTimeSegments: ['morning', 'evening'] });
+
+    it('writes the current segment\'s check-in, not every configured one', () => {
+      // 9am: morning has started, evening has not.
+      useSettingsStore.getState.mockReturnValue(morningAndEvening());
+
+      useTaskStore.getState().checkMoodTasks();
+
+      const live = tasksOfKind('moodLog');
+      expect(live).toHaveLength(1);
+      expect(live[0].generatedSourceId).toBe(`${TODAY}:morning`);
+      expect(live[0].timeSegments).toEqual(['morning']);
+    });
+
+    it('clears the earlier segment\'s unanswered check-in once the next one arrives', () => {
+      useSettingsStore.getState.mockReturnValue(morningAndEvening());
+      useTaskStore.getState().checkMoodTasks();
+      expect(tasksOfKind('moodLog')[0].generatedSourceId).toBe(`${TODAY}:morning`);
+
+      // Roll into the evening and run again — same "decide once" guard the
+      // day-to-day case uses, but keyed on the whole slot rather than the day.
+      useSettingsStore.getState.mockReturnValue(morningAndEvening());
+      jest.setSystemTime(new Date(2026, 7, 25, 19, 0, 0));
+      useTaskStore.getState().checkMoodTasks();
+
+      const live = tasksOfKind('moodLog');
+      expect(live).toHaveLength(1);
+      expect(live[0].generatedSourceId).toBe(`${TODAY}:evening`);
+    });
+
+    it('does not silence the evening check-in with a log made during the morning', () => {
+      setLogs([entry(TODAY, 3)]); // logged this morning
+      useSettingsStore.getState.mockReturnValue(morningAndEvening());
+      jest.setSystemTime(new Date(2026, 7, 25, 19, 0, 0));
+
+      useTaskStore.getState().checkMoodTasks();
+
+      const live = tasksOfKind('moodLog');
+      expect(live).toHaveLength(1);
+      expect(live[0].generatedSourceId).toBe(`${TODAY}:evening`);
+    });
+
+    it('writes nothing for a segment already answered since it began', () => {
+      // Logged at 19:30, after the 18:00 evening threshold.
+      setLogs([{ ...entry(TODAY, 3), loggedAt: '2026-08-25T19:30:00.000Z' }]);
+      useSettingsStore.getState.mockReturnValue(morningAndEvening());
+      jest.setSystemTime(new Date(2026, 7, 25, 20, 0, 0));
+
+      useTaskStore.getState().checkMoodTasks();
+
+      expect(tasksOfKind('moodLog')).toHaveLength(0);
+    });
+
+    it('writes nothing before the earliest configured segment arrives', () => {
+      useSettingsStore.getState.mockReturnValue(settings({ moodLogTimeSegments: ['afternoon'] }));
+      jest.setSystemTime(new Date(2026, 7, 25, 8, 0, 0)); // 8am, before noon
+
+      useTaskStore.getState().checkMoodTasks();
+
+      expect(tasksOfKind('moodLog')).toHaveLength(0);
+    });
+
+    it('does not hand back a segment\'s check-in the user swiped away earlier the same slot', () => {
+      useSettingsStore.getState.mockReturnValue(
+        settings({ moodLogTimeSegments: ['morning', 'evening'], moodLogLastDayKey: `${TODAY}:morning` }),
+      );
 
       useTaskStore.getState().checkMoodTasks();
 
@@ -5477,7 +5568,7 @@ describe('checkMealSlotTasks', () => {
     return {
       id: `m-${date}-${slot}`, date, slot, recipeId: null, title: 'Chili', sortOrder: 1,
       createdAt: '2026-01-01T00:00:00.000Z', cookedAt: null, leftoverId: null,
-      recipeChoices: [], personIds: [], recipeScale: 1, cookTask: null, shopTask: null, calendarEventId: null,
+      recipeChoices: [], personIds: [], recipeScale: 1, cookTask: null, shopTask: null, logMeal: null, calendarEventId: null,
       ...over,
     };
   }
@@ -5826,7 +5917,7 @@ describe('checkMealShortfallTasks', () => {
     return {
       id: `m-${date}-${over.slot ?? 'dinner'}`, date, slot: 'dinner', recipeId, title: 'Ragu',
       sortOrder: 1, createdAt: '2026-01-01T00:00:00.000Z', cookedAt: null, leftoverId: null,
-      recipeChoices: [], personIds: [], recipeScale: 1, cookTask: null, shopTask: null, calendarEventId: null,
+      recipeChoices: [], personIds: [], recipeScale: 1, cookTask: null, shopTask: null, logMeal: null, calendarEventId: null,
       ...over,
     };
   }
@@ -12554,7 +12645,7 @@ describe('completing a leftover-backed meal task', () => {
   const entry: MealPlanEntry = {
     id: 'm-1', date: '2026-08-22', slot: 'dinner', recipeId: null, title: 'Chicken stir-fry',
     sortOrder: 1, createdAt: '2026-01-01T00:00:00.000Z', cookedAt: null, leftoverId: 'l-1',
-    recipeChoices: [], personIds: [], recipeScale: 1, cookTask: null, shopTask: null, calendarEventId: null,
+    recipeChoices: [], personIds: [], recipeScale: 1, cookTask: null, shopTask: null, logMeal: null, calendarEventId: null,
   };
   const seedEntry = (overrides: Partial<MealPlanEntry> = {}) => {
     const merged = { ...entry, ...overrides };
@@ -12644,7 +12735,7 @@ describe('completing a use-up task and its meal task for the same leftover', () 
   const entry: MealPlanEntry = {
     id: 'm-1', date: '2026-08-22', slot: 'dinner', recipeId: null, title: 'Chicken stir-fry',
     sortOrder: 1, createdAt: '2026-01-01T00:00:00.000Z', cookedAt: null, leftoverId: 'l-1',
-    recipeChoices: [], personIds: [], recipeScale: 1, cookTask: null, shopTask: null, calendarEventId: null,
+    recipeChoices: [], personIds: [], recipeScale: 1, cookTask: null, shopTask: null, logMeal: null, calendarEventId: null,
   };
   const seedEntry = () => {
     (dbGetMealPlanEntries as jest.Mock).mockReturnValue([entry]);

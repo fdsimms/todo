@@ -991,6 +991,15 @@ interface SettingsStore {
   // plan the user may well be keeping loosely, and a half-filled week answered
   // with shopping rows is the fastest way to have the whole thing switched off.
   mealShortfallTasks: boolean;
+
+  // Whether finishing a planned meal, or a leftover, offers to log what was
+  // eaten (see src/utils/mealLog.ts). Defaults ON, unlike the generators
+  // above, and the reason is that this one cannot surprise anybody: the offer
+  // is made only for food whose nutrition the app can actually measure, which
+  // takes deliberately attaching a panel to a catalog row first. An install
+  // that has never done that never sees it, so shipping it off would hide the
+  // feature from exactly the people who set the data up for it.
+  mealLogPrompt: boolean;
   // How many days ahead of a meal its shop is raised. See
   // MEAL_SHORTFALL_LEAD_DAYS_DEFAULT for why two and not one.
   mealShortfallLeadDays: number;
@@ -1080,18 +1089,23 @@ interface SettingsStore {
   // shown, not answered, so dismissing it without resolving every row still
   // counts as today's showing and it doesn't reappear until tomorrow.
   morningCheckInLastDayKey: string | null;
-  // Which part of the day the check-in is held back until, or null to show it
-  // as soon as the pass writes it (the behavior before this setting existed).
-  // Same shape and same reading as calendarReviewTimeSegment above, and it
-  // defaults to null for that field's reason rather than for "any time" being
-  // the better question: the generator has shipped for a while showing the task
-  // first thing, and a default that moved it would change the day for everyone
-  // already using it. Answering in the evening is one tap away.
+  // Which part(s) of the day the check-in is held back until. An empty list
+  // shows it as soon as the pass writes it (the behavior, and the default,
+  // before this setting existed) rather than "any time" being the better
+  // default on its own terms: the generator has shipped for a while showing
+  // the task first thing, and a default that moved it would change the day
+  // for everyone already using it. Answering in the evening is one tap away.
+  //
+  // One or more segments instead hold back a task per segment — morning,
+  // evening, and so on — with only the current one ever live: checkMoodTasks
+  // clears an earlier segment's unanswered task the moment the next one's
+  // threshold arrives. See moodTasks.ts's header for the shape this gives
+  // the generated task's sourceId.
   //
   // moodNudge deliberately gets no counterpart. It asks about the week rather
   // than the day and fires at most once a week, so holding it until a part of
   // the day buys nothing.
-  moodLogTimeSegment: TimeOfDay | null;
+  moodLogTimeSegments: TimeOfDay[];
   // Whether a run of low-mood days adds a task to plan something you enjoy.
   // Off by default and deliberately harder to reach than the rest: it is the
   // only generator that fires on a trend in the user's own answers, so opting
@@ -1354,6 +1368,7 @@ interface SettingsStore {
   setPantryReviewLastDayKey: (dayKey: string | null) => void;
   setLastDeloadAppliedDayKey: (dayKey: string | null) => void;
   setMealShortfallTasks: (on: boolean) => void;
+  setMealLogPrompt: (on: boolean) => void;
   setMealShortfallLeadDays: (days: number) => void;
   setMealShortfallTaskCategory: (category: string | null) => void;
   setSupplyReorderTasks: (on: boolean) => void;
@@ -1370,7 +1385,7 @@ interface SettingsStore {
   setMoodLogTaskCategory: (category: string | null) => void;
   setMoodLogLastDayKey: (dayKey: string | null) => void;
   setMorningCheckInLastDayKey: (dayKey: string | null) => void;
-  setMoodLogTimeSegment: (segment: TimeOfDay | null) => void;
+  setMoodLogTimeSegments: (segments: TimeOfDay[]) => void;
   setMoodNudgeTasks: (on: boolean) => void;
   setMoodNudgeTaskCategory: (category: string | null) => void;
   setMoodNudgeAfterDays: (days: number) => void;
@@ -1468,6 +1483,7 @@ const DEFAULT_SETTINGS = {
   groceryUseUpLeadDays: GROCERY_USE_UP_LEAD_DAYS_DEFAULT,
   groceryUseUpTaskCategory: null,
   mealShortfallTasks: false,
+  mealLogPrompt: true,
   mealShortfallLeadDays: MEAL_SHORTFALL_LEAD_DAYS_DEFAULT,
   mealShortfallTaskCategory: null,
   leftoverUseUpTasks: true,
@@ -1579,6 +1595,32 @@ function parseDefaultReminderLeadMinutes(raw: string | null): number | null {
  * a bad value here silently filters every task out of Today — so an unparseable
  * or out-of-range entry is discarded rather than trusted.
  */
+/**
+ * The configured mood check-in segments, plus the migration off the setting's
+ * original single-value shape.
+ *
+ * An install that set `moodLogTimeSegment` before this list existed has never
+ * written `moodLogTimeSegments`, so a missing new key falls back to wrapping
+ * the old single value (itself falling back to `[]`, "any time", exactly as
+ * a missing old value already read) — the same one-time migration shape
+ * `calendarReviewTimeSegment`'s sibling fields don't need because they never
+ * grew a second form. Once anything is saved through `setMoodLogTimeSegments`
+ * the new key exists and this stops consulting the old one.
+ */
+function parseMoodLogTimeSegments(raw: string | null, legacyRaw: string | null): TimeOfDay[] {
+  if (raw) {
+    try {
+      const parsed = JSON.parse(raw);
+      if (Array.isArray(parsed)) {
+        return parsed.filter((s): s is TimeOfDay => NEW_TASK_TIME_SEGMENTS.includes(s));
+      }
+    } catch {
+      // Falls through to the legacy read below.
+    }
+  }
+  return legacyRaw && NEW_TASK_TIME_SEGMENTS.includes(legacyRaw as TimeOfDay) ? [legacyRaw as TimeOfDay] : [];
+}
+
 /**
  * The chosen calendars. Anything unreadable reads as none picked, which turns
  * the feature off rather than reading calendars the user didn't choose — the
@@ -1824,6 +1866,7 @@ export const useSettingsStore = create<SettingsStore>((set, get) => ({
   groceryUseUpLeadDays: GROCERY_USE_UP_LEAD_DAYS_DEFAULT,
   groceryUseUpTaskCategory: null,
   mealShortfallTasks: false,
+  mealLogPrompt: true,
   mealShortfallLeadDays: MEAL_SHORTFALL_LEAD_DAYS_DEFAULT,
   mealShortfallTaskCategory: null,
   leftoverUseUpTasks: true,
@@ -1885,7 +1928,7 @@ export const useSettingsStore = create<SettingsStore>((set, get) => ({
   moodLogTaskCategory: null,
   moodLogLastDayKey: null,
   morningCheckInLastDayKey: null,
-  moodLogTimeSegment: null,
+  moodLogTimeSegments: [],
   moodNudgeTasks: false,
   moodNudgeTaskCategory: null,
   moodNudgeAfterDays: DEFAULT_MOOD_NUDGE_AFTER_DAYS,
@@ -2178,6 +2221,8 @@ export const useSettingsStore = create<SettingsStore>((set, get) => ({
     // adds a surface rather than replacing one, so an install that has never
     // been asked stays silent.
     const mealShortfallTasks = dbGetSetting('mealShortfallTasks') === 'true';
+    // `!== 'false'` because this one defaults on — see the interface note.
+    const mealLogPrompt = dbGetSetting('mealLogPrompt') !== 'false';
     const mealShortfallTaskCategory = dbGetSetting('mealShortfallTaskCategory') || null;
     // The missing row is checked before the number, exactly as
     // groceryUseUpLeadDays is and for the same reason: zero is a real answer
@@ -2218,11 +2263,10 @@ export const useSettingsStore = create<SettingsStore>((set, get) => ({
     const moodLogTaskCategory = dbGetSetting('moodLogTaskCategory') || null;
     const moodLogLastDayKey = dbGetSetting('moodLogLastDayKey') || null;
     const morningCheckInLastDayKey = dbGetSetting('morningCheckInLastDayKey') || null;
-    const storedMoodLogTimeSegment = dbGetSetting('moodLogTimeSegment');
-    const moodLogTimeSegment =
-      storedMoodLogTimeSegment && NEW_TASK_TIME_SEGMENTS.includes(storedMoodLogTimeSegment as TimeOfDay)
-        ? (storedMoodLogTimeSegment as TimeOfDay)
-        : null;
+    const moodLogTimeSegments = parseMoodLogTimeSegments(
+      dbGetSetting('moodLogTimeSegments'),
+      dbGetSetting('moodLogTimeSegment'),
+    );
     const moodNudgeTasks = dbGetSetting('moodNudgeTasks') === 'true';
     const moodNudgeTaskCategory = dbGetSetting('moodNudgeTaskCategory') || null;
     const storedMoodNudgeAfterDays = parseInt(dbGetSetting('moodNudgeAfterDays') ?? '', 10);
@@ -2338,7 +2382,7 @@ export const useSettingsStore = create<SettingsStore>((set, get) => ({
     const newTaskDefaults = parseNewTaskDefaults(dbGetSetting('newTaskDefaults'));
     const titleRules = parseTitleRules(dbGetSetting('titleRules'));
     const lastVisitedScreen = dbGetSetting('lastVisitedScreen') || null;
-    set({ dayResetTime: resetTime, morningStart, afternoonStart, eveningStart, nightStart, activeHoursStart, activeHoursEnd, quietHoursStart, quietHoursEnd, themeMode, appFont, appFontRandomize, appFontPool, dailyAgendaEnabled, dailyAgendaTime, tripReminderEnabled, backgroundRefreshEnabled, use24HourTime, weekStartsOn, fabHand, hapticsEnabled, shakeToUndoEnabled, confirmBeforeDeleting, sortOption, filterPriorities, filterEfforts, filterHasReminder, recipeSortOption, recipeLovedOnly, appLockEnabled, appLockGraceSeconds, vacationMode, vacationStart, vacationEnd, vacationDrivenBy, activeListDrivenBy, destinationForecastEnabled, autoRemoveExpiredTasks, autoCompleteProjectsOnDone, postponeCheckEnabled, postponeCheckThreshold, focusWorkCapMinutes, focusDefaultWorkMinutes, focusRestAfterTasks, focusRestAfterMinutes, focusRestMinutes, focusLongRestEvery, focusLongRestMinutes, focusShieldEnabled, completedRetentionDays, defaultReminderLeadMinutes, hideCategories, collapsedCategories, collapsedRecipeSections, collapsedGroceryGroups, recentSearches, simpleTaskForm, simpleMode, hideHelpText, tipsEnabled, seenTips, lastTipShown, timerLiveActivity, tripLiveActivity, focusLiveActivity, kitchenEnabled, mealsOnToday, kitchenOnToday, unitSystem, currencySymbol, mealCookTasks, mealCookTaskCategory, mealSlotsEnabled, mealSlotTasksWrittenThroughDayKey, mealSlotStepEstimates, cookRecapEnabled, restockOfferEnabled, productLookupEnabled, groceryUseUpTasks, groceryUseUpLeadDays, groceryUseUpTaskCategory, leftoverUseUpTasks, leftoverUseUpTaskCategory, useUpTaskCap, remindersImportEnabled, remindersImportListId, remindersImportConfirmedListId, remindersImportDelete, remindersImportReview, groceryImportEnabled, groceryImportListId, groceryImportConfirmedListId, groceryImportDelete, groceryImportTwoWay, calendarReadEnabled, calendarIds, vacationHiddenCalendarIds, calendarEventCategory, reminderMeetingNudgeEnabled, calendarPeopleHistory, deadlineCalendarId, completionCalendarId, mealCalendarId, healthReadEnabled, healthWriteEnabled, weightUnit, healthCategory, healthTasks, healthTaskCategory, healthRules, projectReviewTasks, projectReviewTaskCategory, birthdayTasks, birthdayLeadDays, birthdayTaskCategory, birthdayGiftTasks, birthdayGiftLeadDays, birthdayGiftTaskCategory, reachOutTasks, reachOutTaskCategory, pantryCheckTasks, pantryCheckTaskCategory, pantryReviewTasks, pantryReviewTaskCategory, pantryReviewLastDayKey, lastDeloadAppliedDayKey, mealShortfallTasks, mealShortfallLeadDays, mealShortfallTaskCategory, supplyReorderTasks, calendarReviewTasks, calendarReviewLastDayKey, calendarReviewTimeSegment, weatherTasks, weatherTaskCategory, weatherRules, screenTimeTasks, screenTimeTaskCategory, screenTimeRules, moodLogTasks, moodLogTaskCategory, moodLogLastDayKey, morningCheckInLastDayKey, moodLogTimeSegment, moodNudgeTasks, moodNudgeTaskCategory, moodNudgeAfterDays, moodNudgeLastDayKey, weekendNudgeTasks, weekendNudgeTaskCategory, weekendNudgeLeadDays, weekendNudgeLastWeekendKey, weighInTasks, weighInTaskCategory, weighInEveryDays, weighInLastDayKey, patchNotesQaStatus, aiFeatureConfig, onDeviceAiEnabled, defaultProjectNudgeCadenceDays, mealPlanNudgeEnabled, mealPlanNudgeIgnoresVacation, mealPlanNudgeWeekday, mealPlanNudgeTime, mealPlanNudgeLastFiredWeekKey, mealPlanNudgeGroupId, mealPlanNudgeTaskCategory, newTaskDefaults, titleRules, lastVisitedScreen, initialized: true });
+    set({ dayResetTime: resetTime, morningStart, afternoonStart, eveningStart, nightStart, activeHoursStart, activeHoursEnd, quietHoursStart, quietHoursEnd, themeMode, appFont, appFontRandomize, appFontPool, dailyAgendaEnabled, dailyAgendaTime, tripReminderEnabled, backgroundRefreshEnabled, use24HourTime, weekStartsOn, fabHand, hapticsEnabled, shakeToUndoEnabled, confirmBeforeDeleting, sortOption, filterPriorities, filterEfforts, filterHasReminder, recipeSortOption, recipeLovedOnly, appLockEnabled, appLockGraceSeconds, vacationMode, vacationStart, vacationEnd, vacationDrivenBy, activeListDrivenBy, destinationForecastEnabled, autoRemoveExpiredTasks, autoCompleteProjectsOnDone, postponeCheckEnabled, postponeCheckThreshold, focusWorkCapMinutes, focusDefaultWorkMinutes, focusRestAfterTasks, focusRestAfterMinutes, focusRestMinutes, focusLongRestEvery, focusLongRestMinutes, focusShieldEnabled, completedRetentionDays, defaultReminderLeadMinutes, hideCategories, collapsedCategories, collapsedRecipeSections, collapsedGroceryGroups, recentSearches, simpleTaskForm, simpleMode, hideHelpText, tipsEnabled, seenTips, lastTipShown, timerLiveActivity, tripLiveActivity, focusLiveActivity, kitchenEnabled, mealsOnToday, kitchenOnToday, unitSystem, currencySymbol, mealCookTasks, mealCookTaskCategory, mealSlotsEnabled, mealSlotTasksWrittenThroughDayKey, mealSlotStepEstimates, cookRecapEnabled, restockOfferEnabled, productLookupEnabled, groceryUseUpTasks, groceryUseUpLeadDays, groceryUseUpTaskCategory, leftoverUseUpTasks, leftoverUseUpTaskCategory, useUpTaskCap, remindersImportEnabled, remindersImportListId, remindersImportConfirmedListId, remindersImportDelete, remindersImportReview, groceryImportEnabled, groceryImportListId, groceryImportConfirmedListId, groceryImportDelete, groceryImportTwoWay, calendarReadEnabled, calendarIds, vacationHiddenCalendarIds, calendarEventCategory, reminderMeetingNudgeEnabled, calendarPeopleHistory, deadlineCalendarId, completionCalendarId, mealCalendarId, healthReadEnabled, healthWriteEnabled, weightUnit, healthCategory, healthTasks, healthTaskCategory, healthRules, projectReviewTasks, projectReviewTaskCategory, birthdayTasks, birthdayLeadDays, birthdayTaskCategory, birthdayGiftTasks, birthdayGiftLeadDays, birthdayGiftTaskCategory, reachOutTasks, reachOutTaskCategory, pantryCheckTasks, pantryCheckTaskCategory, pantryReviewTasks, pantryReviewTaskCategory, pantryReviewLastDayKey, lastDeloadAppliedDayKey, mealShortfallTasks, mealLogPrompt, mealShortfallLeadDays, mealShortfallTaskCategory, supplyReorderTasks, calendarReviewTasks, calendarReviewLastDayKey, calendarReviewTimeSegment, weatherTasks, weatherTaskCategory, weatherRules, screenTimeTasks, screenTimeTaskCategory, screenTimeRules, moodLogTasks, moodLogTaskCategory, moodLogLastDayKey, morningCheckInLastDayKey, moodLogTimeSegments, moodNudgeTasks, moodNudgeTaskCategory, moodNudgeAfterDays, moodNudgeLastDayKey, weekendNudgeTasks, weekendNudgeTaskCategory, weekendNudgeLeadDays, weekendNudgeLastWeekendKey, weighInTasks, weighInTaskCategory, weighInEveryDays, weighInLastDayKey, patchNotesQaStatus, aiFeatureConfig, onDeviceAiEnabled, defaultProjectNudgeCadenceDays, mealPlanNudgeEnabled, mealPlanNudgeIgnoresVacation, mealPlanNudgeWeekday, mealPlanNudgeTime, mealPlanNudgeLastFiredWeekKey, mealPlanNudgeGroupId, mealPlanNudgeTaskCategory, newTaskDefaults, titleRules, lastVisitedScreen, initialized: true });
   },
 
   /**
@@ -2675,6 +2719,11 @@ export const useSettingsStore = create<SettingsStore>((set, get) => ({
     set({ mealShortfallTasks: on });
   },
 
+  setMealLogPrompt(on: boolean) {
+    dbSetSetting('mealLogPrompt', on ? 'true' : 'false');
+    set({ mealLogPrompt: on });
+  },
+
   // Only read when the generator's sweep decides whether a meal is in range, so
   // changing it never moves a task already sitting on the list — it only widens
   // or narrows what the next sweep raises. Same restraint setGroceryUseUpLeadDays
@@ -2769,11 +2818,15 @@ export const useSettingsStore = create<SettingsStore>((set, get) => ({
     set({ morningCheckInLastDayKey: dayKey });
   },
 
-  // '' is "any time", the same stored form for "none" the two settings above
-  // use, and what the load path reads back as null.
-  setMoodLogTimeSegment(segment: TimeOfDay | null) {
-    dbSetSetting('moodLogTimeSegment', segment ?? '');
-    set({ moodLogTimeSegment: segment });
+  // Written whole, like setWeatherRules — the sheet editing this already
+  // holds the full list. An empty array serializes as '[]', not '', so a
+  // deliberately-cleared list is still distinguishable from "never touched"
+  // by parseMoodLogTimeSegments's `if (raw)` — not that it matters here (both
+  // read back as "any time"), but it's the same discipline parseCalendarIds
+  // keeps.
+  setMoodLogTimeSegments(segments: TimeOfDay[]) {
+    dbSetSetting('moodLogTimeSegments', JSON.stringify(segments));
+    set({ moodLogTimeSegments: segments });
   },
 
   setMoodNudgeTasks(on: boolean) {

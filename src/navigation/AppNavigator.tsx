@@ -45,6 +45,7 @@ import { DemoBanner } from '../components/DemoBanner';
 import { UndoBar } from '../components/UndoBar';
 import { UseUpResolveSheet } from '../components/UseUpResolveSheet';
 import { FinishLeftoverPrompt } from '../components/FinishLeftoverPrompt';
+import { LogMealPrompt } from '../components/LogMealPrompt';
 import { CookRecap } from '../components/CookRecap';
 import { useColors } from '../theme/ThemeContext';
 import { useTheme } from '../theme/ThemeContext';
@@ -470,6 +471,7 @@ export default function AppNavigator() {
           navigation hooks, so none needs NavigationContainer. See their own doc
           comments. */}
       <FinishLeftoverPrompt />
+      <LogMealPrompt />
       <UseUpResolveSheet />
       {/* Mounted once here rather than on the two screens a meal is ticked off
           from, which is what the offers it replaced did. A banner rendered
