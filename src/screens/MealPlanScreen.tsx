@@ -118,6 +118,7 @@ import {
 import { decidableNights, weekNights } from '../utils/weekPlan';
 import { standingSwapMap } from '../utils/standingSwaps';
 import { describeWeekCost, estimateWeekCost } from '../utils/recipeCost';
+import { describeWeekNutrition, weekNutrition } from '../utils/recipeNutrition';
 
 /**
  * Tints a day section while a drag is aimed at it — the same "arm on the way
@@ -380,6 +381,10 @@ export function MealPlanScreen() {
   const { offerPrepTasks, offerPrepTasksForEach, earliestUnplannedSlotToday } = usePlanMeal();
   const groceryItems = useGroceryStore(useShallow(s => s.items));
   const itemSubs = useGroceryStore(useShallow(s => s.itemSubs));
+  // A specific box's panel outranks its catalog row's, which is the whole
+  // point of `nutritionFor` — reading the week without these would quote a
+  // generic yogurt for the pot actually planned.
+  const itemProducts = useGroceryStore(useShallow(s => s.itemProducts));
   // "Always use oat milk for milk", applied to every read here that shops or
   // asks about what was cooked — see standingSwaps.ts.
   const standingSwaps = useMemo(
@@ -1588,9 +1593,18 @@ export function MealPlanScreen() {
     () => (range ? estimateWeekCost(entries, recipesById, groceryItems, range, standingSwaps) : null),
     [entries, recipesById, groceryItems, range, standingSwaps]
   );
+  // Null while too little of the week resolves to a panel to say anything, the
+  // per-nutrient coverage floor in recipeNutrition.ts — the common case for a
+  // library whose ingredients mostly have no nutrition on them yet, exactly as
+  // the cost line above answers nothing for a lightly priced one.
+  const weekNutritionEstimate = useMemo(
+    () => (range ? weekNutrition(entries, recipesById, groceryItems, range, itemProducts, standingSwaps) : null),
+    [entries, recipesById, groceryItems, range, itemProducts, standingSwaps]
+  );
   const subtitle = [
     describeWeekPlan(entries),
     describeWeekCost(weekCost, currencySymbol, new Date()),
+    describeWeekNutrition(weekNutritionEstimate),
     addedStamp ? describeAddedToList(addedStamp, new Date(), weekStartsOn) : null,
   ].filter(Boolean).join(' · ');
 
