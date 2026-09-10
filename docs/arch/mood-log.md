@@ -181,14 +181,37 @@ It carries `dundundun://mood?log=1` so the row opens the sheet that answers it �
 without that the only thing to do with a check-in is tick it, which marks the
 question answered while recording no answer.
 
-`moodLogTimeSegment` holds the check-in back until a part of the day, the same
-setting and the same shape `calendarReviewTimeSegment` has, read once at
+`moodLogTimeSegments` holds the check-in back until a part of the day, the
+same shape `calendarReviewTimeSegment` has for its one segment, read once at
 creation so changing it shapes the next check-in rather than moving the one
 already on today's list. "How are you doing?" answered at 7am is a different
 record from the same question in the evening, and the evening is the one most
-people want — but it **defaults to any time**, because the generator shipped
-before the setting did and a default that moved the task would change the day
-for everyone already using it. Choosing the evening is one tap in Settings.
+people want — but it **defaults to any time (empty)**, because the generator
+shipped before the setting did and a default that moved the task would change
+the day for everyone already using it. Choosing the evening is one tap in
+Settings.
+
+Unlike `calendarReviewTimeSegment`, this one is a list rather than one value:
+picking several segments holds back a task per segment instead of one for the
+whole day, "several entries a day is the normal case" (above) applied to the
+question that asks for one. Only the *current* segment's task is ever live —
+`checkMoodTasks` computes it fresh each pass (`currentTimeSegment`, the latest
+configured segment whose threshold has arrived) and clears any other today
+before deciding whether to write the current one, the same clear-first rule
+that already dropped yesterday's leftover. An earlier segment's unanswered
+check-in is a question about a part of the day that's passed, not a task
+still owed — the day-to-day rule, one level down.
+
+The sourceId carries the segment (`${dayKey}:${segment}`, `moodLogSourceId`)
+rather than the day alone, so `moodLogLastDayKey` — despite the name, holding
+the whole sourceId, not just the day — still works as "the slot already
+decided" once a day can hold more than one, and two segments' generated rows
+never collide. "Already answered" is scoped to the segment for the same
+reason a symptom's severity is scoped to the day it happened on: an entry
+made during the morning must not silence the evening's check-in, so the test
+is "logged since this segment's threshold" (`hasLoggedSince`), not "logged
+today at all" (`hasLogOnDay`, which the any-time case still uses, since it
+has no narrower slot to ask about).
 
 **`moodNudge` deliberately has no counterpart.** It asks about the week rather
 than the day and fires at most once a week, so holding it until an hour of the

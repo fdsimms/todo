@@ -255,6 +255,18 @@ export function hasLogOnDay(logs: readonly MoodLog[], dayKey: string): boolean {
 }
 
 /**
+ * Whether anything was recorded at or after a given instant — the "did you
+ * log this slot" read a day with several check-ins needs, where hasLogOnDay
+ * only answers for the whole day. `since` is an ISO instant (a segment's
+ * threshold), compared lexically against `loggedAt` the same way both are
+ * ever compared: both are `toISOString()` output, so string order is time
+ * order.
+ */
+export function hasLoggedSince(logs: readonly MoodLog[], since: string): boolean {
+  return logs.some(l => l.loggedAt >= since);
+}
+
+/**
  * A one-line summary of an entry, for a list row.
  *
  * Mood first because it is the thing on a fixed scale, then the symptoms by

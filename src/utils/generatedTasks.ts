@@ -695,11 +695,12 @@ export const GENERATED_KIND_SPECS: Record<GeneratedKind, GeneratedKindSpec> = {
     onHint: 'Adds one task a day to log how you\'re feeling',
     offHint: 'No daily task to log how you\'re feeling',
     icon: 'happy-outline',
-    // Its source id is the day key it asks about, which names a square on the
-    // calendar rather than a row anything could be written back to — the same
-    // position calendarReview is in, and the reason writeGeneratedOptOut has
-    // nothing to write for it. What stops a swiped-away one coming back is
-    // moodLogLastDayKey.
+    // Its source id is the day key it asks about (or, with moodLogTimeSegments
+    // configured, the day and the segment together — see moodLogSourceId),
+    // which names a square on the calendar rather than a row anything could be
+    // written back to — the same position calendarReview is in, and the reason
+    // writeGeneratedOptOut has nothing to write for it. What stops a
+    // swiped-away one coming back is moodLogLastDayKey.
     sourced: false,
     // Not a notice, unlike calendarReview beside it. Logging is the work rather
     // than something the app is telling you, and pushing the check-in to the
