@@ -153,7 +153,7 @@ export function FoodLogEntrySheet({ visible, slot, at, seedRecipeId, onClose, on
       out.push({
         key: `p:${product.id}`,
         label: `${item.name}${describeProduct(product) ? `, ${describeProduct(product)}` : ''}`,
-        detail: 'This one in particular',
+        detail: null,
         kind: 'food',
         panel: product.nutrition,
         recipeId: null,

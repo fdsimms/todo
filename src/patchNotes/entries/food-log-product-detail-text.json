@@ -1,0 +1,4 @@
+{
+  "message": "Logging a specific branded product to the food log no longer shows a redundant \"This one in particular\" subtitle under every match, since the product name already says which one it is.",
+  "date": "2026-09-10"
+}
