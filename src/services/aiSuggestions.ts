@@ -1,4 +1,4 @@
-import type { Effort, RecipeSourceType } from '../types';
+import type { Effort, RecipeSourceType, NutrientKey } from '../types';
 import {
   TITLE_MAX_LENGTH,
   GROCERY_NAME_MAX_LENGTH,
@@ -10,6 +10,7 @@ import {
   RECIPE_SOURCE_TYPES,
   SHOP_NAME_MAX_LENGTH,
   PREP_MAX_LENGTH,
+  NUTRIENT_KEYS,
 } from '../types';
 import { groceryNameKey } from '../utils/groceryParse';
 import { parsePriceInput } from '../utils/groceryPrice';
@@ -30,6 +31,8 @@ import {
   type NutritionEstimate, type RawNutritionEstimate,
 } from '../utils/nutritionEstimate';
 import { isUnscaled } from '../utils/recipeScale';
+import { amountFromPrintedText, type LabelColumn, type LabelReading } from '../utils/labelOcr';
+import { NUTRIENT_LABEL } from '../utils/foodNutrition';
 import { useSettingsStore } from '../store/useSettingsStore';
 import { getLogicalToday, dayKeyOf } from '../utils/dateUtils';
 import type { AiFeatureId, AiModelId } from '../utils/aiFeatures';
@@ -2231,4 +2234,156 @@ export async function estimateMealNutrition(description: string): Promise<Nutrit
   // telling somebody the description could not be read.
   if (!estimate) throw new Error('No estimate returned');
   return estimate;
+}
+
+/** Whichever basis a column's own heading could state, plus "no heading". */
+const LABEL_BASIS_VALUES = ['per100g', 'per100ml', 'perServing', ''] as const;
+
+/**
+ * Whether `readLabelPhotoWithAi` is worth calling right now — the same two
+ * checks `requireFeature('nutritionLabelPhoto')` makes, surfaced so
+ * `NutritionPanelSheet` can decide *before* taking a photo whether there's a
+ * fallback to try, rather than attempting one and translating "AI feature
+ * disabled" into a message that would puzzle the far larger set of people who
+ * have never configured an API key at all. See the doc comment on
+ * `readLabelPhotoWithAi` for why that distinction matters here.
+ */
+export function nutritionLabelPhotoAiAvailable(): boolean {
+  const { anthropicApiKey, aiFeatureConfig } = useSettingsStore.getState();
+  return aiFeatureConfig.nutritionLabelPhoto.enabled && !!anthropicApiKey;
+}
+
+/**
+ * Reads a photographed nutrition panel that on-device Vision could not turn
+ * into a reading — a curved tub, a steep angle, glare on the plastic wrap.
+ * `labelOcr.ts` already handles the panel Vision *can* transcribe; this is
+ * for the photos it can't, called only once that path has already returned
+ * null (see `NutritionPanelSheet.handlePhoto`).
+ *
+ * **It transcribes; it does not compute.** Every figure the model returns is
+ * the printed text, value and unit together, exactly as the label states it
+ * ("7g", "490mg", "<0.5g") — never a number it has converted or derived from
+ * a percentage. `amountFromPrintedText` (`labelOcr.ts`) does the actual unit
+ * and salt arithmetic, the same tested function an on-device read goes
+ * through, for the reason that file's own doc comment gives at the top: a
+ * second opinion about units living in a second file is how a figure ends up
+ * wrong by a factor nobody notices.
+ *
+ * Null means "not a panel, or nothing legible" — the same contract
+ * `readNutritionLabel` has, so the caller can treat either engine's failure
+ * identically. A request failure (no key, the feature switched off, a
+ * network error) throws instead, same as every other extractor in this file;
+ * `nutritionLabelPhotoAiAvailable` above is what keeps the first two of those
+ * from ever being reached from the sheet.
+ */
+export async function readLabelPhotoWithAi(image: RecipeImage): Promise<LabelReading | null> {
+  const { apiKey, model } = requireFeature('nutritionLabelPhoto');
+  if (!image.base64) return null;
+
+  const prompt = [
+    'This is a photo of a printed nutrition facts panel. It may be on a curved or angled surface, or have glare or reflections across part of it — read through that the way you would hold the packet up to the light yourself.',
+    'Give each nutrient\'s figure exactly as printed, value and unit together ("7g", "490mg", "<0.5g") — do not convert a unit or compute a figure from a percentage. Leave a field empty if the panel does not print that nutrient at all; only write a figure for one the panel actually states, including one it states as zero.',
+    'A panel sometimes prints more than one column of figures side by side, typically "per 100g" and "per serving". Read every column it prints, left to right, and give what that column\'s own heading states — per100g, per100ml, or perServing. Leave a column\'s basis empty only when the panel genuinely does not head it.',
+    'The serving line, when printed, states a size ("2 cookies", "1 oz (28g)") — give it verbatim in servingText, and the gram weight separately in servingGrams if it states one in parentheses.',
+    'Ignore the %DV column entirely; it is not a figure to report. Ignore "Calories from Fat", "Trans Fat", "Added Sugars", and every vitamin or mineral row — this app has no field for any of them.',
+    'If the photo does not show a nutrition panel at all, or is too illegible to make out real figures, return an empty columns array rather than guessing.',
+  ].join('\n\n');
+
+  const nutrientProperties = Object.fromEntries(NUTRIENT_KEYS.map(key => [key, {
+    type: 'string',
+    description: `${NUTRIENT_LABEL[key].label}, exactly as printed with its unit. Empty string if the panel does not print this nutrient.`,
+  }]));
+
+  const data = await callAnthropic({
+    max_tokens: 1500,
+    tools: [{
+      name: 'read_nutrition_label',
+      description: 'Read a photographed nutrition facts panel into its printed figures',
+      input_schema: {
+        type: 'object',
+        properties: {
+          servingText: {
+            type: 'string',
+            description: 'The serving size exactly as printed, e.g. "2 cookies (30g)". Empty string if not printed.',
+          },
+          servingGrams: {
+            type: 'string',
+            description: 'The gram weight the serving line states in parentheses, digits only, e.g. "30". Empty string if none is stated.',
+          },
+          columns: {
+            type: 'array',
+            description: 'One entry per value column the panel prints, left to right. Empty array if this is not a readable nutrition panel.',
+            items: {
+              type: 'object',
+              properties: {
+                basis: {
+                  type: 'string',
+                  enum: [...LABEL_BASIS_VALUES],
+                  description: 'What this column\'s own heading states. Empty string if the column has no stated heading.',
+                },
+                ...nutrientProperties,
+                salt: {
+                  type: 'string',
+                  description: 'The salt figure, exactly as printed with its unit, for a panel that states salt rather than sodium. Empty string otherwise.',
+                },
+              },
+              required: [...NUTRIENT_KEYS],
+            },
+          },
+        },
+        required: ['columns'],
+      },
+    }],
+    tool_choice: { type: 'tool', name: 'read_nutrition_label' },
+    messages: [{
+      role: 'user',
+      content: [
+        { type: 'image', source: { type: 'base64', media_type: image.mediaType, data: image.base64 } },
+        { type: 'text', text: prompt },
+      ],
+    }],
+  }, apiKey, model, IMAGE_REQUEST_TIMEOUT_MS);
+
+  const toolUse = data.content?.find(c => c.type === 'tool_use');
+  const input = toolUse?.input as {
+    servingText?: unknown; servingGrams?: unknown; columns?: unknown;
+  } | undefined;
+  if (!input || !Array.isArray(input.columns)) return null;
+
+  const columns: LabelColumn[] = [];
+  for (const raw of input.columns) {
+    if (!raw || typeof raw !== 'object') continue;
+    const fields = raw as Record<string, unknown>;
+
+    const amounts: Partial<Record<NutrientKey, number>> = {};
+    for (const key of NUTRIENT_KEYS) {
+      const printed = fields[key];
+      if (typeof printed !== 'string') continue;
+      const amount = amountFromPrintedText(key, printed);
+      if (amount !== null) amounts[key] = amount;
+    }
+    // Salt fills sodium only when the panel didn't already print sodium
+    // directly — same "first reading wins" rule readNutritionLabel applies.
+    if (typeof fields.salt === 'string' && amounts.sodiumMg === undefined) {
+      const sodiumFromSalt = amountFromPrintedText('salt', fields.salt);
+      if (sodiumFromSalt !== null) amounts.sodiumMg = sodiumFromSalt;
+    }
+    if (Object.keys(amounts).length === 0) continue;
+
+    const basis = typeof fields.basis === 'string'
+      && (LABEL_BASIS_VALUES as readonly string[]).includes(fields.basis)
+      && fields.basis !== ''
+      ? fields.basis as LabelColumn['basis']
+      : null;
+    columns.push({ basis, amounts });
+  }
+  if (columns.length === 0) return null;
+
+  const servingText = typeof input.servingText === 'string' && input.servingText.trim()
+    ? input.servingText.trim().slice(0, 200)
+    : null;
+  const servingGramsRaw = typeof input.servingGrams === 'string' ? Number(input.servingGrams.trim()) : NaN;
+  const servingGrams = Number.isFinite(servingGramsRaw) && servingGramsRaw > 0 ? servingGramsRaw : null;
+
+  return { servingText, servingGrams, columns };
 }

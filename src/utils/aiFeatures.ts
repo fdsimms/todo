@@ -6,12 +6,12 @@
 export type AiFeatureId =
   | 'taskBreakdown' | 'templateSuggestions' | 'projectTaskSuggestions' | 'groceryAisles'
   | 'recipeExtraction' | 'mealIdeas' | 'substitutes' | 'receiptImport' | 'calendarImport'
-  | 'cookHelp' | 'nutritionEstimate';
+  | 'cookHelp' | 'nutritionEstimate' | 'nutritionLabelPhoto';
 
 export const AI_FEATURE_IDS: AiFeatureId[] = [
   'taskBreakdown', 'templateSuggestions', 'projectTaskSuggestions', 'groceryAisles',
   'recipeExtraction', 'mealIdeas', 'substitutes', 'receiptImport', 'calendarImport',
-  'cookHelp', 'nutritionEstimate',
+  'cookHelp', 'nutritionEstimate', 'nutritionLabelPhoto',
 ];
 
 export type AiModelId = 'claude-haiku-4-5-20251001' | 'claude-sonnet-5' | 'claude-opus-5';
@@ -123,6 +123,14 @@ export const AI_FEATURES: AiFeatureMeta[] = [
     hint: 'Reads a title, date, time, and location out of a pasted confirmation or a photo of one',
     simple: true,
   },
+  {
+    id: 'nutritionLabelPhoto',
+    label: 'Read a nutrition label from a photo',
+    // Reached from `NutritionPanelSheet`'s own "Read from a photo" button, only
+    // once the on-device Vision read of the same photo has already come back
+    // with nothing — a curved tub, a steep angle, glare on the wrap.
+    hint: 'Falls back to Claude to read a nutrition panel photo the on-device reading could not',
+  },
 ];
 
 /**
@@ -189,5 +197,13 @@ export function defaultAiFeatureConfig(): AiFeatureConfigMap {
     // than a wrong read. Still per-feature switchable, so the picker can
     // overrule this.
     nutritionEstimate: { enabled: true, model: 'claude-sonnet-5' },
+    // Sonnet because every photo that reaches this one already failed the
+    // on-device read — the easy panels never get here, so what's left is
+    // disproportionately curved tubs, steep angles and glare, the same reasons
+    // receiptImport picked a stronger model than its default. Enabled by
+    // default rather than opt-in like calendarImport: a nutrition label is the
+    // user's own food packaging, not a third party's data, the same
+    // distinction that keeps receiptImport on by default too.
+    nutritionLabelPhoto: { enabled: true, model: 'claude-sonnet-5' },
   };
 }
