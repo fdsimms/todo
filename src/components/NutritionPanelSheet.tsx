@@ -29,6 +29,7 @@ import { readLabelPhoto, type LabelReading } from '../utils/labelOcr';
 import { pickRecipePhoto } from '../utils/recipePhoto';
 import { haptics } from '../utils/haptics';
 import { InlineAction } from './InlineAction';
+import { NumberPadAccessory, NUMBER_PAD_ACCESSORY_ID } from './NumberPadAccessory';
 import { SegmentedControl } from './SegmentedControl';
 import { SheetHeaderButton } from './SheetHeaderButton';
 
@@ -366,6 +367,7 @@ export function NutritionPanelSheet({ visible, foodName, nutrition, onClose, onS
                     placeholder="e.g. 30"
                     placeholderTextColor={colors.textTertiary}
                     keyboardType="decimal-pad"
+                    inputAccessoryViewID={NUMBER_PAD_ACCESSORY_ID}
                     accessibilityLabel="Serving weight in grams"
                   />
                   <Text style={styles.unit}>g</Text>
@@ -390,6 +392,7 @@ export function NutritionPanelSheet({ visible, foodName, nutrition, onClose, onS
                       placeholder={PLACEHOLDER[key]}
                       placeholderTextColor={colors.textTertiary}
                       keyboardType="decimal-pad"
+                      inputAccessoryViewID={NUMBER_PAD_ACCESSORY_ID}
                       accessibilityLabel={`${NUTRIENT_LABEL[key].label} in ${NUTRIENT_LABEL[key].unit}`}
                     />
                     <Text style={styles.unit}>{NUTRIENT_LABEL[key].unit}</Text>
@@ -407,6 +410,7 @@ export function NutritionPanelSheet({ visible, foodName, nutrition, onClose, onS
             )}
           </ScrollView>
         </KeyboardAvoidingView>
+        <NumberPadAccessory />
       </View>
     </Modal>
   );
