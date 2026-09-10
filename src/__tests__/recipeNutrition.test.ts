@@ -5,6 +5,7 @@ import {
   describeNutritionCoverage,
   describeRecipeNutrition,
   describeWeekNutrition,
+  lineContribution,
   nutritionGaps,
   perServing,
   readRecipeNutrition,
@@ -599,6 +600,38 @@ describe('recipeNutritionLines', () => {
     const [line] = recipeNutritionLines(dish, [boxed], [product]);
     expect(line.nutrition!.amounts.calorieKcal).toBe(50);
     expect(line.product).not.toBeNull();
+  });
+});
+
+describe('lineContribution', () => {
+  it('is the amount times the multiplier, the same arithmetic the fold sums', () => {
+    const dish = recipe('Stew', [ing('Chicken', { quantity: '200 g' })]);
+    const catalog = [item({ name: 'Chicken', nutrition: panel() })];
+    const [line] = recipeNutritionLines(dish, catalog);
+    expect(lineContribution(line)).toEqual({ calorieKcal: 200, proteinG: 20 });
+  });
+
+  it('is null for a line that never reached the total', () => {
+    const dish = recipe('Stew', [ing('Onion', { quantity: '2 cups' })]);
+    // No portion table, so this resolves to 'unmeasured' rather than 'covered'.
+    const catalog = [item({ name: 'Onion', nutrition: panel() })];
+    const [line] = recipeNutritionLines(dish, catalog);
+    expect(line.state).toBe('unmeasured');
+    expect(lineContribution(line)).toBeNull();
+  });
+
+  it('adds up across lines to the same total the rollup reports', () => {
+    const dish = recipe('Stew', [
+      ing('Chicken', { quantity: '200 g' }),
+      ing('Rice', { quantity: '150 g' }),
+    ]);
+    const catalog = [
+      item({ name: 'Chicken', nutrition: panel({ amounts: { calorieKcal: 165, proteinG: 31 } }) }),
+      item({ name: 'Rice', nutrition: panel({ amounts: { calorieKcal: 130, proteinG: 2.7 } }) }),
+    ];
+    const lines = recipeNutritionLines(dish, catalog);
+    const summed = lines.reduce((total, line) => total + (lineContribution(line)?.calorieKcal ?? 0), 0);
+    expect(Math.round(summed * 10) / 10).toBe(recipeNutrition(dish, catalog)!.total.calorieKcal);
   });
 });
 
