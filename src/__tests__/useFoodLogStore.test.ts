@@ -13,6 +13,8 @@ import {
 import { retractFoodEntryFromHealth } from '../utils/healthFoodSync';
 import type { FoodNutrition } from '../types';
 
+jest.mock('react-native', () => ({ Platform: { OS: 'ios' } }));
+
 jest.mock('../db/database', () => ({
   dbGetFoodLogEntries: jest.fn(() => []),
   // Matches the real dbGetFoodLogEntry's own miss case (a null row reads as
