@@ -89,7 +89,7 @@ function item(id: string, overrides: Partial<GroceryItem> = {}): GroceryItem {
     usedUpCount: 0,
     spoiledCount: 0,
     lastSpoiledAt: null,
-    varietyOfKey: null, backfillDismissedFields: [],
+    varietyOfKey: null, nutrition: null, backfillDismissedFields: [],
     lastPriceMinor: null,
     lastPricedAt: null,
     lastPriceQuantity: null, priceHistory: [],
@@ -310,6 +310,7 @@ describe('tripMarkerFor', () => {
       variant: null,
       productKey: 'good culture|',
       rating: null,
+      nutrition: null,
       note: '',
       purchaseCount: 0,
       lastPurchasedAt: null,
@@ -358,7 +359,7 @@ describe('tripMarkerFor', () => {
     it('offers the next box on record when there is one', () => {
       const withStore = [...products, {
         id: 'p-store', itemId: 'milk', brand: 'Store brand', variant: null,
-        productKey: 'store brand|', rating: null, note: '',
+        productKey: 'store brand|', rating: null, nutrition: null, note: '',
         purchaseCount: 0, lastPurchasedAt: null, gtin: null,
         onHandUntil: null, expiresAt: null, frozenAt: null, openedAt: null, createdAt: '2026-02-01T00:00:00.000Z',
       }];
@@ -377,7 +378,7 @@ describe('tripMarkerFor', () => {
     it('never offers a box rated never again', () => {
       const withAvoided = [...products, {
         id: 'p-store', itemId: 'milk', brand: 'Store brand', variant: null,
-        productKey: 'store brand|', rating: 'avoid' as const, note: '',
+        productKey: 'store brand|', rating: 'avoid' as const, nutrition: null, note: '',
         purchaseCount: 0, lastPurchasedAt: null, gtin: null,
         onHandUntil: null, expiresAt: null, frozenAt: null, openedAt: null, createdAt: '2026-02-01T00:00:00.000Z',
       }];
@@ -391,7 +392,7 @@ describe('tripMarkerFor', () => {
     it('never offers a box this store is also on record as lacking', () => {
       const withStore = [...products, {
         id: 'p-store', itemId: 'milk', brand: 'Store brand', variant: null,
-        productKey: 'store brand|', rating: null, note: '',
+        productKey: 'store brand|', rating: null, nutrition: null, note: '',
         purchaseCount: 0, lastPurchasedAt: null, gtin: null,
         onHandUntil: null, expiresAt: null, frozenAt: null, openedAt: null, createdAt: '2026-02-01T00:00:00.000Z',
       }];

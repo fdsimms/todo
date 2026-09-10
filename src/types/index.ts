@@ -2730,6 +2730,133 @@ export interface GroceryListEntry {
   addedAt: string;
 }
 
+/**
+ * The ten nutrients a food can be recorded as holding, keyed the way the health
+ * rules already key theirs.
+ *
+ * **Eight of these are `HealthRuleMetric`'s own nutrient keys, character for
+ * character**, and that alignment is the point rather than a coincidence.
+ * `healthRules.ts` already watches those eight, reading them out of Apple
+ * Health — which today means reading figures some *other* food logger wrote.
+ * A figure recorded here has to be able to answer a rule the user has already
+ * set up, and a second vocabulary spelling it `protein_g` beside one spelling
+ * it `proteinG` is how the two would drift apart. `foodNutrition.test.ts` pins
+ * the containment, so a ninth metric over there can't quietly end up with no
+ * home here.
+ *
+ * **`carbsG` and `fatG` are the two that aren't**, and they are deliberately
+ * not added to `HealthRuleMetric` to match: a rule metric costs a HealthKit
+ * read type and a wider permission sheet (see the note beside `readTypes` in
+ * the bridge), and nobody has asked to be nudged about carbohydrate. They are
+ * here because a label panel prints them, and a food record dropping them would
+ * be visibly missing two of the numbers on the packet.
+ *
+ * The unit is in the name, the same convention the health metrics use, because
+ * a figure stored in one unit and read in another is the bug with no symptom
+ * until somebody's sodium reads a thousand times too high.
+ */
+export type NutrientKey =
+  | 'calorieKcal' | 'proteinG' | 'carbsG' | 'fatG' | 'satFatG'
+  | 'fiberG' | 'sugarG' | 'sodiumMg' | 'caffeineMg' | 'waterMl';
+
+/** Every `NutrientKey`, in the order a nutrition label prints them. */
+export const NUTRIENT_KEYS: readonly NutrientKey[] = [
+  'calorieKcal', 'fatG', 'satFatG', 'carbsG', 'fiberG', 'sugarG', 'proteinG', 'sodiumMg', 'caffeineMg', 'waterMl',
+];
+
+/** Where a `FoodNutrition` record's figures came from. See that type's `source`. */
+export type FoodNutritionSource = 'fdc' | 'openFoodFacts' | 'manual' | 'estimated';
+
+/**
+ * What one food is made of, as some source stated it.
+ *
+ * **One JSON column rather than thirteen**, for the reason `FollowUpTaskDraft`
+ * is one: these are only ever read and written together, by whatever established
+ * a food's nutrition, and a column apiece would be thirteen migrations for a
+ * field set that is this feature's alone. It also passes the test `ItemProduct`'s
+ * own note sets for going the other way — nothing outside the row holds a
+ * pointer at a nutrition record, so there is no id for a separate table to hang
+ * off.
+ *
+ * **It hangs off both `GroceryItem` and `ItemProduct`, and the product wins.**
+ * A catalog row is the generic food ("onion", "chicken breast") and is what a
+ * recipe ingredient resolves to; a product is the box on the shelf, and Fage 5%
+ * and Chobani 0% are two different sets of numbers under one "yogurt". Read the
+ * pair through `nutritionFor` (`foodNutrition.ts`); nothing reads either field
+ * raw.
+ */
+export interface FoodNutrition {
+  /**
+   * What the figures in `amounts` are measured against.
+   *
+   * **Not optional and not defaultable.** "240 calories" means nothing until you
+   * know whether it is per 100g or per serving, and the two differ by whatever a
+   * serving happens to weigh — so a record that lost this would be wrong by an
+   * unknown factor while looking entirely ordinary. The two sources this app
+   * already talks to disagree about which they use, which is why it has to be
+   * carried rather than assumed: FoodData Central's Foundation foods are per
+   * 100g, its Branded ones and Open Food Facts are per serving.
+   */
+  basis: 'per100g' | 'perServing';
+  /**
+   * What one serving weighs, when the source said so. Null when it didn't.
+   *
+   * Needed to relate a `perServing` record to any amount other than exactly one
+   * serving, so such a record without it can answer "one serving of this" and
+   * nothing else. That refusal belongs to whichever reader wants the grams;
+   * nothing here guesses a serving weight.
+   */
+  servingGrams: number | null;
+  /**
+   * The serving as the packet prints it — "1 cup (240ml)", "2 cookies".
+   * Rendered, never parsed for arithmetic; `servingGrams` is the number
+   * anything is allowed to compute with. Same split `Quantity.container`
+   * already draws between a size as written and a number.
+   */
+  servingText: string | null;
+  /**
+   * The figures themselves, every one of them optional.
+   *
+   * **An absent key is unknown, and is emphatically not zero.** Open Food Facts
+   * is crowd-sourced and routinely partial, and a US label only has to declare a
+   * short list, so a food reporting calories and protein but no fibre is the
+   * ordinary case rather than a broken row. Summing an absent value as 0 yields
+   * a total that is quietly wrong with nothing on screen to say so — the same
+   * rule `countOrNull` enforces on the Health read side, and the one
+   * `moodInsights` states generally as "a day you didn't log is not a zero". A
+   * real 0 survives as 0, since a food genuinely containing no fat is a thing a
+   * source can state.
+   *
+   * A map rather than ten sibling fields so that summing, counting coverage and
+   * rendering a panel are each one walk over `NUTRIENT_KEYS`, instead of a
+   * hand-written list that an eleventh nutrient would have to be added to in
+   * four places.
+   */
+  amounts: Partial<Record<NutrientKey, number>>;
+  /**
+   * Where these figures came from, which decides what a reader may claim about
+   * them.
+   *
+   * **Load-bearing, not bookkeeping.** A barcode's figures are a manufacturer's
+   * declared label, a typed one is the user's own transcription, and an
+   * estimated one is a guess a model made. Those are three different things to
+   * put in front of somebody, and a different three again to write into a health
+   * record — see `docs/arch/health-data.md` on why a write costs more to get
+   * wrong than a read. Nothing downstream may render an estimate the way it
+   * renders a label.
+   */
+  source: FoodNutritionSource;
+  /**
+   * The source's own id for this food — an FDC `fdcId`, an Open Food Facts
+   * code — or null for anything typed by hand. Resolve-or-shrug: nothing
+   * re-fetches from it, so an id whose source has since forgotten the food is
+   * simply an id nobody asks about.
+   */
+  sourceId: string | null;
+  /** ISO instant these figures were recorded. */
+  recordedAt: string;
+}
+
 export interface GroceryItem {
   id: string;
   // What the user last typed — the label. "Whole milk" and "milk" reading
@@ -3182,6 +3309,19 @@ export interface GroceryItem {
    */
   priceHistory: PriceObservation[];
   /**
+   * What this food is made of, or null when nothing has established it yet.
+   *
+   * The generic answer for the catalog row, which is what a recipe ingredient
+   * resolves to and so what a recipe's own nutrition is summed from. A box on
+   * the shelf can disagree (`ItemProduct.nutrition`) and wins when it does, so
+   * read the pair through `nutritionFor` rather than this field directly.
+   *
+   * **Null is unknown, never "contains nothing".** Most of the catalog will sit
+   * at null for a long time, since a food only gains figures when a barcode, a
+   * lookup or a person supplies them.
+   */
+  nutrition: FoodNutrition | null;
+  /**
    * Which Backfill screen fields the user has said not to ask about again on
    * this item — "this genuinely isn't a variety of anything", not "not right
    * now" (that's the screen's own session-only skip). Same mechanism as
@@ -3436,6 +3576,18 @@ export interface ItemProduct {
    * tell apart.
    */
   openedAt: string | null;
+  /**
+   * This box's own label panel, or null to fall back to the item's generic
+   * figures — the same fall-through the four pantry columns above use, for a
+   * sharper reason. The whole point of a product row is that Fage 5% and
+   * Chobani 0% are different boxes, and their nutrition is exactly where they
+   * differ: an item-level figure standing in for both would be wrong for at
+   * least one of them.
+   *
+   * This is where a barcode's figures land, since a GTIN denotes one box in the
+   * world and a label panel is that box's own statement about itself.
+   */
+  nutrition: FoodNutrition | null;
   createdAt: string;
 }
 

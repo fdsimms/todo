@@ -1242,6 +1242,10 @@ function ensureProductFor(
       expiresAt: null,
       frozenAt: null,
       openedAt: null,
+      // Defers to the item's, same as the four above. A box named by hand says
+      // nothing about what is in it; a scanned one gets its label panel from
+      // the lookup rather than from being minted here.
+      nutrition: null,
       // Never set here, even on the scan path that has a barcode in hand.
       // Claiming one has to release it from whichever box held it before, so
       // it goes through `linkScannedGtins` rather than riding an insert.
@@ -1346,6 +1350,11 @@ function newItemRow(fields: {
     lastPricedAt: null,
     lastPriceQuantity: null,
     priceHistory: [],
+    // Unknown, which is a different thing from "contains nothing" — see
+    // FoodNutrition.amounts. Nothing is inferred from a name: knowing a row is
+    // called "onion" is not knowing what an onion is made of, and a lookup
+    // (or a person) has to say so before this holds anything.
+    nutrition: null,
     // Nobody has dismissed a Backfill screen field on a row that didn't exist
     // a moment ago.
     backfillDismissedFields: [],

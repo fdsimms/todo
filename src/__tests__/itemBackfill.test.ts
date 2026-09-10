@@ -45,6 +45,7 @@ function makeItem(name: string, overrides: Partial<GroceryItem> = {}): GroceryIt
     lastPricedAt: null,
     lastPriceQuantity: null,
     priceHistory: [],
+    nutrition: null,
     backfillDismissedFields: [],
     ...overrides,
   };

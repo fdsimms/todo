@@ -3,6 +3,7 @@ import type { Cookbook, DeliverableKind, GeneratedKind, LoggedSymptom, MoodLevel
 import { DEFAULT_NUDGE_CADENCE_DAYS, MEAL_SLOTS, PERSON_NOTE_KINDS, RECIPE_MEAL_TYPES, RECIPE_SOURCE_TYPES, isReceiptStyle } from '../types';
 import { generateId } from '../utils/id';
 import { appendPriceObservation, parsePriceHistory } from '../utils/priceHistory';
+import { parseFoodNutrition, serializeFoodNutrition } from '../utils/foodNutrition';
 import { parseUnavailableProductIds, productKeyFor } from '../utils/groceryProduct';
 import { parseChainItems } from '../utils/chain';
 import { parseFollowUpTaskDraft } from '../utils/followUpTask';
@@ -1366,6 +1367,15 @@ export function initDatabase(): void {
     // Freeform, non-symptom context ("vacation", "big deadline") — see
     // MoodLog.contextTags. Same shape as symptoms minus severity.
     "ALTER TABLE mood_logs ADD COLUMN context_tags TEXT NOT NULL DEFAULT '[]'",
+    // Null on every existing row, and null is the honest reading: a food nobody
+    // has looked up has unknown nutrition, which is a different thing from a
+    // food with none. Nullable rather than defaulting to '{}' for that reason —
+    // an empty panel would read as known-and-blank. See GroceryItem.nutrition
+    // and FoodNutrition.amounts.
+    'ALTER TABLE grocery_items ADD COLUMN nutrition TEXT',
+    // The same column on a box rather than on the catalog row, and the one that
+    // a barcode's label panel lands in. See ItemProduct.nutrition.
+    'ALTER TABLE grocery_item_products ADD COLUMN nutrition TEXT',
   ];
   for (const sql of migrations) {
     try { db.runSync(sql); } catch (_) { /* column already exists */ }
@@ -3100,6 +3110,7 @@ function rowToGroceryItem(row: Record<string, unknown>): GroceryItem {
     lastSpoiledAt: (row.last_spoiled_at as string) ?? null,
     varietyOfKey: (row.variety_of_key as string) ?? null,
     priceHistory: parsePriceHistory(row.price_history as string | null),
+    nutrition: parseFoodNutrition(row.nutrition as string | null),
     backfillDismissedFields: JSON.parse((row.backfill_dismissed_fields as string) ?? '[]') as string[],
   };
 }
@@ -3119,8 +3130,8 @@ export function dbInsertGroceryItem(item: GroceryItem): void {
        source_recipe_id, source_recipe_title, choice_group, is_staple, expires_at, frozen_at, opened_at, running_low_at, shelf_life_days, use_up_task,
        pantry_check_declined_at, pantry_reviewed_at, used_up_count, spoiled_count, last_spoiled_at,
        last_price_minor, last_priced_at, last_price_quantity, preferred_product_id, brand_strict, variety_of_key,
-       backfill_dismissed_fields)
-     VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)`,
+       backfill_dismissed_fields, nutrition)
+     VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)`,
     [
       item.id, item.name, item.nameKey, item.aisle, item.quantity ?? null, item.quantityFromRecipe ? 1 : 0, item.note,
       item.onList ? 1 : 0, item.checked ? 1 : 0, 1, item.sortOrder,
@@ -3136,6 +3147,7 @@ export function dbInsertGroceryItem(item: GroceryItem): void {
       item.lastPriceMinor ?? null, item.lastPricedAt ?? null, item.lastPriceQuantity ?? null,
       item.preferredProductId ?? null, item.productStrict ? 1 : 0, item.varietyOfKey ?? null,
       JSON.stringify(item.backfillDismissedFields),
+      serializeFoodNutrition(item.nutrition),
     ]
   );
 }
@@ -3149,7 +3161,7 @@ export function dbUpdateGroceryItem(item: GroceryItem): void {
        expires_at=?, frozen_at=?, opened_at=?, running_low_at=?, shelf_life_days=?, use_up_task=?,
        pantry_check_declined_at=?, pantry_reviewed_at=?, used_up_count=?, spoiled_count=?, last_spoiled_at=?,
        last_price_minor=?, last_priced_at=?, last_price_quantity=?,
-       preferred_product_id=?, brand_strict=?, variety_of_key=?, backfill_dismissed_fields=?
+       preferred_product_id=?, brand_strict=?, variety_of_key=?, backfill_dismissed_fields=?, nutrition=?
      WHERE id=?`,
     [
       item.name, item.nameKey, item.aisle, item.quantity ?? null, item.quantityFromRecipe ? 1 : 0, item.note,
@@ -3166,6 +3178,7 @@ export function dbUpdateGroceryItem(item: GroceryItem): void {
       item.lastPriceMinor ?? null, item.lastPricedAt ?? null, item.lastPriceQuantity ?? null,
       item.preferredProductId ?? null, item.productStrict ? 1 : 0, item.varietyOfKey ?? null,
       JSON.stringify(item.backfillDismissedFields),
+      serializeFoodNutrition(item.nutrition),
       item.id,
     ]
   );
@@ -3888,6 +3901,7 @@ function rowToItemProduct(row: Record<string, unknown>): ItemProduct {
     expiresAt: (row.expires_at as string) ?? null,
     frozenAt: (row.frozen_at as string) ?? null,
     openedAt: (row.opened_at as string) ?? null,
+    nutrition: parseFoodNutrition(row.nutrition as string | null),
     createdAt: row.created_at as string,
   };
 }
@@ -3921,8 +3935,8 @@ export function dbSetItemProduct(product: ItemProduct): void {
   db.runSync(
     `INSERT INTO grocery_item_products
        (id, item_id, brand, variant, product_key, rating, note, purchase_count, last_purchased_at,
-        on_hand_until, expires_at, frozen_at, opened_at, created_at)
-     VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?)
+        on_hand_until, expires_at, frozen_at, opened_at, nutrition, created_at)
+     VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)
      ON CONFLICT(id)
      DO UPDATE SET brand = excluded.brand,
                    variant = excluded.variant,
@@ -3934,7 +3948,8 @@ export function dbSetItemProduct(product: ItemProduct): void {
                    on_hand_until = excluded.on_hand_until,
                    expires_at = excluded.expires_at,
                    frozen_at = excluded.frozen_at,
-                   opened_at = excluded.opened_at`,
+                   opened_at = excluded.opened_at,
+                   nutrition = excluded.nutrition`,
     [
       product.id,
       product.itemId,
@@ -3949,6 +3964,7 @@ export function dbSetItemProduct(product: ItemProduct): void {
       product.expiresAt ?? null,
       product.frozenAt ?? null,
       product.openedAt ?? null,
+      serializeFoodNutrition(product.nutrition),
       product.createdAt,
     ]
   );
