@@ -3,6 +3,7 @@ import { Alert, ScrollView, StyleSheet, Text, TouchableOpacity, View } from 'rea
 import Ionicons from '@expo/vector-icons/Ionicons';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { useBottomTabBarHeight } from '@react-navigation/bottom-tabs';
+import { useRoute } from '@react-navigation/native';
 import { useShallow } from 'zustand/react/shallow';
 import { addDays } from 'date-fns/addDays';
 import { format } from 'date-fns/format';
@@ -67,6 +68,7 @@ export function FoodLogScreen() {
   const colors = useColors();
   const styles = useMemo(() => makeStyles(colors), [colors]);
   const tabBarHeight = useBottomTabBarHeight();
+  const route = useRoute<{ key: string; name: string; params?: { openAdd?: number } }>();
 
   const entries = useFoodLogStore(useShallow(s => s.entries));
   const loadRange = useFoodLogStore(s => s.loadRange);
@@ -111,6 +113,18 @@ export function FoodLogScreen() {
   useEffect(() => {
     loadRange(dayKey, dayKey);
   }, [dayKey, loadRange]);
+
+  // The stamped-param handoff `resetToMood`/`resetToWeight` use for the same
+  // job: a caller that wants the add sheet open on arrival (Meal plan's
+  // "Log food" header action) stamps a fresh timestamp so a second tap opens
+  // it again rather than reading as no change.
+  const [handledOpenAdd, setHandledOpenAdd] = useState<number | undefined>(undefined);
+  useEffect(() => {
+    if (route.params?.openAdd === undefined || route.params.openAdd === handledOpenAdd) return;
+    setHandledOpenAdd(route.params.openAdd);
+    setAddingSlot(null);
+    setAddOpen(true);
+  }, [route.params?.openAdd, handledOpenAdd]);
 
   const dayEntries = useMemo(() => entries.filter(e => e.dayKey === dayKey), [entries, dayKey]);
   const sections = useMemo(() => foodLogSections(dayEntries), [dayEntries]);
@@ -310,7 +324,7 @@ export function FoodLogScreen() {
           },
         ]}
       />
-      <HubPills hub="history" active="FoodLog" />
+      <HubPills hub="kitchen" active="FoodLog" />
 
       <View style={styles.dayNav}>
         <TouchableOpacity
