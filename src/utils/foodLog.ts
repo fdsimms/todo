@@ -202,7 +202,10 @@ export function foodLogTotals(entries: readonly FoodLogEntry[]): FoodLogTotals {
  * only when something is in it.
  */
 export function foodLogSections(entries: readonly FoodLogEntry[]): FoodLogSection[] {
-  const ordered = [...entries].sort((a, b) => a.atISO.localeCompare(b.atISO));
+  // sortOrder first, since that's the hand-set position a drag leaves behind;
+  // atISO only breaks a tie, which is every row that predates the column
+  // (they all read as 0) and so keeps its original chronological order.
+  const ordered = [...entries].sort((a, b) => a.sortOrder - b.sortOrder || a.atISO.localeCompare(b.atISO));
   const sections: FoodLogSection[] = [];
   for (const slot of MEAL_SLOTS) {
     const inSlot = ordered.filter(e => e.slot === slot);
@@ -211,6 +214,41 @@ export function foodLogSections(entries: readonly FoodLogEntry[]): FoodLogSectio
   const loose = ordered.filter(e => e.slot === null);
   if (loose.length > 0) sections.push({ slot: null, entries: loose, totals: foodLogTotals(loose) });
   return sections;
+}
+
+/**
+ * One row of the day view's draggable list — a meal header, an entry, or the
+ * "Add to this meal" row that follows a section's entries. Only `entry` rows
+ * are ever handed a drag handle; the other two ride along as fixed landmarks,
+ * same as Today's own section headers (see `CategoryListItem`).
+ */
+export type FoodLogListItem =
+  | { type: 'header'; slot: MealSlot | null }
+  | { type: 'entry'; entry: FoodLogEntry }
+  | { type: 'add'; slot: MealSlot | null };
+
+/**
+ * What a drop hands back: each entry's new slot (the nearest header above it
+ * after the drop) and its new position in the day's one running order.
+ *
+ * Mirrors `resolveDrop` in `taskGrouping.ts` — one rank shared across every
+ * section rather than a per-section counter, which is what lets a single
+ * `reorderEntries` call carry a row across a section boundary and reorder it
+ * in the same drop. Every list this is called with is expected to open on a
+ * header (built by `foodLogSections`), so there is no "above every header"
+ * case to account for the way Today's uncategorized group is.
+ */
+export function resolveFoodLogDrop(items: readonly FoodLogListItem[]): FoodLogEntry[] {
+  let currentSlot: MealSlot | null = null;
+  let rank = 0;
+  const resolved: FoodLogEntry[] = [];
+  for (const item of items) {
+    if (item.type === 'header') { currentSlot = item.slot; continue; }
+    if (item.type === 'add') continue;
+    rank += 1;
+    resolved.push({ ...item.entry, slot: currentSlot, sortOrder: rank });
+  }
+  return resolved;
 }
 
 /** The nutrients a day's one-line summary leads with, same two the recipe line uses. */

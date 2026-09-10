@@ -1,6 +1,9 @@
 import { create } from 'zustand';
 import type { FoodLogEntry, FoodNutrition, MealSlot } from '../types';
 import {
+  dbBulkDeleteFoodLogEntries,
+  dbBulkSetFoodLogSlot,
+  dbBulkUpdateFoodLogPlacement,
   dbCountFoodLogEntries,
   dbDeleteFoodLogEntry,
   dbGetFoodLogEntries,
@@ -90,8 +93,15 @@ export interface PendingMealLog {
 
 /** What an edit may change. The instant and its day key are deliberately not on it. */
 export type FoodLogPatch = Partial<
-  Pick<FoodLogEntry, 'label' | 'quantity' | 'grams' | 'nutrition' | 'slot'>
+  Pick<FoodLogEntry, 'label' | 'quantity' | 'grams' | 'nutrition' | 'slot' | 'sortOrder'>
 >;
+
+/** A drag's result for one entry: where it landed, and which meal it landed in. */
+export interface FoodLogPlacement {
+  id: string;
+  slot: MealSlot | null;
+  sortOrder: number;
+}
 
 interface FoodLogStore {
   /** Exactly the loaded window, oldest instant first. Never a superset. */
@@ -148,6 +158,16 @@ interface FoodLogStore {
    * the whole feature is arranged around.
    */
   removeEntry: (id: string) => void;
+  /** Forget several entries at once — the bulk bar's Delete. */
+  removeEntries: (ids: string[]) => void;
+  /** Re-slot several entries at once — the bulk bar's Move to meal. */
+  moveEntries: (ids: string[], slot: MealSlot | null) => void;
+  /**
+   * Persists a drag: each touched entry's new slot and its new position in
+   * the day's one running order. A drag that only reorders within a section
+   * still goes through this — `slot` is simply unchanged for those rows.
+   */
+  reorderEntries: (updates: FoodLogPlacement[]) => void;
 
   /**
    * The meal a just-finished "Eat" step, or a just-emptied leftover, is
@@ -212,9 +232,17 @@ export const useFoodLogStore = create<FoodLogStore>((set, get) => ({
     if (Object.keys(draft.nutrition.amounts).length === 0) return null;
 
     const at = draft.at ?? new Date();
+    const dayKey = getLogicalDayKey(at);
+    // Appended to the bottom of the day's one running order, same "max + 1"
+    // rule Task.sortOrder and TaskGroup.sortOrder both stamp a new row with —
+    // never 0, or a manual reorder would be re-shuffled by the next add.
+    const daySiblings = get().entries.filter(e => e.dayKey === dayKey);
+    const sortOrder = daySiblings.length
+      ? Math.max(...daySiblings.map(e => e.sortOrder)) + 1
+      : 0;
     const entry: FoodLogEntry = {
       id: generateId(),
-      dayKey: getLogicalDayKey(at),
+      dayKey,
       atISO: at.toISOString(),
       slot: draft.slot ?? null,
       label,
@@ -227,6 +255,7 @@ export const useFoodLogStore = create<FoodLogStore>((set, get) => ({
       nutrition: draft.nutrition,
       // Nothing writes to Health yet, so nothing has been written to retract.
       healthSampleIds: [],
+      sortOrder,
       createdAt: new Date().toISOString(),
     };
     dbInsertFoodLogEntry(entry);
@@ -275,6 +304,43 @@ export const useFoodLogStore = create<FoodLogStore>((set, get) => ({
       // Floored, so a delete of a row outside the loaded window can't drive the
       // count negative and make the screen vanish while it still holds entries.
       totalCount: Math.max(0, s.totalCount - 1),
+    }));
+  },
+
+  removeEntries(ids) {
+    if (ids.length === 0) return;
+    const idSet = new Set(ids);
+    dbBulkDeleteFoodLogEntries(ids);
+    set(s => ({
+      entries: s.entries.filter(e => !idSet.has(e.id)),
+      windowEntries: s.windowEntries.filter(e => !idSet.has(e.id)),
+      totalCount: Math.max(0, s.totalCount - idSet.size),
+    }));
+  },
+
+  moveEntries(ids, slot) {
+    if (ids.length === 0) return;
+    const idSet = new Set(ids);
+    dbBulkSetFoodLogSlot(ids, slot);
+    set(s => ({
+      entries: s.entries.map(e => (idSet.has(e.id) ? { ...e, slot } : e)),
+      windowEntries: s.windowEntries.map(e => (idSet.has(e.id) ? { ...e, slot } : e)),
+    }));
+  },
+
+  reorderEntries(updates) {
+    if (updates.length === 0) return;
+    dbBulkUpdateFoodLogPlacement(updates);
+    const byId = new Map(updates.map(u => [u.id, u]));
+    set(s => ({
+      entries: s.entries.map(e => {
+        const u = byId.get(e.id);
+        return u ? { ...e, slot: u.slot, sortOrder: u.sortOrder } : e;
+      }),
+      windowEntries: s.windowEntries.map(e => {
+        const u = byId.get(e.id);
+        return u ? { ...e, slot: u.slot, sortOrder: u.sortOrder } : e;
+      }),
     }));
   },
 }));
