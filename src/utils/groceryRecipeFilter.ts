@@ -12,12 +12,20 @@ import { NO_STANDING_SWAPS, type StandingSwapMap } from './standingSwaps';
  * list and the filter tapping it applies.
  *
  * **Membership is derived here, never read off `GroceryItem.sourceRecipeId`.**
- * That column is the obvious candidate and it is the wrong one: its own note in
- * `types/index.ts` says it is stamped *only* when `addFromPlan` mints a
- * genuinely new catalog row, so a staple that already existed carries nothing,
- * and a row first created for one recipe keeps that credit for ever even once a
- * different recipe is the reason it is on the list this week. A filter built on
- * it would hide rows the selected recipe genuinely needs (every staple) and
+ * That column is the obvious candidate and it is the wrong one. Per its own note
+ * in `types/index.ts` it is stamped when `addFromPlan` mints a genuinely new
+ * catalog row and restamped when it re-lists a row that had fallen off every
+ * list — but explicitly *not* when the row is already standing on one. So the
+ * gaps that matter here are the ones no restamping closes:
+ *
+ * - a row already on the list when a recipe is added gets no credit for it,
+ *   which is `addFromPlan`'s own `alreadyOnList` branch and covers most staples;
+ * - one row holds one credit, so an ingredient two recipes both want can only
+ *   ever name one of them;
+ * - the credit then persists for as long as the row stays on the list, so it
+ *   can be stale about why the row is needed now.
+ *
+ * A filter built on it would hide rows the selected recipe genuinely needs and
  * attribute others to a recipe nobody is cooking. The field is a provenance
  * snapshot and is honest about being one; it just cannot answer "why is this on
  * the list *now*".
@@ -40,8 +48,9 @@ import { NO_STANDING_SWAPS, type StandingSwapMap } from './standingSwaps';
  * from being meal-plan-only. What that turns into is still a *candidate*: the
  * pill's rows are derived like every other, so a staple the stamp never
  * credited is claimed anyway and a stale stamp cannot drag an unrelated row in.
- * The known cost is a recipe whose stamped row has sat unbought for months
- * keeping its pill, which is a fair reading of the evidence rather than a bug:
+ * The known cost is a recipe whose stamped row has sat unbought on the list for
+ * months keeping its pill — a row that stays listed is exactly the one no
+ * restamping reaches. That is a fair reading of the evidence rather than a bug:
  * you did add it for that recipe, and you never bought it.
  *
  * **This is also why the `groupBy: 'recipe'` lens keeps reading

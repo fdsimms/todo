@@ -1456,11 +1456,15 @@ tapping them narrows the list to the rows those meals call for. `src/utils/groce
 holds the derivation, `src/hooks/useShoppedRecipes.ts` feeds it, `GroceryRecipeStrip` draws it.
 
 - **Membership is derived, never read off `GroceryItem.sourceRecipeId`.** That column is the
-  obvious source and it is the wrong one: it is stamped only when `addFromPlan` mints a genuinely
-  new catalog row, so a staple that already existed carries nothing, and a row first created for
-  one recipe keeps that credit for ever. Filtering on it would hide every staple the selected
-  recipe needs and attribute other rows to a recipe nobody is cooking. The field is an honest
-  provenance snapshot; it just cannot say why a row is on the list *this week*. So the strip
+  obvious source and it is the wrong one. It is stamped when `addFromPlan` mints a genuinely new
+  catalog row and restamped when it re-lists a row that had fallen off every list, but explicitly
+  not when the row is already standing on one, so three gaps remain that no restamping closes: a
+  row already on the list when a recipe is added gets no credit for it (`addFromPlan`'s own
+  `alreadyOnList` branch, which is most staples), one row holds one credit so a shared ingredient
+  can only name one of the recipes wanting it, and the credit then persists for as long as the row
+  stays listed. Filtering on it would hide staples the selected recipe needs and attribute other
+  rows to a recipe nobody is cooking. The field is an honest provenance snapshot; it just cannot
+  say why a row is on the list *this week*. So the strip
   flattens what the recipe actually calls for (`plannedIngredientsForRecipe`, which already handles
   components, the entry's scale and choices, and standing swaps) and resolves each line against the
   trolley. Nothing is stored, so nothing can drift.
@@ -1470,8 +1474,9 @@ holds the derivation, `src/hooks/useShoppedRecipes.ts` feeds it, `GroceryRecipeS
   rows it minted are the only trace it left, and reading them is what keeps the strip from being
   meal-plan-only. What it yields is still only a *candidate*: the pill's rows are derived like every
   other, so a staple the stamp never credited is claimed anyway and a stale stamp cannot drag an
-  unrelated row in. The known cost is that a recipe whose stamped row has sat unbought for months
-  keeps its pill, which is a fair reading of the evidence rather than a bug. A meal already cooked
+  unrelated row in. The known cost is that a recipe whose stamped row has sat unbought *on the
+  list* for months keeps its pill, a row that stays listed being exactly the one no restamping
+  reaches. That is a fair reading of the evidence rather than a bug. A meal already cooked
   stays refused through this pass too, or its stamped rows would hand back the pill the cooked rule
   just declined to give.
 - **The `groupBy: 'recipe'` lens still reads `sourceRecipeId`, and that is not an oversight.** A
