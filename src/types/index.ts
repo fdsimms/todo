@@ -4654,6 +4654,32 @@ export interface Recipe {
   // nothing was given.
   recipeYield: string | null;
   /**
+   * What the whole finished dish weighs, in grams, as the recipe is written —
+   * `null` until somebody puts the pot on a scale, which is every recipe until
+   * they do.
+   *
+   * **This is the only honest way to log a plate of a cooked dish.** Servings
+   * are the app's other answer and they are a guess dressed as a measurement:
+   * a lasagne "for four" cut into four unequal pieces is four different meals,
+   * and a dish with no servings count can only be logged in fractions of
+   * itself. A weight turns the question into arithmetic — the plate over the
+   * dish is the fraction of the dish that was eaten — and it is the one number
+   * a kitchen scale can actually settle.
+   *
+   * **As written, never as cooked on one night.** A doubled Sunday weighs
+   * twice as much, so the cooking's own `MealPlanEntry.recipeScale` divides on
+   * the way in and multiplies on the way out (`cookedDishGrams`). Same split
+   * `leftoverKeepDays` makes and `recipeScale` makes from the other side: the
+   * recipe is the document, the entry is one instance of having cooked it.
+   *
+   * **Nothing is derived from it beyond that fraction.** No calorie density,
+   * no "servings you should have", no weight goal — the rule
+   * `docs/arch/health-data.md` states for the user's own weight applies to this
+   * one too. It scales figures the nutrition rollup already produced, and where
+   * that rollup declined to answer this stays out of it.
+   */
+  cookedWeightG: number | null;
+  /**
    * How many days this dish's leftovers keep, or null to fall back to
    * LEFTOVER_KEEP_DAYS_DEFAULT. A fish pie is not a chilli, and the keep-for
    * window is a fact about the dish rather than about one night's cooking —
@@ -5255,6 +5281,21 @@ export interface Leftover {
    * (`needsAttention`).
    */
   frozenAt: string | null;
+  /**
+   * What's in the container, in grams, or null when nobody weighed it, which
+   * is most containers.
+   *
+   * **The container's half of `Recipe.cookedWeightG`.** A weight is only worth
+   * having where something can divide by it: this one is measured against the
+   * dish's own cooked weight, so eating the container works out to the
+   * fraction of the recipe it held. Without the recipe's weight it measures
+   * nothing, which is why nothing asks for it on a container logged by hand
+   * off a takeaway.
+   *
+   * Per container rather than per cooking, because that is what a scale can
+   * answer: two tubs off one pot are rarely halves.
+   */
+  weightG: number | null;
   createdAt: string;
   /**
    * The per-leftover answer to "does this get a use-up task" — true, false, or

@@ -5,6 +5,7 @@ import {
   foodLogSections,
   foodLogTotals,
   nutrientContributions,
+  helpingNutrition,
   recipeHelpingNutrition,
   resolveFoodLogDrop,
   scalePanelToAmount,
@@ -136,6 +137,26 @@ describe('recipeHelpingNutrition', () => {
 
   it('is an estimate, since a dish is built from its ingredients through a floor', () => {
     expect(recipeHelpingNutrition(perServing, 1, 'estimated', NOW)?.source).toBe('estimated');
+  });
+});
+
+describe('helpingNutrition', () => {
+  it('records what the helping weighed, when the helping knows', () => {
+    // A weighed plate arrives with its amounts already worked out against the
+    // whole dish, and the grams it was measured as are what it is.
+    const built = helpingNutrition({ calorieKcal: 300 }, '250 g', 250, 'estimated', NOW);
+    expect(built?.servingGrams).toBe(250);
+    expect(built?.servingText).toBe('250 g');
+    expect(built?.basis).toBe('perServing');
+  });
+
+  it('leaves the weight absent when nothing says what the helping weighed', () => {
+    expect(helpingNutrition({ calorieKcal: 300 }, '1 serving', null, 'estimated', NOW)?.servingGrams)
+      .toBeNull();
+  });
+
+  it('refuses a helping with no figures at all', () => {
+    expect(helpingNutrition({}, '250 g', 250, 'estimated', NOW)).toBeNull();
   });
 });
 

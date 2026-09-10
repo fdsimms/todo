@@ -86,6 +86,7 @@ export function UseUpResolveSheet() {
   const renameLeftover = useLeftoverStore(s => s.renameLeftover);
   const setLeftoverStoredAt = useLeftoverStore(s => s.setStoredAt);
   const setLeftoverKeepDays = useLeftoverStore(s => s.setKeepDays);
+  const setLeftoverWeight = useLeftoverStore(s => s.setLeftoverWeight);
   const finishLeftover = useLeftoverStore(s => s.finishLeftover);
   const setLeftoverFrozen = useLeftoverStore(s => s.setFrozen);
   const splitLeftover = useLeftoverStore(s => s.splitLeftover);
@@ -109,6 +110,7 @@ export function UseUpResolveSheet() {
       onRename={title => pendingLeftover && renameLeftover(pendingLeftover.id, title)}
       onSetStoredAt={storedAt => pendingLeftover && setLeftoverStoredAt(pendingLeftover.id, storedAt)}
       onSetKeepDays={days => pendingLeftover && setLeftoverKeepDays(pendingLeftover.id, days)}
+      onSetWeight={grams => pendingLeftover && setLeftoverWeight(pendingLeftover.id, grams)}
       onFinish={outcome => pendingLeftover && finishLeftover(pendingLeftover.id, outcome)}
       onSetFrozen={frozen => pendingLeftover && setLeftoverFrozen(pendingLeftover.id, frozen)}
       onSplit={() => pendingLeftover && splitLeftover(pendingLeftover.id)}

@@ -3817,6 +3817,10 @@ export const useTaskStore = create<TaskStore>((set, get) => ({
           mealPlanEntryId: loggable.id,
           scale: loggable.recipeScale,
           choices: loggable.recipeChoices,
+          // A meal cooked tonight has nothing weighed yet — the prompt asks.
+          // Only a container that was weighed on the way into the fridge
+          // arrives with a figure (see finishLeftover).
+          grams: null,
         });
       }
     }

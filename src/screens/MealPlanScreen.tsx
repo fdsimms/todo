@@ -368,6 +368,7 @@ export function MealPlanScreen() {
   const renameLeftover = useLeftoverStore(s => s.renameLeftover);
   const setLeftoverStoredAt = useLeftoverStore(s => s.setStoredAt);
   const setLeftoverKeepDays = useLeftoverStore(s => s.setKeepDays);
+  const setLeftoverWeight = useLeftoverStore(s => s.setLeftoverWeight);
   const finishLeftover = useLeftoverStore(s => s.finishLeftover);
   const setLeftoverFrozen = useLeftoverStore(s => s.setFrozen);
   const splitLeftover = useLeftoverStore(s => s.splitLeftover);
@@ -2113,17 +2114,21 @@ export function MealPlanScreen() {
         // instead of the meal. `sourceEntryId` is the one thing the sheet
         // can't have changed: every container here came out of that cooking,
         // whichever part of it it is.
-        onLog={(picks, storedAt, keepDays) => picks.forEach(pick => logLeftover({
+        onLog={(picks, storedAt, keepDays, weightG) => picks.forEach(pick => logLeftover({
           title: pick.title,
           storedAt,
           keepDays,
           frozen: pick.frozen,
           recipeId: pick.recipeId,
           sourceEntryId: loggingLeftover?.sourceEntryId ?? null,
+          // Only ever set when the sheet wrote exactly one container, which is
+          // the only case it offers the field in.
+          weightG,
         }))}
         onRename={title => editingLeftover && renameLeftover(editingLeftover.id, title)}
         onSetStoredAt={storedAt => editingLeftover && setLeftoverStoredAt(editingLeftover.id, storedAt)}
         onSetKeepDays={days => editingLeftover && setLeftoverKeepDays(editingLeftover.id, days)}
+        onSetWeight={grams => editingLeftover && setLeftoverWeight(editingLeftover.id, grams)}
         onFinish={outcome => editingLeftover && finishLeftover(editingLeftover.id, outcome)}
         onSetFrozen={frozen => editingLeftover && setLeftoverFrozen(editingLeftover.id, frozen)}
         onSplit={() => editingLeftover && splitLeftover(editingLeftover.id)}

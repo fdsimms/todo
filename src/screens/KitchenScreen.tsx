@@ -180,6 +180,7 @@ export function KitchenScreen() {
   const renameLeftover = useLeftoverStore(s => s.renameLeftover);
   const setLeftoverStoredAt = useLeftoverStore(s => s.setStoredAt);
   const setLeftoverKeepDays = useLeftoverStore(s => s.setKeepDays);
+  const setLeftoverWeight = useLeftoverStore(s => s.setLeftoverWeight);
   const finishLeftover = useLeftoverStore(s => s.finishLeftover);
   const setLeftoverFrozen = useLeftoverStore(s => s.setFrozen);
   const splitLeftover = useLeftoverStore(s => s.splitLeftover);
@@ -878,6 +879,7 @@ export function KitchenScreen() {
         onRename={title => openLeftover && renameLeftover(openLeftover.id, title)}
         onSetStoredAt={storedAt => openLeftover && setLeftoverStoredAt(openLeftover.id, storedAt)}
         onSetKeepDays={days => openLeftover && setLeftoverKeepDays(openLeftover.id, days)}
+        onSetWeight={grams => openLeftover && setLeftoverWeight(openLeftover.id, grams)}
         onFinish={outcome => openLeftover && finishLeftover(openLeftover.id, outcome)}
         onSetFrozen={frozen => openLeftover && setLeftoverFrozen(openLeftover.id, frozen)}
         onSplit={() => openLeftover && splitLeftover(openLeftover.id)}

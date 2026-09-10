@@ -21,6 +21,7 @@ function makeRecipe(name: string, overrides: Partial<Recipe> = {}): Recipe {
     servings: null,
     servingsMax: null,
     recipeYield: null,
+    cookedWeightG: null,
     leftoverKeepDays: null,
     imagePath: null,
     mealType: null,
@@ -72,6 +73,11 @@ describe('isRecipeFieldMissing', () => {
     expect(isRecipeFieldMissing({ ...chili, prepMinutes: 15 }, 'prepTime')).toBe(false);
   });
 
+  it('treats a dish nobody has weighed as missing', () => {
+    expect(isRecipeFieldMissing(chili, 'cookedWeight')).toBe(true);
+    expect(isRecipeFieldMissing({ ...chili, cookedWeightG: 1600 }, 'cookedWeight')).toBe(false);
+  });
+
   // A range is the top of a count that is already set, so it can never be the
   // thing that is missing — the same "meaningless until a sibling is set" rule
   // that kept autoSchedule off the project list.
@@ -119,7 +125,8 @@ describe('recipeBackfillFieldCounts', () => {
       makeRecipe('A', { servings: 4 }),
       makeRecipe('B', { estimatedMinutes: 30 }),
     ];
-    expect(recipeBackfillFieldCounts(recipes)).toEqual({ servings: 1, cookTime: 1, prepTime: 2 });
+    expect(recipeBackfillFieldCounts(recipes))
+      .toEqual({ servings: 1, cookTime: 1, prepTime: 2, cookedWeight: 2 });
   });
 
   it('covers every declared backfillable field', () => {
@@ -131,7 +138,8 @@ describe('recipeBackfillFieldCounts', () => {
 
   it('does not count a recipe dismissed for that field', () => {
     const recipe = makeRecipe('Chili', { backfillDismissedFields: ['prepTime'] });
-    expect(recipeBackfillFieldCounts([recipe])).toEqual({ servings: 1, cookTime: 1, prepTime: 0 });
+    expect(recipeBackfillFieldCounts([recipe]))
+      .toEqual({ servings: 1, cookTime: 1, prepTime: 0, cookedWeight: 1 });
   });
 });
 

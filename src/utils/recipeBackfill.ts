@@ -9,6 +9,15 @@ import type { Recipe } from '../types';
  * stepper rather than a button, closer to the task side's `estimate` than to
  * `streak`.
  *
+ * **`cookedWeight` is the odd one of the four**, and worth knowing before
+ * adding a fifth: it is the only one that cannot be answered from the couch.
+ * A serving count and a cook time are things you know about a recipe; what the
+ * finished dish weighs is something you find out with the pan on a scale (see
+ * `Recipe.cookedWeightG`, and the cook recap that asks for it at that moment).
+ * It is in the pool anyway because a queue is the only way to fill in the
+ * dishes you cook often and have already weighed once in your head, and
+ * because "Don't ask again" is one tap for the ones you never will.
+ *
  * **`servings` is load-bearing rather than decorative**, which is what makes
  * this pool worth walking at all. Without it `recipeHelpingNutrition` has no
  * per-serving figures to return, and `FoodLogEntrySheet` won't offer the
@@ -17,7 +26,7 @@ import type { Recipe } from '../types';
  * plus cook whenever either is set, and a recipe with neither can't say how
  * long it takes.
  *
- * Deliberately just these three. A recipe carries plenty of other nullable
+ * Deliberately just these four. A recipe carries plenty of other nullable
  * fields — `sourceUrl`, `author`, `cookbookId`, `mealType`, `imagePath`,
  * `recipeYield` — and every one of them is a fact about where the recipe came
  * from or how you'd like it filed, not a number the app is waiting on. Asking
@@ -29,7 +38,7 @@ import type { Recipe } from '../types';
  * set, and a recipe that isn't a range is the ordinary case rather than one
  * missing an answer.
  */
-export type RecipeBackfillFieldId = 'servings' | 'cookTime' | 'prepTime';
+export type RecipeBackfillFieldId = 'servings' | 'cookTime' | 'prepTime' | 'cookedWeight';
 
 export interface RecipeBackfillFieldDef {
   id: RecipeBackfillFieldId;
@@ -59,6 +68,14 @@ export const RECIPE_BACKFILL_FIELDS: RecipeBackfillFieldDef[] = [
     label: 'Prep time',
     hint: 'How long the chopping and measuring take before the cooking starts.',
   },
+  // Last, because it is the one you answer at the scale rather than from
+  // memory. Its hint says what the number buys, since nothing else in the app
+  // asks for a weight in grams.
+  {
+    id: 'cookedWeight',
+    label: 'Cooked weight',
+    hint: 'What the whole finished dish weighs, so a plate of it can be logged by weight instead of by servings.',
+  },
 ];
 
 /** Whether `recipe` still needs a value for `fieldId` — the backfill queue's inclusion test. */
@@ -75,6 +92,8 @@ export function isRecipeFieldMissing(recipe: Recipe, fieldId: RecipeBackfillFiel
       return recipe.estimatedMinutes == null;
     case 'prepTime':
       return recipe.prepMinutes == null;
+    case 'cookedWeight':
+      return recipe.cookedWeightG == null;
   }
 }
 
@@ -100,7 +119,9 @@ export function recipeBackfillCandidates(recipes: Recipe[], fieldId: RecipeBackf
 
 /** How many recipes are still missing each field, for the field-picker step's counts. */
 export function recipeBackfillFieldCounts(recipes: Recipe[]): Record<RecipeBackfillFieldId, number> {
-  const counts = { servings: 0, cookTime: 0, prepTime: 0 } as Record<RecipeBackfillFieldId, number>;
+  const counts = {
+    servings: 0, cookTime: 0, prepTime: 0, cookedWeight: 0,
+  } as Record<RecipeBackfillFieldId, number>;
   for (const r of recipes) {
     for (const field of RECIPE_BACKFILL_FIELDS) {
       if (isRecipeFieldMissing(r, field.id) && !isRecipeBackfillDismissed(r, field.id)) counts[field.id]++;
