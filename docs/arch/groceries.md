@@ -1459,10 +1459,11 @@ holds the derivation, `src/hooks/useShoppedRecipes.ts` feeds it, `GroceryRecipeS
   obvious source and it is the wrong one. It is stamped when `addFromPlan` mints a genuinely new
   catalog row and restamped when it re-lists a row that had fallen off every list, but explicitly
   not when the row is already standing on one, so three gaps remain that no restamping closes: a
-  row already on the list when a recipe is added gets no credit for it (`addFromPlan`'s own
-  `alreadyOnList` branch, which is most staples), one row holds one credit so a shared ingredient
-  can only name one of the recipes wanting it, and the credit then persists for as long as the row
-  stays listed. Filtering on it would hide staples the selected recipe needs and attribute other
+  row already on the list when a recipe is added gets no credit for it (most staples), one row
+  holds one credit so a shared ingredient cannot name both recipes wanting it (and
+  `mergeOnListRecipeNeed` now drops it to `null` rather than credit one of the two, so the shared
+  row names neither — honest for a stored credit, exactly wrong for a filter that has to put that
+  onion under both), and the credit then persists for as long as the row stays listed. Filtering on it would hide staples the selected recipe needs and attribute other
   rows to a recipe nobody is cooking. The field is an honest provenance snapshot; it just cannot
   say why a row is on the list *this week*. So the strip
   flattens what the recipe actually calls for (`plannedIngredientsForRecipe`, which already handles

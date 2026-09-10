@@ -19,9 +19,12 @@ import { NO_STANDING_SWAPS, type StandingSwapMap } from './standingSwaps';
  * gaps that matter here are the ones no restamping closes:
  *
  * - a row already on the list when a recipe is added gets no credit for it,
- *   which is `addFromPlan`'s own `alreadyOnList` branch and covers most staples;
- * - one row holds one credit, so an ingredient two recipes both want can only
- *   ever name one of them;
+ *   which covers most staples;
+ * - one row holds one credit, so an ingredient two recipes both want cannot
+ *   name both — and `mergeOnListRecipeNeed` now drops it to `null` rather than
+ *   keep crediting one of the two, so the shared row names *neither*. That is
+ *   the honest answer for a stored credit and exactly the wrong one for a
+ *   filter, which has to put that onion under both recipes;
  * - the credit then persists for as long as the row stays on the list, so it
  *   can be stale about why the row is needed now.
  *
