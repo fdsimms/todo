@@ -1053,7 +1053,7 @@ export function GroceryItemSheet({
         }}>
           <CollapsibleField
             label="Nutrition"
-            summary={describeFoodPanel(item.nutrition)}
+            summary={describeFoodPanel(item.nutrition) ?? undefined}
             hint="What this food is made of, per 100g. Used to estimate a recipe's nutrition."
             expanded={openField === 'nutrition'}
             onToggle={() => toggleField('nutrition')}

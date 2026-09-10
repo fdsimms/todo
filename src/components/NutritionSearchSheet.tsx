@@ -208,7 +208,7 @@ function makeStyles(colors: Colors) {
       paddingHorizontal: spacing.md,
       paddingVertical: spacing.sm,
       borderBottomWidth: border.hairline,
-      borderBottomColor: colors.border,
+      borderBottomColor: colors.separator,
     },
     headerTitle: { color: colors.text, fontSize: font.md, fontWeight: fontWeight.semibold },
     headerSpacer: { minWidth: 64 },
