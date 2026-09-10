@@ -8,6 +8,7 @@ import {
   daySymptoms,
   symptomKey,
   LOW_MOOD_AT_OR_BELOW,
+  MOOD_LEVELS,
 } from './moodLog';
 import type { MoodLog, NutrientKey, Task, TimeOfDay } from '../types';
 
@@ -1081,29 +1082,46 @@ export interface RateContrast {
 }
 
 /**
- * The shortest bar a rate above zero is allowed to draw, as a percentage.
+ * How full a bar drawn for a mood should be, 0..1.
+ *
+ * **Anchored at zero, not at 1.** Mood runs 1..5, so `(mood - 1) / 4` is the
+ * tempting scale and it is the one that lies: it turns the gap between 3.9 and
+ * 4.1 into a fifth of the track when it is a twentieth of the scale. Truncating
+ * an axis to make a difference look bigger is the oldest misleading chart there
+ * is, and this file spends most of its length refusing to overstate a
+ * comparison in words — a bar may not do it in pixels either.
+ *
+ * The cost is that a mood of 1 draws a fifth of the track rather than nothing,
+ * which is correct: 1 is a real answer somebody gave, not an absence.
+ */
+export function moodBarFraction(mood: number): number {
+  return Math.min(1, Math.max(0, mood / MOOD_LEVELS.length));
+}
+
+/**
+ * The shortest bar a value above zero is allowed to draw, as a percentage.
  *
  * A rate of 1 day in 30 is 3% of a track, which at a phone's width is a couple
  * of pixels and reads as an empty bar — as *none*, which is a different fact
- * from the one it holds. So a nonzero rate never draws nothing.
+ * from the one it holds. So a nonzero value never draws nothing.
  */
-export const RATE_BAR_MIN_PERCENT = 4;
+export const CONTRAST_BAR_MIN_PERCENT = 4;
 
 /**
- * How wide a rate's bar should be, 0..100.
+ * How wide a bar should be, 0..100, for a fraction of its track.
  *
- * **The floor overstates a very small rate slightly, and that is the lesser of
+ * **The floor overstates a very small value slightly, and that is the lesser of
  * the two errors.** Rounding 3% up to 4% moves a bar by a pixel; drawing it as
  * empty says the symptom never happened on those days, which is wrong rather
- * than imprecise. The counts sit beside the bar in text and are the record,
- * so the bar is an aid to comparison and not the figure itself.
+ * than imprecise. The figures sit beside the bar in text and are the record,
+ * so the bar is an aid to comparison and not the number itself.
  *
  * Zero stays zero. A day count of none is exactly what an empty track means,
  * and giving it a stub would be the same error pointed the other way.
  */
-export function rateBarPercent(rate: number): number {
-  if (!(rate > 0)) return 0;
-  return Math.min(100, Math.max(RATE_BAR_MIN_PERCENT, Math.round(rate * 100)));
+export function contrastBarPercent(fraction: number): number {
+  if (!(fraction > 0)) return 0;
+  return Math.min(100, Math.max(CONTRAST_BAR_MIN_PERCENT, Math.round(fraction * 100)));
 }
 
 /**

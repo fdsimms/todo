@@ -464,6 +464,15 @@ keep. Four things hold it:
   sample it came from. It is its own type rather than a `GroupContrast` with a
   frequency in `moodWith`, because a mean and a rate rendered by the same code is
   how one gets shown as the other.
+- **It is drawn as a pair of bars, and that decided how every other contrast
+  here is drawn too.** A rate on each side meant a row reading "3 of 6 vs 1 of
+  9", and four numbers on a line is arithmetic the eye cannot do. `ContrastBars`
+  (see CLAUDE.md's primitives list) is the answer, and the five mood contrasts
+  moved onto it so the whole feature reads one way. `moodBarFraction` is
+  anchored at zero rather than at 1, because the scale that starts at the bottom
+  of the mood range turns a twentieth of the scale into a fifth of the track —
+  this file refuses to overstate a comparison in words, so a bar may not do it in
+  pixels.
 - **It counts and never causes**, and the card says so in those words: it cannot
   tell a food apart from everything else about the days that food was eaten on.
 

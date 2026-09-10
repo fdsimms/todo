@@ -16,8 +16,9 @@ import {
   foodPairedDays,
   symptomFoodContrasts,
   symptomFoodDays,
-  rateBarPercent,
-  RATE_BAR_MIN_PERCENT,
+  contrastBarPercent,
+  moodBarFraction,
+  CONTRAST_BAR_MIN_PERCENT,
   metricAverage,
   healthInsight,
   nutrientFindings,
@@ -1060,26 +1061,52 @@ describe('a symptom against what you ate', () => {
 
 describe('how wide a rate draws', () => {
   it('is the rate as a percentage', () => {
-    expect(rateBarPercent(0.5)).toBe(50);
-    expect(rateBarPercent(0.75)).toBe(75);
-    expect(rateBarPercent(1)).toBe(100);
+    expect(contrastBarPercent(0.5)).toBe(50);
+    expect(contrastBarPercent(0.75)).toBe(75);
+    expect(contrastBarPercent(1)).toBe(100);
   });
 
   it('never draws a rate above zero as nothing', () => {
     // 1 day in 30 is 3% of a track, which at a phone's width is an empty bar —
     // and an empty bar says the symptom never happened on those days, which is
     // a different fact from the one it holds.
-    expect(rateBarPercent(1 / 30)).toBe(RATE_BAR_MIN_PERCENT);
-    expect(rateBarPercent(0.001)).toBe(RATE_BAR_MIN_PERCENT);
+    expect(contrastBarPercent(1 / 30)).toBe(CONTRAST_BAR_MIN_PERCENT);
+    expect(contrastBarPercent(0.001)).toBe(CONTRAST_BAR_MIN_PERCENT);
   });
 
   it('draws nothing for a rate of nothing', () => {
     // The floor is for a small number, not for none. A stub on zero would be
     // the same error pointed the other way.
-    expect(rateBarPercent(0)).toBe(0);
+    expect(contrastBarPercent(0)).toBe(0);
   });
 
   it('never overflows its track', () => {
-    expect(rateBarPercent(1.4)).toBe(100);
+    expect(contrastBarPercent(1.4)).toBe(100);
+  });
+});
+
+describe('how full a mood draws its bar', () => {
+  it('is the mood as a share of the whole scale', () => {
+    expect(moodBarFraction(5)).toBeCloseTo(1);
+    expect(moodBarFraction(2.5)).toBeCloseTo(0.5);
+  });
+
+  it('never truncates the axis to make a gap look bigger', () => {
+    // `(mood - 1) / 4` is the tempting scale and it is the one that lies: it
+    // turns the gap between 3.9 and 4.1 into a fifth of the track when it is a
+    // twentieth of the scale. This file spends its length refusing to overstate
+    // a comparison in words; a bar may not do it in pixels either.
+    const gap = moodBarFraction(4.1) - moodBarFraction(3.9);
+    expect(gap).toBeCloseTo(0.04);
+  });
+
+  it('draws the bottom of the scale as something, since 1 is an answer', () => {
+    expect(moodBarFraction(1)).toBeCloseTo(0.2);
+    expect(contrastBarPercent(moodBarFraction(1))).toBe(20);
+  });
+
+  it('stays inside its track for anything out of range', () => {
+    expect(moodBarFraction(6)).toBe(1);
+    expect(moodBarFraction(-1)).toBe(0);
   });
 });

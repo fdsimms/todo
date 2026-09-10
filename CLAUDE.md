@@ -948,6 +948,24 @@ Today, Later, Unscheduled and Inbox are **not** separate screens — they're fou
   `RuleSheetNoticeCard` beside it is the card shape both use for the first of those. It needs no
   unsaved-changes guard because every edit commits straight through `onChange` as it's made —
   the other valid answer to the pageSheet `onRequestClose` rule below, not a workaround.
+- `ContrastBars` (`src/components/ContrastBars.tsx`) — one "with it against without it"
+  comparison, drawn as a pair of bars on one scale. **Every contrast on the Mood screen and the
+  symptom page is this** (mood by kind of work, by repeating task, by symptom, by context tag, by
+  what you ate, and a symptom against each food), and a seventh uses it rather than copying one.
+  They were five copies of the same twelve lines first. Two numbers on a line are readable and
+  four are not, which is what forced this: the symptom/food read reports a *rate* per side, so its
+  row said "3 of 6 vs 1 of 9" and working out whether 1-in-11 beats 3-in-4 took a moment, with
+  another to compare it against the row above. The caller passes each side's fraction (0..1) and
+  its own text, so the component knows nothing about mood scales or day counts and needs no mode
+  flag. Three rules live in it: the figures stay in text because the bar is an aid and the number
+  is the record; both bars are one colour, since length is the data and a second colour would rank
+  the two groups (which the symptom card especially may not do); and the two lines of a pair sit
+  3px apart against `spacing.md` between pairs, or the card reads as one block of bars rather than
+  as N things being compared. The scale is the caller's, and `moodBarFraction` is **anchored at
+  zero on purpose** — `(mood - 1) / 4` is the tempting scale and it is the one that lies, turning
+  the gap between 3.9 and 4.1 into a fifth of the track when it is a twentieth of the scale.
+  `MOOD BY TIME OF DAY` is deliberately *not* converted: three time buckets are not a with/without
+  pair, so it keeps the plain one-line row.
 - `EditorRow` (`src/components/EditorRow.tsx`) — the `icon — label — value ›` row every editor sheet is built from (Date, Deadline, Remind me, Link, …). Pass `expanded` for rows whose controls unfold in place rather than opening a picker, and the chevron becomes up/down.
 - **Filtering by an open-ended set of options (tags, categories) is a bottom sheet with wrapping chips, never a horizontal scrolling chip row.** `LogbookFilterSheet` and `RecipeTagFilterSheet` are the two instances — both replaced a scroll row that had shipped first. A scroll row hides every option past what fits on screen behind a swipe nobody is prompted to make, and a vocabulary the user builds themselves (tags especially) has no ceiling a phone-width row can assume; wrapping puts the whole set on screen at once. The screen itself keeps only a small trigger row: a "Filter"/"Tags" button that opens the sheet, plus whatever's *currently selected* as removable pills (`ActiveFilterPill` in `LogbookScreen`, the `activePill` styles in `RecipesScreen`) — that set stays small by construction, so a scrolling row is still the right shape for it. Don't reach for a horizontal `ScrollView` of chips as the *filter control itself* again; that's the mistake both of these fixed.
 - `SelectionDot` (`src/components/SelectionDot.tsx`) — the circle at a row's **trailing** edge that

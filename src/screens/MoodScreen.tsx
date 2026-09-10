@@ -35,6 +35,7 @@ import {
   foodMoodContrasts,
   healthInsight,
   metricAverage,
+  moodBarFraction,
   moodByTimeOfDay,
   moodCompletionInsight,
   moodSummary,
@@ -50,6 +51,7 @@ import { EmptyState } from '../components/EmptyState';
 import { MoodLogSheet } from '../components/MoodLogSheet';
 import { MoodEntryRow } from '../components/MoodEntryRow';
 import { MoodExportSheet } from '../components/MoodExportSheet';
+import { ContrastBars } from '../components/ContrastBars';
 
 /** How many days the chart shows. Two weeks fits a phone width at a readable bar. */
 const CHART_DAYS = 14;
@@ -588,18 +590,19 @@ export function MoodScreen() {
             <>
               <Text style={styles.sectionTitle}>MOOD BY WHAT YOU ATE</Text>
               <View style={styles.card}>
-                {foodRows.map(row => (
-                  <View
+                {foodRows.map((row, i) => (
+                  <ContrastBars
                     key={row.label}
-                    style={styles.contrastRow}
-                    accessible
-                    accessibilityLabel={`${row.label}, average mood ${row.moodWith.toFixed(1)} on days you ate it, ${row.moodWithout.toFixed(1)} on days you didn't`}
-                  >
-                    <Text style={styles.contrastLabel} numberOfLines={1}>{row.label}</Text>
-                    <Text style={styles.contrastValue}>
-                      {row.moodWith.toFixed(1)} vs {row.moodWithout.toFixed(1)}
-                    </Text>
-                  </View>
+                    first={i === 0}
+                    label={row.label}
+                    withLabel="Had it"
+                    withoutLabel="Didn’t"
+                    withFraction={moodBarFraction(row.moodWith)}
+                    withoutFraction={moodBarFraction(row.moodWithout)}
+                    withText={row.moodWith.toFixed(1)}
+                    withoutText={row.moodWithout.toFixed(1)}
+                    accessibilityLabel={`${row.label}, average mood ${row.moodWith.toFixed(1)} on days you had it, ${row.moodWithout.toFixed(1)} on days you didn't`}
+                  />
                 ))}
                 <Text style={styles.chartCaption}>
                   Your average mood on days you logged that food, against days you logged food
@@ -613,21 +616,22 @@ export function MoodScreen() {
             <>
               <Text style={styles.sectionTitle}>MOOD BY KIND OF WORK</Text>
               <View style={styles.card}>
-                {categoryRows.map(row => (
-                  <View
+                {categoryRows.map((row, i) => (
+                  <ContrastBars
                     key={row.label}
-                    style={styles.contrastRow}
-                    accessible
+                    first={i === 0}
+                    label={row.label}
+                    withLabel="Did some"
+                    withoutLabel="Didn’t"
+                    withFraction={moodBarFraction(row.moodWith)}
+                    withoutFraction={moodBarFraction(row.moodWithout)}
+                    withText={row.moodWith.toFixed(1)}
+                    withoutText={row.moodWithout.toFixed(1)}
                     // "1.8 vs 3.9" says nothing about what is being compared,
                     // and the caption carrying that is a separate element three
                     // rows down. Each row states its own comparison instead.
                     accessibilityLabel={`${row.label}, average mood ${row.moodWith.toFixed(1)} on days you finished something in that category, ${row.moodWithout.toFixed(1)} on days you didn't`}
-                  >
-                    <Text style={styles.contrastLabel} numberOfLines={1}>{row.label}</Text>
-                    <Text style={styles.contrastValue}>
-                      {row.moodWith.toFixed(1)} vs {row.moodWithout.toFixed(1)}
-                    </Text>
-                  </View>
+                  />
                 ))}
                 <Text style={styles.chartCaption}>
                   Your average mood on days you finished something in that category, against days you didn't.
@@ -640,18 +644,19 @@ export function MoodScreen() {
             <>
               <Text style={styles.sectionTitle}>MOOD AND YOUR REPEATING TASKS</Text>
               <View style={styles.card}>
-                {taskRows.map(row => (
-                  <View
+                {taskRows.map((row, i) => (
+                  <ContrastBars
                     key={row.label}
-                    style={styles.contrastRow}
-                    accessible
+                    first={i === 0}
+                    label={row.label}
+                    withLabel="Did it"
+                    withoutLabel="Didn’t"
+                    withFraction={moodBarFraction(row.moodWith)}
+                    withoutFraction={moodBarFraction(row.moodWithout)}
+                    withText={row.moodWith.toFixed(1)}
+                    withoutText={row.moodWithout.toFixed(1)}
                     accessibilityLabel={`${row.label}, average mood ${row.moodWith.toFixed(1)} on the ${row.withDays} days you finished it, ${row.moodWithout.toFixed(1)} on the ${row.withoutDays} days you didn't`}
-                  >
-                    <Text style={styles.contrastLabel} numberOfLines={1}>{row.label}</Text>
-                    <Text style={styles.contrastValue}>
-                      {row.moodWith.toFixed(1)} vs {row.moodWithout.toFixed(1)}
-                    </Text>
-                  </View>
+                  />
                 ))}
                 <Text style={styles.chartCaption}>
                   Your average mood on days you finished a repeating task, against days you
@@ -665,24 +670,23 @@ export function MoodScreen() {
             <>
               <Text style={styles.sectionTitle}>MOOD WITH SYMPTOMS</Text>
               <View style={styles.card}>
-                {symptomRows.map(row => (
-                  <TouchableOpacity
+                {symptomRows.map((row, i) => (
+                  <ContrastBars
                     key={row.label}
-                    style={styles.contrastRow}
-                    activeOpacity={interaction.activeOpacity}
+                    first={i === 0}
+                    label={row.label}
+                    withLabel="Had it"
+                    withoutLabel="Didn’t"
+                    withFraction={moodBarFraction(row.moodWith)}
+                    withoutFraction={moodBarFraction(row.moodWithout)}
+                    withText={row.moodWith.toFixed(1)}
+                    withoutText={row.moodWithout.toFixed(1)}
                     onPress={() => {
                       haptics.tap();
                       navigation.navigate('SymptomDetail', { symptomKey: row.key });
                     }}
-                    accessibilityRole="button"
                     accessibilityLabel={`${row.label}, average mood ${row.moodWith.toFixed(1)} on days you logged it, ${row.moodWithout.toFixed(1)} on days you didn't`}
-                  >
-                    <Text style={styles.contrastLabel} numberOfLines={1}>{row.label}</Text>
-                    <Text style={styles.contrastValue}>
-                      {row.moodWith.toFixed(1)} vs {row.moodWithout.toFixed(1)}
-                    </Text>
-                    <Ionicons name="chevron-forward" size={14} color={colors.textTertiary} />
-                  </TouchableOpacity>
+                  />
                 ))}
                 <Text style={styles.chartCaption}>
                   Your average mood on days you logged it, against days you didn't.
@@ -695,18 +699,19 @@ export function MoodScreen() {
             <>
               <Text style={styles.sectionTitle}>MOOD WITH CONTEXT</Text>
               <View style={styles.card}>
-                {contextTagRows.map(row => (
-                  <View
+                {contextTagRows.map((row, i) => (
+                  <ContrastBars
                     key={row.label}
-                    style={styles.contrastRow}
-                    accessible
+                    first={i === 0}
+                    label={row.label}
+                    withLabel="Applied"
+                    withoutLabel="Didn’t"
+                    withFraction={moodBarFraction(row.moodWith)}
+                    withoutFraction={moodBarFraction(row.moodWithout)}
+                    withText={row.moodWith.toFixed(1)}
+                    withoutText={row.moodWithout.toFixed(1)}
                     accessibilityLabel={`${row.label}, average mood ${row.moodWith.toFixed(1)} on days it applied, ${row.moodWithout.toFixed(1)} on days it didn't`}
-                  >
-                    <Text style={styles.contrastLabel} numberOfLines={1}>{row.label}</Text>
-                    <Text style={styles.contrastValue}>
-                      {row.moodWith.toFixed(1)} vs {row.moodWithout.toFixed(1)}
-                    </Text>
-                  </View>
+                  />
                 ))}
                 <Text style={styles.chartCaption}>
                   Your average mood on days a tag applied, against days it didn't.
