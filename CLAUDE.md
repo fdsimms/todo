@@ -330,6 +330,7 @@ exports.
 | writing down what you ate, and a day's totals | `src/utils/foodLog.ts` + `src/store/useFoodLogStore.ts` (+ `src/utils/nutritionTargets.ts` for the figure a total is read against) |
 | how much of a scanned package was eaten | `src/utils/scanPortion.ts` — one serving or the whole package, and the package option is withheld rather than guessed when the source stated no pack size |
 | what a food is made of, and reading a label panel out of a barcode source | `src/utils/foodNutrition.ts` (the record) + `src/utils/nutritionParse.ts` (the two sources' units, which disagree) |
+| photographing a nutrition panel no barcode source had | `src/utils/labelOcr.ts` — `receiptOcr.ts`'s row geometry over a label, filling `NutritionPanelSheet`'s existing form rather than writing a record |
 | estimating what a restaurant meal contained, from a description | `src/utils/nutritionEstimate.ts` + `estimateMealNutrition` in `src/services/aiSuggestions.ts` — the model proposes and a person confirms; nothing is written unconfirmed, and `source: 'estimated'` is permanent |
 | finding a plain food ("onion", "butter") in a food database by name | `src/services/foodSearch.ts` + `src/utils/foodSearchMatch.ts` (ranks and refuses; the portion table needs a second request) |
 | turning "2 cups chopped onion" into grams | `src/utils/ingredientGrams.ts` — every weight comes from the food's own portion table, never a global density |
@@ -391,7 +392,7 @@ them source rather than tests. The ten biggest source files:
 Grep for the symbol and read the surrounding range; reading any of them end to end costs more
 context than the rest of the task will. `docs/module-map.md` says which file owns what.
 
-The suite is **294 test files**, and `npm test` runs all of them in about half a minute.
+The suite is **295 test files**, and `npm test` runs all of them in about half a minute.
 `npx tsc --noEmit` is a few seconds once `.tsbuildinfo` exists, so run both, every time.
 
 <!-- END GENERATED: repo-stats -->

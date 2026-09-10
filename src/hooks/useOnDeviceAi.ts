@@ -3,7 +3,7 @@ import { AppState } from 'react-native';
 import { useSettingsStore } from '../store/useSettingsStore';
 import { onDeviceAvailability, type OnDeviceAvailability } from '../services/onDeviceModel';
 import { routeForFeature, type AiRoute } from '../utils/aiRouting';
-import { canReadReceiptOnDevice } from '../utils/receiptOcr';
+import { canReadTextOnDevice } from '../utils/receiptOcr';
 import type { AiFeatureId } from '../utils/aiFeatures';
 
 /**
@@ -55,7 +55,7 @@ export function useAiRoute(id: AiFeatureId): AiRoute {
     onDeviceEnabled: onDeviceAiEnabled,
     onDeviceAvailable: availability === 'available',
     // Not part of the state above because it cannot change while the app is
-    // running — see the note on `canReadReceiptOnDevice`.
-    visionAvailable: canReadReceiptOnDevice(),
+    // running — see the note on `canReadTextOnDevice`.
+    visionAvailable: canReadTextOnDevice(),
   });
 }

@@ -1,4 +1,4 @@
-import React, { useEffect, useMemo, useRef, useState } from 'react';
+import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import {
   Alert,
   KeyboardAvoidingView,
@@ -15,14 +15,20 @@ import { border, font, fontWeight, radius, spacing, type Colors } from '../theme
 import { NUTRIENT_KEYS, type FoodNutrition, type NutrientKey } from '../types';
 import { NUTRIENT_LABEL, NUTRITION_BASIS_LABEL } from '../utils/foodNutrition';
 import {
+  applyLabelReading,
   buildPanelNutrition,
   invalidPanelFields,
+  labelReadingFieldCount,
   panelFormDirty,
   panelFormFrom,
   type PanelFieldKey,
   type PanelForm,
 } from '../utils/nutritionPanelForm';
+import { canReadTextOnDevice } from '../utils/receiptOcr';
+import { readLabelPhoto } from '../utils/labelOcr';
+import { pickRecipePhoto } from '../utils/recipePhoto';
 import { haptics } from '../utils/haptics';
+import { InlineAction } from './InlineAction';
 import { SegmentedControl } from './SegmentedControl';
 import { SheetHeaderButton } from './SheetHeaderButton';
 
@@ -54,6 +60,16 @@ import { SheetHeaderButton } from './SheetHeaderButton';
  * **Nothing is written until Save, so the swipe-down is guarded.** Ten typed
  * fields behind a `pageSheet` is exactly the silent-data-loss case CLAUDE.md
  * documents, and the iOS pull-down calls `onRequestClose` rather than Cancel.
+ *
+ * **The packet can fill the form in, and that changes nothing about the save.**
+ * "Read from a photo" hands a photograph of the panel to `labelOcr.ts` and lays
+ * what it read into these same fields, where the person checks it against the
+ * packet still in their hand and commits it with the Save that was already
+ * here. That is what makes an imperfect read acceptable: there is no path from
+ * a photograph to a stored figure that does not pass through a person looking
+ * at it. The button is absent rather than disabled where Vision cannot run,
+ * since there is no second opinion to offer and a control that would only ever
+ * refuse is worse than no control.
  */
 
 interface Props {
@@ -104,6 +120,14 @@ export function NutritionPanelSheet({ visible, foodName, nutrition, onClose, onS
   // Computed on a save attempt rather than as you type: a half-typed "2." is
   // not yet an error, and flagging it mid-keystroke would flicker red.
   const [bad, setBad] = useState<readonly PanelFieldKey[]>([]);
+  const [reading, setReading] = useState(false);
+  // What the last photograph produced, or why it produced nothing. Cleared on
+  // reopen with everything else, since a notice about a packet photographed
+  // yesterday is worse than none.
+  const [photoNote, setPhotoNote] = useState<string | null>(null);
+  // Resolved once rather than per render: whether Vision is linked cannot
+  // change while the app is running. See `canReadTextOnDevice`.
+  const canPhotograph = useMemo(() => canReadTextOnDevice(), []);
 
   useEffect(() => {
     if (!visible) return;
@@ -111,8 +135,69 @@ export function NutritionPanelSheet({ visible, foodName, nutrition, onClose, onS
     setForm(opened);
     baseline.current = opened;
     setBad([]);
+    setPhotoNote(null);
+    setReading(false);
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [visible]);
+
+  const handlePhoto = useCallback(async (source: 'camera' | 'library') => {
+    const picked = await pickRecipePhoto(source);
+    if (picked.status === 'canceled') return;
+    if (picked.status === 'denied') {
+      Alert.alert(
+        source === 'camera' ? 'Camera access is off' : 'Photo access is off',
+        'Turn it on in Settings to read a label from a photo. You can always type the figures in by hand.',
+      );
+      return;
+    }
+    if (picked.status === 'failed') {
+      setPhotoNote(picked.message);
+      return;
+    }
+
+    setReading(true);
+    setPhotoNote(null);
+    try {
+      // The full-resolution copy, not the downscaled one: Vision reads a local
+      // file for free and a nutrition panel is set in small type, so the long
+      // edge cut lands hardest on exactly the rows worth reading. Same call
+      // `receiptOcr`'s path makes, for the same reason.
+      const label = await readLabelPhoto(picked.photo.sourceUri);
+      if (!label) {
+        haptics.warning();
+        setPhotoNote("That photo didn't read as a nutrition panel. Try again with the whole panel in frame and more light on it, or type the figures in below.");
+        return;
+      }
+      haptics.success();
+      setForm(f => applyLabelReading(f, label));
+      // Filling a field can only fix one that wouldn't read, never break one,
+      // so anything flagged from an earlier save attempt is re-judged on the
+      // next rather than left marked red under a figure that is now fine.
+      setBad([]);
+      const filled = labelReadingFieldCount(label);
+      setPhotoNote(
+        `Filled in ${filled} ${filled === 1 ? 'figure' : 'figures'}${
+          label.columns > 1
+            ? `, from the first of the ${label.columns} columns on the label.`
+            : '.'
+        } Check them against the packet before saving.`,
+      );
+    } finally {
+      setReading(false);
+    }
+  }, []);
+
+  const startPhoto = useCallback(() => {
+    Alert.alert(
+      'Read the label',
+      'Photograph the nutrition panel and the figures on it will fill in the fields below.',
+      [
+        { text: 'Take a photo', onPress: () => { void handlePhoto('camera'); } },
+        { text: 'Choose a photo', onPress: () => { void handlePhoto('library'); } },
+        { text: 'Cancel', style: 'cancel' },
+      ],
+    );
+  }, [handlePhoto]);
 
   const setAmount = (key: NutrientKey, text: string) => {
     setForm(f => ({ ...f, amounts: { ...f.amounts, [key]: text } }));
@@ -166,6 +251,18 @@ export function NutritionPanelSheet({ visible, foodName, nutrition, onClose, onS
               Copy the figures from the packet. Leave a field blank if the label doesn't
               state it. Blank means unknown, which is not the same as zero.
             </Text>
+
+            {canPhotograph && (
+              <View style={styles.photoRow}>
+                <InlineAction
+                  label={reading ? 'Reading the label…' : 'Read from a photo'}
+                  icon="camera-outline"
+                  onPress={startPhoto}
+                  disabled={reading}
+                />
+              </View>
+            )}
+            {!!photoNote && <Text style={styles.photoNote}>{photoNote}</Text>}
 
             <Text style={styles.groupLabel}>SERVING</Text>
             <View style={styles.card}>
@@ -274,6 +371,15 @@ function makeStyles(colors: Colors) {
     },
     body: { padding: spacing.md, paddingBottom: spacing.xl, gap: spacing.sm },
     intro: { color: colors.textSecondary, fontSize: font.sm, lineHeight: 18, marginBottom: spacing.sm },
+    // Margin on both sides it needs: the group label below has no top margin of
+    // its own, per the spacing note in CLAUDE.md.
+    photoRow: { flexDirection: 'row', marginBottom: spacing.sm },
+    photoNote: {
+      color: colors.textSecondary,
+      fontSize: font.xs,
+      lineHeight: 16,
+      marginBottom: spacing.sm,
+    },
     groupLabel: {
       color: colors.textSecondary,
       fontSize: font.xs,

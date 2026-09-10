@@ -83,7 +83,7 @@ export interface AiRouteInput {
   /** What the device says right now — see `onDeviceModelAvailability`. */
   onDeviceAvailable: boolean;
   /**
-   * Whether Vision can read a photo here — see `canReadReceiptOnDevice`.
+   * Whether Vision can read a photo here — see `canReadTextOnDevice`.
    *
    * Required rather than optional so a new call site cannot forget it and
    * silently route a `vision` feature to `unavailable`, which would read as the

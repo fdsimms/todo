@@ -1,4 +1,5 @@
 import type { FoodNutrition, NutrientKey } from '../types';
+import type { LabelReading } from './labelOcr';
 import { NUTRIENT_KEYS } from '../types';
 
 /**
@@ -156,4 +157,52 @@ export function buildPanelNutrition(
     portions: previous?.portions ?? [],
     recordedAt: now.toISOString(),
   };
+}
+
+/**
+ * The form with a photographed label's reading laid over it.
+ *
+ * **It fills fields; it does not save anything.** `labelOcr.ts` reads a panel
+ * off a photo and this is where that reading becomes text a person can see and
+ * correct, sitting in the same boxes they would otherwise have typed into. The
+ * Save that commits it is the one that was already there, which is the whole
+ * safety argument for letting the read be best-effort at all: every figure is
+ * on screen beside the packet it came from before any of it is a record.
+ *
+ * **A figure the read did not find leaves its field exactly as it was.** That
+ * matters in both directions. A panel stating no fibre must not blank a fibre
+ * figure the person typed from the packet a moment ago, and — the more
+ * important half — it must not write a 0 there either, since a blank field is
+ * "the label didn't say" and this feature's whole job is transcribing what the
+ * label did say. Same rule the rest of this module keeps.
+ *
+ * **A figure the read did find replaces what was there.** Someone who has just
+ * photographed the packet is asking for the packet's numbers, and a read that
+ * silently declined to correct a field would be the surprising one. The
+ * previous text is not lost in any sense that matters: it is one sheet, still
+ * open, still guarded by its own discard prompt, and every changed field is
+ * visible.
+ *
+ * **`basis` is only taken when the panel actually stated a column heading.**
+ * It is the field a photograph is least able to settle and the one the record
+ * is meaningless without, so a read that found no heading leaves the person's
+ * own choice standing rather than resetting it to a default that looks chosen.
+ */
+export function applyLabelReading(form: PanelForm, reading: LabelReading): PanelForm {
+  const amounts = { ...form.amounts };
+  for (const key of NUTRIENT_KEYS) {
+    const amount = reading.amounts[key];
+    if (amount !== undefined) amounts[key] = String(amount);
+  }
+  return {
+    basis: reading.basis ?? form.basis,
+    servingText: reading.servingText ?? form.servingText,
+    servingGrams: reading.servingGrams === null ? form.servingGrams : String(reading.servingGrams),
+    amounts,
+  };
+}
+
+/** How many of the form's figures a reading filled in, for the sheet to report. */
+export function labelReadingFieldCount(reading: LabelReading): number {
+  return NUTRIENT_KEYS.filter(key => reading.amounts[key] !== undefined).length;
 }
