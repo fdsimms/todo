@@ -4,6 +4,7 @@ import {
   parseQuantity,
   rationalToNumber,
   unitKey,
+  type Quantity,
 } from './quantity';
 
 /**
@@ -323,7 +324,19 @@ export interface MeasuredQuantity {
  * ounces.
  */
 export function measureQuantity(quantity: string): MeasuredQuantity | null {
-  const q = parseQuantity(quantity);
+  return measureParsedQuantity(parseQuantity(quantity));
+}
+
+/**
+ * The same measurement off an already-parsed quantity.
+ *
+ * Exists so a caller holding a `Quantity` doesn't have to render it back to a
+ * string for this to re-parse — `ingredientGrams` reads the parsed fields for
+ * its own rules and then wants the measured base, and round-tripping through
+ * text would be a second parse of the same line and a chance to disagree with
+ * the first.
+ */
+export function measureParsedQuantity(q: Quantity): MeasuredQuantity | null {
   if (q.amount === null) return null;
   const value = rationalToNumber(q.amount);
   if (value <= 0) return null;
@@ -393,6 +406,23 @@ export function shelfUnit(
  * Null is every refusal: a unit off the table (a clove, a can, a bunch, which
  * convert to nothing), the two dimensions, and the two systems.
  */
+/**
+ * A unit's size in its dimension's base — grams for mass, millilitres for
+ * volume — or null for a word off the table.
+ *
+ * Deliberately not `unitFactor`, which refuses a cross-*system* pair on
+ * purpose: it exists to answer "can these two be rendered as each other",
+ * where a cup and a millilitre being different systems is the whole point.
+ * This answers the flatter question of how big a unit is, which is what a
+ * caller doing arithmetic rather than rendering needs — `ingredientGrams`
+ * relates a food's own "1 cup = 160g" to a line written in tablespoons, and
+ * both of those have to reach millilitres to meet.
+ */
+export function unitBase(unit: string): { base: number; dimension: Dimension } | null {
+  const known = KNOWN_UNITS[unitKey(unit)];
+  return known ? { base: known.base, dimension: known.dimension } : null;
+}
+
 export function unitFactor(from: string, to: string): number | null {
   const a = KNOWN_UNITS[unitKey(from)];
   const b = KNOWN_UNITS[unitKey(to)];

@@ -5958,6 +5958,7 @@ describe('linking a barcode to what it turned out to be', () => {
     servingGrams: 45,
     servingText: '1 slice',
     amounts: { calorieKcal: 267, sodiumMg: 400 },
+    portions: [],
     source: 'fdc' as const,
     sourceId: '2674263',
     recordedAt: '2026-09-10T00:00:00.000Z',

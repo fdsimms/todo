@@ -1,6 +1,7 @@
 import type {
   FoodNutrition,
   FoodNutritionSource,
+  FoodPortion,
   GroceryItem,
   ItemProduct,
   NutrientKey,
@@ -75,6 +76,34 @@ function readAmounts(value: unknown): Partial<Record<NutrientKey, number>> {
 }
 
 /**
+ * The portion rows a stored blob carries, dropping anything unreadable.
+ *
+ * **A bad row is dropped rather than failing the record**, which is the
+ * opposite call to `basis` above and deliberate: a portion table is a set of
+ * independent facts, so one unreadable row costs that one conversion, where a
+ * missing basis makes every figure meaningless. A zero or negative weight goes
+ * with the malformed, since a portion weighing nothing converts nothing and a
+ * zero `amount` would divide by it.
+ *
+ * Absent reads as empty, which is what every record written before portions
+ * existed holds and what both barcode sources produce anyway.
+ */
+function readPortions(value: unknown): FoodPortion[] {
+  if (!Array.isArray(value)) return [];
+  const portions: FoodPortion[] = [];
+  for (const row of value) {
+    if (!row || typeof row !== 'object' || Array.isArray(row)) continue;
+    const raw = row as Record<string, unknown>;
+    const label = typeof raw.label === 'string' ? raw.label.trim() : '';
+    const amount = readAmount(raw.amount);
+    const grams = readAmount(raw.grams);
+    if (!label || amount === null || amount <= 0 || grams === null || grams <= 0) continue;
+    portions.push({ amount, label, grams });
+  }
+  return portions;
+}
+
+/**
  * Reads the stored JSON, answering null for anything it can't read whole.
  *
  * Three things are required, and each one is required for its own reason:
@@ -117,6 +146,7 @@ export function parseFoodNutrition(raw: string | null | undefined): FoodNutritio
       // assert the user typed it, which is a worse lie than calling a real
       // label an estimate: this errs toward under-claiming, which is the only
       // direction that stays safe when the figure is bound for a health record.
+      portions: readPortions(parsed.portions),
       source: NUTRITION_SOURCES.find(s => s === parsed.source) ?? 'estimated',
       sourceId: typeof parsed.sourceId === 'string' ? parsed.sourceId : null,
       recordedAt: parsed.recordedAt,

@@ -1726,6 +1726,9 @@ describe('demo seed — groceries, recipes, meals and the fridge', () => {
     // ...and the keys the label never declared stay absent rather than
     // arriving as a confident zero. See FoodNutrition.amounts.
     expect('caffeineMg' in panel!.amounts).toBe(false);
+    // ...and the one portion the loaf states, which is what lets a recipe
+    // line written as "2 slices" become a weight at all. See FoodPortion.
+    expect(panel!.portions).toEqual([{ amount: 1, label: 'slice', grams: 45 }]);
     // ...and a rating, on a box that isn't the preferred one — "the one I
     // avoid" and "the one I want" being the same row would read as a bug.
     const avoided = itemProducts.find(p => p.rating === 'avoid');
