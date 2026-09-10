@@ -749,6 +749,18 @@ Two counts exist and they mean different things, so keep them labelled: the rost
 
 **A stack has no completion state of its own — stored, derived, or dismissed.** Today renders one exactly while it has a visible child (`visibleGroupItems` in `TodayScreen`: `children.length > 0`, and `children` comes from `visibleTasks`), so it leaves in the same commit its last row does and returns whenever a member is visible again. Two designs preceded that and both are gone: a `TaskGroup.completedAt` "user dismissed this for today" stamp (the stack sat on Today saying "all 6 done for today" until tapped — an extra tap per stack per day to acknowledge what the finished rows already said), and before that, clearing that stamp on every event that could give the stack live work, which took four call sites and still missed one. The `completed_at` column is still on `task_groups`, unread and never written. **Don't reintroduce a hidden-for-today flag** — riding on `visibleTasks` is what makes the header and its rows leave together, since a just-ticked row stays in `visibleTasks` for the completion hold (`completionHoldIds`) and the header rides that window out with it.
 
+**`TaskGroup.onToday` is a presence bit, not that flag coming back.** A stack arriving on Today
+collapses (`syncTodayPresence`, written from `TodayScreen`'s own render of what's on the day), so
+an expansion doesn't outlive the stack's stay: one expanded on Monday and finished off would
+otherwise come back on Tuesday expanded, dropping its whole roster into the middle of the day. A
+stack that never leaves keeps whatever the user set, restarts included. What makes it safe is that
+it gates *nothing* — Today still renders a stack exactly while it has a visible child, and a wrong
+value costs one tap on the chevron rather than a stack that won't come back. Presence is read off
+`visibleTasks` and `upcomingTodayTasks` rather than the filtered list, so a stack the priority
+filter hid hasn't left, and it counts Later Today as being on Today, so crossing from one to the
+other isn't an arrival. The write waits for both stores to report `initialized`: mid-load every
+stack looks absent, and recording that would re-collapse the lot on every cold launch.
+
 Cascades (`completeGroup`, `deferGroup`, `pinGroup`, `deleteGroup`) are roster-scoped so they can't mutate completed history. `deleteGroup({cascade:true})` deletes the live members and merely unfiles the past occurrences — deleting a stack must not erase its Logbook and Stats history.
 
 ### Navigation

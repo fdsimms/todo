@@ -22,6 +22,7 @@ const group = (title: string, sortOrder: number, id = `g-${title}`, extra: Parti
   category: null,
   sortOrder,
   collapsed: true,
+  onToday: false,
   projectId: null,
   ...extra,
 });
@@ -98,6 +99,53 @@ describe('setGroupCollapsed', () => {
     seed(group('Errands', 1, 'g-Errands', { collapsed: true }));
     useTaskGroupStore.getState().setGroupCollapsed('g-Errands', true);
     expect(dbUpdateTaskGroup).not.toHaveBeenCalled();
+  });
+});
+
+describe('syncTodayPresence', () => {
+  const sync = (...ids: string[]) => useTaskGroupStore.getState().syncTodayPresence(new Set(ids));
+
+  it('collapses a stack arriving on Today, and records that it is there', () => {
+    seed(group('Errands', 1, 'g-Errands', { collapsed: false, onToday: false }));
+    sync('g-Errands');
+    const [g] = useTaskGroupStore.getState().groups;
+    expect(g.collapsed).toBe(true);
+    expect(g.onToday).toBe(true);
+    expect(dbUpdateTaskGroup).toHaveBeenCalledWith(expect.objectContaining({ collapsed: true, onToday: true }));
+  });
+
+  it('leaves a stack that was already there alone, expanded or not', () => {
+    seed(group('Errands', 1, 'g-Errands', { collapsed: false, onToday: true }));
+    sync('g-Errands');
+    expect(useTaskGroupStore.getState().groups[0].collapsed).toBe(false);
+    expect(dbUpdateTaskGroup).not.toHaveBeenCalled();
+  });
+
+  it('records a stack leaving without touching its collapse state', () => {
+    seed(group('Errands', 1, 'g-Errands', { collapsed: false, onToday: true }));
+    sync();
+    const [g] = useTaskGroupStore.getState().groups;
+    expect(g.onToday).toBe(false);
+    expect(g.collapsed).toBe(false);
+    expect(dbUpdateTaskGroup).toHaveBeenCalledWith(expect.objectContaining({ onToday: false }));
+  });
+
+  it('collapses a stack that comes back after leaving', () => {
+    seed(group('Errands', 1, 'g-Errands', { collapsed: true, onToday: true }));
+    useTaskGroupStore.getState().setGroupCollapsed('g-Errands', false);
+    sync();
+    sync('g-Errands');
+    expect(useTaskGroupStore.getState().groups[0].collapsed).toBe(true);
+  });
+
+  it('writes only the rows that changed', () => {
+    seed(
+      group('Errands', 1, 'g-Errands', { onToday: true }),
+      group('Home', 2, 'g-Home', { onToday: false }),
+    );
+    sync('g-Errands', 'g-Home');
+    expect(dbUpdateTaskGroup).toHaveBeenCalledTimes(1);
+    expect(dbUpdateTaskGroup).toHaveBeenCalledWith(expect.objectContaining({ id: 'g-Home' }));
   });
 });
 

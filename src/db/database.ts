@@ -1383,6 +1383,12 @@ export function initDatabase(): void {
     // would mean re-asking the network about every barcode ever scanned. See
     // GtinLookup.nutrition.
     'ALTER TABLE gtin_lookups ADD COLUMN nutrition TEXT',
+    // 0 on every existing stack, so the first Today render after upgrading
+    // treats each one that's on the list as newly arrived and collapses it
+    // once. That's the same one-time flattening task_groups_collapsed_default
+    // did above, and it's the honest reading: nothing recorded whether these
+    // stacks were on Today before now. See TaskGroup.onToday.
+    'ALTER TABLE task_groups ADD COLUMN on_today INTEGER NOT NULL DEFAULT 0',
   ];
   for (const sql of migrations) {
     try { db.runSync(sql); } catch (_) { /* column already exists */ }
@@ -2923,6 +2929,7 @@ function rowToTaskGroup(row: Record<string, unknown>): TaskGroup {
     category: (row.category as string) ?? null,
     sortOrder: row.sort_order as number,
     collapsed: Boolean(row.collapsed),
+    onToday: Boolean(row.on_today),
     projectId: (row.project_id as string) ?? null,
   };
 }
@@ -2937,22 +2944,22 @@ export function dbInsertTaskGroup(group: TaskGroup): void {
     // completed_at is deliberately absent: it held the old "stack dismissed
     // for today" stamp, which no longer exists (see TaskGroup). The column
     // stays on the table for installs that already have it, and stays null.
-    'INSERT INTO task_groups (id, title, notes, tags, category, sort_order, collapsed, project_id) VALUES (?,?,?,?,?,?,?,?)',
+    'INSERT INTO task_groups (id, title, notes, tags, category, sort_order, collapsed, on_today, project_id) VALUES (?,?,?,?,?,?,?,?,?)',
     [
       group.id, group.title, group.notes, JSON.stringify(group.tags),
       group.category ?? null, group.sortOrder, group.collapsed ? 1 : 0,
-      group.projectId ?? null,
+      group.onToday ? 1 : 0, group.projectId ?? null,
     ]
   );
 }
 
 export function dbUpdateTaskGroup(group: TaskGroup): void {
   db.runSync(
-    'UPDATE task_groups SET title=?, notes=?, tags=?, category=?, sort_order=?, collapsed=?, project_id=? WHERE id=?',
+    'UPDATE task_groups SET title=?, notes=?, tags=?, category=?, sort_order=?, collapsed=?, on_today=?, project_id=? WHERE id=?',
     [
       group.title, group.notes, JSON.stringify(group.tags),
       group.category ?? null, group.sortOrder, group.collapsed ? 1 : 0,
-      group.projectId ?? null, group.id,
+      group.onToday ? 1 : 0, group.projectId ?? null, group.id,
     ]
   );
 }
