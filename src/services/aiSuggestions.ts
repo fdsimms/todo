@@ -638,6 +638,19 @@ export interface RecipeGroceryItem {
    * `quantity` is supposed to land, rather than being discarded.
    */
   prep: string | null;
+  /**
+   * True when the recipe itself marks this line as optional — "(optional)",
+   * "if desired", a garnish called out as not required. Read straight into
+   * RecipeIngredient.optional by normalizeIngredient, which is why this is a
+   * plain boolean rather than the free text the model actually read it off
+   * of: `RecipeIngredient.optional` has no field to hold that text, and
+   * `sharedRecipeInstructions` asks for the boolean directly rather than
+   * having a second layer here infer one from a string. Absent (not just
+   * false) for the overwhelming majority of lines — most ingredients aren't
+   * optional, and normalizeIngredient already only stores the field when
+   * it's true.
+   */
+  optional?: boolean;
 }
 
 /** Same validation `suggestRecipeGroceries` always applied, now shared with extractRecipe. */
@@ -646,7 +659,10 @@ function parseExtractedItems(
   availableAisles: string[],
 ): RecipeGroceryItem[] {
   const items = raw as Array<
-    { name?: unknown; quantity?: unknown; aisle?: unknown; component?: unknown; prep?: unknown }
+    {
+      name?: unknown; quantity?: unknown; aisle?: unknown; component?: unknown; prep?: unknown;
+      optional?: unknown;
+    }
   > | undefined;
   if (!items) return [];
 
@@ -677,6 +693,9 @@ function parseExtractedItems(
       prep: typeof item.prep === 'string' && item.prep.trim()
         ? item.prep.trim().slice(0, PREP_MAX_LENGTH)
         : null,
+      // Same "written only when true" rule normalizeIngredient itself keeps
+      // for this field — an absent/false model answer just isn't carried.
+      ...(item.optional === true && { optional: true }),
     });
   }
   return result.slice(0, MAX_RECIPE_ITEMS);
@@ -770,6 +789,10 @@ function groceryItemsSchema(availableAisles: string[], description: string) {
         prep: {
           type: 'string',
           description: `What to do to it before using it, in the recipe's own words — "pressed and cubed", "steamed 10 min", "minced" — the instruction dropped out of "name" and "quantity" above. Under ${PREP_MAX_LENGTH} characters. Empty string when the recipe states no prep for this item.`,
+        },
+        optional: {
+          type: 'boolean',
+          description: 'True when the recipe itself marks this ingredient as optional — "(optional)", "if desired/available", "or leave it out", a garnish called out as not required. False for everything else, including anything you merely think a cook could skip; only the recipe\'s own wording counts.',
         },
       },
       required: ['name', 'quantity', 'aisle'],
@@ -889,6 +912,7 @@ function sharedRecipeInstructions(availableAisles: string[]): string[] {
     'Name each shopping item the way a shop would label it, not the way the recipe prepares it — "garlic" rather than "3 cloves garlic, minced". Keep the recipe\'s own quantity and unit as stated, with the prep instruction moved to the "prep" field instead of "name" or "quantity" — "4 cloves" or "3 cloves", not "1 bulb", with "minced" in "prep". Never substitute your own guess at a purchasable equivalent; the recipe\'s stated amount is what the cook actually needs, and a bulb doesn\'t reliably yield a fixed number of cloves. Ignore the method when deciding what goes on the shopping list, and skip water.',
     `Sections available: ${availableAisles.join(', ')}. Use "Other" only when nothing else fits.`,
     'If the recipe\'s own ingredient list is split into labelled components — "For the cake" / "For the frosting", "For the marinade" / "For the dish" — carry that label into each item\'s "component" field. Leave it empty when the recipe lists everything as one plain list.',
+    'Set "optional" to true only when the recipe itself says so — "(optional)", "if desired", "if you have it", a garnish explicitly called not required. Leave it false otherwise, even for an item you\'d personally guess is skippable, like a garnish with nothing next to it saying so.',
   ];
 }
 
