@@ -396,7 +396,7 @@ function makeStyles(colors: Colors) {
       alignItems: 'center',
       justifyContent: 'space-between',
       paddingHorizontal: spacing.md,
-      paddingVertical: spacing.sm,
+      paddingVertical: spacing.md,
       borderBottomWidth: border.hairline,
       borderBottomColor: colors.separator,
     },
