@@ -2849,6 +2849,15 @@ export interface FoodPortion {
   label: string;
   /** What `amount` of them weighs, in grams. */
   grams: number;
+  /**
+   * True for a portion the user weighed themselves, rather than one the
+   * source stated. Load-bearing the same way `FoodNutrition.source` is: a
+   * self-weighed cup is one person's measurement of one container, not a
+   * manufacturer's declared figure, and a reader showing portions back to a
+   * person must be able to tell the two apart. Absent (not `false`) on every
+   * row a source stated, so it costs nothing on the far more common case.
+   */
+  custom?: boolean;
 }
 
 /** Where a `FoodNutrition` record's figures came from. See that type's `source`. */
