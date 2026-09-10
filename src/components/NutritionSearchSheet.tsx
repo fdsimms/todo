@@ -46,8 +46,13 @@ interface Props {
   /** What the catalog calls this food, used to seed the search. */
   itemName: string;
   onClose: () => void;
-  /** Called with the chosen food's panel, portions already fetched. */
-  onPick: (nutrition: FoodNutrition) => void;
+  /**
+   * Called with the chosen food's panel, portions already fetched, and the
+   * database's own name for it — a caller with no name of its own yet (a food
+   * log entry with nothing to log against) needs something to show besides
+   * the panel.
+   */
+  onPick: (nutrition: FoodNutrition, description: string) => void;
 }
 
 export function NutritionSearchSheet({ visible, itemName, onClose, onPick }: Props) {
@@ -106,7 +111,7 @@ export function NutritionSearchSheet({ visible, itemName, onClose, onPick }: Pro
       // on the detail endpoint only, and without it a recipe line written as a
       // volume or a count can never become grams. See `readFdcPortions`.
       const portions = await fetchFoodPortions(row.candidate.fdcId);
-      onPick({ ...hit.nutrition, portions });
+      onPick({ ...hit.nutrition, portions }, row.candidate.description);
       haptics.success();
       onClose();
     } catch (e) {
