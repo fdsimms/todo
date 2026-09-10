@@ -414,7 +414,16 @@ export function readOffNutrition(
   // it (Nutella's 539kcal/100g bears no resemblance to its ~81kcal/15g
   // serving). A serving genuinely close to 100 units is left alone, since the
   // two figures are expected to nearly agree there regardless.
-  if (amounts.calorieKcal !== undefined) {
+  //
+  // **Zero is excluded, and the match has to be exact.** `energy-kcal_serving`
+  // is generally OFF's own `per100 * servingUnits / 100`, not a second typed
+  // figure (Red Bull: 42kcal/100ml * 3.3 rounds to its stated 139kcal/330ml
+  // serving) — so a *correct* panel can only land on the same number in this
+  // field as its per-100 one when the serving is ~100 units, already excluded
+  // above, or when the per-100 figure is 0. A water or a black coffee reports
+  // 0 both ways for any serving size, which a wider or nonzero-tolerant match
+  // would wrongly read as misfiled and wipe a calorie count that was correct.
+  if (amounts.calorieKcal) {
     const servingUnits = basis === 'per100ml'
       ? readOffServingMilliliters(product)
       : readOffServingGrams(product);
@@ -422,7 +431,7 @@ export function readOffNutrition(
     if (
       servingUnits !== null && servingEnergy !== null
       && Math.abs(servingUnits - 100) > 15
-      && Math.abs(amounts.calorieKcal - servingEnergy) <= Math.max(1, amounts.calorieKcal * 0.02)
+      && amounts.calorieKcal === servingEnergy
     ) {
       delete amounts.calorieKcal;
     }
