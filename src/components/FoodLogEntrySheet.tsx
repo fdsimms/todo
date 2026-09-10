@@ -26,6 +26,7 @@ import { haptics } from '../utils/haptics';
 import { parseQuantity, rationalToNumber } from '../utils/quantity';
 import { EmptyState } from './EmptyState';
 import { InlineAction } from './InlineAction';
+import { NutritionSearchSheet } from './NutritionSearchSheet';
 import { SegmentedControl } from './SegmentedControl';
 import { SheetHeaderButton } from './SheetHeaderButton';
 
@@ -108,6 +109,7 @@ export function FoodLogEntrySheet({ visible, slot, at, seedRecipeId, onClose }: 
   const [chosenSlot, setChosenSlot] = useState<MealSlot | null>(slot);
   const [weighing, setWeighing] = useState(false);
   const [weighGrams, setWeighGrams] = useState('');
+  const [dbSearchOpen, setDbSearchOpen] = useState(false);
 
   useEffect(() => {
     if (!visible) return;
@@ -115,6 +117,7 @@ export function FoodLogEntrySheet({ visible, slot, at, seedRecipeId, onClose }: 
     setPicked(null);
     setAmount('');
     setChosenSlot(slot);
+    setDbSearchOpen(false);
   }, [visible, slot]);
 
   // Closes the "weigh it" form whenever the picked food or its panel changes
@@ -282,6 +285,24 @@ export function FoodLogEntrySheet({ visible, slot, at, seedRecipeId, onClose }: 
     onClose();
   };
 
+  // Nothing here has a `GroceryItem` or `ItemProduct` behind it, so there is
+  // no row to attach the panel to — the candidate carries it directly, same
+  // as a picked dish carries `servingPanel` rather than pointing at one.
+  const handleDbPick = (nutrition: FoodNutrition, description: string) => {
+    setPicked({
+      key: `db:${description}`,
+      label: description,
+      detail: 'From a food database',
+      kind: 'food',
+      panel: nutrition,
+      recipeId: null,
+      itemId: null,
+      productId: null,
+      servingPanel: null,
+    });
+    setAmount('');
+  };
+
   const handleCancel = () => {
     if (!picked && !amount.trim()) { onClose(); return; }
     Alert.alert(
@@ -447,15 +468,23 @@ export function FoodLogEntrySheet({ visible, slot, at, seedRecipeId, onClose }: 
                   title={candidates.length === 0 ? 'Nothing has figures yet' : 'No matching food'}
                   subtitle={
                     candidates.length === 0
-                      ? 'A food can be logged once it has nutrition on it. Open a grocery item and search a food database, or type in a label.'
-                      : 'Only foods and recipes with nutrition on them can be logged, since an entry with no figures adds nothing to a day.'
+                      ? 'A food can be logged once it has nutrition on it. Search a food database below, or open a grocery item to attach nutrition to it there.'
+                      : 'Only foods and recipes with nutrition on them can be logged. Search a food database instead, or open a grocery item to attach nutrition to it there.'
                   }
+                  actionLabel="Search a food database"
+                  onAction={() => { haptics.tap(); setDbSearchOpen(true); }}
                 />
               }
             />
           </>
         )}
       </View>
+      <NutritionSearchSheet
+        visible={dbSearchOpen}
+        itemName={query}
+        onClose={() => setDbSearchOpen(false)}
+        onPick={handleDbPick}
+      />
     </Modal>
   );
 }
@@ -468,7 +497,7 @@ function makeStyles(colors: Colors) {
       alignItems: 'center',
       justifyContent: 'space-between',
       paddingHorizontal: spacing.md,
-      paddingVertical: spacing.sm,
+      paddingVertical: spacing.md,
       borderBottomWidth: border.hairline,
       borderBottomColor: colors.separator,
     },

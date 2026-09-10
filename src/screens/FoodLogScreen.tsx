@@ -2,6 +2,7 @@ import React, { useCallback, useEffect, useMemo, useState } from 'react';
 import { Alert, ScrollView, StyleSheet, Text, TouchableOpacity, View } from 'react-native';
 import Ionicons from '@expo/vector-icons/Ionicons';
 import { SafeAreaView } from 'react-native-safe-area-context';
+import { useBottomTabBarHeight } from '@react-navigation/bottom-tabs';
 import { useShallow } from 'zustand/react/shallow';
 import { addDays } from 'date-fns/addDays';
 import { format } from 'date-fns/format';
@@ -63,6 +64,7 @@ import { FoodLogEntrySheet } from '../components/FoodLogEntrySheet';
 export function FoodLogScreen() {
   const colors = useColors();
   const styles = useMemo(() => makeStyles(colors), [colors]);
+  const tabBarHeight = useBottomTabBarHeight();
 
   const entries = useFoodLogStore(useShallow(s => s.entries));
   const loadRange = useFoodLogStore(s => s.loadRange);
@@ -303,7 +305,10 @@ export function FoodLogScreen() {
         </TouchableOpacity>
       </View>
 
-      <ScrollView style={styles.scroll} contentContainerStyle={styles.scrollContent}>
+      <ScrollView
+        style={styles.scroll}
+        contentContainerStyle={[styles.scrollContent, { paddingBottom: tabBarHeight + spacing.xl }]}
+      >
         {dayEntries.length === 0 ? (
           <EmptyState
             icon="restaurant-outline"
@@ -462,7 +467,7 @@ function makeStyles(colors: Colors) {
     dayNavTodayText: { color: colors.accent, fontSize: font.sm },
     dayNavTodayTextOff: { color: colors.textSecondary },
     scroll: { flex: 1 },
-    scrollContent: { flexGrow: 1, paddingHorizontal: spacing.md, paddingBottom: spacing.xl },
+    scrollContent: { flexGrow: 1, paddingHorizontal: spacing.md },
     totalsCard: {
       backgroundColor: colors.bgSecondary,
       borderRadius: radius.lg,

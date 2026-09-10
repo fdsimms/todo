@@ -239,6 +239,55 @@ describe('readOffNutrition', () => {
     expect(read.amounts.calorieKcal).toBeUndefined();
     expect(read.amounts.proteinG).toBe(6);
   });
+
+  it('drops a per-100 calorie figure that is really the serving figure misfiled', () => {
+    // Siggi's skyr: a 170g cup stating 100 cal, with that same 100 typed into
+    // the per-100g field instead of the true ~59. Nothing about 100kcal/100g
+    // is arithmetically impossible for a dairy product, so only the sibling
+    // `energy-kcal_serving` field gives the mistake away.
+    const misfiled = {
+      serving_size: '1 container (170g)',
+      serving_quantity: 170,
+      serving_quantity_unit: 'g',
+      product_quantity_unit: 'g',
+      nutriments: {
+        'energy-kcal_100g': 100,
+        'energy-kcal_serving': 100,
+        proteins_100g: 11,
+      },
+    };
+    const read = readOffNutrition(misfiled, 'x', RECORDED_AT)!;
+    expect(read.amounts.calorieKcal).toBeUndefined();
+    expect(read.amounts.proteinG).toBe(11);
+  });
+
+  it('keeps a per-100 calorie figure whose serving figure is merely close, not equal', () => {
+    // A serving several times the size of 100g should disagree with the
+    // per-100 figure by a wide margin, and does here — a real panel, not a
+    // misfiled one.
+    const real = {
+      serving_quantity: 170,
+      serving_quantity_unit: 'g',
+      nutriments: { 'energy-kcal_100g': 59, 'energy-kcal_serving': 100 },
+    };
+    expect(readOffNutrition(real, 'x', RECORDED_AT)!.amounts.calorieKcal).toBe(59);
+  });
+
+  it('leaves a calorie figure alone when the serving is close to 100 units', () => {
+    // The two numbers are expected to nearly agree when the serving itself is
+    // ~100g, so an equal pair there is not evidence of a mistake.
+    const nearHundred = {
+      serving_quantity: 100,
+      serving_quantity_unit: 'g',
+      nutriments: { 'energy-kcal_100g': 250, 'energy-kcal_serving': 250 },
+    };
+    expect(readOffNutrition(nearHundred, 'x', RECORDED_AT)!.amounts.calorieKcal).toBe(250);
+  });
+
+  it('leaves a calorie figure alone when there is no serving figure to compare it to', () => {
+    expect(readOffNutrition(RED_BULL, 'x', RECORDED_AT)!.amounts.calorieKcal).toBe(46);
+    expect(readOffNutrition(NUTELLA, 'x', RECORDED_AT)!.amounts.calorieKcal).toBe(539);
+  });
 });
 
 /**
