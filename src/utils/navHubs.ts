@@ -94,6 +94,7 @@ const KITCHEN_HUB: NavHub = {
     // still `Kitchen` — the same split as "Stack" over `TaskGroup`, and the
     // reason is written up where the label was chosen.
     { route: 'Kitchen', label: 'Pantry', keywords: ['fridge', 'freezer', 'kitchen', 'inventory', 'use by'] },
+    { route: 'FoodLog', label: 'Food log', keywords: ['ate', 'eaten', 'calories', 'diary', 'nutrition', 'macros'] },
   ],
 };
 
@@ -119,7 +120,6 @@ const HISTORY_HUB: NavHub = {
     { route: 'Stats', label: 'Stats', keywords: ['numbers', 'charts', 'streaks', 'progress'] },
     { route: 'Mood', label: 'Mood', keywords: ['feelings', 'symptoms', 'how i feel'] },
     { route: 'Weight', label: 'Weight', keywords: ['scale', 'kg', 'lb', 'pounds', 'body', 'mass'] },
-    { route: 'FoodLog', label: 'Food log', keywords: ['ate', 'eaten', 'calories', 'diary', 'nutrition', 'macros'] },
     { route: 'Archived', label: 'Archived', keywords: ['paused', 'filed', 'put away'] },
   ],
 };
