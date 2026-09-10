@@ -59,6 +59,8 @@ export function LogMealPrompt() {
   // The dish's figures, computed when the prompt opens rather than carried on
   // the pending flag: the store that sets it must not reach the recipe store,
   // and the figures are the same either way.
+  const recipesById = useMemo(() => new Map(recipes.map(r => [r.id, r])), [recipes]);
+
   const figures = useMemo(() => {
     if (!pending?.recipeId) return null;
     const recipe = recipes.find(r => r.id === pending.recipeId);
@@ -67,13 +69,20 @@ export function LogMealPrompt() {
       recipe,
       items,
       itemProducts,
-      new Map([[recipe.id, recipe]]),
-      undefined,
+      // Every recipe, not just this one: a composed dish measures its
+      // components through this map, and a map holding only the outer recipe
+      // would silently drop everything they contribute.
+      recipesById,
+      // The either/or answers that cooking actually used, so a night that
+      // picked serrano over jalapeño is measured as the dish that was made
+      // rather than as the one the recipe leaves open. Same read
+      // collectPlannedIngredients makes off the same field.
+      { chosen: pending.choices },
       pending.scale,
     );
     if (!dish) return null;
     return { total: dish.total, perServing: perServing(dish) };
-  }, [pending, recipes, items, itemProducts]);
+  }, [pending, recipes, recipesById, items, itemProducts]);
 
   const helping = mealHelping(figures, helpings ?? 0);
 
