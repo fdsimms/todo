@@ -203,7 +203,7 @@ render, so listing them adds lines without adding answers.
 - `src/utils/recipeCost.ts` — CostEstimate, estimateRecipeCost, estimateWeekCost, describeRecipeCost, describeWeekCost
 - `src/utils/recipeImportComponents.ts` — ReferenceCandidate, referencePageNumber, importableReferences, coveredIngredients
 - `src/utils/recipeImportPreview.ts` — ImportPreviewLine, methodRowMeta, prepTasksRowMeta, methodPreviewLines, prepTaskPreviewLines, previewToggleLabel
-- `src/utils/recipeNutrition.ts` — RecipeNutrition, recipeNutrition, weekNutrition, perServing, describeRecipeNutrition
+- `src/utils/recipeNutrition.ts` — RecipeNutrition, recipeNutrition, weekNutrition, perServing, describeRecipeNutrition, describeWeekNutrition
 - `src/utils/recipePhoto.ts` — MAX_PHOTO_EDGE, RecipePhotoSource, RecipePhoto, RecipePhotoResult, photoTargetSize, pickRecipePhoto, MAX_IMAGE_EDGE, RecipeImageAttachment, RecipeImageResult, pickRecipeImage, +5 more
 - `src/utils/recipeProvenance.ts` — ExtractedSource, FetchedSourcePage, SourceFields, sourceFieldsFor, CookbookEditIntent, cookbookEditIntent, SourcePlan, sourcePlanFor
 - `src/utils/recipeScale.ts` — ScaledQuantity, scaleQuantity, RECIPE_SCALE_FACTORS, isUnscaled, normalizeScale, formatScale, scaleServings, factorForServings, targetServingsFor, describeUnscaled

@@ -333,7 +333,7 @@ exports.
 | estimating what a restaurant meal contained, from a description | `src/utils/nutritionEstimate.ts` + `estimateMealNutrition` in `src/services/aiSuggestions.ts` — the model proposes and a person confirms; nothing is written unconfirmed, and `source: 'estimated'` is permanent |
 | finding a plain food ("onion", "butter") in a food database by name | `src/services/foodSearch.ts` + `src/utils/foodSearchMatch.ts` (ranks and refuses; the portion table needs a second request) |
 | turning "2 cups chopped onion" into grams | `src/utils/ingredientGrams.ts` — every weight comes from the food's own portion table, never a global density |
-| a recipe's nutrition estimate, and the line under its cost | `src/utils/recipeNutrition.ts` — `recipeCost.ts` with grams in place of prices, plus a per-nutrient coverage floor |
+| a recipe's nutrition estimate, and the line under its cost | `src/utils/recipeNutrition.ts` — `recipeCost.ts` with grams in place of prices, plus a per-nutrient coverage floor. `weekNutrition`/`describeWeekNutrition` are the planned-week pair, splitting one body by noun exactly as `describeRecipeCost`/`describeWeekCost` do |
 | reading a receipt's text on the device before it goes to the model | `src/utils/receiptOcr.ts` + `modules/todo-vision-bridge` |
 | remembering which item a barcode is | `ItemProduct.gtin` + `gtinAliasText` in `src/utils/storeAliases.ts` — see `docs/arch/groceries.md` |
 | what a store's receipt shorthand means | `src/utils/storeAliases.ts` (+ the `remembered` tier in `receiptMatch.ts`) |

@@ -299,8 +299,7 @@ const SUMMARY_LABEL: Record<string, (amount: number) => string> = {
  * has never asked for, and `cookingStats.ts`'s rule holds here too: counts,
  * never a score.
  */
-export function describeRecipeNutrition(nutrition: RecipeNutrition | null): string | null {
-  if (!nutrition) return null;
+function describeNutrition(nutrition: RecipeNutrition, noun: string): string | null {
   const per = perServing(nutrition);
   const figures = per ?? nutrition.total;
 
@@ -313,6 +312,26 @@ export function describeRecipeNutrition(nutrition: RecipeNutrition | null): stri
   const coverage =
     nutrition.covered === nutrition.lines
       ? ''
-      : `, from ${nutrition.covered} of ${nutrition.lines} ingredients`;
+      : `, from ${nutrition.covered} of ${nutrition.lines} ${noun}`;
   return `≈ ${parts.join(', ')}${basis}${coverage}`;
+}
+
+export function describeRecipeNutrition(nutrition: RecipeNutrition | null): string | null {
+  return nutrition ? describeNutrition(nutrition, 'ingredients') : null;
+}
+
+/**
+ * "≈ 8,400 cal, 380g protein, from 13 of 22 items", or null while there is
+ * nothing worth saying.
+ *
+ * The same split `describeRecipeCost` and `describeWeekCost` already make over
+ * one body: a recipe is read as a list of ingredients and a week as a list of
+ * items to buy, and the two nouns are what the reader is actually looking at.
+ *
+ * It never carries a per-serving basis, because `weekNutrition` sets no
+ * servings count. A week is not a recipe and dividing its total by anything
+ * would be inventing a number of eaters.
+ */
+export function describeWeekNutrition(nutrition: RecipeNutrition | null): string | null {
+  return nutrition ? describeNutrition(nutrition, 'items') : null;
 }

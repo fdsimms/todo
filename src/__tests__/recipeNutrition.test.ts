@@ -1,7 +1,13 @@
-import type { FoodNutrition, GroceryItem, Recipe, RecipeIngredient } from '../types';
+import type { FoodNutrition, GroceryItem, MealPlanEntry, Recipe, RecipeIngredient } from '../types';
 import { groceryNameKey } from '../utils/groceryParse';
 import { choiceGroupKey } from '../utils/recipeComponents';
-import { describeRecipeNutrition, perServing, recipeNutrition } from '../utils/recipeNutrition';
+import {
+  describeRecipeNutrition,
+  describeWeekNutrition,
+  perServing,
+  recipeNutrition,
+  weekNutrition,
+} from '../utils/recipeNutrition';
 
 // Same mock recipeCost.test.ts uses, and for the same reason: the week read
 // reaches mealPlanGroceries → mealPlan → dateUtils → the settings store for
@@ -69,6 +75,28 @@ function recipe(name: string, ingredients: RecipeIngredient[], overrides: Partia
     lastPrepMinutes: null,
     prepTimeCount: 0,
     totalPrepMinutes: 0,
+    ...overrides,
+  };
+}
+
+function entry(date: string, recipeId: string | null, overrides: Partial<MealPlanEntry> = {}): MealPlanEntry {
+  return {
+    id: `m-${++seq}`,
+    date,
+    slot: 'dinner',
+    recipeId,
+    title: overrides.title ?? 'Leftovers',
+    sortOrder: 1,
+    createdAt: '2026-01-01T00:00:00.000Z',
+    cookedAt: null,
+    leftoverId: null,
+    recipeChoices: [],
+    personIds: [],
+    recipeScale: 1,
+    cookTask: null,
+    shopTask: null,
+    logMeal: null,
+    calendarEventId: null,
     ...overrides,
   };
 }
@@ -357,5 +385,110 @@ describe('describeRecipeNutrition', () => {
     const line = describeRecipeNutrition(recipeNutrition(dish, items))!;
     expect(line).toContain('cal');
     expect(line).not.toContain('protein');
+  });
+});
+
+// Mirrors estimateWeekCost's own suite one file over, because the two read the
+// same planned lines through the same collector and differ only in what they
+// accumulate.
+describe('weekNutrition', () => {
+  const RANGE = { startKey: '2026-08-09', endKey: '2026-08-15' };
+  const catalog = () => [
+    item({ name: 'Chicken', nutrition: panel() }),
+    item({ name: 'Rice', nutrition: panel({ amounts: { calorieKcal: 130, proteinG: 3 } }) }),
+  ];
+
+  it('is null when nothing in range resolves to a recipe', () => {
+    expect(weekNutrition([entry('2026-08-11', null)], new Map(), [], RANGE)).toBeNull();
+  });
+
+  it('sums the week\'s planned meals', () => {
+    const roast = recipe('Roast', [ing('Chicken', { quantity: '400 g' })]);
+    const bowl = recipe('Bowl', [ing('Rice', { quantity: '100 g' })]);
+    const recipesById = new Map([[roast.id, roast], [bowl.id, bowl]]);
+    const entries = [entry('2026-08-10', roast.id), entry('2026-08-12', bowl.id)];
+    const read = weekNutrition(entries, recipesById, catalog(), RANGE)!;
+    expect(read.total.calorieKcal).toBe(530);
+    expect(read.covered).toBe(2);
+    expect(read.lines).toBe(2);
+  });
+
+  it('has no servings of its own, since a week is not a recipe', () => {
+    // Dividing a week's total by anything would be inventing a number of
+    // eaters, so `perServing` declines and the line never says "per serving".
+    const roast = recipe('Roast', [ing('Chicken', { quantity: '400 g' })], { servings: 4 });
+    const recipesById = new Map([[roast.id, roast]]);
+    const read = weekNutrition([entry('2026-08-10', roast.id)], recipesById, catalog(), RANGE)!;
+    expect(read.servings).toBeNull();
+    expect(perServing(read)).toBeNull();
+  });
+
+  it('applies each entry\'s own scale', () => {
+    const roast = recipe('Roast', [ing('Chicken', { quantity: '400 g' })]);
+    const recipesById = new Map([[roast.id, roast]]);
+    const entries = [entry('2026-08-10', roast.id, { recipeScale: 2 })];
+    expect(weekNutrition(entries, recipesById, catalog(), RANGE)!.total.calorieKcal).toBe(800);
+  });
+
+  it('excludes a cooked entry, same as collectPlannedIngredients', () => {
+    const roast = recipe('Roast', [ing('Chicken', { quantity: '400 g' })]);
+    const recipesById = new Map([[roast.id, roast]]);
+    const entries = [entry('2026-08-10', roast.id, { cookedAt: '2026-08-10T00:00:00.000Z' })];
+    expect(weekNutrition(entries, recipesById, catalog(), RANGE)).toBeNull();
+  });
+
+  it('ignores a meal planned outside the range', () => {
+    const roast = recipe('Roast', [ing('Chicken', { quantity: '400 g' })]);
+    const recipesById = new Map([[roast.id, roast]]);
+    expect(weekNutrition([entry('2026-09-01', roast.id)], recipesById, catalog(), RANGE)).toBeNull();
+  });
+
+  it('keeps a nutrient below the per-nutrient floor out of the total', () => {
+    // The same floor a single recipe applies. Protein is stated by one food of
+    // three, so the week has no protein total rather than a confident one.
+    const bowl = recipe('Bowl', [
+      ing('Rice', { quantity: '100 g' }),
+      ing('Beans', { quantity: '100 g' }),
+      ing('Oil', { quantity: '100 g' }),
+    ]);
+    const recipesById = new Map([[bowl.id, bowl]]);
+    const items = [
+      item({ name: 'Rice', nutrition: panel({ amounts: { calorieKcal: 130 } }) }),
+      item({ name: 'Beans', nutrition: panel({ amounts: { calorieKcal: 120, proteinG: 8 } }) }),
+      item({ name: 'Oil', nutrition: panel({ amounts: { calorieKcal: 880 } }) }),
+    ];
+    const read = weekNutrition([entry('2026-08-10', bowl.id)], recipesById, items, RANGE)!;
+    expect(read.total.calorieKcal).toBeGreaterThan(0);
+    expect(read.total.proteinG).toBeUndefined();
+  });
+});
+
+describe('describeWeekNutrition', () => {
+  const RANGE = { startKey: '2026-08-09', endKey: '2026-08-15' };
+
+  it('is null while there is nothing worth saying', () => {
+    expect(describeWeekNutrition(null)).toBeNull();
+  });
+
+  it('counts items rather than ingredients, matching describeWeekCost', () => {
+    const roast = recipe('Roast', [
+      ing('Chicken', { quantity: '400 g' }),
+      ing('Stock', { quantity: '2 cups' }),
+    ]);
+    const recipesById = new Map([[roast.id, roast]]);
+    const items = [item({ name: 'Chicken', nutrition: panel() })];
+    expect(describeWeekNutrition(weekNutrition([entry('2026-08-10', roast.id)], recipesById, items, RANGE)))
+      .toBe('\u2248 400 cal, 40g protein, from 1 of 2 items');
+  });
+
+  it('never claims a per-serving basis for a week', () => {
+    const roast = recipe('Roast', [ing('Chicken', { quantity: '400 g' })], { servings: 4 });
+    const recipesById = new Map([[roast.id, roast]]);
+    const items = [item({ name: 'Chicken', nutrition: panel() })];
+    const line = describeWeekNutrition(
+      weekNutrition([entry('2026-08-10', roast.id)], recipesById, items, RANGE),
+    )!;
+    expect(line).toBe('\u2248 400 cal, 40g protein');
+    expect(line).not.toContain('per serving');
   });
 });
