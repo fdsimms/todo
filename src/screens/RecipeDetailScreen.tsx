@@ -41,6 +41,7 @@ import { CountStepper } from '../components/CountStepper';
 import { PressableScale } from '../components/PressableScale';
 import { SortableList, type SortableRenderItem } from '../components/SortableList';
 import { IngredientCatalogMatchSheet } from '../components/IngredientCatalogMatchSheet';
+import { RecipeNutritionSheet } from '../components/RecipeNutritionSheet';
 import {
   catalogMatchSummary,
   matchIngredientsToCatalog,
@@ -86,7 +87,11 @@ import {
 } from '../utils/recipeComponents';
 import { applyStandingSwap, describeStandingSwap, standingSwapMap } from '../utils/standingSwaps';
 import { describeRecipeCost, estimateRecipeCost } from '../utils/recipeCost';
-import { describeRecipeNutrition, recipeNutrition } from '../utils/recipeNutrition';
+import {
+  describeNutritionCoverage,
+  describeRecipeNutrition,
+  readRecipeNutrition,
+} from '../utils/recipeNutrition';
 import { formatOffsetLabel } from '../utils/templateUtils';
 import { splitAlternativeNames, splitGroceryLines } from '../utils/groceryParse';
 
@@ -204,19 +209,36 @@ export function RecipeDetailScreen() {
     [costEstimate, currencySymbol]
   );
 
-  // The same flattening again, with grams in place of prices — null while too
-  // little of the recipe resolves to a food whose panel is known, which is
-  // most recipes until their ingredients have been matched (see
-  // recipeNutrition.ts). Deliberately absent rather than an empty state: there
-  // is nowhere to send someone yet, and a dead end reads worse than silence.
-  const nutritionLine = useMemo(
-    () => describeRecipeNutrition(
-      recipe
-        ? recipeNutrition(recipe, groceryItems, itemProducts, recipesById, undefined, scale, standingSwaps)
-        : null
-    ),
+  // The same flattening again, with grams in place of prices. One reading
+  // rather than three calls, so the summary line, the coverage count and the
+  // list of what's missing are all describing the same lines (see
+  // readRecipeNutrition).
+  const nutritionReading = useMemo(
+    () => (recipe
+      ? readRecipeNutrition(recipe, groceryItems, itemProducts, recipesById, undefined, scale, standingSwaps)
+      : null),
     [recipe, groceryItems, itemProducts, recipesById, scale, standingSwaps]
   );
+  // The figures where there are enough of them, and the bare coverage where
+  // there aren't. It used to render nothing in the second case, on the
+  // reasoning that there was nowhere to send someone and a dead end reads
+  // worse than silence — which was true until the sheet below existed. Now
+  // the case with no total is exactly the case someone would want to act on,
+  // so it says so rather than saying nothing.
+  const nutritionLine = useMemo(
+    () => (nutritionReading
+      ? describeRecipeNutrition(nutritionReading.nutrition)
+        ?? describeNutritionCoverage(nutritionReading.gaps)
+      : null),
+    [nutritionReading]
+  );
+  // Shown when there is something to say or something to do. A dish whose
+  // every line is unmatched has neither: the total can't be built and no gap
+  // here is fillable, and the catalog row directly below is already the next
+  // step. Two rows saying "nothing is linked yet" is one too many.
+  const showNutritionRow =
+    !!nutritionLine
+    && (!!nutritionReading?.nutrition || (nutritionReading?.gaps.fillable.length ?? 0) > 0);
 
   // ==== local state (drafts, the sheets this screen opens) ====
   const [draft, setDraft] = useState('');
@@ -258,6 +280,7 @@ export function RecipeDetailScreen() {
   // one paste just added (opened from its banner).
   const [matchSheetOpen, setMatchSheetOpen] = useState(false);
   const [matchScopeIds, setMatchScopeIds] = useState<readonly string[] | null>(null);
+  const [nutritionSheetOpen, setNutritionSheetOpen] = useState(false);
   // The banner a multi-line paste leaves behind, or null once dismissed or
   // acted on. Session-only and deliberately not persisted: it reports on one
   // paste that just happened, and a banner still sitting there tomorrow would
@@ -1411,7 +1434,25 @@ export function RecipeDetailScreen() {
             doubled cost. Renders nothing rather than a guess while too few
             lines are priced to say (see recipeCost.ts's coverage floor). */}
         {!!costLine && <Text style={styles.summary}>{costLine}</Text>}
-        {!!nutritionLine && <Text style={styles.summary}>{nutritionLine}</Text>}
+        {/* The one summary here that opens onto something. Its coverage clause
+            names how many ingredients were left out, which was a number with
+            nowhere to go until the sheet behind it existed — so it takes the
+            same row shape as the catalog line below rather than staying the
+            plain caption the cost estimate is, which has nothing to offer. */}
+        {showNutritionRow && !selectionMode && (
+          <TouchableOpacity
+            style={styles.matchSummaryRow}
+            activeOpacity={interaction.activeOpacity}
+            onPress={() => { haptics.tap(); setNutritionSheetOpen(true); }}
+            accessibilityRole="button"
+            accessibilityLabel={nutritionLine ?? 'Nutrition'}
+            accessibilityHint="Double tap for the whole panel, and to fill in the ingredients it couldn't count"
+          >
+            <Ionicons name="nutrition-outline" size={iconSize.sm} color={colors.textSecondary} />
+            <Text style={styles.matchSummaryText}>{nutritionLine}</Text>
+            <Ionicons name="chevron-forward" size={14} color={colors.textTertiary} />
+          </TouchableOpacity>
+        )}
 
         {/* Where a well-matched recipe says so. The per-row badge is reserved
             for lines with something to act on, so without this line a recipe
@@ -1876,6 +1917,14 @@ export function RecipeDetailScreen() {
           setEditingIngredient(ingredient);
         }}
       />
+
+      {!!nutritionReading && (
+        <RecipeNutritionSheet
+          visible={nutritionSheetOpen}
+          reading={nutritionReading}
+          onClose={() => setNutritionSheetOpen(false)}
+        />
+      )}
 
       <PrepTaskSheet
         visible={editingPrepTask !== null}

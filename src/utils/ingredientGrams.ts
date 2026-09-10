@@ -1,5 +1,13 @@
 import type { FoodNutrition, FoodPortion } from '../types';
-import { parseQuantity, rationalToNumber, unitKey, type Quantity } from './quantity';
+import { addCustomPortion } from './foodNutrition';
+import {
+  formatRational,
+  inflectUnit,
+  parseQuantity,
+  rationalToNumber,
+  unitKey,
+  type Quantity,
+} from './quantity';
 import { measureParsedQuantity, unitBase } from './unitConvert';
 
 /**
@@ -277,4 +285,92 @@ export function panelMultiplier(
   if (nutrition.basis === 'per100g') return grams / 100;
   // perServing
   return nutrition.servingGrams ? grams / nutrition.servingGrams : null;
+}
+
+/** What one line of a refused amount could be weighed as, to make it answerable. */
+export interface LineWeighing {
+  /** The portion row to record it against — the unit the line names, or the food itself. */
+  label: string;
+  /** How many of them to put on the scale, which is the amount the line already calls for. */
+  amount: number;
+  /**
+   * The same pair as a person would say it — "2 cups", not "2 cup".
+   *
+   * `label` is the singular `parseQuantity` keys every unit to, which is right
+   * for the stored row and wrong to read back out: `labelWords` keys a stored
+   * label again at match time, so the row matches either way and only the
+   * sentence asking someone to go and weigh it has to agree with itself.
+   */
+  text: string;
+}
+
+/**
+ * Two weights far enough apart that no density can look agreeable against both.
+ *
+ * See `weighableLine`. A hundredfold is well past `DENSITY_AGREEMENT`'s 5%, so a
+ * probe that passes at both ends passed on the *shape* of the portion table
+ * rather than on a number that happened to sit near an existing row's density.
+ */
+const PROBE_GRAMS = [10, 1000];
+
+/**
+ * The portion somebody could weigh to bring a refused line into the count, or
+ * null when weighing wouldn't help.
+ *
+ * **It refuses far more often than it offers, and that is the point.** Three of
+ * the ways `panelMultiplier` says no have nothing to do with the portion table:
+ * a per-100ml panel against a line written by weight needs a density nobody
+ * has, a per-serving panel with no serving weight needs the serving weighed
+ * rather than the ingredient, and a table already listing small, medium and
+ * large is refusing a bare count because the *recipe* didn't say which — one
+ * more row makes that worse, not better. Offering to weigh something in any of
+ * those cases spends somebody's time on a kitchen scale and leaves the line
+ * exactly as uncounted as it was.
+ *
+ * **So the offer is verified rather than reasoned about**, by adding the row it
+ * would write and asking `panelMultiplier` again. That is the same function
+ * that refused, so a pass is the real answer and not an argument about what
+ * the rules ought to do. It probes twice, at weights a hundredfold apart, and
+ * requires both: a single probe can pass by landing near enough an existing
+ * volume row's density to satisfy `agreedDensity`, which would be an offer
+ * that only works for a weight the person hasn't measured yet. Passing at both
+ * ends means the row resolves the line whatever it turns out to weigh, which
+ * is the only thing worth promising before they go and find the scale.
+ *
+ * The label for a bare count is the food's own name — "1 onion", the row
+ * `gramsForLine`'s last rule looks for. A food already carrying one whole-item
+ * row is refused by the probe rather than by a rule here, since a second one
+ * is what makes that rule ambiguous.
+ */
+export function weighableLine(
+  quantity: string,
+  prep: string | null,
+  nutrition: FoodNutrition,
+  foodName: string,
+): LineWeighing | null {
+  // A line that already resolves has no gap to close, so there is nothing to
+  // weigh — asked here rather than left to the caller, so the answer is about
+  // the line and the panel rather than about who happened to ask.
+  if (panelMultiplier(quantity, prep, nutrition) !== null) return null;
+
+  const parsed = parseQuantity(quantity);
+  if (parsed.amount === null) return null;
+  const amount = rationalToNumber(parsed.amount);
+  if (amount <= 0) return null;
+  // A counted container names how many tins, not how much is in one — the same
+  // line `gramsForLine` draws, and weighing "2 cans" would record the tin.
+  if (parsed.container) return null;
+
+  const label = (parsed.unit ?? foodName).trim();
+  if (!label) return null;
+
+  const resolves = PROBE_GRAMS.every(grams => {
+    const probe = addCustomPortion(nutrition, label, amount, grams);
+    return probe !== null && panelMultiplier(quantity, prep, probe) !== null;
+  });
+  if (!resolves) return null;
+  // Written back in the notation the line was written in, so the sentence
+  // asking for a weight quotes the recipe rather than restating it.
+  const written = formatRational(parsed.amount, parsed.decimal);
+  return { label, amount, text: `${written} ${inflectUnit(label, amount)}` };
 }

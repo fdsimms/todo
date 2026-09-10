@@ -2549,6 +2549,31 @@ function seedGroceries(recipes: DemoRecipes, today: Date): void {
     sourceId: '171265',
     recordedAt: subDays(today, 30).toISOString(),
   });
+  /**
+   * Figures with no portion table, which is the one gap the recipe nutrition
+   * sheet offers a *scale* for rather than a form.
+   *
+   * The three panels above all state portions, so every volume line in the box
+   * converts and the sheet's "weigh it" row would never appear — a remedy the
+   * app has and the demo can't show reads as one it hasn't got. This is the
+   * ordinary shape of a panel somebody typed in off a packet, and of every one
+   * Open Food Facts returns: real figures, and nothing relating them to a
+   * spoon. Both recipes calling for it say "3 tbsp", so the line is refused
+   * until somebody weighs three (see `weighableLine`).
+   *
+   * Deliberately not given the tbsp row FoodData Central itself states, which
+   * would make this the fourth counted food and leave the gap unseeded.
+   */
+  setItemNutrition(itemNamed('Olive oil').id, {
+    basis: 'per100g',
+    servingGrams: null,
+    servingText: null,
+    amounts: { calorieKcal: 884, proteinG: 0, carbsG: 0, fatG: 100, satFatG: 13.8, sodiumMg: 2 },
+    portions: [],
+    source: 'manual',
+    sourceId: null,
+    recordedAt: subDays(today, 12).toISOString(),
+  });
   // Lemon garlic salmon calls for a lemon, and without a fact of its own here
   // Lemons is a bare CATALOG name — nothing else in the seed ever touches it —
   // so clearList below sweeps it and the recipe's own "lemon" line reads as an

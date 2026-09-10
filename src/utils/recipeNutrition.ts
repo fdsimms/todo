@@ -1,4 +1,11 @@
-import type { FoodNutrition, GroceryItem, ItemProduct, MealPlanEntry, NutrientKey, Recipe } from '../types';
+import type {
+  FoodNutrition,
+  GroceryItem,
+  ItemProduct,
+  MealPlanEntry,
+  NutrientKey,
+  Recipe,
+} from '../types';
 import { NUTRIENT_KEYS } from '../types';
 import { nutritionFor } from './foodNutrition';
 import { panelMultiplier } from './ingredientGrams';
@@ -28,6 +35,14 @@ import { NO_STANDING_SWAPS, type StandingSwapMap } from './standingSwaps';
  * **Nothing is written back onto the recipe.** Computed at read time, like the
  * cost estimate, the scale factor and the unit conversion. A stored total goes
  * stale the moment an ingredient is edited.
+ *
+ * **One walk, read twice.** `recipeNutritionLines` resolves each line and stops;
+ * `recipeNutrition` is that plus `fold`. The second reader is the recipe page's
+ * nutrition sheet, which lists the lines that *didn't* count so they can be
+ * filled in, and it has to be describing the same lines the coverage clause
+ * counted — a gap list built from its own rules would send somebody to correct
+ * an ingredient the total had already used. Same call `calendarMonth.ts` makes
+ * about there being one projection walk.
  *
  * **Scale then convert, in that order**, matching `unitConvert`'s own note: the
  * multiplication is exact and the gram resolution rounds, so rounding last is
@@ -77,6 +92,86 @@ const MIN_LINE_COVERAGE = 0.5;
  */
 const MIN_NUTRIENT_COVERAGE = 0.5;
 
+/**
+ * Whether one line reached the total, and where it stopped if it didn't.
+ *
+ * **The three refusals are named rather than collapsed into "no", because they
+ * are three different things to do about it.** The rollup only ever needed to
+ * know that a line didn't count, which is why this started life as a sequence
+ * of bare early returns inside the fold. A screen offering to *fill the gap*
+ * needs to know which gap it is: a line with no catalog row wants linking, a
+ * row with no figures wants a label typed in, and figures that can't be
+ * related to the amount asked for want a portion weighed. Offering the wrong
+ * one of those three is worse than offering nothing.
+ */
+export type NutritionLineState =
+  /** Reached the total. */
+  | 'covered'
+  /** No catalog row of this name, so there is nothing yet to hold figures. */
+  | 'unmatched'
+  /** A catalog row, but neither it nor its preferred box states any figures. */
+  | 'noPanel'
+  /** Figures, but nothing relates *this* amount to them. See `panelMultiplier`. */
+  | 'unmeasured';
+
+interface LineResolution {
+  state: NutritionLineState;
+  /** The catalog row this line resolved to, null only when `unmatched`. */
+  item: GroceryItem | null;
+  /**
+   * The preferred box whose panel spoke for it, when one did.
+   *
+   * Carried so a remedy writes back to whichever of the two rows
+   * `nutritionFor` actually read — correcting a generic yogurt's figures
+   * because a specific pot's were the ones on screen is the write version of
+   * the bug that precedence rule exists to prevent.
+   */
+  product: ItemProduct | null;
+  /** Whichever panel spoke, null for `unmatched` and `noPanel`. */
+  nutrition: FoodNutrition | null;
+  /** How many hundred units of that panel the line came to, null unless `covered`. */
+  multiplier: number | null;
+}
+
+/**
+ * Where one line got to, or null for a staple.
+ *
+ * **The one place the per-line rule lives**, read by the fold below and by
+ * `recipeNutritionLines`. It used to be the fold's own early returns, which
+ * was fine while the rollup was the only reader; a second copy written for the
+ * gap list would be two answers to "does this line count", and the screen
+ * offering to fix a line the total had already counted is exactly how that
+ * drift would show up.
+ *
+ * A staple is null rather than a state of its own: it is excluded from *both*
+ * sides of the coverage fraction, so it is not a line that failed, it is not a
+ * line at all. Salt missing a nutrition panel is not a gap in a dish's figures.
+ */
+function resolveLine(
+  nameKey: string,
+  quantity: string,
+  prep: string | null,
+  byKey: ReadonlyMap<string, GroceryItem>,
+  productFor: (item: GroceryItem) => ItemProduct | null,
+): LineResolution | null {
+  // Plural-tolerant like every other catalog read (`groceryPlural.ts`), or a
+  // line one letter off its own row counts against coverage while the panel it
+  // needs sits right there.
+  const resolved = byKey.has(nameKey) ? nameKey : resolvePluralKey(nameKey, byKey.keys());
+  const item = resolved ? byKey.get(resolved) : undefined;
+  if (item?.isStaple) return null;
+  if (!item) return { state: 'unmatched', item: null, product: null, nutrition: null, multiplier: null };
+
+  const product = productFor(item);
+  const nutrition = nutritionFor(item, product);
+  if (!nutrition) return { state: 'noPanel', item, product, nutrition: null, multiplier: null };
+
+  const multiplier = panelMultiplier(quantity, prep, nutrition);
+  if (multiplier === null) return { state: 'unmeasured', item, product, nutrition, multiplier: null };
+
+  return { state: 'covered', item, product, nutrition, multiplier };
+}
+
 interface Accumulator {
   total: Partial<Record<NutrientKey, number>>;
   reported: Partial<Record<NutrientKey, number>>;
@@ -84,36 +179,24 @@ interface Accumulator {
   lines: number;
 }
 
-/** Folds one more line in, staples excluded from both sides of the fraction. */
-function accumulate(
-  acc: Accumulator,
-  nameKey: string,
-  quantity: string,
-  prep: string | null,
-  byKey: ReadonlyMap<string, GroceryItem>,
-  productFor: (item: GroceryItem) => ItemProduct | null,
-): void {
-  // Plural-tolerant like every other catalog read (`groceryPlural.ts`), or a
-  // line one letter off its own row counts against coverage while the panel it
-  // needs sits right there.
-  const resolved = byKey.has(nameKey) ? nameKey : resolvePluralKey(nameKey, byKey.keys());
-  const item = resolved ? byKey.get(resolved) : undefined;
-  if (item?.isStaple) return;
-  acc.lines += 1;
-  if (!item) return;
-
-  const nutrition = nutritionFor(item, productFor(item));
-  if (!nutrition) return;
-  const multiplier = panelMultiplier(quantity, prep, nutrition);
-  if (multiplier === null) return;
-
-  acc.covered += 1;
-  for (const key of NUTRIENT_KEYS) {
-    const amount = nutrition.amounts[key];
-    if (amount === undefined) continue;
-    acc.total[key] = (acc.total[key] ?? 0) + amount * multiplier;
-    acc.reported[key] = (acc.reported[key] ?? 0) + 1;
+/** Folds the resolved lines into one reading, staples already dropped. */
+function fold(
+  resolutions: readonly LineResolution[],
+  servings: number | null,
+): RecipeNutrition | null {
+  const acc: Accumulator = { total: {}, reported: {}, covered: 0, lines: 0 };
+  for (const line of resolutions) {
+    acc.lines += 1;
+    if (line.state !== 'covered' || !line.nutrition || line.multiplier === null) continue;
+    acc.covered += 1;
+    for (const key of NUTRIENT_KEYS) {
+      const amount = line.nutrition.amounts[key];
+      if (amount === undefined) continue;
+      acc.total[key] = (acc.total[key] ?? 0) + amount * line.multiplier;
+      acc.reported[key] = (acc.reported[key] ?? 0) + 1;
+    }
   }
+  return finish(acc, servings);
 }
 
 /** Drops the nutrients too few lines reported, and refuses outright below the line floor. */
@@ -187,19 +270,112 @@ export function recipeNutrition(
   scale = 1,
   swaps: StandingSwapMap = NO_STANDING_SWAPS,
 ): RecipeNutrition | null {
+  return readRecipeNutrition(recipe, items, products, recipesById, resolution, scale, swaps).nutrition;
+}
+
+/** A dish's figures, the lines behind them, and what is missing, from one walk. */
+export interface RecipeNutritionReading {
+  /** The rollup, or null while too little of the dish is known to total it. */
+  nutrition: RecipeNutrition | null;
+  /** Every line that counts toward the fraction, staples excluded. */
+  lines: NutritionLine[];
+  gaps: NutritionGaps;
+}
+
+/**
+ * Everything a screen showing a dish's nutrition needs, resolved once.
+ *
+ * The recipe page wants three readings of the same walk — a summary line, a
+ * count of what is missing, and the list behind it — and taking them from
+ * three calls would be three chances for the sentence and the list under it to
+ * describe different lines. `recipeNutrition` is this, narrowed to the rollup,
+ * for the callers that only ever wanted that.
+ */
+export function readRecipeNutrition(
+  recipe: Recipe,
+  items: readonly GroceryItem[],
+  products: readonly ItemProduct[] = [],
+  recipesById: ReadonlyMap<string, Recipe> = new Map([[recipe.id, recipe]]),
+  resolution?: ChoiceResolution,
+  scale = 1,
+  swaps: StandingSwapMap = NO_STANDING_SWAPS,
+): RecipeNutritionReading {
+  const lines = recipeNutritionLines(recipe, items, products, recipesById, resolution, scale, swaps);
+  const factor = normalizeScale(scale);
+  return {
+    lines,
+    nutrition: fold(lines, recipe.servings === null ? null : recipe.servings * factor),
+    gaps: nutritionGaps(lines),
+  };
+}
+
+/**
+ * One line of a dish, and what its figures came to.
+ *
+ * Everything a screen needs to name the gap and write the fix back, and
+ * nothing derived: `state` says which of the three remedies applies, `item`
+ * and `product` say which row a correction belongs on, and `nutrition` is the
+ * panel already on file — the one a correction edits rather than replaces.
+ */
+export interface NutritionLine extends LineResolution {
+  /** The recipe line's own id, unique across a flattened dish. */
+  id: string;
+  /** As the recipe writes it, so a row here reads like the row on the page. */
+  name: string;
+  /** Scaled, matching what the ingredient list shows and what was measured. */
+  quantity: string;
+  prep: string | null;
+}
+
+/**
+ * Every line of a dish that counts toward its figures, resolved but not summed.
+ *
+ * **The rollup's own walk, stopped one step early.** `recipeNutrition` is this
+ * plus `fold`, which is what keeps "from 6 of 9 ingredients" and the list of
+ * the other three describing the same nine lines. A screen listing gaps by its
+ * own rules would eventually disagree with the count that sent someone looking
+ * for them.
+ *
+ * Staples are absent, exactly as they are absent from both sides of that
+ * fraction.
+ *
+ * **A dish with an undecided either/or comes back empty**, matching the
+ * refusal `recipeNutrition` already makes and for the same reason: both
+ * options are in the flattened list, so a gap list built from it would ask
+ * someone to fill in figures for the pepper they aren't cooking. The choice is
+ * the thing to settle first, and `ComponentChoiceSheet` is where that happens.
+ */
+export function recipeNutritionLines(
+  recipe: Recipe,
+  items: readonly GroceryItem[],
+  products: readonly ItemProduct[] = [],
+  recipesById: ReadonlyMap<string, Recipe> = new Map([[recipe.id, recipe]]),
+  resolution?: ChoiceResolution,
+  scale = 1,
+  swaps: StandingSwapMap = NO_STANDING_SWAPS,
+): NutritionLine[] {
   const flat = flattenRecipeIngredients(recipe, recipesById, resolution, swaps);
-  if (flat.length === 0) return null;
-  if (hasUnresolvedChoice(flat)) return null;
+  if (flat.length === 0) return [];
+  if (hasUnresolvedChoice(flat)) return [];
 
   const byKey = new Map(items.map(i => [i.nameKey, i]));
   const productFor = preferredProductLookup(products);
   const factor = normalizeScale(scale);
-  const acc: Accumulator = { total: {}, reported: {}, covered: 0, lines: 0 };
+
+  const out: NutritionLine[] = [];
   for (const line of flat) {
     const quantity = scaleQuantity(line.ingredient.quantity, factor).text;
-    accumulate(acc, line.ingredient.nameKey, quantity, line.ingredient.prep, byKey, productFor);
+    const resolved = resolveLine(line.ingredient.nameKey, quantity, line.ingredient.prep, byKey, productFor);
+    if (!resolved) continue;
+    out.push({
+      ...resolved,
+      id: line.ingredient.id,
+      name: line.ingredient.name,
+      quantity,
+      prep: line.ingredient.prep,
+    });
   }
-  return finish(acc, recipe.servings === null ? null : recipe.servings * factor);
+  return out;
 }
 
 /**
@@ -224,11 +400,12 @@ export function weekNutrition(
 
   const byKey = new Map(items.map(i => [i.nameKey, i]));
   const productFor = preferredProductLookup(products);
-  const acc: Accumulator = { total: {}, reported: {}, covered: 0, lines: 0 };
+  const resolved: LineResolution[] = [];
   for (const line of planned) {
-    accumulate(acc, line.nameKey, line.quantity, null, byKey, productFor);
+    const one = resolveLine(line.nameKey, line.quantity, null, byKey, productFor);
+    if (one) resolved.push(one);
   }
-  return finish(acc, null);
+  return fold(resolved, null);
 }
 
 /**
@@ -318,6 +495,56 @@ function describeNutrition(nutrition: RecipeNutrition, noun: string): string | n
 
 export function describeRecipeNutrition(nutrition: RecipeNutrition | null): string | null {
   return nutrition ? describeNutrition(nutrition, 'ingredients') : null;
+}
+
+/** A dish's lines sorted into what can be done about them. */
+export interface NutritionGaps {
+  /** Lines that reached the total. */
+  covered: number;
+  /** Lines the dish calls for, staples excluded — the denominator on screen. */
+  total: number;
+  /**
+   * The lines somebody can answer from the recipe page: a catalog row missing
+   * its figures, or figures nothing relates this amount to.
+   */
+  fillable: NutritionLine[];
+  /**
+   * Lines with no catalog row at all.
+   *
+   * Separated because they are listed rather than offered. Linking a line to
+   * the catalog is a thing this app already does, in its own sheet, by
+   * renaming the line — reproducing it here would be a second way to do one
+   * job, and most one-off ingredients are meant to stay unlinked anyway.
+   */
+  unmatched: NutritionLine[];
+}
+
+export function nutritionGaps(lines: readonly NutritionLine[]): NutritionGaps {
+  return {
+    covered: lines.filter(l => l.state === 'covered').length,
+    total: lines.length,
+    fillable: lines.filter(l => l.state === 'noPanel' || l.state === 'unmeasured'),
+    unmatched: lines.filter(l => l.state === 'unmatched'),
+  };
+}
+
+/**
+ * "Nutrition from 3 of 9 ingredients", or null for a dish with no lines to
+ * count.
+ *
+ * What the summary row says when there are not yet enough figures for
+ * `describeRecipeNutrition` to say anything — which is most recipes before
+ * anyone has filled a gap in, and precisely when somebody would want to.
+ *
+ * It reads "from N of M" rather than naming a defect, because a line without
+ * figures is not a fault: an ingredient nobody has scanned or typed a label
+ * for is the ordinary state of most of a catalog. The phrasing is the rollup's
+ * own coverage clause, so the row says the same thing in the same words
+ * whether or not there is a total in front of it.
+ */
+export function describeNutritionCoverage(gaps: NutritionGaps): string | null {
+  if (gaps.total === 0) return null;
+  return `Nutrition from ${gaps.covered} of ${gaps.total} ingredients`;
 }
 
 /**
