@@ -74,6 +74,7 @@ export type SimpleFeatureId =
   | 'calendarScreen'
   | 'statsScreen'
   | 'moodScreen'
+  | 'foodLogScreen'
   | 'backfillScreen'
   | 'stuckScreen'
   // Everything Today offers besides the list itself.
@@ -164,6 +165,10 @@ export const SIMPLE_FEATURES: readonly SimpleFeature[] = [
   // mood entries that live nowhere else in the app, so hiding it while it holds
   // any would strand them with no way back to them.
   { id: 'moodScreen', label: 'Mood', area: 'screens', screen: 'Mood', contentScreen: true },
+  // A content screen for the same reason Mood is one: a food log's entries live
+  // nowhere else in the app, so hiding the screen while it holds any would
+  // strand them with no way back.
+  { id: 'foodLogScreen', label: 'Food log', area: 'screens', screen: 'FoodLog', contentScreen: true },
   { id: 'backfillScreen', label: 'Backfill', area: 'screens', screen: 'Backfill' },
   { id: 'stuckScreen', label: 'Stuck', area: 'screens', screen: 'Stuck' },
 
@@ -249,7 +254,7 @@ export const SIMPLE_CONTENT_SCREENS: ReadonlySet<string> = new Set(
 export function screenShown(
   routeName: string,
   simpleMode: boolean,
-  contentCounts: { stacks: number; templates: number; people?: number; mood?: number } = { stacks: 0, templates: 0 },
+  contentCounts: { stacks: number; templates: number; people?: number; mood?: number; foodLog?: number } = { stacks: 0, templates: 0 },
 ): boolean {
   if (!simpleMode) return true;
   if (SIMPLE_HIDDEN_SCREENS.has(routeName)) return false;
@@ -261,6 +266,11 @@ export function screenShown(
   // install with no entries at all, which is the opposite of what the flag on
   // it says. Every caller passes the count now.
   if (routeName === 'Mood') return (contentCounts.mood ?? 0) > 0;
+  // Counted across every day rather than off the loaded window, which is one
+  // day: see `useFoodLogStore.totalCount`. Answering this from today's rows
+  // would take the screen away, and months of entries with it, on any day
+  // nobody had logged yet.
+  if (routeName === 'FoodLog') return (contentCounts.foodLog ?? 0) > 0;
   return true;
 }
 

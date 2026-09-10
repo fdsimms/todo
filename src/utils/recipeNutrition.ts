@@ -82,6 +82,10 @@ const MIN_NUTRIENT_COVERAGE = 0.5;
 /**
  * How many hundred units of a food's panel one line amounts to, or null.
  *
+ * Exported because the food log needs exactly this and must not grow a second
+ * copy of it: a helping scaled by one rule here and another rule there is two
+ * different calorie counts for one plate of food.
+ *
  * **The line is measured in the panel's own unit, never converted into it.**
  * A per-100g panel wants grams, a per-100ml panel wants millilitres, and
  * turning one into the other needs a density this app does not have. So a
@@ -92,7 +96,7 @@ const MIN_NUTRIENT_COVERAGE = 0.5;
  * A per-serving panel needs a serving to weigh something, since otherwise
  * "how many servings is 300g" has no answer.
  */
-function panelMultiplier(
+export function panelMultiplier(
   quantity: string,
   prep: string | null,
   nutrition: FoodNutrition,

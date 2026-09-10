@@ -104,6 +104,7 @@ import {
 import { buildDayBuckets } from '../utils/calendarMonth';
 import { buildDayLoads } from '../utils/dayLoad';
 import { hasLogOnDay } from '../utils/moodLog';
+import { useFoodLogStore } from './useFoodLogStore';
 import { useMoodStore } from './useMoodStore';
 import { eventsIn } from '../utils/calendarBusy';
 import { isDemoModeActive } from '../utils/demoState';
@@ -2006,6 +2007,10 @@ export const useTaskStore = create<TaskStore>((set, get) => ({
     // person's own record, or the reverse — and this is the one store where
     // that mistake is a claim about somebody's health.
     useMoodStore.getState().initialize();
+    // Beside the mood log and for the identical reason, with the same stakes:
+    // a food log left pointed at the previous database would show a demo
+    // session's invented meals as somebody's own record of what they ate.
+    useFoodLogStore.getState().initialize();
     useTemplateCategoryStore.getState().initialize();
     // Groceries ride this fan-out rather than being initialized from App.tsx,
     // and that placement is load-bearing: enterDemoMode/exitDemoMode and
