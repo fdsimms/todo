@@ -142,6 +142,17 @@ export function SwipeableRow({ selectAction, whenAction, enabled = true, style, 
         renderLeftActions={renderLeftActions}
         overshootRight={false}
         overshootLeft={false}
+        // `overshootRight/Left: false` caps the whole gesture at ACTION_WIDTH
+        // (80pt) — with the library's default friction of 1, that's the same
+        // 80pt of raw finger travel needed to reveal the panel at all, which
+        // is close enough to the recognizer's own dead zone
+        // (dragOffsetFrom*Edge, 10pt) that any real swipe reached full reveal
+        // before it read as a swipe growing in, rather than a button that had
+        // just appeared. Friction slows the panel down relative to the
+        // finger (see the prop's own doc comment) without changing where it
+        // ends up, so the reveal now tracks a swipe long enough to feel
+        // deliberate.
+        friction={2}
         enabled={enabled}
         onSwipeableOpenStartDrag={() => { committed.current = false; }}
         // A full swipe commits, rather than parking the panel open and waiting
