@@ -2061,7 +2061,17 @@ function seedRecipes(): DemoRecipes {
   const roasties = newRecipe('Roast potatoes');
   addIngredientsFromText(
     roasties.id,
-    ['2 lb potatoes, peeled and halved', '3 tbsp olive oil', '1 bunch rosemary', '1 tsp salt'].join('\n')
+    // The oil line is the demo's example of a "such as" clause — the offer
+    // to declare avocado oil a kind of neutral oil (RecipeIngredient.example,
+    // see splitExample / itemVarieties.ts) is only visible from inside this
+    // one ingredient's sheet, so it has to be seeded deliberately or the
+    // badge reads as a feature the app doesn't have.
+    [
+      '2 lb potatoes, peeled and halved',
+      '3 tbsp neutral oil, such as avocado oil',
+      '1 bunch rosemary',
+      '1 tsp salt',
+    ].join('\n')
   );
   setMealType(roasties.id, 'side');
   setServings(roasties.id, 4);
@@ -2570,6 +2580,31 @@ function seedGroceries(recipes: DemoRecipes, today: Date): void {
     source: 'fdc',
     sourceId: '171265',
     recordedAt: subDays(today, 30).toISOString(),
+  });
+  /**
+   * Figures with no portion table, which is the one gap the recipe nutrition
+   * sheet offers a *scale* for rather than a form.
+   *
+   * The three panels above all state portions, so every volume line in the box
+   * converts and the sheet's "weigh it" row would never appear — a remedy the
+   * app has and the demo can't show reads as one it hasn't got. This is the
+   * ordinary shape of a panel somebody typed in off a packet, and of every one
+   * Open Food Facts returns: real figures, and nothing relating them to a
+   * spoon. Both recipes calling for it say "3 tbsp", so the line is refused
+   * until somebody weighs three (see `weighableLine`).
+   *
+   * Deliberately not given the tbsp row FoodData Central itself states, which
+   * would make this the fourth counted food and leave the gap unseeded.
+   */
+  setItemNutrition(itemNamed('Olive oil').id, {
+    basis: 'per100g',
+    servingGrams: null,
+    servingText: null,
+    amounts: { calorieKcal: 884, proteinG: 0, carbsG: 0, fatG: 100, satFatG: 13.8, sodiumMg: 2 },
+    portions: [],
+    source: 'manual',
+    sourceId: null,
+    recordedAt: subDays(today, 12).toISOString(),
   });
   // Lemon garlic salmon calls for a lemon, and without a fact of its own here
   // Lemons is a bare CATALOG name — nothing else in the seed ever touches it —

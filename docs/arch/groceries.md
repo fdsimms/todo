@@ -1405,6 +1405,16 @@ read side.
   with nothing saying the other exists. `GrocerySuggestion.score` is exposed for exactly this
   one reader. It falls through rather than returning no match, so the tiers below still get
   their turn — same refusal `uniqueSimilarItem` makes, and the same reasoning.
+- **A recipe's own wording is the other route to the same offer.** "Neutral oil, such as avocado
+  oil" names its own generic/specific pair without any catalog collision to notice — a
+  `varietyOfferFor` badge never fires because nothing has been added to the catalog yet.
+  `RecipeIngredient.example` (`src/utils/groceryParse.ts`'s `splitExample`, called from
+  `makeIngredient` and `normalizeIngredient` so it applies to a typed line, a paste, an AI
+  extraction and a JSON-LD scrape alike) pulls "avocado oil" out of the name the same way
+  `prep`/`purpose` are pulled out, so the catalog key stays "neutral oil" rather than minting a
+  row nothing can shop for twice the same way. `RecipeIngredientSheet` offers the same "is X a
+  kind of Y?" declaration from it, `ensureCatalogItem`-ing the example onto a real row first if
+  one doesn't exist yet — never auto-declared, same "the user says so" rule as the badge above.
 - **Nothing infers a declaration.** The user says so, in the item sheet's Variety of field
   (suggestions are the item's own trailing words plus generics already in use —
   `genericNameSuggestions`). Same discipline as substitutes, and a declaration is a user fact

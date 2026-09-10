@@ -14,7 +14,7 @@ import {
   TITLE_MAX_LENGTH,
 } from '../types';
 import { format } from 'date-fns/format';
-import { groceryNameKey, parseGroceryInput, splitGroceryLines, splitPrep, splitPurpose } from './groceryParse';
+import { groceryNameKey, parseGroceryInput, splitExample, splitGroceryLines, splitPrep, splitPurpose } from './groceryParse';
 import { generateId } from './id';
 import { resolveOffsetDate } from './templateUtils';
 import { classifyPlanned, plannedIngredientsForRecipe } from './mealPlanGroceries';
@@ -70,8 +70,37 @@ export function parseRecipeIngredients(raw: unknown): RecipeIngredient[] {
 export function normalizeIngredient(raw: unknown): RecipeIngredient | null {
   if (!raw || typeof raw !== 'object') return null;
   const r = raw as Partial<RecipeIngredient>;
-  const name = typeof r.name === 'string' ? r.name.trim().slice(0, GROCERY_NAME_MAX_LENGTH) : '';
+  let name = typeof r.name === 'string' ? r.name.trim().slice(0, GROCERY_NAME_MAX_LENGTH) : '';
   if (!name) return null;
+
+  let prep = typeof r.prep === 'string' && r.prep.trim()
+    ? r.prep.trim().slice(0, PREP_MAX_LENGTH)
+    : null;
+  let example = typeof r.example === 'string' && r.example.trim()
+    ? r.example.trim().slice(0, PREP_MAX_LENGTH)
+    : null;
+  // A "such as"/"e.g." clause an AI extraction or a scraped page left sitting
+  // in `name` or `prep` instead of splitting out itself — the repair
+  // `nameKey` gets below, run here so it applies regardless of where the
+  // ingredient came from (see makeIngredient for the offline parser's own
+  // pass at add time). Only attempted when nothing already holds an example,
+  // so a value set by hand isn't overwritten, and idempotent on every later
+  // read since a name that's already been split has nothing left to match.
+  if (!example && prep) {
+    const prepSplit = splitExample(prep);
+    if (prepSplit.example) {
+      example = prepSplit.example;
+      prep = prepSplit.core || null;
+    }
+  }
+  if (!example) {
+    const nameSplit = splitExample(name);
+    if (nameSplit.example && nameSplit.core) {
+      name = nameSplit.core;
+      example = nameSplit.example;
+    }
+  }
+
   const normalized: RecipeIngredient = {
     id: typeof r.id === 'string' && r.id ? r.id : generateId(),
     name,
@@ -80,9 +109,7 @@ export function normalizeIngredient(raw: unknown): RecipeIngredient | null {
       ? r.quantity.trim().slice(0, GROCERY_QUANTITY_MAX_LENGTH)
       : '',
     aisle: typeof r.aisle === 'string' && r.aisle ? r.aisle : null,
-    prep: typeof r.prep === 'string' && r.prep.trim()
-      ? r.prep.trim().slice(0, PREP_MAX_LENGTH)
-      : null,
+    prep,
     purpose: typeof r.purpose === 'string' && r.purpose.trim()
       ? r.purpose.trim().slice(0, PREP_MAX_LENGTH)
       : null,
@@ -91,6 +118,9 @@ export function normalizeIngredient(raw: unknown): RecipeIngredient | null {
       : null,
     choiceGroup: cleanChoiceGroup(typeof r.choiceGroup === 'string' ? r.choiceGroup : null),
   };
+  // Same "written only when present" rule as noSwap/optional below — most
+  // lines never have one.
+  if (example) normalized.example = example;
   // Written only when it's true, which is what makes the field optional worth
   // anything: "keep as written" is off for nearly every line in the app, and
   // storing `false` on all of them would grow every recipe's blob to say so.
@@ -122,18 +152,43 @@ export function normalizeIngredient(raw: unknown): RecipeIngredient | null {
 export function makeIngredient(line: string, section: string | null = null): RecipeIngredient | null {
   const { name: rawName, quantity } = parseGroceryInput(line);
   if (!rawName.trim()) return null;
-  const { name: afterPrep, prep } = splitPrep(rawName);
+  const { name: afterPrep, prep: prepClause } = splitPrep(rawName);
   if (!afterPrep.trim()) return null;
+
+  // "such as"/"e.g." names a worked example of the generic name rather than
+  // an instruction, so it doesn't belong in `prep` — see splitExample. It's
+  // almost always the whole of the comma clause splitPrep just took (`core`
+  // comes back empty), but a bare "neutral oil such as avocado oil" with no
+  // comma at all reaches here with nothing in `prepClause`, so the fallback
+  // below checks the name itself for that shape.
+  let prep = prepClause;
+  let example: string | null = null;
+  if (prep) {
+    const prepSplit = splitExample(prep);
+    if (prepSplit.example) {
+      example = prepSplit.example;
+      prep = prepSplit.core || null;
+    }
+  }
+  let nameAfterExample = afterPrep;
+  if (!example) {
+    const nameSplit = splitExample(afterPrep);
+    if (nameSplit.example && nameSplit.core) {
+      nameAfterExample = nameSplit.core;
+      example = nameSplit.example;
+    }
+  }
+
   // splitPurpose only runs when splitPrep didn't already take a comma clause
   // — a comma-based prep clause can legitimately contain "for" on its own
   // ("cheese, plus more for topping" is one prep note), so a raw line with a
   // comma has already had its trailing text claimed. `rawName` (not
   // `afterPrep`) is what's checked, since the comma sits before the prep
   // split either way.
-  const purposeSplit = rawName.includes(',') ? null : splitPurpose(afterPrep);
-  const name = purposeSplit ? purposeSplit.name : afterPrep;
+  const purposeSplit = rawName.includes(',') ? null : splitPurpose(nameAfterExample);
+  const name = purposeSplit ? purposeSplit.name : nameAfterExample;
   if (!name.trim()) return null;
-  return {
+  const ingredient: RecipeIngredient = {
     id: generateId(),
     name,
     nameKey: groceryNameKey(name),
@@ -144,6 +199,10 @@ export function makeIngredient(line: string, section: string | null = null): Rec
     section: section && section.trim() ? section.trim().slice(0, RECIPE_SECTION_MAX_LENGTH) : null,
     choiceGroup: null,
   };
+  // Same "written only when present" convention as noSwap/optional — most
+  // lines never have one.
+  if (example) ingredient.example = example;
+  return ingredient;
 }
 
 /**

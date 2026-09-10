@@ -2,10 +2,14 @@ import type { FoodNutrition, GroceryItem, MealPlanEntry, Recipe, RecipeIngredien
 import { groceryNameKey } from '../utils/groceryParse';
 import { choiceGroupKey } from '../utils/recipeComponents';
 import {
+  describeNutritionCoverage,
   describeRecipeNutrition,
   describeWeekNutrition,
+  nutritionGaps,
   perServing,
+  readRecipeNutrition,
   recipeNutrition,
+  recipeNutritionLines,
   weekNutrition,
 } from '../utils/recipeNutrition';
 
@@ -490,5 +494,121 @@ describe('describeWeekNutrition', () => {
     )!;
     expect(line).toBe('\u2248 400 cal, 40g protein');
     expect(line).not.toContain('per serving');
+  });
+});
+
+describe('recipeNutritionLines', () => {
+  it('names which of the three ways each uncounted line failed', () => {
+    const dish = recipe('Stew', [
+      ing('Chicken', { quantity: '200 g' }),
+      ing('Onion', { quantity: '2 cups' }),
+      ing('Thyme', { quantity: '1 sprig' }),
+    ]);
+    const catalog = [
+      item({ name: 'Chicken', nutrition: panel() }),
+      // A panel with no portion table, so a line written as a volume has
+      // nothing to become a weight through.
+      item({ name: 'Onion', nutrition: panel() }),
+      item({ name: 'Salt', nutrition: panel() }),
+    ];
+    const lines = recipeNutritionLines(dish, catalog);
+    expect(lines.map(l => [l.name, l.state])).toEqual([
+      ['Chicken', 'covered'],
+      ['Onion', 'unmeasured'],
+      ['Thyme', 'unmatched'],
+    ]);
+  });
+
+  it('leaves staples out entirely, exactly as the coverage fraction does', () => {
+    const dish = recipe('Stew', [
+      ing('Chicken', { quantity: '200 g' }),
+      ing('Salt', { quantity: '1 tsp' }),
+    ]);
+    const catalog = [
+      item({ name: 'Chicken', nutrition: panel() }),
+      item({ name: 'Salt', isStaple: true }),
+    ];
+    expect(recipeNutritionLines(dish, catalog).map(l => l.name)).toEqual(['Chicken']);
+    expect(recipeNutrition(dish, catalog)!.lines).toBe(1);
+  });
+
+  it('comes back empty for an either/or nobody has decided, matching the rollup', () => {
+    const dish = recipe('Salsa', [
+      ing('Serrano', { quantity: '100 g', choiceGroup: 'Pepper' }),
+      ing('Jalapeno', { quantity: '100 g', choiceGroup: 'Pepper' }),
+    ]);
+    const catalog = [item({ name: 'Serrano', nutrition: panel() })];
+    const undecided = { undecided: [choiceGroupKey(dish.id, 'Pepper')] };
+    expect(recipeNutritionLines(dish, catalog, [], undefined, undecided)).toEqual([]);
+    expect(recipeNutrition(dish, catalog, [], undefined, undecided)).toBeNull();
+  });
+
+  it('carries the scaled quantity, so a gap is named in the amount on screen', () => {
+    const dish = recipe('Soup', [ing('Onion', { quantity: '2 cups' })]);
+    const catalog = [item({ name: 'Onion', nutrition: panel() })];
+    expect(recipeNutritionLines(dish, catalog, [], undefined, undefined, 2)[0].quantity)
+      .toBe('4 cups');
+  });
+
+  it('reports the panel it actually read, so a correction lands on that row', () => {
+    const dish = recipe('Soup', [ing('Stock', { quantity: '200 g' })]);
+    const stock = item({ name: 'Stock', nutrition: panel({ amounts: { calorieKcal: 10 } }) });
+    const boxed = { ...stock, preferredProductId: 'p-1' };
+    const product = {
+      id: 'p-1',
+      itemId: boxed.id,
+      nutrition: panel({ amounts: { calorieKcal: 50 } }),
+    } as never;
+    const [line] = recipeNutritionLines(dish, [boxed], [product]);
+    expect(line.nutrition!.amounts.calorieKcal).toBe(50);
+    expect(line.product).not.toBeNull();
+  });
+});
+
+describe('nutritionGaps', () => {
+  const dish = () => recipe('Stew', [
+    ing('Chicken', { quantity: '200 g' }),
+    ing('Onion', { quantity: '2 cups' }),
+    ing('Butter'),
+    ing('Thyme', { quantity: '1 sprig' }),
+  ]);
+  const catalog = () => [
+    item({ name: 'Chicken', nutrition: panel() }),
+    item({ name: 'Onion', nutrition: panel() }),
+    item({ name: 'Butter' }),
+  ];
+
+  it('offers only the lines somebody could answer from the recipe page', () => {
+    const gaps = nutritionGaps(recipeNutritionLines(dish(), catalog()));
+    expect(gaps.covered).toBe(1);
+    expect(gaps.total).toBe(4);
+    expect(gaps.fillable.map(l => l.name)).toEqual(['Onion', 'Butter']);
+    expect(gaps.unmatched.map(l => l.name)).toEqual(['Thyme']);
+  });
+
+  it('says how far a dish got even when there is no total to show', () => {
+    const gaps = nutritionGaps(recipeNutritionLines(dish(), catalog()));
+    expect(describeNutritionCoverage(gaps)).toBe('Nutrition from 1 of 4 ingredients');
+  });
+
+  it('says nothing about a dish with no lines to count', () => {
+    expect(describeNutritionCoverage(nutritionGaps([]))).toBeNull();
+  });
+});
+
+describe('readRecipeNutrition', () => {
+  it('gives the rollup and the lines behind it from one walk', () => {
+    const dish = recipe('Stew', [
+      ing('Chicken', { quantity: '200 g' }),
+      ing('Thyme', { quantity: '1 sprig' }),
+    ], { servings: 2 });
+    const catalog = [item({ name: 'Chicken', nutrition: panel() })];
+    const read = readRecipeNutrition(dish, catalog);
+    // The sentence on the row and the list in the sheet describe one set of
+    // lines, which is the whole reason this exists rather than three calls.
+    expect(read.nutrition).toEqual(recipeNutrition(dish, catalog));
+    expect(read.gaps.total).toBe(read.nutrition!.lines);
+    expect(read.gaps.covered).toBe(read.nutrition!.covered);
+    expect(read.lines).toHaveLength(2);
   });
 });
