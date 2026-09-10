@@ -281,6 +281,28 @@ export function RecipeIngredientSheet({ visible, recipeId, ingredient, onClose }
     animateLayout();
   };
 
+  // "neutral oil, such as avocado oil" parses "avocado oil" out as an example
+  // of the generic name (RecipeIngredient.example, see splitExample /
+  // makeIngredient), and this is the same declare-a-variety offer
+  // `varietyOffer` above makes from a catalog-name collision, just sourced
+  // from the recipe's own wording instead. Only while the example's own item
+  // — if it exists yet — hasn't already declared something; an item with an
+  // opinion isn't offered a second one, same rule varietyOfferFor follows.
+  const exampleKey = ingredient.example ? groceryNameKey(ingredient.example) : null;
+  const exampleItem = exampleKey ? catalogItemForKey(exampleKey, groceryItems) : null;
+  const exampleOffer = ingredient.example && !exampleItem?.varietyOfKey
+    ? ingredient.example
+    : null;
+
+  const acceptExample = () => {
+    if (!exampleOffer) return;
+    const created = ensureCatalogItem(exampleOffer);
+    if (!created) { haptics.error(); return; }
+    setVarietyOfKey(created.id, groceryNameKey(name));
+    haptics.success();
+    animateLayout();
+  };
+
   // "cheddar or manchego" wants to be two rows in a choice group, not one
   // catalog entry nothing can ever match — see splitAlternativeNames. Offered,
   // never applied on its own: the split is verbatim, so "chicken or vegetable
@@ -477,6 +499,29 @@ export function RecipeIngredientSheet({ visible, recipeId, ingredient, onClose }
               </Text>
               <Text style={styles.suggestionDetail}>
                 Keeps this line as written, and any {name.trim().toLowerCase()} you have counts for it.
+              </Text>
+            </View>
+          </TouchableOpacity>
+        )}
+        {!!exampleOffer && (
+          <TouchableOpacity
+            style={styles.suggestionRow}
+            activeOpacity={interaction.activeOpacity}
+            onPress={acceptExample}
+            accessibilityRole="button"
+            accessibilityLabel={
+              `Record that ${exampleOffer} is a kind of ${name.trim().toLowerCase()}, `
+              + 'adding it to your groceries if it isn’t there yet'
+            }
+          >
+            <Ionicons name="git-branch-outline" size={iconSize.sm} color={colors.accent} />
+            <View style={styles.suggestionBody}>
+              <Text style={styles.suggestionTitle}>
+                Is “{exampleOffer}” a kind of {name.trim().toLowerCase()}?
+              </Text>
+              <Text style={styles.suggestionDetail}>
+                From “such as {exampleOffer}” on this line. Adds it to your groceries if it isn’t
+                there yet, and any {exampleOffer.toLowerCase()} you have will count for this.
               </Text>
             </View>
           </TouchableOpacity>

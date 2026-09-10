@@ -1830,6 +1830,22 @@ describe('demo seed — groceries, recipes, meals and the fridge', () => {
     expect(byName.get('lemon')?.item?.name).toBe('Lemons');
   });
 
+  // The "is avocado oil a kind of neutral oil?" offer in RecipeIngredientSheet
+  // (RecipeIngredient.example, see splitExample / itemVarieties.ts) is only
+  // visible from inside that one ingredient's sheet, so without a seeded
+  // "such as" line it reads as a feature the app doesn't have.
+  it('seeds a "such as" ingredient clause parsed into an example', () => {
+    useDemoStore.getState().enterDemoMode();
+    const recipes = useRecipeStore.getState().recipes;
+    const oilLine = recipes
+      .flatMap(r => r.ingredients)
+      .find(i => i.nameKey === 'neutral oil');
+
+    expect(oilLine?.example).toBe('avocado oil');
+
+    useDemoStore.getState().exitDemoMode();
+  });
+
   it('seeds a second shopping list, left inactive', () => {
     const { items, lists, listEntries, activeListId } = useGroceryStore.getState();
 
