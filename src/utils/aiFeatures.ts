@@ -6,12 +6,12 @@
 export type AiFeatureId =
   | 'taskBreakdown' | 'templateSuggestions' | 'projectTaskSuggestions' | 'groceryAisles'
   | 'recipeExtraction' | 'mealIdeas' | 'substitutes' | 'receiptImport' | 'calendarImport'
-  | 'cookHelp';
+  | 'cookHelp' | 'nutritionEstimate';
 
 export const AI_FEATURE_IDS: AiFeatureId[] = [
   'taskBreakdown', 'templateSuggestions', 'projectTaskSuggestions', 'groceryAisles',
   'recipeExtraction', 'mealIdeas', 'substitutes', 'receiptImport', 'calendarImport',
-  'cookHelp',
+  'cookHelp', 'nutritionEstimate',
 ];
 
 export type AiModelId = 'claude-haiku-4-5-20251001' | 'claude-sonnet-5' | 'claude-opus-5';
@@ -107,6 +107,17 @@ export const AI_FEATURES: AiFeatureMeta[] = [
     simple: true,
   },
   {
+    id: 'nutritionEstimate',
+    label: 'Estimate what a meal contained',
+    hint: 'Reads a description of a restaurant meal into nutrition figures for you to confirm',
+    kitchen: true,
+    // The food log is itself one of the things simplified mode takes away
+    // (`foodLogScreen` in simpleMode.ts), so the only surface this configures
+    // is already gone and a row left behind would configure nothing. Same
+    // reasoning cookHelp gives.
+    simple: true,
+  },
+  {
     id: 'calendarImport',
     label: 'Import event from photo or text',
     hint: 'Reads a title, date, time, and location out of a pasted confirmation or a photo of one',
@@ -170,5 +181,13 @@ export function defaultAiFeatureConfig(): AiFeatureConfigMap {
     // this one — the first feature here for which that's true — which is the
     // other reason to spend on the better read of it.
     cookHelp: { enabled: true, model: 'claude-sonnet-5' },
+    // Sonnet, for a reason the other three overrides only half share. This one
+    // wants real world knowledge about menus and portion sizes, which is
+    // exactly where a smaller model confabulates most confidently — and a
+    // confabulated figure here is bound for a food log and eventually a health
+    // record, where `docs/arch/health-data.md` says a wrong write costs more
+    // than a wrong read. Still per-feature switchable, so the picker can
+    // overrule this.
+    nutritionEstimate: { enabled: true, model: 'claude-sonnet-5' },
   };
 }

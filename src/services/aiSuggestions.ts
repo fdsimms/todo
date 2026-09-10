@@ -25,6 +25,10 @@ import {
 import {
   clampCookAnswer, COOK_QUESTION_MAX_LENGTH, type CookQuestionContext,
 } from '../utils/cookQuestions';
+import {
+  ESTIMATE_DESCRIPTION_MAX_LENGTH, MAX_ESTIMATE_QUESTIONS, readNutritionEstimate,
+  type NutritionEstimate, type RawNutritionEstimate,
+} from '../utils/nutritionEstimate';
 import { isUnscaled } from '../utils/recipeScale';
 import { useSettingsStore } from '../store/useSettingsStore';
 import { getLogicalToday, dayKeyOf } from '../utils/dateUtils';
@@ -123,6 +127,9 @@ export function describeAIError(error: unknown): string {
   if (message.startsWith('API error 5')) return 'Anthropic is having issues. Try again shortly.';
   if (message.startsWith('API error')) return 'The request failed. Check your API key in Settings.';
   if (message === 'Response was truncated') return 'The response was cut off. Try again.';
+  if (message === 'No estimate returned') {
+    return 'That description could not be read into figures. Try naming the dish and the place.';
+  }
   return 'Network request failed. Check your connection.';
 }
 
@@ -2067,4 +2074,117 @@ function parseExtractedCalendarEvents(raw: unknown): ExtractedCalendarEvent[] {
     });
   }
   return result.slice(0, MAX_CALENDAR_EVENTS);
+}
+
+/**
+ * Reads a description of a meal into nutrition figures to confirm (#2426).
+ *
+ * **The case no database answers.** FoodData Central holds branded packaged
+ * goods and Open Food Facts holds barcodes; neither holds menus, and eating
+ * out is a large share of what anybody needs to log. A model knows roughly
+ * what is in a cheeseburger and often knows what a specific chain publishes.
+ *
+ * **It proposes and stops.** Nothing is written from what this returns until a
+ * person confirms it on screen, which is not a nicety: `docs/arch/health-data.md`
+ * licenses dietary figures on the argument that one "exists at all only because
+ * a person entered it", and an estimate stored unconfirmed breaks exactly that.
+ * `readNutritionEstimate` marks every result `estimated` for its whole life.
+ *
+ * **The model states its own claim rather than having one assumed for it.** A
+ * chain's published figures and a guess at a pub burger are different things to
+ * put in front of somebody, so `basis` and `confidence` come back in the schema
+ * and `describeEstimate` renders them. Asking for them is also what stops the
+ * model from quietly presenting the second as the first.
+ *
+ * **It may ask, and it may not advise.** One or two questions where the answer
+ * moves the figures a lot, and no opinion about the food whatsoever — the
+ * system prompt says so and `nutritionEstimate.test.ts` asserts the copy on
+ * this side of it never slips.
+ *
+ * **No demo-mode gate, and that was checked rather than assumed.** Neither half
+ * of the CLAUDE.md rule applies: nothing here writes fiction somewhere the user
+ * can see with the app closed, and no real queue is drained into a database
+ * about to be thrown away — the entry this leads to is written through
+ * `addEntry`, which lands in whichever database is live. That matches every
+ * other feature in this file, none of which is gated either, and it is the same
+ * reasoning `onDeviceModel.ts` sets out for its own absent gate. Recorded here
+ * so a later reader doesn't add one on the assumption it was forgotten.
+ *
+ * No `ON_DEVICE_ENGINE` entry, so `routeForFeature` answers `'claude'` or
+ * `'unavailable'` and the caller must not render an entry point for the
+ * second. This is world knowledge plus judgment, which `aiRouting.ts` rules
+ * out for the on-device model on a criterion it calls a measurement rather
+ * than a judgement call, and the ~4k shared window would not hold it anyway.
+ */
+export async function estimateMealNutrition(description: string): Promise<NutritionEstimate> {
+  const { apiKey, model } = requireFeature('nutritionEstimate');
+
+  const asked = description.trim().slice(0, ESTIMATE_DESCRIPTION_MAX_LENGTH);
+  if (!asked) throw new Error('No estimate returned');
+
+  const data = await callAnthropic({
+    max_tokens: 900,
+    system: [
+      'You estimate what one described meal contains, for somebody writing it down in a food diary.',
+      'Give figures for the whole thing described, as one helping. Do not give per-100g figures.',
+      'State only the nutrients you actually have a view on. Omit a field entirely rather than guessing a zero: an omitted nutrient reads as unknown, and a zero reads as a measurement that the food contains none.',
+      'Set basis to "published" only when you are recalling figures a specific chain or manufacturer publishes, and name them in attribution. Otherwise set it to "typical" and leave attribution empty.',
+      'Set confidence honestly. A named chain item you know is high; a common dish described plainly is medium; anything vague is low.',
+      'You may ask at most two questions, and only where the answer would move the figures a lot: the size, whether a side was regular or large, whether a dressing or sauce was on it. Each question needs at least two options to tap. Ask nothing if the description already settles it.',
+      'Never comment on the food. No opinion about whether the meal was heavy, healthy, large or small, no suggestion about what to eat instead or later, and no advice of any kind. Return numbers and nothing else.',
+    ].join('\n'),
+    tools: [{
+      name: 'estimate_meal',
+      description: 'Estimate the nutrition of one described meal',
+      input_schema: {
+        type: 'object',
+        properties: {
+          label: { type: 'string', description: 'What to call this in a food diary, e.g. "Cheeseburger and fries, Five Guys"' },
+          quantity: { type: 'string', description: 'The amount these figures are for, in words, e.g. "1 burger and a regular fries"' },
+          amounts: {
+            type: 'object',
+            description: 'Only the nutrients you have a view on. Omit the rest rather than sending zero.',
+            properties: {
+              calorieKcal: { type: 'number', description: 'Calories (kcal)' },
+              fatG: { type: 'number', description: 'Total fat in grams' },
+              satFatG: { type: 'number', description: 'Saturated fat in grams' },
+              carbsG: { type: 'number', description: 'Total carbohydrate in grams' },
+              fiberG: { type: 'number', description: 'Dietary fiber in grams' },
+              sugarG: { type: 'number', description: 'Total sugars in grams' },
+              proteinG: { type: 'number', description: 'Protein in grams' },
+              sodiumMg: { type: 'number', description: 'Sodium in milligrams' },
+              caffeineMg: { type: 'number', description: 'Caffeine in milligrams' },
+              waterMl: { type: 'number', description: 'Water in millilitres' },
+            },
+          },
+          basis: { type: 'string', enum: ['published', 'typical'], description: 'Where the figures come from' },
+          confidence: { type: 'string', enum: ['high', 'medium', 'low'], description: 'How sure you are' },
+          attribution: { type: 'string', description: 'Who publishes them, for basis "published". Empty otherwise.' },
+          questions: {
+            type: 'array',
+            description: `At most ${MAX_ESTIMATE_QUESTIONS} questions, each with at least two options. Empty when the description settles it.`,
+            items: {
+              type: 'object',
+              properties: {
+                prompt: { type: 'string' },
+                options: { type: 'array', items: { type: 'string' } },
+              },
+              required: ['prompt', 'options'],
+            },
+          },
+        },
+        required: ['label', 'quantity', 'amounts', 'basis', 'confidence'],
+      },
+    }],
+    tool_choice: { type: 'tool', name: 'estimate_meal' },
+    messages: [{ role: 'user', content: `The meal:\n${asked}` }],
+  }, apiKey, model);
+
+  const toolUse = data.content?.find(c => c.type === 'tool_use');
+  const estimate = readNutritionEstimate(toolUse?.input as RawNutritionEstimate | undefined);
+  // A reply with no figures or no name is refused rather than repaired: an
+  // entry nobody could identify, or one carrying no numbers, is worse than
+  // telling somebody the description could not be read.
+  if (!estimate) throw new Error('No estimate returned');
+  return estimate;
 }
