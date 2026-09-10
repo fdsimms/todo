@@ -53,6 +53,7 @@ function entry(amounts: Partial<Record<NutrientKey, number>>, label = 'Chicken b
     grams: 420,
     nutrition: nutrition(amounts),
     healthSampleIds: [],
+    sortOrder: 0,
     createdAt: '2026-09-10T12:47:00.000Z',
   };
 }

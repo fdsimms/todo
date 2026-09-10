@@ -9,17 +9,30 @@ import {
 import type { Leftover, Task } from '../types';
 import { daysInFridge, isLiveLeftover, keepDaysBetween, needsAttention } from '../utils/leftovers';
 
+jest.mock('react-native', () => ({ Platform: { OS: 'ios' } }));
+
 jest.mock('../db/database', () => ({
   dbGetAllLeftovers: jest.fn().mockReturnValue([]),
   dbInsertLeftover: jest.fn(),
   dbUpdateLeftover: jest.fn(),
   dbDeleteLeftover: jest.fn(),
   dbPurgeOldLeftovers: jest.fn().mockReturnValue(0),
+  dbGetFoodLogEntries: jest.fn().mockReturnValue([]),
+  dbGetFoodLogEntry: jest.fn().mockReturnValue(null),
+  dbCountFoodLogEntries: jest.fn().mockReturnValue(0),
+  dbInsertFoodLogEntry: jest.fn(),
+  dbUpdateFoodLogEntry: jest.fn(),
+  dbDeleteFoodLogEntry: jest.fn(),
+  dbBulkDeleteFoodLogEntries: jest.fn(),
+  dbBulkSetFoodLogSlot: jest.fn(),
+  dbBulkUpdateFoodLogPlacement: jest.fn(),
 }));
 
-// useLeftoverStore reaches useFoodLogStore → healthFoodSync, which imports
-// react-native — not transformed by babel-jest, so left unmocked it fails
-// every test in this file at module load. Nothing here calls into Health.
+// useLeftoverStore reaches useFoodLogStore only to set a pending meal-log
+// offer (see setPendingMealLog below), but the real healthFoodSync module
+// reaches healthBridge.ts → react-native, which Jest's node environment can't
+// parse — left unmocked it fails every test in this file at module load, and
+// nothing here calls into Health anyway.
 jest.mock('../utils/healthFoodSync', () => ({
   logFoodEntryToHealth: jest.fn(() => Promise.resolve({ outcome: 'unavailable', sampleIds: [] })),
   retractFoodEntryFromHealth: jest.fn(() => Promise.resolve(true)),

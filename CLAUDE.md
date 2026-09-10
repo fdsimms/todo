@@ -337,7 +337,8 @@ exports.
 | estimating what a restaurant meal contained, from a description | `src/utils/nutritionEstimate.ts` + `estimateMealNutrition` in `src/services/aiSuggestions.ts` — the model proposes and a person confirms; nothing is written unconfirmed, and `source: 'estimated'` is permanent |
 | finding a plain food ("onion", "butter") in a food database by name | `src/services/foodSearch.ts` + `src/utils/foodSearchMatch.ts` (ranks and refuses; the portion table needs a second request) |
 | turning "2 cups chopped onion" into grams | `src/utils/ingredientGrams.ts` — every weight comes from the food's own portion table, never a global density |
-| a recipe's nutrition estimate, and the line under its cost | `src/utils/recipeNutrition.ts` — `recipeCost.ts` with grams in place of prices, plus a per-nutrient coverage floor. `weekNutrition`/`describeWeekNutrition` are the planned-week pair, splitting one body by noun exactly as `describeRecipeCost`/`describeWeekCost` do |
+| a recipe's nutrition estimate, and the row under its cost | `src/utils/recipeNutrition.ts` — `recipeCost.ts` with grams in place of prices, plus a per-nutrient coverage floor. `weekNutrition`/`describeWeekNutrition` are the planned-week pair, splitting one body by noun exactly as `describeRecipeCost`/`describeWeekCost` do |
+| filling in the ingredients a recipe's figures couldn't count | `src/components/RecipeNutritionSheet.tsx` + `recipeNutritionLines`/`nutritionGaps` — the rollup's own walk stopped one step early, so "from 6 of 9 ingredients" and the list of the other three can't describe different lines. Three states, three remedies, and they aren't interchangeable; `weighableLine` (`ingredientGrams.ts`) decides whether a scale would settle a line by re-running the refusal rather than reasoning about it |
 | reading a receipt's text on the device before it goes to the model | `src/utils/receiptOcr.ts` + `modules/todo-vision-bridge` |
 | remembering which item a barcode is | `ItemProduct.gtin` + `gtinAliasText` in `src/utils/storeAliases.ts` — see `docs/arch/groceries.md` |
 | what a store's receipt shorthand means | `src/utils/storeAliases.ts` (+ the `remembered` tier in `receiptMatch.ts`) |
@@ -387,10 +388,11 @@ exports.
 **Read narrowly.** 54 files are over 1,000 lines, 35 of
 them source rather than tests. The ten biggest source files:
 
-`store/useTaskStore.ts` (8.3k), `db/database.ts` (5.4k), `components/TaskEditor.tsx` (5.4k),
-`types/index.ts` (5.4k), `store/useGroceryStore.ts` (5.1k), `screens/TodayScreen.tsx` (4.6k),
-`components/TaskItem.tsx` (4.3k), `utils/demoSeed.ts` (3.7k),
-`store/useSettingsStore.ts` (3.6k), `components/QuickAddModal.tsx` (3.1k).
+`store/useTaskStore.ts` (8.3k), `db/database.ts` (5.5k), `types/index.ts` (5.4k),
+`components/TaskEditor.tsx` (5.4k), `store/useGroceryStore.ts` (5.1k),
+`screens/TodayScreen.tsx` (4.6k), `components/TaskItem.tsx` (4.3k),
+`utils/demoSeed.ts` (3.7k), `store/useSettingsStore.ts` (3.6k),
+`components/QuickAddModal.tsx` (3.1k).
 
 Grep for the symbol and read the surrounding range; reading any of them end to end costs more
 context than the rest of the task will. `docs/module-map.md` says which file owns what.

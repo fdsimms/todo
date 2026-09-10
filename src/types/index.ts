@@ -3082,6 +3082,15 @@ export interface FoodLogEntry {
    * `docs/arch/health-data.md` on why a bad write costs more than a bad read.
    */
   healthSampleIds: string[];
+  /**
+   * Hand-set position within the day, in the same running-number-space `Task.sortOrder`
+   * uses across a whole category list rather than one per section — a drag that
+   * re-slots an entry needs one number space it can carry across the boundary.
+   * Defaults to `0` for every row that predates the column, so an existing
+   * install reads as unordered (falling back to `atISO`) until something is
+   * actually dragged.
+   */
+  sortOrder: number;
   createdAt: string;
 }
 
@@ -3208,13 +3217,20 @@ export interface GroceryItem {
   // coming home with something refutes an "Out of it" left on it, the same
   // correction a purchase already makes to ItemShopLink.unavailableAt.
   onHandUntil: string | null;
-  // The recipe this item was first added from, if any. Set only when
-  // addFromPlan creates a genuinely new catalog row — never on a row that
-  // already existed, so re-adding a known item (typed, imported, or from a
-  // different recipe) never overwrites where it originally came from. A
+  // The recipe this item is on the list for, if any. Set when addFromPlan
+  // creates a genuinely new catalog row, and restamped when it re-lists a row
+  // that had fallen off every list — a row with no list membership left has
+  // nothing to be credited to except the recipe that just put it back. A row
+  // still standing on the list keeps its existing credit as far as typing a
+  // known item goes, or a recipe re-adding one it already credited — but a
+  // *different* recipe wanting the same standing row (see
+  // `mergeOnListRecipeNeed` in useGroceryStore) drops this to null rather
+  // than keep crediting just one of the two, same reasoning
+  // `mealPlanGroceries` applies to a week's own overlapping ingredients. A
   // snapshot pair rather than a live id lookup: sourceRecipeTitle is captured
-  // once at creation and never refreshed, resolve-or-shrug like every other
-  // cross-row pointer here — a later recipe rename or delete doesn't touch it.
+  // at each (re)listing and never refreshed in between, resolve-or-shrug like
+  // every other cross-row pointer here — a later recipe rename or delete
+  // doesn't touch it.
   sourceRecipeId: string | null;
   sourceRecipeTitle: string | null;
   // "apples or pears" — two rows you'll pick between at the shelf, sharing this
@@ -4364,6 +4380,22 @@ export interface RecipeIngredient {
   // mealPlanGroceries.ts), where an optional line starts unticked instead of
   // ticked. Same optional-boolean convention as noSwap, for the same reason.
   optional?: boolean;
+  // A worked example of the name, not an instruction or a name of its own —
+  // "avocado oil" from "neutral oil, such as avocado oil". Split out by
+  // splitExample() for the same reason prep/purpose are: left in `name`, it
+  // reads as neither the generic thing the recipe asked for nor a shoppable
+  // item of its own. Optional rather than `string | null` like prep/purpose,
+  // same convention noSwap/dismissedCatalogSuggestion use and the same
+  // reason: most lines never have one, so requiring the key would mean a
+  // backfill through every construction site for a value that's absent
+  // almost everywhere.
+  //
+  // Read by RecipeIngredientSheet to offer declaring the example a variety of
+  // this line's own name (GroceryItem.varietyOfKey, see itemVarieties.ts) —
+  // "is avocado oil a kind of neutral oil?" — the same offer varietyOfferFor
+  // makes from a catalog-name collision, just sourced from the recipe's own
+  // wording instead of an existing row's name.
+  example?: string;
   // "Not now" on the catalog-match signpost pill (see ingredientCatalogMatch.ts
   // and RecipeDetailScreen), remembered permanently rather than for the
   // current screen visit. Holds the *suggested name* that was turned down, not

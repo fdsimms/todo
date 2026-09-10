@@ -73,7 +73,7 @@ import { appendPriceObservation, mergePriceHistories } from '../utils/priceHisto
 import { groceryNameKey, parseGroceryInput, splitGroceryLines } from '../utils/groceryParse';
 import { catalogItemForKey } from '../utils/groceryPlural';
 import { hasUserFacts, factSignature, linkCounts } from '../utils/groceryFacts';
-import { describeQuantities } from '../utils/mealPlanGroceries';
+import { describeQuantities, mergeQuantities } from '../utils/mealPlanGroceries';
 import { defaultOnHandUntil, OUT_OF_IT_UNTIL } from '../utils/grocerySuggest';
 import type { PantryReviewAnswer } from '../utils/pantryReview';
 import { wantsShelfLifePrompt, type DisposalOutcome } from '../utils/itemDisposal';
@@ -1335,9 +1335,9 @@ function newItemRow(fields: {
     lastPurchasedAt: null,
     createdAt: fields.createdAt,
     onHandUntil: fields.onHandUntil ?? null,
-    // Only a genuinely new row gets attributed — see the field's doc comment on
-    // GroceryItem. A row reused via addByName's `existing` branch never reaches
-    // here, so a recipe re-adding a known item can't relabel it.
+    // A genuinely new row is attributed here; a row reused via addByName's
+    // `existing` branch never reaches this factory and is restamped there
+    // instead, per the field's doc comment on GroceryItem.
     choiceGroup: fields.choiceGroup ?? null,
     sourceRecipeId: fields.source?.recipeId ?? null,
     sourceRecipeTitle: fields.source?.recipeTitle ?? null,
@@ -1393,8 +1393,8 @@ export interface PlannedRow {
   /**
    * The recipe this row came from, when unambiguous — null for a week-view
    * row that merged ingredients from more than one recipe, since there's no
-   * single recipe left to credit. Only applied to a row addFromPlan actually
-   * creates; see GroceryItem.sourceRecipeId.
+   * single recipe left to credit. Applied to a row addFromPlan creates or
+   * re-lists from off every list; see GroceryItem.sourceRecipeId.
    */
   sourceRecipeId?: string | null;
   sourceRecipeTitle?: string | null;
@@ -1416,7 +1416,12 @@ export interface PlannedRow {
 export interface PlanAddResult {
   /** Rows that weren't on the list and now are — new catalog rows and re-listed ones alike. */
   added: GroceryItem[];
-  /** Already on the list and left exactly as they were. */
+  /**
+   * Already on the list. Not necessarily untouched: see
+   * `mergeOnListRecipeNeed` — a second recipe's need for the same row can
+   * still fold its quantity in and clear a now-dishonest single-recipe credit,
+   * even though the row isn't freshly (re)listed the way `added` rows are.
+   */
   alreadyOnList: GroceryItem[];
   /**
    * Already in the trolley, and deliberately untouched. THIS IS THE WHOLE
@@ -1427,6 +1432,51 @@ export interface PlanAddResult {
    * rows are reported and skipped.
    */
   skippedInCart: GroceryItem[];
+}
+
+/**
+ * What a second recipe's need can still honestly change on a row that's
+ * already on the list — returns the patched row, or null when nothing
+ * qualifies, so the caller can skip writing a no-op.
+ *
+ * Unlike the off-list re-add in `addByName`'s existing branch, this row isn't
+ * being (re)listed — it's already there for whatever reason put it there —
+ * so nothing here touches `note`, `choiceGroup`, `lastAddedAt` or any of the
+ * other fields that branch owns. Two things still change:
+ *
+ *  - **The quantity**, by listing both needs together through
+ *    `mergeQuantities` — the same rule the week-plan merge and `mergeItems`
+ *    already use, so "2 lb" standing + "1 lb" incoming reads "3 lbs" rather
+ *    than silently staying at "2 lb" with the second recipe's need dropped.
+ *    Only when the standing quantity is itself recipe-owned, though: a
+ *    quantity the user typed by hand outranks every recipe, on the list or
+ *    off, same rule `addFromPlan`'s own quantity write already follows.
+ *  - **The attribution**, which drops to null the moment a *different*
+ *    recipe's need lands on a row already credited to one. A row two recipes
+ *    both want can't honestly be credited to either — the same reasoning
+ *    `mealPlanGroceries` applies when a week's own ingredients overlap (see
+ *    its `sourceRecipeId: null` on a multi-recipe group). A row not yet
+ *    credited to anyone, or credited to this same recipe again, is untouched.
+ */
+function mergeOnListRecipeNeed(existing: GroceryItem, row: PlannedRow): GroceryItem | null {
+  let changed = false;
+  const patch = { ...existing };
+
+  if (row.quantity && existing.quantityFromRecipe) {
+    const merged = mergeQuantities([existing.quantity ?? '', row.quantity]);
+    if (merged && merged !== existing.quantity) {
+      patch.quantity = merged;
+      changed = true;
+    }
+  }
+
+  if (existing.sourceRecipeId && row.sourceRecipeId !== existing.sourceRecipeId) {
+    patch.sourceRecipeId = null;
+    patch.sourceRecipeTitle = null;
+    changed = true;
+  }
+
+  return changed ? patch : null;
 }
 
 /**
@@ -1919,6 +1969,14 @@ export const useGroceryStore = create<GroceryStore>((set, get) => ({
         // re-add of apples must not dissolve a pair it's already in.
         choiceGroup: choiceGroup ?? existing.choiceGroup,
         lastAddedAt: now,
+        // A row still on some list is a standing item the user owns, same as
+        // note/quantity above — a recipe re-adding it doesn't relabel it. But a
+        // row that had fallen off every list is functionally a fresh add: the
+        // recipe that put it back on is the reason it's there, and crediting a
+        // stale recipe (possibly cooked and forgotten) is actively misleading.
+        // See GroceryItem.sourceRecipeId.
+        sourceRecipeId: !wasOnList && source ? source.recipeId : existing.sourceRecipeId,
+        sourceRecipeTitle: !wasOnList && source ? source.recipeTitle : existing.sourceRecipeTitle,
       };
       // And the same rule again for the box: GroceryAddField's Brand/Variant
       // chips are the only caller that passes these, and only when the user
@@ -2131,7 +2189,15 @@ export const useGroceryStore = create<GroceryStore>((set, get) => ({
         const existing = catalogItemForKey(key, get().items) ?? undefined;
 
         if (existing?.checked) { skippedInCart.push(existing); continue; }
-        if (existing?.onList) { alreadyOnList.push(existing); continue; }
+        if (existing?.onList) {
+          const merged = mergeOnListRecipeNeed(existing, row);
+          if (merged) {
+            dbUpdateGroceryItem(merged);
+            set(s => ({ items: s.items.map(i => (i.id === merged.id ? merged : i)) }));
+          }
+          alreadyOnList.push(merged ?? existing);
+          continue;
+        }
 
         // Passing the bare name, not "2 lb chicken thighs": the quantity is
         // already split out on the ingredient, and re-parsing it here would

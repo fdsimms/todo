@@ -1,0 +1,424 @@
+import React, { useMemo, useState } from 'react';
+import { View, Text, TextInput, StyleSheet } from 'react-native';
+import Ionicons from '@expo/vector-icons/Ionicons';
+import { NUTRIENT_KEYS, type FoodNutrition, type NutrientKey } from '../types';
+import { useGroceryStore } from '../store/useGroceryStore';
+import { useColors } from '../theme/ThemeContext';
+import { spacing, radius, font, fontWeight, iconSize, type Colors } from '../theme';
+import { haptics } from '../utils/haptics';
+import { addCustomPortion, NUTRIENT_LABEL } from '../utils/foodNutrition';
+import { weighableLine, type LineWeighing } from '../utils/ingredientGrams';
+import {
+  perServing,
+  type NutritionLine,
+  type RecipeNutritionReading,
+} from '../utils/recipeNutrition';
+import { EditorSheet } from './EditorSheet';
+import { InlineAction } from './InlineAction';
+import { NumberPadAccessory, NUMBER_PAD_ACCESSORY_ID } from './NumberPadAccessory';
+import { NutritionPanelSheet } from './NutritionPanelSheet';
+import { NutritionSearchSheet } from './NutritionSearchSheet';
+import { SheetHeaderButton } from './SheetHeaderButton';
+
+/**
+ * A dish's whole nutrition panel, and the ingredients it couldn't count.
+ *
+ * **What this closes is that "from 6 of 9 ingredients" was a dead end.** The
+ * coverage clause has always been the honest half of the estimate, and it named
+ * a number nobody could act on: which three, why, and what to do about it were
+ * all unanswerable from the recipe page. So the figure that told you the total
+ * was incomplete was also the reason you couldn't complete it.
+ *
+ * **It shows the whole panel, not the two nutrients the summary leads with.**
+ * `SUMMARY_KEYS` carries only calories and protein because a line under the
+ * cost estimate wraps at three, and its own note says the rest is "in `total`
+ * and unshown, waiting for a surface with room for it". This is that surface;
+ * nothing new is computed for it.
+ *
+ * **A gap is offered a remedy only where one exists, and they are not
+ * interchangeable.** A line with no catalog row has nowhere to keep figures, so
+ * it is listed rather than offered — linking it is the grocery catalog's own
+ * flow, one sheet along, and reproducing it here would be a second way to do
+ * one job. A row with no figures gets the pair `GroceryItemSheet` already
+ * offers for exactly this, in the same words: find the food in a database, or
+ * copy the label off the packet. Figures that can't be measured against the
+ * amount asked for get a scale, and only when `weighableLine` has confirmed
+ * that weighing would actually settle it.
+ *
+ * **Every write goes to the grocery catalog, never to the recipe.** What is
+ * missing is a fact about a food, not about this dish, so filling it in here
+ * fixes every other recipe calling for the same thing and the food log with it.
+ * That is also why nothing here is undone when the sheet closes.
+ *
+ * **Rows leave as they are answered**, because the list is recomputed from the
+ * store on every write rather than held in state. The row disappearing is the
+ * confirmation, the way it is in `IngredientCatalogMatchSheet` and the way a
+ * ticked task leaves Today. It is also what makes a refused weighing safe: a
+ * portion that turns out not to settle the line leaves the row where it was,
+ * saying so, instead of reporting a success the total doesn't share.
+ */
+
+interface Props {
+  visible: boolean;
+  /**
+   * The recipe page's own reading, passed in rather than recomputed.
+   *
+   * It arrives already scaled by whatever the scale chips say, so the amounts
+   * here are the amounts on the page behind it, and it refreshes on every
+   * catalog write because the screen's memo watches the same store.
+   */
+  reading: RecipeNutritionReading;
+  onClose: () => void;
+}
+
+/** A figure as a label prints it: calories whole, everything else to a tenth at most. */
+function formatAmount(key: NutrientKey, amount: number): string {
+  if (key === 'calorieKcal') return String(Math.round(amount));
+  return String(Math.round(amount * 10) / 10);
+}
+
+export function RecipeNutritionSheet({ visible, reading, onClose }: Props) {
+  const colors = useColors();
+  const styles = useMemo(() => makeStyles(colors), [colors]);
+
+  const setItemNutrition = useGroceryStore(s => s.setItemNutrition);
+  const setProductNutrition = useGroceryStore(s => s.setProductNutrition);
+
+  // Which line each nested sheet is open for, rather than a boolean and a
+  // separate id: the two can't disagree if there is only one of them.
+  const [panelLine, setPanelLine] = useState<NutritionLine | null>(null);
+  const [searchLine, setSearchLine] = useState<NutritionLine | null>(null);
+  const [weighingId, setWeighingId] = useState<string | null>(null);
+  const [weighGrams, setWeighGrams] = useState('');
+
+  const { nutrition, gaps } = reading;
+
+  // Per serving where the recipe said how many it makes, and the whole dish
+  // where it didn't — the same choice `describeNutrition` makes, so the sheet
+  // and the line that opened it are quoting one figure rather than two.
+  const figures = useMemo(() => {
+    if (!nutrition) return null;
+    const per = perServing(nutrition);
+    return { amounts: per ?? nutrition.total, perServing: per !== null };
+  }, [nutrition]);
+
+  // Paired with the weighing each line would take, so a row can offer a scale
+  // only where one would settle it. Recomputed with the reading, so a line
+  // answered a moment ago is gone rather than still offering.
+  const fillable = useMemo(
+    () => gaps.fillable.map(line => ({
+      line,
+      weighing:
+        line.state === 'unmeasured' && line.nutrition && line.item
+          ? weighableLine(line.quantity, line.prep, line.nutrition, line.item.name)
+          : null,
+    })),
+    [gaps.fillable],
+  );
+
+  /**
+   * Puts figures back on whichever row the ones on screen came from.
+   *
+   * A panel that spoke for this line came from the preferred box or from the
+   * catalog row, and `nutritionFor`'s precedence means correcting the wrong
+   * one leaves the screen showing the figure the person was trying to fix. A
+   * line with no panel at all has nothing to correct, so new figures go on the
+   * catalog row, where they speak for the food rather than for one box of it.
+   */
+  const writePanel = (line: NutritionLine, next: FoodNutrition | null) => {
+    if (line.product?.nutrition) setProductNutrition(line.product.id, next);
+    else if (line.item) setItemNutrition(line.item.id, next);
+  };
+
+  const startWeighing = (line: NutritionLine) => {
+    haptics.tap();
+    setWeighingId(line.id);
+    setWeighGrams('');
+  };
+
+  const saveWeighing = (line: NutritionLine, weighing: LineWeighing) => {
+    const grams = Number(weighGrams.trim().replace(',', '.'));
+    if (!Number.isFinite(grams) || grams <= 0 || !line.nutrition) {
+      haptics.error();
+      return;
+    }
+    const updated = addCustomPortion(line.nutrition, weighing.label, weighing.amount, grams);
+    if (!updated) {
+      haptics.error();
+      return;
+    }
+    writePanel(line, updated);
+    haptics.success();
+    setWeighingId(null);
+    setWeighGrams('');
+  };
+
+  const countLine =
+    gaps.total === 0
+      ? null
+      : `Counted from ${gaps.covered} of ${gaps.total} ingredients. Staples aren't counted on either side.`;
+
+  return (
+    <EditorSheet
+      visible={visible}
+      onRequestClose={onClose}
+      rootStyle={styles.root}
+      headerStyle={styles.header}
+      scrollStyle={styles.scroll}
+      scrollContentStyle={styles.scrollContent}
+      header={
+        <>
+          <SheetHeaderButton label="Done" onPress={onClose} minWidth={40} />
+          <Text style={styles.headerTitle}>Nutrition</Text>
+          <View style={styles.headerSpacer} />
+        </>
+      }
+      footer={
+        <>
+          <NutritionSearchSheet
+            visible={searchLine !== null}
+            itemName={searchLine?.item?.name ?? ''}
+            onClose={() => setSearchLine(null)}
+            onPick={next => { if (searchLine) writePanel(searchLine, next); }}
+          />
+          <NutritionPanelSheet
+            visible={panelLine !== null}
+            foodName={panelLine?.item?.name ?? ''}
+            nutrition={panelLine?.nutrition ?? null}
+            onClose={() => setPanelLine(null)}
+            onSave={next => { if (panelLine) writePanel(panelLine, next); }}
+          />
+          <NumberPadAccessory />
+        </>
+      }
+    >
+      {!!countLine && <Text style={styles.count}>{countLine}</Text>}
+
+      {figures ? (
+        <>
+          <Text style={styles.groupLabel}>
+            {figures.perServing ? 'PER SERVING' : 'WHOLE RECIPE'}
+          </Text>
+          <View style={styles.card}>
+            {NUTRIENT_KEYS.filter(key => figures.amounts[key] !== undefined).map(key => (
+              <View key={key} style={styles.nutrientRow}>
+                <Text style={styles.nutrientLabel}>{NUTRIENT_LABEL[key].label}</Text>
+                <Text style={styles.nutrientAmount}>
+                  {formatAmount(key, figures.amounts[key] as number)} {NUTRIENT_LABEL[key].unit}
+                </Text>
+              </View>
+            ))}
+          </View>
+          <Text style={styles.hint}>
+            Added up from the ingredients' own labels, so these are as good as those
+            labels are. A nutrient too few of them state is left out rather than counted
+            as zero.
+          </Text>
+        </>
+      ) : (
+        <View style={styles.card}>
+          <Text style={styles.emptyTotal}>
+            Too few of these ingredients have figures to total the dish yet. Fill some in
+            below and the panel appears here.
+          </Text>
+        </View>
+      )}
+
+      {fillable.length > 0 && (
+        <>
+          <Text style={styles.groupLabel}>NOT COUNTED</Text>
+          <View style={styles.card}>
+            {fillable.map(({ line, weighing }, index) => (
+              <View key={line.id} style={[styles.gapRow, index > 0 && styles.gapRowRuled]}>
+                <Text style={styles.gapName} numberOfLines={1}>
+                  {line.quantity ? `${line.quantity} ${line.name}` : line.name}
+                </Text>
+                <Text style={styles.gapReason}>
+                  {line.state === 'noPanel'
+                    ? 'Nothing recorded for this food yet.'
+                    : weighing
+                      ? `No weight recorded for ${weighing.text}.`
+                      : "This amount can't be matched to its figures. Check the serving size on them."}
+                </Text>
+
+                {weighingId === line.id && weighing ? (
+                  <View style={styles.weighRow}>
+                    <TextInput
+                      style={styles.weighInput}
+                      value={weighGrams}
+                      onChangeText={setWeighGrams}
+                      // Names the field rather than giving an example, so it
+                      // needs no "e.g." — and an example here would have to be
+                      // a plausible weight for a food and an amount this
+                      // doesn't know, which is the number being asked for.
+                      placeholder="Weight in grams"
+                      placeholderTextColor={colors.textTertiary}
+                      keyboardType="decimal-pad"
+                      inputAccessoryViewID={NUMBER_PAD_ACCESSORY_ID}
+                      autoFocus
+                      accessibilityLabel={`Weight of ${weighing.text} of ${line.name} in grams`}
+                    />
+                    <Text style={styles.weighUnit}>g</Text>
+                    <InlineAction label="Save" onPress={() => saveWeighing(line, weighing)} />
+                    <InlineAction
+                      label="Cancel"
+                      variant="neutral"
+                      onPress={() => { haptics.tap(); setWeighingId(null); }}
+                    />
+                  </View>
+                ) : (
+                  <View style={styles.gapActions}>
+                    {line.state === 'noPanel' ? (
+                      <>
+                        <InlineAction
+                          label="Find this food"
+                          icon="search"
+                          onPress={() => { haptics.tap(); setSearchLine(line); }}
+                        />
+                        <InlineAction
+                          label="Type in a label"
+                          variant="neutral"
+                          onPress={() => { haptics.tap(); setPanelLine(line); }}
+                        />
+                      </>
+                    ) : weighing ? (
+                      <InlineAction
+                        label="Weigh it"
+                        icon="scale-outline"
+                        onPress={() => startWeighing(line)}
+                      />
+                    ) : (
+                      <InlineAction
+                        label="Edit these figures"
+                        variant="neutral"
+                        onPress={() => { haptics.tap(); setPanelLine(line); }}
+                      />
+                    )}
+                  </View>
+                )}
+              </View>
+            ))}
+            <Text style={styles.hint}>
+              Figures are saved against the food in your grocery catalog, so filling one in
+              here also fills it in for every other recipe that calls for it.
+            </Text>
+          </View>
+        </>
+      )}
+
+      {gaps.unmatched.length > 0 && (
+        <>
+          <Text style={styles.groupLabel}>NOT IN YOUR CATALOG</Text>
+          <View style={styles.card}>
+            {gaps.unmatched.map(line => (
+              <View key={line.id} style={styles.plainRow}>
+                <Ionicons name="ellipse-outline" size={iconSize.xs} color={colors.textTertiary} />
+                <Text style={styles.gapName} numberOfLines={1}>{line.name}</Text>
+              </View>
+            ))}
+            <Text style={styles.hint}>
+              These lines don't match anything in your grocery catalog, so there's nowhere
+              to keep figures for them yet. The basket row on the recipe page is where a
+              line gets linked. Most one-off ingredients are fine left as they are.
+            </Text>
+          </View>
+        </>
+      )}
+
+      {fillable.length === 0 && gaps.unmatched.length === 0 && gaps.total > 0 && (
+        <Text style={styles.hint}>Every ingredient this dish calls for was counted.</Text>
+      )}
+    </EditorSheet>
+  );
+}
+
+function makeStyles(colors: Colors) {
+  return StyleSheet.create({
+    root: { flex: 1, backgroundColor: colors.bg },
+    header: {
+      flexDirection: 'row',
+      alignItems: 'center',
+      justifyContent: 'space-between',
+      paddingHorizontal: spacing.md,
+      paddingVertical: spacing.sm,
+      borderBottomWidth: 1,
+      borderBottomColor: colors.separator,
+    },
+    headerTitle: { fontSize: font.lg, fontWeight: fontWeight.semibold, color: colors.text },
+    headerSpacer: { minWidth: 40 },
+    scroll: { flex: 1 },
+    scrollContent: { padding: spacing.md, paddingBottom: spacing.xl },
+    count: {
+      fontSize: font.sm,
+      color: colors.textSecondary,
+      lineHeight: 18,
+      marginBottom: spacing.sm,
+      marginHorizontal: spacing.xs,
+    },
+    groupLabel: {
+      fontSize: font.xs,
+      fontWeight: fontWeight.semibold,
+      letterSpacing: 0.8,
+      color: colors.textSecondary,
+      marginTop: spacing.md,
+      marginBottom: spacing.xs,
+      marginHorizontal: spacing.xs,
+    },
+    card: {
+      backgroundColor: colors.bgSecondary,
+      borderRadius: radius.md,
+      padding: spacing.md,
+    },
+    nutrientRow: {
+      flexDirection: 'row',
+      alignItems: 'center',
+      justifyContent: 'space-between',
+      gap: spacing.md,
+      paddingVertical: spacing.xs + 2,
+    },
+    nutrientLabel: { flex: 1, fontSize: font.md, color: colors.text },
+    nutrientAmount: { fontSize: font.md, fontWeight: fontWeight.medium, color: colors.text },
+    emptyTotal: { fontSize: font.sm, color: colors.textSecondary, lineHeight: 18 },
+    gapRow: { gap: spacing.xs, paddingVertical: spacing.sm },
+    // A gap row is three stacked lines rather than the one an ordinary list
+    // row is, so without a rule between them two of them read as one row with
+    // a great deal in it.
+    gapRowRuled: { borderTopWidth: 1, borderTopColor: colors.separator, marginTop: spacing.xs },
+    gapName: { flex: 1, fontSize: font.md, color: colors.text },
+    gapReason: { fontSize: font.xs, color: colors.textSecondary, lineHeight: 16 },
+    // Margin above only: the hint below the last row supplies its own top gap,
+    // and the row above this one already ends on its own vertical padding.
+    gapActions: { flexDirection: 'row', flexWrap: 'wrap', gap: spacing.sm, marginTop: spacing.xs },
+    weighRow: {
+      flexDirection: 'row',
+      alignItems: 'center',
+      gap: spacing.sm,
+      marginTop: spacing.xs,
+    },
+    weighInput: {
+      flex: 1,
+      color: colors.text,
+      fontSize: font.md,
+      backgroundColor: colors.bg,
+      borderRadius: radius.md,
+      paddingHorizontal: spacing.sm,
+      paddingVertical: spacing.sm,
+      borderWidth: 1,
+      borderColor: colors.separator,
+    },
+    weighUnit: { fontSize: font.sm, color: colors.textSecondary },
+    plainRow: {
+      flexDirection: 'row',
+      alignItems: 'center',
+      gap: spacing.sm,
+      paddingVertical: spacing.sm,
+    },
+    hint: {
+      fontSize: font.xs,
+      color: colors.textTertiary,
+      lineHeight: 16,
+      marginTop: spacing.sm,
+      marginHorizontal: spacing.xs,
+    },
+  });
+}

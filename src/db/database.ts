@@ -1425,6 +1425,9 @@ export function initDatabase(): void {
     // would record every meal ever planned as an explicit "never ask me about
     // this one". See MealPlanEntry.logMeal.
     'ALTER TABLE meal_plan_entries ADD COLUMN log_meal INTEGER',
+    // Hand-set position within the day, one number space across every meal
+    // slot — see FoodLogEntry.sortOrder.
+    'ALTER TABLE food_logs ADD COLUMN sort_order REAL NOT NULL DEFAULT 0',
   ];
   for (const sql of migrations) {
     try { db.runSync(sql); } catch (_) { /* column already exists */ }
@@ -4747,6 +4750,7 @@ function rowToFoodLogEntry(row: Record<string, unknown>): FoodLogEntry | null {
     grams: typeof row.grams === 'number' && Number.isFinite(row.grams) ? row.grams : null,
     nutrition,
     healthSampleIds,
+    sortOrder: typeof row.sort_order === 'number' ? row.sort_order : 0,
     createdAt: row.created_at as string,
   };
 }
@@ -4790,13 +4794,13 @@ export function dbGetFoodLogEntry(id: string): FoodLogEntry | null {
 export function dbInsertFoodLogEntry(entry: FoodLogEntry): void {
   db.runSync(
     `INSERT INTO food_logs (id, day_key, at_iso, slot, label, recipe_id, item_id, product_id,
-       meal_plan_entry_id, quantity, grams, nutrition, health_sample_ids, created_at)
-     VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+       meal_plan_entry_id, quantity, grams, nutrition, health_sample_ids, sort_order, created_at)
+     VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
     [
       entry.id, entry.dayKey, entry.atISO, entry.slot, entry.label,
       entry.recipeId, entry.itemId, entry.productId, entry.mealPlanEntryId,
       entry.quantity, entry.grams, serializeFoodNutrition(entry.nutrition),
-      JSON.stringify(entry.healthSampleIds), entry.createdAt,
+      JSON.stringify(entry.healthSampleIds), entry.sortOrder, entry.createdAt,
     ]
   );
 }
@@ -4804,19 +4808,53 @@ export function dbInsertFoodLogEntry(entry: FoodLogEntry): void {
 export function dbUpdateFoodLogEntry(entry: FoodLogEntry): void {
   db.runSync(
     `UPDATE food_logs SET day_key=?, at_iso=?, slot=?, label=?, recipe_id=?, item_id=?,
-       product_id=?, meal_plan_entry_id=?, quantity=?, grams=?, nutrition=?, health_sample_ids=?
+       product_id=?, meal_plan_entry_id=?, quantity=?, grams=?, nutrition=?, health_sample_ids=?,
+       sort_order=?
      WHERE id=?`,
     [
       entry.dayKey, entry.atISO, entry.slot, entry.label,
       entry.recipeId, entry.itemId, entry.productId, entry.mealPlanEntryId,
       entry.quantity, entry.grams, serializeFoodNutrition(entry.nutrition),
-      JSON.stringify(entry.healthSampleIds), entry.id,
+      JSON.stringify(entry.healthSampleIds), entry.sortOrder, entry.id,
     ]
   );
 }
 
 export function dbDeleteFoodLogEntry(id: string): void {
   db.runSync('DELETE FROM food_logs WHERE id = ?', [id]);
+}
+
+export function dbBulkDeleteFoodLogEntries(ids: string[]): void {
+  if (ids.length === 0) return;
+  db.withTransactionSync(() => {
+    for (let i = 0; i < ids.length; i += BULK_DELETE_CHUNK_SIZE) {
+      const chunk = ids.slice(i, i + BULK_DELETE_CHUNK_SIZE);
+      const placeholders = chunk.map(() => '?').join(', ');
+      db.runSync(`DELETE FROM food_logs WHERE id IN (${placeholders})`, chunk);
+    }
+  });
+}
+
+export function dbBulkSetFoodLogSlot(ids: string[], slot: MealSlot | null): void {
+  if (ids.length === 0) return;
+  db.withTransactionSync(() => {
+    for (const id of ids) {
+      db.runSync('UPDATE food_logs SET slot = ? WHERE id = ?', [slot, id]);
+    }
+  });
+}
+
+/** Persists a drag's result: each entry's new slot (it may have crossed a
+ * section boundary) and its new position in the day's one running order. */
+export function dbBulkUpdateFoodLogPlacement(
+  updates: { id: string; slot: MealSlot | null; sortOrder: number }[]
+): void {
+  if (updates.length === 0) return;
+  db.withTransactionSync(() => {
+    for (const u of updates) {
+      db.runSync('UPDATE food_logs SET slot = ?, sort_order = ? WHERE id = ?', [u.slot, u.sortOrder, u.id]);
+    }
+  });
 }
 
 /**
