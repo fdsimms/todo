@@ -36,6 +36,7 @@ const BASE: MealPlanEntry = {
   recipeScale: 1,
   cookTask: null,
   shopTask: null,
+  logMeal: null,
   calendarEventId: null,
 };
 

@@ -86,6 +86,11 @@ export interface MealPlanDraft {
    */
   shopTask?: boolean | null;
   /**
+   * The same, for "does finishing this one offer to log it?" — see
+   * MealPlanEntry.logMeal. Omitted (or null) leaves it to the setting.
+   */
+  logMeal?: boolean | null;
+  /**
    * Who the meal is for, for a caller that already knows at plan time — a
    * copied meal, a template. Omitted for every ordinary plan, where guests are
    * named afterwards from the meal's own sheet.
@@ -448,6 +453,17 @@ interface MealPlanStore extends UndoHistoryActions {
    * answered by the next sweep, which is seconds away on any foreground.
    */
   setShopTask: (id: string, value: boolean | null) => void;
+  /**
+   * Says whether finishing this meal offers to log what was eaten, or hands
+   * the decision back to the `mealLogPrompt` setting with `null`.
+   *
+   * **Writes the flag and stops there**, like `setShopTask` and unlike
+   * `setCookTask`: there is no task to reconcile into existence. What this
+   * gates is an offer made at the moment a meal is finished, so the next
+   * finish reads whatever this last wrote and nothing has to be created or
+   * torn down in between.
+   */
+  setLogMeal: (id: string, value: boolean | null) => void;
 
   /**
    * "Cooked" as a single user action: stamps `cookedAt` **and** bumps the
@@ -802,6 +818,8 @@ export const useMealPlanStore = create<MealPlanStore>((set, get) => ({
       // Unanswered too, so mealShortfallTasks decides — see
       // MealPlanEntry.shopTask.
       shopTask: draft.shopTask ?? null,
+      // Unanswered too, so mealLogPrompt decides — see MealPlanEntry.logMeal.
+      logMeal: draft.logMeal ?? null,
       // Nothing on the device yet. reconcileMealEvent below writes the id
       // back if a calendar is picked.
       calendarEventId: null,
@@ -1003,6 +1021,16 @@ export const useMealPlanStore = create<MealPlanStore>((set, get) => ({
     // No reconcile and no create — see the interface note. The generator's own
     // sweep owns both directions here, and a `false` written by a delete has
     // already taken the row away by the time this runs.
+  },
+
+  setLogMeal(id, value) {
+    const entry = resolveEntry(get, id);
+    if (!entry || entry.logMeal === value) return;
+    const next: MealPlanEntry = { ...entry, logMeal: value };
+    dbUpdateMealPlanEntry(next);
+    set(s => ({ entries: s.entries.map(e => e.id === id ? next : e) }));
+    // Nothing to reconcile: this gates an offer made at finish time rather
+    // than a row on a list, so there is no task to create or tear down.
   },
 
   setCookedPaired(id, cooked) {

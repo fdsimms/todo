@@ -45,7 +45,9 @@ export function KitchenSettings() {
   const kitchenOnToday = useSettingsStore(s => s.kitchenOnToday);
   const setKitchenOnToday = useSettingsStore(s => s.setKitchenOnToday);
   const cookRecapEnabled = useSettingsStore(s => s.cookRecapEnabled);
+  const mealLogPrompt = useSettingsStore(s => s.mealLogPrompt);
   const setCookRecapEnabled = useSettingsStore(s => s.setCookRecapEnabled);
+  const setMealLogPrompt = useSettingsStore(s => s.setMealLogPrompt);
   const restockOfferEnabled = useSettingsStore(s => s.restockOfferEnabled);
   const setRestockOfferEnabled = useSettingsStore(s => s.setRestockOfferEnabled);
   const tripLiveActivity = useSettingsStore(s => s.tripLiveActivity);
@@ -108,6 +110,16 @@ export function KitchenSettings() {
           accessibilityLabel="Show what needs using up"
         />
         )}
+        <SettingsRow
+          entryId="mealLogPrompt"
+          icon="nutrition-outline"
+          iconColor={mealLogPrompt ? colors.accent : undefined}
+          label="Ask what you ate"
+          hint="When you finish a planned meal or a leftover, offer to add it to the food log. Only for food whose nutrition is known."
+          toggle={mealLogPrompt}
+          onPress={() => setMealLogPrompt(!mealLogPrompt)}
+          accessibilityLabel="Ask what you ate"
+        />
         <SettingsRow
           entryId="cookRecapEnabled"
           icon="restaurant-outline"

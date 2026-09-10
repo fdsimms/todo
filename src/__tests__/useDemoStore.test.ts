@@ -1568,6 +1568,27 @@ describe('demo seed — people', () => {
     expect(rows.map(r => titles.get(r.label))).toContain('Take the vitamin D');
   });
 
+  it('seeds a meal that has opted out of being logged', () => {
+    // The per-meal answer is invisible until something uses it, and a night
+    // out is exactly the meal somebody declines: the app has no idea what was
+    // on the plate, so counting it would be fiction.
+    const declined = useMealPlanStore.getState().entries.filter(e => e.logMeal === false);
+    expect(declined.length).toBeGreaterThan(0);
+  });
+
+  it('leaves every other planned meal to the setting, and logs none of them itself', () => {
+    // The offer exists without the seed having taken it: nothing here writes a
+    // food log entry on somebody's behalf, which is the rule the whole prompt
+    // is built around.
+    const entries = useMealPlanStore.getState().entries;
+    expect(entries.some(e => e.logMeal === null)).toBe(true);
+    const yesterdayKey = dayKeyOf(subDays(getCurrentDayStart(), 1));
+    useFoodLogStore.getState().loadRange(yesterdayKey, yesterdayKey);
+    for (const e of useFoodLogStore.getState().entries) {
+      expect(e.mealPlanEntryId).toBeNull();
+    }
+  });
+
   it('seeds a day of eating, so the food log reads as a feature the app has', () => {
     // Yesterday rather than today: a day with entries is what shows the totals
     // and the meal sections, and leaving today empty means the empty state is

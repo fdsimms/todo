@@ -67,7 +67,7 @@ function entry(over: Partial<MealPlanEntry> = {}): MealPlanEntry {
   return {
     id: `m${seq}`, date: '2026-06-01', slot: 'dinner', recipeId: null, title: 'Dinner',
     sortOrder: 1, createdAt: iso(2026, 1, 1), cookedAt: iso(2026, 6, 1), leftoverId: null,
-    recipeChoices: [], personIds: ['p1'], recipeScale: 1, cookTask: null, shopTask: null,
+    recipeChoices: [], personIds: ['p1'], recipeScale: 1, cookTask: null, shopTask: null, logMeal: null,
     calendarEventId: null,
     ...over,
   };

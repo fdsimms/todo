@@ -27,6 +27,7 @@ function entry(overrides: Partial<MealPlanEntry> & { id: string; date: string })
     recipeScale: 1,
     cookTask: null,
     shopTask: null,
+    logMeal: null,
     calendarEventId: null,
     ...overrides,
   };
