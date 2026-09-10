@@ -72,6 +72,16 @@ export interface ScanProductDraft {
   variant: string | null;
   /** The code this box was read from, or null for a row typed by hand. */
   gtin: string | null;
+  /**
+   * Pack size as the source printed it ("500 g"), empty when it stated none.
+   *
+   * Carried for `'log'` context, which is the one caller that has a use for it:
+   * a package is an amount somebody can have eaten, and without its size the
+   * whole-package option can't be offered at all — see `servingsPerPackage`.
+   * Not written anywhere. A minted row carries the same field on its own
+   * `ReceiptAddDraft`, which is the split every other field here already makes.
+   */
+  packSize: string;
 }
 
 /**
@@ -116,6 +126,62 @@ interface ScanRow extends ScannedItem {
   priceMinor: number | null;
 }
 
+/** Which screen is scanning. See `Props.context`. */
+export type ScanContext = 'shopping' | 'pantry' | 'log';
+
+/**
+ * Everything that reads differently per context, in one place.
+ *
+ * Keyed by the union rather than branched at each sentence, so adding a
+ * context is a compile error here instead of four silently wrong sentences on
+ * screen. `matched`/`rematched`/`offList` take the row's name; the rest are
+ * fixed.
+ */
+const CONTEXT_COPY: Record<ScanContext, {
+  title: string;
+  emptySubtitle: string;
+  confirmLabel: string;
+  /** Whether the freezer toggle means anything here. */
+  freezer: boolean;
+  matched: (name: string) => string;
+  scannedBefore: (name: string) => string;
+  matchedBefore: (name: string) => string;
+  offList: (name: string) => string;
+}> = {
+  shopping: {
+    title: 'Scan groceries',
+    emptySubtitle: 'Point the camera at a barcode as you unpack. Anything without one, type below.',
+    confirmLabel: 'Add',
+    freezer: true,
+    matched: name => `On your list as ${name}`,
+    scannedBefore: name => `On your list as ${name}, as you scanned it before`,
+    matchedBefore: name => `On your list as ${name}, as you matched it before`,
+    offList: name => `Back on the list as ${name}`,
+  },
+  pantry: {
+    title: 'Scan into pantry',
+    emptySubtitle: 'Point the camera at a barcode to add it to the pantry. Anything without one, type below.',
+    confirmLabel: 'Add',
+    freezer: true,
+    matched: name => `Matches \u201C${name}\u201D in your pantry`,
+    scannedBefore: name => `Matches \u201C${name}\u201D, as you scanned it before`,
+    matchedBefore: name => `Matches \u201C${name}\u201D, as you matched it before`,
+    offList: name => `Matches \u201C${name}\u201D`,
+  },
+  log: {
+    title: 'Scan to log',
+    emptySubtitle: 'Point the camera at a barcode to log what you ate. Anything without one, type below.',
+    confirmLabel: 'Next',
+    // A log has no fridge and no freezer: it records that something was eaten,
+    // which is the opposite of where a thing is being kept.
+    freezer: false,
+    matched: name => `Known as \u201C${name}\u201D`,
+    scannedBefore: name => `Known as \u201C${name}\u201D, as you scanned it before`,
+    matchedBefore: name => `Known as \u201C${name}\u201D, as you matched it before`,
+    offList: name => `Known as \u201C${name}\u201D`,
+  },
+};
+
 interface Props {
   visible: boolean;
   onClose: () => void;
@@ -123,12 +189,20 @@ interface Props {
    * Which screen is scanning, and so what a matched row means to say.
    *
    * The session itself — camera, lookup, matching against the catalog — is
-   * identical either way; only the words are different. `'shopping'` (from
+   * identical for all three; only the words are different. `'shopping'` (from
    * `GroceryScreen`, mid-unpack) frames a match in terms of the list;
    * `'pantry'` (from `KitchenScreen`) frames it in terms of the catalog,
-   * since scanning there never touches `onList` at all — see `onApply`.
+   * since scanning there never touches `onList` at all — see `onApply`;
+   * `'log'` (from `FoodLogScreen`) frames it in terms of what was eaten, and
+   * likewise never touches the list.
+   *
+   * **The wording lives in `CONTEXT_COPY` rather than in a ternary per
+   * sentence.** It was four `context === 'pantry' ? … : …` branches, which is
+   * a shape that compiles clean when a third context is added and silently
+   * hands it the shopping wording in all four places. A record keyed by the
+   * union cannot: a missing context fails the build.
    */
-  context: 'shopping' | 'pantry';
+  context: ScanContext;
   /**
    * Hands the confirmed session back to the screen: rows to check off, and
    * rows to create or promote first.
@@ -176,10 +250,12 @@ interface Props {
 
 /**
  * Scanning groceries one barcode at a time — mid-unpack from `GroceryScreen`
- * (`context="shopping"`), or straight into the catalog from `KitchenScreen`'s
- * Pantry screen (`context="pantry"`). The session is one flow either way;
- * only the row captions and the header title read differently, since a
- * pantry scan never puts anything on the shopping list at all.
+ * (`context="shopping"`), straight into the catalog from `KitchenScreen`'s
+ * Pantry screen (`context="pantry"`), or into the food log from
+ * `FoodLogScreen` (`context="log"`). The session is one flow for all three;
+ * only the wording differs, since neither of the last two puts anything on
+ * the shopping list at all. Every difference is in `CONTEXT_COPY` — see
+ * `Props.context` for why it is a record rather than a ternary per sentence.
  *
  * **Not one photo of a pile of shopping.** In a haul shot most barcodes are
  * angled, occluded or face-down, so a dozen items resolve to three, and the
@@ -475,7 +551,7 @@ export function BarcodeScanSheet({ visible, onClose, onApply, context }: Props) 
       // beside the real one every time it is scanned.
       const linked = gtinProductFor(row.gtin);
       if (linked && linked.itemId === itemId) {
-        products.push({ itemId, brand: linked.brand, variant: linked.variant, gtin: row.gtin });
+        products.push({ itemId, brand: linked.brand, variant: linked.variant, gtin: row.gtin, packSize: row.quantity });
         return;
       }
       if (!row.label) return;
@@ -483,7 +559,7 @@ export function BarcodeScanSheet({ visible, onClose, onApply, context }: Props) 
       if (!item) return;
       const variant = variantFor(row.label, row.brand, item.name);
       if (!row.brand && !variant) return;
-      products.push({ itemId, brand: row.brand, variant, gtin: row.gtin });
+      products.push({ itemId, brand: row.brand, variant, gtin: row.gtin, packSize: row.quantity });
     };
     /**
      * The barcode of a row whose catalog id is already known.
@@ -576,22 +652,17 @@ export function BarcodeScanSheet({ visible, onClose, onApply, context }: Props) 
       // your hand, where the generic wording sends someone looking for a name
       // they typed and never find, the row having been renamed since.
       const viaGtin = !!row.gtin && gtinItemFor(row.gtin) === itemId;
-      if (context === 'pantry') {
-        if (viaGtin) return `Matches “${item.name}”, as you scanned it before`;
-        return match?.confidence === 'remembered'
-          ? `Matches “${item.name}”, as you matched it before`
-          : `Matches “${item.name}” in your pantry`;
-      }
-      if (viaGtin) return `On your list as ${item.name}, as you scanned it before`;
+      const copy = CONTEXT_COPY[context];
+      if (viaGtin) return copy.scannedBefore(item.name);
       return match?.confidence === 'remembered'
-        ? `On your list as ${item.name}, as you matched it before`
-        : `On your list as ${item.name}`;
+        ? copy.matchedBefore(item.name)
+        : copy.matched(item.name);
     }
     const offListMatchId = confidentOffListMatchId(row, match);
     if (offListMatchId) {
       const item = items.find(i => i.id === offListMatchId);
       if (!item) return null;
-      return context === 'pantry' ? `Matches “${item.name}”` : `Back on the list as ${item.name}`;
+      return CONTEXT_COPY[context].offList(item.name);
     }
     const pendingId = pendingMatchId(row, match);
     if (pendingId) {
@@ -660,10 +731,10 @@ export function BarcodeScanSheet({ visible, onClose, onApply, context }: Props) 
         <View style={styles.header}>
           <SheetHeaderButton label="Cancel" role="cancel" onPress={handleCancel} minWidth={64} />
           <Text style={styles.headerTitle}>
-            {context === 'pantry' ? 'Scan into pantry' : 'Scan groceries'}
+            {CONTEXT_COPY[context].title}
           </Text>
           <SheetHeaderButton
-            label="Add"
+            label={CONTEXT_COPY[context].confirmLabel}
             onPress={handleApply}
             disabled={includedCount === 0}
             minWidth={64}
@@ -682,11 +753,7 @@ export function BarcodeScanSheet({ visible, onClose, onApply, context }: Props) 
             <EmptyState
               icon="barcode-outline"
               title="Nothing scanned yet"
-              subtitle={
-                context === 'pantry'
-                  ? 'Point the camera at a barcode to add it to the pantry. Anything without one, type below.'
-                  : 'Point the camera at a barcode as you unpack. Anything without one, type below.'
-              }
+              subtitle={CONTEXT_COPY[context].emptySubtitle}
             />
           ) : (
             <View style={styles.card}>
@@ -793,6 +860,9 @@ export function BarcodeScanSheet({ visible, onClose, onApply, context }: Props) 
                       )}
                     </View>
 
+                    {/* Where a thing is being kept, which a log has no
+                        opinion about: it records that something was eaten. */}
+                    {CONTEXT_COPY[context].freezer && (
                     <TouchableOpacity
                       activeOpacity={interaction.activeOpacity}
                       style={styles.rowControl}
@@ -812,6 +882,7 @@ export function BarcodeScanSheet({ visible, onClose, onApply, context }: Props) 
                         color={row.frozen ? colors.accent : colors.textTertiary}
                       />
                     </TouchableOpacity>
+                    )}
 
                     {row.pending ? (
                       <ActivityIndicator

@@ -7,7 +7,7 @@ import { addDays } from 'date-fns/addDays';
 import { format } from 'date-fns/format';
 import { useColors } from '../theme/ThemeContext';
 import { font, fontWeight, iconSize, interaction, radius, spacing, type Colors } from '../theme';
-import { MEAL_SLOT_ICONS, MEAL_SLOT_LABELS, type MealSlot } from '../types';
+import { MEAL_SLOT_ICONS, MEAL_SLOT_LABELS, type GroceryItem, type MealSlot } from '../types';
 import { useFoodLogStore } from '../store/useFoodLogStore';
 import { dayKeyOf, dayKeyToDate, getCurrentDayStart } from '../utils/dateUtils';
 import {
@@ -21,6 +21,13 @@ import { useSettingsStore } from '../store/useSettingsStore';
 import { NUTRIENT_KEYS } from '../types';
 import { haptics } from '../utils/haptics';
 import { animateLayout } from '../utils/layoutAnimation';
+import { useGroceryStore } from '../store/useGroceryStore';
+import { nutritionFor } from '../utils/foodNutrition';
+import { describeProduct } from '../utils/groceryProduct';
+import { BarcodeScanSheet, type ScanProductDraft } from '../components/BarcodeScanSheet';
+import { ScanPortionSheet, type ScannedFood } from '../components/ScanPortionSheet';
+import type { ReceiptAddDraft } from '../components/ReceiptImportSheet';
+import type { ScannedGtinLink } from '../utils/scanResolve';
 import { EmptyState } from '../components/EmptyState';
 import { HubPills } from '../components/HubPills';
 import { InlineAction } from '../components/InlineAction';
@@ -44,6 +51,11 @@ import { FoodLogEntrySheet } from '../components/FoodLogEntrySheet';
  * **Nothing is graded.** No daily-value percentages, no colours, no "good day".
  * Those need an RDA the app has never asked for, and `cookingStats.ts`'s rule
  * holds here: counts, never a score.
+ *
+ * **A barcode is the third way in**, beside the picker and a finished meal. It
+ * answers what a thing is and nothing about how much of it was eaten, so the
+ * scan hands over to `ScanPortionSheet` rather than logging anything itself —
+ * see `handleScanApply`.
  */
 
 export function FoodLogScreen() {
@@ -54,10 +66,17 @@ export function FoodLogScreen() {
   const loadRange = useFoodLogStore(s => s.loadRange);
   const removeEntry = useFoodLogStore(s => s.removeEntry);
   const nutritionTargets = useSettingsStore(useShallow(s => s.nutritionTargets));
+  const items = useGroceryStore(useShallow(s => s.items));
+  const ensureCatalogItem = useGroceryStore(s => s.ensureCatalogItem);
+  const addProduct = useGroceryStore(s => s.addProduct);
+  const linkScannedGtins = useGroceryStore(s => s.linkScannedGtins);
+  const gtinProductFor = useGroceryStore(s => s.gtinProductFor);
 
   const [dayKey, setDayKey] = useState(() => dayKeyOf(getCurrentDayStart()));
   const [addingSlot, setAddingSlot] = useState<MealSlot | null>(null);
   const [addOpen, setAddOpen] = useState(false);
+  const [scanOpen, setScanOpen] = useState(false);
+  const [scanned, setScanned] = useState<ScannedFood[]>([]);
   // Which nutrient rows are on screen. Collapsed by default: calories and
   // protein answer the question most days, and ten rows above the meals would
   // push the day itself below the fold.
@@ -88,6 +107,104 @@ export function FoodLogScreen() {
     haptics.tap();
     setDayKey(k => dayKeyOf(addDays(dayKeyToDate(k), days)));
   }, []);
+
+  /**
+   * A scan session, confirmed. Resolved to catalog rows, then handed on.
+   *
+   * **Nothing is logged here.** A barcode says what a thing is and never how
+   * much of it was eaten, so this does the resolving a code *can* answer and
+   * `ScanPortionSheet` asks the one it can't. Defaulting to a serving would put
+   * a number nobody stated into a day's totals.
+   *
+   * The catalog write is deliberately `ensureCatalogItem` rather than
+   * `addByName`, which is the same restraint `KitchenScreen`'s own scan handler
+   * takes: eating something is not a plan to buy it, so a row minted here
+   * arrives off the list. Everything else is `GroceryScreen.handleScanApply`'s
+   * sequence and has to stay in that order — the boxes first, so a link finds
+   * one, and `linkScannedGtins` last, since that is what carries the label
+   * panel off the barcode cache and onto the box this is about to read.
+   *
+   * A row whose panel is still null after all that is dropped rather than
+   * offered: a source that stated no nutrients has nothing a total could use,
+   * and an entry built from it would record a name and no figures.
+   */
+  const handleScanApply = (
+    itemIds: string[],
+    toAdd: ReceiptAddDraft[],
+    _frozenItemIds: ReadonlySet<string>,
+    products: ScanProductDraft[],
+    gtinLinks: ScannedGtinLink[]
+  ) => {
+    // Keyed rather than looked up in `items`, which is a render snapshot: a row
+    // `ensureCatalogItem` mints two lines down isn't in it, and reading through
+    // it would silently drop exactly the rows this scan just created.
+    const resolved = new Map<string, GroceryItem>();
+    for (const id of itemIds) {
+      const item = items.find(i => i.id === id);
+      if (item) resolved.set(id, item);
+    }
+    const mintedLinks: ScannedGtinLink[] = [];
+    const packSizes = new Map<string, string>();
+    for (const product of products) {
+      if (product.packSize) packSizes.set(product.itemId, product.packSize);
+    }
+    for (const draft of toAdd) {
+      const item = draft.existingItemId
+        ? items.find(i => i.id === draft.existingItemId)
+        : ensureCatalogItem(draft.name);
+      if (!item) continue;
+      const id = item.id;
+      resolved.set(id, item);
+      if (draft.quantity) packSizes.set(id, draft.quantity);
+      if (!draft.existingItemId && draft.gtin) {
+        // Brand-only, matching what a minted row is named after: there is no
+        // existing item name left for a variant to be the residue of.
+        if (draft.brand) addProduct(id, { brand: draft.brand, variant: null });
+        mintedLinks.push({ gtin: draft.gtin, itemId: id, brand: draft.brand, variant: null });
+      }
+    }
+    for (const product of products) {
+      addProduct(product.itemId, { brand: product.brand, variant: product.variant });
+    }
+    linkScannedGtins([...gtinLinks, ...mintedLinks]);
+
+    const gtinByItemId = new Map(
+      [...gtinLinks, ...mintedLinks].map(link => [link.itemId, link.gtin])
+    );
+    const foods: ScannedFood[] = [];
+    for (const [id, item] of resolved) {
+      // The box this barcode names, which `linkScannedGtins` has just given the
+      // panel to. Its own figures outrank the catalog row's, for the reason
+      // `nutritionFor` gives: a specific pot is a better answer than the food.
+      const linked = gtinProductFor(gtinByItemId.get(id) ?? null);
+      const box = linked?.itemId === id ? linked : null;
+      const panel = nutritionFor(item, box);
+      // Nothing to log, rather than a panel written somewhere it doesn't
+      // belong. A scanned code whose source stated figures but no brand has no
+      // box to hang them on, and filing a specific loaf's label onto the "Bread"
+      // row would make every future helping of bread claim that loaf's numbers.
+      // Refuse rather than approximate, same as everywhere else in this tree.
+      if (!panel) continue;
+      const boxWords = describeProduct(box);
+      foods.push({
+        key: id,
+        label: boxWords ? `${item.name}, ${boxWords}` : item.name,
+        panel,
+        packSize: packSizes.get(id) ?? null,
+        itemId: id,
+        productId: box?.id ?? null,
+      });
+    }
+    setScanOpen(false);
+    if (foods.length === 0) {
+      Alert.alert(
+        'Nothing to log',
+        'None of those has nutrition on it yet. A food can be logged once its figures are the food\'s own rather than a guess.',
+      );
+      return;
+    }
+    setScanned(foods);
+  };
 
   const handleDelete = (id: string, label: string) => {
     Alert.alert(
@@ -123,6 +240,11 @@ export function FoodLogScreen() {
             : `${dayEntries.length} ${dayEntries.length === 1 ? 'entry' : 'entries'}`
         }
         actions={[
+          {
+            icon: 'barcode-outline',
+            onPress: () => { haptics.tap(); setAddingSlot(null); setScanOpen(true); },
+            accessibilityLabel: 'Scan a barcode to log',
+          },
           {
             icon: 'add-circle-outline',
             onPress: () => { haptics.tap(); setAddingSlot(null); setAddOpen(true); },
@@ -276,6 +398,19 @@ export function FoodLogScreen() {
         slot={addingSlot}
         at={loggingAt}
         onClose={() => setAddOpen(false)}
+      />
+      <BarcodeScanSheet
+        visible={scanOpen}
+        context="log"
+        onClose={() => setScanOpen(false)}
+        onApply={handleScanApply}
+      />
+      <ScanPortionSheet
+        visible={scanned.length > 0}
+        foods={scanned}
+        slot={addingSlot}
+        at={loggingAt}
+        onClose={() => setScanned([])}
       />
     </SafeAreaView>
   );
