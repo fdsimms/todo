@@ -23,10 +23,11 @@ import { perServing, recipeNutrition } from '../utils/recipeNutrition';
 import { describeProduct } from '../utils/groceryProduct';
 import { groceryNameKey } from '../utils/groceryParse';
 import { haptics } from '../utils/haptics';
-import { parseQuantity, rationalToNumber } from '../utils/quantity';
+import { weighableLine } from '../utils/ingredientGrams';
 import { EmptyState } from './EmptyState';
 import { InlineAction } from './InlineAction';
 import { NutritionSearchSheet } from './NutritionSearchSheet';
+import { NumberPadAccessory, NUMBER_PAD_ACCESSORY_ID } from './NumberPadAccessory';
 import { SegmentedControl } from './SegmentedControl';
 import { SheetHeaderButton } from './SheetHeaderButton';
 
@@ -53,7 +54,11 @@ import { SheetHeaderButton } from './SheetHeaderButton';
  * food itself, not just this entry.** When the typed amount names a unit
  * ("1 cup") the food's own portion table doesn't have, offering to weigh it
  * is cheaper than telling someone to go find a different way to say the same
- * thing they just measured. What's recorded is `{ unit, grams }`, exactly the
+ * thing they just measured. The offer is `weighableLine`'s to make rather
+ * than this file's, and it is verified rather than inferred from the shape of
+ * the amount: several of the ways `scalePanelToAmount` refuses are ones a
+ * portion row cannot fix, and offering there costs a trip to the scale and
+ * settles nothing. What's recorded is `{ unit, grams }`, exactly the
  * shape `FoodPortion` already holds — `addCustomPortion` (`foodNutrition.ts`)
  * appends it with `custom: true`, and it's written through `setItemNutrition`/
  * `setProductNutrition` so it's there the next time this food is logged, not
@@ -227,15 +232,20 @@ export function FoodLogEntrySheet({ visible, slot, at, seedRecipeId, onClose }: 
     return scalePanelToAmount(picked.panel, amount, null);
   }, [picked, amount, recipes, items, itemProducts]);
 
-  // What's actually offered to weigh: the amount typed has to name a plain
-  // unit ("1 cup") rather than a sized container ("14 oz can", already a
-  // weight) or nothing at all ("a pinch") — the one shape this food's own
-  // portion table could be missing a row for.
+  // What's actually offered to weigh, which `weighableLine` decides rather
+  // than the shape of the typed amount alone.
+  //
+  // The rule here used to be that the amount named a plain unit and hadn't
+  // resolved, which sends somebody to the scale for a food a portion row
+  // can't help: a per-serving panel with no serving weight wants the
+  // *serving* weighed, and a table already listing small, medium and large is
+  // refusing "1 medium" because the amount is ambiguous, which one more row
+  // makes worse. `scalePanelToAmount` refuses on `panelMultiplier`, and that
+  // helper re-runs the same refusal against the row it would write, so an
+  // offer is one that actually settles the amount.
   const weighable = useMemo(() => {
-    if (!picked || picked.kind !== 'food' || built || !amount.trim()) return null;
-    const q = parseQuantity(amount);
-    if (q.amount === null || !q.unit || q.container) return null;
-    return { unit: q.unit, count: rationalToNumber(q.amount) };
+    if (!picked || picked.kind !== 'food' || !picked.panel || built || !amount.trim()) return null;
+    return weighableLine(amount, null, picked.panel, picked.label);
   }, [picked, built, amount]);
 
   // Listed from the food's own table rather than a fixed "e.g. 1 cup" — that
@@ -254,7 +264,7 @@ export function FoodLogEntrySheet({ visible, slot, at, seedRecipeId, onClose }: 
     if (!picked || !picked.panel || !weighable) return;
     const grams = Number(weighGrams.trim().replace(',', '.'));
     if (!Number.isFinite(grams) || grams <= 0) { haptics.error(); return; }
-    const updated = addCustomPortion(picked.panel, weighable.unit, weighable.count, grams);
+    const updated = addCustomPortion(picked.panel, weighable.label, weighable.amount, grams);
     if (!updated) { haptics.error(); return; }
     if (picked.productId) setProductNutrition(picked.productId, updated);
     else if (picked.itemId) setItemNutrition(picked.itemId, updated);
@@ -394,6 +404,7 @@ export function FoodLogEntrySheet({ visible, slot, at, seedRecipeId, onClose }: 
                     placeholder="e.g. 240"
                     placeholderTextColor={colors.textTertiary}
                     keyboardType="decimal-pad"
+                    inputAccessoryViewID={NUMBER_PAD_ACCESSORY_ID}
                     accessibilityLabel="Weight in grams"
                   />
                   <Text style={styles.weighUnit}>g</Text>
@@ -485,6 +496,7 @@ export function FoodLogEntrySheet({ visible, slot, at, seedRecipeId, onClose }: 
         onClose={() => setDbSearchOpen(false)}
         onPick={handleDbPick}
       />
+      <NumberPadAccessory />
     </Modal>
   );
 }

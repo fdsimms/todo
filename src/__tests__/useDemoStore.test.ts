@@ -125,7 +125,13 @@ import {
   shopPricesFor,
 } from '../utils/groceryPrice';
 import { describeRecipeCost, estimateRecipeCost } from '../utils/recipeCost';
-import { describeRecipeNutrition, perServing, recipeNutrition } from '../utils/recipeNutrition';
+import {
+  describeRecipeNutrition,
+  perServing,
+  recipeNutrition,
+  recipeNutritionLines,
+} from '../utils/recipeNutrition';
+import { weighableLine } from '../utils/ingredientGrams';
 import { asksOnCompletion, chainStepDatedByAnswer, formatTaskDeliverable } from '../utils/deliverables';
 import { tripMarkerFor, describeTripMarker } from '../utils/activeTrip';
 import { buildDayBuckets, canProject } from '../utils/calendarMonth';
@@ -2420,6 +2426,30 @@ describe('demo seed — groceries, recipes, meals and the fridge', () => {
     // The recipe says it serves four, so the summary leads per serving.
     expect(perServing(read)).not.toBeNull();
     expect(describeRecipeNutrition(read)).toMatch(/^≈ \d+ cal, \d+g protein per serving$/);
+  });
+
+  it('seeds both gaps the recipe nutrition sheet offers to fill', () => {
+    // The sheet's two remedies are only reachable from a line in the right
+    // state, so a seed with neither reads as a sheet that lists problems and
+    // does nothing about them. One of each, on real seeded recipes.
+    const { items, itemProducts } = useGroceryStore.getState();
+    const recipes = useRecipeStore.getState().recipes;
+    const byName = (name: string) => recipes.find(r => r.name === name)!;
+
+    // A catalog row with no figures at all: the "find this food / type in a
+    // label" pair. Rolled oats is bought often enough to survive clearList.
+    const oats = recipeNutritionLines(byName('Overnight oats'), items, itemProducts)
+      .find(l => l.name.toLowerCase().includes('oats'))!;
+    expect(oats.state).toBe('noPanel');
+    expect(oats.item).not.toBeNull();
+
+    // Figures with no portion table, against a line written in tablespoons:
+    // the "weigh it" row, and the offer has to survive its own probe.
+    const oil = recipeNutritionLines(byName('Roast potatoes'), items, itemProducts)
+      .find(l => l.name.toLowerCase().includes('olive oil'))!;
+    expect(oil.state).toBe('unmeasured');
+    expect(weighableLine(oil.quantity, oil.prep, oil.nutrition!, oil.item!.name))
+      .toEqual({ label: 'tbsp', amount: 3, text: '3 tbsp' });
   });
 
   it('seeds a self-weighed portion beside a stated one, marked custom', () => {
