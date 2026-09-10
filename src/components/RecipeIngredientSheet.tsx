@@ -131,6 +131,9 @@ export function RecipeIngredientSheet({ visible, recipeId, ingredient, onClose }
   // A garnish or serving suggestion rather than something the dish needs
   // (RecipeIngredient.optional).
   const [optional, setOptional] = useState(false);
+  // Left out of this recipe's nutrition total on purpose — a garnish or a
+  // small amount that doesn't move the figures (RecipeIngredient.excludeFromNutrition).
+  const [excludeFromNutrition, setExcludeFromNutrition] = useState(false);
   // Nested rather than a sibling: a Modal presents from its React parent's view
   // controller, so a sibling would ask this sheet's own presenter for a second
   // presentation while this one is up. Same call GroceryCatalogSheet makes, and it's
@@ -156,6 +159,7 @@ export function RecipeIngredientSheet({ visible, recipeId, ingredient, onClose }
     setAisle(ingredient.aisle);
     setNoSwap(!!ingredient.noSwap);
     setOptional(!!ingredient.optional);
+    setExcludeFromNutrition(!!ingredient.excludeFromNutrition);
     setEditingItemId(null);
     setLinkOpen(false);
     setAltLinkOpen(false);
@@ -236,6 +240,7 @@ export function RecipeIngredientSheet({ visible, recipeId, ingredient, onClose }
       aisle,
       noSwap,
       optional,
+      excludeFromNutrition,
     });
     onClose();
   };
@@ -622,6 +627,30 @@ export function RecipeIngredientSheet({ visible, recipeId, ingredient, onClose }
               A garnish or serving suggestion rather than something the dish needs. Starts
               unchecked when this recipe's ingredients go on your list — still there to check
               off by hand.
+            </Text>
+          </View>
+        </TouchableOpacity>
+
+        <View style={styles.separator} />
+
+        <TouchableOpacity
+          style={styles.toggleRow}
+          activeOpacity={interaction.activeOpacity}
+          onPress={() => { haptics.tap(); setExcludeFromNutrition(v => !v); }}
+          accessibilityRole="switch"
+          accessibilityState={{ checked: excludeFromNutrition }}
+          accessibilityLabel="Don't count toward nutrition"
+        >
+          <Ionicons
+            name={excludeFromNutrition ? 'checkbox' : 'square-outline'}
+            size={iconSize.md}
+            color={excludeFromNutrition ? colors.accent : colors.textSecondary}
+          />
+          <View style={styles.toggleBody}>
+            <Text style={styles.toggleLabel}>Don't count toward nutrition</Text>
+            <Text style={styles.hint}>
+              Leaves this line out of the recipe's nutrition total, the same way a staple
+              is left out. For an amount too small to matter, like a garnish.
             </Text>
           </View>
         </TouchableOpacity>

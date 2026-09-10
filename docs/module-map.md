@@ -87,7 +87,7 @@ render, so listing them adds lines without adding answers.
 - `src/utils/focusSuggest.ts` — MAX_SUGGESTED_FOCUS, FOCUS_BUDGET_MINUTES, FocusContext, buildFocusContext, fitsWindow, scoreFocusTask, nextFocusSuggestion, suggestFocusTasks, focusQueueFromPinned, focusReason
 - `src/utils/focusWindow.ts` — FOCUS_CALENDAR_HORIZON_MINUTES, CalendarWindow, calendarWindow
 - `src/utils/followUpTask.ts` — MIN_FOLLOW_UP_TASK_EVERY_N, MAX_FOLLOW_UP_TASK_EVERY_N, canHoldFollowUpTask, FollowUpTaskRule, followUpTaskRule, advanceFollowUpTaskTally, FollowUpTaskSuppression, followUpTaskSuppressedBy, completionsUntilFollowUpTask, followUpTaskSummary, +5 more
-- `src/utils/foodLog.ts` — FoodLogTotals, FoodLogSection, scalePanelToAmount, recipeHelpingNutrition, foodLogTotals, foodLogSections, FoodLogListItem, resolveFoodLogDrop, describeFoodLogTotals, NutrientContribution, +2 more
+- `src/utils/foodLog.ts` — FoodLogTotals, FoodLogSection, scalePanelToAmount, recipeHelpingNutrition, combineFoodNutrition, foodLogTotals, foodLogSections, FoodLogListItem, resolveFoodLogDrop, describeFoodLogTotals, +3 more
 - `src/utils/foodNutrition.ts` — parseFoodNutrition, serializeFoodNutrition, addCustomPortion, nutritionFor, describeFoodPanel, NUTRIENT_LABEL, NUTRITION_BASIS_LABEL
 - `src/utils/foodSearchMatch.ts` — FoodCandidate, FoodMatchTier, RankedFood, rankFoodCandidates, unambiguousFood
 - `src/utils/freshness.ts` — daysUntilDay, freshnessFor, FRESHNESS_ORDER, freshnessRank, isUseUpSoon, describeUseBy, liveUseBy, describeOpenedOn, describeFrozenSince
@@ -126,7 +126,7 @@ render, so listing them adds lines without adding answers.
 - `src/utils/kitchenHistory.ts` — KitchenEventKind, KitchenEvent, KitchenHistoryDay, kitchenEvents, kitchenHistoryDays, filterKitchenEvents
 - `src/utils/kitchenInventory.ts` — KitchenKind, kitchenEntryId, parseKitchenEntryId, KITCHEN_LINK_URL, kitchenLinkUrl, FRIDGE_SECTION, FREEZER_SECTION, KitchenEntry, KitchenSection, compareKitchenEntries, +4 more
 - `src/utils/kitchenReorder.ts` — KitchenRow, kitchenRowKey, KitchenDestination, KitchenMove, buildKitchenRows, resolveKitchenDrop, kitchenDragRange
-- `src/utils/labelOcr.ts` — LabelColumn, LabelReading, readNutritionLabel, readLabelPhoto
+- `src/utils/labelOcr.ts` — LabelColumn, LabelReading, readNutritionLabel, amountFromPrintedText, readLabelPhoto
 - `src/utils/layoutAnimation.ts` — animateLayout
 - `src/utils/leftoverTasks.ts` — wantsUseUpTask, useUpTaskTitle, useUpTaskFields, useUpTaskDraft, useUpTaskDrift
 - `src/utils/leftovers.ts` — cleanLeftoverTitle, LeftoverPart, WHOLE_PART_KEY, LeftoverDestination, LeftoverPick, leftoverContainersFor, leftoverPartsFor, clampKeepDays, leftoverKeepDaysFor, describeKeepDays, +25 more
@@ -366,7 +366,7 @@ render, so listing them adds lines without adding answers.
 
 ## `src/services`
 
-- `src/services/aiSuggestions.ts` — describeAIError, TemplateItemSuggestion, suggestTemplateItems, ProjectTaskSuggestion, suggestProjectTasks, SubtaskSuggestion, suggestSubtasks, MAX_RECIPE_CHARS, suggestGroceryAisles, RecipeGroceryItem, +19 more
+- `src/services/aiSuggestions.ts` — describeAIError, TemplateItemSuggestion, suggestTemplateItems, ProjectTaskSuggestion, suggestProjectTasks, SubtaskSuggestion, suggestSubtasks, MAX_RECIPE_CHARS, suggestGroceryAisles, RecipeGroceryItem, +21 more
 - `src/services/foodSearch.ts` — FoodSearchHit, searchFoods, fetchFoodPortions, describeFoodSearchError, foodSearchErrorSettingsEntryId
 - `src/services/geocode.ts` — GeocodedPlace, geocodePlace
 - `src/services/onDeviceModel.ts` — isOnDeviceReady, onDeviceAvailability, describeOnDeviceAvailability, isOnDeviceErrorMessage, describeOnDeviceError, runOnDevice

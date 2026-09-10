@@ -212,6 +212,10 @@ const AI_FEATURE_KEYWORDS: Record<AiFeatureId, string[]> = {
     'claude', 'model', 'food log', 'calories', 'nutrition', 'restaurant', 'takeout',
     'eating out', 'ate out', 'guess',
   ],
+  nutritionLabelPhoto: [
+    'claude', 'model', 'nutrition panel', 'nutrition facts', 'calories', 'barcode',
+    'product', 'curved', 'glare', 'blurry',
+  ],
 };
 
 /** One entry per row `PrivacyAiSettings` actually renders, in the same order. */

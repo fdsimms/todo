@@ -33,6 +33,7 @@ import { alternativeCaptions, applyChoice, choiceGroupKey, recipeChoiceGroups } 
 import { normalizeScale } from '../utils/recipeScale';
 import { convertQuantity } from '../utils/unitConvert';
 import { RecipeScaleChips } from './RecipeScaleChips';
+import { RecipeChoiceChips } from './RecipeChoiceChips';
 import { SheetHeaderButton } from './SheetHeaderButton';
 import { InlineAction } from './InlineAction';
 import { EmptyState } from './EmptyState';
@@ -483,58 +484,39 @@ export function RecipeToListSheet({
               const key = choiceGroupKey(group.recipe.id, group.label);
               const open = undecided.includes(key);
               return (
-                <View key={key} style={styles.choiceGroup}>
-                  <Text style={styles.sectionLabel}>{group.label}</Text>
-                  <View style={styles.choiceChips}>
-                    {group.options.map(option => {
-                      const on = !open && option.id === group.active.id;
-                      const name = option.name || 'Deleted recipe';
-                      return (
-                        <TouchableOpacity
-                          key={option.id}
-                          style={[styles.choiceChip, on && styles.choiceChipOn]}
-                          activeOpacity={interaction.activeOpacity}
-                          onPress={() => {
-                            haptics.tap();
-                            setUndecided(prev => prev.filter(k => k !== key));
-                            setChoices(prev => applyChoice(prev, group, option.id));
-                          }}
-                          accessibilityRole="button"
-                          accessibilityState={{ selected: on }}
-                          accessibilityLabel={`${group.label}: ${name}`}
-                        >
-                          <Text style={[styles.choiceChipText, on && styles.choiceChipTextOn]}>{name}</Text>
-                        </TouchableOpacity>
-                      );
-                    })}
-                    {/* Ingredients only. A component group names a dish, and
-                        two dishes' worth of lines on the list is not something
-                        one tick at the shelf could ever take back off — see
-                        ChoiceResolution.undecided. */}
-                    {group.kind === 'ingredient' && (
-                      <TouchableOpacity
-                        style={[styles.choiceChip, open && styles.choiceChipOn]}
-                        activeOpacity={interaction.activeOpacity}
-                        onPress={() => {
-                          haptics.tap();
-                          setUndecided(prev => (open ? prev.filter(k => k !== key) : [...prev, key]));
-                        }}
-                        accessibilityRole="button"
-                        accessibilityState={{ selected: open }}
-                        accessibilityLabel={`${group.label}: put both on the list and decide at the store`}
-                      >
-                        <Text style={[styles.choiceChipText, open && styles.choiceChipTextOn]}>
-                          Decide at the store
-                        </Text>
-                      </TouchableOpacity>
-                    )}
-                  </View>
-                  {open && (
-                    <Text style={styles.choiceHint}>
-                      All {group.options.length} go on the list. Check off the one you get and the rest come off.
-                    </Text>
-                  )}
-                </View>
+                <RecipeChoiceChips
+                  key={key}
+                  group={group}
+                  activeOptionId={open ? null : group.active.id}
+                  onPick={optionId => {
+                    setUndecided(prev => prev.filter(k => k !== key));
+                    setChoices(prev => applyChoice(prev, group, optionId));
+                  }}
+                  hint={open
+                    ? `All ${group.options.length} go on the list. Check off the one you get and the rest come off.`
+                    : null}
+                  // Ingredients only. A component group names a dish, and two
+                  // dishes' worth of lines on the list is not something one
+                  // tick at the shelf could ever take back off — see
+                  // ChoiceResolution.undecided.
+                  extraChip={group.kind === 'ingredient' ? (
+                    <TouchableOpacity
+                      style={[styles.choiceChip, open && styles.choiceChipOn]}
+                      activeOpacity={interaction.activeOpacity}
+                      onPress={() => {
+                        haptics.tap();
+                        setUndecided(prev => (open ? prev.filter(k => k !== key) : [...prev, key]));
+                      }}
+                      accessibilityRole="button"
+                      accessibilityState={{ selected: open }}
+                      accessibilityLabel={`${group.label}: put both on the list and decide at the store`}
+                    >
+                      <Text style={[styles.choiceChipText, open && styles.choiceChipTextOn]}>
+                        Decide at the store
+                      </Text>
+                    </TouchableOpacity>
+                  ) : null}
+                />
               );
             })}
           </View>
@@ -797,8 +779,6 @@ const makeStyles = (colors: Colors) => StyleSheet.create({
     paddingTop: spacing.md,
     gap: spacing.xs,
   },
-  choiceGroup: { gap: spacing.xs },
-  choiceChips: { flexDirection: 'row', flexWrap: 'wrap', gap: spacing.xs },
   choiceChip: {
     // bgSecondary, not bgTertiary: this row sits directly on the sheet's own
     // `colors.bg` (see `root` below), and bgTertiary is only one step off it —
@@ -814,7 +794,6 @@ const makeStyles = (colors: Colors) => StyleSheet.create({
   choiceChipOn: { backgroundColor: colors.accentFill },
   choiceChipText: { color: colors.textSecondary, fontSize: font.sm },
   choiceChipTextOn: { color: colors.onAccent, fontWeight: fontWeight.medium },
-  choiceHint: { color: colors.textTertiary, fontSize: font.xs },
   section: { gap: spacing.xs },
   sectionHeaderRow: {
     flexDirection: 'row',

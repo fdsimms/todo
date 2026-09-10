@@ -2231,6 +2231,20 @@ describe('demo seed — groceries, recipes, meals and the fridge', () => {
     expect(row?.category).toBe('needToBuy');
   });
 
+  it('seeds an ingredient excluded from its recipe\'s nutrition total', () => {
+    // Invisible without a seeded instance, same as the optional case above:
+    // nothing infers "this line doesn't move the total" from the text of a
+    // recipe.
+    const recipes = useRecipeStore.getState().recipes;
+    const excludedLine = recipes.flatMap(r => r.ingredients).find(i => i.excludeFromNutrition);
+    expect(excludedLine).toBeDefined();
+
+    const owner = recipes.find(r => r.ingredients.some(i => i.id === excludedLine!.id))!;
+    const { items, itemProducts } = useGroceryStore.getState();
+    const lines = recipeNutritionLines(owner, items, itemProducts);
+    expect(lines.some(l => l.id === excludedLine!.id)).toBe(false);
+  });
+
   it('seeds substitutes in both directions', () => {
     const { items, itemSubs } = useGroceryStore.getState();
 
@@ -2576,6 +2590,23 @@ describe('demo seed — groceries, recipes, meals and the fridge', () => {
     expect(oil.state).toBe('unmeasured');
     expect(weighableLine(oil.quantity, oil.prep, oil.nutrition!, oil.item!.name))
       .toEqual({ label: 'tbsp', amount: 3, text: '3 tbsp' });
+  });
+
+  it('seeds a gap neither remedy on the recipe page can close', () => {
+    // A third shape of "unmeasured": figures on file, but the recipe line
+    // never named an amount at all ("Bread", for serving) rather than one
+    // `weighableLine` could resolve with a single weighing. Neither of
+    // RecipeNutritionSheet's two remedies applies, which is exactly the gap
+    // FoodLogEntrySheet's "Anything else?" section exists to ask about
+    // instead, at log time rather than once on the recipe. Without a line in
+    // this state, that section reads as dead code no seeded recipe ever
+    // reaches.
+    const { items, itemProducts } = useGroceryStore.getState();
+    const soup = useRecipeStore.getState().recipes.find(r => r.name === 'Weeknight vegetable soup')!;
+    const bread = recipeNutritionLines(soup, items, itemProducts).find(l => l.name.toLowerCase() === 'bread')!;
+    expect(bread.state).toBe('unmeasured');
+    expect(bread.quantity).toBe('');
+    expect(weighableLine(bread.quantity, bread.prep, bread.nutrition!, bread.item!.name)).toBeNull();
   });
 
   it('seeds a self-weighed portion beside a stated one, marked custom', () => {

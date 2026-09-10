@@ -50,6 +50,15 @@ import {
  * SQLite, so there is no demo-mode gate to add — same reasoning `receiptOcr.ts`
  * gives at length. The photo is one the user just framed and the reading is
  * discarded when the sheet closes.
+ *
+ * **What this can't read, `readLabelPhotoWithAi` in `aiSuggestions.ts` gets a
+ * second try at.** A curved tub, a steep angle, or glare on the wrap warps the
+ * text or hides part of it, which is a real limit of on-device transcription
+ * rather than a gap in the row-matching below — `NutritionPanelSheet` calls
+ * that fallback only once this file has already returned null. It shares
+ * `amountFromPrintedText` at the bottom of this file so the unit and salt
+ * arithmetic stays the one tested place regardless of which path read the
+ * photo.
  */
 
 /** What one printed row was found to say. */
@@ -450,6 +459,25 @@ export function readNutritionLabel(lines: readonly RecognizedLine[]): LabelReadi
     servingGrams: serving.grams !== null && serving.grams > 0 ? serving.grams : null,
     columns,
   };
+}
+
+/**
+ * A figure's printed text — value and unit together, exactly as a label
+ * states it ("7g", "490mg", "<0.5g") — turned into this app's stored unit.
+ *
+ * This is the seam `aiSuggestions.ts`'s vision fallback calls through rather
+ * than doing its own unit arithmetic: that path asks Claude to transcribe a
+ * photographed panel's figures, never to compute one, for the same reason the
+ * module doc comment above gives for keeping the arithmetic in one tested
+ * place. Reuses `readValues`/`amountFor` so a transcribed figure is converted
+ * by the exact same code an on-device read already goes through.
+ */
+export function amountFromPrintedText(target: NutrientKey | 'salt', printed: string): number | null {
+  const trimmed = printed.trim();
+  if (!trimmed) return null;
+  const [value] = readValues(trimmed);
+  if (!value) return null;
+  return amountFor({ target, values: [value] }, value);
 }
 
 /**

@@ -1,4 +1,4 @@
-import { readNutritionLabel } from '../utils/labelOcr';
+import { amountFromPrintedText, readNutritionLabel } from '../utils/labelOcr';
 import type { RecognizedLine } from 'todo-vision-bridge';
 
 /**
@@ -370,5 +370,39 @@ describe('readNutritionLabel', () => {
       expect(reading.columns[0].amounts.calorieKcal).toBe(140);
       expect(reading.columns[0].amounts.fatG).toBe(6);
     });
+  });
+});
+
+describe('amountFromPrintedText', () => {
+  // The seam the AI vision fallback in aiSuggestions.ts calls through: it
+  // transcribes a figure's printed text and this does the actual unit and
+  // salt arithmetic, same as a photo Vision itself could read.
+  it('reads a figure with its printed unit', () => {
+    expect(amountFromPrintedText('fatG', '7g')).toBe(7);
+    expect(amountFromPrintedText('sodiumMg', '490mg')).toBe(490);
+  });
+
+  it('reads a figure with no printed unit in that nutrient\'s own unit', () => {
+    expect(amountFromPrintedText('proteinG', '9')).toBe(9);
+    expect(amountFromPrintedText('sodiumMg', '105')).toBe(105);
+  });
+
+  it('takes the stated bound of a figure printed below a threshold', () => {
+    expect(amountFromPrintedText('fatG', '<0.5g')).toBe(0.5);
+  });
+
+  it('keeps a stated zero', () => {
+    expect(amountFromPrintedText('fatG', '0g')).toBe(0);
+  });
+
+  it('converts a declared salt figure to the sodium in it', () => {
+    // Same regulated 2.5 factor readNutritionLabel applies to a Vision-read
+    // panel: 1.2g of salt is 480mg of sodium.
+    expect(amountFromPrintedText('salt', '1.2g')).toBe(480);
+  });
+
+  it('returns null for text with no figure in it', () => {
+    expect(amountFromPrintedText('fatG', '')).toBeNull();
+    expect(amountFromPrintedText('fatG', 'not stated')).toBeNull();
   });
 });

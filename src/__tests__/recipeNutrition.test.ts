@@ -251,6 +251,21 @@ describe('recipeNutrition', () => {
     expect(read.covered).toBe(1);
   });
 
+  it('excludes a line marked excludeFromNutrition from both sides of the fraction', () => {
+    const dish = recipe('Pasta', [
+      ing('Pasta', { quantity: '200 g' }),
+      ing('Basil', { quantity: '1 handful', excludeFromNutrition: true }),
+    ]);
+    const catalog = [
+      item({ name: 'Pasta', nutrition: panel() }),
+      // No panel at all — if this line weren't excluded it would drag
+      // coverage down, not just leave a nutrient out.
+    ];
+    const read = recipeNutrition(dish, catalog)!;
+    expect(read.lines).toBe(1);
+    expect(read.covered).toBe(1);
+  });
+
   it('applies the scale to the total', () => {
     const dish = recipe('Chicken', [ing('Chicken', { quantity: '200 g' })]);
     const catalog = [item({ name: 'Chicken', nutrition: panel() })];
@@ -448,6 +463,17 @@ describe('weekNutrition', () => {
     expect(weekNutrition([entry('2026-09-01', roast.id)], recipesById, catalog(), RANGE)).toBeNull();
   });
 
+  it('excludes a line marked excludeFromNutrition, same as a single recipe\'s reading', () => {
+    const roast = recipe('Roast', [
+      ing('Chicken', { quantity: '400 g' }),
+      ing('Basil', { quantity: '1 handful', excludeFromNutrition: true }),
+    ]);
+    const recipesById = new Map([[roast.id, roast]]);
+    const read = weekNutrition([entry('2026-08-10', roast.id)], recipesById, catalog(), RANGE)!;
+    expect(read.lines).toBe(1);
+    expect(read.covered).toBe(1);
+  });
+
   it('keeps a nutrient below the per-nutrient floor out of the total', () => {
     // The same floor a single recipe applies. Protein is stated by one food of
     // three, so the week has no protein total rather than a confident one.
@@ -531,6 +557,17 @@ describe('recipeNutritionLines', () => {
     ];
     expect(recipeNutritionLines(dish, catalog).map(l => l.name)).toEqual(['Chicken']);
     expect(recipeNutrition(dish, catalog)!.lines).toBe(1);
+  });
+
+  it('leaves an excluded line out entirely, and it carries which recipe it belongs to', () => {
+    const dish = recipe('Stew', [
+      ing('Chicken', { quantity: '200 g' }),
+      ing('Basil', { quantity: '1 handful', excludeFromNutrition: true }),
+    ]);
+    const catalog = [item({ name: 'Chicken', nutrition: panel() })];
+    const lines = recipeNutritionLines(dish, catalog);
+    expect(lines.map(l => l.name)).toEqual(['Chicken']);
+    expect(lines[0].recipeId).toBe(dish.id);
   });
 
   it('comes back empty for an either/or nobody has decided, matching the rollup', () => {

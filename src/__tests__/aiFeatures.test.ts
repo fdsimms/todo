@@ -18,7 +18,10 @@ describe('AI features', () => {
 describe('aiFeaturesFor', () => {
   it('drops the kitchen features when the area is off', () => {
     expect(aiFeaturesFor(false).map(f => f.id))
-      .toEqual(['taskBreakdown', 'templateSuggestions', 'projectTaskSuggestions', 'calendarImport']);
+      .toEqual([
+        'taskBreakdown', 'templateSuggestions', 'projectTaskSuggestions', 'calendarImport',
+        'nutritionLabelPhoto',
+      ]);
   });
 
   it('keeps them all when it is on', () => {
@@ -37,7 +40,7 @@ describe('aiFeaturesFor', () => {
 
   it('composes the two gates rather than letting one override the other', () => {
     expect(aiFeaturesFor(false, true).map(f => f.id))
-      .toEqual(['taskBreakdown', 'templateSuggestions', 'projectTaskSuggestions']);
+      .toEqual(['taskBreakdown', 'templateSuggestions', 'projectTaskSuggestions', 'nutritionLabelPhoto']);
   });
 
   it('leaves the stored config alone, so the rows come back as they were', () => {

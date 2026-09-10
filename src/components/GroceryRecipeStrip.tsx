@@ -48,7 +48,9 @@ export function GroceryRecipeStrip({ recipes, selected, onToggle, onClear }: Pro
         label: recipe.title,
         // A tick rather than a 0 once everything it needs is in the cart: the
         // count is how much is left to find, and "0" reads as a quantity.
-        suffix: recipe.remaining === 0 ? '✓' : `${recipe.remaining}`,
+        // Parenthesized and spaced off the name, so it reads as a count next
+        // to the recipe rather than as part of its title.
+        suffix: recipe.remaining === 0 ? ' ✓' : ` (${recipe.remaining})`,
         selected: selected.includes(recipe.recipeId),
         accessibilityLabel:
           recipe.remaining === 0

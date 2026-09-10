@@ -492,7 +492,7 @@ export function ApplyTemplateSheet({ visible, template, onClose, projectId, onAp
                 style={styles.runInput}
                 value={runName}
                 onChangeText={setRunName}
-                placeholder={`What's this ${template.name.toLowerCase()} for?`}
+                placeholder={`Name for "${template.name}"`}
                 placeholderTextColor={colors.textTertiary}
                 maxLength={TITLE_MAX_LENGTH}
                 returnKeyType="done"

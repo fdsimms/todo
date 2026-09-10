@@ -4434,6 +4434,18 @@ export interface RecipeIngredient {
   // own name rather than the suggested split, since that's what the pill's
   // offer is keyed on (see splittableInto in RecipeDetailScreen).
   dismissedSplitSuggestion?: string;
+  // "A handful of basil doesn't move the total" — the per-line opt-out from
+  // nutrition counting (see recipeNutrition.ts). Excluded from both sides of
+  // its coverage fraction, the same as a staple (GroceryItem.isStaple), and
+  // for the same reason: a line marked this way isn't a gap in the dish's
+  // figures, it's a line the dish's figures were never meant to include.
+  //
+  // Deliberately per line rather than per catalog item: a pinch of salt is a
+  // staple everywhere it's used, but a handful of basil matters plenty in a
+  // pesto and nothing in a garnish on someone else's dish — the same
+  // ingredient wants counting in one recipe and not in another. Same
+  // optional-boolean convention as noSwap/optional, for the same reason.
+  excludeFromNutrition?: boolean;
 }
 
 // One recipe used as a part of another — "mashed potatoes" inside both "Steak

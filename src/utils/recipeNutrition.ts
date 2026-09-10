@@ -320,6 +320,15 @@ export function readRecipeNutrition(
 export interface NutritionLine extends LineResolution {
   /** The recipe line's own id, unique across a flattened dish. */
   id: string;
+  /**
+   * The recipe this line is actually written on — the root for a plain
+   * dish, but a component's own id for a line that came in through one (see
+   * `flattenRecipeIngredients`). Excluding a line writes back to
+   * `RecipeIngredient.excludeFromNutrition`, and that write has to land on
+   * the recipe holding the ingredient, not on whichever recipe the sheet
+   * opened for.
+   */
+  recipeId: string;
   /** As the recipe writes it, so a row here reads like the row on the page. */
   name: string;
   /** Scaled, matching what the ingredient list shows and what was measured. */
@@ -364,12 +373,16 @@ export function recipeNutritionLines(
 
   const out: NutritionLine[] = [];
   for (const line of flat) {
+    // Excluded outright, same as a staple: not a line that failed to count,
+    // not a line at all.
+    if (line.ingredient.excludeFromNutrition) continue;
     const quantity = scaleQuantity(line.ingredient.quantity, factor).text;
     const resolved = resolveLine(line.ingredient.nameKey, quantity, line.ingredient.prep, byKey, productFor);
     if (!resolved) continue;
     out.push({
       ...resolved,
       id: line.ingredient.id,
+      recipeId: line.recipe.id,
       name: line.ingredient.name,
       quantity,
       prep: line.ingredient.prep,
@@ -402,6 +415,7 @@ export function weekNutrition(
   const productFor = preferredProductLookup(products);
   const resolved: LineResolution[] = [];
   for (const line of planned) {
+    if (line.excludeFromNutrition) continue;
     const one = resolveLine(line.nameKey, line.quantity, null, byKey, productFor);
     if (one) resolved.push(one);
   }
