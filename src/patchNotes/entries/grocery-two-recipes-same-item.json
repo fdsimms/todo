@@ -1,0 +1,4 @@
+{
+  "message": "When two recipes both need something already on your grocery list, the amounts are now combined instead of the second recipe's need being silently dropped, and the \"For\" note clears rather than crediting just one of the two",
+  "date": "2026-09-10"
+}
