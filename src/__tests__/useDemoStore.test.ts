@@ -118,6 +118,7 @@ import {
   shopPricesFor,
 } from '../utils/groceryPrice';
 import { describeRecipeCost, estimateRecipeCost } from '../utils/recipeCost';
+import { describeRecipeNutrition, perServing, recipeNutrition } from '../utils/recipeNutrition';
 import { asksOnCompletion, chainStepDatedByAnswer, formatTaskDeliverable } from '../utils/deliverables';
 import { tripMarkerFor, describeTripMarker } from '../utils/activeTrip';
 import { buildDayBuckets, canProject } from '../utils/calendarMonth';
@@ -2192,6 +2193,33 @@ describe('demo seed — groceries, recipes, meals and the fridge', () => {
     expect(estimate).not.toBeNull();
     expect(estimate!.totalMinor).toBeGreaterThan(0);
     expect(describeRecipeCost(estimate, '$', new Date())).toMatch(/^≈ \$\d+\.\d{2}/);
+  });
+
+  it('seeds a recipe whose nutrition estimate actually answers', () => {
+    // Same reasoning as the cost estimate above, and the same dish. Without a
+    // recipe that clears the floor, the whole rollup reads as a feature the
+    // app hasn't got to anyone handed the phone. Mashed potatoes answers on
+    // all three of its non-staple lines: potatoes by the pound need only a
+    // panel, while butter by the tablespoon and milk by the cup reach grams
+    // through the portion tables seeded beside them.
+    const { items, itemProducts } = useGroceryStore.getState();
+    const mash = useRecipeStore.getState().recipes.find(r => r.name === 'Mashed potatoes')!;
+    const read = recipeNutrition(mash, items, itemProducts)!;
+    expect(read).not.toBeNull();
+    expect(read.covered).toBe(read.lines);
+    // Salt is a staple and drops out of both sides of the fraction.
+    expect(read.lines).toBe(3);
+    expect(read.total.calorieKcal).toBeGreaterThan(0);
+
+    // Fibre is reported by the potatoes alone, so it stays unknown rather than
+    // arriving as a confident total off one food in three. This is the
+    // per-nutrient floor doing its job on real seeded data.
+    expect(read.reported.fiberG).toBe(1);
+    expect(read.total.fiberG).toBeUndefined();
+
+    // The recipe says it serves four, so the summary leads per serving.
+    expect(perServing(read)).not.toBeNull();
+    expect(describeRecipeNutrition(read)).toMatch(/^≈ \d+ cal, \d+g protein per serving$/);
   });
 
   it('seeds a trip in progress, with rows that have something to say about it', () => {

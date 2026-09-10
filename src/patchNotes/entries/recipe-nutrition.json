@@ -1,0 +1,4 @@
+{
+  "message": "A recipe now shows roughly what it contains, next to its cost estimate: calories and protein per serving, with a note saying how many of its ingredients the figure covers. Only ingredients whose food is known count toward it, and a nutrient too few of them report is left out rather than counted as zero",
+  "date": "2026-09-10"
+}
