@@ -1,0 +1,4 @@
+{
+  "message": "Fixed the Focus Sessions stats numbers (average and longest session) showing in black instead of the normal readable color in dark mode",
+  "date": "2026-09-10"
+}
