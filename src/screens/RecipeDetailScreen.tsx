@@ -76,11 +76,15 @@ import { PillGroup } from '../components/PillGroup';
 import { describeUnscaled, scaleQuantity } from '../utils/recipeScale';
 import { convertQuantity } from '../utils/unitConvert';
 import { RecipeScaleChips } from '../components/RecipeScaleChips';
+import { RecipeChoiceChips } from '../components/RecipeChoiceChips';
 import { tagColor } from '../utils/tagColor';
 import { formatDuration } from '../utils/effort';
 import {
+  applyChoice,
+  choiceGroupKey,
   flattenRecipeIngredients,
   recipeAlternativeCaptions,
+  recipeChoiceGroups,
   recipeMap,
   resolveComponents,
   type ResolvedComponent,
@@ -188,6 +192,22 @@ export function RecipeDetailScreen() {
   // sheet, which is the one place the number turns into something bought.
   const [scale, setScale] = useState(1);
 
+  // Which alternative the cost and nutrition estimates below are for, when the
+  // recipe poses an either/or — "sourdough" and "baguette" don't share a
+  // nutrient profile, so silently pricing and totting up whichever option
+  // happens to be listed first was giving one dish's figures for a page that
+  // might mean the other. Screen state, held exactly like `scale` above and
+  // for the same reason: which one you're reading this recipe for isn't an
+  // edit to the recipe, and the lasting form of a real pick lives on
+  // MealPlanEntry.recipeChoices. Starts empty, which is every group on its
+  // default — same contract RecipeToListSheet's own `choices` keeps.
+  const [choices, setChoices] = useState<string[]>([]);
+  const choiceResolution = useMemo(() => ({ chosen: choices }), [choices]);
+  const choiceGroups = useMemo(
+    () => (recipe ? recipeChoiceGroups(recipe, recipesById, choiceResolution) : []),
+    [recipe, recipesById, choiceResolution]
+  );
+
   // Only lines that *have* a quantity can fail to scale; a line with none was
   // never going to say a number either way.
   const unscaledNote = useMemo(() => {
@@ -200,10 +220,14 @@ export function RecipeDetailScreen() {
 
   // Priced through the same flattening the shopping read uses (components,
   // standing swaps, this much of the recipe) — null while too little of it is
-  // priced to say anything (see recipeCost.ts).
+  // priced to say anything (see recipeCost.ts). Reads the same choice picked
+  // above, so a doubled dinner and a swapped ingredient both show up here the
+  // same way the nutrition estimate right below it does.
   const costEstimate = useMemo(
-    () => (recipe ? estimateRecipeCost(recipe, groceryItems, recipesById, undefined, scale, standingSwaps) : null),
-    [recipe, groceryItems, recipesById, scale, standingSwaps]
+    () => (recipe
+      ? estimateRecipeCost(recipe, groceryItems, recipesById, choiceResolution, scale, standingSwaps)
+      : null),
+    [recipe, groceryItems, recipesById, choiceResolution, scale, standingSwaps]
   );
   const costLine = useMemo(
     () => describeRecipeCost(costEstimate, currencySymbol, new Date()),
@@ -213,12 +237,13 @@ export function RecipeDetailScreen() {
   // The same flattening again, with grams in place of prices. One reading
   // rather than three calls, so the summary line, the coverage count and the
   // list of what's missing are all describing the same lines (see
-  // readRecipeNutrition).
+  // readRecipeNutrition). Same resolution as the cost estimate above, so the
+  // two never disagree about which alternative this page is currently for.
   const nutritionReading = useMemo(
     () => (recipe
-      ? readRecipeNutrition(recipe, groceryItems, itemProducts, recipesById, undefined, scale, standingSwaps)
+      ? readRecipeNutrition(recipe, groceryItems, itemProducts, recipesById, choiceResolution, scale, standingSwaps)
       : null),
-    [recipe, groceryItems, itemProducts, recipesById, scale, standingSwaps]
+    [recipe, groceryItems, itemProducts, recipesById, choiceResolution, scale, standingSwaps]
   );
   // The figures where there are enough of them, and the bare coverage where
   // there aren't. It used to render nothing in the second case, on the
@@ -1482,6 +1507,30 @@ export function RecipeDetailScreen() {
             style={styles.scaleRow}
           />
         )}
+        {/* Which alternative the cost and nutrition figures below are for —
+            same reasoning as the scale chips right above: what it changes is
+            visibly below it, not up by the summary. Yogurt and nonfat yogurt
+            don't share a nutrient profile, so this is what lets the estimate
+            answer for the one you're actually making instead of always the
+            recipe's own default. */}
+        {choiceGroups.length > 0 && (
+          <View style={styles.choiceRow}>
+            {choiceGroups.map(group => {
+              const key = choiceGroupKey(group.recipe.id, group.label);
+              return (
+                <RecipeChoiceChips
+                  key={key}
+                  group={group}
+                  activeOptionId={group.active.id}
+                  onPick={optionId => {
+                    animateLayout();
+                    setChoices(prev => applyChoice(prev, group, optionId));
+                  }}
+                />
+              );
+            })}
+          </View>
+        )}
         {/* Live off the same scale chips above — a doubled dinner reads as a
             doubled cost. Renders nothing rather than a guess while too few
             lines are priced to say (see recipeCost.ts's coverage floor). */}
@@ -2517,6 +2566,7 @@ const makeStyles = (colors: Colors) => StyleSheet.create({
   },
   qtyTextScaled: { color: colors.accent, fontWeight: fontWeight.medium },
   scaleRow: { marginTop: spacing.xs, marginBottom: spacing.sm },
+  choiceRow: { gap: spacing.sm, marginBottom: spacing.sm },
   scaleNote: {
     color: colors.textTertiary,
     fontSize: font.xs,

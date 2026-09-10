@@ -14,6 +14,7 @@ import {
   type RecipeNutritionReading,
 } from '../utils/recipeNutrition';
 import { EditorSheet } from './EditorSheet';
+import { GroceryItemSheet } from './GroceryItemSheet';
 import { InlineAction } from './InlineAction';
 import { NumberPadAccessory, NUMBER_PAD_ACCESSORY_ID } from './NumberPadAccessory';
 import { NutritionPanelSheet } from './NutritionPanelSheet';
@@ -36,14 +37,17 @@ import { SheetHeaderButton } from './SheetHeaderButton';
  * nothing new is computed for it.
  *
  * **A gap is offered a remedy only where one exists, and they are not
- * interchangeable.** A line with no catalog row has nowhere to keep figures, so
- * it is listed rather than offered — linking it is the grocery catalog's own
- * flow, one sheet along, and reproducing it here would be a second way to do
- * one job. A row with no figures gets the pair `GroceryItemSheet` already
- * offers for exactly this, in the same words: find the food in a database, or
- * copy the label off the packet. Figures that can't be measured against the
- * amount asked for get a scale, and only when `weighableLine` has confirmed
- * that weighing would actually settle it.
+ * interchangeable.** A line with no catalog row has nowhere to keep figures,
+ * so its remedy is minting one — `ensureCatalogItem` plus `GroceryItemSheet`,
+ * the same off-list creation `addToPantry`'s neutral half already relies on —
+ * rather than the grocery catalog's own *linking* flow, which is for renaming
+ * a line onto an item that already exists and lives one sheet along in
+ * `IngredientCatalogMatchSheet`; reproducing that one here would be a second
+ * way to do the same job. A row with no figures gets the pair `GroceryItemSheet`
+ * already offers for exactly this, in the same words: find the food in a
+ * database, or copy the label off the packet. Figures that can't be measured
+ * against the amount asked for get a scale, and only when `weighableLine` has
+ * confirmed that weighing would actually settle it.
  *
  * **Every write goes to the grocery catalog, never to the recipe.** What is
  * missing is a fact about a food, not about this dish, so filling it in here
@@ -83,6 +87,7 @@ export function RecipeNutritionSheet({ visible, reading, onClose }: Props) {
 
   const setItemNutrition = useGroceryStore(s => s.setItemNutrition);
   const setProductNutrition = useGroceryStore(s => s.setProductNutrition);
+  const ensureCatalogItem = useGroceryStore(s => s.ensureCatalogItem);
 
   // Which line each nested sheet is open for, rather than a boolean and a
   // separate id: the two can't disagree if there is only one of them.
@@ -90,6 +95,10 @@ export function RecipeNutritionSheet({ visible, reading, onClose }: Props) {
   const [searchLine, setSearchLine] = useState<NutritionLine | null>(null);
   const [weighingId, setWeighingId] = useState<string | null>(null);
   const [weighGrams, setWeighGrams] = useState('');
+  // The catalog row `addToCatalog` just minted, so `GroceryItemSheet` can open
+  // straight onto it — off-list, exactly as `ensureCatalogItem` leaves it,
+  // until the person fills something in.
+  const [newItemId, setNewItemId] = useState<string | null>(null);
 
   const { nutrition, gaps } = reading;
 
@@ -128,6 +137,13 @@ export function RecipeNutritionSheet({ visible, reading, onClose }: Props) {
   const writePanel = (line: NutritionLine, next: FoodNutrition | null) => {
     if (line.product?.nutrition) setProductNutrition(line.product.id, next);
     else if (line.item) setItemNutrition(line.item.id, next);
+  };
+
+  /** Mints an off-list catalog row for a line with nothing to match, and opens it. */
+  const addToCatalog = (line: NutritionLine) => {
+    haptics.tap();
+    const item = ensureCatalogItem(line.name);
+    if (item) setNewItemId(item.id);
   };
 
   const startWeighing = (line: NutritionLine) => {
@@ -187,6 +203,11 @@ export function RecipeNutritionSheet({ visible, reading, onClose }: Props) {
             nutrition={panelLine?.nutrition ?? null}
             onClose={() => setPanelLine(null)}
             onSave={next => { if (panelLine) writePanel(panelLine, next); }}
+          />
+          <GroceryItemSheet
+            visible={newItemId !== null}
+            itemId={newItemId}
+            onClose={() => setNewItemId(null)}
           />
           <NumberPadAccessory />
         </>
@@ -314,12 +335,18 @@ export function RecipeNutritionSheet({ visible, reading, onClose }: Props) {
               <View key={line.id} style={styles.plainRow}>
                 <Ionicons name="ellipse-outline" size={iconSize.xs} color={colors.textTertiary} />
                 <Text style={styles.gapName} numberOfLines={1}>{line.name}</Text>
+                <InlineAction
+                  label="Add to catalog"
+                  variant="neutral"
+                  onPress={() => addToCatalog(line)}
+                  accessibilityLabel={`Add ${line.name} to your grocery catalog`}
+                />
               </View>
             ))}
             <Text style={styles.hint}>
               These lines don't match anything in your grocery catalog, so there's nowhere
-              to keep figures for them yet. The basket row on the recipe page is where a
-              line gets linked. Most one-off ingredients are fine left as they are.
+              to keep figures for them yet. Adding one lets you set a brand, a price or
+              figures for it — most one-off ingredients are fine left as they are.
             </Text>
           </View>
         </>
