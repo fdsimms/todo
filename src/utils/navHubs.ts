@@ -1,5 +1,5 @@
 /**
- * What the side menu contains, as data — nine rows, three of which are hubs.
+ * What the side menu contains, as data — ten rows, three of which are hubs.
  *
  * The menu used to be eighteen flat rows of equal weight, about twice what
  * fits on a phone, so half of it lived below a fold nothing announced. Reading
@@ -168,6 +168,19 @@ export const NAV_MENU_ROWS: readonly NavMenuRow[] = [
       route: 'Reminders',
       label: 'Reminders',
       keywords: ['upcoming', 'alerts', 'notifications', 'alarm'],
+    },
+  },
+  // Goes through one field at a time and offers the items missing it — a
+  // lens over tasks, categories, projects, people and grocery items that
+  // already exist, so it's shown unconditionally in simplified mode the same
+  // as Calendar and Stuck (see simpleMode.ts).
+  {
+    kind: 'screen',
+    icon: 'flash-outline',
+    destination: {
+      route: 'Backfill',
+      label: 'Backfill',
+      keywords: ['fill in', 'missing', 'empty fields', 'estimates', 'categories', 'tidy up'],
     },
   },
   { kind: 'hub', hub: KITCHEN_HUB },
