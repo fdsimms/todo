@@ -527,24 +527,59 @@ public class TodoHealthBridgeModule: Module {
             sampleType: type,
             predicate: HKQuery.predicateForSamples(withStart: anchor, end: end, options: []),
             limit: HKObjectQueryNoLimit,
-            sortDescriptors: nil
+            sortDescriptors: [NSSortDescriptor(key: HKSampleSortIdentifierStartDate, ascending: true)]
           ) { _, samples, _ in
             // Per source, then the largest, for `bestSum`'s reason and a
             // sharper version of it: a phone recording "in bed" and a watch
             // recording stages overlap for the same night, so adding them puts
             // people to sleep twice.
-            var bySource: [String: [Double]] = [:]
+            //
+            // A night is not one sample: a Watch records a fresh
+            // `HKCategorySample` every time the sleep stage changes, often
+            // every few minutes, and every one of those crosses whatever
+            // instant `dayResetTime` falls on the moment someone is still
+            // asleep at that hour — which is most nights, not an edge case.
+            // Bucketing each sample by its own `endDate` split a single
+            // night's total across the two adjacent days instead of filing
+            // the whole night under the day it ends in, undercounting both.
+            // So samples are grouped into episodes per source first — a gap
+            // longer than an hour between two samples means the night
+            // actually ended (and a nap started later) — and each episode's
+            // full duration is filed under the day its *last* sample ends in.
+            let episodeGapSeconds: TimeInterval = 60 * 60
+            var bySource: [String: [HKCategorySample]] = [:]
             for sample in (samples as? [HKCategorySample]) ?? [] {
-              guard Self.asleepValues.contains(sample.value) else { continue }
-              guard let i = starts.lastIndex(where: { $0 <= sample.endDate }),
-                    i < days else { continue }
-              let minutes = sample.endDate.timeIntervalSince(sample.startDate) / 60
-              guard minutes > 0 else { continue }
+              guard Self.asleepValues.contains(sample.value),
+                    sample.endDate.timeIntervalSince(sample.startDate) > 0 else { continue }
               let key = sample.sourceRevision.source.bundleIdentifier
-              if bySource[key] == nil { bySource[key] = [Double](repeating: 0, count: days) }
-              bySource[key]![i] += minutes
+              bySource[key, default: []].append(sample)
             }
-            for (_, perDay) in bySource {
+            var perDayBySource: [String: [Double]] = [:]
+            for (source, sourceSamples) in bySource {
+              var perDay = [Double](repeating: 0, count: days)
+              var episodeMinutes: Double = 0
+              var episodeEnd: Date?
+              func flushEpisode() {
+                defer {
+                  episodeMinutes = 0
+                  episodeEnd = nil
+                }
+                guard episodeMinutes > 0, let end = episodeEnd,
+                      let i = starts.lastIndex(where: { $0 <= end }), i < days else { return }
+                perDay[i] += episodeMinutes
+              }
+              for sample in sourceSamples.sorted(by: { $0.startDate < $1.startDate }) {
+                if let prevEnd = episodeEnd,
+                   sample.startDate.timeIntervalSince(prevEnd) > episodeGapSeconds {
+                  flushEpisode()
+                }
+                episodeMinutes += sample.endDate.timeIntervalSince(sample.startDate) / 60
+                episodeEnd = max(episodeEnd ?? sample.endDate, sample.endDate)
+              }
+              flushEpisode()
+              perDayBySource[source] = perDay
+            }
+            for (_, perDay) in perDayBySource {
               for i in 0..<days where perDay[i] > 0 {
                 if sleepMinutes[i] == nil || perDay[i] > sleepMinutes[i]! {
                   sleepMinutes[i] = perDay[i]

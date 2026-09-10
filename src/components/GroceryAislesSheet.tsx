@@ -324,6 +324,11 @@ export function GroceryAislesSheet({ visible, onClose }: Props) {
                     onBlur={commitAisleRename}
                     onSubmitEditing={commitAisleRename}
                     autoFocus
+                    // Off on every name field down here, for the reason
+                    // GroceryRow's inline rename spells out: the correction
+                    // lands on blur, and blur is what commits the name.
+                    autoCorrect={false}
+                    spellCheck={false}
                     returnKeyType="done"
                     maxLength={AISLE_NAME_MAX_LENGTH}
                     accessibilityLabel={`Rename ${aisle}`}
@@ -363,6 +368,8 @@ export function GroceryAislesSheet({ visible, onClose }: Props) {
                   onChangeText={setNewAisle}
                   placeholder="Add an aisle"
                   placeholderTextColor={colors.textTertiary}
+                  autoCorrect={false}
+                  spellCheck={false}
                   returnKeyType="done"
                   onSubmitEditing={handleAdd}
                   blurOnSubmit={false}
@@ -472,6 +479,8 @@ function StoresTab({
                   onBlur={onCommitRename}
                   onSubmitEditing={onCommitRename}
                   autoFocus
+                  autoCorrect={false}
+                  spellCheck={false}
                   returnKeyType="done"
                   maxLength={SHOP_NAME_MAX_LENGTH}
                   accessibilityLabel={`Rename ${shop.name}`}
@@ -527,6 +536,8 @@ function StoresTab({
               onChangeText={setNewShop}
               placeholder="Add a store"
               placeholderTextColor={colors.textTertiary}
+              autoCorrect={false}
+              spellCheck={false}
               returnKeyType="done"
               onSubmitEditing={onAdd}
               blurOnSubmit={false}

@@ -1,4 +1,4 @@
-import React, { useMemo, useState } from 'react';
+import React, { useMemo, useRef, useState } from 'react';
 import { Platform, View, Text, TextInput, TouchableOpacity, StyleSheet } from 'react-native';
 import Ionicons from '@expo/vector-icons/Ionicons';
 import { useColors } from '../theme/ThemeContext';
@@ -22,6 +22,7 @@ import { NumberPadAccessory, NUMBER_PAD_ACCESSORY_ID } from './NumberPadAccessor
 import { convertQuantity } from '../utils/unitConvert';
 import { describeProduct, RATING_LABELS } from '../utils/groceryProduct';
 import { formatPrice, formatPriceInput, parsePriceInput, priceToInput } from '../utils/groceryPrice';
+import { groceryNameKey } from '../utils/groceryParse';
 import { haptics } from '../utils/haptics';
 
 // Matches GroceryItemSheet's own price field — "10000.00" is the longest a
@@ -182,6 +183,19 @@ export const GroceryRow = React.memo(function GroceryRow({
   // is what toggles checked now.
   const [renaming, setRenaming] = useState(false);
   const [draftName, setDraftName] = useState(item.name);
+  // A refused rename used to be an error haptic and nothing else, which on a
+  // silent phone is no answer at all. The row keeps the typed name and says
+  // why instead, the way GroceryItemSheet's own name field does — it has no
+  // room for that field's "Merge with it instead" button, so it names the item
+  // that's in the way and points at the sheet, which offers the merge.
+  //
+  // Blanking the field is the way back out of a refusal, same as it always was
+  // for "changed my mind" — an empty or unchanged name reverts and closes.
+  const [nameError, setNameError] = useState<string | null>(null);
+  // onSubmitEditing is followed by onBlur, so a refusal that stays in edit
+  // mode would be told twice. Remember what was already refused and say
+  // nothing more until the text changes.
+  const refusedName = useRef<string | null>(null);
 
   // The trip price chip's own inline edit, same shape as renaming above:
   // tapping the chip swaps it for a TextInput, blurring or submitting
@@ -238,7 +252,17 @@ export const GroceryRow = React.memo(function GroceryRow({
       return;
     }
     setDraftName(item.name);
+    setNameError(null);
+    refusedName.current = null;
     setRenaming(true);
+  };
+
+  const editDraftName = (text: string) => {
+    setDraftName(text);
+    // The message is about the name that was refused, so any edit retires it
+    // and re-arms the check for whatever is typed next.
+    if (nameError) setNameError(null);
+    refusedName.current = null;
   };
 
   const commitRename = () => {
@@ -246,16 +270,36 @@ export const GroceryRow = React.memo(function GroceryRow({
     // field), and unmounting the TextInput on the way out fires onBlur again
     // — guard so a single edit only ever writes once.
     if (!renaming) return;
-    setRenaming(false);
     const trimmed = draftName.trim();
     // Empty or unchanged is a no-op, not a rename — nothing to write, and
     // reverting silently is friendlier than an error for "changed my mind".
-    if (!trimmed || trimmed === item.name) return;
-    // A collision reverts to the old name the same way a no-op does — there's
-    // no room on the row for GroceryItemSheet's persistent nameError — but it
-    // still needs to say something happened, or a real rename attempt looks
-    // identical to changing your mind.
-    if (!renameItem(item.id, trimmed)) haptics.error();
+    if (!trimmed || trimmed === item.name) {
+      setRenaming(false);
+      setNameError(null);
+      return;
+    }
+    if (trimmed === refusedName.current) return;
+    if (!renameItem(item.id, trimmed)) {
+      // Stay in edit mode holding what was typed: the name is refused because
+      // some other row already claims it, and reverting the field would take
+      // away the text the user needs to correct. Read non-reactively —
+      // subscribing this memoised row to the items array would re-render every
+      // row on the list whenever any item changed.
+      const key = groceryNameKey(trimmed);
+      const collision = useGroceryStore
+        .getState()
+        .items.find(i => i.id !== item.id && i.nameKey === key);
+      setNameError(
+        collision
+          ? `That's the same as ${collision.name}. Open the item to merge them.`
+          : 'Another item already has that name.',
+      );
+      refusedName.current = trimmed;
+      haptics.error();
+      return;
+    }
+    setRenaming(false);
+    setNameError(null);
   };
 
   const rowBody = (
@@ -311,11 +355,20 @@ export const GroceryRow = React.memo(function GroceryRow({
             <TextInput
               style={styles.nameInput}
               value={draftName}
-              onChangeText={setDraftName}
+              onChangeText={editDraftName}
               onBlur={commitRename}
               onSubmitEditing={commitRename}
               autoFocus
               selectTextOnFocus
+              // Off for the same reason GroceryAddField's own name input has
+              // them off: a grocery name is a shelf word, not prose, and iOS
+              // applies a pending autocorrection when the field resigns first
+              // responder — which is the very blur that commits the rename.
+              // "skyr" went in and "Skier" came back out, so commitRename saw
+              // the name it already had and correctly did nothing, which reads
+              // as a rename that silently refuses to happen.
+              autoCorrect={false}
+              spellCheck={false}
               maxLength={GROCERY_NAME_MAX_LENGTH}
               returnKeyType="done"
               accessibilityLabel="Item name"
@@ -328,6 +381,7 @@ export const GroceryRow = React.memo(function GroceryRow({
               {item.name}
             </Text>
           )}
+          {renaming && !!nameError && <Text style={styles.nameError}>{nameError}</Text>}
           {/* First and never suppressed, because it is the one caption that
               changes which box leaves the shelf. Deliberately its own line
               rather than trailing the name: the name is numberOfLines={1} and
@@ -626,6 +680,14 @@ function makeStyles(colors: Colors) {
       // Matches the Text row's box so swapping in the input doesn't nudge
       // the row's height — see the "never lineHeight on TextInput" rule.
       height: font.lg + 6,
+    },
+    // The one caption on this row that is a warning, so it's the one that gets
+    // a colour — it appears only while a rename is being refused, and it goes
+    // away as soon as the text changes.
+    nameError: {
+      fontSize: font.sm,
+      color: colors.red,
+      marginTop: 2,
     },
     // The fourth caption treatment, and the loudest of them — semibold on
     // textSecondary, where `alternatives` is medium on the same colour and both

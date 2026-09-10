@@ -13,6 +13,7 @@ import {
   dbUpdateGroceryItem,
   dbDeleteGroceryItem,
   dbRepointStoreAliases,
+  dbSetStoreAliasItemId,
   dbFinishGroceryShopping,
   dbClearGroceryList,
   dbDeleteGroceryList,
@@ -86,6 +87,7 @@ jest.mock('../db/database', () => ({
   dbGetAllStoreAliases: jest.fn(() => []),
   dbSetStoreAlias: jest.fn(),
   dbRepointStoreAliases: jest.fn(),
+  dbSetStoreAliasItemId: jest.fn(),
   dbSetItemProduct: jest.fn(),
   dbSetProductGtin: jest.fn(),
   dbGetGtinLookup: jest.fn().mockReturnValue(null),
@@ -3309,6 +3311,85 @@ describe('mergeItems keeps recipe ingredients and remembered aisles in step', ()
     const overrides = useGroceryStore.getState().aisleOverrides;
     expect(overrides.cilantro).toBe('Herbs & Spices');
     expect(overrides.coriander).toBeUndefined();
+  });
+});
+
+describe('mergeItems undo', () => {
+  it('restores the item rows, products, shop links, a store alias, and the recipe key it remapped — and redo re-merges it', () => {
+    (dbGetAllRecipes as jest.Mock).mockReturnValue([{
+      id: 'r1', name: 'Salsa', nameKey: 'salsa', notes: '', sourceUrl: null, servings: null,
+      ingredients: [{ id: 'i1', name: 'Cilantro', nameKey: 'cilantro', quantity: '1 bunch', aisle: null }],
+      sortOrder: 1, createdAt: '2026-01-01T00:00:00.000Z',
+    }]);
+    useRecipeStore.getState().initialize();
+
+    const cilantro = makeItem({
+      name: 'Cilantro', purchaseCount: 4, aisle: 'Produce', note: 'the fresh kind',
+    });
+    const coriander = makeItem({
+      name: 'Coriander', purchaseCount: 2, aisle: 'Herbs', note: 'imported',
+    });
+    const safeway = makeShop('Safeway');
+    const alias: StoreAlias = {
+      id: 'a1', shopId: safeway.id, rawKey: 'cilntro', itemId: cilantro.id,
+      hitCount: 3, createdAt: '2026-01-01T00:00:00.000Z', lastUsedAt: '2026-06-01T00:00:00.000Z',
+    };
+    seed([cilantro, coriander], { shops: [safeway], storeAliases: [alias] });
+    const loserProduct = useGroceryStore.getState().addProduct(cilantro.id, { brand: 'Store brand', variant: null })!;
+    useGroceryStore.getState().updateProduct(loserProduct.id, { rating: 'avoid', note: 'Wilts fast' });
+    useGroceryStore.setState({
+      itemShops: [{
+        itemId: cilantro.id, shopId: safeway.id, purchaseCount: 2, lastPurchasedAt: '2026-06-01T00:00:00.000Z',
+        unavailableAt: null, lastPriceMinor: 199, lastPricedAt: '2026-06-01T00:00:00.000Z',
+        lastPriceQuantity: null, priceHistory: [], productId: loserProduct.id, unavailableProductIds: {},
+      }],
+    });
+    const beforeCilantro = useGroceryStore.getState().itemById(cilantro.id)!;
+    const beforeCoriander = useGroceryStore.getState().itemById(coriander.id)!;
+
+    expect(useGroceryStore.getState().mergeItems(cilantro.id, coriander.id)).toBe(true);
+    expect(useGroceryStore.getState().itemById(cilantro.id)).toBeUndefined();
+    expect(useGroceryStore.getState().lastAction?.label).toBe('Merged "Cilantro" into "Coriander"');
+    expect(useGroceryStore.getState().lastAction?.destructive).toBe(true);
+
+    useGroceryStore.getState().undoLastAction();
+
+    expect(useGroceryStore.getState().itemById(cilantro.id)).toEqual(beforeCilantro);
+    expect(useGroceryStore.getState().itemById(coriander.id)).toEqual(beforeCoriander);
+    expect(dbInsertGroceryItem).toHaveBeenCalledWith(beforeCilantro);
+
+    const restoredProduct = useGroceryStore.getState().itemProducts.find(p => p.id === loserProduct.id);
+    expect(restoredProduct).toMatchObject({ itemId: cilantro.id, rating: 'avoid', note: 'Wilts fast' });
+
+    const restoredLink = useGroceryStore.getState().itemShops.find(l => l.itemId === cilantro.id);
+    expect(restoredLink).toMatchObject({ purchaseCount: 2, productId: loserProduct.id });
+
+    expect(useGroceryStore.getState().storeAliases.find(a => a.id === 'a1')).toEqual(alias);
+    expect(dbSetStoreAliasItemId).toHaveBeenCalledWith('a1', cilantro.id);
+
+    const ingredients = useRecipeStore.getState().recipeById('r1')!.ingredients;
+    expect(ingredients[0].nameKey).toBe('cilantro');
+
+    useGroceryStore.getState().redoLastUndone();
+
+    expect(useGroceryStore.getState().itemById(cilantro.id)).toBeUndefined();
+    expect(useGroceryStore.getState().itemById(coriander.id)!.purchaseCount).toBe(6);
+    expect(useRecipeStore.getState().recipeById('r1')!.ingredients[0].nameKey).toBe('coriander');
+  });
+
+  it('undoes a variety re-point onto the loser and a dropped choiceGroup member', () => {
+    const onions = makeItem({ name: 'Onions' });
+    const onion = makeItem({ name: 'Onion' });
+    const white = makeItem({ name: 'White onion', varietyOfKey: 'onion' });
+    seed([onions, onion, white]);
+
+    useGroceryStore.getState().mergeItems(onion.id, onions.id);
+    expect(useGroceryStore.getState().itemById(white.id)!.varietyOfKey).toBe('onions');
+
+    useGroceryStore.getState().undoLastAction();
+
+    expect(useGroceryStore.getState().itemById(white.id)!.varietyOfKey).toBe('onion');
+    expect(useGroceryStore.getState().itemById(onion.id)).toBeDefined();
   });
 });
 

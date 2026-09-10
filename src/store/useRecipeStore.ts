@@ -415,6 +415,16 @@ interface RecipeStore {
    */
   remapIngredientKey: (fromKey: string, toKey: string) => void;
 
+  /**
+   * Writes back an exact set of recipe rows, unconditionally — the mirror
+   * `useGroceryStore.mergeItems`' undo needs `remapIngredientKey` to have.
+   * Remapping `toKey` back to `fromKey` isn't safe there: it would also
+   * catch recipes that already referenced `toKey` before the merge, not just
+   * the ones the merge touched. Restoring the exact snapshot the caller took
+   * before calling `remapIngredientKey` sidesteps that.
+   */
+  restoreRecipes: (recipes: Recipe[]) => void;
+
   recipeById: (id: string) => Recipe | undefined;
   cookbookById: (id: string | null | undefined) => Cookbook | undefined;
 }
@@ -1226,6 +1236,13 @@ export const useRecipeStore = create<RecipeStore>((set, get) => ({
     if (changed.length === 0) return;
     changed.forEach(dbUpdateRecipe);
     const byId = new Map(changed.map(r => [r.id, r]));
+    set(s => ({ recipes: s.recipes.map(r => byId.get(r.id) ?? r) }));
+  },
+
+  restoreRecipes(recipes) {
+    if (recipes.length === 0) return;
+    recipes.forEach(dbUpdateRecipe);
+    const byId = new Map(recipes.map(r => [r.id, r]));
     set(s => ({ recipes: s.recipes.map(r => byId.get(r.id) ?? r) }));
   },
 

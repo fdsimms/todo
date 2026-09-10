@@ -1523,6 +1523,11 @@ export function GroceryItemSheet({
             onSubmitEditing={commitName}
             placeholder="Item name"
             placeholderTextColor={colors.textTertiary}
+            // See the note on GroceryRow's inline rename field: an
+            // autocorrection is applied on blur, and blur is what commits this
+            // field, so a corrected-away name commits as no change at all.
+            autoCorrect={false}
+            spellCheck={false}
             maxLength={GROCERY_NAME_MAX_LENGTH}
             accessibilityLabel="Item name"
           />

@@ -435,6 +435,22 @@ export interface TaskGroup {
   // it's why a stack could only ever render above every loose task.
   sortOrder: number;
   collapsed: boolean;      // persisted expand/collapse state
+  // Whether this stack was on the Today screen the last time it was looked at
+  // — one bit, rewritten by Today itself as stacks come and go, and read by
+  // nothing else.
+  //
+  // It exists so an expansion doesn't outlive the stack's stay on Today: a
+  // stack expanded on Monday and finished off leaves the list, and coming
+  // back on Tuesday it would otherwise arrive expanded, dropping its whole
+  // roster into the middle of the day. Going from absent to present collapses
+  // it (see syncTodayPresence), which is the same state a stack is created in.
+  // A stack that never leaves keeps whatever the user set, restarts included.
+  //
+  // This is deliberately *not* the dismissed-for-today stamp that used to live
+  // on this row: it gates nothing, so a wrong value costs one tap on the
+  // chevron rather than a stack that won't come back. Today still renders a
+  // stack exactly while it has a visible child.
+  onToday: boolean;
   // The project this stack was built inside, if it was built inside one.
   //
   // Everywhere else a stack is scoped by its children — which project it

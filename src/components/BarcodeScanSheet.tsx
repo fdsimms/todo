@@ -731,6 +731,10 @@ export function BarcodeScanSheet({ visible, onClose, onApply, context }: Props) 
                         }
                         placeholder="Name this item"
                         placeholderTextColor={colors.textTertiary}
+                        // A shelf word, not prose — see GroceryRow's inline
+                        // rename field for what autocorrect does to one.
+                        autoCorrect={false}
+                        spellCheck={false}
                         accessibilityLabel="Item name"
                       />
                       {/* The words the lookup used, kept verbatim: the only way
