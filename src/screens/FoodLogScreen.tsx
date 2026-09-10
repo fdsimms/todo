@@ -735,6 +735,7 @@ function makeStyles(colors: Colors) {
       backgroundColor: colors.bgSecondary,
     },
     entryRowSelected: { backgroundColor: colors.accentSubtle },
+    entryRowActive: { backgroundColor: colors.bgTertiary },
     entryContent: {
       flex: 1,
       paddingHorizontal: spacing.md,
@@ -777,7 +778,7 @@ function FoodLogRow({
   const rowBody = (
     <View
       ref={paintRef}
-      style={[styles.entryRow, selectionMode && selected && styles.entryRowSelected, isActive && styles.entryRowSelected]}
+      style={[styles.entryRow, selectionMode && selected && styles.entryRowSelected, isActive && styles.entryRowActive]}
     >
       <TouchableOpacity
         style={styles.entryContent}
