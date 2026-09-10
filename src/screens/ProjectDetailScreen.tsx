@@ -37,6 +37,7 @@ import { BulkActionBar } from '../components/BulkActionBar';
 import { QuickAddModal } from '../components/QuickAddModal';
 import { TemplatePickerSheet } from '../components/TemplatePickerSheet';
 import { ApplyTemplateSheet } from '../components/ApplyTemplateSheet';
+import { TemplateAppliedToast } from '../components/TemplateAppliedToast';
 import { ProjectTaskSuggestionsSheet } from '../components/ProjectTaskSuggestionsSheet';
 import { EmptyState } from '../components/EmptyState';
 import { InlineAction } from '../components/InlineAction';
@@ -173,6 +174,7 @@ export function ProjectDetailScreen() {
   const [templatePickerVisible, setTemplatePickerVisible] = useState(false);
   const [suggestionsVisible, setSuggestionsVisible] = useState(false);
   const [applyTemplate, setApplyTemplate] = useState<TaskTemplate | null>(null);
+  const [templateAppliedCount, setTemplateAppliedCount] = useState<number | null>(null);
   const [editorInitialDraft, setEditorInitialDraft] = useState<Partial<TaskDraft> | null>(null);
   const [showExistingPicker, setShowExistingPicker] = useState(false);
   const [existingSearch, setExistingSearch] = useState('');
@@ -1088,8 +1090,16 @@ export function ProjectDetailScreen() {
           template={applyTemplate}
           onClose={() => setApplyTemplate(null)}
           projectId={project?.id}
-          onApplied={tasks => { if (tasks[0]) openEditor(tasks[0]); }}
+          onApplied={tasks => { if (tasks.length > 0) setTemplateAppliedCount(tasks.length); }}
         />
+
+        {templateAppliedCount !== null && (
+          <TemplateAppliedToast
+            count={templateAppliedCount}
+            bottom={insets.bottom + spacing.xl + FAB_SIZE + spacing.md}
+            onDismiss={() => setTemplateAppliedCount(null)}
+          />
+        )}
 
         {/* Correcting a decision from where it's read — the same sheet in the
             same mode the Logbook's ⋯ menu opens, so there's one place an

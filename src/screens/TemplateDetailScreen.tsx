@@ -12,7 +12,7 @@ import { useNavigation, useRoute, type RouteProp } from '@react-navigation/nativ
 import Ionicons from '@expo/vector-icons/Ionicons';
 import { useTemplateStore } from '../store/useTemplateStore';
 import { EmptyState } from '../components/EmptyState';
-import { Fab } from '../components/Fab';
+import { Fab, FAB_SIZE } from '../components/Fab';
 import { ReorderableList } from '../components/ReorderableList';
 import { TemplateEditor } from '../components/TemplateEditor';
 import { TemplateItemEditor } from '../components/TemplateItemEditor';
@@ -20,7 +20,7 @@ import { TemplateItemQuickAdd } from '../components/TemplateItemQuickAdd';
 import { TemplateItemBulkBar } from '../components/TemplateItemBulkBar';
 import { TemplateSuggestionsSheet } from '../components/TemplateSuggestionsSheet';
 import { ApplyTemplateSheet } from '../components/ApplyTemplateSheet';
-import { TaskEditor } from '../components/TaskEditor';
+import { TemplateAppliedToast } from '../components/TemplateAppliedToast';
 import { NestedTemplatePicker } from '../components/NestedTemplatePicker';
 import { SwipeableRow } from '../components/SwipeableRow';
 import { DetailHeader } from '../components/DetailHeader';
@@ -35,7 +35,7 @@ import { confirmDelete } from '../utils/confirmDelete';
 import { animateLayout } from '../utils/layoutAnimation';
 import { anchorLabel, formatOffsetLabel, getDirectBrokenRefItemIds, findMissingRefs, describeMissingRefs } from '../utils/templateUtils';
 import { liveConditions } from '../utils/templateQuestions';
-import type { Task, TaskTemplate, TemplateItem } from '../types';
+import type { TaskTemplate, TemplateItem } from '../types';
 
 type RootStackParamList = {
   TemplateDetail: { templateId: string };
@@ -78,10 +78,10 @@ export function TemplateDetailScreen() {
   const allTags = useTaskStore(useShallow(s => s.allTags()));
 
   const [applyTemplateId, setApplyTemplateId] = useState<string | null>(null);
-  // Opened straight off a successful apply, to the first task it created —
-  // this screen has no task list of its own to land the created tasks in, so
-  // without this the run's only trace is wherever its container happens to be.
-  const [editingTask, setEditingTask] = useState<Task | null>(null);
+  // Named straight off a successful apply — this screen has no task list of
+  // its own to land the created tasks in, so without this the run leaves no
+  // trace beyond wherever its container happens to be.
+  const [templateAppliedCount, setTemplateAppliedCount] = useState<number | null>(null);
   // Snapshot rather than the live row, like TemplatesScreen does: the editor
   // seeds its fields off this object's identity, so handing it a value that
   // changes under it would reset them mid-edit.
@@ -473,15 +473,17 @@ export function TemplateDetailScreen() {
           visible={applyTemplateObj !== null}
           template={applyTemplateObj}
           onClose={() => setApplyTemplateId(null)}
-          onApplied={tasks => { if (tasks[0]) setEditingTask(tasks[0]); }}
+          onApplied={tasks => { if (tasks.length > 0) setTemplateAppliedCount(tasks.length); }}
         />
       )}
 
-      <TaskEditor
-        visible={editingTask !== null}
-        task={editingTask}
-        onClose={() => setEditingTask(null)}
-      />
+      {templateAppliedCount !== null && (
+        <TemplateAppliedToast
+          count={templateAppliedCount}
+          bottom={insets.bottom + spacing.xl + FAB_SIZE + spacing.md}
+          onDismiss={() => setTemplateAppliedCount(null)}
+        />
+      )}
     </View>
   );
 }
