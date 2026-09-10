@@ -310,13 +310,16 @@ export function SymptomDetailScreen() {
                   key={row.label}
                   style={[styles.foodRow, i > 0 && styles.foodRowGap]}
                   accessible
-                  accessibilityLabel={`${foodNames.get(row.label) ?? row.label}: logged on ${row.withHits} of the ${row.withDays} days you ate it, and ${row.withoutHits} of the ${row.withoutDays} days you didn't`}
+                  accessibilityLabel={`${foodNames.get(row.label) ?? row.label}: logged on ${row.withHits} of the ${row.withDays} days you had it, and ${row.withoutHits} of the ${row.withoutDays} days you didn't`}
                 >
                   <Text style={styles.foodName} numberOfLines={1}>
                     {foodNames.get(row.label) ?? row.label}
                   </Text>
+                  {/* "Had it" rather than "Ate it": half of what a food log
+                      holds is drunk, and "Ate it" over a row labelled Milk or
+                      Coffee reads as the app not knowing what it recorded. */}
                   {([
-                    { key: 'Ate it', rate: row.rateWith, hits: row.withHits, days: row.withDays, muted: false },
+                    { key: 'Had it', rate: row.rateWith, hits: row.withHits, days: row.withDays, muted: false },
                     { key: 'Didn’t', rate: row.rateWithout, hits: row.withoutHits, days: row.withoutDays, muted: true },
                   ] as const).map(side => (
                     <View key={side.key} style={styles.rateLine}>
@@ -327,17 +330,21 @@ export function SymptomDetailScreen() {
                       <View style={styles.rateTrack} accessible={false} importantForAccessibility="no">
                         <View style={[styles.rateFill, { width: `${rateBarPercent(side.rate)}%` }]} />
                       </View>
+                      {/* The unit is spelled out rather than left to the
+                          caption: "3 of 6" beside a bar could be read as a
+                          severity or a score, and days are what every figure
+                          on this card counts. */}
                       <Text style={[styles.rateCount, side.muted && styles.rateMuted]}>
-                        {side.hits} of {side.days}
+                        {side.hits} of {side.days} {side.days === 1 ? 'day' : 'days'}
                       </Text>
                     </View>
                   ))}
                 </View>
               ))}
               <Text style={styles.caption}>
-                How often you logged {stat.name.toLowerCase()} on the days you ate that food,
+                How often you logged {stat.name.toLowerCase()} on the days you had that food,
                 against the days you logged food without it. This counts days. It cannot tell a
-                food apart from everything else about the days you ate it.
+                food apart from everything else about the days you had it.
               </Text>
             </View>
           </>
@@ -440,7 +447,7 @@ const makeStyles = (colors: Colors) => StyleSheet.create({
   // x, which is what lets one food's bars be compared against another's.
   rateKey: { width: 46, fontSize: font.xs, color: colors.textSecondary },
   rateCount: {
-    width: 62,
+    width: 88,
     textAlign: 'right',
     fontSize: font.xs,
     color: colors.textSecondary,
