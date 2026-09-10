@@ -2422,6 +2422,19 @@ describe('demo seed — groceries, recipes, meals and the fridge', () => {
     expect(describeRecipeNutrition(read)).toMatch(/^≈ \d+ cal, \d+g protein per serving$/);
   });
 
+  it('seeds a self-weighed portion beside a stated one, marked custom', () => {
+    // Without a `custom` row in the seed, a portion someone weighed
+    // themselves and a portion the source stated read identically — the
+    // field FoodPortion.custom exists for has nothing showing it. Potatoes
+    // carries one of each: FDC's own diced cup, and a medium-potato weight
+    // nobody but the seed's imagined user ever measured.
+    const potatoes = useGroceryStore.getState().items.find(i => i.nameKey === 'potatoes')!;
+    expect(potatoes.nutrition!.portions).toEqual([
+      { amount: 1, label: 'cup, diced', grams: 150 },
+      { amount: 1, label: 'medium potato', grams: 173, custom: true },
+    ]);
+  });
+
   it('seeds a trip in progress, with rows that have something to say about it', () => {
     const { items, itemShops, shops, itemSubs, itemProducts } = useGroceryStore.getState();
 
