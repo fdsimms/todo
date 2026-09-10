@@ -221,13 +221,20 @@ export function WeightScreen() {
 
         <View style={styles.rangeRow}>
           <SegmentedControl
-            options={WEIGHT_CHART_RANGES.map(r => ({ value: r.days, label: r.label }))}
+            options={WEIGHT_CHART_RANGES.map(r => ({
+              value: r.days,
+              label: r.label,
+              // SegmentedControl reads a spoken label straight off the option
+              // (unlike SettingsSegments, which derives it) — computed here
+              // rather than left to the bare "1M"/"3M" a screen reader would
+              // otherwise read as literal letters.
+              accessibilityLabel: `Show the last ${
+                r.days === 30 ? 'month' : r.days === 365 ? 'year' : `${r.days / 30} months`
+              }`,
+            }))}
             value={rangeDays}
             onChange={next => { haptics.tap(); setRangeDays(next); }}
             label="Chart range"
-            accessibilityLabelFor={r => `Show the last ${
-              r.value === 30 ? 'month' : r.value === 365 ? 'year' : `${r.value / 30} months`
-            }`}
           />
         </View>
 

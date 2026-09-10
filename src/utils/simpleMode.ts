@@ -74,6 +74,7 @@ export type SimpleFeatureId =
   | 'calendarScreen'
   | 'statsScreen'
   | 'moodScreen'
+  | 'weightScreen'
   | 'foodLogScreen'
   | 'backfillScreen'
   | 'stuckScreen'

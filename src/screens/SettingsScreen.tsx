@@ -126,6 +126,7 @@ export function SettingsScreen() {
       moodLogTasks: settings.moodLogTasks,
       moodNudgeTasks: settings.moodNudgeTasks,
       weekendNudgeTasks: settings.weekendNudgeTasks,
+      weighInTasks: settings.weighInTasks,
     }, settings.kitchenEnabled),
     [settings]
   );
