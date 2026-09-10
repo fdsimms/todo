@@ -2,6 +2,7 @@ import React, { useEffect, useMemo, useState } from 'react';
 import { View, Text, ScrollView, StyleSheet } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { useBottomTabBarHeight } from '@react-navigation/bottom-tabs';
+import { useRoute } from '@react-navigation/native';
 import { format } from 'date-fns/format';
 import { useSettingsStore } from '../store/useSettingsStore';
 import { useHealthStore, WEIGHT_HISTORY_DAYS } from '../store/useHealthStore';
@@ -57,6 +58,18 @@ export function WeightScreen() {
   const refreshWeight = useHealthStore(s => s.refreshWeight);
 
   const [logOpen, setLogOpen] = useState(false);
+
+  // `dundundun://weight?log=1` — the weigh-in request's link button. Stamped
+  // with the arrival time rather than a boolean, and tracked against what has
+  // already been handled, so tapping the same row twice opens the sheet twice:
+  // the same shape `MoodScreen`'s own `openLog` uses, for the same reason.
+  const route = useRoute<{ key: string; name: string; params?: { openLog?: number } }>();
+  const [handledOpenLog, setHandledOpenLog] = useState<number | undefined>(undefined);
+  useEffect(() => {
+    if (route.params?.openLog === undefined || route.params.openLog === handledOpenLog) return;
+    setHandledOpenLog(route.params.openLog);
+    setLogOpen(true);
+  }, [route.params?.openLog, handledOpenLog]);
 
   useEffect(() => {
     if (healthReadEnabled) void refreshWeight();

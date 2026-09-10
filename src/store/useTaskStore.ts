@@ -88,6 +88,14 @@ import { deleteGeneratedTaskQuietly, dropGeneratedTask, reconcileGeneratedTask }
 import { generatedBy, generatedSourceOf, generatedTaskCountOf, generatorPausedForVacation, hasAnyGeneratedTask, liveGeneratedTask, liveGeneratedTasksOfKind } from '../utils/generatedTasks';
 import { CALENDAR_REVIEW_TITLE, calendarReviewDayKey, wantsCalendarReview } from '../utils/calendarReviewTasks';
 import { MOOD_LOG_TITLE, MOOD_NUDGE_TITLE, moodLogDayKey, moodNudgeNotes, wantsMoodNudge } from '../utils/moodTasks';
+import {
+  WEIGH_IN_LINK_URL,
+  WEIGH_IN_TITLE,
+  clampWeighInEveryDays,
+  wantsWeighIn,
+  weighInDayKey,
+  weighInNotes,
+} from '../utils/weightTasks';
 import { buildMoodDays, lowMoodRun } from '../utils/moodInsights';
 import {
   WEEKEND_NUDGE_TITLE,
@@ -1756,6 +1764,14 @@ interface TaskStore extends UndoHistoryActions {
   checkMoodTasks: () => void;
   /** The bare-weekend offer — see src/utils/weekendTasks.ts. */
   checkWeekendNudgeTasks: () => void;
+  /**
+   * The weigh-in request — see src/utils/weightTasks.ts. The one generator pass
+   * that takes a Health read of its own rather than judging a snapshot, so the
+   * only one that is async.
+   */
+  checkWeighInTasks: () => Promise<void>;
+  /** Tick off today's weigh-in request, if one is live, after a weight is saved. */
+  completeWeighInTaskForToday: () => void;
   /**
    * Tick off today's "Log how you're feeling" task, if one is live.
    *
@@ -6195,6 +6211,112 @@ export const useTaskStore = create<TaskStore>((set, get) => ({
     });
     // No setLastAction, same reasoning as the other unattended passes: this is
     // not something the user just did.
+  },
+
+  /**
+   * The `weighIn` generator: a task asking for a weight, when Health hasn't had
+   * one for a while.
+   *
+   * **Its trigger is the absence of data rather than a cadence**, which is the
+   * one thing it does differently from `checkMoodTasks` above — see
+   * `src/utils/weightTasks.ts` for why. The practical effect: somebody who
+   * weighs themselves every morning unprompted never sees this task, because
+   * every window it looks at already has a reading in it.
+   *
+   * **Async, and the only generator pass that is.** Every other one judges a
+   * snapshot some foreground effect already took; this one asks HealthKit a
+   * question of its own, because the long window `useHealthSync` would have to
+   * refresh for it is a six-month query the Weight screen alone should pay for.
+   * Nothing is ordered after it, so the maintenance list fires it and moves on.
+   */
+  async checkWeighInTasks() {
+    const settings = useSettingsStore.getState();
+    // Work the app invents, and vacation mode is the deliberate "hide work
+    // from me" — see GeneratedKindSpec.pausedOnVacation. Being asked to find a
+    // set of scales in a hotel is exactly the chore that should stand down.
+    if (generatorPausedForVacation('weighIn', settings.vacationMode)) return;
+    if (!settings.weighInTasks || !settings.weighInTaskCategory) return;
+    // Both Health switches, not just the read: the pass needs the read to know
+    // whether to ask, and the answer needs the write to be recordable. A task
+    // asking for a weight the sheet would then refuse to save is worse than no
+    // task at all.
+    if (!settings.healthReadEnabled || !settings.healthWriteEnabled) return;
+    // A reading taken in demo mode is a real person's, and a task written from
+    // it would be a claim about their logging sitting in a database about to be
+    // thrown away. `healthBridge` refuses the read too; this is the other half.
+    if (isDemoModeActive()) return;
+
+    const todayKey = dayKeyOf(getCurrentDayStart());
+    const dueDate = getCurrentDayStart();
+    dueDate.setHours(12, 0, 0, 0);
+
+    // Clear a request from a day that has gone before deciding today's — the
+    // clear-first-create-second ordering every day-keyed generator uses. An
+    // unanswered request is a question about a window that has moved on, not a
+    // task still owed.
+    liveGeneratedTasksOfKind(get().tasks, 'weighIn')
+      .filter(task => weighInDayKey(task) !== todayKey)
+      .forEach(task => deleteGeneratedTaskQuietly(task.id));
+
+    if (settings.weighInLastDayKey === todayKey) return;
+
+    const everyDays = clampWeighInEveryDays(settings.weighInEveryDays);
+    const points = await useHealthStore.getState().readRecentWeights(everyDays);
+    // **Null is not an empty window.** It means there was no way to ask at all
+    // (not iOS, no Health, demo mode), which is evidence of nothing — and
+    // unlike a refused read, it is a state the app can actually recognise. So
+    // it returns without spending the mark, and the question gets asked again
+    // on the next foreground rather than being silently answered "no readings"
+    // for the whole day.
+    if (points === null) return;
+
+    // Spent only now, once the read has actually happened, and before the
+    // window is judged. Before the read would burn the day on a failure;
+    // after the decision would let a swiped-away request come straight back on
+    // the next foreground, which is what this mark exists to prevent.
+    settings.setWeighInLastDayKey(todayKey);
+    if (!wantsWeighIn(points)) return;
+
+    reconcileGeneratedTask({
+      kind: 'weighIn',
+      sourceId: todayKey,
+      wanted: true,
+      // Title and notes are both derived from the settings alone, and the
+      // window they describe cannot change under a live row without the day
+      // rolling over and deleting it above. Nothing to chase.
+      drift: () => null,
+      draft: () => ({
+        title: WEIGH_IN_TITLE,
+        notes: weighInNotes(everyDays),
+        dueDate: dueDate.toISOString(),
+        category: settings.weighInTaskCategory,
+        // The row's link button opens the sheet that answers it. Without this
+        // the only thing to do with the request is tick it, which completes the
+        // task and records nothing — and unlike a missed mood entry, the number
+        // it was asking for cannot be reconstructed later.
+        linkUrl: WEIGH_IN_LINK_URL,
+        ...generatedBy('weighIn', todayKey),
+      }),
+    });
+    // No setLastAction, same reasoning as the other unattended passes: this is
+    // not something the user just did.
+  },
+
+  /**
+   * Tick off today's weigh-in request, if there is one, because a weight was
+   * just recorded.
+   *
+   * The counterpart to `completeMoodLogTaskForToday` below and called from the
+   * same place in spirit: the sheet that answers the question, on success.
+   * Without it, recording a weight leaves the task asking for one still sitting
+   * on Today.
+   */
+  completeWeighInTaskForToday() {
+    const todayKey = dayKeyOf(getCurrentDayStart());
+    const task = liveGeneratedTasksOfKind(get().tasks, 'weighIn')
+      .find(t => weighInDayKey(t) === todayKey);
+    if (!task) return;
+    get().completeTask(task.id);
   },
 
   completeMoodLogTaskForToday() {

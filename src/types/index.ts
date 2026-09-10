@@ -1305,7 +1305,18 @@ export type GeneratedKind =
   // calendarReview is in, one unit wider: three days named by one of them. So
   // writeGeneratedOptOut has nothing to write for it either, and what stops a
   // swiped-away row coming straight back is weekendNudgeLastWeekendKey.
-  | 'weekendNudge';
+  | 'weekendNudge'
+  // A stretch with no weigh-in recorded becomes a task to record one — see
+  // src/utils/weightTasks.ts. Its source id is the day key the request was
+  // raised on, the same "square on the calendar, not a row" position moodLog
+  // is in, and what stops a swiped-away one coming straight back is
+  // weighInLastDayKey.
+  //
+  // Deliberately not part of 'health' despite reading the same store: that
+  // kind fires *because* a reading crossed a rule the user wrote, and this one
+  // fires because there is no reading at all. Asking for data and reacting to
+  // it are two different permissions, so they are two different switches.
+  | 'weighIn';
 
 export interface Task {
   id: string;

@@ -307,6 +307,28 @@ honest are each a choice against an easier drawing:
 It is one accessibility element with a spoken summary, not one per reading:
 180 of those is a wall to swipe through rather than a chart to read.
 
+### The task that asks for one
+
+`weighIn` (`src/utils/weightTasks.ts`) is the generator that writes "Record
+your weight" when Health has had nothing for a while. It is written up in
+`docs/arch/generated-tasks.md`; two things about it belong here rather than
+there.
+
+**It reads whether a weight exists, never what it was.** That is the same
+fence this file draws everywhere else, applied to the one part of the feature
+that could most easily cross it. The app may notice you have not recorded a
+number, which is a fact about your logging and one you can check. It may not
+notice that the number went up, which is a fact about your body and is exactly
+the kind of claim that kept weight off the read list for years.
+
+**It is deliberately not a `health` rule.** Everything in the rules half of
+this file is about a reading crossing a threshold somebody wrote down.
+`weighIn` fires on the absence of a reading, so it needs no threshold, has
+nothing to compare, and cannot be wrong about a body. Adding it as an
+eleventh `HealthRuleMetric` would have been the obvious shape and would have
+put it back on the wrong side of the line: a rule metric is a thing the app
+judges, and there is no judgement here.
+
 ## The row on Today, and where it files
 
 The reading is a fourth `ContextRow` kind, beside `event`, `meal` and

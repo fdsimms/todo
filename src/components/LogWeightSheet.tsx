@@ -3,6 +3,7 @@ import { View, Text, TextInput, StyleSheet, Alert, Linking } from 'react-native'
 import { format } from 'date-fns/format';
 import { useSettingsStore } from '../store/useSettingsStore';
 import { useHealthStore } from '../store/useHealthStore';
+import { useTaskStore } from '../store/useTaskStore';
 import { useColors } from '../theme/ThemeContext';
 import { spacing, radius, font, fontWeight, type Colors } from '../theme';
 import { haptics } from '../utils/haptics';
@@ -77,6 +78,10 @@ export function LogWeightSheet({ visible, onClose }: Props) {
     if (result === 'written') {
       haptics.success();
       void refreshWeight();
+      // Recording the weight *is* the task, so a live request for one is
+      // answered and must not stay on Today — the same tidy-up the mood sheet
+      // does for its own check-in. A no-op when nothing asked.
+      useTaskStore.getState().completeWeighInTaskForToday();
       close();
       return;
     }

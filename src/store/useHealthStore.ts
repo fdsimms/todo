@@ -139,6 +139,11 @@ interface HealthState {
   refreshHistory: () => Promise<void>;
   /** Re-read the body-mass window. Only the Weight screen calls this. */
   refreshWeight: () => Promise<void>;
+  /**
+   * A short body-mass window, answered without storing it. Null when there was
+   * no way to ask at all.
+   */
+  readRecentWeights: (days: number) => Promise<WeightPoint[] | null>;
   clear: () => void;
 }
 
@@ -290,6 +295,38 @@ export const useHealthStore = create<HealthState>((set, get) => ({
     } finally {
       set({ loadingWeight: false });
     }
+  },
+
+  /**
+   * A short body-mass window, for the `weighIn` generator to ask "has anything
+   * been recorded lately".
+   *
+   * **Deliberately answers without storing anything.** `weightSeries` is the
+   * Weight screen's 180 days, and this is a handful of days a background pass
+   * wants once per foreground: writing the short window into that state would
+   * hand the screen a truncated chart, and widening the pass to the long window
+   * would put a six-month query on every foreground, which is the exact cost
+   * `readWeightSeries` exists as its own native call to avoid.
+   *
+   * **Null and `[]` are different answers and the caller must treat them so.**
+   * Null is "there was no way to ask" (not iOS, no Health, demo mode); `[]` is
+   * "asked, and nothing came back". Only the second is evidence of not having
+   * weighed in. Collapsing them is how a generator ends up writing a task on an
+   * Android build or, worse, during a demo.
+   */
+  async readRecentWeights(days) {
+    const bridge = healthBridge();
+    if (!bridge) return null;
+    const window = Math.max(1, Math.round(days));
+    const anchor = addDays(getCurrentDayStart(), -(window - 1));
+    const readings = await bridge.readWeightSeries(anchor.toISOString(), window);
+    const points: WeightPoint[] = [];
+    for (const reading of readings) {
+      const at = new Date(reading.start);
+      if (Number.isNaN(at.getTime())) continue;
+      points.push({ dayKey: getLogicalDayKey(at), kilograms: reading.kilograms });
+    }
+    return points;
   },
 
   clear() {

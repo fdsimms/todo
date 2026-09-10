@@ -2774,6 +2774,24 @@ describe('demo seed — groceries, recipes, meals and the fridge', () => {
     });
   });
 
+  it('seeds a weigh-in request, and no weight behind it', () => {
+    const { tasks } = useTaskStore.getState();
+    const settings = useSettingsStore.getState();
+
+    const task = tasks.find(t => t.generatedKind === 'weighIn');
+    expect(task).toBeDefined();
+    expect(task!.category).toBe('Health');
+    expect(settings.weighInTaskCategory).toBe('Health');
+    expect(task!.generatedSourceId).toBe(dayKeyOf(getCurrentDayStart()));
+    // The link is the point of the row: ticking a request off records nothing,
+    // and unlike a mood entry the number cannot be reconstructed later.
+    expect(task!.linkUrl).toBe('dundundun://weight?log=1');
+    // Health is the record and this app stores no weights, so there is nothing
+    // a seed could put behind this row. Its notes must therefore never claim a
+    // reading — inventing one would be a number about a body inside a fiction.
+    expect(task!.notes).not.toMatch(/\d+(\.\d+)?\s*(kg|lb)/i);
+  });
+
   it('seeds a health-target task, the fifth kind', () => {
     const task = useTaskStore.getState().tasks.find(t => t.healthMetric !== null);
     expect(task).toBeDefined();

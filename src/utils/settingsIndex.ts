@@ -274,6 +274,10 @@ const GENERATED_KEYWORDS: Record<GeneratedKind, string[]> = {
     'planning', 'project', 'generated', 'automatic'],
   weather: ['sunny', 'rainy', 'snowy', 'cold', 'hot', 'sunscreen', 'umbrella', 'coat', 'forecast',
     'location', 'temperature', 'generated', 'automatic'],
+  // No 'weigh-in': already in this generator's label. 'scale' and 'weight' are
+  // the words somebody actually types, and neither is.
+  weighIn: ['scale', 'scales', 'weight', 'weigh', 'body', 'mass', 'kg', 'lb', 'pounds',
+    'health', 'track', 'log', 'generated', 'automatic'],
 };
 
 /**
@@ -601,6 +605,8 @@ export const SETTINGS_ENTRIES: SettingsEntry[] = [
     keywords: ['birthday', 'days before', 'lead', 'early', 'notice', 'warning'] },
   { id: 'weekendNudgeLeadDays', groupId: 'generated', label: 'Show the task', section: 'Nudge for an empty weekend',
     keywords: ['weekend', 'thursday', 'friday', 'days before', 'lead', 'early', 'notice', 'warning'] },
+  { id: 'weighInEveryDays', groupId: 'generated', label: 'Ask after', section: 'Ask for a weigh-in',
+    keywords: ['weight', 'weigh', 'scale', 'days', 'how often', 'cadence', 'gap', 'interval'] },
   { id: 'birthdayGiftLeadDays', groupId: 'generated', label: 'Show the task', section: 'Birthday gift reminders',
     keywords: ['birthday', 'gift', 'present', 'days before', 'lead', 'early', 'notice', 'warning'] },
   { id: 'mealPlanNudgeTime', groupId: 'generated', label: 'Nudge me on', section: 'Plan meals for the week',
