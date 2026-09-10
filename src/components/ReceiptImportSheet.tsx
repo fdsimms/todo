@@ -87,6 +87,16 @@ export interface ReceiptAddDraft {
   /** The barcode scan sheet's per-row freezer toggle. Always undefined here — a receipt has no shelf to ask about. */
   frozen?: boolean;
   /**
+   * Whether a row this mints should be filed as still wearing the source's own
+   * words — see `GroceryItem.nameFromScan` and `nameFromScanFor`.
+   *
+   * Always undefined from a receipt. A printed line is a store's shorthand and
+   * the shopper name over it is the app's reading of that shorthand, so there
+   * is no product database phrasing sitting on the row for a rename queue to
+   * offer to fix.
+   */
+  nameFromScan?: boolean;
+  /**
    * The barcode this row was scanned from, so the row it mints can be linked
    * back to the code — see `linkScannedGtins`.
    *

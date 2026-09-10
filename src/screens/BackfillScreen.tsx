@@ -20,6 +20,8 @@ import { CategoryPickerList } from '../components/CategoryPicker';
 import { CountStepper } from '../components/CountStepper';
 import { PillGroup } from '../components/PillGroup';
 import { SubstituteSheet } from '../components/SubstituteSheet';
+import { NutritionPanelSheet } from '../components/NutritionPanelSheet';
+import { NutritionSearchSheet } from '../components/NutritionSearchSheet';
 import { NumberPadAccessory, NUMBER_PAD_ACCESSORY_ID } from '../components/NumberPadAccessory';
 import { RemindMePicker } from '../components/RemindMePicker';
 import { BirthdayPicker } from '../components/BirthdayPicker';
@@ -53,6 +55,11 @@ import {
   type ItemBackfillFieldId,
 } from '../utils/itemBackfill';
 import {
+  RECIPE_BACKFILL_FIELDS, recipeBackfillCandidates, recipeBackfillFieldCounts, dismissRecipeBackfillField,
+  type RecipeBackfillFieldId,
+} from '../utils/recipeBackfill';
+import { useRecipeStore } from '../store/useRecipeStore';
+import {
   CADENCE_UNITS, CADENCE_UNIT_MAX, toCadenceParts, fromCadenceParts, withCadenceUnit, describeCadence, cadenceUnitLabel,
   type CadenceParts,
   FALLBACK_CADENCE_DAYS,
@@ -63,7 +70,12 @@ import { observedCadenceDays, describeObservedCadence } from '../utils/reachOutT
 import { genericNameSuggestions } from '../utils/itemVarieties';
 import { substitutesFor, describeSubstitutes } from '../utils/itemSubs';
 import { groceryNameKey } from '../utils/groceryParse';
-import { EFFORT_LABELS, GROCERY_NAME_MAX_LENGTH, type Effort, type Person, type ReminderKind, type Task } from '../types';
+import { shorterNameSuggestions } from '../utils/scanResolve';
+import { describeFoodPanel } from '../utils/foodNutrition';
+import {
+  EFFORT_LABELS, GROCERY_NAME_MAX_LENGTH,
+  type Effort, type FoodNutrition, type Person, type ReminderKind, type Task,
+} from '../types';
 
 const FIELD_ICONS: Record<BackfillFieldId, keyof typeof Ionicons.glyphMap> = {
   estimate: 'time-outline',
@@ -104,22 +116,58 @@ const PERSON_FIELD_ICONS: Record<PersonBackfillFieldId, keyof typeof Ionicons.gl
   location: 'airplane-outline',
 };
 
-// Neither item field is a plain toggle either — `variety` opens a name
-// picker, `substitutes` opens the same sheet the grocery row's swap glyph
-// does — so, like the project/person maps above, there's no filled/outline
-// pair to switch between.
+// No item field is a plain toggle — `variety` opens a name picker,
+// `substitutes` opens the same sheet the grocery row's swap glyph does,
+// `nutrition` opens either of the two the item sheet offers, and
+// `scannedName` is a text field — so, like the project/person maps above,
+// there's no filled/outline pair to switch between.
 const ITEM_FIELD_ICONS: Record<ItemBackfillFieldId, keyof typeof Ionicons.glyphMap> = {
+  scannedName: 'pricetag-outline',
   substitutes: 'swap-horizontal-outline',
   variety: 'layers-outline',
+  nutrition: 'nutrition-outline',
 };
 
-type EntityKind = 'task' | 'category' | 'project' | 'person' | 'item';
+// Every recipe field is a count somebody types, so there is no filled/outline
+// pair here either — see the item map's note.
+const RECIPE_FIELD_ICONS: Record<RecipeBackfillFieldId, keyof typeof Ionicons.glyphMap> = {
+  servings: 'people-outline',
+  cookTime: 'flame-outline',
+  prepTime: 'cut-outline',
+};
+
+/**
+ * The stepper each recipe field puts up.
+ *
+ * A stepper rather than a row of preset chips for the reason `CountStepper`'s
+ * own doc comment gives: every one of these is an open-ended number, and
+ * presets have to pick a granularity and a ceiling for everybody. The two time
+ * fields take `step: 5`, which is what that prop exists for — stepping a cook
+ * time from 15 to 90 is fifteen presses at 5 and seventy-five at 1.
+ */
+const RECIPE_FIELD_STEPPERS: Record<
+  RecipeBackfillFieldId,
+  { min: number; max: number; step: number; format: (n: number) => string }
+> = {
+  // The same 1..99 clamp `setServings` applies, so the control can't offer a
+  // number the store would quietly round back.
+  servings: { min: 1, max: 99, step: 1, format: n => `${n}` },
+  cookTime: { min: 5, max: 480, step: 5, format: formatDuration },
+  prepTime: { min: 5, max: 240, step: 5, format: formatDuration },
+};
+
+type EntityKind = 'task' | 'category' | 'project' | 'person' | 'item' | 'recipe';
+// Six is past what fits on one line at 390pt ("Categories" alone is most of a
+// sixth of it), so this is a grid rather than a track — see SegmentedControl's
+// `columns`. Three by two keeps every label at full width.
+const ENTITY_KIND_COLUMNS = 3;
 const ENTITY_KIND_SEGMENTS = [
   { value: 'task' as const, label: 'Tasks' },
   { value: 'category' as const, label: 'Categories' },
   { value: 'project' as const, label: 'Projects' },
   { value: 'person' as const, label: 'People' },
   { value: 'item' as const, label: 'Items' },
+  { value: 'recipe' as const, label: 'Recipes' },
 ];
 
 // Bucket 0 ("—") is left off — see estimatePatchFor's doc comment for why.
@@ -167,8 +215,8 @@ const DURATION_UNIT_SEGMENTS = [
  * your own history, which is rule 5 and the reason declaring a frequency for a
  * friend never has to be the only way in.
  *
- * **The Items pool's two fields aren't toggles either**, same shape as the
- * project/person value-picker fields: `variety` opens the same generic-name
+ * **None of the Items pool's fields is a toggle either**, same shape as the
+ * project/person value-picker fields. `variety` opens the same generic-name
  * grid `GroceryItemSheet`'s own Variety of field does (`genericNameSuggestions`),
  * and `substitutes` opens the actual `SubstituteSheet` rather than reproducing
  * its search-and-link flow inline. Because that sheet writes to the store
@@ -178,6 +226,34 @@ const DURATION_UNIT_SEGMENTS = [
  * whether anything was actually added — a cancel leaves the card exactly where
  * it was, and only a real add logs a session entry and lets the live queue
  * drop the item.
+ *
+ * `nutrition` reuses that pool's other two real sheets the same way
+ * (`NutritionSearchSheet` and `NutritionPanelSheet`, the pair the item sheet's
+ * own Nutrition field offers), but both of those *return* a value, so
+ * `applyNutrition` is an ordinary apply. The pair is deliberately kept rather
+ * than reduced to the lookup: the lookup needs `productLookupEnabled` and a key
+ * and can still not know the food, and a queue whose only answer is one that
+ * may refuse is a queue you cannot finish.
+ *
+ * **The Recipes pool is three counts and one control**, so its card is a
+ * `CountStepper` plus a commit button rather than a value picker. It commits on
+ * the button and not on each step, which is the one thing to keep: a stepper
+ * passes through every number on the way to the one you want, so writing on
+ * change would file "serves 1" and drop the card out of the live queue before
+ * you reached four. `servings` leads the three because it is the one that
+ * unblocks anything — see `recipeBackfill.ts` for why, and for why the recipe's
+ * other dozen nullable fields are deliberately not here.
+ *
+ * **`scannedName` is the one field in any pool that is already filled in.**
+ * Everything else here queues on an absent value; this queues on
+ * `GroceryItem.nameFromScan`, which says the row is wearing a barcode
+ * database's words rather than anybody's choice — recorded at the scan, never
+ * read out of the text (see that field, and `nameFromScanFor`). Two things
+ * follow. Its "Don't ask again" is worded as keeping the name rather than
+ * leaving a field unset, because there is nothing unset. And a rename that
+ * collides with an existing row is offered as a merge instead of refused:
+ * `renameItem` returns false there, and the collision is the *common* case in
+ * a queue full of rows that all want to be called "Yogurt". See `applyRename`.
  *
  * The header's redo icon (task fields only, for now) starts the same loop
  * over from scratch — every live task for the field, including ones already
@@ -191,7 +267,8 @@ type ActiveField =
   | { kind: 'category'; id: CategoryBackfillFieldId }
   | { kind: 'project'; id: ProjectBackfillFieldId }
   | { kind: 'person'; id: PersonBackfillFieldId }
-  | { kind: 'item'; id: ItemBackfillFieldId };
+  | { kind: 'item'; id: ItemBackfillFieldId }
+  | { kind: 'recipe'; id: RecipeBackfillFieldId };
 
 /**
  * One line of the compact review shown once a field's queue empties: what got
@@ -243,6 +320,15 @@ export function BackfillScreen() {
   const setVarietyOfKey = useGroceryStore(s => s.setVarietyOfKey);
   const unlinkItemSub = useGroceryStore(s => s.unlinkItemSub);
   const setItemBackfillDismissedFields = useGroceryStore(s => s.setItemBackfillDismissedFields);
+  const renameItem = useGroceryStore(s => s.renameItem);
+  const mergeItems = useGroceryStore(s => s.mergeItems);
+  const setNameFromScan = useGroceryStore(s => s.setNameFromScan);
+  const setItemNutrition = useGroceryStore(s => s.setItemNutrition);
+  const recipes = useRecipeStore(useShallow(s => s.recipes));
+  const setServings = useRecipeStore(s => s.setServings);
+  const setEstimatedMinutes = useRecipeStore(s => s.setEstimatedMinutes);
+  const setPrepMinutes = useRecipeStore(s => s.setPrepMinutes);
+  const setRecipeBackfillDismissedFields = useRecipeStore(s => s.setRecipeBackfillDismissedFields);
 
   const [entityKind, setEntityKind] = useState<EntityKind>('task');
   const [active, setActive] = useState<ActiveField | null>(null);
@@ -297,12 +383,27 @@ export function BackfillScreen() {
   // Snapshot of the current item's substitute ids, taken when the sheet
   // opens — see openSubstituteSheet/closeSubstituteSheet.
   const subsBeforeRef = useRef<Set<string>>(new Set());
+  // The items pool's two `nutrition` pickers, which are the same pair
+  // GroceryItemSheet's own Nutrition field offers: look the food up, or type
+  // its label in. Both are real sheets for the reason the substitutes one is.
+  const [nutritionSearchOpen, setNutritionSearchOpen] = useState(false);
+  const [nutritionPanelOpen, setNutritionPanelOpen] = useState(false);
+  // The `scannedName` field's draft. Seeded from the item's current name
+  // rather than left blank, because most of the work here is deleting words
+  // somebody else wrote rather than typing a name from nothing.
+  const [renameText, setRenameText] = useState('');
+  // The recipe pool's own draft — one number, since only one of its three
+  // fields is ever on screen. Separate from the item drafts above for the
+  // reason personCadenceDraft is separate from nudgeDraft: they are different
+  // settings that happen to share a control.
+  const [recipeCountDraft, setRecipeCountDraft] = useState<number | null>(null);
 
   const taskCounts = useMemo(() => backfillFieldCounts(tasks, categories), [tasks, categories]);
   const categoryCounts = useMemo(() => categoryBackfillFieldCounts(categories), [categories]);
   const projectCounts = useMemo(() => projectBackfillFieldCounts(projects), [projects]);
   const personCounts = useMemo(() => personBackfillFieldCounts(people), [people]);
   const itemCounts = useMemo(() => itemBackfillFieldCounts(groceryItems, itemSubs), [groceryItems, itemSubs]);
+  const recipeCounts = useMemo(() => recipeBackfillFieldCounts(recipes), [recipes]);
 
   const taskQueue = useMemo(
     () => active?.kind === 'task'
@@ -332,6 +433,10 @@ export function BackfillScreen() {
     () => active?.kind === 'item' ? itemBackfillCandidates(groceryItems, active.id, itemSubs).filter(i => !skippedIds.has(i.id)) : [],
     [groceryItems, active, skippedIds, itemSubs]
   );
+  const recipeQueue = useMemo(
+    () => active?.kind === 'recipe' ? recipeBackfillCandidates(recipes, active.id).filter(r => !skippedIds.has(r.id)) : [],
+    [recipes, active, skippedIds]
+  );
   const currentProject = active?.kind === 'project'
     ? (manualCurrentId ? projects.find(p => p.id === manualCurrentId) ?? (projectQueue[0] ?? null) : (projectQueue[0] ?? null))
     : null;
@@ -341,12 +446,22 @@ export function BackfillScreen() {
   const currentItem = active?.kind === 'item'
     ? (manualCurrentId ? groceryItems.find(i => i.id === manualCurrentId) ?? (itemQueue[0] ?? null) : (itemQueue[0] ?? null))
     : null;
+  const currentRecipe = active?.kind === 'recipe'
+    ? (manualCurrentId ? recipes.find(r => r.id === manualCurrentId) ?? (recipeQueue[0] ?? null) : (recipeQueue[0] ?? null))
+    : null;
+  // Every arm is tested, including the last: this used to fall through to the
+  // item queue, which was right only for as long as items were the final kind
+  // and would have read a stale length for the pool added after them.
   const queueLength = active?.kind === 'task' ? taskQueue.length
     : active?.kind === 'category' ? categoryQueue.length
     : active?.kind === 'project' ? projectQueue.length
     : active?.kind === 'person' ? personQueue.length
-    : itemQueue.length;
-  const currentId = currentTask?.id ?? currentCategory?.id ?? currentProject?.id ?? currentPerson?.id ?? currentItem?.id ?? null;
+    : active?.kind === 'item' ? itemQueue.length
+    : active?.kind === 'recipe' ? recipeQueue.length
+    : 0;
+  const currentId =
+    currentTask?.id ?? currentCategory?.id ?? currentProject?.id ?? currentPerson?.id
+    ?? currentItem?.id ?? currentRecipe?.id ?? null;
 
   /**
    * The cadence this person's own history suggests, or null when there is not
@@ -396,7 +511,21 @@ export function BackfillScreen() {
     setBirthdayPickerOpen(false);
     setApplyCadenceToGroup(false);
     setSubSheetOpen(false);
+    setNutritionSearchOpen(false);
+    setNutritionPanelOpen(false);
   }, [currentId]);
+
+  // Whatever the recipe already says, so the Previous button doesn't hand back
+  // a blank stepper for a value that was just set — the same call the person
+  // drafts above make, and the reason they make it.
+  useEffect(() => {
+    if (!currentRecipe || active?.kind !== 'recipe') return;
+    setRecipeCountDraft(
+      active.id === 'servings' ? currentRecipe.servings
+      : active.id === 'cookTime' ? currentRecipe.estimatedMinutes
+      : currentRecipe.prepMinutes
+    );
+  }, [currentRecipe?.id, active?.kind === 'recipe' ? active.id : null]);
 
   // Whatever is already on file, so the field shows what's actually there
   // rather than an empty box — the same call the project cadence draft below
@@ -410,6 +539,14 @@ export function BackfillScreen() {
     setAskAboutText(currentPerson.askAbout);
     setLocationText(currentPerson.location ?? '');
   }, [currentPerson?.id]);
+
+  // Same reasoning one pool over: show what the row actually says. Keyed on
+  // the item rather than on `currentId` so it re-seeds when the card changes
+  // and not when some other pool's card does.
+  useEffect(() => {
+    if (!currentItem) return;
+    setRenameText(currentItem.name);
+  }, [currentItem?.id]);
 
   // Same default RemindMePicker's own caller (TaskEditor) opens with: 9am on
   // the date being scheduled against. Every card reaching this field has a
@@ -491,6 +628,17 @@ export function BackfillScreen() {
     setManualCurrentId(null);
     setSessionLog([]);
     setSessionTotal(itemBackfillCandidates(groceryItems, id, itemSubs).length);
+  };
+
+  const chooseRecipeField = (id: RecipeBackfillFieldId) => {
+    haptics.tap();
+    animateLayout();
+    setActive({ kind: 'recipe', id });
+    setSkippedIds(new Set());
+    setHistory([]);
+    setManualCurrentId(null);
+    setSessionLog([]);
+    setSessionTotal(recipeBackfillCandidates(recipes, id).length);
   };
 
   const backToFields = () => {
@@ -902,7 +1050,7 @@ export function BackfillScreen() {
         valueText: "Won't ask again",
         undo: () => updatePerson(personId, before),
       });
-    } else {
+    } else if (active.kind === 'item') {
       if (!currentItem) return;
       const itemId = currentItem.id;
       const before = currentItem.backfillDismissedFields;
@@ -912,6 +1060,20 @@ export function BackfillScreen() {
         title: currentItem.name,
         valueText: "Won't ask again",
         undo: () => setItemBackfillDismissedFields(itemId, before),
+      });
+    } else {
+      if (!currentRecipe) return;
+      const recipeId = currentRecipe.id;
+      const before = currentRecipe.backfillDismissedFields;
+      setRecipeBackfillDismissedFields(
+        recipeId,
+        dismissRecipeBackfillField(currentRecipe, active.id).backfillDismissedFields
+      );
+      logSession({
+        itemId: recipeId,
+        title: currentRecipe.name,
+        valueText: "Won't ask again",
+        undo: () => setRecipeBackfillDismissedFields(recipeId, before),
       });
     }
   };
@@ -980,6 +1142,169 @@ export function BackfillScreen() {
     });
   };
 
+  // The item pool's `nutrition` field. Both pickers land here, so the session
+  // entry and the undo are written once rather than per sheet. No advance()
+  // for the same reason applyVariety has none: a row with figures no longer
+  // satisfies isItemFieldMissing and leaves the queue by itself.
+  const applyNutrition = (nutrition: FoodNutrition | null, description?: string) => {
+    if (!currentItem || active?.kind !== 'item') return;
+    // Null is a real answer from the panel sheet — every figure cleared — and
+    // is written rather than dropped. Reachable only through the Previous
+    // button, since a row with no figures is what put the item in this queue,
+    // and the card simply stays put afterwards: the gap is still a gap.
+    if (nutrition === null && currentItem.nutrition === null) return;
+    haptics.tap();
+    animateLayout();
+    recordVisited();
+    setManualCurrentId(null);
+    const itemId = currentItem.id;
+    const title = currentItem.name;
+    // Snapshotted rather than assumed null: the Previous button can land on an
+    // item that already has a panel, and undo has to put that one back.
+    const before = currentItem.nutrition;
+    setItemNutrition(itemId, nutrition);
+    logSession({
+      itemId,
+      title,
+      // The database's own name for the food when the search supplied one,
+      // since "Milk, whole, 3.25% milkfat" is what tells you which of the
+      // twelve hits got picked. A typed panel has no such name, so it falls
+      // back to the same one-line summary the item sheet's row shows.
+      valueText: nutrition
+        ? description ?? describeFoodPanel(nutrition) ?? 'Figures saved'
+        : 'Figures cleared',
+      undo: () => setItemNutrition(itemId, before),
+    });
+  };
+
+  /**
+   * The item pool's `scannedName` field: the row keeps its id and history and
+   * only its words change.
+   *
+   * **A collision is offered as a merge rather than refused.** `renameItem`
+   * returns false when the new key belongs to another row, and that case is
+   * the common one here rather than an edge: three scanned yogurts all want to
+   * be called "Yogurt", and the second and third would otherwise hit a dead
+   * end in the middle of a queue built to clear exactly them. `mergeItems`
+   * confirms first (its own doc comment argues for the double coverage) and
+   * files its revert under the store's shake-to-undo, which is what the
+   * session entry borrows so this card's Undo does the same thing every other
+   * card's does.
+   */
+  const applyRename = (name: string) => {
+    if (!currentItem || active?.kind !== 'item') return;
+    const trimmed = name.trim();
+    const key = groceryNameKey(trimmed);
+    if (!trimmed || !key) return;
+    const itemId = currentItem.id;
+    const title = currentItem.name;
+    const clash = groceryItems.find(i => i.id !== itemId && i.nameKey === key);
+    if (clash) {
+      Alert.alert(
+        `Merge into "${clash.name}"?`,
+        `You already have an item called "${clash.name}". Merging keeps that one and folds this row's history, boxes and stores into it.`,
+        [
+          { text: 'Cancel', style: 'cancel' },
+          {
+            text: 'Merge',
+            style: 'destructive',
+            onPress: () => {
+              haptics.success();
+              animateLayout();
+              recordVisited();
+              setManualCurrentId(null);
+              if (!mergeItems(itemId, clash.id)) return;
+              // The revert mergeItems just filed for itself. Read straight
+              // back out rather than rebuilt here: folding two rows together
+              // touches products, store links, substitutes, aliases and
+              // recipe keys, and a second, thinner undo written at this call
+              // site would put back less than the merge took.
+              const revert = useGroceryStore.getState().lastAction?.undo;
+              logSession({
+                itemId,
+                title,
+                valueText: `Merged into "${clash.name}"`,
+                undo: () => revert?.(),
+              });
+            },
+          },
+        ]
+      );
+      return;
+    }
+    haptics.tap();
+    animateLayout();
+    recordVisited();
+    setManualCurrentId(null);
+    if (!renameItem(itemId, trimmed)) return;
+    logSession({
+      itemId,
+      title,
+      valueText: trimmed,
+      // Both halves, because renameItem clears nameFromScan on its way past
+      // (that is what takes a row out of this queue) and an undone rename has
+      // to land back in it. See setNameFromScan.
+      undo: () => {
+        renameItem(itemId, title);
+        setNameFromScan(itemId, true);
+      },
+    });
+  };
+
+  /**
+   * The recipe pool's three fields, which are one handler because they are one
+   * control: a number is stepped and then committed, the same shape the
+   * project cadence and the person cadence already use here.
+   *
+   * Committed on a button rather than on each step, unlike the value pickers
+   * above. A stepper passes through every number between where it started and
+   * where it is going, so writing on change would file "serves 1", "serves 2",
+   * "serves 3" on the way to four and drop the card out of the queue at the
+   * first of them.
+   */
+  const applyRecipeCount = () => {
+    if (!currentRecipe || active?.kind !== 'recipe' || recipeCountDraft == null) return;
+    haptics.tap();
+    animateLayout();
+    recordVisited();
+    setManualCurrentId(null);
+    const recipeId = currentRecipe.id;
+    const title = currentRecipe.name;
+    const value = recipeCountDraft;
+    if (active.id === 'servings') {
+      const before = currentRecipe.servings;
+      // Restored as a pair: the max is only ever meaningful alongside the
+      // count (see Recipe.servingsMax), and putting one back without the other
+      // would leave a range half-undone.
+      const beforeMax = currentRecipe.servingsMax;
+      setServings(recipeId, value);
+      logSession({
+        itemId: recipeId,
+        title,
+        valueText: `Serves ${value}`,
+        undo: () => setServings(recipeId, before, beforeMax),
+      });
+    } else if (active.id === 'cookTime') {
+      const before = currentRecipe.estimatedMinutes;
+      setEstimatedMinutes(recipeId, value);
+      logSession({
+        itemId: recipeId,
+        title,
+        valueText: formatDuration(value),
+        undo: () => setEstimatedMinutes(recipeId, before),
+      });
+    } else {
+      const before = currentRecipe.prepMinutes;
+      setPrepMinutes(recipeId, value);
+      logSession({
+        itemId: recipeId,
+        title,
+        valueText: formatDuration(value),
+        undo: () => setPrepMinutes(recipeId, before),
+      });
+    }
+  };
+
   // iOS's number-pad keyboard has no return key (see NumberPadAccessory), so
   // this is reached by an explicit "Set" tap rather than onSubmitEditing.
   // Invalid/empty text is silently ignored rather than applied as null —
@@ -1010,7 +1335,14 @@ export function BackfillScreen() {
       <View style={[styles.container, { paddingTop: insets.top }]}>
         <ScreenHeader title="Backfill" subtitle="Choose a field to fill in, one item at a time" />
         <View style={styles.entitySwitch}>
-          <SegmentedControl label="Backfill scope" surface="page" value={entityKind} onChange={next => { animateLayout(); setEntityKind(next); }} options={ENTITY_KIND_SEGMENTS} />
+          <SegmentedControl
+            label="Backfill scope"
+            surface="page"
+            value={entityKind}
+            onChange={next => { animateLayout(); setEntityKind(next); }}
+            options={ENTITY_KIND_SEGMENTS}
+            columns={ENTITY_KIND_COLUMNS}
+          />
         </View>
         {entityKind === 'task' && (
           <ScrollView contentContainerStyle={[styles.fieldList, { paddingBottom: tabBarHeight + spacing.lg }]}>
@@ -1183,7 +1515,48 @@ export function BackfillScreen() {
             <EmptyState
               icon="basket-outline"
               title="Nothing in your catalog yet"
-              subtitle="Items you add on the Groceries screen show up here, so you can fill in varieties and substitutes for them a few at a time."
+              subtitle="Items you add on the Groceries screen show up here, so you can fill in varieties, substitutes and nutrition for them a few at a time."
+              bottomOffset={tabBarHeight}
+            />
+          )
+        )}
+        {entityKind === 'recipe' && (
+          recipes.length > 0 ? (
+            <ScrollView contentContainerStyle={[styles.fieldList, { paddingBottom: tabBarHeight + spacing.lg }]}>
+              {RECIPE_BACKFILL_FIELDS.map(field => {
+                const count = recipeCounts[field.id];
+                return (
+                  <TouchableOpacity
+                    key={field.id}
+                    style={[styles.fieldRow, shadows.card]}
+                    onPress={() => chooseRecipeField(field.id)}
+                    activeOpacity={interaction.activeOpacity}
+                    accessibilityRole="button"
+                    accessibilityLabel={`${field.label}, ${count === 0 ? 'every recipe already has one' : `${count} ${count === 1 ? 'recipe needs' : 'recipes need'} one`}`}
+                  >
+                    <View style={styles.fieldIcon}>
+                      <Ionicons name={RECIPE_FIELD_ICONS[field.id]} size={iconSize.md} color={colors.accent} />
+                    </View>
+                    <View style={styles.fieldBody}>
+                      <Text style={styles.fieldLabel}>{field.label}</Text>
+                      <Text style={styles.fieldHint}>{field.hint}</Text>
+                      <Text style={count === 0 ? styles.fieldCountDone : styles.fieldCount}>
+                        {count === 0 ? 'Every recipe already has one' : `${count} ${count === 1 ? 'recipe needs' : 'recipes need'} one`}
+                      </Text>
+                    </View>
+                    <Ionicons name="chevron-forward" size={iconSize.sm} color={colors.textTertiary} />
+                  </TouchableOpacity>
+                );
+              })}
+            </ScrollView>
+          ) : (
+            // Same call the People and Items pools make above, for the same
+            // reason: three rows all reading "every recipe already has one"
+            // over an empty cookbook says the wrong thing.
+            <EmptyState
+              icon="restaurant-outline"
+              title="No recipes yet"
+              subtitle="Recipes you save show up here, so you can fill in how many they serve and how long they take a few at a time."
               bottomOffset={tabBarHeight}
             />
           )
@@ -1895,6 +2268,145 @@ export function BackfillScreen() {
     );
   }
 
+  if (active.kind === 'recipe') {
+    const recipeField = RECIPE_BACKFILL_FIELDS.find(f => f.id === active.id)!;
+    const stepper = RECIPE_FIELD_STEPPERS[active.id];
+    const recipeReady = recipeCountDraft != null;
+
+    return (
+      <View style={[styles.container, { paddingTop: insets.top }]}>
+        <DetailHeader
+          title={recipeField.label}
+          onBack={backToFields}
+          backAccessibilityLabel="Back to fields"
+        />
+        {sessionTotal > 0 && (
+          <View style={styles.progressRow}>
+            {history.length > 0 && (
+              <TouchableOpacity
+                onPress={goBack}
+                hitSlop={8}
+                accessibilityRole="button"
+                accessibilityLabel="Previous recipe"
+              >
+                <Ionicons name="play-skip-back-outline" size={iconSize.sm} color={colors.textSecondary} />
+              </TouchableOpacity>
+            )}
+            <Text style={styles.progress}>{doneCount} of {sessionTotal} done</Text>
+            {!!currentId && (
+              <TouchableOpacity
+                onPress={skip}
+                hitSlop={8}
+                accessibilityRole="button"
+                accessibilityLabel="Skip this recipe for now"
+              >
+                <Ionicons name="play-skip-forward-outline" size={iconSize.sm} color={colors.textSecondary} />
+              </TouchableOpacity>
+            )}
+          </View>
+        )}
+
+        {currentRecipe ? (
+          <ScrollView
+            contentContainerStyle={[styles.reviewContent, { paddingBottom: tabBarHeight + spacing.lg }]}
+            keyboardShouldPersistTaps="handled"
+          >
+            <View style={[styles.itemCard, shadows.card]}>
+              <Text style={styles.itemTitle} numberOfLines={2}>{currentRecipe.name}</Text>
+              <View style={styles.metaRow}>
+                <View style={styles.metaChip}>
+                  <Ionicons name="list-outline" size={iconSize.xs} color={colors.textSecondary} />
+                  <Text style={styles.metaText} numberOfLines={1}>
+                    {currentRecipe.ingredients.length}{' '}
+                    {currentRecipe.ingredients.length === 1 ? 'ingredient' : 'ingredients'}
+                  </Text>
+                </View>
+                {/* What the recipe says it makes, when it says anything. It is
+                    free text and independent of the count (see
+                    Recipe.recipeYield), so it is context for the answer rather
+                    than the answer: "makes 1 loaf" is exactly what somebody
+                    needs in front of them to say how many that serves. */}
+                {!!currentRecipe.recipeYield && (
+                  <View style={styles.metaChip}>
+                    <Ionicons name="cube-outline" size={iconSize.xs} color={colors.textSecondary} />
+                    <Text style={styles.metaText} numberOfLines={1}>{currentRecipe.recipeYield}</Text>
+                  </View>
+                )}
+              </View>
+            </View>
+
+            <View style={styles.stepperField}>
+              <CountStepper
+                value={recipeCountDraft}
+                onChange={setRecipeCountDraft}
+                min={stepper.min}
+                max={stepper.max}
+                step={stepper.step}
+                allowNull
+                format={stepper.format}
+                emptyLabel="Not set"
+                label={recipeField.label}
+              />
+              <PressableScale
+                style={[
+                  styles.toggleButton,
+                  { backgroundColor: colors.accentFill },
+                  !recipeReady && styles.toggleButtonIdle,
+                ]}
+                onPress={applyRecipeCount}
+                disabled={!recipeReady}
+                accessibilityRole="button"
+                accessibilityLabel={`Set ${recipeField.label.toLowerCase()} for ${currentRecipe.name}`}
+              >
+                <Ionicons name="checkmark" size={iconSize.md} color={colors.onAccent} />
+                <Text style={styles.toggleButtonText}>Set {recipeField.label.toLowerCase()}</Text>
+              </PressableScale>
+            </View>
+
+            <View style={styles.actionRow}>
+              <PressableScale
+                style={styles.skipButton}
+                onPress={skip}
+                accessibilityRole="button"
+                accessibilityLabel="Skip this recipe for now"
+              >
+                <Text style={styles.skipText}>Skip for now</Text>
+              </PressableScale>
+              <PressableScale
+                style={styles.skipButton}
+                onPress={dismiss}
+                accessibilityRole="button"
+                accessibilityLabel={`Leave "${recipeField.label}" unset for this recipe and don't ask again`}
+              >
+                <Text style={styles.skipText}>Don't ask again</Text>
+              </PressableScale>
+            </View>
+          </ScrollView>
+        ) : sessionLog.length > 0 ? (
+          <SessionReview
+            entries={sessionLog}
+            onUndo={undoSessionEntry}
+            onDone={backToFields}
+            tabBarHeight={tabBarHeight}
+            colors={colors}
+            styles={styles}
+            itemWord="recipe"
+            itemWordPlural="recipes"
+          />
+        ) : (
+          <EmptyState
+            icon="checkmark-circle-outline"
+            title="All caught up"
+            subtitle="Nothing left to fill in for this field. Pick another to keep going."
+            actionLabel="Choose another field"
+            onAction={backToFields}
+            bottomOffset={tabBarHeight}
+          />
+        )}
+      </View>
+    );
+  }
+
   const itemField = ITEM_BACKFILL_FIELDS.find(f => f.id === active.id)!;
   const currentItemSubs = currentItem ? substitutesFor(currentItem.id, itemSubs, groceryItems) : [];
   const varietyOptions = currentItem
@@ -1905,6 +2417,20 @@ export function BackfillScreen() {
         onPress: () => applyVariety(key),
       }))
     : [];
+  // Suffixes of the row's own name, one tap each — see shorterNameSuggestions
+  // for why they can only ever be words already printed on the box.
+  const renameOptions = currentItem
+    ? shorterNameSuggestions(currentItem.name).map(label => ({
+        key: label,
+        label,
+        selected: false,
+        onPress: () => applyRename(label),
+      }))
+    : [];
+  // Blank, or the name it already has: neither is an answer, so the button
+  // that commits them is off rather than doing nothing when tapped.
+  const renameReady =
+    !!currentItem && !!renameText.trim() && renameText.trim() !== currentItem.name;
 
   return (
     <View style={[styles.container, { paddingTop: insets.top }]}>
@@ -1957,7 +2483,7 @@ export function BackfillScreen() {
             )}
           </View>
 
-          {active.id === 'variety' ? (
+          {active.id === 'variety' && (
             <PillGroup
               options={varietyOptions}
               noun="name"
@@ -1965,7 +2491,9 @@ export function BackfillScreen() {
               createMaxLength={GROCERY_NAME_MAX_LENGTH}
               filterPlaceholder="Find or type a general name…"
             />
-          ) : (
+          )}
+
+          {active.id === 'substitutes' && (
             <PressableScale
               style={[styles.toggleButton, { backgroundColor: colors.accentFill }]}
               onPress={openSubstituteSheet}
@@ -1979,12 +2507,82 @@ export function BackfillScreen() {
             </PressableScale>
           )}
 
+          {active.id === 'scannedName' && (
+            <View style={styles.renameField}>
+              {renameOptions.length > 0 && (
+                <>
+                  <Text style={styles.renameHint}>
+                    Tap a shorter name, or edit the full one below.
+                  </Text>
+                  <PillGroup options={renameOptions} noun="name" />
+                </>
+              )}
+              <View style={styles.askAboutRow}>
+                <TextInput
+                  style={styles.askAboutInput}
+                  value={renameText}
+                  onChangeText={text => setRenameText(text.slice(0, GROCERY_NAME_MAX_LENGTH))}
+                  placeholder="e.g. Milk"
+                  placeholderTextColor={colors.textTertiary}
+                  returnKeyType="done"
+                  onSubmitEditing={() => applyRename(renameText)}
+                  accessibilityLabel={`New name for ${currentItem.name}`}
+                />
+                <PressableScale
+                  style={[
+                    styles.toggleButton,
+                    { backgroundColor: colors.accentFill },
+                    !renameReady && styles.toggleButtonIdle,
+                  ]}
+                  onPress={() => applyRename(renameText)}
+                  disabled={!renameReady}
+                  accessibilityRole="button"
+                  accessibilityLabel={`Rename ${currentItem.name}`}
+                >
+                  <Ionicons name="pricetag" size={iconSize.md} color={colors.onAccent} />
+                  <Text style={styles.toggleButtonText}>Rename</Text>
+                </PressableScale>
+              </View>
+            </View>
+          )}
+
+          {active.id === 'nutrition' && (
+            <View style={styles.nutritionField}>
+              <Text style={styles.renameHint}>
+                Look the food up, or copy the figures off the packet. Either way you
+                confirm what gets saved.
+              </Text>
+              <PressableScale
+                style={[styles.toggleButton, { backgroundColor: colors.accentFill }]}
+                onPress={() => { haptics.tap(); setNutritionSearchOpen(true); }}
+                accessibilityRole="button"
+                accessibilityLabel={`Find ${currentItem.name} in the food database`}
+              >
+                <Ionicons name="search" size={iconSize.md} color={colors.onAccent} />
+                <Text style={styles.toggleButtonText}>Find this food</Text>
+              </PressableScale>
+              {/* The quieter half of the pair, and neutral rather than a dimmed
+                  accent: two accent buttons stacked read as one control drawn
+                  twice, and typing a label is the answer whenever the lookup
+                  can't be asked (no key, no network) or doesn't know the food. */}
+              <PressableScale
+                style={styles.neutralButton}
+                onPress={() => { haptics.tap(); setNutritionPanelOpen(true); }}
+                accessibilityRole="button"
+                accessibilityLabel={`Type in a nutrition label for ${currentItem.name}`}
+              >
+                <Ionicons name="create-outline" size={iconSize.md} color={colors.text} />
+                <Text style={styles.neutralButtonText}>Type in a label</Text>
+              </PressableScale>
+            </View>
+          )}
+
           <View style={styles.actionRow}>
             <PressableScale
               style={styles.skipButton}
               onPress={skip}
               accessibilityRole="button"
-              accessibilityLabel="Skip this project for now"
+              accessibilityLabel="Skip this item for now"
             >
               <Text style={styles.skipText}>Skip for now</Text>
             </PressableScale>
@@ -1992,7 +2590,13 @@ export function BackfillScreen() {
               style={styles.skipButton}
               onPress={dismiss}
               accessibilityRole="button"
-              accessibilityLabel={`Leave "${itemField.label}" unset for this item and don't ask again`}
+              accessibilityLabel={
+                // `scannedName` is the one field here that already has a value,
+                // so "leave it unset" would describe the wrong thing.
+                active.id === 'scannedName'
+                  ? `Keep the name "${currentItem.name}" and don't ask again`
+                  : `Leave "${itemField.label}" unset for this item and don't ask again`
+              }
             >
               <Text style={styles.skipText}>Don't ask again</Text>
             </PressableScale>
@@ -2023,6 +2627,19 @@ export function BackfillScreen() {
         visible={subSheetOpen}
         itemId={currentItem?.id ?? null}
         onClose={closeSubstituteSheet}
+      />
+      <NutritionSearchSheet
+        visible={nutritionSearchOpen}
+        itemName={currentItem?.name ?? ''}
+        onClose={() => setNutritionSearchOpen(false)}
+        onPick={(nutrition, description) => applyNutrition(nutrition, description)}
+      />
+      <NutritionPanelSheet
+        visible={nutritionPanelOpen}
+        foodName={currentItem?.name ?? ''}
+        nutrition={currentItem?.nutrition ?? null}
+        onClose={() => setNutritionPanelOpen(false)}
+        onSave={nutrition => applyNutrition(nutrition)}
       />
     </View>
   );
@@ -2461,6 +3078,31 @@ const makeStyles = (colors: Colors) => StyleSheet.create({
   // and reads back what it's waiting for rather than disappearing, so the card
   // doesn't reflow as the field is filled in.
   toggleButtonIdle: { opacity: 0.4 },
+
+  // toggleButton's neutral twin, for the second of a pair of actions — same
+  // box, a surface instead of the accent fill. See `InlineAction`'s own
+  // neutral variant, which makes the same distinction one component over.
+  neutralButton: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    gap: spacing.sm,
+    paddingVertical: spacing.md,
+    borderRadius: radius.md,
+    // One surface step up from the page, which is the same call `PillGroup`
+    // makes for its own controls on a `page` surface. `bgTertiary` was the
+    // first guess and is nearly invisible in light: #EFEFF4 on a #F2F2F7 page.
+    backgroundColor: colors.bgSecondary,
+  },
+  neutralButtonText: { color: colors.text, fontSize: font.md, fontWeight: fontWeight.semibold },
+
+  // The three cards whose control is more than one button. The gap is
+  // spacing.md between stacked blocks, per the design-system note on giving a
+  // new element margin on both sides it needs.
+  renameField: { gap: spacing.md },
+  nutritionField: { gap: spacing.md },
+  stepperField: { gap: spacing.md },
+  renameHint: { color: colors.textSecondary, fontSize: font.sm, lineHeight: lineHeight.sm },
 
   // The cadence offer built from this person's own history — see rule 5 in
   // docs/arch/people.md. Same treatment PersonEditor gives the identical offer,

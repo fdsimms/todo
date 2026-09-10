@@ -14,6 +14,7 @@ import type { GroceryItem, ItemSubLink } from '../types';
 
 function makeItem(name: string, overrides: Partial<GroceryItem> = {}): GroceryItem {
   return {
+    nameFromScan: false,
     id: `item-${groceryNameKey(name).replace(/\s/g, '-')}`,
     name,
     nameKey: groceryNameKey(name),

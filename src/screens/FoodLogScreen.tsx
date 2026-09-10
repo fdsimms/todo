@@ -248,7 +248,9 @@ export function FoodLogScreen() {
     for (const draft of toAdd) {
       const item = draft.existingItemId
         ? items.find(i => i.id === draft.existingItemId)
-        : ensureCatalogItem(draft.name);
+        // Same flag `GroceryScreen.handleScanApply` passes, for the same row:
+        // a name the sheet proposed and nobody edited is the source's words.
+        : ensureCatalogItem(draft.name, { nameFromScan: draft.nameFromScan === true });
       if (!item) continue;
       const id = item.id;
       resolved.set(id, item);

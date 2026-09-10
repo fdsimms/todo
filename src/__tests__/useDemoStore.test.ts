@@ -77,6 +77,7 @@ import { contextTagVocabulary, symptomVocabulary } from '../utils/moodLog';
 import { isStaleNote } from '../utils/personNotes';
 import { personBackfillFieldCounts, PERSON_BACKFILL_FIELDS } from '../utils/peopleBackfill';
 import { itemBackfillFieldCounts, ITEM_BACKFILL_FIELDS } from '../utils/itemBackfill';
+import { recipeBackfillFieldCounts, RECIPE_BACKFILL_FIELDS } from '../utils/recipeBackfill';
 import { mealYearRange, taskYearRange, timeTogetherInRange } from '../utils/peopleStats';
 import { PERSON_NOTE_KINDS } from '../types';
 import { useLeftoverStore } from '../store/useLeftoverStore';
@@ -1416,6 +1417,16 @@ describe('demo seed — people', () => {
     const { items, itemSubs } = useGroceryStore.getState();
     const counts = itemBackfillFieldCounts(items, itemSubs);
     for (const field of ITEM_BACKFILL_FIELDS) {
+      expect(counts[field.id]).toBeGreaterThan(0);
+    }
+  });
+
+  // Same reasoning again for the Recipes pool. The seed's recipes already vary
+  // in what they declare — some carry a serving count and a cook time, others
+  // do not — so this pins that spread rather than asking for anything new.
+  it('leaves each backfillable recipe field with something to fill it in for', () => {
+    const counts = recipeBackfillFieldCounts(useRecipeStore.getState().recipes);
+    for (const field of RECIPE_BACKFILL_FIELDS) {
       expect(counts[field.id]).toBeGreaterThan(0);
     }
   });

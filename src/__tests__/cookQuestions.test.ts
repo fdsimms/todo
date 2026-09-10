@@ -12,6 +12,7 @@ let seq = 0;
 
 function recipe(id: string, name: string, overrides: Partial<Recipe> = {}): Recipe {
   return {
+    backfillDismissedFields: [],
     id,
     name,
     nameKey: name.toLowerCase(),

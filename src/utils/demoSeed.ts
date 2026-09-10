@@ -2871,6 +2871,33 @@ function seedGroceries(recipes: DemoRecipes, today: Date): void {
     ]);
   }
 
+  /**
+   * A row still wearing the words a product database used, which is the whole
+   * of what the Backfill screen's "Scanned name" field walks — see
+   * `GroceryItem.nameFromScan`.
+   *
+   * **The Bread row above cannot show this**, and the contrast is the point:
+   * it carries a barcode too, but a person named it, so it is not something to
+   * offer to rename. This one is what a scan leaves when nobody edits the
+   * proposal in the review sheet — `shopperNameFor` has taken the brand and the
+   * pack size off and stopped there, on purpose, because going further means
+   * guessing what the words mean.
+   *
+   * Named so a shorter name is actually reachable: `shorterNameSuggestions`
+   * only ever drops leading words, so this offers "Riced Cauliflower" and
+   * "Cauliflower", and the catalog holds neither, so it demonstrates the plain
+   * rename rather than the merge. Off-list for `ensureCatalogItem`'s usual
+   * reason, and because an unpack puts things away rather than on a list.
+   */
+  const ricedCauliflower = ensureCatalogItem('Organic Riced Cauliflower', { nameFromScan: true });
+  if (ricedCauliflower) {
+    // The brand the source supplied, filed where a scan files one. Brand-only
+    // with no variant, matching what a minted row gets everywhere else: the
+    // row is *named* after the residue, so there is nothing left to be a
+    // variant of it.
+    addProduct(ricedCauliflower.id, { brand: "Trader Joe's", variant: null });
+  }
+
   const traderJoes = newShop("Trader Joe's");
   const costco = newShop('Costco');
   // "It has everything, but don't send me there" — kept fully available for

@@ -42,6 +42,7 @@ function ing(name: string, overrides: Partial<RecipeIngredient> = {}): RecipeIng
 
 function recipe(name: string, ingredients: RecipeIngredient[]): Recipe {
   return {
+    backfillDismissedFields: [],
     id: `r-${++seq}`,
     name,
     nameKey: name.toLowerCase(),
@@ -125,6 +126,7 @@ function classifiedRow(overrides: Partial<ClassifiedIngredient> & { nameKey: str
 
 function item(overrides: Partial<GroceryItem> & { name: string }): GroceryItem {
   return {
+    nameFromScan: false,
     id: `gi-${++seq}`,
     nameKey: groceryNameKey(overrides.name),
     preferredProductId: null,

@@ -119,6 +119,66 @@ export function shopperNameFor(fullName: string, brand: string | null): string {
   return tidied || full;
 }
 
+/**
+ * Shorter names to offer for a row still wearing a barcode source's words.
+ *
+ * The same trick `genericNameSuggestions` uses one shelf over, aimed at a
+ * different question: that one asks which catalog row a name is a *variety of*,
+ * and answers only in keys the catalog already holds. This one asks what to
+ * call the row itself, so it proposes plain suffixes of the words that are
+ * there — "Great Value 2% Reduced Fat Milk" offers "2% Reduced Fat Milk",
+ * "Reduced Fat Milk", "Fat Milk", "Milk" — and knows nothing about the catalog.
+ *
+ * **Suffixes only, and that is the whole restraint.** A product name puts the
+ * maker and the qualifiers in front of the thing, so the last words are the
+ * thing; dropping from the front can only ever produce a phrase that was
+ * already printed on the box. Nothing here reads the words, drops one from the
+ * middle, or re-capitalises anything, which keeps this on the safe side of the
+ * line `shopperNameFor` draws: it is still a tidy-up somebody confirms, never a
+ * claim about what the product is.
+ *
+ * A suggestion nobody would tap is left out rather than shown and ignored: the
+ * full name (which is what the row already says), anything a single character
+ * long, and duplicates.
+ */
+export function shorterNameSuggestions(name: string): string[] {
+  const words = name.trim().replace(/\s+/g, ' ').split(' ');
+  const out: string[] = [];
+  const seen = new Set<string>();
+  for (let drop = 1; drop < words.length; drop++) {
+    const candidate = words.slice(drop).join(' ').replace(EDGE_JUNK, '');
+    const key = candidate.toLowerCase();
+    if (candidate.length < 2 || seen.has(key)) continue;
+    seen.add(key);
+    out.push(candidate);
+  }
+  return out;
+}
+
+/**
+ * Whether a review row is still wearing the barcode source's own words.
+ *
+ * The one place that rule is written, so `GroceryItem.nameFromScan` is set from
+ * a test of the row rather than from a guess about the text. Three things have
+ * to hold, and each of them rules out a name somebody chose:
+ *
+ * - **There is a barcode.** A produce code or a hand-typed row was named by the
+ *   person holding it; there is no source to have supplied words.
+ * - **The name is not empty.** A miss arrives blank (`unknownScannedItem`), so
+ *   whatever is in the field by the time it is added was typed.
+ * - **It still matches what `shopperNameFor` proposed.** `label` is the source's
+ *   full product name and is never editable, so re-deriving the proposal from it
+ *   answers "has this been edited?" without the row having to remember.
+ */
+export function nameFromScanFor(
+  scan: Pick<ScannedItem, 'gtin' | 'label' | 'brand' | 'name'>
+): boolean {
+  if (!scan.gtin) return false;
+  const name = scan.name.trim();
+  if (!name) return false;
+  return name === shopperNameFor(scan.label, scan.brand);
+}
+
 /** Separates the maker from the product in the review row's source line. */
 const BRAND_SEPARATOR = ' · ';
 

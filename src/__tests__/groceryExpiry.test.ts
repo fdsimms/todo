@@ -16,6 +16,7 @@ jest.mock('../store/useSettingsStore', () => ({
 let seq = 0;
 function item(overrides: Partial<GroceryItem> = {}): GroceryItem {
   return {
+    nameFromScan: false,
     id: `item-${++seq}`,
     name: 'Spinach',
     nameKey: 'spinach',

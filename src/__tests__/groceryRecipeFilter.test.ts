@@ -34,6 +34,7 @@ function ing(name: string, overrides: Partial<RecipeIngredient> = {}): RecipeIng
 
 function recipe(name: string, ingredients: RecipeIngredient[], components: RecipeComponent[] = []): Recipe {
   return {
+    backfillDismissedFields: [],
     id: `r-${++seq}`,
     name,
     nameKey: name.toLowerCase(),
@@ -102,6 +103,7 @@ function entry(date: string, recipeId: string | null, overrides: Partial<MealPla
 /** A row already in the trolley — `itemsOnList`' own projection sets onList. */
 function row(overrides: Partial<GroceryItem> & { name: string }): GroceryItem {
   return {
+    nameFromScan: false,
     id: `gi-${++seq}`,
     nameKey: groceryNameKey(overrides.name),
     preferredProductId: null,

@@ -38,6 +38,7 @@ function entry(
 
 function makeItem(overrides: Partial<GroceryItem> & { id: string }): GroceryItem {
   return {
+    nameFromScan: false,
     name: overrides.id,
     nameKey: overrides.id,
     preferredProductId: null,

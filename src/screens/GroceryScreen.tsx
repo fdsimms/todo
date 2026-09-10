@@ -1055,6 +1055,11 @@ export function GroceryScreen() {
             quantity: draft.quantity || null,
             brand: draft.brand,
             aisle: draft.aisle,
+            // Only true when the sheet's proposed name went through untouched
+            // — see `nameFromScanFor`. It puts the row in the Backfill
+            // screen's rename queue instead of leaving a product database's
+            // phrasing in the catalog for good.
+            nameFromScan: draft.nameFromScan === true,
           }).id;
           // Brand-only, matching what addByName just filed: a minted row is
           // *named* after the residue, so there is no variant left over.

@@ -11,6 +11,7 @@ import type { GroceryItem } from '../types';
 let seq = 0;
 function makeItem(name: string, overrides: Partial<GroceryItem> = {}): GroceryItem {
   return {
+    nameFromScan: false,
     id: `id-${++seq}`,
     name,
     nameKey: groceryNameKey(name),

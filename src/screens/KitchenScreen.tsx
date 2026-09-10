@@ -484,16 +484,29 @@ export function KitchenScreen() {
     const gtinByItemId = new Map(gtinLinks.map(link => [link.itemId, link.gtin]));
     const productNames = new Map<
       string,
-      { brand: string | null; variant: string | null; gtin?: string | null; aisle?: string | null }
+      {
+        brand: string | null;
+        variant: string | null;
+        gtin?: string | null;
+        aisle?: string | null;
+        nameFromScan?: boolean;
+      }
     >();
     const noteScanned = (
       name: string,
       box: { brand: string | null; variant: string | null } | undefined,
       gtin: string | null,
-      aisle?: string | null
+      aisle?: string | null,
+      nameFromScan?: boolean
     ) => {
       if (!box && !gtin && !aisle) return;
-      productNames.set(name, { brand: box?.brand ?? null, variant: box?.variant ?? null, gtin, aisle });
+      productNames.set(name, {
+        brand: box?.brand ?? null,
+        variant: box?.variant ?? null,
+        gtin,
+        aisle,
+        nameFromScan,
+      });
     };
     for (const id of itemIds) {
       const item = items.find(i => i.id === id);
@@ -514,7 +527,16 @@ export function KitchenScreen() {
       // this batch mints, matching GroceryScreen.handleScanApply's own
       // addByName(..., { aisle: draft.aisle }) call, which never touches an
       // already-matched item's filing either.
-      noteScanned(draft.name, box, gtin, draft.existingItemId ? undefined : draft.aisle);
+      // Same restraint again on the last argument: only a row this batch mints
+      // can be wearing the source's words, and `addManyToPantry` checks that
+      // for itself before it writes.
+      noteScanned(
+        draft.name,
+        box,
+        gtin,
+        draft.existingItemId ? undefined : draft.aisle,
+        draft.existingItemId ? undefined : draft.nameFromScan
+      );
     }
     setScanOpen(false);
     if (names.length === 0) return;
