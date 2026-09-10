@@ -78,8 +78,8 @@ import { RecipeScaleChips } from '../components/RecipeScaleChips';
 import { tagColor } from '../utils/tagColor';
 import { formatDuration } from '../utils/effort';
 import {
-  alternativeCaptions,
   flattenRecipeIngredients,
+  recipeAlternativeCaptions,
   recipeMap,
   resolveComponents,
   type ResolvedComponent,
@@ -372,26 +372,68 @@ export function RecipeDetailScreen() {
     return { headers, defaults };
   };
 
-  const componentGroups = useMemo(() => choiceHeadersOf(recipe?.components ?? []), [recipe]);
+  // Every label an ingredient carries — what makes a group "mixed" (see the
+  // cross-type groups note in recipeComponents.ts). A component sharing one of
+  // these is folded in next to that ingredient instead of getting a header of
+  // its own; see mixedComponentsByLabel/lastIngredientIdByGroup below.
+  const ingredientChoiceLabels = useMemo(
+    () => new Set((recipe?.ingredients ?? []).filter(i => i.choiceGroup).map(i => i.choiceGroup as string)),
+    [recipe],
+  );
   const ingredientGroups = useMemo(() => choiceHeadersOf(recipe?.ingredients ?? []), [recipe]);
+  // A component's own header is suppressed for a label the ingredients already
+  // claim — the ingredient row draws the shared "Choose one" header once (it
+  // always sorts first, see resolveGroupWinners), and the paired component
+  // renders folded in beneath it with just its "or corn tortillas" caption,
+  // the same treatment any non-first option of a group already gets.
+  const componentGroups = useMemo(() => {
+    const raw = choiceHeadersOf(recipe?.components ?? []);
+    for (const [id, label] of raw.headers) {
+      if (ingredientChoiceLabels.has(label)) { raw.headers.delete(id); raw.defaults.delete(id); }
+    }
+    return raw;
+  }, [recipe, ingredientChoiceLabels]);
+
+  // The last ingredient (in stored order) carrying each label, and the
+  // components that share it — where a mixed group's component options fold
+  // into the ingredient list, right after the option they're an alternative
+  // to. Components with no matching ingredient label render in their usual
+  // trailing block instead (trailingComponents, used where `components` was).
+  const lastIngredientIdByGroup = useMemo(() => {
+    const map = new Map<string, string>();
+    for (const ing of recipe?.ingredients ?? []) {
+      if (ing.choiceGroup) map.set(ing.choiceGroup, ing.id);
+    }
+    return map;
+  }, [recipe]);
+  const mixedComponentsByLabel = useMemo(() => {
+    const map = new Map<string, ResolvedComponent[]>();
+    for (const resolved of components) {
+      const label = resolved.component.choiceGroup;
+      if (!label || !ingredientChoiceLabels.has(label)) continue;
+      const list = map.get(label);
+      if (list) list.push(resolved); else map.set(label, [resolved]);
+    }
+    return map;
+  }, [components, ingredientChoiceLabels]);
+  const trailingComponents = useMemo(
+    () => components.filter(resolved => {
+      const label = resolved.component.choiceGroup;
+      return !label || !ingredientChoiceLabels.has(label);
+    }),
+    [components, ingredientChoiceLabels],
+  );
 
   // The header above only opens at a group's *first* option, so on its own every
   // other option reads as an ordinary line — and a list you read as ordinary is
   // a list you buy all of. Each option carries its own "or manchego" instead.
-  // Built off the *resolved* components, not the stored links: the row shows the
-  // referenced recipe's live name, and a caption naming the captured one would
-  // go stale the moment that recipe is renamed.
-  const componentAlternatives = useMemo(
-    () => alternativeCaptions(components.map(c => ({
-      id: c.component.id,
-      choiceGroup: c.component.choiceGroup,
-      name: c.name || 'Deleted recipe',
-    }))),
-    [components],
-  );
-  const ingredientAlternatives = useMemo(
-    () => alternativeCaptions(recipe?.ingredients ?? []),
-    [recipe],
+  // One shared map across both lists (recipeAlternativeCaptions, not
+  // alternativeCaptions called twice) so a label crossing them gets one
+  // consistent caption on each side rather than each list only ever seeing
+  // its own options.
+  const alternativeNotesById = useMemo(
+    () => (recipe ? recipeAlternativeCaptions(recipe, recipesById) : new Map<string, string>()),
+    [recipe, recipesById],
   );
 
   // Lines the app can see wanting to be two — "corn tortillas or flour
@@ -744,7 +786,7 @@ export function RecipeDetailScreen() {
     const choiceHeader = ingredientGroups.headers.get(ingredient.id);
     const choiceGroup = ingredient.choiceGroup;
     const isChoiceDefault = ingredientGroups.defaults.has(ingredient.id);
-    const alternativeNote = ingredientAlternatives.get(ingredient.id);
+    const alternativeNote = alternativeNotesById.get(ingredient.id);
     // The raw detection, used for the mutual-exclusion check below regardless
     // of whether its own pill is currently dismissed — dismissing "split into
     // two" shouldn't hand the row over to a catalog suggestion it was never
@@ -930,6 +972,15 @@ export function RecipeDetailScreen() {
             </TouchableOpacity>
           )}
         </TouchableOpacity>
+        {/* A component sharing this ingredient's choice group folds in right
+            here, after the group's last ingredient option — not in its own
+            block at the bottom of the card (see trailingComponents below).
+            Not part of the SortableList's own data, just extra content this
+            one row renders: the drag math only ever tracks ingredient rows,
+            and a linked component isn't one — it's still removed and
+            re-grouped from its own long press, same as any other component. */}
+        {!!choiceGroup && lastIngredientIdByGroup.get(choiceGroup) === ingredient.id
+          && (mixedComponentsByLabel.get(choiceGroup) ?? []).map(resolved => renderComponent(resolved, true))}
       </View>
     );
   };
@@ -1017,7 +1068,7 @@ export function RecipeDetailScreen() {
     const groupHeader = componentGroups.headers.get(resolved.component.id);
     const group = resolved.component.choiceGroup;
     const isDefault = componentGroups.defaults.has(resolved.component.id);
-    const alternativeNote = componentAlternatives.get(resolved.component.id);
+    const alternativeNote = alternativeNotesById.get(resolved.component.id);
     return (
       <View key={resolved.component.id}>
         {!!groupHeader && (
@@ -1457,8 +1508,11 @@ export function RecipeDetailScreen() {
             {/* Marked so a shared part reads as part of this recipe from the
                 first list you'd check, not only several scrolls down in its
                 own Components section (which stays the place to remove one or
-                set a choice-group default). */}
-            {components.map(resolved => renderComponent(resolved, true))}
+                set a choice-group default). Only the components with nowhere
+                more specific to be — one sharing an ingredient's choice group
+                folds in next to that ingredient instead, inside renderIngredient
+                itself (see mixedComponentsByLabel above). */}
+            {trailingComponents.map(resolved => renderComponent(resolved, true))}
           </View>
         )}
 

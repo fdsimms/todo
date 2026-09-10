@@ -79,9 +79,18 @@ export function RecipeIngredientSheet({ visible, recipeId, ingredient, onClose }
   const splitIngredientAlternatives = useRecipeStore(s => s.splitIngredientAlternatives);
   const mergeChoiceGroup = useRecipeStore(s => s.mergeChoiceGroup);
   const renameChoiceGroup = useRecipeStore(s => s.renameChoiceGroup);
+  const setComponentChoiceGroup = useRecipeStore(s => s.setComponentChoiceGroup);
   const recipeIngredients = useRecipeStore(
     useShallow(s => s.recipes.find(r => r.id === recipeId)?.ingredients ?? [])
   );
+  // The recipe's own components, so "Alternatives" can offer joining one —
+  // see the cross-type choice groups note in recipeComponents.ts. Resolved
+  // against the live library rather than each link's captured name, same as
+  // every other component row in the app.
+  const recipeComponents = useRecipeStore(
+    useShallow(s => s.recipes.find(r => r.id === recipeId)?.components ?? [])
+  );
+  const allRecipes = useRecipeStore(useShallow(s => s.recipes));
   const recipeEmptySections = useRecipeStore(
     useShallow(s => s.recipes.find(r => r.id === recipeId)?.emptySections ?? [])
   );
@@ -692,6 +701,34 @@ export function RecipeIngredientSheet({ visible, recipeId, ingredient, onClose }
                   },
                 };
               }),
+            // A recipe used as a component is a real alternative too — "corn
+            // tortillas, or make Tortillas de Maíz instead" — not just another
+            // ingredient. Joining one here writes the shared choiceGroup on
+            // both sides the same way joining a sibling ingredient does; see
+            // the cross-type groups note in recipeComponents.ts.
+            ...recipeComponents.map(component => {
+              const inGroup = !!groupLabel && component.choiceGroup === groupLabel;
+              const componentName =
+                allRecipes.find(r => r.id === component.recipeId)?.name || component.name || 'Deleted recipe';
+              return {
+                key: component.id,
+                label: componentName,
+                selected: inGroup,
+                onPress: () => {
+                  haptics.tap();
+                  if (inGroup) {
+                    setComponentChoiceGroup(recipeId, component.id, null);
+                    return;
+                  }
+                  const label = cleanChoiceGroup(
+                    groupLabel || component.choiceGroup || name.trim() || ingredient.name
+                  );
+                  if (!label) return;
+                  setComponentChoiceGroup(recipeId, component.id, label);
+                  applyChoiceGroup(label);
+                },
+              };
+            }),
           ]}
         />
         {/* The catalog half of the same question, and deliberately the same

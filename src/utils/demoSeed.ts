@@ -2080,6 +2080,20 @@ function seedRecipes(): DemoRecipes {
   // exclude on, not just cooking-style labels.
   setTags(salad.id, ['vegetarian']);
 
+  // A fourth side, paired with an ingredient rather than another component —
+  // see the cross-type choice group added to the stir-fry below (the note on
+  // resolveGroupWinners in recipeComponents.ts).
+  const steamedRice = newRecipe('Steamed rice');
+  addIngredientsFromText(steamedRice.id, ['1 cup rice', '2 cups water', '1/2 tsp salt'].join('\n'));
+  setMealType(steamedRice.id, 'side');
+  setServings(steamedRice.id, 4);
+  setEstimatedMinutes(steamedRice.id, 20);
+  [
+    'Rinse the rice until the water runs clear.',
+    'Bring the water and salt to a boil, stir in the rice, cover and simmer 18 minutes.',
+    'Rest off the heat for 5 minutes, then fluff with a fork.',
+  ].forEach(text => addStep(steamedRice.id, text));
+
   const salsaVerde = newRecipe('Salsa verde');
   addIngredientsFromText(
     salsaVerde.id,
@@ -2227,6 +2241,14 @@ function seedRecipes(): DemoRecipes {
     const id = ingredientIdNamed(stirFry.id, name);
     if (id) updateIngredient(stirFry.id, id, { choiceGroup: 'Chile' });
   });
+  // A choice group crossing the two lists: "rice" is what the recipe already
+  // buys, and the Steamed rice component is the alternative — cook the side
+  // instead of picking up the pre-cooked bag. Ingredients resolve before
+  // components when nothing's chosen (see recipeComponents.ts), so adding
+  // this never changes what stirFry shops for on its own.
+  const riceId = ingredientIdNamed(stirFry.id, 'rice');
+  if (riceId) updateIngredient(stirFry.id, riceId, { choiceGroup: 'Rice' });
+  addComponent(stirFry.id, steamedRice.id, 'Rice');
   setServings(stirFry.id, 4, 6);
   setEstimatedMinutes(stirFry.id, 20);
   setPrepMinutes(stirFry.id, 15);

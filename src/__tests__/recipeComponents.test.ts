@@ -20,6 +20,8 @@ import {
   applyChoice,
   parseRecipeChoices,
   alternativeCaptions,
+  recipeAlternativeCaptions,
+  choiceGroupKey,
 } from '../utils/recipeComponents';
 import type { Recipe, RecipeComponent, RecipeIngredient, RecipePrepTask } from '../types';
 
@@ -647,6 +649,63 @@ describe('choice groups', () => {
         .toEqual(['r-mash', 'r-roast', 'r-rub']);
       // The loop the cycle check has to catch lives down the *second* option.
       expect(wouldCreateRecipeCycle(byId, 'r-roast', 'r-steak')).toBe(true);
+    });
+  });
+
+  describe('mixed groups — an ingredient and a component sharing a label', () => {
+    // "corn tortillas, or make Tortillas de Maíz instead" — the cross-type
+    // case resolveGroupWinners exists for.
+    const mixedLibrary = () => {
+      const homemade = recipe('r-tortillas', 'Tortillas de Maíz', {
+        ingredients: [ing('Masa harina'), ing('Water')],
+      });
+      const taco = recipe('r-taco', 'Fish tacos', {
+        ingredients: [ing('Fish'), ing('Corn tortillas', 'Tortillas')],
+        components: [link('r-tortillas', 'Tortillas de Maíz', 'Tortillas')],
+      });
+      return { taco, homemade, byId: recipeMap([taco, homemade]) };
+    };
+
+    it('buys the ingredient by default and never cooks the component too', () => {
+      const { taco, byId } = mixedLibrary();
+      expect(activeIngredients(taco).map(i => i.name)).toEqual(['Fish', 'Corn tortillas']);
+      expect(activeComponents(taco)).toEqual([]);
+      expect(flattenRecipeIngredients(taco, byId).map(f => f.ingredient.name))
+        .toEqual(['Fish', 'Corn tortillas']);
+    });
+
+    it('cooking the component drops the ingredient and pulls in its own lines', () => {
+      const { taco, byId } = mixedLibrary();
+      const componentId = taco.components[0].id;
+      expect(activeIngredients(taco, { chosen: [componentId] }).map(i => i.name)).toEqual(['Fish']);
+      expect(activeComponents(taco, { chosen: [componentId] }).map(c => c.name))
+        .toEqual(['Tortillas de Maíz']);
+      expect(flattenRecipeIngredients(taco, byId, { chosen: [componentId] }).map(f => f.ingredient.name))
+        .toEqual(['Fish', 'Masa harina', 'Water']);
+    });
+
+    it('poses one group, not two, ingredient first, and reports it as mixed', () => {
+      const { taco, byId } = mixedLibrary();
+      const groups = recipeChoiceGroups(taco, byId);
+      expect(groups).toHaveLength(1);
+      expect(groups[0].label).toBe('Tortillas');
+      expect(groups[0].kind).toBe('mixed');
+      expect(groups[0].options.map(o => o.name)).toEqual(['Corn tortillas', 'Tortillas de Maíz']);
+      expect(groups[0].active.name).toBe('Corn tortillas');
+    });
+
+    it('refuses to leave a mixed group undecided, unlike a pure ingredient group', () => {
+      const { taco } = mixedLibrary();
+      const key = choiceGroupKey(taco.id, 'Tortillas');
+      expect(activeIngredients(taco, { undecided: [key] }).map(i => i.name))
+        .toEqual(['Fish', 'Corn tortillas']);
+    });
+
+    it('captions each side with the other, crossing the two lists', () => {
+      const { taco, byId } = mixedLibrary();
+      const captions = recipeAlternativeCaptions(taco, byId);
+      expect(captions.get(taco.ingredients[1].id)).toBe('or Tortillas de Maíz');
+      expect(captions.get(taco.components[0].id)).toBe('or Corn tortillas');
     });
   });
 });
