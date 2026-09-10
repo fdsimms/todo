@@ -1,23 +1,25 @@
-# Reading (mostly) and writing (twice) Apple Health
+# Reading (mostly) and writing (three times) Apple Health
 
 The whole of it: the bridge, the store, the Settings section, the row on Today,
 the Mood screen's health axis, the `health` generator, the short-night line
-under "Lighten today", the Weight screen and its chart, and the two things this
-app writes back — a dietary-water sample, on completion of a task that opted
-into it, and a body-mass sample, when somebody records a weight — plus the
-rules any further reader or writer has to be built against.
+under "Lighten today", the Weight screen and its chart, and the three things
+this app writes back — a dietary-water sample, on completion of a task that
+opted into it; a body-mass sample, when somebody records a weight; and a meal's
+nutrition, when somebody adds it to the food log — plus the rules any further
+reader or writer has to be built against.
 
 Read this before touching `modules/todo-health-bridge/`,
 `src/utils/healthBridge.ts`, `src/utils/healthCompletionSync.ts`,
-`src/utils/healthWeightSync.ts`, `src/utils/weightLog.ts`,
+`src/utils/healthWeightSync.ts`, `src/utils/healthFoodSync.ts`,
+`src/utils/weightLog.ts`, `src/store/useFoodLogStore.ts`,
 `src/store/useHealthStore.ts`, `src/screens/settings/HealthSettings.tsx`,
 `src/screens/WeightScreen.tsx`, `healthContextRows` in
 `src/utils/dayContextRows.ts` or the health half of
 `src/utils/moodInsights.ts` — and before adding any reader *or writer* of a
 health figure anywhere else. Most of what follows is about what a reader is
 allowed to claim rather than about how to get the number; the "Writing exactly
-one thing" and "The second write" sections are where the concerns are about a
-writer instead.
+one thing", "The second write" and "The third write" sections are where the
+concerns are about a writer instead.
 
 The rules here are settled decisions with the reasoning attached. Don't
 re-derive them from the code, and don't re-open one without a reason this note
@@ -348,6 +350,178 @@ eleventh `HealthRuleMetric` would have been the obvious shape and would have
 put it back on the wrong side of the line: a rule metric is a thing the app
 judges, and there is no judgement here.
 
+## The third write: a logged meal
+
+The one that closes the loop. The app has read eight nutrients since the
+`health` generator shipped and written none of them, so the figures its own
+rules judge could only ever have come from another app. A food log makes this
+app the one entering them.
+
+**It is licensed by the read argument, the same one body mass used.** The
+section below on what is deliberately not built spells it out for the
+nutrients: a dietary figure "exists at all only because a person (or their own
+food-logging app) entered it, and the threshold it is judged against is a
+number *they* typed". Writing is the other half of that sentence. The person is
+entering the figure either way; today they enter it in another app, which
+writes it to Health, which this app reads back. Nothing about the nature of the
+fact changes when the app recording it changes. What changes is the failure
+mode, and everything below is about that.
+
+### Ten write types, and carbs and total fat are two of them
+
+`writeTypes` went from two to twelve in one review. The ten nutrients are one
+capability rather than ten decisions, and they were argued for together.
+
+**Two of the ten are written and never read.** Carbohydrate and total fat are
+not in `readTypes`, no `HealthRuleMetric` watches them, and no screen shows
+them. They are written anyway, and that is a decision made out loud rather than
+by whatever the write loop happened to iterate over: the consumer is not this
+app. A meal that reaches the Health app with no carbohydrate line reads as
+incomplete rather than as deliberate, and every other app reading that record
+expects the macros together. "Write only what you read" would be a tidier rule
+and a worse one, because it would make this app's own gaps into gaps in
+somebody's health record.
+
+The mapping lives in one place, `nutrientWriteTable` in the Swift module, keyed
+by `NutrientKey` so a figure crosses the bridge under the same name it has on
+both sides. **No conversion happens on either side of that bridge.**
+`nutritionParse.ts` already did the unit arithmetic once, and a second opinion
+about units in a second language is how a sodium figure lands a thousand times
+too high.
+
+### Absent stays absent, and here it matters most
+
+A nutrient the entry does not state is not written. This is the same rule
+`FoodNutrition.amounts` states and the whole nutrition tree is built on, at the
+point where it costs the most to break: writing a zero would put into somebody's
+medical record a claim that a meal contained none of something nobody measured.
+Health has no way to record "unknown" other than by the sample's absence, so
+absence is the recording.
+
+A figure that is *present* and zero is written, because a label stating no fat
+is a real statement. The filter is `writableFoodAmounts`
+(`healthFoodSync.ts`), which is pure and tested for exactly this reason — the
+rest of that file is a native call nothing can test.
+
+### Sample identity, which is the actual work
+
+This is the first thing in the app that can un-write, and the reason this was
+not a small change.
+
+`writeWaterSample` and `writeBodyMassSample` each build one sample, save it,
+return a bool and keep nothing. That is right for both: Health is the record,
+and neither a logged drink nor a recorded weight has an edit path here. A food
+log cannot work that way. An entry is logged in a hurry against a picker, and a
+mistyped one that could not be retracted would be a permanent false fact in a
+medical record, survivable only by manual deletion nobody would know to go
+looking for. So:
+
+- **`writeFoodSamples` returns the UUIDs of what it saved**, as JSON, and they
+  are stored on `FoodLogEntry.healthSampleIds`. That column has been on the
+  schema since the food log shipped, empty on every row, waiting for this.
+- **`deleteHealthSamples` takes them back.** HealthKit only lets an app delete
+  what it itself saved, which is what makes exposing a delete safe at all: no
+  argument to it can reach a sample somebody's scale or another food app wrote.
+- **The correlation's own UUID is stored alongside its members'.** Deleting the
+  correlation is what retracts the meal; the members are carried so a partial
+  save still leaves something to clean up.
+- **The delete tallies its results on a serial queue.** Eleven deletes report
+  back on arbitrary background queues. The read side's own fan-out counts on a
+  bare variable; this one does not, because getting the count wrong means
+  telling the app a retraction succeeded when it did not, and what is left
+  behind is a sample in a medical record.
+
+### A correlation, not ten loose samples
+
+A meal is one thing. `HKCorrelation` of type `.food` is the API for that, and
+it is what makes an entry appear in the Health app as "Chicken burrito" (via
+`HKMetadataKeyFoodType`) rather than as ten unrelated numbers at 12:47.
+
+**Every symbol here was checked against Apple's own SDK headers, not against a
+recollection or a search result.** `developer.apple.com` is unreachable from
+the build sandbox, and the first search result for the initializer was an
+iOS 8.3 API-diff page still describing `NSDate` and `Set<NSObject>` — exactly
+the stale paraphrase CLAUDE.md's note about `GeneratedContent.elements()` warns
+about. The headers in the iOS SDK are the authority, and they are reachable:
+`HKCorrelation.h`, `HKObjectType.h`, `HKObject.h`, `HKHealthStore.h`,
+`HKQuery.h` and `HKMetadata.h` between them settle the initializer, the
+nullable `correlationType(forIdentifier:)`, `UUID`,
+`deleteObjects(of:predicate:withCompletion:)` and
+`predicateForObjects(with:)`. `HealthKit.apinotes` was read too, because it is
+what would rename an argument label out from under a header, and it turns out
+to remap nothing but an error enum.
+
+That left one thing a header cannot settle on its own: whether Swift imports
+`correlationWithType:startDate:endDate:objects:` as `start:`/`end:` or keeps
+the Objective-C spelling. The importer's rule says it prunes them, and
+`HKQuantitySample(type:quantity:start:end:)` in this same file is that rule
+already compiling against an identically shaped factory — but a rule plus a
+precedent is still an inference, and this is a file that cannot be compiled
+from the sandbox. So it was checked against real Swift that does compile
+(`HKCorrelationTests.swift` in Stanford's HealthKitOnFHIR), which constructs
+`HKCorrelation(type:start:end:objects:)` verbatim. Nothing here ships on a
+guess.
+
+### The rules it inherits unchanged
+
+- **`healthWriteEnabled` gates it**, the existing switch, separate from
+  `healthReadEnabled`. Somebody who turned on step reading must not find a
+  nutrition sharing sheet in front of them.
+- **Demo mode refuses twice**, in `healthBridge()` and again at the top of
+  `logFoodEntryToHealth`. Same reasoning as the water write's, and a seeded
+  food log entry may exist for the same reason a demo task may carry
+  `logWaterMl`: the gate stops the write, not the demonstration that the
+  feature exists.
+- **One trigger.** `addEntry` in `useFoodLogStore` is the only caller of
+  `logFoodEntryToHealth`, and nothing else may become one. No reconciler, no
+  sweep, no sync pass, and **no backfill**: entries logged before this shipped
+  keep their empty `healthSampleIds` for good. A pass that wrote history would
+  put samples in a medical record for meals nobody asked to share, and would
+  duplicate whatever the person had already logged elsewhere.
+- **The sample is dated `atISO`, not `dayKey`.** HealthKit buckets by wall
+  clock; the logical day is this app's own idea. The two are allowed to
+  disagree and `FoodLogEntry.atISO` says so at length.
+
+### Two asymmetries worth not smoothing out
+
+**The retraction is not gated on `healthWriteEnabled`.** Every other guard
+refuses to create something; this one removes something already created.
+Somebody who has since turned the switch off has, if anything, asked more
+clearly for their samples to go, and refusing to retract on those grounds would
+strand exactly the record the switch was turned off over.
+
+**The write is fired and forgotten; the delete reads from the database.**
+`addEntry` is synchronous because every caller uses the entry it returns to
+close a sheet, so the write runs after and patches the row when it lands. Both
+halves deliberately bypass the loaded range: `updateEntry` only finds rows
+inside the window on screen, and a meal backdated outside it is an ordinary
+case, so the write patches through `dbUpdateFoodLogEntry` directly and the
+delete reads the row back with `dbGetFoodLogEntry`. Finding a row only when it
+happens to be loaded would strand its samples.
+
+### There is still no edit path, and adding one has an obligation
+
+The food log UI adds and deletes; it does not edit. `updateEntry` exists, is
+unused by any screen, and is deliberately dumb — it is what the write above
+calls back into to store the ids, so a retract-and-rewrite there would chase
+its own tail. **If an edit path ever reaches `nutrition` or `label`, it must
+retract the old samples and write new ones**, in that order, rather than
+patching the row and leaving Health stating the meal as first typed.
+
+### One thing about the read side worth writing down here
+
+`bestSum` takes **the largest single source, not the sum** of them. Two apps
+can both record the same real meal, and HealthKit does not de-duplicate for a
+statistics query, so summing double-counts whoever is running two food loggers.
+Taking the largest under-counts instead, which is the error to prefer: it never
+claims more than some one source actually recorded.
+
+The consequence is worth knowing before it is rediscovered: **somebody
+migrating onto this app from another one under-reports for as long as the
+migration is partial.** Log half of Tuesday here and half in Cronometer and
+Tuesday reads as whichever half was larger, not as the day. That is the safe
+direction and it is not an obvious one.
+
 ## The row on Today, and where it files
 
 The reading is a fourth `ContextRow` kind, beside `event`, `meal` and
@@ -672,14 +846,16 @@ once the checkpoint-hour and direction mechanisms both already generalized
 past three, which is why `HEALTH_METRIC_INFO` exists as a table rather than
 five more hand-written switch branches.
 
-**None of this bears on `writeTypes`, which is at two and follows a stricter
-version of the same "don't add until earned" rule.** A twelfth read metric
-costs a bigger permission sheet; a third write type costs a real sample
-landing in somebody's actual Health record if anything about it is wrong. See
-"Writing exactly one thing: dietary water" and "The second write: body mass"
-above for the arguments in full — they are deliberately not summarized here,
-because collapsing them to a sentence is exactly the kind of thing that
-invites re-deriving them wrong later.
+**None of this bears on `writeTypes`, which is at twelve and follows a
+stricter version of the same "don't add until earned" rule.** A twelfth read
+metric costs a bigger permission sheet; a further write type costs a real
+sample landing in somebody's actual Health record if anything about it is
+wrong. The jump from two types to twelve was one review, not ten: the ten
+nutrients are one capability (a logged meal) and were argued for together. See
+"Writing exactly one thing: dietary water", "The second write: body mass" and
+"The third write: a logged meal" above for the arguments in full — they are
+deliberately not summarized here, because collapsing them to a sentence is
+exactly the kind of thing that invites re-deriving them wrong later.
 
 ## One thing worth knowing before scoping the background half
 

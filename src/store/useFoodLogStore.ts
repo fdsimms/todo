@@ -4,11 +4,13 @@ import {
   dbCountFoodLogEntries,
   dbDeleteFoodLogEntry,
   dbGetFoodLogEntries,
+  dbGetFoodLogEntry,
   dbInsertFoodLogEntry,
   dbUpdateFoodLogEntry,
 } from '../db/database';
 import { generateId } from '../utils/id';
 import { dayKeyOf, getCurrentDayStart, getLogicalDayKey } from '../utils/dateUtils';
+import { logFoodEntryToHealth, retractFoodEntryFromHealth } from '../utils/healthFoodSync';
 
 /**
  * The food log — what was eaten, and when.
@@ -225,7 +227,10 @@ export const useFoodLogStore = create<FoodLogStore>((set, get) => ({
       quantity: draft.quantity.trim(),
       grams: draft.grams,
       nutrition: draft.nutrition,
-      // Nothing writes to Health yet, so nothing has been written to retract.
+      // Empty at insert and filled in by the Health write below once it comes
+      // back, rather than awaited: this action is synchronous because every
+      // caller uses the entry it returns to close a sheet, and a meal must land
+      // in the log whether or not Health accepts it.
       healthSampleIds: [],
       createdAt: new Date().toISOString(),
     };
@@ -245,9 +250,46 @@ export const useFoodLogStore = create<FoodLogStore>((set, get) => ({
     if (windowStart && windowEnd && entry.dayKey >= windowStart && entry.dayKey <= windowEnd) {
       set(s => ({ windowEntries: [...s.windowEntries, entry].sort(byInstant) }));
     }
+
+    // The one trigger. `logFoodEntryToHealth` is called from here and from
+    // nowhere else, the same single-writer rule the water write keeps and for
+    // the same reason: a caller that looped it into a save, a sweep or a sync
+    // pass would put meals nobody ate into somebody's medical record. It owns
+    // every guard (demo mode, the write switch, the bridge), so this is not the
+    // place to add another.
+    //
+    // Fire-and-forget with a follow-up patch, because the write is a native
+    // round trip and this action is synchronous. A failure needs nothing done:
+    // the entry keeps its empty `healthSampleIds`, which is exactly what "wrote
+    // nothing, so there is nothing to retract" means.
+    void logFoodEntryToHealth(entry).then(({ outcome, sampleIds }) => {
+      if (outcome !== 'written') return;
+      // Written straight through rather than via `updateEntry`, which only
+      // finds rows inside the loaded range: a meal backdated outside the window
+      // on screen is stored and simply isn't in `entries`, and losing its ids
+      // would mean samples that can never be retracted. The row is rebuilt from
+      // the entry this closure already holds, so no read is needed either.
+      dbUpdateFoodLogEntry({ ...entry, healthSampleIds: sampleIds });
+      const stamp = (e: FoodLogEntry) => (e.id === entry.id ? { ...e, healthSampleIds: sampleIds } : e);
+      set(s => ({ entries: s.entries.map(stamp), windowEntries: s.windowEntries.map(stamp) }));
+    });
+
     return entry;
   },
 
+  /**
+   * Patches a row. Deliberately dumb, and deliberately not a Health writer.
+   *
+   * This is what `addEntry`'s own Health write calls back into to store the
+   * sample ids, so a retract-and-rewrite here would chase its own tail. It is
+   * also unused by the UI today: an entry is deleted and logged again rather
+   * than edited.
+   *
+   * **If an edit path ever reaches `nutrition` or `label`, it must retract the
+   * old samples and write new ones**, not patch the row and leave Health
+   * stating the meal as first typed. `retractFoodEntryFromHealth` then
+   * `logFoodEntryToHealth` is the pair, in that order.
+   */
   updateEntry(id, patch) {
     const entry = get().entries.find(e => e.id === id);
     if (!entry) return;
@@ -268,6 +310,19 @@ export const useFoodLogStore = create<FoodLogStore>((set, get) => ({
   },
 
   removeEntry(id) {
+    // Read before the delete, since the ids are on the row that is about to go.
+    // A meal removed from the log has to be removed from Health too: an entry
+    // logged against the wrong picker and left in a medical record is the
+    // permanent-false-fact case this whole feature is arranged around. Nothing
+    // is awaited and nothing is undone on failure — the row is gone either way,
+    // and Health's own record is something the person can delete there.
+    // Read from the database rather than from the loaded arrays, for the same
+    // reason the write above does not go through `updateEntry`: a backdated
+    // entry outside the window on screen is an ordinary row, and finding it
+    // only when it happens to be loaded would strand its samples.
+    const written = dbGetFoodLogEntry(id)?.healthSampleIds ?? [];
+    if (written.length > 0) void retractFoodEntryFromHealth(written);
+
     dbDeleteFoodLogEntry(id);
     set(s => ({
       entries: s.entries.filter(e => e.id !== id),
