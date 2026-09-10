@@ -9,10 +9,18 @@ import {
   sourceMix,
 } from '../utils/nutritionStats';
 
-// A fixed today, so the window is the same every run. `cookingWindow` takes the
-// logical day rather than reaching for `new Date()`, which is what makes that
-// possible at all.
-const TODAY = new Date('2026-09-10T12:00:00.000Z');
+// nutritionStats reaches dateUtils for dayKeyToDate, and cookingStats reaches it
+// for dayKeyOf, which reaches the settings store for dayResetTime — which
+// nothing here needs, since every date it compares is a calendar day key. Same
+// stub cookingStats.test.ts uses, for the same reason.
+jest.mock('../store/useSettingsStore', () => ({
+  useSettingsStore: { getState: () => ({ dayResetTime: '00:00' }) },
+}));
+
+// A fixed local Thursday, so a run at 23:59 is the same test as a run at noon
+// and a runner's zone can't move the window. `cookingWindow` takes the logical
+// day rather than reaching for `new Date()`, which is what makes that possible.
+const TODAY = new Date(2026, 8, 10, 12, 0, 0);
 const WINDOW = cookingWindow(TODAY, 30);
 
 let seq = 0;
