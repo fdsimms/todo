@@ -2194,6 +2194,7 @@ describe('grocery items', () => {
         // the ordinary case, and the absent key has to survive the column
         // rather than come back as a confident zero.
         amounts: { calorieKcal: 61, proteinG: 3.2, fatG: 3.3, sugarG: 5.1 },
+        portions: [],
         source: 'fdc',
         sourceId: '746782',
         recordedAt: '2026-08-21T10:00:00.000Z',
@@ -2320,6 +2321,7 @@ describe('grocery items', () => {
       servingGrams: 170,
       servingText: '1 container (170g)',
       amounts: { calorieKcal: 90, proteinG: 15, sugarG: 4 },
+      portions: [],
       source: 'openFoodFacts' as const,
       sourceId: '0894700010045',
       recordedAt: '2026-08-21T10:00:00.000Z',

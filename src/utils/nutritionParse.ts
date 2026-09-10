@@ -367,6 +367,9 @@ export function readOffNutrition(
     servingGrams: readOffServingGrams(product),
     servingText: readSourceText(product.serving_size),
     amounts,
+    // Open Food Facts states no culinary portion table at all, so this is a
+    // real "it didn't say" rather than something left unread. See FoodPortion.
+    portions: [],
     source: 'openFoodFacts',
     sourceId: code,
     recordedAt,
@@ -457,6 +460,11 @@ export function readFdcNutrition(
     servingGrams: readFdcServingGrams(food),
     servingText: readSourceText(food.householdServingFullText),
     amounts,
+    // `foodPortions` lives on FoodData Central's *detail* endpoint, and the
+    // search endpoint this asks returns an empty `foodMeasures` in its place.
+    // A packaged product states a serving rather than culinary measures
+    // anyway, so there is nothing here to miss. See FoodPortion.
+    portions: [],
     source: 'fdc',
     sourceId: readSourceText(food.fdcId) ?? (readSourceNumber(food.fdcId) !== null ? String(food.fdcId) : null),
     recordedAt,

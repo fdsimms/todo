@@ -2365,6 +2365,11 @@ function seedGroceries(recipes: DemoRecipes, today: Date): void {
           sugarG: 11.1,
           sodiumMg: 400,
         },
+        // The one portion this loaf states, which is what lets a recipe line
+        // written as "2 slices" become a weight at all. A packaged product
+        // rarely offers more than its own serving; a whole food's table runs
+        // to a dozen rows. See FoodPortion.
+        portions: [{ amount: 1, label: 'slice', grams: 45 }],
         // A manufacturer's declared label, which is a different claim from the
         // estimate a model would make — see FoodNutrition.source.
         source: 'fdc',

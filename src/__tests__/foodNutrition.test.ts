@@ -15,6 +15,7 @@ function nutrition(overrides: Partial<FoodNutrition> = {}): FoodNutrition {
     servingGrams: null,
     servingText: null,
     amounts: { calorieKcal: 52, proteinG: 1.4 },
+    portions: [],
     source: 'fdc',
     sourceId: '170000',
     recordedAt: RECORDED_AT,
@@ -69,6 +70,32 @@ describe('parseFoodNutrition', () => {
         amounts: { calorieKcal: 46, sugarG: 11, caffeineMg: 32 },
       });
       expect(parseFoodNutrition(serializeFoodNutrition(drink))).toEqual(drink);
+    });
+
+    it('reads a portion table back, and drops only the rows it cannot use', () => {
+      // A portion table is a set of independent facts, so one bad row costs
+      // that one conversion where a missing basis would cost every figure.
+      const withPortions = parseFoodNutrition(stored({
+        ...nutrition(),
+        portions: [
+          { amount: 1, label: 'cup, chopped', grams: 160 },
+          { amount: 10, label: 'rings', grams: 60 },
+          { amount: 1, label: '', grams: 50 },
+          { amount: 0, label: 'slice', grams: 9 },
+          { amount: 1, label: 'slice', grams: 0 },
+          'nope',
+        ],
+      }));
+      expect(withPortions!.portions).toEqual([
+        { amount: 1, label: 'cup, chopped', grams: 160 },
+        { amount: 10, label: 'rings', grams: 60 },
+      ]);
+    });
+
+    it('reads a record written before portions existed as having none', () => {
+      const legacy = { ...nutrition() } as Partial<FoodNutrition>;
+      delete legacy.portions;
+      expect(parseFoodNutrition(stored(legacy))!.portions).toEqual([]);
     });
 
     it('refuses a basis it does not recognise rather than picking one', () => {

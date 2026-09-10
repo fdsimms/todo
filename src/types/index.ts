@@ -2789,6 +2789,41 @@ type WithNutrientKeyHome<M extends NutrientKey> = M;
  */
 export type HealthNutrientMetric = WithNutrientKeyHome<Exclude<HealthRuleMetric, 'steps' | 'sleepHours'>>;
 
+/**
+ * One stated portion of a food, and what it weighs — "1 cup, chopped = 160g".
+ *
+ * **The only non-guessed way to turn a recipe line into grams.** Nutrient data
+ * is per 100g; a recipe line says "2 cups chopped onion" or "2 large onions".
+ * Relating the two needs a weight per stated portion, and it has to be *per
+ * food*, because a cup of flour and a cup of honey differ by nearly a factor
+ * of three. A global density table would be wrong at both ends while looking
+ * entirely plausible in the middle, which is why there isn't one.
+ *
+ * Modelled on FoodData Central's `foodPortions` rows, which is where these
+ * come from. Worth knowing about that source: the portion table is on the
+ * *detail* endpoint (`/food/{id}`), not on the search endpoint the barcode
+ * path uses, whose `foodMeasures` comes back empty. A barcode record therefore
+ * carries no portions at all, which is correct rather than a gap — a packaged
+ * product states a serving, not a set of culinary measures.
+ */
+export interface FoodPortion {
+  /**
+   * How many of `label` the weight is for. Usually 1, but FoodData Central
+   * genuinely writes rows like "10 rings = 60g", so dividing is not optional.
+   */
+  amount: number;
+  /**
+   * The portion as the source words it — "cup, chopped", "medium (2-1/2\" dia)",
+   * "large", "clove". Free text, deliberately kept verbatim: it is matched
+   * against rather than parsed into fields, because the vocabulary is open and
+   * every attempt to normalise it upfront loses the prep word that tells a
+   * chopped cup from a sliced one.
+   */
+  label: string;
+  /** What `amount` of them weighs, in grams. */
+  grams: number;
+}
+
 /** Where a `FoodNutrition` record's figures came from. See that type's `source`. */
 export type FoodNutritionSource = 'fdc' | 'openFoodFacts' | 'manual' | 'estimated';
 
@@ -2896,6 +2931,19 @@ export interface FoodNutrition {
    * simply an id nobody asks about.
    */
   sourceId: string | null;
+  /**
+   * The source's own portion table, empty when it stated none.
+   *
+   * **Carried with the nutrients rather than in a column of its own**, because
+   * they describe one food and arrive in one answer: split apart, a row could
+   * end up with one food's calories and another's gram weights, which is a
+   * wrong calorie count with nothing on screen to say so. Same reasoning that
+   * made `amounts` one JSON blob.
+   *
+   * Empty is ordinary. Open Food Facts states no portions, and FoodData
+   * Central's search endpoint does not return them either. See `FoodPortion`.
+   */
+  portions: FoodPortion[];
   /** ISO instant these figures were recorded. */
   recordedAt: string;
 }
