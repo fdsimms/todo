@@ -45,6 +45,7 @@ function recipe(name: string, ingredients: RecipeIngredient[], components: Recip
     servings: null,
     servingsMax: null,
     recipeYield: null,
+    cookedWeightG: null,
     leftoverKeepDays: null,
     imagePath: null,
     mealType: null,

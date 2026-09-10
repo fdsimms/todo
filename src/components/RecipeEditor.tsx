@@ -43,6 +43,7 @@ import { SegmentedControl } from './SegmentedControl';
 import { distinctRecipeValues, filterRecipeSuggestions, formatServingsRange, totalMinutes } from '../utils/recipeUtils';
 import { cookbookEditIntent, type CookbookEditIntent } from '../utils/recipeProvenance';
 import { EditorRow } from './EditorRow';
+import { NumberPadAccessory, NUMBER_PAD_ACCESSORY_ID } from './NumberPadAccessory';
 import { SheetHeaderButton } from './SheetHeaderButton';
 import { EditorSheet } from './EditorSheet';
 
@@ -92,6 +93,7 @@ export function RecipeEditor({ visible, recipe, onClose, onDeleted }: Props) {
   const cookbooks = useRecipeStore(useShallow(s => s.cookbooks));
   const setServings = useRecipeStore(s => s.setServings);
   const setRecipeYield = useRecipeStore(s => s.setRecipeYield);
+  const setCookedWeight = useRecipeStore(s => s.setCookedWeight);
   const setLeftoverKeepDays = useRecipeStore(s => s.setLeftoverKeepDays);
   const setEstimatedMinutes = useRecipeStore(s => s.setEstimatedMinutes);
   const setPrepMinutes = useRecipeStore(s => s.setPrepMinutes);
@@ -110,6 +112,7 @@ export function RecipeEditor({ visible, recipe, onClose, onDeleted }: Props) {
   const [servings, setServingsDraft] = useState<number | null>(null);
   const [servingsMax, setServingsMaxDraft] = useState<number | null>(null);
   const [recipeYield, setRecipeYieldDraft] = useState('');
+  const [cookedWeight, setCookedWeightDraft] = useState('');
   const [mealType, setMealTypeDraft] = useState<RecipeMealType | null>(null);
   const [vote, setVoteDraft] = useState<RecipeVote | null>(null);
   const [voteOpen, setVoteOpen] = useState(false);
@@ -120,6 +123,7 @@ export function RecipeEditor({ visible, recipe, onClose, onDeleted }: Props) {
   const [leftoverKeepDays, setLeftoverKeepDaysDraft] = useState<number | null>(null);
   const [servingsOpen, setServingsOpen] = useState(false);
   const [yieldOpen, setYieldOpen] = useState(false);
+  const [cookedWeightOpen, setCookedWeightOpen] = useState(false);
   const [leftoverKeepOpen, setLeftoverKeepOpen] = useState(false);
   const [estimatedMinutes, setEstimatedMinutesDraft] = useState<number | null>(null);
   const [prepMinutes, setPrepMinutesDraft] = useState<number | null>(null);
@@ -214,6 +218,7 @@ export function RecipeEditor({ visible, recipe, onClose, onDeleted }: Props) {
     setServingsDraft(recipe.servings);
     setServingsMaxDraft(recipe.servingsMax);
     setRecipeYieldDraft(recipe.recipeYield ?? '');
+    setCookedWeightDraft(recipe.cookedWeightG === null ? '' : String(recipe.cookedWeightG));
     setLeftoverKeepDaysDraft(recipe.leftoverKeepDays);
     setMealTypeDraft(recipe.mealType);
     setVoteDraft(recipe.vote);
@@ -224,6 +229,7 @@ export function RecipeEditor({ visible, recipe, onClose, onDeleted }: Props) {
     setNewTag('');
     setServingsOpen(false);
     setYieldOpen(false);
+    setCookedWeightOpen(false);
     setLeftoverKeepOpen(false);
     setEstimatedMinutesDraft(recipe.estimatedMinutes);
     setPrepMinutesDraft(recipe.prepMinutes);
@@ -287,6 +293,9 @@ export function RecipeEditor({ visible, recipe, onClose, onDeleted }: Props) {
     setSourcePage(recipe.id, sourcePage);
     setServings(recipe.id, servings, servingsMax);
     setRecipeYield(recipe.id, recipeYield);
+    // Cleared by an empty field, which is how a weight is taken back off a
+    // recipe; the store clamps whatever survives parsing.
+    setCookedWeight(recipe.id, cookedWeight.trim() ? Number(cookedWeight.trim().replace(',', '.')) : null);
     setLeftoverKeepDays(recipe.id, leftoverKeepDays);
     setEstimatedMinutes(recipe.id, estimatedMinutes);
     setPrepMinutes(recipe.id, prepMinutes);
@@ -347,6 +356,7 @@ export function RecipeEditor({ visible, recipe, onClose, onDeleted }: Props) {
         </>
       }
     >
+      <NumberPadAccessory />
       <TextInput
         style={styles.titleInput}
         value={name}
@@ -437,6 +447,34 @@ export function RecipeEditor({ visible, recipe, onClose, onDeleted }: Props) {
             maxLength={RECIPE_SOURCE_MAX_LENGTH}
             returnKeyType="done"
             accessibilityLabel="Recipe yield"
+          />
+        )}
+        <EditorRow
+          icon="scale-outline"
+          label="Cooked weight"
+          value={cookedWeightOpen
+            ? undefined
+            : (cookedWeight.trim() ? `${cookedWeight.trim()} g` : undefined)}
+          hint="What the whole finished dish weighs, as written. Logging a plate of it then works out from what your plate weighs instead of from servings."
+          expanded={cookedWeightOpen}
+          onPress={() => { animateLayout(); setCookedWeightOpen(v => !v); }}
+          onClear={cookedWeight.trim()
+            ? () => { setCookedWeightDraft(''); setCookedWeightOpen(false); }
+            : undefined}
+        />
+        {cookedWeightOpen && (
+          <TextInput
+            style={styles.urlInput}
+            value={cookedWeight}
+            onChangeText={setCookedWeightDraft}
+            onSubmitEditing={() => confirmField(setCookedWeightOpen)}
+            keyboardType="decimal-pad"
+            inputAccessoryViewID={NUMBER_PAD_ACCESSORY_ID}
+            placeholder="e.g. 1450 (grams)"
+            placeholderTextColor={colors.textTertiary}
+            maxLength={6}
+            returnKeyType="done"
+            accessibilityLabel="Cooked weight in grams"
           />
         )}
         <EditorRow

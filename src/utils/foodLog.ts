@@ -160,12 +160,43 @@ export function recipeHelpingNutrition(
     const amount = perServingAmounts[key];
     if (amount !== undefined) amounts[key] = round(amount * helpings);
   }
+  return helpingNutrition(
+    amounts,
+    helpings === 1 ? '1 serving' : `${helpings} servings`,
+    null,
+    source,
+    now,
+  );
+}
+
+/**
+ * One helping's panel, from amounts that have already been scaled to it.
+ *
+ * The last step `recipeHelpingNutrition` takes, split out because a helping
+ * measured on a scale rather than counted in servings arrives with its amounts
+ * already worked out (`weighedHelping` in `mealLog.ts` does that arithmetic
+ * against the whole dish) and needs the same panel around them. One place
+ * builds the record either way, so the two ways of saying how much can't end
+ * up describing themselves differently.
+ *
+ * `grams` is what the helping weighed, which a weighed plate always knows and
+ * a counted one knows only for a dish somebody weighed. It is the eaten
+ * amount rather than a serving size: `basis` is `perServing` and these figures
+ * are already that helping, so `servingGrams` is what this one helping was.
+ */
+export function helpingNutrition(
+  amounts: Partial<Record<NutrientKey, number>>,
+  servingText: string,
+  grams: number | null,
+  source: FoodNutrition['source'] = 'estimated',
+  now: Date = new Date(),
+): FoodNutrition | null {
   if (Object.keys(amounts).length === 0) return null;
 
   return {
     basis: 'perServing',
-    servingGrams: null,
-    servingText: helpings === 1 ? '1 serving' : `${helpings} servings`,
+    servingGrams: grams,
+    servingText,
     amounts,
     // A dish's figures are built from its ingredients' panels through a
     // coverage floor, so the dish itself is an estimate however good the

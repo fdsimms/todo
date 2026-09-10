@@ -12,6 +12,8 @@ import {
   restockRows,
 } from '../utils/mealPlanGroceries';
 import { leftoverKeepDaysFor, leftoverPartsFor } from '../utils/leftovers';
+import { asWrittenCookedWeight } from '../utils/mealLog';
+import { recipeNutrition } from '../utils/recipeNutrition';
 import { standingSwapMap } from '../utils/standingSwaps';
 import { CookRecapSheet } from './CookRecapSheet';
 import { LeftoverSheet } from './LeftoverSheet';
@@ -46,7 +48,9 @@ export function CookRecap() {
   const clearCookRecap = useMealPlanStore(s => s.clearCookRecap);
   const recipes = useRecipeStore(useShallow(s => s.recipes));
   const setVote = useRecipeStore(s => s.setVote);
+  const setCookedWeight = useRecipeStore(s => s.setCookedWeight);
   const items = useGroceryStore(useShallow(s => s.items));
+  const itemProducts = useGroceryStore(useShallow(s => s.itemProducts));
   const itemSubs = useGroceryStore(useShallow(s => s.itemSubs));
   const logLeftover = useLeftoverStore(s => s.logLeftover);
   // Ranked behind the one other thing a tick can raise — see `waiting` below.
@@ -75,6 +79,22 @@ export function CookRecap() {
   }, [recap, recipe, recipesById, items, swaps]);
 
   const rows = useMemo(() => consumedRows(classified), [classified]);
+
+  /**
+   * Whether to ask what the finished dish weighed.
+   *
+   * Once per recipe, and only where the answer would be used: a meal with no
+   * recipe has nowhere to keep it, a recipe that already has one is being
+   * asked something it has answered, and a dish whose nutrition rollup
+   * declines has no figures for a weight to divide — the weight is only ever a
+   * fraction applied to those figures, so without them it measures nothing.
+   * See Recipe.cookedWeightG.
+   */
+  const askCookedWeight = useMemo(() => {
+    if (!recipe || recipe.cookedWeightG !== null) return false;
+    return recipeNutrition(recipe, items, itemProducts, recipesById, { chosen: recap?.choices ?? [] }) !== null;
+  }, [recipe, items, itemProducts, recipesById, recap]);
+
   const restockList = useMemo(
     () => (restockOfferEnabled ? restockRows(classified) : []),
     [classified, restockOfferEnabled]
@@ -116,7 +136,8 @@ export function CookRecap() {
   }, [recap, recipe, recipesById]);
 
   const askLeftovers = !!recap?.canLogLeftovers;
-  const hasSomethingToAsk = askVote || askLeftovers || rows.length > 0 || restockList.length > 0;
+  const hasSomethingToAsk =
+    askVote || askLeftovers || askCookedWeight || rows.length > 0 || restockList.length > 0;
 
   /**
    * Held back while the one other thing a tick can raise is up.
@@ -165,6 +186,15 @@ export function CookRecap() {
           : undefined
       }
       onLogLeftovers={askLeftovers ? () => setLeftoverVisible(true) : undefined}
+      cookedWeight={
+        askCookedWeight && recipe
+          // Divided by this cooking's scale on the way in, because what goes on
+          // the recipe is what the recipe makes as written — a doubled Sunday
+          // weighs twice that. `cookedDishGrams` multiplies it back out at
+          // every later reading.
+          ? { onSet: grams => setCookedWeight(recipe.id, asWrittenCookedWeight(grams, recap.scale)) }
+          : undefined
+      }
       rows={rows}
       restockRows={restockList}
       onClose={close}

@@ -34,6 +34,7 @@ function makeRecipe(name: string, overrides: Partial<Recipe> = {}): Recipe {
     servings: null,
     servingsMax: null,
     recipeYield: null,
+    cookedWeightG: null,
     leftoverKeepDays: null,
     imagePath: null,
     mealType: null,
@@ -235,6 +236,23 @@ describe('field setters', () => {
 
     useRecipeStore.getState().setRecipeYield(r.id, null);
     expect(useRecipeStore.getState().recipeById(r.id)!.recipeYield).toBeNull();
+  });
+
+  it('sets, clamps and clears the cooked weight', () => {
+    const r = makeRecipe('Lasagne');
+    seed([r]);
+
+    useRecipeStore.getState().setCookedWeight(r.id, 1450.4);
+    expect(useRecipeStore.getState().recipeById(r.id)!.cookedWeightG).toBe(1450);
+
+    // A dish weighing nothing would divide a plate by nothing, so it reads as
+    // no weight rather than as a weight of zero.
+    useRecipeStore.getState().setCookedWeight(r.id, 0);
+    expect(useRecipeStore.getState().recipeById(r.id)!.cookedWeightG).toBeNull();
+
+    useRecipeStore.getState().setCookedWeight(r.id, 900);
+    useRecipeStore.getState().setCookedWeight(r.id, null);
+    expect(useRecipeStore.getState().recipeById(r.id)!.cookedWeightG).toBeNull();
   });
 
   it('sets and clears the leftover keep-for window', () => {

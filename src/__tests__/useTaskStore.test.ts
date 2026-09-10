@@ -5576,7 +5576,7 @@ describe('checkMealSlotTasks', () => {
   function recipe(id: string, over: Partial<Recipe> = {}): Recipe {
     return {
       id, name: 'Chili', nameKey: 'chili', notes: '', sourceUrl: null, sourceName: null,
-      author: null, source: null, servings: null, servingsMax: null, recipeYield: null,
+      author: null, source: null, servings: null, servingsMax: null, recipeYield: null, cookedWeightG: null,
       leftoverKeepDays: null, imagePath: null, mealType: null, tags: [], ingredients: [],
       emptySections: [], components: [], prepTasks: [], steps: [], sortOrder: 1,
       createdAt: '2026-01-01T00:00:00.000Z', cookCount: 0, lastCookedAt: null, vote: null,
@@ -5898,7 +5898,7 @@ describe('checkMealShortfallTasks', () => {
   function shortfallRecipe(id: string, name: string, ingredientNames: string[]): Recipe {
     return {
       id, name, nameKey: name.toLowerCase(), notes: '', sourceUrl: null, sourceName: null,
-      author: null, source: null, servings: null, servingsMax: null, recipeYield: null,
+      author: null, source: null, servings: null, servingsMax: null, recipeYield: null, cookedWeightG: null,
       leftoverKeepDays: null, imagePath: null, mealType: null, tags: [],
       ingredients: ingredientNames.map((n, i) => ({
         id: `${id}-i${i}`, name: n, nameKey: n.toLowerCase(), quantity: '', aisle: null,

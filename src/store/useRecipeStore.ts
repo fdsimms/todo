@@ -29,6 +29,7 @@ import {
 } from '../utils/recipeUtils';
 import { cookTimerElapsed, prepTimerElapsed } from '../utils/recipeTimer';
 import { clampKeepDays } from '../utils/leftovers';
+import { clampCookedWeight } from '../utils/mealLog';
 import { normalizeRecipeTags } from '../utils/recipeTags';
 import { makeComponent, recipeMap, wouldCreateRecipeCycle } from '../utils/recipeComponents';
 import { sectionsOf } from '../utils/recipeSections';
@@ -137,6 +138,21 @@ interface RecipeStore {
   setServings: (id: string, servings: number | null, servingsMax?: number | null) => void;
   /** What the recipe makes when a person-count doesn't fit — "3 cups", "2 dozen cookies". */
   setRecipeYield: (id: string, recipeYield: string | null) => void;
+  /**
+   * What the finished dish weighs, as the recipe is written. null clears it
+   * back to "nobody has weighed this", which is what every recipe says until
+   * somebody does.
+   *
+   * **Takes the as-written weight, not what a scaled cooking weighed.** A
+   * caller holding a scale (the cook recap, which knows the meal's own
+   * `recipeScale`) divides first through `asWrittenCookedWeight`, so the two
+   * halves of that conversion stay in `mealLog.ts` next to each other rather
+   * than one of them living here.
+   *
+   * Clamped rather than validated at the call site, the same call
+   * `setLeftoverKeepDays` makes. See Recipe.cookedWeightG.
+   */
+  setCookedWeight: (id: string, grams: number | null) => void;
   /**
    * How long this dish's leftovers keep. null hands the question back to the
    * standard window, which is what every recipe says until told otherwise.
@@ -460,6 +476,7 @@ export const useRecipeStore = create<RecipeStore>((set, get) => ({
       servings: null,
       servingsMax: null,
       recipeYield: null,
+      cookedWeightG: null,
       leftoverKeepDays: null,
       imagePath: null,
       mealType: null,
@@ -664,6 +681,12 @@ export const useRecipeStore = create<RecipeStore>((set, get) => ({
     if (!recipe) return;
     const clean = cleanRecipeSource(recipeYield ?? '');
     save(set, { ...recipe, recipeYield: clean || null });
+  },
+
+  setCookedWeight(id, grams) {
+    const recipe = get().recipes.find(r => r.id === id);
+    if (!recipe) return;
+    save(set, { ...recipe, cookedWeightG: clampCookedWeight(grams) });
   },
 
   setLeftoverKeepDays(id, days) {

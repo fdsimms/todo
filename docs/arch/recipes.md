@@ -484,6 +484,43 @@ The four rules that make it safe, all enforced in `scaleQuantity`:
   side by side. It still never collapses units that merely measure alike — "g" and "kg" stay two
   units, since merging those is rule 2 again.
 
+## What a cooked dish weighs (`Recipe.cookedWeightG`, `mealLog.ts`)
+
+Logging a plate of something you cooked used to have one answer: how many servings of it you
+had. That is an estimate about how evenly a dish got divided, dressed as a measurement, and a
+dish that never named a servings count could only be logged in fractions of the whole thing.
+`Recipe.cookedWeightG` is what the finished dish weighs, and a plate weighed against it is
+arithmetic instead: the plate over the dish is the fraction of the dish that was eaten, applied
+to figures `recipeNutrition.ts` already produced.
+
+- **The weight is a fact about the dish, not about one cooking.** It lives on the recipe, and a
+  scaled cooking converts at the boundary: `asWrittenCookedWeight` divides on the way in and
+  `cookedDishGrams` multiplies on the way out, so weighing a doubled batch at 1,450g stores 725.
+  Both halves are in `mealLog.ts` next to each other precisely so they can't drift. A per-cooking
+  weight on `MealPlanEntry` was the other option and was rejected: it is a second number to keep
+  in step for a variation (a batch that reduced further than usual) small next to the servings
+  guess this replaces.
+- **It is asked for in the cook recap, once, where the scale is.** `CookRecapSheet` gets a
+  section, gated the way every other section there is gated on its own subject: no recipe to
+  remember it on, a weight already recorded, or a dish whose nutrition rollup declines all mean
+  no question. That last one is the load-bearing gate — a weight is only ever a fraction applied
+  to figures, so without figures it measures nothing. `RecipeEditor` has the same field for
+  anybody who weighed it afterwards.
+- **Nothing else is derived from it.** No calorie density, no "the serving you should have had",
+  no weight goal. The rule `docs/arch/health-data.md` sets for the user's own weight holds for
+  this one: it scales figures that already existed and stops there. `servingGrams` is the one
+  reading beyond the fraction, and it only divides the dish by a servings count the recipe
+  already stated, to say what a serving comes to.
+- **A plate heavier than the dish is refused rather than logged.** 3200 typed for 320 is a typo,
+  and a helping ten times the dish is the write-side failure `docs/arch/health-data.md` describes:
+  nothing downstream would ever question it. Same posture as the rest of the nutrition tree —
+  refuse rather than approximate.
+- **Servings do not go away.** A dish nobody has weighed is logged in servings exactly as before,
+  and a weighed dish that also states servings offers both, weight first (`LogMealPrompt`,
+  `FoodLogEntrySheet`). What changed for the servings path is that it now records grams too when
+  the dish has been weighed, since the dish's weight over its servings count says what one of
+  them weighed.
+
 ## Unit conversion (`unitConvert.ts`) — showing amounts in the reader's units
 
 The `unitSystem` setting (`asWritten` / `metric` / `us`, default `asWritten`) shows a quantity in

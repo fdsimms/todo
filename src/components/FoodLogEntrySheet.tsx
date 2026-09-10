@@ -18,7 +18,8 @@ import { useGroceryStore } from '../store/useGroceryStore';
 import { useRecipeStore } from '../store/useRecipeStore';
 import { useFoodLogStore, type FoodLogDraft } from '../store/useFoodLogStore';
 import { addCustomPortion, nutritionFor } from '../utils/foodNutrition';
-import { combineFoodNutrition, recipeHelpingNutrition, scalePanelToAmount } from '../utils/foodLog';
+import { combineFoodNutrition, helpingNutrition, recipeHelpingNutrition, scalePanelToAmount } from '../utils/foodLog';
+import { cookedDishGrams, mealHelping, servingGrams, weighedHelping } from '../utils/mealLog';
 import { perServing, recipeNutrition, recipeNutritionLines, type NutritionLine } from '../utils/recipeNutrition';
 import { describeProduct } from '../utils/groceryProduct';
 import { groceryNameKey } from '../utils/groceryParse';
@@ -28,7 +29,7 @@ import { EmptyState } from './EmptyState';
 import { InlineAction } from './InlineAction';
 import { NutritionSearchSheet } from './NutritionSearchSheet';
 import { NumberPadAccessory, NUMBER_PAD_ACCESSORY_ID } from './NumberPadAccessory';
-import { SegmentedControl } from './SegmentedControl';
+import { SegmentedControl, type SegmentOption } from './SegmentedControl';
 import { SheetHeaderButton } from './SheetHeaderButton';
 
 /**
@@ -44,8 +45,15 @@ import { SheetHeaderButton } from './SheetHeaderButton';
  * **A dish is offered per serving and a food by its own amount**, because those
  * are the two questions that have answers. "How much of this lasagne did you
  * eat" is answerable in servings and not in grams; "how much milk" is the other
- * way round. A recipe that never said how many servings it makes is not offered
- * at all rather than counted as one helping.
+ * way round.
+ *
+ * **Unless the dish has been weighed, and then grams is the better question.**
+ * `Recipe.cookedWeightG` is what the whole finished dish came to, so a plate
+ * weighed against it is the fraction that was eaten — no servings count and no
+ * assumption that the dish was divided evenly. A weighed dish opens on grams
+ * and offers servings beside it; a dish nobody has weighed is offered in
+ * servings as before, and one with neither a servings count nor a weight is
+ * not offered at all rather than counted as one helping.
  *
  * **Nothing is written until Save**, so the swipe-down is guarded. What it
  * would otherwise lose is a picked food and a typed amount.
@@ -100,6 +108,22 @@ interface Props {
   onEstimate?: () => void;
 }
 
+/** The two ways of saying how much of a dish was eaten. */
+type DishMeasure = 'weight' | 'servings';
+
+const DISH_MEASURE_OPTIONS: SegmentOption<DishMeasure>[] = [
+  { value: 'weight', label: 'By weight' },
+  { value: 'servings', label: 'By servings' },
+];
+
+/** What Save is about to write, once the typed amount resolves to something. */
+interface Built {
+  nutrition: FoodNutrition;
+  grams: number | null;
+  /** How the amount is written down, when the helping named itself. Foods use what was typed. */
+  quantity?: string;
+}
+
 /** One thing that can be logged: a catalog food, a box of one, or a cooked dish. */
 interface Candidate {
   key: string;
@@ -111,8 +135,12 @@ interface Candidate {
   recipeId: string | null;
   itemId: string | null;
   productId: string | null;
-  /** Present for a dish: what one serving of it works out to. */
+  /** Present for a dish: what one serving of it works out to, when it says how many it makes. */
   servingPanel: FoodNutrition | null;
+  /** Present for a dish: what the whole finished dish weighs, when somebody has weighed it. */
+  cookedGrams: number | null;
+  /** Present for a dish: how many servings its figures are, so a serving's own weight can be worked out. */
+  dishServings: number | null;
 }
 
 export function FoodLogEntrySheet({ visible, slot, at, seedRecipeId, onClose, onEstimate }: Props) {
@@ -129,6 +157,9 @@ export function FoodLogEntrySheet({ visible, slot, at, seedRecipeId, onClose, on
   const [query, setQuery] = useState('');
   const [picked, setPicked] = useState<Candidate | null>(null);
   const [amount, setAmount] = useState('');
+  // Which question the amount field is asking of a dish. Set from the picked
+  // dish rather than remembered across picks — see `pickDish`.
+  const [dishMeasure, setDishMeasure] = useState<DishMeasure>('servings');
   const [chosenSlot, setChosenSlot] = useState<MealSlot | null>(slot);
   const [weighing, setWeighing] = useState(false);
   const [weighGrams, setWeighGrams] = useState('');
@@ -180,6 +211,8 @@ export function FoodLogEntrySheet({ visible, slot, at, seedRecipeId, onClose, on
         itemId: item.id,
         productId: product.id,
         servingPanel: null,
+        cookedGrams: null,
+        dishServings: null,
       });
     }
     for (const item of items) {
@@ -195,13 +228,21 @@ export function FoodLogEntrySheet({ visible, slot, at, seedRecipeId, onClose, on
         itemId: item.id,
         productId: null,
         servingPanel: null,
+        cookedGrams: null,
+        dishServings: null,
       });
     }
     for (const recipe of recipes) {
       const dish = recipeNutrition(recipe, items, itemProducts);
       if (!dish) continue;
       const serving = recipeHelpingNutrition(perServing(dish), 1);
-      if (!serving) continue;
+      // Scale 1: this sheet logs the recipe as written rather than one night's
+      // cooking of it, which is the same basis its figures above are on.
+      const cookedGrams = cookedDishGrams(recipe.cookedWeightG, 1);
+      // One or the other is enough. A dish that says how many it serves can be
+      // logged in servings, and a dish somebody has weighed can be logged in
+      // grams whether or not it ever named a serving count.
+      if (!serving && cookedGrams === null) continue;
       out.push({
         key: `r:${recipe.id}`,
         label: recipe.name,
@@ -217,6 +258,8 @@ export function FoodLogEntrySheet({ visible, slot, at, seedRecipeId, onClose, on
         itemId: null,
         productId: null,
         servingPanel: serving,
+        cookedGrams,
+        dishServings: dish.servings,
       });
     }
     return out;
@@ -229,9 +272,22 @@ export function FoodLogEntrySheet({ visible, slot, at, seedRecipeId, onClose, on
     if (!visible || !seedRecipeId) return;
     const dish = candidates.find(c => c.recipeId === seedRecipeId);
     if (!dish) return;
-    setPicked(dish);
-    setAmount('1');
+    choose(dish);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [visible, seedRecipeId, candidates]);
+
+  /**
+   * Picking one, and opening it on the question it can actually answer: grams
+   * for a dish that has been weighed, servings for one that hasn't. The weight
+   * field opens empty because there is nothing sensible to pre-fill — a plate
+   * has to be weighed — while a servings count opens at one.
+   */
+  const choose = (candidate: Candidate) => {
+    setPicked(candidate);
+    const weigh = candidate.kind === 'dish' && candidate.cookedGrams !== null;
+    setDishMeasure(weigh ? 'weight' : 'servings');
+    setAmount(candidate.kind === 'dish' && !weigh ? '1' : '');
+  };
 
   const results = useMemo(() => {
     const key = groceryNameKey(query);
@@ -266,11 +322,11 @@ export function FoodLogEntrySheet({ visible, slot, at, seedRecipeId, onClose, on
     [varyingLines, varyingAmounts],
   );
 
-  const built = useMemo(() => {
+  const built = useMemo<Built | null>(() => {
     if (!picked) return null;
     if (picked.kind === 'dish') {
-      const helpings = Number(amount.trim().replace(',', '.'));
-      if (!Number.isFinite(helpings) || helpings <= 0) return null;
+      const typed = Number(amount.trim().replace(',', '.'));
+      if (!Number.isFinite(typed) || typed <= 0) return null;
       // Rebuilt from the dish rather than scaled off the one-serving panel, so
       // the rounding happens once against the real per-serving figures.
       const dish = recipeNutrition(
@@ -279,15 +335,33 @@ export function FoodLogEntrySheet({ visible, slot, at, seedRecipeId, onClose, on
         itemProducts,
       );
       if (!dish) return null;
-      const base = recipeHelpingNutrition(perServing(dish), helpings);
+      const figures = {
+        total: dish.total,
+        perServing: perServing(dish),
+        servings: dish.servings,
+        cookedGrams: picked.cookedGrams,
+      };
+      const helping = dishMeasure === 'weight'
+        ? weighedHelping(figures, typed)
+        : mealHelping(figures, typed);
+      if (!helping) return null;
+      const base = helpingNutrition(helping.amounts, helping.servingText, helping.grams);
       if (!base) return null;
       const extras = varyingResolved.filter(r => r.resolved).map(r => ({ nutrition: r.resolved!.nutrition }));
       const nutrition = extras.length > 0 ? combineFoodNutrition(base, extras) : base;
-      return { nutrition, grams: null as number | null };
+      return {
+        nutrition,
+        // The dish's own weight stops describing the entry once something with
+        // a weight of its own is folded in, so it's dropped rather than left
+        // standing for a plate it no longer covers — the same call
+        // `combineFoodNutrition` makes about its own `servingGrams`.
+        grams: extras.length > 0 ? null : helping.grams,
+        quantity: helping.servingText,
+      };
     }
     if (!picked.panel) return null;
     return scalePanelToAmount(picked.panel, amount, null);
-  }, [picked, amount, recipes, items, itemProducts, varyingResolved]);
+  }, [picked, amount, dishMeasure, recipes, items, itemProducts, varyingResolved]);
 
   // What's actually offered to weigh, which `weighableLine` decides rather
   // than the shape of the typed amount alone.
@@ -304,6 +378,29 @@ export function FoodLogEntrySheet({ visible, slot, at, seedRecipeId, onClose, on
     if (!picked || picked.kind !== 'food' || !picked.panel || built || !amount.trim()) return null;
     return weighableLine(amount, null, picked.panel, picked.label);
   }, [picked, built, amount]);
+
+  /**
+   * What the amount field means for a dish, said in the dish's own numbers.
+   *
+   * The weight line names what there is to measure against, since the plate
+   * over the dish is the whole arithmetic, and adds what a serving comes to
+   * when the dish also says how many it makes — the two answers are then
+   * readable against each other rather than being two unrelated scales.
+   */
+  const dishWeightHint = useMemo(() => {
+    if (!picked || picked.kind !== 'dish') return '';
+    if (dishMeasure !== 'weight' || picked.cookedGrams === null) {
+      return 'In servings of the recipe as written.';
+    }
+    const per = servingGrams({
+      total: {},
+      perServing: null,
+      servings: picked.dishServings,
+      cookedGrams: picked.cookedGrams,
+    });
+    return `What was on your plate. The whole dish weighs ${picked.cookedGrams} g`
+      + (per !== null ? `, so a serving is about ${per} g.` : '.');
+  }, [picked, dishMeasure]);
 
   // Listed from the food's own table rather than a fixed "e.g. 1 cup" — that
   // placeholder was suggesting an amount this specific food often can't
@@ -333,9 +430,12 @@ export function FoodLogEntrySheet({ visible, slot, at, seedRecipeId, onClose, on
   const handleSave = () => {
     if (!picked || !built) return;
     const answeredExtras = varyingResolved.filter(r => r.resolved).map(r => r.line.name);
+    // A dish says how much in the words its helping already chose ("320 g",
+    // "2 servings"); a food is recorded as the amount that was typed.
+    const measured = built.quantity ?? amount.trim();
     const quantity = answeredExtras.length > 0
-      ? `${amount.trim()}, plus ${answeredExtras.join(', ')}`
-      : amount.trim();
+      ? `${measured}, plus ${answeredExtras.join(', ')}`
+      : measured;
     const draft: FoodLogDraft = {
       label: picked.label,
       quantity,
@@ -370,6 +470,8 @@ export function FoodLogEntrySheet({ visible, slot, at, seedRecipeId, onClose, on
       itemId: null,
       productId: null,
       servingPanel: null,
+      cookedGrams: null,
+      dishServings: null,
     });
     setAmount('');
   };
@@ -390,7 +492,7 @@ export function FoodLogEntrySheet({ visible, slot, at, seedRecipeId, onClose, on
     <TouchableOpacity
       style={styles.row}
       activeOpacity={interaction.activeOpacity}
-      onPress={() => { haptics.tap(); setPicked(item); setAmount(item.kind === 'dish' ? '1' : ''); }}
+      onPress={() => { haptics.tap(); choose(item); }}
       accessibilityRole="button"
       accessibilityLabel={`Log ${item.label}`}
     >
@@ -416,19 +518,40 @@ export function FoodLogEntrySheet({ visible, slot, at, seedRecipeId, onClose, on
         {picked ? (
           <View style={styles.body}>
             <Text style={styles.label}>HOW MUCH</Text>
+            {/* Only for a dish that can answer both ways. A weighed dish with
+                no servings count has nothing to switch to, and offering the
+                switch would offer a question with no answer. */}
+            {picked.kind === 'dish' && picked.cookedGrams !== null && !!picked.servingPanel && (
+              <View style={styles.measureRow}>
+                <SegmentedControl
+                  options={DISH_MEASURE_OPTIONS}
+                  value={dishMeasure}
+                  onChange={next => { setDishMeasure(next); setAmount(next === 'weight' ? '' : '1'); }}
+                  label="How to measure it"
+                />
+              </View>
+            )}
             <TextInput
               style={styles.input}
               value={amount}
               onChangeText={setAmount}
-              placeholder={picked.kind === 'dish' ? 'e.g. 1.5' : `e.g. ${portionExamples[0] ?? '100g'}`}
+              placeholder={
+                picked.kind !== 'dish'
+                  ? `e.g. ${portionExamples[0] ?? '100g'}`
+                  : dishMeasure === 'weight' ? 'e.g. 320 (grams)' : 'e.g. 1.5'
+              }
               placeholderTextColor={colors.textTertiary}
               autoFocus
               keyboardType={picked.kind === 'dish' ? 'decimal-pad' : 'default'}
-              accessibilityLabel="How much you ate"
+              accessibilityLabel={
+                picked.kind === 'dish' && dishMeasure === 'weight'
+                  ? 'Weight on your plate in grams'
+                  : 'How much you ate'
+              }
             />
             <Text style={styles.hint}>
               {picked.kind === 'dish'
-                ? 'In servings of the recipe as written.'
+                ? dishWeightHint
                 : portionExamples.length > 0
                   ? `A weight (like 100g), or one of this food's stated portions: ${portionExamples.join(', ')}. Anything else is refused rather than guessed at.`
                   : 'A weight, like 100g. This food states no portions to measure by, so a volume or a count can\'t be used yet.'}
@@ -437,7 +560,9 @@ export function FoodLogEntrySheet({ visible, slot, at, seedRecipeId, onClose, on
             {!!amount.trim() && !built && (
               <Text style={styles.error}>
                 {picked.kind === 'dish'
-                  ? 'Enter how many servings you had.'
+                  ? (dishMeasure === 'weight'
+                    ? `Enter what was on your plate, in grams, up to the ${picked.cookedGrams} g the whole dish weighs.`
+                    : 'Enter how many servings you had.')
                   : 'This food has no way to weigh that amount, so the figures would be a guess. Try a weight, or an amount it states a portion for.'}
               </Text>
             )}
@@ -624,6 +749,9 @@ function makeStyles(colors: Colors) {
       letterSpacing: 0.8,
     },
     labelSpaced: { marginTop: spacing.lg },
+    // Margin on both sides: the label above has none of its own below it, and
+    // the amount field below has only spacing.xs of its own.
+    measureRow: { marginTop: spacing.sm, marginBottom: spacing.xs },
     input: {
       color: colors.text,
       fontSize: font.md,

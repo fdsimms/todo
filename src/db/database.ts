@@ -1428,6 +1428,12 @@ export function initDatabase(): void {
     // Hand-set position within the day, one number space across every meal
     // slot — see FoodLogEntry.sortOrder.
     'ALTER TABLE food_logs ADD COLUMN sort_order REAL NOT NULL DEFAULT 0',
+    // NULL for every existing recipe, which is the honest reading: nothing
+    // before this ever weighed a finished dish, and there is no figure to
+    // derive one from. REAL rather than INTEGER because a scaled cooking
+    // divides on the way in — a 1,450g double batch stores 725. See
+    // Recipe.cookedWeightG.
+    'ALTER TABLE recipes ADD COLUMN cooked_weight_g REAL',
   ];
   for (const sql of migrations) {
     try { db.runSync(sql); } catch (_) { /* column already exists */ }
@@ -4381,6 +4387,7 @@ function rowToRecipe(row: Record<string, unknown>): Recipe {
     servings: (row.servings as number) ?? null,
     servingsMax: (row.servings_max as number) ?? null,
     recipeYield: (row.recipe_yield as string) ?? null,
+    cookedWeightG: (row.cooked_weight_g as number) ?? null,
     leftoverKeepDays: (row.leftover_keep_days as number) ?? null,
     imagePath: (row.image_path as string) ?? null,
     // Unrecognised reads as null (untagged), not a guessed value — unlike
@@ -4425,16 +4432,16 @@ export function dbGetAllRecipes(): Recipe[] {
 export function dbInsertRecipe(recipe: Recipe): void {
   db.runSync(
     `INSERT INTO recipes
-      (id, name, name_key, notes, source_url, source_name, author, source, source_type, source_page, cookbook_id, servings, servings_max, recipe_yield, leftover_keep_days, image_path, meal_type, tags, ingredients, empty_sections, components, prep_tasks, steps, sort_order, created_at, cook_count, last_cooked_at, vote,
+      (id, name, name_key, notes, source_url, source_name, author, source, source_type, source_page, cookbook_id, servings, servings_max, recipe_yield, cooked_weight_g, leftover_keep_days, image_path, meal_type, tags, ingredients, empty_sections, components, prep_tasks, steps, sort_order, created_at, cook_count, last_cooked_at, vote,
        estimated_minutes, timer_started_at, timer_elapsed_seconds, last_cook_minutes, cook_time_count, total_cook_minutes,
        prep_minutes, prep_timer_started_at, prep_timer_elapsed_seconds, last_prep_minutes, prep_time_count, total_prep_minutes)
-     VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)`,
+     VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)`,
     [
       recipe.id, recipe.name, recipe.nameKey, recipe.notes, recipe.sourceUrl ?? null,
       recipe.sourceName ?? null, recipe.author ?? null, recipe.source ?? null,
       recipe.sourceType ?? null, recipe.sourcePage ?? null, recipe.cookbookId ?? null,
       recipe.servings ?? null, recipe.servingsMax ?? null, recipe.recipeYield ?? null,
-      recipe.leftoverKeepDays ?? null,
+      recipe.cookedWeightG ?? null, recipe.leftoverKeepDays ?? null,
       recipe.imagePath ?? null, recipe.mealType ?? null,
       JSON.stringify(recipe.tags),
       JSON.stringify(recipe.ingredients),
@@ -4453,7 +4460,7 @@ export function dbInsertRecipe(recipe: Recipe): void {
 export function dbUpdateRecipe(recipe: Recipe): void {
   db.runSync(
     `UPDATE recipes SET
-       name=?, name_key=?, notes=?, source_url=?, source_name=?, author=?, source=?, source_type=?, source_page=?, cookbook_id=?, servings=?, servings_max=?, recipe_yield=?, leftover_keep_days=?, image_path=?, meal_type=?, tags=?, ingredients=?, empty_sections=?, components=?, prep_tasks=?, steps=?,
+       name=?, name_key=?, notes=?, source_url=?, source_name=?, author=?, source=?, source_type=?, source_page=?, cookbook_id=?, servings=?, servings_max=?, recipe_yield=?, cooked_weight_g=?, leftover_keep_days=?, image_path=?, meal_type=?, tags=?, ingredients=?, empty_sections=?, components=?, prep_tasks=?, steps=?,
        sort_order=?, cook_count=?, last_cooked_at=?, vote=?,
        estimated_minutes=?, timer_started_at=?, timer_elapsed_seconds=?, last_cook_minutes=?, cook_time_count=?, total_cook_minutes=?,
        prep_minutes=?, prep_timer_started_at=?, prep_timer_elapsed_seconds=?, last_prep_minutes=?, prep_time_count=?, total_prep_minutes=?
@@ -4463,7 +4470,7 @@ export function dbUpdateRecipe(recipe: Recipe): void {
       recipe.sourceName ?? null, recipe.author ?? null, recipe.source ?? null,
       recipe.sourceType ?? null, recipe.sourcePage ?? null, recipe.cookbookId ?? null,
       recipe.servings ?? null, recipe.servingsMax ?? null, recipe.recipeYield ?? null,
-      recipe.leftoverKeepDays ?? null,
+      recipe.cookedWeightG ?? null, recipe.leftoverKeepDays ?? null,
       recipe.imagePath ?? null, recipe.mealType ?? null,
       JSON.stringify(recipe.tags),
       JSON.stringify(recipe.ingredients),

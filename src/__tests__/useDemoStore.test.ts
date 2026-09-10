@@ -1795,6 +1795,19 @@ describe('demo seed — people', () => {
     expect(product?.nutrition).toBeTruthy();
   });
 
+  it('seeds a cooked dish logged by what the plate weighed', () => {
+    // The accurate way to log a dish, and invisible in demo mode without an
+    // entry that used it: a weight, against a recipe whose finished dish was
+    // weighed.
+    const window = cookingWindow(getLogicalToday(), 30);
+    useFoodLogStore.getState().loadWindow(window.startKey, window.endKey);
+    const dish = useFoodLogStore.getState().windowEntries.find(e => e.recipeId);
+    expect(dish?.grams).toBeGreaterThan(0);
+    expect(dish?.quantity).toMatch(/ g$/);
+    const recipe = useRecipeStore.getState().recipes.find(r => r.id === dish?.recipeId);
+    expect(recipe?.cookedWeightG).not.toBeNull();
+  });
+
   it('seeds a day whose totals do not all speak for every entry', () => {
     // A US label declares a short list, so a real day has fibre on some entries
     // and not others. Without that the coverage clause never renders.
@@ -2727,6 +2740,9 @@ describe('demo seed — groceries, recipes, meals and the fridge', () => {
     expect(recipes.some(r => r.estimatedMinutes && r.prepMinutes)).toBe(true);
     expect(recipes.some(r => r.servings && r.servingsMax)).toBe(true);
     expect(recipes.some(r => r.recipeYield)).toBe(true);
+    // One dish that has been weighed, so logging a plate of it by weight is
+    // something demo mode can actually show. See Recipe.cookedWeightG.
+    expect(recipes.some(r => r.cookedWeightG !== null)).toBe(true);
     // Both ends of the leftovers dial — one dish that keeps longer than the
     // standard window and one that keeps less — plus the many that say nothing.
     expect(recipes.some(r => (r.leftoverKeepDays ?? 0) > LEFTOVER_KEEP_DAYS_DEFAULT)).toBe(true);
