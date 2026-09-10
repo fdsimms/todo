@@ -338,19 +338,23 @@ export function GeneratedTasksSection() {
     if (spec.kind === 'calendarReview' && s.calendarReviewTimeSegment) {
       return `Adds a task each day, held back until ${s.calendarReviewTimeSegment}, to review tomorrow's events`;
     }
-    if (spec.kind === 'moodLog' && s.moodLogTimeSegment) {
-      return `Adds one task a day, held back until ${s.moodLogTimeSegment}, to log how you're feeling`;
+    if (spec.kind === 'moodLog' && s.moodLogTimeSegments.length > 0) {
+      const segmentNames = s.moodLogTimeSegments.map(seg =>
+        timeSegmentChoices.find(o => o.value === seg)?.label.toLowerCase() ?? seg
+      );
+      return s.moodLogTimeSegments.length === 1
+        ? `Adds one task a day, held back until ${segmentNames[0]}, to log how you're feeling`
+        : `Adds a task each of these times a day, to log how you're feeling: ${segmentNames.join(', ')}`;
     }
     return spec.onHint;
   };
 
   /**
-   * The "Show the task" row and its pills, for a generator that holds its task
-   * back until a part of the day.
+   * The "Show the task" row and its pills, for a generator that holds its
+   * single task back until one part of the day — single-select, unlike
+   * `moodLogTimeSegmentsExtra` below, which is the same row and pills for a
+   * generator whose check-in can fire more than once a day.
    *
-   * Two generators want this and they want it identically, so it is written
-   * once — the copy this replaced had drifted nowhere yet only because it had
-   * just the one instance, and a second hand-rolled copy is how that starts.
    * It stays a local helper rather than a registry field for the reason the
    * header states: `extrasFor` is JSX precisely so the knobs one generator has
    * don't have to be expressible in config.
@@ -385,6 +389,58 @@ export function GeneratedTasksSection() {
       </View>
     </>
   );
+
+  /**
+   * The mood log's own "Show the task" row — the one generator whose check-in
+   * can fire more than once a day. Multi-select, unlike `timeSegmentExtra`
+   * above: a segment toggles independently rather than replacing whichever
+   * was picked, and "Any time" clears the set back to the single any-time
+   * task rather than being one more mutually-exclusive option.
+   */
+  const moodLogTimeSegmentsExtra = (): React.ReactNode => {
+    const selected = s.moodLogTimeSegments;
+    const summary = selected.length === 0
+      ? 'Any time'
+      : timeSegmentChoices
+          .filter((o): o is { value: TimeOfDay; label: string } => o.value !== null && selected.includes(o.value))
+          .map(o => o.label)
+          .join(', ');
+    return (
+      <>
+        <View style={styles.sep} />
+        <SettingsRow
+          entryId="moodLogTimeSegments"
+          icon="time-outline"
+          label="Show the task"
+          hint="Held back until each part of the day arrives. Pick more than one for several check-ins a day — an earlier one still unanswered is cleared once the next arrives."
+          value={summary}
+          tight
+        />
+        <View style={styles.pillGroupRow}>
+          <PillGroup
+            noun="time of day"
+            options={timeSegmentChoices.map(o => ({
+              key: String(o.value),
+              label: o.label,
+              selected: o.value === null ? selected.length === 0 : selected.includes(o.value),
+              pinned: o.value === null,
+              accessibilityLabel: o.value === null
+                ? 'Show the task any time of day'
+                : `Show the task in the ${o.label.toLowerCase()}`,
+              onPress: () => {
+                haptics.tap();
+                if (o.value === null) { s.setMoodLogTimeSegments([]); return; }
+                const value = o.value;
+                s.setMoodLogTimeSegments(
+                  selected.includes(value) ? selected.filter(seg => seg !== value) : [...selected, value]
+                );
+              },
+            }))}
+          />
+        </View>
+      </>
+    );
+  };
 
   /** The controls only one generator has. Everything else is the same two rows. */
   const extrasFor = (kind: GeneratedKind): React.ReactNode => {
@@ -655,7 +711,7 @@ export function GeneratedTasksSection() {
     }
 
     if (kind === 'moodLog') {
-      return timeSegmentExtra('moodLogTimeSegment', s.moodLogTimeSegment, s.setMoodLogTimeSegment);
+      return moodLogTimeSegmentsExtra();
     }
 
     if (kind === 'weather') {

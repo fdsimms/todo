@@ -234,6 +234,34 @@ function earliestSegmentThreshold(segments: TimeOfDay[], pass?: VisibleAtPass): 
     .reduce((min, t) => (t < min ? t : min));
 }
 
+/** The instant a segment starts on the current logical day — the exported form of getTimeOfDayThreshold, for callers outside this file that need one segment's own threshold rather than a visibility comparison against it. */
+export function timeSegmentThreshold(segment: TimeOfDay, pass?: VisibleAtPass): Date {
+  return getTimeOfDayThreshold(segment, pass);
+}
+
+/**
+ * Which of `segments` the clock is currently in — the latest one whose
+ * threshold has already arrived today — or null if none has (including an
+ * empty list). Every other reader of a time segment here asks "is this task
+ * hidden or not" (earliestSegmentThreshold, streakWindowEnd); this instead
+ * answers "which slot is this", for a generator that holds several check-ins
+ * across one day (mood log) and needs to know which one is live right now
+ * rather than merely whether the earliest has passed.
+ */
+export function currentTimeSegment(segments: readonly TimeOfDay[], pass?: VisibleAtPass): TimeOfDay | null {
+  const now = pass ? pass.now : new Date();
+  let current: TimeOfDay | null = null;
+  let currentThreshold: Date | null = null;
+  for (const s of segments) {
+    const t = getTimeOfDayThreshold(s, pass);
+    if (t <= now && (currentThreshold === null || t > currentThreshold)) {
+      current = s;
+      currentThreshold = t;
+    }
+  }
+  return current;
+}
+
 // Anchored to the current *logical* day (getCurrentDayStart()), same as
 // getTimeOfDayThreshold above and for the same reason: hhmmToDate()'s default
 // base is the literal wall-clock date, so during the early-morning grace
