@@ -820,6 +820,15 @@ interface GroceryStore extends UndoHistoryActions {
    */
   setShelfLifeDays: (id: string, days: number | null) => void;
   /**
+   * What a catalog row is made of, per 100g or per serving — the generic
+   * food's panel, where `linkScannedGtins` writes the specific box's.
+   *
+   * Null clears it, and clearing means unknown rather than "contains
+   * nothing": every reader goes through `nutritionFor`, which falls through
+   * to whichever of the two rows has an answer. See FoodNutrition.
+   */
+  setItemNutrition: (id: string, nutrition: FoodNutrition | null) => void;
+  /**
    * The per-item answer to "does this get a use-up task" — true, false, or
    * null to hand the question back to the setting. Reconciles immediately, so
    * the toggle in the item sheet is also what adds or removes the task.
@@ -3277,6 +3286,14 @@ export const useGroceryStore = create<GroceryStore>((set, get) => ({
     const item = get().items.find(i => i.id === id);
     if (!item || item.shelfLifeDays === days) return;
     const updated = { ...item, shelfLifeDays: days };
+    dbUpdateGroceryItem(updated);
+    set(s => ({ items: s.items.map(i => (i.id === id ? updated : i)) }));
+  },
+
+  setItemNutrition(id, nutrition) {
+    const item = get().items.find(i => i.id === id);
+    if (!item) return;
+    const updated = { ...item, nutrition };
     dbUpdateGroceryItem(updated);
     set(s => ({ items: s.items.map(i => (i.id === id ? updated : i)) }));
   },

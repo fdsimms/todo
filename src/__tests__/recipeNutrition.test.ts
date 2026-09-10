@@ -1,7 +1,7 @@
 import type { FoodNutrition, GroceryItem, Recipe, RecipeIngredient } from '../types';
 import { groceryNameKey } from '../utils/groceryParse';
 import { choiceGroupKey } from '../utils/recipeComponents';
-import { perServing, recipeNutrition } from '../utils/recipeNutrition';
+import { describeRecipeNutrition, perServing, recipeNutrition } from '../utils/recipeNutrition';
 
 // Same mock recipeCost.test.ts uses, and for the same reason: the week read
 // reaches mealPlanGroceries → mealPlan → dateUtils → the settings store for
@@ -309,5 +309,53 @@ describe('perServing', () => {
 
   it('is null for a recipe that produced no reading at all', () => {
     expect(perServing(null)).toBeNull();
+  });
+});
+
+describe('describeRecipeNutrition', () => {
+  const catalog = () => [item({ name: 'Chicken', nutrition: panel() })];
+
+  it('is null while there is nothing worth saying', () => {
+    expect(describeRecipeNutrition(null)).toBeNull();
+  });
+
+  it('leads per serving when the recipe says how many it makes', () => {
+    const dish = recipe('Chicken', [ing('Chicken', { quantity: '400 g' })], { servings: 4 });
+    expect(describeRecipeNutrition(recipeNutrition(dish, catalog())))
+      .toBe('\u2248 100 cal, 10g protein per serving');
+  });
+
+  it('leads with the whole recipe when it does not', () => {
+    const dish = recipe('Chicken', [ing('Chicken', { quantity: '400 g' })]);
+    expect(describeRecipeNutrition(recipeNutrition(dish, catalog())))
+      .toBe('\u2248 400 cal, 40g protein');
+  });
+
+  it('carries the coverage clause whenever anything is uncovered', () => {
+    const dish = recipe('Stew', [
+      ing('Chicken', { quantity: '400 g' }),
+      ing('Stock', { quantity: '2 cups' }),
+    ]);
+    const items = [...catalog(), item({ name: 'Stock', nutrition: panel() })];
+    expect(describeRecipeNutrition(recipeNutrition(dish, items)))
+      .toBe('\u2248 400 cal, 40g protein, from 1 of 2 ingredients');
+  });
+
+  it('names only the nutrients that survived the per-nutrient floor', () => {
+    // Protein is reported by one food of three, so it is unknown rather than
+    // a total, and the line simply does not mention it.
+    const dish = recipe('Bowl', [
+      ing('Rice', { quantity: '100 g' }),
+      ing('Beans', { quantity: '100 g' }),
+      ing('Oil', { quantity: '100 g' }),
+    ]);
+    const items = [
+      item({ name: 'Rice', nutrition: panel({ amounts: { calorieKcal: 130 } }) }),
+      item({ name: 'Beans', nutrition: panel({ amounts: { calorieKcal: 120, proteinG: 8 } }) }),
+      item({ name: 'Oil', nutrition: panel({ amounts: { calorieKcal: 880 } }) }),
+    ];
+    const line = describeRecipeNutrition(recipeNutrition(dish, items))!;
+    expect(line).toContain('cal');
+    expect(line).not.toContain('protein');
   });
 });
