@@ -3217,13 +3217,16 @@ export interface GroceryItem {
   // coming home with something refutes an "Out of it" left on it, the same
   // correction a purchase already makes to ItemShopLink.unavailableAt.
   onHandUntil: string | null;
-  // The recipe this item was first added from, if any. Set only when
-  // addFromPlan creates a genuinely new catalog row — never on a row that
-  // already existed, so re-adding a known item (typed, imported, or from a
-  // different recipe) never overwrites where it originally came from. A
+  // The recipe this item is on the list for, if any. Set when addFromPlan
+  // creates a genuinely new catalog row, and restamped when it re-lists a row
+  // that had fallen off every list — a row still standing on a list keeps its
+  // existing credit (typing a known item, or a recipe re-adding one already
+  // on the list, never relabels it), but a row with no list membership left
+  // has nothing to be credited to except the recipe that just put it back. A
   // snapshot pair rather than a live id lookup: sourceRecipeTitle is captured
-  // once at creation and never refreshed, resolve-or-shrug like every other
-  // cross-row pointer here — a later recipe rename or delete doesn't touch it.
+  // at each (re)listing and never refreshed in between, resolve-or-shrug like
+  // every other cross-row pointer here — a later recipe rename or delete
+  // doesn't touch it.
   sourceRecipeId: string | null;
   sourceRecipeTitle: string | null;
   // "apples or pears" — two rows you'll pick between at the shelf, sharing this
