@@ -201,8 +201,49 @@ export function describeFoodPanel(nutrition: FoodNutrition | null): string | nul
   if (!nutrition) return null;
   const count = Object.keys(nutrition.amounts).length;
   const calories = nutrition.amounts.calorieKcal;
-  const per = nutrition.basis === 'per100ml' ? 'per 100ml' : nutrition.basis === 'perServing' ? 'per serving' : 'per 100g';
   const counted = `${count} ${count === 1 ? 'nutrient' : 'nutrients'}`;
   if (calories === undefined) return counted;
-  return `${Math.round(calories)} cal ${per}, ${counted}`;
+  return `${Math.round(calories)} cal ${NUTRITION_BASIS_LABEL[nutrition.basis]}, ${counted}`;
 }
+
+/**
+ * What to call each nutrient on screen, and the unit its figure is in.
+ *
+ * **One vocabulary, because the unit is the bug with no symptom.** A field
+ * labelled "Sodium" beside a box expecting milligrams, transcribed by somebody
+ * reading a label printed in grams, is a figure a thousand times too high that
+ * looks entirely ordinary until it reaches a health record. The stored unit is
+ * already in each key's name (`sodiumMg`, `waterMl`); this is the same fact
+ * written for a person, kept beside the parse rather than in whichever screen
+ * happened to need it first.
+ *
+ * Label order is `NUTRIENT_KEYS`' own order, which is the order a nutrition
+ * panel prints them, so a form built by walking it reads like the packet
+ * somebody is copying from.
+ */
+export const NUTRIENT_LABEL: Record<NutrientKey, { label: string; unit: string }> = {
+  calorieKcal: { label: 'Calories', unit: 'cal' },
+  fatG: { label: 'Total fat', unit: 'g' },
+  satFatG: { label: 'Saturated fat', unit: 'g' },
+  carbsG: { label: 'Total carbohydrate', unit: 'g' },
+  fiberG: { label: 'Dietary fiber', unit: 'g' },
+  sugarG: { label: 'Total sugars', unit: 'g' },
+  proteinG: { label: 'Protein', unit: 'g' },
+  sodiumMg: { label: 'Sodium', unit: 'mg' },
+  caffeineMg: { label: 'Caffeine', unit: 'mg' },
+  waterMl: { label: 'Water', unit: 'ml' },
+};
+
+/**
+ * How a basis reads in a sentence — "per 100g", "per serving".
+ *
+ * Shared so the one-line summary above and the form that writes the figures
+ * name it identically. A panel described one way and edited under another
+ * heading is a person checking whether they typed the right thing and finding
+ * two different questions.
+ */
+export const NUTRITION_BASIS_LABEL: Record<FoodNutrition['basis'], string> = {
+  per100g: 'per 100g',
+  per100ml: 'per 100ml',
+  perServing: 'per serving',
+};

@@ -21,8 +21,10 @@ import {
   type ProductRating,
 } from '../types';
 import { describeProduct, productsForItem } from '../utils/groceryProduct';
+import { describeFoodPanel } from '../utils/foodNutrition';
 import { defaultOnHandUntil, OUT_OF_IT_UNTIL } from '../utils/grocerySuggest';
 import { haptics } from '../utils/haptics';
+import { NutritionPanelSheet } from './NutritionPanelSheet';
 import { PillGroup, type PillGroupOption } from './PillGroup';
 import { SegmentedControl } from './SegmentedControl';
 import { SheetHeaderButton } from './SheetHeaderButton';
@@ -67,6 +69,7 @@ export function ProductSheet({ visible, itemId, editingProductId = null, onClose
   const markProductsOutOf = useGroceryStore(s => s.markProductsOutOf);
   const setProductFrozen = useGroceryStore(s => s.setProductFrozen);
   const setProductOpened = useGroceryStore(s => s.setProductOpened);
+  const setProductNutrition = useGroceryStore(s => s.setProductNutrition);
 
   const item = items.find(i => i.id === itemId) ?? null;
   const editing = itemProducts.find(p => p.id === editingProductId) ?? null;
@@ -79,6 +82,7 @@ export function ProductSheet({ visible, itemId, editingProductId = null, onClose
   // rather than swallowed, and cleared on the next keystroke: the text stays
   // on screen so the fix is an edit, not a retype.
   const [clash, setClash] = useState(false);
+  const [panelOpen, setPanelOpen] = useState(false);
 
   useEffect(() => {
     if (!visible) return;
@@ -364,6 +368,48 @@ export function ProductSheet({ visible, itemId, editingProductId = null, onClose
             </>
           )}
 
+          {/* A box's own panel, which outranks the item's generic one wherever
+              nutrition is read. Only for a box that exists, same rule the
+              pantry states above follow, and it writes immediately rather than
+              waiting for Save: the panel sheet has its own Save and its own
+              discard guard, so staging it here would mean two of each. There
+              is no search here on purpose — a box with a barcode gets its
+              panel from the scan, and this is the fallback for the deli
+              counter and the store brand that neither database has. */}
+          {editing && (
+            <>
+              <Text style={[styles.label, styles.labelSpaced]}>NUTRITION</Text>
+              <Text style={styles.hint}>
+                {describeFoodPanel(editing.nutrition)
+                  ?? `Nothing recorded for this one, so ${item.name.toLowerCase()}'s own figures are used instead.`}
+              </Text>
+              <View style={styles.actions}>
+                <TouchableOpacity
+                  style={styles.action}
+                  activeOpacity={interaction.activeOpacity}
+                  onPress={() => { haptics.tap(); setPanelOpen(true); }}
+                  accessibilityRole="button"
+                  accessibilityLabel={editing.nutrition ? 'Edit these figures' : 'Type in a label'}
+                >
+                  <Text style={styles.actionText}>
+                    {editing.nutrition ? 'Edit these figures' : 'Type in a label'}
+                  </Text>
+                </TouchableOpacity>
+                {!!editing.nutrition && (
+                  <TouchableOpacity
+                    style={styles.action}
+                    activeOpacity={interaction.activeOpacity}
+                    onPress={() => { haptics.tap(); setProductNutrition(editing.id, null); }}
+                    accessibilityRole="button"
+                    accessibilityLabel="Clear this box's nutrition"
+                  >
+                    <Text style={styles.actionText}>Clear these figures</Text>
+                  </TouchableOpacity>
+                )}
+              </View>
+            </>
+          )}
+
           {editing && (
             <View style={styles.actions}>
               {/* Only when it isn't already the one — a button that does
@@ -396,6 +442,15 @@ export function ProductSheet({ visible, itemId, editingProductId = null, onClose
           )}
         </ScrollView>
       </View>
+      {editing && (
+        <NutritionPanelSheet
+          visible={panelOpen}
+          foodName={describeProduct(editing) ?? item.name}
+          nutrition={editing.nutrition}
+          onClose={() => setPanelOpen(false)}
+          onSave={nutrition => setProductNutrition(editing.id, nutrition)}
+        />
+      )}
     </Modal>
   );
 }

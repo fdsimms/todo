@@ -829,6 +829,16 @@ interface GroceryStore extends UndoHistoryActions {
    */
   setItemNutrition: (id: string, nutrition: FoodNutrition | null) => void;
   /**
+   * One box's own panel, which outranks the catalog row's — the specific pot
+   * of yogurt rather than yogurt.
+   *
+   * Separate from `updateProduct` rather than another field on its patch,
+   * because that one validates a brand/variant pair and can refuse the whole
+   * write over a clash. A panel has nothing to clash with, and losing typed
+   * nutrition to a duplicate-name refusal would be a confusing way to fail.
+   */
+  setProductNutrition: (id: string, nutrition: FoodNutrition | null) => void;
+  /**
    * The per-item answer to "does this get a use-up task" — true, false, or
    * null to hand the question back to the setting. Reconciles immediately, so
    * the toggle in the item sheet is also what adds or removes the task.
@@ -3296,6 +3306,14 @@ export const useGroceryStore = create<GroceryStore>((set, get) => ({
     const updated = { ...item, nutrition };
     dbUpdateGroceryItem(updated);
     set(s => ({ items: s.items.map(i => (i.id === id ? updated : i)) }));
+  },
+
+  setProductNutrition(id, nutrition) {
+    const product = get().itemProducts.find(p => p.id === id);
+    if (!product) return;
+    const updated: ItemProduct = { ...product, nutrition };
+    dbSetItemProduct(updated);
+    set(s => ({ itemProducts: s.itemProducts.map(p => (p.id === id ? updated : p)) }));
   },
 
   setVarietyOfKey(id, key) {

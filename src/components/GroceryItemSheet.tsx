@@ -46,6 +46,7 @@ import { ItemDisposalOffer } from './ItemDisposalOffer';
 import { describeDisposalHistory } from '../utils/itemDisposal';
 import { SearchField } from './SearchField';
 import { CollapsibleField } from './CollapsibleField';
+import { NutritionPanelSheet } from './NutritionPanelSheet';
 import { NutritionSearchSheet } from './NutritionSearchSheet';
 import { describeFoodPanel } from '../utils/foodNutrition';
 import { InlineAction } from './InlineAction';
@@ -238,6 +239,7 @@ export function GroceryItemSheet({
   // progressive-disclosure note in CLAUDE.md.
   const [openField, setOpenField] = useState<CollapsibleFieldKey | null>(null);
   const [nutritionSearchOpen, setNutritionSearchOpen] = useState(false);
+  const [nutritionPanelOpen, setNutritionPanelOpen] = useState(false);
 
   // Field search — TaskEditor's magnifier, ported: sixteen fields is a lot to
   // scan for "where's expiry" when the sheet calls it Use by. Off by default
@@ -1045,7 +1047,7 @@ export function GroceryItemSheet({
     {
       key: 'nutrition',
       label: 'Nutrition',
-      keywords: ['calories', 'kcal', 'protein', 'carbs', 'fat', 'fiber', 'sodium', 'macros', 'food data', 'usda'],
+      keywords: ['calories', 'kcal', 'protein', 'carbs', 'fat', 'fiber', 'sodium', 'macros', 'food data', 'usda', 'label', 'nutrition facts'],
       node: (
         <View onLayout={(e: LayoutChangeEvent) => {
           fieldYRefs.current.nutrition = e.nativeEvent.layout.y;
@@ -1054,7 +1056,7 @@ export function GroceryItemSheet({
           <CollapsibleField
             label="Nutrition"
             summary={describeFoodPanel(item.nutrition) ?? undefined}
-            hint="What this food is made of, per 100g. Used to estimate a recipe's nutrition."
+            hint="What this food is made of. Used to estimate a recipe's nutrition."
             expanded={openField === 'nutrition'}
             onToggle={() => toggleField('nutrition')}
           >
@@ -1068,7 +1070,8 @@ export function GroceryItemSheet({
               ) : (
                 <Text style={styles.nutritionDetail}>
                   Nothing recorded. A recipe using this ingredient counts it as uncovered
-                  rather than guessing at it.
+                  rather than guessing at it. Search a food database, or copy the figures
+                  off the packet.
                 </Text>
               )}
               <View style={styles.nutritionActions}>
@@ -1076,6 +1079,16 @@ export function GroceryItemSheet({
                   label={item.nutrition ? 'Find a different food' : 'Find this food'}
                   icon="search"
                   onPress={() => { haptics.tap(); setNutritionSearchOpen(true); }}
+                />
+                {/*
+                  The fallback for the food no database has, and the correction
+                  path for the one a database got wrong. Neutral beside the
+                  search, which is the answer most foods have.
+                */}
+                <InlineAction
+                  label={item.nutrition ? 'Edit these figures' : 'Type in a label'}
+                  variant="neutral"
+                  onPress={() => { haptics.tap(); setNutritionPanelOpen(true); }}
                 />
                 {!!item.nutrition && (
                   <InlineAction
@@ -1867,6 +1880,13 @@ export function GroceryItemSheet({
         itemName={item.name}
         onClose={() => setNutritionSearchOpen(false)}
         onPick={nutrition => setItemNutrition(item.id, nutrition)}
+      />
+      <NutritionPanelSheet
+        visible={nutritionPanelOpen}
+        foodName={item.name}
+        nutrition={item.nutrition}
+        onClose={() => setNutritionPanelOpen(false)}
+        onSave={nutrition => setItemNutrition(item.id, nutrition)}
       />
       <NumberPadAccessory />
     </Modal>
