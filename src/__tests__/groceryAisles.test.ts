@@ -42,6 +42,7 @@ describe('aisleForName', () => {
     expect(aisleForName('milk')).toBe('Dairy & Eggs');
     expect(aisleForName('Bananas')).toBe('Produce');
     expect(aisleForName('toilet paper')).toBe('Household');
+    expect(aisleForName('hamburger')).toBe('Meat & Seafood');
   });
 
   it('is case- and punctuation-insensitive, via the same key the catalog uses', () => {

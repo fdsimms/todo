@@ -82,7 +82,7 @@ export const AISLE_LEXICON: Record<string, string> = {
   beef: 'Meat & Seafood', 'chicken breast': 'Meat & Seafood', chicken: 'Meat & Seafood',
   'chicken thighs': 'Meat & Seafood', clams: 'Meat & Seafood', cod: 'Meat & Seafood',
   crab: 'Meat & Seafood', 'ground beef': 'Meat & Seafood', 'ground turkey': 'Meat & Seafood',
-  lamb: 'Meat & Seafood', lobster: 'Meat & Seafood', mussels: 'Meat & Seafood',
+  hamburger: 'Meat & Seafood', lamb: 'Meat & Seafood', lobster: 'Meat & Seafood', mussels: 'Meat & Seafood',
   pork: 'Meat & Seafood', 'pork chops': 'Meat & Seafood', prawns: 'Meat & Seafood',
   ribs: 'Meat & Seafood', salmon: 'Meat & Seafood', sausage: 'Meat & Seafood',
   sausages: 'Meat & Seafood', scallops: 'Meat & Seafood', shrimp: 'Meat & Seafood',
