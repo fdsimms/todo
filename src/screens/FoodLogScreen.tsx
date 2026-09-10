@@ -26,12 +26,14 @@ import { nutritionFor } from '../utils/foodNutrition';
 import { describeProduct } from '../utils/groceryProduct';
 import { BarcodeScanSheet, type ScanProductDraft } from '../components/BarcodeScanSheet';
 import { ScanPortionSheet, type ScannedFood } from '../components/ScanPortionSheet';
+import { EstimateMealSheet } from '../components/EstimateMealSheet';
+import { useAiRoute } from '../hooks/useOnDeviceAi';
 import type { ReceiptAddDraft } from '../components/ReceiptImportSheet';
 import type { ScannedGtinLink } from '../utils/scanResolve';
 import { EmptyState } from '../components/EmptyState';
 import { HubPills } from '../components/HubPills';
 import { InlineAction } from '../components/InlineAction';
-import { ScreenHeader } from '../components/ScreenHeader';
+import { ScreenHeader, type ScreenHeaderAction } from '../components/ScreenHeader';
 import { FoodLogEntrySheet } from '../components/FoodLogEntrySheet';
 
 /**
@@ -71,11 +73,17 @@ export function FoodLogScreen() {
   const addProduct = useGroceryStore(s => s.addProduct);
   const linkScannedGtins = useGroceryStore(s => s.linkScannedGtins);
   const gtinProductFor = useGroceryStore(s => s.gtinProductFor);
+  // Gated so the button can't exist for a call that would refuse — the pairing
+  // rule `aiRouting.ts` states. This feature has no on-device engine, so the
+  // route is 'claude' or 'unavailable' and nothing renders for the second.
+  const estimateRoute = useAiRoute('nutritionEstimate');
 
   const [dayKey, setDayKey] = useState(() => dayKeyOf(getCurrentDayStart()));
   const [addingSlot, setAddingSlot] = useState<MealSlot | null>(null);
   const [addOpen, setAddOpen] = useState(false);
   const [scanOpen, setScanOpen] = useState(false);
+  const [estimateOpen, setEstimateOpen] = useState(false);
+  const [seedRecipeId, setSeedRecipeId] = useState<string | null>(null);
   const [scanned, setScanned] = useState<ScannedFood[]>([]);
   // Which nutrient rows are on screen. Collapsed by default: calories and
   // protein answer the question most days, and ten rows above the meals would
@@ -240,6 +248,14 @@ export function FoodLogScreen() {
             : `${dayEntries.length} ${dayEntries.length === 1 ? 'entry' : 'entries'}`
         }
         actions={[
+          // sparkles means "calls api.anthropic.com, needs a key" app-wide —
+          // see the note in GroceryCatalogSheet on why a local heuristic uses
+          // color-wand instead.
+          ...(estimateRoute !== 'unavailable' ? [{
+            icon: 'sparkles-outline',
+            onPress: () => { haptics.tap(); setAddingSlot(null); setEstimateOpen(true); },
+            accessibilityLabel: 'Estimate a meal from a description',
+          } satisfies ScreenHeaderAction] : []),
           {
             icon: 'barcode-outline',
             onPress: () => { haptics.tap(); setAddingSlot(null); setScanOpen(true); },
@@ -397,13 +413,28 @@ export function FoodLogScreen() {
         visible={addOpen}
         slot={addingSlot}
         at={loggingAt}
-        onClose={() => setAddOpen(false)}
+        seedRecipeId={seedRecipeId}
+        onClose={() => { setAddOpen(false); setSeedRecipeId(null); }}
       />
       <BarcodeScanSheet
         visible={scanOpen}
         context="log"
         onClose={() => setScanOpen(false)}
         onApply={handleScanApply}
+      />
+      <EstimateMealSheet
+        visible={estimateOpen}
+        slot={addingSlot}
+        at={loggingAt}
+        onClose={() => setEstimateOpen(false)}
+        onPickRecipe={recipeId => {
+          // Handed to the picker rather than logged here: a recipe is logged in
+          // servings, which is a question this sheet has not asked. Seeded, so
+          // the offer lands on the dish rather than on a list to search again.
+          setEstimateOpen(false);
+          setSeedRecipeId(recipeId);
+          setAddOpen(true);
+        }}
       />
       <ScanPortionSheet
         visible={scanned.length > 0}

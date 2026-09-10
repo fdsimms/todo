@@ -29,7 +29,7 @@ import { itemsOnList } from '../utils/groceryLists';
 import { OTHER_AISLE } from '../utils/groceryAisles';
 import { useGroceryStore } from '../store/useGroceryStore';
 import { useFoodLogStore } from '../store/useFoodLogStore';
-import { foodLogTotals, scalePanelToAmount } from '../utils/foodLog';
+import { describeFoodLogEntry, foodLogTotals, scalePanelToAmount } from '../utils/foodLog';
 import { hasNutritionData, nutrientAverages, nutritionCounts, sourceMix } from '../utils/nutritionStats';
 import { packageHelping } from '../utils/scanPortion';
 import { targetedNutrients } from '../utils/nutritionTargets';
@@ -1667,6 +1667,10 @@ describe('demo seed — people', () => {
       // panel, and carries a recipe instead of an item. Its own arithmetic is
       // pinned by the source assertion below.
       if (e.recipeId) continue;
+      // An estimate has no source to recompute it from, which is the whole
+      // reason it is marked. What is assertable about it is the marker, and
+      // the case below does that.
+      if (!e.itemId) { expect(e.nutrition.source).toBe('estimated'); continue; }
       const item = items.find(i => i.id === e.itemId);
       const product = products.find(p => p.id === e.productId);
       const panel = nutritionFor(item, product);
@@ -1681,6 +1685,22 @@ describe('demo seed — people', () => {
       checked += 1;
     }
     expect(checked).toBeGreaterThan(0);
+  });
+
+  it('seeds a meal eaten out, so the estimated marker has something to render on', () => {
+    // The marker shows on the row through describeFoodLogEntry and is counted
+    // apart by sourceMix on Stats. Neither reader says anything on a seed where
+    // every entry came from a panel, so the feature reads as one the app hasn't
+    // got. It carries no item and no recipe, which is what an estimate is.
+    const window = cookingWindow(getLogicalToday(), 30);
+    useFoodLogStore.getState().loadWindow(window.startKey, window.endKey);
+    const eatenOut = useFoodLogStore.getState().windowEntries
+      .filter(e => !e.itemId && !e.recipeId);
+    expect(eatenOut).toHaveLength(1);
+    expect(eatenOut[0].nutrition.source).toBe('estimated');
+    expect(describeFoodLogEntry(eatenOut[0])).toContain('estimated');
+    // Absent stays absent: a short list is the ordinary case, not a thin seed.
+    expect(eatenOut[0].nutrition.amounts.fiberG).toBeUndefined();
   });
 
   it('seeds figures from more than one source, so the provenance stat has content', () => {

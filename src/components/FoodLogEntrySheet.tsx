@@ -53,6 +53,14 @@ interface Props {
   slot: MealSlot | null;
   /** The logical day being logged, so a backdated entry lands where it is shown. */
   at: Date;
+  /**
+   * A dish to open already picked, rather than a list to search.
+   *
+   * One caller: the estimate sheet, which offers a matching recipe instead of
+   * guessing at a description. Handing over a list with the dish somewhere in
+   * it would make the offer worth less than the tap it cost.
+   */
+  seedRecipeId?: string | null;
   onClose: () => void;
 }
 
@@ -71,7 +79,7 @@ interface Candidate {
   servingPanel: FoodNutrition | null;
 }
 
-export function FoodLogEntrySheet({ visible, slot, at, onClose }: Props) {
+export function FoodLogEntrySheet({ visible, slot, at, seedRecipeId, onClose }: Props) {
   const colors = useColors();
   const styles = useMemo(() => makeStyles(colors), [colors]);
 
@@ -92,6 +100,7 @@ export function FoodLogEntrySheet({ visible, slot, at, onClose }: Props) {
     setAmount('');
     setChosenSlot(slot);
   }, [visible, slot]);
+
 
   // Only foods with a panel, because an entry with no figures records nothing a
   // total could use. A row offered here and then refused at Save would be worse
@@ -153,6 +162,17 @@ export function FoodLogEntrySheet({ visible, slot, at, onClose }: Props) {
     }
     return out;
   }, [items, itemProducts, recipes]);
+
+  // After the reset above, and off `candidates` rather than the recipe store,
+  // so a dish that has no figures is left unpicked rather than opening onto a
+  // form that can never save. Its amount seeds the way tapping the row does.
+  useEffect(() => {
+    if (!visible || !seedRecipeId) return;
+    const dish = candidates.find(c => c.recipeId === seedRecipeId);
+    if (!dish) return;
+    setPicked(dish);
+    setAmount('1');
+  }, [visible, seedRecipeId, candidates]);
 
   const results = useMemo(() => {
     const key = groceryNameKey(query);

@@ -1482,6 +1482,53 @@ function seedFoodLog(today: Date): void {
     }
   }
 
+  /**
+   * A meal eaten out, estimated from a description.
+   *
+   * **The only honest way to show what the `estimated` marker looks like.** It
+   * renders on the row through `describeFoodLogEntry` and is counted apart from
+   * a label and a database read by `sourceMix` on Stats, and neither reader
+   * says anything on a seed where every entry came from a panel.
+   *
+   * Its figures are written out rather than computed, which is the one place in
+   * this seed that happens and is exactly what the feature produces: an
+   * estimate has no source to recompute it from, which is the whole reason it
+   * is marked. It carries no item and no recipe for the same reason. The entry
+   * still goes through `addEntry` like every other seeded row.
+   */
+  {
+    const at = subDays(today, 3);
+    at.setHours(13, 0, 0, 0);
+    addEntry({
+      label: 'Cheeseburger and fries, Five Guys',
+      quantity: '1 burger and a regular fries',
+      grams: null,
+      nutrition: {
+        basis: 'perServing',
+        // No weight, for the reason `estimateToPanel` gives: a gram figure for
+        // a described meal is one more invented number with nothing to check.
+        servingGrams: null,
+        servingText: '1 burger and a regular fries',
+        // A short list, and the absent keys are unknown rather than zero —
+        // the same ordinary case a packaged label sets.
+        amounts: {
+          calorieKcal: 1250,
+          fatG: 68,
+          satFatG: 22,
+          carbsG: 108,
+          proteinG: 45,
+          sodiumMg: 1470,
+        },
+        source: 'estimated',
+        sourceId: null,
+        portions: [],
+        recordedAt: subDays(today, 3).toISOString(),
+      },
+      slot: 'lunch',
+      at,
+    });
+  }
+
   for (const meal of meals) {
     const item = items.find(i => i.name === meal.name);
     if (!item?.nutrition) continue;
