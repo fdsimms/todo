@@ -136,7 +136,7 @@ export function FoodLogEntrySheet({ visible, slot, at, onClose }: Props) {
       if (!serving) continue;
       out.push({
         key: `r:${recipe.id}`,
-        label: recipe.title,
+        label: recipe.name,
         // Named rather than implied: a dish's figures come from its
         // ingredients' panels through a coverage floor, so it is an estimate
         // however good those panels were.
