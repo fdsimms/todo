@@ -10,6 +10,7 @@
  * real test failure rather than being papered over by a shared handle.
  */
 import { addDays } from 'date-fns/addDays';
+import { subDays } from 'date-fns/subDays';
 import { useDemoStore } from '../store/useDemoStore';
 import { bestStreakOf, isStreakAtRecord } from '../utils/streakRecord';
 import { isCleanToday } from '../utils/negativeHabits';
@@ -27,6 +28,8 @@ import { isFocusRunning } from '../utils/focusPlan';
 import { itemsOnList } from '../utils/groceryLists';
 import { OTHER_AISLE } from '../utils/groceryAisles';
 import { useGroceryStore } from '../store/useGroceryStore';
+import { useFoodLogStore } from '../store/useFoodLogStore';
+import { foodLogTotals, scalePanelToAmount } from '../utils/foodLog';
 import { useTemplateStore } from '../store/useTemplateStore';
 import { extractPlaceholders, declaresRunPlaceholder } from '../utils/templateUtils';
 import { awaySpanOf, awayStatus, awayNights, nextAwayProject } from '../utils/awayDates';
@@ -1563,6 +1566,54 @@ describe('demo seed — people', () => {
     expect(rows.length).toBeGreaterThan(0);
     const titles = taskContrastTitles(tasks);
     expect(rows.map(r => titles.get(r.label))).toContain('Take the vitamin D');
+  });
+
+  it('seeds a day of eating, so the food log reads as a feature the app has', () => {
+    // Yesterday rather than today: a day with entries is what shows the totals
+    // and the meal sections, and leaving today empty means the empty state is
+    // the first thing a demo meets.
+    const yesterdayKey = dayKeyOf(subDays(getCurrentDayStart(), 1));
+    useFoodLogStore.getState().loadRange(yesterdayKey, yesterdayKey);
+    const entries = useFoodLogStore.getState().entries;
+    expect(entries.length).toBeGreaterThan(1);
+    expect(entries.every(e => e.dayKey === yesterdayKey)).toBe(true);
+  });
+
+  it('measures every seeded entry rather than typing its numbers in', () => {
+    // An entry whose figures were hand-written could drift from what the same
+    // amount of the same food actually works out to, which is the one thing a
+    // demo of this feature must not show.
+    const yesterdayKey = dayKeyOf(subDays(getCurrentDayStart(), 1));
+    useFoodLogStore.getState().loadRange(yesterdayKey, yesterdayKey);
+    const items = useGroceryStore.getState().items;
+    for (const e of useFoodLogStore.getState().entries) {
+      const item = items.find(i => i.id === e.itemId);
+      expect(item?.nutrition).toBeDefined();
+      const rebuilt = scalePanelToAmount(item!.nutrition!, e.quantity, null);
+      expect(rebuilt?.nutrition.amounts).toEqual(e.nutrition.amounts);
+    }
+  });
+
+  it('seeds a day whose totals do not all speak for every entry', () => {
+    // A US label declares a short list, so a real day has fibre on some entries
+    // and not others. Without that the coverage clause never renders.
+    const yesterdayKey = dayKeyOf(subDays(getCurrentDayStart(), 1));
+    useFoodLogStore.getState().loadRange(yesterdayKey, yesterdayKey);
+    const totals = foodLogTotals(useFoodLogStore.getState().entries);
+    expect(totals.reported.calorieKcal).toBe(totals.entries);
+    expect(totals.reported.fiberG).toBeGreaterThan(0);
+    expect(totals.reported.fiberG! < totals.entries).toBe(true);
+  });
+
+  it('writes no health samples from a seeded entry', () => {
+    // Demo mode swaps the database, so a seeded meal is fiction. Nothing here
+    // may put it into a medical record, and today nothing writes to Health at
+    // all — this pins that so the guard is added with the write, not after it.
+    const yesterdayKey = dayKeyOf(subDays(getCurrentDayStart(), 1));
+    useFoodLogStore.getState().loadRange(yesterdayKey, yesterdayKey);
+    for (const e of useFoodLogStore.getState().entries) {
+      expect(e.healthSampleIds).toEqual([]);
+    }
   });
 
   it('leaves today unlogged, so the check-in is still worth answering', () => {

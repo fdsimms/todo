@@ -1,5 +1,5 @@
-import type { FoodPortion } from '../types';
-import { rationalToNumber, unitKey, type Quantity } from './quantity';
+import type { FoodNutrition, FoodPortion } from '../types';
+import { parseQuantity, rationalToNumber, unitKey, type Quantity } from './quantity';
 import { measureParsedQuantity, unitBase } from './unitConvert';
 
 /**
@@ -235,4 +235,46 @@ export function gramsForLine(
    */
   const wholeItem = portions.filter(p => densityOf(p) === null);
   return wholeItem.length === 1 ? value * gramsPerUnit(wholeItem[0]) : null;
+}
+
+/**
+ * How many hundred units of a food's panel one line amounts to, or null.
+ *
+ * **Here rather than in `recipeNutrition.ts`, where it started.** Two callers
+ * need it now, the recipe rollup and the food log, and a helping scaled by one
+ * rule in one and another rule in the other is two different calorie counts for
+ * one plate of food. It also has to live somewhere that reaches no store: this
+ * module and the two it imports are pure, where `recipeNutrition` pulls in the
+ * meal plan and through it the settings store and SQLite, which is not
+ * something a figure-scaling helper should drag behind it.
+ *
+ * **The line is measured in the panel's own unit, never converted into it.**
+ * A per-100g panel wants grams, a per-100ml panel wants millilitres, and
+ * turning one into the other needs a density this app does not have. So a
+ * volume line against a per-100g food goes through the food's own portion
+ * table (`gramsForLine`), and a per-100ml food is answered only by a line that
+ * is itself a volume. Anything else refuses, which is the whole posture.
+ *
+ * A per-serving panel needs a serving to weigh something, since otherwise
+ * "how many servings is 300g" has no answer.
+ */
+export function panelMultiplier(
+  quantity: string,
+  prep: string | null,
+  nutrition: FoodNutrition,
+): number | null {
+  const parsed = parseQuantity(quantity);
+
+  if (nutrition.basis === 'per100ml') {
+    const single = parsed.rangeMax ? { ...parsed, rangeMax: null } : parsed;
+    const measured = measureParsedQuantity(single);
+    if (!measured || measured.dimension !== 'volume') return null;
+    return measured.base / 100;
+  }
+
+  const grams = gramsForLine(parsed, prep, nutrition.portions);
+  if (grams === null) return null;
+  if (nutrition.basis === 'per100g') return grams / 100;
+  // perServing
+  return nutrition.servingGrams ? grams / nutrition.servingGrams : null;
 }
