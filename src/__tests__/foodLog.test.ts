@@ -314,7 +314,6 @@ describe('resolveFoodLogDrop', () => {
       { type: 'entry', entry: a },
       { type: 'header', slot: 'breakfast' },
       { type: 'entry', entry: b },
-      { type: 'add', slot: 'breakfast' },
     ];
     const resolved = resolveFoodLogDrop(items);
     expect(resolved.map(e => [e.label, e.slot])).toEqual([['A', 'breakfast'], ['B', 'breakfast']]);

@@ -9,9 +9,6 @@ exercised where applicable), open a PR automatically — don't wait to be asked.
 there's a concrete reason (work is incomplete, checks are red, or the user said to hold off);
 say why instead of opening one silently.
 
-Don't subscribe to PR activity and don't schedule follow-up check-ins after opening a PR unless
-the user explicitly asks for that. Just open the PR and stop.
-
 **Before pushing a follow-up fix to a PR you opened, check whether it already merged.** A build
 or submission failure reported after the fact (an EAS log, an App Store Connect rejection) often
 arrives once the PR that introduced the problem is already merged into `main` — `git fetch origin
