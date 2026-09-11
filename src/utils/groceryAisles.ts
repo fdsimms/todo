@@ -34,6 +34,17 @@ export const DEFAULT_AISLES = [
 export const OTHER_AISLE = 'Other';
 
 /**
+ * Whether `item`'s aisle has been flagged as not food (see
+ * `useGroceryStore.nonFoodAisles`) — the gate every automatic nutrition/
+ * food-log prompt checks before treating a catalog row as something to eat.
+ * Aisle names are free text with no fixed non-food set, so this is a lookup
+ * against what the user has actually flagged, never a guess from the name.
+ */
+export function isNonFoodAisle(aisle: string, nonFoodAisles: readonly string[]): boolean {
+  return nonFoodAisles.includes(aisle);
+}
+
+/**
  * name_key → aisle. A literal object on purpose: a computed one would cost
  * parse time on every cold start for no benefit, and this is imported by the
  * store, which initialises during app startup.

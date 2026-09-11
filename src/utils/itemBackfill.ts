@@ -1,5 +1,6 @@
 import type { GroceryItem, ItemSubLink } from '../types';
 import { substitutesFor } from './itemSubs';
+import { isNonFoodAisle } from './groceryAisles';
 
 /**
  * A catalog-item field the Backfill screen can walk and fill in, one item at
@@ -75,12 +76,16 @@ export const ITEM_BACKFILL_FIELDS: ItemBackfillFieldDef[] = [
  * inclusion test. `links`/`items` are only read for `substitutes` (see
  * `substitutesFor`); omit them for a `variety`-only call, the same optional
  * shape `isFieldMissing`'s `categories` param has on the task side.
+ * `nonFoodAisles` is only read for `nutrition` — see `isNonFoodAisle`, and
+ * note it's a real answer ("not food") rather than a missing one, so a
+ * non-food item is excluded here rather than counted as needing a value.
  */
 export function isItemFieldMissing(
   item: GroceryItem,
   fieldId: ItemBackfillFieldId,
   links: readonly ItemSubLink[] = [],
-  items: readonly GroceryItem[] = []
+  items: readonly GroceryItem[] = [],
+  nonFoodAisles: readonly string[] = []
 ): boolean {
   switch (fieldId) {
     case 'variety':
@@ -95,7 +100,7 @@ export function isItemFieldMissing(
     // box in question isn't the preferred one. Reading the pair here would
     // hide a real gap behind an answer to a different question.
     case 'nutrition':
-      return item.nutrition == null;
+      return item.nutrition == null && !isNonFoodAisle(item.aisle, nonFoodAisles);
     // Not a missing value at all but a name nobody has chosen — see
     // `GroceryItem.nameFromScan`, and note that `renameItem` clearing the flag
     // is what takes a row out of this queue.
@@ -120,19 +125,24 @@ export function isItemBackfillDismissed(item: GroceryItem, fieldId: ItemBackfill
 export function itemBackfillCandidates(
   items: GroceryItem[],
   fieldId: ItemBackfillFieldId,
-  links: ItemSubLink[] = []
+  links: ItemSubLink[] = [],
+  nonFoodAisles: readonly string[] = []
 ): GroceryItem[] {
   return items
-    .filter(i => isItemFieldMissing(i, fieldId, links, items) && !isItemBackfillDismissed(i, fieldId))
+    .filter(i => isItemFieldMissing(i, fieldId, links, items, nonFoodAisles) && !isItemBackfillDismissed(i, fieldId))
     .sort((a, b) => a.name.localeCompare(b.name));
 }
 
 /** How many items are still missing each field, for the field-picker step's counts. */
-export function itemBackfillFieldCounts(items: GroceryItem[], links: ItemSubLink[] = []): Record<ItemBackfillFieldId, number> {
+export function itemBackfillFieldCounts(
+  items: GroceryItem[],
+  links: ItemSubLink[] = [],
+  nonFoodAisles: readonly string[] = []
+): Record<ItemBackfillFieldId, number> {
   const counts = { variety: 0, substitutes: 0, nutrition: 0, scannedName: 0 } as Record<ItemBackfillFieldId, number>;
   for (const i of items) {
     for (const field of ITEM_BACKFILL_FIELDS) {
-      if (isItemFieldMissing(i, field.id, links, items) && !isItemBackfillDismissed(i, field.id)) counts[field.id]++;
+      if (isItemFieldMissing(i, field.id, links, items, nonFoodAisles) && !isItemBackfillDismissed(i, field.id)) counts[field.id]++;
     }
   }
   return counts;

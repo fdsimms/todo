@@ -10,6 +10,7 @@ import {
   remapRememberedAisle,
   forgetRememberedAisle,
   renameRememberedAisle,
+  isNonFoodAisle,
 } from '../utils/groceryAisles';
 
 // ─── the lexicon's own invariant ─────────────────────────────────────────────
@@ -165,6 +166,17 @@ describe('hiddenDefaultAisles', () => {
 
   it('ignores custom aisles, which need no tombstone', () => {
     expect(hiddenDefaultAisles([...DEFAULT_AISLES, 'Butcher'])).toEqual([]);
+  });
+});
+
+describe('isNonFoodAisle', () => {
+  it('is false for an aisle nobody flagged', () => {
+    expect(isNonFoodAisle('Household', [])).toBe(false);
+    expect(isNonFoodAisle('Household', ['Personal Care'])).toBe(false);
+  });
+
+  it('is true once the aisle has been flagged, by exact name', () => {
+    expect(isNonFoodAisle('Medicine & Supplements', ['Medicine & Supplements'])).toBe(true);
   });
 });
 

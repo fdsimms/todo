@@ -22,6 +22,7 @@ import { combineFoodNutrition, helpingNutrition, recipeHelpingNutrition, scalePa
 import { cookedDishGrams, mealHelping, servingGrams, weighedHelping } from '../utils/mealLog';
 import { perServing, recipeNutrition, recipeNutritionLines, type NutritionLine } from '../utils/recipeNutrition';
 import { describeProduct } from '../utils/groceryProduct';
+import { isNonFoodAisle } from '../utils/groceryAisles';
 import { groceryNameKey } from '../utils/groceryParse';
 import { haptics } from '../utils/haptics';
 import { weighableLine } from '../utils/ingredientGrams';
@@ -149,6 +150,7 @@ export function FoodLogEntrySheet({ visible, slot, at, seedRecipeId, onClose, on
 
   const items = useGroceryStore(useShallow(s => s.items));
   const itemProducts = useGroceryStore(useShallow(s => s.itemProducts));
+  const nonFoodAisles = useGroceryStore(useShallow(s => s.nonFoodAisles));
   const recipes = useRecipeStore(useShallow(s => s.recipes));
   const addEntry = useFoodLogStore(s => s.addEntry);
   const setItemNutrition = useGroceryStore(s => s.setItemNutrition);
@@ -200,7 +202,7 @@ export function FoodLogEntrySheet({ visible, slot, at, seedRecipeId, onClose, on
     for (const product of itemProducts) {
       if (!product.nutrition) continue;
       const item = items.find(i => i.id === product.itemId);
-      if (!item) continue;
+      if (!item || isNonFoodAisle(item.aisle, nonFoodAisles)) continue;
       out.push({
         key: `p:${product.id}`,
         label: `${item.name}${describeProduct(product) ? `, ${describeProduct(product)}` : ''}`,
@@ -216,6 +218,7 @@ export function FoodLogEntrySheet({ visible, slot, at, seedRecipeId, onClose, on
       });
     }
     for (const item of items) {
+      if (isNonFoodAisle(item.aisle, nonFoodAisles)) continue;
       const panel = nutritionFor(item);
       if (!panel) continue;
       out.push({
@@ -263,7 +266,7 @@ export function FoodLogEntrySheet({ visible, slot, at, seedRecipeId, onClose, on
       });
     }
     return out;
-  }, [items, itemProducts, recipes]);
+  }, [items, itemProducts, recipes, nonFoodAisles]);
 
   // After the reset above, and off `candidates` rather than the recipe store,
   // so a dish that has no figures is left unpicked rather than opening onto a

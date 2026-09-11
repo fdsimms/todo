@@ -5,6 +5,8 @@ import {
   dbSetGroceryAisleOrder,
   dbGetGroceryHiddenAisles,
   dbSetGroceryHiddenAisles,
+  dbGetGroceryNonFoodAisles,
+  dbSetGroceryNonFoodAisles,
   dbGetGroceryAisleOverrides,
   dbSetGroceryAisleOverrides,
   dbGetGroceryGroupBy,
@@ -54,6 +56,8 @@ jest.mock('../db/database', () => ({
   dbSetGroceryAisleOrder: jest.fn(),
   dbGetGroceryHiddenAisles: jest.fn().mockReturnValue([]),
   dbSetGroceryHiddenAisles: jest.fn(),
+  dbGetGroceryNonFoodAisles: jest.fn().mockReturnValue([]),
+  dbSetGroceryNonFoodAisles: jest.fn(),
   dbGetGroceryAisleOverrides: jest.fn().mockReturnValue({}),
   dbSetGroceryAisleOverrides: jest.fn(),
   dbGetGroceryGroupBy: jest.fn().mockReturnValue('aisle'),
@@ -316,6 +320,7 @@ function seed(
     activeListId: extra.activeListId ?? null,
     aisleOrder: [...DEFAULT_AISLES],
     hiddenAisles: [],
+    nonFoodAisles: [],
     groceryGroupBy: 'aisle',
     aisleOverrides: extra.aisleOverrides ?? {},
     shops: extra.shops ?? [],
@@ -337,6 +342,7 @@ beforeEach(() => {
   (dbGetAllGroceryItems as jest.Mock).mockReturnValue([]);
   (dbGetGroceryAisleOrder as jest.Mock).mockReturnValue(null);
   (dbGetGroceryHiddenAisles as jest.Mock).mockReturnValue([]);
+  (dbGetGroceryNonFoodAisles as jest.Mock).mockReturnValue([]);
   (dbGetGroceryAisleOverrides as jest.Mock).mockReturnValue({});
   (dbGetGroceryGroupBy as jest.Mock).mockReturnValue('aisle');
   // clearAllMocks clears calls but not implementations, so a case that stubs a
@@ -376,6 +382,14 @@ describe('initialize', () => {
     expect(useGroceryStore.getState().items).toEqual([milk]);
     expect(useGroceryStore.getState().aisleOrder).toEqual([...DEFAULT_AISLES]);
     expect(useGroceryStore.getState().initialized).toBe(true);
+  });
+
+  it('loads which aisles are flagged non-food', () => {
+    (dbGetGroceryNonFoodAisles as jest.Mock).mockReturnValue(['Household']);
+
+    useGroceryStore.getState().initialize();
+
+    expect(useGroceryStore.getState().nonFoodAisles).toEqual(['Household']);
   });
 
   it('repairs a stored order WITHOUT writing it back', () => {
@@ -1477,6 +1491,22 @@ describe('renameAisle', () => {
     expect(useGroceryStore.getState().hiddenAisles).toContain('Deli');
   });
 
+  it('carries the non-food flag onto the new name', () => {
+    useGroceryStore.getState().setAisleNonFood('Deli', true);
+
+    useGroceryStore.getState().renameAisle('Deli', 'Charcuterie');
+
+    expect(useGroceryStore.getState().nonFoodAisles).toEqual(['Charcuterie']);
+    expect(dbSetGroceryNonFoodAisles).toHaveBeenCalledWith(['Charcuterie']);
+  });
+
+  it('leaves the flag alone for an aisle that was never flagged', () => {
+    useGroceryStore.getState().renameAisle('Deli', 'Charcuterie');
+
+    expect(useGroceryStore.getState().nonFoodAisles).toEqual([]);
+    expect(dbSetGroceryNonFoodAisles).not.toHaveBeenCalled();
+  });
+
   it('refuses a blank, a collision, or Other', () => {
     const s = () => useGroceryStore.getState();
     expect(s().renameAisle('Deli', '   ')).toBe(false);
@@ -1578,6 +1608,38 @@ describe('deleteAisle', () => {
     useGroceryStore.getState().deleteAisle('Snacks');
 
     expect(mockCollapsedGroceryGroups).toEqual(['aisle:Frozen']);
+  });
+
+  it('drops the non-food flag along with the aisle', () => {
+    useGroceryStore.getState().setAisleNonFood('Snacks', true);
+
+    useGroceryStore.getState().deleteAisle('Snacks');
+
+    expect(useGroceryStore.getState().nonFoodAisles).toEqual([]);
+    expect(dbSetGroceryNonFoodAisles).toHaveBeenCalledWith([]);
+  });
+});
+
+describe('setAisleNonFood', () => {
+  it('flags and unflags an aisle, persisting each change', () => {
+    useGroceryStore.getState().setAisleNonFood('Household', true);
+    expect(useGroceryStore.getState().nonFoodAisles).toEqual(['Household']);
+    expect(dbSetGroceryNonFoodAisles).toHaveBeenLastCalledWith(['Household']);
+
+    useGroceryStore.getState().setAisleNonFood('Household', false);
+    expect(useGroceryStore.getState().nonFoodAisles).toEqual([]);
+    expect(dbSetGroceryNonFoodAisles).toHaveBeenLastCalledWith([]);
+  });
+
+  it('is a no-op when the flag already matches, so it never writes needlessly', () => {
+    useGroceryStore.getState().setAisleNonFood('Household', false);
+    expect(dbSetGroceryNonFoodAisles).not.toHaveBeenCalled();
+  });
+
+  it('refuses Other, the catch-all every unrecognised item lands on', () => {
+    useGroceryStore.getState().setAisleNonFood(OTHER_AISLE, true);
+    expect(useGroceryStore.getState().nonFoodAisles).toEqual([]);
+    expect(dbSetGroceryNonFoodAisles).not.toHaveBeenCalled();
   });
 });
 

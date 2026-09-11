@@ -2409,7 +2409,11 @@ describe('demo seed — groceries, recipes, meals and the fridge', () => {
   });
 
   it('seeds stores, per-store links and an edited walk order', () => {
-    const { shops, itemShops, aisleOrder, hiddenAisles, items, listEntries } = useGroceryStore.getState();
+    const { shops, itemShops, aisleOrder, hiddenAisles, nonFoodAisles, items, listEntries } = useGroceryStore.getState();
+
+    // Household holds Paper towels etc. — flagged non-food so it stays out of
+    // the nutrition backfill queue and the food log's own suggestions.
+    expect(nonFoodAisles).toContain('Household');
 
     expect(shops.length).toBeGreaterThanOrEqual(3);
     // "It has everything, but don't send me there".

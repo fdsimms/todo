@@ -2558,6 +2558,7 @@ function seedGroceries(recipes: DemoRecipes, today: Date): void {
     setProductUnavailable,
     setAisle,
     setAisleOrder,
+    setAisleNonFood,
     setOnHandUntil,
     addToPantry,
     setStaple,
@@ -3357,6 +3358,12 @@ function seedGroceries(recipes: DemoRecipes, today: Date): void {
   deleteAisle('Personal Care');
   const order = useGroceryStore.getState().aisleOrder;
   setAisleOrder([...order.filter(a => a !== 'Frozen'), 'Frozen']);
+
+  // Household holds Paper towels/Toilet paper/Dish soap above — none of it is
+  // food, so it's flagged non-food the way a real shopper filing that aisle
+  // for the first time would, keeping it out of the nutrition backfill queue
+  // and the food log's own suggestions.
+  setAisleNonFood('Household', true);
 
   // What's on the list right now, with two things already in the trolley — the
   // state the finish-shopping sheet is for. Milk, Eggs, Bananas, Bread and
