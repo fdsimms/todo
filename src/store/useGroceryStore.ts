@@ -103,6 +103,7 @@ import {
   gtinAliasText,
   type AliasDraft,
 } from '../utils/storeAliases';
+import { suggestGroceryAisles } from '../services/aiSuggestions';
 
 /**
  * The grocery catalog, which is also the shopping list.
@@ -155,6 +156,102 @@ function armCartHold(): void {
   }, CART_HOLD_MS);
   // Without this, jest's node env hangs on the live handle at the end of a run.
   (cartHoldTimer as unknown as { unref?: () => void }).unref?.();
+}
+
+/**
+ * Every add lands an item the offline lexicon couldn't place in Other the
+ * instant it's typed — that stays true here, this only tries to do better a
+ * moment later. Nothing here is load-bearing: an item added with no working
+ * AI route (no key, no on-device model, or the feature switched off) just
+ * keeps the aisle it already has, exactly as before this existed.
+ *
+ * A short debounce collects a pasted multi-line list into one batched
+ * request instead of firing one per line, the same reasoning `suggestGroceryAisles`
+ * itself chunks a big on-device batch for. Module-level rather than store
+ * state: this is scratch work for one background sweep, not something any
+ * screen reads, and putting it in Zustand would fire a re-render for a queue
+ * nobody watches.
+ */
+const AUTO_AISLE_DEBOUNCE_MS = 400;
+let pendingAutoAisleItems: { id: string; name: string }[] = [];
+let autoAisleTimer: ReturnType<typeof setTimeout> | null = null;
+
+/**
+ * Queues a freshly-added item that landed in Other for a background AI
+ * reclassification pass.
+ *
+ * Gated on having an Anthropic key, cheaply and directly — not on
+ * `groceryAisleRoute()`, which is what a screen asks and would be the more
+ * obviously "correct" check here. That route also answers for the on-device
+ * engine, and answering means calling `isOnDeviceReady()`, which resolves the
+ * native `todo-foundation-models` bridge — fine from a screen (nothing in this
+ * app's test suite renders one; see CLAUDE.md's "no component or screen
+ * tests"), but this is a *store* action, and stores are exactly what the
+ * suite's ~11,000 tests exercise directly. `modules/todo-foundation-models`
+ * imports `react-native` at module scope, which is outside this project's
+ * jest `transformIgnorePatterns` — any test file that reaches this without
+ * itself mocking `todo-foundation-models` (virtually all of them, since only
+ * `aiSuggestions.test.ts` and `onDeviceModel.test.ts` have any reason to) hits
+ * a hard CJS parse error, not a caught exception, and it doesn't stay
+ * contained: it corrupted `todo-foundation-models`'s OWN virtual jest mock in
+ * whichever of those two files happened to share a worker with the file that
+ * triggered it, so the flakiness showed up as failures in tests this file
+ * never touches. Requiring a key sidesteps the whole thing: with one
+ * configured, `groceryAisleRoute()` resolves to `'claude'` without ever
+ * asking about on-device (see its own "rule 2" in aiRouting.ts), so nothing
+ * here ever reaches the bridge. A no-key, on-device-only install still gets
+ * aisle sorting for what the lexicon missed — just from the manual "Tidy"
+ * sheet, exactly as before this feature existed, not from this background
+ * pass.
+ */
+function scheduleAutoAisleClassification(id: string, name: string): void {
+  const { anthropicApiKey, aiFeatureConfig } = useSettingsStore.getState();
+  if (!anthropicApiKey || !aiFeatureConfig.groceryAisles.enabled) return;
+  pendingAutoAisleItems.push({ id, name });
+  if (autoAisleTimer) return;
+  autoAisleTimer = setTimeout(() => {
+    const batch = pendingAutoAisleItems;
+    pendingAutoAisleItems = [];
+    autoAisleTimer = null;
+    void runAutoAisleClassification(batch);
+  }, AUTO_AISLE_DEBOUNCE_MS);
+  // Same reasoning as armCartHold's — a scheduled-but-unfired pass shouldn't
+  // hang jest's node env at the end of a run.
+  (autoAisleTimer as unknown as { unref?: () => void }).unref?.();
+}
+
+/**
+ * Applies whatever `suggestGroceryAisles` came back with, skipping anything
+ * that isn't exactly where this pass found it.
+ *
+ * Deliberately not `setAisleMany`: that call is "a deliberate filing" by
+ * design (see its own comment) and remembers it as a standing fact about this
+ * shop. An unreviewed background guess is closer to the lexicon's own nature
+ * — a guess about groceries, not a fact about this one — so it moves the row
+ * and nothing else: no `aisleOverrides` entry a bad guess would otherwise
+ * outrank the lexicon with forever, and no undo entry cluttering the stack
+ * for a change the user didn't make.
+ */
+async function runAutoAisleClassification(batch: { id: string; name: string }[]): Promise<void> {
+  let assigned: Record<string, string>;
+  try {
+    assigned = await suggestGroceryAisles(batch.map(b => b.name), [...useGroceryStore.getState().aisleOrder]);
+  } catch {
+    return;
+  }
+  const current = useGroceryStore.getState().items;
+  const updates: GroceryItem[] = [];
+  for (const { id, name } of batch) {
+    const aisle = assigned[name];
+    if (!aisle || aisle === OTHER_AISLE) continue;
+    const item = current.find(i => i.id === id);
+    if (!item || item.aisle !== OTHER_AISLE) continue;
+    updates.push({ ...item, aisle });
+  }
+  if (updates.length === 0) return;
+  for (const u of updates) dbUpdateGroceryItem(u);
+  const byId = new Map(updates.map(u => [u.id, u]));
+  useGroceryStore.setState(s => ({ items: s.items.map(i => byId.get(i.id) ?? i) }));
 }
 
 /**
@@ -2126,6 +2223,7 @@ export const useGroceryStore = create<GroceryStore>((set, get) => ({
         undo: get().undoForAdds([item.id], EMPTY_IDS),
       });
     }
+    if (item.aisle === OTHER_AISLE) scheduleAutoAisleClassification(item.id, item.name);
     return item;
   },
 
@@ -3213,6 +3311,7 @@ export const useGroceryStore = create<GroceryStore>((set, get) => ({
       get().setLastAction({ label: `Added "${item.name}" to the pantry`, undo });
     }
     opts?.onUndo?.(undo);
+    if (item.aisle === OTHER_AISLE) scheduleAutoAisleClassification(item.id, item.name);
     return item;
   },
 
@@ -4883,6 +4982,7 @@ export const useGroceryStore = create<GroceryStore>((set, get) => ({
     });
     dbInsertGroceryItem(item);
     set(s => ({ items: [...s.items, item] }));
+    if (item.aisle === OTHER_AISLE) scheduleAutoAisleClassification(item.id, item.name);
     return item;
   },
 

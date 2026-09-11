@@ -2397,6 +2397,9 @@ export const useSettingsStore = create<SettingsStore>((set, get) => ({
           aiFeatureConfig[id] = {
             enabled: typeof stored.enabled === 'boolean' ? stored.enabled : aiFeatureConfig[id].enabled,
             model: isAiModelId(stored.model) ? stored.model : aiFeatureConfig[id].model,
+            preferOnDevice: typeof stored.preferOnDevice === 'boolean'
+              ? stored.preferOnDevice
+              : aiFeatureConfig[id].preferOnDevice,
           };
         }
       } catch {

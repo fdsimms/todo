@@ -162,6 +162,14 @@ jest.mock('../store/useSettingsStore', () => ({
       setActiveListDrivenBy: (id: string | null) => { mockActiveListDrivenBy = id; },
       get collapsedGroceryGroups() { return mockCollapsedGroceryGroups; },
       setCollapsedGroceryGroups: (groups: string[]) => { mockCollapsedGroceryGroups = groups; },
+      // Read by groceryAisleRoute() (aiSuggestions.ts), which
+      // scheduleAutoAisleClassification checks before ever queuing anything.
+      // No key and no on-device switch is exactly the route that resolves
+      // 'unavailable' with nothing scheduled — the same "no AI, so this is a
+      // no-op" state every test here already ran in before that existed.
+      anthropicApiKey: null,
+      onDeviceAiEnabled: false,
+      aiFeatureConfig: { groceryAisles: { enabled: true, model: 'claude-haiku-4-5-20251001' } },
     }),
   },
 }));

@@ -281,7 +281,7 @@ export function PrivacyAiSettings({ scrollRef }: Props) {
       {kitchenEnabled && (
       <SettingsSection
         label="On-device suggestions"
-        footer="Uses Apple Intelligence on this iPhone, which needs no key and sends nothing anywhere. It only answers when you haven't added an Anthropic API key above; with a key, those features keep using it."
+        footer="Uses Apple Intelligence on this iPhone, which needs no key and sends nothing anywhere. It only answers when you haven't added an Anthropic API key above, unless a feature below is set to prefer it."
       >
         <SettingsRow
           entryId="onDeviceAiEnabled"
@@ -298,7 +298,31 @@ export function PrivacyAiSettings({ scrollRef }: Props) {
           toggle={onDeviceAiEnabled}
           onPress={() => setOnDeviceAiEnabled(!onDeviceAiEnabled)}
           accessibilityLabel="Use Apple Intelligence"
+          tight={onDeviceAiEnabled}
         />
+        {/* With the switch above off there's no engine here to prefer over
+            Claude, so this follows it exactly like the AI feature rows follow
+            the Anthropic key: shown regardless of whether a key is set yet
+            (same as the API key section itself says "required for the
+            features below" without hiding them), with the case where there's
+            nothing to prefer it *over* explained in the hint instead.
+            aiRouting.ts's own rule still falls back to Claude if on-device
+            turns out not to work, so turning this on can't leave the feature
+            with no answer at all — it can only change which one answers. */}
+        {onDeviceAiEnabled && (
+          <SettingsRow
+            entryId="ai:groceryAisles:preferOnDevice"
+            icon="hardware-chip-outline"
+            iconColor={aiFeatureConfig.groceryAisles.preferOnDevice ? colors.purple : undefined}
+            label="Prefer it for aisle sorting"
+            hint="Sorts new grocery items on this device instead of sending them to Claude, when you have an API key."
+            toggle={!!aiFeatureConfig.groceryAisles.preferOnDevice}
+            onPress={() => setAiFeatureConfig('groceryAisles', {
+              preferOnDevice: !aiFeatureConfig.groceryAisles.preferOnDevice,
+            })}
+            accessibilityLabel="Prefer on-device for aisle sorting"
+          />
+        )}
       </SettingsSection>
       )}
 

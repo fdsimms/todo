@@ -150,6 +150,13 @@ export function aiFeaturesFor(kitchenEnabled: boolean, simpleMode = false): AiFe
 export interface AiFeatureConfig {
   enabled: boolean;
   model: AiModelId;
+  /**
+   * The user's own opt-in past `aiRouting.ts`'s "a key means Claude" default —
+   * see `routeForFeature`'s rule 2. Undefined/false everywhere by default;
+   * only a feature that also supports on-device (`supportsOnDevice`) has
+   * anywhere to expose a switch for it. Grocery aisle sorting is the first.
+   */
+  preferOnDevice?: boolean;
 }
 
 export type AiFeatureConfigMap = Record<AiFeatureId, AiFeatureConfig>;
