@@ -184,7 +184,7 @@ npm install          # dependencies; node_modules isn't checked in, so a fresh c
                      # this before tsc or jest will run at all
 npx expo start       # start dev server (scan QR with Expo Go)
 npx tsc --noEmit     # typecheck; ~4s warm, ~20s the first time in a fresh checkout
-npm test             # the whole suite, about half a minute — just run all of it
+npm test             # the whole suite, well under a minute — just run all of it
 npm run test:watch   # watch mode
 npx jest src/__tests__/dateUtils.test.ts  # single file, if you want the shorter output
 npm run docs         # regenerate all three generated docs, then commit them
@@ -439,15 +439,15 @@ file: the two maps are indexes, not write-ups.
 **Read narrowly.** 58 files are over 1,000 lines, 39 of
 them source rather than tests. The ten biggest source files:
 
-`store/useTaskStore.ts` (8.6k), `components/TaskEditor.tsx` (5.8k), `types/index.ts` (5.8k),
-`db/database.ts` (5.8k), `store/useGroceryStore.ts` (5.4k), `screens/TodayScreen.tsx` (4.6k),
+`store/useTaskStore.ts` (8.6k), `components/TaskEditor.tsx` (5.8k), `db/database.ts` (5.8k),
+`types/index.ts` (5.8k), `store/useGroceryStore.ts` (5.4k), `screens/TodayScreen.tsx` (4.6k),
 `components/TaskItem.tsx` (4.3k), `utils/demoSeed.ts` (4.0k),
 `store/useSettingsStore.ts` (3.8k), `screens/BackfillScreen.tsx` (3.2k).
 
 Grep for the symbol and read the surrounding range; reading any of them end to end costs more
 context than the rest of the task will. `docs/module-map.md` says which file owns what.
 
-The suite is **314 test files**, and `npm test` runs all of them in about half a minute.
+The suite is **314 test files**, and `npm test` runs all of them in well under a minute.
 `npx tsc --noEmit` is a few seconds once `.tsbuildinfo` exists, so run both, every time.
 
 <!-- END GENERATED: repo-stats -->
