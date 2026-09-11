@@ -5964,7 +5964,7 @@ describe('checkMealShortfallTasks', () => {
     useTaskStore.getState().checkMealShortfallTasks();
 
     const [row] = shopRows();
-    expect(row.title).toBe('Shop for Sun Ragu');
+    expect(row.title).toBe('Shop for Ragu (Sun Dinner)');
     expect(row.generatedSourceId).toBe('m-2026-08-23-dinner');
     // The meal plan, opened straight on the add-to-list sheet for this meal.
     expect(row.linkUrl).toBe('dundundun://mealplan?date=2026-08-23&shop=m-2026-08-23-dinner');
@@ -6107,7 +6107,7 @@ describe('checkMealShortfallTasks', () => {
 
     expect(shopRows()).toHaveLength(1);
     expect(shopRows()[0].id).toBe(id);
-    expect(shopRows()[0].title).toBe('Shop for Sun Ragu alla bolognese');
+    expect(shopRows()[0].title).toBe('Shop for Ragu alla bolognese (Sun Dinner)');
   });
 
   it('caps how many it asks at once', () => {

@@ -1,8 +1,8 @@
 import { format } from 'date-fns/format';
-import { MEAL_SHORTFALL_LEAD_DAYS_DEFAULT, type GroceryItem, type ItemSubLink, type MealPlanEntry, type Recipe, type Task } from '../types';
+import { MEAL_SHORTFALL_LEAD_DAYS_DEFAULT, type GroceryItem, type ItemSubLink, type MealPlanEntry, type MealSlot, type Recipe, type Task } from '../types';
 import { dayKeyToDate } from './dateUtils';
 import { generatedSourceOf, liveGeneratedTasksOfKind } from './generatedTasks';
-import { shiftDayKey, slotRank } from './mealPlan';
+import { shiftDayKey, slotLabel, slotRank } from './mealPlan';
 import { mealPlanNudgeLinkUrl } from './mealPlanNudge';
 import { classifyPlanned, plannedIngredientsForRecipe, type ClassifiedIngredient } from './mealPlanGroceries';
 import type { StandingSwapMap } from './standingSwaps';
@@ -67,17 +67,18 @@ export const MAX_MEAL_SHORTFALL_TASKS = 3;
  * Names the verb and the night together, like `pantryCheckTitle` and
  * `projectReviewTitle` and for the same reason: "Ragù" on the widget, in Search
  * or in the Logbook is a task to *make* the ragù, which is the one thing this
- * isn't. The weekday comes from `collectPlannedIngredients`' own "Tue ragù"
- * format rather than a second one, and it earns its place here even though the
- * row is only ever raised a day or two out: a week where Tuesday and Thursday
- * both want a shop otherwise puts two identically-titled rows on Today.
+ * isn't. The weekday and slot are named in the same breath rather than left to
+ * a chip nothing outside the row's own meta line can show, and it earns its
+ * place here even though the row is only ever raised a day or two out: a week
+ * where Tuesday and Thursday both want a shop otherwise puts two
+ * identically-titled rows on Today.
  *
  * Built from the resolved recipe's own name rather than the entry's captured
  * `title`, so a recipe renamed under a live row is chased by `drift` the way a
  * renamed project is.
  */
-export function mealShortfallTitle(dayKey: string, recipeName: string): string {
-  return `Shop for ${format(dayKeyToDate(dayKey), 'EEE')} ${recipeName}`;
+export function mealShortfallTitle(dayKey: string, slot: MealSlot, recipeName: string): string {
+  return `Shop for ${recipeName} (${format(dayKeyToDate(dayKey), 'EEE')} ${slotLabel(slot)})`;
 }
 
 /**
@@ -242,7 +243,7 @@ export function wantedMealShortfalls(
     const recipe = recipesById.get(entry.recipeId!)!;
     wants.push({
       entry,
-      title: mealShortfallTitle(entry.date, recipe.name),
+      title: mealShortfallTitle(entry.date, entry.slot, recipe.name),
       missingCount: rows.length,
     });
   }
