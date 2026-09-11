@@ -113,6 +113,34 @@ describe('rankGrocerySuggestions', () => {
     expect(rankGrocerySuggestions('bananas', items, NOW).map(s => s.item.name)).toEqual(['Banana']);
   });
 
+  it('finds a two-word name typed in the other order', () => {
+    const items = [makeItem({ name: 'Peanut butter' })];
+    expect(rankGrocerySuggestions('butter peanut', items, NOW).map(s => s.item.name))
+      .toEqual(['Peanut butter']);
+  });
+
+  it('puts each word of an out-of-order query through the same rungs', () => {
+    // "creams" reaches "Cream cheese" on the plural rung, exactly as it would
+    // have as a query on its own.
+    const items = [makeItem({ name: 'Cream cheese' })];
+    expect(rankGrocerySuggestions('cheese creams', items, NOW).map(s => s.item.name))
+      .toEqual(['Cream cheese']);
+  });
+
+  it('still requires every word of an out-of-order query to land', () => {
+    const items = [makeItem({ name: 'Peanut butter' })];
+    expect(rankGrocerySuggestions('butter anchovy', items, NOW)).toEqual([]);
+  });
+
+  it('ranks a contiguous match above the same words found apart', () => {
+    const items = [
+      makeItem({ name: 'Peanut butter', purchaseCount: 5, lastPurchasedAt: daysAgo(1) }),
+      makeItem({ name: 'Butter beans with peanut', purchaseCount: 5, lastPurchasedAt: daysAgo(1) }),
+    ];
+    expect(rankGrocerySuggestions('peanut butter', items, NOW).map(s => s.item.name))
+      .toEqual(['Peanut butter', 'Butter beans with peanut']);
+  });
+
   it('prefers a prefix match over a substring one', () => {
     const items = [
       makeItem({ name: 'Buttermilk', purchaseCount: 5, lastPurchasedAt: daysAgo(1) }),

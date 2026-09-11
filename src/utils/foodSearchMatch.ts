@@ -80,6 +80,11 @@ export interface FoodCandidate {
  */
 export type FoodMatchTier = 'exact' | 'leading' | 'partial' | 'none';
 
+/** A word and its plurals, so the per-word match below tolerates what the whole-key one already does. */
+function wordVariants(word: string): string[] {
+  return [word, ...pluralKeyVariants(word)];
+}
+
 function scoreCandidate(candidate: FoodCandidate, queryKey: string): { tier: FoodMatchTier; score: number } {
   const description = candidate.description.toLowerCase();
   const leading = description.split(',')[0].trim();
@@ -91,6 +96,7 @@ function scoreCandidate(candidate: FoodCandidate, queryKey: string): { tier: Foo
   // goes in alongside, because `pluralKeyVariants` returns the *other* forms
   // and not the one it was given.
   const variants = new Set([queryKey, ...pluralKeyVariants(queryKey)]);
+  const words = queryKey.split(' ');
 
   let tier: FoodMatchTier;
   let score: number;
@@ -98,6 +104,17 @@ function scoreCandidate(candidate: FoodCandidate, queryKey: string): { tier: Foo
   else if (variants.has(leadingKey)) { tier = 'exact'; score = 80; }
   else if (leadingKey.includes(queryKey) || queryKey.includes(leadingKey)) { tier = 'leading'; score = 40; }
   else if (fullKey.includes(queryKey)) { tier = 'partial'; score = 20; }
+  // The typed words found on the description in some other order, which is how
+  // "raw onions" reaches "Onions, raw" — this corpus writes the food first and
+  // the qualifiers after the comma, so a person typing them the way they say
+  // them out loud has the words in the wrong order for a contiguous match
+  // roughly half the time. Partial and scored under the contiguous partial
+  // above, never exact or leading: `unambiguousFood` auto-applies on an exact
+  // tier alone, and words found apart are not evidence anybody named this row.
+  else if (words.length > 1 && words.every(word => wordVariants(word).some(v => fullKey.includes(v)))) {
+    tier = 'partial';
+    score = 10;
+  }
   else return { tier: 'none', score: 0 };
 
   // A row that reports no calories is a panel with the headline number missing,

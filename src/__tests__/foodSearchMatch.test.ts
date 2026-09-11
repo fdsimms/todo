@@ -98,6 +98,26 @@ describe('rankFoodCandidates', () => {
   it('answers nothing when the database offered nothing', () => {
     expect(rankFoodCandidates('onion', [])).toEqual([]);
   });
+
+  it('finds a row whose words the query names in the other order', () => {
+    // The corpus writes the food first and the qualifiers after it; a person
+    // types the qualifier first and leaves the head noun off entirely.
+    const ranked = rankFoodCandidates('sharp cheddar', [food('Cheese, cheddar, sharp')]);
+    expect(ranked.map(r => r.candidate.description)).toEqual(['Cheese, cheddar, sharp']);
+  });
+
+  it('still requires every word of an out-of-order query to land', () => {
+    expect(rankFoodCandidates('sharp anchovy', [food('Cheese, cheddar, sharp')])).toEqual([]);
+  });
+
+  it('ranks an out-of-order match under a contiguous one', () => {
+    const ranked = rankFoodCandidates('sharp cheddar', [
+      food('Cheese, cheddar, sharp'),
+      food('Sharp cheddar spread'),
+    ]);
+    expect(ranked.map(r => r.candidate.description))
+      .toEqual(['Sharp cheddar spread', 'Cheese, cheddar, sharp']);
+  });
 });
 
 describe('unambiguousFood', () => {
@@ -116,6 +136,14 @@ describe('unambiguousFood', () => {
       food('Onions, raw', { dataType: 'SR Legacy' }),
       food('Onions, raw', { dataType: 'SR Legacy' }),
     ]);
+    expect(unambiguousFood(ranked)).toBeNull();
+  });
+
+  it('never auto-applies a match whose words were merely found apart', () => {
+    // Words in the wrong order are not evidence anybody named this row, and
+    // every pick here ends in a stored nutrition panel.
+    const ranked = rankFoodCandidates('sharp cheddar', [food('Cheese, cheddar, sharp')]);
+    expect(ranked[0].tier).toBe('partial');
     expect(unambiguousFood(ranked)).toBeNull();
   });
 
