@@ -106,6 +106,30 @@ describe('scalePanelToAmount', () => {
     expect(built?.nutrition.amounts.calorieKcal).toBeCloseTo(105, 1);
     expect(built?.grams).toBeNull();
   });
+
+  it('scales a per-serving panel by a typed serving count, with no portion table needed', () => {
+    // A packaged product's own panel is already one serving — the same amount
+    // "1 serving (80 g)" offers as a tap, just typed and fractional.
+    const built = scalePanelToAmount(
+      panel({
+        basis: 'perServing',
+        portions: [],
+        servingGrams: 80,
+        amounts: { calorieKcal: 200, proteinG: 10 },
+      }),
+      '1.5 servings',
+      null,
+      NOW,
+    );
+    expect(built?.nutrition.amounts.calorieKcal).toBeCloseTo(300, 1);
+    expect(built?.nutrition.amounts.proteinG).toBeCloseTo(15, 1);
+    expect(built?.grams).toBe(120);
+  });
+
+  it('refuses a typed serving count against a panel with no serving to scale by', () => {
+    expect(scalePanelToAmount(panel({ basis: 'per100g', servingGrams: null }), '2 servings', null, NOW))
+      .toBeNull();
+  });
 });
 
 describe('recipeHelpingNutrition', () => {

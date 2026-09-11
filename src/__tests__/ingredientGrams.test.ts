@@ -251,4 +251,55 @@ describe('weighableLine', () => {
       expect(panelMultiplier('2 cups', null, withRow)).not.toBeNull();
     }
   });
+
+  it('does not offer to weigh a serving, which no portion table can settle', () => {
+    // "1.5 servings" against a per-serving panel already resolves (below), and
+    // against any other basis with no serving weight, weighing the *food*
+    // wouldn't help — it's the serving that's unweighed, not the ingredient.
+    expect(weighableLine('1.5 servings', null, panel({ basis: 'perServing' }), 'Bar')).toBeNull();
+    expect(weighableLine('1.5 servings', null, panel(), 'Bar')).toBeNull();
+  });
+});
+
+describe('panelMultiplier and servings', () => {
+  function panel(overrides: Partial<FoodNutrition> = {}): FoodNutrition {
+    return {
+      basis: 'per100g',
+      servingGrams: null,
+      servingText: null,
+      amounts: { calorieKcal: 40 },
+      portions: [],
+      source: 'fdc',
+      sourceId: '1',
+      recordedAt: '2026-09-01T00:00:00.000Z',
+      ...overrides,
+    };
+  }
+
+  it('answers a serving count against a per-serving panel with no portion table at all', () => {
+    // A packaged product states a serving, not a set of culinary measures, so
+    // there is never a "serving" row to look up — the panel's own amounts
+    // already are one serving.
+    expect(panelMultiplier('1.5 servings', null, panel({ basis: 'perServing', portions: [] })))
+      .toBe(1.5);
+    expect(panelMultiplier('1 serving', null, panel({ basis: 'perServing', portions: [] })))
+      .toBe(1);
+  });
+
+  it('scales a per-100g panel through its stated serving weight', () => {
+    // 80g serving, 1.5 of them: 120g, i.e. 1.2x the per-100g figures.
+    expect(panelMultiplier('1.5 servings', null, panel({ servingGrams: 80 })))
+      .toBeCloseTo(1.2, 5);
+  });
+
+  it('refuses a serving count with no serving weight to scale by, apart from perServing', () => {
+    expect(panelMultiplier('1.5 servings', null, panel({ basis: 'per100g', servingGrams: null })))
+      .toBeNull();
+    expect(panelMultiplier('1.5 servings', null, panel({ basis: 'per100ml', servingGrams: null })))
+      .toBeNull();
+  });
+
+  it('refuses a zero or negative serving count', () => {
+    expect(panelMultiplier('0 servings', null, panel({ basis: 'perServing' }))).toBeNull();
+  });
 });

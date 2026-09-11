@@ -265,6 +265,12 @@ export function gramsForLine(
  *
  * A per-serving panel needs a serving to weigh something, since otherwise
  * "how many servings is 300g" has no answer.
+ *
+ * **A line written in servings is the one exception to "goes through the
+ * portion table"**, because it doesn't need to: the panel's own `amounts` or
+ * `servingGrams` already say what a serving is, so "1.5 servings" is answered
+ * directly rather than hunted for as a portion labeled "serving" — which a
+ * packaged product's table never has (see `FoodPortion`).
  */
 export function panelMultiplier(
   quantity: string,
@@ -272,6 +278,21 @@ export function panelMultiplier(
   nutrition: FoodNutrition,
 ): number | null {
   const parsed = parseQuantity(quantity);
+
+  // A serving count needs nothing from the portion table: a `perServing`
+  // panel's `amounts` already are one serving, and `servingGrams` is what any
+  // other basis' serving weighs. Same two facts `packageHelping` scales a
+  // tapped serving count by — a packaged product states a serving, not a set
+  // of culinary measures, so the portion table below can never answer this.
+  if (parsed.unit === 'serving' && parsed.amount !== null) {
+    const servings = rationalToNumber(parsed.amount);
+    if (!(servings > 0)) return null;
+    if (nutrition.basis === 'perServing') return servings;
+    if (nutrition.servingGrams !== null && nutrition.servingGrams > 0) {
+      return (servings * nutrition.servingGrams) / 100;
+    }
+    return null;
+  }
 
   if (nutrition.basis === 'per100ml') {
     const single = parsed.rangeMax ? { ...parsed, rangeMax: null } : parsed;

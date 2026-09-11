@@ -1,7 +1,7 @@
 import type { FoodLogEntry, FoodNutrition, MealSlot, NutrientKey } from '../types';
 import { MEAL_SLOTS, NUTRIENT_KEYS } from '../types';
 import { gramsForLine, panelMultiplier } from './ingredientGrams';
-import { parseQuantity } from './quantity';
+import { parseQuantity, rationalToNumber } from './quantity';
 
 /**
  * The food log's rules: what a helping of something works out to, and what a
@@ -108,7 +108,15 @@ export function scalePanelToAmount(
   // 100 and never shows it, where this one is stored on the row and rendered
   // as a weight. A cup of milk off a 244g portion comes back as
   // 243.99999999999997, and that is a number nobody should be shown.
-  const rawGrams = gramsForLine(parseQuantity(quantity), prep, panel.portions);
+  //
+  // A line written in servings weighs `servingGrams` times itself, the same
+  // fact `panelMultiplier` used to answer `factor` above — `gramsForLine`
+  // can't answer this at all, since it only reads the portion table, and a
+  // packaged product's table never names a "serving" (see `FoodPortion`).
+  const parsedQuantity = parseQuantity(quantity);
+  const rawGrams = parsedQuantity.unit === 'serving' && parsedQuantity.amount !== null
+    ? (panel.servingGrams !== null ? rationalToNumber(parsedQuantity.amount) * panel.servingGrams : null)
+    : gramsForLine(parsedQuantity, prep, panel.portions);
   const grams = rawGrams === null ? null : round(rawGrams);
 
   return {
