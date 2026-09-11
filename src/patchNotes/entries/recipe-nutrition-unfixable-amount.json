@@ -1,0 +1,4 @@
+{
+  "message": "Recipe nutrition no longer offers to edit a food's figures for an ingredient amount with no number in it (\"several cloves\") or a count of containers (\"2 14 oz cans\") — neither could ever be fixed that way, so it now says the ingredient itself needs rewriting",
+  "date": "2026-09-11"
+}
