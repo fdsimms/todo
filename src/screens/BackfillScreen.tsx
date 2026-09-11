@@ -38,7 +38,7 @@ import { formatDuration, EFFORT_MINUTES, minutesToEffort } from '../utils/effort
 import { PRIORITY_SEGMENTS } from '../utils/prioritySegments';
 import {
   BACKFILL_FIELDS, backfillCandidates, backfillFieldCounts, estimatePatchFor, dismissBackfillField,
-  isFieldMissing, ESTIMATE_EFFORTS, type BackfillFieldId,
+  isFieldMissing, ESTIMATE_EFFORTS, backfillFieldsFor, type BackfillFieldId,
 } from '../utils/fieldBackfill';
 import {
   isSuggestibleBackfillField, suggestionTasks, suggestionExamples, type BackfillSuggestion,
@@ -174,7 +174,15 @@ type EntityKind = 'task' | 'category' | 'project' | 'person' | 'item' | 'recipe'
 // Six is past what fits on one line at 390pt ("Categories" alone is most of a
 // sixth of it), so this is a grid rather than a track — see SegmentedControl's
 // `columns`. Three by two keeps every label at full width.
-const ENTITY_KIND_COLUMNS = 3;
+// Six is three by two; the four that are left with the kitchen area off are
+// two by two. Both keep every label at full width, which is the whole reason
+// this is a grid — four across would truncate "Categories" at 390pt.
+const entityKindColumns = (count: number) => (count > 4 ? 3 : 2);
+// The two pools that belong to the groceries/recipes/meal plan area, and so
+// leave with it — the same drop the Groceries tab and the drawer's own
+// "Groceries & Meals" row already make. A queue walking the grocery catalog of
+// an area you switched off is work the app is asking for on its own behalf.
+const KITCHEN_ENTITY_KINDS: ReadonlySet<EntityKind> = new Set<EntityKind>(['item', 'recipe']);
 const ENTITY_KIND_SEGMENTS = [
   { value: 'task' as const, label: 'Tasks' },
   { value: 'category' as const, label: 'Categories' },
@@ -346,6 +354,8 @@ export function BackfillScreen() {
   const setRecipeBackfillDismissedFields = useRecipeStore(s => s.setRecipeBackfillDismissedFields);
 
   const [entityKind, setEntityKind] = useState<EntityKind>('task');
+  const simpleMode = useSettingsStore(s => s.simpleMode);
+  const kitchenEnabled = useSettingsStore(s => s.kitchenEnabled);
   const [active, setActive] = useState<ActiveField | null>(null);
   // Redo-from-scratch (task fields only): widens the queue to every live
   // task for the field instead of just the ones missing a value — see
@@ -440,6 +450,19 @@ export function BackfillScreen() {
   // for a call that would only apologise — the pairing `useAiRoute`'s own doc
   // comment describes.
   const suggestRoute = useAiRoute('backfillSuggestions');
+
+  const taskFields = useMemo(() => backfillFieldsFor(simpleMode), [simpleMode]);
+  const entitySegments = useMemo(
+    () => ENTITY_KIND_SEGMENTS.filter(seg => kitchenEnabled || !KITCHEN_ENTITY_KINDS.has(seg.value)),
+    [kitchenEnabled]
+  );
+  // Derived rather than corrected in an effect, so the kitchen area going off
+  // can't leave one render showing an Items list under a control that no
+  // longer offers Items. A field already being walked is deliberately left
+  // alone (`active` is untouched): finishing the queue you are in is not the
+  // same as being offered a new one.
+  const shownEntityKind: EntityKind =
+    entitySegments.some(seg => seg.value === entityKind) ? entityKind : 'task';
 
   const taskCounts = useMemo(() => backfillFieldCounts(tasks, categories), [tasks, categories]);
   const categoryCounts = useMemo(() => categoryBackfillFieldCounts(categories), [categories]);
@@ -1559,15 +1582,15 @@ export function BackfillScreen() {
           <SegmentedControl
             label="What to fill in"
             surface="page"
-            value={entityKind}
+            value={shownEntityKind}
             onChange={next => { animateLayout(); setEntityKind(next); }}
-            options={ENTITY_KIND_SEGMENTS}
-            columns={ENTITY_KIND_COLUMNS}
+            options={entitySegments}
+            columns={entityKindColumns(entitySegments.length)}
           />
         </View>
-        {entityKind === 'task' && (
+        {shownEntityKind === 'task' && (
           <ScrollView contentContainerStyle={[styles.fieldList, { paddingBottom: tabBarHeight + spacing.lg }]}>
-            {BACKFILL_FIELDS.map(field => {
+            {taskFields.map(field => {
               const count = taskCounts[field.id];
               return (
                 <TouchableOpacity
@@ -1594,7 +1617,7 @@ export function BackfillScreen() {
             })}
           </ScrollView>
         )}
-        {entityKind === 'category' && (
+        {shownEntityKind === 'category' && (
           <ScrollView contentContainerStyle={[styles.fieldList, { paddingBottom: tabBarHeight + spacing.lg }]}>
             {CATEGORY_BACKFILL_FIELDS.map(field => {
               const count = categoryCounts[field.id];
@@ -1623,7 +1646,7 @@ export function BackfillScreen() {
             })}
           </ScrollView>
         )}
-        {entityKind === 'project' && (
+        {shownEntityKind === 'project' && (
           <ScrollView contentContainerStyle={[styles.fieldList, { paddingBottom: tabBarHeight + spacing.lg }]}>
             {PROJECT_BACKFILL_FIELDS.map(field => {
               const count = projectCounts[field.id];
@@ -1652,7 +1675,7 @@ export function BackfillScreen() {
             })}
           </ScrollView>
         )}
-        {entityKind === 'person' && (
+        {shownEntityKind === 'person' && (
           people.some(p => !p.archived) ? (
             <ScrollView contentContainerStyle={[styles.fieldList, { paddingBottom: tabBarHeight + spacing.lg }]}>
               {PERSON_BACKFILL_FIELDS.map(field => {
@@ -1701,7 +1724,7 @@ export function BackfillScreen() {
             />
           )
         )}
-        {entityKind === 'item' && (
+        {shownEntityKind === 'item' && (
           groceryItems.length > 0 ? (
             <ScrollView contentContainerStyle={[styles.fieldList, { paddingBottom: tabBarHeight + spacing.lg }]}>
               {ITEM_BACKFILL_FIELDS.map(field => {
@@ -1741,7 +1764,7 @@ export function BackfillScreen() {
             />
           )
         )}
-        {entityKind === 'recipe' && (
+        {shownEntityKind === 'recipe' && (
           recipes.length > 0 ? (
             <ScrollView contentContainerStyle={[styles.fieldList, { paddingBottom: tabBarHeight + spacing.lg }]}>
               {RECIPE_BACKFILL_FIELDS.map(field => {

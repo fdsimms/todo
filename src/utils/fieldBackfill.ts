@@ -1,6 +1,7 @@
 import type { Task, Effort, Category } from '../types';
 import { EFFORT_MINUTES } from './effort';
 import { activeChainStep } from './chain';
+import { featureHidden, type SimpleFeatureId } from './simpleMode';
 
 /** A field this screen can walk the task list and fill in, one task at a time. */
 export type BackfillFieldId = 'estimate' | 'priority' | 'category' | 'streak' | 'vacation' | 'reminder' | 'suggestions';
@@ -50,6 +51,47 @@ export const BACKFILL_FIELDS: BackfillFieldDef[] = [
     hint: 'Keeps this task out of suggested pins and focus sessions.',
   },
 ];
+
+/**
+ * The simplified-mode capability a field configures, for the three that
+ * configure one.
+ *
+ * Written as a map for the reason `featureHidden` takes an id rather than
+ * being a bare `if (simpleMode)`: "what does simplified mode do to effort" has
+ * to be one search, and this screen was the one place the answer was "nothing"
+ * while `TaskEditor` and `QuickAddModal` both gated on it.
+ *
+ * The other four fields configure nothing the mode touches. `category`,
+ * `priority` and `reminder` are the ordinary form the mode never takes away,
+ * and `suggestions` is about suggested pins and focus sessions, which have
+ * their own ids the mode reaches through their own surfaces.
+ */
+const FIELD_SIMPLE_FEATURE: Partial<Record<BackfillFieldId, SimpleFeatureId>> = {
+  estimate: 'effortRating',
+  streak: 'streakOptions',
+  vacation: 'vacationPause',
+};
+
+/**
+ * The fields worth offering, given whether simplified mode is on.
+ *
+ * Hidden outright rather than through `featureShown`'s "a feature already in
+ * use is never taken away" escape hatch, and that is not an oversight: every
+ * one of these three queues on a task *not* using the feature (`estimate` on a
+ * null estimate, `streak` on `!showStreak`, `vacation` on `!vacationPause`), so
+ * rule 2 is vacuously false for every candidate the field could ever hold.
+ * A row kept for it would be a row promising work that does not exist.
+ *
+ * Only the rows go. Nothing already set is touched, and turning the mode back
+ * off brings the field back with its queue exactly as it was — the same call
+ * `aiFeaturesFor` makes for the AI switches.
+ */
+export function backfillFieldsFor(simpleMode: boolean): BackfillFieldDef[] {
+  return BACKFILL_FIELDS.filter(f => {
+    const feature = FIELD_SIMPLE_FEATURE[f.id];
+    return !feature || !featureHidden(feature, simpleMode);
+  });
+}
 
 export interface BackfillCandidatesOptions {
   /**
