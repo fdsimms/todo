@@ -210,8 +210,15 @@ export function FoodLogScreen() {
   const step = useCallback((days: number) => {
     haptics.tap();
     exitSelection();
-    setDayKey(k => dayKeyOf(addDays(dayKeyToDate(k), days)));
-  }, [exitSelection]);
+    setDayKey(k => {
+      const next = dayKeyOf(addDays(dayKeyToDate(k), days));
+      // A food log entry records what was eaten, which a future day has no
+      // answer for yet — same reasoning MoodLogSheet's allowFuture={false}
+      // rests on. The next-day chevron is already disabled on today, this is
+      // the belt to that pair of braces.
+      return next > todayKey ? todayKey : next;
+    });
+  }, [exitSelection, todayKey]);
 
   /**
    * A scan session, confirmed. Resolved to catalog rows, then handed on.
@@ -449,37 +456,41 @@ export function FoodLogScreen() {
         >
           <Ionicons name="chevron-back" size={iconSize.sm} color={colors.text} />
         </TouchableOpacity>
+        {/* The date itself, not "Back to today" — that text said which of two
+            states you were in but never which day you were actually looking
+            at, so reading it meant checking the header instead. This is
+            always the answer to "what day is this", at a glance. */}
         <TouchableOpacity
-          style={styles.dayNavToday}
+          style={styles.dayNavCenter}
           activeOpacity={interaction.activeOpacity}
-          // On today it opens the picker, since there is no "back" to offer and
-          // the row would otherwise be a disabled label. On any other day a tap
-          // comes back, which is the one-tap answer to the arrows having
-          // carried you off somewhere, and the picker is a long press away.
-          // The label still says which of the two you are on.
-          onPress={() => {
-            haptics.tap();
-            if (isToday) setDayPickerOpen(true);
-            else setDayKey(todayKey);
-          }}
-          onLongPress={() => { haptics.tap(); setDayPickerOpen(true); }}
-          delayLongPress={interaction.delayLongPress}
+          onPress={() => { haptics.tap(); setDayPickerOpen(true); }}
           accessibilityRole="button"
-          accessibilityLabel={isToday ? 'Today. Pick a day' : 'Back to today'}
-          accessibilityHint={isToday ? undefined : 'Press and hold to pick a day'}
+          accessibilityLabel={isToday ? 'Today. Pick a day' : `${format(dayDate, 'EEEE, MMMM d')}. Pick a day`}
         >
-          <Text style={styles.dayNavTodayText}>
-            {isToday ? 'Today' : 'Back to today'}
+          <Text style={styles.dayNavDateText}>
+            {isToday ? 'Today' : format(dayDate, 'EEE, MMM d')}
           </Text>
+          {!isToday && (
+            <TouchableOpacity
+              hitSlop={{ top: 4, bottom: 8, left: 8, right: 8 }}
+              onPress={() => { haptics.tap(); exitSelection(); setDayKey(todayKey); }}
+              accessibilityRole="button"
+              accessibilityLabel="Back to today"
+            >
+              <Text style={styles.dayNavBackText}>Back to today</Text>
+            </TouchableOpacity>
+          )}
         </TouchableOpacity>
         <TouchableOpacity
           style={styles.dayNavButton}
           activeOpacity={interaction.activeOpacity}
           onPress={() => step(1)}
+          disabled={isToday}
           accessibilityRole="button"
           accessibilityLabel="Next day"
+          accessibilityState={{ disabled: isToday }}
         >
-          <Ionicons name="chevron-forward" size={iconSize.sm} color={colors.text} />
+          <Ionicons name="chevron-forward" size={iconSize.sm} color={isToday ? colors.textTertiary : colors.text} />
         </TouchableOpacity>
       </View>
 
@@ -713,13 +724,17 @@ export function FoodLogScreen() {
       />
       {/* The app's own date picker, as CLAUDE.md's note on it says to reach for
           any time a feature asks "what date?". Time of day and Suggest are off:
-          this picks which day to read, not a task's schedule. */}
+          this picks which day to read, not a task's schedule. allowFuture is
+          off too — a food log entry records what was eaten, which a day that
+          hasn't happened yet has no answer for, same reasoning
+          MoodLogSheet's own allowFuture={false} rests on. */}
       <WhenPicker
         visible={dayPickerOpen}
         value={dayDate}
         title="Which day"
         showTimeOfDay={false}
         showSuggest={false}
+        allowFuture={false}
         onConfirm={date => {
           setDayPickerOpen(false);
           if (!date) return;
@@ -744,8 +759,9 @@ function makeStyles(colors: Colors) {
       paddingBottom: spacing.sm,
     },
     dayNavButton: { padding: spacing.sm },
-    dayNavToday: { paddingVertical: spacing.sm, paddingHorizontal: spacing.md },
-    dayNavTodayText: { color: colors.accent, fontSize: font.sm },
+    dayNavCenter: { alignItems: 'center', paddingVertical: spacing.xs, paddingHorizontal: spacing.md },
+    dayNavDateText: { color: colors.text, fontSize: font.md, fontWeight: fontWeight.semibold },
+    dayNavBackText: { color: colors.accent, fontSize: font.xs, marginTop: 2 },
     scrollContent: { flexGrow: 1, paddingHorizontal: spacing.md },
     totalsCard: {
       backgroundColor: colors.bgSecondary,
