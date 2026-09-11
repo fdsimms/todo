@@ -443,16 +443,16 @@ them source rather than tests. The ten biggest source files:
 Grep for the symbol and read the surrounding range; reading any of them end to end costs more
 context than the rest of the task will. `docs/module-map.md` says which file owns what.
 
-The suite is **304 test files**, and `npm test` runs all of them in about half a minute.
+The suite is **305 test files**, and `npm test` runs all of them in about half a minute.
 `npx tsc --noEmit` is a few seconds once `.tsbuildinfo` exists, so run both, every time.
 
 <!-- END GENERATED: repo-stats -->
 
-**The eleven single-component files carry their own map.** `TaskEditor.tsx`, `TodayScreen.tsx`,
+**The twelve single-component files carry their own map.** `TaskEditor.tsx`, `TodayScreen.tsx`,
 `TaskItem.tsx`, `QuickAddModal.tsx`, `MealPlanScreen.tsx`, `RecipeDetailScreen.tsx`,
-`GroceryItemSheet.tsx`, `TemplateItemEditor.tsx`, `LogbookScreen.tsx`, `GroceryScreen.tsx` and
-`SuggestMealsSheet.tsx` are each one component holding most of the file, so there are almost no
-top-level symbols to grep for — `TaskEditor.tsx` has six in 4,200 lines and
+`GroceryItemSheet.tsx`, `TemplateItemEditor.tsx`, `LogbookScreen.tsx`, `GroceryScreen.tsx`,
+`SuggestMealsSheet.tsx` and `FoodLogEntrySheet.tsx` are each one component holding most of the
+file, so there are almost no top-level symbols to grep for — `TaskEditor.tsx` has six in 4,200 lines and
 `RecipeDetailScreen.tsx` has two in 1,900.
 Each opens with a short header comment saying what's where, and its logic half is divided by
 `// ==== <name> ====` banners; `grep -n '// ===='` on one of them is its table of contents. The
@@ -460,6 +460,12 @@ banners stop at the JSX, because a `//` comment can't go inside a `return (`: pa
 banner, the landmarks are the props already there (`<EditorGroup label="…">` for a card in the
 task editor). Keep a banner accurate when you move code across it, and add one when a file grows
 a region that isn't any of the ones listed.
+
+**The list grows when a single-component file crosses 1,000 lines, and that is part of the change
+that pushed it over** rather than a tidy-up for later. `FoodLogEntrySheet.tsx` went from 918 to
+1,076 in one PR and is how this rule got written down: the file that needs the map is precisely
+the one somebody is about to have to grep through, and the moment it is cheap to write one is
+while the person adding the region still knows what the regions are.
 
 The other files over 1,000 lines don't need this and haven't got it: `useTaskStore.ts`,
 `useGroceryStore.ts`, `useSettingsStore.ts` and `useMealPlanStore.ts` each declare a store

@@ -221,6 +221,18 @@ interface FoodLogStore {
   insightEnd: string | null;
   loadInsightWindow: (startKey: string, endKey: string) => void;
   /**
+   * A run of days read straight through, stored nowhere.
+   *
+   * **The fourth reader the note above warns about, answered without a fourth
+   * window.** That warning is about *stored* windows: three named arrays each
+   * clobbering each other is what makes a fourth worth a keyed map. This reader
+   * — the entry sheet, ranking its list by what has actually been eaten — wants
+   * a snapshot at the moment it opens and never wants to be told again, so
+   * holding it in the store would be state nothing subscribes to and one more
+   * array to keep in step on every write.
+   */
+  recentEntries: (startKey: string, endKey: string) => FoodLogEntry[];
+  /**
    * Record something eaten.
    *
    * The day key is stamped here from `dayResetTime`, never derived from the
@@ -320,6 +332,10 @@ export const useFoodLogStore = create<FoodLogStore>((set, get) => ({
       windowStart: startKey,
       windowEnd: endKey,
     });
+  },
+
+  recentEntries(startKey, endKey) {
+    return dbGetFoodLogEntries(startKey, endKey);
   },
 
   loadInsightWindow(startKey, endKey) {

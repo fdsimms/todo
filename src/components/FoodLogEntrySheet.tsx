@@ -1,3 +1,14 @@
+// The food log's entry sheet: pick a food, a box of one or a cooked dish, say
+// how much, and save it as a helping. One component of ~1,070 lines, so grep a
+// landmark rather than reading it start to finish:
+//
+//   ==== <name> ====        the section banners through the logic half
+//   makeStyles              styles, at the bottom
+//
+// The refusals are the design and they are argued in the doc comment below:
+// nothing is offered that has no panel, and no amount is logged that cannot be
+// measured against one. See also `foodLog.ts` for the scaling and
+// `docs/arch/health-data.md` for why a wrong figure here is expensive.
 import React, { useEffect, useMemo, useState } from 'react';
 import {
   Alert,
@@ -18,6 +29,7 @@ import { MEAL_SLOTS, MEAL_SLOT_LABELS, type FoodNutrition, type GroceryItem, typ
 import { useGroceryStore } from '../store/useGroceryStore';
 import { useRecipeStore } from '../store/useRecipeStore';
 import { useFoodLogStore, type FoodLogDraft } from '../store/useFoodLogStore';
+import { subDays } from 'date-fns';
 import { addCustomPortion, catalogPanelWrite, nutritionFor } from '../utils/foodNutrition';
 import { combineFoodNutrition, helpingNutrition, recipeHelpingNutrition, scalePanelToAmount } from '../utils/foodLog';
 import { cookedDishGrams, mealHelping, servingGrams, weighedHelping } from '../utils/mealLog';
@@ -25,6 +37,8 @@ import { perServing, recipeNutrition, recipeNutritionLines, type NutritionLine }
 import { describeProduct } from '../utils/groceryProduct';
 import { isNonFoodAisle } from '../utils/groceryAisles';
 import { groceryNameKey } from '../utils/groceryParse';
+import { dayKeyOf, getCurrentDayStart } from '../utils/dateUtils';
+import { foodLogRecency, rankByRecency } from '../utils/foodLogRecents';
 import { haptics } from '../utils/haptics';
 import { weighableLine } from '../utils/ingredientGrams';
 import { useKeyboardInsetScroll } from '../hooks/useKeyboardInsetScroll';
@@ -208,6 +222,7 @@ export function FoodLogEntrySheet({
   // plain ScrollView — same mechanism as every other keyboard-heavy sheet.
   const keyboardScroll = useKeyboardInsetScroll<ScrollView>();
 
+  // ==== store bindings ====
   const items = useGroceryStore(useShallow(s => s.items));
   const itemProducts = useGroceryStore(useShallow(s => s.itemProducts));
   const nonFoodAisles = useGroceryStore(useShallow(s => s.nonFoodAisles));
@@ -216,7 +231,9 @@ export function FoodLogEntrySheet({
   const setItemNutrition = useGroceryStore(s => s.setItemNutrition);
   const setProductNutrition = useGroceryStore(s => s.setProductNutrition);
   const ensureCatalogItem = useGroceryStore(s => s.ensureCatalogItem);
+  const recentEntries = useFoodLogStore(s => s.recentEntries);
 
+  // ==== local state (what is picked, how much, and which extra form is open) ====
   const [query, setQuery] = useState('');
   const [picked, setPicked] = useState<Candidate | null>(null);
   const [amount, setAmount] = useState('');
@@ -263,6 +280,7 @@ export function FoodLogEntrySheet({
   // Only foods with a panel, because an entry with no figures records nothing a
   // total could use. A row offered here and then refused at Save would be worse
   // than not offering it.
+  // ==== the list: what can be logged, and what to put in front of it ====
   const candidates = useMemo<Candidate[]>(() => {
     const out: Candidate[] = [];
     for (const product of itemProducts) {
@@ -371,11 +389,31 @@ export function FoodLogEntrySheet({
     setAmount(candidate.kind === 'dish' && !weigh ? '1' : '');
   };
 
+  /**
+   * What has actually been eaten lately, read once when the sheet opens.
+   *
+   * A snapshot rather than a subscription: nothing that happens while this is
+   * open should reorder the list under the finger picking from it, and the one
+   * thing that could — saving an entry — closes the sheet anyway. Ninety days
+   * because the question is "what do you eat", which a fortnight answers badly
+   * for anything weekly.
+   */
+  const [recency, setRecency] = useState(() => foodLogRecency([]));
+  useEffect(() => {
+    if (!visible) return;
+    const today = getCurrentDayStart();
+    setRecency(foodLogRecency(recentEntries(dayKeyOf(subDays(today, 90)), dayKeyOf(today))));
+  }, [visible, recentEntries]);
+
   const results = useMemo(() => {
     const key = groceryNameKey(query);
-    if (!key) return candidates.slice(0, 40);
-    return candidates.filter(c => groceryNameKey(c.label).includes(key)).slice(0, 40);
-  }, [candidates, query]);
+    // Ranked before the cap, not after, which is the whole point: a food eaten
+    // every morning was landing below forty things bought once and being cut
+    // off by the slice, so the list promised what it could not be searched for.
+    const ranked = rankByRecency(candidates, recency);
+    if (!key) return ranked.slice(0, 40);
+    return ranked.filter(c => groceryNameKey(c.label).includes(key)).slice(0, 40);
+  }, [candidates, query, recency]);
 
   // The dish's own lines with no fixed amount to count them by — a serving
   // suggestion like "1 baguette, warmed, for serving" rather than an
@@ -385,6 +423,7 @@ export function FoodLogEntrySheet({
   // is made, so asking here — for this one helping — is the only place left
   // to ask it, rather than a fact `recipeNutrition.ts`'s static rollup could
   // ever hold for the recipe as a whole.
+  // ==== the amount: what it resolves to, and the two ways it can be rescued ====
   const varyingLines = useMemo<NutritionLine[]>(() => {
     if (!picked || picked.kind !== 'dish') return [];
     const recipe = recipes.find(r => r.id === picked.recipeId);
@@ -526,6 +565,7 @@ export function FoodLogEntrySheet({
    * thing next week meant searching for it again, and the weigh-it offer below
    * had no row to write a portion to at all.
    */
+  // ==== filing a database food into the grocery catalog ====
   const unfiled = !!picked && picked.fromDatabase && !!picked.panel && picked.itemId === null;
 
   /** What a just-filed food ended up as, for the line that says so. */
@@ -589,6 +629,7 @@ export function FoodLogEntrySheet({
     fileInCatalog(item);
   };
 
+  // ==== actions: saving, picking from the database, leaving ====
   const handleSave = () => {
     if (!picked || !built) return;
     const answeredExtras = varyingResolved.filter(r => r.resolved).map(r => r.line.name);
@@ -652,6 +693,7 @@ export function FoodLogEntrySheet({
     );
   };
 
+  // ==== render. Everything below is JSX ====
   const renderRow = ({ item }: { item: Candidate }) => (
     <TouchableOpacity
       style={styles.row}
