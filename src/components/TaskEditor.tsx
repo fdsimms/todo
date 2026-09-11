@@ -3288,11 +3288,12 @@ export function TaskEditor({ visible, task, initialDraft, onClose }: Props) {
               const useFlOz = isWater && waterLogUnit === 'flOz';
               const range = useFlOz ? LOG_HEALTH_WATER_FL_OZ_STEPS : LOG_HEALTH_VALUE_STEPS[logHealthMetric ?? 'waterMl'];
               const unitLabel = useFlOz ? 'fl oz' : NUTRIENT_LABEL[logHealthMetric ?? 'waterMl'].unit;
+              const isSet = logHealthMetric !== null && logHealthAmount !== null;
               return (
                 <CollapsibleField
                   label="Log to Health"
                   summary={
-                    logHealthMetric !== null && logHealthAmount !== null
+                    isSet
                       ? `${useFlOz ? Math.round(mlToFlOz(logHealthAmount)) : logHealthAmount}${useFlOz ? ' ' : ''}${unitLabel} of ${NUTRIENT_LABEL[logHealthMetric].label.toLowerCase()} when completed`
                       : undefined
                   }
@@ -3303,6 +3304,25 @@ export function TaskEditor({ visible, task, initialDraft, onClose }: Props) {
                   }
                   expanded={healthWriteEnabled && fieldOpen('logHealthValue')}
                   onToggle={() => { if (!healthWriteEnabled) return; toggleField('logHealthValue'); }}
+                  // Turning this off used to mean holding − on the amount
+                  // stepper all the way down past its floor — real, but not
+                  // discoverable, especially from a large amount. This mirrors
+                  // EditorRow's onClear (a close-circle beside the value) for
+                  // the fields built on that component instead of this one.
+                  right={isSet ? (
+                    <TouchableOpacity
+                      onPress={() => {
+                        haptics.tap();
+                        setLogHealthAmount(null);
+                        closeField('logHealthValue');
+                      }}
+                      hitSlop={8}
+                      accessibilityRole="button"
+                      accessibilityLabel="Clear log to health"
+                    >
+                      <Ionicons name="close-circle" size={16} color={colors.textSecondary} />
+                    </TouchableOpacity>
+                  ) : undefined}
                 >
                   <SegmentedControl<NutrientKey>
                     options={NUTRIENT_KEYS.map(key => ({ value: key, label: NUTRIENT_LABEL[key].label }))}
