@@ -1,5 +1,6 @@
 import { isStreakAtRecord } from '../utils/streakRecord';
 import { useTaskStore } from '../store/useTaskStore';
+import { useMedicationStore } from '../store/useMedicationStore';
 import { useSettingsStore } from '../store/useSettingsStore';
 import { useMoodStore } from '../store/useMoodStore';
 import { UNDO_STACK_LIMIT } from '../utils/undoHistory';
@@ -95,6 +96,13 @@ jest.mock('../db/database', () => ({
   dbInsertMilestone: jest.fn(),
   dbUpdateMilestone: jest.fn(),
   dbDeleteMilestone: jest.fn(),
+  // The medication log rides the same fan-out, and completing a task carrying
+  // a medication writes through it.
+  dbGetAllMedicationLogs: jest.fn().mockReturnValue([]),
+  dbInsertMedicationLog: jest.fn(),
+  dbUpdateMedicationLog: jest.fn(),
+  dbDeleteMedicationLog: jest.fn(),
+  dbDeleteMedicationLogsForTask: jest.fn(),
   // The food log rides the same startup fan-out as the mood log, so its reads
   // have to be here too or `initialize` throws before it reaches anything this
   // suite is about.
@@ -385,7 +393,7 @@ const makeTask = (overrides: Partial<Task> = {}): Task => ({
   timedMinutes: null,
   timerElapsedSeconds: 0,
   healthMetric: null,
-  healthTarget: null, completionTimerMinutes: null, logHealthMetric: null, logHealthAmount: null,
+  healthTarget: null, completionTimerMinutes: null, logHealthMetric: null, logHealthAmount: null, medicationName: null, medicationAmount: null, medicationUnit: null,
   actualMinutes: null,
   previousOccurrenceId: null,
   seriesId: null,
@@ -14638,5 +14646,97 @@ describe('changing a task’s polarity', () => {
     });
     useTaskStore.getState().updateTask('y', { title: 'Renamed' });
     expect(get('y').streakCount).toBe(9);
+  });
+});
+
+describe('a task that records a dose', () => {
+  beforeEach(() => {
+    useMedicationStore.setState({ logs: [], initialized: false });
+  });
+
+  it('records the dose the task states, with no question asked', () => {
+    // The task already says what the dose is, so asking again at the tick
+    // would be the "same fact twice" the medication log exists not to be.
+    useTaskStore.setState({
+      tasks: [makeTask({
+        id: 't1', title: 'Take the tablets',
+        medicationName: 'Sertraline', medicationAmount: 50, medicationUnit: 'mg',
+      })],
+    });
+    useTaskStore.getState().completeTask('t1');
+    expect(useMedicationStore.getState().logs).toHaveLength(1);
+    expect(useMedicationStore.getState().logs[0]).toMatchObject({
+      name: 'Sertraline', amount: 50, unit: 'mg', taskId: 't1', asNeeded: false,
+    });
+  });
+
+  it('records nothing for a task carrying no medication', () => {
+    useTaskStore.setState({ tasks: [makeTask({ id: 't1' })] });
+    useTaskStore.getState().completeTask('t1');
+    expect(useMedicationStore.getState().logs).toHaveLength(0);
+  });
+
+  it('records nothing when the day closed the task rather than the person', () => {
+    // A missed sweep completes the row without anybody having taken anything.
+    useTaskStore.setState({
+      tasks: [makeTask({ id: 't1', medicationName: 'Sertraline' })],
+    });
+    useTaskStore.getState().completeTask('t1', { missed: true });
+    expect(useMedicationStore.getState().logs).toHaveLength(0);
+  });
+
+  it('takes the dose back when the task is unticked', () => {
+    useTaskStore.setState({
+      tasks: [makeTask({ id: 't1', medicationName: 'Sertraline' })],
+    });
+    useTaskStore.getState().completeTask('t1');
+    expect(useMedicationStore.getState().logs).toHaveLength(1);
+    useTaskStore.getState().uncompleteTask('t1');
+    expect(useMedicationStore.getState().logs).toHaveLength(0);
+  });
+
+  it('carries the medication onto the next occurrence', () => {
+    // Without this a daily task would have to be re-set every day.
+    useTaskStore.setState({
+      tasks: [makeTask({
+        id: 't1', recurrenceType: 'daily',
+        dueDate: new Date(2025, 5, 10).toISOString(),
+        medicationName: 'Sertraline', medicationAmount: 50, medicationUnit: 'mg',
+      })],
+    });
+    useTaskStore.getState().completeTask('t1');
+    const next = useTaskStore.getState().tasks.find(t => t.id !== 't1');
+    expect(next).toMatchObject({
+      medicationName: 'Sertraline', medicationAmount: 50, medicationUnit: 'mg',
+    });
+  });
+
+  it('records one dose per unit of a daily target, not one per day', () => {
+    // "Three doses a day" is already said here as a quota, so each unit is a
+    // dose — including the one that finishes the day, and only once.
+    useTaskStore.setState({
+      tasks: [makeTask({
+        id: 't1', targetCount: 3, progressCount: 0,
+        medicationName: 'Sertraline',
+      })],
+    });
+    useTaskStore.getState().logQuotaUnit('t1');
+    useTaskStore.getState().logQuotaUnit('t1');
+    expect(useMedicationStore.getState().logs).toHaveLength(2);
+    useTaskStore.getState().logQuotaUnit('t1'); // reaches the target, completes
+    expect(useMedicationStore.getState().logs).toHaveLength(3);
+  });
+
+  it('takes back only the newest dose when one unit is undone', () => {
+    useTaskStore.setState({
+      tasks: [makeTask({
+        id: 't1', targetCount: 3, progressCount: 0,
+        medicationName: 'Sertraline',
+      })],
+    });
+    useTaskStore.getState().logQuotaUnit('t1');
+    useTaskStore.getState().logQuotaUnit('t1');
+    useTaskStore.getState().unlogQuotaUnit('t1');
+    expect(useMedicationStore.getState().logs).toHaveLength(1);
   });
 });

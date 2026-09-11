@@ -154,13 +154,21 @@ describe('nextChainStepTitle', () => {
 describe('parseChainItems', () => {
   it('fills in defaults for rows stored before the fields existed', () => {
     expect(parseChainItems([{ id: 'c1', title: 'Stretch' }])).toEqual([
-      { id: 'c1', title: 'Stretch', estimatedMinutes: null, deliverableKind: null, deliverableDatesNextStep: false },
+      {
+        id: 'c1', title: 'Stretch', estimatedMinutes: null, deliverableKind: null,
+        deliverableDatesNextStep: false,
+        medicationName: null, medicationAmount: null, medicationUnit: null,
+      },
     ]);
   });
 
   it('keeps a stored estimate', () => {
     expect(parseChainItems([{ id: 'c1', title: 'Stretch', estimatedMinutes: 5 }])).toEqual([
-      { id: 'c1', title: 'Stretch', estimatedMinutes: 5, deliverableKind: null, deliverableDatesNextStep: false },
+      {
+        id: 'c1', title: 'Stretch', estimatedMinutes: 5, deliverableKind: null,
+        deliverableDatesNextStep: false,
+        medicationName: null, medicationAmount: null, medicationUnit: null,
+      },
     ]);
   });
 
@@ -171,8 +179,38 @@ describe('parseChainItems', () => {
       {
         id: 'c1', title: 'Book haircut', estimatedMinutes: null,
         deliverableKind: 'date', deliverableDatesNextStep: true,
+        medicationName: null, medicationAmount: null, medicationUnit: null,
       },
     ]);
+  });
+
+  it('keeps a stored medication and its dose', () => {
+    const [item] = parseChainItems([
+      { id: 'c1', title: 'Morning pills', medicationName: 'Sertraline', medicationAmount: 50, medicationUnit: 'mg' },
+    ]);
+    expect(item.medicationName).toBe('Sertraline');
+    expect(item.medicationAmount).toBe(50);
+    expect(item.medicationUnit).toBe('mg');
+  });
+
+  it('drops an amount with no medication to belong to', () => {
+    // The name is the switch, so an orphan amount could never be read back and
+    // would reappear the moment a name was typed — under a medicine nobody
+    // entered it for.
+    const [item] = parseChainItems([
+      { id: 'c1', title: 'x', medicationAmount: 50, medicationUnit: 'mg' },
+    ]);
+    expect(item.medicationName).toBeNull();
+    expect(item.medicationAmount).toBeNull();
+    expect(item.medicationUnit).toBeNull();
+  });
+
+  it('drops an amount with no unit to be read in', () => {
+    const [item] = parseChainItems([
+      { id: 'c1', title: 'x', medicationName: 'Sertraline', medicationAmount: 50 },
+    ]);
+    expect(item.medicationName).toBe('Sertraline');
+    expect(item.medicationAmount).toBeNull();
   });
 
   it('rejects a stored kind that is not one of the three', () => {

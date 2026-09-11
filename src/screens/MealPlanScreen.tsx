@@ -117,6 +117,7 @@ import {
 } from '../utils/mealPlanGroceries';
 import { decidableNights, weekNights } from '../utils/weekPlan';
 import { standingSwapMap } from '../utils/standingSwaps';
+import { onHandNameKeys } from '../utils/grocerySuggest';
 import { describeWeekCost, estimateWeekCost } from '../utils/recipeCost';
 import { describeWeekNutrition, weekNutrition } from '../utils/recipeNutrition';
 
@@ -391,6 +392,11 @@ export function MealPlanScreen() {
   const standingSwaps = useMemo(
     () => standingSwapMap(itemSubs, groceryItems),
     [itemSubs, groceryItems]
+  );
+  // Live, not persisted — see recipeComponents.ts's ChoiceResolution.onHand.
+  const onHand = useMemo(
+    () => onHandNameKeys(groceryItems, new Date(), itemProducts),
+    [groceryItems, itemProducts]
   );
   const shops = useGroceryStore(useShallow(s => s.shops));
   const tripShopId = useGroceryStore(s => s.tripShopId);
@@ -1065,7 +1071,7 @@ export function MealPlanScreen() {
       title,
       recipeId: entry.recipeId,
       sourceEntryId: entry.id,
-      parts: leftoverPartsFor(title, recipe, recipesById, { chosen: entry.recipeChoices }),
+      parts: leftoverPartsFor(title, recipe, recipesById, { chosen: entry.recipeChoices, onHand }),
       // What the dish itself says it keeps for, so the usual log is still one
       // tap for a recipe that lasts a week rather than a stepper to correct
       // every time. A free-text meal has no recipe to ask and falls back.
@@ -1096,8 +1102,8 @@ export function MealPlanScreen() {
   const describeEntryChoices = useCallback((entry: MealPlanEntry): string => {
     const recipe = entry.recipeId ? recipesById.get(entry.recipeId) : undefined;
     if (!recipe || recipe.components.length === 0) return '';
-    return describeChoices(recipeChoiceGroups(recipe, recipesById, { chosen: entry.recipeChoices }));
-  }, [recipesById]);
+    return describeChoices(recipeChoiceGroups(recipe, recipesById, { chosen: entry.recipeChoices, onHand }));
+  }, [recipesById, onHand]);
 
   // ==== day and row renderers ====
   const renderDay = useCallback(({ item: day }: { item: Date }) => {
@@ -1357,7 +1363,7 @@ export function MealPlanScreen() {
   // Counted over the whole component tree, so a dish whose only prep steps
   // live on one of its parts still offers the action.
   const selectedRecipe = selected?.recipeId ? recipesById.get(selected.recipeId) : undefined;
-  const selectedResolution = { chosen: selected?.recipeChoices ?? [] };
+  const selectedResolution = { chosen: selected?.recipeChoices ?? [], onHand };
   const selectedPrepTaskCount = selectedRecipe
     ? flattenRecipePrepTasks(selectedRecipe, recipesById, selectedResolution).length
     : 0;
@@ -1712,6 +1718,7 @@ export function MealPlanScreen() {
                     onNext={() => page(1)}
                     prevAccessibilityLabel="Previous week"
                     nextAccessibilityLabel="Next week"
+                    grouped
                   />
                 </View>
                 {/*
@@ -2068,7 +2075,7 @@ export function MealPlanScreen() {
         visible={reviewingPrepTasksFor !== null}
         recipe={reviewingRecipe}
         recipesById={recipesById}
-        resolution={{ chosen: reviewingEntry?.recipeChoices ?? [] }}
+        resolution={{ chosen: reviewingEntry?.recipeChoices ?? [], onHand }}
         onAdd={addChosenPrepTasks}
         onClose={() => setReviewingPrepTasksFor(null)}
       />

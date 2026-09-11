@@ -4,11 +4,13 @@ import { useShallow } from 'zustand/react/shallow';
 import type { MealPlanEntry, MealSlot, Recipe } from '../types';
 import { useMealPlanStore } from '../store/useMealPlanStore';
 import { useRecipeStore } from '../store/useRecipeStore';
+import { useGroceryStore } from '../store/useGroceryStore';
 import { useSettingsStore } from '../store/useSettingsStore';
 import { useTaskStore } from '../store/useTaskStore';
 import { earliestUnplannedSlot, recipeIndex } from '../utils/mealPlan';
 import { dayKeyOf, dayKeyToDate } from '../utils/dateUtils';
 import { prepTaskDraftsForMeal } from '../utils/recipeUtils';
+import { onHandNameKeys } from '../utils/grocerySuggest';
 import { haptics } from '../utils/haptics';
 
 /**
@@ -30,6 +32,7 @@ export function usePlanMeal() {
   const entriesForDayLive = useMealPlanStore(s => s.entriesForDayLive);
   const mealSlotsEnabled = useSettingsStore(useShallow(s => s.mealSlotsEnabled));
   const recipes = useRecipeStore(useShallow(s => s.recipes));
+  const groceryItems = useGroceryStore(useShallow(s => s.items));
   const addTask = useTaskStore(s => s.addTask);
   const recipesById = useMemo(() => recipeIndex(recipes), [recipes]);
 
@@ -70,9 +73,12 @@ export function usePlanMeal() {
     const recipe = entry.recipeId ? recipesById.get(entry.recipeId) : undefined;
     if (!recipe) { onDone?.(); return; }
     // A freshly planned entry has never had a choice made against it, so this
-    // resolves to the defaults — same as leaving `resolution` off.
+    // resolves to the defaults — an on-hand alternative, if either has one,
+    // else the first — same as leaving `resolution` off but for the pantry
+    // read (see ChoiceResolution.onHand).
     const drafts = prepTaskDraftsForMeal(
-      recipe, recipesById, dayKeyToDate(entry.date), { chosen: entry.recipeChoices }
+      recipe, recipesById, dayKeyToDate(entry.date),
+      { chosen: entry.recipeChoices, onHand: onHandNameKeys(groceryItems, new Date()) }
     );
     if (drafts.length === 0) { onDone?.(); return; }
     const one = drafts.length === 1;
@@ -91,7 +97,7 @@ export function usePlanMeal() {
         },
       ]
     );
-  }, [recipesById, addTask]);
+  }, [recipesById, addTask, groceryItems]);
 
   /**
    * The same offer, over a batch planned in one sitting — RecipePickerSheet's

@@ -32,6 +32,7 @@ import {
   type ClassifiedIngredient,
 } from '../utils/mealPlanGroceries';
 import { standingSwapMap } from '../utils/standingSwaps';
+import { onHandNameKeys } from '../utils/grocerySuggest';
 import { generateId } from '../utils/id';
 import { normalizeScale } from '../utils/recipeScale';
 import { mealCookCounts, type CookingWindow, type MealCookCounts } from '../utils/cookingStats';
@@ -1447,17 +1448,21 @@ function cookedConsumption(entry: MealPlanEntry): ClassifiedIngredient[] {
   // Swapped: what a cook used up is what they actually cooked with, so a
   // standing "oat milk for milk" asks after the oat milk.
   const { items, itemSubs } = useGroceryStore.getState();
+  const now = new Date();
   return consumedRows(
     classifyPlanned(
       plannedIngredientsForRecipe(
         recipe,
         recipesById,
-        { chosen: entry.recipeChoices },
+        // Live, not persisted — matches mealShortfallRows' resolution, so a
+        // cook marking this meal done consumes the same alternative the
+        // shopping task asked them to buy (see ChoiceResolution.onHand).
+        { chosen: entry.recipeChoices, onHand: onHandNameKeys(items, now) },
         normalizeScale(entry.recipeScale),
         standingSwapMap(itemSubs, items)
       ),
       items,
-      new Date()
+      now
     )
   );
 }

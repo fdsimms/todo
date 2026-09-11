@@ -358,6 +358,11 @@ describe('buildKitchenSections', () => {
   it('is empty rather than unfiltered when nothing matches', () => {
     expect(sectionsOf([marked('Rice', 'Pantry')], [], ['Pantry'], 'saffron')).toEqual([]);
   });
+
+  it('finds a two-word name typed in the other order', () => {
+    const sections = sectionsOf([marked('Peanut butter', 'Pantry')], [], ['Pantry'], 'butter peanut');
+    expect(sections.flatMap(s => s.data.map(e => e.title))).toEqual(['Peanut butter']);
+  });
 });
 
 describe('kitchenEntryId', () => {

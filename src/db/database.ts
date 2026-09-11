@@ -1,5 +1,5 @@
 import * as SQLite from 'expo-sqlite';
-import type { Cookbook, DeliverableKind, FoodLogEntry, GeneratedKind, LoggedSymptom, Milestone, MoodLevel, MoodLog, NutrientKey, Person, PersonGroup, PersonNote, PersonNoteKind, Task, Category, GroceryItem, GroceryList, GroceryListEntry, GtinLookup, ItemProduct, ItemShopLink, ItemSubLink, Leftover, MealPlanEntry, MealSlot, Recipe, RecipeMealType, RecipeSourceType, RecipeVote, ReceiptStyle, Shop, StoreAlias, TaskGroup, FocusSession, FocusSessionRecord, FocusStep, FocusStepRecord, Project, ProjectCategory, TaskTemplate, TemplateCategory, TemplateContainer, TemplateItem, TemplateItemGroup, TemplateQuestion, TemplateSchedule, TimeOfDay } from '../types';
+import type { Cookbook, DeliverableKind, FoodLogEntry, GeneratedKind, LoggedSymptom, MedicationLog, Milestone, MoodLevel, MoodLog, NutrientKey, Person, PersonGroup, PersonNote, PersonNoteKind, Task, Category, GroceryItem, GroceryList, GroceryListEntry, GtinLookup, ItemProduct, ItemShopLink, ItemSubLink, Leftover, MealPlanEntry, MealSlot, Recipe, RecipeMealType, RecipeSourceType, RecipeVote, ReceiptStyle, Shop, StoreAlias, TaskGroup, FocusSession, FocusSessionRecord, FocusStep, FocusStepRecord, Project, ProjectCategory, TaskTemplate, TemplateCategory, TemplateContainer, TemplateItem, TemplateItemGroup, TemplateQuestion, TemplateSchedule, TimeOfDay } from '../types';
 import { DEFAULT_NUDGE_CADENCE_DAYS, MEAL_SLOTS, NUTRIENT_KEYS, PERSON_NOTE_KINDS, RECIPE_MEAL_TYPES, RECIPE_SOURCE_TYPES, isReceiptStyle } from '../types';
 import { generateId } from '../utils/id';
 import { appendPriceObservation, parsePriceHistory } from '../utils/priceHistory';
@@ -315,6 +315,27 @@ export function initDatabase(): void {
       label TEXT NOT NULL,
       date TEXT NOT NULL,
       created_at TEXT NOT NULL
+    );
+
+    -- One dose taken, at one moment — see MedicationLog in types/index.ts and
+    -- src/utils/medicationLog.ts. Same shape call mood_logs makes and for the
+    -- same reason: several doses a day is the normal case, so day_key is an
+    -- indexed column rather than the key.
+    --
+    -- amount and unit are nullable together: a dose recorded without a number
+    -- is an ordinary thing ("took one"), and a zero would be a claim nobody
+    -- made. task_id is provenance and deliberately carries no foreign key —
+    -- a dose outlives the task that recorded it.
+    CREATE TABLE IF NOT EXISTS medication_logs (
+      id TEXT PRIMARY KEY NOT NULL,
+      name TEXT NOT NULL,
+      taken_at TEXT NOT NULL,
+      day_key TEXT NOT NULL,
+      amount REAL,
+      unit TEXT,
+      as_needed INTEGER NOT NULL DEFAULT 0,
+      task_id TEXT,
+      note TEXT
     );
 
     -- One thing eaten, at one moment — see FoodLogEntry in types/index.ts and
@@ -720,6 +741,9 @@ export function initDatabase(): void {
     // Every read this table has is one day's entries or a run of days: the day
     // view opens on one, and a total is defined over a range of them.
     'CREATE INDEX IF NOT EXISTS idx_food_logs_day ON food_logs(day_key)',
+    // Same read as mood_logs above: every stat groups doses by day, and the
+    // "how often this month" window is a run of day keys.
+    'CREATE INDEX IF NOT EXISTS idx_medication_logs_day ON medication_logs(day_key)',
     // Null for every existing row is exactly right: nothing predating this has
     // been asserted as on hand. See GroceryItem.onHandUntil.
     'ALTER TABLE grocery_items ADD COLUMN on_hand_until TEXT',
@@ -1492,6 +1516,13 @@ export function initDatabase(): void {
     // defaulting to '[]', because an empty list would have to read as "sells
     // nothing". See Shop.aisles.
     'ALTER TABLE grocery_shops ADD COLUMN aisles TEXT',
+    // What completing this task writes to the medication log. NULL on every
+    // existing row, which is the feature being off — the same one-column-
+    // carries-both-the-switch-and-the-value shape log_health_metric above
+    // uses. See Task.medicationName and MedicationLog.
+    'ALTER TABLE tasks ADD COLUMN medication_name TEXT',
+    'ALTER TABLE tasks ADD COLUMN medication_amount REAL',
+    'ALTER TABLE tasks ADD COLUMN medication_unit TEXT',
   ];
   // Asking SQLite for a table's columns once is cheaper than handing it every
   // ALTER for that table and catching the duplicate-column error, and by the
@@ -1861,6 +1892,10 @@ export const BACKUP_TABLES = [
   'mood_logs',
   // Also points at nothing, for the same reason and beside the same neighbor.
   'milestones',
+  // The medication log, beside the two above it. Its one pointer (task_id) is
+  // provenance rather than a reference — a dose whose task is gone is still a
+  // dose — so it has no ordering requirement against `tasks`.
+  'medication_logs',
   // The food log, for the same reason: standalone rows nothing else points at.
   // Its pointers all run the other way and all dangle freely, so it has no
   // ordering requirement against the tables above it.
@@ -2417,6 +2452,16 @@ function rowToTask(row: Record<string, unknown>): Task {
     penaltyCutoffTime: (row.penalty_cutoff_time as string | null) ?? null,
     penaltyFiredAt: (row.penalty_fired_at as string | null) ?? null,
     gatesApps: row.gates_apps === 1,
+    // A blank name reads as "not logging", so a row that somehow stored one
+    // can't write nameless doses. The amount is kept only alongside a name,
+    // for the reason Task.medicationName gives: the name is the switch.
+    medicationName: ((row.medication_name as string | null) || null),
+    medicationAmount: (row.medication_name as string | null)
+      ? ((row.medication_amount as number | null) ?? null)
+      : null,
+    medicationUnit: (row.medication_name as string | null)
+      ? ((row.medication_unit as string | null) || null)
+      : null,
     timerElapsedSeconds: (row.timer_elapsed_seconds as number | null) ?? 0,
     previousOccurrenceId: (row.previous_occurrence_id as string | null) ?? null,
     seriesId: (row.series_id as string | null) ?? null,
@@ -2488,8 +2533,9 @@ export function dbInsertTask(task: Task): void {
       quota_interval_minutes, quota_reminders, quota_started_at, quota_always_visible, quota_period, location,
       prior_best_streak, reminder_time_anchor, reminder_utc_offset_minutes, polarity, slip_count, slip_date,
       health_metric, health_target, completion_timer_minutes, log_health_metric, log_health_amount,
-      penalty_minutes, penalty_cutoff_time, penalty_fired_at, gates_apps
-    ) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)`,
+      penalty_minutes, penalty_cutoff_time, penalty_fired_at, gates_apps,
+      medication_name, medication_amount, medication_unit
+    ) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)`,
     [
       task.id, task.title, task.notes, task.completed ? 1 : 0,
       task.completedAt, task.createdAt, task.seenAt, task.dueDate, task.deadline, task.deadlineOffsetDays ?? null, task.deadlineMonthDay ?? null, task.deferUntil,
@@ -2576,6 +2622,9 @@ export function dbInsertTask(task: Task): void {
       task.penaltyCutoffTime ?? null,
       task.penaltyFiredAt ?? null,
       task.gatesApps ? 1 : 0,
+      task.medicationName ?? null,
+      task.medicationAmount ?? null,
+      task.medicationUnit ?? null,
     ]
   );
 }
@@ -2605,7 +2654,8 @@ export function dbUpdateTask(task: Task): void {
       quota_interval_minutes=?, quota_reminders=?, quota_started_at=?, quota_always_visible=?, quota_period=?, location=?,
       prior_best_streak=?, reminder_time_anchor=?, reminder_utc_offset_minutes=?, polarity=?, slip_count=?, slip_date=?,
       health_metric=?, health_target=?, completion_timer_minutes=?, log_health_metric=?, log_health_amount=?,
-      penalty_minutes=?, penalty_cutoff_time=?, penalty_fired_at=?, gates_apps=?
+      penalty_minutes=?, penalty_cutoff_time=?, penalty_fired_at=?, gates_apps=?,
+      medication_name=?, medication_amount=?, medication_unit=?
     WHERE id=?`,
     [
       task.title, task.notes, task.completed ? 1 : 0, task.completedAt, task.seenAt,
@@ -2693,6 +2743,9 @@ export function dbUpdateTask(task: Task): void {
       task.penaltyCutoffTime ?? null,
       task.penaltyFiredAt ?? null,
       task.gatesApps ? 1 : 0,
+      task.medicationName ?? null,
+      task.medicationAmount ?? null,
+      task.medicationUnit ?? null,
       task.id,
     ]
   );
@@ -4926,6 +4979,70 @@ export function dbUpdateMilestone(milestone: Milestone): void {
 
 export function dbDeleteMilestone(id: string): void {
   db.runSync('DELETE FROM milestones WHERE id = ?', [id]);
+}
+
+/**
+ * One dose, mapped off its row.
+ *
+ * `amount` and `unit` are kept or dropped together — a number with no unit is
+ * unreadable ("took 2" of what?) and a unit with no number states nothing — so
+ * a row carrying only one of them reads as a dose with no amount, which is a
+ * real and ordinary thing to have recorded.
+ */
+function rowToMedicationLog(row: Record<string, unknown>): MedicationLog {
+  const rawAmount = row.amount as number | null;
+  const rawUnit = (row.unit as string | null) || null;
+  const paired = typeof rawAmount === 'number' && Number.isFinite(rawAmount) && !!rawUnit;
+  return {
+    id: row.id as string,
+    name: row.name as string,
+    takenAt: row.taken_at as string,
+    dayKey: row.day_key as string,
+    amount: paired ? rawAmount : null,
+    unit: paired ? rawUnit : null,
+    asNeeded: row.as_needed === 1,
+    taskId: (row.task_id as string | null) || null,
+    note: (row.note as string) || null,
+  };
+}
+
+export function dbGetAllMedicationLogs(): MedicationLog[] {
+  const rows = db.getAllSync<Record<string, unknown>>(
+    'SELECT * FROM medication_logs ORDER BY taken_at DESC'
+  );
+  return rows.map(rowToMedicationLog);
+}
+
+export function dbInsertMedicationLog(log: MedicationLog): void {
+  db.runSync(
+    `INSERT INTO medication_logs (id, name, taken_at, day_key, amount, unit, as_needed, task_id, note)
+     VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+    [log.id, log.name, log.takenAt, log.dayKey, log.amount, log.unit,
+     log.asNeeded ? 1 : 0, log.taskId, log.note]
+  );
+}
+
+export function dbUpdateMedicationLog(log: MedicationLog): void {
+  db.runSync(
+    `UPDATE medication_logs SET name=?, taken_at=?, day_key=?, amount=?, unit=?, as_needed=?, task_id=?, note=? WHERE id=?`,
+    [log.name, log.takenAt, log.dayKey, log.amount, log.unit,
+     log.asNeeded ? 1 : 0, log.taskId, log.note, log.id]
+  );
+}
+
+export function dbDeleteMedicationLog(id: string): void {
+  db.runSync('DELETE FROM medication_logs WHERE id = ?', [id]);
+}
+
+/**
+ * Drop every dose a given task's completion wrote.
+ *
+ * One statement rather than a read-then-delete loop because unticking is a
+ * single user action and the rows are addressed by exactly this column. A task
+ * that recorded no dose deletes nothing, which is the ordinary case.
+ */
+export function dbDeleteMedicationLogsForTask(taskId: string): void {
+  db.runSync('DELETE FROM medication_logs WHERE task_id = ?', [taskId]);
 }
 
 /**

@@ -127,6 +127,21 @@ export interface ChainItem {
   // date kind. Inert without `deliverableKind: 'date'`, and inert on the last
   // step, which has no next step to date.
   deliverableDatesNextStep?: boolean;
+  // What completing *this step* records in the medication log, or null/absent
+  // for a step that records nothing. Per-step for the same reason
+  // `estimatedMinutes` and `deliverableKind` are: the task-level fields ride
+  // `...effective` onto every successor, so a "morning pills / evening pills"
+  // chain logged the morning dose again in the evening. Resolved by
+  // `medicationFor`, which prefers the active step and falls back to the task.
+  //
+  // **Resolved as a set, never field by field.** A step naming a medication
+  // supplies the whole triple, including a null amount. Falling back per field
+  // would let a step that names only "Sertraline" inherit the task's "25 mcg"
+  // and record a dose of one medicine at another's strength, which is the one
+  // way this feature could state something actively false.
+  medicationName?: string | null;
+  medicationAmount?: number | null;
+  medicationUnit?: string | null;
 }
 
 // Everything the "Follow-up task" rule says about the task it adds, beyond its
@@ -1258,6 +1273,79 @@ export interface Milestone {
 }
 
 /**
+ * One dose of something taken — see `src/utils/medicationLog.ts` and
+ * `docs/arch/mood-log.md`.
+ *
+ * **This deliberately does not replace the task-based answer, and most doses
+ * should never reach it by hand.** `taskMoodContrasts` already answers "how do
+ * the days I take it compare" off an ordinary repeating task, and that stays
+ * the answer for anything on a schedule: a tracker asking you to log the
+ * tablets again, in its own list, next to the task reminding you to take them,
+ * is asking for the same fact twice. Two things that argument doesn't reach,
+ * and they are the whole of what this is for:
+ *
+ * - **An as-needed dose has no task to complete.** You don't schedule "take an
+ *   ibuprofen if the headache gets bad", so nothing records it — and how often
+ *   you reached for it is itself the number worth having, the one a doctor
+ *   asks for. A one-off task can't stand in: `contrastsFor` needs
+ *   `MIN_CONTRAST_DAYS` a side, so a task completed once is excluded by
+ *   construction.
+ * - **A completion carries no amount.** Ticking a task records that you did
+ *   it, not that it was 20mg rather than 10mg.
+ *
+ * So the scheduled case still rides the task, and `Task.medicationName` writes
+ * one of these on completion rather than asking twice — the same shape
+ * `logHealthMetric`/`logHealthAmount` already use to turn a completion into a
+ * quantity recorded elsewhere.
+ */
+export interface MedicationLog {
+  id: string;
+  /**
+   * What was taken, in your own words and casing — matched case-insensitively
+   * via `medicationKey`, which refuses fuzzy matching for a harder version of
+   * the reason `symptomKey` does. Folding "Ibuprofen 200" into "Ibuprofen 400"
+   * would not merely blur a chart, it would misstate a dose.
+   */
+  name: string;
+  /** ISO instant. */
+  takenAt: string;
+  /**
+   * Stamped at write time from `dayResetTime`, never derived on read — the
+   * same rule `MoodLog.dayKey` follows, and for the same reason: moving your
+   * day boundary must not silently rewrite which day last month's late-night
+   * doses belong to.
+   */
+  dayKey: string;
+  /**
+   * How much, as a number, or null when not stated. Null and 0 are different
+   * and must stay different: "I took it, I didn't record how much" against a
+   * recorded zero, which is not a dose at all.
+   */
+  amount: number | null;
+  /** The unit `amount` is in ('mg', 'ml', 'tablet'). Null exactly when `amount` is. */
+  unit: string | null;
+  /**
+   * Taken as needed rather than on a schedule.
+   *
+   * Per entry rather than per medication because there is no medication
+   * entity — the vocabulary is derived from the entries, exactly as
+   * `symptomVocabulary` is. `isAsNeededMedication` reads it back as "any entry
+   * said so", which errs toward treating a medication as as-needed; that is
+   * the safe direction, because it is what withholds the symptom comparison
+   * that would otherwise be drawn backwards (see `medicationLog.ts`).
+   */
+  asNeeded: boolean;
+  /**
+   * The task whose completion recorded this, when one did. Provenance only:
+   * nothing reads it to decide what a dose means, and a dose whose task was
+   * later deleted is still a dose that was taken. It exists so unticking a
+   * task ticked by mistake can take its dose back with it.
+   */
+  taskId: string | null;
+  note: string | null;
+}
+
+/**
  * Which of the app's unattended generators wrote a task — see
  * `Task.generatedKind` below, and `src/utils/generatedTasks.ts` for the
  * mechanism they share.
@@ -1456,6 +1544,30 @@ export interface Task {
   // docs/arch/health-data.md.
   logHealthMetric: NutrientKey | null;
   logHealthAmount: number | null;
+  // What completing this task records in the medication log (see
+  // MedicationLog), or null when it records nothing. medicationAmount /
+  // medicationUnit are the dose, and are the same two-field pair
+  // logHealthMetric / logHealthAmount above are, for the same reason: "off"
+  // and "log 0" must not be two ways of saying nothing happened.
+  //
+  // This is the whole of the task→log hook, and it deliberately asks nothing
+  // at the tick. A scheduled dose is the case taskMoodContrasts already
+  // answers off the task alone, so making the user confirm an amount they
+  // already told the app once would be the "same fact twice" this feature
+  // exists not to be. A dose that varies is logged by hand instead.
+  //
+  // These ride ...effective onto the next occurrence, so a daily task keeps
+  // logging its dose without being re-set every day.
+  //
+  // Unlike logHealthMetric this is NOT one-shot: uncompleting the task
+  // deletes the dose it wrote (matched on MedicationLog.taskId). A health
+  // sample is a historical record in somebody else's database; this is the
+  // app's own record of what went into a person, and a task ticked by mistake
+  // means the dose was not taken. A phantom dose left behind corrupts exactly
+  // the thing the log exists to be.
+  medicationName: string | null;
+  medicationAmount: number | null;
+  medicationUnit: string | null;
   deferUntil: string | null;
   timeSegments: TimeOfDay[];
   windowStart: string | null; // "HH:MM" — task only becomes visible/active from this time on its day
@@ -2585,6 +2697,17 @@ export interface TemplateItem {
   // routine whose point is that nothing else happens until the walk does would
   // otherwise hand out tasks that gate nothing.
   gatesApps: boolean;
+  // Seed Task.medicationName / medicationAmount / medicationUnit. The same
+  // reasoning completionTimerMinutes carries above, which already names a
+  // recurring medication as its case: a morning-routine template whose whole
+  // point is the tablets would otherwise hand out a task that records nothing,
+  // and the dose would have to be re-entered by hand on every application.
+  // There is no template-side counterpart to the dose itself — the instruction
+  // carries, the record doesn't, exactly as deliverableKind carries without
+  // deliverableValue.
+  medicationName: string | null;
+  medicationAmount: number | null;
+  medicationUnit: string | null;
 
   // What the task created from this item asks for when it's completed, or null
   // for the ordinary "ticking it is the whole answer" item. Another field

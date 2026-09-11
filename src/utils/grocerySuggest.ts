@@ -80,6 +80,20 @@ export function matchWeight(nameKey: string, queryKey: string): number {
   // tolerant of.
   if (queryKey.length > 1 && queryKey.endsWith('s') && nameKey.startsWith(queryKey.slice(0, -1))) return 2;
   if (nameKey.startsWith(`${queryKey}s`)) return 3;
+  // Last, and under every rung above it: the query's words found on the name in
+  // some other order, which is what lets "butter peanut" reach "Peanut butter".
+  // A run of characters the user actually typed is the stronger signal, so this
+  // can only ever decide between names that nothing above matched at all —
+  // which is also why the weight is flat rather than another ladder. The file's
+  // own reasoning applies unchanged: with a two- or three-character query it is
+  // frequency × recency that has to decide, and a finer score here would drown
+  // it. Every word is put through the rungs above on its own, so a word matches
+  // on exactly the terms a one-word query would (one word cannot split again,
+  // so the recursion is one deep). The plural rung is anchored to the start of
+  // the name, which is unchanged here: it answers for a word only where it
+  // would have answered for the whole query.
+  const words = queryKey.split(' ');
+  if (words.length > 1 && words.every(word => matchWeight(nameKey, word) > 0)) return 0.5;
   return 0;
 }
 
@@ -546,6 +560,28 @@ export function probablyHaveReason(
   // in the same kind of caption and already share their halving.
   const times = item.purchaseCount === 1 ? 'once' : `${item.purchaseCount}×`;
   return `bought ${times} · last on ${format(new Date(item.lastPurchasedAt), 'MMM d')}`;
+}
+
+/**
+ * The catalog's own nameKeys that are on hand right now — `probablyHaveReason`
+ * (the single owner of the "have it" opinion) run across every item and
+ * flattened to the join key recipe ingredients use, so a caller building a
+ * `ChoiceResolution.onHand` set for recipeComponents.ts doesn't need a second
+ * rule for "do I have this". Deliberately does not treat "already on the
+ * list" or "in the trolley" as on hand — those describe what's about to be
+ * bought, not a reason to prefer this recipe alternative over another one
+ * that's actually in the kitchen.
+ */
+export function onHandNameKeys(
+  items: readonly GroceryItem[],
+  now: Date,
+  products: readonly ItemProduct[] = []
+): ReadonlySet<string> {
+  const keys = new Set<string>();
+  for (const item of items) {
+    if (probablyHaveReason(item, now, products) !== null) keys.add(item.nameKey);
+  }
+  return keys;
 }
 
 /**

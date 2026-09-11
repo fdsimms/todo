@@ -1155,6 +1155,40 @@ describe('rankRecipes', () => {
 
     expect(rankRecipes('potatoes', [steak, mash]).map(r => r.name)).toEqual(['Mash', 'Steak dinner']);
   });
+
+  it('matches a multi-word query in any order', () => {
+    const tofu = recipe('Peanut butter sriracha tofu', { nameKey: 'peanut butter sriracha tofu' });
+    expect(rankRecipes('tofu peanut butter', [tofu, ragu]).map(r => r.name))
+      .toEqual(['Peanut butter sriracha tofu']);
+  });
+
+  it('requires every word of a query to match something', () => {
+    const tofu = recipe('Peanut butter sriracha tofu', { nameKey: 'peanut butter sriracha tofu' });
+    expect(rankRecipes('tofu peanut anchovy', [tofu])).toEqual([]);
+  });
+
+  it('matches words spread across different fields', () => {
+    const noodles = recipe('Sesame noodles', {
+      nameKey: 'sesame noodles',
+      ingredients: [ing('Peanut butter', { nameKey: 'peanut butter' })],
+      tags: ['quick'],
+    });
+    expect(rankRecipes('quick peanut noodles', [noodles, ragu]).map(r => r.name)).toEqual(['Sesame noodles']);
+  });
+
+  it('ranks a contiguous phrase above the same words scattered', () => {
+    const named = recipe('Peanut butter cookies', { nameKey: 'peanut butter cookies' });
+    const scattered = recipe('Butter beans with peanut', { nameKey: 'butter beans with peanut' });
+    expect(rankRecipes('peanut butter', [scattered, named]).map(r => r.name))
+      .toEqual(['Peanut butter cookies', 'Butter beans with peanut']);
+  });
+
+  it('still ranks a word by which field it landed in', () => {
+    const named = recipe('Chicken pie', { nameKey: 'chicken pie', notes: 'Best with leek.' });
+    const mentioned = recipe('Leek tart', { nameKey: 'leek tart', notes: 'Like the chicken one.' });
+    expect(rankRecipes('chicken leek', [mentioned, named]).map(r => r.name))
+      .toEqual(['Chicken pie', 'Leek tart']);
+  });
 });
 
 describe('describeCookHistory', () => {

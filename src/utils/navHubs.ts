@@ -43,6 +43,7 @@ export interface NavContentCounts {
   templates: number;
   people?: number;
   mood?: number;
+  medications?: number;
   foodLog?: number;
 }
 
@@ -119,6 +120,7 @@ const HISTORY_HUB: NavHub = {
     { route: 'Logbook', label: 'Logbook', keywords: ['done', 'completed', 'finished'] },
     { route: 'Stats', label: 'Stats', keywords: ['numbers', 'charts', 'streaks', 'progress'] },
     { route: 'Mood', label: 'Mood', keywords: ['feelings', 'symptoms', 'how i feel'] },
+    { route: 'Medications', label: 'Medications', keywords: ['medicine', 'pills', 'tablets', 'dose', 'supplement', 'inhaler', 'painkiller'] },
     { route: 'Weight', label: 'Weight', keywords: ['scale', 'kg', 'lb', 'pounds', 'body', 'mass'] },
     { route: 'Archived', label: 'Archived', keywords: ['paused', 'filed', 'put away'] },
   ],

@@ -46,6 +46,7 @@ import {
   catalogMatchSummary,
   matchIngredientsToCatalog,
 } from '../utils/ingredientCatalogMatch';
+import { onHandNameKeys } from '../utils/grocerySuggest';
 import { ListBulkBar } from '../components/ListBulkBar';
 import { RecipeEditor } from '../components/RecipeEditor';
 import { RecipeIngredientSheet } from '../components/RecipeIngredientSheet';
@@ -203,7 +204,11 @@ export function RecipeDetailScreen() {
   // MealPlanEntry.recipeChoices. Starts empty, which is every group on its
   // default — same contract RecipeToListSheet's own `choices` keeps.
   const [choices, setChoices] = useState<string[]>([]);
-  const choiceResolution = useMemo(() => ({ chosen: choices }), [choices]);
+  // Live, not persisted — see recipeComponents.ts's ChoiceResolution.onHand.
+  const choiceResolution = useMemo(
+    () => ({ chosen: choices, onHand: onHandNameKeys(groceryItems, new Date(), itemProducts) }),
+    [choices, groceryItems, itemProducts]
+  );
   const choiceGroups = useMemo(
     () => (recipe ? recipeChoiceGroups(recipe, recipesById, choiceResolution) : []),
     [recipe, recipesById, choiceResolution]

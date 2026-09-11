@@ -129,6 +129,12 @@ export function collectPlannedIngredients(
   range: { startKey: string; endKey: string },
   /** The user's standing swaps — see flattenRecipeIngredients. */
   swaps: StandingSwapMap = NO_STANDING_SWAPS,
+  /**
+   * Ingredient nameKeys already on hand, live and never persisted — see
+   * ChoiceResolution.onHand. Empty by default, which is every entry that
+   * never answered resolving to its first-listed option exactly as before.
+   */
+  onHand: ReadonlySet<string> = new Set(),
 ): PlannedIngredient[] {
   const out: PlannedIngredient[] = [];
   for (const entry of entries) {
@@ -145,7 +151,7 @@ export function collectPlannedIngredients(
     // The entry's own picks, so a week holding steak-with-mash on Tuesday and
     // steak-with-roast on Friday shops for one side each night rather than both
     // twice. An entry that never answered resolves to the defaults.
-    for (const flat of flattenRecipeIngredients(recipe, recipesById, { chosen: entry.recipeChoices }, swaps)) {
+    for (const flat of flattenRecipeIngredients(recipe, recipesById, { chosen: entry.recipeChoices, onHand }, swaps)) {
       out.push({
         name: flat.ingredient.name,
         nameKey: flat.ingredient.nameKey,

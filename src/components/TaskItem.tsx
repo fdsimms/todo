@@ -2064,15 +2064,6 @@ export const TaskItem = React.memo(function TaskItem({
                 ellipsizeMode="tail"
               />
             )}
-            {chainStep && (
-              <View
-                style={styles.chainBadge}
-                accessibilityLabel={chainName ? `Step ${chainPosition} of "${chainName}"` : `Chain step ${chainPosition}`}
-              >
-                <Ionicons name="git-commit" size={9} color={colors.accent} />
-                <Text style={styles.chainBadgeText}>{chainPosition}</Text>
-              </View>
-            )}
             {deadlineDays !== null && (
               <View
                 style={styles.deadlineBadge}
@@ -2517,6 +2508,23 @@ export const TaskItem = React.memo(function TaskItem({
           </View>
         )}
       </TouchableOpacity>
+
+      {/* A sibling of the trailing action buttons, not of the title text it
+          used to sit inline with — `content`'s title/meta column is centered
+          as a block against the whole row, so a badge anchored to just the
+          title's own line (the top of that block, when a meta row sits below
+          it) drifted above the row's actual vertical centre, out of line with
+          the pin/link buttons on the same row. This is a plain View here for
+          the same reason it was one there: informational, not a control. */}
+      {chainStep && (
+        <View
+          style={styles.chainBadge}
+          accessibilityLabel={chainName ? `Step ${chainPosition} of "${chainName}"` : `Chain step ${chainPosition}`}
+        >
+          <Ionicons name="git-commit" size={9} color={colors.accent} />
+          <Text style={styles.chainBadgeText}>{chainPosition}</Text>
+        </View>
+      )}
 
       {/* Starting the countdown is the whole point of a timed task, so the
           control sits on the row rather than only inside the expanded panel —

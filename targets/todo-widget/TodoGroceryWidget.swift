@@ -170,7 +170,7 @@ struct TodoGroceryWidget: Widget {
                 }
         }
         .configurationDisplayName("Groceries")
-        .description("What's left to buy, and the shop you're walking.")
+        .description("What's left to buy, and the store you're shopping at.")
         .supportedFamilies([
             .systemSmall, .systemMedium,
             .accessoryRectangular, .accessoryCircular, .accessoryInline,

@@ -23,6 +23,7 @@ import { PRIORITY_LABELS, EFFORT_LABELS, EFFORT_HINTS, TITLE_MAX_LENGTH } from '
 import { useColors, useTheme } from '../theme/ThemeContext';
 import { spacing, radius, font, interaction, type Colors } from '../theme';
 import { haptics } from '../utils/haptics';
+import { DOSE_UNITS } from '../utils/medicationLog';
 import { formatDuration } from '../utils/effort';
 import { animateLayout } from '../utils/layoutAnimation';
 import { tagColor } from '../utils/tagColor';
@@ -49,8 +50,10 @@ import { SortableList } from './SortableList';
 import { DeliverableKindPicker } from './DeliverableKindPicker';
 import { StepMinutes } from './StepMinutes';
 import { StepQuestion } from './StepQuestion';
+import { StepMedication } from './StepMedication';
 import { nextChainStepTitle } from '../utils/chain';
 import { ChainStepQuestionSheet } from './ChainStepQuestionSheet';
+import { ChainStepMedicationSheet } from './ChainStepMedicationSheet';
 import { RecurrencePicker } from './RecurrencePicker';
 import { SegmentedControl } from './SegmentedControl';
 import { PRIORITY_SEGMENTS } from '../utils/prioritySegments';
@@ -78,7 +81,10 @@ const PENALTY_MAX_MINUTES = 24 * 60;
 
 
 /** Editor sections that collapse to a one-line summary of their current value. */
-type FieldKey = 'blanks' | 'conditions' | 'category' | 'tags' | 'priority' | 'effort' | 'subtasks' | 'chainSteps' | 'deliverable' | 'completionTimer' | 'penalty';
+/** Matches TaskEditor's own cap: a label on a row, not a prescription line. */
+const MEDICATION_NAME_MAX_LENGTH = 60;
+
+type FieldKey = 'blanks' | 'conditions' | 'category' | 'tags' | 'priority' | 'effort' | 'subtasks' | 'chainSteps' | 'deliverable' | 'completionTimer' | 'penalty' | 'medication';
 
 interface Props {
   visible: boolean;
@@ -138,6 +144,11 @@ export function TemplateItemEditor({ visible, templateId, templateName, item, in
   const [effort, setEffort] = useState<Effort>(0);
   const [estimatedMinutes, setEstimatedMinutes] = useState<number | null>(null);
   const [completionTimerMinutes, setCompletionTimerMinutes] = useState<number | null>(null);
+  const [medicationName, setMedicationName] = useState<string | null>(null);
+  // The typed string, parsed once on save — same call TaskEditor makes, so a
+  // half-typed "2." isn't thrown away mid-keystroke.
+  const [medicationAmount, setMedicationAmount] = useState('');
+  const [medicationUnit, setMedicationUnit] = useState<string | null>(null);
   const [penaltyMinutes, setPenaltyMinutes] = useState<number | null>(null);
   const [gatesApps, setGatesApps] = useState(false);
   const [penaltyCutoffTime, setPenaltyCutoffTime] = useState<string | null>(null);
@@ -157,6 +168,7 @@ export function TemplateItemEditor({ visible, templateId, templateName, item, in
   const [chainItems, setChainItems] = useState<ChainItem[]>([]);
   // By id rather than index — see the same state in TaskEditor.
   const [questionStepId, setQuestionStepId] = useState<string | null>(null);
+  const [medicationStepId, setMedicationStepId] = useState<string | null>(null);
   const [chainIndex, setChainIndex] = useState(0);
   const [addingChainItem, setAddingChainItem] = useState(false);
   const [newChainItemTitle, setNewChainItemTitle] = useState('');
@@ -199,6 +211,12 @@ export function TemplateItemEditor({ visible, templateId, templateName, item, in
     setEffort(item?.effort ?? draft?.effort ?? 0);
     setEstimatedMinutes(item?.estimatedMinutes ?? draft?.estimatedMinutes ?? null);
     setCompletionTimerMinutes(item?.completionTimerMinutes ?? draft?.completionTimerMinutes ?? null);
+    setMedicationName(item?.medicationName ?? draft?.medicationName ?? null);
+    {
+      const seeded = item?.medicationAmount ?? draft?.medicationAmount ?? null;
+      setMedicationAmount(seeded !== null ? String(seeded) : '');
+    }
+    setMedicationUnit(item?.medicationUnit ?? draft?.medicationUnit ?? null);
     setPenaltyMinutes(item?.penaltyMinutes ?? draft?.penaltyMinutes ?? null);
     setGatesApps(item?.gatesApps ?? draft?.gatesApps ?? false);
     setPenaltyCutoffTime(item?.penaltyCutoffTime ?? draft?.penaltyCutoffTime ?? null);
@@ -303,6 +321,20 @@ export function TemplateItemEditor({ visible, templateId, templateName, item, in
     return name ? withPlaceholder(baseTitle, name) : baseTitle;
   };
 
+  /** The medication a task made from this item records, or null for none. */
+  const resolveMedicationName = () => medicationName?.trim() || null;
+
+  /**
+   * The dose, or null when there isn't a usable one — needs a medication to
+   * belong to, a unit to be read in, and text that parses. Same rule
+   * `TaskEditor` applies, since both seed the same pair of task fields.
+   */
+  const resolveMedicationAmount = () => {
+    if (!resolveMedicationName() || !medicationUnit) return null;
+    const parsed = Number(medicationAmount.trim());
+    return medicationAmount.trim() !== '' && Number.isFinite(parsed) ? parsed : null;
+  };
+
   // ==== save ====
   const handleSave = () => {
     if (!title.trim()) return;
@@ -327,6 +359,11 @@ export function TemplateItemEditor({ visible, templateId, templateName, item, in
       effort,
       estimatedMinutes,
       completionTimerMinutes,
+      medicationName: resolveMedicationName(),
+      // Both halves dropped unless there is a name to attach them to and a
+      // unit to read the number in — the same pairing TaskEditor saves.
+      medicationAmount: resolveMedicationAmount(),
+      medicationUnit: resolveMedicationAmount() !== null ? medicationUnit : null,
       penaltyMinutes,
       // Cleared on an avoid-item for the reason TaskEditor clears it: an
       // avoid-task is never completed, so a gate on one could never be met.
@@ -460,6 +497,15 @@ export function TemplateItemEditor({ visible, templateId, templateName, item, in
               c => (c.id === questionStepId ? { ...c, ...patch } : c),
             ))}
             onClose={() => setQuestionStepId(null)}
+          />
+          <ChainStepMedicationSheet
+            visible={medicationStepId !== null}
+            step={chainItems.find(c => c.id === medicationStepId) ?? null}
+            taskMedicationName={medicationName}
+            onSave={patch => setChainItems(prev => prev.map(
+              c => (c.id === medicationStepId ? { ...c, ...patch } : c),
+            ))}
+            onClose={() => setMedicationStepId(null)}
           />
           <NumberPadAccessory />
         </>
@@ -898,6 +944,56 @@ export function TemplateItemEditor({ visible, templateId, templateName, item, in
           />
         </CollapsibleField>
         <View style={styles.sep} />
+        {/* Beside the completion timer, whose own hint already names a
+            recurring medication as its case. Seeds the task-side pair, so a
+            routine template hands out a task that records its dose rather than
+            one somebody has to set up again by hand. */}
+        <CollapsibleField
+          label="Log a dose"
+          summary={
+            medicationName
+              ? [medicationName, resolveMedicationAmount() !== null ? `${resolveMedicationAmount()} ${medicationUnit}` : null]
+                  .filter(Boolean).join(', ')
+              : undefined
+          }
+          hint="Tasks made from this item record a dose in your medication log each time they're completed."
+          expanded={fieldOpen('medication')}
+          onToggle={() => toggleField('medication')}
+        >
+          <TextInput
+            style={styles.fieldBox}
+            value={medicationName ?? ''}
+            onChangeText={text => setMedicationName(text || null)}
+            placeholder="e.g. Sertraline"
+            placeholderTextColor={colors.textTertiary}
+            maxLength={MEDICATION_NAME_MAX_LENGTH}
+            returnKeyType="done"
+            accessibilityLabel="What tasks from this item record a dose of"
+          />
+          {medicationName !== null && (
+            <>
+              <TextInput
+                style={[styles.fieldBox, styles.medicationAmountInput]}
+                value={medicationAmount}
+                onChangeText={setMedicationAmount}
+                placeholder="e.g. 50"
+                placeholderTextColor={colors.textTertiary}
+                keyboardType="decimal-pad"
+                returnKeyType="done"
+                accessibilityLabel="How much, optional"
+              />
+              <SegmentedControl
+                options={DOSE_UNITS.map(u => ({ value: u.value, label: u.value }))}
+                value={medicationUnit ?? ''}
+                columns={5}
+                label="Unit"
+                surface="card"
+                onChange={next => { haptics.tap(); setMedicationUnit(next === medicationUnit ? null : next); }}
+              />
+            </>
+          )}
+        </CollapsibleField>
+        <View style={styles.sep} />
         <TouchableOpacity
           style={styles.optionRow}
           onPress={() => { haptics.tap(); setGatesApps(!gatesApps); }}
@@ -1130,6 +1226,11 @@ export function TemplateItemEditor({ visible, templateId, templateName, item, in
                         step={chainItem}
                         datesNextStep={chainItem.deliverableDatesNextStep === true}
                         onPress={() => setQuestionStepId(chainItem.id)}
+                      />
+                      <StepMedication
+                        step={chainItem}
+                        taskMedicationName={medicationName}
+                        onPress={() => setMedicationStepId(chainItem.id)}
                       />
                       <TouchableOpacity
                         onPress={() => {
@@ -1725,4 +1826,14 @@ const makeStyles = (colors: Colors) => StyleSheet.create({
     flex: 1, color: colors.text, fontSize: font.md,
     borderBottomWidth: 1, borderBottomColor: colors.accent, paddingVertical: 2,
   },
+  /** A single-line text field inside a CollapsibleField, matching TaskEditor's. */
+  fieldBox: {
+    color: colors.text, fontSize: font.md,
+    backgroundColor: colors.bgTertiary, borderRadius: radius.sm,
+    paddingHorizontal: 12,
+    // Height rather than lineHeight — see the TextInput note in CLAUDE.md.
+    height: 36,
+  },
+  /** Sits between the medication's name and its unit row. */
+  medicationAmountInput: { marginTop: spacing.sm, marginBottom: spacing.sm },
 });

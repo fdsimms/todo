@@ -34,6 +34,7 @@ import { clampStepIndex, cookSteps, describeStepPosition } from '../utils/cookMo
 import { formatStepDuration, stepDurationOffers } from '../utils/stepTimers';
 import { flattenRecipeIngredients } from '../utils/recipeComponents';
 import { describeStandingSwap, standingSwapMap } from '../utils/standingSwaps';
+import { onHandNameKeys } from '../utils/grocerySuggest';
 import { formatScale, isUnscaled, scaleQuantity } from '../utils/recipeScale';
 import { convertQuantity } from '../utils/unitConvert';
 
@@ -123,14 +124,16 @@ export function CookModeSheet({ visible, recipe, recipesById, scale, onClose }: 
     () => standingSwapMap(itemSubs, groceryItems),
     [itemSubs, groceryItems]
   );
+  // Live, not persisted — see recipeComponents.ts's ChoiceResolution.onHand.
+  const onHand = useMemo(() => onHandNameKeys(groceryItems, new Date()), [groceryItems]);
 
   const steps = useMemo(
     () => cookSteps(recipe, recipesById),
     [recipe, recipesById]
   );
   const ingredients = useMemo(
-    () => flattenRecipeIngredients(recipe, recipesById, undefined, standingSwaps),
-    [recipe, recipesById, standingSwaps]
+    () => flattenRecipeIngredients(recipe, recipesById, { onHand }, standingSwaps),
+    [recipe, recipesById, standingSwaps, onHand]
   );
 
   const [rawIndex, setRawIndex] = useState(0);

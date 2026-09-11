@@ -12,6 +12,7 @@ import {
   OUT_OF_IT_UNTIL,
   pantryEntries,
   productHaveReason,
+  onHandNameKeys,
 } from '../utils/grocerySuggest';
 import { groceryNameKey } from '../utils/groceryParse';
 import { FROZEN_REASON, RUNNING_LOW_REASON, type GroceryItem, type ItemProduct } from '../types';
@@ -111,6 +112,34 @@ describe('rankGrocerySuggestions', () => {
   it('still tolerates a plural query past one character', () => {
     const items = [makeItem({ name: 'Banana' })];
     expect(rankGrocerySuggestions('bananas', items, NOW).map(s => s.item.name)).toEqual(['Banana']);
+  });
+
+  it('finds a two-word name typed in the other order', () => {
+    const items = [makeItem({ name: 'Peanut butter' })];
+    expect(rankGrocerySuggestions('butter peanut', items, NOW).map(s => s.item.name))
+      .toEqual(['Peanut butter']);
+  });
+
+  it('puts each word of an out-of-order query through the same rungs', () => {
+    // "creams" reaches "Cream cheese" on the plural rung, exactly as it would
+    // have as a query on its own.
+    const items = [makeItem({ name: 'Cream cheese' })];
+    expect(rankGrocerySuggestions('cheese creams', items, NOW).map(s => s.item.name))
+      .toEqual(['Cream cheese']);
+  });
+
+  it('still requires every word of an out-of-order query to land', () => {
+    const items = [makeItem({ name: 'Peanut butter' })];
+    expect(rankGrocerySuggestions('butter anchovy', items, NOW)).toEqual([]);
+  });
+
+  it('ranks a contiguous match above the same words found apart', () => {
+    const items = [
+      makeItem({ name: 'Peanut butter', purchaseCount: 5, lastPurchasedAt: daysAgo(1) }),
+      makeItem({ name: 'Butter beans with peanut', purchaseCount: 5, lastPurchasedAt: daysAgo(1) }),
+    ];
+    expect(rankGrocerySuggestions('peanut butter', items, NOW).map(s => s.item.name))
+      .toEqual(['Peanut butter', 'Butter beans with peanut']);
   });
 
   it('prefers a prefix match over a substring one', () => {
@@ -630,6 +659,19 @@ describe('pantryEntries', () => {
   it('keeps an item that is also on the list — the assertion outlives the add', () => {
     const item = makeItem({ name: 'Rice', onList: true, onHandUntil: daysAgo(-5) });
     expect(pantryEntries([item], NOW).map(e => e.item.name)).toEqual(['Rice']);
+  });
+});
+
+describe('onHandNameKeys', () => {
+  it('names the nameKeys probablyHaveReason answers for, and nothing else', () => {
+    const tofu = makeItem({ name: 'Extra firm tofu', onHandUntil: daysAgo(-5) });
+    const outOfIt = makeItem({ name: 'Firm tofu', onHandUntil: OUT_OF_IT_UNTIL });
+    const neverBought = makeItem({ name: 'Silken tofu' });
+    expect(onHandNameKeys([tofu, outOfIt, neverBought], NOW)).toEqual(new Set(['extra firm tofu']));
+  });
+
+  it('is empty for an empty catalog', () => {
+    expect(onHandNameKeys([], NOW)).toEqual(new Set());
   });
 });
 

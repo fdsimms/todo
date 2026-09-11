@@ -5,8 +5,10 @@ Read this before changing anything under `src/utils/moodLog.ts`,
 `src/utils/moodInsights.ts`, `src/utils/moodHistory.ts`, `src/utils/moodExport.ts`,
 `src/utils/moodTasks.ts`, `src/store/useMoodStore.ts`, `src/store/useMilestoneStore.ts`,
 `src/screens/MoodScreen.tsx`, `src/screens/MoodHistoryScreen.tsx`,
-`src/screens/SymptomDetailScreen.tsx`, `src/components/MoodLogSheet.tsx` or
-`src/components/MilestoneSheet.tsx`.
+`src/screens/SymptomDetailScreen.tsx`, `src/components/MoodLogSheet.tsx`,
+`src/components/MilestoneSheet.tsx`, `src/utils/medicationLog.ts`,
+`src/store/useMedicationStore.ts`, `src/screens/MedicationScreen.tsx` or
+`src/components/MedicationLogSheet.tsx`.
 
 The rules here are settled decisions with the reasoning attached. Don't
 re-derive them from the code, and don't re-open one without a reason this note
@@ -319,7 +321,7 @@ A correlation drawn over half a record is a different claim from one drawn over
 all of it, and the person who set the window is the only one who can decide
 whether that matters.
 
-## Mood against one repeating task — the medication question, answered without a medication feature
+## Mood against one repeating task — the medication question, answered for everything on a schedule
 
 `taskMoodContrasts` is `categoryMoodContrasts` one level down: your mood on the
 days you finished a particular repeating task, against the days you didn't. It
@@ -345,6 +347,115 @@ asking for the same fact twice.
 - **It is labelled by the most recent occurrence's title**, so a task since
   renamed reads under the name in use now. The identity is the chain, not the
   wording.
+
+## The medication log — what the section above does not reach
+
+This section used to end by saying the app answers the medication question
+without a medication feature. That is still true of every scheduled dose and
+the argument above is not weakened: a tablet you take every morning is a
+repeating task, `taskMoodContrasts` reads it, and asking somebody to log the
+tablets again in a second list next to the task reminding them to take them is
+asking for the same fact twice. **Nothing below changes that.** The scheduled
+case still rides the task.
+
+Two things that argument does not reach, and they are the whole of what
+`MedicationLog` (`src/utils/medicationLog.ts`, `useMedicationStore`,
+`medication_logs`) is for:
+
+- **An as-needed dose has no task to complete.** Nobody schedules "take an
+  ibuprofen if the headache gets bad", so nothing recorded it — and *how often
+  you reached for it* is itself the number people want, the one a doctor asks
+  for. A one-off task cannot stand in: `contrastsFor` needs
+  `MIN_CONTRAST_DAYS` a side, so a task completed once is excluded by
+  construction. This is the gap, and it is the reason the decision was
+  reopened rather than a preference about where things live.
+- **A completion carries no amount.** Ticking records that you did it, not
+  that it was 20mg rather than 10.
+
+**The "same fact twice" objection is answered by the mechanism rather than
+argued away.** `Task.medicationName` makes completing the task *be* the
+logging: the dose is what the task already says it is, nothing is asked at the
+tick, and a daily target records one dose per unit rather than one per day.
+This is `logHealthMetric`/`logHealthAmount` pointed at the app's own log
+instead of Apple Health — the same switch-and-value pair, seeded from a
+`TemplateItem` the same way. The one place it deliberately differs from that
+precedent is undo: a Health sample is a historical record in somebody else's
+database and is never taken back, where a task ticked by mistake means the
+dose was not taken, so `uncompleteTask` deletes what the completion wrote.
+
+### What it refuses to compute, and why that is not a gap to fill later
+
+**There is no medication-against-symptom contrast, and adding one is not a
+small extension of `symptomFoodContrasts`.** For an as-needed medicine the
+comparison is *structurally backwards*: you take the painkiller because your
+head hurts, so "the symptom was worse on the days you took it" restates why
+you took it. It is not a weak finding or one needing a bigger sample; it is
+reverse causation guaranteed by the design of the behaviour. `symptomFoodContrasts`
+survives the same objection only because eating bread is not caused by the
+headache, and reaching for the ibuprofen is.
+
+A card drawn on that arithmetic would read as evidence against the medicine on
+exactly the days it was needed most, which is the one wrong answer this
+feature must never give — and it would give it in the part of the app somebody
+is most likely to act on medically. The scheduled case has the same problem
+from the other end (adherence and mood move together for reasons running both
+ways) and already has `taskMoodContrasts`, with every gate in
+`moodInsights.ts` on it.
+
+So what the screen draws is tallies plus one comparison, and the line between
+them is the one the symptom page already draws: **counting one thing has no
+minimum, comparing two does.** The single comparison is `frequencyTrend`, and
+it is safe where a symptom contrast is not because it is a question about the
+medicine's *use* rather than a claim about its effect — "nine this fortnight
+against three the fortnight before" is the shape people actually ask in. Its
+two refusals are both rule 3 ("a day you didn't log is not a zero") in
+different clothes: the log has to have been running for *both* windows, or an
+install from last week reads as a dramatic increase every time, and
+`MIN_TREND_DOSES` stops one-against-two being reported as a doubling. What it
+still cannot know is whether a quiet fortnight was one of not needing it or
+one of not recording it, which is why the copy says recorded rather than
+taken.
+
+### A chain step records its own dose
+
+`ChainItem.medicationName` is the third field on the pattern
+`estimatedMinutes` and `deliverableKind` already follow, resolved by
+`medicationFor` (active step, else the task) for the identical reason: the
+task-level fields ride `...effective` onto every successor, so a "morning
+pills / evening pills" chain logged the morning dose again at night.
+
+**The triple resolves as a set, never field by field**, and that is the one
+rule here worth not re-deriving. A step naming a medication supplies the whole
+answer including a null amount. Per-field fallback would let a step naming only
+"Ibuprofen" inherit the task's "50 mg" and record a dose of one medicine at
+another's strength: a number nobody entered, under a name somebody did, in the
+log that exists to be accurate. `parseChainItems` enforces the same pairing on
+the way in, so an orphan amount can't survive a round trip and reappear the
+moment a name is typed.
+
+### Getting it off the device
+
+`medicationExport.ts` is `moodExport.ts` pointed at the doses, on the same four
+rules, and the argument for it is stronger: what you have taken and how often
+you reached for the as-needed things is close to the first question asked in a
+consultation. Two rules are its own. **`amount` and `unit` are separate
+columns**, because a record whose point is a quantity should hand over a number
+a spreadsheet can sum rather than "400 mg" in one cell. And **nothing derived
+leaves**, which bites hardest here: `typicalDose` is a mode over a history, and
+a cell holding one with none of that context reads as a prescription rather
+than as a summary. `taskId` stays behind too — provenance, meaningless outside
+this database, and "Taken as needed" already says in words the thing it would
+imply.
+
+`medicationKey` refuses fuzzy matching for a harder version of the reason
+`symptomKey` does: folding two spellings of a symptom blurs a chart, and
+folding "Ibuprofen 200" into "Ibuprofen 400" misstates a dose. The vocabulary
+is derived from the doses rather than stored, exactly as the symptom one is,
+so there is no registry to prune and nothing to migrate. `medication_logs` is
+in `SYNC_TRACKED_TABLES` beside `mood_logs`, with one extra edge of the same
+argument: a phone holding half the doses answers "how often did I reach for
+it" with a number that is simply too low, and nothing about that number looks
+wrong.
 
 ## Mood against what you ate
 
