@@ -62,6 +62,7 @@ import { isDemoModeActive } from './demoState';
 import { runStartupSequence, runStartupStep } from './startup';
 import { catchUpPasses, rebuildNotificationQueue } from './maintenancePasses';
 import { writeWidgetSnapshotNow } from './widgetSync';
+import { reconcileAppShield } from './appShieldReconcile';
 
 /**
  * Namespaced to this app rather than reusing expo's own permitted identifier
@@ -126,6 +127,14 @@ export function runBackgroundRefresh(): BackgroundRefreshOutcome {
     // Last, for the same reason — the snapshot should describe the list as the
     // passes above left it, not as it was.
     ['write widget snapshot', writeWidgetSnapshotNow],
+    // After the passes because they are what changes the answer: the penalty
+    // sweep charges a block here, and the day roll is what makes a gate task
+    // due. Neither reached the shield until this existed — the reconciler was
+    // a React hook, so a block charged while the app was closed sat in settings
+    // with nothing applying it, and a gate came due with nothing arming its
+    // window. Idempotent like everything else in this list: it re-asserts the
+    // shield the state already implies rather than remembering what it last did.
+    ['reconcile app shield', () => { reconcileAppShield(); }],
   ]);
 
   return { ran: true, failed };

@@ -208,7 +208,8 @@ public class TodoScreenTimeBridgeModule: Module {
       otherReasonWantsShield: Bool,
       reason: String,
       untilIso: String?,
-      detail: String?
+      detail: String?,
+      pendingGateDetail: String?
     ) -> Bool in
       var written = false
       TodoScreenTimeExceptionCatcher.runCatchingExceptions {
@@ -216,7 +217,8 @@ public class TodoScreenTimeBridgeModule: Module {
           otherReasonWantsShield: otherReasonWantsShield,
           reason: reason,
           untilIso: untilIso,
-          detail: detail
+          detail: detail,
+          pendingGateDetail: pendingGateDetail
         ))
       }
       return written
@@ -242,11 +244,7 @@ public class TodoScreenTimeBridgeModule: Module {
       if #available(iOS 16.0, *) {
         var scheduled = false
         TodoScreenTimeExceptionCatcher.runCatchingExceptions {
-          let formatter = ISO8601DateFormatter()
-          formatter.formatOptions = [.withInternetDateTime, .withFractionalSeconds]
-          guard let until = formatter.date(from: untilIso) ?? ISO8601DateFormatter().date(from: untilIso),
-                until > Date()
-          else { return }
+          guard let until = Self.parseIso(untilIso), until > Date() else { return }
 
           let calendar = Calendar.current
           let schedule = DeviceActivitySchedule(
@@ -261,6 +259,64 @@ public class TodoScreenTimeBridgeModule: Module {
           scheduled = true
         }
         return scheduled
+      }
+      #endif
+      return false
+    }
+
+    /// Arm a one-shot window whose *start* raises a gate block, so a gate that
+    /// comes due while the app is closed still holds the apps.
+    ///
+    /// The mirror of `schedulePenaltyExpiry` and the same three caveats apply
+    /// (clock-time bounds, `repeats: false`, a quarter-hour floor), plus one
+    /// that is this direction's own: the bounds being clock times rather than
+    /// dates means an armed window is "the next time it is 06:00", so the JS
+    /// side refuses to arm anything more than a day out (`GATE_ARM_HORIZON_MS`
+    /// in `appGate.ts`). Arming further ahead than that would raise a shield
+    /// days before the gate it belongs to was real.
+    ///
+    /// The window's end is deliberately not a callback: a gate ends when its
+    /// task does, not when an hour is up, so `intervalDidEnd` answers only for
+    /// the penalty window and this one runs out doing nothing.
+    Function("scheduleGateWindow") { (startIso: String, endIso: String) -> Bool in
+      #if canImport(DeviceActivity)
+      if #available(iOS 16.0, *) {
+        var scheduled = false
+        TodoScreenTimeExceptionCatcher.runCatchingExceptions {
+          guard let start = Self.parseIso(startIso), let end = Self.parseIso(endIso),
+                end > start
+          else { return }
+
+          let calendar = Calendar.current
+          let schedule = DeviceActivitySchedule(
+            intervalStart: calendar.dateComponents([.hour, .minute, .second], from: start),
+            intervalEnd: calendar.dateComponents([.hour, .minute, .second], from: end),
+            repeats: false
+          )
+          let center = DeviceActivityCenter()
+          let name = DeviceActivityName(ScreenTimeShared.gateActivityName)
+          center.stopMonitoring([name])
+          try? center.startMonitoring(name, during: schedule)
+          scheduled = true
+        }
+        return scheduled
+      }
+      #endif
+      return false
+    }
+
+    /// Disarm the gate window. Called on every reconcile that finds nothing
+    /// pending, so a window armed for a gate since completed, deferred or
+    /// switched off can't raise a shield for it later.
+    Function("cancelGateWindow") { () -> Bool in
+      #if canImport(DeviceActivity)
+      if #available(iOS 16.0, *) {
+        var cancelled = false
+        TodoScreenTimeExceptionCatcher.runCatchingExceptions {
+          DeviceActivityCenter().stopMonitoring([DeviceActivityName(ScreenTimeShared.gateActivityName)])
+          cancelled = true
+        }
+        return cancelled
       }
       #endif
       return false
@@ -397,6 +453,18 @@ public class TodoScreenTimeBridgeModule: Module {
   /// Walks past anything already presented, since the picker is usually opened
   /// from a settings sheet that is itself modal — presenting on the root while
   /// a sheet is up throws.
+  /// An ISO instant as JS writes it, with or without fractional seconds.
+  ///
+  /// `ISO8601DateFormatter` refuses a string whose fractional-second shape
+  /// doesn't match its options, and `Date.toISOString()` always includes them
+  /// while a hand-built string may not — so both are tried rather than assuming
+  /// either.
+  private static func parseIso(_ value: String) -> Date? {
+    let fractional = ISO8601DateFormatter()
+    fractional.formatOptions = [.withInternetDateTime, .withFractionalSeconds]
+    return fractional.date(from: value) ?? ISO8601DateFormatter().date(from: value)
+  }
+
   private static func topViewController() -> UIViewController? {
     let scene = UIApplication.shared.connectedScenes
       .compactMap { $0 as? UIWindowScene }

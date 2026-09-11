@@ -57,9 +57,12 @@ interface TodoScreenTimeNativeModule {
     reason: string,
     untilIso: string | null,
     detail: string | null,
+    pendingGateDetail: string | null,
   ): boolean;
   schedulePenaltyExpiry(untilIso: string): boolean;
   cancelPenaltyExpiry(): boolean;
+  scheduleGateWindow(startIso: string, endIso: string): boolean;
+  cancelGateWindow(): boolean;
   startMonitoring(rulesJson: string, dayKey: string): Promise<boolean>;
   stopMonitoring(): boolean;
   drainCrossings(): Promise<string>;
@@ -146,6 +149,16 @@ export interface ShieldState {
   untilIso: string | null;
   /** What earned it — a task's title — shown as-is on the shield screen. */
   detail: string | null;
+  /**
+   * The line to show for a gate a window has been armed for but that isn't live
+   * yet, or null when no window is armed.
+   *
+   * It is also the monitor extension's permission to raise a shield at that
+   * window's start, which is why it is written here rather than inferred: the
+   * extension cannot ask whether the gate it was armed for still stands, so the
+   * app says so on every reconcile and a stale window finds nothing.
+   */
+  pendingGateDetail: string | null;
 }
 
 /**
@@ -156,6 +169,7 @@ export function setShieldState(state: ShieldState): boolean {
   return degradeOnThrow(
     () => nativeModule!.setShieldState(
       state.otherReasonWantsShield, state.reason, state.untilIso, state.detail,
+      state.pendingGateDetail,
     ),
     false,
   );
@@ -178,6 +192,24 @@ export function schedulePenaltyExpiry(untilIso: string): boolean {
 
 export function cancelPenaltyExpiry(): boolean {
   return degradeOnThrow(() => nativeModule!.cancelPenaltyExpiry(), false);
+}
+
+/**
+ * Arm a one-shot window whose start blocks the apps for a gate that isn't due
+ * yet, so it holds even if the app is never opened.
+ *
+ * The mirror of `schedulePenaltyExpiry`, with the same best-effort caveats, and
+ * one more that belongs to this direction: a `DeviceActivitySchedule`'s bounds
+ * are clock times rather than dates, so nothing further out than a day is armed
+ * (`gateWindowFor` in `appGate.ts` is where that refusal lives). A gate beyond
+ * that is left for a later reconcile, and there will be one.
+ */
+export function scheduleGateWindow(startIso: string, endIso: string): boolean {
+  return degradeOnThrow(() => nativeModule!.scheduleGateWindow(startIso, endIso), false);
+}
+
+export function cancelGateWindow(): boolean {
+  return degradeOnThrow(() => nativeModule!.cancelGateWindow(), false);
 }
 
 export function startMonitoring(rules: readonly ScreenTimeMonitorRule[], dayKey: string): Promise<boolean> {

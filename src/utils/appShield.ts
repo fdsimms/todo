@@ -1,5 +1,5 @@
 import type { FocusSession } from '../types';
-import { gateShieldWanted, gateSubtitle } from './appGate';
+import { gateShieldWanted, gateSubtitle, gateWindowFor } from './appGate';
 import { shieldWanted } from './focusShield';
 import { penaltyShieldWanted } from './penaltyShield';
 import { screenTimeBridge } from './screenTimeBridge';
@@ -46,6 +46,16 @@ export interface AppShieldState {
    * (`outstandingGates`) rather than leaving that decision to this module.
    */
   gateTitles: readonly string[];
+  /**
+   * The next gate that isn't live yet: when it becomes live, and the titles to
+   * name for it. Null when there is none within reach.
+   *
+   * Separate from `gateTitles` because they answer different questions and are
+   * usually different tasks — that one is what's blocking now, this is what the
+   * monitor extension should block for while the app is closed. A gate already
+   * live has nothing to arm.
+   */
+  pendingGate: { liveAt: Date; titles: readonly string[] } | null;
   now: Date;
 }
 
@@ -91,6 +101,15 @@ export function syncAppShield(state: AppShieldState): void {
   const focusWants = shieldWanted(state.session, state.focusEnabled);
   const penaltyWants = penaltyShieldWanted(state.penaltyUntil, state.penaltyEnabled, state.now);
   const gateWants = gateShieldWanted(state.gateTitles.length, state.gateEnabled);
+  // A window is armed only while the feature is on, so switching it off
+  // disarms whatever was armed rather than leaving a shield to be raised for a
+  // setting that no longer holds.
+  const pendingDetail = state.gateEnabled && state.pendingGate
+    ? gateSubtitle(state.pendingGate.titles)
+    : null;
+  const gateWindow = state.gateEnabled && state.pendingGate && pendingDetail
+    ? gateWindowFor(state.pendingGate.liveAt, state.now)
+    : null;
 
   // The screen can only lead with one of them, in the order they're worth
   // reading: a session is what the person is in the middle of, a gate is the
@@ -110,10 +129,21 @@ export function syncAppShield(state: AppShieldState): void {
       : gateWants
         ? gateSubtitle(state.gateTitles)
         : penaltyWants ? state.penaltyReason : null,
+    // Written only when a window is actually armed: it is what the monitor
+    // extension checks before raising a shield, so a detail left behind by an
+    // earlier reconcile would be a standing permission to block for a gate
+    // that has since been completed or deferred.
+    pendingGateDetail: gateWindow ? pendingDetail : null,
   });
 
   if (focusWants || penaltyWants || gateWants) bridge.applyShield();
   else bridge.clearShield();
+
+  // Nothing is armed for a gate that is already live — the shield is up, and a
+  // window would only re-raise it — nor for one further out than the horizon
+  // `gateWindowFor` enforces.
+  if (gateWindow) bridge.scheduleGateWindow(gateWindow.startIso, gateWindow.endIso);
+  else bridge.cancelGateWindow();
 
   // `penaltyWants` being true is what makes penaltyUntil non-null — it is the
   // first thing that predicate checks.
