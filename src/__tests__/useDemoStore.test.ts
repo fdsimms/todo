@@ -72,7 +72,7 @@ import { usePersonNoteStore } from '../store/usePersonNoteStore';
 import { useMoodStore } from '../store/useMoodStore';
 import { useMilestoneStore } from '../store/useMilestoneStore';
 import { useMedicationStore } from '../store/useMedicationStore';
-import { frequencyTrend } from '../utils/medicationLog';
+import { frequencyTrend, medicationFor } from '../utils/medicationLog';
 import { buildMoodDays, contextTagMoodContrasts, describeNutrientInsight, foodMoodContrasts, foodPairedDays, symptomFoodContrasts, milestoneMoodContrast, moodCompletionInsight, nutrientInsight, symptomMoodContrasts, taskContrastTitles, taskMoodContrasts, MIN_PAIRED_DAYS } from '../utils/moodInsights';
 import { contextTagVocabulary, symptomVocabulary } from '../utils/moodLog';
 import { isStaleNote } from '../utils/personNotes';
@@ -1632,6 +1632,18 @@ describe('demo seed — people', () => {
     expect(logs.some(l => l.taskId === null && l.asNeeded)).toBe(true);
     // And a dose the task stated, rather than a bare "took it".
     expect(logs.some(l => l.taskId !== null && l.amount !== null)).toBe(true);
+  });
+
+  it('seeds a chain whose steps record different doses', () => {
+    // Without per-step values one chain logs the morning dose again at night,
+    // so a demo with only a single-dose task shows none of what this is for.
+    const chained = useTaskStore.getState().tasks.find(t => t.title === 'Pills');
+    expect(chained).toBeDefined();
+    const names = chained!.chainItems.map(c => c.medicationName);
+    expect(names.filter(Boolean)).toHaveLength(2);
+    expect(new Set(names).size).toBe(2);
+    // And medicationFor resolves the live step rather than the task.
+    expect(medicationFor(chained!)).toMatchObject({ name: 'Levothyroxine', unit: 'mcg' });
   });
 
   it('seeds enough as-needed doses for the frequency card to draw', () => {

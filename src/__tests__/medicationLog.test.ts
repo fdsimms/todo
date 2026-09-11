@@ -1,4 +1,4 @@
-import type { MedicationLog } from '../types';
+import type { ChainItem, MedicationLog } from '../types';
 import {
   DOSE_UNITS,
   MIN_TREND_DOSES,
@@ -9,10 +9,12 @@ import {
   hasDoseOnDay,
   isAsNeededMedication,
   logsOnDay,
+  medicationFor,
   medicationKey,
   medicationLogSummary,
   medicationStats,
   medicationVocabulary,
+  type MedicationSource,
 } from '../utils/medicationLog';
 
 let seq = 0;
@@ -273,5 +275,85 @@ describe('frequencyTrend', () => {
     ];
     const trend = frequencyTrend(logs, 'ibuprofen', '2026-09-11', 7);
     expect(trend).toEqual({ recent: 1, previous: 3, days: 7 });
+  });
+});
+
+describe('medicationFor', () => {
+  const step = (overrides: Partial<ChainItem> = {}): ChainItem => ({
+    id: 'step-1',
+    title: 'Step',
+    estimatedMinutes: null,
+    deliverableKind: null,
+    ...overrides,
+  });
+
+  const source = (overrides: Partial<MedicationSource> = {}): MedicationSource => ({
+    medicationName: null,
+    medicationAmount: null,
+    medicationUnit: null,
+    ...overrides,
+  });
+
+  it('is null for a task recording nothing', () => {
+    expect(medicationFor(source())).toBeNull();
+  });
+
+  it('reads the task when there is no chain', () => {
+    expect(medicationFor(source({
+      medicationName: 'Sertraline', medicationAmount: 50, medicationUnit: 'mg',
+    }))).toEqual({ name: 'Sertraline', amount: 50, unit: 'mg' });
+  });
+
+  it('treats a blank name as recording nothing', () => {
+    expect(medicationFor(source({ medicationName: '   ', medicationAmount: 50 }))).toBeNull();
+  });
+
+  it('prefers the active chain step', () => {
+    // "morning pills / evening pills" must not log the morning dose at night.
+    expect(medicationFor(source({
+      medicationName: 'Morning pills',
+      chainEnabled: true,
+      chainIndex: 1,
+      chainItems: [step({ id: 'a', medicationName: 'Morning pills' }), step({ id: 'b', medicationName: 'Evening pills' })],
+    }))).toEqual({ name: 'Evening pills', amount: null, unit: null });
+  });
+
+  it('falls back to the task for a step carrying nothing of its own', () => {
+    expect(medicationFor(source({
+      medicationName: 'Sertraline', medicationAmount: 50, medicationUnit: 'mg',
+      chainEnabled: true,
+      chainIndex: 0,
+      chainItems: [step({ id: 'a' }), step({ id: 'b' })],
+    }))).toEqual({ name: 'Sertraline', amount: 50, unit: 'mg' });
+  });
+
+  it('resolves the step as a set, never field by field', () => {
+    // The rule that matters: a step naming only "Ibuprofen" must NOT inherit
+    // the task's 50 mg and report a dose of one medicine at another's
+    // strength — a number nobody entered under a name somebody did.
+    expect(medicationFor(source({
+      medicationName: 'Sertraline', medicationAmount: 50, medicationUnit: 'mg',
+      chainEnabled: true,
+      chainIndex: 0,
+      chainItems: [step({ id: 'a', medicationName: 'Ibuprofen' }), step({ id: 'b' })],
+    }))).toEqual({ name: 'Ibuprofen', amount: null, unit: null });
+  });
+
+  it('ignores a single-item chain, like every other step reader', () => {
+    expect(medicationFor(source({
+      medicationName: 'Sertraline',
+      chainEnabled: true,
+      chainIndex: 0,
+      chainItems: [step({ id: 'a', medicationName: 'Ignored' })],
+    }))).toEqual({ name: 'Sertraline', amount: null, unit: null });
+  });
+
+  it('ignores chain steps while the chain is off', () => {
+    expect(medicationFor(source({
+      medicationName: 'Sertraline',
+      chainEnabled: false,
+      chainIndex: 0,
+      chainItems: [step({ id: 'a', medicationName: 'Ignored' }), step({ id: 'b' })],
+    }))).toEqual({ name: 'Sertraline', amount: null, unit: null });
   });
 });

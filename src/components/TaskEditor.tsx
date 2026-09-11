@@ -34,6 +34,8 @@ import { PressableScale } from './PressableScale';
 import { StepMinutes } from './StepMinutes';
 import { StepQuestion } from './StepQuestion';
 import { ChainStepQuestionSheet } from './ChainStepQuestionSheet';
+import { ChainStepMedicationSheet } from './ChainStepMedicationSheet';
+import { StepMedication } from './StepMedication';
 import { format } from 'date-fns/format';
 import { addMonths } from 'date-fns/addMonths';
 import { addDays } from 'date-fns/addDays';
@@ -571,6 +573,7 @@ export function TaskEditor({ visible, task, initialDraft, onClose }: Props) {
   // Which step's "ask on completion" sheet is open, by id rather than index —
   // the list under it can be reordered or shortened while the sheet is up.
   const [questionStepId, setQuestionStepId] = useState<string | null>(null);
+  const [medicationStepId, setMedicationStepId] = useState<string | null>(null);
   const [chainIndex, setChainIndex] = useState(0);
   const [chainStepOnSchedule, setChainStepOnSchedule] = useState(false);
   const [newChainItemTitle, setNewChainItemTitle] = useState('');
@@ -2307,6 +2310,15 @@ export function TaskEditor({ visible, task, initialDraft, onClose }: Props) {
             ))}
             onClose={() => setQuestionStepId(null)}
           />
+          <ChainStepMedicationSheet
+            visible={medicationStepId !== null}
+            step={chainItems.find(c => c.id === medicationStepId) ?? null}
+            taskMedicationName={medicationName}
+            onSave={patch => setChainItems(prev => prev.map(
+              c => (c.id === medicationStepId ? { ...c, ...patch } : c),
+            ))}
+            onClose={() => setMedicationStepId(null)}
+          />
           <FollowUpTaskSheet
             visible={showFollowUpTaskSheet}
             taskTitle={followUpTaskTitle}
@@ -2975,6 +2987,11 @@ export function TaskEditor({ visible, task, initialDraft, onClose }: Props) {
                               step={item}
                               datesNextStep={item.deliverableDatesNextStep === true}
                               onPress={() => setQuestionStepId(item.id)}
+                            />
+                            <StepMedication
+                              step={item}
+                              taskMedicationName={medicationName}
+                              onPress={() => setMedicationStepId(item.id)}
                             />
                             <TouchableOpacity
                               onPress={() => {

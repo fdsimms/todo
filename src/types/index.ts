@@ -127,6 +127,21 @@ export interface ChainItem {
   // date kind. Inert without `deliverableKind: 'date'`, and inert on the last
   // step, which has no next step to date.
   deliverableDatesNextStep?: boolean;
+  // What completing *this step* records in the medication log, or null/absent
+  // for a step that records nothing. Per-step for the same reason
+  // `estimatedMinutes` and `deliverableKind` are: the task-level fields ride
+  // `...effective` onto every successor, so a "morning pills / evening pills"
+  // chain logged the morning dose again in the evening. Resolved by
+  // `medicationFor`, which prefers the active step and falls back to the task.
+  //
+  // **Resolved as a set, never field by field.** A step naming a medication
+  // supplies the whole triple, including a null amount. Falling back per field
+  // would let a step that names only "Sertraline" inherit the task's "25 mcg"
+  // and record a dose of one medicine at another's strength, which is the one
+  // way this feature could state something actively false.
+  medicationName?: string | null;
+  medicationAmount?: number | null;
+  medicationUnit?: string | null;
 }
 
 // Everything the "Follow-up task" rule says about the task it adds, beyond its

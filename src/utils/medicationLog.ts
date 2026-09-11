@@ -1,6 +1,7 @@
 import { format } from 'date-fns/format';
 import { subDays } from 'date-fns/subDays';
-import type { MedicationLog } from '../types';
+import type { MedicationLog, Task } from '../types';
+import { activeChainStep, type ChainCarrier } from './chain';
 
 /**
  * The medication log: the vocabulary, the day reads, and how often you reached
@@ -86,6 +87,52 @@ export const DOSE_UNITS: readonly { value: string; plural: string | null }[] = [
  * anything.
  */
 export const MIN_TREND_DOSES = 4;
+
+/** What a completion records: a medication and, where one was stated, its dose. */
+export interface MedicationDose {
+  name: string;
+  amount: number | null;
+  unit: string | null;
+}
+
+/** The fields `medicationFor` reads off a task, beside its chain. */
+export type MedicationSource = ChainCarrier &
+  Pick<Task, 'medicationName' | 'medicationAmount' | 'medicationUnit'>;
+
+/**
+ * What completing this task records, or null when it records nothing.
+ *
+ * The active chain step wins over the task, the third field on the pattern
+ * `estimatedMinutesFor` and `deliverableKindFor` already follow and for the
+ * identical reason: the task-level fields ride `...effective` onto every
+ * successor, so without this a "morning pills / evening pills" chain logged
+ * the morning dose again in the evening.
+ *
+ * **The triple is resolved as a set, never field by field**, which is the one
+ * thing here worth not re-deriving. A step naming a medication supplies the
+ * whole answer, including a null amount. Per-field fallback would let a step
+ * that names only "Sertraline" inherit the task's "25 mcg" and record a dose
+ * of one medicine at another's strength — a number nobody entered, attached to
+ * a name somebody did, in the log that exists to be accurate.
+ */
+export function medicationFor(task: MedicationSource): MedicationDose | null {
+  const step = activeChainStep(task);
+  const stepName = step?.medicationName?.trim();
+  if (stepName) {
+    return {
+      name: stepName,
+      amount: step?.medicationAmount ?? null,
+      unit: step?.medicationUnit ?? null,
+    };
+  }
+  const name = task.medicationName?.trim();
+  if (!name) return null;
+  return {
+    name,
+    amount: task.medicationAmount ?? null,
+    unit: task.medicationUnit ?? null,
+  };
+}
 
 /**
  * The key two spellings of one medication agree on.

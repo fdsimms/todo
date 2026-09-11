@@ -416,6 +416,37 @@ still cannot know is whether a quiet fortnight was one of not needing it or
 one of not recording it, which is why the copy says recorded rather than
 taken.
 
+### A chain step records its own dose
+
+`ChainItem.medicationName` is the third field on the pattern
+`estimatedMinutes` and `deliverableKind` already follow, resolved by
+`medicationFor` (active step, else the task) for the identical reason: the
+task-level fields ride `...effective` onto every successor, so a "morning
+pills / evening pills" chain logged the morning dose again at night.
+
+**The triple resolves as a set, never field by field**, and that is the one
+rule here worth not re-deriving. A step naming a medication supplies the whole
+answer including a null amount. Per-field fallback would let a step naming only
+"Ibuprofen" inherit the task's "50 mg" and record a dose of one medicine at
+another's strength: a number nobody entered, under a name somebody did, in the
+log that exists to be accurate. `parseChainItems` enforces the same pairing on
+the way in, so an orphan amount can't survive a round trip and reappear the
+moment a name is typed.
+
+### Getting it off the device
+
+`medicationExport.ts` is `moodExport.ts` pointed at the doses, on the same four
+rules, and the argument for it is stronger: what you have taken and how often
+you reached for the as-needed things is close to the first question asked in a
+consultation. Two rules are its own. **`amount` and `unit` are separate
+columns**, because a record whose point is a quantity should hand over a number
+a spreadsheet can sum rather than "400 mg" in one cell. And **nothing derived
+leaves**, which bites hardest here: `typicalDose` is a mode over a history, and
+a cell holding one with none of that context reads as a prescription rather
+than as a summary. `taskId` stays behind too — provenance, meaningless outside
+this database, and "Taken as needed" already says in words the thing it would
+imply.
+
 `medicationKey` refuses fuzzy matching for a harder version of the reason
 `symptomKey` does: folding two spellings of a symptom blurs a chart, and
 folding "Ibuprofen 200" into "Ibuprofen 400" misstates a dose. The vocabulary

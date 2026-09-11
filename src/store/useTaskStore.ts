@@ -124,6 +124,7 @@ import { useFoodLogStore } from './useFoodLogStore';
 import { useMoodStore } from './useMoodStore';
 import { useMilestoneStore } from './useMilestoneStore';
 import { useMedicationStore } from './useMedicationStore';
+import { medicationFor } from '../utils/medicationLog';
 import { eventsIn } from '../utils/calendarBusy';
 import { isDemoModeActive } from '../utils/demoState';
 import type { MealSlot, Project, TaskGroup } from '../types';
@@ -3409,11 +3410,14 @@ export const useTaskStore = create<TaskStore>((set, get) => ({
     // A missed sweep completes the row without anybody having taken anything,
     // so it records no dose: `missed` is exactly the case where the task closed
     // because the day ended rather than because it was done.
-    if (task.medicationName && !options?.missed) {
+    //
+    // Read through medicationFor rather than off the task, so a chain step
+    // carrying its own medication records that one — "morning pills / evening
+    // pills" would otherwise log the morning dose again at night.
+    const completedDose = options?.missed ? null : medicationFor(task);
+    if (completedDose) {
       useMedicationStore.getState().addLog({
-        name: task.medicationName,
-        amount: task.medicationAmount,
-        unit: task.medicationUnit,
+        ...completedDose,
         taskId: id,
         at: completedAt,
       });
@@ -4166,7 +4170,7 @@ export const useTaskStore = create<TaskStore>((set, get) => ({
     // a person — and a task ticked by mistake means the dose was not taken.
     // Leaving it behind would put a phantom dose in the one log whose whole
     // job is to be accurate. See Task.medicationName.
-    if (task.medicationName) useMedicationStore.getState().removeLogsForTask(id);
+    if (medicationFor(task)) useMedicationStore.getState().removeLogsForTask(id);
     dbUpdateTask(updated);
     // Reopened, so a deadline it still carries is live again.
     reconcileDeadlineEvent(updated);
@@ -4405,13 +4409,9 @@ export const useTaskStore = create<TaskStore>((set, get) => ({
     // branch records: the unit that reaches the target hands off to
     // completeTask above, which logs it there, and logging here too would
     // count the last dose of every day twice.
-    if (task.medicationName) {
-      useMedicationStore.getState().addLog({
-        name: task.medicationName,
-        amount: task.medicationAmount,
-        unit: task.medicationUnit,
-        taskId: id,
-      });
+    const unitDose = medicationFor(task);
+    if (unitDose) {
+      useMedicationStore.getState().addLog({ ...unitDose, taskId: id });
     }
     get().setLastAction({
       label: 'Logged',
@@ -4433,7 +4433,7 @@ export const useTaskStore = create<TaskStore>((set, get) => ({
     set(s => ({ tasks: s.tasks.map(t => (t.id === id ? updated : t)) }));
     // The unit being taken back is the dose that unit recorded, and only that
     // one — the day's earlier doses were still taken.
-    if (task.medicationName) useMedicationStore.getState().removeLatestLogForTask(id);
+    if (medicationFor(task)) useMedicationStore.getState().removeLatestLogForTask(id);
   },
 
   holdQuotaOnToday(id) {

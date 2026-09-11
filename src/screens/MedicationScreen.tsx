@@ -1,5 +1,5 @@
 import React, { useMemo, useState } from 'react';
-import { View, Text, ScrollView, StyleSheet, TouchableOpacity } from 'react-native';
+import { View, Text, ScrollView, StyleSheet, TouchableOpacity, Alert } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { useBottomTabBarHeight } from '@react-navigation/bottom-tabs';
 import { format } from 'date-fns/format';
@@ -15,6 +15,14 @@ import {
   medicationStats,
   type MedicationStat,
 } from '../utils/medicationLog';
+import {
+  medicationExportCsv,
+  medicationExportFileName,
+  medicationExportSummary,
+} from '../utils/medicationExport';
+import {
+  writeExportFile, shareCsvFile, discardBackupFile, canShare,
+} from '../utils/backupFile';
 import { ScreenHeader } from '../components/ScreenHeader';
 import { HubPills } from '../components/HubPills';
 import { EmptyState } from '../components/EmptyState';
@@ -55,10 +63,52 @@ export function MedicationScreen() {
 
   const [sheetOpen, setSheetOpen] = useState(false);
   const [editing, setEditing] = useState<MedicationLog | null>(null);
+  const [sharing, setSharing] = useState(false);
 
   const stats = useMemo(() => medicationStats(logs), [logs]);
   const recent = useMemo(() => logs.slice(0, RECENT_LIMIT), [logs]);
   const today = useMemo(() => dayKeyOf(getCurrentDayStart()), []);
+
+  /**
+   * Hand the whole log to the share sheet as CSV.
+   *
+   * No range picker, unlike the mood export's sheet: that one has windows
+   * because a mood log accumulates several entries a day for years, where a
+   * medication record is the thing a clinician wants whole. The summary is
+   * confirmed before anything is written rather than after, which is the half
+   * of that sheet worth keeping here: what is about to leave the device gets
+   * said in words first.
+   */
+  const share = async () => {
+    if (logs.length === 0 || sharing) return;
+    haptics.tap();
+    const confirmed = await new Promise<boolean>(resolve => {
+      Alert.alert('Share your medication log', medicationExportSummary(logs), [
+        { text: 'Cancel', style: 'cancel', onPress: () => resolve(false) },
+        { text: 'Share', onPress: () => resolve(true) },
+      ]);
+    });
+    if (!confirmed) return;
+
+    setSharing(true);
+    let uri: string | null = null;
+    try {
+      if (!(await canShare())) {
+        Alert.alert('Sharing unavailable', 'This device cannot open a share sheet.');
+        return;
+      }
+      uri = writeExportFile(medicationExportCsv(logs), medicationExportFileName(new Date()));
+      await shareCsvFile(uri, 'Share your medication log');
+    } catch {
+      Alert.alert('Export failed', 'The file could not be written. Try again.');
+    } finally {
+      // Deleted the moment the share sheet closes, exactly as the mood export
+      // and the backup do: a health record accumulating in the app's own
+      // storage would be a second copy of the most sensitive thing here.
+      if (uri) discardBackupFile(uri);
+      setSharing(false);
+    }
+  };
 
   const openNew = () => { haptics.tap(); setEditing(null); setSheetOpen(true); };
   const openEdit = (log: MedicationLog) => { haptics.tap(); setEditing(log); setSheetOpen(true); };
@@ -69,11 +119,21 @@ export function MedicationScreen() {
       <ScreenHeader
         title="Medications"
         subtitle={stats.length > 0 ? `${stats.length} recorded` : undefined}
-        actions={[{
-          icon: 'add-circle-outline' as const,
-          onPress: openNew,
-          accessibilityLabel: 'Record a dose',
-        }]}
+        actions={[
+          // Only once there is something to share, the same condition the mood
+          // screen's own share action carries.
+          ...(logs.length > 0 ? [{
+            icon: 'share-outline' as const,
+            onPress: share,
+            loading: sharing,
+            accessibilityLabel: 'Share your medication log',
+          }] : []),
+          {
+            icon: 'add-circle-outline' as const,
+            onPress: openNew,
+            accessibilityLabel: 'Record a dose',
+          },
+        ]}
       />
       <HubPills hub="history" active="Medications" />
     </>

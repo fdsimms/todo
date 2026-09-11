@@ -50,8 +50,10 @@ import { SortableList } from './SortableList';
 import { DeliverableKindPicker } from './DeliverableKindPicker';
 import { StepMinutes } from './StepMinutes';
 import { StepQuestion } from './StepQuestion';
+import { StepMedication } from './StepMedication';
 import { nextChainStepTitle } from '../utils/chain';
 import { ChainStepQuestionSheet } from './ChainStepQuestionSheet';
+import { ChainStepMedicationSheet } from './ChainStepMedicationSheet';
 import { RecurrencePicker } from './RecurrencePicker';
 import { SegmentedControl } from './SegmentedControl';
 import { PRIORITY_SEGMENTS } from '../utils/prioritySegments';
@@ -166,6 +168,7 @@ export function TemplateItemEditor({ visible, templateId, templateName, item, in
   const [chainItems, setChainItems] = useState<ChainItem[]>([]);
   // By id rather than index — see the same state in TaskEditor.
   const [questionStepId, setQuestionStepId] = useState<string | null>(null);
+  const [medicationStepId, setMedicationStepId] = useState<string | null>(null);
   const [chainIndex, setChainIndex] = useState(0);
   const [addingChainItem, setAddingChainItem] = useState(false);
   const [newChainItemTitle, setNewChainItemTitle] = useState('');
@@ -494,6 +497,15 @@ export function TemplateItemEditor({ visible, templateId, templateName, item, in
               c => (c.id === questionStepId ? { ...c, ...patch } : c),
             ))}
             onClose={() => setQuestionStepId(null)}
+          />
+          <ChainStepMedicationSheet
+            visible={medicationStepId !== null}
+            step={chainItems.find(c => c.id === medicationStepId) ?? null}
+            taskMedicationName={medicationName}
+            onSave={patch => setChainItems(prev => prev.map(
+              c => (c.id === medicationStepId ? { ...c, ...patch } : c),
+            ))}
+            onClose={() => setMedicationStepId(null)}
           />
           <NumberPadAccessory />
         </>
@@ -1214,6 +1226,11 @@ export function TemplateItemEditor({ visible, templateId, templateName, item, in
                         step={chainItem}
                         datesNextStep={chainItem.deliverableDatesNextStep === true}
                         onPress={() => setQuestionStepId(chainItem.id)}
+                      />
+                      <StepMedication
+                        step={chainItem}
+                        taskMedicationName={medicationName}
+                        onPress={() => setMedicationStepId(chainItem.id)}
                       />
                       <TouchableOpacity
                         onPress={() => {

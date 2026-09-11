@@ -379,6 +379,35 @@ export function seedDemoData(): void {
   });
   updateTask(morningRoutine.id, { effort: 1 });
 
+  // A chain whose steps record *different* doses — the per-step half of the
+  // medication log (see ChainItem.medicationName). The task-level fields ride
+  // onto every successor, so without per-step values this one chain would log
+  // the morning dose again in the evening, and a demo with only a single-dose
+  // task would show none of that.
+  //
+  // Left live and never completed, deliberately: completing it would write
+  // doses, and the two seeds that care about dose counts (the frequency card's
+  // windows, and the vitamin D contrast) are both built on exact day gaps.
+  // What this demonstrates lives in the editor anyway.
+  addTask({
+    title: 'Pills',
+    notes: 'Each step records its own dose when you check it off.',
+    category: 'Health',
+    dueDate: today.toISOString(),
+    chainEnabled: true,
+    chainIndex: 0,
+    chainItems: [
+      {
+        id: generateId(), title: 'Morning pills', estimatedMinutes: null,
+        medicationName: 'Levothyroxine', medicationAmount: 75, medicationUnit: 'mcg',
+      },
+      {
+        id: generateId(), title: 'Evening pills', estimatedMinutes: null,
+        medicationName: 'Magnesium', medicationAmount: 1, medicationUnit: 'tablet',
+      },
+    ],
+  });
+
   // A chain step that asks a question and *places the next step with the
   // answer* — the one thing a chain can do with a deliverable that a plain
   // task can't. Left live on its first step so the tap does the whole thing:
