@@ -10,13 +10,14 @@ import HealthKit
 ///
 /// Almost everything here is still read-only: this app consults a number
 /// another app recorded for steps, sleep and eight nutrients, and never
-/// records any of them. The one exception is dietary water — logged when a
-/// task that opted into it completes (`writeWaterSample` below,
-/// `healthCompletionSync.ts` on the JS side) — which is a deliberately
+/// records any of them. The exceptions are a handful of writes — a nutrient,
+/// logged when a task that opted into it completes (`writeNutrientSample`
+/// below, `healthCompletionSync.ts` on the JS side), a logged meal
+/// (`writeFoodSamples`), and a body-mass sample — which are a deliberately
 /// separate ask (`writeTypes`, its own authorization functions) from
 /// everything the read half does, so reading steps never puts a share
 /// permission on screen for somebody who never asked to write anything. See
-/// `docs/arch/health-data.md` for why water is the one type that earned a
+/// `docs/arch/health-data.md` for why these are the types that earned a
 /// write path.
 ///
 /// Every function returns a value rather than Void, the same rule
@@ -453,24 +454,34 @@ public class TodoHealthBridgeModule: Module {
       #endif
     }
 
-    /// Writes one dietary-water sample dated now, for `milliliters`.
+    /// Writes one sample of `amount`, in `key`'s own unit, dated now.
+    ///
+    /// `key` resolves against `nutrientWriteTable` — the same table
+    /// `writeFoodSamples` below writes under, so a task logging (say)
+    /// `"waterMl"` this way lands under the identical share type a food log
+    /// entry stating water would. This is the generalization of what used to
+    /// be a water-only `writeWaterSample`: every nutrient already had a share
+    /// type from the food-log write, so a task naming one needed only this
+    /// single-sample write next to the ten-sample one, not a second table.
     ///
     /// One-shot, like a completion-calendar event: there is no update or
-    /// delete counterpart, because a logged drink is a historical record the
+    /// delete counterpart, because a logged amount is a historical record the
     /// same way a calendar event logging a completion is (see
     /// `completionCalendarSync.ts`). Resolves `false` for every reason there
-    /// is nothing to report success for: no native half, not authorized, a
-    /// non-positive amount, or the save itself failing — the caller
-    /// (`healthCompletionSync.ts`) treats all of them alike, since none of
-    /// them warrant surfacing an error to someone who just finished a task.
-    AsyncFunction("writeWaterSample") { (milliliters: Double, promise: Promise) in
+    /// is nothing to report success for: no native half, an unrecognized key,
+    /// a non-positive amount, not authorized, or the save itself failing —
+    /// the caller (`healthCompletionSync.ts`) treats all of them alike, since
+    /// none of them warrant surfacing an error to someone who just finished a
+    /// task.
+    AsyncFunction("writeNutrientSample") { (key: String, amount: Double, promise: Promise) in
       #if canImport(HealthKit)
-      guard HKHealthStore.isHealthDataAvailable(), milliliters > 0,
-            let type = HKQuantityType.quantityType(forIdentifier: .dietaryWater) else {
+      guard HKHealthStore.isHealthDataAvailable(), amount > 0, amount.isFinite,
+            let entry = Self.nutrientWriteTable.first(where: { $0.key == key }),
+            let type = HKQuantityType.quantityType(forIdentifier: entry.identifier) else {
         promise.resolve(false)
         return
       }
-      let quantity = HKQuantity(unit: HKUnit.literUnit(with: .milli), doubleValue: milliliters)
+      let quantity = HKQuantity(unit: entry.unit, doubleValue: amount)
       let now = Date()
       let sample = HKQuantitySample(type: type, quantity: quantity, start: now, end: now)
       var started = false
@@ -488,7 +499,7 @@ public class TodoHealthBridgeModule: Module {
 
     /// Writes one body-mass sample of `kilograms`, dated `whenISO`.
     ///
-    /// Takes its date rather than stamping `Date()` the way `writeWaterSample`
+    /// Takes its date rather than stamping `Date()` the way `writeNutrientSample`
     /// does, and that difference is the feature: a glass of water is logged by
     /// finishing a task, so the moment it happens *is* now, while a weight is
     /// typed in by somebody who may well be entering this morning's reading in
@@ -545,7 +556,7 @@ public class TodoHealthBridgeModule: Module {
     /// numbers at 12:47; correlated they appear as the meal, named by
     /// `HKMetadataKeyFoodType`, with its figures underneath.
     ///
-    /// **The UUIDs are the point of this function.** `writeWaterSample` and
+    /// **The UUIDs are the point of this function.** `writeNutrientSample` and
     /// `writeBodyMassSample` return a bare `Bool` and keep nothing, because
     /// Health is the record and neither has an edit path here. A food log does:
     /// an entry deleted must retract what it wrote, or a mistyped meal is a

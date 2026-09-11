@@ -158,7 +158,7 @@ interface TodoHealthNativeModule {
   readWeightSeries(anchorISO: string, days: number): Promise<string>;
   writeAuthorizationStatus(kind: HealthWriteKind): HealthWriteStatus;
   requestWriteAuthorization(): Promise<HealthAuthorizationResult>;
-  writeWaterSample(milliliters: number): Promise<boolean>;
+  writeNutrientSample(key: string, amount: number): Promise<boolean>;
   writeBodyMassSample(kilograms: number, whenISO: string): Promise<boolean>;
   writeFoodSamples(label: string, atISO: string, amountsJSON: string): Promise<string>;
   deleteHealthSamples(idsJSON: string): Promise<boolean>;
@@ -240,15 +240,25 @@ export function requestHealthWriteAuthorization(): Promise<HealthAuthorizationRe
 }
 
 /**
- * Writes one dietary-water sample dated now, for `milliliters` — the first of
- * this bridge's two writes. Resolves `false` for every reason there's nothing
- * to report success for (no native half, not authorized, a non-positive
+ * Writes one sample of `amount`, in `key`'s own unit, dated now.
+ *
+ * `key` is a `NutrientKey` from `src/types/index.ts` — the same vocabulary
+ * `writeFoodSamples` writes under, and the same native table
+ * (`nutrientWriteTable`) resolves it against, so a task logging water this
+ * way and a food log entry stating water land in Health under the identical
+ * share type. This is the generalization of what used to be a
+ * water-only `writeWaterSample`: every one of the ten nutrients already had a
+ * share type from the food-log write, so a task naming one of them needed no
+ * new native surface, only a single-sample write next to the ten-sample one.
+ *
+ * Resolves `false` for every reason there's nothing to report success for
+ * (no native half, not authorized, an unrecognized key, a non-positive
  * amount, the save itself failing); the caller (`healthCompletionSync.ts`)
- * treats all of them alike, since none of them are worth surfacing as an error
- * to someone who just finished a task.
+ * treats all of them alike, since none of them are worth surfacing as an
+ * error to someone who just finished a task.
  */
-export function writeWaterSample(milliliters: number): Promise<boolean> {
-  return degradeOnReject(() => nativeModule!.writeWaterSample(milliliters), false);
+export function writeNutrientSample(key: string, amount: number): Promise<boolean> {
+  return degradeOnReject(() => nativeModule!.writeNutrientSample(key, amount), false);
 }
 
 /**

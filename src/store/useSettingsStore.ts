@@ -845,8 +845,8 @@ interface SettingsStore {
   // `modules/todo-health-bridge/index.ts`.
   healthReadEnabled: boolean;
 
-  // Whether this app may write anything to Health at all: a dietary-water
-  // sample when a task that opted in (Task.logWaterMl) completes, and a
+  // Whether this app may write anything to Health at all: a nutrient sample
+  // when a task that opted in (Task.logHealthMetric) completes, and a
   // body-mass sample when somebody logs a weight on the Weight screen. A
   // separate switch from healthReadEnabled above on purpose: read and write are
   // two different permissions to give, asked for separately (see

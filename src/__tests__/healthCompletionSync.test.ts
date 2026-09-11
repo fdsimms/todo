@@ -5,8 +5,8 @@ jest.mock('../store/useSettingsStore', () => ({
   useSettingsStore: { getState: () => mockSettings },
 }));
 
-const mockWriteWaterSample = jest.fn();
-let mockBridge: { writeWaterSample: (mL: number) => Promise<boolean> } | null = null;
+const mockWriteNutrientSample = jest.fn();
+let mockBridge: { writeNutrientSample: (key: string, amount: number) => Promise<boolean> } | null = null;
 jest.mock('../utils/healthBridge', () => ({
   healthBridge: () => mockBridge,
 }));
@@ -16,7 +16,7 @@ jest.mock('../utils/demoState', () => ({
   isDemoModeActive: () => mockDemoActive,
 }));
 
-import { logTaskWaterToHealth } from '../utils/healthCompletionSync';
+import { logTaskHealthValue } from '../utils/healthCompletionSync';
 
 const BASE: Task = {
   id: 'task-1',
@@ -106,7 +106,7 @@ const BASE: Task = {
   healthMetric: null,
   healthTarget: null,
   completionTimerMinutes: null,
-  logWaterMl: null,
+  logHealthMetric: null, logHealthAmount: null,
   actualMinutes: null,
   previousOccurrenceId: null,
   seriesId: null,
@@ -142,52 +142,64 @@ beforeEach(() => {
   jest.clearAllMocks();
   mockSettings = { healthWriteEnabled: true };
   mockDemoActive = false;
-  mockBridge = { writeWaterSample: mockWriteWaterSample };
-  mockWriteWaterSample.mockResolvedValue(true);
+  mockBridge = { writeNutrientSample: mockWriteNutrientSample };
+  mockWriteNutrientSample.mockResolvedValue(true);
 });
 
-describe('logTaskWaterToHealth', () => {
+describe('logTaskHealthValue', () => {
   it('does nothing when the setting is off', async () => {
     mockSettings.healthWriteEnabled = false;
-    const result = await logTaskWaterToHealth(makeTask({ logWaterMl: 250 }));
+    const result = await logTaskHealthValue(makeTask({ logHealthMetric: 'waterMl', logHealthAmount: 250 }));
     expect(result).toBe(false);
-    expect(mockWriteWaterSample).not.toHaveBeenCalled();
+    expect(mockWriteNutrientSample).not.toHaveBeenCalled();
   });
 
   it('does nothing when the task never asked for it', async () => {
-    const result = await logTaskWaterToHealth(makeTask({ logWaterMl: null }));
+    const result = await logTaskHealthValue(makeTask({ logHealthMetric: null, logHealthAmount: null }));
     expect(result).toBe(false);
-    expect(mockWriteWaterSample).not.toHaveBeenCalled();
+    expect(mockWriteNutrientSample).not.toHaveBeenCalled();
+  });
+
+  it('does nothing when a metric is set but no amount is', async () => {
+    const result = await logTaskHealthValue(makeTask({ logHealthMetric: 'waterMl', logHealthAmount: null }));
+    expect(result).toBe(false);
+    expect(mockWriteNutrientSample).not.toHaveBeenCalled();
   });
 
   it('does nothing for a non-positive amount', async () => {
-    const result = await logTaskWaterToHealth(makeTask({ logWaterMl: 0 }));
+    const result = await logTaskHealthValue(makeTask({ logHealthMetric: 'waterMl', logHealthAmount: 0 }));
     expect(result).toBe(false);
-    expect(mockWriteWaterSample).not.toHaveBeenCalled();
+    expect(mockWriteNutrientSample).not.toHaveBeenCalled();
   });
 
-  it('writes the task’s own amount and returns the bridge’s answer', async () => {
-    const result = await logTaskWaterToHealth(makeTask({ logWaterMl: 300 }));
+  it('writes the task’s own metric and amount and returns the bridge’s answer', async () => {
+    const result = await logTaskHealthValue(makeTask({ logHealthMetric: 'waterMl', logHealthAmount: 300 }));
     expect(result).toBe(true);
-    expect(mockWriteWaterSample).toHaveBeenCalledWith(300);
+    expect(mockWriteNutrientSample).toHaveBeenCalledWith('waterMl', 300);
+  });
+
+  it('writes whichever nutrient the task named, not just water', async () => {
+    const result = await logTaskHealthValue(makeTask({ logHealthMetric: 'proteinG', logHealthAmount: 20 }));
+    expect(result).toBe(true);
+    expect(mockWriteNutrientSample).toHaveBeenCalledWith('proteinG', 20);
   });
 
   it('reports false when the bridge is unavailable', async () => {
     mockBridge = null;
-    const result = await logTaskWaterToHealth(makeTask({ logWaterMl: 250 }));
+    const result = await logTaskHealthValue(makeTask({ logHealthMetric: 'waterMl', logHealthAmount: 250 }));
     expect(result).toBe(false);
   });
 
   it('reports whatever the bridge itself reports, including a refused write', async () => {
-    mockWriteWaterSample.mockResolvedValue(false);
-    const result = await logTaskWaterToHealth(makeTask({ logWaterMl: 250 }));
+    mockWriteNutrientSample.mockResolvedValue(false);
+    const result = await logTaskHealthValue(makeTask({ logHealthMetric: 'waterMl', logHealthAmount: 250 }));
     expect(result).toBe(false);
   });
 
   it('never touches the device Health store while demo mode is active', async () => {
     mockDemoActive = true;
-    const result = await logTaskWaterToHealth(makeTask({ logWaterMl: 250 }));
+    const result = await logTaskHealthValue(makeTask({ logHealthMetric: 'waterMl', logHealthAmount: 250 }));
     expect(result).toBe(false);
-    expect(mockWriteWaterSample).not.toHaveBeenCalled();
+    expect(mockWriteNutrientSample).not.toHaveBeenCalled();
   });
 });
