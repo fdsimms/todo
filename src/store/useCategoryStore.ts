@@ -317,6 +317,8 @@ function generatedCategorySetting(kind: GeneratedKind): {
       return { key: 'pantryReviewTaskCategory', current: s.pantryReviewTaskCategory, assign: s.setPantryReviewTaskCategory };
     case 'mealShortfall':
       return { key: 'mealShortfallTaskCategory', current: s.mealShortfallTaskCategory, assign: s.setMealShortfallTaskCategory };
+    case 'mealLogNudge':
+      return { key: 'mealLogNudgeTaskCategory', current: s.mealLogNudgeTaskCategory, assign: s.setMealLogNudgeTaskCategory };
     // Inherits the source task's own category instead — see
     // GeneratedKindSpec.categorized and checkSupplyReorderTasks.
     // ensureGeneratedTaskCategory returns before this null is ever used.

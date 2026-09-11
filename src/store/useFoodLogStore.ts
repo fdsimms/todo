@@ -123,6 +123,26 @@ export interface PendingMealLog {
   grams: number | null;
 }
 
+/**
+ * A meal that just finished with nothing the app can measure automatically —
+ * a leftover with no recipe, takeout, a typed answer — waiting to be offered
+ * the search sheet instead of the auto-computed prompt above.
+ *
+ * The manual counterpart of `PendingMealLog`, watched by a separate global
+ * mount (`LogMealEntrySheet`, beside `LogMealPrompt`) rather than folded into
+ * the same flag: the two prompts are different UIs entirely, and a caller
+ * deciding which one to raise (see `offerMealLog` in `useTaskStore.ts`) only
+ * ever wants one of them showing at a time.
+ */
+export interface PendingManualMealLog {
+  /** What to call it, seeding the search field so finding it is a tap rather than a retype. */
+  label: string;
+  /** Which meal it was, when the moment knows. */
+  slot: MealSlot | null;
+  /** The planned meal this came from, so the entry it logs can point back at it. */
+  mealPlanEntryId: string | null;
+}
+
 /** What an edit may change. The instant and its day key are deliberately not on it. */
 export type FoodLogPatch = Partial<
   Pick<FoodLogEntry, 'label' | 'quantity' | 'grams' | 'nutrition' | 'slot' | 'sortOrder'>
@@ -231,6 +251,19 @@ interface FoodLogStore {
    */
   pendingMealLog: PendingMealLog | null;
   setPendingMealLog: (pending: PendingMealLog | null) => void;
+
+  /**
+   * The meal a just-finished "Eat" step, or its own missed-log nudge task, is
+   * offering to log with nothing the app can measure automatically. Null
+   * while there is nothing to ask about.
+   *
+   * Watched by `LogMealEntrySheet` (mounted in AppNavigator beside
+   * `LogMealPrompt`), which is `pendingMealLog`'s own mount but for the sheet
+   * rather than the modal. Cleared the same two ways: the sheet's own
+   * close, and `uncompleteTask` when the tick that set it is taken back.
+   */
+  pendingManualMealLog: PendingManualMealLog | null;
+  setPendingManualMealLog: (pending: PendingManualMealLog | null) => void;
 }
 
 export const useFoodLogStore = create<FoodLogStore>((set, get) => ({
@@ -246,6 +279,7 @@ export const useFoodLogStore = create<FoodLogStore>((set, get) => ({
   totalCount: 0,
   initialized: false,
   pendingMealLog: null,
+  pendingManualMealLog: null,
 
   initialize() {
     // The current logical day, because that is what a day view opens on and it
@@ -410,6 +444,10 @@ export const useFoodLogStore = create<FoodLogStore>((set, get) => ({
 
   setPendingMealLog(pending) {
     set({ pendingMealLog: pending });
+  },
+
+  setPendingManualMealLog(pending) {
+    set({ pendingManualMealLog: pending });
   },
 
   removeEntry(id) {

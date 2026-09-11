@@ -1269,6 +1269,14 @@ export type GeneratedKind =
   // and often, which is why its whole staleness rule is the creation predicate
   // re-run — see src/utils/mealShortfallTasks.ts.
   | 'mealShortfall'
+  // A planned meal a few days in the past with nothing logged against it
+  // becomes "Log X" — the missed half of the offer `mealLog.ts` makes at
+  // completion time. Its source row is the same `MealPlanEntry` mealShortfall's
+  // is, and its opt-out is the same field the completion prompt's "Don't ask
+  // for this meal" already writes (`MealPlanEntry.logMeal`) — declining either
+  // one means the same thing about the same meal. See
+  // src/utils/mealLogNudgeTasks.ts.
+  | 'mealLogNudge'
   // Somebody's birthday, a few days ahead of the day itself — see
   // src/utils/birthdayTasks.ts. The only generator whose trigger is known years
   // in advance rather than derived from something that just changed.

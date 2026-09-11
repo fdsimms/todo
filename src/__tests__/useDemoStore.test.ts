@@ -106,6 +106,7 @@ import { wantedPantryChecks } from '../utils/pantryCheckTasks';
 import { buildPantryReviewDeck } from '../utils/pantryReview';
 import { MIN_PANTRY_REVIEW_CARDS, stalePantryReviewTasks } from '../utils/pantryReviewTasks';
 import { mealShortfallRows, staleMealShortfallTasks } from '../utils/mealShortfallTasks';
+import { staleMealLogNudgeTasks } from '../utils/mealLogNudgeTasks';
 import {
   canHoldSupply,
   describeSupply,
@@ -3018,6 +3019,37 @@ describe('demo seed — groceries, recipes, meals and the fridge', () => {
         todayKey, new Date()
       )
     ).toEqual([]);
+  });
+
+  it('seeds a planned meal with nothing logged, and the task that asks about it', () => {
+    const { tasks } = useTaskStore.getState();
+    const entries = useMealPlanStore.getState().entries;
+    const todayKey = dayKeyOf(new Date());
+
+    const nudge = tasks.find(t => t.generatedKind === 'mealLogNudge');
+    expect(nudge).toBeDefined();
+    expect(nudge!.title).toContain('Weeknight chicken stir-fry');
+    expect(nudge!.category).toBe('Meal Plan');
+
+    // It speaks for a real night that was actually cooked, one day back —
+    // inside the lookback window — and genuinely has nothing logged against
+    // it anywhere in the seed.
+    const night = entries.find(e => e.id === nudge!.generatedSourceId);
+    expect(night).toBeDefined();
+    expect(night!.cookedAt).toBeTruthy();
+    const yesterdayKey = dayKeyOf(subDays(getCurrentDayStart(), 1));
+    expect(night!.date).toBe(yesterdayKey);
+    useFoodLogStore.getState().loadRange(yesterdayKey, yesterdayKey);
+    expect(
+      useFoodLogStore.getState().entries.some(e => e.mealPlanEntryId === night!.id)
+    ).toBe(false);
+
+    // And the real rule agrees, so the first foreground sweep doesn't clear
+    // the seeded row — the same standard the shortfall task above is held to.
+    const loggedEntryIds = new Set(
+      useFoodLogStore.getState().entries.map(e => e.mealPlanEntryId).filter((id): id is string => id !== null)
+    );
+    expect(staleMealLogNudgeTasks(tasks, entries, loggedEntryIds, todayKey)).toEqual([]);
   });
 
   it('seeds the daily task to review tomorrow\'s calendar', () => {

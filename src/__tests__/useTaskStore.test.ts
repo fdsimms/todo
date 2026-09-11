@@ -20,6 +20,7 @@ import { OUT_OF_IT_UNTIL } from '../utils/grocerySuggest';
 import { useTemplateStore } from '../store/useTemplateStore';
 import { useGroceryStore } from '../store/useGroceryStore';
 import { useLeftoverStore } from '../store/useLeftoverStore';
+import { useFoodLogStore } from '../store/useFoodLogStore';
 import { usePersonStore } from '../store/usePersonStore';
 import { normalizeTemplateItem } from '../utils/templateUtils';
 import {
@@ -221,6 +222,10 @@ jest.mock('../store/useSettingsStore', () => ({
       // carry them with it (see renameCategory/deleteCategory).
       mealCookTaskCategory: null, groceryUseUpTaskCategory: null, leftoverUseUpTaskCategory: null,
       calendarEventCategory: null, collapsedCategories: [], titleRules: [],
+      // Read by offerMealLog, whose whole point is the meal-slot/log-nudge
+      // completion tests further down this file — defaulting it off here
+      // would silently disable every one of them.
+      mealLogPrompt: true,
       setMealCookTaskCategory: jest.fn(), setGroceryUseUpTaskCategory: jest.fn(),
       setLeftoverUseUpTaskCategory: jest.fn(), setCalendarEventCategory: jest.fn(),
       setCollapsedCategories: jest.fn(),
@@ -12716,6 +12721,88 @@ describe('completing a leftover-backed meal task', () => {
     useTaskStore.getState().uncompleteTask(task.id);
 
     expect(useLeftoverStore.getState().pendingFinishLeftoverId).toBeNull();
+  });
+});
+
+describe('completing a meal task offers to log it', () => {
+  const recipeEntry: MealPlanEntry = {
+    id: 'm-1', date: '2026-08-22', slot: 'dinner', recipeId: 'r-1', title: 'Chicken stir-fry',
+    sortOrder: 1, createdAt: '2026-01-01T00:00:00.000Z', cookedAt: null, leftoverId: null,
+    recipeChoices: [], personIds: [], recipeScale: 1, cookTask: null, shopTask: null, logMeal: null, calendarEventId: null,
+  };
+  // No recipe behind it — a typed answer, same as "Eating out" would be —
+  // which is the case offerMealLog's manual branch exists for.
+  const noRecipeEntry: MealPlanEntry = { ...recipeEntry, id: 'm-2', recipeId: null, title: 'Eating out' };
+  const seedEntry = (entry: MealPlanEntry) => {
+    (dbGetMealPlanEntries as jest.Mock).mockReturnValue([entry]);
+    (dbGetMealPlanEntry as jest.Mock).mockReturnValue(entry);
+  };
+  const addEatTask = () => useTaskStore.getState().addTask({
+    title: 'Eat Chicken stir-fry', generatedKind: 'mealSlot', generatedSourceId: '2026-08-22#dinner',
+  });
+
+  beforeEach(() => {
+    useFoodLogStore.setState({ pendingMealLog: null, pendingManualMealLog: null });
+    // Whatever an earlier test left the settings mock returning, offerMealLog
+    // still needs mealLogPrompt on top of it — the top-of-file mock factory
+    // only applies before the first override anywhere in this huge file.
+    const { useSettingsStore } = jest.requireMock('../store/useSettingsStore') as {
+      useSettingsStore: { getState: jest.Mock };
+    };
+    useSettingsStore.getState.mockReturnValue({ ...useSettingsStore.getState(), mealLogPrompt: true });
+  });
+
+  it('offers the auto-computed prompt for a recipe-backed meal', () => {
+    seedEntry(recipeEntry);
+    const task = addEatTask();
+
+    useTaskStore.getState().completeTask(task.id);
+
+    expect(useFoodLogStore.getState().pendingMealLog?.mealPlanEntryId).toBe('m-1');
+    expect(useFoodLogStore.getState().pendingManualMealLog).toBeNull();
+  });
+
+  it('offers the manual search sheet for a meal with nothing to measure automatically', () => {
+    seedEntry(noRecipeEntry);
+    const task = addEatTask();
+
+    useTaskStore.getState().completeTask(task.id);
+
+    expect(useFoodLogStore.getState().pendingManualMealLog).toEqual({
+      label: 'Eating out', slot: 'dinner', mealPlanEntryId: 'm-2',
+    });
+    expect(useFoodLogStore.getState().pendingMealLog).toBeNull();
+  });
+
+  it('does not offer when the meal has been told not to ask', () => {
+    seedEntry({ ...noRecipeEntry, logMeal: false });
+    const task = addEatTask();
+
+    useTaskStore.getState().completeTask(task.id);
+
+    expect(useFoodLogStore.getState().pendingManualMealLog).toBeNull();
+  });
+
+  it('retracts the manual offer when the completion is undone', () => {
+    seedEntry(noRecipeEntry);
+    const task = addEatTask();
+    useTaskStore.getState().completeTask(task.id);
+    expect(useFoodLogStore.getState().pendingManualMealLog).not.toBeNull();
+
+    useTaskStore.getState().uncompleteTask(task.id);
+
+    expect(useFoodLogStore.getState().pendingManualMealLog).toBeNull();
+  });
+
+  it('makes the same offer when a missed-log nudge task is completed instead', () => {
+    seedEntry(noRecipeEntry);
+    const nudgeTask = useTaskStore.getState().addTask({
+      title: 'Log Eating out', generatedKind: 'mealLogNudge', generatedSourceId: 'm-2',
+    });
+
+    useTaskStore.getState().completeTask(nudgeTask.id);
+
+    expect(useFoodLogStore.getState().pendingManualMealLog?.mealPlanEntryId).toBe('m-2');
   });
 });
 

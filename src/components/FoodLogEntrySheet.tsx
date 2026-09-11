@@ -100,6 +100,22 @@ interface Props {
    * it would make the offer worth less than the tap it cost.
    */
   seedRecipeId?: string | null;
+  /**
+   * The search field's starting text, for a caller that already knows what
+   * this entry is probably about — `LogMealEntrySheet`, opening on a meal
+   * plan entry's own name so finding it is a tap rather than a retype.
+   * Ordinary text, not a pick: it filters `candidates` exactly as if it had
+   * been typed, and nothing is chosen until a row is tapped.
+   */
+  initialQuery?: string;
+  /**
+   * The planned meal this entry is logging, carried onto whatever gets
+   * saved — the manual counterpart of `seedRecipeId`'s own caller. Omitted
+   * (or null) for every other caller, which is why `FoodLogDraft`'s field
+   * defaults to null rather than this prop defaulting to it: a screen simply
+   * adding an entry has no meal plan row to point back at.
+   */
+  mealPlanEntryId?: string | null;
   onClose: () => void;
   /**
    * Offers to describe the meal instead of searching for it, handing off to
@@ -145,7 +161,9 @@ interface Candidate {
   dishServings: number | null;
 }
 
-export function FoodLogEntrySheet({ visible, slot, at, seedRecipeId, onClose, onEstimate }: Props) {
+export function FoodLogEntrySheet({
+  visible, slot, at, seedRecipeId, initialQuery, mealPlanEntryId, onClose, onEstimate,
+}: Props) {
   const colors = useColors();
   const styles = useMemo(() => makeStyles(colors), [colors]);
 
@@ -173,11 +191,12 @@ export function FoodLogEntrySheet({ visible, slot, at, seedRecipeId, onClose, on
 
   useEffect(() => {
     if (!visible) return;
-    setQuery('');
+    setQuery(initialQuery ?? '');
     setPicked(null);
     setAmount('');
     setChosenSlot(slot);
     setDbSearchOpen(false);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [visible, slot]);
 
   // Closes the "weigh it" form whenever the picked food or its panel changes
@@ -458,7 +477,7 @@ export function FoodLogEntrySheet({ visible, slot, at, seedRecipeId, onClose, on
       recipeId: picked.recipeId,
       itemId: picked.itemId,
       productId: picked.productId,
-      mealPlanEntryId: null,
+      mealPlanEntryId: mealPlanEntryId ?? null,
       at,
     };
     if (!addEntry(draft)) {

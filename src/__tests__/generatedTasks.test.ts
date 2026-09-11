@@ -332,7 +332,7 @@ describe('the registry', () => {
     // one task written entirely on the app's own schedule landed loose at the
     // top of Today however the other three were filed.
     expect(GENERATED_KIND_LIST.filter(s => s.categorized).map(s => s.kind))
-      .toEqual(['mealSlot', 'groceryUseUp', 'pantryCheck', 'pantryReview', 'leftoverUseUp', 'mealPlanNudge', 'mealShortfall', 'projectReview', 'birthday', 'birthdayGift', 'reachOut', 'weather', 'screenTime', 'health', 'moodLog', 'moodNudge', 'weekendNudge', 'weighIn']);
+      .toEqual(['mealSlot', 'groceryUseUp', 'pantryCheck', 'pantryReview', 'leftoverUseUp', 'mealPlanNudge', 'mealShortfall', 'mealLogNudge', 'projectReview', 'birthday', 'birthdayGift', 'reachOut', 'weather', 'screenTime', 'health', 'moodLog', 'moodNudge', 'weekendNudge', 'weighIn']);
   });
 
   it('marks exactly the two day-shaped questions as notices', () => {
