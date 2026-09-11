@@ -1,5 +1,5 @@
 import React, { useCallback, useMemo, useState } from 'react';
-import { View, AppState, Linking } from 'react-native';
+import { View, AppState } from 'react-native';
 import { useFocusEffect } from '@react-navigation/native';
 import type { HealthRequestStatus, HealthWriteStatus } from 'todo-health-bridge';
 import { useShallow } from 'zustand/react/shallow';
@@ -8,7 +8,7 @@ import { useHealthStore } from '../../store/useHealthStore';
 import { useCategoryStore, ensureHealthCategory } from '../../store/useCategoryStore';
 import { categoryLabel } from '../../utils/categoryLabel';
 import { PillGroup } from '../../components/PillGroup';
-import { healthBridge, isHealthSupported } from '../../utils/healthBridge';
+import { healthBridge, isHealthSupported, openHealthApp } from '../../utils/healthBridge';
 import type { WeightUnit } from '../../utils/weightLog';
 import { dayKeyOf, getCurrentDayStart } from '../../utils/dateUtils';
 import { formatWeight } from '../../utils/weightLog';
@@ -20,26 +20,6 @@ import { SettingsRow } from './SettingsRow';
 import { SettingsSegments } from './SettingsSegments';
 import { makeSettingsStyles } from './settingsStyles';
 import { haptics } from '../../utils/haptics';
-
-/**
- * HealthKit permissions live in the Health app itself, under the profile
- * icon's Privacy → Apps page, not in this app's page under iOS Settings —
- * Settings has no Health row to show. Try the Health app's URL scheme first
- * and only fall back to Settings if that fails.
- *
- * **`x-apple-health` has to be declared in `LSApplicationQueriesSchemes`
- * (app.json's `ios.infoPlist`) or `Linking.openURL` rejects outright**,
- * landing every caller in the `catch` below — this app's own Settings page,
- * which has no Health row, silently proving the row's own hint text wrong.
- * That's not a hypothetical: it shipped without the entry once already.
- */
-async function openHealthApp() {
-  try {
-    await Linking.openURL('x-apple-health://');
-  } catch {
-    await Linking.openSettings();
-  }
-}
 
 /**
  * Reading Apple Health, and — in a section of its own below — writing the two
