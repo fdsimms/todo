@@ -80,7 +80,7 @@ const BLANK_SNOOZE_TASK: Task = {
   quotaIntervalMinutes: null, quotaReminders: false, quotaStartedAt: null, quotaAlwaysVisible: false,
   quotaPeriod: 'day',
   healthMetric: null,
-  healthTarget: null, completionTimerMinutes: null, logHealthMetric: null, logHealthAmount: null,
+  healthTarget: null, completionTimerMinutes: null, logHealthMetric: null, logHealthAmount: null, medicationName: null, medicationAmount: null, medicationUnit: null,
 };
 
 interface Props {

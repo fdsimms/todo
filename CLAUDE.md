@@ -348,6 +348,7 @@ file: the two maps are indexes, not write-ups.
 | how you're feeling, and what that looks like against your tasks | `src/utils/moodLog.ts` + `src/utils/moodInsights.ts` + `src/utils/moodTasks.ts` — see `docs/arch/mood-log.md` |
 | reading the mood log back — the whole history, one symptom, or a file for a doctor | `src/utils/moodHistory.ts` + `src/utils/moodExport.ts` — see `docs/arch/mood-log.md` |
 | marking the day something changed (started a medicine, a new job) and comparing mood before/after it | `src/store/useMilestoneStore.ts` + `milestoneMoodContrast` in `src/utils/moodInsights.ts` — see `docs/arch/mood-log.md` |
+| a dose taken, and how often you reach for something | `src/utils/medicationLog.ts` + `Task.medicationName` — see `docs/arch/mood-log.md`. The scheduled half still rides a repeating task, which is what `taskMoodContrasts` reads; this is the as-needed dose that has no task to tick and the amount a completion can't carry. Read its refusal first: there is deliberately no medication↔symptom contrast, because for an as-needed medicine that comparison is reverse-causal by construction |
 | how you're feeling against what you ate | `foodDayInputs` in `src/utils/nutritionStats.ts` + `nutrientInsight`/`foodMoodContrasts` in `src/utils/moodInsights.ts` — see `docs/arch/mood-log.md`. The two rules to read first are both about a day logged too thinly to stand for a day's eating, which is the one gap here that arrives looking like a number rather than a hole |
 | a symptom against what you ate | `symptomFoodContrasts` + `symptomFoodDays` in `src/utils/moodInsights.ts`, rendered on `SymptomDetailScreen` — see `docs/arch/mood-log.md`. The most loaded read in the app: scoped to one symptom on purpose, and it needs a day to carry a *log entry* rather than only a food, since a symptom is a presence and an unlogged day would otherwise count as one without it |
 | the people you want to keep up with, and their birthdays | `src/store/usePersonStore.ts` + `src/utils/birthdayTasks.ts` — see `docs/arch/people.md` |
@@ -437,15 +438,15 @@ file: the two maps are indexes, not write-ups.
 **Read narrowly.** 58 files are over 1,000 lines, 39 of
 them source rather than tests. The ten biggest source files:
 
-`store/useTaskStore.ts` (8.6k), `components/TaskEditor.tsx` (5.7k), `db/database.ts` (5.7k),
-`types/index.ts` (5.7k), `store/useGroceryStore.ts` (5.4k), `screens/TodayScreen.tsx` (4.6k),
+`store/useTaskStore.ts` (8.6k), `components/TaskEditor.tsx` (5.8k), `types/index.ts` (5.8k),
+`db/database.ts` (5.8k), `store/useGroceryStore.ts` (5.4k), `screens/TodayScreen.tsx` (4.6k),
 `components/TaskItem.tsx` (4.3k), `utils/demoSeed.ts` (4.0k),
 `store/useSettingsStore.ts` (3.8k), `screens/BackfillScreen.tsx` (3.2k).
 
 Grep for the symbol and read the surrounding range; reading any of them end to end costs more
 context than the rest of the task will. `docs/module-map.md` says which file owns what.
 
-The suite is **308 test files**, and `npm test` runs all of them in about half a minute.
+The suite is **311 test files**, and `npm test` runs all of them in about half a minute.
 `npx tsc --noEmit` is a few seconds once `.tsbuildinfo` exists, so run both, every time.
 
 <!-- END GENERATED: repo-stats -->

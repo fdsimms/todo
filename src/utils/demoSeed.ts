@@ -12,6 +12,7 @@ import { usePersonNoteStore } from '../store/usePersonNoteStore';
 import { useFoodLogStore } from '../store/useFoodLogStore';
 import { useMoodStore } from '../store/useMoodStore';
 import { useMilestoneStore } from '../store/useMilestoneStore';
+import { useMedicationStore } from '../store/useMedicationStore';
 import { useTaskGroupStore } from '../store/useTaskGroupStore';
 import { useGroceryStore } from '../store/useGroceryStore';
 import { useRecipeStore } from '../store/useRecipeStore';
@@ -377,6 +378,35 @@ export function seedDemoData(): void {
     ],
   });
   updateTask(morningRoutine.id, { effort: 1 });
+
+  // A chain whose steps record *different* doses — the per-step half of the
+  // medication log (see ChainItem.medicationName). The task-level fields ride
+  // onto every successor, so without per-step values this one chain would log
+  // the morning dose again in the evening, and a demo with only a single-dose
+  // task would show none of that.
+  //
+  // Left live and never completed, deliberately: completing it would write
+  // doses, and the two seeds that care about dose counts (the frequency card's
+  // windows, and the vitamin D contrast) are both built on exact day gaps.
+  // What this demonstrates lives in the editor anyway.
+  addTask({
+    title: 'Pills',
+    notes: 'Each step records its own dose when you check it off.',
+    category: 'Health',
+    dueDate: today.toISOString(),
+    chainEnabled: true,
+    chainIndex: 0,
+    chainItems: [
+      {
+        id: generateId(), title: 'Morning pills', estimatedMinutes: null,
+        medicationName: 'Levothyroxine', medicationAmount: 75, medicationUnit: 'mcg',
+      },
+      {
+        id: generateId(), title: 'Evening pills', estimatedMinutes: null,
+        medicationName: 'Magnesium', medicationAmount: 1, medicationUnit: 'tablet',
+      },
+    ],
+  });
 
   // A chain step that asks a question and *places the next step with the
   // answer* — the one thing a chain can do with a deliverable that a plain
@@ -1379,6 +1409,7 @@ export function seedDemoData(): void {
   // there is to see.
   seedMoodLog(today);
   seedMilestone(today);
+  seedAsNeededDoses(today);
 }
 
 /**
@@ -1881,6 +1912,45 @@ function seedMilestone(today: Date): void {
 }
 
 /**
+ * Painkillers taken as needed — the half of the medication log that has no
+ * task behind it, and the only way the frequency card has anything to draw.
+ *
+ * The scheduled half is already seeded by `seedRepeatedHealthTask` below,
+ * which carries a medication and records a dose per completion. This is the
+ * case that argument does not reach (see `docs/arch/mood-log.md`): nobody
+ * schedules a painkiller, so without these the medication screen would show
+ * only doses a task wrote and the feature would read as a duplicate of the
+ * task list.
+ *
+ * Three of the days line up with the low patch in the seeded mood log, which
+ * carries a Headache — reaching for something on a bad day is what an
+ * as-needed medicine *is*, and a demo whose painkiller days fell randomly
+ * would be showing the mechanism without showing the point of it.
+ *
+ * The dates are chosen so `frequencyTrend` will actually draw: it needs the
+ * log to have been running for both of its fortnights, so the oldest dose sits
+ * a month back rather than inside the earlier window. Deliberately a rise
+ * rather than a clean sweep, for the reason the symptom/food seed keeps one
+ * ordinary day in — a demo of a count that looks like a verdict is the thing
+ * that read is written to avoid.
+ */
+function seedAsNeededDoses(today: Date): void {
+  const { addLog } = useMedicationStore.getState();
+  // Oldest first. 30 back establishes that the log was running before the
+  // comparison's earlier fortnight; 11/9/8 are the headache days.
+  const takenOn = [30, 25, 22, 11, 9, 8, 3];
+  for (const back of takenOn) {
+    addLog({
+      name: 'Ibuprofen',
+      amount: 400,
+      unit: 'mg',
+      asNeeded: true,
+      at: setHours(subDays(today, back), 15),
+    });
+  }
+}
+
+/**
  * A daily task finished on most of the logged days and missed on a few, so the
  * Mood screen's "mood and your repeating tasks" card has a row to draw.
  *
@@ -1912,6 +1982,14 @@ function seedRepeatedHealthTask(today: Date): void {
     category: 'Health',
     effort: 1,
     recurrenceType: 'daily',
+    // Seeded so the task->dose hook is visible rather than theoretical: each
+    // completion below records a dose, which is the whole of how a scheduled
+    // medication is meant to be logged here (see docs/arch/mood-log.md). A
+    // demo with only hand-logged doses would read as an app where the tablets
+    // have to be entered twice, which is the thing the feature avoids.
+    medicationName: 'Vitamin D',
+    medicationAmount: 25,
+    medicationUnit: 'mcg',
   });
   for (const back of takenOn) {
     const day = subDays(today, back);

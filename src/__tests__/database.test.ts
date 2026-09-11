@@ -255,7 +255,7 @@ const makeTask = (overrides: Partial<Task> = {}): Task => ({
   timedMinutes: null,
   timerElapsedSeconds: 0,
   healthMetric: null,
-  healthTarget: null, completionTimerMinutes: null, logHealthMetric: null, logHealthAmount: null,
+  healthTarget: null, completionTimerMinutes: null, logHealthMetric: null, logHealthAmount: null, medicationName: null, medicationAmount: null, medicationUnit: null,
   actualMinutes: null,
   previousOccurrenceId: null,
   seriesId: null,
@@ -716,7 +716,11 @@ describe('dbInsertTask + rowToTask round-trip', () => {
     const tags = ['work', 'urgent'];
     const recurrenceDays = [1, 3, 5];
     const chainItems = [
-      { id: 'ci', title: 'Item A', estimatedMinutes: null, deliverableKind: null, deliverableDatesNextStep: false },
+      {
+        id: 'ci', title: 'Item A', estimatedMinutes: null, deliverableKind: null,
+        deliverableDatesNextStep: false,
+        medicationName: null, medicationAmount: null, medicationUnit: null,
+      },
     ];
     dbInsertTask(makeTask({ id: 'json', tags, recurrenceDays, chainItems }));
     const [t] = dbGetAllTasks();
@@ -733,13 +737,35 @@ describe('dbInsertTask + rowToTask round-trip', () => {
       {
         id: 'book', title: 'Book haircut', estimatedMinutes: null,
         deliverableKind: 'date' as const, deliverableDatesNextStep: true,
+        medicationName: null, medicationAmount: null, medicationUnit: null,
       },
       {
         id: 'get', title: 'Get haircut', estimatedMinutes: null,
         deliverableKind: null, deliverableDatesNextStep: false,
+        medicationName: null, medicationAmount: null, medicationUnit: null,
       },
     ];
     dbInsertTask(makeTask({ id: 'chain-q', chainEnabled: true, chainItems }));
+
+    expect(dbGetAllTasks()[0].chainItems).toEqual(chainItems);
+  });
+
+  it("round-trips a chain step's own medication and dose", () => {
+    // Rides inside the cycle_items JSON like the question above, so the round
+    // trip is what proves parseChainItems and the serializer agree about it.
+    const chainItems = [
+      {
+        id: 'am', title: 'Morning pills', estimatedMinutes: null,
+        deliverableKind: null, deliverableDatesNextStep: false,
+        medicationName: 'Levothyroxine', medicationAmount: 75, medicationUnit: 'mcg',
+      },
+      {
+        id: 'pm', title: 'Evening pills', estimatedMinutes: null,
+        deliverableKind: null, deliverableDatesNextStep: false,
+        medicationName: 'Magnesium', medicationAmount: 1, medicationUnit: 'tablet',
+      },
+    ];
+    dbInsertTask(makeTask({ id: 'chain-med', chainEnabled: true, chainItems }));
 
     expect(dbGetAllTasks()[0].chainItems).toEqual(chainItems);
   });
@@ -1521,6 +1547,9 @@ describe('Templates', () => {
     penaltyMinutes: null,
     penaltyCutoffTime: null,
     gatesApps: false,
+    medicationName: null,
+    medicationAmount: null,
+    medicationUnit: null,
     deliverableKind: null,
     chainEnabled: false,
     chainItems: [],
