@@ -83,7 +83,7 @@ import * as TaskManager from 'expo-task-manager';
 import { useTaskStore } from '../store/useTaskStore';
 import { useSettingsStore } from '../store/useSettingsStore';
 import { useSyncStore } from '../store/useSyncStore';
-import type { SyncRunResult } from './syncEngine';
+import type { SyncSummary } from './syncEngine';
 import { isDemoModeActive } from './demoState';
 import { runStartupSequence, runStartupStep } from './startup';
 import { catchUpPasses, rebuildNotificationQueue } from './maintenancePasses';
@@ -187,7 +187,7 @@ export function runBackgroundRefresh(): BackgroundRefreshOutcome {
  * Returns null when nothing ran, which is the common case on a device that has
  * never turned sync on.
  */
-export async function runBackgroundSync(): Promise<SyncRunResult | null> {
+export async function runBackgroundSync(): Promise<SyncSummary | null> {
   if (isDemoModeActive()) return null;
   return useSyncStore.getState().syncNow();
 }

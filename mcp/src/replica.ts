@@ -42,6 +42,7 @@ import type {
   Task,
 } from '../../src/types';
 import type { FoodLogTotals } from '../../src/utils/foodLog';
+import type { SyncSummary } from '../../src/utils/syncEngine';
 
 type DbModule = typeof import('../../src/db/database');
 type VisibilityModule = typeof import('../../src/utils/visibilityUtils');
@@ -49,6 +50,9 @@ type FuzzyModule = typeof import('../../src/utils/fuzzySearch');
 type EffortModule = typeof import('../../src/utils/effort');
 type DeliverablesModule = typeof import('../../src/utils/deliverables');
 type DateModule = typeof import('../../src/utils/dateUtils');
+type SyncEngineModule = typeof import('../../src/utils/syncEngine');
+type SyncLocalModule = typeof import('../../src/utils/syncLocal');
+type HttpTransportModule = typeof import('../../src/utils/httpSyncTransport');
 type FoodLogModule = typeof import('../../src/utils/foodLog');
 type MoodHistoryModule = typeof import('../../src/utils/moodHistory');
 type MedicationModule = typeof import('../../src/utils/medicationLog');
@@ -113,8 +117,19 @@ export interface Replica {
   medicationSummary(log: MedicationLog): string;
 
   deviceId(): string;
-  /** False for a demo database. Phase 1 will not sync one. */
+  /** False for a demo database. A demo database is never synced. */
   syncable(): boolean;
+
+  /**
+   * Exchange changes with the payload store, as one more device.
+   *
+   * Returns null when no store is configured, which is the ordinary state for a
+   * replica pointed at a file somebody copied. `SyncLocal` is the app's own
+   * `databaseSyncLocal()` verbatim: it is six functions over `database.ts`, and
+   * `database.ts` is what this whole package exists to run in Node, so there
+   * was nothing to write.
+   */
+  sync(): Promise<SyncSummary | null>;
 }
 
 /**
@@ -162,6 +177,9 @@ export function openReplica(path = process.env.TODO_DB_PATH ?? 'todo.db'): Repli
   const foodLog = require('../../src/utils/foodLog') as FoodLogModule;
   const moodHistory = require('../../src/utils/moodHistory') as MoodHistoryModule;
   const medication = require('../../src/utils/medicationLog') as MedicationModule;
+  const syncEngine = require('../../src/utils/syncEngine') as SyncEngineModule;
+  const syncLocal = require('../../src/utils/syncLocal') as SyncLocalModule;
+  const httpTransport = require('../../src/utils/httpSyncTransport') as HttpTransportModule;
   const { registerTaskSource } = require('../../src/utils/blockerRegistry') as typeof import('../../src/utils/blockerRegistry');
   const { registerPersonSource } = require('../../src/utils/peopleRegistry') as typeof import('../../src/utils/peopleRegistry');
   const { useSettingsStore } = require('../../src/store/useSettingsStore') as typeof import('../../src/store/useSettingsStore');
@@ -183,19 +201,24 @@ export function openReplica(path = process.env.TODO_DB_PATH ?? 'todo.db'): Repli
   const people = (): Person[] => (personCache ??= db.dbGetAllPeople());
   const projects = (): Project[] => (projectCache ??= db.dbGetAllProjects());
 
+  // A named function rather than only a method on the returned object, because
+  // `sync` has to call it after applying a pull and reaching it through `this`
+  // would break the moment somebody destructured the replica.
+  const refresh = (): void => {
+    taskCache = null;
+    personCache = null;
+    projectCache = null;
+    useSettingsStore.getState().initialize();
+    useCategoryStore.getState().initialize();
+  };
+
   registerTaskSource(tasks);
   registerPersonSource(people);
 
   return {
     path,
 
-    refresh() {
-      taskCache = null;
-      personCache = null;
-      projectCache = null;
-      useSettingsStore.getState().initialize();
-      useCategoryStore.getState().initialize();
-    },
+    refresh,
 
     tasks,
     projects,
@@ -242,5 +265,19 @@ export function openReplica(path = process.env.TODO_DB_PATH ?? 'todo.db'): Repli
 
     deviceId: () => db.dbGetDeviceId(),
     syncable: () => db.isSyncableDatabase(),
+
+    async sync(): Promise<SyncSummary | null> {
+      const config = { url: process.env.SYNC_URL ?? '', token: process.env.SYNC_TOKEN ?? '' };
+      if (!httpTransport.isHttpSyncConfigured(config)) return null;
+
+      const runs = await syncEngine.runSyncAll(
+        [httpTransport.httpSyncTransport(config)],
+        syncLocal.databaseSyncLocal()
+      );
+      // Whatever a pull applied is now in the database and not in the caches
+      // above, so the next read has to go back to SQLite for it.
+      refresh();
+      return syncEngine.summarizeRuns(runs);
+    },
   };
 }

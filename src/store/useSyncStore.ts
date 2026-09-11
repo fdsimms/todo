@@ -15,12 +15,15 @@
 import { create } from 'zustand';
 import { dbGetSetting, dbSetSetting } from '../db/database';
 import { cloudKitTransport, cloudKitUnavailableReason, isCloudKitSyncAvailable } from '../utils/cloudKitTransport';
+import { httpSyncTransport, isHttpSyncConfigured } from '../utils/httpSyncTransport';
+import { loadSecureKey, saveSecureKey, SYNC_TOKEN_SECURE_KEY } from '../utils/secureApiKey';
 import { databaseSyncLocal } from '../utils/syncLocal';
-import { runSync, type SyncRunResult } from '../utils/syncEngine';
+import { runSyncAll, summarizeRuns, type SyncSummary, type SyncTransport } from '../utils/syncEngine';
 import { describeApply } from '../utils/syncMerge';
 
 const ENABLED_KEY = 'syncEnabled';
 const LAST_SYNCED_KEY = 'syncLastSyncedAt';
+const SERVER_URL_KEY = 'syncServerUrl';
 
 export type SyncPhase = 'idle' | 'syncing';
 
@@ -37,10 +40,39 @@ interface SyncState {
   /** What the last successful sync brought in, for the status line. */
   lastSummary: string | null;
 
+  /**
+   * The payload store's origin, or '' for none. Its token lives in the
+   * keychain, never here and never in the settings table — it is a credential,
+   * and `secureApiKey.ts` is where this app puts those.
+   */
+  serverUrl: string;
+  /** Whether a token is stored, which is all a settings row may say about one. */
+  hasServerToken: boolean;
+
   initialize: () => void;
   setEnabled: (enabled: boolean) => Promise<void>;
+  setServerUrl: (url: string) => void;
+  setServerToken: (token: string) => Promise<boolean>;
   /** Runs a sync if one isn't already running. Safe to call on every foreground. */
-  syncNow: () => Promise<SyncRunResult | null>;
+  syncNow: () => Promise<SyncSummary | null>;
+}
+
+/**
+ * The transports this device is set up for, in the order they run.
+ *
+ * iCloud first because it is the one most users have and the one whose failure
+ * is most likely to be transient; a server the user runs is the one they can go
+ * and restart. Neither depends on the other, and either may be absent.
+ */
+async function configuredTransports(state: { enabled: boolean; serverUrl: string }): Promise<SyncTransport[]> {
+  const transports: SyncTransport[] = [];
+  if (state.enabled && isCloudKitSyncAvailable()) transports.push(cloudKitTransport());
+
+  const token = await loadSecureKey(SYNC_TOKEN_SECURE_KEY);
+  const config = { url: state.serverUrl, token };
+  if (isHttpSyncConfigured(config)) transports.push(httpSyncTransport(config));
+
+  return transports;
 }
 
 export const useSyncStore = create<SyncState>((set, get) => ({
@@ -52,13 +84,33 @@ export const useSyncStore = create<SyncState>((set, get) => ({
   problem: null,
   lastSummary: null,
 
+  serverUrl: '',
+  hasServerToken: false,
+
   initialize: () => {
     set({
       initialized: true,
       enabled: dbGetSetting(ENABLED_KEY) === '1',
       supported: isCloudKitSyncAvailable(),
       lastSyncedAt: dbGetSetting(LAST_SYNCED_KEY),
+      serverUrl: dbGetSetting(SERVER_URL_KEY) ?? '',
     });
+    // The keychain read is async and initialize is not, so the flag lands a
+    // tick later. Nothing gates on it except a settings row's subtitle, and a
+    // sync reads the token itself rather than trusting this.
+    void loadSecureKey(SYNC_TOKEN_SECURE_KEY).then(token => set({ hasServerToken: !!token }));
+  },
+
+  setServerUrl: (url: string) => {
+    const trimmed = url.trim();
+    dbSetSetting(SERVER_URL_KEY, trimmed);
+    set({ serverUrl: trimmed, problem: null });
+  },
+
+  setServerToken: async (token: string) => {
+    const saved = await saveSecureKey(SYNC_TOKEN_SECURE_KEY, token.trim());
+    if (saved) set({ hasServerToken: !!token.trim(), problem: null });
+    return saved;
   },
 
   setEnabled: async (enabled: boolean) => {
@@ -79,30 +131,41 @@ export const useSyncStore = create<SyncState>((set, get) => ({
   },
 
   syncNow: async () => {
-    const { enabled, phase } = get();
-    if (!enabled || phase === 'syncing') return null;
+    const { enabled, phase, serverUrl } = get();
+    if (phase === 'syncing') return null;
+
+    // No longer gated on `enabled` alone: that flag is iCloud's, and a device
+    // with only a payload store configured still has somewhere to sync to.
+    // `configuredTransports` is what decides, and an empty list is a no-op
+    // rather than a failure.
+    const transports = await configuredTransports({ enabled, serverUrl });
+    if (transports.length === 0) return null;
 
     set({ phase: 'syncing' });
     try {
-      const result = await runSync(cloudKitTransport(), databaseSyncLocal());
+      const summary = summarizeRuns(await runSyncAll(transports, databaseSyncLocal()));
 
-      if (result.status === 'ok') {
+      if (summary.ok) {
         const now = new Date().toISOString();
         dbSetSetting(LAST_SYNCED_KEY, now);
         set({
           lastSyncedAt: now,
-          problem: result.unreadable > 0
-            ? 'Some changes need a newer version of the app.'
-            : null,
-          lastSummary: describeApply(result.applied),
+          // A failure on one transport still shows, even though another
+          // succeeded: half a sync is exactly the state worth telling somebody
+          // about, because the device it did not reach is the one they will
+          // wonder about later.
+          problem: summary.problem
+            ?? (summary.unreadable > 0 ? 'Some changes need a newer version of the app.' : null),
+          lastSummary: describeApply(summary.applied),
         });
-      } else if (result.status === 'failed') {
-        set({ problem: result.reason ?? 'Sync failed.' });
+      } else if (summary.problem !== null) {
+        set({ problem: summary.problem });
       }
-      // 'skipped' means demo mode. Not a problem and not worth reporting —
-      // the user swapped their data out themselves.
+      // Neither ok nor failed means every transport skipped, which is demo
+      // mode. Not a problem and not worth reporting — the user swapped their
+      // data out themselves.
 
-      return result;
+      return summary;
     } finally {
       set({ phase: 'idle' });
     }

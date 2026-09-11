@@ -121,6 +121,7 @@ name cannot say is where a component appears, and that is `docs/screen-map.md`.
 - `src/utils/healthTarget.ts` — HealthTargetState, HealthTargetReading, HEALTH_TARGET_RANGES, hasHealthTarget, healthTargetValue, healthTargetProgress, isHealthTargetReady, describeHealthTarget
 - `src/utils/healthWeightSync.ts` — WeightWriteResult, logWeightToHealth
 - `src/utils/hiddenEvents.ts` — HiddenEvent, hiddenEventKey, hiddenEventFromEvent, isHiddenEventStale, pruneStaleHiddenEvents
+- `src/utils/httpSyncTransport.ts` — HTTP_SYNC_SOURCE, SYNC_REQUEST_TIMEOUT_MS, HttpSyncConfig, isHttpSyncConfigured, httpSyncTransport, readPullBody
 - `src/utils/id.ts` — generateId
 - `src/utils/ingredientCatalogMatch.ts` — IngredientMatchReason, IngredientMatchKind, IngredientCatalogMatch, withinOneEdit, matchIngredientToCatalog, matchIngredientsToCatalog, CatalogMatchSummary, catalogMatchSummary
 - `src/utils/ingredientGrams.ts` — gramsForLine, panelMultiplier, LineWeighing, weighableLine
@@ -241,7 +242,7 @@ name cannot say is where a component appears, and that is `docs/screen-map.md`.
 - `src/utils/scrollFade.ts` — SCROLL_FADE_HEIGHT, SCROLL_FADE_TOLERANCE, ScrollEdgeMetrics, hiddenBelow, hiddenAbove, edgeFadeOpacity
 - `src/utils/searchCollapse.ts` — SearchOccurrence, CollapsedOccurrence, occurrenceFamilyKey, collapseOccurrences, formatOccurrenceCount
 - `src/utils/sectionListLayout.ts` — CellLayout, sectionListCellLayout
-- `src/utils/secureApiKey.ts` — API_KEY_SECURE_KEY, API_KEY_LEGACY_SETTING, loadAnthropicApiKey, saveAnthropicApiKey, FDC_KEY_SECURE_KEY, GO_UPC_KEY_SECURE_KEY, loadSecureKey, saveSecureKey
+- `src/utils/secureApiKey.ts` — API_KEY_SECURE_KEY, API_KEY_LEGACY_SETTING, loadAnthropicApiKey, saveAnthropicApiKey, FDC_KEY_SECURE_KEY, GO_UPC_KEY_SECURE_KEY, SYNC_TOKEN_SECURE_KEY, loadSecureKey, saveSecureKey
 - `src/utils/segmentColumns.ts` — segmentRows
 - `src/utils/settingsFocusScroll.ts` — SETTINGS_FOCUS_PADDING, settingsFocusScrollTarget
 - `src/utils/settingsIndex.ts` — SettingsGroupId, SettingsTint, SettingsGroup, SETTINGS_GROUPS, SettingsEntry, SETTINGS_ENTRIES, visibleSettingsGroups, visibleSettingsEntries, settingsGroup
@@ -265,7 +266,7 @@ name cannot say is where a component appears, and that is `docs/screen-map.md`.
 - `src/utils/streakRecord.ts` — nextStreakRecord, bestStreakOf, isStreakAtRecord, streakHint
 - `src/utils/substituteSuggestions.ts` — MAX_SUGGESTED_SUBSTITUTES, SuggestedSubstitute, RawSuggestedSubstitute, dedupeSuggestedSubstitutes
 - `src/utils/supply.ts` — MAX_SUPPLY_COUNT, DEFAULT_SUPPLY_REORDER_AT, MAX_SUPPLY_REORDER_TASKS, clampSupplyCount, clampSupplyReorderAt, clampSupplyLeadDays, clampSupplyRefillCount, SupplySource, isSupplyTask, canHoldSupply, +18 more
-- `src/utils/syncEngine.ts` — SyncTransport, PullResult, SyncLocal, SyncStatus, SyncRunResult, hasChanges, runSync
+- `src/utils/syncEngine.ts` — SyncTransport, PullResult, SyncLocal, SyncStatus, SyncRunResult, hasChanges, runSync, NamedSyncRun, runSyncAll, SyncSummary, +1 more
 - `src/utils/syncIds.ts` — derivedId, isDerivedId, spawnSeed
 - `src/utils/syncLocal.ts` — databaseSyncLocal
 - `src/utils/syncMerge.ts` — SyncDeletion, SyncChangeSet, SYNC_FORMAT, SyncPayload, ParsedPayload, buildPayload, serializePayload, parsePayload, remoteRowWins, remoteDeletionWins, +3 more

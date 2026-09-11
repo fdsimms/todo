@@ -10,12 +10,36 @@ file is only how to run it.
 ```bash
 cd mcp
 npm install
-TODO_DB_PATH=/path/to/todo.db MCP_AUTH_TOKEN=$(openssl rand -hex 32) npm start
+TODO_DB_PATH=./todo.db \
+  MCP_AUTH_TOKEN=$(openssl rand -hex 32) \
+  SYNC_STORE_PATH=./payloads.db \
+  SYNC_AUTH_TOKEN=$(openssl rand -hex 32) \
+  SYNC_URL=http://localhost:8787 \
+  SYNC_TOKEN=<the same SYNC_AUTH_TOKEN> \
+  npm start
 ```
 
-It listens on `:8787` (`PORT` to change it) and speaks Streamable HTTP at `POST /mcp`. It runs
-straight off the TypeScript through `tsx`; there is no build step, because there is nothing to
-deploy to yet.
+It listens on `:8787` (`PORT` to change it) and serves two things: Streamable HTTP at `POST /mcp`
+for Claude, and the payload store at `/sync/push` and `/sync/pull` for your devices. One process,
+two tokens, because they answer to different callers and must not share a secret.
+
+| Variable | What it is |
+|---|---|
+| `TODO_DB_PATH` | The replica. Created empty if absent, then filled by the first sync. |
+| `MCP_AUTH_TOKEN` | Claude's bearer token. Unset means every MCP request is refused. |
+| `SYNC_STORE_PATH` | Where payloads are kept. Unset means the store is not mounted at all. |
+| `SYNC_AUTH_TOKEN` | Your devices' bearer token, for `/sync/*`. |
+| `SYNC_URL`, `SYNC_TOKEN` | Where the *replica itself* syncs to. Usually this same server. |
+
+Then in the app: Settings → Data & reset → Sync, put the server's address in **Sync server** and
+the `SYNC_AUTH_TOKEN` in **Sync server token**. Both are needed; either alone does nothing. iCloud
+sync is unaffected and keeps running alongside.
+
+That also removes the old chore of copying a `todo.db` off a device by hand. Point the server at a
+path that does not exist yet and the first sync fills it.
+
+It runs straight off the TypeScript through `tsx`; there is no build step, because there is nothing
+to deploy to yet.
 
 `TODO_DB_PATH` is a SQLite file with the app's schema. Until phase 1 there is no automatic way to
 get one, so today it means a copy taken off a device or a simulator.
