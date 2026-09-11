@@ -2,6 +2,7 @@ import React, { useCallback, useMemo, useState } from 'react';
 import { View, AppState, Linking } from 'react-native';
 import { useFocusEffect } from '@react-navigation/native';
 import type { HealthRequestStatus, HealthWriteStatus } from 'todo-health-bridge';
+import { useShallow } from 'zustand/react/shallow';
 import { useSettingsStore } from '../../store/useSettingsStore';
 import { useHealthStore } from '../../store/useHealthStore';
 import { useCategoryStore, ensureHealthCategory } from '../../store/useCategoryStore';
@@ -10,6 +11,9 @@ import { PillGroup } from '../../components/PillGroup';
 import { healthBridge, isHealthSupported } from '../../utils/healthBridge';
 import type { WeightUnit } from '../../utils/weightLog';
 import { dayKeyOf, getCurrentDayStart } from '../../utils/dateUtils';
+import { formatWeight } from '../../utils/weightLog';
+import { goalDirection } from '../../utils/weightGoal';
+import { resetToWeightGoal } from '../../navigation/navigationRef';
 import { useColors } from '../../theme/ThemeContext';
 import { SettingsSection } from './SettingsSection';
 import { SettingsRow } from './SettingsRow';
@@ -91,6 +95,7 @@ export function HealthSettings() {
   const healthCategory = useSettingsStore(s => s.healthCategory);
   const setHealthCategory = useSettingsStore(s => s.setHealthCategory);
   const weightUnit = useSettingsStore(s => s.weightUnit);
+  const weightGoal = useSettingsStore(useShallow(s => s.weightGoal));
   const setWeightUnit = useSettingsStore(s => s.setWeightUnit);
   const categories = useCategoryStore(s => s.categories);
   const today = useHealthStore(s => s.today);
@@ -400,6 +405,24 @@ export function HealthSettings() {
       label="Weight"
       footer="Which unit a weight is shown and typed in. Health always stores kilograms, so this changes what you read and type, not what is recorded."
     >
+      {/* Opens the sheet on the Weight screen rather than in place. The sheet
+          needs the latest weigh-in to measure a goal from, and that is a read
+          of Health this page has no reason to hold — so the row navigates to
+          where the data already is, which is also where the progress it sets up
+          gets read. */}
+      <SettingsRow
+        entryId="weightGoal"
+        icon="flag-outline"
+        iconColor={weightGoal !== null ? colors.accent : undefined}
+        label="Weight goal"
+        hint="Set a target weight and a rate, and work out a daily calorie figure."
+        value={weightGoal === null
+          ? 'None'
+          : goalDirection(weightGoal) === 'maintain'
+            ? `Hold ${formatWeight(weightGoal.targetKg, weightUnit)}`
+            : formatWeight(weightGoal.targetKg, weightUnit)}
+        onPress={() => { haptics.tap(); resetToWeightGoal(); }}
+      />
       <SettingsRow
         entryId="weightUnit"
         icon="scale-outline"

@@ -291,7 +291,9 @@ exports.
 | anything read out of Apple Health | `src/store/useHealthStore.ts` + `src/utils/healthBridge.ts` + `modules/todo-health-bridge/` — see `docs/arch/health-data.md`. Read it first: three of its four rules are about what a reader may *claim*, and the big one is that a refused read and a day with nothing recorded are one answer |
 | writing a logged meal back to Apple Health | `src/utils/healthFoodSync.ts` + `writeFoodSamples`/`deleteHealthSamples` in `modules/todo-health-bridge/` — see `docs/arch/health-data.md`. The only write in the app that can be un-written, which is why it keeps sample ids; absent stays absent, never a zero |
 | a task that reads as ready when Apple Health reaches a number | `src/utils/healthTarget.ts` + the `health` arm of `src/utils/taskKinds.ts` — `timer.ts` with a reading in place of a clock, and it derives *ready* only. Nothing here completes a task, for the reason `docs/arch/health-data.md` gives at length |
-| your weight over time, and recording one | `src/utils/weightLog.ts` + `src/utils/healthWeightSync.ts` + `src/screens/WeightScreen.tsx` — see `docs/arch/health-data.md`. Health is the record and the app keeps no copy; the rule that let weight in at all is that **nothing derives anything from it** (no rule metric, no BMI, no goal, no "trending") |
+| your weight over time, and recording one | `src/utils/weightLog.ts` + `src/utils/healthWeightSync.ts` + `src/screens/WeightScreen.tsx` — see `docs/arch/health-data.md`. Health is the record and the app keeps no copy; the rule that let weight in at all is that **the app derives nothing from it on its own** (no rule metric, no BMI, no healthy range, no "trending") |
+| a weight goal, the rate it's aimed at, and progress against it | `src/utils/weightGoal.ts` + `src/components/WeightGoalSheet.tsx` — see `docs/arch/health-data.md`. The one thing the weight rule above carves out, and only because the target is **typed in**: nothing proposes one, nothing judges one, nothing generated fires off one, and ahead/behind is said about the user's own pace rather than about them |
+| a daily calorie figure worked out from a body, and the macro split of it | `src/utils/energyBudget.ts` — see `docs/arch/health-data.md`. Mifflin-St Jeor over fields the person typed, never read from Health; it **proposes** and the sheet's button is what writes `nutritionTargets`. A missing field yields null, never an average, `MIN_PROPOSED_KCAL` floors the suggestion without capping what the user may set, and `MACRO_PRESETS` names four splits while preselecting none |
 | the task asking you to weigh in | `src/utils/weightTasks.ts` — see `docs/arch/generated-tasks.md`. The only generator that fires on *missing* data, and deliberately not part of `health`: that one reacts to a reading, this one asks for one |
 | a meal of the day as a task, and choosing one from Today | `src/utils/mealSlotTasks.ts` — see `docs/arch/generated-tasks.md` |
 | a planned meal you haven't got the ingredients for | `src/utils/mealShortfallTasks.ts` — see `docs/arch/generated-tasks.md` |
@@ -402,13 +404,13 @@ them source rather than tests. The ten biggest source files:
 `store/useTaskStore.ts` (8.3k), `db/database.ts` (5.6k), `types/index.ts` (5.5k),
 `components/TaskEditor.tsx` (5.5k), `store/useGroceryStore.ts` (5.4k),
 `screens/TodayScreen.tsx` (4.6k), `components/TaskItem.tsx` (4.3k),
-`utils/demoSeed.ts` (3.9k), `store/useSettingsStore.ts` (3.6k),
+`utils/demoSeed.ts` (3.9k), `store/useSettingsStore.ts` (3.7k),
 `screens/BackfillScreen.tsx` (3.2k).
 
 Grep for the symbol and read the surrounding range; reading any of them end to end costs more
 context than the rest of the task will. `docs/module-map.md` says which file owns what.
 
-The suite is **298 test files**, and `npm test` runs all of them in about half a minute.
+The suite is **300 test files**, and `npm test` runs all of them in about half a minute.
 `npx tsc --noEmit` is a few seconds once `.tsbuildinfo` exists, so run both, every time.
 
 <!-- END GENERATED: repo-stats -->

@@ -811,11 +811,95 @@ drawing it claims nothing they did not already record.
 
 What replaced the ban is a narrower rule that does the same work: **nothing
 derives anything from a weight.** It is not a `HealthRuleMetric`, so no
-generator fires on it and no task is written from it; there is no goal weight,
-no BMI, no healthy range, and no "trending up". `weightLog.ts` reports the
-first and last readings in a window and the gap between them, with the number
-of weigh-ins printed beside it, and stops. The moment something here wants to
-*judge* a weight rather than draw one, it is back on the ruled-out list.
+generator fires on it and no task is written from it; there is no BMI, no
+healthy range, and no "trending up". `weightLog.ts` reports the first and last
+readings in a window and the gap between them, with the number of weigh-ins
+printed beside it, and stops. The moment something here wants to *judge* a
+weight rather than draw one, it is back on the ruled-out list.
+
+**A goal weight was on that list too, and has moved for a different reason
+than weight itself did — read this before adding anything that reads
+`weightGoal`.** The argument above is about what the *app* may conclude, and
+that has not changed at all. What a goal changes is whose conclusion is on
+screen. A target the app proposes is the app judging a body. A target somebody
+typed in is the same kind of object as a sodium ceiling their doctor set or a
+figure they picked in `NutritionTargetsSheet`: their number, which the app does
+arithmetic against. `weightGoal.ts` does that arithmetic and its header states
+the four posts the fence now sits on. Restated here because this file is where
+a future reader will look for them:
+
+- **Nothing proposes a target weight or a rate.** `RATE_RANGE` bounds what a
+  stepper can produce, in the shape `MAX_WEIGHT_KG` already uses. It is an
+  absurdity check and not a recommendation, and there is deliberately no
+  warning band inside it.
+- **Nothing judges the target somebody picked.** No "that is too low", no
+  encouragement that it is realistic.
+- **Nothing generated fires off a goal.** Still not a `HealthRuleMetric`, still
+  no task written, and reaching the target completes nothing — the call
+  `nutritionTargets.ts` makes about a daily figure, for its reason: a goal is a
+  record to read against, not a task to finish.
+- **Ahead and behind are said about the user's own pace, never about them.**
+  `goalPace` reports the kilograms between where the weight is and where the
+  rate *they set* would have put it. That is a fact they could read off the
+  chart, which is the standard `weightChange` already holds itself to. It
+  carries no colour, no arrow and no advice, and `WeightScreen` must not add
+  one.
+
+The goal lives in the settings table rather than in Health, because it is not a
+measurement: HealthKit has nowhere to put one, and nothing should read it back
+as though somebody had recorded it. The weights it is measured against are
+still Health's, and nothing about this stores one.
+
+**The calorie estimate (`energyBudget.ts`) is the one thing here that takes a
+figure about a body and hands back a number to act on**, so it is fenced twice
+over. Every input is typed in by the person — height, year of birth, sex,
+activity level, rate — and none is read from Health, which keeps `readTypes`
+where it was and raises no new permission sheet. Nothing fills a field in:
+a profile missing any part of itself produces null rather than a guess, which
+is that module's whole discipline about defaults. And it **proposes rather than
+writes**: `WeightGoalSheet` prints the arithmetic with its own working shown
+beside it, and the figure only reaches `nutritionTargets.calorieKcal` when
+somebody presses the button under it. Nothing re-applies it as a weight
+changes. A target that silently tracked a formula would be a figure nobody
+chose driving the food log, which is exactly what `nutritionTargets`' own note
+rules out.
+
+**The macro split follows the same rule and is where it was most tempting to
+break.** `MACRO_PRESETS` names four common ways to divide a day's calories and
+**preselects none of them**, because how somebody splits protein, carbs and fat
+is a real dietary disagreement of exactly the kind `HEALTH_METRIC_DIRECTION`'s
+note above refuses to take a side in. What the app can honestly do is what a
+reference table does: name the splits, show what each works out to in grams
+(`macroGrams`, by the Atwater factors, which are label arithmetic and not an
+opinion), and let the person pick. Applying one writes the calorie target
+alongside the three macros, since a macro target that doesn't add up to the
+calorie figure it was split out of is three numbers with nothing holding them
+together. The split itself is not stored: it is a one-off choice made when
+applying targets, not a setting, and what persists is the four ordinary
+`nutritionTargets` entries anybody can then edit or clear.
+
+**The chart draws the goal, and the colour is the rule.** `WeightChart` takes
+an optional target and pace line. Everything in the accent colour on that chart
+is something that happened (the readings, and an average of the readings); the
+target and the pace are neither, so they are drawn grey and dashed. A solid
+accent line for a plan would put a plan and a measurement in the same visual
+language on a chart whose three stated rules are all about not doing that.
+`weightDomain` takes an optional weight to make room for so the target lands
+inside the plot, which deliberately flattens the readings when the target is
+far away: drawing the line at the edge of a domain it isn't in would be worse,
+and the trend line still carries the shape.
+
+The single judgement in that module is `MIN_PROPOSED_KCAL`, and it is worth
+naming as one rather than leaving it to be discovered. The arithmetic will
+cheerfully produce 700 calories for a small person aiming at two pounds a week,
+and the app must not put that number in front of somebody with its own name on
+it. So the *proposal* is floored (1,200 / 1,500, the long-standing unsupervised
+floors), the sheet says plainly that it was and shows the unfloored figure
+next to it, and nothing is prevented: `NutritionTargetsSheet`'s own stepper
+goes to 500 and is nobody's business but the user's. Suggesting and permitting
+are different acts and the app is only answerable for the first. A profile with
+no sex given gets the lower floor, so the clamp is the weakest one the known
+facts support.
 
 The type-level constraint helps hold this. `HealthRuleMetric`'s nutrient arm is
 checked against `NutrientKey` (`WithNutrientKeyHome`), so adding weight as a

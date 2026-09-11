@@ -329,3 +329,39 @@ describe('weightChange', () => {
     expect(change.readings).toBe(2);
   });
 });
+
+describe('weightDomain with a weight to make room for', () => {
+  it('is unchanged when nothing extra is passed', () => {
+    const points = series([80, 81, 79]);
+    expect(weightDomain(points, null)).toEqual(weightDomain(points));
+    expect(weightDomain(points, undefined)).toEqual(weightDomain(points));
+  });
+
+  it('widens downward to admit a target below the readings', () => {
+    const points = series([80, 81, 79]);
+    const plain = weightDomain(points)!;
+    const widened = weightDomain(points, 70)!;
+    expect(widened.min).toBeLessThan(70);
+    expect(widened.min).toBeLessThan(plain.min);
+  });
+
+  it('widens upward to admit a target above them', () => {
+    const points = series([80, 81, 79]);
+    const widened = weightDomain(points, 90)!;
+    expect(widened.max).toBeGreaterThan(90);
+  });
+
+  it('leaves the domain alone for a target already inside it', () => {
+    const points = series([75, 85]);
+    expect(weightDomain(points, 80)).toEqual(weightDomain(points));
+  });
+
+  it('still has nothing to draw when there are no readings', () => {
+    expect(weightDomain(series([null, null]), 70)).toBeNull();
+  });
+
+  it('ignores a target that is not a number', () => {
+    const points = series([80, 81]);
+    expect(weightDomain(points, NaN)).toEqual(weightDomain(points));
+  });
+});

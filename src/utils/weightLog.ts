@@ -157,7 +157,10 @@ export interface WeightDomain {
  * Returns null when there is nothing to draw, which the caller renders as an
  * empty state rather than as an empty chart.
  */
-export function weightDomain(points: WeightPoint[]): WeightDomain | null {
+export function weightDomain(
+  points: WeightPoint[],
+  includeKg?: number | null,
+): WeightDomain | null {
   const readings = weightReadings(points);
   if (readings.length === 0) return null;
 
@@ -166,6 +169,23 @@ export function weightDomain(points: WeightPoint[]): WeightDomain | null {
   for (const reading of readings) {
     if (reading.kilograms < low) low = reading.kilograms;
     if (reading.kilograms > high) high = reading.kilograms;
+  }
+
+  // A weight the chart must have room for even though nobody recorded it: a
+  // goal's target, so its line lands inside the plot rather than off the top
+  // or bottom of it.
+  //
+  // **This deliberately flattens the readings, and that is the trade.** A
+  // target ten kilograms away widens the domain by ten kilograms, so the
+  // week-to-week wobble the windowed domain exists to show gets squashed
+  // against it. Drawing the line at the edge of a domain it isn't in would be
+  // worse — it would put the target wherever the data happened to end and
+  // invite reading a gap that isn't there — and the fainter trend line still
+  // carries the shape. It only applies when a target is actually passed, so a
+  // chart with no goal behind it is unchanged.
+  if (includeKg !== undefined && includeKg !== null && Number.isFinite(includeKg)) {
+    if (includeKg < low) low = includeKg;
+    if (includeKg > high) high = includeKg;
   }
 
   const middle = (low + high) / 2;

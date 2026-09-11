@@ -5,24 +5,36 @@ import { useBottomTabBarHeight } from '@react-navigation/bottom-tabs';
 import { useRoute } from '@react-navigation/native';
 import { navigationRef } from '../navigation/navigationRef';
 import { format } from 'date-fns/format';
+import { addDays } from 'date-fns/addDays';
+import { useShallow } from 'zustand/react/shallow';
 import { useSettingsStore } from '../store/useSettingsStore';
 import { useHealthStore, WEIGHT_HISTORY_DAYS } from '../store/useHealthStore';
 import { useColors } from '../theme/ThemeContext';
 import { spacing, radius, font, fontWeight, type Colors } from '../theme';
 import { haptics } from '../utils/haptics';
-import { dayKeyToDate } from '../utils/dateUtils';
+import { dayKeyToDate, getLogicalToday } from '../utils/dateUtils';
 import {
   formatWeight,
   kgToUnit,
   latestWeight,
   weightChange,
   weightReadings,
+  type WeightUnit,
 } from '../utils/weightLog';
+import {
+  daysToTarget,
+  goalDirection,
+  goalPace,
+  goalProgress,
+  pacePlotPoints,
+  weightSinceGoalStart,
+} from '../utils/weightGoal';
 import { ScreenHeader } from '../components/ScreenHeader';
 import { HubPills } from '../components/HubPills';
 import { EmptyState } from '../components/EmptyState';
 import { WeightChart } from '../components/WeightChart';
 import { LogWeightSheet } from '../components/LogWeightSheet';
+import { WeightGoalSheet } from '../components/WeightGoalSheet';
 import { SegmentedControl } from '../components/SegmentedControl';
 
 /**
@@ -90,6 +102,7 @@ export function WeightScreen() {
   const refreshWeight = useHealthStore(s => s.refreshWeight);
 
   const [logOpen, setLogOpen] = useState(false);
+  const [goalOpen, setGoalOpen] = useState(false);
   const [rangeDays, setRangeDays] = useState<WeightChartRangeDays>(DEFAULT_RANGE_DAYS);
   const activeRange = WEIGHT_CHART_RANGES.find(r => r.days === rangeDays) ?? WEIGHT_CHART_RANGES[2];
 
@@ -100,9 +113,10 @@ export function WeightScreen() {
   const route = useRoute<{
     key: string;
     name: string;
-    params?: { openLog?: number; returnTo?: string };
+    params?: { openLog?: number; returnTo?: string; openGoal?: number };
   }>();
   const [handledOpenLog, setHandledOpenLog] = useState<number | undefined>(undefined);
+  const [handledOpenGoal, setHandledOpenGoal] = useState<number | undefined>(undefined);
   // Where to hand the user back once the sheet this opens closes — the tab
   // they tapped the weigh-in request from, carried by `resetToWeight`'s
   // `returnTo` param. Cleared whenever the sheet is opened by hand (the "+"
@@ -115,6 +129,14 @@ export function WeightScreen() {
     setReturnTo(route.params.returnTo);
     setLogOpen(true);
   }, [route.params?.openLog, route.params?.returnTo, handledOpenLog]);
+
+  // The same stamped-param handshake for the goal sheet, which the Settings row
+  // for a weight goal lands on. No `returnTo`: see `resetToWeightGoal`.
+  useEffect(() => {
+    if (route.params?.openGoal === undefined || route.params.openGoal === handledOpenGoal) return;
+    setHandledOpenGoal(route.params.openGoal);
+    setGoalOpen(true);
+  }, [route.params?.openGoal, handledOpenGoal]);
 
   useEffect(() => {
     if (healthReadEnabled) void refreshWeight();
@@ -139,6 +161,37 @@ export function WeightScreen() {
   const visibleReadings = useMemo(() => weightReadings(visiblePoints), [visiblePoints]);
   const change = useMemo(() => weightChange(visiblePoints), [visiblePoints]);
 
+  // The goal reads the *whole* series rather than the chart's range: progress
+  // is measured from the day the goal was set, which may well be further back
+  // than the range currently shown, and a card that changed its mind about how
+  // far along you are when you tapped "1M" would be reporting the control
+  // rather than the goal.
+  const goal = useSettingsStore(useShallow(s => s.weightGoal));
+  const goalWeightKg = useMemo(
+    () => (goal === null ? null : weightSinceGoalStart(goal, points)),
+    [goal, points],
+  );
+  const progress = goal !== null && goalWeightKg !== null ? goalProgress(goal, goalWeightKg) : null;
+  const pace = goal !== null && goalWeightKg !== null
+    ? goalPace(goal, goalWeightKg, getLogicalToday())
+    : null;
+  const remainingDays = goal !== null && goalWeightKg !== null
+    ? daysToTarget(goal, goalWeightKg)
+    : null;
+
+  // Against the *visible* slice, since its vertices are indexed into whatever
+  // the chart was handed. The goal card above reads the whole series instead,
+  // for the reason given there.
+  const pacePoints = useMemo(
+    () => (goal === null ? [] : pacePlotPoints(goal, visiblePoints)),
+    [goal, visiblePoints],
+  );
+
+  const openGoal = () => {
+    haptics.tap();
+    setGoalOpen(true);
+  };
+
   const openLog = () => { haptics.tap(); setReturnTo(undefined); setLogOpen(true); };
   const closeLog = () => {
     setLogOpen(false);
@@ -152,16 +205,32 @@ export function WeightScreen() {
     ? '—'
     : `${change.deltaKg > 0 ? '+' : ''}${kgToUnit(change.deltaKg, unit).toFixed(1)}`;
 
+  // Both header actions open a sheet, and neither sheet is mounted in the
+  // Health-off branch below — nor could usefully be, since a weight can only be
+  // recorded by writing it to Health and a goal has nothing to measure against.
+  // So the actions come off rather than sitting there doing nothing when
+  // tapped, which is what "Record a weight" did before this. The empty state is
+  // what points at Settings.
   const header = (
     <>
       <ScreenHeader
         title="Weight"
         subtitle={latest ? formatWeight(latest.kilograms, unit) : undefined}
-        actions={[{
-          icon: 'add-circle-outline' as const,
-          onPress: openLog,
-          accessibilityLabel: 'Record a weight',
-        }]}
+        actions={!healthReadEnabled ? [] : [
+          {
+            icon: 'flag-outline' as const,
+            onPress: openGoal,
+            // Tinted while a goal is set, the same way the Daily targets row
+            // in Settings marks itself once something is set there.
+            active: goal !== null,
+            accessibilityLabel: goal === null ? 'Set a weight goal' : 'Edit your weight goal',
+          },
+          {
+            icon: 'add-circle-outline' as const,
+            onPress: openLog,
+            accessibilityLabel: 'Record a weight',
+          },
+        ]}
       />
       <HubPills hub="history" active="Weight" />
     </>
@@ -202,6 +271,15 @@ export function WeightScreen() {
           bottomOffset={tabBarHeight}
         />
         <LogWeightSheet visible={logOpen} onClose={closeLog} />
+        {/* Mounted here as well as in the main branch: the header (and so its
+            goal action) is shared by every branch, and a button whose sheet
+            isn't mounted does nothing at all. The sheet's own first line is
+            what says a goal needs a weigh-in to measure from. */}
+        <WeightGoalSheet
+          visible={goalOpen}
+          onClose={() => setGoalOpen(false)}
+          currentKg={latest?.kilograms ?? null}
+        />
       </View>
     );
   }
@@ -238,6 +316,64 @@ export function WeightScreen() {
           />
         </View>
 
+        {goal !== null && (
+          <>
+            <Text style={styles.sectionTitle}>YOUR GOAL</Text>
+            <View style={styles.card}>
+              {progress === null ? (
+                <Text style={styles.finding}>
+                  Nothing recorded since you set this goal. Record a weight to see
+                  how it is going.
+                </Text>
+              ) : (
+                <>
+                  <Text style={styles.finding}>
+                    {formatWeight(goalWeightKg!, unit)} now, aiming for{' '}
+                    {formatWeight(goal.targetKg, unit)}.
+                  </Text>
+
+                  {/* One bar, one colour, no end state that reads as a failure —
+                      the same call targetProgress makes about its own. */}
+                  <View
+                    style={styles.goalTrack}
+                    accessible
+                    accessibilityLabel={`${Math.round(progress.fraction * 100)} percent of the way from ${formatWeight(goal.startKg, unit)} to ${formatWeight(goal.targetKg, unit)}`}
+                  >
+                    <View style={[styles.goalFill, { width: `${progress.fraction * 100}%` }]} />
+                  </View>
+
+                  <Text style={styles.goalLine}>
+                    {progress.reached
+                      ? `Reached, from ${formatWeight(goal.startKg, unit)}.`
+                      : `${formatWeight(Math.abs(progress.remainingKg), unit)} to go, from ${formatWeight(goal.startKg, unit)}.`}
+                  </Text>
+
+                  {/* Ahead and behind are said about the rate the user picked,
+                      never about them: no colour, no arrow, no advice. See the
+                      note at the top of weightGoal.ts. */}
+                  {pace !== null && goalDirection(goal) !== 'maintain' && !progress.reached && (
+                    <Text style={styles.goalLine}>
+                      {describePace(pace.aheadKg, unit)} Your pace would have put you at{' '}
+                      {formatWeight(pace.paceKg, unit)} by now.
+                    </Text>
+                  )}
+
+                  {remainingDays !== null && (
+                    <Text style={styles.goalLine}>
+                      At this rate, {format(addDays(getLogicalToday(), remainingDays), 'MMM d, yyyy')}.
+                    </Text>
+                  )}
+
+                  <Text style={styles.chartCaption}>
+                    Measured from your weigh-ins in Apple Health. Reaching it
+                    completes nothing and nothing is written anywhere.
+                  </Text>
+                </>
+              )}
+            </View>
+          </>
+        )}
+
         <View style={styles.rangeRow}>
           <SegmentedControl
             options={WEIGHT_CHART_RANGES.map(r => ({
@@ -263,10 +399,16 @@ export function WeightScreen() {
             <Text style={styles.finding}>Nothing recorded in this range.</Text>
           ) : (
             <>
-              <WeightChart points={visiblePoints} unit={unit} />
+              <WeightChart
+        points={visiblePoints}
+        unit={unit}
+        targetKg={goal?.targetKg ?? null}
+        pacePoints={pacePoints}
+      />
               <Text style={styles.chartCaption}>
                 Each dot is a day you weighed in. The line breaks where more than
                 two weeks passed without one. The fainter line is a 7-day average.
+                {goal !== null && ' The dashed lines are your target and the pace you set.'}
               </Text>
             </>
           )}
@@ -293,9 +435,37 @@ export function WeightScreen() {
         )}
       </ScrollView>
       <LogWeightSheet visible={logOpen} onClose={closeLog} />
+      <WeightGoalSheet
+        visible={goalOpen}
+        onClose={() => setGoalOpen(false)}
+        currentKg={latest?.kilograms ?? null}
+      />
     </View>
   );
 }
+
+/**
+ * The gap against the user's own chosen pace, in words.
+ *
+ * **A fact, not a verdict.** It names the distance and which side of the pace
+ * line it falls, with no colour, no arrow and nothing about whether that is
+ * good — the standard `weightChange` and every contrast on the Mood screen
+ * already hold themselves to. "On pace" gets its own phrasing because a gap of
+ * 20 grams rendered as "0.0 kg ahead" reads as a rounding bug.
+ */
+function describePace(aheadKg: number, unit: WeightUnit): string {
+  if (Math.abs(aheadKg) < ON_PACE_BAND_KG) return 'On your pace.';
+  const distance = formatWeight(Math.abs(aheadKg), unit);
+  return aheadKg > 0 ? `${distance} ahead of your pace.` : `${distance} behind your pace.`;
+}
+
+/**
+ * How close to the pace line counts as on it, in kilograms.
+ *
+ * A tenth of a kilogram, which is the precision a weight is displayed to: a gap
+ * smaller than the shown number can express has nothing to report.
+ */
+const ON_PACE_BAND_KG = 0.1;
 
 interface StatProps {
   styles: ReturnType<typeof makeStyles>;
@@ -342,5 +512,17 @@ const makeStyles = (colors: Colors) => StyleSheet.create({
     marginBottom: spacing.lg,
   },
   chartCaption: { fontSize: font.xs, color: colors.textTertiary, marginTop: spacing.sm },
+  // One colour and one direction. The bar is an aid to the numbers beside it,
+  // which stay the record — the rule ContrastBars states for its own pair.
+  goalTrack: {
+    height: 8,
+    borderRadius: radius.sm,
+    backgroundColor: colors.bgTertiary,
+    overflow: 'hidden',
+    marginTop: spacing.md,
+    marginBottom: spacing.sm,
+  },
+  goalFill: { height: '100%', borderRadius: radius.sm, backgroundColor: colors.accent },
+  goalLine: { fontSize: font.sm, color: colors.textSecondary, lineHeight: 20 },
   finding: { fontSize: font.md, color: colors.text, lineHeight: 22 },
 });

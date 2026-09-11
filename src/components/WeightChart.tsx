@@ -1,6 +1,6 @@
 import React, { useMemo, useState } from 'react';
 import { View, Text, StyleSheet, type LayoutChangeEvent } from 'react-native';
-import Svg, { Circle, Polyline } from 'react-native-svg';
+import Svg, { Circle, Line, Polyline } from 'react-native-svg';
 import { useColors } from '../theme/ThemeContext';
 import { spacing, font, fontWeight, type Colors } from '../theme';
 import {
@@ -12,6 +12,7 @@ import {
   type WeightPoint,
   type WeightUnit,
 } from '../utils/weightLog';
+import type { PacePlotPoint } from '../utils/weightGoal';
 
 /**
  * Body weight over a window of days: the app's first line chart.
@@ -71,18 +72,45 @@ const VERTICAL_INSET = DOT_RADIUS + 1;
  */
 const TREND_LINE_OPACITY = 0.35;
 
+/**
+ * The dash pattern both plan lines use, in SVG user units.
+ *
+ * One pattern rather than two, because the target and the pace are one claim
+ * drawn as two strokes: a horizontal line at the number and a diagonal
+ * arriving at it. Giving them separate treatments would read as two unrelated
+ * things on the chart rather than as the plan against the readings.
+ */
+const PLAN_DASH = '4 4';
+
 interface Props {
   /** One entry per day in the window, oldest first, null where nothing was logged. */
   points: WeightPoint[];
   unit: WeightUnit;
+  /**
+   * The goal's target, drawn as a horizontal line and given room in the
+   * y-domain. Omitted when there is no goal, which leaves the chart exactly as
+   * it was.
+   */
+  targetKg?: number | null;
+  /** The pace line's vertices, indexed into `points`. Empty or omitted draws none. */
+  pacePoints?: PacePlotPoint[];
 }
 
-export function WeightChart({ points, unit }: Props) {
+/**
+ * **The two plan lines are grey and dashed, and that is load-bearing rather
+ * than decorative.** Everything in the accent colour on this chart is something
+ * that happened: the readings, and an average of the readings. The target and
+ * the pace are neither, and a solid accent line for them would put a plan and a
+ * measurement in the same visual language on a chart whose whole design is
+ * about not doing that (see the three rules above). They share one colour and
+ * one dash pattern because together they are one statement.
+ */
+export function WeightChart({ points, unit, targetKg, pacePoints }: Props) {
   const colors = useColors();
   const styles = useMemo(() => makeStyles(colors), [colors]);
   const [width, setWidth] = useState(0);
 
-  const domain = useMemo(() => weightDomain(points), [points]);
+  const domain = useMemo(() => weightDomain(points, targetKg), [points, targetKg]);
   const segments = useMemo(() => weightSegments(points), [points]);
   const trendSegments = useMemo(() => weightTrendSegments(points), [points]);
 
@@ -96,10 +124,16 @@ export function WeightChart({ points, unit }: Props) {
       if (point.kilograms > high) high = point.kilograms;
     }
     const count = `${all.length} ${all.length === 1 ? 'reading' : 'readings'}`;
-    return low === high
+    const range = low === high
       ? `Weight chart, ${count}, ${formatWeight(low, unit)}`
       : `Weight chart, ${count}, between ${formatWeight(low, unit)} and ${formatWeight(high, unit)}`;
-  }, [segments, unit]);
+    // The target is named because it changes what the drawing shows; the pace
+    // line is not, for the reason the trend line isn't — it is the target and
+    // the rate restated as a line, and the goal card says both in words.
+    return targetKg === undefined || targetKg === null
+      ? range
+      : `${range}. Target ${formatWeight(targetKg, unit)}`;
+  }, [segments, unit, targetKg]);
 
   const onLayout = (event: LayoutChangeEvent) => setWidth(event.nativeEvent.layout.width);
 
@@ -119,6 +153,29 @@ export function WeightChart({ points, unit }: Props) {
       <View style={styles.plot} onLayout={onLayout}>
         {width > 0 && (
           <Svg width={width} height={CHART_HEIGHT}>
+            {/* Drawn first so the readings sit on top of the plan, never under it. */}
+            {targetKg !== undefined && targetKg !== null && (
+              <Line
+                x1={0}
+                y1={yFor(targetKg)}
+                x2={width}
+                y2={yFor(targetKg)}
+                stroke={colors.textTertiary}
+                strokeWidth={1}
+                strokeDasharray={PLAN_DASH}
+              />
+            )}
+            {pacePoints !== undefined && pacePoints.length > 1 && (
+              <Polyline
+                points={pacePoints.map(p => `${xFor(p.index)},${yFor(p.kilograms)}`).join(' ')}
+                fill="none"
+                stroke={colors.textTertiary}
+                strokeWidth={1}
+                strokeDasharray={PLAN_DASH}
+                strokeLinejoin="round"
+                strokeLinecap="round"
+              />
+            )}
             {trendSegments.map((segment, i) => segment.length > 1 && (
               <Polyline
                 key={`trend-${i}`}
