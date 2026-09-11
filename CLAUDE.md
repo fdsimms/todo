@@ -302,6 +302,8 @@ exports.
 | a stock of something that runs down as a task repeats, and ordering more | `src/utils/supply.ts` — see `docs/arch/supplies.md` |
 | a target logged N times a day, its pace ramp, and the same thing counted per week | `src/utils/quotaSchedule.ts` (the span) + `Task.quotaPeriod`. "Three times a week" is a quota with a week-long span, deliberately not a `RecurrenceType`: a recurrence answers "what date is next" and this has no next date to give. Every reader is written against the span, so widening it is the whole feature |
 | working a queue of tasks one at a time, with breaks | `src/utils/focusPlan.ts` + `src/store/useFocusStore.ts` — see `docs/arch/focus-sessions.md` |
+| what failing a task costs, in blocked apps | `src/utils/penaltyShield.ts` (the rule) + `sweepTaskPenalties`/`logSlip` in `useTaskStore` (the two triggers). The one feature here that does something to somebody for falling short, so read its refusals first: a task the app itself was withholding is never charged, a charge found on a later day is recorded without being served, and `undoSlip` deliberately doesn't refund |
+| whether the apps are blocked *right now* | `src/utils/appShield.ts` — the single arbiter over the focus shield and the penalty above. They drive one system shield, so it ORs them rather than each reconciling alone; two independent syncs was a race where one reason's end cleared the other's block |
 | a task that asks a question when it's completed | `src/utils/deliverables.ts` (+ `src/utils/bulkCompletion.ts` for the paths that complete several at once) |
 | a task falling on several dates | `seriesId` in `src/store/useTaskStore.ts` (`applyTaskDates`) — see Series below |
 | the month grid, and drawing an occurrence that has no row | `src/utils/calendarMonth.ts` + `src/screens/CalendarScreen.tsx` — see `docs/arch/month-grid.md` |
@@ -401,16 +403,15 @@ exports.
 **Read narrowly.** 56 files are over 1,000 lines, 37 of
 them source rather than tests. The ten biggest source files:
 
-`store/useTaskStore.ts` (8.3k), `db/database.ts` (5.6k), `types/index.ts` (5.5k),
-`components/TaskEditor.tsx` (5.5k), `store/useGroceryStore.ts` (5.4k),
-`screens/TodayScreen.tsx` (4.6k), `components/TaskItem.tsx` (4.3k),
-`utils/demoSeed.ts` (3.9k), `store/useSettingsStore.ts` (3.7k),
-`screens/BackfillScreen.tsx` (3.2k).
+`store/useTaskStore.ts` (8.4k), `components/TaskEditor.tsx` (5.6k), `db/database.ts` (5.6k),
+`types/index.ts` (5.6k), `store/useGroceryStore.ts` (5.4k), `screens/TodayScreen.tsx` (4.6k),
+`components/TaskItem.tsx` (4.3k), `utils/demoSeed.ts` (3.9k),
+`store/useSettingsStore.ts` (3.7k), `screens/BackfillScreen.tsx` (3.2k).
 
 Grep for the symbol and read the surrounding range; reading any of them end to end costs more
 context than the rest of the task will. `docs/module-map.md` says which file owns what.
 
-The suite is **300 test files**, and `npm test` runs all of them in about half a minute.
+The suite is **302 test files**, and `npm test` runs all of them in about half a minute.
 `npx tsc --noEmit` is a few seconds once `.tsbuildinfo` exists, so run both, every time.
 
 <!-- END GENERATED: repo-stats -->

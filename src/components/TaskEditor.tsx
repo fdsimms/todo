@@ -177,6 +177,9 @@ export interface TaskDraft {
   recurrenceCount: number | null;
   /** Carried over when the draft already names a specific time — an imported event's appointment time, for instance. */
   reminderTime?: Date | null;
+  /** What failing this costs in blocked-app minutes, and the time it's judged at. */
+  penaltyMinutes?: number | null;
+  penaltyCutoffTime?: string | null;
   /** Preselects the Chain toggle when opening a brand-new task. */
   chainEnabled?: boolean;
   /** Steps already built in quick add, so "More details" doesn't drop them. */
@@ -242,6 +245,14 @@ const MAX_STREAK_COUNT = 9999;
 // reasoning as the two ceilings above.
 const COMPLETION_TIMER_STEP_MINUTES = 15;
 const MAX_COMPLETION_TIMER_MINUTES = 24 * 60;
+// How long a failed task can block apps for. The floor is a quarter-hour
+// because iOS refuses a very short monitored interval (DeviceActivity throws
+// `intervalTooShort`), so a 5-minute block is a promise this could not keep
+// once the native schedule lands. The ceiling is a day: past that it stops
+// being a nudge and becomes somebody locked out of their phone by a chore.
+const PENALTY_STEP_MINUTES = 15;
+const PENALTY_MIN_MINUTES = 15;
+const PENALTY_MAX_MINUTES = 24 * 60;
 
 // Step and ceiling for one completion's worth of a nutrient, keyed the same
 // way NUTRIENT_LABEL is. This logs a single completion, not a running daily
@@ -416,6 +427,11 @@ export function TaskEditor({ visible, task, initialDraft, onClose }: Props) {
   const [windowEnd, setWindowEnd] = useState<string | null>(null);
   const [windowPickerMode, setWindowPickerMode] = useState<'none' | 'start' | 'end'>('none');
   const [windowPickerDate, setWindowPickerDate] = useState(new Date());
+  const [penaltyMinutes, setPenaltyMinutes] = useState<number | null>(null);
+  const [penaltyCutoffTime, setPenaltyCutoffTime] = useState<string | null>(null);
+  const [showPenalty, setShowPenalty] = useState(false);
+  const [penaltyPickerOpen, setPenaltyPickerOpen] = useState(false);
+  const [penaltyPickerDate, setPenaltyPickerDate] = useState(new Date());
   const [deferUntil, setDeferUntil] = useState<Date | null>(null);
   const [reminderTime, setReminderTime] = useState<Date | null>(null);
   const [reminderKind, setReminderKind] = useState<ReminderKind>('notification');
@@ -548,6 +564,7 @@ export function TaskEditor({ visible, task, initialDraft, onClose }: Props) {
   const [chainItemTitleEdit, setChainItemTitleEdit] = useState('');
 
   const dayResetTime = useSettingsStore(s => s.dayResetTime);
+  const penaltyShieldEnabled = useSettingsStore(s => s.penaltyShieldEnabled);
   const defaultReminderLeadMinutes = useSettingsStore(s => s.defaultReminderLeadMinutes);
   const kitchenEnabled = useSettingsStore(s => s.kitchenEnabled);
   const simpleMode = useSettingsStore(s => s.simpleMode);
@@ -654,6 +671,8 @@ export function TaskEditor({ visible, task, initialDraft, onClose }: Props) {
       setTimeSegments(task.timeSegments ?? []);
       setWindowStart(task.windowStart ?? null);
       setWindowEnd(task.windowEnd ?? null);
+      setPenaltyMinutes(task.penaltyMinutes ?? null);
+      setPenaltyCutoffTime(task.penaltyCutoffTime ?? null);
       setTargetCount(task.targetCount ?? null);
       setTargetUnit(task.targetUnit ?? '');
       setAllowOvershoot(task.allowOvershoot ?? false);
@@ -711,7 +730,7 @@ export function TaskEditor({ visible, task, initialDraft, onClose }: Props) {
     } else {
       setTitle(initialDraft?.title ?? ''); titleCaret.resetCaret(initialDraft?.title ?? ''); setNotes(initialDraft?.notes ?? ''); setCategory(initialDraft?.category ?? null); setProject(initialDraft?.projectId ?? null); setTags(initialDraft?.tags ?? []);
       setGroupId(initialDraft?.groupId ?? null);
-      setDueDate(initialDraft?.dueDate ?? null); setExtraDates([]); setSeriesRepeats(false); setDeadline(null); setDeadlineOffsetDays(null); setDeadlineMonthDay(null); setDeadlineOnCalendar(false); setTimeSegments(initialDraft?.timeSegments ?? []); setWindowStart(null); setWindowEnd(null); setTargetCount(initialDraft?.targetCount ?? null); setTargetUnit(initialDraft?.targetUnit ?? ''); setAllowOvershoot(initialDraft?.allowOvershoot ?? false); setQuotaIntervalMinutes(initialDraft?.quotaIntervalMinutes ?? null); setQuotaReminders(initialDraft?.quotaReminders ?? false); setQuotaAlwaysVisible(initialDraft?.quotaAlwaysVisible ?? false); setSupplyCount(initialDraft?.supplyCount ?? null); setSupplyUnit(initialDraft?.supplyUnit ?? ''); setSupplyRefillCount(initialDraft?.supplyRefillCount ?? null); setSupplyReorderAt(initialDraft?.supplyReorderAt ?? DEFAULT_SUPPLY_REORDER_AT); setSupplyLeadDays(initialDraft?.supplyLeadDays ?? null); setSupplyGroceryItemId(initialDraft?.supplyGroceryItemId ?? null); setDeferUntil(null); setReminderTime(initialDraft?.reminderTime ?? null); setReminderKind('notification'); setReminderTimeAnchor('wallClock'); setReminderTouched(false);
+      setDueDate(initialDraft?.dueDate ?? null); setExtraDates([]); setSeriesRepeats(false); setDeadline(null); setDeadlineOffsetDays(null); setDeadlineMonthDay(null); setDeadlineOnCalendar(false); setTimeSegments(initialDraft?.timeSegments ?? []); setWindowStart(null); setWindowEnd(null); setPenaltyMinutes(initialDraft?.penaltyMinutes ?? null); setPenaltyCutoffTime(initialDraft?.penaltyCutoffTime ?? null); setTargetCount(initialDraft?.targetCount ?? null); setTargetUnit(initialDraft?.targetUnit ?? ''); setAllowOvershoot(initialDraft?.allowOvershoot ?? false); setQuotaIntervalMinutes(initialDraft?.quotaIntervalMinutes ?? null); setQuotaReminders(initialDraft?.quotaReminders ?? false); setQuotaAlwaysVisible(initialDraft?.quotaAlwaysVisible ?? false); setSupplyCount(initialDraft?.supplyCount ?? null); setSupplyUnit(initialDraft?.supplyUnit ?? ''); setSupplyRefillCount(initialDraft?.supplyRefillCount ?? null); setSupplyReorderAt(initialDraft?.supplyReorderAt ?? DEFAULT_SUPPLY_REORDER_AT); setSupplyLeadDays(initialDraft?.supplyLeadDays ?? null); setSupplyGroceryItemId(initialDraft?.supplyGroceryItemId ?? null); setDeferUntil(null); setReminderTime(initialDraft?.reminderTime ?? null); setReminderKind('notification'); setReminderTimeAnchor('wallClock'); setReminderTouched(false);
       setRecurrenceType(initialDraft?.recurrenceType ?? 'none'); setRecurrenceInterval(initialDraft?.recurrenceInterval ?? 1);
       setRecurrenceDays(initialDraft?.recurrenceDays ?? []);
       setRecurrenceMonthDay(initialDraft?.recurrenceMonthDay ?? null);
@@ -783,6 +802,8 @@ export function TaskEditor({ visible, task, initialDraft, onClose }: Props) {
       timeSegments: task ? (task.timeSegments ?? []) : (initialDraft?.timeSegments ?? []),
       windowStart: task?.windowStart ?? null,
       windowEnd: task?.windowEnd ?? null,
+      penaltyMinutes: task ? (task.penaltyMinutes ?? null) : (initialDraft?.penaltyMinutes ?? null),
+      penaltyCutoffTime: task ? (task.penaltyCutoffTime ?? null) : (initialDraft?.penaltyCutoffTime ?? null),
       targetCount: task ? (task.targetCount ?? null) : (initialDraft?.targetCount ?? null),
       targetUnit: normalizeTargetUnit(task ? task.targetUnit : initialDraft?.targetUnit),
       allowOvershoot: task ? (task.allowOvershoot ?? false) : (initialDraft?.allowOvershoot ?? false),
@@ -1053,6 +1074,12 @@ export function TaskEditor({ visible, task, initialDraft, onClose }: Props) {
       deadlineOnCalendar: deadline ? deadlineOnCalendar : false,
       logCompletionToCalendar,
       timeSegments, windowStart, windowEnd, targetCount,
+      penaltyMinutes,
+      // Meaningless without a penalty to be late for, and meaningless on an
+      // avoid-task, which fails on a tap rather than at a time. Cleared rather
+      // than carried so a task that stops costing anything doesn't keep a
+      // cutoff waiting for one to come back.
+      penaltyCutoffTime: penaltyMinutes !== null && polarity !== 'negative' ? penaltyCutoffTime : null,
       // Cleared with the count it labels — a unit left behind on a task that is
       // no longer a target has nothing to sit beside, and would come back the
       // moment a target did.
@@ -1508,6 +1535,20 @@ export function TaskEditor({ visible, task, initialDraft, onClose }: Props) {
     }
   };
 
+  // The cutoff a positive task has to beat. Defaults to 09:00 rather than the
+  // current time: this is a time of day somebody means ("by nine"), and seeding
+  // it with whenever the sheet happened to be opened makes every task's
+  // suggested deadline a different arbitrary minute.
+  const openPenaltyPicker = () => {
+    setPenaltyPickerDate(hhmmToDate(penaltyCutoffTime ?? '09:00'));
+    setPenaltyPickerOpen(true);
+  };
+
+  const confirmPenaltyPicker = () => {
+    setPenaltyCutoffTime(dateToHHMM(penaltyPickerDate));
+    setPenaltyPickerOpen(false);
+  };
+
   const openWindowPicker = (which: 'start' | 'end') => {
     // Switching pills before hitting Set commits the pill being left instead
     // of discarding it, so dialing in Start and tapping End keeps the Start
@@ -1871,6 +1912,15 @@ export function TaskEditor({ visible, task, initialDraft, onClose }: Props) {
   const timeWindowSummary = (windowStart || windowEnd)
     ? `${windowStart ? formatHHMM(windowStart) : 'Any'} – ${windowEnd ? formatHHMM(windowEnd) : 'Any'}`
     : undefined;
+  // Says what happens and when, because the two halves are set separately and
+  // a bare "2h" on the collapsed row reads as how long the task takes.
+  const penaltySummary = penaltyMinutes === null
+    ? undefined
+    : polarity === 'negative'
+      ? `${formatDuration(penaltyMinutes)} each time`
+      : penaltyCutoffTime
+        ? `${formatDuration(penaltyMinutes)} after ${formatHHMM(penaltyCutoffTime, use24HourTime)}`
+        : `${formatDuration(penaltyMinutes)} if not done today`;
   const effortSummaryMinutes = estimatedMinutes ?? effortToMinutes(effort);
   const effortSummary = effort > 0 && effortSummaryMinutes != null
     ? formatDuration(effortSummaryMinutes)
@@ -3472,6 +3522,85 @@ export function TaskEditor({ visible, task, initialDraft, onClose }: Props) {
               </>
             ),
           },
+          // Only while the feature is switched on. A per-task cost that nothing
+          // would ever charge is worse than an undiscoverable one, and Settings
+          // is where the switch lives because that is where Screen Time access
+          // is asked for.
+          ...(penaltyShieldEnabled ? [{
+            key: 'penalty',
+            label: 'Block apps',
+            set: penaltyMinutes !== null,
+            keywords: ['block', 'penalty', 'punish', 'consequence', 'cost', 'screen time', 'apps', 'shield', 'lock'],
+            node: (
+              <>
+                <EditorRow
+                  icon="lock-closed-outline"
+                  label={polarity === 'negative' ? 'Block apps on a slip' : 'Block apps if missed'}
+                  hint={polarity === 'negative'
+                    ? 'Blocks the apps you picked in Settings as soon as you log one.'
+                    : 'Blocks the apps you picked in Settings if this is still undone at the cutoff.'}
+                  value={penaltySummary}
+                  expanded={showPenalty}
+                  onPress={() => { animateLayout(); setShowPenalty(v => !v); }}
+                  onClear={penaltyMinutes !== null
+                    ? () => { setPenaltyMinutes(null); setPenaltyCutoffTime(null); setPenaltyPickerOpen(false); }
+                    : undefined}
+                />
+                {showPenalty && (
+                  <>
+                    <CountStepper
+                      value={penaltyMinutes}
+                      onChange={setPenaltyMinutes}
+                      min={PENALTY_MIN_MINUTES}
+                      max={PENALTY_MAX_MINUTES}
+                      step={PENALTY_STEP_MINUTES}
+                      allowNull
+                      emptyLabel="No block"
+                      format={formatDuration}
+                      label="Block length"
+                      style={styles.penaltyStepper}
+                    />
+                    {polarity !== 'negative' && penaltyMinutes !== null && (
+                      <>
+                        <View style={styles.windowPillRow}>
+                          <TouchableOpacity
+                            style={[
+                              styles.timePill, styles.windowPill,
+                              !!penaltyCutoffTime && styles.timePillActive,
+                              penaltyPickerOpen && styles.timePillEditing,
+                            ]}
+                            onPress={openPenaltyPicker}
+                          >
+                            <Text style={[styles.timePillText, !!penaltyCutoffTime && styles.timePillTextActive]}>
+                              {penaltyCutoffTime ? formatHHMM(penaltyCutoffTime, use24HourTime) : 'End of day'}
+                            </Text>
+                          </TouchableOpacity>
+                          {penaltyCutoffTime !== null && (
+                            <TouchableOpacity
+                              style={[styles.timePill, styles.windowPill]}
+                              onPress={() => { setPenaltyCutoffTime(null); setPenaltyPickerOpen(false); }}
+                              accessibilityRole="button"
+                              accessibilityLabel="Judge at the end of the day instead"
+                            >
+                              <Text style={styles.timePillText}>Clear</Text>
+                            </TouchableOpacity>
+                          )}
+                        </View>
+                        {penaltyPickerOpen && (
+                          <InlineTimePicker
+                            value={penaltyPickerDate}
+                            onChange={setPenaltyPickerDate}
+                            onCancel={() => setPenaltyPickerOpen(false)}
+                            onConfirm={confirmPenaltyPicker}
+                          />
+                        )}
+                      </>
+                    )}
+                  </>
+                )}
+              </>
+            ),
+          }] : []),
           // Only for a saved top-level task: the action opens a system sheet
           // that writes an event against a task id, and there isn't one yet
           // while a task is being composed. Reads the *saved* estimate rather
@@ -5167,6 +5296,10 @@ const makeStyles = (colors: Colors) => StyleSheet.create({
     paddingHorizontal: spacing.md, paddingTop: spacing.sm, paddingBottom: spacing.sm,
   },
   windowPill: { flex: 1 },
+  // Margin on both sides: the pill row below supplies its own top padding, but
+  // the row above this one ends flush, so without the top margin the stepper
+  // sits against it.
+  penaltyStepper: { marginHorizontal: spacing.md, marginTop: spacing.md, marginBottom: spacing.xs },
   targetStepperRow: {
     flexDirection: 'row', alignItems: 'center', gap: spacing.sm,
     paddingHorizontal: spacing.md, paddingTop: spacing.xs, paddingBottom: spacing.xs,

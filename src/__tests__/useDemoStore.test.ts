@@ -647,6 +647,31 @@ describe('demo mode', () => {
     useDemoStore.getState().exitDemoMode();
   });
 
+  it('seeds both sides of the apps-blocked penalty, with the feature switched on', () => {
+    useDemoStore.getState().enterDemoMode();
+
+    // Off by default, so without this the seeded costs would be configuration
+    // nobody can see: the editor row only exists while the feature is on.
+    expect(useSettingsStore.getState().penaltyShieldEnabled).toBe(true);
+
+    const s = useTaskStore.getState();
+    // Fails by a time passing.
+    const walk = s.tasks.find(t => t.title === 'Morning walk');
+    expect(walk?.penaltyMinutes).toBe(120);
+    expect(walk?.penaltyCutoffTime).toBe('08:00');
+    // Fails on a tap — no cutoff, because a slip is the failure itself.
+    const slip = s.tasks.find(t => t.title === 'No snacking after dinner');
+    expect(slip?.penaltyMinutes).toBe(60);
+    expect(slip?.penaltyCutoffTime).toBeNull();
+
+    // Nothing has been charged in a fresh demo — the seed shows what a cost
+    // looks like, not somebody already serving one.
+    expect(walk?.penaltyFiredAt).toBeNull();
+    expect(useSettingsStore.getState().penaltyShieldUntil).toBeNull();
+
+    useDemoStore.getState().exitDemoMode();
+  });
+
   it('seeds a task held back by another', () => {
     useDemoStore.getState().enterDemoMode();
     const s = useTaskStore.getState();
