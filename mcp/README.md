@@ -63,6 +63,7 @@ Read-only except the last, which needs `MCP_WRITE_TOKEN`.
 | `list_medication_logs` | Doses recorded, scheduled and as-needed. |
 | `list_templates` | Stored templates: name, item count, groups, and the questions a run asks. |
 | `create_template` | **Write.** Builds a whole template in one call. Needs `MCP_WRITE_TOKEN`. |
+| `create_task` | **Write.** Adds one task, with the app's own defaults and title rules applied. |
 
 The three log tools take the same range: `days` counts back from today (7 by default), or pass
 `from`/`to` as `YYYY-MM-DD`. There is deliberately **no weight tool** — weight lives in Apple

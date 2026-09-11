@@ -258,6 +258,44 @@ describe('the replica', () => {
     expect(() => replica.createTemplate({ name: '', items: [] })).toThrow(/name is required.*at least one item/);
   });
 
+  it('creates a task through the app\'s own builder, defaults and all', () => {
+    const task = replica.createTask({ title: 'Water the plants', category: 'Home' });
+
+    expect(task).toMatchObject({ title: 'Water the plants', category: 'Home', completed: false });
+    // newTaskFromDraft's doing, not the tool's: an id, a created stamp, and the
+    // hundred other fields at their defaults. A tool restating any of these
+    // would be a second copy to keep in step.
+    expect(task.id).toEqual(expect.any(String));
+    expect(task.createdAt).toEqual(expect.any(String));
+    expect(task.recurrenceType).toBe('none');
+    expect(task.tags).toEqual([]);
+
+    // And it is really in the database, not just returned.
+    replica.refresh();
+    expect(replica.taskById(task.id)?.title).toBe('Water the plants');
+  });
+
+  it('gives each new task the next sort order rather than colliding on one', () => {
+    const first = replica.createTask({ title: 'First' });
+    const second = replica.createTask({ title: 'Second' });
+    expect(second.sortOrder).toBeGreaterThan(first.sortOrder);
+  });
+
+  it('refuses a task with no title', () => {
+    expect(() => replica.createTask({ title: '   ' })).toThrow('needs a title');
+  });
+
+  it('leaves the reminder to the device that receives it', () => {
+    // addTask schedules a notification around this; the replica deliberately
+    // does not, because it has no notification centre and the phone's own
+    // rebuildNotificationQueue reschedules from every task after a sync.
+    const task = replica.createTask({
+      title: 'Call the dentist',
+      reminderTime: '2099-01-01T09:00:00.000Z',
+    });
+    expect(task.reminderTime).toBe('2099-01-01T09:00:00.000Z');
+  });
+
   it('clears cached reads on refresh, so a sync landing mid-session is seen', () => {
     insert({ id: 'first', title: 'First' });
     replica.refresh();

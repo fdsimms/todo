@@ -3,8 +3,8 @@
 An MCP server that lets Claude read this app's data (#100). The code is `mcp/`; the parts of it
 that are ordinary TypeScript are tested by the repo's own jest run, alongside everything else.
 
-**Status: phase 2.** The replica is a real sync peer, and it can write: `create_template` is the
-first tool that changes anything, behind its own token. Nothing is deployed behind real auth. The
+**Status: phase 2.** The replica is a real sync peer, and it can write: `create_template` and
+`create_task`, behind their own token. Nothing is deployed behind real auth. The
 phases are at the bottom of this file.
 
 It runs. The server has been exercised end to end against a file database, and a change made on one
@@ -262,6 +262,29 @@ And it costs nothing, because what the store would have bought is not the store'
 not carry one, so a template written through `dbInsertTemplate` syncs exactly like one the app
 wrote. A whole template is a single row, so one insert is *more* atomic than the store's
 group-then-question-then-item sequence, not less.
+
+### Creating a task, and the builder that had to move
+
+`create_task` goes through `newTaskFromDraft`, which used to be a private function inside
+`useTaskStore.ts` and is now `src/utils/taskDraft.ts`. It moved unchanged, with
+`applyTitleRulesToDraft` and `resolveTimeSegments` beside it, because `useTaskStore` is unreachable
+from Node for the same reason `useTemplateStore` is. Its dependencies were already clean:
+`useSettingsStore`, `useCategoryStore` and pure utils.
+
+The point of moving it rather than writing a second one is that those defaults are the **only**
+copy. A task built anywhere else would drift from `newTaskDefaults`, the category seed, the
+recurrence anchor and the supply and target clamps the first time any of them changed, and nothing
+would fail to say so.
+
+**Title rules apply, and `projectId` is still held back.** An MCP creation is a headless creation,
+like a dictated Apple reminder, a deep link or a template run, and those all get the rules. The one
+field held back for them is held back here too, for the reason `applyTitleRulesToDraft` gives: a
+rule filing an undated task into a project takes it off every list the person was looking at.
+
+**The device work stays on the device.** `addTask` schedules a reminder, the quota nudges and a
+deadline calendar event around the insert; none of that happens here. A task arriving on a phone by
+sync has its reminder scheduled by `rebuildNotificationQueue`, which reschedules from every task
+rather than from the one that changed — which is exactly why that pass exists.
 
 ### Writes have their own token
 

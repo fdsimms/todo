@@ -20,6 +20,7 @@
 import type { FoodLogEntry, GroceryItem, MedicationLog, MoodLog, Project, Task } from '../../src/types';
 import type { Replica } from './replica';
 import type { TemplatePlan } from './templatePlan';
+import type { TaskDraft } from '../../src/types';
 import { serializeTasks, type SerializedTask } from './serialize';
 
 /** The four sub-views of TodayScreen, plus the everything case. */
@@ -415,6 +416,18 @@ export function createTemplate(replica: Replica, plan: TemplatePlan): CreateTemp
     questions: built.questions.length,
     scheduled: built.schedule !== null,
   };
+}
+
+/**
+ * Create a task, and hand back what it actually became.
+ *
+ * The result is the serialized task rather than an id, because the app fills
+ * things the caller did not ask for — a category from `newTaskDefaults`, a
+ * time-of-day segment from that category, a title the rules rewrote — and a
+ * caller that cannot see those cannot tell the user what it made.
+ */
+export function createTask(replica: Replica, draft: Partial<TaskDraft>): SerializedTask {
+  return serializeTasks(replica, [replica.createTask(draft)])[0];
 }
 
 export function listMedicationLogs(

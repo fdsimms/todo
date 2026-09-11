@@ -273,6 +273,7 @@ name cannot say is where a component appears, and that is `docs/screen-map.md`.
 - `src/utils/syncMerge.ts` — SyncDeletion, SyncChangeSet, SYNC_FORMAT, SyncPayload, ParsedPayload, buildPayload, serializePayload, parsePayload, remoteRowWins, remoteDeletionWins, +3 more
 - `src/utils/syncStatus.ts` — describeLastSynced
 - `src/utils/tagColor.ts` — tagColor
+- `src/utils/taskDraft.ts` — applyTitleRulesToDraft, newTaskFromDraft
 - `src/utils/taskGrouping.ts` — CategoryListItem, ContextListItem, TodayListItem, LATER_TODAY_LABEL, makeCategoryGroups, DropResolution, resolveDrop, LaterListItem, flattenLaterSections, isLaterHeader, +19 more
 - `src/utils/taskInstances.ts` — InstanceGroup, normalizeTitle, getRepeatedInstances
 - `src/utils/taskKinds.ts` — TaskKind, TASK_KIND_META, taskKindOf, QuickAddChip, QUICK_ADD_CHIP_LABELS, QUICK_ADD_CHIP_LIMIT, TASK_KINDS, DEFAULT_TIMED_MINUTES, DEFAULT_TARGET_COUNT, TIMED_MINUTE_OPTIONS, +11 more

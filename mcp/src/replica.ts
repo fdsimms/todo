@@ -41,6 +41,7 @@ import type {
   Project,
   TaskTemplate,
   Task,
+  TaskDraft,
 } from '../../src/types';
 import type { FoodLogTotals } from '../../src/utils/foodLog';
 import type { SyncSummary } from '../../src/utils/syncEngine';
@@ -59,6 +60,7 @@ type FoodLogModule = typeof import('../../src/utils/foodLog');
 type MoodHistoryModule = typeof import('../../src/utils/moodHistory');
 type MedicationModule = typeof import('../../src/utils/medicationLog');
 type TemplateUtilsModule = typeof import('../../src/utils/templateUtils');
+type TaskDraftModule = typeof import('../../src/utils/taskDraft');
 type IdModule = typeof import('../../src/utils/id');
 
 /** One task the way `fuzzySearch` ranked it, without the highlight ranges. */
@@ -145,6 +147,27 @@ export interface Replica {
    */
   createTemplate(plan: TemplatePlan): TaskTemplate;
 
+  /**
+   * Create one task, exactly as the app's own create path would.
+   *
+   * Built by `newTaskFromDraft`, which was lifted out of `useTaskStore` for
+   * this (see `src/utils/taskDraft.ts`): it is the only copy of the new-task
+   * defaults, the category seed and the recurrence anchor, so a task built any
+   * other way would drift from the app's the first time one of them changed.
+   *
+   * Title rules apply, which is deliberate and matches the app's other headless
+   * creations — a dictated Apple reminder, a deep link, a template run all get
+   * them. The one field they hold back for those callers, `projectId`, is held
+   * back here too, and for the same reason: a rule filing an undated task into
+   * a project takes it off every list the person was looking at.
+   *
+   * What it does **not** do is the device work `addTask` does around it: no
+   * reminder is scheduled, no quota nudge, no calendar event. Those belong to
+   * whichever device the task syncs to, and `rebuildNotificationQueue` there
+   * reschedules from every task rather than from the one that changed.
+   */
+  createTask(draft: Partial<TaskDraft>): Task;
+
   deviceId(): string;
   /** False for a demo database. A demo database is never synced. */
   syncable(): boolean;
@@ -210,6 +233,7 @@ export function openReplica(path = process.env.TODO_DB_PATH ?? 'todo.db'): Repli
   const syncLocal = require('../../src/utils/syncLocal') as SyncLocalModule;
   const httpTransport = require('../../src/utils/httpSyncTransport') as HttpTransportModule;
   const templateUtils = require('../../src/utils/templateUtils') as TemplateUtilsModule;
+  const taskDraft = require('../../src/utils/taskDraft') as TaskDraftModule;
   const { generateId } = require('../../src/utils/id') as IdModule;
   const { registerTaskSource } = require('../../src/utils/blockerRegistry') as typeof import('../../src/utils/blockerRegistry');
   const { registerPersonSource } = require('../../src/utils/peopleRegistry') as typeof import('../../src/utils/peopleRegistry');
@@ -355,6 +379,23 @@ export function openReplica(path = process.env.TODO_DB_PATH ?? 'todo.db'): Repli
 
       db.dbInsertTemplate(template);
       return template;
+    },
+
+    createTask(draft: Partial<TaskDraft>): Task {
+      if (!draft.title?.trim()) throw new Error('A task needs a title.');
+
+      const all = db.dbGetAllTasks();
+      const task = taskDraft.newTaskFromDraft(
+        taskDraft.applyTitleRulesToDraft(draft),
+        new Date().toISOString(),
+        all.reduce((m, t) => Math.max(m, t.sortOrder), 0) + 1,
+        // Seed time-of-day from the category, as the two from-scratch creation
+        // paths in the app do. This is a from-scratch creation.
+        true
+      );
+      db.dbInsertTask(task);
+      refresh();
+      return task;
     },
 
     deviceId: () => db.dbGetDeviceId(),
