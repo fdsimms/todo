@@ -15,13 +15,25 @@ import type { FoodNutrition } from '../types';
 
 jest.mock('react-native', () => ({ Platform: { OS: 'ios' } }));
 
+/**
+ * Standing in for the table rather than for one call.
+ *
+ * `addEntry` reads the day's existing rows back out of SQLite to work out
+ * where the new one appends, so a range read hard-coded to `[]` would report
+ * that every day is empty and pin every entry at 0 — which is the bug these
+ * tests are here to hold down. Inserts land here and the range read filters
+ * them, which is as much of a database as this file needs.
+ */
+const mockRows: { dayKey: string }[] = [];
+
 jest.mock('../db/database', () => ({
-  dbGetFoodLogEntries: jest.fn(() => []),
+  dbGetFoodLogEntries: jest.fn((startKey: string, endKey: string) =>
+    mockRows.filter(r => r.dayKey >= startKey && r.dayKey <= endKey)),
   // Matches the real dbGetFoodLogEntry's own miss case (a null row reads as
   // null, never undefined) — see database.ts.
   dbGetFoodLogEntry: jest.fn(() => null),
   dbCountFoodLogEntries: jest.fn(() => 0),
-  dbInsertFoodLogEntry: jest.fn(),
+  dbInsertFoodLogEntry: jest.fn((entry: { dayKey: string }) => { mockRows.push(entry); }),
   dbUpdateFoodLogEntry: jest.fn(),
   dbDeleteFoodLogEntry: jest.fn(),
   dbBulkDeleteFoodLogEntries: jest.fn(),
@@ -81,6 +93,7 @@ function draft(overrides: Partial<FoodLogDraft> = {}): FoodLogDraft {
 
 beforeEach(() => {
   jest.clearAllMocks();
+  mockRows.length = 0;
   (dbGetFoodLogEntry as jest.Mock).mockReturnValue(null);
   useFoodLogStore.setState({
     entries: [], rangeStart: null, rangeEnd: null, totalCount: 0, initialized: false,
@@ -218,6 +231,20 @@ describe('addEntry sortOrder', () => {
     state().addEntry(draft({ label: 'Yesterday', at: new Date(2026, 3, 1, 9, 0) }));
     const today = state().addEntry(draft({ label: 'Today' }))!;
     expect(today.sortOrder).toBe(0);
+  });
+
+  // The day's rows are read from SQLite rather than from `entries`, which
+  // holds only the loaded window. Counted from the window, a meal logged from
+  // LogMealPrompt while the day view sat on another day found no siblings,
+  // took 0, and tied with the day's first row instead of appending to it.
+  it('appends even when the day it lands on is outside the loaded window', () => {
+    state().loadRange('2026-04-02', '2026-04-02');
+    state().addEntry(draft({ label: 'Breakfast' }));
+    state().addEntry(draft({ label: 'Lunch' }));
+    state().loadRange('2026-03-01', '2026-03-01');
+    const dinner = state().addEntry(draft({ label: 'Dinner' }))!;
+    expect(dinner.dayKey).toBe('2026-04-02');
+    expect(dinner.sortOrder).toBe(2);
   });
 });
 

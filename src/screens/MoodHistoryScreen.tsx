@@ -73,7 +73,7 @@ export function MoodHistoryScreen() {
   const sections = useMemo(
     () => groupLogsByDay(filterMoodLogs(logs, filter)).map(day => ({
       key: day.dayKey,
-      title: format(dayKeyToDate(day.dayKey), 'EEEE d MMMM yyyy'),
+      title: format(dayKeyToDate(day.dayKey), 'EEEE, MMMM d, yyyy'),
       data: day.logs,
     })),
     [logs, filter],

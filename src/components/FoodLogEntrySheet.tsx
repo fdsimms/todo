@@ -3,6 +3,7 @@ import {
   Alert,
   FlatList,
   Modal,
+  ScrollView,
   StyleSheet,
   Text,
   TextInput,
@@ -268,13 +269,20 @@ export function FoodLogEntrySheet({ visible, slot, at, seedRecipeId, onClose, on
   // After the reset above, and off `candidates` rather than the recipe store,
   // so a dish that has no figures is left unpicked rather than opening onto a
   // form that can never save. Its amount seeds the way tapping the row does.
+  //
+  // Fired once per seed rather than on every `candidates` identity: that list
+  // rebuilds on any grocery or recipe write, and re-running `choose` there
+  // re-picked the dish and threw away whatever amount had been typed since.
+  const [seededRecipeId, setSeededRecipeId] = useState<string | null>(null);
+  useEffect(() => { if (!visible) setSeededRecipeId(null); }, [visible]);
   useEffect(() => {
-    if (!visible || !seedRecipeId) return;
+    if (!visible || !seedRecipeId || seedRecipeId === seededRecipeId) return;
     const dish = candidates.find(c => c.recipeId === seedRecipeId);
     if (!dish) return;
+    setSeededRecipeId(seedRecipeId);
     choose(dish);
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [visible, seedRecipeId, candidates]);
+  }, [visible, seedRecipeId, seededRecipeId, candidates]);
 
   /**
    * Picking one, and opening it on the question it can actually answer: grams
@@ -329,11 +337,13 @@ export function FoodLogEntrySheet({ visible, slot, at, seedRecipeId, onClose, on
       if (!Number.isFinite(typed) || typed <= 0) return null;
       // Rebuilt from the dish rather than scaled off the one-serving panel, so
       // the rounding happens once against the real per-serving figures.
-      const dish = recipeNutrition(
-        recipes.find(r => r.id === picked.recipeId)!,
-        items,
-        itemProducts,
-      );
+      //
+      // Looked up rather than asserted: the recipe can be deleted from another
+      // screen while this sheet is open, and a non-null assertion turned that
+      // into a crash rather than a Save that quietly stays disabled.
+      const recipe = recipes.find(r => r.id === picked.recipeId);
+      if (!recipe) return null;
+      const dish = recipeNutrition(recipe, items, itemProducts);
       if (!dish) return null;
       const figures = {
         total: dish.total,
@@ -516,7 +526,17 @@ export function FoodLogEntrySheet({ visible, slot, at, seedRecipeId, onClose, on
         </View>
 
         {picked ? (
-          <View style={styles.body}>
+          // Scrolls, because this half can outgrow the sheet: the amount field
+          // takes focus on arrival, so the keyboard is already up, and a dish
+          // with a couple of "Anything else?" lines pushes Which meal and
+          // "Pick something else" under it with no way to reach them. Its two
+          // siblings both handle this — `ScanPortionSheet` with a ScrollView
+          // and `LogMealPrompt` with a KeyboardAvoidingView.
+          <ScrollView
+            style={styles.bodyScroll}
+            contentContainerStyle={styles.body}
+            keyboardShouldPersistTaps="handled"
+          >
             <Text style={styles.label}>HOW MUCH</Text>
             {/* Only for a dish that can answer both ways. A weighed dish with
                 no servings count has nothing to switch to, and offering the
@@ -543,6 +563,11 @@ export function FoodLogEntrySheet({ visible, slot, at, seedRecipeId, onClose, on
               placeholderTextColor={colors.textTertiary}
               autoFocus
               keyboardType={picked.kind === 'dish' ? 'decimal-pad' : 'default'}
+              // The number pad has no return key, so without this there is no
+              // way off it — the same accessory the weigh field below already
+              // passes. Omitted for a food, whose amount is typed words ("1
+              // cup") on the ordinary keyboard.
+              inputAccessoryViewID={picked.kind === 'dish' ? NUMBER_PAD_ACCESSORY_ID : undefined}
               accessibilityLabel={
                 picked.kind === 'dish' && dishMeasure === 'weight'
                   ? 'Weight on your plate in grams'
@@ -612,7 +637,7 @@ export function FoodLogEntrySheet({ visible, slot, at, seedRecipeId, onClose, on
                 {built.nutrition.amounts.calorieKcal !== undefined
                   ? `${Math.round(built.nutrition.amounts.calorieKcal)} cal`
                   : 'No calories stated'}
-                {built.grams !== null ? `, ${built.grams}g` : ''}
+                {built.grams !== null ? `, ${built.grams} g` : ''}
               </Text>
             )}
 
@@ -664,7 +689,7 @@ export function FoodLogEntrySheet({ visible, slot, at, seedRecipeId, onClose, on
             >
               <Text style={styles.changeText}>Pick something else</Text>
             </TouchableOpacity>
-          </View>
+          </ScrollView>
         ) : (
           <>
             <View style={styles.searchRow}>
@@ -741,7 +766,8 @@ function makeStyles(colors: Colors) {
       fontSize: font.md,
       fontWeight: fontWeight.semibold,
     },
-    body: { padding: spacing.md, gap: spacing.xs },
+    bodyScroll: { flex: 1 },
+    body: { padding: spacing.md, paddingBottom: spacing.xl, gap: spacing.xs },
     label: {
       color: colors.textSecondary,
       fontSize: font.xs,

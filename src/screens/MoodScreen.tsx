@@ -339,7 +339,7 @@ export function MoodScreen() {
         // elements is the trade: a single summary would lose exactly the two
         // things the chart is drawn to show. The date is spelled out because a
         // weekday initial ("W") is what the chart reads as without it.
-        a11y: `${today ? 'Today, ' : ''}${format(date, 'EEEE d MMMM')}, ${
+        a11y: `${today ? 'Today, ' : ''}${format(date, 'EEEE, MMMM d')}, ${
           mood === null ? 'nothing logged' : `mood ${mood.toFixed(1)} out of 5`
         }`,
         mood,
@@ -763,13 +763,13 @@ export function MoodScreen() {
                     navigation.navigate('SymptomDetail', { symptomKey: stat.key });
                   }}
                   accessibilityRole="button"
-                  accessibilityLabel={`${stat.name}, ${stat.dayCount} ${stat.dayCount === 1 ? 'day' : 'days'}, last logged ${format(dayKeyToDate(stat.lastDayKey), 'd MMMM')}`}
+                  accessibilityLabel={`${stat.name}, ${stat.dayCount} ${stat.dayCount === 1 ? 'day' : 'days'}, last logged ${format(dayKeyToDate(stat.lastDayKey), 'MMMM d')}`}
                 >
                   <View style={styles.linkBody}>
                     <Text style={styles.linkLabel} numberOfLines={1}>{stat.name}</Text>
                     <Text style={styles.linkMeta}>
                       {stat.dayCount} {stat.dayCount === 1 ? 'day' : 'days'} · last on{' '}
-                      {format(dayKeyToDate(stat.lastDayKey), 'd MMM')}
+                      {format(dayKeyToDate(stat.lastDayKey), 'MMM d')}
                     </Text>
                   </View>
                   <Ionicons name="chevron-forward" size={16} color={colors.textTertiary} />

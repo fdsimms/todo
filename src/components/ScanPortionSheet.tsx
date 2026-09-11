@@ -97,6 +97,11 @@ export function ScanPortionSheet({ visible, foods, slot, at, onClose }: Props) {
     for (const food of foods) {
       const answer = answers[food.key];
       if (!answer) continue;
+      // A field typed into and then cleared is untouched again, not a refusal.
+      // Left as an answer it rendered "That amount can't be measured against
+      // this label." under an empty box, which reads as the label being at
+      // fault rather than the field being blank.
+      if (answer.kind === 'typed' && !answer.text.trim()) continue;
       if (answer.kind === 'choice') {
         const nutrition = packageHelping(food.panel, answer.servings, answer.label, at);
         out.set(food.key, nutrition ? { nutrition, grams: nutrition.servingGrams, quantity: answer.label } : null);
@@ -111,7 +116,9 @@ export function ScanPortionSheet({ visible, foods, slot, at, onClose }: Props) {
   const loggable = foods.filter(f => resolved.get(f.key));
 
   const handleCancel = () => {
-    if (Object.keys(answers).length === 0) { onClose(); return; }
+    // Measured against what actually resolved, so a field typed into and then
+    // cleared is not something a swipe-down would lose.
+    if (resolved.size === 0) { onClose(); return; }
     Alert.alert(
       'Discard changes?',
       'You have unsaved changes. Are you sure you want to discard them?',
@@ -126,6 +133,9 @@ export function ScanPortionSheet({ visible, foods, slot, at, onClose }: Props) {
     for (const food of loggable) {
       const answer = resolved.get(food.key);
       if (!answer) continue;
+      // `addEntry` refuses a draft with no label or no figures; neither can
+      // happen for a resolved card, and a silent skip is still the right
+      // answer for the row rather than abandoning the rest of the batch.
       addEntry({
         label: food.label,
         quantity: answer.quantity,
@@ -209,7 +219,7 @@ export function ScanPortionSheet({ visible, foods, slot, at, onClose }: Props) {
                 {/* What the answer works out to, or why it doesn't. An amount
                     the food's own portion table can't measure is refused here
                     rather than at Log, since the field is what needs changing. */}
-                {answer !== undefined && (
+                {resolved.has(food.key) && (
                   <Text style={[styles.outcome, !outcome && styles.outcomeRefused]}>
                     {outcome
                       ? outcome.nutrition.amounts.calorieKcal !== undefined

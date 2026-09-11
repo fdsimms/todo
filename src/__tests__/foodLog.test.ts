@@ -305,6 +305,23 @@ describe('resolveFoodLogDrop', () => {
     expect(resolved[0].slot).toBe('lunch');
   });
 
+  // A drop into gap 0 is above the first header, which is a real drop target
+  // the list offers. Seeded from null it re-filed the entry as unslotted, and
+  // since the loose run renders last, a row dragged to the very top of
+  // breakfast reappeared at the bottom of the day.
+  it('keeps an entry dropped above every header in the first section', () => {
+    const a = entry({ slot: 'lunch', label: 'A' });
+    const b = entry({ slot: 'breakfast', label: 'B' });
+    const items: FoodLogListItem[] = [
+      { type: 'entry', entry: a },
+      { type: 'header', slot: 'breakfast' },
+      { type: 'entry', entry: b },
+      { type: 'add', slot: 'breakfast' },
+    ];
+    const resolved = resolveFoodLogDrop(items);
+    expect(resolved.map(e => [e.label, e.slot])).toEqual([['A', 'breakfast'], ['B', 'breakfast']]);
+  });
+
   it('re-slots into the unslotted "Other" section, not just a named meal', () => {
     const a = entry({ slot: 'breakfast', label: 'A' });
     const items: FoodLogListItem[] = [
@@ -349,8 +366,8 @@ describe('describeFoodLogEntry', () => {
   it('says the amount and what it came to', () => {
     expect(describeFoodLogEntry(entry({
       quantity: '2 slices',
-      nutrition: panel({ amounts: { calorieKcal: 260 } }),
-    }))).toBe('2 slices · 260 cal');
+      nutrition: panel({ source: 'fdc', amounts: { calorieKcal: 260 } }),
+    }))).toBe('2 slices · 260 cal · from a database');
   });
 
   it('marks an estimate as one, since that decides what it may be taken for', () => {
@@ -365,6 +382,20 @@ describe('describeFoodLogEntry', () => {
       nutrition: panel({ source: 'openFoodFacts', amounts: { calorieKcal: 300 } }),
     }));
     expect(described.includes('estimated')).toBe(false);
+  });
+
+  // The row is the only place these four can be told apart, so naming one of
+  // them left a transcription off a jar reading exactly like a manufacturer's
+  // declared label.
+  it('names every provenance, not only the estimate', () => {
+    const described = (source: FoodNutrition['source']) => describeFoodLogEntry(entry({
+      quantity: '1 cup',
+      nutrition: panel({ source, amounts: { calorieKcal: 300 } }),
+    }));
+    expect(described('openFoodFacts')).toContain('from the label');
+    expect(described('fdc')).toContain('from a database');
+    expect(described('manual')).toContain('typed in');
+    expect(described('estimated')).toContain('estimated');
   });
 });
 
