@@ -92,6 +92,14 @@ describe('packageChoices', () => {
     const choices = packageChoices(panel({ servingGrams: 100, servingText: '100g' }), '500 g');
     expect(choices[1].label).toBe('The whole package (5 servings)');
   });
+
+  it('does not repeat "serving" when the source already wrote it', () => {
+    // Open Food Facts' own serving_size is sometimes "1 serving (80 g)"
+    // already, not just the size — prepending "1 serving" again would read
+    // as "1 serving (1 serving (80 g))".
+    const choices = packageChoices(panel({ servingGrams: 80, servingText: '1 serving (80 g)' }), null);
+    expect(choices).toEqual([{ key: 'serving', label: '1 serving (80 g)', servings: 1 }]);
+  });
 });
 
 describe('packageHelping', () => {

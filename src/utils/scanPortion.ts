@@ -85,8 +85,16 @@ export function packageChoices(
     out.push({
       key: 'serving',
       // The packet's own words when it gave any, since that is what the person
-      // is holding and can check against. "1 serving" only as the fallback.
-      label: servingLabel ? `1 serving (${servingLabel})` : '1 serving',
+      // is holding and can check against. "1 serving" only as the fallback —
+      // and only as a prefix, not a repeat: some sources (Open Food Facts'
+      // `serving_size`, notably) already write the word themselves, "1 serving
+      // (80 g)", so prepending it again reads as "1 serving (1 serving (80
+      // g))". A label that already says "serving" is shown as the source wrote
+      // it; only one that's bare size/count words ("45g", "2 biscuits") gets
+      // "1 serving" put in front of it.
+      label: servingLabel
+        ? (/serving/i.test(servingLabel) ? servingLabel : `1 serving (${servingLabel})`)
+        : '1 serving',
       servings: 1,
     });
   }

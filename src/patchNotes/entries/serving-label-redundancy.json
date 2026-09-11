@@ -1,0 +1,4 @@
+{
+  "message": "Fixed a scanned food's \"1 serving\" amount sometimes reading as \"1 serving (1 serving (80 g))\" when the label itself already said the word",
+  "date": "2026-09-11"
+}
