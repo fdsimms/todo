@@ -1,6 +1,6 @@
 import { EFFORT_MINUTES, effortToMinutes, minutesToEffort, formatClockDuration,
   formatDuration, formatStopwatch, applyMeasuredTime, measuredTimeAppliesTo, measuredTimeDiffersEnough,
-  sumEstimatedMinutes, estimatedMinutesFor } from '../utils/effort';
+  measuredTimeWorthSuggesting, sumEstimatedMinutes, estimatedMinutesFor } from '../utils/effort';
 import type { ChainItem, Effort } from '../types';
 
 const step = (title: string, estimatedMinutes: number | null = null): ChainItem =>
@@ -253,6 +253,44 @@ describe('measuredTimeAppliesTo', () => {
     // Proof, not just assertion: the task-level field this would write is
     // never what estimatedMinutesFor reads back while that step is active.
     expect(estimatedMinutesFor({ ...task, estimatedMinutes: 999 })).toBe(5);
+  });
+});
+
+describe('measuredTimeWorthSuggesting', () => {
+  it('is false for a plain one-off — recurrenceType none, no chain, no series', () => {
+    expect(measuredTimeWorthSuggesting({ recurrenceType: 'none', chainEnabled: false, seriesId: null })).toBe(false);
+  });
+
+  it('is true for a recurring task — the estimate seeds every future occurrence', () => {
+    expect(measuredTimeWorthSuggesting({ recurrenceType: 'daily', chainEnabled: false, seriesId: null })).toBe(true);
+  });
+
+  it('is false for a series date — a plain patch does not fan out to the set\'s other dates', () => {
+    expect(measuredTimeWorthSuggesting({ recurrenceType: 'none', chainEnabled: false, seriesId: 'series-1' })).toBe(false);
+  });
+
+  it('is true mid-chain with more steps ahead — those steps still read the task-level estimate', () => {
+    const task = {
+      recurrenceType: 'none' as const, chainEnabled: true, chainIndex: 0, seriesId: null,
+      chainItems: [step('Warm up'), step('Main set')],
+    };
+    expect(measuredTimeWorthSuggesting(task)).toBe(true);
+  });
+
+  it('is false finishing the last chain step with no repeat — nothing left to reuse the estimate', () => {
+    const task = {
+      recurrenceType: 'none' as const, chainEnabled: true, chainIndex: 1, seriesId: null,
+      chainItems: [step('Warm up'), step('Main set')],
+    };
+    expect(measuredTimeWorthSuggesting(task)).toBe(false);
+  });
+
+  it('is true finishing the last chain step when it repeats — the wrap reuses the task-level estimate', () => {
+    const task = {
+      recurrenceType: 'daily' as const, chainEnabled: true, chainIndex: 1, seriesId: null,
+      chainItems: [step('Warm up'), step('Main set')],
+    };
+    expect(measuredTimeWorthSuggesting(task)).toBe(true);
   });
 });
 
