@@ -9,9 +9,6 @@ exercised where applicable), open a PR automatically — don't wait to be asked.
 there's a concrete reason (work is incomplete, checks are red, or the user said to hold off);
 say why instead of opening one silently.
 
-Don't subscribe to PR activity and don't schedule follow-up check-ins after opening a PR unless
-the user explicitly asks for that. Just open the PR and stop.
-
 **Before pushing a follow-up fix to a PR you opened, check whether it already merged.** A build
 or submission failure reported after the fact (an EAS log, an App Store Connect rejection) often
 arrives once the PR that introduced the problem is already merged into `main` — `git fetch origin
@@ -191,10 +188,23 @@ npx tsc --noEmit && npm test && node scripts/build-module-map.js && node scripts
 
 Under a minute together, and `tsc` is incremental (`.tsbuildinfo`, gitignored) so every run after
 the first is a few seconds. There's no reason to skip any of it or to narrow to a single test
-file. All of it is green on `main`; if anything is red, it's you. Don't run `npx expo export`
-locally to check your work — it's the slowest thing CI does and only catches bundle-time breakage
-(a bad import path, a missing asset, a native config change), so run it only when you changed one
-of those. **CI runs `npx tsc --noEmit`, `npm test`, both doc checks in `--check` mode, and
+file. All of it is green on `main`; if anything is red, it's you.
+
+**"It's you" still holds when the loop is red before you've touched anything.** Several sessions
+land PRs into this repo close together, and one of them can merge with a break the others'
+verification loops hadn't caught yet — a type left stale by a sibling change, a test asserting a
+shape a merge removed. Running the loop on an unrelated branch and seeing it fail is how that
+surfaces, and the fix is exactly "bugs found in passing" above, not a separate case: small,
+one place, obvious right answer → fix it in the same PR and say so in the description (this
+happened for real — a `main`-red `foodLog.test.ts` type error from a concurrent merge, fixed
+alongside an unrelated one-line doc change, PR #2525). Don't shrug it off as "not my diff" and
+push anyway; a red `main` blocks every branch cut afterward until someone notices and fixes it,
+and "someone" is whoever's loop happens to hit it next. Ambiguous or multi-file → same as any
+other passing-bug call, ask rather than guess or widen the PR.
+
+Don't run `npx expo export` locally to check your work — it's the slowest thing CI does and only
+catches bundle-time breakage (a bad import path, a missing asset, a native config change), so run
+it only when you changed one of those. **CI runs `npx tsc --noEmit`, `npm test`, both doc checks in `--check` mode, and
 `npx expo export --platform ios` on every PR, and on every push to `main`** — that whole list,
 not just the tests.
 
