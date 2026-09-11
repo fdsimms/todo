@@ -1,4 +1,9 @@
-import { gramsForLine, panelMultiplier, weighableLine } from '../utils/ingredientGrams';
+import {
+  gramsForLine,
+  panelMultiplier,
+  unfixableQuantityReason,
+  weighableLine,
+} from '../utils/ingredientGrams';
 import { addCustomPortion } from '../utils/foodNutrition';
 import { parseQuantity } from '../utils/quantity';
 import type { FoodNutrition, FoodPortion } from '../types';
@@ -258,6 +263,29 @@ describe('weighableLine', () => {
     // wouldn't help — it's the serving that's unweighed, not the ingredient.
     expect(weighableLine('1.5 servings', null, panel({ basis: 'perServing' }), 'Bar')).toBeNull();
     expect(weighableLine('1.5 servings', null, panel(), 'Bar')).toBeNull();
+  });
+});
+
+describe('unfixableQuantityReason', () => {
+  it('names a line with no leading number', () => {
+    expect(unfixableQuantityReason('several large cloves')).toBe('noAmount');
+    expect(unfixableQuantityReason('a pinch')).toBe('noAmount');
+    expect(unfixableQuantityReason('to taste')).toBe('noAmount');
+    expect(unfixableQuantityReason('')).toBe('noAmount');
+  });
+
+  it('names a counted container', () => {
+    expect(unfixableQuantityReason('2 14 oz cans')).toBe('countedContainer');
+  });
+
+  it('is null for a bare container, which is a real weight', () => {
+    expect(unfixableQuantityReason('14 oz can')).toBeNull();
+  });
+
+  it('is null once the line names a number a portion table could still answer', () => {
+    expect(unfixableQuantityReason('3 cloves')).toBeNull();
+    expect(unfixableQuantityReason('1.5 servings')).toBeNull();
+    expect(unfixableQuantityReason('200 g')).toBeNull();
   });
 });
 
