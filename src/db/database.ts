@@ -3791,6 +3791,26 @@ export function dbSetGroceryHiddenAisles(hidden: string[]): void {
   dbSetSetting('grocery_aisle_hidden', JSON.stringify(hidden));
 }
 
+// Which aisles hold things that aren't food — "Household", "Medicine &
+// Supplements", whatever a person has named theirs. Aisle names are free
+// text (see dbGetGroceryAisleOrder), so this can't be inferred from a fixed
+// list; it's a flag on the name itself, same shape and same tolerance for a
+// corrupt value as the order and hidden set above.
+export function dbGetGroceryNonFoodAisles(): string[] {
+  const val = dbGetSetting('grocery_aisle_nonfood');
+  if (!val) return [];
+  try {
+    const parsed = JSON.parse(val) as unknown;
+    return Array.isArray(parsed) ? parsed.filter((x): x is string => typeof x === 'string') : [];
+  } catch {
+    return [];
+  }
+}
+
+export function dbSetGroceryNonFoodAisles(nonFood: string[]): void {
+  dbSetSetting('grocery_aisle_nonfood', JSON.stringify(nonFood));
+}
+
 // name_key → the aisle the user filed that item under, which is why it lives
 // here and not on the row: `clearList` sweeps a row carrying nothing and
 // `deleteItem` takes any row at all, and the filing has to outlive either. Same tolerance for a corrupt

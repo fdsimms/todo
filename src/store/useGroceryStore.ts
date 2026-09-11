@@ -49,6 +49,8 @@ import {
   dbSetGroceryAisleOverrides,
   dbGetGroceryHiddenAisles,
   dbSetGroceryHiddenAisles,
+  dbGetGroceryNonFoodAisles,
+  dbSetGroceryNonFoodAisles,
   dbGetGroceryGroupBy,
   dbSetGroceryGroupBy,
   dbTransaction,
@@ -290,6 +292,14 @@ interface GroceryStore extends UndoHistoryActions {
    * order rather than edited directly, so the two can't disagree.
    */
   hiddenAisles: string[];
+  /**
+   * Aisles holding things that aren't food — Household, Medicine &
+   * Supplements, whatever a person has named theirs. Names are free text
+   * (see aisleOrder), so this can't be inferred from a fixed list; it's the
+   * flag every nutrition/food-log prompt checks before treating a catalog
+   * row as something to eat. See isNonFoodAisle.
+   */
+  nonFoodAisles: string[];
   /**
    * The places you shop, and which items have been bought at each. They live
    * here rather than in a store of their own for the reason aisleOrder does:
@@ -1147,6 +1157,12 @@ interface GroceryStore extends UndoHistoryActions {
    * on and so has to exist.
    */
   deleteAisle: (aisle: string) => void;
+  /**
+   * Marks (or unmarks) an aisle as not food — see nonFoodAisles. A no-op for
+   * 'Other', the same floor deleteAisle refuses to touch, since it's a catch-
+   * all rather than a section anyone would call food or not-food.
+   */
+  setAisleNonFood: (aisle: string, nonFood: boolean) => void;
 
   /** Null when the name collides with an existing store. */
   addShop: (name: string) => Shop | null;
@@ -1805,6 +1821,7 @@ export const useGroceryStore = create<GroceryStore>((set, get) => ({
   items: [],
   aisleOrder: [],
   hiddenAisles: [],
+  nonFoodAisles: [],
   shops: [],
   itemShops: [],
   itemSubs: [],
@@ -1838,6 +1855,7 @@ export const useGroceryStore = create<GroceryStore>((set, get) => ({
       items.map(i => i.aisle),
       hiddenAisles
     );
+    const nonFoodAisles = dbGetGroceryNonFoodAisles();
     const shops = dbGetAllGroceryShops();
     const itemShops = dbGetAllItemShopLinks();
     const itemSubs = dbGetAllItemSubLinks();
@@ -1877,6 +1895,7 @@ export const useGroceryStore = create<GroceryStore>((set, get) => ({
       items,
       aisleOrder,
       hiddenAisles,
+      nonFoodAisles,
       aisleOverrides: dbGetGroceryAisleOverrides(),
       shops,
       itemProducts,
@@ -4470,9 +4489,20 @@ export const useGroceryStore = create<GroceryStore>((set, get) => ({
     // In place, not appended: renaming an aisle doesn't move it in the walk.
     const order = aisleOrder.filter(a => a !== OTHER_AISLE).map(a => (a === from ? trimmed : a));
 
+    // The flag is stored by aisle name too, so it has to move with the rename
+    // or a "Household" a person renamed to "Medicine" quietly stops being
+    // non-food.
+    const { nonFoodAisles } = get();
+    let nextNonFood = nonFoodAisles;
+    if (nonFoodAisles.includes(from)) {
+      nextNonFood = nonFoodAisles.map(a => (a === from ? trimmed : a));
+      dbSetGroceryNonFoodAisles(nextNonFood);
+    }
+
     set({
       items: nextItems,
       aisleOverrides: remembered ?? aisleOverrides,
+      nonFoodAisles: nextNonFood,
       ...commitAisleOrder(order, nextItems.map(i => i.aisle)),
     });
 
@@ -4509,9 +4539,17 @@ export const useGroceryStore = create<GroceryStore>((set, get) => ({
     const byId = new Map(updates.map(u => [u.id, u]));
     const nextItems = items.map(i => byId.get(i.id) ?? i);
 
+    const { nonFoodAisles } = get();
+    let nextNonFood = nonFoodAisles;
+    if (nonFoodAisles.includes(aisle)) {
+      nextNonFood = nonFoodAisles.filter(a => a !== aisle);
+      dbSetGroceryNonFoodAisles(nextNonFood);
+    }
+
     set({
       items: nextItems,
       aisleOverrides: remembered ?? aisleOverrides,
+      nonFoodAisles: nextNonFood,
       ...commitAisleOrder(
         aisleOrder.filter(a => a !== aisle && a !== OTHER_AISLE),
         nextItems.map(i => i.aisle)
@@ -4525,6 +4563,16 @@ export const useGroceryStore = create<GroceryStore>((set, get) => ({
     if (settings.collapsedGroceryGroups.includes(aisleKey)) {
       settings.setCollapsedGroceryGroups(settings.collapsedGroceryGroups.filter(k => k !== aisleKey));
     }
+  },
+
+  setAisleNonFood(aisle, nonFood) {
+    if (aisle === OTHER_AISLE) return;
+    const { nonFoodAisles } = get();
+    const has = nonFoodAisles.includes(aisle);
+    if (nonFood === has) return;
+    const next = nonFood ? [...nonFoodAisles, aisle] : nonFoodAisles.filter(a => a !== aisle);
+    dbSetGroceryNonFoodAisles(next);
+    set({ nonFoodAisles: next });
   },
 
   /**

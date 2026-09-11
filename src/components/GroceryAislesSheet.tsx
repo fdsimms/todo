@@ -28,7 +28,7 @@ import { SheetHeaderButton } from './SheetHeaderButton';
 import { InlineAction } from './InlineAction';
 import { SegmentedControl, type SegmentOption } from './SegmentedControl';
 import { EmptyState } from './EmptyState';
-import { OTHER_AISLE } from '../utils/groceryAisles';
+import { OTHER_AISLE, isNonFoodAisle } from '../utils/groceryAisles';
 import { itemCountsByShop } from '../utils/groceryShops';
 import { haptics } from '../utils/haptics';
 import { confirmDelete } from '../utils/confirmDelete';
@@ -89,6 +89,8 @@ export function GroceryAislesSheet({ visible, onClose }: Props) {
   const addAisle = useGroceryStore(s => s.addAisle);
   const renameAisle = useGroceryStore(s => s.renameAisle);
   const deleteAisle = useGroceryStore(s => s.deleteAisle);
+  const nonFoodAisles = useGroceryStore(useShallow(s => s.nonFoodAisles));
+  const setAisleNonFood = useGroceryStore(s => s.setAisleNonFood);
   const items = useGroceryStore(useShallow(s => s.items));
   const listEntries = useGroceryStore(useShallow(s => s.listEntries));
   const activeListId = useGroceryStore(s => s.activeListId);
@@ -278,7 +280,8 @@ export function GroceryAislesSheet({ visible, onClose }: Props) {
         <>
         <Text style={styles.intro}>
           Hold a row and drag it into the order you walk your store. Your list follows the same
-          order. Tap a name to rename it.
+          order. Tap a name to rename it. Mark an aisle not food to keep it out of nutrition and
+          food log prompts.
         </Text>
 
         <ReorderableList
@@ -294,6 +297,7 @@ export function GroceryAislesSheet({ visible, onClose }: Props) {
           renderItem={({ item: aisle, drag, isActive }) => {
             const count = countFor(aisle);
             const editing = aisle === editingAisle;
+            const nonFood = isNonFoodAisle(aisle, nonFoodAisles);
             return (
               <TouchableOpacity
                 style={[styles.row, isActive && styles.rowActive]}
@@ -338,6 +342,24 @@ export function GroceryAislesSheet({ visible, onClose }: Props) {
                 )}
 
                 {count > 0 && !editing && <Text style={styles.rowCount}>{count}</Text>}
+
+                {!editing && (
+                  <TouchableOpacity
+                    onPress={() => setAisleNonFood(aisle, !nonFood)}
+                    hitSlop={{ top: 10, bottom: 10, left: 10, right: 10 }}
+                    activeOpacity={interaction.activeOpacity}
+                    accessibilityRole="switch"
+                    accessibilityState={{ checked: nonFood }}
+                    accessibilityLabel={`Not food: ${aisle}`}
+                    accessibilityHint="Keeps this aisle out of nutrition and food log prompts"
+                  >
+                    <Ionicons
+                      name={nonFood ? 'nutrition' : 'nutrition-outline'}
+                      size={iconSize.md}
+                      color={nonFood ? colors.accent : colors.textTertiary}
+                    />
+                  </TouchableOpacity>
+                )}
 
                 <TouchableOpacity
                   onPress={() => confirmDeleteAisle(aisle)}

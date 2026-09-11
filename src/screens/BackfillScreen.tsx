@@ -324,6 +324,7 @@ export function BackfillScreen() {
   const personGroups = usePersonGroupStore(useShallow(s => s.groups));
   const groceryItems = useGroceryStore(useShallow(s => s.items));
   const itemSubs = useGroceryStore(useShallow(s => s.itemSubs));
+  const nonFoodAisles = useGroceryStore(useShallow(s => s.nonFoodAisles));
   const setVarietyOfKey = useGroceryStore(s => s.setVarietyOfKey);
   const unlinkItemSub = useGroceryStore(s => s.unlinkItemSub);
   const setItemBackfillDismissedFields = useGroceryStore(s => s.setItemBackfillDismissedFields);
@@ -410,7 +411,10 @@ export function BackfillScreen() {
   const categoryCounts = useMemo(() => categoryBackfillFieldCounts(categories), [categories]);
   const projectCounts = useMemo(() => projectBackfillFieldCounts(projects), [projects]);
   const personCounts = useMemo(() => personBackfillFieldCounts(people), [people]);
-  const itemCounts = useMemo(() => itemBackfillFieldCounts(groceryItems, itemSubs), [groceryItems, itemSubs]);
+  const itemCounts = useMemo(
+    () => itemBackfillFieldCounts(groceryItems, itemSubs, nonFoodAisles),
+    [groceryItems, itemSubs, nonFoodAisles]
+  );
   const recipeCounts = useMemo(() => recipeBackfillFieldCounts(recipes), [recipes]);
 
   const taskQueue = useMemo(
@@ -438,8 +442,10 @@ export function BackfillScreen() {
     [people, active, skippedIds]
   );
   const itemQueue = useMemo(
-    () => active?.kind === 'item' ? itemBackfillCandidates(groceryItems, active.id, itemSubs).filter(i => !skippedIds.has(i.id)) : [],
-    [groceryItems, active, skippedIds, itemSubs]
+    () => active?.kind === 'item'
+      ? itemBackfillCandidates(groceryItems, active.id, itemSubs, nonFoodAisles).filter(i => !skippedIds.has(i.id))
+      : [],
+    [groceryItems, active, skippedIds, itemSubs, nonFoodAisles]
   );
   const recipeQueue = useMemo(
     () => active?.kind === 'recipe' ? recipeBackfillCandidates(recipes, active.id).filter(r => !skippedIds.has(r.id)) : [],
@@ -635,7 +641,7 @@ export function BackfillScreen() {
     setHistory([]);
     setManualCurrentId(null);
     setSessionLog([]);
-    setSessionTotal(itemBackfillCandidates(groceryItems, id, itemSubs).length);
+    setSessionTotal(itemBackfillCandidates(groceryItems, id, itemSubs, nonFoodAisles).length);
   };
 
   const chooseRecipeField = (id: RecipeBackfillFieldId) => {

@@ -102,6 +102,16 @@ describe('isItemFieldMissing', () => {
     expect(isItemFieldMissing({ ...butter, nutrition: panel() }, 'nutrition')).toBe(false);
   });
 
+  it('excludes a non-food aisle from the nutrition queue, but not from other fields', () => {
+    const medicine = makeItem('Aleve', { id: 'medicine', aisle: 'Medicine & Supplements' });
+    expect(isItemFieldMissing(medicine, 'nutrition', [], [], ['Medicine & Supplements'])).toBe(false);
+    // A plain, un-flagged aisle is untouched by the same list.
+    expect(isItemFieldMissing(medicine, 'nutrition', [], [], ['Household'])).toBe(true);
+    // The flag is scoped to nutrition — a non-food item still wants a variety
+    // or a substitute like any other row.
+    expect(isItemFieldMissing(medicine, 'variety', [], [], ['Medicine & Supplements'])).toBe(true);
+  });
+
   it('asks about a name a scan supplied, and only that one', () => {
     expect(isItemFieldMissing(butter, 'scannedName')).toBe(false);
     expect(isItemFieldMissing({ ...butter, nameFromScan: true }, 'scannedName')).toBe(true);
@@ -136,6 +146,16 @@ describe('itemBackfillCandidates', () => {
     expect(itemBackfillCandidates(items, 'substitutes').map(i => i.id)).toEqual([butter.id, margarine.id]);
     expect(itemBackfillCandidates(items, 'substitutes', [sub(butter.id, margarine.id)]).map(i => i.id))
       .toEqual([margarine.id]);
+  });
+
+  it('drops a non-food aisle from the nutrition queue', () => {
+    const items = [
+      makeItem('Aleve', { id: 'medicine', aisle: 'Medicine & Supplements' }),
+      butter,
+    ];
+    expect(itemBackfillCandidates(items, 'nutrition').map(i => i.id)).toEqual(['medicine', butter.id]);
+    expect(itemBackfillCandidates(items, 'nutrition', [], ['Medicine & Supplements']).map(i => i.id))
+      .toEqual([butter.id]);
   });
 });
 
