@@ -67,7 +67,7 @@ export const PERSON_BACKFILL_FIELDS: PersonBackfillFieldDef[] = [
     id: 'cadence',
     label: "Remind me if we haven't talked in a while",
     shortLabel: 'Catch-up reminder',
-    hint: 'How long with nothing on file before a catch-up task offers itself. Off for everyone until you set one.',
+    hint: 'How long with nothing on file before the app adds a catch-up task. Off for everyone until you set one.',
   },
   {
     id: 'askAbout',

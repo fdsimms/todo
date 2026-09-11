@@ -195,7 +195,7 @@ export function FollowUpTaskSheet({ visible, taskTitle, draft, onSave, onClose }
           style={styles.notesInput}
           value={notes}
           onChangeText={setNotes}
-          placeholder="e.g. The tin lives in the case pocket"
+          placeholder="e.g. The rosin lives in the case pocket"
           placeholderTextColor={colors.textTertiary}
           multiline
           accessibilityLabel="Notes for the task to add"

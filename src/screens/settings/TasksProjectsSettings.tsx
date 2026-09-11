@@ -359,8 +359,8 @@ export function TasksProjectsSettings() {
           entryId="defaultProjectNudgeCadence"
           icon="notifications-outline"
           iconColor={defaultProjectNudgeCadenceDays > 0 ? colors.accent : undefined}
-          label="Default review cadence"
-          hint="What a new project's “Bring this up” starts at. Never by default, which keeps a new project out of nudges entirely; anything else opts it in at that cadence. This doesn't touch projects you've already created, and each one can still override it."
+          label="Bring new projects up every"
+          hint="What a new project's “Bring this up” starts at. Never by default, so a new project is never brought up on its own; pick a length and new projects start doing so. This doesn't touch projects you've already created, and each one can still be changed on its own."
           value={describeCadence(defaultProjectNudgeCadenceDays)}
           tight
         />
@@ -372,7 +372,7 @@ export function TasksProjectsSettings() {
             max={CADENCE_UNIT_MAX[defaultCadence.unit]}
             allowNull
             emptyLabel="Never"
-            label="Default review cadence"
+            label="Bring new projects up every"
             describeValue={n => describeCadence(fromCadenceParts({ ...defaultCadence, count: n }))}
           />
           <View style={styles.cadenceUnitRow}>
@@ -389,7 +389,7 @@ export function TasksProjectsSettings() {
                   }}
                   accessibilityRole="radio"
                   accessibilityState={{ selected: active }}
-                  accessibilityLabel={`Default nudge cadence in ${cadenceUnitLabel(unit)}`}
+                  accessibilityLabel={`Bring new projects up every so many ${cadenceUnitLabel(unit).toLowerCase()}`}
                 >
                   <Text style={[styles.pillText, active && styles.pillTextActive]}>
                     {cadenceUnitLabel(unit)}

@@ -70,7 +70,7 @@ interface Props {
   onChangeFromCompletion: (fromCompletion: boolean) => void;
   recurrenceCount: number | null;
   onChangeCount: (updater: number | null | ((c: number | null) => number | null)) => void;
-  /** How to phrase the occurrence-count stepper's unit — TaskEditor pluralizes ("occurrence"/"occurrences"), TemplateItemEditor always says "occurrences". */
+  /** How to phrase the occurrence-count stepper's unit — TaskEditor pluralizes ("time"/"times"), TemplateItemEditor always says "times". */
   countUnitLabel?: (count: number) => string;
 
   /** Week-ordinal monthly mode ("2nd Tuesday") — omit to hide the option entirely (TemplateItemEditor). */
@@ -138,7 +138,7 @@ export function RecurrencePicker({
   recurrenceMonthDay, onChangeMonthDay, seedMonthDay,
   recurrenceFromCompletion, onChangeFromCompletion,
   recurrenceCount, onChangeCount,
-  countUnitLabel = (count) => (count === 1 ? 'occurrence' : 'occurrences'),
+  countUnitLabel = (count) => (count === 1 ? 'time' : 'times'),
   weekOrdinal,
   neverEndsLabel = 'Never',
   afterCountLabel = 'After',
@@ -313,7 +313,7 @@ export function RecurrencePicker({
               onChange={n => onChangeCount(n ?? 1)}
               min={1}
               max={MAX_COUNT}
-              label="Occurrence count"
+              label="How many times it repeats"
             />
             <Text style={styles.stepperLabel}>{countUnitLabel(recurrenceCount ?? 1)}</Text>
           </View>

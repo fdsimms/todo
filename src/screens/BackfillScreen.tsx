@@ -1359,7 +1359,7 @@ export function BackfillScreen() {
         <ScreenHeader title="Backfill" subtitle="Choose a field to fill in, one item at a time" />
         <View style={styles.entitySwitch}>
           <SegmentedControl
-            label="Backfill scope"
+            label="What to fill in"
             surface="page"
             value={entityKind}
             onChange={next => { animateLayout(); setEntityKind(next); }}
@@ -2211,7 +2211,7 @@ export function BackfillScreen() {
                     onChange={next => setNudgeDraft(prev => ({ ...prev, count: next }))}
                     min={1}
                     max={CADENCE_UNIT_MAX[nudgeDraft.unit]}
-                    label="Review cadence"
+                    label="Bring this project up every"
                     describeValue={n => describeCadence(fromCadenceParts({ ...nudgeDraft, count: n }))}
                   />
                 </View>

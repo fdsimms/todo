@@ -57,7 +57,7 @@ export const ITEM_BACKFILL_FIELDS: ItemBackfillFieldDef[] = [
   {
     id: 'substitutes',
     label: 'Substitutes',
-    hint: 'What you’d use instead if there’s none of this — saved on the item, so every recipe calling for it can use it.',
+    hint: 'What you’d use instead if there’s none of this. It’s saved on the item, so every recipe calling for it can use it.',
   },
   {
     id: 'variety',

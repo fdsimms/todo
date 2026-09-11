@@ -386,7 +386,7 @@ export function CalendarScreen() {
                     </View>
                   ))}
                   <Text style={styles.expectedHint}>
-                    These repeat onto this day. Each one is created when the occurrence before it is completed.
+                    These repeat onto this day. Each one is created when you complete the one before it.
                   </Text>
                 </View>
               </View>

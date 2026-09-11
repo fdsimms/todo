@@ -420,7 +420,7 @@ export function GeneratedTasksSection() {
           entryId="moodLogTimeSegments"
           icon="time-outline"
           label="Show the task"
-          hint="Held back until each part of the day arrives. Pick more than one for several check-ins a day — an earlier one still unanswered is cleared once the next arrives."
+          hint="Held back until each part of the day arrives. Pick more than one for several check-ins a day. An earlier one still unanswered is cleared once the next arrives."
           value={summary}
           tight
         />
@@ -699,7 +699,7 @@ export function GeneratedTasksSection() {
       return (
         <>
           <View style={styles.sep} />
-          <SettingsRow entryId="mealPlanNudgeTime" icon="calendar-outline" iconColor={colors.accent} label="Nudge me on" tight />
+          <SettingsRow entryId="mealPlanNudgeTime" icon="calendar-outline" iconColor={colors.accent} label="Add the task on" tight />
           <SettingsSegments
             attached
             options={weekdaySegmentOptions}
@@ -733,7 +733,7 @@ export function GeneratedTasksSection() {
             icon="airplane-outline"
             iconColor={s.mealPlanNudgeIgnoresVacation ? colors.accent : undefined}
             label="Also during vacation"
-            hint="Vacation mode normally pauses this along with the app's other automatic tasks. Turn this on to keep getting the weekly nudge anyway."
+            hint="Vacation mode normally pauses this along with the app's other automatic tasks. Turn this on to keep adding the weekly task anyway."
             toggle={s.mealPlanNudgeIgnoresVacation}
             onPress={() => s.setMealPlanNudgeIgnoresVacation(!s.mealPlanNudgeIgnoresVacation)}
           />

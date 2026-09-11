@@ -60,9 +60,9 @@ export function useTaskSelection(allTasks: Task[]) {
     let deleteLabel: string;
     if (allRecurring) {
       message = count === 1
-        ? 'This task repeats. Mark just this occurrence missed, or delete it and stop the series?'
-        : 'These tasks repeat. Mark them missed instead, or delete them and stop their series?';
-      deleteLabel = 'Delete and Stop Series';
+        ? 'This task repeats. Mark just this one missed, or delete it and stop it repeating?'
+        : 'These tasks repeat. Mark them missed instead, or delete them and stop them repeating?';
+      deleteLabel = 'Delete and stop repeating';
     } else if (allMealPlan) {
       message = count === 1
         ? 'This came from your meal plan. Mark it missed to keep a record, or delete it outright?'

@@ -187,5 +187,5 @@ export function lowMoodDeloadNote(run: number, afterDays: number): string | null
  * suggestion about what it might mean.
  */
 export function moodNudgeNotes(run: number): string {
-  return `You've logged a low mood ${run} days running. Something to look forward to might help.`;
+  return `You've logged a low mood ${run} days running.`;
 }

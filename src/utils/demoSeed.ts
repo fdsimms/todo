@@ -479,7 +479,7 @@ export function seedDemoData(): void {
   // demonstrated is that it stays on Today anyway.
   const stretch = addTask({
     title: 'Stretch',
-    notes: 'Whenever, no particular time — stays on Today all day instead of hiding while you keep up with it.',
+    notes: 'Whenever, no particular time. Stays on Today all day instead of hiding while you keep up with it.',
     category: 'Health',
     dueDate: today.toISOString(),
     targetCount: 3,

@@ -3215,10 +3215,10 @@ export const TaskItem = React.memo(function TaskItem({
                       // forward, because there is nothing to have missed yet.
                       accessibilityLabel={
                         recurrenceNotYetDue
-                          ? `Skip this occurrence of ${task.title}`
+                          ? `Skip this repeat of ${task.title}`
                           : task.recurrenceType === 'none'
                             ? `Mark ${task.title} missed`
-                            : `Mark ${task.title} missed and move to the next occurrence`
+                            : `Mark ${task.title} missed and move on to its next repeat`
                       }
                     >
                       <Ionicons name="close-circle-outline" size={iconSize.sm} color={colors.textSecondary} />
@@ -3240,7 +3240,7 @@ export const TaskItem = React.memo(function TaskItem({
                         if (expanded) onPress(rowId);
                       }}
                       hitSlop={8}
-                      accessibilityLabel={`Skip this occurrence of ${task.title}, without counting it as missed`}
+                      accessibilityLabel={`Skip this repeat of ${task.title}, without counting it as missed`}
                     >
                       <Ionicons name="play-skip-forward-outline" size={iconSize.sm} color={colors.textSecondary} />
                     </PressableScale>

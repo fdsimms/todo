@@ -86,43 +86,43 @@ export function parsePayload(text: string): ParsedPayload {
   try {
     raw = JSON.parse(text);
   } catch {
-    return { ok: false, error: 'Not valid JSON.' };
+    return { ok: false, error: "That update isn't valid JSON, so this app didn't write it." };
   }
 
-  if (!isPlainObject(raw)) return { ok: false, error: 'Not a sync payload.' };
+  if (!isPlainObject(raw)) return { ok: false, error: "That doesn't look like an update from another device." };
 
-  if (typeof raw.format !== 'number') return { ok: false, error: 'Missing format.' };
+  if (typeof raw.format !== 'number') return { ok: false, error: "That update doesn't look right. It has no format version." };
   if (raw.format > SYNC_FORMAT) {
-    return { ok: false, error: `Written by a newer version of the app (format ${raw.format}).` };
+    return { ok: false, error: `That update came from a newer version of the app (format ${raw.format}), so this device can't read it yet.` };
   }
   if (typeof raw.deviceId !== 'string' || raw.deviceId === '') {
-    return { ok: false, error: 'Missing device id.' };
+    return { ok: false, error: "That update doesn't say which device it came from." };
   }
   if (typeof raw.until !== 'string' || raw.until === '') {
-    return { ok: false, error: 'Missing cursor.' };
+    return { ok: false, error: "That update doesn't say what stretch of time it covers." };
   }
   if (raw.since !== null && typeof raw.since !== 'string') {
-    return { ok: false, error: 'Malformed cursor.' };
+    return { ok: false, error: "That update's dates are damaged." };
   }
-  if (!isPlainObject(raw.tables)) return { ok: false, error: 'Missing tables.' };
+  if (!isPlainObject(raw.tables)) return { ok: false, error: 'That update is missing its data.' };
 
   for (const [table, rows] of Object.entries(raw.tables)) {
-    if (!Array.isArray(rows)) return { ok: false, error: `Table ${table} is not a list of rows.` };
+    if (!Array.isArray(rows)) return { ok: false, error: `That update's "${table}" data is damaged.` };
     for (const row of rows) {
-      if (!isPlainObject(row)) return { ok: false, error: `Table ${table} holds a malformed row.` };
+      if (!isPlainObject(row)) return { ok: false, error: `That update's "${table}" data is damaged.` };
       // Without a stamp there is nothing to compare, and defaulting one would
       // silently make a peer's row either always win or always lose.
       if (typeof row.updated_at !== 'string') {
-        return { ok: false, error: `Table ${table} holds a row with no timestamp.` };
+        return { ok: false, error: `That update's "${table}" data has an entry with no timestamp.` };
       }
     }
   }
 
-  if (!Array.isArray(raw.deletions)) return { ok: false, error: 'Missing deletions.' };
+  if (!Array.isArray(raw.deletions)) return { ok: false, error: "That update is missing its list of deleted items." };
   for (const d of raw.deletions) {
-    if (!isPlainObject(d)) return { ok: false, error: 'Malformed deletion.' };
+    if (!isPlainObject(d)) return { ok: false, error: "That update's list of deleted items is damaged." };
     if (typeof d.table !== 'string' || typeof d.rowKey !== 'string' || typeof d.deletedAt !== 'string') {
-      return { ok: false, error: 'Malformed deletion.' };
+      return { ok: false, error: "That update's list of deleted items is damaged." };
     }
   }
 

@@ -161,7 +161,7 @@ export function followUpTaskSummary(everyN: number | null): string | undefined {
 export function describeFollowUpTaskRule(everyN: number | null, title: string | null): string {
   if (everyN === null || everyN < MIN_FOLLOW_UP_TASK_EVERY_N) return 'No follow-up task';
   if (!title?.trim()) return 'Name the task to add';
-  return 'Due with the next occurrence';
+  return 'Due the next time this task repeats';
 }
 
 /**

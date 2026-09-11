@@ -632,7 +632,7 @@ function TemplateItemRow({
           hitSlop={8}
           style={styles.rowButton}
           accessibilityRole="button"
-          accessibilityLabel="Swap which template this points at"
+          accessibilityLabel="Swap which template this item uses"
         >
           <Ionicons name="swap-horizontal-outline" size={14} color={colors.textTertiary} />
           <Text style={styles.rowButtonText}>Swap</Text>

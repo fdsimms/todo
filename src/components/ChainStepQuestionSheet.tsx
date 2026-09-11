@@ -121,7 +121,7 @@ export function ChainStepQuestionSheet({ visible, step, nextStepTitle, onSave, o
             <Text style={styles.hint}>
               {kind
                 ? deliverableMeta(kind).hint
-                : 'Completing this step is the whole answer. Pick a kind to be asked for one.'}
+                : 'Completing this step is the whole answer. Pick one of the others to be asked a question.'}
             </Text>
           </View>
 

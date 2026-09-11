@@ -493,7 +493,7 @@ export function FocusSessionSheet({ visible, onClose }: Props) {
 
           {stepDone && (
             <Text style={styles.doneNote}>
-              {isRest ? 'Break’s over whenever you are.' : 'That’s the stretch. Nothing moves until you say so.'}
+              {isRest ? 'Break’s over whenever you are.' : 'Time’s up for this step. Nothing moves until you say so.'}
             </Text>
           )}
         </View>

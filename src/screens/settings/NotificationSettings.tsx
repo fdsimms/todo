@@ -371,7 +371,7 @@ export function NotificationSettings() {
 
     <SettingsSection
         label="Default reminder"
-        footer="Only kicks in when a task is given an actual start time (its time window), not just a due date or a morning/afternoon/evening slot. A reminder before the day even resets isn't useful. Never overrides a reminder you set or cleared yourself."
+        footer="Only applies when a task has an actual start time, not just a due date or a morning, afternoon or evening setting. A reminder before the day has even started isn't useful. It never overrides a reminder you set or cleared yourself."
       >
         <SettingsRow
           entryId="defaultReminderLead"

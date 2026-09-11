@@ -552,7 +552,7 @@ export function WhenPicker({
   }, [postponeTask, onBreakUp, archiveTask, updateTask, onCancel, reachOutOfferActive, reachOutPerson, updatePersonRecord]);
 
   const suggestionLabel = suggestion
-    ? `${format(new Date(`${suggestion.key}T12:00:00`), 'EEE, MMM d')} — ${suggestion.reason}`
+    ? `${format(new Date(`${suggestion.key}T12:00:00`), 'EEE, MMM d')}: ${suggestion.reason}`
     : null;
 
   return (
@@ -695,7 +695,7 @@ export function WhenPicker({
                     color={colors.accent}
                   />
                   <Text style={styles.afterVacationLabel}>
-                    After vacation — {format(afterVacationDay, 'EEE, MMM d')}
+                    After vacation, {format(afterVacationDay, 'EEE, MMM d')}
                   </Text>
                 </Animated.View>
               </TouchableOpacity>

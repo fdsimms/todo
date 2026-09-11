@@ -200,7 +200,7 @@ export function StacksScreen() {
         <EmptyState
           icon="layers-outline"
           title="No stacks yet"
-          subtitle="A stack is a label several separately-scheduled tasks hang off (a morning routine, a trip to pack for) so they show up together on Today"
+          subtitle="Group tasks that belong together, like a morning routine or a trip to pack for. Each one keeps its own schedule, but they show up together on Today."
           actionLabel="New stack"
           onAction={createStack}
           bottomOffset={tabBarHeight}

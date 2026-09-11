@@ -178,7 +178,7 @@ export function ComponentChoiceSheet({ visible, recipe, component, onClose }: Pr
             {!clean ? (
               <Text style={styles.hint}>
                 Name the group these alternatives share, like “Side” or “Sauce”. Every option
-                under it — an ingredient, another component, or both — is one way of filling the
+                under it (an ingredient, another component, or both) is one way of filling the
                 same slot.
               </Text>
             ) : recipe.ingredients.some(i => i.choiceGroup === clean) ? (

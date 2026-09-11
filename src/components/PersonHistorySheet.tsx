@@ -130,7 +130,7 @@ export function PersonHistorySheet({ visible, personName, entry, onSave, onDelet
       />
       {!entry && (
         <Text style={styles.hint}>
-          Saved to your history with {personName} right away — check the title and date first.
+          Saved to your history with {personName} right away, so check the title and date first.
         </Text>
       )}
 
