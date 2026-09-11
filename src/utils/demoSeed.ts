@@ -48,6 +48,7 @@ import { PANTRY_REVIEW_LINK_URL, PANTRY_REVIEW_TITLE } from './pantryReviewTasks
 import { birthdayGiftTitle, personLinkUrl } from './birthdayTasks';
 import { giftIdeasText } from './personNotes';
 import { mealShortfallLinkUrl, mealShortfallTitle } from './mealShortfallTasks';
+import { mealLogNudgeLinkUrl, mealLogNudgeTitle } from './mealLogNudgeTasks';
 import { CALENDAR_REVIEW_TITLE } from './calendarReviewTasks';
 import {
   WEEKEND_NUDGE_TITLE,
@@ -3837,6 +3838,23 @@ function seedMealPlanAndFridge(recipes: DemoRecipes, today: Date): void {
       linkUrl: mealShortfallLinkUrl(salmonNight.date, salmonNight.id),
       category: 'Meal Plan',
       ...generatedBy('mealShortfall', salmonNight.id),
+    });
+  }
+
+  // --- A planned meal with nothing logged -----------------------------------
+  // The reverse-window generator (off by default, same reasoning as the
+  // shortfall task above): yesterday's stir-fry was cooked but never logged
+  // anywhere in this seed, which is the honest instance of what this
+  // generator exists to ask about rather than an invented one. Written out
+  // by hand for mealShortfallTasks' own reason: this generator ships off too.
+  if (stirFryNight) {
+    useSettingsStore.getState().setMealLogNudgeTaskCategory('Meal Plan');
+    useTaskStore.getState().addTask({
+      title: mealLogNudgeTitle(stirFryNight.date, stirFryNight.slot, 'Weeknight chicken stir-fry'),
+      dueDate: today.toISOString(),
+      linkUrl: mealLogNudgeLinkUrl(stirFryNight.date),
+      category: 'Meal Plan',
+      ...generatedBy('mealLogNudge', stirFryNight.id),
     });
   }
 

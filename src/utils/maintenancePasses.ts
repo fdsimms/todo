@@ -127,6 +127,10 @@ export function catchUpPasses(): MaintenanceStep[] {
     // already loaded, and it fires on a meal coming into range, which is time
     // passing rather than a source mutation.
     ['check meal shortfall tasks', () => tasks().checkMealShortfallTasks()],
+    // And anything planned a few days *behind* rather than ahead, that never
+    // got logged (off by default) — the reverse-window sibling of the pass
+    // above, reading the same meal plan and firing on the same trigger.
+    ['check meal log nudge tasks', () => tasks().checkMealLogNudgeTasks()],
     // Once a day, a task to review tomorrow's calendar — grouped with the two
     // passes above for the same reason: time passing rather than a source
     // mutation. In practice this rarely finds anything to do at cold-launch

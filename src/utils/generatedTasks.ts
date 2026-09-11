@@ -116,6 +116,12 @@ export const GENERATED_KINDS: readonly GeneratedKind[] = [
   // be cooked, they file under one category, and reading them together is how a
   // person meets the meal plan in Settings.
   'mealShortfall',
+  // Beside mealShortfall rather than appended at the end, for its own reason
+  // restated: the two file under one category with mealSlot and mealPlanNudge,
+  // and this is the fourth meal-plan generator a person meets there. It reads
+  // the same source row mealShortfall does, just a few days after the fact
+  // instead of a few days ahead of it.
+  'mealLogNudge',
   'projectReview',
   'supplyReorder',
   'calendarReview',
@@ -204,6 +210,7 @@ export type GeneratedEnabledKey =
   | 'leftoverUseUpTasks'
   | 'mealPlanNudgeEnabled'
   | 'mealShortfallTasks'
+  | 'mealLogNudgeTasks'
   | 'projectReviewTasks'
   | 'supplyReorderTasks'
   | 'calendarReviewTasks'
@@ -582,6 +589,26 @@ export const GENERATED_KIND_SPECS: Record<GeneratedKind, GeneratedKindSpec> = {
     // planning the week, cooking what you planned and shopping for it are one
     // job to the person reading Today, and a third section would be a
     // distinction only the code makes.
+    defaultCategory: 'Meal Plan',
+  },
+  mealLogNudge: {
+    kind: 'mealLogNudge',
+    pausedOnVacation: true,
+    enabledKey: 'mealLogNudgeTasks',
+    label: 'Log reminders for planned meals',
+    onHint: 'A planned meal with nothing logged a few days later adds a task to log it',
+    offHint: 'A planned meal with nothing logged adds no task',
+    icon: 'journal-outline',
+    // Its source is a MealPlanEntry, and the opt-out it writes there
+    // (MealPlanEntry.logMeal) is the same field the completion-time prompt's
+    // "Don't ask for this meal" already writes — see mealLogNudgeTasks.ts.
+    sourced: true,
+    notice: false,
+    kitchen: true,
+    categorized: true,
+    // Beside mealSlot, mealShortfall and mealPlanNudge, for mealShortfall's
+    // own reason: reading the four together is how a person meets the meal
+    // plan in Settings.
     defaultCategory: 'Meal Plan',
   },
   mealPlanNudge: {

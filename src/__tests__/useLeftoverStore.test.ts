@@ -569,11 +569,11 @@ describe('setLeftoverWeight', () => {
 describe('the meal-log offer a finished container raises', () => {
   beforeEach(() => {
     mockMealLogPrompt = true;
-    useFoodLogStore.setState({ pendingMealLog: null });
+    useFoodLogStore.setState({ pendingMealLog: null, pendingManualMealLog: null });
   });
   afterEach(() => {
     mockMealLogPrompt = false;
-    useFoodLogStore.setState({ pendingMealLog: null });
+    useFoodLogStore.setState({ pendingMealLog: null, pendingManualMealLog: null });
   });
 
   it('hands the container weight to the offer, so eating it logs as a weight', () => {
@@ -601,6 +601,25 @@ describe('the meal-log offer a finished container raises', () => {
     useLeftoverStore.getState().finishLeftover('lo-a', 'tossed');
 
     expect(useFoodLogStore.getState().pendingMealLog).toBeNull();
+  });
+
+  it('offers the manual search sheet for a container with no recipe behind it', () => {
+    seed([makeLeftover({ id: 'lo-a', title: 'Takeout curry', recipeId: null })]);
+
+    useLeftoverStore.getState().finishLeftover('lo-a', 'eaten');
+
+    expect(useFoodLogStore.getState().pendingManualMealLog).toEqual({
+      label: 'Takeout curry', slot: null, mealPlanEntryId: null,
+    });
+    expect(useFoodLogStore.getState().pendingMealLog).toBeNull();
+  });
+
+  it('says nothing to the manual sheet either for a container thrown out', () => {
+    seed([makeLeftover({ id: 'lo-a', recipeId: null })]);
+
+    useLeftoverStore.getState().finishLeftover('lo-a', 'tossed');
+
+    expect(useFoodLogStore.getState().pendingManualMealLog).toBeNull();
   });
 });
 

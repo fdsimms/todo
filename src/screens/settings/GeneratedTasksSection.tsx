@@ -226,6 +226,7 @@ export function GeneratedTasksSection() {
       case 'pantryCheck': s.setPantryCheckTasks(next); break;
       case 'pantryReview': s.setPantryReviewTasks(next); break;
       case 'mealShortfall': s.setMealShortfallTasks(next); break;
+      case 'mealLogNudge': s.setMealLogNudgeTasks(next); break;
       case 'supplyReorder': s.setSupplyReorderTasks(next); break;
       case 'calendarReview': s.setCalendarReviewTasks(next); break;
       case 'birthday': s.setBirthdayTasks(next); break;
@@ -264,6 +265,7 @@ export function GeneratedTasksSection() {
       case 'pantryCheck': return s.pantryCheckTaskCategory;
       case 'pantryReview': return s.pantryReviewTaskCategory;
       case 'mealShortfall': return s.mealShortfallTaskCategory;
+      case 'mealLogNudge': return s.mealLogNudgeTaskCategory;
       case 'calendarReview': return s.calendarEventCategory;
       case 'birthday': return s.birthdayTaskCategory;
       case 'birthdayGift': return s.birthdayGiftTaskCategory;
@@ -292,6 +294,7 @@ export function GeneratedTasksSection() {
       case 'pantryCheck': s.setPantryCheckTaskCategory(category); break;
       case 'pantryReview': s.setPantryReviewTaskCategory(category); break;
       case 'mealShortfall': s.setMealShortfallTaskCategory(category); break;
+      case 'mealLogNudge': s.setMealLogNudgeTaskCategory(category); break;
       case 'birthday': s.setBirthdayTaskCategory(category); break;
       case 'birthdayGift': s.setBirthdayGiftTaskCategory(category); break;
       // Unreached — see categoryOf above — but a real, honest answer rather

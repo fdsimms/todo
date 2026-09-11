@@ -116,6 +116,7 @@ export function SettingsScreen() {
       leftoverUseUpTasks: settings.leftoverUseUpTasks,
       mealPlanNudgeEnabled: settings.mealPlanNudgeEnabled,
       mealShortfallTasks: settings.mealShortfallTasks,
+      mealLogNudgeTasks: settings.mealLogNudgeTasks,
       projectReviewTasks: settings.projectReviewTasks,
       supplyReorderTasks: settings.supplyReorderTasks,
       calendarReviewTasks: settings.calendarReviewTasks,
