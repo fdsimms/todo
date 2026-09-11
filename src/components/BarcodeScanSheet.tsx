@@ -34,16 +34,19 @@ import { useKeyboardInsetScroll } from '../hooks/useKeyboardInsetScroll';
 import { SheetHeaderButton } from './SheetHeaderButton';
 import { InlineAction } from './InlineAction';
 import { CatalogLinkPicker } from './CatalogLinkPicker';
+import { ProductPicker } from './ProductPicker';
 import { EmptyState } from './EmptyState';
 import type { ReceiptAddDraft } from './ReceiptImportSheet';
 import type { ReceiptMatch } from '../utils/receiptMatch';
 import { lookupGtin, describeLookupError } from '../services/productLookup';
 import { formatGtin, normalizeGtin } from '../utils/gtin';
+import { describeProduct, productsForItem } from '../utils/groceryProduct';
 import { priceNearBarcode } from '../utils/shelfLabel';
 import { formatPrice } from '../utils/groceryPrice';
 import { normalizePlu, pluNameFor } from '../utils/plu';
 import {
   matchScans,
+  scanBoxFor,
   scanLinkTarget,
   pluScannedItem,
   nameFromScanFor,
@@ -135,6 +138,31 @@ interface ScanRow extends ScannedItem {
    * blocking the row. See `scanLinkTarget`.
    */
   pickedItemId: string | null;
+  /**
+   * The box of that item the user chose by hand, or null for the food itself.
+   *
+   * A second, independent question from `pickedItemId`: which food this is, and
+   * then which box of it. The barcode's own words answer the second one well
+   * enough most of the time — `variantFor` subtracts the item's name from the
+   * product name and keeps the rest — and this is what says so when they don't.
+   * The three ways they don't are all real and all documented where they
+   * happen: a row this scan mints is named after the residue so there is no
+   * variant left to derive, `variantFor` refuses outright when the item's name
+   * doesn't appear in the product name, and a barcode nothing was found for has
+   * no words at all.
+   *
+   * Carried as an id here and turned into brand and variant at apply time by
+   * `scanBoxFor`, which is also where a box left behind by a changed item pick
+   * is dropped.
+   *
+   * Null means nobody has said, and the barcode's own words answer. There is
+   * deliberately no "just the food" state here: a code's claim on a box is only
+   * released by another box claiming it, so a scan saying that would leave the
+   * entry carrying the box it had just been told to drop. `ProductPicker`'s
+   * `allowNone` note has the argument; the log's own relink is where that
+   * answer is said, and means what it says.
+   */
+  pickedProductId: string | null;
   /**
    * The shelf price read off the same label as the barcode, in minor units, or
    * null when nothing near the code read as one.
@@ -324,6 +352,7 @@ export function BarcodeScanSheet({ visible, onClose, onApply, context }: Props) 
   const styles = useMemo(() => makeStyles(colors), [colors]);
 
   const items = useGroceryStore(useShallow(s => s.items));
+  const itemProducts = useGroceryStore(useShallow(s => s.itemProducts));
   const rememberAliases = useGroceryStore(s => s.rememberAliases);
   const aliasItemFor = useGroceryStore(s => s.aliasItemFor);
   const gtinItemFor = useGroceryStore(s => s.gtinItemFor);
@@ -338,7 +367,7 @@ export function BarcodeScanSheet({ visible, onClose, onApply, context }: Props) 
    * is a list of its own, and two of them open down the sheet would bury the
    * rows still waiting to be read.
    */
-  const [pickingKey, setPickingKey] = useState<string | null>(null);
+  const [picking, setPicking] = useState<{ key: string; mode: 'item' | 'box' } | null>(null);
   /**
    * GTINs already claimed in this session, checked and set synchronously in
    * the scan callback itself rather than read off `rows`.
@@ -356,7 +385,7 @@ export function BarcodeScanSheet({ visible, onClose, onApply, context }: Props) 
   const reset = useCallback(() => {
     setRows([]);
     setManual('');
-    setPickingKey(null);
+    setPicking(null);
     scannedGtinsRef.current = new Set();
   }, []);
 
@@ -391,6 +420,7 @@ export function BarcodeScanSheet({ visible, onClose, onApply, context }: Props) 
           frozen: false,
           confirmedMatchId: null,
           pickedItemId: null,
+          pickedProductId: null,
           priceMinor,
         },
       ]);
@@ -477,6 +507,7 @@ export function BarcodeScanSheet({ visible, onClose, onApply, context }: Props) 
           frozen: false,
           confirmedMatchId: null,
           pickedItemId: null,
+          pickedProductId: null,
           priceMinor: null,
         },
       ]);
@@ -497,6 +528,7 @@ export function BarcodeScanSheet({ visible, onClose, onApply, context }: Props) 
           frozen: false,
           confirmedMatchId: null,
           pickedItemId: null,
+          pickedProductId: null,
           priceMinor: null,
         },
       ]);
@@ -568,6 +600,15 @@ export function BarcodeScanSheet({ visible, onClose, onApply, context }: Props) 
     }
     return match.offListMatchId;
   };
+  /**
+   * The row's item, whichever of the readings answered — a hand-pick, a match
+   * on the list, or one off it. What the box question is asked about, since a
+   * box belongs to an item and there is nothing to choose among until one is
+   * settled.
+   */
+  const resolvedItemId = (row: ScanRow, match: ReceiptMatch | undefined): string | null =>
+    confidentItemId(row, match) ?? confidentOffListMatchId(row, match);
+
   /** The item a `'likely'` match is offering, while the row hasn't confirmed it yet. */
   const pendingMatchId = (row: ScanRow, match: ReceiptMatch | undefined): string | null => {
     // Nothing left to confirm: the user has already said which row this is, and
@@ -598,6 +639,25 @@ export function BarcodeScanSheet({ visible, onClose, onApply, context }: Props) 
      * *named* after the residue, so there is nothing left over.
      */
     const recordProduct = (itemId: string, row: ScanRow) => {
+      // A box the user chose outranks everything below, including the one this
+      // barcode already names: picking one is the act of correcting exactly
+      // that. Expressed as its own words, which is what `addProduct` and
+      // `linkScannedGtins` both find a box by, so this reuses the existing box
+      // rather than minting a second with the same name.
+      if (row.pickedProductId) {
+        const picked = scanBoxFor(
+          itemProducts.find(p => p.id === row.pickedProductId),
+          itemId,
+        );
+        if (picked) {
+          products.push({ itemId, ...picked, gtin: row.gtin, packSize: row.quantity });
+          return;
+        }
+        // A pick that no longer resolves — the box was deleted, or the item
+        // pick moved on and left it behind. Resolve-or-shrug: fall through to
+        // the barcode's own words, which is the answer the row had before
+        // anybody picked anything.
+      }
       // A box this barcode already names is the answer, and re-deriving one
       // would produce a worse one: `variantFor` subtracts the item's own name
       // from the product name, so a row renamed away from the source's wording
@@ -699,7 +759,7 @@ export function BarcodeScanSheet({ visible, onClose, onApply, context }: Props) 
         .map(d => ({ shopId: null, rawText: d.label, itemId: d.existingItemId as string })),
     ]);
     onApply(itemIds, toAdd, frozenItemIds, products, gtinLinks);
-  }, [rows, matches, items, onApply, rememberAliases, gtinProductFor]);
+  }, [rows, matches, items, itemProducts, onApply, rememberAliases, gtinProductFor]);
 
   /** What a row resolved to, or null when it has nothing to say yet. */
   const captionFor = (row: ScanRow, index: number): string | null => {
@@ -836,6 +896,16 @@ export function BarcodeScanSheet({ visible, onClose, onApply, context }: Props) 
                 const caption = captionFor(row, index);
                 const pendingId = pendingMatchId(row, match);
                 const nameable = !row.pending;
+                // The box question, asked only once there is an item to ask it
+                // about and boxes to answer with.
+                const rowItemId = resolvedItemId(row, match);
+                const rowItem = rowItemId ? items.find(i => i.id === rowItemId) : null;
+                const rowBoxes = rowItemId ? productsForItem(rowItemId, itemProducts) : [];
+                const boxCount = rowBoxes.length;
+                const resolvedName = rowItem?.name ?? null;
+                const boxLabel = row.pickedProductId
+                  ? describeProduct(rowBoxes.find(b => b.id === row.pickedProductId)) ?? 'Which box'
+                  : 'Which box';
                 return (
                   <View key={row.key} style={index > 0 ? styles.rowDivided : undefined}>
                   <View style={styles.row}>
@@ -938,7 +1008,7 @@ export function BarcodeScanSheet({ visible, onClose, onApply, context }: Props) 
                             label={row.pickedItemId ? 'Change' : pendingId ? 'Not it' : 'Pick an item'}
                             icon="albums-outline"
                             variant="neutral"
-                            onPress={() => setPickingKey(k => (k === row.key ? null : row.key))}
+                            onPress={() => setPicking(p => (p?.key === row.key && p.mode === 'item' ? null : { key: row.key, mode: 'item' }))}
                             accessibilityLabel={
                               row.pickedItemId
                                 ? `Change which item ${row.name.trim() || row.label || 'this scan'} is filed as`
@@ -951,8 +1021,21 @@ export function BarcodeScanSheet({ visible, onClose, onApply, context }: Props) 
                               label="Undo"
                               icon="close-circle-outline"
                               variant="neutral"
-                              onPress={() => { setPickingKey(null); patchRow(row.key, { pickedItemId: null }); }}
+                              onPress={() => { setPicking(null); patchRow(row.key, { pickedItemId: null, pickedProductId: null }); }}
                               accessibilityLabel={`Stop filing ${row.name.trim() || row.label || 'this scan'} by hand`}
+                              style={styles.confirmPill}
+                            />
+                          )}
+                          {/* Only once the row has an item and that item has
+                              boxes. Before either, there is nothing to choose
+                              among and the barcode's own words are the answer. */}
+                          {boxCount > 0 && (
+                            <InlineAction
+                              label={boxLabel}
+                              icon="cube-outline"
+                              variant="neutral"
+                              onPress={() => setPicking(p => (p?.key === row.key && p.mode === 'box' ? null : { key: row.key, mode: 'box' }))}
+                              accessibilityLabel={`Choose which box of ${resolvedName ?? 'this item'} this is`}
                               style={styles.confirmPill}
                             />
                           )}
@@ -1022,7 +1105,7 @@ export function BarcodeScanSheet({ visible, onClose, onApply, context }: Props) 
                       one you cannot pick. Same `CatalogLinkPicker` a recipe
                       ingredient is tied to an item with, asking the same
                       question of a different kind of line. */}
-                  {pickingKey === row.key && (
+                  {picking?.key === row.key && picking.mode === 'item' && (
                     <View style={styles.pickerWrap}>
                       <CatalogLinkPicker
                         items={items}
@@ -1030,13 +1113,19 @@ export function BarcodeScanSheet({ visible, onClose, onApply, context }: Props) 
                         // own, which is the miss this exists for.
                         initialQuery={row.name.trim() || row.label}
                         onPick={item => {
-                          setPickingKey(null);
+                          setPicking(null);
                           patchRow(row.key, {
                             pickedItemId: item.id,
                             // The offer this replaces, dropped: leaving a yes to
                             // a row the user has just said no to would come back
                             // the moment the pick is undone.
                             confirmedMatchId: null,
+                            // A box belongs to the item it hangs off, so a box
+                            // chosen for the old item is not an answer about
+                            // this one. `scanBoxFor` refuses it at apply time
+                            // anyway; clearing here is what stops the row
+                            // *saying* it while it does.
+                            pickedProductId: null,
                             // Naming a row is what makes it recordable, and a
                             // pick is a stronger naming than typing one.
                             included: true,
@@ -1046,6 +1135,30 @@ export function BarcodeScanSheet({ visible, onClose, onApply, context }: Props) 
                             name: row.name.trim() || item.name,
                           });
                         }}
+                      />
+                    </View>
+                  )}
+
+                  {/* The second question, and deliberately its own control
+                      rather than a step of the first: which food this is, then
+                      which box of it. Most scans never need it — the barcode's
+                      own words derive a box perfectly well — so it sits behind
+                      its own tap rather than lengthening every row. */}
+                  {picking?.key === row.key && picking.mode === 'box' && (
+                    <View style={styles.pickerWrap}>
+                      <ProductPicker
+                        itemId={rowItemId}
+                        products={itemProducts}
+                        // Before anybody picks, the row is already filed against
+                        // whichever box its own barcode names, so that is what
+                        // the list shows as current rather than nothing.
+                        value={row.pickedProductId ?? gtinProductFor(row.gtin)?.id ?? null}
+                        allowNone={false}
+                        onPick={product => {
+                          setPicking(null);
+                          if (product) patchRow(row.key, { pickedProductId: product.id });
+                        }}
+                        label={resolvedName ? `WHICH ${resolvedName.toUpperCase()}` : 'WHICH BOX'}
                       />
                     </View>
                   )}
