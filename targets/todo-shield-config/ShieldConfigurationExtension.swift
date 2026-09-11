@@ -88,6 +88,16 @@ class ShieldConfigurationExtension: ShieldConfigurationDataSource {
     switch state.reason {
     case "focus":
       return "A focus session is running. These apps unblock when you pause or finish it."
+    case "gate":
+      // The whole sentence, written by the app rather than assembled here. A
+      // gate can be one task or several, and picking between "isn't done yet"
+      // and "are still to do" is the kind of thing that goes quietly wrong in
+      // a file no test in this repo can reach — `gateSubtitle` in appGate.ts
+      // does it where it can be checked. The penalty below keeps its sentence
+      // on this side only because it needs a time in the reader's own locale,
+      // which is the one thing the app cannot work out for this screen.
+      return state.detail.flatMap { $0.isEmpty ? nil : $0 }
+        ?? "A task has to be done first. Open dundundun to see which."
     case "penalty":
       let cause = state.detail.flatMap { $0.isEmpty ? nil : $0 }
       let until = state.untilIso.flatMap(Self.timeLabel)

@@ -2072,6 +2072,33 @@ export interface Task {
    */
   penaltyFiredAt: string | null;
 
+  /**
+   * Keep the apps picked in Settings blocked for as long as this task is
+   * outstanding. The other direction from `penaltyMinutes` above: that one is
+   * what failing costs afterwards, this one is what has to happen first.
+   *
+   * The block runs for no fixed time, because its length is the person's own
+   * behaviour — "no YouTube before the morning walk" ends when the walk does.
+   * That sounds like a way to be locked out of a phone indefinitely and isn't,
+   * because two one-tap exits are always there: complete it, or move it to
+   * another day. The friction is the whole feature; being trapped is not.
+   *
+   * **When it applies is `isTaskVisible`, not a clock of its own.** That is
+   * what keeps "before my morning walk" from meaning 11pm the night before,
+   * and it inherits every existing reason a task isn't yours to do yet — a
+   * deferral, a time-of-day segment, vacation mode, waiting on another task or
+   * a person. A gate that could be raised by a task the app itself was
+   * withholding is the one outcome this must not have, and reusing the
+   * visibility rule is what rules it out by construction rather than by a
+   * list of exceptions somebody has to maintain (compare `penaltyChargeFor`,
+   * which had to be handed that answer).
+   *
+   * Meaningless on a negative task, which is never completed and so would
+   * block for ever — `isGateTask` refuses one rather than trusting the editor
+   * to hide the row.
+   */
+  gatesApps: boolean;
+
   // Streaks
   //
   // For a positive task these are consecutive completions, which is what they
@@ -2554,6 +2581,10 @@ export interface TemplateItem {
   // deliverableValue.
   penaltyMinutes: number | null;
   penaltyCutoffTime: string | null;
+  // Seeds Task.gatesApps, on the same reasoning as the pair above: a morning
+  // routine whose point is that nothing else happens until the walk does would
+  // otherwise hand out tasks that gate nothing.
+  gatesApps: boolean;
 
   // What the task created from this item asks for when it's completed, or null
   // for the ordinary "ticking it is the whole answer" item. Another field

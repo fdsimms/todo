@@ -79,6 +79,7 @@ const BASE: Task = {
   penaltyMinutes: null,
   penaltyCutoffTime: null,
   penaltyFiredAt: null,
+  gatesApps: false,
   showStreak: false,
   streakRequiresWindow: false,
   reminderTime: null,

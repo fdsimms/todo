@@ -62,6 +62,7 @@ const makeItem = (overrides: Partial<TemplateItem> = {}): TemplateItem => ({
   completionTimerMinutes: null,
   penaltyMinutes: null,
   penaltyCutoffTime: null,
+  gatesApps: false,
   deliverableKind: null,
   chainEnabled: false,
   chainItems: [],
@@ -236,6 +237,13 @@ describe('buildDraftsFromTemplate', () => {
   const start = new Date('2026-06-20T09:00:00');
   const end = new Date('2026-06-27T09:00:00');
   const noAnchors = { start: null, end: null };
+
+  it('carries a gate onto the draft', () => {
+    // A morning-routine template whose point is that nothing else happens
+    // before the walk would otherwise hand out tasks that gate nothing.
+    const [draft] = buildDraftsFromTemplate([makeItem({ gatesApps: true })], noAnchors);
+    expect(draft.gatesApps).toBe(true);
+  });
 
   it('carries the apps-blocked cost onto the draft, but never a charge', () => {
     // A morning-routine template whose point is that the walk costs something
