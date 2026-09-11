@@ -1,0 +1,4 @@
+{
+  "message": "Fixed \"Open Settings\" on the weight-logging screen's Health permission alert opening iOS Settings, which has no Health row. It now opens the Health app instead.",
+  "date": "2026-09-11"
+}
