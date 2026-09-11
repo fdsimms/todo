@@ -184,7 +184,7 @@ npm install          # dependencies; node_modules isn't checked in, so a fresh c
                      # this before tsc or jest will run at all
 npx expo start       # start dev server (scan QR with Expo Go)
 npx tsc --noEmit     # typecheck; ~4s warm, ~20s the first time in a fresh checkout
-npm test             # the whole suite, about half a minute — just run all of it
+npm test             # the whole suite, well under a minute — just run all of it
 npm run test:watch   # watch mode
 npx jest src/__tests__/dateUtils.test.ts  # single file, if you want the shorter output
 npm run docs         # regenerate all three generated docs, then commit them
@@ -446,7 +446,7 @@ them source rather than tests. The ten biggest source files:
 Grep for the symbol and read the surrounding range; reading any of them end to end costs more
 context than the rest of the task will. `docs/module-map.md` says which file owns what.
 
-The suite is **311 test files**, and `npm test` runs all of them in about half a minute.
+The suite is **311 test files**, and `npm test` runs all of them in well under a minute.
 `npx tsc --noEmit` is a few seconds once `.tsbuildinfo` exists, so run both, every time.
 
 <!-- END GENERATED: repo-stats -->
