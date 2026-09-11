@@ -11,6 +11,7 @@ import { usePersonGroupStore } from '../store/usePersonGroupStore';
 import { usePersonNoteStore } from '../store/usePersonNoteStore';
 import { useFoodLogStore } from '../store/useFoodLogStore';
 import { useMoodStore } from '../store/useMoodStore';
+import { useMilestoneStore } from '../store/useMilestoneStore';
 import { useTaskGroupStore } from '../store/useTaskGroupStore';
 import { useGroceryStore } from '../store/useGroceryStore';
 import { useRecipeStore } from '../store/useRecipeStore';
@@ -1354,6 +1355,7 @@ export function seedDemoData(): void {
   // only to somebody who had already found it. The history itself is what
   // there is to see.
   seedMoodLog(today);
+  seedMilestone(today);
 }
 
 /**
@@ -1829,6 +1831,22 @@ function seedMoodLog(today: Date): void {
   }
 
   seedRepeatedHealthTask(today);
+}
+
+/**
+ * One milestone, dated to the worst day in the seeded mood log, so the Mood
+ * screen's before/after card has something to draw rather than showing its
+ * empty state — the exact case `demoSeed` exists for, since a capability with
+ * nothing to show reads as one the app does not have.
+ *
+ * Goes through `addMilestone` like everything else here, so a seeded row
+ * cannot drift from the type.
+ */
+function seedMilestone(today: Date): void {
+  const { addMilestone } = useMilestoneStore.getState();
+  const date = subDays(today, 9);
+  date.setHours(12, 0, 0, 0);
+  addMilestone('Started a magnesium supplement', date);
 }
 
 /**

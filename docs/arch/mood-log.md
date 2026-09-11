@@ -3,9 +3,10 @@
 What #1223 asked for, and the decisions it deliberately left open, resolved.
 Read this before changing anything under `src/utils/moodLog.ts`,
 `src/utils/moodInsights.ts`, `src/utils/moodHistory.ts`, `src/utils/moodExport.ts`,
-`src/utils/moodTasks.ts`, `src/store/useMoodStore.ts`, `src/screens/MoodScreen.tsx`,
-`src/screens/MoodHistoryScreen.tsx`, `src/screens/SymptomDetailScreen.tsx` or
-`src/components/MoodLogSheet.tsx`.
+`src/utils/moodTasks.ts`, `src/store/useMoodStore.ts`, `src/store/useMilestoneStore.ts`,
+`src/screens/MoodScreen.tsx`, `src/screens/MoodHistoryScreen.tsx`,
+`src/screens/SymptomDetailScreen.tsx`, `src/components/MoodLogSheet.tsx` or
+`src/components/MilestoneSheet.tsx`.
 
 The rules here are settled decisions with the reasoning attached. Don't
 re-derive them from the code, and don't re-open one without a reason this note
@@ -557,11 +558,80 @@ things it deliberately is not:
 It needs no settings switch of its own: it appears only if you have been logging,
 only inside a menu you opened, and it adds no row anywhere.
 
+## Milestones — a before/after split, not a with/without one
+
+`Milestone` answers a different question from everything above it in this
+file: not "does this thing being present change my mood" but "did something
+change on this day". Starting or stopping a medicine, a new job, moving
+house — a dated marker read as a before/after split against the mood log,
+rather than a with/without one.
+
+**Its own entity, mirroring `PersonNote` rather than `MoodLog`.** A milestone
+is closer to "a dated fact with its own lifecycle" than to "an entry stamped
+with an instant several times a day" — there is exactly one of it per event,
+not several a day, and its date is something the user picks rather than
+something derived from `dayResetTime` at write time. So it is `{ id, label,
+date, createdAt }`, CRUD in its own store (`useMilestoneStore`) and its own
+table (`milestones`), the same shape `usePersonNoteStore`/`person_notes` take
+and for the identical reason: a row with its own lifecycle that nothing else
+points at.
+
+**No fixed vocabulary, and deliberately no attempt to pair a "Started X" with
+a later "Stopped X".** Same freeform call `LoggedSymptom` and `contextTags`
+make, and the same reason `symptomKey` refuses fuzzy matching: guessing that
+two labels name the same underlying change and silently merging them folds
+two different questions — "how were things before I started" and "how were
+things before I stopped" — into one chart. Each milestone is its own single
+split point; recording both ends of a change is two milestones, each read on
+its own.
+
+**No archive column, unlike `PersonNote`.** A stale `PersonNote` is kept
+around because staleness is itself part of what the note means (a birthday
+note about someone you've stopped seeing degrades gracefully by going quiet
+rather than by being deleted). A milestone has no equivalent "gone stale"
+state — it is a fact about one day in the past, so a wrong one is edited or
+deleted, never filed away.
+
+**The date is required and noon-anchored, unlike `PersonNote.relevantOn`.**
+A `PersonNote` can be about no particular day; a milestone *is* its day — it
+is the split point every before/after read is built from, so there is no
+"any time" state for it to have and `MilestoneSheet` gives it no way to
+clear the date. Noon on the picked day is the same anchor `WhenPicker`
+already gives a picked date and a backdated mood entry uses for the same
+reason: a timezone or DST boundary must not drag the split point onto the
+wrong calendar day.
+
+**`milestoneMoodContrast` doesn't go through `contrastsFor`.** Every other
+contrast in `moodInsights.ts` loops over a vocabulary of labels and produces
+one row per label ("for each category…", "for each symptom…"). A milestone
+names exactly one split point, not a set of labels, so it's its own function
+with its own `MilestoneContrast` return type — `beforeDays`/`afterDays`/
+`moodBefore`/`moodAfter`/`delta` in place of `GroupContrast`'s
+`label`/`withDays`/`withoutDays`/`moodWith`/`moodWithout`, because "before"
+and "after" read better in copy than "with" and "without" do for a date
+split, and there is no `label` to iterate since the card already knows which
+milestone it's drawing. Same gates as everywhere else: `MIN_PAIRED_DAYS`
+before any comparison is offered at all, `MIN_CONTRAST_DAYS` on each side of
+the split. **The milestone's own day counts as "after"**: it dates the day
+the thing started or stopped, not the day it took effect.
+
+**The Mood screen's MILESTONES card is a directory, like SYMPTOMS, not a
+ranked top-four like the with/without cards above it.** Every milestone the
+user has logged gets its own row — either a `ContrastBars` "Before"/"After"
+row once it has enough days on each side, or a plain link row saying so
+isn't possible yet — because a milestone the user typed in has to be findable
+regardless of whether the data behind it has caught up, the same reasoning
+`symptomStats`' directory exists beside the gated `symptomMoodContrasts`
+rows.
+
 ## It syncs, and it hides
 
 `mood_logs` is in `SYNC_TRACKED_TABLES`. Half a person's health record on each
 phone, with every correlation computed off whichever half, is worse than the
-Stats-history split `focus_session_log` is tracked to avoid.
+Stats-history split `focus_session_log` is tracked to avoid. `milestones` is
+tracked beside it for the same reason: a before/after split has to read the
+same on every phone, or it isn't a fact about the person, just about which
+device answered.
 
 The Mood screen is a `contentScreen` in `simpleMode` — like People and Stacks,
 it holds rows that live nowhere else, so hiding it while it holds any would
