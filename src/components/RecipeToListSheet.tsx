@@ -28,6 +28,7 @@ import {
   type PlanCategory,
 } from '../utils/mealPlanGroceries';
 import { describeStandingSwap, standingSwapMap } from '../utils/standingSwaps';
+import { onHandNameKeys } from '../utils/grocerySuggest';
 import { describeSubstitutes, substitutesFor, type Substitute } from '../utils/itemSubs';
 import { alternativeCaptions, applyChoice, choiceGroupKey, recipeChoiceGroups } from '../utils/recipeComponents';
 import { normalizeScale } from '../utils/recipeScale';
@@ -157,6 +158,7 @@ export function RecipeToListSheet({
     [listEntries, activeListId]
   );
   const itemSubs = useGroceryStore(useShallow(s => s.itemSubs));
+  const itemProducts = useGroceryStore(useShallow(s => s.itemProducts));
   const addFromPlan = useGroceryStore(s => s.addFromPlan);
   const addToPantry = useGroceryStore(s => s.addToPantry);
 
@@ -185,9 +187,15 @@ export function RecipeToListSheet({
   // to be a lasting fact about.
   const [scale, setScale] = useState(1);
 
+  // Live, not persisted — see recipeComponents.ts's ChoiceResolution.onHand.
+  const onHand = useMemo(
+    () => onHandNameKeys(items, new Date(), itemProducts),
+    [items, itemProducts]
+  );
+
   const choiceGroups = useMemo(
-    () => (recipe && recipesById ? recipeChoiceGroups(recipe, recipesById, { chosen: choices }) : []),
-    [recipe, recipesById, choiceKey]
+    () => (recipe && recipesById ? recipeChoiceGroups(recipe, recipesById, { chosen: choices, onHand }) : []),
+    [recipe, recipesById, choiceKey, onHand]
   );
 
   // "Always use oat milk for milk" — applied on the way out of the flatten, so
@@ -198,14 +206,14 @@ export function RecipeToListSheet({
   const classified = useMemo(() => {
     if (!recipe) return [];
     return classifyPlanned(
-      plannedIngredientsForRecipe(recipe, recipesById, { chosen: choices, undecided }, scale, swaps),
+      plannedIngredientsForRecipe(recipe, recipesById, { chosen: choices, undecided, onHand }, scale, swaps),
       items,
       new Date(),
       itemSubs,
       // Against the list being added to, not "any list" — see classifyPlanned.
       inTrolley
     );
-  }, [recipe, recipesById, items, itemSubs, swaps, choiceKey, scale, inTrolley]);
+  }, [recipe, recipesById, items, itemSubs, swaps, choiceKey, scale, inTrolley, onHand]);
 
   // "or jalapeño" on each option of a group left open, so a row in Need to buy
   // reads as one of a pair rather than as a second thing to buy. Keyed on

@@ -28,6 +28,7 @@ import {
   type PlanCategory,
 } from '../utils/mealPlanGroceries';
 import { describeStandingSwap, standingSwapMap } from '../utils/standingSwaps';
+import { onHandNameKeys } from '../utils/grocerySuggest';
 import { describeSubstitutes, substitutesFor, type Substitute } from '../utils/itemSubs';
 import { convertQuantity } from '../utils/unitConvert';
 import { SheetHeaderButton } from './SheetHeaderButton';
@@ -141,11 +142,14 @@ export function AddMealsToListSheet({
   const swaps = useMemo(() => standingSwapMap(itemSubs, items), [itemSubs, items]);
 
   const classified = useMemo(() => {
-    const planned = collectPlannedIngredients(entries, recipesById, range, swaps);
+    // Live, not persisted — see recipeComponents.ts's ChoiceResolution.onHand.
+    const planned = collectPlannedIngredients(
+      entries, recipesById, range, swaps, onHandNameKeys(items, new Date())
+    );
     // Against the list being added to — see classifyPlanned's own note on why
     // an unscoped read silently drops shopping.
     return classifyPlanned(planned, items, new Date(), itemSubs, inTrolley);
-  }, [entries, recipesById, range, items, itemSubs, swaps]);
+  }, [entries, recipesById, range, items, itemSubs, swaps, inTrolley]);
 
   const byCategory = useMemo(() => {
     const out: Record<PlanCategory, ClassifiedIngredient[]> = {
