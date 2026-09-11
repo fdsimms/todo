@@ -1,0 +1,4 @@
+{
+  "message": "Fixed sleep-based tasks (like \"Keep today light\") sometimes firing even after a full night's sleep, because the reading only counted the part of the night that fell after midnight",
+  "date": "2026-09-11"
+}

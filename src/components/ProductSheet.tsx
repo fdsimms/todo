@@ -24,6 +24,7 @@ import { describeProduct, productsForItem } from '../utils/groceryProduct';
 import { describeFoodPanel } from '../utils/foodNutrition';
 import { defaultOnHandUntil, OUT_OF_IT_UNTIL } from '../utils/grocerySuggest';
 import { haptics } from '../utils/haptics';
+import { useKeyboardInsetScroll } from '../hooks/useKeyboardInsetScroll';
 import { NutritionPanelSheet } from './NutritionPanelSheet';
 import { PillGroup, type PillGroupOption } from './PillGroup';
 import { SegmentedControl } from './SegmentedControl';
@@ -58,6 +59,7 @@ interface Props {
 export function ProductSheet({ visible, itemId, editingProductId = null, onClose }: Props) {
   const colors = useColors();
   const styles = useMemo(() => makeStyles(colors), [colors]);
+  const keyboardScroll = useKeyboardInsetScroll<ScrollView>();
 
   const items = useGroceryStore(useShallow(s => s.items));
   const itemProducts = useGroceryStore(useShallow(s => s.itemProducts));
@@ -277,9 +279,11 @@ export function ProductSheet({ visible, itemId, editingProductId = null, onClose
         </View>
 
         <ScrollView
+          ref={keyboardScroll.ref}
           style={styles.body}
           contentContainerStyle={styles.bodyContent}
           keyboardShouldPersistTaps="handled"
+          {...keyboardScroll.props}
         >
           <Text style={styles.label}>BRAND</Text>
           <TextInput

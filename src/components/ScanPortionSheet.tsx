@@ -13,6 +13,7 @@ import { useColors } from '../theme/ThemeContext';
 import { border, font, fontWeight, interaction, radius, spacing, type Colors } from '../theme';
 import { MEAL_SLOTS, MEAL_SLOT_LABELS, type FoodNutrition, type MealSlot } from '../types';
 import { useFoodLogStore } from '../store/useFoodLogStore';
+import { useKeyboardInsetScroll } from '../hooks/useKeyboardInsetScroll';
 import { packageChoices, packageHelping } from '../utils/scanPortion';
 import { scalePanelToAmount } from '../utils/foodLog';
 import { haptics } from '../utils/haptics';
@@ -77,6 +78,11 @@ export function ScanPortionSheet({ visible, foods, slot, at, onClose }: Props) {
   const colors = useColors();
   const styles = useMemo(() => makeStyles(colors), [colors]);
   const addEntry = useFoodLogStore(s => s.addEntry);
+  // Lifts the focused amount field clear of the keyboard instead of leaving
+  // it to a plain ScrollView, which only scrolls when the person does it
+  // manually — same mechanism as every other keyboard-heavy sheet (see the
+  // hook's own doc comment for why this beats a KeyboardAvoidingView here).
+  const keyboardScroll = useKeyboardInsetScroll<ScrollView>();
 
   const [answers, setAnswers] = useState<Record<string, Answer>>({});
   const [chosenSlot, setChosenSlot] = useState<MealSlot | null>(slot);
@@ -165,7 +171,13 @@ export function ScanPortionSheet({ visible, foods, slot, at, onClose }: Props) {
           />
         </View>
 
-        <ScrollView style={styles.body} contentContainerStyle={styles.bodyContent}>
+        <ScrollView
+          ref={keyboardScroll.ref}
+          style={styles.body}
+          contentContainerStyle={styles.bodyContent}
+          keyboardShouldPersistTaps="handled"
+          {...keyboardScroll.props}
+        >
           <Text style={styles.groupLabel}>WHICH MEAL</Text>
           <SegmentedControl<MealSlot | null>
             options={[

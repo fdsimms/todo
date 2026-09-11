@@ -27,6 +27,7 @@ import { isNonFoodAisle } from '../utils/groceryAisles';
 import { groceryNameKey } from '../utils/groceryParse';
 import { haptics } from '../utils/haptics';
 import { weighableLine } from '../utils/ingredientGrams';
+import { useKeyboardInsetScroll } from '../hooks/useKeyboardInsetScroll';
 import { EmptyState } from './EmptyState';
 import { InlineAction } from './InlineAction';
 import { NutritionSearchSheet } from './NutritionSearchSheet';
@@ -176,6 +177,10 @@ export function FoodLogEntrySheet({
 }: Props) {
   const colors = useColors();
   const styles = useMemo(() => makeStyles(colors), [colors]);
+  // Lifts the amount field (which autofocuses, so the keyboard is already up
+  // when this half renders) clear of the keyboard instead of leaving it to a
+  // plain ScrollView — same mechanism as every other keyboard-heavy sheet.
+  const keyboardScroll = useKeyboardInsetScroll<ScrollView>();
 
   const items = useGroceryStore(useShallow(s => s.items));
   const itemProducts = useGroceryStore(useShallow(s => s.itemProducts));
@@ -550,24 +555,37 @@ export function FoodLogEntrySheet({
     <Modal visible={visible} animationType="slide" presentationStyle="pageSheet" onRequestClose={handleCancel}>
       <View style={styles.root}>
         <View style={styles.header}>
-          <SheetHeaderButton label="Cancel" role="cancel" onPress={handleCancel} minWidth={64} />
-          <Text style={styles.headerTitle} numberOfLines={1}>
-            {picked ? picked.label : 'What did you eat?'}
-          </Text>
-          <SheetHeaderButton label="Add" onPress={handleSave} disabled={!built} minWidth={64} />
+          <View style={styles.headerRow}>
+            <SheetHeaderButton label="Cancel" role="cancel" onPress={handleCancel} minWidth={64} />
+            {!picked && (
+              <Text style={styles.headerTitle} numberOfLines={1}>What did you eat?</Text>
+            )}
+            <SheetHeaderButton label="Add" onPress={handleSave} disabled={!built} minWidth={64} />
+          </View>
+          {/* Full width of the header rather than squeezed between the two
+              buttons, so a long scanned product name gets far more room
+              before it has to truncate — see the header title note in
+              CLAUDE.md's design system section. */}
+          {!!picked && (
+            <Text style={styles.headerFoodName} numberOfLines={2}>{picked.label}</Text>
+          )}
         </View>
 
         {picked ? (
           // Scrolls, because this half can outgrow the sheet: the amount field
           // takes focus on arrival, so the keyboard is already up, and a dish
-          // with a couple of "Anything else?" lines pushes Which meal and
-          // "Pick something else" under it with no way to reach them. Its two
-          // siblings both handle this — `ScanPortionSheet` with a ScrollView
-          // and `LogMealPrompt` with a KeyboardAvoidingView.
+          // with a couple of "Anything else?" lines pushes Which meal under it
+          // with no way to reach it. `useKeyboardInsetScroll` is what actually
+          // keeps the focused field clear of the keyboard — its two siblings
+          // use the same mechanism (`ScanPortionSheet`) or `LogMealPrompt`'s
+          // `KeyboardAvoidingView`, which fits that sheet's centered-card
+          // shape instead.
           <ScrollView
+            ref={keyboardScroll.ref}
             style={styles.bodyScroll}
             contentContainerStyle={styles.body}
             keyboardShouldPersistTaps="handled"
+            {...keyboardScroll.props}
           >
             <Text style={styles.label}>HOW MUCH</Text>
             {/* Only for a dish that can answer both ways. A weighed dish with
@@ -611,7 +629,7 @@ export function FoodLogEntrySheet({
                 ? dishWeightHint
                 : portionExamples.length > 0
                   ? `A weight (like 100g), or one of this food's stated portions: ${portionExamples.join(', ')}. Anything else is refused rather than guessed at.`
-                  : 'A weight, like 100g. This food states no portions to measure by, so a volume or a count can\'t be used yet.'}
+                  : 'A weight, like 100g. This food has no stated portions — type an amount by volume or count and you can weigh it once to add it.'}
             </Text>
 
             {!!amount.trim() && !built && (
@@ -711,16 +729,6 @@ export function FoodLogEntrySheet({
               label="Which meal"
               surface="page"
             />
-
-            <TouchableOpacity
-              style={styles.change}
-              activeOpacity={interaction.activeOpacity}
-              onPress={() => { haptics.tap(); setPicked(null); setAmount(''); }}
-              accessibilityRole="button"
-              accessibilityLabel="Pick a different food"
-            >
-              <Text style={styles.changeText}>Pick something else</Text>
-            </TouchableOpacity>
           </ScrollView>
         ) : (
           <>
@@ -794,16 +802,25 @@ function makeStyles(colors: Colors) {
   return StyleSheet.create({
     root: { flex: 1, backgroundColor: colors.bg },
     header: {
-      flexDirection: 'row',
-      alignItems: 'center',
-      justifyContent: 'space-between',
       paddingHorizontal: spacing.md,
       paddingVertical: spacing.md,
       borderBottomWidth: border.hairline,
       borderBottomColor: colors.separator,
     },
+    headerRow: {
+      flexDirection: 'row',
+      alignItems: 'center',
+      justifyContent: 'space-between',
+    },
     headerTitle: {
       flex: 1,
+      textAlign: 'center',
+      color: colors.text,
+      fontSize: font.md,
+      fontWeight: fontWeight.semibold,
+    },
+    headerFoodName: {
+      marginTop: spacing.xs,
       textAlign: 'center',
       color: colors.text,
       fontSize: font.md,
@@ -864,8 +881,6 @@ function makeStyles(colors: Colors) {
       paddingHorizontal: spacing.md,
       paddingVertical: spacing.sm,
     },
-    change: { marginTop: spacing.lg, alignSelf: 'flex-start' },
-    changeText: { color: colors.accent, fontSize: font.sm },
     // TextSecondary rather than accent — a decline, not a link, the same
     // weighting LogMealPrompt's own secondary buttons carry.
     declineMeal: { marginTop: spacing.sm, alignSelf: 'flex-start', paddingVertical: spacing.xs },

@@ -1,4 +1,4 @@
-import { Platform } from 'react-native';
+import { Platform, Linking } from 'react-native';
 import { isDemoModeActive } from './demoState';
 
 /**
@@ -70,4 +70,27 @@ export function healthBridge(): HealthBridge | null {
  */
 export function isHealthSupported(): boolean {
   return healthBridge()?.isHealthAvailable() ?? false;
+}
+
+/**
+ * HealthKit permissions live in the Health app itself, under the profile
+ * icon's Privacy → Apps page, not in this app's page under iOS Settings —
+ * Settings has no Health row to show. Try the Health app's URL scheme first
+ * and only fall back to Settings if that fails.
+ *
+ * **`x-apple-health` has to be declared in `LSApplicationQueriesSchemes`
+ * (app.json's `ios.infoPlist`) or `Linking.openURL` rejects outright**,
+ * landing every caller in the `catch` below — this app's own Settings page,
+ * which has no Health row, silently proving the row's own hint text wrong.
+ * That's not a hypothetical: it shipped without the entry once already.
+ *
+ * The one door for any "let them fix Health access" button — never call
+ * `Linking.openSettings()` directly for a Health permission problem.
+ */
+export async function openHealthApp(): Promise<void> {
+  try {
+    await Linking.openURL('x-apple-health://');
+  } catch {
+    await Linking.openSettings();
+  }
 }

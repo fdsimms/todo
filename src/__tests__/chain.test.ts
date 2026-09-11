@@ -38,7 +38,7 @@ describe('chainPreview', () => {
   const items = [step('Put laundry in washers'), step('Remove non-dry items'), step('Fold laundry')];
 
   it('leads with the current step and previews the next one', () => {
-    expect(chainPreview({ chainIndex: 1, chainItems: items })).toEqual({
+    expect(chainPreview({ chainEnabled: true, chainIndex: 1, chainItems: items })).toEqual({
       currentIdx: 1,
       total: 3,
       currentTitle: 'Remove non-dry items',
@@ -47,7 +47,7 @@ describe('chainPreview', () => {
   });
 
   it('has no next title when the current step is the last one', () => {
-    expect(chainPreview({ chainIndex: 2, chainItems: items })).toEqual({
+    expect(chainPreview({ chainEnabled: true, chainIndex: 2, chainItems: items })).toEqual({
       currentIdx: 2,
       total: 3,
       currentTitle: 'Fold laundry',
@@ -56,21 +56,31 @@ describe('chainPreview', () => {
   });
 
   it('never surfaces a step before the current one, finished or not', () => {
-    const preview = chainPreview({ chainIndex: 1, chainItems: items });
+    const preview = chainPreview({ chainEnabled: true, chainIndex: 1, chainItems: items });
     expect(preview?.currentTitle).not.toBe('Put laundry in washers');
     expect(preview?.nextTitle).not.toBe('Put laundry in washers');
   });
 
   it('wraps the index past the end, the way a repeating chain resets', () => {
-    expect(chainPreview({ chainIndex: 3, chainItems: items })?.currentTitle).toBe('Put laundry in washers');
+    expect(chainPreview({ chainEnabled: true, chainIndex: 3, chainItems: items })?.currentTitle).toBe('Put laundry in washers');
   });
 
   it('is null for an empty chain', () => {
-    expect(chainPreview({ chainIndex: 0, chainItems: [] })).toBeNull();
+    expect(chainPreview({ chainEnabled: true, chainIndex: 0, chainItems: [] })).toBeNull();
   });
 
   it('defaults a missing index to the first step', () => {
-    expect(chainPreview({ chainItems: items })?.currentTitle).toBe('Put laundry in washers');
+    expect(chainPreview({ chainEnabled: true, chainItems: items })?.currentTitle).toBe('Put laundry in washers');
+  });
+
+  // Same gate as activeChainStep/nextChainStep, and for the same reason: a
+  // single-item or disabled chain isn't a chain anywhere else in the UI.
+  it('is null when the chain is off', () => {
+    expect(chainPreview({ chainEnabled: false, chainIndex: 1, chainItems: items })).toBeNull();
+  });
+
+  it('is null for a single-item chain — it reads as a plain task everywhere else', () => {
+    expect(chainPreview({ chainEnabled: true, chainIndex: 0, chainItems: [step('Only')] })).toBeNull();
   });
 });
 

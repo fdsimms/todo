@@ -831,6 +831,20 @@ Today, Later, Unscheduled and Inbox are **not** separate screens — they're fou
   hook's doc comment before touching a sheet's open/close animation; the no-re-arm half of the
   rule lives at the call sites.
 
+**Any `pageSheet` Modal whose `ScrollView` holds a `TextInput` needs `useKeyboardInsetScroll`
+(`src/hooks/`), or the keyboard sits on top of whatever's below the focused field.** A bare
+`<ScrollView>` with no keyboard handling only scrolls when the person does it manually — nothing
+lifts the field, or the rest of the sheet, clear of the keyboard on its own, so a card near the
+bottom (the next item in a batch, a Log/Save button, a hint under the field) renders right behind
+it. This shipped as the same bug in five sheets at once (`ScanPortionSheet`, `FoodLogEntrySheet`,
+`EstimateMealSheet`, `ProductSheet`, `RuleListSheet`) before being fixed in all of them together —
+check for it whenever a new `pageSheet` sheet, or a new field in an existing one, puts a
+`TextInput` inside a `ScrollView`. Wire it the same way `EditorSheet` does: spread
+`keyboardScroll.props` onto the `ScrollView` and pass `ref={keyboardScroll.ref}`. Don't reach for
+`KeyboardAvoidingView` instead — see the hook's own doc comment and the note on `EditorSheet` for
+why the two fight each other; `LogMealPrompt`'s `KeyboardAvoidingView` is the one deliberate
+exception, because its Modal is a small centered card rather than a full scrollable sheet.
+
 **Never put `lineHeight` on a `TextInput` style.** RN maps it straight onto the iOS paragraph style's `minimumLineHeight`/`maximumLineHeight` with no compensating baseline offset (`RCTTextAttributes.mm`), so the glyphs are drawn a full line height below the top of the line box instead of one ascent below it — the text sits low in the field while the caret stays centered, and the placeholder inherits the same attributes so it looks wrong even when empty. `lineHeight` is fine (and wanted) on `Text`. When an input needs a specific box height to keep a row from resizing between display and edit mode, set `height`/`minHeight` instead.
 
 **Shared primitives** (use these instead of hand-rolling):

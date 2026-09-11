@@ -854,9 +854,25 @@ public class TodoHealthBridgeModule: Module {
         // toward its own day, which is why nothing calls this number "last
         // night": it is time asleep recorded against a day.
         if let type = HKCategoryType.categoryType(forIdentifier: .sleepAnalysis) {
+          // The query has to look further back than `anchor`, or a night gets
+          // truncated at whichever hour the window happens to start. A person
+          // asleep before `anchor` (nearly everybody, for the 1-day "today"
+          // read: `anchor` is midnight-equivalent and most nights are
+          // underway well before it) has samples with an `endDate` before
+          // `anchor`, and HealthKit's overlap predicate drops any sample
+          // whose `endDate` isn't after the query's start — so only the
+          // portion of the night after `anchor` came back, read as a night
+          // barely a few hours long. The episode grouping below still files
+          // the *whole* night under the day its last sample ends in, so
+          // fetching further back costs nothing extra: an episode that ends
+          // before `anchor` still finds no bucket in `starts` and is dropped
+          // exactly as before. A day is the padding — long enough to hold
+          // the earliest realistic bedtime for a night ending within the
+          // window, and short enough that this stays one cheap query.
+          let sleepQueryStart = calendar.date(byAdding: .day, value: -1, to: anchor) ?? anchor
           let query = HKSampleQuery(
             sampleType: type,
-            predicate: HKQuery.predicateForSamples(withStart: anchor, end: end, options: []),
+            predicate: HKQuery.predicateForSamples(withStart: sleepQueryStart, end: end, options: []),
             limit: HKObjectQueryNoLimit,
             sortDescriptors: [NSSortDescriptor(key: HKSampleSortIdentifierStartDate, ascending: true)]
           ) { _, samples, _ in
