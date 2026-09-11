@@ -45,10 +45,20 @@ import { SheetHeaderButton } from './SheetHeaderButton';
  * Those foods would otherwise be permanently un-loggable.
  *
  * **The layout follows the label, because that is what somebody is copying
- * from.** Serving size first, since every figure below it depends on which
- * quantity they describe, then calories, then the rest in the order a panel
- * prints them (`NUTRIENT_KEYS`). Reading down the packet and down the screen
- * should be the same movement.
+ * from.** Serving size and weight first, since they apply whichever basis is
+ * picked, then calories, then the rest in the order a panel prints them
+ * (`NUTRIENT_KEYS`). Reading down the packet and down the screen should be
+ * the same movement.
+ *
+ * **The basis selector sits at the bottom of the SERVING card, immediately
+ * above NUTRIENTS, not at the top.** It answers "what basis are the figures
+ * below in", and it used to sit directly above Serving weight instead — which
+ * reads as if it scopes that field too, since a form control and the field
+ * right under it look like the control's own target. `servingGrams` is
+ * unrelated to `basis` (see that field's own doc comment in `types/index.ts`)
+ * and applies to a per-100g panel exactly as much as a per-serving one, so it
+ * comes first and the selector sits right against the section it actually
+ * governs.
  *
  * **Every field is blank by default and stays blank if nothing is typed.** A
  * placeholder of "0" would read as a value already saved and would quietly
@@ -358,18 +368,6 @@ export function NutritionPanelSheet({ visible, foodName, nutrition, onClose, onS
 
             <Text style={styles.groupLabel}>SERVING</Text>
             <View style={styles.card}>
-              <SegmentedControl
-                label="These figures are"
-                options={BASIS_OPTIONS}
-                value={form.basis}
-                onChange={basis => setForm(f => ({ ...f, basis }))}
-                surface="card"
-              />
-              <Text style={styles.hint}>
-                Most labels outside the US print per 100g. Pick "per serving" only if the
-                panel's own column says so.
-              </Text>
-
               <View style={styles.field}>
                 <Text style={styles.fieldLabel}>Serving size</Text>
                 <TextInput
@@ -405,6 +403,18 @@ export function NutritionPanelSheet({ visible, foodName, nutrition, onClose, onS
                   is fine.
                 </Text>
               </View>
+
+              <SegmentedControl
+                label="The nutrients below are"
+                options={BASIS_OPTIONS}
+                value={form.basis}
+                onChange={basis => setForm(f => ({ ...f, basis }))}
+                surface="card"
+              />
+              <Text style={styles.hint}>
+                Most labels outside the US print per 100g. Pick "per serving" only if the
+                panel's own column says so.
+              </Text>
             </View>
 
             <Text style={styles.groupLabel}>NUTRIENTS</Text>
