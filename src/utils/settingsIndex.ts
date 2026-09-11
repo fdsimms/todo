@@ -209,6 +209,10 @@ const AI_FEATURE_KEYWORDS: Record<AiFeatureId, string[]> = {
   taskBreakdown: ['claude', 'model', 'subtasks', 'steps', 'split', 'suggestions', 'postpone'],
   templateSuggestions: ['claude', 'model', 'checklist'],
   projectTaskSuggestions: ['claude', 'model', 'checklist', 'fill', 'generate', 'description'],
+  backfillSuggestions: [
+    'claude', 'model', 'fill in', 'category', 'categorize', 'time estimate',
+    'effort', 'how long', 'bulk', 'apply all',
+  ],
   groceryAisles: ['claude', 'model', 'shopping'],
   recipeExtraction: ['claude', 'model', 'ingredients', 'paste', 'photo', 'link'],
   mealIdeas: ['claude', 'model', 'dinner', 'suggest', 'meal plan'],

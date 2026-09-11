@@ -31,6 +31,10 @@ import {
   type NutritionEstimate, type RawNutritionEstimate,
 } from '../utils/nutritionEstimate';
 import { isUnscaled } from '../utils/recipeScale';
+import {
+  readSuggestions, suggestibleEstimateMinutes,
+  type BackfillSuggestion, type SuggestibleBackfillFieldId, type SuggestionExample, type SuggestionTask,
+} from '../utils/backfillSuggest';
 import { amountFromPrintedText, type LabelColumn, type LabelReading } from '../utils/labelOcr';
 import { NUTRIENT_LABEL } from '../utils/foodNutrition';
 import { useSettingsStore } from '../store/useSettingsStore';
@@ -411,6 +415,117 @@ export async function suggestSubtasks(
     result.push({ title });
   }
   return result.slice(0, MAX_SUBTASK_SUGGESTIONS);
+}
+
+/**
+ * Values for the field the Backfill screen is currently asking about, for a
+ * batch of the tasks in its queue.
+ *
+ * One request for the whole visible queue rather than one per card, the same
+ * call `suggestGroceryAisles` makes and for the same reason: the screen is a
+ * fast loop through a long list, and a second of waiting on every card would
+ * cost more than the answer saves. What comes back is a suggestion *per task*,
+ * which the screen shows as an already-picked chip. Nothing is written here.
+ *
+ * Two fields, and the reasoning for which is in `backfillSuggest.ts` rather
+ * than repeated here. Both answer inside a closed set — the user's own
+ * categories, or the effort buckets the card already shows — so the schema
+ * constrains the answer and `readSuggestions` refuses anything outside it
+ * anyway.
+ *
+ * The prompt's real content is `examples`: a dozen of the user's own
+ * already-answered tasks. Without them this is a model guessing at a generic
+ * taxonomy, and "Pay rent" lands in whichever of Home/Money/Admin it happens to
+ * like; with them it is matching a pattern the person has already established.
+ */
+export async function suggestBackfillValues(
+  field: SuggestibleBackfillFieldId,
+  tasks: SuggestionTask[],
+  examples: SuggestionExample[],
+  categoryNames: string[] = [],
+): Promise<Map<string, BackfillSuggestion>> {
+  if (tasks.length === 0) return new Map();
+  if (field === 'category' && categoryNames.length === 0) return new Map();
+  const { apiKey, model } = requireFeature('backfillSuggestions');
+
+  const isCategory = field === 'category';
+  const minutes = suggestibleEstimateMinutes();
+  // Numbered from 1 and matched back by position — see readSuggestions on why
+  // the index rather than the title is what identifies a task here.
+  const taskList = tasks
+    .map((t, i) => `${i + 1}. ${t.title}${t.notes ? ` — ${t.notes}` : ''}`)
+    .join('\n');
+  const examplePart = examples.length > 0
+    ? `${isCategory ? 'How I file tasks already' : 'How I have sized tasks already'}:\n${
+        examples.map(e => `- "${e.title}" → ${e.value}`).join('\n')}`
+    : null;
+
+  const valueProperty = isCategory
+    ? {
+        category: {
+          type: 'string',
+          description: `The category it belongs in. Must be exactly one of: ${categoryNames.join(', ')}.`,
+        },
+      }
+    : {
+        minutes: {
+          type: 'number',
+          enum: minutes,
+          description: `How long it takes, as one of these durations in minutes: ${minutes.join(', ')}. Pick the closest.`,
+        },
+      };
+
+  const data = await callAnthropic({
+    max_tokens: 1500,
+    tools: [{
+      name: 'suggest_values',
+      description: isCategory
+        ? 'Assign each task to the category it belongs in'
+        : 'Say roughly how long each task takes',
+      input_schema: {
+        type: 'object',
+        properties: {
+          suggestions: {
+            type: 'array',
+            description: 'One entry per task you can answer for. Leave a task out entirely rather than guessing at one you cannot place.',
+            items: {
+              type: 'object',
+              properties: {
+                index: {
+                  type: 'integer',
+                  description: 'The number the task was given in the list, copied exactly.',
+                },
+                ...valueProperty,
+              },
+              required: ['index', isCategory ? 'category' : 'minutes'],
+            },
+          },
+        },
+        required: ['suggestions'],
+      },
+    }],
+    tool_choice: { type: 'tool', name: 'suggest_values' },
+    messages: [{
+      role: 'user',
+      content: [
+        isCategory
+          ? 'File each of these tasks of mine into one of my own categories.'
+          : 'Say roughly how long each of these tasks of mine takes, start to finish.',
+        isCategory ? `My categories: ${categoryNames.join(', ')}.` : null,
+        examplePart,
+        isCategory
+          ? 'Match how I have been filing things rather than a tidier scheme of your own. If none of my categories is a reasonable fit for a task, leave that task out of your answer instead of forcing it somewhere.'
+          : 'Judge the work itself, not how urgent it sounds. If a task is too vague to size honestly, leave it out of your answer instead of guessing.',
+        `Tasks:\n${taskList}`,
+      ].filter(Boolean).join('\n\n'),
+    }],
+  }, apiKey, model);
+
+  const toolUse = data.content?.find(c => c.type === 'tool_use');
+  const input = toolUse?.input as { suggestions?: unknown } | undefined;
+  if (!input?.suggestions) throw new Error('No suggestions returned');
+
+  return readSuggestions(input.suggestions, field, tasks, categoryNames);
 }
 
 // ─── Groceries ──────────────────────────────────────────────────────────────

@@ -216,3 +216,38 @@ export function applyLabelReading(
 export function labelColumnFieldCount(column: LabelColumn): number {
   return NUTRIENT_KEYS.filter(key => column.amounts[key] !== undefined).length;
 }
+
+/**
+ * The form with a barcode-sourced panel laid over it.
+ *
+ * **The camera-scanned sibling of `applyLabelReading`, and the same two rules
+ * hold**: a figure the source did not state leaves its field exactly as it
+ * was, and a figure it did state replaces what was there. Only where the
+ * numbers came from differs — a manufacturer's declared label, read out of a
+ * barcode database rather than transcribed from a photograph — so the same
+ * review-before-save discipline still applies: this fills fields and does not
+ * itself write anything. The Save that commits it is the one already on the
+ * sheet.
+ *
+ * **`basis` is always taken**, unlike a photographed column's — that one may
+ * fail to read its own heading, where `FoodNutrition.basis` is a required
+ * field with no "didn't say" state: a fetched record always states one.
+ */
+export function applyFoodNutrition(form: PanelForm, nutrition: FoodNutrition): PanelForm {
+  const amounts = { ...form.amounts };
+  for (const key of NUTRIENT_KEYS) {
+    const amount = nutrition.amounts[key];
+    if (amount !== undefined) amounts[key] = String(amount);
+  }
+  return {
+    basis: nutrition.basis,
+    servingText: nutrition.servingText ?? form.servingText,
+    servingGrams: nutrition.servingGrams === null ? form.servingGrams : String(nutrition.servingGrams),
+    amounts,
+  };
+}
+
+/** How many of the form's figures a fetched panel would fill, for the sheet to report. */
+export function foodNutritionFieldCount(nutrition: FoodNutrition): number {
+  return NUTRIENT_KEYS.filter(key => nutrition.amounts[key] !== undefined).length;
+}

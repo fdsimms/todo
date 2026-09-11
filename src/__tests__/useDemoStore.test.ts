@@ -84,7 +84,7 @@ import { PERSON_NOTE_KINDS } from '../types';
 import { useLeftoverStore } from '../store/useLeftoverStore';
 import { useSettingsStore } from '../store/useSettingsStore';
 import { shouldNudgePostpone, DEFAULT_POSTPONE_THRESHOLD, driftingTasks } from '../utils/postpone';
-import { isUsingDemoDatabase } from '../db/database';
+import { initDatabase, isUsingDemoDatabase } from '../db/database';
 import { dayKeyOf, dayKeyToDate, getCurrentDayStart, getLogicalToday } from '../utils/dateUtils';
 import { differenceInCalendarDays } from 'date-fns/differenceInCalendarDays';
 import { countPlannedSlots, MEAL_PLAN_NUDGE_SLOT_COUNT } from '../utils/mealPlanNudge';
@@ -150,6 +150,9 @@ import { buildCalendarGrid } from '../utils/calendarGrid';
 
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
 let mockDbs: Map<string, any>;
+// A pristine post-initDatabase database, captured once below. Every database
+// the mock opens starts from this rather than from an empty file.
+let mockSchemaSnapshot: Buffer | null = null;
 // Set by the "survives a failed delete" test to reproduce what the device
 // actually does when the file can't be removed — deleteDatabaseSync throws
 // if the database is still open, and never removes -wal/-shm sidecars.
@@ -160,12 +163,34 @@ jest.mock('expo-sqlite', () => {
   const BS = require('better-sqlite3');
   mockDbs = new Map();
 
+  // better-sqlite3 recompiles the SQL on every prepare(), and this suite
+  // replays the same few hundred statements — the whole schema, then the
+  // whole demo seed — once per test. Compiling them again each time was most
+  // of the suite's runtime, so each database keeps its own compiled copy.
+  // Keyed on the raw handle rather than the name, so a database dropped from
+  // mockDbs and reopened starts from an empty cache rather than inheriting
+  // statements bound to the handle it replaced.
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  const stmtCaches = new WeakMap<any, Map<string, any>>();
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  const stmt = (db: any, sql: string) => {
+    let cache = stmtCaches.get(db);
+    if (!cache) { cache = new Map(); stmtCaches.set(db, cache); }
+    let prepared = cache.get(sql);
+    // A statement that won't compile is left uncached, so the throw stays
+    // identical to an uncached prepare's.
+    if (!prepared) { prepared = db.prepare(sql); cache.set(sql, prepared); }
+    return prepared;
+  };
+
   const handleFor = (name: string) => {
     // Resolved per call, not captured: deleting a database and then using a
     // handle to it again has to come back empty rather than throwing, the
     // same as reopening a deleted file on device would.
     const raw = () => {
-      if (!mockDbs.has(name)) mockDbs.set(name, new BS(':memory:'));
+      if (!mockDbs.has(name)) {
+        mockDbs.set(name, new BS(mockSchemaSnapshot ?? ':memory:'));
+      }
       return mockDbs.get(name);
     };
     return {
@@ -174,15 +199,18 @@ jest.mock('expo-sqlite', () => {
       },
       // eslint-disable-next-line @typescript-eslint/no-explicit-any
       runSync(sql: string, params: any[] = []) {
-        raw().prepare(sql).run(...params);
+        const db = raw();
+        stmt(db, sql).run(...params);
       },
       // eslint-disable-next-line @typescript-eslint/no-explicit-any
       getAllSync<T>(sql: string, params: any[] = []): T[] {
-        return raw().prepare(sql).all(...params) as T[];
+        const db = raw();
+        return stmt(db, sql).all(...params) as T[];
       },
       // eslint-disable-next-line @typescript-eslint/no-explicit-any
       getFirstSync<T>(sql: string, params: any[] = []): T | null {
-        return (raw().prepare(sql).get(...params) as T) ?? null;
+        const db = raw();
+        return (stmt(db, sql).get(...params) as T) ?? null;
       },
       withTransactionSync(fn: () => void) {
         raw().transaction(fn)();
@@ -282,14 +310,45 @@ function realDbTaskTitles(): string[] {
     .map(r => r.title);
 }
 
-beforeEach(() => {
-  mockDeleteThrows = false;
+beforeAll(() => {
+  // initDatabase() adds ~260 columns to an empty database one ALTER TABLE at a
+  // time, each one rewriting the schema, and this suite builds a database per
+  // test. Against a database that already has those columns the migration pass
+  // skips every one of them, so the schema is built once here and every
+  // database the mock opens afterwards is restored from it: initDatabase still
+  // runs in full on each, it just has nothing left to add. Captured straight
+  // from initDatabase with no store involved, so what is restored is exactly a
+  // freshly initialized database and nothing else.
+  mockDbs.clear();
+  initDatabase();
+  mockSchemaSnapshot = mockDbs.get('todo.db').serialize();
+  mockDbs.clear();
+});
+
+// A database built from scratch, then demo mode entered against it — the same
+// order App.tsx starts in. The seed blocks below assert what one run of the
+// seed produced and share a single one, so this is also what a test that
+// *changes* what it read asks for rather than leaving the next test to find it
+// (see the nested blocks in the groceries one).
+function freshDemo(): void {
   if (useDemoStore.getState().active) useDemoStore.getState().exitDemoMode();
   mockDbs.clear();
   useTaskStore.getState().initialize();
-});
+  useDemoStore.getState().enterDemoMode();
+}
 
 describe('demo mode', () => {
+  // Scoped to this block rather than the file: these tests are about the swap
+  // itself, so each one needs both databases as they are at a cold launch. The
+  // seed blocks below are about what one seed contains, and re-running it per
+  // test was the bulk of this suite's runtime.
+  beforeEach(() => {
+    mockDeleteThrows = false;
+    if (useDemoStore.getState().active) useDemoStore.getState().exitDemoMode();
+    mockDbs.clear();
+    useTaskStore.getState().initialize();
+  });
+
   it('replaces the real task list and restores it on exit', () => {
     useTaskStore.getState().addTask({ title: 'Real private task', category: 'Finance' });
     const realTasks = useTaskStore.getState().tasks.map(t => t.title);
@@ -1362,10 +1421,10 @@ describe('demo mode', () => {
  * the stores, which have their own suites.
  */
 describe('demo seed — people', () => {
-  beforeEach(() => {
-    useDemoStore.getState().enterDemoMode();
-  });
-  afterEach(() => {
+  // One seed for the whole block: every test here reads what the seed
+  // produced, and none of them writes.
+  beforeAll(freshDemo);
+  afterAll(() => {
     useDemoStore.getState().exitDemoMode();
   });
 
@@ -1964,10 +2023,10 @@ describe('demo seed — people', () => {
 });
 
 describe('demo seed — groceries, recipes, meals and the fridge', () => {
-  beforeEach(() => {
-    useDemoStore.getState().enterDemoMode();
-  });
-  afterEach(() => {
+  // One seed for the whole block, as above. The three tests here that do
+  // write sit in blocks of their own that rebuild it afterwards.
+  beforeAll(freshDemo);
+  afterAll(() => {
     useDemoStore.getState().exitDemoMode();
   });
 
@@ -2017,15 +2076,12 @@ describe('demo seed — groceries, recipes, meals and the fridge', () => {
   // visible from inside that one ingredient's sheet, so without a seeded
   // "such as" line it reads as a feature the app doesn't have.
   it('seeds a "such as" ingredient clause parsed into an example', () => {
-    useDemoStore.getState().enterDemoMode();
     const recipes = useRecipeStore.getState().recipes;
     const oilLine = recipes
       .flatMap(r => r.ingredients)
       .find(i => i.nameKey === 'neutral oil');
 
     expect(oilLine?.example).toBe('avocado oil');
-
-    useDemoStore.getState().exitDemoMode();
   });
 
   it('seeds a second shopping list, left inactive', () => {
@@ -2402,25 +2458,34 @@ describe('demo seed — groceries, recipes, meals and the fridge', () => {
     expect(row.swappedFrom).toBe('onion');
   });
 
-  it('seeds cilantro and coriander as two catalog rows, ready to merge (#1570)', () => {
-    const { items, mergeItems } = useGroceryStore.getState();
-    const cilantro = items.find(i => i.nameKey === 'cilantro');
-    const coriander = items.find(i => i.nameKey === 'coriander');
-    expect(cilantro && coriander).toBeTruthy();
+  // Rebuilds the seed on the way out, because the merge at the end of this one
+  // really does delete the Coriander row and the rest of the block reads the
+  // catalog. An afterEach rather than a beforeEach: a nested block runs where
+  // it is declared, not last, so starting clean would still leave the write
+  // behind for everything below.
+  describe('cilantro and coriander, and merging them', () => {
+    afterEach(freshDemo);
 
-    // Cilantro has a real purchase behind it; Coriander is on the list,
-    // typed fresh, with none — the exact split the issue that added merging
-    // describes, and why the seed leaves the two unmerged rather than
-    // demonstrating the fix itself.
-    expect(cilantro!.purchaseCount).toBeGreaterThan(0);
-    expect(coriander!.onList).toBe(true);
-    expect(coriander!.purchaseCount).toBe(0);
+    it('seeds cilantro and coriander as two catalog rows, ready to merge (#1570)', () => {
+      const { items, mergeItems } = useGroceryStore.getState();
+      const cilantro = items.find(i => i.nameKey === 'cilantro');
+      const coriander = items.find(i => i.nameKey === 'coriander');
+      expect(cilantro && coriander).toBeTruthy();
 
-    // And the feature actually resolves the pair, end to end.
-    expect(mergeItems(coriander!.id, cilantro!.id)).toBe(true);
-    const survivor = useGroceryStore.getState().itemById(cilantro!.id)!;
-    expect(survivor.onList).toBe(true);
-    expect(useGroceryStore.getState().itemById(coriander!.id)).toBeNull();
+      // Cilantro has a real purchase behind it; Coriander is on the list,
+      // typed fresh, with none — the exact split the issue that added merging
+      // describes, and why the seed leaves the two unmerged rather than
+      // demonstrating the fix itself.
+      expect(cilantro!.purchaseCount).toBeGreaterThan(0);
+      expect(coriander!.onList).toBe(true);
+      expect(coriander!.purchaseCount).toBe(0);
+
+      // And the feature actually resolves the pair, end to end.
+      expect(mergeItems(coriander!.id, cilantro!.id)).toBe(true);
+      const survivor = useGroceryStore.getState().itemById(cilantro!.id)!;
+      expect(survivor.onList).toBe(true);
+      expect(useGroceryStore.getState().itemById(coriander!.id)).toBeNull();
+    });
   });
 
   it('seeds a ratio that actually converts a real recipe line (#1573)', () => {
@@ -2731,25 +2796,31 @@ describe('demo seed — groceries, recipes, meals and the fridge', () => {
     expect(markers.length).toBeLessThan(items.filter(i => i.onList).length);
   });
 
-  it('seeds a shelf substitute on the unavailable row, tappable to swap (#1567)', () => {
-    const { items, itemShops, shops, itemSubs } = useGroceryStore.getState();
-    const trip = useGroceryStore.getState().activeShop()!;
+  // Rebuilt on the way out for the same reason as the merge above: the swap at
+  // the end is a real write to the grocery list the rest of the block reads.
+  describe('the shelf substitute, and swapping to it', () => {
+    afterEach(freshDemo);
 
-    const tortillas = items.find(i => i.name === 'Tortillas')!;
-    const cornTortillas = items.find(i => i.nameKey === 'corn tortillas')!;
-    expect(cornTortillas).toBeTruthy();
+    it('seeds a shelf substitute on the unavailable row, tappable to swap (#1567)', () => {
+      const { items, itemShops, shops, itemSubs } = useGroceryStore.getState();
+      const trip = useGroceryStore.getState().activeShop()!;
 
-    const marker = tripMarkerFor(tortillas, itemShops, shops, trip, itemSubs, items)!;
-    expect(marker.kind).toBe('unavailable');
-    expect(marker.substitute?.id).toBe(cornTortillas.id);
-    expect(describeTripMarker(marker)).toBe('Not here · or Corn tortillas');
+      const tortillas = items.find(i => i.name === 'Tortillas')!;
+      const cornTortillas = items.find(i => i.nameKey === 'corn tortillas')!;
+      expect(cornTortillas).toBeTruthy();
 
-    // Tapping the caption is a real swap: the substitute lands on the list
-    // carrying Tortillas off it.
-    useGroceryStore.getState().swapForSubstitute(tortillas.id, cornTortillas.id);
-    const after = useGroceryStore.getState().items;
-    expect(after.find(i => i.id === tortillas.id)?.onList).toBe(false);
-    expect(after.find(i => i.id === cornTortillas.id)?.onList).toBe(true);
+      const marker = tripMarkerFor(tortillas, itemShops, shops, trip, itemSubs, items)!;
+      expect(marker.kind).toBe('unavailable');
+      expect(marker.substitute?.id).toBe(cornTortillas.id);
+      expect(describeTripMarker(marker)).toBe('Not here · or Corn tortillas');
+
+      // Tapping the caption is a real swap: the substitute lands on the list
+      // carrying Tortillas off it.
+      useGroceryStore.getState().swapForSubstitute(tortillas.id, cornTortillas.id);
+      const after = useGroceryStore.getState().items;
+      expect(after.find(i => i.id === tortillas.id)?.onList).toBe(false);
+      expect(after.find(i => i.id === cornTortillas.id)?.onList).toBe(true);
+    });
   });
 
   it('seeds a recipe of every meal type, with the composed ones composed', () => {
@@ -2905,37 +2976,43 @@ describe('demo seed — groceries, recipes, meals and the fridge', () => {
     expect([...ahead].some(date => !dinners.has(date))).toBe(true);
   });
 
-  it('leaves no post-cook recap standing, but sets tonight up to raise one', () => {
-    // The recap is the app's answer to a tap you just made, so it can't be
-    // seeded — the past nights the seed marks cooked would otherwise drop demo
-    // mode straight into a sheet about a dinner eight days ago. What *can* be
-    // checked is the claim the seed comment makes: that cooking tonight's
-    // dinner raises one, which is the only honest way to see this in the demo.
-    expect(useMealPlanStore.getState().cookRecap).toBeNull();
+  // And again: marking tonight cooked is a real write, and the rest of the
+  // block reads the meal plan.
+  describe('the recap tonight\'s dinner raises when it is cooked', () => {
+    afterEach(freshDemo);
 
-    const tonight = useMealPlanStore.getState().entries.find(
-      e => e.title === 'Weeknight chicken stir-fry' && !e.cookedAt
-    );
-    expect(tonight).toBeDefined();
+    it('leaves no post-cook recap standing, but sets tonight up to raise one', () => {
+      // The recap is the app's answer to a tap you just made, so it can't be
+      // seeded — the past nights the seed marks cooked would otherwise drop demo
+      // mode straight into a sheet about a dinner eight days ago. What *can* be
+      // checked is the claim the seed comment makes: that cooking tonight's
+      // dinner raises one, which is the only honest way to see this in the demo.
+      expect(useMealPlanStore.getState().cookRecap).toBeNull();
 
-    useMealPlanStore.getState().setCooked(tonight!.id, true);
+      const tonight = useMealPlanStore.getState().entries.find(
+        e => e.title === 'Weeknight chicken stir-fry' && !e.cookedAt
+      );
+      expect(tonight).toBeDefined();
 
-    // Worth showing because the stir-fry calls for rice and the seeded pantry
-    // claims you have rice — the sheet's pantry section can only ever take away
-    // a claim the app is already making, so that overlap is what makes it
-    // demonstrable rather than an empty section.
-    expect(useMealPlanStore.getState().cookRecap).toMatchObject({
-      recipeName: 'Weeknight chicken stir-fry',
-      canLogLeftovers: true,
+      useMealPlanStore.getState().setCooked(tonight!.id, true);
+
+      // Worth showing because the stir-fry calls for rice and the seeded pantry
+      // claims you have rice — the sheet's pantry section can only ever take away
+      // a claim the app is already making, so that overlap is what makes it
+      // demonstrable rather than an empty section.
+      expect(useMealPlanStore.getState().cookRecap).toMatchObject({
+        recipeName: 'Weeknight chicken stir-fry',
+        canLogLeftovers: true,
+      });
+
+      // And the rating section has something to ask, which is the other half of
+      // the sheet being demonstrable: the seed rates the salmon and deliberately
+      // leaves tonight's dish unrated.
+      const stirFry = useRecipeStore.getState().recipes.find(
+        r => r.name === 'Weeknight chicken stir-fry'
+      );
+      expect(stirFry?.vote).toBeNull();
     });
-
-    // And the rating section has something to ask, which is the other half of
-    // the sheet being demonstrable: the seed rates the salmon and deliberately
-    // leaves tonight's dish unrated.
-    const stirFry = useRecipeStore.getState().recipes.find(
-      r => r.name === 'Weeknight chicken stir-fry'
-    );
-    expect(stirFry?.vote).toBeNull();
   });
 
   it('seeds meal tasks as chains, and a meal that deliberately has none', () => {
@@ -3818,11 +3895,19 @@ describe('demo seed — groceries, recipes, meals and the fridge', () => {
  * open. It's the one branch in the seed, so it's checked from both sides.
  */
 describe('demo seed — with the groceries area turned off', () => {
-  beforeEach(() => {
+  // One seed again, this one taken with the setting already off, since what
+  // the block asserts is what the seed leaves out. Spelled out rather than
+  // calling freshDemo, because where the setting is written matters: leaving
+  // demo mode reloads settings from the real database, so a write before that
+  // is discarded and the seed runs with the kitchen switched back on.
+  beforeAll(() => {
+    if (useDemoStore.getState().active) useDemoStore.getState().exitDemoMode();
+    mockDbs.clear();
+    useTaskStore.getState().initialize();
     useSettingsStore.setState({ kitchenEnabled: false });
     useDemoStore.getState().enterDemoMode();
   });
-  afterEach(() => {
+  afterAll(() => {
     useDemoStore.getState().exitDemoMode();
     useSettingsStore.setState({ kitchenEnabled: true });
   });

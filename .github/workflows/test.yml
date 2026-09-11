@@ -37,7 +37,20 @@ jobs:
       # first half of the verification loop CLAUDE.md asks for, and it went
       # unenforced long enough for main to merge red on it.
       - run: npx tsc --noEmit
-      - run: npm test
+      # The standard hosted runner has two cores, and Jest's default is one
+      # worker fewer than that — so without this the whole suite runs in a
+      # single worker and CI pays the sum of every file rather than the longest
+      # one. Local runs keep the default.
+      - run: npm test -- --maxWorkers=2
+      # The demo-seed blocks in this file share one seeded database across all
+      # the tests in each block, which is only correct while none of them
+      # writes — and a test that starts writing still passes in declaration
+      # order, so the ordinary run above cannot catch it. Randomised order can,
+      # and did: it is what caught a real ordering bug in the change that
+      # introduced the sharing. Scoped to this one file on purpose, because the
+      # rest of the suite is not order-independent yet and would fail here for
+      # reasons no pull request caused.
+      - run: npx jest src/__tests__/useDemoStore.test.ts --randomize
       # The two docs that are generated from the tree rather than written by
       # hand. Both are committed so an agent can read them without running a
       # build; these checks are what stops them going stale the way the
