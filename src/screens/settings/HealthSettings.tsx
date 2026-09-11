@@ -18,9 +18,10 @@ import { makeSettingsStyles } from './settingsStyles';
 import { haptics } from '../../utils/haptics';
 
 /**
- * HealthKit sharing lives in the Health app's own Sharing tab, not in this
- * app's page under iOS Settings — Settings has no Health row to show. Try the
- * Health app's URL scheme first and only fall back to Settings if that fails.
+ * HealthKit permissions live in the Health app itself, under the profile
+ * icon's Privacy → Apps page, not in this app's page under iOS Settings —
+ * Settings has no Health row to show. Try the Health app's URL scheme first
+ * and only fall back to Settings if that fails.
  */
 async function openHealthApp() {
   try {
@@ -50,9 +51,10 @@ async function openHealthApp() {
  *
  * - The access row says whether the app has *asked* yet, which is the one thing
  *   `getRequestStatusForAuthorization` will answer, and offers the sheet when it
- *   hasn't. Once it has asked, the row points at the Health app's own Sharing
- *   tab rather than claiming an outcome — sharing lives there, not in iOS
- *   Settings, which has no Health row for a third-party app to show.
+ *   hasn't. Once it has asked, the row points at the Health app's own
+ *   Privacy → Apps page rather than claiming an outcome — permissions live
+ *   there, not in iOS Settings, which has no Health row for a third-party app
+ *   to show.
  * - The reading row shows the number or says there isn't one. "No number" is
  *   the honest reading of both a refusal and an empty day, and it is never
  *   drawn as a zero.
@@ -271,7 +273,7 @@ export function HealthSettings() {
               requestStatus === 'shouldRequest'
                 ? "Not asked yet. Nothing can be read until you allow it in Health"
                 : requestStatus === 'unnecessary'
-                  ? "Already asked. Change what's shared in the Health app under Sharing"
+                  ? "Already asked. To change what's shared, open Health, tap your profile picture, then Privacy, then Apps, then dundundun"
                   : requestStatus === 'unavailable'
                     ? 'Not available on this device'
                     : 'Checking…'
@@ -361,7 +363,7 @@ export function HealthSettings() {
           <WriteAccessRow
             entryId="healthWriteAccess"
             label="Water-write access"
-            deniedHint="Not allowed. Turn it on in the Health app under Sharing to log water"
+            deniedHint="Not allowed. To log water, open Health, tap your profile picture, then Privacy, then Apps, then dundundun"
             status={waterWriteStatus}
             colors={colors}
             onAsk={askForWriteAccess}
@@ -370,7 +372,7 @@ export function HealthSettings() {
           <WriteAccessRow
             entryId="healthWeightWriteAccess"
             label="Weight-write access"
-            deniedHint="Not allowed. Turn it on in the Health app under Sharing to record a weight"
+            deniedHint="Not allowed. To record a weight, open Health, tap your profile picture, then Privacy, then Apps, then dundundun"
             status={weightWriteStatus}
             colors={colors}
             onAsk={askForWriteAccess}
@@ -379,7 +381,7 @@ export function HealthSettings() {
           <WriteAccessRow
             entryId="healthNutritionWriteAccess"
             label="Nutrition-write access"
-            deniedHint="Not allowed. Turn it on in the Health app under Sharing to log what you ate"
+            deniedHint="Not allowed. To log what you ate, open Health, tap your profile picture, then Privacy, then Apps, then dundundun"
             status={nutritionWriteStatus}
             colors={colors}
             onAsk={askForWriteAccess}
