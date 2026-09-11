@@ -2,6 +2,7 @@ import React, { useCallback, useEffect, useMemo, useState } from 'react';
 import { View, Text, ScrollView, TouchableOpacity, Alert, StyleSheet } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { useFocusEffect, useNavigation, useRoute } from '@react-navigation/native';
+import { navigationRef } from '../navigation/navigationRef';
 import { useBottomTabBarHeight } from '@react-navigation/bottom-tabs';
 import { addDays } from 'date-fns/addDays';
 import { format } from 'date-fns/format';
@@ -133,14 +134,25 @@ export function MoodScreen() {
   // with the arrival time rather than a boolean, and tracked against what has
   // already been handled, so tapping the same row twice opens the sheet twice:
   // the same shape PeopleScreen's openPerson uses, and for the same reason.
-  const route = useRoute<{ key: string; name: string; params?: { openLog?: number } }>();
+  const route = useRoute<{
+    key: string;
+    name: string;
+    params?: { openLog?: number; returnTo?: string };
+  }>();
   const [handledOpenLog, setHandledOpenLog] = useState<number | undefined>(undefined);
+  // Where to hand the user back once the sheet this opens closes — the tab
+  // they tapped the check-in request from, carried by `resetToMood`'s
+  // `returnTo` param. Cleared whenever the sheet is opened by hand (`openNew`,
+  // `openEdit`) so a manual visit never inherits a stale value left over from
+  // an earlier link tap.
+  const [returnTo, setReturnTo] = useState<string | undefined>(undefined);
   useEffect(() => {
     if (route.params?.openLog === undefined || route.params.openLog === handledOpenLog) return;
     setHandledOpenLog(route.params.openLog);
+    setReturnTo(route.params.returnTo);
     setEditing(null);
     setSheetOpen(true);
-  }, [route.params?.openLog, handledOpenLog]);
+  }, [route.params?.openLog, route.params?.returnTo, handledOpenLog]);
 
   const todayKey = dayKeyOf(getCurrentDayStart());
 
@@ -351,8 +363,16 @@ export function MoodScreen() {
 
   const recent = useMemo(() => logs.slice(0, 20), [logs]);
 
-  const openNew = () => { haptics.tap(); setEditing(null); setSheetOpen(true); };
-  const openEdit = (log: MoodLog) => { haptics.tap(); setEditing(log); setSheetOpen(true); };
+  const openNew = () => { haptics.tap(); setReturnTo(undefined); setEditing(null); setSheetOpen(true); };
+  const openEdit = (log: MoodLog) => { haptics.tap(); setReturnTo(undefined); setEditing(log); setSheetOpen(true); };
+  const closeSheet = () => {
+    setSheetOpen(false);
+    setEditing(null);
+    if (returnTo) {
+      navigationRef.navigate(returnTo);
+      setReturnTo(undefined);
+    }
+  };
 
   const confirmDelete = (log: MoodLog) => {
     Alert.alert(
@@ -805,7 +825,7 @@ export function MoodScreen() {
       <MoodLogSheet
         visible={sheetOpen}
         editing={editing}
-        onClose={() => { setSheetOpen(false); setEditing(null); }}
+        onClose={closeSheet}
       />
 
       <MoodExportSheet

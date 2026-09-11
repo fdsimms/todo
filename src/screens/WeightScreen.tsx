@@ -3,6 +3,7 @@ import { View, Text, ScrollView, StyleSheet } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { useBottomTabBarHeight } from '@react-navigation/bottom-tabs';
 import { useRoute } from '@react-navigation/native';
+import { navigationRef } from '../navigation/navigationRef';
 import { format } from 'date-fns/format';
 import { useSettingsStore } from '../store/useSettingsStore';
 import { useHealthStore, WEIGHT_HISTORY_DAYS } from '../store/useHealthStore';
@@ -96,13 +97,24 @@ export function WeightScreen() {
   // with the arrival time rather than a boolean, and tracked against what has
   // already been handled, so tapping the same row twice opens the sheet twice:
   // the same shape `MoodScreen`'s own `openLog` uses, for the same reason.
-  const route = useRoute<{ key: string; name: string; params?: { openLog?: number } }>();
+  const route = useRoute<{
+    key: string;
+    name: string;
+    params?: { openLog?: number; returnTo?: string };
+  }>();
   const [handledOpenLog, setHandledOpenLog] = useState<number | undefined>(undefined);
+  // Where to hand the user back once the sheet this opens closes — the tab
+  // they tapped the weigh-in request from, carried by `resetToWeight`'s
+  // `returnTo` param. Cleared whenever the sheet is opened by hand (the "+"
+  // button, the empty state) so a manual visit never inherits a stale value
+  // left over from an earlier link tap.
+  const [returnTo, setReturnTo] = useState<string | undefined>(undefined);
   useEffect(() => {
     if (route.params?.openLog === undefined || route.params.openLog === handledOpenLog) return;
     setHandledOpenLog(route.params.openLog);
+    setReturnTo(route.params.returnTo);
     setLogOpen(true);
-  }, [route.params?.openLog, handledOpenLog]);
+  }, [route.params?.openLog, route.params?.returnTo, handledOpenLog]);
 
   useEffect(() => {
     if (healthReadEnabled) void refreshWeight();
@@ -127,7 +139,14 @@ export function WeightScreen() {
   const visibleReadings = useMemo(() => weightReadings(visiblePoints), [visiblePoints]);
   const change = useMemo(() => weightChange(visiblePoints), [visiblePoints]);
 
-  const openLog = () => { haptics.tap(); setLogOpen(true); };
+  const openLog = () => { haptics.tap(); setReturnTo(undefined); setLogOpen(true); };
+  const closeLog = () => {
+    setLogOpen(false);
+    if (returnTo) {
+      navigationRef.navigate(returnTo);
+      setReturnTo(undefined);
+    }
+  };
 
   const changeValue = change === null
     ? '—'
@@ -182,7 +201,7 @@ export function WeightScreen() {
           onAction={loadingWeight ? undefined : openLog}
           bottomOffset={tabBarHeight}
         />
-        <LogWeightSheet visible={logOpen} onClose={() => setLogOpen(false)} />
+        <LogWeightSheet visible={logOpen} onClose={closeLog} />
       </View>
     );
   }
@@ -273,7 +292,7 @@ export function WeightScreen() {
           </>
         )}
       </ScrollView>
-      <LogWeightSheet visible={logOpen} onClose={() => setLogOpen(false)} />
+      <LogWeightSheet visible={logOpen} onClose={closeLog} />
     </View>
   );
 }
