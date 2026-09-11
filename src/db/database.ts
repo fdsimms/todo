@@ -1479,6 +1479,10 @@ export function initDatabase(): void {
     'ALTER TABLE tasks ADD COLUMN penalty_minutes INTEGER',
     'ALTER TABLE tasks ADD COLUMN penalty_cutoff_time TEXT',
     'ALTER TABLE tasks ADD COLUMN penalty_fired_at TEXT',
+    // The other direction from the three above: not what failing costs, but
+    // what has to be done before the apps unblock at all. 0 on every existing
+    // row, which is the feature being off. See Task.gatesApps.
+    'ALTER TABLE tasks ADD COLUMN gates_apps INTEGER NOT NULL DEFAULT 0',
   ];
   for (const sql of migrations) {
     try { db.runSync(sql); } catch (_) { /* column already exists */ }
@@ -2378,6 +2382,7 @@ function rowToTask(row: Record<string, unknown>): Task {
     penaltyMinutes: (row.penalty_minutes as number | null) ?? null,
     penaltyCutoffTime: (row.penalty_cutoff_time as string | null) ?? null,
     penaltyFiredAt: (row.penalty_fired_at as string | null) ?? null,
+    gatesApps: row.gates_apps === 1,
     timerElapsedSeconds: (row.timer_elapsed_seconds as number | null) ?? 0,
     previousOccurrenceId: (row.previous_occurrence_id as string | null) ?? null,
     seriesId: (row.series_id as string | null) ?? null,
@@ -2449,8 +2454,8 @@ export function dbInsertTask(task: Task): void {
       quota_interval_minutes, quota_reminders, quota_started_at, quota_always_visible, quota_period, location,
       prior_best_streak, reminder_time_anchor, reminder_utc_offset_minutes, polarity, slip_count, slip_date,
       health_metric, health_target, completion_timer_minutes, log_health_metric, log_health_amount,
-      penalty_minutes, penalty_cutoff_time, penalty_fired_at
-    ) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)`,
+      penalty_minutes, penalty_cutoff_time, penalty_fired_at, gates_apps
+    ) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)`,
     [
       task.id, task.title, task.notes, task.completed ? 1 : 0,
       task.completedAt, task.createdAt, task.seenAt, task.dueDate, task.deadline, task.deadlineOffsetDays ?? null, task.deadlineMonthDay ?? null, task.deferUntil,
@@ -2536,6 +2541,7 @@ export function dbInsertTask(task: Task): void {
       task.penaltyMinutes ?? null,
       task.penaltyCutoffTime ?? null,
       task.penaltyFiredAt ?? null,
+      task.gatesApps ? 1 : 0,
     ]
   );
 }
@@ -2565,7 +2571,7 @@ export function dbUpdateTask(task: Task): void {
       quota_interval_minutes=?, quota_reminders=?, quota_started_at=?, quota_always_visible=?, quota_period=?, location=?,
       prior_best_streak=?, reminder_time_anchor=?, reminder_utc_offset_minutes=?, polarity=?, slip_count=?, slip_date=?,
       health_metric=?, health_target=?, completion_timer_minutes=?, log_health_metric=?, log_health_amount=?,
-      penalty_minutes=?, penalty_cutoff_time=?, penalty_fired_at=?
+      penalty_minutes=?, penalty_cutoff_time=?, penalty_fired_at=?, gates_apps=?
     WHERE id=?`,
     [
       task.title, task.notes, task.completed ? 1 : 0, task.completedAt, task.seenAt,
@@ -2652,6 +2658,7 @@ export function dbUpdateTask(task: Task): void {
       task.penaltyMinutes ?? null,
       task.penaltyCutoffTime ?? null,
       task.penaltyFiredAt ?? null,
+      task.gatesApps ? 1 : 0,
       task.id,
     ]
   );

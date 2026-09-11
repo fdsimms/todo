@@ -657,10 +657,14 @@ describe('demo mode', () => {
     expect(useSettingsStore.getState().penaltyShieldEnabled).toBe(true);
 
     const s = useTaskStore.getState();
-    // Fails by a time passing.
+    // Fails by a time passing, and holds the apps until it's done either way —
+    // the two directions of the same feature, on one task, because they
+    // compose: the gate ends when the walk does, the penalty runs on past it.
     const walk = s.tasks.find(t => t.title === 'Morning walk');
     expect(walk?.penaltyMinutes).toBe(120);
     expect(walk?.penaltyCutoffTime).toBe('08:00');
+    expect(walk?.gatesApps).toBe(true);
+    expect(useSettingsStore.getState().gateShieldEnabled).toBe(true);
     // Fails on a tap — no cutoff, because a slip is the failure itself.
     const slip = s.tasks.find(t => t.title === 'No snacking after dinner');
     expect(slip?.penaltyMinutes).toBe(60);

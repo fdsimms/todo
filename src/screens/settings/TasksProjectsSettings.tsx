@@ -181,6 +181,8 @@ export function TasksProjectsSettings() {
   };
 
   const penaltyShieldEnabled = useSettingsStore(s => s.penaltyShieldEnabled);
+  const gateShieldEnabled = useSettingsStore(s => s.gateShieldEnabled);
+  const setGateShieldEnabled = useSettingsStore(s => s.setGateShieldEnabled);
   const setPenaltyShieldEnabled = useSettingsStore(s => s.setPenaltyShieldEnabled);
   const penaltyShieldUntil = useSettingsStore(s => s.penaltyShieldUntil);
   const setPenaltyShieldUntil = useSettingsStore(s => s.setPenaltyShieldUntil);
@@ -190,6 +192,27 @@ export function TasksProjectsSettings() {
   const penaltyUntilLabel = penaltyShieldUntil && new Date(penaltyShieldUntil) > new Date()
     ? format(new Date(penaltyShieldUntil), clockTimeToken(use24HourTime))
     : null;
+
+
+  const handleToggleGate = async () => {
+    haptics.tap();
+    if (gateShieldEnabled) {
+      setGateShieldEnabled(false);
+      return;
+    }
+    const bridge = screenTimeBridge();
+    if (!bridge) return;
+    const status = await bridge.requestScreenTimeAuthorization();
+    if (status !== 'approved') {
+      Alert.alert(
+        'Screen Time access needed',
+        'Blocking apps until a task is done needs Screen Time access. You can grant it in Settings, under Screen Time.',
+      );
+      return;
+    }
+    setGateShieldEnabled(true);
+    if (shieldTotal === 0) await handleChooseApps();
+  };
 
   const handleTogglePenalty = async () => {
     haptics.tap();
@@ -687,6 +710,18 @@ export function TasksProjectsSettings() {
                 />
               </>
             )}
+            <View style={styles.sep} />
+            <SettingsRow
+              entryId="gateShield"
+              icon="lock-closed-outline"
+              iconColor={gateShieldEnabled ? colors.accent : undefined}
+              label="Block apps until a task is done"
+              hint={gateShieldEnabled
+                ? 'Tasks you mark keep the same apps blocked while they sit on Today undone. Finishing one, or moving it to another day, unblocks them'
+                : 'No task holds your apps'}
+              toggle={gateShieldEnabled}
+              onPress={handleToggleGate}
+            />
             <View style={styles.sep} />
             <SettingsRow
               entryId="penaltyShield"

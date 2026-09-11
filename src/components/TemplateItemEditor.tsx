@@ -139,6 +139,7 @@ export function TemplateItemEditor({ visible, templateId, templateName, item, in
   const [estimatedMinutes, setEstimatedMinutes] = useState<number | null>(null);
   const [completionTimerMinutes, setCompletionTimerMinutes] = useState<number | null>(null);
   const [penaltyMinutes, setPenaltyMinutes] = useState<number | null>(null);
+  const [gatesApps, setGatesApps] = useState(false);
   const [penaltyCutoffTime, setPenaltyCutoffTime] = useState<string | null>(null);
   const [penaltyPickerOpen, setPenaltyPickerOpen] = useState(false);
   const [penaltyPickerDate, setPenaltyPickerDate] = useState(new Date());
@@ -199,6 +200,7 @@ export function TemplateItemEditor({ visible, templateId, templateName, item, in
     setEstimatedMinutes(item?.estimatedMinutes ?? draft?.estimatedMinutes ?? null);
     setCompletionTimerMinutes(item?.completionTimerMinutes ?? draft?.completionTimerMinutes ?? null);
     setPenaltyMinutes(item?.penaltyMinutes ?? draft?.penaltyMinutes ?? null);
+    setGatesApps(item?.gatesApps ?? draft?.gatesApps ?? false);
     setPenaltyCutoffTime(item?.penaltyCutoffTime ?? draft?.penaltyCutoffTime ?? null);
     setVacationPause(item?.vacationPause ?? draft?.vacationPause ?? false);
     setExcludeFromSuggestions(item?.excludeFromSuggestions ?? draft?.excludeFromSuggestions ?? false);
@@ -326,6 +328,9 @@ export function TemplateItemEditor({ visible, templateId, templateName, item, in
       estimatedMinutes,
       completionTimerMinutes,
       penaltyMinutes,
+      // Cleared on an avoid-item for the reason TaskEditor clears it: an
+      // avoid-task is never completed, so a gate on one could never be met.
+      gatesApps: polarity === 'negative' ? false : gatesApps,
       // Cleared with the cost it qualifies, and on an avoid-item, which fails
       // on a tap rather than at a time — the same rule TaskEditor applies.
       penaltyCutoffTime: penaltyMinutes !== null && polarity !== 'negative' ? penaltyCutoffTime : null,
@@ -892,6 +897,23 @@ export function TemplateItemEditor({ visible, templateId, templateName, item, in
             describeValue={n => (n === null ? 'off' : formatDuration(n))}
           />
         </CollapsibleField>
+        <View style={styles.sep} />
+        <TouchableOpacity
+          style={styles.optionRow}
+          onPress={() => { haptics.tap(); setGatesApps(!gatesApps); }}
+          activeOpacity={interaction.activeOpacity}
+          accessibilityRole="switch"
+          accessibilityLabel="Block apps until done"
+          accessibilityState={{ checked: gatesApps }}
+        >
+          <View style={styles.optionContent}>
+            <Text style={styles.optionLabel}>Block apps until done</Text>
+            <Text style={styles.optionHint}>Tasks made from this item hold the apps you picked in Settings until they're done</Text>
+          </View>
+          <View style={[styles.toggle, gatesApps && styles.toggleOn]}>
+            <View style={[styles.toggleKnob, gatesApps && styles.toggleKnobOn]} />
+          </View>
+        </TouchableOpacity>
         <View style={styles.sep} />
         <CollapsibleField
           label={polarity === 'negative' ? 'Block apps on a slip' : 'Block apps if missed'}

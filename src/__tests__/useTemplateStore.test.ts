@@ -74,6 +74,7 @@ const makeItem = (overrides: Partial<TemplateItem> = {}): TemplateItem => ({
   completionTimerMinutes: null,
   penaltyMinutes: null,
   penaltyCutoffTime: null,
+  gatesApps: false,
   deliverableKind: null,
   chainEnabled: false,
   chainItems: [],

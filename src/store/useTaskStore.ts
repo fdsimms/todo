@@ -157,7 +157,7 @@ import { MIN_TARGET_COUNT, MAX_TARGET_COUNT, taskKindOf } from '../utils/taskKin
 import { nextStreakRecord } from '../utils/streakRecord';
 import { isNegativeTask, slipPatch, undoSlipPatch, cleanDayPatch } from '../utils/negativeHabits';
 import { extendShieldUntil, penaltyChargeFor, slipPenaltyUntil } from '../utils/penaltyShield';
-import { isTaskVisible, isTaskNew, isTaskDeferred, isUpcomingToday, isHeldBack, isHiddenForVacation, isVisibleApartFromVacation, isTaskExpired, isTaskSweepable, isRecurrenceNotYetDue, isLiveRecurring, isMissableMealPlanTask, isInboxTask, isUnscheduledTask, isWaitingTask, isRelevantToGroupToday, groupRoster, hasNoDateSignal, isQuotaTask, isQuotaOnPace, quotaRidesOutTheDay, isMissed, sameTimeSegments, isCompletionOnTime, isCategoryScheduledDay, currentTimeSegment, timeSegmentThreshold } from '../utils/visibilityUtils';
+import { isTaskVisible, isTaskNew, isTaskDeferred, isUpcomingToday, isHeldBack, isHiddenForVacation, isVisibleApartFromVacation, isTaskExpired, isTaskSweepable, isRecurrenceNotYetDue, isLiveRecurring, isMissableMealPlanTask, isInboxTask, isUnscheduledTask, isWaitingTask, isRelevantToGroupToday, groupRoster, hasNoDateSignal, isQuotaTask, isQuotaOnPace, quotaRidesOutTheDay, isMissed, sameTimeSegments, isCompletionOnTime, isCategoryScheduledDay, currentTimeSegment, timeSegmentThreshold, displayTitleFor } from '../utils/visibilityUtils';
 import { retentionCutoff, selectPurgeableTaskIds } from '../utils/retention';
 import { categoryLabel } from '../utils/categoryLabel';
 import {
@@ -276,10 +276,15 @@ export const CONTENT_FIELDS: (keyof Task)[] = [
  * no gate of its own at this level (the write lands in the throwaway database
  * like any other) and the one gate that matters stays where the bridge is.
  */
-function chargePenaltyShield(until: Date): void {
+function chargePenaltyShield(until: Date, reason: string): void {
   const settings = useSettingsStore.getState();
   if (!settings.penaltyShieldEnabled) return;
-  settings.setPenaltyShieldUntil(extendShieldUntil(settings.penaltyShieldUntil, until));
+  const next = extendShieldUntil(settings.penaltyShieldUntil, until);
+  // The reason belongs to whichever charge owns the end. A shorter charge
+  // landing mid-block moves nothing, so it must not rename the block either —
+  // the shield screen would otherwise credit a block to the wrong task.
+  if (next === settings.penaltyShieldUntil) return;
+  settings.setPenaltyShieldUntil(next, reason);
 }
 
 /**
@@ -552,6 +557,7 @@ function newTaskFromDraft(
     // earned it, so a new row — including the successor of one that was
     // charged — starts owing nothing.
     penaltyFiredAt: null,
+    gatesApps: draft.gatesApps ?? false,
     polarity: resolvedPolarity,
     // On by default for a negative habit and off for everything else. A flame on
     // every recurring row is noise (the reasoning behind the field), but the run
@@ -4264,7 +4270,7 @@ export const useTaskStore = create<TaskStore>((set, get) => ({
     // slipPenaltyUntil for why taking the block back would be a way out of
     // every other block too.
     const slipUntil = slipPenaltyUntil(updated, new Date());
-    if (slipUntil) chargePenaltyShield(slipUntil);
+    if (slipUntil) chargePenaltyShield(slipUntil, displayTitleFor(updated));
     // A tap here costs a run that may be weeks long, so the undo is offered
     // rather than buried — the same affordance a logged quota unit gets, for a
     // mis-tap that is considerably more expensive.
@@ -4291,6 +4297,10 @@ export const useTaskStore = create<TaskStore>((set, get) => ({
     const now = new Date();
     const charged: Task[] = [];
     let until = settings.penaltyShieldUntil;
+    // Tracked alongside the end rather than taken from the last task charged:
+    // with several failing at once, the block belongs to whichever one pushed
+    // its end furthest out, and that is what the shield screen should name.
+    let reason = settings.penaltyShieldReason;
 
     for (const task of get().tasks) {
       const charge = penaltyChargeFor(task, now, settings.dayResetTime, {
@@ -4302,7 +4312,10 @@ export const useTaskStore = create<TaskStore>((set, get) => ({
       });
       if (!charge) continue;
       charged.push({ ...task, penaltyFiredAt: charge.firedAt });
-      if (charge.until) until = extendShieldUntil(until, charge.until);
+      if (!charge.until) continue;
+      const next = extendShieldUntil(until, charge.until);
+      if (next !== until) reason = displayTitleFor(task);
+      until = next;
     }
 
     if (charged.length === 0) return;
@@ -4311,7 +4324,7 @@ export const useTaskStore = create<TaskStore>((set, get) => ({
     set(s => ({ tasks: s.tasks.map(t => byId.get(t.id) ?? t) }));
     // One write for however many charges landed, so the shield reconciles once
     // rather than once per failed task.
-    if (until !== settings.penaltyShieldUntil) settings.setPenaltyShieldUntil(until);
+    if (until !== settings.penaltyShieldUntil) settings.setPenaltyShieldUntil(until, reason);
   },
 
   rolloverNegativeStreaks() {
@@ -6996,6 +7009,7 @@ export const useTaskStore = create<TaskStore>((set, get) => ({
       penaltyMinutes: null,
       penaltyCutoffTime: null,
       penaltyFiredAt: null,
+      gatesApps: false,
       parentId,
       groupId: null,
       projectId: null,
@@ -7196,6 +7210,7 @@ export const useTaskStore = create<TaskStore>((set, get) => ({
       penaltyMinutes: null,
       penaltyCutoffTime: null,
       penaltyFiredAt: null,
+      gatesApps: false,
       parentId: null,
       groupId,
       projectId: null,

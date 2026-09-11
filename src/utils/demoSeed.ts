@@ -288,9 +288,11 @@ export function seedDemoData(): void {
   // means something different either side of the polarity — this one fails by
   // a time passing, the slip above fails on a tap.
   useSettingsStore.getState().setPenaltyShieldEnabled(true);
+  useSettingsStore.getState().setGateShieldEnabled(true);
   addTask({
     title: 'Morning walk',
-    notes: 'Costs something. Not done by 8am and the apps you picked in Settings are blocked for two hours.',
+    notes: 'Holds your apps two ways. The ones you picked in Settings stay blocked until this is done, and if 8am passes with it still undone they stay blocked for two hours on top of that.',
+    gatesApps: true,
     category: 'Health',
     dueDate: today.toISOString(),
     timeSegments: ['morning'],

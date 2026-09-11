@@ -1,5 +1,6 @@
 import DeviceActivity
 import Foundation
+import ManagedSettings
 
 /// The DeviceActivity monitor extension: a separate process iOS wakes when one
 /// of the usage thresholds the app armed is crossed.
@@ -48,5 +49,39 @@ class TodoActivityMonitor: DeviceActivityMonitor {
     // wake this more than once for an event that has already fired, and a
     // duplicate here would be a duplicate task.
     ScreenTimeShared.appendCrossing(ScreenTimeCrossing(ruleId: ruleId, dayKey: dayKey))
+  }
+
+  /// The end of a penalty block, which is the one thing in this app that has to
+  /// happen while the app is closed.
+  ///
+  /// Everything else here writes to the App Group and lets the app act on it
+  /// later. This cannot: the whole point of a block that ends at a stated time
+  /// is that it ends then, and the app may not be opened for hours. So this is
+  /// the only place outside the app that touches the shield.
+  ///
+  /// Three rules keep that from undoing the arbitration in `appShield.ts`:
+  ///
+  /// - **It only ever clears.** Nothing here can raise a shield, so the worst
+  ///   a bug can do is end a block early rather than start one nobody earned.
+  /// - **It defers to any other reason.** A focus session running when a
+  ///   penalty runs out still wants the apps blocked, and this process cannot
+  ///   ask — so the app writes the answer ahead of time and this reads it. An
+  ///   absent or unreadable answer counts as "yes, something else wants it"
+  ///   (see `readOtherShieldReason`), leaving the block for the app to lift.
+  /// - **It is not the only mechanism.** `useAppShieldSync` reconciles on every
+  ///   foreground regardless, because `intervalDidEnd` is reported not to fire
+  ///   reliably for non-repeating schedules and a schedule's survival across a
+  ///   reboot is undocumented. This makes expiry punctual; it does not make it
+  ///   guaranteed, and the JS backstop is what covers the difference.
+  override func intervalDidEnd(for activity: DeviceActivityName) {
+    super.intervalDidEnd(for: activity)
+
+    guard activity.rawValue == ScreenTimeShared.penaltyActivityName else { return }
+    // No readable state counts as "something else wants it" — see readShieldState.
+    guard let state = ScreenTimeShared.readShieldState(), !state.otherReasonWantsShield else { return }
+
+    let store = ManagedSettingsStore(named: .init(ScreenTimeShared.shieldStoreName))
+    store.shield.applications = nil
+    store.shield.applicationCategories = nil
   }
 }

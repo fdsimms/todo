@@ -116,6 +116,7 @@
       "./plugins/withFamilyControls",
       "./plugins/withHealthKit",
       "./plugins/withActivityMonitor",
+      "./plugins/withShieldExtensions",
       [
         "expo-quick-actions",
         {
@@ -177,6 +178,23 @@
                     "com.apple.security.application-groups": [
                       "group.com.fdsimms.dundundun"
                     ]
+                  }
+                },
+                {
+                  "targetName": "TodoShieldConfig",
+                  "bundleIdentifier": "com.fdsimms.dundundun.ShieldConfig",
+                  "entitlements": {
+                    "com.apple.developer.family-controls": true,
+                    "com.apple.security.application-groups": [
+                      "group.com.fdsimms.dundundun"
+                    ]
+                  }
+                },
+                {
+                  "targetName": "TodoShieldAction",
+                  "bundleIdentifier": "com.fdsimms.dundundun.ShieldAction",
+                  "entitlements": {
+                    "com.apple.developer.family-controls": true
                   }
                 }
               ]

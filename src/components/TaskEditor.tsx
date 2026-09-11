@@ -180,6 +180,8 @@ export interface TaskDraft {
   /** What failing this costs in blocked-app minutes, and the time it's judged at. */
   penaltyMinutes?: number | null;
   penaltyCutoffTime?: string | null;
+  /** Whether the apps stay blocked until this is done. */
+  gatesApps?: boolean;
   /** Preselects the Chain toggle when opening a brand-new task. */
   chainEnabled?: boolean;
   /** Steps already built in quick add, so "More details" doesn't drop them. */
@@ -428,6 +430,7 @@ export function TaskEditor({ visible, task, initialDraft, onClose }: Props) {
   const [windowPickerMode, setWindowPickerMode] = useState<'none' | 'start' | 'end'>('none');
   const [windowPickerDate, setWindowPickerDate] = useState(new Date());
   const [penaltyMinutes, setPenaltyMinutes] = useState<number | null>(null);
+  const [gatesApps, setGatesApps] = useState(false);
   const [penaltyCutoffTime, setPenaltyCutoffTime] = useState<string | null>(null);
   const [showPenalty, setShowPenalty] = useState(false);
   const [penaltyPickerOpen, setPenaltyPickerOpen] = useState(false);
@@ -565,6 +568,7 @@ export function TaskEditor({ visible, task, initialDraft, onClose }: Props) {
 
   const dayResetTime = useSettingsStore(s => s.dayResetTime);
   const penaltyShieldEnabled = useSettingsStore(s => s.penaltyShieldEnabled);
+  const gateShieldEnabled = useSettingsStore(s => s.gateShieldEnabled);
   const defaultReminderLeadMinutes = useSettingsStore(s => s.defaultReminderLeadMinutes);
   const kitchenEnabled = useSettingsStore(s => s.kitchenEnabled);
   const simpleMode = useSettingsStore(s => s.simpleMode);
@@ -672,6 +676,7 @@ export function TaskEditor({ visible, task, initialDraft, onClose }: Props) {
       setWindowStart(task.windowStart ?? null);
       setWindowEnd(task.windowEnd ?? null);
       setPenaltyMinutes(task.penaltyMinutes ?? null);
+      setGatesApps(task.gatesApps ?? false);
       setPenaltyCutoffTime(task.penaltyCutoffTime ?? null);
       setTargetCount(task.targetCount ?? null);
       setTargetUnit(task.targetUnit ?? '');
@@ -730,7 +735,7 @@ export function TaskEditor({ visible, task, initialDraft, onClose }: Props) {
     } else {
       setTitle(initialDraft?.title ?? ''); titleCaret.resetCaret(initialDraft?.title ?? ''); setNotes(initialDraft?.notes ?? ''); setCategory(initialDraft?.category ?? null); setProject(initialDraft?.projectId ?? null); setTags(initialDraft?.tags ?? []);
       setGroupId(initialDraft?.groupId ?? null);
-      setDueDate(initialDraft?.dueDate ?? null); setExtraDates([]); setSeriesRepeats(false); setDeadline(null); setDeadlineOffsetDays(null); setDeadlineMonthDay(null); setDeadlineOnCalendar(false); setTimeSegments(initialDraft?.timeSegments ?? []); setWindowStart(null); setWindowEnd(null); setPenaltyMinutes(initialDraft?.penaltyMinutes ?? null); setPenaltyCutoffTime(initialDraft?.penaltyCutoffTime ?? null); setTargetCount(initialDraft?.targetCount ?? null); setTargetUnit(initialDraft?.targetUnit ?? ''); setAllowOvershoot(initialDraft?.allowOvershoot ?? false); setQuotaIntervalMinutes(initialDraft?.quotaIntervalMinutes ?? null); setQuotaReminders(initialDraft?.quotaReminders ?? false); setQuotaAlwaysVisible(initialDraft?.quotaAlwaysVisible ?? false); setSupplyCount(initialDraft?.supplyCount ?? null); setSupplyUnit(initialDraft?.supplyUnit ?? ''); setSupplyRefillCount(initialDraft?.supplyRefillCount ?? null); setSupplyReorderAt(initialDraft?.supplyReorderAt ?? DEFAULT_SUPPLY_REORDER_AT); setSupplyLeadDays(initialDraft?.supplyLeadDays ?? null); setSupplyGroceryItemId(initialDraft?.supplyGroceryItemId ?? null); setDeferUntil(null); setReminderTime(initialDraft?.reminderTime ?? null); setReminderKind('notification'); setReminderTimeAnchor('wallClock'); setReminderTouched(false);
+      setDueDate(initialDraft?.dueDate ?? null); setExtraDates([]); setSeriesRepeats(false); setDeadline(null); setDeadlineOffsetDays(null); setDeadlineMonthDay(null); setDeadlineOnCalendar(false); setTimeSegments(initialDraft?.timeSegments ?? []); setWindowStart(null); setWindowEnd(null); setPenaltyMinutes(initialDraft?.penaltyMinutes ?? null); setGatesApps(initialDraft?.gatesApps ?? false); setPenaltyCutoffTime(initialDraft?.penaltyCutoffTime ?? null); setTargetCount(initialDraft?.targetCount ?? null); setTargetUnit(initialDraft?.targetUnit ?? ''); setAllowOvershoot(initialDraft?.allowOvershoot ?? false); setQuotaIntervalMinutes(initialDraft?.quotaIntervalMinutes ?? null); setQuotaReminders(initialDraft?.quotaReminders ?? false); setQuotaAlwaysVisible(initialDraft?.quotaAlwaysVisible ?? false); setSupplyCount(initialDraft?.supplyCount ?? null); setSupplyUnit(initialDraft?.supplyUnit ?? ''); setSupplyRefillCount(initialDraft?.supplyRefillCount ?? null); setSupplyReorderAt(initialDraft?.supplyReorderAt ?? DEFAULT_SUPPLY_REORDER_AT); setSupplyLeadDays(initialDraft?.supplyLeadDays ?? null); setSupplyGroceryItemId(initialDraft?.supplyGroceryItemId ?? null); setDeferUntil(null); setReminderTime(initialDraft?.reminderTime ?? null); setReminderKind('notification'); setReminderTimeAnchor('wallClock'); setReminderTouched(false);
       setRecurrenceType(initialDraft?.recurrenceType ?? 'none'); setRecurrenceInterval(initialDraft?.recurrenceInterval ?? 1);
       setRecurrenceDays(initialDraft?.recurrenceDays ?? []);
       setRecurrenceMonthDay(initialDraft?.recurrenceMonthDay ?? null);
@@ -803,6 +808,7 @@ export function TaskEditor({ visible, task, initialDraft, onClose }: Props) {
       windowStart: task?.windowStart ?? null,
       windowEnd: task?.windowEnd ?? null,
       penaltyMinutes: task ? (task.penaltyMinutes ?? null) : (initialDraft?.penaltyMinutes ?? null),
+      gatesApps: task ? (task.gatesApps ?? false) : (initialDraft?.gatesApps ?? false),
       penaltyCutoffTime: task ? (task.penaltyCutoffTime ?? null) : (initialDraft?.penaltyCutoffTime ?? null),
       targetCount: task ? (task.targetCount ?? null) : (initialDraft?.targetCount ?? null),
       targetUnit: normalizeTargetUnit(task ? task.targetUnit : initialDraft?.targetUnit),
@@ -1075,6 +1081,10 @@ export function TaskEditor({ visible, task, initialDraft, onClose }: Props) {
       logCompletionToCalendar,
       timeSegments, windowStart, windowEnd, targetCount,
       penaltyMinutes,
+      // Meaningless on an avoid-task, which is never completed and so could
+      // never satisfy a gate. Cleared rather than carried so flipping the
+      // polarity cannot leave a block nothing can lift.
+      gatesApps: polarity === 'negative' ? false : gatesApps,
       // Meaningless without a penalty to be late for, and meaningless on an
       // avoid-task, which fails on a tap rather than at a time. Cleared rather
       // than carried so a task that stops costing anything doesn't keep a
@@ -3526,6 +3536,36 @@ export function TaskEditor({ visible, task, initialDraft, onClose }: Props) {
           // would ever charge is worse than an undiscoverable one, and Settings
           // is where the switch lives because that is where Screen Time access
           // is asked for.
+          // The other direction from the penalty row below, and a plain switch
+          // because there is nothing to configure: a gate's length is however
+          // long the task goes undone.
+          ...(gateShieldEnabled && polarity !== 'negative' ? [{
+            key: 'gate',
+            label: 'Block apps until done',
+            set: gatesApps,
+            keywords: ['block', 'gate', 'until', 'first', 'before', 'unlock', 'screen time', 'apps', 'lock'],
+            node: (
+              <TouchableOpacity
+                style={styles.optionRow}
+                onPress={() => { haptics.tap(); setGatesApps(v => !v); }}
+                activeOpacity={interaction.activeOpacity}
+                accessibilityRole="switch"
+                accessibilityLabel="Block apps until this is done"
+                accessibilityState={{ checked: gatesApps }}
+              >
+                <Ionicons name="lock-closed-outline" size={18} color={gatesApps ? colors.accent : colors.textSecondary} />
+                <View style={styles.optionContent}>
+                  <Text style={styles.optionLabel}>Block apps until this is done</Text>
+                  <Text style={styles.optionHint}>
+                    The apps you picked in Settings stay blocked while this is on Today and not done. Finishing it, or moving it to another day, unblocks them.
+                  </Text>
+                </View>
+                <View style={[styles.toggle, gatesApps && styles.toggleOn]}>
+                  <View style={[styles.toggleKnob, gatesApps && styles.toggleKnobOn]} />
+                </View>
+              </TouchableOpacity>
+            ),
+          }] : []),
           ...(penaltyShieldEnabled ? [{
             key: 'penalty',
             label: 'Block apps',

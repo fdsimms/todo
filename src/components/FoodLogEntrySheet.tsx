@@ -141,6 +141,17 @@ interface Props {
    */
   onEstimate?: () => void;
   /**
+   * Opens the barcode scanner, handing off to `ScanToLogFlow` — the third way
+   * in, beside searching and describing. Omitted by a caller with nowhere to
+   * send it, same split `onEstimate` draws.
+   *
+   * It is here rather than only on the screen's header because a packaged food
+   * is most often reached for *after* the search has come up empty: the sheet
+   * is open, the packet is in hand, and cancelling out to find a header button
+   * is the step this removes.
+   */
+  onScan?: () => void;
+  /**
    * "Don't ask about this meal" — the manual sheet's counterpart to
    * `LogMealPrompt`'s own secondary button of the same name. Present only
    * while there's a meal to decline: `LogMealEntrySheet` supplies it exactly
@@ -213,7 +224,7 @@ interface Candidate {
 }
 
 export function FoodLogEntrySheet({
-  visible, slot, at, seedRecipeId, initialQuery, mealPlanEntryId, onClose, onEstimate, onDeclineMeal,
+  visible, slot, at, seedRecipeId, initialQuery, mealPlanEntryId, onClose, onEstimate, onScan, onDeclineMeal,
 }: Props) {
   const colors = useColors();
   const styles = useMemo(() => makeStyles(colors), [colors]);
@@ -939,14 +950,24 @@ export function FoodLogEntrySheet({
                 autoCorrect={false}
               />
             </View>
-            {!!onEstimate && (
-              <InlineAction
-                label="Describe what you ate instead"
-                icon="sparkles-outline"
-                variant="neutral"
-                onPress={() => { haptics.tap(); onEstimate(); }}
-                style={styles.estimateAction}
-              />
+            {(!!onScan || !!onEstimate) && (
+              <View style={styles.actionRow}>
+                {!!onScan && (
+                  <InlineAction
+                    label="Scan a barcode"
+                    icon="barcode-outline"
+                    onPress={() => { haptics.tap(); onScan(); }}
+                  />
+                )}
+                {!!onEstimate && (
+                  <InlineAction
+                    label="Describe what you ate instead"
+                    icon="sparkles-outline"
+                    variant="neutral"
+                    onPress={() => { haptics.tap(); onEstimate(); }}
+                  />
+                )}
+              </View>
             )}
             {!!onDeclineMeal && (
               <TouchableOpacity
@@ -1083,7 +1104,15 @@ function makeStyles(colors: Colors) {
     },
     // TextSecondary rather than accent — a decline, not a link, the same
     // weighting LogMealPrompt's own secondary buttons carry.
-    declineMeal: { marginTop: spacing.sm, alignSelf: 'flex-start', paddingVertical: spacing.xs },
+    // Indented to the same gutter the field, the actions and the rows all sit
+    // on — it had none of its own, so it hugged the screen edge — and given
+    // the block gap below it rather than leaning on the list's own padding.
+    declineMeal: {
+      alignSelf: 'flex-start',
+      marginHorizontal: spacing.md,
+      marginBottom: spacing.md,
+      paddingVertical: spacing.xs,
+    },
     declineMealText: { color: colors.textSecondary, fontSize: font.sm },
     searchRow: {
       flexDirection: 'row',
@@ -1091,14 +1120,29 @@ function makeStyles(colors: Colors) {
       gap: spacing.sm,
       marginHorizontal: spacing.md,
       marginTop: spacing.md,
-      marginBottom: spacing.sm,
+      marginBottom: spacing.md,
       paddingHorizontal: spacing.md,
       paddingVertical: spacing.sm,
       backgroundColor: colors.bgSecondary,
       borderRadius: radius.md,
     },
     searchInput: { flex: 1, color: colors.text, fontSize: font.md, padding: 0 },
-    estimateAction: { alignSelf: 'flex-start', marginHorizontal: spacing.md, marginBottom: spacing.sm },
+    // The three blocks above the list — field, actions, results — sat
+    // spacing.sm apart, which is the same gap the result rows keep between
+    // themselves, so the actions read as one more row of the list rather than
+    // as a separate offer. spacing.md is the stacked-block default, and it is
+    // what separates them. Wraps because both labels together are wider than a
+    // phone.
+    actionRow: {
+      flexDirection: 'row',
+      flexWrap: 'wrap',
+      // Or a row's default stretch gives a wrapped pill the height of its
+      // line rather than its own.
+      alignItems: 'flex-start',
+      gap: spacing.sm,
+      marginHorizontal: spacing.md,
+      marginBottom: spacing.md,
+    },
     list: { flex: 1 },
     listContent: { flexGrow: 1, paddingHorizontal: spacing.md, paddingBottom: spacing.xl },
     row: {

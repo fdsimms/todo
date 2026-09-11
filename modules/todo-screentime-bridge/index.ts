@@ -52,6 +52,14 @@ interface TodoScreenTimeNativeModule {
   clearSelection(): boolean;
   applyShield(): boolean;
   clearShield(): boolean;
+  setShieldState(
+    otherReasonWantsShield: boolean,
+    reason: string,
+    untilIso: string | null,
+    detail: string | null,
+  ): boolean;
+  schedulePenaltyExpiry(untilIso: string): boolean;
+  cancelPenaltyExpiry(): boolean;
   startMonitoring(rulesJson: string, dayKey: string): Promise<boolean>;
   stopMonitoring(): boolean;
   drainCrossings(): Promise<string>;
@@ -119,6 +127,57 @@ export function applyShield(): boolean {
 
 export function clearShield(): boolean {
   return degradeOnThrow(() => nativeModule!.clearShield(), false);
+}
+
+/** Why the apps are blocked, as the two extensions will read it back. */
+export type ShieldReason = 'penalty' | 'focus' | 'gate' | 'none';
+
+export interface ShieldState {
+  /**
+   * Whether a reason other than a penalty wants the shield up. The monitor
+   * extension reads this at the end of a penalty window, which is the one
+   * moment something outside the app decides whether to lift a shield. The
+   * arbitration stays in `appShield.ts`; this hands the extension its answer in
+   * advance, because a woken extension cannot ask.
+   */
+  otherReasonWantsShield: boolean;
+  reason: ShieldReason;
+  /** When a penalty block runs out; null when the shield is up for anything else. */
+  untilIso: string | null;
+  /** What earned it — a task's title — shown as-is on the shield screen. */
+  detail: string | null;
+}
+
+/**
+ * Record why the apps are blocked, for the two extensions that have to answer
+ * for it while the app isn't running.
+ */
+export function setShieldState(state: ShieldState): boolean {
+  return degradeOnThrow(
+    () => nativeModule!.setShieldState(
+      state.otherReasonWantsShield, state.reason, state.untilIso, state.detail,
+    ),
+    false,
+  );
+}
+
+/**
+ * Arm a one-shot window whose end lifts the current penalty block, so it comes
+ * off on time with the app closed.
+ *
+ * Best-effort by design, and the false it returns is not worth branching on:
+ * iOS refuses a window shorter than about a quarter of an hour, a schedule's
+ * survival across a reboot is undocumented, and `intervalDidEnd` is reported
+ * not to fire reliably for a non-repeating schedule. It makes expiry punctual
+ * rather than guaranteed — `useAppShieldSync` reconciling on every foreground
+ * is what covers the difference, and it is not removable.
+ */
+export function schedulePenaltyExpiry(untilIso: string): boolean {
+  return degradeOnThrow(() => nativeModule!.schedulePenaltyExpiry(untilIso), false);
+}
+
+export function cancelPenaltyExpiry(): boolean {
+  return degradeOnThrow(() => nativeModule!.cancelPenaltyExpiry(), false);
 }
 
 export function startMonitoring(rules: readonly ScreenTimeMonitorRule[], dayKey: string): Promise<boolean> {
