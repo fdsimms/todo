@@ -2504,6 +2504,16 @@ export interface TemplateItem {
   // shouldn't need it re-set by hand on every application.
   completionTimerMinutes: number | null;
 
+  // Seed Task.penaltyMinutes / Task.penaltyCutoffTime. A morning routine whose
+  // whole point is that the walk costs something would otherwise hand out
+  // tasks that cost nothing, and the cost would have to be re-set by hand on
+  // every application — the same reasoning completionTimerMinutes carries
+  // above. There is no counterpart to penaltyFiredAt: the cost carries, the
+  // charge doesn't, exactly as deliverableKind carries without
+  // deliverableValue.
+  penaltyMinutes: number | null;
+  penaltyCutoffTime: string | null;
+
   // What the task created from this item asks for when it's completed, or null
   // for the ordinary "ticking it is the whole answer" item. Another field
   // alongside the ones above rather than a template-item "kind", exactly as

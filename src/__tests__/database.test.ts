@@ -1516,6 +1516,8 @@ describe('Templates', () => {
     vacationPause: false, excludeFromSuggestions: false,
     estimatedMinutes: null,
     completionTimerMinutes: null,
+    penaltyMinutes: null,
+    penaltyCutoffTime: null,
     deliverableKind: null,
     chainEnabled: false,
     chainItems: [],
