@@ -344,6 +344,32 @@ export function FoodLogScreen() {
     setScanned(foods);
   };
 
+  // The "…" on a row is a real menu, not a synonym for delete: an accidental
+  // tap must not open a destructive confirm with nothing to say what's about
+  // to happen. Move reuses the same slot list the bulk bar's own panel does.
+  const handleOpenMenu = (entry: FoodLogEntry) => {
+    const moveButtons = MEAL_SLOTS
+      .filter(s => s !== entry.slot)
+      .map(s => ({
+        text: MEAL_SLOT_LABELS[s],
+        onPress: () => { haptics.tap(); moveEntries([entry.id], s); },
+      }));
+    if (entry.slot !== null) {
+      moveButtons.push({ text: 'Other', onPress: () => { haptics.tap(); moveEntries([entry.id], null); } });
+    }
+    Alert.alert(entry.label, undefined, [
+      {
+        text: 'Move to meal',
+        onPress: () => Alert.alert('Move to meal', undefined, [
+          ...moveButtons,
+          { text: 'Cancel', style: 'cancel' as const },
+        ]),
+      },
+      { text: 'Forget', style: 'destructive', onPress: () => handleDelete(entry.id, entry.label) },
+      { text: 'Cancel', style: 'cancel' },
+    ]);
+  };
+
   const handleDelete = (id: string, label: string) => {
     Alert.alert(
       `Forget ${label}?`,
@@ -624,7 +650,7 @@ export function FoodLogScreen() {
                   colors={colors}
                   onToggleSelect={() => toggleSelection(item.entry.id)}
                   onSwipeSelect={() => enterSelectionMode(item.entry.id)}
-                  onOpenMenu={() => handleDelete(item.entry.id, item.entry.label)}
+                  onOpenMenu={() => handleOpenMenu(item.entry)}
                 />
               );
             }}
@@ -884,7 +910,7 @@ function FoodLogRow({
           onPress={onOpenMenu}
           hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
           accessibilityRole="button"
-          accessibilityLabel={`Forget ${entry.label}`}
+          accessibilityLabel={`More options for ${entry.label}`}
         >
           <Ionicons name="ellipsis-horizontal" size={iconSize.sm} color={colors.textTertiary} />
         </TouchableOpacity>
