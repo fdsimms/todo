@@ -28,6 +28,9 @@ jest.mock('../db/database', () => ({
   // marking what it used as opened. Nothing here asserts the row hit SQLite,
   // only what the store holds afterwards.
   dbUpdateGroceryItem: jest.fn(),
+  // Runs the body straight through: the grocery store batches its bulk writes
+  // into one transaction, and what the tests below check is the writes.
+  dbTransaction: jest.fn((fn: () => void) => fn()),
 }));
 
 // mealCookTasks defaults on, matching the real store — so every test here runs

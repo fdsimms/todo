@@ -439,8 +439,8 @@ file: the two maps are indexes, not write-ups.
 **Read narrowly.** 58 files are over 1,000 lines, 39 of
 them source rather than tests. The ten biggest source files:
 
-`store/useTaskStore.ts` (8.6k), `components/TaskEditor.tsx` (5.8k), `types/index.ts` (5.8k),
-`db/database.ts` (5.8k), `store/useGroceryStore.ts` (5.4k), `screens/TodayScreen.tsx` (4.6k),
+`store/useTaskStore.ts` (8.6k), `db/database.ts` (5.9k), `components/TaskEditor.tsx` (5.8k),
+`types/index.ts` (5.8k), `store/useGroceryStore.ts` (5.4k), `screens/TodayScreen.tsx` (4.6k),
 `components/TaskItem.tsx` (4.3k), `utils/demoSeed.ts` (4.0k),
 `store/useSettingsStore.ts` (3.8k), `screens/BackfillScreen.tsx` (3.2k).
 
@@ -1151,6 +1151,10 @@ deleted with it. Task drag on that list is untouched and still goes through `res
 ### Database schema / migrations
 
 `initDatabase()` in `src/db/database.ts` creates tables and runs a list of `ALTER TABLE ADD COLUMN` migrations wrapped in try/catch — they fail silently if the column already exists. When adding a new column, append it to the migrations array rather than modifying the `CREATE TABLE` statement.
+
+**The migrations array is append-only, and its length is the schema version.** `PRAGMA user_version` holds the count of statements the database has already had run against it, and the loop is skipped outright when the two match — without it, a mature install re-parsed and re-threw all ~270 ALTERs across the bridge on every cold start, before the first row was read. Appending (or removing) an entry changes the length, which re-runs the whole idempotent list and re-stamps the version, so the normal way of adding a column needs nothing extra. The one edit this can't see is a swap that keeps the count the same — replacing one statement with another — so don't rewrite the list in place; add to the end.
+
+**A statement that repairs data rather than changing the schema does not belong in that array**, because the guard means it now runs once rather than on every launch. The one that existed (rewriting the retired `'opaque'` receipt style) sits just above the guard instead, and has to: a row carrying a retired value can still arrive after this device has migrated, from a sync peer on an older build or a restored backup. Same for the one-time backfills further down, which are each behind their own `dbGetSetting('…_done')` flag — including the five `tasks` backfills that used to be unguarded full scans on every launch.
 
 Tags and categories are stored as JSON arrays in each task row (`tags TEXT`, `category TEXT`). Tags are additionally tracked in a `tag_registry` key in the `settings` table, so a tag that exists but is currently unused doesn't disappear. Categories used to work the same way, but now live in their own `categories` table (they carry schedule/vacation fields a string list can't hold) — the `category_registry` setting is legacy, read only by the one-time migration in `initDatabase()` that backfills that table.
 

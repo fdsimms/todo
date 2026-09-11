@@ -4357,7 +4357,9 @@ export const useTaskStore = create<TaskStore>((set, get) => ({
     }
 
     if (charged.length === 0) return;
-    for (const task of charged) dbUpdateTask(task);
+    dbTransaction(() => {
+      for (const task of charged) dbUpdateTask(task);
+    });
     const byId = new Map(charged.map(t => [t.id, t]));
     set(s => ({ tasks: s.tasks.map(t => byId.get(t.id) ?? t) }));
     // One write for however many charges landed, so the shield reconciles once
@@ -4377,7 +4379,7 @@ export const useTaskStore = create<TaskStore>((set, get) => ({
       return patch ? [{ ...t, ...patch }] : [];
     });
     if (patched.length === 0) return;
-    patched.forEach(dbUpdateTask);
+    dbTransaction(() => patched.forEach(dbUpdateTask));
     const byId = new Map(patched.map(t => [t.id, t]));
     set(s => ({ tasks: s.tasks.map(t => byId.get(t.id) ?? t) }));
   },
@@ -4587,11 +4589,15 @@ export const useTaskStore = create<TaskStore>((set, get) => ({
       });
     }
 
-    closed.forEach(dbUpdateTask);
-    spawned.forEach(t => {
-      dbInsertTask(t);
-      scheduleTaskReminder(t);
+    // One WAL transaction for the whole rollover rather than one per row:
+    // this runs at launch and on every background refresh, and a day's worth
+    // of quota tasks is a row each. Scheduling the reminders stays outside it,
+    // since that reaches the notification system rather than the database.
+    dbTransaction(() => {
+      closed.forEach(dbUpdateTask);
+      spawned.forEach(dbInsertTask);
     });
+    spawned.forEach(scheduleTaskReminder);
     const closedById = new Map(closed.map(t => [t.id, t]));
     set(s => ({
       tasks: [...s.tasks.map(t => closedById.get(t.id) ?? t), ...spawned],
@@ -4631,10 +4637,8 @@ export const useTaskStore = create<TaskStore>((set, get) => ({
     // here explicitly: the launch call path chains into
     // rescheduleAllReminders right after this, but the foreground listener
     // doesn't, so this is the only place that would ever correct it there.
-    updated.forEach(t => {
-      dbUpdateTask(t);
-      scheduleTaskReminder(t);
-    });
+    dbTransaction(() => updated.forEach(dbUpdateTask));
+    updated.forEach(scheduleTaskReminder);
     const updatedById = new Map(updated.map(t => [t.id, t]));
     set(s => ({
       tasks: s.tasks.map(t => updatedById.get(t.id) ?? t),

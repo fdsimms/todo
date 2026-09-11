@@ -1,5 +1,5 @@
 import { create } from 'zustand';
-import { dbGetSetting, dbSetSetting } from '../db/database';
+import { dbGetAllSettings, dbGetSetting, dbSetSetting } from '../db/database';
 import type { ThemeMode } from '../theme';
 import type { WeightUnit } from '../utils/weightLog';
 import {
@@ -2085,6 +2085,16 @@ export const useSettingsStore = create<SettingsStore>((set, get) => ({
   initialized: false,
 
   initialize() {
+    // Every read below goes through one SELECT of the whole settings table
+    // rather than one per key: this runs on the synchronous startup path and
+    // there are ~180 of them, which was ~180 round trips through the bridge
+    // before the first screen could render. The local shadows the imported
+    // `dbGetSetting` so each read reads exactly as it did, and it is safe
+    // because nothing in this function writes a key it later reads back (the
+    // one write, `appFont` below, happens after its own read).
+    const storedSettings = dbGetAllSettings();
+    const dbGetSetting = (key: string): string | null => storedSettings.get(key) ?? null;
+
     const resetTime = dbGetSetting('dayResetTime') ?? '00:00';
     const morningStart = dbGetSetting('morningStart') ?? '06:00';
     const afternoonStart = dbGetSetting('afternoonStart') ?? '12:00';
