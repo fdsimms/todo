@@ -25,6 +25,8 @@ import { useSettingsStore } from '../store/useSettingsStore';
 import { NUTRIENT_KEYS, type NutrientKey } from '../types';
 import { haptics } from '../utils/haptics';
 import { animateLayout } from '../utils/layoutAnimation';
+import { useGroceryStore } from '../store/useGroceryStore';
+import { CatalogLinkSheet } from '../components/CatalogLinkSheet';
 import { ScanToLogFlow } from '../components/ScanToLogFlow';
 import { EstimateMealSheet } from '../components/EstimateMealSheet';
 import { useAiRoute } from '../hooks/useOnDeviceAi';
@@ -89,10 +91,13 @@ export function FoodLogScreen() {
   const entries = useFoodLogStore(useShallow(s => s.entries));
   const loadRange = useFoodLogStore(s => s.loadRange);
   const removeEntry = useFoodLogStore(s => s.removeEntry);
+  const updateEntry = useFoodLogStore(s => s.updateEntry);
   const removeEntries = useFoodLogStore(s => s.removeEntries);
   const moveEntries = useFoodLogStore(s => s.moveEntries);
   const reorderEntries = useFoodLogStore(s => s.reorderEntries);
   const nutritionTargets = useSettingsStore(useShallow(s => s.nutritionTargets));
+  // Only for the catalog picker below; the scan flow keeps its own reads.
+  const items = useGroceryStore(useShallow(s => s.items));
   // Gated so the button can't exist for a call that would refuse — the pairing
   // rule `aiRouting.ts` states. This feature has no on-device engine, so the
   // route is 'claude' or 'unavailable' and nothing renders for the second.
@@ -103,6 +108,17 @@ export function FoodLogScreen() {
   const [addOpen, setAddOpen] = useState(false);
   const [scanOpen, setScanOpen] = useState(false);
   const [estimateOpen, setEstimateOpen] = useState(false);
+  /**
+   * The entry whose catalog row is being chosen, or null.
+   *
+   * An entry's `itemId` is set once, by whichever path logged it, and until now
+   * could never be corrected: a scan that read the wrong row, or a food found
+   * in a database before the catalog had it, left the entry pointing at the
+   * wrong thing or at nothing, and deleting and re-logging was the only way
+   * back. This is only ever provenance — see `FoodLogPatch` — so nothing about
+   * the meal's own figures moves with it.
+   */
+  const [linkingEntry, setLinkingEntry] = useState<FoodLogEntry | null>(null);
   const [seedRecipeId, setSeedRecipeId] = useState<string | null>(null);
   // Plain useRowSelection, same as Templates/Projects/People: there is
   // nothing recurrence- or meal-plan-aware to reuse useTaskSelection's delete
@@ -219,6 +235,22 @@ export function FoodLogScreen() {
           { text: 'Cancel', style: 'cancel' as const },
         ]),
       },
+      {
+        text: entry.itemId ? 'File as a different item' : 'File as an item',
+        onPress: () => setLinkingEntry(entry),
+      },
+      ...(entry.itemId
+        ? [{
+          text: 'Stop filing it as an item',
+          onPress: () => {
+            // The box goes with the row: a product is one of an item's boxes,
+            // so an entry pointing at a box and not at the item is a pointer
+            // with nothing above it.
+            updateEntry(entry.id, { itemId: null, productId: null });
+            haptics.tap();
+          },
+        }]
+        : []),
       { text: 'Forget', style: 'destructive', onPress: () => handleDelete(entry.id, entry.label) },
       { text: 'Cancel', style: 'cancel' },
     ]);
@@ -569,6 +601,25 @@ export function FoodLogScreen() {
           setEstimateOpen(false);
           setSeedRecipeId(recipeId);
           setAddOpen(true);
+        }}
+      />
+      {/* Provenance only: the entry's own figures are a snapshot of what was
+          eaten and must not follow the pointer. See `FoodLogPatch`. */}
+      <CatalogLinkSheet
+        visible={linkingEntry !== null}
+        subject={linkingEntry?.label ?? ''}
+        items={items}
+        initialQuery={linkingEntry?.label ?? ''}
+        excludeItemId={linkingEntry?.itemId ?? null}
+        onClose={() => setLinkingEntry(null)}
+        onPick={item => {
+          if (linkingEntry) {
+            // The old box goes: it was one of the *previous* item's boxes, and
+            // keeping it would leave the entry naming a product from one row
+            // and an item from another.
+            updateEntry(linkingEntry.id, { itemId: item.id, productId: null });
+          }
+          setLinkingEntry(null);
         }}
       />
       <NutrientContributorsSheet

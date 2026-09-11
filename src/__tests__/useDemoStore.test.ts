@@ -1673,6 +1673,23 @@ describe('demo seed — people', () => {
     expect(entries.every(e => e.dayKey === yesterdayKey)).toBe(true);
   });
 
+  it('seeds a food that is in the catalog only because it was eaten', () => {
+    // What filing a food-database result leaves behind, and the one artifact of
+    // that path there is to look at: an off-list catalog row carrying a
+    // database's own panel, with log entries pointing at it. Every other food
+    // in the seed got there by being bought, so without this the path reads as
+    // an app that makes you search again every time.
+    const item = useGroceryStore.getState().items.find(i => i.name === 'Greek yogurt');
+    expect(item).toBeDefined();
+    expect(item?.onList).toBe(false);
+    expect(item?.nutrition?.source).toBe('fdc');
+
+    const window = cookingWindow(getLogicalToday(), 30);
+    useFoodLogStore.getState().loadWindow(window.startKey, window.endKey);
+    const filed = useFoodLogStore.getState().windowEntries.filter(e => e.itemId === item?.id);
+    expect(filed.length).toBeGreaterThan(0);
+  });
+
   it('seeds several days, since one day averages to itself', () => {
     // The Stats read averages over days, so a single seeded day gives a section
     // that can only ever say "1 of 30" — a feature that reads as broken rather

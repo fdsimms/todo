@@ -92,7 +92,8 @@ name cannot say is where a component appears, and that is `docs/screen-map.md`.
 - `src/utils/focusWindow.ts` — FOCUS_CALENDAR_HORIZON_MINUTES, CalendarWindow, calendarWindow
 - `src/utils/followUpTask.ts` — MIN_FOLLOW_UP_TASK_EVERY_N, MAX_FOLLOW_UP_TASK_EVERY_N, canHoldFollowUpTask, FollowUpTaskRule, followUpTaskRule, advanceFollowUpTaskTally, FollowUpTaskSuppression, followUpTaskSuppressedBy, completionsUntilFollowUpTask, followUpTaskSummary, +5 more
 - `src/utils/foodLog.ts` — FoodLogTotals, FoodLogSection, scalePanelToAmount, recipeHelpingNutrition, helpingNutrition, combineFoodNutrition, foodLogTotals, foodLogSections, FoodLogListItem, resolveFoodLogDrop, +4 more
-- `src/utils/foodNutrition.ts` — parseFoodNutrition, serializeFoodNutrition, addCustomPortion, nutritionFor, describeFoodPanel, NUTRIENT_LABEL, NUTRITION_BASIS_LABEL
+- `src/utils/foodLogRecents.ts` — FoodRecency, creditedKeys, foodLogRecency, rankByRecency
+- `src/utils/foodNutrition.ts` — parseFoodNutrition, serializeFoodNutrition, addCustomPortion, nutritionFor, CatalogPanelWrite, catalogPanelWrite, describeFoodPanel, NUTRIENT_LABEL, NUTRITION_BASIS_LABEL
 - `src/utils/foodSearchMatch.ts` — FoodCandidate, FoodMatchTier, RankedFood, rankFoodCandidates, unambiguousFood
 - `src/utils/freshness.ts` — daysUntilDay, freshnessFor, FRESHNESS_ORDER, freshnessRank, isUseUpSoon, describeUseBy, liveUseBy, describeOpenedOn, describeFrozenSince
 - `src/utils/fuzzySearch.ts` — SearchResult, fuzzySearch, ProjectSearchResult, searchProjects, GroupSearchResult, searchGroups
@@ -230,7 +231,7 @@ name cannot say is where a component appears, and that is `docs/screen-map.md`.
 - `src/utils/rhythms.ts` — SegmentBoundaries, DEFAULT_BOUNDARIES, RhythmOptions, MIN_SAMPLES, segmentOf, HourRange, RhythmProfile, buildRhythmProfile, formatHour, formatHourRange, +3 more
 - `src/utils/rhythmsSettings.ts` — rhythmOptionsFromSettings
 - `src/utils/scanPortion.ts` — PackageChoice, servingsPerPackage, packageChoices, packageHelping
-- `src/utils/scanResolve.ts` — ScannedItem, ScannedGtinLink, shopperNameFor, shorterNameSuggestions, nameFromScanFor, sourceLabelFor, variantFor, scannedItemFor, pluScannedItem, unknownScannedItem, +3 more
+- `src/utils/scanResolve.ts` — ScannedItem, ScannedGtinLink, shopperNameFor, shorterNameSuggestions, nameFromScanFor, sourceLabelFor, variantFor, scannedItemFor, pluScannedItem, unknownScannedItem, +5 more
 - `src/utils/screenTimeBridge.ts` — ScreenTimeBridge, screenTimeBridge, isScreenTimeSupported
 - `src/utils/screenTimeRules.ts` — SCREEN_TIME_RULE_TITLE_MAX_LENGTH, SCREEN_TIME_THRESHOLD_MIN, SCREEN_TIME_THRESHOLD_MAX, SCREEN_TIME_THRESHOLD_DEFAULT, clampThresholdMinutes, defaultScreenTimeRules, parseScreenTimeRules, serializeScreenTimeRules, screenTimeSourceId, parseScreenTimeSourceId, +3 more
 - `src/utils/scrollClamp.ts` — maxRestingOffset, strandedScrollOffset, NO_INSET, NO_INSET_ALT, pulseNoInset

@@ -2,6 +2,7 @@ import {
   alreadyScanned,
   matchScans,
   nameFromScanFor,
+  scanLinkTarget,
   scannedItemFor,
   shopperNameFor,
   shorterNameSuggestions,
@@ -327,5 +328,25 @@ describe('matchScans', () => {
     const [match] = matchScans([scan({ name: 'Milk' })], [milk], s => (s.gtin ? milk.id : null));
     expect(match.itemId).toBe(milk.id);
     expect(match.confidence).toBe('exact');
+  });
+});
+
+describe('scanLinkTarget', () => {
+  it('sends a pick on the list down the list branch', () => {
+    const milk = makeItem({ name: 'Milk', onList: true });
+    expect(scanLinkTarget(milk)).toEqual({ onList: true, itemId: milk.id });
+  });
+
+  it('sends a pick that is merely in the catalog down the off-list branch', () => {
+    // The two branches do different things — one ticks a row off the list, the
+    // other rides an add draft — so a pick has to say which, off the item's own
+    // onList rather than off how it was chosen.
+    const flour = makeItem({ name: 'Flour', onList: false });
+    expect(scanLinkTarget(flour)).toEqual({ onList: false, itemId: flour.id });
+  });
+
+  it('shrugs at a pick that no longer resolves, so the row falls back to the matcher', () => {
+    expect(scanLinkTarget(null)).toBeNull();
+    expect(scanLinkTarget(undefined)).toBeNull();
   });
 });

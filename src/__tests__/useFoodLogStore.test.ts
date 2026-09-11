@@ -192,6 +192,27 @@ describe('updateEntry', () => {
     state().updateEntry('nope', { label: 'x' });
     expect(dbUpdateFoodLogEntry).not.toHaveBeenCalled();
   });
+
+  it('re-points an entry at a different catalog row without touching what was eaten', () => {
+    // The link is provenance and `nutrition` is a snapshot of the helping.
+    // Saying which row this was must never rewrite the meal — the same rule the
+    // snapshot exists for, one step along.
+    state().loadRange('2026-04-02', '2026-04-02');
+    const entry = state().addEntry(draft({ itemId: 'item-a', productId: 'box-a' }))!;
+    state().updateEntry(entry.id, { itemId: 'item-b', productId: null });
+    expect(state().entries[0].itemId).toBe('item-b');
+    expect(state().entries[0].productId).toBeNull();
+    expect(state().entries[0].nutrition).toEqual(entry.nutrition);
+    expect(state().entries[0].label).toBe(entry.label);
+    expect(state().entries[0].grams).toBe(entry.grams);
+  });
+
+  it('lets the link be dropped entirely', () => {
+    state().loadRange('2026-04-02', '2026-04-02');
+    const entry = state().addEntry(draft({ itemId: 'item-a' }))!;
+    state().updateEntry(entry.id, { itemId: null, productId: null });
+    expect(state().entries[0].itemId).toBeNull();
+  });
 });
 
 describe('removeEntry', () => {
