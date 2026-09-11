@@ -1,0 +1,4 @@
+{
+  "message": "Fixed \"Open Health\" on the Health settings rows landing on this app's own iOS Settings page instead of the Health app, which is why it never showed anything about write access",
+  "date": "2026-09-11"
+}
