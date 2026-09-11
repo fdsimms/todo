@@ -112,7 +112,7 @@ describe('followUpTaskSummary', () => {
 
 describe('describeFollowUpTaskRule', () => {
   it('says where the task lands, and only that', () => {
-    expect(describeFollowUpTaskRule(4, 'Rosin the bow')).toBe('Due with the next occurrence');
+    expect(describeFollowUpTaskRule(4, 'Rosin the bow')).toBe('Due the next time this task repeats');
   });
 
   // The count and the title are both on screen — the stepper says one and the

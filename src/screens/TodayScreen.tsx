@@ -3979,7 +3979,7 @@ export function TodayScreen() {
               if (recategorizedRecurring) {
                 Alert.alert(
                   'Update recurring task',
-                  'This task repeats. Apply this category change to just this task, or to this and all future occurrences?',
+                  'This task repeats. Apply this category change to just this task, or to it and every future repeat?',
                   [
                     { text: 'Cancel', style: 'cancel' },
                     { text: 'This task', onPress: () => commitDrop('occurrence') },

@@ -771,7 +771,7 @@ export function TemplateItemEditor({ visible, templateId, templateName, item, in
             onChangeFromCompletion={setRecurrenceFromCompletion}
             recurrenceCount={recurrenceCount}
             onChangeCount={setRecurrenceCount}
-            countUnitLabel={() => 'occurrences'}
+            countUnitLabel={() => 'times'}
             neverEndsLabel="Never ends"
             afterCountLabel="After N"
             onSelectEndNever={() => setRecurrenceCount(null)}

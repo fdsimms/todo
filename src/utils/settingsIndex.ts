@@ -531,8 +531,8 @@ export const SETTINGS_ENTRIES: SettingsEntry[] = [
   // Named for the row as it reads now. It was indexed as "Default nudge
   // cadence" long after the row had been renamed, which is a result naming a
   // label nobody can find on the screen it opens.
-  { id: 'defaultProjectNudgeCadence', groupId: 'tasksProjects', label: 'Default review cadence', section: 'Projects',
-    keywords: ['nudge me', 'nudge', 'stalled', 'quiet', 'chase', 'reminder', 'stall', 'new project'] },
+  { id: 'defaultProjectNudgeCadence', groupId: 'tasksProjects', label: 'Bring new projects up every', section: 'Projects',
+    keywords: ['nudge me', 'nudge', 'stalled', 'quiet', 'chase', 'reminder', 'stall', 'cadence', 'review', 'how often'] },
   { id: 'postponeCheck', groupId: 'tasksProjects', label: 'Suggest an action after repeated reschedules', section: 'Rescheduling',
     keywords: ['postpone', 'procrastinate', 'snooze', 'defer', 'avoid'] },
   { id: 'postponeCheckThreshold', requires: 'postponeCheck', groupId: 'tasksProjects', label: 'Reschedule threshold', section: 'Rescheduling',
@@ -620,8 +620,8 @@ export const SETTINGS_ENTRIES: SettingsEntry[] = [
     keywords: ['weight', 'weigh', 'scale', 'days', 'how often', 'cadence', 'gap', 'interval'] },
   { id: 'birthdayGiftLeadDays', groupId: 'generated', label: 'Show the task', section: 'Birthday gift reminders',
     keywords: ['birthday', 'gift', 'present', 'days before', 'lead', 'early', 'notice', 'warning'] },
-  { id: 'mealPlanNudgeTime', groupId: 'generated', label: 'Nudge me on', section: 'Plan meals for the week',
-    keywords: ['meal plan', 'weekday', 'day', 'time', 'when'], kitchen: true },
+  { id: 'mealPlanNudgeTime', groupId: 'generated', label: 'Add the task on', section: 'Plan meals for the week',
+    keywords: ['meal plan', 'weekday', 'day', 'time', 'when', 'nudge'], kitchen: true },
   { id: 'mealPlanNudgeIgnoresVacation', groupId: 'generated', label: 'Also during vacation', section: 'Plan meals for the week',
     keywords: ['meal plan', 'away', 'trip', 'pause'], kitchen: true },
   { id: 'calendarReviewTimeSegment', groupId: 'generated', label: 'Show the task', section: 'Review tomorrow\'s calendar',

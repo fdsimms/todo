@@ -556,7 +556,7 @@ export function LookAheadSheet({ visible, onClose }: Props) {
                   {day.expected.length > 0 && (
                     <Text style={styles.ghostLine}>
                       + {day.expected.length} recurring{' '}
-                      {day.expected.length === 1 ? 'occurrence' : 'occurrences'}
+                      {day.expected.length === 1 ? 'repeat' : 'repeats'}
                     </Text>
                   )}
                 </View>

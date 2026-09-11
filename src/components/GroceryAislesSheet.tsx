@@ -187,7 +187,7 @@ export function GroceryAislesSheet({ visible, onClose }: Props) {
     confirmDelete({
       title: `Delete ${aisle}?`,
       message: filed > 0
-        ? `${filed} ${filed === 1 ? 'item moves' : 'items move'} to ${OTHER_AISLE}. You can file them somewhere else afterwards.`
+        ? `${filed} ${filed === 1 ? 'item moves' : 'items move'} to ${OTHER_AISLE}. You can file them somewhere else afterward.`
         : `Nothing is filed here. You can add it back at any time.`,
       onConfirm: () => {
         deleteAisle(aisle);

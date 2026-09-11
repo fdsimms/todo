@@ -621,7 +621,7 @@ export function FoodLogEntrySheet({ visible, slot, at, seedRecipeId, onClose, on
                 <Text style={[styles.label, styles.labelSpaced]}>ANYTHING ELSE?</Text>
                 <Text style={styles.hint}>
                   These have no fixed amount in the recipe, so they're not in the figures
-                  above. Say how much you had of any you want counted — skip the rest.
+                  above. Say how much you had of any you want counted, and skip the rest.
                 </Text>
                 {varyingResolved.map(({ line, typed, resolved }) => (
                   <View key={line.id} style={styles.varyingRow}>

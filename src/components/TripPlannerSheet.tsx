@@ -74,7 +74,7 @@ export function TripPlannerSheet({ visible, people, onPickPerson, onClose }: Pro
           <EmptyState
             icon="airplane-outline"
             title="Search a place"
-            subtitle="Type a city or region to see who you know there, from what's on their Location field."
+            subtitle="Type a city or region to see who you know there, based on the location saved on each person."
           />
         ) : matches.length === 0 ? (
           <EmptyState

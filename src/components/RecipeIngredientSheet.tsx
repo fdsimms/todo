@@ -625,8 +625,8 @@ export function RecipeIngredientSheet({ visible, recipeId, ingredient, onClose }
             <Text style={styles.toggleLabel}>Optional</Text>
             <Text style={styles.hint}>
               A garnish or serving suggestion rather than something the dish needs. Starts
-              unchecked when this recipe's ingredients go on your list — still there to check
-              off by hand.
+              unchecked when this recipe's ingredients go on your list, but still there to
+              check off by hand.
             </Text>
           </View>
         </TouchableOpacity>

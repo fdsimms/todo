@@ -197,9 +197,9 @@ export function KitchenSettings() {
           label="Units"
           hint={
             unitSystem === 'metric'
-              ? 'Ounces, pounds, cups and spoons show in grams and millilitres'
+              ? 'Ounces, pounds, cups and spoons show in grams and milliliters'
               : unitSystem === 'us'
-                ? 'Grams, kilograms and millilitres show in ounces, pounds and cups'
+                ? 'Grams, kilograms and milliliters show in ounces, pounds and cups'
                 : 'Amounts show exactly as they were typed'
           }
           tight

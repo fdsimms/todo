@@ -273,9 +273,9 @@ export function describeLastPurchase(item: Pick<GroceryItem, 'lastPurchasedAt'>)
  */
 export function describePantryDoubt(card: PantryReviewCard): string | null {
   if (card.doubt !== 'lapsed' || card.lapsedDays === null) return null;
-  if (card.lapsedDays <= 0) return 'Guess ran out today';
-  if (card.lapsedDays === 1) return 'Guess ran out yesterday';
-  return `Guess ran out ${Math.round(card.lapsedDays)} days ago`;
+  if (card.lapsedDays <= 0) return 'Estimated use-by passed today';
+  if (card.lapsedDays === 1) return 'Estimated use-by passed yesterday';
+  return `Estimated use-by passed ${Math.round(card.lapsedDays)} days ago`;
 }
 
 /**

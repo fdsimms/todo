@@ -505,7 +505,7 @@ export function CalendarSettings() {
             iconColor={calendarPeopleHistory ? colors.accent : undefined}
             label="Match events to people"
             hint={calendarPeopleHistory
-              ? "A person's screen offers past events with their name in the title"
+              ? "A person's screen lists past events with their name in the title"
               : 'Past events are never matched to the people you track'}
             toggle={calendarPeopleHistory}
             onPress={() => setCalendarPeopleHistory(!calendarPeopleHistory)}

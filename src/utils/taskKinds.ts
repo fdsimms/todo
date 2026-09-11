@@ -243,8 +243,8 @@ export function typeSummary(type: TaskKind, v: TypeValues): string | null {
       // difference is the whole feature and this line is the only place the app
       // gets to explain it.
       return v.healthMetric != null && v.healthTarget != null
-        ? `Ready to check off once Apple Health reaches ${describeHealthGoal(v.healthMetric, v.healthTarget)} today. You still tick it.`
-        : 'Ready to check off once Apple Health reaches a number today. You still tick it.';
+        ? `Ready to check off once Apple Health reaches ${describeHealthGoal(v.healthMetric, v.healthTarget)} today. You still check it off yourself.`
+        : 'Ready to check off once Apple Health reaches a number today. You still check it off yourself.';
     case 'chain':
       return v.chainItems.length > 0
         ? `${v.chainItems.length} step${v.chainItems.length === 1 ? '' : 's'}, one per completion. Finishing one reveals the next.`

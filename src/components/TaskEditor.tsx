@@ -1234,7 +1234,7 @@ export function TaskEditor({ visible, task, initialDraft, onClose }: Props) {
           isSeries ? 'Update task on several dates' : 'Update recurring task',
           isSeries
             ? 'This task falls on more than one date. Apply this change to just this date, or to this and its later dates?'
-            : 'This task repeats. Apply this change to just this task, or to this and all future occurrences?',
+            : 'This task repeats. Apply this change to just this task, or to it and every future repeat?',
           [
             { text: 'Cancel', style: 'cancel' },
             { text: isSeries ? 'This date' : 'This task', onPress: () => commitSave('occurrence') },
@@ -1678,7 +1678,7 @@ export function TaskEditor({ visible, task, initialDraft, onClose }: Props) {
     if (task.recurrenceType !== 'none') {
       Alert.alert(
         'Delete recurring task',
-        'This task repeats. Mark just this occurrence missed, or delete it and stop the series?',
+        'This task repeats. Mark just this one missed, or delete it and stop it repeating?',
         [
           { text: 'Cancel', style: 'cancel' },
           {
@@ -1689,7 +1689,7 @@ export function TaskEditor({ visible, task, initialDraft, onClose }: Props) {
             },
           },
           {
-            text: 'Delete and Stop Series',
+            text: 'Delete and stop repeating',
             style: 'destructive',
             onPress: () => {
               haptics.success();
@@ -3282,7 +3282,7 @@ export function TaskEditor({ visible, task, initialDraft, onClose }: Props) {
                         label="Deadline offset"
                       />
                       <Text style={styles.intervalLabel}>
-                        {`${Math.abs(deadlineOffsetDays) === 1 ? 'day' : 'days'} ${deadlineOffsetDays < 0 ? 'after' : 'before'} due, every occurrence`}
+                        {`${Math.abs(deadlineOffsetDays) === 1 ? 'day' : 'days'} ${deadlineOffsetDays < 0 ? 'after' : 'before'} due, every time it repeats`}
                       </Text>
                     </View>
                   </>
@@ -3536,7 +3536,7 @@ export function TaskEditor({ visible, task, initialDraft, onClose }: Props) {
             <EditorRow
               icon="location-outline"
               label="Location"
-              hint="Where this task happens — an appointment's address, a venue."
+              hint="Where this task happens, like an appointment's address or a venue."
               value={location ?? undefined}
               expanded={showLocationField}
               onPress={() => {

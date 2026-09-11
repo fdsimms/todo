@@ -512,7 +512,7 @@ function ReviewRow({
               key={answer}
               onPress={() => onChange(answer)}
               accessibilityRole="button"
-              accessibilityLabel={`${meta.label} — ${entry.item.name}`}
+              accessibilityLabel={`${meta.label}, ${entry.item.name}`}
               accessibilityState={{ selected: active }}
               style={[styles.reviewChip, { backgroundColor: active ? tint + '26' : colors.bgTertiary }]}
             >

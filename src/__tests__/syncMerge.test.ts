@@ -83,7 +83,7 @@ describe('parsePayload rejects', () => {
   };
 
   it('non-JSON', () => rejects('{oops', 'JSON'));
-  it('a bare array', () => rejects('[]', 'sync payload'));
+  it('a bare array', () => rejects('[]', 'another device'));
   it('a missing format', () => rejects(JSON.stringify({ deviceId: 'a' }), 'format'));
 
   it('a payload from a newer build', () => {
@@ -94,7 +94,7 @@ describe('parsePayload rejects', () => {
   });
 
   it('a missing device id', () =>
-    rejects(JSON.stringify({ format: SYNC_FORMAT, until: 'x', since: null, tables: {}, deletions: [] }), 'device id'));
+    rejects(JSON.stringify({ format: SYNC_FORMAT, until: 'x', since: null, tables: {}, deletions: [] }), 'which device'));
 
   it('a row with no timestamp', () => {
     // There would be nothing to compare, and defaulting one would silently
@@ -122,7 +122,7 @@ describe('parsePayload rejects', () => {
         tables: {},
         deletions: [{ table: 'tasks' }],
       }),
-      'deletion'
+      'deleted items'
     );
   });
 

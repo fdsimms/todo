@@ -358,7 +358,7 @@ export function RemindMePicker({ visible, value, kind, dueDate = null, offsetDay
                 Task.reminderTimeAnchor. */}
             <View style={styles.anchorSection}>
               <SegmentedControl<'wallClock' | 'fixed'>
-                label="Anchor"
+                label="If your timezone changes"
                 value={selectedAnchor}
                 onChange={setSelectedAnchor}
                 options={[

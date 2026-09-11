@@ -1819,7 +1819,7 @@ export function RecipeDetailScreen() {
               />
             </View>
             <Text style={styles.inputHint}>
-              Cook mode offers a timer for the time written in the step. Set a length here to
+              Cook mode shows a timer for the time written in the step. Set a length here to
               use it instead.
             </Text>
             {/* Written here or kept from an answer in cook mode, and an

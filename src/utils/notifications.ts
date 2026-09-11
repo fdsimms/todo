@@ -321,7 +321,7 @@ export async function scheduleCompletionTimer(task: Task, completedAt: Date = ne
     identifier: completionTimerNotificationId(task.id),
     content: {
       title: displayTitleFor(task) || 'Task timer',
-      body: `It's time — you completed "${displayTitleFor(task) || task.title}" a while ago.`,
+      body: `It's time. You completed "${displayTitleFor(task) || task.title}" a while ago.`,
       data: { taskId: task.id, completionTimer: true },
       sound: true,
       interruptionLevel: REMINDER_INTERRUPTION_LEVEL,

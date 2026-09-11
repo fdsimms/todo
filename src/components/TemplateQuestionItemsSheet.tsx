@@ -65,7 +65,7 @@ export function TemplateQuestionItemsSheet({ visible, templateId, question, onCl
         ) : (
           <ScrollView contentContainerStyle={styles.list}>
             <Text style={styles.caption}>
-              A ticked answer checks that item by default when the run answers it. Every item
+              A checked answer checks that item by default when the template asks. Every item
               stays on the list either way, so it can still be checked or unchecked when the
               template is applied.
             </Text>
