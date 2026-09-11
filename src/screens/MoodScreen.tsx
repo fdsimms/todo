@@ -8,8 +8,9 @@ import { addDays } from 'date-fns/addDays';
 import { format } from 'date-fns/format';
 import Ionicons from '@expo/vector-icons/Ionicons';
 import { useShallow } from 'zustand/react/shallow';
-import type { MoodLog } from '../types';
+import type { Milestone, MoodLog } from '../types';
 import { useMoodStore } from '../store/useMoodStore';
+import { useMilestoneStore } from '../store/useMilestoneStore';
 import { useTaskStore } from '../store/useTaskStore';
 import { useSettingsStore } from '../store/useSettingsStore';
 import { useHealthStore, HEALTH_HISTORY_DAYS } from '../store/useHealthStore';
@@ -36,6 +37,7 @@ import {
   foodMoodContrasts,
   healthInsight,
   metricAverage,
+  milestoneMoodContrast,
   moodBarFraction,
   moodByTimeOfDay,
   moodCompletionInsight,
@@ -49,9 +51,11 @@ import {
 import { ScreenHeader } from '../components/ScreenHeader';
 import { HubPills } from '../components/HubPills';
 import { EmptyState } from '../components/EmptyState';
+import { InlineAction } from '../components/InlineAction';
 import { MoodLogSheet } from '../components/MoodLogSheet';
 import { MoodEntryRow } from '../components/MoodEntryRow';
 import { MoodExportSheet } from '../components/MoodExportSheet';
+import { MilestoneSheet } from '../components/MilestoneSheet';
 import { ContrastBars } from '../components/ContrastBars';
 
 /** How many days the chart shows. Two weeks fits a phone width at a readable bar. */
@@ -82,6 +86,7 @@ export function MoodScreen() {
 
   const logs = useMoodStore(s => s.logs);
   const removeLog = useMoodStore(s => s.removeLog);
+  const milestones = useMilestoneStore(s => s.milestones);
   const tasks = useTaskStore(s => s.tasks);
   // Apple Health's trailing window, read on demand rather than on the app's
   // foreground triggers: it is a wider query than the Today reading and only
@@ -129,6 +134,8 @@ export function MoodScreen() {
   const [sheetOpen, setSheetOpen] = useState(false);
   const [exportOpen, setExportOpen] = useState(false);
   const [editing, setEditing] = useState<MoodLog | null>(null);
+  const [milestoneSheetOpen, setMilestoneSheetOpen] = useState(false);
+  const [editingMilestone, setEditingMilestone] = useState<Milestone | null>(null);
 
   // `dundundun://mood?log=1` — the daily check-in task's link button. Stamped
   // with the arrival time rather than a boolean, and tracked against what has
@@ -305,6 +312,19 @@ export function MoodScreen() {
       label: titles.get(row.label) ?? row.label,
     }));
   }, [days, tasks]);
+
+  // Mood before a milestone's date, against on and after it. Unlike every
+  // contrast above, this isn't a with/without split over a vocabulary of
+  // labels — each milestone names its own single split point, so every row is
+  // computed independently rather than sliced from one ranked list.
+  const milestoneRows = useMemo(
+    () => milestones.map(milestone => ({
+      milestone,
+      contrast: milestoneMoodContrast(days, dayKeyOf(new Date(milestone.date))),
+    })),
+    [days, milestones],
+  );
+
   // Same key-to-casing resolution as symptomNames, for the same reason: a
   // contrast is keyed on the lowercased match, not what the user typed.
   const contextTagNames = useMemo(() => {
@@ -388,6 +408,14 @@ export function MoodScreen() {
       ],
     );
   };
+
+  const openNewMilestone = () => { haptics.tap(); setEditingMilestone(null); setMilestoneSheetOpen(true); };
+  const openEditMilestone = (milestone: Milestone) => {
+    haptics.tap();
+    setEditingMilestone(milestone);
+    setMilestoneSheetOpen(true);
+  };
+  const closeMilestoneSheet = () => { setMilestoneSheetOpen(false); setEditingMilestone(null); };
 
   const daysToGo = Math.max(0, MIN_PAIRED_DAYS - completion.dayCount);
 
@@ -798,6 +826,63 @@ export function MoodScreen() {
             </View>
           )}
 
+          <Text style={styles.sectionTitle}>MILESTONES</Text>
+          <View style={styles.card}>
+            {milestoneRows.length === 0 ? (
+              <Text style={[styles.pending, styles.milestoneAddSpacing]}>
+                Mark the day something changed — starting a medicine, a new
+                job — and compare your mood before and after it.
+              </Text>
+            ) : (
+              <View style={styles.milestoneAddSpacing}>
+                {milestoneRows.map(({ milestone, contrast }, i) => (
+                  contrast ? (
+                    <ContrastBars
+                      key={milestone.id}
+                      first={i === 0}
+                      label={milestone.label}
+                      withLabel="Before"
+                      withoutLabel="After"
+                      withFraction={moodBarFraction(contrast.moodBefore)}
+                      withoutFraction={moodBarFraction(contrast.moodAfter)}
+                      withText={contrast.moodBefore.toFixed(1)}
+                      withoutText={contrast.moodAfter.toFixed(1)}
+                      onPress={() => openEditMilestone(milestone)}
+                      accessibilityLabel={`${milestone.label}, average mood ${contrast.moodBefore.toFixed(1)} before ${format(new Date(milestone.date), 'MMMM d')}, ${contrast.moodAfter.toFixed(1)} on and after`}
+                    />
+                  ) : (
+                    <TouchableOpacity
+                      key={milestone.id}
+                      style={[styles.linkRow, i > 0 && styles.milestoneRowGap]}
+                      activeOpacity={interaction.activeOpacity}
+                      onPress={() => openEditMilestone(milestone)}
+                      accessibilityRole="button"
+                      accessibilityLabel={`${milestone.label}, ${format(new Date(milestone.date), 'MMMM d, yyyy')}, not enough days logged yet to compare`}
+                    >
+                      <View style={styles.linkBody}>
+                        <Text style={styles.linkLabel} numberOfLines={1}>{milestone.label}</Text>
+                        <Text style={styles.linkMeta}>
+                          {format(new Date(milestone.date), 'MMM d, yyyy')} · not enough days yet
+                        </Text>
+                      </View>
+                      <Ionicons name="chevron-forward" size={16} color={colors.textTertiary} />
+                    </TouchableOpacity>
+                  )
+                ))}
+              </View>
+            )}
+            <InlineAction
+              label="Add milestone"
+              onPress={openNewMilestone}
+              variant={milestoneRows.length > 0 ? 'neutral' : 'accent'}
+            />
+            {milestoneRows.some(r => r.contrast) && (
+              <Text style={styles.chartCaption}>
+                Average mood before a milestone's date, against on and after it.
+              </Text>
+            )}
+          </View>
+
           <Text style={styles.sectionTitle}>RECENT ENTRIES</Text>
           {recent.map(log => (
             <MoodEntryRow
@@ -832,6 +917,12 @@ export function MoodScreen() {
         visible={exportOpen}
         logs={logs}
         onClose={() => setExportOpen(false)}
+      />
+
+      <MilestoneSheet
+        visible={milestoneSheetOpen}
+        milestone={editingMilestone}
+        onClose={closeMilestoneSheet}
       />
     </View>
   );
@@ -919,6 +1010,12 @@ const makeStyles = (colors: Colors) => StyleSheet.create({
   linkBody: { flex: 1 },
   linkLabel: { fontSize: font.sm, color: colors.text },
   linkMeta: { fontSize: font.xs, color: colors.textSecondary, marginTop: 2 },
+  // Space before the "Add milestone" action below, whichever branch (the
+  // empty-state text or the row list) sits above it.
+  milestoneAddSpacing: { marginBottom: spacing.md },
+  // Between one pending milestone row and the next — ContrastBars rows carry
+  // their own gap, but a plain TouchableOpacity row needs its own.
+  milestoneRowGap: { marginTop: spacing.md },
   seeAllRow: {
     flexDirection: 'row',
     alignItems: 'center',

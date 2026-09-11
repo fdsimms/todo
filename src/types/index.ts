@@ -1225,6 +1225,39 @@ export interface MoodLog {
 }
 
 /**
+ * A dated marker for something that changed — starting or stopping a
+ * medicine, a new job, moving house — read by `moodInsights.ts` as a
+ * before/after split against the mood log. See `docs/arch/mood-log.md`.
+ *
+ * Deliberately just a label and a date, the same freeform-vocabulary call
+ * `LoggedSymptom` and `MoodLog.contextTags` make: no fixed list of milestone
+ * "kinds", and — this is the one worth not re-deriving — no attempt to pair a
+ * "Started X" with a later "Stopped X" by matching their text. That is exactly
+ * the fuzzy matching `symptomKey` refuses for the same reason: getting it
+ * wrong silently folds two different questions ("how were things before I
+ * started" and "how were things before I stopped") into one chart. Each
+ * milestone is its own single split point; recording both ends of a change is
+ * two milestones, read independently.
+ *
+ * No archive column, unlike `PersonNote`: a milestone that's wrong is edited
+ * or deleted, not filed away, and there is no "gone stale" state for a fact
+ * about a single day in the past.
+ */
+export interface Milestone {
+  id: string;
+  /** What happened, in your own words — "Started sertraline", "New job". */
+  label: string;
+  /**
+   * The day it happened. Noon on the picked day, the same anchor a backdated
+   * mood entry uses (see `MoodLog`'s backdating note) — a timezone or DST
+   * boundary must not drag it onto the wrong day, since this is the split
+   * point every before/after read is built on.
+   */
+  date: string;
+  createdAt: string;
+}
+
+/**
  * Which of the app's unattended generators wrote a task — see
  * `Task.generatedKind` below, and `src/utils/generatedTasks.ts` for the
  * mechanism they share.

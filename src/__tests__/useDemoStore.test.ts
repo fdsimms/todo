@@ -70,7 +70,8 @@ import { isStepTimerRunning, parseStepDurations, stepDurationOffers, stepTimerRe
 import { useMealPlanStore } from '../store/useMealPlanStore';
 import { usePersonNoteStore } from '../store/usePersonNoteStore';
 import { useMoodStore } from '../store/useMoodStore';
-import { buildMoodDays, contextTagMoodContrasts, describeNutrientInsight, foodMoodContrasts, foodPairedDays, symptomFoodContrasts, moodCompletionInsight, nutrientInsight, symptomMoodContrasts, taskContrastTitles, taskMoodContrasts, MIN_PAIRED_DAYS } from '../utils/moodInsights';
+import { useMilestoneStore } from '../store/useMilestoneStore';
+import { buildMoodDays, contextTagMoodContrasts, describeNutrientInsight, foodMoodContrasts, foodPairedDays, symptomFoodContrasts, milestoneMoodContrast, moodCompletionInsight, nutrientInsight, symptomMoodContrasts, taskContrastTitles, taskMoodContrasts, MIN_PAIRED_DAYS } from '../utils/moodInsights';
 import { contextTagVocabulary, symptomVocabulary } from '../utils/moodLog';
 import { isStaleNote } from '../utils/personNotes';
 import { personBackfillFieldCounts, PERSON_BACKFILL_FIELDS } from '../utils/peopleBackfill';
@@ -1588,6 +1589,17 @@ describe('demo seed — people', () => {
     expect(rows.length).toBeGreaterThan(0);
     const titles = taskContrastTitles(tasks);
     expect(rows.map(r => titles.get(r.label))).toContain('Take the vitamin D');
+  });
+
+  it('seeds a milestone with enough days on each side for the before/after card to draw', () => {
+    // A capability with nothing to show reads as one the app does not have —
+    // same reasoning as the low patch and the repeated task above, one level
+    // down for the milestone feature specifically.
+    const milestones = useMilestoneStore.getState().milestones;
+    expect(milestones.length).toBeGreaterThan(0);
+    const days = buildMoodDays(useMoodStore.getState().logs, [], '00:00');
+    const contrast = milestoneMoodContrast(days, dayKeyOf(new Date(milestones[0].date)));
+    expect(contrast).not.toBeNull();
   });
 
   it('seeds a couple of nutrition targets, so the totals read against something', () => {

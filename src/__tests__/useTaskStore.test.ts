@@ -89,6 +89,11 @@ jest.mock('../db/database', () => ({
   dbInsertMoodLog: jest.fn(),
   dbUpdateMoodLog: jest.fn(),
   dbDeleteMoodLog: jest.fn(),
+  // Milestones ride the same fan-out immediately after the mood log.
+  dbGetAllMilestones: jest.fn().mockReturnValue([]),
+  dbInsertMilestone: jest.fn(),
+  dbUpdateMilestone: jest.fn(),
+  dbDeleteMilestone: jest.fn(),
   // The food log rides the same startup fan-out as the mood log, so its reads
   // have to be here too or `initialize` throws before it reaches anything this
   // suite is about.

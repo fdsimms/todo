@@ -69,6 +69,11 @@ export const SYNC_TRACKED_TABLES: readonly SyncTable[] = [
   // Ids are base36 from generateId(), and an entry is written once and rarely
   // edited, so last-writer-wins is a no-op on almost every row.
   { name: 'mood_logs', key: ['id'] },
+  // Milestones — dated markers read as a before/after split against the mood
+  // log. Same reasoning as mood_logs: they have to travel or that split reads
+  // differently on each phone, and a milestone is written once and rarely
+  // edited, so last-writer-wins is a no-op on almost every row.
+  { name: 'milestones', key: ['id'] },
   // The food log. It has to travel for the reason mood entries do, and the
   // reading it prevents is starker: a day's totals computed off whichever half
   // of the record happens to be on the phone in your hand. An entry is written

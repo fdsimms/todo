@@ -1,5 +1,5 @@
 import * as SQLite from 'expo-sqlite';
-import type { Cookbook, DeliverableKind, FoodLogEntry, GeneratedKind, LoggedSymptom, MoodLevel, MoodLog, NutrientKey, Person, PersonGroup, PersonNote, PersonNoteKind, Task, Category, GroceryItem, GroceryList, GroceryListEntry, GtinLookup, ItemProduct, ItemShopLink, ItemSubLink, Leftover, MealPlanEntry, MealSlot, Recipe, RecipeMealType, RecipeSourceType, RecipeVote, ReceiptStyle, Shop, StoreAlias, TaskGroup, FocusSession, FocusSessionRecord, FocusStep, FocusStepRecord, Project, ProjectCategory, TaskTemplate, TemplateCategory, TemplateContainer, TemplateItem, TemplateItemGroup, TemplateQuestion, TemplateSchedule, TimeOfDay } from '../types';
+import type { Cookbook, DeliverableKind, FoodLogEntry, GeneratedKind, LoggedSymptom, Milestone, MoodLevel, MoodLog, NutrientKey, Person, PersonGroup, PersonNote, PersonNoteKind, Task, Category, GroceryItem, GroceryList, GroceryListEntry, GtinLookup, ItemProduct, ItemShopLink, ItemSubLink, Leftover, MealPlanEntry, MealSlot, Recipe, RecipeMealType, RecipeSourceType, RecipeVote, ReceiptStyle, Shop, StoreAlias, TaskGroup, FocusSession, FocusSessionRecord, FocusStep, FocusStepRecord, Project, ProjectCategory, TaskTemplate, TemplateCategory, TemplateContainer, TemplateItem, TemplateItemGroup, TemplateQuestion, TemplateSchedule, TimeOfDay } from '../types';
 import { DEFAULT_NUDGE_CADENCE_DAYS, MEAL_SLOTS, NUTRIENT_KEYS, PERSON_NOTE_KINDS, RECIPE_MEAL_TYPES, RECIPE_SOURCE_TYPES, isReceiptStyle } from '../types';
 import { generateId } from '../utils/id';
 import { appendPriceObservation, parsePriceHistory } from '../utils/priceHistory';
@@ -304,6 +304,17 @@ export function initDatabase(): void {
       mood INTEGER,
       symptoms TEXT NOT NULL DEFAULT '[]',
       note TEXT
+    );
+
+    -- A dated marker for something that changed — see Milestone in
+    -- types/index.ts and docs/arch/mood-log.md. No index on date: these are
+    -- rare, hand-entered rows, not a table anything scans by day the way
+    -- mood_logs is.
+    CREATE TABLE IF NOT EXISTS milestones (
+      id TEXT PRIMARY KEY NOT NULL,
+      label TEXT NOT NULL,
+      date TEXT NOT NULL,
+      created_at TEXT NOT NULL
     );
 
     -- One thing eaten, at one moment — see FoodLogEntry in types/index.ts and
@@ -1802,6 +1813,8 @@ export const BACKUP_TABLES = [
   // Points at nothing at all — a mood entry is a standalone record of a moment,
   // so its position here is only about keeping related rows together.
   'mood_logs',
+  // Also points at nothing, for the same reason and beside the same neighbor.
+  'milestones',
   // The food log, for the same reason: standalone rows nothing else points at.
   // Its pointers all run the other way and all dangle freely, so it has no
   // ordering requirement against the tables above it.
@@ -4780,6 +4793,45 @@ export function dbUpdateMoodLog(log: MoodLog): void {
 
 export function dbDeleteMoodLog(id: string): void {
   db.runSync('DELETE FROM mood_logs WHERE id = ?', [id]);
+}
+
+/** One milestone, mapped off its row. Every column is NOT NULL, so nothing here can drift. */
+function rowToMilestone(row: Record<string, unknown>): Milestone {
+  return {
+    id: row.id as string,
+    label: row.label as string,
+    date: row.date as string,
+    createdAt: row.created_at as string,
+  };
+}
+
+/**
+ * Every milestone, oldest first — the order the Mood screen wants them in,
+ * since they read as a timeline rather than a most-recent-first log.
+ */
+export function dbGetAllMilestones(): Milestone[] {
+  const rows = db.getAllSync<Record<string, unknown>>(
+    'SELECT * FROM milestones ORDER BY date ASC'
+  );
+  return rows.map(rowToMilestone);
+}
+
+export function dbInsertMilestone(milestone: Milestone): void {
+  db.runSync(
+    `INSERT INTO milestones (id, label, date, created_at) VALUES (?, ?, ?, ?)`,
+    [milestone.id, milestone.label, milestone.date, milestone.createdAt]
+  );
+}
+
+export function dbUpdateMilestone(milestone: Milestone): void {
+  db.runSync(
+    `UPDATE milestones SET label=?, date=? WHERE id=?`,
+    [milestone.label, milestone.date, milestone.id]
+  );
+}
+
+export function dbDeleteMilestone(id: string): void {
+  db.runSync('DELETE FROM milestones WHERE id = ?', [id]);
 }
 
 /**

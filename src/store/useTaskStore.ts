@@ -122,6 +122,7 @@ import { buildDayLoads } from '../utils/dayLoad';
 import { hasLogOnDay, hasLoggedSince } from '../utils/moodLog';
 import { useFoodLogStore } from './useFoodLogStore';
 import { useMoodStore } from './useMoodStore';
+import { useMilestoneStore } from './useMilestoneStore';
 import { eventsIn } from '../utils/calendarBusy';
 import { isDemoModeActive } from '../utils/demoState';
 import type { MealSlot, Project, TaskGroup } from '../types';
@@ -2082,6 +2083,10 @@ export const useTaskStore = create<TaskStore>((set, get) => ({
     // person's own record, or the reverse — and this is the one store where
     // that mistake is a claim about somebody's health.
     useMoodStore.getState().initialize();
+    // Beside the mood log, on the same fan-out and for the same reason:
+    // milestones are read against it, so a device swap that left them out of
+    // step would date a before/after split against the wrong person's phone.
+    useMilestoneStore.getState().initialize();
     // Beside the mood log and for the identical reason, with the same stakes:
     // a food log left pointed at the previous database would show a demo
     // session's invented meals as somebody's own record of what they ate.
