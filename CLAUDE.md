@@ -413,6 +413,7 @@ file: the two maps are indexes, not write-ups.
 | a timer for the cooking step you're on | `src/utils/stepTimers.ts` + `src/store/useStepTimerStore.ts` — see `docs/arch/recipes.md` |
 | a recipe page shared in from another app's share sheet | `src/utils/sharedRecipeLinks.ts` + `targets/todo-share/` — see `docs/arch/recipes.md` |
 | syncing between devices | `src/utils/syncEngine.ts` + `syncMerge.ts` + `cloudKitTransport.ts` + `src/store/useSyncStore.ts` |
+| letting Claude read the app's data | `mcp/` — see `docs/arch/mcp-server.md`. Its own npm package, deliberately not a dependency of the app; it opens a `todo.db` in Node by putting `mcp/src/expoSqliteShim.ts` in front of `expo-sqlite`, so the whole of `src/db` and `src/utils` runs unchanged. Read-only so far, and nothing is deployed. It reads tasks, projects, groceries and the three day-keyed logs; **weight is structurally unreadable** (HealthKit is the record and there is no table), which is the health model working rather than a gap |
 | exporting or restoring a backup | `src/utils/backup.ts` + `src/utils/backupFile.ts` |
 | writing tasks to the system calendar | `src/utils/calendarSync.ts` (+ `deadlineCalendarSync.ts`, `mealCalendarSync.ts`) |
 | reading free/busy out of the system calendar | `src/utils/calendarBusy.ts` + `src/store/useCalendarStore.ts` |
@@ -446,7 +447,7 @@ them source rather than tests. The ten biggest source files:
 Grep for the symbol and read the surrounding range; reading any of them end to end costs more
 context than the rest of the task will. `docs/module-map.md` says which file owns what.
 
-The suite is **311 test files**, and `npm test` runs all of them in about half a minute.
+The suite is **314 test files**, and `npm test` runs all of them in about half a minute.
 `npx tsc --noEmit` is a few seconds once `.tsbuildinfo` exists, so run both, every time.
 
 <!-- END GENERATED: repo-stats -->
@@ -606,6 +607,7 @@ decided, and the design system every screen is built from. Individual features a
 | `docs/arch/health-data.md` | Reading Apple Health: why nothing is stored, and why a refusal is invisible |
 | `docs/arch/simple-mode.md` | Simplified mode: what the one switch hides, and the two rules that make it safe |
 | `docs/arch/away-dates.md` | A project's away span: scheduled vacation mode, the trip move, the destination forecast, the away grocery list |
+| `docs/arch/mcp-server.md` | The MCP server: why it is a syncing replica rather than an in-app or backup-file one, and what it costs the "no backend" promise |
 | `docs/native-targets.md` | Adding an iOS native target (widget, Watch app, Live Activity) |
 
 ### Data flow
