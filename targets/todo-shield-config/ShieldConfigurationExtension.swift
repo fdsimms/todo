@@ -112,6 +112,14 @@ class ShieldConfigurationExtension: ShieldConfigurationDataSource {
         return "A task wasn't done in time."
       }
     default:
+      // A gate the monitor extension raised while the app was closed lands
+      // here, and it is the common case rather than an edge: the app's last
+      // reconcile wrote "none" because nothing wanted the shield *then*, and
+      // armed a window for the gate that was coming. `pendingGateDetail` is the
+      // sentence it wrote for exactly this screen, so prefer it over the
+      // fallback below — otherwise the one block somebody can act on right now
+      // is the one that refuses to say what it wants.
+      if let pending = state.pendingGateDetail, !pending.isEmpty { return pending }
       // The shield is up but the app's last reconcile says nothing wants it —
       // a state the app's own next foreground resolves by lifting it. Saying
       // so is better than claiming a reason that isn't there.

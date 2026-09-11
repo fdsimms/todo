@@ -21,10 +21,11 @@ name cannot say is where a component appears, and that is `docs/screen-map.md`.
 - `src/utils/aiRouting.ts` — AiRoute, OnDeviceEngine, onDeviceEngineFor, ON_DEVICE_FEATURES, supportsOnDevice, AiRouteInput, routeForFeature
 - `src/utils/alarmChain.ts` — ALARM_RING_INTERVAL_MINUTES, ALARM_MAX_RINGS, alarmChainTimes, taskAlarmUuid, alarmChainIds, stepTimerAlarmUuid
 - `src/utils/allClear.ts` — completedOnDay, describeAllClear
-- `src/utils/appGate.ts` — isGateTask, outstandingGates, gateShieldWanted, gateSubtitle
+- `src/utils/appGate.ts` — isGateTask, outstandingGates, gateShieldWanted, GATE_WINDOW_MINUTES, GATE_ARM_HORIZON_MS, GateWindow, gateWindowFor, PendingGate, nextPendingGate, gateSubtitle
 - `src/utils/appLock.ts` — APP_LOCK_GRACE_OPTIONS, DEFAULT_APP_LOCK_GRACE_SECONDS, graceLabel, parseGraceSeconds, shouldLockOnResume, biometryLabel
 - `src/utils/appLockAuth.ts` — AppLockCapability, AppLockSupport, getAppLockSupport, UnlockResult, authenticateForAppLock
 - `src/utils/appShield.ts` — AppShieldState, appShieldWanted, syncAppShield
+- `src/utils/appShieldReconcile.ts` — reconcileAppShield, gateTitlesNow
 - `src/utils/archiveMatch.ts` — findArchivedMatch
 - `src/utils/awayDates.ts` — AwaySpan, AwayPhase, AwayStatus, awayNoonIso, awaySpanOf, isAwayDay, awayNights, awayStatus, describeAwaySpan, nextAwayProject, +5 more
 - `src/utils/awayShift.ts` — AwayShiftProposal, AwayShiftPlan, buildAwayShiftPlan, awayShiftUpdates, describeAwayShift, hasAnchoredMember

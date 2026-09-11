@@ -72,6 +72,95 @@ export function gateShieldWanted(outstanding: number, enabled: boolean): boolean
 }
 
 /**
+ * How long the armed window is. It exists only for its *start*, which is the
+ * callback that applies the shield, so this is just a length that clears the
+ * quarter-hour iOS refuses to monitor below with room to spare. Its end is a
+ * no-op (see `intervalDidEnd` in the monitor extension, which answers only for
+ * the penalty window).
+ */
+export const GATE_WINDOW_MINUTES = 60;
+
+/**
+ * How far ahead a window can be armed, and the reason it's a limit at all.
+ *
+ * A `DeviceActivitySchedule`'s bounds are clock times rather than dates, so an
+ * armed window means "the next time it is 06:00", not "06:00 three weeks from
+ * now". Arming one for a gate further out than a day would raise a shield weeks
+ * early, which is the one way this could block somebody for a reason that isn't
+ * real yet. Anything beyond the horizon is simply left for a later reconcile to
+ * arm, and there will be one: the app cannot go a day without a foreground or a
+ * background refresh and still matter.
+ */
+export const GATE_ARM_HORIZON_MS = 24 * 60 * 60 * 1000;
+
+export interface GateWindow {
+  startIso: string;
+  endIso: string;
+}
+
+/**
+ * The window to arm so a gate takes hold at `liveAt` without the app being
+ * opened, or null when there is nothing to arm.
+ *
+ * Null covers the two cases that need no window rather than a shorter one: a
+ * gate already live (the app is running right now, so it applies the shield
+ * itself and an armed window would only re-apply what is already there), and
+ * one past the horizon above.
+ */
+export function gateWindowFor(liveAt: Date, now: Date): GateWindow | null {
+  const delay = liveAt.getTime() - now.getTime();
+  if (delay <= 0) return null;
+  if (delay > GATE_ARM_HORIZON_MS) return null;
+  return {
+    startIso: liveAt.toISOString(),
+    endIso: new Date(liveAt.getTime() + GATE_WINDOW_MINUTES * 60_000).toISOString(),
+  };
+}
+
+/**
+ * The gate tasks that aren't live yet but will be, and when the first of them
+ * turns up.
+ *
+ * `visibleAt` is the caller's `getVisibleAt` for the same reason `isVisible` is
+ * `isTaskVisible` above: it reads stores this module must not import. It
+ * answers `now` for a task that is already live and for one held back by
+ * something with no clock behind it (waiting on another task, on a person), so
+ * filtering to strictly-future answers drops both — which is right in each
+ * case. A live gate needs no window because the shield is already up, and a
+ * held-back one has no moment to arm for, only an event.
+ *
+ * Returns the tasks as well as the moment because the shield screen has to name
+ * them, and the extension that raises it can't ask. Only the tasks sharing the
+ * earliest moment are named: a gate arriving at 06:00 and another at 21:00 are
+ * two separate windows, and the screen shown at 06:00 must not claim the
+ * evening one is already standing in the way.
+ */
+export interface PendingGate {
+  liveAt: Date;
+  tasks: Task[];
+}
+
+export function nextPendingGate(
+  tasks: readonly Task[],
+  visibleAt: (task: Task) => Date,
+  now: Date,
+): PendingGate | null {
+  const upcoming: { liveAt: Date; task: Task }[] = [];
+  for (const task of tasks) {
+    if (!isGateTask(task) || task.completed || task.archived) continue;
+    const liveAt = visibleAt(task);
+    if (liveAt.getTime() > now.getTime()) upcoming.push({ liveAt, task });
+  }
+  if (upcoming.length === 0) return null;
+
+  const earliest = upcoming.reduce((a, b) => (b.liveAt.getTime() < a.liveAt.getTime() ? b : a)).liveAt;
+  return {
+    liveAt: earliest,
+    tasks: upcoming.filter(u => u.liveAt.getTime() === earliest.getTime()).map(u => u.task),
+  };
+}
+
+/**
  * The line the shield screen shows when a gate is what's blocking.
  *
  * Built here rather than in the extension, unlike the penalty's, and the reason
