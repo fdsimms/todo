@@ -313,8 +313,8 @@ export function NutritionPanelSheet({ visible, foodName, nutrition, onClose, onS
             keyboardDismissMode="interactive"
           >
             <Text style={styles.intro}>
-              Copy the figures from the packet. Leave a field blank if the label doesn't
-              state it. Blank means unknown, which is not the same as zero.
+              Copy the numbers off the package label. Leave a field blank if the label
+              doesn't list it. Blank means unknown, which is not the same as zero.
             </Text>
 
             {canPhotograph && (
@@ -343,14 +343,14 @@ export function NutritionPanelSheet({ visible, foodName, nutrition, onClose, onS
                     <Text style={styles.photoNote}>
                       This label prints more than one column. They're the same food against
                       different portions, so they don't agree. Pick the one you want, then
-                      check a figure or two against the packet before saving.
+                      double-check a figure or two against the label before saving.
                     </Text>
                   </>
                 ) : (
                   <Text style={styles.photoNote}>
                     {`Filled in ${labelColumnFieldCount(label.columns[0])} ${
                       labelColumnFieldCount(label.columns[0]) === 1 ? 'figure' : 'figures'
-                    }. Check them against the packet before saving.`}
+                    }. Double-check them against the label before saving.`}
                   </Text>
                 )}
               </View>
