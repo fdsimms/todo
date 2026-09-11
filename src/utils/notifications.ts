@@ -734,13 +734,16 @@ export async function scheduleFocusStepAlarm(session: FocusSession | null): Prom
   if (isWithinQuietHours(triggerDate, quietHoursStart, quietHoursEnd)) return;
 
   const isRest = step.kind === 'rest';
+  const nextIsRest = session.steps[session.stepIndex + 1]?.kind === 'rest';
   await Notifications.scheduleNotificationAsync({
     identifier: FOCUS_STEP_ALARM_ID,
     content: {
       title: isRest ? 'Break’s over' : 'Time’s up',
       body: isRest
         ? 'Back to it when you’re ready.'
-        : 'That stretch is done. Take your break when you’re ready.',
+        : nextIsRest
+          ? 'That stretch is done. Take your break when you’re ready.'
+          : 'That stretch is done.',
       data: { focusSessionId: session.id },
       sound: true,
       // Mid-session and actively waiting on this step to end — see
