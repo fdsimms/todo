@@ -434,6 +434,13 @@ export default function AppNavigator() {
             options={{ presentation: 'card' }}
           />
         </RootStack.Navigator>
+        {/* Inside NavigationContainer, unlike its siblings below, because it
+            renders FoodLogEntrySheet and (via ScanToLogFlow) ScanPortionSheet
+            and BarcodeScanSheet, all of which use useKeyboardInsetScroll —
+            which calls useIsFocused and so needs a navigation object. It's
+            still a sibling of the Navigator rather than a screen, so it stays
+            mounted across every screen exactly as before. */}
+        <LogMealEntrySheet />
       </NavigationContainer>
 
       <SideMenuDrawer
@@ -461,10 +468,10 @@ export default function AppNavigator() {
           each renders nothing (FinishLeftoverPrompt) or a plain Modal
           (UseUpResolveSheet's LeftoverSheet, CookRecap's sheet), touching no
           navigation hooks, so none needs NavigationContainer. See their own doc
-          comments. */}
+          comments. (LogMealEntrySheet moved inside NavigationContainer above,
+          for the reason noted there.) */}
       <FinishLeftoverPrompt />
       <LogMealPrompt />
-      <LogMealEntrySheet />
       <UseUpResolveSheet />
       {/* Mounted once here rather than on the two screens a meal is ticked off
           from, which is what the offers it replaced did. A banner rendered
