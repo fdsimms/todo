@@ -39,6 +39,7 @@ describe('the three maintenance groups', () => {
       'check pantry reviews',
       'check pantry checks',
       'check meal shortfall tasks',
+      'check meal log nudge tasks',
       'check calendar review tasks',
       'check weather tasks',
       'check screen time tasks',

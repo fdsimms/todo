@@ -1,5 +1,6 @@
 import type { Task, Effort, Category } from '../types';
 import { EFFORT_MINUTES } from './effort';
+import { activeChainStep } from './chain';
 
 /** A field this screen can walk the task list and fill in, one task at a time. */
 export type BackfillFieldId = 'estimate' | 'priority' | 'category' | 'streak' | 'vacation' | 'reminder' | 'suggestions';
@@ -88,8 +89,13 @@ export function isFieldMissing(task: Task, fieldId: BackfillFieldId, categories?
       // mealSlotChain), and a meal-slot "Choose"/"Eat" step gets one from
       // mealSlotStepEstimates once the user has sized that step-type once.
       // Reading task.estimatedMinutes alone would flag both as missing
-      // even though the app already knows the answer.
-      return (task.chainItems[task.chainIndex]?.estimatedMinutes ?? task.estimatedMinutes) == null;
+      // even though the app already knows the answer. Goes through
+      // activeChainStep() rather than indexing chainItems[chainIndex]
+      // directly, since a chain whose steps were edited down can leave
+      // chainIndex out of range — the raw index would then read undefined
+      // and wrongly flag the task as missing an estimate the active step
+      // (found via the modulo activeChainStep applies) already has.
+      return (activeChainStep(task)?.estimatedMinutes ?? task.estimatedMinutes) == null;
     case 'priority':
       return task.priority === 0;
     case 'category':

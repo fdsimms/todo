@@ -1,5 +1,5 @@
 import React, { useMemo, useState } from 'react';
-import { View, Text, TextInput, StyleSheet, Alert, Linking } from 'react-native';
+import { View, Text, TextInput, StyleSheet, Alert } from 'react-native';
 import { format } from 'date-fns/format';
 import { useSettingsStore } from '../store/useSettingsStore';
 import { useHealthStore } from '../store/useHealthStore';
@@ -9,6 +9,7 @@ import { spacing, radius, font, fontWeight, type Colors } from '../theme';
 import { haptics } from '../utils/haptics';
 import { dayKeyOf, getCurrentDayStart, getLogicalToday } from '../utils/dateUtils';
 import { logWeightToHealth } from '../utils/healthWeightSync';
+import { openHealthApp } from '../utils/healthBridge';
 import { parseWeightInput } from '../utils/weightLog';
 import { EditorSheet } from './EditorSheet';
 import { EditorRow } from './EditorRow';
@@ -100,7 +101,7 @@ export function LogWeightSheet({ visible, onClose }: Props) {
         'Open the Health app, find this app under Sharing, and allow it to write weight.',
         [
           { text: 'Not now', style: 'cancel' },
-          { text: 'Open Settings', onPress: () => Linking.openSettings() },
+          { text: 'Open Settings', onPress: () => { void openHealthApp(); } },
         ],
       );
       return;

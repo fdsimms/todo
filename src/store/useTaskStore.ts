@@ -1,6 +1,6 @@
 import { create } from 'zustand';
 import { addDays } from 'date-fns/addDays';
-import type { Task, TaskDraft, Priority, TimeOfDay, TitleRule, Person, QuotaPeriod, Polarity } from '../types';
+import type { Task, TaskDraft, Priority, TimeOfDay, TitleRule, Person, QuotaPeriod, Polarity, MealPlanEntry } from '../types';
 import {
   initDatabase,
   dbGetAllTasks,
@@ -28,6 +28,7 @@ import {
   dbTransaction,
   dbGetMealPlanEntries,
   dbGetMealPlanEntry,
+  dbGetFoodLogEntries,
 } from '../db/database';
 import { useSettingsStore } from './useSettingsStore';
 import { useCategoryStore, ensureCalendarEventCategory, ensureHealthCategory, ensureGeneratedTaskCategories, ensureGeneratedTaskCategory } from './useCategoryStore';
@@ -74,6 +75,13 @@ import {
   staleMealShortfallTasks,
   wantedMealShortfalls,
 } from '../utils/mealShortfallTasks';
+import {
+  MEAL_LOG_NUDGE_LOOKBACK_DAYS,
+  mealLogNudgeEntryId,
+  mealLogNudgeLinkUrl,
+  staleMealLogNudgeTasks,
+  wantedMealLogNudges,
+} from '../utils/mealLogNudgeTasks';
 import { standingSwapMap } from '../utils/standingSwaps';
 import {
   dueMealPlanNudge,
@@ -114,6 +122,7 @@ import { buildDayLoads } from '../utils/dayLoad';
 import { hasLogOnDay, hasLoggedSince } from '../utils/moodLog';
 import { useFoodLogStore } from './useFoodLogStore';
 import { useMoodStore } from './useMoodStore';
+import { useMilestoneStore } from './useMilestoneStore';
 import { eventsIn } from '../utils/calendarBusy';
 import { isDemoModeActive } from '../utils/demoState';
 import type { MealSlot, Project, TaskGroup } from '../types';
@@ -823,6 +832,12 @@ function writeGeneratedOptOut(task: Task, value: false | null): void {
     case 'mealShortfall':
       useMealPlanStore.getState().setShopTask(sourceId, value);
       return;
+    // The same field the completion-time log prompt's "Don't ask for this
+    // meal" already writes — see mealLogNudgeTasks.ts. Declining either one
+    // means the same thing about the same meal.
+    case 'mealLogNudge':
+      useMealPlanStore.getState().setLogMeal(sourceId, value);
+      return;
     case 'groceryUseUp':
       useGroceryStore.getState()
         .setUseUpTask(sourceId, value, value === null ? reconcileOff : undefined);
@@ -903,6 +918,42 @@ function writeGeneratedOptOut(task: Task, value: false | null): void {
     }
     default:
       return;
+  }
+}
+
+/**
+ * The offer a meal's own finish, or its missed-log nudge, makes — the moment
+ * either completes and the meal isn't already opted out of it.
+ *
+ * A recipe-backed meal gets the auto-computed prompt (`pendingMealLog`,
+ * `mealLog.ts`/`LogMealPrompt.tsx`), which can measure it. Anything else —
+ * a leftover with no recipe, takeout, a typed answer — gets the search sheet
+ * instead (`pendingManualMealLog`, `FoodLogEntrySheet.tsx`), prefilled with
+ * the meal's own name so finding it is a tap rather than a retype. Both
+ * check the same per-meal "no" first, because both are the same offer with
+ * two different ways of answering "how much".
+ */
+function offerMealLog(loggable: MealPlanEntry): void {
+  if (!wantsMealLogPrompt(loggable, useSettingsStore.getState().mealLogPrompt)) return;
+  if (loggable.recipeId) {
+    useFoodLogStore.getState().setPendingMealLog({
+      label: loggable.title,
+      slot: loggable.slot,
+      recipeId: loggable.recipeId,
+      mealPlanEntryId: loggable.id,
+      scale: loggable.recipeScale,
+      choices: loggable.recipeChoices,
+      // A meal cooked tonight has nothing weighed yet — the prompt asks.
+      // Only a container that was weighed on the way into the fridge arrives
+      // with a figure (see finishLeftover).
+      grams: null,
+    });
+  } else {
+    useFoodLogStore.getState().setPendingManualMealLog({
+      label: loggable.title,
+      slot: loggable.slot,
+      mealPlanEntryId: loggable.id,
+    });
   }
 }
 
@@ -1792,6 +1843,13 @@ interface TaskStore extends UndoHistoryActions {
    */
   checkMealShortfallTasks: () => void;
   /**
+   * Give every planned meal a few days in the past with nothing logged
+   * against it a "Log X" task, and clear the ones whose meal has since been
+   * logged, told not to ask, deleted, or has fallen out of the window. See
+   * src/utils/mealLogNudgeTasks.ts.
+   */
+  checkMealLogNudgeTasks: () => void;
+  /**
    * Give every supply that's running low an "Order more X" task, put every
    * *linked* supply's grocery item on the shopping list instead, and clear the
    * rows whose supply has since been topped back up. See src/utils/supply.ts.
@@ -2070,6 +2128,10 @@ export const useTaskStore = create<TaskStore>((set, get) => ({
     // person's own record, or the reverse — and this is the one store where
     // that mistake is a claim about somebody's health.
     useMoodStore.getState().initialize();
+    // Beside the mood log, on the same fan-out and for the same reason:
+    // milestones are read against it, so a device swap that left them out of
+    // step would date a before/after split against the wrong person's phone.
+    useMilestoneStore.getState().initialize();
     // Beside the mood log and for the identical reason, with the same stakes:
     // a food log left pointed at the previous database would show a demo
     // session's invented meals as somebody's own record of what they ate.
@@ -3810,6 +3872,13 @@ export const useTaskStore = create<TaskStore>((set, get) => ({
     const cookedEntryId =
       generatedSourceOf(task, 'mealCook') ??
       (completesMealSlot(task) ? mealSlotEntryId(task) : null);
+    // A mealLogNudge task's own completion is the other moment this offer can
+    // come from — see offerMealLog below. Kept apart from cookedEntryId,
+    // which also drives the cook-pairing and leftover-finish logic right
+    // below: ticking "Log breakfast" three days late must not re-ask "was
+    // that the last of the leftover?" on a meal already settled one way or
+    // the other.
+    const logNudgeEntryId = generatedSourceOf(task, 'mealLogNudge');
     const undoMealCooked = !missed && cookedEntryId
       ? useMealPlanStore.getState().setCookedPaired(cookedEntryId, true)
       : null;
@@ -3847,34 +3916,20 @@ export const useTaskStore = create<TaskStore>((set, get) => ({
 
     // ...and the same tick is the cheapest logging moment the app will ever
     // have: the step that finished a meal-slot chain is literally "Eat", and
-    // the entry behind it already names the dish, the scale it was cooked at
-    // and the either/or answers that went into it.
+    // the entry behind it already names the dish and, for a recipe-backed
+    // one, the scale it was cooked at and the either/or answers that went
+    // into it. A mealLogNudge task's own completion is the other way in —
+    // see offerMealLog.
     //
     // An offer, never a write — see mealLog.ts. A plan can diverge from
     // reality (the dinner was cooked, then everyone went out), which is the
     // same reason mealSlotDrift withholds the chain once it is under way.
     // Never on a miss, matching the cook pairing above: a missed deadline did
     // not feed anybody.
-    if (!missed && cookedEntryId) {
-      const loggable = dbGetMealPlanEntry(cookedEntryId);
-      if (
-        loggable &&
-        loggable.recipeId &&
-        wantsMealLogPrompt(loggable, useSettingsStore.getState().mealLogPrompt)
-      ) {
-        useFoodLogStore.getState().setPendingMealLog({
-          label: loggable.title,
-          slot: loggable.slot,
-          recipeId: loggable.recipeId,
-          mealPlanEntryId: loggable.id,
-          scale: loggable.recipeScale,
-          choices: loggable.recipeChoices,
-          // A meal cooked tonight has nothing weighed yet — the prompt asks.
-          // Only a container that was weighed on the way into the fridge
-          // arrives with a figure (see finishLeftover).
-          grams: null,
-        });
-      }
+    if (!missed) {
+      const loggableEntryId = cookedEntryId ?? logNudgeEntryId;
+      const loggable = loggableEntryId ? dbGetMealPlanEntry(loggableEntryId) : null;
+      if (loggable) offerMealLog(loggable);
     }
 
     // Ticking a "Use up X" task off is the moment the user can say what
@@ -4118,6 +4173,11 @@ export const useTaskStore = create<TaskStore>((set, get) => ({
       // since finishing one spawns nothing.
       (completesMealSlot(task) ? mealSlotEntryId(task) : null);
     if (uncookedEntryId) useMealPlanStore.getState().setCooked(uncookedEntryId, false);
+    // The mirror of logNudgeEntryId in completeTask — kept apart from
+    // uncookedEntryId for the same reason it's kept apart from cookedEntryId
+    // there: un-ticking "Log breakfast" must not un-cook a meal that was
+    // never this task's to mark either way.
+    const logNudgeUncompleteEntryId = generatedSourceOf(task, 'mealLogNudge');
 
     // Mirrors the retraction just above: un-ticking the step that finished a
     // leftover-backed meal takes back whatever finish-the-container ask it
@@ -4128,9 +4188,18 @@ export const useTaskStore = create<TaskStore>((set, get) => ({
       useLeftoverStore.getState().setPendingFinishLeftover(null);
     }
     // Taking the tick back takes the offer back with it: the meal did not
-    // happen after all, so there is nothing to be asked about.
-    if (uncookedEntryId && useFoodLogStore.getState().pendingMealLog?.mealPlanEntryId === uncookedEntryId) {
+    // happen after all, so there is nothing to be asked about. Covers both
+    // shapes offerMealLog can have raised, and both the meal-slot and the
+    // log-nudge tick that can each have raised them.
+    const uncookedOfferEntryId = uncookedEntryId ?? logNudgeUncompleteEntryId;
+    if (uncookedOfferEntryId && useFoodLogStore.getState().pendingMealLog?.mealPlanEntryId === uncookedOfferEntryId) {
       useFoodLogStore.getState().setPendingMealLog(null);
+    }
+    if (
+      uncookedOfferEntryId &&
+      useFoodLogStore.getState().pendingManualMealLog?.mealPlanEntryId === uncookedOfferEntryId
+    ) {
+      useFoodLogStore.getState().setPendingManualMealLog(null);
     }
 
     // Un-ticking a "Use up X" task retracts whatever resolve prompt it just
@@ -5654,6 +5723,71 @@ export const useTaskStore = create<TaskStore>((set, get) => ({
           linkUrl: mealShortfallLinkUrl(want.dayKey, want.entryId),
           category,
           ...generatedBy('mealShortfall', want.entryId),
+        }),
+      });
+    });
+    // No setLastAction, same reasoning as checkMealPlanNudge above.
+  },
+
+  /**
+   * Give every planned meal a few days in the past with nothing logged
+   * against it a "Log X" task. See src/utils/mealLogNudgeTasks.ts for the
+   * window, the cap, and why `cookedAt` is never consulted.
+   *
+   * Reads both the entry window and the food log window straight from the
+   * database, for `checkMealShortfallTasks`' own reason: the loaded stores
+   * hold only whatever range a screen happened to have open.
+   */
+  checkMealLogNudgeTasks() {
+    const settings = useSettingsStore.getState();
+    if (generatorPausedForVacation('mealLogNudge', settings.vacationMode)) return;
+    if (!settings.mealLogNudgeTasks) return;
+    if (!settings.kitchenEnabled) return;
+
+    const tasks = get().tasks;
+    const todayKey = dayKeyOf(getLogicalToday());
+    // One day wider on the near edge, for the reason checkMealShortfallTasks
+    // reads one day wider on each of its own: a task whose entry has moved is
+    // told apart from one whose entry has vanished only by what's actually in
+    // this set.
+    const windowStart = shiftDayKey(todayKey, -MEAL_LOG_NUDGE_LOOKBACK_DAYS - 1);
+    const entries = dbGetMealPlanEntries(windowStart, todayKey);
+    const loggedEntryIds = new Set(
+      dbGetFoodLogEntries(windowStart, todayKey)
+        .map(e => e.mealPlanEntryId)
+        .filter((id): id is string => id !== null)
+    );
+
+    // Clear first, create second, the same ordering every generator here
+    // runs on: the stale set includes the row for a meal just logged from
+    // this very task, and a create pass running first would be deciding
+    // against a list that still held it.
+    const stale = staleMealLogNudgeTasks(tasks, entries, loggedEntryIds, todayKey);
+    stale.forEach(task => dropGeneratedTask('mealLogNudge', mealLogNudgeEntryId(task)));
+
+    const wanted = wantedMealLogNudges(entries, loggedEntryIds, todayKey);
+    if (wanted.length === 0) return;
+
+    ensureGeneratedTaskCategory('mealLogNudge');
+    const category = useSettingsStore.getState().mealLogNudgeTaskCategory;
+    const dueDate = getCurrentDayStart();
+    dueDate.setHours(12, 0, 0, 0);
+
+    wanted.forEach(want => {
+      reconcileGeneratedTask({
+        kind: 'mealLogNudge',
+        sourceId: want.entryId,
+        wanted: true,
+        // A meal is one event — see the module header on why a finished row
+        // (whether or not it actually led to a log entry) never comes back.
+        blocksOnFinished: true,
+        drift: existing => (existing.title === want.title ? null : { title: want.title }),
+        draft: () => ({
+          title: want.title,
+          dueDate: dueDate.toISOString(),
+          linkUrl: mealLogNudgeLinkUrl(want.dayKey),
+          category,
+          ...generatedBy('mealLogNudge', want.entryId),
         }),
       });
     });

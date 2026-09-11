@@ -263,6 +263,8 @@ const GENERATED_KEYWORDS: Record<GeneratedKind, string[]> = {
   mealPlanNudge: ['meal plan', 'weekly', 'nudge', 'remind', 'planning', 'generated', 'automatic'],
   mealShortfall: ['ingredients', 'missing', 'meal plan', 'grocery', 'buy', 'short', 'generated',
     'automatic'],
+  mealLogNudge: ['food log', 'nutrition', 'ate', 'eaten', 'meal plan', 'nudge', 'generated',
+    'automatic'],
   projectReview: ['stalled', 'stale', 'nudge', 'pull', 'idle', 'abandoned', 'generated', 'automatic'],
   supplyReorder: ['supply', 'stock', 'restock', 'order more', 'refill', 'running low', 'run out',
     'consumable', 'filter', 'cartridge', 'generated', 'automatic'],

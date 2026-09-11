@@ -1,5 +1,5 @@
 import React, { useCallback, useMemo, useState } from 'react';
-import { View, AppState, Linking } from 'react-native';
+import { View, AppState } from 'react-native';
 import { useFocusEffect } from '@react-navigation/native';
 import type { HealthRequestStatus, HealthWriteStatus } from 'todo-health-bridge';
 import { useShallow } from 'zustand/react/shallow';
@@ -8,7 +8,7 @@ import { useHealthStore } from '../../store/useHealthStore';
 import { useCategoryStore, ensureHealthCategory } from '../../store/useCategoryStore';
 import { categoryLabel } from '../../utils/categoryLabel';
 import { PillGroup } from '../../components/PillGroup';
-import { healthBridge, isHealthSupported } from '../../utils/healthBridge';
+import { healthBridge, isHealthSupported, openHealthApp } from '../../utils/healthBridge';
 import type { WeightUnit } from '../../utils/weightLog';
 import { dayKeyOf, getCurrentDayStart } from '../../utils/dateUtils';
 import { formatWeight } from '../../utils/weightLog';
@@ -20,26 +20,6 @@ import { SettingsRow } from './SettingsRow';
 import { SettingsSegments } from './SettingsSegments';
 import { makeSettingsStyles } from './settingsStyles';
 import { haptics } from '../../utils/haptics';
-
-/**
- * HealthKit permissions live in the Health app itself, under the profile
- * icon's Privacy → Apps page, not in this app's page under iOS Settings —
- * Settings has no Health row to show. Try the Health app's URL scheme first
- * and only fall back to Settings if that fails.
- *
- * **`x-apple-health` has to be declared in `LSApplicationQueriesSchemes`
- * (app.json's `ios.infoPlist`) or `Linking.openURL` rejects outright**,
- * landing every caller in the `catch` below — this app's own Settings page,
- * which has no Health row, silently proving the row's own hint text wrong.
- * That's not a hypothetical: it shipped without the entry once already.
- */
-async function openHealthApp() {
-  try {
-    await Linking.openURL('x-apple-health://');
-  } catch {
-    await Linking.openSettings();
-  }
-}
 
 /**
  * Reading Apple Health, and — in a section of its own below — writing the two
@@ -166,6 +146,14 @@ export function HealthSettings() {
       bridge?.requestHealthAuthorization()
         .then(() => {
           refreshStatus();
+          // Also here, not just on focus/foreground — see refreshWriteStatus's
+          // own comment for why a read grant can silently cost write access on
+          // the types the two sides share (water, weight, the eight nutrients).
+          // Re-checking now is what turns "found out weeks later, confused"
+          // into "the row below already says Not allowed the moment you granted
+          // read", which is the one thing this app can still do about an OS
+          // bug it cannot prevent.
+          refreshWriteStatus();
           void refresh();
         })
         .catch(() => refreshStatus());
@@ -178,6 +166,8 @@ export function HealthSettings() {
     if (!bridge) return;
     await bridge.requestHealthAuthorization();
     refreshStatus();
+    // Same reason as onToggle above.
+    refreshWriteStatus();
     void refresh();
   };
 
@@ -282,7 +272,14 @@ export function HealthSettings() {
             // anything is actually coming through.
             hint={
               requestStatus === 'shouldRequest'
-                ? "Not asked yet. Nothing can be read until you allow it in Health"
+                ? healthWriteEnabled
+                  // iOS has been observed silently revoking write access to a
+                  // type (water, weight, a nutrient) the moment read access for
+                  // that same type is granted — see the note in
+                  // docs/arch/health-data.md. Worth saying here, before it
+                  // happens, since the write rows below only report it after.
+                  ? "Not asked yet. Allowing this can reset write access below for the types this app both reads and writes (water, weight, most nutrients) — check Log to Health afterward"
+                  : "Not asked yet. Nothing can be read until you allow it in Health"
                 : requestStatus === 'unnecessary'
                   ? "Already asked. To change what's shared, open Health, tap your profile picture, then Privacy, then Apps, then dundundun"
                   : requestStatus === 'unavailable'

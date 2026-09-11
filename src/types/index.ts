@@ -1225,6 +1225,39 @@ export interface MoodLog {
 }
 
 /**
+ * A dated marker for something that changed — starting or stopping a
+ * medicine, a new job, moving house — read by `moodInsights.ts` as a
+ * before/after split against the mood log. See `docs/arch/mood-log.md`.
+ *
+ * Deliberately just a label and a date, the same freeform-vocabulary call
+ * `LoggedSymptom` and `MoodLog.contextTags` make: no fixed list of milestone
+ * "kinds", and — this is the one worth not re-deriving — no attempt to pair a
+ * "Started X" with a later "Stopped X" by matching their text. That is exactly
+ * the fuzzy matching `symptomKey` refuses for the same reason: getting it
+ * wrong silently folds two different questions ("how were things before I
+ * started" and "how were things before I stopped") into one chart. Each
+ * milestone is its own single split point; recording both ends of a change is
+ * two milestones, read independently.
+ *
+ * No archive column, unlike `PersonNote`: a milestone that's wrong is edited
+ * or deleted, not filed away, and there is no "gone stale" state for a fact
+ * about a single day in the past.
+ */
+export interface Milestone {
+  id: string;
+  /** What happened, in your own words — "Started sertraline", "New job". */
+  label: string;
+  /**
+   * The day it happened. Noon on the picked day, the same anchor a backdated
+   * mood entry uses (see `MoodLog`'s backdating note) — a timezone or DST
+   * boundary must not drag it onto the wrong day, since this is the split
+   * point every before/after read is built on.
+   */
+  date: string;
+  createdAt: string;
+}
+
+/**
  * Which of the app's unattended generators wrote a task — see
  * `Task.generatedKind` below, and `src/utils/generatedTasks.ts` for the
  * mechanism they share.
@@ -1269,6 +1302,14 @@ export type GeneratedKind =
   // and often, which is why its whole staleness rule is the creation predicate
   // re-run — see src/utils/mealShortfallTasks.ts.
   | 'mealShortfall'
+  // A planned meal a few days in the past with nothing logged against it
+  // becomes "Log X" — the missed half of the offer `mealLog.ts` makes at
+  // completion time. Its source row is the same `MealPlanEntry` mealShortfall's
+  // is, and its opt-out is the same field the completion prompt's "Don't ask
+  // for this meal" already writes (`MealPlanEntry.logMeal`) — declining either
+  // one means the same thing about the same meal. See
+  // src/utils/mealLogNudgeTasks.ts.
+  | 'mealLogNudge'
   // Somebody's birthday, a few days ahead of the day itself — see
   // src/utils/birthdayTasks.ts. The only generator whose trigger is known years
   // in advance rather than derived from something that just changed.

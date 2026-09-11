@@ -110,7 +110,7 @@ render, so listing them adds lines without adding answers.
 - `src/utils/grocerySuggest.ts` — GrocerySuggestion, GrocerySection, GroceryRecipeSection, NO_RECIPE_LABEL, matchWeight, rankGrocerySuggestions, rankedCatalogItems, sectionsInAisleOrder, buildGrocerySections, buildGroceryRecipeSections, +10 more
 - `src/utils/gtin.ts` — gtinCheckDigit, normalizeGtin, isGtin, formatGtin, GTIN_MISS_TTL_DAYS, isCacheEntryFresh
 - `src/utils/haptics.ts` — haptics
-- `src/utils/healthBridge.ts` — HealthBridge, healthBridge, isHealthSupported
+- `src/utils/healthBridge.ts` — HealthBridge, healthBridge, isHealthSupported, openHealthApp
 - `src/utils/healthCompletionSync.ts` — logTaskHealthValue
 - `src/utils/healthFoodSync.ts` — FoodWriteResult, writableFoodAmounts, logFoodEntryToHealth, retractFoodEntryFromHealth
 - `src/utils/healthRules.ts` — HEALTH_NUTRIENT_METRICS, usesCheckpoint, HEALTH_RULE_TITLE_MAX_LENGTH, HEALTH_THRESHOLDS, HEALTH_METRIC_DIRECTION, healthRuleDirection, HEALTH_METRIC_EARLIEST_HOUR, HEALTH_METRICS, healthRuleCheckpointHour, HealthRuleReading, +19 more
@@ -139,6 +139,7 @@ render, so listing them adds lines without adding answers.
 - `src/utils/mealGuests.ts` — guestsOn, describeGuests, hasGuests, GuestMeal, upcomingMealsWithGuest
 - `src/utils/mealIdeas.ts` — MIN_MEAL_IDEAS, MAX_MEAL_IDEAS, RECENT_MEAL_DAYS, MealIdea, RawMealIdea, mealTitleKey, clampIdeaCount, dedupeMealIdeas, MealSuggestion, mergeMealSuggestions, +6 more
 - `src/utils/mealLog.ts` — DishFigures, MealHelping, wantsMealLogPrompt, defaultHelpings, mealHelping, servingGrams, weighedHelping, cookedDishGrams, describeCookedWeight, COOKED_WEIGHT_MIN_G, +4 more
+- `src/utils/mealLogNudgeTasks.ts` — MAX_MEAL_LOG_NUDGE_TASKS, MEAL_LOG_NUDGE_LOOKBACK_DAYS, mealLogNudgeTitle, mealLogNudgeEntryId, mealLogNudgeLinkUrl, isWithinLogNudgeWindow, MealLogNudgeWant, wantedMealLogNudges, staleMealLogNudgeTasks
 - `src/utils/mealPlan.ts` — slotRank, slotLabel, sortMealEntries, entriesForDay, cookEntryForRecipe, earliestUnplannedSlot, entriesForSlot, nextSortOrder, upcomingDays, daysWithoutMeal, +16 more
 - `src/utils/mealPlanGroceries.ts` — PlannedIngredient, collectPlannedIngredients, hasShoppableMeals, plannedIngredientsForRecipe, parseQuantityAmount, mergeQuantities, describeQuantities, PlanCategory, ClassifiedIngredient, classifyPlanned, +4 more
 - `src/utils/mealPlanNudge.ts` — DEFAULT_MEAL_PLAN_NUDGE_WEEKDAY, DEFAULT_MEAL_PLAN_NUDGE_TIME, MEAL_PLAN_NUDGE_LINK_URL, mealPlanNudgeLinkUrl, MEAL_PLAN_NUDGE_SLOTS, MEAL_PLAN_NUDGE_SLOT_COUNT, countPlannedSlots, mealPlanNudgeDayKey, MealPlanNudgeDue, MealPlanNudgeDay, +3 more
@@ -148,7 +149,7 @@ render, so listing them adds lines without adding answers.
 - `src/utils/missed.ts` — isMissed, isRealCompletion, MostMissedGroup, mostMissed
 - `src/utils/moodExport.ts` — MOOD_EXPORT_COLUMNS, csvCell, moodExportCsv, moodExportFileName, moodExportSummary
 - `src/utils/moodHistory.ts` — MoodFilter, EMPTY_MOOD_FILTER, isMoodFilterActive, toggleFilterValue, filterMoodLogs, MoodLogDay, groupLogsByDay, SymptomStat, symptomStats, symptomStatFor, +4 more
-- `src/utils/moodInsights.ts` — MIN_PAIRED_DAYS, MIN_CONTRAST_DAYS, MoodDay, taskIdentityKey, HealthDayInput, FoodDayInput, NUTRIENT_INSIGHT_KEYS, InsightNutrient, completionDayKey, buildMoodDays, +40 more
+- `src/utils/moodInsights.ts` — MIN_PAIRED_DAYS, MIN_CONTRAST_DAYS, MoodDay, taskIdentityKey, HealthDayInput, FoodDayInput, NUTRIENT_INSIGHT_KEYS, InsightNutrient, completionDayKey, buildMoodDays, +42 more
 - `src/utils/moodLog.ts` — MOOD_LEVELS, LOW_MOOD_AT_OR_BELOW, DEFAULT_CONTEXT_TAGS, SYMPTOM_SEVERITIES, moodLabel, moodEmoji, severityLabel, symptomKey, withSymptom, withoutSymptom, +12 more
 - `src/utils/moodTasks.ts` — MOOD_LOG_TITLE, MOOD_NUDGE_TITLE, DEFAULT_MOOD_NUDGE_AFTER_DAYS, MOOD_NUDGE_COOLDOWN_DAYS, moodLogDayKey, moodLogSegmentOf, moodLogSourceId, moodNudgeDayKey, wantsMoodNudge, daysBetweenKeys, +2 more
 - `src/utils/morningCheckIn.ts` — isMorningCheckInCandidate, morningCheckInTasks
@@ -308,12 +309,13 @@ render, so listing them adds lines without adding answers.
 - `src/store/useDemoStore.ts` — useDemoStore
 - `src/store/useEventReminderStore.ts` — useEventReminderStore
 - `src/store/useFocusStore.ts` — useFocusStore
-- `src/store/useFoodLogStore.ts` — FOOD_INSIGHT_DAYS, FoodLogDraft, PendingMealLog, FoodLogPatch, FoodLogPlacement, useFoodLogStore
+- `src/store/useFoodLogStore.ts` — FOOD_INSIGHT_DAYS, FoodLogDraft, PendingMealLog, PendingManualMealLog, FoodLogPatch, FoodLogPlacement, useFoodLogStore
 - `src/store/useGroceryStore.ts` — PlannedRow, PlanAddResult, useGroceryStore
 - `src/store/useHealthStore.ts` — HealthDay, HEALTH_HISTORY_DAYS, WEIGHT_HISTORY_DAYS, useHealthStore, useHealthSync
 - `src/store/useHiddenEventsStore.ts` — useHiddenEventsStore
 - `src/store/useLeftoverStore.ts` — LeftoverDraft, useLeftoverStore
 - `src/store/useMealPlanStore.ts` — MealPlanDraft, CookRecap, useMealPlanStore
+- `src/store/useMilestoneStore.ts` — MilestonePatch, useMilestoneStore
 - `src/store/useMoodStore.ts` — MoodLogPatch, useMoodStore
 - `src/store/usePersonGroupStore.ts` — usePersonGroupStore
 - `src/store/usePersonNoteStore.ts` — PersonNotePatch, usePersonNoteStore
@@ -364,7 +366,7 @@ render, so listing them adds lines without adding answers.
 
 ## `src/db`
 
-- `src/db/database.ts` — switchToDemoDatabase, switchToRealDatabase, isUsingDemoDatabase, initDatabase, BACKUP_TABLES, BACKUP_EXCLUDED_TABLES, dbTableColumns, dbExportTables, dbReplaceAllData, isSyncableDatabase, +181 more
+- `src/db/database.ts` — switchToDemoDatabase, switchToRealDatabase, isUsingDemoDatabase, initDatabase, BACKUP_TABLES, BACKUP_EXCLUDED_TABLES, dbTableColumns, dbExportTables, dbReplaceAllData, isSyncableDatabase, +185 more
 - `src/db/syncTracking.ts` — SyncTable, KEY_SEPARATOR, SYNC_TRACKED_TABLES, SYNC_EXCLUDED_TABLES, SYNCED_SETTING_KEYS, isSyncedSettingKey, SYNC_DELETIONS_TABLE, NOW_EXPR, TOMBSTONE_RETENTION_DAYS, rowKeyExpr, +5 more
 
 ## `src/services`

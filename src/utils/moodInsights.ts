@@ -661,6 +661,51 @@ export function taskContrastTitles(tasks: readonly Task[]): Map<string, string> 
   return new Map([...newest].map(([key, v]) => [key, v.title]));
 }
 
+export interface MilestoneContrast {
+  /** Days before the milestone's date, and on or after it. Both reported, never hidden. */
+  beforeDays: number;
+  afterDays: number;
+  moodBefore: number;
+  moodAfter: number;
+  /** Positive means better mood since the milestone. */
+  delta: number;
+}
+
+/**
+ * How your mood ran before a milestone's date, against on and after it.
+ *
+ * The one contrast in this file with a single split point rather than a
+ * vocabulary to loop over — a milestone names one day, not a set of labels —
+ * so it doesn't go through `contrastsFor` below, which is built to produce one
+ * row per label. Same gates as every other contrast otherwise: `MIN_PAIRED_DAYS`
+ * before any comparison is offered at all, then `MIN_CONTRAST_DAYS` on each
+ * side of the split — a milestone logged last week has no "after" to speak of
+ * yet, and that is the honest state to report rather than a contrast built on
+ * two days.
+ *
+ * The milestone's own day counts as "after": it dates the day the thing
+ * started (or stopped), not the day it took effect.
+ */
+export function milestoneMoodContrast(
+  days: readonly MoodDay[],
+  milestoneDayKey: string,
+): MilestoneContrast | null {
+  const paired = pairedDays(days);
+  if (paired.length < MIN_PAIRED_DAYS) return null;
+  const before = paired.filter(d => d.dayKey < milestoneDayKey);
+  const after = paired.filter(d => d.dayKey >= milestoneDayKey);
+  if (before.length < MIN_CONTRAST_DAYS || after.length < MIN_CONTRAST_DAYS) return null;
+  const moodBefore = mean(before.map(d => d.mood as number));
+  const moodAfter = mean(after.map(d => d.mood as number));
+  return {
+    beforeDays: before.length,
+    afterDays: after.length,
+    moodBefore,
+    moodAfter,
+    delta: moodAfter - moodBefore,
+  };
+}
+
 function contrastsFor(
   paired: readonly MoodDay[],
   labels: readonly string[],

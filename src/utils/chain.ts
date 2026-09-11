@@ -115,10 +115,15 @@ export interface ChainPreview {
  * A finished earlier step is never included — with the row truncated to one
  * line, spending width on something already done pushed the upcoming step
  * past the truncation point.
+ *
+ * Same `chainEnabled` + `length > 1` gate as `activeChainStep`/`nextChainStep`
+ * above, for the same reason: a single-item or disabled chain isn't a chain
+ * anywhere else in the UI, so a caller relying on this as the single source
+ * of truth for "is there a chain to preview" shouldn't get one either.
  */
 export function chainPreview(task: ChainCarrier): ChainPreview | null {
   const items = task.chainItems;
-  if (!items || items.length === 0) return null;
+  if (!task.chainEnabled || !items || items.length <= 1) return null;
   const total = items.length;
   const currentIdx = (task.chainIndex ?? 0) % total;
   const nextItem = currentIdx + 1 < total ? items[currentIdx + 1] : null;

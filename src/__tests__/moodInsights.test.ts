@@ -26,6 +26,7 @@ import {
   NUTRIENT_INSIGHT_KEYS,
   loggingStreak,
   lowMoodRun,
+  milestoneMoodContrast,
   moodByTimeOfDay,
   moodCompletionInsight,
   moodSummary,
@@ -266,6 +267,48 @@ describe('contrasts', () => {
     ]);
     const [row] = contextTagMoodContrasts(days);
     expect(row).toMatchObject({ label: 'vacation', withDays: 5, withoutDays: 5, delta: 3 });
+  });
+});
+
+describe('milestoneMoodContrast', () => {
+  const daysOf = (moods: (number | null)[]): MoodDay[] =>
+    moods.map((mood, i) => ({
+      dayKey: `2026-08-${String(i + 1).padStart(2, '0')}`,
+      mood,
+      symptomKeys: [],
+      contextTagKeys: [],
+      completed: 0,
+      categories: [],
+      taskKeys: [],
+      steps: null,
+      sleepHours: null,
+      nutrients: null,
+      foodKeys: [],
+    }));
+
+  it('splits on the milestone day, which counts as after', () => {
+    const days = daysOf([1, 1, 1, 1, 1, 5, 5, 5, 5, 5]);
+    const contrast = milestoneMoodContrast(days, '2026-08-06');
+    expect(contrast).toMatchObject({ beforeDays: 5, afterDays: 5, moodBefore: 1, moodAfter: 5, delta: 4 });
+  });
+
+  it('says nothing at all below the paired-day floor', () => {
+    const days = daysOf([1, 5, 1, 5]);
+    expect(milestoneMoodContrast(days, '2026-08-03')).toBeNull();
+  });
+
+  it('says nothing when one side has too few days, even above the floor', () => {
+    // Only 2026-08-01 falls before this date — one day, under MIN_CONTRAST_DAYS.
+    const days = daysOf([5, 1, 1, 1, 1, 1, 1, 1, 1, 1]);
+    expect(milestoneMoodContrast(days, '2026-08-02')).toBeNull();
+  });
+
+  it('drops an unlogged day from both the count and the paired-day floor', () => {
+    const days = daysOf([2, 2, 2, 2, 2, 2, 4, 4, 4, 4, 4, 4]);
+    days[0].mood = null;
+    const contrast = milestoneMoodContrast(days, '2026-08-07')!;
+    expect(contrast.beforeDays).toBe(5);
+    expect(contrast.afterDays).toBe(6);
   });
 });
 

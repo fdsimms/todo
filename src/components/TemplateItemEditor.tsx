@@ -334,7 +334,7 @@ export function TemplateItemEditor({ visible, templateId, templateName, item, in
       // Belt and braces with the row above being hidden for a chain: the two
       // are mutually exclusive, and this is what an item saved by an older
       // build carrying both is normalized by on its next save.
-      polarity: chainEnabled && effectiveChainItems.length > 0 ? 'positive' : polarity,
+      polarity: chainEnabled && effectiveChainItems.length >= 2 ? 'positive' : polarity,
       recurrenceType,
       recurrenceInterval,
       recurrenceDays: recurrenceType === 'weekly' ? recurrenceDays : [],
@@ -342,7 +342,13 @@ export function TemplateItemEditor({ visible, templateId, templateName, item, in
       recurrenceFromCompletion,
       recurrenceCount: recurrenceType !== 'none' ? recurrenceCount : null,
       deliverableKind,
-      chainEnabled: chainEnabled && effectiveChainItems.length > 0,
+      // A chain needs at least 2 steps — activeChainStep() (src/utils/chain.ts)
+      // already treats a single-item chain as equivalent to a plain task, so
+      // saving with fewer than 2 items quietly turns Chain back off rather
+      // than persisting a meaningless one-step "chain" that a task created
+      // from this template would then silently inherit. Matches TaskEditor's
+      // own save gate.
+      chainEnabled: chainEnabled && effectiveChainItems.length >= 2,
       chainItems: effectiveChainItems,
       chainIndex: effectiveChainItems.length > 0 ? Math.min(chainIndex, effectiveChainItems.length - 1) : 0,
       subtasks: effectiveSubtasks,
