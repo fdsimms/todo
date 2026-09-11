@@ -172,6 +172,48 @@ export const lightColors: Colors = {
 // Keep for backward compat — static references that don't need theming
 export const colors = darkColors;
 
+/**
+ * Flattens a translucent overlay color — `rgba(r, g, b, a)`, or a hex color
+ * with a trailing alpha byte such as `colors.accent + '1A'` — against an
+ * opaque hex background, returning a solid hex that looks identical to the
+ * two simply stacked. Reach for this wherever a translucent token
+ * (`accentSubtle`, a tag's `+ '33'` tint, …) would otherwise sit on a surface
+ * it doesn't fully occlude — a `SwipeableRow` panel or a `ReorderableList`
+ * drag overlay behind it, say — since a translucent background there lets
+ * *that* surface's color bleed through instead of the row's own, which reads
+ * as a transparency glitch rather than the intended tint. See the note on
+ * `SwipeableRow` for the full failure mode this exists to avoid; if you're
+ * about to reach for a translucent background on anything that can sit atop
+ * a swipe panel or a drag overlay, flatten it here instead.
+ */
+export function flattenOverlay(overlay: string, baseHex: string): string {
+  const base = baseHex.replace('#', '');
+  const baseR = parseInt(base.substring(0, 2), 16);
+  const baseG = parseInt(base.substring(2, 4), 16);
+  const baseB = parseInt(base.substring(4, 6), 16);
+  const mix = (fg: number, bg: number, alpha: number) => Math.round(fg * alpha + bg * (1 - alpha));
+  const toHex = (n: number) => n.toString(16).padStart(2, '0');
+
+  const rgbaMatch = overlay.match(/rgba?\(\s*(\d+)\s*,\s*(\d+)\s*,\s*(\d+)\s*(?:,\s*([\d.]+)\s*)?\)/);
+  if (rgbaMatch) {
+    const [, rStr, gStr, bStr, aStr] = rgbaMatch;
+    const alpha = aStr !== undefined ? parseFloat(aStr) : 1;
+    return `#${toHex(mix(parseInt(rStr, 10), baseR, alpha))}${toHex(mix(parseInt(gStr, 10), baseG, alpha))}${toHex(mix(parseInt(bStr, 10), baseB, alpha))}`;
+  }
+
+  const hexMatch = overlay.match(/^#([0-9a-fA-F]{6})([0-9a-fA-F]{2})$/);
+  if (hexMatch) {
+    const [, rgbHex, alphaHex] = hexMatch;
+    const alpha = parseInt(alphaHex, 16) / 255;
+    const r = parseInt(rgbHex.substring(0, 2), 16);
+    const g = parseInt(rgbHex.substring(2, 4), 16);
+    const b = parseInt(rgbHex.substring(4, 6), 16);
+    return `#${toHex(mix(r, baseR, alpha))}${toHex(mix(g, baseG, alpha))}${toHex(mix(b, baseB, alpha))}`;
+  }
+
+  return overlay;
+}
+
 export const spacing = {
   xs: 4,
   sm: 8,

@@ -41,7 +41,7 @@ import { ListBulkBar } from '../components/ListBulkBar';
 import { useRowSelection } from '../hooks/useRowSelection';
 import { groupTemplatesByCategory, resolveTemplateDrop, type TemplateListItem } from '../utils/templateGrouping';
 import { useColors } from '../theme/ThemeContext';
-import { spacing, font, fontWeight, radius, interaction, type Colors } from '../theme';
+import { spacing, font, fontWeight, radius, interaction, flattenOverlay, type Colors } from '../theme';
 import { haptics } from '../utils/haptics';
 import { confirmDelete } from '../utils/confirmDelete';
 import { animateLayout } from '../utils/layoutAnimation';
@@ -572,8 +572,11 @@ const makeStyles = (colors: Colors) => StyleSheet.create({
     paddingVertical: 10,
     gap: spacing.md,
   },
+  // Opaque, not a translucent tint directly: this can be applied the instant
+  // a swipe-select commits, while SwipeableRow's own panel is still open
+  // behind this row mid-close-animation — see the note on `flattenOverlay`.
   tplRowSelected: {
-    backgroundColor: colors.accent + '1A',
+    backgroundColor: flattenOverlay(colors.accent + '1A', colors.bgSecondary),
   },
   dropSlot: {
     marginHorizontal: spacing.md,
