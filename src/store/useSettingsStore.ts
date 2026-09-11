@@ -2,6 +2,17 @@ import { create } from 'zustand';
 import { dbGetSetting, dbSetSetting } from '../db/database';
 import type { ThemeMode } from '../theme';
 import type { WeightUnit } from '../utils/weightLog';
+import {
+  parseWeightGoal,
+  serializeWeightGoal,
+  type WeightGoal,
+} from '../utils/weightGoal';
+import {
+  EMPTY_BODY_PROFILE,
+  parseBodyProfile,
+  serializeBodyProfile,
+  type BodyProfile,
+} from '../utils/energyBudget';
 import { DEFAULT_WEIGH_IN_EVERY_DAYS, clampWeighInEveryDays } from '../utils/weightTasks';
 import { DEFAULT_APP_FONT, isAppFont, pickRandomAppFont, type AppFont } from '../theme/fonts';
 import type { SortOption, RecipeSortOption, Priority, Effort, MealSlot, TimeOfDay, TitleRule, WeatherRule, ScreenTimeRule, HealthRule, NutrientKey } from '../types';
@@ -872,6 +883,38 @@ interface SettingsStore {
   // immediately.
   weightUnit: WeightUnit;
 
+  /**
+   * A weight to reach, the rate to reach it at, and the weight it was set
+   * from — see src/utils/weightGoal.ts. Null until somebody sets one, which is
+   * the shipping state.
+   *
+   * **Here rather than in Apple Health because it is not a measurement.**
+   * HealthKit has nowhere to put a goal, and the weights this is read against
+   * stay Health's own. It derives nothing on its own: no task fires off it,
+   * reaching it completes nothing, and nothing outside the Weight screen and
+   * its sheet reads it.
+   *
+   * Kept out of DEFAULT_SETTINGS/resetToDefaults for the mechanical reason
+   * nutritionTargets is: it's an object, and String(value) doesn't round-trip
+   * one. Resetting settings must not silently discard somebody's goal anyway.
+   */
+  weightGoal: WeightGoal | null;
+
+  /**
+   * Height, year of birth, sex and activity level — the inputs the calorie
+   * estimate needs, and nothing else in the app reads them. See
+   * src/utils/energyBudget.ts.
+   *
+   * **Every field ships empty and nothing fills one in.** An absent height is
+   * absent rather than average, which is the whole of that module's discipline
+   * about defaults; the one field that isn't nullable (`activity`) starts at
+   * the bottom of its ladder so an untouched profile produces the smallest
+   * estimate its other fields support rather than a middle guess.
+   *
+   * An object, so out of DEFAULT_SETTINGS for the same reason as above.
+   */
+  bodyProfile: BodyProfile;
+
   // Which category the health reading files under on Today, by name.
   //
   // Exactly `calendarEventCategory`'s shape and for its reasons: filing the row
@@ -1356,6 +1399,10 @@ interface SettingsStore {
   setHealthReadEnabled: (on: boolean) => void;
   setHealthWriteEnabled: (on: boolean) => void;
   setWeightUnit: (unit: WeightUnit) => void;
+  /** Sets the weight goal, or clears it with null. */
+  setWeightGoal: (goal: WeightGoal | null) => void;
+  /** Replaces the body profile whole — the sheet stages it and saves once. */
+  setBodyProfile: (profile: BodyProfile) => void;
   setHealthCategory: (category: string | null) => void;
   setHealthTasks: (on: boolean) => void;
   setHealthTaskCategory: (category: string | null) => void;
@@ -1917,6 +1964,8 @@ export const useSettingsStore = create<SettingsStore>((set, get) => ({
   healthReadEnabled: false,
   healthWriteEnabled: false,
   weightUnit: 'kg',
+  weightGoal: null,
+  bodyProfile: { ...EMPTY_BODY_PROFILE },
   healthCategory: null,
   healthTasks: false,
   healthTaskCategory: null,
@@ -2204,6 +2253,11 @@ export const useSettingsStore = create<SettingsStore>((set, get) => ({
     // future unit this build doesn't know about degrades to the default rather
     // than to undefined.
     const weightUnit: WeightUnit = dbGetSetting('weightUnit') === 'lb' ? 'lb' : 'kg';
+    // Both parsers salvage rather than throw: an unreadable goal reads back as
+    // no goal, and an unreadable profile as an empty one, so a blob written by
+    // a future build can never stop the settings loading.
+    const weightGoal = parseWeightGoal(dbGetSetting('weightGoal'));
+    const bodyProfile = parseBodyProfile(dbGetSetting('bodyProfile'));
     // '' persists as "not chosen", matching calendarEventCategory. Nothing
     // creates the category from here — see ensureHealthCategory, which runs
     // once the categories themselves have loaded.
@@ -2409,7 +2463,7 @@ export const useSettingsStore = create<SettingsStore>((set, get) => ({
     const newTaskDefaults = parseNewTaskDefaults(dbGetSetting('newTaskDefaults'));
     const titleRules = parseTitleRules(dbGetSetting('titleRules'));
     const lastVisitedScreen = dbGetSetting('lastVisitedScreen') || null;
-    set({ dayResetTime: resetTime, morningStart, afternoonStart, eveningStart, nightStart, activeHoursStart, activeHoursEnd, quietHoursStart, quietHoursEnd, themeMode, appFont, appFontRandomize, appFontPool, dailyAgendaEnabled, dailyAgendaTime, tripReminderEnabled, backgroundRefreshEnabled, use24HourTime, weekStartsOn, fabHand, hapticsEnabled, shakeToUndoEnabled, confirmBeforeDeleting, sortOption, filterPriorities, filterEfforts, filterHasReminder, recipeSortOption, recipeLovedOnly, appLockEnabled, appLockGraceSeconds, vacationMode, vacationStart, vacationEnd, vacationDrivenBy, activeListDrivenBy, destinationForecastEnabled, autoRemoveExpiredTasks, autoCompleteProjectsOnDone, postponeCheckEnabled, postponeCheckThreshold, focusWorkCapMinutes, focusDefaultWorkMinutes, focusRestAfterTasks, focusRestAfterMinutes, focusRestMinutes, focusLongRestEvery, focusLongRestMinutes, focusShieldEnabled, completedRetentionDays, defaultReminderLeadMinutes, hideCategories, collapsedCategories, collapsedRecipeSections, collapsedGroceryGroups, recentSearches, simpleTaskForm, simpleMode, hideHelpText, tipsEnabled, seenTips, lastTipShown, timerLiveActivity, tripLiveActivity, focusLiveActivity, kitchenEnabled, mealsOnToday, kitchenOnToday, unitSystem, currencySymbol, mealCookTasks, mealCookTaskCategory, mealSlotsEnabled, mealSlotTasksWrittenThroughDayKey, mealSlotStepEstimates, cookRecapEnabled, restockOfferEnabled, productLookupEnabled, groceryUseUpTasks, groceryUseUpLeadDays, groceryUseUpTaskCategory, leftoverUseUpTasks, leftoverUseUpTaskCategory, useUpTaskCap, remindersImportEnabled, remindersImportListId, remindersImportConfirmedListId, remindersImportDelete, remindersImportReview, groceryImportEnabled, groceryImportListId, groceryImportConfirmedListId, groceryImportDelete, groceryImportTwoWay, calendarReadEnabled, calendarIds, vacationHiddenCalendarIds, calendarEventCategory, reminderMeetingNudgeEnabled, calendarPeopleHistory, deadlineCalendarId, completionCalendarId, mealCalendarId, healthReadEnabled, healthWriteEnabled, weightUnit, healthCategory, healthTasks, healthTaskCategory, healthRules, projectReviewTasks, projectReviewTaskCategory, birthdayTasks, birthdayLeadDays, birthdayTaskCategory, birthdayGiftTasks, birthdayGiftLeadDays, birthdayGiftTaskCategory, reachOutTasks, reachOutTaskCategory, pantryCheckTasks, pantryCheckTaskCategory, pantryReviewTasks, pantryReviewTaskCategory, pantryReviewLastDayKey, lastDeloadAppliedDayKey, mealShortfallTasks, mealLogPrompt, nutritionTargets, mealShortfallLeadDays, mealShortfallTaskCategory, supplyReorderTasks, calendarReviewTasks, calendarReviewLastDayKey, calendarReviewTimeSegment, weatherTasks, weatherTaskCategory, weatherRules, screenTimeTasks, screenTimeTaskCategory, screenTimeRules, moodLogTasks, moodLogTaskCategory, moodLogLastDayKey, morningCheckInLastDayKey, moodLogTimeSegments, moodNudgeTasks, moodNudgeTaskCategory, moodNudgeAfterDays, moodNudgeLastDayKey, weekendNudgeTasks, weekendNudgeTaskCategory, weekendNudgeLeadDays, weekendNudgeLastWeekendKey, weighInTasks, weighInTaskCategory, weighInEveryDays, weighInLastDayKey, patchNotesQaStatus, aiFeatureConfig, onDeviceAiEnabled, defaultProjectNudgeCadenceDays, mealPlanNudgeEnabled, mealPlanNudgeIgnoresVacation, mealPlanNudgeWeekday, mealPlanNudgeTime, mealPlanNudgeLastFiredWeekKey, mealPlanNudgeGroupId, mealPlanNudgeTaskCategory, newTaskDefaults, titleRules, lastVisitedScreen, initialized: true });
+    set({ dayResetTime: resetTime, morningStart, afternoonStart, eveningStart, nightStart, activeHoursStart, activeHoursEnd, quietHoursStart, quietHoursEnd, themeMode, appFont, appFontRandomize, appFontPool, dailyAgendaEnabled, dailyAgendaTime, tripReminderEnabled, backgroundRefreshEnabled, use24HourTime, weekStartsOn, fabHand, hapticsEnabled, shakeToUndoEnabled, confirmBeforeDeleting, sortOption, filterPriorities, filterEfforts, filterHasReminder, recipeSortOption, recipeLovedOnly, appLockEnabled, appLockGraceSeconds, vacationMode, vacationStart, vacationEnd, vacationDrivenBy, activeListDrivenBy, destinationForecastEnabled, autoRemoveExpiredTasks, autoCompleteProjectsOnDone, postponeCheckEnabled, postponeCheckThreshold, focusWorkCapMinutes, focusDefaultWorkMinutes, focusRestAfterTasks, focusRestAfterMinutes, focusRestMinutes, focusLongRestEvery, focusLongRestMinutes, focusShieldEnabled, completedRetentionDays, defaultReminderLeadMinutes, hideCategories, collapsedCategories, collapsedRecipeSections, collapsedGroceryGroups, recentSearches, simpleTaskForm, simpleMode, hideHelpText, tipsEnabled, seenTips, lastTipShown, timerLiveActivity, tripLiveActivity, focusLiveActivity, kitchenEnabled, mealsOnToday, kitchenOnToday, unitSystem, currencySymbol, mealCookTasks, mealCookTaskCategory, mealSlotsEnabled, mealSlotTasksWrittenThroughDayKey, mealSlotStepEstimates, cookRecapEnabled, restockOfferEnabled, productLookupEnabled, groceryUseUpTasks, groceryUseUpLeadDays, groceryUseUpTaskCategory, leftoverUseUpTasks, leftoverUseUpTaskCategory, useUpTaskCap, remindersImportEnabled, remindersImportListId, remindersImportConfirmedListId, remindersImportDelete, remindersImportReview, groceryImportEnabled, groceryImportListId, groceryImportConfirmedListId, groceryImportDelete, groceryImportTwoWay, calendarReadEnabled, calendarIds, vacationHiddenCalendarIds, calendarEventCategory, reminderMeetingNudgeEnabled, calendarPeopleHistory, deadlineCalendarId, completionCalendarId, mealCalendarId, healthReadEnabled, healthWriteEnabled, weightUnit, weightGoal, bodyProfile, healthCategory, healthTasks, healthTaskCategory, healthRules, projectReviewTasks, projectReviewTaskCategory, birthdayTasks, birthdayLeadDays, birthdayTaskCategory, birthdayGiftTasks, birthdayGiftLeadDays, birthdayGiftTaskCategory, reachOutTasks, reachOutTaskCategory, pantryCheckTasks, pantryCheckTaskCategory, pantryReviewTasks, pantryReviewTaskCategory, pantryReviewLastDayKey, lastDeloadAppliedDayKey, mealShortfallTasks, mealLogPrompt, nutritionTargets, mealShortfallLeadDays, mealShortfallTaskCategory, supplyReorderTasks, calendarReviewTasks, calendarReviewLastDayKey, calendarReviewTimeSegment, weatherTasks, weatherTaskCategory, weatherRules, screenTimeTasks, screenTimeTaskCategory, screenTimeRules, moodLogTasks, moodLogTaskCategory, moodLogLastDayKey, morningCheckInLastDayKey, moodLogTimeSegments, moodNudgeTasks, moodNudgeTaskCategory, moodNudgeAfterDays, moodNudgeLastDayKey, weekendNudgeTasks, weekendNudgeTaskCategory, weekendNudgeLeadDays, weekendNudgeLastWeekendKey, weighInTasks, weighInTaskCategory, weighInEveryDays, weighInLastDayKey, patchNotesQaStatus, aiFeatureConfig, onDeviceAiEnabled, defaultProjectNudgeCadenceDays, mealPlanNudgeEnabled, mealPlanNudgeIgnoresVacation, mealPlanNudgeWeekday, mealPlanNudgeTime, mealPlanNudgeLastFiredWeekKey, mealPlanNudgeGroupId, mealPlanNudgeTaskCategory, newTaskDefaults, titleRules, lastVisitedScreen, initialized: true });
   },
 
   /**
@@ -3354,6 +3408,22 @@ export const useSettingsStore = create<SettingsStore>((set, get) => ({
   setWeightUnit(unit: WeightUnit) {
     dbSetSetting('weightUnit', unit);
     set({ weightUnit: unit });
+  },
+
+  // '' persists as "no goal", matching every other nullable here: the settings
+  // table is all TEXT, and parseWeightGoal reads anything it can't make a goal
+  // out of back as none.
+  setWeightGoal(goal: WeightGoal | null) {
+    dbSetSetting('weightGoal', goal === null ? '' : serializeWeightGoal(goal));
+    set({ weightGoal: goal });
+  },
+
+  // Replaced whole rather than a field at a time, unlike setNutritionTarget:
+  // the four fields are one form, saved once, and a partial write would leave a
+  // half-entered profile producing an estimate off fields nobody finished.
+  setBodyProfile(profile: BodyProfile) {
+    dbSetSetting('bodyProfile', serializeBodyProfile(profile));
+    set({ bodyProfile: profile });
   },
 
   setHealthCategory(category: string | null) {
