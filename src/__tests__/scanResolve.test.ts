@@ -2,6 +2,7 @@ import {
   alreadyScanned,
   matchScans,
   nameFromScanFor,
+  scanBoxFor,
   scanLinkTarget,
   scannedItemFor,
   shopperNameFor,
@@ -348,5 +349,34 @@ describe('scanLinkTarget', () => {
   it('shrugs at a pick that no longer resolves, so the row falls back to the matcher', () => {
     expect(scanLinkTarget(null)).toBeNull();
     expect(scanLinkTarget(undefined)).toBeNull();
+  });
+});
+
+describe('scanBoxFor', () => {
+  const box = { itemId: 'milk', brand: 'Horizon', variant: 'whole' };
+
+  it('hands back the box\'s own words, which is what a box is found by', () => {
+    // `addProduct` and `linkScannedGtins` both resolve a box through
+    // `productKeyFor(brand, variant)`, so the words land on the existing box
+    // and create nothing. An id would need a second lookup path through both.
+    expect(scanBoxFor(box, 'milk')).toEqual({ brand: 'Horizon', variant: 'whole' });
+  });
+
+  it('keeps a brand-only box, which is what most scanned rows have', () => {
+    expect(scanBoxFor({ itemId: 'bread', brand: "Dave's Killer", variant: null }, 'bread'))
+      .toEqual({ brand: "Dave's Killer", variant: null });
+  });
+
+  it('refuses a box belonging to a different item', () => {
+    // The two picks are independent controls on one row: pick the Horizon
+    // carton, then change your mind about which catalog row this is, and the
+    // box now belongs to a food the scan is no longer about. Carrying it would
+    // file Horizon's words onto Bread and mint a box there.
+    expect(scanBoxFor(box, 'bread')).toBeNull();
+  });
+
+  it('shrugs at a box that no longer resolves', () => {
+    expect(scanBoxFor(null, 'milk')).toBeNull();
+    expect(scanBoxFor(undefined, 'milk')).toBeNull();
   });
 });

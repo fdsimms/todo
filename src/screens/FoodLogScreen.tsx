@@ -98,6 +98,7 @@ export function FoodLogScreen() {
   const nutritionTargets = useSettingsStore(useShallow(s => s.nutritionTargets));
   // Only for the catalog picker below; the scan flow keeps its own reads.
   const items = useGroceryStore(useShallow(s => s.items));
+  const itemProducts = useGroceryStore(useShallow(s => s.itemProducts));
   // Gated so the button can't exist for a call that would refuse — the pairing
   // rule `aiRouting.ts` states. This feature has no on-device engine, so the
   // route is 'claude' or 'unavailable' and nothing renders for the second.
@@ -609,15 +610,18 @@ export function FoodLogScreen() {
         visible={linkingEntry !== null}
         subject={linkingEntry?.label ?? ''}
         items={items}
+        products={itemProducts}
         initialQuery={linkingEntry?.label ?? ''}
-        excludeItemId={linkingEntry?.itemId ?? null}
+        currentItemId={linkingEntry?.itemId ?? null}
+        currentProductId={linkingEntry?.productId ?? null}
         onClose={() => setLinkingEntry(null)}
-        onPick={item => {
+        onPick={(item, product) => {
+          // Both, together. The sheet has just asked each question in turn, so
+          // a box left over from the previous item can't survive here — and
+          // where the item has no boxes at all, `product` is null, which is the
+          // same answer the old single-step pick wrote.
           if (linkingEntry) {
-            // The old box goes: it was one of the *previous* item's boxes, and
-            // keeping it would leave the entry naming a product from one row
-            // and an item from another.
-            updateEntry(linkingEntry.id, { itemId: item.id, productId: null });
+            updateEntry(linkingEntry.id, { itemId: item.id, productId: product?.id ?? null });
           }
           setLinkingEntry(null);
         }}

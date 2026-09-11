@@ -1,4 +1,4 @@
-import type { GroceryItem } from '../types';
+import type { GroceryItem, ItemProduct } from '../types';
 import { GROCERY_NAME_MAX_LENGTH, GROCERY_VARIANT_MAX_LENGTH } from '../types';
 import { aisleForProductCategory } from './productCategory';
 import { matchReceiptLines, type AliasResolver, type ReceiptMatch } from './receiptMatch';
@@ -377,4 +377,30 @@ export function scanLinkTarget(
 ): ScanLinkTarget | null {
   if (!item) return null;
   return { onList: item.onList, itemId: item.id };
+}
+
+/**
+ * The box a scan row is filed against, as the words the link layer finds one by.
+ *
+ * **A picked box travels as its brand and variant rather than as its id, and
+ * that is the whole reason this returns words.** `addProduct` find-or-creates
+ * by `productKeyFor(brand, variant)` and `linkScannedGtins` looks a box up the
+ * same way, so handing either the words of a box that already exists lands on
+ * that exact box and creates nothing. An id would need a second lookup path
+ * through both, for a fact they can already both resolve.
+ *
+ * **It refuses a box belonging to a different item**, which is the guard worth
+ * having rather than the lookup. The two picks are independent controls on the
+ * same row: choose the Chobani tub, then change your mind about which catalog
+ * row this is, and the box is now one of a food this scan is no longer about.
+ * Carrying it would file Chobani's words onto Bread and mint a box there.
+ * Dropping it falls back to the words derived from the barcode, which is the
+ * answer the row had before anybody picked anything.
+ */
+export function scanBoxFor(
+  picked: Pick<ItemProduct, 'itemId' | 'brand' | 'variant'> | null | undefined,
+  itemId: string,
+): { brand: string | null; variant: string | null } | null {
+  if (!picked || picked.itemId !== itemId) return null;
+  return { brand: picked.brand, variant: picked.variant };
 }
