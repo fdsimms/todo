@@ -42,6 +42,7 @@ describe('aisleForName', () => {
     expect(aisleForName('milk')).toBe('Dairy & Eggs');
     expect(aisleForName('Bananas')).toBe('Produce');
     expect(aisleForName('toilet paper')).toBe('Household');
+    expect(aisleForName('hamburger')).toBe('Meat & Seafood');
   });
 
   it('is case- and punctuation-insensitive, via the same key the catalog uses', () => {
@@ -57,6 +58,25 @@ describe('aisleForName', () => {
     // "ice cream" is Frozen even though "cream" alone is Dairy & Eggs.
     expect(aisleForName('ice cream')).toBe('Frozen');
     expect(aisleForName('cream')).toBe('Dairy & Eggs');
+    // "bell pepper" is Produce even though "pepper" alone is Baking & Spices.
+    expect(aisleForName('bell pepper')).toBe('Produce');
+    expect(aisleForName('pepper')).toBe('Baking & Spices');
+    // "onion powder" is a spice even though "onion" alone is Produce.
+    expect(aisleForName('onion powder')).toBe('Baking & Spices');
+    expect(aisleForName('onion')).toBe('Produce');
+    // "spaghetti sauce" is the jarred sauce, not the dry pasta "spaghetti".
+    expect(aisleForName('spaghetti sauce')).toBe('Canned & Jarred');
+    expect(aisleForName('spaghetti')).toBe('Pantry');
+    // "rice cakes" is a snack, not the pantry staple "rice".
+    expect(aisleForName('rice cakes')).toBe('Snacks');
+    // Canned fruit and canned/jarred tomato prep aren't fresh produce.
+    expect(aisleForName('canned peaches')).toBe('Canned & Jarred');
+    expect(aisleForName('diced tomatoes')).toBe('Canned & Jarred');
+  });
+
+  it('handles "&" the same as "and", since punctuation normalises to a space', () => {
+    expect(aisleForName('half & half')).toBe('Dairy & Eggs');
+    expect(aisleForName('half and half')).toBe('Dairy & Eggs');
   });
 
   it('falls back to any token when the last one is unknown', () => {

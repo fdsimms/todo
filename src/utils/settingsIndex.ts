@@ -644,6 +644,15 @@ export const SETTINGS_ENTRIES: SettingsEntry[] = [
     keywords: ['on device', 'offline', 'no key', 'free', 'private', 'foundation models',
       'grocery', 'aisle', 'sort', 'siri'] },
 
+  // Nested under `onDeviceAiEnabled` alone, same as the row itself is: with
+  // the switch off there's no engine here to prefer over Claude. Shown
+  // whether or not a key is set yet, same as the AI feature rows are — see
+  // that row's own comment in PrivacyAiSettings.
+  { id: 'ai:groceryAisles:preferOnDevice', groupId: 'privacyAi', label: 'Prefer it for aisle sorting',
+    section: 'On-device suggestions', kitchen: true, requires: 'onDeviceAiEnabled',
+    keywords: ['claude', 'model', 'on device', 'grocery', 'offline', 'foundation models',
+      'apple intelligence'] },
+
   { id: 'productLookupEnabled', groupId: 'privacyAi', label: 'Look up food databases', section: 'Barcode lookups',
     keywords: ['upc', 'ean', 'gtin', 'open food facts', 'pantry', 'unpack', 'network', 'privacy',
       'nutrition', 'calories', 'usda', 'food data central', 'search food'],

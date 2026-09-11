@@ -57,5 +57,6 @@ export function useAiRoute(id: AiFeatureId): AiRoute {
     // Not part of the state above because it cannot change while the app is
     // running — see the note on `canReadTextOnDevice`.
     visionAvailable: canReadTextOnDevice(),
+    preferOnDevice: aiFeatureConfig[id].preferOnDevice,
   });
 }

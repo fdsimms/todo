@@ -538,16 +538,23 @@ export async function suggestGroceryAisles(
  */
 function groceryAisleRoute(): AiRoute {
   const { anthropicApiKey, aiFeatureConfig, onDeviceAiEnabled } = useSettingsStore.getState();
+  const hasApiKey = !!anthropicApiKey;
+  const preferOnDevice = aiFeatureConfig.groceryAisles.preferOnDevice;
   return routeForFeature('groceryAisles', {
     enabled: aiFeatureConfig.groceryAisles.enabled,
-    hasApiKey: !!anthropicApiKey,
+    hasApiKey,
     onDeviceEnabled: onDeviceAiEnabled,
-    onDeviceAvailable: isOnDeviceReady(),
+    // Skipped when a key already wins outright (routeForFeature's rule 2) —
+    // not an optimisation for its own sake, but what keeps a plain "has a
+    // key, isn't preferring on-device" call from ever resolving the native
+    // `todo-foundation-models` bridge at all.
+    onDeviceAvailable: hasApiKey && !preferOnDevice ? false : isOnDeviceReady(),
     // Never consulted for this feature, which routes to the language model.
     // Passed because the input describes the install rather than the feature,
     // and a required field is what stops a Vision feature's call site
     // forgetting it.
     visionAvailable: canReadTextOnDevice(),
+    preferOnDevice,
   });
 }
 
