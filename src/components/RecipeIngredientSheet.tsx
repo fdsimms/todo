@@ -649,8 +649,8 @@ export function RecipeIngredientSheet({ visible, recipeId, ingredient, onClose }
           <View style={styles.toggleBody}>
             <Text style={styles.toggleLabel}>Don't count toward nutrition</Text>
             <Text style={styles.hint}>
-              Leaves this line out of the recipe's nutrition total, the same way a staple
-              is left out. For an amount too small to matter, like a garnish.
+              Leaves this line out of the recipe's nutrition total. For an amount too small
+              to matter, like a garnish.
             </Text>
           </View>
         </TouchableOpacity>
