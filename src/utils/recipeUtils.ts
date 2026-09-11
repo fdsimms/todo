@@ -747,6 +747,67 @@ export function cleanChoiceGroup(raw: string | null | undefined): string | null 
 }
 
 /**
+ * One term's weight against one recipe — the tier ladder `rankRecipes` ranks
+ * by, pulled out so a multi-word query can run it once per word.
+ *
+ * `ingredientKeys` is a thunk rather than an array because flattening walks the
+ * component tree: a term that matches on the name or a tag never pays for it,
+ * and a term that does pay shares the result with every other term of the same
+ * query (see the memo at the call site).
+ */
+function recipeTermWeight(
+  recipe: Recipe,
+  term: string,
+  ingredientKeys: () => readonly string[]
+): number {
+  const key = recipe.nameKey;
+  if (key.startsWith(term)) return 3;
+  if (key.split(' ').some(word => word.startsWith(term))) return 2;
+  if (key.includes(term)) return 1;
+  // A tag is a label the cook chose for this recipe, so typing one is a
+  // deliberate hit — ranked under every name match and above an ingredient,
+  // which is a match on something the recipe merely contains. The chip row is
+  // still the way to *filter* by a tag (filterRecipesByTags); this is only so
+  // typing "thai" into the search field doesn't come back empty.
+  // Matched through the same key the query went through, so a hyphenated
+  // "gluten-free" is still found by typing it with the hyphen.
+  if (recipe.tags.some(tag => groceryNameKey(tag).includes(term))) return 0.75;
+  // An ingredient match is a real hit — "what can I make with fennel" is the
+  // question a recipe box is for — but it must never outrank a name match.
+  // `allOptions` here and nowhere else that shops: an alternative the user
+  // isn't cooking tonight is still an ingredient this recipe can call for, and
+  // hiding it would make a recipe unfindable by a search for the very thing
+  // it's sometimes made of. A result is an invitation to look, not a purchase.
+  if (ingredientKeys().some(nameKey => nameKey.includes(term))) return 0.5;
+  // Attribution — "ottolenghi", "nyt cooking". A person or a publication is a
+  // deliberate way to slice a box ("what else is out of Sweet"), so it's a
+  // real hit, but it names where a recipe came from rather than what it is,
+  // which is why it sits under the ingredient the recipe is made of.
+  //
+  // `sourceName` is matched alongside the two fields that superseded it
+  // precisely because nothing backfilled it (see the field's note in
+  // types/index.ts): an old recipe whose only attribution is "Alison Roman,
+  // Nothing Fancy" would otherwise be the one recipe in the box that can't be
+  // found by its own author. Matching it needs no split — a substring finds
+  // either half of that string, which is the whole reason the field was left
+  // alone rather than guessed apart.
+  //
+  // sourceUrl is deliberately *not* searched. groceryNameKey strips the
+  // punctuation out of it, so "https://cooking.nytimes.com/x" collapses to one
+  // long word — "nyt" would match it by accident, and "https" would match
+  // every recipe carrying a link at all.
+  if ([recipe.author, recipe.source, recipe.sourceName]
+    .some(field => field !== null && groceryNameKey(field).includes(term))) return 0.4;
+  // Notes last, and last on purpose: it's the one free-text field, so it's
+  // where an incidental mention lives ("used up the chicken from Sunday").
+  // Ranked below every deliberate match, that noise lands under the real hits
+  // rather than displacing them — the same trade fuzzySearch makes weighting a
+  // task's notes at 0.5 against its title's 2.
+  if (groceryNameKey(recipe.notes).includes(term)) return 0.25;
+  return 0;
+}
+
+/**
  * Ranks recipes for the library's search field, mirroring
  * rankGrocerySuggestions' 3/2/1 prefix / word-start / substring weighting so
  * searching here behaves the way searching the catalog already does. The vote
@@ -765,59 +826,52 @@ export function cleanChoiceGroup(raw: string | null | undefined): string | null 
  * `recipes` array rather than a second parameter — searching "potato" has to
  * find the dinner whose mash is where the potatoes are written down, or a
  * component is a place ingredients go to hide from search.
+ *
+ * **A multi-word query matches its words in any order and anywhere**, which is
+ * what makes "tofu peanut butter" find "Peanut butter sriracha tofu". Nobody
+ * recalls a dish's name in the order it was written down, and matching the
+ * typed string as one run meant the box could only be searched by someone who
+ * did. The rule is an AND — every word has to land somewhere, or "butter"
+ * returns the whole box — and each word climbs the ladder above on its own, so
+ * a word found in a name still outranks one found in the notes.
+ *
+ * A contiguous run is scored *as well*, not instead: the phrase's own weight is
+ * added to the average of the words'. That keeps "peanut butter" ranking a
+ * recipe actually called that above one that merely has peanuts and butter in
+ * it, which is the thing an order-free match would otherwise throw away. With
+ * one word there is nothing to average and the score is the phrase's alone, so
+ * a single-word search ranks exactly as it always has.
  */
 export function rankRecipes(query: string, recipes: readonly Recipe[]): Recipe[] {
   const q = groceryNameKey(query);
   if (!q) return [...recipes];
+  const terms = q.split(' ');
   const byId = recipeMap(recipes);
   const scored: Array<{ recipe: Recipe; weight: number }> = [];
   for (const recipe of recipes) {
-    const key = recipe.nameKey;
-    let weight = 0;
-    if (key.startsWith(q)) weight = 3;
-    else if (key.split(' ').some(word => word.startsWith(q))) weight = 2;
-    else if (key.includes(q)) weight = 1;
-    // A tag is a label the cook chose for this recipe, so typing one is a
-    // deliberate hit — ranked under every name match and above an ingredient,
-    // which is a match on something the recipe merely contains. The chip row is
-    // still the way to *filter* by a tag (filterRecipesByTags); this is only so
-    // typing "thai" into the search field doesn't come back empty.
-    // Matched through the same key the query went through, so a hyphenated
-    // "gluten-free" is still found by typing it with the hyphen.
-    else if (recipe.tags.some(tag => groceryNameKey(tag).includes(q))) weight = 0.75;
-    // An ingredient match is a real hit — "what can I make with fennel" is the
-    // question a recipe box is for — but it must never outrank a name match.
-    // `allOptions` here and nowhere else that shops: an alternative the user
-    // isn't cooking tonight is still an ingredient this recipe can call for, and
-    // hiding it would make a recipe unfindable by a search for the very thing
-    // it's sometimes made of. A result is an invitation to look, not a purchase.
-    else if (flattenRecipeIngredients(recipe, byId, { allOptions: true })
-      .some(f => f.ingredient.nameKey.includes(q))) weight = 0.5;
-    // Attribution — "ottolenghi", "nyt cooking". A person or a publication is a
-    // deliberate way to slice a box ("what else is out of Sweet"), so it's a
-    // real hit, but it names where a recipe came from rather than what it is,
-    // which is why it sits under the ingredient the recipe is made of.
-    //
-    // `sourceName` is matched alongside the two fields that superseded it
-    // precisely because nothing backfilled it (see the field's note in
-    // types/index.ts): an old recipe whose only attribution is "Alison Roman,
-    // Nothing Fancy" would otherwise be the one recipe in the box that can't be
-    // found by its own author. Matching it needs no split — a substring finds
-    // either half of that string, which is the whole reason the field was left
-    // alone rather than guessed apart.
-    //
-    // sourceUrl is deliberately *not* searched. groceryNameKey strips the
-    // punctuation out of it, so "https://cooking.nytimes.com/x" collapses to one
-    // long word — "nyt" would match it by accident, and "https" would match
-    // every recipe carrying a link at all.
-    else if ([recipe.author, recipe.source, recipe.sourceName]
-      .some(field => field !== null && groceryNameKey(field).includes(q))) weight = 0.4;
-    // Notes last, and last on purpose: it's the one free-text field, so it's
-    // where an incidental mention lives ("used up the chicken from Sunday").
-    // Ranked below every deliberate match, that noise lands under the real hits
-    // rather than displacing them — the same trade fuzzySearch makes weighting a
-    // task's notes at 0.5 against its title's 2.
-    else if (groceryNameKey(recipe.notes).includes(q)) weight = 0.25;
+    // Memoised per recipe rather than per term: the flatten walks this
+    // recipe's component tree, and every term of one query wants the same
+    // answer out of it.
+    let flattened: readonly string[] | null = null;
+    const ingredientKeys = () =>
+      (flattened ??= flattenRecipeIngredients(recipe, byId, { allOptions: true })
+        .map(f => f.ingredient.nameKey));
+
+    let weight = recipeTermWeight(recipe, q, ingredientKeys);
+    if (terms.length > 1) {
+      let total = 0;
+      for (const term of terms) {
+        const termWeight = recipeTermWeight(recipe, term, ingredientKeys);
+        // One word nobody's recipe contains is the user saying they remember
+        // it — the query narrows rather than widening to whatever else matched.
+        if (termWeight === 0) {
+          total = 0;
+          break;
+        }
+        total += termWeight;
+      }
+      if (total > 0) weight += total / terms.length;
+    }
     if (weight > 0) scored.push({ recipe, weight });
   }
   return scored
