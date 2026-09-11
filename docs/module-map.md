@@ -10,7 +10,8 @@ can grep one file instead of the tree. Where a module is written up properly,
 CLAUDE.md's routing table says so and that write-up is the authority.
 
 Components and screens are omitted on purpose: they are named after what they
-render, so listing them adds lines without adding answers.
+render, so listing their exports adds lines without adding answers. What a
+name cannot say is where a component appears, and that is `docs/screen-map.md`.
 
 ## `src/utils`
 

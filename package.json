@@ -13,7 +13,9 @@
     "android": "expo run:android",
     "ios": "expo run:ios",
     "test": "jest",
-    "test:watch": "jest --watch"
+    "test:watch": "jest --watch",
+    "docs": "node scripts/build-module-map.js && node scripts/check-doc-stats.js && node scripts/build-screen-map.js",
+    "verify": "tsc --noEmit && npm test && npm run docs && git status --short"
   },
   "jest": {
     "testEnvironment": "node",
