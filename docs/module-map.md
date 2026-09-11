@@ -110,7 +110,7 @@ name cannot say is where a component appears, and that is `docs/screen-map.md`.
 - `src/utils/groceryReminderMirror.ts` — GroceryReminderLink, GroceryLinkIndex, parseGroceryLinks, serializeGroceryLinks, withGroceryLinks, MirrorItem, MirrorReminder, mirrorTitleFor, normalizeMirrorTitle, GroceryReminderPlan, +1 more
 - `src/utils/groceryReorder.ts` — GroceryDropRow, GroceryPlacement, resolveGroceryDrop, KeyedGroceryDropRow, placeNewGroceryItems, groceryDragRange
 - `src/utils/groceryShelfLife.ts` — SHELF_LIFE_LEXICON, OPEN_SHELF_LIFE_LEXICON, openShelfLifeDaysFor, shelfLifeDaysFor, clampExpiryDays, expiryKeyFor, defaultExpiresAt, expiresAtForPurchase, expiresAtForOpening, liveExpiresAt, +2 more
-- `src/utils/groceryShops.ts` — isUnavailable, isAsserted, lacksWantedProduct, countsForItem, ShopWithCount, shopsForItem, unavailableShopsFor, withoutProductShopsFor, primaryShopFor, exclusiveShopFor, +3 more
+- `src/utils/groceryShops.ts` — isUnavailable, isAsserted, lacksWantedProduct, countsForItem, sellsAisle, isOutOfRange, describeShopAisles, ShopWithCount, shopsForItem, unavailableShopsFor, +6 more
 - `src/utils/grocerySuggest.ts` — GrocerySuggestion, GrocerySection, GroceryRecipeSection, NO_RECIPE_LABEL, matchWeight, rankGrocerySuggestions, rankedCatalogItems, sectionsInAisleOrder, buildGrocerySections, buildGroceryRecipeSections, +10 more
 - `src/utils/gtin.ts` — gtinCheckDigit, normalizeGtin, isGtin, formatGtin, GTIN_MISS_TTL_DAYS, isCacheEntryFresh
 - `src/utils/haptics.ts` — haptics
@@ -370,7 +370,7 @@ name cannot say is where a component appears, and that is `docs/screen-map.md`.
 
 ## `src/db`
 
-- `src/db/database.ts` — switchToDemoDatabase, switchToRealDatabase, isUsingDemoDatabase, initDatabase, BACKUP_TABLES, BACKUP_EXCLUDED_TABLES, dbTableColumns, dbExportTables, dbReplaceAllData, isSyncableDatabase, +185 more
+- `src/db/database.ts` — switchToDemoDatabase, switchToRealDatabase, isUsingDemoDatabase, initDatabase, BACKUP_TABLES, BACKUP_EXCLUDED_TABLES, dbTableColumns, dbExportTables, dbReplaceAllData, isSyncableDatabase, +186 more
 - `src/db/syncTracking.ts` — SyncTable, KEY_SEPARATOR, SYNC_TRACKED_TABLES, SYNC_EXCLUDED_TABLES, SYNCED_SETTING_KEYS, isSyncedSettingKey, SYNC_DELETIONS_TABLE, NOW_EXPR, TOMBSTONE_RETENTION_DAYS, rowKeyExpr, +5 more
 
 ## `src/services`

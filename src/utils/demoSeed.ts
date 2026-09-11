@@ -2631,6 +2631,7 @@ function seedGroceries(recipes: DemoRecipes, today: Date): void {
     ensureCatalogItem,
     linkItemSub,
     setShopExcludedFromSuggestions,
+    setShopAisles,
     startTrip,
     setItemPrice,
     addList,
@@ -3006,6 +3007,14 @@ function seedGroceries(recipes: DemoRecipes, today: Date): void {
   // linking by hand while being pulled out of every suggestion.
   const amazon = newShop('Amazon');
   setShopExcludedFromSuggestions(amazon.id, true);
+  // The other half of that: a store that sells *some* aisles rather than all
+  // of them. Without one on file the finish sheet asks, after every trip,
+  // which of the week's groceries the pharmacy didn't have — and the whole
+  // point of a range is that it already has that answer. Household is the one
+  // non-food aisle the demo keeps (Personal Care is deleted further down, as
+  // its own demonstration), and paper goods at a pharmacy is the shape of it.
+  const pharmacy = newShop('Corner Pharmacy');
+  setShopAisles(pharmacy.id, ['Household']);
 
   // Three finished trips, so the catalog and the autocomplete ranking have a
   // real spread of purchase counts to sort by rather than a flat list of ones.
@@ -3034,6 +3043,13 @@ function seedGroceries(recipes: DemoRecipes, today: Date): void {
     traderJoes.id,
     priced({ Milk: 429, Eggs: 599, Spinach: 349, Bread: 449, Coffee: 1099 })
   );
+
+  // One trip at the scoped store, so it's a shop with a record rather than a
+  // bare name: a range is about what a store sells, and that reads properly
+  // only next to something it has actually sold you.
+  addExistingMany(idsNamed(['Toilet paper']));
+  setCheckedMany(idsNamed(['Toilet paper']), true);
+  finishShopping(pharmacy.id, priced({ 'Toilet paper': 899 }));
 
   // The same item bought at a second store for more — the whole point of
   // keeping a price per (item, store), and the only shape "cheapest at Costco"

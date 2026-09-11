@@ -21,6 +21,7 @@ function makeShop(name: string, overrides: Partial<Shop> = {}): Shop {
     createdAt: '2026-01-01T00:00:00.000Z',
     excludeFromSuggestions: false,
     receiptStyle: 'itemized' as const,
+    aisles: null,
     ...overrides,
   };
 }
@@ -552,5 +553,49 @@ describe('describeGroupedUnavailable', () => {
   // function itself stays honest about what it actually reads.
   it('says nothing for a marker of a different kind', () => {
     expect(describeGroupedUnavailable({ kind: 'only', shop: traderJoes })).toBe('');
+  });
+});
+
+describe('tripMarkerFor and a store\'s aisle range', () => {
+  const cvs = makeShop('CVS', { aisles: ['Personal Care'] });
+  const shops = [cvs, traderJoes];
+
+  it('marks a row from an aisle the store does not sell', () => {
+    const tofurky = item('tofurky', { aisle: 'Frozen' });
+    expect(tripMarkerFor(tofurky, [], shops, cvs)).toEqual({ kind: 'outOfRange', shop: cvs });
+  });
+
+  it('says nothing about a row from an aisle it does sell', () => {
+    expect(tripMarkerFor(item('soap', { aisle: 'Personal Care' }), [], shops, cvs)).toBeNull();
+  });
+
+  // The rule that makes a roughly-drawn range safe, at the shelf this time.
+  it('stays silent once the thing has been bought here', () => {
+    const tofurky = item('tofurky', { aisle: 'Frozen' });
+    expect(tripMarkerFor(tofurky, [link('tofurky', cvs.id, 3)], shops, cvs)).toBeNull();
+  });
+
+  // A stamped claim is the more specific statement and keeps its own caption,
+  // which is the one that can carry a substitute.
+  it('leaves a stamped claim as the unavailable marker it is', () => {
+    const tofurky = item('tofurky', { aisle: 'Frozen' });
+    const links = [link('tofurky', cvs.id, 0, { unavailableAt: '2026-08-01T00:00:00.000Z' })];
+    expect(tripMarkerFor(tofurky, links, shops, cvs)?.kind).toBe('unavailable');
+  });
+
+  // Standing in the pharmacy, "the pharmacy doesn't sell this" is the useful
+  // half; where you usually get it is trivia.
+  it('outranks a clause about another store', () => {
+    const tofurky = item('tofurky', { aisle: 'Frozen' });
+    const links = [link('tofurky', traderJoes.id, 5)];
+    expect(tripMarkerFor(tofurky, links, shops, cvs)).toEqual({ kind: 'outOfRange', shop: cvs });
+  });
+
+  it('reads as the store being out, same as the other negative', () => {
+    expect(describeTripMarker({ kind: 'outOfRange', shop: cvs })).toBe('Not at CVS');
+  });
+
+  it('says nothing extra once grouped under the section\'s own header', () => {
+    expect(describeGroupedUnavailable({ kind: 'outOfRange', shop: cvs })).toBe('');
   });
 });

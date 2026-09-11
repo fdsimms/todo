@@ -1,5 +1,5 @@
 import type { GroceryItem, ItemShopLink, Shop } from '../types';
-import { lacksWantedProduct } from './groceryShops';
+import { describeShopAisles, isOutOfRange, lacksWantedProduct } from './groceryShops';
 
 /**
  * Which store to shop the list you're actually holding.
@@ -98,6 +98,18 @@ export interface ShopCoverage {
    * claim as not stocking it, and saying the latter would be false.
    */
   withoutProductItemIds: string[];
+  /**
+   * On-list items outside the aisles this store has been said to sell, in list
+   * order. The module's third hard negative, and the only one that needs no
+   * link to exist: see `groceryShops.isOutOfRange`.
+   *
+   * Its own bucket rather than folded into `unavailableItemIds` because the two
+   * are different claims and only one of them is about this item. "You looked
+   * and it wasn't there" names a date and a shelf; this names a range the store
+   * was given. Disjoint from the other two by construction — a stamped claim is
+   * the more specific statement, so an item carrying one is counted there.
+   */
+  outOfRangeItemIds: string[];
   /** How many of `itemIds` are hand-assertions rather than observed purchases. */
   assertedCount: number;
   /** Total purchases behind the observed ones — a tiebreak, never rendered. */
@@ -126,6 +138,13 @@ export interface TripSummary {
    * said so — and that no selected store covers or probably covers. Split out
    * of `gap` because the copy differs in kind: a gap is "you've never got this
    * here", which the store may well disprove, and this is "it isn't there".
+   *
+   * The claim behind one of these comes from either of the user's two
+   * negatives: a stamped `unavailableAt` on this item, or the store's own
+   * declared range not including this item's aisle. They land in one bucket
+   * because the consequence for the trip is identical — this shop won't close
+   * the row — and because both are the user's own statement rather than
+   * anything the app worked out.
    */
   missing: string[];
   /**
@@ -184,6 +203,7 @@ export function planTrip(
           itemIds: [],
           unavailableItemIds: [],
           withoutProductItemIds: [],
+          outOfRangeItemIds: [],
           assertedCount: 0,
           observedPurchases: 0,
           recordedItems: 0,
@@ -224,10 +244,26 @@ export function planTrip(
     else entry.assertedCount += 1;
   }
 
+  // The range pass is separate from the link loop above because it is the one
+  // negative here that needs no link to exist — that is the whole point of it,
+  // and why it walks the list rather than the records. It runs after, so the
+  // stamped claims are already filed and an item can be kept out of a second
+  // bucket: a claim naming this item is the more specific statement and the
+  // sheet must never count one row twice.
+  for (const entry of byShop.values()) {
+    if (entry.shop.aisles === null) continue;
+    const claimed = new Set([...entry.unavailableItemIds, ...entry.withoutProductItemIds]);
+    for (const item of onList) {
+      if (claimed.has(item.id)) continue;
+      if (isOutOfRange(entry.shop, item, links)) entry.outOfRangeItemIds.push(item.id);
+    }
+  }
+
   for (const entry of byShop.values()) {
     entry.itemIds.sort((a, b) => rank.get(a)! - rank.get(b)!);
     entry.unavailableItemIds.sort((a, b) => rank.get(a)! - rank.get(b)!);
     entry.withoutProductItemIds.sort((a, b) => rank.get(a)! - rank.get(b)!);
+    entry.outOfRangeItemIds.sort((a, b) => rank.get(a)! - rank.get(b)!);
   }
 
   const coverage = [...byShop.values()];
@@ -266,6 +302,10 @@ export function summarizeTrip(selectedShopIds: readonly string[], plan: TripPlan
     // being credited with it above.
     if (isSelected) {
       for (const id of entry.unavailableItemIds) absentHere.add(id);
+      // A range the user gave the store says the same thing about this trip as
+      // a stamped claim does: it isn't coming home from here. See
+      // TripSummary.missing.
+      for (const id of entry.outOfRangeItemIds) absentHere.add(id);
       for (const id of entry.withoutProductItemIds) withoutProductHere.add(id);
     }
   }
@@ -352,6 +392,12 @@ export function describeShopCoverage(entry: ShopCoverage, total: number): string
 
   const parts = [head];
   if (absent > 0) parts.push(`${absent} they don’t have`);
+  // The range gets its own clause rather than swelling the count in front of
+  // it, for the reason the absent clause already has one: it is a different
+  // kind of fact. A count is about your list, and this is about the shop, so
+  // it says what the store sells rather than how much of today it misses.
+  const range = describeShopAisles(entry.shop);
+  if (range) parts.push(`only ${range}`);
   return parts.join(' · ');
 }
 
