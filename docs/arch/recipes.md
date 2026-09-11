@@ -505,7 +505,12 @@ to figures `recipeNutrition.ts` already produced.
   remember it on, a weight already recorded, or a dish whose nutrition rollup declines all mean
   no question. That last one is the load-bearing gate — a weight is only ever a fraction applied
   to figures, so without figures it measures nothing. `RecipeEditor` has the same field for
-  anybody who weighed it afterwards.
+  anybody who weighed it afterwards, and `RecipeDetailScreen` carries a third copy of it: the
+  page's own weight caption is a tappable row rather than only a read-out, so setting or
+  correcting it doesn't mean leaving the page for Edit. All three write through the same
+  `setCookedWeight`/`clampCookedWeight` pair, and the detail screen's field always reads and
+  writes the as-written grams (`recipe.cookedWeightG`), never the scaled figure its own caption
+  shows when the scale chips above it aren't at 1×.
 - **Nothing else is derived from it.** No calorie density, no "the serving you should have had",
   no weight goal. The rule `docs/arch/health-data.md` sets for the user's own weight holds for
   this one: it scales figures that already existed and stops there. `servingGrams` is the one

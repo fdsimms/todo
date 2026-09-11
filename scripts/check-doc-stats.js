@@ -29,7 +29,16 @@ function walk(dir, out = []) {
   return out;
 }
 
-const files = walk(path.join(root, 'src')).map(abs => ({
+// mcp/src alongside src because the MCP server's tests run in this repo's jest
+// like everything else (see docs/arch/mcp-server.md) — a suite count that only
+// walked src/ would understate what `npm test` costs, which is the one job this
+// number has.
+const SOURCE_DIRS = ['src', 'mcp/src'];
+
+const files = SOURCE_DIRS.flatMap(dir => {
+  const abs = path.join(root, dir);
+  return fs.existsSync(abs) ? walk(abs) : [];
+}).map(abs => ({
   rel: path.relative(root, abs).split(path.sep).join('/'),
   lines: fs.readFileSync(abs, 'utf8').split('\n').length,
 }));
@@ -68,7 +77,7 @@ const block = [
   'Grep for the symbol and read the surrounding range; reading any of them end to end costs more',
   'context than the rest of the task will. `docs/module-map.md` says which file owns what.',
   '',
-  `The suite is **${suites} test files**, and \`npm test\` runs all of them in about half a minute.`,
+  `The suite is **${suites} test files**, and \`npm test\` runs all of them in well under a minute.`,
   '`npx tsc --noEmit` is a few seconds once `.tsbuildinfo` exists, so run both, every time.',
   '',
   END,

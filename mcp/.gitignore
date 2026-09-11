@@ -1,0 +1,7 @@
+node_modules/
+dist/
+
+# A replica is a complete copy of the user's data. Never let one near a commit.
+*.db
+*.db-wal
+*.db-shm

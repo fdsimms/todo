@@ -253,6 +253,57 @@ describe('recipeNutrition', () => {
     expect(read.covered).toBe(1);
   });
 
+  it('still counts a staple written in a bulk weight', () => {
+    // Sugar marked "Always have it", but this dish uses a pound of it —
+    // not a dash, so it isn't waved through the way a pinch of salt is.
+    const dish = recipe('Cake', [
+      ing('Flour', { quantity: '200 g' }),
+      ing('Sugar', { quantity: '1 lb' }),
+    ]);
+    const catalog = [
+      item({ name: 'Flour', nutrition: panel() }),
+      item({ name: 'Sugar', isStaple: true, nutrition: panel({ amounts: { calorieKcal: 400 } }) }),
+    ];
+    const read = recipeNutrition(dish, catalog)!;
+    expect(read.lines).toBe(2);
+    expect(read.covered).toBe(2);
+    // 200g flour @ 100 kcal/100g + ~453.6g sugar @ 400 kcal/100g.
+    expect(read.total.calorieKcal).toBe(Math.round((200 + 453.59237 * 4) * 10) / 10);
+  });
+
+  it('still excludes a staple written in a small weight', () => {
+    // A packet of yeast, well under the bulk threshold — stays waved through.
+    const dish = recipe('Bread', [
+      ing('Flour', { quantity: '200 g' }),
+      ing('Yeast', { quantity: '7 g' }),
+    ]);
+    const catalog = [
+      item({ name: 'Flour', nutrition: panel() }),
+      item({ name: 'Yeast', isStaple: true, nutrition: panel() }),
+    ];
+    const read = recipeNutrition(dish, catalog)!;
+    expect(read.lines).toBe(1);
+    expect(read.covered).toBe(1);
+  });
+
+  it('turns a staple written in a bulk weight into a real gap when it has no figures', () => {
+    const dish = recipe('Cake', [
+      ing('Flour', { quantity: '200 g' }),
+      ing('Sugar', { quantity: '1 lb' }),
+    ]);
+    const catalog = [
+      item({ name: 'Flour', nutrition: panel() }),
+      item({ name: 'Sugar', isStaple: true }),
+      // No panel — a pound of sugar with nothing on file is a real gap, not
+      // the "salt missing a panel" case this exclusion exists for.
+    ];
+    const lines = recipeNutritionLines(dish, catalog);
+    expect(lines.map(l => [l.name, l.state])).toEqual([
+      ['Flour', 'covered'],
+      ['Sugar', 'noPanel'],
+    ]);
+  });
+
   it('excludes a line marked excludeFromNutrition from both sides of the fraction', () => {
     const dish = recipe('Pasta', [
       ing('Pasta', { quantity: '200 g' }),

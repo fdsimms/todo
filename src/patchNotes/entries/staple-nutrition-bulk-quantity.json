@@ -1,0 +1,4 @@
+{
+  "message": "A recipe's nutrition estimate now counts an ingredient marked \"Always have it\" when the recipe actually calls for a lot of it (a pound of sugar, say), instead of leaving it out entirely the way a pinch of salt is.",
+  "date": "2026-09-11"
+}
