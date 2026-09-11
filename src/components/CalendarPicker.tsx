@@ -58,7 +58,7 @@ export function CalendarPicker({
   multiple, values, onConfirmMultiple,
 }: Props) {
   const colors = useColors();
-  const { isDark } = useTheme();
+  const { isDark, shadows } = useTheme();
   const styles = useMemo(() => makeStyles(colors), [colors]);
 
   const [displayMonth, setDisplayMonth] = useState(() => value ?? new Date());
@@ -156,7 +156,7 @@ export function CalendarPicker({
           pointerEvents="none"
         />
         <SheetScrim onPress={onCancel} />
-        <Animated.View style={[styles.card, { opacity: enterAnim, transform: [{ scale: cardScale }] }]}>
+        <Animated.View style={[styles.card, shadows.popover, { opacity: enterAnim, transform: [{ scale: cardScale }] }]}>
           {/* Header */}
           <View style={styles.header}>
             <SheetHeaderButton label="Cancel" role="cancel" onPress={onCancel} minWidth={28} />
@@ -301,11 +301,6 @@ const makeStyles = (colors: Colors) => StyleSheet.create({
     backgroundColor: colors.bgSecondary,
     borderRadius: radius.lg,
     overflow: 'hidden',
-    shadowColor: '#000',
-    shadowOffset: { width: 0, height: 8 },
-    shadowOpacity: 0.35,
-    shadowRadius: 20,
-    elevation: 12,
   },
   header: {
     flexDirection: 'row',

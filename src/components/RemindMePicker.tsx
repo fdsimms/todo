@@ -67,7 +67,7 @@ const BEFORE_DAYS_MAX = 60;
 
 export function RemindMePicker({ visible, value, kind, dueDate = null, offsetDays = null, anchor = 'wallClock', onConfirm, onClear, onCancel }: Props) {
   const colors = useColors();
-  const { isDark } = useTheme();
+  const { isDark, shadows } = useTheme();
   // Reactive, unlike the width above: read once at module load, a stale
   // height would cap the card against a screen that no longer matches the
   // one it's actually rendering on.
@@ -166,7 +166,7 @@ export function RemindMePicker({ visible, value, kind, dueDate = null, offsetDay
     >
       <View style={styles.backdrop}>
         <SheetScrim onPress={onCancel} />
-        <View style={styles.card}>
+        <View style={[styles.card, shadows.popover]}>
           <ScrollView
             showsVerticalScrollIndicator={false}
             bounces={false}
@@ -488,11 +488,6 @@ const makeStyles = (colors: Colors, windowHeight: number) => StyleSheet.create({
     backgroundColor: colors.bgSecondary,
     borderRadius: radius.lg,
     overflow: 'hidden',
-    shadowColor: '#000',
-    shadowOffset: { width: 0, height: 8 },
-    shadowOpacity: 0.35,
-    shadowRadius: 20,
-    elevation: 12,
   },
   header: {
     flexDirection: 'row',

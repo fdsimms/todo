@@ -1300,7 +1300,7 @@ export function RecipeDetailScreen() {
       </TouchableOpacity>
       <TouchableOpacity
         onLongPress={drag}
-        delayLongPress={150}
+        delayLongPress={interaction.delayLongPress}
         hitSlop={10}
         accessibilityRole="button"
         accessibilityLabel={`Reorder step ${displayIndex + 1}`}

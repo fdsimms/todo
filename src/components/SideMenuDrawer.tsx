@@ -58,8 +58,8 @@ interface Props {
  * It held eighteen flat rows, which is about twice what a phone fits, so half
  * of it lived under a fold nothing announced and the fix for that was a
  * scroll-edge fade and a flashed scrollbar — both of which say "there is more"
- * without making any of it easier to reach. Eight rows fit, and four of them
- * are hubs standing in for thirteen destinations. What goes where, and why,
+ * without making any of it easier to reach. Ten rows fit, and three of them
+ * are hubs standing in for sixteen destinations. What goes where, and why,
  * is `navHubs.ts`; this file is the drawing.
  *
  * Two things carry the weight of the collapse:
@@ -77,7 +77,7 @@ interface Props {
 export function SideMenuDrawer({ visible, onClose, onNavigate, onOpenSettings, activeTab }: Props) {
   const colors = useColors();
   const insets = useSafeAreaInsets();
-  const { isDark } = useTheme();
+  const { isDark, shadows } = useTheme();
   // A scalar, so it's referentially stable and needs no useShallow. Counts
   // what's still to buy — items already in the trolley aren't a reason to go.
   const groceryCount = useGroceryStore(s => listRemainingCount(s.listEntries, s.activeListId));
@@ -144,11 +144,11 @@ export function SideMenuDrawer({ visible, onClose, onNavigate, onOpenSettings, a
           Animated.timing(dragOffsetX, { toValue: 0, duration: 0, useNativeDriver: true }).start();
           onClose();
         } else {
-          Animated.spring(dragOffsetX, { toValue: 0, damping: 20, stiffness: 200, useNativeDriver: true }).start();
+          Animated.spring(dragOffsetX, { toValue: 0, ...animation.spring.smooth, useNativeDriver: true }).start();
         }
       },
       onPanResponderTerminate: () => {
-        Animated.spring(dragOffsetX, { toValue: 0, damping: 20, stiffness: 200, useNativeDriver: true }).start();
+        Animated.spring(dragOffsetX, { toValue: 0, ...animation.spring.smooth, useNativeDriver: true }).start();
       },
     })
   ).current;
@@ -166,8 +166,7 @@ export function SideMenuDrawer({ visible, onClose, onNavigate, onOpenSettings, a
       Animated.parallel([
         Animated.spring(translateX, {
           toValue: 0,
-          damping: 28,
-          stiffness: 220,
+          ...animation.spring.smooth,
           useNativeDriver: true,
         }),
         Animated.timing(backdropOpacity, {
@@ -196,8 +195,7 @@ export function SideMenuDrawer({ visible, onClose, onNavigate, onOpenSettings, a
         : [
             Animated.spring(translateX, {
               toValue: -DRAWER_WIDTH,
-              damping: 30,
-              stiffness: 280,
+              ...animation.spring.snappy,
               useNativeDriver: true,
             }),
             Animated.timing(backdropOpacity, {
@@ -268,6 +266,7 @@ export function SideMenuDrawer({ visible, onClose, onNavigate, onOpenSettings, a
         <Animated.View
           style={[
             styles.drawer,
+            shadows.drawer,
             {
               width: DRAWER_WIDTH,
               borderRightColor: colors.separator,
@@ -497,11 +496,6 @@ const styles = StyleSheet.create({
     top: 0,
     bottom: 0,
     borderRightWidth: StyleSheet.hairlineWidth,
-    shadowColor: '#000',
-    shadowOffset: { width: 6, height: 0 },
-    shadowOpacity: 0.35,
-    shadowRadius: 16,
-    elevation: 20,
     overflow: 'hidden',
   },
   header: {
