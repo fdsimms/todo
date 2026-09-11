@@ -17,7 +17,11 @@ const SOURCE_DIR = path.join(__dirname, '..', 'targets', 'todo-widget');
 const SWIFT_FILES = [
   'TodoWidgetBundle.swift',
   'TodoWidgetData.swift',
+  'WidgetShared.swift',
+  'WidgetConfigIntents.swift',
   'TodoTodayWidget.swift',
+  'TodoGroceryWidget.swift',
+  'TodoKitchenWidget.swift',
   'CompleteTaskIntent.swift',
   'TimerLiveActivity.swift',
   'TripLiveActivity.swift',

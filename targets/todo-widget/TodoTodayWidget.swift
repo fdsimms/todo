@@ -6,55 +6,38 @@ struct TodoEntry: TimelineEntry {
     let date: Date
     let result: WidgetLoadResult
     let pendingCompletionIds: Set<String>
+    let configuration: TodayWidgetIntent
 }
 
-struct TodoTodayProvider: TimelineProvider {
+struct TodoTodayProvider: AppIntentTimelineProvider {
     func placeholder(in context: Context) -> TodoEntry {
-        TodoEntry(date: Date(), result: .noSnapshotYet, pendingCompletionIds: [])
+        TodoEntry(
+            date: Date(),
+            result: .noSnapshotYet,
+            pendingCompletionIds: [],
+            configuration: TodayWidgetIntent()
+        )
     }
 
-    func getSnapshot(in context: Context, completion: @escaping (TodoEntry) -> Void) {
-        completion(TodoEntry(date: Date(), result: loadWidgetSnapshot(), pendingCompletionIds: loadPendingCompletionIds()))
+    func snapshot(for configuration: TodayWidgetIntent, in context: Context) async -> TodoEntry {
+        entry(for: configuration)
     }
 
-    func getTimeline(in context: Context, completion: @escaping (Timeline<TodoEntry>) -> Void) {
-        let entry = TodoEntry(date: Date(), result: loadWidgetSnapshot(), pendingCompletionIds: loadPendingCompletionIds())
+    func timeline(for configuration: TodayWidgetIntent, in context: Context) async -> Timeline<TodoEntry> {
         // The app calls WidgetCenter.reloadAllTimelines() after every task
         // mutation (and CompleteTaskIntent does the same), so this fallback
         // only matters if the app hasn't been opened in a while.
         let nextRefresh = Calendar.current.date(byAdding: .minute, value: 15, to: Date()) ?? Date()
-        completion(Timeline(entries: [entry], policy: .after(nextRefresh)))
+        return Timeline(entries: [entry(for: configuration)], policy: .after(nextRefresh))
     }
-}
 
-// Every fixed measurement the layout is built from. They're collected here
-// because they have to add up: the grid is what's left after the header and
-// the padding are taken out of the widget's height, so changing one without
-// looking at the rest is how rows end up clipped off the bottom edge again.
-private enum WidgetLayout {
-    /// Own padding, in place of the container margins the widget opts out of.
-    static let horizontalPadding: CGFloat = 14
-    static let topPadding: CGFloat = 12
-    static let bottomPadding: CGFloat = 12
-    /// The header's own height — the add button, the tallest thing in it.
-    static let headerHeight: CGFloat = 22
-    /// Gap between the header and the first row of tasks.
-    static let headerGap: CGFloat = 8
-    /// Gap between the two task columns.
-    static let columnGap: CGFloat = 6
-    static let rowsPerColumn = 4
-    /// A row can't go below the checkbox plus a hairline, or grow tall enough
-    /// on a big device that the grid stops reading as a grid.
-    static let minRowHeight: CGFloat = 22
-    static let maxRowHeight: CGFloat = 30
-
-    /// Splits whatever height is left after the header and padding into
-    /// `rowsPerColumn` equal slots. Measured rather than hardcoded because a
-    /// medium widget is ~141pt tall on a 4" phone and ~170pt on a Max — a
-    /// single row height that fits the tallest clips the shortest.
-    static func rowHeight(forWidgetHeight height: CGFloat) -> CGFloat {
-        let available = height - topPadding - bottomPadding - headerHeight - headerGap
-        return min(maxRowHeight, max(minRowHeight, available / CGFloat(rowsPerColumn)))
+    private func entry(for configuration: TodayWidgetIntent) -> TodoEntry {
+        TodoEntry(
+            date: Date(),
+            result: loadWidgetSnapshot(),
+            pendingCompletionIds: loadPendingCompletionIds(),
+            configuration: configuration
+        )
     }
 }
 
@@ -91,176 +74,183 @@ struct TaskRowView: View {
             }
             .buttonStyle(.plain)
 
+            // layoutPriority, because the title is the one thing the row exists
+            // to show and everything beside it is short and fixed. A row that
+            // lets its trailing pieces claim width first truncates the title
+            // instead — see the same rule in CLAUDE.md's design section.
             Text(task.title)
                 .font(.system(size: 12))
                 .foregroundColor(isPendingCompletion ? palette.textTertiary : palette.text)
                 .strikethrough(isPendingCompletion)
                 .lineLimit(1)
                 .truncationMode(.tail)
+                .layoutPriority(1)
 
             if task.pinned && !isPendingCompletion {
                 Image(systemName: "pin.fill")
-                    .foregroundColor(Color(hex: "FF9F0A"))
+                    .foregroundColor(palette.orange)
                     .font(.system(size: 8))
             }
 
-            Spacer(minLength: 0)
+            Spacer(minLength: 2)
+
+            // A daily target's fraction, or a streak — never both, so the slot
+            // stays short. See taskRowDetail.
+            if !isPendingCompletion, let detail = taskRowDetail(task) {
+                HStack(spacing: 2) {
+                    if let symbol = taskRowDetailSymbol(task) {
+                        Image(systemName: symbol)
+                            .font(.system(size: 8))
+                            .foregroundColor(palette.orange)
+                    }
+                    Text(detail)
+                        .font(.system(size: 10, weight: .medium))
+                        .foregroundColor(palette.textSecondary)
+                        .lineLimit(1)
+                }
+            }
+
+            if let dot = priorityColor(task.priority), !isPendingCompletion {
+                Circle().fill(dot).frame(width: 5, height: 5)
+            }
         }
         .frame(height: height)
-    }
-}
-
-// Opens the app straight into quick add — `dundundun://add` with no title,
-// handled by isQuickAddUrl in src/utils/deepLinks.ts.
-private let quickAddURL = URL(string: "dundundun://add")!
-
-/// The add button: one filled shape with the plus punched *out* of it, rather
-/// than a white glyph drawn on top of a filled circle.
-///
-/// Colour can't be relied on to separate the two. The Home Screen's tinted
-/// appearance, StandBy and the system Grayscale colour filter all flatten a
-/// widget to a single tone, keeping only the alpha channel — so a white plus
-/// over an accent circle collapses into one solid blob and the glyph vanishes.
-/// `.widgetAccentable()` doesn't help, because it moves the circle and the
-/// glyph into the *same* group. A hole is alpha 0, so it survives every mode:
-/// whatever sits behind the button shows through it.
-private struct AddButtonShape: Shape {
-    /// Both are fractions of the circle's diameter, so the glyph scales with
-    /// the header height instead of needing a second constant kept in step.
-    /// Sized to match the 11pt bold SF `plus` this replaced.
-    private let armFraction: CGFloat = 0.45
-    private let barFraction: CGFloat = 0.11
-
-    func path(in rect: CGRect) -> Path {
-        let diameter = min(rect.width, rect.height)
-        let circle = CGRect(
-            x: rect.midX - diameter / 2,
-            y: rect.midY - diameter / 2,
-            width: diameter,
-            height: diameter
-        )
-        let arm = diameter * armFraction
-        let bar = diameter * barFraction
-        let horizontal = CGRect(
-            x: circle.midX - arm / 2, y: circle.midY - bar / 2, width: arm, height: bar
-        )
-        let vertical = CGRect(
-            x: circle.midX - bar / 2, y: circle.midY - arm / 2, width: bar, height: arm
-        )
-        // Unioned, not added as two overlapping subpaths: an even-odd fill
-        // counts the region they share twice and fills it back in, which would
-        // leave a square of accent sitting in the middle of the plus.
-        let cross = CGPath(
-            roundedRect: horizontal, cornerWidth: bar / 2, cornerHeight: bar / 2, transform: nil
-        ).union(
-            CGPath(roundedRect: vertical, cornerWidth: bar / 2, cornerHeight: bar / 2, transform: nil)
-        )
-
-        var path = Path()
-        path.addEllipse(in: circle)
-        path.addPath(Path(cross))
-        return path
-    }
-}
-
-struct WidgetHeaderView: View {
-    let palette: WidgetPalette
-    let countLabel: String?
-
-    var body: some View {
-        HStack(spacing: 6) {
-            Image(systemName: "sun.max.fill")
-                .foregroundColor(Color(hex: "FF9F0A"))
-                .font(.system(size: 12))
-            Text("Today")
-                .font(.system(size: 13, weight: .semibold))
-                .foregroundColor(palette.textSecondary)
-
-            Spacer(minLength: 8)
-
-            if let countLabel {
-                Text(countLabel)
-                    .font(.system(size: 12))
-                    .foregroundColor(palette.textSecondary)
-            }
-
-            // A Link rather than an AppIntent: there's nothing for the
-            // extension to do on its own, the whole point is to land in the
-            // app's composer. Sized to the header so the header's height
-            // never depends on which of these pieces is showing.
-            Link(destination: quickAddURL) {
-                // See AddButtonShape: the plus is a hole, not a white glyph.
-                AddButtonShape()
-                    .fill(palette.accent, style: FillStyle(eoFill: true))
-                    .frame(width: WidgetLayout.headerHeight, height: WidgetLayout.headerHeight)
-                    .contentShape(Circle())
-            }
-            // Keeps the button in the accent group, so a tinted Home Screen
-            // renders it a step brighter than the text beside it. Safe to do
-            // now that the plus reads by shape rather than by colour.
-            .widgetAccentable()
-            .accessibilityLabel("Add task")
-        }
-        .frame(height: WidgetLayout.headerHeight)
     }
 }
 
 struct TodoTodayWidgetEntryView: View {
     var entry: TodoTodayProvider.Entry
     @Environment(\.colorScheme) var colorScheme
+    @Environment(\.widgetFamily) var family
 
-    var emptyStateMessage: String {
+    private var emptyStateMessage: String {
         switch entry.result {
         case .noAppGroupAccess: return "Can't access shared data (App Group)"
         case .noSnapshotYet: return "Open the app to get started"
         case .decodeFailed: return "Couldn't read task data"
-        case .success: return "All clear"
+        case .success:
+            return entry.configuration.categoryFilter == nil ? "All clear" : "Nothing in this list"
         }
     }
 
+    /// The rows this particular placed widget draws, after its own
+    /// configuration. Filtered here rather than in the snapshot because there
+    /// is one snapshot on disk and any number of widgets reading it.
+    private var tasks: [WidgetTask] {
+        guard let snapshot = entry.result.snapshot else { return [] }
+        let base = entry.configuration.pinnedOnly
+            ? snapshot.pinnedTasks
+            : snapshot.visibleTasks
+        guard let category = entry.configuration.categoryFilter else { return base }
+        return base.filter { $0.category == category }
+    }
+
+    /// How many of the rows on screen are still outstanding.
+    ///
+    /// Intersected with the rows rather than subtracting the whole pending
+    /// queue's size: that file is the app's, not this widget's, and it can hold
+    /// ids for tasks this widget isn't showing (a different category, a tap
+    /// whose snapshot has already been rewritten). Subtracting its raw count
+    /// under-reported the tally, and did so by more the more the user tapped.
+    private var remaining: Int {
+        tasks.filter { !entry.pendingCompletionIds.contains($0.id) }.count
+    }
+
+    private var doneToday: Int { entry.result.snapshot?.doneToday ?? 0 }
+
+    private var header: WidgetHeaderView {
+        WidgetHeaderView(
+            palette: WidgetPalette.forScheme(colorScheme),
+            symbolName: entry.configuration.pinnedOnly ? "pin.fill" : "sun.max.fill",
+            symbolColor: WidgetPalette.forScheme(colorScheme).orange,
+            title: entry.configuration.categoryFilter ?? (entry.configuration.pinnedOnly ? "Pinned" : "Today"),
+            // A small widget's header holds a glyph, a title and the add
+            // button in 158pt. The count is what gives way: it is the one piece
+            // the rows below already imply.
+            countLabel: tasks.isEmpty || family == .systemSmall ? nil : taskCountLabel(remaining),
+            actionURL: quickAddURL,
+            actionLabel: "Add task"
+        )
+    }
+
     var body: some View {
+        switch family {
+        case .accessoryInline:
+            Text(remaining == 0 ? "All clear" : taskCountLabel(remaining))
+        case .accessoryCircular:
+            AccessoryRing(
+                fraction: doneToday + remaining == 0 ? 0 : Double(doneToday) / Double(doneToday + remaining),
+                label: "\(remaining)",
+                caption: "left"
+            )
+        case .accessoryRectangular:
+            rectangularView
+        default:
+            gridView
+        }
+    }
+
+    /// Two lines of type on the Lock Screen: what the day holds, then the row
+    /// at the top of it. No checkbox — an accessory family is a glance, and a
+    /// tap target that small on a locked screen is a mis-tap waiting to happen.
+    private var rectangularView: some View {
+        VStack(alignment: .leading, spacing: 1) {
+            Text(remaining == 0 ? "All clear" : taskCountLabel(remaining))
+                .font(.headline)
+                .lineLimit(1)
+            // The task title before the agenda summary, deliberately: a
+            // rectangular accessory is 172pt wide and something has to
+            // truncate. "4 due · 2 carried over · 1 deadline" losing its tail
+            // costs a number the headline above already implies; a task title
+            // losing its tail costs the only actionable thing on the widget.
+            if let first = tasks.first {
+                Text(first.title)
+                    .font(.caption)
+                    .lineLimit(1)
+            }
+            if let agenda = entry.result.snapshot?.agenda, let line = agendaLine(agenda) {
+                Text(line)
+                    .font(.caption)
+                    .foregroundStyle(.secondary)
+                    .lineLimit(1)
+            }
+        }
+        .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .leading)
+    }
+
+    /// "3 due · 1 carried over · 2 deadlines", or nothing worth a line.
+    /// Mirrors agendaBody in src/utils/dailyAgenda.ts, including its refusal to
+    /// say anything at all when every count is zero.
+    private func agendaLine(_ agenda: WidgetAgenda) -> String? {
+        var parts: [String] = []
+        if agenda.due > 0 { parts.append("\(agenda.due) due") }
+        if agenda.carriedOver > 0 { parts.append("\(agenda.carriedOver) carried over") }
+        if agenda.deadlines > 0 {
+            parts.append("\(agenda.deadlines) deadline\(agenda.deadlines == 1 ? "" : "s")")
+        }
+        return parts.isEmpty ? nil : parts.joined(separator: " · ")
+    }
+
+    private var gridView: some View {
         let palette = WidgetPalette.forScheme(colorScheme)
-        let snapshot: WidgetSnapshot? = {
-            if case .success(let snapshot) = entry.result { return snapshot }
-            return nil
-        }()
-        let allTasks = snapshot?.visibleTasks ?? []
-        let perColumn = WidgetLayout.rowsPerColumn
-        // Two columns of up to `perColumn` rows each.
-        let shown = Array(allTasks.prefix(perColumn * 2))
+        let perColumn = WidgetLayout.rowsPerColumn(for: family)
+        // Small is one column; medium and large are two.
+        let columns = family == .systemSmall ? 1 : 2
+        let shown = Array(tasks.prefix(perColumn * columns))
         let leftColumn = Array(shown.prefix(perColumn))
         let rightColumn = Array(shown.dropFirst(perColumn))
-        let remaining = max(0, allTasks.count - entry.pendingCompletionIds.count)
 
-        GeometryReader { geo in
-            let rowHeight = WidgetLayout.rowHeight(forWidgetHeight: geo.size.height)
-            // The grid keeps all four slots whether or not they're filled, so
+        return GeometryReader { geo in
+            let rowHeight = WidgetLayout.rowHeight(forWidgetHeight: geo.size.height, rows: perColumn)
+            // The grid keeps all its slots whether or not they're filled, so
             // a two-task day and an eight-task day put the header, the first
             // row and the bottom edge in exactly the same places.
             let gridHeight = rowHeight * CGFloat(perColumn)
 
-            VStack(alignment: .leading, spacing: 0) {
-                // First child of the VStack, not an overlay sibling: there is
-                // then nothing below it that can push it down.
-                WidgetHeaderView(
-                    palette: palette,
-                    countLabel: allTasks.isEmpty ? nil
-                        : (remaining == 1 ? "1 task" : "\(remaining) tasks")
-                )
-
+            WidgetFrame(header: header, holdsTop: !shown.isEmpty) {
                 Group {
                     if shown.isEmpty {
-                        // maxHeight: .infinity, not a fixed gridHeight box: rowHeight
-                        // clamps at WidgetLayout.maxRowHeight on most widget sizes, so
-                        // gridHeight is shorter than the space actually available below
-                        // the header. Centering in the fixed box left the leftover to
-                        // the trailing Spacer alone, which put the text above the
-                        // widget's true center instead of in it.
-                        Text(emptyStateMessage)
-                            .font(.system(size: 13))
-                            .foregroundColor(palette.textTertiary)
-                            .multilineTextAlignment(.center)
-                            .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .center)
+                        WidgetEmptyState(palette: palette, message: emptyStateMessage)
                     } else {
                         // Both columns are always laid out, even when the
                         // right one is empty — otherwise the left column is
@@ -269,30 +259,20 @@ struct TodoTodayWidgetEntryView: View {
                         // each. Same reason the grid keeps its empty slots.
                         HStack(alignment: .top, spacing: WidgetLayout.columnGap) {
                             columnView(leftColumn, palette: palette, rowHeight: rowHeight)
-                            columnView(rightColumn, palette: palette, rowHeight: rowHeight)
+                            if columns > 1 {
+                                columnView(rightColumn, palette: palette, rowHeight: rowHeight)
+                            }
                         }
                         .frame(height: gridHeight, alignment: .top)
                     }
                 }
-                .padding(.top, WidgetLayout.headerGap)
-
-                // Only needed to hold the fixed-height grid at the top when
-                // there are rows — the empty state above already fills all
-                // remaining space itself via maxHeight: .infinity.
-                if !shown.isEmpty {
-                    Spacer(minLength: 0)
-                }
             }
-            .padding(.horizontal, WidgetLayout.horizontalPadding)
-            .padding(.top, WidgetLayout.topPadding)
-            .padding(.bottom, WidgetLayout.bottomPadding)
-            .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topLeading)
         }
-        .widgetURL(URL(string: "dundundun://"))
+        .widgetURL(openAppURL)
     }
 
-    /// One half of the grid. Always half-width and always the grid's full
-    /// height, however few rows it holds.
+    /// One column of the grid. Always its share of the width and always the
+    /// grid's full height, however few rows it holds.
     private func columnView(
         _ tasks: [WidgetTask],
         palette: WidgetPalette,
@@ -317,7 +297,12 @@ struct TodoTodayWidget: Widget {
     let kind: String = "TodoTodayWidget"
 
     var body: some WidgetConfiguration {
-        StaticConfiguration(kind: kind, provider: TodoTodayProvider()) { entry in
+        // AppIntentConfiguration rather than StaticConfiguration, so a placed
+        // widget can be pointed at one category or at the pinned block. An
+        // existing widget placed before this shipped keeps its slot and picks
+        // up the parameter defaults, which are "every category, not pinned
+        // only" — exactly what it was already showing.
+        AppIntentConfiguration(kind: kind, intent: TodayWidgetIntent.self, provider: TodoTodayProvider()) { entry in
             TodoTodayWidgetEntryView(entry: entry)
                 .containerBackground(for: .widget) {
                     Color(UIColor.secondarySystemGroupedBackground)
@@ -325,7 +310,10 @@ struct TodoTodayWidget: Widget {
         }
         .configurationDisplayName("Today")
         .description("Your tasks for today.")
-        .supportedFamilies([.systemMedium])
+        .supportedFamilies([
+            .systemSmall, .systemMedium, .systemLarge,
+            .accessoryRectangular, .accessoryCircular, .accessoryInline,
+        ])
         // The default container margins are ~16pt a side, and a medium widget
         // is only ~155pt tall — a header plus four rows doesn't fit inside
         // what's left, which is why the bottom row used to run off the edge.
