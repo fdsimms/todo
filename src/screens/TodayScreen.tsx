@@ -3164,17 +3164,31 @@ export function TodayScreen() {
               <Ionicons name="hourglass-outline" size={iconSize.sm} color={colors.textSecondary} />
             </TouchableOpacity>
           )}
-          {/* Gone during a bulk edit. It unpins every task in one tap, with no
-              confirm and no undo, and it sits a thumb's width from the rows
-              being tapped in a mode whose whole gesture is tapping rows — so
-              the one control here that ignores the selection is also the most
-              expensive thing to hit by accident. Unpinning has a home in that
-              mode already, and it's the right one: the bulk bar's Pin/Unpin,
-              which acts on what was picked. The eye stays, because hiding
-              everything but the pinned tasks is a way to *see* the rows you're
-              selecting among, and it's reversible by tapping it again. */}
+          {/* Gone during a bulk edit. It unpins every task in one tap and has
+              no undo, and it sits a thumb's width from the rows being tapped
+              in a mode whose whole gesture is tapping rows — so the one
+              control here that ignores the selection is also the most
+              expensive thing to hit by accident. A confirm is the guard for
+              that: unlike the eye (reversible by tapping again), unpinning
+              everything can't be undone, so it's the one action here worth
+              stopping to ask about. Unpinning has a home in selection mode
+              already, and it's the right one: the bulk bar's Pin/Unpin, which
+              acts on what was picked. */}
           {!selectionMode && (
-            <TouchableOpacity onPress={clearAllPins} hitSlop={8} accessibilityRole="button">
+            <TouchableOpacity
+              onPress={() => {
+                Alert.alert(
+                  'Unpin all tasks?',
+                  'This removes every task from the Pinned Tasks block. Their own rows are unaffected.',
+                  [
+                    { text: 'Cancel', style: 'cancel' },
+                    { text: 'Unpin all', style: 'destructive', onPress: clearAllPins },
+                  ],
+                );
+              }}
+              hitSlop={8}
+              accessibilityRole="button"
+            >
               <Text style={styles.clearText}>Clear</Text>
             </TouchableOpacity>
           )}
