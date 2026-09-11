@@ -14,6 +14,7 @@ import { collectPlannedIngredients } from './mealPlanGroceries';
 import { flattenRecipeIngredients, type ChoiceResolution } from './recipeComponents';
 import { normalizeScale, scaleQuantity } from './recipeScale';
 import { NO_STANDING_SWAPS, type StandingSwapMap } from './standingSwaps';
+import { onHandNameKeys } from './grocerySuggest';
 import { measureQuantity } from './unitConvert';
 
 /**
@@ -467,7 +468,9 @@ export function weekNutrition(
   products: readonly ItemProduct[] = [],
   swaps: StandingSwapMap = NO_STANDING_SWAPS,
 ): RecipeNutrition | null {
-  const planned = collectPlannedIngredients(entries, recipesById, range, swaps);
+  const planned = collectPlannedIngredients(
+    entries, recipesById, range, swaps, onHandNameKeys(items, new Date(), products)
+  );
   if (planned.length === 0) return null;
 
   const byKey = new Map(items.map(i => [i.nameKey, i]));

@@ -1,7 +1,9 @@
 import {
+  applyFoodNutrition,
   applyLabelReading,
   buildPanelNutrition,
   emptyPanelForm,
+  foodNutritionFieldCount,
   labelColumnFieldCount,
   invalidPanelFields,
   panelFormDirty,
@@ -267,5 +269,64 @@ describe('labelColumnFieldCount', () => {
 
   it('counts a stated zero, which is a figure', () => {
     expect(labelColumnFieldCount({ basis: null, amounts: { fatG: 0 } })).toBe(1);
+  });
+});
+
+describe('applyFoodNutrition', () => {
+  it('lays a fetched panel\'s figures into the form as text', () => {
+    const form = applyFoodNutrition(emptyPanelForm(), panel());
+    expect(form.amounts.calorieKcal).toBe('480');
+    expect(form.amounts.fatG).toBe('21');
+    expect(form.basis).toBe('per100g');
+  });
+
+  it('leaves a nutrient the source did not state blank rather than zero', () => {
+    const form = applyFoodNutrition(emptyPanelForm(), panel());
+    expect(form.amounts.fiberG).toBe('');
+    expect(form.amounts.sodiumMg).toBe('');
+  });
+
+  it('does not blank a figure already typed that the source did not state', () => {
+    const typed = { ...emptyPanelForm() };
+    typed.amounts = { ...typed.amounts, fiberG: '2.7' };
+    expect(applyFoodNutrition(typed, panel()).amounts.fiberG).toBe('2.7');
+  });
+
+  it('replaces a figure the source did state', () => {
+    const typed = { ...emptyPanelForm() };
+    typed.amounts = { ...typed.amounts, fatG: '99' };
+    expect(applyFoodNutrition(typed, panel()).amounts.fatG).toBe('21');
+  });
+
+  it('takes the serving line and its weight', () => {
+    const form = applyFoodNutrition(emptyPanelForm(), panel());
+    expect(form.servingText).toBe('2 cookies (30g)');
+    expect(form.servingGrams).toBe('30');
+  });
+
+  it('always takes the basis, which a fetched record must state', () => {
+    const chosen = { ...emptyPanelForm(), basis: 'perServing' as const };
+    expect(applyFoodNutrition(chosen, panel({ basis: 'per100ml' })).basis).toBe('per100ml');
+  });
+
+  it('keeps a typed serving weight when the source stated none', () => {
+    const typed = { ...emptyPanelForm(), servingGrams: '45' };
+    expect(applyFoodNutrition(typed, panel({ servingGrams: null })).servingGrams).toBe('45');
+  });
+
+  it('round-trips through the builder without inventing a figure', () => {
+    const built = buildPanelNutrition(applyFoodNutrition(emptyPanelForm(), panel()), null)!;
+    expect(built.amounts).toEqual({ calorieKcal: 480, fatG: 21 });
+    expect(built.source).toBe('manual');
+  });
+});
+
+describe('foodNutritionFieldCount', () => {
+  it('counts the figures a fetched panel would fill', () => {
+    expect(foodNutritionFieldCount(panel())).toBe(2);
+  });
+
+  it('counts a stated zero, which is a figure', () => {
+    expect(foodNutritionFieldCount(panel({ amounts: { fatG: 0 } }))).toBe(1);
   });
 });

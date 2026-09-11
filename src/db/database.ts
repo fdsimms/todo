@@ -577,7 +577,10 @@ export function initDatabase(): void {
     );
   `);
 
-  // Migrations for existing installs (safe to run multiple times — fails silently if column exists)
+  // Migrations for existing installs (safe to run multiple times — a column
+  // that is already there is skipped, and anything that still slips through
+  // fails silently). Appending here is still the way to add a column, never by
+  // editing the CREATE TABLE above.
   const migrations = [
     'ALTER TABLE tasks ADD COLUMN focused INTEGER NOT NULL DEFAULT 0',
     'ALTER TABLE tasks ADD COLUMN priority INTEGER NOT NULL DEFAULT 0',
@@ -1521,8 +1524,33 @@ export function initDatabase(): void {
     'ALTER TABLE tasks ADD COLUMN medication_amount REAL',
     'ALTER TABLE tasks ADD COLUMN medication_unit TEXT',
   ];
+  // Asking SQLite for a table's columns once is cheaper than handing it every
+  // ALTER for that table and catching the duplicate-column error, and by the
+  // second launch every one of them is a duplicate. The statement's own text
+  // is the only thing consulted, so a migration this can't read (anything but
+  // a plain ADD COLUMN) is simply run and allowed to fail exactly as before.
+  const columnsOf = new Map<string, Set<string>>();
+  const hasColumn = (table: string, column: string): boolean => {
+    let columns = columnsOf.get(table);
+    if (!columns) {
+      // Empty for a table that doesn't exist, which lands on the ALTER and its
+      // catch below — the same path that case took before.
+      columns = new Set(
+        db.getAllSync<{ name: string }>(`PRAGMA table_info(${table})`).map(r => r.name)
+      );
+      columnsOf.set(table, columns);
+    }
+    return columns.has(column);
+  };
   for (const sql of migrations) {
-    try { db.runSync(sql); } catch (_) { /* column already exists */ }
+    const addColumn = /^ALTER TABLE (\w+) ADD COLUMN (\w+)\b/.exec(sql);
+    if (addColumn && hasColumn(addColumn[1], addColumn[2])) continue;
+    try {
+      db.runSync(sql);
+      // So a column this pass just added isn't re-read from a stale set if the
+      // list ever names it twice.
+      if (addColumn) columnsOf.get(addColumn[1])?.add(addColumn[2]);
+    } catch (_) { /* column already exists */ }
   }
 
   // Change tracking for multi-device sync. Ordered deliberately: the columns

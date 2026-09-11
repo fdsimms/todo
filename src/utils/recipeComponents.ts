@@ -29,9 +29,23 @@ import { applyStandingSwap, NO_STANDING_SWAPS, type StandingSwapMap } from './st
  * a `choiceGroup` label, of which exactly one is cooked; which one is a fact
  * about a *meal*, so the pick is stored on MealPlanEntry.recipeChoices and
  * arrives here as a `ChoiceResolution`. Passing none resolves every group to
- * its default, which is what every caller that predates this does implicitly —
- * so an unresolved read is always a complete, cookable dish rather than a
- * partial one.
+ * its default — so an unresolved read is always a complete, cookable dish
+ * rather than a partial one.
+ *
+ * **The default itself prefers whatever's already on hand.**
+ * `ChoiceResolution.onHand` names ingredient nameKeys the caller already has
+ * in the pantry; an unresolved group with an on-hand ingredient among its
+ * options resolves to that ingredient rather than to the first-listed
+ * option, on the reasoning that "I have extra-firm tofu" is a stronger
+ * signal about which dish you're actually cooking than the order the recipe
+ * happened to list its alternatives in. It's computed by the caller from
+ * live pantry state and never persisted, so it tracks the pantry rather than
+ * freezing a pick — this module still reads no store of its own; the set
+ * just rides along as data on `ChoiceResolution`, same as `chosen`. An
+ * explicit `chosen` id always outranks it, and it can only ever promote an
+ * *ingredient* — a component names a dish, not something that can be "on
+ * hand" (see `ChoiceResolution.onHand`'s own doc for why that isn't a
+ * loophole).
  *
  * **A label can be shared across the two lists** — an ingredient and a
  * component both carrying `choiceGroup: 'Rice'` resolve as one exclusive
@@ -164,6 +178,25 @@ export interface ChoiceResolution {
    * nobody asked for.
    */
   undecided?: readonly string[];
+  /**
+   * Ingredient nameKeys the caller already has on hand, computed live from
+   * pantry state (the same "have it" opinion `probablyHaveReason` owns —
+   * callers build this set with it, never a second rule). An unresolved
+   * group prefers an option whose nameKey is in this set over the
+   * first-listed option; an explicit `chosen` id still wins outright.
+   *
+   * **Never promotes a component.** A component names a dish ("Mash"), which
+   * has no nameKey and nothing in a pantry to check — only a `chosen` id can
+   * make a component win its group. So a mixed group ("corn tortillas" the
+   * ingredient vs. "Tortillas de Maíz" the component) can only default to
+   * the ingredient side, same as it already did before this existed; `onHand`
+   * just widens *which* ingredient option that default picks.
+   *
+   * Left unset, resolution is exactly what it always was: the first option.
+   * `allOptions` and `undecided` both ignore it — neither reads a "winner"
+   * at all.
+   */
+  onHand?: ReadonlySet<string>;
 }
 
 /**
@@ -204,6 +237,7 @@ function resolveGroupWinners(
   const componentGroups = groupOptions(recipe.components);
   const ingredientGroups = groupOptions(recipe.ingredients);
   const chosen = new Set(resolution?.chosen ?? []);
+  const onHand = resolution?.onHand;
   const labels = new Set([...ingredientGroups.keys(), ...componentGroups.keys()]);
   for (const label of labels) {
     const ingredients = ingredientGroups.get(label) ?? [];
@@ -212,11 +246,13 @@ function resolveGroupWinners(
       for (const ingredient of ingredients) ingredientIds.add(ingredient.id);
       continue;
     }
-    const options: { id: string; kind: 'ingredient' | 'component' }[] = [
-      ...ingredients.map(i => ({ id: i.id, kind: 'ingredient' as const })),
-      ...components.map(c => ({ id: c.id, kind: 'component' as const })),
+    const options: { id: string; kind: 'ingredient' | 'component'; nameKey: string | null }[] = [
+      ...ingredients.map(i => ({ id: i.id, kind: 'ingredient' as const, nameKey: i.nameKey })),
+      ...components.map(c => ({ id: c.id, kind: 'component' as const, nameKey: null })),
     ];
-    const winner = options.find(o => chosen.has(o.id)) ?? options[0];
+    const winner = options.find(o => chosen.has(o.id))
+      ?? options.find(o => !!o.nameKey && !!onHand?.has(o.nameKey))
+      ?? options[0];
     if (!winner) continue;
     (winner.kind === 'ingredient' ? ingredientIds : componentIds).add(winner.id);
   }
@@ -515,6 +551,8 @@ export interface ChoiceOption {
   name: string;
   /** True for a component whose recipe is gone. Still pickable, contributes nothing. */
   broken: boolean;
+  /** The ingredient's catalog nameKey, or null for a component — see ChoiceResolution.onHand. */
+  nameKey: string | null;
 }
 
 /** One either/or slot: the label, its options, and which one is in force. */
@@ -552,10 +590,24 @@ export interface ChoiceGroup {
    * `'component'` already does, without the caller needing to know about it.
    */
   kind: 'component' | 'ingredient' | 'mixed';
-  /** The alternatives, in list order. The first is the group's default. */
+  /**
+   * The alternatives, in list order. The first is the group's default when
+   * nothing is chosen and nothing else is on hand — see `active` and
+   * ChoiceResolution.onHand.
+   */
   options: ChoiceOption[];
-  /** Whichever option the resolution selects: the chosen one, else the default. */
+  /**
+   * Whichever option the resolution selects: the chosen one, else an
+   * on-hand ingredient among the options, else the first option.
+   */
   active: ChoiceOption;
+  /**
+   * The option this group would resolve to with nothing explicitly chosen
+   * for it — an on-hand ingredient among the options, else the first one.
+   * What `applyChoice` compares a new pick against to decide whether it
+   * still needs storing (see that function's doc comment).
+   */
+  defaultId: string;
 }
 
 /**
@@ -582,14 +634,20 @@ export function recipeChoiceGroups(
   resolution?: ChoiceResolution,
 ): ChoiceGroup[] {
   const chosen = new Set(resolution?.chosen ?? []);
+  const onHand = resolution?.onHand;
   const out: ChoiceGroup[] = [];
   const push = (node: Recipe, label: string, kind: ChoiceGroup['kind'], options: ChoiceOption[]) => {
+    // Same order as resolveGroupWinners: an on-hand ingredient, else the
+    // first option — computed with no regard for `chosen` so it names what
+    // this group would resolve to on its own, for applyChoice to compare against.
+    const defaultOption = options.find(o => !!o.nameKey && !!onHand?.has(o.nameKey)) ?? options[0];
     out.push({
       recipe: node,
       label,
       kind,
       options,
-      active: options.find(o => chosen.has(o.id)) ?? options[0],
+      defaultId: defaultOption.id,
+      active: options.find(o => chosen.has(o.id)) ?? defaultOption,
     });
   };
   // Ingredients before components within one group's *options* (see
@@ -601,10 +659,10 @@ export function recipeChoiceGroups(
     const ingredientsByLabel = groupOptions(node.recipe.ingredients);
     const optionsFor = (label: string): ChoiceOption[] => [
       ...(ingredientsByLabel.get(label) ?? []).map(ingredient =>
-        ({ id: ingredient.id, name: ingredient.name, broken: false })),
+        ({ id: ingredient.id, name: ingredient.name, broken: false, nameKey: ingredient.nameKey })),
       ...(componentsByLabel.get(label) ?? []).map(component => {
         const resolved = resolveComponent(component, recipesById);
-        return { id: component.id, name: resolved.name, broken: !resolved.recipe };
+        return { id: component.id, name: resolved.name, broken: !resolved.recipe, nameKey: null };
       }),
     ];
     const kindFor = (label: string): ChoiceGroup['kind'] =>
@@ -631,7 +689,12 @@ export function recipeChoiceGroups(
  * default drops the entry's answer entirely rather than storing it: an explicit
  * "the usual one" and no answer at all resolve identically, and the shorter
  * list is the one that keeps following the recipe if its default is later
- * reordered.
+ * reordered — or, now, if what's on hand changes. That's why the comparison
+ * is against `group.defaultId` (what this group resolves to with *no*
+ * explicit pick) rather than `group.active.id` (what it resolves to with
+ * whatever was already stored): re-tapping an already-explicit non-default
+ * pick must stay explicit, not collapse into "whatever's on hand right now"
+ * the moment it happens to match.
  */
 export function applyChoice(
   choices: readonly string[],
@@ -640,7 +703,7 @@ export function applyChoice(
 ): string[] {
   const optionIds = new Set(group.options.map(o => o.id));
   const rest = choices.filter(id => !optionIds.has(id));
-  const isDefault = group.options[0]?.id === optionId;
+  const isDefault = group.defaultId === optionId;
   return isDefault || !optionIds.has(optionId) ? rest : [...rest, optionId];
 }
 

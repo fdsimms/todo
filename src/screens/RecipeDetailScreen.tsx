@@ -46,6 +46,7 @@ import {
   catalogMatchSummary,
   matchIngredientsToCatalog,
 } from '../utils/ingredientCatalogMatch';
+import { onHandNameKeys } from '../utils/grocerySuggest';
 import { ListBulkBar } from '../components/ListBulkBar';
 import { RecipeEditor } from '../components/RecipeEditor';
 import { RecipeIngredientSheet } from '../components/RecipeIngredientSheet';
@@ -59,7 +60,7 @@ import { usePlanMeal } from '../hooks/usePlanMeal';
 import { useRecipeTimer } from '../hooks/useRecipeTimer';
 import { useStepTimers } from '../hooks/useStepTimers';
 import { RecipeTimerRow } from '../components/RecipeTimerRow';
-import { NumberPadAccessory } from '../components/NumberPadAccessory';
+import { NumberPadAccessory, NUMBER_PAD_ACCESSORY_ID } from '../components/NumberPadAccessory';
 import { CookModeSheet } from '../components/CookModeSheet';
 import { cookSteps } from '../utils/cookMode';
 import { MAX_STEP_TIMER_SECONDS, formatStepDuration, parseStepDurations, stepDurationOffers } from '../utils/stepTimers';
@@ -130,6 +131,7 @@ export function RecipeDetailScreen() {
   const addEmptySection = useRecipeStore(s => s.addEmptySection);
   const removeEmptySection = useRecipeStore(s => s.removeEmptySection);
   const setVote = useRecipeStore(s => s.setVote);
+  const setCookedWeight = useRecipeStore(s => s.setCookedWeight);
   const addPrepTask = useRecipeStore(s => s.addPrepTask);
   const removePrepTask = useRecipeStore(s => s.removePrepTask);
   const addStep = useRecipeStore(s => s.addStep);
@@ -203,7 +205,11 @@ export function RecipeDetailScreen() {
   // MealPlanEntry.recipeChoices. Starts empty, which is every group on its
   // default — same contract RecipeToListSheet's own `choices` keeps.
   const [choices, setChoices] = useState<string[]>([]);
-  const choiceResolution = useMemo(() => ({ chosen: choices }), [choices]);
+  // Live, not persisted — see recipeComponents.ts's ChoiceResolution.onHand.
+  const choiceResolution = useMemo(
+    () => ({ chosen: choices, onHand: onHandNameKeys(groceryItems, new Date(), itemProducts) }),
+    [choices, groceryItems, itemProducts]
+  );
   const choiceGroups = useMemo(
     () => (recipe ? recipeChoiceGroups(recipe, recipesById, choiceResolution) : []),
     [recipe, recipesById, choiceResolution]
@@ -313,6 +319,12 @@ export function RecipeDetailScreen() {
   const [matchSheetOpen, setMatchSheetOpen] = useState(false);
   const [matchScopeIds, setMatchScopeIds] = useState<readonly string[] | null>(null);
   const [nutritionSheetOpen, setNutritionSheetOpen] = useState(false);
+  // Cooked weight's inline field, right here rather than only in Edit — same
+  // collapse-to-value-until-tapped RecipeEditor's own field uses, just living
+  // on the page it's a caption of. Draft holds the as-written grams
+  // (recipe.cookedWeightG), never the scaled weightLine text below.
+  const [cookedWeightOpen, setCookedWeightOpen] = useState(false);
+  const [cookedWeightDraft, setCookedWeightDraft] = useState('');
   // The banner a multi-line paste leaves behind, or null once dismissed or
   // acted on. Session-only and deliberately not persisted: it reports on one
   // paste that just happened, and a banner still sitting there tomorrow would
@@ -595,6 +607,28 @@ export function RecipeDetailScreen() {
   };
 
   // ==== actions: add to list, share, plan, edit an ingredient ====
+  // Cooked weight commits immediately, the way the step timer/note fields
+  // below do — there's no Save button on this screen to hold it for, unlike
+  // RecipeEditor's own copy of this field. setCookedWeight does the clamping
+  // (see clampCookedWeight), so a stray non-numeric draft just clears it.
+  const openCookedWeight = () => {
+    haptics.tap();
+    animateLayout();
+    setCookedWeightDraft(recipe.cookedWeightG === null ? '' : String(recipe.cookedWeightG));
+    setCookedWeightOpen(true);
+  };
+
+  const commitCookedWeight = () => {
+    const trimmed = cookedWeightDraft.trim();
+    setCookedWeight(recipe.id, trimmed ? Number(trimmed.replace(',', '.')) : null);
+  };
+
+  const closeCookedWeight = () => {
+    commitCookedWeight();
+    animateLayout();
+    setCookedWeightOpen(false);
+  };
+
   const addToList = () => {
     if (shoppableCount === 0) return;
     haptics.tap();
@@ -1541,12 +1575,57 @@ export function RecipeDetailScreen() {
             doubled cost. Renders nothing rather than a guess while too few
             lines are priced to say (see recipeCost.ts's coverage floor). */}
         {!!costLine && <Text style={styles.summary}>{costLine}</Text>}
-        {/* What the finished dish weighs, when somebody has weighed it (see
-            Recipe.cookedWeightG). It sits with the cost and nutrition captions
-            because it is the third thing measured about the dish rather than
-            written in it, and it carries no "≈": this one came off a scale.
-            Scaled with the chips, like the cost above. */}
-        {!!weightLine && <Text style={styles.summary}>{weightLine}</Text>}
+        {/* What the finished dish weighs (see Recipe.cookedWeightG). It sits
+            with the cost and nutrition captions because it is the third thing
+            measured about the dish rather than written in it, and it carries
+            no "≈": this one came off a scale. weightLine is scaled with the
+            chips like the cost above, but the row stays tappable whether or
+            not a weight is set yet — RecipeEditor keeps the same field, but
+            asking here is the point: no need to leave the page for it. */}
+        {!selectionMode && (
+          <TouchableOpacity
+            style={styles.matchSummaryRow}
+            activeOpacity={interaction.activeOpacity}
+            onPress={cookedWeightOpen ? closeCookedWeight : openCookedWeight}
+            accessibilityRole="button"
+            accessibilityLabel={weightLine ?? 'Set cooked weight'}
+            accessibilityHint="How much the whole finished dish weighs"
+          >
+            <Ionicons name="scale-outline" size={iconSize.sm} color={colors.textSecondary} />
+            <Text style={styles.matchSummaryText}>{weightLine ?? 'Set cooked weight'}</Text>
+            <Ionicons
+              name={cookedWeightOpen ? 'chevron-up' : 'chevron-forward'}
+              size={14}
+              color={colors.textTertiary}
+            />
+          </TouchableOpacity>
+        )}
+        {cookedWeightOpen && (
+          <View style={styles.weightEditRow}>
+            <TextInput
+              style={styles.weightEditInput}
+              value={cookedWeightDraft}
+              onChangeText={setCookedWeightDraft}
+              onBlur={commitCookedWeight}
+              onSubmitEditing={closeCookedWeight}
+              keyboardType="decimal-pad"
+              inputAccessoryViewID={NUMBER_PAD_ACCESSORY_ID}
+              placeholder="e.g. 1450"
+              placeholderTextColor={colors.textTertiary}
+              maxLength={6}
+              returnKeyType="done"
+              autoFocus
+              accessibilityLabel="Cooked weight in grams"
+            />
+            <Text style={styles.weightEditUnit}>g</Text>
+          </View>
+        )}
+        {cookedWeightOpen && (
+          <Text style={styles.inputHint}>
+            What the whole dish weighs, as written. Logging a plate of it then works out from
+            what your plate weighs instead of from servings.
+          </Text>
+        )}
         {/* The one summary here that opens onto something. Its coverage clause
             names how many ingredients were left out, which was a number with
             nowhere to go until the sheet behind it existed — so it takes the
@@ -2524,6 +2603,25 @@ const makeStyles = (colors: Colors) => StyleSheet.create({
     flex: 1,
     fontSize: font.sm,
     color: colors.textSecondary,
+  },
+  // The cooked-weight row's own inline field, open only while cookedWeightOpen
+  // is true — same shape CookRecapSheet's weight row uses.
+  weightEditRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: spacing.sm,
+    paddingHorizontal: spacing.xs,
+    paddingVertical: spacing.xs,
+  },
+  weightEditInput: {
+    flex: 1,
+    color: colors.text,
+    fontSize: font.md,
+    paddingVertical: spacing.xs,
+  },
+  weightEditUnit: {
+    color: colors.textSecondary,
+    fontSize: font.sm,
   },
   pasteBanner: {
     flexDirection: 'row',
