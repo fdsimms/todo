@@ -1,6 +1,6 @@
 import {
   isFieldMissing, isBackfillDismissed, backfillCandidates, backfillFieldCounts,
-  dismissBackfillField, estimatePatchFor, BACKFILL_FIELDS,
+  dismissBackfillField, estimatePatchFor, BACKFILL_FIELDS, backfillFieldsFor,
 } from '../utils/fieldBackfill';
 import type { Task, Category } from '../types';
 
@@ -438,5 +438,27 @@ describe('estimatePatchFor', () => {
 
   it('maps the unknown bucket to a null estimate', () => {
     expect(estimatePatchFor(0)).toEqual({ effort: 0, estimatedMinutes: null });
+  });
+});
+
+describe('backfillFieldsFor', () => {
+  it('offers every field when simplified mode is off', () => {
+    expect(backfillFieldsFor(false)).toEqual(BACKFILL_FIELDS);
+  });
+
+  // The gap this closes: `TaskEditor` and `QuickAddModal` both gate on these
+  // three, and this screen gated on nothing — so simplified mode took effort,
+  // streak options and vacation pause off every other surface and left a
+  // wizard walking you through all three.
+  it('drops the three fields simplified mode takes away elsewhere', () => {
+    const ids = backfillFieldsFor(true).map(f => f.id);
+    expect(ids).not.toContain('estimate');
+    expect(ids).not.toContain('streak');
+    expect(ids).not.toContain('vacation');
+  });
+
+  it('keeps the fields the mode never touches, in their own order', () => {
+    expect(backfillFieldsFor(true).map(f => f.id))
+      .toEqual(['priority', 'category', 'reminder', 'suggestions']);
   });
 });
