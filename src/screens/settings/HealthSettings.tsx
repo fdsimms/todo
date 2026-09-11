@@ -228,8 +228,8 @@ export function HealthSettings() {
         >
           <SettingsRow
             entryId="healthWrite"
-            icon="water-outline"
-            label="Log water to Health"
+            icon="create-outline"
+            label="Log to Health"
             hint="Not available on this device"
             disabled
           />

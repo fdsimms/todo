@@ -40,8 +40,9 @@ import { addDays } from 'date-fns/addDays';
 import { subDays } from 'date-fns/subDays';
 import { subMinutes } from 'date-fns/subMinutes';
 import { differenceInCalendarDays } from 'date-fns/differenceInCalendarDays';
-import type { Task, Priority, Effort, FollowUpTaskDraft, RecurrenceType, ChainItem, DeliverableKind, TimeOfDay, ReminderKind, Polarity, QuotaPeriod } from '../types';
-import { PRIORITY_LABELS, EFFORT_LABELS, TITLE_MAX_LENGTH } from '../types';
+import type { Task, Priority, Effort, FollowUpTaskDraft, RecurrenceType, ChainItem, DeliverableKind, TimeOfDay, ReminderKind, Polarity, QuotaPeriod, NutrientKey } from '../types';
+import { PRIORITY_LABELS, EFFORT_LABELS, TITLE_MAX_LENGTH, NUTRIENT_KEYS } from '../types';
+import { NUTRIENT_LABEL } from '../utils/foodNutrition';
 import { useColors, useTheme } from '../theme/ThemeContext';
 import { spacing, radius, font, border, interaction, animation, checkboxRadius, iconSize, type Colors } from '../theme';
 import { haptics } from '../utils/haptics';
@@ -186,7 +187,8 @@ export interface TaskDraft {
   groupId?: string | null;
   linkUrl?: string | null;
   completionTimerMinutes?: number | null;
-  logWaterMl?: number | null;
+  logHealthMetric?: NutrientKey | null;
+  logHealthAmount?: number | null;
   phoneNumber?: string | null;
   emailAddress?: string | null;
   location?: string | null;
@@ -217,7 +219,7 @@ type PickerMode = 'none' | 'reminder';
 type DraftSubtask = { id: string; title: string; completed: boolean; timedMinutes: number | null };
 
 /** Editor sections that collapse to a one-line summary of their current value. */
-type FieldKey = 'stack' | 'category' | 'project' | 'tags' | 'people' | 'waitingOnPerson' | 'priority' | 'effort' | 'duration' | 'subtasks' | 'chainSteps' | 'deliverable' | 'completionTimer' | 'logWaterMl';
+type FieldKey = 'stack' | 'category' | 'project' | 'tags' | 'people' | 'waitingOnPerson' | 'priority' | 'effort' | 'duration' | 'subtasks' | 'chainSteps' | 'deliverable' | 'completionTimer' | 'logHealthValue';
 
 // Presets for the Duration field, in minutes — the common "do this for a bit"
 // spans, including the 25-minute pomodoro.
@@ -241,11 +243,23 @@ const MAX_STREAK_COUNT = 9999;
 const COMPLETION_TIMER_STEP_MINUTES = 15;
 const MAX_COMPLETION_TIMER_MINUTES = 24 * 60;
 
-// A glass at a time, up to a generous single serving — this logs one
-// completion's worth of water, not a running daily total, so there's no
-// reason for the ceiling to approach a whole day's intake.
-const LOG_WATER_STEP_ML = 50;
-const MAX_LOG_WATER_ML = 1000;
+// Step and ceiling for one completion's worth of a nutrient, keyed the same
+// way NUTRIENT_LABEL is. This logs a single completion, not a running daily
+// total, so every ceiling is sized to a generous single serving rather than
+// to a whole day's intake — waterMl's 1000mL/50mL step is the original
+// water-only feature's own numbers, kept unchanged for it.
+const LOG_HEALTH_VALUE_STEPS: Record<NutrientKey, { step: number; max: number }> = {
+  calorieKcal: { step: 50, max: 1500 },
+  proteinG: { step: 5, max: 100 },
+  carbsG: { step: 5, max: 150 },
+  fatG: { step: 5, max: 100 },
+  satFatG: { step: 1, max: 50 },
+  fiberG: { step: 1, max: 30 },
+  sugarG: { step: 1, max: 50 },
+  sodiumMg: { step: 100, max: 3000 },
+  caffeineMg: { step: 10, max: 500 },
+  waterMl: { step: 50, max: 1000 },
+};
 
 
 export function TaskEditor({ visible, task, initialDraft, onClose }: Props) {
@@ -437,7 +451,8 @@ export function TaskEditor({ visible, task, initialDraft, onClose }: Props) {
   const [excludeFromSuggestions, setExcludeFromSuggestions] = useState(false);
   const [linkUrl, setLinkUrl] = useState<string | null>(null);
   const [completionTimerMinutes, setCompletionTimerMinutes] = useState<number | null>(null);
-  const [logWaterMl, setLogWaterMl] = useState<number | null>(null);
+  const [logHealthMetric, setLogHealthMetric] = useState<NutrientKey | null>(null);
+  const [logHealthAmount, setLogHealthAmount] = useState<number | null>(null);
   const [blockedById, setBlockedById] = useState<string | null>(null);
   const [waitingOnPersonId, setWaitingOnPersonId] = useState<string | null>(null);
   const [deliverableKind, setDeliverableKind] = useState<DeliverableKind | null>(null);
@@ -680,7 +695,8 @@ export function TaskEditor({ visible, task, initialDraft, onClose }: Props) {
       setStreakRequiresWindow(task.streakRequiresWindow ?? false);
       setLinkUrl(task.linkUrl ?? null);
       setCompletionTimerMinutes(task.completionTimerMinutes ?? null);
-      setLogWaterMl(task.logWaterMl ?? null);
+      setLogHealthMetric(task.logHealthMetric ?? null);
+      setLogHealthAmount(task.logHealthAmount ?? null);
       setPhoneNumber(task.phoneNumber ?? null);
       setEmailAddress(task.emailAddress ?? null);
       setLocation(task.location ?? null);
@@ -716,7 +732,8 @@ export function TaskEditor({ visible, task, initialDraft, onClose }: Props) {
       setStreakRequiresWindow(false);
       setLinkUrl(initialDraft?.linkUrl ?? null);
       setCompletionTimerMinutes(initialDraft?.completionTimerMinutes ?? null);
-      setLogWaterMl(initialDraft?.logWaterMl ?? null);
+      setLogHealthMetric(initialDraft?.logHealthMetric ?? null);
+      setLogHealthAmount(initialDraft?.logHealthAmount ?? null);
       setPhoneNumber(initialDraft?.phoneNumber ?? null);
       setEmailAddress(initialDraft?.emailAddress ?? null);
       setLocation(initialDraft?.location ?? null);
@@ -822,7 +839,8 @@ export function TaskEditor({ visible, task, initialDraft, onClose }: Props) {
       streakRequiresWindow: task?.streakRequiresWindow ?? false,
       linkUrl: task ? (task.linkUrl ?? null) : (initialDraft?.linkUrl ?? null),
       completionTimerMinutes: task ? (task.completionTimerMinutes ?? null) : (initialDraft?.completionTimerMinutes ?? null),
-      logWaterMl: task ? (task.logWaterMl ?? null) : (initialDraft?.logWaterMl ?? null),
+      logHealthMetric: task ? (task.logHealthMetric ?? null) : (initialDraft?.logHealthMetric ?? null),
+      logHealthAmount: task ? (task.logHealthAmount ?? null) : (initialDraft?.logHealthAmount ?? null),
       phoneNumber: task ? (task.phoneNumber ?? null) : (initialDraft?.phoneNumber ?? null),
       emailAddress: task ? (task.emailAddress ?? null) : (initialDraft?.emailAddress ?? null),
       location: task ? (task.location ?? null) : (initialDraft?.location ?? null),
@@ -1113,7 +1131,8 @@ export function TaskEditor({ visible, task, initialDraft, onClose }: Props) {
       streakRequiresWindow: recurrenceType !== 'none' && streakRequiresWindow,
       linkUrl: resolveLinkUrl(),
       completionTimerMinutes,
-      logWaterMl,
+      logHealthMetric,
+      logHealthAmount,
       phoneNumber: resolvePhoneNumber(),
       emailAddress: resolveEmailAddress(),
       location: resolveLocation(),
@@ -1647,7 +1666,8 @@ export function TaskEditor({ visible, task, initialDraft, onClose }: Props) {
       streakRequiresWindow,
       linkUrl,
       completionTimerMinutes,
-      logWaterMl,
+      logHealthMetric,
+      logHealthAmount,
       phoneNumber,
       emailAddress,
       location,
@@ -3044,35 +3064,63 @@ export function TaskEditor({ visible, task, initialDraft, onClose }: Props) {
           // A third "what does completing this mean" question, same family as
           // the calendar toggle right above — opt-in, gated on a Settings
           // switch it can't turn on for itself, same disabled/hint shape.
-          // A number rather than a toggle, unlike the calendar row: the
-          // calendar event's content is fixed (the task's own title), but
-          // "how much water" has no single obvious answer to bake in.
+          // A metric-and-number pair rather than a toggle, unlike the
+          // calendar row: the calendar event's content is fixed (the task's
+          // own title), but "how much of what" has no single obvious answer
+          // to bake in — this used to log dietary water only.
           {
-            key: 'logWaterMl', label: 'Log water to Health', set: logWaterMl !== null,
-            keywords: ['water', 'hydration', 'drink', 'health', 'apple health'],
+            key: 'logHealthValue', label: 'Log to Health',
+            set: logHealthMetric !== null && logHealthAmount !== null,
+            keywords: ['water', 'hydration', 'drink', 'health', 'apple health', 'nutrient', 'protein', 'sodium', 'calories', 'sugar', 'fiber', 'fat', 'carbs', 'caffeine'],
             node: (
               <CollapsibleField
-                label="Log water to Health"
-                summary={logWaterMl !== null ? `${logWaterMl}mL when completed` : undefined}
+                label="Log to Health"
+                summary={
+                  logHealthMetric !== null && logHealthAmount !== null
+                    ? `${logHealthAmount}${NUTRIENT_LABEL[logHealthMetric].unit} of ${NUTRIENT_LABEL[logHealthMetric].label.toLowerCase()} when completed`
+                    : undefined
+                }
                 hint={
                   healthWriteEnabled
-                    ? 'Writes a dietary water sample to Apple Health each time you complete this task.'
+                    ? 'Writes one sample to Apple Health each time you complete this task.'
                     : 'Turn on writing to Health in Settings › Health first'
                 }
-                expanded={healthWriteEnabled && fieldOpen('logWaterMl')}
-                onToggle={() => { if (!healthWriteEnabled) return; toggleField('logWaterMl'); }}
+                expanded={healthWriteEnabled && fieldOpen('logHealthValue')}
+                onToggle={() => { if (!healthWriteEnabled) return; toggleField('logHealthValue'); }}
               >
+                <SegmentedControl<NutrientKey>
+                  options={NUTRIENT_KEYS.map(key => ({ value: key, label: NUTRIENT_LABEL[key].label }))}
+                  value={logHealthMetric ?? 'waterMl'}
+                  onChange={next => {
+                    haptics.tap();
+                    setLogHealthMetric(next);
+                    // Re-defaulted rather than carried over, same reasoning
+                    // the health-target metric switch above uses: 250 of
+                    // whatever the old metric was is not a meaningful amount
+                    // of the new one, so switching starts back at one step.
+                    setLogHealthAmount(LOG_HEALTH_VALUE_STEPS[next].step);
+                  }}
+                  columns={2}
+                  label="Nutrient"
+                  surface="card"
+                />
                 <CountStepper
-                  value={logWaterMl}
-                  onChange={setLogWaterMl}
-                  min={LOG_WATER_STEP_ML}
-                  max={MAX_LOG_WATER_ML}
-                  step={LOG_WATER_STEP_ML}
+                  value={logHealthAmount}
+                  onChange={next => {
+                    setLogHealthAmount(next);
+                    // Stepping up from Off before ever touching the picker
+                    // above still has to turn the row on for some metric —
+                    // water, the same default this feature started as.
+                    if (next !== null && logHealthMetric === null) setLogHealthMetric('waterMl');
+                  }}
+                  min={LOG_HEALTH_VALUE_STEPS[logHealthMetric ?? 'waterMl'].step}
+                  max={LOG_HEALTH_VALUE_STEPS[logHealthMetric ?? 'waterMl'].max}
+                  step={LOG_HEALTH_VALUE_STEPS[logHealthMetric ?? 'waterMl'].step}
                   allowNull
                   emptyLabel="Off"
-                  label="Log water to Health"
-                  format={n => `${n}mL`}
-                  describeValue={n => (n === null ? 'off' : `${n} millilitres`)}
+                  label="Log to Health"
+                  format={n => `${n}${NUTRIENT_LABEL[logHealthMetric ?? 'waterMl'].unit}`}
+                  describeValue={n => (n === null ? 'off' : `${n} ${NUTRIENT_LABEL[logHealthMetric ?? 'waterMl'].unit}`)}
                 />
               </CollapsibleField>
             ),

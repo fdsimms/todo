@@ -3,10 +3,10 @@
 The whole of it: the bridge, the store, the Settings section, the row on Today,
 the Mood screen's health axis, the `health` generator, the short-night line
 under "Lighten today", the Weight screen and its chart, and the three things
-this app writes back — a dietary-water sample, on completion of a task that
-opted into it; a body-mass sample, when somebody records a weight; and a meal's
-nutrition, when somebody adds it to the food log — plus the rules any further
-reader or writer has to be built against.
+this app writes back — a nutrient sample, on completion of a task that opted
+into logging one; a body-mass sample, when somebody records a weight; and a
+meal's nutrition, when somebody adds it to the food log — plus the rules any
+further reader or writer has to be built against.
 
 Read this before touching `modules/todo-health-bridge/`,
 `src/utils/healthBridge.ts`, `src/utils/healthCompletionSync.ts`,
@@ -122,17 +122,32 @@ reading taken there is the real person's, shown beside seeded fiction, in a
 database about to be discarded. Nothing is seeded in `demoSeed.ts` for the
 *reading* itself, and that is not an oversight: nothing here writes a row for
 it, so there is nothing a seed could show, and the honest demo of a health
-reading is its absence. (A demo task can still carry `logWaterMl` — see the
-next section for why that's a different case.)
+reading is its absence. (A demo task can still carry `logHealthMetric` — see
+the next section for why that's a different case.)
 
-## Writing exactly one thing: dietary water
+## Writing what a task names: a logged nutrient
 
 Everything above this section is still exactly true: every read stays
 read-only, and this app never infers, diagnoses, or has an opinion about a
-body from a number it read. What changed is that the app now *writes* one
-thing of its own — a dietary-water sample, when a task the user set up to log
-it completes — and that capability earned enough new rules to need its own
-section rather than a footnote on the reading ones.
+body from a number it read. What changed is that the app now *writes*
+something of its own when a task the user set up to log it completes — a
+sample of whatever `NutrientKey` the task names, in that nutrient's own
+unit — and that capability earned enough new rules to need its own section
+rather than a footnote on the reading ones.
+
+**This shipped as dietary water only, and was generalized later.** The
+feature's shape below — one place it fires from, opt-in per task, one-shot,
+gated separately from reading — was all argued out for water alone; nothing
+about it needed to change to widen from one nutrient to ten; what changed is
+`Task.logWaterMl` (a bare millilitre count) became `Task.logHealthMetric` +
+`Task.logHealthAmount` (which nutrient, and how much of it), and the native
+write (`writeWaterSample`, one hardcoded share type) became
+`writeNutrientSample`, which resolves the task's chosen key against the same
+`nutrientWriteTable` the food-log write (see "The third write" below)
+already had to build. **No new share type was added for this**: every
+nutrient a task can now log is one `writeFoodSamples` already had a
+`HKQuantityTypeIdentifier` for, so the write authorization sheet a task's
+picker can trigger is unchanged from what logging a meal already asks for.
 
 **Read and write are not the same kind of risk, and the asymmetry runs through
 every design choice below.** A read that leaks (shown in the wrong place, or
@@ -165,26 +180,28 @@ one place.
   "Allowed" / "Not allowed" / "Not asked yet" — the one place in this screen
   that gets to say what `CalendarSettings`' access row says, rather than the
   read row's necessarily vaguer "have you been asked" phrasing.
-- **There is one write type, and adding a second is not a small decision.**
-  `writeTypes` in the Swift module is deliberately not generalized the way
-  `readTypes` is (a `Record` keyed by an ever-growing metric union) — a share
-  type is a real consequence landing in somebody's actual Health record, so
-  each one earns its own review rather than riding in with whatever the read
-  side happens to be reading that month. `dietaryWater` is the one type
-  today, chosen because it's the one thing a "drink water" task has an
-  unambiguous, undisputed amount to write — there's no equivalent obvious
-  number for, say, a stretching task.
+- **Adding a genuinely new share type is still not a small decision** —
+  that part of the old rule holds. `writeTypes` in the Swift module is
+  deliberately not generalized the way `readTypes` is (a `Record` keyed by an
+  ever-growing metric union): a share type is a real consequence landing in
+  somebody's actual Health record, so each one earned its own review rather
+  than riding in with whatever the read side happened to be reading that
+  month. What *did* turn out to be small was widening which of the
+  already-reviewed ten a task may target, because none of them needed a new
+  type — the review for all ten happened together, for the food-log write
+  (see "The third write" below), before a task could reach any of them.
 - **The write is triggered from exactly one place, opt-in per task, and
-  one-shot.** `Task.logWaterMl` (a number, not a boolean-plus-amount pair,
-  so "off" and "log 0mL" can't become two different ways to say nothing
-  happens) is read only by `completeTask` in `useTaskStore.ts`, which calls
-  `logTaskWaterToHealth` (`src/utils/healthCompletionSync.ts`) the moment a
-  task is marked completed — the exact shape `logTaskCompletionToCalendar`
-  already established for the completion-calendar event beside it, copied
+  one-shot.** `Task.logHealthMetric` and `Task.logHealthAmount` (two fields
+  rather than a boolean-plus-amount pair, so "off" and "log 0" can't become
+  two different ways to say nothing happens) are read only by `completeTask`
+  in `useTaskStore.ts`, which calls `logTaskHealthValue`
+  (`src/utils/healthCompletionSync.ts`) the moment a task is marked
+  completed — the exact shape `logTaskCompletionToCalendar` already
+  established for the completion-calendar event beside it, copied
   deliberately rather than reinvented. Like that one, it is a historical
   record with no delete-on-uncomplete and no reconciler: nothing calls it
   from anywhere else, because a caller that looped it into a save or an edit
-  path would write water nobody drank.
+  path would write an amount nobody actually logged.
 - **`healthBridge()`'s demo-mode gate is sharper for this write than for any
   read it already covered.** The gate's own module comment used to describe
   the worst case a leak could cause as "a true number in a fictional
@@ -193,18 +210,18 @@ one place.
   session would put a *real* sample, sourced from a completion that never
   happened, into the person's *actual* Health record, outliving the demo
   session by however long until they happen to notice and delete it by hand.
-  `logTaskWaterToHealth` checks `isDemoModeActive()` first, before anything
+  `logTaskHealthValue` checks `isDemoModeActive()` first, before anything
   else, for exactly this reason — see its own doc comment.
-- **A demo task may still carry `logWaterMl`, and that's not a contradiction
-  of the demo-mode gate above.** The gate stops the *write*; it says nothing
-  about whether a seeded task's fields may show the feature exists. Since the
-  write path refuses unconditionally in demo mode regardless of what
-  `logWaterMl` holds, seeding a demo "Drink water" task with it set
-  demonstrates the setting exists (opening its editor shows "Log water to
-  Health" already on) without ever being able to trigger the write it
-  describes — the same reasoning that lets `demoSeed.ts` seed
-  `logCompletionToCalendar` on a task despite the calendar write it names
-  being equally gated.
+- **A demo task may still carry `logHealthMetric`/`logHealthAmount`, and
+  that's not a contradiction of the demo-mode gate above.** The gate stops
+  the *write*; it says nothing about whether a seeded task's fields may show
+  the feature exists. Since the write path refuses unconditionally in demo
+  mode regardless of what those fields hold, seeding a demo "Drink water"
+  task with them set would demonstrate the setting exists (opening its
+  editor shows "Log to Health" already on) without ever being able to
+  trigger the write it describes — the same reasoning that lets
+  `demoSeed.ts` seed `logCompletionToCalendar` on a task despite the
+  calendar write it names being equally gated.
 - **App Store's Info.plist strings had to change, not just get a second
   key.** `NSHealthShareUsageDescription` and `NSHealthUpdateUsageDescription`
   (`app.json`'s `ios.infoPlist`) both used to say, truthfully at the time,
@@ -242,7 +259,7 @@ water, because everywhere it doesn't, the rules above are the rules.
   two access rows in Settings and still **one** app-level switch: "may this app
   put samples in my Health record" is asked once, and which types is Health's
   question rather than this app's.
-- **Failures are surfaced rather than swallowed.** `logTaskWaterToHealth`
+- **Failures are surfaced rather than swallowed.** `logTaskHealthValue`
   returns a bare boolean because nobody is watching a completion and no failure
   is worth interrupting them over. `logWeightToHealth` returns which failure it
   was, because a person is standing there having just typed a number, and the
@@ -408,9 +425,9 @@ rest of that file is a native call nothing can test.
 This is the first thing in the app that can un-write, and the reason this was
 not a small change.
 
-`writeWaterSample` and `writeBodyMassSample` each build one sample, save it,
+`writeNutrientSample` and `writeBodyMassSample` each build one sample, save it,
 return a bool and keep nothing. That is right for both: Health is the record,
-and neither a logged drink nor a recorded weight has an edit path here. A food
+and neither a task's logged amount nor a recorded weight has an edit path here. A food
 log cannot work that way. An entry is logged in a hurry against a picker, and a
 mistyped one that could not be retracted would be a permanent false fact in a
 medical record, survivable only by manual deletion nobody would know to go
@@ -476,9 +493,9 @@ guess.
   `healthReadEnabled`. Somebody who turned on step reading must not find a
   nutrition sharing sheet in front of them.
 - **Demo mode refuses twice**, in `healthBridge()` and again at the top of
-  `logFoodEntryToHealth`. Same reasoning as the water write's, and a seeded
-  food log entry may exist for the same reason a demo task may carry
-  `logWaterMl`: the gate stops the write, not the demonstration that the
+  `logFoodEntryToHealth`. Same reasoning as the nutrient write's, and a
+  seeded food log entry may exist for the same reason a demo task may carry
+  `logHealthMetric`: the gate stops the write, not the demonstration that the
   feature exists.
 - **One trigger.** `addEntry` in `useFoodLogStore` is the only caller of
   `logFoodEntryToHealth`, and nothing else may become one. No reconciler, no
@@ -860,8 +877,8 @@ metric costs a bigger permission sheet; a further write type costs a real
 sample landing in somebody's actual Health record if anything about it is
 wrong. The jump from two types to twelve was one review, not ten: the ten
 nutrients are one capability (a logged meal) and were argued for together. See
-"Writing exactly one thing: dietary water", "The second write: body mass" and
-"The third write: a logged meal" above for the arguments in full — they are
+"Writing what a task names: a logged nutrient", "The second write: body mass"
+and "The third write: a logged meal" above for the arguments in full — they are
 deliberately not summarized here, because collapsing them to a sentence is
 exactly the kind of thing that invites re-deriving them wrong later.
 

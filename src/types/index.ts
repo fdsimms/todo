@@ -1401,16 +1401,20 @@ export interface Task {
   // completion in the app. See completionCalendarEventId below and
   // logCompletionEvent in useTaskStore.ts.
   logCompletionToCalendar: boolean;
-  // Millilitres of water written to Apple Health as a dietary-water sample
-  // each time this task completes, or null when it isn't logged. Opt-in per
-  // task and gated on Settings' healthWriteEnabled the same way
-  // logCompletionToCalendar is gated on completionCalendarId — this is the
-  // number, not a boolean, because "off" and "log 0mL" would otherwise be
-  // two different ways to say nothing happened. One-shot like the completion
-  // calendar event: no delete-on-uncomplete, because a logged drink is a
-  // historical record. See logTaskWaterToHealth in
-  // src/utils/healthCompletionSync.ts and docs/arch/health-data.md.
-  logWaterMl: number | null;
+  // Which nutrient (see NutrientKey) is written to Apple Health as a sample
+  // each time this task completes, or null when nothing is logged.
+  // logHealthAmount is the amount, in that nutrient's own unit — a task
+  // logging water this way stores 'waterMl' here and the millilitres there.
+  // Two fields rather than a boolean-plus-amount pair, same reasoning this
+  // field's predecessor (logWaterMl) had: "off" and "log 0" would otherwise
+  // be two different ways to say nothing happened. Opt-in per task and gated
+  // on Settings' healthWriteEnabled the same way logCompletionToCalendar is
+  // gated on completionCalendarId. One-shot like the completion calendar
+  // event: no delete-on-uncomplete, because a logged sample is a historical
+  // record. See logTaskHealthValue in src/utils/healthCompletionSync.ts and
+  // docs/arch/health-data.md.
+  logHealthMetric: NutrientKey | null;
+  logHealthAmount: number | null;
   deferUntil: string | null;
   timeSegments: TimeOfDay[];
   windowStart: string | null; // "HH:MM" — task only becomes visible/active from this time on its day

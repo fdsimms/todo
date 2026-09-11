@@ -1,6 +1,6 @@
 import * as SQLite from 'expo-sqlite';
-import type { Cookbook, DeliverableKind, FoodLogEntry, GeneratedKind, LoggedSymptom, MoodLevel, MoodLog, Person, PersonGroup, PersonNote, PersonNoteKind, Task, Category, GroceryItem, GroceryList, GroceryListEntry, GtinLookup, ItemProduct, ItemShopLink, ItemSubLink, Leftover, MealPlanEntry, MealSlot, Recipe, RecipeMealType, RecipeSourceType, RecipeVote, ReceiptStyle, Shop, StoreAlias, TaskGroup, FocusSession, FocusSessionRecord, FocusStep, FocusStepRecord, Project, ProjectCategory, TaskTemplate, TemplateCategory, TemplateContainer, TemplateItem, TemplateItemGroup, TemplateQuestion, TemplateSchedule, TimeOfDay } from '../types';
-import { DEFAULT_NUDGE_CADENCE_DAYS, MEAL_SLOTS, PERSON_NOTE_KINDS, RECIPE_MEAL_TYPES, RECIPE_SOURCE_TYPES, isReceiptStyle } from '../types';
+import type { Cookbook, DeliverableKind, FoodLogEntry, GeneratedKind, LoggedSymptom, MoodLevel, MoodLog, NutrientKey, Person, PersonGroup, PersonNote, PersonNoteKind, Task, Category, GroceryItem, GroceryList, GroceryListEntry, GtinLookup, ItemProduct, ItemShopLink, ItemSubLink, Leftover, MealPlanEntry, MealSlot, Recipe, RecipeMealType, RecipeSourceType, RecipeVote, ReceiptStyle, Shop, StoreAlias, TaskGroup, FocusSession, FocusSessionRecord, FocusStep, FocusStepRecord, Project, ProjectCategory, TaskTemplate, TemplateCategory, TemplateContainer, TemplateItem, TemplateItemGroup, TemplateQuestion, TemplateSchedule, TimeOfDay } from '../types';
+import { DEFAULT_NUDGE_CADENCE_DAYS, MEAL_SLOTS, NUTRIENT_KEYS, PERSON_NOTE_KINDS, RECIPE_MEAL_TYPES, RECIPE_SOURCE_TYPES, isReceiptStyle } from '../types';
 import { generateId } from '../utils/id';
 import { appendPriceObservation, parsePriceHistory } from '../utils/priceHistory';
 import { parseFoodNutrition, serializeFoodNutrition } from '../utils/foodNutrition';
@@ -1393,7 +1393,10 @@ export function initDatabase(): void {
     'ALTER TABLE tasks ADD COLUMN completion_timer_minutes INTEGER',
     // Null on every existing row, same reasoning as completion_timer_minutes
     // above: writing to Health is an opt-in a task doesn't have until someone
-    // sets it. See Task.logWaterMl.
+    // sets it. Superseded by log_health_metric/log_health_amount below, which
+    // generalized this from water-only to any nutrient — kept on the schema
+    // and read as a fallback in rowToTask, since dropping a column an
+    // existing row's data lives in would lose that row's setting on upgrade.
     'ALTER TABLE tasks ADD COLUMN log_water_ml INTEGER',
     // Freeform, non-symptom context ("vacation", "big deadline") — see
     // MoodLog.contextTags. Same shape as symptoms minus severity.
@@ -1450,6 +1453,13 @@ export function initDatabase(): void {
     // for the same reason: nothing before this weighed one, and there is no
     // figure to derive one from. See Leftover.weightG.
     'ALTER TABLE leftovers ADD COLUMN weight_g REAL',
+    // Generalizes log_water_ml (still on the schema below, read as a fallback
+    // in rowToTask for rows written before this) from "water only" to any
+    // NutrientKey. NULL on every existing row; a row that already had
+    // log_water_ml set keeps working via that fallback rather than losing the
+    // setting on upgrade. See Task.logHealthMetric / Task.logHealthAmount.
+    'ALTER TABLE tasks ADD COLUMN log_health_metric TEXT',
+    'ALTER TABLE tasks ADD COLUMN log_health_amount REAL',
   ];
   for (const sql of migrations) {
     try { db.runSync(sql); } catch (_) { /* column already exists */ }
@@ -2334,7 +2344,16 @@ function rowToTask(row: Record<string, unknown>): Task {
       : null,
     healthTarget: (row.health_target as number | null) ?? null,
     completionTimerMinutes: (row.completion_timer_minutes as number | null) ?? null,
-    logWaterMl: (row.log_water_ml as number | null) ?? null,
+    // Narrowed the same way healthMetric above is: an unrecognized column value
+    // reads as "not logging", the safe answer for a row this build can't place.
+    // The log_water_ml fallback is for a row written before this generalized
+    // from water-only — see the log_health_metric migration's own comment.
+    logHealthMetric: (NUTRIENT_KEYS as readonly string[]).includes(row.log_health_metric as string)
+      ? (row.log_health_metric as NutrientKey)
+      : ((row.log_water_ml as number | null) ? 'waterMl' : null),
+    logHealthAmount: (row.log_health_metric as string | null)
+      ? ((row.log_health_amount as number | null) ?? null)
+      : ((row.log_water_ml as number | null) ?? null),
     timerElapsedSeconds: (row.timer_elapsed_seconds as number | null) ?? 0,
     previousOccurrenceId: (row.previous_occurrence_id as string | null) ?? null,
     seriesId: (row.series_id as string | null) ?? null,
@@ -2405,8 +2424,8 @@ export function dbInsertTask(task: Task): void {
       person_ids, waiting_on_person_id, reminder_offset_days, exclude_from_suggestions,
       quota_interval_minutes, quota_reminders, quota_started_at, quota_always_visible, quota_period, location,
       prior_best_streak, reminder_time_anchor, reminder_utc_offset_minutes, polarity, slip_count, slip_date,
-      health_metric, health_target, completion_timer_minutes, log_water_ml
-    ) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)`,
+      health_metric, health_target, completion_timer_minutes, log_health_metric, log_health_amount
+    ) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)`,
     [
       task.id, task.title, task.notes, task.completed ? 1 : 0,
       task.completedAt, task.createdAt, task.seenAt, task.dueDate, task.deadline, task.deadlineOffsetDays ?? null, task.deadlineMonthDay ?? null, task.deferUntil,
@@ -2487,7 +2506,8 @@ export function dbInsertTask(task: Task): void {
       task.healthMetric ?? null,
       task.healthTarget ?? null,
       task.completionTimerMinutes ?? null,
-      task.logWaterMl ?? null,
+      task.logHealthMetric ?? null,
+      task.logHealthAmount ?? null,
     ]
   );
 }
@@ -2516,7 +2536,7 @@ export function dbUpdateTask(task: Task): void {
       person_ids=?, waiting_on_person_id=?, reminder_offset_days=?, exclude_from_suggestions=?,
       quota_interval_minutes=?, quota_reminders=?, quota_started_at=?, quota_always_visible=?, quota_period=?, location=?,
       prior_best_streak=?, reminder_time_anchor=?, reminder_utc_offset_minutes=?, polarity=?, slip_count=?, slip_date=?,
-      health_metric=?, health_target=?, completion_timer_minutes=?, log_water_ml=?
+      health_metric=?, health_target=?, completion_timer_minutes=?, log_health_metric=?, log_health_amount=?
     WHERE id=?`,
     [
       task.title, task.notes, task.completed ? 1 : 0, task.completedAt, task.seenAt,
@@ -2598,7 +2618,8 @@ export function dbUpdateTask(task: Task): void {
       task.healthMetric ?? null,
       task.healthTarget ?? null,
       task.completionTimerMinutes ?? null,
-      task.logWaterMl ?? null,
+      task.logHealthMetric ?? null,
+      task.logHealthAmount ?? null,
       task.id,
     ]
   );

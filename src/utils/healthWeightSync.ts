@@ -13,7 +13,7 @@ import { MAX_WEIGHT_KG } from './weightLog';
  * somebody typing it, which is a different event with a different trigger.
  *
  * **The demo-mode gate is checked here as well as inside `healthBridge()`, and
- * that is not redundant.** It is the same belt-and-braces `logTaskWaterToHealth`
+ * that is not redundant.** It is the same belt-and-braces `logTaskHealthValue`
  * keeps, and the reason is worth restating rather than inferring: a write leak
  * puts a *real* sample in somebody's *real* Health record, sourced from a
  * session that was fiction, and it survives the demo by however long it takes
