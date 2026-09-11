@@ -5,6 +5,8 @@ import SwiftUI
 struct TodoWidgetBundle: WidgetBundle {
     var body: some Widget {
         TodoTodayWidget()
+        TodoGroceryWidget()
+        TodoKitchenWidget()
         // No #available needed here: this whole target is built at
         // IPHONEOS_DEPLOYMENT_TARGET 17.0 (plugins/withWidgetExtension.js).
         TimerLiveActivity()

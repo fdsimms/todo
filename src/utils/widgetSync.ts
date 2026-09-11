@@ -1,46 +1,23 @@
 import { useEffect } from 'react';
 import { AppState, Platform } from 'react-native';
-import type { RecurrenceType, Priority, Task } from '../types';
 import { useTaskStore } from '../store/useTaskStore';
+import { useCategoryStore } from '../store/useCategoryStore';
+import { useGroceryStore } from '../store/useGroceryStore';
+import { useLeftoverStore } from '../store/useLeftoverStore';
+import { useMealPlanStore } from '../store/useMealPlanStore';
+import { useRecipeStore } from '../store/useRecipeStore';
+import { useSettingsStore } from '../store/useSettingsStore';
 import { useWidgetCompletionStore } from '../store/useWidgetCompletionStore';
 import { resetToToday } from '../navigation/navigationRef';
-import { displayTitleFor } from './visibilityUtils';
+import { buildWidgetSnapshot } from './widgetSnapshot';
+import { completedOnDay } from './allClear';
+import { getLogicalDayKey } from './dateUtils';
+import { kitchenInventory } from './kitchenInventory';
+import { listedAnywhere } from './groceryLists';
 import { widgetBridge } from './widgetBridge';
 import { haptics } from './haptics';
 
 const DEBOUNCE_MS = 300;
-const MAX_VISIBLE_TASKS = 50;
-const MAX_PINNED_TASKS = 10;
-
-interface WidgetTask {
-  id: string;
-  title: string;
-  priority: Priority;
-  pinned: boolean;
-  dueDate: string | null;
-  category: string | null;
-  streakCount: number;
-  recurrenceType: RecurrenceType;
-}
-
-interface WidgetSnapshot {
-  updatedAt: string;
-  visibleTasks: WidgetTask[];
-  pinnedTasks: WidgetTask[];
-}
-
-function toWidgetTask(task: Task): WidgetTask {
-  return {
-    id: task.id,
-    title: displayTitleFor(task),
-    priority: task.priority,
-    pinned: task.pinned,
-    dueDate: task.dueDate,
-    category: task.category,
-    streakCount: task.streakCount,
-    recurrenceType: task.recurrenceType,
-  };
-}
 
 // Through widgetBridge(), which answers not-iOS, demo mode and a build with no
 // native half in one call. The demo gate is checked here rather than in the
@@ -110,24 +87,6 @@ async function processPendingAddTasks(): Promise<void> {
   }
 }
 
-// The weekly meal-plan nudge (see mealPlanNudge.ts) fires as a stack of
-// seven — one bare "Sunday 08/17"-style task per day — which reads fine
-// under its stack header in the app but, flattened onto the widget with no
-// header or grouping to explain them, looked like seven nonsense date
-// titles crowding out the real tasks around them (#1726). The widget has no
-// notion of a stack to collapse them into instead, so they're left off
-// entirely; the stack is still one tap away inside the app.
-function isWidgetWorthy(task: Task): boolean {
-  // A negative habit's only control is "I slipped", and the widget has one
-  // control: a checkbox that queues a completion. That completion is refused
-  // (see the polarity guard in completeTask), so shipping the row would put a
-  // checkbox on the home screen that does nothing at all when tapped — and the
-  // one thing it *looks* like it would do is the opposite of what the task
-  // means. Until the widget can draw a shield, it doesn't carry these.
-  if (task.polarity === 'negative') return false;
-  return task.generatedKind !== 'mealPlanNudge';
-}
-
 /**
  * Exported for the background refresh task, which has no store subscription to
  * ride and needs the snapshot rewritten once, synchronously, at the end of its
@@ -140,14 +99,66 @@ export function writeWidgetSnapshotNow(): void {
   writeSnapshotNow();
 }
 
+/**
+ * Reads every store the snapshot draws on and hands the lot to the builder.
+ *
+ * **A store that reports `initialized: false` contributes null, not an empty
+ * section**, and the two mean different things on the widget: null is "open
+ * the app", an empty list is "nothing to buy". A cold *background* launch has
+ * them all, because `useTaskStore.initialize()` fans out to the grocery, meal
+ * plan, leftover and recipe stores (see its own comment, and the order
+ * `runBackgroundRefresh` relies on) — so this guard is about a build or a test
+ * that never opened the database at all rather than about the background pass.
+ */
 function writeSnapshotNow(): void {
   if (Platform.OS !== 'ios') return;
-  const { visibleTasks, pinnedTasks } = useTaskStore.getState();
-  const snapshot: WidgetSnapshot = {
-    updatedAt: new Date().toISOString(),
-    visibleTasks: visibleTasks().filter(isWidgetWorthy).slice(0, MAX_VISIBLE_TASKS).map(toWidgetTask),
-    pinnedTasks: pinnedTasks().filter(isWidgetWorthy).slice(0, MAX_PINNED_TASKS).map(toWidgetTask),
-  };
+  const now = new Date();
+  const tasks = useTaskStore.getState();
+  const settings = useSettingsStore.getState();
+  const grocery = useGroceryStore.getState();
+  const leftovers = useLeftoverStore.getState();
+  const dayResetTime = settings.dayResetTime;
+  const todayKey = getLogicalDayKey(now, dayResetTime);
+
+  const snapshot = buildWidgetSnapshot({
+    now,
+    visibleTasks: tasks.visibleTasks(),
+    pinnedTasks: tasks.pinnedTasks(),
+    allTasks: tasks.tasks,
+    categories: useCategoryStore.getState().categories.map(c => c.name),
+    dayResetTime,
+    doneToday: completedOnDay(tasks.tasks, todayKey, dayResetTime).length,
+    grocery: grocery.initialized
+      ? {
+          lists: grocery.lists,
+          listEntries: grocery.listEntries,
+          items: grocery.items,
+          activeListId: grocery.activeListId,
+          shops: grocery.shops,
+          tripShopId: grocery.tripShopId,
+          tripStartedAt: grocery.tripStartedAt,
+        }
+      : null,
+    // entriesForDayLive rather than a filter over `entries`: that array is a
+    // single range-scoped window shared with MealPlanScreen, and a today the
+    // user has paged away from is simply not in it — a bare filter would read
+    // "nothing planned" and the widget would say so (see selectTodayMealEntries).
+    meals: useMealPlanStore.getState().entriesForDayLive(todayKey),
+    recipes: useRecipeStore.getState().recipes,
+    // The one genuinely expensive derivation here, so it rides the same debounce
+    // as everything else rather than being recomputed per store event.
+    kitchen:
+      grocery.initialized && leftovers.initialized
+        ? kitchenInventory(
+            grocery.items,
+            leftovers.leftovers,
+            now,
+            grocery.itemProducts,
+            listedAnywhere(grocery.listEntries)
+          )
+        : null,
+  });
+
   writeToNativeBridge(JSON.stringify(snapshot));
 }
 
@@ -158,18 +169,59 @@ function scheduleSnapshotWrite(): void {
   debounceTimer = setTimeout(writeSnapshotNow, DEBOUNCE_MS);
 }
 
-// Keeps the iOS Today widget's data fresh. Subscribes once to the task
-// store's `tasks` array reference rather than threading a sync call through
-// every mutating store action — the store has ~30 of them (add/update/
-// delete/complete/defer/bulk ops/group ops/subtasks/…) and any new one added
-// later would otherwise silently skip the widget refresh.
+// Keeps the iOS widgets' data fresh. Subscribes to the *identity* of each
+// store slice the snapshot reads rather than threading a sync call through
+// every mutating store action — the task store alone has ~30 of them
+// (add/update/delete/complete/defer/bulk ops/group ops/subtasks/…) and any new
+// one added later would otherwise silently skip the widget refresh. The same
+// argument applies once per store, which is why this is a list rather than one
+// subscription: a grocery row ticked off has to move the groceries widget, and
+// nothing about it touches `tasks`.
+//
+// Every one of them lands on the same debounce, so a change that moves several
+// stores at once (finishing a shop writes entries, items and the trip) still
+// costs one write.
+function subscribeToStores(): () => void {
+  const unsubscribers = [
+    useTaskStore.subscribe((s, p) => {
+      if (s.tasks !== p.tasks) scheduleSnapshotWrite();
+    }),
+    useCategoryStore.subscribe((s, p) => {
+      if (s.categories !== p.categories) scheduleSnapshotWrite();
+    }),
+    useGroceryStore.subscribe((s, p) => {
+      if (
+        s.listEntries !== p.listEntries ||
+        s.items !== p.items ||
+        s.lists !== p.lists ||
+        s.activeListId !== p.activeListId ||
+        s.tripShopId !== p.tripShopId ||
+        s.tripStartedAt !== p.tripStartedAt ||
+        s.itemProducts !== p.itemProducts
+      ) {
+        scheduleSnapshotWrite();
+      }
+    }),
+    useLeftoverStore.subscribe((s, p) => {
+      if (s.leftovers !== p.leftovers) scheduleSnapshotWrite();
+    }),
+    useMealPlanStore.subscribe((s, p) => {
+      if (s.entries !== p.entries) scheduleSnapshotWrite();
+    }),
+    useRecipeStore.subscribe((s, p) => {
+      if (s.recipes !== p.recipes) scheduleSnapshotWrite();
+    }),
+  ];
+  return () => {
+    for (const unsubscribe of unsubscribers) unsubscribe();
+  };
+}
+
 export function useWidgetSync(): void {
   useEffect(() => {
     if (Platform.OS !== 'ios') return;
-    const unsubscribe = useTaskStore.subscribe((state, prevState) => {
-      if (state.tasks !== prevState.tasks) scheduleSnapshotWrite();
-    });
-    // Subscription is registered before this resolves, so any completions
+    const unsubscribe = subscribeToStores();
+    // Subscriptions are registered before this resolves, so any completions
     // (or additions — see processPendingAddTasks) applied here also trigger
     // the debounced write above like any other mutation would — no separate
     // write path needed for the drain itself, just an initial one below in
