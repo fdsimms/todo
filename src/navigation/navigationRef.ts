@@ -6,6 +6,15 @@ import type { MealSlot } from '../types';
 // threading a ref through props.
 export const navigationRef = createNavigationContainerRef<any>();
 
+// The tab a task-action link was tapped from, before this module navigates
+// away from it. `resetToMood`/`resetToWeight` stamp it onto their `returnTo`
+// param so the log sheet those routes open can hand the user back to it on
+// Cancel/Save instead of stranding them on a hidden tab they never meant to
+// land on for good.
+function currentRouteName(): string | undefined {
+  return navigationRef.isReady() ? navigationRef.getCurrentRoute()?.name : undefined;
+}
+
 // Bare `dundundun://` launches (currently only the Today widget's
 // `.widgetURL`) should always land on the Today tab's Today sub-view, even if
 // the app was left on Later/Search/Projects when it was backgrounded.
@@ -184,12 +193,21 @@ export function resetToFocusSession(): void {
  * so a second tap on the same row re-opens it rather than being read as no
  * change. Without it the link lands on the history, which is what a tap from
  * anywhere else should do.
+ *
+ * When it does open the sheet, it also carries `returnTo` — the tab the user
+ * was on before this call, e.g. Today — so `MoodScreen` can hand them back to
+ * it once the sheet closes. Otherwise a "log your mood" task tapped from
+ * Today leaves the checking-off flow stranded on the Mood tab, since a bare
+ * `navigate` between tabs has no back stack the way a pushed screen does.
  */
 export function resetToMood(openLog = false): void {
   if (!navigationRef.isReady()) return;
+  const returnTo = openLog ? currentRouteName() : undefined;
   navigationRef.navigate({
     name: 'Mood',
-    params: openLog ? { openLog: Date.now() } : undefined,
+    params: openLog
+      ? { openLog: Date.now(), returnTo: returnTo !== 'Mood' ? returnTo : undefined }
+      : undefined,
   });
 }
 
@@ -200,12 +218,19 @@ export function resetToMood(openLog = false): void {
  * Exactly `resetToMood`'s shape above, stamp included: a second tap on the same
  * row has to re-open the sheet rather than read as no change. Without `log=1`
  * the link lands on the chart, which is what a tap from anywhere else means.
+ *
+ * Also exactly `resetToMood`'s `returnTo` handoff, for the same reason: a
+ * weigh-in request tapped from Today shouldn't strand the user on the Weight
+ * tab once they've recorded (or cancelled out of) the number.
  */
 export function resetToWeight(openLog = false): void {
   if (!navigationRef.isReady()) return;
+  const returnTo = openLog ? currentRouteName() : undefined;
   navigationRef.navigate({
     name: 'Weight',
-    params: openLog ? { openLog: Date.now() } : undefined,
+    params: openLog
+      ? { openLog: Date.now(), returnTo: returnTo !== 'Weight' ? returnTo : undefined }
+      : undefined,
   });
 }
 
