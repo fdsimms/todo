@@ -69,10 +69,16 @@ const MAX_REMINDER_OFFSET_MINUTES = 10080;   // a week, in 15-minute steps
 const MAX_CUSTOM_ESTIMATE_MINUTES = 600;     // ten hours
 const COMPLETION_TIMER_STEP_MINUTES = 15;
 const MAX_COMPLETION_TIMER_MINUTES = 24 * 60; // matches TaskEditor's own ceiling
+// The same three bounds TaskEditor uses for a penalty, and for the same
+// reasons: a quarter-hour floor because iOS refuses a very short monitored
+// interval, and a day's ceiling because past that it stops being a nudge.
+const PENALTY_STEP_MINUTES = 15;
+const PENALTY_MIN_MINUTES = 15;
+const PENALTY_MAX_MINUTES = 24 * 60;
 
 
 /** Editor sections that collapse to a one-line summary of their current value. */
-type FieldKey = 'blanks' | 'conditions' | 'category' | 'tags' | 'priority' | 'effort' | 'subtasks' | 'chainSteps' | 'deliverable' | 'completionTimer';
+type FieldKey = 'blanks' | 'conditions' | 'category' | 'tags' | 'priority' | 'effort' | 'subtasks' | 'chainSteps' | 'deliverable' | 'completionTimer' | 'penalty';
 
 interface Props {
   visible: boolean;
@@ -132,6 +138,10 @@ export function TemplateItemEditor({ visible, templateId, templateName, item, in
   const [effort, setEffort] = useState<Effort>(0);
   const [estimatedMinutes, setEstimatedMinutes] = useState<number | null>(null);
   const [completionTimerMinutes, setCompletionTimerMinutes] = useState<number | null>(null);
+  const [penaltyMinutes, setPenaltyMinutes] = useState<number | null>(null);
+  const [penaltyCutoffTime, setPenaltyCutoffTime] = useState<string | null>(null);
+  const [penaltyPickerOpen, setPenaltyPickerOpen] = useState(false);
+  const [penaltyPickerDate, setPenaltyPickerDate] = useState(new Date());
   const [vacationPause, setVacationPause] = useState(false);
   const [excludeFromSuggestions, setExcludeFromSuggestions] = useState(false);
   const [polarity, setPolarity] = useState<Polarity>('positive');
@@ -188,6 +198,8 @@ export function TemplateItemEditor({ visible, templateId, templateName, item, in
     setEffort(item?.effort ?? draft?.effort ?? 0);
     setEstimatedMinutes(item?.estimatedMinutes ?? draft?.estimatedMinutes ?? null);
     setCompletionTimerMinutes(item?.completionTimerMinutes ?? draft?.completionTimerMinutes ?? null);
+    setPenaltyMinutes(item?.penaltyMinutes ?? draft?.penaltyMinutes ?? null);
+    setPenaltyCutoffTime(item?.penaltyCutoffTime ?? draft?.penaltyCutoffTime ?? null);
     setVacationPause(item?.vacationPause ?? draft?.vacationPause ?? false);
     setExcludeFromSuggestions(item?.excludeFromSuggestions ?? draft?.excludeFromSuggestions ?? false);
     setPolarity(item?.polarity ?? draft?.polarity ?? 'positive');
@@ -235,6 +247,19 @@ export function TemplateItemEditor({ visible, templateId, templateName, item, in
   const closeField = (key: FieldKey) => {
     animateLayout();
     setOpenFields(prev => ({ ...prev, [key]: false }));
+  };
+
+  // Defaults to 09:00 rather than the current time, for the reason TaskEditor's
+  // own cutoff picker does: this is a time of day somebody means, not whenever
+  // the sheet happened to be opened.
+  const openPenaltyPicker = () => {
+    setPenaltyPickerDate(hhmmToDate(penaltyCutoffTime ?? '09:00'));
+    setPenaltyPickerOpen(true);
+  };
+
+  const confirmPenaltyPicker = () => {
+    setPenaltyCutoffTime(dateToHHMM(penaltyPickerDate));
+    setPenaltyPickerOpen(false);
   };
 
   const openWindowPicker = (which: 'start' | 'end') => {
@@ -300,6 +325,10 @@ export function TemplateItemEditor({ visible, templateId, templateName, item, in
       effort,
       estimatedMinutes,
       completionTimerMinutes,
+      penaltyMinutes,
+      // Cleared with the cost it qualifies, and on an avoid-item, which fails
+      // on a tap rather than at a time — the same rule TaskEditor applies.
+      penaltyCutoffTime: penaltyMinutes !== null && polarity !== 'negative' ? penaltyCutoffTime : null,
       vacationPause,
       excludeFromSuggestions,
       // Belt and braces with the row above being hidden for a chain: the two
@@ -862,6 +891,86 @@ export function TemplateItemEditor({ visible, templateId, templateName, item, in
             format={formatDuration}
             describeValue={n => (n === null ? 'off' : formatDuration(n))}
           />
+        </CollapsibleField>
+        <View style={styles.sep} />
+        <CollapsibleField
+          label={polarity === 'negative' ? 'Block apps on a slip' : 'Block apps if missed'}
+          summary={penaltyMinutes === null
+            ? undefined
+            : polarity === 'negative'
+              ? `${formatDuration(penaltyMinutes)} each time`
+              : penaltyCutoffTime
+                ? `${formatDuration(penaltyMinutes)} after ${formatHHMM(penaltyCutoffTime)}`
+                : `${formatDuration(penaltyMinutes)} if not done that day`}
+          hint="Seeds the cost on tasks made from this item. Needs the setting switched on in Settings before anything is actually blocked."
+          expanded={fieldOpen('penalty')}
+          onToggle={() => toggleField('penalty')}
+        >
+          <CountStepper
+            value={penaltyMinutes}
+            onChange={setPenaltyMinutes}
+            min={PENALTY_MIN_MINUTES}
+            max={PENALTY_MAX_MINUTES}
+            step={PENALTY_STEP_MINUTES}
+            allowNull
+            emptyLabel="No block"
+            label="Block length"
+            format={formatDuration}
+            describeValue={n => (n === null ? 'no block' : formatDuration(n))}
+          />
+          {polarity !== 'negative' && penaltyMinutes !== null && (
+            <>
+              <View style={styles.timePillRow}>
+                <TouchableOpacity
+                  style={[styles.timePill, !!penaltyCutoffTime && styles.timePillActive]}
+                  onPress={openPenaltyPicker}
+                >
+                  <Text style={[styles.timePillText, !!penaltyCutoffTime && styles.timePillTextActive]}>
+                    {penaltyCutoffTime ? formatHHMM(penaltyCutoffTime) : 'End of day'}
+                  </Text>
+                </TouchableOpacity>
+                {penaltyCutoffTime !== null && (
+                  <TouchableOpacity
+                    style={styles.timePill}
+                    onPress={() => { setPenaltyCutoffTime(null); setPenaltyPickerOpen(false); }}
+                    accessibilityRole="button"
+                    accessibilityLabel="Judge at the end of the day instead"
+                  >
+                    <Text style={styles.timePillText}>Clear</Text>
+                  </TouchableOpacity>
+                )}
+              </View>
+              {penaltyPickerOpen && (
+                <>
+                  <DateTimePicker
+                    value={penaltyPickerDate}
+                    mode="time"
+                    display={Platform.OS === 'ios' ? 'spinner' : 'default'}
+                    onChange={(_e, d) => d && setPenaltyPickerDate(d)}
+                    themeVariant={isDark ? 'dark' : 'light'}
+                  />
+                  <View style={styles.intervalRow}>
+                    <TouchableOpacity
+                      style={styles.intervalBtn}
+                      onPress={() => setPenaltyPickerOpen(false)}
+                      accessibilityRole="button"
+                      accessibilityLabel="Cancel cutoff time"
+                    >
+                      <Ionicons name="close" size={16} color={colors.textSecondary} />
+                    </TouchableOpacity>
+                    <TouchableOpacity
+                      style={styles.intervalBtn}
+                      onPress={confirmPenaltyPicker}
+                      accessibilityRole="button"
+                      accessibilityLabel="Confirm cutoff time"
+                    >
+                      <Ionicons name="checkmark" size={16} color={colors.accent} />
+                    </TouchableOpacity>
+                  </View>
+                </>
+              )}
+            </>
+          )}
         </CollapsibleField>
         {/* The template-side half of Task.polarity. A "quit smoking" template
             that could only produce ordinary tasks would be missing the one

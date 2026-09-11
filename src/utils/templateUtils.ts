@@ -60,6 +60,8 @@ export function normalizeTemplateItem(raw: Partial<TemplateItem>): TemplateItem 
     recurrenceCount: raw.recurrenceCount ?? null,
     vacationPause: raw.vacationPause ?? false,
     excludeFromSuggestions: raw.excludeFromSuggestions ?? false,
+    penaltyMinutes: raw.penaltyMinutes ?? null,
+    penaltyCutoffTime: raw.penaltyCutoffTime ?? null,
     estimatedMinutes: raw.estimatedMinutes ?? null,
     completionTimerMinutes: raw.completionTimerMinutes ?? null,
     deliverableKind: raw.deliverableKind ?? null,
@@ -181,6 +183,11 @@ export function buildDraftsFromTemplate(
       polarity: item.polarity,
       estimatedMinutes: item.estimatedMinutes,
       completionTimerMinutes: item.completionTimerMinutes,
+      // The cost only, for the reason the question below carries without its
+      // answer: an applied item starts owing nothing, whatever the item it
+      // came from has been charged in the past.
+      penaltyMinutes: item.penaltyMinutes,
+      penaltyCutoffTime: item.penaltyCutoffTime,
       // The question only — createTask never reads a draft's deliverableValue,
       // so an applied item always starts with the decision still to make.
       deliverableKind: item.deliverableKind,

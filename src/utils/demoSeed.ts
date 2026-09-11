@@ -282,6 +282,26 @@ export function seedDemoData(): void {
     priorBestStreak: 4,
   });
 
+  // Both halves of the apps-blocked penalty, which is otherwise invisible: it
+  // is off by default, and even switched on it shows nothing until a task
+  // actually carries a cost. The two are seeded together because the feature
+  // means something different either side of the polarity — this one fails by
+  // a time passing, the slip above fails on a tap.
+  useSettingsStore.getState().setPenaltyShieldEnabled(true);
+  addTask({
+    title: 'Morning walk',
+    notes: 'Costs something. Not done by 8am and the apps you picked in Settings are blocked for two hours.',
+    category: 'Health',
+    dueDate: today.toISOString(),
+    timeSegments: ['morning'],
+    recurrenceType: 'daily',
+    recurrenceInterval: 1,
+    effort: 2,
+    penaltyMinutes: 120,
+    penaltyCutoffTime: '08:00',
+  });
+  updateTask(noSnacking.id, { penaltyMinutes: 60 });
+
   addTask({
     title: 'Read a chapter of the Le Guin',
     notes: 'Open-ended, so it stays out of suggested pins and focus sessions.',

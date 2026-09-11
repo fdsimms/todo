@@ -60,6 +60,8 @@ const makeItem = (overrides: Partial<TemplateItem> = {}): TemplateItem => ({
   vacationPause: false, excludeFromSuggestions: false,
   estimatedMinutes: null,
   completionTimerMinutes: null,
+  penaltyMinutes: null,
+  penaltyCutoffTime: null,
   deliverableKind: null,
   chainEnabled: false,
   chainItems: [],
@@ -234,6 +236,17 @@ describe('buildDraftsFromTemplate', () => {
   const start = new Date('2026-06-20T09:00:00');
   const end = new Date('2026-06-27T09:00:00');
   const noAnchors = { start: null, end: null };
+
+  it('carries the apps-blocked cost onto the draft, but never a charge', () => {
+    // A morning-routine template whose point is that the walk costs something
+    // would otherwise hand out tasks that cost nothing. There is no
+    // penaltyFiredAt to carry: the cost is configuration, the charge is not.
+    const item = makeItem({ penaltyMinutes: 120, penaltyCutoffTime: '08:00' });
+    const [draft] = buildDraftsFromTemplate([item], noAnchors);
+    expect(draft.penaltyMinutes).toBe(120);
+    expect(draft.penaltyCutoffTime).toBe('08:00');
+    expect('penaltyFiredAt' in draft).toBe(false);
+  });
 
   it('maps all item fields onto the draft, resolved against the start anchor', () => {
     const item = makeItem({

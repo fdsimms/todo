@@ -1471,6 +1471,14 @@ export function initDatabase(): void {
     // setting on upgrade. See Task.logHealthMetric / Task.logHealthAmount.
     'ALTER TABLE tasks ADD COLUMN log_health_metric TEXT',
     'ALTER TABLE tasks ADD COLUMN log_health_amount REAL',
+    // What failing this task costs, in blocked-app minutes, and when it counts
+    // as failed. NULL on every existing row, which is the feature being off —
+    // see Task.penaltyMinutes for why one column carries both the switch and
+    // the size. penalty_fired_at is per-occurrence and never copied onto a
+    // successor, so a recurring task can fail again tomorrow.
+    'ALTER TABLE tasks ADD COLUMN penalty_minutes INTEGER',
+    'ALTER TABLE tasks ADD COLUMN penalty_cutoff_time TEXT',
+    'ALTER TABLE tasks ADD COLUMN penalty_fired_at TEXT',
   ];
   for (const sql of migrations) {
     try { db.runSync(sql); } catch (_) { /* column already exists */ }
@@ -2367,6 +2375,9 @@ function rowToTask(row: Record<string, unknown>): Task {
     logHealthAmount: (row.log_health_metric as string | null)
       ? ((row.log_health_amount as number | null) ?? null)
       : ((row.log_water_ml as number | null) ?? null),
+    penaltyMinutes: (row.penalty_minutes as number | null) ?? null,
+    penaltyCutoffTime: (row.penalty_cutoff_time as string | null) ?? null,
+    penaltyFiredAt: (row.penalty_fired_at as string | null) ?? null,
     timerElapsedSeconds: (row.timer_elapsed_seconds as number | null) ?? 0,
     previousOccurrenceId: (row.previous_occurrence_id as string | null) ?? null,
     seriesId: (row.series_id as string | null) ?? null,
@@ -2437,8 +2448,9 @@ export function dbInsertTask(task: Task): void {
       person_ids, waiting_on_person_id, reminder_offset_days, exclude_from_suggestions,
       quota_interval_minutes, quota_reminders, quota_started_at, quota_always_visible, quota_period, location,
       prior_best_streak, reminder_time_anchor, reminder_utc_offset_minutes, polarity, slip_count, slip_date,
-      health_metric, health_target, completion_timer_minutes, log_health_metric, log_health_amount
-    ) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)`,
+      health_metric, health_target, completion_timer_minutes, log_health_metric, log_health_amount,
+      penalty_minutes, penalty_cutoff_time, penalty_fired_at
+    ) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)`,
     [
       task.id, task.title, task.notes, task.completed ? 1 : 0,
       task.completedAt, task.createdAt, task.seenAt, task.dueDate, task.deadline, task.deadlineOffsetDays ?? null, task.deadlineMonthDay ?? null, task.deferUntil,
@@ -2521,6 +2533,9 @@ export function dbInsertTask(task: Task): void {
       task.completionTimerMinutes ?? null,
       task.logHealthMetric ?? null,
       task.logHealthAmount ?? null,
+      task.penaltyMinutes ?? null,
+      task.penaltyCutoffTime ?? null,
+      task.penaltyFiredAt ?? null,
     ]
   );
 }
@@ -2549,7 +2564,8 @@ export function dbUpdateTask(task: Task): void {
       person_ids=?, waiting_on_person_id=?, reminder_offset_days=?, exclude_from_suggestions=?,
       quota_interval_minutes=?, quota_reminders=?, quota_started_at=?, quota_always_visible=?, quota_period=?, location=?,
       prior_best_streak=?, reminder_time_anchor=?, reminder_utc_offset_minutes=?, polarity=?, slip_count=?, slip_date=?,
-      health_metric=?, health_target=?, completion_timer_minutes=?, log_health_metric=?, log_health_amount=?
+      health_metric=?, health_target=?, completion_timer_minutes=?, log_health_metric=?, log_health_amount=?,
+      penalty_minutes=?, penalty_cutoff_time=?, penalty_fired_at=?
     WHERE id=?`,
     [
       task.title, task.notes, task.completed ? 1 : 0, task.completedAt, task.seenAt,
@@ -2633,6 +2649,9 @@ export function dbUpdateTask(task: Task): void {
       task.completionTimerMinutes ?? null,
       task.logHealthMetric ?? null,
       task.logHealthAmount ?? null,
+      task.penaltyMinutes ?? null,
+      task.penaltyCutoffTime ?? null,
+      task.penaltyFiredAt ?? null,
       task.id,
     ]
   );

@@ -74,6 +74,7 @@ export function SettingsScreen() {
     if (settings.postponeCheckEnabled) on.add('postponeCheck');
     if (settings.focusLongRestEvery !== null) on.add('focusLongRestEvery');
     if (settings.focusShieldEnabled) on.add('focusShield');
+    if (settings.penaltyShieldEnabled) on.add('penaltyShield');
     if (settings.vacationMode) on.add('vacationMode');
     if (settings.dailyAgendaEnabled) on.add('dailyAgenda');
     // Both null is how quiet hours are off; the screen's own toggle is derived
