@@ -7,9 +7,23 @@
  * functions meet a real database.
  */
 import { serializeTask } from '../serialize';
-import { getTask, listGroceryItems, listProjects, listTasks, searchTasks, DEFAULT_LIMIT, MAX_LIMIT } from '../tools';
+import {
+  getTask,
+  listFoodLog,
+  listGroceryItems,
+  listMedicationLogs,
+  listMoodLogs,
+  listProjects,
+  listTasks,
+  resolveRange,
+  searchTasks,
+  DEFAULT_LIMIT,
+  DEFAULT_LOG_DAYS,
+  MAX_LIMIT,
+  MAX_LOG_DAYS,
+} from '../tools';
 import type { Replica } from '../replica';
-import type { GroceryItem, Project, Task } from '../../../src/types';
+import type { FoodLogEntry, GroceryItem, MedicationLog, MoodLog, Project, Task } from '../../../src/types';
 
 const task = (over: Partial<Task> & { id: string; title: string }): Task =>
   ({
@@ -56,6 +70,20 @@ function stubReplica(over: Partial<Replica> = {}): Replica {
     displayTitle: (t: Task) => t.title,
     estimatedMinutes: () => null,
     deliverableKind: () => null,
+    // A fixed "today" so the range arithmetic is assertable. The real one goes
+    // through getLogicalToday; what is tested here is the counting, not the
+    // clock.
+    todayKey: () => '2026-09-11',
+    shiftDayKey: (key: string, days: number) => {
+      const d = new Date(`${key}T00:00:00Z`);
+      d.setUTCDate(d.getUTCDate() + days);
+      return d.toISOString().slice(0, 10);
+    },
+    foodLogEntries: () => [],
+    foodTotals: () => ({ total: {}, reported: {}, entries: 0 }),
+    moodLogs: () => [],
+    medicationLogs: () => [],
+    medicationSummary: (log: MedicationLog) => log.name,
     deviceId: () => 'stub-device',
     syncable: () => true,
     ...over,
@@ -199,6 +227,138 @@ describe('listGroceryItems', () => {
     const [, catalog] = listGroceryItems(stubReplica({ groceryItems: () => items }), { onListOnly: false });
     expect(catalog.quantity).toBeUndefined();
     expect(catalog.aisle).toBeUndefined();
+  });
+});
+
+describe('resolveRange', () => {
+  it('counts days back from today, with today inside the count', () => {
+    // 7 days means today and the six before it, not today and seven before it.
+    expect(resolveRange(stubReplica())).toEqual({ from: '2026-09-05', to: '2026-09-11' });
+    expect(resolveRange(stubReplica(), { days: 1 })).toEqual({ from: '2026-09-11', to: '2026-09-11' });
+    expect(DEFAULT_LOG_DAYS).toBe(7);
+  });
+
+  it('lets an explicit from win, and defaults its end to today', () => {
+    expect(resolveRange(stubReplica(), { from: '2026-01-01' })).toEqual({
+      from: '2026-01-01',
+      to: '2026-09-11',
+    });
+    expect(resolveRange(stubReplica(), { from: '2026-01-01', to: '2026-01-31' })).toEqual({
+      from: '2026-01-01',
+      to: '2026-01-31',
+    });
+    // `days` is ignored rather than combined, so the two can't disagree.
+    expect(resolveRange(stubReplica(), { from: '2026-01-01', days: 3 }).from).toBe('2026-01-01');
+  });
+
+  it('clamps the day count at both ends', () => {
+    expect(resolveRange(stubReplica(), { days: 0 }).from).toBe('2026-09-11');
+    expect(resolveRange(stubReplica(), { days: 99999 }).from).toBe(
+      resolveRange(stubReplica(), { days: MAX_LOG_DAYS }).from
+    );
+  });
+});
+
+describe('listFoodLog', () => {
+  const entry = (over: Partial<FoodLogEntry> & { id: string; label: string }): FoodLogEntry =>
+    ({
+      dayKey: '2026-09-11',
+      atISO: '2026-09-11T08:00:00.000Z',
+      slot: null,
+      quantity: '',
+      grams: null,
+      recipeId: null,
+      ...over,
+    }) as FoodLogEntry;
+
+  it('reports the range it actually read, alongside the entries', () => {
+    const result = listFoodLog(
+      stubReplica({ foodLogEntries: () => [entry({ id: 'f1', label: 'Porridge', slot: 'breakfast' })] })
+    );
+    expect(result.range).toEqual({ from: '2026-09-05', to: '2026-09-11' });
+    expect(result.entries).toEqual([
+      { id: 'f1', dayKey: '2026-09-11', at: '2026-09-11T08:00:00.000Z', slot: 'breakfast', label: 'Porridge' },
+    ]);
+  });
+
+  it('passes totals through without filling in a nutrient nobody logged', () => {
+    const result = listFoodLog(
+      stubReplica({
+        foodLogEntries: () => [entry({ id: 'f1', label: 'Toast' })],
+        foodTotals: () => ({ total: { calorieKcal: 210 }, reported: { calorieKcal: 1 }, entries: 1 }),
+      })
+    );
+    // A day logged thinly is a hole, not a small number, so protein is absent
+    // rather than 0 — that distinction is the whole reason totals carry
+    // `reported` alongside `total`.
+    expect(result.totals.total).toEqual({ calorieKcal: 210 });
+    expect(result.totals.total.proteinG).toBeUndefined();
+    expect(result.totals.reported).toEqual({ calorieKcal: 1 });
+  });
+});
+
+describe('listMoodLogs', () => {
+  const log = (over: Partial<MoodLog> & { id: string }): MoodLog =>
+    ({
+      dayKey: '2026-09-11',
+      loggedAt: '2026-09-11T09:00:00.000Z',
+      mood: null,
+      symptoms: [],
+      contextTags: [],
+      note: null,
+      ...over,
+    }) as MoodLog;
+
+  it('keeps a check-in that recorded only symptoms', () => {
+    const result = listMoodLogs(
+      stubReplica({
+        moodLogs: () => [log({ id: 'm1', symptoms: [{ name: 'Headache', severity: 2 }] as MoodLog['symptoms'] })],
+      })
+    );
+    // mood is nullable on purpose: somebody can log a symptom without rating
+    // the day, and reporting that as a 0 would invent a rating.
+    expect(result.logs[0].mood).toBeUndefined();
+    expect(result.logs[0].symptoms).toEqual([{ name: 'Headache', severity: '2' }]);
+  });
+
+  it('drops empty symptom and tag lists rather than sending them', () => {
+    const result = listMoodLogs(stubReplica({ moodLogs: () => [log({ id: 'm1', mood: 4 })] }));
+    expect(result.logs[0]).toEqual({
+      id: 'm1',
+      dayKey: '2026-09-11',
+      loggedAt: '2026-09-11T09:00:00.000Z',
+      mood: 4,
+    });
+  });
+});
+
+describe('listMedicationLogs', () => {
+  const dose = (over: Partial<MedicationLog> & { id: string; name: string }): MedicationLog =>
+    ({
+      dayKey: '2026-09-11',
+      takenAt: '2026-09-11T20:00:00.000Z',
+      amount: null,
+      unit: null,
+      asNeeded: false,
+      ...over,
+    }) as MedicationLog;
+
+  it("uses the app's own one-line rendering rather than rebuilding it", () => {
+    const result = listMedicationLogs(
+      stubReplica({
+        medicationLogs: () => [dose({ id: 'd1', name: 'Ibuprofen', amount: 400, unit: 'mg', asNeeded: true })],
+        medicationSummary: () => 'Ibuprofen · 400 mg · as needed',
+      })
+    );
+    expect(result.logs[0].summary).toBe('Ibuprofen · 400 mg · as needed');
+    expect(result.logs[0]).toMatchObject({ amount: 400, unit: 'mg', asNeeded: true });
+  });
+
+  it('omits asNeeded when a dose was scheduled', () => {
+    const result = listMedicationLogs(
+      stubReplica({ medicationLogs: () => [dose({ id: 'd1', name: 'Levothyroxine' })] })
+    );
+    expect(result.logs[0].asNeeded).toBeUndefined();
   });
 });
 

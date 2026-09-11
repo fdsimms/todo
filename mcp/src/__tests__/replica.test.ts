@@ -121,6 +121,64 @@ describe('the replica', () => {
     expect(replica.search('').map(h => h.task.id)).toEqual([]);
   });
 
+  it('reads the log tables through the app\'s own row mapping', () => {
+    // food_logs, mood_logs and medication_logs all arrived on main long after
+    // this package was written, so this is the case that says the shim keeps up
+    // with the schema rather than only with the tables it was built against.
+    mockRaw.runSync(
+      "INSERT INTO food_logs (id, day_key, at_iso, slot, label, quantity, nutrition, created_at) VALUES (?,?,?,?,?,?,?,?)",
+      [
+        'f1',
+        '2026-09-11',
+        '2026-09-11T08:00:00.000Z',
+        'breakfast',
+        'Porridge',
+        '1 bowl',
+        // A real panel, because parseFoodNutrition refuses one with no basis,
+        // no recordedAt or no amounts, and rowToFoodLogEntry drops the row
+        // rather than inventing figures for it. That refusal is the behaviour
+        // being relied on here, not an obstacle to the fixture.
+        JSON.stringify({
+          basis: 'perServing',
+          recordedAt: '2026-09-11T08:00:00.000Z',
+          amounts: { calorieKcal: 210 },
+        }),
+        '2026-09-11T08:00:00.000Z',
+      ]
+    );
+    mockRaw.runSync(
+      "INSERT INTO mood_logs (id, logged_at, day_key, mood, symptoms, context_tags) VALUES (?,?,?,?,?,?)",
+      ['m1', '2026-09-11T09:00:00.000Z', '2026-09-11', 4, JSON.stringify([{ name: 'Headache', severity: 2 }]), '[]']
+    );
+    mockRaw.runSync(
+      "INSERT INTO medication_logs (id, name, taken_at, day_key, amount, unit, as_needed) VALUES (?,?,?,?,?,?,?)",
+      ['d1', 'Ibuprofen', '2026-09-11T20:00:00.000Z', '2026-09-11', 400, 'mg', 1]
+    );
+    replica.refresh();
+
+    expect(replica.foodLogEntries('2026-09-01', '2026-09-30').map(e => e.label)).toEqual(['Porridge']);
+
+    const mood = replica.moodLogs('2026-09-01', '2026-09-30');
+    expect(mood).toHaveLength(1);
+    // The JSON column came back as objects, and as_needed's 0/1 came back a
+    // boolean — the two halves of rowToTask's discipline that a hand-written
+    // query would have to redo.
+    expect(mood[0].symptoms).toEqual([{ name: 'Headache', severity: 2 }]);
+
+    const doses = replica.medicationLogs('2026-09-01', '2026-09-30');
+    expect(doses[0].asNeeded).toBe(true);
+    expect(replica.medicationSummary(doses[0])).toContain('Ibuprofen');
+  });
+
+  it('bounds a log range on the logical day rather than the calendar one', () => {
+    // getLogicalToday honours dayResetTime, so a read at 1am under a 2am reset
+    // asks about the day the user would name. Only the shape is asserted here;
+    // dateUtils owns the arithmetic and tests it.
+    expect(replica.todayKey()).toMatch(/^\d{4}-\d{2}-\d{2}$/);
+    expect(replica.shiftDayKey('2026-03-02', -7)).toBe('2026-02-23');
+    expect(replica.shiftDayKey('2026-01-01', -1)).toBe('2025-12-31');
+  });
+
   it('clears cached reads on refresh, so a sync landing mid-session is seen', () => {
     insert({ id: 'first', title: 'First' });
     replica.refresh();

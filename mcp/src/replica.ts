@@ -24,14 +24,34 @@
  *
  * See docs/arch/mcp-server.md.
  */
+// date-fns is safe to import for its values: it is a third-party leaf that
+// cannot reach database.ts, so the rule above does not apply to it. The app's
+// own modules import it exactly this way.
+import { addDays } from 'date-fns/addDays';
+
 import { shimModule } from './expoSqliteShim';
-import type { Category, DeliverableKind, GroceryItem, Person, Project, Task } from '../../src/types';
+import type {
+  Category,
+  DeliverableKind,
+  FoodLogEntry,
+  GroceryItem,
+  MedicationLog,
+  MoodLog,
+  Person,
+  Project,
+  Task,
+} from '../../src/types';
+import type { FoodLogTotals } from '../../src/utils/foodLog';
 
 type DbModule = typeof import('../../src/db/database');
 type VisibilityModule = typeof import('../../src/utils/visibilityUtils');
 type FuzzyModule = typeof import('../../src/utils/fuzzySearch');
 type EffortModule = typeof import('../../src/utils/effort');
 type DeliverablesModule = typeof import('../../src/utils/deliverables');
+type DateModule = typeof import('../../src/utils/dateUtils');
+type FoodLogModule = typeof import('../../src/utils/foodLog');
+type MoodHistoryModule = typeof import('../../src/utils/moodHistory');
+type MedicationModule = typeof import('../../src/utils/medicationLog');
 
 /** One task the way `fuzzySearch` ranked it, without the highlight ranges. */
 export interface ReplicaSearchHit {
@@ -69,6 +89,28 @@ export interface Replica {
   displayTitle(task: Task): string;
   estimatedMinutes(task: Task): number | null;
   deliverableKind(task: Task): DeliverableKind | null;
+
+  /**
+   * The logical day, as a `YYYY-MM-DD` key. Goes through `getLogicalToday` so a
+   * read at 1am under a 2am `dayResetTime` gets yesterday, which is the day the
+   * user would say they were asking about.
+   */
+  todayKey(): string;
+  /** Shifts a day key by whole days. Used to default a range to "the last N days". */
+  shiftDayKey(key: string, days: number): string;
+
+  /** Food log entries between two day keys, inclusive. */
+  foodLogEntries(fromDayKey: string, toDayKey: string): FoodLogEntry[];
+  /** Summed nutrients over a set of entries. A nutrient nobody stated is absent, never 0. */
+  foodTotals(entries: readonly FoodLogEntry[]): FoodLogTotals;
+
+  /** Mood check-ins between two day keys, inclusive. */
+  moodLogs(fromDayKey: string, toDayKey: string): MoodLog[];
+
+  /** Doses between two day keys, inclusive. */
+  medicationLogs(fromDayKey: string, toDayKey: string): MedicationLog[];
+  /** "Ibuprofen · 400 mg · as needed", the app's own one-line rendering of a dose. */
+  medicationSummary(log: MedicationLog): string;
 
   deviceId(): string;
   /** False for a demo database. Phase 1 will not sync one. */
@@ -116,6 +158,10 @@ export function openReplica(path = process.env.TODO_DB_PATH ?? 'todo.db'): Repli
   const fuzzy = require('../../src/utils/fuzzySearch') as FuzzyModule;
   const effort = require('../../src/utils/effort') as EffortModule;
   const deliverables = require('../../src/utils/deliverables') as DeliverablesModule;
+  const dates = require('../../src/utils/dateUtils') as DateModule;
+  const foodLog = require('../../src/utils/foodLog') as FoodLogModule;
+  const moodHistory = require('../../src/utils/moodHistory') as MoodHistoryModule;
+  const medication = require('../../src/utils/medicationLog') as MedicationModule;
   const { registerTaskSource } = require('../../src/utils/blockerRegistry') as typeof import('../../src/utils/blockerRegistry');
   const { registerPersonSource } = require('../../src/utils/peopleRegistry') as typeof import('../../src/utils/peopleRegistry');
   const { useSettingsStore } = require('../../src/store/useSettingsStore') as typeof import('../../src/store/useSettingsStore');
@@ -166,6 +212,23 @@ export function openReplica(path = process.env.TODO_DB_PATH ?? 'todo.db'): Repli
     displayTitle: (task: Task) => visibility.displayTitleFor(task),
     estimatedMinutes: (task: Task) => effort.estimatedMinutesFor(task),
     deliverableKind: (task: Task) => deliverables.deliverableKindFor(task),
+
+    todayKey: () => dates.dayKeyOf(dates.getLogicalToday()),
+    shiftDayKey: (key: string, days: number) =>
+      dates.dayKeyOf(addDays(dates.dayKeyToDate(key), days)),
+
+    // The only one of the three with a ranged db read of its own, because
+    // food_logs is the table that grows fastest — several rows a day, for ever.
+    // The other two are read whole and filtered, which is what the app does.
+    foodLogEntries: (from: string, to: string) => db.dbGetFoodLogEntries(from, to),
+    foodTotals: (entries: readonly FoodLogEntry[]) => foodLog.foodLogTotals(entries),
+
+    moodLogs: (from: string, to: string) =>
+      moodHistory.logsInDayRange(db.dbGetAllMoodLogs(), from, to),
+
+    medicationLogs: (from: string, to: string) =>
+      db.dbGetAllMedicationLogs().filter(l => l.dayKey >= from && l.dayKey <= to),
+    medicationSummary: (log: MedicationLog) => medication.medicationLogSummary(log),
 
     // The same ranking the quick-search sheet gets, project names and all —
     // reimplementing it here would be a second answer to "what matches", which

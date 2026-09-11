@@ -413,7 +413,7 @@ file: the two maps are indexes, not write-ups.
 | a timer for the cooking step you're on | `src/utils/stepTimers.ts` + `src/store/useStepTimerStore.ts` — see `docs/arch/recipes.md` |
 | a recipe page shared in from another app's share sheet | `src/utils/sharedRecipeLinks.ts` + `targets/todo-share/` — see `docs/arch/recipes.md` |
 | syncing between devices | `src/utils/syncEngine.ts` + `syncMerge.ts` + `cloudKitTransport.ts` + `src/store/useSyncStore.ts` |
-| letting Claude read the app's data | `mcp/` — see `docs/arch/mcp-server.md`. Its own npm package, deliberately not a dependency of the app; it opens a `todo.db` in Node by putting `mcp/src/expoSqliteShim.ts` in front of `expo-sqlite`, so the whole of `src/db` and `src/utils` runs unchanged. Read-only so far, and nothing is deployed |
+| letting Claude read the app's data | `mcp/` — see `docs/arch/mcp-server.md`. Its own npm package, deliberately not a dependency of the app; it opens a `todo.db` in Node by putting `mcp/src/expoSqliteShim.ts` in front of `expo-sqlite`, so the whole of `src/db` and `src/utils` runs unchanged. Read-only so far, and nothing is deployed. It reads tasks, projects, groceries and the three day-keyed logs; **weight is structurally unreadable** (HealthKit is the record and there is no table), which is the health model working rather than a gap |
 | exporting or restoring a backup | `src/utils/backup.ts` + `src/utils/backupFile.ts` |
 | writing tasks to the system calendar | `src/utils/calendarSync.ts` (+ `deadlineCalendarSync.ts`, `mealCalendarSync.ts`) |
 | reading free/busy out of the system calendar | `src/utils/calendarBusy.ts` + `src/store/useCalendarStore.ts` |

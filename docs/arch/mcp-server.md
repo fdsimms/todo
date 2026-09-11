@@ -131,6 +131,30 @@ quick-search sheet uses, `get_task`, `list_projects`, `list_grocery_items`. The 
 in `mcp/src/tools.ts` and take a replica as an argument, which is what makes them testable without
 an SDK or a socket.
 
+Three more read the day-keyed logs: `list_food_log` (with the day's summed nutrients),
+`list_mood_logs` and `list_medication_logs`. They share one range convention rather than three,
+because all three tables grow without bound and none has a useful "everything" answer: `days`
+counts back from the logical today and an explicit `from`/`to` overrides it. "Today" goes through
+`getLogicalToday`, so a read at 1am under a 2am `dayResetTime` answers about the day the user would
+name rather than the one the calendar would.
+
+Two projection rules carry over from the features themselves and are the reason these aren't just
+`SELECT *`. A nutrient nobody logged is **absent rather than zero**, because a thinly logged day is
+a hole and not a small number, which is exactly the distinction `nutritionStats` refuses to blur;
+and a mood check-in that recorded only symptoms has **no `mood`**, because reporting an unrated day
+as a 0 invents a rating.
+
+### There is no weight tool, and that is the health model working
+
+`docs/arch/health-data.md`'s rule is that Apple Health is the record and the app keeps no copy.
+There is no weight table, by design: `weightLog.ts` is arithmetic over numbers HealthKit already
+holds, and its own header says a local copy "would be a backup file with somebody's body weight in
+it". A replica over SQLite therefore has nothing to read, and no amount of phase 1 changes that,
+because a Node process cannot reach HealthKit at all.
+
+So the absence is structural rather than a gap to fill later. Anyone who adds a weight tool will
+have to break the health rule first, and that is a much larger decision than adding a tool.
+
 Tasks are serialized by `mcp/src/serialize.ts` rather than handed over as raw `Task` objects. A
 `Task` has over a hundred fields and most of them are machinery; a tool result that spends its
 budget on `supplyDeclinedAtCount` is a tool result with no room left for the task list. What the
@@ -173,6 +197,14 @@ This is a decision the user has made knowingly and it does not need relitigating
 is to stay visible: it belongs in the Settings copy that turns sync-to-a-replica on, in whatever
 ships to the App Store as a privacy label, and in this file. Do not let it become a footnote in a
 PR body.
+
+**The log tools sharpen it rather than sitting alongside it.** A copy of somebody's tasks is one
+thing; a copy that also holds every symptom they have recorded, every dose they have taken and
+every meal they have eaten is health data in the sense a privacy label means it, and a hosted
+replica puts all of it on a machine with a public address. The read surface is all-or-nothing
+behind one bearer token today, which is adequate for a laptop and is not adequate for that. Phase 3
+should decide whether the health logs need their own consent separate from the rest, and the honest
+default is that they do.
 
 ## Phases
 

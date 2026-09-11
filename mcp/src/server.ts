@@ -25,13 +25,26 @@ import { z } from 'zod';
 import { authorize } from './auth';
 import { installExpoSqliteShim, openReplica, type Replica } from './replica';
 import {
+  MAX_LOG_DAYS,
   TASK_VIEWS,
   getTask,
+  listFoodLog,
   listGroceryItems,
+  listMedicationLogs,
+  listMoodLogs,
   listProjects,
   listTasks,
   searchTasks,
 } from './tools';
+
+/** `YYYY-MM-DD`, the shape every day-keyed table stores and sorts on. */
+const dayKey = z.string().regex(/^\d{4}-\d{2}-\d{2}$/, 'Expected YYYY-MM-DD.');
+
+const logRange = {
+  days: z.number().int().positive().max(MAX_LOG_DAYS).optional(),
+  from: dayKey.optional(),
+  to: dayKey.optional(),
+};
 
 const PORT = Number(process.env.PORT ?? 8787);
 
@@ -91,6 +104,27 @@ export function buildMcpServer(replica: Replica): McpServer {
     'The grocery list. Pass onListOnly: false to search the whole catalog instead.',
     { onListOnly: z.boolean().optional() },
     async input => json(withFresh(() => listGroceryItems(replica, input)))
+  );
+
+  server.tool(
+    'list_food_log',
+    'Logged food over a range of days, with summed nutrients. A nutrient nobody logged is absent rather than zero. Defaults to the last 7 days.',
+    logRange,
+    async input => json(withFresh(() => listFoodLog(replica, input)))
+  );
+
+  server.tool(
+    'list_mood_logs',
+    'Mood check-ins over a range of days: the 1 to 5 rating, any symptoms and their severity, context tags and notes. Defaults to the last 7 days.',
+    logRange,
+    async input => json(withFresh(() => listMoodLogs(replica, input)))
+  );
+
+  server.tool(
+    'list_medication_logs',
+    'Doses recorded over a range of days, including as-needed ones. Defaults to the last 7 days.',
+    logRange,
+    async input => json(withFresh(() => listMedicationLogs(replica, input)))
   );
 
   return server;

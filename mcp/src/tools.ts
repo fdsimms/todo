@@ -17,7 +17,7 @@
  * deferred task, a time-of-day segment that has not opened, a task held by a
  * blocker, a `dayResetTime` that is not midnight.
  */
-import type { GroceryItem, Project, Task } from '../../src/types';
+import type { FoodLogEntry, GroceryItem, MedicationLog, MoodLog, Project, Task } from '../../src/types';
 import type { Replica } from './replica';
 import { serializeTasks, type SerializedTask } from './serialize';
 
@@ -208,4 +208,160 @@ export function listGroceryItems(
     onList: i.onList,
     checked: i.checked ? true : undefined,
   }));
+}
+
+// ---------------------------------------------------------------------------
+// The logs: food, mood, medication.
+//
+// All three are day-keyed, all three grow without bound, and none of them has a
+// useful "everything" answer — so they share one range convention rather than
+// three. `days` counts back from the logical today (`todayKey`, so a read at 1am
+// under a 2am dayResetTime gets the day the user would name), and an explicit
+// `from`/`to` overrides it.
+//
+// The fourth thing a caller will ask for is weight, and it is deliberately not
+// here: it lives in Apple Health and the app stores no copy, so a replica over
+// SQLite has nothing to read. docs/arch/mcp-server.md says so at more length,
+// because "no weight tool" otherwise reads as an oversight rather than as the
+// health model working.
+// ---------------------------------------------------------------------------
+
+export const DEFAULT_LOG_DAYS = 7;
+export const MAX_LOG_DAYS = 365;
+
+export interface LogRangeInput {
+  /** Days back from today, inclusive of today. Ignored when `from` is given. */
+  days?: number;
+  /** `YYYY-MM-DD`. */
+  from?: string;
+  /** `YYYY-MM-DD`. Defaults to today when `from` is given without it. */
+  to?: string;
+}
+
+export interface DayRange {
+  from: string;
+  to: string;
+}
+
+export function resolveRange(replica: Replica, input: LogRangeInput = {}): DayRange {
+  const today = replica.todayKey();
+  if (input.from) return { from: input.from, to: input.to ?? today };
+
+  const days = Math.min(Math.max(input.days ?? DEFAULT_LOG_DAYS, 1), MAX_LOG_DAYS);
+  // `days: 1` is today alone, so the shift is one less than the count.
+  return { from: replica.shiftDayKey(today, -(days - 1)), to: today };
+}
+
+export interface SerializedFoodEntry {
+  id: string;
+  dayKey: string;
+  at: string;
+  /** breakfast / lunch / dinner / snack, or absent for something eaten outside a meal. */
+  slot?: string;
+  label: string;
+  quantity?: string;
+  grams?: number;
+  recipeId?: string;
+}
+
+export interface FoodLogResult {
+  range: DayRange;
+  entries: SerializedFoodEntry[];
+  /**
+   * Summed nutrients over the range, and how many entries stated each one.
+   * A nutrient nobody logged is absent rather than zero, which is the whole
+   * point: a day logged thinly is a hole, not a small number.
+   */
+  totals: { total: Record<string, number>; reported: Record<string, number>; entries: number };
+}
+
+export function listFoodLog(replica: Replica, input: LogRangeInput = {}): FoodLogResult {
+  const range = resolveRange(replica, input);
+  const entries = replica.foodLogEntries(range.from, range.to);
+  const totals = replica.foodTotals(entries);
+
+  return {
+    range,
+    entries: entries.map((e: FoodLogEntry) => ({
+      id: e.id,
+      dayKey: e.dayKey,
+      at: e.atISO,
+      slot: e.slot ?? undefined,
+      label: e.label,
+      quantity: e.quantity || undefined,
+      grams: e.grams ?? undefined,
+      recipeId: e.recipeId ?? undefined,
+    })),
+    totals: {
+      total: totals.total as Record<string, number>,
+      reported: totals.reported as Record<string, number>,
+      entries: totals.entries,
+    },
+  };
+}
+
+export interface SerializedMoodLog {
+  id: string;
+  dayKey: string;
+  loggedAt: string;
+  /** 1 to 5. Absent when the check-in recorded only symptoms. */
+  mood?: number;
+  symptoms?: { name: string; severity: string }[];
+  contextTags?: string[];
+  note?: string;
+}
+
+export function listMoodLogs(
+  replica: Replica,
+  input: LogRangeInput = {}
+): { range: DayRange; logs: SerializedMoodLog[] } {
+  const range = resolveRange(replica, input);
+
+  return {
+    range,
+    logs: replica.moodLogs(range.from, range.to).map((log: MoodLog) => ({
+      id: log.id,
+      dayKey: log.dayKey,
+      loggedAt: log.loggedAt,
+      mood: log.mood ?? undefined,
+      symptoms: log.symptoms.length
+        ? log.symptoms.map(s => ({ name: s.name, severity: String(s.severity) }))
+        : undefined,
+      contextTags: log.contextTags.length ? log.contextTags : undefined,
+      note: log.note ?? undefined,
+    })),
+  };
+}
+
+export interface SerializedMedicationLog {
+  id: string;
+  dayKey: string;
+  takenAt: string;
+  name: string;
+  /** The app's own one-line rendering: name, dose, and whether it was as-needed. */
+  summary: string;
+  amount?: number;
+  unit?: string;
+  asNeeded?: boolean;
+}
+
+export function listMedicationLogs(
+  replica: Replica,
+  input: LogRangeInput = {}
+): { range: DayRange; logs: SerializedMedicationLog[] } {
+  const range = resolveRange(replica, input);
+
+  return {
+    range,
+    logs: replica.medicationLogs(range.from, range.to).map((log: MedicationLog) => ({
+      id: log.id,
+      dayKey: log.dayKey,
+      takenAt: log.takenAt,
+      name: log.name,
+      summary: replica.medicationSummary(log),
+      amount: log.amount ?? undefined,
+      unit: log.unit ?? undefined,
+      asNeeded: log.asNeeded ? true : undefined,
+    })),
+  };
 }

@@ -36,6 +36,13 @@ All read-only.
 | `get_task` | One task, with its subtasks, chain steps, project, and why it is not on Today. |
 | `list_projects` | Active projects and how many live tasks each has. |
 | `list_grocery_items` | The grocery list, or the whole catalog with `onListOnly: false`. |
+| `list_food_log` | Logged food over a day range, with summed nutrients. |
+| `list_mood_logs` | Mood check-ins: rating, symptoms, context tags, notes. |
+| `list_medication_logs` | Doses recorded, scheduled and as-needed. |
+
+The last three take the same range: `days` counts back from today (7 by default), or pass
+`from`/`to` as `YYYY-MM-DD`. There is deliberately **no weight tool** — weight lives in Apple
+Health and the app stores no copy, so a replica over SQLite has nothing to read. See the arch doc.
 
 ## Working on it
 
