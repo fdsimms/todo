@@ -10,6 +10,9 @@
 const mockBridge = {
   applyShield: jest.fn(() => true),
   clearShield: jest.fn(() => true),
+  setShieldState: jest.fn(() => true),
+  schedulePenaltyExpiry: jest.fn(() => true),
+  cancelPenaltyExpiry: jest.fn(() => true),
 };
 let mockBridgeOpen = true;
 jest.mock('../utils/screenTimeBridge', () => ({
@@ -44,14 +47,14 @@ const state = (over: Partial<AppShieldState> = {}): AppShieldState => ({
   focusEnabled: false,
   penaltyUntil: null,
   penaltyEnabled: false,
+  penaltyReason: null,
   now: NOW,
   ...over,
 });
 
 beforeEach(() => {
   mockBridgeOpen = true;
-  mockBridge.applyShield.mockClear();
-  mockBridge.clearShield.mockClear();
+  for (const fn of Object.values(mockBridge)) fn.mockClear();
 });
 
 describe('appShieldWanted', () => {
@@ -139,5 +142,92 @@ describe('syncAppShield', () => {
     syncAppShield(running);
     syncAppShield(running);
     expect(mockBridge.applyShield).toHaveBeenCalledTimes(3);
+  });
+});
+
+/**
+ * The half that has to work with the app closed.
+ *
+ * A penalty block ends at a stated time, and none of this code is running then,
+ * so the monitor extension lifts it — which means the extension has to be told
+ * in advance what this module would have decided, since a woken extension has
+ * no way to ask.
+ */
+describe('what syncAppShield leaves behind for the extension', () => {
+  it('arms a window for the end of a block being served', () => {
+    syncAppShield(state({ penaltyUntil: LATER, penaltyEnabled: true }));
+    expect(mockBridge.schedulePenaltyExpiry).toHaveBeenCalledWith(LATER);
+    expect(mockBridge.cancelPenaltyExpiry).not.toHaveBeenCalled();
+  });
+
+  it('disarms the window once no block is being served', () => {
+    // Or its end would lift a shield some later focus session had raised.
+    syncAppShield(state({ penaltyUntil: EARLIER, penaltyEnabled: true }));
+    expect(mockBridge.cancelPenaltyExpiry).toHaveBeenCalledTimes(1);
+    expect(mockBridge.schedulePenaltyExpiry).not.toHaveBeenCalled();
+  });
+
+  it('disarms the window when the feature is switched off mid-block', () => {
+    syncAppShield(state({ penaltyUntil: LATER, penaltyEnabled: false }));
+    expect(mockBridge.cancelPenaltyExpiry).toHaveBeenCalledTimes(1);
+  });
+
+  it('tells the extension a focus session still wants the apps blocked', () => {
+    // The case the whole handshake exists for: a penalty running out while a
+    // session is going must not hand the apps back.
+    syncAppShield(state({
+      session: session(),
+      focusEnabled: true,
+      penaltyUntil: LATER,
+      penaltyEnabled: true,
+    }));
+    expect(mockBridge.setShieldState).toHaveBeenCalledWith(
+      expect.objectContaining({ otherReasonWantsShield: true, reason: 'focus' }),
+    );
+  });
+
+  it('tells the extension nothing else wants them when a penalty is the only reason', () => {
+    syncAppShield(state({ penaltyUntil: LATER, penaltyEnabled: true, penaltyReason: 'Morning walk' }));
+    expect(mockBridge.setShieldState).toHaveBeenCalledWith({
+      otherReasonWantsShield: false,
+      reason: 'penalty',
+      untilIso: LATER,
+      detail: 'Morning walk',
+    });
+  });
+
+  it('keeps that answer current on every reconcile, not just when a block starts', () => {
+    // A session can start, or the feature be switched off, while a window is
+    // already armed — and the extension gets no chance to ask when it wakes.
+    syncAppShield(state({ penaltyUntil: LATER, penaltyEnabled: true }));
+    expect(mockBridge.setShieldState).toHaveBeenLastCalledWith(
+      expect.objectContaining({ otherReasonWantsShield: false }),
+    );
+    syncAppShield(state({
+      session: session(), focusEnabled: true, penaltyUntil: LATER, penaltyEnabled: true,
+    }));
+    expect(mockBridge.setShieldState).toHaveBeenLastCalledWith(
+      expect.objectContaining({ otherReasonWantsShield: true }),
+    );
+  });
+
+  it('names nothing once no block is being served', () => {
+    // A stale reason is what would put a finished block's task on the next
+    // shield screen.
+    syncAppShield(state({ penaltyUntil: EARLIER, penaltyEnabled: true, penaltyReason: 'Morning walk' }));
+    expect(mockBridge.setShieldState).toHaveBeenCalledWith({
+      otherReasonWantsShield: false,
+      reason: 'none',
+      untilIso: null,
+      detail: null,
+    });
+  });
+
+  it('touches none of it when the gate is closed', () => {
+    mockBridgeOpen = false;
+    syncAppShield(state({ penaltyUntil: LATER, penaltyEnabled: true }));
+    expect(mockBridge.setShieldState).not.toHaveBeenCalled();
+    expect(mockBridge.schedulePenaltyExpiry).not.toHaveBeenCalled();
+    expect(mockBridge.cancelPenaltyExpiry).not.toHaveBeenCalled();
   });
 });

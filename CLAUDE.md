@@ -328,6 +328,7 @@ file: the two maps are indexes, not write-ups.
 | working a queue of tasks one at a time, with breaks | `src/utils/focusPlan.ts` + `src/store/useFocusStore.ts` — see `docs/arch/focus-sessions.md` |
 | what failing a task costs, in blocked apps | `src/utils/penaltyShield.ts` (the rule) + `sweepTaskPenalties`/`logSlip` in `useTaskStore` (the two triggers). The one feature here that does something to somebody for falling short, so read its refusals first: a task the app itself was withholding is never charged, a charge found on a later day is recorded without being served, and `undoSlip` deliberately doesn't refund |
 | whether the apps are blocked *right now* | `src/utils/appShield.ts` — the single arbiter over the focus shield and the penalty above. They drive one system shield, so it ORs them rather than each reconciling alone; two independent syncs was a race where one reason's end cleared the other's block |
+| the screen somebody sees when they open a blocked app | `targets/todo-shield-config/` (what it says) + `targets/todo-shield-action/` (its button) — see `docs/native-targets.md`. Two targets for one screen, and the layout is the system's; all that's ours is the words, which come from the App Group because the extension can reach nothing else |
 | a project that knows when you're away, and every reader of that span | `src/utils/awayDates.ts` + `Project.awayStart`/`awayEnd` — see `docs/arch/away-dates.md`. Read it before adding a fifth half-implementation of "the user is away from home"; it names the four that already exist and the one discipline that keeps them in step |
 | moving a whole trip when its dates change | `src/utils/awayShift.ts` + `src/components/AwayShiftSheet.tsx` — see `docs/arch/away-dates.md`. The offsets are deliberately not stored on the task, and that section says why |
 | where you're going, and the forecast for it | `Project.destination` + `src/services/geocode.ts` + `src/utils/tripForecast.ts` — see `docs/arch/away-dates.md`, including the itinerary boundary it refuses to cross |
@@ -433,7 +434,7 @@ file: the two maps are indexes, not write-ups.
 **Read narrowly.** 57 files are over 1,000 lines, 38 of
 them source rather than tests. The ten biggest source files:
 
-`store/useTaskStore.ts` (8.5k), `db/database.ts` (5.6k), `types/index.ts` (5.6k),
+`store/useTaskStore.ts` (8.6k), `db/database.ts` (5.6k), `types/index.ts` (5.6k),
 `components/TaskEditor.tsx` (5.6k), `store/useGroceryStore.ts` (5.4k),
 `screens/TodayScreen.tsx` (4.6k), `components/TaskItem.tsx` (4.3k),
 `utils/demoSeed.ts` (3.9k), `store/useSettingsStore.ts` (3.7k),
