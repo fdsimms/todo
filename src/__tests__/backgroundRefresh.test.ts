@@ -54,6 +54,7 @@ const mockTaskState = {
   checkBirthdayTasks: mockRecord('checkBirthdayTasks'),
   checkBirthdayGiftTasks: mockRecord('checkBirthdayGiftTasks'),
   checkReachOutTasks: mockRecord('checkReachOutTasks'),
+  sweepTaskPenalties: mockRecord('sweepTaskPenalties'),
   purgeOldCompletedTasks: mockRecord('purgeOldCompletedTasks'),
   tasks: [] as unknown[],
 };
@@ -138,6 +139,7 @@ describe('runBackgroundRefresh', () => {
       'checkMoodTasks', 'checkWeekendNudgeTasks', 'checkWeighInTasks',
       'checkBirthdayTasks', 'checkBirthdayGiftTasks', 'checkReachOutTasks',
       'reconcileAllLeftoverTasks', 'checkScheduledTemplates',
+      'sweepTaskPenalties',
     ];
     expect(expected).toHaveLength(passNames.length);
     expect(mockCalls.slice(0, passNames.length)).toEqual(passNames);

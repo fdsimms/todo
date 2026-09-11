@@ -1974,6 +1974,63 @@ export interface Task {
   slipCount: number;
   slipDate: string | null; // logical-day ISO string the slips above belong to
 
+  /**
+   * How long the apps picked in Settings are blocked when this task is failed,
+   * or null for the tasks — nearly all of them — that cost nothing.
+   *
+   * One field carries both the switch and the size, the way
+   * `deadlineOffsetDays` does, because "blocking for no minutes" is not a state
+   * worth being able to store. What counts as failing depends on the polarity
+   * and is the whole of the difference between the two:
+   *
+   * - A **positive** task fails by still being incomplete when
+   *   `penaltyCutoffTime` passes. It needs a `dueDate` to be late against, for
+   *   the reason `isTaskExpired` needs one: a task with no day on it has no day
+   *   to have missed.
+   * - A **negative** task fails on every slip logged, with no cutoff involved —
+   *   `logSlip` is already the failure report (see `polarity` above), so there
+   *   is nothing to wait for and nothing to be idempotent about.
+   *
+   * Deliberately not a `blockMinutes`: `blockedById`, `isHeldBack` and
+   * `blocking.ts` already mean one task waiting on another throughout this
+   * codebase, and a second sense of the word in the same type is how a reader
+   * ends up trusting the wrong one.
+   */
+  penaltyMinutes: number | null;
+
+  /**
+   * The time of day a positive task has to be done by, as "HH:mm", or null to
+   * be judged at the end of its logical day.
+   *
+   * Scoped to this feature rather than being a time added to `deadline`, which
+   * is documented above as informational and deliberately outside scheduling —
+   * giving it an hour would put `deadlineCalendarSync`, the countdown and both
+   * relative-deadline forms in scope of a question none of them asked. Read
+   * through `penaltyCutoffAt()`, never directly: a time before `dayResetTime`
+   * belongs to the *next* calendar day of the same logical one, so "01:00"
+   * under a 02:00 reset is tomorrow morning's 01:00 and not a cutoff that
+   * passed 23 hours ago.
+   */
+  penaltyCutoffTime: string | null;
+
+  /**
+   * When this occurrence's penalty was charged, or null while it still hasn't
+   * been.
+   *
+   * Per-occurrence state like `progressCount` and `deliverableValue`, so it is
+   * deliberately absent from CONTENT_FIELDS: a recurring task's successor is a
+   * fresh row that has to be able to fail on its own day, and a scope:'series'
+   * edit must not spread one morning's charge across every morning after it.
+   *
+   * It exists to make the sweep idempotent, which is the whole reason the
+   * charge is recorded on the row rather than as a day key in settings — a day
+   * key cannot tell two tasks missed on the same day apart, which is the
+   * unbounded mistake `generatedTasks.ts` argues against at length. It is also
+   * why completing a task late does not refund it: the stamp records that the
+   * cutoff passed with the task undone, and that stays true afterwards.
+   */
+  penaltyFiredAt: string | null;
+
   // Streaks
   //
   // For a positive task these are consecutive completions, which is what they
@@ -2311,7 +2368,7 @@ export interface Task {
 // source, so a series row or a template application can't inherit a count.
 // followUpTaskTally is the same kind of thing — the rule (followUpTaskEveryN,
 // followUpTaskTitle) is the draft's to set, the progress toward it is not.
-export type TaskDraft = Omit<Task, 'id' | 'createdAt' | 'seenAt' | 'completed' | 'completedAt' | 'streakCount' | 'streakDate' | 'previousStreakCount' | 'previousStreakDate' | 'priorBestStreak' | 'slipCount' | 'slipDate' | 'archived' | 'archivedAt' | 'postponeCount' | 'postponeMuted' | 'driftingSince' | 'followUpTaskTally' | 'previousFollowUpTaskTally' | 'calendarEventId' | 'completionCalendarEventId' | 'timeBlockEventId' | 'backfillDismissedFields'>;
+export type TaskDraft = Omit<Task, 'id' | 'createdAt' | 'seenAt' | 'completed' | 'completedAt' | 'streakCount' | 'streakDate' | 'previousStreakCount' | 'previousStreakDate' | 'priorBestStreak' | 'slipCount' | 'slipDate' | 'penaltyFiredAt' | 'archived' | 'archivedAt' | 'postponeCount' | 'postponeMuted' | 'driftingSince' | 'followUpTaskTally' | 'previousFollowUpTaskTally' | 'calendarEventId' | 'completionCalendarEventId' | 'timeBlockEventId' | 'backfillDismissedFields'>;
 
 // Which of the template's two anchor dates an item's offsets are relative
 // to — e.g. "pack" anchored to the trip's end date, "request time off"

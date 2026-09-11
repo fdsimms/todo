@@ -226,6 +226,9 @@ const makeTask = (overrides: Partial<Task> = {}): Task => ({
   polarity: 'positive',
   slipCount: 0,
   slipDate: null,
+  penaltyMinutes: null,
+  penaltyCutoffTime: null,
+  penaltyFiredAt: null,
   showStreak: false,
   streakRequiresWindow: false,
   parentId: null,
@@ -991,7 +994,7 @@ describe('dbInsertTask + rowToTask round-trip', () => {
 
   it('round-trips polarity and the slip pair', () => {
     dbInsertTask(makeTask({
-      id: 'avoid', polarity: 'negative', slipCount: 3, slipDate: '2026-01-10T00:00:00.000Z',
+      id: 'avoid', polarity: 'negative', slipCount: 3, slipDate: '2026-01-10T00:00:00.000Z', penaltyMinutes: null, penaltyCutoffTime: null, penaltyFiredAt: null,
     }));
     dbInsertTask(makeTask({ id: 'plain' }));
     const tasks = dbGetAllTasks();

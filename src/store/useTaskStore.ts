@@ -147,6 +147,7 @@ import { quotaRunSpan, quotaTargetForInterval, quotaDueTimesAfter, isQuotaRunOve
 import { MIN_TARGET_COUNT, MAX_TARGET_COUNT, taskKindOf } from '../utils/taskKinds';
 import { nextStreakRecord } from '../utils/streakRecord';
 import { isNegativeTask, slipPatch, undoSlipPatch, cleanDayPatch } from '../utils/negativeHabits';
+import { extendShieldUntil, penaltyChargeFor, slipPenaltyUntil } from '../utils/penaltyShield';
 import { isTaskVisible, isTaskNew, isTaskDeferred, isUpcomingToday, isHeldBack, isHiddenForVacation, isVisibleApartFromVacation, isTaskExpired, isTaskSweepable, isRecurrenceNotYetDue, isLiveRecurring, isMissableMealPlanTask, isInboxTask, isUnscheduledTask, isWaitingTask, isRelevantToGroupToday, groupRoster, hasNoDateSignal, isQuotaTask, isQuotaOnPace, quotaRidesOutTheDay, isMissed, sameTimeSegments, isCompletionOnTime, isCategoryScheduledDay, currentTimeSegment, timeSegmentThreshold } from '../utils/visibilityUtils';
 import { retentionCutoff, selectPurgeableTaskIds } from '../utils/retention';
 import { categoryLabel } from '../utils/categoryLabel';
@@ -252,6 +253,25 @@ export const CONTENT_FIELDS: (keyof Task)[] = [
   // top of the row that spawns the next occurrence — so listing them would hand
   // a fresh occurrence a stale count that completeTask had just reset to 0.
 ];
+
+/**
+ * Fold a fresh block into whatever is already being served.
+ *
+ * The single write point for the penalty shield, shared by the tap that logs a
+ * slip and the sweep that finds a missed cutoff. Does nothing while the feature
+ * is off, which is also what keeps a charge from being banked against the day
+ * somebody switches it on.
+ *
+ * Nothing here touches Screen Time. This writes a setting, and the subscription
+ * in `useAppShieldSync` is what turns that into a shield — so demo mode needs
+ * no gate of its own at this level (the write lands in the throwaway database
+ * like any other) and the one gate that matters stays where the bridge is.
+ */
+function chargePenaltyShield(until: Date): void {
+  const settings = useSettingsStore.getState();
+  if (!settings.penaltyShieldEnabled) return;
+  settings.setPenaltyShieldUntil(extendShieldUntil(settings.penaltyShieldUntil, until));
+}
 
 /**
  * The updateTask option for a date write nobody chose — series reconciliation,
@@ -517,6 +537,12 @@ function newTaskFromDraft(
     priorBestStreak: 0,
     slipCount: 0,
     slipDate: null,
+    penaltyMinutes: draft.penaltyMinutes ?? null,
+    penaltyCutoffTime: draft.penaltyCutoffTime ?? null,
+    // Never seeded from the draft: a charge belongs to the occurrence that
+    // earned it, so a new row — including the successor of one that was
+    // charged — starts owing nothing.
+    penaltyFiredAt: null,
     polarity: resolvedPolarity,
     // On by default for a negative habit and off for everything else. A flame on
     // every recurring row is noise (the reasoning behind the field), but the run
@@ -1608,8 +1634,27 @@ interface TaskStore extends UndoHistoryActions {
    * second kind of task behind it. See src/utils/negativeHabits.ts.
    */
   logSlip: (id: string) => void;
-  /** Takes back a slip logged today, restoring the run it ended. */
+  /**
+   * Takes back a slip logged today, restoring the run it ended.
+   *
+   * Restores the record only. A penalty block the slip bought stays in force —
+   * see `slipPenaltyUntil`, where taking it back would also be a way to buy
+   * back a block earned by something else entirely.
+   */
   undoSlip: (id: string) => void;
+  /**
+   * Charge the penalty on every task that has gone past its cutoff undone.
+   *
+   * The other half of `logSlip` above, for the polarity that fails by *not*
+   * doing something: there is no tap to hang it on, so it has to be swept for.
+   * Idempotent, which is what lets it sit in the catch-up list — a charge
+   * stamps `penaltyFiredAt` on the row it belongs to, and a stamped row is
+   * never charged twice however often this runs.
+   *
+   * Does nothing at all while the feature is switched off, so an install that
+   * has never used it cannot accumulate charges waiting to be served.
+   */
+  sweepTaskPenalties: () => void;
   /**
    * Credits the clean days that have gone by since each negative habit was last
    * accounted for.
@@ -3403,6 +3448,12 @@ export const useTaskStore = create<TaskStore>((set, get) => ({
           completed: false,
           completedAt: null,
           missedAt: null, // a miss belongs to the occurrence that was missed, never to its successor
+          // The twin of the line above, and load-bearing rather than tidy: the
+          // stamp is what stops a charge being made twice, so riding it forward
+          // would mean a daily task could be charged once and then never again,
+          // however many mornings it went undone after that. The configuration
+          // that decides the cost still carries via ...effective.
+          penaltyFiredAt: null,
           // Same reasoning one field up: the drip dated the occurrence that was
           // just completed, not this one, whose date came from the schedule.
           autoScheduledAt: null,
@@ -4139,6 +4190,12 @@ export const useTaskStore = create<TaskStore>((set, get) => ({
     const updated = { ...task, ...slipPatch(task, getCurrentDayStart()) };
     dbUpdateTask(updated);
     set(s => ({ tasks: s.tasks.map(t => (t.id === id ? updated : t)) }));
+    // The tap is the failure, so the cost lands with it rather than waiting for
+    // a sweep to notice. Deliberately not undone by `undoSlip` below — see
+    // slipPenaltyUntil for why taking the block back would be a way out of
+    // every other block too.
+    const slipUntil = slipPenaltyUntil(updated, new Date());
+    if (slipUntil) chargePenaltyShield(slipUntil);
     // A tap here costs a run that may be weeks long, so the undo is offered
     // rather than buried — the same affordance a logged quota unit gets, for a
     // mis-tap that is considerably more expensive.
@@ -4156,6 +4213,36 @@ export const useTaskStore = create<TaskStore>((set, get) => ({
     const updated = { ...task, ...patch };
     dbUpdateTask(updated);
     set(s => ({ tasks: s.tasks.map(t => (t.id === id ? updated : t)) }));
+  },
+
+  sweepTaskPenalties() {
+    const settings = useSettingsStore.getState();
+    if (!settings.penaltyShieldEnabled) return;
+
+    const now = new Date();
+    const charged: Task[] = [];
+    let until = settings.penaltyShieldUntil;
+
+    for (const task of get().tasks) {
+      const charge = penaltyChargeFor(task, now, settings.dayResetTime, {
+        // The two ways the app itself was the reason a task didn't get done.
+        // Charging for either would be punishing somebody for the app's own
+        // gate — see penaltyChargeFor, where this is a required argument
+        // rather than a default precisely so it has to be answered here.
+        excused: isHeldBack(task) || isHiddenForVacation(task),
+      });
+      if (!charge) continue;
+      charged.push({ ...task, penaltyFiredAt: charge.firedAt });
+      if (charge.until) until = extendShieldUntil(until, charge.until);
+    }
+
+    if (charged.length === 0) return;
+    for (const task of charged) dbUpdateTask(task);
+    const byId = new Map(charged.map(t => [t.id, t]));
+    set(s => ({ tasks: s.tasks.map(t => byId.get(t.id) ?? t) }));
+    // One write for however many charges landed, so the shield reconciles once
+    // rather than once per failed task.
+    if (until !== settings.penaltyShieldUntil) settings.setPenaltyShieldUntil(until);
   },
 
   rolloverNegativeStreaks() {
@@ -4338,6 +4425,9 @@ export const useTaskStore = create<TaskStore>((set, get) => ({
         completed: false,
         completedAt: null,
         missedAt: null,
+        // Same as completeTask's successor: the stamp is per-occurrence, and
+        // carrying it would leave this row unable to be charged at all.
+        penaltyFiredAt: null,
         autoScheduledAt: null,
         createdAt: now,
         seenAt: now,
@@ -6769,6 +6859,9 @@ export const useTaskStore = create<TaskStore>((set, get) => ({
       polarity: 'positive',
       slipCount: 0,
       slipDate: null,
+      penaltyMinutes: null,
+      penaltyCutoffTime: null,
+      penaltyFiredAt: null,
       parentId,
       groupId: null,
       projectId: null,
@@ -6966,6 +7059,9 @@ export const useTaskStore = create<TaskStore>((set, get) => ({
       polarity: 'positive',
       slipCount: 0,
       slipDate: null,
+      penaltyMinutes: null,
+      penaltyCutoffTime: null,
+      penaltyFiredAt: null,
       parentId: null,
       groupId,
       projectId: null,

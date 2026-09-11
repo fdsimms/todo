@@ -1,5 +1,6 @@
 import { isStreakAtRecord } from '../utils/streakRecord';
 import { useTaskStore } from '../store/useTaskStore';
+import { useSettingsStore } from '../store/useSettingsStore';
 import { useMoodStore } from '../store/useMoodStore';
 import { UNDO_STACK_LIMIT } from '../utils/undoHistory';
 import { isMissed, isRealCompletion } from '../utils/missed';
@@ -221,6 +222,7 @@ jest.mock('../store/useSettingsStore', () => ({
       // carry them with it (see renameCategory/deleteCategory).
       mealCookTaskCategory: null, groceryUseUpTaskCategory: null, leftoverUseUpTaskCategory: null,
       calendarEventCategory: null, collapsedCategories: [], titleRules: [],
+      penaltyShieldEnabled: false, penaltyShieldUntil: null, setPenaltyShieldUntil: jest.fn(),
       setMealCookTaskCategory: jest.fn(), setGroceryUseUpTaskCategory: jest.fn(),
       setLeftoverUseUpTaskCategory: jest.fn(), setCalendarEventCategory: jest.fn(),
       setCollapsedCategories: jest.fn(),
@@ -345,6 +347,9 @@ const makeTask = (overrides: Partial<Task> = {}): Task => ({
   polarity: 'positive',
   slipCount: 0,
   slipDate: null,
+  penaltyMinutes: null,
+  penaltyCutoffTime: null,
+  penaltyFiredAt: null,
   showStreak: false,
   streakRequiresWindow: false,
   parentId: null,
@@ -14201,6 +14206,83 @@ describe('negative habits', () => {
     });
   });
 
+  // What a slip costs, when the person has asked for it to cost something.
+  // The arithmetic is pinned in penaltyShield.test.ts; this is the store's
+  // half — that the tap charges, and that taking the tap back does not refund.
+  describe('the penalty it charges', () => {
+    const realSettings = (useSettingsStore.getState as jest.Mock).getMockImplementation()!;
+    let shieldUntil: string | null;
+    let setShieldUntil: jest.Mock;
+
+    beforeEach(() => {
+      shieldUntil = null;
+      setShieldUntil = jest.fn((next: string | null) => { shieldUntil = next; });
+      (useSettingsStore.getState as jest.Mock).mockImplementation(() => ({
+        ...realSettings(),
+        penaltyShieldEnabled: true,
+        penaltyShieldUntil: shieldUntil,
+        setPenaltyShieldUntil: setShieldUntil,
+      }));
+    });
+
+    afterEach(() => {
+      (useSettingsStore.getState as jest.Mock).mockImplementation(realSettings);
+    });
+
+    it('blocks the chosen apps for the configured stretch, measured from the tap', () => {
+      seed(avoid({ penaltyMinutes: 120 }));
+      useTaskStore.getState().logSlip('smoke');
+      // Tapped at 10:00 on Jan 10; two hours buys until noon.
+      expect(new Date(shieldUntil!)).toEqual(new Date(2026, 0, 10, 12, 0, 0));
+    });
+
+    it('charges nothing for a task carrying no penalty', () => {
+      seed(avoid({ penaltyMinutes: null }));
+      useTaskStore.getState().logSlip('smoke');
+      expect(setShieldUntil).not.toHaveBeenCalled();
+    });
+
+    it('charges nothing while the feature is switched off', () => {
+      (useSettingsStore.getState as jest.Mock).mockImplementation(() => ({
+        ...realSettings(),
+        penaltyShieldEnabled: false,
+        penaltyShieldUntil: null,
+        setPenaltyShieldUntil: setShieldUntil,
+      }));
+      seed(avoid({ penaltyMinutes: 120 }));
+      useTaskStore.getState().logSlip('smoke');
+      expect(setShieldUntil).not.toHaveBeenCalled();
+    });
+
+    it('extends rather than replaces when a second slip lands mid-block', () => {
+      seed(avoid({ penaltyMinutes: 120 }));
+      useTaskStore.getState().logSlip('smoke');
+      jest.setSystemTime(new Date(2026, 0, 10, 11, 0, 0));
+      useTaskStore.getState().logSlip('smoke');
+      expect(new Date(shieldUntil!)).toEqual(new Date(2026, 0, 10, 13, 0, 0));
+    });
+
+    it('does not shorten the block when the second slip would end sooner', () => {
+      // Failing twice must not be a way out of failing once.
+      seed(avoid({ penaltyMinutes: 120 }));
+      useTaskStore.getState().logSlip('smoke');
+      seed({ ...get(), penaltyMinutes: 5 });
+      jest.setSystemTime(new Date(2026, 0, 10, 10, 30, 0));
+      useTaskStore.getState().logSlip('smoke');
+      expect(new Date(shieldUntil!)).toEqual(new Date(2026, 0, 10, 12, 0, 0));
+    });
+
+    it('leaves the block in force when the slip is undone', () => {
+      // Undo corrects the record, not the consequence — otherwise logging and
+      // retracting a slip would be a way to buy back any block at all.
+      seed(avoid({ penaltyMinutes: 120, streakCount: 12, streakDate: new Date(2026, 0, 9).toISOString() }));
+      useTaskStore.getState().logSlip('smoke');
+      useTaskStore.getState().undoSlip('smoke');
+      expect(get().streakCount).toBe(12);
+      expect(new Date(shieldUntil!)).toEqual(new Date(2026, 0, 10, 12, 0, 0));
+    });
+  });
+
   describe('rolloverNegativeStreaks', () => {
     it('credits the clean days that have gone by', () => {
       seed(avoid({ streakCount: 1, streakDate: new Date(2026, 0, 5).toISOString() }));
@@ -14236,6 +14318,114 @@ describe('negative habits', () => {
       useTaskStore.getState().rolloverNegativeStreaks();
       expect(get().streakCount).toBe(2); // Jan 11 and 12
     });
+  });
+});
+
+// The other polarity's penalty: a task that fails by not getting done. There is
+// no tap to hang it on, so it is swept for — which makes the stamp that stops
+// it firing twice the thing most worth pinning down here.
+describe('sweepTaskPenalties', () => {
+  const realSettings = (useSettingsStore.getState as jest.Mock).getMockImplementation()!;
+  let shieldUntil: string | null;
+  let setShieldUntil: jest.Mock;
+
+  beforeEach(() => {
+    jest.useFakeTimers();
+    jest.setSystemTime(new Date(2026, 0, 10, 9, 0, 0)); // Sat Jan 10 2026, 09:00
+    shieldUntil = null;
+    setShieldUntil = jest.fn((next: string | null) => { shieldUntil = next; });
+    (useSettingsStore.getState as jest.Mock).mockImplementation(() => ({
+      ...realSettings(),
+      penaltyShieldEnabled: true,
+      penaltyShieldUntil: shieldUntil,
+      setPenaltyShieldUntil: setShieldUntil,
+    }));
+  });
+
+  afterEach(() => {
+    jest.useRealTimers();
+    (useSettingsStore.getState as jest.Mock).mockImplementation(realSettings);
+  });
+
+  const walk = (over: Partial<Task> = {}) => makeTask({
+    id: 'walk',
+    title: 'Morning walk',
+    dueDate: new Date(2026, 0, 10, 12, 0, 0).toISOString(),
+    penaltyMinutes: 120,
+    penaltyCutoffTime: '08:00',
+    ...over,
+  });
+  const get = (id = 'walk') => useTaskStore.getState().tasks.find(t => t.id === id)!;
+
+  it('charges a task left undone past its cutoff', () => {
+    useTaskStore.setState({ tasks: [walk()] });
+    useTaskStore.getState().sweepTaskPenalties();
+    expect(get().penaltyFiredAt).not.toBeNull();
+    expect(new Date(shieldUntil!)).toEqual(new Date(2026, 0, 10, 11, 0, 0));
+  });
+
+  it('leaves a task alone before its cutoff', () => {
+    jest.setSystemTime(new Date(2026, 0, 10, 7, 0, 0));
+    useTaskStore.setState({ tasks: [walk()] });
+    useTaskStore.getState().sweepTaskPenalties();
+    expect(get().penaltyFiredAt).toBeNull();
+    expect(setShieldUntil).not.toHaveBeenCalled();
+  });
+
+  it('charges once and then never again, however often it runs', () => {
+    // The stamp is what makes this safe to sit in the catch-up list, which runs
+    // on every launch and every background refresh.
+    useTaskStore.setState({ tasks: [walk()] });
+    useTaskStore.getState().sweepTaskPenalties();
+    const firstCallCount = setShieldUntil.mock.calls.length;
+    useTaskStore.getState().sweepTaskPenalties();
+    useTaskStore.getState().sweepTaskPenalties();
+    expect(setShieldUntil).toHaveBeenCalledTimes(firstCallCount);
+  });
+
+  it('charges nothing for a task that was done in time', () => {
+    useTaskStore.setState({ tasks: [walk({ completed: true })] });
+    useTaskStore.getState().sweepTaskPenalties();
+    expect(get().penaltyFiredAt).toBeNull();
+    expect(setShieldUntil).not.toHaveBeenCalled();
+  });
+
+  it('charges nothing for a task carrying no penalty', () => {
+    useTaskStore.setState({ tasks: [walk({ penaltyMinutes: null })] });
+    useTaskStore.getState().sweepTaskPenalties();
+    expect(get().penaltyFiredAt).toBeNull();
+  });
+
+  it('does nothing at all while the feature is switched off', () => {
+    // Including no stamping: an install that switches this on later must not
+    // find every task it has ever missed already charged.
+    (useSettingsStore.getState as jest.Mock).mockImplementation(() => ({
+      ...realSettings(),
+      penaltyShieldEnabled: false,
+      penaltyShieldUntil: null,
+      setPenaltyShieldUntil: setShieldUntil,
+    }));
+    useTaskStore.setState({ tasks: [walk()] });
+    useTaskStore.getState().sweepTaskPenalties();
+    expect(get().penaltyFiredAt).toBeNull();
+    expect(setShieldUntil).not.toHaveBeenCalled();
+  });
+
+  it('records but serves nothing for a miss from an earlier day', () => {
+    jest.setSystemTime(new Date(2026, 0, 12, 9, 0, 0)); // two days on
+    useTaskStore.setState({ tasks: [walk()] });
+    useTaskStore.getState().sweepTaskPenalties();
+    expect(get().penaltyFiredAt).not.toBeNull();
+    expect(setShieldUntil).not.toHaveBeenCalled();
+  });
+
+  it('folds several misses on the same day into one write', () => {
+    useTaskStore.setState({
+      tasks: [walk(), walk({ id: 'stretch', title: 'Stretch', penaltyMinutes: 180 })],
+    });
+    useTaskStore.getState().sweepTaskPenalties();
+    expect(setShieldUntil).toHaveBeenCalledTimes(1);
+    expect(new Date(shieldUntil!)).toEqual(new Date(2026, 0, 10, 12, 0, 0)); // the longer of the two
   });
 });
 
