@@ -1,6 +1,7 @@
 import React, { useEffect, useMemo, useRef, useState } from 'react';
 import { View, Text, TextInput, TouchableOpacity, ScrollView, FlatList, StyleSheet, Platform, Alert } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
+import { useBottomTabBarHeight } from '@react-navigation/bottom-tabs';
 import Ionicons from '@expo/vector-icons/Ionicons';
 import { useShallow } from 'zustand/react/shallow';
 import { format } from 'date-fns/format';
@@ -301,9 +302,10 @@ interface SessionEntry {
 
 export function BackfillScreen() {
   const insets = useSafeAreaInsets();
-  // Pushed as a RootStack card rather than a tab screen, so there's no bottom
-  // tab bar behind it to clear — the safe area inset is the whole gap.
-  const tabBarHeight = insets.bottom;
+  // A hidden tab (see AppNavigator), so the real bottom tab bar sits behind
+  // this screen and its height has to be cleared like any other hidden-tab
+  // screen — insets.bottom alone leaves the CTA sitting under the tab bar.
+  const tabBarHeight = useBottomTabBarHeight();
   const { colors, shadows } = useTheme();
   const styles = useMemo(() => makeStyles(colors), [colors]);
 
