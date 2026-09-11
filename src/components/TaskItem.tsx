@@ -1285,6 +1285,13 @@ export const TaskItem = React.memo(function TaskItem({
   // Computed once and reused by the expandable step list (#1237) and the row's
   // step-forward/back controls (#786) — same reasoning as chainStepIndex above.
   const chainStepPreview = chainStep ? chainPreview(task) : null;
+  // task.title is the chain's own name (what the editor's name field actually
+  // edits — see handleTitleTap's comment above), distinct from the active
+  // step's title the row displays. Nothing else on the row ever showed it, so
+  // surface it in the chain summary whenever it says something the current
+  // step doesn't already say.
+  const chainName =
+    chainStepPreview && task.title !== chainStepPreview.currentTitle ? task.title : null;
   // "@Brittany" stays literal in the title rather than being lifted into a
   // separate field (see matchPersonMentions' doc comment), so this is a purely
   // visual pass: find that span in the displayed text and tint it. Matched
@@ -2056,7 +2063,10 @@ export const TaskItem = React.memo(function TaskItem({
               />
             )}
             {chainStep && (
-              <View style={styles.chainBadge}>
+              <View
+                style={styles.chainBadge}
+                accessibilityLabel={chainName ? `Step ${chainPosition} of "${chainName}"` : `Chain step ${chainPosition}`}
+              >
                 <Ionicons name="git-commit" size={9} color={colors.accent} />
                 <Text style={styles.chainBadgeText}>{chainPosition}</Text>
               </View>
@@ -2852,18 +2862,18 @@ export const TaskItem = React.memo(function TaskItem({
                 accessibilityState={{ expanded: chainStepsExpanded }}
                 accessibilityLabel={
                   chainStepsExpanded
-                    ? `Collapse the ${chainStepPreview.total}-step chain`
-                    : `Show all ${chainStepPreview.total} steps of the chain, currently on ${chainStepPreview.currentTitle}`
+                    ? `Collapse the ${chainStepPreview.total}-step chain${chainName ? ` "${chainName}"` : ''}`
+                    : `Show all ${chainStepPreview.total} steps of the chain${chainName ? ` "${chainName}"` : ''}, currently on ${chainStepPreview.currentTitle}`
                 }
               >
                 <Ionicons name="git-commit" size={12} color={colors.textSecondary} />
                 {chainStepsExpanded ? (
                   <Text style={styles.expandMeta}>
-                    Chain · {chainStepPreview.total} steps
+                    {chainName ? `${chainName} · ` : ''}Chain · {chainStepPreview.total} steps
                   </Text>
                 ) : (
                   <Text style={styles.expandMeta} numberOfLines={1}>
-                    Chain {chainStepPreview.currentIdx + 1}/{chainStepPreview.total}:{' '}
+                    {chainName ? `${chainName} · ` : ''}Chain {chainStepPreview.currentIdx + 1}/{chainStepPreview.total}:{' '}
                     <Text style={styles.expandMetaActive}>On: {chainStepPreview.currentTitle}</Text>
                     {chainStepPreview.nextTitle ? ` → Next: ${chainStepPreview.nextTitle}` : ''}
                   </Text>
