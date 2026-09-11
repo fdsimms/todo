@@ -45,6 +45,7 @@ export type SettingsGroupId =
   | 'generated'
   | 'health'
   | 'kitchen'
+  | 'permissions'
   | 'privacyAi'
   | 'dataReset'
   | 'about';
@@ -117,6 +118,13 @@ export const SETTINGS_GROUPS: SettingsGroup[] = [
   // instance, since adjacency is what reads as an accident rather than as a
   // category. Appearance/Automatic tasks are five rows apart, Day & time and
   // Groceries & meals four.
+  //
+  // Permissions is read-only accounting rather than a thing you configure —
+  // every row here is a status and a link to fix it elsewhere (this app's own
+  // Health/Calendar/Notifications groups, or the OS's own per-app page for the
+  // rest), never a switch of its own — which is what puts it here rather than
+  // beside Health above.
+  { id: 'permissions', title: 'App permissions', icon: 'shield-checkmark-outline', tint: 'neutral' },
   { id: 'privacyAi', title: 'Privacy & AI', icon: 'lock-closed-outline', tint: 'neutral' },
   { id: 'dataReset', title: 'Data & reset', icon: 'archive-outline', tint: 'neutral' },
   { id: 'about', title: 'About', icon: 'information-circle-outline', tint: 'neutral' },
@@ -476,6 +484,29 @@ export const SETTINGS_ENTRIES: SettingsEntry[] = [
     keywords: ['permission', 'allow', 'authorize', 'grant', 'sharing', 'food', 'meal', 'calories', 'macros'] },
   { id: 'weightUnit', groupId: 'health', label: 'Weight unit', section: 'Weight',
     keywords: ['kg', 'kilograms', 'lb', 'pounds', 'scale', 'body', 'mass', 'metric', 'imperial'] },
+
+  // App permissions — one row per system permission the app ever asks for,
+  // read-only status plus a link to fix it. Health, Calendar and Notifications
+  // already have their own detailed rows elsewhere (above, and in Reminders &
+  // Calendar / Notifications); this group exists so there's one place to see
+  // all of them at once, which matters most right after a device-wide privacy
+  // reset wipes every grant back to "not asked".
+  { id: 'permHealth', groupId: 'permissions', label: 'Apple Health', section: 'App permissions', iosOnly: true,
+    keywords: ['permission', 'steps', 'water', 'weight', 'nutrition', 'healthkit', 'reset'] },
+  { id: 'permCalendar', groupId: 'permissions', label: 'Calendar', section: 'App permissions', iosOnly: true,
+    keywords: ['permission', 'events', 'busy', 'schedule', 'google', 'reset'] },
+  { id: 'permReminders', groupId: 'permissions', label: 'Reminders', section: 'App permissions', iosOnly: true,
+    keywords: ['permission', 'siri', 'voice', 'import', 'reset'] },
+  { id: 'permContacts', groupId: 'permissions', label: 'Contacts', section: 'App permissions', iosOnly: true,
+    keywords: ['permission', 'address book', 'people', 'birthday', 'reset'] },
+  { id: 'permLocation', groupId: 'permissions', label: 'Location', section: 'App permissions', iosOnly: true,
+    keywords: ['permission', 'weather', 'forecast', 'gps', 'reset'] },
+  { id: 'permCamera', groupId: 'permissions', label: 'Camera', section: 'App permissions',
+    keywords: ['permission', 'barcode', 'scan', 'receipt', 'recipe photo', 'label', 'reset'] },
+  { id: 'permPhotos', groupId: 'permissions', label: 'Photos', section: 'App permissions',
+    keywords: ['permission', 'library', 'gallery', 'recipe photo', 'reset'] },
+  { id: 'permNotifications', groupId: 'permissions', label: 'Notifications', section: 'App permissions',
+    keywords: ['permission', 'alerts', 'reminders', 'badges', 'reset'] },
 
   // ── Tasks & projects ──────────────────────────────────────────────────────
   // In the order the screen renders them, which the registry's own comment
