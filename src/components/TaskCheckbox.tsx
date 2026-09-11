@@ -4,6 +4,8 @@ import Ionicons from '@expo/vector-icons/Ionicons';
 import { format } from 'date-fns';
 import type { Task } from '../types';
 import { useTaskStore } from '../store/useTaskStore';
+import { useSettingsStore } from '../store/useSettingsStore';
+import { confirmSlip } from '../utils/slipConfirm';
 import { useMealPlanStore } from '../store/useMealPlanStore';
 import { usePlanMeal } from '../hooks/usePlanMeal';
 import { useColors } from '../theme/ThemeContext';
@@ -70,6 +72,7 @@ export function TaskCheckbox({ task, taskLabel, onTicked }: Props) {
   const uncompleteTask = useTaskStore(s => s.uncompleteTask);
   const logQuotaUnit = useTaskStore(s => s.logQuotaUnit);
   const logSlip = useTaskStore(s => s.logSlip);
+  const penaltyShieldEnabled = useSettingsStore(s => s.penaltyShieldEnabled);
   const planMeal = useMealPlanStore(s => s.planMeal);
   const removeMealPlanEntry = useMealPlanStore(s => s.removeEntry);
   const { offerPrepTasksForEach } = usePlanMeal();
@@ -134,7 +137,7 @@ export function TaskCheckbox({ task, taskLabel, onTicked }: Props) {
         // habit stays on the list either way — so the haptic and the box going
         // red are the whole of the feedback here.
         await haptics.warning();
-        logSlip(task.id);
+        confirmSlip(task, penaltyShieldEnabled, () => logSlip(task.id));
         return;
       case 'ask':
         // The question comes first and the completion only follows an answer,

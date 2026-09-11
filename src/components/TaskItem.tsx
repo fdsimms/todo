@@ -43,6 +43,7 @@ import { formatDeadlineDate, formatScheduledDate, formatTaskDate, formatHHMM, da
 import { isNegativeTask, isCleanToday, slipsToday } from '../utils/negativeHabits';
 import { scheduleMoveUpdates } from '../utils/taskMoves';
 import { formatDuration, formatStopwatch } from '../utils/effort';
+import { confirmSlip } from '../utils/slipConfirm';
 import { scheduleCompletionTimer } from '../utils/notifications';
 import { isTimedTask, timerRemaining, timerProgress, timerElapsed } from '../utils/timer';
 import {
@@ -441,6 +442,7 @@ export const TaskItem = React.memo(function TaskItem({
   // a key it's the AI sheet; without one it falls back to the editor, where the
   // subtask field is. A row that can't do either (no onEdit) offers no pill.
   const anthropicApiKey = useSettingsStore(s => s.anthropicApiKey);
+  const penaltyShieldEnabled = useSettingsStore(s => s.penaltyShieldEnabled);
   const canBreakUp = !!anthropicApiKey || !!onEdit;
   const handleBreakUp = () => {
     setShowWhenPicker(false);
@@ -1451,7 +1453,7 @@ export const TaskItem = React.memo(function TaskItem({
   // (handleSlipUndo), the same affordance a logged quota unit has.
   const handleSlip = async () => {
     await haptics.warning();
-    logSlip(task.id);
+    confirmSlip(task, penaltyShieldEnabled, () => logSlip(task.id));
   };
 
   const handleSlipUndo = async () => {

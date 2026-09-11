@@ -205,6 +205,13 @@ export function catchUpPasses(): MaintenanceStep[] {
     // reason that one sits after rolloverQuotas — a run can create tasks a
     // project counts, so the cheaper pass goes first and sees a settled list.
     ['check scheduled templates', () => useTemplateStore.getState().checkScheduledTemplates()],
+    // Charge the apps-blocked penalty on anything that went past its cutoff
+    // undone. Last in the list on purpose: every pass above can change whether
+    // a task is still outstanding — a template can create one, a rollover can
+    // roll one forward, a trip starting can excuse the lot — and a charge is
+    // the one thing here that cannot be taken back by the pass that follows it.
+    // Idempotent like everything else in this list, via the stamp on the row.
+    ['sweep task penalties', () => tasks().sweepTaskPenalties()],
   ];
 }
 

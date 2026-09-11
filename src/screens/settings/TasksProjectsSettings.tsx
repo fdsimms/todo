@@ -11,6 +11,7 @@ import { useColors } from '../../theme/ThemeContext';
 import { spacing } from '../../theme';
 import { WhenPicker } from '../../components/WhenPicker';
 import { getTaskDayStart } from '../../utils/dateUtils';
+import { clockTimeToken } from '../../utils/clockTime';
 import { EXPIRED_TASK_GRACE_OPTIONS, expiredTaskGraceLabel, type ExpiredTaskGraceDays } from '../../utils/expiredTaskGrace';
 import { CountStepper } from '../../components/CountStepper';
 import { SettingsSection } from './SettingsSection';
@@ -176,6 +177,42 @@ export function TasksProjectsSettings() {
     // Straight into the picker the first time: the setting does nothing at all
     // until some apps are chosen, and a toggle that visibly changes nothing is
     // how somebody concludes the feature is broken.
+    if (shieldTotal === 0) await handleChooseApps();
+  };
+
+  const penaltyShieldEnabled = useSettingsStore(s => s.penaltyShieldEnabled);
+  const setPenaltyShieldEnabled = useSettingsStore(s => s.setPenaltyShieldEnabled);
+  const penaltyShieldUntil = useSettingsStore(s => s.penaltyShieldUntil);
+  const setPenaltyShieldUntil = useSettingsStore(s => s.setPenaltyShieldUntil);
+  const use24HourTime = useSettingsStore(s => s.use24HourTime);
+  // Only while one is actually being served. A row reporting a time that has
+  // already passed reads as a block still in force.
+  const penaltyUntilLabel = penaltyShieldUntil && new Date(penaltyShieldUntil) > new Date()
+    ? format(new Date(penaltyShieldUntil), clockTimeToken(use24HourTime))
+    : null;
+
+  const handleTogglePenalty = async () => {
+    haptics.tap();
+    if (penaltyShieldEnabled) {
+      setPenaltyShieldEnabled(false);
+      // Switching the feature off is the way out of a block being served, so
+      // the block must not be left waiting to resume the moment it comes back
+      // on. This is deliberately the *only* way out from inside the app: a
+      // "lift it now" button would undo the one thing the feature is for.
+      setPenaltyShieldUntil(null);
+      return;
+    }
+    const bridge = screenTimeBridge();
+    if (!bridge) return;
+    const status = await bridge.requestScreenTimeAuthorization();
+    if (status !== 'approved') {
+      Alert.alert(
+        'Screen Time access needed',
+        'Blocking apps when you fail a task needs Screen Time access. You can grant it in Settings, under Screen Time.',
+      );
+      return;
+    }
+    setPenaltyShieldEnabled(true);
     if (shieldTotal === 0) await handleChooseApps();
   };
 
@@ -648,6 +685,48 @@ export function TasksProjectsSettings() {
                   value={shieldSelectionLabel}
                   onPress={handleChooseApps}
                 />
+              </>
+            )}
+            <View style={styles.sep} />
+            <SettingsRow
+              entryId="penaltyShield"
+              icon="alert-circle-outline"
+              iconColor={penaltyShieldEnabled ? colors.accent : undefined}
+              label="Block apps when you fail a task"
+              hint={penaltyShieldEnabled
+                ? 'Each task sets how long. The same apps are blocked when you miss a cutoff, or log a slip on a task you’re avoiding'
+                : 'Failing a task blocks nothing'}
+              toggle={penaltyShieldEnabled}
+              onPress={handleTogglePenalty}
+            />
+            {penaltyShieldEnabled && (
+              <>
+                {shieldTotal === 0 && !focusShieldEnabled && (
+                  <>
+                    <View style={styles.sep} />
+                    <SettingsRow
+                      entryId="penaltyShieldApps"
+                      icon="apps-outline"
+                      label="Apps to block"
+                      hint="The same set the focus shield uses. iOS doesn’t tell the app which ones you picked, so only the count shows here."
+                      value={shieldSelectionLabel}
+                      onPress={handleChooseApps}
+                    />
+                  </>
+                )}
+                {penaltyUntilLabel && (
+                  <>
+                    <View style={styles.sep} />
+                    <SettingsRow
+                      entryId="penaltyShieldActive"
+                      icon="time-outline"
+                      iconColor={colors.accent}
+                      label="Blocked until"
+                      hint="Turning this setting off is the only way to end it early."
+                      value={penaltyUntilLabel}
+                    />
+                  </>
+                )}
               </>
             )}
           </>
