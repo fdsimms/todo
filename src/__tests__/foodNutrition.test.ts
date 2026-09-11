@@ -2,6 +2,8 @@ import {
   addCustomPortion,
   catalogPanelWrite,
   describeFoodPanel,
+  flOzToMl,
+  mlToFlOz,
   nutritionFor,
   parseFoodNutrition,
   serializeFoodNutrition,
@@ -335,5 +337,18 @@ describe('catalogPanelWrite', () => {
     expect(catalogPanelWrite(null, empty)).toBe('refuse');
     expect(catalogPanelWrite(nutrition(), empty)).toBe('refuse');
     expect(catalogPanelWrite(null, null)).toBe('refuse');
+  });
+});
+
+describe('mlToFlOz / flOzToMl', () => {
+  it('converts a known real-world amount', () => {
+    // A US cup is 8 fl oz and 236.5882365 ml.
+    expect(mlToFlOz(236.5882365)).toBeCloseTo(8, 5);
+    expect(flOzToMl(8)).toBeCloseTo(236.5882365, 5);
+  });
+
+  it('round-trips without drifting', () => {
+    expect(flOzToMl(mlToFlOz(300))).toBeCloseTo(300, 10);
+    expect(mlToFlOz(flOzToMl(10))).toBeCloseTo(10, 10);
   });
 });

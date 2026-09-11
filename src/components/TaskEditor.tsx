@@ -44,7 +44,7 @@ import { subMinutes } from 'date-fns/subMinutes';
 import { differenceInCalendarDays } from 'date-fns/differenceInCalendarDays';
 import type { Task, Priority, Effort, FollowUpTaskDraft, RecurrenceType, ChainItem, DeliverableKind, TimeOfDay, ReminderKind, Polarity, QuotaPeriod, NutrientKey } from '../types';
 import { PRIORITY_LABELS, EFFORT_LABELS, TITLE_MAX_LENGTH, NUTRIENT_KEYS } from '../types';
-import { NUTRIENT_LABEL } from '../utils/foodNutrition';
+import { NUTRIENT_LABEL, mlToFlOz, flOzToMl } from '../utils/foodNutrition';
 import { useColors, useTheme } from '../theme/ThemeContext';
 import { spacing, radius, font, border, interaction, animation, checkboxRadius, iconSize, type Colors } from '../theme';
 import { haptics } from '../utils/haptics';
@@ -283,6 +283,12 @@ const LOG_HEALTH_VALUE_STEPS: Record<NutrientKey, { step: number; max: number }>
   waterMl: { step: 50, max: 1000 },
 };
 
+// The fl oz equivalent of waterMl's own step/max above, for people who think
+// in cups/fl oz rather than millilitres. Whole numbers so the stepper still
+// moves by clean amounts rather than by 1.7-oz increments; the max is rounded
+// up from waterMl's 1000ml so the two units cover the same real range.
+const LOG_HEALTH_WATER_FL_OZ_STEPS = { step: 1, max: 34 };
+
 
 export function TaskEditor({ visible, task, initialDraft, onClose }: Props) {
   // ==== store bindings ====
@@ -481,6 +487,12 @@ export function TaskEditor({ visible, task, initialDraft, onClose }: Props) {
   const [completionTimerMinutes, setCompletionTimerMinutes] = useState<number | null>(null);
   const [logHealthMetric, setLogHealthMetric] = useState<NutrientKey | null>(null);
   const [logHealthAmount, setLogHealthAmount] = useState<number | null>(null);
+  // Display-only, and not read from the task: logHealthAmount is always held
+  // and written in millilitres (what logTaskHealthValue actually sends to
+  // Health), and this just picks what the stepper below shows and steps in.
+  // Every sheet opens back at ml, same as the amount always opens back at
+  // whatever the task itself has.
+  const [waterLogUnit, setWaterLogUnit] = useState<'ml' | 'flOz'>('ml');
   const [medicationName, setMedicationName] = useState<string | null>(null);
   // Held as the typed string rather than a number so a half-typed "2." isn't
   // thrown away mid-keystroke; parsed once, on save.
@@ -3267,58 +3279,113 @@ export function TaskEditor({ visible, task, initialDraft, onClose }: Props) {
             key: 'logHealthValue', label: 'Log to Health',
             set: logHealthMetric !== null && logHealthAmount !== null,
             keywords: ['water', 'hydration', 'drink', 'health', 'apple health', 'nutrient', 'protein', 'sodium', 'calories', 'sugar', 'fiber', 'fat', 'carbs', 'caffeine'],
-            node: (
-              <CollapsibleField
-                label="Log to Health"
-                summary={
-                  logHealthMetric !== null && logHealthAmount !== null
-                    ? `${logHealthAmount}${NUTRIENT_LABEL[logHealthMetric].unit} of ${NUTRIENT_LABEL[logHealthMetric].label.toLowerCase()} when completed`
-                    : undefined
-                }
-                hint={
-                  healthWriteEnabled
-                    ? 'Writes one sample to Apple Health each time you complete this task.'
-                    : 'Turn on writing to Health in Settings › Health first'
-                }
-                expanded={healthWriteEnabled && fieldOpen('logHealthValue')}
-                onToggle={() => { if (!healthWriteEnabled) return; toggleField('logHealthValue'); }}
-              >
-                <SegmentedControl<NutrientKey>
-                  options={NUTRIENT_KEYS.map(key => ({ value: key, label: NUTRIENT_LABEL[key].label }))}
-                  value={logHealthMetric ?? 'waterMl'}
-                  onChange={next => {
-                    haptics.tap();
-                    setLogHealthMetric(next);
-                    // Re-defaulted rather than carried over, same reasoning
-                    // the health-target metric switch above uses: 250 of
-                    // whatever the old metric was is not a meaningful amount
-                    // of the new one, so switching starts back at one step.
-                    setLogHealthAmount(LOG_HEALTH_VALUE_STEPS[next].step);
-                  }}
-                  columns={2}
-                  label="Nutrient"
-                  surface="card"
-                />
-                <CountStepper
-                  value={logHealthAmount}
-                  onChange={next => {
-                    setLogHealthAmount(next);
-                    // Stepping up from Off before ever touching the picker
-                    // above still has to turn the row on for some metric —
-                    // water, the same default this feature started as.
-                    if (next !== null && logHealthMetric === null) setLogHealthMetric('waterMl');
-                  }}
-                  min={LOG_HEALTH_VALUE_STEPS[logHealthMetric ?? 'waterMl'].step}
-                  max={LOG_HEALTH_VALUE_STEPS[logHealthMetric ?? 'waterMl'].max}
-                  step={LOG_HEALTH_VALUE_STEPS[logHealthMetric ?? 'waterMl'].step}
-                  allowNull
-                  emptyLabel="Off"
+            node: (() => {
+              // Water is the one nutrient with a second unit worth offering —
+              // nobody asks for a stepper in fl oz of sodium. logHealthAmount
+              // stays in ml regardless (see waterLogUnit above); this only
+              // decides what the stepper displays and steps in.
+              const isWater = (logHealthMetric ?? 'waterMl') === 'waterMl';
+              const useFlOz = isWater && waterLogUnit === 'flOz';
+              const range = useFlOz ? LOG_HEALTH_WATER_FL_OZ_STEPS : LOG_HEALTH_VALUE_STEPS[logHealthMetric ?? 'waterMl'];
+              const unitLabel = useFlOz ? 'fl oz' : NUTRIENT_LABEL[logHealthMetric ?? 'waterMl'].unit;
+              const isSet = logHealthMetric !== null && logHealthAmount !== null;
+              return (
+                <CollapsibleField
                   label="Log to Health"
-                  format={n => `${n}${NUTRIENT_LABEL[logHealthMetric ?? 'waterMl'].unit}`}
-                  describeValue={n => (n === null ? 'off' : `${n} ${NUTRIENT_LABEL[logHealthMetric ?? 'waterMl'].unit}`)}
-                />
-              </CollapsibleField>
-            ),
+                  summary={
+                    isSet
+                      ? `${useFlOz ? Math.round(mlToFlOz(logHealthAmount)) : logHealthAmount}${useFlOz ? ' ' : ''}${unitLabel} of ${NUTRIENT_LABEL[logHealthMetric].label.toLowerCase()} when completed`
+                      : undefined
+                  }
+                  hint={
+                    healthWriteEnabled
+                      ? 'Writes one sample to Apple Health each time you complete this task.'
+                      : 'Turn on writing to Health in Settings › Health first'
+                  }
+                  expanded={healthWriteEnabled && fieldOpen('logHealthValue')}
+                  onToggle={() => { if (!healthWriteEnabled) return; toggleField('logHealthValue'); }}
+                  // Turning this off used to mean holding − on the amount
+                  // stepper all the way down past its floor — real, but not
+                  // discoverable, especially from a large amount. This mirrors
+                  // EditorRow's onClear (a close-circle beside the value) for
+                  // the fields built on that component instead of this one.
+                  right={isSet ? (
+                    <TouchableOpacity
+                      onPress={() => {
+                        haptics.tap();
+                        setLogHealthAmount(null);
+                        closeField('logHealthValue');
+                      }}
+                      hitSlop={8}
+                      accessibilityRole="button"
+                      accessibilityLabel="Clear log to health"
+                    >
+                      <Ionicons name="close-circle" size={16} color={colors.textSecondary} />
+                    </TouchableOpacity>
+                  ) : undefined}
+                >
+                  <SegmentedControl<NutrientKey>
+                    options={NUTRIENT_KEYS.map(key => ({ value: key, label: NUTRIENT_LABEL[key].label }))}
+                    value={logHealthMetric ?? 'waterMl'}
+                    onChange={next => {
+                      haptics.tap();
+                      setLogHealthMetric(next);
+                      // Re-defaulted rather than carried over, same reasoning
+                      // the health-target metric switch above uses: 250 of
+                      // whatever the old metric was is not a meaningful amount
+                      // of the new one, so switching starts back at one step.
+                      setLogHealthAmount(LOG_HEALTH_VALUE_STEPS[next].step);
+                    }}
+                    columns={2}
+                    label="Nutrient"
+                    surface="card"
+                  />
+                  <View style={styles.logHealthAmountRow}>
+                    <CountStepper
+                      value={logHealthAmount === null ? null : (useFlOz ? Math.round(mlToFlOz(logHealthAmount)) : logHealthAmount)}
+                      onChange={next => {
+                        const ml = next === null ? null : (useFlOz ? Math.round(flOzToMl(next)) : next);
+                        setLogHealthAmount(ml);
+                        // Stepping up from Off before ever touching the picker
+                        // above still has to turn the row on for some metric —
+                        // water, the same default this feature started as.
+                        if (ml !== null && logHealthMetric === null) setLogHealthMetric('waterMl');
+                      }}
+                      min={range.step}
+                      max={range.max}
+                      step={range.step}
+                      allowNull
+                      emptyLabel="Off"
+                      label="Log to Health"
+                      format={n => (useFlOz ? `${n} fl oz` : `${n}${unitLabel}`)}
+                      describeValue={n => (n === null ? 'off' : `${n} ${useFlOz ? 'fluid ounces' : unitLabel}`)}
+                    />
+                    {isWater && (
+                      <View style={styles.pillRow}>
+                        {(['ml', 'flOz'] as const).map(u => {
+                          const active = waterLogUnit === u;
+                          return (
+                            <TouchableOpacity
+                              key={u}
+                              style={[styles.pill, active && styles.pillActiveNeutral]}
+                              onPress={() => { haptics.tap(); setWaterLogUnit(u); }}
+                              activeOpacity={interaction.activeOpacity}
+                              accessibilityRole="button"
+                              accessibilityState={{ selected: active }}
+                              accessibilityLabel={u === 'ml' ? 'Milliliters' : 'Fluid ounces'}
+                            >
+                              <Text style={[styles.pillText, active && styles.pillTextActive]}>
+                                {u === 'ml' ? 'ml' : 'fl oz'}
+                              </Text>
+                            </TouchableOpacity>
+                          );
+                        })}
+                      </View>
+                    )}
+                  </View>
+                </CollapsibleField>
+              );
+            })(),
           },
           // The fourth "what does completing this mean" row, and the closest
           // relative of the Health one right above: a name-and-amount pair
@@ -5556,6 +5623,14 @@ const makeStyles = (colors: Colors) => StyleSheet.create({
   healthTargetControls: {
     gap: spacing.sm,
     paddingHorizontal: spacing.md, paddingTop: spacing.xs, paddingBottom: spacing.sm,
+  },
+  // The Log to Health stepper, and — for water only — the ml/fl oz pills
+  // beside it. marginTop is the gap the nutrient track above is missing on
+  // its own bottom edge; without it the stepper sits flush against the
+  // selected pill above.
+  logHealthAmountRow: {
+    flexDirection: 'row', alignItems: 'center', flexWrap: 'wrap',
+    gap: spacing.sm, marginTop: spacing.sm,
   },
   /** The static words either side of a stepper, e.g. "Every [4th] completion". */
   stepperSentence: { color: colors.textSecondary, fontSize: font.md },
