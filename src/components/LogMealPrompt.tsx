@@ -1,5 +1,5 @@
 import React, { useEffect, useMemo, useState } from 'react';
-import { Modal, StyleSheet, Text, TouchableOpacity, View } from 'react-native';
+import { KeyboardAvoidingView, Modal, Platform, StyleSheet, Text, TextInput, TouchableOpacity, View } from 'react-native';
 import { useShallow } from 'zustand/react/shallow';
 import { useColors } from '../theme/ThemeContext';
 import { border, font, fontWeight, interaction, radius, spacing, type Colors } from '../theme';
@@ -9,11 +9,27 @@ import { useLeftoverStore } from '../store/useLeftoverStore';
 import { useMealPlanStore } from '../store/useMealPlanStore';
 import { useRecipeStore } from '../store/useRecipeStore';
 import { perServing, recipeNutrition } from '../utils/recipeNutrition';
-import { defaultHelpings, mealHelping } from '../utils/mealLog';
-import { recipeHelpingNutrition } from '../utils/foodLog';
+import {
+  cookedDishGrams,
+  defaultHelpings,
+  mealHelping,
+  servingGrams,
+  weighedHelping,
+} from '../utils/mealLog';
+import { helpingNutrition } from '../utils/foodLog';
 import { haptics } from '../utils/haptics';
 import { CountStepper } from './CountStepper';
+import { NumberPadAccessory, NUMBER_PAD_ACCESSORY_ID } from './NumberPadAccessory';
+import { SegmentedControl, type SegmentOption } from './SegmentedControl';
 import { SheetHeaderButton } from './SheetHeaderButton';
+
+/** The two ways of saying how much of a dish was eaten. */
+type Measure = 'weight' | 'servings';
+
+const MEASURE_OPTIONS: SegmentOption<Measure>[] = [
+  { value: 'weight', label: 'By weight' },
+  { value: 'servings', label: 'By servings' },
+];
 
 /**
  * "You just finished dinner. Log it?"
@@ -33,6 +49,13 @@ import { SheetHeaderButton } from './SheetHeaderButton';
  * is the difference between a useful record and a wrong one, and it is the
  * only thing the app cannot work out for itself.
  *
+ * **A dish that has been weighed is answered on a scale, and that is the
+ * accurate half.** Servings are an estimate about how evenly a dish was
+ * divided; the plate over the whole dish is arithmetic. So the weight field
+ * leads whenever `Recipe.cookedWeightG` is set, servings stay for every dish
+ * nobody has weighed, and either way the entry records the grams it knows —
+ * see `mealLog.ts`.
+ *
  * **Declining costs one tap and is never punished.** No badge, no "you didn't
  * log", no streak, and the offer does not come back for that meal.
  */
@@ -51,9 +74,17 @@ export function LogMealPrompt() {
   const itemProducts = useGroceryStore(useShallow(s => s.itemProducts));
 
   const [helpings, setHelpings] = useState<number | null>(defaultHelpings());
+  const [platedText, setPlatedText] = useState('');
+  const [measure, setMeasure] = useState<Measure>('servings');
 
   useEffect(() => {
-    if (pending) setHelpings(defaultHelpings());
+    if (pending) {
+      setHelpings(defaultHelpings());
+      // What the container weighed, when something already knows — finishing a
+      // leftover that was weighed on the way into the fridge. A figure to
+      // correct, not an answer: see PendingMealLog.grams.
+      setPlatedText(pending.grams === null ? '' : String(pending.grams));
+    }
   }, [pending]);
 
   // The dish's figures, computed when the prompt opens rather than carried on
@@ -81,10 +112,29 @@ export function LogMealPrompt() {
       pending.scale,
     );
     if (!dish) return null;
-    return { total: dish.total, perServing: perServing(dish) };
+    return {
+      total: dish.total,
+      perServing: perServing(dish),
+      servings: dish.servings,
+      // Multiplied by this cooking's own scale, exactly as the figures above
+      // already are: a doubled batch weighs twice what the recipe says.
+      cookedGrams: cookedDishGrams(recipe.cookedWeightG, pending.scale),
+    };
   }, [pending, recipes, recipesById, items, itemProducts]);
 
-  const helping = mealHelping(figures, helpings ?? 0);
+  // Weight leads for a dish somebody has weighed, and is simply unavailable
+  // for one nobody has: there is nothing to measure a plate against. Reset per
+  // opening rather than remembered, since the next meal is a different dish.
+  const canWeigh = figures?.cookedGrams !== null && figures?.cookedGrams !== undefined;
+  useEffect(() => {
+    setMeasure(canWeigh ? 'weight' : 'servings');
+  }, [pending, canWeigh]);
+
+  const plated = Number(platedText.trim().replace(',', '.'));
+  const helping = measure === 'weight' && canWeigh
+    ? weighedHelping(figures, Number.isFinite(plated) ? plated : 0)
+    : mealHelping(figures, helpings ?? 0);
+  const oneServing = figures ? servingGrams(figures) : null;
 
   // Nothing measurable came back, so there is no question worth asking. The
   // flag is cleared rather than left pending, or the next thing that sets one
@@ -99,12 +149,12 @@ export function LogMealPrompt() {
 
   const handleLog = () => {
     if (!helping) return;
-    const nutrition = recipeHelpingNutrition(helping.amounts, 1);
+    const nutrition = helpingNutrition(helping.amounts, helping.servingText, helping.grams);
     if (!nutrition) { haptics.error(); return; }
     addEntry({
       label: pending.label,
       quantity: helping.servingText,
-      grams: null,
+      grams: helping.grams,
       // Already scaled to the helping, so this is one of them.
       nutrition: { ...nutrition, servingText: helping.servingText },
       slot: pending.slot,
@@ -126,7 +176,11 @@ export function LogMealPrompt() {
 
   return (
     <Modal visible animationType="fade" transparent onRequestClose={close}>
-      <View style={styles.backdrop}>
+      <NumberPadAccessory />
+      <KeyboardAvoidingView
+        style={styles.backdrop}
+        behavior={Platform.OS === 'ios' ? 'padding' : undefined}
+      >
         <View style={styles.card}>
           <Text style={styles.title}>Log {pending.label.toLowerCase()}?</Text>
           <Text style={styles.body}>
@@ -135,20 +189,58 @@ export function LogMealPrompt() {
               : 'Choose how much you had.'}
           </Text>
 
-          <View style={styles.stepper}>
-            <CountStepper
-              value={helpings}
-              onChange={setHelpings}
-              min={1}
-              max={20}
-              label={helping?.countsServings ? 'Servings' : 'Whole dishes'}
-            />
-          </View>
-          <Text style={styles.hint}>
-            {figures.perServing
-              ? 'In servings of the recipe as it was cooked.'
-              : 'This recipe doesn\'t say how many servings it makes, so this counts whole dishes.'}
-          </Text>
+          {canWeigh && (
+            <View style={styles.stepper}>
+              <SegmentedControl
+                options={MEASURE_OPTIONS}
+                value={measure}
+                onChange={setMeasure}
+                label="How to measure it"
+              />
+            </View>
+          )}
+
+          {measure === 'weight' && canWeigh ? (
+            <>
+              <View style={styles.weightRow}>
+                <TextInput
+                  style={styles.weightInput}
+                  value={platedText}
+                  onChangeText={setPlatedText}
+                  keyboardType="decimal-pad"
+                  inputAccessoryViewID={NUMBER_PAD_ACCESSORY_ID}
+                  placeholder="e.g. 320"
+                  placeholderTextColor={colors.textTertiary}
+                  maxLength={6}
+                  accessibilityLabel="Weight on your plate in grams"
+                />
+                <Text style={styles.weightUnit}>g</Text>
+              </View>
+              <Text style={styles.hint}>
+                {pending.grams !== null
+                  ? `What the container weighed when you put it away. Change it if you didn't finish it all. The whole dish weighs ${figures.cookedGrams} g.`
+                  : `What was on your plate. The whole dish weighs ${figures.cookedGrams} g`
+                    + (oneServing !== null ? `, so a serving is about ${oneServing} g.` : '.')}
+              </Text>
+            </>
+          ) : (
+            <>
+              <View style={styles.stepper}>
+                <CountStepper
+                  value={helpings}
+                  onChange={setHelpings}
+                  min={1}
+                  max={20}
+                  label={helping?.countsServings ? 'Servings' : 'Whole dishes'}
+                />
+              </View>
+              <Text style={styles.hint}>
+                {figures.perServing
+                  ? 'In servings of the recipe as it was cooked.'
+                  : 'This recipe doesn\'t say how many servings it makes, so this counts whole dishes.'}
+              </Text>
+            </>
+          )}
 
           <View style={styles.actions}>
             <SheetHeaderButton label="Log it" onPress={handleLog} disabled={!helping} />
@@ -174,7 +266,7 @@ export function LogMealPrompt() {
             )}
           </View>
         </View>
-      </View>
+      </KeyboardAvoidingView>
     </Modal>
   );
 }
@@ -200,7 +292,24 @@ function makeStyles(colors: Colors) {
     },
     title: { color: colors.text, fontSize: font.lg, fontWeight: fontWeight.semibold },
     body: { color: colors.textSecondary, fontSize: font.sm, lineHeight: 18 },
-    stepper: { marginTop: spacing.sm },
+    stepper: { marginTop: spacing.sm, marginBottom: spacing.xs },
+    weightRow: {
+      flexDirection: 'row',
+      alignItems: 'center',
+      gap: spacing.sm,
+      marginTop: spacing.sm,
+      marginBottom: spacing.xs,
+    },
+    weightInput: {
+      flex: 1,
+      color: colors.text,
+      fontSize: font.md,
+      backgroundColor: colors.bgTertiary,
+      borderRadius: radius.md,
+      paddingHorizontal: spacing.md,
+      paddingVertical: spacing.sm,
+    },
+    weightUnit: { color: colors.textSecondary, fontSize: font.sm },
     hint: { color: colors.textSecondary, fontSize: font.xs, lineHeight: 16 },
     actions: { marginTop: spacing.md, gap: spacing.sm, alignItems: 'flex-start' },
     secondary: { paddingVertical: spacing.xs },

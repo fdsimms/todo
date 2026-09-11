@@ -1,20 +1,33 @@
 import {
+  asWrittenCookedWeight,
+  describeCookedWeight,
+  clampCookedWeight,
+  cookedDishGrams,
   defaultHelpings,
   describeHelping,
   mealHelping,
+  servingGrams,
   wantsMealLogPrompt,
+  weighedHelping,
   type DishFigures,
 } from '../utils/mealLog';
 
 const DISH: DishFigures = {
   total: { calorieKcal: 1200, proteinG: 40 },
   perServing: { calorieKcal: 300, proteinG: 10 },
+  servings: 4,
+  cookedGrams: null,
 };
 
 const UNPORTIONED: DishFigures = {
   total: { calorieKcal: 900, proteinG: 30 },
   perServing: null,
+  servings: null,
+  cookedGrams: null,
 };
+
+/** The same dish, weighed: 1,200 kcal spread over 1,000g of finished food. */
+const WEIGHED: DishFigures = { ...DISH, cookedGrams: 1000 };
 
 describe('wantsMealLogPrompt', () => {
   it('asks when nobody has said otherwise', () => {
@@ -67,6 +80,18 @@ describe('mealHelping', () => {
     expect(helping?.servingText).toBe('the whole dish');
   });
 
+  it('records no weight for a dish nobody has weighed', () => {
+    expect(mealHelping(DISH, 2)?.grams).toBeNull();
+  });
+
+  it('works a counted helping out in grams once the dish has been weighed', () => {
+    // The plate was never on a scale, but the dish was, and 1,000g over four
+    // servings says what two of them weigh.
+    expect(mealHelping(WEIGHED, 2)?.grams).toBe(500);
+    // Counting whole dishes counts whole dish weights.
+    expect(mealHelping({ ...UNPORTIONED, cookedGrams: 800 }, 0.5)?.grams).toBe(400);
+  });
+
   it('leaves a nutrient the dish never reported absent, never zero', () => {
     expect('fiberG' in (mealHelping(DISH, 1)?.amounts ?? {})).toBe(false);
   });
@@ -75,12 +100,121 @@ describe('mealHelping', () => {
     // An offer built on nothing asks a question whose only answer is an empty
     // record.
     expect(mealHelping(null, 1)).toBeNull();
-    expect(mealHelping({ total: {}, perServing: {} }, 1)).toBeNull();
+    expect(mealHelping({ total: {}, perServing: {}, servings: null, cookedGrams: null }, 1)).toBeNull();
   });
 
   it('refuses a helping of nothing', () => {
     expect(mealHelping(DISH, 0)).toBeNull();
     expect(mealHelping(DISH, -1)).toBeNull();
+  });
+});
+
+describe('servingGrams', () => {
+  it('divides the weighed dish by the servings it makes', () => {
+    expect(servingGrams(WEIGHED)).toBe(250);
+  });
+
+  it('has no answer while either half is missing', () => {
+    expect(servingGrams(DISH)).toBeNull();
+    expect(servingGrams({ ...UNPORTIONED, cookedGrams: 800 })).toBeNull();
+  });
+});
+
+describe('weighedHelping', () => {
+  it('takes the fraction of the dish that was on the plate', () => {
+    // 250g of a 1,000g dish is a quarter of it, whatever the recipe claims a
+    // serving is.
+    const helping = weighedHelping(WEIGHED, 250);
+    expect(helping?.amounts.calorieKcal).toBe(300);
+    expect(helping?.amounts.proteinG).toBe(10);
+    expect(helping?.grams).toBe(250);
+    expect(helping?.servingText).toBe('250 g');
+  });
+
+  it('measures a dish that never said how many servings it makes', () => {
+    // The whole point: no servings count is needed, so a dish the servings
+    // path can only log whole is logged by the plate.
+    expect(weighedHelping({ ...UNPORTIONED, cookedGrams: 900 }, 300)?.amounts.calorieKcal).toBe(300);
+  });
+
+  it('scales the whole dish, never the per-serving figures', () => {
+    // Reading perServing here would give 300 kcal for the whole dish.
+    expect(weighedHelping(WEIGHED, 1000)?.amounts.calorieKcal).toBe(1200);
+  });
+
+  it('leaves a nutrient the dish never reported absent, never zero', () => {
+    expect('fiberG' in (weighedHelping(WEIGHED, 250)?.amounts ?? {})).toBe(false);
+  });
+
+  it('has no answer for a dish nobody weighed', () => {
+    expect(weighedHelping(DISH, 250)).toBeNull();
+    expect(weighedHelping(null, 250)).toBeNull();
+  });
+
+  it('refuses a plate weighing nothing, or more than the dish it came off', () => {
+    // 3200 for 320 is a typo, not a meal, and a helping three times the dish
+    // is the write nothing downstream would ever question.
+    expect(weighedHelping(WEIGHED, 0)).toBeNull();
+    expect(weighedHelping(WEIGHED, -10)).toBeNull();
+    expect(weighedHelping(WEIGHED, 3200)).toBeNull();
+  });
+});
+
+describe('cookedDishGrams', () => {
+  it('multiplies the as-written weight by what this cooking made', () => {
+    expect(cookedDishGrams(725, 2)).toBe(1450);
+    expect(cookedDishGrams(1000, 1)).toBe(1000);
+    expect(cookedDishGrams(1000, 0.5)).toBe(500);
+  });
+
+  it('has no answer for a dish with no weight, or a scale of nothing', () => {
+    expect(cookedDishGrams(null, 1)).toBeNull();
+    expect(cookedDishGrams(0, 1)).toBeNull();
+    expect(cookedDishGrams(1000, 0)).toBeNull();
+  });
+
+  it('round-trips what a scaled cooking weighed', () => {
+    // Weighing a doubled batch at 1,450g stores 725 and reads back as 1,450.
+    const stored = asWrittenCookedWeight(1450, 2);
+    expect(stored).toBe(725);
+    expect(cookedDishGrams(stored, 2)).toBe(1450);
+  });
+});
+
+describe('describeCookedWeight', () => {
+  it('says what the dish weighs and what that makes a serving', () => {
+    expect(describeCookedWeight(900, 2)).toBe('900 g cooked, about 450 g a serving');
+  });
+
+  it('says only the dish when the recipe never named a servings count', () => {
+    expect(describeCookedWeight(900, null)).toBe('900 g cooked');
+  });
+
+  it('scales the dish and leaves the serving alone', () => {
+    // Twice as much food in twice as many servings, so a serving is the same
+    // size. That the second figure does not move is the check on the first.
+    expect(describeCookedWeight(900, 2, 2)).toBe('1800 g cooked, about 450 g a serving');
+  });
+
+  it('has nothing to say about a dish nobody weighed', () => {
+    expect(describeCookedWeight(null, 4)).toBeNull();
+  });
+});
+
+describe('clampCookedWeight', () => {
+  it('takes a weight to the nearest gram', () => {
+    expect(clampCookedWeight(1450.4)).toBe(1450);
+  });
+
+  it('reads nothing, nonsense and a dish weighing zero as no weight at all', () => {
+    expect(clampCookedWeight(null)).toBeNull();
+    expect(clampCookedWeight(0)).toBeNull();
+    expect(clampCookedWeight(-5)).toBeNull();
+    expect(clampCookedWeight(Number.NaN)).toBeNull();
+  });
+
+  it('holds a restored backup inside the range a kitchen can produce', () => {
+    expect(clampCookedWeight(9_000_000)).toBe(50000);
   });
 });
 

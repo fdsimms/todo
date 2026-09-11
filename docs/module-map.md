@@ -87,7 +87,7 @@ render, so listing them adds lines without adding answers.
 - `src/utils/focusSuggest.ts` — MAX_SUGGESTED_FOCUS, FOCUS_BUDGET_MINUTES, FocusContext, buildFocusContext, fitsWindow, scoreFocusTask, nextFocusSuggestion, suggestFocusTasks, focusQueueFromPinned, focusReason
 - `src/utils/focusWindow.ts` — FOCUS_CALENDAR_HORIZON_MINUTES, CalendarWindow, calendarWindow
 - `src/utils/followUpTask.ts` — MIN_FOLLOW_UP_TASK_EVERY_N, MAX_FOLLOW_UP_TASK_EVERY_N, canHoldFollowUpTask, FollowUpTaskRule, followUpTaskRule, advanceFollowUpTaskTally, FollowUpTaskSuppression, followUpTaskSuppressedBy, completionsUntilFollowUpTask, followUpTaskSummary, +5 more
-- `src/utils/foodLog.ts` — FoodLogTotals, FoodLogSection, scalePanelToAmount, recipeHelpingNutrition, combineFoodNutrition, foodLogTotals, foodLogSections, FoodLogListItem, resolveFoodLogDrop, describeFoodLogTotals, +3 more
+- `src/utils/foodLog.ts` — FoodLogTotals, FoodLogSection, scalePanelToAmount, recipeHelpingNutrition, helpingNutrition, combineFoodNutrition, foodLogTotals, foodLogSections, FoodLogListItem, resolveFoodLogDrop, +4 more
 - `src/utils/foodNutrition.ts` — parseFoodNutrition, serializeFoodNutrition, addCustomPortion, nutritionFor, describeFoodPanel, NUTRIENT_LABEL, NUTRITION_BASIS_LABEL
 - `src/utils/foodSearchMatch.ts` — FoodCandidate, FoodMatchTier, RankedFood, rankFoodCandidates, unambiguousFood
 - `src/utils/freshness.ts` — daysUntilDay, freshnessFor, FRESHNESS_ORDER, freshnessRank, isUseUpSoon, describeUseBy, liveUseBy, describeOpenedOn, describeFrozenSince
@@ -136,7 +136,7 @@ render, so listing them adds lines without adding answers.
 - `src/utils/mealCalendarSync.ts` — mealEventTitle, mealEventFields, syncMealEvent
 - `src/utils/mealGuests.ts` — guestsOn, describeGuests, hasGuests, GuestMeal, upcomingMealsWithGuest
 - `src/utils/mealIdeas.ts` — MIN_MEAL_IDEAS, MAX_MEAL_IDEAS, RECENT_MEAL_DAYS, MealIdea, RawMealIdea, mealTitleKey, clampIdeaCount, dedupeMealIdeas, MealSuggestion, mergeMealSuggestions, +6 more
-- `src/utils/mealLog.ts` — DishFigures, MealHelping, wantsMealLogPrompt, defaultHelpings, mealHelping, describeHelping
+- `src/utils/mealLog.ts` — DishFigures, MealHelping, wantsMealLogPrompt, defaultHelpings, mealHelping, servingGrams, weighedHelping, cookedDishGrams, describeCookedWeight, COOKED_WEIGHT_MIN_G, +4 more
 - `src/utils/mealPlan.ts` — slotRank, slotLabel, sortMealEntries, entriesForDay, cookEntryForRecipe, earliestUnplannedSlot, entriesForSlot, nextSortOrder, upcomingDays, daysWithoutMeal, +16 more
 - `src/utils/mealPlanGroceries.ts` — PlannedIngredient, collectPlannedIngredients, hasShoppableMeals, plannedIngredientsForRecipe, parseQuantityAmount, mergeQuantities, describeQuantities, PlanCategory, ClassifiedIngredient, classifyPlanned, +4 more
 - `src/utils/mealPlanNudge.ts` — DEFAULT_MEAL_PLAN_NUDGE_WEEKDAY, DEFAULT_MEAL_PLAN_NUDGE_TIME, MEAL_PLAN_NUDGE_LINK_URL, mealPlanNudgeLinkUrl, MEAL_PLAN_NUDGE_SLOTS, MEAL_PLAN_NUDGE_SLOT_COUNT, countPlannedSlots, mealPlanNudgeDayKey, MealPlanNudgeDue, MealPlanNudgeDay, +3 more

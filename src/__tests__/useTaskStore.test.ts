@@ -5579,7 +5579,7 @@ describe('checkMealSlotTasks', () => {
     return {
       backfillDismissedFields: [],
       id, name: 'Chili', nameKey: 'chili', notes: '', sourceUrl: null, sourceName: null,
-      author: null, source: null, servings: null, servingsMax: null, recipeYield: null,
+      author: null, source: null, servings: null, servingsMax: null, recipeYield: null, cookedWeightG: null,
       leftoverKeepDays: null, imagePath: null, mealType: null, tags: [], ingredients: [],
       emptySections: [], components: [], prepTasks: [], steps: [], sortOrder: 1,
       createdAt: '2026-01-01T00:00:00.000Z', cookCount: 0, lastCookedAt: null, vote: null,
@@ -5902,7 +5902,7 @@ describe('checkMealShortfallTasks', () => {
     return {
       backfillDismissedFields: [],
       id, name, nameKey: name.toLowerCase(), notes: '', sourceUrl: null, sourceName: null,
-      author: null, source: null, servings: null, servingsMax: null, recipeYield: null,
+      author: null, source: null, servings: null, servingsMax: null, recipeYield: null, cookedWeightG: null,
       leftoverKeepDays: null, imagePath: null, mealType: null, tags: [],
       ingredients: ingredientNames.map((n, i) => ({
         id: `${id}-i${i}`, name: n, nameKey: n.toLowerCase(), quantity: '', aisle: null,
@@ -12569,7 +12569,7 @@ describe('completing a use-up task', () => {
   const leftover = {
     id: 'l-1', title: 'Chicken stir-fry', recipeId: null, sourceEntryId: null,
     storedAt: '2026-08-10T18:00:00.000Z', keepUntil: '2026-08-14', finishedAt: null,
-    outcome: null, frozenAt: null, createdAt: '2026-08-10T18:00:00.000Z', useUpTask: null,
+    outcome: null, frozenAt: null, weightG: null, createdAt: '2026-08-10T18:00:00.000Z', useUpTask: null,
   };
   const seedLeftover = () => {
     useLeftoverStore.setState({ leftovers: [{ ...leftover }], pendingUseUpLeftoverId: null, initialized: true });
@@ -12641,7 +12641,7 @@ describe('completing a leftover-backed meal task', () => {
     id: 'l-1', title: 'Chicken stir-fry', recipeId: null, sourceEntryId: null,
     storedAt: '2026-08-10T18:00:00.000Z', keepUntil: '2026-08-14',
     finishedAt: null as string | null, outcome: null as 'eaten' | 'tossed' | null,
-    frozenAt: null, createdAt: '2026-08-10T18:00:00.000Z', useUpTask: null,
+    frozenAt: null, weightG: null, createdAt: '2026-08-10T18:00:00.000Z', useUpTask: null,
   };
   const seedLeftover = (overrides: Partial<typeof leftover> = {}) => {
     useLeftoverStore.setState({
@@ -12728,7 +12728,7 @@ describe('completing a use-up task and its meal task for the same leftover', () 
     id: 'l-1', title: 'Chicken stir-fry', recipeId: null, sourceEntryId: null,
     storedAt: '2026-08-10T18:00:00.000Z', keepUntil: '2026-08-14',
     finishedAt: null as string | null, outcome: null as 'eaten' | 'tossed' | null,
-    frozenAt: null, createdAt: '2026-08-10T18:00:00.000Z', useUpTask: null,
+    frozenAt: null, weightG: null, createdAt: '2026-08-10T18:00:00.000Z', useUpTask: null,
   };
   const seedLeftover = () => {
     useLeftoverStore.setState({

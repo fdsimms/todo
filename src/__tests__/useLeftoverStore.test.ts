@@ -1,3 +1,4 @@
+import { useFoodLogStore } from '../store/useFoodLogStore';
 import { useLeftoverStore } from '../store/useLeftoverStore';
 import {
   dbGetAllLeftovers,
@@ -46,12 +47,16 @@ jest.mock('../utils/healthFoodSync', () => ({
 // use-up-task describe block below flips it on per test.
 let mockLeftoverUseUpTasks = false;
 let mockLeftoverUseUpTaskCategory: string | null = null;
+// Off by default for the same reason: finishing a container as eaten raises a
+// meal-log offer, and the block that is about that offer turns this on.
+let mockMealLogPrompt = false;
 jest.mock('../store/useSettingsStore', () => ({
   useSettingsStore: {
     getState: () => ({
       dayResetTime: '00:00',
       get leftoverUseUpTasks() { return mockLeftoverUseUpTasks; },
       get leftoverUseUpTaskCategory() { return mockLeftoverUseUpTaskCategory; },
+      get mealLogPrompt() { return mockMealLogPrompt; },
     }),
   },
 }));
@@ -90,6 +95,7 @@ function makeLeftover(overrides: Partial<Leftover> = {}): Leftover {
     finishedAt: null,
     outcome: null,
     frozenAt: null,
+    weightG: null,
     createdAt: '2026-08-10T09:00:00.000Z',
     useUpTask: null,
     ...overrides,
@@ -530,6 +536,71 @@ describe('finishLeftover', () => {
     seed([makeLeftover({ id: 'lo-a', title: 'Chilli' })]);
     useLeftoverStore.getState().finishLeftover('lo-a', 'tossed');
     expect(useLeftoverStore.getState().lastAction?.label).toBe('Threw out "Chilli"');
+  });
+});
+
+describe('setLeftoverWeight', () => {
+  it('records what the container holds, to the gram', () => {
+    seed([makeLeftover({ id: 'lo-a' })]);
+    useLeftoverStore.getState().setLeftoverWeight('lo-a', 420.4);
+    expect(useLeftoverStore.getState().leftovers[0].weightG).toBe(420);
+  });
+
+  it('reads nothing and a container weighing zero as unweighed', () => {
+    seed([makeLeftover({ id: 'lo-a' })]);
+    useLeftoverStore.getState().setLeftoverWeight('lo-a', 420);
+    useLeftoverStore.getState().setLeftoverWeight('lo-a', 0);
+    expect(useLeftoverStore.getState().leftovers[0].weightG).toBeNull();
+    useLeftoverStore.getState().setLeftoverWeight('lo-a', 420);
+    useLeftoverStore.getState().setLeftoverWeight('lo-a', null);
+    expect(useLeftoverStore.getState().leftovers[0].weightG).toBeNull();
+  });
+
+  it('keeps the weight a container was logged with', () => {
+    const logged = useLeftoverStore.getState().logLeftover({
+      title: 'Salmon',
+      storedAt: new Date(2026, 7, 10, 9, 0).toISOString(),
+      weightG: 300,
+    })!;
+    expect(useLeftoverStore.getState().leftoverById(logged.id)!.weightG).toBe(300);
+  });
+});
+
+describe('the meal-log offer a finished container raises', () => {
+  beforeEach(() => {
+    mockMealLogPrompt = true;
+    useFoodLogStore.setState({ pendingMealLog: null });
+  });
+  afterEach(() => {
+    mockMealLogPrompt = false;
+    useFoodLogStore.setState({ pendingMealLog: null });
+  });
+
+  it('hands the container weight to the offer, so eating it logs as a weight', () => {
+    seed([makeLeftover({ id: 'lo-a', title: 'Salmon', recipeId: 'r-1', weightG: 300 })]);
+
+    useLeftoverStore.getState().finishLeftover('lo-a', 'eaten');
+
+    const pending = useFoodLogStore.getState().pendingMealLog;
+    expect(pending?.recipeId).toBe('r-1');
+    expect(pending?.grams).toBe(300);
+  });
+
+  it('offers nothing to open on for a container nobody weighed', () => {
+    seed([makeLeftover({ id: 'lo-a', title: 'Chilli', recipeId: 'r-1' })]);
+
+    useLeftoverStore.getState().finishLeftover('lo-a', 'eaten');
+
+    expect(useFoodLogStore.getState().pendingMealLog?.grams).toBeNull();
+  });
+
+  it('says nothing about a container that was thrown out', () => {
+    // It fed nobody, which is the whole distinction the outcome exists to keep.
+    seed([makeLeftover({ id: 'lo-a', recipeId: 'r-1', weightG: 300 })]);
+
+    useLeftoverStore.getState().finishLeftover('lo-a', 'tossed');
+
+    expect(useFoodLogStore.getState().pendingMealLog).toBeNull();
   });
 });
 

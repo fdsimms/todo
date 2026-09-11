@@ -35,7 +35,8 @@ import {
   WEIGH_IN_TITLE,
   weighInNotes,
 } from './weightTasks';
-import { recipeHelpingNutrition, scalePanelToAmount } from './foodLog';
+import { helpingNutrition, scalePanelToAmount } from './foodLog';
+import { cookedDishGrams, mealHelping, weighedHelping } from './mealLog';
 import { perServing, recipeNutrition } from './recipeNutrition';
 import { recipeMap } from './recipeComponents';
 import { packageHelping } from './scanPortion';
@@ -1464,17 +1465,34 @@ function seedFoodLog(today: Date): void {
   const { recipes } = useRecipeStore.getState();
   const { itemProducts } = useGroceryStore.getState();
   const byId = recipeMap(recipes);
-  for (const recipe of recipes) {
-    const perHelping = perServing(recipeNutrition(recipe, items, itemProducts, byId));
-    const helping = perHelping ? recipeHelpingNutrition(perHelping, 1) : null;
-    if (!helping) continue;
+  // A dish somebody weighed goes first, because the plate it produces is what
+  // the weight is for: an entry saying "400 g" of a soup whose pot came to
+  // 1,600 g is the accurate half of this feature, and a seed that only ever
+  // said "1 serving" would read as an app that still only counts servings.
+  const dishesFirst = [...recipes].sort(
+    (a, b) => Number(b.cookedWeightG !== null) - Number(a.cookedWeightG !== null)
+  );
+  for (const recipe of dishesFirst) {
+    const dish = recipeNutrition(recipe, items, itemProducts, byId);
+    if (!dish) continue;
+    const figures = {
+      total: dish.total,
+      perServing: perServing(dish),
+      servings: dish.servings,
+      cookedGrams: cookedDishGrams(recipe.cookedWeightG, 1),
+    };
+    const helping = figures.cookedGrams !== null
+      ? weighedHelping(figures, Math.round(figures.cookedGrams / 4))
+      : mealHelping(figures, 1);
+    const nutrition = helping ? helpingNutrition(helping.amounts, helping.servingText, helping.grams) : null;
+    if (!helping || !nutrition) continue;
     const at = subDays(today, 2);
     at.setHours(19, 0, 0, 0);
     addEntry({
       label: recipe.name,
-      quantity: '1 serving',
-      grams: null,
-      nutrition: helping,
+      quantity: helping.servingText,
+      grams: helping.grams,
+      nutrition,
       slot: 'dinner',
       recipeId: recipe.id,
       at,
@@ -2056,6 +2074,7 @@ function seedRecipes(): DemoRecipes {
     setEstimatedMinutes,
     setPrepMinutes,
     setLeftoverKeepDays,
+    setCookedWeight,
     markCooked,
     startCookTimer,
     addStep,
@@ -2366,6 +2385,13 @@ function seedRecipes(): DemoRecipes {
   setEstimatedMinutes(salmon.id, 25);
   // Fish, so the log sheet opens on one day rather than three.
   setLeftoverKeepDays(salmon.id, 1);
+  // The one dish here that has been on a scale, which is what lets the food log
+  // below record a plate of it by weight rather than as a fraction of a tray
+  // nobody divided evenly — see Recipe.cookedWeightG. It's this dish rather
+  // than another because a weight only means anything on a dish whose figures
+  // the nutrition rollup will answer for, and this is the one dinner in the
+  // seed that clears that floor.
+  setCookedWeight(salmon.id, 900);
   // The website attribution shape: a person and a publication, independently.
   // It's also what a link import leaves behind — url, site, author, and the
   // method taken verbatim off the page's own markup — so this is the recipe
@@ -3627,6 +3653,18 @@ function seedMealPlanAndFridge(recipes: DemoRecipes, today: Date): void {
     sourceEntryId: steakNight?.id ?? null,
     storedAt: subDays(today, 4).toISOString(),
     keepDays: 5,
+  });
+  // Weighed on the way into the fridge, which is the fridge half of
+  // Recipe.cookedWeightG and is only worth doing on a dish that has one: this
+  // container is 300 g of a salmon tray that came to 900 g, so finishing it
+  // logs a third of the dish rather than a guess at "one serving". Salmon
+  // because it is the seeded recipe that has been weighed.
+  logLeftover({
+    title: 'Lemon garlic salmon',
+    recipeId: recipes.salmon,
+    storedAt: subDays(today, 1).toISOString(),
+    keepDays: 1,
+    weightG: 300,
   });
   logLeftover({
     title: 'Carrot cake',

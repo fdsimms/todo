@@ -134,6 +134,7 @@ const RECIPE_FIELD_ICONS: Record<RecipeBackfillFieldId, keyof typeof Ionicons.gl
   servings: 'people-outline',
   cookTime: 'flame-outline',
   prepTime: 'cut-outline',
+  cookedWeight: 'scale-outline',
 };
 
 /**
@@ -154,6 +155,12 @@ const RECIPE_FIELD_STEPPERS: Record<
   servings: { min: 1, max: 99, step: 1, format: n => `${n}` },
   cookTime: { min: 5, max: 480, step: 5, format: formatDuration },
   prepTime: { min: 5, max: 240, step: 5, format: formatDuration },
+  // 25g a press for the same reason the times take 5: a pot of stew is
+  // measured in hundreds of grams, and stepping to 1,600 one gram at a time is
+  // not a control. The floor is well above `COOKED_WEIGHT_MIN_G` because a
+  // finished dish weighing less than 50g is not a thing this queue is for; the
+  // store still clamps whatever arrives.
+  cookedWeight: { min: 50, max: 5000, step: 25, format: n => `${n} g` },
 };
 
 type EntityKind = 'task' | 'category' | 'project' | 'person' | 'item' | 'recipe';
@@ -328,6 +335,7 @@ export function BackfillScreen() {
   const setServings = useRecipeStore(s => s.setServings);
   const setEstimatedMinutes = useRecipeStore(s => s.setEstimatedMinutes);
   const setPrepMinutes = useRecipeStore(s => s.setPrepMinutes);
+  const setCookedWeight = useRecipeStore(s => s.setCookedWeight);
   const setRecipeBackfillDismissedFields = useRecipeStore(s => s.setRecipeBackfillDismissedFields);
 
   const [entityKind, setEntityKind] = useState<EntityKind>('task');
@@ -1293,7 +1301,7 @@ export function BackfillScreen() {
         valueText: formatDuration(value),
         undo: () => setEstimatedMinutes(recipeId, before),
       });
-    } else {
+    } else if (active.id === 'prepTime') {
       const before = currentRecipe.prepMinutes;
       setPrepMinutes(recipeId, value);
       logSession({
@@ -1301,6 +1309,15 @@ export function BackfillScreen() {
         title,
         valueText: formatDuration(value),
         undo: () => setPrepMinutes(recipeId, before),
+      });
+    } else {
+      const before = currentRecipe.cookedWeightG;
+      setCookedWeight(recipeId, value);
+      logSession({
+        itemId: recipeId,
+        title,
+        valueText: `${value} g`,
+        undo: () => setCookedWeight(recipeId, before),
       });
     }
   };
