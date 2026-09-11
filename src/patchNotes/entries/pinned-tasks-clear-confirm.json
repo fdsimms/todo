@@ -1,0 +1,4 @@
+{
+  "message": "Clearing the Pinned Tasks block now asks first, so a stray tap next to the other header buttons can't unpin everything by accident",
+  "date": "2026-09-11"
+}
