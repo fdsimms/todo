@@ -5,9 +5,11 @@
 // volume; the other half (sync, backup, calendar, rhythms, blocking) had no
 // entry point at all short of grepping blind.
 //
-// Deliberately only utils/store/hooks/db/services. Components and screens are
-// named after what they render, so a line saying `TaskEditor.tsx: TaskEditor`
-// costs context and tells nobody anything.
+// Deliberately only utils/store/hooks/db/services. A line saying
+// `TaskEditor.tsx: TaskEditor` costs context and tells nobody anything, because
+// a component is named after what it renders. What a name cannot tell you is
+// *placement* — which screen shows a row, what is on a screen — so that half is
+// its own index, docs/screen-map.md, built from JSX rather than from exports.
 //
 // Committed rather than gitignored — an agent has to be able to read it
 // without running a build first. `--check` is what keeps it honest, and CI
@@ -71,7 +73,8 @@ function render() {
     "CLAUDE.md's routing table says so and that write-up is the authority.",
     '',
     'Components and screens are omitted on purpose: they are named after what they',
-    'render, so listing them adds lines without adding answers.',
+    'render, so listing their exports adds lines without adding answers. What a',
+    'name cannot say is where a component appears, and that is `docs/screen-map.md`.',
     '',
   ];
 

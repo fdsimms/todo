@@ -187,15 +187,19 @@ npx tsc --noEmit     # typecheck; ~4s warm, ~20s the first time in a fresh check
 npm test             # the whole suite, about half a minute — just run all of it
 npm run test:watch   # watch mode
 npx jest src/__tests__/dateUtils.test.ts  # single file, if you want the shorter output
-node scripts/build-module-map.js   # regenerate docs/module-map.md, then commit it
-node scripts/check-doc-stats.js    # regenerate the repo-stats block in CLAUDE.md, then commit it
+npm run docs         # regenerate all three generated docs, then commit them
+npm run verify       # the whole verification loop, below
 ```
 
-**The verification loop is:**
+**The verification loop is `npm run verify`**, which is:
 
 ```bash
-npx tsc --noEmit && npm test && node scripts/build-module-map.js && node scripts/check-doc-stats.js && git status --short
+tsc --noEmit && npm test && npm run docs && git status --short
 ```
+
+It is one command rather than a chain to retype because the part that gets dropped is always the
+same part: the generators at the end, which is the single most common reason a PR goes red (see
+below). Run `npm run verify`, not a subset of it.
 
 Under a minute together, and `tsc` is incremental (`.tsbuildinfo`, gitignored) so every run after
 the first is a few seconds. There's no reason to skip any of it or to narrow to a single test
@@ -215,15 +219,17 @@ other passing-bug call, ask rather than guess or widen the PR.
 
 Don't run `npx expo export` locally to check your work — it's the slowest thing CI does and only
 catches bundle-time breakage (a bad import path, a missing asset, a native config change), so run
-it only when you changed one of those. **CI runs `npx tsc --noEmit`, `npm test`, both doc checks in `--check` mode, and
+it only when you changed one of those. **CI runs `npx tsc --noEmit`, `npm test`, all three doc checks in `--check` mode, and
 `npx expo export --platform ios` on every PR, and on every push to `main`** — that whole list,
 not just the tests.
 
-**The two generated docs are the single most common reason a PR goes red, and the failure is
-entirely avoidable.** `docs/module-map.md` and the `repo-stats` block in this file are generated
-from the tree and committed, and CI re-runs their generators with `--check` and fails if the
-committed copy differs. They are not optional bookkeeping and not a separate chore: **regenerating
-them and committing the result is part of finishing the change, in the same commit.** Concretely:
+**The three generated docs are the single most common reason a PR goes red, and the failure is
+entirely avoidable.** `docs/module-map.md`, `docs/screen-map.md` and the `repo-stats` block in this
+file are generated from the tree and committed, and CI re-runs their generators with `--check` and
+fails if the committed copy differs. They are not optional bookkeeping and not a separate chore:
+**regenerating them and committing the result is part of finishing the change, in the same
+commit** — which is what `npm run verify` does for you, so the reliable way to never hit this is
+to run that rather than its parts. Concretely:
 
 - **Adding, removing, or renaming any top-level `export` in `src/utils`, `src/store`, `src/hooks`,
   `src/db` or `src/services` changes `docs/module-map.md`.** That's most PRs in this repo. A new
@@ -231,19 +237,23 @@ them and committing the result is part of finishing the change, in the same comm
   (the map deliberately skips them).
 - **Adding a file to `src/`, or pushing one across 1,000 lines, changes the `repo-stats` block.**
   A new test file moves the suite count, which is why a pure test-only PR can still fail this.
+- **Adding a component or a screen, or rendering an existing one somewhere new, changes
+  `docs/screen-map.md`.** The edge it records is a JSX tag, so adding `<EmptyState />` to a screen
+  that didn't have one moves a line even though no export changed.
 - **Stage a brand-new file before regenerating.** `build-module-map.js` enumerates through
   `git ls-files`, so a module you just created is invisible to it until it's tracked: regenerate
   first and the map comes out missing that file's line, `git status` looks clean because the map
   matches what you generated, and CI fails on a file you did add. `git add -A` and *then*
   regenerate, or regenerate a second time after staging.
 - **Run the generators (no `--check`) rather than trying to predict whether you're affected.**
-  Both are idempotent and take milliseconds: if nothing changed they rewrite the same bytes and
-  `git status` stays clean, so running them costs nothing and guessing costs a red PR.
+  `npm run docs` runs all three; they are idempotent and take milliseconds, so if nothing changed
+  they rewrite the same bytes and `git status` stays clean. Running them costs nothing and guessing
+  costs a red PR.
 - **Then check `git status` before you commit.** These files are *generated into your working
   tree*, so the loop passing locally is not the signal — an uncommitted regenerated file looks
   exactly like a passing run right up until CI compares against what you actually pushed. That is
   the whole failure mode: the tests were green every single time.
-- **Never hand-edit either one, and never edit inside the `repo-stats` markers in this file.**
+- **Never hand-edit any of them, and never edit inside the `repo-stats` markers in this file.**
   Fix the source and regenerate.
 
 One missed regeneration doesn't stay one red PR, which is why the rule above is worth this much
@@ -253,9 +263,9 @@ someone regenerated. `main` is checked on push now (see `.github/workflows/test.
 staleness surfaces on the merge that caused it. If the doc check fails on a PR that plainly
 touched no exports, pull `main` and regenerate before hunting through your own diff.
 
-**Never resolve a merge conflict in either one by hand, and don't trust a clean merge of them
-either.** Both are one line per fact — one per module in the map, one per statistic in the
-`repo-stats` block — so git merges them line by line and a merge of two individually correct
+**Never resolve a merge conflict in any of them by hand, and don't trust a clean merge of them
+either.** All three are one line per fact — one per module in the map, one per screen or component
+in the screen map, one per statistic in the `repo-stats` block — so git merges them line by line and a merge of two individually correct
 generations is not itself a correct generation. A `+N more` counter is a per-line summary, so a
 merge takes one side's number instead of recounting (`db/database.ts` sat at `+122` against an
 actual `+125` for weeks); a newly added module's line is placed next to whichever context each
@@ -285,7 +295,10 @@ with the arguments attached, and the "don't do X" ones exist because X was tried
 their own files rather than here so a task about groceries doesn't cost every other task 20,000
 tokens of context. For anything the table doesn't cover, `docs/module-map.md` lists every module
 in `src/utils`, `src/store`, `src/hooks`, `src/db` and `src/services` with the symbols it
-exports.
+exports, and `docs/screen-map.md` answers the other half — what a screen puts on the page, and
+which screens a given component can appear on. Both are generated and checked in CI, so reach for
+them before grepping the tree blind. The table below is still the authority wherever it names a
+file: the two maps are indexes, not write-ups.
 
 | Changing… | Start at |
 |---|---|
@@ -316,6 +329,10 @@ exports.
 | what failing a task costs, in blocked apps | `src/utils/penaltyShield.ts` (the rule) + `sweepTaskPenalties`/`logSlip` in `useTaskStore` (the two triggers). The one feature here that does something to somebody for falling short, so read its refusals first: a task the app itself was withholding is never charged, a charge found on a later day is recorded without being served, and `undoSlip` deliberately doesn't refund |
 | whether the apps are blocked *right now* | `src/utils/appShield.ts` — the single arbiter over the focus shield and the penalty above. They drive one system shield, so it ORs them rather than each reconciling alone; two independent syncs was a race where one reason's end cleared the other's block |
 | the screen somebody sees when they open a blocked app | `targets/todo-shield-config/` (what it says) + `targets/todo-shield-action/` (its button) — see `docs/native-targets.md`. Two targets for one screen, and the layout is the system's; all that's ours is the words, which come from the App Group because the extension can reach nothing else |
+| a project that knows when you're away, and every reader of that span | `src/utils/awayDates.ts` + `Project.awayStart`/`awayEnd` — see `docs/arch/away-dates.md`. Read it before adding a fifth half-implementation of "the user is away from home"; it names the four that already exist and the one discipline that keeps them in step |
+| moving a whole trip when its dates change | `src/utils/awayShift.ts` + `src/components/AwayShiftSheet.tsx` — see `docs/arch/away-dates.md`. The offsets are deliberately not stored on the task, and that section says why |
+| where you're going, and the forecast for it | `Project.destination` + `src/services/geocode.ts` + `src/utils/tripForecast.ts` — see `docs/arch/away-dates.md`, including the itinerary boundary it refuses to cross |
+| vacation mode turning itself on for a trip, and the list you shop from while away | `Project.awayPauses`/`checkAwayVacation` + `Project.awayListId`/`checkAwayGroceryList` — see `docs/arch/away-dates.md` |
 | a task that asks a question when it's completed | `src/utils/deliverables.ts` (+ `src/utils/bulkCompletion.ts` for the paths that complete several at once) |
 | a task falling on several dates | `seriesId` in `src/store/useTaskStore.ts` (`applyTaskDates`) — see Series below |
 | the month grid, and drawing an occurrence that has no row | `src/utils/calendarMonth.ts` + `src/screens/CalendarScreen.tsx` — see `docs/arch/month-grid.md` |
@@ -408,7 +425,8 @@ exports.
 | search ranking and the quick-search sheet | `src/utils/fuzzySearch.ts` + `src/utils/quickSearch.ts` |
 | the numbers on the Stats screen | `src/utils/stats.ts` (+ `cookingStats.ts`, `nutritionStats.ts`) |
 | planning a week of work | `src/utils/weekPlan.ts` |
-| anything not listed here | `docs/module-map.md` — every logic module and what it exports |
+| anything not listed here, in the logic layer | `docs/module-map.md` — every logic module and what it exports |
+| which screen shows a component, or what's on a screen | `docs/screen-map.md` — both directions, generated from the JSX |
 
 <!-- BEGIN GENERATED: repo-stats -->
 <!-- Regenerated by scripts/check-doc-stats.js. Run it after adding or growing a file. -->
@@ -474,10 +492,11 @@ grinding through them inline. When you already know the file from the table abov
 don't spawn an agent for a one-file lookup. Never hand off the writing: one agent making the
 whole diff is what keeps it coherent.
 
-**Reach for Explore, not a manual read, on the seven 1,000+ line files.** Grepping and reading
-the surrounding range is still the right move (see above), but for an unfamiliar change to
-`useTaskStore.ts`, `TaskEditor.tsx`, `TodayScreen.tsx`, or the others in that list, running that
-grep-then-read loop through an Explore agent keeps the raw file content out of your own context
+**Reach for Explore, not a manual read, on the big files the generated block above names.**
+Grepping and reading the surrounding range is still the right move (see above), but for an
+unfamiliar change to `useTaskStore.ts`, `TaskEditor.tsx`, `TodayScreen.tsx`, or any of the others
+that block lists, running that grep-then-read loop through an Explore agent keeps the raw file
+content out of your own context
 — you get the relevant chunk and a citation, not the whole file. Reach for it especially when
 you expect more than one round trip into the same file.
 
@@ -577,6 +596,7 @@ decided, and the design system every screen is built from. Individual features a
 | `docs/arch/mood-log.md` | The mood/symptom log, what its insights may claim, and the nudge's three rules |
 | `docs/arch/health-data.md` | Reading Apple Health: why nothing is stored, and why a refusal is invisible |
 | `docs/arch/simple-mode.md` | Simplified mode: what the one switch hides, and the two rules that make it safe |
+| `docs/arch/away-dates.md` | A project's away span: scheduled vacation mode, the trip move, the destination forecast, the away grocery list |
 | `docs/native-targets.md` | Adding an iOS native target (widget, Watch app, Live Activity) |
 
 ### Data flow
