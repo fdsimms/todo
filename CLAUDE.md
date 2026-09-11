@@ -412,6 +412,7 @@ file: the two maps are indexes, not write-ups.
 | either of a recipe's two timers, from any screen | `src/hooks/useRecipeTimer.ts` — see `docs/arch/recipes.md` |
 | a timer for the cooking step you're on | `src/utils/stepTimers.ts` + `src/store/useStepTimerStore.ts` — see `docs/arch/recipes.md` |
 | a recipe page shared in from another app's share sheet | `src/utils/sharedRecipeLinks.ts` + `targets/todo-share/` — see `docs/arch/recipes.md` |
+| a store that fills itself from outside the app, and a read that lands too late | `src/utils/refreshGuard.ts` — the calendar, the weather, Apple Health and Screen Time all await a device read and then write what came back. A generation token per independent read decides whether the answer is still the one being asked for; `clear()` moves it on, which is what stops a revoked read writing its data back after the user switched the feature off |
 | syncing between devices | `src/utils/syncEngine.ts` + `syncMerge.ts` + `cloudKitTransport.ts` + `src/store/useSyncStore.ts` |
 | letting Claude read the app's data | `mcp/` — see `docs/arch/mcp-server.md`. Its own npm package, deliberately not a dependency of the app; it opens a `todo.db` in Node by putting `mcp/src/expoSqliteShim.ts` in front of `expo-sqlite`, so the whole of `src/db` and `src/utils` runs unchanged. Read-only so far, and nothing is deployed. It reads tasks, projects, groceries and the three day-keyed logs; **weight is structurally unreadable** (HealthKit is the record and there is no table), which is the health model working rather than a gap |
 | exporting or restoring a backup | `src/utils/backup.ts` + `src/utils/backupFile.ts` |
@@ -447,7 +448,7 @@ them source rather than tests. The ten biggest source files:
 Grep for the symbol and read the surrounding range; reading any of them end to end costs more
 context than the rest of the task will. `docs/module-map.md` says which file owns what.
 
-The suite is **314 test files**, and `npm test` runs all of them in about half a minute.
+The suite is **318 test files**, and `npm test` runs all of them in about half a minute.
 `npx tsc --noEmit` is a few seconds once `.tsbuildinfo` exists, so run both, every time.
 
 <!-- END GENERATED: repo-stats -->

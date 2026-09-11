@@ -6,6 +6,7 @@ import { screenTimeBridge } from '../utils/screenTimeBridge';
 import { armableRules } from '../utils/screenTimeRules';
 import { getCurrentDayStart, dayKeyOf } from '../utils/dateUtils';
 import { useSettingsStore } from './useSettingsStore';
+import { createRefreshGuard } from '../utils/refreshGuard';
 
 /**
  * What iOS has reported about app usage, held in memory — the screen-time
@@ -36,6 +37,10 @@ interface ScreenTimeState {
   clear: () => void;
 }
 
+// See refreshGuard.ts. One read here, and a stale drain is discarded rather
+// than appended.
+const crossingsGuard = createRefreshGuard();
+
 export const useScreenTimeStore = create<ScreenTimeState>((set, get) => ({
   crossings: [],
   refreshing: false,
@@ -45,9 +50,15 @@ export const useScreenTimeStore = create<ScreenTimeState>((set, get) => ({
     if (!bridge) return;
     if (get().refreshing) return;
     set({ refreshing: true });
+    const token = crossingsGuard.begin();
     try {
       const drained = await bridge.drainCrossings();
       if (drained.length === 0) return;
+      // A drain that lands after the feature was switched off is dropped
+      // rather than appended: `clear` ran because the user turned Screen Time
+      // tasks off, and crossings from a rule that is no longer armed would sit
+      // in state waiting to raise a task nobody asked for.
+      if (!crossingsGuard.isCurrent(token)) return;
       // Appended rather than replacing: a drain that happens between one sweep
       // and the next must not discard what the previous drain is still holding.
       set({ crossings: [...get().crossings, ...drained] });
@@ -77,6 +88,7 @@ export const useScreenTimeStore = create<ScreenTimeState>((set, get) => ({
   },
 
   clear() {
+    crossingsGuard.invalidate();
     set({ crossings: [] });
   },
 }));

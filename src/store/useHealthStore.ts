@@ -7,6 +7,7 @@ import type { HealthDayInput } from '../utils/moodInsights';
 import type { WeightPoint } from '../utils/weightLog';
 import { healthBridge } from '../utils/healthBridge';
 import { useSettingsStore } from './useSettingsStore';
+import { createRefreshGuard } from '../utils/refreshGuard';
 
 /**
  * What Apple Health says about today, held in memory.
@@ -154,6 +155,15 @@ interface HealthState {
   clear: () => void;
 }
 
+// Three reads that run independently, so a guard each rather than one for the
+// store: today's reading and the history window are fetched separately and
+// neither should cancel the other. See refreshGuard.ts — what they are really
+// protecting is the rule this feature is built on, that access revoked shows as
+// no data rather than as the last data.
+const todayGuard = createRefreshGuard();
+const historyGuard = createRefreshGuard();
+const weightGuard = createRefreshGuard();
+
 export const useHealthStore = create<HealthState>((set, get) => ({
   today: null,
   refreshing: false,
@@ -178,12 +188,14 @@ export const useHealthStore = create<HealthState>((set, get) => ({
     const now = new Date();
 
     set({ refreshing: true });
+    const token = todayGuard.begin();
     try {
       // One bucket, today's. The same call the history read uses rather than a
       // second "just today" one: HealthKit has no future samples, so a bucket
       // running to the end of today is today-so-far, and one query shape means
       // the source de-duplication rule cannot drift between the two reads.
       const [reading] = await bridge.readDailyHealth(dayStart.toISOString(), 1);
+      if (!todayGuard.isCurrent(token)) return;
       // Written even when the numbers are null, and written as a whole day
       // rather than merged into the last one. A null answer is the current
       // truth rather than a failed read to paper over, and holding the last
@@ -233,8 +245,10 @@ export const useHealthStore = create<HealthState>((set, get) => ({
     const anchor = addDays(getCurrentDayStart(), -(HEALTH_HISTORY_DAYS - 1));
 
     set({ loadingHistory: true });
+    const token = historyGuard.begin();
     try {
       const readings = await bridge.readDailyHealth(anchor.toISOString(), HEALTH_HISTORY_DAYS);
+      if (!historyGuard.isCurrent(token)) return;
       const history: HealthDayInput[] = [];
       for (const reading of readings) {
         const at = new Date(reading.start);
@@ -281,8 +295,10 @@ export const useHealthStore = create<HealthState>((set, get) => ({
     const anchor = addDays(getCurrentDayStart(), -(WEIGHT_HISTORY_DAYS - 1));
 
     set({ loadingWeight: true });
+    const token = weightGuard.begin();
     try {
       const readings = await bridge.readWeightSeries(anchor.toISOString(), WEIGHT_HISTORY_DAYS);
+      if (!weightGuard.isCurrent(token)) return;
       const weightSeries: WeightPoint[] = [];
       for (const reading of readings) {
         const at = new Date(reading.start);
@@ -337,6 +353,11 @@ export const useHealthStore = create<HealthState>((set, get) => ({
   },
 
   clear() {
+    // All three, because all three are being dropped: a read still in flight
+    // when access is revoked must not write its answer back afterwards.
+    todayGuard.invalidate();
+    historyGuard.invalidate();
+    weightGuard.invalidate();
     set({ today: null, history: null, weightSeries: null });
   },
 }));

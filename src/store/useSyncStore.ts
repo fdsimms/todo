@@ -70,7 +70,19 @@ export const useSyncStore = create<SyncState>((set, get) => ({
     // Check the account the moment it's switched on rather than waiting for
     // the first sync to fail: "sign in to iCloud" is something for the user to
     // do, and the moment they asked for sync is when they're able to do it.
-    const reason = await cloudKitUnavailableReason();
+    //
+    // Guarded because this is a native call on a switch the user just tapped,
+    // and every other failure in this store arrives as a `problem` string the
+    // Settings row renders. A throw here would reject a promise nobody awaits:
+    // the switch would read on, nothing would sync, and the screen would say
+    // nothing about why.
+    let reason: string | null;
+    try {
+      reason = await cloudKitUnavailableReason();
+    } catch {
+      set({ problem: 'Could not check your iCloud account.' });
+      return;
+    }
     if (reason) {
       set({ problem: reason });
       return;
