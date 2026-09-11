@@ -1848,6 +1848,8 @@ export const TaskItem = React.memo(function TaskItem({
                       ? `${task.title}, ready, complete`
                     : mealSlotChooseSource
                       ? `${task.title}, pick a meal`
+                    : reviewProjectId
+                      ? `${task.title}, opens the project review`
                     : asksOnComplete
                       ? `Complete ${task.title}, asks for an answer`
                       : `Complete ${task.title}`
@@ -1970,12 +1972,13 @@ export const TaskItem = React.memo(function TaskItem({
           {!completing && !isNegative && recurrenceNotYetDue && (
             <Ionicons name="repeat" size={iconSize.sm} color={colors.textSecondary} />
           )}
-          {!completing && !completionLocked && (asksOnComplete || mealSlotChooseSource) && (
+          {!completing && !completionLocked && (asksOnComplete || mealSlotChooseSource || reviewProjectId) && (
             // xs like the lock, not sm like the repeat: a "?" is tall where
             // the repeat glyph is wide and short, so the same nominal size
             // fills far more of a 20pt box and reads as crowded. Shared with
             // asksOnComplete: both mean "this tap asks something before it
-            // completes anything," which is exactly what happens here too.
+            // completes anything," which is exactly what happens here too —
+            // a review task's tap opens the pull sheet instead of completing.
             <Ionicons name="help" size={iconSize.xs} color={colors.textSecondary} />
           )}
         </View>
