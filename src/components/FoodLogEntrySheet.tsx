@@ -540,10 +540,10 @@ export function FoodLogEntrySheet({ visible, slot, at, seedRecipeId, onClose, on
         {picked ? (
           // Scrolls, because this half can outgrow the sheet: the amount field
           // takes focus on arrival, so the keyboard is already up, and a dish
-          // with a couple of "Anything else?" lines pushes Which meal and
-          // "Pick something else" under it with no way to reach them. Its two
-          // siblings both handle this — `ScanPortionSheet` with a ScrollView
-          // and `LogMealPrompt` with a KeyboardAvoidingView.
+          // with a couple of "Anything else?" lines pushes Which meal under it
+          // with no way to reach it. Its two siblings both handle this —
+          // `ScanPortionSheet` with a ScrollView and `LogMealPrompt` with a
+          // KeyboardAvoidingView.
           <ScrollView
             style={styles.bodyScroll}
             contentContainerStyle={styles.body}
@@ -691,16 +691,6 @@ export function FoodLogEntrySheet({ visible, slot, at, seedRecipeId, onClose, on
               label="Which meal"
               surface="page"
             />
-
-            <TouchableOpacity
-              style={styles.change}
-              activeOpacity={interaction.activeOpacity}
-              onPress={() => { haptics.tap(); setPicked(null); setAmount(''); }}
-              accessibilityRole="button"
-              accessibilityLabel="Pick a different food"
-            >
-              <Text style={styles.changeText}>Pick something else</Text>
-            </TouchableOpacity>
           </ScrollView>
         ) : (
           <>
@@ -842,8 +832,6 @@ function makeStyles(colors: Colors) {
       paddingHorizontal: spacing.md,
       paddingVertical: spacing.sm,
     },
-    change: { marginTop: spacing.lg, alignSelf: 'flex-start' },
-    changeText: { color: colors.accent, fontSize: font.sm },
     searchRow: {
       flexDirection: 'row',
       alignItems: 'center',
