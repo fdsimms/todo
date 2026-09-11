@@ -315,6 +315,7 @@ exports.
 | working a queue of tasks one at a time, with breaks | `src/utils/focusPlan.ts` + `src/store/useFocusStore.ts` — see `docs/arch/focus-sessions.md` |
 | what failing a task costs, in blocked apps | `src/utils/penaltyShield.ts` (the rule) + `sweepTaskPenalties`/`logSlip` in `useTaskStore` (the two triggers). The one feature here that does something to somebody for falling short, so read its refusals first: a task the app itself was withholding is never charged, a charge found on a later day is recorded without being served, and `undoSlip` deliberately doesn't refund |
 | whether the apps are blocked *right now* | `src/utils/appShield.ts` — the single arbiter over the focus shield and the penalty above. They drive one system shield, so it ORs them rather than each reconciling alone; two independent syncs was a race where one reason's end cleared the other's block |
+| the screen somebody sees when they open a blocked app | `targets/todo-shield-config/` (what it says) + `targets/todo-shield-action/` (its button) — see `docs/native-targets.md`. Two targets for one screen, and the layout is the system's; all that's ours is the words, which come from the App Group because the extension can reach nothing else |
 | a task that asks a question when it's completed | `src/utils/deliverables.ts` (+ `src/utils/bulkCompletion.ts` for the paths that complete several at once) |
 | a task falling on several dates | `seriesId` in `src/store/useTaskStore.ts` (`applyTaskDates`) — see Series below |
 | the month grid, and drawing an occurrence that has no row | `src/utils/calendarMonth.ts` + `src/screens/CalendarScreen.tsx` — see `docs/arch/month-grid.md` |
@@ -415,7 +416,7 @@ exports.
 **Read narrowly.** 57 files are over 1,000 lines, 38 of
 them source rather than tests. The ten biggest source files:
 
-`store/useTaskStore.ts` (8.5k), `db/database.ts` (5.6k), `types/index.ts` (5.6k),
+`store/useTaskStore.ts` (8.6k), `db/database.ts` (5.6k), `types/index.ts` (5.6k),
 `components/TaskEditor.tsx` (5.6k), `store/useGroceryStore.ts` (5.4k),
 `screens/TodayScreen.tsx` (4.6k), `components/TaskItem.tsx` (4.3k),
 `utils/demoSeed.ts` (3.9k), `store/useSettingsStore.ts` (3.7k),

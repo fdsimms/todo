@@ -31,6 +31,29 @@ enum ScreenTimeShared {
   /// reads — see `ScreenTimeCrossing.dayKey` for why the extension can't work
   /// this out itself.
   static let dayFileName = "screentime_day.json"
+  /// Why the apps are blocked right now, and until when. App writes on every
+  /// reconcile; two extensions read it, for two unrelated reasons — the monitor
+  /// needs to know whether it may lift a shield at the end of a penalty window,
+  /// and the shield screen needs something to tell the person who just opened a
+  /// blocked app. One file rather than two because both answers come from the
+  /// same reconcile and a second file is a second thing to go stale.
+  static let shieldStateFileName = "screentime_shield_state.json"
+
+  /// The `ManagedSettingsStore` both processes write the shield to.
+  ///
+  /// **Never rename this.** A shield lives in the store it was written to until
+  /// something clears that same store, so a build that starts writing a
+  /// differently-named one leaves any shield already in force with nothing left
+  /// that can lift it: the apps stay blocked for good, and reinstalling is the
+  /// only way out. The name is historical — it predates a failed task being
+  /// able to raise the same shield — and it stays wrong rather than becoming
+  /// dangerous.
+  static let shieldStoreName = "focusShield"
+
+  /// The one-shot DeviceActivity window whose end lifts a penalty block.
+  /// Deliberately a different activity from the usage monitor: stopping one
+  /// must not disarm the other.
+  static let penaltyActivityName = "todo.penaltyWindow"
 
   static func containerURL() -> URL? {
     FileManager.default.containerURL(forSecurityApplicationGroupIdentifier: appGroupID)
@@ -78,6 +101,28 @@ struct ScreenTimeRuleShared: Codable {
   let thresholdMinutes: Int
 }
 
+/// Why the apps are blocked right now, written by the app on every reconcile.
+///
+/// Deliberately says nothing the extensions would have to interpret. The app
+/// has already decided; this carries the decision, the moment it runs out, and
+/// a line of text to show for it. Neither extension can reach the app's SQLite,
+/// its stores or its JS, so anything not in here does not exist to them.
+struct ShieldStateShared: Codable {
+  /// Whether a reason *other* than a penalty wants the apps blocked — a focus
+  /// session, in practice. The monitor extension reads only this: it is what
+  /// says whether the end of a penalty window may lift the shield.
+  let otherReasonWantsShield: Bool
+  /// "penalty", "focus" or "none" — what the shield screen leads with.
+  let reason: String
+  /// When a penalty block runs out, as an ISO instant, or nil when the shield
+  /// is up for some other reason. The shield screen turns this into a time;
+  /// it deliberately does not compute one itself, since the app owns the clock.
+  let untilIso: String?
+  /// What earned it, e.g. a task's title. Shown as-is, so the app is
+  /// responsible for it being something a person would recognise.
+  let detail: String?
+}
+
 /// A threshold that fired, waiting to be turned into a task.
 ///
 /// `dayKey` is the app's own logical day (`yyyy-MM-dd`), stamped by the app
@@ -111,6 +156,24 @@ extension ScreenTimeShared {
   static func writeDayKey(_ dayKey: String) -> Bool {
     guard let data = try? JSONEncoder().encode(["dayKey": dayKey]) else { return false }
     return writeData(data, to: dayFileName)
+  }
+
+  /// Why the apps are blocked, as the app last worked it out.
+  ///
+  /// Nil when the file is missing or unreadable, and every reader has to treat
+  /// that as "assume something still wants the shield": a shield wrongly left
+  /// on is lifted by the app's own reconcile on the next foreground, and one
+  /// wrongly lifted is somebody let out of a block they were serving with
+  /// nothing to notice it.
+  static func readShieldState() -> ShieldStateShared? {
+    guard let data = readData(shieldStateFileName) else { return nil }
+    return try? JSONDecoder().decode(ShieldStateShared.self, from: data)
+  }
+
+  @discardableResult
+  static func writeShieldState(_ state: ShieldStateShared) -> Bool {
+    guard let data = try? JSONEncoder().encode(state) else { return false }
+    return writeData(data, to: shieldStateFileName)
   }
 
   static func readCrossings() -> [ScreenTimeCrossing] {

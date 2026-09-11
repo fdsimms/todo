@@ -116,6 +116,11 @@ const withActivityMonitor = config => {
         // it: this target's deployment target is 16.0, above the framework's
         // own floor.
         'FamilyControls.framework',
+        // The end of a penalty window is the one moment something outside the
+        // app lifts a shield, so this target writes the ManagedSettingsStore
+        // too — see intervalDidEnd in TodoActivityMonitor.swift. Missing here,
+        // the Swift still reads fine and the link fails at build.
+        'ManagedSettings.framework',
       ],
       extraBuildSettings: {
         // NSExtensionPrincipalClass above is

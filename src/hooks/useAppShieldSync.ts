@@ -61,6 +61,7 @@ export function useAppShieldSync(): void {
         focusEnabled: settings.focusShieldEnabled,
         penaltyUntil: settings.penaltyShieldUntil,
         penaltyEnabled: settings.penaltyShieldEnabled,
+        penaltyReason: settings.penaltyShieldReason,
         now,
       });
 
@@ -86,6 +87,7 @@ export function useAppShieldSync(): void {
         state.focusShieldEnabled !== prev.focusShieldEnabled ||
         state.penaltyShieldEnabled !== prev.penaltyShieldEnabled ||
         state.penaltyShieldUntil !== prev.penaltyShieldUntil ||
+        state.penaltyShieldReason !== prev.penaltyShieldReason ||
         state.initialized !== prev.initialized
       ) reconcile();
     });

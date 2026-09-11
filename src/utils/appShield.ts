@@ -30,6 +30,8 @@ export interface AppShieldState {
   focusEnabled: boolean;
   penaltyUntil: string | null;
   penaltyEnabled: boolean;
+  /** What earned the block — a task's title — for the shield screen to name. */
+  penaltyReason: string | null;
   now: Date;
 }
 
@@ -48,10 +50,46 @@ export function appShieldWanted(state: AppShieldState): boolean {
  * `screenTimeBridge()` itself — including for the clearing branch, which has to
  * go through the same door or the launch backstop that lifts a shield left
  * behind by a crash would be the one call that couldn't run.
+ *
+ * Three writes rather than one, because a penalty block has to end on time even
+ * with the app closed and none of this code is running then:
+ *
+ * - **The shield itself**, as before.
+ * - **The answer the monitor extension will need.** It wakes at the end of a
+ *   penalty window with no way to ask whether anything else still wants the
+ *   apps blocked, so the answer is written ahead of it, on every reconcile
+ *   rather than only when a penalty is armed — a focus session can start, or
+ *   the feature be switched off, while a window is already running.
+ * - **The window.** Armed while a block is being served and disarmed the moment
+ *   it isn't, so its end can never lift a shield some later focus session
+ *   raised.
+ *
+ * Re-arming on every reconcile keeps this as stateless as it was: the end
+ * instant is what the window is built from, so re-arming an unchanged block
+ * lands on the same moment and costs nothing. That is what lets this be called
+ * on every foreground without remembering what it last did.
  */
 export function syncAppShield(state: AppShieldState): void {
   const bridge = screenTimeBridge();
   if (!bridge) return;
-  if (appShieldWanted(state)) bridge.applyShield();
+
+  const focusWants = shieldWanted(state.session, state.focusEnabled);
+  const penaltyWants = penaltyShieldWanted(state.penaltyUntil, state.penaltyEnabled, state.now);
+
+  // Focus leads when both are in force: it is the one the person is in the
+  // middle of and can end themselves, where a penalty only runs out.
+  bridge.setShieldState({
+    otherReasonWantsShield: focusWants,
+    reason: focusWants ? 'focus' : penaltyWants ? 'penalty' : 'none',
+    untilIso: penaltyWants ? state.penaltyUntil : null,
+    detail: penaltyWants ? state.penaltyReason : null,
+  });
+
+  if (focusWants || penaltyWants) bridge.applyShield();
   else bridge.clearShield();
+
+  // `penaltyWants` being true is what makes penaltyUntil non-null — it is the
+  // first thing that predicate checks.
+  if (penaltyWants && state.penaltyUntil) bridge.schedulePenaltyExpiry(state.penaltyUntil);
+  else bridge.cancelPenaltyExpiry();
 }
