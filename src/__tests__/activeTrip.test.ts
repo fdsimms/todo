@@ -475,9 +475,10 @@ describe('tripMarkerFor', () => {
       expect(marker?.substitute?.id).toBe('margarine');
     });
 
-    // Silence carries: a substitute on record for an item this store is *not*
-    // marked unavailable for must not leak the clause onto some other kind.
-    it('never carries a substitute on a marker that is not "unavailable"', () => {
+    // Silence carries: a substitute rides the two markers that say this store
+    // hasn't got it. A clause about a *different* store is not one of those, so
+    // it must not pick one up.
+    it('never carries a substitute onto a clause about another store', () => {
       const links = [link('milk', traderJoes.id, 3)];
       const subs = [subLink('milk', 'oat-milk', '2026-01-01T00:00:00.000Z')];
       const oatMilk = item('oat-milk', { name: 'Oat milk' });
@@ -597,5 +598,63 @@ describe('tripMarkerFor and a store\'s aisle range', () => {
 
   it('says nothing extra once grouped under the section\'s own header', () => {
     expect(describeGroupedUnavailable({ kind: 'outOfRange', shop: cvs })).toBe('');
+  });
+
+  // Standing in a shop that hasn't got it is the best moment for a swap,
+  // whichever of the two negatives put the row there.
+  it('offers a substitute the store can actually sell you', () => {
+    const tofurky = item('tofurky', { aisle: 'Frozen' });
+    const jerky = item('jerky', { name: 'Jerky', aisle: 'Personal Care' });
+    const subs = [subLink('tofurky', 'jerky', '2026-01-01T00:00:00.000Z')];
+    const marker = tripMarkerFor(tofurky, [], shops, cvs, subs, [tofurky, jerky]);
+    expect(marker).toEqual({ kind: 'outOfRange', shop: cvs, substitute: jerky });
+  });
+
+  // The whole point of filtering: suggesting a second thing from the same
+  // aisle the store doesn't sell is the app not having read its own record.
+  it('drops a substitute the store cannot sell you either', () => {
+    const tofurky = item('tofurky', { aisle: 'Frozen' });
+    const seitan = item('seitan', { name: 'Seitan', aisle: 'Frozen' });
+    const subs = [subLink('tofurky', 'seitan', '2026-01-01T00:00:00.000Z')];
+    const marker = tripMarkerFor(tofurky, [], shops, cvs, subs, [tofurky, seitan]);
+    expect(marker?.substitute).toBeUndefined();
+  });
+
+  it('skips past an out-of-range substitute to one that is in range', () => {
+    const tofurky = item('tofurky', { aisle: 'Frozen' });
+    const seitan = item('seitan', { name: 'Seitan', aisle: 'Frozen' });
+    const jerky = item('jerky', { name: 'Jerky', aisle: 'Personal Care' });
+    const subs = [
+      subLink('tofurky', 'seitan', '2026-01-01T00:00:00.000Z'),
+      subLink('tofurky', 'jerky', '2026-02-01T00:00:00.000Z'),
+    ];
+    const marker = tripMarkerFor(tofurky, [], shops, cvs, subs, [tofurky, seitan, jerky]);
+    expect(marker?.substitute?.id).toBe('jerky');
+  });
+
+  // Same filter on the stamped claim, which had no reason to need one until a
+  // store could be given a range. Unchanged for every unscoped store.
+  it('applies the same filter to a stamped claim', () => {
+    const soap = item('soap', { aisle: 'Personal Care' });
+    const bleach = item('bleach', { name: 'Bleach', aisle: 'Household' });
+    const links = [link('soap', cvs.id, 0, { unavailableAt: '2026-08-01T00:00:00.000Z' })];
+    const subs = [subLink('soap', 'bleach', '2026-01-01T00:00:00.000Z')];
+    const marker = tripMarkerFor(soap, links, shops, cvs, subs, [soap, bleach]);
+    expect(marker?.kind).toBe('unavailable');
+    expect(marker?.substitute).toBeUndefined();
+  });
+
+  it('drops the store name once there is something to grab instead', () => {
+    const jerky = item('jerky', { name: 'Jerky' });
+    expect(describeTripMarker({ kind: 'outOfRange', shop: cvs, substitute: jerky })).toBe(
+      'Not here \u00b7 or Jerky'
+    );
+  });
+
+  it('says only the substitute once grouped', () => {
+    const jerky = item('jerky', { name: 'Jerky' });
+    expect(describeGroupedUnavailable({ kind: 'outOfRange', shop: cvs, substitute: jerky })).toBe(
+      'or Jerky'
+    );
   });
 });

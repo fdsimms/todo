@@ -539,6 +539,12 @@ items from, and this is a person stating what a shop sells. Same side of the lin
   `GroceryScreen` routes into the section's existing "Not here" group: to somebody holding the list
   the two negatives say the same thing, and which one it was is a fact about where the claim came
   from.
+- **A substitute rides both negatives, and is filtered by the range.** Standing in a shop that
+  hasn't got the thing is the best moment to offer a swap, whichever of the two negatives put the
+  row there — so `outOfRange` carries one exactly as `unavailable` always has. `substituteAt` picks
+  it, and drops anything the store equally can't sell you: offering a second thing from the same
+  missing aisle is the error `alternativeProductAt` already refuses one level down, at the product.
+  Nothing changes for an unscoped store, where `isOutOfRange` is false for everything.
 - **A purchase from outside the range is offered as a correction, not taken as one.** A purchase
   refutes a range outright, but widening on it silently would let one ice pack decide a pharmacy
   sells Frozen for good. So the finish sheet names the aisles the trip bought from and offers to
