@@ -1,4 +1,4 @@
 {
-  "message": "Logging a food with a long name (like a scanned product) no longer truncates it in the \"How much\" sheet's header — the name now gets its own full-width line",
+  "message": "Logging a food with a long name (like a scanned product) no longer truncates it in the \"How much\" sheet's header. The name now gets its own full-width line",
   "date": "2026-09-11"
 }

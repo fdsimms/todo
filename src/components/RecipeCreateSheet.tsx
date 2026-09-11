@@ -5,7 +5,6 @@ import {
   View,
   Text,
   TextInput,
-  TouchableOpacity,
   ScrollView,
   ActivityIndicator,
   StyleSheet,
@@ -20,7 +19,6 @@ import {
   font,
   fontWeight,
   border,
-  interaction,
   type Colors,
 } from '../theme';
 import { RECIPE_NAME_MAX_LENGTH, RECIPE_PAGE_MAX_LENGTH, RECIPE_SOURCE_MAX_LENGTH, type RecipeSourceType } from '../types';
@@ -52,6 +50,7 @@ import { useRecipeComponentImports } from '../hooks/useRecipeComponentImports';
 import { ImportedComponentRow } from './ImportedComponentRow';
 import { coveredIngredients, importableReferences } from '../utils/recipeImportComponents';
 import { haptics } from '../utils/haptics';
+import { InlineAction } from './InlineAction';
 
 interface Props {
   visible: boolean;
@@ -664,21 +663,17 @@ export function RecipeCreateSheet({
               <Text style={styles.dupeText} numberOfLines={2}>
                 You already have a recipe called “{duplicate.name}”.
               </Text>
-              <TouchableOpacity
-                activeOpacity={interaction.activeOpacity}
+              <InlineAction
+                label="Open it"
                 // The page still counts as dealt with: they shared a recipe,
                 // it turned out to already be in the box, and this lands them
                 // on it. A queue entry the caller can now drop.
                 onPress={() => {
-                  haptics.tap();
                   onClose();
                   onCreated(duplicate.id, input.page?.url ?? null);
                 }}
-                accessibilityRole="button"
                 accessibilityLabel={`Open ${duplicate.name}`}
-              >
-                <Text style={styles.dupeAction}>Open it</Text>
-              </TouchableOpacity>
+              />
             </View>
           )}
           {!duplicate && !!urlDuplicate && (
@@ -686,18 +681,14 @@ export function RecipeCreateSheet({
               <Text style={styles.dupeText} numberOfLines={2}>
                 You already imported this link as “{urlDuplicate.name}”.
               </Text>
-              <TouchableOpacity
-                activeOpacity={interaction.activeOpacity}
+              <InlineAction
+                label="Open it"
                 onPress={() => {
-                  haptics.tap();
                   onClose();
                   onCreated(urlDuplicate.id, input.page?.url ?? null);
                 }}
-                accessibilityRole="button"
                 accessibilityLabel={`Open ${urlDuplicate.name}`}
-              >
-                <Text style={styles.dupeAction}>Open it</Text>
-              </TouchableOpacity>
+              />
             </View>
           )}
         </View>
@@ -982,6 +973,5 @@ function makeStyles(colors: Colors) {
       borderTopColor: colors.separator,
     },
     dupeText: { flex: 1, color: colors.textSecondary, fontSize: font.xs },
-    dupeAction: { color: colors.accent, fontSize: font.sm, fontWeight: fontWeight.semibold },
   });
 }

@@ -459,7 +459,8 @@ const makeStyles = (colors: Colors) => StyleSheet.create({
   // a rounded row leaves its revealed panel square-cornered behind it.
   card: {
     borderRadius: radius.md,
-    marginBottom: spacing.sm,
+    // Same 4pt between cards as TaskItem's marginVertical: 2; these sat 8 apart.
+    marginBottom: spacing.xs,
   },
   // Flush, so it slides over the swipe panel rather than beside it.
   row: {

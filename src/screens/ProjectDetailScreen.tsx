@@ -634,7 +634,7 @@ export function ProjectDetailScreen() {
                   <Ionicons name="sparkles-outline" size={20} color={colors.purple} />
                 </TouchableOpacity>
               )}
-              <TouchableOpacity
+              <TouchableOpacity hitSlop={12}
                 onPress={() => project && setEditingProject(project)}
                 accessibilityRole="button"
                 accessibilityLabel="Edit project"

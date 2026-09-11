@@ -350,6 +350,8 @@ export function DeloadSheet({ visible, todaysTasks, notes, onClose }: Props) {
             onPress={handleApply}
             disabled={selected.length === 0}
             activeOpacity={interaction.activeOpacity}
+            accessibilityRole="button"
+            accessibilityState={{ disabled: selected.length === 0 }}
           >
             <Text style={[styles.applyBtnText, selected.length === 0 && styles.applyBtnTextDisabled]}>
               {selected.length === 0
@@ -359,7 +361,7 @@ export function DeloadSheet({ visible, todaysTasks, notes, onClose }: Props) {
           </TouchableOpacity>
         </View>
 
-        <TouchableOpacity style={styles.cancelCard} onPress={dismiss} activeOpacity={interaction.activeOpacity}>
+        <TouchableOpacity style={styles.cancelCard} onPress={dismiss} activeOpacity={interaction.activeOpacity} accessibilityRole="button">
           <Text style={styles.cancelLabel}>Cancel</Text>
         </TouchableOpacity>
       </Animated.View>

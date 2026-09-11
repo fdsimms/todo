@@ -451,6 +451,8 @@ export function RemindMePicker({ visible, value, kind, dueDate = null, offsetDay
               onPress={confirm}
               disabled={!canConfirm}
               activeOpacity={interaction.activeOpacity}
+              accessibilityRole="button"
+              accessibilityState={{ disabled: !canConfirm }}
             >
               <Text style={styles.doneBtnLabel}>Done</Text>
             </TouchableOpacity>
@@ -459,7 +461,7 @@ export function RemindMePicker({ visible, value, kind, dueDate = null, offsetDay
             {onClear && (
               <>
                 <View style={styles.sectionGapSm} />
-                <TouchableOpacity style={styles.clearBtn} onPress={onClear} activeOpacity={interaction.activeOpacity}>
+                <TouchableOpacity style={styles.clearBtn} onPress={onClear} activeOpacity={interaction.activeOpacity} accessibilityRole="button">
                   <Text style={styles.clearLabel}>Clear reminder</Text>
                 </TouchableOpacity>
               </>
@@ -535,7 +537,7 @@ const makeStyles = (colors: Colors, windowHeight: number) => StyleSheet.create({
     fontSize: font.xs,
     fontWeight: fontWeight.semibold,
     textTransform: 'uppercase',
-    letterSpacing: 0.5,
+    letterSpacing: 0.8,
     marginBottom: spacing.xs + 2,
   },
   modeSection: {
