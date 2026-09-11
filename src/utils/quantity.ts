@@ -177,6 +177,7 @@ const UNIT_PLURALS: Record<string, string> = {
   pinch: 'pinches',
   dash: 'dashes',
   handful: 'handfuls',
+  serving: 'servings',
 };
 
 const UNIT_SINGULARS: Record<string, string> = Object.fromEntries(

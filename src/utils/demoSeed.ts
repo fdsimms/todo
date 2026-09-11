@@ -40,7 +40,7 @@ import { helpingNutrition, scalePanelToAmount } from './foodLog';
 import { cookedDishGrams, mealHelping, weighedHelping } from './mealLog';
 import { perServing, recipeNutrition } from './recipeNutrition';
 import { recipeMap } from './recipeComponents';
-import { packageHelping } from './scanPortion';
+import { packageChoices, packageHelping } from './scanPortion';
 import { describeProduct } from './groceryProduct';
 import { focusPlanOptionsFrom } from './focusSettings';
 import { projectReviewLinkUrl, projectReviewTitle } from './projectReviewTasks';
@@ -1538,9 +1538,10 @@ function seedFoodLog(today: Date): void {
   const scannedBox = itemProducts.find(p => p.gtin && p.nutrition);
   if (scannedBox?.nutrition) {
     const item = items.find(i => i.id === scannedBox.itemId);
-    const label = scannedBox.nutrition.servingText
-      ? `1 serving (${scannedBox.nutrition.servingText})`
-      : '1 serving';
+    // Same label `packageChoices` itself offers first for a scanned box — kept
+    // in step with its own "don't repeat the word 'serving'" rule rather than
+    // rebuilt by hand here, which is what let this drift out of step before.
+    const label = packageChoices(scannedBox.nutrition, null)[0]?.label ?? '1 serving';
     const helping = packageHelping(scannedBox.nutrition, 1, label);
     if (item && helping) {
       const at = subDays(today, 1);
