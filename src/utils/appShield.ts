@@ -1,4 +1,5 @@
 import type { FocusSession } from '../types';
+import { gateShieldWanted, gateSubtitle } from './appGate';
 import { shieldWanted } from './focusShield';
 import { penaltyShieldWanted } from './penaltyShield';
 import { screenTimeBridge } from './screenTimeBridge';
@@ -7,23 +8,26 @@ import { screenTimeBridge } from './screenTimeBridge';
  * The one place that decides whether the system shield is on, and the only
  * place that writes it.
  *
- * There are two reasons this app blocks apps — a focus session is running, and
- * a task was failed — and they share a single `ManagedSettingsStore`. That
- * sharing is not an implementation detail to route around: the native side
- * exposes one shield, so two reconcilers driving it independently is not two
- * features, it is one feature with a race. Whichever ran second would win, and
- * the losing case is specific and bad — a focus session ending mid-penalty
+ * Three reasons this app blocks apps — a focus session is running, a task was
+ * failed, and a task has to be done first — and they share a single
+ * `ManagedSettingsStore`. That sharing is not an implementation detail to route
+ * around: the native side exposes one shield, so a reconciler per reason is not
+ * three features, it is one feature with a race. Whichever ran last would win,
+ * and the losing case is specific and bad — a focus session ending mid-penalty
  * would call `clearShield` and hand back the apps somebody was supposed to be
  * locked out of, silently, because from the focus side nothing was wrong.
  *
  * So the shield is on if *any* reason wants it on, and off only when none does.
  * Each reason keeps its own rule as a pure predicate (`focusShield.ts`,
- * `penaltyShield.ts`); this ORs them and makes the single call.
+ * `penaltyShield.ts`, `appGate.ts`); this ORs them and makes the single call.
+ * Adding a fourth is a predicate and a line here, which is what the arbiter was
+ * for.
  *
  * Safe to over-call, which is the point: it runs on every session write, every
- * settings change, every foreground and every penalty expiry, and most of those
- * agree with each other. Applying is idempotent on the native side, so
- * re-asserting costs nothing and this needs no memory of what it last did.
+ * settings change, every foreground, every task write and every penalty expiry,
+ * and most of those agree with each other. Applying is idempotent on the native
+ * side, so re-asserting costs nothing and this needs no memory of what it last
+ * did.
  */
 export interface AppShieldState {
   session: FocusSession | null;
@@ -32,6 +36,16 @@ export interface AppShieldState {
   penaltyEnabled: boolean;
   /** What earned the block — a task's title — for the shield screen to name. */
   penaltyReason: string | null;
+  gateEnabled: boolean;
+  /**
+   * The titles of the gate tasks standing in the way, in the order the screen
+   * should name them. Empty when nothing is gating.
+   *
+   * Titles rather than tasks because that is all any reader here needs, and it
+   * keeps the caller honest about having already applied the visibility rule
+   * (`outstandingGates`) rather than leaving that decision to this module.
+   */
+  gateTitles: readonly string[];
   now: Date;
 }
 
@@ -39,7 +53,8 @@ export interface AppShieldState {
 export function appShieldWanted(state: AppShieldState): boolean {
   return (
     shieldWanted(state.session, state.focusEnabled) ||
-    penaltyShieldWanted(state.penaltyUntil, state.penaltyEnabled, state.now)
+    penaltyShieldWanted(state.penaltyUntil, state.penaltyEnabled, state.now) ||
+    gateShieldWanted(state.gateTitles.length, state.gateEnabled)
   );
 }
 
@@ -75,17 +90,29 @@ export function syncAppShield(state: AppShieldState): void {
 
   const focusWants = shieldWanted(state.session, state.focusEnabled);
   const penaltyWants = penaltyShieldWanted(state.penaltyUntil, state.penaltyEnabled, state.now);
+  const gateWants = gateShieldWanted(state.gateTitles.length, state.gateEnabled);
 
-  // Focus leads when both are in force: it is the one the person is in the
-  // middle of and can end themselves, where a penalty only runs out.
+  // The screen can only lead with one of them, in the order they're worth
+  // reading: a session is what the person is in the middle of, a gate is the
+  // one they can act on right now, and a penalty is the one that only runs out.
+  //
+  // `otherReasonWantsShield` is what the monitor extension checks before
+  // lifting a shield at the end of a penalty window, so a gate has to count as
+  // one of the others. Left out, a penalty running out would hand back apps a
+  // gate was still holding — the same race this arbiter exists to prevent,
+  // reappearing in the one process that can't see any of this.
   bridge.setShieldState({
-    otherReasonWantsShield: focusWants,
-    reason: focusWants ? 'focus' : penaltyWants ? 'penalty' : 'none',
-    untilIso: penaltyWants ? state.penaltyUntil : null,
-    detail: penaltyWants ? state.penaltyReason : null,
+    otherReasonWantsShield: focusWants || gateWants,
+    reason: focusWants ? 'focus' : gateWants ? 'gate' : penaltyWants ? 'penalty' : 'none',
+    untilIso: penaltyWants && !focusWants && !gateWants ? state.penaltyUntil : null,
+    detail: focusWants
+      ? null
+      : gateWants
+        ? gateSubtitle(state.gateTitles)
+        : penaltyWants ? state.penaltyReason : null,
   });
 
-  if (focusWants || penaltyWants) bridge.applyShield();
+  if (focusWants || penaltyWants || gateWants) bridge.applyShield();
   else bridge.clearShield();
 
   // `penaltyWants` being true is what makes penaltyUntil non-null — it is the

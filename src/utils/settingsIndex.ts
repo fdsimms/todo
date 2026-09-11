@@ -598,6 +598,8 @@ export const SETTINGS_ENTRIES: SettingsEntry[] = [
     keywords: ['screen time', 'pomodoro', 'distraction', 'shield', 'social media', 'restrict'] },
   { id: 'focusShieldApps', iosOnly: true, requires: 'focusShield', groupId: 'tasksProjects', label: 'Apps to block', section: 'Focus sessions', simple: true,
     keywords: ['screen time', 'distraction', 'which apps', 'picker', 'choose'] },
+  { id: 'gateShield', iosOnly: true, groupId: 'tasksProjects', label: 'Block apps until a task is done', section: 'Focus sessions', simple: true,
+    keywords: ['screen time', 'gate', 'first', 'before', 'unlock', 'precondition', 'accountability', 'restrict', 'morning'] },
   { id: 'penaltyShield', iosOnly: true, groupId: 'tasksProjects', label: 'Block apps when you fail a task', section: 'Focus sessions', simple: true,
     keywords: ['screen time', 'penalty', 'punish', 'consequence', 'miss', 'missed', 'slip', 'deadline', 'cutoff', 'accountability', 'restrict'] },
   { id: 'penaltyShieldApps', iosOnly: true, requires: 'penaltyShield', groupId: 'tasksProjects', label: 'Apps to block', section: 'Focus sessions', simple: true,

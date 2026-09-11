@@ -557,6 +557,7 @@ function newTaskFromDraft(
     // earned it, so a new row — including the successor of one that was
     // charged — starts owing nothing.
     penaltyFiredAt: null,
+    gatesApps: draft.gatesApps ?? false,
     polarity: resolvedPolarity,
     // On by default for a negative habit and off for everything else. A flame on
     // every recurring row is noise (the reasoning behind the field), but the run
@@ -7008,6 +7009,7 @@ export const useTaskStore = create<TaskStore>((set, get) => ({
       penaltyMinutes: null,
       penaltyCutoffTime: null,
       penaltyFiredAt: null,
+      gatesApps: false,
       parentId,
       groupId: null,
       projectId: null,
@@ -7208,6 +7210,7 @@ export const useTaskStore = create<TaskStore>((set, get) => ({
       penaltyMinutes: null,
       penaltyCutoffTime: null,
       penaltyFiredAt: null,
+      gatesApps: false,
       parentId: null,
       groupId,
       projectId: null,

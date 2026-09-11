@@ -48,6 +48,8 @@ const state = (over: Partial<AppShieldState> = {}): AppShieldState => ({
   penaltyUntil: null,
   penaltyEnabled: false,
   penaltyReason: null,
+  gateEnabled: false,
+  gateTitles: [],
   now: NOW,
   ...over,
 });
@@ -229,5 +231,70 @@ describe('what syncAppShield leaves behind for the extension', () => {
     expect(mockBridge.setShieldState).not.toHaveBeenCalled();
     expect(mockBridge.schedulePenaltyExpiry).not.toHaveBeenCalled();
     expect(mockBridge.cancelPenaltyExpiry).not.toHaveBeenCalled();
+  });
+});
+
+/**
+ * The third reason: apps blocked until a task is done.
+ *
+ * Most of this is the same shape as the other two, and the case worth the most
+ * is the one where it meets the penalty — because that one is the race this
+ * module exists for, reappearing in the process that can't see any of it.
+ */
+describe('a gate', () => {
+  const gated = { gateEnabled: true, gateTitles: ['Morning walk'] };
+
+  it('wants the apps blocked while something is outstanding', () => {
+    expect(appShieldWanted(state(gated))).toBe(true);
+  });
+
+  it('stops wanting them blocked once nothing is — this is how a gate ends', () => {
+    expect(appShieldWanted(state({ gateEnabled: true, gateTitles: [] }))).toBe(false);
+  });
+
+  it('is ignored with its own feature off, however much is outstanding', () => {
+    expect(appShieldWanted(state({ gateEnabled: false, gateTitles: ['Morning walk'] }))).toBe(false);
+  });
+
+  it('counts as an other reason, so a penalty running out cannot lift it', () => {
+    // The one that matters. The monitor extension reads this single flag before
+    // clearing a shield at the end of a penalty window, and it cannot see a
+    // gate any other way — so leaving the gate out here would hand back apps
+    // that were still being held, with nothing appearing to go wrong.
+    syncAppShield(state({ ...gated, penaltyUntil: LATER, penaltyEnabled: true }));
+    expect(mockBridge.setShieldState).toHaveBeenCalledWith(
+      expect.objectContaining({ otherReasonWantsShield: true }),
+    );
+  });
+
+  it('leads the screen over a penalty, being the one you can act on', () => {
+    syncAppShield(state({ ...gated, penaltyUntil: LATER, penaltyEnabled: true }));
+    expect(mockBridge.setShieldState).toHaveBeenCalledWith(
+      expect.objectContaining({
+        reason: 'gate',
+        detail: "Morning walk isn't done yet. Finish it in dundundun to unblock.",
+        // The penalty's end is withheld while a gate leads: a block that
+        // outlasts the time shown is worse than one that shows no time.
+        untilIso: null,
+      }),
+    );
+  });
+
+  it('yields the screen to a running focus session', () => {
+    syncAppShield(state({ ...gated, session: session(), focusEnabled: true }));
+    expect(mockBridge.setShieldState).toHaveBeenCalledWith(
+      expect.objectContaining({ reason: 'focus' }),
+    );
+  });
+
+  it('keeps the shield up when a focus session ends with a gate still open', () => {
+    expect(appShieldWanted(state({ ...gated, session: null, focusEnabled: true }))).toBe(true);
+  });
+
+  it('arms no expiry window — a gate has no end to schedule', () => {
+    syncAppShield(state(gated));
+    expect(mockBridge.applyShield).toHaveBeenCalledTimes(1);
+    expect(mockBridge.schedulePenaltyExpiry).not.toHaveBeenCalled();
+    expect(mockBridge.cancelPenaltyExpiry).toHaveBeenCalledTimes(1);
   });
 });

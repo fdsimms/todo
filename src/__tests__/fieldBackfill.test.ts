@@ -67,6 +67,7 @@ const baseTask: Task = {
   penaltyMinutes: null,
   penaltyCutoffTime: null,
   penaltyFiredAt: null,
+  gatesApps: false,
   showStreak: false,
   streakRequiresWindow: false,
   recurrenceFromCompletion: false,

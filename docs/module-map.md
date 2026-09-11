@@ -21,6 +21,7 @@ name cannot say is where a component appears, and that is `docs/screen-map.md`.
 - `src/utils/aiRouting.ts` — AiRoute, OnDeviceEngine, onDeviceEngineFor, ON_DEVICE_FEATURES, supportsOnDevice, AiRouteInput, routeForFeature
 - `src/utils/alarmChain.ts` — ALARM_RING_INTERVAL_MINUTES, ALARM_MAX_RINGS, alarmChainTimes, taskAlarmUuid, alarmChainIds, stepTimerAlarmUuid
 - `src/utils/allClear.ts` — completedOnDay, describeAllClear
+- `src/utils/appGate.ts` — isGateTask, outstandingGates, gateShieldWanted, gateSubtitle
 - `src/utils/appLock.ts` — APP_LOCK_GRACE_OPTIONS, DEFAULT_APP_LOCK_GRACE_SECONDS, graceLabel, parseGraceSeconds, shouldLockOnResume, biometryLabel
 - `src/utils/appLockAuth.ts` — AppLockCapability, AppLockSupport, getAppLockSupport, UnlockResult, authenticateForAppLock
 - `src/utils/appShield.ts` — AppShieldState, appShieldWanted, syncAppShield
