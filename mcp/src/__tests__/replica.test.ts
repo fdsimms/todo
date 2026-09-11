@@ -179,6 +179,85 @@ describe('the replica', () => {
     expect(replica.shiftDayKey('2026-01-01', -1)).toBe('2025-12-31');
   });
 
+  it('builds a whole template, resolving group keys and question names to ids', () => {
+    const built = replica.createTemplate({
+      name: 'Trip',
+      category: 'Home',
+      container: 'project',
+      anchorsAreAway: true,
+      groups: [{ key: 'clothes', title: 'Clothes' }],
+      questions: [
+        { name: 'trip', prompt: 'What kind of trip?', kind: 'choice', options: ['Work', 'Holiday'] },
+        { name: 'nights', prompt: 'How many nights?', kind: 'number', fromDates: 'nights' },
+      ],
+      items: [
+        { title: 'Shirts', groupKey: 'clothes', dueOffsetDays: -1 },
+        { title: 'Laptop', conditions: [{ question: 'trip', values: ['Work'] }] },
+      ],
+    });
+
+    expect(built).toMatchObject({ name: 'Trip', category: 'Home', applyContainer: 'project', anchorsAreAway: true });
+
+    // The two cross-references the caller wrote as a key and a name now point
+    // at ids it could not have known, which is the whole job of the applier.
+    const group = built.itemGroups[0];
+    const choice = built.questions.find(q => q.name === 'trip')!;
+    expect(built.items.find(i => i.title === 'Shirts')!.groupId).toBe(group.id);
+    expect(built.items.find(i => i.title === 'Laptop')!.conditions).toEqual([
+      { questionId: choice.id, values: ['Work'] },
+    ]);
+    expect(choice.id).not.toBe('trip');
+  });
+
+  it('leaves the field defaults to the app\'s own normalizer', () => {
+    const built = replica.createTemplate({ name: 'Bare', items: [{ title: 'One thing' }] });
+    const item = built.items[0];
+
+    // Restating these in the tool would be a second copy of normalizeTemplateItem
+    // to keep in step with the app.
+    expect(item).toMatchObject({
+      anchor: 'start',
+      optional: false,
+      polarity: 'positive',
+      recurrenceType: 'none',
+      recurrenceInterval: 1,
+      priority: 0,
+      tags: [],
+      conditions: [],
+    });
+    expect(item.id).toEqual(expect.any(String));
+  });
+
+  it('nests one template inside another, by name', () => {
+    const packing = replica.createTemplate({ name: 'Packing list', items: [{ title: 'Socks' }] });
+    const trip = replica.createTemplate({
+      name: 'Trip with packing',
+      items: [{ title: 'Bring the packing list', refTemplate: 'Packing list' }],
+    });
+
+    const ref = trip.items[0];
+    expect(ref.refTemplateId).toBe(packing.id);
+    // Carried so a broken reference can still say what it pointed at.
+    expect(ref.refTemplateName).toBe('Packing list');
+  });
+
+  it('writes nothing at all when the plan is invalid', () => {
+    const before = replica.templates().length;
+    expect(() =>
+      replica.createTemplate({
+        name: 'Broken',
+        items: [{ title: 'Thing', groupKey: 'nope' }],
+      })
+    ).toThrow('does not define');
+
+    // A half-built template is worse than none: it looks finished in the list.
+    expect(replica.templates()).toHaveLength(before);
+  });
+
+  it('reports every problem in one throw', () => {
+    expect(() => replica.createTemplate({ name: '', items: [] })).toThrow(/name is required.*at least one item/);
+  });
+
   it('clears cached reads on refresh, so a sync landing mid-session is seen', () => {
     insert({ id: 'first', title: 'First' });
     replica.refresh();
