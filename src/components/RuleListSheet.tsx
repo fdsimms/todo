@@ -6,6 +6,7 @@ import { useColors } from '../theme/ThemeContext';
 import { border, font, fontWeight, iconSize, interaction, radius, spacing, type Colors } from '../theme';
 import { haptics } from '../utils/haptics';
 import { animateLayout } from '../utils/layoutAnimation';
+import { useKeyboardInsetScroll } from '../hooks/useKeyboardInsetScroll';
 import { EmptyState } from './EmptyState';
 import { InlineAction } from './InlineAction';
 import { SheetHeaderButton } from './SheetHeaderButton';
@@ -105,6 +106,7 @@ export function RuleListSheet<T extends EditableRule>({
   const colors = useColors();
   const styles = useMemo(() => makeStyles(colors), [colors]);
   const hideHelpText = useSettingsStore(s => s.hideHelpText);
+  const keyboardScroll = useKeyboardInsetScroll<ScrollView>();
 
   const [expandedId, setExpandedId] = useState<string | null>(null);
 
@@ -155,7 +157,12 @@ export function RuleListSheet<T extends EditableRule>({
           <SheetHeaderButton label="Done" onPress={close} minWidth={56} />
         </View>
 
-        <ScrollView contentContainerStyle={rules.length === 0 ? styles.listEmpty : styles.list}>
+        <ScrollView
+          ref={keyboardScroll.ref}
+          contentContainerStyle={rules.length === 0 ? styles.listEmpty : styles.list}
+          keyboardShouldPersistTaps="handled"
+          {...keyboardScroll.props}
+        >
           {!hideHelpText && <Text style={styles.caption}>{caption}</Text>}
 
           {header}

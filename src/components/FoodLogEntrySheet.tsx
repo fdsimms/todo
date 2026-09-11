@@ -27,6 +27,7 @@ import { isNonFoodAisle } from '../utils/groceryAisles';
 import { groceryNameKey } from '../utils/groceryParse';
 import { haptics } from '../utils/haptics';
 import { weighableLine } from '../utils/ingredientGrams';
+import { useKeyboardInsetScroll } from '../hooks/useKeyboardInsetScroll';
 import { EmptyState } from './EmptyState';
 import { InlineAction } from './InlineAction';
 import { NutritionSearchSheet } from './NutritionSearchSheet';
@@ -148,6 +149,10 @@ interface Candidate {
 export function FoodLogEntrySheet({ visible, slot, at, seedRecipeId, onClose, onEstimate }: Props) {
   const colors = useColors();
   const styles = useMemo(() => makeStyles(colors), [colors]);
+  // Lifts the amount field (which autofocuses, so the keyboard is already up
+  // when this half renders) clear of the keyboard instead of leaving it to a
+  // plain ScrollView — same mechanism as every other keyboard-heavy sheet.
+  const keyboardScroll = useKeyboardInsetScroll<ScrollView>();
 
   const items = useGroceryStore(useShallow(s => s.items));
   const itemProducts = useGroceryStore(useShallow(s => s.itemProducts));
@@ -532,13 +537,17 @@ export function FoodLogEntrySheet({ visible, slot, at, seedRecipeId, onClose, on
           // Scrolls, because this half can outgrow the sheet: the amount field
           // takes focus on arrival, so the keyboard is already up, and a dish
           // with a couple of "Anything else?" lines pushes Which meal and
-          // "Pick something else" under it with no way to reach them. Its two
-          // siblings both handle this — `ScanPortionSheet` with a ScrollView
-          // and `LogMealPrompt` with a KeyboardAvoidingView.
+          // "Pick something else" under it with no way to reach them.
+          // `useKeyboardInsetScroll` is what actually keeps the focused field
+          // clear of the keyboard — its two siblings use the same mechanism
+          // (`ScanPortionSheet`) or `LogMealPrompt`'s `KeyboardAvoidingView`,
+          // which fits that sheet's centered-card shape instead.
           <ScrollView
+            ref={keyboardScroll.ref}
             style={styles.bodyScroll}
             contentContainerStyle={styles.body}
             keyboardShouldPersistTaps="handled"
+            {...keyboardScroll.props}
           >
             <Text style={styles.label}>HOW MUCH</Text>
             {/* Only for a dish that can answer both ways. A weighed dish with
