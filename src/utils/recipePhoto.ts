@@ -95,6 +95,60 @@ function imagePicker(): typeof import('expo-image-picker') {
   return require('expo-image-picker');
 }
 
+/**
+ * The camera/photo-library status pair, in the same shape every other
+ * permission in the app reports it (`getCalendarPermission`,
+ * `getContactsPermission`, `getRemindersPermission`, `getLocationPermission`)
+ * — read by the Permissions settings screen alongside those. Neither is
+ * platform-gated the way those are: the picker itself runs on Android too, so
+ * there is no "wrong OS" answer to short-circuit on, only whatever the module
+ * itself reports or fails to.
+ */
+export type CameraPermission = 'granted' | 'denied' | 'undetermined' | 'unsupported';
+export type PhotoLibraryPermission = 'granted' | 'denied' | 'undetermined' | 'unsupported';
+
+export async function getCameraPermission(): Promise<CameraPermission> {
+  try {
+    const existing = await imagePicker().getCameraPermissionsAsync();
+    if (existing.granted) return 'granted';
+    return existing.status === 'undetermined' || existing.canAskAgain ? 'undetermined' : 'denied';
+  } catch {
+    return 'unsupported';
+  }
+}
+
+export async function requestCameraPermission(): Promise<boolean> {
+  try {
+    const existing = await imagePicker().getCameraPermissionsAsync();
+    if (existing.granted) return true;
+    const result = await imagePicker().requestCameraPermissionsAsync();
+    return result.granted;
+  } catch {
+    return false;
+  }
+}
+
+export async function getPhotoLibraryPermission(): Promise<PhotoLibraryPermission> {
+  try {
+    const existing = await imagePicker().getMediaLibraryPermissionsAsync();
+    if (existing.granted) return 'granted';
+    return existing.status === 'undetermined' || existing.canAskAgain ? 'undetermined' : 'denied';
+  } catch {
+    return 'unsupported';
+  }
+}
+
+export async function requestPhotoLibraryPermission(): Promise<boolean> {
+  try {
+    const existing = await imagePicker().getMediaLibraryPermissionsAsync();
+    if (existing.granted) return true;
+    const result = await imagePicker().requestMediaLibraryPermissionsAsync();
+    return result.granted;
+  } catch {
+    return false;
+  }
+}
+
 function imageManipulator(): typeof import('expo-image-manipulator') {
   return require('expo-image-manipulator');
 }

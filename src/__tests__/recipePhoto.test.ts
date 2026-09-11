@@ -8,12 +8,16 @@
 
 const mockRequestCamera = jest.fn();
 const mockRequestLibrary = jest.fn();
+const mockGetCamera = jest.fn();
+const mockGetLibrary = jest.fn();
 const mockLaunchCamera = jest.fn();
 const mockLaunchLibrary = jest.fn();
 
 jest.mock('expo-image-picker', () => ({
   requestCameraPermissionsAsync: (...args: unknown[]) => mockRequestCamera(...args),
   requestMediaLibraryPermissionsAsync: (...args: unknown[]) => mockRequestLibrary(...args),
+  getCameraPermissionsAsync: (...args: unknown[]) => mockGetCamera(...args),
+  getMediaLibraryPermissionsAsync: (...args: unknown[]) => mockGetLibrary(...args),
   launchCameraAsync: (...args: unknown[]) => mockLaunchCamera(...args),
   launchImageLibraryAsync: (...args: unknown[]) => mockLaunchLibrary(...args),
 }));
@@ -97,6 +101,10 @@ import {
   resolveRecipeImagePath,
   readRecipeImageBase64,
   writeRecipeImageFile,
+  getCameraPermission,
+  requestCameraPermission,
+  getPhotoLibraryPermission,
+  requestPhotoLibraryPermission,
   MAX_PHOTO_EDGE,
   MAX_IMAGE_EDGE,
 } from '../utils/recipePhoto';
@@ -621,5 +629,91 @@ describe('writeRecipeImageFile', () => {
 
     expect(mockFileCreate).not.toHaveBeenCalled();
     expect(mockWrite).toHaveBeenCalledWith('file:///documents/recipe-images/abc.jpg', 'QUJD', { encoding: 'base64' });
+  });
+});
+
+describe('getCameraPermission', () => {
+  it('reports granted', async () => {
+    mockGetCamera.mockResolvedValue({ granted: true, status: 'granted', canAskAgain: true });
+    await expect(getCameraPermission()).resolves.toBe('granted');
+  });
+
+  it('reports undetermined while it can still ask', async () => {
+    mockGetCamera.mockResolvedValue({ granted: false, status: 'denied', canAskAgain: true });
+    await expect(getCameraPermission()).resolves.toBe('undetermined');
+  });
+
+  it('reports denied once it cannot', async () => {
+    mockGetCamera.mockResolvedValue({ granted: false, status: 'denied', canAskAgain: false });
+    await expect(getCameraPermission()).resolves.toBe('denied');
+  });
+
+  it('reports unsupported rather than throwing when the module is missing', async () => {
+    mockGetCamera.mockRejectedValue(new Error('no native module'));
+    await expect(getCameraPermission()).resolves.toBe('unsupported');
+  });
+});
+
+describe('requestCameraPermission', () => {
+  it('does not re-ask when it already has access', async () => {
+    mockGetCamera.mockResolvedValue({ granted: true, status: 'granted', canAskAgain: true });
+    await expect(requestCameraPermission()).resolves.toBe(true);
+    expect(mockRequestCamera).not.toHaveBeenCalled();
+  });
+
+  it('asks when it does not', async () => {
+    mockGetCamera.mockResolvedValue({ granted: false, status: 'undetermined', canAskAgain: true });
+    mockRequestCamera.mockResolvedValue({ granted: true });
+    await expect(requestCameraPermission()).resolves.toBe(true);
+    expect(mockRequestCamera).toHaveBeenCalled();
+  });
+
+  it('is false rather than throwing when the ask fails', async () => {
+    mockGetCamera.mockResolvedValue({ granted: false, status: 'undetermined', canAskAgain: true });
+    mockRequestCamera.mockRejectedValue(new Error('nope'));
+    await expect(requestCameraPermission()).resolves.toBe(false);
+  });
+});
+
+describe('getPhotoLibraryPermission', () => {
+  it('reports granted', async () => {
+    mockGetLibrary.mockResolvedValue({ granted: true, status: 'granted', canAskAgain: true });
+    await expect(getPhotoLibraryPermission()).resolves.toBe('granted');
+  });
+
+  it('reports undetermined while it can still ask', async () => {
+    mockGetLibrary.mockResolvedValue({ granted: false, status: 'denied', canAskAgain: true });
+    await expect(getPhotoLibraryPermission()).resolves.toBe('undetermined');
+  });
+
+  it('reports denied once it cannot', async () => {
+    mockGetLibrary.mockResolvedValue({ granted: false, status: 'denied', canAskAgain: false });
+    await expect(getPhotoLibraryPermission()).resolves.toBe('denied');
+  });
+
+  it('reports unsupported rather than throwing when the module is missing', async () => {
+    mockGetLibrary.mockRejectedValue(new Error('no native module'));
+    await expect(getPhotoLibraryPermission()).resolves.toBe('unsupported');
+  });
+});
+
+describe('requestPhotoLibraryPermission', () => {
+  it('does not re-ask when it already has access', async () => {
+    mockGetLibrary.mockResolvedValue({ granted: true, status: 'granted', canAskAgain: true });
+    await expect(requestPhotoLibraryPermission()).resolves.toBe(true);
+    expect(mockRequestLibrary).not.toHaveBeenCalled();
+  });
+
+  it('asks when it does not', async () => {
+    mockGetLibrary.mockResolvedValue({ granted: false, status: 'undetermined', canAskAgain: true });
+    mockRequestLibrary.mockResolvedValue({ granted: true });
+    await expect(requestPhotoLibraryPermission()).resolves.toBe(true);
+    expect(mockRequestLibrary).toHaveBeenCalled();
+  });
+
+  it('is false rather than throwing when the ask fails', async () => {
+    mockGetLibrary.mockResolvedValue({ granted: false, status: 'undetermined', canAskAgain: true });
+    mockRequestLibrary.mockRejectedValue(new Error('nope'));
+    await expect(requestPhotoLibraryPermission()).resolves.toBe(false);
   });
 });
