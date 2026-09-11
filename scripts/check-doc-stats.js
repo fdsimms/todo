@@ -29,7 +29,16 @@ function walk(dir, out = []) {
   return out;
 }
 
-const files = walk(path.join(root, 'src')).map(abs => ({
+// mcp/src alongside src because the MCP server's tests run in this repo's jest
+// like everything else (see docs/arch/mcp-server.md) — a suite count that only
+// walked src/ would understate what `npm test` costs, which is the one job this
+// number has.
+const SOURCE_DIRS = ['src', 'mcp/src'];
+
+const files = SOURCE_DIRS.flatMap(dir => {
+  const abs = path.join(root, dir);
+  return fs.existsSync(abs) ? walk(abs) : [];
+}).map(abs => ({
   rel: path.relative(root, abs).split(path.sep).join('/'),
   lines: fs.readFileSync(abs, 'utf8').split('\n').length,
 }));

@@ -15,7 +15,24 @@ import WidgetKit
 struct CompleteTaskIntent: AppIntent {
     static var title: LocalizedStringResource = "Complete Task"
     static var isDiscoverable: Bool = false
+    // Deprecated in iOS 26 in favor of supportedModes below, and left in place
+    // only for the OS versions this widget still has to support: Apple's own
+    // doc for this property now says setting it true "generates an error if
+    // the app intent runs in an app extension" — which this intent, compiled
+    // into the WidgetKit extension (see SWIFT_FILES in
+    // plugins/withWidgetExtension.js), always has been. That's why tapping the
+    // checkbox stopped opening the app at all on iOS 26: this line still
+    // builds the queued completion (perform() below still runs), but the
+    // "bring the app forward" half now errors instead of doing anything.
     static var openAppWhenRun: Bool = true
+
+    // The iOS 26 replacement, gated to the OS version it's actually available
+    // on — AppIntent's own default (derived from openAppWhenRun above) still
+    // covers everything older. .foreground(.immediate) is the same "open the
+    // app before running" behavior openAppWhenRun used to provide, and is the
+    // one variant that still works from inside an extension.
+    @available(iOS 26.0, *)
+    static var supportedModes: IntentModes { .foreground(.immediate) }
 
     @Parameter(title: "Task ID")
     var taskId: String
