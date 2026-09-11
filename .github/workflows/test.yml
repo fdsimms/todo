@@ -44,6 +44,11 @@ jobs:
       # hand-counted "seven files are over 1,000 lines" paragraph did.
       - run: node scripts/build-module-map.js --check
       - run: node scripts/check-doc-stats.js --check
+      # The third generated doc: which screen renders which component, and
+      # which screens a component appears on. Same contract as the two above —
+      # generated from the tree, committed so it can be read without a build,
+      # and checked here so it cannot drift.
+      - run: node scripts/build-screen-map.js --check
       # `expo export --platform ios` is the slowest step here and only catches
       # bundle-time breakage (a bad import path, a missing asset, a native
       # config change) per CLAUDE.md's own guidance not to run it locally
