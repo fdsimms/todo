@@ -437,22 +437,26 @@ export function RecipeNutritionSheet({ visible, reading, onClose }: Props) {
         <>
           <Text style={styles.groupLabel}>NOT IN YOUR CATALOG</Text>
           <View style={styles.card}>
-            {gaps.unmatched.map(line => (
-              <View key={line.id} style={styles.plainRow}>
-                <Ionicons name="ellipse-outline" size={iconSize.xs} color={colors.textTertiary} />
-                <Text style={styles.gapName} numberOfLines={1}>{line.name}</Text>
-                <InlineAction
-                  label="Add to catalog"
-                  variant="neutral"
-                  onPress={() => addToCatalog(line)}
-                  accessibilityLabel={`Add ${line.name} to your grocery catalog`}
-                />
-                <InlineAction
-                  label="Don't count this"
-                  variant="neutral"
-                  onPress={() => excludeLine(line)}
-                  accessibilityLabel={`Leave ${line.name} out of this recipe's nutrition total`}
-                />
+            {gaps.unmatched.map((line, index) => (
+              <View key={line.id} style={[styles.gapRow, index > 0 && styles.gapRowRuled]}>
+                <View style={styles.unmatchedNameRow}>
+                  <Ionicons name="ellipse-outline" size={iconSize.xs} color={colors.textTertiary} />
+                  <Text style={styles.gapName} numberOfLines={1}>{line.name}</Text>
+                </View>
+                <View style={styles.gapActions}>
+                  <InlineAction
+                    label="Add to catalog"
+                    variant="neutral"
+                    onPress={() => addToCatalog(line)}
+                    accessibilityLabel={`Add ${line.name} to your grocery catalog`}
+                  />
+                  <InlineAction
+                    label="Don't count this"
+                    variant="neutral"
+                    onPress={() => excludeLine(line)}
+                    accessibilityLabel={`Leave ${line.name} out of this recipe's nutrition total`}
+                  />
+                </View>
               </View>
             ))}
             <Text style={styles.hint}>
@@ -563,13 +567,7 @@ function makeStyles(colors: Colors) {
       borderColor: colors.separator,
     },
     weighUnit: { fontSize: font.sm, color: colors.textSecondary },
-    plainRow: {
-      flexDirection: 'row',
-      alignItems: 'center',
-      flexWrap: 'wrap',
-      gap: spacing.sm,
-      paddingVertical: spacing.sm,
-    },
+    unmatchedNameRow: { flexDirection: 'row', alignItems: 'center', gap: spacing.sm },
     hint: {
       fontSize: font.xs,
       color: colors.textTertiary,
