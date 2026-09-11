@@ -298,6 +298,22 @@ export const NUTRIENT_LABEL: Record<NutrientKey, { label: string; unit: string }
 };
 
 /**
+ * The exact US fluid ounce, for the one nutrient somebody might rather type in
+ * cups/fl oz than millilitres. Written out rather than rounded to 29.57, same
+ * reasoning as `weightLog.ts`'s `KG_PER_LB`: a round trip through this must
+ * never drift the millilitre figure a caller actually writes to Health.
+ */
+export const ML_PER_FL_OZ = 29.5735295625;
+
+export function mlToFlOz(ml: number): number {
+  return ml / ML_PER_FL_OZ;
+}
+
+export function flOzToMl(flOz: number): number {
+  return flOz * ML_PER_FL_OZ;
+}
+
+/**
  * How a basis reads in a sentence — "per 100g", "per serving".
  *
  * Shared so the one-line summary above and the form that writes the figures
