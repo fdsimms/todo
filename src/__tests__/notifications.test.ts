@@ -620,6 +620,7 @@ const makeShop = (overrides: Partial<Shop> = {}): Shop => ({
   createdAt: '2025-01-01T00:00:00.000Z',
   excludeFromSuggestions: false,
     receiptStyle: 'itemized' as const,
+    aisles: null,
   ...overrides,
 });
 

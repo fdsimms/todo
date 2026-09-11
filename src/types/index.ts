@@ -4275,6 +4275,34 @@ export interface Shop {
    * which of theirs does.
    */
   receiptStyle: ReceiptStyle;
+  /**
+   * The aisles this store sells from, or `null` for a store that sells
+   * everything. A pharmacy that stocks Personal Care and Household and nothing
+   * else is the case this exists for: without it the finish sheet asks, every
+   * trip, which of your fourteen groceries it didn't have.
+   *
+   * **`null` is the unscoped value and the default**, so nothing changes for a
+   * store nobody has scoped. An empty array would have to mean "sells
+   * nothing", which is not a thing anyone wants to say about a shop, so
+   * clearing the last aisle writes `null` rather than `[]`.
+   *
+   * **An inclusion list, never an exclusion list.** A store is defined by the
+   * short list here, and `normalizeAisleOrder` re-appends `DEFAULT_AISLES` on
+   * every read — so with exclusions, an aisle that ships in a later version
+   * would silently join every scoped store's range.
+   *
+   * **This is the user asserting a range, never the app inferring one**, which
+   * is what puts it on the same side of the line as `ItemShopLink.unavailableAt`
+   * rather than with the `likelyItemIds` guess `shoppingTrip.ts` deleted. Three
+   * rules keep it there, and they live in `groceryShops.isOutOfRange`:
+   * a positive link outranks it, nothing is ever materialised into link rows,
+   * and it gates only what the app asks and asserts, never what the user can do.
+   *
+   * Aisle names are strings, so this is the fourth place one lives (after
+   * `aisleOrder`, `GroceryItem.aisle` and the values of `aisleOverrides`):
+   * `renameAisle` rewrites it and `deleteAisle` drops from it.
+   */
+  aisles: string[] | null;
 }
 
 /**

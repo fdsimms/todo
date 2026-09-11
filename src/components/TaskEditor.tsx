@@ -83,7 +83,7 @@ import { isStreakAtRecord, nextStreakRecord, streakHint } from '../utils/streakR
 import { formatDeadlineDate, formatScheduledDate, formatHHMM, formatTimeOfDay, hhmmToDate, dateToHHMM, getDeadlineFromOffset, getDeadlineFromMonthDay, describeDeadlineOffset, describeReminderOffset, getTaskDayStart, getCurrentDayStart, getLogicalNow, seriesMonthDaysFrom } from '../utils/dateUtils';
 import { generateId } from '../utils/id';
 import { findArchivedMatch } from '../utils/archiveMatch';
-import { parseTaskInput, describeSchedule, detectContactIntent, matchPersonMentions } from '../utils/parseTaskInput';
+import { parseTaskInput, describeSchedule, detectContactIntent, matchPersonMentions, getEditorMentionSuggestions, type MentionSuggestionCandidate } from '../utils/parseTaskInput';
 import { groupMentionTokens } from '../utils/peopleRegistry';
 import { mergeRanges } from '../utils/ranges';
 import { HighlightedText } from './HighlightedText';
@@ -624,6 +624,8 @@ export function TaskEditor({ visible, task, initialDraft, onClose }: Props) {
 
   const scheduleTooltipAnim = useRef(new Animated.Value(0)).current;
   const hadScheduleParse = useRef(false);
+  const mentionSuggestionAnim = useRef(new Animated.Value(0)).current;
+  const hadMentionSuggestion = useRef(false);
 
   const titleRef = useRef<TextInput>(null);
   const chainInputRef = useRef<TextInput>(null);
@@ -956,6 +958,18 @@ export function TaskEditor({ visible, task, initialDraft, onClose }: Props) {
   }, [titleMentionRanges, parsedSchedule, scheduleMatchEnd]);
   const hasTitleOverlay = parsedSchedule != null || titleMentionRanges.length > 0;
 
+  // Unlike quick add, nothing here ever resolves a fresh "@name" on its own —
+  // so a token that would be a unique, fully-typed match anywhere else still
+  // gets a "tap to add" suggestion, not silence. Only offered when the
+  // schedule banner isn't already claiming the one tooltip slot below the
+  // title. See getEditorMentionSuggestions' doc comment.
+  const titleMentionSuggestion = useMemo(
+    () => (!parsedSchedule && title.trim()
+      ? getEditorMentionSuggestions(title, people, personIds, groupMentionTokens())
+      : null),
+    [title, parsedSchedule, people, personIds]
+  );
+
   // "Call Kristen", "Text the plumber", "Email the landlord" — a title that
   // implies a contact action with no data to power it. Purely a discoverability
   // nudge toward the Phone/Email rows below (see #1152/#1153); never blocking,
@@ -974,11 +988,35 @@ export function TaskEditor({ visible, task, initialDraft, onClose }: Props) {
     hadScheduleParse.current = parsedSchedule != null;
   }, [parsedSchedule]);
 
+  useEffect(() => {
+    if (titleMentionSuggestion && !hadMentionSuggestion.current) {
+      mentionSuggestionAnim.setValue(0);
+      Animated.spring(mentionSuggestionAnim, { toValue: 1, ...animation.spring.bouncy, useNativeDriver: true }).start();
+    }
+    hadMentionSuggestion.current = titleMentionSuggestion != null;
+  }, [titleMentionSuggestion]);
+
   // Splices a token in at the current cursor position, same as a normal
   // keypress would, rather than always appending to the end.
   const insertTitleToken = (token: string) => {
     haptics.tap();
     setTitle(titleCaret.insertToken(token));
+  };
+
+  // Completes an in-progress (or already fully-typed) "@name" and links the
+  // person — or every member of a chosen group — the same tap-to-add motion
+  // every other field in this editor uses to change personIds; see
+  // getEditorMentionSuggestions' doc comment for why this field needs a tap
+  // where quick add resolves live.
+  const applyTitleMentionSuggestion = (candidate: MentionSuggestionCandidate) => {
+    if (!titleMentionSuggestion) return;
+    haptics.success();
+    animateLayout();
+    const next = `${title.slice(0, titleMentionSuggestion.start)}@${candidate.resolveKey} `;
+    setTitle(next);
+    titleCaret.moveCaret(next);
+    const newIds = candidate.memberIds ?? [candidate.id];
+    setPersonIds(prev => [...new Set([...prev, ...newIds])]);
   };
 
   // Apply the suggested schedule and strip the phrase from the title.
@@ -2416,6 +2454,31 @@ export function TaskEditor({ visible, task, initialDraft, onClose }: Props) {
             <View style={styles.scheduleBannerDot} />
             <Text style={styles.scheduleBannerHint}>Tap to set</Text>
           </PressableScale>
+        </Animated.View>
+      )}
+
+      {/* Mention suggestions — a still-typed or already-resolvable "@name"; tap one to link them */}
+      {titleVisible && titleMentionSuggestion && (
+        <Animated.View
+          style={[styles.mentionSuggestionRow, {
+            opacity: mentionSuggestionAnim,
+            transform: [
+              { translateY: mentionSuggestionAnim.interpolate({ inputRange: [0, 1], outputRange: [-6, 0] }) },
+              { scale: mentionSuggestionAnim.interpolate({ inputRange: [0, 1], outputRange: [0.95, 1] }) },
+            ],
+          }]}
+        >
+          {titleMentionSuggestion.candidates.map(candidate => (
+            <PressableScale
+              key={candidate.id}
+              style={styles.scheduleBannerBtn}
+              haptic
+              onPress={() => applyTitleMentionSuggestion(candidate)}
+            >
+              <Ionicons name="person-add-outline" size={14} color={colors.onAccent} />
+              <Text style={styles.scheduleBannerText} numberOfLines={1}>{candidate.name}</Text>
+            </PressableScale>
+          ))}
         </Animated.View>
       )}
       {notesVisible && (
@@ -5349,6 +5412,14 @@ const makeStyles = (colors: Colors) => StyleSheet.create({
     marginTop: -4,
     marginBottom: spacing.sm,
     alignItems: 'flex-start',
+  },
+  mentionSuggestionRow: {
+    flexDirection: 'row',
+    flexWrap: 'wrap',
+    gap: 6,
+    marginHorizontal: spacing.md,
+    marginTop: -4,
+    marginBottom: spacing.sm,
   },
   scheduleBannerBtn: {
     flexDirection: 'row',

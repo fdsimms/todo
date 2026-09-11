@@ -25,6 +25,7 @@ import {
   dbUpdateGroceryShop,
   dbDeleteGroceryShop,
   dbSetShopExcludeFromSuggestions,
+  dbSetShopAisles,
   dbSetShopReceiptStyle,
   dbGetAllItemShopLinks,
   dbSetItemShopLink,
@@ -1173,6 +1174,11 @@ interface GroceryStore extends UndoHistoryActions {
    * primaryShopFor/exclusiveShopFor and the grocery-run task's store picker
    * while leaving manual linking and finishShopping untouched. */
   setShopExcludedFromSuggestions: (id: string, excluded: boolean) => void;
+  /**
+   * The aisles this store sells from — `null`, or an empty list, for one that
+   * sells everything. See Shop.aisles.
+   */
+  setShopAisles: (id: string, aisles: string[] | null) => void;
   /** What this store's receipts are worth reading. See ReceiptStyle. */
   setShopReceiptStyle: (id: string, style: ReceiptStyle) => void;
   /** Assert "this item is available here" without a purchase behind it. */
@@ -4499,10 +4505,24 @@ export const useGroceryStore = create<GroceryStore>((set, get) => ({
       dbSetGroceryNonFoodAisles(nextNonFood);
     }
 
+    // A store's range is stored by aisle name too — the fourth place one
+    // lives — so it moves with the rename for the same reason the non-food
+    // flag above does: a pharmacy scoped to "Personal Care" must not quietly
+    // stop selling it the moment that aisle is renamed to "Pharmacy". A scope
+    // that loses its only aisle would read as "sells nothing", so this rewrites
+    // names and never drops one.
+    const nextShops = get().shops.map(shop => {
+      if (!shop.aisles || !shop.aisles.includes(from)) return shop;
+      const next = shop.aisles.map(a => (a === from ? trimmed : a));
+      dbSetShopAisles(shop.id, next);
+      return { ...shop, aisles: next };
+    });
+
     set({
       items: nextItems,
       aisleOverrides: remembered ?? aisleOverrides,
       nonFoodAisles: nextNonFood,
+      shops: nextShops,
       ...commitAisleOrder(order, nextItems.map(i => i.aisle)),
     });
 
@@ -4546,10 +4566,28 @@ export const useGroceryStore = create<GroceryStore>((set, get) => ({
       dbSetGroceryNonFoodAisles(nextNonFood);
     }
 
+    // The rows move to Other, so a store scoped to this aisle has to be told:
+    // left alone it would name an aisle nothing is filed under any more, which
+    // reads as a store that stopped selling everything it sold. Dropping the
+    // last name clears the scope rather than emptying it — a store that sells
+    // nothing is not a state (see Shop.aisles), and "sells everything" is the
+    // honest reading of a range whose only aisle no longer exists. Deliberately
+    // not rewritten to Other, for the reason deleteAisle forgets the remembered
+    // filings rather than repointing them: that would assert a range the user
+    // never gave.
+    const nextShops = get().shops.map(shop => {
+      if (!shop.aisles || !shop.aisles.includes(aisle)) return shop;
+      const rest = shop.aisles.filter(a => a !== aisle);
+      const next = rest.length > 0 ? rest : null;
+      dbSetShopAisles(shop.id, next);
+      return { ...shop, aisles: next };
+    });
+
     set({
       items: nextItems,
       aisleOverrides: remembered ?? aisleOverrides,
       nonFoodAisles: nextNonFood,
+      shops: nextShops,
       ...commitAisleOrder(
         aisleOrder.filter(a => a !== aisle && a !== OTHER_AISLE),
         nextItems.map(i => i.aisle)
@@ -4626,6 +4664,11 @@ export const useGroceryStore = create<GroceryStore>((set, get) => ({
       // Nothing infers this. An ordinary receipt is the default, and a store
       // that prints a bad one is something only the user can tell us.
       receiptStyle: 'itemized',
+      // Same rule, and the more important one here: a new store sells
+      // everything until the user says what it sells. Seeding a range from the
+      // name, or from what gets bought there later, is the inference this
+      // feature exists to replace with a statement. See Shop.aisles.
+      aisles: null,
     };
     dbInsertGroceryShop(shop);
     set(s => ({ shops: [...s.shops, shop] }));
@@ -4698,6 +4741,16 @@ export const useGroceryStore = create<GroceryStore>((set, get) => ({
     set(s => ({
       shops: s.shops.map(x => (x.id === id ? { ...x, excludeFromSuggestions: excluded } : x)),
     }));
+  },
+
+  setShopAisles(id, aisles) {
+    const shop = get().shops.find(s => s.id === id);
+    if (!shop) return;
+    // One state for "sells everything", collapsed here as well as in the db
+    // setter, so nothing downstream has to test for both. See Shop.aisles.
+    const next = aisles && aisles.length > 0 ? aisles : null;
+    dbSetShopAisles(id, next);
+    set(s => ({ shops: s.shops.map(x => (x.id === id ? { ...x, aisles: next } : x)) }));
   },
 
   setShopReceiptStyle(id, style) {

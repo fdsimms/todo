@@ -1,0 +1,4 @@
+{
+  "message": "A store can now be set to sell only certain aisles. Finishing a trip there stops asking whether it had things from the aisles it doesn't sell, and planning a trip won't send you to it for them",
+  "date": "2026-09-11"
+}

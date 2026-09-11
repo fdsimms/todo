@@ -1,4 +1,4 @@
-import { parseTaskInput, describeSchedule, parseLinkInput, parsePhoneInput, parseEmailInput, detectContactIntent, parseDurationInput, parseSupplyInput, parseCategoryAndTagsInput, parsePriorityInput, matchPersonMentions, findAmbiguousMention, applyMentionOverrides, parseFromCompletionSuffix, type ParsedSchedule } from '../utils/parseTaskInput';
+import { parseTaskInput, describeSchedule, parseLinkInput, parsePhoneInput, parseEmailInput, detectContactIntent, parseDurationInput, parseSupplyInput, parseCategoryAndTagsInput, parsePriorityInput, matchPersonMentions, findAmbiguousMention, getMentionSuggestions, getEditorMentionSuggestions, applyMentionOverrides, parseFromCompletionSuffix, type ParsedSchedule } from '../utils/parseTaskInput';
 
 // Tuesday, June 10 2025, 10:00 AM — same anchor as parseNaturalDate.test.ts
 const NOW = new Date(2025, 5, 10, 10, 0, 0);
@@ -1235,6 +1235,125 @@ describe('findAmbiguousMention', () => {
   it('finds the first ambiguous token, skipping ones already resolved', () => {
     const r = findAmbiguousMention('call @mom about @sam', [...twoSams, { id: 'c', name: 'Mom', nickname: '' }]);
     expect(r?.token).toBe('sam');
+  });
+});
+
+describe('getMentionSuggestions', () => {
+  const people = [
+    { id: 'p1', name: 'Luke Harmon', nickname: '' },
+    { id: 'p2', name: 'Lauren Diaz', nickname: '' },
+    { id: 'p3', name: 'Dustin', nickname: '' },
+  ];
+
+  it('suggests candidates for a one-letter prefix nothing else can resolve yet', () => {
+    const r = getMentionSuggestions('respond to @l', people);
+    expect(r?.token).toBe('l');
+    expect(r?.candidates.map(c => c.id).sort()).toEqual(['p1', 'p2']);
+  });
+
+  it('narrows as more of the name is typed', () => {
+    const r = getMentionSuggestions('respond to @lu', people);
+    expect(r?.candidates.map(c => c.name)).toEqual(['Luke Harmon']);
+    expect(r?.candidates[0].resolveKey).toBe('Luke');
+  });
+
+  it('resolves to a nickname over the first name when one is set', () => {
+    const withNickname = [{ id: 'p1', name: 'Alexander Bell', nickname: 'Xander' }];
+    const r = getMentionSuggestions('call @al', withNickname);
+    expect(r?.candidates[0].resolveKey).toBe('Xander');
+  });
+
+  it('is silent once a unique prefix is long enough to resolve on its own', () => {
+    expect(getMentionSuggestions('respond to @luk', people)).toBeNull();
+  });
+
+  it('is silent for a token that already resolves to exactly one person', () => {
+    expect(getMentionSuggestions('call @dustin', people)).toBeNull();
+  });
+
+  it('is silent for a token more than one person answers to exactly — findAmbiguousMention owns that', () => {
+    const twoSams = [
+      { id: 'a', name: 'Sam Riley', nickname: '' },
+      { id: 'b', name: 'Sam Okafor', nickname: '' },
+    ];
+    expect(getMentionSuggestions('lunch @sam', twoSams)).toBeNull();
+  });
+
+  it('is silent when nobody matches at all', () => {
+    expect(getMentionSuggestions('respond to @z', people)).toBeNull();
+  });
+
+  it('only looks at the token still being typed at the end of the title', () => {
+    expect(getMentionSuggestions('respond to @l about the invoice', people)).toBeNull();
+  });
+
+  it('is silent with no "@" token in the title', () => {
+    expect(getMentionSuggestions('respond to luke', people)).toBeNull();
+  });
+
+  it('falls back to groups once no person answers to the prefix at all', () => {
+    const groups = [{ id: 'g1', name: 'Household', memberIds: ['p1', 'p2'] }];
+    const r = getMentionSuggestions('errands @ho', people, groups);
+    expect(r?.candidates).toEqual([
+      { id: 'g1', name: 'Household', resolveKey: 'Household', isGroup: true, memberIds: ['p1', 'p2'] },
+    ]);
+  });
+
+  it('never falls back to a group while a person still answers to the prefix', () => {
+    // "@l" matches Luke/Lauren by prefix; a group named "Lakers" must not join that list.
+    const groups = [{ id: 'g1', name: 'Lakers', memberIds: ['p1'] }];
+    const r = getMentionSuggestions('respond to @l', people, groups);
+    expect(r?.candidates.every(c => !c.isGroup)).toBe(true);
+  });
+
+  it('uses a group\'s first word as its resolveKey when its name has more than one', () => {
+    const groups = [{ id: 'g1', name: 'Book Club', memberIds: ['p1'] }];
+    const r = getMentionSuggestions('call @bo', [], groups);
+    expect(r?.candidates[0].resolveKey).toBe('Book');
+  });
+});
+
+describe('getEditorMentionSuggestions', () => {
+  const people = [
+    { id: 'p1', name: 'Luke Harmon', nickname: '' },
+    { id: 'p2', name: 'Lauren Diaz', nickname: '' },
+    { id: 'p3', name: 'Dustin', nickname: '' },
+  ];
+
+  it('suggests a unique, fully-typed match — nothing else resolves it in this field', () => {
+    const r = getEditorMentionSuggestions('call @dustin', people, []);
+    expect(r?.candidates.map(c => c.id)).toEqual(['p3']);
+  });
+
+  it('suggests every candidate for a short prefix, same as quick add', () => {
+    const r = getEditorMentionSuggestions('call @l', people, []);
+    expect(r?.candidates.map(c => c.id).sort()).toEqual(['p1', 'p2']);
+  });
+
+  it('excludes someone already linked — already tinted, nothing to suggest', () => {
+    expect(getEditorMentionSuggestions('call @dustin', people, ['p3'])).toBeNull();
+  });
+
+  it('still offers the others when only one candidate is already linked', () => {
+    const r = getEditorMentionSuggestions('call @l', people, ['p1']);
+    expect(r?.candidates.map(c => c.id)).toEqual(['p2']);
+  });
+
+  it('suggests a group, including its members for the caller to add', () => {
+    const groups = [{ id: 'g1', name: 'Household', memberIds: ['p1', 'p2'] }];
+    const r = getEditorMentionSuggestions('errands @ho', people, [], groups);
+    expect(r?.candidates).toEqual([
+      { id: 'g1', name: 'Household', resolveKey: 'Household', isGroup: true, memberIds: ['p1', 'p2'] },
+    ]);
+  });
+
+  it('excludes a group whose entire membership is already linked', () => {
+    const groups = [{ id: 'g1', name: 'Household', memberIds: ['p1', 'p2'] }];
+    expect(getEditorMentionSuggestions('errands @ho', people, ['p1', 'p2'], groups)).toBeNull();
+  });
+
+  it('only looks at the token still being typed at the end of the title', () => {
+    expect(getEditorMentionSuggestions('call @l about the invoice', people, [])).toBeNull();
   });
 });
 

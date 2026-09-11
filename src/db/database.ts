@@ -1507,6 +1507,12 @@ export function initDatabase(): void {
     // what has to be done before the apps unblock at all. 0 on every existing
     // row, which is the feature being off. See Task.gatesApps.
     'ALTER TABLE tasks ADD COLUMN gates_apps INTEGER NOT NULL DEFAULT 0',
+    // The aisles a store sells from. NULL on every existing row, which is the
+    // feature being off: a store nobody has scoped sells everything, exactly as
+    // every store did before this column. Deliberately nullable rather than
+    // defaulting to '[]', because an empty list would have to read as "sells
+    // nothing". See Shop.aisles.
+    'ALTER TABLE grocery_shops ADD COLUMN aisles TEXT',
     // What completing this task writes to the medication log. NULL on every
     // existing row, which is the feature being off — the same one-column-
     // carries-both-the-switch-and-the-value shape log_health_metric above
@@ -3987,7 +3993,31 @@ function rowToShop(row: Record<string, unknown>): Shop {
     // via sync; it reads as 'itemized' for that session and the next launch's
     // migration settles it.
     receiptStyle: isReceiptStyle(row.receipt_style) ? row.receipt_style : 'itemized',
+    // NULL and a blob that won't parse land on the same answer, and it's the
+    // permissive one: a store whose scope can't be read sells everything,
+    // rather than one whose list has silently become empty. Same
+    // resolve-or-shrug the rest of this file applies to a stored JSON value.
+    aisles: parseShopAisles(row.aisles),
   };
+}
+
+/**
+ * `Shop.aisles` out of its column. Null for an unscoped store, and null again
+ * for anything that doesn't parse to a non-empty list of strings — an empty
+ * array is not a state this feature has (see Shop.aisles), so it normalises to
+ * null on the way in rather than being carried around as a second way to say
+ * "unscoped".
+ */
+function parseShopAisles(value: unknown): string[] | null {
+  if (typeof value !== 'string' || value === '') return null;
+  try {
+    const parsed = JSON.parse(value) as unknown;
+    if (!Array.isArray(parsed)) return null;
+    const names = parsed.filter((x): x is string => typeof x === 'string' && x !== '');
+    return names.length > 0 ? names : null;
+  } catch {
+    return null;
+  }
 }
 
 export function dbGetAllGroceryShops(): Shop[] {
@@ -4013,6 +4043,16 @@ export function dbUpdateGroceryShop(shop: Shop): void {
 
 export function dbSetShopExcludeFromSuggestions(id: string, exclude: boolean): void {
   db.runSync('UPDATE grocery_shops SET exclude_from_suggestions = ? WHERE id = ?', [exclude ? 1 : 0, id]);
+}
+
+/**
+ * The store's aisle scope. `null` clears it back to "sells everything", and so
+ * does an empty list — the two are one state and this is where they're
+ * collapsed, so no caller has to remember which it holds.
+ */
+export function dbSetShopAisles(id: string, aisles: string[] | null): void {
+  const value = aisles && aisles.length > 0 ? JSON.stringify(aisles) : null;
+  db.runSync('UPDATE grocery_shops SET aisles = ? WHERE id = ?', [value, id]);
 }
 
 export function dbSetShopReceiptStyle(id: string, style: ReceiptStyle): void {

@@ -26,10 +26,11 @@ import { useGroceryStore } from '../store/useGroceryStore';
 import { ReorderableList } from './ReorderableList';
 import { SheetHeaderButton } from './SheetHeaderButton';
 import { InlineAction } from './InlineAction';
+import { PillGroup } from './PillGroup';
 import { SegmentedControl, type SegmentOption } from './SegmentedControl';
 import { EmptyState } from './EmptyState';
 import { OTHER_AISLE, isNonFoodAisle } from '../utils/groceryAisles';
-import { itemCountsByShop } from '../utils/groceryShops';
+import { describeShopAisles, itemCountsByShop } from '../utils/groceryShops';
 import { haptics } from '../utils/haptics';
 import { confirmDelete } from '../utils/confirmDelete';
 import { AISLE_NAME_MAX_LENGTH, SHOP_NAME_MAX_LENGTH, type Shop } from '../types';
@@ -40,6 +41,16 @@ interface Props {
 }
 
 type Tab = 'aisles' | 'stores' | 'groupBy';
+
+/**
+ * The two states `Shop.aisles` has. Named for what the store does rather than
+ * for the field: "Only some aisles" is the answer to "what does this shop
+ * sell", where "Scoped" would be the answer to a question about the data.
+ */
+const RANGE_OPTIONS: SegmentOption<'all' | 'some'>[] = [
+  { value: 'all', label: 'Everything' },
+  { value: 'some', label: 'Only some aisles' },
+];
 
 const TAB_OPTIONS: SegmentOption<Tab>[] = [
   { value: 'aisles', label: 'Aisles' },
@@ -101,6 +112,7 @@ export function GroceryAislesSheet({ visible, onClose }: Props) {
   const reorderShops = useGroceryStore(s => s.reorderShops);
   const deleteShop = useGroceryStore(s => s.deleteShop);
   const setShopExcludedFromSuggestions = useGroceryStore(s => s.setShopExcludedFromSuggestions);
+  const setShopAisles = useGroceryStore(s => s.setShopAisles);
   const groceryGroupBy = useGroceryStore(s => s.groceryGroupBy);
   const setGroceryGroupBy = useGroceryStore(s => s.setGroceryGroupBy);
 
@@ -113,6 +125,12 @@ export function GroceryAislesSheet({ visible, onClose }: Props) {
   // under it. Only one tab renders at a time, so the two share the draft text.
   const [editingAisle, setEditingAisle] = useState<string | null>(null);
   const [editingName, setEditingName] = useState('');
+  // Which store has its aisle range open, and which stores are mid-answer with
+  // nothing picked yet. Both are sheet-local: the range itself is committed the
+  // moment an aisle is tapped, like everything else here, and what these hold
+  // is only where the user is in the form. See StoresTabProps.scopedDrafts.
+  const [rangeShopId, setRangeShopId] = useState<string | null>(null);
+  const [scopedDrafts, setScopedDrafts] = useState<ReadonlySet<string>>(() => new Set());
 
   useEffect(() => {
     if (visible) {
@@ -121,6 +139,12 @@ export function GroceryAislesSheet({ visible, onClose }: Props) {
       setNewShop('');
       setEditingShopId(null);
       setEditingAisle(null);
+      setRangeShopId(null);
+      // An unfinished answer doesn't survive the sheet closing: reopening to a
+      // store showing "Only some aisles" with nothing ticked, and no memory of
+      // having said so, is a form that looks broken. The store itself is
+      // unchanged either way, which is what makes dropping it safe.
+      setScopedDrafts(new Set());
     }
   }, [visible]);
 
@@ -268,6 +292,37 @@ export function GroceryAislesSheet({ visible, onClose }: Props) {
             onToggleExcluded={(id, excluded) => {
               haptics.tap();
               setShopExcludedFromSuggestions(id, excluded);
+            }}
+            aisleOrder={aisleOrder}
+            rangeShopId={rangeShopId}
+            onToggleRange={id => {
+              haptics.tap();
+              setRangeShopId(cur => (cur === id ? null : id));
+            }}
+            scopedDrafts={scopedDrafts}
+            onSetScoped={(id, scoped) => {
+              setScopedDrafts(cur => {
+                const next = new Set(cur);
+                if (scoped) next.add(id);
+                else next.delete(id);
+                return next;
+              });
+              // Switching back to Everything clears the range outright. The
+              // other direction writes nothing: there is no range to write
+              // until an aisle is picked, and a store scoped to none of them
+              // would have to mean "sells nothing".
+              if (!scoped) setShopAisles(id, null);
+            }}
+            onSetAisles={(id, aisles) => {
+              // Unticking the last aisle empties the range, which normalises
+              // back to null in the store. The draft above is what keeps the
+              // pills on screen so the next tap has somewhere to land.
+              setScopedDrafts(cur => {
+                const next = new Set(cur);
+                next.add(id);
+                return next;
+              });
+              setShopAisles(id, aisles);
             }}
           />
         ) : tab === 'groupBy' ? (
@@ -433,6 +488,20 @@ interface StoresTabProps {
   onReorder: (ids: string[]) => void;
   onDelete: (id: string, name: string) => void;
   onToggleExcluded: (id: string, excluded: boolean) => void;
+  /** The walk order, which is the set of aisles a range can be drawn from. */
+  aisleOrder: string[];
+  /** Which store has its range open. One at a time, like the rename field. */
+  rangeShopId: string | null;
+  onToggleRange: (id: string) => void;
+  /**
+   * True while a store is being scoped but has no aisle picked yet. The store
+   * itself has no such state — an empty range normalises to `null`, which is
+   * "sells everything" (see Shop.aisles) — so the half-finished answer lives
+   * here in the sheet rather than being written as a range nobody gave.
+   */
+  scopedDrafts: ReadonlySet<string>;
+  onSetScoped: (id: string, scoped: boolean) => void;
+  onSetAisles: (id: string, aisles: string[] | null) => void;
 }
 
 /**
@@ -459,12 +528,19 @@ function StoresTab({
   onReorder,
   onDelete,
   onToggleExcluded,
+  aisleOrder,
+  rangeShopId,
+  onToggleRange,
+  scopedDrafts,
+  onSetScoped,
+  onSetAisles,
 }: StoresTabProps) {
   return (
     <>
       <Text style={styles.intro}>
         The places you shop. Naming one when you finish a trip is what records which store has
-        which items, so you can filter the catalog by store.
+        which items, so you can filter the catalog by store. Set a store's aisles if it only sells
+        some of them, and it stops being asked about the rest.
       </Text>
 
       <ReorderableList
@@ -477,7 +553,15 @@ function StoresTab({
         renderItem={({ item: shop, drag, isActive }) => {
           const count = shopCounts.get(shop.id) ?? 0;
           const editing = shop.id === editingShopId;
+          const rangeOpen = shop.id === rangeShopId && !editing;
+          // An empty draft is not a range — the store still sells everything
+          // until an aisle is picked — so the control reads scoped while the
+          // shop does not. That gap is the point: it is what lets somebody pick
+          // the first aisle at all.
+          const scoped = shop.aisles !== null || scopedDrafts.has(shop.id);
+          const range = describeShopAisles(shop);
           return (
+            <View>
             <TouchableOpacity
               style={[styles.row, isActive && styles.rowActive]}
               // The row is the drag target and the rename tap both, the way a
@@ -508,10 +592,42 @@ function StoresTab({
                   accessibilityLabel={`Rename ${shop.name}`}
                 />
               ) : (
-                <Text style={styles.rowLabel} numberOfLines={1}>{shop.name}</Text>
+                // The name gets the row's flexible width on its own line and
+                // the range sits under it, rather than the two sharing a row
+                // with three icon buttons: a store's name is what the row
+                // exists to show, and it must not be the thing that truncates.
+                <View style={styles.rowText}>
+                  <Text style={styles.rowLabel} numberOfLines={1}>{shop.name}</Text>
+                  {!!range && (
+                    <Text style={styles.rowRange} numberOfLines={1}>Only {range}</Text>
+                  )}
+                </View>
               )}
 
               {count > 0 && !editing && <Text style={styles.rowCount}>{count}</Text>}
+
+              {!editing && (
+                <TouchableOpacity
+                  onPress={() => onToggleRange(shop.id)}
+                  hitSlop={{ top: 10, bottom: 10, left: 10, right: 10 }}
+                  activeOpacity={interaction.activeOpacity}
+                  accessibilityRole="button"
+                  accessibilityState={{ expanded: rangeOpen }}
+                  accessibilityLabel={`Aisles ${shop.name} sells`}
+                  accessibilityHint="Limits this store to certain aisles, so it isn't asked about the rest"
+                >
+                  <Ionicons
+                    // Stacked trays rather than a list glyph: the row already
+                    // opens with `reorder-three-outline`, and two sets of
+                    // horizontal lines side by side read as one control that
+                    // has been drawn twice. Shelves are also what the thing
+                    // being picked actually is.
+                    name={shop.aisles !== null ? 'file-tray-stacked' : 'file-tray-stacked-outline'}
+                    size={iconSize.md}
+                    color={shop.aisles !== null ? colors.accent : colors.textTertiary}
+                  />
+                </TouchableOpacity>
+              )}
 
               {!editing && (
                 <TouchableOpacity
@@ -541,6 +657,50 @@ function StoresTab({
                 <Ionicons name="close-circle" size={iconSize.md} color={colors.textTertiary} />
               </TouchableOpacity>
             </TouchableOpacity>
+
+            {rangeOpen && (
+              <View style={styles.rangePanel}>
+                <Text style={styles.rangeHint}>
+                  {scoped && !range
+                    ? `Pick the aisles ${shop.name} sells. Until you pick one it still sells everything.`
+                    : `A store set to certain aisles isn’t asked whether it had things from the others, and isn’t suggested for them when you plan a trip.`}
+                </Text>
+                <SegmentedControl
+                  label={`What ${shop.name} sells`}
+                  value={scoped ? 'some' : 'all'}
+                  onChange={v => {
+                    haptics.tap();
+                    onSetScoped(shop.id, v === 'some');
+                  }}
+                  options={RANGE_OPTIONS}
+                  surface="card"
+                />
+                {scoped && (
+                  <View style={styles.rangePills}>
+                    <PillGroup
+                      noun="aisle"
+                      surface="card"
+                      options={aisleOrder.map(aisle => ({
+                        key: aisle,
+                        label: aisle,
+                        selected: shop.aisles?.includes(aisle) ?? false,
+                        onPress: () => {
+                          haptics.tap();
+                          const current = shop.aisles ?? [];
+                          onSetAisles(
+                            shop.id,
+                            current.includes(aisle)
+                              ? current.filter(a => a !== aisle)
+                              : [...current, aisle]
+                          );
+                        },
+                      }))}
+                    />
+                  </View>
+                )}
+              </View>
+            )}
+            </View>
           );
         }}
         ListEmptyComponent={
@@ -663,7 +823,23 @@ function makeStyles(colors: Colors) {
     },
     rowActive: { backgroundColor: colors.bgTertiary },
     rowPinned: { opacity: 0.6 },
-    rowLabel:{ flex: 1, fontSize: font.md, fontWeight: fontWeight.medium, color: colors.text },
+    rowText: { flex: 1, gap: 2 },
+    rowLabel:{ fontSize: font.md, fontWeight: fontWeight.medium, color: colors.text },
+    rowRange: { fontSize: font.xs, color: colors.textSecondary },
+    // Sits under its store's card and inside the same horizontal margin, with
+    // a gap on both sides: the row above has none below it and the next row
+    // has none above.
+    rangePanel: {
+      marginHorizontal: spacing.md,
+      marginTop: spacing.xs,
+      marginBottom: spacing.sm,
+      padding: spacing.md,
+      backgroundColor: colors.bgSecondary,
+      borderRadius: radius.md,
+      gap: spacing.md,
+    },
+    rangeHint: { fontSize: font.sm, color: colors.textTertiary, lineHeight: 19 },
+    rangePills: { marginTop: -spacing.xs },
     renameInput: {
       flex: 1,
       fontSize: font.md,
