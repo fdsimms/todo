@@ -6,12 +6,12 @@
 export type AiFeatureId =
   | 'taskBreakdown' | 'templateSuggestions' | 'projectTaskSuggestions' | 'groceryAisles'
   | 'recipeExtraction' | 'mealIdeas' | 'substitutes' | 'receiptImport' | 'calendarImport'
-  | 'cookHelp' | 'nutritionEstimate' | 'nutritionLabelPhoto';
+  | 'cookHelp' | 'nutritionEstimate' | 'nutritionLabelPhoto' | 'backfillSuggestions';
 
 export const AI_FEATURE_IDS: AiFeatureId[] = [
   'taskBreakdown', 'templateSuggestions', 'projectTaskSuggestions', 'groceryAisles',
   'recipeExtraction', 'mealIdeas', 'substitutes', 'receiptImport', 'calendarImport',
-  'cookHelp', 'nutritionEstimate', 'nutritionLabelPhoto',
+  'cookHelp', 'nutritionEstimate', 'nutritionLabelPhoto', 'backfillSuggestions',
 ];
 
 export type AiModelId = 'claude-haiku-4-5-20251001' | 'claude-sonnet-5' | 'claude-opus-5';
@@ -59,6 +59,14 @@ export const AI_FEATURES: AiFeatureMeta[] = [
     id: 'projectTaskSuggestions',
     label: 'Project drafting',
     hint: 'Suggests tasks for a project from its title and notes',
+  },
+  {
+    id: 'backfillSuggestions',
+    // Only the two Backfill fields a title can actually answer, and both pick
+    // from a closed set — see `backfillSuggest.ts` for why the other five task
+    // fields and the whole People pool are deliberately not offered here.
+    label: 'Backfill suggestions',
+    hint: 'Proposes a category and a time estimate for the tasks the Backfill screen is asking about',
   },
   {
     id: 'groceryAisles',
@@ -166,6 +174,12 @@ export function defaultAiFeatureConfig(): AiFeatureConfigMap {
     taskBreakdown: { enabled: true, model: DEFAULT_AI_MODEL },
     templateSuggestions: { enabled: true, model: DEFAULT_AI_MODEL },
     projectTaskSuggestions: { enabled: true, model: DEFAULT_AI_MODEL },
+    // The default model, for the reason groceryAisles keeps it: both fields
+    // this answers are a pick from a closed set rather than open generation,
+    // the prompt carries the user's own already-answered tasks as the examples
+    // to match, and every value is confirmed by a tap before it is written. A
+    // mediocre answer costs a glance, which is the bar that picked Haiku there.
+    backfillSuggestions: { enabled: true, model: DEFAULT_AI_MODEL },
     groceryAisles: { enabled: true, model: DEFAULT_AI_MODEL },
     recipeExtraction: { enabled: true, model: DEFAULT_AI_MODEL },
     mealIdeas: { enabled: true, model: DEFAULT_AI_MODEL },

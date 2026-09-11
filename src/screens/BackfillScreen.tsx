@@ -1,5 +1,5 @@
 import React, { useEffect, useMemo, useRef, useState } from 'react';
-import { View, Text, TextInput, TouchableOpacity, ScrollView, FlatList, StyleSheet, Platform, Alert } from 'react-native';
+import { View, Text, TextInput, TouchableOpacity, ScrollView, FlatList, StyleSheet, Platform, Alert, ActivityIndicator } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { useBottomTabBarHeight } from '@react-navigation/bottom-tabs';
 import Ionicons from '@expo/vector-icons/Ionicons';
@@ -20,6 +20,7 @@ import { SegmentedControl } from '../components/SegmentedControl';
 import { CategoryPickerList } from '../components/CategoryPicker';
 import { CountStepper } from '../components/CountStepper';
 import { PillGroup } from '../components/PillGroup';
+import { InlineAction } from '../components/InlineAction';
 import { SubstituteSheet } from '../components/SubstituteSheet';
 import { NutritionPanelSheet } from '../components/NutritionPanelSheet';
 import { NutritionSearchSheet } from '../components/NutritionSearchSheet';
@@ -37,8 +38,13 @@ import { formatDuration, EFFORT_MINUTES, minutesToEffort } from '../utils/effort
 import { PRIORITY_SEGMENTS } from '../utils/prioritySegments';
 import {
   BACKFILL_FIELDS, backfillCandidates, backfillFieldCounts, estimatePatchFor, dismissBackfillField,
-  isFieldMissing, type BackfillFieldId,
+  isFieldMissing, ESTIMATE_EFFORTS, type BackfillFieldId,
 } from '../utils/fieldBackfill';
+import {
+  isSuggestibleBackfillField, suggestionTasks, suggestionExamples, type BackfillSuggestion,
+} from '../utils/backfillSuggest';
+import { useAiRoute } from '../hooks/useOnDeviceAi';
+import { describeAIError, suggestBackfillValues } from '../services/aiSuggestions';
 import {
   CATEGORY_BACKFILL_FIELDS, categoryBackfillCandidates, categoryBackfillFieldCounts, dismissCategoryBackfillField,
   type CategoryBackfillFieldId,
@@ -178,8 +184,6 @@ const ENTITY_KIND_SEGMENTS = [
   { value: 'recipe' as const, label: 'Recipes' },
 ];
 
-// Bucket 0 ("—") is left off — see estimatePatchFor's doc comment for why.
-const ESTIMATE_OPTIONS = [1, 2, 3, 4, 5, 6] as Effort[];
 // None is the field's own "missing" value here, so offering it would be a
 // tap that visibly does nothing — see the note on SegmentedControl's
 // no-op-on-reselect behavior.
@@ -409,6 +413,34 @@ export function BackfillScreen() {
   // settings that happen to share a control.
   const [recipeCountDraft, setRecipeCountDraft] = useState<number | null>(null);
 
+  // AI suggestions for the two task fields a title can actually answer — see
+  // `backfillSuggest.ts` for which, and why the other five (and the whole
+  // People pool) are deliberately not among them. Session-only state, held
+  // here rather than on the task: a suggestion is something offered while you
+  // are looking at the card, and a stale one written to the row would outlive
+  // both the queue and any reason to trust it.
+  const [suggestions, setSuggestions] = useState<Map<string, BackfillSuggestion>>(new Map());
+  // Tasks a request has actually covered, which is *not* the key set above:
+  // the model is told to leave out anything it can't place honestly, so a
+  // task can be asked about and come back with nothing. Without this the card
+  // would offer to fetch a suggestion it has already been refused, and asking
+  // again would spend a request to be refused identically.
+  const [suggestAskedIds, setSuggestAskedIds] = useState<Set<string>>(new Set());
+  const [suggestLoading, setSuggestLoading] = useState(false);
+  const [suggestError, setSuggestError] = useState<string | null>(null);
+
+  const clearSuggestions = () => {
+    setSuggestions(new Map());
+    setSuggestAskedIds(new Set());
+    setSuggestLoading(false);
+    setSuggestError(null);
+  };
+
+  // Read here rather than inside the service so the entry point can't exist
+  // for a call that would only apologise — the pairing `useAiRoute`'s own doc
+  // comment describes.
+  const suggestRoute = useAiRoute('backfillSuggestions');
+
   const taskCounts = useMemo(() => backfillFieldCounts(tasks, categories), [tasks, categories]);
   const categoryCounts = useMemo(() => categoryBackfillFieldCounts(categories), [categories]);
   const projectCounts = useMemo(() => projectBackfillFieldCounts(projects), [projects]);
@@ -478,6 +510,18 @@ export function BackfillScreen() {
   const currentId =
     currentTask?.id ?? currentCategory?.id ?? currentProject?.id ?? currentPerson?.id
     ?? currentItem?.id ?? currentRecipe?.id ?? null;
+
+  // What "Apply all" would actually write: read off the *live* queue rather
+  // than the suggestion map, so a task answered, skipped or dismissed since
+  // the request drops out of the count on its own — the same reason the
+  // queues themselves are recomputed every render rather than snapshotted.
+  const suggestedQueue = useMemo(
+    () => taskQueue.filter(t => suggestions.has(t.id)),
+    [taskQueue, suggestions]
+  );
+  const canSuggest = active?.kind === 'task' && isSuggestibleBackfillField(active.id)
+    && suggestRoute !== 'unavailable';
+  const currentSuggestion = currentTask ? suggestions.get(currentTask.id) ?? null : null;
 
   /**
    * The cadence this person's own history suggests, or null when there is not
@@ -599,6 +643,7 @@ export function BackfillScreen() {
     setHistory([]);
     setManualCurrentId(null);
     setSessionLog([]);
+    clearSuggestions();
     setSessionTotal(backfillCandidates(tasks, id, { categories }).length);
   };
 
@@ -610,6 +655,7 @@ export function BackfillScreen() {
     setHistory([]);
     setManualCurrentId(null);
     setSessionLog([]);
+    clearSuggestions();
     setSessionTotal(categoryBackfillCandidates(categories, id).length);
   };
 
@@ -621,6 +667,7 @@ export function BackfillScreen() {
     setHistory([]);
     setManualCurrentId(null);
     setSessionLog([]);
+    clearSuggestions();
     setSessionTotal(projectBackfillCandidates(projects, id).length);
   };
 
@@ -632,6 +679,7 @@ export function BackfillScreen() {
     setHistory([]);
     setManualCurrentId(null);
     setSessionLog([]);
+    clearSuggestions();
     setSessionTotal(personBackfillCandidates(people, id).length);
   };
 
@@ -643,6 +691,7 @@ export function BackfillScreen() {
     setHistory([]);
     setManualCurrentId(null);
     setSessionLog([]);
+    clearSuggestions();
     setSessionTotal(itemBackfillCandidates(groceryItems, id, itemSubs, nonFoodAisles).length);
   };
 
@@ -654,6 +703,7 @@ export function BackfillScreen() {
     setHistory([]);
     setManualCurrentId(null);
     setSessionLog([]);
+    clearSuggestions();
     setSessionTotal(recipeBackfillCandidates(recipes, id).length);
   };
 
@@ -665,6 +715,7 @@ export function BackfillScreen() {
     setHistory([]);
     setManualCurrentId(null);
     setSessionLog([]);
+    clearSuggestions();
   };
 
   // Widens the task queue to every live task for the field, including ones
@@ -681,6 +732,11 @@ export function BackfillScreen() {
     setHistory([]);
     setManualCurrentId(null);
     setSessionLog([]);
+    // A from-scratch run asks a different question of the same tasks ("is this
+    // value still right?" rather than "what should it be?"), and the batch was
+    // built to exclude tasks that already had one — so the answers that batch
+    // came back with are about a queue this one isn't.
+    clearSuggestions();
     setSessionTotal(backfillCandidates(tasks, active.id, { fromScratch: true }).length);
   };
 
@@ -790,6 +846,146 @@ export function BackfillScreen() {
       undo: () => updateTask(snapshot.id, snapshot),
     });
     advance(currentTask.id);
+  };
+
+  // The two task fields the suggestion feature answers, factored out so the
+  // ordinary pills and a suggested value write through exactly the same call —
+  // a suggestion accepted has to be indistinguishable from the same value
+  // tapped, in the row it writes and in the session-review line it leaves.
+  const applyEstimate = (e: Effort) =>
+    apply(estimatePatchFor(e), EFFORT_MINUTES[e] != null ? formatDuration(EFFORT_MINUTES[e]!) : EFFORT_LABELS[e]);
+  const applyTaskCategory = (name: string | null) =>
+    apply({ category: name }, name ? categoryLabel(name, getCategoryByName) : 'No category');
+
+  const describeSuggestion = (s: BackfillSuggestion): string =>
+    s.field === 'category'
+      ? categoryLabel(s.category, getCategoryByName)
+      : (EFFORT_MINUTES[s.effort] != null ? formatDuration(EFFORT_MINUTES[s.effort]!) : EFFORT_LABELS[s.effort]);
+
+  const applySuggestion = (suggestion: BackfillSuggestion) => {
+    if (suggestion.field === 'category') applyTaskCategory(suggestion.category);
+    else applyEstimate(suggestion.effort);
+  };
+
+  /**
+   * Asks for the whole visible queue at once rather than for the card on
+   * screen — one request per sitting instead of one per card, which is what
+   * keeps a suggestion from costing a second of waiting every time the queue
+   * advances. `suggestionTasks` caps the batch; a queue longer than that is
+   * answered a batch at a time, since the button comes back for any card the
+   * request didn't reach.
+   *
+   * Results are merged rather than replacing, so a second batch doesn't
+   * discard the first one's unanswered cards.
+   */
+  const runSuggest = async () => {
+    if (active?.kind !== 'task' || !isSuggestibleBackfillField(active.id) || suggestLoading) return;
+    const field = active.id;
+    const batch = suggestionTasks(taskQueue, displayTitleFor);
+    if (batch.length === 0) return;
+    haptics.tap();
+    setSuggestLoading(true);
+    setSuggestError(null);
+    try {
+      const asking = new Set(batch.map(t => t.id));
+      const examples = suggestionExamples(tasks, field, displayTitleFor, asking);
+      const result = await suggestBackfillValues(field, batch, examples, categories.map(c => c.name));
+      animateLayout();
+      setSuggestions(prev => new Map([...prev, ...result]));
+      setSuggestAskedIds(prev => new Set([...prev, ...asking]));
+      if (result.size === 0) {
+        // Not an error — the model was told to leave out anything it couldn't
+        // place, and every task in a small batch being unplaceable is a real
+        // answer. Said in the error slot because it is the only slot that says
+        // anything, and saying nothing would read as a button that did nothing.
+        setSuggestError('Nothing here could be suggested. Fill these in yourself.');
+      } else {
+        haptics.success();
+      }
+    } catch (e) {
+      haptics.error();
+      setSuggestError(describeAIError(e));
+    } finally {
+      setSuggestLoading(false);
+    }
+  };
+
+  /**
+   * Writes every pending suggestion in the queue at once.
+   *
+   * The one place this screen commits more than the card in front of you, so
+   * it is the one place that asks first (see `confirmApplyAll`). Two recoveries
+   * are left behind rather than one: a single `setLastAction` reverting the
+   * whole batch, since a shake after a bulk action means "not that", and a
+   * per-task row in the session review with its own Undo, for the far commoner
+   * case where 28 of 30 were right.
+   */
+  const applyAllSuggestions = () => {
+    if (active?.kind !== 'task') return;
+    const batch = suggestedQueue;
+    if (batch.length === 0) return;
+    haptics.success();
+    animateLayout();
+    recordVisited();
+    setManualCurrentId(null);
+    const fieldLabel = BACKFILL_FIELDS.find(f => f.id === active.id)!.label;
+    // One copy per task, shared by both recoveries below: the shake undo puts
+    // the whole array back, each session-review row puts its own one back.
+    const snapshots = batch.map(t => ({ ...t }));
+    batch.forEach((task, i) => {
+      const suggestion = suggestions.get(task.id)!;
+      const snapshot = snapshots[i];
+      let valueText: string;
+      if (suggestion.field === 'category') {
+        updateTask(task.id, { category: suggestion.category });
+        valueText = categoryLabel(suggestion.category, getCategoryByName);
+      } else {
+        const patch = estimatePatchFor(suggestion.effort);
+        updateTask(task.id, patch);
+        // Same carry-forward the single-task apply does — see apply()'s note
+        // on mealSlotStepEstimates.
+        if (patch.estimatedMinutes != null) {
+          const stepId = activeMealSlotStepId(task);
+          if (stepId) useSettingsStore.getState().setMealSlotStepEstimate(stepId, patch.estimatedMinutes);
+        }
+        valueText = patch.estimatedMinutes != null
+          ? formatDuration(patch.estimatedMinutes)
+          : EFFORT_LABELS[suggestion.effort];
+      }
+      logSession({
+        itemId: task.id,
+        title: displayTitleFor(task),
+        valueText,
+        undo: () => updateTask(snapshot.id, snapshot),
+      });
+    });
+    setLastAction({
+      label: `${fieldLabel} set on ${batch.length} ${batch.length === 1 ? 'task' : 'tasks'}`,
+      undo: () => { for (const snapshot of snapshots) updateTask(snapshot.id, snapshot); },
+    });
+    // One write rather than `advance` per task: in a from-scratch run the
+    // candidate filter doesn't drop a task that now has a value, so this is
+    // what actually moves the queue past all of them.
+    setSkippedIds(prev => {
+      const next = new Set(prev);
+      for (const task of batch) next.add(task.id);
+      return next;
+    });
+  };
+
+  const confirmApplyAll = () => {
+    if (active?.kind !== 'task') return;
+    const count = suggestedQueue.length;
+    if (count === 0) return;
+    const label = BACKFILL_FIELDS.find(f => f.id === active.id)!.label.toLowerCase();
+    Alert.alert(
+      `Apply ${count} ${count === 1 ? 'suggestion' : 'suggestions'}?`,
+      `Sets the suggested ${label} on ${count} ${count === 1 ? 'task' : 'tasks'} at once. Each one is listed with its own Undo when the queue finishes, and a shake takes the whole batch back.`,
+      [
+        { text: 'Cancel', style: 'cancel' },
+        { text: 'Apply all', onPress: applyAllSuggestions },
+      ]
+    );
   };
 
   // The category store has no generic "patch a category" setter (see
@@ -1662,13 +1858,29 @@ export function BackfillScreen() {
               />
             </View>
 
+            {canSuggest && (
+              <SuggestionBar
+                suggestionText={currentSuggestion ? describeSuggestion(currentSuggestion) : null}
+                asked={suggestAskedIds.has(currentTask.id)}
+                loading={suggestLoading}
+                error={suggestError}
+                applyAllCount={suggestedQueue.length}
+                fieldLabel={field.label.toLowerCase()}
+                colors={colors}
+                styles={styles}
+                onSuggest={runSuggest}
+                onAccept={() => currentSuggestion && applySuggestion(currentSuggestion)}
+                onApplyAll={confirmApplyAll}
+              />
+            )}
+
             <FieldControl
               field={active.id}
               colors={colors}
               styles={styles}
-              onEstimate={e => apply(estimatePatchFor(e), EFFORT_MINUTES[e] != null ? formatDuration(EFFORT_MINUTES[e]!) : EFFORT_LABELS[e])}
+              onEstimate={applyEstimate}
               onPriority={p => apply({ priority: p }, PRIORITY_OPTIONS.find(o => o.value === p)?.label ?? 'Priority set')}
-              onCategory={name => apply({ category: name }, name ? categoryLabel(name, getCategoryByName) : 'No category')}
+              onCategory={applyTaskCategory}
               onStreak={() => apply({ showStreak: true }, 'Streak shown')}
               onVacation={() => apply({ vacationPause: true }, 'Paused on vacation')}
               onReminder={() => { haptics.tap(); setReminderPickerOpen(true); }}
@@ -2845,7 +3057,7 @@ function FieldControl({
     return (
       <View>
         <View style={styles.pillRow}>
-          {ESTIMATE_OPTIONS.map(e => {
+          {ESTIMATE_EFFORTS.map(e => {
             const mins = EFFORT_MINUTES[e];
             return (
               <PressableScale
@@ -2977,6 +3189,100 @@ function FieldControl({
       <Ionicons name="color-wand" size={iconSize.md} color={colors.onAccent} />
       <Text style={styles.toggleButtonText}>Skip in suggestions</Text>
     </PressableScale>
+  );
+}
+
+/**
+ * The AI half of a task card: ask for suggestions, accept the one for this
+ * task, or write the whole queue's at once.
+ *
+ * Sits above `FieldControl` rather than inside it, and offers the value as its
+ * own control rather than pre-selecting a pill, because those are two different
+ * claims. A highlighted pill would say "this is the value" — `CategoryPickerList`'s
+ * `value` tick means exactly that — when what is true is "something proposed
+ * this and nothing has been written". Keeping it separate is also what lets the
+ * card say where the value came from, which a lit-up pill cannot.
+ *
+ * Four states, and the third is the one worth keeping: a request that reached
+ * this task and declined to answer it says so and does not offer to ask again.
+ * The model is told to leave out anything it cannot place honestly, so a second
+ * identical request would spend a call to be refused identically.
+ */
+function SuggestionBar({
+  suggestionText, asked, loading, error, applyAllCount, fieldLabel, colors, styles,
+  onSuggest, onAccept, onApplyAll,
+}: {
+  suggestionText: string | null;
+  asked: boolean;
+  loading: boolean;
+  error: string | null;
+  applyAllCount: number;
+  fieldLabel: string;
+  colors: Colors;
+  styles: ReturnType<typeof makeStyles>;
+  onSuggest: () => void;
+  onAccept: () => void;
+  onApplyAll: () => void;
+}) {
+  if (loading) {
+    return (
+      <View style={styles.suggestStatusRow}>
+        <ActivityIndicator size="small" color={colors.purple} />
+        <Text style={styles.suggestNote}>Reading the tasks in this queue…</Text>
+      </View>
+    );
+  }
+
+  return (
+    <View style={styles.suggestBar}>
+      {suggestionText != null && (
+        <>
+          <Text style={styles.suggestCaption}>Suggested</Text>
+          <PressableScale
+            style={styles.suggestValue}
+            onPress={onAccept}
+            accessibilityRole="button"
+            accessibilityLabel={`Set ${fieldLabel} to ${suggestionText}`}
+          >
+            <Ionicons name="sparkles" size={iconSize.sm} color={colors.purple} />
+            {/* flex: 1 with only two fixed icons beside it, so a long category
+                name keeps the row rather than being squeezed out of it. */}
+            <Text style={styles.suggestValueText} numberOfLines={1}>{suggestionText}</Text>
+            <Ionicons name="checkmark-circle" size={iconSize.md} color={colors.purple} />
+          </PressableScale>
+        </>
+      )}
+      {suggestionText == null && asked && !error && (
+        <Text style={styles.suggestNote}>No suggestion for this one.</Text>
+      )}
+      {!!error && <Text style={styles.suggestError}>{error}</Text>}
+      <View style={styles.suggestActions}>
+        {(!asked || !!error) && (
+          <InlineAction
+            label={error ? 'Try again' : 'Suggest with AI'}
+            icon={error ? 'refresh' : 'sparkles-outline'}
+            tint={colors.purple}
+            surface="page"
+            onPress={onSuggest}
+            accessibilityLabel={error
+              ? 'Ask for suggestions again'
+              : `Suggest a ${fieldLabel} for the tasks left in this queue`}
+          />
+        )}
+        {/* Only past one, since at exactly one the chip above already is the
+            whole batch and "Apply all 1" would be the same tap twice. */}
+        {applyAllCount > 1 && (
+          <InlineAction
+            label={`Apply all ${applyAllCount}`}
+            icon="checkmark-done-outline"
+            variant="neutral"
+            surface="page"
+            onPress={onApplyAll}
+            accessibilityLabel={`Set the suggested ${fieldLabel} on all ${applyAllCount} tasks at once`}
+          />
+        )}
+      </View>
+    </View>
   );
 }
 
@@ -3188,6 +3494,28 @@ const makeStyles = (colors: Colors) => StyleSheet.create({
   reviewUndoText: { color: colors.accent, fontSize: font.sm, fontWeight: fontWeight.medium },
   reviewSeparator: { height: StyleSheet.hairlineWidth, backgroundColor: colors.separator, marginLeft: spacing.md },
   reviewFooter: { paddingHorizontal: spacing.md, paddingTop: spacing.sm },
+
+  suggestBar: { gap: spacing.sm, alignItems: 'flex-start' },
+  suggestCaption: {
+    color: colors.textSecondary, fontSize: font.xs, fontWeight: fontWeight.semibold,
+    textTransform: 'uppercase', letterSpacing: 0.8,
+  },
+  suggestValue: {
+    alignSelf: 'stretch',
+    flexDirection: 'row', alignItems: 'center', gap: spacing.sm,
+    paddingVertical: spacing.md, paddingHorizontal: spacing.md,
+    borderRadius: radius.md,
+    // Built from the token with an alpha suffix, the way InlineAction and the
+    // tag chips build theirs rather than adding a token per hue. Purple is the
+    // app's AI colour (see InlineAction's `tint`), and it stays in the tint and
+    // the icons: the value itself is `text`, because it is the thing being read.
+    backgroundColor: colors.purple + '26',
+  },
+  suggestValueText: { flex: 1, color: colors.text, fontSize: font.md, fontWeight: fontWeight.semibold },
+  suggestActions: { flexDirection: 'row', flexWrap: 'wrap', gap: spacing.sm },
+  suggestStatusRow: { flexDirection: 'row', alignItems: 'center', gap: spacing.sm },
+  suggestNote: { color: colors.textSecondary, fontSize: font.sm, lineHeight: lineHeight.sm },
+  suggestError: { color: colors.red, fontSize: font.sm, lineHeight: lineHeight.sm },
 
   actionRow: { flexDirection: 'row', justifyContent: 'center', gap: spacing.md },
   skipButton: {

@@ -183,6 +183,19 @@ export function dismissBackfillField(task: Task, fieldId: BackfillFieldId): Pick
 }
 
 /**
+ * The effort buckets this screen offers for `estimate`, in the order they
+ * render. Bucket 0 ("—") is left off for the reason `estimatePatchFor`
+ * gives below.
+ *
+ * Exported rather than kept local to the screen because the AI suggestion for
+ * this field picks from exactly this set (see `backfillSuggest.ts`) — a
+ * suggested value is one of the pills already on the card, highlighted, rather
+ * than a number from somewhere else. Two copies of the list would be two places
+ * for that to stop being true.
+ */
+export const ESTIMATE_EFFORTS: readonly Effort[] = [1, 2, 3, 4, 5, 6];
+
+/**
  * The `effort`/`estimatedMinutes` pair to write for a chosen effort bucket —
  * the same pairing `applyEffortPreset` in TaskEditor writes, so a task
  * backfilled here reads identically to one sized in the editor. Bucket 0
