@@ -297,32 +297,11 @@ func taskCountLabel(_ count: Int) -> String {
     count == 1 ? "1 task" : "\(count) tasks"
 }
 
-/// The trailing detail on a task row: a daily target's fraction if it has one,
-/// otherwise a streak worth mentioning, otherwise nothing.
-///
-/// One or the other rather than both, because the row has one short slot and a
-/// target that is also on a streak would otherwise push the title out of it.
+/// The trailing detail on a task row: a streak worth mentioning, or nothing.
 func taskRowDetail(_ task: WidgetTask) -> String? {
-    if task.isTarget, let target = task.targetCount {
-        return "\(task.progressCount)/\(target)"
-    }
-    if task.streakCount > 1 { return "\(task.streakCount)" }
-    return nil
+    task.streakCount > 1 ? "\(task.streakCount)" : nil
 }
 
 func taskRowDetailSymbol(_ task: WidgetTask) -> String? {
-    if task.isTarget { return nil }
-    return task.streakCount > 1 ? "flame.fill" : nil
-}
-
-/// Mirrors PRIORITY_COLORS in src/types/index.ts. Index 0 is "none", which
-/// draws no dot at all rather than a transparent one.
-func priorityColor(_ priority: Int) -> Color? {
-    switch priority {
-    case 1: return Color(hex: "30D158")
-    case 2: return Color(hex: "FFD60A")
-    case 3: return Color(hex: "FF9F0A")
-    case 4: return Color(hex: "FF453A")
-    default: return nil
-    }
+    task.streakCount > 1 ? "flame.fill" : nil
 }

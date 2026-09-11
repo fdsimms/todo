@@ -86,16 +86,11 @@ struct TaskRowView: View {
                 .truncationMode(.tail)
                 .layoutPriority(1)
 
-            if task.pinned && !isPendingCompletion {
-                Image(systemName: "pin.fill")
-                    .foregroundColor(palette.orange)
-                    .font(.system(size: 8))
-            }
-
             Spacer(minLength: 2)
 
-            // A daily target's fraction, or a streak — never both, so the slot
-            // stays short. See taskRowDetail.
+            // The streak, if there's one worth mentioning. See taskRowDetail.
+            // Fixed-size so a tight row shrinks the title (which already
+            // truncates) rather than clipping these few short characters.
             if !isPendingCompletion, let detail = taskRowDetail(task) {
                 HStack(spacing: 2) {
                     if let symbol = taskRowDetailSymbol(task) {
@@ -108,10 +103,7 @@ struct TaskRowView: View {
                         .foregroundColor(palette.textSecondary)
                         .lineLimit(1)
                 }
-            }
-
-            if let dot = priorityColor(task.priority), !isPendingCompletion {
-                Circle().fill(dot).frame(width: 5, height: 5)
+                .fixedSize()
             }
         }
         .frame(height: height)
