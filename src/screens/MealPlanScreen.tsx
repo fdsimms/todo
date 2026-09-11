@@ -1712,6 +1712,7 @@ export function MealPlanScreen() {
                     onNext={() => page(1)}
                     prevAccessibilityLabel="Previous week"
                     nextAccessibilityLabel="Next week"
+                    grouped
                   />
                 </View>
                 {/*
