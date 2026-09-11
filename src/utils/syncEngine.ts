@@ -177,3 +177,76 @@ function messageOf(e: unknown, fallback: string): string {
   if (e instanceof Error && e.message) return e.message;
   return fallback;
 }
+
+/** One transport's run, labelled, so a caller with several can say which failed. */
+export interface NamedSyncRun {
+  transport: string;
+  result: SyncRunResult;
+}
+
+/**
+ * Every configured transport, one after another.
+ *
+ * **Sequential rather than parallel, and that is not a performance oversight.**
+ * The transports share one local database and `changesSince`/`apply` are
+ * synchronous SQLite either side of an `await`, so running two at once
+ * interleaves them: B's `apply` can land rows in the window between A's push
+ * and A's cursor advance, and those rows carry a fresh `updated_at`. A would
+ * then push straight back what it had just been handed. The per-transport
+ * cursors keep the two from clobbering each other's *positions* (see the two
+ * cursor keys in `runSync`), which is what makes a second transport safe to add
+ * at all; they do nothing about that interleaving.
+ *
+ * A transport that fails does not stop the ones after it. They are independent
+ * stores and a laptop being off is not a reason to skip iCloud.
+ */
+export async function runSyncAll(
+  transports: readonly SyncTransport[],
+  local: SyncLocal
+): Promise<NamedSyncRun[]> {
+  const runs: NamedSyncRun[] = [];
+  for (const transport of transports) {
+    runs.push({ transport: transport.name, result: await runSync(transport, local) });
+  }
+  return runs;
+}
+
+/** What several runs come to, for one status line. */
+export interface SyncSummary {
+  /** True when at least one transport completed. A skip is not a completion. */
+  ok: boolean;
+  /** Everything applied, across all of them. */
+  applied: ApplyReport;
+  pushed: boolean;
+  unreadable: number;
+  /** The first failure, named by transport. Null when nothing failed. */
+  problem: string | null;
+}
+
+/**
+ * Collapse several runs into the one line a settings screen has room for.
+ *
+ * A failure is named by its transport because with more than one configured,
+ * "Sync failed" is unactionable: the user needs to know whether to check their
+ * iCloud account or their own server. With a single transport the name is
+ * still there, which is a small price for not having two phrasings.
+ */
+export function summarizeRuns(runs: readonly NamedSyncRun[]): SyncSummary {
+  const applied = emptyApplyReport();
+  let ok = false;
+  let pushed = false;
+  let unreadable = 0;
+  let problem: string | null = null;
+
+  for (const { transport, result } of runs) {
+    addReport(applied, result.applied);
+    unreadable += result.unreadable;
+    if (result.pushed) pushed = true;
+    if (result.status === 'ok') ok = true;
+    if (result.status === 'failed' && problem === null) {
+      problem = `${transport}: ${result.reason ?? 'Sync failed.'}`;
+    }
+  }
+
+  return { ok, applied, pushed, unreadable, problem };
+}

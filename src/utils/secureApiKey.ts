@@ -113,6 +113,14 @@ export async function saveAnthropicApiKey(key: string): Promise<boolean> {
  */
 export const FDC_KEY_SECURE_KEY = 'fdcApiKey';
 export const GO_UPC_KEY_SECURE_KEY = 'goUpcApiKey';
+/**
+ * The bearer token for a user-run sync payload store (`httpSyncTransport`).
+ *
+ * Here rather than in the settings table for the ordinary reason, plus one
+ * specific to it: settings rows are what sync, and a credential that synced
+ * would be handed to every device through the very store it authenticates.
+ */
+export const SYNC_TOKEN_SECURE_KEY = 'syncServerToken';
 
 export async function loadSecureKey(name: string): Promise<string> {
   try {

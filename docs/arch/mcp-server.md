@@ -3,15 +3,14 @@
 An MCP server that lets Claude read this app's data (#100). The code is `mcp/`; the parts of it
 that are ordinary TypeScript are tested by the repo's own jest run, alongside everything else.
 
-**Status: phase 0.** What exists is a replica that opens a real `todo.db` in Node, a read-only tool
-surface over it, and the HTTP/auth wiring stubbed at a documented seam. Nothing is deployed,
-nothing writes, and the sync transport that would make the replica current does not exist yet. The
-phases are at the bottom of this file.
+**Status: phase 1.** The replica is a real sync peer. It opens a `todo.db` in Node, exchanges
+changes with a payload store the user runs, and serves a read-only tool surface over the result.
+Nothing writes through MCP yet and nothing is deployed behind real auth. The phases are at the
+bottom of this file.
 
-It does run. The server has been exercised end to end against a file database — handshake, tool
-listing, and all five tools returning real rows through `rowToTask` and `isTaskVisible`, with the
-auth gate refusing an absent and a wrong token. What has *not* been exercised is anything in the
-three numbered items under "the part that is blocked on infrastructure", because none of it exists.
+It runs. The server has been exercised end to end against a file database, and a change made on one
+side reaches the other through the store. What has *not* been exercised is a public deployment,
+because that is phase 3 and needs infrastructure this repo cannot produce.
 
 ## The problem this has to solve first
 
@@ -174,15 +173,54 @@ this repo cannot produce on its own.
    shared secret from `MCP_AUTH_TOKEN` and refuses everything if that is unset, which is enough to
    develop against and is **not** enough to expose. It is written as a single `authorize()` so that
    the real implementation replaces one function.
-3. **A transport `syncEngine` can use from Node.** CloudKit's private database is reachable outside
-   an Apple platform only through CloudKit Web Services, which needs a container API token and a
-   web-auth flow. The alternative is a second `SyncTransport` both sides can speak — the interface
-   was built for exactly this substitution, and `cloudKitTransport.ts` is 18 lines of actual
-   adapter, so the cost is in choosing the store, not in the wiring.
+Item (3), a transport, was the one that decided whether any of this was real, and it is done. See
+the next section.
 
-Until (3) exists the replica is a file somebody copied, which is the backup-reader option wearing
-the replica's clothes. That is an honest description of phase 0 and it should not be described as
-anything else in a release note.
+## Phase 1: the payload store
+
+The replica syncs through a second `SyncTransport` (`src/utils/httpSyncTransport.ts`) pointed at a
+store the user runs (`mcp/src/syncStore.ts`, mounted at `/sync/*`).
+
+**Why not CloudKit.** The app syncs to `container.privateCloudDatabase`. CloudKit Web Services can
+reach a private database only with a `ckWebAuthToken`, which comes from a browser sign-in and
+expires; server-to-server keys reach the *public* database only. That is workable for a laptop
+somebody is sitting at and useless for the always-on box phase 3 is aimed at.
+
+**It adds to CloudKit rather than replacing it.** `syncEngine` keys its cursors by transport name
+(`${transport.name}:push`), so two transports hold independent positions and a user with no server
+keeps exactly the sync they had. `runSyncAll` runs them **sequentially**, which is the one
+non-obvious thing here: they share a local database and `changesSince`/`apply` are synchronous
+SQLite either side of an `await`, so running them at once lets B's `apply` land rows in the window
+between A's push and A's cursor advance, and A pushes straight back what it was just handed. The
+separate cursors do nothing about that.
+
+**The store is deliberately dumb.** Append an opaque string, read back the ones after a cursor. It
+never parses a payload, so the merge rules stay on the devices where `syncMerge.ts` tests them
+without a network, a schema change is not a deployment, and the machine holding the data cannot
+read it without deserialising it itself. The cursor is the autoincrement rowid as a string, because
+`syncEngine` stores a cursor verbatim and lets each transport pick its own.
+
+Two rules in it are worth not re-deriving. A pull's cursor is **the last row of that page, not the
+table's maximum** — advancing past rows that were not returned is the only way to lose a change
+here. And an unreadable cursor reads as **the beginning rather than as a skip**, because applying a
+payload twice is a no-op under `syncMerge`'s tie rule while skipping one loses an edit for good.
+
+Payloads are pruned at 90 days, matched to `TOMBSTONE_RETENTION_DAYS` rather than chosen
+separately: a device away longer than the tombstone window already needs a full reconcile, and
+pruning on a *shorter* horizon than the app's would drop changes whose deletions the devices have
+forgotten, which resurrects rows.
+
+**Configuration is the opt-in.** A URL in Settings and a token in the keychain; both or neither.
+That mirrors the API key rather than the `syncEnabled` switch, and a separate toggle that also had
+to be on would be one more way for it to look broken. The token is in the keychain rather than the
+settings table for the usual reason plus one specific to it: settings rows are what sync, and a
+credential that synced would be handed to every device through the very store it authenticates.
+`syncServerUrl` is not on `SYNCED_SETTING_KEYS` either, same reasoning as `syncEnabled`.
+
+The replica syncs before answering, throttled to ten seconds. Long enough to cover the run of tool
+calls a model makes to answer one question, short enough that somebody who just ticked something
+off on their phone and turned to Claude sees it. A failure is swallowed: a store that is down
+should mean slightly stale answers, not no answers.
 
 ### The privacy consequence, stated plainly
 
@@ -208,13 +246,13 @@ default is that they do.
 
 ## Phases
 
-- **Phase 0 (here).** The replica, the read-only tools, the serializer, the auth seam, and this
-  file. Runs locally, against a database file the user supplies.
-- **Phase 1. A transport.** Pick the store, write the `SyncTransport`, and the replica becomes
-  current instead of a snapshot. This is the phase that decides whether the feature is real.
+- **Phase 0 (done).** The replica, the read-only tools, the serializer, the auth seam, and this
+  file. Ran locally, against a database file the user supplied.
+- **Phase 1 (here).** The payload store, `httpSyncTransport`, `runSyncAll`, and the Settings rows
+  to configure it. The replica is current instead of a snapshot.
 - **Phase 2. Writes.** Create, complete, defer, add to the grocery list, through the `db*`
-  functions. Cheap once phase 1 lands and worthless before it: a write into a replica nothing syncs
-  is a write into a file.
+  functions so they carry `updated_at` and get picked up by `dbSyncChangesSince`. Now worth doing,
+  because there is somewhere for a write to go.
 - **Phase 3. Hosting.** Real OAuth, a deployment, and the Settings surface that admits to the copy.
 
 Phase 2 has a design question of its own that is worth thinking about before it starts, rather than
