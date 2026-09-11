@@ -2,6 +2,10 @@ import DeviceActivity
 import Foundation
 import ManagedSettings
 
+#if canImport(FamilyControls)
+import FamilyControls
+#endif
+
 /// The DeviceActivity monitor extension: a separate process iOS wakes when one
 /// of the usage thresholds the app armed is crossed.
 ///
@@ -51,6 +55,56 @@ class TodoActivityMonitor: DeviceActivityMonitor {
     ScreenTimeShared.appendCrossing(ScreenTimeCrossing(ruleId: ruleId, dayKey: dayKey))
   }
 
+  /// The start of a gate block: a task the apps are held behind becoming due
+  /// while the app is closed.
+  ///
+  /// This is the one place outside the app that *raises* a shield, and it is a
+  /// deliberate relaxation of the "only ever clears" rule below rather than an
+  /// oversight. A gate that only bit when the app was next opened was dodgeable
+  /// by not opening it, which is the one hole that made the feature decorative:
+  /// the block is supposed to be what gets you to do the walk, not a reward for
+  /// checking in.
+  ///
+  /// Three things keep it from blocking apps nobody asked it to:
+  ///
+  /// - **The app's permission is written ahead, per window.** `pendingGateDetail`
+  ///   is set only by a reconcile that armed a window, and cleared by every one
+  ///   that didn't. A wake with nothing there is a stale schedule — the gate was
+  ///   completed, deferred, or the feature switched off since — and does
+  ///   nothing. An unreadable state file is the same answer, which is the
+  ///   opposite default from `intervalDidEnd` below and right for the same
+  ///   reason: the cautious direction is whichever one leaves the apps alone.
+  /// - **It is scoped to the gate activity.** The usage monitor's own interval
+  ///   starts every day, and answering that one would raise a shield on the
+  ///   strength of a threshold nobody crossed.
+  /// - **It shields exactly the picked apps**, read from the same App Group
+  ///   selection `applyShield` uses, with the same empty-set care: an empty
+  ///   `applicationCategories` is read as `.all` by ManagedSettings and would
+  ///   lock the whole phone.
+  ///
+  /// The block it raises is lifted by the app's own reconcile, as every other
+  /// gate block is — completing the task is a task write, and that is what
+  /// takes the shield down.
+  override func intervalDidStart(for activity: DeviceActivityName) {
+    super.intervalDidStart(for: activity)
+
+    guard activity.rawValue == ScreenTimeShared.gateActivityName else { return }
+    guard let state = ScreenTimeShared.readShieldState(),
+          let detail = state.pendingGateDetail, !detail.isEmpty
+    else { return }
+
+    #if canImport(FamilyControls)
+    if #available(iOS 16.0, *) {
+      guard let selection = ScreenTimeShared.readSelection() else { return }
+      let store = ManagedSettingsStore(named: .init(ScreenTimeShared.shieldStoreName))
+      store.shield.applications = selection.applicationTokens.isEmpty ? nil : selection.applicationTokens
+      store.shield.applicationCategories = selection.categoryTokens.isEmpty
+        ? nil
+        : ShieldSettings.ActivityCategoryPolicy.specific(selection.categoryTokens)
+    }
+    #endif
+  }
+
   /// The end of a penalty block, which is the one thing in this app that has to
   /// happen while the app is closed.
   ///
@@ -61,8 +115,10 @@ class TodoActivityMonitor: DeviceActivityMonitor {
   ///
   /// Three rules keep that from undoing the arbitration in `appShield.ts`:
   ///
-  /// - **It only ever clears.** Nothing here can raise a shield, so the worst
-  ///   a bug can do is end a block early rather than start one nobody earned.
+  /// - **This callback only ever clears.** Raising is `intervalDidStart`'s job
+  ///   above and needs the app's written permission for the specific window;
+  ///   the worst a bug here can do is end a block early rather than start one
+  ///   nobody earned.
   /// - **It defers to any other reason.** A focus session running when a
   ///   penalty runs out still wants the apps blocked, and this process cannot
   ///   ask — so the app writes the answer ahead of time and this reads it. An

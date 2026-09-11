@@ -55,6 +55,14 @@ enum ScreenTimeShared {
   /// must not disarm the other.
   static let penaltyActivityName = "todo.penaltyWindow"
 
+  /// The one-shot DeviceActivity window whose *start* raises a gate block, so a
+  /// gate that comes due while the app is closed still holds the apps.
+  ///
+  /// Separate from the penalty window above because the two answer opposite
+  /// callbacks — that one acts at `intervalDidEnd`, this one at
+  /// `intervalDidStart` — and stopping either must not disarm the other.
+  static let gateActivityName = "todo.gateWindow"
+
   static func containerURL() -> URL? {
     FileManager.default.containerURL(forSecurityApplicationGroupIdentifier: appGroupID)
   }
@@ -121,6 +129,29 @@ struct ShieldStateShared: Codable {
   /// What earned it, e.g. a task's title. Shown as-is, so the app is
   /// responsible for it being something a person would recognise.
   let detail: String?
+  /// The line to show for a gate the app has armed a window for but that isn't
+  /// live yet, or nil when no window is armed.
+  ///
+  /// It is the monitor extension's whole permission to raise a shield: the app
+  /// writes this when, and only when, it arms a gate window, so a wake with
+  /// nothing here is a stale schedule and the extension does nothing. Optional
+  /// so a state file written by an older build still decodes, with the gate
+  /// half simply absent.
+  let pendingGateDetail: String?
+
+  init(
+    otherReasonWantsShield: Bool,
+    reason: String,
+    untilIso: String?,
+    detail: String?,
+    pendingGateDetail: String? = nil
+  ) {
+    self.otherReasonWantsShield = otherReasonWantsShield
+    self.reason = reason
+    self.untilIso = untilIso
+    self.detail = detail
+    self.pendingGateDetail = pendingGateDetail
+  }
 }
 
 /// A threshold that fired, waiting to be turned into a task.

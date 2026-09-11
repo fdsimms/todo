@@ -13,6 +13,8 @@ const mockBridge = {
   setShieldState: jest.fn(() => true),
   schedulePenaltyExpiry: jest.fn(() => true),
   cancelPenaltyExpiry: jest.fn(() => true),
+  scheduleGateWindow: jest.fn(() => true),
+  cancelGateWindow: jest.fn(() => true),
 };
 let mockBridgeOpen = true;
 jest.mock('../utils/screenTimeBridge', () => ({
@@ -50,6 +52,7 @@ const state = (over: Partial<AppShieldState> = {}): AppShieldState => ({
   penaltyReason: null,
   gateEnabled: false,
   gateTitles: [],
+  pendingGate: null,
   now: NOW,
   ...over,
 });
@@ -194,6 +197,7 @@ describe('what syncAppShield leaves behind for the extension', () => {
       otherReasonWantsShield: false,
       reason: 'penalty',
       untilIso: LATER,
+      pendingGateDetail: null,
       detail: 'Morning walk',
     });
   });
@@ -222,6 +226,7 @@ describe('what syncAppShield leaves behind for the extension', () => {
       reason: 'none',
       untilIso: null,
       detail: null,
+      pendingGateDetail: null,
     });
   });
 
@@ -296,5 +301,69 @@ describe('a gate', () => {
     expect(mockBridge.applyShield).toHaveBeenCalledTimes(1);
     expect(mockBridge.schedulePenaltyExpiry).not.toHaveBeenCalled();
     expect(mockBridge.cancelPenaltyExpiry).toHaveBeenCalledTimes(1);
+  });
+});
+
+describe('the gate window it arms for the app being closed', () => {
+  const SOON = new Date('2026-08-22T15:00:00.000Z');
+
+  it('arms a window at the moment the next gate goes live', () => {
+    syncAppShield(state({
+      gateEnabled: true,
+      pendingGate: { liveAt: SOON, titles: ['Morning walk'] },
+    }));
+    expect(mockBridge.scheduleGateWindow).toHaveBeenCalledWith(
+      SOON.toISOString(), '2026-08-22T16:00:00.000Z',
+    );
+    // The extension's whole permission to raise a shield, written with the
+    // window and never without it.
+    expect(mockBridge.setShieldState).toHaveBeenCalledWith(expect.objectContaining({
+      pendingGateDetail: "Morning walk isn't done yet. Finish it in dundundun to unblock.",
+    }));
+  });
+
+  it('arms nothing with the feature switched off', () => {
+    syncAppShield(state({
+      gateEnabled: false,
+      pendingGate: { liveAt: SOON, titles: ['Morning walk'] },
+    }));
+    expect(mockBridge.scheduleGateWindow).not.toHaveBeenCalled();
+    expect(mockBridge.cancelGateWindow).toHaveBeenCalled();
+    expect(mockBridge.setShieldState).toHaveBeenCalledWith(expect.objectContaining({
+      pendingGateDetail: null,
+    }));
+  });
+
+  it('disarms whatever was armed once nothing is pending', () => {
+    // A gate since completed, deferred or ticked off leaves a window behind
+    // that would otherwise raise a shield for it at the old time.
+    syncAppShield(state({ gateEnabled: true, pendingGate: null }));
+    expect(mockBridge.cancelGateWindow).toHaveBeenCalled();
+    expect(mockBridge.setShieldState).toHaveBeenCalledWith(expect.objectContaining({
+      pendingGateDetail: null,
+    }));
+  });
+
+  it('arms nothing for a gate further out than the horizon', () => {
+    const weeksOut = new Date('2026-09-22T06:00:00.000Z');
+    syncAppShield(state({
+      gateEnabled: true,
+      pendingGate: { liveAt: weeksOut, titles: ['Morning walk'] },
+    }));
+    expect(mockBridge.scheduleGateWindow).not.toHaveBeenCalled();
+    expect(mockBridge.setShieldState).toHaveBeenCalledWith(expect.objectContaining({
+      pendingGateDetail: null,
+    }));
+  });
+
+  it('leaves a pending gate out of what is blocking right now', () => {
+    // The window is for later. Nothing is in the way yet, so the apps stay
+    // open — arming must never be the same thing as blocking.
+    syncAppShield(state({
+      gateEnabled: true,
+      pendingGate: { liveAt: SOON, titles: ['Morning walk'] },
+    }));
+    expect(mockBridge.applyShield).not.toHaveBeenCalled();
+    expect(mockBridge.clearShield).toHaveBeenCalled();
   });
 });

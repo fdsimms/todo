@@ -98,6 +98,10 @@ jest.mock('../utils/notifications', () => ({
 jest.mock('../utils/widgetSync', () => ({
   writeWidgetSnapshotNow: () => { mockCalls.push('writeWidgetSnapshot'); },
 }));
+jest.mock('../utils/appShieldReconcile', () => ({
+  reconcileAppShield: () => { mockCalls.push('reconcileAppShield'); return null; },
+  gateTitlesNow: () => [],
+}));
 
 import * as TaskManager from 'expo-task-manager';
 import { runBackgroundRefresh, BACKGROUND_REFRESH_TASK } from '../utils/backgroundRefresh';
@@ -166,6 +170,16 @@ describe('runBackgroundRefresh', () => {
     // and a snapshot before them would describe the old list.
     expect(mockCalls.indexOf('rescheduleAllReminders')).toBeGreaterThan(mockCalls.indexOf('checkBirthdayTasks'));
     expect(mockCalls.indexOf('writeWidgetSnapshot')).toBeGreaterThan(mockCalls.indexOf('rescheduleAllReminders'));
+  });
+
+  it('reconciles the app shield after the passes, so a block charged while closed applies', () => {
+    runBackgroundRefresh();
+    // The sweep inside the passes is what charges a penalty, and the day roll
+    // is what makes a gate task due. Until this ran here, both wrote a block
+    // nothing applied: the reconciler was a React hook, so the shield waited
+    // for a foreground the block existed to make less appealing.
+    expect(mockCalls).toContain('reconcileAppShield');
+    expect(mockCalls.indexOf('reconcileAppShield')).toBeGreaterThan(mockCalls.indexOf('sweepTaskPenalties'));
   });
 
   it('opens the database on a cold background launch, where nothing has', () => {
