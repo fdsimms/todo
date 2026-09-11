@@ -66,6 +66,13 @@ interface Props {
   slot: MealSlot | null;
   /** The logical day being logged, so a backdated scan lands where it is shown. */
   at: Date;
+  /**
+   * The planned meal these entries are logging, carried onto each one — the
+   * same link `FoodLogEntrySheet` writes for the caller that has one. Omitted
+   * by every caller scanning a food on its own, which is why the store's own
+   * field defaults to null rather than this prop defaulting to it.
+   */
+  mealPlanEntryId?: string | null;
   onClose: () => void;
 }
 
@@ -74,7 +81,7 @@ type Answer =
   | { kind: 'choice'; servings: number; label: string }
   | { kind: 'typed'; text: string };
 
-export function ScanPortionSheet({ visible, foods, slot, at, onClose }: Props) {
+export function ScanPortionSheet({ visible, foods, slot, at, mealPlanEntryId, onClose }: Props) {
   const colors = useColors();
   const styles = useMemo(() => makeStyles(colors), [colors]);
   const addEntry = useFoodLogStore(s => s.addEntry);
@@ -150,6 +157,7 @@ export function ScanPortionSheet({ visible, foods, slot, at, onClose }: Props) {
         slot: chosenSlot,
         itemId: food.itemId,
         productId: food.productId,
+        mealPlanEntryId: mealPlanEntryId ?? null,
         at,
       });
     }

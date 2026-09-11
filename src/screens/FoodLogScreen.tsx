@@ -9,7 +9,7 @@ import { addDays } from 'date-fns/addDays';
 import { format } from 'date-fns/format';
 import { useColors } from '../theme/ThemeContext';
 import { flattenOverlay, font, fontWeight, iconSize, interaction, radius, spacing, type Colors } from '../theme';
-import { MEAL_SLOTS, MEAL_SLOT_ICONS, MEAL_SLOT_LABELS, type FoodLogEntry, type GroceryItem, type MealSlot } from '../types';
+import { MEAL_SLOTS, MEAL_SLOT_ICONS, MEAL_SLOT_LABELS, type FoodLogEntry, type MealSlot } from '../types';
 import { useFoodLogStore } from '../store/useFoodLogStore';
 import { dayKeyOf, dayKeyToDate, getCurrentDayStart } from '../utils/dateUtils';
 import {
@@ -25,16 +25,9 @@ import { useSettingsStore } from '../store/useSettingsStore';
 import { NUTRIENT_KEYS, type NutrientKey } from '../types';
 import { haptics } from '../utils/haptics';
 import { animateLayout } from '../utils/layoutAnimation';
-import { useGroceryStore } from '../store/useGroceryStore';
-import { nutritionFor } from '../utils/foodNutrition';
-import { describeProduct } from '../utils/groceryProduct';
-import { BarcodeScanSheet, type ScanProductDraft } from '../components/BarcodeScanSheet';
-import { ScanPortionSheet, type ScannedFood } from '../components/ScanPortionSheet';
-import { NutritionPanelSheet } from '../components/NutritionPanelSheet';
+import { ScanToLogFlow } from '../components/ScanToLogFlow';
 import { EstimateMealSheet } from '../components/EstimateMealSheet';
 import { useAiRoute } from '../hooks/useOnDeviceAi';
-import type { ReceiptAddDraft } from '../components/ReceiptImportSheet';
-import type { ScannedGtinLink } from '../utils/scanResolve';
 import { EmptyState } from '../components/EmptyState';
 import { HubPills } from '../components/HubPills';
 import { InlineAction } from '../components/InlineAction';
@@ -71,8 +64,9 @@ import { useRowSelection } from '../hooks/useRowSelection';
  *
  * **A barcode is the third way in**, beside the picker and a finished meal. It
  * answers what a thing is and nothing about how much of it was eaten, so the
- * scan hands over to `ScanPortionSheet` rather than logging anything itself —
- * see `handleScanApply`.
+ * scan hands over to an amount question rather than logging anything itself.
+ * The whole of it is `ScanToLogFlow`, mounted here and by `LogMealEntrySheet`
+ * — the header's scan button and the picker sheet's both open the same one.
  *
  * **The day is one draggable list, same shape Today's category sections use.**
  * A meal header and its entries are all one flat `FoodLogListItem[]` handed
@@ -99,13 +93,6 @@ export function FoodLogScreen() {
   const moveEntries = useFoodLogStore(s => s.moveEntries);
   const reorderEntries = useFoodLogStore(s => s.reorderEntries);
   const nutritionTargets = useSettingsStore(useShallow(s => s.nutritionTargets));
-  const items = useGroceryStore(useShallow(s => s.items));
-  const ensureCatalogItem = useGroceryStore(s => s.ensureCatalogItem);
-  const addProduct = useGroceryStore(s => s.addProduct);
-  const setItemNutrition = useGroceryStore(s => s.setItemNutrition);
-  const setProductNutrition = useGroceryStore(s => s.setProductNutrition);
-  const linkScannedGtins = useGroceryStore(s => s.linkScannedGtins);
-  const gtinProductFor = useGroceryStore(s => s.gtinProductFor);
   // Gated so the button can't exist for a call that would refuse — the pairing
   // rule `aiRouting.ts` states. This feature has no on-device engine, so the
   // route is 'claude' or 'unavailable' and nothing renders for the second.
@@ -117,16 +104,6 @@ export function FoodLogScreen() {
   const [scanOpen, setScanOpen] = useState(false);
   const [estimateOpen, setEstimateOpen] = useState(false);
   const [seedRecipeId, setSeedRecipeId] = useState<string | null>(null);
-  const [scanned, setScanned] = useState<ScannedFood[]>([]);
-  /**
-   * The scanned food whose label is being typed or photographed in, or null.
-   *
-   * Held here rather than pushed onto the grocery screens because this is where
-   * the person hit the wall: a barcode that carried no figures is discovered
-   * while logging, and sending them off to find the catalog row is how a
-   * two-tap fix becomes an errand.
-   */
-  const [panelFor, setPanelFor] = useState<{ itemId: string; productId: string | null; name: string } | null>(null);
   // Plain useRowSelection, same as Templates/Projects/People: there is
   // nothing recurrence- or meal-plan-aware to reuse useTaskSelection's delete
   // flow for, only a confirm.
@@ -220,129 +197,6 @@ export function FoodLogScreen() {
     });
   }, [exitSelection, todayKey]);
 
-  /**
-   * A scan session, confirmed. Resolved to catalog rows, then handed on.
-   *
-   * **Nothing is logged here.** A barcode says what a thing is and never how
-   * much of it was eaten, so this does the resolving a code *can* answer and
-   * `ScanPortionSheet` asks the one it can't. Defaulting to a serving would put
-   * a number nobody stated into a day's totals.
-   *
-   * The catalog write is deliberately `ensureCatalogItem` rather than
-   * `addByName`, which is the same restraint `KitchenScreen`'s own scan handler
-   * takes: eating something is not a plan to buy it, so a row minted here
-   * arrives off the list. Everything else is `GroceryScreen.handleScanApply`'s
-   * sequence and has to stay in that order — the boxes first, so a link finds
-   * one, and `linkScannedGtins` last, since that is what carries the label
-   * panel off the barcode cache and onto the box this is about to read.
-   *
-   * A row whose panel is still null after all that is dropped rather than
-   * offered: a source that stated no nutrients has nothing a total could use,
-   * and an entry built from it would record a name and no figures.
-   */
-  const handleScanApply = (
-    itemIds: string[],
-    toAdd: ReceiptAddDraft[],
-    _frozenItemIds: ReadonlySet<string>,
-    products: ScanProductDraft[],
-    gtinLinks: ScannedGtinLink[]
-  ) => {
-    // Keyed rather than looked up in `items`, which is a render snapshot: a row
-    // `ensureCatalogItem` mints two lines down isn't in it, and reading through
-    // it would silently drop exactly the rows this scan just created.
-    const resolved = new Map<string, GroceryItem>();
-    for (const id of itemIds) {
-      const item = items.find(i => i.id === id);
-      if (item) resolved.set(id, item);
-    }
-    const mintedLinks: ScannedGtinLink[] = [];
-    const packSizes = new Map<string, string>();
-    for (const product of products) {
-      if (product.packSize) packSizes.set(product.itemId, product.packSize);
-    }
-    for (const draft of toAdd) {
-      const item = draft.existingItemId
-        ? items.find(i => i.id === draft.existingItemId)
-        // Same flag `GroceryScreen.handleScanApply` passes, for the same row:
-        // a name the sheet proposed and nobody edited is the source's words.
-        : ensureCatalogItem(draft.name, { nameFromScan: draft.nameFromScan === true });
-      if (!item) continue;
-      const id = item.id;
-      resolved.set(id, item);
-      if (draft.quantity) packSizes.set(id, draft.quantity);
-      if (!draft.existingItemId && draft.gtin) {
-        // Brand-only, matching what a minted row is named after: there is no
-        // existing item name left for a variant to be the residue of.
-        if (draft.brand) addProduct(id, { brand: draft.brand, variant: null });
-        mintedLinks.push({ gtin: draft.gtin, itemId: id, brand: draft.brand, variant: null });
-      }
-    }
-    for (const product of products) {
-      addProduct(product.itemId, { brand: product.brand, variant: product.variant });
-    }
-    linkScannedGtins([...gtinLinks, ...mintedLinks]);
-
-    const gtinByItemId = new Map(
-      [...gtinLinks, ...mintedLinks].map(link => [link.itemId, link.gtin])
-    );
-    const foods: ScannedFood[] = [];
-    const unpanelled: { itemId: string; productId: string | null; name: string }[] = [];
-    for (const [id, item] of resolved) {
-      // The box this barcode names, which `linkScannedGtins` has just given the
-      // panel to. Its own figures outrank the catalog row's, for the reason
-      // `nutritionFor` gives: a specific pot is a better answer than the food.
-      const linked = gtinProductFor(gtinByItemId.get(id) ?? null);
-      const box = linked?.itemId === id ? linked : null;
-      const panel = nutritionFor(item, box);
-      // Nothing to log, rather than a panel written somewhere it doesn't
-      // belong. A scanned code whose source stated figures but no brand has no
-      // box to hang them on, and filing a specific loaf's label onto the "Bread"
-      // row would make every future helping of bread claim that loaf's numbers.
-      // Refuse rather than approximate, same as everywhere else in this tree.
-      if (!panel) {
-        // Remembered rather than merely skipped: this is the exact moment a
-        // person learns the barcode carried no figures, and the packet is
-        // still in their hand. See `unpanelled` below.
-        unpanelled.push({ itemId: id, productId: box?.id ?? null, name: item.name });
-        continue;
-      }
-      const boxWords = describeProduct(box);
-      foods.push({
-        key: id,
-        label: boxWords ? `${item.name}, ${boxWords}` : item.name,
-        panel,
-        packSize: packSizes.get(id) ?? null,
-        itemId: id,
-        productId: box?.id ?? null,
-      });
-    }
-    setScanOpen(false);
-    if (foods.length === 0) {
-      // The packet is in their hand and it has the figures printed on it, so
-      // the honest answer here is an offer rather than only a refusal. It takes
-      // the first, since the panel sheet edits one food and doing several means
-      // doing them one at a time regardless — the copy says so when there are
-      // more.
-      const first = unpanelled[0];
-      const rest = unpanelled.length - 1;
-      Alert.alert(
-        'No nutrition on it yet',
-        `A food can be logged once its figures are the food's own rather than a guess.${
-          first ? ` You can read them off the packet for ${first.name}${
-            rest > 0 ? `, then the other ${rest === 1 ? 'one' : `${rest}`} the same way` : ''
-          }.` : ''
-        }`,
-        first
-          ? [
-            { text: 'Not now', style: 'cancel' },
-            { text: 'Add its label', onPress: () => setPanelFor(first) },
-          ]
-          : undefined,
-      );
-      return;
-    }
-    setScanned(foods);
-  };
 
   // The "…" on a row is a real menu, not a synonym for delete: an accidental
   // tap must not open a destructive confirm with nothing to say what's about
@@ -695,27 +549,13 @@ export function FoodLogScreen() {
         seedRecipeId={seedRecipeId}
         onClose={() => { setAddOpen(false); setSeedRecipeId(null); }}
         onEstimate={estimateRoute !== 'unavailable' ? () => { setAddOpen(false); setEstimateOpen(true); } : undefined}
+        onScan={() => { setAddOpen(false); setScanOpen(true); }}
       />
-      <BarcodeScanSheet
+      <ScanToLogFlow
         visible={scanOpen}
-        context="log"
+        slot={addingSlot}
+        at={loggingAt}
         onClose={() => setScanOpen(false)}
-        onApply={handleScanApply}
-      />
-      <NutritionPanelSheet
-        visible={panelFor !== null}
-        foodName={panelFor?.name ?? ''}
-        nutrition={null}
-        onClose={() => setPanelFor(null)}
-        onSave={panel => {
-          if (!panelFor) return;
-          // Onto the box when the scan named one, onto the catalog row when it
-          // didn't — the same precedence `nutritionFor` reads them back in, so
-          // a specific packet's figures never become every future helping of
-          // the generic food's.
-          if (panelFor.productId) setProductNutrition(panelFor.productId, panel);
-          else setItemNutrition(panelFor.itemId, panel);
-        }}
       />
       <EstimateMealSheet
         visible={estimateOpen}
@@ -730,13 +570,6 @@ export function FoodLogScreen() {
           setSeedRecipeId(recipeId);
           setAddOpen(true);
         }}
-      />
-      <ScanPortionSheet
-        visible={scanned.length > 0}
-        foods={scanned}
-        slot={addingSlot}
-        at={loggingAt}
-        onClose={() => setScanned([])}
       />
       <NutrientContributorsSheet
         visible={contributorsKey !== null}
