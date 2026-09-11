@@ -343,7 +343,7 @@ standalone stopwatch writes through — so the corrected number gets the same
 "Timed" label on the row and in the Logbook, and the same in-place correction
 affordance, regardless of which one measured it.
 
-Three gates, and each exists because the naive version is wrong in a specific
+Four gates, and each exists because the naive version is wrong in a specific
 way:
 
 - **Offered only from this Done tap, never from `syncWithTasks`.** A task
@@ -363,6 +363,17 @@ way:
   reads a chain step's own estimate ahead of the task-level fields
   `applyMeasuredTime` writes, so applying it there would change nothing a
   reader ever sees — a silent no-op is worse than not offering at all.
+- **Skipped on a genuine one-off** (`measuredTimeWorthSuggesting` in
+  `effort.ts`). A recurring task's estimate seeds every future occurrence,
+  and a task mid-chain with more steps ahead still reads the task-level
+  estimate for those steps, so correcting it now pays off later. A plain
+  `recurrenceType: 'none'` task with no further chain step is completed once
+  and never scheduled again — there's no future reader for the correction,
+  so the interrupt would be pure friction for zero payoff. A series date
+  (`seriesId` set) gets the same answer from a different angle: it's its own
+  row, and a plain estimate patch doesn't fan out to the set's other dates
+  the way a `scope: 'series'` edit does, so the sibling rows never see it
+  either.
 
 - **A real miss, not any miss** (`measuredTimeDiffersEnough` in `effort.ts`).
   Unlike `applyMeasuredTime` itself — which has no threshold, because a
