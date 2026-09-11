@@ -262,9 +262,9 @@ export function WeightScreen() {
                   file note above for why this screen stops here. */}
               <Text style={styles.finding}>
                 {formatWeight(change.first.kilograms, unit)} on{' '}
-                {format(dayKeyToDate(change.first.dayKey), 'd MMM')}, and{' '}
+                {format(dayKeyToDate(change.first.dayKey), 'MMM d')}, and{' '}
                 {formatWeight(change.last.kilograms, unit)} on{' '}
-                {format(dayKeyToDate(change.last.dayKey), 'd MMM')}.
+                {format(dayKeyToDate(change.last.dayKey), 'MMM d')}.
               </Text>
               <Text style={styles.chartCaption}>
                 From {change.readings} weigh-ins. Recorded in Apple Health.

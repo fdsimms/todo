@@ -20,7 +20,7 @@ import {
   type FoodLogListItem,
 } from '../utils/foodLog';
 import { NUTRIENT_LABEL } from '../utils/foodNutrition';
-import { targetProgress } from '../utils/nutritionTargets';
+import { describeAgainstTarget, targetProgress } from '../utils/nutritionTargets';
 import { useSettingsStore } from '../store/useSettingsStore';
 import { NUTRIENT_KEYS, type NutrientKey } from '../types';
 import { haptics } from '../utils/haptics';
@@ -41,6 +41,8 @@ import { InlineAction } from '../components/InlineAction';
 import { ScreenHeader, type ScreenHeaderAction } from '../components/ScreenHeader';
 import { FoodLogEntrySheet } from '../components/FoodLogEntrySheet';
 import { NutrientContributorsSheet } from '../components/NutrientContributorsSheet';
+import { NutritionTargetsSheet } from '../components/NutritionTargetsSheet';
+import { WhenPicker } from '../components/WhenPicker';
 import { ReorderableList } from '../components/ReorderableList';
 import { SwipeableRow } from '../components/SwipeableRow';
 import { SelectionDot } from '../components/SelectionDot';
@@ -140,6 +142,13 @@ export function FoodLogScreen() {
   // Which nutrient's contributors are open in the breakdown sheet, or null
   // while it's closed.
   const [contributorsKey, setContributorsKey] = useState<NutrientKey | null>(null);
+  // The day picker, opened from the date in the header. The arrows step one
+  // day; reaching a day last month through them alone was twenty-odd taps.
+  const [dayPickerOpen, setDayPickerOpen] = useState(false);
+  // Daily targets, which drive the bars on this card and used to be reachable
+  // only from Settings, Kitchen — a page away from the only figures they mean
+  // anything against.
+  const [targetsOpen, setTargetsOpen] = useState(false);
 
   useEffect(() => {
     loadRange(dayKey, dayKey);
@@ -386,15 +395,18 @@ export function FoodLogScreen() {
   // bar — same arithmetic every other bulk-selecting list uses.
   const selectionListPadding = tabBarHeight + spacing.sm + bulkBarHeight + spacing.sm;
 
+  // Every nutrient the day actually stated, and the two the card leads with.
+  // Absent stays absent in both — see foodLogTotals.
+  const statedKeys = NUTRIENT_KEYS.filter(k => totals.total[k] !== undefined);
   const shownKeys = allNutrients
-    ? NUTRIENT_KEYS.filter(k => totals.total[k] !== undefined)
-    : NUTRIENT_KEYS.filter(k => totals.total[k] !== undefined && (k === 'calorieKcal' || k === 'proteinG'));
+    ? statedKeys
+    : statedKeys.filter(k => k === 'calorieKcal' || k === 'proteinG');
 
   return (
     <SafeAreaView style={styles.root} edges={['top']}>
       <ScreenHeader
         title="Food log"
-        overline={format(dayDate, 'EEEE, d MMMM')}
+        overline={format(dayDate, 'EEEE, MMMM d')}
         subtitle={
           dayEntries.length === 0
             ? undefined
@@ -417,6 +429,11 @@ export function FoodLogScreen() {
             onPress: () => { haptics.tap(); setAddingSlot(null); setScanOpen(true); },
             accessibilityLabel: 'Scan a barcode to log',
           },
+          {
+            icon: 'flag-outline',
+            onPress: () => { haptics.tap(); setTargetsOpen(true); },
+            accessibilityLabel: 'Daily targets',
+          },
           // Plain logging moved to the FAB below, same as every other
           // primary-add list screen — selecting is reached by swiping a row.
         ]}
@@ -436,12 +453,23 @@ export function FoodLogScreen() {
         <TouchableOpacity
           style={styles.dayNavToday}
           activeOpacity={interaction.activeOpacity}
-          disabled={isToday}
-          onPress={() => { haptics.tap(); setDayKey(todayKey); }}
+          // On today it opens the picker, since there is no "back" to offer and
+          // the row would otherwise be a disabled label. On any other day a tap
+          // comes back, which is the one-tap answer to the arrows having
+          // carried you off somewhere, and the picker is a long press away.
+          // The label still says which of the two you are on.
+          onPress={() => {
+            haptics.tap();
+            if (isToday) setDayPickerOpen(true);
+            else setDayKey(todayKey);
+          }}
+          onLongPress={() => { haptics.tap(); setDayPickerOpen(true); }}
+          delayLongPress={interaction.delayLongPress}
           accessibilityRole="button"
-          accessibilityLabel="Back to today"
+          accessibilityLabel={isToday ? 'Today. Pick a day' : 'Back to today'}
+          accessibilityHint={isToday ? undefined : 'Press and hold to pick a day'}
         >
-          <Text style={[styles.dayNavTodayText, isToday && styles.dayNavTodayTextOff]}>
+          <Text style={styles.dayNavTodayText}>
             {isToday ? 'Today' : 'Back to today'}
           </Text>
         </TouchableOpacity>
@@ -492,18 +520,21 @@ export function FoodLogScreen() {
                   >
                     <Text style={styles.totalLabel}>{NUTRIENT_LABEL[key].label}</Text>
                     <View style={styles.totalRight}>
+                      {/* The target, when there is one, and nothing suggested
+                          when there isn't — see nutritionTargets.ts. Reported
+                          flat beside the figure rather than as a percentage or
+                          a verdict: counts, never a score.
+
+                          `describeAgainstTarget` writes both halves rather than
+                          this file writing one and that module the other: the
+                          hand-rolled pair here rounded the total with
+                          `Math.round` and the target with `toLocaleString`, so
+                          a heavy day read "1840 of 2,000 cal" — two number
+                          formats on one line. */}
                       <Text style={styles.totalValue}>
-                        {Math.round(totals.total[key] as number)}{nutritionTargets[key] !== undefined || NUTRIENT_LABEL[key].unit === 'cal' ? '' : NUTRIENT_LABEL[key].unit}
+                        {describeAgainstTarget(key, totals.total[key], nutritionTargets)
+                          ?? `${Math.round(totals.total[key] as number).toLocaleString()}${NUTRIENT_LABEL[key].unit === 'cal' ? '' : NUTRIENT_LABEL[key].unit}`}
                       </Text>
-                      {/* The target, when there is one, and nothing suggested when
-                          there isn't — see nutritionTargets.ts. Reported flat
-                          beside the figure rather than as a percentage or a
-                          verdict: counts, never a score. */}
-                      {nutritionTargets[key] !== undefined && (
-                        <Text style={styles.totalTarget}>
-                          of {nutritionTargets[key]!.toLocaleString()}{NUTRIENT_LABEL[key].unit === 'cal' ? ' cal' : NUTRIENT_LABEL[key].unit}
-                        </Text>
-                      )}
                       {/* What the figure speaks for. Without it a total built from
                           three of seven entries reads as the day's — and against a
                           target it would overstate the day rather than merely
@@ -531,11 +562,17 @@ export function FoodLogScreen() {
                   )}
                   </View>
                 ))}
-                <InlineAction
-                  label={allNutrients ? 'Show less' : 'Show every nutrient'}
-                  variant="neutral"
-                  onPress={() => { haptics.tap(); animateLayout(); setAllNutrients(v => !v); }}
-                />
+                {/* Withheld when expanding would add nothing. The list is
+                    filtered to nutrients the day actually stated, so on a day
+                    of calories-and-protein-only entries the toggle used to sit
+                    there doing visibly nothing when tapped. */}
+                {(allNutrients || statedKeys.length > shownKeys.length) && (
+                  <InlineAction
+                    label={allNutrients ? 'Show less' : 'Show every nutrient'}
+                    variant="neutral"
+                    onPress={() => { haptics.tap(); animateLayout(); setAllNutrients(v => !v); }}
+                  />
+                )}
               </View>
             }
             ListFooterComponent={
@@ -676,6 +713,28 @@ export function FoodLogScreen() {
         entries={dayEntries}
         onClose={() => setContributorsKey(null)}
       />
+      <NutritionTargetsSheet
+        visible={targetsOpen}
+        onClose={() => setTargetsOpen(false)}
+      />
+      {/* The app's own date picker, as CLAUDE.md's note on it says to reach for
+          any time a feature asks "what date?". Time of day and Suggest are off:
+          this picks which day to read, not a task's schedule. */}
+      <WhenPicker
+        visible={dayPickerOpen}
+        value={dayDate}
+        title="Which day"
+        showTimeOfDay={false}
+        showSuggest={false}
+        onConfirm={date => {
+          setDayPickerOpen(false);
+          if (!date) return;
+          haptics.tap();
+          exitSelection();
+          setDayKey(dayKeyOf(date));
+        }}
+        onCancel={() => setDayPickerOpen(false)}
+      />
     </SafeAreaView>
   );
 }
@@ -693,7 +752,6 @@ function makeStyles(colors: Colors) {
     dayNavButton: { padding: spacing.sm },
     dayNavToday: { paddingVertical: spacing.sm, paddingHorizontal: spacing.md },
     dayNavTodayText: { color: colors.accent, fontSize: font.sm },
-    dayNavTodayTextOff: { color: colors.textSecondary },
     scrollContent: { flexGrow: 1, paddingHorizontal: spacing.md },
     totalsCard: {
       backgroundColor: colors.bgSecondary,
@@ -704,7 +762,6 @@ function makeStyles(colors: Colors) {
     },
     totalBlock: { gap: spacing.xs },
     totalRow: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between' },
-    totalTarget: { color: colors.textSecondary, fontSize: font.sm },
     targetTrack: { height: 4, borderRadius: 2, backgroundColor: colors.separator, overflow: 'hidden' },
     targetFill: { height: '100%', borderRadius: 2, backgroundColor: colors.accent },
     totalLabel: { color: colors.text, fontSize: font.sm },
@@ -810,7 +867,7 @@ function FoodLogRow({
           onPress={onOpenMenu}
           hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
           accessibilityRole="button"
-          accessibilityLabel={`More options for ${entry.label}`}
+          accessibilityLabel={`Forget ${entry.label}`}
         >
           <Ionicons name="ellipsis-horizontal" size={iconSize.sm} color={colors.textTertiary} />
         </TouchableOpacity>

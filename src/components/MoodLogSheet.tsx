@@ -43,7 +43,7 @@ function noonOn(day: Date): Date {
 
 /** "Today" for the common case, an actual date once you have moved off it. */
 function dayLabel(day: Date): string {
-  return isSameDay(day, getLogicalToday()) ? 'Today' : format(day, 'EEE d MMM');
+  return isSameDay(day, getLogicalToday()) ? 'Today' : format(day, 'EEE, MMM d');
 }
 
 interface Props {

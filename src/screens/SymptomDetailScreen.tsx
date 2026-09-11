@@ -92,7 +92,7 @@ export function SymptomDetailScreen() {
       out.push({
         key: dayKey,
         label: format(date, 'EEEEE'),
-        a11y: `${format(date, 'EEEE d MMMM')}: ${severity === null ? 'not logged' : severityLabel(severity)}`,
+        a11y: `${format(date, 'EEEE, MMMM d')}: ${severity === null ? 'not logged' : severityLabel(severity)}`,
         severity,
       });
     }
@@ -181,7 +181,7 @@ export function SymptomDetailScreen() {
   const todayKey = dayKeyOf(getCurrentDayStart());
   const lastLabel = stat.lastDayKey === todayKey
     ? 'Today'
-    : format(dayKeyToDate(stat.lastDayKey), 'd MMM');
+    : format(dayKeyToDate(stat.lastDayKey), 'MMM d');
 
   return (
     <View style={[styles.container, { paddingTop: insets.top }]}>

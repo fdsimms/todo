@@ -165,7 +165,7 @@ export function LogWeightSheet({ visible, onClose }: Props) {
           label="Day"
           value={dayKeyOf(day) === dayKeyOf(getCurrentDayStart())
             ? 'Today'
-            : format(day, 'EEE d MMM')}
+            : format(day, 'EEE, MMM d')}
           onPress={() => { haptics.tap(); setPickerOpen(true); }}
         />
       </View>

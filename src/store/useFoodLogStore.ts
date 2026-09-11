@@ -297,7 +297,13 @@ export const useFoodLogStore = create<FoodLogStore>((set, get) => ({
     // Appended to the bottom of the day's one running order, same "max + 1"
     // rule Task.sortOrder and TaskGroup.sortOrder both stamp a new row with —
     // never 0, or a manual reorder would be re-shuffled by the next add.
-    const daySiblings = get().entries.filter(e => e.dayKey === dayKey);
+    //
+    // Read from SQLite rather than from `entries`, which holds only the loaded
+    // window: a meal logged from `LogMealPrompt` while the day view sits on
+    // another day would otherwise find no siblings at all, take 0, and tie with
+    // the day's first row — landing in the middle of a day it should have been
+    // appended to.
+    const daySiblings = dbGetFoodLogEntries(dayKey, dayKey);
     const sortOrder = daySiblings.length
       ? Math.max(...daySiblings.map(e => e.sortOrder)) + 1
       : 0;

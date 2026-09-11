@@ -317,7 +317,17 @@ export type FoodLogListItem =
  * case to account for the way Today's uncategorized group is.
  */
 export function resolveFoodLogDrop(items: readonly FoodLogListItem[]): FoodLogEntry[] {
-  let currentSlot: MealSlot | null = null;
+  // Seeded from the first header rather than from null, because a drop *can*
+  // land above every header: the list opens on one, and the gap above it is a
+  // real drop target. Starting at null re-filed that entry as unslotted, and
+  // since the loose run renders last, a row dragged to the very top of
+  // Breakfast reappeared at the bottom of the day under "Other". Today's own
+  // list dodges this by rendering its header-less group *first* (see
+  // `makeCategoryGroups`), which this one can't: "Other" is a catch-all rather
+  // than a time of day, so it belongs last. So the top gap joins the first
+  // section instead, which is what the gesture was asking for.
+  const firstHeader = items.find(item => item.type === 'header');
+  let currentSlot: MealSlot | null = firstHeader?.type === 'header' ? firstHeader.slot : null;
   let rank = 0;
   const resolved: FoodLogEntry[] = [];
   for (const item of items) {
@@ -402,6 +412,28 @@ export function describeFoodLogEntry(entry: FoodLogEntry): string {
   const parts: string[] = [];
   if (entry.quantity.trim()) parts.push(entry.quantity.trim());
   if (calories !== undefined) parts.push(`${Math.round(calories)} cal`);
-  if (entry.nutrition.source === 'estimated') parts.push('estimated');
+  parts.push(SOURCE_WORDS[entry.nutrition.source]);
   return parts.join(' · ');
 }
+
+/**
+ * How each provenance reads on a row.
+ *
+ * All four are named, not just `estimated`. The doc above says the row is the
+ * only place a person can tell these apart, and naming one of them left the
+ * other three indistinguishable — a transcription off a jar read exactly like
+ * a manufacturer's declared label, which is the distinction the record keeps
+ * `FoodNutrition.source` for in the first place.
+ *
+ * Plain phrases rather than the source's own name, since "fdc" and
+ * "openFoodFacts" are facts about where the app looked rather than about what
+ * the figures are. Nothing here ranks them: a panel typed off a packet in your
+ * hand is a perfectly good record. See `SourceMix` in `nutritionStats.ts`,
+ * which makes the same point at length about the same four.
+ */
+const SOURCE_WORDS: Record<FoodNutrition['source'], string> = {
+  openFoodFacts: 'from the label',
+  fdc: 'from a database',
+  manual: 'typed in',
+  estimated: 'estimated',
+};

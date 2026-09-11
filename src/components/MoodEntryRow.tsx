@@ -44,7 +44,7 @@ export function MoodEntryRow({ log, onPress, onLongPress, highlightSymptomKey, s
     showDate ? 'EEE d MMM, h:mm a' : 'h:mm a',
   );
   const spoken = [
-    showDate ? format(new Date(log.loggedAt), 'EEEE d MMMM') : null,
+    showDate ? format(new Date(log.loggedAt), 'EEEE, MMMM d') : null,
     format(new Date(log.loggedAt), 'h:mm a'),
     log.mood === null ? 'no mood recorded' : moodLabel(log.mood),
     highlighted ? `${highlighted.name}, ${severityLabel(highlighted.severity)}` : null,
