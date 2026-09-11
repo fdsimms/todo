@@ -73,9 +73,9 @@ import { useRowSelection } from '../hooks/useRowSelection';
  * see `handleScanApply`.
  *
  * **The day is one draggable list, same shape Today's category sections use.**
- * A meal header, its entries and its trailing "Add to this meal" row are all
- * one flat `FoodLogListItem[]` handed to `ReorderableList` (`listItems`
- * below), so a drag can carry an entry across a meal boundary in the same
+ * A meal header and its entries are all one flat `FoodLogListItem[]` handed
+ * to `ReorderableList` (`listItems` below), so a drag can carry an entry
+ * across a meal boundary in the same
  * gesture that reorders it — `resolveFoodLogDrop` is `resolveDrop`
  * (`taskGrouping.ts`) with tasks and categories swapped for entries and meal
  * slots. Bulk selection is the same `useRowSelection` + swipe-to-select +
@@ -161,17 +161,16 @@ export function FoodLogScreen() {
   const sections = useMemo(() => foodLogSections(dayEntries), [dayEntries]);
   const totals = useMemo(() => foodLogTotals(dayEntries), [dayEntries]);
 
-  // The flat row list ReorderableList actually drags — a header and a
-  // trailing "Add to this meal" row bookend each section's entries, same
-  // shape `CategoryListItem` gives Today's own sections. Only 'entry' rows
-  // are ever handed a drag handle (see renderItem below); the other two ride
-  // along as fixed landmarks a drop is resolved against.
+  // The flat row list ReorderableList actually drags — a header opens each
+  // section's entries, same shape `CategoryListItem` gives Today's own
+  // sections. Only 'entry' rows are ever handed a drag handle (see renderItem
+  // below); the header rides along as a fixed landmark a drop is resolved
+  // against.
   const listItems = useMemo<FoodLogListItem[]>(() => {
     const out: FoodLogListItem[] = [];
     for (const section of sections) {
       out.push({ type: 'header', slot: section.slot });
       for (const entry of section.entries) out.push({ type: 'entry', entry });
-      out.push({ type: 'add', slot: section.slot });
     }
     return out;
   }, [sections]);
@@ -544,6 +543,7 @@ export function FoodLogScreen() {
             renderItem={({ item, drag, isActive }) => {
               if (item.type === 'header') {
                 const section = sections.find(s => s.slot === item.slot);
+                const slotLabel = item.slot ? MEAL_SLOT_LABELS[item.slot] : 'Other';
                 return (
                   <View style={styles.sectionHeader}>
                     <Ionicons
@@ -551,24 +551,18 @@ export function FoodLogScreen() {
                       size={iconSize.sm}
                       color={colors.textSecondary}
                     />
-                    <Text style={styles.sectionTitle}>
-                      {item.slot ? MEAL_SLOT_LABELS[item.slot] : 'Other'}
-                    </Text>
+                    <Text style={styles.sectionTitle}>{slotLabel}</Text>
                     {section && section.totals.total.calorieKcal !== undefined && (
                       <Text style={styles.sectionTotal}>
                         {Math.round(section.totals.total.calorieKcal)} cal
                       </Text>
                     )}
+                    <InlineAction
+                      icon="add"
+                      onPress={() => { haptics.tap(); setAddingSlot(item.slot); setAddOpen(true); }}
+                      accessibilityLabel={`Add to ${slotLabel}`}
+                    />
                   </View>
-                );
-              }
-              if (item.type === 'add') {
-                return (
-                  <InlineAction
-                    label="Add to this meal"
-                    style={styles.addToMeal}
-                    onPress={() => { haptics.tap(); setAddingSlot(item.slot); setAddOpen(true); }}
-                  />
                 );
               }
               return (
@@ -727,7 +721,6 @@ function makeStyles(colors: Colors) {
       textTransform: 'uppercase',
     },
     sectionTotal: { color: colors.textSecondary, fontSize: font.xs },
-    addToMeal: { marginTop: spacing.sm },
     entryRowSwipe: { borderRadius: radius.md, marginBottom: spacing.sm },
     entryRow: {
       flexDirection: 'row',

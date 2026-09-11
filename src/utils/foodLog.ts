@@ -295,15 +295,13 @@ export function foodLogSections(entries: readonly FoodLogEntry[]): FoodLogSectio
 }
 
 /**
- * One row of the day view's draggable list — a meal header, an entry, or the
- * "Add to this meal" row that follows a section's entries. Only `entry` rows
- * are ever handed a drag handle; the other two ride along as fixed landmarks,
- * same as Today's own section headers (see `CategoryListItem`).
+ * One row of the day view's draggable list — a meal header or an entry. Only
+ * `entry` rows are ever handed a drag handle; a header rides along as a fixed
+ * landmark, same as Today's own section headers (see `CategoryListItem`).
  */
 export type FoodLogListItem =
   | { type: 'header'; slot: MealSlot | null }
-  | { type: 'entry'; entry: FoodLogEntry }
-  | { type: 'add'; slot: MealSlot | null };
+  | { type: 'entry'; entry: FoodLogEntry };
 
 /**
  * What a drop hands back: each entry's new slot (the nearest header above it
@@ -322,7 +320,6 @@ export function resolveFoodLogDrop(items: readonly FoodLogListItem[]): FoodLogEn
   const resolved: FoodLogEntry[] = [];
   for (const item of items) {
     if (item.type === 'header') { currentSlot = item.slot; continue; }
-    if (item.type === 'add') continue;
     rank += 1;
     resolved.push({ ...item.entry, slot: currentSlot, sortOrder: rank });
   }
