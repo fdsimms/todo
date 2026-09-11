@@ -5,6 +5,7 @@ import { collectPlannedIngredients } from './mealPlanGroceries';
 import { normalizeScale, scaleQuantity } from './recipeScale';
 import { NO_STANDING_SWAPS, type StandingSwapMap } from './standingSwaps';
 import { resolvePluralKey } from './groceryPlural';
+import { onHandNameKeys } from './grocerySuggest';
 
 /**
  * What a recipe, or a week of planned meals, is likely to cost — the one place
@@ -156,7 +157,9 @@ export function estimateWeekCost(
   range: { startKey: string; endKey: string },
   swaps: StandingSwapMap = NO_STANDING_SWAPS
 ): CostEstimate | null {
-  const planned = collectPlannedIngredients(entries, recipesById, range, swaps);
+  const planned = collectPlannedIngredients(
+    entries, recipesById, range, swaps, onHandNameKeys(items, new Date())
+  );
   if (planned.length === 0) return null;
 
   const byKey = new Map(items.map(i => [i.nameKey, i]));

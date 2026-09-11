@@ -14,6 +14,7 @@ import { dayKeyOf } from '../utils/dateUtils';
 import { describeCookHistory, describePantryCoverage, describeRecipe, type PantryCoverage } from '../utils/recipeUtils';
 import { flattenRecipeIngredients, recipeMap, type FlatIngredient } from '../utils/recipeComponents';
 import { describeStandingSwap, standingSwapMap } from '../utils/standingSwaps';
+import { onHandNameKeys } from '../utils/grocerySuggest';
 import { describeLeftover, isPlannedPastKeepUntil, liveFreshnessOf } from '../utils/leftovers';
 import { convertQuantity } from '../utils/unitConvert';
 import {
@@ -475,7 +476,9 @@ export function SuggestMealsSheet({
 
   const previewGroups = useMemo(() => {
     if (!previewRecipe) return [];
-    const flat = flattenRecipeIngredients(previewRecipe, recipesById, undefined, standingSwaps);
+    // Live, not persisted — see recipeComponents.ts's ChoiceResolution.onHand.
+    const onHand = onHandNameKeys(groceryItems, new Date());
+    const flat = flattenRecipeIngredients(previewRecipe, recipesById, { onHand }, standingSwaps);
     const groups: { recipe: Recipe; items: FlatIngredient[] }[] = [];
     for (const item of flat) {
       let group = groups.find(g => g.recipe.id === item.recipe.id);
@@ -483,7 +486,7 @@ export function SuggestMealsSheet({
       group.items.push(item);
     }
     return groups;
-  }, [previewRecipe, recipesById, standingSwaps]);
+  }, [previewRecipe, recipesById, standingSwaps, groceryItems]);
 
   const openPreview = (recipe: Recipe) => { haptics.tap(); setPreviewRecipe(recipe); };
 

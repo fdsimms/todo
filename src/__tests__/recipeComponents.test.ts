@@ -730,6 +730,37 @@ describe('either/or ingredients', () => {
       .toEqual(['Tomatoes', 'Jalapeño']);
   });
 
+  it('defaults to whichever alternative is already on hand', () => {
+    const r = salsa();
+    expect(activeIngredients(r, { onHand: new Set(['jalapeño']) }).map(i => i.name))
+      .toEqual(['Tomatoes', 'Jalapeño']);
+    // No pantry match for either option: falls back to the first, exactly as
+    // with no onHand set at all.
+    expect(activeIngredients(r, { onHand: new Set(['habanero']) }).map(i => i.name))
+      .toEqual(['Tomatoes', 'Serrano']);
+  });
+
+  it('lets an explicit pick outrank what is on hand', () => {
+    const r = salsa();
+    expect(activeIngredients(r, { chosen: [r.ingredients[1].id], onHand: new Set(['jalapeño']) })
+      .map(i => i.name)).toEqual(['Tomatoes', 'Serrano']);
+  });
+
+  it('never lets onHand promote a component, even one whose name coincidentally matches', () => {
+    // A mixed group: an ingredient ("Corn tortillas") alternative to a
+    // component ("Tortillas de Maíz"). A component has no nameKey to check
+    // against a pantry, so a set that happens to contain the component's
+    // own name (lowercased) as a string must not be mistaken for a match —
+    // the ingredient side still wins, same as with no onHand at all.
+    const taco = recipe('r-taco', 'Fish tacos', {
+      ingredients: [ing('Fish'), ing('Corn tortillas', 'Tortillas')],
+      components: [link('r-tortillas', 'Tortillas de Maíz', 'Tortillas')],
+    });
+    const onHand = new Set(['tortillas de maíz']);
+    expect(activeIngredients(taco, { onHand }).map(i => i.name)).toEqual(['Fish', 'Corn tortillas']);
+    expect(activeComponents(taco, { onHand })).toEqual([]);
+  });
+
   it('keeps each alternative a clean catalog name — never the "or" string', () => {
     const r = salsa();
     // The point of the whole feature: what reaches the grocery list is a real
@@ -756,6 +787,37 @@ describe('either/or ingredients', () => {
     const r = salsa();
     expect(flattenRecipeIngredients(r, recipeMap([r]), { allOptions: true }).map(f => f.ingredient.name))
       .toEqual(['Tomatoes', 'Serrano', 'Jalapeño']);
+  });
+
+  it('names the on-hand option as active, and its own default for applyChoice', () => {
+    const r = salsa();
+    const groups = recipeChoiceGroups(r, recipeMap([r]), { onHand: new Set(['jalapeño']) });
+    const pepperGroup = groups.find(g => g.label === 'Pepper')!;
+    expect(pepperGroup.active.name).toBe('Jalapeño');
+    expect(pepperGroup.defaultId).toBe(r.ingredients[2].id);
+  });
+
+  it('re-tapping an already-explicit pick that disagrees with what is on hand stays explicit', () => {
+    const r = salsa();
+    // Explicitly Serrano, even though Jalapeño is what's on hand.
+    const groups = recipeChoiceGroups(r, recipeMap([r]), { chosen: [r.ingredients[1].id], onHand: new Set(['jalapeño']) });
+    const pepperGroup = groups.find(g => g.label === 'Pepper')!;
+    expect(pepperGroup.active.name).toBe('Serrano');
+    expect(pepperGroup.defaultId).toBe(r.ingredients[2].id);
+    // Re-picking Serrano must stay stored. Comparing against `active.id`
+    // (Serrano, since the explicit pick wins) would wrongly treat this as
+    // "picked its own current answer, so clear it" — the comparison has to
+    // be against `defaultId` (Jalapeño, computed with no regard for what's
+    // already chosen), which disagrees, so the pick stays explicit.
+    const result = applyChoice([r.ingredients[1].id], pepperGroup, r.ingredients[1].id);
+    expect(result).toEqual([r.ingredients[1].id]);
+  });
+
+  it('picking the on-hand default clears the answer, same as picking the first option would with nothing on hand', () => {
+    const r = salsa();
+    const groups = recipeChoiceGroups(r, recipeMap([r]), { onHand: new Set(['jalapeño']) });
+    const pepperGroup = groups.find(g => g.label === 'Pepper')!;
+    expect(applyChoice([], pepperGroup, r.ingredients[2].id)).toEqual([]);
   });
 
   it('poses the question through recipeChoiceGroups, components first', () => {

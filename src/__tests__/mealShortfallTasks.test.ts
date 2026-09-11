@@ -307,6 +307,18 @@ describe('mealShortfallRows', () => {
     const doubled = call(entry(TODAY, r.id, { recipeScale: 2 }), rows(r));
     expect(doubled?.[0].quantity).toBe('4');
   });
+
+  it('an unanswered either/or defaults to whichever alternative is already on hand', () => {
+    // The reported case: "firm tofu or extra-firm tofu", never answered on
+    // the entry, and the kitchen has the extra-firm kind — the task must not
+    // ask to buy the tofu the meal isn't actually going to use.
+    const r = recipe('Peanut butter tofu', [
+      ing('Firm tofu', { choiceGroup: 'Tofu' }),
+      ing('Extra firm tofu', { choiceGroup: 'Tofu' }),
+    ]);
+    const result = call(entry(TODAY, r.id), rows(r), [item({ name: 'Extra firm tofu', isStaple: true })]);
+    expect(result).toEqual([]);
+  });
 });
 
 describe('wantedMealShortfalls', () => {

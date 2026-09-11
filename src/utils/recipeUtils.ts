@@ -20,6 +20,7 @@ import { resolveOffsetDate } from './templateUtils';
 import { classifyPlanned, plannedIngredientsForRecipe } from './mealPlanGroceries';
 import { substitutesOnHand } from './itemSubs';
 import { varietyIndex } from './itemVarieties';
+import { onHandNameKeys } from './grocerySuggest';
 import { resolvePluralKey } from './groceryPlural';
 import { standingSwapMap } from './standingSwaps';
 import { formatDuration } from './effort';
@@ -606,8 +607,11 @@ export function pantryCoverageForRecipe(
   // than passed in so every caller of this — and of
   // `countLikelyInPantry` above it — gets the same answer without a new
   // argument each.
+  // Live, not persisted — an unresolved choice group counts toward coverage
+  // via whichever alternative is already on hand (see recipeComponents.ts's
+  // ChoiceResolution.onHand), the same rule the shopping read uses.
   const planned = plannedIngredientsForRecipe(
-    recipe, recipesById, undefined, 1, standingSwapMap(itemSubs, items)
+    recipe, recipesById, { onHand: onHandNameKeys(items, now) }, 1, standingSwapMap(itemSubs, items)
   );
   if (planned.length === 0) return { total: 0, catalogMatches: 0, probablyHave: 0, viaSubstitute: 0, percent: null };
 
@@ -1299,8 +1303,14 @@ function catalogCoverage(
   // Standing swaps applied, for the reason pantryCoverageForRecipe gives: this
   // is "how ready am I to cook this", and the answer is about the ingredients
   // this kitchen actually uses.
+  // Live, not persisted — an unresolved choice group defaults to whichever
+  // alternative is already on hand (see recipeComponents.ts's
+  // ChoiceResolution.onHand), so a dish this kitchen can already half-make
+  // under its alternate ingredient doesn't score as less ready than one
+  // scored under the option nobody has.
   const ingredients = flattenRecipeIngredients(
-    recipe, recipesById ?? new Map([[recipe.id, recipe]]), undefined, standingSwapMap(itemSubs, items)
+    recipe, recipesById ?? new Map([[recipe.id, recipe]]), { onHand: onHandNameKeys(items, now) },
+    standingSwapMap(itemSubs, items)
   ).map(f => f.ingredient);
   if (ingredients.length === 0) return { matched: 0, total: 0, coverage: 0, avgRecency: 0 };
   const byKey = new Map(items.map(i => [i.nameKey, i]));

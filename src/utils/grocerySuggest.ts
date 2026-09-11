@@ -549,6 +549,28 @@ export function probablyHaveReason(
 }
 
 /**
+ * The catalog's own nameKeys that are on hand right now — `probablyHaveReason`
+ * (the single owner of the "have it" opinion) run across every item and
+ * flattened to the join key recipe ingredients use, so a caller building a
+ * `ChoiceResolution.onHand` set for recipeComponents.ts doesn't need a second
+ * rule for "do I have this". Deliberately does not treat "already on the
+ * list" or "in the trolley" as on hand — those describe what's about to be
+ * bought, not a reason to prefer this recipe alternative over another one
+ * that's actually in the kitchen.
+ */
+export function onHandNameKeys(
+  items: readonly GroceryItem[],
+  now: Date,
+  products: readonly ItemProduct[] = []
+): ReadonlySet<string> {
+  const keys = new Set<string>();
+  for (const item of items) {
+    if (probablyHaveReason(item, now, products) !== null) keys.add(item.nameKey);
+  }
+  return keys;
+}
+
+/**
  * Why one *box* is in the pantry, or null when nothing has been said about it —
  * `probablyHaveReason` addressed to a packet rather than to the catalog row it
  * hangs off.

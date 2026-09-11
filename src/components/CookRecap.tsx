@@ -15,6 +15,7 @@ import { leftoverKeepDaysFor, leftoverPartsFor } from '../utils/leftovers';
 import { asWrittenCookedWeight } from '../utils/mealLog';
 import { recipeNutrition } from '../utils/recipeNutrition';
 import { standingSwapMap } from '../utils/standingSwaps';
+import { onHandNameKeys } from '../utils/grocerySuggest';
 import { CookRecapSheet } from './CookRecapSheet';
 import { LeftoverSheet } from './LeftoverSheet';
 
@@ -71,8 +72,12 @@ export function CookRecap() {
 
   const classified = useMemo(() => {
     if (!recap || !recipe) return [];
+    // Live, not persisted — matches cookedConsumption's own resolution, so
+    // the recap names what was actually consumed (see ChoiceResolution.onHand).
     return classifyPlanned(
-      plannedIngredientsForRecipe(recipe, recipesById, { chosen: recap.choices }, recap.scale, swaps),
+      plannedIngredientsForRecipe(
+        recipe, recipesById, { chosen: recap.choices, onHand: onHandNameKeys(items, new Date()) }, recap.scale, swaps
+      ),
       items,
       new Date()
     );
