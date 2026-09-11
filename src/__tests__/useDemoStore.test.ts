@@ -2477,6 +2477,14 @@ describe('demo seed — groceries, recipes, meals and the fridge', () => {
     expect(shops.length).toBeGreaterThanOrEqual(3);
     // "It has everything, but don't send me there".
     expect(shops.some(s => s.excludeFromSuggestions)).toBe(true);
+    // And the other half: a store that sells only some aisles, so the finish
+    // sheet has something to stop asking about. It carries a real range rather
+    // than an empty one, which would just be "sells everything" again.
+    const scoped = shops.find(s => s.aisles !== null);
+    expect(scoped).toBeDefined();
+    expect(scoped!.aisles!.length).toBeGreaterThan(0);
+    // And it's a shop with a record, not a bare name.
+    expect(itemShops.some(l => l.shopId === scoped!.id && l.purchaseCount > 0)).toBe(true);
     // All three link kinds: observed on a trip, asserted by hand, and the
     // negative claim — "they don't stock it", which is invisible in the app
     // until something carries it.

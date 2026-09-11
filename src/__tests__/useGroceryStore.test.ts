@@ -22,6 +22,7 @@ import {
   dbGetAllGroceryListEntries,
   dbGetAllGroceryShops,
   dbInsertGroceryShop,
+  dbSetShopAisles,
   dbUpdateGroceryShop,
   dbDeleteGroceryShop,
   dbGetAllItemShopLinks,
@@ -81,6 +82,7 @@ jest.mock('../db/database', () => ({
   dbInsertGroceryShop: jest.fn(),
   dbUpdateGroceryShop: jest.fn(),
   dbDeleteGroceryShop: jest.fn(),
+  dbSetShopAisles: jest.fn(),
   dbGetAllItemShopLinks: jest.fn().mockReturnValue([]),
   dbSetItemShopLink: jest.fn(),
   dbDeleteItemShopLink: jest.fn(),
@@ -277,6 +279,7 @@ function makeShop(name: string, overrides: Partial<Shop> = {}): Shop {
     createdAt: '2026-01-01T00:00:00.000Z',
     excludeFromSuggestions: false,
     receiptStyle: 'itemized' as const,
+    aisles: null,
     ...overrides,
   };
 }
@@ -7244,5 +7247,84 @@ describe('checkAwayGroceryList', () => {
     expect(active()).toBe(LISBON.id);
     expect(mockActiveListDrivenBy).toBe('trip');
     expect(mockProjects[0].awayListDeclinedFor).toBeNull();
+  });
+});
+
+describe('a store\'s aisle range', () => {
+  it('starts unscoped, so a new store sells everything', () => {
+    expect(useGroceryStore.getState().addShop('CVS')!.aisles).toBeNull();
+  });
+
+  it('setShopAisles writes the range and keeps it in state', () => {
+    const cvs = makeShop('CVS');
+    seed([], { shops: [cvs] });
+
+    useGroceryStore.getState().setShopAisles(cvs.id, ['Personal Care', 'Household']);
+
+    expect(dbSetShopAisles).toHaveBeenCalledWith(cvs.id, ['Personal Care', 'Household']);
+    expect(useGroceryStore.getState().shops[0].aisles).toEqual(['Personal Care', 'Household']);
+  });
+
+  // An empty range would have to mean "sells nothing", which is not a state
+  // this has — so it collapses to the one that means "sells everything".
+  it('reads an empty list as no range at all', () => {
+    const cvs = makeShop('CVS');
+    seed([], { shops: [cvs] });
+
+    useGroceryStore.getState().setShopAisles(cvs.id, []);
+
+    expect(dbSetShopAisles).toHaveBeenCalledWith(cvs.id, null);
+    expect(useGroceryStore.getState().shops[0].aisles).toBeNull();
+  });
+
+  it('ignores a store that is gone', () => {
+    useGroceryStore.getState().setShopAisles('nope', ['Produce']);
+    expect(dbSetShopAisles).not.toHaveBeenCalled();
+  });
+
+  // The fourth place an aisle name lives, so it moves with a rename for the
+  // same reason the non-food flag does.
+  it('carries a renamed aisle onto every store scoped to it', () => {
+    const cvs = makeShop('CVS');
+    seed([], { shops: [cvs] });
+    useGroceryStore.getState().setShopAisles(cvs.id, ['Deli', 'Household']);
+
+    useGroceryStore.getState().renameAisle('Deli', 'Charcuterie');
+
+    expect(useGroceryStore.getState().shops[0].aisles).toEqual(['Charcuterie', 'Household']);
+    expect(dbSetShopAisles).toHaveBeenLastCalledWith(cvs.id, ['Charcuterie', 'Household']);
+  });
+
+  it('leaves an unscoped store alone on a rename', () => {
+    const cvs = makeShop('CVS');
+    seed([], { shops: [cvs] });
+
+    useGroceryStore.getState().renameAisle('Deli', 'Charcuterie');
+
+    expect(useGroceryStore.getState().shops[0].aisles).toBeNull();
+    expect(dbSetShopAisles).not.toHaveBeenCalled();
+  });
+
+  it('drops a deleted aisle from a range that has others left', () => {
+    const cvs = makeShop('CVS');
+    seed([], { shops: [cvs] });
+    useGroceryStore.getState().setShopAisles(cvs.id, ['Deli', 'Household']);
+
+    useGroceryStore.getState().deleteAisle('Deli');
+
+    expect(useGroceryStore.getState().shops[0].aisles).toEqual(['Household']);
+  });
+
+  // Deleting the only aisle a store was scoped to clears the range rather than
+  // emptying it: a store that sells nothing is not a thing to record.
+  it('clears the range when its last aisle is deleted', () => {
+    const cvs = makeShop('CVS');
+    seed([], { shops: [cvs] });
+    useGroceryStore.getState().setShopAisles(cvs.id, ['Deli']);
+
+    useGroceryStore.getState().deleteAisle('Deli');
+
+    expect(useGroceryStore.getState().shops[0].aisles).toBeNull();
+    expect(dbSetShopAisles).toHaveBeenLastCalledWith(cvs.id, null);
   });
 });

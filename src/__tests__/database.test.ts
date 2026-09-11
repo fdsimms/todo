@@ -70,6 +70,7 @@ import {
   dbInsertGroceryShop,
   dbGetAllGroceryShops,
   dbSetShopReceiptStyle,
+  dbSetShopAisles,
   dbGetAllItemSubLinks,
   dbSetItemSubLink,
   dbDeleteItemSubLink,
@@ -2184,6 +2185,7 @@ function makeShop(overrides: { id: string; name: string }): Shop {
     createdAt: '2026-01-01T00:00:00.000Z',
     excludeFromSuggestions: false,
     receiptStyle: 'itemized' as const,
+    aisles: null,
     ...overrides,
   };
 }
@@ -2259,7 +2261,7 @@ describe('grocery items', () => {
   it('records a priced trip into the rolling window, at both levels', () => {
     const shop = { id: 's1', name: 'Costco', nameKey: 'costco', sortOrder: 1,
       createdAt: '2026-01-01T00:00:00.000Z', excludeFromSuggestions: false,
-      receiptStyle: 'itemized' as const };
+      receiptStyle: 'itemized' as const, aisles: null };
     dbInsertGroceryShop(shop);
     const item = makeGroceryItem({
       id: 'g1', name: 'Olive oil', onList: true, checked: true, quantity: '1 l',
@@ -4075,5 +4077,64 @@ describe('recipe rows', () => {
   it('reads a recipe that never dismissed anything as an empty list', () => {
     dbInsertRecipe(makeRecipe({ id: 'r1', name: 'Dal' }));
     expect(dbGetAllRecipes()[0].backfillDismissedFields).toEqual([]);
+  });
+});
+
+describe('a store\'s aisle range', () => {
+  const insertShop = (id: string) => {
+    dbInsertGroceryShop({
+      id, name: id, nameKey: id, sortOrder: 1, createdAt: '2026-01-01T00:00:00.000Z',
+      excludeFromSuggestions: false, receiptStyle: 'itemized', aisles: null,
+    });
+  };
+  const rangeOf = (id: string) => dbGetAllGroceryShops().find(s => s.id === id)?.aisles;
+
+  it('reads back as null for a store nobody has scoped', () => {
+    insertShop('cvs');
+    expect(rangeOf('cvs')).toBeNull();
+  });
+
+  it('round-trips a range', () => {
+    insertShop('cvs');
+
+    dbSetShopAisles('cvs', ['Personal Care', 'Household']);
+
+    expect(rangeOf('cvs')).toEqual(['Personal Care', 'Household']);
+  });
+
+  it('stores an empty range as no range at all', () => {
+    insertShop('cvs');
+    dbSetShopAisles('cvs', ['Personal Care']);
+
+    dbSetShopAisles('cvs', []);
+
+    expect(rangeOf('cvs')).toBeNull();
+  });
+
+  it('clears one on null', () => {
+    insertShop('cvs');
+    dbSetShopAisles('cvs', ['Personal Care']);
+
+    dbSetShopAisles('cvs', null);
+
+    expect(rangeOf('cvs')).toBeNull();
+  });
+
+  // Resolve-or-shrug, and deliberately on the permissive side: a store whose
+  // range can't be read sells everything rather than nothing.
+  it('reads a blob that will not parse as no range', () => {
+    insertShop('cvs');
+    mockRawDb.prepare('UPDATE grocery_shops SET aisles = ? WHERE id = ?').run('{oops', 'cvs');
+
+    expect(rangeOf('cvs')).toBeNull();
+  });
+
+  it('drops non-string members rather than carrying them into the range', () => {
+    insertShop('cvs');
+    mockRawDb
+      .prepare('UPDATE grocery_shops SET aisles = ? WHERE id = ?')
+      .run(JSON.stringify(['Produce', 3, '', null]), 'cvs');
+
+    expect(rangeOf('cvs')).toEqual(['Produce']);
   });
 });

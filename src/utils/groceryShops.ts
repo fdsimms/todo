@@ -92,6 +92,73 @@ export function countsForItem(link: ItemShopLink, item: GroceryItem): boolean {
   return !isUnavailable(link) && !lacksWantedProduct(link, item);
 }
 
+/**
+ * Does this store's declared range include `aisle`? True for an unscoped store,
+ * which is every store until somebody says otherwise.
+ *
+ * `Shop.aisles` is an inclusion list, so this is a membership test and not a
+ * lexicon lookup: aisle names are the user's own strings, and guessing that a
+ * pharmacy "obviously" doesn't sell Frozen is exactly the inference this
+ * feature exists to replace with a statement.
+ */
+export function sellsAisle(shop: Shop, aisle: string): boolean {
+  return shop.aisles === null || shop.aisles.includes(aisle);
+}
+
+/**
+ * The standing negative: the user has said this store sells certain aisles and
+ * this item isn't in one of them.
+ *
+ * **This is the user asserting a range, never the app inferring one.** That is
+ * the whole reason it is allowed to exist next to `isUnavailable` rather than
+ * being the `likelyItemIds` guess `shoppingTrip.ts` deleted coming back in the
+ * negative direction. The app still learns nothing about a shop on its own; it
+ * repeats something it was told.
+ *
+ * **A positive link outranks it**, which is the rule that makes a
+ * roughly-drawn scope safe. If the record says you have bought Tofurky at the
+ * pharmacy, or that you tapped it to say you can get it there, then the scope
+ * is wrong about this item and the specific statement beats the general one.
+ * It is the same call `finishShopping` makes when a purchase clears
+ * `unavailableAt`, just settled at read time — there is nothing to clear here,
+ * because a scope is a standing claim rather than a stamped one.
+ *
+ * **Nothing is ever materialised from this into link rows.** Writing one
+ * `unavailableAt` per out-of-range item would grow the table by items times
+ * aisles, and it would destroy the distinction `ItemShopLink.unavailableAt`
+ * is built on: a stamped link means the user looked, on a date. A scope has no
+ * date because nobody looked at anything.
+ *
+ * And it gates only what the app **asks and asserts**. Linking the item here by
+ * hand, ticking it off, scanning this store's receipt: all unchanged. A scope
+ * is never a reason to refuse the user something.
+ */
+export function isOutOfRange(
+  shop: Shop,
+  item: GroceryItem,
+  links: readonly ItemShopLink[]
+): boolean {
+  if (sellsAisle(shop, item.aisle)) return false;
+  return !links.some(
+    l => l.itemId === item.id && l.shopId === shop.id && countsForItem(l, item)
+  );
+}
+
+/**
+ * "Personal Care and Household" — a scoped store's range in its own words, or
+ * null for a store that sells everything.
+ *
+ * One function so the aisles sheet, the planner's coverage line and the trip
+ * caption can't come to word it three ways, the same reason `describeShops`
+ * exists below.
+ */
+export function describeShopAisles(shop: Shop): string | null {
+  const aisles = shop.aisles;
+  if (!aisles || aisles.length === 0) return null;
+  if (aisles.length === 1) return aisles[0];
+  return `${aisles.slice(0, -1).join(', ')} and ${aisles[aisles.length - 1]}`;
+}
+
 function byPurchasesThenRecency(a: ItemShopLink, b: ItemShopLink): number {
   if (b.purchaseCount !== a.purchaseCount) return b.purchaseCount - a.purchaseCount;
   const at = a.lastPurchasedAt ? Date.parse(a.lastPurchasedAt) : 0;

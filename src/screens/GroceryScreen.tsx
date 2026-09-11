@@ -418,7 +418,12 @@ export function GroceryScreen() {
       // rows being marked up are the list's.
       const marker = tripMarkerFor(item, itemShops, shops, activeTripShop, itemSubs, items, itemProducts);
       if (!marker) continue;
-      const unavailable = marker.kind === 'unavailable';
+      // Both of the user's negatives route a row into the section's "Not here"
+      // group, because to somebody holding the list they say the same thing:
+      // this isn't coming home from here. Which of them it was — a stamped
+      // claim about this item, or a range given to the store — is a fact about
+      // where the claim came from, and not one the reader needs at a shelf.
+      const unavailable = marker.kind === 'unavailable' || marker.kind === 'outOfRange';
       out.set(item.id, {
         text: unavailable ? describeGroupedUnavailable(marker) : describeTripMarker(marker),
         substituteId: marker.substitute?.id,
