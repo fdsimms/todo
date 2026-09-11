@@ -146,6 +146,14 @@ export function HealthSettings() {
       bridge?.requestHealthAuthorization()
         .then(() => {
           refreshStatus();
+          // Also here, not just on focus/foreground — see refreshWriteStatus's
+          // own comment for why a read grant can silently cost write access on
+          // the types the two sides share (water, weight, the eight nutrients).
+          // Re-checking now is what turns "found out weeks later, confused"
+          // into "the row below already says Not allowed the moment you granted
+          // read", which is the one thing this app can still do about an OS
+          // bug it cannot prevent.
+          refreshWriteStatus();
           void refresh();
         })
         .catch(() => refreshStatus());
@@ -158,6 +166,8 @@ export function HealthSettings() {
     if (!bridge) return;
     await bridge.requestHealthAuthorization();
     refreshStatus();
+    // Same reason as onToggle above.
+    refreshWriteStatus();
     void refresh();
   };
 
@@ -262,7 +272,14 @@ export function HealthSettings() {
             // anything is actually coming through.
             hint={
               requestStatus === 'shouldRequest'
-                ? "Not asked yet. Nothing can be read until you allow it in Health"
+                ? healthWriteEnabled
+                  // iOS has been observed silently revoking write access to a
+                  // type (water, weight, a nutrient) the moment read access for
+                  // that same type is granted — see the note in
+                  // docs/arch/health-data.md. Worth saying here, before it
+                  // happens, since the write rows below only report it after.
+                  ? "Not asked yet. Allowing this can reset write access below for the types this app both reads and writes (water, weight, most nutrients) — check Log to Health afterward"
+                  : "Not asked yet. Nothing can be read until you allow it in Health"
                 : requestStatus === 'unnecessary'
                   ? "Already asked. To change what's shared, open Health, tap your profile picture, then Privacy, then Apps, then dundundun"
                   : requestStatus === 'unavailable'

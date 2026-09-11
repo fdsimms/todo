@@ -180,6 +180,37 @@ one place.
   "Allowed" / "Not allowed" / "Not asked yet" — the one place in this screen
   that gets to say what `CalendarSettings`' access row says, rather than the
   read row's necessarily vaguer "have you been asked" phrasing.
+- **Granting read access can silently cost write access, for the types the
+  two sides share, and this app cannot prevent it.** `readTypes` and
+  `writeTypes` overlap on nine of the app's twelve HealthKit types — water,
+  body mass, and the eight nutrients `writeNutrientSample` shares with the
+  food-log write (everything except carbs and total fat, which are write-only
+  and never read). Apple's docs say read and write authorization for one type
+  are independent, but in practice, granting the *read* sheet for a type that
+  already had *write* access can flip that write access to `sharingDenied` —
+  observed for real, reported by a user whose Water/Weight write access
+  (granted earlier, and working) disappeared after later granting read
+  access, while Carbohydrates/Total Fat write access (write-only, no read
+  overlap) survived untouched. This is a HealthKit/Health-app bug, not a
+  mistake in this file's `requestAuthorization` calls — they already follow
+  Apple's documented pattern (separate `toShare`/`read` calls, per the rule
+  above), and there is no supported API to prevent the OS from doing this or
+  to programmatically win the permission back once it's denied. Once
+  it happens, the affected types can also fail to appear at all in the
+  Health app's own Settings → Sharing list, even as a denied (off) toggle —
+  so the one usual recovery path ("go flip it back on in Health") can be
+  unavailable too, and the only fixes that have worked are a device restart,
+  revoking and re-granting from scratch ("Turn Off All" on that same Health
+  screen), or a full iOS privacy-settings reset.
+  What this app *can* do, and does: `refreshWriteStatus()` in
+  `HealthSettings.tsx` is called immediately after every read-authorization
+  grant (`onToggle`, `askForAccess`), not only on focus/foreground, so a
+  silently-revoked write permission shows up as "Not allowed" on this same
+  screen right away instead of being discovered confused, weeks later,
+  through Health's own UI. The read-access row also warns about this before
+  it happens, when `healthWriteEnabled` is already on. Neither is a fix for
+  the underlying OS behavior — there isn't one available here — only for how
+  fast and how clearly the fallout is surfaced.
 - **Adding a genuinely new share type is still not a small decision** —
   that part of the old rule holds. `writeTypes` in the Swift module is
   deliberately not generalized the way `readTypes` is (a `Record` keyed by an
