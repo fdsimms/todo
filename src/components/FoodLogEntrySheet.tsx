@@ -124,6 +124,16 @@ interface Props {
    * sparkles action uses, just read by the caller instead of duplicated here.
    */
   onEstimate?: () => void;
+  /**
+   * "Don't ask about this meal" — the manual sheet's counterpart to
+   * `LogMealPrompt`'s own secondary button of the same name. Present only
+   * while there's a meal to decline: `LogMealEntrySheet` supplies it exactly
+   * when its `pending.mealPlanEntryId` is set, and every other caller (the
+   * plain "add a food" flow, the estimate sheet) leaves it out, since there's
+   * no meal here to say no to. Writing the flag and closing the sheet is left
+   * to the caller, same split `onEstimate` already draws.
+   */
+  onDeclineMeal?: () => void;
 }
 
 /** The two ways of saying how much of a dish was eaten. */
@@ -162,7 +172,7 @@ interface Candidate {
 }
 
 export function FoodLogEntrySheet({
-  visible, slot, at, seedRecipeId, initialQuery, mealPlanEntryId, onClose, onEstimate,
+  visible, slot, at, seedRecipeId, initialQuery, mealPlanEntryId, onClose, onEstimate, onDeclineMeal,
 }: Props) {
   const colors = useColors();
   const styles = useMemo(() => makeStyles(colors), [colors]);
@@ -734,6 +744,17 @@ export function FoodLogEntrySheet({
                 style={styles.estimateAction}
               />
             )}
+            {!!onDeclineMeal && (
+              <TouchableOpacity
+                style={styles.declineMeal}
+                activeOpacity={interaction.activeOpacity}
+                onPress={() => { haptics.tap(); onDeclineMeal(); }}
+                accessibilityRole="button"
+                accessibilityLabel="Don't ask about this meal"
+              >
+                <Text style={styles.declineMealText}>Don't ask about this meal</Text>
+              </TouchableOpacity>
+            )}
             <FlatList
               style={styles.list}
               contentContainerStyle={styles.listContent}
@@ -845,6 +866,10 @@ function makeStyles(colors: Colors) {
     },
     change: { marginTop: spacing.lg, alignSelf: 'flex-start' },
     changeText: { color: colors.accent, fontSize: font.sm },
+    // TextSecondary rather than accent — a decline, not a link, the same
+    // weighting LogMealPrompt's own secondary buttons carry.
+    declineMeal: { marginTop: spacing.sm, alignSelf: 'flex-start', paddingVertical: spacing.xs },
+    declineMealText: { color: colors.textSecondary, fontSize: font.sm },
     searchRow: {
       flexDirection: 'row',
       alignItems: 'center',
