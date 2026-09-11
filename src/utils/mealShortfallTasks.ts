@@ -6,6 +6,7 @@ import { shiftDayKey, slotLabel, slotRank } from './mealPlan';
 import { mealPlanNudgeLinkUrl } from './mealPlanNudge';
 import { classifyPlanned, plannedIngredientsForRecipe, type ClassifiedIngredient } from './mealPlanGroceries';
 import type { StandingSwapMap } from './standingSwaps';
+import { onHandNameKeys } from './grocerySuggest';
 
 /**
  * "Shop for Tue ragù" — the meal plan's answer to being blindsided on the night.
@@ -164,7 +165,11 @@ export function mealShortfallRows(
     plannedIngredientsForRecipe(
       recipe,
       recipesById,
-      { chosen: entry.recipeChoices },
+      // Live, not persisted — an unresolved choice group defaults to
+      // whichever alternative is already in the kitchen (see
+      // recipeComponents.ts's ChoiceResolution.onHand) rather than always
+      // asking to buy the recipe's first-listed option.
+      { chosen: entry.recipeChoices, onHand: onHandNameKeys(items, now) },
       entry.recipeScale,
       swaps
     ),

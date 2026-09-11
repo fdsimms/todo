@@ -215,7 +215,7 @@ export function RecipeNutritionSheet({ visible, reading, onClose }: Props) {
   const countLine =
     gaps.total === 0
       ? null
-      : `Counted from ${gaps.covered} of ${gaps.total} ingredients. Staples, and any ingredient marked not to count, aren't counted on either side.`;
+      : `Counted from ${gaps.covered} of ${gaps.total} ingredients.`;
 
   return (
     <EditorSheet

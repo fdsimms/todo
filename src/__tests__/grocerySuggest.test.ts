@@ -12,6 +12,7 @@ import {
   OUT_OF_IT_UNTIL,
   pantryEntries,
   productHaveReason,
+  onHandNameKeys,
 } from '../utils/grocerySuggest';
 import { groceryNameKey } from '../utils/groceryParse';
 import { FROZEN_REASON, RUNNING_LOW_REASON, type GroceryItem, type ItemProduct } from '../types';
@@ -658,6 +659,19 @@ describe('pantryEntries', () => {
   it('keeps an item that is also on the list — the assertion outlives the add', () => {
     const item = makeItem({ name: 'Rice', onList: true, onHandUntil: daysAgo(-5) });
     expect(pantryEntries([item], NOW).map(e => e.item.name)).toEqual(['Rice']);
+  });
+});
+
+describe('onHandNameKeys', () => {
+  it('names the nameKeys probablyHaveReason answers for, and nothing else', () => {
+    const tofu = makeItem({ name: 'Extra firm tofu', onHandUntil: daysAgo(-5) });
+    const outOfIt = makeItem({ name: 'Firm tofu', onHandUntil: OUT_OF_IT_UNTIL });
+    const neverBought = makeItem({ name: 'Silken tofu' });
+    expect(onHandNameKeys([tofu, outOfIt, neverBought], NOW)).toEqual(new Set(['extra firm tofu']));
+  });
+
+  it('is empty for an empty catalog', () => {
+    expect(onHandNameKeys([], NOW)).toEqual(new Set());
   });
 });
 
