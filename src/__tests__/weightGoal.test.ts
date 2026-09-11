@@ -7,6 +7,7 @@ import {
   goalPace,
   goalProgress,
   paceWeightAfterDays,
+  pacePlotPoints,
   parseWeightGoal,
   serializeWeightGoal,
   signedRateKgPerWeek,
@@ -230,5 +231,67 @@ describe('RATE_RANGE', () => {
   it('has no rate of zero, since maintain is said with the target', () => {
     expect(RATE_RANGE.kg.min).toBeGreaterThan(0);
     expect(RATE_RANGE.lb.min).toBeGreaterThan(0);
+  });
+});
+
+describe('pacePlotPoints', () => {
+  /** A window of N days starting on the given day key. */
+  function window(startDay: number, days: number): WeightPoint[] {
+    return Array.from({ length: days }, (_, i) => ({
+      dayKey: `2026-09-${String(startDay + i).padStart(2, '0')}`,
+      kilograms: null,
+    }));
+  }
+
+  it('draws two vertices when the target is not reached inside the window', () => {
+    // Sep 1 to Sep 15: half a kilo a week from 80 reaches 79 by day 14.
+    const points = pacePlotPoints(losingGoal(), window(1, 15));
+    expect(points).toHaveLength(2);
+    expect(points[0]).toEqual({ index: 0, kilograms: 80 });
+    expect(points[1].index).toBe(14);
+    expect(points[1].kilograms).toBeCloseTo(79);
+  });
+
+  it('adds a bend where the pace meets the target', () => {
+    // 80 to 79 at half a kilo a week is 14 days, inside a 20-day window.
+    const goal = losingGoal({ targetKg: 79 });
+    const points = pacePlotPoints(goal, window(1, 20));
+    expect(points).toHaveLength(3);
+    expect(points[1].index).toBe(14);
+    expect(points[1].kilograms).toBeCloseTo(79);
+    // Flat from the bend onward rather than continuing down.
+    expect(points[2].kilograms).toBeCloseTo(79);
+  });
+
+  it('enters from the left edge for a goal set before the window', () => {
+    // The goal began Sep 1; the window starts Sep 15, two weeks in.
+    const points = pacePlotPoints(losingGoal(), window(15, 10));
+    expect(points[0].index).toBe(0);
+    expect(points[0].kilograms).toBeCloseTo(79);
+  });
+
+  it('starts at the goal\'s own day for a goal set inside the window', () => {
+    const goal = losingGoal({ startDayKey: '2026-09-05' });
+    const points = pacePlotPoints(goal, window(1, 15));
+    expect(points[0]).toEqual({ index: 4, kilograms: 80 });
+  });
+
+  it('draws nothing for a goal that starts after the window ends', () => {
+    expect(pacePlotPoints(losingGoal({ startDayKey: '2026-10-01' }), window(1, 10))).toEqual([]);
+  });
+
+  it('draws nothing for an empty window', () => {
+    expect(pacePlotPoints(losingGoal(), [])).toEqual([]);
+  });
+
+  it('draws a maintain goal flat at its target', () => {
+    const points = pacePlotPoints(losingGoal({ targetKg: 80 }), window(1, 10));
+    expect(points).toHaveLength(2);
+    expect(points.every(p => p.kilograms === 80)).toBe(true);
+  });
+
+  it('rises for a gaining goal', () => {
+    const points = pacePlotPoints(losingGoal({ targetKg: 85 }), window(1, 15));
+    expect(points[1].kilograms).toBeGreaterThan(points[0].kilograms);
   });
 });

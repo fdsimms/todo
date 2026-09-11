@@ -26,6 +26,7 @@ import {
   goalDirection,
   goalPace,
   goalProgress,
+  pacePlotPoints,
   weightSinceGoalStart,
 } from '../utils/weightGoal';
 import { ScreenHeader } from '../components/ScreenHeader';
@@ -112,9 +113,10 @@ export function WeightScreen() {
   const route = useRoute<{
     key: string;
     name: string;
-    params?: { openLog?: number; returnTo?: string };
+    params?: { openLog?: number; returnTo?: string; openGoal?: number };
   }>();
   const [handledOpenLog, setHandledOpenLog] = useState<number | undefined>(undefined);
+  const [handledOpenGoal, setHandledOpenGoal] = useState<number | undefined>(undefined);
   // Where to hand the user back once the sheet this opens closes — the tab
   // they tapped the weigh-in request from, carried by `resetToWeight`'s
   // `returnTo` param. Cleared whenever the sheet is opened by hand (the "+"
@@ -127,6 +129,14 @@ export function WeightScreen() {
     setReturnTo(route.params.returnTo);
     setLogOpen(true);
   }, [route.params?.openLog, route.params?.returnTo, handledOpenLog]);
+
+  // The same stamped-param handshake for the goal sheet, which the Settings row
+  // for a weight goal lands on. No `returnTo`: see `resetToWeightGoal`.
+  useEffect(() => {
+    if (route.params?.openGoal === undefined || route.params.openGoal === handledOpenGoal) return;
+    setHandledOpenGoal(route.params.openGoal);
+    setGoalOpen(true);
+  }, [route.params?.openGoal, handledOpenGoal]);
 
   useEffect(() => {
     if (healthReadEnabled) void refreshWeight();
@@ -169,6 +179,14 @@ export function WeightScreen() {
     ? daysToTarget(goal, goalWeightKg)
     : null;
 
+  // Against the *visible* slice, since its vertices are indexed into whatever
+  // the chart was handed. The goal card above reads the whole series instead,
+  // for the reason given there.
+  const pacePoints = useMemo(
+    () => (goal === null ? [] : pacePlotPoints(goal, visiblePoints)),
+    [goal, visiblePoints],
+  );
+
   const openGoal = () => {
     haptics.tap();
     setGoalOpen(true);
@@ -187,12 +205,18 @@ export function WeightScreen() {
     ? '—'
     : `${change.deltaKg > 0 ? '+' : ''}${kgToUnit(change.deltaKg, unit).toFixed(1)}`;
 
+  // Both header actions open a sheet, and neither sheet is mounted in the
+  // Health-off branch below — nor could usefully be, since a weight can only be
+  // recorded by writing it to Health and a goal has nothing to measure against.
+  // So the actions come off rather than sitting there doing nothing when
+  // tapped, which is what "Record a weight" did before this. The empty state is
+  // what points at Settings.
   const header = (
     <>
       <ScreenHeader
         title="Weight"
         subtitle={latest ? formatWeight(latest.kilograms, unit) : undefined}
-        actions={[
+        actions={!healthReadEnabled ? [] : [
           {
             icon: 'flag-outline' as const,
             onPress: openGoal,
@@ -375,10 +399,16 @@ export function WeightScreen() {
             <Text style={styles.finding}>Nothing recorded in this range.</Text>
           ) : (
             <>
-              <WeightChart points={visiblePoints} unit={unit} />
+              <WeightChart
+        points={visiblePoints}
+        unit={unit}
+        targetKg={goal?.targetKg ?? null}
+        pacePoints={pacePoints}
+      />
               <Text style={styles.chartCaption}>
                 Each dot is a day you weighed in. The line breaks where more than
                 two weeks passed without one. The fainter line is a 7-day average.
+                {goal !== null && ' The dashed lines are your target and the pace you set.'}
               </Text>
             </>
           )}

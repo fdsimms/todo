@@ -23,9 +23,11 @@ import {
   ACTIVITY_LABEL,
   ACTIVITY_LEVELS,
   EMPTY_BODY_PROFILE,
+  MACRO_PRESETS,
   calorieBudget,
   formatHeight,
   isProfileComplete,
+  macroGrams,
   parseHeightInput,
   type ActivityLevel,
   type BodyProfile,
@@ -87,6 +89,10 @@ export function WeightGoalSheet({ visible, onClose, currentKg }: Props) {
   const [birthYearText, setBirthYearText] = useState('');
   const [sex, setSex] = useState<BodySex | null>(null);
   const [activity, setActivity] = useState<ActivityLevel>('sedentary');
+  // Nothing preselected, and not persisted: a split is a one-off choice made
+  // when applying targets, not a setting. See MACRO_PRESETS on why the app has
+  // no opinion about which one.
+  const [macroPresetId, setMacroPresetId] = useState<string | null>(null);
 
   // Seeded on each open rather than on mount: the sheet stays mounted across
   // visibility toggles, and a form still holding last time's numbers would
@@ -98,6 +104,7 @@ export function WeightGoalSheet({ visible, onClose, currentKg }: Props) {
     setBirthYearText(profile.birthYear === null ? '' : String(profile.birthYear));
     setSex(profile.sex);
     setActivity(profile.activity);
+    setMacroPresetId(null);
 
     if (storedGoal) {
       setDirection(goalDirection(storedGoal));
@@ -202,6 +209,24 @@ export function WeightGoalSheet({ visible, onClose, currentKg }: Props) {
     haptics.success();
     setBodyProfile(profile);
     setNutritionTarget('calorieKcal', budget.proposedKcal);
+  };
+
+  const macroPreset = MACRO_PRESETS.find(p => p.id === macroPresetId) ?? null;
+  const macros = budget === null || macroPreset === null
+    ? null
+    : macroGrams(budget.proposedKcal, macroPreset.split);
+
+  // Writes the calorie target alongside the three macros, because a macro
+  // target that doesn't add up to the calorie figure it was split out of is
+  // three numbers with nothing holding them together.
+  const applyMacroTargets = () => {
+    if (!budget || !macros) return;
+    haptics.success();
+    setBodyProfile(profile);
+    setNutritionTarget('calorieKcal', budget.proposedKcal);
+    setNutritionTarget('proteinG', macros.proteinG);
+    setNutritionTarget('carbsG', macros.carbsG);
+    setNutritionTarget('fatG', macros.fatG);
   };
 
   const existingCalorieTarget = storedTargets.calorieKcal;
@@ -439,6 +464,52 @@ export function WeightGoalSheet({ visible, onClose, currentKg }: Props) {
             )}
           </View>
 
+          {budget !== null && (
+            <>
+              <Text style={styles.sectionTitle}>MACROS</Text>
+              <View style={styles.card}>
+                <Text style={styles.help}>
+                  Optional, and nothing is picked for you. Each of these is a common
+                  way to divide a day's calories, not a recommendation. Pick one to
+                  see what it works out to, or leave this alone and set the three
+                  numbers yourself under Daily targets.
+                </Text>
+
+                <SegmentedControl
+                  options={MACRO_PRESETS.map(preset => ({
+                    value: preset.id as string | null,
+                    label: preset.label,
+                  }))}
+                  value={macroPresetId}
+                  onChange={next => { haptics.tap(); setMacroPresetId(next); }}
+                  columns={2}
+                  label="Macro split"
+                />
+
+                {macroPreset !== null && macros !== null && (
+                  <>
+                    <View style={styles.macroRow}>
+                      <MacroCell styles={styles} label="Protein" grams={macros.proteinG}
+                        percent={macroPreset.split.proteinPct} />
+                      <MacroCell styles={styles} label="Carbs" grams={macros.carbsG}
+                        percent={macroPreset.split.carbsPct} />
+                      <MacroCell styles={styles} label="Fat" grams={macros.fatG}
+                        percent={macroPreset.split.fatPct} />
+                    </View>
+                    <InlineAction
+                      icon="flag-outline"
+                      label="Use these as my targets"
+                      onPress={applyMacroTargets}
+                    />
+                    <Text style={styles.help}>
+                      Sets calories as well, so the four numbers agree with each other.
+                    </Text>
+                  </>
+                )}
+              </View>
+            </>
+          )}
+
           {storedGoal && (
             <InlineAction
               icon="trash-outline"
@@ -450,6 +521,23 @@ export function WeightGoalSheet({ visible, onClose, currentKg }: Props) {
         </>
       )}
     </EditorSheet>
+  );
+}
+
+interface MacroCellProps {
+  styles: ReturnType<typeof makeStyles>;
+  label: string;
+  grams: number;
+  percent: number;
+}
+
+function MacroCell({ styles, label, grams, percent }: MacroCellProps) {
+  return (
+    <View style={styles.macroCell} accessible accessibilityLabel={`${label}, ${grams} grams, ${percent} percent`}>
+      <Text style={styles.macroGrams}>{grams}g</Text>
+      <Text style={styles.macroLabel}>{label}</Text>
+      <Text style={styles.macroPercent}>{percent}%</Text>
+    </View>
   );
 }
 
@@ -565,5 +653,21 @@ const makeStyles = (colors: Colors) => StyleSheet.create({
     marginTop: spacing.sm,
     marginBottom: spacing.xs,
   },
+  macroRow: {
+    flexDirection: 'row',
+    gap: spacing.sm,
+    marginTop: spacing.md,
+    marginBottom: spacing.sm,
+  },
+  macroCell: {
+    flex: 1,
+    backgroundColor: colors.bgTertiary,
+    borderRadius: radius.md,
+    paddingVertical: spacing.sm,
+    alignItems: 'center',
+  },
+  macroGrams: { fontSize: font.lg, fontWeight: fontWeight.bold, color: colors.text },
+  macroLabel: { fontSize: font.xs, color: colors.textSecondary, marginTop: 2 },
+  macroPercent: { fontSize: font.xs, color: colors.textTertiary },
   footnote: { fontSize: font.sm, color: colors.textSecondary, lineHeight: 20 },
 });

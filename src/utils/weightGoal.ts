@@ -258,6 +258,65 @@ export function weightSinceGoalStart(goal: WeightGoal, points: WeightPoint[]): n
   return latest;
 }
 
+/** A vertex of the pace line, indexed into the window it was built against. */
+export interface PacePlotPoint {
+  /** Offset in days from the start of the window, matching `WeightPlotPoint`. */
+  index: number;
+  kilograms: number;
+}
+
+/**
+ * The chosen pace drawn across a window of days, as polyline vertices.
+ *
+ * **Three vertices at most, because the line has at most one bend.** The pace
+ * is linear until it reaches the target and flat afterwards
+ * (`paceWeightAfterDays` clamps), so emitting a point per day would be up to
+ * 365 vertices describing two straight runs. The bend is only included when it
+ * falls inside the window.
+ *
+ * The line starts at whichever comes later, the goal's own start day or the
+ * left edge of the window: a goal set three months before the month on screen
+ * enters from the left at whatever the pace had reached by then, rather than
+ * being drawn from a day the chart isn't showing. It is empty when the goal
+ * starts after the window ends, which is the case a freshly set goal on a
+ * long chart range produces.
+ *
+ * **It is the plan, not a reading**, and the caller must draw it as such. The
+ * whole point of `weightSegments` breaking its line across gaps is that a drawn
+ * line reads as data; this one is drawn dashed and in a grey rather than the
+ * accent for exactly that reason.
+ */
+export function pacePlotPoints(goal: WeightGoal, points: WeightPoint[]): PacePlotPoint[] {
+  if (points.length === 0) return [];
+  const start = dayKeyToDate(goal.startDayKey);
+  const daysAt = (index: number) =>
+    differenceInCalendarDays(dayKeyToDate(points[index].dayKey), start);
+
+  const lastIndex = points.length - 1;
+  if (daysAt(lastIndex) < 0) return [];
+
+  // The first day of the window that the goal had already started on.
+  let firstIndex = 0;
+  while (firstIndex < lastIndex && daysAt(firstIndex) < 0) firstIndex++;
+
+  const vertex = (index: number): PacePlotPoint => ({
+    index,
+    kilograms: paceWeightAfterDays(goal, daysAt(index)),
+  });
+  const out = [vertex(firstIndex)];
+
+  // Where the pace meets the target, if that happens inside the window.
+  const rate = signedRateKgPerWeek(goal);
+  if (rate !== 0) {
+    const daysToReach = Math.ceil(Math.abs((goal.targetKg - goal.startKg) / rate) * 7);
+    const bend = firstIndex + (daysToReach - daysAt(firstIndex));
+    if (bend > firstIndex && bend < lastIndex) out.push(vertex(bend));
+  }
+
+  if (lastIndex > firstIndex) out.push(vertex(lastIndex));
+  return out;
+}
+
 /** A stored goal, or null if there isn't a readable one. */
 export function parseWeightGoal(raw: string | null | undefined): WeightGoal | null {
   if (!raw) return null;

@@ -5,8 +5,12 @@ import {
   KCAL_PER_LB,
   MAX_HEIGHT_CM,
   MIN_PROPOSED_KCAL,
+  KCAL_PER_GRAM,
+  MACRO_PRESETS,
   ageFromBirthYear,
   calorieBudget,
+  isWholeSplit,
+  macroGrams,
   cmToFeetInches,
   dailyAdjustmentKcal,
   feetInchesToCm,
@@ -210,5 +214,46 @@ describe('isProfileComplete', () => {
     expect(isProfileComplete(EMPTY_BODY_PROFILE)).toBe(false);
     expect(isProfileComplete(profile({ heightCm: null }))).toBe(false);
     expect(isProfileComplete({ ...profile(), activity: 'sedentary' })).toBe(true);
+  });
+});
+
+describe('macro splits', () => {
+  it('offers presets that each divide a whole day', () => {
+    for (const preset of MACRO_PRESETS) {
+      expect(isWholeSplit(preset.split)).toBe(true);
+    }
+  });
+
+  it('offers more than one, and names them all distinctly', () => {
+    expect(MACRO_PRESETS.length).toBeGreaterThan(1);
+    expect(new Set(MACRO_PRESETS.map(p => p.id)).size).toBe(MACRO_PRESETS.length);
+    expect(new Set(MACRO_PRESETS.map(p => p.label)).size).toBe(MACRO_PRESETS.length);
+  });
+
+  it('converts a share of calories to grams by the Atwater factors', () => {
+    // 30% of 2,000 is 600 calories; at 4 a gram that is 150g of protein.
+    const grams = macroGrams(2000, { proteinPct: 30, carbsPct: 40, fatPct: 30 });
+    expect(grams.proteinG).toBe(150);
+    expect(grams.carbsG).toBe(200);
+    // 30% of 2,000 is 600 calories; at 9 a gram that is 66.7g, rounded.
+    expect(grams.fatG).toBe(67);
+  });
+
+  it('keeps the three within rounding distance of the calorie total', () => {
+    for (const preset of MACRO_PRESETS) {
+      const grams = macroGrams(2000, preset.split);
+      const kcal =
+        grams.proteinG * KCAL_PER_GRAM.proteinG +
+        grams.carbsG * KCAL_PER_GRAM.carbsG +
+        grams.fatG * KCAL_PER_GRAM.fatG;
+      // Rounded per nutrient rather than reconciled, so a few calories of
+      // drift is expected and anything more is a bug.
+      expect(Math.abs(kcal - 2000)).toBeLessThanOrEqual(10);
+    }
+  });
+
+  it('refuses to call a split that misses 100 a whole one', () => {
+    expect(isWholeSplit({ proteinPct: 30, carbsPct: 30, fatPct: 30 })).toBe(false);
+    expect(isWholeSplit({ proteinPct: 50, carbsPct: 50, fatPct: 50 })).toBe(false);
   });
 });

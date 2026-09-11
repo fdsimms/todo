@@ -234,6 +234,26 @@ export function resetToWeight(openLog = false): void {
   });
 }
 
+/**
+ * The Weight screen with its goal sheet open — where the Settings row for a
+ * weight goal lands.
+ *
+ * Its own function rather than a second flag on `resetToWeight`, because the
+ * two open different sheets and a boolean pair would make "both" spellable
+ * when it isn't. Same `Date.now()` stamp for the same reason that one gives:
+ * a second tap on the row has to re-open the sheet rather than read as no
+ * change.
+ *
+ * No `returnTo` handoff, unlike the weigh-in link. That one exists because a
+ * request tapped from Today shouldn't strand somebody on the Weight tab after
+ * answering it; this is a Settings row, and the Weight screen is where a goal
+ * lives and where its owner wants to end up.
+ */
+export function resetToWeightGoal(): void {
+  if (!navigationRef.isReady()) return;
+  navigationRef.navigate({ name: 'Weight', params: { openGoal: Date.now() } });
+}
+
 export function resetToPeople(personId?: string | null): void {
   if (!navigationRef.isReady()) return;
   // The list first, always, so the back chevron on the detail screen has

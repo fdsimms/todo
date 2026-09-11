@@ -847,6 +847,31 @@ changes. A target that silently tracked a formula would be a figure nobody
 chose driving the food log, which is exactly what `nutritionTargets`' own note
 rules out.
 
+**The macro split follows the same rule and is where it was most tempting to
+break.** `MACRO_PRESETS` names four common ways to divide a day's calories and
+**preselects none of them**, because how somebody splits protein, carbs and fat
+is a real dietary disagreement of exactly the kind `HEALTH_METRIC_DIRECTION`'s
+note above refuses to take a side in. What the app can honestly do is what a
+reference table does: name the splits, show what each works out to in grams
+(`macroGrams`, by the Atwater factors, which are label arithmetic and not an
+opinion), and let the person pick. Applying one writes the calorie target
+alongside the three macros, since a macro target that doesn't add up to the
+calorie figure it was split out of is three numbers with nothing holding them
+together. The split itself is not stored: it is a one-off choice made when
+applying targets, not a setting, and what persists is the four ordinary
+`nutritionTargets` entries anybody can then edit or clear.
+
+**The chart draws the goal, and the colour is the rule.** `WeightChart` takes
+an optional target and pace line. Everything in the accent colour on that chart
+is something that happened (the readings, and an average of the readings); the
+target and the pace are neither, so they are drawn grey and dashed. A solid
+accent line for a plan would put a plan and a measurement in the same visual
+language on a chart whose three stated rules are all about not doing that.
+`weightDomain` takes an optional weight to make room for so the target lands
+inside the plot, which deliberately flattens the readings when the target is
+far away: drawing the line at the edge of a domain it isn't in would be worse,
+and the trend line still carries the shape.
+
 The single judgement in that module is `MIN_PROPOSED_KCAL`, and it is worth
 naming as one rather than leaving it to be discovered. The arithmetic will
 cheerfully produce 700 calories for a small person aiming at two pounds a week,

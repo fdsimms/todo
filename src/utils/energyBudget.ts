@@ -247,6 +247,73 @@ export function calorieBudget(
   };
 }
 
+// ==== splitting the calories into macronutrients ====
+
+/**
+ * Calories per gram, by macronutrient — the Atwater factors.
+ *
+ * Published constants, the same ones every nutrition label in the world is
+ * computed with, so there is nothing here to have an opinion about.
+ */
+export const KCAL_PER_GRAM = { proteinG: 4, carbsG: 4, fatG: 9 } as const;
+
+/** How a day's calories are divided, as whole percentages summing to 100. */
+export interface MacroSplit {
+  proteinPct: number;
+  carbsPct: number;
+  fatPct: number;
+}
+
+/**
+ * The named splits offered, in the order they are listed.
+ *
+ * **None of these is a default and nothing preselects one.** How somebody
+ * divides their calories is a real dietary disagreement, and the app picking a
+ * side of it is exactly what `docs/arch/health-data.md` says it may not do.
+ * What it can honestly do is what a reference table does: name the common
+ * splits, show what each works out to in grams, and let the person pick. The
+ * control opens with nothing chosen, the same way the sex control does and for
+ * the same reason.
+ *
+ * The list is deliberately short and spans the range rather than trying to be
+ * complete. A split nobody here covers is typed straight into
+ * `NutritionTargetsSheet`, which has always taken any number.
+ */
+export const MACRO_PRESETS: readonly { id: string; label: string; split: MacroSplit }[] = [
+  { id: 'balanced', label: 'Balanced', split: { proteinPct: 30, carbsPct: 40, fatPct: 30 } },
+  { id: 'lowerCarb', label: 'Lower carb', split: { proteinPct: 30, carbsPct: 25, fatPct: 45 } },
+  { id: 'higherCarb', label: 'Higher carb', split: { proteinPct: 25, carbsPct: 50, fatPct: 25 } },
+  { id: 'highProtein', label: 'High protein', split: { proteinPct: 40, carbsPct: 35, fatPct: 25 } },
+];
+
+/** Grams of each macronutrient in `kcal` calories, split this way. */
+export interface MacroGrams {
+  proteinG: number;
+  carbsG: number;
+  fatG: number;
+}
+
+/**
+ * The split applied to a calorie figure, in grams, rounded to whole grams.
+ *
+ * Rounded per nutrient rather than reconciled back to the total, so each figure
+ * is the honest rounding of its own share. The three multiplied back out can
+ * therefore miss the calorie total by a few, which is true of every nutrition
+ * label for the same reason and is not worth a fudge factor to hide.
+ */
+export function macroGrams(kcal: number, split: MacroSplit): MacroGrams {
+  return {
+    proteinG: Math.round((kcal * split.proteinPct) / 100 / KCAL_PER_GRAM.proteinG),
+    carbsG: Math.round((kcal * split.carbsPct) / 100 / KCAL_PER_GRAM.carbsG),
+    fatG: Math.round((kcal * split.fatPct) / 100 / KCAL_PER_GRAM.fatG),
+  };
+}
+
+/** Whether a split actually divides a whole day, which every preset must. */
+export function isWholeSplit(split: MacroSplit): boolean {
+  return split.proteinPct + split.carbsPct + split.fatPct === 100;
+}
+
 // ==== height, in the unit the weight is already in ====
 
 const CM_PER_INCH = 2.54;
