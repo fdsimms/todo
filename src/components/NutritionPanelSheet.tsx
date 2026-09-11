@@ -15,8 +15,10 @@ import { border, font, fontWeight, radius, spacing, type Colors } from '../theme
 import { NUTRIENT_KEYS, type FoodNutrition, type NutrientKey } from '../types';
 import { NUTRIENT_LABEL, NUTRITION_BASIS_LABEL } from '../utils/foodNutrition';
 import {
+  applyFoodNutrition,
   applyLabelReading,
   buildPanelNutrition,
+  foodNutritionFieldCount,
   invalidPanelFields,
   labelColumnFieldCount,
   panelFormDirty,
@@ -33,6 +35,7 @@ import {
 import { haptics } from '../utils/haptics';
 import { InlineAction } from './InlineAction';
 import { NumberPadAccessory, NUMBER_PAD_ACCESSORY_ID } from './NumberPadAccessory';
+import { NutritionBarcodeScanSheet } from './NutritionBarcodeScanSheet';
 import { SegmentedControl } from './SegmentedControl';
 import { SheetHeaderButton } from './SheetHeaderButton';
 
@@ -84,6 +87,14 @@ import { SheetHeaderButton } from './SheetHeaderButton';
  * everyone who hasn't set one up — a real failure on the fallback itself
  * (a timeout, a rate limit) gets its own message rather than being folded
  * into that one.
+ *
+ * **A barcode can fill the form in too, and that changes nothing about the
+ * save either.** "Scan a barcode" hands a decoded GTIN to
+ * `NutritionBarcodeScanSheet`, which asks the same barcode databases
+ * `BarcodeScanSheet` does and lays whatever nutrition they had into these same
+ * fields via `applyFoodNutrition` — the camera-scanned sibling of
+ * `applyLabelReading`. Same review, same Save; only the source of the numbers
+ * differs.
  */
 
 interface Props {
@@ -150,6 +161,12 @@ export function NutritionPanelSheet({ visible, foodName, nutrition, onClose, onS
   // Resolved once rather than per render: whether Vision is linked cannot
   // change while the app is running. See `canReadTextOnDevice`.
   const canPhotograph = useMemo(() => canReadTextOnDevice(), []);
+  // Whether the barcode camera sheet is open, and what its last successful
+  // scan found — cleared alongside the photo's own `label` on reopen, and by
+  // whichever of the two runs next, so only the most recent source's note is
+  // ever on screen.
+  const [scanning, setScanning] = useState(false);
+  const [scanNote, setScanNote] = useState<string | null>(null);
 
   useEffect(() => {
     if (!visible) return;
@@ -161,6 +178,8 @@ export function NutritionPanelSheet({ visible, foodName, nutrition, onClose, onS
     setLabel(null);
     setColumn(0);
     setReading(false);
+    setScanning(false);
+    setScanNote(null);
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [visible]);
 
@@ -216,6 +235,9 @@ export function NutritionPanelSheet({ visible, foodName, nutrition, onClose, onS
       // so anything flagged from an earlier save attempt is re-judged on the
       // next rather than left marked red under a figure that is now fine.
       setBad([]);
+      // A fresh photo read is the source on screen now; a scan note from
+      // earlier in this session would otherwise sit stale beside it.
+      setScanNote(null);
     } finally {
       setReading(false);
     }
@@ -248,6 +270,29 @@ export function NutritionPanelSheet({ visible, foodName, nutrition, onClose, onS
       ],
     );
   }, [handlePhoto]);
+
+  /**
+   * A barcode's own figures, laid over the form the same way a photo's are.
+   *
+   * The sheet closes itself the moment it finds something (see
+   * `NutritionBarcodeScanSheet`), so by the time this runs there is exactly
+   * one panel to apply — no column picker, since a fetched record states one
+   * basis rather than a photographed panel's several.
+   */
+  const handleBarcodeFound = useCallback((found: FoodNutrition, sourceName: string) => {
+    haptics.success();
+    setForm(f => applyFoodNutrition(f, found));
+    setBad([]);
+    // The barcode's figures are on screen now; a photo column picker or note
+    // from earlier in this session would otherwise sit stale beside them.
+    setLabel(null);
+    setPhotoError(null);
+    const count = foodNutritionFieldCount(found);
+    setScanNote(
+      `Filled in ${count} ${count === 1 ? 'figure' : 'figures'} from the barcode for `
+      + `“${sourceName}”. Double-check them against the label before saving.`,
+    );
+  }, []);
 
   const setAmount = (key: NutrientKey, text: string) => {
     setForm(f => ({ ...f, amounts: { ...f.amounts, [key]: text } }));
@@ -317,17 +362,28 @@ export function NutritionPanelSheet({ visible, foodName, nutrition, onClose, onS
               doesn't list it. Blank means unknown, which is not the same as zero.
             </Text>
 
-            {canPhotograph && (
-              <View style={styles.photoRow}>
+            <View style={styles.photoRow}>
+              {canPhotograph && (
                 <InlineAction
                   label={reading ? 'Reading the label…' : 'Read from a photo'}
                   icon="camera-outline"
                   onPress={startPhoto}
                   disabled={reading}
                 />
+              )}
+              <InlineAction
+                label="Scan a barcode"
+                icon="barcode-outline"
+                variant="neutral"
+                onPress={() => { haptics.tap(); setScanning(true); }}
+              />
+            </View>
+            {!!photoError && <Text style={styles.photoError}>{photoError}</Text>}
+            {!!scanNote && (
+              <View style={styles.photoRead}>
+                <Text style={styles.photoNote}>{scanNote}</Text>
               </View>
             )}
-            {!!photoError && <Text style={styles.photoError}>{photoError}</Text>}
 
             {!!label && (
               <View style={styles.photoRead}>
@@ -440,6 +496,11 @@ export function NutritionPanelSheet({ visible, foodName, nutrition, onClose, onS
         </KeyboardAvoidingView>
         <NumberPadAccessory />
       </View>
+      <NutritionBarcodeScanSheet
+        visible={scanning}
+        onClose={() => setScanning(false)}
+        onFound={handleBarcodeFound}
+      />
     </Modal>
   );
 }
@@ -467,8 +528,10 @@ function makeStyles(colors: Colors) {
     body: { padding: spacing.md, paddingBottom: spacing.xl, gap: spacing.sm },
     intro: { color: colors.textSecondary, fontSize: font.sm, lineHeight: 18, marginBottom: spacing.sm },
     // Margin on both sides it needs: the group label below has no top margin of
-    // its own, per the spacing note in CLAUDE.md.
-    photoRow: { flexDirection: 'row', marginBottom: spacing.sm },
+    // its own, per the spacing note in CLAUDE.md. Wraps rather than a fixed
+    // row now that a second action sits beside the first — same treatment
+    // `GroceryItemSheet`'s own nutrition action row uses.
+    photoRow: { flexDirection: 'row', flexWrap: 'wrap', gap: spacing.sm, marginBottom: spacing.sm },
     photoRead: { gap: spacing.sm, marginBottom: spacing.sm },
     photoNote: { color: colors.textSecondary, fontSize: font.xs, lineHeight: 16 },
     photoError: {
