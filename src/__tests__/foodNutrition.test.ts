@@ -1,5 +1,6 @@
 import {
   addCustomPortion,
+  catalogPanelWrite,
   describeFoodPanel,
   nutritionFor,
   parseFoodNutrition,
@@ -314,5 +315,25 @@ describe('describeFoodPanel', () => {
 
   it('is null for a food with no record, which is not a food containing nothing', () => {
     expect(describeFoodPanel(null)).toBeNull();
+  });
+});
+
+describe('catalogPanelWrite', () => {
+  it('writes onto a row that has no figures of its own', () => {
+    expect(catalogPanelWrite(null, nutrition())).toBe('write');
+    expect(catalogPanelWrite(undefined, nutrition())).toBe('write');
+  });
+
+  it('calls it a replacement when the row already states figures, rather than refusing', () => {
+    // A row carrying a bad transcription is exactly the row somebody wants to
+    // correct from a database, so the answer is "ask", never "no".
+    expect(catalogPanelWrite(nutrition(), nutrition({ source: 'openFoodFacts' }))).toBe('replace');
+  });
+
+  it('refuses a panel with nothing in it, whatever the row holds', () => {
+    const empty = nutrition({ amounts: {} });
+    expect(catalogPanelWrite(null, empty)).toBe('refuse');
+    expect(catalogPanelWrite(nutrition(), empty)).toBe('refuse');
+    expect(catalogPanelWrite(null, null)).toBe('refuse');
   });
 });

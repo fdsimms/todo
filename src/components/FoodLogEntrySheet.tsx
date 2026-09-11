@@ -14,11 +14,11 @@ import Ionicons from '@expo/vector-icons/Ionicons';
 import { useShallow } from 'zustand/react/shallow';
 import { useColors } from '../theme/ThemeContext';
 import { border, font, fontWeight, iconSize, interaction, radius, spacing, type Colors } from '../theme';
-import { MEAL_SLOTS, MEAL_SLOT_LABELS, type FoodNutrition, type MealSlot } from '../types';
+import { MEAL_SLOTS, MEAL_SLOT_LABELS, type FoodNutrition, type GroceryItem, type MealSlot } from '../types';
 import { useGroceryStore } from '../store/useGroceryStore';
 import { useRecipeStore } from '../store/useRecipeStore';
 import { useFoodLogStore, type FoodLogDraft } from '../store/useFoodLogStore';
-import { addCustomPortion, nutritionFor } from '../utils/foodNutrition';
+import { addCustomPortion, catalogPanelWrite, nutritionFor } from '../utils/foodNutrition';
 import { combineFoodNutrition, helpingNutrition, recipeHelpingNutrition, scalePanelToAmount } from '../utils/foodLog';
 import { cookedDishGrams, mealHelping, servingGrams, weighedHelping } from '../utils/mealLog';
 import { perServing, recipeNutrition, recipeNutritionLines, type NutritionLine } from '../utils/recipeNutrition';
@@ -28,6 +28,7 @@ import { groceryNameKey } from '../utils/groceryParse';
 import { haptics } from '../utils/haptics';
 import { weighableLine } from '../utils/ingredientGrams';
 import { useKeyboardInsetScroll } from '../hooks/useKeyboardInsetScroll';
+import { CatalogLinkPicker } from './CatalogLinkPicker';
 import { EmptyState } from './EmptyState';
 import { InlineAction } from './InlineAction';
 import { NutritionSearchSheet } from './NutritionSearchSheet';
@@ -164,6 +165,31 @@ interface Candidate {
   recipeId: string | null;
   itemId: string | null;
   productId: string | null;
+  /**
+   * The catalog row this panel actually lives on, which is not always the row
+   * the entry is filed as.
+   *
+   * The two are the same for every candidate the catalog itself offers, and
+   * part company for a food found in a database and then filed against a row
+   * that already stated figures of its own: the entry points at that row, and
+   * the figures being logged are still the database's. **`handleSaveWeighedPortion`
+   * writes against this one and never `itemId`**, or weighing out a cup of the
+   * database's flour would overwrite the panel somebody had transcribed off
+   * their own bag.
+   */
+  panelItemId: string | null;
+  /**
+   * Whether this food came out of a food database rather than off a row this
+   * app already had.
+   *
+   * Recorded rather than inferred from `itemId`/`productId`/`recipeId` all
+   * being null, which is what it used to be read as: those three go on being
+   * null for a row the catalog simply hasn't got, and once filing sets `itemId`
+   * the shape stops telling you anything at all. It is what says whether the
+   * catalog offer below belongs on screen, and afterwards what lets the sheet
+   * say where the food went.
+   */
+  fromDatabase: boolean;
   /** Present for a dish: what one serving of it works out to, when it says how many it makes. */
   servingPanel: FoodNutrition | null;
   /** Present for a dish: what the whole finished dish weighs, when somebody has weighed it. */
@@ -189,6 +215,7 @@ export function FoodLogEntrySheet({
   const addEntry = useFoodLogStore(s => s.addEntry);
   const setItemNutrition = useGroceryStore(s => s.setItemNutrition);
   const setProductNutrition = useGroceryStore(s => s.setProductNutrition);
+  const ensureCatalogItem = useGroceryStore(s => s.ensureCatalogItem);
 
   const [query, setQuery] = useState('');
   const [picked, setPicked] = useState<Candidate | null>(null);
@@ -200,6 +227,8 @@ export function FoodLogEntrySheet({
   const [weighing, setWeighing] = useState(false);
   const [weighGrams, setWeighGrams] = useState('');
   const [dbSearchOpen, setDbSearchOpen] = useState(false);
+  /** Whether the "which item is this" picker is open under a database food. */
+  const [catalogPickOpen, setCatalogPickOpen] = useState(false);
   // What was typed for each of a dish's amount-varies lines, keyed by the
   // recipe ingredient's own id. See `varyingLines` below.
   const [varyingAmounts, setVaryingAmounts] = useState<Record<string, string>>({});
@@ -211,6 +240,7 @@ export function FoodLogEntrySheet({
     setAmount('');
     setChosenSlot(slot);
     setDbSearchOpen(false);
+    setCatalogPickOpen(false);
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [visible, slot]);
 
@@ -220,6 +250,7 @@ export function FoodLogEntrySheet({
   useEffect(() => {
     setWeighing(false);
     setWeighGrams('');
+    setCatalogPickOpen(false);
   }, [picked]);
 
   // A fresh dish starts with none of its varying lines answered, same as a
@@ -247,6 +278,8 @@ export function FoodLogEntrySheet({
         recipeId: null,
         itemId: item.id,
         productId: product.id,
+        panelItemId: item.id,
+        fromDatabase: false,
         servingPanel: null,
         cookedGrams: null,
         dishServings: null,
@@ -265,6 +298,8 @@ export function FoodLogEntrySheet({
         recipeId: null,
         itemId: item.id,
         productId: null,
+        panelItemId: item.id,
+        fromDatabase: false,
         servingPanel: null,
         cookedGrams: null,
         dishServings: null,
@@ -295,6 +330,8 @@ export function FoodLogEntrySheet({
         recipeId: recipe.id,
         itemId: null,
         productId: null,
+        panelItemId: null,
+        fromDatabase: false,
         servingPanel: serving,
         cookedGrams,
         dishServings: dish.servings,
@@ -467,11 +504,89 @@ export function FoodLogEntrySheet({
     if (!Number.isFinite(grams) || grams <= 0) { haptics.error(); return; }
     const updated = addCustomPortion(picked.panel, weighable.label, weighable.amount, grams);
     if (!updated) { haptics.error(); return; }
+    // `panelItemId`, never `itemId` — see its note on the candidate. A food
+    // filed against a row that already had figures is pointing at that row
+    // while still carrying a database's own panel, and writing a portion back
+    // onto it would replace figures nobody asked to replace.
     if (picked.productId) setProductNutrition(picked.productId, updated);
-    else if (picked.itemId) setItemNutrition(picked.itemId, updated);
+    else if (picked.panelItemId) setItemNutrition(picked.panelItemId, updated);
     else { haptics.error(); return; }
     setPicked({ ...picked, panel: updated });
     haptics.success();
+  };
+
+  /**
+   * Whether the food on screen is one a database answered and the catalog has
+   * never heard of.
+   *
+   * The one candidate with nowhere to go: every other row here came off a
+   * `GroceryItem`, an `ItemProduct` or a `Recipe` and already knows what it is.
+   * A database result is figures and a description, and without this it stayed
+   * that way — the panel rode onto the entry and was gone, so eating the same
+   * thing next week meant searching for it again, and the weigh-it offer below
+   * had no row to write a portion to at all.
+   */
+  const unfiled = !!picked && picked.fromDatabase && !!picked.panel && picked.itemId === null;
+
+  /** What a just-filed food ended up as, for the line that says so. */
+  const filedAs = useMemo(() => {
+    if (!picked?.fromDatabase || !picked.itemId) return null;
+    return items.find(i => i.id === picked.itemId)?.name ?? null;
+  }, [picked, items]);
+
+  /**
+   * Filing a database food against a catalog row.
+   *
+   * **Two separable things happen here and the user decides the second one.**
+   * The link is always written: this entry is that food, which is a fact about
+   * the entry and costs the catalog nothing. Whether the row's own figures
+   * become these figures is a different question, and `catalogPanelWrite` is
+   * what says which of the three ways it can go. A row with no record takes
+   * them with nothing to ask. A row that already states figures is asked
+   * about, and **keeping what it has is offered first**, because the common
+   * case is filing a database's "Milk, whole" against a Milk row somebody
+   * transcribed off their own carton, and silently replacing that is the one
+   * outcome this may not produce.
+   */
+  const fileInCatalog = (item: GroceryItem) => {
+    if (!picked || !picked.panel) return;
+    const panel = picked.panel;
+    setCatalogPickOpen(false);
+    const link = (panelItemId: string | null) => {
+      setPicked(current => (current ? { ...current, itemId: item.id, panelItemId } : current));
+      haptics.success();
+    };
+    const verdict = catalogPanelWrite(item.nutrition, panel);
+    if (verdict === 'refuse') { haptics.error(); return; }
+    if (verdict === 'write') {
+      setItemNutrition(item.id, panel);
+      link(item.id);
+      return;
+    }
+    Alert.alert(
+      `${item.name} already has figures`,
+      `Keep the ones already on ${item.name}, or replace them with these? Either way this entry is filed as ${item.name}.`,
+      [
+        { text: 'Cancel', style: 'cancel' },
+        { text: 'Keep its own', onPress: () => link(null) },
+        {
+          text: 'Replace',
+          style: 'destructive',
+          onPress: () => { setItemNutrition(item.id, panel); link(item.id); },
+        },
+      ],
+    );
+  };
+
+  /** Filing it under its own name, minting the row when there isn't one. */
+  const fileAsNewItem = () => {
+    if (!picked) return;
+    // `ensureCatalogItem` rather than `addByName`, the same restraint
+    // `FoodLogScreen`'s scan handler takes: eating something is not a plan to
+    // buy it, so a row minted here arrives off the list.
+    const item = ensureCatalogItem(picked.label);
+    if (!item) { haptics.error(); return; }
+    fileInCatalog(item);
   };
 
   const handleSave = () => {
@@ -516,6 +631,8 @@ export function FoodLogEntrySheet({
       recipeId: null,
       itemId: null,
       productId: null,
+      panelItemId: null,
+      fromDatabase: true,
       servingPanel: null,
       cookedGrams: null,
       dishServings: null,
@@ -691,6 +808,43 @@ export function FoodLogEntrySheet({
               </Text>
             )}
 
+            {unfiled && (
+              <>
+                <Text style={[styles.label, styles.labelSpaced]}>KEEP THIS FOOD</Text>
+                <Text style={styles.hint}>
+                  Your grocery catalog has nothing for this yet, so these figures
+                  go on the entry and nowhere else. File it and it's here to pick
+                  next time instead of to search for.
+                </Text>
+                <View style={styles.fileRow}>
+                  <InlineAction
+                    label={`Add “${picked.label}”`}
+                    icon="add"
+                    onPress={() => { haptics.tap(); fileAsNewItem(); }}
+                  />
+                  <InlineAction
+                    label={catalogPickOpen ? 'Never mind' : 'Something I already have'}
+                    icon="albums-outline"
+                    variant="neutral"
+                    onPress={() => { haptics.tap(); setCatalogPickOpen(o => !o); }}
+                  />
+                </View>
+                {catalogPickOpen && (
+                  <CatalogLinkPicker
+                    items={items}
+                    initialQuery={picked.label}
+                    onPick={fileInCatalog}
+                  />
+                )}
+              </>
+            )}
+
+            {/* Said once it has somewhere to live, so filing has a visible
+                result rather than the buttons merely disappearing. */}
+            {!!filedAs && (
+              <Text style={styles.filedNote}>{`Filed in your catalog as ${filedAs}.`}</Text>
+            )}
+
             {varyingLines.length > 0 && (
               <>
                 <Text style={[styles.label, styles.labelSpaced]}>ANYTHING ELSE?</Text>
@@ -850,6 +1004,10 @@ function makeStyles(colors: Colors) {
     hint: { color: colors.textSecondary, fontSize: font.xs, lineHeight: 16, marginTop: spacing.xs },
     error: { color: colors.red, fontSize: font.sm, lineHeight: 18, marginTop: spacing.sm },
     preview: { color: colors.text, fontSize: font.sm, fontWeight: fontWeight.semibold, marginTop: spacing.sm },
+    // Wraps rather than truncating: the first pill carries the food's own name,
+    // which can be a database description several words long.
+    fileRow: { flexDirection: 'row', flexWrap: 'wrap', gap: spacing.sm, marginTop: spacing.sm },
+    filedNote: { color: colors.textSecondary, fontSize: font.sm, marginTop: spacing.md },
     weighAction: { alignSelf: 'flex-start', marginTop: spacing.sm },
     weighForm: {
       marginTop: spacing.sm,

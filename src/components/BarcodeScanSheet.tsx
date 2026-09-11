@@ -33,6 +33,7 @@ import { useSettingsStore } from '../store/useSettingsStore';
 import { useKeyboardInsetScroll } from '../hooks/useKeyboardInsetScroll';
 import { SheetHeaderButton } from './SheetHeaderButton';
 import { InlineAction } from './InlineAction';
+import { CatalogLinkPicker } from './CatalogLinkPicker';
 import { EmptyState } from './EmptyState';
 import type { ReceiptAddDraft } from './ReceiptImportSheet';
 import type { ReceiptMatch } from '../utils/receiptMatch';
@@ -43,6 +44,7 @@ import { formatPrice } from '../utils/groceryPrice';
 import { normalizePlu, pluNameFor } from '../utils/plu';
 import {
   matchScans,
+  scanLinkTarget,
   pluScannedItem,
   nameFromScanFor,
   scannedItemFor,
@@ -116,6 +118,24 @@ interface ScanRow extends ScannedItem {
    */
   confirmedMatchId: string | null;
   /**
+   * The catalog row the user chose by hand, which outranks whatever the
+   * matcher read.
+   *
+   * **Separate from `confirmedMatchId` because it answers a different
+   * question.** That one is a yes to a row the app offered, and is deliberately
+   * compared against the offer so that editing the name asks again. This is the
+   * app being *told*, and nothing about it is contingent on a guess: it stands
+   * whether the matcher found anything, found the wrong thing, or found nothing
+   * at all. That last case is the one it exists for — a barcode no database has
+   * heard of used to leave "New item" and a name field, so scanning the tub of
+   * yogurt already in the catalog minted a second row for it.
+   *
+   * Resolve-or-shrug, like every other cross-row pointer here: an id that no
+   * longer names a row falls back to the matcher's own reading rather than
+   * blocking the row. See `scanLinkTarget`.
+   */
+  pickedItemId: string | null;
+  /**
    * The shelf price read off the same label as the barcode, in minor units, or
    * null when nothing near the code read as one.
    *
@@ -145,6 +165,8 @@ const CONTEXT_COPY: Record<ScanContext, {
   /** Whether the freezer toggle means anything here. */
   freezer: boolean;
   matched: (name: string) => string;
+  /** A row the user filed by hand. One sentence per context, same as the rest. */
+  picked: (name: string) => string;
   scannedBefore: (name: string) => string;
   matchedBefore: (name: string) => string;
   offList: (name: string) => string;
@@ -155,6 +177,7 @@ const CONTEXT_COPY: Record<ScanContext, {
     confirmLabel: 'Add',
     freezer: true,
     matched: name => `On your list as ${name}`,
+    picked: name => `Filed as ${name} on your list`,
     scannedBefore: name => `On your list as ${name}, as you scanned it before`,
     matchedBefore: name => `On your list as ${name}, as you matched it before`,
     offList: name => `Back on the list as ${name}`,
@@ -165,6 +188,7 @@ const CONTEXT_COPY: Record<ScanContext, {
     confirmLabel: 'Add',
     freezer: true,
     matched: name => `Matches \u201C${name}\u201D in your pantry`,
+    picked: name => `Filed as \u201C${name}\u201D in your pantry`,
     scannedBefore: name => `Matches \u201C${name}\u201D, as you scanned it before`,
     matchedBefore: name => `Matches \u201C${name}\u201D, as you matched it before`,
     offList: name => `Matches \u201C${name}\u201D`,
@@ -177,6 +201,7 @@ const CONTEXT_COPY: Record<ScanContext, {
     // which is the opposite of where a thing is being kept.
     freezer: false,
     matched: name => `Known as \u201C${name}\u201D`,
+    picked: name => `Filed as \u201C${name}\u201D`,
     scannedBefore: name => `Known as \u201C${name}\u201D, as you scanned it before`,
     matchedBefore: name => `Known as \u201C${name}\u201D, as you matched it before`,
     offList: name => `Known as \u201C${name}\u201D`,
@@ -309,6 +334,12 @@ export function BarcodeScanSheet({ visible, onClose, onApply, context }: Props) 
   const [rows, setRows] = useState<ScanRow[]>([]);
   const [manual, setManual] = useState('');
   /**
+   * The row whose catalog picker is open, or null. One at a time: the picker
+   * is a list of its own, and two of them open down the sheet would bury the
+   * rows still waiting to be read.
+   */
+  const [pickingKey, setPickingKey] = useState<string | null>(null);
+  /**
    * GTINs already claimed in this session, checked and set synchronously in
    * the scan callback itself rather than read off `rows`.
    *
@@ -325,6 +356,7 @@ export function BarcodeScanSheet({ visible, onClose, onApply, context }: Props) 
   const reset = useCallback(() => {
     setRows([]);
     setManual('');
+    setPickingKey(null);
     scannedGtinsRef.current = new Set();
   }, []);
 
@@ -358,6 +390,7 @@ export function BarcodeScanSheet({ visible, onClose, onApply, context }: Props) 
           error: null,
           frozen: false,
           confirmedMatchId: null,
+          pickedItemId: null,
           priceMinor,
         },
       ]);
@@ -443,6 +476,7 @@ export function BarcodeScanSheet({ visible, onClose, onApply, context }: Props) 
           error: null,
           frozen: false,
           confirmedMatchId: null,
+          pickedItemId: null,
           priceMinor: null,
         },
       ]);
@@ -462,6 +496,7 @@ export function BarcodeScanSheet({ visible, onClose, onApply, context }: Props) 
           error: null,
           frozen: false,
           confirmedMatchId: null,
+          pickedItemId: null,
           priceMinor: null,
         },
       ]);
@@ -506,12 +541,27 @@ export function BarcodeScanSheet({ visible, onClose, onApply, context }: Props) 
   const needsConfirm = (confidence: ReceiptMatchConfidence | null): boolean =>
     confidence === 'likely';
 
+  /**
+   * The row a hand-pick names, or null when nothing was picked or the pick no
+   * longer resolves. `scanLinkTarget` is what decides which of the two branches
+   * below it belongs to, off the item's own `onList`.
+   */
+  const pickedTarget = (row: ScanRow) =>
+    scanLinkTarget(row.pickedItemId ? items.find(i => i.id === row.pickedItemId) : null);
+
   const confidentItemId = (row: ScanRow, match: ReceiptMatch | undefined): string | null => {
+    // A hand-pick outranks the matcher outright, and answers for exactly one of
+    // the two branches: an off-list pick falls through to `confidentOffListMatchId`
+    // rather than ticking a row nobody was shopping for.
+    const picked = pickedTarget(row);
+    if (picked) return picked.onList ? picked.itemId : null;
     if (!match?.itemId || match.confidence === 'weak') return null;
     if (needsConfirm(match.confidence) && row.confirmedMatchId !== match.itemId) return null;
     return match.itemId;
   };
   const confidentOffListMatchId = (row: ScanRow, match: ReceiptMatch | undefined): string | null => {
+    const picked = pickedTarget(row);
+    if (picked) return picked.onList ? null : picked.itemId;
     if (!match?.offListMatchId || match.offListConfidence === 'weak') return null;
     if (needsConfirm(match.offListConfidence) && row.confirmedMatchId !== match.offListMatchId) {
       return null;
@@ -520,6 +570,10 @@ export function BarcodeScanSheet({ visible, onClose, onApply, context }: Props) 
   };
   /** The item a `'likely'` match is offering, while the row hasn't confirmed it yet. */
   const pendingMatchId = (row: ScanRow, match: ReceiptMatch | undefined): string | null => {
+    // Nothing left to confirm: the user has already said which row this is, and
+    // offering the matcher's guess beside their own answer reads as the app
+    // second-guessing them.
+    if (pickedTarget(row)) return null;
     const candidate =
       match?.itemId && needsConfirm(match.confidence)
         ? match.itemId
@@ -582,7 +636,13 @@ export function BarcodeScanSheet({ visible, onClose, onApply, context }: Props) 
       });
     };
     rows.forEach((row, index) => {
-      if (!row.included || !row.name.trim()) return;
+      // A hand-picked row is exempt from the name test, and has to be: the row
+      // it was picked for is the one a barcode lookup missed entirely, so there
+      // is nothing in the field and nothing that needs to be. It is never minted
+      // either — both branches below resolve it to a row that already exists —
+      // so the name the drafts carry is not read for it.
+      if (!row.included) return;
+      if (!row.name.trim() && !pickedTarget(row)) return;
       const match = matches[index];
       const itemId = confidentItemId(row, match);
       if (itemId) {
@@ -645,6 +705,15 @@ export function BarcodeScanSheet({ visible, onClose, onApply, context }: Props) 
   const captionFor = (row: ScanRow, index: number): string | null => {
     if (row.pending) return 'Looking it up…';
     if (row.error) return row.error;
+    // Ahead of the empty-name branch: a barcode nothing was found for is
+    // exactly the row somebody files by hand, and telling them to type what it
+    // is after they have already said which row it is reads as the pick not
+    // having landed.
+    const picked = pickedTarget(row);
+    if (picked) {
+      const item = items.find(i => i.id === picked.itemId);
+      if (item) return CONTEXT_COPY[context].picked(item.name);
+    }
     if (!row.name.trim()) return 'Not found. Type what it is.';
     const match = matches[index];
     const itemId = confidentItemId(row, match);
@@ -768,7 +837,8 @@ export function BarcodeScanSheet({ visible, onClose, onApply, context }: Props) 
                 const pendingId = pendingMatchId(row, match);
                 const nameable = !row.pending;
                 return (
-                  <View key={row.key} style={[styles.row, index > 0 && styles.rowDivided]}>
+                  <View key={row.key} style={index > 0 ? styles.rowDivided : undefined}>
+                  <View style={styles.row}>
                     <TouchableOpacity
                       style={[
                         styles.check,
@@ -776,7 +846,7 @@ export function BarcodeScanSheet({ visible, onClose, onApply, context }: Props) 
                         row.included && { backgroundColor: colors.accentFill, borderColor: colors.accent },
                       ]}
                       activeOpacity={interaction.activeOpacity}
-                      disabled={!row.name.trim()}
+                      disabled={!row.name.trim() && !row.pickedItemId}
                       onPress={() => patchRow(row.key, { included: !row.included })}
                       accessibilityRole="checkbox"
                       accessibilityState={{ checked: row.included }}
@@ -837,18 +907,52 @@ export function BarcodeScanSheet({ visible, onClose, onApply, context }: Props) 
                           />
                         </View>
                       )}
-                      {!!caption && (
+                      {!row.pending && (
                         <View style={styles.captionRow}>
-                          <Text style={row.error ? styles.rowError : styles.rowCaption}>
-                            {caption}
-                          </Text>
-                          {!!pendingId && (
+                          {!!caption && (
+                            <Text style={row.error ? styles.rowError : styles.rowCaption}>
+                              {caption}
+                            </Text>
+                          )}
+                          {!!pendingId && !!caption && (
                             <InlineAction
                               label="Confirm"
                               icon="checkmark-circle-outline"
                               variant="neutral"
                               onPress={() => patchRow(row.key, { confirmedMatchId: pendingId })}
                               accessibilityLabel={`Confirm: ${caption}`}
+                              style={styles.confirmPill}
+                            />
+                          )}
+                          {/* The way out of every reading above, including the
+                              one that read nothing. Neutral rather than accent
+                              for the reason `InlineAction` gives: it is the
+                              quieter half of the pair whenever a Confirm is
+                              sitting beside it. */}
+                          <InlineAction
+                            // Three states, three labels, because one word has
+                            // to make sense in all three places this sits: next
+                            // to a guess it is rejecting, next to a reading it
+                            // is replacing, and under a row that read nothing
+                            // at all.
+                            label={row.pickedItemId ? 'Change' : pendingId ? 'Not it' : 'Pick an item'}
+                            icon="albums-outline"
+                            variant="neutral"
+                            onPress={() => setPickingKey(k => (k === row.key ? null : row.key))}
+                            accessibilityLabel={
+                              row.pickedItemId
+                                ? `Change which item ${row.name.trim() || row.label || 'this scan'} is filed as`
+                                : `Choose which item ${row.name.trim() || row.label || 'this scan'} is`
+                            }
+                            style={styles.confirmPill}
+                          />
+                          {!!row.pickedItemId && (
+                            <InlineAction
+                              label="Undo"
+                              icon="close-circle-outline"
+                              variant="neutral"
+                              onPress={() => { setPickingKey(null); patchRow(row.key, { pickedItemId: null }); }}
+                              accessibilityLabel={`Stop filing ${row.name.trim() || row.label || 'this scan'} by hand`}
                               style={styles.confirmPill}
                             />
                           )}
@@ -871,7 +975,7 @@ export function BarcodeScanSheet({ visible, onClose, onApply, context }: Props) 
                     <TouchableOpacity
                       activeOpacity={interaction.activeOpacity}
                       style={styles.rowControl}
-                      disabled={!row.name.trim()}
+                      disabled={!row.name.trim() && !row.pickedItemId}
                       onPress={() => patchRow(row.key, { frozen: !row.frozen })}
                       accessibilityRole="switch"
                       accessibilityState={{ checked: row.frozen }}
@@ -910,6 +1014,41 @@ export function BarcodeScanSheet({ visible, onClose, onApply, context }: Props) 
                         <Ionicons name="close" size={iconSize.sm} color={colors.textTertiary} />
                       </TouchableOpacity>
                     )}
+                  </View>
+
+                  {/* Under the row rather than beside it: a result list sharing
+                      the row's flex line would take its width from whatever the
+                      name field left over, and a catalog row you cannot read is
+                      one you cannot pick. Same `CatalogLinkPicker` a recipe
+                      ingredient is tied to an item with, asking the same
+                      question of a different kind of line. */}
+                  {pickingKey === row.key && (
+                    <View style={styles.pickerWrap}>
+                      <CatalogLinkPicker
+                        items={items}
+                        // The source's own words when the row has no name of its
+                        // own, which is the miss this exists for.
+                        initialQuery={row.name.trim() || row.label}
+                        onPick={item => {
+                          setPickingKey(null);
+                          patchRow(row.key, {
+                            pickedItemId: item.id,
+                            // The offer this replaces, dropped: leaving a yes to
+                            // a row the user has just said no to would come back
+                            // the moment the pick is undone.
+                            confirmedMatchId: null,
+                            // Naming a row is what makes it recordable, and a
+                            // pick is a stronger naming than typing one.
+                            included: true,
+                            // Only where there was nothing. A scan's own name is
+                            // the words on the box being checked against the box,
+                            // and overwriting them would take away the check.
+                            name: row.name.trim() || item.name,
+                          });
+                        }}
+                      />
+                    </View>
+                  )}
                   </View>
                 );
               })}
@@ -1020,8 +1159,20 @@ function makeStyles(colors: Colors) {
     // compensation, which drops the glyphs below the caret. See CLAUDE.md.
     rowInput: { color: colors.text, fontSize: font.md, paddingVertical: 2 },
     rowLabel: { color: colors.textTertiary, fontSize: font.xs, marginTop: 2 },
-    captionRow: { flexDirection: 'row', alignItems: 'center', gap: spacing.xs, marginTop: 2 },
-    rowCaption: { color: colors.textSecondary, fontSize: font.xs },
+    // Wraps, because the caption now shares its line with up to three pills
+    // and a long "Filed as …" sentence would otherwise squeeze them off the
+    // right edge — see CLAUDE.md on text losing a row to its buttons.
+    captionRow: {
+      flexDirection: 'row',
+      alignItems: 'center',
+      flexWrap: 'wrap',
+      gap: spacing.xs,
+      marginTop: 2,
+    },
+    rowCaption: { color: colors.textSecondary, fontSize: font.xs, flexShrink: 1 },
+    // Indented to the row body's own left edge so the results read as belonging
+    // to the row above rather than to the card.
+    pickerWrap: { paddingLeft: spacing.xl, paddingRight: spacing.md, paddingBottom: spacing.sm },
     rowError: { color: colors.orange, fontSize: font.xs },
     // Tighter than `InlineAction`'s own default so a "Confirm" pill sitting
     // beside a caption reads as part of the line, not a control from a denser

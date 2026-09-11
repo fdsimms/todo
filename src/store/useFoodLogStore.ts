@@ -143,9 +143,21 @@ export interface PendingManualMealLog {
   mealPlanEntryId: string | null;
 }
 
-/** What an edit may change. The instant and its day key are deliberately not on it. */
+/**
+ * What an edit may change. The instant and its day key are deliberately not on it.
+ *
+ * `itemId`/`productId` are on it and `nutrition` deliberately keeps them
+ * company without being changed by the same edit: saying which catalog row an
+ * entry was is provenance, and `FoodLogEntry.nutrition` is a snapshot of what
+ * was actually eaten. Re-pointing an entry at a row with different figures must
+ * not rewrite the meal — that is the same rule the snapshot exists for, one
+ * step further along.
+ */
 export type FoodLogPatch = Partial<
-  Pick<FoodLogEntry, 'label' | 'quantity' | 'grams' | 'nutrition' | 'slot' | 'sortOrder'>
+  Pick<
+    FoodLogEntry,
+    'label' | 'quantity' | 'grams' | 'nutrition' | 'slot' | 'sortOrder' | 'itemId' | 'productId'
+  >
 >;
 
 /** A drag's result for one entry: where it landed, and which meal it landed in. */
@@ -417,9 +429,10 @@ export const useFoodLogStore = create<FoodLogStore>((set, get) => ({
    * Patches a row. Deliberately dumb, and deliberately not a Health writer.
    *
    * This is what `addEntry`'s own Health write calls back into to store the
-   * sample ids, so a retract-and-rewrite here would chase its own tail. It is
-   * also unused by the UI today: an entry is deleted and logged again rather
-   * than edited.
+   * sample ids, so a retract-and-rewrite here would chase its own tail. The
+   * one thing the UI changes through it is an entry's catalog link, which is
+   * provenance and reaches neither `nutrition` nor `label` — so the rule below
+   * still holds and is still unexercised.
    *
    * **If an edit path ever reaches `nutrition` or `label`, it must retract the
    * old samples and write new ones**, not patch the row and leave Health

@@ -29,6 +29,7 @@ import { useGroceryStore } from '../store/useGroceryStore';
 import { nutritionFor } from '../utils/foodNutrition';
 import { describeProduct } from '../utils/groceryProduct';
 import { BarcodeScanSheet, type ScanProductDraft } from '../components/BarcodeScanSheet';
+import { CatalogLinkSheet } from '../components/CatalogLinkSheet';
 import { ScanPortionSheet, type ScannedFood } from '../components/ScanPortionSheet';
 import { NutritionPanelSheet } from '../components/NutritionPanelSheet';
 import { EstimateMealSheet } from '../components/EstimateMealSheet';
@@ -95,6 +96,7 @@ export function FoodLogScreen() {
   const entries = useFoodLogStore(useShallow(s => s.entries));
   const loadRange = useFoodLogStore(s => s.loadRange);
   const removeEntry = useFoodLogStore(s => s.removeEntry);
+  const updateEntry = useFoodLogStore(s => s.updateEntry);
   const removeEntries = useFoodLogStore(s => s.removeEntries);
   const moveEntries = useFoodLogStore(s => s.moveEntries);
   const reorderEntries = useFoodLogStore(s => s.reorderEntries);
@@ -127,6 +129,17 @@ export function FoodLogScreen() {
    * two-tap fix becomes an errand.
    */
   const [panelFor, setPanelFor] = useState<{ itemId: string; productId: string | null; name: string } | null>(null);
+  /**
+   * The entry whose catalog row is being chosen, or null.
+   *
+   * An entry's `itemId` is set once, by whichever path logged it, and until now
+   * could never be corrected: a scan that read the wrong row, or a food found
+   * in a database before the catalog had it, left the entry pointing at the
+   * wrong thing or at nothing, and deleting and re-logging was the only way
+   * back. This is only ever provenance — see `FoodLogPatch` — so nothing about
+   * the meal's own figures moves with it.
+   */
+  const [linkingEntry, setLinkingEntry] = useState<FoodLogEntry | null>(null);
   // Plain useRowSelection, same as Templates/Projects/People: there is
   // nothing recurrence- or meal-plan-aware to reuse useTaskSelection's delete
   // flow for, only a confirm.
@@ -342,6 +355,39 @@ export function FoodLogScreen() {
       return;
     }
     setScanned(foods);
+  };
+
+  /**
+   * The row's "…". Two things an entry can have done to it, so it asks which
+   * rather than the button meaning only one of them.
+   */
+  const handleOpenMenu = (entry: FoodLogEntry) => {
+    haptics.tap();
+    Alert.alert(
+      entry.label,
+      undefined,
+      [
+        { text: 'Cancel', style: 'cancel' },
+        {
+          text: entry.itemId ? 'File as a different item' : 'File as an item',
+          onPress: () => setLinkingEntry(entry),
+        },
+        ...(entry.itemId
+          ? [{ text: 'Stop filing it as an item', onPress: () => {
+            // The box goes with the row: a product is one of an item's boxes,
+            // so an entry pointing at a box and not at the item is a pointer
+            // with nothing above it.
+            updateEntry(entry.id, { itemId: null, productId: null });
+            haptics.tap();
+          } }]
+          : []),
+        {
+          text: 'Forget',
+          style: 'destructive' as const,
+          onPress: () => handleDelete(entry.id, entry.label),
+        },
+      ],
+    );
   };
 
   const handleDelete = (id: string, label: string) => {
@@ -624,7 +670,7 @@ export function FoodLogScreen() {
                   colors={colors}
                   onToggleSelect={() => toggleSelection(item.entry.id)}
                   onSwipeSelect={() => enterSelectionMode(item.entry.id)}
-                  onOpenMenu={() => handleDelete(item.entry.id, item.entry.label)}
+                  onOpenMenu={() => handleOpenMenu(item.entry)}
                 />
               );
             }}
@@ -703,6 +749,25 @@ export function FoodLogScreen() {
           setEstimateOpen(false);
           setSeedRecipeId(recipeId);
           setAddOpen(true);
+        }}
+      />
+      {/* Provenance only: the entry's own figures are a snapshot of what was
+          eaten and must not follow the pointer. See `FoodLogPatch`. */}
+      <CatalogLinkSheet
+        visible={linkingEntry !== null}
+        subject={linkingEntry?.label ?? ''}
+        items={items}
+        initialQuery={linkingEntry?.label ?? ''}
+        excludeItemId={linkingEntry?.itemId ?? null}
+        onClose={() => setLinkingEntry(null)}
+        onPick={item => {
+          if (linkingEntry) {
+            // The old box goes: it was one of the *previous* item's boxes, and
+            // keeping it would leave the entry naming a product from one row
+            // and an item from another.
+            updateEntry(linkingEntry.id, { itemId: item.id, productId: null });
+          }
+          setLinkingEntry(null);
         }}
       />
       <ScanPortionSheet
@@ -884,7 +949,7 @@ function FoodLogRow({
           onPress={onOpenMenu}
           hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
           accessibilityRole="button"
-          accessibilityLabel={`Forget ${entry.label}`}
+          accessibilityLabel={`More for ${entry.label}`}
         >
           <Ionicons name="ellipsis-horizontal" size={iconSize.sm} color={colors.textTertiary} />
         </TouchableOpacity>

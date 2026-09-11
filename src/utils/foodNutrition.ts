@@ -210,6 +210,48 @@ export function nutritionFor(
 }
 
 /**
+ * What filing a panel found elsewhere onto a catalog row would do to the row.
+ *
+ * The food log can turn up figures for a food the catalog has never had any:
+ * a food database answered a search, and the person is looking straight at
+ * the food it describes. Keeping those figures is the difference between
+ * searching the database again every time that food is eaten and having it in
+ * the list of things this app can already measure.
+ *
+ * **Which of the three answers comes back decides what the user is asked, and
+ * that is why this is a rule rather than an `if` at the call site.** The same
+ * question is asked from the search sheet and from a relink, and a row quietly
+ * losing the figures it already had is the one outcome neither may produce.
+ *
+ * - `'write'` — the row has no record, so filing costs nothing and needs no
+ *   asking.
+ * - `'replace'` — the row already states figures. Filing overwrites them, so
+ *   the caller has to ask first. It is deliberately not refused outright: a
+ *   row carrying a bad transcription is exactly the row somebody wants to
+ *   correct from a database.
+ * - `'refuse'` — there is nothing to file. A panel with no amounts records a
+ *   food containing nothing, which is the refuse-rather-than-approximate call
+ *   every read in this module already makes.
+ *
+ * **It answers about a `GroceryItem`, never an `ItemProduct`.** A database
+ * result describes a food ("Milk, whole, 3.25% milkfat") rather than a box on
+ * a shelf, and `nutritionFor`'s precedence above is what makes that
+ * load-bearing: a panel filed onto a box becomes the answer for that box only,
+ * where the same figures on the item answer for every helping of the food.
+ * Barcode figures go the other way for the same reason, and `FoodLogScreen`'s
+ * scan handler says so at length.
+ */
+export type CatalogPanelWrite = 'write' | 'replace' | 'refuse';
+
+export function catalogPanelWrite(
+  existing: FoodNutrition | null | undefined,
+  incoming: FoodNutrition | null | undefined,
+): CatalogPanelWrite {
+  if (!incoming || Object.keys(incoming.amounts).length === 0) return 'refuse';
+  return existing ? 'replace' : 'write';
+}
+
+/**
  * A one-line summary of a stored panel, for a row that shows what it has.
  *
  * Calories lead because they are what somebody is looking for, and the count

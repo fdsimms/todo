@@ -351,3 +351,30 @@ export function matchScans(
     : undefined;
   return matchReceiptLines(lines, items, aliasFor);
 }
+
+/**
+ * Where a scan row goes once the user has picked its catalog row by hand.
+ *
+ * **The matcher's two answers are the two answers a hand-pick has to produce
+ * as well**, and that is the whole reason this exists rather than the sheet
+ * branching inline. `matchReceiptLines` reports a row on the list as `itemId`
+ * and a row merely in the catalog as `offListMatchId`, and every caller is
+ * written against that split: the first is ticked off the list, the second
+ * rides an add draft's `existingItemId`. A hand-pick can land on either kind
+ * of row, so it has to say which — and the answer comes off the item's own
+ * `onList`, never off how it was chosen. A pick treated as always-on-list
+ * ticks a row nobody was shopping for; treated as always-off-list it adds a
+ * second "bought" draft for a row already on the list.
+ *
+ * Null for a pick that no longer resolves, which is the ordinary
+ * resolve-or-shrug this app makes at every cross-row pointer: the row simply
+ * falls back to whatever the matcher read.
+ */
+export type ScanLinkTarget = { onList: boolean; itemId: string };
+
+export function scanLinkTarget(
+  item: Pick<GroceryItem, 'id' | 'onList'> | null | undefined
+): ScanLinkTarget | null {
+  if (!item) return null;
+  return { onList: item.onList, itemId: item.id };
+}

@@ -1473,6 +1473,13 @@ function seedFoodLog(today: Date): void {
       meals.push({ name: 'Coffee', quantity: '1 cup', slot: 'breakfast', hour: 8, daysAgo });
     }
   }
+  // The food that is only in the catalog because it was eaten (see
+  // `Greek yogurt` in `seedGroceries`). Logged a handful of times so the row it
+  // left behind has a reason to be there, and so the picker offers a food
+  // nobody ever put on a shopping list.
+  for (const daysAgo of [2, 4, 6]) {
+    meals.push({ name: 'Greek yogurt', quantity: '1 cup', slot: 'breakfast', hour: 9, daysAgo });
+  }
 
   /**
    * One helping of something cooked, so the log isn't all catalog foods.
@@ -2867,6 +2874,32 @@ function seedGroceries(recipes: DemoRecipes, today: Date): void {
     sourceId: '172686',
     recordedAt: subDays(today, 25).toISOString(),
   });
+
+  /**
+   * A food that is in the catalog *only because it was eaten*, which is the
+   * one thing filing a database result leaves behind that can be looked at.
+   *
+   * The log can turn up figures for a food nobody shops for: a search answered,
+   * and the person kept the answer. What that produces is exactly this — an
+   * off-list row carrying a database's own panel — and without a seeded one the
+   * whole path reads as an app that makes you search again every time, since
+   * every other food here arrived by being bought. `ensureCatalogItem` is what
+   * the sheet itself calls, and its `onList: false` is the point rather than an
+   * incidental default: eating something is not a plan to buy it.
+   */
+  const keptFromSearch = ensureCatalogItem('Greek yogurt');
+  if (keptFromSearch) {
+    setItemNutrition(keptFromSearch.id, {
+      basis: 'per100g',
+      servingGrams: null,
+      servingText: null,
+      amounts: { calorieKcal: 59, proteinG: 10, carbsG: 3.6, fatG: 0.4, sugarG: 3.2, sodiumMg: 36 },
+      portions: [{ amount: 1, label: 'cup', grams: 245 }],
+      source: 'fdc',
+      sourceId: '170903',
+      recordedAt: subDays(today, 6).toISOString(),
+    });
+  }
 
   // A box with the barcode that names it, which is invisible until something
   // uses it: the demo has no camera, so without a seeded link "scanning this
