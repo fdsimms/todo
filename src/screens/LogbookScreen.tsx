@@ -48,7 +48,7 @@ import { usePersonStore, displayNameOf } from '../store/usePersonStore';
 import { useTaskSelection } from '../hooks/useTaskSelection';
 import { useDebouncedValue } from '../hooks/useDebouncedValue';
 import { useColors } from '../theme/ThemeContext';
-import { spacing, font, fontWeight, lineHeight, radius, iconSize, border, checkboxRadius, animation, interaction, type Colors } from '../theme';
+import { spacing, font, fontWeight, lineHeight, radius, iconSize, border, checkboxRadius, animation, interaction, flattenOverlay, type Colors } from '../theme';
 import { haptics } from '../utils/haptics';
 import { confirmDelete } from '../utils/confirmDelete';
 import { animateLayout } from '../utils/layoutAnimation';
@@ -1241,7 +1241,13 @@ const makeStyles = (colors: Colors) => StyleSheet.create({
   // These rows are flat and separator-divided rather than cards, so a selected
   // one is marked by tinting the whole band instead of the card treatment
   // TaskItem uses.
-  rowSelected: { backgroundColor: colors.accent + '1A' },
+  //
+  // Opaque, not a translucent tint directly: this can be applied the instant
+  // a swipe-select commits, while SwipeableRow's own panel is still open
+  // behind this row mid-close-animation — see the note on `flattenOverlay`.
+  // Flattened against `colors.bg` (not `bgSecondary`) since this row has no
+  // card of its own and rests directly on the screen background.
+  rowSelected: { backgroundColor: flattenOverlay(colors.accent + '1A', colors.bg) },
   rowContent: { flex: 1 },
   taskTitle: {
     color: colors.textSecondary,

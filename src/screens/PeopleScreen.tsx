@@ -23,7 +23,7 @@ import { SwipeableRow } from '../components/SwipeableRow';
 import { PaintSelectionProvider, usePaintSelectionRow } from '../components/PaintSelection';
 import { useRowSelection } from '../hooks/useRowSelection';
 import { useColors } from '../theme/ThemeContext';
-import { spacing, font, fontWeight, radius, interaction, type Colors } from '../theme';
+import { spacing, font, fontWeight, radius, interaction, flattenOverlay, type Colors } from '../theme';
 import { haptics } from '../utils/haptics';
 import { animateLayout } from '../utils/layoutAnimation';
 import {
@@ -468,7 +468,11 @@ const makeStyles = (colors: Colors) => StyleSheet.create({
     paddingHorizontal: spacing.md, paddingVertical: 14,
   },
   rowActive: { backgroundColor: colors.bgTertiary },
-  rowSelected: { backgroundColor: colors.accentSubtle },
+  // Opaque, not `colors.accentSubtle` directly: this can be applied the
+  // instant a swipe-select commits, while SwipeableRow's own panel is still
+  // open behind this row mid-close-animation — see the note on
+  // `flattenOverlay`.
+  rowSelected: { backgroundColor: flattenOverlay(colors.accentSubtle, colors.bgSecondary) },
   rowBody: { flex: 1, flexDirection: 'row', alignItems: 'center', gap: spacing.md, minWidth: 0 },
   avatar: {
     width: 36, height: 36, borderRadius: radius.full,

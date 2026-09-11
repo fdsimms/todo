@@ -8,7 +8,7 @@ import { useShallow } from 'zustand/react/shallow';
 import { addDays } from 'date-fns/addDays';
 import { format } from 'date-fns/format';
 import { useColors } from '../theme/ThemeContext';
-import { font, fontWeight, iconSize, interaction, radius, spacing, type Colors } from '../theme';
+import { flattenOverlay, font, fontWeight, iconSize, interaction, radius, spacing, type Colors } from '../theme';
 import { MEAL_SLOTS, MEAL_SLOT_ICONS, MEAL_SLOT_LABELS, type FoodLogEntry, type GroceryItem, type MealSlot } from '../types';
 import { useFoodLogStore } from '../store/useFoodLogStore';
 import { dayKeyOf, dayKeyToDate, getCurrentDayStart } from '../utils/dateUtils';
@@ -734,7 +734,15 @@ function makeStyles(colors: Colors) {
       alignItems: 'center',
       backgroundColor: colors.bgSecondary,
     },
-    entryRowSelected: { backgroundColor: colors.accentSubtle },
+    // Opaque, not `colors.accentSubtle` directly: this can be applied the
+    // instant a swipe-select commits, while `SwipeableRow`'s own panel is
+    // still open behind this row mid-close-animation. A translucent
+    // background there lets the panel's solid color bleed through for the
+    // whole close, then vanish abruptly when the panel finally snaps shut —
+    // reading as a transparency glitch rather than the row settling into its
+    // selected tint. Flattening it against the row's own resting background
+    // keeps the same look in the normal (non-swiping) selected state.
+    entryRowSelected: { backgroundColor: flattenOverlay(colors.accentSubtle, colors.bgSecondary) },
     entryRowActive: { backgroundColor: colors.bgTertiary },
     entryContent: {
       flex: 1,

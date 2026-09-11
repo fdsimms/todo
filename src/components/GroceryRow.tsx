@@ -11,6 +11,7 @@ import {
   iconSize,
   interaction,
   checkboxRadius,
+  flattenOverlay,
   type Colors,
 } from '../theme';
 import { useGroceryStore } from '../store/useGroceryStore';
@@ -633,8 +634,17 @@ function makeStyles(colors: Colors) {
     // selected even inside the cart section. Applied on the inner row (not
     // itemWrapper) since it has to win over itemWrapperChecked in the same
     // array position SwipeableRow's child renders at.
+    //
+    // Opaque, not a translucent tint directly: this can be applied the
+    // instant a swipe-select commits, while SwipeableRow's own panel is
+    // still open behind this row mid-close-animation. A translucent
+    // background there lets the panel's solid color bleed through for the
+    // whole close, then vanish abruptly when the panel finally snaps shut —
+    // reading as a transparency glitch rather than the row settling into its
+    // selected tint. Flattening it against the row's own resting background
+    // keeps the same look in the normal (non-swiping) selected state.
     rowSelected: {
-      backgroundColor: colors.accent + '1A',
+      backgroundColor: flattenOverlay(colors.accent + '1A', colors.bgSecondary),
     },
     checkbox: {
       width: CHECKBOX_SIZE,

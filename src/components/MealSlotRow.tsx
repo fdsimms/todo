@@ -3,7 +3,7 @@ import { Animated, View, Text, TouchableOpacity, StyleSheet } from 'react-native
 import Ionicons from '@expo/vector-icons/Ionicons';
 import type { MealPlanEntry } from '../types';
 import { useColors, useTheme } from '../theme/ThemeContext';
-import { spacing, font, fontWeight, radius, animation, interaction, iconSize, type Colors } from '../theme';
+import { spacing, font, fontWeight, radius, animation, interaction, iconSize, flattenOverlay, type Colors } from '../theme';
 import { haptics } from '../utils/haptics';
 import { slotLabel } from '../utils/mealPlan';
 import { formatScale, isUnscaled } from '../utils/recipeScale';
@@ -148,11 +148,13 @@ export function MealSlotRow({
       style={[
         styles.row,
         { backgroundColor: surface ?? colors.bgSecondary },
-        // Wins outright, as it always has: the tint is translucent, so it
-        // composites over the container to exactly the colour it did before
-        // the row painted a background of its own. Safe against the swipe
-        // panel too — the gesture is off in selection mode.
-        selectionMode && selected && styles.rowSelected,
+        // Flattened against `surface` rather than a static translucent tint
+        // in `styles` — `surface` is a runtime prop, and a translucent
+        // background here would otherwise let SwipeableRow's still-open
+        // panel show through for the instant between a swipe-select commit
+        // and this row's SwipeableRow unmounting below (`if (selectionMode)
+        // return rowBody`). See the note on `flattenOverlay`.
+        selectionMode && selected && { backgroundColor: flattenOverlay(colors.accent + '1A', surface ?? colors.bgSecondary) },
       ]}
       onPress={onPress}
       // Selection mode takes the row's gestures over wholesale, drag included:
@@ -352,9 +354,6 @@ const makeStyles = (colors: Colors) => StyleSheet.create({
     gap: spacing.sm,
     paddingHorizontal: spacing.md,
     paddingVertical: 10,
-  },
-  rowSelected: {
-    backgroundColor: colors.accent + '1A',
   },
   // The floating copy. Deliberately not the day's `card` style plus a shadow,
   // for the reason LeftoverDragCard's own note gives: that style clips to its

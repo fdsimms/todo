@@ -49,7 +49,7 @@ import { useSettingsStore } from '../store/useSettingsStore';
 import { PlanMealSheet } from '../components/PlanMealSheet';
 import { usePlanMeal } from '../hooks/usePlanMeal';
 import { useColors } from '../theme/ThemeContext';
-import { spacing, font, fontWeight, radius, iconSize, interaction, type Colors } from '../theme';
+import { spacing, font, fontWeight, radius, iconSize, interaction, flattenOverlay, type Colors } from '../theme';
 import { haptics } from '../utils/haptics';
 import { confirmDelete } from '../utils/confirmDelete';
 import { animateLayout } from '../utils/layoutAnimation';
@@ -1101,8 +1101,11 @@ const makeStyles = (colors: Colors) => StyleSheet.create({
     paddingVertical: 12,
     gap: spacing.md,
   },
+  // Opaque, not a translucent tint directly: this can be applied the instant
+  // a swipe-select commits, while SwipeableRow's own panel is still open
+  // behind this row mid-close-animation — see the note on `flattenOverlay`.
   rowSelected: {
-    backgroundColor: colors.accent + '1A',
+    backgroundColor: flattenOverlay(colors.accent + '1A', colors.bgSecondary),
   },
   // Subtle slot marking where a dragged recipe will land; mirrors the row's
   // own footprint (margin + radius), same treatment as Today's dropSlot.
