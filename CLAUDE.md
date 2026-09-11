@@ -20,6 +20,17 @@ sits stranded on a branch nobody looks at. When it's merged, cut a fresh branch 
 that same situation recurring mid-task, not a one-off. When it's *not* merged yet, push the fix to
 the existing branch and PR as usual; don't open a new one just because a build failed once.
 
+**Batch pushes instead of pushing after every individual fix.** This repo is private, on a
+plan with a fixed monthly GitHub Actions minutes allowance, and each push re-runs the whole
+`test.yml` pipeline. When several review comments or CI failures land close together (a batch
+of nit comments, a CI run failing on more than one check at once), make all the fixes locally
+first — running the verification loop yourself in between — and push once, rather than pushing
+after each one. This doesn't apply to the drive-to-green loop's own round-trip cadence: a fix
+that needs a fresh CI run to confirm (a flaky-vs-real judgment, a build-only failure you can't
+reproduce locally) still has to push and wait, because there's no other way to see the result.
+The distinction is whether the next fix depends on seeing this one's CI result — if it doesn't,
+don't spend a CI run finding that out.
+
 If you notice a real bug while working on something else — not a style nit, an actual wrong
 behavior — and the fix is small (a couple of lines, one clear place, no design judgment call),
 just fix it in the same PR rather than only mentioning it. "Stay in scope" (below) is about not
@@ -411,7 +422,7 @@ them source rather than tests. The ten biggest source files:
 Grep for the symbol and read the surrounding range; reading any of them end to end costs more
 context than the rest of the task will. `docs/module-map.md` says which file owns what.
 
-The suite is **301 test files**, and `npm test` runs all of them in about half a minute.
+The suite is **302 test files**, and `npm test` runs all of them in about half a minute.
 `npx tsc --noEmit` is a few seconds once `.tsbuildinfo` exists, so run both, every time.
 
 <!-- END GENERATED: repo-stats -->
