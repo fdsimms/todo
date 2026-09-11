@@ -45,6 +45,7 @@ export type SettingsGroupId =
   | 'generated'
   | 'health'
   | 'kitchen'
+  | 'permissions'
   | 'privacyAi'
   | 'dataReset'
   | 'about';
@@ -117,6 +118,13 @@ export const SETTINGS_GROUPS: SettingsGroup[] = [
   // instance, since adjacency is what reads as an accident rather than as a
   // category. Appearance/Automatic tasks are five rows apart, Day & time and
   // Groceries & meals four.
+  //
+  // Permissions is read-only accounting rather than a thing you configure —
+  // every row here is a status and a link to fix it elsewhere (this app's own
+  // Health/Calendar/Notifications groups, or the OS's own per-app page for the
+  // rest), never a switch of its own — which is what puts it here rather than
+  // beside Health above.
+  { id: 'permissions', title: 'App permissions', icon: 'shield-checkmark-outline', tint: 'neutral' },
   { id: 'privacyAi', title: 'Privacy & AI', icon: 'lock-closed-outline', tint: 'neutral' },
   { id: 'dataReset', title: 'Data & reset', icon: 'archive-outline', tint: 'neutral' },
   { id: 'about', title: 'About', icon: 'information-circle-outline', tint: 'neutral' },
@@ -207,6 +215,15 @@ const AI_FEATURE_KEYWORDS: Record<AiFeatureId, string[]> = {
   substitutes: ['claude', 'model', 'instead of', 'swap', 'replace', 'allergy', 'out of'],
   receiptImport: ['claude', 'model', 'photo', 'till', 'shopping trip', 'prices'],
   calendarImport: ['claude', 'model', 'paste', 'appointment', 'itinerary', 'add to calendar'],
+  cookHelp: ['claude', 'model', 'cooking', 'step', 'question', 'ask', 'method', 'instead of'],
+  nutritionEstimate: [
+    'claude', 'model', 'food log', 'calories', 'nutrition', 'restaurant', 'takeout',
+    'eating out', 'ate out', 'guess',
+  ],
+  nutritionLabelPhoto: [
+    'claude', 'model', 'nutrition panel', 'nutrition facts', 'calories', 'barcode',
+    'product', 'curved', 'glare', 'blurry',
+  ],
 };
 
 /** One entry per row `PrivacyAiSettings` actually renders, in the same order. */
@@ -246,6 +263,8 @@ const GENERATED_KEYWORDS: Record<GeneratedKind, string[]> = {
   mealPlanNudge: ['meal plan', 'weekly', 'nudge', 'remind', 'planning', 'generated', 'automatic'],
   mealShortfall: ['ingredients', 'missing', 'meal plan', 'grocery', 'buy', 'short', 'generated',
     'automatic'],
+  mealLogNudge: ['food log', 'nutrition', 'ate', 'eaten', 'meal plan', 'nudge', 'generated',
+    'automatic'],
   projectReview: ['stalled', 'stale', 'nudge', 'pull', 'idle', 'abandoned', 'generated', 'automatic'],
   supplyReorder: ['supply', 'stock', 'restock', 'order more', 'refill', 'running low', 'run out',
     'consumable', 'filter', 'cartridge', 'generated', 'automatic'],
@@ -273,6 +292,11 @@ const GENERATED_KEYWORDS: Record<GeneratedKind, string[]> = {
     'planning', 'project', 'generated', 'automatic'],
   weather: ['sunny', 'rainy', 'snowy', 'cold', 'hot', 'sunscreen', 'umbrella', 'coat', 'forecast',
     'location', 'temperature', 'generated', 'automatic'],
+  // No bare 'weigh': already a substring of this generator's own label
+  // ("Ask for a weigh-in"). 'scale' and 'weight' are the words somebody
+  // actually types, and neither is in the label.
+  weighIn: ['scale', 'scales', 'weight', 'body', 'mass', 'kg', 'lb', 'pounds',
+    'health', 'track', 'log', 'generated', 'automatic'],
 };
 
 /**
@@ -438,6 +462,8 @@ export const SETTINGS_ENTRIES: SettingsEntry[] = [
     keywords: ['friends', 'family', 'history', 'together', 'name', 'title', 'suggest', 'past'] },
   { id: 'deadlineCalendar', groupId: 'capture', label: 'Write deadlines to', section: 'Deadlines on your calendar',
     keywords: ['all-day', 'event', 'export', 'google', 'sync'] },
+  { id: 'completionCalendar', groupId: 'capture', label: 'Write completions to', section: 'Completions on your calendar',
+    keywords: ['event', 'export', 'google', 'sync', 'log', 'history', 'record'] },
   { id: 'mealCalendar', groupId: 'capture', label: 'Write meals to', section: 'Meals on your calendar',
     keywords: ['all-day', 'event', 'export', 'google', 'sync', 'meal plan', 'dinner', 'share', 'household', 'family'],
     kitchen: true },
@@ -450,6 +476,40 @@ export const SETTINGS_ENTRIES: SettingsEntry[] = [
     keywords: ['count', 'reading', 'walked'] },
   { id: 'healthCategory', groupId: 'health', label: 'Show steps under', section: 'Apple Health',
     keywords: ['category', 'section', 'today', 'where', 'hide', 'nowhere'] },
+  { id: 'healthWrite', groupId: 'health', label: 'Log to Health', section: 'Log to Health',
+    keywords: ['hydration', 'drink', 'water', 'weight', 'write', 'healthkit', 'food', 'meal', 'nutrition'] },
+  { id: 'healthWriteAccess', groupId: 'health', label: 'Water-write access', section: 'Log to Health',
+    keywords: ['permission', 'allow', 'authorize', 'grant', 'sharing'] },
+  { id: 'healthWeightWriteAccess', groupId: 'health', label: 'Weight-write access', section: 'Log to Health',
+    keywords: ['permission', 'allow', 'authorize', 'grant', 'sharing', 'body', 'mass'] },
+  { id: 'healthNutritionWriteAccess', groupId: 'health', label: 'Nutrition-write access', section: 'Log to Health',
+    keywords: ['permission', 'allow', 'authorize', 'grant', 'sharing', 'food', 'meal', 'calories', 'macros'] },
+  { id: 'weightGoal', groupId: 'health', label: 'Weight goal', section: 'Weight', keywords: ['target', 'lose', 'gain', 'maintain', 'calories', 'tdee', 'deficit', 'macros', 'protein', 'bmr', 'rate', 'lb per week'] },
+  { id: 'weightUnit', groupId: 'health', label: 'Weight unit', section: 'Weight',
+    keywords: ['kg', 'kilograms', 'lb', 'pounds', 'scale', 'body', 'mass', 'metric', 'imperial'] },
+
+  // App permissions — one row per system permission the app ever asks for,
+  // read-only status plus a link to fix it. Health, Calendar and Notifications
+  // already have their own detailed rows elsewhere (above, and in Reminders &
+  // Calendar / Notifications); this group exists so there's one place to see
+  // all of them at once, which matters most right after a device-wide privacy
+  // reset wipes every grant back to "not asked".
+  { id: 'permHealth', groupId: 'permissions', label: 'Apple Health', section: 'App permissions', iosOnly: true,
+    keywords: ['permission', 'steps', 'water', 'weight', 'nutrition', 'healthkit', 'reset'] },
+  { id: 'permCalendar', groupId: 'permissions', label: 'Calendar', section: 'App permissions', iosOnly: true,
+    keywords: ['permission', 'events', 'busy', 'schedule', 'google', 'reset'] },
+  { id: 'permReminders', groupId: 'permissions', label: 'Reminders', section: 'App permissions', iosOnly: true,
+    keywords: ['permission', 'siri', 'voice', 'import', 'reset'] },
+  { id: 'permContacts', groupId: 'permissions', label: 'Contacts', section: 'App permissions', iosOnly: true,
+    keywords: ['permission', 'address book', 'people', 'birthday', 'reset'] },
+  { id: 'permLocation', groupId: 'permissions', label: 'Location', section: 'App permissions', iosOnly: true,
+    keywords: ['permission', 'weather', 'forecast', 'gps', 'reset'] },
+  { id: 'permCamera', groupId: 'permissions', label: 'Camera', section: 'App permissions',
+    keywords: ['permission', 'barcode', 'scan', 'receipt', 'recipe photo', 'label', 'reset'] },
+  { id: 'permPhotos', groupId: 'permissions', label: 'Photos', section: 'App permissions',
+    keywords: ['permission', 'library', 'gallery', 'recipe photo', 'reset'] },
+  { id: 'permNotifications', groupId: 'permissions', label: 'Notifications', section: 'App permissions',
+    keywords: ['permission', 'alerts', 'reminders', 'badges', 'reset'] },
 
   // ── Tasks & projects ──────────────────────────────────────────────────────
   // In the order the screen renders them, which the registry's own comment
@@ -490,7 +550,9 @@ export const SETTINGS_ENTRIES: SettingsEntry[] = [
     keywords: ['screen time', 'usage', 'phone', 'apps', 'threshold', 'minutes', 'distraction',
       'social media', 'doomscroll', 'limit', 'screen time rule'] },
   { id: 'healthRules', groupId: 'generated', label: 'Rules', section: 'Health tasks',
-    keywords: ['apple health', 'steps', 'sleep', 'walk', 'threshold', 'under'] },
+    keywords: ['apple health', 'steps', 'sleep', 'walk', 'sodium', 'salt', 'protein',
+      'saturated fat', 'fiber', 'sugar', 'caffeine', 'water', 'hydration', 'calories',
+      'nutrition', 'diet', 'threshold', 'under', 'over', 'ceiling', 'floor'] },
   { id: 'simpleTaskForm', groupId: 'tasksProjects', label: 'Show fewer fields', section: 'Task form',
     keywords: ['simple', 'quick add', 'chips', 'declutter', 'basic', 'minimal'] },
   { id: 'hideCategories', groupId: 'tasksProjects', label: 'Hide categories', section: 'Today',
@@ -503,8 +565,8 @@ export const SETTINGS_ENTRIES: SettingsEntry[] = [
   // Named for the row as it reads now. It was indexed as "Default nudge
   // cadence" long after the row had been renamed, which is a result naming a
   // label nobody can find on the screen it opens.
-  { id: 'defaultProjectNudgeCadence', groupId: 'tasksProjects', label: 'Default review cadence', section: 'Projects',
-    keywords: ['nudge me', 'nudge', 'stalled', 'quiet', 'chase', 'reminder', 'stall', 'new project'] },
+  { id: 'defaultProjectNudgeCadence', groupId: 'tasksProjects', label: 'Bring new projects up every', section: 'Projects',
+    keywords: ['nudge me', 'nudge', 'stalled', 'quiet', 'chase', 'reminder', 'stall', 'cadence', 'review', 'how often'] },
   { id: 'postponeCheck', groupId: 'tasksProjects', label: 'Suggest an action after repeated reschedules', section: 'Rescheduling',
     keywords: ['postpone', 'procrastinate', 'snooze', 'defer', 'avoid'] },
   { id: 'postponeCheckThreshold', requires: 'postponeCheck', groupId: 'tasksProjects', label: 'Reschedule threshold', section: 'Rescheduling',
@@ -536,6 +598,14 @@ export const SETTINGS_ENTRIES: SettingsEntry[] = [
     keywords: ['screen time', 'pomodoro', 'distraction', 'shield', 'social media', 'restrict'] },
   { id: 'focusShieldApps', iosOnly: true, requires: 'focusShield', groupId: 'tasksProjects', label: 'Apps to block', section: 'Focus sessions', simple: true,
     keywords: ['screen time', 'distraction', 'which apps', 'picker', 'choose'] },
+  { id: 'gateShield', iosOnly: true, groupId: 'tasksProjects', label: 'Block apps until a task is done', section: 'Focus sessions', simple: true,
+    keywords: ['screen time', 'gate', 'first', 'before', 'unlock', 'precondition', 'accountability', 'restrict', 'morning'] },
+  { id: 'penaltyShield', iosOnly: true, groupId: 'tasksProjects', label: 'Block apps when you fail a task', section: 'Focus sessions', simple: true,
+    keywords: ['screen time', 'penalty', 'punish', 'consequence', 'miss', 'missed', 'slip', 'deadline', 'cutoff', 'accountability', 'restrict'] },
+  { id: 'penaltyShieldApps', iosOnly: true, requires: 'penaltyShield', groupId: 'tasksProjects', label: 'Apps to block', section: 'Focus sessions', simple: true,
+    keywords: ['screen time', 'penalty', 'which apps', 'picker', 'choose'] },
+  { id: 'penaltyShieldActive', iosOnly: true, requires: 'penaltyShield', groupId: 'tasksProjects', label: 'Blocked until', section: 'Focus sessions', simple: true,
+    keywords: ['screen time', 'penalty', 'locked out', 'how long', 'end early', 'unblock'] },
   { id: 'timerLiveActivity', iosOnly: true, groupId: 'tasksProjects', label: 'Live Activity while timing', section: 'Timers',
     keywords: ['lock screen', 'dynamic island', 'timer', 'stopwatch', 'cooking', 'recipe', 'countdown'] },
   { id: 'autoRemoveExpired', groupId: 'tasksProjects', label: 'Auto-remove expired tasks', section: 'Time-limited tasks',
@@ -544,6 +614,9 @@ export const SETTINGS_ENTRIES: SettingsEntry[] = [
     keywords: ['holiday', 'pause', 'away', 'streaks'], simple: true },
   { id: 'vacationEnd', requires: 'vacationMode', groupId: 'tasksProjects', label: 'End date', section: 'Vacation',
     keywords: ['vacation end', 'return'], simple: true },
+  { id: 'destinationForecastEnabled', groupId: 'tasksProjects', label: 'Destination forecast',
+    section: 'Trips',
+    keywords: ['weather', 'trip', 'away', 'packing', 'travel', 'rain'] },
   // The master switch for the groceries/recipes/meal plan area. Unflagged, and
   // has to stay that way — a row that hid itself when switched off would be a
   // setting with no way back, which is now also why it can't live in the
@@ -585,15 +658,19 @@ export const SETTINGS_ENTRIES: SettingsEntry[] = [
     keywords: ['birthday', 'days before', 'lead', 'early', 'notice', 'warning'] },
   { id: 'weekendNudgeLeadDays', groupId: 'generated', label: 'Show the task', section: 'Nudge for an empty weekend',
     keywords: ['weekend', 'thursday', 'friday', 'days before', 'lead', 'early', 'notice', 'warning'] },
+  { id: 'weighInEveryDays', groupId: 'generated', label: 'Ask after', section: 'Ask for a weigh-in',
+    keywords: ['weight', 'weigh', 'scale', 'days', 'how often', 'cadence', 'gap', 'interval'] },
   { id: 'birthdayGiftLeadDays', groupId: 'generated', label: 'Show the task', section: 'Birthday gift reminders',
     keywords: ['birthday', 'gift', 'present', 'days before', 'lead', 'early', 'notice', 'warning'] },
-  { id: 'mealPlanNudgeTime', groupId: 'generated', label: 'Nudge me on', section: 'Plan meals for the week',
-    keywords: ['meal plan', 'weekday', 'day', 'time', 'when'], kitchen: true },
+  { id: 'mealPlanNudgeTime', groupId: 'generated', label: 'Add the task on', section: 'Plan meals for the week',
+    keywords: ['meal plan', 'weekday', 'day', 'time', 'when', 'nudge'], kitchen: true },
+  { id: 'mealPlanNudgeIgnoresVacation', groupId: 'generated', label: 'Also during vacation', section: 'Plan meals for the week',
+    keywords: ['meal plan', 'away', 'trip', 'pause'], kitchen: true },
   { id: 'calendarReviewTimeSegment', groupId: 'generated', label: 'Show the task', section: 'Review tomorrow\'s calendar',
     keywords: ['morning', 'afternoon', 'evening', 'night', 'time of day', 'hold back', 'when'] },
-  { id: 'moodLogTimeSegment', groupId: 'generated', label: 'Show the task', section: 'Daily mood check-in',
+  { id: 'moodLogTimeSegments', groupId: 'generated', label: 'Show the task', section: 'Daily mood check-in',
     keywords: ['morning', 'afternoon', 'evening', 'night', 'time of day', 'hold back', 'when',
-      'mood', 'feeling'] },
+      'mood', 'feeling', 'multiple', 'several', 'twice'] },
   // Spans both use-up generators, so it sits below the loop rather than inside
   // either one's extras — and so its section can't be one generator's name.
   { id: 'useUpTaskCap', groupId: 'generated', label: 'Limit use-up tasks', section: 'Automatic tasks',
@@ -609,8 +686,18 @@ export const SETTINGS_ENTRIES: SettingsEntry[] = [
     keywords: ['on device', 'offline', 'no key', 'free', 'private', 'foundation models',
       'grocery', 'aisle', 'sort', 'siri'] },
 
-  { id: 'productLookupEnabled', groupId: 'privacyAi', label: 'Look up scanned barcodes', section: 'Barcode lookups',
-    keywords: ['upc', 'ean', 'gtin', 'open food facts', 'pantry', 'unpack', 'network', 'privacy'],
+  // Nested under `onDeviceAiEnabled` alone, same as the row itself is: with
+  // the switch off there's no engine here to prefer over Claude. Shown
+  // whether or not a key is set yet, same as the AI feature rows are — see
+  // that row's own comment in PrivacyAiSettings.
+  { id: 'ai:groceryAisles:preferOnDevice', groupId: 'privacyAi', label: 'Prefer it for aisle sorting',
+    section: 'On-device suggestions', kitchen: true, requires: 'onDeviceAiEnabled',
+    keywords: ['claude', 'model', 'on device', 'grocery', 'offline', 'foundation models',
+      'apple intelligence'] },
+
+  { id: 'productLookupEnabled', groupId: 'privacyAi', label: 'Look up food databases', section: 'Barcode lookups',
+    keywords: ['upc', 'ean', 'gtin', 'open food facts', 'pantry', 'unpack', 'network', 'privacy',
+      'nutrition', 'calories', 'usda', 'food data central', 'search food'],
     kitchen: true, simple: true },
   { id: 'fdcApiKey', requires: 'productLookupEnabled', groupId: 'privacyAi', label: 'FoodData Central key', section: 'Barcode lookups',
     keywords: ['usda', 'api', 'barcode', 'scan', 'branded', 'nutrition'], kitchen: true, simple: true },
@@ -632,6 +719,10 @@ export const SETTINGS_ENTRIES: SettingsEntry[] = [
     keywords: ['rate', 'rating', 'review', 'leftovers', 'used up', 'out of', 'sheet', 'prompt', 'cooked'] },
   { id: 'restockOfferEnabled', requires: 'cookRecapEnabled', groupId: 'kitchen', label: 'Restock after cooking', section: 'Meals on Today',
     keywords: ['ingredients', 'shopping list', 'offer', 'buy again', 'cooked'] },
+  { id: 'mealLogPrompt', groupId: 'kitchen', label: 'Ask what you ate', section: 'Meals on Today',
+    keywords: ['food log', 'calories', 'nutrition', 'diary', 'eaten', 'leftovers', 'prompt'] },
+  { id: 'nutritionTargets', groupId: 'kitchen', label: 'Daily targets', section: 'Meals on Today',
+    keywords: ['calories', 'protein', 'goal', 'nutrition', 'food log', 'macros', 'aim'] },
   { id: 'tripLiveActivity', iosOnly: true, groupId: 'kitchen', label: 'Live Activity while shopping', section: 'Shopping trip',
     keywords: ['lock screen', 'dynamic island', 'store', 'trip', 'grocery', 'elapsed', 'timer'],
     simple: true },
@@ -658,8 +749,6 @@ export const SETTINGS_ENTRIES: SettingsEntry[] = [
   ...AI_FEATURE_ENTRIES,
 
   // Data & reset
-  { id: 'backfill', groupId: 'dataReset', label: 'Backfill', section: 'Fill in', simple: true,
-    keywords: ['missing', 'empty', 'blank', 'fields', 'estimate', 'category', 'tidy', 'sweep'] },
   { id: 'syncEnabled', groupId: 'dataReset', label: 'Sync with iCloud', section: 'Sync',
     keywords: ['devices', 'mac', 'laptop', 'phone', 'across', 'same'] },
   { id: 'syncNow', groupId: 'dataReset', label: 'Sync now', section: 'Sync',

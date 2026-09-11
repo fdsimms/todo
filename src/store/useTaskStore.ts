@@ -1,6 +1,6 @@
 import { create } from 'zustand';
 import { addDays } from 'date-fns/addDays';
-import type { Task, TaskDraft, Priority, TimeOfDay, TitleRule, Person, QuotaPeriod, Polarity } from '../types';
+import type { Task, TaskDraft, Priority, TimeOfDay, TitleRule, Person, QuotaPeriod, Polarity, MealPlanEntry } from '../types';
 import {
   initDatabase,
   dbGetAllTasks,
@@ -28,6 +28,7 @@ import {
   dbTransaction,
   dbGetMealPlanEntries,
   dbGetMealPlanEntry,
+  dbGetFoodLogEntries,
 } from '../db/database';
 import { useSettingsStore } from './useSettingsStore';
 import { useCategoryStore, ensureCalendarEventCategory, ensureHealthCategory, ensureGeneratedTaskCategories, ensureGeneratedTaskCategory } from './useCategoryStore';
@@ -74,6 +75,13 @@ import {
   staleMealShortfallTasks,
   wantedMealShortfalls,
 } from '../utils/mealShortfallTasks';
+import {
+  MEAL_LOG_NUDGE_LOOKBACK_DAYS,
+  mealLogNudgeEntryId,
+  mealLogNudgeLinkUrl,
+  staleMealLogNudgeTasks,
+  wantedMealLogNudges,
+} from '../utils/mealLogNudgeTasks';
 import { standingSwapMap } from '../utils/standingSwaps';
 import {
   dueMealPlanNudge,
@@ -87,7 +95,15 @@ import {
 import { deleteGeneratedTaskQuietly, dropGeneratedTask, reconcileGeneratedTask } from './generatedTaskSync';
 import { generatedBy, generatedSourceOf, generatedTaskCountOf, generatorPausedForVacation, hasAnyGeneratedTask, liveGeneratedTask, liveGeneratedTasksOfKind } from '../utils/generatedTasks';
 import { CALENDAR_REVIEW_TITLE, calendarReviewDayKey, wantsCalendarReview } from '../utils/calendarReviewTasks';
-import { MOOD_LOG_TITLE, MOOD_NUDGE_TITLE, moodLogDayKey, moodNudgeNotes, wantsMoodNudge } from '../utils/moodTasks';
+import { MOOD_LOG_TITLE, MOOD_NUDGE_TITLE, moodLogDayKey, moodLogSourceId, moodNudgeNotes, wantsMoodNudge } from '../utils/moodTasks';
+import {
+  WEIGH_IN_LINK_URL,
+  WEIGH_IN_TITLE,
+  clampWeighInEveryDays,
+  wantsWeighIn,
+  weighInDayKey,
+  weighInNotes,
+} from '../utils/weightTasks';
 import { buildMoodDays, lowMoodRun } from '../utils/moodInsights';
 import {
   WEEKEND_NUDGE_TITLE,
@@ -103,11 +119,16 @@ import {
 } from '../utils/weekendTasks';
 import { buildDayBuckets } from '../utils/calendarMonth';
 import { buildDayLoads } from '../utils/dayLoad';
-import { hasLogOnDay } from '../utils/moodLog';
+import { hasLogOnDay, hasLoggedSince } from '../utils/moodLog';
+import { useFoodLogStore } from './useFoodLogStore';
 import { useMoodStore } from './useMoodStore';
+import { useMilestoneStore } from './useMilestoneStore';
+import { useMedicationStore } from './useMedicationStore';
+import { medicationFor } from '../utils/medicationLog';
 import { eventsIn } from '../utils/calendarBusy';
 import { isDemoModeActive } from '../utils/demoState';
-import type { MealSlot, TaskGroup } from '../types';
+import type { MealSlot, Project, TaskGroup } from '../types';
+import { awayPauseDriver, isProjectAwayNow } from '../utils/awayDates';
 import { generateId } from '../utils/id';
 import { derivedId, spawnSeed } from '../utils/syncIds';
 import { reorderSubset } from '../utils/reorder';
@@ -132,11 +153,13 @@ import {
 import { getNextDueDate, getCurrentDayStart, getLogicalToday, getLogicalTomorrow, getTaskDayStart, getEffectiveTaskDate, dayKeyOf, dayKeyToDate, getDeadlineFromOffset, getDeadlineFromMonthDay, getReminderOffsetDate, getStreakOutcome, getNextSeriesDates, recurrenceAnchorDayFor, captureReminderOffset, reanchorReminderToWallClock } from '../utils/dateUtils';
 import { entriesForSlot, shiftDayKey } from '../utils/mealPlan';
 import { MEAL_SLOT_TASK_DAYS, completesMealSlot, mealSlotSourceId, mealSlotStepTimeSegments, mealSlotTaskDraft, parseMealSlotSource } from '../utils/mealSlotTasks';
+import { wantsMealLogPrompt } from '../utils/mealLog';
 import { quotaRunSpan, quotaTargetForInterval, quotaDueTimesAfter, isQuotaRunOver, quotaWeekStart } from '../utils/quotaSchedule';
 import { MIN_TARGET_COUNT, MAX_TARGET_COUNT, taskKindOf } from '../utils/taskKinds';
 import { nextStreakRecord } from '../utils/streakRecord';
 import { isNegativeTask, slipPatch, undoSlipPatch, cleanDayPatch } from '../utils/negativeHabits';
-import { isTaskVisible, isTaskNew, isTaskDeferred, isUpcomingToday, isHeldBack, isHiddenForVacation, isVisibleApartFromVacation, isTaskExpired, isTaskSweepable, isRecurrenceNotYetDue, isLiveRecurring, isMissableMealPlanTask, isInboxTask, isUnscheduledTask, isWaitingTask, isRelevantToGroupToday, groupRoster, hasNoDateSignal, isQuotaTask, isQuotaOnPace, quotaRidesOutTheDay, isMissed, sameTimeSegments, isCompletionOnTime, isCategoryScheduledDay } from '../utils/visibilityUtils';
+import { extendShieldUntil, penaltyChargeFor, slipPenaltyUntil } from '../utils/penaltyShield';
+import { isTaskVisible, isTaskNew, isTaskDeferred, isUpcomingToday, isHeldBack, isHiddenForVacation, isVisibleApartFromVacation, isTaskExpired, isTaskSweepable, isRecurrenceNotYetDue, isLiveRecurring, isMissableMealPlanTask, isInboxTask, isUnscheduledTask, isWaitingTask, isRelevantToGroupToday, groupRoster, hasNoDateSignal, isQuotaTask, isQuotaOnPace, quotaRidesOutTheDay, isMissed, sameTimeSegments, isCompletionOnTime, isCategoryScheduledDay, currentTimeSegment, timeSegmentThreshold, displayTitleFor } from '../utils/visibilityUtils';
 import { retentionCutoff, selectPurgeableTaskIds } from '../utils/retention';
 import { categoryLabel } from '../utils/categoryLabel';
 import {
@@ -181,8 +204,10 @@ import { usePersonGroupStore } from './usePersonGroupStore';
 import { usePersonNoteStore } from './usePersonNoteStore';
 import { giftIdeasText } from '../utils/personNotes';
 import { resolveBlocksEdit, waitingOn } from '../utils/blocking';
-import { scheduleTaskReminder, cancelTaskReminder, rescheduleAllReminders, scheduleTimerAlarm, cancelTimerAlarm, scheduleQuotaNudges, cancelQuotaNudges } from '../utils/notifications';
+import { scheduleTaskReminder, cancelTaskReminder, rescheduleAllReminders, scheduleTimerAlarm, cancelTimerAlarm, scheduleQuotaNudges, cancelQuotaNudges, cancelCompletionTimer } from '../utils/notifications';
 import { syncDeadlineEvent } from '../utils/deadlineCalendarSync';
+import { logTaskCompletionToCalendar } from '../utils/completionCalendarSync';
+import { logTaskHealthValue } from '../utils/healthCompletionSync';
 import {
   deleteCalendarEvent,
   presentTimeBlockCreate,
@@ -198,7 +223,15 @@ import { weatherSourceId, parseWeatherSourceId, ruleMatchesToday } from '../util
 import { useScreenTimeStore } from './useScreenTimeStore';
 import { useHealthStore } from './useHealthStore';
 import { screenTimeSourceId, parseScreenTimeSourceId, crossingWantsTask } from '../utils/screenTimeRules';
-import { healthSourceId, parseHealthSourceId, ruleCanBeJudgedYet, ruleShortfallToday } from '../utils/healthRules';
+import {
+  healthSourceId,
+  parseHealthSourceId,
+  healthRuleDirection,
+  healthTaskNote,
+  ruleCanBeJudgedYet,
+  ruleShortfallToday,
+  healthTaskLinkUrl,
+} from '../utils/healthRules';
 import { isTimedTask, timerElapsed } from '../utils/timer';
 import { apportionedMinutes, segmentMinutesOf } from '../utils/timerSegments';
 
@@ -216,7 +249,7 @@ import {
 // isLiveRecurring / CLAUDE.md recurrence docs for why).
 export const CONTENT_FIELDS: (keyof Task)[] = [
   'title', 'notes', 'tags', 'category', 'priority', 'effort',
-  'estimatedMinutes', 'timedMinutes', 'healthMetric', 'healthTarget', 'windowStart', 'windowEnd', 'timeSegments', 'reminderTime', 'reminderKind', 'reminderOffsetDays', 'linkUrl', 'phoneNumber', 'emailAddress', 'location',
+  'estimatedMinutes', 'timedMinutes', 'healthMetric', 'healthTarget', 'windowStart', 'windowEnd', 'timeSegments', 'reminderTime', 'reminderKind', 'reminderOffsetDays', 'linkUrl', 'phoneNumber', 'emailAddress', 'location', 'completionTimerMinutes',
   // The question, not the answer — `deliverableValue` is per-occurrence data
   // like progressCount and is deliberately absent, or a scope:'occurrence'
   // edit would capture one date's answer as the default for every date after.
@@ -231,6 +264,30 @@ export const CONTENT_FIELDS: (keyof Task)[] = [
   // top of the row that spawns the next occurrence — so listing them would hand
   // a fresh occurrence a stale count that completeTask had just reset to 0.
 ];
+
+/**
+ * Fold a fresh block into whatever is already being served.
+ *
+ * The single write point for the penalty shield, shared by the tap that logs a
+ * slip and the sweep that finds a missed cutoff. Does nothing while the feature
+ * is off, which is also what keeps a charge from being banked against the day
+ * somebody switches it on.
+ *
+ * Nothing here touches Screen Time. This writes a setting, and the subscription
+ * in `useAppShieldSync` is what turns that into a shield — so demo mode needs
+ * no gate of its own at this level (the write lands in the throwaway database
+ * like any other) and the one gate that matters stays where the bridge is.
+ */
+function chargePenaltyShield(until: Date, reason: string): void {
+  const settings = useSettingsStore.getState();
+  if (!settings.penaltyShieldEnabled) return;
+  const next = extendShieldUntil(settings.penaltyShieldUntil, until);
+  // The reason belongs to whichever charge owns the end. A shorter charge
+  // landing mid-block moves nothing, so it must not rename the block either —
+  // the shield screen would otherwise credit a block to the wrong task.
+  if (next === settings.penaltyShieldUntil) return;
+  settings.setPenaltyShieldUntil(next, reason);
+}
 
 /**
  * The updateTask option for a date write nobody chose — series reconciliation,
@@ -496,6 +553,13 @@ function newTaskFromDraft(
     priorBestStreak: 0,
     slipCount: 0,
     slipDate: null,
+    penaltyMinutes: draft.penaltyMinutes ?? null,
+    penaltyCutoffTime: draft.penaltyCutoffTime ?? null,
+    // Never seeded from the draft: a charge belongs to the occurrence that
+    // earned it, so a new row — including the successor of one that was
+    // charged — starts owing nothing.
+    penaltyFiredAt: null,
+    gatesApps: draft.gatesApps ?? false,
     polarity: resolvedPolarity,
     // On by default for a negative habit and off for everything else. A flame on
     // every recurring row is noise (the reasoning behind the field), but the run
@@ -543,15 +607,24 @@ function newTaskFromDraft(
     timerElapsedSeconds: draft.timerElapsedSeconds ?? 0,
     healthMetric: draft.healthMetric ?? null,
     healthTarget: draft.healthTarget ?? null,
+    completionTimerMinutes: draft.completionTimerMinutes ?? null,
+    logHealthMetric: draft.logHealthMetric ?? null,
+    logHealthAmount: draft.logHealthAmount ?? null,
+    medicationName: draft.medicationName ?? null,
+    medicationAmount: draft.medicationAmount ?? null,
+    medicationUnit: draft.medicationUnit ?? null,
     previousOccurrenceId: draft.previousOccurrenceId ?? null,
     generatedKind: draft.generatedKind ?? null,
     generatedSourceId: draft.generatedSourceId ?? null,
     deadlineOnCalendar: draft.deadlineOnCalendar ?? false,
+    logCompletionToCalendar: draft.logCompletionToCalendar ?? false,
     // Never read off the draft, same reasoning as deliverableValue just
     // below: a duplicate or template application starting with someone
     // else's device event id would either point at the wrong task's event or
     // silently overwrite it on the first reconcile.
     calendarEventId: null,
+    // Same rule: a fresh row hasn't logged a completion yet.
+    completionCalendarEventId: null,
     // Same rule, and both are off the draft type for it (see TaskDraft).
     timeBlockEventId: null,
     seriesId: draft.seriesId ?? null,
@@ -633,6 +706,34 @@ function reconcileDeadlineEvent(task: Task): void {
       const current = useTaskStore.getState().tasks.find(t => t.id === task.id);
       if (!current) return;
       const updated = { ...current, calendarEventId };
+      dbUpdateTask(updated);
+      useTaskStore.setState(s => ({ tasks: s.tasks.map(t => (t.id === task.id ? updated : t)) }));
+    })
+    .catch(() => {});
+}
+
+/**
+ * Writes the silent, one-shot completion event for a task that has
+ * `logCompletionToCalendar` on — fire-and-forget, same shape as
+ * `reconcileDeadlineEvent` above, but simpler: `logTaskCompletionToCalendar`
+ * (completionCalendarSync.ts) never reconciles or rewrites, so there's no
+ * "did the id change" check, only the write and the patch of the id it
+ * returns. Still guards against the task having vanished by the time the
+ * device write resolves, the same reason `reconcileDeadlineEvent` does.
+ *
+ * Called only when `task.logCompletionToCalendar` is true (checked by the
+ * caller, not here) rather than unconditionally on every completion the way
+ * `reconcileDeadlineEvent` is — the util itself checks the settings side
+ * too, but there's no reason to fire a promise on every completion in the
+ * app just to have it resolve to null for the ones with the flag off.
+ */
+function logCompletionEvent(task: Task, completedAt: Date): void {
+  logTaskCompletionToCalendar(task, completedAt)
+    .then(completionCalendarEventId => {
+      if (!completionCalendarEventId) return;
+      const current = useTaskStore.getState().tasks.find(t => t.id === task.id);
+      if (!current) return;
+      const updated = { ...current, completionCalendarEventId };
       dbUpdateTask(updated);
       useTaskStore.setState(s => ({ tasks: s.tasks.map(t => (t.id === task.id ? updated : t)) }));
     })
@@ -742,6 +843,12 @@ function writeGeneratedOptOut(task: Task, value: false | null): void {
     case 'mealShortfall':
       useMealPlanStore.getState().setShopTask(sourceId, value);
       return;
+    // The same field the completion-time log prompt's "Don't ask for this
+    // meal" already writes — see mealLogNudgeTasks.ts. Declining either one
+    // means the same thing about the same meal.
+    case 'mealLogNudge':
+      useMealPlanStore.getState().setLogMeal(sourceId, value);
+      return;
     case 'groceryUseUp':
       useGroceryStore.getState()
         .setUseUpTask(sourceId, value, value === null ? reconcileOff : undefined);
@@ -822,6 +929,42 @@ function writeGeneratedOptOut(task: Task, value: false | null): void {
     }
     default:
       return;
+  }
+}
+
+/**
+ * The offer a meal's own finish, or its missed-log nudge, makes — the moment
+ * either completes and the meal isn't already opted out of it.
+ *
+ * A recipe-backed meal gets the auto-computed prompt (`pendingMealLog`,
+ * `mealLog.ts`/`LogMealPrompt.tsx`), which can measure it. Anything else —
+ * a leftover with no recipe, takeout, a typed answer — gets the search sheet
+ * instead (`pendingManualMealLog`, `FoodLogEntrySheet.tsx`), prefilled with
+ * the meal's own name so finding it is a tap rather than a retype. Both
+ * check the same per-meal "no" first, because both are the same offer with
+ * two different ways of answering "how much".
+ */
+function offerMealLog(loggable: MealPlanEntry): void {
+  if (!wantsMealLogPrompt(loggable, useSettingsStore.getState().mealLogPrompt)) return;
+  if (loggable.recipeId) {
+    useFoodLogStore.getState().setPendingMealLog({
+      label: loggable.title,
+      slot: loggable.slot,
+      recipeId: loggable.recipeId,
+      mealPlanEntryId: loggable.id,
+      scale: loggable.recipeScale,
+      choices: loggable.recipeChoices,
+      // A meal cooked tonight has nothing weighed yet — the prompt asks.
+      // Only a container that was weighed on the way into the fridge arrives
+      // with a figure (see finishLeftover).
+      grams: null,
+    });
+  } else {
+    useFoodLogStore.getState().setPendingManualMealLog({
+      label: loggable.title,
+      slot: loggable.slot,
+      mealPlanEntryId: loggable.id,
+    });
   }
 }
 
@@ -1519,7 +1662,7 @@ interface TaskStore extends UndoHistoryActions {
    * exclusive with `missed` in practice (nothing passes both); `missed`
    * still wins if it somehow were, since a miss is the more specific claim.
    */
-  completeTask: (id: string, options?: { missed?: boolean; deliverableValue?: string | null; neutral?: boolean }) => void;
+  completeTask: (id: string, options?: { missed?: boolean; deliverableValue?: string | null; neutral?: boolean; completedAt?: string }) => void;
   uncompleteTask: (id: string) => void;
   /**
    * Writes (or clears) the answer on an already-completed task — the Logbook's
@@ -1553,8 +1696,27 @@ interface TaskStore extends UndoHistoryActions {
    * second kind of task behind it. See src/utils/negativeHabits.ts.
    */
   logSlip: (id: string) => void;
-  /** Takes back a slip logged today, restoring the run it ended. */
+  /**
+   * Takes back a slip logged today, restoring the run it ended.
+   *
+   * Restores the record only. A penalty block the slip bought stays in force —
+   * see `slipPenaltyUntil`, where taking it back would also be a way to buy
+   * back a block earned by something else entirely.
+   */
   undoSlip: (id: string) => void;
+  /**
+   * Charge the penalty on every task that has gone past its cutoff undone.
+   *
+   * The other half of `logSlip` above, for the polarity that fails by *not*
+   * doing something: there is no tap to hang it on, so it has to be swept for.
+   * Idempotent, which is what lets it sit in the catch-up list — a charge
+   * stamps `penaltyFiredAt` on the row it belongs to, and a stamped row is
+   * never charged twice however often this runs.
+   *
+   * Does nothing at all while the feature is switched off, so an install that
+   * has never used it cannot accumulate charges waiting to be served.
+   */
+  sweepTaskPenalties: () => void;
   /**
    * Credits the clean days that have gone by since each negative habit was last
    * accounted for.
@@ -1612,6 +1774,13 @@ interface TaskStore extends UndoHistoryActions {
   // simpler because a pull candidate is undated, so there's no existing date to
   // protect and every move is a plain reschedule.
   pullProjectTasks: (moves: readonly { id: string; updates: Partial<Task> }[]) => void;
+  /**
+   * Applies an accepted "the trip moved" plan (see utils/awayShift) under one
+   * undo entry. deloadTasks' mirror, and deliberately *not* deloadTasks: that
+   * one counts postpones, which would blame the user for a flight change, and
+   * its undo snapshot drops recurrenceAnchorDate, which a pull-forward writes.
+   */
+  shiftAwayTasks: (moves: readonly { id: string; updates: Partial<Task> }[]) => void;
   /**
    * Files the tasks a rule just written would have filed, had it existed when
    * they were typed (see utils/titleRules.titleRuleBacklog). Offered once, at
@@ -1685,6 +1854,13 @@ interface TaskStore extends UndoHistoryActions {
    */
   checkMealShortfallTasks: () => void;
   /**
+   * Give every planned meal a few days in the past with nothing logged
+   * against it a "Log X" task, and clear the ones whose meal has since been
+   * logged, told not to ask, deleted, or has fallen out of the window. See
+   * src/utils/mealLogNudgeTasks.ts.
+   */
+  checkMealLogNudgeTasks: () => void;
+  /**
    * Give every supply that's running low an "Order more X" task, put every
    * *linked* supply's grocery item on the shopping list instead, and clear the
    * rows whose supply has since been topped back up. See src/utils/supply.ts.
@@ -1705,6 +1881,14 @@ interface TaskStore extends UndoHistoryActions {
   checkMoodTasks: () => void;
   /** The bare-weekend offer — see src/utils/weekendTasks.ts. */
   checkWeekendNudgeTasks: () => void;
+  /**
+   * The weigh-in request — see src/utils/weightTasks.ts. The one generator pass
+   * that takes a Health read of its own rather than judging a snapshot, so the
+   * only one that is async.
+   */
+  checkWeighInTasks: () => Promise<void>;
+  /** Tick off today's weigh-in request, if one is live, after a weight is saved. */
+  completeWeighInTaskForToday: () => void;
   /**
    * Tick off today's "Log how you're feeling" task, if one is live.
    *
@@ -1847,6 +2031,12 @@ interface TaskStore extends UndoHistoryActions {
 
   forgivVacationStreaks: () => void;
   checkVacationExpiry: () => void;
+  /**
+   * Arm vacation mode for a nominated trip that has started, and keep its end
+   * date in step. The "off" half is checkVacationExpiry above, which already
+   * shipped — see this action's own doc for the four rules it holds to.
+   */
+  checkAwayVacation: () => void;
   resetAllStreaks: () => void;
   bulkCompleteTasks: (ids: string[]) => void;
   bulkUncompleteTasks: (ids: string[]) => void;
@@ -1949,6 +2139,19 @@ export const useTaskStore = create<TaskStore>((set, get) => ({
     // person's own record, or the reverse — and this is the one store where
     // that mistake is a claim about somebody's health.
     useMoodStore.getState().initialize();
+    // Beside the mood log, on the same fan-out and for the same reason:
+    // milestones are read against it, so a device swap that left them out of
+    // step would date a before/after split against the wrong person's phone.
+    useMilestoneStore.getState().initialize();
+    // Beside the mood log, same fan-out, and the sharpest version of the same
+    // stakes: a medication history left pointed at the previous database would
+    // report a demo session's invented doses as a real person's record of what
+    // they have taken.
+    useMedicationStore.getState().initialize();
+    // Beside the mood log and for the identical reason, with the same stakes:
+    // a food log left pointed at the previous database would show a demo
+    // session's invented meals as somebody's own record of what they ate.
+    useFoodLogStore.getState().initialize();
     useTemplateCategoryStore.getState().initialize();
     // Groceries ride this fan-out rather than being initialized from App.tsx,
     // and that placement is load-bearing: enterDemoMode/exitDemoMode and
@@ -2366,6 +2569,9 @@ export const useTaskStore = create<TaskStore>((set, get) => ({
       // two tasks pointing at one event means editing either one's deadline
       // silently drags the other's calendar entry with it.
       calendarEventId: null,
+      // logCompletionToCalendar carries via ...original the same way, but a
+      // copy is a fresh, uncompleted task — it hasn't logged anything yet.
+      completionCalendarEventId: null,
       // Same reasoning, and the copy has no claim on the original's slot
       // anyway — the block was time set aside for one piece of work.
       timeBlockEventId: null,
@@ -2889,6 +3095,7 @@ export const useTaskStore = create<TaskStore>((set, get) => ({
     dbDeleteSubtasks(id);
     dbDeleteTask(id);
     cancelTaskReminder(id);
+    cancelCompletionTimer(id);
     if (task.timerStartedAt !== null) cancelTimerAlarm(id);
     // Fire-and-forget, same as every other calendar/notification side effect
     // here. Not restored on undo below — deleting a device event isn't
@@ -3004,6 +3211,13 @@ export const useTaskStore = create<TaskStore>((set, get) => ({
     }
 
     const now = new Date();
+    // The morning check-in is the one caller that completes a task after the
+    // fact — "yes, I did this last night" — and wants the record to say so
+    // rather than reading as done at whatever moment the user got around to
+    // answering. Everything else this function writes (the successor's
+    // createdAt/seenAt, the streak's getCurrentDayStart() calls) stays keyed
+    // to the real moment; only the completed row's own timestamps move.
+    const completedAt = options?.completedAt ? new Date(options.completedAt) : now;
     const { dayResetTime } = useSettingsStore.getState();
 
     const recurs = task.recurrenceType !== 'none';
@@ -3135,10 +3349,10 @@ export const useTaskStore = create<TaskStore>((set, get) => ({
     const completed: Task = {
       ...task,
       completed: true,
-      completedAt: now.toISOString(),
+      completedAt: completedAt.toISOString(),
       // What makes this row a miss rather than a completion. It is set
       // alongside `completed`, never instead of it — see Task.missedAt.
-      missedAt: missed ? now.toISOString() : task.missedAt,
+      missedAt: missed ? completedAt.toISOString() : task.missedAt,
       // Pin is cleared once the completion hold below expires, not
       // immediately — otherwise a pinned row would vanish from the Pinned
       // section instantly instead of getting the same fade-out grace period
@@ -3180,6 +3394,34 @@ export const useTaskStore = create<TaskStore>((set, get) => ({
     // A completed row has nothing left to be late for — its deadline event,
     // if it had one, is deleted rather than left dangling on the calendar.
     reconcileDeadlineEvent(completed);
+    // Opt-in and one-shot, unlike the reconcile above — only fired when the
+    // task actually asked for it.
+    if (task.logCompletionToCalendar) logCompletionEvent(completed, completedAt);
+    // Same shape as the calendar log one line up: opt-in, one-shot, fire and
+    // forget. See logTaskHealthValue's own comment for why there is no
+    // write-back id to store and no undo on uncomplete.
+    if (task.logHealthMetric) void logTaskHealthValue(completed);
+    // Opt-in like the two above, but deliberately *not* one-shot: this writes
+    // into the app's own record rather than somebody else's database, and
+    // uncompleteTask takes it back (see Task.medicationName). Nothing is asked
+    // at the tick — the dose is what the task already says it is, and asking
+    // again would be the "same fact twice" the medication log exists not to be.
+    //
+    // A missed sweep completes the row without anybody having taken anything,
+    // so it records no dose: `missed` is exactly the case where the task closed
+    // because the day ended rather than because it was done.
+    //
+    // Read through medicationFor rather than off the task, so a chain step
+    // carrying its own medication records that one — "morning pills / evening
+    // pills" would otherwise log the morning dose again at night.
+    const completedDose = options?.missed ? null : medicationFor(task);
+    if (completedDose) {
+      useMedicationStore.getState().addLog({
+        ...completedDose,
+        taskId: id,
+        at: completedAt,
+      });
+    }
 
     cancelTaskReminder(id);
 
@@ -3305,6 +3547,12 @@ export const useTaskStore = create<TaskStore>((set, get) => ({
           completed: false,
           completedAt: null,
           missedAt: null, // a miss belongs to the occurrence that was missed, never to its successor
+          // The twin of the line above, and load-bearing rather than tidy: the
+          // stamp is what stops a charge being made twice, so riding it forward
+          // would mean a daily task could be charged once and then never again,
+          // however many mornings it went undone after that. The configuration
+          // that decides the cost still carries via ...effective.
+          penaltyFiredAt: null,
           // Same reasoning one field up: the drip dated the occurrence that was
           // just completed, not this one, whose date came from the schedule.
           autoScheduledAt: null,
@@ -3440,6 +3688,10 @@ export const useTaskStore = create<TaskStore>((set, get) => ({
           // deadline (nextDeadline above) that needs its own event, created
           // by the reconcile call below.
           calendarEventId: null,
+          // Nor this: the old occurrence's completion event logged that
+          // occurrence's completion, not this fresh one's — which hasn't
+          // happened yet.
+          completionCalendarEventId: null,
           // Nor this: last Tuesday's block was time spent on last Tuesday's
           // occurrence. The next one starts unblocked, and asking for a slot
           // is a decision the user makes per occurrence — there is no
@@ -3657,6 +3909,13 @@ export const useTaskStore = create<TaskStore>((set, get) => ({
     const cookedEntryId =
       generatedSourceOf(task, 'mealCook') ??
       (completesMealSlot(task) ? mealSlotEntryId(task) : null);
+    // A mealLogNudge task's own completion is the other moment this offer can
+    // come from — see offerMealLog below. Kept apart from cookedEntryId,
+    // which also drives the cook-pairing and leftover-finish logic right
+    // below: ticking "Log breakfast" three days late must not re-ask "was
+    // that the last of the leftover?" on a meal already settled one way or
+    // the other.
+    const logNudgeEntryId = generatedSourceOf(task, 'mealLogNudge');
     const undoMealCooked = !missed && cookedEntryId
       ? useMealPlanStore.getState().setCookedPaired(cookedEntryId, true)
       : null;
@@ -3690,6 +3949,24 @@ export const useTaskStore = create<TaskStore>((set, get) => ({
       ) {
         useLeftoverStore.getState().setPendingFinishLeftover(cookedLeftover.id);
       }
+    }
+
+    // ...and the same tick is the cheapest logging moment the app will ever
+    // have: the step that finished a meal-slot chain is literally "Eat", and
+    // the entry behind it already names the dish and, for a recipe-backed
+    // one, the scale it was cooked at and the either/or answers that went
+    // into it. A mealLogNudge task's own completion is the other way in —
+    // see offerMealLog.
+    //
+    // An offer, never a write — see mealLog.ts. A plan can diverge from
+    // reality (the dinner was cooked, then everyone went out), which is the
+    // same reason mealSlotDrift withholds the chain once it is under way.
+    // Never on a miss, matching the cook pairing above: a missed deadline did
+    // not feed anybody.
+    if (!missed) {
+      const loggableEntryId = cookedEntryId ?? logNudgeEntryId;
+      const loggable = loggableEntryId ? dbGetMealPlanEntry(loggableEntryId) : null;
+      if (loggable) offerMealLog(loggable);
     }
 
     // Ticking a "Use up X" task off is the moment the user can say what
@@ -3882,10 +4159,24 @@ export const useTaskStore = create<TaskStore>((set, get) => ({
       // again immediately. The follow-up task itself is deleted below, as an
       // uncompleted row pointing back at this one.
       followUpTaskTally: task.previousFollowUpTaskTally,
+      // Un-completing means the completion the event logged didn't actually
+      // happen, so there's nothing left for it to record.
+      completionCalendarEventId: null,
     };
+    if (task.completionCalendarEventId) deleteCalendarEvent(task.completionCalendarEventId);
+    // The dose this completion recorded goes with it. Unlike the Apple Health
+    // write, which is one-shot because a sample is a historical record in
+    // somebody else's database, this is the app's own record of what went into
+    // a person — and a task ticked by mistake means the dose was not taken.
+    // Leaving it behind would put a phantom dose in the one log whose whole
+    // job is to be accurate. See Task.medicationName.
+    if (medicationFor(task)) useMedicationStore.getState().removeLogsForTask(id);
     dbUpdateTask(updated);
     // Reopened, so a deadline it still carries is live again.
     reconcileDeadlineEvent(updated);
+    // The completion timer this task's own completion may have scheduled no
+    // longer means anything once that completion is undone.
+    cancelCompletionTimer(id);
 
     // Completing a recurring task spawns a fresh next occurrence. Undoing
     // that completion means it never happened, so the occurrence it
@@ -3926,6 +4217,11 @@ export const useTaskStore = create<TaskStore>((set, get) => ({
       // since finishing one spawns nothing.
       (completesMealSlot(task) ? mealSlotEntryId(task) : null);
     if (uncookedEntryId) useMealPlanStore.getState().setCooked(uncookedEntryId, false);
+    // The mirror of logNudgeEntryId in completeTask — kept apart from
+    // uncookedEntryId for the same reason it's kept apart from cookedEntryId
+    // there: un-ticking "Log breakfast" must not un-cook a meal that was
+    // never this task's to mark either way.
+    const logNudgeUncompleteEntryId = generatedSourceOf(task, 'mealLogNudge');
 
     // Mirrors the retraction just above: un-ticking the step that finished a
     // leftover-backed meal takes back whatever finish-the-container ask it
@@ -3934,6 +4230,20 @@ export const useTaskStore = create<TaskStore>((set, get) => ({
     // harmless, same reasoning the Use-up clears below rely on.
     if (uncookedEntryId && dbGetMealPlanEntry(uncookedEntryId)?.leftoverId) {
       useLeftoverStore.getState().setPendingFinishLeftover(null);
+    }
+    // Taking the tick back takes the offer back with it: the meal did not
+    // happen after all, so there is nothing to be asked about. Covers both
+    // shapes offerMealLog can have raised, and both the meal-slot and the
+    // log-nudge tick that can each have raised them.
+    const uncookedOfferEntryId = uncookedEntryId ?? logNudgeUncompleteEntryId;
+    if (uncookedOfferEntryId && useFoodLogStore.getState().pendingMealLog?.mealPlanEntryId === uncookedOfferEntryId) {
+      useFoodLogStore.getState().setPendingMealLog(null);
+    }
+    if (
+      uncookedOfferEntryId &&
+      useFoodLogStore.getState().pendingManualMealLog?.mealPlanEntryId === uncookedOfferEntryId
+    ) {
+      useFoodLogStore.getState().setPendingManualMealLog(null);
     }
 
     // Un-ticking a "Use up X" task retracts whatever resolve prompt it just
@@ -3993,6 +4303,12 @@ export const useTaskStore = create<TaskStore>((set, get) => ({
     const updated = { ...task, ...slipPatch(task, getCurrentDayStart()) };
     dbUpdateTask(updated);
     set(s => ({ tasks: s.tasks.map(t => (t.id === id ? updated : t)) }));
+    // The tap is the failure, so the cost lands with it rather than waiting for
+    // a sweep to notice. Deliberately not undone by `undoSlip` below — see
+    // slipPenaltyUntil for why taking the block back would be a way out of
+    // every other block too.
+    const slipUntil = slipPenaltyUntil(updated, new Date());
+    if (slipUntil) chargePenaltyShield(slipUntil, displayTitleFor(updated));
     // A tap here costs a run that may be weeks long, so the undo is offered
     // rather than buried — the same affordance a logged quota unit gets, for a
     // mis-tap that is considerably more expensive.
@@ -4010,6 +4326,43 @@ export const useTaskStore = create<TaskStore>((set, get) => ({
     const updated = { ...task, ...patch };
     dbUpdateTask(updated);
     set(s => ({ tasks: s.tasks.map(t => (t.id === id ? updated : t)) }));
+  },
+
+  sweepTaskPenalties() {
+    const settings = useSettingsStore.getState();
+    if (!settings.penaltyShieldEnabled) return;
+
+    const now = new Date();
+    const charged: Task[] = [];
+    let until = settings.penaltyShieldUntil;
+    // Tracked alongside the end rather than taken from the last task charged:
+    // with several failing at once, the block belongs to whichever one pushed
+    // its end furthest out, and that is what the shield screen should name.
+    let reason = settings.penaltyShieldReason;
+
+    for (const task of get().tasks) {
+      const charge = penaltyChargeFor(task, now, settings.dayResetTime, {
+        // The two ways the app itself was the reason a task didn't get done.
+        // Charging for either would be punishing somebody for the app's own
+        // gate — see penaltyChargeFor, where this is a required argument
+        // rather than a default precisely so it has to be answered here.
+        excused: isHeldBack(task) || isHiddenForVacation(task),
+      });
+      if (!charge) continue;
+      charged.push({ ...task, penaltyFiredAt: charge.firedAt });
+      if (!charge.until) continue;
+      const next = extendShieldUntil(until, charge.until);
+      if (next !== until) reason = displayTitleFor(task);
+      until = next;
+    }
+
+    if (charged.length === 0) return;
+    for (const task of charged) dbUpdateTask(task);
+    const byId = new Map(charged.map(t => [t.id, t]));
+    set(s => ({ tasks: s.tasks.map(t => byId.get(t.id) ?? t) }));
+    // One write for however many charges landed, so the shield reconciles once
+    // rather than once per failed task.
+    if (until !== settings.penaltyShieldUntil) settings.setPenaltyShieldUntil(until, reason);
   },
 
   rolloverNegativeStreaks() {
@@ -4051,6 +4404,15 @@ export const useTaskStore = create<TaskStore>((set, get) => ({
     const updated = { ...task, progressCount: task.progressCount + 1 };
     dbUpdateTask(updated);
     set(s => ({ tasks: s.tasks.map(t => (t.id === id ? updated : t)) }));
+    // A daily target is how "three doses a day" is already said here, so each
+    // unit is a dose — not just the one that finishes the day. Only this
+    // branch records: the unit that reaches the target hands off to
+    // completeTask above, which logs it there, and logging here too would
+    // count the last dose of every day twice.
+    const unitDose = medicationFor(task);
+    if (unitDose) {
+      useMedicationStore.getState().addLog({ ...unitDose, taskId: id });
+    }
     get().setLastAction({
       label: 'Logged',
       undo: () => get().unlogQuotaUnit(id),
@@ -4069,6 +4431,9 @@ export const useTaskStore = create<TaskStore>((set, get) => ({
     const updated = { ...task, progressCount: task.progressCount - 1 };
     dbUpdateTask(updated);
     set(s => ({ tasks: s.tasks.map(t => (t.id === id ? updated : t)) }));
+    // The unit being taken back is the dose that unit recorded, and only that
+    // one — the day's earlier doses were still taken.
+    if (medicationFor(task)) useMedicationStore.getState().removeLatestLogForTask(id);
   },
 
   holdQuotaOnToday(id) {
@@ -4192,6 +4557,9 @@ export const useTaskStore = create<TaskStore>((set, get) => ({
         completed: false,
         completedAt: null,
         missedAt: null,
+        // Same as completeTask's successor: the stamp is per-occurrence, and
+        // carrying it would leave this row unable to be charged at all.
+        penaltyFiredAt: null,
         autoScheduledAt: null,
         createdAt: now,
         seenAt: now,
@@ -4475,6 +4843,50 @@ export const useTaskStore = create<TaskStore>((set, get) => ({
     });
   },
 
+  shiftAwayTasks(moves) {
+    const byId = new Map(get().tasks.map(t => [t.id, t]));
+    const applied = moves.filter(m => byId.has(m.id));
+    if (applied.length === 0) return;
+
+    // The anchor rides in the snapshot, unlike deloadTasks' three fields. A
+    // shift can *pull* a recurring member forward, which writes
+    // recurrenceAnchorDate, and an undo that restored only the two dates would
+    // leave that behind — silently rotating the grid the rest of the
+    // schedule steps from, the exact back-door rotation the "only ever set
+    // once" rule in scheduleMoveUpdates exists to prevent.
+    const snapshots = applied.map(m => {
+      const t = byId.get(m.id)!;
+      return {
+        id: m.id,
+        dueDate: t.dueDate,
+        deferUntil: t.deferUntil,
+        recurrenceAnchorDate: t.recurrenceAnchorDate,
+      };
+    });
+
+    // Never counted, deliberately, and this is the half deloadTasks gets the
+    // other way round. "Lighten this day" is the most explicit *I am pushing
+    // today's work* action in the app, so it counts; a trip moving because the
+    // airline moved it is not the user postponing anything, and counting it
+    // would feed the "you've pushed this five times" prompt (utils/postpone)
+    // with pushes nobody made.
+    dbTransaction(() => {
+      applied.forEach(m => get().updateTask(m.id, m.updates, { skipPostponeCount: true, markSeenOnBecomeVisible: true }));
+    });
+
+    get().setLastAction({
+      label: `${applied.length} task${applied.length === 1 ? '' : 's'} moved with the trip`,
+      redo: () => get().shiftAwayTasks(moves),
+      undo: () => snapshots.forEach(s =>
+        get().updateTask(
+          s.id,
+          { dueDate: s.dueDate, deferUntil: s.deferUntil, recurrenceAnchorDate: s.recurrenceAnchorDate },
+          { skipPostponeCount: true },
+        )
+      ),
+    });
+  },
+
   pullProjectTasks(moves) {
     const byId = new Map(get().tasks.map(t => [t.id, t]));
     const applied = moves.filter(m => byId.has(m.id));
@@ -4567,7 +4979,11 @@ export const useTaskStore = create<TaskStore>((set, get) => ({
     // Through the registry rather than reading vacationMode directly: this was
     // the only generator of nineteen that answered this question, and one rule
     // with one exception is how the other eighteen came to have no answer.
-    if (generatorPausedForVacation('mealPlanNudge', settings.vacationMode)) return;
+    // mealPlanNudgeIgnoresVacation is checked ahead of it rather than folded
+    // into the registry: some people plan meals *for* the trip, and this is
+    // the one generator where "hide work from me" isn't what vacation mode
+    // should mean for everybody.
+    if (!settings.mealPlanNudgeIgnoresVacation && generatorPausedForVacation('mealPlanNudge', settings.vacationMode)) return;
 
     const due = dueMealPlanNudge(
       new Date(),
@@ -5376,6 +5792,71 @@ export const useTaskStore = create<TaskStore>((set, get) => ({
     // No setLastAction, same reasoning as checkMealPlanNudge above.
   },
 
+  /**
+   * Give every planned meal a few days in the past with nothing logged
+   * against it a "Log X" task. See src/utils/mealLogNudgeTasks.ts for the
+   * window, the cap, and why `cookedAt` is never consulted.
+   *
+   * Reads both the entry window and the food log window straight from the
+   * database, for `checkMealShortfallTasks`' own reason: the loaded stores
+   * hold only whatever range a screen happened to have open.
+   */
+  checkMealLogNudgeTasks() {
+    const settings = useSettingsStore.getState();
+    if (generatorPausedForVacation('mealLogNudge', settings.vacationMode)) return;
+    if (!settings.mealLogNudgeTasks) return;
+    if (!settings.kitchenEnabled) return;
+
+    const tasks = get().tasks;
+    const todayKey = dayKeyOf(getLogicalToday());
+    // One day wider on the near edge, for the reason checkMealShortfallTasks
+    // reads one day wider on each of its own: a task whose entry has moved is
+    // told apart from one whose entry has vanished only by what's actually in
+    // this set.
+    const windowStart = shiftDayKey(todayKey, -MEAL_LOG_NUDGE_LOOKBACK_DAYS - 1);
+    const entries = dbGetMealPlanEntries(windowStart, todayKey);
+    const loggedEntryIds = new Set(
+      dbGetFoodLogEntries(windowStart, todayKey)
+        .map(e => e.mealPlanEntryId)
+        .filter((id): id is string => id !== null)
+    );
+
+    // Clear first, create second, the same ordering every generator here
+    // runs on: the stale set includes the row for a meal just logged from
+    // this very task, and a create pass running first would be deciding
+    // against a list that still held it.
+    const stale = staleMealLogNudgeTasks(tasks, entries, loggedEntryIds, todayKey);
+    stale.forEach(task => dropGeneratedTask('mealLogNudge', mealLogNudgeEntryId(task)));
+
+    const wanted = wantedMealLogNudges(entries, loggedEntryIds, todayKey);
+    if (wanted.length === 0) return;
+
+    ensureGeneratedTaskCategory('mealLogNudge');
+    const category = useSettingsStore.getState().mealLogNudgeTaskCategory;
+    const dueDate = getCurrentDayStart();
+    dueDate.setHours(12, 0, 0, 0);
+
+    wanted.forEach(want => {
+      reconcileGeneratedTask({
+        kind: 'mealLogNudge',
+        sourceId: want.entryId,
+        wanted: true,
+        // A meal is one event — see the module header on why a finished row
+        // (whether or not it actually led to a log entry) never comes back.
+        blocksOnFinished: true,
+        drift: existing => (existing.title === want.title ? null : { title: want.title }),
+        draft: () => ({
+          title: want.title,
+          dueDate: dueDate.toISOString(),
+          linkUrl: mealLogNudgeLinkUrl(want.dayKey),
+          category,
+          ...generatedBy('mealLogNudge', want.entryId),
+        }),
+      });
+    });
+    // No setLastAction, same reasoning as checkMealPlanNudge above.
+  },
+
   checkSupplyReorderTasks() {
     const settings = useSettingsStore.getState();
     // Work the app invents, and vacation mode is the deliberate "hide work
@@ -5738,6 +6219,16 @@ export const useTaskStore = create<TaskStore>((set, get) => ({
    *   fires off Health data cannot run while the app is not allowed to read
    *   any, so both switches gate the pass — and the rules sheet says so, rather
    *   than leaving somebody with a toggle that visibly does nothing.
+   * - **A ceiling rule (saturated fat) spends its mark the other way round.**
+   *   Every other rule here is a floor, so `ruleCanBeJudgedYet` returning true
+   *   is the only gate: whatever the reading says once the checkpoint has
+   *   passed is final, because more steps or more sodium later only helps.
+   *   Saturated fat only gets worse as the day goes on, so an early "still
+   *   under" is not a day-long answer — the mark is withheld until the rule
+   *   actually matches, and only then does this behave like every other
+   *   generator ("considered and it fired" spends the mark for good). See
+   *   `ruleCanBeJudgedYet`'s own comment in `healthRules.ts` for the full
+   *   argument.
    *
    * Reads whatever snapshot `useHealthStore` already has and never fetches, the
    * split `checkWeatherTasks` draws against `useWeatherStore`: a cold launch
@@ -5790,27 +6281,41 @@ export const useTaskStore = create<TaskStore>((set, get) => ({
       if (!ruleCanBeJudgedYet(rule, hoursIntoDay, reading)) return rule;
       if (rule.lastFiredDayKey === todayKey) return rule;
 
-      if (ruleShortfallToday(rule, reading)) {
+      const matched = ruleShortfallToday(rule, reading);
+      if (matched) {
         const sourceId = healthSourceId(todayKey, rule.id);
         reconcileGeneratedTask({
           kind: 'health',
           sourceId,
           wanted: true,
-          // The title is the rule's own and never varies mid-day.
+          // The title is the rule's own and never varies mid-day; same for the
+          // reading behind the note, so nothing here needs drift either.
           drift: () => null,
           draft: () => ({
             title: rule.title,
+            notes: healthTaskNote(rule, reading),
             dueDate: dueDate.toISOString(),
             category: settings.healthTaskCategory,
+            linkUrl: healthTaskLinkUrl(rule.metric),
             ...generatedBy('health', sourceId),
           }),
         });
+      } else if (healthRuleDirection(rule) === 'over') {
+        // A ceiling can only get easier to cross as the day goes on — "still
+        // under 20g of saturated fat" at 9am says nothing about 6pm the way a
+        // floor's "still under 3,000 steps" at 6pm does. Leaving the mark
+        // unspent is what lets the next sweep judge it again once more of the
+        // day has actually happened, rather than retiring the rule the moment
+        // it happens to be checked while still safe.
+        return rule;
       }
 
       // Spent whether or not it matched, the way checkWeatherTasks spends its
       // mark: "considered and did not apply" and "considered and fired" both
       // mean this day has been answered, and without that a task swiped away
-      // comes straight back on the next foreground sweep.
+      // comes straight back on the next foreground sweep. For an 'under' rule
+      // that is true the moment it's judged at all; for an 'over' rule it's
+      // only true once matched, which is exactly the branch above this one.
       rulesChanged = true;
       return { ...rule, lastFiredDayKey: todayKey };
     });
@@ -5831,6 +6336,9 @@ export const useTaskStore = create<TaskStore>((set, get) => ({
    * Both are day-keyed with no source row, the position `calendarReview` is in,
    * so neither has a per-source stamp to decline onto and both use a
    * settings-level mark instead (`moodLogLastDayKey`, `moodNudgeLastDayKey`).
+   * `moodLogLastDayKey` holds the check-in's whole sourceId, not just the day —
+   * see `moodLogTimeSegments` and `moodLogSourceId` — so it still works as "the
+   * slot already decided" once a day can hold more than one.
    */
   checkMoodTasks() {
     const settings = useSettingsStore.getState();
@@ -5847,46 +6355,66 @@ export const useTaskStore = create<TaskStore>((set, get) => ({
     dueDate.setHours(12, 0, 0, 0);
 
     if (settings.moodLogTasks && settings.moodLogTaskCategory) {
-      // Clear yesterday's check-in before deciding today's — the same
-      // clear-first-create-second ordering checkCalendarReviewTasks uses. An
-      // unanswered check-in is a question about a day that has gone, not a
-      // task still owed.
+      const segments = settings.moodLogTimeSegments;
+      // The slot this pass is deciding: the segment the clock is currently
+      // in, or null for the any-time task an empty list still means. With
+      // segments configured, "before the first one's threshold" is a real
+      // third state (see noSlotYet below) — there's no day-one fallback the
+      // way the any-time case has.
+      const segment = segments.length > 0 ? currentTimeSegment(segments) : null;
+      const noSlotYet = segments.length > 0 && segment === null;
+      const sourceId = noSlotYet ? null : moodLogSourceId(todayKey, segment);
+
+      // Clear anything not for this exact slot — a previous day's check-in
+      // (the original rule), and, once segments are configured, an earlier
+      // segment's today, or everything today while nothing has opened yet.
+      // At most one check-in is ever live: an earlier segment's unanswered
+      // task is a question about a part of the day that's passed, not a task
+      // still owed, the same reasoning the day-to-day clear always used.
       liveGeneratedTasksOfKind(get().tasks, 'moodLog')
-        .filter(task => moodLogDayKey(task) !== todayKey)
+        .filter(task => moodLogDayKey(task) !== todayKey || task.generatedSourceId !== sourceId)
         .forEach(task => deleteGeneratedTaskQuietly(task.id));
 
       // Recorded before the "already logged" check below and unconditionally,
-      // for the reason calendarReviewLastDayKey is: a day already decided must
-      // not be re-diagnosed on every later sweep, or a check-in swiped away at
-      // breakfast comes straight back at lunch.
-      if (settings.moodLogLastDayKey !== todayKey) {
-        settings.setMoodLogLastDayKey(todayKey);
-        // Nothing to ask if the day is already logged. Someone who opened the
-        // sheet before the app got round to firing has answered the question,
-        // and a task asking it again is the app not listening.
-        if (!hasLogOnDay(logs, todayKey)) {
+      // for the reason calendarReviewLastDayKey is: a slot already decided
+      // must not be re-diagnosed on every later sweep, or a check-in swiped
+      // away at breakfast comes straight back at lunch. Comparing the whole
+      // sourceId rather than just the day is what makes a new segment's
+      // arrival reconsider, the same way a new day already did.
+      if (sourceId !== null && settings.moodLogLastDayKey !== sourceId) {
+        settings.setMoodLogLastDayKey(sourceId);
+        // Nothing to ask if this slot is already answered — someone who
+        // opened the sheet before the app got round to firing has answered
+        // the question, and a task asking it again is the app not listening.
+        // The any-time case asks "was the day logged at all"; a segment asks
+        // the narrower "was anything logged since this segment began" — an
+        // entry from this morning must not silence the evening check-in.
+        const answered = segment
+          ? hasLoggedSince(logs, timeSegmentThreshold(segment).toISOString())
+          : hasLogOnDay(logs, todayKey);
+        if (!answered) {
           reconcileGeneratedTask({
             kind: 'moodLog',
-            sourceId: todayKey,
+            sourceId,
             wanted: true,
             // The title never varies, so nothing to chase.
             drift: () => null,
             draft: () => ({
               title: MOOD_LOG_TITLE,
               dueDate: dueDate.toISOString(),
-              // Held back until a part of the day, if one is chosen — read
-              // once, here at creation, so changing the setting shapes the
-              // next check-in rather than reaching back to move the one
-              // already on today's list. Same rule checkCalendarReviewTasks
-              // states for calendarReviewTimeSegment.
-              timeSegments: settings.moodLogTimeSegment ? [settings.moodLogTimeSegment] : [],
+              // Held back until this segment, if one is chosen — read once,
+              // here at creation, so changing the setting shapes the next
+              // check-in rather than reaching back to move the one already on
+              // today's list. Same rule checkCalendarReviewTasks states for
+              // calendarReviewTimeSegment.
+              timeSegments: segment ? [segment] : [],
               category: settings.moodLogTaskCategory,
               // The row's link button opens the sheet that answers it. Without
               // this the only thing to do with a check-in is tick it, which
               // completes the task without logging anything — the question
               // marked answered and no answer recorded.
               linkUrl: 'dundundun://mood?log=1',
-              ...generatedBy('moodLog', todayKey),
+              ...generatedBy('moodLog', sourceId),
             }),
           });
         }
@@ -6037,6 +6565,112 @@ export const useTaskStore = create<TaskStore>((set, get) => ({
     });
     // No setLastAction, same reasoning as the other unattended passes: this is
     // not something the user just did.
+  },
+
+  /**
+   * The `weighIn` generator: a task asking for a weight, when Health hasn't had
+   * one for a while.
+   *
+   * **Its trigger is the absence of data rather than a cadence**, which is the
+   * one thing it does differently from `checkMoodTasks` above — see
+   * `src/utils/weightTasks.ts` for why. The practical effect: somebody who
+   * weighs themselves every morning unprompted never sees this task, because
+   * every window it looks at already has a reading in it.
+   *
+   * **Async, and the only generator pass that is.** Every other one judges a
+   * snapshot some foreground effect already took; this one asks HealthKit a
+   * question of its own, because the long window `useHealthSync` would have to
+   * refresh for it is a six-month query the Weight screen alone should pay for.
+   * Nothing is ordered after it, so the maintenance list fires it and moves on.
+   */
+  async checkWeighInTasks() {
+    const settings = useSettingsStore.getState();
+    // Work the app invents, and vacation mode is the deliberate "hide work
+    // from me" — see GeneratedKindSpec.pausedOnVacation. Being asked to find a
+    // set of scales in a hotel is exactly the chore that should stand down.
+    if (generatorPausedForVacation('weighIn', settings.vacationMode)) return;
+    if (!settings.weighInTasks || !settings.weighInTaskCategory) return;
+    // Both Health switches, not just the read: the pass needs the read to know
+    // whether to ask, and the answer needs the write to be recordable. A task
+    // asking for a weight the sheet would then refuse to save is worse than no
+    // task at all.
+    if (!settings.healthReadEnabled || !settings.healthWriteEnabled) return;
+    // A reading taken in demo mode is a real person's, and a task written from
+    // it would be a claim about their logging sitting in a database about to be
+    // thrown away. `healthBridge` refuses the read too; this is the other half.
+    if (isDemoModeActive()) return;
+
+    const todayKey = dayKeyOf(getCurrentDayStart());
+    const dueDate = getCurrentDayStart();
+    dueDate.setHours(12, 0, 0, 0);
+
+    // Clear a request from a day that has gone before deciding today's — the
+    // clear-first-create-second ordering every day-keyed generator uses. An
+    // unanswered request is a question about a window that has moved on, not a
+    // task still owed.
+    liveGeneratedTasksOfKind(get().tasks, 'weighIn')
+      .filter(task => weighInDayKey(task) !== todayKey)
+      .forEach(task => deleteGeneratedTaskQuietly(task.id));
+
+    if (settings.weighInLastDayKey === todayKey) return;
+
+    const everyDays = clampWeighInEveryDays(settings.weighInEveryDays);
+    const points = await useHealthStore.getState().readRecentWeights(everyDays);
+    // **Null is not an empty window.** It means there was no way to ask at all
+    // (not iOS, no Health, demo mode), which is evidence of nothing — and
+    // unlike a refused read, it is a state the app can actually recognise. So
+    // it returns without spending the mark, and the question gets asked again
+    // on the next foreground rather than being silently answered "no readings"
+    // for the whole day.
+    if (points === null) return;
+
+    // Spent only now, once the read has actually happened, and before the
+    // window is judged. Before the read would burn the day on a failure;
+    // after the decision would let a swiped-away request come straight back on
+    // the next foreground, which is what this mark exists to prevent.
+    settings.setWeighInLastDayKey(todayKey);
+    if (!wantsWeighIn(points)) return;
+
+    reconcileGeneratedTask({
+      kind: 'weighIn',
+      sourceId: todayKey,
+      wanted: true,
+      // Title and notes are both derived from the settings alone, and the
+      // window they describe cannot change under a live row without the day
+      // rolling over and deleting it above. Nothing to chase.
+      drift: () => null,
+      draft: () => ({
+        title: WEIGH_IN_TITLE,
+        notes: weighInNotes(everyDays),
+        dueDate: dueDate.toISOString(),
+        category: settings.weighInTaskCategory,
+        // The row's link button opens the sheet that answers it. Without this
+        // the only thing to do with the request is tick it, which completes the
+        // task and records nothing — and unlike a missed mood entry, the number
+        // it was asking for cannot be reconstructed later.
+        linkUrl: WEIGH_IN_LINK_URL,
+        ...generatedBy('weighIn', todayKey),
+      }),
+    });
+    // No setLastAction, same reasoning as the other unattended passes: this is
+    // not something the user just did.
+  },
+
+  /**
+   * Tick off today's weigh-in request, if there is one, because a weight was
+   * just recorded.
+   *
+   * The counterpart to `completeMoodLogTaskForToday` below and called from the
+   * same place in spirit: the sheet that answers the question, on success.
+   * Without it, recording a weight leaves the task asking for one still sitting
+   * on Today.
+   */
+  completeWeighInTaskForToday() {
+    const todayKey = dayKeyOf(getCurrentDayStart());
+    const task = liveGeneratedTasksOfKind(get().tasks, 'weighIn')
+      .find(t => weighInDayKey(t) === todayKey);
+    if (!task) return;
+    get().completeTask(task.id);
   },
 
   completeMoodLogTaskForToday() {
@@ -6422,6 +7056,13 @@ export const useTaskStore = create<TaskStore>((set, get) => ({
       polarity: 'positive',
       slipCount: 0,
       slipDate: null,
+      penaltyMinutes: null,
+      penaltyCutoffTime: null,
+      penaltyFiredAt: null,
+      gatesApps: false,
+      medicationName: null,
+      medicationAmount: null,
+      medicationUnit: null,
       parentId,
       groupId: null,
       projectId: null,
@@ -6457,7 +7098,7 @@ export const useTaskStore = create<TaskStore>((set, get) => ({
       timedMinutes: null,
       timerElapsedSeconds: 0,
       healthMetric: null,
-      healthTarget: null,
+      healthTarget: null, completionTimerMinutes: null, logHealthMetric: null, logHealthAmount: null,
       previousOccurrenceId: null,
       seriesId: null,
       seriesMonthDays: [],
@@ -6477,6 +7118,8 @@ export const useTaskStore = create<TaskStore>((set, get) => ({
       generatedSourceId: null,
       deadlineOnCalendar: false,
       calendarEventId: null,
+      logCompletionToCalendar: false,
+      completionCalendarEventId: null,
       timeBlockEventId: null,
       pendingImport: null,
       postponeCount: 0,
@@ -6617,6 +7260,13 @@ export const useTaskStore = create<TaskStore>((set, get) => ({
       polarity: 'positive',
       slipCount: 0,
       slipDate: null,
+      penaltyMinutes: null,
+      penaltyCutoffTime: null,
+      penaltyFiredAt: null,
+      gatesApps: false,
+      medicationName: null,
+      medicationAmount: null,
+      medicationUnit: null,
       parentId: null,
       groupId,
       projectId: null,
@@ -6652,7 +7302,7 @@ export const useTaskStore = create<TaskStore>((set, get) => ({
       timedMinutes: null,
       timerElapsedSeconds: 0,
       healthMetric: null,
-      healthTarget: null,
+      healthTarget: null, completionTimerMinutes: null, logHealthMetric: null, logHealthAmount: null,
       previousOccurrenceId: null,
       seriesId: null,
       seriesMonthDays: [],
@@ -6672,6 +7322,8 @@ export const useTaskStore = create<TaskStore>((set, get) => ({
       generatedSourceId: null,
       deadlineOnCalendar: false,
       calendarEventId: null,
+      logCompletionToCalendar: false,
+      completionCalendarEventId: null,
       timeBlockEventId: null,
       pendingImport: null,
       postponeCount: 0,
@@ -7260,6 +7912,77 @@ export const useTaskStore = create<TaskStore>((set, get) => ({
     if (new Date() < new Date(vacationEnd)) return;
     get().forgivVacationStreaks();
     setVacationMode(false);
+  },
+
+  /**
+   * Switch vacation mode on for a trip that has started, and reconcile the end
+   * date it should turn itself off on. See docs/arch/away-dates.md.
+   *
+   * **This is the "on" half only.** `checkVacationExpiry` above already turns
+   * vacation off once `vacationEnd` passes, so arming with the trip's return
+   * date hands the other half to code that has shipped for years. It also
+   * keeps `vacationStart` honest: that stamp is `new Date()` at switch-on, and
+   * firing *on* the departure day rather than arming in advance means it still
+   * records when you went.
+   *
+   * Four rules, none of them optional:
+   *
+   * - **It may only turn off what it turned on** (`vacationDrivenBy`). A mode
+   *   somebody switched on by hand is theirs, and the existing `vacationEnd`
+   *   is the only thing that may end it.
+   * - **Mode off while `vacationDrivenBy` still names a live trip means the
+   *   user switched it off**, and that is declined for the whole span rather
+   *   than for the day (`Project.awayPauseDeclinedFor`) — a day-scoped opt-out
+   *   would re-arm every morning for the rest of the week.
+   * - **It reconciles rather than arming once**, since moving the return date
+   *   in the editor has to move the date expiry will read.
+   * - **Several trips at once need no tie-break.** Vacation mode is a boolean,
+   *   so the question is only whether *any* nominated trip covers today.
+   */
+  checkAwayVacation() {
+    const settings = useSettingsStore.getState();
+    const { vacationMode, vacationEnd, vacationDrivenBy } = settings;
+    const today = getCurrentDayStart();
+    const projects = useProjectStore.getState().projects;
+    const covers = (p: Project) => isProjectAwayNow(p, today);
+
+    // Turned off by hand since we armed it. Judged on the trip still covering
+    // today, so the ordinary case — checkVacationExpiry having just ended a
+    // finished trip — is read as the expiry it is rather than as a refusal.
+    if (!vacationMode && vacationDrivenBy) {
+      const driver = projects.find(p => p.id === vacationDrivenBy);
+      const live = driver ? covers(driver) : false;
+      if (live && driver?.awayStart) {
+        useProjectStore.getState().updateProject(driver.id, {
+          awayPauseDeclinedFor: driver.awayStart,
+        });
+      }
+      settings.setVacationDrivenBy(null);
+      if (live) return;
+    }
+
+    // The same call `isTaskExpired` makes, so the sweep that runs before this
+    // pass and this pass itself cannot disagree about whose trip is driving.
+    const driver = awayPauseDriver(projects, today);
+
+    if (!driver) {
+      // Nothing should be driving. Clear a stale pointer left by an expiry, so
+      // the branch above can't read it later as a refusal that never happened.
+      if (!vacationMode && vacationDrivenBy) settings.setVacationDrivenBy(null);
+      return;
+    }
+
+    if (!vacationMode) {
+      settings.setVacationMode(true, driver.awayEnd);
+      settings.setVacationDrivenBy(driver.id);
+      return;
+    }
+    // Already on. Only a mode this pass owns may have its end date moved —
+    // rewriting the end of a vacation somebody set by hand is exactly the
+    // "turn off what you turned on" rule, one field over.
+    if (vacationDrivenBy === driver.id && vacationEnd !== driver.awayEnd) {
+      settings.setVacationEnd(driver.awayEnd);
+    }
   },
 
   resetAllStreaks() {

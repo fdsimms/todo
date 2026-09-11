@@ -1,4 +1,4 @@
-import type { Effort, RecipeSourceType } from '../types';
+import type { Effort, RecipeSourceType, NutrientKey } from '../types';
 import {
   TITLE_MAX_LENGTH,
   GROCERY_NAME_MAX_LENGTH,
@@ -10,6 +10,7 @@ import {
   RECIPE_SOURCE_TYPES,
   SHOP_NAME_MAX_LENGTH,
   PREP_MAX_LENGTH,
+  NUTRIENT_KEYS,
 } from '../types';
 import { groceryNameKey } from '../utils/groceryParse';
 import { parsePriceInput } from '../utils/groceryPrice';
@@ -22,10 +23,21 @@ import {
   dedupeSuggestedSubstitutes, MAX_SUGGESTED_SUBSTITUTES,
   type RawSuggestedSubstitute, type SuggestedSubstitute,
 } from '../utils/substituteSuggestions';
+import {
+  clampCookAnswer, COOK_QUESTION_MAX_LENGTH, type CookQuestionContext,
+} from '../utils/cookQuestions';
+import {
+  ESTIMATE_DESCRIPTION_MAX_LENGTH, MAX_ESTIMATE_QUESTIONS, readNutritionEstimate,
+  type NutritionEstimate, type RawNutritionEstimate,
+} from '../utils/nutritionEstimate';
+import { isUnscaled } from '../utils/recipeScale';
+import { amountFromPrintedText, type LabelColumn, type LabelReading } from '../utils/labelOcr';
+import { NUTRIENT_LABEL } from '../utils/foodNutrition';
 import { useSettingsStore } from '../store/useSettingsStore';
+import { getLogicalToday, dayKeyOf } from '../utils/dateUtils';
 import type { AiFeatureId, AiModelId } from '../utils/aiFeatures';
 import { routeForFeature, type AiRoute } from '../utils/aiRouting';
-import { canReadReceiptOnDevice } from '../utils/receiptOcr';
+import { canReadTextOnDevice } from '../utils/receiptOcr';
 import {
   isOnDeviceReady, runOnDevice, describeOnDeviceError, isOnDeviceErrorMessage,
   type OnDeviceSchema,
@@ -118,6 +130,9 @@ export function describeAIError(error: unknown): string {
   if (message.startsWith('API error 5')) return 'Anthropic is having issues. Try again shortly.';
   if (message.startsWith('API error')) return 'The request failed. Check your API key in Settings.';
   if (message === 'Response was truncated') return 'The response was cut off. Try again.';
+  if (message === 'No estimate returned') {
+    return 'That description could not be read into figures. Try naming the dish and the place.';
+  }
   return 'Network request failed. Check your connection.';
 }
 
@@ -523,16 +538,23 @@ export async function suggestGroceryAisles(
  */
 function groceryAisleRoute(): AiRoute {
   const { anthropicApiKey, aiFeatureConfig, onDeviceAiEnabled } = useSettingsStore.getState();
+  const hasApiKey = !!anthropicApiKey;
+  const preferOnDevice = aiFeatureConfig.groceryAisles.preferOnDevice;
   return routeForFeature('groceryAisles', {
     enabled: aiFeatureConfig.groceryAisles.enabled,
-    hasApiKey: !!anthropicApiKey,
+    hasApiKey,
     onDeviceEnabled: onDeviceAiEnabled,
-    onDeviceAvailable: isOnDeviceReady(),
+    // Skipped when a key already wins outright (routeForFeature's rule 2) —
+    // not an optimisation for its own sake, but what keeps a plain "has a
+    // key, isn't preferring on-device" call from ever resolving the native
+    // `todo-foundation-models` bridge at all.
+    onDeviceAvailable: hasApiKey && !preferOnDevice ? false : isOnDeviceReady(),
     // Never consulted for this feature, which routes to the language model.
     // Passed because the input describes the install rather than the feature,
     // and a required field is what stops a Vision feature's call site
     // forgetting it.
-    visionAvailable: canReadReceiptOnDevice(),
+    visionAvailable: canReadTextOnDevice(),
+    preferOnDevice,
   });
 }
 
@@ -626,6 +648,19 @@ export interface RecipeGroceryItem {
    * `quantity` is supposed to land, rather than being discarded.
    */
   prep: string | null;
+  /**
+   * True when the recipe itself marks this line as optional — "(optional)",
+   * "if desired", a garnish called out as not required. Read straight into
+   * RecipeIngredient.optional by normalizeIngredient, which is why this is a
+   * plain boolean rather than the free text the model actually read it off
+   * of: `RecipeIngredient.optional` has no field to hold that text, and
+   * `sharedRecipeInstructions` asks for the boolean directly rather than
+   * having a second layer here infer one from a string. Absent (not just
+   * false) for the overwhelming majority of lines — most ingredients aren't
+   * optional, and normalizeIngredient already only stores the field when
+   * it's true.
+   */
+  optional?: boolean;
 }
 
 /** Same validation `suggestRecipeGroceries` always applied, now shared with extractRecipe. */
@@ -634,7 +669,10 @@ function parseExtractedItems(
   availableAisles: string[],
 ): RecipeGroceryItem[] {
   const items = raw as Array<
-    { name?: unknown; quantity?: unknown; aisle?: unknown; component?: unknown; prep?: unknown }
+    {
+      name?: unknown; quantity?: unknown; aisle?: unknown; component?: unknown; prep?: unknown;
+      optional?: unknown;
+    }
   > | undefined;
   if (!items) return [];
 
@@ -665,6 +703,9 @@ function parseExtractedItems(
       prep: typeof item.prep === 'string' && item.prep.trim()
         ? item.prep.trim().slice(0, PREP_MAX_LENGTH)
         : null,
+      // Same "written only when true" rule normalizeIngredient itself keeps
+      // for this field — an absent/false model answer just isn't carried.
+      ...(item.optional === true && { optional: true }),
     });
   }
   return result.slice(0, MAX_RECIPE_ITEMS);
@@ -758,6 +799,10 @@ function groceryItemsSchema(availableAisles: string[], description: string) {
         prep: {
           type: 'string',
           description: `What to do to it before using it, in the recipe's own words — "pressed and cubed", "steamed 10 min", "minced" — the instruction dropped out of "name" and "quantity" above. Under ${PREP_MAX_LENGTH} characters. Empty string when the recipe states no prep for this item.`,
+        },
+        optional: {
+          type: 'boolean',
+          description: 'True when the recipe itself marks this ingredient as optional — "(optional)", "if desired/available", "or leave it out", a garnish called out as not required. False for everything else, including anything you merely think a cook could skip; only the recipe\'s own wording counts.',
         },
       },
       required: ['name', 'quantity', 'aisle'],
@@ -877,6 +922,7 @@ function sharedRecipeInstructions(availableAisles: string[]): string[] {
     'Name each shopping item the way a shop would label it, not the way the recipe prepares it — "garlic" rather than "3 cloves garlic, minced". Keep the recipe\'s own quantity and unit as stated, with the prep instruction moved to the "prep" field instead of "name" or "quantity" — "4 cloves" or "3 cloves", not "1 bulb", with "minced" in "prep". Never substitute your own guess at a purchasable equivalent; the recipe\'s stated amount is what the cook actually needs, and a bulb doesn\'t reliably yield a fixed number of cloves. Ignore the method when deciding what goes on the shopping list, and skip water.',
     `Sections available: ${availableAisles.join(', ')}. Use "Other" only when nothing else fits.`,
     'If the recipe\'s own ingredient list is split into labelled components — "For the cake" / "For the frosting", "For the marinade" / "For the dish" — carry that label into each item\'s "component" field. Leave it empty when the recipe lists everything as one plain list.',
+    'Set "optional" to true only when the recipe itself says so — "(optional)", "if desired", "if you have it", a garnish explicitly called not required. Leave it false otherwise, even for an item you\'d personally guess is skippable, like a garnish with nothing next to it saying so.',
   ];
 }
 
@@ -1518,6 +1564,102 @@ export async function suggestSubstitutes(
 }
 
 /**
+ * Answers one question about the step a cook is standing in front of (#2241).
+ *
+ * The short answer is the whole feature: someone is holding a phone with wet
+ * hands, so what comes back is two or three sentences, clamped by
+ * `clampCookAnswer` before it reaches the screen. `max_tokens` is a backstop
+ * rather than the mechanism — a completion that runs past it means the brevity
+ * instruction was ignored, and `callAnthropic` already reads a truncation as an
+ * error rather than showing half an instruction.
+ *
+ * Forced tool use like every other call in this file, even though the payload is
+ * prose: it keeps one parse path for all of them, and the schema description is
+ * where the rest of these features state their constraints too.
+ *
+ * What the model may *not* do is the half worth reading. It answers about the
+ * method in front of it and declines anything else; it never rewrites the step,
+ * and nothing it says is written to the recipe unless the cook presses Keep.
+ */
+export async function askCookQuestion(
+  context: CookQuestionContext,
+  question: string,
+): Promise<string> {
+  const { apiKey, model } = requireFeature('cookHelp');
+
+  const asked = question.trim().slice(0, COOK_QUESTION_MAX_LENGTH);
+  if (!asked) throw new Error('No question asked');
+
+  const ingredientLines = context.ingredients.map(i => {
+    const amount = i.quantity ? `${i.quantity} ` : '';
+    // The swap is named rather than hidden: someone asking why the sauce won't
+    // thicken is owed the fact that the milk in front of them is oat milk.
+    const swap = i.swappedFrom ? ` (standing in for ${i.swappedFrom})` : '';
+    return `- ${amount}${i.name}${swap}`;
+  });
+
+  const unitNote = context.unitSystem === 'metric'
+    ? 'The cook is reading amounts in metric units.'
+    : context.unitSystem === 'us'
+      ? 'The cook is reading amounts in US units.'
+      : '';
+
+  const data = await callAnthropic({
+    max_tokens: 400,
+    system: [
+      'You are helping someone who is cooking right now, mid-recipe, reading one step off a phone with their hands full.',
+      'Answer in at most three short sentences. No preamble, no restating the question, no lists, no markdown.',
+      'Answer about this recipe and this step. If the question is about something else, say you can only help with the step on screen.',
+      'Use the amounts given, which are what this cook is actually working with: they may be scaled up or down from the recipe as written, and an ingredient may have been swapped for another.',
+      'Never rewrite the step or invent an instruction the recipe does not give. If the recipe genuinely does not say, say that, and say what you would do.',
+      'For doneness on meat, poultry, fish, eggs or anything else where undercooking is a safety question, give the internal temperature to check for rather than telling the cook it is probably fine.',
+    ].join('\n'),
+    tools: [{
+      name: 'answer_cook_question',
+      description: 'Answer a cook\'s question about the recipe step they are working on',
+      input_schema: {
+        type: 'object',
+        properties: {
+          answer: {
+            type: 'string',
+            description: 'At most three short sentences, plain text. Put a genuine break between two parts of an answer on its own line; otherwise one paragraph.',
+          },
+        },
+        required: ['answer'],
+      },
+    }],
+    tool_choice: { type: 'tool', name: 'answer_cook_question' },
+    messages: [{
+      role: 'user',
+      content: [
+        `Recipe: ${context.recipeName}`,
+        context.componentName ? `This step belongs to a part of the meal: ${context.componentName}` : '',
+        isUnscaled(context.scale) ? '' : `The recipe is being cooked at ${context.scale}x the written quantities.`,
+        unitNote,
+        '',
+        `Step ${context.stepNumber} of ${context.stepCount}, which is the step on screen:`,
+        context.stepText,
+        '',
+        context.previousStepText ? `The step before it: ${context.previousStepText}` : '',
+        context.nextStepText ? `The step after it: ${context.nextStepText}` : '',
+        '',
+        ingredientLines.length > 0
+          ? `Ingredients, in the amounts this cook is working with:\n${ingredientLines.join('\n')}`
+          : '',
+        '',
+        `The cook asks: ${asked}`,
+      ].filter(Boolean).join('\n'),
+    }],
+  }, apiKey, model);
+
+  const toolUse = data.content?.find(c => c.type === 'tool_use');
+  const input = toolUse?.input as { answer?: unknown } | undefined;
+  const answer = typeof input?.answer === 'string' ? clampCookAnswer(input.answer) : '';
+  if (!answer) throw new Error('No answer returned');
+  return answer;
+}
+
+/**
  * How many lines of one receipt are worth reading. A big weekly shop is around
  * sixty; the cap exists so a photo of a CVS receipt can't spend the whole
  * completion budget on loyalty copy.
@@ -1832,9 +1974,15 @@ export async function extractCalendarEvents(source: string | RecipeImage): Promi
   // Same "nothing in, no network call" guard extractRecipe/extractReceipt use.
   if (image ? !image.base64 : !text) return [];
 
+  // A ticket or confirmation that gives a date with no year ("Thu, Sep 10")
+  // is common — the model has no other way to resolve which year that is, so
+  // it needs today's date the same way the offline parseEventText path
+  // already gets it via getLogicalToday.
+  const today = dayKeyOf(getLogicalToday(useSettingsStore.getState().dayResetTime));
+
   const eventFields = [
     'For each event give: its title, in a few words a person would recognize on their own calendar ("Dentist appointment", "Flight to Chicago", "Dinner at Marea") — not the page\'s own heading verbatim when that heading is generic ("Appointment Details", "Booking Confirmed").',
-    'Its date, as YYYY-MM-DD, and its time as 24-hour HH:MM — only when a specific time is actually stated. Leave the time empty for an all-day event or a date given with no time.',
+    `Its date, as YYYY-MM-DD, and its time as 24-hour HH:MM — only when a specific time is actually stated. Leave the time empty for an all-day event or a date given with no time. Today is ${today}: when a date is given with no year, use the year that makes it the soonest such date on or after today, not a year already passed.`,
     'Its location: a physical address or venue name, exactly as given. Empty string when the event has no physical location (a phone call, a virtual meeting) or none is stated.',
     'Anything else worth keeping, in one short line: a phone number, a confirmation or reservation number, what to bring or do to prepare. Empty string if there is nothing beyond what the other fields already capture.',
   ];
@@ -1960,4 +2108,289 @@ function parseExtractedCalendarEvents(raw: unknown): ExtractedCalendarEvent[] {
     });
   }
   return result.slice(0, MAX_CALENDAR_EVENTS);
+}
+
+/**
+ * Reads a description of a meal into nutrition figures to confirm (#2426).
+ *
+ * **The case no database answers.** FoodData Central holds branded packaged
+ * goods and Open Food Facts holds barcodes; neither holds menus, and eating
+ * out is a large share of what anybody needs to log. A model knows roughly
+ * what is in a cheeseburger and often knows what a specific chain publishes.
+ *
+ * **It proposes and stops.** Nothing is written from what this returns until a
+ * person confirms it on screen, which is not a nicety: `docs/arch/health-data.md`
+ * licenses dietary figures on the argument that one "exists at all only because
+ * a person entered it", and an estimate stored unconfirmed breaks exactly that.
+ * `readNutritionEstimate` marks every result `estimated` for its whole life.
+ *
+ * **The model states its own claim rather than having one assumed for it.** A
+ * chain's published figures and a guess at a pub burger are different things to
+ * put in front of somebody, so `basis` and `confidence` come back in the schema
+ * and `describeEstimate` renders them. Asking for them is also what stops the
+ * model from quietly presenting the second as the first.
+ *
+ * **It may ask, and it may not advise.** One or two questions where the answer
+ * moves the figures a lot, and no opinion about the food whatsoever — the
+ * system prompt says so and `nutritionEstimate.test.ts` asserts the copy on
+ * this side of it never slips.
+ *
+ * **No demo-mode gate, and that was checked rather than assumed.** Neither half
+ * of the CLAUDE.md rule applies: nothing here writes fiction somewhere the user
+ * can see with the app closed, and no real queue is drained into a database
+ * about to be thrown away — the entry this leads to is written through
+ * `addEntry`, which lands in whichever database is live. That matches every
+ * other feature in this file, none of which is gated either, and it is the same
+ * reasoning `onDeviceModel.ts` sets out for its own absent gate. Recorded here
+ * so a later reader doesn't add one on the assumption it was forgotten.
+ *
+ * No `ON_DEVICE_ENGINE` entry, so `routeForFeature` answers `'claude'` or
+ * `'unavailable'` and the caller must not render an entry point for the
+ * second. This is world knowledge plus judgment, which `aiRouting.ts` rules
+ * out for the on-device model on a criterion it calls a measurement rather
+ * than a judgement call, and the ~4k shared window would not hold it anyway.
+ *
+ * **It's also asked to split the total across whatever it named**, when the
+ * description names more than one thing — see `NutritionEstimate.breakdown`.
+ * A total is one figure to trust or not; the pieces it's made of are each
+ * something a person can actually eyeball against what they know.
+ */
+export async function estimateMealNutrition(description: string): Promise<NutritionEstimate> {
+  const { apiKey, model } = requireFeature('nutritionEstimate');
+
+  const asked = description.trim().slice(0, ESTIMATE_DESCRIPTION_MAX_LENGTH);
+  if (!asked) throw new Error('No estimate returned');
+
+  const amountsSchema = {
+    type: 'object' as const,
+    description: 'Only the nutrients you have a view on. Omit the rest rather than sending zero.',
+    properties: {
+      calorieKcal: { type: 'number', description: 'Calories (kcal)' },
+      fatG: { type: 'number', description: 'Total fat in grams' },
+      satFatG: { type: 'number', description: 'Saturated fat in grams' },
+      carbsG: { type: 'number', description: 'Total carbohydrate in grams' },
+      fiberG: { type: 'number', description: 'Dietary fiber in grams' },
+      sugarG: { type: 'number', description: 'Total sugars in grams' },
+      proteinG: { type: 'number', description: 'Protein in grams' },
+      sodiumMg: { type: 'number', description: 'Sodium in milligrams' },
+      caffeineMg: { type: 'number', description: 'Caffeine in milligrams' },
+      waterMl: { type: 'number', description: 'Water in millilitres' },
+    },
+  };
+
+  const data = await callAnthropic({
+    max_tokens: 900,
+    system: [
+      'You estimate what one described meal contains, for somebody writing it down in a food diary.',
+      'Give figures for the whole thing described, as one helping. Do not give per-100g figures.',
+      'State only the nutrients you actually have a view on. Omit a field entirely rather than guessing a zero: an omitted nutrient reads as unknown, and a zero reads as a measurement that the food contains none.',
+      'When the description names more than one component (separate foods, or an item plus a side), also split the total across a breakdown array, one entry per component named. Each entry states only the nutrients you have a view on for that component, same rule as the total. Skip the breakdown entirely for a single named item, or when you cannot split it sensibly.',
+      'Set basis to "published" only when you are recalling figures a specific chain or manufacturer publishes, and name them in attribution. Otherwise set it to "typical" and leave attribution empty.',
+      'Set confidence honestly. A named chain item you know is high; a common dish described plainly is medium; anything vague is low.',
+      'You may ask at most two questions, and only where the answer would move the figures a lot: the size, whether a side was regular or large, whether a dressing or sauce was on it. Each question needs at least two options to tap. Ask nothing if the description already settles it.',
+      'Never comment on the food. No opinion about whether the meal was heavy, healthy, large or small, no suggestion about what to eat instead or later, and no advice of any kind. Return numbers and nothing else.',
+    ].join('\n'),
+    tools: [{
+      name: 'estimate_meal',
+      description: 'Estimate the nutrition of one described meal',
+      input_schema: {
+        type: 'object',
+        properties: {
+          label: { type: 'string', description: 'What to call this in a food diary, e.g. "Cheeseburger and fries, Five Guys"' },
+          quantity: { type: 'string', description: 'The amount these figures are for, in words, e.g. "1 burger and a regular fries"' },
+          amounts: amountsSchema,
+          basis: { type: 'string', enum: ['published', 'typical'], description: 'Where the figures come from' },
+          confidence: { type: 'string', enum: ['high', 'medium', 'low'], description: 'How sure you are' },
+          attribution: { type: 'string', description: 'Who publishes them, for basis "published". Empty otherwise.' },
+          questions: {
+            type: 'array',
+            description: `At most ${MAX_ESTIMATE_QUESTIONS} questions, each with at least two options. Empty when the description settles it.`,
+            items: {
+              type: 'object',
+              properties: {
+                prompt: { type: 'string' },
+                options: { type: 'array', items: { type: 'string' } },
+              },
+              required: ['prompt', 'options'],
+            },
+          },
+          breakdown: {
+            type: 'array',
+            description: 'The total split across the components named in the description, one entry per component. Omit entirely for a single named item, or when it cannot be split sensibly.',
+            items: {
+              type: 'object',
+              properties: {
+                label: { type: 'string', description: 'The component in your own words, e.g. "salted butter"' },
+                amounts: amountsSchema,
+              },
+              required: ['label', 'amounts'],
+            },
+          },
+        },
+        required: ['label', 'quantity', 'amounts', 'basis', 'confidence'],
+      },
+    }],
+    tool_choice: { type: 'tool', name: 'estimate_meal' },
+    messages: [{ role: 'user', content: `The meal:\n${asked}` }],
+  }, apiKey, model);
+
+  const toolUse = data.content?.find(c => c.type === 'tool_use');
+  const estimate = readNutritionEstimate(toolUse?.input as RawNutritionEstimate | undefined);
+  // A reply with no figures or no name is refused rather than repaired: an
+  // entry nobody could identify, or one carrying no numbers, is worse than
+  // telling somebody the description could not be read.
+  if (!estimate) throw new Error('No estimate returned');
+  return estimate;
+}
+
+/** Whichever basis a column's own heading could state, plus "no heading". */
+const LABEL_BASIS_VALUES = ['per100g', 'per100ml', 'perServing', ''] as const;
+
+/**
+ * Whether `readLabelPhotoWithAi` is worth calling right now — the same two
+ * checks `requireFeature('nutritionLabelPhoto')` makes, surfaced so
+ * `NutritionPanelSheet` can decide *before* taking a photo whether there's a
+ * fallback to try, rather than attempting one and translating "AI feature
+ * disabled" into a message that would puzzle the far larger set of people who
+ * have never configured an API key at all. See the doc comment on
+ * `readLabelPhotoWithAi` for why that distinction matters here.
+ */
+export function nutritionLabelPhotoAiAvailable(): boolean {
+  const { anthropicApiKey, aiFeatureConfig } = useSettingsStore.getState();
+  return aiFeatureConfig.nutritionLabelPhoto.enabled && !!anthropicApiKey;
+}
+
+/**
+ * Reads a photographed nutrition panel that on-device Vision could not turn
+ * into a reading — a curved tub, a steep angle, glare on the plastic wrap.
+ * `labelOcr.ts` already handles the panel Vision *can* transcribe; this is
+ * for the photos it can't, called only once that path has already returned
+ * null (see `NutritionPanelSheet.handlePhoto`).
+ *
+ * **It transcribes; it does not compute.** Every figure the model returns is
+ * the printed text, value and unit together, exactly as the label states it
+ * ("7g", "490mg", "<0.5g") — never a number it has converted or derived from
+ * a percentage. `amountFromPrintedText` (`labelOcr.ts`) does the actual unit
+ * and salt arithmetic, the same tested function an on-device read goes
+ * through, for the reason that file's own doc comment gives at the top: a
+ * second opinion about units living in a second file is how a figure ends up
+ * wrong by a factor nobody notices.
+ *
+ * Null means "not a panel, or nothing legible" — the same contract
+ * `readNutritionLabel` has, so the caller can treat either engine's failure
+ * identically. A request failure (no key, the feature switched off, a
+ * network error) throws instead, same as every other extractor in this file;
+ * `nutritionLabelPhotoAiAvailable` above is what keeps the first two of those
+ * from ever being reached from the sheet.
+ */
+export async function readLabelPhotoWithAi(image: RecipeImage): Promise<LabelReading | null> {
+  const { apiKey, model } = requireFeature('nutritionLabelPhoto');
+  if (!image.base64) return null;
+
+  const prompt = [
+    'This is a photo of a printed nutrition facts panel. It may be on a curved or angled surface, or have glare or reflections across part of it — read through that the way you would hold the packet up to the light yourself.',
+    'Give each nutrient\'s figure exactly as printed, value and unit together ("7g", "490mg", "<0.5g") — do not convert a unit or compute a figure from a percentage. Leave a field empty if the panel does not print that nutrient at all; only write a figure for one the panel actually states, including one it states as zero.',
+    'A panel sometimes prints more than one column of figures side by side, typically "per 100g" and "per serving". Read every column it prints, left to right, and give what that column\'s own heading states — per100g, per100ml, or perServing. Leave a column\'s basis empty only when the panel genuinely does not head it.',
+    'The serving line, when printed, states a size ("2 cookies", "1 oz (28g)") — give it verbatim in servingText, and the gram weight separately in servingGrams if it states one in parentheses.',
+    'Ignore the %DV column entirely; it is not a figure to report. Ignore "Calories from Fat", "Trans Fat", "Added Sugars", and every vitamin or mineral row — this app has no field for any of them.',
+    'If the photo does not show a nutrition panel at all, or is too illegible to make out real figures, return an empty columns array rather than guessing.',
+  ].join('\n\n');
+
+  const nutrientProperties = Object.fromEntries(NUTRIENT_KEYS.map(key => [key, {
+    type: 'string',
+    description: `${NUTRIENT_LABEL[key].label}, exactly as printed with its unit. Empty string if the panel does not print this nutrient.`,
+  }]));
+
+  const data = await callAnthropic({
+    max_tokens: 1500,
+    tools: [{
+      name: 'read_nutrition_label',
+      description: 'Read a photographed nutrition facts panel into its printed figures',
+      input_schema: {
+        type: 'object',
+        properties: {
+          servingText: {
+            type: 'string',
+            description: 'The serving size exactly as printed, e.g. "2 cookies (30g)". Empty string if not printed.',
+          },
+          servingGrams: {
+            type: 'string',
+            description: 'The gram weight the serving line states in parentheses, digits only, e.g. "30". Empty string if none is stated.',
+          },
+          columns: {
+            type: 'array',
+            description: 'One entry per value column the panel prints, left to right. Empty array if this is not a readable nutrition panel.',
+            items: {
+              type: 'object',
+              properties: {
+                basis: {
+                  type: 'string',
+                  enum: [...LABEL_BASIS_VALUES],
+                  description: 'What this column\'s own heading states. Empty string if the column has no stated heading.',
+                },
+                ...nutrientProperties,
+                salt: {
+                  type: 'string',
+                  description: 'The salt figure, exactly as printed with its unit, for a panel that states salt rather than sodium. Empty string otherwise.',
+                },
+              },
+              required: [...NUTRIENT_KEYS],
+            },
+          },
+        },
+        required: ['columns'],
+      },
+    }],
+    tool_choice: { type: 'tool', name: 'read_nutrition_label' },
+    messages: [{
+      role: 'user',
+      content: [
+        { type: 'image', source: { type: 'base64', media_type: image.mediaType, data: image.base64 } },
+        { type: 'text', text: prompt },
+      ],
+    }],
+  }, apiKey, model, IMAGE_REQUEST_TIMEOUT_MS);
+
+  const toolUse = data.content?.find(c => c.type === 'tool_use');
+  const input = toolUse?.input as {
+    servingText?: unknown; servingGrams?: unknown; columns?: unknown;
+  } | undefined;
+  if (!input || !Array.isArray(input.columns)) return null;
+
+  const columns: LabelColumn[] = [];
+  for (const raw of input.columns) {
+    if (!raw || typeof raw !== 'object') continue;
+    const fields = raw as Record<string, unknown>;
+
+    const amounts: Partial<Record<NutrientKey, number>> = {};
+    for (const key of NUTRIENT_KEYS) {
+      const printed = fields[key];
+      if (typeof printed !== 'string') continue;
+      const amount = amountFromPrintedText(key, printed);
+      if (amount !== null) amounts[key] = amount;
+    }
+    // Salt fills sodium only when the panel didn't already print sodium
+    // directly — same "first reading wins" rule readNutritionLabel applies.
+    if (typeof fields.salt === 'string' && amounts.sodiumMg === undefined) {
+      const sodiumFromSalt = amountFromPrintedText('salt', fields.salt);
+      if (sodiumFromSalt !== null) amounts.sodiumMg = sodiumFromSalt;
+    }
+    if (Object.keys(amounts).length === 0) continue;
+
+    const basis = typeof fields.basis === 'string'
+      && (LABEL_BASIS_VALUES as readonly string[]).includes(fields.basis)
+      && fields.basis !== ''
+      ? fields.basis as LabelColumn['basis']
+      : null;
+    columns.push({ basis, amounts });
+  }
+  if (columns.length === 0) return null;
+
+  const servingText = typeof input.servingText === 'string' && input.servingText.trim()
+    ? input.servingText.trim().slice(0, 200)
+    : null;
+  const servingGramsRaw = typeof input.servingGrams === 'string' ? Number(input.servingGrams.trim()) : NaN;
+  const servingGrams = Number.isFinite(servingGramsRaw) && servingGramsRaw > 0 ? servingGramsRaw : null;
+
+  return { servingText, servingGrams, columns };
 }

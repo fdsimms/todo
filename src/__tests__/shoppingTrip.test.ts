@@ -19,12 +19,14 @@ function makeShop(name: string, sortOrder = 0, overrides: Partial<Shop> = {}): S
     createdAt: '2026-01-01T00:00:00.000Z',
     excludeFromSuggestions: false,
     receiptStyle: 'itemized' as const,
+    aisles: null,
     ...overrides,
   };
 }
 
 function makeItem(name: string, overrides: Partial<GroceryItem> = {}): GroceryItem {
   return {
+    nameFromScan: false,
     id: `item-${groceryNameKey(name).replace(/\s/g, '-')}`,
     name,
     nameKey: groceryNameKey(name),
@@ -57,7 +59,7 @@ function makeItem(name: string, overrides: Partial<GroceryItem> = {}): GroceryIt
     usedUpCount: 0,
     spoiledCount: 0,
     lastSpoiledAt: null,
-    varietyOfKey: null, backfillDismissedFields: [],
+    varietyOfKey: null, nutrition: null, backfillDismissedFields: [],
     lastPriceMinor: null,
     lastPricedAt: null,
     lastPriceQuantity: null, priceHistory: [],
@@ -451,6 +453,7 @@ describe('describeShopCoverage', () => {
       itemIds: Array.from({ length: known }, (_, i) => `k${i}`),
       unavailableItemIds: Array.from({ length: absent }, (_, i) => `n${i}`),
       withoutProductItemIds: [],
+      outOfRangeItemIds: [],
       assertedCount: 0,
       observedPurchases: 0,
       recordedItems,
@@ -501,5 +504,65 @@ describe('joinNames', () => {
   it('counts the overflow', () => {
     expect(joinNames(['a', 'b', 'c', 'd', 'e'])).toBe('a, b, c and 2 more');
     expect(joinNames(['a', 'b', 'c', 'd'], 2)).toBe('a, b and 2 more');
+  });
+});
+
+describe('a store that only sells certain aisles', () => {
+  // The case the feature is named for: a pharmacy, a frozen thing, and no
+  // reason for anyone to be asked whether the pharmacy had it.
+  const cvs = makeShop('CVS', 1, { aisles: ['Personal Care'] });
+  const tofurky = makeItem('Tofurky', { aisle: 'Frozen' });
+  const soap = makeItem('soap', { aisle: 'Personal Care' });
+  const RANGE_LIST = [tofurky, soap];
+
+  it('files an out-of-range row as its own kind of negative', () => {
+    const plan = planTrip(RANGE_LIST, [], [cvs]);
+    const entry = plan.coverage.find(c => c.shop.id === cvs.id)!;
+    expect(entry.outOfRangeItemIds).toEqual([tofurky.id]);
+    expect(entry.unavailableItemIds).toEqual([]);
+  });
+
+  it('leaves an unscoped store with nothing out of range', () => {
+    const plan = planTrip(RANGE_LIST, [], [makeShop('CVS', 1)]);
+    expect(plan.coverage[0].outOfRangeItemIds).toEqual([]);
+  });
+
+  it('counts a row only once when a stamped claim already names it', () => {
+    const claimed: ItemShopLink = { ...link(tofurky.id, cvs.id, 0), unavailableAt: '2026-03-04T00:00:00.000Z' };
+    const entry = planTrip(RANGE_LIST, [claimed], [cvs]).coverage[0];
+    expect(entry.unavailableItemIds).toEqual([tofurky.id]);
+    expect(entry.outOfRangeItemIds).toEqual([]);
+  });
+
+  it('lets a purchase on record outrank the range', () => {
+    const entry = planTrip(RANGE_LIST, [link(tofurky.id, cvs.id, 2)], [cvs]).coverage[0];
+    expect(entry.outOfRangeItemIds).toEqual([]);
+    expect(entry.itemIds).toContain(tofurky.id);
+  });
+
+  it('reports it as missing from the trip, not as a gap', () => {
+    const plan = planTrip(RANGE_LIST, [link(soap.id, cvs.id, 1)], [cvs]);
+    const summary = summarizeTrip([cvs.id], plan);
+    expect(summary.covered).toEqual([soap.id]);
+    expect(summary.missing).toEqual([tofurky.id]);
+    expect(summary.gap).toEqual([]);
+    expect(summary.unknown).toEqual([]);
+  });
+
+  it('says nothing about an unselected store\'s range', () => {
+    const plan = planTrip(RANGE_LIST, [], [cvs, tj]);
+    const summary = summarizeTrip([tj.id], plan);
+    expect(summary.missing).toEqual([]);
+  });
+
+  it('names the range on the coverage line', () => {
+    const entry = planTrip(RANGE_LIST, [link(soap.id, cvs.id, 1)], [cvs]).coverage[0];
+    expect(describeShopCoverage(entry, 2)).toBe('1 of 2 seen here · only Personal Care');
+  });
+
+  it('leaves an unscoped store\'s coverage line alone', () => {
+    const plain = makeShop('CVS', 1);
+    const entry = planTrip(RANGE_LIST, [link(soap.id, plain.id, 1)], [plain]).coverage[0];
+    expect(describeShopCoverage(entry, 2)).toBe('1 of 2 seen here');
   });
 });

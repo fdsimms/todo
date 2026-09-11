@@ -28,7 +28,7 @@ import { useCopyToClipboard } from '../hooks/useCopyToClipboard';
 import Ionicons from '@expo/vector-icons/Ionicons';
 import { useShallow } from 'zustand/react/shallow';
 import type { RecipeIngredient, RecipePrepTask, RecipeStep } from '../types';
-import { GROCERY_NAME_MAX_LENGTH, RECIPE_SECTION_MAX_LENGTH, TITLE_MAX_LENGTH } from '../types';
+import { GROCERY_NAME_MAX_LENGTH, RECIPE_SECTION_MAX_LENGTH, RECIPE_STEP_NOTE_MAX_LENGTH, TITLE_MAX_LENGTH } from '../types';
 import { useRecipeStore } from '../store/useRecipeStore';
 import { useGroceryStore } from '../store/useGroceryStore';
 import { useSettingsStore } from '../store/useSettingsStore';
@@ -41,6 +41,7 @@ import { CountStepper } from '../components/CountStepper';
 import { PressableScale } from '../components/PressableScale';
 import { SortableList, type SortableRenderItem } from '../components/SortableList';
 import { IngredientCatalogMatchSheet } from '../components/IngredientCatalogMatchSheet';
+import { RecipeNutritionSheet } from '../components/RecipeNutritionSheet';
 import {
   catalogMatchSummary,
   matchIngredientsToCatalog,
@@ -64,7 +65,7 @@ import { cookSteps } from '../utils/cookMode';
 import { MAX_STEP_TIMER_SECONDS, formatStepDuration, parseStepDurations, stepDurationOffers } from '../utils/stepTimers';
 import { featureHidden, featureShown } from '../utils/simpleMode';
 import { useColors } from '../theme/ThemeContext';
-import { spacing, font, fontWeight, radius, iconSize, interaction, type Colors } from '../theme';
+import { spacing, font, fontWeight, lineHeight, radius, iconSize, interaction, type Colors } from '../theme';
 import { haptics } from '../utils/haptics';
 import { animateLayout } from '../utils/layoutAnimation';
 import { pickRecipeImage, resolveRecipeImagePath, type RecipePhotoSource } from '../utils/recipePhoto';
@@ -75,17 +76,27 @@ import { PillGroup } from '../components/PillGroup';
 import { describeUnscaled, scaleQuantity } from '../utils/recipeScale';
 import { convertQuantity } from '../utils/unitConvert';
 import { RecipeScaleChips } from '../components/RecipeScaleChips';
+import { RecipeChoiceChips } from '../components/RecipeChoiceChips';
 import { tagColor } from '../utils/tagColor';
 import { formatDuration } from '../utils/effort';
 import {
-  alternativeCaptions,
+  applyChoice,
+  choiceGroupKey,
   flattenRecipeIngredients,
+  recipeAlternativeCaptions,
+  recipeChoiceGroups,
   recipeMap,
   resolveComponents,
   type ResolvedComponent,
 } from '../utils/recipeComponents';
 import { applyStandingSwap, describeStandingSwap, standingSwapMap } from '../utils/standingSwaps';
 import { describeRecipeCost, estimateRecipeCost } from '../utils/recipeCost';
+import { describeCookedWeight } from '../utils/mealLog';
+import {
+  describeNutritionCoverage,
+  describeRecipeNutrition,
+  readRecipeNutrition,
+} from '../utils/recipeNutrition';
 import { formatOffsetLabel } from '../utils/templateUtils';
 import { splitAlternativeNames, splitGroceryLines } from '../utils/groceryParse';
 
@@ -110,6 +121,7 @@ export function RecipeDetailScreen() {
   const recipes = useRecipeStore(useShallow(s => s.recipes));
   const recipe = recipes.find(r => r.id === recipeId);
   const addIngredient = useRecipeStore(s => s.addIngredient);
+  const updateIngredient = useRecipeStore(s => s.updateIngredient);
   const addIngredientsFromText = useRecipeStore(s => s.addIngredientsFromText);
   const removeIngredient = useRecipeStore(s => s.removeIngredient);
   const reorderIngredients = useRecipeStore(s => s.reorderIngredients);
@@ -125,6 +137,7 @@ export function RecipeDetailScreen() {
   const removeStep = useRecipeStore(s => s.removeStep);
   const reorderSteps = useRecipeStore(s => s.reorderSteps);
   const setStepTimerSeconds = useRecipeStore(s => s.setStepTimerSeconds);
+  const setStepNote = useRecipeStore(s => s.setStepNote);
   const setImage = useRecipeStore(s => s.setImage);
   const addComponent = useRecipeStore(s => s.addComponent);
   const removeComponent = useRecipeStore(s => s.removeComponent);
@@ -135,6 +148,9 @@ export function RecipeDetailScreen() {
   const aisleOrder = useGroceryStore(useShallow(s => s.aisleOrder));
   const addAisle = useGroceryStore(s => s.addAisle);
   const groceryItems = useGroceryStore(useShallow(s => s.items));
+  // For the nutrition line only: a scanned box's own panel beats the generic
+  // catalog row's, and `nutritionFor` is where that precedence lives.
+  const itemProducts = useGroceryStore(useShallow(s => s.itemProducts));
   const itemSubs = useGroceryStore(useShallow(s => s.itemSubs));
 
   // The user's standing swaps — "always use oat milk for milk" (#1571). Shown
@@ -177,6 +193,22 @@ export function RecipeDetailScreen() {
   // sheet, which is the one place the number turns into something bought.
   const [scale, setScale] = useState(1);
 
+  // Which alternative the cost and nutrition estimates below are for, when the
+  // recipe poses an either/or — "sourdough" and "baguette" don't share a
+  // nutrient profile, so silently pricing and totting up whichever option
+  // happens to be listed first was giving one dish's figures for a page that
+  // might mean the other. Screen state, held exactly like `scale` above and
+  // for the same reason: which one you're reading this recipe for isn't an
+  // edit to the recipe, and the lasting form of a real pick lives on
+  // MealPlanEntry.recipeChoices. Starts empty, which is every group on its
+  // default — same contract RecipeToListSheet's own `choices` keeps.
+  const [choices, setChoices] = useState<string[]>([]);
+  const choiceResolution = useMemo(() => ({ chosen: choices }), [choices]);
+  const choiceGroups = useMemo(
+    () => (recipe ? recipeChoiceGroups(recipe, recipesById, choiceResolution) : []),
+    [recipe, recipesById, choiceResolution]
+  );
+
   // Only lines that *have* a quantity can fail to scale; a line with none was
   // never going to say a number either way.
   const unscaledNote = useMemo(() => {
@@ -189,15 +221,56 @@ export function RecipeDetailScreen() {
 
   // Priced through the same flattening the shopping read uses (components,
   // standing swaps, this much of the recipe) — null while too little of it is
-  // priced to say anything (see recipeCost.ts).
+  // priced to say anything (see recipeCost.ts). Reads the same choice picked
+  // above, so a doubled dinner and a swapped ingredient both show up here the
+  // same way the nutrition estimate right below it does.
   const costEstimate = useMemo(
-    () => (recipe ? estimateRecipeCost(recipe, groceryItems, recipesById, undefined, scale, standingSwaps) : null),
-    [recipe, groceryItems, recipesById, scale, standingSwaps]
+    () => (recipe
+      ? estimateRecipeCost(recipe, groceryItems, recipesById, choiceResolution, scale, standingSwaps)
+      : null),
+    [recipe, groceryItems, recipesById, choiceResolution, scale, standingSwaps]
   );
   const costLine = useMemo(
     () => describeRecipeCost(costEstimate, currencySymbol, new Date()),
     [costEstimate, currencySymbol]
   );
+
+  const weightLine = useMemo(
+    () => (recipe ? describeCookedWeight(recipe.cookedWeightG, recipe.servings, scale) : null),
+    [recipe, scale]
+  );
+
+  // The same flattening again, with grams in place of prices. One reading
+  // rather than three calls, so the summary line, the coverage count and the
+  // list of what's missing are all describing the same lines (see
+  // readRecipeNutrition). Same resolution as the cost estimate above, so the
+  // two never disagree about which alternative this page is currently for.
+  const nutritionReading = useMemo(
+    () => (recipe
+      ? readRecipeNutrition(recipe, groceryItems, itemProducts, recipesById, choiceResolution, scale, standingSwaps)
+      : null),
+    [recipe, groceryItems, itemProducts, recipesById, choiceResolution, scale, standingSwaps]
+  );
+  // The figures where there are enough of them, and the bare coverage where
+  // there aren't. It used to render nothing in the second case, on the
+  // reasoning that there was nowhere to send someone and a dead end reads
+  // worse than silence — which was true until the sheet below existed. Now
+  // the case with no total is exactly the case someone would want to act on,
+  // so it says so rather than saying nothing.
+  const nutritionLine = useMemo(
+    () => (nutritionReading
+      ? describeRecipeNutrition(nutritionReading.nutrition)
+        ?? describeNutritionCoverage(nutritionReading.gaps)
+      : null),
+    [nutritionReading]
+  );
+  // Shown when there is something to say or something to do. A dish whose
+  // every line is unmatched has neither: the total can't be built and no gap
+  // here is fillable, and the catalog row directly below is already the next
+  // step. Two rows saying "nothing is linked yet" is one too many.
+  const showNutritionRow =
+    !!nutritionLine
+    && (!!nutritionReading?.nutrition || (nutritionReading?.gaps.fillable.length ?? 0) > 0);
 
   // ==== local state (drafts, the sheets this screen opens) ====
   const [draft, setDraft] = useState('');
@@ -218,6 +291,10 @@ export function RecipeDetailScreen() {
   // building a new step; set, it's replacing that step's text on submit.
   const [stepDraft, setStepDraft] = useState('');
   const [editingStepId, setEditingStepId] = useState<string | null>(null);
+  // The note for the step being edited, held as a draft rather than written on
+  // every keystroke: the length stepper beside it writes straight through
+  // because a press is one discrete value, and typed prose is not.
+  const [noteDraft, setNoteDraft] = useState('');
   const stepInputRef = useRef<TextInput>(null);
   const [editorVisible, setEditorVisible] = useState(false);
   const [editingIngredient, setEditingIngredient] = useState<RecipeIngredient | null>(null);
@@ -235,6 +312,7 @@ export function RecipeDetailScreen() {
   // one paste just added (opened from its banner).
   const [matchSheetOpen, setMatchSheetOpen] = useState(false);
   const [matchScopeIds, setMatchScopeIds] = useState<readonly string[] | null>(null);
+  const [nutritionSheetOpen, setNutritionSheetOpen] = useState(false);
   // The banner a multi-line paste leaves behind, or null once dismissed or
   // acted on. Session-only and deliberately not persisted: it reports on one
   // paste that just happened, and a banner still sitting there tomorrow would
@@ -349,26 +427,68 @@ export function RecipeDetailScreen() {
     return { headers, defaults };
   };
 
-  const componentGroups = useMemo(() => choiceHeadersOf(recipe?.components ?? []), [recipe]);
+  // Every label an ingredient carries — what makes a group "mixed" (see the
+  // cross-type groups note in recipeComponents.ts). A component sharing one of
+  // these is folded in next to that ingredient instead of getting a header of
+  // its own; see mixedComponentsByLabel/lastIngredientIdByGroup below.
+  const ingredientChoiceLabels = useMemo(
+    () => new Set((recipe?.ingredients ?? []).filter(i => i.choiceGroup).map(i => i.choiceGroup as string)),
+    [recipe],
+  );
   const ingredientGroups = useMemo(() => choiceHeadersOf(recipe?.ingredients ?? []), [recipe]);
+  // A component's own header is suppressed for a label the ingredients already
+  // claim — the ingredient row draws the shared "Choose one" header once (it
+  // always sorts first, see resolveGroupWinners), and the paired component
+  // renders folded in beneath it with just its "or corn tortillas" caption,
+  // the same treatment any non-first option of a group already gets.
+  const componentGroups = useMemo(() => {
+    const raw = choiceHeadersOf(recipe?.components ?? []);
+    for (const [id, label] of raw.headers) {
+      if (ingredientChoiceLabels.has(label)) { raw.headers.delete(id); raw.defaults.delete(id); }
+    }
+    return raw;
+  }, [recipe, ingredientChoiceLabels]);
+
+  // The last ingredient (in stored order) carrying each label, and the
+  // components that share it — where a mixed group's component options fold
+  // into the ingredient list, right after the option they're an alternative
+  // to. Components with no matching ingredient label render in their usual
+  // trailing block instead (trailingComponents, used where `components` was).
+  const lastIngredientIdByGroup = useMemo(() => {
+    const map = new Map<string, string>();
+    for (const ing of recipe?.ingredients ?? []) {
+      if (ing.choiceGroup) map.set(ing.choiceGroup, ing.id);
+    }
+    return map;
+  }, [recipe]);
+  const mixedComponentsByLabel = useMemo(() => {
+    const map = new Map<string, ResolvedComponent[]>();
+    for (const resolved of components) {
+      const label = resolved.component.choiceGroup;
+      if (!label || !ingredientChoiceLabels.has(label)) continue;
+      const list = map.get(label);
+      if (list) list.push(resolved); else map.set(label, [resolved]);
+    }
+    return map;
+  }, [components, ingredientChoiceLabels]);
+  const trailingComponents = useMemo(
+    () => components.filter(resolved => {
+      const label = resolved.component.choiceGroup;
+      return !label || !ingredientChoiceLabels.has(label);
+    }),
+    [components, ingredientChoiceLabels],
+  );
 
   // The header above only opens at a group's *first* option, so on its own every
   // other option reads as an ordinary line — and a list you read as ordinary is
   // a list you buy all of. Each option carries its own "or manchego" instead.
-  // Built off the *resolved* components, not the stored links: the row shows the
-  // referenced recipe's live name, and a caption naming the captured one would
-  // go stale the moment that recipe is renamed.
-  const componentAlternatives = useMemo(
-    () => alternativeCaptions(components.map(c => ({
-      id: c.component.id,
-      choiceGroup: c.component.choiceGroup,
-      name: c.name || 'Deleted recipe',
-    }))),
-    [components],
-  );
-  const ingredientAlternatives = useMemo(
-    () => alternativeCaptions(recipe?.ingredients ?? []),
-    [recipe],
+  // One shared map across both lists (recipeAlternativeCaptions, not
+  // alternativeCaptions called twice) so a label crossing them gets one
+  // consistent caption on each side rather than each list only ever seeing
+  // its own options.
+  const alternativeNotesById = useMemo(
+    () => (recipe ? recipeAlternativeCaptions(recipe, recipesById) : new Map<string, string>()),
+    [recipe, recipesById],
   );
 
   // Lines the app can see wanting to be two — "corn tortillas or flour
@@ -414,13 +534,6 @@ export function RecipeDetailScreen() {
     [catalogMatches],
   );
 
-  // Session-only "not now" for the two signpost pills below: dismissing one
-  // doesn't touch the ingredient, so it's keyed on what the pill was
-  // offering rather than a boolean, and clears itself the moment that offer
-  // changes (a rename, a different catalog match) rather than hiding a pill
-  // that's now suggesting something new.
-  const [dismissedMatchPills, setDismissedMatchPills] = useState<Map<string, string>>(new Map());
-  const [dismissedSplitPills, setDismissedSplitPills] = useState<Map<string, string>>(new Map());
 
   // The row can be gone while the screen is still mounted (deleted from the
   // editor), so this renders rather than crashing on the next read.
@@ -566,12 +679,22 @@ export function RecipeDetailScreen() {
   const editingStep = editingStepId === null ? null : recipe.steps.find(s => s.id === editingStepId) ?? null;
   const editingStepParsed = editingStep === null ? null : parseStepDurations(editingStep.text)[0] ?? null;
 
+  /** Writes the note draft onto the step being edited. No-ops when unchanged. */
+  const commitStepNote = () => {
+    if (editingStepId === null) return;
+    setStepNote(recipe.id, editingStepId, noteDraft);
+  };
+
   const submitStepDraft = () => {
     if (!stepDraft.trim()) return;
     animateLayout();
     if (editingStepId) {
       updateStep(recipe.id, editingStepId, stepDraft);
+      // Before the id goes: Save closes the editor, and a note typed but not
+      // yet blurred is part of what was being saved.
+      commitStepNote();
       setEditingStepId(null);
+      setNoteDraft('');
       haptics.tap();
     } else {
       const added = addStep(recipe.id, stepDraft);
@@ -585,6 +708,7 @@ export function RecipeDetailScreen() {
     haptics.tap();
     setEditingStepId(step.id);
     setStepDraft(step.text);
+    setNoteDraft(step.note ?? '');
     stepInputRef.current?.focus();
   };
 
@@ -592,13 +716,14 @@ export function RecipeDetailScreen() {
     haptics.tap();
     setEditingStepId(null);
     setStepDraft('');
+    setNoteDraft('');
   };
 
   const confirmRemoveStep = (step: RecipeStep) => {
     animateLayout();
     // Editing the very step being deleted would otherwise leave the field
     // pointed at an id that no longer resolves.
-    if (editingStepId === step.id) { setEditingStepId(null); setStepDraft(''); }
+    if (editingStepId === step.id) { setEditingStepId(null); setStepDraft(''); setNoteDraft(''); }
     removeStep(recipe.id, step.id);
     haptics.tap();
   };
@@ -642,6 +767,7 @@ export function RecipeDetailScreen() {
     const options: Array<{ text: string; style?: 'default' | 'cancel' | 'destructive'; onPress?: () => void }> = [
       { text: 'Take photo', onPress: () => pickImage('camera') },
       { text: 'Choose from library', onPress: () => pickImage('library') },
+      { text: 'Paste image', onPress: () => pickImage('clipboard') },
     ];
     if (recipe.imagePath) {
       options.push({ text: 'Remove photo', style: 'destructive', onPress: () => setImage(recipe.id, null) });
@@ -658,15 +784,22 @@ export function RecipeDetailScreen() {
     setHoveredRowId(index === null ? null : mergedIngredientRows[index]?.id ?? null);
   };
 
+  // Persisted on the ingredient itself (dismissedCatalogSuggestion /
+  // dismissedSplitSuggestion), not session state — a "not now" here used to
+  // reset the moment the screen unmounted, which made the pill feel
+  // impossible to turn off (#2246). Keyed on what the pill was offering
+  // rather than a boolean, so it clears itself the moment that offer changes
+  // (a rename, a different catalog match) rather than hiding a pill that's
+  // now suggesting something new.
   const dismissMatchPill = (ingredientId: string, suggestedName: string) => {
     haptics.tap();
     animateLayout();
-    setDismissedMatchPills(prev => new Map(prev).set(ingredientId, suggestedName));
+    updateIngredient(recipe.id, ingredientId, { dismissedCatalogSuggestion: suggestedName });
   };
   const dismissSplitPill = (ingredientId: string, name: string) => {
     haptics.tap();
     animateLayout();
-    setDismissedSplitPills(prev => new Map(prev).set(ingredientId, name));
+    updateIngredient(recipe.id, ingredientId, { dismissedSplitSuggestion: name });
   };
 
   const renderIngredient = (
@@ -708,13 +841,13 @@ export function RecipeDetailScreen() {
     const choiceHeader = ingredientGroups.headers.get(ingredient.id);
     const choiceGroup = ingredient.choiceGroup;
     const isChoiceDefault = ingredientGroups.defaults.has(ingredient.id);
-    const alternativeNote = ingredientAlternatives.get(ingredient.id);
+    const alternativeNote = alternativeNotesById.get(ingredient.id);
     // The raw detection, used for the mutual-exclusion check below regardless
     // of whether its own pill is currently dismissed — dismissing "split into
     // two" shouldn't hand the row over to a catalog suggestion it was never
     // going to show.
     const splittableInto = splittableCounts.get(ingredient.id);
-    const splitInto = splittableInto && dismissedSplitPills.get(ingredient.id) !== ingredient.name
+    const splitInto = splittableInto && ingredient.dismissedSplitSuggestion !== ingredient.name
       ? splittableInto
       : undefined;
     // Only a line with something to act on gets a badge: an exact match is the
@@ -729,7 +862,7 @@ export function RecipeDetailScreen() {
     // is. Two competing offers on one row is a row nobody reads.
     const catalogMatch = catalogMatches.get(ingredient.id);
     const catalogSuggestion = !splittableInto && catalogMatch?.kind === 'suggested'
-      && catalogMatch.suggestedName !== dismissedMatchPills.get(ingredient.id)
+      && catalogMatch.suggestedName !== ingredient.dismissedCatalogSuggestion
       ? catalogMatch
       : null;
     return (
@@ -798,7 +931,7 @@ export function RecipeDetailScreen() {
             )}
             {(!!ingredient.prep || !!ingredient.purpose || !!ingredient.optional) && (
               <Text style={styles.ingredientPrep}>
-                {[ingredient.prep, ingredient.purpose && `for ${ingredient.purpose}`, ingredient.optional && 'Optional']
+                {[ingredient.prep, ingredient.purpose && `for ${ingredient.purpose}`, ingredient.optional && 'optional']
                   .filter(Boolean).join(' · ')}
               </Text>
             )}
@@ -894,6 +1027,15 @@ export function RecipeDetailScreen() {
             </TouchableOpacity>
           )}
         </TouchableOpacity>
+        {/* A component sharing this ingredient's choice group folds in right
+            here, after the group's last ingredient option — not in its own
+            block at the bottom of the card (see trailingComponents below).
+            Not part of the SortableList's own data, just extra content this
+            one row renders: the drag math only ever tracks ingredient rows,
+            and a linked component isn't one — it's still removed and
+            re-grouped from its own long press, same as any other component. */}
+        {!!choiceGroup && lastIngredientIdByGroup.get(choiceGroup) === ingredient.id
+          && (mixedComponentsByLabel.get(choiceGroup) ?? []).map(resolved => renderComponent(resolved, true))}
       </View>
     );
   };
@@ -981,7 +1123,7 @@ export function RecipeDetailScreen() {
     const groupHeader = componentGroups.headers.get(resolved.component.id);
     const group = resolved.component.choiceGroup;
     const isDefault = componentGroups.defaults.has(resolved.component.id);
-    const alternativeNote = componentAlternatives.get(resolved.component.id);
+    const alternativeNote = alternativeNotesById.get(resolved.component.id);
     return (
       <View key={resolved.component.id}>
         {!!groupHeader && (
@@ -1116,6 +1258,11 @@ export function RecipeDetailScreen() {
         {stepTimerLabel(step) !== null && (
           <Text style={styles.stepTimerNote}>Timer · {stepTimerLabel(step)}</Text>
         )}
+        {/* A note kept from cook mode, on the row rather than hidden behind a
+            tap: it's the answer to a question this step raised, which is worth
+            reading while the method is being read. Removing it is in the
+            open-for-editing block below, same division as the timer length. */}
+        {!!step.note && <Text style={styles.stepNote}>{step.note}</Text>}
       </TouchableOpacity>
       <TouchableOpacity
         onLongPress={drag}
@@ -1366,10 +1513,59 @@ export function RecipeDetailScreen() {
             style={styles.scaleRow}
           />
         )}
+        {/* Which alternative the cost and nutrition figures below are for —
+            same reasoning as the scale chips right above: what it changes is
+            visibly below it, not up by the summary. Yogurt and nonfat yogurt
+            don't share a nutrient profile, so this is what lets the estimate
+            answer for the one you're actually making instead of always the
+            recipe's own default. */}
+        {choiceGroups.length > 0 && (
+          <View style={styles.choiceRow}>
+            {choiceGroups.map(group => {
+              const key = choiceGroupKey(group.recipe.id, group.label);
+              return (
+                <RecipeChoiceChips
+                  key={key}
+                  group={group}
+                  activeOptionId={group.active.id}
+                  onPick={optionId => {
+                    animateLayout();
+                    setChoices(prev => applyChoice(prev, group, optionId));
+                  }}
+                />
+              );
+            })}
+          </View>
+        )}
         {/* Live off the same scale chips above — a doubled dinner reads as a
             doubled cost. Renders nothing rather than a guess while too few
             lines are priced to say (see recipeCost.ts's coverage floor). */}
         {!!costLine && <Text style={styles.summary}>{costLine}</Text>}
+        {/* What the finished dish weighs, when somebody has weighed it (see
+            Recipe.cookedWeightG). It sits with the cost and nutrition captions
+            because it is the third thing measured about the dish rather than
+            written in it, and it carries no "≈": this one came off a scale.
+            Scaled with the chips, like the cost above. */}
+        {!!weightLine && <Text style={styles.summary}>{weightLine}</Text>}
+        {/* The one summary here that opens onto something. Its coverage clause
+            names how many ingredients were left out, which was a number with
+            nowhere to go until the sheet behind it existed — so it takes the
+            same row shape as the catalog line below rather than staying the
+            plain caption the cost estimate is, which has nothing to offer. */}
+        {showNutritionRow && !selectionMode && (
+          <TouchableOpacity
+            style={styles.matchSummaryRow}
+            activeOpacity={interaction.activeOpacity}
+            onPress={() => { haptics.tap(); setNutritionSheetOpen(true); }}
+            accessibilityRole="button"
+            accessibilityLabel={nutritionLine ?? 'Nutrition'}
+            accessibilityHint="Double tap for the whole panel, and to fill in the ingredients it couldn't count"
+          >
+            <Ionicons name="nutrition-outline" size={iconSize.sm} color={colors.textSecondary} />
+            <Text style={styles.matchSummaryText}>{nutritionLine}</Text>
+            <Ionicons name="chevron-forward" size={14} color={colors.textTertiary} />
+          </TouchableOpacity>
+        )}
 
         {/* Where a well-matched recipe says so. The per-row badge is reserved
             for lines with something to act on, so without this line a recipe
@@ -1415,8 +1611,11 @@ export function RecipeDetailScreen() {
             {/* Marked so a shared part reads as part of this recipe from the
                 first list you'd check, not only several scrolls down in its
                 own Components section (which stays the place to remove one or
-                set a choice-group default). */}
-            {components.map(resolved => renderComponent(resolved, true))}
+                set a choice-group default). Only the components with nowhere
+                more specific to be — one sharing an ingredient's choice group
+                folds in next to that ingredient instead, inside renderIngredient
+                itself (see mixedComponentsByLabel above). */}
+            {trailingComponents.map(resolved => renderComponent(resolved, true))}
           </View>
         )}
 
@@ -1620,8 +1819,42 @@ export function RecipeDetailScreen() {
               />
             </View>
             <Text style={styles.inputHint}>
-              Cook mode offers a timer for the time written in the step. Set a length here to
+              Cook mode shows a timer for the time written in the step. Set a length here to
               use it instead.
+            </Text>
+            {/* Written here or kept from an answer in cook mode, and an
+                ordinary note either way. Cook mode's Keep is the commoner
+                writer, but a note that could *only* arrive that way would be
+                unwritable without an API key, and this is the field it is
+                already showing. Committed on blur rather than per keystroke. */}
+            <View style={styles.stepNoteEditRow}>
+              <Text style={styles.stepNoteEditLabel}>Note</Text>
+              <TextInput
+                style={styles.stepNoteInput}
+                value={noteDraft}
+                onChangeText={setNoteDraft}
+                onBlur={commitStepNote}
+                placeholder="e.g. dry the chicken first, or the pan steams it"
+                placeholderTextColor={colors.textTertiary}
+                maxLength={RECIPE_STEP_NOTE_MAX_LENGTH}
+                multiline
+                accessibilityLabel="Note on this step"
+              />
+              {!!editingStep.note && (
+                <InlineAction
+                  label="Remove note"
+                  icon="trash-outline"
+                  variant="neutral"
+                  onPress={() => {
+                    haptics.tap();
+                    setNoteDraft('');
+                    setStepNote(recipe.id, editingStep.id, null);
+                  }}
+                />
+              )}
+            </View>
+            <Text style={styles.inputHint}>
+              Shown under the step in cook mode. Keeping an answer there writes one too.
             </Text>
           </>
         )}
@@ -1710,15 +1943,7 @@ export function RecipeDetailScreen() {
               Cook mode joined them as the third verb (#1695), for the same
               reason and in the same place: it's the one that happens *now*, so
               it leads. Its label is a word where the others are two, which is
-              what keeps three buttons on a 390pt line.
-
-              It says "Steps", not "Cook", because "cook" was already taken:
-              a planned meal's sheet has a "Start cooking" row that starts the
-              recipe's timer and navigates here, so arriving that way and being
-              offered "Cook" read as though the tap hadn't worked. Both wore the
-              same flame glyph too. The button is named for what it shows
-              instead, matching the "Steps" section further up this screen, and
-              the flame stays with the timer. */}
+              what keeps three buttons on a 390pt line. */}
           {cookableCount > 0 && !featureHidden('cookMode', simpleMode) && (
             <TouchableOpacity
               style={styles.secondary}
@@ -1728,7 +1953,7 @@ export function RecipeDetailScreen() {
               accessibilityLabel={`Read ${recipe.name} one step at a time`}
             >
               <Ionicons name="list-outline" size={iconSize.sm} color={colors.accent} />
-              <Text style={styles.secondaryText}>Steps</Text>
+              <Text style={styles.secondaryText}>Cook</Text>
             </TouchableOpacity>
           )}
           <TouchableOpacity
@@ -1808,6 +2033,14 @@ export function RecipeDetailScreen() {
           setEditingIngredient(ingredient);
         }}
       />
+
+      {!!nutritionReading && (
+        <RecipeNutritionSheet
+          visible={nutritionSheetOpen}
+          reading={nutritionReading}
+          onClose={() => setNutritionSheetOpen(false)}
+        />
+      )}
 
       <PrepTaskSheet
         visible={editingPrepTask !== null}
@@ -2101,6 +2334,38 @@ const makeStyles = (colors: Colors) => StyleSheet.create({
     fontSize: font.xs,
     marginTop: 2,
   },
+  // `textSecondary` rather than the tertiary the timer line uses: this is a
+  // sentence to read, where that is a label saying what a parse found.
+  stepNote: {
+    color: colors.textSecondary,
+    fontSize: font.sm,
+    lineHeight: lineHeight.sm,
+    marginTop: spacing.xs,
+  },
+  stepNoteEditRow: {
+    alignItems: 'flex-start',
+    gap: spacing.sm,
+    backgroundColor: colors.bgSecondary,
+    borderRadius: radius.md,
+    padding: spacing.md,
+    marginTop: spacing.sm,
+  },
+  stepNoteEditLabel: {
+    color: colors.textSecondary,
+    fontSize: font.sm,
+  },
+  // No `lineHeight` on a TextInput — see CLAUDE.md; `minHeight` holds the box
+  // open so the row doesn't resize between an empty note and a typed one.
+  stepNoteInput: {
+    alignSelf: 'stretch',
+    backgroundColor: colors.bg,
+    borderRadius: radius.sm,
+    paddingHorizontal: spacing.sm,
+    paddingVertical: spacing.sm,
+    minHeight: 60,
+    color: colors.text,
+    fontSize: font.sm,
+  },
   stepTimerEditRow: {
     flexDirection: 'row',
     alignItems: 'center',
@@ -2313,6 +2578,7 @@ const makeStyles = (colors: Colors) => StyleSheet.create({
   },
   qtyTextScaled: { color: colors.accent, fontWeight: fontWeight.medium },
   scaleRow: { marginTop: spacing.xs, marginBottom: spacing.sm },
+  choiceRow: { gap: spacing.sm, marginBottom: spacing.sm },
   scaleNote: {
     color: colors.textTertiary,
     fontSize: font.xs,

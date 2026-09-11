@@ -1,4 +1,9 @@
-import { classifyWeather } from '../utils/weatherCondition';
+import {
+  classifyWeather,
+  weatherIconFor,
+  weatherConditionAdjective,
+  weatherConditionNoun,
+} from '../utils/weatherCondition';
 
 describe('classifyWeather', () => {
   it('reads a clear sky as sunny', () => {
@@ -39,5 +44,32 @@ describe('classifyWeather', () => {
 
   it('reports nothing for an unremarkable mild, overcast day', () => {
     expect(classifyWeather(3, 65)).toEqual([]);
+  });
+});
+
+describe('weatherIconFor', () => {
+  it('picks snow over rain over sun, sky codes only', () => {
+    expect(weatherIconFor(71)).toBe('snow-outline');
+    expect(weatherIconFor(61)).toBe('rainy-outline');
+    expect(weatherIconFor(0)).toBe('sunny-outline');
+  });
+
+  it('falls back to a cloud for an overcast or foggy code', () => {
+    expect(weatherIconFor(3)).toBe('cloud-outline');
+    expect(weatherIconFor(45)).toBe('cloud-outline');
+  });
+});
+
+describe('weatherConditionAdjective / weatherConditionNoun', () => {
+  it('describe the same three sky groups as weatherIconFor, plus a cloudy fallback', () => {
+    expect(weatherConditionAdjective(0)).toBe('sunny');
+    expect(weatherConditionAdjective(61)).toBe('rainy');
+    expect(weatherConditionAdjective(71)).toBe('snowy');
+    expect(weatherConditionAdjective(3)).toBe('cloudy');
+
+    expect(weatherConditionNoun(0)).toBe('Sun');
+    expect(weatherConditionNoun(61)).toBe('Rain');
+    expect(weatherConditionNoun(71)).toBe('Snow');
+    expect(weatherConditionNoun(3)).toBe('Clouds');
   });
 });

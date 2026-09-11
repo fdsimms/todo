@@ -4,7 +4,7 @@ import {
 } from '../utils/navHubs';
 import { SIMPLE_HIDDEN_SCREENS } from '../utils/simpleMode';
 
-const FULL = { kitchenEnabled: true, simpleMode: false, counts: { stacks: 3, templates: 2, people: 4, mood: 5 } };
+const FULL = { kitchenEnabled: true, simpleMode: false, counts: { stacks: 3, templates: 2, people: 4, mood: 5, foodLog: 6 } };
 const routesOf = (rows: ReturnType<typeof visibleMenuRows>) => rows.map(rowEntryRoute);
 
 describe('the menu as data', () => {
@@ -36,8 +36,8 @@ describe('the menu as data', () => {
     }
   });
 
-  it('fits on a phone: nine rows with everything switched on', () => {
-    expect(visibleMenuRows(FULL)).toHaveLength(9);
+  it('fits on a phone: ten rows with everything switched on', () => {
+    expect(visibleMenuRows(FULL)).toHaveLength(10);
   });
 
   it('opens a hub row on its first member', () => {

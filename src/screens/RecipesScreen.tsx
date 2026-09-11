@@ -15,6 +15,7 @@ import { useNavigation } from '@react-navigation/native';
 import Ionicons from '@expo/vector-icons/Ionicons';
 import { useShallow } from 'zustand/react/shallow';
 import type { Recipe, RecipeMealType } from '../types';
+import { RECIPE_MEAL_TYPES, RECIPE_MEAL_TYPE_LABELS } from '../types';
 import { useRecipeStore } from '../store/useRecipeStore';
 import { useGroceryStore } from '../store/useGroceryStore';
 import { useRowSelection } from '../hooks/useRowSelection';
@@ -48,7 +49,7 @@ import { useSettingsStore } from '../store/useSettingsStore';
 import { PlanMealSheet } from '../components/PlanMealSheet';
 import { usePlanMeal } from '../hooks/usePlanMeal';
 import { useColors } from '../theme/ThemeContext';
-import { spacing, font, fontWeight, radius, iconSize, interaction, type Colors } from '../theme';
+import { spacing, font, fontWeight, radius, iconSize, interaction, flattenOverlay, type Colors } from '../theme';
 import { haptics } from '../utils/haptics';
 import { confirmDelete } from '../utils/confirmDelete';
 import { animateLayout } from '../utils/layoutAnimation';
@@ -158,6 +159,7 @@ export function RecipesScreen() {
   const addRecipe = useRecipeStore(s => s.addRecipe);
   const bulkDeleteRecipes = useRecipeStore(s => s.bulkDeleteRecipes);
   const bulkSetVote = useRecipeStore(s => s.bulkSetVote);
+  const bulkSetMealType = useRecipeStore(s => s.bulkSetMealType);
   const setMealType = useRecipeStore(s => s.setMealType);
   const anthropicApiKey = useSettingsStore(s => s.anthropicApiKey);
   const recipeSort = useSettingsStore(s => s.recipeSortOption);
@@ -479,6 +481,18 @@ export function RecipesScreen() {
     exitSelection();
   };
 
+  const mealTypeLabelToType = useMemo(
+    () => new Map(RECIPE_MEAL_TYPES.map(t => [RECIPE_MEAL_TYPE_LABELS[t], t])),
+    [],
+  );
+
+  const handleBulkSetMealType = (label: string | null) => {
+    animateLayout();
+    bulkSetMealType(Array.from(selectedIds), label === null ? null : mealTypeLabelToType.get(label) ?? null);
+    haptics.tap();
+    exitSelection();
+  };
+
   const handleBulkDelete = () => {
     const ids = Array.from(selectedIds);
     const count = ids.length;
@@ -629,6 +643,21 @@ export function RecipesScreen() {
       />
       <HubPills hub="kitchen" active="Recipes" />
       <TipHost screen="recipes" />
+      {/* A shelf for recipes rather than a fifth Kitchen-hub tab: it isn't a
+          working surface the way Groceries/Recipes/Meal plan/Pantry are, so
+          it doesn't need equal billing in the pill row — just a way in from
+          the recipe box it organizes. */}
+      <TouchableOpacity
+        style={styles.cookbooksLink}
+        onPress={() => { haptics.tap(); navigation.navigate('Cookbooks'); }}
+        activeOpacity={interaction.activeOpacity}
+        accessibilityRole="button"
+        accessibilityLabel="Open cookbooks"
+      >
+        <Ionicons name="albums-outline" size={13} color={colors.textTertiary} />
+        <Text style={styles.cookbooksLinkText}>Cookbooks</Text>
+        <Ionicons name="chevron-forward" size={13} color={colors.textTertiary} />
+      </TouchableOpacity>
       {!selectionMode && !!activeTripShop && (
         <ActiveTripBanner
           shopName={activeTripShop.name}
@@ -849,6 +878,12 @@ export function RecipesScreen() {
         <ListBulkBar
           selectedCount={selectedIds.size}
           totalCount={visible.length}
+          category={{
+            title: 'Move to Meal Type',
+            options: RECIPE_MEAL_TYPES.map(t => RECIPE_MEAL_TYPE_LABELS[t]),
+            onSet: handleBulkSetMealType,
+            allowNone: true,
+          }}
           actions={[
             {
               key: 'love',
@@ -924,6 +959,19 @@ const makeStyles = (colors: Colors) => StyleSheet.create({
   container: {
     flex: 1,
     backgroundColor: colors.bg,
+  },
+  cookbooksLink: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 3,
+    alignSelf: 'flex-end',
+    marginHorizontal: spacing.md,
+    marginTop: spacing.xs,
+  },
+  cookbooksLinkText: {
+    color: colors.textTertiary,
+    fontSize: font.xs,
+    fontWeight: fontWeight.medium,
   },
   searchWrap: {
     flexDirection: 'row',
@@ -1053,8 +1101,11 @@ const makeStyles = (colors: Colors) => StyleSheet.create({
     paddingVertical: 12,
     gap: spacing.md,
   },
+  // Opaque, not a translucent tint directly: this can be applied the instant
+  // a swipe-select commits, while SwipeableRow's own panel is still open
+  // behind this row mid-close-animation — see the note on `flattenOverlay`.
   rowSelected: {
-    backgroundColor: colors.accent + '1A',
+    backgroundColor: flattenOverlay(colors.accent + '1A', colors.bgSecondary),
   },
   // Subtle slot marking where a dragged recipe will land; mirrors the row's
   // own footprint (margin + radius), same treatment as Today's dropSlot.

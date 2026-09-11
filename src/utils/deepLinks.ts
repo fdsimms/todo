@@ -16,8 +16,10 @@ import {
   resetToKitchen,
   resetToPeople,
   resetToMood,
+  resetToWeight,
   resetToProjectPull,
   resetToFocusSession,
+  resetToDeload,
   openQuickAddFromShortcut,
 } from '../navigation/navigationRef';
 import { MEAL_SLOTS, type MealSlot } from '../types';
@@ -316,6 +318,25 @@ export function moodUrlWantsLog(url: string): boolean {
   return value === '1' || value.toLowerCase() === 'true';
 }
 
+// `dundundun://weight[?log=1]` — what the weigh-in request carries, the exact
+// shape the mood check-in's link takes and for a sharper version of its reason:
+// ticking the request off without recording anything loses a number that cannot
+// be reconstructed afterwards. The bare link lands on the chart.
+const WEIGHT_RE = new RegExp(`^${SCHEME}:\\/\\/\\/?weight\\/?(?:\\?(.*))?$`, 'i');
+
+export function isWeightUrl(url: string): boolean {
+  return typeof url === 'string' && WEIGHT_RE.test(url.trim());
+}
+
+/** Does a weight link ask for the recording sheet on arrival? */
+export function weightUrlWantsLog(url: string): boolean {
+  if (typeof url !== 'string') return false;
+  const match = WEIGHT_RE.exec(url.trim());
+  if (!match) return false;
+  const value = (parseQuery(match[1] ?? '').log ?? '').trim();
+  return value === '1' || value.toLowerCase() === 'true';
+}
+
 /** The person a people link asks to open, or null for the bare link. */
 export function peopleUrlPersonId(url: string): string | null {
   if (typeof url !== 'string') return null;
@@ -323,6 +344,15 @@ export function peopleUrlPersonId(url: string): string | null {
   if (!match) return null;
   const id = (parseQuery(match[1] ?? '').person ?? '').trim();
   return id || null;
+}
+
+// `dundundun://deload` — a short-night health task's own link (see
+// utils/healthRules.ts), so "Keep today light" opens the sheet that actually
+// lightens the day rather than sitting there as a title with no next step.
+const DELOAD_RE = new RegExp(`^${SCHEME}:\\/\\/\\/?deload\\/?$`, 'i');
+
+export function isDeloadUrl(url: string): boolean {
+  return typeof url === 'string' && DELOAD_RE.test(url.trim());
 }
 
 // `dundundun://completeTask?id=…` — the Done button on a task's timer Live
@@ -463,7 +493,9 @@ export function linkIconFor(url: string | null | undefined): string {
   if (isGroceriesUrl(url)) return 'cart-outline';
   if (isPeopleUrl(url)) return 'people-outline';
   if (isMoodUrl(url)) return 'happy-outline';
+  if (isWeightUrl(url)) return 'scale-outline';
   if (isProjectsUrl(url)) return 'briefcase-outline';
+  if (isDeloadUrl(url)) return 'leaf-outline';
   return 'link';
 }
 
@@ -511,8 +543,16 @@ export function openInAppUrl(url: string | null | undefined): boolean {
     resetToMood(moodUrlWantsLog(url));
     return true;
   }
+  if (isWeightUrl(url)) {
+    resetToWeight(weightUrlWantsLog(url));
+    return true;
+  }
   if (isProjectsUrl(url)) {
     resetToProjectPull(projectsUrlPullId(url));
+    return true;
+  }
+  if (isDeloadUrl(url)) {
+    resetToDeload();
     return true;
   }
   if (isCompleteTaskUrl(url)) {

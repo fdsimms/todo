@@ -25,7 +25,7 @@ import {
 import { useTaskStore } from '../store/useTaskStore';
 import { useProjectStore } from '../store/useProjectStore';
 import { useSettingsStore } from '../store/useSettingsStore';
-import { projectReviewProjectId } from '../utils/projectReviewTasks';
+import { liveGeneratedTask } from '../utils/generatedTasks';
 import { WhenPicker } from './WhenPicker';
 import { SheetScrim } from './SheetScrim';
 import type { Task } from '../types';
@@ -86,8 +86,15 @@ export function ProjectPullSheet({ visible, todaysTasks, scopeProjectIds, onClos
   // rather than the board-wide "..." menu. Skip below marks *this* task
   // reviewed; a board-wide opening has no one task to mark and gets no
   // Skip button at all.
+  //
+  // liveGeneratedTask, not a bare `.find()` on `projectReviewProjectId` — a
+  // project reviewed more than once keeps its earlier review tasks around as
+  // completed history (see completedRetentionDays), so a plain find can land
+  // on one of those instead of the live row. completeTask no-ops on an
+  // already-completed task, so that picked the wrong id, silently did
+  // nothing, and left the real live task sitting on Today.
   const reviewTaskId = scopeProjectIds?.length === 1
-    ? allTasks.find(t => projectReviewProjectId(t) === scopeProjectIds[0])?.id ?? null
+    ? liveGeneratedTask(allTasks, 'projectReview', scopeProjectIds[0])?.id ?? null
     : null;
 
   // The plan is computed once per opening, not derived live: it's a snapshot
@@ -264,7 +271,7 @@ export function ProjectPullSheet({ visible, todaysTasks, scopeProjectIds, onClos
   const handleSkip = () => {
     if (!reviewTaskId) return;
     haptics.success();
-    completeTask(reviewTaskId);
+    completeTask(reviewTaskId, { completedAt: new Date().toISOString() });
     dismiss();
   };
 
@@ -602,7 +609,7 @@ const makeStyles = (colors: Colors) => StyleSheet.create({
   applyBtnTextDisabled: { color: colors.textTertiary },
   skipBtn: {
     alignItems: 'center',
-    paddingBottom: spacing.md,
+    paddingVertical: spacing.md,
   },
   skipBtnText: { color: colors.textSecondary, fontSize: font.sm, fontWeight: fontWeight.medium },
   cancelCard: {

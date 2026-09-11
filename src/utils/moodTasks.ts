@@ -1,4 +1,4 @@
-import type { Task } from '../types';
+import type { Task, TimeOfDay } from '../types';
 import { generatedSourceOf } from './generatedTasks';
 import { lowMoodRun, type MoodDay } from './moodInsights';
 
@@ -10,9 +10,15 @@ import { lowMoodRun, type MoodDay } from './moodInsights';
  * `birthdayTasks.ts`: one subject, two lead-ins, and the second reuses
  * everything but its trigger.
  *
- * `moodLog` is the ordinary one — once a day, a task to write down how you are
- * doing, day-keyed like `calendarReview` with a settings-level mark in place of
- * a per-source stamp.
+ * `moodLog` is the ordinary one — a task to write down how you are doing,
+ * day-keyed like `calendarReview` with a settings-level mark in place of a
+ * per-source stamp. `moodLogTimeSegments` lets it fire more than once a day,
+ * one held-back task per configured segment (morning, evening, and so on)
+ * instead of the single any-time task an empty list still means; at most one
+ * is ever live at once, and `checkMoodTasks` clears an earlier segment's
+ * unanswered task the moment the next one's threshold arrives — an unanswered
+ * morning check-in is a question about a part of the day that's passed, not a
+ * task still owed, the same reasoning the day-to-day clear already applies.
  *
  * **`moodNudge` is the one worth reading before changing.** It is the only
  * generator in the app whose trigger is a *trend in the user's own answers*
@@ -69,13 +75,40 @@ export const MOOD_NUDGE_COOLDOWN_DAYS = 7;
 /**
  * The day key a daily log task is asking about, or null for any other task.
  *
- * Thin, like `calendarReviewDayKey` — a named wrapper over `generatedSourceOf`
- * for the one meaning this column has here.
+ * A check-in's `sourceId` is the day key alone when `moodLogTimeSegments` is
+ * empty (one any-time task a day, the original shape), or `${dayKey}:${segment}`
+ * when several are configured — this strips the segment back off, so every
+ * caller that only cares about the day (completing today's check-in,
+ * deciding whether a task belongs to today at all) doesn't have to know the
+ * two-part form exists. `moodLogSegmentOf` below reads the other half.
  */
 export function moodLogDayKey(
   task: Pick<Task, 'generatedKind' | 'generatedSourceId'>
 ): string | null {
-  return generatedSourceOf(task, 'moodLog');
+  const source = generatedSourceOf(task, 'moodLog');
+  if (source === null) return null;
+  const sep = source.indexOf(':');
+  return sep === -1 ? source : source.slice(0, sep);
+}
+
+/**
+ * The time-of-day segment a check-in was raised for, or null for a task with
+ * no segment — either `moodLogTimeSegments` was empty when it was created, or
+ * this isn't a mood-log task at all. See `moodLogDayKey` above for the
+ * sourceId shape this splits.
+ */
+export function moodLogSegmentOf(
+  task: Pick<Task, 'generatedKind' | 'generatedSourceId'>
+): TimeOfDay | null {
+  const source = generatedSourceOf(task, 'moodLog');
+  if (source === null) return null;
+  const sep = source.indexOf(':');
+  return sep === -1 ? null : (source.slice(sep + 1) as TimeOfDay);
+}
+
+/** The sourceId for a check-in, given the day and — if configured — its segment. */
+export function moodLogSourceId(dayKey: string, segment: TimeOfDay | null): string {
+  return segment === null ? dayKey : `${dayKey}:${segment}`;
 }
 
 /** The day key a nudge was raised on, or null for any other task. */
@@ -154,5 +187,5 @@ export function lowMoodDeloadNote(run: number, afterDays: number): string | null
  * suggestion about what it might mean.
  */
 export function moodNudgeNotes(run: number): string {
-  return `You've logged a low mood ${run} days running. Something to look forward to might help.`;
+  return `You've logged a low mood ${run} days running.`;
 }

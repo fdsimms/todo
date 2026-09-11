@@ -4,6 +4,7 @@ import { getCurrentDayStart, getTaskDayStart, getDayStart, hhmmToDate, getNextDu
 import type { ExpiredTaskGraceDays } from './expiredTaskGrace';
 import { useSettingsStore } from '../store/useSettingsStore';
 import { useCategoryStore } from '../store/useCategoryStore';
+import { isAwayPauseInForce } from './awayDates';
 import { activeChainStep } from './chain';
 import { isBlocked, isWaitingOnPerson } from './blocking';
 import { resolveBlocker } from './blockerRegistry';
@@ -97,11 +98,15 @@ function getTimeOfDayThreshold(timeOfDay: TimeOfDay, pass?: VisibleAtPass): Date
 
 // True when the task's category is set to hide while vacation mode is on.
 // Mirrors per-task `vacationPause`: the task is hidden everywhere (Today and Later).
-function isCategoryHiddenOnVacation(category: string | null): boolean {
+function categoryHidesOnVacation(category: string | null): boolean {
   if (!category) return false;
-  if (!useSettingsStore.getState().vacationMode) return false;
   const cat = useCategoryStore.getState().getCategoryByName(category);
   return !!cat?.hideOnVacation;
+}
+
+function isCategoryHiddenOnVacation(category: string | null): boolean {
+  if (!useSettingsStore.getState().vacationMode) return false;
+  return categoryHidesOnVacation(category);
 }
 
 // True when a task is hidden *specifically* because vacation mode is on — either
@@ -229,6 +234,34 @@ function earliestSegmentThreshold(segments: TimeOfDay[], pass?: VisibleAtPass): 
     .reduce((min, t) => (t < min ? t : min));
 }
 
+/** The instant a segment starts on the current logical day — the exported form of getTimeOfDayThreshold, for callers outside this file that need one segment's own threshold rather than a visibility comparison against it. */
+export function timeSegmentThreshold(segment: TimeOfDay, pass?: VisibleAtPass): Date {
+  return getTimeOfDayThreshold(segment, pass);
+}
+
+/**
+ * Which of `segments` the clock is currently in — the latest one whose
+ * threshold has already arrived today — or null if none has (including an
+ * empty list). Every other reader of a time segment here asks "is this task
+ * hidden or not" (earliestSegmentThreshold, streakWindowEnd); this instead
+ * answers "which slot is this", for a generator that holds several check-ins
+ * across one day (mood log) and needs to know which one is live right now
+ * rather than merely whether the earliest has passed.
+ */
+export function currentTimeSegment(segments: readonly TimeOfDay[], pass?: VisibleAtPass): TimeOfDay | null {
+  const now = pass ? pass.now : new Date();
+  let current: TimeOfDay | null = null;
+  let currentThreshold: Date | null = null;
+  for (const s of segments) {
+    const t = getTimeOfDayThreshold(s, pass);
+    if (t <= now && (currentThreshold === null || t > currentThreshold)) {
+      current = s;
+      currentThreshold = t;
+    }
+  }
+  return current;
+}
+
 // Anchored to the current *logical* day (getCurrentDayStart()), same as
 // getTimeOfDayThreshold above and for the same reason: hhmmToDate()'s default
 // base is the literal wall-clock date, so during the early-morning grace
@@ -354,6 +387,30 @@ export function isTaskWindowActive(task: Task): boolean {
   return true;
 }
 
+// True while the tasks a vacation pauses are actually paused — the mode the
+// user set by hand, *or* a nominated trip whose span covers today with the
+// pass that arms the mode not having run yet.
+//
+// That second half is only expiry's problem, and it is not solvable by
+// reordering the passes. `sweepExpiredTasks` runs first and has to
+// (#689: it must see vacationMode before checkVacationExpiry turns a finished
+// vacation off), and `checkAwayVacation` has to run after checkVacationExpiry
+// (one trip ending and another starting on the same day resolve in that
+// order), so the arm is necessarily downstream of the sweep. The first launch
+// after a departure therefore sweeps with the mode still off — and that is the
+// launch carrying the biggest backlog of windows that closed while the app was
+// shut, all of them on days the user had said they would be away for.
+//
+// So expiry asks the span rather than asking whether the arm has happened yet.
+// Deliberately *only* expiry: nothing renders during the startup sequence, so
+// visibility never observes the unarmed window, and a Today screen hiding rows
+// for a vacation mode the Settings switch says is off would be a second, worse
+// bug. This is about the one call with no way back.
+function isVacationPauseInForce(): boolean {
+  if (useSettingsStore.getState().vacationMode) return true;
+  return isAwayPauseInForce();
+}
+
 // True once a task's time window has closed (windowEnd has passed on its own
 // day) and it's still incomplete. Expired tasks are neither "visible" nor
 // "deferred" — they move to their own Expired bucket and stay there until the
@@ -361,8 +418,9 @@ export function isTaskWindowActive(task: Task): boolean {
 export function isTaskExpired(task: Task): boolean {
   const end = effectiveWindowEnd(task);
   if (task.completed || task.archived || !end) return false;
-  if (task.vacationPause && useSettingsStore.getState().vacationMode) return false;
-  if (isCategoryHiddenOnVacation(task.category)) return false;
+  const paused = isVacationPauseInForce();
+  if (paused && task.vacationPause) return false;
+  if (paused && categoryHidesOnVacation(task.category)) return false;
   if (!isPlacedOnADay(task)) return false;
   if (!hasDayArrived(task)) return false;
   return new Date() >= getWindowThreshold(end);
@@ -1135,14 +1193,22 @@ export function groupRoster(children: Task[]): Task[] {
     if (child.previousOccurrenceId) superseded.add(child.previousOccurrenceId);
   }
   const collapsed = children.filter(child => {
-    // Checked first so a successor that IS due today (a chain step spawned
-    // from a dated predecessor picks up today's date — see completeTask)
-    // is never dropped as a duplicate of the step that spawned it.
+    const prev = child.previousOccurrenceId ? byId.get(child.previousOccurrenceId) : undefined;
+    // A successor whose own predecessor is already relevant today is a
+    // duplicate of it (tonight's finished row plus tomorrow's fresh one) and
+    // loses to the predecessor — *unless* it's a chain step, where a 'date'
+    // step can legitimately place the next step on the same day as the one
+    // that spawned it (see completeTask). Checking this ahead of the child's
+    // own isRelevantToGroupToday is what makes the drop stick: a plain
+    // recurring successor otherwise reads as "relevant today" too whenever a
+    // stored dueDate lands on today's side of the day boundary — normally
+    // only true for a genuinely same-day catch-up, but also true, spuriously,
+    // for a `dueDate` computed under one timezone and re-read under another
+    // after the device travels — and without this check both rows survive.
+    if (prev && isRelevantToGroupToday(prev) && !child.chainEnabled) return false;
     if (isRelevantToGroupToday(child)) return true;
     if (child.completed || child.archived) return false;
     if (superseded.has(child.id)) return false;
-    const prev = child.previousOccurrenceId ? byId.get(child.previousOccurrenceId) : undefined;
-    if (prev && isRelevantToGroupToday(prev)) return false;
     return true;
   });
   return collapseSeries(collapsed);

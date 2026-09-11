@@ -1,0 +1,339 @@
+import {
+  addCustomPortion,
+  catalogPanelWrite,
+  describeFoodPanel,
+  nutritionFor,
+  parseFoodNutrition,
+  serializeFoodNutrition,
+} from '../utils/foodNutrition';
+import { NUTRIENT_KEYS } from '../types';
+import { HEALTH_NUTRIENT_METRICS } from '../utils/healthRules';
+import type { FoodNutrition } from '../types';
+
+const RECORDED_AT = '2026-09-09T12:00:00.000Z';
+
+function nutrition(overrides: Partial<FoodNutrition> = {}): FoodNutrition {
+  return {
+    basis: 'per100g',
+    servingGrams: null,
+    servingText: null,
+    amounts: { calorieKcal: 52, proteinG: 1.4 },
+    portions: [],
+    source: 'fdc',
+    sourceId: '170000',
+    recordedAt: RECORDED_AT,
+    ...overrides,
+  };
+}
+
+/** The stored column value for a blob, so a test can hand `parseFoodNutrition` something hand-shaped. */
+function stored(blob: unknown): string {
+  return JSON.stringify(blob);
+}
+
+describe('parseFoodNutrition', () => {
+  it('reads back what serializeFoodNutrition wrote', () => {
+    const original = nutrition({
+      basis: 'perServing',
+      servingGrams: 170,
+      servingText: '1 container (170g)',
+      amounts: { calorieKcal: 90, proteinG: 15, sugarG: 4, sodiumMg: 55 },
+      source: 'openFoodFacts',
+      sourceId: '0894700010045',
+    });
+    expect(parseFoodNutrition(serializeFoodNutrition(original))).toEqual(original);
+  });
+
+  it('answers null for an empty column, which is every row predating the migration', () => {
+    expect(parseFoodNutrition(null)).toBeNull();
+    expect(parseFoodNutrition(undefined)).toBeNull();
+    expect(parseFoodNutrition('')).toBeNull();
+  });
+
+  it('shrugs at a blob it cannot read rather than throwing', () => {
+    expect(parseFoodNutrition('not json at all')).toBeNull();
+    expect(parseFoodNutrition('null')).toBeNull();
+    expect(parseFoodNutrition('[]')).toBeNull();
+    expect(parseFoodNutrition('"a string"')).toBeNull();
+  });
+
+  describe('the three things it refuses to do without', () => {
+    it('refuses a record with no basis, since the figures would be unreadable', () => {
+      expect(parseFoodNutrition(stored({ ...nutrition(), basis: undefined }))).toBeNull();
+    });
+
+    it('reads per100ml back, which is a drink and not a mistyped per100g', () => {
+      // The two are not interchangeable: a beverage's panel is per 100ml, and
+      // reading it as per 100g would be wrong by the drink's own density. A
+      // record measured by volume also has no serving *weight* to carry.
+      const drink = nutrition({
+        basis: 'per100ml',
+        servingGrams: null,
+        servingText: '250ml',
+        amounts: { calorieKcal: 46, sugarG: 11, caffeineMg: 32 },
+      });
+      expect(parseFoodNutrition(serializeFoodNutrition(drink))).toEqual(drink);
+    });
+
+    it('reads a portion table back, and drops only the rows it cannot use', () => {
+      // A portion table is a set of independent facts, so one bad row costs
+      // that one conversion where a missing basis would cost every figure.
+      const withPortions = parseFoodNutrition(stored({
+        ...nutrition(),
+        portions: [
+          { amount: 1, label: 'cup, chopped', grams: 160 },
+          { amount: 10, label: 'rings', grams: 60 },
+          { amount: 1, label: '', grams: 50 },
+          { amount: 0, label: 'slice', grams: 9 },
+          { amount: 1, label: 'slice', grams: 0 },
+          'nope',
+        ],
+      }));
+      expect(withPortions!.portions).toEqual([
+        { amount: 1, label: 'cup, chopped', grams: 160 },
+        { amount: 10, label: 'rings', grams: 60 },
+      ]);
+    });
+
+    it('carries a self-weighed row\'s `custom` flag through, and never invents one', () => {
+      const parsed = parseFoodNutrition(stored({
+        ...nutrition(),
+        portions: [
+          { amount: 1, label: 'cup', grams: 240, custom: true },
+          { amount: 1, label: 'cup, chopped', grams: 160 },
+        ],
+      }));
+      expect(parsed!.portions).toEqual([
+        { amount: 1, label: 'cup', grams: 240, custom: true },
+        { amount: 1, label: 'cup, chopped', grams: 160 },
+      ]);
+    });
+
+    it('reads a record written before portions existed as having none', () => {
+      const legacy = { ...nutrition() } as Partial<FoodNutrition>;
+      delete legacy.portions;
+      expect(parseFoodNutrition(stored(legacy))!.portions).toEqual([]);
+    });
+
+    it('refuses a basis it does not recognise rather than picking one', () => {
+      expect(parseFoodNutrition(stored({ ...nutrition(), basis: 'perOunce' }))).toBeNull();
+    });
+
+    it('refuses a record with no figures in it', () => {
+      expect(parseFoodNutrition(stored({ ...nutrition(), amounts: {} }))).toBeNull();
+      expect(parseFoodNutrition(stored({ ...nutrition(), amounts: undefined }))).toBeNull();
+    });
+
+    it('refuses a record this app never stamped', () => {
+      expect(parseFoodNutrition(stored({ ...nutrition(), recordedAt: undefined }))).toBeNull();
+      expect(parseFoodNutrition(stored({ ...nutrition(), recordedAt: '' }))).toBeNull();
+    });
+  });
+
+  describe('an absent figure is unknown, never zero', () => {
+    it('leaves a nutrient the source never mentioned absent', () => {
+      const parsed = parseFoodNutrition(stored(nutrition({ amounts: { calorieKcal: 52 } })));
+      expect(parsed!.amounts.calorieKcal).toBe(52);
+      expect(parsed!.amounts.fiberG).toBeUndefined();
+      expect('fiberG' in parsed!.amounts).toBe(false);
+    });
+
+    it('keeps a real zero, because a food containing no fat is a thing a source can state', () => {
+      const parsed = parseFoodNutrition(stored(nutrition({ amounts: { calorieKcal: 52, fatG: 0 } })));
+      expect(parsed!.amounts.fatG).toBe(0);
+    });
+
+    it('drops a figure that is not a usable number', () => {
+      const parsed = parseFoodNutrition(
+        stored(nutrition({ amounts: { calorieKcal: 52, proteinG: 'lots', fiberG: NaN, sugarG: -3 } as never }))
+      );
+      expect(parsed!.amounts).toEqual({ calorieKcal: 52 });
+    });
+
+    it('drops a nutrient this build has no unit for', () => {
+      const parsed = parseFoodNutrition(
+        stored(nutrition({ amounts: { calorieKcal: 52, vitaminDMcg: 2.4 } as never }))
+      );
+      expect(parsed!.amounts).toEqual({ calorieKcal: 52 });
+    });
+  });
+
+  describe('serving weight', () => {
+    it('keeps one the source stated', () => {
+      expect(parseFoodNutrition(stored(nutrition({ servingGrams: 170 })))!.servingGrams).toBe(170);
+    });
+
+    it('refuses a weight of nothing, which could not scale anything', () => {
+      expect(parseFoodNutrition(stored(nutrition({ servingGrams: 0 })))!.servingGrams).toBeNull();
+      expect(parseFoodNutrition(stored(nutrition({ servingGrams: -5 })))!.servingGrams).toBeNull();
+    });
+
+    it('degrades an unreadable weight rather than dropping the whole record', () => {
+      const parsed = parseFoodNutrition(stored(nutrition({ servingGrams: 'about 6oz' as never })));
+      expect(parsed).not.toBeNull();
+      expect(parsed!.servingGrams).toBeNull();
+    });
+
+    it('keeps the printed serving as text and never treats it as the number', () => {
+      const parsed = parseFoodNutrition(stored(nutrition({ servingText: '2 cookies', servingGrams: 30 })));
+      expect(parsed!.servingText).toBe('2 cookies');
+      expect(parsed!.servingGrams).toBe(30);
+    });
+  });
+
+  describe('provenance', () => {
+    it.each(['fdc', 'openFoodFacts', 'manual', 'estimated'] as const)('keeps a known source (%s)', source => {
+      expect(parseFoodNutrition(stored(nutrition({ source })))!.source).toBe(source);
+    });
+
+    it('demotes a source it cannot explain to the weakest claim rather than dropping the record', () => {
+      const parsed = parseFoodNutrition(stored({ ...nutrition(), source: 'someFutureDatabase' }));
+      expect(parsed).not.toBeNull();
+      expect(parsed!.source).toBe('estimated');
+    });
+
+    it('never promotes an unknown source to one that asserts a person typed it', () => {
+      expect(parseFoodNutrition(stored({ ...nutrition(), source: undefined }))!.source).not.toBe('manual');
+    });
+
+    it('drops a source id that is not one', () => {
+      expect(parseFoodNutrition(stored(nutrition({ sourceId: 12345 as never })))!.sourceId).toBeNull();
+    });
+  });
+});
+
+describe('serializeFoodNutrition', () => {
+  it('writes an empty column for no record, which is what parse answers null for', () => {
+    expect(serializeFoodNutrition(null)).toBeNull();
+  });
+
+  it('writes something parse can read', () => {
+    expect(parseFoodNutrition(serializeFoodNutrition(nutrition()))).toEqual(nutrition());
+  });
+});
+
+describe('addCustomPortion', () => {
+  it('appends a self-weighed row and marks it custom', () => {
+    const base = nutrition({ portions: [{ amount: 1, label: 'container', grams: 150 }] });
+    const updated = addCustomPortion(base, 'cup', 1, 240);
+    expect(updated!.portions).toEqual([
+      { amount: 1, label: 'container', grams: 150 },
+      { amount: 1, label: 'cup', grams: 240, custom: true },
+    ]);
+    // Everything else about the record is untouched.
+    expect(updated!.amounts).toBe(base.amounts);
+    expect(updated!.source).toBe(base.source);
+  });
+
+  it('divides through the amount actually weighed, not just "1"', () => {
+    // "2 cups weighed 480g" is a fact about one cup, same as a stated
+    // FoodPortion row where `amount` isn't always 1 ("10 rings = 60g").
+    const updated = addCustomPortion(nutrition(), 'cup', 2, 480);
+    expect(updated!.portions).toEqual([{ amount: 2, label: 'cup', grams: 480, custom: true }]);
+  });
+
+  it('refuses a blank label, and a zero or negative amount or weight', () => {
+    expect(addCustomPortion(nutrition(), '  ', 1, 240)).toBeNull();
+    expect(addCustomPortion(nutrition(), 'cup', 0, 240)).toBeNull();
+    expect(addCustomPortion(nutrition(), 'cup', -1, 240)).toBeNull();
+    expect(addCustomPortion(nutrition(), 'cup', 1, 0)).toBeNull();
+    expect(addCustomPortion(nutrition(), 'cup', 1, -240)).toBeNull();
+    expect(addCustomPortion(nutrition(), 'cup', NaN, 240)).toBeNull();
+  });
+
+  it('trims the label', () => {
+    expect(addCustomPortion(nutrition(), '  cup  ', 1, 240)!.portions).toEqual([
+      { amount: 1, label: 'cup', grams: 240, custom: true },
+    ]);
+  });
+});
+
+describe('nutritionFor', () => {
+  const itemFigures = nutrition({ amounts: { calorieKcal: 59 }, source: 'fdc' });
+  const boxFigures = nutrition({ amounts: { calorieKcal: 90 }, source: 'openFoodFacts' });
+
+  it('prefers the box in hand over the generic catalog row', () => {
+    expect(nutritionFor({ nutrition: itemFigures }, { nutrition: boxFigures })).toBe(boxFigures);
+  });
+
+  it('falls back to the item when the box has nothing of its own', () => {
+    expect(nutritionFor({ nutrition: itemFigures }, { nutrition: null })).toBe(itemFigures);
+  });
+
+  it('answers the item when there is no box at all', () => {
+    expect(nutritionFor({ nutrition: itemFigures })).toBe(itemFigures);
+    expect(nutritionFor({ nutrition: itemFigures }, null)).toBe(itemFigures);
+  });
+
+  it('answers null when neither knows anything, rather than an empty panel', () => {
+    expect(nutritionFor({ nutrition: null }, { nutrition: null })).toBeNull();
+    expect(nutritionFor(null)).toBeNull();
+    expect(nutritionFor(undefined)).toBeNull();
+  });
+});
+
+describe('the vocabulary lines up with the health rules', () => {
+  // The containment itself — a home in NutrientKey for every nutrient a health
+  // rule can watch — is enforced by the compiler now, by HealthNutrientMetric's
+  // own constraint in types/index.ts. A ninth metric with nowhere to live fails
+  // `tsc` on that line rather than failing here, which is the stronger place
+  // for it: the build can't be skipped and it names the offending metric.
+  //
+  // What is still worth asserting at runtime is that NUTRIENT_KEYS actually
+  // lists what the type declares. The array is hand-written beside the union,
+  // and nothing about the type stops it going stale — a key added to one and
+  // not the other type-checks perfectly and silently drops that nutrient from
+  // every walk over the list, which is how a panel loses a row.
+  it('lists every metric a health rule can watch', () => {
+    for (const metric of HEALTH_NUTRIENT_METRICS) {
+      expect(NUTRIENT_KEYS).toContain(metric);
+    }
+  });
+
+  it('lists each key exactly once', () => {
+    expect(new Set(NUTRIENT_KEYS).size).toBe(NUTRIENT_KEYS.length);
+  });
+});
+
+describe('describeFoodPanel', () => {
+  it('leads with calories, which is what somebody is looking for', () => {
+    expect(describeFoodPanel(nutrition({ amounts: { calorieKcal: 77, proteinG: 2 } })))
+      .toBe('77 cal per 100g, 2 nutrients');
+  });
+
+  it('names the basis a drink is measured in', () => {
+    expect(describeFoodPanel(nutrition({ basis: 'per100ml', amounts: { calorieKcal: 46 } })))
+      .toBe('46 cal per 100ml, 1 nutrient');
+  });
+
+  it('falls back to a count when the food reports no calories at all', () => {
+    // Real rows do this: FoodData Central's Foundation entry for butter lists
+    // 130 analysed nutrients with no energy among them.
+    expect(describeFoodPanel(nutrition({ amounts: { fatG: 81, satFatG: 51 } })))
+      .toBe('2 nutrients');
+  });
+
+  it('is null for a food with no record, which is not a food containing nothing', () => {
+    expect(describeFoodPanel(null)).toBeNull();
+  });
+});
+
+describe('catalogPanelWrite', () => {
+  it('writes onto a row that has no figures of its own', () => {
+    expect(catalogPanelWrite(null, nutrition())).toBe('write');
+    expect(catalogPanelWrite(undefined, nutrition())).toBe('write');
+  });
+
+  it('calls it a replacement when the row already states figures, rather than refusing', () => {
+    // A row carrying a bad transcription is exactly the row somebody wants to
+    // correct from a database, so the answer is "ask", never "no".
+    expect(catalogPanelWrite(nutrition(), nutrition({ source: 'openFoodFacts' }))).toBe('replace');
+  });
+
+  it('refuses a panel with nothing in it, whatever the row holds', () => {
+    const empty = nutrition({ amounts: {} });
+    expect(catalogPanelWrite(null, empty)).toBe('refuse');
+    expect(catalogPanelWrite(nutrition(), empty)).toBe('refuse');
+    expect(catalogPanelWrite(null, null)).toBe('refuse');
+  });
+});

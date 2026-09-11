@@ -66,6 +66,7 @@ export type SimpleFeatureId =
   | 'stacks'
   | 'streakOptions'
   | 'vacationPause'
+  | 'awayDates'
   | 'effortRating'
   | 'calendarImport'
   // Screens behind the menu.
@@ -73,6 +74,9 @@ export type SimpleFeatureId =
   | 'calendarScreen'
   | 'statsScreen'
   | 'moodScreen'
+  | 'medicationScreen'
+  | 'weightScreen'
+  | 'foodLogScreen'
   | 'backfillScreen'
   | 'stuckScreen'
   // Everything Today offers besides the list itself.
@@ -149,6 +153,7 @@ export const SIMPLE_FEATURES: readonly SimpleFeature[] = [
   { id: 'stacks', label: 'Stacks', area: 'tasks', screen: 'Stacks', contentScreen: true },
   { id: 'streakOptions', label: 'Streak options', area: 'tasks' },
   { id: 'vacationPause', label: 'Vacation pause', area: 'tasks' },
+  { id: 'awayDates', label: "A project's away dates", area: 'tasks' },
   { id: 'effortRating', label: 'Effort', area: 'tasks' },
   { id: 'calendarImport', label: 'Import event from photo or text', area: 'tasks' },
 
@@ -162,6 +167,22 @@ export const SIMPLE_FEATURES: readonly SimpleFeature[] = [
   // mood entries that live nowhere else in the app, so hiding it while it holds
   // any would strand them with no way back to them.
   { id: 'moodScreen', label: 'Mood', area: 'screens', screen: 'Mood', contentScreen: true },
+  // A content screen for the reason Mood is one, and *unlike* Weight below:
+  // a dose taken as needed lives nowhere else in the app, so hiding the
+  // screen while it holds any would strand it. The scheduled doses have a
+  // task behind them and would survive either way, but they are not the ones
+  // this has to protect.
+  { id: 'medicationScreen', label: 'Medications', area: 'screens', screen: 'Medications', contentScreen: true },
+  // Deliberately *not* a content screen, unlike Mood right above it, and the
+  // difference is the whole reason: a mood entry lives nowhere but the mood
+  // screen, so hiding that screen strands it. Every weight this screen draws
+  // lives in Apple Health, which the app only ever reads — hiding the screen
+  // hides a view of somebody else's data and loses nothing at all.
+  { id: 'weightScreen', label: 'Weight', area: 'screens', screen: 'Weight' },
+  // A content screen for the same reason Mood is one: a food log's entries live
+  // nowhere else in the app, so hiding the screen while it holds any would
+  // strand them with no way back.
+  { id: 'foodLogScreen', label: 'Food log', area: 'screens', screen: 'FoodLog', contentScreen: true },
   { id: 'backfillScreen', label: 'Backfill', area: 'screens', screen: 'Backfill' },
   { id: 'stuckScreen', label: 'Stuck', area: 'screens', screen: 'Stuck' },
 
@@ -247,7 +268,7 @@ export const SIMPLE_CONTENT_SCREENS: ReadonlySet<string> = new Set(
 export function screenShown(
   routeName: string,
   simpleMode: boolean,
-  contentCounts: { stacks: number; templates: number; people?: number; mood?: number } = { stacks: 0, templates: 0 },
+  contentCounts: { stacks: number; templates: number; people?: number; mood?: number; medications?: number; foodLog?: number } = { stacks: 0, templates: 0 },
 ): boolean {
   if (!simpleMode) return true;
   if (SIMPLE_HIDDEN_SCREENS.has(routeName)) return false;
@@ -259,6 +280,12 @@ export function screenShown(
   // install with no entries at all, which is the opposite of what the flag on
   // it says. Every caller passes the count now.
   if (routeName === 'Mood') return (contentCounts.mood ?? 0) > 0;
+  if (routeName === 'Medications') return (contentCounts.medications ?? 0) > 0;
+  // Counted across every day rather than off the loaded window, which is one
+  // day: see `useFoodLogStore.totalCount`. Answering this from today's rows
+  // would take the screen away, and months of entries with it, on any day
+  // nobody had logged yet.
+  if (routeName === 'FoodLog') return (contentCounts.foodLog ?? 0) > 0;
   return true;
 }
 

@@ -38,7 +38,7 @@ export const MAX_PHOTO_EDGE = 1568;
 /** JPEG quality for the downscaled copy. Text on a page survives this easily. */
 const PHOTO_COMPRESS = 0.7;
 
-export type RecipePhotoSource = 'camera' | 'library';
+export type RecipePhotoSource = 'camera' | 'library' | 'clipboard';
 
 export interface RecipePhoto extends RecipeImage {
   /** Always JPEG — see the note above about HEIC. */
@@ -95,12 +95,70 @@ function imagePicker(): typeof import('expo-image-picker') {
   return require('expo-image-picker');
 }
 
+/**
+ * The camera/photo-library status pair, in the same shape every other
+ * permission in the app reports it (`getCalendarPermission`,
+ * `getContactsPermission`, `getRemindersPermission`, `getLocationPermission`)
+ * — read by the Permissions settings screen alongside those. Neither is
+ * platform-gated the way those are: the picker itself runs on Android too, so
+ * there is no "wrong OS" answer to short-circuit on, only whatever the module
+ * itself reports or fails to.
+ */
+export type CameraPermission = 'granted' | 'denied' | 'undetermined' | 'unsupported';
+export type PhotoLibraryPermission = 'granted' | 'denied' | 'undetermined' | 'unsupported';
+
+export async function getCameraPermission(): Promise<CameraPermission> {
+  try {
+    const existing = await imagePicker().getCameraPermissionsAsync();
+    if (existing.granted) return 'granted';
+    return existing.status === 'undetermined' || existing.canAskAgain ? 'undetermined' : 'denied';
+  } catch {
+    return 'unsupported';
+  }
+}
+
+export async function requestCameraPermission(): Promise<boolean> {
+  try {
+    const existing = await imagePicker().getCameraPermissionsAsync();
+    if (existing.granted) return true;
+    const result = await imagePicker().requestCameraPermissionsAsync();
+    return result.granted;
+  } catch {
+    return false;
+  }
+}
+
+export async function getPhotoLibraryPermission(): Promise<PhotoLibraryPermission> {
+  try {
+    const existing = await imagePicker().getMediaLibraryPermissionsAsync();
+    if (existing.granted) return 'granted';
+    return existing.status === 'undetermined' || existing.canAskAgain ? 'undetermined' : 'denied';
+  } catch {
+    return 'unsupported';
+  }
+}
+
+export async function requestPhotoLibraryPermission(): Promise<boolean> {
+  try {
+    const existing = await imagePicker().getMediaLibraryPermissionsAsync();
+    if (existing.granted) return true;
+    const result = await imagePicker().requestMediaLibraryPermissionsAsync();
+    return result.granted;
+  } catch {
+    return false;
+  }
+}
+
 function imageManipulator(): typeof import('expo-image-manipulator') {
   return require('expo-image-manipulator');
 }
 
 function fileSystem(): typeof import('expo-file-system') {
   return require('expo-file-system');
+}
+
+function clipboard(): typeof import('expo-clipboard') {
+  return require('expo-clipboard');
 }
 
 /**
@@ -117,9 +175,91 @@ function discardTempPhoto(uri: string): void {
   }
 }
 
-/** Takes or picks a photo and returns it sized and encoded for the Messages API. */
+/**
+ * The shared downscale-and-re-encode step, run against a file already sitting
+ * on disk — a picker asset, or a clipboard paste written to a temp file by
+ * `pickClipboardPhoto` below. Both callers want the same JPEG-at-a-cap output;
+ * only how they get a `uri`/`width`/`height` to hand it differs.
+ */
+async function encodePickedPhoto(uri: string, width: number, height: number): Promise<
+  | { ok: true; base64: string; mediaType: 'image/jpeg'; width: number; height: number }
+  | { ok: false; message: string }
+> {
+  const { ImageManipulator, SaveFormat } = imageManipulator();
+  const context = ImageManipulator.manipulate(uri);
+  const target = photoTargetSize(width, height);
+  if (target) context.resize(target);
+
+  const rendered = await context.renderAsync();
+  const saved = await rendered.saveAsync({
+    compress: PHOTO_COMPRESS,
+    format: SaveFormat.JPEG,
+    base64: true,
+  });
+
+  if (saved.uri) discardTempPhoto(saved.uri);
+  if (!saved.base64) return { ok: false, message: 'That photo could not be read.' };
+
+  return { ok: true, base64: saved.base64, mediaType: 'image/jpeg', width: saved.width, height: saved.height };
+}
+
+/**
+ * Reads whatever image is on the system clipboard — a screenshot, a photo
+ * copied out of Messages or Safari — and writes it to a temp PNG in the
+ * cache directory, since every downstream step (`encodePickedPhoto`, the
+ * manipulator move in `pickRecipeImage`, and, for a receipt, the on-device
+ * OCR read that follows) works from a file `uri`, not from bytes already in
+ * JS. Shared by the clipboard branches of `pickRecipePhoto` and
+ * `pickRecipeImage` below.
+ *
+ * No permission prompt: unlike camera/library access, `expo-clipboard` needs
+ * none, and iOS shows its own one-time paste banner rather than an app-level
+ * grant — there is nothing here to check before reading.
+ *
+ * Null rather than a `RecipePhotoResult`/`RecipeImageResult` itself, so each
+ * caller can word its own "nothing to paste" message for what it's about
+ * to attach.
+ */
+async function writeClipboardImageToTempFile(): Promise<{ uri: string; width: number; height: number } | null> {
+  const image = await clipboard().getImageAsync({ format: 'png' });
+  if (!image) return null;
+
+  const base64 = image.data.replace(/^data:image\/\w+;base64,/, '');
+  const { File, Paths } = fileSystem();
+  const temp = new File(Paths.cache, `${generateId()}.png`);
+  temp.create();
+  temp.write(base64, { encoding: 'base64' });
+
+  return { uri: temp.uri, width: image.size.width, height: image.size.height };
+}
+
+/** The clipboard half of `pickRecipePhoto` — see `writeClipboardImageToTempFile`. */
+async function pickClipboardPhoto(): Promise<RecipePhotoResult> {
+  const pasted = await writeClipboardImageToTempFile();
+  if (!pasted) {
+    return { status: 'failed', message: 'No image on the clipboard. Copy one, then try pasting.' };
+  }
+
+  const encoded = await encodePickedPhoto(pasted.uri, pasted.width, pasted.height);
+  if (!encoded.ok) return { status: 'failed', message: encoded.message };
+
+  return {
+    status: 'ok',
+    photo: {
+      base64: encoded.base64,
+      mediaType: encoded.mediaType,
+      width: encoded.width,
+      height: encoded.height,
+      sourceUri: pasted.uri,
+    },
+  };
+}
+
+/** Takes, picks, or pastes a photo and returns it sized and encoded for the Messages API. */
 export async function pickRecipePhoto(source: RecipePhotoSource): Promise<RecipePhotoResult> {
   try {
+    if (source === 'clipboard') return await pickClipboardPhoto();
+
     const ImagePicker = imagePicker();
 
     const permission = source === 'camera'
@@ -147,28 +287,16 @@ export async function pickRecipePhoto(source: RecipePhotoSource): Promise<Recipe
     const asset = result.assets?.[0];
     if (!asset?.uri) return { status: 'failed', message: 'No photo came back from the picker.' };
 
-    const { ImageManipulator, SaveFormat } = imageManipulator();
-    const context = ImageManipulator.manipulate(asset.uri);
-    const target = photoTargetSize(asset.width, asset.height);
-    if (target) context.resize(target);
-
-    const rendered = await context.renderAsync();
-    const saved = await rendered.saveAsync({
-      compress: PHOTO_COMPRESS,
-      format: SaveFormat.JPEG,
-      base64: true,
-    });
-
-    if (saved.uri) discardTempPhoto(saved.uri);
-    if (!saved.base64) return { status: 'failed', message: 'That photo could not be read.' };
+    const encoded = await encodePickedPhoto(asset.uri, asset.width, asset.height);
+    if (!encoded.ok) return { status: 'failed', message: encoded.message };
 
     return {
       status: 'ok',
       photo: {
-        base64: saved.base64,
-        mediaType: 'image/jpeg',
-        width: saved.width,
-        height: saved.height,
+        base64: encoded.base64,
+        mediaType: encoded.mediaType,
+        width: encoded.width,
+        height: encoded.height,
         sourceUri: asset.uri,
       },
     };
@@ -214,8 +342,40 @@ function recipeImageDirectory(): import('expo-file-system').Directory {
 }
 
 /**
- * Takes or picks a photo and saves it into the app's document directory,
- * sized for display.
+ * The shared downscale-and-persist step behind `pickRecipeImage`, run against
+ * a file already on disk — a picker asset, or a clipboard paste written to a
+ * temp file by `writeClipboardImageToTempFile`. Moves the result into the
+ * document directory so it survives the app being closed and reopened.
+ */
+async function saveIntoRecipeImageDirectory(uri: string, width: number, height: number): Promise<RecipeImageResult> {
+  const { ImageManipulator, SaveFormat } = imageManipulator();
+  const context = ImageManipulator.manipulate(uri);
+  const target = photoTargetSize(width, height, MAX_IMAGE_EDGE);
+  if (target) context.resize(target);
+
+  const rendered = await context.renderAsync();
+  const saved = await rendered.saveAsync({
+    compress: PHOTO_COMPRESS,
+    format: SaveFormat.JPEG,
+  });
+  if (!saved.uri) return { status: 'failed', message: 'That photo could not be read.' };
+
+  const { File } = fileSystem();
+  const dest = new File(recipeImageDirectory(), `${generateId()}.jpg`);
+  // Awaited, not fire-and-forget: `move()` became asynchronous in SDK 57
+  // (it was synchronous through SDK 54). Left floating, this returned `ok`
+  // with `dest.uri` before the move had necessarily landed, and a rejection
+  // escaped the try/catch below as an unhandled rejection — so a photo that
+  // failed to save still reported success. `tsc` can't catch that: ignoring
+  // a returned promise isn't a type error.
+  await new File(saved.uri).move(dest);
+
+  return { status: 'ok', image: { uri: dest.uri, width: saved.width, height: saved.height } };
+}
+
+/**
+ * Takes, picks, or pastes a photo and saves it into the app's document
+ * directory, sized for display.
  *
  * Unlike `pickRecipePhoto` above — which exists to feed the Messages API and
  * is deliberately never asked to persist anything — this *is* the persistence
@@ -226,6 +386,14 @@ function recipeImageDirectory(): import('expo-file-system').Directory {
  */
 export async function pickRecipeImage(source: RecipePhotoSource): Promise<RecipeImageResult> {
   try {
+    if (source === 'clipboard') {
+      const pasted = await writeClipboardImageToTempFile();
+      if (!pasted) {
+        return { status: 'failed', message: 'No image on the clipboard. Copy one, then try pasting.' };
+      }
+      return await saveIntoRecipeImageDirectory(pasted.uri, pasted.width, pasted.height);
+    }
+
     const ImagePicker = imagePicker();
 
     const permission = source === 'camera'
@@ -252,29 +420,7 @@ export async function pickRecipeImage(source: RecipePhotoSource): Promise<Recipe
     const asset = result.assets?.[0];
     if (!asset?.uri) return { status: 'failed', message: 'No photo came back from the picker.' };
 
-    const { ImageManipulator, SaveFormat } = imageManipulator();
-    const context = ImageManipulator.manipulate(asset.uri);
-    const target = photoTargetSize(asset.width, asset.height, MAX_IMAGE_EDGE);
-    if (target) context.resize(target);
-
-    const rendered = await context.renderAsync();
-    const saved = await rendered.saveAsync({
-      compress: PHOTO_COMPRESS,
-      format: SaveFormat.JPEG,
-    });
-    if (!saved.uri) return { status: 'failed', message: 'That photo could not be read.' };
-
-    const { File } = fileSystem();
-    const dest = new File(recipeImageDirectory(), `${generateId()}.jpg`);
-    // Awaited, not fire-and-forget: `move()` became asynchronous in SDK 57
-    // (it was synchronous through SDK 54). Left floating, this returned `ok`
-    // with `dest.uri` before the move had necessarily landed, and a rejection
-    // escaped the try/catch below as an unhandled rejection — so a photo that
-    // failed to save still reported success. `tsc` can't catch that: ignoring
-    // a returned promise isn't a type error.
-    await new File(saved.uri).move(dest);
-
-    return { status: 'ok', image: { uri: dest.uri, width: saved.width, height: saved.height } };
+    return await saveIntoRecipeImageDirectory(asset.uri, asset.width, asset.height);
   } catch (e) {
     return {
       status: 'failed',

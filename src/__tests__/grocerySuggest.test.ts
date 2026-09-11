@@ -32,6 +32,7 @@ function makeProduct(overrides: Partial<ItemProduct> & { itemId: string }): Item
     variant: null,
     productKey: `k-${seq}`,
     rating: null,
+    nutrition: null,
     note: '',
     purchaseCount: 0,
     lastPurchasedAt: null,
@@ -48,6 +49,7 @@ function makeProduct(overrides: Partial<ItemProduct> & { itemId: string }): Item
 function makeItem(overrides: Partial<GroceryItem> & { name: string }): GroceryItem {
   const name = overrides.name;
   return {
+    nameFromScan: false,
     id: `id-${++seq}`,
     nameKey: groceryNameKey(name),
     preferredProductId: null,
@@ -79,7 +81,7 @@ function makeItem(overrides: Partial<GroceryItem> & { name: string }): GroceryIt
     usedUpCount: 0,
     spoiledCount: 0,
     lastSpoiledAt: null,
-    varietyOfKey: null, backfillDismissedFields: [],
+    varietyOfKey: null, nutrition: null, backfillDismissedFields: [],
     lastPriceMinor: null,
     lastPricedAt: null,
     lastPriceQuantity: null, priceHistory: [],
@@ -109,6 +111,34 @@ describe('rankGrocerySuggestions', () => {
   it('still tolerates a plural query past one character', () => {
     const items = [makeItem({ name: 'Banana' })];
     expect(rankGrocerySuggestions('bananas', items, NOW).map(s => s.item.name)).toEqual(['Banana']);
+  });
+
+  it('finds a two-word name typed in the other order', () => {
+    const items = [makeItem({ name: 'Peanut butter' })];
+    expect(rankGrocerySuggestions('butter peanut', items, NOW).map(s => s.item.name))
+      .toEqual(['Peanut butter']);
+  });
+
+  it('puts each word of an out-of-order query through the same rungs', () => {
+    // "creams" reaches "Cream cheese" on the plural rung, exactly as it would
+    // have as a query on its own.
+    const items = [makeItem({ name: 'Cream cheese' })];
+    expect(rankGrocerySuggestions('cheese creams', items, NOW).map(s => s.item.name))
+      .toEqual(['Cream cheese']);
+  });
+
+  it('still requires every word of an out-of-order query to land', () => {
+    const items = [makeItem({ name: 'Peanut butter' })];
+    expect(rankGrocerySuggestions('butter anchovy', items, NOW)).toEqual([]);
+  });
+
+  it('ranks a contiguous match above the same words found apart', () => {
+    const items = [
+      makeItem({ name: 'Peanut butter', purchaseCount: 5, lastPurchasedAt: daysAgo(1) }),
+      makeItem({ name: 'Butter beans with peanut', purchaseCount: 5, lastPurchasedAt: daysAgo(1) }),
+    ];
+    expect(rankGrocerySuggestions('peanut butter', items, NOW).map(s => s.item.name))
+      .toEqual(['Peanut butter', 'Butter beans with peanut']);
   });
 
   it('prefers a prefix match over a substring one', () => {

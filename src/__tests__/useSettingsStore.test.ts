@@ -752,35 +752,51 @@ describe('calendarReviewTasks', () => {
   });
 });
 
-describe('moodLogTimeSegment', () => {
-  it('defaults to any time, so the check-in does not move for anyone already using it', () => {
-    expect(useSettingsStore.getState().moodLogTimeSegment).toBeNull();
+describe('moodLogTimeSegments', () => {
+  it('defaults to any time (empty), so the check-in does not move for anyone already using it', () => {
+    expect(useSettingsStore.getState().moodLogTimeSegments).toEqual([]);
   });
 
-  it('stores a segment and clears it back to any time through an empty string', () => {
-    useSettingsStore.getState().setMoodLogTimeSegment('evening');
-    expect(useSettingsStore.getState().moodLogTimeSegment).toBe('evening');
-    expect(dbSetSetting).toHaveBeenCalledWith('moodLogTimeSegment', 'evening');
+  it('stores a list of segments and clears it back to any time', () => {
+    useSettingsStore.getState().setMoodLogTimeSegments(['morning', 'evening']);
+    expect(useSettingsStore.getState().moodLogTimeSegments).toEqual(['morning', 'evening']);
+    expect(dbSetSetting).toHaveBeenCalledWith('moodLogTimeSegments', JSON.stringify(['morning', 'evening']));
 
-    useSettingsStore.getState().setMoodLogTimeSegment(null);
-    expect(useSettingsStore.getState().moodLogTimeSegment).toBeNull();
-    expect(dbSetSetting).toHaveBeenCalledWith('moodLogTimeSegment', '');
+    useSettingsStore.getState().setMoodLogTimeSegments([]);
+    expect(useSettingsStore.getState().moodLogTimeSegments).toEqual([]);
+    expect(dbSetSetting).toHaveBeenCalledWith('moodLogTimeSegments', '[]');
   });
 
-  it('reads a stored segment back on initialize', () => {
+  it('reads a stored list back on initialize', () => {
     (dbGetSetting as jest.Mock).mockImplementation((key: string) =>
-      key === 'moodLogTimeSegment' ? 'afternoon' : null,
+      key === 'moodLogTimeSegments' ? JSON.stringify(['afternoon', 'night']) : null,
     );
     useSettingsStore.getState().initialize();
-    expect(useSettingsStore.getState().moodLogTimeSegment).toBe('afternoon');
+    expect(useSettingsStore.getState().moodLogTimeSegments).toEqual(['afternoon', 'night']);
   });
 
-  it('falls back to any time when the stored value is not a segment', () => {
+  it('drops unrecognised segments from a stored list', () => {
+    (dbGetSetting as jest.Mock).mockImplementation((key: string) =>
+      key === 'moodLogTimeSegments' ? JSON.stringify(['afternoon', 'lunchtime']) : null,
+    );
+    useSettingsStore.getState().initialize();
+    expect(useSettingsStore.getState().moodLogTimeSegments).toEqual(['afternoon']);
+  });
+
+  it('migrates the legacy single-segment setting when the list has never been saved', () => {
+    (dbGetSetting as jest.Mock).mockImplementation((key: string) =>
+      key === 'moodLogTimeSegment' ? 'evening' : null,
+    );
+    useSettingsStore.getState().initialize();
+    expect(useSettingsStore.getState().moodLogTimeSegments).toEqual(['evening']);
+  });
+
+  it('falls back to any time when neither the list nor the legacy value is a segment', () => {
     (dbGetSetting as jest.Mock).mockImplementation((key: string) =>
       key === 'moodLogTimeSegment' ? 'lunchtime' : null,
     );
     useSettingsStore.getState().initialize();
-    expect(useSettingsStore.getState().moodLogTimeSegment).toBeNull();
+    expect(useSettingsStore.getState().moodLogTimeSegments).toEqual([]);
   });
 });
 
@@ -829,6 +845,12 @@ describe('meal plan nudge settings', () => {
     useSettingsStore.getState().setMealPlanNudgeEnabled(true);
     expect(useSettingsStore.getState().mealPlanNudgeEnabled).toBe(true);
     expect(dbSetSetting).toHaveBeenCalledWith('mealPlanNudgeEnabled', 'true');
+  });
+
+  it('stores and persists mealPlanNudgeIgnoresVacation', () => {
+    useSettingsStore.getState().setMealPlanNudgeIgnoresVacation(true);
+    expect(useSettingsStore.getState().mealPlanNudgeIgnoresVacation).toBe(true);
+    expect(dbSetSetting).toHaveBeenCalledWith('mealPlanNudgeIgnoresVacation', 'true');
   });
 
   it('stores and persists mealPlanNudgeWeekday', () => {

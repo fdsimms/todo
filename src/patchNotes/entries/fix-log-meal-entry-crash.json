@@ -1,0 +1,4 @@
+{
+  "message": "Fixed a crash that could happen when logging a planned meal or scanning a barcode from outside the food log screen (Today, Search, Stuck, or the widget)",
+  "date": "2026-09-11"
+}

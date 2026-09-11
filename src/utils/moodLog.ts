@@ -43,6 +43,20 @@ export const MOOD_LEVELS: readonly { value: MoodLevel; label: string; emoji: str
  */
 export const LOW_MOOD_AT_OR_BELOW = 2;
 
+/**
+ * A handful of starter suggestions for context tags, shown alongside whatever
+ * has actually been logged.
+ *
+ * The vocabulary itself stays derived (see `contextTagVocabulary` below) —
+ * this is not a registry and nothing here is ever stored. It exists only
+ * because a brand-new log has no history to derive suggestions from, so the
+ * grid would otherwise open empty on day one with nothing to tap. Kept short
+ * and generic; the freeform field is the real answer to "my own reasons".
+ */
+export const DEFAULT_CONTEXT_TAGS: readonly string[] = [
+  'Vacation', 'Travel', 'Sick', 'Poor sleep', 'Big deadline', 'Social event',
+];
+
 export const SYMPTOM_SEVERITIES: readonly { value: SymptomSeverity; label: string }[] = [
   { value: 1, label: 'Mild' },
   { value: 2, label: 'Moderate' },
@@ -107,6 +121,23 @@ export function withoutSymptom(
   return symptoms.filter(s => symptomKey(s.name) !== key);
 }
 
+/** The key two spellings of one context tag agree on. Same rule as `symptomKey`. */
+export const contextTagKey = symptomKey;
+
+/** Add a context tag to a set, or leave it alone if it's already there. */
+export function withContextTag(tags: readonly string[], name: string): string[] {
+  const trimmed = name.trim();
+  if (!trimmed) return [...tags];
+  const key = contextTagKey(trimmed);
+  if (tags.some(t => contextTagKey(t) === key)) return [...tags];
+  return [...tags, trimmed];
+}
+
+export function withoutContextTag(tags: readonly string[], name: string): string[] {
+  const key = contextTagKey(name);
+  return tags.filter(t => contextTagKey(t) !== key);
+}
+
 /**
  * Every symptom name you have ever logged, most-used first, then alphabetical.
  *
@@ -130,6 +161,29 @@ export function symptomVocabulary(logs: readonly MoodLog[]): string[] {
       const seen = counts.get(key);
       if (seen) seen.count++;
       else counts.set(key, { name: symptom.name.trim(), count: 1 });
+    }
+  }
+  return [...counts.values()]
+    .sort((a, b) => b.count - a.count || a.name.localeCompare(b.name))
+    .map(e => e.name);
+}
+
+/**
+ * Every context tag you have ever logged, most-used first, then alphabetical.
+ *
+ * Derived on read, exactly like `symptomVocabulary` and for the same reason:
+ * a tag is named by having happened, so the honest vocabulary is the set of
+ * things that have happened, nothing to migrate and nothing to prune.
+ */
+export function contextTagVocabulary(logs: readonly MoodLog[]): string[] {
+  const counts = new Map<string, { name: string; count: number }>();
+  for (const log of logs) {
+    for (const tag of log.contextTags) {
+      const key = contextTagKey(tag);
+      if (!key) continue;
+      const seen = counts.get(key);
+      if (seen) seen.count++;
+      else counts.set(key, { name: tag.trim(), count: 1 });
     }
   }
   return [...counts.values()]
@@ -181,9 +235,35 @@ export function daySymptoms(logs: readonly MoodLog[], dayKey: string): LoggedSym
   return [...worst.values()].sort((a, b) => a.name.localeCompare(b.name));
 }
 
+/** Every context tag logged on one day, de-duplicated, alphabetical. */
+export function dayContextTags(logs: readonly MoodLog[], dayKey: string): string[] {
+  const seen = new Map<string, string>();
+  for (const log of logs) {
+    if (log.dayKey !== dayKey) continue;
+    for (const tag of log.contextTags) {
+      const key = contextTagKey(tag);
+      if (!key || seen.has(key)) continue;
+      seen.set(key, tag);
+    }
+  }
+  return [...seen.values()].sort((a, b) => a.localeCompare(b));
+}
+
 /** Whether anything at all was recorded on a day — the "did you log" read. */
 export function hasLogOnDay(logs: readonly MoodLog[], dayKey: string): boolean {
   return logs.some(l => l.dayKey === dayKey);
+}
+
+/**
+ * Whether anything was recorded at or after a given instant — the "did you
+ * log this slot" read a day with several check-ins needs, where hasLogOnDay
+ * only answers for the whole day. `since` is an ISO instant (a segment's
+ * threshold), compared lexically against `loggedAt` the same way both are
+ * ever compared: both are `toISOString()` output, so string order is time
+ * order.
+ */
+export function hasLoggedSince(logs: readonly MoodLog[], since: string): boolean {
+  return logs.some(l => l.loggedAt >= since);
 }
 
 /**
@@ -197,6 +277,7 @@ export function moodLogSummary(log: MoodLog): string {
   const parts: string[] = [];
   if (log.mood !== null) parts.push(`${moodEmoji(log.mood)} ${moodLabel(log.mood)}`);
   if (log.symptoms.length > 0) parts.push(log.symptoms.map(s => s.name).join(', '));
+  if (log.contextTags.length > 0) parts.push(log.contextTags.join(', '));
   if (parts.length === 0 && log.note) return log.note;
   return parts.join(' · ');
 }

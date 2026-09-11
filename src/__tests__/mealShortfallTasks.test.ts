@@ -44,6 +44,7 @@ function ing(name: string, overrides: Partial<RecipeIngredient> = {}): RecipeIng
 
 function recipe(name: string, ingredients: RecipeIngredient[], overrides: Partial<Recipe> = {}): Recipe {
   return {
+    backfillDismissedFields: [],
     id: `r-${++seq}`,
     name,
     nameKey: name.toLowerCase(),
@@ -55,6 +56,7 @@ function recipe(name: string, ingredients: RecipeIngredient[], overrides: Partia
     servings: null,
     servingsMax: null,
     recipeYield: null,
+    cookedWeightG: null,
     leftoverKeepDays: null,
     imagePath: null,
     mealType: null,
@@ -104,6 +106,7 @@ function entry(date: string, recipeId: string | null, overrides: Partial<MealPla
     recipeScale: 1,
     cookTask: null,
     shopTask: null,
+    logMeal: null,
     calendarEventId: null,
     ...overrides,
   };
@@ -111,6 +114,7 @@ function entry(date: string, recipeId: string | null, overrides: Partial<MealPla
 
 function item(overrides: Partial<GroceryItem> & { name: string }): GroceryItem {
   return {
+    nameFromScan: false,
     id: `gi-${++seq}`,
     nameKey: groceryNameKey(overrides.name),
     preferredProductId: null,
@@ -142,7 +146,7 @@ function item(overrides: Partial<GroceryItem> & { name: string }): GroceryItem {
     usedUpCount: 0,
     spoiledCount: 0,
     lastSpoiledAt: null,
-    varietyOfKey: null, backfillDismissedFields: [],
+    varietyOfKey: null, nutrition: null, backfillDismissedFields: [],
     lastPriceMinor: null,
     lastPricedAt: null,
     lastPriceQuantity: null,
@@ -186,12 +190,20 @@ const stale = (
 ) => staleMealShortfallTasks(tasks, entries, recipesById, items, [], NO_STANDING_SWAPS, TODAY, NOW, leadDays);
 
 describe('mealShortfallTitle', () => {
-  it('names the verb and the night, so the row is not read as a task to cook', () => {
-    expect(mealShortfallTitle('2026-08-25', 'Ragù')).toBe('Shop for Tue Ragù');
+  it('names the verb, the dish, and the night and slot, so the row is not read as a task to cook', () => {
+    expect(mealShortfallTitle('2026-08-25', 'dinner', 'Ragù')).toBe('Shop for Ragù (Tue Dinner)');
   });
 
   it('distinguishes two nights planning the same dish', () => {
-    expect(mealShortfallTitle('2026-08-25', 'Ragù')).not.toBe(mealShortfallTitle('2026-08-27', 'Ragù'));
+    expect(mealShortfallTitle('2026-08-25', 'dinner', 'Ragù')).not.toBe(
+      mealShortfallTitle('2026-08-27', 'dinner', 'Ragù')
+    );
+  });
+
+  it('distinguishes two slots on the same day planning the same dish', () => {
+    expect(mealShortfallTitle('2026-08-25', 'lunch', 'Ragù')).not.toBe(
+      mealShortfallTitle('2026-08-25', 'dinner', 'Ragù')
+    );
   });
 });
 
@@ -302,7 +314,7 @@ describe('wantedMealShortfalls', () => {
     const r = ragu();
     const e = entry('2026-08-23', r.id);
     expect(shortfalls([e], rows(r))).toEqual([
-      { entryId: e.id, title: 'Shop for Sun Ragù', dayKey: '2026-08-23', missingCount: 1 },
+      { entryId: e.id, title: 'Shop for Ragù (Sun Dinner)', dayKey: '2026-08-23', missingCount: 1 },
     ]);
   });
 
@@ -332,7 +344,7 @@ describe('wantedMealShortfalls', () => {
     const small = recipe('Ragù', [ing('Onions')]);
     const by = new Map([[big.id, big], [small.id, small]]);
     const result = shortfalls([entry('2026-08-24', big.id), entry(TODAY, small.id)], by);
-    expect(result.map(w => w.title)).toEqual(['Shop for Sat Ragù', 'Shop for Mon Curry']);
+    expect(result.map(w => w.title)).toEqual(['Shop for Ragù (Sat Dinner)', 'Shop for Curry (Mon Dinner)']);
   });
 
   it('orders two meals on one day the way the day reads', () => {

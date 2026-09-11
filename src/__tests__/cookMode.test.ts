@@ -15,6 +15,7 @@ function step(text: string): RecipeStep {
 
 function recipe(id: string, name: string, overrides: Partial<Recipe> = {}): Recipe {
   return {
+    backfillDismissedFields: [],
     id,
     name,
     nameKey: name.toLowerCase(),
@@ -35,6 +36,7 @@ function recipe(id: string, name: string, overrides: Partial<Recipe> = {}): Reci
     createdAt: '2026-01-01T00:00:00.000Z',
     servingsMax: null,
     recipeYield: null,
+    cookedWeightG: null,
     leftoverKeepDays: null,
     imagePath: null,
     estimatedMinutes: null,
@@ -138,6 +140,20 @@ describe('cookSteps', () => {
     expect(out.every(s => s.fromNotes)).toBe(true);
     // Synthesized, and never a RecipeStep id — nothing writes these back.
     expect(out.map(s => s.id)).toEqual(['r1:notes:0', 'r1:notes:1']);
+  });
+
+  it('carries a step’s kept note, and never one for a step read out of notes', () => {
+    const r = recipe('r1', 'Salmon', {
+      steps: [{ ...step('Heat the pan'), note: 'Hotter than feels right.' }, step('Cook the fish')],
+    });
+    const out = cookSteps(r, recipeMap([r]));
+    expect(out[0].note).toBe('Hotter than feels right.');
+    expect(out[1].note).toBeNull();
+
+    // A notes step has no row to hold one, the same reason its id is
+    // synthesized — see CookStep.note.
+    const blob = recipe('r2', 'Steak', { notes: 'Get the pan hot.\nSear it.' });
+    expect(cookSteps(blob, recipeMap([blob])).every(s => s.note === null)).toBe(true);
   });
 
   it('prefers structured steps over notes on the same recipe', () => {

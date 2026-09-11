@@ -6,7 +6,7 @@ import {
   dbDeleteRecipe,
 } from '../db/database';
 import type { Recipe, RecipeIngredient } from '../types';
-import { LEFTOVER_KEEP_DAYS_MAX } from '../types';
+import { LEFTOVER_KEEP_DAYS_MAX, RECIPE_STEP_NOTE_MAX_LENGTH } from '../types';
 import { groceryNameKey } from '../utils/groceryParse';
 
 jest.mock('../db/database', () => ({
@@ -23,6 +23,7 @@ jest.mock('../db/database', () => ({
 let seq = 0;
 function makeRecipe(name: string, overrides: Partial<Recipe> = {}): Recipe {
   return {
+    backfillDismissedFields: [],
     id: `r-${++seq}`,
     name,
     nameKey: name.toLowerCase(),
@@ -34,6 +35,7 @@ function makeRecipe(name: string, overrides: Partial<Recipe> = {}): Recipe {
     servings: null,
     servingsMax: null,
     recipeYield: null,
+    cookedWeightG: null,
     leftoverKeepDays: null,
     imagePath: null,
     mealType: null,
@@ -177,6 +179,22 @@ describe('field setters', () => {
     expect(useRecipeStore.getState().recipeById(r.id)!.sourceName).toBeNull();
   });
 
+  it('persists the Backfill screen\'s don\'t-ask-again list', () => {
+    const r = makeRecipe('Ragu');
+    seed([r]);
+
+    useRecipeStore.getState().setRecipeBackfillDismissedFields(r.id, ['prepTime']);
+    expect(useRecipeStore.getState().recipeById(r.id)!.backfillDismissedFields).toEqual(['prepTime']);
+    expect(dbUpdateRecipe).toHaveBeenCalled();
+  });
+
+  it('ignores a dismissal for a recipe that is not there', () => {
+    seed([makeRecipe('Ragu')]);
+    expect(() =>
+      useRecipeStore.getState().setRecipeBackfillDismissedFields('nope', ['servings'])
+    ).not.toThrow();
+  });
+
   it('clamps servings into range and allows clearing it', () => {
     const r = makeRecipe('Ragu');
     seed([r]);
@@ -235,6 +253,23 @@ describe('field setters', () => {
 
     useRecipeStore.getState().setRecipeYield(r.id, null);
     expect(useRecipeStore.getState().recipeById(r.id)!.recipeYield).toBeNull();
+  });
+
+  it('sets, clamps and clears the cooked weight', () => {
+    const r = makeRecipe('Lasagne');
+    seed([r]);
+
+    useRecipeStore.getState().setCookedWeight(r.id, 1450.4);
+    expect(useRecipeStore.getState().recipeById(r.id)!.cookedWeightG).toBe(1450);
+
+    // A dish weighing nothing would divide a plate by nothing, so it reads as
+    // no weight rather than as a weight of zero.
+    useRecipeStore.getState().setCookedWeight(r.id, 0);
+    expect(useRecipeStore.getState().recipeById(r.id)!.cookedWeightG).toBeNull();
+
+    useRecipeStore.getState().setCookedWeight(r.id, 900);
+    useRecipeStore.getState().setCookedWeight(r.id, null);
+    expect(useRecipeStore.getState().recipeById(r.id)!.cookedWeightG).toBeNull();
   });
 
   it('sets and clears the leftover keep-for window', () => {
@@ -723,10 +758,38 @@ describe('steps', () => {
     expect(useRecipeStore.getState().recipeById(r.id)!.steps[0].timerSeconds).toBeUndefined();
   });
 
+  it('keeps and clears a note on a step', () => {
+    const r = makeRecipe('Ragu');
+    seed([r]);
+    const step = useRecipeStore.getState().addStep(r.id, 'Simmer until it darkens')!;
+
+    useRecipeStore.getState().setStepNote(r.id, step.id, '  Two hours is not too long.  ');
+    expect(useRecipeStore.getState().recipeById(r.id)!.steps[0].note)
+      .toBe('Two hours is not too long.');
+
+    // Absent rather than an empty string once cleared, same as the duration
+    // above — see RecipeStep.note.
+    useRecipeStore.getState().setStepNote(r.id, step.id, null);
+    expect(useRecipeStore.getState().recipeById(r.id)!.steps[0])
+      .toEqual({ id: step.id, text: 'Simmer until it darkens' });
+    useRecipeStore.getState().setStepNote(r.id, step.id, '   ');
+    expect(useRecipeStore.getState().recipeById(r.id)!.steps[0].note).toBeUndefined();
+  });
+
+  it('truncates a note past the cap rather than refusing it', () => {
+    const r = makeRecipe('Ragu');
+    seed([r]);
+    const step = useRecipeStore.getState().addStep(r.id, 'Simmer')!;
+    useRecipeStore.getState().setStepNote(r.id, step.id, 'x'.repeat(RECIPE_STEP_NOTE_MAX_LENGTH + 50));
+    expect(useRecipeStore.getState().recipeById(r.id)!.steps[0].note)
+      .toHaveLength(RECIPE_STEP_NOTE_MAX_LENGTH);
+  });
+
   it('shrugs at a recipe or step id it does not hold', () => {
     seed([]);
     expect(useRecipeStore.getState().addStep('gone', 'Preheat the oven')).toBeNull();
     useRecipeStore.getState().setStepTimerSeconds('gone', 'also gone', 240);
+    useRecipeStore.getState().setStepNote('gone', 'also gone', 'nothing to keep it on');
 
     const r = makeRecipe('Ragu');
     seed([r]);

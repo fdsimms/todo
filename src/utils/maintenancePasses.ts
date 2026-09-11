@@ -70,6 +70,17 @@ export function catchUpPasses(): MaintenanceStep[] {
     // Turn vacation mode back off if its end date already passed while the
     // app was closed
     ['check vacation expiry', () => tasks().checkVacationExpiry()],
+    // And switch it *on* for a trip whose departure has arrived, or move the
+    // end date a trip that got longer should now turn itself off on (see
+    // Project.awayPauses). Immediately after the expiry above, deliberately:
+    // one trip ending and another starting on the same day has to resolve in
+    // that order, or the arm is undone by the pass that follows it.
+    ['check away vacation', () => tasks().checkAwayVacation()],
+    // And put the screen on that trip's shopping list, or take it off again now
+    // it is over. Straight after the pass above because they read the same span
+    // and are the same shape; separate opt-ins because a trip that pauses your
+    // tasks is not necessarily one you shop for. See Project.awayListId.
+    ['check away grocery list', () => useGroceryStore.getState().checkAwayGroceryList()],
     // Close out quota tasks whose day ended unfinished while the app was
     // closed, so a day you fell short on is logged as a partial instead of
     // sitting overdue — also needs real settings (dayResetTime) loaded first.
@@ -116,6 +127,10 @@ export function catchUpPasses(): MaintenanceStep[] {
     // already loaded, and it fires on a meal coming into range, which is time
     // passing rather than a source mutation.
     ['check meal shortfall tasks', () => tasks().checkMealShortfallTasks()],
+    // And anything planned a few days *behind* rather than ahead, that never
+    // got logged (off by default) — the reverse-window sibling of the pass
+    // above, reading the same meal plan and firing on the same trigger.
+    ['check meal log nudge tasks', () => tasks().checkMealLogNudgeTasks()],
     // Once a day, a task to review tomorrow's calendar — grouped with the two
     // passes above for the same reason: time passing rather than a source
     // mutation. In practice this rarely finds anything to do at cold-launch
@@ -156,6 +171,13 @@ export function catchUpPasses(): MaintenanceStep[] {
     // and is close to a no-op here; the task half is answered either way, and
     // an unreadable calendar is deliberately not a reason to stay silent.
     ['check weekend nudge tasks', () => tasks().checkWeekendNudgeTasks()],
+    // Beside the health pass in spirit, listed here because it shares the mood
+    // check-in's shape rather than the rule generators'. The only pass that
+    // takes a Health read of its own instead of judging a snapshot some
+    // foreground effect filled in, so it is the only async one — nothing is
+    // ordered after it, and the void return is deliberate: the sweep fires it
+    // and moves on rather than waiting on the health daemon.
+    ['check weigh-in tasks', () => { void tasks().checkWeighInTasks(); }],
     // Birthdays, which share the same trigger — a date arriving rather than a
     // source changing — and read the people initTasks' fan-out has loaded.
     // After initSettings for the same reason the meal pass is: the day a task
@@ -183,6 +205,13 @@ export function catchUpPasses(): MaintenanceStep[] {
     // reason that one sits after rolloverQuotas — a run can create tasks a
     // project counts, so the cheaper pass goes first and sees a settled list.
     ['check scheduled templates', () => useTemplateStore.getState().checkScheduledTemplates()],
+    // Charge the apps-blocked penalty on anything that went past its cutoff
+    // undone. Last in the list on purpose: every pass above can change whether
+    // a task is still outstanding — a template can create one, a rollover can
+    // roll one forward, a trip starting can excuse the lot — and a charge is
+    // the one thing here that cannot be taken back by the pass that follows it.
+    // Idempotent like everything else in this list, via the stamp on the row.
+    ['sweep task penalties', () => tasks().sweepTaskPenalties()],
   ];
 }
 

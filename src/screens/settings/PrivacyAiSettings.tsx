@@ -281,7 +281,7 @@ export function PrivacyAiSettings({ scrollRef }: Props) {
       {kitchenEnabled && (
       <SettingsSection
         label="On-device suggestions"
-        footer="Uses Apple Intelligence on this iPhone, which needs no key and sends nothing anywhere. It only answers when you haven't added an Anthropic API key above; with a key, those features keep using it."
+        footer="Uses Apple Intelligence on this iPhone, which needs no key and sends nothing anywhere. It only answers when you haven't added an Anthropic API key above, unless a feature below is set to prefer it."
       >
         <SettingsRow
           entryId="onDeviceAiEnabled"
@@ -298,7 +298,31 @@ export function PrivacyAiSettings({ scrollRef }: Props) {
           toggle={onDeviceAiEnabled}
           onPress={() => setOnDeviceAiEnabled(!onDeviceAiEnabled)}
           accessibilityLabel="Use Apple Intelligence"
+          tight={onDeviceAiEnabled}
         />
+        {/* With the switch above off there's no engine here to prefer over
+            Claude, so this follows it exactly like the AI feature rows follow
+            the Anthropic key: shown regardless of whether a key is set yet
+            (same as the API key section itself says "required for the
+            features below" without hiding them), with the case where there's
+            nothing to prefer it *over* explained in the hint instead.
+            aiRouting.ts's own rule still falls back to Claude if on-device
+            turns out not to work, so turning this on can't leave the feature
+            with no answer at all — it can only change which one answers. */}
+        {onDeviceAiEnabled && (
+          <SettingsRow
+            entryId="ai:groceryAisles:preferOnDevice"
+            icon="hardware-chip-outline"
+            iconColor={aiFeatureConfig.groceryAisles.preferOnDevice ? colors.purple : undefined}
+            label="Prefer it for aisle sorting"
+            hint="Sorts new grocery items on this device instead of sending them to Claude, when you have an API key."
+            toggle={!!aiFeatureConfig.groceryAisles.preferOnDevice}
+            onPress={() => setAiFeatureConfig('groceryAisles', {
+              preferOnDevice: !aiFeatureConfig.groceryAisles.preferOnDevice,
+            })}
+            accessibilityLabel="Prefer on-device for aisle sorting"
+          />
+        )}
       </SettingsSection>
       )}
 
@@ -316,11 +340,11 @@ export function PrivacyAiSettings({ scrollRef }: Props) {
             entryId="productLookupEnabled"
             icon="barcode-outline"
             iconColor={productLookupEnabled ? colors.accent : undefined}
-            label="Look up scanned barcodes"
-            hint="Finds out what a barcode is so a scanned item arrives named."
+            label="Look up food databases"
+            hint="Sends a scanned barcode, or a food name you search for, to find out what it is."
             toggle={productLookupEnabled}
             onPress={() => setProductLookupEnabled(!productLookupEnabled)}
-            accessibilityLabel="Look up scanned barcodes"
+            accessibilityLabel="Look up food databases"
           />
           {/* Only while lookups are on: a key for a service that isn't being
               called is a field that can't do anything. */}
@@ -332,7 +356,7 @@ export function PrivacyAiSettings({ scrollRef }: Props) {
                 icon="key-outline"
                 iconColor={fdcApiKey ? colors.accent : undefined}
                 label="FoodData Central key"
-                hint="Optional. The USDA's own database of US branded foods, asked first when set."
+                hint="Optional. The USDA's own food database. Asked first for a barcode, and it is the only source for searching a food by name."
               >
                 <TextInput
                   style={[styles.apiKeyInput, { color: colors.text, borderBottomColor: colors.separator }]}

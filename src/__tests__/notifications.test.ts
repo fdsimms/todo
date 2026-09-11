@@ -1,6 +1,6 @@
 import * as Notifications from 'expo-notifications';
 import { Platform } from 'react-native';
-import type { Task } from '../types';
+import type { FocusSession, FocusStep, Task } from '../types';
 import { nextAgendaTime } from '../utils/dailyAgenda';
 import { ALARM_MAX_RINGS, ALARM_RING_INTERVAL_MINUTES, stepTimerAlarmUuid, taskAlarmUuid } from '../utils/alarmChain';
 
@@ -75,6 +75,8 @@ import {
   rescheduleAllTimerAlarms,
   scheduleStepAlarm,
   cancelStepAlarm,
+  scheduleFocusStepAlarm,
+  cancelFocusStepAlarm,
   getNotificationPermission,
   upcomingReminders,
   pendingReminderStats,
@@ -165,6 +167,10 @@ const makeTask = (overrides: Partial<Task> = {}): Task => ({
   polarity: 'positive',
   slipCount: 0,
   slipDate: null,
+  penaltyMinutes: null,
+  penaltyCutoffTime: null,
+  penaltyFiredAt: null,
+  gatesApps: false,
   showStreak: false,
   streakRequiresWindow: false,
   parentId: null,
@@ -190,7 +196,7 @@ const makeTask = (overrides: Partial<Task> = {}): Task => ({
   timedMinutes: null,
   timerElapsedSeconds: 0,
   healthMetric: null,
-  healthTarget: null,
+  healthTarget: null, completionTimerMinutes: null, logHealthMetric: null, logHealthAmount: null, medicationName: null, medicationAmount: null, medicationUnit: null,
   actualMinutes: null,
   previousOccurrenceId: null,
   seriesId: null,
@@ -210,6 +216,8 @@ const makeTask = (overrides: Partial<Task> = {}): Task => ({
   generatedSourceId: null,
   deadlineOnCalendar: false,
   calendarEventId: null,
+  logCompletionToCalendar: false,
+  completionCalendarEventId: null,
   timeBlockEventId: null,
   pendingImport: null,
   backfillDismissedFields: [],
@@ -555,7 +563,7 @@ describe('scheduleTimerAlarm', () => {
         timedMinutes: 15,
         timerElapsedSeconds: 10 * 60,
         healthMetric: null,
-        healthTarget: null,
+        healthTarget: null, completionTimerMinutes: null, logHealthMetric: null, logHealthAmount: null, medicationName: null, medicationAmount: null, medicationUnit: null,
         timerStartedAt: new Date().toISOString(),
       })
     );
@@ -581,7 +589,7 @@ describe('scheduleTimerAlarm', () => {
         timedMinutes: 15,
         timerElapsedSeconds: 20 * 60,
         healthMetric: null,
-        healthTarget: null,
+        healthTarget: null, completionTimerMinutes: null, logHealthMetric: null, logHealthAmount: null, medicationName: null, medicationAmount: null, medicationUnit: null,
         timerStartedAt: new Date().toISOString(),
       })
     );
@@ -612,6 +620,7 @@ const makeShop = (overrides: Partial<Shop> = {}): Shop => ({
   createdAt: '2025-01-01T00:00:00.000Z',
   excludeFromSuggestions: false,
     receiptStyle: 'itemized' as const,
+    aisles: null,
   ...overrides,
 });
 
@@ -1520,6 +1529,92 @@ describe('scheduleStepAlarm', () => {
 
   it('gives a step timer and a task the same id different alarm uuids', () => {
     expect(stepTimerAlarmUuid('x')).not.toBe(taskAlarmUuid('x'));
+  });
+});
+
+describe('scheduleFocusStepAlarm', () => {
+  beforeEach(() => {
+    jest.clearAllMocks();
+    Object.assign(mockSettings, DEFAULT_MOCK_SETTINGS);
+  });
+
+  afterEach(() => setDemoModeActive(false));
+
+  const workStep = (overrides: Partial<FocusStep> = {}): FocusStep => ({
+    kind: 'work',
+    taskId: 't1',
+    minutes: 25,
+    part: 1,
+    partCount: 1,
+    long: false,
+    ...overrides,
+  });
+
+  const restStep = (overrides: Partial<FocusStep> = {}): FocusStep => ({
+    kind: 'rest',
+    taskId: null,
+    minutes: 5,
+    part: 1,
+    partCount: 1,
+    long: false,
+    ...overrides,
+  });
+
+  const makeSession = (steps: FocusStep[], stepIndex = 0): FocusSession => ({
+    id: 'session1',
+    startedAt: new Date().toISOString(),
+    steps,
+    stepIndex,
+    stepStartedAt: new Date().toISOString(),
+    stepElapsedSeconds: 0,
+    completedTaskIds: [],
+    stepLog: [],
+  });
+
+  it('mentions a break when one actually follows', async () => {
+    await scheduleFocusStepAlarm(makeSession([workStep(), restStep()], 0));
+    const call = (Notifications.scheduleNotificationAsync as jest.Mock).mock.calls[0][0];
+    expect(call.content.body).toBe('That stretch is done. Take your break when you’re ready.');
+  });
+
+  it('says nothing about a break when the plan has none, like a no-breaks session', async () => {
+    await scheduleFocusStepAlarm(makeSession([workStep()], 0));
+    const call = (Notifications.scheduleNotificationAsync as jest.Mock).mock.calls[0][0];
+    expect(call.content.body).toBe('That stretch is done.');
+  });
+
+  it('says nothing about a break when the next step is another task, not a rest', async () => {
+    await scheduleFocusStepAlarm(makeSession([workStep(), workStep({ taskId: 't2' })], 0));
+    const call = (Notifications.scheduleNotificationAsync as jest.Mock).mock.calls[0][0];
+    expect(call.content.body).toBe('That stretch is done.');
+  });
+
+  it('still tells you to get back to it once a break ends', async () => {
+    await scheduleFocusStepAlarm(makeSession([workStep(), restStep()], 1));
+    const call = (Notifications.scheduleNotificationAsync as jest.Mock).mock.calls[0][0];
+    expect(call.content.title).toBe('Break’s over');
+    expect(call.content.body).toBe('Back to it when you’re ready.');
+  });
+
+  it('schedules nothing once the session is finished', async () => {
+    await scheduleFocusStepAlarm(makeSession([workStep()], 1));
+    expect(Notifications.scheduleNotificationAsync).not.toHaveBeenCalled();
+  });
+
+  it('schedules nothing for a paused session', async () => {
+    await scheduleFocusStepAlarm({ ...makeSession([workStep()]), stepStartedAt: null });
+    expect(Notifications.scheduleNotificationAsync).not.toHaveBeenCalled();
+  });
+
+  it('cancels whatever was pending, and a null session just cancels', async () => {
+    await scheduleFocusStepAlarm(null);
+    expect(Notifications.cancelScheduledNotificationAsync).toHaveBeenCalledWith('focus-step');
+    expect(Notifications.scheduleNotificationAsync).not.toHaveBeenCalled();
+  });
+
+  it('cancels via cancelFocusStepAlarm directly', async () => {
+    await cancelFocusStepAlarm();
+    expect(Notifications.cancelScheduledNotificationAsync).toHaveBeenCalledWith('focus-step');
   });
 });
 

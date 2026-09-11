@@ -42,6 +42,7 @@ function ing(name: string, overrides: Partial<RecipeIngredient> = {}): RecipeIng
 
 function recipe(name: string, ingredients: RecipeIngredient[]): Recipe {
   return {
+    backfillDismissedFields: [],
     id: `r-${++seq}`,
     name,
     nameKey: name.toLowerCase(),
@@ -53,6 +54,7 @@ function recipe(name: string, ingredients: RecipeIngredient[]): Recipe {
     servings: null,
     servingsMax: null,
     recipeYield: null,
+    cookedWeightG: null,
     leftoverKeepDays: null,
     imagePath: null,
     mealType: null,
@@ -101,6 +103,7 @@ function entry(date: string, recipeId: string | null, overrides: Partial<MealPla
     recipeScale: 1,
     cookTask: null,
     shopTask: null,
+    logMeal: null,
     calendarEventId: null,
     ...overrides,
   };
@@ -124,6 +127,7 @@ function classifiedRow(overrides: Partial<ClassifiedIngredient> & { nameKey: str
 
 function item(overrides: Partial<GroceryItem> & { name: string }): GroceryItem {
   return {
+    nameFromScan: false,
     id: `gi-${++seq}`,
     nameKey: groceryNameKey(overrides.name),
     preferredProductId: null,
@@ -155,7 +159,7 @@ function item(overrides: Partial<GroceryItem> & { name: string }): GroceryItem {
     usedUpCount: 0,
     spoiledCount: 0,
     lastSpoiledAt: null,
-    varietyOfKey: null, backfillDismissedFields: [],
+    varietyOfKey: null, nutrition: null, backfillDismissedFields: [],
     lastPriceMinor: null,
     lastPricedAt: null,
     lastPriceQuantity: null, priceHistory: [],
@@ -191,6 +195,20 @@ describe('collectPlannedIngredients', () => {
 
     expect('optional' in result[0]).toBe(false);
     expect(result[1].optional).toBe(true);
+  });
+
+  it('carries excludeFromNutrition through, and writes the key only when it is set', () => {
+    const stew = recipe('Stew', [
+      ing('Beef'),
+      ing('Basil', { excludeFromNutrition: true }),
+    ]);
+    const recipesById = new Map([[stew.id, stew]]);
+    const entries = [entry('2026-08-11', stew.id)]; // Tuesday
+
+    const result = collectPlannedIngredients(entries, recipesById, RANGE);
+
+    expect('excludeFromNutrition' in result[0]).toBe(false);
+    expect(result[1].excludeFromNutrition).toBe(true);
   });
 
   it('scales each entry by its own factor, leaving the others alone', () => {

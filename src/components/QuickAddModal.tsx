@@ -71,7 +71,7 @@ import { TitleTokenAccessory } from './TitleTokenAccessory';
 import { HighlightedText } from './HighlightedText';
 import { suggestTitles } from '../utils/titleSuggestions';
 import { findArchivedMatch } from '../utils/archiveMatch';
-import { parseTaskInput, describeSchedule, parseLinkInput, parsePhoneInput, parseEmailInput, parseDurationInput, parseSupplyInput, parseCategoryAndTagsInput, parsePriorityInput, matchPersonMentions, findAmbiguousMention, applyMentionOverrides, type ParsedCategoryAndTags } from '../utils/parseTaskInput';
+import { parseTaskInput, describeSchedule, parseLinkInput, parsePhoneInput, parseEmailInput, parseDurationInput, parseSupplyInput, parseCategoryAndTagsInput, parsePriorityInput, matchPersonMentions, findAmbiguousMention, getMentionSuggestions, applyMentionOverrides, type ParsedCategoryAndTags, type MentionSuggestionCandidate } from '../utils/parseTaskInput';
 import { mergeRanges } from '../utils/ranges';
 import { usePersonStore } from '../store/usePersonStore';
 import { usePersonGroupStore } from '../store/usePersonGroupStore';
@@ -626,22 +626,36 @@ export function QuickAddModal({
       : null),
     [title, parsed, categoryTagsParsed, people, personOverrides]
   );
+  // Hoisted above mentionSuggestion (which needs it) from where it otherwise
+  // sits, right beside personMentions below.
+  const groupTokens = useMemo(() => groupMentionTokens(), [people, groups]);
+  // "beach with @lu" — a "@name" token still being typed, too short to have
+  // resolved (or ruled out) on its own yet. Same single tooltip slot, checked
+  // right after the ambiguous-mention case so a token that's already a
+  // genuine collision keeps first claim on it; see getMentionSuggestions'
+  // doc comment for exactly which tokens this does and doesn't cover.
+  const mentionSuggestion = useMemo(
+    () => (!parsed && !categoryTagsParsed && !ambiguousMention && title.trim()
+      ? getMentionSuggestions(title, people, groupTokens)
+      : null),
+    [title, parsed, categoryTagsParsed, ambiguousMention, people, groupTokens]
+  );
   // "clean the garage !urgent" — a "!word" token naming a priority
   // (parsePriorityInput), same single tooltip slot and same sigil-token
   // shape as the category/tag check above, just checked after the ambiguous
-  // mention so a "@name" two people answer to still gets first claim on the
-  // slot.
+  // mention and the in-progress mention suggestions so a "@name" still
+  // claiming the slot always wins.
   const priorityParsed = useMemo(
-    () => (!parsed && !categoryTagsParsed && !ambiguousMention && title.trim() ? parsePriorityInput(title) : null),
-    [title, parsed, categoryTagsParsed, ambiguousMention]
+    () => (!parsed && !categoryTagsParsed && !ambiguousMention && !mentionSuggestion && title.trim() ? parsePriorityInput(title) : null),
+    [title, parsed, categoryTagsParsed, ambiguousMention, mentionSuggestion]
   );
   // Pasted URL/app-link detection — same tooltip mechanism as the schedule
   // parse above, just not suffix-anchored. Only checked when no schedule
   // phrase, category/tag token, ambiguous mention, or priority token
   // matched, so the tooltips never compete for the same slot.
   const linkParsed = useMemo(
-    () => (!parsed && !categoryTagsParsed && !ambiguousMention && !priorityParsed && title.trim() ? parseLinkInput(title) : null),
-    [title, parsed, categoryTagsParsed, ambiguousMention, priorityParsed]
+    () => (!parsed && !categoryTagsParsed && !ambiguousMention && !mentionSuggestion && !priorityParsed && title.trim() ? parseLinkInput(title) : null),
+    [title, parsed, categoryTagsParsed, ambiguousMention, mentionSuggestion, priorityParsed]
   );
   // "call the doctor 555-123-4567" — the same mechanism again, for the number
   // rather than the URL. Checked after the link so a tel: URL someone pasted
@@ -649,8 +663,8 @@ export function QuickAddModal({
   // looksLikePhoneNumber): this one is reading prose full of digits, so a
   // year or a price must not light it up.
   const phoneParsed = useMemo(
-    () => (!parsed && !categoryTagsParsed && !ambiguousMention && !priorityParsed && !linkParsed && title.trim() ? parsePhoneInput(title) : null),
-    [title, parsed, categoryTagsParsed, ambiguousMention, priorityParsed, linkParsed]
+    () => (!parsed && !categoryTagsParsed && !ambiguousMention && !mentionSuggestion && !priorityParsed && !linkParsed && title.trim() ? parsePhoneInput(title) : null),
+    [title, parsed, categoryTagsParsed, ambiguousMention, mentionSuggestion, priorityParsed, linkParsed]
   );
   // "email jane@example.com about the invoice" — the same mechanism again,
   // for an address rather than a number. Checked after phone so a title that
@@ -658,8 +672,8 @@ export function QuickAddModal({
   // priority chain, and email addresses don't collide with the phone pattern
   // since "@" and letters aren't dial digits.
   const emailParsed = useMemo(
-    () => (!parsed && !categoryTagsParsed && !ambiguousMention && !priorityParsed && !linkParsed && !phoneParsed && title.trim() ? parseEmailInput(title) : null),
-    [title, parsed, categoryTagsParsed, ambiguousMention, priorityParsed, linkParsed, phoneParsed]
+    () => (!parsed && !categoryTagsParsed && !ambiguousMention && !mentionSuggestion && !priorityParsed && !linkParsed && !phoneParsed && title.trim() ? parseEmailInput(title) : null),
+    [title, parsed, categoryTagsParsed, ambiguousMention, mentionSuggestion, priorityParsed, linkParsed, phoneParsed]
   );
   // "play violin for 15 minutes" — a duration, not a schedule. Same single
   // tooltip slot, checked last, so a schedule, category/tag token, link or
@@ -670,8 +684,8 @@ export function QuickAddModal({
   // is one. Someone already part-way through a Chain or a Target has said what
   // they're making, and a tooltip shouldn't overrule it.
   const durationParsed = useMemo(
-    () => (!parsed && !categoryTagsParsed && !ambiguousMention && !priorityParsed && !linkParsed && !phoneParsed && !emailParsed && type === 'task' && title.trim() ? parseDurationInput(title) : null),
-    [title, parsed, categoryTagsParsed, ambiguousMention, priorityParsed, linkParsed, phoneParsed, emailParsed, type]
+    () => (!parsed && !categoryTagsParsed && !ambiguousMention && !mentionSuggestion && !priorityParsed && !linkParsed && !phoneParsed && !emailParsed && type === 'task' && title.trim() ? parseDurationInput(title) : null),
+    [title, parsed, categoryTagsParsed, ambiguousMention, mentionSuggestion, priorityParsed, linkParsed, phoneParsed, emailParsed, type]
   );
   // "replace cpap filter 6 filters left" — a stock this task spends, not a
   // schedule. Last in the chain, so everything above still wins the one slot.
@@ -688,10 +702,10 @@ export function QuickAddModal({
   // and the schedule tooltip comes first (it needs the trailing text); tapping
   // it shortens the title, sets the repeat, and this fires on the remainder.
   const supplyParsed = useMemo(
-    () => (!parsed && !categoryTagsParsed && !ambiguousMention && !priorityParsed && !linkParsed && !phoneParsed && !emailParsed
+    () => (!parsed && !categoryTagsParsed && !ambiguousMention && !mentionSuggestion && !priorityParsed && !linkParsed && !phoneParsed && !emailParsed
       && !durationParsed && recurrenceType !== 'none' && title.trim()
       ? parseSupplyInput(title) : null),
-    [title, parsed, categoryTagsParsed, ambiguousMention, priorityParsed, linkParsed, phoneParsed, emailParsed, durationParsed, recurrenceType]
+    [title, parsed, categoryTagsParsed, ambiguousMention, mentionSuggestion, priorityParsed, linkParsed, phoneParsed, emailParsed, durationParsed, recurrenceType]
   );
   const activeMatch = parsed
     ? { matchStart: parsed.matchStart, matchedText: parsed.matchedText }
@@ -704,6 +718,11 @@ export function QuickAddModal({
         ? {
             matchStart: ambiguousMention.start,
             matchedText: title.slice(ambiguousMention.start, ambiguousMention.end),
+          }
+      : mentionSuggestion
+        ? {
+            matchStart: mentionSuggestion.start,
+            matchedText: title.slice(mentionSuggestion.start, mentionSuggestion.end),
           }
       : priorityParsed
         ? {
@@ -741,7 +760,6 @@ export function QuickAddModal({
   // what's typed next (see ambiguousMention above), so a pick made from that
   // tooltip is layered on top here instead of changing the title text — see
   // applyMentionOverrides' doc comment for why.
-  const groupTokens = useMemo(() => groupMentionTokens(), [people, groups]);
   const personMentions = useMemo(() => {
     const matched = matchPersonMentions(title, people, groupTokens);
     return applyMentionOverrides(title, matched, personOverrides);
@@ -869,6 +887,21 @@ export function QuickAddModal({
     setPersonOverrides(prev => ({ ...prev, [ambiguousMention.token]: personId }));
   };
 
+  // Completes an in-progress "@lu" to "@Luke " — unlike applyAmbiguousCandidate,
+  // this rewrites the title rather than recording an override: the typed
+  // prefix doesn't yet spell any name exactly, so there's no collision an
+  // override would need to work around. matchPersonMentions picks the
+  // completed word up and tints it on the very next render, same as if it
+  // had been typed out by hand. See getMentionSuggestions' doc comment.
+  const applyMentionSuggestion = (candidate: MentionSuggestionCandidate) => {
+    if (!mentionSuggestion) return;
+    haptics.success();
+    animateLayout();
+    const next = `${title.slice(0, mentionSuggestion.start)}@${candidate.resolveKey} `;
+    setTitle(next);
+    titleCaret.moveCaret(next);
+  };
+
   // Apply the detected link and strip it from the title.
   // Apply the detected "!word" priority token and strip it from the title.
   const applyPriority = () => {
@@ -949,7 +982,7 @@ export function QuickAddModal({
     else if (durationParsed) applyDuration();
     else if (supplyParsed) applySupply();
   };
-  const confirmVisible = activeMatch !== null && !ambiguousMention;
+  const confirmVisible = activeMatch !== null && !ambiguousMention && !mentionSuggestion;
 
   const addStep = (stepTitle: string) => {
     const t = stepTitle.trim();
@@ -1449,6 +1482,7 @@ export function QuickAddModal({
               added on top. Scrolling the content keeps the title pinned at
               the top of a sheet that can no longer grow past the screen. */}
           <ScrollView
+            style={styles.scrollBody}
             showsVerticalScrollIndicator={false}
             keyboardShouldPersistTaps="handled"
             {...fade.scrollProps}
@@ -1609,9 +1643,29 @@ export function QuickAddModal({
                       </PressableScale>
                     ))}
                   </View>
+                ) : mentionSuggestion ? (
+                  // A "@name" token still short of resolving (or ruling itself
+                  // out) on its own — the same pill row, offered as suggestions
+                  // to complete rather than as a disambiguation. See
+                  // applyMentionSuggestion.
+                  <View
+                    style={styles.tooltipCandidateRow}
+                    onLayout={e => setBubbleW(e.nativeEvent.layout.width)}
+                  >
+                    {mentionSuggestion.candidates.map(candidate => (
+                      <PressableScale
+                        key={candidate.id}
+                        style={styles.tooltipCandidatePill}
+                        haptic
+                        onPress={() => applyMentionSuggestion(candidate)}
+                      >
+                        <Text style={styles.tooltipText} numberOfLines={1}>{candidate.name}</Text>
+                      </PressableScale>
+                    ))}
+                  </View>
                 ) : (
                   <PressableScale
-                    style={styles.tooltipBubble}
+                    style={[styles.tooltipBubble, tooltipRowW > 0 && { maxWidth: tooltipRowW }]}
                     onPress={applyActiveParse}
                     onLayout={e => setBubbleW(e.nativeEvent.layout.width)}
                   >
@@ -1623,33 +1677,37 @@ export function QuickAddModal({
                               : parsed.schedule.deadline ? 'flag-outline' : 'calendar-outline')
                           : categoryTagsParsed
                             ? (categoryTagsParsed.category ? 'pricetag-outline' : 'pricetags-outline')
-                            : linkParsed
-                              ? 'link-outline'
-                              : phoneParsed
-                                ? 'call-outline'
-                                : emailParsed
-                                  ? 'mail-outline'
-                                  : durationParsed
-                                    ? 'timer-outline'
-                                    : 'cube-outline'
+                            : priorityParsed
+                              ? 'alert-circle-outline'
+                              : linkParsed
+                                ? 'link-outline'
+                                : phoneParsed
+                                  ? 'call-outline'
+                                  : emailParsed
+                                    ? 'mail-outline'
+                                    : durationParsed
+                                      ? 'timer-outline'
+                                      : 'cube-outline'
                       }
                       size={14}
                       color={colors.onAccent}
                     />
-                    <Text style={styles.tooltipText}>
+                    <Text style={styles.tooltipText} numberOfLines={1} ellipsizeMode="tail">
                       {parsed
                         ? describeSchedule(parsed.schedule, getLogicalNow(dayResetTime))
                         : categoryTagsParsed
                           ? categoryTagsLabel(categoryTagsParsed, categories)
-                          : linkParsed
-                            ? linkLabel(linkParsed.url)
-                            : phoneParsed
-                              ? `Call ${phoneParsed.number}`
-                              : emailParsed
-                                ? `Email ${emailParsed.address}`
-                                : durationParsed
-                                  ? `Timer · ${formatDuration(durationParsed.minutes)}`
-                                  : `Supply · ${formatSupplyLeft(supplyParsed!.count, supplyParsed!.unit)}`}
+                          : priorityParsed
+                            ? `Priority · ${PRIORITY_LABELS_SHORT[priorityParsed.priority]}`
+                            : linkParsed
+                              ? linkLabel(linkParsed.url)
+                              : phoneParsed
+                                ? `Call ${phoneParsed.number}`
+                                : emailParsed
+                                  ? `Email ${emailParsed.address}`
+                                  : durationParsed
+                                    ? `Timer · ${formatDuration(durationParsed.minutes)}`
+                                    : `Supply · ${formatSupplyLeft(supplyParsed!.count, supplyParsed!.unit)}`}
                     </Text>
                     <View style={styles.tooltipDot} />
                     <Text style={styles.tooltipHint}>Tap to set</Text>
@@ -2477,6 +2535,12 @@ const makeStyles = (colors: Colors, sheetMaxHeight: number) => StyleSheet.create
     paddingBottom: spacing.md,
     maxHeight: sheetMaxHeight,
   },
+  // Without this, the ScrollView's own flexShrink defaults to 0 and it won't
+  // shrink to fit under the sheet's maxHeight — enough open panels (a
+  // handful of set pills, each with its own inline panel) grow past the
+  // screen instead of becoming scrollable, and the sheet is cut off at the
+  // bottom with no way to reach what's below.
+  scrollBody: { flexShrink: 1 },
   row: {
     flexDirection: 'row',
     alignItems: 'center',
@@ -2768,6 +2832,13 @@ const makeStyles = (colors: Colors, sheetMaxHeight: number) => StyleSheet.create
     color: colors.onAccent,
     fontSize: font.sm,
     fontWeight: fontWeight.semibold,
+    // A pasted link's own URL is the value shown here, and unlike the other
+    // parses (dates, priority, category) it has no natural ceiling on
+    // length — without this the bubble grows past the sheet's width and
+    // renders past its edge instead of ellipsizing. flexShrink lets it give
+    // up space to the icon/dot/"Tap to set" hint that share the row rather
+    // than growing the row past the bubble's own maxWidth.
+    flexShrink: 1,
   },
   tooltipDot: {
     width: 3,

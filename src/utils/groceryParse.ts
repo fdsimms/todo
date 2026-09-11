@@ -352,6 +352,46 @@ export function splitPurpose(name: string): { name: string; purpose: string | nu
   };
 }
 
+// "such as"/"e.g." introduces a worked example of the name before it, not an
+// instruction or a name of its own — "neutral oil, such as avocado oil",
+// "hard cheese (e.g. parmesan)". Same convention-match discipline as
+// PREP_SPLIT/PURPOSE_SPLIT: the phrase is a closed, unambiguous pair rather
+// than a guess at arbitrary words, so it's safe to split unconditionally.
+// Matches with or without a leading comma and an optional wrapping
+// parenthesis — both show up on real pages — and with no leading text at
+// all, which is the shape `makeIngredient` hands it when the whole of a
+// comma clause splitPrep already took turns out to be the example rather
+// than a prep instruction.
+const EXAMPLE_CLAUSE = /^(.*?)[,\s]*\(?(?:such as|e\.g\.,?)\s+([^()]+?)\)?$/i;
+
+/**
+ * Splits "neutral oil, such as avocado oil" into
+ * `{ core: 'neutral oil', example: 'avocado oil' }`, and a bare
+ * "such as avocado oil" (nothing before the phrase) into
+ * `{ core: '', example: 'avocado oil' }` — the shape a comma clause that
+ * turns out to be entirely an example reaches this in, from `makeIngredient`.
+ *
+ * The point is the same as splitPrep/splitPurpose: keep the catalog key
+ * clean. Left in `name`, the example is what a recipe actually calls for
+ * ("avocado oil") mixed into a name that means something broader ("neutral
+ * oil"), which reads as neither — the row can't be shopped for exactly and
+ * doesn't say what it stands in for either. Pulling it out onto its own field
+ * is what lets `RecipeIngredientSheet` offer declaring it a variety of the
+ * generic name instead (see `itemVarieties.ts`), which is the useful half:
+ * the example becomes a real catalog row and any of it already on hand counts
+ * toward the generic line, without narrowing what the recipe actually asked
+ * for.
+ */
+export function splitExample(text: string): { core: string; example: string | null } {
+  const trimmed = text.trim();
+  const match = EXAMPLE_CLAUSE.exec(trimmed);
+  if (!match) return { core: trimmed, example: null };
+  const [, core, example] = match;
+  const cleanExample = example.trim().slice(0, PREP_MAX_LENGTH);
+  if (!cleanExample) return { core: trimmed, example: null };
+  return { core: core.trim(), example: cleanExample };
+}
+
 /**
  * "cloves garlic" → "garlic", when "garlic" (and not "cloves garlic") is
  * already a name in the catalog — a one-tap correction for exactly the

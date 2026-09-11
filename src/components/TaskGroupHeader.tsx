@@ -4,7 +4,7 @@ import Ionicons from '@expo/vector-icons/Ionicons';
 import type { Task, TaskGroup } from '../types';
 import { useColors } from '../theme/ThemeContext';
 import { spacing, radius, font, fontWeight, border, iconSize, interaction, type Colors } from '../theme';
-import { isRelevantToGroupToday } from '../utils/visibilityUtils';
+import { groupRoster, isRelevantToGroupToday } from '../utils/visibilityUtils';
 import { tagColor } from '../utils/tagColor';
 import { haptics } from '../utils/haptics';
 import { WhenPicker } from './WhenPicker';
@@ -17,7 +17,10 @@ interface Props {
   group: TaskGroup;
   // Every child regardless of current visibility — drives the "N/M done
   // today" tally (isRelevantToGroupToday), which needs to see completed and
-  // not-yet-due children too, not just what's currently rendered below.
+  // not-yet-due children too, not just what's currently rendered below. Raw,
+  // so it still carries every tombstone a recurring member has left behind
+  // — routed through groupRoster() below before anything counts it, the same
+  // as every other reader of a stack's membership.
   allChildren: Task[];
   // Overrides the "N/M" tally with an explicit child list instead of
   // deriving it from allChildren via isRelevantToGroupToday. Needed inside
@@ -79,7 +82,7 @@ export function TaskGroupHeader({
   const [showDefer, setShowDefer] = useState(false);
 
   const dueToday = useMemo(
-    () => dueTodayOverride ?? allChildren.filter(isRelevantToGroupToday),
+    () => dueTodayOverride ?? groupRoster(allChildren).filter(isRelevantToGroupToday),
     [dueTodayOverride, allChildren],
   );
   const doneToday = dueToday.filter(c => c.completed).length;

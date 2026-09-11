@@ -16,6 +16,8 @@ import {
   draftMealRecipe,
   suggestSubstitutes,
   describeAIError,
+  readLabelPhotoWithAi,
+  nutritionLabelPhotoAiAvailable,
 } from '../services/aiSuggestions';
 import { MAX_MEAL_IDEAS } from '../utils/mealIdeas';
 import type { Task } from '../types';
@@ -32,6 +34,7 @@ const TEST_AI_FEATURE_CONFIG = {
   mealIdeas: { enabled: true, model: 'claude-haiku-4-5-20251001' },
   substitutes: { enabled: true, model: 'claude-haiku-4-5-20251001' },
   receiptImport: { enabled: true, model: 'claude-sonnet-5' },
+  nutritionLabelPhoto: { enabled: true, model: 'claude-sonnet-5' },
 };
 
 /**
@@ -136,6 +139,10 @@ const makeTask = (overrides: Partial<Task> = {}): Task => ({
   polarity: 'positive',
   slipCount: 0,
   slipDate: null,
+  penaltyMinutes: null,
+  penaltyCutoffTime: null,
+  penaltyFiredAt: null,
+  gatesApps: false,
   showStreak: false,
   streakRequiresWindow: false,
   parentId: null,
@@ -160,7 +167,7 @@ const makeTask = (overrides: Partial<Task> = {}): Task => ({
   timedMinutes: null,
   timerElapsedSeconds: 0,
   healthMetric: null,
-  healthTarget: null,
+  healthTarget: null, completionTimerMinutes: null, logHealthMetric: null, logHealthAmount: null, medicationName: null, medicationAmount: null, medicationUnit: null,
   actualMinutes: null,
   previousOccurrenceId: null,
   seriesId: null,
@@ -180,6 +187,8 @@ const makeTask = (overrides: Partial<Task> = {}): Task => ({
   generatedSourceId: null,
   deadlineOnCalendar: false,
   calendarEventId: null,
+  logCompletionToCalendar: false,
+  completionCalendarEventId: null,
   timeBlockEventId: null,
   pendingImport: null,
   backfillDismissedFields: [],
@@ -943,6 +952,23 @@ describe('extractRecipe', () => {
     expect(result.ingredients).toEqual([
       { name: 'tempeh', quantity: '1 block', aisle: 'Pantry', section: null, prep: 'pressed and cubed' },
       { name: 'garlic', quantity: '2 cloves', aisle: 'Produce', section: null, prep: null },
+    ]);
+  });
+
+  it('reads the model\'s optional flag, and only carries it when true', async () => {
+    mockFetchOnce(
+      toolUseResponse('extract_recipe', {
+        name: 'Weeknight Chili',
+        items: [
+          { name: 'ground beef', quantity: '2 lb', aisle: 'Pantry', optional: false },
+          { name: 'sour cream', quantity: '', aisle: 'Dairy & Eggs', optional: true },
+        ],
+      })
+    );
+    const result = await extractRecipe('some recipe', AISLES);
+    expect(result.ingredients).toEqual([
+      { name: 'ground beef', quantity: '2 lb', aisle: 'Pantry', section: null, prep: null },
+      { name: 'sour cream', quantity: '', aisle: 'Dairy & Eggs', section: null, prep: null, optional: true },
     ]);
   });
 
@@ -1875,5 +1901,131 @@ describe('extractReceipt', () => {
       });
       expect(spy).not.toHaveBeenCalled();
     });
+  });
+});
+
+// ============================================================================
+// readLabelPhotoWithAi / nutritionLabelPhotoAiAvailable
+// ============================================================================
+
+describe('nutritionLabelPhotoAiAvailable', () => {
+  it('is true with the feature on and a key configured', () => {
+    expect(nutritionLabelPhotoAiAvailable()).toBe(true);
+  });
+
+  it('is false with no key, even though the feature is on', () => {
+    mockSettings.anthropicApiKey = '';
+    expect(nutritionLabelPhotoAiAvailable()).toBe(false);
+  });
+
+  it('is false with the feature switched off, even with a key', () => {
+    mockSettings.aiFeatureConfig.nutritionLabelPhoto.enabled = false;
+    expect(nutritionLabelPhotoAiAvailable()).toBe(false);
+  });
+});
+
+describe('readLabelPhotoWithAi', () => {
+  const PHOTO = { base64: 'QUJD', mediaType: 'image/jpeg' as const };
+
+  const bodyOf = (spy: jest.SpyInstance) =>
+    JSON.parse((spy.mock.calls[0][1] as RequestInit).body as string);
+
+  it('sends the image block ahead of the text block', async () => {
+    const spy = mockFetchOnce(toolUseResponse('read_nutrition_label', { columns: [] }));
+    await readLabelPhotoWithAi(PHOTO);
+
+    const content = bodyOf(spy).messages[0].content;
+    expect(content[0]).toEqual({
+      type: 'image',
+      source: { type: 'base64', media_type: 'image/jpeg', data: 'QUJD' },
+    });
+    expect(content[1].type).toBe('text');
+    expect(content[1].text).toContain('This is a photo of a printed nutrition facts panel');
+  });
+
+  it('does not call the network for an empty image', async () => {
+    const spy = jest.spyOn(global, 'fetch');
+    await expect(readLabelPhotoWithAi({ base64: '', mediaType: 'image/jpeg' })).resolves.toBeNull();
+    expect(spy).not.toHaveBeenCalled();
+  });
+
+  it('reads a single column of transcribed figures into stored units', async () => {
+    mockFetchOnce(toolUseResponse('read_nutrition_label', {
+      servingText: '2 cookies (30g)',
+      servingGrams: '30',
+      columns: [{
+        basis: 'perServing',
+        calorieKcal: '140', fatG: '6g', satFatG: '2.5g', carbsG: '20g',
+        fiberG: '1g', sugarG: '11g', proteinG: '1g', sodiumMg: '105mg',
+        caffeineMg: '', waterMl: '', salt: '',
+      }],
+    }));
+    await expect(readLabelPhotoWithAi(PHOTO)).resolves.toEqual({
+      servingText: '2 cookies (30g)',
+      servingGrams: 30,
+      columns: [{
+        basis: 'perServing',
+        amounts: {
+          calorieKcal: 140, fatG: 6, satFatG: 2.5, carbsG: 20,
+          fiberG: 1, sugarG: 11, proteinG: 1, sodiumMg: 105,
+        },
+      }],
+    });
+  });
+
+  it('converts a transcribed salt figure to sodium when sodium was not printed', async () => {
+    mockFetchOnce(toolUseResponse('read_nutrition_label', {
+      columns: [{
+        basis: '', calorieKcal: '', fatG: '', satFatG: '', carbsG: '',
+        fiberG: '', sugarG: '', proteinG: '', sodiumMg: '', caffeineMg: '', waterMl: '',
+        salt: '1.2g',
+      }],
+    }));
+    const read = await readLabelPhotoWithAi(PHOTO);
+    expect(read?.columns[0].amounts.sodiumMg).toBe(480);
+  });
+
+  it('leaves a printed sodium figure alone rather than overwriting it with a salt one', async () => {
+    mockFetchOnce(toolUseResponse('read_nutrition_label', {
+      columns: [{
+        basis: '', calorieKcal: '', fatG: '', satFatG: '', carbsG: '',
+        fiberG: '', sugarG: '', proteinG: '', sodiumMg: '105mg', caffeineMg: '', waterMl: '',
+        salt: '1.2g',
+      }],
+    }));
+    const read = await readLabelPhotoWithAi(PHOTO);
+    expect(read?.columns[0].amounts.sodiumMg).toBe(105);
+  });
+
+  it('drops a column that came back with no readable figure at all', async () => {
+    mockFetchOnce(toolUseResponse('read_nutrition_label', {
+      columns: [
+        {
+          basis: 'per100g', calorieKcal: '140', fatG: '', satFatG: '', carbsG: '',
+          fiberG: '', sugarG: '', proteinG: '', sodiumMg: '', caffeineMg: '', waterMl: '',
+        },
+        {
+          basis: '', calorieKcal: '', fatG: '', satFatG: '', carbsG: '',
+          fiberG: '', sugarG: '', proteinG: '', sodiumMg: '', caffeineMg: '', waterMl: '',
+        },
+      ],
+    }));
+    const read = await readLabelPhotoWithAi(PHOTO);
+    expect(read?.columns).toHaveLength(1);
+  });
+
+  it('returns null when the photo is not a readable panel at all', async () => {
+    mockFetchOnce(toolUseResponse('read_nutrition_label', { columns: [] }));
+    await expect(readLabelPhotoWithAi(PHOTO)).resolves.toBeNull();
+  });
+
+  it('throws when the feature is switched off, same as every other extractor', async () => {
+    mockSettings.aiFeatureConfig.nutritionLabelPhoto.enabled = false;
+    await expect(readLabelPhotoWithAi(PHOTO)).rejects.toThrow('AI feature disabled');
+  });
+
+  it('maps a network failure through describeAIError like the rest of the file', async () => {
+    mockFetchOnce({}, 500);
+    await expect(readLabelPhotoWithAi(PHOTO)).rejects.toThrow('API error 500');
   });
 });

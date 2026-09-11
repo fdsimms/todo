@@ -74,6 +74,8 @@ export function SettingsScreen() {
     if (settings.postponeCheckEnabled) on.add('postponeCheck');
     if (settings.focusLongRestEvery !== null) on.add('focusLongRestEvery');
     if (settings.focusShieldEnabled) on.add('focusShield');
+    if (settings.penaltyShieldEnabled) on.add('penaltyShield');
+    if (settings.gateShieldEnabled) on.add('gateShield');
     if (settings.vacationMode) on.add('vacationMode');
     if (settings.dailyAgendaEnabled) on.add('dailyAgenda');
     // Both null is how quiet hours are off; the screen's own toggle is derived
@@ -82,6 +84,8 @@ export function SettingsScreen() {
     if (settings.appLockEnabled) on.add('appLock');
     if (settings.productLookupEnabled) on.add('productLookupEnabled');
     if (settings.cookRecapEnabled) on.add('cookRecapEnabled');
+    if (settings.mealLogPrompt) on.add('mealLogPrompt');
+    if (settings.onDeviceAiEnabled) on.add('onDeviceAiEnabled');
     // Through the same rule the rows themselves use, so a generator whose read
     // is switched off takes its "File them under" row out of search too.
     for (const spec of GENERATED_KIND_LIST) {
@@ -114,6 +118,7 @@ export function SettingsScreen() {
       leftoverUseUpTasks: settings.leftoverUseUpTasks,
       mealPlanNudgeEnabled: settings.mealPlanNudgeEnabled,
       mealShortfallTasks: settings.mealShortfallTasks,
+      mealLogNudgeTasks: settings.mealLogNudgeTasks,
       projectReviewTasks: settings.projectReviewTasks,
       supplyReorderTasks: settings.supplyReorderTasks,
       calendarReviewTasks: settings.calendarReviewTasks,
@@ -126,6 +131,7 @@ export function SettingsScreen() {
       moodLogTasks: settings.moodLogTasks,
       moodNudgeTasks: settings.moodNudgeTasks,
       weekendNudgeTasks: settings.weekendNudgeTasks,
+      weighInTasks: settings.weighInTasks,
     }, settings.kitchenEnabled),
     [settings]
   );

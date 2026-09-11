@@ -1,9 +1,13 @@
 import {
   MOOD_LEVELS,
   LOW_MOOD_AT_OR_BELOW,
+  contextTagKey,
+  contextTagVocabulary,
+  dayContextTags,
   dayMoodAverage,
   daySymptoms,
   hasLogOnDay,
+  hasLoggedSince,
   logsOnDay,
   moodEmoji,
   moodLabel,
@@ -11,7 +15,9 @@ import {
   severityLabel,
   symptomKey,
   symptomVocabulary,
+  withContextTag,
   withSymptom,
+  withoutContextTag,
   withoutSymptom,
 } from '../utils/moodLog';
 import type { MoodLevel, MoodLog } from '../types';
@@ -23,6 +29,7 @@ function log(over: Partial<MoodLog> = {}): MoodLog {
     dayKey: over.dayKey ?? '2026-08-17',
     mood: over.mood === undefined ? 3 : over.mood,
     symptoms: over.symptoms ?? [],
+    contextTags: over.contextTags ?? [],
     note: over.note ?? null,
   };
 }
@@ -104,6 +111,45 @@ describe('the vocabulary', () => {
   });
 });
 
+describe('building a context tag set', () => {
+  it('shares its matching rule with symptoms', () => {
+    expect(contextTagKey('  Vacation ')).toBe('vacation');
+    expect(contextTagKey('VACATION')).toBe(contextTagKey('vacation'));
+  });
+
+  it('adds one', () => {
+    expect(withContextTag([], 'Vacation')).toEqual(['Vacation']);
+  });
+
+  it('does not duplicate a tag that is already there, matching case-insensitively', () => {
+    const once = withContextTag([], 'Vacation');
+    expect(withContextTag(once, 'vacation')).toEqual(['Vacation']);
+  });
+
+  it('refuses a blank', () => {
+    expect(withContextTag([], '   ')).toEqual([]);
+  });
+
+  it('removes one, matching case-insensitively', () => {
+    const set = withContextTag([], 'Vacation');
+    expect(withoutContextTag(set, 'VACATION')).toEqual([]);
+  });
+});
+
+describe('the context tag vocabulary', () => {
+  it('is derived from the entries, most-used first', () => {
+    const logs = [
+      log({ id: 'a', contextTags: ['Vacation'] }),
+      log({ id: 'b', contextTags: ['vacation', 'Travel'] }),
+    ];
+    expect(contextTagVocabulary(logs)).toEqual(['Vacation', 'Travel']);
+  });
+
+  it('drops a tag by itself once it stops being logged', () => {
+    expect(contextTagVocabulary([log({ contextTags: [] })])).toEqual([]);
+  });
+});
+
 describe('reading a day', () => {
   const logs = [
     log({ id: 'b', loggedAt: '2026-08-17T20:00:00.000Z', mood: 2 }),
@@ -138,12 +184,42 @@ describe('reading a day', () => {
     ];
     expect(daySymptoms(day, '2026-08-17')).toEqual([{ name: 'headache', severity: 3 }]);
   });
+
+  it('de-duplicates a day\'s context tags, keeping the first spelling seen', () => {
+    const day = [
+      log({ id: 'a', contextTags: ['Vacation'] }),
+      log({ id: 'b', contextTags: ['vacation', 'Travel'] }),
+    ];
+    expect(dayContextTags(day, '2026-08-17')).toEqual(['Travel', 'Vacation']);
+  });
+});
+
+describe('logging since an instant', () => {
+  it('answers the narrower "was this slot logged" question a day full of entries needs', () => {
+    const entries = [log({ id: 'a', loggedAt: '2026-08-17T08:00:00.000Z' })];
+    // A morning entry doesn't answer for an evening slot that starts later.
+    expect(hasLoggedSince(entries, '2026-08-17T18:00:00.000Z')).toBe(false);
+    expect(hasLoggedSince(entries, '2026-08-17T06:00:00.000Z')).toBe(true);
+  });
+
+  it('counts an entry made exactly at the threshold', () => {
+    const entries = [log({ id: 'a', loggedAt: '2026-08-17T18:00:00.000Z' })];
+    expect(hasLoggedSince(entries, '2026-08-17T18:00:00.000Z')).toBe(true);
+  });
 });
 
 describe('an entry summary', () => {
   it('leads with the mood, then names the symptoms', () => {
     expect(moodLogSummary(log({ mood: 4, symptoms: [{ name: 'Headache', severity: 1 }] })))
       .toBe('🙂 Good · Headache');
+  });
+
+  it('names the context tags after the symptoms', () => {
+    expect(moodLogSummary(log({
+      mood: 4,
+      symptoms: [{ name: 'Headache', severity: 1 }],
+      contextTags: ['Vacation'],
+    }))).toBe('🙂 Good · Headache · Vacation');
   });
 
   it('falls back to the note for an entry that is only a note', () => {

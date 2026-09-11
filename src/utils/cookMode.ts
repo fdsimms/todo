@@ -31,6 +31,16 @@ export interface CookStep {
    * split it guessed at must not read as the recipe's own numbering.
    */
   fromNotes: boolean;
+  /**
+   * The note kept on this step, or null when it has none.
+   *
+   * Always null for a step derived from `notes`: that step has no row to hold
+   * one, for the same reason its `id` is synthesized, and a note kept against a
+   * split the app guessed at would be filed under whatever the next split
+   * produced. Cook mode offers to keep an answer only where there's a step to
+   * keep it on.
+   */
+  note: string | null;
 }
 
 /**
@@ -116,7 +126,14 @@ export function cookSteps(
   for (const dish of cookedDishes(recipe, recipesById, resolution)) {
     if (dish.recipe.steps.length > 0) {
       for (const step of dish.recipe.steps) {
-        out.push({ id: step.id, text: step.text, recipe: dish.recipe, whole: dish.whole, fromNotes: false });
+        out.push({
+          id: step.id,
+          text: step.text,
+          recipe: dish.recipe,
+          whole: dish.whole,
+          fromNotes: false,
+          note: step.note ?? null,
+        });
       }
       continue;
     }
@@ -127,6 +144,7 @@ export function cookSteps(
         recipe: dish.recipe,
         whole: dish.whole,
         fromNotes: true,
+        note: null,
       });
     });
   }

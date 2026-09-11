@@ -1,0 +1,4 @@
+{
+  "message": "A template can now say its two dates are days away from home. A run of one asks for Leaving and Coming back instead of a start and end date, and the project it creates keeps them as its away dates rather than reading your return as a deadline. Applying a template into a trip you already have fills those dates in for you.",
+  "date": "2026-09-05"
+}

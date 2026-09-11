@@ -69,6 +69,23 @@ export const SYNC_TRACKED_TABLES: readonly SyncTable[] = [
   // Ids are base36 from generateId(), and an entry is written once and rarely
   // edited, so last-writer-wins is a no-op on almost every row.
   { name: 'mood_logs', key: ['id'] },
+  // Milestones — dated markers read as a before/after split against the mood
+  // log. Same reasoning as mood_logs: they have to travel or that split reads
+  // differently on each phone, and a milestone is written once and rarely
+  // edited, so last-writer-wins is a no-op on almost every row.
+  { name: 'milestones', key: ['id'] },
+  // The medication log. Same health-record argument as mood_logs, with one
+  // extra edge: a phone that only has half the doses answers "how often did I
+  // reach for it" with a number that is simply too low, and nothing about that
+  // number looks wrong. A dose is written once and edited rarely, so
+  // last-writer-wins is a no-op on almost every row.
+  { name: 'medication_logs', key: ['id'] },
+  // The food log. It has to travel for the reason mood entries do, and the
+  // reading it prevents is starker: a day's totals computed off whichever half
+  // of the record happens to be on the phone in your hand. An entry is written
+  // once and edited rarely, and its nutrition is a snapshot nothing recomputes,
+  // so last-writer-wins is a no-op on almost every row.
+  { name: 'food_logs', key: ['id'] },
   { name: 'person_groups', key: ['id'] },
   { name: 'categories', key: ['id'] },
   { name: 'project_categories', key: ['id'] },
@@ -214,6 +231,7 @@ export const SYNCED_SETTING_KEYS: readonly string[] = [
   // Automatic tasks. Per-generator, matching the settings keys themselves
   // (see the note on GeneratedTasksSection — these were never merged).
   'mealCookTasks',
+  'mealLogPrompt',
   'mealCookTaskCategory',
   'groceryUseUpTasks',
   'groceryUseUpTaskCategory',
@@ -244,6 +262,10 @@ export const SYNCED_SETTING_KEYS: readonly string[] = [
   'vacationMode',
   'vacationStart',
   'vacationEnd',
+  // Which trip switched it on, so a peer doesn't read a mode it can see as one
+  // nobody owns and turn it off. Rides with the three above for the same
+  // reason: it is a statement about the person, not the device.
+  'vacationDrivenBy',
 ];
 
 /**
@@ -260,7 +282,7 @@ export const SYNCED_SETTING_KEYS: readonly string[] = [
  *   notification schedules. Shared, both devices would fire the same
  *   notification and every reminder would arrive twice.
  * - `calendarIds`, `calendarReadEnabled`, `calendarPeopleHistory`,
- *   `deadlineCalendarId`, `mealCalendarId`, `remindersImport*`,
+ *   `deadlineCalendarId`, `completionCalendarId`, `mealCalendarId`, `remindersImport*`,
  *   `groceryImport*` — identifiers for calendars and lists that exist on one
  *   device. Wrong, not just useless, on the other. `calendarPeopleHistory`
  *   is a preference rather than an id, but it refines `calendarReadEnabled`
@@ -271,6 +293,9 @@ export const SYNCED_SETTING_KEYS: readonly string[] = [
  *   other phone would read it as answers about events it has never seen.
  * - `aiFeatureConfig` — the API key it depends on is device-local by design,
  *   so syncing the config turns features on for a device that cannot run them.
+ * - `activeListDrivenBy` — a pointer into `grocery_active_list`, so it is per
+ *   device for that key's reason. Synced, it would have one phone switching
+ *   another one's list back at the end of a trip.
  * - `grocery_active_list`, `grocery_group_by` — which shopping list one device
  *   is showing and how it groups the rows. The lists themselves sync
  *   (`grocery_lists`); which of them you are *looking at* is the same kind of

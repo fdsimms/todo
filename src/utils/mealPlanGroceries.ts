@@ -89,6 +89,13 @@ export interface PlannedIngredient {
    * untouched by a field most of them have nothing to say about.
    */
   optional?: boolean;
+  /**
+   * `RecipeIngredient.excludeFromNutrition`, carried through so `weekNutrition`
+   * (recipeNutrition.ts) can skip it the same way a single recipe's own
+   * reading does. Same write-only-when-true convention as `optional` above,
+   * for the same reason.
+   */
+  excludeFromNutrition?: boolean;
 }
 
 /**
@@ -152,6 +159,7 @@ export function collectPlannedIngredients(
         recipeTitle: flat.recipe.name,
         swappedFrom: flat.swappedFrom ?? null,
         ...(flat.ingredient.optional ? { optional: true } : {}),
+        ...(flat.ingredient.excludeFromNutrition ? { excludeFromNutrition: true } : {}),
       });
     }
   }

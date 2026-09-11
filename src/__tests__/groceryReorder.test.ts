@@ -11,6 +11,7 @@ import type { GroceryItem } from '../types';
 let seq = 0;
 function makeItem(name: string, overrides: Partial<GroceryItem> = {}): GroceryItem {
   return {
+    nameFromScan: false,
     id: `id-${++seq}`,
     name,
     nameKey: groceryNameKey(name),
@@ -43,7 +44,7 @@ function makeItem(name: string, overrides: Partial<GroceryItem> = {}): GroceryIt
     usedUpCount: 0,
     spoiledCount: 0,
     lastSpoiledAt: null,
-    varietyOfKey: null, backfillDismissedFields: [],
+    varietyOfKey: null, nutrition: null, backfillDismissedFields: [],
     lastPriceMinor: null,
     lastPricedAt: null,
     lastPriceQuantity: null, priceHistory: [],

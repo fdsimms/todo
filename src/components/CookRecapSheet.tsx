@@ -1,5 +1,5 @@
 import React, { useEffect, useMemo, useRef, useState } from 'react';
-import { Modal, View, Text, TouchableOpacity, ScrollView, Animated, StyleSheet, useWindowDimensions } from 'react-native';
+import { Modal, View, Text, TextInput, TouchableOpacity, ScrollView, Animated, StyleSheet, useWindowDimensions } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import Ionicons from '@expo/vector-icons/Ionicons';
 import { useShallow } from 'zustand/react/shallow';
@@ -23,6 +23,7 @@ import { useSettingsStore } from '../store/useSettingsStore';
 import { convertQuantity } from '../utils/unitConvert';
 import type { ClassifiedIngredient } from '../utils/mealPlanGroceries';
 import { RECIPE_VOTE_LABELS, type RecipeVote } from '../types';
+import { NumberPadAccessory, NUMBER_PAD_ACCESSORY_ID } from './NumberPadAccessory';
 import { SheetHeaderButton } from './SheetHeaderButton';
 import { SegmentedControl, type SegmentOption } from './SegmentedControl';
 import { InlineAction } from './InlineAction';
@@ -54,6 +55,17 @@ interface Props {
   vote?: { value: RecipeVote | null; onChange: (vote: RecipeVote) => void };
   /** The fridge section, or null when this meal has nothing to put in one. */
   onLogLeftovers?: () => void;
+  /**
+   * The weigh-the-dish section, or null when there is nothing to ask — a meal
+   * with no recipe to remember it on, one whose weight is already recorded, or
+   * a dish whose figures the nutrition rollup declined, where a weight would
+   * scale nothing.
+   *
+   * `onSet` takes what this cooking weighed on the scale, scale and all: the
+   * host divides by the meal's own `recipeScale` before storing it on the
+   * recipe, since a doubled batch weighs twice what the recipe makes.
+   */
+  cookedWeight?: { onSet: (weighedGrams: number) => void };
   /**
    * What the app is currently claiming you had before this cooking
    * (`consumedRows`), recomputed live by the host. Empty leaves the ticking
@@ -100,6 +112,11 @@ interface Props {
  *
  * Three rules hold it to that:
  *
+ * - **The weight question is asked here because here is where the scale is.**
+ *   Weighing the finished dish is what makes logging a plate of it accurate
+ *   (see `Recipe.cookedWeightG`), and the only moment it can be done is while
+ *   the pan is still out. It is asked once per recipe — the answer is a fact
+ *   about the dish, so the section is gone the next time it is cooked.
  * - **Every section is gated on its own subject**, so this is only ever as long
  *   as the cooking earned. A repeat cook of a rated dish with a full pantry is
  *   one row: the fridge question. `CookRecap` declines to open it at all when
@@ -136,6 +153,7 @@ export function CookRecapSheet({
   title,
   vote,
   onLogLeftovers,
+  cookedWeight,
   rows,
   restockRows,
   onClose,
@@ -187,6 +205,7 @@ export function CookRecapSheet({
   const hideHelpText = useSettingsStore(s => s.hideHelpText);
 
   const [ticked, setTicked] = useState<Set<string>>(new Set());
+  const [weightText, setWeightText] = useState('');
   // Which restock rows are queued to add — unlike `ticked` above, this starts
   // *full*, not empty (see the class doc's note on that).
   const [restockTicked, setRestockTicked] = useState<Set<string>>(new Set());
@@ -196,6 +215,7 @@ export function CookRecapSheet({
   useEffect(() => {
     if (visible) {
       setTicked(new Set());
+      setWeightText('');
       setRestockTicked(new Set(restockRows.map(r => r.nameKey)));
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
@@ -250,7 +270,25 @@ export function CookRecapSheet({
     return marked;
   };
 
+  /**
+   * Writes the typed weight, if there is one to write.
+   *
+   * Committed on leaving the field and again on Done, rather than on every
+   * keystroke: a half-typed "14" of "1450" is a real number and storing it
+   * would be storing a dish a tenth of its size. Nothing is written for an
+   * empty field, which is what skipping the question looks like.
+   */
+  const commitWeight = () => {
+    if (!cookedWeight) return;
+    const grams = Number(weightText.trim().replace(',', '.'));
+    if (!Number.isFinite(grams) || grams <= 0) return;
+    cookedWeight.onSet(grams);
+    setWeightText('');
+    haptics.success();
+  };
+
   const handleDone = () => {
+    commitWeight();
     commitTicks();
     dismiss();
   };
@@ -283,6 +321,7 @@ export function CookRecapSheet({
 
   return (
     <Modal visible={visible} animationType="none" transparent onRequestClose={dismiss}>
+      <NumberPadAccessory />
       <Animated.View style={[StyleSheet.absoluteFill, { opacity: backdropOpacity }]} pointerEvents="none">
         <SafeBlurView intensity={isDark ? 20 : 15} tint="dark" style={StyleSheet.absoluteFill} />
         <View style={[StyleSheet.absoluteFill, styles.backdropDim]} />
@@ -299,7 +338,7 @@ export function CookRecapSheet({
         >
           <View style={styles.header}>
             <SheetHeaderButton label="Skip" role="cancel" onPress={dismiss} minWidth={80} />
-            <Text style={styles.headerTitle} numberOfLines={1}>Cooked it</Text>
+            <Text style={styles.headerTitle} numberOfLines={1}>Meal eaten</Text>
             <SheetHeaderButton
               label={ticked.size > 0 ? `Mark ${ticked.size}` : 'Done'}
               onPress={handleDone}
@@ -339,6 +378,36 @@ export function CookRecapSheet({
                     <View style={styles.choiceButtons}>
                       <InlineAction label="Log" onPress={onLogLeftovers} accessibilityLabel="Log leftovers" />
                     </View>
+                  </View>
+                </View>
+              </>
+            )}
+
+            {cookedWeight && (
+              <>
+                <Text style={styles.groupLabel}>Cooked weight</Text>
+                {!hideHelpText && (
+                  <Text style={styles.hint}>
+                    Weigh the finished dish, pan and all subtracted, and logging a plate of it later works
+                    out from what your plate weighs instead of from servings.
+                  </Text>
+                )}
+                <View style={styles.card}>
+                  <View style={styles.weightRow}>
+                    <Ionicons name="scale-outline" size={18} color={colors.textSecondary} />
+                    <TextInput
+                      style={styles.weightInput}
+                      value={weightText}
+                      onChangeText={setWeightText}
+                      onBlur={commitWeight}
+                      keyboardType="decimal-pad"
+                      inputAccessoryViewID={NUMBER_PAD_ACCESSORY_ID}
+                      placeholder="e.g. 1450"
+                      placeholderTextColor={colors.textTertiary}
+                      maxLength={6}
+                      accessibilityLabel="Weight of the finished dish in grams"
+                    />
+                    <Text style={styles.weightUnit}>g</Text>
                   </View>
                 </View>
               </>
@@ -592,6 +661,16 @@ const makeStyles = (colors: Colors, sheetMaxHeight: number) => StyleSheet.create
     paddingVertical: 13,
   },
   choiceLabel: { flexGrow: 1, flexShrink: 0, color: colors.text, fontSize: font.md },
+  // The same row geometry as choiceRow above, with a field where its label is.
+  weightRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: spacing.md,
+    paddingHorizontal: spacing.md,
+    paddingVertical: spacing.xs,
+  },
+  weightInput: { flex: 1, color: colors.text, fontSize: font.md, paddingVertical: spacing.sm },
+  weightUnit: { color: colors.textSecondary, fontSize: font.sm },
   choiceButtons: { flexDirection: 'row', alignItems: 'center', gap: spacing.sm },
   // Both margins, not just the one above: nothing below this has a top margin
   // of its own, and the section that follows would otherwise sit against it.

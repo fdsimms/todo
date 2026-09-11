@@ -7,6 +7,7 @@ import {
   StyleSheet,
 } from 'react-native';
 import Ionicons from '@expo/vector-icons/Ionicons';
+import { useNavigation } from '@react-navigation/native';
 import { useShallow } from 'zustand/react/shallow';
 import type { RecipeIngredient } from '../types';
 import {
@@ -74,14 +75,24 @@ interface Props {
 export function RecipeIngredientSheet({ visible, recipeId, ingredient, onClose }: Props) {
   const colors = useColors();
   const styles = useMemo(() => makeStyles(colors), [colors]);
+  const navigation = useNavigation<any>();
 
   const updateIngredient = useRecipeStore(s => s.updateIngredient);
   const splitIngredientAlternatives = useRecipeStore(s => s.splitIngredientAlternatives);
   const mergeChoiceGroup = useRecipeStore(s => s.mergeChoiceGroup);
   const renameChoiceGroup = useRecipeStore(s => s.renameChoiceGroup);
+  const setComponentChoiceGroup = useRecipeStore(s => s.setComponentChoiceGroup);
   const recipeIngredients = useRecipeStore(
     useShallow(s => s.recipes.find(r => r.id === recipeId)?.ingredients ?? [])
   );
+  // The recipe's own components, so "Alternatives" can offer joining one —
+  // see the cross-type choice groups note in recipeComponents.ts. Resolved
+  // against the live library rather than each link's captured name, same as
+  // every other component row in the app.
+  const recipeComponents = useRecipeStore(
+    useShallow(s => s.recipes.find(r => r.id === recipeId)?.components ?? [])
+  );
+  const allRecipes = useRecipeStore(useShallow(s => s.recipes));
   const recipeEmptySections = useRecipeStore(
     useShallow(s => s.recipes.find(r => r.id === recipeId)?.emptySections ?? [])
   );
@@ -120,6 +131,9 @@ export function RecipeIngredientSheet({ visible, recipeId, ingredient, onClose }
   // A garnish or serving suggestion rather than something the dish needs
   // (RecipeIngredient.optional).
   const [optional, setOptional] = useState(false);
+  // Left out of this recipe's nutrition total on purpose — a garnish or a
+  // small amount that doesn't move the figures (RecipeIngredient.excludeFromNutrition).
+  const [excludeFromNutrition, setExcludeFromNutrition] = useState(false);
   // Nested rather than a sibling: a Modal presents from its React parent's view
   // controller, so a sibling would ask this sheet's own presenter for a second
   // presentation while this one is up. Same call GroceryCatalogSheet makes, and it's
@@ -145,6 +159,7 @@ export function RecipeIngredientSheet({ visible, recipeId, ingredient, onClose }
     setAisle(ingredient.aisle);
     setNoSwap(!!ingredient.noSwap);
     setOptional(!!ingredient.optional);
+    setExcludeFromNutrition(!!ingredient.excludeFromNutrition);
     setEditingItemId(null);
     setLinkOpen(false);
     setAltLinkOpen(false);
@@ -225,6 +240,7 @@ export function RecipeIngredientSheet({ visible, recipeId, ingredient, onClose }
       aisle,
       noSwap,
       optional,
+      excludeFromNutrition,
     });
     onClose();
   };
@@ -268,6 +284,28 @@ export function RecipeIngredientSheet({ visible, recipeId, ingredient, onClose }
   const acceptVariety = () => {
     if (!varietyOffer) return;
     setVarietyOfKey(varietyOffer.id, groceryNameKey(name));
+    haptics.success();
+    animateLayout();
+  };
+
+  // "neutral oil, such as avocado oil" parses "avocado oil" out as an example
+  // of the generic name (RecipeIngredient.example, see splitExample /
+  // makeIngredient), and this is the same declare-a-variety offer
+  // `varietyOffer` above makes from a catalog-name collision, just sourced
+  // from the recipe's own wording instead. Only while the example's own item
+  // — if it exists yet — hasn't already declared something; an item with an
+  // opinion isn't offered a second one, same rule varietyOfferFor follows.
+  const exampleKey = ingredient.example ? groceryNameKey(ingredient.example) : null;
+  const exampleItem = exampleKey ? catalogItemForKey(exampleKey, groceryItems) : null;
+  const exampleOffer = ingredient.example && !exampleItem?.varietyOfKey
+    ? ingredient.example
+    : null;
+
+  const acceptExample = () => {
+    if (!exampleOffer) return;
+    const created = ensureCatalogItem(exampleOffer);
+    if (!created) { haptics.error(); return; }
+    setVarietyOfKey(created.id, groceryNameKey(name));
     haptics.success();
     animateLayout();
   };
@@ -405,6 +443,10 @@ export function RecipeIngredientSheet({ visible, recipeId, ingredient, onClose }
           placeholderTextColor={colors.textTertiary}
           maxLength={GROCERY_NAME_MAX_LENGTH}
           autoCapitalize="none"
+          // An ingredient is a shelf word and bridges to the catalog by name
+          // key, so a correction here strands the match — see GroceryRow.
+          autoCorrect={false}
+          spellCheck={false}
           accessibilityLabel="Ingredient name"
         />
         {!!alternatives && (
@@ -464,6 +506,29 @@ export function RecipeIngredientSheet({ visible, recipeId, ingredient, onClose }
               </Text>
               <Text style={styles.suggestionDetail}>
                 Keeps this line as written, and any {name.trim().toLowerCase()} you have counts for it.
+              </Text>
+            </View>
+          </TouchableOpacity>
+        )}
+        {!!exampleOffer && (
+          <TouchableOpacity
+            style={styles.suggestionRow}
+            activeOpacity={interaction.activeOpacity}
+            onPress={acceptExample}
+            accessibilityRole="button"
+            accessibilityLabel={
+              `Record that ${exampleOffer} is a kind of ${name.trim().toLowerCase()}, `
+              + 'adding it to your groceries if it isn’t there yet'
+            }
+          >
+            <Ionicons name="git-branch-outline" size={iconSize.sm} color={colors.accent} />
+            <View style={styles.suggestionBody}>
+              <Text style={styles.suggestionTitle}>
+                Is “{exampleOffer}” a kind of {name.trim().toLowerCase()}?
+              </Text>
+              <Text style={styles.suggestionDetail}>
+                From “such as {exampleOffer}” on this line. Adds it to your groceries if it isn’t
+                there yet, and any {exampleOffer.toLowerCase()} you have will count for this.
               </Text>
             </View>
           </TouchableOpacity>
@@ -560,8 +625,32 @@ export function RecipeIngredientSheet({ visible, recipeId, ingredient, onClose }
             <Text style={styles.toggleLabel}>Optional</Text>
             <Text style={styles.hint}>
               A garnish or serving suggestion rather than something the dish needs. Starts
-              unchecked when this recipe's ingredients go on your list — still there to check
-              off by hand.
+              unchecked when this recipe's ingredients go on your list, but still there to
+              check off by hand.
+            </Text>
+          </View>
+        </TouchableOpacity>
+
+        <View style={styles.separator} />
+
+        <TouchableOpacity
+          style={styles.toggleRow}
+          activeOpacity={interaction.activeOpacity}
+          onPress={() => { haptics.tap(); setExcludeFromNutrition(v => !v); }}
+          accessibilityRole="switch"
+          accessibilityState={{ checked: excludeFromNutrition }}
+          accessibilityLabel="Don't count toward nutrition"
+        >
+          <Ionicons
+            name={excludeFromNutrition ? 'checkbox' : 'square-outline'}
+            size={iconSize.md}
+            color={excludeFromNutrition ? colors.accent : colors.textSecondary}
+          />
+          <View style={styles.toggleBody}>
+            <Text style={styles.toggleLabel}>Don't count toward nutrition</Text>
+            <Text style={styles.hint}>
+              Leaves this line out of the recipe's nutrition total. For an amount too small
+              to matter, like a garnish.
             </Text>
           </View>
         </TouchableOpacity>
@@ -688,6 +777,34 @@ export function RecipeIngredientSheet({ visible, recipeId, ingredient, onClose }
                   },
                 };
               }),
+            // A recipe used as a component is a real alternative too — "corn
+            // tortillas, or make Tortillas de Maíz instead" — not just another
+            // ingredient. Joining one here writes the shared choiceGroup on
+            // both sides the same way joining a sibling ingredient does; see
+            // the cross-type groups note in recipeComponents.ts.
+            ...recipeComponents.map(component => {
+              const inGroup = !!groupLabel && component.choiceGroup === groupLabel;
+              const componentName =
+                allRecipes.find(r => r.id === component.recipeId)?.name || component.name || 'Deleted recipe';
+              return {
+                key: component.id,
+                label: componentName,
+                selected: inGroup,
+                onPress: () => {
+                  haptics.tap();
+                  if (inGroup) {
+                    setComponentChoiceGroup(recipeId, component.id, null);
+                    return;
+                  }
+                  const label = cleanChoiceGroup(
+                    groupLabel || component.choiceGroup || name.trim() || ingredient.name
+                  );
+                  if (!label) return;
+                  setComponentChoiceGroup(recipeId, component.id, label);
+                  applyChoiceGroup(label);
+                },
+              };
+            }),
           ]}
         />
         {/* The catalog half of the same question, and deliberately the same
@@ -867,6 +984,12 @@ export function RecipeIngredientSheet({ visible, recipeId, ingredient, onClose }
         visible={editingItemId !== null}
         itemId={editingItemId}
         onClose={() => setEditingItemId(null)}
+        onOpenRecipe={openRecipeId => {
+          setEditingItemId(null);
+          onClose();
+          navigation.navigate('RecipeDetail', { recipeId: openRecipeId });
+        }}
+        recipeExists={openRecipeId => allRecipes.some(r => r.id === openRecipeId)}
       />
     </EditorSheet>
   );

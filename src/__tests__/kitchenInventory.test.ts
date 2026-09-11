@@ -38,6 +38,7 @@ function makeItem(overrides: Partial<GroceryItem> & { name: string }): GroceryIt
   const name = overrides.name;
   seq += 1;
   return {
+    nameFromScan: false,
     id: `gi-${seq}`,
     nameKey: groceryNameKey(name),
     preferredProductId: null,
@@ -69,7 +70,7 @@ function makeItem(overrides: Partial<GroceryItem> & { name: string }): GroceryIt
     usedUpCount: 0,
     spoiledCount: 0,
     lastSpoiledAt: null,
-    varietyOfKey: null, backfillDismissedFields: [],
+    varietyOfKey: null, nutrition: null, backfillDismissedFields: [],
     lastPriceMinor: null,
     lastPricedAt: null,
     lastPriceQuantity: null, priceHistory: [],
@@ -88,6 +89,7 @@ function makeLeftover(overrides: Partial<Leftover> & { title: string }): Leftove
     finishedAt: null,
     outcome: null,
     frozenAt: null,
+    weightG: null,
     createdAt: daysAgo(2),
     useUpTask: null,
     ...overrides,
@@ -356,6 +358,11 @@ describe('buildKitchenSections', () => {
   it('is empty rather than unfiltered when nothing matches', () => {
     expect(sectionsOf([marked('Rice', 'Pantry')], [], ['Pantry'], 'saffron')).toEqual([]);
   });
+
+  it('finds a two-word name typed in the other order', () => {
+    const sections = sectionsOf([marked('Peanut butter', 'Pantry')], [], ['Pantry'], 'butter peanut');
+    expect(sections.flatMap(s => s.data.map(e => e.title))).toEqual(['Peanut butter']);
+  });
 });
 
 describe('kitchenEntryId', () => {
@@ -561,6 +568,7 @@ describe('a box of its own', () => {
       variant: null,
       productKey: `k-${productSeq}`,
       rating: null,
+      nutrition: null,
       note: '',
       purchaseCount: 0,
       lastPurchasedAt: null,

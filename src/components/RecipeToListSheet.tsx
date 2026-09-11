@@ -33,6 +33,7 @@ import { alternativeCaptions, applyChoice, choiceGroupKey, recipeChoiceGroups } 
 import { normalizeScale } from '../utils/recipeScale';
 import { convertQuantity } from '../utils/unitConvert';
 import { RecipeScaleChips } from './RecipeScaleChips';
+import { RecipeChoiceChips } from './RecipeChoiceChips';
 import { SheetHeaderButton } from './SheetHeaderButton';
 import { InlineAction } from './InlineAction';
 import { EmptyState } from './EmptyState';
@@ -251,18 +252,28 @@ export function RecipeToListSheet({
   // recompute below — so the dirty check in handleCancel can tell a real tap
   // apart from the set simply being recomputed out from under it.
   const tickedBaselineRef = useRef<string>('');
+  // Which rows existed after the last recompute, so the effect below can tell
+  // a row that's brand new (never manually unticked, defaults on) from one
+  // that was already there (keep whatever the user left it at). Null means
+  // "sheet just opened" — everything starts ticked.
+  const knownRowKeysRef = useRef<Set<string> | null>(null);
 
   useEffect(() => {
     if (!visible) return;
     setChoices(initialChoices ? [...initialChoices] : []);
     setUndecided([]);
     setScale(normalizeScale(initialScale));
+    knownRowKeysRef.current = null;
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [visible]);
 
   // Re-ticks on a swapped alternative as well as on open: changing the side
   // changes which rows exist, and a row that has just appeared has never been
-  // unticked, so it belongs in the default selection.
+  // unticked, so it belongs in the default selection. A choice group only
+  // ever swaps rows in and out of *its own* alternative, so every row outside
+  // it is "already there" and must keep whatever the user left it at — this
+  // used to reset the whole set to its default on every choice, undoing an
+  // untick on a completely unrelated line.
   //
   // Not keyed on `scale`, deliberately: scaling changes the quantities on the
   // rows, never which rows there are, so a line the user just unticked must
@@ -275,9 +286,18 @@ export function RecipeToListSheet({
     // A garnish or serving suggestion (RecipeIngredient.optional) starts
     // unticked — it's still listed and one tap away, just not assumed.
     ).filter(r => !r.optional);
-    const defaultTicked = new Set(rows.map(r => r.nameKey));
-    setTicked(defaultTicked);
-    tickedBaselineRef.current = JSON.stringify([...defaultTicked].sort());
+    const rowKeys = new Set(rows.map(r => r.nameKey));
+    const knownBefore = knownRowKeysRef.current;
+    setTicked(prev => {
+      if (knownBefore === null) return rowKeys;
+      const next = new Set<string>();
+      for (const key of rowKeys) {
+        if (knownBefore.has(key) ? prev.has(key) : true) next.add(key);
+      }
+      return next;
+    });
+    knownRowKeysRef.current = rowKeys;
+    tickedBaselineRef.current = JSON.stringify([...rowKeys].sort());
     setExpandedSections(defaultExpandedSections());
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [visible, choiceKey, initialSelection]);
@@ -464,58 +484,39 @@ export function RecipeToListSheet({
               const key = choiceGroupKey(group.recipe.id, group.label);
               const open = undecided.includes(key);
               return (
-                <View key={key} style={styles.choiceGroup}>
-                  <Text style={styles.sectionLabel}>{group.label}</Text>
-                  <View style={styles.choiceChips}>
-                    {group.options.map(option => {
-                      const on = !open && option.id === group.active.id;
-                      const name = option.name || 'Deleted recipe';
-                      return (
-                        <TouchableOpacity
-                          key={option.id}
-                          style={[styles.choiceChip, on && styles.choiceChipOn]}
-                          activeOpacity={interaction.activeOpacity}
-                          onPress={() => {
-                            haptics.tap();
-                            setUndecided(prev => prev.filter(k => k !== key));
-                            setChoices(prev => applyChoice(prev, group, option.id));
-                          }}
-                          accessibilityRole="button"
-                          accessibilityState={{ selected: on }}
-                          accessibilityLabel={`${group.label}: ${name}`}
-                        >
-                          <Text style={[styles.choiceChipText, on && styles.choiceChipTextOn]}>{name}</Text>
-                        </TouchableOpacity>
-                      );
-                    })}
-                    {/* Ingredients only. A component group names a dish, and
-                        two dishes' worth of lines on the list is not something
-                        one tick at the shelf could ever take back off — see
-                        ChoiceResolution.undecided. */}
-                    {group.kind === 'ingredient' && (
-                      <TouchableOpacity
-                        style={[styles.choiceChip, open && styles.choiceChipOn]}
-                        activeOpacity={interaction.activeOpacity}
-                        onPress={() => {
-                          haptics.tap();
-                          setUndecided(prev => (open ? prev.filter(k => k !== key) : [...prev, key]));
-                        }}
-                        accessibilityRole="button"
-                        accessibilityState={{ selected: open }}
-                        accessibilityLabel={`${group.label}: put both on the list and decide at the store`}
-                      >
-                        <Text style={[styles.choiceChipText, open && styles.choiceChipTextOn]}>
-                          Decide at the store
-                        </Text>
-                      </TouchableOpacity>
-                    )}
-                  </View>
-                  {open && (
-                    <Text style={styles.choiceHint}>
-                      All {group.options.length} go on the list. Check off the one you get and the rest come off.
-                    </Text>
-                  )}
-                </View>
+                <RecipeChoiceChips
+                  key={key}
+                  group={group}
+                  activeOptionId={open ? null : group.active.id}
+                  onPick={optionId => {
+                    setUndecided(prev => prev.filter(k => k !== key));
+                    setChoices(prev => applyChoice(prev, group, optionId));
+                  }}
+                  hint={open
+                    ? `All ${group.options.length} go on the list. Check off the one you get and the rest come off.`
+                    : null}
+                  // Ingredients only. A component group names a dish, and two
+                  // dishes' worth of lines on the list is not something one
+                  // tick at the shelf could ever take back off — see
+                  // ChoiceResolution.undecided.
+                  extraChip={group.kind === 'ingredient' ? (
+                    <TouchableOpacity
+                      style={[styles.choiceChip, open && styles.choiceChipOn]}
+                      activeOpacity={interaction.activeOpacity}
+                      onPress={() => {
+                        haptics.tap();
+                        setUndecided(prev => (open ? prev.filter(k => k !== key) : [...prev, key]));
+                      }}
+                      accessibilityRole="button"
+                      accessibilityState={{ selected: open }}
+                      accessibilityLabel={`${group.label}: put both on the list and decide at the store`}
+                    >
+                      <Text style={[styles.choiceChipText, open && styles.choiceChipTextOn]}>
+                        Decide at the store
+                      </Text>
+                    </TouchableOpacity>
+                  ) : null}
+                />
               );
             })}
           </View>
@@ -578,7 +579,7 @@ export function RecipeToListSheet({
                               // apply and the row has no room to spare.
                               const subtitle = [
                                 row.reason ?? (row.sources.length > 1 ? row.sources.join(' · ') : null),
-                                row.optional ? 'Optional' : null,
+                                row.optional ? 'optional' : null,
                               ].filter(Boolean).join(' · ') || null;
                               // Its own line rather than folded into the
                               // subtitle: the subtitle says why the row is
@@ -778,8 +779,6 @@ const makeStyles = (colors: Colors) => StyleSheet.create({
     paddingTop: spacing.md,
     gap: spacing.xs,
   },
-  choiceGroup: { gap: spacing.xs },
-  choiceChips: { flexDirection: 'row', flexWrap: 'wrap', gap: spacing.xs },
   choiceChip: {
     // bgSecondary, not bgTertiary: this row sits directly on the sheet's own
     // `colors.bg` (see `root` below), and bgTertiary is only one step off it —
@@ -795,7 +794,6 @@ const makeStyles = (colors: Colors) => StyleSheet.create({
   choiceChipOn: { backgroundColor: colors.accentFill },
   choiceChipText: { color: colors.textSecondary, fontSize: font.sm },
   choiceChipTextOn: { color: colors.onAccent, fontWeight: fontWeight.medium },
-  choiceHint: { color: colors.textTertiary, fontSize: font.xs },
   section: { gap: spacing.xs },
   sectionHeaderRow: {
     flexDirection: 'row',
@@ -826,7 +824,6 @@ const makeStyles = (colors: Colors) => StyleSheet.create({
     textTransform: 'uppercase',
     paddingHorizontal: spacing.md,
     paddingTop: spacing.sm,
-    paddingBottom: spacing.xs,
   },
   card: {
     backgroundColor: colors.bgSecondary,

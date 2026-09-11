@@ -27,7 +27,7 @@ import { ListBulkBar } from '../components/ListBulkBar';
 import { CategoryPickerSheet } from '../components/CategoryPicker';
 import { useRowSelection } from '../hooks/useRowSelection';
 import { useColors } from '../theme/ThemeContext';
-import { spacing, font, fontWeight, radius, interaction, type Colors } from '../theme';
+import { spacing, font, fontWeight, radius, interaction, flattenOverlay, type Colors } from '../theme';
 import { haptics } from '../utils/haptics';
 import { animateLayout } from '../utils/layoutAnimation';
 import { groupRoster, isRelevantToGroupToday } from '../utils/visibilityUtils';
@@ -200,7 +200,7 @@ export function StacksScreen() {
         <EmptyState
           icon="layers-outline"
           title="No stacks yet"
-          subtitle="A stack is a label several separately-scheduled tasks hang off (a morning routine, a trip to pack for) so they show up together on Today"
+          subtitle="Group tasks that belong together, like a morning routine or a trip to pack for. Each one keeps its own schedule, but they show up together on Today."
           actionLabel="New stack"
           onAction={createStack}
           bottomOffset={tabBarHeight}
@@ -377,8 +377,11 @@ const makeStyles = (colors: Colors) => StyleSheet.create({
     paddingVertical: 12,
     gap: spacing.md,
   },
+  // Opaque, not a translucent tint directly: this can be applied the instant
+  // a swipe-select commits, while SwipeableRow's own panel is still open
+  // behind this row mid-close-animation — see the note on `flattenOverlay`.
   rowSelected: {
-    backgroundColor: colors.accent + '1A',
+    backgroundColor: flattenOverlay(colors.accent + '1A', colors.bgSecondary),
   },
   rowMain: {
     flex: 1,

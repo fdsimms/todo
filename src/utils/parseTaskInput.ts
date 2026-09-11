@@ -254,6 +254,9 @@ function matchRecurrenceCore(text: string, now: Date, segments: TimeOfDay[]): Pa
   }
 
   if (/^every weekdays?$/.test(text)) return recurrence('weekly', 1, [1, 2, 3, 4, 5], segments, now);
+  if (/^every weeknights?$/.test(text)) {
+    return recurrence('weekly', 1, [1, 2, 3, 4, 5], [DAY_PART_SEGMENT.night], now);
+  }
   if (/^every weekends?$/.test(text)) return recurrence('weekly', 1, [0, 6], segments, now);
 
   // Interval synonyms.
@@ -350,7 +353,8 @@ function extractStartingClause(text: string, now: Date): { date: Date; rest: str
 }
 
 /**
- * Peels a trailing "after completion" clause, mapping to recurrenceFromCompletion.
+ * Peels a trailing "after completion" (or "on completion") clause, mapping to
+ * recurrenceFromCompletion.
  *
  * Case-insensitive so it can be run against original-cased input as well as the
  * lowercased suffix the parser normally hands it — see
@@ -358,7 +362,7 @@ function extractStartingClause(text: string, now: Date): { date: Date; rest: str
  * of `rest` and would mis-slice if this only matched lowercase.
  */
 function extractFromCompletionClause(text: string): { rest: string } | null {
-  const m = text.match(/^(.*?)\s+after\s+(?:completion|completing|finishing|finished|it'?s?\s+done|i\s+(?:complete|finish)\s+it|done)$/i);
+  const m = text.match(/^(.*?)\s+(?:after|on)\s+(?:completion|completing|finishing|finished|it'?s?\s+done|i\s+(?:complete|finish)\s+it|done)$/i);
   return m ? { rest: m[1] } : null;
 }
 
@@ -1276,6 +1280,185 @@ export function findAmbiguousMention(
     }
   }
   return null;
+}
+
+/** One row of `getMentionSuggestions`' candidate list. */
+export interface MentionSuggestionCandidate {
+  id: string;
+  /** Full display name/label, shown on the suggestion pill. */
+  name: string;
+  /**
+   * What actually gets spliced into the title on selection — a person's
+   * nickname or first name, or a group's own first word when its name has
+   * more than one. Always a single word: the token grammar admits no spaces,
+   * same constraint `applyMentionOverrides`' doc comment explains for a
+   * two-word full name.
+   */
+  resolveKey: string;
+  isGroup?: boolean;
+  /** Set only when `isGroup` — every person the group expands into. */
+  memberIds?: string[];
+}
+
+/** A "@name" token still being typed, offered as a row of candidates. See `getMentionSuggestions`. */
+export interface MentionSuggestion {
+  start: number;
+  end: number;
+  token: string;
+  candidates: MentionSuggestionCandidate[];
+}
+
+/**
+ * A "@name" token still being typed, at the very end of the title, offered as
+ * a row of candidate suggestions before it's typed far enough to resolve on
+ * its own. `matchPersonMentions` needs a full name/nickname or a *unique*
+ * prefix of at least `MIN_PREFIX_LENGTH` characters to tint anything, so
+ * someone one letter into "@luke" gets no feedback at all today — the actual
+ * complaint this exists to answer, not a new way of resolving a mention.
+ *
+ * It only ever returns a token `matchPersonMentions` (and `findAmbiguousMention`)
+ * wouldn't already have an opinion about:
+ * - An exact name/nickname match, unique or ambiguous, is excluded outright —
+ *   the first is already live-tinted, the second is `findAmbiguousMention`'s
+ *   job, and the two tooltips must never compete for the same token.
+ * - A unique prefix `MIN_PREFIX_LENGTH` characters or longer is excluded too,
+ *   for the same reason: it's already resolved and tinted, so suggesting it
+ *   again would just be a second UI pointing at what the title already shows.
+ * - What's left is a short (1-2 character) prefix with at least one
+ *   candidate, resolved or not — exactly the window neither existing function
+ *   covers.
+ *
+ * Groups are only tried once no person answers to the prefix at all, the same
+ * fallback order `matchPersonMentions` uses — a group whose name happens to
+ * share a member's own first word must never shadow the person.
+ *
+ * Selecting a candidate always **rewrites** the token to its `resolveKey`, never
+ * records an override the way `findAmbiguousMention`'s pick does — nothing
+ * here is an exact-name collision that text alone can't spell, so there's no
+ * need for the override mechanism's workaround.
+ */
+export function getMentionSuggestions(
+  input: string,
+  people: PersonToken[],
+  groups: GroupMentionToken[] = []
+): MentionSuggestion | null {
+  let last: RegExpMatchArray | null = null;
+  for (const m of input.matchAll(PERSON_TOKEN_PATTERN)) last = m;
+  if (!last || last.index === undefined) return null;
+  const start = last.index;
+  const end = start + last[0].length;
+  if (end !== input.length) return null; // done growing — not what's being typed right now
+
+  const token = last[1].toLowerCase();
+  const { byName, toCandidates } = buildPersonNameIndex(people);
+
+  // An exact match, unique or ambiguous, is already spoken for above.
+  if (byName.has(token)) return null;
+
+  const prefixIds = new Set<string>();
+  for (const [key, ids] of byName) {
+    if (key.startsWith(token)) ids.forEach(id => prefixIds.add(id));
+  }
+  if (prefixIds.size === 1 && token.length >= MIN_PREFIX_LENGTH) return null; // matchPersonMentions already has this
+
+  if (prefixIds.size > 0) {
+    return {
+      start, end, token,
+      candidates: toCandidates(prefixIds).slice(0, 5).map(p => ({
+        id: p.id,
+        name: p.name,
+        resolveKey: p.nickname.trim() || p.name.trim().split(/\s+/)[0],
+      })),
+    };
+  }
+
+  if (groups.length === 0) return null;
+  const groupByName = buildGroupNameIndex(groups);
+  if (groupByName.has(token)) return null; // exact match already resolves live
+
+  const groupIds = new Set<string>();
+  for (const [key, ids] of groupByName) {
+    if (key.startsWith(token)) ids.forEach(id => groupIds.add(id));
+  }
+  if (groupIds.size === 0) return null;
+  if (groupIds.size === 1 && token.length >= MIN_PREFIX_LENGTH) return null;
+
+  const groupById = new Map(groups.map(g => [g.id, g]));
+  const candidates: MentionSuggestionCandidate[] = [...groupIds]
+    .map(id => groupById.get(id))
+    .filter((g): g is GroupMentionToken => g !== undefined)
+    .slice(0, 5)
+    .map(g => ({ id: g.id, name: g.name, resolveKey: g.name.trim().split(/\s+/)[0], isGroup: true, memberIds: g.memberIds }));
+  return { start, end, token, candidates };
+}
+
+/**
+ * `getMentionSuggestions`' counterpart for `TaskEditor`'s title field, which
+ * never resolves a fresh "@name" on its own at all — People is its own
+ * picker (docs/arch/people.md), so a mention only tints once `linkedIds`
+ * already covers it. That means the "already resolves, so stay quiet" exits
+ * in `getMentionSuggestions` are the wrong call here: a token that would be a
+ * unique, fully-typed match anywhere else is exactly the case with no
+ * feedback at all in this field otherwise, not a redundant one.
+ *
+ * So every prefix match against everyone **not already in `linkedIds`** is a
+ * candidate, any length, unique or not — the only thing excluded is a token
+ * that already names someone the task links (that one's tinted, and adding
+ * it again would double a mention already in `personIds`). Selecting a
+ * candidate both rewrites the token (same as `getMentionSuggestions`) and
+ * adds the person — or every member of a chosen group — to `personIds`; see
+ * the caller in `TaskEditor`.
+ */
+export function getEditorMentionSuggestions(
+  input: string,
+  people: PersonToken[],
+  linkedIds: readonly string[],
+  groups: GroupMentionToken[] = []
+): MentionSuggestion | null {
+  let last: RegExpMatchArray | null = null;
+  for (const m of input.matchAll(PERSON_TOKEN_PATTERN)) last = m;
+  if (!last || last.index === undefined) return null;
+  const start = last.index;
+  const end = start + last[0].length;
+  if (end !== input.length) return null; // done growing — not what's being typed right now
+
+  const token = last[1].toLowerCase();
+  const linked = new Set(linkedIds);
+  const { byName, toCandidates } = buildPersonNameIndex(people.filter(p => !linked.has(p.id)));
+
+  const prefixIds = new Set<string>();
+  for (const [key, ids] of byName) {
+    if (key.startsWith(token)) ids.forEach(id => prefixIds.add(id));
+  }
+  if (prefixIds.size > 0) {
+    return {
+      start, end, token,
+      candidates: toCandidates(prefixIds).slice(0, 5).map(p => ({
+        id: p.id,
+        name: p.name,
+        resolveKey: p.nickname.trim() || p.name.trim().split(/\s+/)[0],
+      })),
+    };
+  }
+
+  if (groups.length === 0) return null;
+  // A group every member of which is already linked has nothing left to add.
+  const groupCandidates = groups.filter(g => !g.memberIds.every(id => linked.has(id)));
+  if (groupCandidates.length === 0) return null;
+  const groupByName = buildGroupNameIndex(groupCandidates);
+  const groupIds = new Set<string>();
+  for (const [key, ids] of groupByName) {
+    if (key.startsWith(token)) ids.forEach(id => groupIds.add(id));
+  }
+  if (groupIds.size === 0) return null;
+
+  const groupById = new Map(groupCandidates.map(g => [g.id, g]));
+  const candidates: MentionSuggestionCandidate[] = [...groupIds]
+    .map(id => groupById.get(id))
+    .filter((g): g is GroupMentionToken => g !== undefined)
+    .slice(0, 5)
+    .map(g => ({ id: g.id, name: g.name, resolveKey: g.name.trim().split(/\s+/)[0], isGroup: true, memberIds: g.memberIds }));
+  return { start, end, token, candidates };
 }
 
 /**

@@ -8,14 +8,24 @@
 
 const mockRequestCamera = jest.fn();
 const mockRequestLibrary = jest.fn();
+const mockGetCamera = jest.fn();
+const mockGetLibrary = jest.fn();
 const mockLaunchCamera = jest.fn();
 const mockLaunchLibrary = jest.fn();
 
 jest.mock('expo-image-picker', () => ({
   requestCameraPermissionsAsync: (...args: unknown[]) => mockRequestCamera(...args),
   requestMediaLibraryPermissionsAsync: (...args: unknown[]) => mockRequestLibrary(...args),
+  getCameraPermissionsAsync: (...args: unknown[]) => mockGetCamera(...args),
+  getMediaLibraryPermissionsAsync: (...args: unknown[]) => mockGetLibrary(...args),
   launchCameraAsync: (...args: unknown[]) => mockLaunchCamera(...args),
   launchImageLibraryAsync: (...args: unknown[]) => mockLaunchLibrary(...args),
+}));
+
+const mockGetImage = jest.fn();
+
+jest.mock('expo-clipboard', () => ({
+  getImageAsync: (...args: unknown[]) => mockGetImage(...args),
 }));
 
 const mockResize = jest.fn();
@@ -77,7 +87,7 @@ jest.mock('expo-file-system', () => {
       this.exists = mockDirExists;
       this.create = () => mockDirCreate(this.uri);
     },
-    Paths: { document: { uri: 'file:///documents' } },
+    Paths: { document: { uri: 'file:///documents' }, cache: { uri: 'file:///cache' } },
     EncodingType: { UTF8: 'utf8', Base64: 'base64' },
   };
 });
@@ -91,6 +101,10 @@ import {
   resolveRecipeImagePath,
   readRecipeImageBase64,
   writeRecipeImageFile,
+  getCameraPermission,
+  requestCameraPermission,
+  getPhotoLibraryPermission,
+  requestPhotoLibraryPermission,
   MAX_PHOTO_EDGE,
   MAX_IMAGE_EDGE,
 } from '../utils/recipePhoto';
@@ -114,6 +128,11 @@ function stubPipeline(saved: { base64?: string | null; uri?: string; width?: num
 
 beforeEach(() => {
   jest.clearAllMocks();
+  // clearAllMocks only clears calls/results, not an implementation set with
+  // mockImplementation — mockDelete's own override is harmless (discardTempPhoto
+  // swallows it), but a test that throws through mockMove leaves every later
+  // test's move() throwing too unless it's reset back to a no-op here.
+  mockMove.mockReset();
   mockFileExists = true;
   mockDirExists = false;
 });
@@ -269,6 +288,58 @@ describe('pickRecipePhoto', () => {
   });
 });
 
+describe('pickRecipePhoto clipboard paste', () => {
+  it('reports a failure without touching any permission when nothing is copied', async () => {
+    mockGetImage.mockResolvedValue(null);
+
+    await expect(pickRecipePhoto('clipboard')).resolves.toMatchObject({ status: 'failed' });
+    expect(mockRequestCamera).not.toHaveBeenCalled();
+    expect(mockRequestLibrary).not.toHaveBeenCalled();
+  });
+
+  it('writes the pasted image to a temp file and runs it through the same encode pipeline', async () => {
+    mockGetImage.mockResolvedValue({
+      data: 'data:image/png;base64,QUJD',
+      size: { width: 1200, height: 900 },
+    });
+    stubPipeline();
+
+    const result = await pickRecipePhoto('clipboard');
+
+    // The data: URI prefix is stripped before it's written to disk.
+    expect(mockWrite).toHaveBeenCalledWith(expect.stringContaining('file:///cache/'), 'QUJD', { encoding: 'base64' });
+    expect(mockManipulate).toHaveBeenCalledWith(expect.stringContaining('file:///cache/'));
+    expect(result).toMatchObject({
+      status: 'ok',
+      photo: { mediaType: 'image/jpeg', sourceUri: expect.stringContaining('file:///cache/') },
+    });
+  });
+
+  it('downscales a pasted image over the cap on its long edge', async () => {
+    mockGetImage.mockResolvedValue({
+      data: 'data:image/png;base64,QUJD',
+      size: { width: 4032, height: 3024 },
+    });
+    stubPipeline();
+
+    await pickRecipePhoto('clipboard');
+
+    expect(mockResize).toHaveBeenCalledWith({ width: MAX_PHOTO_EDGE });
+  });
+
+  it('reports a failure rather than rejecting when the manipulator throws', async () => {
+    mockGetImage.mockResolvedValue({
+      data: 'data:image/png;base64,QUJD',
+      size: { width: 1200, height: 900 },
+    });
+    mockManipulate.mockImplementation(() => { throw new Error('corrupt image'); });
+
+    await expect(pickRecipePhoto('clipboard')).resolves.toEqual({
+      status: 'failed', message: 'corrupt image',
+    });
+  });
+});
+
 describe('pickRecipeImage', () => {
   it('reports a denied permission without launching the picker', async () => {
     mockRequestLibrary.mockResolvedValue({ granted: false, canAskAgain: true });
@@ -392,6 +463,44 @@ describe('pickRecipeImage', () => {
 
     await expect(pickRecipeImage('library')).resolves.toMatchObject({ status: 'failed' });
     expect(mockMove).not.toHaveBeenCalled();
+  });
+
+  describe('clipboard paste', () => {
+    it('reports a failure without touching any permission when nothing is copied', async () => {
+      mockGetImage.mockResolvedValue(null);
+
+      await expect(pickRecipeImage('clipboard')).resolves.toMatchObject({ status: 'failed' });
+      expect(mockRequestCamera).not.toHaveBeenCalled();
+      expect(mockRequestLibrary).not.toHaveBeenCalled();
+    });
+
+    it('writes the pasted image to a temp file, resizes on the display-size cap, and moves it into the document directory', async () => {
+      mockGetImage.mockResolvedValue({
+        data: 'data:image/png;base64,QUJD',
+        size: { width: 4032, height: 3024 },
+      });
+      stubPipeline({ uri: 'file:///cache/out.jpg', width: 1568, height: 1176 });
+
+      const result = await pickRecipeImage('clipboard');
+
+      expect(mockWrite).toHaveBeenCalledWith(expect.stringContaining('file:///cache/'), 'QUJD', { encoding: 'base64' });
+      expect(mockManipulate).toHaveBeenCalledWith(expect.stringContaining('file:///cache/'));
+      expect(mockResize).toHaveBeenCalledWith({ width: MAX_IMAGE_EDGE });
+      expect(mockMove).toHaveBeenCalledTimes(1);
+      expect(result).toMatchObject({ status: 'ok', image: { width: 1568, height: 1176 } });
+    });
+
+    it('reports a failure rather than rejecting when the manipulator throws', async () => {
+      mockGetImage.mockResolvedValue({
+        data: 'data:image/png;base64,QUJD',
+        size: { width: 1200, height: 900 },
+      });
+      mockManipulate.mockImplementation(() => { throw new Error('corrupt image'); });
+
+      await expect(pickRecipeImage('clipboard')).resolves.toEqual({
+        status: 'failed', message: 'corrupt image',
+      });
+    });
   });
 });
 
@@ -520,5 +629,91 @@ describe('writeRecipeImageFile', () => {
 
     expect(mockFileCreate).not.toHaveBeenCalled();
     expect(mockWrite).toHaveBeenCalledWith('file:///documents/recipe-images/abc.jpg', 'QUJD', { encoding: 'base64' });
+  });
+});
+
+describe('getCameraPermission', () => {
+  it('reports granted', async () => {
+    mockGetCamera.mockResolvedValue({ granted: true, status: 'granted', canAskAgain: true });
+    await expect(getCameraPermission()).resolves.toBe('granted');
+  });
+
+  it('reports undetermined while it can still ask', async () => {
+    mockGetCamera.mockResolvedValue({ granted: false, status: 'denied', canAskAgain: true });
+    await expect(getCameraPermission()).resolves.toBe('undetermined');
+  });
+
+  it('reports denied once it cannot', async () => {
+    mockGetCamera.mockResolvedValue({ granted: false, status: 'denied', canAskAgain: false });
+    await expect(getCameraPermission()).resolves.toBe('denied');
+  });
+
+  it('reports unsupported rather than throwing when the module is missing', async () => {
+    mockGetCamera.mockRejectedValue(new Error('no native module'));
+    await expect(getCameraPermission()).resolves.toBe('unsupported');
+  });
+});
+
+describe('requestCameraPermission', () => {
+  it('does not re-ask when it already has access', async () => {
+    mockGetCamera.mockResolvedValue({ granted: true, status: 'granted', canAskAgain: true });
+    await expect(requestCameraPermission()).resolves.toBe(true);
+    expect(mockRequestCamera).not.toHaveBeenCalled();
+  });
+
+  it('asks when it does not', async () => {
+    mockGetCamera.mockResolvedValue({ granted: false, status: 'undetermined', canAskAgain: true });
+    mockRequestCamera.mockResolvedValue({ granted: true });
+    await expect(requestCameraPermission()).resolves.toBe(true);
+    expect(mockRequestCamera).toHaveBeenCalled();
+  });
+
+  it('is false rather than throwing when the ask fails', async () => {
+    mockGetCamera.mockResolvedValue({ granted: false, status: 'undetermined', canAskAgain: true });
+    mockRequestCamera.mockRejectedValue(new Error('nope'));
+    await expect(requestCameraPermission()).resolves.toBe(false);
+  });
+});
+
+describe('getPhotoLibraryPermission', () => {
+  it('reports granted', async () => {
+    mockGetLibrary.mockResolvedValue({ granted: true, status: 'granted', canAskAgain: true });
+    await expect(getPhotoLibraryPermission()).resolves.toBe('granted');
+  });
+
+  it('reports undetermined while it can still ask', async () => {
+    mockGetLibrary.mockResolvedValue({ granted: false, status: 'denied', canAskAgain: true });
+    await expect(getPhotoLibraryPermission()).resolves.toBe('undetermined');
+  });
+
+  it('reports denied once it cannot', async () => {
+    mockGetLibrary.mockResolvedValue({ granted: false, status: 'denied', canAskAgain: false });
+    await expect(getPhotoLibraryPermission()).resolves.toBe('denied');
+  });
+
+  it('reports unsupported rather than throwing when the module is missing', async () => {
+    mockGetLibrary.mockRejectedValue(new Error('no native module'));
+    await expect(getPhotoLibraryPermission()).resolves.toBe('unsupported');
+  });
+});
+
+describe('requestPhotoLibraryPermission', () => {
+  it('does not re-ask when it already has access', async () => {
+    mockGetLibrary.mockResolvedValue({ granted: true, status: 'granted', canAskAgain: true });
+    await expect(requestPhotoLibraryPermission()).resolves.toBe(true);
+    expect(mockRequestLibrary).not.toHaveBeenCalled();
+  });
+
+  it('asks when it does not', async () => {
+    mockGetLibrary.mockResolvedValue({ granted: false, status: 'undetermined', canAskAgain: true });
+    mockRequestLibrary.mockResolvedValue({ granted: true });
+    await expect(requestPhotoLibraryPermission()).resolves.toBe(true);
+    expect(mockRequestLibrary).toHaveBeenCalled();
+  });
+
+  it('is false rather than throwing when the ask fails', async () => {
+    mockGetLibrary.mockResolvedValue({ granted: false, status: 'undetermined', canAskAgain: true });
+    mockRequestLibrary.mockRejectedValue(new Error('nope'));
+    await expect(requestPhotoLibraryPermission()).resolves.toBe(false);
   });
 });

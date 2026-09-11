@@ -298,6 +298,45 @@ export async function cancelTaskReminder(taskId: string): Promise<void> {
   await cancelAlarmChain(taskId);
 }
 
+// Its own identifier namespace, distinct from the bare task id
+// scheduleTaskReminder uses, so a completion timer can never collide with (or
+// get silently cancelled by) an ordinary reminder on the same task.
+function completionTimerNotificationId(taskId: string): string {
+  return `completion-timer-${taskId}`;
+}
+
+/**
+ * The optional reminder a task can ask for a fixed span after it's completed
+ * (see Task.completionTimerMinutes) — "take the iron pill" -> "eat, 2 hours
+ * later". Scheduled from the moment of completion, not from the task's own
+ * schedule, so it ignores reminderTime/quiet hours entirely: it's a plain
+ * kitchen-timer alarm, not a task reminder that happens to be late.
+ */
+export async function scheduleCompletionTimer(task: Task, completedAt: Date = new Date()): Promise<void> {
+  if (isDemoModeActive()) return;
+  if (!task.completionTimerMinutes || task.completionTimerMinutes <= 0) return;
+  const triggerDate = new Date(completedAt.getTime() + task.completionTimerMinutes * 60000);
+  await Notifications.cancelScheduledNotificationAsync(completionTimerNotificationId(task.id)).catch(() => {});
+  await Notifications.scheduleNotificationAsync({
+    identifier: completionTimerNotificationId(task.id),
+    content: {
+      title: displayTitleFor(task) || 'Task timer',
+      body: `It's time. You completed "${displayTitleFor(task) || task.title}" a while ago.`,
+      data: { taskId: task.id, completionTimer: true },
+      sound: true,
+      interruptionLevel: REMINDER_INTERRUPTION_LEVEL,
+    },
+    trigger: {
+      type: Notifications.SchedulableTriggerInputTypes.DATE,
+      date: triggerDate,
+    },
+  });
+}
+
+export async function cancelCompletionTimer(taskId: string): Promise<void> {
+  await Notifications.cancelScheduledNotificationAsync(completionTimerNotificationId(taskId)).catch(() => {});
+}
+
 // iOS caps pending local notification requests at 64.
 export const MAX_PENDING_REMINDERS = 64;
 
@@ -695,13 +734,16 @@ export async function scheduleFocusStepAlarm(session: FocusSession | null): Prom
   if (isWithinQuietHours(triggerDate, quietHoursStart, quietHoursEnd)) return;
 
   const isRest = step.kind === 'rest';
+  const nextIsRest = session.steps[session.stepIndex + 1]?.kind === 'rest';
   await Notifications.scheduleNotificationAsync({
     identifier: FOCUS_STEP_ALARM_ID,
     content: {
       title: isRest ? 'Break’s over' : 'Time’s up',
       body: isRest
         ? 'Back to it when you’re ready.'
-        : 'That stretch is done. Take your break when you’re ready.',
+        : nextIsRest
+          ? 'That stretch is done. Take your break when you’re ready.'
+          : 'That stretch is done.',
       data: { focusSessionId: session.id },
       sound: true,
       // Mid-session and actively waiting on this step to end — see

@@ -66,7 +66,7 @@ const bucketsOf = (byDay: Record<string, DayMark[]>): Map<string, DayBucket> =>
 
 const load = (key: string, over: Partial<DayLoad> = {}): DayLoad =>
   ({ key, taskCount: 0, taskMinutes: 0, unestimated: 0, projected: 0,
-     busyKnown: false, busyMinutes: 0, rankedMinutes: 0, ...over });
+     busyKnown: false, busyMinutes: 0, rankedMinutes: 0, away: false, ...over });
 
 const project = (id: string, over: Partial<Project> = {}): Project =>
   ({ id, title: id, sortOrder: 0, archived: false, weekendSource: true, ...over } as Project);

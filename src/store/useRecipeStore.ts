@@ -1,6 +1,6 @@
 import { create } from 'zustand';
 import type { Cookbook, Recipe, RecipeIngredient, RecipeMealType, RecipePrepTask, RecipeSourceType, RecipeStep, RecipeVote } from '../types';
-import { GROCERY_NAME_MAX_LENGTH, RECIPE_PAGE_MAX_LENGTH, RECIPE_SECTION_MAX_LENGTH, TITLE_MAX_LENGTH } from '../types';
+import { GROCERY_NAME_MAX_LENGTH, RECIPE_PAGE_MAX_LENGTH, RECIPE_SECTION_MAX_LENGTH, RECIPE_STEP_NOTE_MAX_LENGTH, TITLE_MAX_LENGTH } from '../types';
 import {
   dbGetAllRecipes,
   dbInsertRecipe,
@@ -29,6 +29,7 @@ import {
 } from '../utils/recipeUtils';
 import { cookTimerElapsed, prepTimerElapsed } from '../utils/recipeTimer';
 import { clampKeepDays } from '../utils/leftovers';
+import { clampCookedWeight } from '../utils/mealLog';
 import { normalizeRecipeTags } from '../utils/recipeTags';
 import { makeComponent, recipeMap, wouldCreateRecipeCycle } from '../utils/recipeComponents';
 import { sectionsOf } from '../utils/recipeSections';
@@ -138,6 +139,28 @@ interface RecipeStore {
   /** What the recipe makes when a person-count doesn't fit — "3 cups", "2 dozen cookies". */
   setRecipeYield: (id: string, recipeYield: string | null) => void;
   /**
+   * What the finished dish weighs, as the recipe is written. null clears it
+   * back to "nobody has weighed this", which is what every recipe says until
+   * somebody does.
+   *
+   * **Takes the as-written weight, not what a scaled cooking weighed.** A
+   * caller holding a scale (the cook recap, which knows the meal's own
+   * `recipeScale`) divides first through `asWrittenCookedWeight`, so the two
+   * halves of that conversion stay in `mealLog.ts` next to each other rather
+   * than one of them living here.
+   *
+   * Clamped rather than validated at the call site, the same call
+   * `setLeftoverKeepDays` makes. See Recipe.cookedWeightG.
+   */
+  setCookedWeight: (id: string, grams: number | null) => void;
+  /**
+   * Persists the Backfill screen's "don't ask again" list for one recipe —
+   * same mechanism as `setItemBackfillDismissedFields` one store over, and
+   * through the generic recipe save for the same reason: recipes already have
+   * one, so there is no dedicated column setter to add.
+   */
+  setRecipeBackfillDismissedFields: (id: string, fields: string[]) => void;
+  /**
    * How long this dish's leftovers keep. null hands the question back to the
    * standard window, which is what every recipe says until told otherwise.
    *
@@ -182,6 +205,8 @@ interface RecipeStore {
   bulkDeleteRecipes: (ids: string[]) => void;
   /** Sets vote on every named recipe at once — the bulk form of setVote. */
   bulkSetVote: (ids: string[], vote: RecipeVote | null) => void;
+  /** Sets meal type on every named recipe at once — the bulk form of setMealType. */
+  bulkSetMealType: (ids: string[], mealType: RecipeMealType | null) => void;
 
   /**
    * Bumps cookCount and stamps lastCookedAt. Called once per "Mark cooked" on
@@ -391,6 +416,14 @@ interface RecipeStore {
    * reads wrong. Out of range is treated as a clear — see RecipeStep.timerSeconds.
    */
   setStepTimerSeconds: (recipeId: string, stepId: string, seconds: number | null) => void;
+  /**
+   * Keeps a note on one step, or clears it with null/empty.
+   *
+   * The one writer of `RecipeStep.note` — cook mode's "keep this" on an answer
+   * it was given, and the recipe screen's own clear. Asking a question writes
+   * nothing; only this does.
+   */
+  setStepNote: (recipeId: string, stepId: string, note: string | null) => void;
   removeStep: (recipeId: string, stepId: string) => void;
   /**
    * The new order. An id missing from `ids` keeps its place at the end rather
@@ -404,6 +437,16 @@ interface RecipeStore {
    * key. Called by useGroceryStore.renameItem — see the note there.
    */
   remapIngredientKey: (fromKey: string, toKey: string) => void;
+
+  /**
+   * Writes back an exact set of recipe rows, unconditionally — the mirror
+   * `useGroceryStore.mergeItems`' undo needs `remapIngredientKey` to have.
+   * Remapping `toKey` back to `fromKey` isn't safe there: it would also
+   * catch recipes that already referenced `toKey` before the merge, not just
+   * the ones the merge touched. Restoring the exact snapshot the caller took
+   * before calling `remapIngredientKey` sidesteps that.
+   */
+  restoreRecipes: (recipes: Recipe[]) => void;
 
   recipeById: (id: string) => Recipe | undefined;
   cookbookById: (id: string | null | undefined) => Cookbook | undefined;
@@ -440,6 +483,7 @@ export const useRecipeStore = create<RecipeStore>((set, get) => ({
       servings: null,
       servingsMax: null,
       recipeYield: null,
+      cookedWeightG: null,
       leftoverKeepDays: null,
       imagePath: null,
       mealType: null,
@@ -466,6 +510,9 @@ export const useRecipeStore = create<RecipeStore>((set, get) => ({
       lastPrepMinutes: null,
       prepTimeCount: 0,
       totalPrepMinutes: 0,
+      // Nobody has dismissed a Backfill screen field on a recipe that didn't
+      // exist a moment ago.
+      backfillDismissedFields: [],
     };
     dbInsertRecipe(recipe);
     set(s => ({ recipes: [...s.recipes, recipe] }));
@@ -639,11 +686,23 @@ export const useRecipeStore = create<RecipeStore>((set, get) => ({
     save(set, { ...recipe, servings: next, servingsMax: nextMax });
   },
 
+  setRecipeBackfillDismissedFields(id, fields) {
+    const recipe = get().recipes.find(r => r.id === id);
+    if (!recipe) return;
+    save(set, { ...recipe, backfillDismissedFields: fields });
+  },
+
   setRecipeYield(id, recipeYield) {
     const recipe = get().recipes.find(r => r.id === id);
     if (!recipe) return;
     const clean = cleanRecipeSource(recipeYield ?? '');
     save(set, { ...recipe, recipeYield: clean || null });
+  },
+
+  setCookedWeight(id, grams) {
+    const recipe = get().recipes.find(r => r.id === id);
+    if (!recipe) return;
+    save(set, { ...recipe, cookedWeightG: clampCookedWeight(grams) });
   },
 
   setLeftoverKeepDays(id, days) {
@@ -702,6 +761,16 @@ export const useRecipeStore = create<RecipeStore>((set, get) => ({
     const toUpdate = get().recipes.filter(r => idSet.has(r.id) && r.vote !== vote);
     if (toUpdate.length === 0) return;
     const updated = toUpdate.map(r => ({ ...r, vote }));
+    updated.forEach(dbUpdateRecipe);
+    const byId = new Map(updated.map(r => [r.id, r]));
+    set(s => ({ recipes: s.recipes.map(r => byId.get(r.id) ?? r) }));
+  },
+
+  bulkSetMealType(ids, mealType) {
+    const idSet = new Set(ids);
+    const toUpdate = get().recipes.filter(r => idSet.has(r.id) && r.mealType !== mealType);
+    if (toUpdate.length === 0) return;
+    const updated = toUpdate.map(r => ({ ...r, mealType }));
     updated.forEach(dbUpdateRecipe);
     const byId = new Map(updated.map(r => [r.id, r]));
     set(s => ({ recipes: s.recipes.map(r => byId.get(r.id) ?? r) }));
@@ -1165,6 +1234,24 @@ export const useRecipeStore = create<RecipeStore>((set, get) => ({
     save(set, { ...recipe, steps });
   },
 
+  setStepNote(recipeId, stepId, note) {
+    const recipe = get().recipes.find(r => r.id === recipeId);
+    if (!recipe) return;
+    const value = (note ?? '').trim().slice(0, RECIPE_STEP_NOTE_MAX_LENGTH);
+    let touched = false;
+    const steps = recipe.steps.map(s => {
+      if (s.id !== stepId) return s;
+      if ((s.note ?? '') === value) return s;
+      touched = true;
+      // Cleared back to absent rather than stored as an empty string, same as
+      // the duration above — see RecipeStep.note.
+      const { note: _dropped, ...rest } = s;
+      return value ? { ...rest, note: value } : rest;
+    });
+    if (!touched) return;
+    save(set, { ...recipe, steps });
+  },
+
   removeStep(recipeId, stepId) {
     const recipe = get().recipes.find(r => r.id === recipeId);
     if (!recipe) return;
@@ -1188,6 +1275,13 @@ export const useRecipeStore = create<RecipeStore>((set, get) => ({
     if (changed.length === 0) return;
     changed.forEach(dbUpdateRecipe);
     const byId = new Map(changed.map(r => [r.id, r]));
+    set(s => ({ recipes: s.recipes.map(r => byId.get(r.id) ?? r) }));
+  },
+
+  restoreRecipes(recipes) {
+    if (recipes.length === 0) return;
+    recipes.forEach(dbUpdateRecipe);
+    const byId = new Map(recipes.map(r => [r.id, r]));
     set(s => ({ recipes: s.recipes.map(r => byId.get(r.id) ?? r) }));
   },
 

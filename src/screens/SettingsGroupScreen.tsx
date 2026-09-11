@@ -14,10 +14,12 @@ import { NotificationSettings } from './settings/NotificationSettings';
 import { RemindersCaptureSettings } from './settings/RemindersCaptureSettings';
 import { CalendarSettings } from './settings/CalendarSettings';
 import { DeadlineCalendarSettings } from './settings/DeadlineCalendarSettings';
+import { CompletionCalendarSettings } from './settings/CompletionCalendarSettings';
 import { MealCalendarSettings } from './settings/MealCalendarSettings';
 import { TasksProjectsSettings } from './settings/TasksProjectsSettings';
 import { GeneratedTasksSection } from './settings/GeneratedTasksSection';
 import { HealthSettings } from './settings/HealthSettings';
+import { PermissionsSettings } from './settings/PermissionsSettings';
 import { KitchenSettings } from './settings/KitchenSettings';
 import { PrivacyAiSettings } from './settings/PrivacyAiSettings';
 import { DataResetSettings } from './settings/DataResetSettings';
@@ -122,12 +124,14 @@ export function SettingsGroupScreen() {
           {groupId === 'capture' && <RemindersCaptureSettings />}
           {groupId === 'capture' && <CalendarSettings />}
           {groupId === 'capture' && <DeadlineCalendarSettings />}
+          {groupId === 'capture' && <CompletionCalendarSettings />}
           {groupId === 'capture' && kitchenEnabled && <MealCalendarSettings />}
           {groupId === 'tasksProjects' && <TasksProjectsSettings />}
           {groupId === 'generated' && <GeneratedTasksSection />}
           {/* No Platform check: the whole group is `iosOnly`, so the index
               stops offering it and this route stops being reachable. */}
           {groupId === 'health' && <HealthSettings />}
+          {groupId === 'permissions' && <PermissionsSettings />}
           {/* No kitchenEnabled check: the whole group is `kitchenOnly`, so the
               index stops offering it and this route stops being reachable. */}
           {groupId === 'kitchen' && <KitchenSettings />}

@@ -46,6 +46,9 @@ import { ItemDisposalOffer } from './ItemDisposalOffer';
 import { describeDisposalHistory } from '../utils/itemDisposal';
 import { SearchField } from './SearchField';
 import { CollapsibleField } from './CollapsibleField';
+import { NutritionPanelSheet } from './NutritionPanelSheet';
+import { NutritionSearchSheet } from './NutritionSearchSheet';
+import { describeFoodPanel } from '../utils/foodNutrition';
 import { InlineAction } from './InlineAction';
 import { PillGroup, type PillGroupOption } from './PillGroup';
 import { haptics } from '../utils/haptics';
@@ -106,7 +109,7 @@ const PRICE_INPUT_MAX_LENGTH = 8;
 const ITEM_PRICE_KEY = 'item';
 
 /** The collapsible fields in the "More" card, in the order they render. */
-export type CollapsibleFieldKey = 'products' | 'aisle' | 'stores' | 'pantry' | 'useBy' | 'substitutes' | 'varietyOf' | 'usedIn';
+export type CollapsibleFieldKey = 'products' | 'aisle' | 'stores' | 'pantry' | 'useBy' | 'substitutes' | 'varietyOf' | 'usedIn' | 'nutrition';
 
 interface Props {
   visible: boolean;
@@ -147,6 +150,7 @@ export function GroceryItemSheet({
 
   const item = useGroceryStore(s => (itemId ? s.items.find(i => i.id === itemId) ?? null : null));
   const clearChoice = useGroceryStore(s => s.clearChoice);
+  const setItemNutrition = useGroceryStore(s => s.setItemNutrition);
   // Named siblings, live ones only — the same read GroceryScreen does for the
   // row caption, phrased as a sentence here because the sheet has the room.
   const alternativeNames = useGroceryStore(s => {
@@ -223,6 +227,7 @@ export function GroceryItemSheet({
   // it, which is how a price is taken back.
   const [priceEdits, setPriceEdits] = useState<Record<string, string>>({});
   const [nameError, setNameError] = useState<string | null>(null);
+  const [nameCollisionId, setNameCollisionId] = useState<string | null>(null);
   // Which substitute sheet is up, if any: 'add' opens the picker, an item id
   // opens that link for review. Null closes it.
   const [subSheet, setSubSheet] = useState<'add' | string | null>(null);
@@ -233,6 +238,8 @@ export function GroceryItemSheet({
   // One picker open at a time, like every other editor in the app — see the
   // progressive-disclosure note in CLAUDE.md.
   const [openField, setOpenField] = useState<CollapsibleFieldKey | null>(null);
+  const [nutritionSearchOpen, setNutritionSearchOpen] = useState(false);
+  const [nutritionPanelOpen, setNutritionPanelOpen] = useState(false);
 
   // Field search — TaskEditor's magnifier, ported: sixteen fields is a lot to
   // scan for "where's expiry" when the sheet calls it Use by. Off by default
@@ -338,13 +345,18 @@ export function GroceryItemSheet({
   // the field itself keeps whatever was typed until it's corrected.
   const commitName = () => {
     const trimmed = name.trim();
-    if (!trimmed || trimmed === item.name) { setNameError(null); return; }
+    if (!trimmed || trimmed === item.name) { setNameError(null); setNameCollisionId(null); return; }
     if (!renameItem(item.id, trimmed)) {
-      setNameError('Another item already has that name.');
+      const collision = items.find(i => i.id !== item.id && i.nameKey === groceryNameKey(trimmed));
+      setNameError(
+        collision ? `That's the same as ${collision.name} in your catalog.` : 'Another item already has that name.',
+      );
+      setNameCollisionId(collision?.id ?? null);
       haptics.error();
       return;
     }
     setNameError(null);
+    setNameCollisionId(null);
   };
   const commitQuantity = () => {
     if (quantity !== (item.quantity ?? '')) setQuantity(item.id, quantity);
@@ -1033,6 +1045,65 @@ export function GroceryItemSheet({
       ),
     },
     {
+      key: 'nutrition',
+      label: 'Nutrition',
+      keywords: ['calories', 'kcal', 'protein', 'carbs', 'fat', 'fiber', 'sodium', 'macros', 'food data', 'usda', 'label', 'nutrition facts'],
+      node: (
+        <View onLayout={(e: LayoutChangeEvent) => {
+          fieldYRefs.current.nutrition = e.nativeEvent.layout.y;
+          maybeScrollToInitialField();
+        }}>
+          <CollapsibleField
+            label="Nutrition"
+            summary={describeFoodPanel(item.nutrition) ?? undefined}
+            hint="What this food is made of. Used to estimate a recipe's nutrition."
+            expanded={openField === 'nutrition'}
+            onToggle={() => toggleField('nutrition')}
+          >
+            <View style={styles.nutritionField}>
+              {item.nutrition ? (
+                <Text style={styles.nutritionDetail}>
+                  {item.nutrition.portions.length > 0
+                    ? `${item.nutrition.portions.length} stated portions, so a recipe line written as a cup or a count can become a weight.`
+                    : 'No stated portions, so only lines already written as a weight can use this.'}
+                </Text>
+              ) : (
+                <Text style={styles.nutritionDetail}>
+                  Nothing recorded. A recipe using this ingredient counts it as uncovered
+                  rather than guessing at it. Search a food database, or copy the figures
+                  off the packet.
+                </Text>
+              )}
+              <View style={styles.nutritionActions}>
+                <InlineAction
+                  label={item.nutrition ? 'Find a different food' : 'Find this food'}
+                  icon="search"
+                  onPress={() => { haptics.tap(); setNutritionSearchOpen(true); }}
+                />
+                {/*
+                  The fallback for the food no database has, and the correction
+                  path for the one a database got wrong. Neutral beside the
+                  search, which is the answer most foods have.
+                */}
+                <InlineAction
+                  label={item.nutrition ? 'Edit these figures' : 'Type in a label'}
+                  variant="neutral"
+                  onPress={() => { haptics.tap(); setNutritionPanelOpen(true); }}
+                />
+                {!!item.nutrition && (
+                  <InlineAction
+                    label="Clear"
+                    variant="neutral"
+                    onPress={() => { haptics.tap(); setItemNutrition(item.id, null); }}
+                  />
+                )}
+              </View>
+            </View>
+          </CollapsibleField>
+        </View>
+      ),
+    },
+    {
       key: 'aisle',
       label: 'Aisle',
       keywords: ['section', 'shelf', 'location', 'walk'],
@@ -1446,16 +1517,30 @@ export function GroceryItemSheet({
             value={name}
             onChangeText={t => {
               setName(t);
-              if (nameError) setNameError(null);
+              if (nameError) { setNameError(null); setNameCollisionId(null); }
             }}
             onBlur={commitName}
             onSubmitEditing={commitName}
             placeholder="Item name"
             placeholderTextColor={colors.textTertiary}
+            // See the note on GroceryRow's inline rename field: an
+            // autocorrection is applied on blur, and blur is what commits this
+            // field, so a corrected-away name commits as no change at all.
+            autoCorrect={false}
+            spellCheck={false}
             maxLength={GROCERY_NAME_MAX_LENGTH}
             accessibilityLabel="Item name"
           />
           {!!nameError && <Text style={styles.error}>{nameError}</Text>}
+          {!!nameCollisionId && (
+            <InlineAction
+              label="Merge with it instead"
+              icon="git-merge-outline"
+              onPress={() => setMergeSheetOpen(true)}
+              accessibilityLabel="Merge with the existing item"
+              style={styles.mergeSuggestion}
+            />
+          )}
           {/* A snapshot, not editable here — see GroceryItem.sourceRecipeTitle.
               Renaming the item doesn't touch it, and there's nothing to
               reassign; it just says why this row exists. */}
@@ -1784,14 +1869,29 @@ export function GroceryItemSheet({
       <MergeItemSheet
         visible={mergeSheetOpen}
         itemId={item.id}
-        onClose={() => setMergeSheetOpen(false)}
+        initialPickedId={nameCollisionId}
+        onClose={() => { setMergeSheetOpen(false); setNameCollisionId(null); }}
         onMerged={survivorId => {
           setMergeSheetOpen(false);
+          setNameCollisionId(null);
           // The row this sheet is open for lost the merge — nothing left to
           // show, so the whole sheet closes rather than rendering over a
           // deleted item.
           if (survivorId !== item.id) onClose();
         }}
+      />
+      <NutritionSearchSheet
+        visible={nutritionSearchOpen}
+        itemName={item.name}
+        onClose={() => setNutritionSearchOpen(false)}
+        onPick={nutrition => setItemNutrition(item.id, nutrition)}
+      />
+      <NutritionPanelSheet
+        visible={nutritionPanelOpen}
+        foodName={item.name}
+        nutrition={item.nutrition}
+        onClose={() => setNutritionPanelOpen(false)}
+        onSave={nutrition => setItemNutrition(item.id, nutrition)}
       />
       <NumberPadAccessory />
     </Modal>
@@ -1806,6 +1906,9 @@ export function GroceryItemSheet({
  */
 function makeStyles(colors: Colors) {
   return StyleSheet.create({
+    nutritionField: { gap: spacing.sm },
+    nutritionDetail: { color: colors.textSecondary, fontSize: font.sm, lineHeight: 18 },
+    nutritionActions: { flexDirection: 'row', gap: spacing.sm, flexWrap: 'wrap' },
     root: { flex: 1, backgroundColor: colors.bg },
     header: {
       flexDirection: 'row',
@@ -1915,6 +2018,7 @@ function makeStyles(colors: Colors) {
     // No lineHeight, same as `input` — see the note there.
     priceInput: { flex: 1, fontSize: font.md, color: colors.text, padding: 0 },
     error: { fontSize: font.sm, color: colors.red, marginTop: spacing.xs },
+    mergeSuggestion: { alignSelf: 'flex-start', marginTop: spacing.sm },
     hint: { fontSize: font.sm, color: colors.textTertiary, marginBottom: spacing.sm },
     choiceBlock: { alignItems: 'flex-start', marginBottom: spacing.sm },
     // A row rather than bare accent text: this leaves the sheet for another

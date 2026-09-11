@@ -2,7 +2,8 @@ import { Platform } from 'react-native';
 import { requireNativeModule } from 'expo-modules-core';
 
 /**
- * Apple Health, as much of it as this app reads — which is one number.
+ * Apple Health: a small handful of numbers read, and — for exactly one type —
+ * a number written.
  *
  * The shape of this module is dictated by one hard limit in Apple's API, and
  * it is worth knowing before adding to it:
@@ -20,6 +21,33 @@ import { requireNativeModule } from 'expo-modules-core';
  * says less than it looks like: `unnecessary` means asking again would show no
  * sheet, which is equally true of everything-allowed and everything-refused.
  * It answers "have you been asked yet", and that is all it is used for.
+ *
+ * - **Write authorization is the mirror case, and genuinely observable.** The
+ *   same Apple doc that obscures reads says so explicitly: `authorizationStatus`
+ *   "checks the authorization status for saving data to the HealthKit store"
+ *   and answers truthfully — `.notDetermined` / `.sharingDenied` /
+ *   `.sharingAuthorized` are three different, real answers, not one obscured
+ *   one. `healthWriteAuthorizationStatus` is a plain synchronous read of that,
+ *   unlike anything on the read side, and `HealthSettings` can and does show a
+ *   real Allowed/Not allowed/Not asked row for it — see
+ *   `docs/arch/health-data.md` for why that would be dishonest for reads and
+ *   isn't for this.
+ * - **Read and write ask separately, on purpose.** One `requestAuthorization`
+ *   call could ask for both a read type and a share type in the same sheet,
+ *   but folding water's write ask into the existing read flow would mean
+ *   somebody who only ever wanted to read steps gets asked about writing
+ *   water too, the first time they tap "Turn on" for reading. Two asks, two
+ *   switches (`healthReadEnabled` / `healthWriteEnabled`), same as the
+ *   generator's own two-switch rule one level up.
+ * - **Each write type earns its own review, and there are two.** `writeTypes`
+ *   in the Swift module is deliberately not `readTypes`'s shape generalized —
+ *   a new share type is a new consequence (a real sample lands in somebody's
+ *   Health record), not a new column in a read tuple. Dietary water was the
+ *   first; body mass is the second, licensed by the same argument that let the
+ *   app read the eight nutrients (the number exists only because a person
+ *   recorded it) and fenced by the rule that nothing derives anything from it.
+ *   Because the two are separately allowable in Health's own sheet, every
+ *   write-side call here names which type it means.
  *
  * The native module is resolved once, lazily, and every export degrades to an
  * "unavailable" answer if it isn't there — the todo-screentime-bridge shape,
@@ -46,6 +74,47 @@ export type HealthRequestStatus = 'unavailable' | 'shouldRequest' | 'unnecessary
 export type HealthAuthorizationResult = 'unavailable' | 'requested' | 'failed';
 
 /**
+ * The real write-authorization state for one share type — unlike
+ * `HealthRequestStatus`, this one is allowed to say what actually happened.
+ * `unavailable` covers "this build/device can't", same meaning it has for
+ * every other status here.
+ */
+export type HealthWriteStatus = 'unavailable' | 'notDetermined' | 'sharingDenied' | 'sharingAuthorized';
+
+/**
+ * Which of the three things this app can write.
+ *
+ * Every write-side call takes one, because Health asks about share types
+ * individually and somebody can allow water and refuse weight in the same
+ * sheet. One status for "writing" would be wrong for whoever split them.
+ *
+ * `nutrition` is ten share types behind one key, since a meal is written as
+ * one correlation of ten samples and there is no useful row to draw for each
+ * nutrient separately. Its status is the weakest of the ten — see the native
+ * `writeAuthorizationStatus`, which explains why under-claiming is the right
+ * direction to be wrong in.
+ */
+export type HealthWriteKind = 'water' | 'weight' | 'nutrition';
+
+/**
+ * One logical day's body mass, in kilograms, or null for a day with no
+ * weigh-in.
+ *
+ * `start` carries the same meaning it does on `HealthDayReading`: the instant
+ * the day began, with the day *key* derived on the app side by the one
+ * `getLogicalDayKey` that knows about `dayResetTime`.
+ *
+ * Null is not zero, and here that matters more than anywhere else in this
+ * module: most people do not weigh themselves daily, so gaps are the normal
+ * case rather than the broken one, and a reader that filled them with 0 would
+ * draw a chart of somebody repeatedly weighing nothing.
+ */
+export interface HealthWeightDay {
+  start: string;
+  kilograms: number | null;
+}
+
+/**
  * One logical day's readings, as the daily read hands them back.
  *
  * `start` is the instant the day began, not a day key: which day that *is*
@@ -54,13 +123,31 @@ export type HealthAuthorizationResult = 'unavailable' | 'requested' | 'failed';
  * uses. One implementation of "which day is this", and it is the one that has
  * the setting.
  *
- * Both numbers are independently nullable, and null is never zero — see the
+ * Every number is independently nullable, and null is never zero — see the
  * module note above.
  */
 export interface HealthDayReading {
   start: string;
   steps: number | null;
   sleepMinutes: number | null;
+  /** Milligrams of dietary sodium logged for the day, or null. Not read from
+   * this app's own writes — nothing here writes to Health — but from whatever
+   * food-logging app the person already uses; see the module note above. */
+  sodiumMg: number | null;
+  /** Grams of dietary protein logged for the day, or null. Same source as `sodiumMg`. */
+  proteinG: number | null;
+  /** Grams of dietary saturated fat logged for the day, or null. Same source as `sodiumMg`. */
+  satFatG: number | null;
+  /** Grams of dietary fiber logged for the day, or null. Same source as `sodiumMg`. */
+  fiberG: number | null;
+  /** Grams of dietary sugar logged for the day, or null. Same source as `sodiumMg`. */
+  sugarG: number | null;
+  /** Milligrams of dietary caffeine logged for the day, or null. Same source as `sodiumMg`. */
+  caffeineMg: number | null;
+  /** Millilitres of dietary water logged for the day, or null. Same source as `sodiumMg`. */
+  waterMl: number | null;
+  /** Kilocalories of dietary energy logged for the day, or null. Same source as `sodiumMg`. */
+  calorieKcal: number | null;
 }
 
 interface TodoHealthNativeModule {
@@ -68,6 +155,13 @@ interface TodoHealthNativeModule {
   authorizationRequestStatus(): Promise<HealthRequestStatus>;
   requestAuthorization(): Promise<HealthAuthorizationResult>;
   readDailyHealth(anchorISO: string, days: number): Promise<string>;
+  readWeightSeries(anchorISO: string, days: number): Promise<string>;
+  writeAuthorizationStatus(kind: HealthWriteKind): HealthWriteStatus;
+  requestWriteAuthorization(): Promise<HealthAuthorizationResult>;
+  writeNutrientSample(key: string, amount: number): Promise<boolean>;
+  writeBodyMassSample(kilograms: number, whenISO: string): Promise<boolean>;
+  writeFoodSamples(label: string, atISO: string, amountsJSON: string): Promise<string>;
+  deleteHealthSamples(idsJSON: string): Promise<boolean>;
 }
 
 let nativeModule: TodoHealthNativeModule | null = null;
@@ -119,6 +213,140 @@ export function requestHealthAuthorization(): Promise<HealthAuthorizationResult>
 }
 
 /**
+ * The real, current write-authorization state for one share type. Synchronous,
+ * because `HKHealthStore.authorizationStatus(for:)` is — there is no sheet to
+ * wait on here, only a fact to read. Call it again right after
+ * `requestHealthWriteAuthorization` resolves to find out what was actually
+ * chosen, which the read side can never do for itself.
+ *
+ * Takes a `kind` because the two share types are allowed and refused
+ * independently: somebody can say yes to water and no to weight on the one
+ * sheet, and a single answer for "writing" would misreport whichever they
+ * refused.
+ */
+export function healthWriteAuthorizationStatus(kind: HealthWriteKind): HealthWriteStatus {
+  return degradeOnThrow(() => nativeModule!.writeAuthorizationStatus(kind), 'unavailable');
+}
+
+/**
+ * Present the Health share sheet for dietary water. Resolving `requested`
+ * says the sheet was shown, nothing about what was chosen — same shape as
+ * `requestHealthAuthorization` — but unlike that one, the truth is available
+ * right afterward: call `healthWriteAuthorizationStatus()` rather than
+ * inferring anything from this call's own result.
+ */
+export function requestHealthWriteAuthorization(): Promise<HealthAuthorizationResult> {
+  return degradeOnReject(() => nativeModule!.requestWriteAuthorization(), 'unavailable');
+}
+
+/**
+ * Writes one sample of `amount`, in `key`'s own unit, dated now.
+ *
+ * `key` is a `NutrientKey` from `src/types/index.ts` — the same vocabulary
+ * `writeFoodSamples` writes under, and the same native table
+ * (`nutrientWriteTable`) resolves it against, so a task logging water this
+ * way and a food log entry stating water land in Health under the identical
+ * share type. This is the generalization of what used to be a
+ * water-only `writeWaterSample`: every one of the ten nutrients already had a
+ * share type from the food-log write, so a task naming one of them needed no
+ * new native surface, only a single-sample write next to the ten-sample one.
+ *
+ * Resolves `false` for every reason there's nothing to report success for
+ * (no native half, not authorized, an unrecognized key, a non-positive
+ * amount, the save itself failing); the caller (`healthCompletionSync.ts`)
+ * treats all of them alike, since none of them are worth surfacing as an
+ * error to someone who just finished a task.
+ */
+export function writeNutrientSample(key: string, amount: number): Promise<boolean> {
+  return degradeOnReject(() => nativeModule!.writeNutrientSample(key, amount), false);
+}
+
+/**
+ * Writes one body-mass sample of `kilograms`, dated `whenISO`.
+ *
+ * Carries its own date, where the water write stamps the moment it runs: water
+ * is logged by completing a task, so the logging and the drinking are the same
+ * event, while a weight is typed in and may well be this morning's figure
+ * entered tonight.
+ *
+ * Kilograms because HealthKit stores a mass and the app has to pick a unit to
+ * hand it; what the user *typed* may have been pounds, and converting is the
+ * caller's job (`weightLog.ts`) so there is one conversion in the app rather
+ * than one per call site.
+ *
+ * Resolves `false` for the same spread of reasons the water write does, plus a
+ * value outside any plausible body mass — unlike a mistyped glass of water, a
+ * mistyped weight would sit in the person's Health record as a permanent
+ * outlier and skew every chart drawn from it, so the caller is expected to
+ * surface this one rather than swallow it.
+ */
+export function writeBodyMassSample(kilograms: number, whenISO: string): Promise<boolean> {
+  return degradeOnReject(() => nativeModule!.writeBodyMassSample(kilograms, whenISO), false);
+}
+
+/**
+ * Writes one logged meal as a food correlation, and resolves the identifiers
+ * of what it saved.
+ *
+ * `amounts` carries only the figures the entry actually states, keyed by
+ * `NutrientKey`. **A nutrient absent from it is not written**, which is the
+ * contract rather than an optimisation: absent means the label never said, and
+ * a zero sample would be this app claiming a meal contained none of something
+ * nobody measured. A present zero is written, since "no fat" is a real thing
+ * for a label to state.
+ *
+ * **This is the only write here that hands back identity, and that is the
+ * reason it exists in this shape.** The other two return a bare boolean and
+ * keep nothing, because Health is the record and neither a logged drink nor a
+ * recorded weight has an edit path in this app. A food log does: an entry
+ * deleted has to retract what it wrote, or a mistyped meal is a permanent
+ * false fact in a medical record. The ids belong on
+ * `FoodLogEntry.healthSampleIds`; pass them back to `deleteHealthSamples` to
+ * retract.
+ *
+ * Resolves an empty array for every kind of nothing-happened, which the caller
+ * treats alike: an entry with no ids simply has nothing to retract.
+ */
+export async function writeFoodSamples(
+  label: string,
+  atISO: string,
+  amounts: Record<string, number>,
+): Promise<string[]> {
+  const raw = await degradeOnReject(
+    () => nativeModule!.writeFoodSamples(label, atISO, JSON.stringify(amounts)),
+    '[]',
+  );
+  // Re-validated rather than trusted, the same rule `readDailyHealth` follows
+  // about its own payload: this crosses a boundary `tsc` cannot see across,
+  // and an id that is not a string is one that would be stored and later
+  // handed back to a delete that could not use it.
+  try {
+    const parsed: unknown = JSON.parse(raw);
+    if (!Array.isArray(parsed)) return [];
+    return parsed.filter((id): id is string => typeof id === 'string' && id.length > 0);
+  } catch {
+    return [];
+  }
+}
+
+/**
+ * Deletes the samples named by `ids`, the retraction half of
+ * `writeFoodSamples`.
+ *
+ * HealthKit only lets an app delete what it itself saved, which is what makes
+ * this safe to expose: no argument can reach a sample somebody's scale or
+ * another food app wrote.
+ *
+ * Resolves true when nothing went wrong, ids matching nothing included — an
+ * entry deleted twice, or one whose samples the person already removed in the
+ * Health app, is not a failure worth reporting.
+ */
+export function deleteHealthSamples(ids: readonly string[]): Promise<boolean> {
+  if (ids.length === 0) return Promise.resolve(true);
+  return degradeOnReject(() => nativeModule!.deleteHealthSamples(JSON.stringify(ids)), false);
+}
+
+/**
  * A count that came back over the bridge, or null.
  *
  * Shared by both reads so the "absent is not zero" rule has one implementation:
@@ -132,7 +360,9 @@ function countOrNull(value: unknown): number | null {
 }
 
 /**
- * Steps and sleep for each of `days` logical days starting at `anchorISO`.
+ * Steps, sleep, and eight nutrients (sodium, protein, saturated fat, fiber,
+ * sugar, caffeine, water, calories) for each of `days` logical days starting
+ * at `anchorISO`.
  *
  * The window is an anchor plus a count rather than a pair of instants, because
  * a logical day is exactly one calendar day long under any reset time — so the
@@ -163,7 +393,9 @@ export async function readDailyHealth(
     const out: HealthDayReading[] = [];
     for (const entry of parsed) {
       if (typeof entry !== 'object' || entry === null) continue;
-      const { start, steps, sleepMinutes } = entry as Record<string, unknown>;
+      const {
+        start, steps, sleepMinutes, sodiumMg, proteinG, satFatG, fiberG, sugarG, caffeineMg, waterMl, calorieKcal,
+      } = entry as Record<string, unknown>;
       // A row with no instant cannot be filed under a day, so it is dropped
       // rather than guessed at — the same refusal the native side makes when
       // it cannot work out which bucket a sample belongs in.
@@ -172,7 +404,60 @@ export async function readDailyHealth(
         start,
         steps: countOrNull(steps),
         sleepMinutes: countOrNull(sleepMinutes),
+        sodiumMg: countOrNull(sodiumMg),
+        proteinG: countOrNull(proteinG),
+        satFatG: countOrNull(satFatG),
+        fiberG: countOrNull(fiberG),
+        sugarG: countOrNull(sugarG),
+        caffeineMg: countOrNull(caffeineMg),
+        waterMl: countOrNull(waterMl),
+        calorieKcal: countOrNull(calorieKcal),
       });
+    }
+    return out;
+  } catch {
+    return [];
+  }
+}
+
+/**
+ * Body mass for each of `days` logical days starting at `anchorISO`, in
+ * kilograms, with null for every day that has no weigh-in.
+ *
+ * Same window shape and the same "nothing is cached" rule as `readDailyHealth`,
+ * and a separate native call for the reasons that function's Swift counterpart
+ * sets out: the daily read is cumulative, integer-rounded, and runs on every
+ * foreground, and body mass is none of those things.
+ *
+ * The wire carries whole grams as an integer, which this converts back. That
+ * is not an implementation detail worth hiding: a weight is the first
+ * fractional number to cross this bridge, and hand-built JSON with a `Double`
+ * in it is one comma-decimal locale away from a parse failure. Whole grams are
+ * finer than any scale reports, so the integer format every other reading uses
+ * survives intact.
+ */
+export async function readWeightSeries(
+  anchorISO: string,
+  days: number,
+): Promise<HealthWeightDay[]> {
+  const json = await degradeOnReject(
+    () => nativeModule!.readWeightSeries(anchorISO, days),
+    '[]',
+  );
+  try {
+    const parsed = JSON.parse(json) as unknown;
+    if (!Array.isArray(parsed)) return [];
+    const out: HealthWeightDay[] = [];
+    for (const entry of parsed) {
+      if (typeof entry !== 'object' || entry === null) continue;
+      const { start, grams } = entry as Record<string, unknown>;
+      if (typeof start !== 'string' || start === '') continue;
+      // Deliberately not `countOrNull`, which keeps a real 0 because a day of
+      // no steps is a reading. Nobody weighs zero: a 0 here is a broken answer,
+      // so it reads as "no weigh-in" rather than as a measurement.
+      const kilograms =
+        typeof grams === 'number' && Number.isFinite(grams) && grams > 0 ? grams / 1000 : null;
+      out.push({ start, kilograms });
     }
     return out;
   } catch {

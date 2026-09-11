@@ -5,11 +5,17 @@ extension). Referenced from `CLAUDE.md` — read this *before* touching `plugins
 `targets/`, not after the first failed build.
 
 Targets are injected at prebuild time by custom config plugins rather than a checked-in
-`ios/` folder. There are two:
+`ios/` folder:
 
 - **`targets/todo-widget/`** — the Today widget, added by `plugins/withWidgetExtension.js`.
 - **`targets/todo-share/`** — the share extension ("dundundun" in another app's share sheet,
   for a recipe page), added by `plugins/withShareExtension.js`.
+- **`targets/todo-activity-monitor/`** — the DeviceActivity monitor, added by
+  `plugins/withActivityMonitor.js`. Woken when a usage threshold is crossed, and at the end of
+  a penalty block.
+- **`targets/todo-shield-config/`** and **`targets/todo-shield-action/`** — the screen shown
+  when a blocked app is opened, and the button on it, both added by
+  `plugins/withShieldExtensions.js`.
 
 Both get the App Group entitlement from `plugins/withAppGroup.js`, and both build their Xcode
 target through **`plugins/lib/nativeTarget.js`**, which is where the sharp edges below actually
@@ -88,6 +94,23 @@ plumbing moved into `lib/nativeTarget.js`.
   plugin work needed, unlike a widget/share-extension addition. The intent still can't reach
   the app's SQLite or JS logic any more than `CompleteTaskIntent` can, so it follows the same
   App-Group-queue-then-`openAppWhenRun`-open-the-app shape.
+- **The custom shield screen is two targets, not one, and the layout is not yours.** A
+  `ShieldConfigurationDataSource` (`ManagedSettingsUI`) draws the screen and is *never told
+  about a tap*; `ShieldAction` only ever reaches a `ShieldActionDelegate` (`ManagedSettings`),
+  at a different extension point — so a button drawn by the configuration extension does
+  nothing at all until the second target exists. The two point identifiers differ by exactly
+  the `UI` suffix (`com.apple.ManagedSettingsUI.shield-configuration-service` vs
+  `com.apple.ManagedSettings.shield-action-service`), which is the easiest typo here to make
+  and, like every wrong principal class, silently yields no extension rather than a build
+  error. And there is no custom UI to write: the whole `ManagedSettingsUI` framework is two
+  types, so what a caller supplies is a blur style, a background colour, one `UIImage`, three
+  `Label`s and a button colour, which iOS arranges for you. Every app's shield screen has the
+  same shape for this reason.
+- **`Application.localizedDisplayName` works inside a shield extension**, which is the one
+  place a blocked app's name is readable at all — everywhere else in the app a picked app is
+  an opaque token that only SwiftUI can render (see `modules/todo-screentime-bridge`). It is
+  `String?`, so handle nil. In the *action* extension you get an `ApplicationToken` rather than
+  an `Application`, and the name has to be reconstructed with `Application(token:)`.
 - **A spoken Siri phrase for an `AppShortcut` needs the `com.apple.developer.siri` entitlement
   *and* `NSSiriUsageDescription`, even though App Intents otherwise needs neither.** Without the
   entitlement (`plugins/withSiriShortcuts.js`, added via `withEntitlementsPlist`), the same

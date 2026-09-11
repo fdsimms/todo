@@ -103,6 +103,14 @@ export function ImportedComponentRow({ candidate, state, accepted, onToggle, onI
           accessibilityLabel={`Choose a photo of ${title}`}
         />
       )}
+      <InlineAction
+        label="Paste image"
+        icon="copy-outline"
+        variant="neutral"
+        onPress={() => onImport('clipboard')}
+        haptic
+        accessibilityLabel={`Paste an image of ${title}`}
+      />
     </View>
   );
 

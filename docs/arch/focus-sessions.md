@@ -247,6 +247,59 @@ Two details in `pruneFocusPlan`:
 Only *completion* is added to `completedTaskIds`. A deleted task was not an
 achievement, and skipping one (`skipTask`) says so too.
 
+## Undoing a skip or a Done, right after it happens
+
+The session sheet offers an inline "Undo" the moment a Skip, "Done for now",
+or Done tap takes a task out of the plan, and it goes away the moment
+anything else happens — another tap in the sheet, or leaving it. It is
+deliberately not multi-level and not wired into the app-wide undo/redo stacks
+(`src/utils/undoHistory.ts`, `UndoBar`, shake-to-undo): those cover tasks,
+groceries, meal plan and leftovers, and a fifth store joining that shared
+history would let a grocery clear and a focus-session skip contend for the
+same slot, which is a much bigger promise than "put back what I just did."
+
+**It's a plain restore, not `pruneFocusPlan` run backwards.** The session
+sheet already holds `session` in scope the instant it calls `skipTask`,
+`finishForNow`, or completes the current task — so it captures that exact
+object as `sessionBefore` before the call, and `useFocusStore.restoreSession`
+puts it back verbatim (steps, cursor, clock, `completedTaskIds`, `stepLog`)
+if asked to. Rebuilding the removed steps from scratch would have to know
+which of them a break had ended up next to (see `normalizePlanTail`) and get
+it back exactly right; a snapshot already has the answer. `restoreSession`
+is a no-op once the session it belongs to has ended or been replaced —
+`sessionBefore.id` has to match the live session's — so a stale offer can't
+resurrect a run that no longer exists.
+
+**A Skip or "Done for now" needs only the session restored.** Neither one
+touches `useTaskStore`, so putting the plan back is the whole undo.
+
+**A Done tap needs the task reopened too, and reuses `completeTask`'s own
+undo entry to do it rather than inventing a second way to reverse a
+completion.** `completeTask` already registers `{ label: 'Task completed',
+undo: () => uncompleteTask(id) }` on `useTaskStore`'s stack — the same entry
+shake-to-undo or the row's own undo would reach for — so the sheet captures
+that entry by reference right after calling `completeTask` (the identity
+check `TitleRulesSheet` uses on `lastAction`, so it only fires while it's
+still the top of that stack) and calls it before restoring the session.
+Reversing a completion by hand here — walking back the recurrence successor,
+the streak, the chain step, the Logbook row — would be re-deriving
+`uncompleteTask`, badly. Order between the two doesn't matter:
+`useFocusSession`'s effect re-syncs the plan against `tasks` on every task
+change, and a task that's no longer completed is a no-op for that sync
+either way.
+
+**Scoped to the one Done tap made through this sheet, not a background sync.**
+A task ticked off from the Today list sitting behind the session (caught by
+`syncWithTasks`) gets no inline Undo — the same boundary
+`focusMeasuredMinutes`'s offer already draws, and for the same reason: the
+sheet is only the record of what a person just did *here*. Undoing that
+background completion is what the task's own row, or shake-to-undo, is for.
+A task that asks a question on completion (`asksOnCompletion`) is the other
+thing left out — it completes through `DeliverablePromptQueue` on its own
+schedule once answered, decoupled from this tap by a run of questions that
+can land seconds or minutes later, so there's no single "the completion that
+just happened" moment here to pair an inline Undo with.
+
 ## A daily target is logged, not ticked
 
 The session's tick action goes through `logQuotaUnit` for a quota task, exactly
@@ -290,7 +343,7 @@ standalone stopwatch writes through — so the corrected number gets the same
 "Timed" label on the row and in the Logbook, and the same in-place correction
 affordance, regardless of which one measured it.
 
-Three gates, and each exists because the naive version is wrong in a specific
+Four gates, and each exists because the naive version is wrong in a specific
 way:
 
 - **Offered only from this Done tap, never from `syncWithTasks`.** A task
@@ -310,6 +363,17 @@ way:
   reads a chain step's own estimate ahead of the task-level fields
   `applyMeasuredTime` writes, so applying it there would change nothing a
   reader ever sees — a silent no-op is worse than not offering at all.
+- **Skipped on a genuine one-off** (`measuredTimeWorthSuggesting` in
+  `effort.ts`). A recurring task's estimate seeds every future occurrence,
+  and a task mid-chain with more steps ahead still reads the task-level
+  estimate for those steps, so correcting it now pays off later. A plain
+  `recurrenceType: 'none'` task with no further chain step is completed once
+  and never scheduled again — there's no future reader for the correction,
+  so the interrupt would be pure friction for zero payoff. A series date
+  (`seriesId` set) gets the same answer from a different angle: it's its own
+  row, and a plain estimate patch doesn't fan out to the set's other dates
+  the way a `scope: 'series'` edit does, so the sibling rows never see it
+  either.
 
 - **A real miss, not any miss** (`measuredTimeDiffersEnough` in `effort.ts`).
   Unlike `applyMeasuredTime` itself — which has no threshold, because a
@@ -340,8 +404,12 @@ objects and no store standing behind it.
   phones sharing one session's cursor is not a state this feature has, and
   syncing the row would invent it. Both exclusions are argued in
   `BACKUP_EXCLUDED_TABLES` and `SYNC_EXCLUDED_TABLES`.
-- **No reordering on the setup sheet.** The suggester's order is "best first,
-  and each one partly chosen for going with the ones above it", which is a
-  defensible run order. Dragging inside that sheet is the `SortableList`
-  scroll-container dance (see the drag notes in `CLAUDE.md`) for a v1 that
-  doesn't need it.
+- **The setup sheet's rows are reorderable** (a `SortableList` inside the
+  sheet's own `ScrollView`, `scrollEnabled` switched off for the duration —
+  the drag notes in `CLAUDE.md`). The suggester's order is "best first, and
+  each one partly chosen for going with the ones above it", a defensible
+  default, but the queue runs one at a time in the order shown, so dragging a
+  row is a real edit to the plan rather than cosmetic — the same weight
+  swapping a row already carries. The reorder is local to the session being
+  set up; it doesn't write back to `pinnedOrder` or anything the suggester
+  reads next time.

@@ -22,6 +22,7 @@ import type { GroceryItem, ItemShopLink, Shop } from '../types';
 
 function makeItem(overrides: Partial<GroceryItem> = {}): GroceryItem {
   return {
+    nameFromScan: false,
     id: 'i1',
     name: 'Milk',
     nameKey: 'milk',
@@ -54,7 +55,7 @@ function makeItem(overrides: Partial<GroceryItem> = {}): GroceryItem {
     usedUpCount: 0,
     spoiledCount: 0,
     lastSpoiledAt: null,
-    varietyOfKey: null, backfillDismissedFields: [],
+    varietyOfKey: null, nutrition: null, backfillDismissedFields: [],
     lastPriceMinor: null,
     lastPricedAt: null,
     lastPriceQuantity: null, priceHistory: [],
@@ -71,6 +72,7 @@ function makeShop(name: string, sortOrder: number): Shop {
     createdAt: '2026-01-01T00:00:00.000Z',
     excludeFromSuggestions: false,
     receiptStyle: 'itemized' as const,
+    aisles: null,
   };
 }
 

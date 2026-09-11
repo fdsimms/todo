@@ -48,7 +48,7 @@ import { usePersonStore, displayNameOf } from '../store/usePersonStore';
 import { useTaskSelection } from '../hooks/useTaskSelection';
 import { useDebouncedValue } from '../hooks/useDebouncedValue';
 import { useColors } from '../theme/ThemeContext';
-import { spacing, font, fontWeight, lineHeight, radius, iconSize, border, checkboxRadius, animation, interaction, type Colors } from '../theme';
+import { spacing, font, fontWeight, lineHeight, radius, iconSize, border, checkboxRadius, animation, interaction, flattenOverlay, type Colors } from '../theme';
 import { haptics } from '../utils/haptics';
 import { confirmDelete } from '../utils/confirmDelete';
 import { animateLayout } from '../utils/layoutAnimation';
@@ -337,9 +337,14 @@ export function LogbookScreen() {
       ? query.trim().length > 0
       : query.trim().length > 0 || selectedCategory !== null || selectedTag !== null || selectedPerson !== null;
 
+  // The floating tab bar (see AppNavigator's absolutely-positioned
+  // tabBarStyle) covers whatever's behind it rather than pushing content up,
+  // so every list needs this in its bottom padding or its last rows are
+  // unreachable behind the bar.
+  const basePadding = tabBarHeight + spacing.sm;
   // Extra bottom padding so the last rows aren't hidden behind the floating
-  // bulk bar, same as the other bulk-selecting screens.
-  const selectionListPadding = tabBarHeight + spacing.sm + bulkBarHeight + spacing.sm;
+  // bulk bar too, same as the other bulk-selecting screens.
+  const selectionListPadding = basePadding + bulkBarHeight + spacing.sm;
 
   // ==== actions: clearing, bulk uncomplete, delete ====
   const handleClearLogbook = () => {
@@ -557,7 +562,9 @@ export function LogbookScreen() {
           keyExtractor={item => item.key}
           getItemLayout={getItemLayout}
           contentContainerStyle={
-            kitchenSections.length === 0 ? styles.emptyContainer : styles.listContent
+            kitchenSections.length === 0
+              ? styles.emptyContainer
+              : [styles.listContent, { paddingBottom: basePadding }]
           }
           renderSectionHeader={({ section }) => (
             <View style={styles.sectionHeader}>
@@ -618,7 +625,10 @@ export function LogbookScreen() {
         contentContainerStyle={
           sections.length === 0
             ? styles.emptyContainer
-            : [styles.listContent, selectionMode && { paddingBottom: selectionListPadding }]
+            : [
+                styles.listContent,
+                { paddingBottom: selectionMode ? selectionListPadding : basePadding },
+              ]
         }
         renderSectionHeader={({ section }) => (
           <View style={styles.sectionHeader}>
@@ -1186,7 +1196,7 @@ const makeStyles = (colors: Colors) => StyleSheet.create({
     lineHeight: lineHeight.xs,
     fontWeight: fontWeight.semibold,
   },
-  listContent: { paddingBottom: 40 },
+  listContent: {},
   emptyContainer: { flexGrow: 1 },
   rowSwipe: { borderRadius: 0 },
   // Deliberately flat, not the inset-grouped card TaskItem rows use — a
@@ -1231,7 +1241,13 @@ const makeStyles = (colors: Colors) => StyleSheet.create({
   // These rows are flat and separator-divided rather than cards, so a selected
   // one is marked by tinting the whole band instead of the card treatment
   // TaskItem uses.
-  rowSelected: { backgroundColor: colors.accent + '1A' },
+  //
+  // Opaque, not a translucent tint directly: this can be applied the instant
+  // a swipe-select commits, while SwipeableRow's own panel is still open
+  // behind this row mid-close-animation — see the note on `flattenOverlay`.
+  // Flattened against `colors.bg` (not `bgSecondary`) since this row has no
+  // card of its own and rests directly on the screen background.
+  rowSelected: { backgroundColor: flattenOverlay(colors.accent + '1A', colors.bg) },
   rowContent: { flex: 1 },
   taskTitle: {
     color: colors.textSecondary,

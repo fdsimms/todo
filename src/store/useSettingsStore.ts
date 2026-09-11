@@ -1,8 +1,26 @@
 import { create } from 'zustand';
 import { dbGetSetting, dbSetSetting } from '../db/database';
 import type { ThemeMode } from '../theme';
+import type { WeightUnit } from '../utils/weightLog';
+import {
+  parseWeightGoal,
+  serializeWeightGoal,
+  type WeightGoal,
+} from '../utils/weightGoal';
+import {
+  EMPTY_BODY_PROFILE,
+  parseBodyProfile,
+  serializeBodyProfile,
+  type BodyProfile,
+} from '../utils/energyBudget';
+import { DEFAULT_WEIGH_IN_EVERY_DAYS, clampWeighInEveryDays } from '../utils/weightTasks';
 import { DEFAULT_APP_FONT, isAppFont, pickRandomAppFont, type AppFont } from '../theme/fonts';
-import type { SortOption, RecipeSortOption, Priority, Effort, MealSlot, TimeOfDay, TitleRule, WeatherRule, ScreenTimeRule, HealthRule } from '../types';
+import type { SortOption, RecipeSortOption, Priority, Effort, MealSlot, TimeOfDay, TitleRule, WeatherRule, ScreenTimeRule, HealthRule, NutrientKey } from '../types';
+import {
+  parseNutritionTargets,
+  serializeNutritionTargets,
+  type NutritionTargets,
+} from '../utils/nutritionTargets';
 import {
   DEFAULT_CURRENCY_SYMBOL,
   CURRENCY_SYMBOL_MAX_LENGTH,
@@ -295,6 +313,42 @@ interface SettingsStore {
   vacationMode: boolean;
   vacationStart: string | null;
   vacationEnd: string | null; // optional ISO date — vacation mode auto-turns-off once this passes
+  /**
+   * The project whose away dates switched vacation mode on, or null when a
+   * person did it themselves.
+   *
+   * The pass may only turn off what it turned on — same rule as
+   * `dropGeneratedTask` versus an opt-out write, where the app's own tidying
+   * never overwrites a decision somebody made. It is also how a manual switch
+   * *off* mid-trip is detected: vacation mode being off while this still names
+   * a project can only mean it was turned off since the pass armed it. See
+   * checkAwayVacation in useTaskStore.
+   */
+  vacationDrivenBy: string | null;
+  /**
+   * The project whose away list is the one currently being shown, or null.
+   *
+   * `vacationDrivenBy` one feature over, with the same job and the same rule:
+   * the pass may only switch back a list it switched to, and a mismatch
+   * between this and `activeListId` is how a switch made by hand mid-trip is
+   * detected. See checkAwayGroceryList in useGroceryStore.
+   *
+   * Not synced, because the list it points into is not: which trolley a device
+   * is showing is that device's business (see `grocery_active_list` in
+   * `syncTracking.ts`), and a pointer that outlived the value it points at
+   * would have one phone switching another one's list back.
+   */
+  activeListDrivenBy: string | null;
+  /**
+   * Whether a trip's destination may be looked up and its forecast fetched.
+   *
+   * Its own switch, off by default, on `productLookupEnabled`'s precedent and
+   * for its reason: both calls are keyless, so "no key, no traffic" is not the
+   * privacy answer here the way it is for everything gated behind the user's
+   * own Anthropic key. This one sends a place name the user typed to a third
+   * party, which is a thing to opt into rather than a thing to discover.
+   */
+  destinationForecastEnabled: boolean;
   // How long a task with a closed time window sits in the Expired section
   // before sweepExpiredTasks deletes it. null = Never (keep forever, the old
   // `false`), 0 = Immediately (delete on window close, the old `true`), or a
@@ -356,6 +410,37 @@ interface SettingsStore {
   // doing unasked. Which apps is not stored here — the picked set lives in the
   // App Group as opaque tokens, because iOS never tells the app what they are.
   focusShieldEnabled: boolean;
+  // Block those same apps for a while when a task is failed — a positive task
+  // left undone past its cutoff, or a slip logged against a negative one. See
+  // src/utils/penaltyShield.ts for what counts as failing.
+  //
+  // Ships off for the reason the focus shield does, with one more on top of
+  // it: this is the only feature in the app that does something to somebody
+  // because they fell short, so it has to be asked for rather than discovered.
+  // Which apps is not a separate choice — the native side stores one selection
+  // and the focus shield already names it, so this blocks the same set rather
+  // than pretending to a second one it has nowhere to keep.
+  penaltyShieldEnabled: boolean;
+  // Keep those same apps blocked while a task marked as a gate is outstanding.
+  // The other direction from the penalty: not what failing costs afterwards,
+  // but what has to happen before the apps unblock at all. See
+  // src/utils/appGate.ts, including why this can't lock anybody out.
+  //
+  // Its own switch rather than riding on the penalty's, because wanting one is
+  // no reason to want the other: a consequence you serve and a precondition you
+  // clear are different bargains to make with yourself.
+  gateShieldEnabled: boolean;
+  // When the current penalty block runs out, or null when none is being
+  // served. An instant rather than a duration because it has to survive the app
+  // being killed and mean the same thing on the way back, and in settings
+  // rather than on a task because several failures fold into one block (see
+  // extendShieldUntil) and the block outlives the row that bought it.
+  penaltyShieldUntil: string | null;
+  // What earned the block being served — a task's title — or null when none is.
+  // Kept beside the instant rather than derived: the row that caused it may be
+  // completed, edited or gone by the time the shield screen asks, and a block
+  // that cannot say what it was for is the thing the screen exists to fix.
+  penaltyShieldReason: string | null;
   // How long completed tasks are kept before a startup purge deletes them.
   // null = forever, and forever is the default: nothing about an existing
   // install changes until the user picks a window in Settings. See
@@ -726,6 +811,16 @@ interface SettingsStore {
   // type and never renamed, so there's nothing to reconcile against on load
   // the way `collapsedCategories` has to be.
   collapsedRecipeSections: string[];
+  // Which grocery list groups — aisles, or recipes when grouped that way —
+  // are folded shut. Same reasoning as `collapsedCategories` (a collapse is a
+  // preference about the shape of the list) and the same key shape as the
+  // list's own `ListRow` headers (`aisle:<name>` / `recipe:<id | 'none'>`),
+  // so a rename or delete has one string to reconcile rather than a second
+  // encoding of "which group". Aisle renames/deletes are reconciled the way
+  // `renameCategory`/`deleteCategory` reconcile `collapsedCategories` — see
+  // `renameAisle`/`deleteAisle` in useGroceryStore. A deleted recipe's key is
+  // left to go unused, same as an unused name in `collapsedCategories`.
+  collapsedGroceryGroups: string[];
   // The last few queries run on the Search screen, newest first, offered back
   // while the field is empty. Device-local on purpose — see the note in
   // src/utils/recentSearches.ts for why this one isn't in SYNCED_SETTING_KEYS.
@@ -757,6 +852,15 @@ interface SettingsStore {
   // calendar" toggle in the editor has nothing to offer without one, the
   // same way `calendarReadEnabled` follows `calendarIds` in `CalendarSettings`.
   deadlineCalendarId: string | null;
+  // Which calendar a task's completion is logged onto as a silent,
+  // point-in-time event, separate from `deadlineCalendarId` above. Not
+  // because a different person reads it (unlike `mealCalendarId`) — it's the
+  // same shape of setting for a different question: a deadline event answers
+  // "when is this due" and a completion event answers "when did I finish
+  // this", two different facts about a task that a user may want recorded on
+  // either calendar, both, or neither. Null means off, same "the calendar to
+  // write into is the switch" reasoning as `deadlineCalendarId`.
+  completionCalendarId: string | null;
   // Which calendar the week's planned meals are mirrored onto as all-day
   // events (#1494). Null means off, and off is the default — same shape as
   // `deadlineCalendarId` above and for the same reason: a calendar to write
@@ -782,6 +886,65 @@ interface SettingsStore {
   // renders whatever comes back, including nothing. See
   // `modules/todo-health-bridge/index.ts`.
   healthReadEnabled: boolean;
+
+  // Whether this app may write anything to Health at all: a nutrient sample
+  // when a task that opted in (Task.logHealthMetric) completes, and a
+  // body-mass sample when somebody logs a weight on the Weight screen. A
+  // separate switch from healthReadEnabled above on purpose: read and write are
+  // two different permissions to give, asked for separately (see
+  // `modules/todo-health-bridge/index.ts`), and someone who only wants the
+  // steps row on Today has no reason to also be asked about writing anything.
+  //
+  // One switch covering both writes rather than one per type, because what it
+  // answers is "may this app put samples in my Health record" — a question
+  // asked once. Which *types* it may write is Health's own question, answered
+  // in Health's own sheet and reported per type by
+  // `healthWriteAuthorizationStatus`, so a second app-level switch would only
+  // add a way to be refused twice for the same reason.
+  healthWriteEnabled: boolean;
+
+  // Whether a weight is shown and typed in kilograms or pounds.
+  //
+  // Its own setting rather than a read of `unitSystem`, which is the recipe
+  // one: that carries 'asWritten', which means "however the recipe put it" and
+  // has no answer for a number coming out of HealthKit. Kilograms by default
+  // because that is what Health stores and what the bridge hands back, so it is
+  // the answer that involves no conversion; the Weight screen puts the choice
+  // in reach rather than burying it, since somebody who wants pounds wants them
+  // immediately.
+  weightUnit: WeightUnit;
+
+  /**
+   * A weight to reach, the rate to reach it at, and the weight it was set
+   * from — see src/utils/weightGoal.ts. Null until somebody sets one, which is
+   * the shipping state.
+   *
+   * **Here rather than in Apple Health because it is not a measurement.**
+   * HealthKit has nowhere to put a goal, and the weights this is read against
+   * stay Health's own. It derives nothing on its own: no task fires off it,
+   * reaching it completes nothing, and nothing outside the Weight screen and
+   * its sheet reads it.
+   *
+   * Kept out of DEFAULT_SETTINGS/resetToDefaults for the mechanical reason
+   * nutritionTargets is: it's an object, and String(value) doesn't round-trip
+   * one. Resetting settings must not silently discard somebody's goal anyway.
+   */
+  weightGoal: WeightGoal | null;
+
+  /**
+   * Height, year of birth, sex and activity level — the inputs the calorie
+   * estimate needs, and nothing else in the app reads them. See
+   * src/utils/energyBudget.ts.
+   *
+   * **Every field ships empty and nothing fills one in.** An absent height is
+   * absent rather than average, which is the whole of that module's discipline
+   * about defaults; the one field that isn't nullable (`activity`) starts at
+   * the bottom of its ladder so an untouched profile produces the smallest
+   * estimate its other fields support rather than a middle guess.
+   *
+   * An object, so out of DEFAULT_SETTINGS for the same reason as above.
+   */
+  bodyProfile: BodyProfile;
 
   // Which category the health reading files under on Today, by name.
   //
@@ -893,18 +1056,59 @@ interface SettingsStore {
   // "how long since the last offer" rather than testing it for existence — see
   // PANTRY_REVIEW_CADENCE_DAYS.
   pantryReviewLastDayKey: string | null;
+  // The logical day key the "Lighten this day" flow (DeloadSheet) was last
+  // applied on — stamped by deloadTasks' caller, not by deloadTasks itself,
+  // since deload moves also fire from LookAheadSheet for a day that isn't
+  // today. Read by TaskItem to show the sleep-shortfall "Keep today light"
+  // task as ready to complete once the day it named has actually been
+  // lightened, the same "nudge, not a lock" treatment isHealthTargetReady
+  // gets — see healthTaskLinkUrl/DELOAD_LINK_URL in utils/healthRules.ts.
+  lastDeloadAppliedDayKey: string | null;
   // Whether a planned meal the kitchen can't currently make gets a "Shop for
   // Tue ragu" task (see src/utils/mealShortfallTasks.ts). Defaults OFF, for
   // pantryCheckTasks' reason above and one of its own: this generator reads a
   // plan the user may well be keeping loosely, and a half-filled week answered
   // with shopping rows is the fastest way to have the whole thing switched off.
   mealShortfallTasks: boolean;
+
+  // Whether finishing a planned meal, or a leftover, offers to log what was
+  // eaten — the auto-computed prompt for a recipe-backed meal, the search
+  // sheet for anything else (see src/utils/mealLog.ts, offerMealLog in
+  // useTaskStore.ts). Defaults ON, unlike the generators above, and the
+  // reason is that this one cannot surprise anybody: either shape is a
+  // dismissable ask rather than a written record, so there is nothing here a
+  // person could be shown that they didn't already just do.
+  mealLogPrompt: boolean;
+
+  /**
+   * A daily figure to aim at, per nutrient — see src/utils/nutritionTargets.ts.
+   *
+   * **Ships empty and has no defaults of any kind.** The app has no business
+   * having an opinion on what somebody should eat, so nothing is suggested,
+   * nothing is computed from a body, and a nutrient with no entry here simply
+   * has no target. A "recommended" figure sitting in a field nobody chose is
+   * exactly how an app acquires an opinion it was never given.
+   *
+   * Kept out of DEFAULT_SETTINGS/resetToDefaults for the mechanical reason
+   * newTaskDefaults and aiFeatureConfig are: it's an object, and String(value)
+   * doesn't round-trip one.
+   */
+  nutritionTargets: NutritionTargets;
   // How many days ahead of a meal its shop is raised. See
   // MEAL_SHORTFALL_LEAD_DAYS_DEFAULT for why two and not one.
   mealShortfallLeadDays: number;
   // Which category a shopping task files itself under, by name, or null for
   // none — same setting as the other generators' for the same reason.
   mealShortfallTaskCategory: string | null;
+  // Whether a planned meal with nothing logged a few days later gets a "Log
+  // X" task (see src/utils/mealLogNudgeTasks.ts). Defaults OFF, for
+  // mealShortfallTasks' own reason: it adds a surface — a task on Today —
+  // rather than replacing one, so an install that has never asked for it
+  // should see nothing new appear.
+  mealLogNudgeTasks: boolean;
+  // Which category a log-nudge task files itself under, by name, or null for
+  // none — same setting as the other generators' for the same reason.
+  mealLogNudgeTaskCategory: string | null;
   // Whether a recurring task running low on its supply gets an "Order more X"
   // task (see src/utils/supply.ts). Defaults ON, unlike pantryCheckTasks above,
   // and the difference is who asked: a pantry check is projected from a catalog
@@ -983,18 +1187,28 @@ interface SettingsStore {
   // decline onto, and without this a swiped-away check-in would come straight
   // back on the next foreground.
   moodLogLastDayKey: string | null;
-  // Which part of the day the check-in is held back until, or null to show it
-  // as soon as the pass writes it (the behavior before this setting existed).
-  // Same shape and same reading as calendarReviewTimeSegment above, and it
-  // defaults to null for that field's reason rather than for "any time" being
-  // the better question: the generator has shipped for a while showing the task
-  // first thing, and a default that moved it would change the day for everyone
-  // already using it. Answering in the evening is one tap away.
+  // The logical day the morning check-in sheet was last shown, or null if
+  // never. Same reading as moodLogLastDayKey/pantryReviewLastDayKey above —
+  // shown, not answered, so dismissing it without resolving every row still
+  // counts as today's showing and it doesn't reappear until tomorrow.
+  morningCheckInLastDayKey: string | null;
+  // Which part(s) of the day the check-in is held back until. An empty list
+  // shows it as soon as the pass writes it (the behavior, and the default,
+  // before this setting existed) rather than "any time" being the better
+  // default on its own terms: the generator has shipped for a while showing
+  // the task first thing, and a default that moved it would change the day
+  // for everyone already using it. Answering in the evening is one tap away.
+  //
+  // One or more segments instead hold back a task per segment — morning,
+  // evening, and so on — with only the current one ever live: checkMoodTasks
+  // clears an earlier segment's unanswered task the moment the next one's
+  // threshold arrives. See moodTasks.ts's header for the shape this gives
+  // the generated task's sourceId.
   //
   // moodNudge deliberately gets no counterpart. It asks about the week rather
   // than the day and fires at most once a week, so holding it until a part of
   // the day buys nothing.
-  moodLogTimeSegment: TimeOfDay | null;
+  moodLogTimeSegments: TimeOfDay[];
   // Whether a run of low-mood days adds a task to plan something you enjoy.
   // Off by default and deliberately harder to reach than the rest: it is the
   // only generator that fires on a trend in the user's own answers, so opting
@@ -1024,6 +1238,31 @@ interface SettingsStore {
   // source row to stamp a decline onto and without it a swiped-away row would
   // come straight back on the next foreground.
   weekendNudgeLastWeekendKey: string | null;
+  // Whether a stretch with no weigh-in recorded adds a task to record one. Off
+  // by default, like every generator that adds a surface rather than replacing
+  // one. See src/utils/weightTasks.ts.
+  //
+  // It needs healthReadEnabled and healthWriteEnabled on top of this to do
+  // anything: the pass reads Health to find out whether to ask, and the sheet
+  // writes Health to record the answer. Three switches sounds like a lot, and
+  // it is the same count the health generator already carries — the two Health
+  // ones are permissions over somebody's medical record and this one is a
+  // preference about their task list, so collapsing them would mean turning on
+  // a reminder in order to grant a data permission.
+  weighInTasks: boolean;
+  weighInTaskCategory: string | null;
+  // How many days without a recorded weight before the task is offered. Its own
+  // setting rather than a constant for weekendNudgeLeadDays' reason: how often
+  // somebody wants to weigh themselves is not a thing the app gets to decide,
+  // and the honest range runs from every day to once a month. See
+  // DEFAULT_WEIGH_IN_EVERY_DAYS.
+  weighInEveryDays: number;
+  // The day key a request was last raised on. The whole of the "don't ask
+  // twice" promise, and — like weekendNudgeLastWeekendKey above and
+  // moodLogLastDayKey — written before the window is judged rather than after,
+  // since there is no source row to stamp a decline onto and without it a
+  // swiped-away row would come straight back on the next foreground.
+  weighInLastDayKey: string | null;
   // The opt-in "plan meals for the week" nudge (#1121) — a real Task,
   // auto-created once a week, off by default so an existing install sees no
   // new task until this is turned on. See src/utils/mealPlanNudge.ts for the
@@ -1032,6 +1271,16 @@ interface SettingsStore {
   mealPlanNudgeEnabled: boolean;
   mealPlanNudgeWeekday: number;
   mealPlanNudgeTime: string; // "HH:MM"
+  // Opt-out from the vacation pause, for this generator alone: vacation still
+  // means "hide work from me" for the other generators, but a trip is exactly
+  // when some people most want to plan meals. Off by default — an existing
+  // install keeps today's behavior (paused on vacation) until asked
+  // otherwise. Checked at the checkMealPlanNudge call site, ahead of
+  // generatorPausedForVacation, rather than folded into
+  // GeneratedKindSpec.pausedOnVacation itself — that stays a fixed fact about
+  // a generator, true for every user, so a per-user exception belongs beside
+  // it rather than inside it.
+  mealPlanNudgeIgnoresVacation: boolean;
   // Idempotency state, not a preference — the day-key of the week the nudge
   // last fired in. Read only by dueMealPlanNudge, which compares it against
   // the current week rather than testing it for existence, so it "expires"
@@ -1140,6 +1389,9 @@ interface SettingsStore {
   setAppLockGraceSeconds: (seconds: number) => void;
   setVacationMode: (on: boolean, endDate?: string | null) => void;
   setVacationEnd: (endDate: string | null) => void;
+  setVacationDrivenBy: (projectId: string | null) => void;
+  setActiveListDrivenBy: (projectId: string | null) => void;
+  setDestinationForecastEnabled: (on: boolean) => void;
   setAutoRemoveExpiredTasks: (days: ExpiredTaskGraceDays) => void;
   setAutoCompleteProjectsOnDone: (on: boolean) => void;
   setFocusWorkCapMinutes: (minutes: number) => void;
@@ -1150,6 +1402,9 @@ interface SettingsStore {
   setFocusLongRestEvery: (count: number | null) => void;
   setFocusLongRestMinutes: (minutes: number) => void;
   setFocusShieldEnabled: (on: boolean) => void;
+  setPenaltyShieldEnabled: (on: boolean) => void;
+  setGateShieldEnabled: (on: boolean) => void;
+  setPenaltyShieldUntil: (until: string | null, reason?: string | null) => void;
   setCompletedRetentionDays: (days: RetentionDays) => void;
   setDefaultReminderLeadMinutes: (minutes: number | null) => void;
   setHideCategories: (on: boolean) => void;
@@ -1185,6 +1440,12 @@ interface SettingsStore {
   setRemindersImportReview: (on: boolean) => void;
   setCalendarReadEnabled: (on: boolean) => void;
   setHealthReadEnabled: (on: boolean) => void;
+  setHealthWriteEnabled: (on: boolean) => void;
+  setWeightUnit: (unit: WeightUnit) => void;
+  /** Sets the weight goal, or clears it with null. */
+  setWeightGoal: (goal: WeightGoal | null) => void;
+  /** Replaces the body profile whole — the sheet stages it and saves once. */
+  setBodyProfile: (profile: BodyProfile) => void;
   setHealthCategory: (category: string | null) => void;
   setHealthTasks: (on: boolean) => void;
   setHealthTaskCategory: (category: string | null) => void;
@@ -1194,9 +1455,11 @@ interface SettingsStore {
   setCalendarEventCategory: (category: string | null) => void;
   setCollapsedCategories: (categories: string[]) => void;
   setCollapsedRecipeSections: (sections: string[]) => void;
+  setCollapsedGroceryGroups: (groups: string[]) => void;
   setReminderMeetingNudgeEnabled: (on: boolean) => void;
   setCalendarPeopleHistory: (on: boolean) => void;
   setDeadlineCalendarId: (id: string | null) => void;
+  setCompletionCalendarId: (id: string | null) => void;
   setMealCalendarId: (id: string | null) => void;
   setProjectReviewTasks: (on: boolean) => void;
   setProjectReviewTaskCategory: (category: string | null) => void;
@@ -1213,9 +1476,15 @@ interface SettingsStore {
   setPantryReviewTasks: (on: boolean) => void;
   setPantryReviewTaskCategory: (category: string | null) => void;
   setPantryReviewLastDayKey: (dayKey: string | null) => void;
+  setLastDeloadAppliedDayKey: (dayKey: string | null) => void;
   setMealShortfallTasks: (on: boolean) => void;
+  setMealLogPrompt: (on: boolean) => void;
+  /** Sets one nutrient's target, or clears it with null. */
+  setNutritionTarget: (key: NutrientKey, value: number | null) => void;
   setMealShortfallLeadDays: (days: number) => void;
   setMealShortfallTaskCategory: (category: string | null) => void;
+  setMealLogNudgeTasks: (on: boolean) => void;
+  setMealLogNudgeTaskCategory: (category: string | null) => void;
   setSupplyReorderTasks: (on: boolean) => void;
   setCalendarReviewTasks: (on: boolean) => void;
   setCalendarReviewLastDayKey: (dayKey: string | null) => void;
@@ -1229,7 +1498,8 @@ interface SettingsStore {
   setMoodLogTasks: (on: boolean) => void;
   setMoodLogTaskCategory: (category: string | null) => void;
   setMoodLogLastDayKey: (dayKey: string | null) => void;
-  setMoodLogTimeSegment: (segment: TimeOfDay | null) => void;
+  setMorningCheckInLastDayKey: (dayKey: string | null) => void;
+  setMoodLogTimeSegments: (segments: TimeOfDay[]) => void;
   setMoodNudgeTasks: (on: boolean) => void;
   setMoodNudgeTaskCategory: (category: string | null) => void;
   setMoodNudgeAfterDays: (days: number) => void;
@@ -1238,8 +1508,13 @@ interface SettingsStore {
   setWeekendNudgeTaskCategory: (category: string | null) => void;
   setWeekendNudgeLeadDays: (days: number) => void;
   setWeekendNudgeLastWeekendKey: (weekendKey: string | null) => void;
+  setWeighInTasks: (on: boolean) => void;
+  setWeighInTaskCategory: (category: string | null) => void;
+  setWeighInEveryDays: (days: number) => void;
+  setWeighInLastDayKey: (dayKey: string | null) => void;
   setDefaultProjectNudgeCadenceDays: (days: number) => void;
   setMealPlanNudgeEnabled: (on: boolean) => void;
+  setMealPlanNudgeIgnoresVacation: (on: boolean) => void;
   setMealPlanNudgeWeekday: (weekday: number) => void;
   setMealPlanNudgeTime: (time: string) => void;
   setMealPlanNudgeLastFiredWeekKey: (weekKey: string | null) => void;
@@ -1292,6 +1567,10 @@ const DEFAULT_SETTINGS = {
   focusLongRestEvery: FOCUS_DEFAULTS.longRestEvery,
   focusLongRestMinutes: FOCUS_DEFAULTS.longRestMinutes,
   focusShieldEnabled: false,
+  penaltyShieldEnabled: false,
+  gateShieldEnabled: false,
+  penaltyShieldUntil: null,
+  penaltyShieldReason: null,
   hideCategories: false,
   simpleTaskForm: false,
   simpleMode: false,
@@ -1305,6 +1584,7 @@ const DEFAULT_SETTINGS = {
   focusLiveActivity: true,
   collapsedCategories: [] as string[],
   collapsedRecipeSections: [] as string[],
+  collapsedGroceryGroups: [] as string[],
   mealsOnToday: 'inline' as MealsOnToday,
   kitchenOnToday: true,
   unitSystem: 'asWritten' as UnitSystem,
@@ -1321,8 +1601,11 @@ const DEFAULT_SETTINGS = {
   groceryUseUpLeadDays: GROCERY_USE_UP_LEAD_DAYS_DEFAULT,
   groceryUseUpTaskCategory: null,
   mealShortfallTasks: false,
+  mealLogPrompt: true,
   mealShortfallLeadDays: MEAL_SHORTFALL_LEAD_DAYS_DEFAULT,
   mealShortfallTaskCategory: null,
+  mealLogNudgeTasks: false,
+  mealLogNudgeTaskCategory: null,
   leftoverUseUpTasks: true,
   leftoverUseUpTaskCategory: null,
   useUpTaskCap: null,
@@ -1334,11 +1617,14 @@ const DEFAULT_SETTINGS = {
   remindersImportReview: true,
   calendarReadEnabled: false,
   healthReadEnabled: false,
+  healthWriteEnabled: false,
+  weightUnit: 'kg' as WeightUnit,
   healthTasks: false,
   reminderMeetingNudgeEnabled: true,
   calendarPeopleHistory: true,
   defaultProjectNudgeCadenceDays: 0,
   mealPlanNudgeEnabled: false,
+  mealPlanNudgeIgnoresVacation: false,
   mealPlanNudgeWeekday: DEFAULT_MEAL_PLAN_NUDGE_WEEKDAY,
   mealPlanNudgeTime: DEFAULT_MEAL_PLAN_NUDGE_TIME,
   mealPlanNudgeTaskCategory: null,
@@ -1430,6 +1716,32 @@ function parseDefaultReminderLeadMinutes(raw: string | null): number | null {
  * or out-of-range entry is discarded rather than trusted.
  */
 /**
+ * The configured mood check-in segments, plus the migration off the setting's
+ * original single-value shape.
+ *
+ * An install that set `moodLogTimeSegment` before this list existed has never
+ * written `moodLogTimeSegments`, so a missing new key falls back to wrapping
+ * the old single value (itself falling back to `[]`, "any time", exactly as
+ * a missing old value already read) — the same one-time migration shape
+ * `calendarReviewTimeSegment`'s sibling fields don't need because they never
+ * grew a second form. Once anything is saved through `setMoodLogTimeSegments`
+ * the new key exists and this stops consulting the old one.
+ */
+function parseMoodLogTimeSegments(raw: string | null, legacyRaw: string | null): TimeOfDay[] {
+  if (raw) {
+    try {
+      const parsed = JSON.parse(raw);
+      if (Array.isArray(parsed)) {
+        return parsed.filter((s): s is TimeOfDay => NEW_TASK_TIME_SEGMENTS.includes(s));
+      }
+    } catch {
+      // Falls through to the legacy read below.
+    }
+  }
+  return legacyRaw && NEW_TASK_TIME_SEGMENTS.includes(legacyRaw as TimeOfDay) ? [legacyRaw as TimeOfDay] : [];
+}
+
+/**
  * The chosen calendars. Anything unreadable reads as none picked, which turns
  * the feature off rather than reading calendars the user didn't choose — the
  * same direction of failure `parseDefaultReminderLeadMinutes` takes.
@@ -1478,6 +1790,17 @@ function parseCategoryNames(raw: string | null): string[] {
  * matches a rendered header again rather than one that needs pruning.
  */
 function parseCollapsedRecipeSections(raw: string | null): string[] {
+  if (!raw) return [];
+  try {
+    const parsed = JSON.parse(raw);
+    if (!Array.isArray(parsed)) return [];
+    return parsed.filter((key): key is string => typeof key === 'string' && key.length > 0);
+  } catch {
+    return [];
+  }
+}
+
+function parseCollapsedGroceryGroups(raw: string | null): string[] {
   if (!raw) return [];
   try {
     const parsed = JSON.parse(raw);
@@ -1615,6 +1938,9 @@ export const useSettingsStore = create<SettingsStore>((set, get) => ({
   vacationMode: false,
   vacationStart: null,
   vacationEnd: null,
+  vacationDrivenBy: null,
+  activeListDrivenBy: null,
+  destinationForecastEnabled: false,
   autoRemoveExpiredTasks: null,
   autoCompleteProjectsOnDone: false,
   postponeCheckEnabled: true,
@@ -1627,6 +1953,10 @@ export const useSettingsStore = create<SettingsStore>((set, get) => ({
   focusLongRestEvery: FOCUS_DEFAULTS.longRestEvery,
   focusLongRestMinutes: FOCUS_DEFAULTS.longRestMinutes,
   focusShieldEnabled: false,
+  penaltyShieldEnabled: false,
+  gateShieldEnabled: false,
+  penaltyShieldUntil: null,
+  penaltyShieldReason: null,
   completedRetentionDays: null,
   defaultReminderLeadMinutes: null,
   hideCategories: false,
@@ -1641,6 +1971,7 @@ export const useSettingsStore = create<SettingsStore>((set, get) => ({
   focusLiveActivity: true,
   collapsedCategories: [],
   collapsedRecipeSections: [],
+  collapsedGroceryGroups: [],
   kitchenEnabled: true,
   mealsOnToday: 'inline',
   kitchenOnToday: true,
@@ -1659,8 +1990,12 @@ export const useSettingsStore = create<SettingsStore>((set, get) => ({
   groceryUseUpLeadDays: GROCERY_USE_UP_LEAD_DAYS_DEFAULT,
   groceryUseUpTaskCategory: null,
   mealShortfallTasks: false,
+  mealLogPrompt: true,
+  nutritionTargets: {},
   mealShortfallLeadDays: MEAL_SHORTFALL_LEAD_DAYS_DEFAULT,
   mealShortfallTaskCategory: null,
+  mealLogNudgeTasks: false,
+  mealLogNudgeTaskCategory: null,
   leftoverUseUpTasks: true,
   leftoverUseUpTaskCategory: null,
   useUpTaskCap: null,
@@ -1681,8 +2016,13 @@ export const useSettingsStore = create<SettingsStore>((set, get) => ({
   reminderMeetingNudgeEnabled: true,
   calendarPeopleHistory: true,
   deadlineCalendarId: null,
+  completionCalendarId: null,
   mealCalendarId: null,
   healthReadEnabled: false,
+  healthWriteEnabled: false,
+  weightUnit: 'kg',
+  weightGoal: null,
+  bodyProfile: { ...EMPTY_BODY_PROFILE },
   healthCategory: null,
   healthTasks: false,
   healthTaskCategory: null,
@@ -1702,6 +2042,7 @@ export const useSettingsStore = create<SettingsStore>((set, get) => ({
   pantryReviewTasks: false,
   pantryReviewTaskCategory: null,
   pantryReviewLastDayKey: null,
+  lastDeloadAppliedDayKey: null,
   supplyReorderTasks: true,
   calendarReviewTasks: false,
   calendarReviewLastDayKey: null,
@@ -1715,7 +2056,8 @@ export const useSettingsStore = create<SettingsStore>((set, get) => ({
   moodLogTasks: false,
   moodLogTaskCategory: null,
   moodLogLastDayKey: null,
-  moodLogTimeSegment: null,
+  morningCheckInLastDayKey: null,
+  moodLogTimeSegments: [],
   moodNudgeTasks: false,
   moodNudgeTaskCategory: null,
   moodNudgeAfterDays: DEFAULT_MOOD_NUDGE_AFTER_DAYS,
@@ -1724,9 +2066,14 @@ export const useSettingsStore = create<SettingsStore>((set, get) => ({
   weekendNudgeTaskCategory: null,
   weekendNudgeLeadDays: WEEKEND_NUDGE_LEAD_DAYS_DEFAULT,
   weekendNudgeLastWeekendKey: null,
+  weighInTasks: false,
+  weighInTaskCategory: null,
+  weighInEveryDays: DEFAULT_WEIGH_IN_EVERY_DAYS,
+  weighInLastDayKey: null,
   patchNotesQaStatus: {},
   defaultProjectNudgeCadenceDays: 0,
   mealPlanNudgeEnabled: false,
+  mealPlanNudgeIgnoresVacation: false,
   mealPlanNudgeWeekday: DEFAULT_MEAL_PLAN_NUDGE_WEEKDAY,
   mealPlanNudgeTime: DEFAULT_MEAL_PLAN_NUDGE_TIME,
   mealPlanNudgeTaskCategory: null,
@@ -1798,6 +2145,9 @@ export const useSettingsStore = create<SettingsStore>((set, get) => ({
     const vacationMode = dbGetSetting('vacationMode') === 'true';
     const vacationStart = dbGetSetting('vacationStart') ?? null;
     const vacationEnd = dbGetSetting('vacationEnd') || null;
+    const vacationDrivenBy = dbGetSetting('vacationDrivenBy') || null;
+    const activeListDrivenBy = dbGetSetting('activeListDrivenBy') || null;
+    const destinationForecastEnabled = dbGetSetting('destinationForecastEnabled') === 'true';
     const autoRemoveExpiredTasks = parseExpiredTaskGrace(dbGetSetting('autoRemoveExpiredTasks'));
     // Still read from the 'autoArchiveProjectsOnComplete' key: the behaviour
     // changed from archiving to completing, but the question the toggle asks
@@ -1813,11 +2163,16 @@ export const useSettingsStore = create<SettingsStore>((set, get) => ({
     const focusLongRestEvery = parseFocusLongRestEvery(dbGetSetting('focusLongRestEvery'));
     const focusLongRestMinutes = parseFocusLongRestMinutes(dbGetSetting('focusLongRestMinutes'));
     const focusShieldEnabled = dbGetSetting('focusShieldEnabled') === 'true';
+    const penaltyShieldEnabled = dbGetSetting('penaltyShieldEnabled') === 'true';
+    const gateShieldEnabled = dbGetSetting('gateShieldEnabled') === 'true';
+    const penaltyShieldUntil = dbGetSetting('penaltyShieldUntil') || null;
+    const penaltyShieldReason = dbGetSetting('penaltyShieldReason') || null;
     const completedRetentionDays = parseRetentionDays(dbGetSetting('completedRetentionDays'));
     const defaultReminderLeadMinutes = parseDefaultReminderLeadMinutes(dbGetSetting('defaultReminderLeadMinutes'));
     const hideCategories = dbGetSetting('hideCategories') === 'true';
     const collapsedCategories = parseCategoryNames(dbGetSetting('collapsedCategories'));
     const collapsedRecipeSections = parseCollapsedRecipeSections(dbGetSetting('collapsedRecipeSections'));
+    const collapsedGroceryGroups = parseCollapsedGroceryGroups(dbGetSetting('collapsedGroceryGroups'));
     const recentSearches = parseRecentSearches(dbGetSetting('recentSearches'));
     const simpleTaskForm = dbGetSetting('simpleTaskForm') === 'true';
     const simpleMode = dbGetSetting('simpleMode') === 'true';
@@ -1951,8 +2306,19 @@ export const useSettingsStore = create<SettingsStore>((set, get) => ({
     const reminderMeetingNudgeEnabled = dbGetSetting('reminderMeetingNudgeEnabled') !== 'false';
     const calendarPeopleHistory = dbGetSetting('calendarPeopleHistory') !== 'false';
     const deadlineCalendarId = dbGetSetting('deadlineCalendarId') || null;
+    const completionCalendarId = dbGetSetting('completionCalendarId') || null;
     const mealCalendarId = dbGetSetting('mealCalendarId') || null;
     const healthReadEnabled = dbGetSetting('healthReadEnabled') === 'true';
+    const healthWriteEnabled = dbGetSetting('healthWriteEnabled') === 'true';
+    // Anything that isn't 'lb' reads as kilograms, so a stored value from a
+    // future unit this build doesn't know about degrades to the default rather
+    // than to undefined.
+    const weightUnit: WeightUnit = dbGetSetting('weightUnit') === 'lb' ? 'lb' : 'kg';
+    // Both parsers salvage rather than throw: an unreadable goal reads back as
+    // no goal, and an unreadable profile as an empty one, so a blob written by
+    // a future build can never stop the settings loading.
+    const weightGoal = parseWeightGoal(dbGetSetting('weightGoal'));
+    const bodyProfile = parseBodyProfile(dbGetSetting('bodyProfile'));
     // '' persists as "not chosen", matching calendarEventCategory. Nothing
     // creates the category from here — see ensureHealthCategory, which runs
     // once the categories themselves have loaded.
@@ -1988,11 +2354,19 @@ export const useSettingsStore = create<SettingsStore>((set, get) => ({
     const pantryReviewTasks = dbGetSetting('pantryReviewTasks') === 'true';
     const pantryReviewTaskCategory = dbGetSetting('pantryReviewTaskCategory') || null;
     const pantryReviewLastDayKey = dbGetSetting('pantryReviewLastDayKey') || null;
+    const lastDeloadAppliedDayKey = dbGetSetting('lastDeloadAppliedDayKey') || null;
     // `=== 'true'` for pantryCheckTasks' reason directly above: this generator
     // adds a surface rather than replacing one, so an install that has never
     // been asked stays silent.
     const mealShortfallTasks = dbGetSetting('mealShortfallTasks') === 'true';
+    // `!== 'false'` because this one defaults on — see the interface note.
+    const mealLogPrompt = dbGetSetting('mealLogPrompt') !== 'false';
+    const nutritionTargets = parseNutritionTargets(dbGetSetting('nutritionTargets'));
     const mealShortfallTaskCategory = dbGetSetting('mealShortfallTaskCategory') || null;
+    // `=== 'true'` for mealShortfallTasks' own reason: adds a surface rather
+    // than replacing one.
+    const mealLogNudgeTasks = dbGetSetting('mealLogNudgeTasks') === 'true';
+    const mealLogNudgeTaskCategory = dbGetSetting('mealLogNudgeTaskCategory') || null;
     // The missing row is checked before the number, exactly as
     // groceryUseUpLeadDays is and for the same reason: zero is a real answer
     // here ("tell me on the day"), and both Number(null) and Number('') are 0,
@@ -2031,11 +2405,11 @@ export const useSettingsStore = create<SettingsStore>((set, get) => ({
     const moodLogTasks = dbGetSetting('moodLogTasks') === 'true';
     const moodLogTaskCategory = dbGetSetting('moodLogTaskCategory') || null;
     const moodLogLastDayKey = dbGetSetting('moodLogLastDayKey') || null;
-    const storedMoodLogTimeSegment = dbGetSetting('moodLogTimeSegment');
-    const moodLogTimeSegment =
-      storedMoodLogTimeSegment && NEW_TASK_TIME_SEGMENTS.includes(storedMoodLogTimeSegment as TimeOfDay)
-        ? (storedMoodLogTimeSegment as TimeOfDay)
-        : null;
+    const morningCheckInLastDayKey = dbGetSetting('morningCheckInLastDayKey') || null;
+    const moodLogTimeSegments = parseMoodLogTimeSegments(
+      dbGetSetting('moodLogTimeSegments'),
+      dbGetSetting('moodLogTimeSegment'),
+    );
     const moodNudgeTasks = dbGetSetting('moodNudgeTasks') === 'true';
     const moodNudgeTaskCategory = dbGetSetting('moodNudgeTaskCategory') || null;
     const storedMoodNudgeAfterDays = parseInt(dbGetSetting('moodNudgeAfterDays') ?? '', 10);
@@ -2055,6 +2429,16 @@ export const useSettingsStore = create<SettingsStore>((set, get) => ({
       ? Math.max(WEEKEND_NUDGE_LEAD_DAYS_MIN, Math.min(WEEKEND_NUDGE_LEAD_DAYS_MAX, storedWeekendLead))
       : WEEKEND_NUDGE_LEAD_DAYS_DEFAULT;
     const weekendNudgeLastWeekendKey = dbGetSetting('weekendNudgeLastWeekendKey') || null;
+    const weighInTasks = dbGetSetting('weighInTasks') === 'true';
+    const weighInTaskCategory = dbGetSetting('weighInTaskCategory') || null;
+    // Clamped on read as well as on write, for the reason the weekend lead
+    // above is: a value can arrive from a peer on a different build, and the
+    // clamp is where a 0 becomes "every day" rather than "never fires".
+    const storedWeighInEveryDays = parseInt(dbGetSetting('weighInEveryDays') ?? '', 10);
+    const weighInEveryDays = Number.isFinite(storedWeighInEveryDays)
+      ? clampWeighInEveryDays(storedWeighInEveryDays)
+      : DEFAULT_WEIGH_IN_EVERY_DAYS;
+    const weighInLastDayKey = dbGetSetting('weighInLastDayKey') || null;
     const screenTimeTasks = dbGetSetting('screenTimeTasks') === 'true';
     const screenTimeTaskCategory = dbGetSetting('screenTimeTaskCategory') || null;
     const storedScreenTimeRules = dbGetSetting('screenTimeRules');
@@ -2068,6 +2452,7 @@ export const useSettingsStore = create<SettingsStore>((set, get) => ({
     const defaultProjectNudgeCadenceDays =
       Number.isFinite(storedDefaultCadence) && storedDefaultCadence > 0 ? storedDefaultCadence : 0;
     const mealPlanNudgeEnabled = dbGetSetting('mealPlanNudgeEnabled') === 'true';
+    const mealPlanNudgeIgnoresVacation = dbGetSetting('mealPlanNudgeIgnoresVacation') === 'true';
     const storedNudgeWeekday = Number(dbGetSetting('mealPlanNudgeWeekday'));
     const mealPlanNudgeWeekday =
       Number.isInteger(storedNudgeWeekday) && storedNudgeWeekday >= 0 && storedNudgeWeekday <= 6
@@ -2131,6 +2516,9 @@ export const useSettingsStore = create<SettingsStore>((set, get) => ({
           aiFeatureConfig[id] = {
             enabled: typeof stored.enabled === 'boolean' ? stored.enabled : aiFeatureConfig[id].enabled,
             model: isAiModelId(stored.model) ? stored.model : aiFeatureConfig[id].model,
+            preferOnDevice: typeof stored.preferOnDevice === 'boolean'
+              ? stored.preferOnDevice
+              : aiFeatureConfig[id].preferOnDevice,
           };
         }
       } catch {
@@ -2140,7 +2528,7 @@ export const useSettingsStore = create<SettingsStore>((set, get) => ({
     const newTaskDefaults = parseNewTaskDefaults(dbGetSetting('newTaskDefaults'));
     const titleRules = parseTitleRules(dbGetSetting('titleRules'));
     const lastVisitedScreen = dbGetSetting('lastVisitedScreen') || null;
-    set({ dayResetTime: resetTime, morningStart, afternoonStart, eveningStart, nightStart, activeHoursStart, activeHoursEnd, quietHoursStart, quietHoursEnd, themeMode, appFont, appFontRandomize, appFontPool, dailyAgendaEnabled, dailyAgendaTime, tripReminderEnabled, backgroundRefreshEnabled, use24HourTime, weekStartsOn, fabHand, hapticsEnabled, shakeToUndoEnabled, confirmBeforeDeleting, sortOption, filterPriorities, filterEfforts, filterHasReminder, recipeSortOption, recipeLovedOnly, appLockEnabled, appLockGraceSeconds, vacationMode, vacationStart, vacationEnd, autoRemoveExpiredTasks, autoCompleteProjectsOnDone, postponeCheckEnabled, postponeCheckThreshold, focusWorkCapMinutes, focusDefaultWorkMinutes, focusRestAfterTasks, focusRestAfterMinutes, focusRestMinutes, focusLongRestEvery, focusLongRestMinutes, focusShieldEnabled, completedRetentionDays, defaultReminderLeadMinutes, hideCategories, collapsedCategories, collapsedRecipeSections, recentSearches, simpleTaskForm, simpleMode, hideHelpText, tipsEnabled, seenTips, lastTipShown, timerLiveActivity, tripLiveActivity, focusLiveActivity, kitchenEnabled, mealsOnToday, kitchenOnToday, unitSystem, currencySymbol, mealCookTasks, mealCookTaskCategory, mealSlotsEnabled, mealSlotTasksWrittenThroughDayKey, mealSlotStepEstimates, cookRecapEnabled, restockOfferEnabled, productLookupEnabled, groceryUseUpTasks, groceryUseUpLeadDays, groceryUseUpTaskCategory, leftoverUseUpTasks, leftoverUseUpTaskCategory, useUpTaskCap, remindersImportEnabled, remindersImportListId, remindersImportConfirmedListId, remindersImportDelete, remindersImportReview, groceryImportEnabled, groceryImportListId, groceryImportConfirmedListId, groceryImportDelete, groceryImportTwoWay, calendarReadEnabled, calendarIds, vacationHiddenCalendarIds, calendarEventCategory, reminderMeetingNudgeEnabled, calendarPeopleHistory, deadlineCalendarId, mealCalendarId, healthReadEnabled, healthCategory, healthTasks, healthTaskCategory, healthRules, projectReviewTasks, projectReviewTaskCategory, birthdayTasks, birthdayLeadDays, birthdayTaskCategory, birthdayGiftTasks, birthdayGiftLeadDays, birthdayGiftTaskCategory, reachOutTasks, reachOutTaskCategory, pantryCheckTasks, pantryCheckTaskCategory, pantryReviewTasks, pantryReviewTaskCategory, pantryReviewLastDayKey, mealShortfallTasks, mealShortfallLeadDays, mealShortfallTaskCategory, supplyReorderTasks, calendarReviewTasks, calendarReviewLastDayKey, calendarReviewTimeSegment, weatherTasks, weatherTaskCategory, weatherRules, screenTimeTasks, screenTimeTaskCategory, screenTimeRules, moodLogTasks, moodLogTaskCategory, moodLogLastDayKey, moodLogTimeSegment, moodNudgeTasks, moodNudgeTaskCategory, moodNudgeAfterDays, moodNudgeLastDayKey, weekendNudgeTasks, weekendNudgeTaskCategory, weekendNudgeLeadDays, weekendNudgeLastWeekendKey, patchNotesQaStatus, aiFeatureConfig, onDeviceAiEnabled, defaultProjectNudgeCadenceDays, mealPlanNudgeEnabled, mealPlanNudgeWeekday, mealPlanNudgeTime, mealPlanNudgeLastFiredWeekKey, mealPlanNudgeGroupId, mealPlanNudgeTaskCategory, newTaskDefaults, titleRules, lastVisitedScreen, initialized: true });
+    set({ dayResetTime: resetTime, morningStart, afternoonStart, eveningStart, nightStart, activeHoursStart, activeHoursEnd, quietHoursStart, quietHoursEnd, themeMode, appFont, appFontRandomize, appFontPool, dailyAgendaEnabled, dailyAgendaTime, tripReminderEnabled, backgroundRefreshEnabled, use24HourTime, weekStartsOn, fabHand, hapticsEnabled, shakeToUndoEnabled, confirmBeforeDeleting, sortOption, filterPriorities, filterEfforts, filterHasReminder, recipeSortOption, recipeLovedOnly, appLockEnabled, appLockGraceSeconds, vacationMode, vacationStart, vacationEnd, vacationDrivenBy, activeListDrivenBy, destinationForecastEnabled, autoRemoveExpiredTasks, autoCompleteProjectsOnDone, postponeCheckEnabled, postponeCheckThreshold, focusWorkCapMinutes, focusDefaultWorkMinutes, focusRestAfterTasks, focusRestAfterMinutes, focusRestMinutes, focusLongRestEvery, focusLongRestMinutes, focusShieldEnabled, penaltyShieldEnabled, gateShieldEnabled, penaltyShieldUntil, penaltyShieldReason, completedRetentionDays, defaultReminderLeadMinutes, hideCategories, collapsedCategories, collapsedRecipeSections, collapsedGroceryGroups, recentSearches, simpleTaskForm, simpleMode, hideHelpText, tipsEnabled, seenTips, lastTipShown, timerLiveActivity, tripLiveActivity, focusLiveActivity, kitchenEnabled, mealsOnToday, kitchenOnToday, unitSystem, currencySymbol, mealCookTasks, mealCookTaskCategory, mealSlotsEnabled, mealSlotTasksWrittenThroughDayKey, mealSlotStepEstimates, cookRecapEnabled, restockOfferEnabled, productLookupEnabled, groceryUseUpTasks, groceryUseUpLeadDays, groceryUseUpTaskCategory, leftoverUseUpTasks, leftoverUseUpTaskCategory, useUpTaskCap, remindersImportEnabled, remindersImportListId, remindersImportConfirmedListId, remindersImportDelete, remindersImportReview, groceryImportEnabled, groceryImportListId, groceryImportConfirmedListId, groceryImportDelete, groceryImportTwoWay, calendarReadEnabled, calendarIds, vacationHiddenCalendarIds, calendarEventCategory, reminderMeetingNudgeEnabled, calendarPeopleHistory, deadlineCalendarId, completionCalendarId, mealCalendarId, healthReadEnabled, healthWriteEnabled, weightUnit, weightGoal, bodyProfile, healthCategory, healthTasks, healthTaskCategory, healthRules, projectReviewTasks, projectReviewTaskCategory, birthdayTasks, birthdayLeadDays, birthdayTaskCategory, birthdayGiftTasks, birthdayGiftLeadDays, birthdayGiftTaskCategory, reachOutTasks, reachOutTaskCategory, pantryCheckTasks, pantryCheckTaskCategory, pantryReviewTasks, pantryReviewTaskCategory, pantryReviewLastDayKey, lastDeloadAppliedDayKey, mealShortfallTasks, mealLogPrompt, nutritionTargets, mealShortfallLeadDays, mealShortfallTaskCategory, mealLogNudgeTasks, mealLogNudgeTaskCategory, supplyReorderTasks, calendarReviewTasks, calendarReviewLastDayKey, calendarReviewTimeSegment, weatherTasks, weatherTaskCategory, weatherRules, screenTimeTasks, screenTimeTaskCategory, screenTimeRules, moodLogTasks, moodLogTaskCategory, moodLogLastDayKey, morningCheckInLastDayKey, moodLogTimeSegments, moodNudgeTasks, moodNudgeTaskCategory, moodNudgeAfterDays, moodNudgeLastDayKey, weekendNudgeTasks, weekendNudgeTaskCategory, weekendNudgeLeadDays, weekendNudgeLastWeekendKey, weighInTasks, weighInTaskCategory, weighInEveryDays, weighInLastDayKey, patchNotesQaStatus, aiFeatureConfig, onDeviceAiEnabled, defaultProjectNudgeCadenceDays, mealPlanNudgeEnabled, mealPlanNudgeIgnoresVacation, mealPlanNudgeWeekday, mealPlanNudgeTime, mealPlanNudgeLastFiredWeekKey, mealPlanNudgeGroupId, mealPlanNudgeTaskCategory, newTaskDefaults, titleRules, lastVisitedScreen, initialized: true });
   },
 
   /**
@@ -2375,6 +2763,21 @@ export const useSettingsStore = create<SettingsStore>((set, get) => ({
     set({ vacationEnd: endDate });
   },
 
+  setDestinationForecastEnabled(on: boolean) {
+    dbSetSetting('destinationForecastEnabled', on ? 'true' : 'false');
+    set({ destinationForecastEnabled: on });
+  },
+
+  setVacationDrivenBy(projectId: string | null) {
+    dbSetSetting('vacationDrivenBy', projectId ?? '');
+    set({ vacationDrivenBy: projectId });
+  },
+
+  setActiveListDrivenBy(projectId: string | null) {
+    dbSetSetting('activeListDrivenBy', projectId ?? '');
+    set({ activeListDrivenBy: projectId });
+  },
+
   setProjectReviewTasks(on: boolean) {
     dbSetSetting('projectReviewTasks', on ? 'true' : 'false');
     set({ projectReviewTasks: on });
@@ -2452,9 +2855,33 @@ export const useSettingsStore = create<SettingsStore>((set, get) => ({
     set({ pantryReviewLastDayKey: dayKey });
   },
 
+  setLastDeloadAppliedDayKey(dayKey: string | null) {
+    dbSetSetting('lastDeloadAppliedDayKey', dayKey ?? '');
+    set({ lastDeloadAppliedDayKey: dayKey });
+  },
+
   setMealShortfallTasks(on: boolean) {
     dbSetSetting('mealShortfallTasks', on ? 'true' : 'false');
     set({ mealShortfallTasks: on });
+  },
+
+  setMealLogPrompt(on: boolean) {
+    dbSetSetting('mealLogPrompt', on ? 'true' : 'false');
+    set({ mealLogPrompt: on });
+  },
+
+  // One key of the map, updated and persisted whole — the shape
+  // setMealSlotStepEstimate uses. Unlike that one this *can* remove a key:
+  // "I no longer want a protein target" is a real thing to say, and leaving a
+  // number behind at zero would be a target of zero rather than none.
+  setNutritionTarget(key: NutrientKey, value: number | null) {
+    set(state => {
+      const next = { ...state.nutritionTargets };
+      if (value === null || !(value > 0)) delete next[key];
+      else next[key] = value;
+      dbSetSetting('nutritionTargets', serializeNutritionTargets(next));
+      return { nutritionTargets: next };
+    });
   },
 
   // Only read when the generator's sweep decides whether a meal is in range, so
@@ -2473,6 +2900,16 @@ export const useSettingsStore = create<SettingsStore>((set, get) => ({
   setMealShortfallTaskCategory(category: string | null) {
     dbSetSetting('mealShortfallTaskCategory', category ?? '');
     set({ mealShortfallTaskCategory: category });
+  },
+
+  setMealLogNudgeTasks(on: boolean) {
+    dbSetSetting('mealLogNudgeTasks', on ? 'true' : 'false');
+    set({ mealLogNudgeTasks: on });
+  },
+
+  setMealLogNudgeTaskCategory(category: string | null) {
+    dbSetSetting('mealLogNudgeTaskCategory', category ?? '');
+    set({ mealLogNudgeTaskCategory: category });
   },
 
   setSupplyReorderTasks(on: boolean) {
@@ -2546,11 +2983,20 @@ export const useSettingsStore = create<SettingsStore>((set, get) => ({
     set({ moodLogLastDayKey: dayKey });
   },
 
-  // '' is "any time", the same stored form for "none" the two settings above
-  // use, and what the load path reads back as null.
-  setMoodLogTimeSegment(segment: TimeOfDay | null) {
-    dbSetSetting('moodLogTimeSegment', segment ?? '');
-    set({ moodLogTimeSegment: segment });
+  setMorningCheckInLastDayKey(dayKey: string | null) {
+    dbSetSetting('morningCheckInLastDayKey', dayKey ?? '');
+    set({ morningCheckInLastDayKey: dayKey });
+  },
+
+  // Written whole, like setWeatherRules — the sheet editing this already
+  // holds the full list. An empty array serializes as '[]', not '', so a
+  // deliberately-cleared list is still distinguishable from "never touched"
+  // by parseMoodLogTimeSegments's `if (raw)` — not that it matters here (both
+  // read back as "any time"), but it's the same discipline parseCalendarIds
+  // keeps.
+  setMoodLogTimeSegments(segments: TimeOfDay[]) {
+    dbSetSetting('moodLogTimeSegments', JSON.stringify(segments));
+    set({ moodLogTimeSegments: segments });
   },
 
   setMoodNudgeTasks(on: boolean) {
@@ -2598,6 +3044,27 @@ export const useSettingsStore = create<SettingsStore>((set, get) => ({
   setWeekendNudgeLastWeekendKey(weekendKey: string | null) {
     dbSetSetting('weekendNudgeLastWeekendKey', weekendKey ?? '');
     set({ weekendNudgeLastWeekendKey: weekendKey });
+  },
+
+  setWeighInTasks(on: boolean) {
+    dbSetSetting('weighInTasks', String(on));
+    set({ weighInTasks: on });
+  },
+
+  setWeighInTaskCategory(category: string | null) {
+    dbSetSetting('weighInTaskCategory', category ?? '');
+    set({ weighInTaskCategory: category });
+  },
+
+  setWeighInEveryDays(days: number) {
+    const clamped = clampWeighInEveryDays(days);
+    dbSetSetting('weighInEveryDays', String(clamped));
+    set({ weighInEveryDays: clamped });
+  },
+
+  setWeighInLastDayKey(dayKey: string | null) {
+    dbSetSetting('weighInLastDayKey', dayKey ?? '');
+    set({ weighInLastDayKey: dayKey });
   },
 
   setAutoRemoveExpiredTasks(days: ExpiredTaskGraceDays) {
@@ -2673,6 +3140,29 @@ export const useSettingsStore = create<SettingsStore>((set, get) => ({
   setFocusShieldEnabled(on: boolean) {
     dbSetSetting('focusShieldEnabled', on ? 'true' : 'false');
     set({ focusShieldEnabled: on });
+  },
+
+  setPenaltyShieldEnabled(on: boolean) {
+    dbSetSetting('penaltyShieldEnabled', on ? 'true' : 'false');
+    set({ penaltyShieldEnabled: on });
+  },
+
+  setGateShieldEnabled(on: boolean) {
+    dbSetSetting('gateShieldEnabled', on ? 'true' : 'false');
+    set({ gateShieldEnabled: on });
+  },
+
+  // Stored as '' for "nothing being served", matching vacationEnd: the settings
+  // table is all TEXT, and a null written as the string 'null' would read back
+  // as a date nobody can parse rather than as an absence.
+  // The reason moves with the instant rather than being set separately: they
+  // describe one block, and a reason left behind by a block that has ended is
+  // what would put the wrong task's name on the next one's shield screen.
+  // Omitting it clears it, which is what every caller lifting a block wants.
+  setPenaltyShieldUntil(until: string | null, reason: string | null = null) {
+    dbSetSetting('penaltyShieldUntil', until ?? '');
+    dbSetSetting('penaltyShieldReason', until ? (reason ?? '') : '');
+    set({ penaltyShieldUntil: until, penaltyShieldReason: until ? reason : null });
   },
 
   // Stored as '' for forever, matching vacationEnd —
@@ -3008,6 +3498,32 @@ export const useSettingsStore = create<SettingsStore>((set, get) => ({
     set({ healthReadEnabled: on });
   },
 
+  setHealthWriteEnabled(on: boolean) {
+    dbSetSetting('healthWriteEnabled', on ? 'true' : 'false');
+    set({ healthWriteEnabled: on });
+  },
+
+  setWeightUnit(unit: WeightUnit) {
+    dbSetSetting('weightUnit', unit);
+    set({ weightUnit: unit });
+  },
+
+  // '' persists as "no goal", matching every other nullable here: the settings
+  // table is all TEXT, and parseWeightGoal reads anything it can't make a goal
+  // out of back as none.
+  setWeightGoal(goal: WeightGoal | null) {
+    dbSetSetting('weightGoal', goal === null ? '' : serializeWeightGoal(goal));
+    set({ weightGoal: goal });
+  },
+
+  // Replaced whole rather than a field at a time, unlike setNutritionTarget:
+  // the four fields are one form, saved once, and a partial write would leave a
+  // half-entered profile producing an estimate off fields nobody finished.
+  setBodyProfile(profile: BodyProfile) {
+    dbSetSetting('bodyProfile', serializeBodyProfile(profile));
+    set({ bodyProfile: profile });
+  },
+
   setHealthCategory(category: string | null) {
     dbSetSetting('healthCategory', category ?? '');
     set({ healthCategory: category });
@@ -3061,6 +3577,11 @@ export const useSettingsStore = create<SettingsStore>((set, get) => ({
     set({ collapsedRecipeSections: sections });
   },
 
+  setCollapsedGroceryGroups(groups: string[]) {
+    dbSetSetting('collapsedGroceryGroups', JSON.stringify(groups));
+    set({ collapsedGroceryGroups: groups });
+  },
+
   pushRecentSearch(query: string) {
     const next = addRecentSearch(get().recentSearches, query);
     // addRecentSearch returns the list untouched for a blank query, and
@@ -3090,6 +3611,11 @@ export const useSettingsStore = create<SettingsStore>((set, get) => ({
   setDeadlineCalendarId(id: string | null) {
     dbSetSetting('deadlineCalendarId', id ?? '');
     set({ deadlineCalendarId: id });
+  },
+
+  setCompletionCalendarId(id: string | null) {
+    dbSetSetting('completionCalendarId', id ?? '');
+    set({ completionCalendarId: id });
   },
 
   // Deliberately no backfill, the same call `mealCookTasks` makes: picking a
@@ -3124,6 +3650,11 @@ export const useSettingsStore = create<SettingsStore>((set, get) => ({
   setMealPlanNudgeEnabled(on: boolean) {
     dbSetSetting('mealPlanNudgeEnabled', on ? 'true' : 'false');
     set({ mealPlanNudgeEnabled: on });
+  },
+
+  setMealPlanNudgeIgnoresVacation(on: boolean) {
+    dbSetSetting('mealPlanNudgeIgnoresVacation', on ? 'true' : 'false');
+    set({ mealPlanNudgeIgnoresVacation: on });
   },
 
   setMealPlanNudgeWeekday(weekday: number) {
@@ -3204,6 +3735,7 @@ export const useSettingsStore = create<SettingsStore>((set, get) => ({
     // Per-task deadlineOnCalendar flags aren't settings and aren't touched —
     // they just have nothing to write to until a calendar is picked again.
     dbSetSetting('deadlineCalendarId', '');
+    dbSetSetting('completionCalendarId', '');
     dbSetSetting('mealCalendarId', '');
     set({
       ...DEFAULT_SETTINGS,
@@ -3212,6 +3744,7 @@ export const useSettingsStore = create<SettingsStore>((set, get) => ({
       groceryImportListId: null,
       groceryImportConfirmedListId: null,
       deadlineCalendarId: null,
+      completionCalendarId: null,
       mealCalendarId: null,
     });
   },

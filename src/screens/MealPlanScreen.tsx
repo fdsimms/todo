@@ -118,6 +118,7 @@ import {
 import { decidableNights, weekNights } from '../utils/weekPlan';
 import { standingSwapMap } from '../utils/standingSwaps';
 import { describeWeekCost, estimateWeekCost } from '../utils/recipeCost';
+import { describeWeekNutrition, weekNutrition } from '../utils/recipeNutrition';
 
 /**
  * Tints a day section while a drag is aimed at it — the same "arm on the way
@@ -360,7 +361,6 @@ export function MealPlanScreen() {
   const recipes = useRecipeStore(useShallow(s => s.recipes));
   const recipesById = useMemo(() => recipeIndex(recipes), [recipes]);
   const markRecipeCooked = useRecipeStore(s => s.markCooked);
-  const startCookTimer = useRecipeStore(s => s.startCookTimer);
   const restoreCookStats = useRecipeStore(s => s.restoreCookStats);
 
   const leftovers = useLeftoverStore(useShallow(s => s.leftovers));
@@ -368,6 +368,7 @@ export function MealPlanScreen() {
   const renameLeftover = useLeftoverStore(s => s.renameLeftover);
   const setLeftoverStoredAt = useLeftoverStore(s => s.setStoredAt);
   const setLeftoverKeepDays = useLeftoverStore(s => s.setKeepDays);
+  const setLeftoverWeight = useLeftoverStore(s => s.setLeftoverWeight);
   const finishLeftover = useLeftoverStore(s => s.finishLeftover);
   const setLeftoverFrozen = useLeftoverStore(s => s.setFrozen);
   const splitLeftover = useLeftoverStore(s => s.splitLeftover);
@@ -381,6 +382,10 @@ export function MealPlanScreen() {
   const { offerPrepTasks, offerPrepTasksForEach, earliestUnplannedSlotToday } = usePlanMeal();
   const groceryItems = useGroceryStore(useShallow(s => s.items));
   const itemSubs = useGroceryStore(useShallow(s => s.itemSubs));
+  // A specific box's panel outranks its catalog row's, which is the whole
+  // point of `nutritionFor` — reading the week without these would quote a
+  // generic yogurt for the pot actually planned.
+  const itemProducts = useGroceryStore(useShallow(s => s.itemProducts));
   // "Always use oat milk for milk", applied to every read here that shops or
   // asks about what was cooked — see standingSwaps.ts.
   const standingSwaps = useMemo(
@@ -1520,6 +1525,17 @@ export function MealPlanScreen() {
     // row under the header (see the render). What's left is the three things
     // you do *to* the week on screen rather than to pick which week that is.
     const actions: ScreenHeaderAction[] = [
+      // Straight into Food log's own add sheet rather than just the screen —
+      // the tap is "I ate something", not "take me to my diary". See the
+      // stamped-param handoff in FoodLogScreen (same shape as resetToMood's).
+      {
+        icon: 'nutrition-outline',
+        onPress: () => {
+          haptics.tap();
+          navigation.navigate('FoodLog', { openAdd: Date.now() });
+        },
+        accessibilityLabel: 'Log food',
+      },
       {
         icon: copiedWeek ? 'checkmark' : 'copy-outline',
         onPress: () => copyWeekText(weekShareText),
@@ -1550,7 +1566,7 @@ export function MealPlanScreen() {
       });
     }
     return actions;
-  }, [onThisWeek, selectionMode, page, exitSelection, weekStartsOn, handleShareWeek, weekShareText, copiedWeek, copyWeekText]);
+  }, [onThisWeek, selectionMode, page, exitSelection, weekStartsOn, handleShareWeek, weekShareText, copiedWeek, copyWeekText, navigation]);
 
   /**
    * The week a "copy" would take from, and only while this one is empty.
@@ -1589,9 +1605,18 @@ export function MealPlanScreen() {
     () => (range ? estimateWeekCost(entries, recipesById, groceryItems, range, standingSwaps) : null),
     [entries, recipesById, groceryItems, range, standingSwaps]
   );
+  // Null while too little of the week resolves to a panel to say anything, the
+  // per-nutrient coverage floor in recipeNutrition.ts — the common case for a
+  // library whose ingredients mostly have no nutrition on them yet, exactly as
+  // the cost line above answers nothing for a lightly priced one.
+  const weekNutritionEstimate = useMemo(
+    () => (range ? weekNutrition(entries, recipesById, groceryItems, range, itemProducts, standingSwaps) : null),
+    [entries, recipesById, groceryItems, range, itemProducts, standingSwaps]
+  );
   const subtitle = [
     describeWeekPlan(entries),
     describeWeekCost(weekCost, currencySymbol, new Date()),
+    describeWeekNutrition(weekNutritionEstimate),
     addedStamp ? describeAddedToList(addedStamp, new Date(), weekStartsOn) : null,
   ].filter(Boolean).join(' · ');
 
@@ -1687,6 +1712,7 @@ export function MealPlanScreen() {
                     onNext={() => page(1)}
                     prevAccessibilityLabel="Previous week"
                     nextAccessibilityLabel="Next week"
+                    grouped
                   />
                 </View>
                 {/*
@@ -1952,17 +1978,6 @@ export function MealPlanScreen() {
         baseServingsMax={selectedRecipe?.servingsMax}
         onSetGuests={selected ? ids => setMealGuests(selected.id, ids) : undefined}
         onSetCooked={selected ? cooked => setCooked(selected, cooked) : undefined}
-        onStartCooking={
-          selected?.recipeId && recipesById.has(selected.recipeId)
-            ? () => {
-                // The timer lives on the recipe, so starting it here means the
-                // screen opens with it already running — no navigation param,
-                // no second source of truth. Idempotent if one is already going.
-                startCookTimer(selected.recipeId!);
-                navigation.navigate('RecipeDetail', { recipeId: selected.recipeId });
-              }
-            : undefined
-        }
         onOpenRecipe={
           selected?.recipeId && recipesById.has(selected.recipeId)
             ? () => navigation.navigate('RecipeDetail', { recipeId: selected.recipeId })
@@ -2100,17 +2115,21 @@ export function MealPlanScreen() {
         // instead of the meal. `sourceEntryId` is the one thing the sheet
         // can't have changed: every container here came out of that cooking,
         // whichever part of it it is.
-        onLog={(picks, storedAt, keepDays) => picks.forEach(pick => logLeftover({
+        onLog={(picks, storedAt, keepDays, weightG) => picks.forEach(pick => logLeftover({
           title: pick.title,
           storedAt,
           keepDays,
           frozen: pick.frozen,
           recipeId: pick.recipeId,
           sourceEntryId: loggingLeftover?.sourceEntryId ?? null,
+          // Only ever set when the sheet wrote exactly one container, which is
+          // the only case it offers the field in.
+          weightG,
         }))}
         onRename={title => editingLeftover && renameLeftover(editingLeftover.id, title)}
         onSetStoredAt={storedAt => editingLeftover && setLeftoverStoredAt(editingLeftover.id, storedAt)}
         onSetKeepDays={days => editingLeftover && setLeftoverKeepDays(editingLeftover.id, days)}
+        onSetWeight={grams => editingLeftover && setLeftoverWeight(editingLeftover.id, grams)}
         onFinish={outcome => editingLeftover && finishLeftover(editingLeftover.id, outcome)}
         onSetFrozen={frozen => editingLeftover && setLeftoverFrozen(editingLeftover.id, frozen)}
         onSplit={() => editingLeftover && splitLeftover(editingLeftover.id)}

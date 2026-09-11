@@ -89,16 +89,31 @@ const DELIVERABLE_KINDS: readonly string[] = ['text', 'date', 'number'];
  */
 export function parseChainItems(raw: unknown): ChainItem[] {
   if (!Array.isArray(raw)) return [];
-  return raw.map((c: Partial<ChainItem>) => ({
-    id: c?.id ?? '',
-    title: c?.title ?? '',
-    estimatedMinutes: typeof c?.estimatedMinutes === 'number' ? c.estimatedMinutes : null,
-    deliverableKind:
-      typeof c?.deliverableKind === 'string' && DELIVERABLE_KINDS.includes(c.deliverableKind)
-        ? (c.deliverableKind as DeliverableKind)
-        : null,
-    deliverableDatesNextStep: c?.deliverableDatesNextStep === true,
-  }));
+  return raw.map((c: Partial<ChainItem>) => {
+    // The name is the switch, so the amount and unit are kept only alongside
+    // one — the same set-or-nothing rule `medicationFor` resolves by. An
+    // orphan amount could never be read back and would reappear the moment a
+    // name was typed, attached to a medicine nobody entered it for.
+    const medicationName = c?.medicationName?.trim() || null;
+    const amount = c?.medicationAmount;
+    const unit = c?.medicationUnit?.trim() || null;
+    const paired = medicationName !== null
+      && typeof amount === 'number' && Number.isFinite(amount)
+      && unit !== null;
+    return {
+      id: c?.id ?? '',
+      title: c?.title ?? '',
+      estimatedMinutes: typeof c?.estimatedMinutes === 'number' ? c.estimatedMinutes : null,
+      deliverableKind:
+        typeof c?.deliverableKind === 'string' && DELIVERABLE_KINDS.includes(c.deliverableKind)
+          ? (c.deliverableKind as DeliverableKind)
+          : null,
+      deliverableDatesNextStep: c?.deliverableDatesNextStep === true,
+      medicationName,
+      medicationAmount: paired ? (amount as number) : null,
+      medicationUnit: paired ? unit : null,
+    };
+  });
 }
 
 /** The current-step and (if any) next-step titles for a chain preview row. */
@@ -115,10 +130,15 @@ export interface ChainPreview {
  * A finished earlier step is never included — with the row truncated to one
  * line, spending width on something already done pushed the upcoming step
  * past the truncation point.
+ *
+ * Same `chainEnabled` + `length > 1` gate as `activeChainStep`/`nextChainStep`
+ * above, for the same reason: a single-item or disabled chain isn't a chain
+ * anywhere else in the UI, so a caller relying on this as the single source
+ * of truth for "is there a chain to preview" shouldn't get one either.
  */
 export function chainPreview(task: ChainCarrier): ChainPreview | null {
   const items = task.chainItems;
-  if (!items || items.length === 0) return null;
+  if (!task.chainEnabled || !items || items.length <= 1) return null;
   const total = items.length;
   const currentIdx = (task.chainIndex ?? 0) % total;
   const nextItem = currentIdx + 1 < total ? items[currentIdx + 1] : null;

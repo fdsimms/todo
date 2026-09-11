@@ -1,44 +1,62 @@
-import React, { useEffect, useMemo, useState } from 'react';
+import React, { useCallback, useEffect, useMemo, useState } from 'react';
 import { View, Text, ScrollView, TouchableOpacity, Alert, StyleSheet } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
-import { useRoute } from '@react-navigation/native';
+import { useFocusEffect, useNavigation, useRoute } from '@react-navigation/native';
+import { navigationRef } from '../navigation/navigationRef';
 import { useBottomTabBarHeight } from '@react-navigation/bottom-tabs';
+import { addDays } from 'date-fns/addDays';
 import { format } from 'date-fns/format';
+import Ionicons from '@expo/vector-icons/Ionicons';
 import { useShallow } from 'zustand/react/shallow';
-import type { MoodLog } from '../types';
+import type { Milestone, MoodLog } from '../types';
 import { useMoodStore } from '../store/useMoodStore';
+import { useMilestoneStore } from '../store/useMilestoneStore';
 import { useTaskStore } from '../store/useTaskStore';
 import { useSettingsStore } from '../store/useSettingsStore';
 import { useHealthStore, HEALTH_HISTORY_DAYS } from '../store/useHealthStore';
+import { useFoodLogStore, FOOD_INSIGHT_DAYS } from '../store/useFoodLogStore';
 import { useColors } from '../theme/ThemeContext';
 import { spacing, radius, font, fontWeight, interaction, type Colors } from '../theme';
 import { haptics } from '../utils/haptics';
 import { dayKeyOf, dayKeyToDate, getCurrentDayStart } from '../utils/dateUtils';
 import { segmentOf } from '../utils/rhythms';
 import {
-  moodEmoji,
-  moodLabel,
-  moodLogSummary,
-  severityLabel,
+  contextTagKey,
+  contextTagVocabulary,
   symptomKey,
   symptomVocabulary,
 } from '../utils/moodLog';
+import { symptomStats } from '../utils/moodHistory';
+import { foodDayInputs } from '../utils/nutritionStats';
+import { retentionCutoff, retentionLabel } from '../utils/retention';
 import {
   buildMoodDays,
   categoryMoodContrasts,
+  contextTagMoodContrasts,
   describeHealthInsight,
-  healthAverage,
+  foodMoodContrasts,
   healthInsight,
+  metricAverage,
+  milestoneMoodContrast,
+  moodBarFraction,
   moodByTimeOfDay,
   moodCompletionInsight,
   moodSummary,
+  nutrientFindings,
   symptomMoodContrasts,
+  taskContrastTitles,
+  taskMoodContrasts,
   MIN_PAIRED_DAYS,
 } from '../utils/moodInsights';
 import { ScreenHeader } from '../components/ScreenHeader';
 import { HubPills } from '../components/HubPills';
 import { EmptyState } from '../components/EmptyState';
+import { InlineAction } from '../components/InlineAction';
 import { MoodLogSheet } from '../components/MoodLogSheet';
+import { MoodEntryRow } from '../components/MoodEntryRow';
+import { MoodExportSheet } from '../components/MoodExportSheet';
+import { MilestoneSheet } from '../components/MilestoneSheet';
+import { ContrastBars } from '../components/ContrastBars';
 
 /** How many days the chart shows. Two weeks fits a phone width at a readable bar. */
 const CHART_DAYS = 14;
@@ -60,6 +78,7 @@ const BAR_HEIGHT = 90;
  * a finding built on eleven days reads as one.
  */
 export function MoodScreen() {
+  const navigation = useNavigation<{ navigate: (screen: string, params?: object) => void }>();
   const colors = useColors();
   const styles = useMemo(() => makeStyles(colors), [colors]);
   const insets = useSafeAreaInsets();
@@ -67,6 +86,7 @@ export function MoodScreen() {
 
   const logs = useMoodStore(s => s.logs);
   const removeLog = useMoodStore(s => s.removeLog);
+  const milestones = useMilestoneStore(s => s.milestones);
   const tasks = useTaskStore(s => s.tasks);
   // Apple Health's trailing window, read on demand rather than on the app's
   // foreground triggers: it is a wider query than the Today reading and only
@@ -78,8 +98,33 @@ export function MoodScreen() {
   useEffect(() => {
     if (healthReadEnabled) void refreshHealthHistory();
   }, [healthReadEnabled, refreshHealthHistory]);
+  // The food log's own window, kept apart from the day view's and from Stats'
+  // — see `loadInsightWindow`. Loaded on focus rather than on mount for the
+  // reason Stats loads its own that way: a blurred tab stays mounted for the
+  // life of the session, so a window computed at mount would still end on the
+  // day the app was opened.
+  //
+  // Gated on `kitchenEnabled` exactly as `healthReadEnabled` gates the readings
+  // above. The whole food half of the app is behind that switch, and reading a
+  // log the user has switched away from to tell them about their eating is the
+  // same mistake as reading Health without permission.
+  const kitchenEnabled = useSettingsStore(s => s.kitchenEnabled);
+  const foodEntries = useFoodLogStore(s => s.insightEntries);
+  const loadFoodInsightWindow = useFoodLogStore(s => s.loadInsightWindow);
+  useFocusEffect(
+    useCallback(() => {
+      if (!kitchenEnabled) return;
+      const today = getCurrentDayStart();
+      loadFoodInsightWindow(
+        dayKeyOf(addDays(today, -(FOOD_INSIGHT_DAYS - 1))),
+        dayKeyOf(today),
+      );
+    }, [kitchenEnabled, loadFoodInsightWindow]),
+  );
+
   const settings = useSettingsStore(useShallow(s => ({
     dayResetTime: s.dayResetTime,
+    completedRetentionDays: s.completedRetentionDays,
     morningStart: s.morningStart,
     afternoonStart: s.afternoonStart,
     eveningStart: s.eveningStart,
@@ -87,26 +132,74 @@ export function MoodScreen() {
   })));
 
   const [sheetOpen, setSheetOpen] = useState(false);
+  const [exportOpen, setExportOpen] = useState(false);
   const [editing, setEditing] = useState<MoodLog | null>(null);
+  const [milestoneSheetOpen, setMilestoneSheetOpen] = useState(false);
+  const [editingMilestone, setEditingMilestone] = useState<Milestone | null>(null);
 
   // `dundundun://mood?log=1` — the daily check-in task's link button. Stamped
   // with the arrival time rather than a boolean, and tracked against what has
   // already been handled, so tapping the same row twice opens the sheet twice:
   // the same shape PeopleScreen's openPerson uses, and for the same reason.
-  const route = useRoute<{ key: string; name: string; params?: { openLog?: number } }>();
+  const route = useRoute<{
+    key: string;
+    name: string;
+    params?: { openLog?: number; returnTo?: string };
+  }>();
   const [handledOpenLog, setHandledOpenLog] = useState<number | undefined>(undefined);
+  // Where to hand the user back once the sheet this opens closes — the tab
+  // they tapped the check-in request from, carried by `resetToMood`'s
+  // `returnTo` param. Cleared whenever the sheet is opened by hand (`openNew`,
+  // `openEdit`) so a manual visit never inherits a stale value left over from
+  // an earlier link tap.
+  const [returnTo, setReturnTo] = useState<string | undefined>(undefined);
   useEffect(() => {
     if (route.params?.openLog === undefined || route.params.openLog === handledOpenLog) return;
     setHandledOpenLog(route.params.openLog);
+    setReturnTo(route.params.returnTo);
     setEditing(null);
     setSheetOpen(true);
-  }, [route.params?.openLog, handledOpenLog]);
+  }, [route.params?.openLog, route.params?.returnTo, handledOpenLog]);
 
   const todayKey = dayKeyOf(getCurrentDayStart());
-  const days = useMemo(
-    () => buildMoodDays(logs, tasks, settings.dayResetTime, healthHistory ?? []),
-    [logs, tasks, settings.dayResetTime, healthHistory],
+
+  // The first day the task record is complete for. `completedRetentionDays`
+  // deletes completed rows on a schedule while the mood log keeps every entry
+  // forever, so without this the days behind the window read as days on which
+  // nothing was finished — see `MoodDay.completed`. Null when retention is off,
+  // which is the default and leaves every read exactly as it was.
+  const completionsKnownFrom = useMemo(() => {
+    const cutoff = retentionCutoff(
+      settings.completedRetentionDays, new Date(), settings.dayResetTime,
+    );
+    return cutoff === null ? null : dayKeyOf(cutoff);
+  }, [settings.completedRetentionDays, settings.dayResetTime]);
+
+  // Only the days the log can speak for — `foodDayInputs` drops the rest, and
+  // the switch drops the lot. Empty rather than absent when the kitchen half is
+  // off, so every food read below reports nothing to say rather than being
+  // asked not to look.
+  const foodDays = useMemo(
+    () => (kitchenEnabled ? foodDayInputs(foodEntries) : []),
+    [kitchenEnabled, foodEntries],
   );
+
+  const days = useMemo(
+    () => buildMoodDays(
+      logs, tasks, settings.dayResetTime, healthHistory ?? [], completionsKnownFrom, foodDays,
+    ),
+    [logs, tasks, settings.dayResetTime, healthHistory, completionsKnownFrom, foodDays],
+  );
+
+  // Days the mood log covers that the task history no longer does. Said out
+  // loud on the screen rather than left to quietly weaken the numbers: a
+  // correlation drawn over half a record is a different claim from one drawn
+  // over all of it, and the person who set the window is the only one who can
+  // decide whether that matters.
+  const clippedDays = useMemo(() => {
+    if (completionsKnownFrom === null) return 0;
+    return days.filter(d => d.dayKey < completionsKnownFrom && d.mood !== null).length;
+  }, [days, completionsKnownFrom]);
 
   // Every pairing the data can actually speak to, in the order they read: what
   // you got done first, because that is the join no health app can make, and
@@ -131,12 +224,52 @@ export function MoodScreen() {
   // The two averages, over the days that carry a reading rather than over the
   // window — an absent day is absent here as everywhere else.
   const averageSteps = useMemo(
-    () => (healthReadEnabled ? healthAverage(days, 'steps') : null),
+    () => (healthReadEnabled ? metricAverage(days, 'steps') : null),
     [days, healthReadEnabled],
   );
   const averageSleep = useMemo(
-    () => (healthReadEnabled ? healthAverage(days, 'sleepHours') : null),
+    () => (healthReadEnabled ? metricAverage(days, 'sleepHours') : null),
     [days, healthReadEnabled],
+  );
+
+  // Ordering, and the one-line collapse for a nutrient with nothing to report,
+  // both live in `nutrientFindings` — it is copy, so it is testable there
+  // rather than assembled here. Anything under MIN_PAIRED_DAYS drops out, so a
+  // nutrient nobody's entries state consistently leaves no empty row behind.
+  const foodFindings = useMemo(
+    () => (kitchenEnabled ? nutrientFindings(days) : []),
+    [days, kitchenEnabled],
+  );
+
+  // The two figures the food log itself leads with (see `SUMMARY_KEYS`), over
+  // the days that could speak for themselves rather than over the window.
+  const averageCalories = useMemo(
+    () => (kitchenEnabled ? metricAverage(days, 'calorieKcal') : null),
+    [days, kitchenEnabled],
+  );
+  const averageProtein = useMemo(
+    () => (kitchenEnabled ? metricAverage(days, 'proteinG') : null),
+    [days, kitchenEnabled],
+  );
+
+  // A contrast is keyed on the lowercased label, which is not what the user
+  // typed — same resolution the symptom rows make, and the same reason: showing
+  // "porridge" to somebody who has been writing "Porridge" all month reads as
+  // the app having rewritten their entry.
+  const foodNames = useMemo(() => {
+    const names = new Map<string, string>();
+    for (const entry of foodEntries) {
+      const label = entry.label.trim();
+      if (label) names.set(label.toLowerCase(), label);
+    }
+    return names;
+  }, [foodEntries]);
+  const foodRows = useMemo(
+    () => (kitchenEnabled ? foodMoodContrasts(days).slice(0, 4).map(row => ({
+      ...row,
+      label: foodNames.get(row.label) ?? row.label,
+    })) : []),
+    [days, foodNames, kitchenEnabled],
   );
   const summary = useMemo(() => moodSummary(days, todayKey), [days, todayKey]);
   const completion = useMemo(() => moodCompletionInsight(days), [days]);
@@ -154,9 +287,57 @@ export function MoodScreen() {
   const symptomRows = useMemo(
     () => symptomMoodContrasts(days).slice(0, 4).map(row => ({
       ...row,
+      // The match key kept alongside the display name, so the row can open the
+      // symptom's own page — which is addressed by key, not by what it is
+      // called this week.
+      key: row.label,
       label: symptomNames.get(row.label) ?? row.label,
     })),
     [days, symptomNames],
+  );
+
+  // Every symptom the log holds, most days first — the directory the contrast
+  // rows above cannot be. Those need ten paired days and show the top four by
+  // gap size, so without this a symptom logged three times has no page reachable
+  // from anywhere.
+  const symptomList = useMemo(() => symptomStats(logs), [logs]);
+
+  // Mood on the days one repeating task got done, against the days it didn't.
+  // The app's answer to medication tracking: a tablet, a supplement or a walk
+  // is already a repeating task here, so this needs no second list to keep.
+  const taskRows = useMemo(() => {
+    const titles = taskContrastTitles(tasks);
+    return taskMoodContrasts(days).slice(0, 4).map(row => ({
+      ...row,
+      label: titles.get(row.label) ?? row.label,
+    }));
+  }, [days, tasks]);
+
+  // Mood before a milestone's date, against on and after it. Unlike every
+  // contrast above, this isn't a with/without split over a vocabulary of
+  // labels — each milestone names its own single split point, so every row is
+  // computed independently rather than sliced from one ranked list.
+  const milestoneRows = useMemo(
+    () => milestones.map(milestone => ({
+      milestone,
+      contrast: milestoneMoodContrast(days, dayKeyOf(new Date(milestone.date))),
+    })),
+    [days, milestones],
+  );
+
+  // Same key-to-casing resolution as symptomNames, for the same reason: a
+  // contrast is keyed on the lowercased match, not what the user typed.
+  const contextTagNames = useMemo(() => {
+    const names = new Map<string, string>();
+    for (const name of contextTagVocabulary(logs)) names.set(contextTagKey(name), name);
+    return names;
+  }, [logs]);
+  const contextTagRows = useMemo(
+    () => contextTagMoodContrasts(days).slice(0, 4).map(row => ({
+      ...row,
+      label: contextTagNames.get(row.label) ?? row.label,
+    })),
+    [days, contextTagNames],
   );
   const timeRows = useMemo(
     () => moodByTimeOfDay(logs, iso => segmentOf(new Date(iso), {
@@ -190,7 +371,7 @@ export function MoodScreen() {
         // elements is the trade: a single summary would lose exactly the two
         // things the chart is drawn to show. The date is spelled out because a
         // weekday initial ("W") is what the chart reads as without it.
-        a11y: `${today ? 'Today, ' : ''}${format(date, 'EEEE d MMMM')}, ${
+        a11y: `${today ? 'Today, ' : ''}${format(date, 'EEEE, MMMM d')}, ${
           mood === null ? 'nothing logged' : `mood ${mood.toFixed(1)} out of 5`
         }`,
         mood,
@@ -202,8 +383,16 @@ export function MoodScreen() {
 
   const recent = useMemo(() => logs.slice(0, 20), [logs]);
 
-  const openNew = () => { haptics.tap(); setEditing(null); setSheetOpen(true); };
-  const openEdit = (log: MoodLog) => { haptics.tap(); setEditing(log); setSheetOpen(true); };
+  const openNew = () => { haptics.tap(); setReturnTo(undefined); setEditing(null); setSheetOpen(true); };
+  const openEdit = (log: MoodLog) => { haptics.tap(); setReturnTo(undefined); setEditing(log); setSheetOpen(true); };
+  const closeSheet = () => {
+    setSheetOpen(false);
+    setEditing(null);
+    if (returnTo) {
+      navigationRef.navigate(returnTo);
+      setReturnTo(undefined);
+    }
+  };
 
   const confirmDelete = (log: MoodLog) => {
     Alert.alert(
@@ -220,6 +409,14 @@ export function MoodScreen() {
     );
   };
 
+  const openNewMilestone = () => { haptics.tap(); setEditingMilestone(null); setMilestoneSheetOpen(true); };
+  const openEditMilestone = (milestone: Milestone) => {
+    haptics.tap();
+    setEditingMilestone(milestone);
+    setMilestoneSheetOpen(true);
+  };
+  const closeMilestoneSheet = () => { setMilestoneSheetOpen(false); setEditingMilestone(null); };
+
   const daysToGo = Math.max(0, MIN_PAIRED_DAYS - completion.dayCount);
 
   return (
@@ -229,11 +426,18 @@ export function MoodScreen() {
         subtitle={summary.loggedDays > 0
           ? `${summary.loggedDays} ${summary.loggedDays === 1 ? 'day' : 'days'} logged`
           : undefined}
-        actions={[{
-          icon: 'add-circle-outline',
-          onPress: openNew,
-          accessibilityLabel: 'Log how you\'re feeling',
-        }]}
+        actions={[
+          ...(logs.length > 0 ? [{
+            icon: 'share-outline' as const,
+            onPress: () => { haptics.tap(); setExportOpen(true); },
+            accessibilityLabel: 'Export your mood log',
+          }] : []),
+          {
+            icon: 'add-circle-outline' as const,
+            onPress: openNew,
+            accessibilityLabel: 'Log how you\'re feeling',
+          },
+        ]}
       />
       <HubPills hub="history" active="Mood" />
 
@@ -343,6 +547,14 @@ export function MoodScreen() {
                 </View>
               </View>
             )}
+            {clippedDays > 0 && (
+              <Text style={styles.chartCaption}>
+                {clippedDays} earlier logged {clippedDays === 1 ? 'day is' : 'days are'} left out
+                here. Completed tasks are only kept for
+                {' '}{retentionLabel(settings.completedRetentionDays).toLowerCase()}, so there is
+                nothing left to compare those days against. Your entries are still there.
+              </Text>
+            )}
           </View>
 
           {(healthFindings.length > 0 || averageSteps !== null || averageSleep !== null) && (
@@ -383,28 +595,120 @@ export function MoodScreen() {
             </>
           )}
 
+          {(foodFindings.length > 0 || averageCalories !== null || averageProtein !== null) && (
+            <>
+              <Text style={styles.sectionTitle}>EATING</Text>
+              <View style={styles.card}>
+                <View style={styles.findings}>
+                  {foodFindings.map(finding => (
+                    <Text key={finding.key} style={styles.finding}>{finding.text}</Text>
+                  ))}
+                </View>
+                {(averageCalories !== null || averageProtein !== null) && (
+                  <View style={styles.splitRow}>
+                    {averageCalories !== null && (
+                      <View style={styles.splitCell}>
+                        <Text style={styles.splitValue}>{Math.round(averageCalories).toLocaleString()}</Text>
+                        <Text style={styles.splitLabel}>calories a day</Text>
+                      </View>
+                    )}
+                    {averageProtein !== null && (
+                      <View style={styles.splitCell}>
+                        <Text style={styles.splitValue}>{Math.round(averageProtein)}g</Text>
+                        <Text style={styles.splitLabel}>protein a day</Text>
+                      </View>
+                    )}
+                  </View>
+                )}
+                {/* The two-meal bar is said out loud rather than left as an
+                    invisible filter. It is the one gate here somebody could
+                    otherwise be surprised by, and it is also the answer to "why
+                    does this say fewer days than my food log does". */}
+                <Text style={styles.chartCaption}>
+                  From your food log, over the last {FOOD_INSIGHT_DAYS} days, counting only the days
+                  {' '}you logged at least two meals. A day logged more thinly says less about what
+                  {' '}you ate than it looks like it does. These are patterns between two numbers,
+                  {' '}not causes.
+                </Text>
+              </View>
+            </>
+          )}
+
+          {foodRows.length > 0 && (
+            <>
+              <Text style={styles.sectionTitle}>MOOD BY WHAT YOU ATE</Text>
+              <View style={styles.card}>
+                {foodRows.map((row, i) => (
+                  <ContrastBars
+                    key={row.label}
+                    first={i === 0}
+                    label={row.label}
+                    withLabel="Had it"
+                    withoutLabel="Didn’t"
+                    withFraction={moodBarFraction(row.moodWith)}
+                    withoutFraction={moodBarFraction(row.moodWithout)}
+                    withText={row.moodWith.toFixed(1)}
+                    withoutText={row.moodWithout.toFixed(1)}
+                    accessibilityLabel={`${row.label}, average mood ${row.moodWith.toFixed(1)} on days you had it, ${row.moodWithout.toFixed(1)} on days you didn't`}
+                  />
+                ))}
+                <Text style={styles.chartCaption}>
+                  Your average mood on days you logged that food, against days you logged food
+                  {' '}without it. Both sides are days you logged at least two meals.
+                </Text>
+              </View>
+            </>
+          )}
+
           {categoryRows.length > 0 && (
             <>
               <Text style={styles.sectionTitle}>MOOD BY KIND OF WORK</Text>
               <View style={styles.card}>
-                {categoryRows.map(row => (
-                  <View
+                {categoryRows.map((row, i) => (
+                  <ContrastBars
                     key={row.label}
-                    style={styles.contrastRow}
-                    accessible
+                    first={i === 0}
+                    label={row.label}
+                    withLabel="Did some"
+                    withoutLabel="Didn’t"
+                    withFraction={moodBarFraction(row.moodWith)}
+                    withoutFraction={moodBarFraction(row.moodWithout)}
+                    withText={row.moodWith.toFixed(1)}
+                    withoutText={row.moodWithout.toFixed(1)}
                     // "1.8 vs 3.9" says nothing about what is being compared,
                     // and the caption carrying that is a separate element three
                     // rows down. Each row states its own comparison instead.
                     accessibilityLabel={`${row.label}, average mood ${row.moodWith.toFixed(1)} on days you finished something in that category, ${row.moodWithout.toFixed(1)} on days you didn't`}
-                  >
-                    <Text style={styles.contrastLabel} numberOfLines={1}>{row.label}</Text>
-                    <Text style={styles.contrastValue}>
-                      {row.moodWith.toFixed(1)} vs {row.moodWithout.toFixed(1)}
-                    </Text>
-                  </View>
+                  />
                 ))}
                 <Text style={styles.chartCaption}>
                   Your average mood on days you finished something in that category, against days you didn't.
+                </Text>
+              </View>
+            </>
+          )}
+
+          {taskRows.length > 0 && (
+            <>
+              <Text style={styles.sectionTitle}>MOOD AND YOUR REPEATING TASKS</Text>
+              <View style={styles.card}>
+                {taskRows.map((row, i) => (
+                  <ContrastBars
+                    key={row.label}
+                    first={i === 0}
+                    label={row.label}
+                    withLabel="Did it"
+                    withoutLabel="Didn’t"
+                    withFraction={moodBarFraction(row.moodWith)}
+                    withoutFraction={moodBarFraction(row.moodWithout)}
+                    withText={row.moodWith.toFixed(1)}
+                    withoutText={row.moodWithout.toFixed(1)}
+                    accessibilityLabel={`${row.label}, average mood ${row.moodWith.toFixed(1)} on the ${row.withDays} days you finished it, ${row.moodWithout.toFixed(1)} on the ${row.withoutDays} days you didn't`}
+                  />
+                ))}
+                <Text style={styles.chartCaption}>
+                  Your average mood on days you finished a repeating task, against days you
+                  didn't. Two averages side by side, not a cause.
                 </Text>
               </View>
             </>
@@ -414,21 +718,51 @@ export function MoodScreen() {
             <>
               <Text style={styles.sectionTitle}>MOOD WITH SYMPTOMS</Text>
               <View style={styles.card}>
-                {symptomRows.map(row => (
-                  <View
+                {symptomRows.map((row, i) => (
+                  <ContrastBars
                     key={row.label}
-                    style={styles.contrastRow}
-                    accessible
+                    first={i === 0}
+                    label={row.label}
+                    withLabel="Had it"
+                    withoutLabel="Didn’t"
+                    withFraction={moodBarFraction(row.moodWith)}
+                    withoutFraction={moodBarFraction(row.moodWithout)}
+                    withText={row.moodWith.toFixed(1)}
+                    withoutText={row.moodWithout.toFixed(1)}
+                    onPress={() => {
+                      haptics.tap();
+                      navigation.navigate('SymptomDetail', { symptomKey: row.key });
+                    }}
                     accessibilityLabel={`${row.label}, average mood ${row.moodWith.toFixed(1)} on days you logged it, ${row.moodWithout.toFixed(1)} on days you didn't`}
-                  >
-                    <Text style={styles.contrastLabel} numberOfLines={1}>{row.label}</Text>
-                    <Text style={styles.contrastValue}>
-                      {row.moodWith.toFixed(1)} vs {row.moodWithout.toFixed(1)}
-                    </Text>
-                  </View>
+                  />
                 ))}
                 <Text style={styles.chartCaption}>
                   Your average mood on days you logged it, against days you didn't.
+                </Text>
+              </View>
+            </>
+          )}
+
+          {contextTagRows.length > 0 && (
+            <>
+              <Text style={styles.sectionTitle}>MOOD WITH CONTEXT</Text>
+              <View style={styles.card}>
+                {contextTagRows.map((row, i) => (
+                  <ContrastBars
+                    key={row.label}
+                    first={i === 0}
+                    label={row.label}
+                    withLabel="Applied"
+                    withoutLabel="Didn’t"
+                    withFraction={moodBarFraction(row.moodWith)}
+                    withoutFraction={moodBarFraction(row.moodWithout)}
+                    withText={row.moodWith.toFixed(1)}
+                    withoutText={row.moodWithout.toFixed(1)}
+                    accessibilityLabel={`${row.label}, average mood ${row.moodWith.toFixed(1)} on days it applied, ${row.moodWithout.toFixed(1)} on days it didn't`}
+                  />
+                ))}
+                <Text style={styles.chartCaption}>
+                  Your average mood on days a tag applied, against days it didn't.
                 </Text>
               </View>
             </>
@@ -457,45 +791,138 @@ export function MoodScreen() {
             </>
           )}
 
+          <Text style={styles.sectionTitle}>SYMPTOMS</Text>
+          {symptomList.length === 0 ? (
+            <View style={styles.card}>
+              <Text style={styles.pending}>
+                Nothing logged yet. Add a symptom to an entry and it gets its own page here,
+                with how often it happens and how bad it gets.
+              </Text>
+            </View>
+          ) : (
+            <View style={styles.card}>
+              {symptomList.map(stat => (
+                <TouchableOpacity
+                  key={stat.key}
+                  style={styles.linkRow}
+                  activeOpacity={interaction.activeOpacity}
+                  onPress={() => {
+                    haptics.tap();
+                    navigation.navigate('SymptomDetail', { symptomKey: stat.key });
+                  }}
+                  accessibilityRole="button"
+                  accessibilityLabel={`${stat.name}, ${stat.dayCount} ${stat.dayCount === 1 ? 'day' : 'days'}, last logged ${format(dayKeyToDate(stat.lastDayKey), 'MMMM d')}`}
+                >
+                  <View style={styles.linkBody}>
+                    <Text style={styles.linkLabel} numberOfLines={1}>{stat.name}</Text>
+                    <Text style={styles.linkMeta}>
+                      {stat.dayCount} {stat.dayCount === 1 ? 'day' : 'days'} · last on{' '}
+                      {format(dayKeyToDate(stat.lastDayKey), 'MMM d')}
+                    </Text>
+                  </View>
+                  <Ionicons name="chevron-forward" size={16} color={colors.textTertiary} />
+                </TouchableOpacity>
+              ))}
+            </View>
+          )}
+
+          <Text style={styles.sectionTitle}>MILESTONES</Text>
+          <View style={styles.card}>
+            {milestoneRows.length === 0 ? (
+              <Text style={[styles.pending, styles.milestoneAddSpacing]}>
+                Mark the day something changed — starting a medicine, a new
+                job — and compare your mood before and after it.
+              </Text>
+            ) : (
+              <View style={styles.milestoneAddSpacing}>
+                {milestoneRows.map(({ milestone, contrast }, i) => (
+                  contrast ? (
+                    <ContrastBars
+                      key={milestone.id}
+                      first={i === 0}
+                      label={milestone.label}
+                      withLabel="Before"
+                      withoutLabel="After"
+                      withFraction={moodBarFraction(contrast.moodBefore)}
+                      withoutFraction={moodBarFraction(contrast.moodAfter)}
+                      withText={contrast.moodBefore.toFixed(1)}
+                      withoutText={contrast.moodAfter.toFixed(1)}
+                      onPress={() => openEditMilestone(milestone)}
+                      accessibilityLabel={`${milestone.label}, average mood ${contrast.moodBefore.toFixed(1)} before ${format(new Date(milestone.date), 'MMMM d')}, ${contrast.moodAfter.toFixed(1)} on and after`}
+                    />
+                  ) : (
+                    <TouchableOpacity
+                      key={milestone.id}
+                      style={[styles.linkRow, i > 0 && styles.milestoneRowGap]}
+                      activeOpacity={interaction.activeOpacity}
+                      onPress={() => openEditMilestone(milestone)}
+                      accessibilityRole="button"
+                      accessibilityLabel={`${milestone.label}, ${format(new Date(milestone.date), 'MMMM d, yyyy')}, not enough days logged yet to compare`}
+                    >
+                      <View style={styles.linkBody}>
+                        <Text style={styles.linkLabel} numberOfLines={1}>{milestone.label}</Text>
+                        <Text style={styles.linkMeta}>
+                          {format(new Date(milestone.date), 'MMM d, yyyy')} · not enough days yet
+                        </Text>
+                      </View>
+                      <Ionicons name="chevron-forward" size={16} color={colors.textTertiary} />
+                    </TouchableOpacity>
+                  )
+                ))}
+              </View>
+            )}
+            <InlineAction
+              label="Add milestone"
+              onPress={openNewMilestone}
+              variant={milestoneRows.length > 0 ? 'neutral' : 'accent'}
+            />
+            {milestoneRows.some(r => r.contrast) && (
+              <Text style={styles.chartCaption}>
+                Average mood before a milestone's date, against on and after it.
+              </Text>
+            )}
+          </View>
+
           <Text style={styles.sectionTitle}>RECENT ENTRIES</Text>
           {recent.map(log => (
-            <TouchableOpacity
+            <MoodEntryRow
               key={log.id}
-              style={styles.entryRow}
-              activeOpacity={interaction.activeOpacity}
+              log={log}
               onPress={() => openEdit(log)}
               onLongPress={() => confirmDelete(log)}
-              delayLongPress={interaction.delayLongPress}
-              accessibilityLabel={`${format(dayKeyToDate(log.dayKey), 'EEEE d MMMM')}: ${moodLogSummary(log)}`}
-            >
-              <Text style={styles.entryEmoji}>
-                {log.mood === null ? '·' : moodEmoji(log.mood)}
-              </Text>
-              <View style={styles.entryBody}>
-                <Text style={styles.entryTitle} numberOfLines={1}>
-                  {log.mood === null ? 'Logged' : moodLabel(log.mood)}
-                </Text>
-                <Text style={styles.entryMeta} numberOfLines={1}>
-                  {format(new Date(log.loggedAt), 'EEE d MMM, h:mm a')}
-                </Text>
-                {log.symptoms.length > 0 && (
-                  <Text style={styles.entrySymptoms} numberOfLines={2}>
-                    {log.symptoms.map(s => `${s.name} (${severityLabel(s.severity).toLowerCase()})`).join(', ')}
-                  </Text>
-                )}
-                {!!log.note && (
-                  <Text style={styles.entryNote} numberOfLines={2}>{log.note}</Text>
-                )}
-              </View>
-            </TouchableOpacity>
+            />
           ))}
+          {logs.length > recent.length && (
+            <TouchableOpacity
+              style={styles.seeAllRow}
+              activeOpacity={interaction.activeOpacity}
+              onPress={() => { haptics.tap(); navigation.navigate('MoodHistory'); }}
+              accessibilityRole="button"
+              accessibilityLabel={`See all ${logs.length} entries`}
+            >
+              <Text style={styles.seeAllText}>See all {logs.length} entries</Text>
+              <Ionicons name="chevron-forward" size={16} color={colors.accent} />
+            </TouchableOpacity>
+          )}
         </ScrollView>
       )}
 
       <MoodLogSheet
         visible={sheetOpen}
         editing={editing}
-        onClose={() => { setSheetOpen(false); setEditing(null); }}
+        onClose={closeSheet}
+      />
+
+      <MoodExportSheet
+        visible={exportOpen}
+        logs={logs}
+        onClose={() => setExportOpen(false)}
+      />
+
+      <MilestoneSheet
+        visible={milestoneSheetOpen}
+        milestone={editingMilestone}
+        onClose={closeMilestoneSheet}
       />
     </View>
   );
@@ -574,19 +1001,27 @@ const makeStyles = (colors: Colors) => StyleSheet.create({
   },
   contrastLabel: { flex: 1, fontSize: font.sm, color: colors.text },
   contrastValue: { fontSize: font.sm, color: colors.textSecondary, fontWeight: fontWeight.medium },
-  entryRow: {
+  linkRow: {
     flexDirection: 'row',
-    alignItems: 'flex-start',
-    backgroundColor: colors.bgSecondary,
-    borderRadius: radius.lg,
-    padding: spacing.md,
-    marginBottom: spacing.sm,
+    alignItems: 'center',
     gap: spacing.sm,
+    paddingVertical: spacing.sm,
   },
-  entryEmoji: { fontSize: font.lg, width: 28, textAlign: 'center' },
-  entryBody: { flex: 1 },
-  entryTitle: { fontSize: font.md, fontWeight: fontWeight.medium, color: colors.text },
-  entryMeta: { fontSize: font.xs, color: colors.textSecondary, marginTop: 2 },
-  entrySymptoms: { fontSize: font.sm, color: colors.textSecondary, marginTop: spacing.xs },
-  entryNote: { fontSize: font.sm, color: colors.textTertiary, marginTop: spacing.xs },
+  linkBody: { flex: 1 },
+  linkLabel: { fontSize: font.sm, color: colors.text },
+  linkMeta: { fontSize: font.xs, color: colors.textSecondary, marginTop: 2 },
+  // Space before the "Add milestone" action below, whichever branch (the
+  // empty-state text or the row list) sits above it.
+  milestoneAddSpacing: { marginBottom: spacing.md },
+  // Between one pending milestone row and the next — ContrastBars rows carry
+  // their own gap, but a plain TouchableOpacity row needs its own.
+  milestoneRowGap: { marginTop: spacing.md },
+  seeAllRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    gap: 4,
+    paddingVertical: spacing.md,
+  },
+  seeAllText: { fontSize: font.sm, color: colors.accent, fontWeight: fontWeight.medium },
 });

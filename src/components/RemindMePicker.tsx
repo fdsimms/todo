@@ -62,7 +62,7 @@ const CELL_SIZE = Math.floor((CARD_WIDTH - spacing.md * 2 - CAL_PADDING * 2) / 7
 
 const alarmKitAvailable = isAlarmKitAvailable();
 
-const BEFORE_DAYS_MIN = 1;
+const BEFORE_DAYS_MIN = 0;
 const BEFORE_DAYS_MAX = 60;
 
 export function RemindMePicker({ visible, value, kind, dueDate = null, offsetDays = null, anchor = 'wallClock', onConfirm, onClear, onCancel }: Props) {
@@ -358,7 +358,7 @@ export function RemindMePicker({ visible, value, kind, dueDate = null, offsetDay
                 Task.reminderTimeAnchor. */}
             <View style={styles.anchorSection}>
               <SegmentedControl<'wallClock' | 'fixed'>
-                label="Anchor"
+                label="If your timezone changes"
                 value={selectedAnchor}
                 onChange={setSelectedAnchor}
                 options={[

@@ -1,5 +1,8 @@
 import {
+  describeShopAisles,
   isAsserted,
+  isOutOfRange,
+  sellsAisle,
   isUnavailable,
   shopsForItem,
   unavailableShopsFor,
@@ -23,6 +26,7 @@ function makeShop(name: string, sortOrder = 0): Shop {
     createdAt: '2026-01-01T00:00:00.000Z',
     excludeFromSuggestions: false,
     receiptStyle: 'itemized' as const,
+    aisles: null,
   };
 }
 
@@ -34,6 +38,7 @@ function product(id: string, itemId: string, brand: string | null, variant: stri
     variant,
     productKey: `${brand ?? ''}|${variant ?? ''}`.toLowerCase(),
     rating: null,
+    nutrition: null,
     note: '',
     purchaseCount: 0,
     lastPurchasedAt: null,
@@ -48,6 +53,7 @@ function product(id: string, itemId: string, brand: string | null, variant: stri
 
 function makeItem(name: string, overrides: Partial<GroceryItem> = {}): GroceryItem {
   return {
+    nameFromScan: false,
     id: `item-${groceryNameKey(name).replace(/\s/g, '-')}`,
     name,
     nameKey: groceryNameKey(name),
@@ -80,7 +86,7 @@ function makeItem(name: string, overrides: Partial<GroceryItem> = {}): GroceryIt
     usedUpCount: 0,
     spoiledCount: 0,
     lastSpoiledAt: null,
-    varietyOfKey: null, backfillDismissedFields: [],
+    varietyOfKey: null, nutrition: null, backfillDismissedFields: [],
     lastPriceMinor: null,
     lastPricedAt: null,
     lastPriceQuantity: null, priceHistory: [],
@@ -502,5 +508,73 @@ describe('describeShops', () => {
   it('lists several, in store order', () => {
     const links = [notAt('milk', safeway.id), notAt('milk', costco.id)];
     expect(describeShops(milk, links, SHOPS)).toBe('Bought 7 times · not at Costco, Safeway');
+  });
+});
+
+describe('sellsAisle', () => {
+  const pharmacy = makeShop('CVS');
+  const scoped = { ...pharmacy, aisles: ['Personal Care', 'Household'] };
+
+  it('lets an unscoped store sell everything', () => {
+    expect(sellsAisle(pharmacy, 'Frozen')).toBe(true);
+    expect(sellsAisle(pharmacy, OTHER_AISLE)).toBe(true);
+  });
+
+  it('is a membership test against what the user listed', () => {
+    expect(sellsAisle(scoped, 'Personal Care')).toBe(true);
+    expect(sellsAisle(scoped, 'Frozen')).toBe(false);
+  });
+});
+
+describe('isOutOfRange', () => {
+  const pharmacy = { ...makeShop('CVS'), aisles: ['Personal Care'] };
+  const tofurky = makeItem('Tofurky', { id: 'tofurky', aisle: 'Frozen' });
+  const shampoo = makeItem('Shampoo', { id: 'shampoo', aisle: 'Personal Care' });
+
+  it('is false for every item at an unscoped store', () => {
+    expect(isOutOfRange(makeShop('CVS'), tofurky, [])).toBe(false);
+  });
+
+  it('is true for an item from an aisle the store was not given', () => {
+    expect(isOutOfRange(pharmacy, tofurky, [])).toBe(true);
+  });
+
+  it('is false for an item from an aisle it was given', () => {
+    expect(isOutOfRange(pharmacy, shampoo, [])).toBe(false);
+  });
+
+  // The rule that makes a roughly-drawn range safe: a record about this exact
+  // item beats a range drawn round the shop.
+  it('lets an observed purchase outrank the range', () => {
+    const links = [link('tofurky', pharmacy.id, 4, '2026-03-01T00:00:00.000Z')];
+    expect(isOutOfRange(pharmacy, tofurky, links)).toBe(false);
+  });
+
+  it('lets a hand-asserted link outrank it too', () => {
+    expect(isOutOfRange(pharmacy, tofurky, [link('tofurky', pharmacy.id, 0)])).toBe(false);
+  });
+
+  it('is unmoved by a link that is itself a negative', () => {
+    expect(isOutOfRange(pharmacy, tofurky, [notAt('tofurky', pharmacy.id)])).toBe(true);
+  });
+
+  it('reads only this store\'s own links', () => {
+    const elsewhere = [link('tofurky', 'shop-other', 9, '2026-03-01T00:00:00.000Z')];
+    expect(isOutOfRange(pharmacy, tofurky, elsewhere)).toBe(true);
+  });
+});
+
+describe('describeShopAisles', () => {
+  it('is null for a store that sells everything', () => {
+    expect(describeShopAisles(makeShop('CVS'))).toBeNull();
+  });
+
+  it('names one, two and three', () => {
+    const at = (aisles: string[]) => describeShopAisles({ ...makeShop('CVS'), aisles });
+    expect(at(['Personal Care'])).toBe('Personal Care');
+    expect(at(['Personal Care', 'Household'])).toBe('Personal Care and Household');
+    expect(at(['Personal Care', 'Household', 'Snacks'])).toBe(
+      'Personal Care, Household and Snacks'
+    );
   });
 });

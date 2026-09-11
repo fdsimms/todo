@@ -48,6 +48,7 @@ const person = (overrides: Partial<Person> = {}): Person => ({
   askAbout: '',
   backfillDismissedFields: [],
   groupId: null,
+  location: null,
   ...overrides,
 });
 

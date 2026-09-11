@@ -26,7 +26,7 @@ import { useCalendarSync } from './src/store/useCalendarStore';
 import { useWeatherSync } from './src/store/useWeatherStore';
 import { useScreenTimeSync } from './src/store/useScreenTimeStore';
 import { useHealthSync } from './src/store/useHealthStore';
-import { useFocusShieldSync } from './src/hooks/useFocusShieldSync';
+import { useAppShieldSync } from './src/hooks/useAppShieldSync';
 import { useSyncStore } from './src/store/useSyncStore';
 import { useSyncOnForeground } from './src/utils/useSyncOnForeground';
 import { runStartupSequence, runStartupStep } from './src/utils/startup';
@@ -202,7 +202,7 @@ function AppRoot() {
   // Blocks the chosen apps while a focus session is actually running, and —
   // the half that matters — lifts a shield left in force by a run that
   // crashed. Inert until focusShieldEnabled is switched on.
-  useFocusShieldSync();
+  useAppShieldSync();
   useSyncOnForeground();
 
   // Keeps the iOS Today widget's shared snapshot in sync with the task store.

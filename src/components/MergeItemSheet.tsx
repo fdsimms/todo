@@ -1,4 +1,4 @@
-import React, { useMemo, useState } from 'react';
+import React, { useEffect, useMemo, useState } from 'react';
 import { FlatList, Modal, StyleSheet, Text, TextInput, TouchableOpacity, View } from 'react-native';
 import Ionicons from '@expo/vector-icons/Ionicons';
 import { useShallow } from 'zustand/react/shallow';
@@ -18,6 +18,12 @@ interface Props {
   visible: boolean;
   /** The item the merge was opened from — one side of the pair. */
   itemId: string | null;
+  /**
+   * Skip straight to the "which one to keep" step for this row, instead of
+   * the search list — for a rename that collided with it, where the other
+   * side of the pair is already known.
+   */
+  initialPickedId?: string | null;
   onClose: () => void;
   /**
    * Fired after a successful merge, with the id of the row that survived.
@@ -35,13 +41,12 @@ interface Props {
  * references fold into it, and it's deleted. See useGroceryStore.mergeItems
  * for the field-by-field reconciliation this hands off to.
  *
- * No shake-to-undo here, unlike almost everything else in the grocery list —
- * a merge is confirmed instead, the same discipline GroceryItemSheet's own
- * "Forget this item" uses, and for the same reason: there is no undo
- * anywhere in this store, so a destructive action is behind a confirm rather
- * than a swipe.
+ * Confirmed *and* shake-to-undoable — a merge folds enough state that both
+ * earn their place, the same double coverage clearing the list or finishing
+ * a trip get. The confirm is what "Forget this item" uses on its own for a
+ * plainer delete; this one also gets the safety net.
  */
-export function MergeItemSheet({ visible, itemId, onClose, onMerged }: Props) {
+export function MergeItemSheet({ visible, itemId, initialPickedId, onClose, onMerged }: Props) {
   const colors = useColors();
   const styles = useMemo(() => makeStyles(colors), [colors]);
 
@@ -53,6 +58,15 @@ export function MergeItemSheet({ visible, itemId, onClose, onMerged }: Props) {
 
   const [query, setQuery] = useState('');
   const [pickedId, setPickedId] = useState<string | null>(null);
+
+  // The sheet stays mounted with `visible` toggling, so a fresh open has to
+  // reseed state rather than relying on a mount-time default.
+  useEffect(() => {
+    if (visible) {
+      setQuery('');
+      setPickedId(initialPickedId ?? null);
+    }
+  }, [visible, initialPickedId]);
 
   const picked = items.find(i => i.id === pickedId) ?? null;
 
@@ -94,8 +108,8 @@ export function MergeItemSheet({ visible, itemId, onClose, onMerged }: Props) {
   const confirmKeep = (survivor: GroceryItem, loser: GroceryItem) => {
     confirmDelete({
       title: `Merge ${loser.name} into ${survivor.name}?`,
-      message: `${loser.name}’s purchases, store links and recipes combine into ${survivor.name}. ` +
-        `${loser.name} is deleted, and this can’t be undone.`,
+      message: `${loser.name}’s purchases, store links and recipes combine into ${survivor.name}, ` +
+        `and ${loser.name} is deleted.`,
       confirmLabel: 'Merge',
       onConfirm: () => {
         mergeItems(loser.id, survivor.id);

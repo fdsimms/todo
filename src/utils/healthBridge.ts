@@ -1,4 +1,4 @@
-import { Platform } from 'react-native';
+import { Platform, Linking } from 'react-native';
 import { isDemoModeActive } from './demoState';
 
 /**
@@ -14,11 +14,24 @@ import { isDemoModeActive } from './demoState';
  * it is a real read the demo has no business making, and anything derived from
  * it is a claim about someone that outlives the demo only by luck.
  *
- * Unlike the Screen Time gate there is nothing here that *writes* anywhere, and
- * nothing that drains a queue: every call is a read, and the worst a leak could
- * do is show a true number in a fictional context. That is still enough. The
- * gate is also what keeps the permission sheet from ever being raised by a demo
- * session, which is the visible half.
+ * This gate now covers two writes as well as every read — a dietary-water
+ * sample, logged when a task that opted into it completes (see
+ * `healthCompletionSync.ts`), and a body-mass sample when somebody records a
+ * weight — and demo mode is the sharper case for that half, not the milder one
+ * the note above still describes for reads. A read leak shows a true number in
+ * a fictional context; a write leak would put a *real* sample in the person's
+ * *real* Health record, sourced from a demo-seeded completion that never
+ * happened. Nothing here drains a queue the way the Screen Time/widget gates'
+ * writes do, but "worse than a read leak" is still the operative comparison,
+ * not "as harmless as one". The gate is also what keeps either permission
+ * sheet — read or write — from ever being raised by a demo session, which is
+ * the visible half.
+ *
+ * The weight write is the milder of the two against demo mode, and only by
+ * accident: it is reached from a screen rather than from a completion, so a
+ * demo session would have to be driven there by hand rather than writing on
+ * its own. The gate is unconditional anyway, because "you would have to mean
+ * it" is not a guarantee and this is somebody's medical record.
  *
  * Returns null for every reason a caller has nothing to do — not iOS, demo mode
  * on, or no native module in the binary — so a caller is one `if` rather than a
@@ -57,4 +70,27 @@ export function healthBridge(): HealthBridge | null {
  */
 export function isHealthSupported(): boolean {
   return healthBridge()?.isHealthAvailable() ?? false;
+}
+
+/**
+ * HealthKit permissions live in the Health app itself, under the profile
+ * icon's Privacy → Apps page, not in this app's page under iOS Settings —
+ * Settings has no Health row to show. Try the Health app's URL scheme first
+ * and only fall back to Settings if that fails.
+ *
+ * **`x-apple-health` has to be declared in `LSApplicationQueriesSchemes`
+ * (app.json's `ios.infoPlist`) or `Linking.openURL` rejects outright**,
+ * landing every caller in the `catch` below — this app's own Settings page,
+ * which has no Health row, silently proving the row's own hint text wrong.
+ * That's not a hypothetical: it shipped without the entry once already.
+ *
+ * The one door for any "let them fix Health access" button — never call
+ * `Linking.openSettings()` directly for a Health permission problem.
+ */
+export async function openHealthApp(): Promise<void> {
+  try {
+    await Linking.openURL('x-apple-health://');
+  } catch {
+    await Linking.openSettings();
+  }
 }

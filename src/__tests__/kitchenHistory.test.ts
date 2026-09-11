@@ -27,6 +27,7 @@ function entry(overrides: Partial<MealPlanEntry> & { id: string; date: string })
     recipeScale: 1,
     cookTask: null,
     shopTask: null,
+    logMeal: null,
     calendarEventId: null,
     ...overrides,
   };
@@ -42,6 +43,7 @@ function leftover(overrides: Partial<Leftover> & { id: string }): Leftover {
     finishedAt: null,
     outcome: null,
     frozenAt: null,
+    weightG: null,
     createdAt: '2026-08-01T12:00:00.000Z',
     useUpTask: null,
     ...overrides,
@@ -50,6 +52,7 @@ function leftover(overrides: Partial<Leftover> & { id: string }): Leftover {
 
 function recipe(id: string, name: string): Recipe {
   return {
+    backfillDismissedFields: [],
     id,
     name,
     nameKey: name.toLowerCase(),
@@ -64,6 +67,7 @@ function recipe(id: string, name: string): Recipe {
     servings: null,
     servingsMax: null,
     recipeYield: null,
+    cookedWeightG: null,
     leftoverKeepDays: null,
     imagePath: null,
     mealType: null,

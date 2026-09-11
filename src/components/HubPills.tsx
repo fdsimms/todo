@@ -11,6 +11,7 @@ import { useSettingsStore } from '../store/useSettingsStore';
 import { useTaskGroupStore } from '../store/useTaskGroupStore';
 import { useTemplateStore } from '../store/useTemplateStore';
 import { usePersonStore } from '../store/usePersonStore';
+import { useFoodLogStore } from '../store/useFoodLogStore';
 import { useMoodStore } from '../store/useMoodStore';
 import { NAV_HUBS, visibleHubMembers, type NavHubId } from '../utils/navHubs';
 import { attentionLeftovers, freshnessOf } from '../utils/leftovers';
@@ -54,6 +55,7 @@ export function HubPills({ hub, active }: Props) {
   const templates = useTemplateStore(s => s.templates.length);
   const people = usePersonStore(s => s.people.length);
   const mood = useMoodStore(s => s.logs.length);
+  const foodLog = useFoodLogStore(s => s.totalCount);
 
   // The list you're actually looking at, not every trolley you have going — a
   // pill reading 22 while the Airbnb list holds four is counting shopping this
@@ -84,11 +86,11 @@ export function HubPills({ hub, active }: Props) {
   const tabs = useMemo(() => {
     const definition = NAV_HUBS.find(h => h.id === hub);
     if (!definition) return [];
-    const shown = visibleHubMembers(definition, simpleMode, { stacks, templates, people, mood });
+    const shown = visibleHubMembers(definition, simpleMode, { stacks, templates, people, mood, foodLog });
     if (shown.some(m => m.route === active)) return shown;
     // Standing on a hidden member: put it back, in its own place.
     return definition.members.filter(m => m.route === active || shown.includes(m));
-  }, [hub, active, simpleMode, stacks, templates, people, mood]);
+  }, [hub, active, simpleMode, stacks, templates, people, mood, foodLog]);
 
   if (tabs.length < 2) return null;
 
@@ -146,7 +148,7 @@ const makeStyles = (colors: Colors) => StyleSheet.create({
   scroll: { flexGrow: 0, flexShrink: 0 },
   pills: {
     flexDirection: 'row', alignItems: 'center', gap: spacing.xs,
-    paddingHorizontal: spacing.md, paddingTop: 6, paddingBottom: 4,
+    paddingHorizontal: spacing.md, paddingTop: 6, paddingBottom: spacing.sm,
   },
   pill: {
     paddingHorizontal: spacing.md, paddingVertical: spacing.sm,

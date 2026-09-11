@@ -35,6 +35,7 @@ function link(recipeId: string, name: string): RecipeComponent {
 
 function recipe(id: string, name: string, overrides: Partial<Recipe> = {}): Recipe {
   return {
+    backfillDismissedFields: [],
     id,
     name,
     nameKey: name.toLowerCase(),
@@ -49,6 +50,7 @@ function recipe(id: string, name: string, overrides: Partial<Recipe> = {}): Reci
     servings: null,
     servingsMax: null,
     recipeYield: null,
+    cookedWeightG: null,
     leftoverKeepDays: null,
     imagePath: null,
     mealType: null,
@@ -81,12 +83,13 @@ function recipe(id: string, name: string, overrides: Partial<Recipe> = {}): Reci
 
 function item(name: string, overrides: Partial<GroceryItem> = {}): GroceryItem {
   return {
+    nameFromScan: false,
     id: `i-${++seq}`, name, nameKey: name.toLowerCase(), preferredProductId: null, productStrict: false,
     aisle: 'Other', quantity: null, quantityFromRecipe: false, note: '',
     onList: true, checked: false, sortOrder: seq, purchaseCount: 0,
     lastAddedAt: null, lastPurchasedAt: null, createdAt: '2026-01-01T00:00:00.000Z',
     onHandUntil: null, sourceRecipeId: null, sourceRecipeTitle: null, choiceGroup: null,
-    isStaple: false, expiresAt: null, frozenAt: null, openedAt: null, runningLowAt: null, shelfLifeDays: null, useUpTask: null, pantryCheckDeclinedAt: null, pantryReviewedAt: null, usedUpCount: 0, spoiledCount: 0, lastSpoiledAt: null, varietyOfKey: null, backfillDismissedFields: [], lastPriceMinor: null,
+    isStaple: false, expiresAt: null, frozenAt: null, openedAt: null, runningLowAt: null, shelfLifeDays: null, useUpTask: null, pantryCheckDeclinedAt: null, pantryReviewedAt: null, usedUpCount: 0, spoiledCount: 0, lastSpoiledAt: null, varietyOfKey: null, nutrition: null, backfillDismissedFields: [], lastPriceMinor: null,
     lastPricedAt: null, lastPriceQuantity: null, priceHistory: [],
     ...overrides,
   };
@@ -269,7 +272,7 @@ describe('buildWeekPlanShareText', () => {
     return {
       id: `m-${++seq}`, date, slot, recipeId: null, title: 'Meal', sortOrder: 1,
       createdAt: '2026-01-01T00:00:00.000Z', cookedAt: null, leftoverId: null,
-      recipeChoices: [], personIds: [], recipeScale: 1, cookTask: null, shopTask: null, calendarEventId: null,
+      recipeChoices: [], personIds: [], recipeScale: 1, cookTask: null, shopTask: null, logMeal: null, calendarEventId: null,
       ...overrides,
     };
   }

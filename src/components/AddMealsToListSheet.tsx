@@ -399,7 +399,7 @@ export function AddMealsToListSheet({
                               // to apply and the row has no room to spare.
                               const subtitle = [
                                 row.reason ?? (row.sources.length > 1 ? row.sources.join(' · ') : null),
-                                row.optional ? 'Optional' : null,
+                                row.optional ? 'optional' : null,
                               ].filter(Boolean).join(' · ') || null;
                               // Shown in the reader's units; what gets written to
                               // the list is still row.quantity, as the recipes
@@ -583,19 +583,18 @@ const makeStyles = (colors: Colors) => StyleSheet.create({
     letterSpacing: 0.8,
     textTransform: 'uppercase',
   },
-  // Same uppercase treatment as sectionLabel, scoped to sit above one
-  // recipe's rows inside the category's card — see
-  // RecipeDetailScreen.ingredientSectionHeader, the same idea for a
-  // recipe's own ingredient sections.
+  // Deliberately not sectionLabel's uppercase/letterSpacing treatment: this
+  // sits one level down, naming a recipe inside a category the section
+  // header already named, and matching that header's weight read as one
+  // heading repeated rather than two levels of one. textTertiary + regular
+  // case keeps it legible as a sub-label without competing with the
+  // category above it.
   recipeGroupLabel: {
-    color: colors.textSecondary,
+    color: colors.textTertiary,
     fontSize: font.xs,
-    fontWeight: fontWeight.semibold,
-    letterSpacing: 0.8,
-    textTransform: 'uppercase',
+    fontWeight: fontWeight.medium,
     paddingHorizontal: spacing.md,
     paddingTop: spacing.sm,
-    paddingBottom: spacing.xs,
   },
   sectionHint: {
     color: colors.textTertiary,

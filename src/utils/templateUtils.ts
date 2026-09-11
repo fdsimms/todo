@@ -60,7 +60,16 @@ export function normalizeTemplateItem(raw: Partial<TemplateItem>): TemplateItem 
     recurrenceCount: raw.recurrenceCount ?? null,
     vacationPause: raw.vacationPause ?? false,
     excludeFromSuggestions: raw.excludeFromSuggestions ?? false,
+    penaltyMinutes: raw.penaltyMinutes ?? null,
+    penaltyCutoffTime: raw.penaltyCutoffTime ?? null,
+    gatesApps: raw.gatesApps ?? false,
+    // Null for every item stored before this shipped — an older template
+    // carries no medication and records nothing, which is the feature off.
+    medicationName: raw.medicationName ?? null,
+    medicationAmount: raw.medicationAmount ?? null,
+    medicationUnit: raw.medicationUnit ?? null,
     estimatedMinutes: raw.estimatedMinutes ?? null,
+    completionTimerMinutes: raw.completionTimerMinutes ?? null,
     deliverableKind: raw.deliverableKind ?? null,
     chainEnabled: raw.chainEnabled ?? false,
     chainItems: parseChainItems(raw.chainItems),
@@ -179,6 +188,18 @@ export function buildDraftsFromTemplate(
       excludeFromSuggestions: item.excludeFromSuggestions,
       polarity: item.polarity,
       estimatedMinutes: item.estimatedMinutes,
+      completionTimerMinutes: item.completionTimerMinutes,
+      // The cost only, for the reason the question below carries without its
+      // answer: an applied item starts owing nothing, whatever the item it
+      // came from has been charged in the past.
+      penaltyMinutes: item.penaltyMinutes,
+      penaltyCutoffTime: item.penaltyCutoffTime,
+      gatesApps: item.gatesApps,
+      // The instruction only. An applied item starts having recorded nothing,
+      // the same split the cost above and the question below both make.
+      medicationName: item.medicationName,
+      medicationAmount: item.medicationAmount,
+      medicationUnit: item.medicationUnit,
       // The question only — createTask never reads a draft's deliverableValue,
       // so an applied item always starts with the decision still to make.
       deliverableKind: item.deliverableKind,

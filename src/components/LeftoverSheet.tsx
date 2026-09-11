@@ -28,6 +28,7 @@ import { haptics } from '../utils/haptics';
 import { confirmDelete } from '../utils/confirmDelete';
 import { SafeBlurView } from './SafeBlurView';
 import { CountStepper } from './CountStepper';
+import { NumberPadAccessory, NUMBER_PAD_ACCESSORY_ID } from './NumberPadAccessory';
 import { SheetHeaderButton } from './SheetHeaderButton';
 import { SheetActionRow } from './SheetActionRow';
 import { SegmentedControl } from './SegmentedControl';
@@ -129,10 +130,21 @@ interface Props {
    * A pick carries its own `frozen`, already multiplied out from the sheet's
    * fridge/freezer/both answer, so a caller only ever writes one row per pick.
    */
-  onLog: (picks: LeftoverPick[], storedAt: string, keepDays: number) => void;
+  onLog: (
+    picks: LeftoverPick[],
+    storedAt: string,
+    keepDays: number,
+    weightG: number | null,
+  ) => void;
   onRename: (title: string) => void;
   onSetStoredAt: (storedAt: string) => void;
   onSetKeepDays: (days: number) => void;
+  /**
+   * What the container holds, in grams, or null to clear it. Only ever called
+   * for a container already in the fridge — a new one carries its weight
+   * through `onLog` instead, the same split every other field here makes.
+   */
+  onSetWeight: (grams: number | null) => void;
   onFinish: (outcome: 'eaten' | 'tossed') => void;
   /**
    * Into the freezer, or back out. Not an outcome — a frozen container is
@@ -150,6 +162,12 @@ interface Props {
   onReopen: () => void;
   onDelete: () => void;
   onClose: () => void;
+  /**
+   * Set only when `leftover.recipeId` still resolves to a recipe that exists —
+   * a leftover's link is resolve-or-shrug, same as MealPlanEntry's, so a
+   * deleted recipe just leaves this row off rather than opening a dead one.
+   */
+  onOpenRecipe?: () => void;
 }
 
 /**
@@ -177,8 +195,8 @@ interface Props {
  * the row in the fridge is for).
  */
 export function LeftoverSheet({
-  visible, leftover, seed, onLog, onRename, onSetStoredAt, onSetKeepDays,
-  onFinish, onSetFrozen, onSplit, onReopen, onDelete, onClose,
+  visible, leftover, seed, onLog, onRename, onSetStoredAt, onSetKeepDays, onSetWeight,
+  onFinish, onSetFrozen, onSplit, onReopen, onDelete, onClose, onOpenRecipe,
 }: Props) {
   const colors = useColors();
   const { isDark } = useTheme();
@@ -232,6 +250,7 @@ export function LeftoverSheet({
   const [draftDaysAgo, setDraftDaysAgo] = useState(0);
   const [draftKeepDays, setDraftKeepDays] = useState<number | null>(LEFTOVER_KEEP_DAYS_DEFAULT);
   const [pickedKeys, setPickedKeys] = useState<string[]>([]);
+  const [weightText, setWeightText] = useState('');
   // Opens on the fridge, which is where most of a week's leftovers go, so the
   // ordinary log still costs the taps it always did.
   const [destination, setDestination] = useState<LeftoverDestination>('fridge');
@@ -264,6 +283,9 @@ export function LeftoverSheet({
     // somehow carries only components.
     setPickedKeys(seed?.parts?.length ? [(seed.parts.find(p => p.whole) ?? seed.parts[0]).key] : []);
     setDestination('fridge');
+    setWeightText(leftover?.weightG === null || leftover?.weightG === undefined
+      ? ''
+      : String(leftover.weightG));
   }, [visible, leftover?.id]);
 
   const dismiss = (after?: () => void) => {
@@ -294,6 +316,11 @@ export function LeftoverSheet({
 
   const cleanTitle = cleanLeftoverTitle(title);
 
+  const parsedWeight = Number(weightText.trim().replace(',', '.'));
+  const typedWeight = weightText.trim() && Number.isFinite(parsedWeight) && parsedWeight > 0
+    ? parsedWeight
+    : null;
+
   // What "Log it" is about to write: the ticked parts, or the one thing that's
   // been typed, each multiplied out by where it's going. Empty means the button
   // is inert rather than writing nothing.
@@ -319,8 +346,27 @@ export function LeftoverSheet({
   const commit = () => {
     if (picks.length === 0) return;
     haptics.success();
-    onLog(picks, instantDaysAgo(draftDaysAgo), draftKeepDays ?? LEFTOVER_KEEP_DAYS_DEFAULT);
+    onLog(
+      picks,
+      instantDaysAgo(draftDaysAgo),
+      draftKeepDays ?? LEFTOVER_KEEP_DAYS_DEFAULT,
+      typedWeight,
+    );
     dismiss();
+  };
+
+  /**
+   * The typed weight, or null while there is nothing usable in the field.
+   *
+   * Committed on blur and on submit for a row already in the fridge, the same
+   * rule the title above follows and for a plainer reason: a half-typed "14"
+   * of "1450" is a real number, and storing it would record a container a
+   * tenth of its size.
+   */
+  const commitWeight = () => {
+    if (!leftover) return;
+    if (typedWeight === leftover.weightG) return;
+    onSetWeight(typedWeight);
   };
 
   // An existing row's title commits on blur/submit rather than on every
@@ -359,6 +405,12 @@ export function LeftoverSheet({
     else setDraftDaysAgo(days);
   };
 
+  // Editing a container the fridge already holds, or logging exactly one that
+  // came off a recipe. Two tubs and one field is a weight nobody can attribute.
+  const showWeight = editing
+    ? !!leftover?.recipeId
+    : picks.length === 1 && !!picks[0].recipeId;
+
   const pickKeepDays = (days: number | null) => {
     const next = days ?? LEFTOVER_KEEP_DAYS_DEFAULT;
     if (leftover) onSetKeepDays(next);
@@ -367,6 +419,7 @@ export function LeftoverSheet({
 
   return (
     <Modal visible={visible} animationType="none" transparent onRequestClose={() => dismiss()}>
+      <NumberPadAccessory />
       <Animated.View style={[StyleSheet.absoluteFill, { opacity: backdropOpacity }]} pointerEvents="none">
         <SafeBlurView intensity={isDark ? 20 : 15} tint="dark" style={StyleSheet.absoluteFill} />
         <View style={[StyleSheet.absoluteFill, styles.backdropDim]} />
@@ -460,6 +513,10 @@ export function LeftoverSheet({
               // shouldn't summon itself on top of it.
               autoFocus={!editing && !seed?.title}
               returnKeyType={editing ? 'done' : 'go'}
+              // A food name, and one whose rename commits on blur — the same
+              // autocorrect trap GroceryRow's inline rename describes.
+              autoCorrect={false}
+              spellCheck={false}
               maxLength={LEFTOVER_NAME_MAX_LENGTH}
               accessibilityLabel="Leftover name"
             />
@@ -549,6 +606,53 @@ export function LeftoverSheet({
               describeValue={n => (n === 0 ? 'Use today' : `${n} days`)}
             />
           </View>
+
+          {/* Only where a weight would be used, which is a container that came
+              off a recipe: the number is measured against that dish's own
+              cooked weight (see Leftover.weightG), and there is nothing to
+              divide for half a takeaway. Withheld while several containers are
+              about to be written at once, since one number cannot be the
+              weight of two tubs. */}
+          {showWeight && (
+            <View style={styles.keepRow}>
+              <View style={styles.keepText}>
+                <Text style={styles.keepLabel}>Weighs</Text>
+                <Text style={styles.hintInline}>
+                  Eating it then logs as what it weighed, rather than as a serving
+                </Text>
+              </View>
+              <View style={styles.weightField}>
+                <TextInput
+                  style={styles.weightInput}
+                  value={weightText}
+                  onChangeText={setWeightText}
+                  onBlur={commitWeight}
+                  onSubmitEditing={commitWeight}
+                  keyboardType="decimal-pad"
+                  inputAccessoryViewID={NUMBER_PAD_ACCESSORY_ID}
+                  placeholder="e.g. 420"
+                  placeholderTextColor={colors.textTertiary}
+                  maxLength={6}
+                  returnKeyType="done"
+                  accessibilityLabel="What this container weighs, in grams"
+                />
+                <Text style={styles.hintInline}>g</Text>
+              </View>
+            </View>
+          )}
+
+          {editing && !!onOpenRecipe && (
+            <>
+              <View style={styles.sep} />
+              <SheetActionRow
+                icon="restaurant-outline"
+                color={colors.accent}
+                label="Open recipe"
+                onPress={() => { haptics.tap(); dismiss(onOpenRecipe); }}
+                accessibilityLabel="Open the recipe this leftover was made from"
+              />
+            </>
+          )}
 
           {editing && live && (
             <>
@@ -826,6 +930,17 @@ const makeStyles = (colors: Colors) => StyleSheet.create({
     marginBottom: spacing.md,
   },
   keepText: { flex: 1, gap: 2 },
+  weightField: { flexDirection: 'row', alignItems: 'center', gap: spacing.xs },
+  weightInput: {
+    color: colors.text,
+    fontSize: font.md,
+    backgroundColor: colors.bgTertiary,
+    borderRadius: radius.md,
+    paddingHorizontal: spacing.md,
+    paddingVertical: spacing.sm,
+    minWidth: 92,
+    textAlign: 'right',
+  },
   keepLabel: {
     color: colors.text,
     fontSize: font.md,

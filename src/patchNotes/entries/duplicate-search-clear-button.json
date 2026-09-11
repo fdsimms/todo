@@ -1,0 +1,4 @@
+{
+  "message": "Fixed a duplicate clear button showing up in search fields (like the task editor's field search) while typing.",
+  "date": "2026-09-07"
+}

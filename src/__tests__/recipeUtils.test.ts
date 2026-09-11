@@ -47,6 +47,7 @@ import {
   recipeHasAttribution,
 } from '../utils/recipeUtils';
 import type { GroceryItem, ItemSubLink, Recipe, RecipeComponent, RecipeIngredient, RecipePrepTask } from '../types';
+import { RECIPE_STEP_NOTE_MAX_LENGTH } from '../types';
 
 // recipeUtils now reaches mealPlanGroceries.ts (for countLikelyInPantry) and,
 // through it, mealPlan.ts → dateUtils.ts → the settings store — which
@@ -77,6 +78,7 @@ function component(recipeId: string, name: string, choiceGroup: string | null = 
 
 function recipe(name: string, overrides: Partial<Recipe> = {}): Recipe {
   return {
+    backfillDismissedFields: [],
     id: `r-${++seq}`,
     name,
     nameKey: name.toLowerCase(),
@@ -88,6 +90,7 @@ function recipe(name: string, overrides: Partial<Recipe> = {}): Recipe {
     servings: null,
     servingsMax: null,
     recipeYield: null,
+    cookedWeightG: null,
     leftoverKeepDays: null,
     imagePath: null,
     mealType: null,
@@ -166,6 +169,26 @@ describe('parseRecipeIngredients', () => {
       { id: 'a', name: 'Mint sprigs', nameKey: 'mint sprigs', quantity: '' },
     ]));
     expect('optional' in plain[0]).toBe(false);
+  });
+
+  it('keeps a permanently dismissed catalog/split suggestion, and writes the key only when it is set', () => {
+    // Same rebuild-field-by-field reasoning as noSwap/optional above — a
+    // dismissal that stopped surviving a reload of the recipe is the bug
+    // this field exists to fix (#2246).
+    const dismissed = JSON.parse(JSON.stringify(parseRecipeIngredients(JSON.stringify([
+      {
+        id: 'a', name: 'Avocados', nameKey: 'avocados', quantity: '2',
+        dismissedCatalogSuggestion: 'Avocado oil', dismissedSplitSuggestion: 'Avocados',
+      },
+    ]))));
+    expect(dismissed[0].dismissedCatalogSuggestion).toBe('Avocado oil');
+    expect(dismissed[0].dismissedSplitSuggestion).toBe('Avocados');
+
+    const plain = parseRecipeIngredients(JSON.stringify([
+      { id: 'a', name: 'Avocados', nameKey: 'avocados', quantity: '2' },
+    ]));
+    expect('dismissedCatalogSuggestion' in plain[0]).toBe(false);
+    expect('dismissedSplitSuggestion' in plain[0]).toBe(false);
   });
 
   it('reads a stored purpose clause', () => {
@@ -247,6 +270,37 @@ describe('normalizeIngredient', () => {
   it('trims a section label to RECIPE_SECTION_MAX_LENGTH', () => {
     const long = 'x'.repeat(100);
     expect(normalizeIngredient({ name: 'Flour', section: long })!.section).toHaveLength(40);
+  });
+
+  it('splits a "such as" clause out of a raw name — an AI extraction or a scraped page never split it itself', () => {
+    const result = normalizeIngredient({ name: 'neutral oil, such as avocado oil' })!;
+    expect(result.name).toBe('neutral oil');
+    expect(result.example).toBe('avocado oil');
+    expect(result.nameKey).toBe('neutral oil');
+  });
+
+  it('splits a "such as" clause an extraction folded into prep instead', () => {
+    const result = normalizeIngredient({ name: 'neutral oil', prep: 'such as avocado oil' })!;
+    expect(result.name).toBe('neutral oil');
+    expect(result.example).toBe('avocado oil');
+    expect(result.prep).toBeNull();
+  });
+
+  it('leaves example undefined when there is no such clause', () => {
+    expect(normalizeIngredient({ name: 'Garlic' })!.example).toBeUndefined();
+  });
+
+  it('keeps a stored example rather than reparsing the (already clean) name', () => {
+    const result = normalizeIngredient({ name: 'neutral oil', example: 'avocado oil' })!;
+    expect(result.name).toBe('neutral oil');
+    expect(result.example).toBe('avocado oil');
+  });
+
+  it('is idempotent — normalizing an already-split ingredient a second time changes nothing', () => {
+    const once = normalizeIngredient({ name: 'neutral oil, such as avocado oil' })!;
+    const twice = normalizeIngredient(once)!;
+    expect(twice.name).toBe('neutral oil');
+    expect(twice.example).toBe('avocado oil');
   });
 });
 
@@ -364,6 +418,35 @@ describe('makeIngredient', () => {
 
   it('returns null for a line that parses to nothing', () => {
     expect(makeIngredient('   ')).toBeNull();
+  });
+
+  it('splits a "such as" clause into example, out of the comma clause splitPrep already took', () => {
+    const result = makeIngredient('6 tbsp neutral oil, such as avocado oil')!;
+    expect(result.name).toBe('neutral oil');
+    expect(result.quantity).toBe('6 tbsp');
+    expect(result.example).toBe('avocado oil');
+    expect(result.prep).toBeNull();
+    expect(result.nameKey).toBe('neutral oil');
+  });
+
+  it('splits an "e.g." clause the same way', () => {
+    expect(makeIngredient('hard cheese, e.g. parmesan')!.example).toBe('parmesan');
+  });
+
+  it('splits a "such as" clause with no comma at all', () => {
+    const result = makeIngredient('neutral oil such as avocado oil')!;
+    expect(result.name).toBe('neutral oil');
+    expect(result.example).toBe('avocado oil');
+  });
+
+  it('leaves example undefined when there is no such clause', () => {
+    expect(makeIngredient('2 lb chicken thighs')!.example).toBeUndefined();
+  });
+
+  it('does not read an ordinary comma-prep clause as an example', () => {
+    const result = makeIngredient('garlic, peeled and sliced')!;
+    expect(result.prep).toBe('peeled and sliced');
+    expect(result.example).toBeUndefined();
   });
 });
 
@@ -524,6 +607,18 @@ describe('normalizeStep', () => {
     expect(normalizeStep({ id: 's1', text: 'Sear', timerSeconds: 0 })!.timerSeconds).toBeUndefined();
     expect(normalizeStep({ id: 's1', text: 'Sear', timerSeconds: 48 * 3600 })!.timerSeconds).toBeUndefined();
     expect(normalizeStep({ id: 's1', text: 'Sear', timerSeconds: 'soon' })!.timerSeconds).toBeUndefined();
+  });
+
+  it('keeps a stored note, trimmed and capped', () => {
+    expect(normalizeStep({ id: 's1', text: 'Sear', note: '  Four minutes a side.  ' })!.note)
+      .toBe('Four minutes a side.');
+    expect(normalizeStep({ id: 's1', text: 'Sear', note: 'x'.repeat(999) })!.note)
+      .toHaveLength(RECIPE_STEP_NOTE_MAX_LENGTH);
+  });
+
+  it('leaves the note off a step that has none, and ignores a stored non-string', () => {
+    expect(normalizeStep({ id: 's1', text: 'Sear', note: '   ' })).toEqual({ id: 's1', text: 'Sear' });
+    expect(normalizeStep({ id: 's1', text: 'Sear', note: 7 })).toEqual({ id: 's1', text: 'Sear' });
   });
 });
 
@@ -1059,6 +1154,40 @@ describe('rankRecipes', () => {
     });
 
     expect(rankRecipes('potatoes', [steak, mash]).map(r => r.name)).toEqual(['Mash', 'Steak dinner']);
+  });
+
+  it('matches a multi-word query in any order', () => {
+    const tofu = recipe('Peanut butter sriracha tofu', { nameKey: 'peanut butter sriracha tofu' });
+    expect(rankRecipes('tofu peanut butter', [tofu, ragu]).map(r => r.name))
+      .toEqual(['Peanut butter sriracha tofu']);
+  });
+
+  it('requires every word of a query to match something', () => {
+    const tofu = recipe('Peanut butter sriracha tofu', { nameKey: 'peanut butter sriracha tofu' });
+    expect(rankRecipes('tofu peanut anchovy', [tofu])).toEqual([]);
+  });
+
+  it('matches words spread across different fields', () => {
+    const noodles = recipe('Sesame noodles', {
+      nameKey: 'sesame noodles',
+      ingredients: [ing('Peanut butter', { nameKey: 'peanut butter' })],
+      tags: ['quick'],
+    });
+    expect(rankRecipes('quick peanut noodles', [noodles, ragu]).map(r => r.name)).toEqual(['Sesame noodles']);
+  });
+
+  it('ranks a contiguous phrase above the same words scattered', () => {
+    const named = recipe('Peanut butter cookies', { nameKey: 'peanut butter cookies' });
+    const scattered = recipe('Butter beans with peanut', { nameKey: 'butter beans with peanut' });
+    expect(rankRecipes('peanut butter', [scattered, named]).map(r => r.name))
+      .toEqual(['Peanut butter cookies', 'Butter beans with peanut']);
+  });
+
+  it('still ranks a word by which field it landed in', () => {
+    const named = recipe('Chicken pie', { nameKey: 'chicken pie', notes: 'Best with leek.' });
+    const mentioned = recipe('Leek tart', { nameKey: 'leek tart', notes: 'Like the chicken one.' });
+    expect(rankRecipes('chicken leek', [mentioned, named]).map(r => r.name))
+      .toEqual(['Chicken pie', 'Leek tart']);
   });
 });
 

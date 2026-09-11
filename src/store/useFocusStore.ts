@@ -75,6 +75,19 @@ interface FocusStore {
   finishForNow: (taskId: string) => void;
   /** Reconcile the plan against the task list. Cheap, and safe to over-call. */
   syncWithTasks: (tasks: readonly Task[]) => void;
+  /**
+   * Puts the session back exactly as `before` describes — the plan, the
+   * cursor, the clock, `completedTaskIds`, all of it.
+   *
+   * For the session sheet's inline Undo, offered right after a skip, a
+   * "Done for now", or a Done tap: the sheet is what remembers "before" (it
+   * already holds the session in scope the moment it calls one of those
+   * actions), so this is a plain restore rather than a second copy of
+   * `pruneFocusPlan`'s bookkeeping run in reverse. A no-op if the session has
+   * since ended or been replaced by a new one — `before` belongs to a session
+   * that isn't running any more, and there's nothing to undo back into.
+   */
+  restoreSession: (before: FocusSession) => void;
   /** End the session and forget it. */
   endSession: () => void;
   /**
@@ -245,6 +258,12 @@ export const useFocusStore = create<FocusStore>((set, get) => ({
     if (pruned === session && newlyDone.length === 0) return;
 
     persist({ ...pruned, completedTaskIds: [...pruned.completedTaskIds, ...newlyDone] }, set);
+  },
+
+  restoreSession(before) {
+    const { session } = get();
+    if (!session || session.id !== before.id) return;
+    persist(before, set);
   },
 
   endSession() {

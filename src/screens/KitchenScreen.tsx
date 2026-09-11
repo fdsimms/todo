@@ -82,7 +82,7 @@ import { resetToGroceries } from '../navigation/navigationRef';
  * (`utils/kitchenInventory.ts`) with one freshness ladder, and what's about to
  * be wasted sorts to the top of whatever heading it's under.
  *
- * The fourth of the Groceries/Recipes/Meal plan hub (`HubPills`),
+ * One of the Groceries/Recipes/Meal plan/Food log hub (`HubPills`),
  * rather than a sheet popped over Groceries — see that component's doc
  * comment for why it moved. Displayed as "Pantry" (`HubPills`'
  * label, and this screen's own `ScreenHeader` title) while the route, this
@@ -180,6 +180,7 @@ export function KitchenScreen() {
   const renameLeftover = useLeftoverStore(s => s.renameLeftover);
   const setLeftoverStoredAt = useLeftoverStore(s => s.setStoredAt);
   const setLeftoverKeepDays = useLeftoverStore(s => s.setKeepDays);
+  const setLeftoverWeight = useLeftoverStore(s => s.setLeftoverWeight);
   const finishLeftover = useLeftoverStore(s => s.finishLeftover);
   const setLeftoverFrozen = useLeftoverStore(s => s.setFrozen);
   const splitLeftover = useLeftoverStore(s => s.splitLeftover);
@@ -484,16 +485,29 @@ export function KitchenScreen() {
     const gtinByItemId = new Map(gtinLinks.map(link => [link.itemId, link.gtin]));
     const productNames = new Map<
       string,
-      { brand: string | null; variant: string | null; gtin?: string | null; aisle?: string | null }
+      {
+        brand: string | null;
+        variant: string | null;
+        gtin?: string | null;
+        aisle?: string | null;
+        nameFromScan?: boolean;
+      }
     >();
     const noteScanned = (
       name: string,
       box: { brand: string | null; variant: string | null } | undefined,
       gtin: string | null,
-      aisle?: string | null
+      aisle?: string | null,
+      nameFromScan?: boolean
     ) => {
       if (!box && !gtin && !aisle) return;
-      productNames.set(name, { brand: box?.brand ?? null, variant: box?.variant ?? null, gtin, aisle });
+      productNames.set(name, {
+        brand: box?.brand ?? null,
+        variant: box?.variant ?? null,
+        gtin,
+        aisle,
+        nameFromScan,
+      });
     };
     for (const id of itemIds) {
       const item = items.find(i => i.id === id);
@@ -514,7 +528,16 @@ export function KitchenScreen() {
       // this batch mints, matching GroceryScreen.handleScanApply's own
       // addByName(..., { aisle: draft.aisle }) call, which never touches an
       // already-matched item's filing either.
-      noteScanned(draft.name, box, gtin, draft.existingItemId ? undefined : draft.aisle);
+      // Same restraint again on the last argument: only a row this batch mints
+      // can be wearing the source's words, and `addManyToPantry` checks that
+      // for itself before it writes.
+      noteScanned(
+        draft.name,
+        box,
+        gtin,
+        draft.existingItemId ? undefined : draft.aisle,
+        draft.existingItemId ? undefined : draft.nameFromScan
+      );
     }
     setScanOpen(false);
     if (names.length === 0) return;
@@ -816,6 +839,12 @@ export function KitchenScreen() {
           setOpenItemId(null);
           setOpenItemField('pantry');
         }}
+        onOpenRecipe={recipeId => {
+          setOpenItemId(null);
+          setOpenItemField('pantry');
+          navigation.navigate('RecipeDetail', { recipeId });
+        }}
+        recipeExists={recipeId => recipes.some(r => r.id === recipeId)}
         // Opened on the Pantry pills, since that's what a catalog row here is:
         // the sheet is dense enough that a collapsed "Pantry" field halfway
         // down it was, in practice, no way to say you're out of something. The
@@ -850,12 +879,18 @@ export function KitchenScreen() {
         onRename={title => openLeftover && renameLeftover(openLeftover.id, title)}
         onSetStoredAt={storedAt => openLeftover && setLeftoverStoredAt(openLeftover.id, storedAt)}
         onSetKeepDays={days => openLeftover && setLeftoverKeepDays(openLeftover.id, days)}
+        onSetWeight={grams => openLeftover && setLeftoverWeight(openLeftover.id, grams)}
         onFinish={outcome => openLeftover && finishLeftover(openLeftover.id, outcome)}
         onSetFrozen={frozen => openLeftover && setLeftoverFrozen(openLeftover.id, frozen)}
         onSplit={() => openLeftover && splitLeftover(openLeftover.id)}
         onReopen={() => openLeftover && reopenLeftover(openLeftover.id)}
         onDelete={() => openLeftover && deleteLeftover(openLeftover.id)}
         onClose={() => setOpenLeftoverId(null)}
+        onOpenRecipe={
+          openLeftover?.recipeId && recipes.some(r => r.id === openLeftover.recipeId)
+            ? () => navigation.navigate('RecipeDetail', { recipeId: openLeftover.recipeId })
+            : undefined
+        }
       />
     </View>
   );

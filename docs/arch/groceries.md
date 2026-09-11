@@ -494,6 +494,68 @@ tombstone per shop. This table is bounded by (items × stores you actually shop 
   rows** — the row is already dense, and a chip on every row is a column you can't act on. What
   a row can now carry is one quiet caption, and only while a trip is running: see below.
 
+### A store can be told which aisles it sells (`Shop.aisles`)
+
+A pharmacy stocks two of your fifteen aisles, and before this the finish sheet asked, every trip,
+which of the week's groceries it didn't have. `Shop.aisles` is the answer: a list of aisle names,
+or `null` for a store that sells everything, which is every store until somebody says otherwise.
+
+**This is the user asserting a range, never the app inferring one**, and that is the whole reason
+it is allowed to exist. It looks at first like `likelyItemIds` coming back in the negative
+direction, and it is the opposite: that was the app crediting a store with an aisle it had seen two
+items from, and this is a person stating what a shop sells. Same side of the line as
+`ItemShopLink.unavailableAt`, which is the feature's other negative and is also the user's own.
+
+- **A positive link outranks it**, which is the rule that makes a roughly-drawn range safe. A
+  purchase on record at this store, or a hand-assertion that you can get it here, is a statement
+  about *this item* and beats a range drawn round the shop. `isOutOfRange` owns that, and it is
+  the same call `finishShopping` makes when a purchase clears `unavailableAt` — settled at read
+  time instead, because a range is a standing claim and there is no stamp to clear.
+- **Nothing is ever materialised into link rows.** Writing one `unavailableAt` per out-of-range
+  item would grow `grocery_item_shops` by (items × aisles), and it would wreck the distinction
+  that table is built on: a stamped link means the user looked, on a date. A range has no date
+  because nobody looked at anything.
+- **It gates what the app asks and asserts, never what the user can do.** Linking the item here by
+  hand, ticking it off, scanning this store's receipt: all unchanged. A range is never a reason to
+  refuse somebody something.
+- **`null` is the unscoped value and an empty list is not a state.** "Sells nothing" is not a thing
+  anyone wants to record, so an empty range normalises to `null` in `dbSetShopAisles` and again in
+  `setShopAisles`. The sheet carries the half-finished answer ("Only some aisles" chosen, nothing
+  ticked yet) in its own local `scopedDrafts`, because the store genuinely still sells everything
+  until an aisle is picked.
+- **An inclusion list, never an exclusion list.** `normalizeAisleOrder` re-appends `DEFAULT_AISLES`
+  on every read, so with exclusions an aisle shipped in a later version would silently join every
+  scoped store's range.
+- **It is the fourth place an aisle name lives**, after `aisleOrder`, `GroceryItem.aisle` and the
+  values of `aisleOverrides` — so `renameAisle` rewrites it and `deleteAisle` drops from it, the
+  same upkeep the non-food flag already needed. A delete that empties a range clears it rather than
+  repointing it at `Other`: rewriting would assert a range the user never gave, which is exactly
+  why `deleteAisle` forgets the remembered filings instead of refiling them.
+- **Three readers, and they all had a drop site already.** `FinishShoppingSheet` asks only about
+  leftovers the store could plausibly have, and says how many it withheld rather than quietly
+  showing three rows of fourteen. `planTrip` files them in `ShopCoverage.outOfRangeItemIds`, which
+  `summarizeTrip` folds into `missing` — the consequence for the trip is identical to a stamped
+  claim, and both are the user's own words. `tripMarkerFor` returns an `outOfRange` marker, which
+  `GroceryScreen` routes into the section's existing "Not here" group: to somebody holding the list
+  the two negatives say the same thing, and which one it was is a fact about where the claim came
+  from.
+- **A substitute rides both negatives, and is filtered by the range.** Standing in a shop that
+  hasn't got the thing is the best moment to offer a swap, whichever of the two negatives put the
+  row there — so `outOfRange` carries one exactly as `unavailable` always has. `substituteAt` picks
+  it, and drops anything the store equally can't sell you: offering a second thing from the same
+  missing aisle is the error `alternativeProductAt` already refuses one level down, at the product.
+  Nothing changes for an unscoped store, where `isOutOfRange` is false for everything.
+- **A purchase from outside the range is offered as a correction, not taken as one.** A purchase
+  refutes a range outright, but widening on it silently would let one ice pack decide a pharmacy
+  sells Frozen for good. So the finish sheet names the aisles the trip bought from and offers to
+  add them, the same shape as the "Actually, it has more" correction flow. It commits straight
+  through and isn't part of the sheet's dirty check, because it's an edit to the *store* rather
+  than to this trip.
+- **What it deliberately doesn't touch**: `itemIdsForShop` and `itemCountsByShop`, which feed the
+  catalog's store filter. Those report the record, and a range would have them promise rows the
+  filter can't produce. For the same reason `shopsForItem` needs no change at all — every link it
+  returns is a positive one, and a positive link already outranks the range.
+
 ## The active trip — "I'm at this store"
 
 The store used to be captured only at the *end* of a shop, in the finish sheet, which meant the
@@ -1405,6 +1467,16 @@ read side.
   with nothing saying the other exists. `GrocerySuggestion.score` is exposed for exactly this
   one reader. It falls through rather than returning no match, so the tiers below still get
   their turn — same refusal `uniqueSimilarItem` makes, and the same reasoning.
+- **A recipe's own wording is the other route to the same offer.** "Neutral oil, such as avocado
+  oil" names its own generic/specific pair without any catalog collision to notice — a
+  `varietyOfferFor` badge never fires because nothing has been added to the catalog yet.
+  `RecipeIngredient.example` (`src/utils/groceryParse.ts`'s `splitExample`, called from
+  `makeIngredient` and `normalizeIngredient` so it applies to a typed line, a paste, an AI
+  extraction and a JSON-LD scrape alike) pulls "avocado oil" out of the name the same way
+  `prep`/`purpose` are pulled out, so the catalog key stays "neutral oil" rather than minting a
+  row nothing can shop for twice the same way. `RecipeIngredientSheet` offers the same "is X a
+  kind of Y?" declaration from it, `ensureCatalogItem`-ing the example onto a real row first if
+  one doesn't exist yet — never auto-declared, same "the user says so" rule as the badge above.
 - **Nothing infers a declaration.** The user says so, in the item sheet's Variety of field
   (suggestions are the item's own trailing words plus generics already in use —
   `genericNameSuggestions`). Same discipline as substitutes, and a declaration is a user fact
@@ -1438,3 +1510,4 @@ so this is the wire between them, not a third system.
 - **Nothing about it is written back to the recipe**, the same rule the existing picks follow: an
   ad-hoc shop isn't attached to a meal, so there's nothing for "I'll decide later" to be a fact
   about. It lives in sheet state and dies with the sheet.
+

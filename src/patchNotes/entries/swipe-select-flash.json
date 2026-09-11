@@ -1,0 +1,4 @@
+{
+  "message": "Fixed a flash of the wrong color when swiping a list row to select it, in Food log and several other lists",
+  "date": "2026-09-11"
+}

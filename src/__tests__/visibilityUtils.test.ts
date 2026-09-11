@@ -32,8 +32,11 @@ import {
   sameTimeSegments,
   isCompletionOnTime,
   isCategoryScheduledDay,
+  currentTimeSegment,
+  timeSegmentThreshold,
 } from '../utils/visibilityUtils';
 import { registerTaskSource } from '../utils/blockerRegistry';
+import { registerAwayProjectSource } from '../utils/awayDates';
 import { registerPersonSource } from '../utils/peopleRegistry';
 import { useCategoryStore } from '../store/useCategoryStore';
 import type { Task, Category } from '../types';
@@ -132,6 +135,10 @@ const baseTask: Task = {
   polarity: 'positive',
   slipCount: 0,
   slipDate: null,
+  penaltyMinutes: null,
+  penaltyCutoffTime: null,
+  penaltyFiredAt: null,
+  gatesApps: false,
   showStreak: false,
   streakRequiresWindow: false,
   recurrenceFromCompletion: false,
@@ -172,7 +179,7 @@ const baseTask: Task = {
   timedMinutes: null,
   timerElapsedSeconds: 0,
   healthMetric: null,
-  healthTarget: null,
+  healthTarget: null, completionTimerMinutes: null, logHealthMetric: null, logHealthAmount: null, medicationName: null, medicationAmount: null, medicationUnit: null,
   actualMinutes: null,
   previousOccurrenceId: null,
   seriesId: null,
@@ -192,6 +199,8 @@ const baseTask: Task = {
   generatedSourceId: null,
   deadlineOnCalendar: false,
   calendarEventId: null,
+  logCompletionToCalendar: false,
+  completionCalendarEventId: null,
   timeBlockEventId: null,
   pendingImport: null,
   backfillDismissedFields: [],
@@ -1389,6 +1398,7 @@ describe('isTaskNew when a hold comes off', () => {
       cadenceDays: 0, nudgeOptIn: false, cadenceSetAt: null, reachOutDeclinedAt: null, reachOutOfferDeclinedAt: null, askAbout: '',
       backfillDismissedFields: [],
       groupId: null,
+      location: null,
     };
     const chasing: Task = {
       ...baseTask, id: 'chase', title: 'Photos from the trip',
@@ -2013,6 +2023,7 @@ describe('blocking', () => {
       cadenceDays: 0, nudgeOptIn: false, cadenceSetAt: null, reachOutDeclinedAt: null, reachOutOfferDeclinedAt: null, askAbout: '',
       backfillDismissedFields: [],
       groupId: null,
+      location: null,
     };
     const chasing = {
       ...baseTask,
@@ -2129,5 +2140,147 @@ describe('sameTimeSegments', () => {
   // nothing guarantees the order two equal sets were written in.
   it('ignores order', () => {
     expect(sameTimeSegments(['morning', 'night'], ['night', 'morning'])).toBe(true);
+  });
+});
+
+// ─── currentTimeSegment ─────────────────────────────────────────────────────
+// The mood log's own reader: not "is this task hidden" (getVisibleAt above)
+// but "which slot is the clock in right now", for a generator holding several
+// check-ins across one day.
+
+describe('currentTimeSegment', () => {
+  beforeEach(() => {
+    jest.useFakeTimers();
+    jest.setSystemTime(NOW); // 10:00 AM
+  });
+
+  afterEach(() => {
+    jest.useRealTimers();
+  });
+
+  it('returns null for an empty list', () => {
+    expect(currentTimeSegment([])).toBeNull();
+  });
+
+  it('returns null when none of the segments have started yet', () => {
+    expect(currentTimeSegment(['afternoon', 'evening'])).toBeNull();
+  });
+
+  it('returns the one segment that has started', () => {
+    expect(currentTimeSegment(['morning', 'evening'])).toBe('morning');
+  });
+
+  it('returns the latest of several that have started, not the earliest', () => {
+    // 10 AM: morning (06:00) has started, afternoon and evening have not.
+    expect(currentTimeSegment(['morning', 'afternoon', 'evening'])).toBe('morning');
+    jest.setSystemTime(new Date(2025, 5, 10, 19, 0, 0)); // 7 PM
+    expect(currentTimeSegment(['morning', 'afternoon', 'evening'])).toBe('evening');
+  });
+
+  it('is order-insensitive, like sameTimeSegments', () => {
+    jest.setSystemTime(new Date(2025, 5, 10, 19, 0, 0));
+    expect(currentTimeSegment(['evening', 'afternoon', 'morning'])).toBe('evening');
+  });
+});
+
+describe('timeSegmentThreshold', () => {
+  it('returns the instant a segment starts on the current logical day', () => {
+    jest.useFakeTimers();
+    jest.setSystemTime(NOW);
+    const t = timeSegmentThreshold('evening');
+    expect(t.getHours()).toBe(18);
+    expect(t.getMinutes()).toBe(0);
+    expect(t.getDate()).toBe(10);
+    jest.useRealTimers();
+  });
+});
+
+// ─── Expiry during a nominated trip ────────────────────────────────────────
+// The sweep runs before the pass that arms a trip's vacation mode and cannot
+// be reordered after it, so expiry asks the away span itself. See the note on
+// isVacationPauseInForce.
+
+describe('isTaskExpired during a nominated away span', () => {
+  const NOW_AWAY = new Date(2025, 5, 10, 10, 0, 0);
+
+  const trip = (extra: Record<string, unknown> = {}) => ({
+    id: 'trip',
+    // 2025-06-08 to 2025-06-15, so NOW_AWAY sits inside it.
+    awayStart: new Date(2025, 5, 8, 12, 0, 0).toISOString(),
+    awayEnd: new Date(2025, 5, 15, 12, 0, 0).toISOString(),
+    awayPauses: true,
+    awayPauseDeclinedFor: null,
+    archived: false,
+    completed: false,
+    ...extra,
+  });
+
+  // A task whose window closed two days ago, on a day inside the span.
+  const closed = (over: Partial<Task> = {}): Task => ({
+    ...baseTask,
+    dueDate: new Date(2025, 5, 8, 0, 0, 0).toISOString(),
+    windowStart: '07:00',
+    windowEnd: '09:00',
+    ...over,
+  });
+
+  let mockProjects: any[] = [];
+
+  beforeEach(() => {
+    jest.useFakeTimers();
+    jest.setSystemTime(NOW_AWAY);
+    mockProjects = [];
+    registerAwayProjectSource(() => mockProjects);
+    mockSettingsState.vacationMode = false;
+  });
+
+  afterEach(() => {
+    jest.useRealTimers();
+    registerAwayProjectSource(null);
+    mockSettingsState.vacationMode = false;
+  });
+
+  it('expires a vacation-paused task with no trip in force', () => {
+    expect(isTaskExpired(closed({ vacationPause: true }))).toBe(true);
+  });
+
+  it('spares a vacation-paused task while a nominated trip covers today', () => {
+    mockProjects.push(trip());
+    expect(isTaskExpired(closed({ vacationPause: true }))).toBe(false);
+    // And so the delete never comes up, at any grace setting.
+    expect(isTaskSweepable(closed({ vacationPause: true }), 0)).toBe(false);
+  });
+
+  it('still expires a task that was never vacation-paused', () => {
+    // The span pauses what the user marked, not the whole app — the same
+    // refusal to gate on the trip that the away cue makes in the day grids.
+    mockProjects.push(trip());
+    expect(isTaskExpired(closed({ vacationPause: false }))).toBe(true);
+  });
+
+  it('spares a task in a category set to hide on vacation', () => {
+    mockProjects.push(trip());
+    mockCategorySchedule({ ...workCategory, hideOnVacation: true });
+    expect(isTaskExpired(closed({ category: 'Work', vacationPause: false }))).toBe(false);
+    mockCategorySchedule(null);
+  });
+
+  it('does not spare anything for a trip that did not nominate a pause', () => {
+    mockProjects.push(trip({ awayPauses: false }));
+    expect(isTaskExpired(closed({ vacationPause: true }))).toBe(true);
+  });
+
+  it('does not spare anything once the trip is over', () => {
+    mockProjects.push(trip({
+      awayStart: new Date(2025, 4, 1, 12, 0, 0).toISOString(),
+      awayEnd: new Date(2025, 4, 8, 12, 0, 0).toISOString(),
+    }));
+    expect(isTaskExpired(closed({ vacationPause: true }))).toBe(true);
+  });
+
+  it('honours a pause the user turned off for this trip', () => {
+    const t = trip();
+    mockProjects.push({ ...t, awayPauseDeclinedFor: t.awayStart });
+    expect(isTaskExpired(closed({ vacationPause: true }))).toBe(true);
   });
 });

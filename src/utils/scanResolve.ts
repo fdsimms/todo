@@ -1,4 +1,4 @@
-import type { GroceryItem } from '../types';
+import type { GroceryItem, ItemProduct } from '../types';
 import { GROCERY_NAME_MAX_LENGTH, GROCERY_VARIANT_MAX_LENGTH } from '../types';
 import { aisleForProductCategory } from './productCategory';
 import { matchReceiptLines, type AliasResolver, type ReceiptMatch } from './receiptMatch';
@@ -117,6 +117,66 @@ export function shopperNameFor(fullName: string, brand: string | null): string {
 
   const tidied = name.replace(EDGE_JUNK, '').replace(/\s+/g, ' ');
   return tidied || full;
+}
+
+/**
+ * Shorter names to offer for a row still wearing a barcode source's words.
+ *
+ * The same trick `genericNameSuggestions` uses one shelf over, aimed at a
+ * different question: that one asks which catalog row a name is a *variety of*,
+ * and answers only in keys the catalog already holds. This one asks what to
+ * call the row itself, so it proposes plain suffixes of the words that are
+ * there — "Great Value 2% Reduced Fat Milk" offers "2% Reduced Fat Milk",
+ * "Reduced Fat Milk", "Fat Milk", "Milk" — and knows nothing about the catalog.
+ *
+ * **Suffixes only, and that is the whole restraint.** A product name puts the
+ * maker and the qualifiers in front of the thing, so the last words are the
+ * thing; dropping from the front can only ever produce a phrase that was
+ * already printed on the box. Nothing here reads the words, drops one from the
+ * middle, or re-capitalises anything, which keeps this on the safe side of the
+ * line `shopperNameFor` draws: it is still a tidy-up somebody confirms, never a
+ * claim about what the product is.
+ *
+ * A suggestion nobody would tap is left out rather than shown and ignored: the
+ * full name (which is what the row already says), anything a single character
+ * long, and duplicates.
+ */
+export function shorterNameSuggestions(name: string): string[] {
+  const words = name.trim().replace(/\s+/g, ' ').split(' ');
+  const out: string[] = [];
+  const seen = new Set<string>();
+  for (let drop = 1; drop < words.length; drop++) {
+    const candidate = words.slice(drop).join(' ').replace(EDGE_JUNK, '');
+    const key = candidate.toLowerCase();
+    if (candidate.length < 2 || seen.has(key)) continue;
+    seen.add(key);
+    out.push(candidate);
+  }
+  return out;
+}
+
+/**
+ * Whether a review row is still wearing the barcode source's own words.
+ *
+ * The one place that rule is written, so `GroceryItem.nameFromScan` is set from
+ * a test of the row rather than from a guess about the text. Three things have
+ * to hold, and each of them rules out a name somebody chose:
+ *
+ * - **There is a barcode.** A produce code or a hand-typed row was named by the
+ *   person holding it; there is no source to have supplied words.
+ * - **The name is not empty.** A miss arrives blank (`unknownScannedItem`), so
+ *   whatever is in the field by the time it is added was typed.
+ * - **It still matches what `shopperNameFor` proposed.** `label` is the source's
+ *   full product name and is never editable, so re-deriving the proposal from it
+ *   answers "has this been edited?" without the row having to remember.
+ */
+export function nameFromScanFor(
+  scan: Pick<ScannedItem, 'gtin' | 'label' | 'brand' | 'name'>
+): boolean {
+  if (!scan.gtin) return false;
+  const name = scan.name.trim();
+  if (!name) return false;
+  return name === shopperNameFor(scan.label, scan.brand);
 }
 
 /** Separates the maker from the product in the review row's source line. */
@@ -290,4 +350,57 @@ export function matchScans(
       }
     : undefined;
   return matchReceiptLines(lines, items, aliasFor);
+}
+
+/**
+ * Where a scan row goes once the user has picked its catalog row by hand.
+ *
+ * **The matcher's two answers are the two answers a hand-pick has to produce
+ * as well**, and that is the whole reason this exists rather than the sheet
+ * branching inline. `matchReceiptLines` reports a row on the list as `itemId`
+ * and a row merely in the catalog as `offListMatchId`, and every caller is
+ * written against that split: the first is ticked off the list, the second
+ * rides an add draft's `existingItemId`. A hand-pick can land on either kind
+ * of row, so it has to say which — and the answer comes off the item's own
+ * `onList`, never off how it was chosen. A pick treated as always-on-list
+ * ticks a row nobody was shopping for; treated as always-off-list it adds a
+ * second "bought" draft for a row already on the list.
+ *
+ * Null for a pick that no longer resolves, which is the ordinary
+ * resolve-or-shrug this app makes at every cross-row pointer: the row simply
+ * falls back to whatever the matcher read.
+ */
+export type ScanLinkTarget = { onList: boolean; itemId: string };
+
+export function scanLinkTarget(
+  item: Pick<GroceryItem, 'id' | 'onList'> | null | undefined
+): ScanLinkTarget | null {
+  if (!item) return null;
+  return { onList: item.onList, itemId: item.id };
+}
+
+/**
+ * The box a scan row is filed against, as the words the link layer finds one by.
+ *
+ * **A picked box travels as its brand and variant rather than as its id, and
+ * that is the whole reason this returns words.** `addProduct` find-or-creates
+ * by `productKeyFor(brand, variant)` and `linkScannedGtins` looks a box up the
+ * same way, so handing either the words of a box that already exists lands on
+ * that exact box and creates nothing. An id would need a second lookup path
+ * through both, for a fact they can already both resolve.
+ *
+ * **It refuses a box belonging to a different item**, which is the guard worth
+ * having rather than the lookup. The two picks are independent controls on the
+ * same row: choose the Chobani tub, then change your mind about which catalog
+ * row this is, and the box is now one of a food this scan is no longer about.
+ * Carrying it would file Chobani's words onto Bread and mint a box there.
+ * Dropping it falls back to the words derived from the barcode, which is the
+ * answer the row had before anybody picked anything.
+ */
+export function scanBoxFor(
+  picked: Pick<ItemProduct, 'itemId' | 'brand' | 'variant'> | null | undefined,
+  itemId: string,
+): { brand: string | null; variant: string | null } | null {
+  if (!picked || picked.itemId !== itemId) return null;
+  return { brand: picked.brand, variant: picked.variant };
 }

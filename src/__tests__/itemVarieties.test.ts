@@ -19,6 +19,7 @@ let seq = 0;
 function makeItem(overrides: Partial<GroceryItem> & { name: string }): GroceryItem {
   const name = overrides.name;
   return {
+    nameFromScan: false,
     id: `id-${++seq}`,
     nameKey: groceryNameKey(name),
     preferredProductId: null,
@@ -50,7 +51,7 @@ function makeItem(overrides: Partial<GroceryItem> & { name: string }): GroceryIt
     usedUpCount: 0,
     spoiledCount: 0,
     lastSpoiledAt: null,
-    varietyOfKey: null, backfillDismissedFields: [],
+    varietyOfKey: null, nutrition: null, backfillDismissedFields: [],
     lastPriceMinor: null,
     lastPricedAt: null,
     lastPriceQuantity: null,

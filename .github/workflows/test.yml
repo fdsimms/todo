@@ -44,6 +44,36 @@ jobs:
       # hand-counted "seven files are over 1,000 lines" paragraph did.
       - run: node scripts/build-module-map.js --check
       - run: node scripts/check-doc-stats.js --check
-      - run: npx expo export --platform ios --output-dir /tmp/expo-export
+      # The third generated doc: which screen renders which component, and
+      # which screens a component appears on. Same contract as the two above —
+      # generated from the tree, committed so it can be read without a build,
+      # and checked here so it cannot drift.
+      - run: node scripts/build-screen-map.js --check
+      # `expo export --platform ios` is the slowest step here and only catches
+      # bundle-time breakage (a bad import path, a missing asset, a native
+      # config change) per CLAUDE.md's own guidance not to run it locally
+      # otherwise. Most PRs touch neither, so on PRs it's gated to the paths
+      # that can actually cause that class of failure — the CI minutes for a
+      # doc tweak or a one-line logic fix were otherwise identical to a
+      # native-config change. Push to main always runs it as the safety net:
+      # that's the build every branch gets cut from next.
+      - name: Check for bundle-relevant changes
+        if: github.event_name == 'pull_request'
+        id: bundle-paths
+        uses: dorny/paths-filter@v3
+        with:
+          filters: |
+            bundle:
+              - 'package.json'
+              - 'package-lock.json'
+              - 'app.json'
+              - 'eas.json'
+              - 'patches/**'
+              - 'plugins/**'
+              - 'modules/**'
+              - 'targets/**'
+              - 'assets/**'
+      - if: github.event_name != 'pull_request' || steps.bundle-paths.outputs.bundle == 'true'
+        run: npx expo export --platform ios --output-dir /tmp/expo-export
         env:
           CI: 1

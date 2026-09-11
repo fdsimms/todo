@@ -2,8 +2,13 @@
 
 What #1223 asked for, and the decisions it deliberately left open, resolved.
 Read this before changing anything under `src/utils/moodLog.ts`,
-`src/utils/moodInsights.ts`, `src/utils/moodTasks.ts`, `src/store/useMoodStore.ts`
-or `src/screens/MoodScreen.tsx`.
+`src/utils/moodInsights.ts`, `src/utils/moodHistory.ts`, `src/utils/moodExport.ts`,
+`src/utils/moodTasks.ts`, `src/store/useMoodStore.ts`, `src/store/useMilestoneStore.ts`,
+`src/screens/MoodScreen.tsx`, `src/screens/MoodHistoryScreen.tsx`,
+`src/screens/SymptomDetailScreen.tsx`, `src/components/MoodLogSheet.tsx`,
+`src/components/MilestoneSheet.tsx`, `src/utils/medicationLog.ts`,
+`src/store/useMedicationStore.ts`, `src/screens/MedicationScreen.tsx` or
+`src/components/MedicationLogSheet.tsx`.
 
 The rules here are settled decisions with the reasoning attached. Don't
 re-derive them from the code, and don't re-open one without a reason this note
@@ -54,6 +59,56 @@ doesn't disappear — the user *named* it as a thing that exists. A symptom is
 named by having happened, so the honest vocabulary is exactly the set of things
 that have happened: nothing to migrate, nothing to prune, and a symptom logged
 once three years ago drops off the suggestions by itself.
+
+## Context tags — the non-symptom half of "why might today be like this"
+
+`LoggedSymptom` answers "what hurt". `MoodLog.contextTags` answers a
+different question: things going on that day that aren't symptoms but
+plausibly explain the mood anyway — "vacation", "travel day", "big deadline
+at work". Same freeform, `symptomKey`-style match as symptoms (`contextTagKey`
+is a plain alias of it), same derived vocabulary (`contextTagVocabulary`),
+same day collapse (`dayContextTags`), same contrast shape on the Mood screen
+(`contextTagMoodContrasts`, built off the same `contrastsFor` symptoms use).
+It is a second freeform field next to symptoms rather than a fold into
+`symptoms` itself, because a tag carries no severity — "vacation" is not mild
+or severe, it either applies to the day or it doesn't — and folding the two
+together would mean every reader of symptoms has to branch on whether a
+`severity` is meaningful for the row it is holding.
+
+**One deliberate departure from the symptom vocabulary's zero-registry
+rule:** `DEFAULT_CONTEXT_TAGS` is a small fixed list ('Vacation', 'Travel',
+'Sick', 'Poor sleep', 'Big deadline', 'Social event') merged into the pill
+grid alongside whatever has actually been logged. Symptoms start every
+account with an empty grid on purpose — no fixed list could guess "brain
+fog", so there was nothing worth seeding. Context is different: the useful
+half of this feature is realizing a mundane thing might be worth naming at
+all, and a blank grid on day one teaches nobody that. The list is not
+storage, not a registry to prune, and not read anywhere but the sheet's pill
+grid — it is a constant, the same kind `MOOD_LEVELS` is, and it never
+overrides what the log itself has accumulated (real usage sorts ahead of it
+in `MoodLogSheet`'s pill ordering).
+
+**The one auto-suggestion, and why it stops at one.** `MoodLogSheet`
+pre-selects "Vacation" when opening a *new* entry while `vacationMode` is on
+— visibly, as an already-picked pill the person can untap before Save, never
+written silently. That is the same "offer, don't decide" posture
+`lowMoodDeloadNote` takes below: the app can notice a fact it already tracks,
+but the log stays the user's own record of what they think was going on, not
+an automated inference dressed up as one. It is scoped to exactly one signal
+on purpose. Vacation mode is a clean boolean the app already owns and gets
+right on its own terms (see the vacation-mode note in the tasks
+architecture); most other "obvious" candidates are not nearly as clean —
+a missed-task-heavy day, a bad-sleep night from Health — and guessing wrong
+on those reads as the app telling somebody why they feel a certain way, which
+is exactly what `moodInsights.ts`'s association-not-cause rule exists to
+forbid. Widening the source list is a real feature decision each time, not a
+default to reach for.
+
+The suggestion only fires for a *new* entry on **today**. Editing an existing
+row must never retroactively add a tag it didn't say (same reason the Day
+row itself only shows for a new entry), and a backdated entry records how a
+past day went — the app's *current* vacation state says nothing about
+whether last Tuesday was one.
 
 ## Several entries a day is the normal case
 
@@ -129,14 +184,37 @@ It carries `dundundun://mood?log=1` so the row opens the sheet that answers it �
 without that the only thing to do with a check-in is tick it, which marks the
 question answered while recording no answer.
 
-`moodLogTimeSegment` holds the check-in back until a part of the day, the same
-setting and the same shape `calendarReviewTimeSegment` has, read once at
+`moodLogTimeSegments` holds the check-in back until a part of the day, the
+same shape `calendarReviewTimeSegment` has for its one segment, read once at
 creation so changing it shapes the next check-in rather than moving the one
 already on today's list. "How are you doing?" answered at 7am is a different
 record from the same question in the evening, and the evening is the one most
-people want — but it **defaults to any time**, because the generator shipped
-before the setting did and a default that moved the task would change the day
-for everyone already using it. Choosing the evening is one tap in Settings.
+people want — but it **defaults to any time (empty)**, because the generator
+shipped before the setting did and a default that moved the task would change
+the day for everyone already using it. Choosing the evening is one tap in
+Settings.
+
+Unlike `calendarReviewTimeSegment`, this one is a list rather than one value:
+picking several segments holds back a task per segment instead of one for the
+whole day, "several entries a day is the normal case" (above) applied to the
+question that asks for one. Only the *current* segment's task is ever live —
+`checkMoodTasks` computes it fresh each pass (`currentTimeSegment`, the latest
+configured segment whose threshold has arrived) and clears any other today
+before deciding whether to write the current one, the same clear-first rule
+that already dropped yesterday's leftover. An earlier segment's unanswered
+check-in is a question about a part of the day that's passed, not a task
+still owed — the day-to-day rule, one level down.
+
+The sourceId carries the segment (`${dayKey}:${segment}`, `moodLogSourceId`)
+rather than the day alone, so `moodLogLastDayKey` — despite the name, holding
+the whole sourceId, not just the day — still works as "the slot already
+decided" once a day can hold more than one, and two segments' generated rows
+never collide. "Already answered" is scoped to the segment for the same
+reason a symptom's severity is scoped to the day it happened on: an entry
+made during the morning must not silence the evening's check-in, so the test
+is "logged since this segment's threshold" (`hasLoggedSince`), not "logged
+today at all" (`hasLogOnDay`, which the any-time case still uses, since it
+has no narrower slot to ask about).
 
 **`moodNudge` deliberately has no counterpart.** It asks about the week rather
 than the day and fires at most once a week, so holding it until an hour of the
@@ -164,6 +242,381 @@ wrong about a person rather than about their data. Three rules:
 `LOW_MOOD_AT_OR_BELOW` is 2, not 3: "OK" is not a bad day, and a threshold
 catching it would have the app offering to cheer up somebody who said they were
 fine.
+
+## The log has to be readable back, and for a while it wasn't
+
+The Mood screen shows the newest twenty entries and used to show *only* those.
+An entry past that was unreachable — not viewable, not editable, not deletable
+— and for anybody logging morning and evening that is ten days, in a feature
+whose entire value is the months behind it. `MoodHistoryScreen` is the whole of
+it, grouped by day, and it is a `SectionList` rather than the Mood screen's
+`ScrollView` because it is the one mood surface with no ceiling on its length.
+
+**The filter is a sheet of wrapping chips**, per CLAUDE.md's rule, and the
+symptom vocabulary is the clearest case that rule has: it is whatever the user
+has ever typed, so no phone-width scroll row can assume a ceiling for it. The
+chips are multi-select and `ChipFilterSheet` is the shared shell they live in —
+`LogbookFilterSheet` and `RecipeTagFilterSheet` predate it and still carry their
+own copies of the same 150 lines of sheet chrome.
+
+Two rules on the filtering itself, both in `moodHistory.ts`:
+
+- **It filters entries, not days.** Several entries a day is the normal case, so
+  a day holding a cheerful morning and a rough evening is a day you want shown
+  as its rough evening when you have asked for the low ones. Collapsing to the
+  day first would answer with `dayMoodAverage`, which is a number nobody logged.
+- **An entry with no mood never matches a mood filter.** It is not a 3, the same
+  rule `dayMoodAverage` already holds one file over.
+
+## The symptom page, and why it has no threshold
+
+A symptom had no page. It appeared in the log sheet's pill grid, and — only past
+`MIN_PAIRED_DAYS`, and only if it made the top four by gap size — as one row of
+`symptomMoodContrasts`. So the ordinary question a person tracking a symptom has
+("how often is this happening, and is it getting worse?") had no answer anywhere,
+while the far stronger claim about its relationship to their mood did.
+
+`SymptomDetailScreen` answers it: days, last logged, worst it reached, a
+fortnight strip at the day's worst severity, the severity breakdown, and every
+entry carrying it. The Mood screen reaches it two ways, and it needs both — the
+contrast rows (top four, gated), and a plain `SYMPTOMS` directory built from
+`symptomStats`, without which a symptom logged three times is on no screen at
+all.
+
+**Everything on that page above the contrast card is a tally, and a tally has no
+minimum.** `moodInsights.ts`'s three rules govern *comparisons between two
+variables*; counting one variable is not a comparison, so `MIN_PAIRED_DAYS` has
+no business gating it and does not. A person who has logged a headache twice is
+entitled to see both of those days. The one card that is a comparison comes
+straight out of `symptomMoodContrasts` with its own gates intact, rather than
+being recomputed loosely because the page is about one symptom.
+
+## A purged task record is absent, not zero
+
+`completedRetentionDays` deletes completed rows on a schedule. The mood log is
+never purged. So an install with a retention window accumulates days that carry
+a real mood and no rows to say what was done on them — and counted as zeros,
+those days drag every completion read toward "you finish nothing when you feel
+like that". It is rule 3 of `moodInsights.ts` breached by the app's own
+housekeeping rather than by a gap in the data, and nothing else in the app would
+have noticed: the numbers stay plausible, they just quietly stop being true.
+
+`buildMoodDays` takes `completionsKnownFrom` (the retention cutoff as a day key,
+null when retention is off) and nulls `completed`, `categories` and `taskKeys`
+for every day before it. Three consequences worth not re-deriving:
+
+- **`MoodDay.completed` is `number | null`**, and the null is only ever this.
+  Zero stays a real zero: a day is in the set at all because something was
+  logged or finished on it, so "none finished" is something that happened.
+- **`taskPairedDays` is separate from `pairedDays`**, and only the reads about
+  what got done use it. Narrowing the symptom and context contrasts to the
+  retention window would throw away years of good symptom history to fix a
+  problem they do not have — they only ever touch the mood side.
+- **The clearing happens after the count**, so a row that outlived the window
+  (an archived one, or a decision task holding an answer) cannot make a purged
+  day look like a fully recorded one with a single completion on it.
+
+The Mood screen says how many logged days this drops, under the card it affects.
+A correlation drawn over half a record is a different claim from one drawn over
+all of it, and the person who set the window is the only one who can decide
+whether that matters.
+
+## Mood against one repeating task — the medication question, answered for everything on a schedule
+
+`taskMoodContrasts` is `categoryMoodContrasts` one level down: your mood on the
+days you finished a particular repeating task, against the days you didn't. It
+is the app's answer to the thing every symptom tracker builds a separate feature
+for. **A tablet, a supplement, a stretch or a walk is already a repeating task
+here**, so "how do the days I take it compare" needs no schema, no second
+vocabulary and no pill-shaped UI — and a tracker that asks you to log the
+tablets again, in its own list, next to the task reminding you to take them, is
+asking for the same fact twice.
+
+- **Membership is a task *series*, not a row.** Completing a recurring task
+  spawns a new row, so a fortnight of "Take the tablets" is fourteen ids unless
+  something walks them back to one. `taskIdentityKey` does that — series first,
+  then the root of the `previousOccurrenceId` chain — the same collapse
+  `projectProgress` makes, resolve-or-shrug at every step like every other chain
+  walk in the app.
+- **One-offs are excluded by the existing gate rather than by hand.** A task
+  completed once has one "with" day and `contrastsFor` needs
+  `MIN_CONTRAST_DAYS` on both sides. Filtering on `recurrenceType` instead would
+  be wrong twice: a task repeated by hand every morning is exactly as real as
+  one carrying a rule, and a rule added yesterday says nothing about the
+  fortnight behind it.
+- **It is labelled by the most recent occurrence's title**, so a task since
+  renamed reads under the name in use now. The identity is the chain, not the
+  wording.
+
+## The medication log — what the section above does not reach
+
+This section used to end by saying the app answers the medication question
+without a medication feature. That is still true of every scheduled dose and
+the argument above is not weakened: a tablet you take every morning is a
+repeating task, `taskMoodContrasts` reads it, and asking somebody to log the
+tablets again in a second list next to the task reminding them to take them is
+asking for the same fact twice. **Nothing below changes that.** The scheduled
+case still rides the task.
+
+Two things that argument does not reach, and they are the whole of what
+`MedicationLog` (`src/utils/medicationLog.ts`, `useMedicationStore`,
+`medication_logs`) is for:
+
+- **An as-needed dose has no task to complete.** Nobody schedules "take an
+  ibuprofen if the headache gets bad", so nothing recorded it — and *how often
+  you reached for it* is itself the number people want, the one a doctor asks
+  for. A one-off task cannot stand in: `contrastsFor` needs
+  `MIN_CONTRAST_DAYS` a side, so a task completed once is excluded by
+  construction. This is the gap, and it is the reason the decision was
+  reopened rather than a preference about where things live.
+- **A completion carries no amount.** Ticking records that you did it, not
+  that it was 20mg rather than 10.
+
+**The "same fact twice" objection is answered by the mechanism rather than
+argued away.** `Task.medicationName` makes completing the task *be* the
+logging: the dose is what the task already says it is, nothing is asked at the
+tick, and a daily target records one dose per unit rather than one per day.
+This is `logHealthMetric`/`logHealthAmount` pointed at the app's own log
+instead of Apple Health — the same switch-and-value pair, seeded from a
+`TemplateItem` the same way. The one place it deliberately differs from that
+precedent is undo: a Health sample is a historical record in somebody else's
+database and is never taken back, where a task ticked by mistake means the
+dose was not taken, so `uncompleteTask` deletes what the completion wrote.
+
+### What it refuses to compute, and why that is not a gap to fill later
+
+**There is no medication-against-symptom contrast, and adding one is not a
+small extension of `symptomFoodContrasts`.** For an as-needed medicine the
+comparison is *structurally backwards*: you take the painkiller because your
+head hurts, so "the symptom was worse on the days you took it" restates why
+you took it. It is not a weak finding or one needing a bigger sample; it is
+reverse causation guaranteed by the design of the behaviour. `symptomFoodContrasts`
+survives the same objection only because eating bread is not caused by the
+headache, and reaching for the ibuprofen is.
+
+A card drawn on that arithmetic would read as evidence against the medicine on
+exactly the days it was needed most, which is the one wrong answer this
+feature must never give — and it would give it in the part of the app somebody
+is most likely to act on medically. The scheduled case has the same problem
+from the other end (adherence and mood move together for reasons running both
+ways) and already has `taskMoodContrasts`, with every gate in
+`moodInsights.ts` on it.
+
+So what the screen draws is tallies plus one comparison, and the line between
+them is the one the symptom page already draws: **counting one thing has no
+minimum, comparing two does.** The single comparison is `frequencyTrend`, and
+it is safe where a symptom contrast is not because it is a question about the
+medicine's *use* rather than a claim about its effect — "nine this fortnight
+against three the fortnight before" is the shape people actually ask in. Its
+two refusals are both rule 3 ("a day you didn't log is not a zero") in
+different clothes: the log has to have been running for *both* windows, or an
+install from last week reads as a dramatic increase every time, and
+`MIN_TREND_DOSES` stops one-against-two being reported as a doubling. What it
+still cannot know is whether a quiet fortnight was one of not needing it or
+one of not recording it, which is why the copy says recorded rather than
+taken.
+
+### A chain step records its own dose
+
+`ChainItem.medicationName` is the third field on the pattern
+`estimatedMinutes` and `deliverableKind` already follow, resolved by
+`medicationFor` (active step, else the task) for the identical reason: the
+task-level fields ride `...effective` onto every successor, so a "morning
+pills / evening pills" chain logged the morning dose again at night.
+
+**The triple resolves as a set, never field by field**, and that is the one
+rule here worth not re-deriving. A step naming a medication supplies the whole
+answer including a null amount. Per-field fallback would let a step naming only
+"Ibuprofen" inherit the task's "50 mg" and record a dose of one medicine at
+another's strength: a number nobody entered, under a name somebody did, in the
+log that exists to be accurate. `parseChainItems` enforces the same pairing on
+the way in, so an orphan amount can't survive a round trip and reappear the
+moment a name is typed.
+
+### Getting it off the device
+
+`medicationExport.ts` is `moodExport.ts` pointed at the doses, on the same four
+rules, and the argument for it is stronger: what you have taken and how often
+you reached for the as-needed things is close to the first question asked in a
+consultation. Two rules are its own. **`amount` and `unit` are separate
+columns**, because a record whose point is a quantity should hand over a number
+a spreadsheet can sum rather than "400 mg" in one cell. And **nothing derived
+leaves**, which bites hardest here: `typicalDose` is a mode over a history, and
+a cell holding one with none of that context reads as a prescription rather
+than as a summary. `taskId` stays behind too — provenance, meaningless outside
+this database, and "Taken as needed" already says in words the thing it would
+imply.
+
+`medicationKey` refuses fuzzy matching for a harder version of the reason
+`symptomKey` does: folding two spellings of a symptom blurs a chart, and
+folding "Ibuprofen 200" into "Ibuprofen 400" misstates a dose. The vocabulary
+is derived from the doses rather than stored, exactly as the symptom one is,
+so there is no registry to prune and nothing to migrate. `medication_logs` is
+in `SYNC_TRACKED_TABLES` beside `mood_logs`, with one extra edge of the same
+argument: a phone holding half the doses answers "how often did I reach for
+it" with a number that is simply too low, and nothing about that number looks
+wrong.
+
+## Mood against what you ate
+
+The food log is the third dataset the insights read, after the task history and
+Apple Health, and it arrives on the same terms as Health: `foodDayInputs`
+(`nutritionStats.ts`) hands `buildMoodDays` a row per day, and those rows
+**decorate days that already exist and never create one**.
+
+The reason differs from Health's and is worth having written down, because the
+obvious objection is a good one. A step count is ambient — recorded whether or
+not anybody was paying attention — which is exactly why folding ninety of them
+in must not conjure ninety days into the set. A food entry is nothing of the
+sort: somebody typed it. It still stays out of the union, because the union is
+what `completed: 0` is charged against, and a day somebody logged lunch on and
+finished nothing is not evidence about their task load. Nothing is lost by it:
+every read needs a mood or a completion beside it anyway, so a food-only day has
+nothing to be paired with.
+
+**Two rules decide whether a day gets a row at all**, both enforced in
+`foodDayInputs` and both about the same thing — a figure that looks like a
+measurement and isn't.
+
+- **A day logged past one meal, or no row.** This is the one that matters.
+  `nutritionStats.ts` already refuses a one-meal day from its own averages
+  ("a smaller number that is not a smaller day"); paired against a mood, that
+  same wrong number does considerably more damage, because it is how "your mood
+  is lower on the days you eat less" gets manufactured out of the days somebody
+  stopped logging at 11am. It is rule 3 above with a second face: an unlogged day
+  is an obvious hole, where a half-logged day arrives looking like a small
+  number. One constant (`COMPLETE_DAY_SLOTS`) answers for both readers, because
+  a day either stands for a day's eating or it doesn't.
+- **A nutrient only counts for a day every entry stated.** A total covering five
+  of seven entries is fine on the day's own card, where `describeFoodLogTotals`
+  prints the clause saying so. Across days there is nowhere to print one and the
+  coverage varies day to day, so the variation reads as variation in the food.
+
+Unlike the averages on Stats, **today is kept**: that window stops at yesterday
+because a partial day drags a mean down, and this one is paired rather than
+averaged with the two-meal bar already asking that question.
+
+**The vocabulary is four nutrients and that is a cap, not a starting point.**
+`NUTRIENT_INSIGHT_KEYS` is calories, caffeine, sugar and protein. Ten nutrients
+against two outcomes would be twenty comparisons over the same thirty-odd days,
+and at that width a couple land at something eye-catching by arithmetic alone —
+`MIN_PAIRED_DAYS` guards each comparison from being built on too little, and
+nothing guards a screenful of them from the one that happened to hit. Widening
+it is a real feature decision each time, on the same terms this note sets for
+the log sheet's one auto-suggestion.
+
+`nutrientInsight` and `healthInsight` are two typed doors onto one body
+(`insightFor`), which is what stops the rules drifting apart between an activity
+reading and a nutrient. Two cautions are particular to this axis, neither
+fixable and both reasons the copy stays descriptive: the day is one bucket, so
+an evening mood entry sits inside a total that includes the dinner eaten after
+it; and what somebody logs is not what somebody ate, so a person who logs more
+carefully when they feel better has a correlation here that is about their
+logging.
+
+**`foodMoodContrasts` is the medication argument pointed at the plate.** That
+section above exists because a tablet or a walk is already a repeating task
+here, so "how do the days I take it compare" needs no second vocabulary. A food
+you ate is already a food log entry here, for the same reason and with the same
+payoff: this is the elimination-diet question, and every symptom tracker that
+asks it makes you keep a whole separate food diary next to the log you were
+already keeping. Grouped by the entry's own label, which is `mostLoggedFoods`'
+choice and made for its reason — `itemId` and `recipeId` are null for anything
+typed in.
+
+Its second gate is the one that makes the answer mean anything: it runs over
+`foodPairedDays`, not `pairedDays`, so "the days you didn't eat it" is days the
+log would have said so. Against every mood day, this read would really be "the
+days I logged my food against the days I didn't", with a food's name on it.
+
+**It is behind `kitchenEnabled`**, which the Mood screen checks exactly as it
+checks `healthReadEnabled` for the readings: the whole food half of the app is
+behind that switch, and reading a log somebody has switched away from to tell
+them about their eating is the same mistake as reading Health without
+permission.
+
+**The nutrient vocabulary has one deliberate hole, and caffeine is it.**
+Caffeine has the best same-day mechanism of anything on the list and it is what
+people actually wonder about, so it is the first thing anybody will try to add.
+It cannot work: the coverage rule needs every entry on a day to state a nutrient,
+and almost nothing states caffeine, so a day of coffee, toast and pasta carries
+one figure out of three. `nutritionParse.ts` reaches the same conclusion from the
+other end, throwing away a *stated* caffeine zero from Open Food Facts
+(`OFF_UNINFORMATIVE_ZERO`) as untrustworthy. Adding the key back ships a row that
+silently never appears; making it appear means summing absent caffeine as zero,
+which `foodLog.ts` refuses outright. The demo seed keeps a coffee panel that
+states caffeine precisely so this is visible rather than theoretical.
+
+## A symptom against what you ate
+
+`symptomFoodContrasts` is the elimination-diet question, and **the most loaded
+read in the app.** It is one step past `foodMoodContrasts` in what somebody might
+do about it: a mood comparison invites a shrug, and "you logged a headache on
+most of the days you ate bread" invites somebody to stop eating bread. Which is
+the reason it exists rather than the reason to leave it out. A person tracking a
+symptom is already forming that hypothesis, and every symptom tracker that
+supports it makes them keep a second food diary next to the log they already
+keep. Four things hold it:
+
+- **It is scoped to one symptom somebody opened.** It lives on
+  `SymptomDetailScreen` and takes the symptom as an argument, rather than
+  searching every symptom against every food for whatever pair happens to land.
+  Ten symptoms against twenty foods is two hundred comparisons and a guaranteed
+  finding; this is one question a person asked.
+- **`symptomFoodDays`, not `foodPairedDays`.** The food-log bar is the same, but
+  the day must also carry a log entry (`hasMoodEntry`) or its silence reads as a
+  day without the symptom. This is rule 3 in the place it does the most damage:
+  a symptom is a *presence*, so absence-of-record and absence-of-symptom look
+  identical unless something insists on the difference. Every other read here is
+  safe by accident, because `pairedDays` needs a number. What stays unfixable is
+  self-report itself: a day somebody logged a mood on and did not bother
+  recording a headache reads as headache-free.
+- **Days, never percentages.** `RateContrast` carries `withHits`/`withDays`
+  alongside the rates so a caller cannot render "67% against 14%" without the
+  sample it came from. It is its own type rather than a `GroupContrast` with a
+  frequency in `moodWith`, because a mean and a rate rendered by the same code is
+  how one gets shown as the other.
+- **It is drawn as a pair of bars, and that decided how every other contrast
+  here is drawn too.** A rate on each side meant a row reading "3 of 6 vs 1 of
+  9", and four numbers on a line is arithmetic the eye cannot do. `ContrastBars`
+  (see CLAUDE.md's primitives list) is the answer, and the five mood contrasts
+  moved onto it so the whole feature reads one way. `moodBarFraction` is
+  anchored at zero rather than at 1, because the scale that starts at the bottom
+  of the mood range turns a twentieth of the scale into a fifth of the track —
+  this file refuses to overstate a comparison in words, so a bar may not do it in
+  pixels.
+- **It counts and never causes**, and the card says so in those words: it cannot
+  tell a food apart from everything else about the days that food was eaten on.
+
+The demo seeds coffee on three of the four hard days and three ordinary ones,
+deliberately not all four. A clean sweep ("4 of 4 against 0 of 11") would read as
+a proof, and a demo of an association has no business looking like one, least of
+all for the read somebody might act on medically.
+
+## Getting it off the device
+
+`moodExport.ts` writes the log as CSV and hands it to the share sheet. This note
+says elsewhere that the app must not fold two spellings of a symptom together
+because the chart is one somebody may be about to show a doctor — and until this
+existed there was no way to show anybody anything. A backup is the wrong shape
+twice over: it is JSON for `parseBackup` to restore from, and it is the whole
+database, so handing one to a clinician means handing over the shopping list and
+everybody's birthday too.
+
+- **One row per entry, and no day is collapsed.** A screen averages a day
+  because a screen has to show one number. A record has no such excuse, and the
+  morning that was fine is part of what happened.
+- **Oldest first**, unlike every list in the app. A record is read forwards.
+- **Nothing derived, and above all nothing from `moodInsights.ts`.** Those are
+  associations that carry their sample size and their hedging in the UI around
+  them; a spreadsheet cell holding "moderate" with none of that is exactly the
+  overclaim the association-not-cause rule exists to prevent. What leaves the
+  device is what the user typed.
+- **The scale is spelled out** — the number and its label, severity as its word
+  — because "2" means nothing on a page on its own.
+- The file goes to the cache and is deleted the moment the share sheet closes,
+  exactly as the backup export does. A health record accumulating silently in
+  the app's own storage would be a second copy of the most sensitive thing here.
 
 ## Backdating, and the picker's new ceiling
 
@@ -216,11 +669,80 @@ things it deliberately is not:
 It needs no settings switch of its own: it appears only if you have been logging,
 only inside a menu you opened, and it adds no row anywhere.
 
+## Milestones — a before/after split, not a with/without one
+
+`Milestone` answers a different question from everything above it in this
+file: not "does this thing being present change my mood" but "did something
+change on this day". Starting or stopping a medicine, a new job, moving
+house — a dated marker read as a before/after split against the mood log,
+rather than a with/without one.
+
+**Its own entity, mirroring `PersonNote` rather than `MoodLog`.** A milestone
+is closer to "a dated fact with its own lifecycle" than to "an entry stamped
+with an instant several times a day" — there is exactly one of it per event,
+not several a day, and its date is something the user picks rather than
+something derived from `dayResetTime` at write time. So it is `{ id, label,
+date, createdAt }`, CRUD in its own store (`useMilestoneStore`) and its own
+table (`milestones`), the same shape `usePersonNoteStore`/`person_notes` take
+and for the identical reason: a row with its own lifecycle that nothing else
+points at.
+
+**No fixed vocabulary, and deliberately no attempt to pair a "Started X" with
+a later "Stopped X".** Same freeform call `LoggedSymptom` and `contextTags`
+make, and the same reason `symptomKey` refuses fuzzy matching: guessing that
+two labels name the same underlying change and silently merging them folds
+two different questions — "how were things before I started" and "how were
+things before I stopped" — into one chart. Each milestone is its own single
+split point; recording both ends of a change is two milestones, each read on
+its own.
+
+**No archive column, unlike `PersonNote`.** A stale `PersonNote` is kept
+around because staleness is itself part of what the note means (a birthday
+note about someone you've stopped seeing degrades gracefully by going quiet
+rather than by being deleted). A milestone has no equivalent "gone stale"
+state — it is a fact about one day in the past, so a wrong one is edited or
+deleted, never filed away.
+
+**The date is required and noon-anchored, unlike `PersonNote.relevantOn`.**
+A `PersonNote` can be about no particular day; a milestone *is* its day — it
+is the split point every before/after read is built from, so there is no
+"any time" state for it to have and `MilestoneSheet` gives it no way to
+clear the date. Noon on the picked day is the same anchor `WhenPicker`
+already gives a picked date and a backdated mood entry uses for the same
+reason: a timezone or DST boundary must not drag the split point onto the
+wrong calendar day.
+
+**`milestoneMoodContrast` doesn't go through `contrastsFor`.** Every other
+contrast in `moodInsights.ts` loops over a vocabulary of labels and produces
+one row per label ("for each category…", "for each symptom…"). A milestone
+names exactly one split point, not a set of labels, so it's its own function
+with its own `MilestoneContrast` return type — `beforeDays`/`afterDays`/
+`moodBefore`/`moodAfter`/`delta` in place of `GroupContrast`'s
+`label`/`withDays`/`withoutDays`/`moodWith`/`moodWithout`, because "before"
+and "after" read better in copy than "with" and "without" do for a date
+split, and there is no `label` to iterate since the card already knows which
+milestone it's drawing. Same gates as everywhere else: `MIN_PAIRED_DAYS`
+before any comparison is offered at all, `MIN_CONTRAST_DAYS` on each side of
+the split. **The milestone's own day counts as "after"**: it dates the day
+the thing started or stopped, not the day it took effect.
+
+**The Mood screen's MILESTONES card is a directory, like SYMPTOMS, not a
+ranked top-four like the with/without cards above it.** Every milestone the
+user has logged gets its own row — either a `ContrastBars` "Before"/"After"
+row once it has enough days on each side, or a plain link row saying so
+isn't possible yet — because a milestone the user typed in has to be findable
+regardless of whether the data behind it has caught up, the same reasoning
+`symptomStats`' directory exists beside the gated `symptomMoodContrasts`
+rows.
+
 ## It syncs, and it hides
 
 `mood_logs` is in `SYNC_TRACKED_TABLES`. Half a person's health record on each
 phone, with every correlation computed off whichever half, is worse than the
-Stats-history split `focus_session_log` is tracked to avoid.
+Stats-history split `focus_session_log` is tracked to avoid. `milestones` is
+tracked beside it for the same reason: a before/after split has to read the
+same on every phone, or it isn't a fact about the person, just about which
+device answered.
 
 The Mood screen is a `contentScreen` in `simpleMode` — like People and Stacks,
 it holds rows that live nowhere else, so hiding it while it holds any would

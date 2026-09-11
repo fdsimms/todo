@@ -36,6 +36,9 @@ import { usePersonStore, displayNameOf } from '../store/usePersonStore';
 import { computeSnoozeSuggestion } from '../utils/snoozeEngine';
 import { buildDayBuckets } from '../utils/calendarMonth';
 import { buildDayLoads, describeDayWeight, weightFor, type DayLoad } from '../utils/dayLoad';
+import { awaySpanOf, type AwaySpan } from '../utils/awayDates';
+import { useProjectStore } from '../store/useProjectStore';
+import { useShallow } from 'zustand/react/shallow';
 import { shouldNudgePostpone } from '../utils/postpone';
 import { reachOutPersonId, offerDeclinedRecently } from '../utils/reachOutTasks';
 import { PostponeCheckBanner, type PostponeCheckAction } from './PostponeCheckBanner';
@@ -60,11 +63,12 @@ const BLANK_SNOOZE_TASK: Task = {
   tags: [], personIds: [], category: null, sortOrder: 0, pinned: false, pinnedOrder: 0, priority: 0, effort: 0,
   estimatedMinutes: null, reminderTime: null, reminderKind: 'notification', reminderOffsetDays: null, reminderTimeAnchor: 'wallClock', reminderUtcOffsetMinutes: null, linkUrl: null, phoneNumber: null, emailAddress: null, location: null, blockedById: null, waitingOnPersonId: null, deliverableKind: null, deliverableValue: null, generatedKind: null, generatedSourceId: null,
   deadlineOnCalendar: false, calendarEventId: null,
+  logCompletionToCalendar: false, completionCalendarEventId: null,
   timeBlockEventId: null,
   pendingImport: null,
   backfillDismissedFields: [],
   streakCount: 0, streakDate: null, previousStreakCount: 0, previousStreakDate: null, priorBestStreak: 0, showStreak: false, streakRequiresWindow: false,
-  polarity: 'positive', slipCount: 0, slipDate: null,
+  polarity: 'positive', slipCount: 0, slipDate: null, penaltyMinutes: null, penaltyCutoffTime: null, penaltyFiredAt: null, gatesApps: false,
   parentId: null, groupId: null, projectId: null,
   chainEnabled: false, chainIndex: 0, chainItems: [], chainStepOnSchedule: false, vacationPause: false, excludeFromSuggestions: false,
   followUpTaskEveryN: null, followUpTaskTitle: null, followUpTaskDraft: null, followUpTaskOneAtATime: false, followUpTaskTally: 0, previousFollowUpTaskTally: 0, followUpTaskSourceTitle: null,
@@ -76,7 +80,7 @@ const BLANK_SNOOZE_TASK: Task = {
   quotaIntervalMinutes: null, quotaReminders: false, quotaStartedAt: null, quotaAlwaysVisible: false,
   quotaPeriod: 'day',
   healthMetric: null,
-  healthTarget: null,
+  healthTarget: null, completionTimerMinutes: null, logHealthMetric: null, logHealthAmount: null, medicationName: null, medicationAmount: null, medicationUnit: null,
 };
 
 interface Props {
@@ -196,6 +200,7 @@ export function WhenPicker({
   const colors = useColors();
   const styles = useMemo(() => makeStyles(colors), [colors]);
   const tasks = useTaskStore(s => s.tasks);
+  const projects = useProjectStore(useShallow(s => s.projects));
   const dayResetTime = useSettingsStore(s => s.dayResetTime);
   const calendarReadEnabled = useSettingsStore(s => s.calendarReadEnabled);
   const calendarEvents = useCalendarStore(s => s.events);
@@ -305,6 +310,25 @@ export function WhenPicker({
    * template's anchor date), which is a different question from whether the
    * day being picked is already full — and on both of those it very much is.
    */
+  /**
+   * Every live away span, so a day inside a trip can say so.
+   *
+   * All of them rather than `nextAwayProject`'s one: the grid pages months and
+   * can reach past the trip a reader is standing nearest to. Archived and
+   * completed projects are dropped for the reason nextAwayProject drops them —
+   * those are history, not schedule — but a span already over is *kept*, since
+   * a picker showing last month is entitled to say you were away.
+   */
+  const awaySpans = useMemo(
+    () => (visible
+      ? projects
+          .filter(p => !p.archived && !p.completed)
+          .map(p => awaySpanOf(p, dayResetTime))
+          .filter((span): span is AwaySpan => span !== null)
+      : []),
+    [visible, projects, dayResetTime],
+  );
+
   const dayLoads = useMemo(() => {
     if (!visible || calendarDays.length === 0) return new Map<string, DayLoad>();
     const buckets = buildDayBuckets(tasks, {
@@ -319,10 +343,11 @@ export function WhenPicker({
       busyWindow: calendarWindowStart && calendarWindowEnd
         ? { start: new Date(calendarWindowStart), end: new Date(calendarWindowEnd) }
         : null,
+      awaySpans,
       dayResetTime,
     });
   }, [visible, calendarDays, tasks, dayResetTime, calendarReadEnabled, calendarLoaded, calendarEvents,
-      calendarWindowStart, calendarWindowEnd]);
+      calendarWindowStart, calendarWindowEnd, awaySpans]);
 
   const toggleSegment = (seg: TimeOfDay) => {
     setSegments(prev =>
@@ -527,7 +552,7 @@ export function WhenPicker({
   }, [postponeTask, onBreakUp, archiveTask, updateTask, onCancel, reachOutOfferActive, reachOutPerson, updatePersonRecord]);
 
   const suggestionLabel = suggestion
-    ? `${format(new Date(`${suggestion.key}T12:00:00`), 'EEE, MMM d')} — ${suggestion.reason}`
+    ? `${format(new Date(`${suggestion.key}T12:00:00`), 'EEE, MMM d')}: ${suggestion.reason}`
     : null;
 
   return (
@@ -670,7 +695,7 @@ export function WhenPicker({
                     color={colors.accent}
                   />
                   <Text style={styles.afterVacationLabel}>
-                    After vacation — {format(afterVacationDay, 'EEE, MMM d')}
+                    After vacation, {format(afterVacationDay, 'EEE, MMM d')}
                   </Text>
                 </Animated.View>
               </TouchableOpacity>
@@ -812,10 +837,23 @@ export function WhenPicker({
                           neighbours' — most days carry nothing here. */}
                       <View style={styles.weightSlot}>
                         {weight && !outOfRange && (
-                          <View style={[
-                            styles.weightBar,
-                            weight === 'full' ? styles.weightBarFull : styles.weightBarBusy,
-                          ]} />
+                          weight === 'away' ? (
+                            // Two segments with a gap rather than a third bar
+                            // width: away is not a heavier `full`, and a run of
+                            // them reads across the row as the stretch of days
+                            // it is. Same greys as the other two — the cue is
+                            // weight, not alarm, and a coloured dot here would
+                            // read as an event marker.
+                            <View style={styles.weightAway}>
+                              <View style={styles.weightAwayDash} />
+                              <View style={styles.weightAwayDash} />
+                            </View>
+                          ) : (
+                            <View style={[
+                              styles.weightBar,
+                              weight === 'full' ? styles.weightBarFull : styles.weightBarBusy,
+                            ]} />
+                          )
                         )}
                       </View>
                     </View>
@@ -1112,6 +1150,17 @@ const makeStyles = (colors: Colors) => StyleSheet.create({
   weightBarFull: {
     width: 21,
     height: 3,
+    backgroundColor: colors.textSecondary,
+  },
+  weightAway: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 3,
+  },
+  weightAwayDash: {
+    width: 5,
+    height: 3,
+    borderRadius: 1.5,
     backgroundColor: colors.textSecondary,
   },
   dayCircleSelected: {

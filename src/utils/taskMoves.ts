@@ -1,5 +1,6 @@
-import type { Task } from '../types';
+import type { GeneratedKind, Task } from '../types';
 import { getTaskDayStart } from './dateUtils';
+import { isNoticeTask } from './generatedTasks';
 
 /**
  * Whether a task may be swept off the day it is on, what moving it means, and
@@ -28,10 +29,35 @@ export type DeloadBlocker =
   | 'urgent'
   | 'quota'
   | 'chain'
+  | 'notice'
+  | 'day-bound'
   | 'streak'
   | 'started'
   | 'high-priority'
   | 'people';
+
+/**
+ * Generated kinds whose task is a claim about *today specifically* — today's
+ * forecast crossed a rule, today's Health reading fell short, today's screen
+ * time crossed a threshold, or this is the slot for today's actual planned
+ * meal. Each one's `generatedSourceId` names the day (and for `mealSlot`, the
+ * slot) it was raised for, so pushing the row to another day doesn't move the
+ * thing the title is about — a "Put on sunscreen" written for a sunny Tuesday
+ * doesn't become true of Wednesday by being moved there, and the day it's
+ * pushed to gets its own fresh row from the same generator if its own
+ * condition fires, doubling up rather than replacing it. Contrast `moodLog`,
+ * `moodNudge` and `weekendNudge`, which are also day-keyed but whose specs say
+ * explicitly that rescheduling them is an ordinary thing to want (see their
+ * comments in `generatedTasks.ts`) — the content of those doesn't depend on
+ * which day they land on, only when they were raised.
+ */
+const DAY_BOUND_GENERATED_KINDS: ReadonlySet<GeneratedKind> = new Set([
+  'weather',
+  'health',
+  'screenTime',
+  'mealSlot',
+  'mealCook',
+]);
 
 /**
  * Blockers that leave the task movable but unchecked — the user can opt in.
@@ -67,6 +93,15 @@ export function isDateAnchored(task: Task): boolean {
  * why the day won't get any lighter than it does.
  */
 export function deloadBlockerFor(task: Task): { blocker: DeloadBlocker; label: string } | null {
+  // A notice (calendarReview's "what's on tomorrow", mealPlanNudge's "plan the
+  // week") has no reschedule chip in its own row for the same reason it can't
+  // move here: its title is a fixed question about a fixed day, not a task to
+  // plan around. Bulk-moving what the single-task UI already refuses would be
+  // the two disagreeing about the same task.
+  if (isNoticeTask(task)) return { blocker: 'notice', label: 'About today specifically' };
+  if (task.generatedKind !== null && DAY_BOUND_GENERATED_KINDS.has(task.generatedKind)) {
+    return { blocker: 'day-bound', label: 'About today specifically' };
+  }
   if (task.pinned) return { blocker: 'pinned', label: 'Pinned to today' };
   if (task.timerStartedAt !== null) return { blocker: 'running', label: 'Timer running' };
   if (task.priority === 4) return { blocker: 'urgent', label: 'Urgent' };
@@ -130,4 +165,61 @@ export function deloadUpdates(
   if (!date) return null;
   const iso = date.toISOString();
   return proposal.mode === 'defer' ? { deferUntil: iso } : { dueDate: iso, deferUntil: null };
+}
+
+/**
+ * The field updates that move one task to `date` **in either direction**.
+ *
+ * `deloadUpdates` above knows push and plain reschedule, which is everything
+ * its two callers need: `deloadPlan` spreads a day forward and `lookAhead`
+ * pushes a window past a trip, so neither ever pulls an anchored task
+ * *earlier*. This is the same rule with that third arm, and it is the rule
+ * `docs/arch/away-dates.md` needs for shifting a trip and for pulling work in
+ * front of one.
+ *
+ * The asymmetry is the schema being honest about two different wants, and
+ * collapsing it is what made #1953 a bug in the first place:
+ *
+ * - **Pushing an anchored task out writes `deferUntil`**, a floor laid over the
+ *   stored date, so the grid the rest of its future is measured from does not
+ *   move.
+ * - **Pulling one forward writes `dueDate` and `recurrenceAnchorDate`.** A
+ *   defer cannot pull a task in front of its own date, and there is no
+ *   "un-hide" to pair with the hide: the only way a task surfaces on Wednesday
+ *   is for its date to *be* Wednesday. The anchor is **only ever set once** —
+ *   whatever the grid was already measured from, or the date being moved off —
+ *   because pulling a second time must not re-anchor the schedule onto the
+ *   first pull's day, which would rotate it by the back door.
+ * - **Everything else is a plain reschedule**, and `updateTask` clears the
+ *   grid's anchor on exactly that, which is the deliberate schedule edit.
+ *
+ * It lived inline in `TaskItem`'s date picker until the third caller arrived,
+ * with only `isDateAnchored` shared — the predicate in the leaf and the rule
+ * that consumes it in a component, which is the drift this module exists to
+ * prevent.
+ */
+export function scheduleMoveUpdates(
+  task: Pick<Task, 'dueDate' | 'recurrenceType' | 'recurrenceAnchorDate' | 'seriesId'>,
+  date: Date | null,
+  dayResetTime?: string,
+): Partial<Task> {
+  if (!date) return { dueDate: null, deferUntil: null };
+  const anchored = isDateAnchored(task as Task) && task.dueDate != null;
+  if (!anchored) return { dueDate: date.toISOString(), deferUntil: null };
+
+  const picked = getTaskDayStart(date, dayResetTime);
+  const stored = getTaskDayStart(new Date(task.dueDate!), dayResetTime);
+  if (picked > stored) return { deferUntil: date.toISOString() };
+  if (picked < stored) {
+    return {
+      dueDate: date.toISOString(),
+      recurrenceAnchorDate: task.recurrenceAnchorDate ?? task.dueDate,
+      deferUntil: null,
+    };
+  }
+  // Same day. Clearing the defer is what makes the picked date the one that
+  // takes effect: a task already pushed out is hidden until the old
+  // deferUntil, and writing only dueDate would leave it behind a date the
+  // caller has just replaced.
+  return { dueDate: date.toISOString(), deferUntil: null };
 }

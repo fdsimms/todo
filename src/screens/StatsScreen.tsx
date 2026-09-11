@@ -71,6 +71,15 @@ import {
   mostCookedRecipes,
   type CookingWindow,
 } from '../utils/cookingStats';
+import {
+  hasNutritionData,
+  mostLoggedFoods,
+  nutrientAverages,
+  nutritionCounts,
+  sourceMix,
+} from '../utils/nutritionStats';
+import { NUTRIENT_LABEL } from '../utils/foodNutrition';
+import { useFoodLogStore } from '../store/useFoodLogStore';
 
 const BAR_HEIGHT = 96;
 // The window the focus summary rows describe. Matches HABIT_DAYS below rather
@@ -89,6 +98,10 @@ const HABIT_DAYS = 30;
 // and LEFTOVER_RETENTION_DAYS (60), so neither purge can quietly clip the window.
 const COOKING_DAYS = 30;
 const MOST_COOKED_LIMIT = 5;
+// The eating read shares the cooking window rather than picking its own. They
+// are the same question asked from two sides, and two headings a month apart on
+// one screen would read as a disagreement about what "lately" means.
+const MOST_LOGGED_LIMIT = 5;
 
 // Sections cascade in on mount: each fades and rises with a small delay.
 function StaggerIn({ index, children }: { index: number; children: React.ReactNode }) {
@@ -375,6 +388,20 @@ export function StatsScreen() {
     }, [refreshPeopleYearMealCount]),
   );
 
+  // The food log's own window, kept apart from the day view's — see
+  // `loadWindow`. Refetched on focus for the same reason the cooking window is:
+  // a blurred tab stays mounted for the life of the session, so a window
+  // computed at mount would still end on the day the app was opened.
+  const foodEntries = useFoodLogStore(s => s.windowEntries);
+  const loadFoodWindow = useFoodLogStore(s => s.loadWindow);
+  useFocusEffect(
+    useCallback(() => {
+      if (!kitchenEnabled) return;
+      const next = cookingWindow(getLogicalToday(), COOKING_DAYS);
+      loadFoodWindow(next.startKey, next.endKey);
+    }, [kitchenEnabled, loadFoodWindow]),
+  );
+
   // Off `tasks` rather than `done`: onTimeSummary above makes the same call,
   // doing its own isRealCompletion/parentId check rather than assuming a
   // pre-filtered list, so the function stands on its own if anything else
@@ -397,6 +424,21 @@ export function StatsScreen() {
   );
   const hasCooking = hasCookingData(cookingCounts, outcomeCounts(fridge), mostCooked);
 
+  // Gated at the point of use like the cooking read above: the food log lives
+  // behind the kitchen switch, so somebody who has put the kitchen away
+  // shouldn't be shown what they ate, and turning it back on restores this
+  // exactly as it was.
+  const eating = useMemo(() => {
+    if (!kitchenEnabled || !cookWindow) return null;
+    return {
+      counts: nutritionCounts(foodEntries, cookWindow),
+      averages: nutrientAverages(foodEntries, cookWindow),
+      mix: sourceMix(foodEntries, cookWindow),
+      foods: mostLoggedFoods(foodEntries, cookWindow, MOST_LOGGED_LIMIT),
+    };
+  }, [kitchenEnabled, foodEntries, cookWindow]);
+  const hasEating = hasNutritionData(eating?.counts ?? null);
+
   // The screen used to be gated on completions alone, so someone whose history
   // is in the kitchen rather than the task list was told there was no data.
   const hasTaskData = done.length > 0;
@@ -416,13 +458,16 @@ export function StatsScreen() {
   // out: someone tracking a project with nothing completed in it yet has data
   // here, and telling them the screen is empty is the bug that note describes.
   const hasProjectData = projectSummary.active > 0 || projectSummary.finished > 0;
+  // Two blocks when there is eating to describe, so everything below it keeps
+  // its place in the cascade rather than every index being rewritten.
+  const peopleStagger = cookingStagger + 2 + (hasEating ? 2 : 0);
 
   return (
     <View style={[styles.container, { paddingTop: insets.top }]}>
       <ScreenHeader title="Stats" subtitle={hasTaskData ? `${done.length} completed` : undefined} />
       <HubPills hub="history" active="Stats" />
 
-      {!hasTaskData && !hasCooking && !hasProjectData && !hasFocusData ? (
+      {!hasTaskData && !hasCooking && !hasEating && !hasProjectData && !hasFocusData ? (
         <EmptyState
           icon="bar-chart-outline"
           title="No data yet"
@@ -874,6 +919,103 @@ export function StatsScreen() {
           )}
 
           {/*
+            Counts, never a score. This is the surface where a task app turns
+            into something that makes people feel bad about eating, so there is
+            no percentage of a goal here, no colour that means anything, no
+            streak and no encouragement — see nutritionStats.ts. A daily target
+            is a number somebody typed and belongs beside the day it was set
+            against; a month of days measured against it is a report card.
+
+            Every average says how many days it covers, for the same reason the
+            day view's totals carry a coverage clause: an average built from
+            four days of fibre is not the month's fibre.
+          */}
+          {hasEating && eating !== null && (
+            <StaggerIn index={cookingStagger + 2}>
+            <View style={styles.section}>
+              <Text style={styles.sectionTitle}>EATING (LAST {COOKING_DAYS} DAYS)</Text>
+              <View style={styles.card}>
+                <View style={[styles.row, styles.rowBorder]}>
+                  <Text style={styles.rowText}>Days you logged</Text>
+                  <Text style={styles.cookValue}>
+                    {eating.counts.daysLogged} of {eating.counts.days}
+                  </Text>
+                </View>
+                {/* Named rather than quietly filtered out of the averages: this
+                    is how the card says what its figures are built on. */}
+                {eating.counts.daysComplete < eating.counts.daysLogged && (
+                  <View style={[styles.row, styles.rowBorder]}>
+                    <Text style={styles.rowText}>Logged past one meal</Text>
+                    <Text style={styles.cookValue}>
+                      {eating.counts.daysComplete} of {eating.counts.daysLogged}
+                    </Text>
+                  </View>
+                )}
+                {eating.averages.map((row, i) => (
+                  <View
+                    key={row.key}
+                    style={[styles.row, i < eating.averages.length - 1 && styles.rowBorder]}
+                  >
+                    <View style={styles.instanceMain}>
+                      <Text style={styles.rowText}>{NUTRIENT_LABEL[row.key].label} a day</Text>
+                      {row.days < eating.counts.daysComplete && (
+                        <Text style={styles.instanceMeta}>
+                          across {row.days} {row.days === 1 ? 'day' : 'days'} that stated it
+                        </Text>
+                      )}
+                    </View>
+                    <Text style={styles.cookValue}>
+                      {Math.round(row.average).toLocaleString()}
+                      {NUTRIENT_LABEL[row.key].unit === 'cal' ? ' cal' : NUTRIENT_LABEL[row.key].unit}
+                    </Text>
+                  </View>
+                ))}
+              </View>
+            </View>
+            </StaggerIn>
+          )}
+
+          {/*
+            Where the figures came from — the one statistic here nobody else's
+            food logger has, because it says how much of the record to trust.
+            Four different claims kept apart, and none of them better than
+            another: a panel typed off a jar in your hand is a perfectly good
+            record, and an estimate is the honest answer for a bowl of soup.
+          */}
+          {hasEating && eating !== null && eating.foods.length > 0 && (
+            <StaggerIn index={cookingStagger + 3}>
+            <View style={styles.section}>
+              <Text style={styles.sectionTitle}>MOST LOGGED (LAST {COOKING_DAYS} DAYS)</Text>
+              <View style={styles.card}>
+                {eating.foods.map((food, i) => (
+                  <View key={food.label} style={[styles.row, styles.rowBorder]}>
+                    <Text style={styles.rank}>#{i + 1}</Text>
+                    <View style={styles.instanceMain}>
+                      <Text style={styles.instanceTitle} numberOfLines={1}>{food.label}</Text>
+                    </View>
+                    <View style={styles.badge}>
+                      <Ionicons name="restaurant-outline" size={13} color={colors.accent} />
+                      <Text style={[styles.badgeText, { color: colors.accent }]}>{food.count}</Text>
+                    </View>
+                  </View>
+                ))}
+                <View style={styles.row}>
+                  <Text style={styles.rowText}>Where the figures came from</Text>
+                  <Text style={styles.cookValue}>
+                    {[
+                      eating.mix.label > 0 ? `${eating.mix.label} label` : null,
+                      eating.mix.database > 0 ? `${eating.mix.database} database` : null,
+                      eating.mix.manual > 0 ? `${eating.mix.manual} typed` : null,
+                      eating.mix.estimated > 0 ? `${eating.mix.estimated} estimated` : null,
+                    ].filter(Boolean).join(' · ')}
+                  </Text>
+                </View>
+              </View>
+            </View>
+            </StaggerIn>
+          )}
+
+          {/*
             A warm year in review — see docs/arch/people.md. Two independent
             facts, each gated on its own truthiness rather than as one row: a
             year with hosting but no tagged tasks (or the reverse) should still
@@ -883,7 +1025,7 @@ export function StatsScreen() {
             intermediate state — see the note on peopleStats.ts.
           */}
           {(!!timeTogetherText || !!mealsTogetherText) && (
-            <StaggerIn index={cookingStagger + 2}>
+            <StaggerIn index={peopleStagger}>
             <View style={styles.section}>
               <Text style={styles.sectionTitle}>PEOPLE THIS YEAR</Text>
               <View style={styles.card}>
@@ -909,7 +1051,7 @@ export function StatsScreen() {
             nothing rather than a card of zeroes.
           */}
           {hasProjectData && (
-            <StaggerIn index={cookingStagger + 3}>
+            <StaggerIn index={peopleStagger + 1}>
             <View style={styles.section}>
               <Text style={styles.sectionTitle}>PROJECTS</Text>
               <View style={styles.card}>
@@ -944,7 +1086,7 @@ export function StatsScreen() {
           )}
 
           {projectSummary.recentlyFinished.length > 0 && (
-            <StaggerIn index={cookingStagger + 4}>
+            <StaggerIn index={peopleStagger + 2}>
             <View style={styles.section}>
               <Text style={styles.sectionTitle}>RECENTLY FINISHED</Text>
               <View style={styles.card}>
@@ -1131,7 +1273,7 @@ const makeStyles = (colors: Colors) =>
       paddingVertical: 3,
       borderRadius: radius.full,
     },
-    badgeText: { fontSize: font.sm, fontWeight: '700' },
+    badgeText: { fontSize: font.sm, fontWeight: '700', color: colors.text },
     // Sits between the title and the badge, quiet enough to read as context
     // for the number rather than as a second number competing with it.
     streakBest: {

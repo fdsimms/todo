@@ -36,6 +36,7 @@ function ing(name: string, overrides: Partial<RecipeIngredient> = {}): RecipeIng
 
 function recipe(name: string, ingredients: RecipeIngredient[], overrides: Partial<Recipe> = {}): Recipe {
   return {
+    backfillDismissedFields: [],
     id: `r-${++seq}`,
     name,
     nameKey: name.toLowerCase(),
@@ -47,6 +48,7 @@ function recipe(name: string, ingredients: RecipeIngredient[], overrides: Partia
     servings: null,
     servingsMax: null,
     recipeYield: null,
+    cookedWeightG: null,
     leftoverKeepDays: null,
     imagePath: null,
     mealType: null,
@@ -96,6 +98,7 @@ function entry(date: string, recipeId: string | null, overrides: Partial<MealPla
     recipeScale: 1,
     cookTask: null,
     shopTask: null,
+    logMeal: null,
     calendarEventId: null,
     ...overrides,
   };

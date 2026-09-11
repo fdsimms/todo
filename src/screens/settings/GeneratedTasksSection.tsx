@@ -29,6 +29,11 @@ import {
   WEEKEND_NUDGE_LEAD_DAYS_MIN,
   type TimeOfDay,
 } from '../../types';
+import {
+  DEFAULT_WEIGH_IN_EVERY_DAYS,
+  WEIGH_IN_EVERY_DAYS_MAX,
+  WEIGH_IN_EVERY_DAYS_MIN,
+} from '../../utils/weightTasks';
 import { dateToHHMM, hhmmToDate } from '../../utils/clockTime';
 import { formatHHMM } from '../../utils/dateUtils';
 import { useColors } from '../../theme/ThemeContext';
@@ -221,6 +226,7 @@ export function GeneratedTasksSection() {
       case 'pantryCheck': s.setPantryCheckTasks(next); break;
       case 'pantryReview': s.setPantryReviewTasks(next); break;
       case 'mealShortfall': s.setMealShortfallTasks(next); break;
+      case 'mealLogNudge': s.setMealLogNudgeTasks(next); break;
       case 'supplyReorder': s.setSupplyReorderTasks(next); break;
       case 'calendarReview': s.setCalendarReviewTasks(next); break;
       case 'birthday': s.setBirthdayTasks(next); break;
@@ -232,6 +238,7 @@ export function GeneratedTasksSection() {
       case 'moodLog': s.setMoodLogTasks(next); break;
       case 'moodNudge': s.setMoodNudgeTasks(next); break;
       case 'weekendNudge': s.setWeekendNudgeTasks(next); break;
+      case 'weighIn': s.setWeighInTasks(next); break;
     }
     // Switching one on gives it somewhere to file, so the "File them under"
     // row that appears directly below already has an answer in it rather than
@@ -258,6 +265,7 @@ export function GeneratedTasksSection() {
       case 'pantryCheck': return s.pantryCheckTaskCategory;
       case 'pantryReview': return s.pantryReviewTaskCategory;
       case 'mealShortfall': return s.mealShortfallTaskCategory;
+      case 'mealLogNudge': return s.mealLogNudgeTaskCategory;
       case 'calendarReview': return s.calendarEventCategory;
       case 'birthday': return s.birthdayTaskCategory;
       case 'birthdayGift': return s.birthdayGiftTaskCategory;
@@ -269,6 +277,7 @@ export function GeneratedTasksSection() {
       case 'moodLog': return s.moodLogTaskCategory;
       case 'moodNudge': return s.moodNudgeTaskCategory;
       case 'weekendNudge': return s.weekendNudgeTaskCategory;
+      case 'weighIn': return s.weighInTaskCategory;
     }
   };
 
@@ -285,6 +294,7 @@ export function GeneratedTasksSection() {
       case 'pantryCheck': s.setPantryCheckTaskCategory(category); break;
       case 'pantryReview': s.setPantryReviewTaskCategory(category); break;
       case 'mealShortfall': s.setMealShortfallTaskCategory(category); break;
+      case 'mealLogNudge': s.setMealLogNudgeTaskCategory(category); break;
       case 'birthday': s.setBirthdayTaskCategory(category); break;
       case 'birthdayGift': s.setBirthdayGiftTaskCategory(category); break;
       // Unreached — see categoryOf above — but a real, honest answer rather
@@ -297,6 +307,7 @@ export function GeneratedTasksSection() {
       case 'moodLog': s.setMoodLogTaskCategory(category); break;
       case 'moodNudge': s.setMoodNudgeTaskCategory(category); break;
       case 'weekendNudge': s.setWeekendNudgeTaskCategory(category); break;
+      case 'weighIn': s.setWeighInTaskCategory(category); break;
       // Genuinely nothing to write: its task inherits the category of the task
       // whose supply it is about (see checkSupplyReorderTasks), so there is no
       // one global answer to store. categorized: false means the pills that
@@ -338,19 +349,23 @@ export function GeneratedTasksSection() {
     if (spec.kind === 'calendarReview' && s.calendarReviewTimeSegment) {
       return `Adds a task each day, held back until ${s.calendarReviewTimeSegment}, to review tomorrow's events`;
     }
-    if (spec.kind === 'moodLog' && s.moodLogTimeSegment) {
-      return `Adds one task a day, held back until ${s.moodLogTimeSegment}, to log how you're feeling`;
+    if (spec.kind === 'moodLog' && s.moodLogTimeSegments.length > 0) {
+      const segmentNames = s.moodLogTimeSegments.map(seg =>
+        timeSegmentChoices.find(o => o.value === seg)?.label.toLowerCase() ?? seg
+      );
+      return s.moodLogTimeSegments.length === 1
+        ? `Adds one task a day, held back until ${segmentNames[0]}, to log how you're feeling`
+        : `Adds a task each of these times a day, to log how you're feeling: ${segmentNames.join(', ')}`;
     }
     return spec.onHint;
   };
 
   /**
-   * The "Show the task" row and its pills, for a generator that holds its task
-   * back until a part of the day.
+   * The "Show the task" row and its pills, for a generator that holds its
+   * single task back until one part of the day — single-select, unlike
+   * `moodLogTimeSegmentsExtra` below, which is the same row and pills for a
+   * generator whose check-in can fire more than once a day.
    *
-   * Two generators want this and they want it identically, so it is written
-   * once — the copy this replaced had drifted nowhere yet only because it had
-   * just the one instance, and a second hand-rolled copy is how that starts.
    * It stays a local helper rather than a registry field for the reason the
    * header states: `extrasFor` is JSX precisely so the knobs one generator has
    * don't have to be expressible in config.
@@ -385,6 +400,58 @@ export function GeneratedTasksSection() {
       </View>
     </>
   );
+
+  /**
+   * The mood log's own "Show the task" row — the one generator whose check-in
+   * can fire more than once a day. Multi-select, unlike `timeSegmentExtra`
+   * above: a segment toggles independently rather than replacing whichever
+   * was picked, and "Any time" clears the set back to the single any-time
+   * task rather than being one more mutually-exclusive option.
+   */
+  const moodLogTimeSegmentsExtra = (): React.ReactNode => {
+    const selected = s.moodLogTimeSegments;
+    const summary = selected.length === 0
+      ? 'Any time'
+      : timeSegmentChoices
+          .filter((o): o is { value: TimeOfDay; label: string } => o.value !== null && selected.includes(o.value))
+          .map(o => o.label)
+          .join(', ');
+    return (
+      <>
+        <View style={styles.sep} />
+        <SettingsRow
+          entryId="moodLogTimeSegments"
+          icon="time-outline"
+          label="Show the task"
+          hint="Held back until each part of the day arrives. Pick more than one for several check-ins a day. An earlier one still unanswered is cleared once the next arrives."
+          value={summary}
+          tight
+        />
+        <View style={styles.pillGroupRow}>
+          <PillGroup
+            noun="time of day"
+            options={timeSegmentChoices.map(o => ({
+              key: String(o.value),
+              label: o.label,
+              selected: o.value === null ? selected.length === 0 : selected.includes(o.value),
+              pinned: o.value === null,
+              accessibilityLabel: o.value === null
+                ? 'Show the task any time of day'
+                : `Show the task in the ${o.label.toLowerCase()}`,
+              onPress: () => {
+                haptics.tap();
+                if (o.value === null) { s.setMoodLogTimeSegments([]); return; }
+                const value = o.value;
+                s.setMoodLogTimeSegments(
+                  selected.includes(value) ? selected.filter(seg => seg !== value) : [...selected, value]
+                );
+              },
+            }))}
+          />
+        </View>
+      </>
+    );
+  };
 
   /** The controls only one generator has. Everything else is the same two rows. */
   const extrasFor = (kind: GeneratedKind): React.ReactNode => {
@@ -518,6 +585,33 @@ export function GeneratedTasksSection() {
       );
     }
 
+    if (kind === 'weighIn') {
+      return (
+        <>
+          <View style={styles.sep} />
+          <SettingsRow
+            entryId="weighInEveryDays"
+            icon="calendar-outline"
+            label="Ask after"
+            hint="How long with nothing recorded in Apple Health before the task appears. It never appears on a day you have already recorded one."
+            value={s.weighInEveryDays === 1 ? '1 day' : `${s.weighInEveryDays} days`}
+            tight
+          />
+          <View style={styles.cadenceRow}>
+            <CountStepper
+              value={s.weighInEveryDays}
+              onChange={next => s.setWeighInEveryDays(next ?? DEFAULT_WEIGH_IN_EVERY_DAYS)}
+              min={WEIGH_IN_EVERY_DAYS_MIN}
+              max={WEIGH_IN_EVERY_DAYS_MAX}
+              format={n => `${n}d`}
+              label="Days without a weigh-in"
+              describeValue={n => (n === 1 ? '1 day' : `${n ?? DEFAULT_WEIGH_IN_EVERY_DAYS} days`)}
+            />
+          </View>
+        </>
+      );
+    }
+
     if (kind === 'birthdayGift') {
       return (
         <>
@@ -608,7 +702,7 @@ export function GeneratedTasksSection() {
       return (
         <>
           <View style={styles.sep} />
-          <SettingsRow entryId="mealPlanNudgeTime" icon="calendar-outline" iconColor={colors.accent} label="Nudge me on" tight />
+          <SettingsRow entryId="mealPlanNudgeTime" icon="calendar-outline" iconColor={colors.accent} label="Add the task on" tight />
           <SettingsSegments
             attached
             options={weekdaySegmentOptions}
@@ -636,6 +730,16 @@ export function GeneratedTasksSection() {
               onConfirm={confirmTime}
             />
           )}
+          <View style={styles.sep} />
+          <SettingsRow
+            entryId="mealPlanNudgeIgnoresVacation"
+            icon="airplane-outline"
+            iconColor={s.mealPlanNudgeIgnoresVacation ? colors.accent : undefined}
+            label="Also during vacation"
+            hint="Vacation mode normally pauses this along with the app's other automatic tasks. Turn this on to keep adding the weekly task anyway."
+            toggle={s.mealPlanNudgeIgnoresVacation}
+            onPress={() => s.setMealPlanNudgeIgnoresVacation(!s.mealPlanNudgeIgnoresVacation)}
+          />
         </>
       );
     }
@@ -645,7 +749,7 @@ export function GeneratedTasksSection() {
     }
 
     if (kind === 'moodLog') {
-      return timeSegmentExtra('moodLogTimeSegment', s.moodLogTimeSegment, s.setMoodLogTimeSegment);
+      return moodLogTimeSegmentsExtra();
     }
 
     if (kind === 'weather') {

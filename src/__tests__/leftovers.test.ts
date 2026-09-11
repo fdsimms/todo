@@ -61,6 +61,7 @@ function makeLeftover(overrides: Partial<Leftover> = {}): Leftover {
     finishedAt: null,
     outcome: null,
     frozenAt: null,
+    weightG: null,
     createdAt: new Date(2026, 7, 13, 9, 0, 0).toISOString(),
     useUpTask: null,
     ...overrides,
@@ -70,6 +71,7 @@ function makeLeftover(overrides: Partial<Leftover> = {}): Leftover {
 /** Just enough of a Recipe for the component walk leftoverPartsFor takes. */
 function makeRecipe(id: string, name: string, overrides: Partial<Recipe> = {}): Recipe {
   return {
+    backfillDismissedFields: [],
     id,
     name,
     nameKey: name.toLowerCase(),
@@ -81,6 +83,7 @@ function makeRecipe(id: string, name: string, overrides: Partial<Recipe> = {}): 
     servings: null,
     servingsMax: null,
     recipeYield: null,
+    cookedWeightG: null,
     leftoverKeepDays: null,
     mealType: null,
     tags: [],

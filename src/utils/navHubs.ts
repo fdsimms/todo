@@ -1,5 +1,5 @@
 /**
- * What the side menu contains, as data — nine rows, three of which are hubs.
+ * What the side menu contains, as data — ten rows, three of which are hubs.
  *
  * The menu used to be eighteen flat rows of equal weight, about twice what
  * fits on a phone, so half of it lived below a fold nothing announced. Reading
@@ -43,6 +43,8 @@ export interface NavContentCounts {
   templates: number;
   people?: number;
   mood?: number;
+  medications?: number;
+  foodLog?: number;
 }
 
 export type NavHubId = 'kitchen' | 'organize' | 'history';
@@ -93,9 +95,7 @@ const KITCHEN_HUB: NavHub = {
     // still `Kitchen` — the same split as "Stack" over `TaskGroup`, and the
     // reason is written up where the label was chosen.
     { route: 'Kitchen', label: 'Pantry', keywords: ['fridge', 'freezer', 'kitchen', 'inventory', 'use by'] },
-    // Folded in from its own menu row: it is a shelf for recipes, so it
-    // belongs beside them rather than one tap away among the task shelves.
-    { route: 'Cookbooks', label: 'Cookbooks', keywords: ['collections', 'shelf'] },
+    { route: 'FoodLog', label: 'Food log', keywords: ['ate', 'eaten', 'calories', 'diary', 'nutrition', 'macros'] },
   ],
 };
 
@@ -120,6 +120,8 @@ const HISTORY_HUB: NavHub = {
     { route: 'Logbook', label: 'Logbook', keywords: ['done', 'completed', 'finished'] },
     { route: 'Stats', label: 'Stats', keywords: ['numbers', 'charts', 'streaks', 'progress'] },
     { route: 'Mood', label: 'Mood', keywords: ['feelings', 'symptoms', 'how i feel'] },
+    { route: 'Medications', label: 'Medications', keywords: ['medicine', 'pills', 'tablets', 'dose', 'supplement', 'inhaler', 'painkiller'] },
+    { route: 'Weight', label: 'Weight', keywords: ['scale', 'kg', 'lb', 'pounds', 'body', 'mass'] },
     { route: 'Archived', label: 'Archived', keywords: ['paused', 'filed', 'put away'] },
   ],
 };
@@ -168,6 +170,19 @@ export const NAV_MENU_ROWS: readonly NavMenuRow[] = [
       route: 'Reminders',
       label: 'Reminders',
       keywords: ['upcoming', 'alerts', 'notifications', 'alarm'],
+    },
+  },
+  // Goes through one field at a time and offers the items missing it — a
+  // lens over tasks, categories, projects, people and grocery items that
+  // already exist, so it's shown unconditionally in simplified mode the same
+  // as Calendar and Stuck (see simpleMode.ts).
+  {
+    kind: 'screen',
+    icon: 'flash-outline',
+    destination: {
+      route: 'Backfill',
+      label: 'Backfill',
+      keywords: ['fill in', 'missing', 'empty fields', 'estimates', 'categories', 'tidy up'],
     },
   },
   { kind: 'hub', hub: KITCHEN_HUB },

@@ -58,6 +58,7 @@ export function blankPerson(name: string, sortOrder: number): Person {
     askAbout: '',
     backfillDismissedFields: [],
     groupId: null,
+    location: null,
   };
 }
 
@@ -77,6 +78,7 @@ export type PersonPatch = Partial<Pick<Person,
   // `updateProject`, and there is nothing about it worth a setter of its own.
   | 'backfillDismissedFields'
   | 'groupId'
+  | 'location'
 >>;
 
 interface PersonStore {

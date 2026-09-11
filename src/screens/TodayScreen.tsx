@@ -62,6 +62,7 @@ import {
   mealContextRows,
   kitchenContextRows,
   healthContextRows,
+  weatherContextRows,
   plannedUsesToday,
   insertContextRows,
   withoutContextRows,
@@ -89,6 +90,7 @@ import { useSettingsStore, type MealsOnToday } from '../store/useSettingsStore';
 import { useShallow } from 'zustand/react/shallow';
 import { MAX_SUGGESTED_PINS } from '../utils/pinSuggest';
 import { SuggestedPinsSheet } from '../components/SuggestedPinsSheet';
+import { MorningCheckInSheet } from '../components/MorningCheckInSheet';
 import { TaskItem } from '../components/TaskItem';
 import { TaskGroupHeader } from '../components/TaskGroupHeader';
 import { TaskGroupBody } from '../components/TaskGroupBody';
@@ -121,6 +123,7 @@ import { draftFromExtractedEvent } from '../utils/calendarEventImport';
 import type { TaskKind } from '../utils/taskKinds';
 import { TemplatePickerSheet } from '../components/TemplatePickerSheet';
 import { ApplyTemplateSheet } from '../components/ApplyTemplateSheet';
+import { TemplateAppliedToast } from '../components/TemplateAppliedToast';
 import { SortFilterSheet } from '../components/SortFilterSheet';
 import { TodayOptionsMenu } from '../components/TodayOptionsMenu';
 import { CategoryOrderSheet } from '../components/CategoryOrderSheet';
@@ -138,9 +141,11 @@ import { useMealPlanStore } from '../store/useMealPlanStore';
 import { useRecipeStore } from '../store/useRecipeStore';
 import { selectTodayMealEntries, recipeIndex } from '../utils/mealPlan';
 import { getDayStart, getLogicalDayKey } from '../utils/dateUtils';
+import { morningCheckInTasks } from '../utils/morningCheckIn';
 import { addDays } from 'date-fns/addDays';
 import { useCalendarStore } from '../store/useCalendarStore';
 import { useHealthStore } from '../store/useHealthStore';
+import { useWeatherStore } from '../store/useWeatherStore';
 import { eventsIn, type BusyEvent } from '../utils/calendarBusy';
 import { useHiddenEventsStore } from '../store/useHiddenEventsStore';
 import { hiddenEventKey } from '../utils/hiddenEvents';
@@ -638,6 +643,7 @@ export function TodayScreen() {
   const [deloadVisible, setDeloadVisible] = useState(false);
   const [lookAheadVisible, setLookAheadVisible] = useState(false);
   const [suggestedPinsVisible, setSuggestedPinsVisible] = useState(false);
+  const [morningCheckInVisible, setMorningCheckInVisible] = useState(false);
   const [pullVisible, setPullVisible] = useState(false);
   // undefined = unscoped (opened from the "…" menu's "Pull from projects");
   // set = opened from the quiet-project nudge, restricted to those projects.
@@ -734,6 +740,7 @@ export function TodayScreen() {
   // then the apply sheet takes over for anchors and the item checklist.
   const [templatePickerVisible, setTemplatePickerVisible] = useState(false);
   const [applyTemplate, setApplyTemplate] = useState<TaskTemplate | null>(null);
+  const [templateAppliedCount, setTemplateAppliedCount] = useState<number | null>(null);
 
   // Collapse any expanded task when navigating away from this tab so it
   // isn't still expanded when the user comes back.
@@ -830,6 +837,17 @@ export function TodayScreen() {
     setHandledOpenFocus(route.params.openFocusSession);
     setFocusSessionVisible(true);
   }, [route.params?.openFocusSession, handledOpenFocus]);
+
+  // The same handoff again, for a short-night health task's own link
+  // (dundundun://deload — see utils/healthRules.ts). DeloadSheet already reads
+  // the short-sleep note live off the health store below, so there's nothing
+  // to pass along beyond opening it.
+  const [handledOpenDeload, setHandledOpenDeload] = useState<number | undefined>(undefined);
+  useEffect(() => {
+    if (route.params?.openDeload === undefined || route.params.openDeload === handledOpenDeload) return;
+    setHandledOpenDeload(route.params.openDeload);
+    setDeloadVisible(true);
+  }, [route.params?.openDeload, handledOpenDeload]);
 
   // Claims completions queued by the Today widget's checkbox and by Live
   // Activity's Done button (see useWidgetCompletionStore / widgetSync.ts).
@@ -1077,6 +1095,11 @@ export function TodayScreen() {
       const subscription = AppState.addEventListener('change', state => {
         if (state === 'active') {
           useTaskStore.getState().checkVacationExpiry();
+          // Straight after the expiry, the order maintenancePasses uses and for
+          // its reason: opening the app on the morning you fly is the moment
+          // this is for, and a trip ending as another starts must resolve in
+          // that order.
+          useTaskStore.getState().checkAwayVacation();
           // The device's timezone can change while the app sits backgrounded
           // (a flight lands mid-trip) — a phone left closed never sees a
           // cold start, so this is the only chance to notice before the
@@ -1286,6 +1309,33 @@ export function TodayScreen() {
 
   const dayResetTime = useSettingsStore(s => s.dayResetTime);
 
+  // The morning check-in: recurring tasks whose day already passed with
+  // nothing said about them. Shown once per logical day, on this screen's
+  // first mount rather than gated behind focus/foreground — reopening the
+  // app later the same day shouldn't ask twice, which is exactly what
+  // morningCheckInLastDayKey is for (same "shown, not answered" reading as
+  // moodLogLastDayKey/pantryReviewLastDayKey). The candidate list itself
+  // stays live off `allTasks` so answering a row inside the sheet shrinks it
+  // without needing its own refresh.
+  const morningCheckInLastDayKey = useSettingsStore(s => s.morningCheckInLastDayKey);
+  const setMorningCheckInLastDayKey = useSettingsStore(s => s.setMorningCheckInLastDayKey);
+  const morningCheckInCandidates = useMemo(
+    () => morningCheckInTasks(allTasks, dayResetTime),
+    [allTasks, dayResetTime]
+  );
+  useEffect(() => {
+    const todayKey = getLogicalDayKey(new Date(), dayResetTime);
+    if (morningCheckInLastDayKey === todayKey) return;
+    if (morningCheckInCandidates.length === 0) return;
+    setMorningCheckInVisible(true);
+    setMorningCheckInLastDayKey(todayKey);
+    // Only the day-key gate belongs here — re-running this effect as tasks
+    // change (e.g. while the sheet is open answering rows) must not reopen
+    // it, so the candidate list and the visible flag are deliberately left
+    // out of the dependency array.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
+
   // The one place the mood log reaches back into Today — one line under
   // "Lighten today", and only while a run of low days is actually going. See
   // lowMoodDeloadNote for why it is a line in a menu rather than a banner or a
@@ -1312,6 +1362,14 @@ export function TodayScreen() {
   const healthReadEnabled = useSettingsStore(s => s.healthReadEnabled);
   const healthCategory = useSettingsStore(s => s.healthCategory);
   const healthToday = useHealthStore(s => s.today);
+
+  // Today's reading and tomorrow's forecast, filed under the same category the
+  // "sunny -> sunscreen"-style rule tasks land in (`weatherTaskCategory`) —
+  // that's also this row's off switch, and `useWeatherSync` in App.tsx is what
+  // keeps the snapshot current, same split useHealthSync draws above.
+  const weatherTaskCategory = useSettingsStore(s => s.weatherTaskCategory);
+  const weatherSnapshot = useWeatherStore(s => s.snapshot);
+  const weatherSnapshotDayKey = useWeatherStore(s => s.snapshotDayKey);
 
   // The second line the same menu can carry, and the health feature's only
   // reach into Today beyond its own row. Gated on the *read* rather than on the
@@ -1626,7 +1684,11 @@ export function TodayScreen() {
     return taskGroups
       .map(group => ({
         group,
-        children: (childrenByGroupId.get(group.id) ?? []).filter(t => filteredIds.has(t.id)),
+        // Rostered first — otherwise a completed-today tombstone and the
+        // fresh occurrence it just spawned can both land in `filtered` at
+        // once (see groupRoster's own note on why that pair can look
+        // "relevant today" together) and the tray renders both.
+        children: groupRoster(childrenByGroupId.get(group.id) ?? NO_GROUP_CHILDREN).filter(t => filteredIds.has(t.id)),
       }))
       .filter(g => g.children.length > 0);
   }, [taskGroups, childrenByGroupId, filtered]);
@@ -1639,10 +1701,37 @@ export function TodayScreen() {
     return taskGroups
       .map(group => ({
         group,
-        children: (childrenByGroupId.get(group.id) ?? []).filter(t => upcomingTaskIds.has(t.id)),
+        // Rostered first, same reason visibleGroupItems is — see its comment.
+        children: groupRoster(childrenByGroupId.get(group.id) ?? NO_GROUP_CHILDREN).filter(t => upcomingTaskIds.has(t.id)),
       }))
       .filter(g => g.children.length > 0);
   }, [taskGroups, childrenByGroupId, upcomingTaskIds]);
+
+  // Which stacks are on Today at all — a visible child or a Later Today one,
+  // since both draw a header on this screen and a stack crossing from one to
+  // the other hasn't arrived from anywhere. Built from visibleTasks rather
+  // than `filtered` on purpose: the priority/effort/reminder filters narrow
+  // what's on screen, not what's on the day, and a stack that dropped out of
+  // a filter would otherwise re-collapse the moment the filter cleared.
+  const todayGroupIds = useMemo(() => {
+    if (!showingToday) return null;
+    const ids = new Set<string>();
+    for (const t of visibleTasks) if (t.groupId) ids.add(t.groupId);
+    for (const t of upcomingTodayTasks) if (t.groupId) ids.add(t.groupId);
+    return ids;
+  }, [showingToday, visibleTasks, upcomingTodayTasks]);
+
+  // A stack that has just arrived on Today opens collapsed (see
+  // TaskGroup.onToday). Held until both stores have loaded — mid-load every
+  // stack looks absent, and recording that would collapse the lot on every
+  // cold launch rather than only on a genuine arrival.
+  const syncTodayPresence = useTaskGroupStore(s => s.syncTodayPresence);
+  const tasksLoaded = useTaskStore(s => s.initialized);
+  const groupsLoaded = useTaskGroupStore(s => s.initialized);
+  useEffect(() => {
+    if (!tasksLoaded || !groupsLoaded || !todayGroupIds) return;
+    syncTodayPresence(todayGroupIds);
+  }, [tasksLoaded, groupsLoaded, todayGroupIds, syncTodayPresence]);
 
   // Same pairing again, for the Inbox lens: stacks with at least one Inbox
   // member, each paired with just those members. Being in a stack isn't one
@@ -1898,6 +1987,18 @@ export function TodayScreen() {
         category: healthCategory,
       }));
     }
+    // Same gate as health above, and the same reason: a cleared category is
+    // this row's off switch, and it's also what keeps a demo session from
+    // reading a real snapshot left in the store by a previous one — the demo
+    // database has never had a weatherTaskCategory of its own.
+    if (weatherTaskCategory) {
+      rows.push(...weatherContextRows(weatherSnapshot, {
+        todayKey: getLogicalDayKey(new Date(), dayResetTime),
+        snapshotDayKey: weatherSnapshotDayKey,
+        category: weatherTaskCategory,
+        now: new Date(),
+      }));
+    }
     // No category means nowhere to put them — see ensureCalendarEventCategory
     // for why a cleared setting is a real answer rather than a missing one.
     if (calendarEventCategory) {
@@ -1945,6 +2046,7 @@ export function TodayScreen() {
     mealsOnToday, todayMealEntries, recipesById, mealCookTaskCategory, allTasks,
     kitchenOnToday, kitchenEntries, kitchenPlannedUses,
     healthToday, healthCategory, dayResetTime,
+    weatherSnapshot, weatherSnapshotDayKey, weatherTaskCategory,
     minuteTick,
   ]);
 
@@ -2726,6 +2828,10 @@ export function TodayScreen() {
             // already read. The arm is explicit rather than left to fall
             // through, because the fall-through is the meal plan.
             : item.row.kind === 'health' ? undefined
+            // A weather row has nowhere to go either, for the same reason a
+            // health row doesn't: the reading came from another service and
+            // this row already shows the whole of what's known about it.
+            : item.row.kind === 'weather' ? undefined
             : openMealPlan
           }
           onMarkCooked={
@@ -3058,17 +3164,31 @@ export function TodayScreen() {
               <Ionicons name="hourglass-outline" size={iconSize.sm} color={colors.textSecondary} />
             </TouchableOpacity>
           )}
-          {/* Gone during a bulk edit. It unpins every task in one tap, with no
-              confirm and no undo, and it sits a thumb's width from the rows
-              being tapped in a mode whose whole gesture is tapping rows — so
-              the one control here that ignores the selection is also the most
-              expensive thing to hit by accident. Unpinning has a home in that
-              mode already, and it's the right one: the bulk bar's Pin/Unpin,
-              which acts on what was picked. The eye stays, because hiding
-              everything but the pinned tasks is a way to *see* the rows you're
-              selecting among, and it's reversible by tapping it again. */}
+          {/* Gone during a bulk edit. It unpins every task in one tap and has
+              no undo, and it sits a thumb's width from the rows being tapped
+              in a mode whose whole gesture is tapping rows — so the one
+              control here that ignores the selection is also the most
+              expensive thing to hit by accident. A confirm is the guard for
+              that: unlike the eye (reversible by tapping again), unpinning
+              everything can't be undone, so it's the one action here worth
+              stopping to ask about. Unpinning has a home in selection mode
+              already, and it's the right one: the bulk bar's Pin/Unpin, which
+              acts on what was picked. */}
           {!selectionMode && (
-            <TouchableOpacity onPress={clearAllPins} hitSlop={8} accessibilityRole="button">
+            <TouchableOpacity
+              onPress={() => {
+                Alert.alert(
+                  'Unpin all tasks?',
+                  'This removes every task from the Pinned Tasks block. Their own rows are unaffected.',
+                  [
+                    { text: 'Cancel', style: 'cancel' },
+                    { text: 'Unpin all', style: 'destructive', onPress: clearAllPins },
+                  ],
+                );
+              }}
+              hitSlop={8}
+              accessibilityRole="button"
+            >
               <Text style={styles.clearText}>Clear</Text>
             </TouchableOpacity>
           )}
@@ -3873,7 +3993,7 @@ export function TodayScreen() {
               if (recategorizedRecurring) {
                 Alert.alert(
                   'Update recurring task',
-                  'This task repeats. Apply this category change to just this task, or to this and all future occurrences?',
+                  'This task repeats. Apply this category change to just this task, or to it and every future repeat?',
                   [
                     { text: 'Cancel', style: 'cancel' },
                     { text: 'This task', onPress: () => commitDrop('occurrence') },
@@ -4132,8 +4252,16 @@ export function TodayScreen() {
           visible={applyTemplate !== null}
           template={applyTemplate}
           onClose={() => setApplyTemplate(null)}
-          onApplied={tasks => { if (tasks[0]) openEditor(tasks[0]); }}
+          onApplied={tasks => { if (tasks.length > 0) setTemplateAppliedCount(tasks.length); }}
         />
+
+        {templateAppliedCount !== null && (
+          <TemplateAppliedToast
+            count={templateAppliedCount}
+            bottom={insets.bottom + 64 + FAB_SIZE + spacing.md}
+            onDismiss={() => setTemplateAppliedCount(null)}
+          />
+        )}
 
         <EventImportSheet
           visible={eventImportVisible}
@@ -4228,6 +4356,12 @@ export function TodayScreen() {
         <LookAheadSheet
           visible={lookAheadVisible}
           onClose={() => setLookAheadVisible(false)}
+        />
+
+        <MorningCheckInSheet
+          visible={morningCheckInVisible}
+          onClose={() => setMorningCheckInVisible(false)}
+          tasks={morningCheckInCandidates}
         />
 
         <SuggestedPinsSheet

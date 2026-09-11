@@ -110,6 +110,28 @@ describe('addLog', () => {
     state().addLog(3, [{ name: '  ', severity: 1 }]);
     expect(state().logs[0].symptoms).toEqual([]);
   });
+
+  it('writes context tags alongside symptoms', () => {
+    state().addLog(4, [], null, undefined, ['Vacation']);
+    expect(state().logs[0].contextTags).toEqual(['Vacation']);
+    expect(dbInsertMoodLog).toHaveBeenCalledWith(
+      expect.objectContaining({ contextTags: ['Vacation'] })
+    );
+  });
+
+  it('collapses two spellings of one context tag', () => {
+    state().addLog(3, [], null, undefined, ['Vacation', 'vacation']);
+    expect(state().logs[0].contextTags).toEqual(['Vacation']);
+  });
+
+  it('drops a blank context tag', () => {
+    state().addLog(3, [], null, undefined, ['  ']);
+    expect(state().logs[0].contextTags).toEqual([]);
+  });
+
+  it('accepts an entry with only a context tag', () => {
+    expect(state().addLog(null, [], null, undefined, ['Vacation'])).not.toBeNull();
+  });
 });
 
 describe('updateLog', () => {
@@ -132,6 +154,12 @@ describe('updateLog', () => {
   it('shrugs at an id that isn\'t there', () => {
     state().updateLog('nope', { mood: 1 });
     expect(dbUpdateMoodLog).not.toHaveBeenCalled();
+  });
+
+  it('rewrites the context tags, collapsing two spellings of one', () => {
+    const log = state().addLog(2, [])!;
+    state().updateLog(log.id, { contextTags: ['Vacation', 'vacation'] });
+    expect(state().logs[0].contextTags).toEqual(['Vacation']);
   });
 });
 

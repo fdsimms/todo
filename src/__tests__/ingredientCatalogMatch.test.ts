@@ -17,6 +17,7 @@ let seq = 0;
 function makeItem(overrides: Partial<GroceryItem> & { name: string }): GroceryItem {
   const name = overrides.name;
   return {
+    nameFromScan: false,
     id: `id-${++seq}`,
     nameKey: groceryNameKey(name),
     preferredProductId: null,
@@ -48,7 +49,7 @@ function makeItem(overrides: Partial<GroceryItem> & { name: string }): GroceryIt
     usedUpCount: 0,
     spoiledCount: 0,
     lastSpoiledAt: null,
-    varietyOfKey: null, backfillDismissedFields: [],
+    varietyOfKey: null, nutrition: null, backfillDismissedFields: [],
     lastPriceMinor: null,
     lastPricedAt: null,
     lastPriceQuantity: null,
@@ -264,6 +265,28 @@ describe('matchIngredientToCatalog', () => {
     // suggestion that picked one would be a coin flip dressed as a correction.
     const items = [makeItem({ name: 'Beef' }), makeItem({ name: 'Beer' })];
     expect(matchIngredientToCatalog('beet', items, NOW).kind).toBe('unknown');
+  });
+
+  // ─── word-extension refusal ─────────────────────────────────────────────────
+
+  it('will not suggest a more specific product for a shorter, plain ingredient', () => {
+    // "avocados" ranked-matched "Avocado oil" via matchWeight's plural
+    // tolerance — an oil isn't a stand-in for whole avocados (#2246).
+    const items = [makeItem({ name: 'Avocado oil' })];
+    expect(matchIngredientToCatalog('avocados', items, NOW).kind).toBe('unknown');
+  });
+
+  it('will not suggest a qualified product for its plain singular either', () => {
+    const items = [makeItem({ name: 'Onion powder' })];
+    expect(matchIngredientToCatalog('onion', items, NOW).kind).toBe('unknown');
+  });
+
+  it('still offers a lower tier once the word-extension is excluded', () => {
+    const items = [makeItem({ name: 'Avocado oil' }), makeItem({ name: 'Avocado' })];
+    const match = matchIngredientToCatalog('avocados', items, NOW);
+    expect(match.kind).toBe('linked');
+    expect(match.reason).toBe('plural');
+    expect(match.item?.name).toBe('Avocado');
   });
 
   it('refuses a one-character correction on a very short name', () => {

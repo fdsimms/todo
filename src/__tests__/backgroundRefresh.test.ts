@@ -29,6 +29,7 @@ const mockTaskState = {
   initialize: mockRecord('initialize'),
   sweepExpiredTasks: mockRecord('sweepExpiredTasks'),
   checkVacationExpiry: mockRecord('checkVacationExpiry'),
+  checkAwayVacation: mockRecord('checkAwayVacation'),
   rolloverQuotas: mockRecord('rolloverQuotas'),
   sweepOvershootQuotas: mockRecord('sweepOvershootQuotas'),
   dripStalledProjects: mockRecord('dripStalledProjects'),
@@ -38,15 +39,23 @@ const mockTaskState = {
   checkPantryReviewTasks: mockRecord('checkPantryReviewTasks'),
   checkPantryCheckTasks: mockRecord('checkPantryCheckTasks'),
   checkMealShortfallTasks: mockRecord('checkMealShortfallTasks'),
+  checkMealLogNudgeTasks: mockRecord('checkMealLogNudgeTasks'),
   checkCalendarReviewTasks: mockRecord('checkCalendarReviewTasks'),
   checkWeatherTasks: mockRecord('checkWeatherTasks'),
   checkScreenTimeTasks: mockRecord('checkScreenTimeTasks'),
   checkHealthTasks: mockRecord('checkHealthTasks'),
   checkMoodTasks: mockRecord('checkMoodTasks'),
   checkWeekendNudgeTasks: mockRecord('checkWeekendNudgeTasks'),
+  // Sync-shaped like every other mock here even though the real pass is
+  // async (`checkWeighInTasks(): Promise<void>`) — the caller wraps it as
+  // `() => { void tasks().checkWeighInTasks(); }`, so what runs synchronously
+  // during the pass is this call itself, and that's the only part this file
+  // is testing.
+  checkWeighInTasks: mockRecord('checkWeighInTasks'),
   checkBirthdayTasks: mockRecord('checkBirthdayTasks'),
   checkBirthdayGiftTasks: mockRecord('checkBirthdayGiftTasks'),
   checkReachOutTasks: mockRecord('checkReachOutTasks'),
+  sweepTaskPenalties: mockRecord('sweepTaskPenalties'),
   purgeOldCompletedTasks: mockRecord('purgeOldCompletedTasks'),
   tasks: [] as unknown[],
 };
@@ -77,7 +86,12 @@ jest.mock('../store/useLeftoverStore', () => ({
   },
 }));
 jest.mock('../store/useGroceryStore', () => ({
-  useGroceryStore: { getState: () => ({ tripShopId: null, tripStartedAt: null, shops: [] }) },
+  useGroceryStore: {
+    getState: () => ({
+      tripShopId: null, tripStartedAt: null, shops: [],
+      checkAwayGroceryList: mockRecord('checkAwayGroceryList'),
+    }),
+  },
 }));
 jest.mock('../store/useEventReminderStore', () => ({
   useEventReminderStore: { getState: () => ({ remindersByKey: {} }) },
@@ -90,6 +104,10 @@ jest.mock('../utils/notifications', () => ({
 }));
 jest.mock('../utils/widgetSync', () => ({
   writeWidgetSnapshotNow: () => { mockCalls.push('writeWidgetSnapshot'); },
+}));
+jest.mock('../utils/appShieldReconcile', () => ({
+  reconcileAppShield: () => { mockCalls.push('reconcileAppShield'); return null; },
+  gateTitlesNow: () => [],
 }));
 
 import * as TaskManager from 'expo-task-manager';
@@ -124,13 +142,17 @@ describe('runBackgroundRefresh', () => {
     // added to the launch sequence has to reach the background run too, and a
     // hand-written expectation here is exactly how that would stop being true.
     const passNames = [
-      'checkVacationExpiry', 'rolloverQuotas', 'sweepOvershootQuotas', 'dripStalledProjects',
+      'checkVacationExpiry', 'checkAwayVacation', 'checkAwayGroceryList',
+      'rolloverQuotas', 'sweepOvershootQuotas',
+      'dripStalledProjects',
       'checkMealPlanNudge', 'checkProjectReviewTasks', 'checkMealSlotTasks',
       'checkPantryReviewTasks', 'checkPantryCheckTasks', 'checkMealShortfallTasks',
+      'checkMealLogNudgeTasks',
       'checkCalendarReviewTasks', 'checkWeatherTasks', 'checkScreenTimeTasks', 'checkHealthTasks',
-      'checkMoodTasks', 'checkWeekendNudgeTasks',
+      'checkMoodTasks', 'checkWeekendNudgeTasks', 'checkWeighInTasks',
       'checkBirthdayTasks', 'checkBirthdayGiftTasks', 'checkReachOutTasks',
       'reconcileAllLeftoverTasks', 'checkScheduledTemplates',
+      'sweepTaskPenalties',
     ];
     expect(expected).toHaveLength(passNames.length);
     expect(mockCalls.slice(0, passNames.length)).toEqual(passNames);
@@ -155,6 +177,16 @@ describe('runBackgroundRefresh', () => {
     // and a snapshot before them would describe the old list.
     expect(mockCalls.indexOf('rescheduleAllReminders')).toBeGreaterThan(mockCalls.indexOf('checkBirthdayTasks'));
     expect(mockCalls.indexOf('writeWidgetSnapshot')).toBeGreaterThan(mockCalls.indexOf('rescheduleAllReminders'));
+  });
+
+  it('reconciles the app shield after the passes, so a block charged while closed applies', () => {
+    runBackgroundRefresh();
+    // The sweep inside the passes is what charges a penalty, and the day roll
+    // is what makes a gate task due. Until this ran here, both wrote a block
+    // nothing applied: the reconciler was a React hook, so the shield waited
+    // for a foreground the block existed to make less appealing.
+    expect(mockCalls).toContain('reconcileAppShield');
+    expect(mockCalls.indexOf('reconcileAppShield')).toBeGreaterThan(mockCalls.indexOf('sweepTaskPenalties'));
   });
 
   it('opens the database on a cold background launch, where nothing has', () => {

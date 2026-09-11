@@ -36,17 +36,17 @@ import { ReorderableList } from '../components/ReorderableList';
 import { SwipeableRow } from '../components/SwipeableRow';
 import { ApplyTemplateSheet } from '../components/ApplyTemplateSheet';
 import { TemplateEditor } from '../components/TemplateEditor';
-import { TaskEditor } from '../components/TaskEditor';
+import { TemplateAppliedToast } from '../components/TemplateAppliedToast';
 import { ListBulkBar } from '../components/ListBulkBar';
 import { useRowSelection } from '../hooks/useRowSelection';
 import { groupTemplatesByCategory, resolveTemplateDrop, type TemplateListItem } from '../utils/templateGrouping';
 import { useColors } from '../theme/ThemeContext';
-import { spacing, font, fontWeight, radius, interaction, type Colors } from '../theme';
+import { spacing, font, fontWeight, radius, interaction, flattenOverlay, type Colors } from '../theme';
 import { haptics } from '../utils/haptics';
 import { confirmDelete } from '../utils/confirmDelete';
 import { animateLayout } from '../utils/layoutAnimation';
 import { templateHasBrokenRefs, templateHasMissingRefs } from '../utils/templateUtils';
-import type { Task, TaskTemplate } from '../types';
+import type { TaskTemplate } from '../types';
 
 // The add button, naming what a release right now would do.
 function AddTemplateFabWithDropLabel({
@@ -86,10 +86,10 @@ export function TemplatesScreen() {
   const [quickAddVisible, setQuickAddVisible] = useState(false);
   const [applyTemplateId, setApplyTemplateId] = useState<string | null>(null);
   const [editingTemplate, setEditingTemplate] = useState<TaskTemplate | null>(null);
-  // Opened straight off a successful apply, to the first task it created —
-  // this screen has no task list of its own to land the created tasks in, so
-  // without this the run's only trace is wherever its container happens to be.
-  const [editingTask, setEditingTask] = useState<Task | null>(null);
+  // Named straight off a successful apply — this screen has no task list of
+  // its own to land the created tasks in, so without this the run leaves no
+  // trace beyond wherever its container happens to be.
+  const [templateAppliedCount, setTemplateAppliedCount] = useState<number | null>(null);
   const [bulkBarHeight, setBulkBarHeight] = useState(0);
 
   // Selection is entered from the header rather than from a row: both of a
@@ -384,7 +384,7 @@ export function TemplatesScreen() {
         visible={applyTemplateObj !== null}
         template={applyTemplateObj}
         onClose={() => setApplyTemplateId(null)}
-        onApplied={tasks => { if (tasks[0]) setEditingTask(tasks[0]); }}
+        onApplied={tasks => { if (tasks.length > 0) setTemplateAppliedCount(tasks.length); }}
       />
 
       <TemplateEditor
@@ -393,11 +393,13 @@ export function TemplatesScreen() {
         onClose={() => setEditingTemplate(null)}
       />
 
-      <TaskEditor
-        visible={editingTask !== null}
-        task={editingTask}
-        onClose={() => setEditingTask(null)}
-      />
+      {templateAppliedCount !== null && (
+        <TemplateAppliedToast
+          count={templateAppliedCount}
+          bottom={insets.bottom + tabBarHeight + FAB_SIZE + spacing.md}
+          onDismiss={() => setTemplateAppliedCount(null)}
+        />
+      )}
     </View>
   );
 }
@@ -570,8 +572,11 @@ const makeStyles = (colors: Colors) => StyleSheet.create({
     paddingVertical: 10,
     gap: spacing.md,
   },
+  // Opaque, not a translucent tint directly: this can be applied the instant
+  // a swipe-select commits, while SwipeableRow's own panel is still open
+  // behind this row mid-close-animation — see the note on `flattenOverlay`.
   tplRowSelected: {
-    backgroundColor: colors.accent + '1A',
+    backgroundColor: flattenOverlay(colors.accent + '1A', colors.bgSecondary),
   },
   dropSlot: {
     marginHorizontal: spacing.md,

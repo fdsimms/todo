@@ -16,6 +16,7 @@ import type { GroceryItem } from '../types';
 
 function item(overrides: Partial<GroceryItem> = {}): GroceryItem {
   return {
+    nameFromScan: false,
     id: 'item-1',
     name: 'Spinach',
     nameKey: 'spinach',
@@ -48,7 +49,7 @@ function item(overrides: Partial<GroceryItem> = {}): GroceryItem {
     usedUpCount: 0,
     spoiledCount: 0,
     lastSpoiledAt: null,
-    varietyOfKey: null, backfillDismissedFields: [],
+    varietyOfKey: null, nutrition: null, backfillDismissedFields: [],
     lastPriceMinor: null,
     lastPricedAt: null,
     lastPriceQuantity: null, priceHistory: [],

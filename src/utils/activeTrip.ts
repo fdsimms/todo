@@ -1,5 +1,5 @@
 import type { GroceryItem, ItemProduct, ItemShopLink, ItemSubLink, Shop } from '../types';
-import { exclusiveShopFor, isUnavailable, lacksWantedProduct, primaryShopFor } from './groceryShops';
+import { exclusiveShopFor, isOutOfRange, isUnavailable, lacksWantedProduct, primaryShopFor } from './groceryShops';
 import { describePreferredProduct, describeProduct, productsForItem } from './groceryProduct';
 import { substitutesFor } from './itemSubs';
 
@@ -140,13 +140,13 @@ export function resolveActiveTrip(
  * come to be read as noise. Same discipline as `shoppingTrip.ts`, where the
  * only line allowed to assert an absence is the one the user asserted first.
  */
-export type TripMarkerKind = 'unavailable' | 'withoutProduct' | 'only' | 'usually';
+export type TripMarkerKind = 'unavailable' | 'outOfRange' | 'withoutProduct' | 'only' | 'usually';
 
 export interface TripMarker {
   kind: TripMarkerKind;
   /**
-   * For `unavailable` and `withoutProduct` this is the store you're at;
-   * otherwise the other one.
+   * For `unavailable`, `outOfRange` and `withoutProduct` this is the store
+   * you're at; otherwise the other one.
    */
   shop: Shop;
   /** `withoutProduct` only: the product the item insists on, in its own words. */
@@ -163,13 +163,43 @@ export interface TripMarker {
    */
   alternativeProduct?: string;
   /**
-   * `unavailable` only: the oldest substitute on record for this item, if any
-   * (see itemSubs.substitutesFor). This is the highest-value moment for a
-   * substitute link — you're standing in front of the empty shelf — so the
-   * marker rides the clause rather than the row growing a fourth caption; see
-   * describeTripMarker and GroceryRow's tap-to-swap.
+   * `unavailable` and `outOfRange`: the oldest substitute on record for this
+   * item that this store can actually sell you, if any (see
+   * itemSubs.substitutesFor, and substituteAt for the second half of that).
+   * This is the highest-value moment for a substitute link — you're standing in
+   * front of the empty shelf — so the marker rides the clause rather than the
+   * row growing a fourth caption; see describeTripMarker and GroceryRow's
+   * tap-to-swap.
+   *
+   * It rides both negatives because to somebody holding the list they mean the
+   * same thing: this isn't coming home from here, so what else would do?
    */
   substitute?: GroceryItem;
+}
+
+/**
+ * The substitute to offer alongside a negative, or undefined.
+ *
+ * Oldest on record, which is `substitutesFor`'s own order, **minus anything
+ * this store is equally unable to sell you**. Offering a swap the shop hasn't
+ * got either is the same error `alternativeProductAt` already refuses one level
+ * down, at the product: the app recommending here rather than listing, and a
+ * recommendation it has already been told is wrong.
+ *
+ * `isOutOfRange` is false for every item at an unscoped store, so this changes
+ * nothing for a shop nobody has given a range to — which is every shop until
+ * somebody does.
+ */
+function substituteAt(
+  item: GroceryItem,
+  links: readonly ItemShopLink[],
+  trip: Shop,
+  subLinks: readonly ItemSubLink[],
+  items: readonly GroceryItem[]
+): GroceryItem | undefined {
+  return substitutesFor(item.id, subLinks, items).find(
+    s => !isOutOfRange(trip, s.item, links)
+  )?.item;
 }
 
 export function tripMarkerFor(
@@ -186,7 +216,7 @@ export function tripMarkerFor(
     // Not stocking it at all outranks not having your product — it's the
     // stronger claim, and both are the user's own.
     if (isUnavailable(here)) {
-      const substitute = substitutesFor(item.id, subLinks, items)[0]?.item;
+      const substitute = substituteAt(item, links, trip, subLinks, items);
       return { kind: 'unavailable', shop: trip, substitute };
     }
     if (lacksWantedProduct(here, item)) {
@@ -204,11 +234,26 @@ export function tripMarkerFor(
         };
       }
     }
-    // Otherwise this store covers the row, so say nothing.
+    // Otherwise this store covers the row, so say nothing. Note that this is
+    // also what silences the aisle scope below: a positive link is the more
+    // specific statement and outranks a range, which is `isOutOfRange`'s own
+    // rule and the reason it is safe for a scope to be drawn roughly.
     return null;
   }
 
-  // Nothing on record here. Anything to say now has to come from a link naming
+  // Nothing on record here, so the store's own declared range gets to speak.
+  // It comes before the two clauses about *other* stores because it is about
+  // this one: standing in a pharmacy, "the pharmacy doesn't sell this" is the
+  // useful half and "usually Trader Joe's" is trivia. Same silence rule as the
+  // rest of the module applies to everything it doesn't cover — an unscoped
+  // store says nothing here, which is every store until somebody says
+  // otherwise.
+  if (isOutOfRange(trip, item, links)) {
+    const substitute = substituteAt(item, links, trip, subLinks, items);
+    return { kind: 'outOfRange', shop: trip, substitute };
+  }
+
+  // Anything left to say has to come from a link naming
   // a *different* store — and `exclusiveShopFor` before `primaryShopFor`
   // because "only" is the stronger claim when both would answer. Both already
   // drop the stores said to lack your product, so on a strict item "Only at
@@ -311,6 +356,21 @@ export function describeTripMarker(marker: TripMarker): string {
       return marker.alternativeProduct
         ? `Yours isn’t here · try ${marker.alternativeProduct}`
         : `No ${marker.wantedProduct} here`;
+    // Names the store rather than the aisle it doesn't sell. "Not at CVS"
+    // answers the question the row raises; "CVS doesn't sell Frozen" answers a
+    // question about the shop, which is one the aisles sheet is for. It also
+    // deliberately reads the same as the `unavailable` case above, because to
+    // somebody holding the list the two mean the same thing — the difference
+    // between them is about where the claim came from, and that is not the
+    // reader's problem at a shelf.
+    case 'outOfRange':
+      // Same two shapes as `unavailable` above, for the same reason and with
+      // the same trade: once there's something to grab instead, the store's own
+      // name is the one fact on the row you don't need, because you're standing
+      // in it.
+      return marker.substitute
+        ? `Not here · or ${marker.substitute.name}`
+        : `Not at ${marker.shop.name}`;
     case 'only':
       return `Only at ${marker.shop.name}`;
     case 'usually':
@@ -326,10 +386,12 @@ export function describeTripMarker(marker: TripMarker): string {
  * negative claim on every row under a header that already said it once is
  * exactly the over-stuffed caption that case was shortened to avoid.
  *
- * Every row under that header is `unavailable` by construction, so there is
- * nothing left to say beyond the one thing the header doesn't know: what to
- * grab instead. Empty when there's no substitute on record — the row says
- * nothing at all, same silence rule as everywhere else in this module.
+ * Every row under that header is `unavailable` or `outOfRange` by
+ * construction, so there is nothing left to say beyond the one thing the header
+ * doesn't know: what to grab instead. Empty when there's no substitute on
+ * record — the row says nothing at all, same silence rule as everywhere else in
+ * this module — and empty a second way for a store with a range, which is that
+ * a substitute it also can't sell you has been dropped before it got here.
  */
 export function describeGroupedUnavailable(marker: TripMarker): string {
   return marker.substitute ? `or ${marker.substitute.name}` : '';

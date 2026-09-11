@@ -11,6 +11,7 @@ import { useColors } from '../../theme/ThemeContext';
 import { spacing } from '../../theme';
 import { WhenPicker } from '../../components/WhenPicker';
 import { getTaskDayStart } from '../../utils/dateUtils';
+import { clockTimeToken } from '../../utils/clockTime';
 import { EXPIRED_TASK_GRACE_OPTIONS, expiredTaskGraceLabel, type ExpiredTaskGraceDays } from '../../utils/expiredTaskGrace';
 import { CountStepper } from '../../components/CountStepper';
 import { SettingsSection } from './SettingsSection';
@@ -70,6 +71,8 @@ export function TasksProjectsSettings() {
   const setVacationMode = useSettingsStore(s => s.setVacationMode);
   const vacationStart = useSettingsStore(s => s.vacationStart);
   const vacationEnd = useSettingsStore(s => s.vacationEnd);
+  const destinationForecastEnabled = useSettingsStore(s => s.destinationForecastEnabled);
+  const setDestinationForecastEnabled = useSettingsStore(s => s.setDestinationForecastEnabled);
   const setVacationEnd = useSettingsStore(s => s.setVacationEnd);
   const autoRemoveExpiredTasks = useSettingsStore(s => s.autoRemoveExpiredTasks);
   const setAutoRemoveExpiredTasks = useSettingsStore(s => s.setAutoRemoveExpiredTasks);
@@ -174,6 +177,65 @@ export function TasksProjectsSettings() {
     // Straight into the picker the first time: the setting does nothing at all
     // until some apps are chosen, and a toggle that visibly changes nothing is
     // how somebody concludes the feature is broken.
+    if (shieldTotal === 0) await handleChooseApps();
+  };
+
+  const penaltyShieldEnabled = useSettingsStore(s => s.penaltyShieldEnabled);
+  const gateShieldEnabled = useSettingsStore(s => s.gateShieldEnabled);
+  const setGateShieldEnabled = useSettingsStore(s => s.setGateShieldEnabled);
+  const setPenaltyShieldEnabled = useSettingsStore(s => s.setPenaltyShieldEnabled);
+  const penaltyShieldUntil = useSettingsStore(s => s.penaltyShieldUntil);
+  const setPenaltyShieldUntil = useSettingsStore(s => s.setPenaltyShieldUntil);
+  const use24HourTime = useSettingsStore(s => s.use24HourTime);
+  // Only while one is actually being served. A row reporting a time that has
+  // already passed reads as a block still in force.
+  const penaltyUntilLabel = penaltyShieldUntil && new Date(penaltyShieldUntil) > new Date()
+    ? format(new Date(penaltyShieldUntil), clockTimeToken(use24HourTime))
+    : null;
+
+
+  const handleToggleGate = async () => {
+    haptics.tap();
+    if (gateShieldEnabled) {
+      setGateShieldEnabled(false);
+      return;
+    }
+    const bridge = screenTimeBridge();
+    if (!bridge) return;
+    const status = await bridge.requestScreenTimeAuthorization();
+    if (status !== 'approved') {
+      Alert.alert(
+        'Screen Time access needed',
+        'Blocking apps until a task is done needs Screen Time access. You can grant it in Settings, under Screen Time.',
+      );
+      return;
+    }
+    setGateShieldEnabled(true);
+    if (shieldTotal === 0) await handleChooseApps();
+  };
+
+  const handleTogglePenalty = async () => {
+    haptics.tap();
+    if (penaltyShieldEnabled) {
+      setPenaltyShieldEnabled(false);
+      // Switching the feature off is the way out of a block being served, so
+      // the block must not be left waiting to resume the moment it comes back
+      // on. This is deliberately the *only* way out from inside the app: a
+      // "lift it now" button would undo the one thing the feature is for.
+      setPenaltyShieldUntil(null);
+      return;
+    }
+    const bridge = screenTimeBridge();
+    if (!bridge) return;
+    const status = await bridge.requestScreenTimeAuthorization();
+    if (status !== 'approved') {
+      Alert.alert(
+        'Screen Time access needed',
+        'Blocking apps when you fail a task needs Screen Time access. You can grant it in Settings, under Screen Time.',
+      );
+      return;
+    }
+    setPenaltyShieldEnabled(true);
     if (shieldTotal === 0) await handleChooseApps();
   };
 
@@ -357,8 +419,8 @@ export function TasksProjectsSettings() {
           entryId="defaultProjectNudgeCadence"
           icon="notifications-outline"
           iconColor={defaultProjectNudgeCadenceDays > 0 ? colors.accent : undefined}
-          label="Default review cadence"
-          hint="What a new project's “Bring this up” starts at. Never by default, which keeps a new project out of nudges entirely; anything else opts it in at that cadence. This doesn't touch projects you've already created, and each one can still override it."
+          label="Bring new projects up every"
+          hint="What a new project's “Bring this up” starts at. Never by default, so a new project is never brought up on its own; pick a length and new projects start doing so. This doesn't touch projects you've already created, and each one can still be changed on its own."
           value={describeCadence(defaultProjectNudgeCadenceDays)}
           tight
         />
@@ -370,7 +432,7 @@ export function TasksProjectsSettings() {
             max={CADENCE_UNIT_MAX[defaultCadence.unit]}
             allowNull
             emptyLabel="Never"
-            label="Default review cadence"
+            label="Bring new projects up every"
             describeValue={n => describeCadence(fromCadenceParts({ ...defaultCadence, count: n }))}
           />
           <View style={styles.cadenceUnitRow}>
@@ -387,7 +449,7 @@ export function TasksProjectsSettings() {
                   }}
                   accessibilityRole="radio"
                   accessibilityState={{ selected: active }}
-                  accessibilityLabel={`Default nudge cadence in ${cadenceUnitLabel(unit)}`}
+                  accessibilityLabel={`Bring new projects up every so many ${cadenceUnitLabel(unit).toLowerCase()}`}
                 >
                   <Text style={[styles.pillText, active && styles.pillTextActive]}>
                     {cadenceUnitLabel(unit)}
@@ -648,6 +710,60 @@ export function TasksProjectsSettings() {
                 />
               </>
             )}
+            <View style={styles.sep} />
+            <SettingsRow
+              entryId="gateShield"
+              icon="lock-closed-outline"
+              iconColor={gateShieldEnabled ? colors.accent : undefined}
+              label="Block apps until a task is done"
+              hint={gateShieldEnabled
+                ? 'Tasks you mark keep the same apps blocked while they sit on Today undone. Finishing one, or moving it to another day, unblocks them'
+                : 'No task holds your apps'}
+              toggle={gateShieldEnabled}
+              onPress={handleToggleGate}
+            />
+            <View style={styles.sep} />
+            <SettingsRow
+              entryId="penaltyShield"
+              icon="alert-circle-outline"
+              iconColor={penaltyShieldEnabled ? colors.accent : undefined}
+              label="Block apps when you fail a task"
+              hint={penaltyShieldEnabled
+                ? 'Each task sets how long. The same apps are blocked when you miss a cutoff, or log a slip on a task you’re avoiding'
+                : 'Failing a task blocks nothing'}
+              toggle={penaltyShieldEnabled}
+              onPress={handleTogglePenalty}
+            />
+            {penaltyShieldEnabled && (
+              <>
+                {shieldTotal === 0 && !focusShieldEnabled && (
+                  <>
+                    <View style={styles.sep} />
+                    <SettingsRow
+                      entryId="penaltyShieldApps"
+                      icon="apps-outline"
+                      label="Apps to block"
+                      hint="The same set the focus shield uses. iOS doesn’t tell the app which ones you picked, so only the count shows here."
+                      value={shieldSelectionLabel}
+                      onPress={handleChooseApps}
+                    />
+                  </>
+                )}
+                {penaltyUntilLabel && (
+                  <>
+                    <View style={styles.sep} />
+                    <SettingsRow
+                      entryId="penaltyShieldActive"
+                      icon="time-outline"
+                      iconColor={colors.accent}
+                      label="Blocked until"
+                      hint="Turning this setting off is the only way to end it early."
+                      value={penaltyUntilLabel}
+                    />
+                  </>
+                )}
+              </>
+            )}
           </>
         )}
       </SettingsSection>
@@ -771,6 +887,21 @@ export function TasksProjectsSettings() {
         )}
       </SettingsSection>
       )}
+
+      <SettingsSection
+        label="Trips"
+        footer="A project with away dates can carry where you're going. With this on, that place is sent to Open-Meteo to look up its coordinates and the forecast for your dates, and the project shows a line with the temperature range and whether rain or snow is expected. Nothing is stored, and it's only ever asked about a project that has both a destination and a departure date. Off means nothing leaves the app."
+      >
+        <SettingsRow
+          entryId="destinationForecastEnabled"
+          icon="partly-sunny-outline"
+          iconColor={destinationForecastEnabled ? colors.accent : undefined}
+          label="Destination forecast"
+          hint="Looks up the weather where you're going."
+          toggle={destinationForecastEnabled}
+          onPress={() => setDestinationForecastEnabled(!destinationForecastEnabled)}
+        />
+      </SettingsSection>
 
       <SettingsSection
         label="Feature areas"

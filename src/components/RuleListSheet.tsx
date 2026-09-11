@@ -6,6 +6,7 @@ import { useColors } from '../theme/ThemeContext';
 import { border, font, fontWeight, iconSize, interaction, radius, spacing, type Colors } from '../theme';
 import { haptics } from '../utils/haptics';
 import { animateLayout } from '../utils/layoutAnimation';
+import { useKeyboardInsetScroll } from '../hooks/useKeyboardInsetScroll';
 import { EmptyState } from './EmptyState';
 import { InlineAction } from './InlineAction';
 import { SheetHeaderButton } from './SheetHeaderButton';
@@ -61,8 +62,13 @@ interface Props<T extends EditableRule> {
   makeRule: () => T;
   /** The secondary line under a rule's title, e.g. "After 30 min". */
   describeRule: (rule: T) => string;
-  /** Uppercase label above `renderEditor`'s control. */
-  editorLabel: string;
+  /**
+   * Uppercase label above `renderEditor`'s control. A function when the
+   * wording depends on the rule itself — health's ceiling rule reads "more
+   * than" where every other rule here reads "less than" — a plain string
+   * otherwise.
+   */
+  editorLabel: string | ((rule: T) => string);
   renderEditor: (rule: T, update: (patch: Partial<T>) => void) => ReactNode;
   titlePlaceholder: string;
   titleMaxLength: number;
@@ -100,6 +106,7 @@ export function RuleListSheet<T extends EditableRule>({
   const colors = useColors();
   const styles = useMemo(() => makeStyles(colors), [colors]);
   const hideHelpText = useSettingsStore(s => s.hideHelpText);
+  const keyboardScroll = useKeyboardInsetScroll<ScrollView>();
 
   const [expandedId, setExpandedId] = useState<string | null>(null);
 
@@ -150,7 +157,12 @@ export function RuleListSheet<T extends EditableRule>({
           <SheetHeaderButton label="Done" onPress={close} minWidth={56} />
         </View>
 
-        <ScrollView contentContainerStyle={rules.length === 0 ? styles.listEmpty : styles.list}>
+        <ScrollView
+          ref={keyboardScroll.ref}
+          contentContainerStyle={rules.length === 0 ? styles.listEmpty : styles.list}
+          keyboardShouldPersistTaps="handled"
+          {...keyboardScroll.props}
+        >
           {!hideHelpText && <Text style={styles.caption}>{caption}</Text>}
 
           {header}
@@ -208,7 +220,9 @@ export function RuleListSheet<T extends EditableRule>({
                     </View>
                     {expanded && (
                       <View style={styles.editor}>
-                        <Text style={styles.editorLabel}>{editorLabel}</Text>
+                        <Text style={styles.editorLabel}>
+                          {typeof editorLabel === 'function' ? editorLabel(rule) : editorLabel}
+                        </Text>
                         {renderEditor(rule, patch => update(rule.id, patch))}
                         <Text style={[styles.editorLabel, styles.editorLabelSpaced]}>Add this task</Text>
                         <TextInput

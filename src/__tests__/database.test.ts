@@ -44,6 +44,8 @@ import {
   dbDeleteCategory,
   dbGetAllTaskGroups,
   dbInsertTaskGroup,
+  dbUpdateTaskGroup,
+  dbDeleteTaskGroup,
   dbTableColumns,
   dbExportTables,
   dbReplaceAllData,
@@ -54,6 +56,9 @@ import {
   BACKUP_TABLES,
   BACKUP_EXCLUDED_TABLES,
   dbGetAllGroceryItems,
+  dbInsertRecipe,
+  dbUpdateRecipe,
+  dbGetAllRecipes,
   dbInsertGroceryItem,
   dbUpdateGroceryItem,
   dbDeleteGroceryItem,
@@ -65,6 +70,7 @@ import {
   dbInsertGroceryShop,
   dbGetAllGroceryShops,
   dbSetShopReceiptStyle,
+  dbSetShopAisles,
   dbGetAllItemSubLinks,
   dbSetItemSubLink,
   dbDeleteItemSubLink,
@@ -112,7 +118,7 @@ import {
 } from '../db/syncTracking';
 import { buildBackup, serializeBackup, parseBackup } from '../utils/backup';
 import { OUT_OF_IT_UNTIL } from '../utils/grocerySuggest';
-import type { Task, TaskTemplate, TemplateItem, Project, Category, TaskGroup, GroceryItem, ItemProduct, ItemShopLink, Shop, Leftover, MealPlanEntry, MealSlot } from '../types';
+import type { Task, TaskTemplate, TemplateItem, Project, Category, TaskGroup, GroceryItem, ItemProduct, ItemShopLink, Shop, Leftover, MealPlanEntry, MealSlot, Recipe } from '../types';
 
 // ---------------------------------------------------------------------------
 // Mock expo-sqlite with an in-memory better-sqlite3 database.
@@ -221,6 +227,10 @@ const makeTask = (overrides: Partial<Task> = {}): Task => ({
   polarity: 'positive',
   slipCount: 0,
   slipDate: null,
+  penaltyMinutes: null,
+  penaltyCutoffTime: null,
+  penaltyFiredAt: null,
+  gatesApps: false,
   showStreak: false,
   streakRequiresWindow: false,
   parentId: null,
@@ -245,7 +255,7 @@ const makeTask = (overrides: Partial<Task> = {}): Task => ({
   timedMinutes: null,
   timerElapsedSeconds: 0,
   healthMetric: null,
-  healthTarget: null,
+  healthTarget: null, completionTimerMinutes: null, logHealthMetric: null, logHealthAmount: null, medicationName: null, medicationAmount: null, medicationUnit: null,
   actualMinutes: null,
   previousOccurrenceId: null,
   seriesId: null,
@@ -265,6 +275,8 @@ const makeTask = (overrides: Partial<Task> = {}): Task => ({
   generatedSourceId: null,
   deadlineOnCalendar: false,
   calendarEventId: null,
+  logCompletionToCalendar: false,
+  completionCalendarEventId: null,
   timeBlockEventId: null,
   pendingImport: null,
   backfillDismissedFields: [],
@@ -631,6 +643,25 @@ describe('dbInsertTask + rowToTask round-trip', () => {
     expect(t.healthMetric).toBeNull();
   });
 
+  it('round-trips a completion timer', () => {
+    dbInsertTask(makeTask({ id: 'timer1', completionTimerMinutes: 120 }));
+    const [t] = dbGetAllTasks();
+    expect(t.completionTimerMinutes).toBe(120);
+  });
+
+  it('round-trips a completion timer through an update', () => {
+    dbInsertTask(makeTask({ id: 'timer2' }));
+    dbUpdateTask(makeTask({ id: 'timer2', completionTimerMinutes: 30 }));
+    const [t] = dbGetAllTasks();
+    expect(t.completionTimerMinutes).toBe(30);
+  });
+
+  it('reads a task with no completion timer as having none', () => {
+    dbInsertTask(makeTask({ id: 'timer3' }));
+    const [t] = dbGetAllTasks();
+    expect(t.completionTimerMinutes).toBeNull();
+  });
+
   it('returns null targetUnit when unset', () => {
     dbInsertTask(makeTask({ id: 'nounit', targetCount: 12 }));
     const [t] = dbGetAllTasks();
@@ -685,7 +716,11 @@ describe('dbInsertTask + rowToTask round-trip', () => {
     const tags = ['work', 'urgent'];
     const recurrenceDays = [1, 3, 5];
     const chainItems = [
-      { id: 'ci', title: 'Item A', estimatedMinutes: null, deliverableKind: null, deliverableDatesNextStep: false },
+      {
+        id: 'ci', title: 'Item A', estimatedMinutes: null, deliverableKind: null,
+        deliverableDatesNextStep: false,
+        medicationName: null, medicationAmount: null, medicationUnit: null,
+      },
     ];
     dbInsertTask(makeTask({ id: 'json', tags, recurrenceDays, chainItems }));
     const [t] = dbGetAllTasks();
@@ -702,13 +737,35 @@ describe('dbInsertTask + rowToTask round-trip', () => {
       {
         id: 'book', title: 'Book haircut', estimatedMinutes: null,
         deliverableKind: 'date' as const, deliverableDatesNextStep: true,
+        medicationName: null, medicationAmount: null, medicationUnit: null,
       },
       {
         id: 'get', title: 'Get haircut', estimatedMinutes: null,
         deliverableKind: null, deliverableDatesNextStep: false,
+        medicationName: null, medicationAmount: null, medicationUnit: null,
       },
     ];
     dbInsertTask(makeTask({ id: 'chain-q', chainEnabled: true, chainItems }));
+
+    expect(dbGetAllTasks()[0].chainItems).toEqual(chainItems);
+  });
+
+  it("round-trips a chain step's own medication and dose", () => {
+    // Rides inside the cycle_items JSON like the question above, so the round
+    // trip is what proves parseChainItems and the serializer agree about it.
+    const chainItems = [
+      {
+        id: 'am', title: 'Morning pills', estimatedMinutes: null,
+        deliverableKind: null, deliverableDatesNextStep: false,
+        medicationName: 'Levothyroxine', medicationAmount: 75, medicationUnit: 'mcg',
+      },
+      {
+        id: 'pm', title: 'Evening pills', estimatedMinutes: null,
+        deliverableKind: null, deliverableDatesNextStep: false,
+        medicationName: 'Magnesium', medicationAmount: 1, medicationUnit: 'tablet',
+      },
+    ];
+    dbInsertTask(makeTask({ id: 'chain-med', chainEnabled: true, chainItems }));
 
     expect(dbGetAllTasks()[0].chainItems).toEqual(chainItems);
   });
@@ -965,7 +1022,7 @@ describe('dbInsertTask + rowToTask round-trip', () => {
 
   it('round-trips polarity and the slip pair', () => {
     dbInsertTask(makeTask({
-      id: 'avoid', polarity: 'negative', slipCount: 3, slipDate: '2026-01-10T00:00:00.000Z',
+      id: 'avoid', polarity: 'negative', slipCount: 3, slipDate: '2026-01-10T00:00:00.000Z', penaltyMinutes: null, penaltyCutoffTime: null, penaltyFiredAt: null,
     }));
     dbInsertTask(makeTask({ id: 'plain' }));
     const tasks = dbGetAllTasks();
@@ -1486,6 +1543,13 @@ describe('Templates', () => {
     recurrenceCount: null,
     vacationPause: false, excludeFromSuggestions: false,
     estimatedMinutes: null,
+    completionTimerMinutes: null,
+    penaltyMinutes: null,
+    penaltyCutoffTime: null,
+    gatesApps: false,
+    medicationName: null,
+    medicationAmount: null,
+    medicationUnit: null,
     deliverableKind: null,
     chainEnabled: false,
     chainItems: [],
@@ -1510,6 +1574,7 @@ describe('Templates', () => {
     applyContainer: 'stack',
     schedule: null,
     scheduleLastFiredKey: null,
+    anchorsAreAway: false,
     ...overrides,
   });
 
@@ -1658,6 +1723,13 @@ describe('Projects', () => {
     reviewDeclinedAt: null,
     backfillDismissedFields: [],
     kind: 'project' as const,
+    awayStart: null,
+    awayEnd: null,
+    awayPauses: false,
+    awayPauseDeclinedFor: null,
+    destination: null,
+    awayListId: null,
+    awayListDeclinedFor: null,
     ...overrides,
   });
 
@@ -1756,6 +1828,35 @@ describe('Projects', () => {
   });
 });
 
+describe('Task groups', () => {
+  const stack = (overrides: Partial<TaskGroup> = {}): TaskGroup => ({
+    id: 'g-round-trip',
+    title: 'Kitchen refresh',
+    notes: '',
+    tags: [],
+    category: null,
+    sortOrder: 1,
+    collapsed: false,
+    onToday: false,
+    projectId: null,
+    ...overrides,
+  });
+
+  it('round-trips onToday through insert and update', () => {
+    dbInsertTaskGroup(stack({ onToday: true }));
+    expect(dbGetAllTaskGroups()[0].onToday).toBe(true);
+
+    dbUpdateTaskGroup(stack({ onToday: false, collapsed: true }));
+    const [saved] = dbGetAllTaskGroups();
+    expect(saved.onToday).toBe(false);
+    expect(saved.collapsed).toBe(true);
+
+    // The describe below asserts on the whole task_groups table, so put this
+    // row back the way it found it.
+    dbDeleteTaskGroup('g-round-trip');
+  });
+});
+
 describe('Categories', () => {
   const makeTaskGroup = (overrides: Partial<TaskGroup> = {}): TaskGroup => ({
     id: 'group-1',
@@ -1765,6 +1866,7 @@ describe('Categories', () => {
     category: null,
     sortOrder: 1,
     collapsed: false,
+    onToday: false,
     projectId: null,
     ...overrides,
   });
@@ -1867,6 +1969,13 @@ describe('backup and restore', () => {
       reviewDeclinedAt: null,
       backfillDismissedFields: [],
       kind: 'project' as const,
+      awayStart: null,
+      awayEnd: null,
+      awayPauses: false,
+      awayPauseDeclinedFor: null,
+      destination: null,
+      awayListId: null,
+      awayListDeclinedFor: null,
     });
     dbInsertCategory('Home');
     dbSetSetting('themeMode', 'light');
@@ -2035,6 +2144,7 @@ function insertListedGroceryItem(item: GroceryItem): void {
 
 function makeGroceryItem(overrides: Partial<GroceryItem> & { id: string; name: string }): GroceryItem {
   return {
+    nameFromScan: false,
     nameKey: overrides.name.toLowerCase(),
     preferredProductId: null,
     productStrict: false,
@@ -2065,7 +2175,7 @@ function makeGroceryItem(overrides: Partial<GroceryItem> & { id: string; name: s
     usedUpCount: 0,
     spoiledCount: 0,
     lastSpoiledAt: null,
-    varietyOfKey: null, backfillDismissedFields: [],
+    varietyOfKey: null, nutrition: null, backfillDismissedFields: [],
     lastPriceMinor: null,
     lastPricedAt: null,
     lastPriceQuantity: null, priceHistory: [],
@@ -2083,6 +2193,7 @@ function makeProduct(
     variant,
     productKey: `${(brand ?? '').toLowerCase()}|${(variant ?? '').toLowerCase()}`,
     rating: null,
+    nutrition: null,
     note: '',
     purchaseCount: 0,
     lastPurchasedAt: null,
@@ -2103,6 +2214,7 @@ function makeShop(overrides: { id: string; name: string }): Shop {
     createdAt: '2026-01-01T00:00:00.000Z',
     excludeFromSuggestions: false,
     receiptStyle: 'itemized' as const,
+    aisles: null,
     ...overrides,
   };
 }
@@ -2147,14 +2259,30 @@ describe('grocery items', () => {
       usedUpCount: 0,
       spoiledCount: 0,
       lastSpoiledAt: null,
-      varietyOfKey: null, backfillDismissedFields: ['substitutes'],
+      varietyOfKey: null,
+      nutrition: {
+        basis: 'per100g',
+        servingGrams: 240,
+        servingText: '1 cup (240ml)',
+        // Deliberately a partial panel: a source that never mentioned fibre is
+        // the ordinary case, and the absent key has to survive the column
+        // rather than come back as a confident zero.
+        amounts: { calorieKcal: 61, proteinG: 3.2, fatG: 3.3, sugarG: 5.1 },
+        portions: [],
+        source: 'fdc',
+        sourceId: '746782',
+        recordedAt: '2026-08-21T10:00:00.000Z',
+      },
+      backfillDismissedFields: ['substitutes'],
       preferredProductId: 'p1',
       productStrict: true,
+      nameFromScan: true,
     });
     insertListedGroceryItem(item);
 
     expect(dbGetAllGroceryItems()).toEqual([item]);
   });
+
 
   // A trip is the only thing that writes the rolling window, and it has to land
   // at both levels — the item's run is the fallback for a trip that named no
@@ -2162,7 +2290,7 @@ describe('grocery items', () => {
   it('records a priced trip into the rolling window, at both levels', () => {
     const shop = { id: 's1', name: 'Costco', nameKey: 'costco', sortOrder: 1,
       createdAt: '2026-01-01T00:00:00.000Z', excludeFromSuggestions: false,
-      receiptStyle: 'itemized' as const };
+      receiptStyle: 'itemized' as const, aisles: null };
     dbInsertGroceryShop(shop);
     const item = makeGroceryItem({
       id: 'g1', name: 'Olive oil', onList: true, checked: true, quantity: '1 l',
@@ -2258,6 +2386,29 @@ describe('grocery items', () => {
       note: 'the green packet',
       gtin: '00850003201115',
     });
+  });
+
+  // A box's own label panel, unlike its barcode, is an ordinary column of the
+  // upsert: rewriting the row is how a corrected or re-fetched panel lands.
+  it('round-trips a box’s nutrition, and lets a rewrite replace it', () => {
+    insertListedGroceryItem(makeGroceryItem({ id: 'g1', name: 'Yogurt' }));
+    const panel = {
+      basis: 'perServing' as const,
+      servingGrams: 170,
+      servingText: '1 container (170g)',
+      amounts: { calorieKcal: 90, proteinG: 15, sugarG: 4 },
+      portions: [],
+      source: 'openFoodFacts' as const,
+      sourceId: '0894700010045',
+      recordedAt: '2026-08-21T10:00:00.000Z',
+    };
+    const product = makeProduct({ id: 'p1', itemId: 'g1', brand: 'Fage', variant: '0%', nutrition: panel });
+    dbSetItemProduct(product);
+    expect(dbGetAllItemProducts()[0].nutrition).toEqual(panel);
+
+    const corrected = { ...panel, amounts: { ...panel.amounts, proteinG: 18 }, source: 'manual' as const };
+    dbSetItemProduct({ ...product, nutrition: corrected });
+    expect(dbGetAllItemProducts()[0].nutrition).toEqual(corrected);
   });
 
   // A GTIN denotes one box in the world, so pointing it at a second one has to
@@ -3069,6 +3220,7 @@ describe('meal plan entries', () => {
       recipeScale: 1,
       cookTask: null,
       shopTask: null,
+      logMeal: null,
       calendarEventId: null,
       cookedAt: null,
       leftoverId: null,
@@ -3237,6 +3389,7 @@ describe('leftovers', () => {
       finishedAt: null,
       outcome: null,
       frozenAt: null,
+      weightG: null,
       createdAt: '2026-08-10T09:00:00.000Z',
       useUpTask: null,
       ...overrides,
@@ -3288,7 +3441,7 @@ describe('leftovers', () => {
       id: 'meal-x', date: '2026-08-11', slot: 'dinner', recipeId: null,
       title: 'Chilli (1 day old)', sortOrder: 1, createdAt: '2026-08-11T00:00:00.000Z',
       cookedAt: null, leftoverId: 'lo-a', recipeChoices: [], personIds: [], recipeScale: 1, cookTask: null,
-      shopTask: null, calendarEventId: null,
+      shopTask: null, logMeal: null, calendarEventId: null,
     });
 
     dbDeleteLeftover('lo-a');
@@ -3824,6 +3977,7 @@ describe('the barcode cache', () => {
 
   const entry = (gtin: string, found = true) => ({
     gtin, found, name: found ? 'Milk' : '', brand: null, quantity: null, category: null,
+    nutrition: null,
     source: found ? 'openfoodfacts' : '', fetchedAt: '2026-08-21T12:00:00.000Z',
   });
 
@@ -3859,5 +4013,157 @@ describe('the barcode cache', () => {
     dbClearGtinLookups();
     expect(dbCountGtinLookups()).toBe(0);
     expect(dbGetGtinLookup('00036000291452')).toBeNull();
+  });
+});
+
+// ---------------------------------------------------------------------------
+// Recipes
+// ---------------------------------------------------------------------------
+
+// A recipe's INSERT and UPDATE each list forty-one columns by hand, so the
+// thing worth pinning is that the column list, the placeholders and the
+// argument array still agree — a mismatch there is a runtime throw with no
+// type error in front of it, and nothing else in the suite exercises this SQL.
+describe('recipe rows', () => {
+  // Recipes aren't in the shared beforeEach's list, and every read here is a
+  // `dbGetAllRecipes()[0]`, so they clear here instead.
+  beforeEach(() => {
+    mockRawDb.exec('DELETE FROM recipes;');
+  });
+
+  const makeRecipe = (overrides: Partial<Recipe> & { id: string; name: string }): Recipe => ({
+    nameKey: overrides.name.toLowerCase(),
+    notes: '',
+    sourceUrl: null,
+    sourceName: null,
+    author: null,
+    source: null,
+    sourceType: null,
+    sourcePage: null,
+    cookbookId: null,
+    servings: null,
+    servingsMax: null,
+    recipeYield: null,
+    cookedWeightG: null,
+    leftoverKeepDays: null,
+    imagePath: null,
+    mealType: null,
+    tags: [],
+    ingredients: [],
+    emptySections: [],
+    components: [],
+    prepTasks: [],
+    steps: [],
+    sortOrder: 1,
+    createdAt: '2026-01-01T00:00:00.000Z',
+    cookCount: 0,
+    lastCookedAt: null,
+    vote: null,
+    estimatedMinutes: null,
+    timerStartedAt: null,
+    timerElapsedSeconds: 0,
+    lastCookMinutes: null,
+    cookTimeCount: 0,
+    totalCookMinutes: 0,
+    prepMinutes: null,
+    prepTimerStartedAt: null,
+    prepTimerElapsedSeconds: 0,
+    lastPrepMinutes: null,
+    prepTimeCount: 0,
+    totalPrepMinutes: 0,
+    backfillDismissedFields: [],
+    ...overrides,
+  });
+
+  it('round-trips a recipe, backfill dismissals included', () => {
+    const recipe = makeRecipe({
+      id: 'r1',
+      name: 'Chili',
+      servings: 6,
+      servingsMax: 8,
+      estimatedMinutes: 45,
+      prepMinutes: 20,
+      recipeYield: '1 big pot',
+      backfillDismissedFields: ['prepTime'],
+    });
+    dbInsertRecipe(recipe);
+
+    expect(dbGetAllRecipes()).toEqual([recipe]);
+  });
+
+  it('round-trips an update, so the SET list and its arguments stay in step', () => {
+    const recipe = makeRecipe({ id: 'r1', name: 'Chili' });
+    dbInsertRecipe(recipe);
+
+    const answered = { ...recipe, servings: 4, estimatedMinutes: 30, backfillDismissedFields: ['prepTime'] };
+    dbUpdateRecipe(answered);
+
+    expect(dbGetAllRecipes()).toEqual([answered]);
+  });
+
+  // Empty on every row that predates the column, which is what "nothing
+  // dismissed yet" has to read as. See Recipe.backfillDismissedFields.
+  it('reads a recipe that never dismissed anything as an empty list', () => {
+    dbInsertRecipe(makeRecipe({ id: 'r1', name: 'Dal' }));
+    expect(dbGetAllRecipes()[0].backfillDismissedFields).toEqual([]);
+  });
+});
+
+describe('a store\'s aisle range', () => {
+  const insertShop = (id: string) => {
+    dbInsertGroceryShop({
+      id, name: id, nameKey: id, sortOrder: 1, createdAt: '2026-01-01T00:00:00.000Z',
+      excludeFromSuggestions: false, receiptStyle: 'itemized', aisles: null,
+    });
+  };
+  const rangeOf = (id: string) => dbGetAllGroceryShops().find(s => s.id === id)?.aisles;
+
+  it('reads back as null for a store nobody has scoped', () => {
+    insertShop('cvs');
+    expect(rangeOf('cvs')).toBeNull();
+  });
+
+  it('round-trips a range', () => {
+    insertShop('cvs');
+
+    dbSetShopAisles('cvs', ['Personal Care', 'Household']);
+
+    expect(rangeOf('cvs')).toEqual(['Personal Care', 'Household']);
+  });
+
+  it('stores an empty range as no range at all', () => {
+    insertShop('cvs');
+    dbSetShopAisles('cvs', ['Personal Care']);
+
+    dbSetShopAisles('cvs', []);
+
+    expect(rangeOf('cvs')).toBeNull();
+  });
+
+  it('clears one on null', () => {
+    insertShop('cvs');
+    dbSetShopAisles('cvs', ['Personal Care']);
+
+    dbSetShopAisles('cvs', null);
+
+    expect(rangeOf('cvs')).toBeNull();
+  });
+
+  // Resolve-or-shrug, and deliberately on the permissive side: a store whose
+  // range can't be read sells everything rather than nothing.
+  it('reads a blob that will not parse as no range', () => {
+    insertShop('cvs');
+    mockRawDb.prepare('UPDATE grocery_shops SET aisles = ? WHERE id = ?').run('{oops', 'cvs');
+
+    expect(rangeOf('cvs')).toBeNull();
+  });
+
+  it('drops non-string members rather than carrying them into the range', () => {
+    insertShop('cvs');
+    mockRawDb
+      .prepare('UPDATE grocery_shops SET aisles = ? WHERE id = ?')
+      .run(JSON.stringify(['Produce', 3, '', null]), 'cvs');
+
+    expect(rangeOf('cvs')).toEqual(['Produce']);
   });
 });

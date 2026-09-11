@@ -1,5 +1,7 @@
 import { isStreakAtRecord } from '../utils/streakRecord';
 import { useTaskStore } from '../store/useTaskStore';
+import { useMedicationStore } from '../store/useMedicationStore';
+import { useSettingsStore } from '../store/useSettingsStore';
 import { useMoodStore } from '../store/useMoodStore';
 import { UNDO_STACK_LIMIT } from '../utils/undoHistory';
 import { isMissed, isRealCompletion } from '../utils/missed';
@@ -20,6 +22,7 @@ import { OUT_OF_IT_UNTIL } from '../utils/grocerySuggest';
 import { useTemplateStore } from '../store/useTemplateStore';
 import { useGroceryStore } from '../store/useGroceryStore';
 import { useLeftoverStore } from '../store/useLeftoverStore';
+import { useFoodLogStore } from '../store/useFoodLogStore';
 import { usePersonStore } from '../store/usePersonStore';
 import { normalizeTemplateItem } from '../utils/templateUtils';
 import {
@@ -52,6 +55,7 @@ import {
   rescheduleAllReminders,
 } from '../utils/notifications';
 import { syncDeadlineEvent } from '../utils/deadlineCalendarSync';
+import { logTaskCompletionToCalendar } from '../utils/completionCalendarSync';
 import { deleteCalendarEvent } from '../utils/calendarSync';
 import { setDemoModeActive } from '../utils/demoState';
 import type { GroceryItem, Person, Project, Task, TaskGroup, TitleRule } from '../types';
@@ -87,6 +91,26 @@ jest.mock('../db/database', () => ({
   dbInsertMoodLog: jest.fn(),
   dbUpdateMoodLog: jest.fn(),
   dbDeleteMoodLog: jest.fn(),
+  // Milestones ride the same fan-out immediately after the mood log.
+  dbGetAllMilestones: jest.fn().mockReturnValue([]),
+  dbInsertMilestone: jest.fn(),
+  dbUpdateMilestone: jest.fn(),
+  dbDeleteMilestone: jest.fn(),
+  // The medication log rides the same fan-out, and completing a task carrying
+  // a medication writes through it.
+  dbGetAllMedicationLogs: jest.fn().mockReturnValue([]),
+  dbInsertMedicationLog: jest.fn(),
+  dbUpdateMedicationLog: jest.fn(),
+  dbDeleteMedicationLog: jest.fn(),
+  dbDeleteMedicationLogsForTask: jest.fn(),
+  // The food log rides the same startup fan-out as the mood log, so its reads
+  // have to be here too or `initialize` throws before it reaches anything this
+  // suite is about.
+  dbGetFoodLogEntries: jest.fn().mockReturnValue([]),
+  dbCountFoodLogEntries: jest.fn().mockReturnValue(0),
+  dbInsertFoodLogEntry: jest.fn(),
+  dbUpdateFoodLogEntry: jest.fn(),
+  dbDeleteFoodLogEntry: jest.fn(),
   dbInsertPersonNote: jest.fn(),
   dbUpdatePersonNote: jest.fn(),
   dbDeletePersonNote: jest.fn(),
@@ -141,6 +165,7 @@ jest.mock('../db/database', () => ({
   dbGetAllGroceryItems: jest.fn().mockReturnValue([]),
   dbGetGroceryAisleOrder: jest.fn().mockReturnValue(null),
   dbGetGroceryHiddenAisles: jest.fn().mockReturnValue([]),
+  dbGetGroceryNonFoodAisles: jest.fn().mockReturnValue([]),
   // useTaskStore.initialize() initialises the grocery store too, so its whole
   // read path has to be stubbed here even though nothing in this file is about
   // groceries.
@@ -211,6 +236,11 @@ jest.mock('../store/useSettingsStore', () => ({
       // carry them with it (see renameCategory/deleteCategory).
       mealCookTaskCategory: null, groceryUseUpTaskCategory: null, leftoverUseUpTaskCategory: null,
       calendarEventCategory: null, collapsedCategories: [], titleRules: [],
+      penaltyShieldEnabled: false, penaltyShieldUntil: null, setPenaltyShieldUntil: jest.fn(),
+      // Read by offerMealLog, whose whole point is the meal-slot/log-nudge
+      // completion tests further down this file — defaulting it off here
+      // would silently disable every one of them.
+      mealLogPrompt: true,
       setMealCookTaskCategory: jest.fn(), setGroceryUseUpTaskCategory: jest.fn(),
       setLeftoverUseUpTaskCategory: jest.fn(), setCalendarEventCategory: jest.fn(),
       setCollapsedCategories: jest.fn(),
@@ -237,10 +267,16 @@ jest.mock('../utils/notifications', () => ({
   // startTrip/endTrip.
   scheduleTripReminder: jest.fn().mockResolvedValue(undefined),
   cancelTripReminder: jest.fn().mockResolvedValue(undefined),
+  scheduleCompletionTimer: jest.fn().mockResolvedValue(undefined),
+  cancelCompletionTimer: jest.fn().mockResolvedValue(undefined),
 }));
 
 jest.mock('../utils/deadlineCalendarSync', () => ({
   syncDeadlineEvent: jest.fn().mockResolvedValue(null),
+}));
+
+jest.mock('../utils/completionCalendarSync', () => ({
+  logTaskCompletionToCalendar: jest.fn().mockResolvedValue(null),
 }));
 
 jest.mock('../utils/calendarSync', () => ({
@@ -329,6 +365,10 @@ const makeTask = (overrides: Partial<Task> = {}): Task => ({
   polarity: 'positive',
   slipCount: 0,
   slipDate: null,
+  penaltyMinutes: null,
+  penaltyCutoffTime: null,
+  penaltyFiredAt: null,
+  gatesApps: false,
   showStreak: false,
   streakRequiresWindow: false,
   parentId: null,
@@ -353,7 +393,7 @@ const makeTask = (overrides: Partial<Task> = {}): Task => ({
   timedMinutes: null,
   timerElapsedSeconds: 0,
   healthMetric: null,
-  healthTarget: null,
+  healthTarget: null, completionTimerMinutes: null, logHealthMetric: null, logHealthAmount: null, medicationName: null, medicationAmount: null, medicationUnit: null,
   actualMinutes: null,
   previousOccurrenceId: null,
   seriesId: null,
@@ -373,6 +413,8 @@ const makeTask = (overrides: Partial<Task> = {}): Task => ({
   generatedSourceId: null,
   deadlineOnCalendar: false,
   calendarEventId: null,
+  logCompletionToCalendar: false,
+  completionCalendarEventId: null,
   timeBlockEventId: null,
   pendingImport: null,
   backfillDismissedFields: [],
@@ -388,6 +430,7 @@ const makeGroup = (overrides: Partial<TaskGroup> = {}): TaskGroup => ({
   category: null,
   sortOrder: 1,
   collapsed: false,
+  onToday: false,
   projectId: null,
   ...overrides,
 });
@@ -412,6 +455,13 @@ const makeProject = (overrides: Partial<import('../types').Project> = {}): impor
   reviewDeclinedAt: null,
   backfillDismissedFields: [],
   kind: 'project' as const,
+  awayStart: null,
+  awayEnd: null,
+  awayPauses: false,
+  awayPauseDeclinedFor: null,
+  destination: null,
+  awayListId: null,
+  awayListDeclinedFor: null,
   ...overrides,
 });
 
@@ -427,6 +477,7 @@ const makeTemplate = (overrides: Partial<import('../types').TaskTemplate> = {}):
   applyContainer: 'stack',
   schedule: null,
   scheduleLastFiredKey: null,
+  anchorsAreAway: false,
   ...overrides,
 });
 
@@ -1529,6 +1580,26 @@ describe('completeTask', () => {
     expect(syncDeadlineEvent).toHaveBeenCalledWith(expect.objectContaining({ id: 't1', completed: true }));
   });
 
+  it('logs the completion to the calendar when logCompletionToCalendar is on', async () => {
+    (logTaskCompletionToCalendar as jest.Mock).mockResolvedValue('log-evt');
+    useTaskStore.setState({ tasks: [makeTask({ id: 't1', logCompletionToCalendar: true })] });
+    useTaskStore.getState().completeTask('t1');
+    expect(logTaskCompletionToCalendar).toHaveBeenCalledWith(
+      expect.objectContaining({ id: 't1', completed: true }),
+      expect.any(Date)
+    );
+    await Promise.resolve();
+    await Promise.resolve();
+    const task = useTaskStore.getState().tasks.find(t => t.id === 't1');
+    expect(task?.completionCalendarEventId).toBe('log-evt');
+  });
+
+  it('does not call logTaskCompletionToCalendar when the flag is off', () => {
+    useTaskStore.setState({ tasks: [makeTask({ id: 't1', logCompletionToCalendar: false })] });
+    useTaskStore.getState().completeTask('t1');
+    expect(logTaskCompletionToCalendar).not.toHaveBeenCalled();
+  });
+
   it('clears calendarEventId on the fresh occurrence of a recurring task', () => {
     useTaskStore.setState({
       tasks: [makeTask({
@@ -2573,6 +2644,243 @@ describe('completeTask', () => {
   });
 });
 
+// ─── shiftAwayTasks ─────────────────────────────────────────────────────────
+
+describe('shiftAwayTasks', () => {
+  it('applies every move under one undo entry', () => {
+    const a = makeTask({ id: 'a', dueDate: '2026-06-05T12:00:00.000Z' });
+    const b = makeTask({ id: 'b', dueDate: '2026-06-06T12:00:00.000Z' });
+    useTaskStore.setState({ tasks: [a, b] });
+    useTaskStore.getState().shiftAwayTasks([
+      { id: 'a', updates: { dueDate: '2026-06-07T12:00:00.000Z', deferUntil: null } },
+      { id: 'b', updates: { dueDate: '2026-06-08T12:00:00.000Z', deferUntil: null } },
+    ]);
+    expect(useTaskStore.getState().tasks.find(t => t.id === 'a')!.dueDate)
+      .toBe('2026-06-07T12:00:00.000Z');
+    expect(useTaskStore.getState().lastAction?.label).toBe('2 tasks moved with the trip');
+  });
+
+  it('does not count a shift as the user postponing anything', () => {
+    // A trip moving because the airline moved it is not a push, and counting
+    // it would feed the "you've pushed this five times" prompt with pushes
+    // nobody made. deloadTasks deliberately counts; this deliberately does not.
+    useTaskStore.setState({ tasks: [makeTask({ id: 'a', dueDate: '2026-06-05T12:00:00.000Z' })] });
+    useTaskStore.getState().shiftAwayTasks([
+      { id: 'a', updates: { dueDate: '2026-06-09T12:00:00.000Z', deferUntil: null } },
+    ]);
+    expect(useTaskStore.getState().tasks[0].postponeCount).toBe(0);
+  });
+
+  it('restores the recurrence anchor on undo, not just the two dates', () => {
+    // A shift can pull a recurring member forward, which writes
+    // recurrenceAnchorDate. An undo that left it behind would silently rotate
+    // the grid the rest of the schedule steps from.
+    useTaskStore.setState({ tasks: [makeTask({
+      id: 'a', dueDate: '2026-06-08T12:00:00.000Z', recurrenceType: 'daily',
+      recurrenceAnchorDate: null,
+    })] });
+    useTaskStore.getState().shiftAwayTasks([{ id: 'a', updates: {
+      dueDate: '2026-06-05T12:00:00.000Z',
+      recurrenceAnchorDate: '2026-06-08T12:00:00.000Z',
+      deferUntil: null,
+    } }]);
+    expect(useTaskStore.getState().tasks[0].recurrenceAnchorDate).toBe('2026-06-08T12:00:00.000Z');
+
+    useTaskStore.getState().lastAction!.undo();
+    const back = useTaskStore.getState().tasks[0];
+    expect(back.dueDate).toBe('2026-06-08T12:00:00.000Z');
+    expect(back.recurrenceAnchorDate).toBeNull();
+  });
+
+  it('ignores an id that is no longer there', () => {
+    useTaskStore.setState({ tasks: [] });
+    useTaskStore.getState().shiftAwayTasks([{ id: 'gone', updates: { dueDate: null } }]);
+    expect(useTaskStore.getState().lastAction?.label).not.toBe('1 task moved with the trip');
+  });
+});
+
+// ─── checkAwayVacation ──────────────────────────────────────────────────────
+
+describe('checkAwayVacation', () => {
+  const getSettingsMock = () => {
+    const { useSettingsStore } = jest.requireMock('../store/useSettingsStore') as { useSettingsStore: { getState: jest.Mock } };
+    return useSettingsStore;
+  };
+
+  /** Midday N days from today, the way the away columns store a boundary. */
+  const dayOffset = (n: number) => {
+    const d = new Date();
+    d.setDate(d.getDate() + n);
+    d.setHours(12, 0, 0, 0);
+    return d.toISOString();
+  };
+
+  const settings = (over: Record<string, unknown> = {}) => {
+    const setVacationMode = jest.fn();
+    const setVacationDrivenBy = jest.fn();
+    const setVacationEnd = jest.fn();
+    getSettingsMock().getState.mockReturnValue({
+      dayResetTime: '00:00',
+      vacationMode: false,
+      vacationEnd: null,
+      vacationDrivenBy: null,
+      setVacationMode, setVacationDrivenBy, setVacationEnd,
+      ...over,
+    });
+    return { setVacationMode, setVacationDrivenBy, setVacationEnd };
+  };
+
+  /** A trip covering today, nominated to drive vacation mode. */
+  const liveTrip = (over: Partial<import('../types').Project> = {}) => makeProject({
+    id: 'trip', title: 'Lisbon',
+    awayStart: dayOffset(-1), awayEnd: dayOffset(4), awayPauses: true,
+    ...over,
+  });
+
+  beforeEach(() => { useProjectStore.setState({ projects: [] }); });
+
+  it('does nothing with no trips at all', () => {
+    const { setVacationMode } = settings();
+    useTaskStore.getState().checkAwayVacation();
+    expect(setVacationMode).not.toHaveBeenCalled();
+  });
+
+  it('arms vacation mode for a nominated trip that has started', () => {
+    useProjectStore.setState({ projects: [liveTrip()] });
+    const { setVacationMode, setVacationDrivenBy } = settings();
+    useTaskStore.getState().checkAwayVacation();
+    expect(setVacationMode).toHaveBeenCalledWith(true, dayOffset(4));
+    expect(setVacationDrivenBy).toHaveBeenCalledWith('trip');
+  });
+
+  it('leaves a trip that has not started yet alone', () => {
+    useProjectStore.setState({ projects: [liveTrip({ awayStart: dayOffset(3), awayEnd: dayOffset(9) })] });
+    const { setVacationMode } = settings();
+    useTaskStore.getState().checkAwayVacation();
+    expect(setVacationMode).not.toHaveBeenCalled();
+  });
+
+  it('leaves a trip that was never nominated alone', () => {
+    // Entering dates is "when am I gone", not "and pause my tasks while I am".
+    useProjectStore.setState({ projects: [liveTrip({ awayPauses: false })] });
+    const { setVacationMode } = settings();
+    useTaskStore.getState().checkAwayVacation();
+    expect(setVacationMode).not.toHaveBeenCalled();
+  });
+
+  it('ignores an archived or completed trip', () => {
+    for (const over of [{ archived: true }, { completed: true }]) {
+      useProjectStore.setState({ projects: [liveTrip(over)] });
+      const { setVacationMode } = settings();
+      useTaskStore.getState().checkAwayVacation();
+      expect(setVacationMode).not.toHaveBeenCalled();
+    }
+  });
+
+  it('never turns off a vacation somebody switched on themselves', () => {
+    // vacationDrivenBy null means nobody here owns it.
+    const { setVacationMode, setVacationEnd } = settings({ vacationMode: true, vacationEnd: null });
+    useTaskStore.getState().checkAwayVacation();
+    expect(setVacationMode).not.toHaveBeenCalled();
+    expect(setVacationEnd).not.toHaveBeenCalled();
+  });
+
+  it('does not rewrite the end date of a vacation it does not own', () => {
+    useProjectStore.setState({ projects: [liveTrip()] });
+    const { setVacationEnd } = settings({
+      vacationMode: true, vacationEnd: '2099-01-01T12:00:00.000Z', vacationDrivenBy: null,
+    });
+    useTaskStore.getState().checkAwayVacation();
+    expect(setVacationEnd).not.toHaveBeenCalled();
+  });
+
+  it('moves the end date when its own trip got longer', () => {
+    useProjectStore.setState({ projects: [liveTrip()] });
+    const { setVacationEnd } = settings({
+      vacationMode: true, vacationEnd: dayOffset(2), vacationDrivenBy: 'trip',
+    });
+    useTaskStore.getState().checkAwayVacation();
+    expect(setVacationEnd).toHaveBeenCalledWith(dayOffset(4));
+  });
+
+  it('leaves its own trip alone when the end date already matches', () => {
+    useProjectStore.setState({ projects: [liveTrip()] });
+    const { setVacationEnd, setVacationMode } = settings({
+      vacationMode: true, vacationEnd: dayOffset(4), vacationDrivenBy: 'trip',
+    });
+    useTaskStore.getState().checkAwayVacation();
+    expect(setVacationEnd).not.toHaveBeenCalled();
+    expect(setVacationMode).not.toHaveBeenCalled();
+  });
+
+  it('reads mode-off mid-trip as a refusal, and scopes it to the span', () => {
+    // Not to the day: turning it off on day three of a seven-day trip means
+    // "give me my tasks back for this trip", so a day-scoped stamp would
+    // re-arm every morning for the rest of the week.
+    const trip = liveTrip();
+    useProjectStore.setState({ projects: [trip] });
+    const { setVacationMode, setVacationDrivenBy } = settings({
+      vacationMode: false, vacationDrivenBy: 'trip',
+    });
+    useTaskStore.getState().checkAwayVacation();
+    expect(useProjectStore.getState().projects[0].awayPauseDeclinedFor).toBe(trip.awayStart);
+    expect(setVacationDrivenBy).toHaveBeenCalledWith(null);
+    // And emphatically does not re-arm in the same pass.
+    expect(setVacationMode).not.toHaveBeenCalled();
+  });
+
+  it('does not re-arm a trip that was refused for this span', () => {
+    const trip = liveTrip();
+    useProjectStore.setState({ projects: [{ ...trip, awayPauseDeclinedFor: trip.awayStart }] });
+    const { setVacationMode } = settings();
+    useTaskStore.getState().checkAwayVacation();
+    expect(setVacationMode).not.toHaveBeenCalled();
+  });
+
+  it('arms again once the dates move, since that is a different trip', () => {
+    const trip = liveTrip();
+    useProjectStore.setState({ projects: [{ ...trip, awayPauseDeclinedFor: dayOffset(-30) }] });
+    const { setVacationMode } = settings();
+    useTaskStore.getState().checkAwayVacation();
+    expect(setVacationMode).toHaveBeenCalledWith(true, trip.awayEnd);
+  });
+
+  it('reads mode-off after a finished trip as the expiry it is, not a refusal', () => {
+    // checkVacationExpiry runs immediately before this and turns the mode off
+    // on its own; stamping a refusal for that would be a decision nobody made.
+    const over = makeProject({
+      id: 'trip', awayStart: dayOffset(-9), awayEnd: dayOffset(-2), awayPauses: true,
+    });
+    useProjectStore.setState({ projects: [over] });
+    const { setVacationDrivenBy } = settings({ vacationMode: false, vacationDrivenBy: 'trip' });
+    useTaskStore.getState().checkAwayVacation();
+    expect(useProjectStore.getState().projects[0].awayPauseDeclinedFor).toBeNull();
+    expect(setVacationDrivenBy).toHaveBeenCalledWith(null);
+  });
+
+  it('arms regardless of simplified mode', () => {
+    // Rule 1 of that mode: it changes what is rendered, never what is stored.
+    // The editor rows are hidden for a project with no span, and that must
+    // never reach the pass, or a rendering switch would change behaviour.
+    useProjectStore.setState({ projects: [liveTrip()] });
+    const { setVacationMode } = settings({ simpleMode: true });
+    useTaskStore.getState().checkAwayVacation();
+    expect(setVacationMode).toHaveBeenCalledWith(true, dayOffset(4));
+  });
+
+  it('needs no tie-break between two trips at once', () => {
+    // Vacation mode is a boolean, so the question is only whether any
+    // nominated trip covers today.
+    useProjectStore.setState({ projects: [
+      liveTrip({ id: 'a', awayPauses: false }),
+      liveTrip({ id: 'b' }),
+    ] });
+    const { setVacationDrivenBy } = settings();
+    useTaskStore.getState().checkAwayVacation();
+    expect(setVacationDrivenBy).toHaveBeenCalledWith('b');
+  });
+});
+
 // ─── checkVacationExpiry ────────────────────────────────────────────────────
 
 describe('checkVacationExpiry', () => {
@@ -2644,6 +2952,24 @@ describe('uncompleteTask', () => {
     useTaskStore.setState({ tasks: [makeTask({ id: 't1', completed: true, completedAt: 'now' })] });
     useTaskStore.getState().uncompleteTask('t1');
     expect(dbUpdateTask).toHaveBeenCalledWith(expect.objectContaining({ id: 't1', completed: false }));
+  });
+
+  it('deletes the completion calendar event and clears the field', () => {
+    useTaskStore.setState({
+      tasks: [makeTask({ id: 't1', completed: true, completedAt: 'now', completionCalendarEventId: 'log-evt' })],
+    });
+    useTaskStore.getState().uncompleteTask('t1');
+    expect(deleteCalendarEvent).toHaveBeenCalledWith('log-evt');
+    const task = useTaskStore.getState().tasks[0];
+    expect(task.completionCalendarEventId).toBeNull();
+  });
+
+  it('does not call deleteCalendarEvent when there is no completion calendar event', () => {
+    useTaskStore.setState({
+      tasks: [makeTask({ id: 't1', completed: true, completedAt: 'now', completionCalendarEventId: null })],
+    });
+    useTaskStore.getState().uncompleteTask('t1');
+    expect(deleteCalendarEvent).not.toHaveBeenCalled();
   });
 
   it('removes the untouched follow-up occurrence spawned by the completion', () => {
@@ -3763,6 +4089,7 @@ describe('checkPantryCheckTasks', () => {
    * over a year (a 122-day cadence) and last bought 125 days ago.
    */
   const lapsedItem = (overrides: Partial<GroceryItem> = {}): GroceryItem => ({
+    nameFromScan: false,
     id: 'g-1', name: 'Flour', nameKey: 'flour', preferredProductId: null, productStrict: false,
     aisle: 'Baking', quantity: null, quantityFromRecipe: false, note: '',
     onList: false, checked: false, sortOrder: 1,
@@ -3770,7 +4097,7 @@ describe('checkPantryCheckTasks', () => {
     onHandUntil: null, sourceRecipeId: null, sourceRecipeTitle: null, choiceGroup: null,
     isStaple: false, expiresAt: null, frozenAt: null, openedAt: null, runningLowAt: null,
     shelfLifeDays: null, useUpTask: null, pantryCheckDeclinedAt: null, pantryReviewedAt: null,
-    usedUpCount: 0, spoiledCount: 0, lastSpoiledAt: null, varietyOfKey: null, backfillDismissedFields: [],
+    usedUpCount: 0, spoiledCount: 0, lastSpoiledAt: null, varietyOfKey: null, nutrition: null, backfillDismissedFields: [],
     lastPriceMinor: null, lastPricedAt: null, lastPriceQuantity: null, priceHistory: [],
     ...overrides,
   });
@@ -4000,6 +4327,7 @@ describe('checkPantryReviewTasks', () => {
 
   /** A row still inside its purchase window: a `guessed` card, the common case. */
   const guessedItem = (i: number, overrides: Partial<GroceryItem> = {}): GroceryItem => ({
+    nameFromScan: false,
     id: `g-${i}`, name: `Thing ${i}`, nameKey: `thing ${i}`, preferredProductId: null, productStrict: false,
     aisle: 'Baking', quantity: null, quantityFromRecipe: false, note: '',
     onList: false, checked: false, sortOrder: i,
@@ -4007,7 +4335,7 @@ describe('checkPantryReviewTasks', () => {
     onHandUntil: null, sourceRecipeId: null, sourceRecipeTitle: null, choiceGroup: null,
     isStaple: false, expiresAt: null, frozenAt: null, openedAt: null, runningLowAt: null,
     shelfLifeDays: null, useUpTask: null, pantryCheckDeclinedAt: null, pantryReviewedAt: null,
-    usedUpCount: 0, spoiledCount: 0, lastSpoiledAt: null, varietyOfKey: null, backfillDismissedFields: [],
+    usedUpCount: 0, spoiledCount: 0, lastSpoiledAt: null, varietyOfKey: null, nutrition: null, backfillDismissedFields: [],
     lastPriceMinor: null, lastPricedAt: null, lastPriceQuantity: null, priceHistory: [],
     ...overrides,
   });
@@ -4186,6 +4514,7 @@ describe('checkReachOutTasks', () => {
     reachOutDeclinedAt: null, reachOutOfferDeclinedAt: null, askAbout: '',
     backfillDismissedFields: [],
     groupId: null,
+    location: null,
     ...overrides,
   });
 
@@ -4480,10 +4809,15 @@ describe('checkMoodTasks', () => {
 
   const settings = (overrides: Record<string, unknown> = {}) => ({
     dayResetTime: '00:00',
+    morningStart: '06:00',
+    afternoonStart: '12:00',
+    eveningStart: '18:00',
+    nightStart: '21:00',
     moodLogTasks: true,
     moodLogTaskCategory: 'Health',
     moodLogLastDayKey: null as string | null,
     setMoodLogLastDayKey: jest.fn(),
+    moodLogTimeSegments: [] as string[],
     moodNudgeTasks: false,
     moodNudgeTaskCategory: 'Health',
     moodNudgeAfterDays: 3,
@@ -4501,6 +4835,7 @@ describe('checkMoodTasks', () => {
     dayKey,
     mood,
     symptoms: [],
+    contextTags: [],
     note: null,
   });
 
@@ -4556,13 +4891,23 @@ describe('checkMoodTasks', () => {
       expect(tasksOfKind('moodLog')).toHaveLength(0);
     });
 
+    it('writes nothing yet when the chosen time of day has not arrived', () => {
+      useSettingsStore.getState.mockReturnValue(settings({ moodLogTimeSegments: ['evening'] }));
+
+      useTaskStore.getState().checkMoodTasks();
+
+      expect(tasksOfKind('moodLog')).toHaveLength(0);
+    });
+
     it('holds the check-in back until the chosen time of day, when one is set', () => {
-      useSettingsStore.getState.mockReturnValue(settings({ moodLogTimeSegment: 'evening' }));
+      useSettingsStore.getState.mockReturnValue(settings({ moodLogTimeSegments: ['evening'] }));
+      jest.setSystemTime(new Date(2026, 7, 25, 19, 0, 0));
 
       useTaskStore.getState().checkMoodTasks();
 
       const [check] = tasksOfKind('moodLog');
       expect(check.timeSegments).toEqual(['evening']);
+      expect(check.generatedSourceId).toBe(`${TODAY}:evening`);
     });
 
     it('carries no time-of-day hold-back by default', () => {
@@ -4616,6 +4961,82 @@ describe('checkMoodTasks', () => {
 
     it('writes nothing with no category to file it under', () => {
       useSettingsStore.getState.mockReturnValue(settings({ moodLogTaskCategory: null }));
+
+      useTaskStore.getState().checkMoodTasks();
+
+      expect(tasksOfKind('moodLog')).toHaveLength(0);
+    });
+  });
+
+  describe('several check-ins a day', () => {
+    // Morning 06:00, afternoon 12:00, evening 18:00, night 21:00 — the
+    // defaults settings() carries.
+    const morningAndEvening = () => settings({ moodLogTimeSegments: ['morning', 'evening'] });
+
+    it('writes the current segment\'s check-in, not every configured one', () => {
+      // 9am: morning has started, evening has not.
+      useSettingsStore.getState.mockReturnValue(morningAndEvening());
+
+      useTaskStore.getState().checkMoodTasks();
+
+      const live = tasksOfKind('moodLog');
+      expect(live).toHaveLength(1);
+      expect(live[0].generatedSourceId).toBe(`${TODAY}:morning`);
+      expect(live[0].timeSegments).toEqual(['morning']);
+    });
+
+    it('clears the earlier segment\'s unanswered check-in once the next one arrives', () => {
+      useSettingsStore.getState.mockReturnValue(morningAndEvening());
+      useTaskStore.getState().checkMoodTasks();
+      expect(tasksOfKind('moodLog')[0].generatedSourceId).toBe(`${TODAY}:morning`);
+
+      // Roll into the evening and run again — same "decide once" guard the
+      // day-to-day case uses, but keyed on the whole slot rather than the day.
+      useSettingsStore.getState.mockReturnValue(morningAndEvening());
+      jest.setSystemTime(new Date(2026, 7, 25, 19, 0, 0));
+      useTaskStore.getState().checkMoodTasks();
+
+      const live = tasksOfKind('moodLog');
+      expect(live).toHaveLength(1);
+      expect(live[0].generatedSourceId).toBe(`${TODAY}:evening`);
+    });
+
+    it('does not silence the evening check-in with a log made during the morning', () => {
+      setLogs([entry(TODAY, 3)]); // logged this morning
+      useSettingsStore.getState.mockReturnValue(morningAndEvening());
+      jest.setSystemTime(new Date(2026, 7, 25, 19, 0, 0));
+
+      useTaskStore.getState().checkMoodTasks();
+
+      const live = tasksOfKind('moodLog');
+      expect(live).toHaveLength(1);
+      expect(live[0].generatedSourceId).toBe(`${TODAY}:evening`);
+    });
+
+    it('writes nothing for a segment already answered since it began', () => {
+      // Logged at 19:30, after the 18:00 evening threshold.
+      setLogs([{ ...entry(TODAY, 3), loggedAt: '2026-08-25T19:30:00.000Z' }]);
+      useSettingsStore.getState.mockReturnValue(morningAndEvening());
+      jest.setSystemTime(new Date(2026, 7, 25, 20, 0, 0));
+
+      useTaskStore.getState().checkMoodTasks();
+
+      expect(tasksOfKind('moodLog')).toHaveLength(0);
+    });
+
+    it('writes nothing before the earliest configured segment arrives', () => {
+      useSettingsStore.getState.mockReturnValue(settings({ moodLogTimeSegments: ['afternoon'] }));
+      jest.setSystemTime(new Date(2026, 7, 25, 8, 0, 0)); // 8am, before noon
+
+      useTaskStore.getState().checkMoodTasks();
+
+      expect(tasksOfKind('moodLog')).toHaveLength(0);
+    });
+
+    it('does not hand back a segment\'s check-in the user swiped away earlier the same slot', () => {
+      useSettingsStore.getState.mockReturnValue(
+        settings({ moodLogTimeSegments: ['morning', 'evening'], moodLogLastDayKey: `${TODAY}:morning` }),
+      );
 
       useTaskStore.getState().checkMoodTasks();
 
@@ -4713,6 +5134,7 @@ describe('checkMealPlanNudge', () => {
     vacationMode: false,
     kitchenEnabled: true,
     mealPlanNudgeEnabled: true,
+    mealPlanNudgeIgnoresVacation: false,
     mealPlanNudgeWeekday: 0,
     mealPlanNudgeTime: '09:00',
     mealPlanNudgeLastFiredWeekKey: null as string | null,
@@ -4791,6 +5213,17 @@ describe('checkMealPlanNudge', () => {
 
     expect(useTaskStore.getState().tasks).toHaveLength(0);
     expect(s.setMealPlanNudgeLastFiredWeekKey).not.toHaveBeenCalled();
+  });
+
+  it('still fires during vacation mode when told to ignore it', () => {
+    jest.setSystemTime(new Date(2025, 7, 3, 9, 0, 0));
+    const s = settings({ vacationMode: true, mealPlanNudgeIgnoresVacation: true });
+    useSettingsStore.getState.mockReturnValue(s);
+    useTaskStore.setState({ tasks: [] });
+
+    useTaskStore.getState().checkMealPlanNudge();
+
+    expect(useTaskStore.getState().tasks).toHaveLength(7);
   });
 
   it('does nothing before the configured day/time arrives', () => {
@@ -5162,15 +5595,16 @@ describe('checkMealSlotTasks', () => {
     return {
       id: `m-${date}-${slot}`, date, slot, recipeId: null, title: 'Chili', sortOrder: 1,
       createdAt: '2026-01-01T00:00:00.000Z', cookedAt: null, leftoverId: null,
-      recipeChoices: [], personIds: [], recipeScale: 1, cookTask: null, shopTask: null, calendarEventId: null,
+      recipeChoices: [], personIds: [], recipeScale: 1, cookTask: null, shopTask: null, logMeal: null, calendarEventId: null,
       ...over,
     };
   }
 
   function recipe(id: string, over: Partial<Recipe> = {}): Recipe {
     return {
+      backfillDismissedFields: [],
       id, name: 'Chili', nameKey: 'chili', notes: '', sourceUrl: null, sourceName: null,
-      author: null, source: null, servings: null, servingsMax: null, recipeYield: null,
+      author: null, source: null, servings: null, servingsMax: null, recipeYield: null, cookedWeightG: null,
       leftoverKeepDays: null, imagePath: null, mealType: null, tags: [], ingredients: [],
       emptySections: [], components: [], prepTasks: [], steps: [], sortOrder: 1,
       createdAt: '2026-01-01T00:00:00.000Z', cookCount: 0, lastCookedAt: null, vote: null,
@@ -5491,8 +5925,9 @@ describe('checkMealShortfallTasks', () => {
 
   function shortfallRecipe(id: string, name: string, ingredientNames: string[]): Recipe {
     return {
+      backfillDismissedFields: [],
       id, name, nameKey: name.toLowerCase(), notes: '', sourceUrl: null, sourceName: null,
-      author: null, source: null, servings: null, servingsMax: null, recipeYield: null,
+      author: null, source: null, servings: null, servingsMax: null, recipeYield: null, cookedWeightG: null,
       leftoverKeepDays: null, imagePath: null, mealType: null, tags: [],
       ingredients: ingredientNames.map((n, i) => ({
         id: `${id}-i${i}`, name: n, nameKey: n.toLowerCase(), quantity: '', aisle: null,
@@ -5511,7 +5946,7 @@ describe('checkMealShortfallTasks', () => {
     return {
       id: `m-${date}-${over.slot ?? 'dinner'}`, date, slot: 'dinner', recipeId, title: 'Ragu',
       sortOrder: 1, createdAt: '2026-01-01T00:00:00.000Z', cookedAt: null, leftoverId: null,
-      recipeChoices: [], personIds: [], recipeScale: 1, cookTask: null, shopTask: null, calendarEventId: null,
+      recipeChoices: [], personIds: [], recipeScale: 1, cookTask: null, shopTask: null, logMeal: null, calendarEventId: null,
       ...over,
     };
   }
@@ -5553,7 +5988,7 @@ describe('checkMealShortfallTasks', () => {
     useTaskStore.getState().checkMealShortfallTasks();
 
     const [row] = shopRows();
-    expect(row.title).toBe('Shop for Sun Ragu');
+    expect(row.title).toBe('Shop for Ragu (Sun Dinner)');
     expect(row.generatedSourceId).toBe('m-2026-08-23-dinner');
     // The meal plan, opened straight on the add-to-list sheet for this meal.
     expect(row.linkUrl).toBe('dundundun://mealplan?date=2026-08-23&shop=m-2026-08-23-dinner');
@@ -5572,6 +6007,7 @@ describe('checkMealShortfallTasks', () => {
   it('writes nothing for a meal it has everything for', () => {
     useGroceryStore.setState({
       items: [{
+        nameFromScan: false,
         id: 'g-1', name: 'Onions', nameKey: 'onions', preferredProductId: null, productStrict: false,
         aisle: 'Produce', quantity: null, quantityFromRecipe: false, note: '',
         onList: true, checked: false, sortOrder: 1,
@@ -5579,7 +6015,7 @@ describe('checkMealShortfallTasks', () => {
         onHandUntil: null, sourceRecipeId: null, sourceRecipeTitle: null, choiceGroup: null,
         isStaple: false, expiresAt: null, frozenAt: null, openedAt: null, runningLowAt: null,
         shelfLifeDays: null, useUpTask: null, pantryCheckDeclinedAt: null, pantryReviewedAt: null,
-        usedUpCount: 0, spoiledCount: 0, lastSpoiledAt: null, varietyOfKey: null, backfillDismissedFields: [],
+        usedUpCount: 0, spoiledCount: 0, lastSpoiledAt: null, varietyOfKey: null, nutrition: null, backfillDismissedFields: [],
         lastPriceMinor: null, lastPricedAt: null, lastPriceQuantity: null, priceHistory: [],
       }],
     });
@@ -5695,7 +6131,7 @@ describe('checkMealShortfallTasks', () => {
 
     expect(shopRows()).toHaveLength(1);
     expect(shopRows()[0].id).toBe(id);
-    expect(shopRows()[0].title).toBe('Shop for Sun Ragu alla bolognese');
+    expect(shopRows()[0].title).toBe('Shop for Ragu alla bolognese (Sun Dinner)');
   });
 
   it('caps how many it asks at once', () => {
@@ -6740,6 +7176,7 @@ function makeTemplateWithItemCategories(id: string, categories: (string | null)[
     applyContainer: 'stack' as const,
     schedule: null,
     scheduleLastFiredKey: null,
+    anchorsAreAway: false,
   };
 }
 
@@ -7127,6 +7564,21 @@ describe('groupRosterOf', () => {
       ],
     });
     // One member, shown as done — not two, and not zero.
+    expect(useTaskStore.getState().groupRosterOf('g1').map(t => t.id)).toEqual(['done']);
+  });
+
+  it('drops a plain successor that reads as due today alongside its completed-today predecessor', () => {
+    // The reported bug (#Supplements): after a device timezone change, a
+    // stored `dueDate` that was computed as "tomorrow" can re-derive as
+    // "today" — unlike the chain-step case above, an ordinary recurring
+    // successor has no legitimate reason to share today with the row it
+    // replaced, so the predecessor wins and the successor drops out.
+    useTaskStore.setState({
+      tasks: [
+        makeTask({ id: 'done', groupId: 'g1', completed: true, completedAt: today(), sortOrder: 1 }),
+        makeTask({ id: 'today-too', groupId: 'g1', dueDate: today(), previousOccurrenceId: 'done', sortOrder: 1 }),
+      ],
+    });
     expect(useTaskStore.getState().groupRosterOf('g1').map(t => t.id)).toEqual(['done']);
   });
 
@@ -8417,7 +8869,7 @@ describe('pinnedTasks', () => {
         phoneNumber: null, email: null, linkUrl: null,
         cadenceDays: 30, nudgeOptIn: false, cadenceSetAt: null,
         reachOutDeclinedAt: null, reachOutOfferDeclinedAt: null, askAbout: '',
-        backfillDismissedFields: [], groupId: null,
+        backfillDismissedFields: [], groupId: null, location: null,
       }],
       initialized: true,
     });
@@ -12064,6 +12516,7 @@ describe('postponeCount', () => {
 
 describe('deleting a use-up task', () => {
   const item = {
+    nameFromScan: false,
     id: 'g-1', name: 'Spinach', nameKey: 'spinach', preferredProductId: null, productStrict: false, variant: null, aisle: 'Produce', quantity: null, quantityFromRecipe: false, note: '',
     onList: false, checked: false, sortOrder: 1, purchaseCount: 3,
     lastAddedAt: null, lastPurchasedAt: null, createdAt: '2026-01-01T00:00:00.000Z',
@@ -12074,7 +12527,7 @@ describe('deleting a use-up task', () => {
     usedUpCount: 0,
     spoiledCount: 0,
     lastSpoiledAt: null,
-    varietyOfKey: null, backfillDismissedFields: [],
+    varietyOfKey: null, nutrition: null, backfillDismissedFields: [],
     lastPriceMinor: null, lastPricedAt: null, lastPriceQuantity: null, priceHistory: [],
   };
 
@@ -12117,6 +12570,7 @@ describe('deleting a use-up task', () => {
 
 describe('completing a use-up task', () => {
   const groceryItem = {
+    nameFromScan: false,
     id: 'g-1', name: 'Spinach', nameKey: 'spinach', preferredProductId: null, productStrict: false, variant: null, aisle: 'Produce', quantity: null, quantityFromRecipe: false, note: '',
     onList: false, checked: false, sortOrder: 1, purchaseCount: 3,
     lastAddedAt: null, lastPurchasedAt: null, createdAt: '2026-01-01T00:00:00.000Z',
@@ -12127,7 +12581,7 @@ describe('completing a use-up task', () => {
     usedUpCount: 0,
     spoiledCount: 0,
     lastSpoiledAt: null,
-    varietyOfKey: null, backfillDismissedFields: [],
+    varietyOfKey: null, nutrition: null, backfillDismissedFields: [],
     lastPriceMinor: null, lastPricedAt: null, lastPriceQuantity: null, priceHistory: [],
   };
   const seedItem = () => {
@@ -12140,7 +12594,7 @@ describe('completing a use-up task', () => {
   const leftover = {
     id: 'l-1', title: 'Chicken stir-fry', recipeId: null, sourceEntryId: null,
     storedAt: '2026-08-10T18:00:00.000Z', keepUntil: '2026-08-14', finishedAt: null,
-    outcome: null, frozenAt: null, createdAt: '2026-08-10T18:00:00.000Z', useUpTask: null,
+    outcome: null, frozenAt: null, weightG: null, createdAt: '2026-08-10T18:00:00.000Z', useUpTask: null,
   };
   const seedLeftover = () => {
     useLeftoverStore.setState({ leftovers: [{ ...leftover }], pendingUseUpLeftoverId: null, initialized: true });
@@ -12212,7 +12666,7 @@ describe('completing a leftover-backed meal task', () => {
     id: 'l-1', title: 'Chicken stir-fry', recipeId: null, sourceEntryId: null,
     storedAt: '2026-08-10T18:00:00.000Z', keepUntil: '2026-08-14',
     finishedAt: null as string | null, outcome: null as 'eaten' | 'tossed' | null,
-    frozenAt: null, createdAt: '2026-08-10T18:00:00.000Z', useUpTask: null,
+    frozenAt: null, weightG: null, createdAt: '2026-08-10T18:00:00.000Z', useUpTask: null,
   };
   const seedLeftover = (overrides: Partial<typeof leftover> = {}) => {
     useLeftoverStore.setState({
@@ -12223,7 +12677,7 @@ describe('completing a leftover-backed meal task', () => {
   const entry: MealPlanEntry = {
     id: 'm-1', date: '2026-08-22', slot: 'dinner', recipeId: null, title: 'Chicken stir-fry',
     sortOrder: 1, createdAt: '2026-01-01T00:00:00.000Z', cookedAt: null, leftoverId: 'l-1',
-    recipeChoices: [], personIds: [], recipeScale: 1, cookTask: null, shopTask: null, calendarEventId: null,
+    recipeChoices: [], personIds: [], recipeScale: 1, cookTask: null, shopTask: null, logMeal: null, calendarEventId: null,
   };
   const seedEntry = (overrides: Partial<MealPlanEntry> = {}) => {
     const merged = { ...entry, ...overrides };
@@ -12289,6 +12743,88 @@ describe('completing a leftover-backed meal task', () => {
   });
 });
 
+describe('completing a meal task offers to log it', () => {
+  const recipeEntry: MealPlanEntry = {
+    id: 'm-1', date: '2026-08-22', slot: 'dinner', recipeId: 'r-1', title: 'Chicken stir-fry',
+    sortOrder: 1, createdAt: '2026-01-01T00:00:00.000Z', cookedAt: null, leftoverId: null,
+    recipeChoices: [], personIds: [], recipeScale: 1, cookTask: null, shopTask: null, logMeal: null, calendarEventId: null,
+  };
+  // No recipe behind it — a typed answer, same as "Eating out" would be —
+  // which is the case offerMealLog's manual branch exists for.
+  const noRecipeEntry: MealPlanEntry = { ...recipeEntry, id: 'm-2', recipeId: null, title: 'Eating out' };
+  const seedEntry = (entry: MealPlanEntry) => {
+    (dbGetMealPlanEntries as jest.Mock).mockReturnValue([entry]);
+    (dbGetMealPlanEntry as jest.Mock).mockReturnValue(entry);
+  };
+  const addEatTask = () => useTaskStore.getState().addTask({
+    title: 'Eat Chicken stir-fry', generatedKind: 'mealSlot', generatedSourceId: '2026-08-22#dinner',
+  });
+
+  beforeEach(() => {
+    useFoodLogStore.setState({ pendingMealLog: null, pendingManualMealLog: null });
+    // Whatever an earlier test left the settings mock returning, offerMealLog
+    // still needs mealLogPrompt on top of it — the top-of-file mock factory
+    // only applies before the first override anywhere in this huge file.
+    const { useSettingsStore } = jest.requireMock('../store/useSettingsStore') as {
+      useSettingsStore: { getState: jest.Mock };
+    };
+    useSettingsStore.getState.mockReturnValue({ ...useSettingsStore.getState(), mealLogPrompt: true });
+  });
+
+  it('offers the auto-computed prompt for a recipe-backed meal', () => {
+    seedEntry(recipeEntry);
+    const task = addEatTask();
+
+    useTaskStore.getState().completeTask(task.id);
+
+    expect(useFoodLogStore.getState().pendingMealLog?.mealPlanEntryId).toBe('m-1');
+    expect(useFoodLogStore.getState().pendingManualMealLog).toBeNull();
+  });
+
+  it('offers the manual search sheet for a meal with nothing to measure automatically', () => {
+    seedEntry(noRecipeEntry);
+    const task = addEatTask();
+
+    useTaskStore.getState().completeTask(task.id);
+
+    expect(useFoodLogStore.getState().pendingManualMealLog).toEqual({
+      label: 'Eating out', slot: 'dinner', mealPlanEntryId: 'm-2',
+    });
+    expect(useFoodLogStore.getState().pendingMealLog).toBeNull();
+  });
+
+  it('does not offer when the meal has been told not to ask', () => {
+    seedEntry({ ...noRecipeEntry, logMeal: false });
+    const task = addEatTask();
+
+    useTaskStore.getState().completeTask(task.id);
+
+    expect(useFoodLogStore.getState().pendingManualMealLog).toBeNull();
+  });
+
+  it('retracts the manual offer when the completion is undone', () => {
+    seedEntry(noRecipeEntry);
+    const task = addEatTask();
+    useTaskStore.getState().completeTask(task.id);
+    expect(useFoodLogStore.getState().pendingManualMealLog).not.toBeNull();
+
+    useTaskStore.getState().uncompleteTask(task.id);
+
+    expect(useFoodLogStore.getState().pendingManualMealLog).toBeNull();
+  });
+
+  it('makes the same offer when a missed-log nudge task is completed instead', () => {
+    seedEntry(noRecipeEntry);
+    const nudgeTask = useTaskStore.getState().addTask({
+      title: 'Log Eating out', generatedKind: 'mealLogNudge', generatedSourceId: 'm-2',
+    });
+
+    useTaskStore.getState().completeTask(nudgeTask.id);
+
+    expect(useFoodLogStore.getState().pendingManualMealLog?.mealPlanEntryId).toBe('m-2');
+  });
+});
+
 describe('completing a use-up task and its meal task for the same leftover', () => {
   // Regression: ticking off "Use up X" and the meal task that closes out the
   // same container within moments of each other used to set both pending
@@ -12299,7 +12835,7 @@ describe('completing a use-up task and its meal task for the same leftover', () 
     id: 'l-1', title: 'Chicken stir-fry', recipeId: null, sourceEntryId: null,
     storedAt: '2026-08-10T18:00:00.000Z', keepUntil: '2026-08-14',
     finishedAt: null as string | null, outcome: null as 'eaten' | 'tossed' | null,
-    frozenAt: null, createdAt: '2026-08-10T18:00:00.000Z', useUpTask: null,
+    frozenAt: null, weightG: null, createdAt: '2026-08-10T18:00:00.000Z', useUpTask: null,
   };
   const seedLeftover = () => {
     useLeftoverStore.setState({
@@ -12313,7 +12849,7 @@ describe('completing a use-up task and its meal task for the same leftover', () 
   const entry: MealPlanEntry = {
     id: 'm-1', date: '2026-08-22', slot: 'dinner', recipeId: null, title: 'Chicken stir-fry',
     sortOrder: 1, createdAt: '2026-01-01T00:00:00.000Z', cookedAt: null, leftoverId: 'l-1',
-    recipeChoices: [], personIds: [], recipeScale: 1, cookTask: null, shopTask: null, calendarEventId: null,
+    recipeChoices: [], personIds: [], recipeScale: 1, cookTask: null, shopTask: null, logMeal: null, calendarEventId: null,
   };
   const seedEntry = () => {
     (dbGetMealPlanEntries as jest.Mock).mockReturnValue([entry]);
@@ -13771,6 +14307,83 @@ describe('negative habits', () => {
     });
   });
 
+  // What a slip costs, when the person has asked for it to cost something.
+  // The arithmetic is pinned in penaltyShield.test.ts; this is the store's
+  // half — that the tap charges, and that taking the tap back does not refund.
+  describe('the penalty it charges', () => {
+    const realSettings = (useSettingsStore.getState as jest.Mock).getMockImplementation()!;
+    let shieldUntil: string | null;
+    let setShieldUntil: jest.Mock;
+
+    beforeEach(() => {
+      shieldUntil = null;
+      setShieldUntil = jest.fn((next: string | null) => { shieldUntil = next; });
+      (useSettingsStore.getState as jest.Mock).mockImplementation(() => ({
+        ...realSettings(),
+        penaltyShieldEnabled: true,
+        penaltyShieldUntil: shieldUntil,
+        setPenaltyShieldUntil: setShieldUntil,
+      }));
+    });
+
+    afterEach(() => {
+      (useSettingsStore.getState as jest.Mock).mockImplementation(realSettings);
+    });
+
+    it('blocks the chosen apps for the configured stretch, measured from the tap', () => {
+      seed(avoid({ penaltyMinutes: 120 }));
+      useTaskStore.getState().logSlip('smoke');
+      // Tapped at 10:00 on Jan 10; two hours buys until noon.
+      expect(new Date(shieldUntil!)).toEqual(new Date(2026, 0, 10, 12, 0, 0));
+    });
+
+    it('charges nothing for a task carrying no penalty', () => {
+      seed(avoid({ penaltyMinutes: null }));
+      useTaskStore.getState().logSlip('smoke');
+      expect(setShieldUntil).not.toHaveBeenCalled();
+    });
+
+    it('charges nothing while the feature is switched off', () => {
+      (useSettingsStore.getState as jest.Mock).mockImplementation(() => ({
+        ...realSettings(),
+        penaltyShieldEnabled: false,
+        penaltyShieldUntil: null,
+        setPenaltyShieldUntil: setShieldUntil,
+      }));
+      seed(avoid({ penaltyMinutes: 120 }));
+      useTaskStore.getState().logSlip('smoke');
+      expect(setShieldUntil).not.toHaveBeenCalled();
+    });
+
+    it('extends rather than replaces when a second slip lands mid-block', () => {
+      seed(avoid({ penaltyMinutes: 120 }));
+      useTaskStore.getState().logSlip('smoke');
+      jest.setSystemTime(new Date(2026, 0, 10, 11, 0, 0));
+      useTaskStore.getState().logSlip('smoke');
+      expect(new Date(shieldUntil!)).toEqual(new Date(2026, 0, 10, 13, 0, 0));
+    });
+
+    it('does not shorten the block when the second slip would end sooner', () => {
+      // Failing twice must not be a way out of failing once.
+      seed(avoid({ penaltyMinutes: 120 }));
+      useTaskStore.getState().logSlip('smoke');
+      seed({ ...get(), penaltyMinutes: 5 });
+      jest.setSystemTime(new Date(2026, 0, 10, 10, 30, 0));
+      useTaskStore.getState().logSlip('smoke');
+      expect(new Date(shieldUntil!)).toEqual(new Date(2026, 0, 10, 12, 0, 0));
+    });
+
+    it('leaves the block in force when the slip is undone', () => {
+      // Undo corrects the record, not the consequence — otherwise logging and
+      // retracting a slip would be a way to buy back any block at all.
+      seed(avoid({ penaltyMinutes: 120, streakCount: 12, streakDate: new Date(2026, 0, 9).toISOString() }));
+      useTaskStore.getState().logSlip('smoke');
+      useTaskStore.getState().undoSlip('smoke');
+      expect(get().streakCount).toBe(12);
+      expect(new Date(shieldUntil!)).toEqual(new Date(2026, 0, 10, 12, 0, 0));
+    });
+  });
+
   describe('rolloverNegativeStreaks', () => {
     it('credits the clean days that have gone by', () => {
       seed(avoid({ streakCount: 1, streakDate: new Date(2026, 0, 5).toISOString() }));
@@ -13806,6 +14419,114 @@ describe('negative habits', () => {
       useTaskStore.getState().rolloverNegativeStreaks();
       expect(get().streakCount).toBe(2); // Jan 11 and 12
     });
+  });
+});
+
+// The other polarity's penalty: a task that fails by not getting done. There is
+// no tap to hang it on, so it is swept for — which makes the stamp that stops
+// it firing twice the thing most worth pinning down here.
+describe('sweepTaskPenalties', () => {
+  const realSettings = (useSettingsStore.getState as jest.Mock).getMockImplementation()!;
+  let shieldUntil: string | null;
+  let setShieldUntil: jest.Mock;
+
+  beforeEach(() => {
+    jest.useFakeTimers();
+    jest.setSystemTime(new Date(2026, 0, 10, 9, 0, 0)); // Sat Jan 10 2026, 09:00
+    shieldUntil = null;
+    setShieldUntil = jest.fn((next: string | null) => { shieldUntil = next; });
+    (useSettingsStore.getState as jest.Mock).mockImplementation(() => ({
+      ...realSettings(),
+      penaltyShieldEnabled: true,
+      penaltyShieldUntil: shieldUntil,
+      setPenaltyShieldUntil: setShieldUntil,
+    }));
+  });
+
+  afterEach(() => {
+    jest.useRealTimers();
+    (useSettingsStore.getState as jest.Mock).mockImplementation(realSettings);
+  });
+
+  const walk = (over: Partial<Task> = {}) => makeTask({
+    id: 'walk',
+    title: 'Morning walk',
+    dueDate: new Date(2026, 0, 10, 12, 0, 0).toISOString(),
+    penaltyMinutes: 120,
+    penaltyCutoffTime: '08:00',
+    ...over,
+  });
+  const get = (id = 'walk') => useTaskStore.getState().tasks.find(t => t.id === id)!;
+
+  it('charges a task left undone past its cutoff', () => {
+    useTaskStore.setState({ tasks: [walk()] });
+    useTaskStore.getState().sweepTaskPenalties();
+    expect(get().penaltyFiredAt).not.toBeNull();
+    expect(new Date(shieldUntil!)).toEqual(new Date(2026, 0, 10, 11, 0, 0));
+  });
+
+  it('leaves a task alone before its cutoff', () => {
+    jest.setSystemTime(new Date(2026, 0, 10, 7, 0, 0));
+    useTaskStore.setState({ tasks: [walk()] });
+    useTaskStore.getState().sweepTaskPenalties();
+    expect(get().penaltyFiredAt).toBeNull();
+    expect(setShieldUntil).not.toHaveBeenCalled();
+  });
+
+  it('charges once and then never again, however often it runs', () => {
+    // The stamp is what makes this safe to sit in the catch-up list, which runs
+    // on every launch and every background refresh.
+    useTaskStore.setState({ tasks: [walk()] });
+    useTaskStore.getState().sweepTaskPenalties();
+    const firstCallCount = setShieldUntil.mock.calls.length;
+    useTaskStore.getState().sweepTaskPenalties();
+    useTaskStore.getState().sweepTaskPenalties();
+    expect(setShieldUntil).toHaveBeenCalledTimes(firstCallCount);
+  });
+
+  it('charges nothing for a task that was done in time', () => {
+    useTaskStore.setState({ tasks: [walk({ completed: true })] });
+    useTaskStore.getState().sweepTaskPenalties();
+    expect(get().penaltyFiredAt).toBeNull();
+    expect(setShieldUntil).not.toHaveBeenCalled();
+  });
+
+  it('charges nothing for a task carrying no penalty', () => {
+    useTaskStore.setState({ tasks: [walk({ penaltyMinutes: null })] });
+    useTaskStore.getState().sweepTaskPenalties();
+    expect(get().penaltyFiredAt).toBeNull();
+  });
+
+  it('does nothing at all while the feature is switched off', () => {
+    // Including no stamping: an install that switches this on later must not
+    // find every task it has ever missed already charged.
+    (useSettingsStore.getState as jest.Mock).mockImplementation(() => ({
+      ...realSettings(),
+      penaltyShieldEnabled: false,
+      penaltyShieldUntil: null,
+      setPenaltyShieldUntil: setShieldUntil,
+    }));
+    useTaskStore.setState({ tasks: [walk()] });
+    useTaskStore.getState().sweepTaskPenalties();
+    expect(get().penaltyFiredAt).toBeNull();
+    expect(setShieldUntil).not.toHaveBeenCalled();
+  });
+
+  it('records but serves nothing for a miss from an earlier day', () => {
+    jest.setSystemTime(new Date(2026, 0, 12, 9, 0, 0)); // two days on
+    useTaskStore.setState({ tasks: [walk()] });
+    useTaskStore.getState().sweepTaskPenalties();
+    expect(get().penaltyFiredAt).not.toBeNull();
+    expect(setShieldUntil).not.toHaveBeenCalled();
+  });
+
+  it('folds several misses on the same day into one write', () => {
+    useTaskStore.setState({
+      tasks: [walk(), walk({ id: 'stretch', title: 'Stretch', penaltyMinutes: 180 })],
+    });
+    useTaskStore.getState().sweepTaskPenalties();
+    expect(setShieldUntil).toHaveBeenCalledTimes(1);
+    expect(new Date(shieldUntil!)).toEqual(new Date(2026, 0, 10, 12, 0, 0)); // the longer of the two
   });
 });
 
@@ -13925,5 +14646,97 @@ describe('changing a task’s polarity', () => {
     });
     useTaskStore.getState().updateTask('y', { title: 'Renamed' });
     expect(get('y').streakCount).toBe(9);
+  });
+});
+
+describe('a task that records a dose', () => {
+  beforeEach(() => {
+    useMedicationStore.setState({ logs: [], initialized: false });
+  });
+
+  it('records the dose the task states, with no question asked', () => {
+    // The task already says what the dose is, so asking again at the tick
+    // would be the "same fact twice" the medication log exists not to be.
+    useTaskStore.setState({
+      tasks: [makeTask({
+        id: 't1', title: 'Take the tablets',
+        medicationName: 'Sertraline', medicationAmount: 50, medicationUnit: 'mg',
+      })],
+    });
+    useTaskStore.getState().completeTask('t1');
+    expect(useMedicationStore.getState().logs).toHaveLength(1);
+    expect(useMedicationStore.getState().logs[0]).toMatchObject({
+      name: 'Sertraline', amount: 50, unit: 'mg', taskId: 't1', asNeeded: false,
+    });
+  });
+
+  it('records nothing for a task carrying no medication', () => {
+    useTaskStore.setState({ tasks: [makeTask({ id: 't1' })] });
+    useTaskStore.getState().completeTask('t1');
+    expect(useMedicationStore.getState().logs).toHaveLength(0);
+  });
+
+  it('records nothing when the day closed the task rather than the person', () => {
+    // A missed sweep completes the row without anybody having taken anything.
+    useTaskStore.setState({
+      tasks: [makeTask({ id: 't1', medicationName: 'Sertraline' })],
+    });
+    useTaskStore.getState().completeTask('t1', { missed: true });
+    expect(useMedicationStore.getState().logs).toHaveLength(0);
+  });
+
+  it('takes the dose back when the task is unticked', () => {
+    useTaskStore.setState({
+      tasks: [makeTask({ id: 't1', medicationName: 'Sertraline' })],
+    });
+    useTaskStore.getState().completeTask('t1');
+    expect(useMedicationStore.getState().logs).toHaveLength(1);
+    useTaskStore.getState().uncompleteTask('t1');
+    expect(useMedicationStore.getState().logs).toHaveLength(0);
+  });
+
+  it('carries the medication onto the next occurrence', () => {
+    // Without this a daily task would have to be re-set every day.
+    useTaskStore.setState({
+      tasks: [makeTask({
+        id: 't1', recurrenceType: 'daily',
+        dueDate: new Date(2025, 5, 10).toISOString(),
+        medicationName: 'Sertraline', medicationAmount: 50, medicationUnit: 'mg',
+      })],
+    });
+    useTaskStore.getState().completeTask('t1');
+    const next = useTaskStore.getState().tasks.find(t => t.id !== 't1');
+    expect(next).toMatchObject({
+      medicationName: 'Sertraline', medicationAmount: 50, medicationUnit: 'mg',
+    });
+  });
+
+  it('records one dose per unit of a daily target, not one per day', () => {
+    // "Three doses a day" is already said here as a quota, so each unit is a
+    // dose — including the one that finishes the day, and only once.
+    useTaskStore.setState({
+      tasks: [makeTask({
+        id: 't1', targetCount: 3, progressCount: 0,
+        medicationName: 'Sertraline',
+      })],
+    });
+    useTaskStore.getState().logQuotaUnit('t1');
+    useTaskStore.getState().logQuotaUnit('t1');
+    expect(useMedicationStore.getState().logs).toHaveLength(2);
+    useTaskStore.getState().logQuotaUnit('t1'); // reaches the target, completes
+    expect(useMedicationStore.getState().logs).toHaveLength(3);
+  });
+
+  it('takes back only the newest dose when one unit is undone', () => {
+    useTaskStore.setState({
+      tasks: [makeTask({
+        id: 't1', targetCount: 3, progressCount: 0,
+        medicationName: 'Sertraline',
+      })],
+    });
+    useTaskStore.getState().logQuotaUnit('t1');
+    useTaskStore.getState().logQuotaUnit('t1');
+    useTaskStore.getState().unlogQuotaUnit('t1');
+    expect(useMedicationStore.getState().logs).toHaveLength(1);
   });
 });

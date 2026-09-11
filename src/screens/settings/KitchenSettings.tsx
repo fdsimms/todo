@@ -10,6 +10,8 @@ import { SettingsRow } from './SettingsRow';
 import { SettingsSegments } from './SettingsSegments';
 import { type SegmentOption } from '../../components/SegmentedControl';
 import { PillGroup } from '../../components/PillGroup';
+import { NutritionTargetsSheet } from '../../components/NutritionTargetsSheet';
+import { targetedNutrients } from '../../utils/nutritionTargets';
 import { StandingSwapsSheet } from '../../components/StandingSwapsSheet';
 import { standingSwaps } from '../../utils/standingSwaps';
 import { makeSettingsStyles } from './settingsStyles';
@@ -45,7 +47,12 @@ export function KitchenSettings() {
   const kitchenOnToday = useSettingsStore(s => s.kitchenOnToday);
   const setKitchenOnToday = useSettingsStore(s => s.setKitchenOnToday);
   const cookRecapEnabled = useSettingsStore(s => s.cookRecapEnabled);
+  const mealLogPrompt = useSettingsStore(s => s.mealLogPrompt);
+  const nutritionTargets = useSettingsStore(useShallow(s => s.nutritionTargets));
+  const targetCount = targetedNutrients(nutritionTargets).length;
+  const [targetsOpen, setTargetsOpen] = useState(false);
   const setCookRecapEnabled = useSettingsStore(s => s.setCookRecapEnabled);
+  const setMealLogPrompt = useSettingsStore(s => s.setMealLogPrompt);
   const restockOfferEnabled = useSettingsStore(s => s.restockOfferEnabled);
   const setRestockOfferEnabled = useSettingsStore(s => s.setRestockOfferEnabled);
   const tripLiveActivity = useSettingsStore(s => s.tripLiveActivity);
@@ -109,6 +116,27 @@ export function KitchenSettings() {
         />
         )}
         <SettingsRow
+          entryId="nutritionTargets"
+          icon="flag-outline"
+          iconColor={targetCount > 0 ? colors.accent : undefined}
+          label="Daily targets"
+          hint={targetCount === 0
+            ? 'Nothing set. A figure to read the day\'s food log total against, if you want one.'
+            : `${targetCount} set. Read against the day's total in the food log.`}
+          onPress={() => setTargetsOpen(true)}
+          accessibilityLabel="Daily nutrition targets"
+        />
+        <SettingsRow
+          entryId="mealLogPrompt"
+          icon="nutrition-outline"
+          iconColor={mealLogPrompt ? colors.accent : undefined}
+          label="Ask what you ate"
+          hint="When you finish a planned meal or a leftover, offer to add it to the food log. Only for food whose nutrition is known."
+          toggle={mealLogPrompt}
+          onPress={() => setMealLogPrompt(!mealLogPrompt)}
+          accessibilityLabel="Ask what you ate"
+        />
+        <SettingsRow
           entryId="cookRecapEnabled"
           icon="restaurant-outline"
           iconColor={cookRecapEnabled ? colors.accent : undefined}
@@ -169,9 +197,9 @@ export function KitchenSettings() {
           label="Units"
           hint={
             unitSystem === 'metric'
-              ? 'Ounces, pounds, cups and spoons show in grams and millilitres'
+              ? 'Ounces, pounds, cups and spoons show in grams and milliliters'
               : unitSystem === 'us'
-                ? 'Grams, kilograms and millilitres show in ounces, pounds and cups'
+                ? 'Grams, kilograms and milliliters show in ounces, pounds and cups'
                 : 'Amounts show exactly as they were typed'
           }
           tight
@@ -252,6 +280,10 @@ export function KitchenSettings() {
       <StandingSwapsSheet
         visible={standingSwapsVisible}
         onClose={() => setStandingSwapsVisible(false)}
+      />
+      <NutritionTargetsSheet
+        visible={targetsOpen}
+        onClose={() => setTargetsOpen(false)}
       />
     </>
   );

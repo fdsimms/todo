@@ -1,0 +1,4 @@
+{
+  "message": "A grocery item the offline list doesn't recognize now gets sorted into an aisle automatically if you have an Anthropic API key, instead of waiting for you to run \"Sort into aisles.\" A new Settings switch lets you prefer Apple Intelligence over Claude for aisle sorting even with a key.",
+  "date": "2026-09-11"
+}

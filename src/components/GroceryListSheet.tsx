@@ -214,6 +214,10 @@ export function GroceryListSheet({ visible, onClose }: Props) {
                       onBlur={commitRename}
                       onSubmitEditing={commitRename}
                       autoFocus
+                      // See GroceryRow's inline rename: an autocorrection is
+                      // applied on blur, and blur is what commits this name.
+                      autoCorrect={false}
+                      spellCheck={false}
                       returnKeyType="done"
                       maxLength={LIST_NAME_MAX_LENGTH}
                       accessibilityLabel={`Rename ${row.name}`}
@@ -278,6 +282,8 @@ export function GroceryListSheet({ visible, onClose }: Props) {
               onChangeText={setNewName}
               placeholder="e.g. Airbnb"
               placeholderTextColor={colors.textTertiary}
+              autoCorrect={false}
+              spellCheck={false}
               returnKeyType="done"
               onSubmitEditing={handleAdd}
               blurOnSubmit={false}

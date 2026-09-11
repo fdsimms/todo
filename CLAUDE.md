@@ -9,10 +9,27 @@ exercised where applicable), open a PR automatically — don't wait to be asked.
 there's a concrete reason (work is incomplete, checks are red, or the user said to hold off);
 say why instead of opening one silently.
 
-Don't subscribe to PR activity and don't schedule follow-up check-ins after opening a PR unless
-the user explicitly asks for that. Just open the PR and stop.
+**Before pushing a follow-up fix to a PR you opened, check whether it already merged.** A build
+or submission failure reported after the fact (an EAS log, an App Store Connect rejection) often
+arrives once the PR that introduced the problem is already merged into `main` — `git fetch origin
+main && git merge-base --is-ancestor <your-branch> origin/main` says so in one line. Pushing more
+commits onto an already-merged branch doesn't reach `main` again; nothing rebuilds it and the fix
+sits stranded on a branch nobody looks at. When it's merged, cut a fresh branch off the latest
+`main` for the fix (`git checkout -b <new-branch> origin/main`) and open a new PR, same as the
+"merged PR" case this session's own designated-branch instructions already describe — this is
+that same situation recurring mid-task, not a one-off. When it's *not* merged yet, push the fix to
+the existing branch and PR as usual; don't open a new one just because a build failed once.
 
-## Bugs found in passing
+**Batch pushes instead of pushing after every individual fix.** This repo is private, on a
+plan with a fixed monthly GitHub Actions minutes allowance, and each push re-runs the whole
+`test.yml` pipeline. When several review comments or CI failures land close together (a batch
+of nit comments, a CI run failing on more than one check at once), make all the fixes locally
+first — running the verification loop yourself in between — and push once, rather than pushing
+after each one. This doesn't apply to the drive-to-green loop's own round-trip cadence: a fix
+that needs a fresh CI run to confirm (a flaky-vs-real judgment, a build-only failure you can't
+reproduce locally) still has to push and wait, because there's no other way to see the result.
+The distinction is whether the next fix depends on seeing this one's CI result — if it doesn't,
+don't spend a CI run finding that out.
 
 If you notice a real bug while working on something else — not a style nit, an actual wrong
 behavior — and the fix is small (a couple of lines, one clear place, no design judgment call),
@@ -170,30 +187,49 @@ npx tsc --noEmit     # typecheck; ~4s warm, ~20s the first time in a fresh check
 npm test             # the whole suite, about half a minute — just run all of it
 npm run test:watch   # watch mode
 npx jest src/__tests__/dateUtils.test.ts  # single file, if you want the shorter output
-node scripts/build-module-map.js   # regenerate docs/module-map.md, then commit it
-node scripts/check-doc-stats.js    # regenerate the repo-stats block in CLAUDE.md, then commit it
+npm run docs         # regenerate all three generated docs, then commit them
+npm run verify       # the whole verification loop, below
 ```
 
-**The verification loop is:**
+**The verification loop is `npm run verify`**, which is:
 
 ```bash
-npx tsc --noEmit && npm test && node scripts/build-module-map.js && node scripts/check-doc-stats.js && git status --short
+tsc --noEmit && npm test && npm run docs && git status --short
 ```
+
+It is one command rather than a chain to retype because the part that gets dropped is always the
+same part: the generators at the end, which is the single most common reason a PR goes red (see
+below). Run `npm run verify`, not a subset of it.
 
 Under a minute together, and `tsc` is incremental (`.tsbuildinfo`, gitignored) so every run after
 the first is a few seconds. There's no reason to skip any of it or to narrow to a single test
-file. All of it is green on `main`; if anything is red, it's you. Don't run `npx expo export`
-locally to check your work — it's the slowest thing CI does and only catches bundle-time breakage
-(a bad import path, a missing asset, a native config change), so run it only when you changed one
-of those. **CI runs `npx tsc --noEmit`, `npm test`, both doc checks in `--check` mode, and
+file. All of it is green on `main`; if anything is red, it's you.
+
+**"It's you" still holds when the loop is red before you've touched anything.** Several sessions
+land PRs into this repo close together, and one of them can merge with a break the others'
+verification loops hadn't caught yet — a type left stale by a sibling change, a test asserting a
+shape a merge removed. Running the loop on an unrelated branch and seeing it fail is how that
+surfaces, and the fix is exactly "bugs found in passing" above, not a separate case: small,
+one place, obvious right answer → fix it in the same PR and say so in the description (this
+happened for real — a `main`-red `foodLog.test.ts` type error from a concurrent merge, fixed
+alongside an unrelated one-line doc change, PR #2525). Don't shrug it off as "not my diff" and
+push anyway; a red `main` blocks every branch cut afterward until someone notices and fixes it,
+and "someone" is whoever's loop happens to hit it next. Ambiguous or multi-file → same as any
+other passing-bug call, ask rather than guess or widen the PR.
+
+Don't run `npx expo export` locally to check your work — it's the slowest thing CI does and only
+catches bundle-time breakage (a bad import path, a missing asset, a native config change), so run
+it only when you changed one of those. **CI runs `npx tsc --noEmit`, `npm test`, all three doc checks in `--check` mode, and
 `npx expo export --platform ios` on every PR, and on every push to `main`** — that whole list,
 not just the tests.
 
-**The two generated docs are the single most common reason a PR goes red, and the failure is
-entirely avoidable.** `docs/module-map.md` and the `repo-stats` block in this file are generated
-from the tree and committed, and CI re-runs their generators with `--check` and fails if the
-committed copy differs. They are not optional bookkeeping and not a separate chore: **regenerating
-them and committing the result is part of finishing the change, in the same commit.** Concretely:
+**The three generated docs are the single most common reason a PR goes red, and the failure is
+entirely avoidable.** `docs/module-map.md`, `docs/screen-map.md` and the `repo-stats` block in this
+file are generated from the tree and committed, and CI re-runs their generators with `--check` and
+fails if the committed copy differs. They are not optional bookkeeping and not a separate chore:
+**regenerating them and committing the result is part of finishing the change, in the same
+commit** — which is what `npm run verify` does for you, so the reliable way to never hit this is
+to run that rather than its parts. Concretely:
 
 - **Adding, removing, or renaming any top-level `export` in `src/utils`, `src/store`, `src/hooks`,
   `src/db` or `src/services` changes `docs/module-map.md`.** That's most PRs in this repo. A new
@@ -201,19 +237,23 @@ them and committing the result is part of finishing the change, in the same comm
   (the map deliberately skips them).
 - **Adding a file to `src/`, or pushing one across 1,000 lines, changes the `repo-stats` block.**
   A new test file moves the suite count, which is why a pure test-only PR can still fail this.
+- **Adding a component or a screen, or rendering an existing one somewhere new, changes
+  `docs/screen-map.md`.** The edge it records is a JSX tag, so adding `<EmptyState />` to a screen
+  that didn't have one moves a line even though no export changed.
 - **Stage a brand-new file before regenerating.** `build-module-map.js` enumerates through
   `git ls-files`, so a module you just created is invisible to it until it's tracked: regenerate
   first and the map comes out missing that file's line, `git status` looks clean because the map
   matches what you generated, and CI fails on a file you did add. `git add -A` and *then*
   regenerate, or regenerate a second time after staging.
 - **Run the generators (no `--check`) rather than trying to predict whether you're affected.**
-  Both are idempotent and take milliseconds: if nothing changed they rewrite the same bytes and
-  `git status` stays clean, so running them costs nothing and guessing costs a red PR.
+  `npm run docs` runs all three; they are idempotent and take milliseconds, so if nothing changed
+  they rewrite the same bytes and `git status` stays clean. Running them costs nothing and guessing
+  costs a red PR.
 - **Then check `git status` before you commit.** These files are *generated into your working
   tree*, so the loop passing locally is not the signal — an uncommitted regenerated file looks
   exactly like a passing run right up until CI compares against what you actually pushed. That is
   the whole failure mode: the tests were green every single time.
-- **Never hand-edit either one, and never edit inside the `repo-stats` markers in this file.**
+- **Never hand-edit any of them, and never edit inside the `repo-stats` markers in this file.**
   Fix the source and regenerate.
 
 One missed regeneration doesn't stay one red PR, which is why the rule above is worth this much
@@ -223,9 +263,9 @@ someone regenerated. `main` is checked on push now (see `.github/workflows/test.
 staleness surfaces on the merge that caused it. If the doc check fails on a PR that plainly
 touched no exports, pull `main` and regenerate before hunting through your own diff.
 
-**Never resolve a merge conflict in either one by hand, and don't trust a clean merge of them
-either.** Both are one line per fact — one per module in the map, one per statistic in the
-`repo-stats` block — so git merges them line by line and a merge of two individually correct
+**Never resolve a merge conflict in any of them by hand, and don't trust a clean merge of them
+either.** All three are one line per fact — one per module in the map, one per screen or component
+in the screen map, one per statistic in the `repo-stats` block — so git merges them line by line and a merge of two individually correct
 generations is not itself a correct generation. A `+N more` counter is a per-line summary, so a
 merge takes one side's number instead of recounting (`db/database.ts` sat at `+122` against an
 actual `+125` for weeks); a newly added module's line is placed next to whichever context each
@@ -255,7 +295,10 @@ with the arguments attached, and the "don't do X" ones exist because X was tried
 their own files rather than here so a task about groceries doesn't cost every other task 20,000
 tokens of context. For anything the table doesn't cover, `docs/module-map.md` lists every module
 in `src/utils`, `src/store`, `src/hooks`, `src/db` and `src/services` with the symbols it
-exports.
+exports, and `docs/screen-map.md` answers the other half — what a screen puts on the page, and
+which screens a given component can appear on. Both are generated and checked in CI, so reach for
+them before grepping the tree blind. The table below is still the authority wherever it names a
+file: the two maps are indexes, not write-ups.
 
 | Changing… | Start at |
 |---|---|
@@ -266,11 +309,16 @@ exports.
 | a task row — swipes, checkbox, expansion | `src/components/TaskItem.tsx` |
 | quick-add text parsing (`"pay rent tmrw 5p #home"`) | `src/utils/parseTaskInput.ts`, `parseNaturalDate.ts` |
 | what a template asks before it creates anything | `src/utils/templateQuestions.ts` — see `docs/arch/template-questions.md` |
-| a task the app writes unasked, and the quiet-project offer | `src/utils/generatedTasks.ts` + `src/utils/projectReviewTasks.ts` — see `docs/arch/generated-tasks.md` (nineteen generators now: `health` and `weekendNudge` are the newest, `moodNudge` is the only one whose trigger is a trend in the user's own answers rather than a date, a row or a one-off threshold, and `weekendNudge` the only one that asks about a span of days rather than a single one) |
+| a task the app writes unasked, and the quiet-project offer | `src/utils/generatedTasks.ts` + `src/utils/projectReviewTasks.ts` — see `docs/arch/generated-tasks.md` (twenty generators now: `weighIn` is the newest and the only one that fires on *missing* data, `moodNudge` the only one whose trigger is a trend in the user's own answers rather than a date, a row or a one-off threshold, and `weekendNudge` the only one that asks about a span of days rather than a single one) |
 | a bare weekend, and the project it offers to fill it from | `src/utils/weekendTasks.ts` + `Project.weekendSource` — see `docs/arch/generated-tasks.md` |
 | a weather rule ("sunny -> sunscreen") and the location/forecast read behind it | `src/utils/weatherTasks.ts` + `src/utils/weatherCondition.ts` + `src/store/useWeatherStore.ts` — see `docs/arch/generated-tasks.md` |
 | anything read out of Apple Health | `src/store/useHealthStore.ts` + `src/utils/healthBridge.ts` + `modules/todo-health-bridge/` — see `docs/arch/health-data.md`. Read it first: three of its four rules are about what a reader may *claim*, and the big one is that a refused read and a day with nothing recorded are one answer |
+| writing a logged meal back to Apple Health | `src/utils/healthFoodSync.ts` + `writeFoodSamples`/`deleteHealthSamples` in `modules/todo-health-bridge/` — see `docs/arch/health-data.md`. The only write in the app that can be un-written, which is why it keeps sample ids; absent stays absent, never a zero |
 | a task that reads as ready when Apple Health reaches a number | `src/utils/healthTarget.ts` + the `health` arm of `src/utils/taskKinds.ts` — `timer.ts` with a reading in place of a clock, and it derives *ready* only. Nothing here completes a task, for the reason `docs/arch/health-data.md` gives at length |
+| your weight over time, and recording one | `src/utils/weightLog.ts` + `src/utils/healthWeightSync.ts` + `src/screens/WeightScreen.tsx` — see `docs/arch/health-data.md`. Health is the record and the app keeps no copy; the rule that let weight in at all is that **the app derives nothing from it on its own** (no rule metric, no BMI, no healthy range, no "trending") |
+| a weight goal, the rate it's aimed at, and progress against it | `src/utils/weightGoal.ts` + `src/components/WeightGoalSheet.tsx` — see `docs/arch/health-data.md`. The one thing the weight rule above carves out, and only because the target is **typed in**: nothing proposes one, nothing judges one, nothing generated fires off one, and ahead/behind is said about the user's own pace rather than about them |
+| a daily calorie figure worked out from a body, and the macro split of it | `src/utils/energyBudget.ts` — see `docs/arch/health-data.md`. Mifflin-St Jeor over fields the person typed, never read from Health; it **proposes** and the sheet's button is what writes `nutritionTargets`. A missing field yields null, never an average, `MIN_PROPOSED_KCAL` floors the suggestion without capping what the user may set, and `MACRO_PRESETS` names four splits while preselecting none |
+| the task asking you to weigh in | `src/utils/weightTasks.ts` — see `docs/arch/generated-tasks.md`. The only generator that fires on *missing* data, and deliberately not part of `health`: that one reacts to a reading, this one asks for one |
 | a meal of the day as a task, and choosing one from Today | `src/utils/mealSlotTasks.ts` — see `docs/arch/generated-tasks.md` |
 | a planned meal you haven't got the ingredients for | `src/utils/mealShortfallTasks.ts` — see `docs/arch/generated-tasks.md` |
 | date math, recurrence | `src/utils/dateUtils.ts` |
@@ -278,6 +326,15 @@ exports.
 | a stock of something that runs down as a task repeats, and ordering more | `src/utils/supply.ts` — see `docs/arch/supplies.md` |
 | a target logged N times a day, its pace ramp, and the same thing counted per week | `src/utils/quotaSchedule.ts` (the span) + `Task.quotaPeriod`. "Three times a week" is a quota with a week-long span, deliberately not a `RecurrenceType`: a recurrence answers "what date is next" and this has no next date to give. Every reader is written against the span, so widening it is the whole feature |
 | working a queue of tasks one at a time, with breaks | `src/utils/focusPlan.ts` + `src/store/useFocusStore.ts` — see `docs/arch/focus-sessions.md` |
+| what failing a task costs, in blocked apps | `src/utils/penaltyShield.ts` (the rule) + `sweepTaskPenalties`/`logSlip` in `useTaskStore` (the two triggers). The one feature here that does something to somebody for falling short, so read its refusals first: a task the app itself was withholding is never charged, a charge found on a later day is recorded without being served, and `undoSlip` deliberately doesn't refund |
+| apps held until a task is done ("no YouTube before the walk") | `src/utils/appGate.ts` + `Task.gatesApps` — the other direction from the penalty above: a precondition with no length of its own rather than a consequence measured in minutes. Read its two refusals first, since both are what stop it trapping somebody: a gate is live exactly while `isTaskVisible` says its task is, and a negative task can never be one |
+| whether the apps are blocked *right now* | `src/utils/appShield.ts` (the rule) + `src/utils/appShieldReconcile.ts` (the one that reads the stores) — the single arbiter over the focus shield, the penalty and the gate. They drive one system shield, so it ORs them rather than each reconciling alone; two independent syncs was a race where one reason's end cleared the other's block. The reconciler is a plain function rather than only the hook because a background refresh has no React tree and is where a penalty gets charged |
+| a block that starts or ends with the app closed | `scheduleGateWindow`/`schedulePenaltyExpiry` in `todo-screentime-bridge` + `intervalDidStart`/`intervalDidEnd` in `targets/todo-activity-monitor/`. Two one-shot DeviceActivity windows, opposite directions, and the extension may raise one only on the app's written permission (`pendingGateDetail`). Read `gateWindowFor`'s horizon first: a schedule's bounds are clock times, not dates |
+| the screen somebody sees when they open a blocked app | `targets/todo-shield-config/` (what it says) + `targets/todo-shield-action/` (its button) — see `docs/native-targets.md`. Two targets for one screen, and the layout is the system's; all that's ours is the words, which come from the App Group because the extension can reach nothing else |
+| a project that knows when you're away, and every reader of that span | `src/utils/awayDates.ts` + `Project.awayStart`/`awayEnd` — see `docs/arch/away-dates.md`. Read it before adding a fifth half-implementation of "the user is away from home"; it names the four that already exist and the one discipline that keeps them in step |
+| moving a whole trip when its dates change | `src/utils/awayShift.ts` + `src/components/AwayShiftSheet.tsx` — see `docs/arch/away-dates.md`. The offsets are deliberately not stored on the task, and that section says why |
+| where you're going, and the forecast for it | `Project.destination` + `src/services/geocode.ts` + `src/utils/tripForecast.ts` — see `docs/arch/away-dates.md`, including the itinerary boundary it refuses to cross |
+| vacation mode turning itself on for a trip, and the list you shop from while away | `Project.awayPauses`/`checkAwayVacation` + `Project.awayListId`/`checkAwayGroceryList` — see `docs/arch/away-dates.md` |
 | a task that asks a question when it's completed | `src/utils/deliverables.ts` (+ `src/utils/bulkCompletion.ts` for the paths that complete several at once) |
 | a task falling on several dates | `seriesId` in `src/store/useTaskStore.ts` (`applyTaskDates`) — see Series below |
 | the month grid, and drawing an occurrence that has no row | `src/utils/calendarMonth.ts` + `src/screens/CalendarScreen.tsx` — see `docs/arch/month-grid.md` |
@@ -289,6 +346,11 @@ exports.
 | reminders | `src/utils/notifications.ts` |
 | how long completed tasks are kept | `src/utils/retention.ts` + `purgeOldCompletedTasks` in `useTaskStore` |
 | how you're feeling, and what that looks like against your tasks | `src/utils/moodLog.ts` + `src/utils/moodInsights.ts` + `src/utils/moodTasks.ts` — see `docs/arch/mood-log.md` |
+| reading the mood log back — the whole history, one symptom, or a file for a doctor | `src/utils/moodHistory.ts` + `src/utils/moodExport.ts` — see `docs/arch/mood-log.md` |
+| marking the day something changed (started a medicine, a new job) and comparing mood before/after it | `src/store/useMilestoneStore.ts` + `milestoneMoodContrast` in `src/utils/moodInsights.ts` — see `docs/arch/mood-log.md` |
+| a dose taken, and how often you reach for something | `src/utils/medicationLog.ts` + `Task.medicationName` — see `docs/arch/mood-log.md`. The scheduled half still rides a repeating task, which is what `taskMoodContrasts` reads; this is the as-needed dose that has no task to tick and the amount a completion can't carry. Read its refusal first: there is deliberately no medication↔symptom contrast, because for an as-needed medicine that comparison is reverse-causal by construction |
+| how you're feeling against what you ate | `foodDayInputs` in `src/utils/nutritionStats.ts` + `nutrientInsight`/`foodMoodContrasts` in `src/utils/moodInsights.ts` — see `docs/arch/mood-log.md`. The two rules to read first are both about a day logged too thinly to stand for a day's eating, which is the one gap here that arrives looking like a number rather than a hole |
+| a symptom against what you ate | `symptomFoodContrasts` + `symptomFoodDays` in `src/utils/moodInsights.ts`, rendered on `SymptomDetailScreen` — see `docs/arch/mood-log.md`. The most loaded read in the app: scoped to one symptom on purpose, and it needs a day to carry a *log entry* rather than only a food, since a symptom is a presence and an unlogged day would otherwise count as one without it |
 | the people you want to keep up with, and their birthdays | `src/store/usePersonStore.ts` + `src/utils/birthdayTasks.ts` — see `docs/arch/people.md` |
 | filling a person in from the contact book | `src/utils/contactsImport.ts` + `src/utils/contactsAccess.ts` — see `docs/arch/people.md` |
 | what demo mode shows | `src/utils/demoSeed.ts` — see Demo data below |
@@ -315,6 +377,17 @@ exports.
 | going through the whole pantry a card at a time | `src/utils/pantryReview.ts` + `src/components/PantryReviewSheet.tsx` — see `docs/arch/groceries.md` |
 | whether a thing got used up or went bad | `src/utils/itemDisposal.ts` — see `docs/arch/groceries.md` |
 | scanning a barcode into the list | `src/utils/gtin.ts` + `src/services/productLookup.ts` + `src/utils/scanResolve.ts` |
+| how much of a cooked dish ended up on your plate | `Recipe.cookedWeightG` + `src/utils/mealLog.ts` — see `docs/arch/recipes.md`. The plate over the weighed dish is the fraction eaten; servings stay for every dish nobody has weighed |
+| writing down what you ate, and a day's totals | `src/utils/foodLog.ts` + `src/store/useFoodLogStore.ts` (+ `src/utils/nutritionTargets.ts` for the figure a total is read against) |
+| saying which catalog row a scanned or logged food is | `CatalogLinkPicker` (the one ranked search every surface reuses) + `scanLinkTarget` in `src/utils/scanResolve.ts` (which of the matcher's two branches a hand-pick belongs to) + `catalogPanelWrite` in `src/utils/foodNutrition.ts` (whether filing a database's figures may overwrite a row's own). An entry's `itemId` is provenance and nothing else: re-pointing one never rewrites `FoodLogEntry.nutrition`, which is a snapshot of the helping |
+| how much of a scanned package was eaten | `src/utils/scanPortion.ts` — one serving or the whole package, and the package option is withheld rather than guessed when the source stated no pack size |
+| what a food is made of, and reading a label panel out of a barcode source | `src/utils/foodNutrition.ts` (the record) + `src/utils/nutritionParse.ts` (the two sources' units, which disagree) |
+| photographing a nutrition panel no barcode source had | `src/utils/labelOcr.ts` — `receiptOcr.ts`'s row geometry over a label, filling `NutritionPanelSheet`'s existing form rather than writing a record |
+| estimating what a restaurant meal contained, from a description | `src/utils/nutritionEstimate.ts` + `estimateMealNutrition` in `src/services/aiSuggestions.ts` — the model proposes and a person confirms; nothing is written unconfirmed, and `source: 'estimated'` is permanent |
+| finding a plain food ("onion", "butter") in a food database by name | `src/services/foodSearch.ts` + `src/utils/foodSearchMatch.ts` (ranks and refuses; the portion table needs a second request) |
+| turning "2 cups chopped onion" into grams | `src/utils/ingredientGrams.ts` — every weight comes from the food's own portion table, never a global density |
+| a recipe's nutrition estimate, and the row under its cost | `src/utils/recipeNutrition.ts` — `recipeCost.ts` with grams in place of prices, plus a per-nutrient coverage floor. `weekNutrition`/`describeWeekNutrition` are the planned-week pair, splitting one body by noun exactly as `describeRecipeCost`/`describeWeekCost` do |
+| filling in the ingredients a recipe's figures couldn't count | `src/components/RecipeNutritionSheet.tsx` + `recipeNutritionLines`/`nutritionGaps` — the rollup's own walk stopped one step early, so "from 6 of 9 ingredients" and the list of the other three can't describe different lines. Three states, three remedies, and they aren't interchangeable; `weighableLine` (`ingredientGrams.ts`) decides whether a scale would settle a line by re-running the refusal rather than reasoning about it |
 | reading a receipt's text on the device before it goes to the model | `src/utils/receiptOcr.ts` + `modules/todo-vision-bridge` |
 | remembering which item a barcode is | `ItemProduct.gtin` + `gtinAliasText` in `src/utils/storeAliases.ts` — see `docs/arch/groceries.md` |
 | what a store's receipt shorthand means | `src/utils/storeAliases.ts` (+ the `remembered` tier in `receiptMatch.ts`) |
@@ -335,6 +408,7 @@ exports.
 | whether an ingredient line is something you already buy | `src/utils/ingredientCatalogMatch.ts` — see `docs/arch/recipes.md` |
 | reading a `quantity` string at all — amounts, units, containers | `src/utils/quantity.ts` — see `docs/arch/recipes.md` |
 | reading a recipe out one step at a time while cooking | `src/utils/cookMode.ts` + `src/components/CookModeSheet.tsx` — see `docs/arch/recipes.md` |
+| asking about the cooking step you're on, and keeping the answer | `src/utils/cookQuestions.ts` + `askCookQuestion` — see `docs/arch/recipes.md` |
 | either of a recipe's two timers, from any screen | `src/hooks/useRecipeTimer.ts` — see `docs/arch/recipes.md` |
 | a timer for the cooking step you're on | `src/utils/stepTimers.ts` + `src/store/useStepTimerStore.ts` — see `docs/arch/recipes.md` |
 | a recipe page shared in from another app's share sheet | `src/utils/sharedRecipeLinks.ts` + `targets/todo-share/` — see `docs/arch/recipes.md` |
@@ -354,34 +428,35 @@ exports.
 | a task that was missed, and the grace it gets | `src/utils/missed.ts` + `src/utils/expiredTaskGrace.ts` |
 | the iOS Live Activity | `src/utils/liveActivity.ts` (+ `tripLiveActivity.ts`) |
 | search ranking and the quick-search sheet | `src/utils/fuzzySearch.ts` + `src/utils/quickSearch.ts` |
-| the numbers on the Stats screen | `src/utils/stats.ts` (+ `cookingStats.ts`) |
+| the numbers on the Stats screen | `src/utils/stats.ts` (+ `cookingStats.ts`, `nutritionStats.ts`) |
 | planning a week of work | `src/utils/weekPlan.ts` |
-| anything not listed here | `docs/module-map.md` — every logic module and what it exports |
+| anything not listed here, in the logic layer | `docs/module-map.md` — every logic module and what it exports |
+| which screen shows a component, or what's on a screen | `docs/screen-map.md` — both directions, generated from the JSX |
 
 <!-- BEGIN GENERATED: repo-stats -->
 <!-- Regenerated by scripts/check-doc-stats.js. Run it after adding or growing a file. -->
 
-**Read narrowly.** 51 files are over 1,000 lines, 33 of
+**Read narrowly.** 58 files are over 1,000 lines, 39 of
 them source rather than tests. The ten biggest source files:
 
-`store/useTaskStore.ts` (7.9k), `components/TaskEditor.tsx` (5.3k), `db/database.ts` (5.1k),
-`store/useGroceryStore.ts` (4.8k), `types/index.ts` (4.7k), `screens/TodayScreen.tsx` (4.5k),
-`components/TaskItem.tsx` (4.3k), `store/useSettingsStore.ts` (3.2k),
-`components/QuickAddModal.tsx` (3.1k), `utils/demoSeed.ts` (3.1k).
+`store/useTaskStore.ts` (8.6k), `components/TaskEditor.tsx` (5.8k), `types/index.ts` (5.8k),
+`db/database.ts` (5.8k), `store/useGroceryStore.ts` (5.4k), `screens/TodayScreen.tsx` (4.6k),
+`components/TaskItem.tsx` (4.3k), `utils/demoSeed.ts` (4.0k),
+`store/useSettingsStore.ts` (3.8k), `screens/BackfillScreen.tsx` (3.2k).
 
 Grep for the symbol and read the surrounding range; reading any of them end to end costs more
 context than the rest of the task will. `docs/module-map.md` says which file owns what.
 
-The suite is **270 test files**, and `npm test` runs all of them in about half a minute.
+The suite is **314 test files**, and `npm test` runs all of them in about half a minute.
 `npx tsc --noEmit` is a few seconds once `.tsbuildinfo` exists, so run both, every time.
 
 <!-- END GENERATED: repo-stats -->
 
-**The eleven single-component files carry their own map.** `TaskEditor.tsx`, `TodayScreen.tsx`,
+**The twelve single-component files carry their own map.** `TaskEditor.tsx`, `TodayScreen.tsx`,
 `TaskItem.tsx`, `QuickAddModal.tsx`, `MealPlanScreen.tsx`, `RecipeDetailScreen.tsx`,
-`GroceryItemSheet.tsx`, `TemplateItemEditor.tsx`, `LogbookScreen.tsx`, `GroceryScreen.tsx` and
-`SuggestMealsSheet.tsx` are each one component holding most of the file, so there are almost no
-top-level symbols to grep for — `TaskEditor.tsx` has six in 4,200 lines and
+`GroceryItemSheet.tsx`, `TemplateItemEditor.tsx`, `LogbookScreen.tsx`, `GroceryScreen.tsx`,
+`SuggestMealsSheet.tsx` and `FoodLogEntrySheet.tsx` are each one component holding most of the
+file, so there are almost no top-level symbols to grep for — `TaskEditor.tsx` has six in 4,200 lines and
 `RecipeDetailScreen.tsx` has two in 1,900.
 Each opens with a short header comment saying what's where, and its logic half is divided by
 `// ==== <name> ====` banners; `grep -n '// ===='` on one of them is its table of contents. The
@@ -389,6 +464,12 @@ banners stop at the JSX, because a `//` comment can't go inside a `return (`: pa
 banner, the landmarks are the props already there (`<EditorGroup label="…">` for a card in the
 task editor). Keep a banner accurate when you move code across it, and add one when a file grows
 a region that isn't any of the ones listed.
+
+**The list grows when a single-component file crosses 1,000 lines, and that is part of the change
+that pushed it over** rather than a tidy-up for later. `FoodLogEntrySheet.tsx` went from 918 to
+1,076 in one PR and is how this rule got written down: the file that needs the map is precisely
+the one somebody is about to have to grep through, and the moment it is cheap to write one is
+while the person adding the region still knows what the regions are.
 
 The other files over 1,000 lines don't need this and haven't got it: `useTaskStore.ts`,
 `useGroceryStore.ts`, `useSettingsStore.ts` and `useMealPlanStore.ts` each declare a store
@@ -421,10 +502,11 @@ grinding through them inline. When you already know the file from the table abov
 don't spawn an agent for a one-file lookup. Never hand off the writing: one agent making the
 whole diff is what keeps it coherent.
 
-**Reach for Explore, not a manual read, on the seven 1,000+ line files.** Grepping and reading
-the surrounding range is still the right move (see above), but for an unfamiliar change to
-`useTaskStore.ts`, `TaskEditor.tsx`, `TodayScreen.tsx`, or the others in that list, running that
-grep-then-read loop through an Explore agent keeps the raw file content out of your own context
+**Reach for Explore, not a manual read, on the big files the generated block above names.**
+Grepping and reading the surrounding range is still the right move (see above), but for an
+unfamiliar change to `useTaskStore.ts`, `TaskEditor.tsx`, `TodayScreen.tsx`, or any of the others
+that block lists, running that grep-then-read loop through an Explore agent keeps the raw file
+content out of your own context
 — you get the relevant chunk and a citation, not the whole file. Reach for it especially when
 you expect more than one round trip into the same file.
 
@@ -460,6 +542,38 @@ numbers and the visual hierarchy and nothing else, so label it that way when you
 it for logic changes and one-line tweaks; reach for it whenever the question is "does this look
 right".
 
+**Verify an unfamiliar API instead of guessing it, when verification is possible.** Native code
+under `modules/` can't be compiled or type-checked from this sandbox, so a wrong signature against
+a framework like FoundationModels or AlarmKit doesn't fail fast — it ships and only surfaces days
+later as a red EAS build, with a log that names the broken member but not the fix. That happened
+for real: `TodoFoundationModelsModule.swift` invented `GeneratedContent.elements()`, the build
+failed, and the first attempted fix (`elements(of:)`) was *also* invented rather than checked —
+same mistake twice, because "the compiler will catch it" isn't true here. There usually **is** a
+way to check before writing the call: Apple's developer docs serve a JSON form of any framework
+page at `https://developer.apple.com/tutorials/data/documentation/<framework>/<symbol>.json`
+(fetch it with WebFetch) with real declaration fragments, argument labels and default values —
+that's how the actual fix (`GeneratedContent.Kind.array` via the `kind` property, plus a second
+latent bug in the same file, `LanguageModelSession()` having no no-argument initializer) was
+found. Reach for that before trusting WWDC session notes, a blog post's paraphrase, or memory of
+an older SDK version, and before re-guessing a fix to a guess that just failed. If a symbol
+genuinely isn't documented yet (a fresh beta, an internal API), say so at the call site — the
+way this file's own header comment already tried to — and say so again in the PR description as
+an open risk, rather than presenting an unverified signature as a confirmed fix.
+
+**A fetched doc page can still be wrong, so don't stop checking once you have one.** The first
+round of verification above got `GeneratedContent.Kind.array` right but still misreported
+`value(_:forProperty:)` as non-throwing and optional-returning; the real declaration throws and
+returns a non-optional value, and only the next EAS build surfaced that — the tool that fetches
+and paraphrases a doc page is itself something that can mishear a signature, not just WWDC notes
+or memory. Two things reduce how often that costs a second round trip: ask for the raw
+`declarationFragments`/`fragments` array rather than a plain-English restatement when a call's
+exact throws/optional shape matters, since a paraphrase is exactly where "throws, returns `T`"
+and "doesn't throw, returns `T?`" get blurred into each other; and where a value is genuinely
+best-effort (a field that's fine to skip if absent, same as here), write the read as `try?
+expr` rather than `if let expr` — `try? T` and `try? T?` both flatten to the same `T?`, so that
+form tolerates a throws/optional guess being wrong in either direction, where a bare `if let`
+only compiles for one specific combination.
+
 **Stay in scope.** Fix what was asked, in the pattern the surrounding file already uses.
 Adjacent code that looks improvable isn't the task; mention it instead of rewriting it.
 
@@ -492,6 +606,7 @@ decided, and the design system every screen is built from. Individual features a
 | `docs/arch/mood-log.md` | The mood/symptom log, what its insights may claim, and the nudge's three rules |
 | `docs/arch/health-data.md` | Reading Apple Health: why nothing is stored, and why a refusal is invisible |
 | `docs/arch/simple-mode.md` | Simplified mode: what the one switch hides, and the two rules that make it safe |
+| `docs/arch/away-dates.md` | A project's away span: scheduled vacation mode, the trip move, the destination forecast, the away grocery list |
 | `docs/arch/mcp-server.md` | The MCP server: why it is a syncing replica rather than an in-app or backup-file one, and what it costs the "no backend" promise |
 | `docs/native-targets.md` | Adding an iOS native target (widget, Watch app, Live Activity) |
 
@@ -707,6 +822,18 @@ Two counts exist and they mean different things, so keep them labelled: the rost
 
 **A stack has no completion state of its own — stored, derived, or dismissed.** Today renders one exactly while it has a visible child (`visibleGroupItems` in `TodayScreen`: `children.length > 0`, and `children` comes from `visibleTasks`), so it leaves in the same commit its last row does and returns whenever a member is visible again. Two designs preceded that and both are gone: a `TaskGroup.completedAt` "user dismissed this for today" stamp (the stack sat on Today saying "all 6 done for today" until tapped — an extra tap per stack per day to acknowledge what the finished rows already said), and before that, clearing that stamp on every event that could give the stack live work, which took four call sites and still missed one. The `completed_at` column is still on `task_groups`, unread and never written. **Don't reintroduce a hidden-for-today flag** — riding on `visibleTasks` is what makes the header and its rows leave together, since a just-ticked row stays in `visibleTasks` for the completion hold (`completionHoldIds`) and the header rides that window out with it.
 
+**`TaskGroup.onToday` is a presence bit, not that flag coming back.** A stack arriving on Today
+collapses (`syncTodayPresence`, written from `TodayScreen`'s own render of what's on the day), so
+an expansion doesn't outlive the stack's stay: one expanded on Monday and finished off would
+otherwise come back on Tuesday expanded, dropping its whole roster into the middle of the day. A
+stack that never leaves keeps whatever the user set, restarts included. What makes it safe is that
+it gates *nothing* — Today still renders a stack exactly while it has a visible child, and a wrong
+value costs one tap on the chevron rather than a stack that won't come back. Presence is read off
+`visibleTasks` and `upcomingTodayTasks` rather than the filtered list, so a stack the priority
+filter hid hasn't left, and it counts Later Today as being on Today, so crossing from one to the
+other isn't an arrival. The write waits for both stores to report `initialized`: mid-load every
+stack looks absent, and recording that would re-collapse the lot on every cold launch.
+
 Cascades (`completeGroup`, `deferGroup`, `pinGroup`, `deleteGroup`) are roster-scoped so they can't mutate completed history. `deleteGroup({cascade:true})` deletes the live members and merely unfiles the past occurrences — deleting a stack must not erase its Logbook and Stats history.
 
 ### Navigation
@@ -722,7 +849,7 @@ Four things follow from that and are worth not re-deriving:
 - **Route sets are derived, not listed twice.** `DRAWER_TABS`, `RESTORABLE_SCREENS` and `KITCHEN_SCREENS` all come off `NAV_MENU_ROWS`/`NAV_HUBS`. Adding a screen to the menu is one edit.
 - **A hub row drops out when every member is gone**, and simplified mode is the only thing that can do that today. Pantry's disappearance under that mode used to be a hand-written special case in `initialScreenFromSettings` plus a second `featureHidden` call inside the pills; it is now just `screen: 'Kitchen'` on the `pantryTracking` feature, so one gate answers for the menu row, the pill and the cold-launch restore alike.
 
-**Two screens are deliberately not in the menu.** `StuckScreen` is the merge of what were the Waiting and Drift rows — both were lists of tasks held out of the daily lists, differing only in whether something else or you are holding them, and `DriftScreen` opened by saying it was "the same shape and same reasoning as WaitingScreen". `BackfillScreen` moved to Settings ("Data & reset" → Fill in) as a pushed `RootStack` card: it is not a task list at all, it fills in empty fields across tasks, categories, projects, people and grocery items, which is maintenance rather than a place to work.
+`StuckScreen` is the merge of what were the Waiting and Drift rows — both were lists of tasks held out of the daily lists, differing only in whether something else or you are holding them, and `DriftScreen` opened by saying it was "the same shape and same reasoning as WaitingScreen". `BackfillScreen` briefly moved to Settings ("Data & reset" → Fill in) as a pushed `RootStack` card, on the reasoning that it fills in empty fields across tasks, categories, projects, people and grocery items rather than being a task list — but that buried a feature people reach for often behind four taps, so it's a standalone menu row again (a hidden tab, same as Stuck and Calendar), shown unconditionally in simplified mode as one of the "lens" screens (see `simpleMode.ts`).
 
 Today, Later, Unscheduled and Inbox are **not** separate screens — they're four `viewMode` sub-views of `TodayScreen`, switched by the pill row under its header, and they share one set of screen state (selection mode, expanded row, quick-add, editor). They're disjoint lenses over the same tasks (`isUnscheduledTask()` excludes inbox tasks, `isTaskVisible()` excludes both), each backed by its own store selector. Keep it that way when adding a fifth: Inbox used to be its own route, and every switch into it had to hand the destination over as a navigation param, which painted a frame of the *previous* sub-view before the param landed. A segmented control shouldn't navigate.
 
@@ -731,6 +858,8 @@ Today, Later, Unscheduled and Inbox are **not** separate screens — they're fou
 `src/theme/index.ts` exports design tokens (`spacing`, `radius`, `font`, `fontWeight`, `border`, `iconSize`, `animation`, `interaction`) and two color palettes (`darkColors`, `lightColors`). Components consume colors via `useColors()` or `useTheme()` (which also exposes theme-aware `shadows`) from `src/theme/ThemeContext.tsx`. The top-level `colors` export is kept only for non-themed static uses.
 
 **When adding a new element above/below existing ones, give it margin on both sides it needs, not just the side that happened to matter for its own layout.** A recurring mistake here: a new row/bar gets `marginTop` to clear whatever's above it, but no `marginBottom`, so the *next* element — which itself has no `marginTop` — ends up jammed right against it. `TaskEditor`'s field-search bar shipped exactly this way (`marginTop: spacing.md` only), and the group label right below it had no top margin of its own, so the two sat with zero gap between them. Don't assume the neighboring element already accounts for spacing on its side — check it, and default to `spacing.md` (16) between stacked blocks, `spacing.lg` (24) between denser groups, rather than shipping a cramped gap and letting it get caught in review.
+
+**Never put a `numberOfLines={1}` name/title next to one or more action buttons in the same flex row — an identifying piece of text has to win the row, or say the row's own thing on its own line.** `RecipeNutritionSheet`'s "Not in your catalog" row did this: an ingredient name shared a `flexDirection: 'row'` with two `InlineAction` pills, the pills claimed their full label width first, and whatever was left over went to the name — "Monkfruit sweetener" truncated down to "Monkfrui…", the one piece of information the row exists to show. `numberOfLines={1}` is fine; a fixed-width sibling eating the row before the flexible text gets a fair share of it is the bug, and it gets worse as more buttons are added. The fix is the same shape `RecipeNutritionSheet`'s own sibling section ("Not counted") already used two dozen lines above the bug: stack the name on its own full-width row, put the actions in a `flexWrap: 'wrap'` row underneath. If a name truly has to share a row with something else (an icon, a count, a chevron), the something else should be the thing that's short and fixed, never a button whose label can grow, and the name gets `flex: 1` in a row with nothing else claiming width ahead of it. Check this whenever a row pairs a data-derived string (an ingredient, a task title, a store name, anything the user typed or picked) with one or more `InlineAction`/button siblings in the same row.
 
 **Never hardcode** hex/rgba colors, shadow styles, spring params, `activeOpacity`, or `delayLongPress`. The tokens to reach for:
 
@@ -747,6 +876,20 @@ Today, Later, Unscheduled and Inbox are **not** separate screens — they're fou
   completion callback — putting the card back on screen until the modal unmounted. Read the
   hook's doc comment before touching a sheet's open/close animation; the no-re-arm half of the
   rule lives at the call sites.
+
+**Any `pageSheet` Modal whose `ScrollView` holds a `TextInput` needs `useKeyboardInsetScroll`
+(`src/hooks/`), or the keyboard sits on top of whatever's below the focused field.** A bare
+`<ScrollView>` with no keyboard handling only scrolls when the person does it manually — nothing
+lifts the field, or the rest of the sheet, clear of the keyboard on its own, so a card near the
+bottom (the next item in a batch, a Log/Save button, a hint under the field) renders right behind
+it. This shipped as the same bug in five sheets at once (`ScanPortionSheet`, `FoodLogEntrySheet`,
+`EstimateMealSheet`, `ProductSheet`, `RuleListSheet`) before being fixed in all of them together —
+check for it whenever a new `pageSheet` sheet, or a new field in an existing one, puts a
+`TextInput` inside a `ScrollView`. Wire it the same way `EditorSheet` does: spread
+`keyboardScroll.props` onto the `ScrollView` and pass `ref={keyboardScroll.ref}`. Don't reach for
+`KeyboardAvoidingView` instead — see the hook's own doc comment and the note on `EditorSheet` for
+why the two fight each other; `LogMealPrompt`'s `KeyboardAvoidingView` is the one deliberate
+exception, because its Modal is a small centered card rather than a full scrollable sheet.
 
 **Never put `lineHeight` on a `TextInput` style.** RN maps it straight onto the iOS paragraph style's `minimumLineHeight`/`maximumLineHeight` with no compensating baseline offset (`RCTTextAttributes.mm`), so the glyphs are drawn a full line height below the top of the line box instead of one ascent below it — the text sits low in the field while the caret stays centered, and the placeholder inherits the same attributes so it looks wrong even when empty. `lineHeight` is fine (and wanted) on `Text`. When an input needs a specific box height to keep a row from resizing between display and edit mode, set `height`/`minHeight` instead.
 
@@ -882,6 +1025,24 @@ Today, Later, Unscheduled and Inbox are **not** separate screens — they're fou
   `RuleSheetNoticeCard` beside it is the card shape both use for the first of those. It needs no
   unsaved-changes guard because every edit commits straight through `onChange` as it's made —
   the other valid answer to the pageSheet `onRequestClose` rule below, not a workaround.
+- `ContrastBars` (`src/components/ContrastBars.tsx`) — one "with it against without it"
+  comparison, drawn as a pair of bars on one scale. **Every contrast on the Mood screen and the
+  symptom page is this** (mood by kind of work, by repeating task, by symptom, by context tag, by
+  what you ate, and a symptom against each food), and a seventh uses it rather than copying one.
+  They were five copies of the same twelve lines first. Two numbers on a line are readable and
+  four are not, which is what forced this: the symptom/food read reports a *rate* per side, so its
+  row said "3 of 6 vs 1 of 9" and working out whether 1-in-11 beats 3-in-4 took a moment, with
+  another to compare it against the row above. The caller passes each side's fraction (0..1) and
+  its own text, so the component knows nothing about mood scales or day counts and needs no mode
+  flag. Three rules live in it: the figures stay in text because the bar is an aid and the number
+  is the record; both bars are one colour, since length is the data and a second colour would rank
+  the two groups (which the symptom card especially may not do); and the two lines of a pair sit
+  3px apart against `spacing.md` between pairs, or the card reads as one block of bars rather than
+  as N things being compared. The scale is the caller's, and `moodBarFraction` is **anchored at
+  zero on purpose** — `(mood - 1) / 4` is the tempting scale and it is the one that lies, turning
+  the gap between 3.9 and 4.1 into a fifth of the track when it is a twentieth of the scale.
+  `MOOD BY TIME OF DAY` is deliberately *not* converted: three time buckets are not a with/without
+  pair, so it keeps the plain one-line row.
 - `EditorRow` (`src/components/EditorRow.tsx`) — the `icon — label — value ›` row every editor sheet is built from (Date, Deadline, Remind me, Link, …). Pass `expanded` for rows whose controls unfold in place rather than opening a picker, and the chevron becomes up/down.
 - **Filtering by an open-ended set of options (tags, categories) is a bottom sheet with wrapping chips, never a horizontal scrolling chip row.** `LogbookFilterSheet` and `RecipeTagFilterSheet` are the two instances — both replaced a scroll row that had shipped first. A scroll row hides every option past what fits on screen behind a swipe nobody is prompted to make, and a vocabulary the user builds themselves (tags especially) has no ceiling a phone-width row can assume; wrapping puts the whole set on screen at once. The screen itself keeps only a small trigger row: a "Filter"/"Tags" button that opens the sheet, plus whatever's *currently selected* as removable pills (`ActiveFilterPill` in `LogbookScreen`, the `activePill` styles in `RecipesScreen`) — that set stays small by construction, so a scrolling row is still the right shape for it. Don't reach for a horizontal `ScrollView` of chips as the *filter control itself* again; that's the mistake both of these fixed.
 - `SelectionDot` (`src/components/SelectionDot.tsx`) — the circle at a row's **trailing** edge that
@@ -924,6 +1085,8 @@ Three decisions worth not re-deriving:
   with no visible reason why is the one way this breaks.
 
 **List rows** use the iOS inset-grouped card treatment app-wide — match the styling in `TaskItem.itemWrapper` (Search/Logbook/Tags/Categories/Projects rows follow the same pattern). Section headers are uppercase `font.xs` semibold **`textSecondary`** with `letterSpacing: 0.8` — every one of them, the editor group labels (`EditorGroup`, `CollapsibleField`) and the Settings section labels included. `textTertiary` measures 2.84:1 on `bgSecondary` in dark, under even the 3:1 large-text bar, and these are the one grey the app repeats on every screen; `textSecondary` is 5.22:1 and was already the other grey in use. Raising the size instead was the alternative and was rejected — it makes the headers louder than the rows they label. `textTertiary` is still right where dimness is the *signal* rather than decoration (`CollapsibleField`'s `summaryEmpty`, which is how a field says it has no value). The one row that is deliberately *not* a card is `TaskGroupHeader` — a stack heads its tasks rather than sitting among them, so it's a transparent caption (see the note on its `band` style; every filled-card version of it read as a *selected* row, because a brighter card surface is what this app uses for pressed and dragged). What ties it to its tasks is enclosure, not resemblance: `TaskGroupTray` puts the header and the child cards in one `bgSunken` region, and the children drop their own margins to sit on its padding. Grouping a header with its rows by giving the header a card-like treatment is the move that keeps failing here — reach for the region instead.
+
+**A selected/active row's background must be opaque, never a translucent tint, on anything that sits inside a `SwipeableRow` or a `ReorderableList`/`SortableList` drag overlay.** `SwipeableRow`'s `selectAction` commits the moment the swipe starts opening (`onSwipeableWillOpen`, not `onSwipeableOpen` — see that component's own doc comment for why), but the row doesn't visually finish closing until the open spring settles and a second, close spring runs after it — a few hundred ms the caller's state change (`selectionMode`/`selected` flipping true) runs well ahead of. If the row's own "selected" style is a translucent color (`colors.accentSubtle`, `colors.accent + '1A'`, …) applied on top of `bgSecondary` instead of replacing it, that translucency doesn't just tint the row — it lets whatever's *behind* the row's own layer bleed through for that whole window: `SwipeableRow`'s still-open panel (an opaque, more saturated color than the intended tint), or a `ReorderableList`/`SortableList` drag overlay (which paints no background of its own at all). The visible bug is the same shape either way: a block of the wrong, too-vivid color sits there for the whole animation and then snaps to the true (dimmer) tint the instant the panel/overlay is actually removed — reading as a transparency glitch, not a slow animation, because the two colors are similar enough that the difference doesn't register as motion. Two real bugs shipped from this, a drag case (`FoodLogRow`'s dragging state, #2504 — fixed by giving `isActive` its own opaque `bgTertiary` style instead of reusing the translucent selected one) and a select case (`FoodLogRow`'s swipe-to-select, the same file, fixed by flattening the tint itself). **Use `flattenOverlay(overlayColor, baseHex)`** (`src/theme/index.ts`) to precompute an opaque equivalent of a translucent token against the row's own resting background (`colors.bgSecondary` for a card row, `colors.bg` for a flat full-bleed one like Logbook's) — it looks identical in the row's normal resting state and stops the bleed-through during the transient window. This has shown up independently in enough list rows (`FoodLogRow` twice, `GroceryRow`, `RecipesScreen`, `LogbookScreen`, `PeopleScreen`, `TemplatesScreen`, `StacksScreen`, `ProjectsScreen`, `MealSlotRow` — all fixed the same way in one pass) that it's worth checking on sight rather than rediscovering per screen: **any row that both (a) sits inside a `SwipeableRow` with a `selectAction`/`whenAction`, or a draggable list, and (b) changes its own background color for a state (selected, active, checked, …) needs that background to be opaque.** `TaskItem` never had this bug because it doesn't tint the row for selection at all — it only fills `SelectionDot` — which is the other valid way to sidestep the whole class of bug, not just a fix for it.
 
 **A `presentationStyle="pageSheet"` Modal is dismissible by an iOS swipe-down, and that gesture calls the Modal's `onRequestClose` — not whatever the header's Cancel button runs, if the two aren't the same function.** A bare `onRequestClose={onClose}` on a sheet that stages typed or picked state before an explicit Save/Add is a silent-data-loss bug, not a style choice: the swipe bypasses the save path entirely, the same way it does for `EditorSheet`'s own pageSheet-vs-fullScreen tradeoff noted below. This shipped as a bug for four sheets first (#1681/#1682), and turned out to be the default rather than the exception — a sweep of the rest of the app (#2192) found the identical bare-`onClose` `onRequestClose` on fourteen more. **Any new `pageSheet` Modal holding state that isn't committed immediately needs a `handleCancel`, not a bare `onClose`, wired to both `onRequestClose` and the header's Cancel/Back button:**
 ```tsx

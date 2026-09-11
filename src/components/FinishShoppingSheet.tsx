@@ -30,10 +30,22 @@ import {
   priceToInput,
 } from '../utils/groceryPrice';
 import { resolveShoppingSubstitutes, substitutesFor } from '../utils/itemSubs';
+import { describeShopAisles, isOutOfRange } from '../utils/groceryShops';
 import { GROCERY_NAME_MAX_LENGTH, SHOP_NAME_MAX_LENGTH } from '../types';
 
 /** Matches the shopping list's own checkbox, so the shape reads as familiar. */
 const CHECK_SIZE = 22;
+
+/**
+ * "Frozen", "Frozen and Bakery", "Frozen, Bakery and Deli" — the aisles a trip
+ * bought from that its store isn't set to sell. Named rather than counted,
+ * because the correction being offered is about these specific aisles and "2
+ * aisles" is not something anyone can agree or disagree with.
+ */
+function joinAisles(aisles: readonly string[]): string {
+  if (aisles.length === 1) return aisles[0];
+  return `${aisles.slice(0, -1).join(', ')} and ${aisles[aisles.length - 1]}`;
+}
 
 /** "10000.00" — the widest thing GROCERY_PRICE_MINOR_MAX allows. */
 const PRICE_INPUT_MAX_LENGTH = 8;
@@ -203,6 +215,7 @@ export function FinishShoppingSheet({
   const itemShops = useGroceryStore(useShallow(s => s.itemShops));
   const itemSubs = useGroceryStore(useShallow(s => s.itemSubs));
   const ensureCatalogItem = useGroceryStore(s => s.ensureCatalogItem);
+  const setShopAisles = useGroceryStore(s => s.setShopAisles);
   const currencySymbol = useSettingsStore(s => s.currencySymbol);
 
   const [selected, setSelected] = useState<string | null>(null);
@@ -339,6 +352,62 @@ export function FinishShoppingSheet({
   };
 
   const selectedShop = selected ? shops.find(s => s.id === selected) ?? null : null;
+
+  // The leftovers actually worth asking about. A store told it only sells
+  // certain aisles is not being asked, every trip, which of your groceries the
+  // pharmacy didn't have — that question has an answer already and it is the
+  // user's own (see Shop.aisles). Everything else is unchanged: an unscoped
+  // store is asked about the whole list, which is every store until somebody
+  // says otherwise, and a row with a purchase on record here survives the
+  // filter because `isOutOfRange` lets the specific statement beat the range.
+  const askable = useMemo(() => {
+    if (!selectedShop || selectedShop.aisles === null) return leftover;
+    const byId = new Map(items.map(i => [i.id, i]));
+    return leftover.filter(row => {
+      const item = byId.get(row.id);
+      // Resolve-or-shrug: a leftover whose catalog row has gone is still a
+      // question we can't rule out, so it stays askable rather than vanishing.
+      if (!item) return true;
+      return !isOutOfRange(selectedShop, item, itemShops);
+    });
+  }, [selectedShop, leftover, items, itemShops]);
+
+  // How many the range took off the question, so the section can say it rather
+  // than quietly showing three rows of fourteen. A filtered list that doesn't
+  // admit it is filtered is a scope you can't discover is wrong.
+  const withheldCount = leftover.length - askable.length;
+
+  // What came home from an aisle this store isn't set to sell. A purchase is
+  // the one thing that refutes a range outright — the same call `finishShopping`
+  // makes when a purchase clears `unavailableAt` — but widening on its own
+  // would let one ice pack decide a pharmacy sells Frozen for good, so the
+  // correction is offered and the user makes it. Ordered by the aisle walk the
+  // list itself is in.
+  const unsoldAisles = useMemo(() => {
+    if (!selectedShop || selectedShop.aisles === null) return [];
+    const scope = new Set(selectedShop.aisles);
+    const byId = new Map(items.map(i => [i.id, i]));
+    const out: string[] = [];
+    for (const row of purchased) {
+      const aisle = byId.get(row.id)?.aisle;
+      if (!aisle || scope.has(aisle) || out.includes(aisle)) continue;
+      out.push(aisle);
+    }
+    return out;
+  }, [selectedShop, purchased, items]);
+
+  /**
+   * Widen the store's range to cover what the trip actually bought. Commits
+   * straight through, like every other control that edits a store rather than
+   * this trip — see GroceryAislesSheet, which has nothing to guard for the same
+   * reason. It is a correction to the shop, so cancelling the trip afterwards
+   * has no business taking it back.
+   */
+  const handleWidenRange = () => {
+    if (!selectedShop || selectedShop.aisles === null || unsoldAisles.length === 0) return;
+    haptics.success();
+    setShopAisles(selectedShop.id, [...selectedShop.aisles, ...unsoldAisles]);
+  };
   const toggleUnavailable = (id: string) => {
     haptics.tap();
     setUnavailable(prev => (prev.includes(id) ? prev.filter(x => x !== id) : [...prev, id]));
@@ -488,19 +557,42 @@ export function FinishShoppingSheet({
             </View>
           )}
 
+          {/* A purchase from outside the store's range. The one thing that
+              refutes a range outright, offered as a correction rather than
+              taken: see handleWidenRange. */}
+          {!!selectedShop && unsoldAisles.length > 0 && (
+            <View style={styles.rangeCard}>
+              <Text style={styles.rangeText}>
+                {selectedShop.name} is set to sell {describeShopAisles(selectedShop)}. This trip bought
+                from {joinAisles(unsoldAisles)}.
+              </Text>
+              <InlineAction
+                label={unsoldAisles.length === 1 ? `Add ${unsoldAisles[0]}` : 'Add these aisles'}
+                icon="add"
+                variant="neutral"
+                onPress={handleWidenRange}
+                style={styles.rangeAction}
+              />
+            </View>
+          )}
+
           {/* The leftovers, and the one question the app can't work out for
               itself. Only with a store named: without one there's nobody for
-              "they didn't have it" to be about. */}
-          {!!selectedShop && leftover.length > 0 && (
+              "they didn't have it" to be about — and only the rows the store
+              could plausibly have, which for an unscoped store is all of them. */}
+          {!!selectedShop && askable.length > 0 && (
             <>
               <Text style={styles.label}>ANYTHING THEY DIDN’T HAVE?</Text>
               <Text style={styles.hint}>
                 Optional. Check off what {selectedShop.name} didn’t stock. Everything here stays on your
                 list either way; this only records why.
+                {withheldCount > 0
+                  ? ` ${withheldCount} more ${withheldCount === 1 ? 'is' : 'are'} in aisles ${selectedShop.name} doesn’t sell, so ${withheldCount === 1 ? "it isn’t" : "they aren’t"} listed.`
+                  : ''}
               </Text>
 
               <View style={styles.card}>
-                {leftover.map((row, i) => {
+                {askable.map((row, i) => {
                   const ticked = unavailable.includes(row.id);
                   const chosenId = substituteFor[row.id] ?? null;
                   // What the item's own substitute links already say to use
@@ -767,5 +859,16 @@ function makeStyles(colors: Colors) {
       marginTop: spacing.lg,
     },
     emptyText: { flex: 1, fontSize: font.sm, color: colors.textTertiary },
+    // Margin on both sides: the store picker sits above and the leftovers
+    // label below, and neither carries a top margin of its own.
+    rangeCard: {
+      backgroundColor: colors.bgSecondary,
+      borderRadius: radius.md,
+      padding: spacing.md,
+      marginTop: spacing.md,
+      marginBottom: spacing.md,
+    },
+    rangeText: { fontSize: font.sm, color: colors.textSecondary, lineHeight: 19 },
+    rangeAction: { alignSelf: 'flex-start', marginTop: spacing.sm },
   });
 }

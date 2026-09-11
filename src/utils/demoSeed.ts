@@ -9,7 +9,10 @@ import { useProjectCategoryStore } from '../store/useProjectCategoryStore';
 import { usePersonStore } from '../store/usePersonStore';
 import { usePersonGroupStore } from '../store/usePersonGroupStore';
 import { usePersonNoteStore } from '../store/usePersonNoteStore';
+import { useFoodLogStore } from '../store/useFoodLogStore';
 import { useMoodStore } from '../store/useMoodStore';
+import { useMilestoneStore } from '../store/useMilestoneStore';
+import { useMedicationStore } from '../store/useMedicationStore';
 import { useTaskGroupStore } from '../store/useTaskGroupStore';
 import { useGroceryStore } from '../store/useGroceryStore';
 import { useRecipeStore } from '../store/useRecipeStore';
@@ -22,11 +25,24 @@ import { useTemplateStore } from '../store/useTemplateStore';
 import { useFocusStore } from '../store/useFocusStore';
 import { useSharedLinkStore } from '../store/useSharedLinkStore';
 import type { DeliverableKind, FocusSession, GroceryItem, MealSlot, MoodLevel, Recipe, Shop, SymptomSeverity, TemplateItem } from '../types';
-import { dbGetFocusSessionLog, dbInsertFocusSessionRecord } from '../db/database';
+import { dbGetFocusSessionLog, dbInsertFocusSessionRecord, dbSetGtinLookup } from '../db/database';
 import { advanceFocusSession, buildFocusPlan, closeFocusSession } from './focusPlan';
 import { buildWeekDays } from './calendarGrid';
 import { getCurrentDayStart, dayKeyOf } from './dateUtils';
+import { awayNoonIso } from './awayDates';
 import { generatedBy } from './generatedTasks';
+import {
+  DEFAULT_WEIGH_IN_EVERY_DAYS,
+  WEIGH_IN_LINK_URL,
+  WEIGH_IN_TITLE,
+  weighInNotes,
+} from './weightTasks';
+import { helpingNutrition, scalePanelToAmount } from './foodLog';
+import { cookedDishGrams, mealHelping, weighedHelping } from './mealLog';
+import { perServing, recipeNutrition } from './recipeNutrition';
+import { recipeMap } from './recipeComponents';
+import { packageChoices, packageHelping } from './scanPortion';
+import { describeProduct } from './groceryProduct';
 import { focusPlanOptionsFrom } from './focusSettings';
 import { projectReviewLinkUrl, projectReviewTitle } from './projectReviewTasks';
 import { pantryCheckLinkUrl, pantryCheckTitle } from './pantryCheckTasks';
@@ -34,6 +50,7 @@ import { PANTRY_REVIEW_LINK_URL, PANTRY_REVIEW_TITLE } from './pantryReviewTasks
 import { birthdayGiftTitle, personLinkUrl } from './birthdayTasks';
 import { giftIdeasText } from './personNotes';
 import { mealShortfallLinkUrl, mealShortfallTitle } from './mealShortfallTasks';
+import { mealLogNudgeLinkUrl, mealLogNudgeTitle } from './mealLogNudgeTasks';
 import { CALENDAR_REVIEW_TITLE } from './calendarReviewTasks';
 import {
   WEEKEND_NUDGE_TITLE,
@@ -171,6 +188,12 @@ export function seedDemoData(): void {
     // notes and a link only show on that screen once a task in the plan
     // actually carries one.
     linkUrl: 'https://example.com/q3-roadmap-draft',
+    // Nothing here says logCompletionToCalendar reads as a feature the app
+    // doesn't have — no calendar is picked in demo mode's own settings, so
+    // completing this task shows the toggle without ever reaching a real
+    // device calendar (completionCalendarSync.ts's demo-mode gate covers it
+    // either way).
+    logCompletionToCalendar: true,
   });
 
   // Nothing here says Work, #admin or XXS — the seeded title rule above does,
@@ -260,6 +283,28 @@ export function seedDemoData(): void {
     priorBestStreak: 4,
   });
 
+  // Both halves of the apps-blocked penalty, which is otherwise invisible: it
+  // is off by default, and even switched on it shows nothing until a task
+  // actually carries a cost. The two are seeded together because the feature
+  // means something different either side of the polarity — this one fails by
+  // a time passing, the slip above fails on a tap.
+  useSettingsStore.getState().setPenaltyShieldEnabled(true);
+  useSettingsStore.getState().setGateShieldEnabled(true);
+  addTask({
+    title: 'Morning walk',
+    notes: 'Holds your apps two ways. The ones you picked in Settings stay blocked until this is done, and if 8am passes with it still undone they stay blocked for two hours on top of that.',
+    gatesApps: true,
+    category: 'Health',
+    dueDate: today.toISOString(),
+    timeSegments: ['morning'],
+    recurrenceType: 'daily',
+    recurrenceInterval: 1,
+    effort: 2,
+    penaltyMinutes: 120,
+    penaltyCutoffTime: '08:00',
+  });
+  updateTask(noSnacking.id, { penaltyMinutes: 60 });
+
   addTask({
     title: 'Read a chapter of the Le Guin',
     notes: 'Open-ended, so it stays out of suggested pins and focus sessions.',
@@ -333,6 +378,35 @@ export function seedDemoData(): void {
     ],
   });
   updateTask(morningRoutine.id, { effort: 1 });
+
+  // A chain whose steps record *different* doses — the per-step half of the
+  // medication log (see ChainItem.medicationName). The task-level fields ride
+  // onto every successor, so without per-step values this one chain would log
+  // the morning dose again in the evening, and a demo with only a single-dose
+  // task would show none of that.
+  //
+  // Left live and never completed, deliberately: completing it would write
+  // doses, and the two seeds that care about dose counts (the frequency card's
+  // windows, and the vitamin D contrast) are both built on exact day gaps.
+  // What this demonstrates lives in the editor anyway.
+  addTask({
+    title: 'Pills',
+    notes: 'Each step records its own dose when you check it off.',
+    category: 'Health',
+    dueDate: today.toISOString(),
+    chainEnabled: true,
+    chainIndex: 0,
+    chainItems: [
+      {
+        id: generateId(), title: 'Morning pills', estimatedMinutes: null,
+        medicationName: 'Levothyroxine', medicationAmount: 75, medicationUnit: 'mcg',
+      },
+      {
+        id: generateId(), title: 'Evening pills', estimatedMinutes: null,
+        medicationName: 'Magnesium', medicationAmount: 1, medicationUnit: 'tablet',
+      },
+    ],
+  });
 
   // A chain step that asks a question and *places the next step with the
   // answer* — the one thing a chain can do with a deliverable that a plain
@@ -437,13 +511,29 @@ export function seedDemoData(): void {
   // in and closes out in without it counting as a miss.
   updateTask(eyes.id, { progressCount: 7 });
 
+  // A recurring task still sitting on yesterday's date, unresolved, with a
+  // deadline set — the one row that makes the morning check-in sheet
+  // actually have something to show. The check-in only asks about tasks
+  // with a deadline (see morningCheckIn.ts), so without one this row would
+  // be invisible to it — and without this row the feature is invisible in
+  // the demo altogether: nothing else seeded above is recurring, left
+  // dangling on a past day, and deadlined.
+  addTask({
+    title: 'Floss',
+    category: 'Health',
+    dueDate: addDays(today, -1).toISOString(),
+    deadline: addDays(today, -1).toISOString(),
+    recurrenceType: 'daily',
+    recurrenceInterval: 1,
+  });
+
   // The third kind of daily target: no time-of-day expectation at all, so the
   // hide-while-on-pace behavior the other two rely on is exactly what this one
   // opts out of. Seeded on pace (unlike water/eyes) — the point being
   // demonstrated is that it stays on Today anyway.
   const stretch = addTask({
     title: 'Stretch',
-    notes: 'Whenever, no particular time — stays on Today all day instead of hiding while you keep up with it.',
+    notes: 'Whenever, no particular time. Stays on Today all day instead of hiding while you keep up with it.',
     category: 'Health',
     dueDate: today.toISOString(),
     targetCount: 3,
@@ -581,7 +671,10 @@ export function seedDemoData(): void {
   // make the demo's own pin-all miss Iron until that time of day arrives.
   updateTask(vitaminD.id, { dueDate: today.toISOString() });
   updateTask(omega3.id, { dueDate: today.toISOString() });
-  updateTask(iron.id, { dueDate: today.toISOString() });
+  // Iron needs food kept away for a couple of hours either side, so it's
+  // also the seed's one example of a completion timer — see
+  // Task.completionTimerMinutes.
+  updateTask(iron.id, { dueDate: today.toISOString(), completionTimerMinutes: 120 });
   // Pinned as a whole via the stack editor's pin button, so the Pinned Tasks
   // block shows a copy of all three alongside the lone pinned task above.
   pinGroup(supplements.id);
@@ -715,7 +808,7 @@ export function seedDemoData(): void {
   addProjectCategory('Around the house');
   addProjectCategory('Ideas');
 
-  const kitchen = createProject('Kitchen refresh', addDays(today, 45).toISOString());
+  const kitchen = createProject('Kitchen refresh', { deadline: addDays(today, 45).toISOString() });
   // Notes are collapsed to one line at the top of the project screen and
   // expand on tap — with no project carrying any, that row never rendered.
   updateProject(kitchen.id, {
@@ -794,7 +887,7 @@ export function seedDemoData(): void {
   //
   // nudgeOptIn defaults to false, so it still never trips the gone-quiet nudge
   // or shows up in "Pull from projects". See Project.nudgeOptIn.
-  const giftIdeas = createProject('Gift ideas', null, 'list');
+  const giftIdeas = createProject('Gift ideas', { kind: 'list' });
   // A running list nobody expects to finish — see Project.ongoing. Never
   // offers to mark itself complete, however many ideas on it get used.
   updateProject(giftIdeas.id, { category: 'Ideas', ongoing: true });
@@ -808,8 +901,37 @@ export function seedDemoData(): void {
   // demanded an answer on completion would be a form, so the kind is opt-in
   // per item and the demo has to show that it's the exception rather than the
   // rule. See Project.kind.
-  const doctor = createProject('Questions for Dr. Okafor', null, 'list');
+  const doctor = createProject('Questions for Dr. Okafor', { kind: 'list' });
   updateProject(doctor.id, { category: 'Ideas' });
+
+  // A trip, so the away span is visible as a thing the app has rather than as
+  // two empty rows in the project editor (see Project.awayStart). Everything
+  // it buys is invisible until a project carries dates: the card's countdown,
+  // and the look-ahead sheet opening on the trip instead of asking for both
+  // ends of it. Far enough out that the countdown reads as one ("Leaves in 24
+  // days") rather than as the away state, which needs a trip in progress and
+  // would put the demo mid-flight on every screenshot.
+  const lisbon = createProject('Lisbon, with Mia', {
+    category: 'Ideas',
+    awayStart: awayNoonIso(addDays(today, 24)),
+    awayEnd: awayNoonIso(addDays(today, 31)),
+    // Somewhere to go, so the destination row is visible as a thing a trip
+    // has. Nothing is looked up for it: destinationForecastEnabled is off by
+    // default and geocodePlace refuses in demo mode anyway, so a demo session
+    // puts no traffic on the network about an invented trip.
+    destination: 'Lisbon',
+  });
+  // Nominated to drive vacation mode, which is invisible until something does.
+  // Not a creation-time option for the reason CreateProjectOptions gives — the
+  // opt-ins all start off — so the demo turns it on the way a user would.
+  // Inert here anyway: the pass only arms once the departure has arrived, so a
+  // trip three weeks out shows the setting without a demo session ever waking
+  // up with half its tasks hidden.
+  updateProject(lisbon.id, { awayPauses: true });
+  ['Renew passport', 'Book the airport parking', 'Sort out data roaming'].forEach((title, i) => {
+    const t = addTask({ title, dueDate: addDays(today, 10 + i * 4).toISOString() });
+    addExistingToProject(t.id, lisbon.id);
+  });
   const asked = addTask({
     title: 'Is the new dose meant to make me this tired?',
     deliverableKind: 'text',
@@ -843,7 +965,7 @@ export function seedDemoData(): void {
   // the seed runs, so the row a screenshot shows wouldn't be the row this file
   // wrote — and the same foreground would delete the review task below, since
   // the two layers coordinate by excluding each other (see wantedProjectReviews).
-  const garage = createProject('Garage shelving', null);
+  const garage = createProject('Garage shelving');
   updateProject(garage.id, { nudgeOptIn: true, nudgeCadenceDays: 14, category: 'Around the house' });
   // Quiet is measured from the project's own creation until something in it
   // is completed, so a project minted seconds ago is never quiet however long
@@ -914,7 +1036,7 @@ export function seedDemoData(): void {
   // different feature: a project nominated as somewhere to look
   // (Project.weekendSource, invisible until something quotes it — exactly the
   // kind of capability the demo has to make visible), and the row quoting it.
-  const dayTrips = createProject('Day trips', null);
+  const dayTrips = createProject('Day trips');
   updateProject(dayTrips.id, { category: 'Ideas', ongoing: true, weekendSource: true });
   ['Drive out to the coast', 'Walk the ridge trail', 'That bakery two towns over'].forEach(title => {
     const t = addTask({ title });
@@ -1002,6 +1124,26 @@ export function seedDemoData(): void {
     ...generatedBy('health', healthSourceId(dayKeyOf(today), sleepRule.id)),
   });
 
+  // The weigh-in request, seeded directly for the same reason the health task
+  // above it is: `checkWeighInTasks` refuses outright in demo mode, and it
+  // could not fire here anyway, since its trigger is a Health read that the
+  // gate declines. Seeding the row is how the feature is visible at all.
+  //
+  // Its notes are the real ones, which say nothing was recorded — true of the
+  // demo database by construction, and the honest thing to show: what cannot
+  // be seeded is a *weight*, because this app stores none (Health is the
+  // record) and inventing one would put a number about a body in a fiction.
+  // Same line the reading above draws, one step further along.
+  useSettingsStore.getState().setWeighInTaskCategory('Health');
+  addTask({
+    title: WEIGH_IN_TITLE,
+    notes: weighInNotes(DEFAULT_WEIGH_IN_EVERY_DAYS),
+    dueDate: today.toISOString(),
+    linkUrl: WEIGH_IN_LINK_URL,
+    category: 'Health',
+    ...generatedBy('weighIn', dayKeyOf(today)),
+  });
+
   // A health-target task, the fifth kind. Seeded so the shape is visible even
   // though the demo can show no reading behind it: the row draws its chip only
   // once Health has a number, so in demo mode this reads as an ordinary task
@@ -1020,7 +1162,7 @@ export function seedDemoData(): void {
   // Marked complete rather than archived — demonstrates Project.completed,
   // which has its own Completed list (see ProjectEditor's Mark complete row)
   // instead of disappearing into Archived the way finishing a project used to.
-  const hallway = createProject('Repaint the hallway', null);
+  const hallway = createProject('Repaint the hallway');
   updateProject(hallway.id, { category: 'Around the house' });
   ['Buy paint and tape', 'Tape the trim', 'Two coats, let dry between'].forEach(title => {
     const t = addTask({ title, category: 'Home' });
@@ -1034,7 +1176,7 @@ export function seedDemoData(): void {
   // Abandoned rather than finished, which is what archiving without completing
   // says — its two members stay live and unfiled the same way they would for a
   // real archive.
-  const basement = createProject('Basement declutter', null);
+  const basement = createProject('Basement declutter');
   updateProject(basement.id, { category: 'Around the house' });
   ['Hire a skip', 'Sort the boxes by the stairs'].forEach(title => {
     const t = addTask({ title, category: 'Home' });
@@ -1047,7 +1189,7 @@ export function seedDemoData(): void {
   // screen exists for. Left uncompleted on purpose, unlike the hallway
   // above: that one demonstrates Project.completed, this one demonstrates
   // the nudge to reach it.
-  const gate = createProject('Fix the back gate', null);
+  const gate = createProject('Fix the back gate');
   ['Buy a new hinge', 'Sand and repaint'].forEach(title => {
     const t = addTask({ title, category: 'Home' });
     addExistingToProject(t.id, gate.id);
@@ -1255,12 +1397,272 @@ export function seedDemoData(): void {
     seedMealPlanAndFridge(recipes, today);
   }
 
+  // Rides the same switch as the rest of the kitchen, because everything it can
+  // log lives behind it: a food log with no food to point at is a screen that
+  // can only ever be empty.
+  if (useSettingsStore.getState().kitchenEnabled) seedFoodLog(today);
+
   seedPeople(today);
   // Last, and unlike the people it needs no generator pass afterwards: both
   // mood generators ship off, so a demo relying on them would show the feature
   // only to somebody who had already found it. The history itself is what
   // there is to see.
   seedMoodLog(today);
+  seedMilestone(today);
+  seedAsNeededDoses(today);
+}
+
+/**
+ * A day of eating, so the food log reads as a feature the app has.
+ *
+ * **Yesterday rather than today**, which is deliberate on both counts: a day
+ * with entries is what shows the totals, the meal sections and the coverage
+ * clause all working, and leaving today empty means the empty state and the
+ * "log something" path are the first thing a demo actually meets.
+ *
+ * The figures come from the same catalog panels the rest of the seed already
+ * lays down (`seedGroceries` gives Potatoes, Butter and Milk their FoodData
+ * Central rows), scaled through `scalePanelToAmount` exactly as a real entry
+ * is. Nothing is hand-written: an entry whose numbers were typed here rather
+ * than measured could drift from what the same amount of the same food
+ * actually works out to, which is the one thing a demo of this feature must
+ * not show.
+ *
+ * **One entry deliberately states no fibre.** That is the ordinary case rather
+ * than a thin seed, and it is what puts a real coverage clause on the day's
+ * totals: a figure built from two of three entries reads as the day's unless
+ * something says otherwise. See foodLogTotals.
+ */
+function seedFoodLog(today: Date): void {
+  const { addEntry } = useFoodLogStore.getState();
+  // Two targets, because a target is invisible until something reads against
+  // it — the day's totals would otherwise be bare figures and the feature
+  // would read as one the app hasn't got. Two rather than ten: somebody
+  // actually watching what they eat watches a couple of numbers, and a demo
+  // showing all ten set would suggest the app expects that. Nothing here is a
+  // recommendation; see nutritionTargets.ts on why there are no defaults.
+  const { setNutritionTarget } = useSettingsStore.getState();
+  setNutritionTarget('calorieKcal', 2000);
+  setNutritionTarget('proteinG', 60);
+  const { items } = useGroceryStore.getState();
+
+  /**
+   * A fortnight and a half rather than a few days, and the length is the point
+   * for the same reason `seedMoodLog`'s is.
+   *
+   * Stats only needed several days: an average over one day averages to itself,
+   * and a section that can only say "1 of 30" reads as a feature that doesn't
+   * work. The mood screen's food pairings need considerably more — they refuse
+   * anything under `MIN_PAIRED_DAYS` (10) of days that are *both* logged for
+   * mood and logged past one meal (see `foodDayInputs`), so a five-day seed
+   * left "Eating" and "Mood by what you ate" invisible and the join reading as
+   * a feature the app hasn't got. This runs the same 17 days back the mood log
+   * does, which is what puts the two datasets over the same stretch of life.
+   *
+   * Yesterday backwards, never today: today's emptiness is what makes the day
+   * view's own empty state and its add button the first thing a demo meets.
+   *
+   * **Deliberately ragged, still.** Two days are one meal only, which is what
+   * an honest log looks like, and they now earn their place twice over: they
+   * are why `nutritionCounts` reports days logged and days logged past one meal
+   * as two different numbers, *and* they are the days the mood pairing quietly
+   * declines to use.
+   *
+   * **The pattern is deliberate rather than flat**, on `seedMoodLog`'s own
+   * argument: identical days every day correlate with nothing, which is honest
+   * of the code and useless as a demo. The deadline week in the middle of the
+   * mood seed — the one carrying "Long day, skipped lunch" — eats plainly and
+   * lightly here, and the better days either side have butter on the potatoes.
+   * That gives the screen one real calorie pairing and one real food contrast
+   * to report, off figures that are still every one of them measured rather
+   * than typed.
+   */
+  const meals: Array<{ name: string; quantity: string; slot: MealSlot; hour: number; daysAgo: number }> = [];
+  for (let daysAgo = 1; daysAgo <= 17; daysAgo++) {
+    meals.push({ name: 'Milk', quantity: '1 cup', slot: 'breakfast', hour: 8, daysAgo });
+    // The two thin days: somebody logged breakfast and got on with their life.
+    if (daysAgo === 5 || daysAgo === 6) continue;
+    // The low patch in `seedMoodLog` runs 8 to 11 days back. Plainer, smaller
+    // dinners through it.
+    const lean = daysAgo >= 8 && daysAgo <= 11;
+    meals.push({
+      name: 'Potatoes',
+      quantity: lean ? '150 g' : '250 g',
+      slot: 'dinner',
+      hour: 19,
+      daysAgo,
+    });
+    if (!lean) {
+      meals.push({ name: 'Butter', quantity: '1 tbsp', slot: 'dinner', hour: 19, daysAgo });
+    }
+    // Coffee on three of the four hard days and on three ordinary ones, which
+    // is the shape the symptom read on `SymptomDetailScreen` needs to show
+    // anything honest. All four would make it a clean sweep — "4 of 4 days
+    // against 0 of 11" — and a demo of an association has no business looking
+    // like a proof, least of all the one read in the app somebody might act on
+    // medically. Three of six against one of nine is a pattern you can see and
+    // still doubt, which is the whole posture of that card.
+    if ([8, 9, 10, 13, 15, 17].includes(daysAgo)) {
+      meals.push({ name: 'Coffee', quantity: '1 cup', slot: 'breakfast', hour: 8, daysAgo });
+    }
+  }
+  // The food that is only in the catalog because it was eaten (see
+  // `Greek yogurt` in `seedGroceries`). Logged a handful of times so the row it
+  // left behind has a reason to be there, and so the picker offers a food
+  // nobody ever put on a shopping list.
+  for (const daysAgo of [2, 4, 6]) {
+    meals.push({ name: 'Greek yogurt', quantity: '1 cup', slot: 'breakfast', hour: 9, daysAgo });
+  }
+
+  /**
+   * One helping of something cooked, so the log isn't all catalog foods.
+   *
+   * **The provenance stat is the reason this is here rather than a fourth
+   * bowl of potatoes.** A dish's figures are built from its ingredients'
+   * panels and are an estimate however good those were, which is a different
+   * claim from a label — see `FoodNutrition.source`. A seed where every entry
+   * came from one source would leave "where the figures came from" reading as
+   * a row with one number in it, which is a feature the app appears not to
+   * have.
+   */
+  const { recipes } = useRecipeStore.getState();
+  const { itemProducts } = useGroceryStore.getState();
+  const byId = recipeMap(recipes);
+  // A dish somebody weighed goes first, because the plate it produces is what
+  // the weight is for: an entry saying "400 g" of a soup whose pot came to
+  // 1,600 g is the accurate half of this feature, and a seed that only ever
+  // said "1 serving" would read as an app that still only counts servings.
+  const dishesFirst = [...recipes].sort(
+    (a, b) => Number(b.cookedWeightG !== null) - Number(a.cookedWeightG !== null)
+  );
+  for (const recipe of dishesFirst) {
+    const dish = recipeNutrition(recipe, items, itemProducts, byId);
+    if (!dish) continue;
+    const figures = {
+      total: dish.total,
+      perServing: perServing(dish),
+      servings: dish.servings,
+      cookedGrams: cookedDishGrams(recipe.cookedWeightG, 1),
+    };
+    const helping = figures.cookedGrams !== null
+      ? weighedHelping(figures, Math.round(figures.cookedGrams / 4))
+      : mealHelping(figures, 1);
+    const nutrition = helping ? helpingNutrition(helping.amounts, helping.servingText, helping.grams) : null;
+    if (!helping || !nutrition) continue;
+    const at = subDays(today, 2);
+    at.setHours(19, 0, 0, 0);
+    addEntry({
+      label: recipe.name,
+      quantity: helping.servingText,
+      grams: helping.grams,
+      nutrition,
+      slot: 'dinner',
+      recipeId: recipe.id,
+      at,
+    });
+    // One is the point. A week of cooked dinners would be a different seed and
+    // would drown the catalog foods the picker's own half is meant to show.
+    break;
+  }
+
+  /**
+   * The one entry that came off a barcode rather than the picker.
+   *
+   * Its figures are the *box's* panel — the one `linkScannedGtins` carried off
+   * the seeded barcode cache — rather than the catalog row's, which is the
+   * whole reason a scan is worth having: a specific loaf states its own label,
+   * where "bread" can only state an average. Logged as one of the panel's own
+   * servings, which is the answer `packageChoices` offers first and the only
+   * amount a label supports without somebody typing one.
+   */
+  const scannedBox = itemProducts.find(p => p.gtin && p.nutrition);
+  if (scannedBox?.nutrition) {
+    const item = items.find(i => i.id === scannedBox.itemId);
+    // Same label `packageChoices` itself offers first for a scanned box — kept
+    // in step with its own "don't repeat the word 'serving'" rule rather than
+    // rebuilt by hand here, which is what let this drift out of step before.
+    const label = packageChoices(scannedBox.nutrition, null)[0]?.label ?? '1 serving';
+    const helping = packageHelping(scannedBox.nutrition, 1, label);
+    if (item && helping) {
+      const at = subDays(today, 1);
+      at.setHours(8, 0, 0, 0);
+      addEntry({
+        label: `${item.name}, ${describeProduct(scannedBox) ?? 'scanned'}`,
+        quantity: label,
+        grams: helping.servingGrams,
+        nutrition: helping,
+        slot: 'breakfast',
+        itemId: item.id,
+        productId: scannedBox.id,
+        at,
+      });
+    }
+  }
+
+  /**
+   * A meal eaten out, estimated from a description.
+   *
+   * **The only honest way to show what the `estimated` marker looks like.** It
+   * renders on the row through `describeFoodLogEntry` and is counted apart from
+   * a label and a database read by `sourceMix` on Stats, and neither reader
+   * says anything on a seed where every entry came from a panel.
+   *
+   * Its figures are written out rather than computed, which is the one place in
+   * this seed that happens and is exactly what the feature produces: an
+   * estimate has no source to recompute it from, which is the whole reason it
+   * is marked. It carries no item and no recipe for the same reason. The entry
+   * still goes through `addEntry` like every other seeded row.
+   */
+  {
+    const at = subDays(today, 3);
+    at.setHours(13, 0, 0, 0);
+    addEntry({
+      label: 'Cheeseburger and fries, Five Guys',
+      quantity: '1 burger and a regular fries',
+      grams: null,
+      nutrition: {
+        basis: 'perServing',
+        // No weight, for the reason `estimateToPanel` gives: a gram figure for
+        // a described meal is one more invented number with nothing to check.
+        servingGrams: null,
+        servingText: '1 burger and a regular fries',
+        // A short list, and the absent keys are unknown rather than zero —
+        // the same ordinary case a packaged label sets.
+        amounts: {
+          calorieKcal: 1250,
+          fatG: 68,
+          satFatG: 22,
+          carbsG: 108,
+          proteinG: 45,
+          sodiumMg: 1470,
+        },
+        source: 'estimated',
+        sourceId: null,
+        portions: [],
+        recordedAt: subDays(today, 3).toISOString(),
+      },
+      slot: 'lunch',
+      at,
+    });
+  }
+
+  for (const meal of meals) {
+    const item = items.find(i => i.name === meal.name);
+    if (!item?.nutrition) continue;
+    const built = scalePanelToAmount(item.nutrition, meal.quantity, null);
+    if (!built) continue;
+    const at = subDays(today, meal.daysAgo);
+    at.setHours(meal.hour, 0, 0, 0);
+    addEntry({
+      label: item.name,
+      quantity: meal.quantity,
+      grams: built.grams,
+      nutrition: built.nutrition,
+      slot: meal.slot,
+      itemId: item.id,
+      at,
+    });
+  }
 }
 
 // ---------------------------------------------------------------------------
@@ -1295,6 +1697,7 @@ function seedPeople(today: Date): void {
     birthYear: bdayNear.getFullYear() - 34,
     phoneNumber: '555 0148',
     notes: 'Climbs on Wednesdays. Allergic to shellfish.',
+    location: 'Denver, CO',
   });
 
   const ansley = createPerson('Ansley');
@@ -1328,6 +1731,7 @@ function seedPeople(today: Date): void {
     nudgeOptIn: true,
     askAbout: 'her garden',
     phoneNumber: '555 0106',
+    location: 'Denver, CO',
   });
 
   // Tasks that name people, which is what a shared history is made of (#2045).
@@ -1431,10 +1835,12 @@ function seedPeople(today: Date): void {
  * there is a fortnight of it.
  *
  * The pattern is deliberate rather than random: a low patch in the middle
- * with headaches through it, better days either side. That gives the screen a
- * real correlation to report and a real symptom contrast, which is what the
- * feature claims to do. Random moods would average out to "no clear pattern",
- * which is honest of the code and useless as a demo.
+ * with headaches through it, better days either side, and a "Big deadline"
+ * context tag on the worst of them so the context contrast has something real
+ * to show too. That gives the screen a real correlation to report and a real
+ * symptom/context contrast, which is what the feature claims to do. Random
+ * moods would average out to "no clear pattern", which is honest of the code
+ * and useless as a demo.
  *
  * Goes through `addLog` like everything else here, using its `at` parameter
  * rather than raw db inserts, so a seeded entry cannot drift from the type.
@@ -1446,16 +1852,22 @@ function seedMoodLog(today: Date): void {
   // Read bottom-up: 17 days ago at the top, yesterday at the end. Today is
   // deliberately left unlogged, so demo mode opens with the daily check-in
   // still worth answering and the sheet one tap from the Today list.
-  const history: { back: number; mood: MoodLevel; symptoms?: [string, SymptomSeverity][]; note?: string }[] = [
+  const history: {
+    back: number;
+    mood: MoodLevel;
+    symptoms?: [string, SymptomSeverity][];
+    contextTags?: string[];
+    note?: string;
+  }[] = [
     { back: 17, mood: 4 },
     { back: 16, mood: 4, note: 'Good week so far' },
-    { back: 15, mood: 5 },
+    { back: 15, mood: 5, contextTags: ['Vacation'] },
     { back: 14, mood: 3, symptoms: [['Poor sleep', 2]] },
     { back: 13, mood: 4 },
     { back: 12, mood: 3 },
-    { back: 11, mood: 2, symptoms: [['Headache', 2], ['Poor sleep', 2]] },
-    { back: 10, mood: 2, symptoms: [['Headache', 3]], note: 'Long day, skipped lunch' },
-    { back: 9, mood: 1, symptoms: [['Headache', 3], ['Poor sleep', 3]] },
+    { back: 11, mood: 2, symptoms: [['Headache', 2], ['Poor sleep', 2]], contextTags: ['Big deadline'] },
+    { back: 10, mood: 2, symptoms: [['Headache', 3]], note: 'Long day, skipped lunch', contextTags: ['Big deadline'] },
+    { back: 9, mood: 1, symptoms: [['Headache', 3], ['Poor sleep', 3]], contextTags: ['Big deadline'] },
     { back: 8, mood: 2, symptoms: [['Headache', 1]] },
     { back: 7, mood: 3 },
     { back: 6, mood: 3, symptoms: [['Poor sleep', 1]] },
@@ -1476,7 +1888,124 @@ function seedMoodLog(today: Date): void {
       (day.symptoms ?? []).map(([name, severity]) => ({ name, severity })),
       day.note ?? null,
       at,
+      day.contextTags ?? [],
     );
+  }
+
+  seedRepeatedHealthTask(today);
+}
+
+/**
+ * One milestone, dated to the worst day in the seeded mood log, so the Mood
+ * screen's before/after card has something to draw rather than showing its
+ * empty state — the exact case `demoSeed` exists for, since a capability with
+ * nothing to show reads as one the app does not have.
+ *
+ * Goes through `addMilestone` like everything else here, so a seeded row
+ * cannot drift from the type.
+ */
+function seedMilestone(today: Date): void {
+  const { addMilestone } = useMilestoneStore.getState();
+  const date = subDays(today, 9);
+  date.setHours(12, 0, 0, 0);
+  addMilestone('Started a magnesium supplement', date);
+}
+
+/**
+ * Painkillers taken as needed — the half of the medication log that has no
+ * task behind it, and the only way the frequency card has anything to draw.
+ *
+ * The scheduled half is already seeded by `seedRepeatedHealthTask` below,
+ * which carries a medication and records a dose per completion. This is the
+ * case that argument does not reach (see `docs/arch/mood-log.md`): nobody
+ * schedules a painkiller, so without these the medication screen would show
+ * only doses a task wrote and the feature would read as a duplicate of the
+ * task list.
+ *
+ * Three of the days line up with the low patch in the seeded mood log, which
+ * carries a Headache — reaching for something on a bad day is what an
+ * as-needed medicine *is*, and a demo whose painkiller days fell randomly
+ * would be showing the mechanism without showing the point of it.
+ *
+ * The dates are chosen so `frequencyTrend` will actually draw: it needs the
+ * log to have been running for both of its fortnights, so the oldest dose sits
+ * a month back rather than inside the earlier window. Deliberately a rise
+ * rather than a clean sweep, for the reason the symptom/food seed keeps one
+ * ordinary day in — a demo of a count that looks like a verdict is the thing
+ * that read is written to avoid.
+ */
+function seedAsNeededDoses(today: Date): void {
+  const { addLog } = useMedicationStore.getState();
+  // Oldest first. 30 back establishes that the log was running before the
+  // comparison's earlier fortnight; 11/9/8 are the headache days.
+  const takenOn = [30, 25, 22, 11, 9, 8, 3];
+  for (const back of takenOn) {
+    addLog({
+      name: 'Ibuprofen',
+      amount: 400,
+      unit: 'mg',
+      asNeeded: true,
+      at: setHours(subDays(today, back), 15),
+    });
+  }
+}
+
+/**
+ * A daily task finished on most of the logged days and missed on a few, so the
+ * Mood screen's "mood and your repeating tasks" card has a row to draw.
+ *
+ * This is the app's answer to medication tracking (see `taskMoodContrasts`) and
+ * it is invisible until something has actually been repeated across the days
+ * the mood log covers — the exact case the demo seed exists for, since a
+ * capability with no row in the seed reads as one the app does not have.
+ *
+ * Driven by `completeTask` rather than by writing rows, like everything else
+ * here: each completion spawns the next occurrence and stamps it with the
+ * `previousOccurrenceId` that `taskIdentityKey` walks to collapse the run back
+ * into one label, which is precisely the mechanism under test. Only the
+ * timestamp is written afterwards, because `completeTask` stamps "now" and
+ * takes no date. The occurrence left standing at the end is a live daily task,
+ * which is what a real one of these looks like.
+ *
+ * The gaps are deliberate: a row needs `MIN_CONTRAST_DAYS` days on *both* sides,
+ * so a task finished every single day would have no "without" to compare
+ * against and no row would appear at all.
+ */
+function seedRepeatedHealthTask(today: Date): void {
+  const { addTask, updateTask, completeTask } = useTaskStore.getState();
+  // Oldest first. The four missing days (11 through 8 back) are the low patch
+  // in the seeded mood log, which is what gives the contrast two sides.
+  const takenOn = [17, 16, 15, 14, 13, 12, 7, 6, 5, 4, 3, 2, 1];
+
+  let occurrence = addTask({
+    title: 'Take the vitamin D',
+    category: 'Health',
+    effort: 1,
+    recurrenceType: 'daily',
+    // Seeded so the task->dose hook is visible rather than theoretical: each
+    // completion below records a dose, which is the whole of how a scheduled
+    // medication is meant to be logged here (see docs/arch/mood-log.md). A
+    // demo with only hand-logged doses would read as an app where the tablets
+    // have to be entered twice, which is the thing the feature avoids.
+    medicationName: 'Vitamin D',
+    medicationAmount: 25,
+    medicationUnit: 'mcg',
+  });
+  for (const back of takenOn) {
+    const day = subDays(today, back);
+    const completedId = occurrence.id;
+    // Dated onto the day before it is ticked, because `completeTask` refuses a
+    // recurring occurrence that isn't due yet (`isRecurrenceNotYetDue`) — the
+    // successor it spawns lands on tomorrow, so a loop that only back-dated the
+    // *completion* would stop after one step.
+    updateTask(completedId, { dueDate: day.toISOString() });
+    completeTask(completedId, { completedAt: setHours(day, 8).toISOString() });
+    const next = useTaskStore.getState().tasks
+      .find(t => t.previousOccurrenceId === completedId && !t.completed);
+    // Nothing spawned means the chain ended early, which would leave the loop
+    // completing one row over and over. Stop rather than seed a lie.
+    if (!next) return;
+    occurrence = next;
   }
 }
 
@@ -1503,6 +2032,12 @@ function seedMoodLog(today: Date): void {
 function seedTemplates(): void {
   const { addTemplate, addItem, addQuestion } = useTemplateStore.getState();
   const template = addTemplate('Trip prep');
+  // Its two anchors are days away from home, so a run of it fills in the
+  // project's away span rather than reading its return date as a deadline.
+  // Nominated, never inferred from the nights question below — see
+  // TaskTemplate.anchorsAreAway.
+  useTemplateStore.getState().setTemplateAnchorsAreAway(template.id, true);
+  useTemplateStore.getState().setTemplateContainer(template.id, 'project');
   // Referenced by the item titles below rather than by an item field, so its
   // id is never needed here.
   addQuestion(template.id, {
@@ -1595,6 +2130,7 @@ interface DemoRecipes {
   salad: string;
   oats: string;
   sandwich: string;
+  soup: string;
   stirFry: string;
   salmon: string;
   steak: string;
@@ -1665,10 +2201,12 @@ function seedRecipes(): DemoRecipes {
     setEstimatedMinutes,
     setPrepMinutes,
     setLeftoverKeepDays,
+    setCookedWeight,
     markCooked,
     startCookTimer,
     addStep,
     setStepTimerSeconds,
+    setStepNote,
   } = useRecipeStore.getState();
 
   // --- Sides, first: the two dinners below reference them as components ----
@@ -1705,7 +2243,17 @@ function seedRecipes(): DemoRecipes {
   const roasties = newRecipe('Roast potatoes');
   addIngredientsFromText(
     roasties.id,
-    ['2 lb potatoes, peeled and halved', '3 tbsp olive oil', '1 bunch rosemary', '1 tsp salt'].join('\n')
+    // The oil line is the demo's example of a "such as" clause — the offer
+    // to declare avocado oil a kind of neutral oil (RecipeIngredient.example,
+    // see splitExample / itemVarieties.ts) is only visible from inside this
+    // one ingredient's sheet, so it has to be seeded deliberately or the
+    // badge reads as a feature the app doesn't have.
+    [
+      '2 lb potatoes, peeled and halved',
+      '3 tbsp neutral oil, such as avocado oil',
+      '1 bunch rosemary',
+      '1 tsp salt',
+    ].join('\n')
   );
   setMealType(roasties.id, 'side');
   setServings(roasties.id, 4);
@@ -1723,6 +2271,20 @@ function seedRecipes(): DemoRecipes {
   // excluded-tags picker (#1693) has something a household would actually
   // exclude on, not just cooking-style labels.
   setTags(salad.id, ['vegetarian']);
+
+  // A fourth side, paired with an ingredient rather than another component —
+  // see the cross-type choice group added to the stir-fry below (the note on
+  // resolveGroupWinners in recipeComponents.ts).
+  const steamedRice = newRecipe('Steamed rice');
+  addIngredientsFromText(steamedRice.id, ['1 cup rice', '2 cups water', '1/2 tsp salt'].join('\n'));
+  setMealType(steamedRice.id, 'side');
+  setServings(steamedRice.id, 4);
+  setEstimatedMinutes(steamedRice.id, 20);
+  [
+    'Rinse the rice until the water runs clear.',
+    'Bring the water and salt to a boil, stir in the rice, cover and simmer 18 minutes.',
+    'Rest off the heat for 5 minutes, then fluff with a fork.',
+  ].forEach(text => addStep(steamedRice.id, text));
 
   const salsaVerde = newRecipe('Salsa verde');
   addIngredientsFromText(
@@ -1841,10 +2403,16 @@ function seedRecipes(): DemoRecipes {
   setEstimatedMinutes(tea.id, 10);
   // A serving suggestion, not something the pitcher needs — the escape hatch
   // from "everything on the recipe is something to buy" (RecipeIngredient.optional).
-  // Seeded because it's otherwise invisible: without one, both add-to-list
-  // sheets read exactly as they did before the field existed.
+  // Also excluded from the recipe's own nutrition total: a few sprigs on top
+  // of a garnish don't move the figures, and that's a fact about this line in
+  // this dish rather than about mint itself (RecipeIngredient.excludeFromNutrition).
+  // Seeded because both are otherwise invisible: without one, every reader —
+  // both add-to-list sheets, the recipe page's nutrition sheet — reads exactly
+  // as it did before the fields existed.
   const mintSprigs = addIngredient(tea.id, 'Mint sprigs');
-  if (mintSprigs) updateIngredient(tea.id, mintSprigs.id, { purpose: 'garnish', optional: true });
+  if (mintSprigs) {
+    updateIngredient(tea.id, mintSprigs.id, { purpose: 'garnish', optional: true, excludeFromNutrition: true });
+  }
 
   // --- Dinners -------------------------------------------------------------
   const stirFry = newRecipe('Weeknight chicken stir-fry');
@@ -1871,6 +2439,14 @@ function seedRecipes(): DemoRecipes {
     const id = ingredientIdNamed(stirFry.id, name);
     if (id) updateIngredient(stirFry.id, id, { choiceGroup: 'Chile' });
   });
+  // A choice group crossing the two lists: "rice" is what the recipe already
+  // buys, and the Steamed rice component is the alternative — cook the side
+  // instead of picking up the pre-cooked bag. Ingredients resolve before
+  // components when nothing's chosen (see recipeComponents.ts), so adding
+  // this never changes what stirFry shops for on its own.
+  const riceId = ingredientIdNamed(stirFry.id, 'rice');
+  if (riceId) updateIngredient(stirFry.id, riceId, { choiceGroup: 'Rice' });
+  addComponent(stirFry.id, steamedRice.id, 'Rice');
   setServings(stirFry.id, 4, 6);
   setEstimatedMinutes(stirFry.id, 20);
   setPrepMinutes(stirFry.id, 15);
@@ -1893,6 +2469,18 @@ function seedRecipes(): DemoRecipes {
   // without this.
   const searStep = useRecipeStore.getState().recipeById(stirFry.id)?.steps[1];
   if (searStep) setStepTimerSeconds(stirFry.id, searStep.id, 4 * 60);
+  // A note kept on a step from a previous cooking — what cook mode's "ask about
+  // this step" leaves behind when an answer is worth keeping. The asking itself
+  // needs an API key nobody hands a demo phone, and the note is the half that
+  // outlives it, so without a seeded one that whole exchange reads as absent
+  // rather than as unused.
+  if (searStep) {
+    setStepNote(
+      stirFry.id,
+      searStep.id,
+      'Dry the chicken first and leave it alone for a minute. Crowding the pan steams it.',
+    );
+  }
   // Cooked often enough to have a history worth reading.
   [0, 1, 2, 3, 4].forEach(() => markCooked(stirFry.id));
   // Tonight's dinner, mid-cook — the one place a live timer shows up.
@@ -1924,6 +2512,13 @@ function seedRecipes(): DemoRecipes {
   setEstimatedMinutes(salmon.id, 25);
   // Fish, so the log sheet opens on one day rather than three.
   setLeftoverKeepDays(salmon.id, 1);
+  // The one dish here that has been on a scale, which is what lets the food log
+  // below record a plate of it by weight rather than as a fraction of a tray
+  // nobody divided evenly — see Recipe.cookedWeightG. It's this dish rather
+  // than another because a weight only means anything on a dish whose figures
+  // the nutrition rollup will answer for, and this is the one dinner in the
+  // seed that clears that floor.
+  setCookedWeight(salmon.id, 900);
   // The website attribution shape: a person and a publication, independently.
   // It's also what a link import leaves behind — url, site, author, and the
   // method taken verbatim off the page's own markup — so this is the recipe
@@ -1950,6 +2545,37 @@ function seedRecipes(): DemoRecipes {
   // The shared component — the same mash inside two different dinners, which
   // is the whole point of a reference rather than a copy.
   addComponent(salmon.id, mash.id);
+
+  const soup = newRecipe('Weeknight vegetable soup');
+  addIngredientsFromText(
+    soup.id,
+    [
+      '2 tbsp olive oil',
+      '1 onion, diced',
+      '2 carrots, diced',
+      '2 stalks celery, diced',
+      '4 cups vegetable stock',
+      '1 can diced tomatoes',
+      '1 tsp dried thyme',
+    ].join('\n')
+  );
+  setMealType(soup.id, 'dinner');
+  setTags(soup.id, ['weeknight', 'vegetarian']);
+  setServings(soup.id, 4);
+  setEstimatedMinutes(soup.id, 35);
+  // A side with no fixed amount in the recipe — "however much bread was on
+  // the table", not a line `recipeNutrition.ts`'s rollup could ever total
+  // (there's no single right answer to write down once) and not one
+  // `RecipeNutritionSheet` has a remedy for either, since weighing settles a
+  // line that names an amount and this one names none.
+  // `FoodLogEntrySheet`'s "Anything else?" is the only place left to ask, and
+  // it's asked fresh each time the soup is logged rather than fixed on the
+  // recipe. Seeded because otherwise the whole feature reads as invisible in
+  // demo mode — see the seeding rule below. `Bread`'s own nutrition (set
+  // further down, once the item exists) is what turns the empty quantity into
+  // a real question at log time instead of a line demo mode can never answer.
+  const crustyBread = addIngredient(soup.id, 'Bread');
+  if (crustyBread) updateIngredient(soup.id, crustyBread.id, { purpose: 'serving', optional: true });
 
   const steak = newRecipe('Seared steak with potatoes');
   addIngredientsFromText(
@@ -1999,6 +2625,7 @@ function seedRecipes(): DemoRecipes {
     salad: salad.id,
     oats: oats.id,
     sandwich: sandwich.id,
+    soup: soup.id,
     stirFry: stirFry.id,
     salmon: salmon.id,
     steak: steak.id,
@@ -2058,6 +2685,7 @@ function seedGroceries(recipes: DemoRecipes, today: Date): void {
     setProductUnavailable,
     setAisle,
     setAisleOrder,
+    setAisleNonFood,
     setOnHandUntil,
     addToPantry,
     setStaple,
@@ -2067,6 +2695,8 @@ function seedGroceries(recipes: DemoRecipes, today: Date): void {
     recordDisposal,
     dismissDisposalOffer,
     setExpiresAt,
+    setItemNutrition,
+    setProductNutrition,
     setShelfLifeDays,
     setUseUpTask,
     setVarietyOfKey,
@@ -2079,6 +2709,7 @@ function seedGroceries(recipes: DemoRecipes, today: Date): void {
     ensureCatalogItem,
     linkItemSub,
     setShopExcludedFromSuggestions,
+    setShopAisles,
     startTrip,
     setItemPrice,
     addList,
@@ -2125,6 +2756,103 @@ function seedGroceries(recipes: DemoRecipes, today: Date): void {
   // example of a recipe cost actually clearing recipeCost.ts's coverage floor
   // (see estimateRecipeCost in useDemoStore.test.ts).
   setQuantity(itemNamed('Potatoes').id, '5 lb');
+
+  /**
+   * The three foods Mashed potatoes is made of, given the panels that make it
+   * the demo's one recipe with a nutrition estimate.
+   *
+   * **Chosen so the dish clears the coverage floor honestly**, which took all
+   * three: its potatoes are written as a mass and need nothing but a panel,
+   * while its butter and milk lines are volumes and reach grams only through
+   * the portion tables below. Salt is a staple and drops out of both sides of
+   * the fraction. Without a recipe that actually answers, the whole rollup
+   * reads as a feature the app hasn't got (see recipeNutrition.ts).
+   *
+   * Figures are FoodData Central's, per 100g, and deliberately partial: none
+   * of the three states caffeine or water, which is the ordinary case and is
+   * what keeps an absent nutrient visibly absent rather than zero.
+   */
+  setItemNutrition(itemNamed('Potatoes').id, {
+    basis: 'per100g',
+    servingGrams: null,
+    servingText: null,
+    amounts: { calorieKcal: 77, proteinG: 2, carbsG: 17.5, fatG: 0.1, fiberG: 2.1, sugarG: 0.8, sodiumMg: 6 },
+    // FDC states the diced cup; the medium-potato row beside it is the other
+    // kind, a weighing somebody did themselves and saved for next time — see
+    // FoodPortion.custom. Without one of each in the seed, a self-weighed
+    // portion reads identically to the source's own and the distinction the
+    // field exists for has nothing showing it.
+    portions: [
+      { amount: 1, label: 'cup, diced', grams: 150 },
+      { amount: 1, label: 'medium potato', grams: 173, custom: true },
+    ],
+    source: 'fdc',
+    sourceId: '170026',
+    recordedAt: subDays(today, 30).toISOString(),
+  });
+  setItemNutrition(itemNamed('Butter').id, {
+    basis: 'per100g',
+    servingGrams: null,
+    servingText: null,
+    amounts: { calorieKcal: 717, proteinG: 0.9, carbsG: 0.1, fatG: 81.1, satFatG: 51.4, sugarG: 0.1, sodiumMg: 643 },
+    portions: [{ amount: 1, label: 'tbsp', grams: 14.2 }],
+    source: 'fdc',
+    sourceId: '173410',
+    recordedAt: subDays(today, 30).toISOString(),
+  });
+  setItemNutrition(itemNamed('Milk').id, {
+    basis: 'per100g',
+    servingGrams: null,
+    servingText: null,
+    amounts: { calorieKcal: 61, proteinG: 3.2, carbsG: 4.8, fatG: 3.3, satFatG: 1.9, sugarG: 5.1, sodiumMg: 43 },
+    portions: [{ amount: 1, label: 'cup', grams: 244 }],
+    source: 'fdc',
+    sourceId: '171265',
+    recordedAt: subDays(today, 30).toISOString(),
+  });
+  // **The one panel here that states caffeine**, and the only food in the seed
+  // that does — which is the ordinary case rather than a thin seed, and is
+  // exactly why caffeine is not one of `NUTRIENT_INSIGHT_KEYS`. A day of coffee
+  // and two other things has one entry out of three carrying a caffeine figure,
+  // so `foodDayInputs`' coverage rule drops it for the day and the mood pairing
+  // never sees it. Worth having in the seed anyway: it is what the panel on the
+  // day's card actually looks like, and it is what makes the demo's food
+  // contrasts about something a person recognises.
+  setItemNutrition(itemNamed('Coffee').id, {
+    basis: 'per100g',
+    servingGrams: null,
+    servingText: null,
+    amounts: { calorieKcal: 1, proteinG: 0.1, carbsG: 0, fatG: 0, sugarG: 0, sodiumMg: 2, caffeineMg: 40 },
+    portions: [{ amount: 1, label: 'cup', grams: 237 }],
+    source: 'fdc',
+    sourceId: '171890',
+    recordedAt: subDays(today, 30).toISOString(),
+  });
+  /**
+   * Figures with no portion table, which is the one gap the recipe nutrition
+   * sheet offers a *scale* for rather than a form.
+   *
+   * The three panels above all state portions, so every volume line in the box
+   * converts and the sheet's "weigh it" row would never appear — a remedy the
+   * app has and the demo can't show reads as one it hasn't got. This is the
+   * ordinary shape of a panel somebody typed in off a packet, and of every one
+   * Open Food Facts returns: real figures, and nothing relating them to a
+   * spoon. Both recipes calling for it say "3 tbsp", so the line is refused
+   * until somebody weighs three (see `weighableLine`).
+   *
+   * Deliberately not given the tbsp row FoodData Central itself states, which
+   * would make this the fourth counted food and leave the gap unseeded.
+   */
+  setItemNutrition(itemNamed('Olive oil').id, {
+    basis: 'per100g',
+    servingGrams: null,
+    servingText: null,
+    amounts: { calorieKcal: 884, proteinG: 0, carbsG: 0, fatG: 100, satFatG: 13.8, sodiumMg: 2 },
+    portions: [],
+    source: 'manual',
+    sourceId: null,
+    recordedAt: subDays(today, 12).toISOString(),
+  });
   // Lemon garlic salmon calls for a lemon, and without a fact of its own here
   // Lemons is a bare CATALOG name — nothing else in the seed ever touches it —
   // so clearList below sweeps it and the recipe's own "lemon" line reads as an
@@ -2176,6 +2904,84 @@ function seedGroceries(recipes: DemoRecipes, today: Date): void {
   // the seed says what it means rather than depending on insertion order.
   if (arnolds) setPreferredProduct(bread, arnolds.id);
 
+  /**
+   * The bakery loaf's panel, typed in by hand — the case no database answers.
+   *
+   * **Put on the brandless one deliberately.** A store's own seeded sourdough
+   * has no barcode either database knows, and Open Food Facts is crowd-sourced
+   * and patchy outside Europe, so the only way this food ever gets figures is
+   * somebody copying them off the tag. `source: 'manual'` is what says so, and
+   * it is a different claim from the manufacturer's declared label on the
+   * Dave's Killer box below: without one of each in the seed, the distinction
+   * the record is built around has nothing showing it.
+   *
+   * No portion table, which is honest rather than thin: a bakery tag prints a
+   * serving and no gram weights per stated portion, so a recipe line written
+   * as "2 slices" of this cannot become a weight. `servingGrams` is the one
+   * number it does state, and it is what a per-serving basis needs.
+   */
+  if (sourdough) {
+    setProductNutrition(sourdough.id, {
+      basis: 'perServing',
+      servingGrams: 50,
+      servingText: '1 slice (50g)',
+      amounts: { calorieKcal: 130, proteinG: 5, carbsG: 25, fatG: 1.5, fiberG: 2, sodiumMg: 260 },
+      portions: [],
+      source: 'manual',
+      sourceId: null,
+      recordedAt: subDays(today, 12).toISOString(),
+    });
+  }
+
+  /**
+   * The plain item's own panel, not a specific box's.
+   *
+   * `recipeNutrition.ts`'s `productFor` reads only the *preferred* product's
+   * panel (Arnold's, which states none), never any other box on the shelf —
+   * so a recipe line that just says "Bread" needs the figures somewhere
+   * `nutritionFor` will actually fall through to. Per-100g plus a slice
+   * portion, the same generic-label shape `Potatoes`/`Butter`/`Milk` already
+   * use above, rather than the bakery sourdough's per-serving-only panel:
+   * this is a boxed loaf stating a real serving weight, not a bakery tag that
+   * never printed one.
+   */
+  setItemNutrition(bread, {
+    basis: 'per100g',
+    servingGrams: null,
+    servingText: null,
+    amounts: { calorieKcal: 265, proteinG: 9, carbsG: 49, fatG: 3.2, fiberG: 2.7, sugarG: 5, sodiumMg: 490 },
+    portions: [{ amount: 1, label: 'slice', grams: 28 }],
+    source: 'fdc',
+    sourceId: '172686',
+    recordedAt: subDays(today, 25).toISOString(),
+  });
+
+  /**
+   * A food that is in the catalog *only because it was eaten*, which is the
+   * one thing filing a database result leaves behind that can be looked at.
+   *
+   * The log can turn up figures for a food nobody shops for: a search answered,
+   * and the person kept the answer. What that produces is exactly this — an
+   * off-list row carrying a database's own panel — and without a seeded one the
+   * whole path reads as an app that makes you search again every time, since
+   * every other food here arrived by being bought. `ensureCatalogItem` is what
+   * the sheet itself calls, and its `onList: false` is the point rather than an
+   * incidental default: eating something is not a plan to buy it.
+   */
+  const keptFromSearch = ensureCatalogItem('Greek yogurt');
+  if (keptFromSearch) {
+    setItemNutrition(keptFromSearch.id, {
+      basis: 'per100g',
+      servingGrams: null,
+      servingText: null,
+      amounts: { calorieKcal: 59, proteinG: 10, carbsG: 3.6, fatG: 0.4, sugarG: 3.2, sodiumMg: 36 },
+      portions: [{ amount: 1, label: 'cup', grams: 245 }],
+      source: 'fdc',
+      sourceId: '170903',
+      recordedAt: subDays(today, 6).toISOString(),
+    });
+  }
+
   // A box with the barcode that names it, which is invisible until something
   // uses it: the demo has no camera, so without a seeded link "scanning this
   // again lands on the row you filed it under" reads as a feature the app
@@ -2187,9 +2993,90 @@ function seedGroceries(recipes: DemoRecipes, today: Date): void {
   // A real GTIN-14 for Dave's Killer Bread 21 Whole Grains, check digit and
   // all, so it round-trips through normalizeGtin exactly as a scan would.
   if (daves) {
+    /**
+     * The barcode cache row a real scan would have left behind, seeded so the
+     * link below can do what a scan does with it: carry the label panel onto
+     * the box.
+     *
+     * **Written rather than faked onto the product**, because the transfer is
+     * the part worth showing — `linkScannedGtins` reads the panel out of this
+     * cache, so seeding the product directly would show the result while
+     * leaving the mechanism untested by the demo. The `dbSetGtinLookup` call is
+     * the only writer this table has (there is no store over it), the same
+     * reason the focus log above is seeded through a db function.
+     *
+     * Figures are the real per-100g panel FoodData Central holds for this loaf.
+     * A demo product with no nutrition would read as a feature the app hasn't
+     * got, which is exactly what it did before this shipped.
+     */
+    dbSetGtinLookup({
+      gtin: '00013764000315',
+      found: true,
+      name: "Dave's Killer Bread 21 Whole Grains and Seeds Organic Bread",
+      brand: "Dave's Killer",
+      quantity: '27 oz',
+      category: 'Bread',
+      nutrition: {
+        basis: 'per100g',
+        servingGrams: 45,
+        servingText: '1 slice',
+        // No caffeine or water row, and that is the ordinary case rather than a
+        // thin seed: a US label declares a short list, and the absent keys are
+        // unknown rather than zero. See FoodNutrition.amounts.
+        amounts: {
+          calorieKcal: 267,
+          proteinG: 11.1,
+          carbsG: 48.9,
+          fatG: 4.44,
+          satFatG: 0,
+          fiberG: 11.1,
+          sugarG: 11.1,
+          sodiumMg: 400,
+        },
+        // The one portion this loaf states, which is what lets a recipe line
+        // written as "2 slices" become a weight at all. A packaged product
+        // rarely offers more than its own serving; a whole food's table runs
+        // to a dozen rows. See FoodPortion.
+        portions: [{ amount: 1, label: 'slice', grams: 45 }],
+        // A manufacturer's declared label, which is a different claim from the
+        // estimate a model would make — see FoodNutrition.source.
+        source: 'fdc',
+        sourceId: '2674263',
+        recordedAt: subDays(today, 3).toISOString(),
+      },
+      source: 'usda',
+      fetchedAt: subDays(today, 3).toISOString(),
+    });
     linkScannedGtins([
       { gtin: '00013764000315', itemId: bread, brand: "Dave's Killer", variant: '21 whole grains' },
     ]);
+  }
+
+  /**
+   * A row still wearing the words a product database used, which is the whole
+   * of what the Backfill screen's "Scanned name" field walks — see
+   * `GroceryItem.nameFromScan`.
+   *
+   * **The Bread row above cannot show this**, and the contrast is the point:
+   * it carries a barcode too, but a person named it, so it is not something to
+   * offer to rename. This one is what a scan leaves when nobody edits the
+   * proposal in the review sheet — `shopperNameFor` has taken the brand and the
+   * pack size off and stopped there, on purpose, because going further means
+   * guessing what the words mean.
+   *
+   * Named so a shorter name is actually reachable: `shorterNameSuggestions`
+   * only ever drops leading words, so this offers "Riced Cauliflower" and
+   * "Cauliflower", and the catalog holds neither, so it demonstrates the plain
+   * rename rather than the merge. Off-list for `ensureCatalogItem`'s usual
+   * reason, and because an unpack puts things away rather than on a list.
+   */
+  const ricedCauliflower = ensureCatalogItem('Organic Riced Cauliflower', { nameFromScan: true });
+  if (ricedCauliflower) {
+    // The brand the source supplied, filed where a scan files one. Brand-only
+    // with no variant, matching what a minted row gets everywhere else: the
+    // row is *named* after the residue, so there is nothing left to be a
+    // variant of it.
+    addProduct(ricedCauliflower.id, { brand: "Trader Joe's", variant: null });
   }
 
   const traderJoes = newShop("Trader Joe's");
@@ -2198,6 +3085,14 @@ function seedGroceries(recipes: DemoRecipes, today: Date): void {
   // linking by hand while being pulled out of every suggestion.
   const amazon = newShop('Amazon');
   setShopExcludedFromSuggestions(amazon.id, true);
+  // The other half of that: a store that sells *some* aisles rather than all
+  // of them. Without one on file the finish sheet asks, after every trip,
+  // which of the week's groceries the pharmacy didn't have — and the whole
+  // point of a range is that it already has that answer. Household is the one
+  // non-food aisle the demo keeps (Personal Care is deleted further down, as
+  // its own demonstration), and paper goods at a pharmacy is the shape of it.
+  const pharmacy = newShop('Corner Pharmacy');
+  setShopAisles(pharmacy.id, ['Household']);
 
   // Three finished trips, so the catalog and the autocomplete ranking have a
   // real spread of purchase counts to sort by rather than a flat list of ones.
@@ -2226,6 +3121,13 @@ function seedGroceries(recipes: DemoRecipes, today: Date): void {
     traderJoes.id,
     priced({ Milk: 429, Eggs: 599, Spinach: 349, Bread: 449, Coffee: 1099 })
   );
+
+  // One trip at the scoped store, so it's a shop with a record rather than a
+  // bare name: a range is about what a store sells, and that reads properly
+  // only next to something it has actually sold you.
+  addExistingMany(idsNamed(['Toilet paper']));
+  setCheckedMany(idsNamed(['Toilet paper']), true);
+  finishShopping(pharmacy.id, priced({ 'Toilet paper': 899 }));
 
   // The same item bought at a second store for more — the whole point of
   // keeping a price per (item, store), and the only shape "cheapest at Costco"
@@ -2626,6 +3528,12 @@ function seedGroceries(recipes: DemoRecipes, today: Date): void {
   const order = useGroceryStore.getState().aisleOrder;
   setAisleOrder([...order.filter(a => a !== 'Frozen'), 'Frozen']);
 
+  // Household holds Paper towels/Toilet paper/Dish soap above — none of it is
+  // food, so it's flagged non-food the way a real shopper filing that aisle
+  // for the first time would, keeping it out of the nutrition backfill queue
+  // and the food log's own suggestions.
+  setAisleNonFood('Household', true);
+
   // What's on the list right now, with two things already in the trolley — the
   // state the finish-shopping sheet is for. Milk, Eggs, Bananas, Bread and
   // Tortillas are already catalog rows (bought or linked above) and go back
@@ -2704,6 +3612,14 @@ function seedGroceries(recipes: DemoRecipes, today: Date): void {
   // away list rather than land in it.
   const airbnb = addList('Airbnb');
   if (airbnb) {
+    // And the Lisbon trip buys from it, which is the only way the nomination is
+    // visible at all (see Project.awayListId). Inert for the same reason
+    // `awayPauses` is: the trip is three weeks out, so `checkAwayGroceryList`
+    // has nothing to switch and a demo session never opens on a list somebody
+    // handed the phone did not choose. Looked up by title rather than passed
+    // in, because the project is seeded before any grocery list exists.
+    const lisbon = useProjectStore.getState().projects.find(p => p.title === 'Lisbon, with Mia');
+    if (lisbon) useProjectStore.getState().updateProject(lisbon.id, { awayListId: airbnb.id });
     setActiveList(airbnb.id);
     ['Coffee', 'Milk', 'Eggs', 'Olive oil', 'Paper towels'].forEach(name =>
       addByName(name, undefined, undefined, { registerUndo: false })
@@ -2832,7 +3748,10 @@ function seedMealPlanAndFridge(recipes: DemoRecipes, today: Date): void {
   const plan = (
     dayOffset: number,
     slot: MealSlot,
-    entry: { title: string; recipeId?: string; leftoverId?: string; cookTask?: boolean | null }
+    entry: {
+      title: string; recipeId?: string; leftoverId?: string;
+      cookTask?: boolean | null; logMeal?: boolean | null;
+    }
   ) =>
     planMeal({
       date: dayKeyOf(addDays(today, dayOffset)),
@@ -2841,6 +3760,7 @@ function seedMealPlanAndFridge(recipes: DemoRecipes, today: Date): void {
       recipeId: entry.recipeId ?? null,
       leftoverId: entry.leftoverId ?? null,
       cookTask: entry.cookTask ?? null,
+      logMeal: entry.logMeal ?? null,
     });
 
   // --- Nights already cooked ----------------------------------------------
@@ -2909,6 +3829,18 @@ function seedMealPlanAndFridge(recipes: DemoRecipes, today: Date): void {
     sourceEntryId: steakNight?.id ?? null,
     storedAt: subDays(today, 4).toISOString(),
     keepDays: 5,
+  });
+  // Weighed on the way into the fridge, which is the fridge half of
+  // Recipe.cookedWeightG and is only worth doing on a dish that has one: this
+  // container is 300 g of a salmon tray that came to 900 g, so finishing it
+  // logs a third of the dish rather than a guess at "one serving". Salmon
+  // because it is the seeded recipe that has been weighed.
+  logLeftover({
+    title: 'Lemon garlic salmon',
+    recipeId: recipes.salmon,
+    storedAt: subDays(today, 1).toISOString(),
+    keepDays: 1,
+    weightG: 300,
   });
   logLeftover({
     title: 'Carrot cake',
@@ -2987,7 +3919,12 @@ function seedMealPlanAndFridge(recipes: DemoRecipes, today: Date): void {
 
   // Freeform — planning doesn't require a recipe, and a night that just says
   // "eating out" holds its place and counts like any other.
-  plan(2, 'dinner', { title: 'Eating out' });
+  // Deliberately opted out of the food log offer, and this is the one meal in
+  // the seed that says no. The per-meal answer is invisible until something
+  // uses it — a feature with no row in the seed reads as one the app hasn't
+  // got — and a night out is exactly the meal somebody would decline: the app
+  // has no idea what was on the plate, so counting it would be fiction.
+  plan(2, 'dinner', { title: 'Eating out', logMeal: false });
 
   // Eating the chilli that's in the fridge. Planning against a leftover
   // deliberately doesn't close it out — a pot feeds two dinners.
@@ -3064,11 +4001,28 @@ function seedMealPlanAndFridge(recipes: DemoRecipes, today: Date): void {
   if (salmonNight) {
     useSettingsStore.getState().setMealShortfallTaskCategory('Meal Plan');
     useTaskStore.getState().addTask({
-      title: mealShortfallTitle(salmonNight.date, 'Lemon garlic salmon'),
+      title: mealShortfallTitle(salmonNight.date, salmonNight.slot, 'Lemon garlic salmon'),
       dueDate: today.toISOString(),
       linkUrl: mealShortfallLinkUrl(salmonNight.date, salmonNight.id),
       category: 'Meal Plan',
       ...generatedBy('mealShortfall', salmonNight.id),
+    });
+  }
+
+  // --- A planned meal with nothing logged -----------------------------------
+  // The reverse-window generator (off by default, same reasoning as the
+  // shortfall task above): yesterday's stir-fry was cooked but never logged
+  // anywhere in this seed, which is the honest instance of what this
+  // generator exists to ask about rather than an invented one. Written out
+  // by hand for mealShortfallTasks' own reason: this generator ships off too.
+  if (stirFryNight) {
+    useSettingsStore.getState().setMealLogNudgeTaskCategory('Meal Plan');
+    useTaskStore.getState().addTask({
+      title: mealLogNudgeTitle(stirFryNight.date, stirFryNight.slot, 'Weeknight chicken stir-fry'),
+      dueDate: today.toISOString(),
+      linkUrl: mealLogNudgeLinkUrl(stirFryNight.date),
+      category: 'Meal Plan',
+      ...generatedBy('mealLogNudge', stirFryNight.id),
     });
   }
 

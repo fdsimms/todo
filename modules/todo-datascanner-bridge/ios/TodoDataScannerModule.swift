@@ -11,11 +11,30 @@ public class TodoDataScannerModule: Module {
     // hardware and `isAvailable` about whether it's usable right now.
     Function("isAvailable") { () -> Bool in
       guard #available(iOS 16, *) else { return false }
-      return DataScannerViewController.isSupported && DataScannerViewController.isAvailable
+      return dataScannerIsReady()
     }
 
     View(TodoDataScannerView.self) {
       Events("onScan")
+    }
+  }
+}
+
+// `DataScannerViewController.isSupported`/`.isAvailable` are `@MainActor`
+// class vars, and this bridge's Expo `Function` closure isn't guaranteed to
+// run on the main thread the way a UIKit view lifecycle callback is — so
+// this checks rather than assumes, and bridges onto the main thread only
+// when it actually needs to.
+@available(iOS 16, *)
+func dataScannerIsReady() -> Bool {
+  if Thread.isMainThread {
+    return MainActor.assumeIsolated {
+      DataScannerViewController.isSupported && DataScannerViewController.isAvailable
+    }
+  }
+  return DispatchQueue.main.sync {
+    MainActor.assumeIsolated {
+      DataScannerViewController.isSupported && DataScannerViewController.isAvailable
     }
   }
 }

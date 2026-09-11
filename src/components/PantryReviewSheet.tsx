@@ -4,6 +4,7 @@ import {
   Dimensions,
   Modal,
   PanResponder,
+  ScrollView,
   StyleSheet,
   Text,
   View,
@@ -81,7 +82,8 @@ export function PantryReviewSheet({ visible, onClose }: Props) {
   const [deck, setDeck] = useState<PantryReviewDeck>(EMPTY_DECK);
   const [index, setIndex] = useState(0);
   /**
-   * One row snapshot per answered card, newest last — what Undo writes back.
+   * One row snapshot per answered card, newest last — what Undo writes back,
+   * and what the finished screen's review list is built from.
    *
    * Snapshots rather than a list of answers: the three answers aren't each
    * other's opposites, so undoing "Running low" means restoring the
@@ -89,10 +91,16 @@ export function PantryReviewSheet({ visible, onClose }: Props) {
    * in, which only the row and its membership as they stood can say. Both, and
    * not just the row: membership is a table now (see `GroceryListEntry`), so
    * the item alone can't say whether it was already on this list.
+   *
+   * `answer` rides along so the review list can show and change what was
+   * picked without re-deriving it from the row — the columns three answers
+   * write aren't each other's inverses either (see `answerPantryReview`), so
+   * there's no reading a row back into "have/low/out".
    */
   const [history, setHistory] = useState<Array<{
     item: GroceryItem;
     entry: GroceryListEntry | null;
+    answer: PantryReviewAnswer;
   }>>([]);
 
   const pan = useRef(new Animated.ValueXY({ x: 0, y: 0 })).current;
@@ -126,7 +134,7 @@ export function PantryReviewSheet({ visible, onClose }: Props) {
       const entry = entryFor(state.listEntries, card.item.id, state.activeListId);
       haptics.tap();
       answerPantryReview(card.item.id, answer);
-      setHistory(h => [...h, { item: live ?? card.item, entry }]);
+      setHistory(h => [...h, { item: live ?? card.item, entry, answer }]);
       setIndex(i => i + 1);
       pan.setValue({ x: 0, y: 0 });
     },
@@ -147,11 +155,22 @@ export function PantryReviewSheet({ visible, onClose }: Props) {
         answer === 'low'
           ? { x: 0, y: -SCREEN_HEIGHT }
           : { x: answer === 'have' ? SCREEN_WIDTH * 1.4 : -SCREEN_WIDTH * 1.4, y: 0 };
+      // A second swipe or button tap before this animation finishes stops it
+      // and fires this same callback with `finished: false` — Animated always
+      // calls back on interruption, not just on completion (the same reason
+      // TaskItem's own completion animations check the flag). Committing
+      // unconditionally here double-committed the interrupted card: one
+      // commit from the stopped animation and a second from whatever
+      // restarted `pan`, advancing `index` twice for a single card and
+      // leaving the next real card's fling stranded off-screen with the
+      // pan value it never got reset from.
       Animated.timing(pan, {
         toValue,
         duration: animation.duration.fast,
         useNativeDriver: true,
-      }).start(() => commit(answer));
+      }).start(({ finished }) => {
+        if (finished) commit(answer);
+      });
     },
     [commit, pan]
   );
@@ -165,6 +184,50 @@ export function PantryReviewSheet({ visible, onClose }: Props) {
     setIndex(i => Math.max(0, i - 1));
     pan.setValue({ x: 0, y: 0 });
   }, [history, pan, revertPantryAnswer]);
+
+  /**
+   * The review screen's per-row Undo — puts that one row back exactly as it
+   * was and drops it from the list, without touching `index`.
+   *
+   * Unlike `undo` above this isn't a stack: a row picked from the middle of
+   * the review list reverts on its own, because `revertPantryAnswer` restores
+   * a snapshot of that row rather than inverting a sequence of edits. The
+   * card stays answered-and-forgotten rather than coming back to be swiped
+   * again — this screen is for taking back what was written, not for
+   * reopening the deck.
+   */
+  const undoReviewEntry = useCallback(
+    (i: number) => {
+      const entry = history[i];
+      if (!entry) return;
+      haptics.tap();
+      revertPantryAnswer(entry.item, entry.entry);
+      setHistory(h => h.filter((_, idx) => idx !== i));
+    },
+    [history, revertPantryAnswer]
+  );
+
+  /**
+   * The review screen's per-row "pick a different answer" — reverts to the
+   * pristine snapshot first, then applies the new answer to it.
+   *
+   * Reapplying straight onto the already-answered row would leave the old
+   * answer's columns standing alongside the new one (a swipe from "Running
+   * low" to "Still have it" would keep `runningLowAt` set, since neither
+   * answer clears the other's column on purpose — see `answerPantryReview`).
+   * Restoring first is what makes "change" mean replace rather than layer.
+   */
+  const changeReviewAnswer = useCallback(
+    (i: number, answer: PantryReviewAnswer) => {
+      const entry = history[i];
+      if (!entry || entry.answer === answer) return;
+      haptics.tap();
+      revertPantryAnswer(entry.item, entry.entry);
+      answerPantryReview(entry.item.id, answer);
+      setHistory(h => h.map((e, idx) => (idx === i ? { ...e, answer } : e)));
+    },
+    [answerPantryReview, history, revertPantryAnswer]
+  );
 
   const responder = useMemo(
     () =>
@@ -212,7 +275,10 @@ export function PantryReviewSheet({ visible, onClose }: Props) {
 
   const cards = deck.cards;
   const card = cards[index];
-  const answered = index;
+  // Equal to `index` while swiping (they advance together in `commit`/`undo`)
+  // and the one that keeps moving once the deck is finished, as the review
+  // list's own per-row Undo takes rows back out of it.
+  const answered = history.length;
   const finished = !card;
 
   const rotate = pan.x.interpolate({
@@ -258,11 +324,32 @@ export function PantryReviewSheet({ visible, onClose }: Props) {
             subtitle="The app isn't in any doubt about what's in the pantry right now."
           />
         ) : finished ? (
-          <EmptyState
-            icon="checkmark-done-outline"
-            title="All done"
-            subtitle={describePantryReviewDone(answered, deck.omitted)}
-          />
+          <View style={styles.reviewWrap}>
+            <View style={styles.reviewHead}>
+              <View style={styles.reviewIcon}>
+                <Ionicons name="checkmark-done-outline" size={iconSize.lg} color={colors.textTertiary} />
+              </View>
+              <Text style={styles.reviewTitle}>All done</Text>
+              <Text style={styles.reviewSubtitle}>{describePantryReviewDone(answered, deck.omitted)}</Text>
+            </View>
+            {history.length > 0 && (
+              <ScrollView
+                style={styles.reviewList}
+                contentContainerStyle={{ paddingBottom: insets.bottom + spacing.lg }}
+              >
+                {history.map((entry, i) => (
+                  <ReviewRow
+                    key={entry.item.id}
+                    entry={entry}
+                    colors={colors}
+                    styles={styles}
+                    onChange={answer => changeReviewAnswer(i, answer)}
+                    onUndo={() => undoReviewEntry(i)}
+                  />
+                ))}
+              </ScrollView>
+            )}
+          </View>
         ) : (
           <View style={styles.stage}>
             <View style={styles.deck}>
@@ -382,6 +469,70 @@ function CardBody({ card, styles }: { card: PantryReviewCard; styles: Styles }) 
   );
 }
 
+/** Icon, label and color for each answer — the review row's chips and the swipe stamps agree on all three. */
+const ANSWER_META: Record<
+  PantryReviewAnswer,
+  { icon: keyof typeof Ionicons.glyphMap; label: string; colorKey: 'red' | 'orange' | 'green' }
+> = {
+  out: { icon: 'close', label: 'Out of it', colorKey: 'red' },
+  low: { icon: 'contrast-outline', label: 'Running low', colorKey: 'orange' },
+  have: { icon: 'checkmark', label: 'Still have it', colorKey: 'green' },
+};
+
+/**
+ * One row of the finished screen's review list — the item, the answer given
+ * to it as three tappable chips (the filled one is what's standing), and an
+ * Undo that reverts the row and drops it from the list.
+ */
+function ReviewRow({
+  entry,
+  colors,
+  styles,
+  onChange,
+  onUndo,
+}: {
+  entry: { item: GroceryItem; answer: PantryReviewAnswer };
+  colors: Colors;
+  styles: Styles;
+  onChange: (answer: PantryReviewAnswer) => void;
+  onUndo: () => void;
+}) {
+  return (
+    <View style={styles.reviewRow}>
+      <Text style={styles.reviewName} numberOfLines={1}>
+        {entry.item.name}
+      </Text>
+      <View style={styles.reviewChips}>
+        {(['out', 'low', 'have'] as const).map(answer => {
+          const meta = ANSWER_META[answer];
+          const active = entry.answer === answer;
+          const tint = colors[meta.colorKey];
+          return (
+            <PressableScale
+              key={answer}
+              onPress={() => onChange(answer)}
+              accessibilityRole="button"
+              accessibilityLabel={`${meta.label}, ${entry.item.name}`}
+              accessibilityState={{ selected: active }}
+              style={[styles.reviewChip, { backgroundColor: active ? tint + '26' : colors.bgTertiary }]}
+            >
+              <Ionicons name={meta.icon} size={iconSize.sm} color={active ? tint : colors.textTertiary} />
+            </PressableScale>
+          );
+        })}
+      </View>
+      <PressableScale
+        onPress={onUndo}
+        accessibilityRole="button"
+        accessibilityLabel={`Undo ${entry.item.name}`}
+        style={styles.reviewUndo}
+      >
+        <Ionicons name="arrow-undo-outline" size={iconSize.sm} color={colors.textSecondary} />
+      </PressableScale>
+    </View>
+  );
+}
+
 function Action({
   icon,
   label,
@@ -479,6 +630,55 @@ const makeStyles = (colors: Colors) =>
     track: { height: 4, borderRadius: radius.full, backgroundColor: colors.bgTertiary, overflow: 'hidden' },
     fill: { height: '100%', borderRadius: radius.full, backgroundColor: colors.accent },
     progressText: { fontSize: font.sm, color: colors.textSecondary, marginTop: spacing.sm },
+
+    reviewWrap: { flex: 1 },
+    reviewHead: { alignItems: 'center', paddingTop: spacing.xl, paddingBottom: spacing.lg, paddingHorizontal: spacing.lg },
+    reviewIcon: {
+      width: 64,
+      height: 64,
+      borderRadius: 32,
+      backgroundColor: colors.bgSecondary,
+      alignItems: 'center',
+      justifyContent: 'center',
+      marginBottom: spacing.sm,
+    },
+    reviewTitle: { fontSize: font.lg, fontWeight: fontWeight.semibold, color: colors.textSecondary },
+    reviewSubtitle: {
+      fontSize: font.sm,
+      color: colors.textTertiary,
+      textAlign: 'center',
+      marginTop: spacing.xs,
+      paddingHorizontal: spacing.xl,
+    },
+    reviewList: { flex: 1 },
+    reviewRow: {
+      flexDirection: 'row',
+      alignItems: 'center',
+      marginHorizontal: spacing.md,
+      marginVertical: 2,
+      paddingVertical: spacing.sm + 2,
+      paddingHorizontal: spacing.md,
+      borderRadius: radius.md,
+      backgroundColor: colors.bgSecondary,
+      gap: spacing.sm,
+    },
+    reviewName: { flex: 1, fontSize: font.md, color: colors.text },
+    reviewChips: { flexDirection: 'row', gap: spacing.xs },
+    reviewChip: {
+      width: 32,
+      height: 32,
+      borderRadius: radius.full,
+      alignItems: 'center',
+      justifyContent: 'center',
+    },
+    reviewUndo: {
+      width: 32,
+      height: 32,
+      borderRadius: radius.full,
+      alignItems: 'center',
+      justifyContent: 'center',
+      marginLeft: spacing.xs,
+    },
 
     stage: { flex: 1, justifyContent: 'center', paddingHorizontal: spacing.md },
     deck: { height: CARD_HEIGHT },

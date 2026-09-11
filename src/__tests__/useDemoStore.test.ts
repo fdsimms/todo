@@ -10,6 +10,7 @@
  * real test failure rather than being papered over by a shared handle.
  */
 import { addDays } from 'date-fns/addDays';
+import { subDays } from 'date-fns/subDays';
 import { useDemoStore } from '../store/useDemoStore';
 import { bestStreakOf, isStreakAtRecord } from '../utils/streakRecord';
 import { isCleanToday } from '../utils/negativeHabits';
@@ -20,21 +21,30 @@ import { usePersonGroupStore } from '../store/usePersonGroupStore';
 import { useProjectStore, projectDecisions, projectProgress } from '../store/useProjectStore';
 import { useProjectCategoryStore } from '../store/useProjectCategoryStore';
 import { isHeldBack, isQuotaOnPace, isTaskVisible } from '../utils/visibilityUtils';
+import { isMorningCheckInCandidate } from '../utils/morningCheckIn';
 import { useTaskGroupStore } from '../store/useTaskGroupStore';
 import { useFocusStore } from '../store/useFocusStore';
 import { isFocusRunning } from '../utils/focusPlan';
 import { itemsOnList } from '../utils/groceryLists';
 import { OTHER_AISLE } from '../utils/groceryAisles';
 import { useGroceryStore } from '../store/useGroceryStore';
+import { useFoodLogStore } from '../store/useFoodLogStore';
+import { describeFoodLogEntry, foodLogTotals, scalePanelToAmount } from '../utils/foodLog';
+import { foodDayInputs, hasNutritionData, nutrientAverages, nutritionCounts, sourceMix } from '../utils/nutritionStats';
+import { packageHelping } from '../utils/scanPortion';
+import { targetedNutrients } from '../utils/nutritionTargets';
+import { NUTRIENT_KEYS } from '../types';
 import { useTemplateStore } from '../store/useTemplateStore';
 import { extractPlaceholders, declaresRunPlaceholder } from '../utils/templateUtils';
+import { awaySpanOf, awayStatus, awayNights, nextAwayProject } from '../utils/awayDates';
 import { pantryEntries } from '../utils/grocerySuggest';
 import { substituteQuantity, substitutesFor } from '../utils/itemSubs';
 import { standingSwapMap } from '../utils/standingSwaps';
 import { coveringVariety, varietyIndex } from '../utils/itemVarieties';
 import { normalizeGtin } from '../utils/gtin';
+import { nutritionFor } from '../utils/foodNutrition';
 import { classifyPlanned, plannedIngredientsForRecipe } from '../utils/mealPlanGroceries';
-import { flattenRecipeIngredients, recipeMap } from '../utils/recipeComponents';
+import { activeComponents, activeIngredients, flattenRecipeIngredients, recipeMap } from '../utils/recipeComponents';
 import { catalogMatchSummary, matchIngredientsToCatalog } from '../utils/ingredientCatalogMatch';
 import { cookSteps, stepsFromNotes } from '../utils/cookMode';
 import { kitchenEvents, kitchenHistoryDays } from '../utils/kitchenHistory';
@@ -60,18 +70,22 @@ import { isStepTimerRunning, parseStepDurations, stepDurationOffers, stepTimerRe
 import { useMealPlanStore } from '../store/useMealPlanStore';
 import { usePersonNoteStore } from '../store/usePersonNoteStore';
 import { useMoodStore } from '../store/useMoodStore';
-import { buildMoodDays, moodCompletionInsight, symptomMoodContrasts, MIN_PAIRED_DAYS } from '../utils/moodInsights';
-import { symptomVocabulary } from '../utils/moodLog';
+import { useMilestoneStore } from '../store/useMilestoneStore';
+import { useMedicationStore } from '../store/useMedicationStore';
+import { frequencyTrend, medicationFor } from '../utils/medicationLog';
+import { buildMoodDays, contextTagMoodContrasts, describeNutrientInsight, foodMoodContrasts, foodPairedDays, symptomFoodContrasts, milestoneMoodContrast, moodCompletionInsight, nutrientInsight, symptomMoodContrasts, taskContrastTitles, taskMoodContrasts, MIN_PAIRED_DAYS } from '../utils/moodInsights';
+import { contextTagVocabulary, symptomVocabulary } from '../utils/moodLog';
 import { isStaleNote } from '../utils/personNotes';
 import { personBackfillFieldCounts, PERSON_BACKFILL_FIELDS } from '../utils/peopleBackfill';
 import { itemBackfillFieldCounts, ITEM_BACKFILL_FIELDS } from '../utils/itemBackfill';
+import { recipeBackfillFieldCounts, RECIPE_BACKFILL_FIELDS } from '../utils/recipeBackfill';
 import { mealYearRange, taskYearRange, timeTogetherInRange } from '../utils/peopleStats';
 import { PERSON_NOTE_KINDS } from '../types';
 import { useLeftoverStore } from '../store/useLeftoverStore';
 import { useSettingsStore } from '../store/useSettingsStore';
 import { shouldNudgePostpone, DEFAULT_POSTPONE_THRESHOLD, driftingTasks } from '../utils/postpone';
 import { isUsingDemoDatabase } from '../db/database';
-import { dayKeyOf, dayKeyToDate, getCurrentDayStart } from '../utils/dateUtils';
+import { dayKeyOf, dayKeyToDate, getCurrentDayStart, getLogicalToday } from '../utils/dateUtils';
 import { differenceInCalendarDays } from 'date-fns/differenceInCalendarDays';
 import { countPlannedSlots, MEAL_PLAN_NUDGE_SLOT_COUNT } from '../utils/mealPlanNudge';
 import { RECIPE_MEAL_TYPES, LEFTOVER_KEEP_DAYS_DEFAULT } from '../types';
@@ -95,6 +109,7 @@ import { wantedPantryChecks } from '../utils/pantryCheckTasks';
 import { buildPantryReviewDeck } from '../utils/pantryReview';
 import { MIN_PANTRY_REVIEW_CARDS, stalePantryReviewTasks } from '../utils/pantryReviewTasks';
 import { mealShortfallRows, staleMealShortfallTasks } from '../utils/mealShortfallTasks';
+import { staleMealLogNudgeTasks } from '../utils/mealLogNudgeTasks';
 import {
   canHoldSupply,
   describeSupply,
@@ -115,6 +130,13 @@ import {
   shopPricesFor,
 } from '../utils/groceryPrice';
 import { describeRecipeCost, estimateRecipeCost } from '../utils/recipeCost';
+import {
+  describeRecipeNutrition,
+  perServing,
+  recipeNutrition,
+  recipeNutritionLines,
+} from '../utils/recipeNutrition';
+import { weighableLine } from '../utils/ingredientGrams';
 import { asksOnCompletion, chainStepDatedByAnswer, formatTaskDeliverable } from '../utils/deliverables';
 import { tripMarkerFor, describeTripMarker } from '../utils/activeTrip';
 import { buildDayBuckets, canProject } from '../utils/calendarMonth';
@@ -202,6 +224,8 @@ jest.mock('../utils/notifications', () => ({
   // either side of it.
   scheduleStepAlarm: jest.fn().mockResolvedValue(undefined),
   cancelStepAlarm: jest.fn().mockResolvedValue(undefined),
+  scheduleCompletionTimer: jest.fn().mockResolvedValue(undefined),
+  cancelCompletionTimer: jest.fn().mockResolvedValue(undefined),
 }));
 
 // Same reason: useTaskStore.ts reaches calendarSync.ts (real react-native
@@ -240,6 +264,15 @@ jest.mock('../store/useScreenTimeStore', () => ({
 // is seeded directly, since both the bridge and the pass refuse in demo mode.
 jest.mock('../store/useHealthStore', () => ({
   useHealthStore: { getState: () => ({ today: null, history: null, refreshing: false }) },
+}));
+
+// healthCompletionSync.ts (reached via useTaskStore.ts, for the water-logging
+// write path) imports healthBridge.ts directly rather than through
+// useHealthStore, so the mock above doesn't cover it — same react-native
+// module-scope problem, a different module path to it.
+jest.mock('../utils/healthBridge', () => ({
+  healthBridge: () => null,
+  isHealthSupported: () => false,
 }));
 
 // ---------------------------------------------------------------------------
@@ -313,7 +346,7 @@ describe('demo mode', () => {
   it('hides real categories, tags, projects and stacks too, not just tasks', () => {
     useTaskStore.getState().addCategory('Therapy');
     useTaskStore.getState().addTag('confidential');
-    useProjectStore.getState().createProject('Divorce paperwork', null);
+    useProjectStore.getState().createProject('Divorce paperwork');
     useTaskGroupStore.getState().createGroup('Medications', null);
 
     useDemoStore.getState().enterDemoMode();
@@ -573,6 +606,24 @@ describe('demo mode', () => {
     useDemoStore.getState().exitDemoMode();
   });
 
+  // Without a recurring task left dangling on a past day, the morning
+  // check-in sheet has nothing to show and the demo reads as not having the
+  // feature at all.
+  it('seeds a recurring task still sitting on yesterday, for the morning check-in to pick up', () => {
+    useDemoStore.getState().enterDemoMode();
+    const s = useTaskStore.getState();
+
+    const floss = s.tasks.find(t => t.title === 'Floss');
+    expect(floss).toBeDefined();
+    expect(floss?.recurrenceType).toBe('daily');
+    expect(floss?.completed).toBe(false);
+    expect(
+      isMorningCheckInCandidate(floss!, useSettingsStore.getState().dayResetTime)
+    ).toBe(true);
+
+    useDemoStore.getState().exitDemoMode();
+  });
+
   // Both states, because either alone reads as half a feature: clean is where
   // the row sits almost always, and broken is the only way to see what the tap
   // does — and it isn't a state the seed can reach by tapping.
@@ -596,6 +647,35 @@ describe('demo mode', () => {
     // Neither is ever completed, which is the whole shape of the polarity.
     expect(clean?.completed).toBe(false);
     expect(broken?.completed).toBe(false);
+
+    useDemoStore.getState().exitDemoMode();
+  });
+
+  it('seeds both sides of the apps-blocked penalty, with the feature switched on', () => {
+    useDemoStore.getState().enterDemoMode();
+
+    // Off by default, so without this the seeded costs would be configuration
+    // nobody can see: the editor row only exists while the feature is on.
+    expect(useSettingsStore.getState().penaltyShieldEnabled).toBe(true);
+
+    const s = useTaskStore.getState();
+    // Fails by a time passing, and holds the apps until it's done either way —
+    // the two directions of the same feature, on one task, because they
+    // compose: the gate ends when the walk does, the penalty runs on past it.
+    const walk = s.tasks.find(t => t.title === 'Morning walk');
+    expect(walk?.penaltyMinutes).toBe(120);
+    expect(walk?.penaltyCutoffTime).toBe('08:00');
+    expect(walk?.gatesApps).toBe(true);
+    expect(useSettingsStore.getState().gateShieldEnabled).toBe(true);
+    // Fails on a tap — no cutoff, because a slip is the failure itself.
+    const slip = s.tasks.find(t => t.title === 'No snacking after dinner');
+    expect(slip?.penaltyMinutes).toBe(60);
+    expect(slip?.penaltyCutoffTime).toBeNull();
+
+    // Nothing has been charged in a fresh demo — the seed shows what a cost
+    // looks like, not somebody already serving one.
+    expect(walk?.penaltyFiredAt).toBeNull();
+    expect(useSettingsStore.getState().penaltyShieldUntil).toBeNull();
 
     useDemoStore.getState().exitDemoMode();
   });
@@ -656,6 +736,18 @@ describe('demo mode', () => {
 
     const reading = tasks.find(t => t.title === 'Read a chapter of the Le Guin');
     expect(reading?.excludeFromSuggestions).toBe(true);
+
+    useDemoStore.getState().exitDemoMode();
+  });
+
+  // Same reasoning: nothing seeded carrying logCompletionToCalendar reads as
+  // a feature the app doesn't have.
+  it('seeds a task that logs its completion to the calendar', () => {
+    useDemoStore.getState().enterDemoMode();
+    const { tasks } = useTaskStore.getState();
+
+    const roadmap = tasks.find(t => t.title === 'Send the Q3 roadmap to Priya');
+    expect(roadmap?.logCompletionToCalendar).toBe(true);
 
     useDemoStore.getState().exitDemoMode();
   });
@@ -995,6 +1087,13 @@ describe('demo mode', () => {
     expect(withLocation.length).toBeGreaterThan(0);
   });
 
+  it('seeds a task with a completion timer', () => {
+    useDemoStore.getState().enterDemoMode();
+    const withTimer = useTaskStore.getState().tasks.filter(t => t.completionTimerMinutes !== null);
+
+    expect(withTimer.length).toBeGreaterThan(0);
+  });
+
   it('seeds a reminder that keeps ringing until the task is completed', () => {
     useDemoStore.getState().enterDemoMode();
     const persistent = useTaskStore.getState().tasks.filter(t => t.reminderKind === 'persistent');
@@ -1292,6 +1391,10 @@ describe('demo seed — people', () => {
     expect(usePersonStore.getState().people.some(p => p.nickname !== '')).toBe(true);
   });
 
+  it('seeds a location, which is otherwise invisible', () => {
+    expect(usePersonStore.getState().people.some(p => p.location !== null)).toBe(true);
+  });
+
   // Off is the default the whole feature rests on, so the seed has to show it
   // as the default rather than as a thing nobody uses: most people carry no
   // cadence at all, and exactly one is opted in so the generator is visible.
@@ -1345,6 +1448,16 @@ describe('demo seed — people', () => {
     const { items, itemSubs } = useGroceryStore.getState();
     const counts = itemBackfillFieldCounts(items, itemSubs);
     for (const field of ITEM_BACKFILL_FIELDS) {
+      expect(counts[field.id]).toBeGreaterThan(0);
+    }
+  });
+
+  // Same reasoning again for the Recipes pool. The seed's recipes already vary
+  // in what they declare — some carry a serving count and a cook time, others
+  // do not — so this pins that spread rather than asking for anything new.
+  it('leaves each backfillable recipe field with something to fill it in for', () => {
+    const counts = recipeBackfillFieldCounts(useRecipeStore.getState().recipes);
+    for (const field of RECIPE_BACKFILL_FIELDS) {
       expect(counts[field.id]).toBeGreaterThan(0);
     }
   });
@@ -1489,6 +1602,337 @@ describe('demo seed — people', () => {
     expect(symptomMoodContrasts(days).length).toBeGreaterThan(0);
   });
 
+  it('seeds context tags, so the Mood screen has something to show for the feature', () => {
+    const logs = useMoodStore.getState().logs;
+    expect(contextTagVocabulary(logs).length).toBeGreaterThan(0);
+    const days = buildMoodDays(logs, [], '00:00');
+    expect(contextTagMoodContrasts(days).length).toBeGreaterThan(0);
+  });
+
+  it('seeds a repeated task finished on some logged days and not others', () => {
+    // The app's answer to medication tracking is a repeating task plus the
+    // contrast (see taskMoodContrasts), and it is invisible until something has
+    // actually been repeated across the days the mood log covers — so with no
+    // seeded row the card never draws and the capability reads as missing.
+    const tasks = useTaskStore.getState().tasks;
+    const days = buildMoodDays(useMoodStore.getState().logs, tasks, '00:00');
+    const rows = taskMoodContrasts(days);
+    expect(rows.length).toBeGreaterThan(0);
+    const titles = taskContrastTitles(tasks);
+    expect(rows.map(r => titles.get(r.label))).toContain('Take the vitamin D');
+  });
+
+  it('seeds both halves of the medication log, so neither reads as missing', () => {
+    // The scheduled half has to come from a task completion or the feature
+    // reads as a second list you type the tablets into again; the as-needed
+    // half has to exist or it reads as a duplicate of the task list. See
+    // docs/arch/mood-log.md.
+    const logs = useMedicationStore.getState().logs;
+    expect(logs.some(l => l.taskId !== null && !l.asNeeded)).toBe(true);
+    expect(logs.some(l => l.taskId === null && l.asNeeded)).toBe(true);
+    // And a dose the task stated, rather than a bare "took it".
+    expect(logs.some(l => l.taskId !== null && l.amount !== null)).toBe(true);
+  });
+
+  it('seeds a chain whose steps record different doses', () => {
+    // Without per-step values one chain logs the morning dose again at night,
+    // so a demo with only a single-dose task shows none of what this is for.
+    const chained = useTaskStore.getState().tasks.find(t => t.title === 'Pills');
+    expect(chained).toBeDefined();
+    const names = chained!.chainItems.map(c => c.medicationName);
+    expect(names.filter(Boolean)).toHaveLength(2);
+    expect(new Set(names).size).toBe(2);
+    // And medicationFor resolves the live step rather than the task.
+    expect(medicationFor(chained!)).toMatchObject({ name: 'Levothyroxine', unit: 'mcg' });
+  });
+
+  it('seeds enough as-needed doses for the frequency card to draw', () => {
+    // frequencyTrend needs the log to have been running for both of its
+    // fortnights and MIN_TREND_DOSES across them, so a seed that only covered
+    // the recent window would show the card to nobody.
+    const logs = useMedicationStore.getState().logs;
+    const trend = frequencyTrend(logs, 'ibuprofen', dayKeyOf(new Date()), 14);
+    expect(trend).not.toBeNull();
+  });
+
+  it('seeds a milestone with enough days on each side for the before/after card to draw', () => {
+    // A capability with nothing to show reads as one the app does not have —
+    // same reasoning as the low patch and the repeated task above, one level
+    // down for the milestone feature specifically.
+    const milestones = useMilestoneStore.getState().milestones;
+    expect(milestones.length).toBeGreaterThan(0);
+    const days = buildMoodDays(useMoodStore.getState().logs, [], '00:00');
+    const contrast = milestoneMoodContrast(days, dayKeyOf(new Date(milestones[0].date)));
+    expect(contrast).not.toBeNull();
+  });
+
+  it('seeds a couple of nutrition targets, so the totals read against something', () => {
+    // A target is invisible until something reads against it. Two rather than
+    // ten: somebody watching what they eat watches a couple of numbers, and
+    // ten set would suggest the app expects that.
+    const targets = useSettingsStore.getState().nutritionTargets;
+    expect(targetedNutrients(targets).length).toBeGreaterThan(0);
+    expect(targets.calorieKcal).toBeGreaterThan(0);
+    expect(targetedNutrients(targets).length).toBeLessThan(NUTRIENT_KEYS.length);
+  });
+
+  it('seeds a meal that has opted out of being logged', () => {
+    // The per-meal answer is invisible until something uses it, and a night
+    // out is exactly the meal somebody declines: the app has no idea what was
+    // on the plate, so counting it would be fiction.
+    const declined = useMealPlanStore.getState().entries.filter(e => e.logMeal === false);
+    expect(declined.length).toBeGreaterThan(0);
+  });
+
+  it('leaves every other planned meal to the setting, and logs none of them itself', () => {
+    // The offer exists without the seed having taken it: nothing here writes a
+    // food log entry on somebody's behalf, which is the rule the whole prompt
+    // is built around.
+    const entries = useMealPlanStore.getState().entries;
+    expect(entries.some(e => e.logMeal === null)).toBe(true);
+    const yesterdayKey = dayKeyOf(subDays(getCurrentDayStart(), 1));
+    useFoodLogStore.getState().loadRange(yesterdayKey, yesterdayKey);
+    for (const e of useFoodLogStore.getState().entries) {
+      expect(e.mealPlanEntryId).toBeNull();
+    }
+  });
+
+  it('seeds a day of eating, so the food log reads as a feature the app has', () => {
+    // Yesterday rather than today: a day with entries is what shows the totals
+    // and the meal sections, and leaving today empty means the empty state is
+    // the first thing a demo meets.
+    const yesterdayKey = dayKeyOf(subDays(getCurrentDayStart(), 1));
+    useFoodLogStore.getState().loadRange(yesterdayKey, yesterdayKey);
+    const entries = useFoodLogStore.getState().entries;
+    expect(entries.length).toBeGreaterThan(1);
+    expect(entries.every(e => e.dayKey === yesterdayKey)).toBe(true);
+  });
+
+  it('seeds a food that is in the catalog only because it was eaten', () => {
+    // What filing a food-database result leaves behind, and the one artifact of
+    // that path there is to look at: an off-list catalog row carrying a
+    // database's own panel, with log entries pointing at it. Every other food
+    // in the seed got there by being bought, so without this the path reads as
+    // an app that makes you search again every time.
+    const item = useGroceryStore.getState().items.find(i => i.name === 'Greek yogurt');
+    expect(item).toBeDefined();
+    expect(item?.onList).toBe(false);
+    expect(item?.nutrition?.source).toBe('fdc');
+
+    const window = cookingWindow(getLogicalToday(), 30);
+    useFoodLogStore.getState().loadWindow(window.startKey, window.endKey);
+    const filed = useFoodLogStore.getState().windowEntries.filter(e => e.itemId === item?.id);
+    expect(filed.length).toBeGreaterThan(0);
+  });
+
+  it('seeds several days, since one day averages to itself', () => {
+    // The Stats read averages over days, so a single seeded day gives a section
+    // that can only ever say "1 of 30" — a feature that reads as broken rather
+    // than as unused.
+    const window = cookingWindow(getLogicalToday(), 30);
+    useFoodLogStore.getState().loadWindow(window.startKey, window.endKey);
+    const counts = nutritionCounts(useFoodLogStore.getState().windowEntries, window);
+    expect(counts.daysLogged).toBeGreaterThan(2);
+    expect(hasNutritionData(counts)).toBe(true);
+  });
+
+  it('seeds enough overlap for the food and mood logs to actually be read together', () => {
+    // The join is the whole feature, and it is invisible below MIN_PAIRED_DAYS
+    // of days that were both logged for mood and logged past one meal. A seed
+    // shorter than that leaves the two cards off the Mood screen entirely,
+    // which reads as an app that cannot do this rather than as one nobody has
+    // used yet — the same call `seedMoodLog`'s own length makes.
+    const window = cookingWindow(getLogicalToday(), 90);
+    useFoodLogStore.getState().loadInsightWindow(window.startKey, window.endKey);
+    const days = buildMoodDays(
+      useMoodStore.getState().logs,
+      useTaskStore.getState().tasks,
+      '00:00',
+      [],
+      null,
+      foodDayInputs(useFoodLogStore.getState().insightEntries),
+    );
+    expect(foodPairedDays(days).length).toBeGreaterThanOrEqual(MIN_PAIRED_DAYS);
+    // Something sayable on both cards, rather than a pair of empty ones.
+    expect(describeNutrientInsight(nutrientInsight(days, 'calorieKcal', 'mood'))).toBeTruthy();
+    expect(foodMoodContrasts(days).length).toBeGreaterThan(0);
+  });
+
+  it('seeds a symptom against a food, without making it look like a proof', () => {
+    // The most loaded read in the app, so the seed has to show it working and
+    // must not show it as a clean sweep — see the coffee note in demoSeed.
+    const window = cookingWindow(getLogicalToday(), 90);
+    useFoodLogStore.getState().loadInsightWindow(window.startKey, window.endKey);
+    const days = buildMoodDays(
+      useMoodStore.getState().logs,
+      useTaskStore.getState().tasks,
+      '00:00',
+      [],
+      null,
+      foodDayInputs(useFoodLogStore.getState().insightEntries),
+    );
+    const rows = symptomFoodContrasts(days, 'headache');
+    const coffee = rows.find(r => r.label === 'coffee');
+    expect(coffee).toBeDefined();
+    // Present on both sides, so neither group is the empty one.
+    expect(coffee!.withHits).toBeGreaterThan(0);
+    expect(coffee!.withoutHits).toBeGreaterThan(0);
+    // And not every day it was drunk, which is what would read as a proof.
+    expect(coffee!.rateWith).toBeLessThan(1);
+  });
+
+  it('seeds the one food that states caffeine, and it still cannot clear the coverage rule', () => {
+    // Deliberate, and the reason caffeine is not a NUTRIENT_INSIGHT_KEY: one
+    // entry of three carrying a figure is the ordinary case, and a day's total
+    // built from it would not be a measurement.
+    const window = cookingWindow(getLogicalToday(), 90);
+    useFoodLogStore.getState().loadInsightWindow(window.startKey, window.endKey);
+    const entries = useFoodLogStore.getState().insightEntries;
+    expect(entries.some(e => e.nutrition.amounts.caffeineMg !== undefined)).toBe(true);
+    const rows = foodDayInputs(entries);
+    expect(rows.length).toBeGreaterThan(0);
+    expect(rows.every(r => r.nutrients.caffeineMg === undefined)).toBe(true);
+  });
+
+  it('seeds a ragged log, so the two day counts are different numbers', () => {
+    // An honest log has days somebody stopped after breakfast, and that is the
+    // whole reason days-logged and days-logged-past-one-meal are reported apart.
+    // A seed where every day was complete would hide the distinction.
+    const window = cookingWindow(getLogicalToday(), 30);
+    useFoodLogStore.getState().loadWindow(window.startKey, window.endKey);
+    const counts = nutritionCounts(useFoodLogStore.getState().windowEntries, window);
+    expect(counts.daysComplete).toBeGreaterThan(0);
+    expect(counts.daysComplete < counts.daysLogged).toBe(true);
+  });
+
+  it('leaves today out of the seeded log, so nothing averages a partial day', () => {
+    const window = cookingWindow(getLogicalToday(), 30);
+    useFoodLogStore.getState().loadWindow(window.startKey, window.endKey);
+    const todayKey = dayKeyOf(getCurrentDayStart());
+    expect(useFoodLogStore.getState().windowEntries.some(e => e.dayKey === todayKey)).toBe(false);
+  });
+
+  it('seeds enough of a log for an average to be worth reading', () => {
+    const window = cookingWindow(getLogicalToday(), 30);
+    useFoodLogStore.getState().loadWindow(window.startKey, window.endKey);
+    const rows = nutrientAverages(useFoodLogStore.getState().windowEntries, window);
+    const calories = rows.find(r => r.key === 'calorieKcal');
+    expect(calories).toBeDefined();
+    expect(calories!.days).toBeGreaterThan(1);
+  });
+
+  it('measures every seeded entry rather than typing its numbers in', () => {
+    // An entry whose figures were hand-written could drift from what the same
+    // amount of the same food actually works out to, which is the one thing a
+    // demo of this feature must not show. Read over the whole window rather
+    // than one day, so a seeded day added later can't slip past this.
+    const window = cookingWindow(getLogicalToday(), 30);
+    useFoodLogStore.getState().loadWindow(window.startKey, window.endKey);
+    const items = useGroceryStore.getState().items;
+    const products = useGroceryStore.getState().itemProducts;
+    let checked = 0;
+    for (const e of useFoodLogStore.getState().windowEntries) {
+      // A cooked dish is measured from its ingredients rather than from any one
+      // panel, and carries a recipe instead of an item. Its own arithmetic is
+      // pinned by the source assertion below.
+      if (e.recipeId) continue;
+      // An estimate has no source to recompute it from, which is the whole
+      // reason it is marked. What is assertable about it is the marker, and
+      // the case below does that.
+      if (!e.itemId) { expect(e.nutrition.source).toBe('estimated'); continue; }
+      const item = items.find(i => i.id === e.itemId);
+      const product = products.find(p => p.id === e.productId);
+      const panel = nutritionFor(item, product);
+      expect(panel).not.toBeNull();
+      // A scanned entry is measured in the panel's own servings, since that is
+      // the only amount a label states; a catalog food is measured against its
+      // portion table. Two paths, both arithmetic rather than typing.
+      const rebuilt = e.productId
+        ? packageHelping(panel!, 1, e.quantity)
+        : scalePanelToAmount(panel!, e.quantity, null)?.nutrition;
+      expect(rebuilt?.amounts).toEqual(e.nutrition.amounts);
+      checked += 1;
+    }
+    expect(checked).toBeGreaterThan(0);
+  });
+
+  it('seeds a meal eaten out, so the estimated marker has something to render on', () => {
+    // The marker shows on the row through describeFoodLogEntry and is counted
+    // apart by sourceMix on Stats. Neither reader says anything on a seed where
+    // every entry came from a panel, so the feature reads as one the app hasn't
+    // got. It carries no item and no recipe, which is what an estimate is.
+    const window = cookingWindow(getLogicalToday(), 30);
+    useFoodLogStore.getState().loadWindow(window.startKey, window.endKey);
+    const eatenOut = useFoodLogStore.getState().windowEntries
+      .filter(e => !e.itemId && !e.recipeId);
+    expect(eatenOut).toHaveLength(1);
+    expect(eatenOut[0].nutrition.source).toBe('estimated');
+    expect(describeFoodLogEntry(eatenOut[0])).toContain('estimated');
+    // Absent stays absent: a short list is the ordinary case, not a thin seed.
+    expect(eatenOut[0].nutrition.amounts.fiberG).toBeUndefined();
+  });
+
+  it('seeds figures from more than one source, so the provenance stat has content', () => {
+    // A dish estimated from its ingredients and a food read off a database are
+    // two different claims, and "where the figures came from" reading as a row
+    // with one number in it is a feature the app appears not to have.
+    const window = cookingWindow(getLogicalToday(), 30);
+    useFoodLogStore.getState().loadWindow(window.startKey, window.endKey);
+    const mix = sourceMix(useFoodLogStore.getState().windowEntries, window);
+    expect(mix.estimated).toBeGreaterThan(0);
+    expect(mix.database).toBeGreaterThan(0);
+    expect(mix.fromRecipe).toBeGreaterThan(0);
+  });
+
+  it('seeds one entry that came off a barcode, carrying that box’s own figures', () => {
+    // The point of a scan is that a specific loaf states its own label where
+    // the catalog row can only state an average, so the entry has to carry the
+    // box's panel rather than the item's, or the feature reads as the picker again.
+    const yesterdayKey = dayKeyOf(subDays(getCurrentDayStart(), 1));
+    useFoodLogStore.getState().loadRange(yesterdayKey, yesterdayKey);
+    const scanned = useFoodLogStore.getState().entries.filter(e => e.productId);
+    expect(scanned.length).toBe(1);
+    const product = useGroceryStore.getState().itemProducts
+      .find(p => p.id === scanned[0].productId);
+    expect(product?.gtin).toBeTruthy();
+    expect(product?.nutrition).toBeTruthy();
+  });
+
+  it('seeds a cooked dish logged by what the plate weighed', () => {
+    // The accurate way to log a dish, and invisible in demo mode without an
+    // entry that used it: a weight, against a recipe whose finished dish was
+    // weighed.
+    const window = cookingWindow(getLogicalToday(), 30);
+    useFoodLogStore.getState().loadWindow(window.startKey, window.endKey);
+    const dish = useFoodLogStore.getState().windowEntries.find(e => e.recipeId);
+    expect(dish?.grams).toBeGreaterThan(0);
+    expect(dish?.quantity).toMatch(/ g$/);
+    const recipe = useRecipeStore.getState().recipes.find(r => r.id === dish?.recipeId);
+    expect(recipe?.cookedWeightG).not.toBeNull();
+  });
+
+  it('seeds a day whose totals do not all speak for every entry', () => {
+    // A US label declares a short list, so a real day has fibre on some entries
+    // and not others. Without that the coverage clause never renders.
+    const yesterdayKey = dayKeyOf(subDays(getCurrentDayStart(), 1));
+    useFoodLogStore.getState().loadRange(yesterdayKey, yesterdayKey);
+    const totals = foodLogTotals(useFoodLogStore.getState().entries);
+    expect(totals.reported.calorieKcal).toBe(totals.entries);
+    expect(totals.reported.fiberG).toBeGreaterThan(0);
+    expect(totals.reported.fiberG! < totals.entries).toBe(true);
+  });
+
+  it('writes no health samples from a seeded entry', () => {
+    // Demo mode swaps the database, so a seeded meal is fiction. Nothing here
+    // may put it into a medical record, and today nothing writes to Health at
+    // all — this pins that so the guard is added with the write, not after it.
+    const yesterdayKey = dayKeyOf(subDays(getCurrentDayStart(), 1));
+    useFoodLogStore.getState().loadRange(yesterdayKey, yesterdayKey);
+    for (const e of useFoodLogStore.getState().entries) {
+      expect(e.healthSampleIds).toEqual([]);
+    }
+  });
+
   it('leaves today unlogged, so the check-in is still worth answering', () => {
     const todayKey = dayKeyOf(getCurrentDayStart());
     expect(useMoodStore.getState().logs.some(l => l.dayKey === todayKey)).toBe(false);
@@ -1568,6 +2012,22 @@ describe('demo seed — groceries, recipes, meals and the fridge', () => {
     expect(byName.get('lemon')?.item?.name).toBe('Lemons');
   });
 
+  // The "is avocado oil a kind of neutral oil?" offer in RecipeIngredientSheet
+  // (RecipeIngredient.example, see splitExample / itemVarieties.ts) is only
+  // visible from inside that one ingredient's sheet, so without a seeded
+  // "such as" line it reads as a feature the app doesn't have.
+  it('seeds a "such as" ingredient clause parsed into an example', () => {
+    useDemoStore.getState().enterDemoMode();
+    const recipes = useRecipeStore.getState().recipes;
+    const oilLine = recipes
+      .flatMap(r => r.ingredients)
+      .find(i => i.nameKey === 'neutral oil');
+
+    expect(oilLine?.example).toBe('avocado oil');
+
+    useDemoStore.getState().exitDemoMode();
+  });
+
   it('seeds a second shopping list, left inactive', () => {
     const { items, lists, listEntries, activeListId } = useGroceryStore.getState();
 
@@ -1636,6 +2096,38 @@ describe('demo seed — groceries, recipes, meals and the fridge', () => {
     const scannedItem = items.find(i => i.id === scanned!.itemId)!;
     expect(scannedItem.nameKey).not.toContain(scanned!.brand!.toLowerCase());
     expect(useGroceryStore.getState().gtinItemFor(scanned!.gtin)).toBe(scannedItem.id);
+    // ...carrying the nutrition panel that barcode's own lookup fetched, which
+    // is the half a scan used to throw away. It arrives by the real route —
+    // seedGroceries writes the cache row and `linkScannedGtins` transfers it —
+    // so this pins the transfer and not just the presence of some figures.
+    const panel = nutritionFor(scannedItem, scanned);
+    expect(panel).not.toBeNull();
+    expect(panel!.basis).toBe('per100g');
+    // A manufacturer's label rather than a guess: FoodNutrition.source decides
+    // what a reader is allowed to claim about these numbers.
+    expect(panel!.source).toBe('fdc');
+    expect(panel!.amounts.calorieKcal).toBeGreaterThan(0);
+    expect(panel!.amounts.sodiumMg).toBeGreaterThan(0);
+    // ...and the keys the label never declared stay absent rather than
+    // arriving as a confident zero. See FoodNutrition.amounts.
+    expect('caffeineMg' in panel!.amounts).toBe(false);
+    // ...and the one portion the loaf states, which is what lets a recipe
+    // line written as "2 slices" become a weight at all. See FoodPortion.
+    expect(panel!.portions).toEqual([{ amount: 1, label: 'slice', grams: 45 }]);
+    // ...and, on a different box, a panel somebody typed off the tag rather
+    // than fetched. The bakery loaf has no barcode either database knows, so
+    // without a manual path it would be permanently un-loggable — and without
+    // one of each in the seed, `source`'s whole reason for existing has
+    // nothing showing it.
+    const typed = itemProducts.find(p => p.nutrition?.source === 'manual');
+    expect(typed).toBeDefined();
+    expect(typed!.gtin).toBeNull();
+    expect(typed!.nutrition!.basis).toBe('perServing');
+    expect(typed!.nutrition!.servingGrams).toBeGreaterThan(0);
+    // A bakery tag prints no gram weight per stated portion, so this one has
+    // no portion table, which is the honest shape rather than a thin seed.
+    expect(typed!.nutrition!.portions).toEqual([]);
+    expect(typed!.nutrition!.sourceId).toBeNull();
     // ...and a rating, on a box that isn't the preferred one — "the one I
     // avoid" and "the one I want" being the same row would read as a bug.
     const avoided = itemProducts.find(p => p.rating === 'avoid');
@@ -1755,6 +2247,16 @@ describe('demo seed — groceries, recipes, meals and the fridge', () => {
     expect(parsed.length).toBeGreaterThanOrEqual(2);
   });
 
+  it('seeds a note kept on a step, so cook mode\'s answers aren\'t invisible without a key', () => {
+    const steps = useRecipeStore.getState().recipes.flatMap(r => r.steps);
+    const noted = steps.filter(step => !!step.note);
+
+    // One is the point: a note is what keeping an answer leaves behind, and the
+    // asking itself needs an API key nobody handed a demo phone.
+    expect(noted).toHaveLength(1);
+    expect(noted[0].note!.length).toBeGreaterThan(20);
+  });
+
   it('seeds an either/or on the list, from a recipe choice left for the shelf', () => {
     const { items } = useGroceryStore.getState();
     const grouped = items.filter(i => i.onList && i.choiceGroup);
@@ -1796,6 +2298,20 @@ describe('demo seed — groceries, recipes, meals and the fridge', () => {
     const row = classified.find(r => r.nameKey === optionalLine!.nameKey);
     expect(row?.optional).toBe(true);
     expect(row?.category).toBe('needToBuy');
+  });
+
+  it('seeds an ingredient excluded from its recipe\'s nutrition total', () => {
+    // Invisible without a seeded instance, same as the optional case above:
+    // nothing infers "this line doesn't move the total" from the text of a
+    // recipe.
+    const recipes = useRecipeStore.getState().recipes;
+    const excludedLine = recipes.flatMap(r => r.ingredients).find(i => i.excludeFromNutrition);
+    expect(excludedLine).toBeDefined();
+
+    const owner = recipes.find(r => r.ingredients.some(i => i.id === excludedLine!.id))!;
+    const { items, itemProducts } = useGroceryStore.getState();
+    const lines = recipeNutritionLines(owner, items, itemProducts);
+    expect(lines.some(l => l.id === excludedLine!.id)).toBe(false);
   });
 
   it('seeds substitutes in both directions', () => {
@@ -1987,11 +2503,23 @@ describe('demo seed — groceries, recipes, meals and the fridge', () => {
   });
 
   it('seeds stores, per-store links and an edited walk order', () => {
-    const { shops, itemShops, aisleOrder, hiddenAisles, items, listEntries } = useGroceryStore.getState();
+    const { shops, itemShops, aisleOrder, hiddenAisles, nonFoodAisles, items, listEntries } = useGroceryStore.getState();
+
+    // Household holds Paper towels etc. — flagged non-food so it stays out of
+    // the nutrition backfill queue and the food log's own suggestions.
+    expect(nonFoodAisles).toContain('Household');
 
     expect(shops.length).toBeGreaterThanOrEqual(3);
     // "It has everything, but don't send me there".
     expect(shops.some(s => s.excludeFromSuggestions)).toBe(true);
+    // And the other half: a store that sells only some aisles, so the finish
+    // sheet has something to stop asking about. It carries a real range rather
+    // than an empty one, which would just be "sells everything" again.
+    const scoped = shops.find(s => s.aisles !== null);
+    expect(scoped).toBeDefined();
+    expect(scoped!.aisles!.length).toBeGreaterThan(0);
+    // And it's a shop with a record, not a bare name.
+    expect(itemShops.some(l => l.shopId === scoped!.id && l.purchaseCount > 0)).toBe(true);
     // All three link kinds: observed on a trip, asserted by hand, and the
     // negative claim — "they don't stock it", which is invisible in the app
     // until something carries it.
@@ -2091,6 +2619,90 @@ describe('demo seed — groceries, recipes, meals and the fridge', () => {
     expect(describeRecipeCost(estimate, '$', new Date())).toMatch(/^≈ \$\d+\.\d{2}/);
   });
 
+  it('seeds a recipe whose nutrition estimate actually answers', () => {
+    // Same reasoning as the cost estimate above, and the same dish. Without a
+    // recipe that clears the floor, the whole rollup reads as a feature the
+    // app hasn't got to anyone handed the phone. Mashed potatoes answers on
+    // all three of its non-staple lines: potatoes by the pound need only a
+    // panel, while butter by the tablespoon and milk by the cup reach grams
+    // through the portion tables seeded beside them.
+    const { items, itemProducts } = useGroceryStore.getState();
+    const mash = useRecipeStore.getState().recipes.find(r => r.name === 'Mashed potatoes')!;
+    const read = recipeNutrition(mash, items, itemProducts)!;
+    expect(read).not.toBeNull();
+    expect(read.covered).toBe(read.lines);
+    // Salt is a staple and drops out of both sides of the fraction.
+    expect(read.lines).toBe(3);
+    expect(read.total.calorieKcal).toBeGreaterThan(0);
+
+    // Fibre is reported by the potatoes alone, so it stays unknown rather than
+    // arriving as a confident total off one food in three. This is the
+    // per-nutrient floor doing its job on real seeded data.
+    expect(read.reported.fiberG).toBe(1);
+    expect(read.total.fiberG).toBeUndefined();
+
+    // The recipe says it serves four, so the summary leads per serving.
+    expect(perServing(read)).not.toBeNull();
+    expect(describeRecipeNutrition(read)).toMatch(/^≈ \d+ cal, \d+g protein per serving$/);
+  });
+
+  it('seeds both gaps the recipe nutrition sheet offers to fill', () => {
+    // The sheet's two remedies are only reachable from a line in the right
+    // state, so a seed with neither reads as a sheet that lists problems and
+    // does nothing about them. One of each, on real seeded recipes.
+    const { items, itemProducts } = useGroceryStore.getState();
+    const recipes = useRecipeStore.getState().recipes;
+    const byName = (name: string) => recipes.find(r => r.name === name)!;
+
+    // A catalog row with no figures at all: the "find this food / type in a
+    // label" pair. Rolled oats is bought often enough to survive clearList.
+    const oats = recipeNutritionLines(byName('Overnight oats'), items, itemProducts)
+      .find(l => l.name.toLowerCase().includes('oats'))!;
+    expect(oats.state).toBe('noPanel');
+    expect(oats.item).not.toBeNull();
+
+    // Figures with no portion table, against a line written in tablespoons:
+    // the "weigh it" row, and the offer has to survive its own probe. Roast
+    // potatoes' own oil line moved to "neutral oil, such as avocado oil" for
+    // the "such as" clause example (see addIngredientsFromText there), so the
+    // plain olive-oil line this case needs now lives on the salad instead.
+    const oil = recipeNutritionLines(byName('Simple green salad'), items, itemProducts)
+      .find(l => l.name.toLowerCase().includes('olive oil'))!;
+    expect(oil.state).toBe('unmeasured');
+    expect(weighableLine(oil.quantity, oil.prep, oil.nutrition!, oil.item!.name))
+      .toEqual({ label: 'tbsp', amount: 3, text: '3 tbsp' });
+  });
+
+  it('seeds a gap neither remedy on the recipe page can close', () => {
+    // A third shape of "unmeasured": figures on file, but the recipe line
+    // never named an amount at all ("Bread", for serving) rather than one
+    // `weighableLine` could resolve with a single weighing. Neither of
+    // RecipeNutritionSheet's two remedies applies, which is exactly the gap
+    // FoodLogEntrySheet's "Anything else?" section exists to ask about
+    // instead, at log time rather than once on the recipe. Without a line in
+    // this state, that section reads as dead code no seeded recipe ever
+    // reaches.
+    const { items, itemProducts } = useGroceryStore.getState();
+    const soup = useRecipeStore.getState().recipes.find(r => r.name === 'Weeknight vegetable soup')!;
+    const bread = recipeNutritionLines(soup, items, itemProducts).find(l => l.name.toLowerCase() === 'bread')!;
+    expect(bread.state).toBe('unmeasured');
+    expect(bread.quantity).toBe('');
+    expect(weighableLine(bread.quantity, bread.prep, bread.nutrition!, bread.item!.name)).toBeNull();
+  });
+
+  it('seeds a self-weighed portion beside a stated one, marked custom', () => {
+    // Without a `custom` row in the seed, a portion someone weighed
+    // themselves and a portion the source stated read identically — the
+    // field FoodPortion.custom exists for has nothing showing it. Potatoes
+    // carries one of each: FDC's own diced cup, and a medium-potato weight
+    // nobody but the seed's imagined user ever measured.
+    const potatoes = useGroceryStore.getState().items.find(i => i.nameKey === 'potatoes')!;
+    expect(potatoes.nutrition!.portions).toEqual([
+      { amount: 1, label: 'cup, diced', grams: 150 },
+      { amount: 1, label: 'medium potato', grams: 173, custom: true },
+    ]);
+  });
+
   it('seeds a trip in progress, with rows that have something to say about it', () => {
     const { items, itemShops, shops, itemSubs, itemProducts } = useGroceryStore.getState();
 
@@ -2160,6 +2772,16 @@ describe('demo seed — groceries, recipes, meals and the fridge', () => {
     expect(recipes.some(r => r.ingredients.filter(i => i.choiceGroup).length >= 2)).toBe(true);
     expect(recipes.every(r => r.ingredients.every(i => !/\bor\b/.test(i.name)))).toBe(true);
 
+    // A choice group crossing the two lists: the stir-fry's own rice line and
+    // its Steamed rice component share one label, and the ingredient — not
+    // the component — is what an unresolved read still buys by default.
+    const stirFry = recipes.find(r => r.name === 'Weeknight chicken stir-fry')!;
+    const riceIngredient = stirFry.ingredients.find(i => i.choiceGroup === 'Rice');
+    expect(riceIngredient).toBeTruthy();
+    expect(stirFry.components.some(c => c.choiceGroup === 'Rice')).toBe(true);
+    expect(activeIngredients(stirFry).some(i => i.id === riceIngredient!.id)).toBe(true);
+    expect(activeComponents(stirFry).some(c => c.choiceGroup === 'Rice')).toBe(false);
+
     // The ingredient-line detail the parser splits out, and the editor's labels.
     expect(recipes.some(r => r.ingredients.some(i => i.section))).toBe(true);
     expect(recipes.some(r => r.ingredients.some(i => i.prep))).toBe(true);
@@ -2197,6 +2819,9 @@ describe('demo seed — groceries, recipes, meals and the fridge', () => {
     expect(recipes.some(r => r.estimatedMinutes && r.prepMinutes)).toBe(true);
     expect(recipes.some(r => r.servings && r.servingsMax)).toBe(true);
     expect(recipes.some(r => r.recipeYield)).toBe(true);
+    // One dish that has been weighed, so logging a plate of it by weight is
+    // something demo mode can actually show. See Recipe.cookedWeightG.
+    expect(recipes.some(r => r.cookedWeightG !== null)).toBe(true);
     // Both ends of the leftovers dial — one dish that keeps longer than the
     // standard window and one that keeps less — plus the many that say nothing.
     expect(recipes.some(r => (r.leftoverKeepDays ?? 0) > LEFTOVER_KEEP_DAYS_DEFAULT)).toBe(true);
@@ -2497,6 +3122,37 @@ describe('demo seed — groceries, recipes, meals and the fridge', () => {
     ).toEqual([]);
   });
 
+  it('seeds a planned meal with nothing logged, and the task that asks about it', () => {
+    const { tasks } = useTaskStore.getState();
+    const entries = useMealPlanStore.getState().entries;
+    const todayKey = dayKeyOf(new Date());
+
+    const nudge = tasks.find(t => t.generatedKind === 'mealLogNudge');
+    expect(nudge).toBeDefined();
+    expect(nudge!.title).toContain('Weeknight chicken stir-fry');
+    expect(nudge!.category).toBe('Meal Plan');
+
+    // It speaks for a real night that was actually cooked, one day back —
+    // inside the lookback window — and genuinely has nothing logged against
+    // it anywhere in the seed.
+    const night = entries.find(e => e.id === nudge!.generatedSourceId);
+    expect(night).toBeDefined();
+    expect(night!.cookedAt).toBeTruthy();
+    const yesterdayKey = dayKeyOf(subDays(getCurrentDayStart(), 1));
+    expect(night!.date).toBe(yesterdayKey);
+    useFoodLogStore.getState().loadRange(yesterdayKey, yesterdayKey);
+    expect(
+      useFoodLogStore.getState().entries.some(e => e.mealPlanEntryId === night!.id)
+    ).toBe(false);
+
+    // And the real rule agrees, so the first foreground sweep doesn't clear
+    // the seeded row — the same standard the shortfall task above is held to.
+    const loggedEntryIds = new Set(
+      useFoodLogStore.getState().entries.map(e => e.mealPlanEntryId).filter((id): id is string => id !== null)
+    );
+    expect(staleMealLogNudgeTasks(tasks, entries, loggedEntryIds, todayKey)).toEqual([]);
+  });
+
   it('seeds the daily task to review tomorrow\'s calendar', () => {
     const { tasks } = useTaskStore.getState();
 
@@ -2508,6 +3164,49 @@ describe('demo seed — groceries, recipes, meals and the fridge', () => {
     expect(review!.category).toBe('Calendar Events');
     expect(useSettingsStore.getState().calendarEventCategory).toBe('Calendar Events');
     expect(review!.generatedSourceId).toBe(dayKeyOf(addDays(getCurrentDayStart(), 1)));
+  });
+
+  it('seeds a trip template whose anchors are days away', () => {
+    // Invisible until a template says so: without it the apply sheet asks for
+    // a start and an end date, and a run's return date lands on the deadline.
+    const tpl = useTemplateStore.getState().templates.find(t => t.name === 'Trip prep');
+    expect(tpl).toBeDefined();
+    expect(tpl!.anchorsAreAway).toBe(true);
+    expect(tpl!.applyContainer).toBe('project');
+  });
+
+  it('seeds a trip carrying away dates', () => {
+    // The span is invisible until a project has one: with no trip seeded, the
+    // editor's two rows read as a feature the app doesn't have.
+    const { projects } = useProjectStore.getState();
+    const trip = projects.find(p => p.awayStart !== null);
+    expect(trip).toBeDefined();
+    expect(trip!.title).toBe('Lisbon, with Mia');
+
+    const span = awaySpanOf(trip!)!;
+    expect(span).not.toBeNull();
+    expect(span.end).not.toBeNull();
+    expect(awayNights(span)).toBe(7);
+
+    // Ahead of today, so the card shows the countdown rather than the away
+    // state, and so nextAwayProject has something live to find.
+    expect(awayStatus(span, new Date())!.phase).toBe('before');
+    // Nominated to drive vacation mode, and inert until the departure arrives:
+    // a demo session must never open with half its tasks hidden.
+    expect(trip!.awayPauses).toBe(true);
+    // Somewhere to go, which is what makes the destination row visible. It is
+    // never looked up: the switch is off by default and geocodePlace refuses
+    // in demo mode regardless.
+    expect(trip!.destination).toBe('Lisbon');
+    expect(useSettingsStore.getState().destinationForecastEnabled).toBe(false);
+    // And it buys from the away list, the other half of a nomination that is
+    // invisible without one. Inert for awayPauses' reason: the trip is ahead,
+    // so the demo opens on Groceries rather than on somebody else's trolley.
+    const airbnb = useGroceryStore.getState().lists.find(l => l.name === 'Airbnb');
+    expect(airbnb).toBeDefined();
+    expect(trip!.awayListId).toBe(airbnb!.id);
+    expect(useGroceryStore.getState().activeListId).toBeNull();
+    expect(nextAwayProject(projects, new Date())!.project.id).toBe(trip!.id);
   });
 
   it('seeds the bare-weekend nudge and the project it quotes', () => {
@@ -2598,6 +3297,24 @@ describe('demo seed — groceries, recipes, meals and the fridge', () => {
     rules.filter(r => r.id !== firedRule!.id).forEach(r => {
       expect(r.lastFiredDayKey).toBeNull();
     });
+  });
+
+  it('seeds a weigh-in request, and no weight behind it', () => {
+    const { tasks } = useTaskStore.getState();
+    const settings = useSettingsStore.getState();
+
+    const task = tasks.find(t => t.generatedKind === 'weighIn');
+    expect(task).toBeDefined();
+    expect(task!.category).toBe('Health');
+    expect(settings.weighInTaskCategory).toBe('Health');
+    expect(task!.generatedSourceId).toBe(dayKeyOf(getCurrentDayStart()));
+    // The link is the point of the row: ticking a request off records nothing,
+    // and unlike a mood entry the number cannot be reconstructed later.
+    expect(task!.linkUrl).toBe('dundundun://weight?log=1');
+    // Health is the record and this app stores no weights, so there is nothing
+    // a seed could put behind this row. Its notes must therefore never claim a
+    // reading — inventing one would be a number about a body inside a fiction.
+    expect(task!.notes).not.toMatch(/\d+(\.\d+)?\s*(kg|lb)/i);
   });
 
   it('seeds a health-target task, the fifth kind', () => {
@@ -2897,6 +3614,13 @@ describe('demo seed — groceries, recipes, meals and the fridge', () => {
     // "We ate it" and "it went off" are the two things the feature tells apart.
     expect(leftovers.some(l => l.outcome === 'eaten')).toBe(true);
     expect(leftovers.some(l => l.outcome === 'tossed')).toBe(true);
+    // One container weighed on the way in, and its recipe weighed too — a
+    // container weight is measured against the dish's own, so seeding one
+    // without the other would show a number nothing can use.
+    const weighed = live.find(l => l.weightG !== null);
+    expect(weighed).toBeDefined();
+    const dish = useRecipeStore.getState().recipes.find(r => r.id === weighed!.recipeId);
+    expect(dish?.cookedWeightG).not.toBeNull();
   });
 
   it("fills every row of Stats' cooking section", () => {

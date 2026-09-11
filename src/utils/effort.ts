@@ -1,5 +1,5 @@
 import type { Effort } from '../types';
-import { activeChainStep, type ChainCarrier } from './chain';
+import { activeChainStep, isChainFinish, type ChainCarrier, type ChainCompletionCarrier } from './chain';
 
 /**
  * Field updates to apply when a task's duration is measured by the stopwatch.
@@ -99,6 +99,29 @@ export function estimatedMinutesFor(task: EstimateSource): number | null {
  */
 export function measuredTimeAppliesTo(task: EstimateSource): boolean {
   return activeChainStep(task)?.estimatedMinutes == null;
+}
+
+/** What measuredTimeWorthSuggesting needs on top of EstimateSource. */
+export type SuggestionCarrier = ChainCompletionCarrier & {
+  seriesId?: string | null;
+};
+
+/**
+ * Whether this task's estimate has anywhere to go besides this one
+ * completion. A recurring task's estimate seeds every future occurrence, and
+ * a task mid-chain with more steps ahead still reads the task-level estimate
+ * for those steps — either way, correcting it now pays off later. A genuine
+ * one-off (`recurrenceType: 'none'`, not mid-chain) is completed once and
+ * never scheduled again, so there's no future reader for the correction —
+ * the interrupt would be pure friction for zero payoff. A series date is the
+ * same story from a different angle: each date is its own row, and a plain
+ * estimate patch doesn't fan out to the set's other dates (that needs
+ * `updateTask(..., {scope: 'series'})`), so the sibling rows never see it.
+ */
+export function measuredTimeWorthSuggesting(task: SuggestionCarrier): boolean {
+  if ((task.recurrenceType ?? 'none') !== 'none') return true;
+  if (task.seriesId) return false;
+  return task.chainEnabled === true && !isChainFinish(task);
 }
 
 // The floor a diff has to clear before a session's clock reading is worth

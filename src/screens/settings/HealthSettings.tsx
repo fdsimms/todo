@@ -1,49 +1,82 @@
 import React, { useCallback, useMemo, useState } from 'react';
-import { View, AppState, Linking } from 'react-native';
+import { View, AppState } from 'react-native';
 import { useFocusEffect } from '@react-navigation/native';
-import type { HealthRequestStatus } from 'todo-health-bridge';
+import type { HealthRequestStatus, HealthWriteStatus } from 'todo-health-bridge';
+import { useShallow } from 'zustand/react/shallow';
 import { useSettingsStore } from '../../store/useSettingsStore';
 import { useHealthStore } from '../../store/useHealthStore';
 import { useCategoryStore, ensureHealthCategory } from '../../store/useCategoryStore';
 import { categoryLabel } from '../../utils/categoryLabel';
 import { PillGroup } from '../../components/PillGroup';
-import { healthBridge, isHealthSupported } from '../../utils/healthBridge';
+import { healthBridge, isHealthSupported, openHealthApp } from '../../utils/healthBridge';
+import type { WeightUnit } from '../../utils/weightLog';
 import { dayKeyOf, getCurrentDayStart } from '../../utils/dateUtils';
+import { formatWeight } from '../../utils/weightLog';
+import { goalDirection } from '../../utils/weightGoal';
+import { resetToWeightGoal } from '../../navigation/navigationRef';
 import { useColors } from '../../theme/ThemeContext';
 import { SettingsSection } from './SettingsSection';
 import { SettingsRow } from './SettingsRow';
+import { SettingsSegments } from './SettingsSegments';
 import { makeSettingsStyles } from './settingsStyles';
 import { haptics } from '../../utils/haptics';
 
 /**
- * Reading Apple Health.
+ * Reading Apple Health, and — in a section of its own below — writing the two
+ * things this app writes to it.
  *
- * Sits beside the calendar read in spirit and not in the index: both only ever
- * look and neither writes anything, but the permission models are opposite, and
- * that difference is most of what this screen has to say.
+ * **Reading sits beside the calendar read in spirit and not in the index: both
+ * only ever look, but the permission models are opposite**, and that
+ * difference is most of what the read section has to say.
  *
- * **EventKit tells you whether you were allowed. HealthKit refuses to.** A read
- * that was refused is served as an empty store, deliberately, so that an app
- * cannot learn what a person declined to share. So there is no "Blocked" state
- * to render here the way `CalendarSettings` renders one, and inventing one
- * would be worse than having none: every "Health access blocked" banner would
- * also be shown to somebody who simply has no step data yet.
+ * **EventKit tells you whether you were allowed. HealthKit refuses to, for
+ * reads.** A read that was refused is served as an empty store, deliberately,
+ * so that an app cannot learn what a person declined to share. So there is no
+ * "Blocked" state to render for reading the way `CalendarSettings` renders
+ * one, and inventing one would be worse than having none: every "Health
+ * access blocked" banner would also be shown to somebody who simply has no
+ * step data yet.
  *
- * What the rows can honestly say is therefore narrower than it looks:
+ * What the read rows can honestly say is therefore narrower than it looks:
  *
  * - The access row says whether the app has *asked* yet, which is the one thing
  *   `getRequestStatusForAuthorization` will answer, and offers the sheet when it
- *   hasn't. Once it has asked, the row points at the Settings app rather than
- *   claiming an outcome.
+ *   hasn't. Once it has asked, the row points at the Health app's own
+ *   Privacy → Apps page rather than claiming an outcome — permissions live
+ *   there, not in iOS Settings, which has no Health row for a third-party app
+ *   to show.
  * - The reading row shows the number or says there isn't one. "No number" is
  *   the honest reading of both a refusal and an empty day, and it is never
  *   drawn as a zero.
+ *
+ * **Writing is the mirror case, and this is the one place in the screen that
+ * gets to say "Allowed" or "Not allowed" outright.** `authorizationStatus(for:)`
+ * is truthful for share/write types — Apple's own docs draw the line at reads,
+ * not at Health generally — so the write access rows below read exactly like
+ * `CalendarSettings`' access row, not like the read access row above them.
+ * It's a separate `SettingsSection` and a separate switch
+ * (`healthWriteEnabled`) on purpose: reading steps and writing anything are two
+ * different permissions with two different sheets, and folding them into one
+ * switch would ask someone who only wanted the steps row about writing too.
+ *
+ * **There is one app-level write switch but two access rows under it, and that
+ * asymmetry is deliberate.** "May this app write to my Health record" is asked
+ * once, and the switch answers it. *Which types* it may write is Health's
+ * question rather than this app's, answered in Health's own sheet, and Health
+ * lets somebody allow water and refuse body mass in that one sheet — so the
+ * rows report per type while the switch stays single. A second app-level
+ * toggle would only add a way to be refused twice for the same reason.
  */
 export function HealthSettings() {
   const healthReadEnabled = useSettingsStore(s => s.healthReadEnabled);
   const setHealthReadEnabled = useSettingsStore(s => s.setHealthReadEnabled);
+  const healthWriteEnabled = useSettingsStore(s => s.healthWriteEnabled);
+  const setHealthWriteEnabled = useSettingsStore(s => s.setHealthWriteEnabled);
   const healthCategory = useSettingsStore(s => s.healthCategory);
   const setHealthCategory = useSettingsStore(s => s.setHealthCategory);
+  const weightUnit = useSettingsStore(s => s.weightUnit);
+  const weightGoal = useSettingsStore(useShallow(s => s.weightGoal));
+  const setWeightUnit = useSettingsStore(s => s.setWeightUnit);
   const categories = useCategoryStore(s => s.categories);
   const today = useHealthStore(s => s.today);
   const refreshing = useHealthStore(s => s.refreshing);
@@ -56,6 +89,15 @@ export function HealthSettings() {
   // data at all cannot change while the screen is open.
   const [supported] = useState(isHealthSupported);
   const [requestStatus, setRequestStatus] = useState<HealthRequestStatus | null>(null);
+  // Two statuses, not one, because Health lets somebody allow water and refuse
+  // weight on the same sheet — a single "write access" row would be wrong for
+  // whichever of the two they declined.
+  const [waterWriteStatus, setWaterWriteStatus] = useState<HealthWriteStatus | null>(null);
+  const [weightWriteStatus, setWeightWriteStatus] = useState<HealthWriteStatus | null>(null);
+  // A third, and the only one standing for more than one share type: a meal is
+  // ten of them, and this reads as allowed only when every one is. See the
+  // native `writeAuthorizationStatus`.
+  const [nutritionWriteStatus, setNutritionWriteStatus] = useState<HealthWriteStatus | null>(null);
 
   // Re-read on focus *and* on foreground, for the reason the calendar rows
   // give: the access row can send someone to the system Settings app, which
@@ -69,14 +111,24 @@ export function HealthSettings() {
     bridge.healthRequestStatus().then(setRequestStatus).catch(() => setRequestStatus(null));
   }, []);
 
+  // Synchronous, unlike refreshStatus above — writeAuthorizationStatus is a
+  // plain fact, not a sheet-shaped question, so there's nothing to await.
+  const refreshWriteStatus = useCallback(() => {
+    const bridge = healthBridge();
+    setWaterWriteStatus(bridge ? bridge.healthWriteAuthorizationStatus('water') : null);
+    setWeightWriteStatus(bridge ? bridge.healthWriteAuthorizationStatus('weight') : null);
+    setNutritionWriteStatus(bridge ? bridge.healthWriteAuthorizationStatus('nutrition') : null);
+  }, []);
+
   useFocusEffect(
     useCallback(() => {
       refreshStatus();
+      refreshWriteStatus();
       const subscription = AppState.addEventListener('change', state => {
-        if (state === 'active') refreshStatus();
+        if (state === 'active') { refreshStatus(); refreshWriteStatus(); }
       });
       return () => subscription.remove();
-    }, [refreshStatus]),
+    }, [refreshStatus, refreshWriteStatus]),
   );
 
   const onToggle = () => {
@@ -94,6 +146,14 @@ export function HealthSettings() {
       bridge?.requestHealthAuthorization()
         .then(() => {
           refreshStatus();
+          // Also here, not just on focus/foreground — see refreshWriteStatus's
+          // own comment for why a read grant can silently cost write access on
+          // the types the two sides share (water, weight, the eight nutrients).
+          // Re-checking now is what turns "found out weeks later, confused"
+          // into "the row below already says Not allowed the moment you granted
+          // read", which is the one thing this app can still do about an OS
+          // bug it cannot prevent.
+          refreshWriteStatus();
           void refresh();
         })
         .catch(() => refreshStatus());
@@ -106,7 +166,35 @@ export function HealthSettings() {
     if (!bridge) return;
     await bridge.requestHealthAuthorization();
     refreshStatus();
+    // Same reason as onToggle above.
+    refreshWriteStatus();
     void refresh();
+  };
+
+  const onToggleWrite = () => {
+    const next = !healthWriteEnabled;
+    haptics.tap();
+    setHealthWriteEnabled(next);
+    // Same moment-of-asking rule the read toggle follows: turning this on is
+    // the one unambiguous ask, so it's the one moment the sheet may appear.
+    // One sheet covers both share types (`requestWriteAuthorization` passes the
+    // whole of `writeTypes`), so it is worth raising if *either* is still
+    // unanswered.
+    if (next && (waterWriteStatus === 'notDetermined' || weightWriteStatus === 'notDetermined'
+      || nutritionWriteStatus === 'notDetermined')) {
+      const bridge = healthBridge();
+      bridge?.requestHealthWriteAuthorization()
+        .then(() => refreshWriteStatus())
+        .catch(() => refreshWriteStatus());
+    }
+  };
+
+  const askForWriteAccess = async () => {
+    haptics.tap();
+    const bridge = healthBridge();
+    if (!bridge) return;
+    await bridge.requestHealthWriteAuthorization();
+    refreshWriteStatus();
   };
 
   // A reading from a day that has already turned over is not an answer about
@@ -122,25 +210,40 @@ export function HealthSettings() {
 
   if (!supported) {
     return (
-      <SettingsSection
-        label="Apple Health"
-        footer="This device doesn't have Health data, so there is nothing for the app to read."
-      >
-        <SettingsRow
-          entryId="healthRead"
-          icon="heart-outline"
-          label="Read Apple Health"
-          hint="Not available on this device"
-          disabled
-        />
-      </SettingsSection>
+      <>
+        <SettingsSection
+          label="Apple Health"
+          footer="This device doesn't have Health data, so there is nothing for the app to read."
+        >
+          <SettingsRow
+            entryId="healthRead"
+            icon="heart-outline"
+            label="Read Apple Health"
+            hint="Not available on this device"
+            disabled
+          />
+        </SettingsSection>
+        <SettingsSection
+          label="Log to Health"
+          footer="Not available on this device."
+        >
+          <SettingsRow
+            entryId="healthWrite"
+            icon="create-outline"
+            label="Log to Health"
+            hint="Not available on this device"
+            disabled
+          />
+        </SettingsSection>
+      </>
     );
   }
 
   return (
+    <>
     <SettingsSection
       label="Apple Health"
-      footer="Reads what Health already has on this phone, so the app can show it beside your day. Nothing is written to Health, nothing is sent anywhere, and no copy is kept: the numbers are read when the app opens and are gone when it closes. iOS never tells an app whether a Health read was allowed, so if you say no, the app sees the same thing it sees on a day with nothing recorded."
+      footer="Reads what Health already has on this phone, so the app can show it beside your day and check it against rules you set. This section never writes anything to Health, nothing is sent anywhere, and no copy is kept: the numbers are read when the app opens and are gone when it closes. iOS never tells an app whether a Health read was allowed, so if you say no, the app sees the same thing it sees on a day with nothing recorded."
     >
       <SettingsRow
         entryId="healthRead"
@@ -169,9 +272,16 @@ export function HealthSettings() {
             // anything is actually coming through.
             hint={
               requestStatus === 'shouldRequest'
-                ? "Not asked yet. Nothing can be read until you allow it in Health"
+                ? healthWriteEnabled
+                  // iOS has been observed silently revoking write access to a
+                  // type (water, weight, a nutrient) the moment read access for
+                  // that same type is granted — see the note in
+                  // docs/arch/health-data.md. Worth saying here, before it
+                  // happens, since the write rows below only report it after.
+                  ? "Not asked yet. Allowing this can reset write access below for the types this app both reads and writes (water, weight, most nutrients) — check Log to Health afterward"
+                  : "Not asked yet. Nothing can be read until you allow it in Health"
                 : requestStatus === 'unnecessary'
-                  ? "Already asked. Change what's shared in the Health app under Sharing"
+                  ? "Already asked. To change what's shared, open Health, tap your profile picture, then Privacy, then Apps, then dundundun"
                   : requestStatus === 'unavailable'
                     ? 'Not available on this device'
                     : 'Checking…'
@@ -179,12 +289,12 @@ export function HealthSettings() {
             alwaysShowHint
             value={
               requestStatus === 'shouldRequest' ? 'Allow'
-                : requestStatus === 'unnecessary' ? 'Open Settings'
+                : requestStatus === 'unnecessary' ? 'Open Health'
                   : undefined
             }
             onPress={
               requestStatus === 'shouldRequest' ? askForAccess
-                : requestStatus === 'unnecessary' ? () => Linking.openSettings()
+                : requestStatus === 'unnecessary' ? () => { void openHealthApp(); }
                   : undefined
             }
           />
@@ -237,5 +347,155 @@ export function HealthSettings() {
         </>
       )}
     </SettingsSection>
+
+    <SettingsSection
+      label="Log to Health"
+      footer="Writes a dietary water sample when a task you've set up to log it is completed, a body mass sample when you record a weight, and a meal's nutrition when you add it to the food log. These are the only things this app ever writes to Health, and nothing else is touched. Deleting a food log entry removes what it wrote."
+    >
+      <SettingsRow
+        entryId="healthWrite"
+        icon="create-outline"
+        iconColor={healthWriteEnabled ? colors.accent : undefined}
+        label="Log to Health"
+        hint={healthWriteEnabled
+          ? 'Water from tasks set up to log it, weights you record, and meals you log'
+          : 'Nothing is written to Health'}
+        toggle={healthWriteEnabled}
+        onPress={onToggleWrite}
+        accessibilityLabel="Log to Health"
+      />
+
+      {healthWriteEnabled && (
+        <>
+          <View style={styles.sep} />
+          <WriteAccessRow
+            entryId="healthWriteAccess"
+            label="Water-write access"
+            deniedHint="Not allowed. To log water, open Health, tap your profile picture, then Privacy, then Apps, then dundundun"
+            status={waterWriteStatus}
+            colors={colors}
+            onAsk={askForWriteAccess}
+          />
+          <View style={styles.sep} />
+          <WriteAccessRow
+            entryId="healthWeightWriteAccess"
+            label="Weight-write access"
+            deniedHint="Not allowed. To record a weight, open Health, tap your profile picture, then Privacy, then Apps, then dundundun"
+            status={weightWriteStatus}
+            colors={colors}
+            onAsk={askForWriteAccess}
+          />
+          <View style={styles.sep} />
+          <WriteAccessRow
+            entryId="healthNutritionWriteAccess"
+            label="Nutrition-write access"
+            deniedHint="Not allowed. To log what you ate, open Health, tap your profile picture, then Privacy, then Apps, then dundundun"
+            status={nutritionWriteStatus}
+            colors={colors}
+            onAsk={askForWriteAccess}
+          />
+        </>
+      )}
+    </SettingsSection>
+
+    <SettingsSection
+      label="Weight"
+      footer="Which unit a weight is shown and typed in. Health always stores kilograms, so this changes what you read and type, not what is recorded."
+    >
+      {/* Opens the sheet on the Weight screen rather than in place. The sheet
+          needs the latest weigh-in to measure a goal from, and that is a read
+          of Health this page has no reason to hold — so the row navigates to
+          where the data already is, which is also where the progress it sets up
+          gets read. */}
+      <SettingsRow
+        entryId="weightGoal"
+        icon="flag-outline"
+        iconColor={weightGoal !== null ? colors.accent : undefined}
+        label="Weight goal"
+        hint="Set a target weight and a rate, and work out a daily calorie figure."
+        value={weightGoal === null
+          ? 'None'
+          : goalDirection(weightGoal) === 'maintain'
+            ? `Hold ${formatWeight(weightGoal.targetKg, weightUnit)}`
+            : formatWeight(weightGoal.targetKg, weightUnit)}
+        onPress={() => { haptics.tap(); resetToWeightGoal(); }}
+      />
+      <SettingsRow
+        entryId="weightUnit"
+        icon="scale-outline"
+        label="Weight unit"
+        value={weightUnit === 'kg' ? 'Kilograms' : 'Pounds'}
+        tight
+      />
+      <SettingsSegments
+        attached
+        label="Weight unit"
+        options={[
+          { value: 'kg' as WeightUnit, label: 'kg' },
+          { value: 'lb' as WeightUnit, label: 'lb' },
+        ]}
+        selected={weightUnit}
+        onSelect={unit => { haptics.tap(); setWeightUnit(unit); }}
+        accessibilityLabelFor={o => (o.value === 'kg' ? 'Kilograms' : 'Pounds')}
+      />
+    </SettingsSection>
+    </>
+  );
+}
+
+interface WriteAccessRowProps {
+  entryId: string;
+  label: string;
+  /** What to say, and where to go, when this type was refused. */
+  deniedHint: string;
+  status: HealthWriteStatus | null;
+  colors: ReturnType<typeof useColors>;
+  onAsk: () => void;
+}
+
+/**
+ * One share type's real authorization state.
+ *
+ * Unlike the read access row above, these are allowed to say "Allowed" or "Not
+ * allowed" outright — see the file's own note on why write authorization is
+ * truthful where read isn't.
+ *
+ * A component rather than the row written twice because the two differ only in
+ * their label and in which sharing row to point somebody at: the four-state
+ * ladder, which state offers a button, and which opens the Health app are
+ * the same decision for every share type, and a second hand-written copy is
+ * how one of them ends up still saying "water" after a third is added.
+ */
+function WriteAccessRow({ entryId, label, deniedHint, status, colors, onAsk }: WriteAccessRowProps) {
+  const allowed = status === 'sharingAuthorized';
+  return (
+    <SettingsRow
+      entryId={entryId}
+      icon={allowed ? 'lock-open-outline' : 'lock-closed-outline'}
+      iconColor={allowed ? colors.accent : undefined}
+      label={label}
+      hint={
+        status === 'notDetermined'
+          ? 'Not asked yet. Nothing can be written until you allow it in Health'
+          : status === 'sharingDenied'
+            ? deniedHint
+            : allowed
+              ? 'Allowed'
+              : status === 'unavailable'
+                ? 'Not available on this device'
+                : 'Checking…'
+      }
+      alwaysShowHint
+      value={
+        status === 'notDetermined' ? 'Allow'
+          : status === 'sharingDenied' ? 'Open Health'
+            : undefined
+      }
+      onPress={
+        status === 'notDetermined' ? onAsk
+          : status === 'sharingDenied' ? () => { void openHealthApp(); }
+            : undefined
+      }
+    />
   );
 }

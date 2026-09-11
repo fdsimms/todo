@@ -15,6 +15,7 @@ import { ReorderableList } from '../components/ReorderableList';
 import { PersonEditor } from '../components/PersonEditor';
 import { QuickAddNameSheet } from '../components/QuickAddNameSheet';
 import { ContactPickerSheet } from '../components/ContactPickerSheet';
+import { TripPlannerSheet } from '../components/TripPlannerSheet';
 import { Fab, FAB_SIZE } from '../components/Fab';
 import { SelectionDot } from '../components/SelectionDot';
 import { SimpleBulkBar } from '../components/SimpleBulkBar';
@@ -22,7 +23,7 @@ import { SwipeableRow } from '../components/SwipeableRow';
 import { PaintSelectionProvider, usePaintSelectionRow } from '../components/PaintSelection';
 import { useRowSelection } from '../hooks/useRowSelection';
 import { useColors } from '../theme/ThemeContext';
-import { spacing, font, fontWeight, radius, interaction, type Colors } from '../theme';
+import { spacing, font, fontWeight, radius, interaction, flattenOverlay, type Colors } from '../theme';
 import { haptics } from '../utils/haptics';
 import { animateLayout } from '../utils/layoutAnimation';
 import {
@@ -30,6 +31,7 @@ import {
   nextBirthday,
 } from '../utils/birthdayTasks';
 import { getCurrentDayStart } from '../utils/dateUtils';
+import { anyoneHasLocation } from '../utils/peopleLocations';
 
 /**
  * The people list.
@@ -71,6 +73,7 @@ export function PeopleScreen() {
   const [newPerson, setNewPerson] = useState<Person | null>(null);
   const [quickAddVisible, setQuickAddVisible] = useState(false);
   const [contactPickerVisible, setContactPickerVisible] = useState(false);
+  const [tripPlannerVisible, setTripPlannerVisible] = useState(false);
   const [showArchived, setShowArchived] = useState(false);
   // Off by default: the hand-dragged order is the one ranking this feature is
   // allowed to have (see the header comment and docs/arch/people.md, rule 3).
@@ -181,6 +184,13 @@ export function PeopleScreen() {
             active: alphabetical,
             accessibilityLabel: alphabetical ? 'Sort by hand order' : 'Sort alphabetically',
           },
+          // Only once somebody actually has a location on file — a row that
+          // opens onto an empty search is a feature with nothing to offer yet.
+          ...(showArchived || !anyoneHasLocation(people) ? [] : [{
+            icon: 'airplane-outline' as const,
+            onPress: () => { haptics.tap(); setTripPlannerVisible(true); },
+            accessibilityLabel: 'Plan a trip',
+          }]),
           {
             icon: 'archive-outline',
             onPress: () => { haptics.tap(); animateLayout(); setShowArchived(v => !v); },
@@ -340,6 +350,16 @@ export function PeopleScreen() {
         isNew
         onClose={() => setNewPerson(null)}
       />
+
+      <TripPlannerSheet
+        visible={tripPlannerVisible}
+        people={people}
+        onPickPerson={personId => {
+          setTripPlannerVisible(false);
+          navigation.navigate('PersonDetail', { personId });
+        }}
+        onClose={() => setTripPlannerVisible(false)}
+      />
     </View>
   );
 }
@@ -448,7 +468,11 @@ const makeStyles = (colors: Colors) => StyleSheet.create({
     paddingHorizontal: spacing.md, paddingVertical: 14,
   },
   rowActive: { backgroundColor: colors.bgTertiary },
-  rowSelected: { backgroundColor: colors.accentSubtle },
+  // Opaque, not `colors.accentSubtle` directly: this can be applied the
+  // instant a swipe-select commits, while SwipeableRow's own panel is still
+  // open behind this row mid-close-animation — see the note on
+  // `flattenOverlay`.
+  rowSelected: { backgroundColor: flattenOverlay(colors.accentSubtle, colors.bgSecondary) },
   rowBody: { flex: 1, flexDirection: 'row', alignItems: 'center', gap: spacing.md, minWidth: 0 },
   avatar: {
     width: 36, height: 36, borderRadius: radius.full,

@@ -150,6 +150,12 @@ export function settingsSummaries(s: SettingsSummaryInput): Record<SettingsGroup
       s.unitSystemLabel,
     ) || 'Meals on Today, amounts, swaps',
 
+    // No live status here, for the reason this file's own header comment
+    // gives for every group: reading it would run permission probes on the
+    // index whether or not this group is ever opened. This line only says
+    // what the group is for.
+    permissions: 'What the app can access, and where to fix it',
+
     privacyAi: line(
       s.appLockEnabled && 'App lock on',
       s.hasApiKey && 'API key set',

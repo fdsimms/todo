@@ -28,6 +28,8 @@ describe('the three maintenance groups', () => {
     // whole so a reorder has to be deliberate.
     expect(names(catchUpPasses())).toEqual([
       'check vacation expiry',
+      'check away vacation',
+      'check away grocery list',
       'roll over quotas',
       'sweep overshoot quotas',
       'drip stalled projects',
@@ -37,17 +39,20 @@ describe('the three maintenance groups', () => {
       'check pantry reviews',
       'check pantry checks',
       'check meal shortfall tasks',
+      'check meal log nudge tasks',
       'check calendar review tasks',
       'check weather tasks',
       'check screen time tasks',
       'check health tasks',
       'check mood tasks',
       'check weekend nudge tasks',
+      'check weigh-in tasks',
       'check birthday tasks',
       'check birthday gift tasks',
       'check reach-out tasks',
       'reconcile leftover use-up tasks',
       'check scheduled templates',
+      'sweep task penalties',
     ]);
   });
 

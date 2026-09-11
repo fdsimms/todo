@@ -86,6 +86,11 @@ export interface MealPlanDraft {
    */
   shopTask?: boolean | null;
   /**
+   * The same, for "does finishing this one offer to log it?" — see
+   * MealPlanEntry.logMeal. Omitted (or null) leaves it to the setting.
+   */
+  logMeal?: boolean | null;
+  /**
    * Who the meal is for, for a caller that already knows at plan time — a
    * copied meal, a template. Omitted for every ordinary plan, where guests are
    * named afterwards from the meal's own sheet.
@@ -262,6 +267,37 @@ interface MealPlanStore extends UndoHistoryActions {
    * each time an unrelated meal moves.
    */
   refreshPlannedSlotCounts: (dayKeys: readonly string[]) => void;
+
+  /**
+   * The meals close enough to shop for — what the grocery list's recipe strip
+   * offers as a filter (`shoppedRecipes`, `src/utils/groceryRecipeFilter.ts`).
+   *
+   * **Outside the window contract, for `plannedSlotCounts`' reason exactly.**
+   * Groceries is its own tab, and the window `entries` holds belongs to Meal
+   * plan: the week on screen there is routinely not the next two days, and on a
+   * cold launch into Groceries it is nothing at all. Reading the window would
+   * report an empty strip over a fully planned week, and calling `loadRange` to
+   * fix that would clobber whichever week Meal plan has open — on a hidden tab
+   * that stays mounted and never reloads (see `enableScreens(false)`).
+   *
+   * A snapshot rather than a subscription, refreshed by
+   * `refreshShopWindowEntries` — same pull-not-push discipline, same reasons,
+   * driven by `useShopWindowMeals`.
+   */
+  shopWindowEntries: MealPlanEntry[];
+
+  /**
+   * Re-reads `[todayKey, todayKey + leadDays]` from SQLite, replacing the
+   * snapshot.
+   *
+   * `todayKey` is the caller's *logical* today, so the window doesn't open a day
+   * early for a late `dayResetTime` — see the grace-window note in CLAUDE.md and
+   * `isWithinShopWindow`, which re-checks the same bound on the read side.
+   *
+   * Returns without a `set` when nothing the strip reads has changed, so an
+   * unrelated edit elsewhere in the plan doesn't re-render the grocery list.
+   */
+  refreshShopWindowEntries: (todayKey: string, leadDays: number) => void;
 
   /**
    * What the last month of the plan says about cooking — the meal half of the
@@ -448,6 +484,17 @@ interface MealPlanStore extends UndoHistoryActions {
    * answered by the next sweep, which is seconds away on any foreground.
    */
   setShopTask: (id: string, value: boolean | null) => void;
+  /**
+   * Says whether finishing this meal offers to log what was eaten, or hands
+   * the decision back to the `mealLogPrompt` setting with `null`.
+   *
+   * **Writes the flag and stops there**, like `setShopTask` and unlike
+   * `setCookTask`: there is no task to reconcile into existence. What this
+   * gates is an offer made at the moment a meal is finished, so the next
+   * finish reads whatever this last wrote and nothing has to be created or
+   * torn down in between.
+   */
+  setLogMeal: (id: string, value: boolean | null) => void;
 
   /**
    * "Cooked" as a single user action: stamps `cookedAt` **and** bumps the
@@ -624,6 +671,7 @@ export const useMealPlanStore = create<MealPlanStore>((set, get) => ({
   rangeEnd: null,
   addedToListAt: {},
   plannedSlotCounts: {},
+  shopWindowEntries: [],
   cookingCounts: null,
   peopleYearMealCount: null,
   cookHistory: null,
@@ -710,6 +758,20 @@ export const useMealPlanStore = create<MealPlanStore>((set, get) => ({
     if (unchanged) return;
 
     set({ plannedSlotCounts: next });
+  },
+
+  refreshShopWindowEntries(todayKey, leadDays) {
+    const rows = dbGetMealPlanEntries(todayKey, shiftDayKey(todayKey, Math.max(0, leadDays)));
+    const current = get().shopWindowEntries;
+    // Only the fields `shoppedRecipes` actually reads. Comparing whole rows
+    // would re-render the grocery list every time an unrelated column moved on
+    // a planned meal — a note edited, a person added, a cook task spawned.
+    const signature = (list: readonly MealPlanEntry[]) =>
+      list
+        .map(e => [e.id, e.date, e.recipeId ?? '', e.cookedAt ?? '', e.recipeScale, e.recipeChoices.join('|')].join(' '))
+        .join('');
+    if (signature(current) === signature(rows)) return;
+    set({ shopWindowEntries: rows });
   },
 
   refreshPeopleYearMealCount(startKey, endKey) {
@@ -802,6 +864,8 @@ export const useMealPlanStore = create<MealPlanStore>((set, get) => ({
       // Unanswered too, so mealShortfallTasks decides — see
       // MealPlanEntry.shopTask.
       shopTask: draft.shopTask ?? null,
+      // Unanswered too, so mealLogPrompt decides — see MealPlanEntry.logMeal.
+      logMeal: draft.logMeal ?? null,
       // Nothing on the device yet. reconcileMealEvent below writes the id
       // back if a calendar is picked.
       calendarEventId: null,
@@ -1003,6 +1067,16 @@ export const useMealPlanStore = create<MealPlanStore>((set, get) => ({
     // No reconcile and no create — see the interface note. The generator's own
     // sweep owns both directions here, and a `false` written by a delete has
     // already taken the row away by the time this runs.
+  },
+
+  setLogMeal(id, value) {
+    const entry = resolveEntry(get, id);
+    if (!entry || entry.logMeal === value) return;
+    const next: MealPlanEntry = { ...entry, logMeal: value };
+    dbUpdateMealPlanEntry(next);
+    set(s => ({ entries: s.entries.map(e => e.id === id ? next : e) }));
+    // Nothing to reconcile: this gates an offer made at finish time rather
+    // than a row on a list, so there is no task to create or tear down.
   },
 
   setCookedPaired(id, cooked) {

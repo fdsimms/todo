@@ -3,6 +3,7 @@ import {
   parseGroceryInput,
   splitPrep,
   splitPurpose,
+  splitExample,
   splitAlternativeNames,
   suggestShorterCatalogName,
   resolveGroceryTokens,
@@ -432,6 +433,72 @@ describe('splitPurpose', () => {
 
   it('leaves an empty string untouched', () => {
     expect(splitPurpose('')).toEqual({ name: '', purpose: null });
+  });
+});
+
+// ─── splitExample ─────────────────────────────────────────────────────────────
+
+describe('splitExample', () => {
+  it('splits a trailing "such as" clause into an example', () => {
+    expect(splitExample('neutral oil, such as avocado oil')).toEqual({
+      core: 'neutral oil',
+      example: 'avocado oil',
+    });
+  });
+
+  it('splits a trailing "e.g." clause', () => {
+    expect(splitExample('hard cheese, e.g. parmesan')).toEqual({
+      core: 'hard cheese',
+      example: 'parmesan',
+    });
+  });
+
+  it('splits a parenthesised clause', () => {
+    expect(splitExample('hard cheese (such as parmesan)')).toEqual({
+      core: 'hard cheese',
+      example: 'parmesan',
+    });
+    expect(splitExample('hard cheese (e.g. parmesan)')).toEqual({
+      core: 'hard cheese',
+      example: 'parmesan',
+    });
+  });
+
+  it('splits with no comma at all', () => {
+    expect(splitExample('neutral oil such as avocado oil')).toEqual({
+      core: 'neutral oil',
+      example: 'avocado oil',
+    });
+  });
+
+  it('reads a bare "such as" clause with nothing in front as the whole example, empty core', () => {
+    expect(splitExample('such as avocado oil')).toEqual({ core: '', example: 'avocado oil' });
+  });
+
+  it('leaves a name with no example clause untouched', () => {
+    expect(splitExample('avocado oil')).toEqual({ core: 'avocado oil', example: null });
+  });
+
+  it('does not false-positive on a word merely containing the phrase', () => {
+    expect(splitExample('such assorted nuts')).toEqual({ core: 'such assorted nuts', example: null });
+  });
+
+  it('is case-insensitive on the connective phrase', () => {
+    expect(splitExample('Neutral oil, Such As avocado oil')).toEqual({
+      core: 'Neutral oil',
+      example: 'avocado oil',
+    });
+  });
+
+  it('clamps a very long example clause to PREP_MAX_LENGTH', () => {
+    const longExample = 'a'.repeat(120);
+    const result = splitExample(`neutral oil, such as ${longExample}`);
+    expect(result.core).toBe('neutral oil');
+    expect(result.example!.length).toBe(60);
+  });
+
+  it('leaves an empty string untouched', () => {
+    expect(splitExample('')).toEqual({ core: '', example: null });
   });
 });
 

@@ -38,7 +38,7 @@ describe('chainPreview', () => {
   const items = [step('Put laundry in washers'), step('Remove non-dry items'), step('Fold laundry')];
 
   it('leads with the current step and previews the next one', () => {
-    expect(chainPreview({ chainIndex: 1, chainItems: items })).toEqual({
+    expect(chainPreview({ chainEnabled: true, chainIndex: 1, chainItems: items })).toEqual({
       currentIdx: 1,
       total: 3,
       currentTitle: 'Remove non-dry items',
@@ -47,7 +47,7 @@ describe('chainPreview', () => {
   });
 
   it('has no next title when the current step is the last one', () => {
-    expect(chainPreview({ chainIndex: 2, chainItems: items })).toEqual({
+    expect(chainPreview({ chainEnabled: true, chainIndex: 2, chainItems: items })).toEqual({
       currentIdx: 2,
       total: 3,
       currentTitle: 'Fold laundry',
@@ -56,21 +56,31 @@ describe('chainPreview', () => {
   });
 
   it('never surfaces a step before the current one, finished or not', () => {
-    const preview = chainPreview({ chainIndex: 1, chainItems: items });
+    const preview = chainPreview({ chainEnabled: true, chainIndex: 1, chainItems: items });
     expect(preview?.currentTitle).not.toBe('Put laundry in washers');
     expect(preview?.nextTitle).not.toBe('Put laundry in washers');
   });
 
   it('wraps the index past the end, the way a repeating chain resets', () => {
-    expect(chainPreview({ chainIndex: 3, chainItems: items })?.currentTitle).toBe('Put laundry in washers');
+    expect(chainPreview({ chainEnabled: true, chainIndex: 3, chainItems: items })?.currentTitle).toBe('Put laundry in washers');
   });
 
   it('is null for an empty chain', () => {
-    expect(chainPreview({ chainIndex: 0, chainItems: [] })).toBeNull();
+    expect(chainPreview({ chainEnabled: true, chainIndex: 0, chainItems: [] })).toBeNull();
   });
 
   it('defaults a missing index to the first step', () => {
-    expect(chainPreview({ chainItems: items })?.currentTitle).toBe('Put laundry in washers');
+    expect(chainPreview({ chainEnabled: true, chainItems: items })?.currentTitle).toBe('Put laundry in washers');
+  });
+
+  // Same gate as activeChainStep/nextChainStep, and for the same reason: a
+  // single-item or disabled chain isn't a chain anywhere else in the UI.
+  it('is null when the chain is off', () => {
+    expect(chainPreview({ chainEnabled: false, chainIndex: 1, chainItems: items })).toBeNull();
+  });
+
+  it('is null for a single-item chain — it reads as a plain task everywhere else', () => {
+    expect(chainPreview({ chainEnabled: true, chainIndex: 0, chainItems: [step('Only')] })).toBeNull();
   });
 });
 
@@ -144,13 +154,21 @@ describe('nextChainStepTitle', () => {
 describe('parseChainItems', () => {
   it('fills in defaults for rows stored before the fields existed', () => {
     expect(parseChainItems([{ id: 'c1', title: 'Stretch' }])).toEqual([
-      { id: 'c1', title: 'Stretch', estimatedMinutes: null, deliverableKind: null, deliverableDatesNextStep: false },
+      {
+        id: 'c1', title: 'Stretch', estimatedMinutes: null, deliverableKind: null,
+        deliverableDatesNextStep: false,
+        medicationName: null, medicationAmount: null, medicationUnit: null,
+      },
     ]);
   });
 
   it('keeps a stored estimate', () => {
     expect(parseChainItems([{ id: 'c1', title: 'Stretch', estimatedMinutes: 5 }])).toEqual([
-      { id: 'c1', title: 'Stretch', estimatedMinutes: 5, deliverableKind: null, deliverableDatesNextStep: false },
+      {
+        id: 'c1', title: 'Stretch', estimatedMinutes: 5, deliverableKind: null,
+        deliverableDatesNextStep: false,
+        medicationName: null, medicationAmount: null, medicationUnit: null,
+      },
     ]);
   });
 
@@ -161,8 +179,38 @@ describe('parseChainItems', () => {
       {
         id: 'c1', title: 'Book haircut', estimatedMinutes: null,
         deliverableKind: 'date', deliverableDatesNextStep: true,
+        medicationName: null, medicationAmount: null, medicationUnit: null,
       },
     ]);
+  });
+
+  it('keeps a stored medication and its dose', () => {
+    const [item] = parseChainItems([
+      { id: 'c1', title: 'Morning pills', medicationName: 'Sertraline', medicationAmount: 50, medicationUnit: 'mg' },
+    ]);
+    expect(item.medicationName).toBe('Sertraline');
+    expect(item.medicationAmount).toBe(50);
+    expect(item.medicationUnit).toBe('mg');
+  });
+
+  it('drops an amount with no medication to belong to', () => {
+    // The name is the switch, so an orphan amount could never be read back and
+    // would reappear the moment a name was typed — under a medicine nobody
+    // entered it for.
+    const [item] = parseChainItems([
+      { id: 'c1', title: 'x', medicationAmount: 50, medicationUnit: 'mg' },
+    ]);
+    expect(item.medicationName).toBeNull();
+    expect(item.medicationAmount).toBeNull();
+    expect(item.medicationUnit).toBeNull();
+  });
+
+  it('drops an amount with no unit to be read in', () => {
+    const [item] = parseChainItems([
+      { id: 'c1', title: 'x', medicationName: 'Sertraline', medicationAmount: 50 },
+    ]);
+    expect(item.medicationName).toBe('Sertraline');
+    expect(item.medicationAmount).toBeNull();
   });
 
   it('rejects a stored kind that is not one of the three', () => {

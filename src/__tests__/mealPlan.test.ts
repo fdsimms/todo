@@ -54,6 +54,7 @@ function entry(
     recipeScale: 1,
     cookTask: null,
     shopTask: null,
+    logMeal: null,
     calendarEventId: null,
     ...overrides,
   };
@@ -61,6 +62,7 @@ function entry(
 
 function recipe(id: string, name: string): Recipe {
   return {
+    backfillDismissedFields: [],
     id,
     name,
     nameKey: name.toLowerCase(),
@@ -72,6 +74,7 @@ function recipe(id: string, name: string): Recipe {
     servings: null,
     servingsMax: null,
     recipeYield: null,
+    cookedWeightG: null,
     leftoverKeepDays: null,
     imagePath: null,
     mealType: null,

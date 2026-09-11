@@ -116,6 +116,12 @@ export const GENERATED_KINDS: readonly GeneratedKind[] = [
   // be cooked, they file under one category, and reading them together is how a
   // person meets the meal plan in Settings.
   'mealShortfall',
+  // Beside mealShortfall rather than appended at the end, for its own reason
+  // restated: the two file under one category with mealSlot and mealPlanNudge,
+  // and this is the fourth meal-plan generator a person meets there. It reads
+  // the same source row mealShortfall does, just a few days after the fact
+  // instead of a few days ahead of it.
+  'mealLogNudge',
   'projectReview',
   'supplyReorder',
   'calendarReview',
@@ -154,6 +160,14 @@ export const GENERATED_KINDS: readonly GeneratedKind[] = [
   // groceryUseUp are: one is about a project going quiet and the other about a
   // weekend going empty, and somebody meeting one has not half-met the other.
   'weekendNudge',
+  // The twentieth, appended beside the mood pair rather than beside `health`.
+  // It shares a *store* with `health` and nothing else: that one reacts to a
+  // reading, this one asks for one, and the switch a person is looking for
+  // when they want to be reminded to weigh themselves is not the switch that
+  // governs their sodium rule. What it does have in common with `moodLog`, and
+  // what puts it here, is the shape of the question: once in a while, record
+  // something only you can record.
+  'weighIn',
 ];
 
 /**
@@ -196,6 +210,7 @@ export type GeneratedEnabledKey =
   | 'leftoverUseUpTasks'
   | 'mealPlanNudgeEnabled'
   | 'mealShortfallTasks'
+  | 'mealLogNudgeTasks'
   | 'projectReviewTasks'
   | 'supplyReorderTasks'
   | 'calendarReviewTasks'
@@ -208,7 +223,8 @@ export type GeneratedEnabledKey =
   | 'healthTasks'
   | 'moodLogTasks'
   | 'moodNudgeTasks'
-  | 'weekendNudgeTasks';
+  | 'weekendNudgeTasks'
+  | 'weighInTasks';
 
 export interface GeneratedKindSpec {
   kind: GeneratedKind;
@@ -575,6 +591,26 @@ export const GENERATED_KIND_SPECS: Record<GeneratedKind, GeneratedKindSpec> = {
     // distinction only the code makes.
     defaultCategory: 'Meal Plan',
   },
+  mealLogNudge: {
+    kind: 'mealLogNudge',
+    pausedOnVacation: true,
+    enabledKey: 'mealLogNudgeTasks',
+    label: 'Log reminders for planned meals',
+    onHint: 'A planned meal with nothing logged a few days later adds a task to log it',
+    offHint: 'A planned meal with nothing logged adds no task',
+    icon: 'journal-outline',
+    // Its source is a MealPlanEntry, and the opt-out it writes there
+    // (MealPlanEntry.logMeal) is the same field the completion-time prompt's
+    // "Don't ask for this meal" already writes — see mealLogNudgeTasks.ts.
+    sourced: true,
+    notice: false,
+    kitchen: true,
+    categorized: true,
+    // Beside mealSlot, mealShortfall and mealPlanNudge, for mealShortfall's
+    // own reason: reading the four together is how a person meets the meal
+    // plan in Settings.
+    defaultCategory: 'Meal Plan',
+  },
   mealPlanNudge: {
     kind: 'mealPlanNudge',
     pausedOnVacation: true,
@@ -695,11 +731,12 @@ export const GENERATED_KIND_SPECS: Record<GeneratedKind, GeneratedKindSpec> = {
     onHint: 'Adds one task a day to log how you\'re feeling',
     offHint: 'No daily task to log how you\'re feeling',
     icon: 'happy-outline',
-    // Its source id is the day key it asks about, which names a square on the
-    // calendar rather than a row anything could be written back to — the same
-    // position calendarReview is in, and the reason writeGeneratedOptOut has
-    // nothing to write for it. What stops a swiped-away one coming back is
-    // moodLogLastDayKey.
+    // Its source id is the day key it asks about (or, with moodLogTimeSegments
+    // configured, the day and the segment together — see moodLogSourceId),
+    // which names a square on the calendar rather than a row anything could be
+    // written back to — the same position calendarReview is in, and the reason
+    // writeGeneratedOptOut has nothing to write for it. What stops a
+    // swiped-away one coming back is moodLogLastDayKey.
     sourced: false,
     // Not a notice, unlike calendarReview beside it. Logging is the work rather
     // than something the app is telling you, and pushing the check-in to the
@@ -756,6 +793,39 @@ export const GENERATED_KIND_SPECS: Record<GeneratedKind, GeneratedKindSpec> = {
     kitchen: false,
     categorized: true,
     defaultCategory: 'Personal',
+  },
+  // Ships off, like every generator that adds a surface rather than replacing
+  // one already on screen, and with a second gate underneath it that this
+  // switch alone can't satisfy: reading and writing Health are both required,
+  // because the pass needs the read to know whether to ask and the sheet needs
+  // the write to record the answer. So the settings row is the permission and
+  // `checkWeighInTasks` is what refuses when the two Health switches aren't
+  // there to back it.
+  weighIn: {
+    kind: 'weighIn',
+    // Paused on vacation, unlike moodLog beside it. A mood log is a personal
+    // record that a week away is exactly the interesting part of; being asked
+    // to find a set of scales in a hotel is a chore, and the whole point of
+    // vacation mode is that chores stand down.
+    pausedOnVacation: true,
+    enabledKey: 'weighInTasks',
+    label: 'Ask for a weigh-in',
+    onHint: 'Adds a task when nothing has been recorded for a while',
+    offHint: 'No task when nothing has been recorded',
+    icon: 'scale-outline',
+    // Its source id is the day key the request was raised on — a square on the
+    // calendar rather than a row anything could be written back to, the same
+    // position moodLog is in, and the reason writeGeneratedOptOut has nothing
+    // to write for it. What stops a swiped-away one coming straight back is
+    // weighInLastDayKey.
+    sourced: false,
+    // Not a notice, for moodLog's reason: recording the weight is the work
+    // rather than something the app is telling you, and moving the request to
+    // tomorrow morning is the obvious thing to want to do with it.
+    notice: false,
+    kitchen: false,
+    categorized: true,
+    defaultCategory: 'Health',
   },
 };
 

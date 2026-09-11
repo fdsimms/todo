@@ -17,6 +17,7 @@ import { haptics } from '../utils/haptics';
 import { animateLayout } from '../utils/layoutAnimation';
 import { formatDuration } from '../utils/effort';
 import { buildDeloadPlan, deloadUpdates, type DeloadPlan, type DeloadProposal } from '../utils/deloadPlan';
+import { getLogicalDayKey } from '../utils/dateUtils';
 import { useTaskStore } from '../store/useTaskStore';
 import { useSettingsStore } from '../store/useSettingsStore';
 import { useCalendarStore } from '../store/useCalendarStore';
@@ -76,6 +77,8 @@ export function DeloadSheet({ visible, todaysTasks, notes, onClose }: Props) {
   const allTasks = useTaskStore(s => s.tasks);
   const deloadTasks = useTaskStore(s => s.deloadTasks);
   const calendarReadEnabled = useSettingsStore(s => s.calendarReadEnabled);
+  const dayResetTime = useSettingsStore(s => s.dayResetTime);
+  const setLastDeloadAppliedDayKey = useSettingsStore(s => s.setLastDeloadAppliedDayKey);
   const calendarEvents = useCalendarStore(s => s.events);
   const calendarLoaded = useCalendarStore(s => s.loaded);
 
@@ -203,6 +206,10 @@ export function DeloadSheet({ visible, todaysTasks, notes, onClose }: Props) {
       .filter((m): m is { id: string; updates: Partial<Task> } => m !== null);
     animateLayout();
     deloadTasks(moves);
+    // Stamped here rather than inside deloadTasks itself: that action also
+    // fires from LookAheadSheet for a day that isn't today, and only this
+    // sheet is "lighten today" — see lastDeloadAppliedDayKey's own comment.
+    setLastDeloadAppliedDayKey(getLogicalDayKey(new Date(), dayResetTime));
     dismiss();
   };
 

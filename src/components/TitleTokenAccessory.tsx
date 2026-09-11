@@ -1,9 +1,10 @@
-import React from 'react';
+import React, { useEffect, useState } from 'react';
 import { InputAccessoryView, Platform, StyleSheet, Text, View } from 'react-native';
+import * as Clipboard from 'expo-clipboard';
 import Ionicons from '@expo/vector-icons/Ionicons';
 import { PressableScale } from './PressableScale';
 import { useColors } from '../theme/ThemeContext';
-import { spacing, radius, font, fontWeight, type Colors } from '../theme';
+import { spacing, radius, font, fontWeight, iconSize, type Colors } from '../theme';
 
 const TOKENS: { char: string; label: string }[] = [
   { char: '#', label: 'hash' },
@@ -40,11 +41,46 @@ interface TitleTokenAccessoryProps {
  * while looking at the keyboard rather than the field above it, and this
  * sits right where the thumb already is. It only renders when the caller
  * passes both `onConfirm` and `confirmVisible`.
+ *
+ * The clipboard button is the same insert as a token, just with the
+ * clipboard's text standing in for a fixed character — `onInsert` already
+ * splices whatever string it's given in at the caret (`insertToken` in
+ * `useTitleSelection`), so a copied link lands the same way tapping "#"
+ * does, without detouring through tapping into the field and holding for
+ * the system paste menu first.
  */
 export function TitleTokenAccessory({ nativeID, onInsert, onConfirm, confirmVisible }: TitleTokenAccessoryProps) {
   const colors = useColors();
+  // Starts true so the button isn't disabled for a frame before the first
+  // check resolves; a listener keeps it current while the bar stays mounted
+  // (copying something in another app and switching back fires it too).
+  const [hasClipboardContent, setHasClipboardContent] = useState(true);
+
+  useEffect(() => {
+    if (Platform.OS !== 'ios') return;
+    let cancelled = false;
+    const check = () => {
+      Clipboard.hasStringAsync().then((result) => {
+        if (!cancelled) setHasClipboardContent(result);
+      });
+    };
+    check();
+    const subscription = Clipboard.addClipboardListener(check);
+    return () => {
+      cancelled = true;
+      subscription.remove();
+    };
+  }, []);
 
   if (Platform.OS !== 'ios') return null;
+
+  const handlePaste = async () => {
+    // Empty is a no-op rather than inserting nothing visible — same guard
+    // useCopyToClipboard uses on the write side, for the same reason: a
+    // silently-failed read shouldn't read as "there was nothing to paste".
+    const text = await Clipboard.getStringAsync();
+    if (text) onInsert(text);
+  };
 
   const styles = makeStyles(colors);
   return (
@@ -62,6 +98,20 @@ export function TitleTokenAccessory({ nativeID, onInsert, onConfirm, confirmVisi
               <Text style={styles.tokenText}>{char}</Text>
             </PressableScale>
           ))}
+          <PressableScale
+            style={[styles.tokenBtn, !hasClipboardContent && styles.tokenBtnDisabled]}
+            haptic
+            disabled={!hasClipboardContent}
+            onPress={handlePaste}
+            accessibilityLabel="Paste from clipboard"
+            accessibilityState={{ disabled: !hasClipboardContent }}
+          >
+            <Ionicons
+              name="clipboard-outline"
+              size={iconSize.md}
+              color={hasClipboardContent ? colors.text : colors.textTertiary}
+            />
+          </PressableScale>
         </View>
         {onConfirm && confirmVisible && (
           <PressableScale
@@ -88,6 +138,11 @@ const makeStyles = (colors: Colors) => StyleSheet.create({
     backgroundColor: colors.bgSecondary,
     borderTopWidth: StyleSheet.hairlineWidth,
     borderTopColor: colors.separator,
+    // Rounds to meet the keyboard's own top corners, which sit flush
+    // against this bar's bottom edge.
+    borderTopLeftRadius: radius.lg,
+    borderTopRightRadius: radius.lg,
+    borderCurve: 'continuous',
   },
   tokenGroup: {
     flexDirection: 'row',
@@ -101,6 +156,9 @@ const makeStyles = (colors: Colors) => StyleSheet.create({
     paddingHorizontal: spacing.md,
     borderRadius: radius.md,
     backgroundColor: colors.bgTertiary,
+  },
+  tokenBtnDisabled: {
+    opacity: 0.4,
   },
   tokenText: {
     fontSize: font.lg,

@@ -59,6 +59,13 @@ const makeItem = (overrides: Partial<TemplateItem> = {}): TemplateItem => ({
   recurrenceCount: null,
   vacationPause: false, excludeFromSuggestions: false,
   estimatedMinutes: null,
+  completionTimerMinutes: null,
+  penaltyMinutes: null,
+  penaltyCutoffTime: null,
+  gatesApps: false,
+  medicationName: null,
+  medicationAmount: null,
+  medicationUnit: null,
   deliverableKind: null,
   chainEnabled: false,
   chainItems: [],
@@ -234,6 +241,24 @@ describe('buildDraftsFromTemplate', () => {
   const end = new Date('2026-06-27T09:00:00');
   const noAnchors = { start: null, end: null };
 
+  it('carries a gate onto the draft', () => {
+    // A morning-routine template whose point is that nothing else happens
+    // before the walk would otherwise hand out tasks that gate nothing.
+    const [draft] = buildDraftsFromTemplate([makeItem({ gatesApps: true })], noAnchors);
+    expect(draft.gatesApps).toBe(true);
+  });
+
+  it('carries the apps-blocked cost onto the draft, but never a charge', () => {
+    // A morning-routine template whose point is that the walk costs something
+    // would otherwise hand out tasks that cost nothing. There is no
+    // penaltyFiredAt to carry: the cost is configuration, the charge is not.
+    const item = makeItem({ penaltyMinutes: 120, penaltyCutoffTime: '08:00' });
+    const [draft] = buildDraftsFromTemplate([item], noAnchors);
+    expect(draft.penaltyMinutes).toBe(120);
+    expect(draft.penaltyCutoffTime).toBe('08:00');
+    expect('penaltyFiredAt' in draft).toBe(false);
+  });
+
   it('maps all item fields onto the draft, resolved against the start anchor', () => {
     const item = makeItem({
       title: 'Pick up rental car',
@@ -392,6 +417,7 @@ const makeTemplate = (overrides: Partial<TaskTemplate> = {}): TaskTemplate => ({
   applyContainer: 'stack',
   schedule: null,
   scheduleLastFiredKey: null,
+  anchorsAreAway: false,
   ...overrides,
 });
 

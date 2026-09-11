@@ -1,0 +1,4 @@
+{
+  "message": "Health rules can now watch sodium, protein, fiber, sugar, caffeine, water and calories, plus a saturated fat limit, each with its own checkpoint time. Any of them can be set as a floor or a ceiling, so a rule can ask for at least 2,000mg of sodium by lunch, or fire if you go over a caffeine limit for the day",
+  "date": "2026-09-09"
+}

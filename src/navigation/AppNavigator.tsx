@@ -17,7 +17,13 @@ import { SearchScreen } from '../screens/SearchScreen';
 import { ProjectsScreen } from '../screens/ProjectsScreen';
 import { LogbookScreen } from '../screens/LogbookScreen';
 import { StatsScreen } from '../screens/StatsScreen';
+import { FoodLogScreen } from '../screens/FoodLogScreen';
 import { MoodScreen } from '../screens/MoodScreen';
+import { MedicationScreen } from '../screens/MedicationScreen';
+import { useMedicationStore } from '../store/useMedicationStore';
+import { WeightScreen } from '../screens/WeightScreen';
+import { MoodHistoryScreen } from '../screens/MoodHistoryScreen';
+import { SymptomDetailScreen } from '../screens/SymptomDetailScreen';
 import { ArchivedScreen } from '../screens/ArchivedScreen';
 import { BackfillScreen } from '../screens/BackfillScreen';
 import { StuckScreen } from '../screens/StuckScreen';
@@ -41,6 +47,8 @@ import { DemoBanner } from '../components/DemoBanner';
 import { UndoBar } from '../components/UndoBar';
 import { UseUpResolveSheet } from '../components/UseUpResolveSheet';
 import { FinishLeftoverPrompt } from '../components/FinishLeftoverPrompt';
+import { LogMealPrompt } from '../components/LogMealPrompt';
+import { LogMealEntrySheet } from '../components/LogMealEntrySheet';
 import { CookRecap } from '../components/CookRecap';
 import { useColors } from '../theme/ThemeContext';
 import { useTheme } from '../theme/ThemeContext';
@@ -54,6 +62,7 @@ import { NAV_HUBS, NAV_MENU_ROWS } from '../utils/navHubs';
 import { useTaskGroupStore } from '../store/useTaskGroupStore';
 import { useTemplateStore } from '../store/useTemplateStore';
 import { usePersonStore } from '../store/usePersonStore';
+import { useFoodLogStore } from '../store/useFoodLogStore';
 import { useMoodStore } from '../store/useMoodStore';
 
 const Tab = createBottomTabNavigator();
@@ -116,11 +125,12 @@ const KITCHEN_SCREENS: ReadonlySet<string> = new Set(
 const PUSHED_ROUTES = new Set([
   'Settings', 'SettingsGroup', 'TemplateDetail', 'ProjectDetail', 'CategoryDetail',
   'RecipeDetail', 'PersonDetail', 'CookbookDetail',
-  // Reached from Settings rather than from the menu — it fills in empty fields
-  // across tasks, categories, projects, people and grocery items, which is
-  // maintenance rather than a place to work. A pushed card like SettingsGroup,
-  // so it needs no tab and can't be restored onto at launch.
-  'Backfill',
+  // Reached from the Mood screen rather than from the menu. Both are the mood
+  // log read at a narrower grain — every entry there is, and one symptom —
+  // which is a place you go *from* Mood rather than a destination of its own,
+  // and neither would survive a cold-launch restore with nothing to say what
+  // it was showing.
+  'MoodHistory', 'SymptomDetail',
 ]);
 
 function MorePlaceholder() {
@@ -240,7 +250,11 @@ const MainTabs = React.memo(function MainTabs({
       <Tab.Screen name="Logbook" component={LogbookScreen} options={HIDDEN} />
       <Tab.Screen name="Stats" component={StatsScreen} options={HIDDEN} />
       <Tab.Screen name="Mood" component={MoodScreen} options={HIDDEN} />
+      <Tab.Screen name="Medications" component={MedicationScreen} options={HIDDEN} />
+      <Tab.Screen name="Weight" component={WeightScreen} options={HIDDEN} />
+      <Tab.Screen name="FoodLog" component={FoodLogScreen} options={HIDDEN} />
       <Tab.Screen name="Stuck" component={StuckScreen} options={HIDDEN} />
+      <Tab.Screen name="Backfill" component={BackfillScreen} options={HIDDEN} />
       <Tab.Screen name="Reminders" component={RemindersScreen} options={HIDDEN} />
       <Tab.Screen name="Archived" component={ArchivedScreen} options={HIDDEN} />
       <Tab.Screen name="Tips" component={TipsScreen} options={HIDDEN} />
@@ -268,6 +282,8 @@ function initialScreenFromSettings(): string {
     templates: useTemplateStore.getState().templates.length,
     people: usePersonStore.getState().people.length,
     mood: useMoodStore.getState().logs.length,
+    medications: useMedicationStore.getState().logs.length,
+    foodLog: useFoodLogStore.getState().totalCount,
   })) return 'Today';
   return lastVisitedScreen;
 }
@@ -382,11 +398,6 @@ export default function AppNavigator() {
             options={{ presentation: 'card' }}
           />
           <RootStack.Screen
-            name="Backfill"
-            component={BackfillScreen}
-            options={{ presentation: 'card' }}
-          />
-          <RootStack.Screen
             name="RecipeDetail"
             component={RecipeDetailScreen}
             options={{ presentation: 'card' }}
@@ -412,11 +423,28 @@ export default function AppNavigator() {
             options={{ presentation: 'card' }}
           />
           <RootStack.Screen
+            name="MoodHistory"
+            component={MoodHistoryScreen}
+            options={{ presentation: 'card' }}
+          />
+          <RootStack.Screen
+            name="SymptomDetail"
+            component={SymptomDetailScreen}
+            options={{ presentation: 'card' }}
+          />
+          <RootStack.Screen
             name="PersonDetail"
             component={PersonDetailScreen}
             options={{ presentation: 'card' }}
           />
         </RootStack.Navigator>
+        {/* Inside NavigationContainer, unlike its siblings below, because it
+            renders FoodLogEntrySheet and (via ScanToLogFlow) ScanPortionSheet
+            and BarcodeScanSheet, all of which use useKeyboardInsetScroll —
+            which calls useIsFocused and so needs a navigation object. It's
+            still a sibling of the Navigator rather than a screen, so it stays
+            mounted across every screen exactly as before. */}
+        <LogMealEntrySheet />
       </NavigationContainer>
 
       <SideMenuDrawer
@@ -444,8 +472,10 @@ export default function AppNavigator() {
           each renders nothing (FinishLeftoverPrompt) or a plain Modal
           (UseUpResolveSheet's LeftoverSheet, CookRecap's sheet), touching no
           navigation hooks, so none needs NavigationContainer. See their own doc
-          comments. */}
+          comments. (LogMealEntrySheet moved inside NavigationContainer above,
+          for the reason noted there.) */}
       <FinishLeftoverPrompt />
+      <LogMealPrompt />
       <UseUpResolveSheet />
       {/* Mounted once here rather than on the two screens a meal is ticked off
           from, which is what the offers it replaced did. A banner rendered

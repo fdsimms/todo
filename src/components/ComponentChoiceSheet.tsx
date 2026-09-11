@@ -59,7 +59,11 @@ export function ComponentChoiceSheet({ visible, recipe, component, onClose }: Pr
   }, [component?.component.id, visible]);
 
   // The recipe's other labels, so joining an existing group is a tap and can't
-  // be misspelled into a lookalike group of one.
+  // be misspelled into a lookalike group of one. Includes the recipe's
+  // ingredient labels too — sharing one with "corn tortillas" is exactly how
+  // a component becomes that ingredient's alternative (see recipeComponents.ts
+  // on cross-type groups); the pill can't say which kind a label belongs to
+  // any more than the picker itself distinguishes them once joined.
   const existingLabels = useMemo(() => {
     const labels: string[] = [];
     for (const c of recipe.components) {
@@ -67,16 +71,30 @@ export function ComponentChoiceSheet({ visible, recipe, component, onClose }: Pr
         labels.push(c.choiceGroup);
       }
     }
+    for (const i of recipe.ingredients) {
+      if (i.choiceGroup && !labels.includes(i.choiceGroup)) labels.push(i.choiceGroup);
+    }
     return labels;
-  }, [recipe.components, component?.component.id]);
+  }, [recipe.components, recipe.ingredients, component?.component.id]);
+
+  // The ingredient this component's group already belongs to, if any — an
+  // ingredient always wins an unresolved group over a component (see
+  // resolveGroupWinners), so a mixed group's recipe-level default is always
+  // this, never something "Make the default" below could move.
+  const defaultIngredientName = useMemo(() => {
+    const group = component?.component.choiceGroup;
+    if (!group) return null;
+    return recipe.ingredients.find(i => i.choiceGroup === group)?.name || null;
+  }, [recipe.ingredients, component?.component.choiceGroup]);
 
   // Whether this component already wins its group by sitting first — the state
-  // "Make the default" would move it to, so there'd be nothing to offer.
+  // "Make the default" would move it to, so there'd be nothing to offer. Can
+  // never be true for a mixed group: the ingredient side always wins first.
   const isDefault = useMemo(() => {
     const group = component?.component.choiceGroup;
-    if (!group) return false;
+    if (!group || defaultIngredientName) return false;
     return recipe.components.find(c => c.choiceGroup === group)?.id === component?.component.id;
-  }, [recipe.components, component?.component.id, component?.component.choiceGroup]);
+  }, [recipe.components, component?.component.id, component?.component.choiceGroup, defaultIngredientName]);
 
   const saveAndClose = () => {
     if (component) setComponentChoiceGroup(recipe.id, component.component.id, cleanChoiceGroup(label));
@@ -159,8 +177,15 @@ export function ComponentChoiceSheet({ visible, recipe, component, onClose }: Pr
             />
             {!clean ? (
               <Text style={styles.hint}>
-                Name the group these alternatives share, like “Side” or “Sauce”. Every component
-                under it is one way of filling the same slot.
+                Name the group these alternatives share, like “Side” or “Sauce”. Every option
+                under it (an ingredient, another component, or both) is one way of filling the
+                same slot.
+              </Text>
+            ) : recipe.ingredients.some(i => i.choiceGroup === clean) ? (
+              <Text style={styles.hint}>
+                “{clean}” already names an ingredient on this recipe. Sharing it makes this
+                component an alternative to that ingredient: a meal buys the ingredient or cooks
+                this instead, never both.
               </Text>
             ) : (
               <Text style={styles.hint}>
@@ -180,7 +205,12 @@ export function ComponentChoiceSheet({ visible, recipe, component, onClose }: Pr
       {!!clean && (
         <View style={styles.sectionCard}>
           <Text style={styles.groupLabel}>Default</Text>
-          {isDefault ? (
+          {defaultIngredientName ? (
+            <View style={styles.defaultRow}>
+              <Ionicons name="checkmark-circle" size={iconSize.sm} color={colors.accent} />
+              <Text style={styles.defaultText}>{defaultIngredientName} is the usual choice for “{clean}”</Text>
+            </View>
+          ) : isDefault ? (
             <View style={styles.defaultRow}>
               <Ionicons name="checkmark-circle" size={iconSize.sm} color={colors.accent} />
               <Text style={styles.defaultText}>The usual choice for “{clean}”</Text>
@@ -205,7 +235,9 @@ export function ComponentChoiceSheet({ visible, recipe, component, onClose }: Pr
             </TouchableOpacity>
           )}
           <Text style={styles.hint}>
-            What a planned meal uses until you pick something else for that night.
+            {defaultIngredientName
+              ? `An ingredient sharing this group is always the default. Pick ${name} for a specific meal from the plan instead.`
+              : 'What a planned meal uses until you pick something else for that night.'}
           </Text>
         </View>
       )}

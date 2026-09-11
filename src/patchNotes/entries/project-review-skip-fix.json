@@ -1,0 +1,4 @@
+{
+  "message": "Fixed \"Nothing to pull, mark reviewed\" not dismissing the review task for a project you'd reviewed before — it could mark an old, already-completed review task instead of the one actually on your list.",
+  "date": "2026-09-11"
+}

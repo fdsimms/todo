@@ -34,9 +34,14 @@ import DeviceActivity
 /// are opaque values only SwiftUI can render. So the app can count what the
 /// user picked and shield it; it can never name it or measure it.
 public class TodoScreenTimeBridgeModule: Module {
-  /// The store the focus shield is written to. Named rather than the default
-  /// one so clearing it can never disturb settings written by anything else.
-  private static let shieldStoreName = "focusShield"
+  /// The store the shield is written to. Named rather than the default one so
+  /// clearing it can never disturb settings written by anything else.
+  ///
+  /// Lives in `ScreenTimeShared` because the monitor extension writes the same
+  /// store when a penalty window ends, and two processes clearing two
+  /// differently-named stores is a shield nothing can lift. That file's own
+  /// comment says why the name is never to be changed.
+  private static var shieldStoreName: String { ScreenTimeShared.shieldStoreName }
   /// The monitor's activity name, and the prefix its threshold events are
   /// registered under. A crossing is reported by parsing the rule id back out
   /// of the event name, so the two halves have to agree — the extension's copy
@@ -191,6 +196,149 @@ public class TodoScreenTimeBridgeModule: Module {
       return false
     }
 
+    /// Hand both extensions the app's own answer about why the apps are blocked.
+    ///
+    /// Written on every reconcile rather than only when a block starts: the
+    /// answer changes (a focus session begins, a setting is switched off, a
+    /// second failure moves the end) while a window is already armed, and
+    /// neither extension gets a chance to ask when it wakes. The monitor reads
+    /// `otherReasonWantsShield` to decide whether it may lift a shield; the
+    /// shield screen reads the rest to say something better than "blocked".
+    Function("setShieldState") { (
+      otherReasonWantsShield: Bool,
+      reason: String,
+      untilIso: String?,
+      detail: String?,
+      pendingGateDetail: String?
+    ) -> Bool in
+      var written = false
+      TodoScreenTimeExceptionCatcher.runCatchingExceptions {
+        written = ScreenTimeShared.writeShieldState(ShieldStateShared(
+          otherReasonWantsShield: otherReasonWantsShield,
+          reason: reason,
+          untilIso: untilIso,
+          detail: detail,
+          pendingGateDetail: pendingGateDetail
+        ))
+      }
+      return written
+    }
+
+    /// Arm a one-shot window whose end lifts the current penalty block, so it
+    /// comes off on time with the app closed.
+    ///
+    /// Three things about the schedule are not obvious:
+    ///
+    /// - **The bounds are `DateComponents`, not dates.** Only hour/minute/second
+    ///   are given, which is what the interval actually needs: this window is
+    ///   always shorter than a day (the editor's own ceiling), so the clock time
+    ///   is unambiguous within it.
+    /// - **`repeats: false`.** A repeating window would lift the shield at the
+    ///   same time tomorrow, on a block nobody is serving.
+    /// - **A window under about a quarter of an hour is refused by iOS**
+    ///   (`MonitoringError.intervalTooShort`), which is why the editor's floor
+    ///   is 15 minutes. `startMonitoring` throws, and a throw here is not fatal:
+    ///   the JS reconciler still lifts the block on the next foreground.
+    Function("schedulePenaltyExpiry") { (untilIso: String) -> Bool in
+      #if canImport(DeviceActivity)
+      if #available(iOS 16.0, *) {
+        var scheduled = false
+        TodoScreenTimeExceptionCatcher.runCatchingExceptions {
+          guard let until = Self.parseIso(untilIso), until > Date() else { return }
+
+          let calendar = Calendar.current
+          let schedule = DeviceActivitySchedule(
+            intervalStart: calendar.dateComponents([.hour, .minute, .second], from: Date()),
+            intervalEnd: calendar.dateComponents([.hour, .minute, .second], from: until),
+            repeats: false
+          )
+          let center = DeviceActivityCenter()
+          let name = DeviceActivityName(ScreenTimeShared.penaltyActivityName)
+          center.stopMonitoring([name])
+          try? center.startMonitoring(name, during: schedule)
+          scheduled = true
+        }
+        return scheduled
+      }
+      #endif
+      return false
+    }
+
+    /// Arm a one-shot window whose *start* raises a gate block, so a gate that
+    /// comes due while the app is closed still holds the apps.
+    ///
+    /// The mirror of `schedulePenaltyExpiry` and the same three caveats apply
+    /// (clock-time bounds, `repeats: false`, a quarter-hour floor), plus one
+    /// that is this direction's own: the bounds being clock times rather than
+    /// dates means an armed window is "the next time it is 06:00", so the JS
+    /// side refuses to arm anything more than a day out (`GATE_ARM_HORIZON_MS`
+    /// in `appGate.ts`). Arming further ahead than that would raise a shield
+    /// days before the gate it belongs to was real.
+    ///
+    /// The window's end is deliberately not a callback: a gate ends when its
+    /// task does, not when an hour is up, so `intervalDidEnd` answers only for
+    /// the penalty window and this one runs out doing nothing.
+    Function("scheduleGateWindow") { (startIso: String, endIso: String) -> Bool in
+      #if canImport(DeviceActivity)
+      if #available(iOS 16.0, *) {
+        var scheduled = false
+        TodoScreenTimeExceptionCatcher.runCatchingExceptions {
+          guard let start = Self.parseIso(startIso), let end = Self.parseIso(endIso),
+                end > start
+          else { return }
+
+          let calendar = Calendar.current
+          let schedule = DeviceActivitySchedule(
+            intervalStart: calendar.dateComponents([.hour, .minute, .second], from: start),
+            intervalEnd: calendar.dateComponents([.hour, .minute, .second], from: end),
+            repeats: false
+          )
+          let center = DeviceActivityCenter()
+          let name = DeviceActivityName(ScreenTimeShared.gateActivityName)
+          center.stopMonitoring([name])
+          try? center.startMonitoring(name, during: schedule)
+          scheduled = true
+        }
+        return scheduled
+      }
+      #endif
+      return false
+    }
+
+    /// Disarm the gate window. Called on every reconcile that finds nothing
+    /// pending, so a window armed for a gate since completed, deferred or
+    /// switched off can't raise a shield for it later.
+    Function("cancelGateWindow") { () -> Bool in
+      #if canImport(DeviceActivity)
+      if #available(iOS 16.0, *) {
+        var cancelled = false
+        TodoScreenTimeExceptionCatcher.runCatchingExceptions {
+          DeviceActivityCenter().stopMonitoring([DeviceActivityName(ScreenTimeShared.gateActivityName)])
+          cancelled = true
+        }
+        return cancelled
+      }
+      #endif
+      return false
+    }
+
+    /// Disarm the window above. Called when a block is lifted early — the
+    /// feature being switched off — so its end can't clear a shield that a
+    /// later focus session has raised in the meantime.
+    Function("cancelPenaltyExpiry") { () -> Bool in
+      #if canImport(DeviceActivity)
+      if #available(iOS 16.0, *) {
+        var cancelled = false
+        TodoScreenTimeExceptionCatcher.runCatchingExceptions {
+          DeviceActivityCenter().stopMonitoring([DeviceActivityName(ScreenTimeShared.penaltyActivityName)])
+          cancelled = true
+        }
+        return cancelled
+      }
+      #endif
+      return false
+    }
+
     /// Lift the shield. Called on every route out of a session *and* at launch
     /// as a backstop — a crash mid-session must not leave someone locked out
     /// of their own apps with no running code to let them back in.
@@ -305,6 +453,18 @@ public class TodoScreenTimeBridgeModule: Module {
   /// Walks past anything already presented, since the picker is usually opened
   /// from a settings sheet that is itself modal — presenting on the root while
   /// a sheet is up throws.
+  /// An ISO instant as JS writes it, with or without fractional seconds.
+  ///
+  /// `ISO8601DateFormatter` refuses a string whose fractional-second shape
+  /// doesn't match its options, and `Date.toISOString()` always includes them
+  /// while a hand-built string may not — so both are tried rather than assuming
+  /// either.
+  private static func parseIso(_ value: String) -> Date? {
+    let fractional = ISO8601DateFormatter()
+    fractional.formatOptions = [.withInternetDateTime, .withFractionalSeconds]
+    return fractional.date(from: value) ?? ISO8601DateFormatter().date(from: value)
+  }
+
   private static func topViewController() -> UIViewController? {
     let scene = UIApplication.shared.connectedScenes
       .compactMap { $0 as? UIWindowScene }

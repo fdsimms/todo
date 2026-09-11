@@ -27,8 +27,12 @@ export interface ListBulkCategoryPanel {
   /** Category names offered as chips, in the order they should appear. */
   options: string[];
   onSet: (category: string | null) => void;
-  /** Called before onSet when the typed name isn't one of the options yet. */
-  onCreate: (name: string) => void;
+  /**
+   * Called before onSet when the typed name isn't one of the options yet.
+   * Omit for a closed set (a meal type, say) — the "Create …" chip hides and
+   * typing a name that matches nothing simply offers nothing to tap.
+   */
+  onCreate?: (name: string) => void;
   /** Off for a field that always holds a value — an aisle, say — where "None" isn't a real choice. Defaults to true. */
   allowNone?: boolean;
 }
@@ -96,7 +100,7 @@ export function ListBulkBar({
 
   const handleCreateCategory = () => {
     const trimmed = categoryText.trim();
-    if (!trimmed || !category) return;
+    if (!trimmed || !category?.onCreate) return;
     category.onCreate(trimmed);
     handleSetCategory(trimmed);
   };
@@ -219,7 +223,7 @@ export function ListBulkBar({
                 <Text style={styles.categoryChipText}>{name}</Text>
               </TouchableOpacity>
             ))}
-            {query !== '' && !exact && (
+            {query !== '' && !exact && category.onCreate && (
               <TouchableOpacity
                 style={[styles.categoryChip, styles.categoryCreateChip]}
                 onPress={handleCreateCategory}

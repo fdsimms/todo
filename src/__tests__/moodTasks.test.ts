@@ -6,6 +6,8 @@ import {
   MOOD_NUDGE_TITLE,
   daysBetweenKeys,
   moodLogDayKey,
+  moodLogSegmentOf,
+  moodLogSourceId,
   moodNudgeDayKey,
   moodNudgeNotes,
   wantsMoodNudge,
@@ -18,10 +20,14 @@ const days = (moods: (number | null)[]): MoodDay[] =>
     dayKey: `2026-08-${String(i + 1).padStart(2, '0')}`,
     mood,
     symptomKeys: [],
+    contextTagKeys: [],
     completed: 0,
     categories: [],
+    taskKeys: [],
     steps: null,
     sleepHours: null,
+    nutrients: null,
+    foodKeys: [],
   }));
 
 const generated = (kind: string, sourceId: string): Pick<Task, 'generatedKind' | 'generatedSourceId'> =>
@@ -35,6 +41,20 @@ describe('the day key on each kind', () => {
     expect(moodLogDayKey(generated('moodNudge', '2026-08-17'))).toBeNull();
     expect(moodNudgeDayKey(generated('moodNudge', '2026-08-17'))).toBe('2026-08-17');
     expect(moodNudgeDayKey(generated('moodLog', '2026-08-17'))).toBeNull();
+  });
+
+  it('splits a segmented check-in\'s sourceId back into its day and segment', () => {
+    expect(moodLogDayKey(generated('moodLog', '2026-08-17:evening'))).toBe('2026-08-17');
+    expect(moodLogSegmentOf(generated('moodLog', '2026-08-17:evening'))).toBe('evening');
+  });
+
+  it('reads no segment off an any-time check-in', () => {
+    expect(moodLogSegmentOf(generated('moodLog', '2026-08-17'))).toBeNull();
+  });
+
+  it('builds the sourceId a check-in is filed under, with and without a segment', () => {
+    expect(moodLogSourceId('2026-08-17', null)).toBe('2026-08-17');
+    expect(moodLogSourceId('2026-08-17', 'evening')).toBe('2026-08-17:evening');
   });
 });
 

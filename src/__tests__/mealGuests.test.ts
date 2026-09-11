@@ -15,6 +15,7 @@ function person(over: Partial<Person> & Pick<Person, 'id' | 'name'>): Person {
     cadenceDays: 0, nudgeOptIn: false, cadenceSetAt: null, reachOutDeclinedAt: null, reachOutOfferDeclinedAt: null, askAbout: '',
     backfillDismissedFields: [],
     groupId: null,
+    location: null,
     ...over,
   };
 }
@@ -35,6 +36,7 @@ function meal(over: Partial<MealPlanEntry> = {}): MealPlanEntry {
     recipeScale: 1,
     cookTask: null,
     shopTask: null,
+    logMeal: null,
     calendarEventId: null,
     ...over,
   };

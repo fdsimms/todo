@@ -40,6 +40,20 @@ function offHit(name: string) {
   return jsonResponse({ status: 1, product: { product_name: name, brands: 'Great Value', quantity: '1 gal' } });
 }
 
+/** An Open Food Facts hit carrying a label panel, trimmed from a real response. */
+function offHitWithPanel(name: string) {
+  return jsonResponse({
+    status: 1,
+    product: {
+      product_name: name,
+      brands: 'Great Value',
+      quantity: '1 gal',
+      serving_size: '240ml',
+      nutriments: { 'energy-kcal_100g': 50, proteins_100g: 3.3, salt_100g: 0.1 },
+    },
+  });
+}
+
 let fetchSpy: jest.SpyInstance;
 
 beforeEach(() => {
@@ -59,7 +73,8 @@ describe('the cache', () => {
   it('answers a stored hit without asking anyone', async () => {
     (dbGetGtinLookup as jest.Mock).mockReturnValue({
       gtin: GTIN, found: true, name: 'Milk', brand: 'Great Value',
-      quantity: '1 gal', source: 'openfoodfacts', fetchedAt: '2019-01-01T00:00:00Z',
+      quantity: '1 gal', category: null, nutrition: null,
+      source: 'openfoodfacts', fetchedAt: '2019-01-01T00:00:00Z',
     });
 
     await expect(lookupGtin(GTIN, NOW)).resolves.toMatchObject({ name: 'Milk' });
@@ -69,7 +84,8 @@ describe('the cache', () => {
   it('answers a fresh stored miss without asking anyone', async () => {
     (dbGetGtinLookup as jest.Mock).mockReturnValue({
       gtin: GTIN, found: false, name: '', brand: null,
-      quantity: null, source: '', fetchedAt: '2026-08-20T12:00:00Z',
+      quantity: null, category: null, nutrition: null,
+      source: '', fetchedAt: '2026-08-20T12:00:00Z',
     });
 
     await expect(lookupGtin(GTIN, NOW)).resolves.toBeNull();
@@ -79,12 +95,29 @@ describe('the cache', () => {
   it('re-asks once a stored miss has aged out', async () => {
     (dbGetGtinLookup as jest.Mock).mockReturnValue({
       gtin: GTIN, found: false, name: '', brand: null,
-      quantity: null, source: '', fetchedAt: '2026-01-01T00:00:00Z',
+      quantity: null, category: null, nutrition: null,
+      source: '', fetchedAt: '2026-01-01T00:00:00Z',
     });
     fetchSpy.mockResolvedValue(offHit('Milk'));
 
     await expect(lookupGtin(GTIN, NOW)).resolves.toMatchObject({ name: 'Milk' });
     expect(fetchSpy).toHaveBeenCalledTimes(1);
+  });
+
+  it('reads a cached row from before nutrition was kept as unknown, without re-asking', async () => {
+    // The upgrade case. Re-fetching would re-ask every barcode ever scanned on
+    // the first launch after the upgrade, on a path that has not yet checked
+    // whether lookups are even switched on.
+    (dbGetGtinLookup as jest.Mock).mockReturnValue({
+      gtin: GTIN, found: true, name: 'Milk', brand: 'Great Value', quantity: '1 gal',
+      category: null, source: 'openfoodfacts', fetchedAt: '2019-01-01T00:00:00Z',
+    });
+
+    const record = await lookupGtin(GTIN, NOW);
+
+    expect(record).toMatchObject({ name: 'Milk' });
+    expect(record?.nutrition ?? null).toBeNull();
+    expect(fetchSpy).not.toHaveBeenCalled();
   });
 
   it('refuses to reach the network while lookups are off', async () => {
@@ -116,6 +149,72 @@ describe('the source chain', () => {
     expect(fetchSpy).toHaveBeenCalledTimes(1);
     expect(String(fetchSpy.mock.calls[0][0])).toContain('api.nal.usda.gov');
     expect(record).toMatchObject({ name: 'Milk, 2%', source: 'usda' });
+  });
+
+  it('keeps the nutrition Open Food Facts sends back', async () => {
+    // The panel is the half this chain used to discard. The arithmetic itself
+    // is nutritionParse's to prove; what matters here is that it survives the
+    // trip through the service and onto the record.
+    fetchSpy.mockResolvedValue(offHitWithPanel('Milk'));
+
+    const record = await lookupGtin(GTIN, NOW);
+
+    expect(record?.nutrition).not.toBeNull();
+    expect(record?.nutrition?.source).toBe('openFoodFacts');
+    expect(record?.nutrition?.amounts.calorieKcal).toBe(50);
+    // Derived from salt, since Open Food Facts' own sodium field is not
+    // reliably in the unit it claims — see readOffNutrition.
+    expect(record?.nutrition?.amounts.sodiumMg).toBe(40);
+    // Stamped with the moment of the lookup, not with the wall clock.
+    expect(record?.nutrition?.recordedAt).toBe(NOW.toISOString());
+  });
+
+  it('asks Open Food Facts for the nutrition fields, which do not arrive unasked', async () => {
+    // The field-selected request is why this was free to add: `nutriments` is
+    // simply absent from the response unless it is named.
+    fetchSpy.mockResolvedValue(offHitWithPanel('Milk'));
+
+    await lookupGtin(GTIN, NOW);
+
+    expect(String(fetchSpy.mock.calls[0][0])).toContain('nutriments');
+  });
+
+  it('keeps the nutrition FoodData Central already sends, and caches it', async () => {
+    settings.fdcApiKey = 'fdc-key';
+    fetchSpy.mockResolvedValue(jsonResponse({
+      foods: [{
+        fdcId: 123,
+        description: 'Milk, 2%',
+        gtinUpc: '036000291452',
+        servingSize: 240,
+        servingSizeUnit: 'GRM',
+        foodNutrients: [{ nutrientId: 1008, unitName: 'KCAL', value: 50 }],
+      }],
+    }));
+
+    const record = await lookupGtin(GTIN, NOW);
+
+    expect(record?.nutrition?.source).toBe('fdc');
+    expect(record?.nutrition?.amounts.calorieKcal).toBe(50);
+    expect(record?.nutrition?.servingGrams).toBe(240);
+    // Cached with the rest of the answer, so the next scan of this code gets
+    // the panel without another request.
+    expect(dbSetGtinLookup).toHaveBeenCalledWith(
+      expect.objectContaining({ nutrition: record?.nutrition })
+    );
+  });
+
+  it('records no nutrition when the source sent none, rather than an empty panel', async () => {
+    // A source that said nothing about a food's contents has not said it
+    // contains nothing. See FoodNutrition.amounts.
+    fetchSpy.mockResolvedValue(offHit('Milk'));
+
+    const record = await lookupGtin(GTIN, NOW);
+
+    expect(record?.nutrition).toBeNull();
+    expect(dbSetGtinLookup).toHaveBeenCalledWith(
+      expect.objectContaining({ found: true, nutrition: null })
+    );
   });
 
   it('refuses a FoodData Central result whose own barcode is a different product', async () => {

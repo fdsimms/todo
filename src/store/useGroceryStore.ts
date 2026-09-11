@@ -1,5 +1,5 @@
 import { create } from 'zustand';
-import type { GroceryItem, GroceryList, GroceryListEntry, ItemProduct, ItemShopLink, ItemSubLink, ProductRating, ReceiptStyle, Shop, StoreAlias } from '../types';
+import type { FoodNutrition, GroceryItem, GroceryList, GroceryListEntry, ItemProduct, ItemShopLink, ItemSubLink, ProductRating, ReceiptStyle, Shop, StoreAlias } from '../types';
 import {
   dbGetAllGroceryItems,
   dbInsertGroceryItem,
@@ -25,6 +25,7 @@ import {
   dbUpdateGroceryShop,
   dbDeleteGroceryShop,
   dbSetShopExcludeFromSuggestions,
+  dbSetShopAisles,
   dbSetShopReceiptStyle,
   dbGetAllItemShopLinks,
   dbSetItemShopLink,
@@ -35,6 +36,8 @@ import {
   dbGetAllItemProducts,
   dbGetAllStoreAliases,
   dbSetStoreAlias,
+  dbSetStoreAliasItemId,
+  dbGetGtinLookup,
   dbSetItemProduct,
   dbSetProductGtin,
   dbDeleteItemProduct,
@@ -47,6 +50,8 @@ import {
   dbSetGroceryAisleOverrides,
   dbGetGroceryHiddenAisles,
   dbSetGroceryHiddenAisles,
+  dbGetGroceryNonFoodAisles,
+  dbSetGroceryNonFoodAisles,
   dbGetGroceryGroupBy,
   dbSetGroceryGroupBy,
   dbTransaction,
@@ -55,6 +60,9 @@ import { useRecipeStore } from './useRecipeStore';
 import { clampSupplyReorderAt, restockedSupplyCount } from '../utils/supply';
 import { useTaskStore } from './useTaskStore';
 import { useSettingsStore } from './useSettingsStore';
+import { useProjectStore } from './useProjectStore';
+import { awayListDriver, isProjectAwayNow } from '../utils/awayDates';
+import { getCurrentDayStart } from '../utils/dateUtils';
 import { generateId } from '../utils/id';
 import {
   HOME_LIST_NAME,
@@ -68,7 +76,7 @@ import { appendPriceObservation, mergePriceHistories } from '../utils/priceHisto
 import { groceryNameKey, parseGroceryInput, splitGroceryLines } from '../utils/groceryParse';
 import { catalogItemForKey } from '../utils/groceryPlural';
 import { hasUserFacts, factSignature, linkCounts } from '../utils/groceryFacts';
-import { describeQuantities } from '../utils/mealPlanGroceries';
+import { describeQuantities, mergeQuantities } from '../utils/mealPlanGroceries';
 import { defaultOnHandUntil, OUT_OF_IT_UNTIL } from '../utils/grocerySuggest';
 import type { PantryReviewAnswer } from '../utils/pantryReview';
 import { wantsShelfLifePrompt, type DisposalOutcome } from '../utils/itemDisposal';
@@ -98,6 +106,7 @@ import {
   gtinAliasText,
   type AliasDraft,
 } from '../utils/storeAliases';
+import { suggestGroceryAisles } from '../services/aiSuggestions';
 
 /**
  * The grocery catalog, which is also the shopping list.
@@ -153,6 +162,102 @@ function armCartHold(): void {
 }
 
 /**
+ * Every add lands an item the offline lexicon couldn't place in Other the
+ * instant it's typed — that stays true here, this only tries to do better a
+ * moment later. Nothing here is load-bearing: an item added with no working
+ * AI route (no key, no on-device model, or the feature switched off) just
+ * keeps the aisle it already has, exactly as before this existed.
+ *
+ * A short debounce collects a pasted multi-line list into one batched
+ * request instead of firing one per line, the same reasoning `suggestGroceryAisles`
+ * itself chunks a big on-device batch for. Module-level rather than store
+ * state: this is scratch work for one background sweep, not something any
+ * screen reads, and putting it in Zustand would fire a re-render for a queue
+ * nobody watches.
+ */
+const AUTO_AISLE_DEBOUNCE_MS = 400;
+let pendingAutoAisleItems: { id: string; name: string }[] = [];
+let autoAisleTimer: ReturnType<typeof setTimeout> | null = null;
+
+/**
+ * Queues a freshly-added item that landed in Other for a background AI
+ * reclassification pass.
+ *
+ * Gated on having an Anthropic key, cheaply and directly — not on
+ * `groceryAisleRoute()`, which is what a screen asks and would be the more
+ * obviously "correct" check here. That route also answers for the on-device
+ * engine, and answering means calling `isOnDeviceReady()`, which resolves the
+ * native `todo-foundation-models` bridge — fine from a screen (nothing in this
+ * app's test suite renders one; see CLAUDE.md's "no component or screen
+ * tests"), but this is a *store* action, and stores are exactly what the
+ * suite's ~11,000 tests exercise directly. `modules/todo-foundation-models`
+ * imports `react-native` at module scope, which is outside this project's
+ * jest `transformIgnorePatterns` — any test file that reaches this without
+ * itself mocking `todo-foundation-models` (virtually all of them, since only
+ * `aiSuggestions.test.ts` and `onDeviceModel.test.ts` have any reason to) hits
+ * a hard CJS parse error, not a caught exception, and it doesn't stay
+ * contained: it corrupted `todo-foundation-models`'s OWN virtual jest mock in
+ * whichever of those two files happened to share a worker with the file that
+ * triggered it, so the flakiness showed up as failures in tests this file
+ * never touches. Requiring a key sidesteps the whole thing: with one
+ * configured, `groceryAisleRoute()` resolves to `'claude'` without ever
+ * asking about on-device (see its own "rule 2" in aiRouting.ts), so nothing
+ * here ever reaches the bridge. A no-key, on-device-only install still gets
+ * aisle sorting for what the lexicon missed — just from the manual "Tidy"
+ * sheet, exactly as before this feature existed, not from this background
+ * pass.
+ */
+function scheduleAutoAisleClassification(id: string, name: string): void {
+  const { anthropicApiKey, aiFeatureConfig } = useSettingsStore.getState();
+  if (!anthropicApiKey || !aiFeatureConfig.groceryAisles.enabled) return;
+  pendingAutoAisleItems.push({ id, name });
+  if (autoAisleTimer) return;
+  autoAisleTimer = setTimeout(() => {
+    const batch = pendingAutoAisleItems;
+    pendingAutoAisleItems = [];
+    autoAisleTimer = null;
+    void runAutoAisleClassification(batch);
+  }, AUTO_AISLE_DEBOUNCE_MS);
+  // Same reasoning as armCartHold's — a scheduled-but-unfired pass shouldn't
+  // hang jest's node env at the end of a run.
+  (autoAisleTimer as unknown as { unref?: () => void }).unref?.();
+}
+
+/**
+ * Applies whatever `suggestGroceryAisles` came back with, skipping anything
+ * that isn't exactly where this pass found it.
+ *
+ * Deliberately not `setAisleMany`: that call is "a deliberate filing" by
+ * design (see its own comment) and remembers it as a standing fact about this
+ * shop. An unreviewed background guess is closer to the lexicon's own nature
+ * — a guess about groceries, not a fact about this one — so it moves the row
+ * and nothing else: no `aisleOverrides` entry a bad guess would otherwise
+ * outrank the lexicon with forever, and no undo entry cluttering the stack
+ * for a change the user didn't make.
+ */
+async function runAutoAisleClassification(batch: { id: string; name: string }[]): Promise<void> {
+  let assigned: Record<string, string>;
+  try {
+    assigned = await suggestGroceryAisles(batch.map(b => b.name), [...useGroceryStore.getState().aisleOrder]);
+  } catch {
+    return;
+  }
+  const current = useGroceryStore.getState().items;
+  const updates: GroceryItem[] = [];
+  for (const { id, name } of batch) {
+    const aisle = assigned[name];
+    if (!aisle || aisle === OTHER_AISLE) continue;
+    const item = current.find(i => i.id === id);
+    if (!item || item.aisle !== OTHER_AISLE) continue;
+    updates.push({ ...item, aisle });
+  }
+  if (updates.length === 0) return;
+  for (const u of updates) dbUpdateGroceryItem(u);
+  const byId = new Map(updates.map(u => [u.id, u]));
+  useGroceryStore.setState(s => ({ items: s.items.map(i => byId.get(i.id) ?? i) }));
+}
+
+/**
  * The later of two ISO stamps, treating null as older than any of them —
  * i.e. an explicit assertion always beats no assertion. Used by mergeItems
  * for every "which of two timestamps wins" question, including
@@ -188,6 +293,14 @@ interface GroceryStore extends UndoHistoryActions {
    * order rather than edited directly, so the two can't disagree.
    */
   hiddenAisles: string[];
+  /**
+   * Aisles holding things that aren't food — Household, Medicine &
+   * Supplements, whatever a person has named theirs. Names are free text
+   * (see aisleOrder), so this can't be inferred from a fixed list; it's the
+   * flag every nutrition/food-log prompt checks before treating a catalog
+   * row as something to eat. See isNonFoodAisle.
+   */
+  nonFoodAisles: string[];
   /**
    * The places you shop, and which items have been bought at each. They live
    * here rather than in a store of their own for the reason aisleOrder does:
@@ -285,6 +398,16 @@ interface GroceryStore extends UndoHistoryActions {
    * trolley nobody can name.
    */
   activeListId: string | null;
+  /**
+   * Put the screen on the shopping list of the trip you are currently on, and
+   * take it off again when you get back. See Project.awayListId.
+   *
+   * A `catchUpPasses` member beside `checkAwayVacation`, and the same shape:
+   * it reconciles rather than fires once, it only ever switches back a list it
+   * switched to, and a switch made by hand mid-trip is recorded against the
+   * departure so it is not undone on the next foreground.
+   */
+  checkAwayGroceryList: () => void;
   setActiveList: (id: string | null) => void;
   /** Null when the name is blank or already taken. */
   addList: (name: string) => GroceryList | null;
@@ -383,6 +506,16 @@ interface GroceryStore extends UndoHistoryActions {
        * lexicon knows.
        */
       aisle?: string | null;
+      /**
+       * Whether `name` is still the barcode source's own words rather than
+       * words a person chose — see `GroceryItem.nameFromScan`.
+       *
+       * **Only ever applied to a row this call mints.** A row the catalog
+       * already had was named by whoever named it, and a scan landing on it
+       * says nothing about that; overwriting the flag there would put somebody's
+       * own spelling into a rename queue on the strength of an unrelated scan.
+       */
+      nameFromScan?: boolean;
     },
     source?: { recipeId: string; recipeTitle: string },
     /** `registerUndo: false` suppresses the per-call shake-to-undo entry — batch
@@ -427,9 +560,12 @@ interface GroceryStore extends UndoHistoryActions {
    * merge renameItem's own doc comment defers to. `fromId`'s history folds
    * into `intoId` field by field (see the implementation for exactly how),
    * `fromId` is deleted, and the pair's recipes/remembered aisle re-key onto
-   * `intoId` the same way a rename does. Not reversible by shake-to-undo —
-   * the merge sheet confirms first instead. False when either id is unknown
-   * or they're the same row.
+   * `intoId` the same way a rename does. Registers shake-to-undo like almost
+   * everything else in this store — the merge sheet confirms first as well,
+   * the same double coverage `clearList` and `finishShopping` get, since a
+   * merge folds enough state that a confirm before and an undo after both
+   * earn their place. False when either id is unknown or they're the same
+   * row.
    */
   mergeItems: (fromId: string, intoId: string) => boolean;
   setNote: (id: string, note: string) => void;
@@ -609,7 +745,21 @@ interface GroceryStore extends UndoHistoryActions {
    * presented as a native `Modal` sits above `UndoBar` too) can still offer
    * an immediate, local way back without reimplementing the revert itself.
    */
-  addToPantry: (raw: string, opts?: { registerUndo?: boolean; onUndo?: (undo: () => void) => void }) => GroceryItem | null;
+  addToPantry: (
+    raw: string,
+    opts?: {
+      registerUndo?: boolean;
+      onUndo?: (undo: () => void) => void;
+      /**
+       * Files a row this call *mints* as still wearing a barcode source's own
+       * words — see `GroceryItem.nameFromScan`. Ignored for a name that
+       * resolved to a row the catalog already had, exactly as `addByName`'s
+       * own option is and for the same reason: that row was named by whoever
+       * named it.
+       */
+      nameFromScan?: boolean;
+    }
+  ) => GroceryItem | null;
   /**
    * `addToPantry`, for a whole scan session at once — the barcode sheet's
    * "Add" button on the Pantry screen. Loops `addToPantry` with its undo
@@ -661,7 +811,14 @@ interface GroceryStore extends UndoHistoryActions {
     frozenNames?: ReadonlySet<string>,
     products?: ReadonlyMap<
       string,
-      { brand: string | null; variant: string | null; gtin?: string | null; aisle?: string | null }
+      {
+        brand: string | null;
+        variant: string | null;
+        gtin?: string | null;
+        aisle?: string | null;
+        /** Rides through to `addToPantry`'s option of the same name. */
+        nameFromScan?: boolean;
+      }
     >,
     prices?: { byName: ReadonlyMap<string, number>; shopId: string | null }
   ) => number;
@@ -806,6 +963,25 @@ interface GroceryStore extends UndoHistoryActions {
    */
   setShelfLifeDays: (id: string, days: number | null) => void;
   /**
+   * What a catalog row is made of, per 100g or per serving — the generic
+   * food's panel, where `linkScannedGtins` writes the specific box's.
+   *
+   * Null clears it, and clearing means unknown rather than "contains
+   * nothing": every reader goes through `nutritionFor`, which falls through
+   * to whichever of the two rows has an answer. See FoodNutrition.
+   */
+  setItemNutrition: (id: string, nutrition: FoodNutrition | null) => void;
+  /**
+   * One box's own panel, which outranks the catalog row's — the specific pot
+   * of yogurt rather than yogurt.
+   *
+   * Separate from `updateProduct` rather than another field on its patch,
+   * because that one validates a brand/variant pair and can refuse the whole
+   * write over a clash. A panel has nothing to clash with, and losing typed
+   * nutrition to a duplicate-name refusal would be a confusing way to fail.
+   */
+  setProductNutrition: (id: string, nutrition: FoodNutrition | null) => void;
+  /**
    * The per-item answer to "does this get a use-up task" — true, false, or
    * null to hand the question back to the setting. Reconciles immediately, so
    * the toggle in the item sheet is also what adds or removes the task.
@@ -841,6 +1017,19 @@ interface GroceryStore extends UndoHistoryActions {
    * since items already have one.
    */
   setItemBackfillDismissedFields: (id: string, fields: string[]) => void;
+
+  /**
+   * Puts `GroceryItem.nameFromScan` back, for undoing a rename.
+   *
+   * **The only writer besides the insert paths, and deliberately a narrow
+   * one.** `renameItem` clears the flag and nothing sets it again, which is
+   * what makes it mean "still wearing the barcode's words" — but the Backfill
+   * screen's undo has to restore the row it changed, flag included, or an
+   * undone rename would leave the item out of the rename queue it came from.
+   * Restoring is not deciding, which is why this may say `true` where nothing
+   * else can.
+   */
+  setNameFromScan: (id: string, nameFromScan: boolean) => void;
 
   /**
    * Picks this row at the shelf: it stays (no longer an either/or) and every
@@ -969,6 +1158,12 @@ interface GroceryStore extends UndoHistoryActions {
    * on and so has to exist.
    */
   deleteAisle: (aisle: string) => void;
+  /**
+   * Marks (or unmarks) an aisle as not food — see nonFoodAisles. A no-op for
+   * 'Other', the same floor deleteAisle refuses to touch, since it's a catch-
+   * all rather than a section anyone would call food or not-food.
+   */
+  setAisleNonFood: (aisle: string, nonFood: boolean) => void;
 
   /** Null when the name collides with an existing store. */
   addShop: (name: string) => Shop | null;
@@ -979,6 +1174,11 @@ interface GroceryStore extends UndoHistoryActions {
    * primaryShopFor/exclusiveShopFor and the grocery-run task's store picker
    * while leaving manual linking and finishShopping untouched. */
   setShopExcludedFromSuggestions: (id: string, excluded: boolean) => void;
+  /**
+   * The aisles this store sells from — `null`, or an empty list, for one that
+   * sells everything. See Shop.aisles.
+   */
+  setShopAisles: (id: string, aisles: string[] | null) => void;
   /** What this store's receipts are worth reading. See ReceiptStyle. */
   setShopReceiptStyle: (id: string, style: ReceiptStyle) => void;
   /** Assert "this item is available here" without a purchase behind it. */
@@ -1087,7 +1287,13 @@ interface GroceryStore extends UndoHistoryActions {
    * naming something to record a standing fact about it is not a plan to buy
    * it this week.
    */
-  ensureCatalogItem: (name: string) => GroceryItem | null;
+  ensureCatalogItem: (
+    name: string,
+    /** Files a row this call *mints* as still wearing a barcode source's own
+     * words, exactly as `addByName`/`addToPantry`'s option of the same name
+     * does. Ignored when the name resolved to a row that already existed. */
+    opts?: { nameFromScan?: boolean }
+  ) => GroceryItem | null;
   /** Drops one direction. The reverse row, if there is one, is left alone. */
   unlinkItemSub: (itemId: string, subItemId: string) => void;
   /** The caveat — "fine for frying, not for baking". Blank clears it. */
@@ -1229,6 +1435,10 @@ function ensureProductFor(
       expiresAt: null,
       frozenAt: null,
       openedAt: null,
+      // Defers to the item's, same as the four above. A box named by hand says
+      // nothing about what is in it; a scanned one gets its label panel from
+      // the lookup rather than from being minted here.
+      nutrition: null,
       // Never set here, even on the scan path that has a barcode in hand.
       // Claiming one has to release it from whichever box held it before, so
       // it goes through `linkScannedGtins` rather than riding an insert.
@@ -1257,6 +1467,8 @@ function newItemRow(fields: {
   quantity?: string | null;
   note?: string | null;
   choiceGroup?: string | null;
+  /** See GroceryItem.nameFromScan. Only the barcode path passes this. */
+  nameFromScan?: boolean;
   source?: { recipeId: string; recipeTitle: string };
   onHandUntil?: string | null;
 }): GroceryItem {
@@ -1294,9 +1506,9 @@ function newItemRow(fields: {
     lastPurchasedAt: null,
     createdAt: fields.createdAt,
     onHandUntil: fields.onHandUntil ?? null,
-    // Only a genuinely new row gets attributed — see the field's doc comment on
-    // GroceryItem. A row reused via addByName's `existing` branch never reaches
-    // here, so a recipe re-adding a known item can't relabel it.
+    // A genuinely new row is attributed here; a row reused via addByName's
+    // `existing` branch never reaches this factory and is restamped there
+    // instead, per the field's doc comment on GroceryItem.
     choiceGroup: fields.choiceGroup ?? null,
     sourceRecipeId: fields.source?.recipeId ?? null,
     sourceRecipeTitle: fields.source?.recipeTitle ?? null,
@@ -1333,9 +1545,18 @@ function newItemRow(fields: {
     lastPricedAt: null,
     lastPriceQuantity: null,
     priceHistory: [],
+    // Unknown, which is a different thing from "contains nothing" — see
+    // FoodNutrition.amounts. Nothing is inferred from a name: knowing a row is
+    // called "onion" is not knowing what an onion is made of, and a lookup
+    // (or a person) has to say so before this holds anything.
+    nutrition: null,
     // Nobody has dismissed a Backfill screen field on a row that didn't exist
     // a moment ago.
     backfillDismissedFields: [],
+    // False for every path but the barcode one, and false there too unless the
+    // user left the proposed name alone — a name somebody typed is a name
+    // somebody chose. See GroceryItem.nameFromScan.
+    nameFromScan: fields.nameFromScan ?? false,
   };
 }
 
@@ -1347,8 +1568,8 @@ export interface PlannedRow {
   /**
    * The recipe this row came from, when unambiguous — null for a week-view
    * row that merged ingredients from more than one recipe, since there's no
-   * single recipe left to credit. Only applied to a row addFromPlan actually
-   * creates; see GroceryItem.sourceRecipeId.
+   * single recipe left to credit. Applied to a row addFromPlan creates or
+   * re-lists from off every list; see GroceryItem.sourceRecipeId.
    */
   sourceRecipeId?: string | null;
   sourceRecipeTitle?: string | null;
@@ -1370,7 +1591,12 @@ export interface PlannedRow {
 export interface PlanAddResult {
   /** Rows that weren't on the list and now are — new catalog rows and re-listed ones alike. */
   added: GroceryItem[];
-  /** Already on the list and left exactly as they were. */
+  /**
+   * Already on the list. Not necessarily untouched: see
+   * `mergeOnListRecipeNeed` — a second recipe's need for the same row can
+   * still fold its quantity in and clear a now-dishonest single-recipe credit,
+   * even though the row isn't freshly (re)listed the way `added` rows are.
+   */
   alreadyOnList: GroceryItem[];
   /**
    * Already in the trolley, and deliberately untouched. THIS IS THE WHOLE
@@ -1381,6 +1607,51 @@ export interface PlanAddResult {
    * rows are reported and skipped.
    */
   skippedInCart: GroceryItem[];
+}
+
+/**
+ * What a second recipe's need can still honestly change on a row that's
+ * already on the list — returns the patched row, or null when nothing
+ * qualifies, so the caller can skip writing a no-op.
+ *
+ * Unlike the off-list re-add in `addByName`'s existing branch, this row isn't
+ * being (re)listed — it's already there for whatever reason put it there —
+ * so nothing here touches `note`, `choiceGroup`, `lastAddedAt` or any of the
+ * other fields that branch owns. Two things still change:
+ *
+ *  - **The quantity**, by listing both needs together through
+ *    `mergeQuantities` — the same rule the week-plan merge and `mergeItems`
+ *    already use, so "2 lb" standing + "1 lb" incoming reads "3 lbs" rather
+ *    than silently staying at "2 lb" with the second recipe's need dropped.
+ *    Only when the standing quantity is itself recipe-owned, though: a
+ *    quantity the user typed by hand outranks every recipe, on the list or
+ *    off, same rule `addFromPlan`'s own quantity write already follows.
+ *  - **The attribution**, which drops to null the moment a *different*
+ *    recipe's need lands on a row already credited to one. A row two recipes
+ *    both want can't honestly be credited to either — the same reasoning
+ *    `mealPlanGroceries` applies when a week's own ingredients overlap (see
+ *    its `sourceRecipeId: null` on a multi-recipe group). A row not yet
+ *    credited to anyone, or credited to this same recipe again, is untouched.
+ */
+function mergeOnListRecipeNeed(existing: GroceryItem, row: PlannedRow): GroceryItem | null {
+  let changed = false;
+  const patch = { ...existing };
+
+  if (row.quantity && existing.quantityFromRecipe) {
+    const merged = mergeQuantities([existing.quantity ?? '', row.quantity]);
+    if (merged && merged !== existing.quantity) {
+      patch.quantity = merged;
+      changed = true;
+    }
+  }
+
+  if (existing.sourceRecipeId && row.sourceRecipeId !== existing.sourceRecipeId) {
+    patch.sourceRecipeId = null;
+    patch.sourceRecipeTitle = null;
+    changed = true;
+  }
+
+  return changed ? patch : null;
 }
 
 /**
@@ -1556,6 +1827,7 @@ export const useGroceryStore = create<GroceryStore>((set, get) => ({
   items: [],
   aisleOrder: [],
   hiddenAisles: [],
+  nonFoodAisles: [],
   shops: [],
   itemShops: [],
   itemSubs: [],
@@ -1589,6 +1861,7 @@ export const useGroceryStore = create<GroceryStore>((set, get) => ({
       items.map(i => i.aisle),
       hiddenAisles
     );
+    const nonFoodAisles = dbGetGroceryNonFoodAisles();
     const shops = dbGetAllGroceryShops();
     const itemShops = dbGetAllItemShopLinks();
     const itemSubs = dbGetAllItemSubLinks();
@@ -1628,6 +1901,7 @@ export const useGroceryStore = create<GroceryStore>((set, get) => ({
       items,
       aisleOrder,
       hiddenAisles,
+      nonFoodAisles,
       aisleOverrides: dbGetGroceryAisleOverrides(),
       shops,
       itemProducts,
@@ -1651,6 +1925,63 @@ export const useGroceryStore = create<GroceryStore>((set, get) => ({
   setGroceryGroupBy(groupBy) {
     dbSetGroceryGroupBy(groupBy);
     set({ groceryGroupBy: groupBy });
+  },
+
+  checkAwayGroceryList() {
+    const settings = useSettingsStore.getState();
+    const { activeListDrivenBy } = settings;
+    const activeListId = get().activeListId;
+    const projects = useProjectStore.getState().projects;
+    const today = getCurrentDayStart();
+
+    // Switched by hand since we switched it. Recorded against the departure
+    // rather than the day, `awayPauseDeclinedFor`'s rule: switching back to the
+    // home list on day three of a week away means "leave my lists alone for
+    // this trip", and a day-scoped stamp would put you back on the trip's list
+    // on the next foreground.
+    if (activeListDrivenBy) {
+      const owner = projects.find(p => p.id === activeListDrivenBy);
+      const stillOurs = owner ? activeListId === owner.awayListId : false;
+      if (!stillOurs) {
+        if (owner && owner.awayStart && isProjectAwayNow(owner, today)) {
+          useProjectStore.getState().updateProject(owner.id, {
+            awayListDeclinedFor: owner.awayStart,
+          });
+        }
+        settings.setActiveListDrivenBy(null);
+        return;
+      }
+    }
+
+    const driver = awayListDriver(projects, today);
+    // A list deleted mid-trip resolves to nothing, and the nomination is left
+    // alone rather than cleared: same resolve-or-shrug every cross-row pointer
+    // in groceries takes, and a restore or a sync would bring the row back.
+    const target = driver && get().lists.some(l => l.id === driver.awayListId)
+      ? driver.awayListId
+      : null;
+
+    if (!target) {
+      // Home again. Switching back matters more than switching there did: an
+      // away list records nothing (see finishShopping), so a shop at home on a
+      // list nobody switched off drops the purchase history, the prices, the
+      // store link and the use-by days without saying so.
+      if (activeListDrivenBy) {
+        if (activeListId !== null) get().setActiveList(null);
+        settings.setActiveListDrivenBy(null);
+      }
+      return;
+    }
+
+    if (activeListId !== target) {
+      get().setActiveList(target);
+      settings.setActiveListDrivenBy(driver!.id);
+    } else if (activeListDrivenBy !== driver!.id) {
+      // Already on the right list, but claimed by nobody or by a finished trip
+      // — happens when the user switched there themselves before leaving.
+      // Claiming it is what lets the switch home at the end still happen.
+      settings.setActiveListDrivenBy(driver!.id);
+    }
   },
 
   setActiveList(id) {
@@ -1816,6 +2147,14 @@ export const useGroceryStore = create<GroceryStore>((set, get) => ({
         // re-add of apples must not dissolve a pair it's already in.
         choiceGroup: choiceGroup ?? existing.choiceGroup,
         lastAddedAt: now,
+        // A row still on some list is a standing item the user owns, same as
+        // note/quantity above — a recipe re-adding it doesn't relabel it. But a
+        // row that had fallen off every list is functionally a fresh add: the
+        // recipe that put it back on is the reason it's there, and crediting a
+        // stale recipe (possibly cooked and forgotten) is actively misleading.
+        // See GroceryItem.sourceRecipeId.
+        sourceRecipeId: !wasOnList && source ? source.recipeId : existing.sourceRecipeId,
+        sourceRecipeTitle: !wasOnList && source ? source.recipeTitle : existing.sourceRecipeTitle,
       };
       // And the same rule again for the box: GroceryAddField's Brand/Variant
       // chips are the only caller that passes these, and only when the user
@@ -1881,6 +2220,7 @@ export const useGroceryStore = create<GroceryStore>((set, get) => ({
       createdAt: now,
       choiceGroup,
       source,
+      nameFromScan: override?.nameFromScan === true,
     });
     // After the row exists, because a product hangs off an item id. Nothing
     // is ever parsed out of the typed name to get here — see ItemProduct.brand.
@@ -1908,6 +2248,7 @@ export const useGroceryStore = create<GroceryStore>((set, get) => ({
         undo: get().undoForAdds([item.id], EMPTY_IDS),
       });
     }
+    if (item.aisle === OTHER_AISLE) scheduleAutoAisleClassification(item.id, item.name);
     return item;
   },
 
@@ -2028,7 +2369,15 @@ export const useGroceryStore = create<GroceryStore>((set, get) => ({
         const existing = catalogItemForKey(key, get().items) ?? undefined;
 
         if (existing?.checked) { skippedInCart.push(existing); continue; }
-        if (existing?.onList) { alreadyOnList.push(existing); continue; }
+        if (existing?.onList) {
+          const merged = mergeOnListRecipeNeed(existing, row);
+          if (merged) {
+            dbUpdateGroceryItem(merged);
+            set(s => ({ items: s.items.map(i => (i.id === merged.id ? merged : i)) }));
+          }
+          alreadyOnList.push(merged ?? existing);
+          continue;
+        }
 
         // Passing the bare name, not "2 lb chicken thighs": the quantity is
         // already split out on the ingredient, and re-parsing it here would
@@ -2189,6 +2538,12 @@ export const useGroceryStore = create<GroceryStore>((set, get) => ({
       // A rename that lands the row on its own declared generic clears the
       // declaration — a thing is not a variety of itself.
       varietyOfKey: item.varietyOfKey === key ? null : item.varietyOfKey,
+      // Somebody has now chosen this name, whatever it was called before, so
+      // the row is no longer wearing a barcode source's words. Cleared even
+      // when the trimmed name is identical to the stored one: reaching this
+      // function at all means a person typed it and meant it, and the flag's
+      // only job is to stop asking. See GroceryItem.nameFromScan.
+      nameFromScan: false,
     };
     dbUpdateGroceryItem(updated);
     // Variety declarations point at the generic's key, so ones aimed at this
@@ -2225,10 +2580,34 @@ export const useGroceryStore = create<GroceryStore>((set, get) => ({
 
   mergeItems(fromId, intoId) {
     if (fromId === intoId) return false;
-    const { items, itemShops, itemSubs, itemProducts, aisleOverrides } = get();
+    const { items, itemShops, itemSubs, itemProducts, aisleOverrides, storeAliases, cartHoldIds } = get();
     const fromItem = items.find(i => i.id === fromId);
     const intoItem = items.find(i => i.id === intoId);
     if (!fromItem || !intoItem) return false;
+
+    // The undo snapshot, taken before anything below writes. `fromItem` and
+    // `intoItem` above are already exactly this for the item rows themselves
+    // — the store's own objects, from before any patch touches them — so
+    // only the *other* rows this merge folds need their own slice pulled out
+    // ahead of time. The two-directional filter on subs is deliberate: a
+    // link the loser sits on either end of is a link the cascade below takes
+    // with it.
+    const beforeVarietyRepoints = items.filter(
+      i => i.id !== fromId && i.id !== intoId && i.varietyOfKey === fromItem.nameKey
+    );
+    const beforeProducts = itemProducts.filter(p => p.itemId === fromId || p.itemId === intoId);
+    const beforeShopLinks = itemShops.filter(l => l.itemId === fromId || l.itemId === intoId);
+    const beforeSubs = itemSubs.filter(l => l.itemId === fromId || l.subItemId === fromId);
+    const beforeStoreAliases = storeAliases.filter(a => a.itemId === fromId);
+    const wasFromIdCartHeld = cartHoldIds.includes(fromId);
+    // Same filter `remapIngredientKeyIn` runs internally — capturing it here,
+    // before that call, is what lets undo restore these rows exactly rather
+    // than remapping `intoItem.nameKey` back to `fromItem.nameKey`, which
+    // would also catch recipes that already used the survivor's key before
+    // the merge.
+    const beforeRecipesTouched = useRecipeStore
+      .getState()
+      .recipes.filter(r => r.ingredients.some(i => i.nameKey === fromItem.nameKey));
 
     const onList = fromItem.onList || intoItem.onList;
     let quantity: string | null;
@@ -2514,6 +2893,78 @@ export const useGroceryStore = create<GroceryStore>((set, get) => ({
     // fromId's own "Use up X" task would otherwise keep pointing at a
     // catalog row that no longer exists.
     dropUseUpTask(fromId);
+
+    const finalRetargetedSubKeys = new Set(finalRetargetedSubs.map(l => `${l.itemId}|${l.subItemId}`));
+    const beforeStoreAliasesById = new Map(beforeStoreAliases.map(a => [a.id, a]));
+    get().setLastAction({
+      label: `Merged "${fromItem.name}" into "${intoItem.name}"`,
+      destructive: true,
+      redo: () => {
+        get().mergeItems(fromId, intoId);
+      },
+      undo: () => {
+        // Item rows: fromId's was deleted outright, so it needs a fresh
+        // INSERT; intoId's still exists, so a plain UPDATE puts it back.
+        dbInsertGroceryItem(fromItem);
+        dbUpdateGroceryItem(intoItem);
+        for (const row of beforeVarietyRepoints) dbUpdateGroceryItem(row);
+
+        // Products and shop links: the whole slice for both rows, exactly as
+        // it stood. Both db writers upsert by the row's own identity, which
+        // both reinstates whatever the cascade deleted and puts a folded row
+        // back the way it was — nothing merged here ever minted a fresh id.
+        for (const product of beforeProducts) dbSetItemProduct(product);
+        for (const product of beforeProducts) {
+          if (product.gtin) dbSetProductGtin(product.id, product.gtin);
+        }
+        for (const link of beforeShopLinks) dbSetItemShopLink(link);
+
+        // Substitutes: undo just the pair this merge actually wrote — the
+        // links it retargeted onto intoId — rather than trying to reverse
+        // survivingSubs/finalRetargetedSubs by hand, which would also have
+        // to know which collisions were dropped rather than written.
+        for (const link of finalRetargetedSubs) dbDeleteItemSubLink(link.itemId, link.subItemId);
+        for (const link of beforeSubs) dbSetItemSubLink(link);
+
+        // Store aliases: point each of fromId's own phrases back one row at
+        // a time — dbRepointStoreAliases moves everything currently on an
+        // id, which would also drag along whatever intoId has picked up on
+        // its own since the merge.
+        for (const alias of beforeStoreAliases) dbSetStoreAliasItemId(alias.id, fromId);
+
+        if (remembered) dbSetGroceryAisleOverrides(aisleOverrides);
+
+        const byId = new Map<string, GroceryItem>([
+          [intoItem.id, intoItem],
+          ...beforeVarietyRepoints.map((row): [string, GroceryItem] => [row.id, row]),
+        ]);
+        set(s => ({
+          items: [fromItem, ...s.items.map(i => byId.get(i.id) ?? i)],
+          itemProducts: [
+            ...beforeProducts,
+            ...s.itemProducts.filter(p => p.itemId !== fromId && p.itemId !== intoId),
+          ],
+          itemShops: [
+            ...beforeShopLinks,
+            ...s.itemShops.filter(l => l.itemId !== fromId && l.itemId !== intoId),
+          ],
+          itemSubs: [
+            ...beforeSubs,
+            ...s.itemSubs.filter(l => !finalRetargetedSubKeys.has(`${l.itemId}|${l.subItemId}`)),
+          ],
+          storeAliases: s.storeAliases.map(a => beforeStoreAliasesById.get(a.id) ?? a),
+          cartHoldIds: wasFromIdCartHeld ? [...s.cartHoldIds, fromId] : s.cartHoldIds,
+          aisleOverrides: remembered ? aisleOverrides : s.aisleOverrides,
+        }));
+
+        // Recipes and the use-up task are bridged by nameKey/sourceId rather
+        // than by a row this store owns, so they go back through their own
+        // stores rather than the set() above.
+        useRecipeStore.getState().restoreRecipes(beforeRecipesTouched);
+        reconcileUseUpTask(fromItem);
+      },
+    });
+
     return true;
   },
 
@@ -2634,7 +3085,12 @@ export const useGroceryStore = create<GroceryStore>((set, get) => ({
   setProductOnHandUntil(id, until) {
     const product = get().itemProducts.find(p => p.id === id);
     if (!product || product.onHandUntil === until) return;
-    const updated: ItemProduct = { ...product, onHandUntil: until };
+    const updated: ItemProduct = {
+      ...product,
+      onHandUntil: until,
+      // Mirrors the item-level setOnHandUntil's clear exactly — see its note.
+      ...(until === OUT_OF_IT_UNTIL ? { expiresAt: null, frozenAt: null, openedAt: null } : null),
+    };
     dbSetItemProduct(updated);
     set(s => ({ itemProducts: s.itemProducts.map(p => (p.id === id ? updated : p)) }));
   },
@@ -2645,7 +3101,14 @@ export const useGroceryStore = create<GroceryStore>((set, get) => ({
       p => wanted.has(p.id) && p.onHandUntil !== OUT_OF_IT_UNTIL
     );
     if (before.length === 0) return 0;
-    const updates = before.map((p): ItemProduct => ({ ...p, onHandUntil: OUT_OF_IT_UNTIL }));
+    // Mirrors markOutOfMany's own clear — see its note.
+    const updates = before.map((p): ItemProduct => ({
+      ...p,
+      onHandUntil: OUT_OF_IT_UNTIL,
+      expiresAt: null,
+      frozenAt: null,
+      openedAt: null,
+    }));
     for (const u of updates) dbSetItemProduct(u);
     const byId = new Map(updates.map(u => [u.id, u]));
     set(s => ({ itemProducts: s.itemProducts.map(p => byId.get(p.id) ?? p) }));
@@ -2712,7 +3175,16 @@ export const useGroceryStore = create<GroceryStore>((set, get) => ({
   setOnHandUntil(id, until) {
     const item = get().items.find(i => i.id === id);
     if (!item) return;
-    const updated = { ...item, onHandUntil: until };
+    const updated: GroceryItem = {
+      ...item,
+      onHandUntil: until,
+      // Marking the row out of it ends this box's story, same as a purchase
+      // already ends the last one — see the matching clear in markOutOfMany
+      // for why these three specifically. Without it, a bare re-add
+      // (addToPantry, which never touches any of these) came back reading the
+      // disposed box's use-by day as the new one's.
+      ...(until === OUT_OF_IT_UNTIL ? { expiresAt: null, frozenAt: null, openedAt: null } : null),
+    };
     dbUpdateGroceryItem(updated);
     set(s => ({ items: s.items.map(i => (i.id === id ? updated : i)) }));
   },
@@ -2738,6 +3210,11 @@ export const useGroceryStore = create<GroceryStore>((set, get) => ({
       usedUpCount: i.usedUpCount + (outcome === 'usedUp' ? 1 : 0),
       spoiledCount: i.spoiledCount + (outcome === 'spoiled' ? 1 : 0),
       lastSpoiledAt: outcome === 'spoiled' ? at : i.lastSpoiledAt,
+      // Same clear setOnHandUntil makes for the same sentinel — see its note.
+      // Undo restores these from `before` along with everything else.
+      expiresAt: null,
+      frozenAt: null,
+      openedAt: null,
     }));
     for (const u of updates) dbUpdateGroceryItem(u);
     const byId = new Map(updates.map(u => [u.id, u]));
@@ -2846,6 +3323,7 @@ export const useGroceryStore = create<GroceryStore>((set, get) => ({
       onList: false,
       sortOrder: nextSortOrder(get().items),
       createdAt: nowIso,
+      nameFromScan: opts?.nameFromScan === true,
     });
     // Stamped off the finished row rather than a literal fortnight, so this
     // and "Got it" can't drift — with no purchases yet it lands on the same
@@ -2858,6 +3336,7 @@ export const useGroceryStore = create<GroceryStore>((set, get) => ({
       get().setLastAction({ label: `Added "${item.name}" to the pantry`, undo });
     }
     opts?.onUndo?.(undo);
+    if (item.aisle === OTHER_AISLE) scheduleAutoAisleClassification(item.id, item.name);
     return item;
   },
 
@@ -2872,7 +3351,15 @@ export const useGroceryStore = create<GroceryStore>((set, get) => ({
       // a row it merely updated would look freshly minted and undo would
       // delete a catalog row the user already had.
       const before = catalogItemForKey(key, get().items) ?? undefined;
-      const item = get().addToPantry(raw, { registerUndo: false });
+      // Read ahead of the add rather than beside the `addProduct` call below,
+      // because `nameFromScan` is a fact about the row being *minted* and so
+      // has to travel into the insert itself. `!before` is the same "this
+      // batch created it" test the aisle write further down already makes.
+      const product = products?.get(raw);
+      const item = get().addToPantry(raw, {
+        registerUndo: false,
+        nameFromScan: !before && product?.nameFromScan === true,
+      });
       if (!item) continue;
       count++;
       if (before) revertRows.push(before);
@@ -2883,7 +3370,6 @@ export const useGroceryStore = create<GroceryStore>((set, get) => ({
       if (frozenNames?.has(raw)) get().setFrozen(item.id, true);
       // Same reasoning: not part of the undo snapshot, matching addProduct's
       // own callers everywhere else — a box named is never itself undoable.
-      const product = products?.get(raw);
       if (product && (product.brand || product.variant)) {
         get().addProduct(item.id, { brand: product.brand, variant: product.variant });
       }
@@ -3175,6 +3661,22 @@ export const useGroceryStore = create<GroceryStore>((set, get) => ({
     set(s => ({ items: s.items.map(i => (i.id === id ? updated : i)) }));
   },
 
+  setItemNutrition(id, nutrition) {
+    const item = get().items.find(i => i.id === id);
+    if (!item) return;
+    const updated = { ...item, nutrition };
+    dbUpdateGroceryItem(updated);
+    set(s => ({ items: s.items.map(i => (i.id === id ? updated : i)) }));
+  },
+
+  setProductNutrition(id, nutrition) {
+    const product = get().itemProducts.find(p => p.id === id);
+    if (!product) return;
+    const updated: ItemProduct = { ...product, nutrition };
+    dbSetItemProduct(updated);
+    set(s => ({ itemProducts: s.itemProducts.map(p => (p.id === id ? updated : p)) }));
+  },
+
   setVarietyOfKey(id, key) {
     const item = get().items.find(i => i.id === id);
     if (!item) return;
@@ -3194,6 +3696,14 @@ export const useGroceryStore = create<GroceryStore>((set, get) => ({
     const item = get().items.find(i => i.id === id);
     if (!item) return;
     const updated = { ...item, backfillDismissedFields: fields };
+    dbUpdateGroceryItem(updated);
+    set(s => ({ items: s.items.map(i => (i.id === id ? updated : i)) }));
+  },
+
+  setNameFromScan(id, nameFromScan) {
+    const item = get().items.find(i => i.id === id);
+    if (!item || item.nameFromScan === nameFromScan) return;
+    const updated = { ...item, nameFromScan };
     dbUpdateGroceryItem(updated);
     set(s => ({ items: s.items.map(i => (i.id === id ? updated : i)) }));
   },
@@ -3985,11 +4495,48 @@ export const useGroceryStore = create<GroceryStore>((set, get) => ({
     // In place, not appended: renaming an aisle doesn't move it in the walk.
     const order = aisleOrder.filter(a => a !== OTHER_AISLE).map(a => (a === from ? trimmed : a));
 
+    // The flag is stored by aisle name too, so it has to move with the rename
+    // or a "Household" a person renamed to "Medicine" quietly stops being
+    // non-food.
+    const { nonFoodAisles } = get();
+    let nextNonFood = nonFoodAisles;
+    if (nonFoodAisles.includes(from)) {
+      nextNonFood = nonFoodAisles.map(a => (a === from ? trimmed : a));
+      dbSetGroceryNonFoodAisles(nextNonFood);
+    }
+
+    // A store's range is stored by aisle name too — the fourth place one
+    // lives — so it moves with the rename for the same reason the non-food
+    // flag above does: a pharmacy scoped to "Personal Care" must not quietly
+    // stop selling it the moment that aisle is renamed to "Pharmacy". A scope
+    // that loses its only aisle would read as "sells nothing", so this rewrites
+    // names and never drops one.
+    const nextShops = get().shops.map(shop => {
+      if (!shop.aisles || !shop.aisles.includes(from)) return shop;
+      const next = shop.aisles.map(a => (a === from ? trimmed : a));
+      dbSetShopAisles(shop.id, next);
+      return { ...shop, aisles: next };
+    });
+
     set({
       items: nextItems,
       aisleOverrides: remembered ?? aisleOverrides,
+      nonFoodAisles: nextNonFood,
+      shops: nextShops,
       ...commitAisleOrder(order, nextItems.map(i => i.aisle)),
     });
+
+    // The list screen's collapse state is keyed by the header's own row key
+    // (`aisle:<name>`), so a rename has to carry it the way collapsedCategories
+    // does for a category rename — otherwise the section reopens under its new
+    // name and re-collapses if the old name is ever reused.
+    const settings = useSettingsStore.getState();
+    const fromKey = `aisle:${from}`;
+    if (settings.collapsedGroceryGroups.includes(fromKey)) {
+      settings.setCollapsedGroceryGroups(
+        settings.collapsedGroceryGroups.map(k => (k === fromKey ? `aisle:${trimmed}` : k))
+      );
+    }
     return true;
   },
 
@@ -4012,14 +4559,58 @@ export const useGroceryStore = create<GroceryStore>((set, get) => ({
     const byId = new Map(updates.map(u => [u.id, u]));
     const nextItems = items.map(i => byId.get(i.id) ?? i);
 
+    const { nonFoodAisles } = get();
+    let nextNonFood = nonFoodAisles;
+    if (nonFoodAisles.includes(aisle)) {
+      nextNonFood = nonFoodAisles.filter(a => a !== aisle);
+      dbSetGroceryNonFoodAisles(nextNonFood);
+    }
+
+    // The rows move to Other, so a store scoped to this aisle has to be told:
+    // left alone it would name an aisle nothing is filed under any more, which
+    // reads as a store that stopped selling everything it sold. Dropping the
+    // last name clears the scope rather than emptying it — a store that sells
+    // nothing is not a state (see Shop.aisles), and "sells everything" is the
+    // honest reading of a range whose only aisle no longer exists. Deliberately
+    // not rewritten to Other, for the reason deleteAisle forgets the remembered
+    // filings rather than repointing them: that would assert a range the user
+    // never gave.
+    const nextShops = get().shops.map(shop => {
+      if (!shop.aisles || !shop.aisles.includes(aisle)) return shop;
+      const rest = shop.aisles.filter(a => a !== aisle);
+      const next = rest.length > 0 ? rest : null;
+      dbSetShopAisles(shop.id, next);
+      return { ...shop, aisles: next };
+    });
+
     set({
       items: nextItems,
       aisleOverrides: remembered ?? aisleOverrides,
+      nonFoodAisles: nextNonFood,
+      shops: nextShops,
       ...commitAisleOrder(
         aisleOrder.filter(a => a !== aisle && a !== OTHER_AISLE),
         nextItems.map(i => i.aisle)
       ),
     });
+
+    // The deleted aisle's header is gone, so nothing is left to fold — see
+    // the rename note above on why this is keyed the same way.
+    const settings = useSettingsStore.getState();
+    const aisleKey = `aisle:${aisle}`;
+    if (settings.collapsedGroceryGroups.includes(aisleKey)) {
+      settings.setCollapsedGroceryGroups(settings.collapsedGroceryGroups.filter(k => k !== aisleKey));
+    }
+  },
+
+  setAisleNonFood(aisle, nonFood) {
+    if (aisle === OTHER_AISLE) return;
+    const { nonFoodAisles } = get();
+    const has = nonFoodAisles.includes(aisle);
+    if (nonFood === has) return;
+    const next = nonFood ? [...nonFoodAisles, aisle] : nonFoodAisles.filter(a => a !== aisle);
+    dbSetGroceryNonFoodAisles(next);
+    set({ nonFoodAisles: next });
   },
 
   /**
@@ -4073,6 +4664,11 @@ export const useGroceryStore = create<GroceryStore>((set, get) => ({
       // Nothing infers this. An ordinary receipt is the default, and a store
       // that prints a bad one is something only the user can tell us.
       receiptStyle: 'itemized',
+      // Same rule, and the more important one here: a new store sells
+      // everything until the user says what it sells. Seeding a range from the
+      // name, or from what gets bought there later, is the inference this
+      // feature exists to replace with a statement. See Shop.aisles.
+      aisles: null,
     };
     dbInsertGroceryShop(shop);
     set(s => ({ shops: [...s.shops, shop] }));
@@ -4147,6 +4743,16 @@ export const useGroceryStore = create<GroceryStore>((set, get) => ({
     }));
   },
 
+  setShopAisles(id, aisles) {
+    const shop = get().shops.find(s => s.id === id);
+    if (!shop) return;
+    // One state for "sells everything", collapsed here as well as in the db
+    // setter, so nothing downstream has to test for both. See Shop.aisles.
+    const next = aisles && aisles.length > 0 ? aisles : null;
+    dbSetShopAisles(id, next);
+    set(s => ({ shops: s.shops.map(x => (x.id === id ? { ...x, aisles: next } : x)) }));
+  },
+
   setShopReceiptStyle(id, style) {
     dbSetShopReceiptStyle(id, style);
     set(s => ({ shops: s.shops.map(sh => (sh.id === id ? { ...sh, receiptStyle: style } : sh)) }));
@@ -4204,6 +4810,12 @@ export const useGroceryStore = create<GroceryStore>((set, get) => ({
     if (links.length === 0) return;
     const { items, itemProducts } = get();
     const claimed: Array<{ productId: string; gtin: string }> = [];
+    /**
+     * Boxes that are about to be given the nutrition panel their own barcode
+     * already fetched. See the loop below for why it is read here rather than
+     * carried in on the link.
+     */
+    const panels: Array<{ productId: string; nutrition: FoodNutrition }> = [];
     const aliasDrafts: AliasDraft[] = [];
 
     for (const link of links) {
@@ -4215,7 +4827,34 @@ export const useGroceryStore = create<GroceryStore>((set, get) => ({
       const product = productKey
         ? itemProducts.find(p => p.itemId === link.itemId && p.productKey === productKey)
         : undefined;
-      if (product) claimed.push({ productId: product.id, gtin: link.gtin });
+      if (product) {
+        claimed.push({ productId: product.id, gtin: link.gtin });
+        /**
+         * The label panel the lookup already fetched for this exact code, read
+         * out of the barcode cache rather than threaded down from the scan
+         * sheet.
+         *
+         * **This is the one point both scan paths pass through**, which is the
+         * whole reason it is here: a row matched to an existing item gets its
+         * box from `addProduct` and a minted row gets one from `addByName`, so
+         * carrying a panel down either would mean adding a field to
+         * `ScannedItem`, `ScanProductDraft` and `ReceiptAddDraft` alike and
+         * writing it in two screens. The cache is keyed by the same barcode the
+         * link carries and was written moments ago by the lookup that produced
+         * this row, so reading it back here is the same fact by a shorter route.
+         *
+         * **Only ever fills a box that hasn't got one.** A panel already on the
+         * row may be a figure the user typed, and a rescan silently overwriting
+         * a person's own correction with a crowd-sourced one is the wrong way
+         * round — see `FoodNutrition.source` on why those two are not
+         * interchangeable. A code the cache has never seen leaves it null,
+         * which is unknown rather than empty.
+         */
+        if (!product.nutrition) {
+          const cached = dbGetGtinLookup(link.gtin)?.nutrition;
+          if (cached) panels.push({ productId: product.id, nutrition: cached });
+        }
+      }
       // Written whether or not a box was found. The two are different facts and
       // the item-level one is the durable half: deleting a box should send the
       // barcode back to naming its row, not to naming nothing.
@@ -4225,15 +4864,26 @@ export const useGroceryStore = create<GroceryStore>((set, get) => ({
     if (claimed.length > 0) {
       dbTransaction(() => {
         for (const { productId, gtin } of claimed) dbSetProductGtin(productId, gtin);
+        // After the barcode claims, and off the in-memory row rather than the
+        // one just written: `dbSetProductGtin` touches only the gtin column, so
+        // the rest of this row is unchanged and the upsert can carry it.
+        for (const { productId, nutrition } of panels) {
+          const product = itemProducts.find(p => p.id === productId);
+          if (product) dbSetItemProduct({ ...product, nutrition });
+        }
       });
       set(s => ({
         itemProducts: s.itemProducts.map(p => {
+          const panel = panels.find(n => n.productId === p.id);
+          const withPanel = panel ? { ...p, nutrition: panel.nutrition } : p;
           const claim = claimed.find(c => c.productId === p.id);
-          if (claim) return { ...p, gtin: claim.gtin };
+          if (claim) return { ...withPanel, gtin: claim.gtin };
           // Mirrors the release half of the write: a box that held one of these
           // barcodes has just lost it, and leaving the old value in memory
           // would have two rows claiming one code until the next reload.
-          return p.gtin && claimed.some(c => c.gtin === p.gtin) ? { ...p, gtin: null } : p;
+          return withPanel.gtin && claimed.some(c => c.gtin === withPanel.gtin)
+            ? { ...withPanel, gtin: null }
+            : withPanel;
         }),
       }));
     }
@@ -4405,7 +5055,7 @@ export const useGroceryStore = create<GroceryStore>((set, get) => ({
     }));
   },
 
-  ensureCatalogItem(raw) {
+  ensureCatalogItem(raw, opts) {
     // Parsed like every other typed name, so "2 lb margarine" keys on
     // "margarine" rather than minting a row no purchase can ever match. The
     // quantity is dropped: this is a name being named, not an amount to buy.
@@ -4429,9 +5079,11 @@ export const useGroceryStore = create<GroceryStore>((set, get) => ({
       onList: false,
       sortOrder: nextSortOrder(get().items),
       createdAt: nowIso,
+      nameFromScan: opts?.nameFromScan === true,
     });
     dbInsertGroceryItem(item);
     set(s => ({ items: [...s.items, item] }));
+    if (item.aisle === OTHER_AISLE) scheduleAutoAisleClassification(item.id, item.name);
     return item;
   },
 

@@ -97,7 +97,14 @@ export function useTitleSelection(text: string): TitleSelection {
   }, []);
 
   const insertToken = useCallback((token: string) => {
-    const spliced = spliceAtSelection(textRef.current, selectionRef.current, token);
+    // A tap right after a word (no space typed yet) would otherwise splice the
+    // token straight onto it — "milk" + "#" -> "milk#home" as the next letters
+    // land, never reading as a tag. Lead with a space whenever the caret isn't
+    // already at the start of the text or just after whitespace.
+    const { start } = clampSelection(selectionRef.current, textRef.current.length);
+    const needsLeadingSpace = start > 0 && !/\s/.test(textRef.current[start - 1]);
+    const toInsert = needsLeadingSpace ? ` ${token}` : token;
+    const spliced = spliceAtSelection(textRef.current, selectionRef.current, toInsert);
     // The caller sets the text; keep the ref in step so a second token
     // inserted before the next selection event still lands in the right place.
     textRef.current = spliced.text;

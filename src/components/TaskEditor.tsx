@@ -34,17 +34,21 @@ import { PressableScale } from './PressableScale';
 import { StepMinutes } from './StepMinutes';
 import { StepQuestion } from './StepQuestion';
 import { ChainStepQuestionSheet } from './ChainStepQuestionSheet';
+import { ChainStepMedicationSheet } from './ChainStepMedicationSheet';
+import { StepMedication } from './StepMedication';
 import { format } from 'date-fns/format';
 import { addMonths } from 'date-fns/addMonths';
 import { addDays } from 'date-fns/addDays';
 import { subDays } from 'date-fns/subDays';
 import { subMinutes } from 'date-fns/subMinutes';
 import { differenceInCalendarDays } from 'date-fns/differenceInCalendarDays';
-import type { Task, Priority, Effort, FollowUpTaskDraft, RecurrenceType, ChainItem, DeliverableKind, TimeOfDay, ReminderKind, Polarity, QuotaPeriod } from '../types';
-import { PRIORITY_LABELS, EFFORT_LABELS, TITLE_MAX_LENGTH } from '../types';
+import type { Task, Priority, Effort, FollowUpTaskDraft, RecurrenceType, ChainItem, DeliverableKind, TimeOfDay, ReminderKind, Polarity, QuotaPeriod, NutrientKey } from '../types';
+import { PRIORITY_LABELS, EFFORT_LABELS, TITLE_MAX_LENGTH, NUTRIENT_KEYS } from '../types';
+import { NUTRIENT_LABEL } from '../utils/foodNutrition';
 import { useColors, useTheme } from '../theme/ThemeContext';
 import { spacing, radius, font, border, interaction, animation, checkboxRadius, iconSize, type Colors } from '../theme';
 import { haptics } from '../utils/haptics';
+import { DOSE_UNITS } from '../utils/medicationLog';
 import { useTitleSelection } from '../hooks/useTitleSelection';
 import { confirmDelete } from '../utils/confirmDelete';
 import { animateLayout } from '../utils/layoutAnimation';
@@ -79,7 +83,7 @@ import { isStreakAtRecord, nextStreakRecord, streakHint } from '../utils/streakR
 import { formatDeadlineDate, formatScheduledDate, formatHHMM, formatTimeOfDay, hhmmToDate, dateToHHMM, getDeadlineFromOffset, getDeadlineFromMonthDay, describeDeadlineOffset, describeReminderOffset, getTaskDayStart, getCurrentDayStart, getLogicalNow, seriesMonthDaysFrom } from '../utils/dateUtils';
 import { generateId } from '../utils/id';
 import { findArchivedMatch } from '../utils/archiveMatch';
-import { parseTaskInput, describeSchedule, detectContactIntent, matchPersonMentions } from '../utils/parseTaskInput';
+import { parseTaskInput, describeSchedule, detectContactIntent, matchPersonMentions, getEditorMentionSuggestions, type MentionSuggestionCandidate } from '../utils/parseTaskInput';
 import { groupMentionTokens } from '../utils/peopleRegistry';
 import { mergeRanges } from '../utils/ranges';
 import { HighlightedText } from './HighlightedText';
@@ -176,6 +180,11 @@ export interface TaskDraft {
   recurrenceCount: number | null;
   /** Carried over when the draft already names a specific time — an imported event's appointment time, for instance. */
   reminderTime?: Date | null;
+  /** What failing this costs in blocked-app minutes, and the time it's judged at. */
+  penaltyMinutes?: number | null;
+  penaltyCutoffTime?: string | null;
+  /** Whether the apps stay blocked until this is done. */
+  gatesApps?: boolean;
   /** Preselects the Chain toggle when opening a brand-new task. */
   chainEnabled?: boolean;
   /** Steps already built in quick add, so "More details" doesn't drop them. */
@@ -185,6 +194,12 @@ export interface TaskDraft {
   /** Same, for a stack. The task adopts the stack's category on the way in, as it would through addExistingToGroup. */
   groupId?: string | null;
   linkUrl?: string | null;
+  completionTimerMinutes?: number | null;
+  logHealthMetric?: NutrientKey | null;
+  logHealthAmount?: number | null;
+  medicationName?: string | null;
+  medicationAmount?: number | null;
+  medicationUnit?: string | null;
   phoneNumber?: string | null;
   emailAddress?: string | null;
   location?: string | null;
@@ -215,7 +230,10 @@ type PickerMode = 'none' | 'reminder';
 type DraftSubtask = { id: string; title: string; completed: boolean; timedMinutes: number | null };
 
 /** Editor sections that collapse to a one-line summary of their current value. */
-type FieldKey = 'stack' | 'category' | 'project' | 'tags' | 'people' | 'waitingOnPerson' | 'priority' | 'effort' | 'duration' | 'subtasks' | 'chainSteps' | 'deliverable';
+/** A medication name is a label on a row, not a prescription line. */
+const MEDICATION_NAME_MAX_LENGTH = 60;
+
+type FieldKey = 'stack' | 'category' | 'project' | 'tags' | 'people' | 'waitingOnPerson' | 'priority' | 'effort' | 'duration' | 'subtasks' | 'chainSteps' | 'deliverable' | 'completionTimer' | 'logHealthValue' | 'medication';
 
 // Presets for the Duration field, in minutes — the common "do this for a bit"
 // spans, including the 25-minute pomodoro.
@@ -233,6 +251,37 @@ const SUBTASK_CHECKBOX_SIZE = 16;
 // to nonsense.
 const MAX_DEADLINE_OFFSET_DAYS = 365;
 const MAX_STREAK_COUNT = 9999;
+// A completion timer steps in quarter-hours up to 24h — well past a real wait
+// (the iron-pill case this shipped for is 2h), same "past any real value"
+// reasoning as the two ceilings above.
+const COMPLETION_TIMER_STEP_MINUTES = 15;
+const MAX_COMPLETION_TIMER_MINUTES = 24 * 60;
+// How long a failed task can block apps for. The floor is a quarter-hour
+// because iOS refuses a very short monitored interval (DeviceActivity throws
+// `intervalTooShort`), so a 5-minute block is a promise this could not keep
+// once the native schedule lands. The ceiling is a day: past that it stops
+// being a nudge and becomes somebody locked out of their phone by a chore.
+const PENALTY_STEP_MINUTES = 15;
+const PENALTY_MIN_MINUTES = 15;
+const PENALTY_MAX_MINUTES = 24 * 60;
+
+// Step and ceiling for one completion's worth of a nutrient, keyed the same
+// way NUTRIENT_LABEL is. This logs a single completion, not a running daily
+// total, so every ceiling is sized to a generous single serving rather than
+// to a whole day's intake — waterMl's 1000mL/50mL step is the original
+// water-only feature's own numbers, kept unchanged for it.
+const LOG_HEALTH_VALUE_STEPS: Record<NutrientKey, { step: number; max: number }> = {
+  calorieKcal: { step: 50, max: 1500 },
+  proteinG: { step: 5, max: 100 },
+  carbsG: { step: 5, max: 150 },
+  fatG: { step: 5, max: 100 },
+  satFatG: { step: 1, max: 50 },
+  fiberG: { step: 1, max: 30 },
+  sugarG: { step: 1, max: 50 },
+  sodiumMg: { step: 100, max: 3000 },
+  caffeineMg: { step: 10, max: 500 },
+  waterMl: { step: 50, max: 1000 },
+};
 
 
 export function TaskEditor({ visible, task, initialDraft, onClose }: Props) {
@@ -366,6 +415,7 @@ export function TaskEditor({ visible, task, initialDraft, onClose }: Props) {
   const [deadlineOffsetDays, setDeadlineOffsetDays] = useState<number | null>(null);
   const [deadlineMonthDay, setDeadlineMonthDay] = useState<number | null>(null);
   const [deadlineOnCalendar, setDeadlineOnCalendar] = useState(false);
+  const [logCompletionToCalendar, setLogCompletionToCalendar] = useState(false);
   const [showDeadlinePicker, setShowDeadlinePicker] = useState(false);
   const [timeSegments, setTimeSegments] = useState<TimeOfDay[]>([]);
   const [targetCount, setTargetCount] = useState<number | null>(null);
@@ -388,6 +438,12 @@ export function TaskEditor({ visible, task, initialDraft, onClose }: Props) {
   const [windowEnd, setWindowEnd] = useState<string | null>(null);
   const [windowPickerMode, setWindowPickerMode] = useState<'none' | 'start' | 'end'>('none');
   const [windowPickerDate, setWindowPickerDate] = useState(new Date());
+  const [penaltyMinutes, setPenaltyMinutes] = useState<number | null>(null);
+  const [gatesApps, setGatesApps] = useState(false);
+  const [penaltyCutoffTime, setPenaltyCutoffTime] = useState<string | null>(null);
+  const [showPenalty, setShowPenalty] = useState(false);
+  const [penaltyPickerOpen, setPenaltyPickerOpen] = useState(false);
+  const [penaltyPickerDate, setPenaltyPickerDate] = useState(new Date());
   const [deferUntil, setDeferUntil] = useState<Date | null>(null);
   const [reminderTime, setReminderTime] = useState<Date | null>(null);
   const [reminderKind, setReminderKind] = useState<ReminderKind>('notification');
@@ -422,6 +478,14 @@ export function TaskEditor({ visible, task, initialDraft, onClose }: Props) {
   const [vacationPause, setVacationPause] = useState(false);
   const [excludeFromSuggestions, setExcludeFromSuggestions] = useState(false);
   const [linkUrl, setLinkUrl] = useState<string | null>(null);
+  const [completionTimerMinutes, setCompletionTimerMinutes] = useState<number | null>(null);
+  const [logHealthMetric, setLogHealthMetric] = useState<NutrientKey | null>(null);
+  const [logHealthAmount, setLogHealthAmount] = useState<number | null>(null);
+  const [medicationName, setMedicationName] = useState<string | null>(null);
+  // Held as the typed string rather than a number so a half-typed "2." isn't
+  // thrown away mid-keystroke; parsed once, on save.
+  const [medicationAmount, setMedicationAmount] = useState('');
+  const [medicationUnit, setMedicationUnit] = useState<string | null>(null);
   const [blockedById, setBlockedById] = useState<string | null>(null);
   const [waitingOnPersonId, setWaitingOnPersonId] = useState<string | null>(null);
   const [deliverableKind, setDeliverableKind] = useState<DeliverableKind | null>(null);
@@ -509,6 +573,7 @@ export function TaskEditor({ visible, task, initialDraft, onClose }: Props) {
   // Which step's "ask on completion" sheet is open, by id rather than index —
   // the list under it can be reordered or shortened while the sheet is up.
   const [questionStepId, setQuestionStepId] = useState<string | null>(null);
+  const [medicationStepId, setMedicationStepId] = useState<string | null>(null);
   const [chainIndex, setChainIndex] = useState(0);
   const [chainStepOnSchedule, setChainStepOnSchedule] = useState(false);
   const [newChainItemTitle, setNewChainItemTitle] = useState('');
@@ -517,12 +582,16 @@ export function TaskEditor({ visible, task, initialDraft, onClose }: Props) {
   const [chainItemTitleEdit, setChainItemTitleEdit] = useState('');
 
   const dayResetTime = useSettingsStore(s => s.dayResetTime);
+  const penaltyShieldEnabled = useSettingsStore(s => s.penaltyShieldEnabled);
+  const gateShieldEnabled = useSettingsStore(s => s.gateShieldEnabled);
   const defaultReminderLeadMinutes = useSettingsStore(s => s.defaultReminderLeadMinutes);
   const kitchenEnabled = useSettingsStore(s => s.kitchenEnabled);
   const simpleMode = useSettingsStore(s => s.simpleMode);
   const calendarReadEnabled = useSettingsStore(s => s.calendarReadEnabled);
   const reminderMeetingNudgeEnabled = useSettingsStore(s => s.reminderMeetingNudgeEnabled);
   const deadlineCalendarId = useSettingsStore(s => s.deadlineCalendarId);
+  const completionCalendarId = useSettingsStore(s => s.completionCalendarId);
+  const healthWriteEnabled = useSettingsStore(s => s.healthWriteEnabled);
   const use24HourTime = useSettingsStore(s => s.use24HourTime);
   const activeHoursStart = useSettingsStore(s => s.activeHoursStart);
   const activeHoursEnd = useSettingsStore(s => s.activeHoursEnd);
@@ -555,6 +624,8 @@ export function TaskEditor({ visible, task, initialDraft, onClose }: Props) {
 
   const scheduleTooltipAnim = useRef(new Animated.Value(0)).current;
   const hadScheduleParse = useRef(false);
+  const mentionSuggestionAnim = useRef(new Animated.Value(0)).current;
+  const hadMentionSuggestion = useRef(false);
 
   const titleRef = useRef<TextInput>(null);
   const chainInputRef = useRef<TextInput>(null);
@@ -617,9 +688,13 @@ export function TaskEditor({ visible, task, initialDraft, onClose }: Props) {
       setDeadlineOffsetDays(task.deadlineOffsetDays ?? null);
       setDeadlineMonthDay(task.deadlineMonthDay ?? null);
       setDeadlineOnCalendar(task.deadlineOnCalendar ?? false);
+      setLogCompletionToCalendar(task.logCompletionToCalendar ?? false);
       setTimeSegments(task.timeSegments ?? []);
       setWindowStart(task.windowStart ?? null);
       setWindowEnd(task.windowEnd ?? null);
+      setPenaltyMinutes(task.penaltyMinutes ?? null);
+      setGatesApps(task.gatesApps ?? false);
+      setPenaltyCutoffTime(task.penaltyCutoffTime ?? null);
       setTargetCount(task.targetCount ?? null);
       setTargetUnit(task.targetUnit ?? '');
       setAllowOvershoot(task.allowOvershoot ?? false);
@@ -660,6 +735,12 @@ export function TaskEditor({ visible, task, initialDraft, onClose }: Props) {
       setQuotaPeriod(task.quotaPeriod ?? 'day');
       setStreakRequiresWindow(task.streakRequiresWindow ?? false);
       setLinkUrl(task.linkUrl ?? null);
+      setCompletionTimerMinutes(task.completionTimerMinutes ?? null);
+      setLogHealthMetric(task.logHealthMetric ?? null);
+      setLogHealthAmount(task.logHealthAmount ?? null);
+      setMedicationName(task.medicationName ?? null);
+      setMedicationAmount(task.medicationAmount !== null ? String(task.medicationAmount) : '');
+      setMedicationUnit(task.medicationUnit ?? null);
       setPhoneNumber(task.phoneNumber ?? null);
       setEmailAddress(task.emailAddress ?? null);
       setLocation(task.location ?? null);
@@ -674,7 +755,7 @@ export function TaskEditor({ visible, task, initialDraft, onClose }: Props) {
     } else {
       setTitle(initialDraft?.title ?? ''); titleCaret.resetCaret(initialDraft?.title ?? ''); setNotes(initialDraft?.notes ?? ''); setCategory(initialDraft?.category ?? null); setProject(initialDraft?.projectId ?? null); setTags(initialDraft?.tags ?? []);
       setGroupId(initialDraft?.groupId ?? null);
-      setDueDate(initialDraft?.dueDate ?? null); setExtraDates([]); setSeriesRepeats(false); setDeadline(null); setDeadlineOffsetDays(null); setDeadlineMonthDay(null); setDeadlineOnCalendar(false); setTimeSegments(initialDraft?.timeSegments ?? []); setWindowStart(null); setWindowEnd(null); setTargetCount(initialDraft?.targetCount ?? null); setTargetUnit(initialDraft?.targetUnit ?? ''); setAllowOvershoot(initialDraft?.allowOvershoot ?? false); setQuotaIntervalMinutes(initialDraft?.quotaIntervalMinutes ?? null); setQuotaReminders(initialDraft?.quotaReminders ?? false); setQuotaAlwaysVisible(initialDraft?.quotaAlwaysVisible ?? false); setSupplyCount(initialDraft?.supplyCount ?? null); setSupplyUnit(initialDraft?.supplyUnit ?? ''); setSupplyRefillCount(initialDraft?.supplyRefillCount ?? null); setSupplyReorderAt(initialDraft?.supplyReorderAt ?? DEFAULT_SUPPLY_REORDER_AT); setSupplyLeadDays(initialDraft?.supplyLeadDays ?? null); setSupplyGroceryItemId(initialDraft?.supplyGroceryItemId ?? null); setDeferUntil(null); setReminderTime(initialDraft?.reminderTime ?? null); setReminderKind('notification'); setReminderTimeAnchor('wallClock'); setReminderTouched(false);
+      setDueDate(initialDraft?.dueDate ?? null); setExtraDates([]); setSeriesRepeats(false); setDeadline(null); setDeadlineOffsetDays(null); setDeadlineMonthDay(null); setDeadlineOnCalendar(false); setTimeSegments(initialDraft?.timeSegments ?? []); setWindowStart(null); setWindowEnd(null); setPenaltyMinutes(initialDraft?.penaltyMinutes ?? null); setGatesApps(initialDraft?.gatesApps ?? false); setPenaltyCutoffTime(initialDraft?.penaltyCutoffTime ?? null); setTargetCount(initialDraft?.targetCount ?? null); setTargetUnit(initialDraft?.targetUnit ?? ''); setAllowOvershoot(initialDraft?.allowOvershoot ?? false); setQuotaIntervalMinutes(initialDraft?.quotaIntervalMinutes ?? null); setQuotaReminders(initialDraft?.quotaReminders ?? false); setQuotaAlwaysVisible(initialDraft?.quotaAlwaysVisible ?? false); setSupplyCount(initialDraft?.supplyCount ?? null); setSupplyUnit(initialDraft?.supplyUnit ?? ''); setSupplyRefillCount(initialDraft?.supplyRefillCount ?? null); setSupplyReorderAt(initialDraft?.supplyReorderAt ?? DEFAULT_SUPPLY_REORDER_AT); setSupplyLeadDays(initialDraft?.supplyLeadDays ?? null); setSupplyGroceryItemId(initialDraft?.supplyGroceryItemId ?? null); setDeferUntil(null); setReminderTime(initialDraft?.reminderTime ?? null); setReminderKind('notification'); setReminderTimeAnchor('wallClock'); setReminderTouched(false);
       setRecurrenceType(initialDraft?.recurrenceType ?? 'none'); setRecurrenceInterval(initialDraft?.recurrenceInterval ?? 1);
       setRecurrenceDays(initialDraft?.recurrenceDays ?? []);
       setRecurrenceMonthDay(initialDraft?.recurrenceMonthDay ?? null);
@@ -694,6 +775,16 @@ export function TaskEditor({ visible, task, initialDraft, onClose }: Props) {
       setShowStreak(false);
       setStreakRequiresWindow(false);
       setLinkUrl(initialDraft?.linkUrl ?? null);
+      setCompletionTimerMinutes(initialDraft?.completionTimerMinutes ?? null);
+      setLogHealthMetric(initialDraft?.logHealthMetric ?? null);
+      setLogHealthAmount(initialDraft?.logHealthAmount ?? null);
+      setMedicationName(initialDraft?.medicationName ?? null);
+      setMedicationAmount(
+        initialDraft?.medicationAmount !== null && initialDraft?.medicationAmount !== undefined
+          ? String(initialDraft.medicationAmount)
+          : ''
+      );
+      setMedicationUnit(initialDraft?.medicationUnit ?? null);
       setPhoneNumber(initialDraft?.phoneNumber ?? null);
       setEmailAddress(initialDraft?.emailAddress ?? null);
       setLocation(initialDraft?.location ?? null);
@@ -739,15 +830,20 @@ export function TaskEditor({ visible, task, initialDraft, onClose }: Props) {
       deadlineOffsetDays: task?.deadlineOffsetDays ?? null,
       deadlineMonthDay: task?.deadlineMonthDay ?? null,
       deadlineOnCalendar: task?.deadlineOnCalendar ?? false,
+      logCompletionToCalendar: task?.logCompletionToCalendar ?? false,
       timeSegments: task ? (task.timeSegments ?? []) : (initialDraft?.timeSegments ?? []),
       windowStart: task?.windowStart ?? null,
       windowEnd: task?.windowEnd ?? null,
+      penaltyMinutes: task ? (task.penaltyMinutes ?? null) : (initialDraft?.penaltyMinutes ?? null),
+      gatesApps: task ? (task.gatesApps ?? false) : (initialDraft?.gatesApps ?? false),
+      penaltyCutoffTime: task ? (task.penaltyCutoffTime ?? null) : (initialDraft?.penaltyCutoffTime ?? null),
       targetCount: task ? (task.targetCount ?? null) : (initialDraft?.targetCount ?? null),
       targetUnit: normalizeTargetUnit(task ? task.targetUnit : initialDraft?.targetUnit),
       allowOvershoot: task ? (task.allowOvershoot ?? false) : (initialDraft?.allowOvershoot ?? false),
       quotaIntervalMinutes: task ? (task.quotaIntervalMinutes ?? null) : (initialDraft?.quotaIntervalMinutes ?? null),
       quotaReminders: task ? (task.quotaReminders ?? false) : (initialDraft?.quotaReminders ?? false),
       quotaAlwaysVisible: task ? (task.quotaAlwaysVisible ?? false) : (initialDraft?.quotaAlwaysVisible ?? false),
+      quotaPeriod: task?.quotaPeriod ?? 'day',
       supplyCount: task ? (task.supplyCount ?? null) : null,
       supplyUnit: task ? (task.supplyUnit ?? '') : '',
       supplyRefillCount: task ? (task.supplyRefillCount ?? null) : null,
@@ -792,11 +888,21 @@ export function TaskEditor({ visible, task, initialDraft, onClose }: Props) {
       chainStepOnSchedule: task?.chainStepOnSchedule ?? false,
       vacationPause: task?.vacationPause ?? false,
       excludeFromSuggestions: task?.excludeFromSuggestions ?? false,
-      showStreak: task?.showStreak ?? false,
       polarity: task?.polarity ?? 'positive',
-      quotaPeriod: task?.quotaPeriod ?? 'day',
+      showStreak: task?.showStreak ?? false,
       streakRequiresWindow: task?.streakRequiresWindow ?? false,
       linkUrl: task ? (task.linkUrl ?? null) : (initialDraft?.linkUrl ?? null),
+      completionTimerMinutes: task ? (task.completionTimerMinutes ?? null) : (initialDraft?.completionTimerMinutes ?? null),
+      logHealthMetric: task ? (task.logHealthMetric ?? null) : (initialDraft?.logHealthMetric ?? null),
+      logHealthAmount: task ? (task.logHealthAmount ?? null) : (initialDraft?.logHealthAmount ?? null),
+      medicationName: task ? (task.medicationName ?? null) : (initialDraft?.medicationName ?? null),
+      // The string the field holds, not the number the task stores, so this
+      // compares like for like against handleCancel's live snapshot below.
+      medicationAmount: (() => {
+        const stored = task ? task.medicationAmount : (initialDraft?.medicationAmount ?? null);
+        return stored !== null && stored !== undefined ? String(stored) : '';
+      })(),
+      medicationUnit: task ? (task.medicationUnit ?? null) : (initialDraft?.medicationUnit ?? null),
       phoneNumber: task ? (task.phoneNumber ?? null) : (initialDraft?.phoneNumber ?? null),
       emailAddress: task ? (task.emailAddress ?? null) : (initialDraft?.emailAddress ?? null),
       location: task ? (task.location ?? null) : (initialDraft?.location ?? null),
@@ -852,6 +958,18 @@ export function TaskEditor({ visible, task, initialDraft, onClose }: Props) {
   }, [titleMentionRanges, parsedSchedule, scheduleMatchEnd]);
   const hasTitleOverlay = parsedSchedule != null || titleMentionRanges.length > 0;
 
+  // Unlike quick add, nothing here ever resolves a fresh "@name" on its own —
+  // so a token that would be a unique, fully-typed match anywhere else still
+  // gets a "tap to add" suggestion, not silence. Only offered when the
+  // schedule banner isn't already claiming the one tooltip slot below the
+  // title. See getEditorMentionSuggestions' doc comment.
+  const titleMentionSuggestion = useMemo(
+    () => (!parsedSchedule && title.trim()
+      ? getEditorMentionSuggestions(title, people, personIds, groupMentionTokens())
+      : null),
+    [title, parsedSchedule, people, personIds]
+  );
+
   // "Call Kristen", "Text the plumber", "Email the landlord" — a title that
   // implies a contact action with no data to power it. Purely a discoverability
   // nudge toward the Phone/Email rows below (see #1152/#1153); never blocking,
@@ -870,11 +988,35 @@ export function TaskEditor({ visible, task, initialDraft, onClose }: Props) {
     hadScheduleParse.current = parsedSchedule != null;
   }, [parsedSchedule]);
 
+  useEffect(() => {
+    if (titleMentionSuggestion && !hadMentionSuggestion.current) {
+      mentionSuggestionAnim.setValue(0);
+      Animated.spring(mentionSuggestionAnim, { toValue: 1, ...animation.spring.bouncy, useNativeDriver: true }).start();
+    }
+    hadMentionSuggestion.current = titleMentionSuggestion != null;
+  }, [titleMentionSuggestion]);
+
   // Splices a token in at the current cursor position, same as a normal
   // keypress would, rather than always appending to the end.
   const insertTitleToken = (token: string) => {
     haptics.tap();
     setTitle(titleCaret.insertToken(token));
+  };
+
+  // Completes an in-progress (or already fully-typed) "@name" and links the
+  // person — or every member of a chosen group — the same tap-to-add motion
+  // every other field in this editor uses to change personIds; see
+  // getEditorMentionSuggestions' doc comment for why this field needs a tap
+  // where quick add resolves live.
+  const applyTitleMentionSuggestion = (candidate: MentionSuggestionCandidate) => {
+    if (!titleMentionSuggestion) return;
+    haptics.success();
+    animateLayout();
+    const next = `${title.slice(0, titleMentionSuggestion.start)}@${candidate.resolveKey} `;
+    setTitle(next);
+    titleCaret.moveCaret(next);
+    const newIds = candidate.memberIds ?? [candidate.id];
+    setPersonIds(prev => [...new Set([...prev, ...newIds])]);
   };
 
   // Apply the suggested schedule and strip the phrase from the title.
@@ -1007,7 +1149,18 @@ export function TaskEditor({ visible, task, initialDraft, onClose }: Props) {
       // task that no longer has one doesn't quietly keep the flag armed for
       // whenever a deadline comes back.
       deadlineOnCalendar: deadline ? deadlineOnCalendar : false,
+      logCompletionToCalendar,
       timeSegments, windowStart, windowEnd, targetCount,
+      penaltyMinutes,
+      // Meaningless on an avoid-task, which is never completed and so could
+      // never satisfy a gate. Cleared rather than carried so flipping the
+      // polarity cannot leave a block nothing can lift.
+      gatesApps: polarity === 'negative' ? false : gatesApps,
+      // Meaningless without a penalty to be late for, and meaningless on an
+      // avoid-task, which fails on a tap rather than at a time. Cleared rather
+      // than carried so a task that stops costing anything doesn't keep a
+      // cutoff waiting for one to come back.
+      penaltyCutoffTime: penaltyMinutes !== null && polarity !== 'negative' ? penaltyCutoffTime : null,
       // Cleared with the count it labels — a unit left behind on a task that is
       // no longer a target has nothing to sit beside, and would come back the
       // moment a target did.
@@ -1085,6 +1238,15 @@ export function TaskEditor({ visible, task, initialDraft, onClose }: Props) {
       // still be set — only the editor's own row is gated on that.
       streakRequiresWindow: recurrenceType !== 'none' && streakRequiresWindow,
       linkUrl: resolveLinkUrl(),
+      completionTimerMinutes,
+      logHealthMetric,
+      logHealthAmount,
+      medicationName: resolveMedicationName(),
+      // Both halves are dropped unless the name is set and the amount parses:
+      // the name is the switch (see Task.medicationName), and an amount
+      // without a unit is unreadable in a dose.
+      medicationAmount: resolveMedicationAmount(),
+      medicationUnit: resolveMedicationAmount() !== null ? medicationUnit : null,
       phoneNumber: resolvePhoneNumber(),
       emailAddress: resolveEmailAddress(),
       location: resolveLocation(),
@@ -1205,7 +1367,7 @@ export function TaskEditor({ visible, task, initialDraft, onClose }: Props) {
           isSeries ? 'Update task on several dates' : 'Update recurring task',
           isSeries
             ? 'This task falls on more than one date. Apply this change to just this date, or to this and its later dates?'
-            : 'This task repeats. Apply this change to just this task, or to this and all future occurrences?',
+            : 'This task repeats. Apply this change to just this task, or to it and every future repeat?',
           [
             { text: 'Cancel', style: 'cancel' },
             { text: isSeries ? 'This date' : 'This task', onPress: () => commitSave('occurrence') },
@@ -1460,6 +1622,20 @@ export function TaskEditor({ visible, task, initialDraft, onClose }: Props) {
     }
   };
 
+  // The cutoff a positive task has to beat. Defaults to 09:00 rather than the
+  // current time: this is a time of day somebody means ("by nine"), and seeding
+  // it with whenever the sheet happened to be opened makes every task's
+  // suggested deadline a different arbitrary minute.
+  const openPenaltyPicker = () => {
+    setPenaltyPickerDate(hhmmToDate(penaltyCutoffTime ?? '09:00'));
+    setPenaltyPickerOpen(true);
+  };
+
+  const confirmPenaltyPicker = () => {
+    setPenaltyCutoffTime(dateToHHMM(penaltyPickerDate));
+    setPenaltyPickerOpen(false);
+  };
+
   const openWindowPicker = (which: 'start' | 'end') => {
     // Switching pills before hitting Set commits the pill being left instead
     // of discarding it, so dialing in Start and tapping End keeps the Start
@@ -1553,6 +1729,22 @@ export function TaskEditor({ visible, task, initialDraft, onClose }: Props) {
     return showLocationField && t ? t : location;
   };
 
+  /** The medication, or null for a task that records nothing. */
+  const resolveMedicationName = () => medicationName?.trim() || null;
+
+  /**
+   * The dose, or null when there isn't a usable one.
+   *
+   * Null unless there is a medication to attach it to, the typed text parses,
+   * and a unit was picked — a number with no unit is unreadable in a dose, and
+   * an amount on a task recording nothing has nothing to be the amount of.
+   */
+  const resolveMedicationAmount = () => {
+    if (!resolveMedicationName() || !medicationUnit) return null;
+    const parsed = Number(medicationAmount.trim());
+    return medicationAmount.trim() !== '' && Number.isFinite(parsed) ? parsed : null;
+  };
+
   // A quota only makes sense period to period: the count resets because each
   // new occurrence starts at zero, so without a repeat there'd be nothing to
   // reset it. The repeat has to match the period it's counting across — a
@@ -1588,6 +1780,7 @@ export function TaskEditor({ visible, task, initialDraft, onClose }: Props) {
       deadlineOffsetDays,
       deadlineMonthDay,
       deadlineOnCalendar,
+      logCompletionToCalendar,
       timeSegments,
       windowStart, windowEnd,
       targetCount,
@@ -1616,6 +1809,12 @@ export function TaskEditor({ visible, task, initialDraft, onClose }: Props) {
       showStreak,
       streakRequiresWindow,
       linkUrl,
+      completionTimerMinutes,
+      logHealthMetric,
+      logHealthAmount,
+      medicationName,
+      medicationAmount,
+      medicationUnit,
       phoneNumber,
       emailAddress,
       location,
@@ -1646,7 +1845,7 @@ export function TaskEditor({ visible, task, initialDraft, onClose }: Props) {
     if (task.recurrenceType !== 'none') {
       Alert.alert(
         'Delete recurring task',
-        'This task repeats. Mark just this occurrence missed, or delete it and stop the series?',
+        'This task repeats. Mark just this one missed, or delete it and stop it repeating?',
         [
           { text: 'Cancel', style: 'cancel' },
           {
@@ -1657,7 +1856,7 @@ export function TaskEditor({ visible, task, initialDraft, onClose }: Props) {
             },
           },
           {
-            text: 'Delete and Stop Series',
+            text: 'Delete and stop repeating',
             style: 'destructive',
             onPress: () => {
               haptics.success();
@@ -1819,6 +2018,15 @@ export function TaskEditor({ visible, task, initialDraft, onClose }: Props) {
   const timeWindowSummary = (windowStart || windowEnd)
     ? `${windowStart ? formatHHMM(windowStart) : 'Any'} – ${windowEnd ? formatHHMM(windowEnd) : 'Any'}`
     : undefined;
+  // Says what happens and when, because the two halves are set separately and
+  // a bare "2h" on the collapsed row reads as how long the task takes.
+  const penaltySummary = penaltyMinutes === null
+    ? undefined
+    : polarity === 'negative'
+      ? `${formatDuration(penaltyMinutes)} each time`
+      : penaltyCutoffTime
+        ? `${formatDuration(penaltyMinutes)} after ${formatHHMM(penaltyCutoffTime, use24HourTime)}`
+        : `${formatDuration(penaltyMinutes)} if not done today`;
   const effortSummaryMinutes = estimatedMinutes ?? effortToMinutes(effort);
   const effortSummary = effort > 0 && effortSummaryMinutes != null
     ? formatDuration(effortSummaryMinutes)
@@ -1983,7 +2191,7 @@ export function TaskEditor({ visible, task, initialDraft, onClose }: Props) {
     <EditorSheet
       visible={visible}
       onRequestClose={handleCancel}
-      onShow={() => titleRef.current?.focus()}
+      onShow={() => { if (!task) titleRef.current?.focus(); }}
       rootStyle={styles.root}
       headerStyle={styles.header}
       scrollStyle={styles.scroll}
@@ -2140,6 +2348,15 @@ export function TaskEditor({ visible, task, initialDraft, onClose }: Props) {
             ))}
             onClose={() => setQuestionStepId(null)}
           />
+          <ChainStepMedicationSheet
+            visible={medicationStepId !== null}
+            step={chainItems.find(c => c.id === medicationStepId) ?? null}
+            taskMedicationName={medicationName}
+            onSave={patch => setChainItems(prev => prev.map(
+              c => (c.id === medicationStepId ? { ...c, ...patch } : c),
+            ))}
+            onClose={() => setMedicationStepId(null)}
+          />
           <FollowUpTaskSheet
             visible={showFollowUpTaskSheet}
             taskTitle={followUpTaskTitle}
@@ -2237,6 +2454,31 @@ export function TaskEditor({ visible, task, initialDraft, onClose }: Props) {
             <View style={styles.scheduleBannerDot} />
             <Text style={styles.scheduleBannerHint}>Tap to set</Text>
           </PressableScale>
+        </Animated.View>
+      )}
+
+      {/* Mention suggestions — a still-typed or already-resolvable "@name"; tap one to link them */}
+      {titleVisible && titleMentionSuggestion && (
+        <Animated.View
+          style={[styles.mentionSuggestionRow, {
+            opacity: mentionSuggestionAnim,
+            transform: [
+              { translateY: mentionSuggestionAnim.interpolate({ inputRange: [0, 1], outputRange: [-6, 0] }) },
+              { scale: mentionSuggestionAnim.interpolate({ inputRange: [0, 1], outputRange: [0.95, 1] }) },
+            ],
+          }]}
+        >
+          {titleMentionSuggestion.candidates.map(candidate => (
+            <PressableScale
+              key={candidate.id}
+              style={styles.scheduleBannerBtn}
+              haptic
+              onPress={() => applyTitleMentionSuggestion(candidate)}
+            >
+              <Ionicons name="person-add-outline" size={14} color={colors.onAccent} />
+              <Text style={styles.scheduleBannerText} numberOfLines={1}>{candidate.name}</Text>
+            </PressableScale>
+          ))}
         </Animated.View>
       )}
       {notesVisible && (
@@ -2809,6 +3051,11 @@ export function TaskEditor({ visible, task, initialDraft, onClose }: Props) {
                               datesNextStep={item.deliverableDatesNextStep === true}
                               onPress={() => setQuestionStepId(item.id)}
                             />
+                            <StepMedication
+                              step={item}
+                              taskMedicationName={medicationName}
+                              onPress={() => setMedicationStepId(item.id)}
+                            />
                             <TouchableOpacity
                               onPress={() => {
                                 // Track the active step by id (like onReorder above) rather
@@ -2966,6 +3213,175 @@ export function TaskEditor({ visible, task, initialDraft, onClose }: Props) {
                   value={deliverableKind}
                   onChange={kind => { setDeliverableKind(kind); closeField('deliverable'); }}
                 />
+              </CollapsibleField>
+            ),
+          },
+          // Another "what does completing this mean" question, and — like
+          // deliverable above — not gated on any other field: it answers to
+          // completion itself, not to a deadline the way the calendar toggle
+          // in the Schedule group does.
+          {
+            key: 'logCompletionToCalendar', label: 'Log to calendar',
+            keywords: ['calendar', 'event', 'log', 'history', 'record'],
+            node: (
+              <TouchableOpacity
+                style={styles.optionRow}
+                onPress={() => {
+                  if (!completionCalendarId) return;
+                  haptics.tap();
+                  setLogCompletionToCalendar(v => !v);
+                }}
+                activeOpacity={interaction.activeOpacity}
+                disabled={!completionCalendarId}
+                accessibilityRole="switch"
+                accessibilityLabel="Log this task's completion to your calendar"
+                accessibilityState={{ checked: logCompletionToCalendar, disabled: !completionCalendarId }}
+              >
+                <Ionicons
+                  name="calendar-outline"
+                  size={18}
+                  color={logCompletionToCalendar ? colors.accent : colors.textSecondary}
+                />
+                <View style={styles.optionContent}>
+                  <Text style={styles.optionLabel}>Log to calendar</Text>
+                  <Text style={styles.optionHint}>
+                    {completionCalendarId
+                      ? 'A calendar event when you complete this task'
+                      : 'Pick a calendar to write to in Settings › Calendar first'}
+                  </Text>
+                </View>
+                <View style={[styles.toggle, logCompletionToCalendar && styles.toggleOn]}>
+                  <View style={[styles.toggleKnob, logCompletionToCalendar && styles.toggleKnobOn]} />
+                </View>
+              </TouchableOpacity>
+            ),
+          },
+          // A third "what does completing this mean" question, same family as
+          // the calendar toggle right above — opt-in, gated on a Settings
+          // switch it can't turn on for itself, same disabled/hint shape.
+          // A metric-and-number pair rather than a toggle, unlike the
+          // calendar row: the calendar event's content is fixed (the task's
+          // own title), but "how much of what" has no single obvious answer
+          // to bake in — this used to log dietary water only.
+          {
+            key: 'logHealthValue', label: 'Log to Health',
+            set: logHealthMetric !== null && logHealthAmount !== null,
+            keywords: ['water', 'hydration', 'drink', 'health', 'apple health', 'nutrient', 'protein', 'sodium', 'calories', 'sugar', 'fiber', 'fat', 'carbs', 'caffeine'],
+            node: (
+              <CollapsibleField
+                label="Log to Health"
+                summary={
+                  logHealthMetric !== null && logHealthAmount !== null
+                    ? `${logHealthAmount}${NUTRIENT_LABEL[logHealthMetric].unit} of ${NUTRIENT_LABEL[logHealthMetric].label.toLowerCase()} when completed`
+                    : undefined
+                }
+                hint={
+                  healthWriteEnabled
+                    ? 'Writes one sample to Apple Health each time you complete this task.'
+                    : 'Turn on writing to Health in Settings › Health first'
+                }
+                expanded={healthWriteEnabled && fieldOpen('logHealthValue')}
+                onToggle={() => { if (!healthWriteEnabled) return; toggleField('logHealthValue'); }}
+              >
+                <SegmentedControl<NutrientKey>
+                  options={NUTRIENT_KEYS.map(key => ({ value: key, label: NUTRIENT_LABEL[key].label }))}
+                  value={logHealthMetric ?? 'waterMl'}
+                  onChange={next => {
+                    haptics.tap();
+                    setLogHealthMetric(next);
+                    // Re-defaulted rather than carried over, same reasoning
+                    // the health-target metric switch above uses: 250 of
+                    // whatever the old metric was is not a meaningful amount
+                    // of the new one, so switching starts back at one step.
+                    setLogHealthAmount(LOG_HEALTH_VALUE_STEPS[next].step);
+                  }}
+                  columns={2}
+                  label="Nutrient"
+                  surface="card"
+                />
+                <CountStepper
+                  value={logHealthAmount}
+                  onChange={next => {
+                    setLogHealthAmount(next);
+                    // Stepping up from Off before ever touching the picker
+                    // above still has to turn the row on for some metric —
+                    // water, the same default this feature started as.
+                    if (next !== null && logHealthMetric === null) setLogHealthMetric('waterMl');
+                  }}
+                  min={LOG_HEALTH_VALUE_STEPS[logHealthMetric ?? 'waterMl'].step}
+                  max={LOG_HEALTH_VALUE_STEPS[logHealthMetric ?? 'waterMl'].max}
+                  step={LOG_HEALTH_VALUE_STEPS[logHealthMetric ?? 'waterMl'].step}
+                  allowNull
+                  emptyLabel="Off"
+                  label="Log to Health"
+                  format={n => `${n}${NUTRIENT_LABEL[logHealthMetric ?? 'waterMl'].unit}`}
+                  describeValue={n => (n === null ? 'off' : `${n} ${NUTRIENT_LABEL[logHealthMetric ?? 'waterMl'].unit}`)}
+                />
+              </CollapsibleField>
+            ),
+          },
+          // The fourth "what does completing this mean" row, and the closest
+          // relative of the Health one right above: a name-and-amount pair
+          // that turns a completion into a quantity recorded elsewhere. It
+          // needs no Settings switch, because what it writes is the app's own
+          // log rather than somebody else's database.
+          //
+          // Nothing is asked at the tick — the dose is what this row already
+          // says it is. That is the whole point: a repeating task carrying a
+          // medication *is* how a scheduled dose gets logged here, so asking
+          // again would be recording the same fact twice. See
+          // docs/arch/mood-log.md.
+          {
+            key: 'medication', label: 'Log a dose', set: medicationName !== null,
+            keywords: ['medication', 'medicine', 'pill', 'tablet', 'dose', 'drug', 'supplement', 'vitamin', 'mg', 'prescription'],
+            node: (
+              <CollapsibleField
+                label="Log a dose"
+                summary={
+                  medicationName
+                    ? [medicationName, resolveMedicationAmount() !== null ? `${resolveMedicationAmount()} ${medicationUnit}` : null]
+                        .filter(Boolean).join(', ')
+                    : undefined
+                }
+                hint="Records a dose in your medication log each time you complete this task. Unticking it takes the dose back."
+                expanded={fieldOpen('medication')}
+                onToggle={() => toggleField('medication')}
+              >
+                <TextInput
+                  style={styles.fieldBox}
+                  value={medicationName ?? ''}
+                  onChangeText={text => setMedicationName(text || null)}
+                  placeholder="e.g. Sertraline"
+                  placeholderTextColor={colors.textTertiary}
+                  maxLength={MEDICATION_NAME_MAX_LENGTH}
+                  returnKeyType="done"
+                  accessibilityLabel="What this task records a dose of"
+                />
+                {/* Hidden until there's something to be the amount *of*, the
+                    same rule the daily target's unit field follows: on its own
+                    it labels nothing. */}
+                {medicationName !== null && (
+                  <>
+                    <TextInput
+                      style={[styles.fieldBox, styles.medicationAmountInput]}
+                      value={medicationAmount}
+                      onChangeText={setMedicationAmount}
+                      placeholder="e.g. 50"
+                      placeholderTextColor={colors.textTertiary}
+                      keyboardType="decimal-pad"
+                      returnKeyType="done"
+                      accessibilityLabel="How much, optional"
+                    />
+                    <SegmentedControl
+                      options={DOSE_UNITS.map(u => ({ value: u.value, label: u.value }))}
+                      value={medicationUnit ?? ''}
+                      columns={5}
+                      label="Unit"
+                      surface="card"
+                      onChange={next => { haptics.tap(); setMedicationUnit(next === medicationUnit ? null : next); }}
+                    />
+                  </>
+                )}
               </CollapsibleField>
             ),
           },
@@ -3174,7 +3590,7 @@ export function TaskEditor({ visible, task, initialDraft, onClose }: Props) {
                         label="Deadline offset"
                       />
                       <Text style={styles.intervalLabel}>
-                        {`${Math.abs(deadlineOffsetDays) === 1 ? 'day' : 'days'} ${deadlineOffsetDays < 0 ? 'after' : 'before'} due, every occurrence`}
+                        {`${Math.abs(deadlineOffsetDays) === 1 ? 'day' : 'days'} ${deadlineOffsetDays < 0 ? 'after' : 'before'} due, every time it repeats`}
                       </Text>
                     </View>
                   </>
@@ -3316,6 +3732,115 @@ export function TaskEditor({ visible, task, initialDraft, onClose }: Props) {
               </>
             ),
           },
+          // Only while the feature is switched on. A per-task cost that nothing
+          // would ever charge is worse than an undiscoverable one, and Settings
+          // is where the switch lives because that is where Screen Time access
+          // is asked for.
+          // The other direction from the penalty row below, and a plain switch
+          // because there is nothing to configure: a gate's length is however
+          // long the task goes undone.
+          ...(gateShieldEnabled && polarity !== 'negative' ? [{
+            key: 'gate',
+            label: 'Block apps until done',
+            set: gatesApps,
+            keywords: ['block', 'gate', 'until', 'first', 'before', 'unlock', 'screen time', 'apps', 'lock'],
+            node: (
+              <TouchableOpacity
+                style={styles.optionRow}
+                onPress={() => { haptics.tap(); setGatesApps(v => !v); }}
+                activeOpacity={interaction.activeOpacity}
+                accessibilityRole="switch"
+                accessibilityLabel="Block apps until this is done"
+                accessibilityState={{ checked: gatesApps }}
+              >
+                <Ionicons name="lock-closed-outline" size={18} color={gatesApps ? colors.accent : colors.textSecondary} />
+                <View style={styles.optionContent}>
+                  <Text style={styles.optionLabel}>Block apps until this is done</Text>
+                  <Text style={styles.optionHint}>
+                    The apps you picked in Settings stay blocked while this is on Today and not done. Finishing it, or moving it to another day, unblocks them.
+                  </Text>
+                </View>
+                <View style={[styles.toggle, gatesApps && styles.toggleOn]}>
+                  <View style={[styles.toggleKnob, gatesApps && styles.toggleKnobOn]} />
+                </View>
+              </TouchableOpacity>
+            ),
+          }] : []),
+          ...(penaltyShieldEnabled ? [{
+            key: 'penalty',
+            label: 'Block apps',
+            set: penaltyMinutes !== null,
+            keywords: ['block', 'penalty', 'punish', 'consequence', 'cost', 'screen time', 'apps', 'shield', 'lock'],
+            node: (
+              <>
+                <EditorRow
+                  icon="lock-closed-outline"
+                  label={polarity === 'negative' ? 'Block apps on a slip' : 'Block apps if missed'}
+                  hint={polarity === 'negative'
+                    ? 'Blocks the apps you picked in Settings as soon as you log one.'
+                    : 'Blocks the apps you picked in Settings if this is still undone at the cutoff.'}
+                  value={penaltySummary}
+                  expanded={showPenalty}
+                  onPress={() => { animateLayout(); setShowPenalty(v => !v); }}
+                  onClear={penaltyMinutes !== null
+                    ? () => { setPenaltyMinutes(null); setPenaltyCutoffTime(null); setPenaltyPickerOpen(false); }
+                    : undefined}
+                />
+                {showPenalty && (
+                  <>
+                    <CountStepper
+                      value={penaltyMinutes}
+                      onChange={setPenaltyMinutes}
+                      min={PENALTY_MIN_MINUTES}
+                      max={PENALTY_MAX_MINUTES}
+                      step={PENALTY_STEP_MINUTES}
+                      allowNull
+                      emptyLabel="No block"
+                      format={formatDuration}
+                      label="Block length"
+                      style={styles.penaltyStepper}
+                    />
+                    {polarity !== 'negative' && penaltyMinutes !== null && (
+                      <>
+                        <View style={styles.windowPillRow}>
+                          <TouchableOpacity
+                            style={[
+                              styles.timePill, styles.windowPill,
+                              !!penaltyCutoffTime && styles.timePillActive,
+                              penaltyPickerOpen && styles.timePillEditing,
+                            ]}
+                            onPress={openPenaltyPicker}
+                          >
+                            <Text style={[styles.timePillText, !!penaltyCutoffTime && styles.timePillTextActive]}>
+                              {penaltyCutoffTime ? formatHHMM(penaltyCutoffTime, use24HourTime) : 'End of day'}
+                            </Text>
+                          </TouchableOpacity>
+                          {penaltyCutoffTime !== null && (
+                            <TouchableOpacity
+                              style={[styles.timePill, styles.windowPill]}
+                              onPress={() => { setPenaltyCutoffTime(null); setPenaltyPickerOpen(false); }}
+                              accessibilityRole="button"
+                              accessibilityLabel="Judge at the end of the day instead"
+                            >
+                              <Text style={styles.timePillText}>Clear</Text>
+                            </TouchableOpacity>
+                          )}
+                        </View>
+                        {penaltyPickerOpen && (
+                          <InlineTimePicker
+                            value={penaltyPickerDate}
+                            onChange={setPenaltyPickerDate}
+                            onCancel={() => setPenaltyPickerOpen(false)}
+                            onConfirm={confirmPenaltyPicker}
+                          />
+                        )}
+                      </>
+                    )}
+                  </>
+                )}
+              </>
+            ),
+          }] : []),
           // Only for a saved top-level task: the action opens a system sheet
           // that writes an event against a task id, and there isn't one yet
           // while a task is being composed. Reads the *saved* estimate rather
@@ -3393,6 +3918,34 @@ export function TaskEditor({ visible, task, initialDraft, onClose }: Props) {
             ),
           },
           {
+            key: 'completionTimer', label: 'Completion timer', set: completionTimerMinutes !== null,
+            keywords: ['timer', 'alarm', 'after', 'later', 'reminder', 'wait'],
+            node: (
+              <>
+            <CollapsibleField
+              label="Completion timer"
+              summary={completionTimerMinutes !== null ? `${formatDuration(completionTimerMinutes)} after completing` : undefined}
+              hint="Asks to set a reminder this long after you complete the task, e.g. a two-hour wait before eating after a medication."
+              expanded={fieldOpen('completionTimer')}
+              onToggle={() => toggleField('completionTimer')}
+            >
+              <CountStepper
+                value={completionTimerMinutes}
+                onChange={setCompletionTimerMinutes}
+                min={COMPLETION_TIMER_STEP_MINUTES}
+                max={MAX_COMPLETION_TIMER_MINUTES}
+                step={COMPLETION_TIMER_STEP_MINUTES}
+                allowNull
+                emptyLabel="Off"
+                label="Completion timer"
+                format={formatDuration}
+                describeValue={n => (n === null ? 'off' : formatDuration(n))}
+              />
+            </CollapsibleField>
+              </>
+            ),
+          },
+          {
             key: 'location', label: 'Location',
             keywords: ['address', 'place', 'venue', 'where'],
             node: (
@@ -3400,7 +3953,7 @@ export function TaskEditor({ visible, task, initialDraft, onClose }: Props) {
             <EditorRow
               icon="location-outline"
               label="Location"
-              hint="Where this task happens — an appointment's address, a venue."
+              hint="Where this task happens, like an appointment's address or a venue."
               value={location ?? undefined}
               expanded={showLocationField}
               onPress={() => {
@@ -4860,6 +5413,14 @@ const makeStyles = (colors: Colors) => StyleSheet.create({
     marginBottom: spacing.sm,
     alignItems: 'flex-start',
   },
+  mentionSuggestionRow: {
+    flexDirection: 'row',
+    flexWrap: 'wrap',
+    gap: 6,
+    marginHorizontal: spacing.md,
+    marginTop: -4,
+    marginBottom: spacing.sm,
+  },
   scheduleBannerBtn: {
     flexDirection: 'row',
     alignItems: 'center',
@@ -4983,6 +5544,10 @@ const makeStyles = (colors: Colors) => StyleSheet.create({
     paddingHorizontal: spacing.md, paddingTop: spacing.sm, paddingBottom: spacing.sm,
   },
   windowPill: { flex: 1 },
+  // Margin on both sides: the pill row below supplies its own top padding, but
+  // the row above this one ends flush, so without the top margin the stepper
+  // sits against it.
+  penaltyStepper: { marginHorizontal: spacing.md, marginTop: spacing.md, marginBottom: spacing.xs },
   targetStepperRow: {
     flexDirection: 'row', alignItems: 'center', gap: spacing.sm,
     paddingHorizontal: spacing.md, paddingTop: spacing.xs, paddingBottom: spacing.xs,
@@ -5040,6 +5605,8 @@ const makeStyles = (colors: Colors) => StyleSheet.create({
   },
   /** Daily target's unit: one word, so it takes the rest of the stepper's line. */
   targetUnitInput: { flex: 1 },
+  /** Sits between the medication's name and its unit row. */
+  medicationAmountInput: { marginTop: spacing.sm, marginBottom: spacing.sm },
   /** The count in its read-out state, where a cadence is deriving it. */
   targetDerivedCount: { color: colors.text, fontSize: font.md, fontWeight: '500' },
   /**

@@ -83,46 +83,70 @@ export interface AiRouteInput {
   /** What the device says right now — see `onDeviceModelAvailability`. */
   onDeviceAvailable: boolean;
   /**
-   * Whether Vision can read a photo here — see `canReadReceiptOnDevice`.
+   * Whether Vision can read a photo here — see `canReadTextOnDevice`.
    *
    * Required rather than optional so a new call site cannot forget it and
    * silently route a `vision` feature to `unavailable`, which would read as the
    * feature being switched off rather than as a missing field.
    */
   visionAvailable: boolean;
+  /**
+   * The explicit, per-feature opt-in past rule 2 below: `AiFeatureConfig.preferOnDevice`.
+   * Optional and false by default, so every existing caller keeps rule 2's
+   * behavior unchanged — this only matters for a feature whose config was
+   * deliberately set to it (grocery aisle sorting, at launch). It's a
+   * *preference*, not a demand: if on-device can't actually answer (off, or
+   * the model isn't ready), a key holder still falls through to Claude rather
+   * than losing the feature outright.
+   */
+  preferOnDevice?: boolean;
 }
 
 /**
- * Four rules, in this order, and the order is the design:
+ * Five rules, in this order, and the order is the design:
  *
  * 1. **The feature's own switch wins outright.** Someone who turned grocery
  *    aisle sorting off asked for no aisle sorting, not for a quieter engine to
  *    do it instead. On-device is a floor under the features, never a way past
  *    a switch.
- * 2. **A key means Claude.** The on-device path is not offered to a key holder
- *    even for the small calls it could plausibly serve faster, because "could
+ * 2. **A key means Claude — unless the feature's own `preferOnDevice` opt-in
+ *    says otherwise.** The on-device path is not offered to a key holder even
+ *    for the small calls it could plausibly serve faster, because "could
  *    plausibly" is the whole of the evidence: nothing here has measured
  *    on-device latency for a 60-name batch against a Haiku round trip, and
- *    quietly making an existing, working feature worse is the one outcome this
- *    change must not have. That routing is a follow-up with a number attached.
- * 3. **No key, but a working engine, means on-device.** The point of the
- *    exercise. Which engine, and so what has to be true for it to work, is the
- *    feature's own — see `OnDeviceEngine`. Only the language model answers to
- *    the Apple Intelligence switch: that setting is about a model that reasons
- *    about your text, and reading a photo you just took is neither that model
- *    nor that concern, so gating Vision on it would take receipt scanning away
- *    from someone who only meant to turn Apple Intelligence off.
- * 4. **Otherwise nothing**, and the caller must not render an entry point.
+ *    quietly making an existing, working feature worse is the one outcome
+ *    this rule must not have by default. `preferOnDevice` is that
+ *    measurement's opt-in escape hatch: a per-feature switch the *user* sets
+ *    (not a default), so making it worse is a choice they made, not one this
+ *    file made for them.
+ * 3. **A working engine, with no key or the key overridden, means on-device.**
+ *    The point of the exercise. Which engine, and so what has to be true for
+ *    it to work, is the feature's own — see `OnDeviceEngine`. Only the
+ *    language model answers to the Apple Intelligence switch: that setting is
+ *    about a model that reasons about your text, and reading a photo you just
+ *    took is neither that model nor that concern, so gating Vision on it
+ *    would take receipt scanning away from someone who only meant to turn
+ *    Apple Intelligence off.
+ * 4. **A key means Claude after all, if on-device turned out not to work.**
+ *    `preferOnDevice` is a preference, not a demand — it must never be the
+ *    reason a working feature goes dark for someone who has a key sitting
+ *    right there. This is rule 2 again, reached the second time only when
+ *    rule 3 couldn't answer.
+ * 5. **Otherwise nothing**, and the caller must not render an entry point.
  */
 export function routeForFeature(id: AiFeatureId, input: AiRouteInput): AiRoute {
   if (!input.enabled) return 'unavailable';
-  if (input.hasApiKey) return 'claude';
-  switch (onDeviceEngineFor(id)) {
-    case 'languageModel':
-      return input.onDeviceEnabled && input.onDeviceAvailable ? 'onDevice' : 'unavailable';
-    case 'vision':
-      return input.visionAvailable ? 'onDevice' : 'unavailable';
-    default:
-      return 'unavailable';
-  }
+  if (input.hasApiKey && !input.preferOnDevice) return 'claude';
+  const onDeviceRoute = (() => {
+    switch (onDeviceEngineFor(id)) {
+      case 'languageModel':
+        return input.onDeviceEnabled && input.onDeviceAvailable;
+      case 'vision':
+        return input.visionAvailable;
+      default:
+        return false;
+    }
+  })();
+  if (onDeviceRoute) return 'onDevice';
+  return input.hasApiKey ? 'claude' : 'unavailable';
 }

@@ -34,15 +34,17 @@ import Reanimated, {
 import Ionicons from '@expo/vector-icons/Ionicons';
 import { format } from 'date-fns';
 import { PinIcon } from './PinIcon';
-import type { Task, GroceryItem, ItemSubLink, Recipe } from '../types';
+import type { Task, GroceryItem, ItemSubLink, ItemProduct, Recipe } from '../types';
 import { MEAL_SLOT_ICONS, MEAL_SLOT_LABELS, PRIORITY_COLORS, TITLE_MAX_LENGTH } from '../types';
 import { useColors } from '../theme/ThemeContext';
 import { useTheme } from '../theme/ThemeContext';
 import { spacing, radius, font, fontWeight, lineHeight, border, iconSize, animation, interaction, checkboxRadius, type Colors } from '../theme';
 import { formatDeadlineDate, formatScheduledDate, formatTaskDate, formatHHMM, dateToHHMM, formatWindowRemaining, getDeadlineCountdown, getEffectiveTaskDate, getTaskDayStart, getCurrentDayStart, getLogicalDayKey, dayKeyToDate, formatTimeOfDay } from '../utils/dateUtils';
 import { isNegativeTask, isCleanToday, slipsToday } from '../utils/negativeHabits';
-import { isDateAnchored } from '../utils/taskMoves';
+import { scheduleMoveUpdates } from '../utils/taskMoves';
 import { formatDuration, formatStopwatch } from '../utils/effort';
+import { confirmSlip } from '../utils/slipConfirm';
+import { scheduleCompletionTimer } from '../utils/notifications';
 import { isTimedTask, timerRemaining, timerProgress, timerElapsed } from '../utils/timer';
 import {
   describeHealthTarget, hasHealthTarget, healthTargetProgress, healthTargetValue, isHealthTargetReady,
@@ -57,7 +59,11 @@ import { chainPreview, isChainFinish } from '../utils/chain';
 import { formatQuotaProgress } from '../utils/quotaUnit';
 import { clampSupplyReorderAt, describeSupply } from '../utils/supply';
 import { haptics } from '../utils/haptics';
-import { openInAppUrl, linkIconFor } from '../utils/deepLinks';
+import { openInAppUrl, linkIconFor, isDeloadUrl } from '../utils/deepLinks';
+import { parseHealthSourceId } from '../utils/healthRules';
+import { pantryCheckItemId, pantryCheckLapse } from '../utils/pantryCheckTasks';
+import { pantryReviewDayKey } from '../utils/pantryReviewTasks';
+import { buildPantryReviewDeck } from '../utils/pantryReview';
 import { telUrl, smsUrl } from '../utils/phone';
 import { mailtoUrl } from '../utils/email';
 import { directionsUrl } from '../utils/maps';
@@ -140,6 +146,7 @@ const EMPTY_BUSY_EVENTS: BusyEvent[] = [];
 const EMPTY_GROCERY_ITEMS: GroceryItem[] = [];
 const EMPTY_ITEM_SUBS: ItemSubLink[] = [];
 const EMPTY_RECIPES: Recipe[] = [];
+const EMPTY_ITEM_PRODUCTS: ItemProduct[] = [];
 
 interface Props {
   task: Task;
@@ -435,6 +442,7 @@ export const TaskItem = React.memo(function TaskItem({
   // a key it's the AI sheet; without one it falls back to the editor, where the
   // subtask field is. A row that can't do either (no onEdit) offers no pill.
   const anthropicApiKey = useSettingsStore(s => s.anthropicApiKey);
+  const penaltyShieldEnabled = useSettingsStore(s => s.penaltyShieldEnabled);
   const canBreakUp = !!anthropicApiKey || !!onEdit;
   const handleBreakUp = () => {
     setShowWhenPicker(false);
@@ -839,6 +847,48 @@ export const TaskItem = React.memo(function TaskItem({
   const mealPlanReady =
     plannedMeals !== undefined && plannedMeals >= MEAL_PLAN_NUDGE_SLOT_COUNT && !task.completed;
 
+  // Three more generated-task readinesses, same "nudge, not a lock" treatment
+  // as the ones above: the question this row asked has already been answered
+  // by a flow elsewhere, and the row itself is still sitting here only
+  // because the maintenance sweep that would otherwise clear it silently
+  // (stalePantryCheckTasks, stalePantryReviewTasks) hasn't run yet.
+  //
+  // "Check if you still have X" — ready once the item's own probablyHave
+  // question has an answer again (pantryCheckLapse back to null), the same
+  // predicate stalePantryCheckTasks judges the row stale against.
+  const pantryCheckId = pantryCheckItemId(task);
+  const pantryCheckItem = useGroceryStore(s => (pantryCheckId ? s.itemById(pantryCheckId) : null));
+  const pantryCheckReady =
+    !!pantryCheckItem && !task.completed && pantryCheckLapse(pantryCheckItem, new Date()) === null;
+
+  // "Review what's in the pantry" — ready once the deck it opens is empty,
+  // the same predicate stalePantryReviewTasks judges the row stale against.
+  // Gated behind isPantryReviewTask so every other row on Today keeps the
+  // stable EMPTY_* references and re-renders no more often than it did.
+  const isPantryReviewTask = pantryReviewDayKey(task) !== null;
+  const pantryReviewItems = useGroceryStore(s => (isPantryReviewTask ? s.items : EMPTY_GROCERY_ITEMS));
+  const pantryReviewItemProducts = useGroceryStore(s =>
+    isPantryReviewTask ? s.itemProducts : EMPTY_ITEM_PRODUCTS
+  );
+  const pantryReviewReady = useMemo(
+    () =>
+      isPantryReviewTask &&
+      !task.completed &&
+      buildPantryReviewDeck(pantryReviewItems, new Date(), pantryReviewItemProducts).cards.length === 0,
+    [isPantryReviewTask, task.completed, pantryReviewItems, pantryReviewItemProducts]
+  );
+
+  // "Keep today light" — ready once the day it named has actually been
+  // lightened via DeloadSheet's "Lighten this day", not merely opened.
+  // Gated on the row's own deload link (only a sleep-shortfall health rule
+  // carries one) and its day key rather than on healthRuleIdOf's rule id, so
+  // this reads no settings.healthRules the row wasn't already reading.
+  const lastDeloadAppliedDayKey = useSettingsStore(s => s.lastDeloadAppliedDayKey);
+  const deloadReady =
+    isDeloadUrl(task.linkUrl ?? '') &&
+    !task.completed &&
+    parseHealthSourceId(task.generatedSourceId)?.dayKey === lastDeloadAppliedDayKey;
+
   // Which meal an auto-generated meal task is for (mealSlotOf, off the row's
   // own source id — no store read). Only its unanswered steps name the meal
   // themselves ("Choose lunch"); once the slot is answered the title is the
@@ -932,9 +982,9 @@ export const TaskItem = React.memo(function TaskItem({
   const shortfallGroceryItems = useGroceryStore(s => (shortfallEntry ? s.items : EMPTY_GROCERY_ITEMS));
   const shortfallItemSubs = useGroceryStore(s => (shortfallEntry ? s.itemSubs : EMPTY_ITEM_SUBS));
   const shortfallRecipes = useRecipeStore(s => (shortfallEntry ? s.recipes : EMPTY_RECIPES));
-  const missingCount = useMemo(() => {
+  const shortfallRows = useMemo(() => {
     if (!shortfallEntry) return null;
-    const rows = mealShortfallRows(
+    return mealShortfallRows(
       shortfallEntry,
       recipeMap(shortfallRecipes),
       shortfallGroceryItems,
@@ -942,13 +992,19 @@ export const TaskItem = React.memo(function TaskItem({
       standingSwapMap(shortfallItemSubs, shortfallGroceryItems),
       new Date()
     );
-    // No chip rather than "0 to buy" — a shortfall task can outlive its own
-    // reason by up to one sweep (the item got bought some other way, the
-    // meal's ingredients changed), and naming a shortfall of zero would be
-    // the app stating something false. Covers both null ("not shoppable any
-    // more" — cooked, unlinked, deleted recipe) and an empty row list.
-    return rows && rows.length > 0 ? rows.length : null;
   }, [shortfallEntry, shortfallRecipes, shortfallGroceryItems, shortfallItemSubs]);
+  // No chip rather than "0 to buy" — a shortfall task can outlive its own
+  // reason by up to one sweep (the item got bought some other way, the
+  // meal's ingredients changed), and naming a shortfall of zero would be
+  // the app stating something false. Covers both null ("not shoppable any
+  // more" — cooked, unlinked, deleted recipe) and an empty row list.
+  const missingCount = shortfallRows && shortfallRows.length > 0 ? shortfallRows.length : null;
+  // Same "nudge, not a lock" treatment as pantryCheckReady/pantryReviewReady/
+  // deloadReady just below: everything on the list got bought, so the row is
+  // still sitting here only because the sweep that clears it (see
+  // staleMealShortfallTasks) hasn't run yet. Ready once the row resolves to a
+  // real, still-imminent meal with nothing left to buy.
+  const mealShortfallReady = shortfallRows !== null && shortfallRows.length === 0 && !task.completed;
 
   // The stretches the subtasks split the countdown into, and which one the
   // clock is in. Empty for a timed task nobody apportioned, which is what keeps
@@ -1231,6 +1287,13 @@ export const TaskItem = React.memo(function TaskItem({
   // Computed once and reused by the expandable step list (#1237) and the row's
   // step-forward/back controls (#786) — same reasoning as chainStepIndex above.
   const chainStepPreview = chainStep ? chainPreview(task) : null;
+  // task.title is the chain's own name (what the editor's name field actually
+  // edits — see handleTitleTap's comment above), distinct from the active
+  // step's title the row displays. Nothing else on the row ever showed it, so
+  // surface it in the chain summary whenever it says something the current
+  // step doesn't already say.
+  const chainName =
+    chainStepPreview && task.title !== chainStepPreview.currentTitle ? task.title : null;
   // "@Brittany" stays literal in the title rather than being lifted into a
   // separate field (see matchPersonMentions' doc comment), so this is a purely
   // visual pass: find that span in the displayed text and tint it. Matched
@@ -1390,7 +1453,7 @@ export const TaskItem = React.memo(function TaskItem({
   // (handleSlipUndo), the same affordance a logged quota unit has.
   const handleSlip = async () => {
     await haptics.warning();
-    logSlip(task.id);
+    confirmSlip(task, penaltyShieldEnabled, () => logSlip(task.id));
   };
 
   const handleSlipUndo = async () => {
@@ -1431,6 +1494,30 @@ export const TaskItem = React.memo(function TaskItem({
     if (asksOnComplete) {
       await haptics.tap();
       setShowDeliverablePrompt(true);
+      return;
+    }
+    // A completion timer is asked about, not assumed — same "ask before it's
+    // scheduled" rule the deliverable prompt above follows, for a task that
+    // opted into a reminder a fixed span after completion (see
+    // Task.completionTimerMinutes and docs/arch for the iron-pill case this
+    // shipped for). The row still completes immediately either way; only the
+    // reminder is conditional.
+    if (task.completionTimerMinutes) {
+      await haptics.tap();
+      Alert.alert(
+        'Set a reminder?',
+        `Remind you in ${formatDuration(task.completionTimerMinutes)}?`,
+        [
+          { text: 'No thanks', style: 'cancel', onPress: () => runCompletion() },
+          {
+            text: 'Set reminder',
+            onPress: () => {
+              scheduleCompletionTimer(task);
+              runCompletion();
+            },
+          },
+        ],
+      );
       return;
     }
     await runCompletion();
@@ -1766,8 +1853,12 @@ export const TaskItem = React.memo(function TaskItem({
                       ? `${task.title}, health target reached, complete`
                     : mealPlanReady
                       ? `${task.title}, all ${MEAL_PLAN_NUDGE_SLOT_COUNT} meals planned, complete`
+                    : pantryCheckReady || pantryReviewReady || deloadReady || mealShortfallReady
+                      ? `${task.title}, ready, complete`
                     : mealSlotChooseSource
                       ? `${task.title}, pick a meal`
+                    : reviewProjectId
+                      ? `${task.title}, opens the project review`
                     : asksOnComplete
                       ? `Complete ${task.title}, asks for an answer`
                       : `Complete ${task.title}`
@@ -1791,7 +1882,16 @@ export const TaskItem = React.memo(function TaskItem({
           // green already means done-or-ready on this row, and a second colour
           // for a second kind of "you can tick this now" would be teaching the
           // reader two vocabularies for one idea.
-          !completing && !completionLocked && (timerReady || mealPlanReady || healthReady) && styles.circleReady,
+          !completing &&
+            !completionLocked &&
+            (timerReady ||
+              mealPlanReady ||
+              healthReady ||
+              pantryCheckReady ||
+              pantryReviewReady ||
+              deloadReady ||
+              mealShortfallReady) &&
+            styles.circleReady,
           (showQuotaMeter || quotaPartial) && styles.circleQuota,
           // Last of the state styles, so a broken day wins the box outright:
           // it's the one thing on this row that has just gone wrong.
@@ -1881,12 +1981,13 @@ export const TaskItem = React.memo(function TaskItem({
           {!completing && !isNegative && recurrenceNotYetDue && (
             <Ionicons name="repeat" size={iconSize.sm} color={colors.textSecondary} />
           )}
-          {!completing && !completionLocked && (asksOnComplete || mealSlotChooseSource) && (
+          {!completing && !completionLocked && (asksOnComplete || mealSlotChooseSource || reviewProjectId) && (
             // xs like the lock, not sm like the repeat: a "?" is tall where
             // the repeat glyph is wide and short, so the same nominal size
             // fills far more of a 20pt box and reads as crowded. Shared with
             // asksOnComplete: both mean "this tap asks something before it
-            // completes anything," which is exactly what happens here too.
+            // completes anything," which is exactly what happens here too —
+            // a review task's tap opens the pull sheet instead of completing.
             <Ionicons name="help" size={iconSize.xs} color={colors.textSecondary} />
           )}
         </View>
@@ -1962,12 +2063,6 @@ export const TaskItem = React.memo(function TaskItem({
                 numberOfLines={2}
                 ellipsizeMode="tail"
               />
-            )}
-            {chainStep && (
-              <View style={styles.chainBadge}>
-                <Ionicons name="git-commit" size={9} color={colors.accent} />
-                <Text style={styles.chainBadgeText}>{chainPosition}</Text>
-              </View>
             )}
             {deadlineDays !== null && (
               <View
@@ -2414,6 +2509,23 @@ export const TaskItem = React.memo(function TaskItem({
         )}
       </TouchableOpacity>
 
+      {/* A sibling of the trailing action buttons, not of the title text it
+          used to sit inline with — `content`'s title/meta column is centered
+          as a block against the whole row, so a badge anchored to just the
+          title's own line (the top of that block, when a meta row sits below
+          it) drifted above the row's actual vertical centre, out of line with
+          the pin/link buttons on the same row. This is a plain View here for
+          the same reason it was one there: informational, not a control. */}
+      {chainStep && (
+        <View
+          style={styles.chainBadge}
+          accessibilityLabel={chainName ? `Step ${chainPosition} of "${chainName}"` : `Chain step ${chainPosition}`}
+        >
+          <Ionicons name="git-commit" size={9} color={colors.accent} />
+          <Text style={styles.chainBadgeText}>{chainPosition}</Text>
+        </View>
+      )}
+
       {/* Starting the countdown is the whole point of a timed task, so the
           control sits on the row rather than only inside the expanded panel —
           the chip in the meta line reports the time, this starts and pauses it.
@@ -2760,18 +2872,18 @@ export const TaskItem = React.memo(function TaskItem({
                 accessibilityState={{ expanded: chainStepsExpanded }}
                 accessibilityLabel={
                   chainStepsExpanded
-                    ? `Collapse the ${chainStepPreview.total}-step chain`
-                    : `Show all ${chainStepPreview.total} steps of the chain, currently on ${chainStepPreview.currentTitle}`
+                    ? `Collapse the ${chainStepPreview.total}-step chain${chainName ? ` "${chainName}"` : ''}`
+                    : `Show all ${chainStepPreview.total} steps of the chain${chainName ? ` "${chainName}"` : ''}, currently on ${chainStepPreview.currentTitle}`
                 }
               >
                 <Ionicons name="git-commit" size={12} color={colors.textSecondary} />
                 {chainStepsExpanded ? (
                   <Text style={styles.expandMeta}>
-                    Chain · {chainStepPreview.total} steps
+                    {chainName ? `${chainName} · ` : ''}Chain · {chainStepPreview.total} steps
                   </Text>
                 ) : (
                   <Text style={styles.expandMeta} numberOfLines={1}>
-                    Chain {chainStepPreview.currentIdx + 1}/{chainStepPreview.total}:{' '}
+                    {chainName ? `${chainName} · ` : ''}Chain {chainStepPreview.currentIdx + 1}/{chainStepPreview.total}:{' '}
                     <Text style={styles.expandMetaActive}>On: {chainStepPreview.currentTitle}</Text>
                     {chainStepPreview.nextTitle ? ` → Next: ${chainStepPreview.nextTitle}` : ''}
                   </Text>
@@ -3126,10 +3238,10 @@ export const TaskItem = React.memo(function TaskItem({
                       // forward, because there is nothing to have missed yet.
                       accessibilityLabel={
                         recurrenceNotYetDue
-                          ? `Skip this occurrence of ${task.title}`
+                          ? `Skip this repeat of ${task.title}`
                           : task.recurrenceType === 'none'
                             ? `Mark ${task.title} missed`
-                            : `Mark ${task.title} missed and move to the next occurrence`
+                            : `Mark ${task.title} missed and move on to its next repeat`
                       }
                     >
                       <Ionicons name="close-circle-outline" size={iconSize.sm} color={colors.textSecondary} />
@@ -3151,7 +3263,7 @@ export const TaskItem = React.memo(function TaskItem({
                         if (expanded) onPress(rowId);
                       }}
                       hitSlop={8}
-                      accessibilityLabel={`Skip this occurrence of ${task.title}, without counting it as missed`}
+                      accessibilityLabel={`Skip this repeat of ${task.title}, without counting it as missed`}
                     >
                       <Ionicons name="play-skip-forward-outline" size={iconSize.sm} color={colors.textSecondary} />
                     </PressableScale>
@@ -3410,33 +3522,12 @@ export const TaskItem = React.memo(function TaskItem({
             // Wednesday is for its date to *be* Wednesday. So an earlier pick
             // moves `dueDate` honestly and hands the grid its own anchor to
             // keep stepping from.
-            const anchored = date != null && isDateAnchored(task) && task.dueDate != null;
+            // The push/pull/reschedule rule itself lives in taskMoves, the leaf
+            // that exists so it cannot drift from `isDateAnchored` beside it.
+            // It was inline here until the away-date shift became its third
+            // caller; the comments explaining the three arms moved with it.
+            const baseUpdates = { ...scheduleMoveUpdates(task, date), timeSegments: segs };
             const picked = date ? getTaskDayStart(date) : null;
-            const stored = task.dueDate ? getTaskDayStart(new Date(task.dueDate)) : null;
-            const anchoredPush = anchored && picked !== null && stored !== null && picked > stored;
-            const anchoredPull = anchored && picked !== null && stored !== null && picked < stored;
-            const baseUpdates =
-              anchoredPush && date
-                ? { deferUntil: date.toISOString(), timeSegments: segs }
-                : anchoredPull && date
-                  ? {
-                      dueDate: date.toISOString(),
-                      // Whatever the grid was already measured from, or the
-                      // date being moved off. Only ever set once: pulling a
-                      // second time must not re-anchor the schedule onto the
-                      // first pull's day, which would rotate it by the back
-                      // door — the very thing this exists to stop.
-                      recurrenceAnchorDate: task.recurrenceAnchorDate ?? task.dueDate,
-                      deferUntil: null,
-                      timeSegments: segs,
-                    }
-                // Clearing the defer is what makes the picked date the one that
-                // takes effect: a task already pushed out is hidden until the
-                // old deferUntil, and writing only dueDate would leave it
-                // sitting behind a date the user has just replaced. Writing
-                // dueDate with no anchor beside it is a deliberate schedule
-                // edit, and updateTask clears the grid's anchor on exactly that.
-                : { dueDate: date ? date.toISOString() : null, deferUntil: null, timeSegments: segs };
             // Pinning is for today's block specifically — moving the task off
             // the day it was sitting on means it no longer belongs there, so a
             // real reschedule (not just a time-of-day tweak on the same day)

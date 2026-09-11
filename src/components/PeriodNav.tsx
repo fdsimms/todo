@@ -2,7 +2,7 @@ import React, { useMemo } from 'react';
 import { View, Text, StyleSheet } from 'react-native';
 import Ionicons from '@expo/vector-icons/Ionicons';
 import { useColors } from '../theme/ThemeContext';
-import { spacing, font, fontWeight, iconSize, type Colors } from '../theme';
+import { spacing, font, fontWeight, iconSize, radius, type Colors } from '../theme';
 import { PressableScale } from './PressableScale';
 
 interface Props {
@@ -13,6 +13,16 @@ interface Props {
   /** Spoken labels for the two icon-only buttons ("Previous week"/"Next week"). */
   prevAccessibilityLabel: string;
   nextAccessibilityLabel: string;
+  /**
+   * Draws the arrows and label as one `bgSecondary` capsule instead of
+   * spreading the arrows to the row's full width. The plain layout reads fine
+   * under a header, where the title above already gives the row something to
+   * sit against; with nothing above it but another card (the meal plan's
+   * fridge), two arrows anchored to the edges left a wide stretch of bare
+   * background between them and the label, and looked like empty space
+   * rather than a control. Default false so Calendar's layout is unchanged.
+   */
+  grouped?: boolean;
 }
 
 /**
@@ -30,12 +40,19 @@ interface Props {
  * Neither button fires a haptic — both call sites do it in their own handler,
  * alongside the state they clear when the period changes.
  */
-export function PeriodNav({ label, onPrev, onNext, prevAccessibilityLabel, nextAccessibilityLabel }: Props) {
+export function PeriodNav({
+  label,
+  onPrev,
+  onNext,
+  prevAccessibilityLabel,
+  nextAccessibilityLabel,
+  grouped = false,
+}: Props) {
   const colors = useColors();
   const styles = useMemo(() => makeStyles(colors), [colors]);
 
-  return (
-    <View style={styles.nav}>
+  const arrows = (
+    <>
       <PressableScale style={styles.btn} onPress={onPrev} accessibilityLabel={prevAccessibilityLabel}>
         <Ionicons name="chevron-back" size={iconSize.md} color={colors.accent} />
       </PressableScale>
@@ -43,8 +60,18 @@ export function PeriodNav({ label, onPrev, onNext, prevAccessibilityLabel, nextA
       <PressableScale style={styles.btn} onPress={onNext} accessibilityLabel={nextAccessibilityLabel}>
         <Ionicons name="chevron-forward" size={iconSize.md} color={colors.accent} />
       </PressableScale>
-    </View>
+    </>
   );
+
+  if (grouped) {
+    return (
+      <View style={styles.navGrouped}>
+        <View style={styles.pill}>{arrows}</View>
+      </View>
+    );
+  }
+
+  return <View style={styles.nav}>{arrows}</View>;
 }
 
 const makeStyles = (colors: Colors) =>
@@ -71,5 +98,19 @@ const makeStyles = (colors: Colors) =>
       color: colors.text,
       fontSize: font.md,
       fontWeight: fontWeight.semibold,
+    },
+    navGrouped: {
+      alignItems: 'center',
+      paddingHorizontal: spacing.md,
+      paddingTop: spacing.xs,
+      paddingBottom: spacing.xs,
+    },
+    pill: {
+      flexDirection: 'row',
+      alignItems: 'center',
+      gap: spacing.xs,
+      backgroundColor: colors.bgSecondary,
+      borderRadius: radius.full,
+      paddingHorizontal: spacing.sm,
     },
   });

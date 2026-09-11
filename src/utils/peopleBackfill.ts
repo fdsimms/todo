@@ -21,15 +21,16 @@ import type { Person } from '../types';
  * - **A dismissal is about the field, not about the person.** See
  *   `Person.backfillDismissedFields`.
  *
- * The three fields are the three that actually unlock something: a birthday
- * turns on the birthday generators, a cadence turns on the reach-out nudge, and
- * `askAbout` is what makes that nudge a reason to get in touch rather than a
- * prompt to. Deliberately **not** covering `nickname`, `notes`, `email` or
- * `linkUrl`: walking somebody through their friends asking for nicknames is
- * data entry about the people you love, which is the sixth bullet at the top of
- * the arch doc and the failure mode the whole feature is built around avoiding.
+ * The fields are the ones that actually unlock something: a birthday turns on
+ * the birthday generators, a cadence turns on the reach-out nudge, `askAbout`
+ * is what makes that nudge a reason to get in touch rather than a prompt to,
+ * and `location` is what the trip planner (`peopleLocations.ts`) can search.
+ * Deliberately **not** covering `nickname`, `notes`, `email` or `linkUrl`:
+ * walking somebody through their friends asking for nicknames is data entry
+ * about the people you love, which is the sixth bullet at the top of the arch
+ * doc and the failure mode the whole feature is built around avoiding.
  */
-export type PersonBackfillFieldId = 'birthday' | 'cadence' | 'askAbout';
+export type PersonBackfillFieldId = 'birthday' | 'cadence' | 'askAbout' | 'location';
 
 export interface PersonBackfillFieldDef {
   id: PersonBackfillFieldId;
@@ -66,13 +67,19 @@ export const PERSON_BACKFILL_FIELDS: PersonBackfillFieldDef[] = [
     id: 'cadence',
     label: "Remind me if we haven't talked in a while",
     shortLabel: 'Catch-up reminder',
-    hint: 'How long with nothing on file before a catch-up task offers itself. Off for everyone until you set one.',
+    hint: 'How long with nothing on file before the app adds a catch-up task. Off for everyone until you set one.',
   },
   {
     id: 'askAbout',
     label: 'Ask about',
     shortLabel: 'Ask about',
     hint: 'Something to ask them about next time, so that reminder names a reason instead of just saying to catch up.',
+  },
+  {
+    id: 'location',
+    label: 'Location',
+    shortLabel: 'Location',
+    hint: 'Where they live, so you can find them when planning a trip somewhere.',
   },
 ];
 
@@ -102,6 +109,8 @@ export function isPersonFieldMissing(person: Person, fieldId: PersonBackfillFiel
       return !person.nudgeOptIn;
     case 'askAbout':
       return person.askAbout.trim() === '';
+    case 'location':
+      return !person.location || person.location.trim() === '';
   }
 }
 
@@ -160,7 +169,7 @@ export function personBackfillCandidates(people: Person[], fieldId: PersonBackfi
  * fine, aggregates about individual people are not.
  */
 export function personBackfillFieldCounts(people: Person[]): Record<PersonBackfillFieldId, number> {
-  const counts = { birthday: 0, cadence: 0, askAbout: 0 } as Record<PersonBackfillFieldId, number>;
+  const counts = { birthday: 0, cadence: 0, askAbout: 0, location: 0 } as Record<PersonBackfillFieldId, number>;
   for (const p of people) {
     if (p.archived) continue;
     for (const field of PERSON_BACKFILL_FIELDS) {

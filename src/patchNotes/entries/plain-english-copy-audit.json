@@ -1,0 +1,4 @@
+{
+  "message": "Went through the app's wording and rewrote the places that described how things work inside rather than what they do. Alerts and labels about repeating tasks no longer say \"occurrence\" or \"series\", the reminder timezone choice is now \"If your timezone changes\" instead of \"Anchor\", a few settings are named after the decision you're making rather than the number behind it, and some copy that talked about nudging or offering now just says what the app adds.",
+  "date": "2026-09-11"
+}

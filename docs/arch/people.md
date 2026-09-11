@@ -230,6 +230,22 @@ Search and Quick Search, and `TaskEditor`'s own title field.
   design as everything else in this section. This is quick-add-only: `TaskEditor`'s
   title field never resolves a fresh token at all (the bullet above), so there
   is nothing for it to disambiguate.
+- **A short, still-growing token gets a live suggestion row, not silence.**
+  Before `getMentionSuggestions` (`src/utils/parseTaskInput.ts`), typing "@l"
+  toward "@luke" gave no feedback of any kind until the prefix reached
+  `MIN_PREFIX_LENGTH` and resolved on its own — someone one or two letters in
+  had no way to tell whether they were spelling a real person's name or
+  literal text. It only ever fires for the token currently being typed (the
+  one running to the end of the title, so it disappears the moment you move
+  on to the next word) and only for a token neither `matchPersonMentions` nor
+  `findAmbiguousMention` already has an opinion about — an exact match
+  (unique or ambiguous) or an already-unique prefix is excluded, so this
+  never competes with either. Picking a candidate **rewrites** the token to
+  that person's resolving name (`QuickAddModal`'s `applyMentionSuggestion`),
+  unlike the ambiguous-mention pick above: nothing here is an exact-name
+  collision text can't spell, so there's no need for the override mechanism's
+  workaround. Same quick-add-only scope as the bullet above, for the same
+  reason.
 
 ## History is completed tasks, and there is no interactions table
 
