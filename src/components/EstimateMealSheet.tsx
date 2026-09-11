@@ -26,6 +26,7 @@ import {
 import { NUTRIENT_LABEL } from '../utils/foodNutrition';
 import { groceryNameKey } from '../utils/groceryParse';
 import { haptics } from '../utils/haptics';
+import { useKeyboardInsetScroll } from '../hooks/useKeyboardInsetScroll';
 import { InlineAction } from './InlineAction';
 import { SegmentedControl } from './SegmentedControl';
 import { SheetHeaderButton } from './SheetHeaderButton';
@@ -77,6 +78,7 @@ interface Props {
 export function EstimateMealSheet({ visible, slot, at, onClose, onPickRecipe }: Props) {
   const colors = useColors();
   const styles = useMemo(() => makeStyles(colors), [colors]);
+  const keyboardScroll = useKeyboardInsetScroll<ScrollView>();
 
   const addEntry = useFoodLogStore(s => s.addEntry);
   const recipes = useRecipeStore(s => s.recipes);
@@ -215,7 +217,13 @@ export function EstimateMealSheet({ visible, slot, at, onClose, onPickRecipe }: 
           <SheetHeaderButton label="Log" onPress={handleLog} disabled={!estimate} minWidth={64} />
         </View>
 
-        <ScrollView style={styles.body} contentContainerStyle={styles.bodyContent}>
+        <ScrollView
+          ref={keyboardScroll.ref}
+          style={styles.body}
+          contentContainerStyle={styles.bodyContent}
+          keyboardShouldPersistTaps="handled"
+          {...keyboardScroll.props}
+        >
           <Text style={styles.label}>WHAT DID YOU EAT?</Text>
           <TextInput
             style={styles.input}
