@@ -46,6 +46,7 @@ import { NUTRIENT_LABEL } from '../utils/foodNutrition';
 import { useColors, useTheme } from '../theme/ThemeContext';
 import { spacing, radius, font, border, interaction, animation, checkboxRadius, iconSize, type Colors } from '../theme';
 import { haptics } from '../utils/haptics';
+import { DOSE_UNITS } from '../utils/medicationLog';
 import { useTitleSelection } from '../hooks/useTitleSelection';
 import { confirmDelete } from '../utils/confirmDelete';
 import { animateLayout } from '../utils/layoutAnimation';
@@ -194,6 +195,9 @@ export interface TaskDraft {
   completionTimerMinutes?: number | null;
   logHealthMetric?: NutrientKey | null;
   logHealthAmount?: number | null;
+  medicationName?: string | null;
+  medicationAmount?: number | null;
+  medicationUnit?: string | null;
   phoneNumber?: string | null;
   emailAddress?: string | null;
   location?: string | null;
@@ -224,7 +228,10 @@ type PickerMode = 'none' | 'reminder';
 type DraftSubtask = { id: string; title: string; completed: boolean; timedMinutes: number | null };
 
 /** Editor sections that collapse to a one-line summary of their current value. */
-type FieldKey = 'stack' | 'category' | 'project' | 'tags' | 'people' | 'waitingOnPerson' | 'priority' | 'effort' | 'duration' | 'subtasks' | 'chainSteps' | 'deliverable' | 'completionTimer' | 'logHealthValue';
+/** A medication name is a label on a row, not a prescription line. */
+const MEDICATION_NAME_MAX_LENGTH = 60;
+
+type FieldKey = 'stack' | 'category' | 'project' | 'tags' | 'people' | 'waitingOnPerson' | 'priority' | 'effort' | 'duration' | 'subtasks' | 'chainSteps' | 'deliverable' | 'completionTimer' | 'logHealthValue' | 'medication';
 
 // Presets for the Duration field, in minutes — the common "do this for a bit"
 // spans, including the 25-minute pomodoro.
@@ -472,6 +479,11 @@ export function TaskEditor({ visible, task, initialDraft, onClose }: Props) {
   const [completionTimerMinutes, setCompletionTimerMinutes] = useState<number | null>(null);
   const [logHealthMetric, setLogHealthMetric] = useState<NutrientKey | null>(null);
   const [logHealthAmount, setLogHealthAmount] = useState<number | null>(null);
+  const [medicationName, setMedicationName] = useState<string | null>(null);
+  // Held as the typed string rather than a number so a half-typed "2." isn't
+  // thrown away mid-keystroke; parsed once, on save.
+  const [medicationAmount, setMedicationAmount] = useState('');
+  const [medicationUnit, setMedicationUnit] = useState<string | null>(null);
   const [blockedById, setBlockedById] = useState<string | null>(null);
   const [waitingOnPersonId, setWaitingOnPersonId] = useState<string | null>(null);
   const [deliverableKind, setDeliverableKind] = useState<DeliverableKind | null>(null);
@@ -721,6 +733,9 @@ export function TaskEditor({ visible, task, initialDraft, onClose }: Props) {
       setCompletionTimerMinutes(task.completionTimerMinutes ?? null);
       setLogHealthMetric(task.logHealthMetric ?? null);
       setLogHealthAmount(task.logHealthAmount ?? null);
+      setMedicationName(task.medicationName ?? null);
+      setMedicationAmount(task.medicationAmount !== null ? String(task.medicationAmount) : '');
+      setMedicationUnit(task.medicationUnit ?? null);
       setPhoneNumber(task.phoneNumber ?? null);
       setEmailAddress(task.emailAddress ?? null);
       setLocation(task.location ?? null);
@@ -758,6 +773,13 @@ export function TaskEditor({ visible, task, initialDraft, onClose }: Props) {
       setCompletionTimerMinutes(initialDraft?.completionTimerMinutes ?? null);
       setLogHealthMetric(initialDraft?.logHealthMetric ?? null);
       setLogHealthAmount(initialDraft?.logHealthAmount ?? null);
+      setMedicationName(initialDraft?.medicationName ?? null);
+      setMedicationAmount(
+        initialDraft?.medicationAmount !== null && initialDraft?.medicationAmount !== undefined
+          ? String(initialDraft.medicationAmount)
+          : ''
+      );
+      setMedicationUnit(initialDraft?.medicationUnit ?? null);
       setPhoneNumber(initialDraft?.phoneNumber ?? null);
       setEmailAddress(initialDraft?.emailAddress ?? null);
       setLocation(initialDraft?.location ?? null);
@@ -868,6 +890,14 @@ export function TaskEditor({ visible, task, initialDraft, onClose }: Props) {
       completionTimerMinutes: task ? (task.completionTimerMinutes ?? null) : (initialDraft?.completionTimerMinutes ?? null),
       logHealthMetric: task ? (task.logHealthMetric ?? null) : (initialDraft?.logHealthMetric ?? null),
       logHealthAmount: task ? (task.logHealthAmount ?? null) : (initialDraft?.logHealthAmount ?? null),
+      medicationName: task ? (task.medicationName ?? null) : (initialDraft?.medicationName ?? null),
+      // The string the field holds, not the number the task stores, so this
+      // compares like for like against handleCancel's live snapshot below.
+      medicationAmount: (() => {
+        const stored = task ? task.medicationAmount : (initialDraft?.medicationAmount ?? null);
+        return stored !== null && stored !== undefined ? String(stored) : '';
+      })(),
+      medicationUnit: task ? (task.medicationUnit ?? null) : (initialDraft?.medicationUnit ?? null),
       phoneNumber: task ? (task.phoneNumber ?? null) : (initialDraft?.phoneNumber ?? null),
       emailAddress: task ? (task.emailAddress ?? null) : (initialDraft?.emailAddress ?? null),
       location: task ? (task.location ?? null) : (initialDraft?.location ?? null),
@@ -1170,6 +1200,12 @@ export function TaskEditor({ visible, task, initialDraft, onClose }: Props) {
       completionTimerMinutes,
       logHealthMetric,
       logHealthAmount,
+      medicationName: resolveMedicationName(),
+      // Both halves are dropped unless the name is set and the amount parses:
+      // the name is the switch (see Task.medicationName), and an amount
+      // without a unit is unreadable in a dose.
+      medicationAmount: resolveMedicationAmount(),
+      medicationUnit: resolveMedicationAmount() !== null ? medicationUnit : null,
       phoneNumber: resolvePhoneNumber(),
       emailAddress: resolveEmailAddress(),
       location: resolveLocation(),
@@ -1652,6 +1688,22 @@ export function TaskEditor({ visible, task, initialDraft, onClose }: Props) {
     return showLocationField && t ? t : location;
   };
 
+  /** The medication, or null for a task that records nothing. */
+  const resolveMedicationName = () => medicationName?.trim() || null;
+
+  /**
+   * The dose, or null when there isn't a usable one.
+   *
+   * Null unless there is a medication to attach it to, the typed text parses,
+   * and a unit was picked — a number with no unit is unreadable in a dose, and
+   * an amount on a task recording nothing has nothing to be the amount of.
+   */
+  const resolveMedicationAmount = () => {
+    if (!resolveMedicationName() || !medicationUnit) return null;
+    const parsed = Number(medicationAmount.trim());
+    return medicationAmount.trim() !== '' && Number.isFinite(parsed) ? parsed : null;
+  };
+
   // A quota only makes sense period to period: the count resets because each
   // new occurrence starts at zero, so without a repeat there'd be nothing to
   // reset it. The repeat has to match the period it's counting across — a
@@ -1719,6 +1771,9 @@ export function TaskEditor({ visible, task, initialDraft, onClose }: Props) {
       completionTimerMinutes,
       logHealthMetric,
       logHealthAmount,
+      medicationName,
+      medicationAmount,
+      medicationUnit,
       phoneNumber,
       emailAddress,
       location,
@@ -3182,6 +3237,71 @@ export function TaskEditor({ visible, task, initialDraft, onClose }: Props) {
                   format={n => `${n}${NUTRIENT_LABEL[logHealthMetric ?? 'waterMl'].unit}`}
                   describeValue={n => (n === null ? 'off' : `${n} ${NUTRIENT_LABEL[logHealthMetric ?? 'waterMl'].unit}`)}
                 />
+              </CollapsibleField>
+            ),
+          },
+          // The fourth "what does completing this mean" row, and the closest
+          // relative of the Health one right above: a name-and-amount pair
+          // that turns a completion into a quantity recorded elsewhere. It
+          // needs no Settings switch, because what it writes is the app's own
+          // log rather than somebody else's database.
+          //
+          // Nothing is asked at the tick — the dose is what this row already
+          // says it is. That is the whole point: a repeating task carrying a
+          // medication *is* how a scheduled dose gets logged here, so asking
+          // again would be recording the same fact twice. See
+          // docs/arch/mood-log.md.
+          {
+            key: 'medication', label: 'Log a dose', set: medicationName !== null,
+            keywords: ['medication', 'medicine', 'pill', 'tablet', 'dose', 'drug', 'supplement', 'vitamin', 'mg', 'prescription'],
+            node: (
+              <CollapsibleField
+                label="Log a dose"
+                summary={
+                  medicationName
+                    ? [medicationName, resolveMedicationAmount() !== null ? `${resolveMedicationAmount()} ${medicationUnit}` : null]
+                        .filter(Boolean).join(', ')
+                    : undefined
+                }
+                hint="Records a dose in your medication log each time you complete this task. Unticking it takes the dose back."
+                expanded={fieldOpen('medication')}
+                onToggle={() => toggleField('medication')}
+              >
+                <TextInput
+                  style={styles.fieldBox}
+                  value={medicationName ?? ''}
+                  onChangeText={text => setMedicationName(text || null)}
+                  placeholder="e.g. Sertraline"
+                  placeholderTextColor={colors.textTertiary}
+                  maxLength={MEDICATION_NAME_MAX_LENGTH}
+                  returnKeyType="done"
+                  accessibilityLabel="What this task records a dose of"
+                />
+                {/* Hidden until there's something to be the amount *of*, the
+                    same rule the daily target's unit field follows: on its own
+                    it labels nothing. */}
+                {medicationName !== null && (
+                  <>
+                    <TextInput
+                      style={[styles.fieldBox, styles.medicationAmountInput]}
+                      value={medicationAmount}
+                      onChangeText={setMedicationAmount}
+                      placeholder="e.g. 50"
+                      placeholderTextColor={colors.textTertiary}
+                      keyboardType="decimal-pad"
+                      returnKeyType="done"
+                      accessibilityLabel="How much, optional"
+                    />
+                    <SegmentedControl
+                      options={DOSE_UNITS.map(u => ({ value: u.value, label: u.value }))}
+                      value={medicationUnit ?? ''}
+                      columns={5}
+                      label="Unit"
+                      surface="card"
+                      onChange={next => { haptics.tap(); setMedicationUnit(next === medicationUnit ? null : next); }}
+                    />
+                  </>
+                )}
               </CollapsibleField>
             ),
           },
@@ -5397,6 +5517,8 @@ const makeStyles = (colors: Colors) => StyleSheet.create({
   },
   /** Daily target's unit: one word, so it takes the rest of the stepper's line. */
   targetUnitInput: { flex: 1 },
+  /** Sits between the medication's name and its unit row. */
+  medicationAmountInput: { marginTop: spacing.sm, marginBottom: spacing.sm },
   /** The count in its read-out state, where a cadence is deriving it. */
   targetDerivedCount: { color: colors.text, fontSize: font.md, fontWeight: '500' },
   /**

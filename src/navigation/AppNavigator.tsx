@@ -19,6 +19,8 @@ import { LogbookScreen } from '../screens/LogbookScreen';
 import { StatsScreen } from '../screens/StatsScreen';
 import { FoodLogScreen } from '../screens/FoodLogScreen';
 import { MoodScreen } from '../screens/MoodScreen';
+import { MedicationScreen } from '../screens/MedicationScreen';
+import { useMedicationStore } from '../store/useMedicationStore';
 import { WeightScreen } from '../screens/WeightScreen';
 import { MoodHistoryScreen } from '../screens/MoodHistoryScreen';
 import { SymptomDetailScreen } from '../screens/SymptomDetailScreen';
@@ -248,6 +250,7 @@ const MainTabs = React.memo(function MainTabs({
       <Tab.Screen name="Logbook" component={LogbookScreen} options={HIDDEN} />
       <Tab.Screen name="Stats" component={StatsScreen} options={HIDDEN} />
       <Tab.Screen name="Mood" component={MoodScreen} options={HIDDEN} />
+      <Tab.Screen name="Medications" component={MedicationScreen} options={HIDDEN} />
       <Tab.Screen name="Weight" component={WeightScreen} options={HIDDEN} />
       <Tab.Screen name="FoodLog" component={FoodLogScreen} options={HIDDEN} />
       <Tab.Screen name="Stuck" component={StuckScreen} options={HIDDEN} />
@@ -279,6 +282,7 @@ function initialScreenFromSettings(): string {
     templates: useTemplateStore.getState().templates.length,
     people: usePersonStore.getState().people.length,
     mood: useMoodStore.getState().logs.length,
+    medications: useMedicationStore.getState().logs.length,
     foodLog: useFoodLogStore.getState().totalCount,
   })) return 'Today';
   return lastVisitedScreen;

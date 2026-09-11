@@ -63,6 +63,11 @@ export function normalizeTemplateItem(raw: Partial<TemplateItem>): TemplateItem 
     penaltyMinutes: raw.penaltyMinutes ?? null,
     penaltyCutoffTime: raw.penaltyCutoffTime ?? null,
     gatesApps: raw.gatesApps ?? false,
+    // Null for every item stored before this shipped — an older template
+    // carries no medication and records nothing, which is the feature off.
+    medicationName: raw.medicationName ?? null,
+    medicationAmount: raw.medicationAmount ?? null,
+    medicationUnit: raw.medicationUnit ?? null,
     estimatedMinutes: raw.estimatedMinutes ?? null,
     completionTimerMinutes: raw.completionTimerMinutes ?? null,
     deliverableKind: raw.deliverableKind ?? null,
@@ -190,6 +195,11 @@ export function buildDraftsFromTemplate(
       penaltyMinutes: item.penaltyMinutes,
       penaltyCutoffTime: item.penaltyCutoffTime,
       gatesApps: item.gatesApps,
+      // The instruction only. An applied item starts having recorded nothing,
+      // the same split the cost above and the question below both make.
+      medicationName: item.medicationName,
+      medicationAmount: item.medicationAmount,
+      medicationUnit: item.medicationUnit,
       // The question only — createTask never reads a draft's deliverableValue,
       // so an applied item always starts with the decision still to make.
       deliverableKind: item.deliverableKind,

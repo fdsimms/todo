@@ -211,7 +211,7 @@ describe('QUICK_ADD_CHIP_LABELS', () => {
 describe('taskKindOf agrees with the readers that act on the fields', () => {
   const shape = (over: Record<string, unknown> = {}) => ({
     chainEnabled: false, targetCount: null, timedMinutes: null,
-    healthMetric: null, healthTarget: null, completionTimerMinutes: null, logHealthMetric: null, logHealthAmount: null, ...over,
+    healthMetric: null, healthTarget: null, completionTimerMinutes: null, logHealthMetric: null, logHealthAmount: null, medicationName: null, medicationAmount: null, medicationUnit: null, ...over,
   }) as Parameters<typeof taskKindOf>[0];
 
   it('matches isQuotaTask at the target floor', () => {
@@ -245,7 +245,7 @@ describe('taskKindOf agrees with the readers that act on the fields', () => {
 describe('taskKindOf', () => {
   const shape = (over: Partial<Parameters<typeof taskKindOf>[0]> = {}) => ({
     chainEnabled: false, targetCount: null, timedMinutes: null,
-    healthMetric: null, healthTarget: null, completionTimerMinutes: null, logHealthMetric: null, logHealthAmount: null, ...over,
+    healthMetric: null, healthTarget: null, completionTimerMinutes: null, logHealthMetric: null, logHealthAmount: null, medicationName: null, medicationAmount: null, medicationUnit: null, ...over,
   });
 
   it('reads a plain task as standard', () => {

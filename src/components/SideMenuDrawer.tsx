@@ -30,6 +30,7 @@ import { useTemplateStore } from '../store/useTemplateStore';
 import { usePersonStore } from '../store/usePersonStore';
 import { useFoodLogStore } from '../store/useFoodLogStore';
 import { useMoodStore } from '../store/useMoodStore';
+import { useMedicationStore } from '../store/useMedicationStore';
 import {
   hubSubtitle, menuDestinations, menuSearchTerms, rowEntryRoute, searchMenu, visibleMenuRows,
   type NavMenuRow, type NavSearchResult,
@@ -95,6 +96,7 @@ export function SideMenuDrawer({ visible, onClose, onNavigate, onOpenSettings, a
   const templateCount = useTemplateStore(s => s.templates.length);
   const peopleCount = usePersonStore(s => s.people.length);
   const moodCount = useMoodStore(s => s.logs.length);
+  const medicationCount = useMedicationStore(s => s.logs.length);
   // The whole history, not today's rows — see useFoodLogStore.totalCount.
   const foodLogCount = useFoodLogStore(s => s.totalCount);
 
@@ -102,8 +104,8 @@ export function SideMenuDrawer({ visible, onClose, onNavigate, onOpenSettings, a
   const menuOptions = useMemo(() => ({
     kitchenEnabled,
     simpleMode,
-    counts: { stacks: stackCount, templates: templateCount, people: peopleCount, mood: moodCount, foodLog: foodLogCount },
-  }), [kitchenEnabled, simpleMode, stackCount, templateCount, peopleCount, moodCount, foodLogCount]);
+    counts: { stacks: stackCount, templates: templateCount, people: peopleCount, mood: moodCount, medications: medicationCount, foodLog: foodLogCount },
+  }), [kitchenEnabled, simpleMode, stackCount, templateCount, peopleCount, moodCount, medicationCount, foodLogCount]);
   const menuRows = useMemo(() => visibleMenuRows(menuOptions), [menuOptions]);
   const terms = useMemo(() => menuSearchTerms(query), [query]);
   const results = useMemo(

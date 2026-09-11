@@ -196,7 +196,7 @@ const makeTask = (overrides: Partial<Task> = {}): Task => ({
   timedMinutes: null,
   timerElapsedSeconds: 0,
   healthMetric: null,
-  healthTarget: null, completionTimerMinutes: null, logHealthMetric: null, logHealthAmount: null,
+  healthTarget: null, completionTimerMinutes: null, logHealthMetric: null, logHealthAmount: null, medicationName: null, medicationAmount: null, medicationUnit: null,
   actualMinutes: null,
   previousOccurrenceId: null,
   seriesId: null,
@@ -563,7 +563,7 @@ describe('scheduleTimerAlarm', () => {
         timedMinutes: 15,
         timerElapsedSeconds: 10 * 60,
         healthMetric: null,
-        healthTarget: null, completionTimerMinutes: null, logHealthMetric: null, logHealthAmount: null,
+        healthTarget: null, completionTimerMinutes: null, logHealthMetric: null, logHealthAmount: null, medicationName: null, medicationAmount: null, medicationUnit: null,
         timerStartedAt: new Date().toISOString(),
       })
     );
@@ -589,7 +589,7 @@ describe('scheduleTimerAlarm', () => {
         timedMinutes: 15,
         timerElapsedSeconds: 20 * 60,
         healthMetric: null,
-        healthTarget: null, completionTimerMinutes: null, logHealthMetric: null, logHealthAmount: null,
+        healthTarget: null, completionTimerMinutes: null, logHealthMetric: null, logHealthAmount: null, medicationName: null, medicationAmount: null, medicationUnit: null,
         timerStartedAt: new Date().toISOString(),
       })
     );

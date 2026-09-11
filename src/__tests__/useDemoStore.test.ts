@@ -71,6 +71,8 @@ import { useMealPlanStore } from '../store/useMealPlanStore';
 import { usePersonNoteStore } from '../store/usePersonNoteStore';
 import { useMoodStore } from '../store/useMoodStore';
 import { useMilestoneStore } from '../store/useMilestoneStore';
+import { useMedicationStore } from '../store/useMedicationStore';
+import { frequencyTrend } from '../utils/medicationLog';
 import { buildMoodDays, contextTagMoodContrasts, describeNutrientInsight, foodMoodContrasts, foodPairedDays, symptomFoodContrasts, milestoneMoodContrast, moodCompletionInsight, nutrientInsight, symptomMoodContrasts, taskContrastTitles, taskMoodContrasts, MIN_PAIRED_DAYS } from '../utils/moodInsights';
 import { contextTagVocabulary, symptomVocabulary } from '../utils/moodLog';
 import { isStaleNote } from '../utils/personNotes';
@@ -1618,6 +1620,27 @@ describe('demo seed — people', () => {
     expect(rows.length).toBeGreaterThan(0);
     const titles = taskContrastTitles(tasks);
     expect(rows.map(r => titles.get(r.label))).toContain('Take the vitamin D');
+  });
+
+  it('seeds both halves of the medication log, so neither reads as missing', () => {
+    // The scheduled half has to come from a task completion or the feature
+    // reads as a second list you type the tablets into again; the as-needed
+    // half has to exist or it reads as a duplicate of the task list. See
+    // docs/arch/mood-log.md.
+    const logs = useMedicationStore.getState().logs;
+    expect(logs.some(l => l.taskId !== null && !l.asNeeded)).toBe(true);
+    expect(logs.some(l => l.taskId === null && l.asNeeded)).toBe(true);
+    // And a dose the task stated, rather than a bare "took it".
+    expect(logs.some(l => l.taskId !== null && l.amount !== null)).toBe(true);
+  });
+
+  it('seeds enough as-needed doses for the frequency card to draw', () => {
+    // frequencyTrend needs the log to have been running for both of its
+    // fortnights and MIN_TREND_DOSES across them, so a seed that only covered
+    // the recent window would show the card to nobody.
+    const logs = useMedicationStore.getState().logs;
+    const trend = frequencyTrend(logs, 'ibuprofen', dayKeyOf(new Date()), 14);
+    expect(trend).not.toBeNull();
   });
 
   it('seeds a milestone with enough days on each side for the before/after card to draw', () => {

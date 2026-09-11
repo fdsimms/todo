@@ -123,6 +123,7 @@ import { hasLogOnDay, hasLoggedSince } from '../utils/moodLog';
 import { useFoodLogStore } from './useFoodLogStore';
 import { useMoodStore } from './useMoodStore';
 import { useMilestoneStore } from './useMilestoneStore';
+import { useMedicationStore } from './useMedicationStore';
 import { eventsIn } from '../utils/calendarBusy';
 import { isDemoModeActive } from '../utils/demoState';
 import type { MealSlot, Project, TaskGroup } from '../types';
@@ -608,6 +609,9 @@ function newTaskFromDraft(
     completionTimerMinutes: draft.completionTimerMinutes ?? null,
     logHealthMetric: draft.logHealthMetric ?? null,
     logHealthAmount: draft.logHealthAmount ?? null,
+    medicationName: draft.medicationName ?? null,
+    medicationAmount: draft.medicationAmount ?? null,
+    medicationUnit: draft.medicationUnit ?? null,
     previousOccurrenceId: draft.previousOccurrenceId ?? null,
     generatedKind: draft.generatedKind ?? null,
     generatedSourceId: draft.generatedSourceId ?? null,
@@ -2138,6 +2142,11 @@ export const useTaskStore = create<TaskStore>((set, get) => ({
     // milestones are read against it, so a device swap that left them out of
     // step would date a before/after split against the wrong person's phone.
     useMilestoneStore.getState().initialize();
+    // Beside the mood log, same fan-out, and the sharpest version of the same
+    // stakes: a medication history left pointed at the previous database would
+    // report a demo session's invented doses as a real person's record of what
+    // they have taken.
+    useMedicationStore.getState().initialize();
     // Beside the mood log and for the identical reason, with the same stakes:
     // a food log left pointed at the previous database would show a demo
     // session's invented meals as somebody's own record of what they ate.
@@ -3391,6 +3400,24 @@ export const useTaskStore = create<TaskStore>((set, get) => ({
     // forget. See logTaskHealthValue's own comment for why there is no
     // write-back id to store and no undo on uncomplete.
     if (task.logHealthMetric) void logTaskHealthValue(completed);
+    // Opt-in like the two above, but deliberately *not* one-shot: this writes
+    // into the app's own record rather than somebody else's database, and
+    // uncompleteTask takes it back (see Task.medicationName). Nothing is asked
+    // at the tick — the dose is what the task already says it is, and asking
+    // again would be the "same fact twice" the medication log exists not to be.
+    //
+    // A missed sweep completes the row without anybody having taken anything,
+    // so it records no dose: `missed` is exactly the case where the task closed
+    // because the day ended rather than because it was done.
+    if (task.medicationName && !options?.missed) {
+      useMedicationStore.getState().addLog({
+        name: task.medicationName,
+        amount: task.medicationAmount,
+        unit: task.medicationUnit,
+        taskId: id,
+        at: completedAt,
+      });
+    }
 
     cancelTaskReminder(id);
 
@@ -4133,6 +4160,13 @@ export const useTaskStore = create<TaskStore>((set, get) => ({
       completionCalendarEventId: null,
     };
     if (task.completionCalendarEventId) deleteCalendarEvent(task.completionCalendarEventId);
+    // The dose this completion recorded goes with it. Unlike the Apple Health
+    // write, which is one-shot because a sample is a historical record in
+    // somebody else's database, this is the app's own record of what went into
+    // a person — and a task ticked by mistake means the dose was not taken.
+    // Leaving it behind would put a phantom dose in the one log whose whole
+    // job is to be accurate. See Task.medicationName.
+    if (task.medicationName) useMedicationStore.getState().removeLogsForTask(id);
     dbUpdateTask(updated);
     // Reopened, so a deadline it still carries is live again.
     reconcileDeadlineEvent(updated);
@@ -4366,6 +4400,19 @@ export const useTaskStore = create<TaskStore>((set, get) => ({
     const updated = { ...task, progressCount: task.progressCount + 1 };
     dbUpdateTask(updated);
     set(s => ({ tasks: s.tasks.map(t => (t.id === id ? updated : t)) }));
+    // A daily target is how "three doses a day" is already said here, so each
+    // unit is a dose — not just the one that finishes the day. Only this
+    // branch records: the unit that reaches the target hands off to
+    // completeTask above, which logs it there, and logging here too would
+    // count the last dose of every day twice.
+    if (task.medicationName) {
+      useMedicationStore.getState().addLog({
+        name: task.medicationName,
+        amount: task.medicationAmount,
+        unit: task.medicationUnit,
+        taskId: id,
+      });
+    }
     get().setLastAction({
       label: 'Logged',
       undo: () => get().unlogQuotaUnit(id),
@@ -4384,6 +4431,9 @@ export const useTaskStore = create<TaskStore>((set, get) => ({
     const updated = { ...task, progressCount: task.progressCount - 1 };
     dbUpdateTask(updated);
     set(s => ({ tasks: s.tasks.map(t => (t.id === id ? updated : t)) }));
+    // The unit being taken back is the dose that unit recorded, and only that
+    // one — the day's earlier doses were still taken.
+    if (task.medicationName) useMedicationStore.getState().removeLatestLogForTask(id);
   },
 
   holdQuotaOnToday(id) {
@@ -7010,6 +7060,9 @@ export const useTaskStore = create<TaskStore>((set, get) => ({
       penaltyCutoffTime: null,
       penaltyFiredAt: null,
       gatesApps: false,
+      medicationName: null,
+      medicationAmount: null,
+      medicationUnit: null,
       parentId,
       groupId: null,
       projectId: null,
@@ -7211,6 +7264,9 @@ export const useTaskStore = create<TaskStore>((set, get) => ({
       penaltyCutoffTime: null,
       penaltyFiredAt: null,
       gatesApps: false,
+      medicationName: null,
+      medicationAmount: null,
+      medicationUnit: null,
       parentId: null,
       groupId,
       projectId: null,

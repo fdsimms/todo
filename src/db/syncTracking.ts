@@ -74,6 +74,12 @@ export const SYNC_TRACKED_TABLES: readonly SyncTable[] = [
   // differently on each phone, and a milestone is written once and rarely
   // edited, so last-writer-wins is a no-op on almost every row.
   { name: 'milestones', key: ['id'] },
+  // The medication log. Same health-record argument as mood_logs, with one
+  // extra edge: a phone that only has half the doses answers "how often did I
+  // reach for it" with a number that is simply too low, and nothing about that
+  // number looks wrong. A dose is written once and edited rarely, so
+  // last-writer-wins is a no-op on almost every row.
+  { name: 'medication_logs', key: ['id'] },
   // The food log. It has to travel for the reason mood entries do, and the
   // reading it prevents is starker: a day's totals computed off whichever half
   // of the record happens to be on the phone in your hand. An entry is written
