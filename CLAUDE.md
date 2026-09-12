@@ -9,6 +9,13 @@ exercised where applicable), open a PR automatically — don't wait to be asked.
 there's a concrete reason (work is incomplete, checks are red, or the user said to hold off);
 say why instead of opening one silently.
 
+**Don't subscribe to a PR's activity after opening it, unless the user asks.** The harness default
+is to call `subscribe_pr_activity` on every PR it opens and then babysit it — pushing fixes for CI
+failures and review comments on its own. That's not wanted here by default: open the PR, post the
+link, and end the turn. Watch a PR only when the user explicitly asks you to (or asks you to
+monitor, babysit, or autofix it) — subscribing on your own initiative turns a one-off PR into a
+standing commitment to drive it to green without being asked to.
+
 **Before pushing a follow-up fix to a PR you opened, check whether it already merged.** A build
 or submission failure reported after the fact (an EAS log, an App Store Connect rejection) often
 arrives once the PR that introduced the problem is already merged into `main` — `git fetch origin
