@@ -2904,6 +2904,24 @@ describe('grocery items', () => {
       expect(left.some(e => e.itemId === 'milk' && e.listId === null)).toBe(true);
     });
 
+    it('clears the recipe credit on an away trip’s rows too', () => {
+      dbInsertGroceryList({ id: 'l1', name: 'Airbnb', sortOrder: 1, createdAt: '2026-08-01T00:00:00.000Z' });
+      insertListedGroceryItem(makeGroceryItem({
+        id: 'coffee', name: 'Coffee', nameKey: 'coffee', onList: false,
+        sourceRecipeId: 'r1', sourceRecipeTitle: 'Paella',
+      }));
+      dbSetGroceryListEntry({
+        itemId: 'coffee', listId: 'l1', checked: true, sortOrder: 1,
+        choiceGroup: null, addedAt: '2026-08-01T00:00:00.000Z',
+      });
+
+      dbFinishGroceryShopping('2026-08-07T12:00:00.000Z', null, {}, {}, new Set(), 'l1');
+
+      const row = dbGetAllGroceryItems().find(i => i.id === 'coffee')!;
+      expect(row.sourceRecipeId).toBeNull();
+      expect(row.sourceRecipeTitle).toBeNull();
+    });
+
     it('records nothing on an away trip’s rows', () => {
       seedTwoLists();
 
@@ -2968,6 +2986,22 @@ describe('grocery items', () => {
       expect(byId.get('g1')!.lastPurchasedAt).toBe('2026-08-07T12:00:00.000Z');
       // Not bought, so still on the list for next time.
       expect(byId.get('g2')!.onList).toBe(true);
+    });
+
+    // Same lifetime as quantity_from_recipe: the recipe credit says why this
+    // trip needed the row, and buying it ends that trip. See
+    // GroceryItem.sourceRecipeId.
+    it('clears the recipe credit on a row it buys', () => {
+      insertListedGroceryItem(makeGroceryItem({
+        id: 'g1', name: 'Rice', nameKey: 'rice', checked: true,
+        sourceRecipeId: 'r1', sourceRecipeTitle: 'Paella',
+      }));
+
+      dbFinishGroceryShopping('2026-08-07T12:00:00.000Z');
+
+      const item = dbGetAllGroceryItems()[0];
+      expect(item.sourceRecipeId).toBeNull();
+      expect(item.sourceRecipeTitle).toBeNull();
     });
 
     // The SQL half of the product stamp — the store-side mirror of the patch

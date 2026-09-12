@@ -3588,10 +3588,15 @@ export const useGroceryStore = create<GroceryStore>((set, get) => ({
     // there is nothing here clearing either — see GroceryListEntry.
     const listId = get().activeListId;
     if (!entryFor(get().listEntries, id, listId)) return;
+    // sourceRecipeTitle is the same kind of shop-scoped bookkeeping as
+    // quantityFromRecipe above — see GroceryItem.sourceRecipeId — and clears
+    // for the same reason: leaving the list ends the reason it was on it.
     const updated = {
       ...item,
       quantity: item.quantityFromRecipe ? null : item.quantity,
       quantityFromRecipe: false,
+      sourceRecipeId: null,
+      sourceRecipeTitle: null,
     };
     dbUpdateGroceryItem(updated);
     set(s => ({
@@ -3608,7 +3613,8 @@ export const useGroceryStore = create<GroceryStore>((set, get) => ({
     const leaving = get().listEntries.filter(e => e.listId === listId && wanted.has(e.itemId));
     if (leaving.length === 0) return;
     // Parks every row, same as removeFromList: the entry goes, the catalog row
-    // stays, and a recipe-owned quantity ends with the shop it was for.
+    // stays, and a recipe-owned quantity and its credit end with the shop they
+    // were for.
     const toUpdate = leaving
       .map(e => get().items.find(i => i.id === e.itemId))
       .filter((i): i is GroceryItem => !!i)
@@ -3616,6 +3622,8 @@ export const useGroceryStore = create<GroceryStore>((set, get) => ({
         ...i,
         quantity: i.quantityFromRecipe ? null : i.quantity,
         quantityFromRecipe: false,
+        sourceRecipeId: null,
+        sourceRecipeTitle: null,
       }));
 
     for (const u of toUpdate) dbUpdateGroceryItem(u);
@@ -3905,6 +3913,11 @@ export const useGroceryStore = create<GroceryStore>((set, get) => ({
                 // way, and the amount a recipe asked for was for that shop.
                 quantity: i.quantityFromRecipe ? null : i.quantity,
                 quantityFromRecipe: false,
+                // Same reasoning, same shop: the recipe credit was for why
+                // this trip needed the row, and the trip is over. See
+                // GroceryItem.sourceRecipeId.
+                sourceRecipeId: null,
+                sourceRecipeTitle: null,
                 // Everything from here down is the *record* a purchase leaves
                 // on the catalog row, and an away trip leaves none of it: see
                 // GroceryList, and the shorter UPDATE dbFinishGroceryShopping

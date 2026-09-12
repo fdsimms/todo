@@ -1009,6 +1009,22 @@ describe('finishShopping', () => {
     expect(row.purchaseCount).toBe(1);
   });
 
+  // Same lifetime as the recipe-owned quantity: the recipe credit says why
+  // this trip needed the row, and buying it is that trip ending.
+  it('clears the recipe credit on a row it buys', () => {
+    const rice = makeItem({
+      name: 'Rice', onList: true, checked: true, sourceRecipeId: 'r1', sourceRecipeTitle: 'Paella',
+    });
+    seed([rice]);
+    (dbFinishGroceryShopping as jest.Mock).mockReturnValue([rice.id]);
+
+    useGroceryStore.getState().finishShopping();
+
+    const row = useGroceryStore.getState().itemById(rice.id)!;
+    expect(row.sourceRecipeId).toBeNull();
+    expect(row.sourceRecipeTitle).toBeNull();
+  });
+
   it('is a no-op with an empty trolley', () => {
     seed([makeItem({ name: 'Milk', onList: true })]);
     expect(useGroceryStore.getState().finishShopping()).toBe(0);
@@ -1291,6 +1307,23 @@ describe('list membership', () => {
     expect(useGroceryStore.getState().itemById(flour.id)!.quantity).toBe('2 bags');
   });
 
+  // The recipe credit is scoped to why the row is on the list right now, same
+  // lifetime as the recipe-owned quantity above (GroceryItem.sourceRecipeId):
+  // leaving the list ends the reason it was there, so a row taken off the list
+  // must not keep saying it's "for" a recipe from a shop that's over.
+  it('removeFromList clears the recipe credit along with the recipe-owned quantity', () => {
+    const rice = makeItem({
+      name: 'Rice', onList: true, sourceRecipeId: 'r1', sourceRecipeTitle: 'Paella',
+    });
+    seed([rice]);
+
+    useGroceryStore.getState().removeFromList(rice.id);
+
+    const after = useGroceryStore.getState().itemById(rice.id)!;
+    expect(after.sourceRecipeId).toBeNull();
+    expect(after.sourceRecipeTitle).toBeNull();
+  });
+
   it('addExistingMany only touches rows that are off the list', () => {
     const milk = makeItem({ name: 'Milk', onList: false });
     const eggs = makeItem({ name: 'Eggs', onList: true });
@@ -1344,6 +1377,19 @@ describe('list membership', () => {
     const after = useGroceryStore.getState().items;
     expect(after).toHaveLength(2);
     expect(after.every(i => !i.onList && !i.checked)).toBe(true);
+  });
+
+  it('removeFromListMany clears the recipe credit on every row it parks', () => {
+    const rice = makeItem({
+      name: 'Rice', onList: true, sourceRecipeId: 'r1', sourceRecipeTitle: 'Paella',
+    });
+    seed([rice]);
+
+    useGroceryStore.getState().removeFromListMany([rice.id]);
+
+    const after = useGroceryStore.getState().itemById(rice.id)!;
+    expect(after.sourceRecipeId).toBeNull();
+    expect(after.sourceRecipeTitle).toBeNull();
   });
 
   it('removeFromListMany only touches ids that are on the list', () => {

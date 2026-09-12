@@ -2299,6 +2299,19 @@ function seedRecipes(): DemoRecipes {
   setServings(oats.id, 2);
   setPrepMinutes(oats.id, 10);
   setVote(oats.id, 'liked');
+  // The standing swap said in the method rather than only in the ingredient
+  // list: this recipe's milk line reads as oat milk, and step one names milk,
+  // so it is the one place the inline annotation's substitution half is visible
+  // (see stepIngredients.ts). Step one is also where the shorter-name rule
+  // shows: the line is called "rolled oats" and the step says "the oats", which
+  // is how a method actually reads. The notes above stop rendering as the
+  // method now that there are steps, which is the trade: the fallback itself is
+  // still on show, on the steak below that has no steps at all.
+  [
+    'Stir the oats into the milk and leave the jar overnight.',
+    'In the morning, fold in the yogurt and honey.',
+    'Top with the blueberries.',
+  ].forEach(text => addStep(oats.id, text));
 
   const sandwich = newRecipe('Turkey and avocado sandwich');
   addIngredientsFromText(
@@ -2360,7 +2373,11 @@ function seedRecipes(): DemoRecipes {
   // A method on the one recipe here that has sections, because cook mode's
   // ingredient panel is where those headings now do their work (it reads the
   // recipe's own sections, not just a component's name) — and a recipe with
-  // no steps and no notes has no cook mode to open.
+  // no steps and no notes has no cook mode to open. It carries the inline
+  // amounts too (stepIngredients.ts), and this is the recipe that shows the one
+  // rule a single ingredient list can't: it holds "brown sugar" and "sugar" as
+  // separate lines, so the frosting step's plain "sugar" has to go to the line
+  // actually called that rather than to the alias the other one offers.
   [
     'Heat the oven to 180°C and line a 9-inch cake pan.',
     'Whisk the eggs with the brown sugar, then fold in the flour, cinnamon and grated carrot.',
