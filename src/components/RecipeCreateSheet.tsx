@@ -11,14 +11,17 @@
 import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import {
   Alert,
+  Keyboard,
   Modal,
   View,
   Text,
   TextInput,
+  TouchableOpacity,
   ScrollView,
   ActivityIndicator,
   StyleSheet,
 } from 'react-native';
+import Ionicons from '@expo/vector-icons/Ionicons';
 import { useShallow } from 'zustand/react/shallow';
 import { useKeyboardInsetScroll } from '../hooks/useKeyboardInsetScroll';
 import { useColors } from '../theme/ThemeContext';
@@ -28,9 +31,19 @@ import {
   font,
   fontWeight,
   border,
+  interaction,
   type Colors,
 } from '../theme';
-import { RECIPE_NAME_MAX_LENGTH, RECIPE_PAGE_MAX_LENGTH, RECIPE_SOURCE_MAX_LENGTH, type RecipeSourceType } from '../types';
+import {
+  RECIPE_NAME_MAX_LENGTH,
+  RECIPE_PAGE_MAX_LENGTH,
+  RECIPE_SOURCE_MAX_LENGTH,
+  RECIPE_TAG_MAX_LENGTH,
+  RECIPE_MEAL_TYPES,
+  RECIPE_MEAL_TYPE_LABELS,
+  type RecipeSourceType,
+  type RecipeMealType,
+} from '../types';
 import { useRecipeStore } from '../store/useRecipeStore';
 import { useGroceryStore } from '../store/useGroceryStore';
 import {
@@ -45,6 +58,8 @@ import { groceryNameKey } from '../utils/groceryParse';
 import { sourceFieldsFor, sourcePlanFor } from '../utils/recipeProvenance';
 import { aisleForName } from '../utils/groceryAisles';
 import { sectionsOf } from '../utils/recipeSections';
+import { allRecipeTags, cleanRecipeTag, toggleRecipeTag } from '../utils/recipeTags';
+import { tagColor } from '../utils/tagColor';
 import { SheetHeader } from './SheetHeader';
 import { SheetHeaderButton } from './SheetHeaderButton';
 import { EmptyState } from './EmptyState';
@@ -149,6 +164,8 @@ export function RecipeCreateSheet({
   const setSourceType = useRecipeStore(s => s.setSourceType);
   const setSourcePage = useRecipeStore(s => s.setSourcePage);
   const linkNewCookbook = useRecipeStore(s => s.linkNewCookbook);
+  const setMealType = useRecipeStore(s => s.setMealType);
+  const setTags = useRecipeStore(s => s.setTags);
   const addStep = useRecipeStore(s => s.addStep);
   const addPrepTask = useRecipeStore(s => s.addPrepTask);
   const updatePrepTask = useRecipeStore(s => s.updatePrepTask);
@@ -178,6 +195,15 @@ export function RecipeCreateSheet({
   // the recipe doesn't exist yet, so there's nothing of the user's own for this
   // to land on top of.
   const [applySource, setApplySource] = useState(true);
+  // Same "nothing to overwrite" reasoning as the rows above — these are drafts
+  // for setMealType/setTags below, kept `Draft`-suffixed like RecipeEditor's
+  // own so they don't collide with the store setters of the same name.
+  const [applyMealType, setApplyMealType] = useState(true);
+  const [mealType, setMealTypeDraft] = useState<RecipeMealType | null>(null);
+  const [applyTags, setApplyTags] = useState(true);
+  const [tags, setTagsDraft] = useState<string[]>([]);
+  const [addingTag, setAddingTag] = useState(false);
+  const [newTag, setNewTag] = useState('');
   // Working copies of everything the review list can correct, on the same
   // terms `ingredients` above has been on since #1608: `extracted` is what the
   // model said and is never written back to, these are what gets created.
@@ -226,6 +252,13 @@ export function RecipeCreateSheet({
     [ingredients],
   );
 
+  // The box's whole vocabulary, minus what's already been added here — same
+  // derivation as RecipeEditor's own tagSuggestions.
+  const tagSuggestions = useMemo(
+    () => allRecipeTags(recipes).filter(t => !tags.includes(t)),
+    [recipes, tags],
+  );
+
   // ==== reset, and syncing the sheet's tabs to the add-menu selection ====
   const reset = useCallback(() => {
     setLoading(false);
@@ -238,6 +271,12 @@ export function RecipeCreateSheet({
     setApplyMethod(true);
     setApplyPrepTasks(true);
     setApplySource(true);
+    setApplyMealType(true);
+    setMealTypeDraft(null);
+    setApplyTags(true);
+    setTagsDraft([]);
+    setAddingTag(false);
+    setNewTag('');
     setSteps([]);
     setAcceptedSteps(new Set());
     setPrepTasks([]);
@@ -414,6 +453,14 @@ export function RecipeCreateSheet({
     setPrepTasks(prev => prev.map((task, i) => (i === index ? { ...task, ...patch } : task)));
   };
 
+  // ==== tags ====
+  const addTagFromInput = () => {
+    const tag = cleanRecipeTag(newTag);
+    if (tag && !tags.includes(tag)) setTagsDraft(prev => [...prev, tag]);
+    setNewTag('');
+    setAddingTag(false);
+  };
+
   // ==== creating the recipe ====
   const handleCreate = () => {
     if (!extracted || !cleaned || duplicate || urlDuplicate) return;
@@ -422,7 +469,7 @@ export function RecipeCreateSheet({
       // The store refused a name the live check said was free — the box changed
       // under a sheet left open. Land them on the recipe they were after.
       const existing = recipes.find(r => r.nameKey === groceryNameKey(cleaned));
-      if (existing) { onClose(); onCreated(existing.id, input.page?.url ?? null); }
+      if (existing) { Keyboard.dismiss(); onClose(); onCreated(existing.id, input.page?.url ?? null); }
       return;
     }
     // Tapping Create can beat a field's own blur, so every value below is read
@@ -497,6 +544,8 @@ export function RecipeCreateSheet({
       // After the type either way, which clears the page for anything but a book.
       if (plan.page) setSourcePage(recipe.id, plan.page);
     }
+    if (applyMealType && mealType) setMealType(recipe.id, mealType);
+    if (applyTags && tags.length > 0) setTags(recipe.id, tags);
     // The page's own steps when it has them (verbatim structured data),
     // otherwise whatever the model read off the source itself. Both of these
     // used to be written unconditionally, announced only by a sentence in the
@@ -517,6 +566,7 @@ export function RecipeCreateSheet({
       });
     }
     haptics.success();
+    Keyboard.dismiss();
     // Close first, then navigate: a navigate fired from under a live pageSheet
     // renders the destination behind the sheet.
     onClose();
@@ -534,13 +584,13 @@ export function RecipeCreateSheet({
       || !!input.text.trim()
       || !!input.url.trim()
       || input.photos.length > 0;
-    if (!dirty) { onClose(); return; }
+    if (!dirty) { Keyboard.dismiss(); onClose(); return; }
     Alert.alert(
       'Discard changes?',
       'You have unsaved changes. Are you sure you want to discard them?',
       [
         { text: 'Keep editing', style: 'cancel' },
-        { text: 'Discard', style: 'destructive', onPress: onClose },
+        { text: 'Discard', style: 'destructive', onPress: () => { Keyboard.dismiss(); onClose(); } },
       ],
     );
   };
@@ -730,6 +780,7 @@ export function RecipeCreateSheet({
                 // it turned out to already be in the box, and this lands them
                 // on it. A queue entry the caller can now drop.
                 onPress={() => {
+                  Keyboard.dismiss();
                   onClose();
                   onCreated(duplicate.id, input.page?.url ?? null);
                 }}
@@ -745,6 +796,7 @@ export function RecipeCreateSheet({
               <InlineAction
                 label="Open it"
                 onPress={() => {
+                  Keyboard.dismiss();
                   onClose();
                   onCreated(urlDuplicate.id, input.page?.url ?? null);
                 }}
@@ -917,6 +969,91 @@ export function RecipeCreateSheet({
           </View>
         </ImportApplyRow>
 
+        <ImportApplyRow
+          checked={applyMealType}
+          onToggle={() => setApplyMealType(v => !v)}
+          title="Meal type"
+          meta={mealType ? RECIPE_MEAL_TYPE_LABELS[mealType] : null}
+          accessibilityLabel={mealType ? `Meal type, ${RECIPE_MEAL_TYPE_LABELS[mealType]}` : 'Meal type'}
+        >
+          <View style={styles.pillRow}>
+            {RECIPE_MEAL_TYPES.map(type => (
+              <TouchableOpacity
+                key={type}
+                style={[styles.pill, mealType === type && styles.pillActiveNeutral]}
+                activeOpacity={interaction.activeOpacity}
+                onPress={() => { haptics.tap(); setMealTypeDraft(mealType === type ? null : type); }}
+                accessibilityRole="button"
+                accessibilityLabel={RECIPE_MEAL_TYPE_LABELS[type]}
+                accessibilityState={{ selected: mealType === type }}
+              >
+                <Text style={[styles.pillText, mealType === type && styles.pillTextActive]}>
+                  {RECIPE_MEAL_TYPE_LABELS[type]}
+                </Text>
+              </TouchableOpacity>
+            ))}
+          </View>
+        </ImportApplyRow>
+
+        <ImportApplyRow
+          checked={applyTags}
+          onToggle={() => setApplyTags(v => !v)}
+          title="Tags"
+          meta={tags.length > 0 ? tags.join(', ') : null}
+          accessibilityLabel={tags.length > 0 ? `Tags, ${tags.join(', ')}` : 'Tags'}
+        >
+          <View style={styles.tagRow}>
+            {tags.map(tag => (
+              <TouchableOpacity
+                key={tag}
+                style={[styles.tagChip, { backgroundColor: tagColor(tag) + '33' }]}
+                activeOpacity={interaction.activeOpacity}
+                onPress={() => { haptics.tap(); setTagsDraft(prev => toggleRecipeTag(prev, tag)); }}
+                accessibilityRole="button"
+                accessibilityLabel={`Remove tag ${tag}`}
+              >
+                <View style={[styles.tagDot, { backgroundColor: tagColor(tag) }]} />
+                <Text style={[styles.tagChipText, { color: tagColor(tag) }]}>{tag}</Text>
+                <Ionicons name="close" size={12} color={tagColor(tag)} />
+              </TouchableOpacity>
+            ))}
+            {addingTag ? (
+              <TextInput
+                autoFocus
+                style={styles.tagInput}
+                value={newTag}
+                onChangeText={setNewTag}
+                onSubmitEditing={addTagFromInput}
+                onBlur={addTagFromInput}
+                placeholder="e.g. weeknight"
+                placeholderTextColor={colors.textTertiary}
+                maxLength={RECIPE_TAG_MAX_LENGTH}
+                returnKeyType="done"
+                autoCapitalize="none"
+                accessibilityLabel="New tag name"
+              />
+            ) : (
+              <InlineAction icon="add" label="Add tag" variant="neutral" onPress={() => setAddingTag(true)} />
+            )}
+          </View>
+          {tagSuggestions.length > 0 && (
+            <View style={styles.tagSuggestions}>
+              {tagSuggestions.slice(0, 8).map(tag => (
+                <TouchableOpacity
+                  key={tag}
+                  style={styles.tagSuggestion}
+                  activeOpacity={interaction.activeOpacity}
+                  onPress={() => { haptics.tap(); setTagsDraft(prev => toggleRecipeTag(prev, tag)); }}
+                  accessibilityRole="button"
+                  accessibilityLabel={`Add tag ${tag}`}
+                >
+                  <Text style={styles.tagSuggestionText}>{tag}</Text>
+                </TouchableOpacity>
+              ))}
+            </View>
+          )}
+        </ImportApplyRow>
+
         {renderReferences()}
 
         {ingredients.map((row, i) => {
@@ -992,7 +1129,7 @@ function makeStyles(colors: Colors) {
       paddingBottom: spacing.sm,
     },
     list: { paddingTop: spacing.md, paddingBottom: spacing.xl },
-    detailFields: { flexDirection: 'row', alignItems: 'center', gap: spacing.xs },
+    detailFields: { flexDirection: 'row', flexWrap: 'wrap', alignItems: 'center', gap: spacing.xs },
     // `text`, not `textSecondary`: every one of these sits on its own chip
     // now, and the chrome between them (`detailSep`) is what stays grey. It
     // used to be the other way round — the static "·"/"min"/"Makes" were
@@ -1048,5 +1185,41 @@ function makeStyles(colors: Colors) {
       borderTopColor: colors.separator,
     },
     dupeText: { flex: 1, color: colors.textSecondary, fontSize: font.xs },
+    // Same meal-type/tag treatment as RecipeEditor's own rows.
+    pillRow: { flexDirection: 'row', flexWrap: 'wrap', gap: spacing.xs, paddingBottom: spacing.sm },
+    pill: {
+      paddingHorizontal: 14,
+      paddingVertical: 8,
+      borderRadius: radius.full,
+      backgroundColor: colors.bgTertiary,
+      alignItems: 'center',
+    },
+    pillActiveNeutral: { backgroundColor: colors.bgQuaternary },
+    pillText: { color: colors.text, fontSize: font.sm, fontWeight: '500' },
+    pillTextActive: { color: colors.text, fontWeight: '600' },
+    tagRow: {
+      flexDirection: 'row', flexWrap: 'wrap', gap: spacing.sm,
+      alignItems: 'center', paddingBottom: spacing.sm,
+    },
+    tagChip: {
+      flexDirection: 'row', alignItems: 'center', gap: 4,
+      paddingHorizontal: 10, paddingVertical: 5, borderRadius: radius.full,
+    },
+    tagDot: { width: 6, height: 6, borderRadius: 3 },
+    tagChipText: { fontSize: font.sm, fontWeight: fontWeight.medium },
+    tagInput: {
+      color: colors.text, fontSize: font.sm,
+      borderBottomWidth: 1, borderBottomColor: colors.accent,
+      paddingVertical: 4, paddingHorizontal: 4, minWidth: 80,
+    },
+    tagSuggestions: {
+      flexDirection: 'row', flexWrap: 'wrap',
+      gap: spacing.xs, paddingBottom: spacing.sm,
+    },
+    tagSuggestion: {
+      paddingHorizontal: 8, paddingVertical: 3,
+      borderRadius: radius.full, backgroundColor: colors.bgTertiary,
+    },
+    tagSuggestionText: { color: colors.textSecondary, fontSize: font.xs },
   });
 }

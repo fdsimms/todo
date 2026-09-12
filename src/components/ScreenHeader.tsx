@@ -173,12 +173,16 @@ const makeStyles = (colors: Colors) => StyleSheet.create({
     backgroundColor: colors.bgSecondary,
     alignItems: 'center', justifyContent: 'center',
   },
+  // minWidth rather than a fixed width, matching the three sibling badges that
+  // already grow (HubPills, Today's view-mode pills, RecipeSourcePicker's
+  // thumb order): this holds an arbitrary count, and a fixed 16pt box left a
+  // two-digit one touching both edges once the text moved onto `font.xxs`.
   badge: {
     position: 'absolute', top: -3, right: -3,
-    width: 16, height: 16, borderRadius: 8,
+    minWidth: 16, height: 16, borderRadius: 8, paddingHorizontal: 3,
     backgroundColor: colors.red, alignItems: 'center', justifyContent: 'center',
   },
-  badgeText: { color: colors.onAccent, fontSize: 9, fontWeight: fontWeight.bold },
+  badgeText: { color: colors.onAccent, fontSize: font.xxs, fontWeight: fontWeight.bold },
   badgeDot: {
     position: 'absolute', top: 1, right: 1,
     width: 8, height: 8, borderRadius: 4,

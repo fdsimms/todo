@@ -25,6 +25,21 @@ import { describeLastSynced } from '../../utils/syncStatus';
  * when the app comes to the front and on the background pass — iOS won't let a
  * backgrounded app poll freely — so "up to date" would be a claim the app can't
  * keep. A timestamp is a fact.
+ *
+ * **The copy names what actually travels, and the two destinations are not
+ * equivalent.** CLAUDE.md's promise is that there is no backend and every piece
+ * of user data lives on device; a sync server ends that, and the row that turns
+ * one on is the last place a person can decide whether they want it to. So the
+ * footer says the server holds a complete copy rather than only describing the
+ * mechanism, and both hints name the mood, medication and food logs explicitly:
+ * they are sync-tracked (see SYNC_TRACKED_TABLES), so "tasks, lists and
+ * recipes" was an undercount on the iCloud side too. Weight is the one thing
+ * that genuinely cannot travel — HealthKit is the record and there is no table.
+ *
+ * The pattern is the app's own: PrivacyAiSettings states in each section footer
+ * exactly what leaves the device, and this is the same obligation for a bigger
+ * departure. See "The privacy consequence, stated plainly" in
+ * docs/arch/mcp-server.md.
  */
 export function SyncSettings() {
   const supported = useSyncStore(s => s.supported);
@@ -66,7 +81,7 @@ export function SyncSettings() {
   return (
     <SettingsSection
       label="Sync"
-      footer="Changes are exchanged when you open the app on each device."
+      footer="Changes are exchanged when you open the app on each device. iCloud keeps them in your private iCloud database, on the Apple ID this device is signed in to. A sync server is not the same: it holds a complete copy of everything in this app, your mood, medication and food logs included, on whatever machine you point it at. Set one up only if you want that copy to exist."
     >
       {supported && (
         <SettingsRow
@@ -74,7 +89,7 @@ export function SyncSettings() {
           icon="cloud-outline"
           iconColor={enabled ? colors.accent : undefined}
           label="Sync with iCloud"
-          hint="Keeps your tasks, lists and recipes the same on every device signed in to this Apple ID."
+          hint="Keeps this app's data the same on every device signed in to this Apple ID, your mood, medication and food logs included."
           toggle={enabled}
           value={enabled ? 'On' : 'Off'}
           onPress={onToggle}
@@ -87,7 +102,7 @@ export function SyncSettings() {
         icon="server-outline"
         iconColor={serverUrl ? colors.accent : undefined}
         label="Sync server"
-        hint="A payload store you run. Lets something that isn't an Apple device, like a computer running the MCP server, sync with this app. Both this and the token are needed."
+        hint="A server you run, so something that isn't an Apple device can sync with this app. It keeps a full copy of your data, health logs included. Both this and the token are needed."
       >
         <TextInput
           style={[styles.apiKeyInput, { color: colors.text, borderBottomColor: colors.separator }]}

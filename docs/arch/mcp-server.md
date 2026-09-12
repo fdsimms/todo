@@ -3,9 +3,9 @@
 An MCP server that lets Claude read this app's data (#100). The code is `mcp/`; the parts of it
 that are ordinary TypeScript are tested by the repo's own jest run, alongside everything else.
 
-**Status: phase 2.** The replica is a real sync peer, and it can write: `create_template`,
-`create_task`, `complete_task` and `defer_task`, behind their own token. Nothing is deployed behind
-real auth. The phases are at the bottom of this file.
+**Status: phase 2.** The replica is a real sync peer, and it writes: templates, tasks, completions,
+reschedules and the grocery list, behind their own token. Nothing is deployed behind real auth. The
+phases are at the bottom of this file.
 
 It runs. The server has been exercised end to end against a file database, and a change made on one
 side reaches the other through the store. What has *not* been exercised is a public deployment,
@@ -352,6 +352,50 @@ That is also why the tool returns the whole task rather than an acknowledgement.
 changed is not predictable from the request, so a caller that assumed `dueDate` would misreport
 what it had just done.
 
+### The grocery list, and the read that is not an equality test
+
+`add_grocery_item`, `check_off_grocery_item` and `remove_from_grocery_list`. The third extraction on
+the same pattern, and the one where the pattern paid off least evenly: checking off and removing are
+genuinely thin, and adding is not.
+
+**Checking off and removing go straight through the db layer**, because there is nothing to decide.
+Checked lives on the membership row, and `dbSetGroceryListEntry` is also the only writer of the
+mirror columns on the item (`dbSyncGroceryHomeColumns`), so the row and its entry cannot end up
+disagreeing. Removing parks the row and clears a recipe's claim on the quantity, which is two lines.
+
+**Adding could not.** `planGroceryAdd` (`src/utils/groceryAdd.ts`) is `addByName`'s core, lifted out
+with `newItemRow`, `ensureProductFor` and `nextSortOrder`. Two things made a second implementation
+untenable rather than merely inadvisable:
+
+- `newItemRow` decides forty columns. A second copy would not fail loudly when the two drifted; it
+  would quietly write rows missing whatever column was added last.
+- **The find is not an equality test.** `catalogItemForKey` resolves singular against plural, so a
+  caller reading `items.find(i => i.nameKey === key)` mints "serrano pepper" beside an existing
+  "Serrano peppers" and splits one shelf item's aisle, purchase count and pantry state in two, with
+  nothing to say it happened. `docs/arch/groceries.md` names that exact read as the mistake.
+
+What stayed in the store is the `set()`, the cart-hold timer behind the tick animation, the undo,
+and the debounced AI aisle classification a row landing in Other triggers. The last is the only one
+with teeth and the right call regardless: it is a network request to Anthropic on the user's key,
+and a server making them because a model added milk is not a thing to do unasked.
+
+#### One bug and one wrong comment, found by moving the code
+
+Both were pre-existing, and neither would have surfaced without a second caller.
+
+**Re-adding something already in your cart un-ticked it.** The row's `checked` was forced to false
+whenever the target was the home list, on the stated grounds that the membership write would
+recompute it. It does not: joining a list a row is already in is a deliberate no-op, so on exactly
+the path where the tick matters nothing recomputed anything. The row then said unbought while its
+own entry still said checked. The tick is now read off the entry, which is what the schema treats as
+the truth. `joinList`'s own comment had asserted this behaviour all along; a test asserted the
+opposite, and that test is replaced.
+
+**`ensureProductFor`'s doc claimed more matching than it does.** `productKeyFor` goes through
+`groceryNameKey`, which keeps letters, digits and `%` and turns everything else into a space, so
+"Arnold's" keys as `arnold s` and "arnolds" as `arnolds`: two boxes, not one. Only the comment was
+wrong, and it is corrected rather than the keying, which the groceries doc fences off.
+
 ### Writes have their own token
 
 `MCP_WRITE_TOKEN`, separate from `MCP_AUTH_TOKEN`. The write token buys both scopes so one
@@ -386,6 +430,39 @@ behind one bearer token today, which is adequate for a laptop and is not adequat
 should decide whether the health logs need their own consent separate from the rest, and the honest
 default is that they do.
 
+### What the privacy label has to say
+
+Concretely, so phase 3 is not left deriving it under deadline. The app ships no privacy manifest
+today (`app.json` carries none), so this is the whole of the record.
+
+**Nothing changes while no sync server is configured.** The URL and the token are both required and
+both empty by default, iCloud is a private CloudKit database on the user's own Apple ID, and the
+three existing network calls are unchanged. The label question is entirely about the sync server
+being switched on.
+
+**What leaves the device when it is.** `SYNC_TRACKED_TABLES` is the authority, and it is broad: the
+tasks and their notes, projects, categories, tags and templates, the people layer (names, and the
+phone numbers and email addresses a task or a person carries), the grocery catalog with its prices
+and purchase history, recipes and the meal plan, and the three day-keyed logs. In Apple's
+categories that is at least **User Content**, **Contact Info**, **Health & Fitness** and
+**Purchases**, all of it linked to the person using the app.
+
+**The log tables are the reason this is not a routine declaration.** Mood, medication and food are
+health records in the sense a label means it. Weight is the one thing that cannot travel, because
+HealthKit is the record and there is no table to sync; that is the health model working rather than
+an omission.
+
+**The open question is whether a server the user runs counts as collection at all.** Apple asks
+what the developer and its partners collect, and here the developer receives nothing: the box is
+the user's, the address is theirs, and nothing reports back. That is a real argument and it is not
+obviously the winning one, because the data does leave the device and is stored beyond the session.
+**Do not settle this from the code.** It wants Apple's current guidance read at the time, and if it
+stays ambiguous the safe declaration is the honest one rather than the narrow one.
+
+**A second consent for the health logs is still undecided**, and the section above already says the
+honest default is that they need one. Worth noting that the Settings copy now names them explicitly
+on both destinations, which is the minimum; a separate switch would be the next step up from that.
+
 ## Phases
 
 - **Phase 0 (done).** The replica, the read-only tools, the serializer, the auth seam, and this
@@ -395,13 +472,13 @@ default is that they do.
 - **Phase 2 (here).** The writes, the write token, and the per-request scoping. Templates went
   first because a template is a *definition* — creating one fires no notification, spawns no
   successor and completes nothing, so it is the write with the least machinery behind it. Then
-  `create_task`, which moved `newTaskFromDraft` out of the store, and then `complete_task` and
-  `defer_task`, which moved the completion core out after it.
+  `create_task`, which moved `newTaskFromDraft` out of the store, then `complete_task` and
+  `defer_task`, which moved the completion core out after it, and then the grocery list, which
+  moved `addByName`'s core out.
 - **Phase 3. Hosting.** Real OAuth, a deployment, and the Settings surface that admits to the copy.
 
 The design question phase 2 was holding is settled, and the sections above say how: a model is the
 one caller that could have asked a task's question and did not, so an omitted answer is refused
-rather than read as "nobody asked", while an explicit `null` still completes without one. What is
-left in this phase is the grocery list, and `listProjects` reporting a plain count of live members
-where it should be asking `projectProgress`, which collapses recurrence tombstones and series by
-identity.
+rather than read as "nobody asked", while an explicit `null` still completes without one. Both of the other phase 2 items are done too: the grocery list writes, and `listProjects` now asks
+`projectProgress` rather than counting incomplete rows, so a project holding a recurring member no
+longer grows a denominator for ever.

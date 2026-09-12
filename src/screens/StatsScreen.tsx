@@ -1146,7 +1146,7 @@ const makeStyles = (colors: Colors) =>
     barLabel: {
       marginTop: 4,
       color: colors.textTertiary,
-      fontSize: 10,
+      fontSize: font.xxs,
       fontWeight: '500',
       textAlign: 'center',
     },
@@ -1188,7 +1188,7 @@ const makeStyles = (colors: Colors) =>
     },
     hourLabel: {
       color: colors.textTertiary,
-      fontSize: 10,
+      fontSize: font.xxs,
       fontWeight: '500',
     },
     row: {

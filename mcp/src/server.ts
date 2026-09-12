@@ -37,6 +37,9 @@ import {
   createTemplate,
   completeTask,
   deferTask,
+  addGroceryItem,
+  setGroceryChecked,
+  removeFromGroceryList,
   listProjects,
   listTasks,
   listTemplates,
@@ -156,7 +159,7 @@ export function buildMcpServer(replica: Replica, scope: AuthScope = 'read'): Mcp
     }
   );
 
-  server.tool('list_projects', 'Active projects and how many live tasks each still has.', {}, async () =>
+  server.tool('list_projects', "Active projects and how far through each one is. The counts are the app's own: a recurring member counts once however many times it has recurred, and a dated series counts once rather than once per date.", {}, async () =>
     json(await withFresh(() => listProjects(replica)))
   );
 
@@ -363,6 +366,49 @@ function registerWriteTools(
         return json(await withWrite(() => deferTask(replica, id, date)));
       } catch (e) {
         return json({ error: e instanceof Error ? e.message : 'Could not reschedule the task.' });
+      }
+    }
+  );
+
+  server.tool(
+    'add_grocery_item',
+    "Put something on the grocery list. A name the user has bought before re-lists the shelf item they already have, keeping its aisle, its history and its pantry state, rather than creating a second one. Singular and plural resolve to the same item. The result says which of those happened.",
+    {
+      name: z.string().min(1).describe('What to add. A leading amount is split off, so "2 gal milk" files milk with a quantity of 2 gal.'),
+      quantity: z.string().nullable().optional().describe('Stated separately instead of being parsed out of the name.'),
+      note: z.string().nullable().optional(),
+    },
+    async ({ name, ...rest }) => {
+      try {
+        return json(await withWrite(() => addGroceryItem(replica, name, rest)));
+      } catch (e) {
+        return json({ error: e instanceof Error ? e.message : 'Could not add that.' });
+      }
+    }
+  );
+
+  server.tool(
+    'check_off_grocery_item',
+    'Tick something off in the trolley, or un-tick it with checked: false. Takes the item id from list_grocery_items.',
+    { id: z.string().min(1), checked: z.boolean().optional().describe('Defaults to true.') },
+    async ({ id, checked }) => {
+      try {
+        return json(await withWrite(() => setGroceryChecked(replica, id, checked ?? true)));
+      } catch (e) {
+        return json({ error: e instanceof Error ? e.message : 'Could not check that off.' });
+      }
+    }
+  );
+
+  server.tool(
+    'remove_from_grocery_list',
+    'Take something off the list without deleting it. The shelf item stays in the catalog with its aisle, purchase history, prices and substitutes, so adding it again brings all of that back. There is deliberately no tool that deletes one.',
+    { id: z.string().min(1) },
+    async ({ id }) => {
+      try {
+        return json(await withWrite(() => removeFromGroceryList(replica, id)));
+      } catch (e) {
+        return json({ error: e instanceof Error ? e.message : 'Could not remove that.' });
       }
     }
   );

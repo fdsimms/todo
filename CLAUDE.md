@@ -416,7 +416,7 @@ file: the two maps are indexes, not write-ups.
 | a store that fills itself from outside the app, and a read that lands too late | `src/utils/refreshGuard.ts` — the calendar, the weather, Apple Health and Screen Time all await a device read and then write what came back. A generation token per independent read decides whether the answer is still the one being asked for; `clear()` moves it on, which is what stops a revoked read writing its data back after the user switched the feature off |
 | syncing between devices | `src/utils/syncEngine.ts` + `syncMerge.ts` + `cloudKitTransport.ts` + `src/store/useSyncStore.ts`. Two transports now, and `runSyncAll` runs them **sequentially** on purpose: they share one database across an `await`, so in parallel one pushes back what the other just applied |
 | syncing with something that isn't an Apple device | `src/utils/httpSyncTransport.ts` + `mcp/src/syncStore.ts` — see `docs/arch/mcp-server.md`. A payload store the user runs; it never parses a payload, which is what keeps the merge rules on the devices. Configuration is the opt-in (a URL in settings, a token in the keychain, both or neither) |
-| letting Claude read or write the app's data | `mcp/` — see `docs/arch/mcp-server.md`. Its own npm package, deliberately not a dependency of the app; it opens a `todo.db` in Node by putting `mcp/src/expoSqliteShim.ts` in front of `expo-sqlite`, so the whole of `src/db` and `src/utils` runs unchanged. It reads tasks, projects, groceries and the three day-keyed logs, and `create_template`/`create_task` write, behind a second token (`MCP_WRITE_TOKEN`) whose scope is decided per request. Nothing is deployed. **weight is structurally unreadable** (HealthKit is the record and there is no table), which is the health model working rather than a gap |
+| letting Claude read or write the app's data | `mcp/` — see `docs/arch/mcp-server.md`. Its own npm package, deliberately not a dependency of the app; it opens a `todo.db` in Node by putting `mcp/src/expoSqliteShim.ts` in front of `expo-sqlite`, so the whole of `src/db` and `src/utils` runs unchanged. It reads tasks, projects, groceries and the three day-keyed logs, and writes templates, tasks, completions, reschedules and the grocery list behind a second token (`MCP_WRITE_TOKEN`) whose scope is decided per request. Each write moved the app's own core out of a store rather than reimplementing it: `taskDraft.ts`, `taskCompletion.ts`, `groceryAdd.ts`. Nothing is deployed. **weight is structurally unreadable** (HealthKit is the record and there is no table), which is the health model working rather than a gap |
 | exporting or restoring a backup | `src/utils/backup.ts` + `src/utils/backupFile.ts` |
 | writing tasks to the system calendar | `src/utils/calendarSync.ts` (+ `deadlineCalendarSync.ts`, `mealCalendarSync.ts`) |
 | reading free/busy out of the system calendar | `src/utils/calendarBusy.ts` + `src/store/useCalendarStore.ts` |
@@ -443,14 +443,14 @@ file: the two maps are indexes, not write-ups.
 them source rather than tests. The ten biggest source files:
 
 `store/useTaskStore.ts` (7.6k), `components/TaskEditor.tsx` (5.9k), `db/database.ts` (5.9k),
-`types/index.ts` (5.8k), `store/useGroceryStore.ts` (5.4k), `screens/TodayScreen.tsx` (4.6k),
+`types/index.ts` (5.8k), `store/useGroceryStore.ts` (5.1k), `screens/TodayScreen.tsx` (4.6k),
 `components/TaskItem.tsx` (4.4k), `utils/demoSeed.ts` (4.0k),
 `store/useSettingsStore.ts` (3.8k), `screens/BackfillScreen.tsx` (3.5k).
 
 Grep for the symbol and read the surrounding range; reading any of them end to end costs more
 context than the rest of the task will. `docs/module-map.md` says which file owns what.
 
-The suite is **336 test files**, and `npm test` runs all of them in well under a minute.
+The suite is **337 test files**, and `npm test` runs all of them in well under a minute.
 `npx tsc --noEmit` is a few seconds once `.tsbuildinfo` exists, so run both, every time.
 
 <!-- END GENERATED: repo-stats -->
@@ -860,6 +860,31 @@ Today, Later, Unscheduled and Inbox are **not** separate screens — they're fou
 
 `src/theme/index.ts` exports design tokens (`spacing`, `radius`, `font`, `fontWeight`, `border`, `iconSize`, `animation`, `interaction`) and two color palettes (`darkColors`, `lightColors`). Components consume colors via `useColors()` or `useTheme()` (which also exposes theme-aware `shadows`) from `src/theme/ThemeContext.tsx`. The top-level `colors` export is kept only for non-themed static uses.
 
+**The spacing scale has eight steps, not five.** `xs` (4) through `xl` (32) double at each step and
+are the backbone; `xxs` (2), `xsm` (6) and `smd` (12) fill the gaps between 4 and 8, and between 8
+and 16. Those three were added after a sweep found ~980 raw numbers across 183 files — four fifths
+of every spacing value written — clustered almost entirely on exactly those gaps: a scale nobody
+can hit is a scale nobody uses, so the fix was to widen it rather than keep rounding call sites
+onto the nearest wrong value. **The values still *between* the steps (1, 3, 5, 7, 10, 14) are
+deliberately literals and deliberately not rounded onto a token** — they're optical nudges (a
+chevron aligned against a cap height, a border's width taken back out of a padding) where the exact
+number is the point. Radii were left alone in that sweep and are their own question: a
+`borderRadius` is usually geometry (half an element's size, for a circle) rather than a scale step.
+Font sizes got the same treatment in their own pass — see below.
+
+**The font scale bottoms out at `xxs` (11), and nothing goes below it.** The same sweep run over
+type found one job — the caption: a badge count in a 16pt circle, the weekday letter under a chart
+bar, the hint trailing a pill, the chips on a task row — written as 9, 10 *and* 11 across ~26
+sites, none of them reaching for a token because the smallest one (`xs`, 12) was too big for a
+badge. Three sizes for one job is the same drift the spacing gaps were, and 9pt is below what a
+caption should ever be, so the fix was the same: widen the scale rather than keep rounding onto the
+nearest wrong literal. **A container too small to hold 11pt is the container that's wrong** — grow
+the box with `minWidth` + `paddingHorizontal` instead of shrinking the text back down, which is
+what `ScreenHeader`'s badge now does to match the three sibling badges (`HubPills`, Today's
+view-mode pills, `RecipeSourcePicker`'s thumb order) that already did. The one file that keeps
+literal sizes is `ErrorBoundary.tsx`, which sits outside `ThemeProvider` and can't import tokens at
+all; its own comment says so.
+
 **When adding a new element above/below existing ones, give it margin on both sides it needs, not just the side that happened to matter for its own layout.** A recurring mistake here: a new row/bar gets `marginTop` to clear whatever's above it, but no `marginBottom`, so the *next* element — which itself has no `marginTop` — ends up jammed right against it. `TaskEditor`'s field-search bar shipped exactly this way (`marginTop: spacing.md` only), and the group label right below it had no top margin of its own, so the two sat with zero gap between them. Don't assume the neighboring element already accounts for spacing on its side — check it, and default to `spacing.md` (16) between stacked blocks, `spacing.lg` (24) between denser groups, rather than shipping a cramped gap and letting it get caught in review.
 
 **Never put a `numberOfLines={1}` name/title next to one or more action buttons in the same flex row — an identifying piece of text has to win the row, or say the row's own thing on its own line.** `RecipeNutritionSheet`'s "Not in your catalog" row did this: an ingredient name shared a `flexDirection: 'row'` with two `InlineAction` pills, the pills claimed their full label width first, and whatever was left over went to the name — "Monkfruit sweetener" truncated down to "Monkfrui…", the one piece of information the row exists to show. `numberOfLines={1}` is fine; a fixed-width sibling eating the row before the flexible text gets a fair share of it is the bug, and it gets worse as more buttons are added. The fix is the same shape `RecipeNutritionSheet`'s own sibling section ("Not counted") already used two dozen lines above the bug: stack the name on its own full-width row, put the actions in a `flexWrap: 'wrap'` row underneath. If a name truly has to share a row with something else (an icon, a count, a chevron), the something else should be the thing that's short and fixed, never a button whose label can grow, and the name gets `flex: 1` in a row with nothing else claiming width ahead of it. Check this whenever a row pairs a data-derived string (an ingredient, a task title, a store name, anything the user typed or picked) with one or more `InlineAction`/button siblings in the same row.
@@ -918,6 +943,20 @@ exception, because its Modal is a small centered card rather than a full scrolla
   buttons, and **both are accent**: two of the twelve hand-rolled copies this replaced had drifted
   to a grey Cancel. `minWidth` reserves matching width on the light side so the title stays
   optically centered.
+- `SheetHeader` (`src/components/SheetHeader.tsx`) — the row that button sits in: Cancel/Back on
+  the left, Save/Done on the right, the title centered between them. `SheetHeaderButton` unified
+  the buttons and left the row around them hand-written in every sheet in the app — about thirty
+  distinct row layouts in about fifteen title styles — so this is that row, written once. 63 sheets
+  use it. The title **always** centers itself (`flex: 1`), which is a small correctness fix over
+  what it replaced: a title that merely sat between two same-width buttons drifted off-centre the
+  moment either label changed length. `left`/`right` take whatever a sheet needs (a button, a
+  spacer `View`, or a row of two controls); `icon` adds the sparkle the AI-generated sheets put
+  before their titles; `size="lg"` is for the handful whose title reads larger. **`bare` is for a
+  sheet built on `EditorSheet`**, whose `headerStyle` already supplies the row — that one passes
+  `bare` and keeps its own `header:` style, since several of those differ on padding and border on
+  purpose. The ~20 sheets still hand-rolling a header are the ones whose padding, border or title
+  shape genuinely differs (a popover card, a left-aligned heading, a title with a subtitle under
+  it); forcing those into this shape would be a visual change rather than a deduplication.
 - `disclosureValue(colors)` (`src/theme/textStyles.ts`) — the right-aligned "currently set to" text
   in `EditorRow`, `CollapsibleField` and the Settings rows. Spread it and add layout on top. It's a
   shared style rather than four local ones because it had been written as `value` / `summary` /
@@ -954,6 +993,14 @@ exception, because its Modal is a small centered card rather than a full scrolla
   more than once, and each fix means finding and swapping a call site after the fact instead of
   writing it right the first time.
 - `EmptyState` (`src/components/EmptyState.tsx`) — every empty list: tinted icon circle + title + subtitle + optional CTA, animates in on mount. **When rendering inside a `ScrollView`, the ScrollView must have `flex: 1` and its `contentContainerStyle` must use `flexGrow: 1`**, so the content container expands to fill available space and the centered view can actually center vertically. Without that, the empty state content sits at the top of the sheet — the flex:1 on the centered view has nothing to fill. See `EventImportSheet.tsx` for the pattern.
+- `EmptyNote` (`src/components/EmptyNote.tsx`) — the same idea as `EmptyState`, for a section that
+  is empty while the rest of the sheet still has content above and below it ("No stores yet. Name
+  one when you finish a trip…"). An icon, a line of text, one card. **Reach for it rather than
+  `EmptyState` whenever the empty thing is one section rather than the whole screen**: that one
+  needs a viewport to centre itself in (`flex: 1`, an 88pt icon circle, a title), so inside a
+  scrolling sheet it towers over the two lines it is explaining and fights the content around it.
+  Its text is `textSecondary` for the reason `EmptyState`'s own subtitle is — this says what's
+  missing and how to fix it, which is information, not a dim aside.
 - `PinIcon` (`src/components/PinIcon.tsx`) — the pin glyph everywhere pinning is shown or toggled
   (task row, bulk bar, editor's Pin row, category pin-all, Pinned Tasks header),
   and the **one** icon in the app that isn't an Ionicons name. Ionicons has no thumbtack: its `pin`
@@ -1090,6 +1137,8 @@ Three decisions worth not re-deriving:
 **List rows** use the iOS inset-grouped card treatment app-wide — match the styling in `TaskItem.itemWrapper` (Search/Logbook/Tags/Categories/Projects rows follow the same pattern). Section headers are uppercase `font.xs` semibold **`textSecondary`** with `letterSpacing: 0.8` — every one of them, the editor group labels (`EditorGroup`, `CollapsibleField`) and the Settings section labels included. `textTertiary` measures 2.84:1 on `bgSecondary` in dark, under even the 3:1 large-text bar, and these are the one grey the app repeats on every screen; `textSecondary` is 5.22:1 and was already the other grey in use. Raising the size instead was the alternative and was rejected — it makes the headers louder than the rows they label. `textTertiary` is still right where dimness is the *signal* rather than decoration (`CollapsibleField`'s `summaryEmpty`, which is how a field says it has no value). The one row that is deliberately *not* a card is `TaskGroupHeader` — a stack heads its tasks rather than sitting among them, so it's a transparent caption (see the note on its `band` style; every filled-card version of it read as a *selected* row, because a brighter card surface is what this app uses for pressed and dragged). What ties it to its tasks is enclosure, not resemblance: `TaskGroupTray` puts the header and the child cards in one `bgSunken` region, and the children drop their own margins to sit on its padding. Grouping a header with its rows by giving the header a card-like treatment is the move that keeps failing here — reach for the region instead.
 
 **A selected/active row's background must be opaque, never a translucent tint, on anything that sits inside a `SwipeableRow` or a `ReorderableList`/`SortableList` drag overlay.** `SwipeableRow`'s `selectAction` commits the moment the swipe starts opening (`onSwipeableWillOpen`, not `onSwipeableOpen` — see that component's own doc comment for why), but the row doesn't visually finish closing until the open spring settles and a second, close spring runs after it — a few hundred ms the caller's state change (`selectionMode`/`selected` flipping true) runs well ahead of. If the row's own "selected" style is a translucent color (`colors.accentSubtle`, `colors.accent + '1A'`, …) applied on top of `bgSecondary` instead of replacing it, that translucency doesn't just tint the row — it lets whatever's *behind* the row's own layer bleed through for that whole window: `SwipeableRow`'s still-open panel (an opaque, more saturated color than the intended tint), or a `ReorderableList`/`SortableList` drag overlay (which paints no background of its own at all). The visible bug is the same shape either way: a block of the wrong, too-vivid color sits there for the whole animation and then snaps to the true (dimmer) tint the instant the panel/overlay is actually removed — reading as a transparency glitch, not a slow animation, because the two colors are similar enough that the difference doesn't register as motion. Two real bugs shipped from this, a drag case (`FoodLogRow`'s dragging state, #2504 — fixed by giving `isActive` its own opaque `bgTertiary` style instead of reusing the translucent selected one) and a select case (`FoodLogRow`'s swipe-to-select, the same file, fixed by flattening the tint itself). **Use `flattenOverlay(overlayColor, baseHex)`** (`src/theme/index.ts`) to precompute an opaque equivalent of a translucent token against the row's own resting background (`colors.bgSecondary` for a card row, `colors.bg` for a flat full-bleed one like Logbook's) — it looks identical in the row's normal resting state and stops the bleed-through during the transient window. This has shown up independently in enough list rows (`FoodLogRow` twice, `GroceryRow`, `RecipesScreen`, `LogbookScreen`, `PeopleScreen`, `TemplatesScreen`, `StacksScreen`, `ProjectsScreen`, `MealSlotRow` — all fixed the same way in one pass) that it's worth checking on sight rather than rediscovering per screen: **any row that both (a) sits inside a `SwipeableRow` with a `selectAction`/`whenAction`, or a draggable list, and (b) changes its own background color for a state (selected, active, checked, …) needs that background to be opaque.** `TaskItem` never had this bug because it doesn't tint the row for selection at all — it only fills `SelectionDot` — which is the other valid way to sidestep the whole class of bug, not just a fix for it.
+
+**A row's `SwipeableRow` must stay mounted through the `selectionMode` toggle too, not just through `enabled` toggles for other reasons.** The `flattenOverlay` fix above patches the tint that shows through while the panel is still closing; it assumes the panel is still there to show through. `GroceryRow`, `RecipesScreen`, `TemplatesScreen`, `TemplateDetailScreen` and `MealSlotRow` instead swapped `<SwipeableRow>…</SwipeableRow>` for a bare `rowBody`/`View` once `selectionMode` flipped true (`selectionMode ? rowBody : (<SwipeableRow>…)`, or an early `if (selectionMode) return rowBody`) — the same anti-pattern `SwipeableRow`'s own doc comment already warns about for `enabled`, just not caught for this particular toggle. Since the row's own select action is what sets `selectionMode` true in the first place, this unmounts the native `Swipeable` view at the exact moment its close spring is running, which doesn't flatten to a wrong tint — it freezes the still-open panel and the row content underneath it for a frame, then snaps to the new (selection-mode) row layout, reading as the swipe glitching rather than sliding shut. `TaskItem` had the identical bug, despite its own comment correctly warning against exactly this for `spotlightDisabled` right above it. The fix is the same one that comment already prescribes: keep `SwipeableRow` mounted unconditionally and pass `enabled={!selectionMode}` (or `enabled={!selectionMode && !alreadyExistingCondition}`) instead of conditionally rendering it — `PeopleScreen`, `ProjectsScreen`, `StacksScreen`, `LogbookScreen` and `FoodLogScreen` already did this correctly and are the reference to copy. Check for the conditional-render form specifically (not just the translucent-tint one) whenever a `SwipeableRow`'s `selectAction` is what flips `selectionMode`.
 
 **A `presentationStyle="pageSheet"` Modal is dismissible by an iOS swipe-down, and that gesture calls the Modal's `onRequestClose` — not whatever the header's Cancel button runs, if the two aren't the same function.** A bare `onRequestClose={onClose}` on a sheet that stages typed or picked state before an explicit Save/Add is a silent-data-loss bug, not a style choice: the swipe bypasses the save path entirely, the same way it does for `EditorSheet`'s own pageSheet-vs-fullScreen tradeoff noted below. This shipped as a bug for four sheets first (#1681/#1682), and turned out to be the default rather than the exception — a sweep of the rest of the app (#2192) found the identical bare-`onClose` `onRequestClose` on fourteen more. **Any new `pageSheet` Modal holding state that isn't committed immediately needs a `handleCancel`, not a bare `onClose`, wired to both `onRequestClose` and the header's Cancel/Back button:**
 ```tsx

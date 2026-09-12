@@ -101,6 +101,7 @@ name cannot say is where a component appears, and that is `docs/screen-map.md`.
 - `src/utils/freshness.ts` — daysUntilDay, freshnessFor, FRESHNESS_ORDER, freshnessRank, isUseUpSoon, describeUseBy, liveUseBy, describeOpenedOn, describeFrozenSince
 - `src/utils/fuzzySearch.ts` — SearchResult, fuzzySearch, ProjectSearchResult, searchProjects, GroupSearchResult, searchGroups
 - `src/utils/generatedTasks.ts` — GENERATED_KINDS, GeneratedEnabledKey, GeneratedKindSpec, GENERATED_KIND_SPECS, GENERATED_KIND_LIST, listedGeneratedKinds, generatedTaskCounts, GeneratedEnabledFlags, generatorSwitchedOn, generatorPausedForVacation, +10 more
+- `src/utils/groceryAdd.ts` — nextSortOrder, ensureProductFor, newItemRow, GroceryAddOverride, GroceryAddContext, GroceryAddPlan, planGroceryAdd
 - `src/utils/groceryAisles.ts` — DEFAULT_AISLES, OTHER_AISLE, isNonFoodAisle, AISLE_LEXICON, aisleForName, rememberAisles, remapRememberedAisle, forgetRememberedAisle, renameRememberedAisle, normalizeAisleOrder, +2 more
 - `src/utils/groceryExpiry.ts` — wantsUseUpTask, useUpTaskTitle, clampUseUpLeadDays, useUpTaskFields, useUpTaskDraft, useUpTaskDrift
 - `src/utils/groceryFacts.ts` — ItemRelations, linkCounts, hasUserFacts, factSignature

@@ -666,13 +666,20 @@ const TemplateItemRow = React.memo(function TemplateItemRow({
   // The card's margins live on the wrapper, not on itemRow — leaving them on
   // the row rendered the revealed panel behind that margin, so its color ran
   // to the screen edge with square corners while the card slid over it.
-  if (selectionMode) return <View style={styles.itemCard}>{rowBody}</View>;
-
+  //
   // No whenAction: a template item has no schedule of its own — it only gets
   // dates when the template is applied.
+  //
+  // SwipeableRow stays mounted through the selectionMode toggle rather than
+  // swapping for a bare View — swapping it unmounts the panel mid-close-
+  // animation (the very moment its own select action just fired), which is
+  // what read as the swipe panel freezing instead of sliding shut. `enabled`
+  // turns the gesture off without disturbing the mount, same as every other
+  // list's row.
   return (
     <SwipeableRow
       style={styles.itemCard}
+      enabled={!selectionMode}
       selectAction={{ onSelect: () => onSwipeSelect(item.id), accessibilityLabel: `Select ${item.title}` }}
     >
       {rowBody}

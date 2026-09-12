@@ -1,5 +1,6 @@
 import React, { useEffect, useMemo, useRef, useState } from 'react';
 import {
+  Keyboard,
   Modal,
   View,
   Text,
@@ -181,6 +182,7 @@ export function MealEntrySheet({
   };
 
   const dismiss = (after?: () => void) => {
+    Keyboard.dismiss();
     Animated.parallel([
       Animated.spring(translateY, { toValue: hiddenY, ...animation.spring.sheetDismiss, useNativeDriver: true }),
       Animated.timing(backdropOpacity, { toValue: 0, duration: animation.duration.fast, useNativeDriver: true }),

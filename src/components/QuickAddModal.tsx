@@ -319,6 +319,7 @@ export function QuickAddModal({
   // background while the sheet was still fully visible on top of it: a flash
   // of the wrong screen, then the sheet vanishing over it a beat later.
   const dismiss = (onDone?: () => void) => {
+    Keyboard.dismiss();
     Animated.parallel([
       Animated.timing(scaleAnim, { toValue: 0.95, duration: animation.duration.dismiss, useNativeDriver: true }),
       Animated.timing(sheetOpacity, { toValue: 0, duration: animation.duration.dismiss, useNativeDriver: true }),

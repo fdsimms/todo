@@ -605,17 +605,21 @@ export const GroceryRow = React.memo(function GroceryRow({
         choicePosition === 'last' && styles.itemWrapperChoiceLast,
       ]}
     >
-      {selectionMode ? rowBody : (
-        <SwipeableRow
-          enabled={!isActive}
-          selectAction={onSwipeSelect ? {
-            onSelect: () => onSwipeSelect(item.id),
-            accessibilityLabel: `Select ${item.name}`,
-          } : undefined}
-        >
-          {rowBody}
-        </SwipeableRow>
-      )}
+      {/* SwipeableRow stays mounted through the selectionMode toggle rather
+          than swapping for a bare rowBody — swapping it unmounts the panel
+          mid-close-animation (the very moment its own select action just
+          fired), which is what read as the swipe panel freezing instead of
+          sliding shut. `enabled` turns the gesture off without disturbing
+          the mount, same as every other list's row. */}
+      <SwipeableRow
+        enabled={!isActive && !selectionMode}
+        selectAction={onSwipeSelect ? {
+          onSelect: () => onSwipeSelect(item.id),
+          accessibilityLabel: `Select ${item.name}`,
+        } : undefined}
+      >
+        {rowBody}
+      </SwipeableRow>
       {/* The seam between two stitched segments — everything but the last one
           gets it. Decorative only: VoiceOver already gets nothing from the
           "or …" caption this replaces (the row's own accessibilityLabel wins

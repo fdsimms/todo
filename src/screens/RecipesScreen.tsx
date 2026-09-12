@@ -598,17 +598,21 @@ export function RecipesScreen() {
     );
     return (
       <View style={[styles.itemWrapper, isActive && styles.itemWrapperActive]}>
-        {selectionMode ? rowBody : (
-          <SwipeableRow
-            enabled={!isActive}
-            selectAction={{
-              onSelect: () => enterSelectionMode(recipe.id),
-              accessibilityLabel: `Select ${recipe.name}`,
-            }}
-          >
-            {rowBody}
-          </SwipeableRow>
-        )}
+        {/* SwipeableRow stays mounted through the selectionMode toggle rather
+            than swapping for a bare rowBody — swapping it unmounts the panel
+            mid-close-animation (the very moment its own select action just
+            fired), which is what read as the swipe panel freezing instead of
+            sliding shut. `enabled` turns the gesture off without disturbing
+            the mount, same as every other list's row. */}
+        <SwipeableRow
+          enabled={!isActive && !selectionMode}
+          selectAction={{
+            onSelect: () => enterSelectionMode(recipe.id),
+            accessibilityLabel: `Select ${recipe.name}`,
+          }}
+        >
+          {rowBody}
+        </SwipeableRow>
       </View>
     );
   };

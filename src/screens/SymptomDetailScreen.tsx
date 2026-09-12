@@ -395,7 +395,7 @@ const makeStyles = (colors: Colors) => StyleSheet.create({
   stripCol: { flex: 1, alignItems: 'center' },
   barTrack: { width: 12, height: BAR_HEIGHT, justifyContent: 'flex-end' },
   bar: { width: 12, borderRadius: 4 },
-  barLabel: { marginTop: 4, color: colors.textTertiary, fontSize: 10, fontWeight: '500' },
+  barLabel: { marginTop: 4, color: colors.textTertiary, fontSize: font.xxs, fontWeight: '500' },
   caption: { fontSize: font.xs, color: colors.textTertiary, marginTop: spacing.sm },
   severityRow: {
     flexDirection: 'row',
