@@ -1,0 +1,4 @@
+{
+  "message": "Fixed grocery list rows squeezing ingredient names down to a sliver when the quantity carried a long prep note, like \"cut into 1/4-inch-thick rounds\"",
+  "date": "2026-09-12"
+}
