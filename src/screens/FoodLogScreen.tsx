@@ -524,7 +524,7 @@ export function FoodLogScreen() {
           // primary-add list screen — selecting is reached by swiping a row.
         ]}
       />
-      <HubPills hub="health" active="FoodLog" />
+      <HubPills hub="kitchen" active="FoodLog" />
 
       <View style={styles.dayNav}>
         <TouchableOpacity
