@@ -118,6 +118,13 @@ describe('scaleQuantity', () => {
     expect(text('2, large', 0.5)).toBe('1, large');
   });
 
+  it('drops a parenthetical source count rather than scaling the amount and leaving it stale', () => {
+    // "3 oz (from about 2 limes)" doubled must not claim it still takes 2 limes.
+    expect(text('3 oz (from about 2 limes)', 2)).toBe('6 oz');
+    expect(text('1 medium onion (1 cup chopped)', 2)).toBe('2 medium onion');
+    expect(text('1 to 2 tbsp (a squeeze)', 2)).toBe('2 to 4 tbsp');
+  });
+
   it('passes an unparseable amount through verbatim and flags it', () => {
     for (const quantity of ['a pinch', 'to taste', 'dozen', 'a knob', 'some']) {
       expect(scaleQuantity(quantity, 2)).toEqual({ text: quantity, scaled: false });

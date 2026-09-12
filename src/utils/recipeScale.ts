@@ -90,6 +90,22 @@ export interface ScaledQuantity {
  * unscaled read is indistinguishable from one that never asked to be scaled —
  * which is what lets every caller pass a factor unconditionally.
  */
+/**
+ * Drops a trailing parenthetical aside — "(from about 2 limes)", "(1 medium
+ * onion)" — from a scaled quantity's `trailing` text.
+ *
+ * `extractRecipe` now asks the model to append a source count like this after
+ * the amount (see aiSuggestions.ts), and it's carried in `Quantity.trailing`
+ * like any other text after the unit. Left in place, doubling "3 oz (from
+ * about 2 limes)" would render "6 oz (from about 2 limes)" — the amount
+ * scaled, the limes it takes to get there didn't, and the parenthetical would
+ * be lying about how much fruit the doubled recipe actually needs. Dropping
+ * it is safer than leaving stale information in a scaled ingredient list.
+ */
+function stripSourceCountAside(trailing: string): string {
+  return trailing.replace(/\s*\([^()]*\)\s*$/, '');
+}
+
 export function scaleQuantity(quantity: string, factor: number): ScaledQuantity {
   const q = parseQuantity(quantity);
   const unchanged: ScaledQuantity = { text: q.raw, scaled: false };
@@ -130,21 +146,23 @@ export function scaleQuantity(quantity: string, factor: number): ScaledQuantity 
     const renderedMax = formatRational(scaledMax, q.decimal);
     const joined =
       q.rangeSeparator === '-' ? `${renderedMin}-${renderedMax}` : `${renderedMin} to ${renderedMax}`;
-    if (!q.unitWritten) return { text: `${joined}${q.trailing}`, scaled: true };
+    const trailing = stripSourceCountAside(q.trailing);
+    if (!q.unitWritten) return { text: `${joined}${trailing}`, scaled: true };
     const inflected = inflectUnit(q.unitWritten, rationalToNumber(scaledMax));
-    return { text: `${joined} ${inflected}${q.trailing}`, scaled: true };
+    return { text: `${joined} ${inflected}${trailing}`, scaled: true };
   }
 
   const scaled = multiplyRational(q.amount, multiplier);
   const rendered = formatRational(scaled, q.decimal);
   if (!q.rest) return { text: rendered, scaled: true };
 
+  const trailing = stripSourceCountAside(q.trailing);
   // A size clause rather than a unit — parseGroceryInput emits "1, medium",
   // and splitting that on spaces would produce "2 , medium".
-  if (!q.unitWritten) return { text: `${rendered}${q.trailing}`, scaled: true };
+  if (!q.unitWritten) return { text: `${rendered}${trailing}`, scaled: true };
 
   const inflected = inflectUnit(q.unitWritten, rationalToNumber(scaled));
-  return { text: `${rendered} ${inflected}${q.trailing}`, scaled: true };
+  return { text: `${rendered} ${inflected}${trailing}`, scaled: true };
 }
 
 // ---------------------------------------------------------------------------
