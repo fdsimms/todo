@@ -48,6 +48,7 @@ import { useRecipeImportSource } from '../hooks/useRecipeImportSource';
 import { useRecipeComponentImports } from '../hooks/useRecipeComponentImports';
 import { ImportedComponentRow } from './ImportedComponentRow';
 import { coveredIngredients, importableReferences } from '../utils/recipeImportComponents';
+import { MAX_RECIPE_PHOTOS } from '../utils/recipePhoto';
 import { haptics } from '../utils/haptics';
 
 interface Props {
@@ -152,7 +153,7 @@ export function RecipeExtractSheet({ visible, recipe, onClose }: Props) {
   const [importedSourceType, setImportedSourceType] = useState<RecipeSourceType | null>(null);
   const edits = usePendingEdits();
   const keyboardScroll = useKeyboardInsetScroll<ScrollView>();
-  const input = useRecipeImportSource();
+  const input = useRecipeImportSource('paste', 'read a recipe off a page', MAX_RECIPE_PHOTOS);
   const { resolveSource, reset: resetInput } = input;
 
   // "…and there's a salsa verde on page 45." Filtered against this recipe, so a
@@ -476,7 +477,7 @@ export function RecipeExtractSheet({ visible, recipe, onClose }: Props) {
     const dirty = !!extracted
       || !!input.text.trim()
       || !!input.url.trim()
-      || !!input.photo;
+      || input.photos.length > 0;
     if (!dirty) { onClose(); return; }
     Alert.alert(
       'Discard changes?',
@@ -556,7 +557,7 @@ export function RecipeExtractSheet({ visible, recipe, onClose }: Props) {
           <ActivityIndicator color={colors.purple} />
           <Text style={styles.loadingText}>
             {input.fetching ? 'Opening the page…'
-              : input.usingPhoto ? 'Reading the photo…'
+              : input.usingPhoto ? `Reading the photo${input.photos.length > 1 ? 's' : ''}…`
               : 'Reading the recipe…'}
           </Text>
         </View>
@@ -593,13 +594,14 @@ export function RecipeExtractSheet({ visible, recipe, onClose }: Props) {
             onChangeText={input.setText}
             url={input.url}
             onChangeUrl={input.setUrl}
-            photo={input.photo}
+            photos={input.photos}
             onPickPhoto={input.pick}
             onClearPhoto={input.clearPhoto}
+            maxPhotos={input.maxPhotos}
             picking={input.picking}
             ctaLabel={
               input.usingLink ? 'Get the recipe'
-                : input.usingPhoto ? 'Read the photo'
+                : input.usingPhoto ? 'Read the photo' + (input.photos.length > 1 ? 's' : '')
                 : 'Read the recipe'
             }
             onRun={run}
@@ -620,7 +622,7 @@ export function RecipeExtractSheet({ visible, recipe, onClose }: Props) {
             icon="checkmark-circle-outline"
             title="Nothing found"
             subtitle={input.usingPhoto
-              ? 'Nothing readable turned up in that photo. Try again in better light, or paste the text instead.'
+              ? `Nothing readable turned up in ${input.photos.length > 1 ? 'those photos' : 'that photo'}. Try again in better light, or paste the text instead.`
               : input.usingLink
               ? 'No recipe turned up on that page. Copy the recipe from it and paste it instead.'
               : 'No servings or shopping items turned up in that text.'}

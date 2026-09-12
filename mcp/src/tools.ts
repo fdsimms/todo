@@ -20,6 +20,7 @@
 import type { FoodLogEntry, GroceryItem, MedicationLog, MoodLog, Project, Task } from '../../src/types';
 import type { Replica } from './replica';
 import type { TemplatePlan } from './templatePlan';
+import type { TaskDraft } from '../../src/types';
 import { serializeTasks, type SerializedTask } from './serialize';
 
 /** The four sub-views of TodayScreen, plus the everything case. */
@@ -415,6 +416,89 @@ export function createTemplate(replica: Replica, plan: TemplatePlan): CreateTemp
     questions: built.questions.length,
     scheduled: built.schedule !== null,
   };
+}
+
+/**
+ * Create a task, and hand back what it actually became.
+ *
+ * The result is the serialized task rather than an id, because the app fills
+ * things the caller did not ask for — a category from `newTaskDefaults`, a
+ * time-of-day segment from that category, a title the rules rewrote — and a
+ * caller that cannot see those cannot tell the user what it made.
+ */
+export function createTask(replica: Replica, draft: Partial<TaskDraft>): SerializedTask {
+  return serializeTasks(replica, [replica.createTask(draft)])[0];
+}
+
+export interface CompleteTaskResult {
+  completed: SerializedTask;
+  /**
+   * What the completion produced, in words rather than as rows.
+   *
+   * A completion is the one write here whose visible effect is mostly on
+   * *other* rows: a recurring task reappears on its next date, a chain moves
+   * to its next step, a dated series lays out next month, and every Nth
+   * practice earns a separate task. A caller told only "completed: true"
+   * would report that a daily task is done for good.
+   */
+  spawned: string[];
+  /** The successor, where one was created, so a caller can say when it lands. */
+  nextTask: SerializedTask | null;
+  /** True when the task named a medication and a dose was recorded. */
+  loggedDose: boolean;
+}
+
+/**
+ * Complete a task, and say what that did beyond the row itself.
+ *
+ * The refusals are the interesting half and both are deliberate: a task that
+ * cannot be completed (a negative habit, a recurrence not yet due) says so
+ * rather than being quietly ignored the way the store's early `return` does,
+ * and a task that asks a question with no answer given is sent back for one
+ * (see `deliverableAsk.ts`).
+ */
+export function completeTask(
+  replica: Replica,
+  id: string,
+  options?: { deliverableValue?: string | null; completedAt?: string },
+): CompleteTaskResult {
+  const result = replica.completeTask(id, options);
+  const spawned: string[] = [];
+  if (result.nextTask) {
+    const when = result.nextTask.dueDate
+      ? `due ${result.nextTask.dueDate.slice(0, 10)}`
+      : 'with no date';
+    spawned.push(`The next occurrence was created, ${when}.`);
+  }
+  if (result.followUpTask) {
+    spawned.push(`This completion earned the follow-up task "${result.followUpTask.title}".`);
+  }
+  if (result.rolledOver.length > 0) {
+    spawned.push(`The last date of the series was completed, so the next set of ${result.rolledOver.length} was created.`);
+  }
+  if (result.loggedDose) spawned.push('A dose was recorded in the medication log.');
+  return {
+    completed: serializeTasks(replica, [result.completed])[0],
+    spawned,
+    nextTask: result.nextTask ? serializeTasks(replica, [result.nextTask])[0] : null,
+    loggedDose: result.loggedDose,
+  };
+}
+
+/**
+ * Move a task to a date, or clear its date.
+ *
+ * The result is the whole task because the field that changed is not
+ * predictable from the request: pushing a recurring task out writes
+ * `deferUntil` and leaves `dueDate` alone, which is the opposite of what a
+ * caller would assume from asking for a date. See `Replica.deferTask`.
+ */
+export function deferTask(replica: Replica, id: string, date: string | null): SerializedTask {
+  const parsed = date === null ? null : new Date(date);
+  if (parsed !== null && Number.isNaN(parsed.getTime())) {
+    throw new Error(`"${date}" is not a date I can read. Use an ISO date like 2026-03-14.`);
+  }
+  return serializeTasks(replica, [replica.deferTask(id, parsed)])[0];
 }
 
 export function listMedicationLogs(
