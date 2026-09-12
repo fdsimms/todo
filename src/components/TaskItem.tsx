@@ -4024,11 +4024,16 @@ const makeStyles = (colors: Colors) => StyleSheet.create({
     paddingBottom: spacing.sm,
     paddingTop: spacing.xs,
   },
+  // paddingLeft matches subtaskSection's own (see its comment): expandedPanel's
+  // paddingHorizontal (spacing.md) plus spacing.xl equals circleWrapper's
+  // marginLeft + width + the row's gap to `content`, which is where the
+  // title starts — so the notes text sits under the title, not the checkbox.
   expandNotes: {
     color: colors.textSecondary,
     fontSize: font.sm,
     lineHeight: lineHeight.sm,
     paddingVertical: spacing.xs,
+    paddingLeft: spacing.xl,
   },
   expandSection: {
     gap: 6,
@@ -4131,6 +4136,7 @@ const makeStyles = (colors: Colors) => StyleSheet.create({
   followUpTaskSourceRow: {
     alignItems: 'flex-start',
     paddingVertical: spacing.xs,
+    paddingLeft: spacing.xl,
   },
   // The icon has to sit at the text's cap-height, not centered against
   // however many lines the title wraps to below it.
