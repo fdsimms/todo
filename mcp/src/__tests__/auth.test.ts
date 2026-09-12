@@ -1,4 +1,4 @@
-import { UNCONFIGURED, authorize, bearerToken } from '../auth';
+import { UNCONFIGURED, authorize, bearerToken, scopeFor } from '../auth';
 
 describe('bearerToken', () => {
   it('reads a bearer header in any casing, with surrounding space', () => {
@@ -43,5 +43,35 @@ describe('authorize', () => {
   it('sends a challenge with every refusal and none with a pass', () => {
     expect(authorize(undefined, 'secret').challenge).toBe('Bearer realm="todo-mcp"');
     expect(authorize('Bearer secret', 'secret').challenge).toBeUndefined();
+  });
+});
+
+describe('scopeFor', () => {
+  const read = 'read-token';
+  const write = 'write-token';
+
+  it('gives the write token both scopes, so one credential is enough to write', () => {
+    expect(scopeFor('Bearer write-token', read, write)).toBe('write');
+  });
+
+  it('never lets the read token write', () => {
+    // The entire reason there are two.
+    expect(scopeFor('Bearer read-token', read, write)).toBe('read');
+  });
+
+  it('refuses a token that is neither, and an absent one', () => {
+    expect(scopeFor('Bearer nope', read, write)).toBeNull();
+    expect(scopeFor(undefined, read, write)).toBeNull();
+  });
+
+  it('is read-only when no write token is configured', () => {
+    // Default to refusal: a deployment that has not been told to accept writes
+    // does not accept them, however the request is addressed.
+    expect(scopeFor('Bearer read-token', read, undefined)).toBe('read');
+    expect(scopeFor('Bearer write-token', read, undefined)).toBeNull();
+  });
+
+  it('refuses everything when nothing is configured', () => {
+    expect(scopeFor('Bearer anything', undefined, undefined)).toBeNull();
   });
 });

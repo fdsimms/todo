@@ -19,6 +19,7 @@
  */
 import type { FoodLogEntry, GroceryItem, MedicationLog, MoodLog, Project, Task } from '../../src/types';
 import type { Replica } from './replica';
+import type { TemplatePlan } from './templatePlan';
 import { serializeTasks, type SerializedTask } from './serialize';
 
 /** The four sub-views of TodayScreen, plus the everything case. */
@@ -343,6 +344,77 @@ export interface SerializedMedicationLog {
   amount?: number;
   unit?: string;
   asNeeded?: boolean;
+}
+
+export interface SerializedTemplate {
+  id: string;
+  name: string;
+  category?: string;
+  container: string;
+  items: number;
+  groups?: string[];
+  /** Choice questions by name, since those are the ones an item can be gated on. */
+  questions?: { name: string; kind: string; options?: string[] }[];
+  scheduled?: string;
+  anchorsAreAway?: boolean;
+}
+
+/**
+ * Templates, shallow.
+ *
+ * Exists as much for writing as for reading: `create_template` can nest one
+ * template inside another by name, and a caller cannot name what it cannot see.
+ * Item *contents* are left out on purpose — a list of twenty templates with
+ * every field of every item is most of a database, and what a caller needs from
+ * this is the name to reference and the questions it could condition on.
+ */
+export function listTemplates(replica: Replica): SerializedTemplate[] {
+  return replica.templates().map(t => ({
+    id: t.id,
+    name: t.name,
+    category: t.category ?? undefined,
+    container: t.applyContainer,
+    items: t.items.length,
+    groups: t.itemGroups.length ? t.itemGroups.map(g => g.title) : undefined,
+    questions: t.questions.length
+      ? t.questions.map(q => ({
+          name: q.name,
+          kind: q.kind,
+          options: q.options.length ? q.options : undefined,
+        }))
+      : undefined,
+    scheduled: t.schedule ? t.schedule.frequency : undefined,
+    anchorsAreAway: t.anchorsAreAway ? true : undefined,
+  }));
+}
+
+export interface CreateTemplateResult {
+  id: string;
+  name: string;
+  items: number;
+  groups: number;
+  questions: number;
+  scheduled: boolean;
+}
+
+/**
+ * Build a whole template from one plan.
+ *
+ * The validation is `validateTemplatePlan` and it runs inside
+ * `replica.createTemplate`, which throws with every problem at once rather than
+ * writing a partial template. That is the shape worth keeping: a half-built
+ * template is worse than none, because it looks finished in the user's list.
+ */
+export function createTemplate(replica: Replica, plan: TemplatePlan): CreateTemplateResult {
+  const built = replica.createTemplate(plan);
+  return {
+    id: built.id,
+    name: built.name,
+    items: built.items.length,
+    groups: built.itemGroups.length,
+    questions: built.questions.length,
+    scheduled: built.schedule !== null,
+  };
 }
 
 export function listMedicationLogs(
