@@ -32,7 +32,7 @@ import Reanimated, {
   runOnJS,
 } from 'react-native-reanimated';
 import Ionicons from '@expo/vector-icons/Ionicons';
-import { format } from 'date-fns';
+import { format } from 'date-fns/format';
 import { PinIcon } from './PinIcon';
 import type { Task, GroceryItem, ItemSubLink, ItemProduct, Recipe } from '../types';
 import { MEAL_SLOT_ICONS, MEAL_SLOT_LABELS, PRIORITY_COLORS, TITLE_MAX_LENGTH } from '../types';

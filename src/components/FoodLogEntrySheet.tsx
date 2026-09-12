@@ -29,7 +29,7 @@ import { MEAL_SLOTS, MEAL_SLOT_LABELS, type FoodNutrition, type GroceryItem, typ
 import { useGroceryStore } from '../store/useGroceryStore';
 import { useRecipeStore } from '../store/useRecipeStore';
 import { useFoodLogStore, type FoodLogDraft } from '../store/useFoodLogStore';
-import { subDays } from 'date-fns';
+import { subDays } from 'date-fns/subDays';
 import { addCustomPortion, catalogPanelWrite, nutritionFor } from '../utils/foodNutrition';
 import { combineFoodNutrition, helpingNutrition, recipeHelpingNutrition, scalePanelToAmount } from '../utils/foodLog';
 import { cookedDishGrams, mealHelping, servingGrams, weighedHelping } from '../utils/mealLog';

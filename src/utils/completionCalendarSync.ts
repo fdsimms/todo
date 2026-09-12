@@ -1,4 +1,4 @@
-import { addMinutes } from 'date-fns';
+import { addMinutes } from 'date-fns/addMinutes';
 import type { Task } from '../types';
 import { displayTitleFor } from './visibilityUtils';
 import { createTimedEvent } from './calendarSync';
