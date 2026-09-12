@@ -286,11 +286,13 @@ export function RecipeExtractSheet({ visible, recipe, onClose }: Props) {
   // the ingredient row's link panel — see ExtractedIngredientRow's own doc
   // comment. addToPantry mints the catalog row if this name has never been
   // seen before, which is exactly the case the panel's search comes up empty.
+  // Deliberately doesn't touch `accepted`: that set decides what belongs in
+  // the *recipe*, and "I already have this" is a pantry fact about right now
+  // — it says nothing about whether the ingredient is one the recipe needs.
   const markAlreadyHave = (index: number) => {
     const item = addToPantry(ingredients[index].name);
     if (!item) { haptics.error(); return; }
     haptics.success();
-    if (accepted.has(index)) toggle(index);
   };
 
   const editIngredient = (
