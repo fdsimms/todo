@@ -320,7 +320,13 @@ export function TemplateDetailScreen() {
         contentContainerStyle={
           (template?.items.length ?? 0) === 0
             ? styles.emptyContainer
-            : [styles.list, selectionMode && styles.listWithBulkBar]
+            : [
+                styles.list,
+                // Clears the floating add button, same sum every FAB screen uses;
+                // a fixed 120 sat two points short on a 34pt-inset phone.
+                { paddingBottom: insets.bottom + spacing.xl + FAB_SIZE + spacing.md },
+                selectionMode && styles.listWithBulkBar,
+              ]
         }
         renderItem={({ item, drag, isActive }) => {
           const hint = itemHint(item);
@@ -712,7 +718,6 @@ const makeStyles = (colors: Colors) => StyleSheet.create({
   },
   list: {
     paddingTop: spacing.sm,
-    paddingBottom: 120,
   },
   // The empty state centres itself with `flex: 1`, which needs a content
   // container tall enough to centre in — a scroll view's is content-sized by

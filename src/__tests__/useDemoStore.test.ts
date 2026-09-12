@@ -2821,7 +2821,12 @@ describe('demo seed — groceries, recipes, meals and the fridge', () => {
     expect(activeComponents(stirFry).some(c => c.choiceGroup === 'Rice')).toBe(false);
 
     // The ingredient-line detail the parser splits out, and the editor's labels.
-    expect(recipes.some(r => r.ingredients.some(i => i.section))).toBe(true);
+    // The sectioned recipe carries a method too: cook mode's ingredient panel
+    // heads its lines by section, and a recipe with no steps and no notes has
+    // no cook mode to show that in.
+    const sectioned = recipes.filter(r => r.ingredients.some(i => i.section));
+    expect(sectioned.length).toBeGreaterThan(0);
+    expect(sectioned.some(r => r.steps.length > 0 || r.notes)).toBe(true);
     expect(recipes.some(r => r.ingredients.some(i => i.prep))).toBe(true);
     expect(recipes.some(r => r.ingredients.some(i => i.purpose))).toBe(true);
     // A heading declared ahead of anything filed under it — see Recipe.emptySections.

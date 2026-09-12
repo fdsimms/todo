@@ -39,10 +39,12 @@ import type {
   MoodLog,
   Person,
   Project,
+  TaskTemplate,
   Task,
 } from '../../src/types';
 import type { FoodLogTotals } from '../../src/utils/foodLog';
 import type { SyncSummary } from '../../src/utils/syncEngine';
+import { DEFAULT_SCHEDULE, resolveRef, validateTemplatePlan, type TemplatePlan } from './templatePlan';
 
 type DbModule = typeof import('../../src/db/database');
 type VisibilityModule = typeof import('../../src/utils/visibilityUtils');
@@ -56,6 +58,8 @@ type HttpTransportModule = typeof import('../../src/utils/httpSyncTransport');
 type FoodLogModule = typeof import('../../src/utils/foodLog');
 type MoodHistoryModule = typeof import('../../src/utils/moodHistory');
 type MedicationModule = typeof import('../../src/utils/medicationLog');
+type TemplateUtilsModule = typeof import('../../src/utils/templateUtils');
+type IdModule = typeof import('../../src/utils/id');
 
 /** One task the way `fuzzySearch` ranked it, without the highlight ranges. */
 export interface ReplicaSearchHit {
@@ -115,6 +119,31 @@ export interface Replica {
   medicationLogs(fromDayKey: string, toDayKey: string): MedicationLog[];
   /** "Ibuprofen · 400 mg · as needed", the app's own one-line rendering of a dose. */
   medicationSummary(log: MedicationLog): string;
+
+  /** Every stored template, for listing and for resolving a nested reference. */
+  templates(): TaskTemplate[];
+  /**
+   * Apply a validated plan, returning the template it built.
+   *
+   * **Written through `dbInsertTemplate` rather than `useTemplateStore`**, which
+   * is the opposite of the rule demo seeding follows, for two reasons.
+   *
+   * The store is unreachable here at all: it imports `useTaskStore`, which
+   * imports `useFocusStore`, which imports `notifications.ts`, which imports
+   * `expo-notifications` — a native module with nothing to bind to in Node. The
+   * settings and category stores this file already hydrates have no such chain,
+   * which is why they work and this one does not.
+   *
+   * And it costs nothing, because the thing the store would have bought is not
+   * the store's to give: `updated_at` is stamped by the SQLite trigger
+   * `templates_sync_stamp_insert` (`syncTracking.ts`), on any insert that does
+   * not carry one. So a template written this way syncs exactly like one the
+   * app wrote. A whole template is also a single row, so one insert is more
+   * atomic than the store's group-then-question-then-item sequence, not less.
+   *
+   * Throws on an invalid plan rather than writing half of one. Validate first.
+   */
+  createTemplate(plan: TemplatePlan): TaskTemplate;
 
   deviceId(): string;
   /** False for a demo database. A demo database is never synced. */
@@ -180,6 +209,8 @@ export function openReplica(path = process.env.TODO_DB_PATH ?? 'todo.db'): Repli
   const syncEngine = require('../../src/utils/syncEngine') as SyncEngineModule;
   const syncLocal = require('../../src/utils/syncLocal') as SyncLocalModule;
   const httpTransport = require('../../src/utils/httpSyncTransport') as HttpTransportModule;
+  const templateUtils = require('../../src/utils/templateUtils') as TemplateUtilsModule;
+  const { generateId } = require('../../src/utils/id') as IdModule;
   const { registerTaskSource } = require('../../src/utils/blockerRegistry') as typeof import('../../src/utils/blockerRegistry');
   const { registerPersonSource } = require('../../src/utils/peopleRegistry') as typeof import('../../src/utils/peopleRegistry');
   const { useSettingsStore } = require('../../src/store/useSettingsStore') as typeof import('../../src/store/useSettingsStore');
@@ -261,6 +292,69 @@ export function openReplica(path = process.env.TODO_DB_PATH ?? 'todo.db'): Repli
       return fuzzy
         .fuzzySearch(tasks(), query, names)
         .map(r => ({ task: r.task, score: r.score, projectName: r.projectName }));
+    },
+
+    templates: () => db.dbGetAllTemplates(),
+
+    createTemplate(plan: TemplatePlan): TaskTemplate {
+      const existing = db.dbGetAllTemplates();
+      const errors = validateTemplatePlan(plan, existing);
+      if (errors.length > 0) throw new Error(errors.join(' '));
+
+      // Groups and questions are built first because an item's `groupId` and
+      // its conditions' `questionId`s are ids minted here. The plan names them
+      // by key and by name precisely because the caller cannot know these.
+      const groupIds = new Map<string, string>();
+      const itemGroups = (plan.groups ?? []).map((group, i) => {
+        const id = generateId();
+        groupIds.set(group.key, id);
+        return { id, title: group.title, sortOrder: i + 1 };
+      });
+
+      const questionIds = new Map<string, string>();
+      const questions = (plan.questions ?? []).map(question => {
+        const stored = templateUtils.normalizeTemplateQuestion({ ...question, id: generateId() });
+        if (stored.name) questionIds.set(stored.name, stored.id);
+        return stored;
+      });
+
+      const items = (plan.items ?? []).map(item => {
+        const { groupKey, conditions, refTemplate, ...fields } = item;
+        const ref = refTemplate === undefined ? null : resolveRef(refTemplate, existing)[0];
+        return templateUtils.normalizeTemplateItem({
+          ...fields,
+          groupId: groupKey === undefined ? null : (groupIds.get(groupKey) ?? null),
+          conditions: (conditions ?? []).map(c => ({
+            questionId: questionIds.get(c.question) ?? '',
+            values: c.values,
+          })),
+          refTemplateId: ref?.id ?? null,
+          // Carried so a broken reference can still say what it pointed at,
+          // which is what the field is for (see TemplateItem.refTemplateName).
+          refTemplateName: ref?.name ?? '',
+        });
+      });
+
+      const template: TaskTemplate = {
+        id: generateId(),
+        name: plan.name.trim(),
+        items,
+        itemGroups,
+        questions,
+        createdAt: new Date().toISOString(),
+        sortOrder: existing.reduce((m, t) => Math.max(m, t.sortOrder), 0) + 1,
+        category: plan.category ?? null,
+        applyContainer: plan.container ?? 'none',
+        schedule: plan.schedule ? { ...DEFAULT_SCHEDULE, ...plan.schedule } : null,
+        // Never set by a caller. It is state recording that a schedule already
+        // fired, so accepting one would let a template be created already
+        // suppressed for the current period.
+        scheduleLastFiredKey: null,
+        anchorsAreAway: plan.anchorsAreAway ?? false,
+      };
+
+      db.dbInsertTemplate(template);
+      return template;
     },
 
     deviceId: () => db.dbGetDeviceId(),

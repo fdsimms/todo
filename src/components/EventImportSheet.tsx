@@ -1,4 +1,4 @@
-import React, { useCallback, useEffect, useMemo, useState } from 'react';
+import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import {
   Alert,
   Modal,
@@ -118,6 +118,13 @@ export function EventImportSheet({ visible, onClose, onImported }: Props) {
     if (!visible) reset();
   }, [visible, reset]);
 
+  // `run` below awaits a network call that easily outlives a cancel — the
+  // sheet stays mounted (only its Modal hides), so nothing stops that promise
+  // once `onClose` fires. Read inside the promise continuation, never as a
+  // dependency, so a cancel mid-request is seen without re-running `run`.
+  const visibleRef = useRef(visible);
+  useEffect(() => { visibleRef.current = visible; }, [visible]);
+
   const pick = useCallback(async (source: RecipePhotoSource) => {
     setPicking(true);
     setPhotoError(null);
@@ -180,13 +187,17 @@ export function EventImportSheet({ visible, onClose, onImported }: Props) {
     setTriedEmpty(false);
     try {
       const events = await extractCalendarEvents(mode === 'photo' ? photo! : text);
+      // Canceled while the request was in flight: the sheet already told the
+      // user its work was discarded, so a late success must not turn around
+      // and pop the task editor open behind its back — see `visibleRef`.
+      if (!visibleRef.current) return;
       if (events.length === 0) {
         setTriedEmpty(true);
         return;
       }
       finish(events);
     } catch (e) {
-      setError(describeAIError(e));
+      if (visibleRef.current) setError(describeAIError(e));
     } finally {
       setLoading(false);
     }
@@ -312,7 +323,7 @@ export function EventImportSheet({ visible, onClose, onImported }: Props) {
               resizeMode="cover"
               accessibilityIgnoresInvertColors
             />
-            <TouchableOpacity
+            <TouchableOpacity hitSlop={8}
               style={styles.previewClear}
               activeOpacity={interaction.activeOpacity}
               onPress={() => { haptics.tap(); setPhoto(null); }}

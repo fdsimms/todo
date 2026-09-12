@@ -668,6 +668,8 @@ export function FocusSetupSheet({ visible, tasks, allTasks, pinnedSeed, reachOut
             onPress={handleStart}
             disabled={selected.length === 0}
             activeOpacity={interaction.activeOpacity}
+            accessibilityRole="button"
+            accessibilityState={{ disabled: selected.length === 0 }}
           >
             <Text style={[styles.confirmBtnText, selected.length === 0 && styles.confirmBtnTextDisabled]}>
               {selected.length === 0
@@ -677,7 +679,7 @@ export function FocusSetupSheet({ visible, tasks, allTasks, pinnedSeed, reachOut
           </TouchableOpacity>
         </View>
 
-        <TouchableOpacity style={styles.cancelCard} onPress={dismiss} activeOpacity={interaction.activeOpacity}>
+        <TouchableOpacity style={styles.cancelCard} onPress={dismiss} activeOpacity={interaction.activeOpacity} accessibilityRole="button">
           <Text style={styles.cancelLabel}>Cancel</Text>
         </TouchableOpacity>
       </Animated.View>

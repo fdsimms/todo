@@ -1,4 +1,4 @@
-import React, { useCallback, useEffect, useMemo, useState } from 'react';
+import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import {
   Alert,
   Modal,
@@ -30,6 +30,7 @@ import {
   normalizeIngredient, formatServingsRange, parseServingsRange,
   recipeHasMethod, recipeHasPrepTasks, recipeHasAttribution,
 } from '../utils/recipeUtils';
+import { describeKeepDays } from '../utils/leftovers';
 import { sourceFieldsFor, sourcePlanFor } from '../utils/recipeProvenance';
 import { aisleForName } from '../utils/groceryAisles';
 import { allSectionsOf, sectionsOf } from '../utils/recipeSections';
@@ -100,6 +101,7 @@ export function RecipeExtractSheet({ visible, recipe, onClose }: Props) {
   const setServings = useRecipeStore(s => s.setServings);
   const setRecipeYield = useRecipeStore(s => s.setRecipeYield);
   const setEstimatedMinutes = useRecipeStore(s => s.setEstimatedMinutes);
+  const setLeftoverKeepDays = useRecipeStore(s => s.setLeftoverKeepDays);
   const setSourceUrl = useRecipeStore(s => s.setSourceUrl);
   const setSource = useRecipeStore(s => s.setSource);
   const setAuthor = useRecipeStore(s => s.setAuthor);
@@ -141,6 +143,7 @@ export function RecipeExtractSheet({ visible, recipe, onClose }: Props) {
   const [servingsText, setServingsText] = useState('');
   const [minutesText, setMinutesText] = useState('');
   const [yieldText, setYieldText] = useState('');
+  const [leftoverKeepDaysText, setLeftoverKeepDaysText] = useState('');
   const [siteName, setSiteName] = useState('');
   const [sourceAuthor, setSourceAuthor] = useState('');
   const [sourcePageText, setSourcePageText] = useState('');
@@ -196,6 +199,7 @@ export function RecipeExtractSheet({ visible, recipe, onClose }: Props) {
     setServingsText('');
     setMinutesText('');
     setYieldText('');
+    setLeftoverKeepDaysText('');
     setSiteName('');
     setSourceAuthor('');
     setSourcePageText('');
@@ -208,6 +212,13 @@ export function RecipeExtractSheet({ visible, recipe, onClose }: Props) {
     if (!visible) reset();
   }, [visible, reset]);
 
+  // `run` below awaits a network call that easily outlives a cancel — the
+  // sheet stays mounted (only its Modal hides), so nothing stops that promise
+  // once the user discards. Read inside the promise continuation, never as a
+  // dependency, so a cancel mid-request is seen without re-running `run`.
+  const visibleRef = useRef(visible);
+  useEffect(() => { visibleRef.current = visible; }, [visible]);
+
   const run = useCallback(async () => {
     setLoading(true);
     setError(null);
@@ -216,10 +227,17 @@ export function RecipeExtractSheet({ visible, recipe, onClose }: Props) {
       const resolved = await resolveSource();
       if (!resolved) return;
       const result = await extractRecipe(resolved.source, [...aisleOrder]);
+      // Canceled while the request was in flight: don't repopulate a sheet
+      // the user already discarded — it would silently reappear filled in
+      // the next time this sheet opens.
+      if (!visibleRef.current) return;
       setExtracted(result);
       setIngredients(result.ingredients);
       setAccepted(new Set(result.ingredients.map((_, i) => i)));
-      setApplyDetails(result.servings !== null || result.prepMinutes !== null || result.recipeYield !== null);
+      setApplyDetails(
+        result.servings !== null || result.prepMinutes !== null || result.recipeYield !== null
+          || result.leftoverKeepDays !== null,
+      );
       // A method is offered whichever source it came from — the page's own
       // steps when it publishes them, otherwise the model's read of the same
       // source. Attribution likewise: the page's markup when there is one, what
@@ -238,14 +256,17 @@ export function RecipeExtractSheet({ visible, recipe, onClose }: Props) {
       setServingsText(formatServingsRange(result.servings, result.servingsMax) ?? '');
       setMinutesText(result.prepMinutes !== null ? String(result.prepMinutes) : '');
       setYieldText(result.recipeYield ?? '');
+      setLeftoverKeepDaysText(result.leftoverKeepDays !== null ? String(result.leftoverKeepDays) : '');
       const source = sourceFieldsFor(page, result);
       setSiteName(source.source);
       setSourceAuthor(source.author);
       setSourcePageText(source.page);
       setImportedSourceType(source.sourceType);
     } catch (e) {
-      setError(describeImportError(e));
-      setCanRetry(isRetryableImportError(e));
+      if (visibleRef.current) {
+        setError(describeImportError(e));
+        setCanRetry(isRetryableImportError(e));
+      }
     } finally {
       setLoading(false);
     }
@@ -353,6 +374,11 @@ export function RecipeExtractSheet({ visible, recipe, onClose }: Props) {
       if (minutes > 0) setEstimatedMinutes(recipe.id, minutes);
       const yieldValue = pendingText('details:yield', yieldText).trim();
       if (yieldValue) setRecipeYield(recipe.id, yieldValue);
+      const keepDaysRaw = pendingText('details:leftoverKeepDays', leftoverKeepDaysText).trim();
+      if (keepDaysRaw) {
+        const keepDays = parseInt(keepDaysRaw, 10);
+        if (!Number.isNaN(keepDays)) setLeftoverKeepDays(recipe.id, keepDays);
+      }
     }
     // Appended, never replacing what's there. A recipe with its own method or
     // prep tasks arrives here unticked, so reaching this line at all means the
@@ -403,8 +429,9 @@ export function RecipeExtractSheet({ visible, recipe, onClose }: Props) {
   // right now decides whether it applies anything. Emptying them must not
   // unmount the row mid-edit — there'd be no way to type a value back in.
   const foundDetails = !!extracted
-    && (extracted.servings !== null || extracted.prepMinutes !== null || extracted.recipeYield !== null);
-  const hasDetails = !!servingsText || !!minutesText || !!yieldText;
+    && (extracted.servings !== null || extracted.prepMinutes !== null || extracted.recipeYield !== null
+      || extracted.leftoverKeepDays !== null);
+  const hasDetails = !!servingsText || !!minutesText || !!yieldText || !!leftoverKeepDaysText;
   // The page's own steps (verbatim structured data) when it has them,
   // otherwise whatever the model read off the source itself.
   const canApply = !loading && !!extracted && (
@@ -426,6 +453,10 @@ export function RecipeExtractSheet({ visible, recipe, onClose }: Props) {
     if (servingsText) parts.push(`Serves ${servingsText}`);
     if (minutesText) parts.push(`about ${minutesText} min`);
     if (yieldText) parts.push(`makes ${yieldText}`);
+    const keepDaysNum = parseInt(leftoverKeepDaysText, 10);
+    if (leftoverKeepDaysText && !Number.isNaN(keepDaysNum)) {
+      parts.push(`leftovers keep ${describeKeepDays(keepDaysNum).toLowerCase()}`);
+    }
     if (parts.length === 0) return '';
     const [first, ...rest] = parts;
     return [first.charAt(0).toUpperCase() + first.slice(1), ...rest].join(', ');
@@ -457,10 +488,11 @@ export function RecipeExtractSheet({ visible, recipe, onClose }: Props) {
     );
   };
 
-  // Unlike the method and the prep tasks, these two overwrite rather than
-  // append — there's only one servings field — so the row says so when the
-  // recipe already has one.
-  const detailsReplace = recipe?.servings != null || recipe?.estimatedMinutes != null || recipe?.recipeYield != null;
+  // Unlike the method and the prep tasks, these overwrite rather than append
+  // — there's only one servings field — so the row says so when the recipe
+  // already has one.
+  const detailsReplace = recipe?.servings != null || recipe?.estimatedMinutes != null
+    || recipe?.recipeYield != null || recipe?.leftoverKeepDays != null;
 
   const methodMeta = methodRowMeta(acceptedSteps.size, steps.length, recipeHasMethod(recipe));
   const prepTasksMeta = prepTasksRowMeta(
@@ -497,8 +529,10 @@ export function RecipeExtractSheet({ visible, recipe, onClose }: Props) {
               candidate={candidate}
               state={components.stateFor(candidate.key)}
               accepted={components.accepted.has(candidate.key)}
+              parent={recipe}
               onToggle={() => components.toggle(candidate.key)}
               onImport={source => components.importFrom(candidate.key, source)}
+              onLink={picked => components.linkTo(candidate.key, picked)}
             />
           ))}
         </View>
@@ -645,6 +679,22 @@ export function RecipeExtractSheet({ visible, recipe, onClose }: Props) {
                 maxLength={RECIPE_SOURCE_MAX_LENGTH}
                 numberOfLines={1}
               />
+            </View>
+            <View style={styles.detailFields}>
+              <Text style={styles.detailSep}>Leftovers keep</Text>
+              <InlineEditableText
+                edits={edits}
+                editKey="details:leftoverKeepDays"
+                value={leftoverKeepDaysText}
+                onCommit={setLeftoverKeepDaysText}
+                allowEmpty
+                textStyle={styles.detailValue}
+                placeholder="e.g. 4"
+                accessibilityLabel="leftovers keep, days"
+                maxLength={3}
+                numberOfLines={1}
+              />
+              <Text style={styles.detailSep}>days</Text>
             </View>
           </ImportApplyRow>
         )}

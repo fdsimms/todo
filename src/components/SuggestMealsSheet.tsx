@@ -13,6 +13,7 @@ import { spacing, radius, font, fontWeight, lineHeight, border, iconSize, intera
 import { dayKeyOf } from '../utils/dateUtils';
 import { describeCookHistory, describePantryCoverage, describeRecipe, type PantryCoverage } from '../utils/recipeUtils';
 import { flattenRecipeIngredients, recipeMap, type FlatIngredient } from '../utils/recipeComponents';
+import { ingredientHeadings } from '../utils/recipeSections';
 import { describeStandingSwap, standingSwapMap } from '../utils/standingSwaps';
 import { onHandNameKeys } from '../utils/grocerySuggest';
 import { describeLeftover, isPlannedPastKeepUntil, liveFreshnessOf } from '../utils/leftovers';
@@ -472,6 +473,12 @@ export function SuggestMealsSheet({
   // flattenRecipeIngredients' callers use elsewhere (RecipeToListSheet,
   // AddWeekToListSheet). Resolved to the defaults: a preview isn't a shop, so
   // there's nothing to pick an alternative for.
+  //
+  // Within a group, a line carries the section heading it opens, if any — the
+  // recipe's own headings, from the same walk cook mode and the share text
+  // read (ingredientHeadings). The walk runs over the flat list rather than
+  // per group because it is the one that knows a recipe boundary resets the
+  // section vocabulary, which is exactly where these groups are cut.
   // ==== the ingredient preview ====
 
   const previewGroups = useMemo(() => {
@@ -479,12 +486,13 @@ export function SuggestMealsSheet({
     // Live, not persisted — see recipeComponents.ts's ChoiceResolution.onHand.
     const onHand = onHandNameKeys(groceryItems, new Date());
     const flat = flattenRecipeIngredients(previewRecipe, recipesById, { onHand }, standingSwaps);
-    const groups: { recipe: Recipe; items: FlatIngredient[] }[] = [];
-    for (const item of flat) {
+    const headings = ingredientHeadings(flat);
+    const groups: { recipe: Recipe; items: { flat: FlatIngredient; section: string | null }[] }[] = [];
+    flat.forEach((item, index) => {
       let group = groups.find(g => g.recipe.id === item.recipe.id);
       if (!group) { group = { recipe: item.recipe, items: [] }; groups.push(group); }
-      group.items.push(item);
-    }
+      group.items.push({ flat: item, section: headings[index].section });
+    });
     return groups;
   }, [previewRecipe, recipesById, standingSwaps, groceryItems]);
 
@@ -966,23 +974,30 @@ export function SuggestMealsSheet({
                     {group.recipe.id !== previewRecipe.id && (
                       <Text style={styles.sectionHeader}>FROM {group.recipe.name.toUpperCase()}</Text>
                     )}
-                    {group.items.map(({ ingredient, swappedFrom }) => {
+                    {group.items.map(({ flat: { ingredient, swappedFrom }, section }) => {
                       const quantity = convertQuantity(ingredient.quantity, unitSystem).text;
                       return (
-                        <View key={ingredient.id} style={styles.previewIngredientRow}>
-                          <Text style={styles.previewIngredientName}>
-                            {ingredient.name}{ingredient.prep ? `, ${ingredient.prep}` : ''}
-                            {/* A swapped line always says what the recipe
-                                wrote. Inline here rather than on its own line:
-                                these rows are a compact preview, and the name
-                                is already carrying its prep clause. */}
-                            {!!swappedFrom && (
-                              <Text style={styles.previewSwap}> · {describeStandingSwap(swappedFrom)}</Text>
-                            )}
-                          </Text>
-                          {!!quantity && (
-                            <Text style={styles.previewIngredientQty} numberOfLines={1}>{quantity}</Text>
+                        <View key={ingredient.id}>
+                          {!!section && (
+                            <Text style={[styles.sectionHeader, styles.previewSectionHeader]}>
+                              {section.toUpperCase()}
+                            </Text>
                           )}
+                          <View style={styles.previewIngredientRow}>
+                            <Text style={styles.previewIngredientName}>
+                              {ingredient.name}{ingredient.prep ? `, ${ingredient.prep}` : ''}
+                              {/* A swapped line always says what the recipe
+                                  wrote. Inline here rather than on its own line:
+                                  these rows are a compact preview, and the name
+                                  is already carrying its prep clause. */}
+                              {!!swappedFrom && (
+                                <Text style={styles.previewSwap}> · {describeStandingSwap(swappedFrom)}</Text>
+                              )}
+                            </Text>
+                            {!!quantity && (
+                              <Text style={styles.previewIngredientQty} numberOfLines={1}>{quantity}</Text>
+                            )}
+                          </View>
                         </View>
                       );
                     })}
@@ -1138,6 +1153,9 @@ const makeStyles = (colors: Colors) => StyleSheet.create({
   previewLinkRow: { alignItems: 'flex-start' },
   previewNotes: { fontSize: font.sm, color: colors.textSecondary, lineHeight: lineHeight.sm },
   previewGroup: { gap: spacing.xs },
+  // Clear of the row above it; the rows' own hairlines already separate them,
+  // so the heading needs the gap rather than a rule of its own.
+  previewSectionHeader: { marginTop: spacing.sm, marginBottom: spacing.xs },
   previewIngredientRow: {
     flexDirection: 'row',
     alignItems: 'center',
