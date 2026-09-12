@@ -144,6 +144,22 @@ export function useKeyboardInsetScroll<T extends ScrollHandle>() {
     unstrand(false, 0);
   }, [focused, unstrand]);
 
+  // A caller-driven counterpart to the blur effect above, for a list that
+  // stays focused but has just lost the content that justified an inset — a
+  // keyboard opened for an inline field (a subtask entry, an editor row) and
+  // the row it was editing is now gone, e.g. the list just emptied out from
+  // under it. Guarded on `Keyboard.isVisible()` for the same reason the blur
+  // effect doesn't need to be: while a field is genuinely focused this would
+  // be exactly the "writing our own would wipe the one holding a focused text
+  // field clear of the keyboard" mistake the hook exists to avoid. Once the
+  // keyboard is confirmed down, any inset still on the list is stale by
+  // definition, so clearing it can't cost a legitimate one.
+  const clearStaleInset = useCallback(() => {
+    if (Keyboard.isVisible()) return;
+    setNoInset(pulseNoInset);
+    unstrand(false, 0);
+  }, [unstrand]);
+
   // Named apart from the `contentInset` the scroll event reports in `record`,
   // which is the live native value rather than this assertion about it.
   const insetProp = useMemo(
@@ -153,6 +169,7 @@ export function useKeyboardInsetScroll<T extends ScrollHandle>() {
 
   return {
     ref,
+    clearStaleInset,
     props: {
       automaticallyAdjustKeyboardInsets: focused,
       contentInset: insetProp,
