@@ -335,6 +335,17 @@ choosable before anything's filed under it.
   update the internal hover state, mirroring `ReorderableList`'s same-named prop but with the
   payload this list's caller actually needs. Nothing about the drag itself changes for a caller that
   doesn't pass it.
+- **Every surface that flattens a composed recipe reads its sections too, through one walk
+  (`ingredientHeadings`).** The detail screen infers a heading from adjacent rows' labels; the
+  three surfaces that show a *flattened* list (cook mode's ingredient panel, the recipe share
+  text, the suggest-meals preview) were each doing half of that — inferring the component's name
+  at a recipe boundary and dropping `section` entirely, so a recipe that says Sauce, then For the
+  tofu, then For serving read as one undifferentiated run exactly where someone is cooking from
+  it. The walk returns both kinds of boundary per line and lets each surface word them (a bare
+  caption in the panel, `For the mash:` in a share), because the wording is all they disagreed
+  about. **A recipe boundary resets the section walk**: two recipes' section labels are separate
+  vocabularies that happen to collide, so a component opening with "Sauce" under a root whose last
+  line was also "Sauce" gets its own heading rather than reading as a continuation.
 
 ## Linking an ingredient to an existing item (`CatalogLinkPicker.tsx`)
 
