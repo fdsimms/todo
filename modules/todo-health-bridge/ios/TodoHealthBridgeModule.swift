@@ -13,12 +13,23 @@ import HealthKit
 /// records any of them. The exceptions are a handful of writes — a nutrient,
 /// logged when a task that opted into it completes (`writeNutrientSample`
 /// below, `healthCompletionSync.ts` on the JS side), a logged meal
-/// (`writeFoodSamples`), and a body-mass sample — which are a deliberately
-/// separate ask (`writeTypes`, its own authorization functions) from
-/// everything the read half does, so reading steps never puts a share
-/// permission on screen for somebody who never asked to write anything. See
+/// (`writeFoodSamples`), and a body-mass sample — which have their own type
+/// list (`writeTypes`) reviewed on its own terms, a real sample landing in
+/// somebody's actual Health record being a bigger deal than a read. See
 /// `docs/arch/health-data.md` for why these are the types that earned a
 /// write path.
+///
+/// **The two authorization requests below ask for both halves together, on
+/// purpose.** `requestAuthorization` and `requestWriteAuthorization` used to
+/// ask for read and write separately, so turning on step-reading never put a
+/// water-sharing row in front of somebody who only wanted steps. iOS has
+/// since been observed silently revoking an existing write grant the moment
+/// read access for the same type is granted later — an undocumented OS bug
+/// with no API to prevent or reverse it — so both functions now pass the
+/// full `toShare: writeTypes, read: readTypes` regardless of which one was
+/// called. That costs the narrower ask; what it buys is that the one
+/// sequence that triggers the bug (one half decided, the other decided
+/// later) can no longer happen from this app. See `docs/arch/health-data.md`.
 ///
 /// Every function returns a value rather than Void, the same rule
 /// TodoWidgetBridgeModule.swift states at length: RN's exception-to-JSError
@@ -358,6 +369,21 @@ public class TodoHealthBridgeModule: Module {
     /// what the user chose. A bridge that mapped it to "granted" would be
     /// inventing the one fact Apple withholds, and every screen built on that
     /// lie would be wrong for exactly the people who said no.
+    ///
+    /// **Passes `toShare: writeTypes` too, not `[]`.** This used to ask for
+    /// reading alone, on the reasoning that somebody who only wanted to read
+    /// steps shouldn't be asked about sharing water in the same breath — see
+    /// `docs/arch/health-data.md`'s note on why that stopped being the whole
+    /// story. iOS has been observed silently revoking write access to a type
+    /// (water, weight, a nutrient) the moment *read* access for that same type
+    /// is granted afterward, and there is no supported API to detect that
+    /// before it happens or reverse it after. The one thing this app can
+    /// actually do about it is make sure that specific sequence — write
+    /// decided, read decided later, for the same type — never occurs again:
+    /// asking for both together means both are decided in the one user
+    /// action, so there is no later solo read grant left to trigger the flip.
+    /// `requestWriteAuthorization` below makes the identical change for the
+    /// same reason, in the other direction.
     AsyncFunction("requestAuthorization") { (promise: Promise) in
       #if canImport(HealthKit)
       guard HKHealthStore.isHealthDataAvailable() else {
@@ -366,7 +392,7 @@ public class TodoHealthBridgeModule: Module {
       }
       var started = false
       TodoHealthExceptionCatcher.runCatchingExceptions {
-        self.store.requestAuthorization(toShare: [], read: self.readTypes) { success, _ in
+        self.store.requestAuthorization(toShare: self.writeTypes, read: self.readTypes) { success, _ in
           promise.resolve(success ? "requested" : "failed")
         }
         started = true
@@ -427,14 +453,22 @@ public class TodoHealthBridgeModule: Module {
       #endif
     }
 
-    /// Ask for water-write access. Same "unavailable" | "requested" | "failed"
+    /// Ask for write access. Same "unavailable" | "requested" | "failed"
     /// shape as `requestAuthorization`, and the same reason it says no more
     /// than that the sheet was shown — but unlike the read side, a caller that
     /// wants the truth can simply call `writeAuthorizationStatus` right after
     /// this resolves, rather than being stuck with "requested" forever.
-    /// `toShare: writeTypes, read: []` on purpose: this never asks to read
-    /// anything, so it can be triggered on its own from a task's water-logging
-    /// row without also raising the unrelated steps/sleep/nutrient read sheet.
+    ///
+    /// **Passes `read: readTypes` too, not `[]`, for the identical reason
+    /// `requestAuthorization` above now passes `toShare: writeTypes`.** This
+    /// used to ask only to write, so a task's water-logging row could trigger
+    /// it without also raising the unrelated steps/sleep/nutrient read sheet —
+    /// but that made *this* call the other half of the same dangerous
+    /// sequence: write decided here, read decided later elsewhere, still the
+    /// exact trigger for iOS silently revoking the write access just granted.
+    /// Folding the read ask in means whichever of the two switches somebody
+    /// turns on first, both halves get decided together and there is no later
+    /// solo grant left to flip anything.
     AsyncFunction("requestWriteAuthorization") { (promise: Promise) in
       #if canImport(HealthKit)
       guard HKHealthStore.isHealthDataAvailable() else {
@@ -443,7 +477,7 @@ public class TodoHealthBridgeModule: Module {
       }
       var started = false
       TodoHealthExceptionCatcher.runCatchingExceptions {
-        self.store.requestAuthorization(toShare: self.writeTypes, read: []) { success, _ in
+        self.store.requestAuthorization(toShare: self.writeTypes, read: self.readTypes) { success, _ in
           promise.resolve(success ? "requested" : "failed")
         }
         started = true
