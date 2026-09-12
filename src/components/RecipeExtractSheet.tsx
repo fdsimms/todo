@@ -469,9 +469,18 @@ export function RecipeExtractSheet({ visible, recipe, onClose }: Props) {
 
   // The URL is what identifies the page, so it stays on the row even though
   // the two editable fields sit above it.
+  //
+  // Only a link import ever writes a new URL (see the `if (applySource)`
+  // block below) — a paste or photo has none to offer, so ticking the box
+  // for one of those leaves whatever link the recipe already had untouched
+  // even as it overwrites the source and author. "Replaces what's there" is
+  // only true without qualification when this import came from a link.
+  const keepsExistingLink = !input.page && !!recipe?.sourceUrl;
   const sourceMeta = [
     input.page?.url,
-    recipeHasAttribution(recipe) ? 'replaces what’s there' : null,
+    recipeHasAttribution(recipe)
+      ? (keepsExistingLink ? 'replaces the source and author, not the link' : 'replaces what’s there')
+      : null,
   ].filter(Boolean).join(' · ');
 
   /**
