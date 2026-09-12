@@ -342,9 +342,29 @@ export interface Quantity {
   rangeSeparator: 'to' | '-' | null;
 }
 
-// The three notations, in this order and for this reason: a mixed number has
+// The Unicode vulgar fractions `decodeEntities` (recipeUrl.ts) writes when a
+// recipe page spells a fraction as an HTML entity ("&frac12;" -> "½") — the
+// only glyphs the app's own recipe import can produce, so this is the exact
+// set worth reading back rather than every vulgar fraction Unicode defines.
+const UNICODE_FRACTIONS: Record<string, Rational> = {
+  '½': rational(1, 2), '⅓': rational(1, 3), '⅔': rational(2, 3),
+  '¼': rational(1, 4), '¾': rational(3, 4),
+  '⅛': rational(1, 8), '⅜': rational(3, 8), '⅝': rational(5, 8), '⅞': rational(7, 8),
+};
+const UNICODE_FRACTION_CHARS = Object.keys(UNICODE_FRACTIONS).join('');
+// A whole number, glued straight to one of those glyphs with no space ("1½"),
+// or the glyph alone ("½"). Tried before the other three for the same reason a
+// mixed number is tried before a bare decimal: without it, "1½ cups" reads as
+// amount 1 with "½ cups" left as unrecognized rest, since none of the other
+// notations expect a fraction with no digits and no "/" — losing the fraction
+// *and* the unit that followed it, since a leading unit word is read off
+// `rest`, not off the original text.
+const UNICODE_FRACTION = new RegExp(`^(\\d*)([${UNICODE_FRACTION_CHARS}])`);
+
+// The four notations, in this order and for this reason: a mixed number has
 // to be tried before a bare decimal, or "1 1/2 cups" is read as "1" with
-// "1/2 cups" left over.
+// "1/2 cups" left over — and the Unicode glyph before either, since it can
+// look like a bare decimal's leading digit too ("1½" vs "1.5").
 const MIXED_NUMBER = /^(\d+)\s+(\d+)\/(\d+)/;
 const FRACTION = /^(\d+)\/(\d+)/;
 const DECIMAL = /^\d+(?:\.\d+)?/;
@@ -384,6 +404,16 @@ interface LeadingAmount {
 }
 
 function readLeadingAmount(text: string): LeadingAmount | null {
+  const unicodeFraction = UNICODE_FRACTION.exec(text);
+  if (unicodeFraction) {
+    const whole = unicodeFraction[1] ? Number(unicodeFraction[1]) : 0;
+    const frac = UNICODE_FRACTIONS[unicodeFraction[2]];
+    return {
+      value: rational(whole * frac.den + frac.num, frac.den),
+      length: unicodeFraction[0].length,
+      decimal: false,
+    };
+  }
   const mixed = MIXED_NUMBER.exec(text);
   if (mixed) {
     const den = Number(mixed[3]);
