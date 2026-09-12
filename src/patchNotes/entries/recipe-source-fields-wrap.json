@@ -1,0 +1,4 @@
+{
+  "message": "Fixed the recipe import \"Where it's from\" row overflowing its card when the cookbook title or author name was long",
+  "date": "2026-09-12"
+}
