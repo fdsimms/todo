@@ -34,6 +34,7 @@ import {
 import { OTHER_AISLE } from '../utils/groceryAisles';
 import { groceryNameKey } from '../utils/groceryParse';
 import { catalogItemForKey } from '../utils/groceryPlural';
+import { SheetHeader } from './SheetHeader';
 import { SheetHeaderButton } from './SheetHeaderButton';
 import { EmptyState } from './EmptyState';
 import { RecipeSourcePicker } from './RecipeSourcePicker';
@@ -369,25 +370,23 @@ export function GroceryAISheet({ visible, mode, onClose }: Props) {
   return (
     <Modal visible={visible} animationType="slide" presentationStyle="pageSheet" onRequestClose={handleCancel}>
       <View style={styles.root}>
-        <View style={styles.header}>
-          <SheetHeaderButton label="Cancel" role="cancel" onPress={handleCancel} minWidth={72} />
-          <View style={styles.headerTitleWrap}>
-            <Ionicons name="sparkles" size={14} color={colors.purple} />
-            <Text style={styles.headerTitle}>
-              {mode === 'tidy' ? 'Sort into aisles' : 'From a recipe'}
-            </Text>
-          </View>
-          <SheetHeaderButton
-            label={
-              rowCount > 0
-                ? `${mode === 'tidy' ? 'Move' : 'Add'} ${accepted.size}`
-                : mode === 'tidy' ? 'Move' : 'Add'
-            }
-            onPress={handleApply}
-            disabled={!canApply}
-            minWidth={72}
-          />
-        </View>
+        <SheetHeader
+          title={mode === 'tidy' ? 'Sort into aisles' : 'From a recipe'}
+          icon="sparkles"
+          left={<SheetHeaderButton label="Cancel" role="cancel" onPress={handleCancel} minWidth={72} />}
+          right={
+            <SheetHeaderButton
+              label={
+                rowCount > 0
+                  ? `${mode === 'tidy' ? 'Move' : 'Add'} ${accepted.size}`
+                  : mode === 'tidy' ? 'Move' : 'Add'
+              }
+              onPress={handleApply}
+              disabled={!canApply}
+              minWidth={72}
+            />
+          }
+        />
         {renderBody()}
       </View>
     </Modal>
@@ -406,8 +405,6 @@ function makeStyles(colors: Colors) {
       borderBottomWidth: border.hairline,
       borderBottomColor: colors.separator,
     },
-    headerTitleWrap: { flexDirection: 'row', alignItems: 'center', gap: spacing.xs },
-    headerTitle: { color: colors.text, fontSize: font.md, fontWeight: fontWeight.semibold },
     centered: { flex: 1, alignItems: 'center', justifyContent: 'center', padding: spacing.xl, gap: spacing.md },
     loadingText: { color: colors.textSecondary, fontSize: font.md, textAlign: 'center' },
     intro: {

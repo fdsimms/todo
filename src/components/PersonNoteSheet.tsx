@@ -7,6 +7,7 @@ import { usePersonNoteStore } from '../store/usePersonNoteStore';
 import { EditorSheet } from './EditorSheet';
 import { EditorRow } from './EditorRow';
 import { SheetHeaderButton } from './SheetHeaderButton';
+import { SheetHeader } from './SheetHeader';
 import { SegmentedControl } from './SegmentedControl';
 import { WhenPicker } from './WhenPicker';
 import { useColors } from '../theme/ThemeContext';
@@ -101,19 +102,21 @@ export function PersonNoteSheet({ visible, personId, personName, note, initialKi
       scrollStyle={styles.scroll}
       scrollContentStyle={styles.scrollContent}
       header={
-        <>
-          <SheetHeaderButton label="Done" onPress={saveAndClose} />
-          <Text style={styles.headerTitle} numberOfLines={1}>
-            {note ? 'Edit note' : `About ${personName}`}
-          </Text>
-          {note ? (
-            <TouchableOpacity onPress={handleDelete} hitSlop={8} accessibilityRole="button" accessibilityLabel="Delete note">
-              <Ionicons name="trash-outline" size={20} color={colors.red} />
-            </TouchableOpacity>
-          ) : (
-            <View style={styles.headerSpacer} />
-          )}
-        </>
+        <SheetHeader
+          bare
+          title={note ? 'Edit note' : `About ${personName}`}
+          numberOfLines={1}
+          left={<SheetHeaderButton label="Done" onPress={saveAndClose} />}
+          right={
+            note ? (
+              <TouchableOpacity onPress={handleDelete} hitSlop={8} accessibilityRole="button" accessibilityLabel="Delete note">
+                <Ionicons name="trash-outline" size={20} color={colors.red} />
+              </TouchableOpacity>
+            ) : (
+              <View style={styles.headerSpacer} />
+            )
+          }
+        />
       }
       footer={
         <WhenPicker
@@ -172,10 +175,6 @@ const makeStyles = (colors: Colors) => StyleSheet.create({
     flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between',
     paddingHorizontal: spacing.md, paddingVertical: spacing.md,
     borderBottomWidth: StyleSheet.hairlineWidth, borderBottomColor: colors.separator,
-  },
-  headerTitle: {
-    flex: 1, textAlign: 'center', color: colors.text,
-    fontSize: font.md, fontWeight: fontWeight.semibold,
   },
   // Matches the trash button's width so the title stays optically centred, the
   // same job SheetHeaderButton's own minWidth does on the other side.

@@ -28,6 +28,7 @@ import { useGroceryStore } from '../store/useGroceryStore';
 import { useSettingsStore } from '../store/useSettingsStore';
 import { freshnessColor } from './LeftoversCard';
 import { SheetHeaderButton } from './SheetHeaderButton';
+import { SheetHeader } from './SheetHeader';
 import { InlineAction } from './InlineAction';
 import { EmptyState } from './EmptyState';
 import { useKeyboardInsetScroll } from '../hooks/useKeyboardInsetScroll';
@@ -817,18 +818,20 @@ export function SuggestMealsSheet({
   return (
     <Modal visible={visible} animationType="slide" presentationStyle="pageSheet" onRequestClose={handleCancel}>
       <View style={styles.root}>
-        <View style={styles.header}>
-          <SheetHeaderButton label="Cancel" role="cancel" onPress={handleCancel} disabled={saving} minWidth={72} />
-          <Text style={styles.headerTitle}>Suggest meals</Text>
-          <SheetHeaderButton
-            label={saving ? 'Saving…' : selected.size > 0 ? `Save (${selected.size})` : 'Save'}
-            role="confirm"
-            onPress={handleSave}
-            disabled={saving}
-            minWidth={72}
-            accessibilityLabel={selected.size > 0 ? `Save ${selected.size} selected meals` : 'Save'}
-          />
-        </View>
+        <SheetHeader
+          title="Suggest meals"
+          left={<SheetHeaderButton label="Cancel" role="cancel" onPress={handleCancel} disabled={saving} minWidth={72} />}
+          right={
+            <SheetHeaderButton
+              label={saving ? 'Saving…' : selected.size > 0 ? `Save (${selected.size})` : 'Save'}
+              role="confirm"
+              onPress={handleSave}
+              disabled={saving}
+              minWidth={72}
+              accessibilityLabel={selected.size > 0 ? `Save ${selected.size} selected meals` : 'Save'}
+            />
+          }
+        />
 
         {availableMealTypes.length > 0 && (
           <ScrollView
@@ -940,22 +943,24 @@ export function SuggestMealsSheet({
         >
           {previewRecipe && (
             <View style={styles.root}>
-              <View style={styles.header}>
-                <SheetHeaderButton label="Close" role="cancel" onPress={() => setPreviewRecipe(null)} minWidth={72} />
-                <Text style={styles.headerTitle}>{previewRecipe.name}</Text>
-                <SheetHeaderButton
-                  label={selected.has(`recipe:${previewRecipe.id}`) ? 'Selected' : 'Select'}
-                  role="confirm"
-                  onPress={() => {
-                    const key = `recipe:${previewRecipe.id}`;
-                    if (!selected.has(key)) toggleSelect(key);
-                    setPreviewRecipe(null);
-                  }}
-                  disabled={saving || !!landedOn.get(`recipe:${previewRecipe.id}`)
-                    || (!selected.has(`recipe:${previewRecipe.id}`) && capacityFull)}
-                  minWidth={72}
-                />
-              </View>
+              <SheetHeader
+                title={previewRecipe.name}
+                left={<SheetHeaderButton label="Close" role="cancel" onPress={() => setPreviewRecipe(null)} minWidth={72} />}
+                right={
+                  <SheetHeaderButton
+                    label={selected.has(`recipe:${previewRecipe.id}`) ? 'Selected' : 'Select'}
+                    role="confirm"
+                    onPress={() => {
+                      const key = `recipe:${previewRecipe.id}`;
+                      if (!selected.has(key)) toggleSelect(key);
+                      setPreviewRecipe(null);
+                    }}
+                    disabled={saving || !!landedOn.get(`recipe:${previewRecipe.id}`)
+                      || (!selected.has(`recipe:${previewRecipe.id}`) && capacityFull)}
+                    minWidth={72}
+                  />
+                }
+              />
               <ScrollView contentContainerStyle={styles.previewList}>
                 <Text style={styles.previewMeta}>{describeRecipe(previewRecipe)}</Text>
                 <View style={styles.previewLinkRow}>
@@ -1016,23 +1021,6 @@ const makeStyles = (colors: Colors) => StyleSheet.create({
   root: { flex: 1, backgroundColor: colors.bg },
   // Accent, the same tint every other surface marks a swapped line with.
   previewSwap: { color: colors.accent },
-  header: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'space-between',
-    gap: spacing.sm,
-    paddingHorizontal: spacing.md,
-    paddingVertical: spacing.md,
-    borderBottomWidth: border.hairline,
-    borderBottomColor: colors.separator,
-  },
-  headerTitle: {
-    flex: 1,
-    color: colors.text,
-    fontSize: font.md,
-    fontWeight: fontWeight.semibold,
-    textAlign: 'center',
-  },
   filterRow: {
     flexDirection: 'row',
     alignItems: 'center',

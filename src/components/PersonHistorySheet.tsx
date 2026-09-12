@@ -5,6 +5,7 @@ import { format } from 'date-fns/format';
 import { EditorSheet } from './EditorSheet';
 import { EditorRow } from './EditorRow';
 import { SheetHeaderButton } from './SheetHeaderButton';
+import { SheetHeader } from './SheetHeader';
 import { CalendarPicker } from './CalendarPicker';
 import { useColors } from '../theme/ThemeContext';
 import { spacing, radius, font, fontWeight, interaction, type Colors } from '../theme';
@@ -93,13 +94,13 @@ export function PersonHistorySheet({ visible, personName, entry, onSave, onDelet
       scrollStyle={styles.scroll}
       scrollContentStyle={styles.scrollContent}
       header={
-        <>
-          <SheetHeaderButton label="Cancel" role="cancel" onPress={onClose} minWidth={56} />
-          <Text style={styles.headerTitle} numberOfLines={1}>
-            {entry ? 'Edit entry' : 'Add to history'}
-          </Text>
-          <SheetHeaderButton label="Save" onPress={save} disabled={!trimmed} minWidth={56} />
-        </>
+        <SheetHeader
+          bare
+          title={entry ? 'Edit entry' : 'Add to history'}
+          numberOfLines={1}
+          left={<SheetHeaderButton label="Cancel" role="cancel" onPress={onClose} minWidth={56} />}
+          right={<SheetHeaderButton label="Save" onPress={save} disabled={!trimmed} minWidth={56} />}
+        />
       }
       footer={
         <CalendarPicker
@@ -156,10 +157,6 @@ const makeStyles = (colors: Colors) => StyleSheet.create({
     flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between',
     paddingHorizontal: spacing.md, paddingVertical: spacing.md,
     borderBottomWidth: StyleSheet.hairlineWidth, borderBottomColor: colors.separator,
-  },
-  headerTitle: {
-    flex: 1, textAlign: 'center', color: colors.text,
-    fontSize: font.md, fontWeight: fontWeight.semibold,
   },
   scroll: { flex: 1 },
   scrollContent: { padding: spacing.md, paddingBottom: 120 },

@@ -28,6 +28,7 @@ import { EditorSheet } from './EditorSheet';
 import { InlineAction } from './InlineAction';
 import { PinIcon } from './PinIcon';
 import { SheetHeaderButton } from './SheetHeaderButton';
+import { SheetHeader } from './SheetHeader';
 import { TaskEditor } from './TaskEditor';
 
 /** Editor sections that collapse to a one-line summary of their current value. */
@@ -324,29 +325,32 @@ export function TaskGroupEditor({ visible, group, isNew, onClose, projectId }: P
         />
       }
       header={
-        <>
-          <SheetHeaderButton label="Done" onPress={saveAndClose} />
-          <Text style={styles.headerTitle}>{isNew ? 'New stack' : 'Edit stack'}</Text>
-          <View style={styles.headerRight}>
-            <TouchableOpacity
-              onPress={handlePin}
-              disabled={pinEligible.length === 0}
-              hitSlop={8}
-              accessibilityRole="button"
-              accessibilityState={{ disabled: pinEligible.length === 0, selected: allPinned }}
-              accessibilityLabel={`${allPinned ? 'Unpin' : 'Pin'} all tasks in ${group.title}`}
-            >
-              <PinIcon
-                filled={allPinned}
-                size={20}
-                color={pinEligible.length === 0 ? colors.textTertiary : (allPinned ? colors.orange : colors.textSecondary)}
-              />
-            </TouchableOpacity>
-            <TouchableOpacity onPress={handleDelete} hitSlop={8} accessibilityRole="button" accessibilityLabel="Delete stack">
-              <Ionicons name="trash-outline" size={20} color={colors.red} />
-            </TouchableOpacity>
-          </View>
-        </>
+        <SheetHeader
+          bare
+          title={isNew ? 'New stack' : 'Edit stack'}
+          left={<SheetHeaderButton label="Done" onPress={saveAndClose} />}
+          right={
+            <View style={styles.headerRight}>
+              <TouchableOpacity
+                onPress={handlePin}
+                disabled={pinEligible.length === 0}
+                hitSlop={8}
+                accessibilityRole="button"
+                accessibilityState={{ disabled: pinEligible.length === 0, selected: allPinned }}
+                accessibilityLabel={`${allPinned ? 'Unpin' : 'Pin'} all tasks in ${group.title}`}
+              >
+                <PinIcon
+                  filled={allPinned}
+                  size={20}
+                  color={pinEligible.length === 0 ? colors.textTertiary : (allPinned ? colors.orange : colors.textSecondary)}
+                />
+              </TouchableOpacity>
+              <TouchableOpacity onPress={handleDelete} hitSlop={8} accessibilityRole="button" accessibilityLabel="Delete stack">
+                <Ionicons name="trash-outline" size={20} color={colors.red} />
+              </TouchableOpacity>
+            </View>
+          }
+        />
       }
     >
       <TextInput
@@ -586,7 +590,6 @@ const makeStyles = (colors: Colors) => StyleSheet.create({
     paddingHorizontal: spacing.lg, paddingVertical: spacing.md,
     borderBottomWidth: StyleSheet.hairlineWidth, borderBottomColor: colors.separator,
   },
-  headerTitle: { color: colors.text, fontSize: font.md, fontWeight: fontWeight.semibold },
   headerRight: { flexDirection: 'row', alignItems: 'center', gap: spacing.md },
   scroll: { flex: 1 },
   scrollContent: { paddingBottom: 80 },

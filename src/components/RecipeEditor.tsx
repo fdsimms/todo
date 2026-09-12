@@ -45,6 +45,7 @@ import { cookbookEditIntent, type CookbookEditIntent } from '../utils/recipeProv
 import { EditorRow } from './EditorRow';
 import { NumberPadAccessory, NUMBER_PAD_ACCESSORY_ID } from './NumberPadAccessory';
 import { SheetHeaderButton } from './SheetHeaderButton';
+import { SheetHeader } from './SheetHeader';
 import { EditorSheet } from './EditorSheet';
 
 interface Props {
@@ -342,18 +343,21 @@ export function RecipeEditor({ visible, recipe, onClose, onDeleted }: Props) {
       scrollStyle={styles.scroll}
       scrollContentStyle={styles.scrollContent}
       header={
-        <>
-          <SheetHeaderButton label="Done" onPress={saveAndClose} minWidth={40} />
-          <Text style={styles.headerTitle}>Recipe details</Text>
-          <TouchableOpacity
-            onPress={handleDelete}
-            hitSlop={8}
-            accessibilityRole="button"
-            accessibilityLabel={`Delete recipe ${recipe.name}`}
-          >
-            <Ionicons name="trash-outline" size={20} color={colors.red} />
-          </TouchableOpacity>
-        </>
+        <SheetHeader
+          bare
+          title="Recipe details"
+          left={<SheetHeaderButton label="Done" onPress={saveAndClose} minWidth={40} />}
+          right={
+            <TouchableOpacity
+              onPress={handleDelete}
+              hitSlop={8}
+              accessibilityRole="button"
+              accessibilityLabel={`Delete recipe ${recipe.name}`}
+            >
+              <Ionicons name="trash-outline" size={20} color={colors.red} />
+            </TouchableOpacity>
+          }
+        />
       }
     >
       <NumberPadAccessory />
@@ -860,11 +864,6 @@ const makeStyles = (colors: Colors) => StyleSheet.create({
     paddingVertical: spacing.md,
     borderBottomWidth: 1,
     borderBottomColor: colors.separator,
-  },
-  headerTitle: {
-    color: colors.text,
-    fontSize: font.md,
-    fontWeight: fontWeight.semibold,
   },
   scroll: {
     flex: 1,

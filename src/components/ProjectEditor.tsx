@@ -20,6 +20,7 @@ import { PillGroup, type PillGroupOption } from './PillGroup';
 import { useGroceryStore } from '../store/useGroceryStore';
 import { InlineAction } from './InlineAction';
 import { SheetHeaderButton } from './SheetHeaderButton';
+import { SheetHeader } from './SheetHeader';
 import { EditorRow } from './EditorRow';
 import { awayNoonIso } from '../utils/awayDates';
 import { useSettingsStore } from '../store/useSettingsStore';
@@ -339,13 +340,16 @@ export function ProjectEditor({ visible, project, isNew, onClose }: Props) {
       scrollStyle={styles.scroll}
       scrollContentStyle={styles.scrollContent}
       header={
-        <>
-          <SheetHeaderButton label="Done" onPress={saveAndClose} />
-          <Text style={styles.headerTitle}>{isNew ? 'New project' : 'Edit project'}</Text>
-          <TouchableOpacity onPress={handleDelete} hitSlop={8} accessibilityRole="button" accessibilityLabel="Delete project">
-            <Ionicons name="trash-outline" size={20} color={colors.red} />
-          </TouchableOpacity>
-        </>
+        <SheetHeader
+          bare
+          title={isNew ? 'New project' : 'Edit project'}
+          left={<SheetHeaderButton label="Done" onPress={saveAndClose} />}
+          right={
+            <TouchableOpacity onPress={handleDelete} hitSlop={8} accessibilityRole="button" accessibilityLabel="Delete project">
+              <Ionicons name="trash-outline" size={20} color={colors.red} />
+            </TouchableOpacity>
+          }
+        />
       }
       footer={
         <>
@@ -802,7 +806,6 @@ const makeStyles = (colors: Colors) => StyleSheet.create({
     paddingHorizontal: spacing.lg, paddingVertical: spacing.md,
     borderBottomWidth: StyleSheet.hairlineWidth, borderBottomColor: colors.separator,
   },
-  headerTitle: { color: colors.text, fontSize: font.md, fontWeight: fontWeight.semibold },
   scroll: { flex: 1 },
   scrollContent: { padding: spacing.md, paddingBottom: 120 },
   titleInput: {

@@ -19,7 +19,6 @@ import {
   ActivityIndicator,
   StyleSheet,
 } from 'react-native';
-import Ionicons from '@expo/vector-icons/Ionicons';
 import { useShallow } from 'zustand/react/shallow';
 import { useKeyboardInsetScroll } from '../hooks/useKeyboardInsetScroll';
 import { useColors } from '../theme/ThemeContext';
@@ -46,6 +45,7 @@ import { groceryNameKey } from '../utils/groceryParse';
 import { sourceFieldsFor, sourcePlanFor } from '../utils/recipeProvenance';
 import { aisleForName } from '../utils/groceryAisles';
 import { sectionsOf } from '../utils/recipeSections';
+import { SheetHeader } from './SheetHeader';
 import { SheetHeaderButton } from './SheetHeaderButton';
 import { EmptyState } from './EmptyState';
 import { RecipeSourcePicker, type RecipeInputMode } from './RecipeSourcePicker';
@@ -945,19 +945,19 @@ export function RecipeCreateSheet({
   return (
     <Modal visible={visible} animationType="slide" presentationStyle="pageSheet" onRequestClose={handleCancel}>
       <View style={styles.root}>
-        <View style={styles.header}>
-          <SheetHeaderButton label="Cancel" role="cancel" onPress={handleCancel} minWidth={72} />
-          <View style={styles.headerTitleWrap}>
-            <Ionicons name="sparkles" size={14} color={colors.purple} />
-            <Text style={styles.headerTitle}>Import a recipe</Text>
-          </View>
-          <SheetHeaderButton
-            label="Create"
-            onPress={handleCreate}
-            disabled={!canCreate}
-            minWidth={72}
-          />
-        </View>
+        <SheetHeader
+          title="Import a recipe"
+          icon="sparkles"
+          left={<SheetHeaderButton label="Cancel" role="cancel" onPress={handleCancel} minWidth={72} />}
+          right={
+            <SheetHeaderButton
+              label="Create"
+              onPress={handleCreate}
+              disabled={!canCreate}
+              minWidth={72}
+            />
+          }
+        />
         {renderBody()}
       </View>
     </Modal>
@@ -976,8 +976,6 @@ function makeStyles(colors: Colors) {
       borderBottomWidth: border.hairline,
       borderBottomColor: colors.separator,
     },
-    headerTitleWrap: { flexDirection: 'row', alignItems: 'center', gap: spacing.xs },
-    headerTitle: { color: colors.text, fontSize: font.md, fontWeight: fontWeight.semibold },
     centered: { flex: 1, alignItems: 'center', justifyContent: 'center', padding: spacing.xl, gap: spacing.md },
     loadingText: { color: colors.textSecondary, fontSize: font.md, textAlign: 'center' },
     intro: {

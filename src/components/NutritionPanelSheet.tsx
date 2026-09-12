@@ -36,6 +36,7 @@ import { NumberPadAccessory, NUMBER_PAD_ACCESSORY_ID } from './NumberPadAccessor
 import { NutritionBarcodeScanSheet } from './NutritionBarcodeScanSheet';
 import { SegmentedControl } from './SegmentedControl';
 import { SheetHeaderButton } from './SheetHeaderButton';
+import { SheetHeader } from './SheetHeader';
 import { useKeyboardInsetScroll } from '../hooks/useKeyboardInsetScroll';
 
 /**
@@ -351,11 +352,11 @@ export function NutritionPanelSheet({ visible, foodName, nutrition, onClose, onS
   return (
     <Modal visible={visible} animationType="slide" presentationStyle="pageSheet" onRequestClose={handleCancel}>
       <View style={styles.root}>
-        <View style={styles.header}>
-          <SheetHeaderButton label="Cancel" role="cancel" onPress={handleCancel} minWidth={64} />
-          <Text style={styles.headerTitle} numberOfLines={1}>{foodName}</Text>
-          <SheetHeaderButton label="Save" onPress={handleSave} minWidth={64} />
-        </View>
+        <SheetHeader
+          title={foodName}
+          left={<SheetHeaderButton label="Cancel" role="cancel" onPress={handleCancel} minWidth={64} />}
+          right={<SheetHeaderButton label="Save" onPress={handleSave} minWidth={64} />}
+        />
 
         <View style={styles.flex}>
           <ScrollView
@@ -518,22 +519,6 @@ function makeStyles(colors: Colors) {
   return StyleSheet.create({
     root: { flex: 1, backgroundColor: colors.bg },
     flex: { flex: 1 },
-    header: {
-      flexDirection: 'row',
-      alignItems: 'center',
-      justifyContent: 'space-between',
-      paddingHorizontal: spacing.md,
-      paddingVertical: spacing.md,
-      borderBottomWidth: border.hairline,
-      borderBottomColor: colors.separator,
-    },
-    headerTitle: {
-      flex: 1,
-      textAlign: 'center',
-      color: colors.text,
-      fontSize: font.md,
-      fontWeight: fontWeight.semibold,
-    },
     body: { padding: spacing.md, paddingBottom: spacing.xl, gap: spacing.sm },
     intro: { color: colors.textSecondary, fontSize: font.sm, lineHeight: 18, marginBottom: spacing.sm },
     // Margin on both sides it needs: the group label below has no top margin of

@@ -63,6 +63,7 @@ import { animateLayout } from '../utils/layoutAnimation';
 import type { Task, Project, TaskGroup, TaskTemplate } from '../types';
 import { TITLE_MAX_LENGTH } from '../types';
 import { SheetHeaderButton } from '../components/SheetHeaderButton';
+import { SheetHeader } from '../components/SheetHeader';
 import { SearchField } from '../components/SearchField';
 import { DetailHeader } from '../components/DetailHeader';
 import { useCopyToClipboard } from '../hooks/useCopyToClipboard';
@@ -996,17 +997,20 @@ export function ProjectDetailScreen() {
                 every sheet in the app gets (fourteen of them, all built the
                 same way out of `SheetHeaderButton`). Two idioms, already
                 decomposed — the button is the shared part, the row isn't. */}
-            <View style={styles.detailHeader}>
-              <SheetHeaderButton
-                label="Cancel"
-                role="cancel"
-                onPress={() => setShowExistingPicker(false)}
-                accessibilityLabel="Close"
-              />
-              <Text style={styles.detailTitleText}>Add existing task</Text>
-              {/* Balances Cancel so the title stays optically centered. */}
-              <View style={styles.headerSpacer} />
-            </View>
+            <SheetHeader
+              title="Add existing task"
+              size="lg"
+              left={
+                <SheetHeaderButton
+                  label="Cancel"
+                  role="cancel"
+                  onPress={() => setShowExistingPicker(false)}
+                  accessibilityLabel="Close"
+                />
+              }
+              // Balances Cancel so the title stays optically centered.
+              right={<View style={styles.headerSpacer} />}
+            />
             <SearchField
               autoFocus
               style={styles.searchBar}
@@ -1196,27 +1200,11 @@ const makeStyles = (colors: Colors) => StyleSheet.create({
     flex: 1,
     backgroundColor: colors.bg,
   },
-  detailHeader: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'space-between',
-    paddingHorizontal: spacing.md,
-    paddingBottom: spacing.md,
-    borderBottomWidth: StyleSheet.hairlineWidth,
-    borderBottomColor: colors.separator,
-  },
   headerSpacer: { width: 48 },
   detailHeaderActions: {
     flexDirection: 'row',
     alignItems: 'center',
     gap: spacing.md,
-  },
-  detailTitleText: {
-    flex: 1,
-    textAlign: 'center',
-    color: colors.text,
-    fontSize: font.lg,
-    fontWeight: fontWeight.semibold,
   },
   // A full-height content container, so the empty state's `flex: 1` centres in
   // the list's viewport rather than collapsing to its own height at the top.

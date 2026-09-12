@@ -17,6 +17,7 @@ import { wouldCreateCycle } from '../utils/templateUtils';
 import { EmptyState } from './EmptyState';
 import type { TaskTemplate } from '../types';
 import { SheetHeaderButton } from './SheetHeaderButton';
+import { SheetHeader } from './SheetHeader';
 
 interface Props {
   visible: boolean;
@@ -55,12 +56,11 @@ export function NestedTemplatePicker({ visible, currentTemplateId, onClose, onSe
       onRequestClose={onClose}
     >
       <View style={styles.root}>
-        <View style={styles.header}>
-          <SheetHeaderButton label="Cancel" role="cancel" onPress={onClose} minWidth={50} />
-          <Text style={styles.headerTitle}>Nest a template</Text>
-          {/* Balances Cancel so the title stays optically centered. */}
-          <View style={styles.headerSpacer} />
-        </View>
+        <SheetHeader
+          title="Nest a template"
+          left={<SheetHeaderButton label="Cancel" role="cancel" onPress={onClose} minWidth={50} />}
+          right={<View style={styles.headerSpacer} />}
+        />
 
         {candidates.length === 0 ? (
           <EmptyState
@@ -111,12 +111,6 @@ export function NestedTemplatePicker({ visible, currentTemplateId, onClose, onSe
 
 const makeStyles = (colors: Colors) => StyleSheet.create({
   root: { flex: 1, backgroundColor: colors.bg },
-  header: {
-    flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between',
-    paddingHorizontal: spacing.md, paddingVertical: spacing.md,
-    borderBottomWidth: StyleSheet.hairlineWidth, borderBottomColor: colors.separator,
-  },
-  headerTitle: { color: colors.text, fontSize: font.md, fontWeight: '600' },
   headerSpacer: { minWidth: 50 },
   list: { paddingVertical: spacing.sm, paddingBottom: spacing.xl },
   row: {

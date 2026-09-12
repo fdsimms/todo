@@ -13,6 +13,7 @@ import { openHealthApp } from '../utils/healthBridge';
 import { parseWeightInput } from '../utils/weightLog';
 import { EditorSheet } from './EditorSheet';
 import { EditorRow } from './EditorRow';
+import { SheetHeader } from './SheetHeader';
 import { SheetHeaderButton } from './SheetHeaderButton';
 import { WhenPicker } from './WhenPicker';
 
@@ -122,11 +123,12 @@ export function LogWeightSheet({ visible, onClose }: Props) {
       scrollStyle={styles.scroll}
       scrollContentStyle={styles.scrollContent}
       header={
-        <>
-          <SheetHeaderButton label="Cancel" role="cancel" onPress={close} minWidth={64} />
-          <Text style={styles.headerTitle}>Record a weight</Text>
-          <SheetHeaderButton label="Save" onPress={save} disabled={!canSave} minWidth={64} />
-        </>
+        <SheetHeader
+          bare
+          title="Record a weight"
+          left={<SheetHeaderButton label="Cancel" role="cancel" onPress={close} minWidth={64} />}
+          right={<SheetHeaderButton label="Save" onPress={save} disabled={!canSave} minWidth={64} />}
+        />
       }
       footer={
         <WhenPicker
@@ -188,7 +190,6 @@ const makeStyles = (colors: Colors) => StyleSheet.create({
     paddingHorizontal: spacing.md,
     paddingVertical: spacing.sm,
   },
-  headerTitle: { fontSize: font.md, fontWeight: fontWeight.semibold, color: colors.text },
   scroll: { flex: 1 },
   scrollContent: { padding: spacing.md, paddingBottom: spacing.xl },
   card: {

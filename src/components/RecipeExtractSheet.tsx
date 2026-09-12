@@ -9,7 +9,6 @@ import {
   StyleSheet,
 } from 'react-native';
 import { useKeyboardInsetScroll } from '../hooks/useKeyboardInsetScroll';
-import Ionicons from '@expo/vector-icons/Ionicons';
 import { useShallow } from 'zustand/react/shallow';
 import { RECIPE_PAGE_MAX_LENGTH, RECIPE_SOURCE_MAX_LENGTH, type Recipe, type RecipeSourceType } from '../types';
 import { useColors } from '../theme/ThemeContext';
@@ -34,6 +33,7 @@ import { describeKeepDays } from '../utils/leftovers';
 import { sourceFieldsFor, sourcePlanFor } from '../utils/recipeProvenance';
 import { aisleForName } from '../utils/groceryAisles';
 import { allSectionsOf, sectionsOf } from '../utils/recipeSections';
+import { SheetHeader } from './SheetHeader';
 import { SheetHeaderButton } from './SheetHeaderButton';
 import { EmptyState } from './EmptyState';
 import { RecipeSourcePicker } from './RecipeSourcePicker';
@@ -832,19 +832,19 @@ export function RecipeExtractSheet({ visible, recipe, onClose }: Props) {
   return (
     <Modal visible={visible} animationType="slide" presentationStyle="pageSheet" onRequestClose={handleCancel}>
       <View style={styles.root}>
-        <View style={styles.header}>
-          <SheetHeaderButton label="Cancel" role="cancel" onPress={handleCancel} minWidth={72} />
-          <View style={styles.headerTitleWrap}>
-            <Ionicons name="sparkles" size={14} color={colors.purple} />
-            <Text style={styles.headerTitle}>From a recipe</Text>
-          </View>
-          <SheetHeaderButton
-            label="Add"
-            onPress={handleApply}
-            disabled={!canApply}
-            minWidth={72}
-          />
-        </View>
+        <SheetHeader
+          title="From a recipe"
+          icon="sparkles"
+          left={<SheetHeaderButton label="Cancel" role="cancel" onPress={handleCancel} minWidth={72} />}
+          right={
+            <SheetHeaderButton
+              label="Add"
+              onPress={handleApply}
+              disabled={!canApply}
+              minWidth={72}
+            />
+          }
+        />
         {renderBody()}
       </View>
     </Modal>
@@ -863,8 +863,6 @@ function makeStyles(colors: Colors) {
       borderBottomWidth: border.hairline,
       borderBottomColor: colors.separator,
     },
-    headerTitleWrap: { flexDirection: 'row', alignItems: 'center', gap: spacing.xs },
-    headerTitle: { color: colors.text, fontSize: font.md, fontWeight: fontWeight.semibold },
     centered: { flex: 1, alignItems: 'center', justifyContent: 'center', padding: spacing.xl, gap: spacing.md },
     loadingText: { color: colors.textSecondary, fontSize: font.md, textAlign: 'center' },
     intro: {

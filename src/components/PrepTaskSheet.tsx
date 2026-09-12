@@ -8,6 +8,7 @@ import { spacing, radius, font, fontWeight, type Colors } from '../theme';
 import { formatOffsetLabel, formatMinutesOffset } from '../utils/templateUtils';
 import { PREP_OFFSET_MIN, PREP_OFFSET_MAX } from '../utils/recipeUtils';
 import { CountStepper } from './CountStepper';
+import { SheetHeader } from './SheetHeader';
 import { SheetHeaderButton } from './SheetHeaderButton';
 import { EditorSheet } from './EditorSheet';
 
@@ -74,11 +75,12 @@ export function PrepTaskSheet({ visible, recipeId, prepTask, onClose }: Props) {
       scrollStyle={styles.scroll}
       scrollContentStyle={styles.scrollContent}
       header={
-        <>
-          <SheetHeaderButton label="Done" onPress={saveAndClose} minWidth={40} />
-          <Text style={styles.headerTitle}>Prep task</Text>
-          <View style={styles.headerSpacer} />
-        </>
+        <SheetHeader
+          bare
+          title="Prep task"
+          left={<SheetHeaderButton label="Done" onPress={saveAndClose} minWidth={40} />}
+          right={<View style={styles.headerSpacer} />}
+        />
       }
     >
       <View style={styles.sectionCard}>
@@ -139,11 +141,6 @@ const makeStyles = (colors: Colors) => StyleSheet.create({
     paddingVertical: spacing.md,
     borderBottomWidth: 1,
     borderBottomColor: colors.separator,
-  },
-  headerTitle: {
-    color: colors.text,
-    fontSize: font.md,
-    fontWeight: fontWeight.semibold,
   },
   headerSpacer: {
     width: 40,

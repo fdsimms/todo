@@ -17,6 +17,7 @@ import { haptics } from '../utils/haptics';
 import { useTemplateStore } from '../store/useTemplateStore';
 import { EmptyState } from './EmptyState';
 import { suggestTemplateItems, describeAIError, type TemplateItemSuggestion } from '../services/aiSuggestions';
+import { SheetHeader } from './SheetHeader';
 import { SheetHeaderButton } from './SheetHeaderButton';
 
 interface Props {
@@ -144,18 +145,18 @@ export function TemplateSuggestionsSheet({ visible, templateId, templateName, ex
       onRequestClose={handleCancel}
     >
       <View style={styles.root}>
-        <View style={styles.header}>
-          <SheetHeaderButton label="Cancel" role="cancel" onPress={handleCancel} />
-          <View style={styles.headerTitleWrap}>
-            <Ionicons name="sparkles" size={14} color={colors.purple} />
-            <Text style={styles.headerTitle}>Suggested tasks</Text>
-          </View>
-          <SheetHeaderButton
-            label={acceptedCount > 0 ? `Add ${acceptedCount}` : 'Add'}
-            onPress={handleAdd}
-            disabled={!canAdd}
-          />
-        </View>
+        <SheetHeader
+          title="Suggested tasks"
+          icon="sparkles"
+          left={<SheetHeaderButton label="Cancel" role="cancel" onPress={handleCancel} />}
+          right={
+            <SheetHeaderButton
+              label={acceptedCount > 0 ? `Add ${acceptedCount}` : 'Add'}
+              onPress={handleAdd}
+              disabled={!canAdd}
+            />
+          }
+        />
 
         {loading ? (
           <View style={styles.centered}>
@@ -229,8 +230,6 @@ const makeStyles = (colors: Colors) => StyleSheet.create({
     paddingHorizontal: spacing.md, paddingVertical: spacing.md,
     borderBottomWidth: StyleSheet.hairlineWidth, borderBottomColor: colors.separator,
   },
-  headerTitleWrap: { flexDirection: 'row', alignItems: 'center', gap: spacing.xs },
-  headerTitle: { color: colors.text, fontSize: font.md, fontWeight: '600' },
   disabled: { opacity: 0.4 },
   centered: { flex: 1, alignItems: 'center', justifyContent: 'center', padding: spacing.xl, gap: spacing.md },
   loadingText: { color: colors.textSecondary, fontSize: font.md, textAlign: 'center' },

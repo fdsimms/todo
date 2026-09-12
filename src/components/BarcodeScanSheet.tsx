@@ -32,6 +32,7 @@ import { useGroceryStore } from '../store/useGroceryStore';
 import { useSettingsStore } from '../store/useSettingsStore';
 import { useKeyboardInsetScroll } from '../hooks/useKeyboardInsetScroll';
 import { SheetHeaderButton } from './SheetHeaderButton';
+import { SheetHeader } from './SheetHeader';
 import { InlineAction } from './InlineAction';
 import { CatalogLinkPicker } from './CatalogLinkPicker';
 import { ProductPicker } from './ProductPicker';
@@ -862,18 +863,18 @@ export function BarcodeScanSheet({ visible, onClose, onApply, context }: Props) 
   return (
     <Modal visible={visible} animationType="slide" presentationStyle="pageSheet" onRequestClose={handleCancel}>
       <View style={styles.root}>
-        <View style={styles.header}>
-          <SheetHeaderButton label="Cancel" role="cancel" onPress={handleCancel} minWidth={64} />
-          <Text style={styles.headerTitle}>
-            {CONTEXT_COPY[context].title}
-          </Text>
-          <SheetHeaderButton
-            label={CONTEXT_COPY[context].confirmLabel}
-            onPress={handleApply}
-            disabled={includedCount === 0}
-            minWidth={64}
-          />
-        </View>
+        <SheetHeader
+          title={CONTEXT_COPY[context].title}
+          left={<SheetHeaderButton label="Cancel" role="cancel" onPress={handleCancel} minWidth={64} />}
+          right={
+            <SheetHeaderButton
+              label={CONTEXT_COPY[context].confirmLabel}
+              onPress={handleApply}
+              disabled={includedCount === 0}
+              minWidth={64}
+            />
+          }
+        />
 
         {camera()}
 
@@ -1193,16 +1194,6 @@ export function BarcodeScanSheet({ visible, onClose, onApply, context }: Props) 
 function makeStyles(colors: Colors) {
   return StyleSheet.create({
     root: { flex: 1, backgroundColor: colors.bg },
-    header: {
-      flexDirection: 'row',
-      alignItems: 'center',
-      justifyContent: 'space-between',
-      paddingHorizontal: spacing.md,
-      paddingVertical: spacing.md,
-      borderBottomWidth: border.hairline,
-      borderBottomColor: colors.separator,
-    },
-    headerTitle: { color: colors.text, fontSize: font.md, fontWeight: fontWeight.semibold },
     // Tall enough to frame a box at arm's length, short enough to leave the
     // scanned rows on screen — seeing the last read land is the whole feedback
     // loop, and a full-bleed viewfinder puts it behind the camera.

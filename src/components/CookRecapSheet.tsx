@@ -25,6 +25,7 @@ import type { ClassifiedIngredient } from '../utils/mealPlanGroceries';
 import { RECIPE_VOTE_LABELS, type RecipeVote } from '../types';
 import { NumberPadAccessory, NUMBER_PAD_ACCESSORY_ID } from './NumberPadAccessory';
 import { SheetHeaderButton } from './SheetHeaderButton';
+import { SheetHeader } from './SheetHeader';
 import { SegmentedControl, type SegmentOption } from './SegmentedControl';
 import { InlineAction } from './InlineAction';
 import { ScrollEdgeFade } from './ScrollEdgeFade';
@@ -336,15 +337,17 @@ export function CookRecapSheet({
             { opacity: sheetOpacity, transform: [{ scale: scaleAnim }, { translateY: translateYAnim }] },
           ]}
         >
-          <View style={styles.header}>
-            <SheetHeaderButton label="Skip" role="cancel" onPress={dismiss} minWidth={80} />
-            <Text style={styles.headerTitle} numberOfLines={1}>Meal eaten</Text>
-            <SheetHeaderButton
-              label={ticked.size > 0 ? `Mark ${ticked.size}` : 'Done'}
-              onPress={handleDone}
-              minWidth={80}
-            />
-          </View>
+          <SheetHeader
+            title="Meal eaten"
+            left={<SheetHeaderButton label="Skip" role="cancel" onPress={dismiss} minWidth={80} />}
+            right={
+              <SheetHeaderButton
+                label={ticked.size > 0 ? `Mark ${ticked.size}` : 'Done'}
+                onPress={handleDone}
+                minWidth={80}
+              />
+            }
+          />
 
           <ScrollView
             style={styles.scrollBody}
@@ -569,16 +572,6 @@ const makeStyles = (colors: Colors, sheetMaxHeight: number) => StyleSheet.create
     borderBottomRightRadius: 20,
     overflow: 'hidden',
   },
-  header: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'space-between',
-    paddingHorizontal: spacing.md,
-    paddingVertical: spacing.md,
-    borderBottomWidth: border.hairline,
-    borderBottomColor: colors.separator,
-  },
-  headerTitle: { color: colors.text, fontSize: font.md, fontWeight: fontWeight.semibold },
   body: { paddingBottom: spacing.xl },
   subject: {
     color: colors.text,
