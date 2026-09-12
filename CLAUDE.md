@@ -416,7 +416,7 @@ file: the two maps are indexes, not write-ups.
 | a store that fills itself from outside the app, and a read that lands too late | `src/utils/refreshGuard.ts` — the calendar, the weather, Apple Health and Screen Time all await a device read and then write what came back. A generation token per independent read decides whether the answer is still the one being asked for; `clear()` moves it on, which is what stops a revoked read writing its data back after the user switched the feature off |
 | syncing between devices | `src/utils/syncEngine.ts` + `syncMerge.ts` + `cloudKitTransport.ts` + `src/store/useSyncStore.ts`. Two transports now, and `runSyncAll` runs them **sequentially** on purpose: they share one database across an `await`, so in parallel one pushes back what the other just applied |
 | syncing with something that isn't an Apple device | `src/utils/httpSyncTransport.ts` + `mcp/src/syncStore.ts` — see `docs/arch/mcp-server.md`. A payload store the user runs; it never parses a payload, which is what keeps the merge rules on the devices. Configuration is the opt-in (a URL in settings, a token in the keychain, both or neither) |
-| letting Claude read or write the app's data | `mcp/` — see `docs/arch/mcp-server.md`. Its own npm package, deliberately not a dependency of the app; it opens a `todo.db` in Node by putting `mcp/src/expoSqliteShim.ts` in front of `expo-sqlite`, so the whole of `src/db` and `src/utils` runs unchanged. It reads tasks, projects, groceries and the three day-keyed logs, and `create_template`/`create_task` write, behind a second token (`MCP_WRITE_TOKEN`) whose scope is decided per request. Nothing is deployed. **weight is structurally unreadable** (HealthKit is the record and there is no table), which is the health model working rather than a gap |
+| letting Claude read or write the app's data | `mcp/` — see `docs/arch/mcp-server.md`. Its own npm package, deliberately not a dependency of the app; it opens a `todo.db` in Node by putting `mcp/src/expoSqliteShim.ts` in front of `expo-sqlite`, so the whole of `src/db` and `src/utils` runs unchanged. It reads tasks, projects, groceries and the three day-keyed logs, and writes templates, tasks, completions, reschedules and the grocery list behind a second token (`MCP_WRITE_TOKEN`) whose scope is decided per request. Each write moved the app's own core out of a store rather than reimplementing it: `taskDraft.ts`, `taskCompletion.ts`, `groceryAdd.ts`. Nothing is deployed. **weight is structurally unreadable** (HealthKit is the record and there is no table), which is the health model working rather than a gap |
 | exporting or restoring a backup | `src/utils/backup.ts` + `src/utils/backupFile.ts` |
 | writing tasks to the system calendar | `src/utils/calendarSync.ts` (+ `deadlineCalendarSync.ts`, `mealCalendarSync.ts`) |
 | reading free/busy out of the system calendar | `src/utils/calendarBusy.ts` + `src/store/useCalendarStore.ts` |
@@ -443,14 +443,14 @@ file: the two maps are indexes, not write-ups.
 them source rather than tests. The ten biggest source files:
 
 `store/useTaskStore.ts` (7.6k), `components/TaskEditor.tsx` (5.9k), `db/database.ts` (5.9k),
-`types/index.ts` (5.8k), `store/useGroceryStore.ts` (5.4k), `screens/TodayScreen.tsx` (4.6k),
+`types/index.ts` (5.8k), `store/useGroceryStore.ts` (5.1k), `screens/TodayScreen.tsx` (4.6k),
 `components/TaskItem.tsx` (4.4k), `utils/demoSeed.ts` (4.0k),
 `store/useSettingsStore.ts` (3.8k), `screens/BackfillScreen.tsx` (3.5k).
 
 Grep for the symbol and read the surrounding range; reading any of them end to end costs more
 context than the rest of the task will. `docs/module-map.md` says which file owns what.
 
-The suite is **336 test files**, and `npm test` runs all of them in well under a minute.
+The suite is **337 test files**, and `npm test` runs all of them in well under a minute.
 `npx tsc --noEmit` is a few seconds once `.tsbuildinfo` exists, so run both, every time.
 
 <!-- END GENERATED: repo-stats -->

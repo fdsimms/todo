@@ -1,7 +1,7 @@
 # todo-mcp
 
-An MCP server over a replica of the app's database. **Phase 2: the replica syncs, and one tool
-writes. Nothing is deployed behind real auth.** The design, the phases and the
+An MCP server over a replica of the app's database. **Phase 2: the replica syncs, and it writes.
+Nothing is deployed behind real auth.** The design, the phases and the
 reasoning are in [`docs/arch/mcp-server.md`](../docs/arch/mcp-server.md); read that first, this
 file is only how to run it.
 
@@ -49,14 +49,14 @@ Do not put this on a public address.
 
 ## Tools
 
-Read-only except the last, which needs `MCP_WRITE_TOKEN`.
+Read-only except those marked **Write**, which need `MCP_WRITE_TOKEN`.
 
 | Tool | What it answers |
 |---|---|
 | `list_tasks` | Tasks in one of the app's lenses: `today`, `later`, `unscheduled`, `inbox`, `all`. Filters by category, tag, project. |
 | `search_tasks` | The app's own fuzzy ranking over titles, notes and project names. |
 | `get_task` | One task, with its subtasks, chain steps, project, and why it is not on Today. |
-| `list_projects` | Active projects and how many live tasks each has. |
+| `list_projects` | Active projects and how far through each one is, counting a recurring member once rather than once per completion. |
 | `list_grocery_items` | The grocery list, or the whole catalog with `onListOnly: false`. |
 | `list_food_log` | Logged food over a day range, with summed nutrients. |
 | `list_mood_logs` | Mood check-ins: rating, symptoms, context tags, notes. |
@@ -66,6 +66,9 @@ Read-only except the last, which needs `MCP_WRITE_TOKEN`.
 | `create_task` | **Write.** Adds one task, with the app's own defaults and title rules applied. |
 | `complete_task` | **Write.** Ticks one off, spawning whatever that spawns: the next occurrence, the next chain step, the next set of a dated series. |
 | `defer_task` | **Write.** Moves a task to a date, or clears its date. |
+| `add_grocery_item` | **Write.** Puts something on the list, re-using the shelf item the user already has where there is one. |
+| `check_off_grocery_item` | **Write.** Ticks something off in the trolley, or un-ticks it. |
+| `remove_from_grocery_list` | **Write.** Takes something off the list. Does not delete it. |
 
 `complete_task` refuses two things rather than doing them quietly, and both are
 deliberate. A task that **cannot** be completed says so: a negative habit has no
@@ -82,6 +85,18 @@ cancelled or scheduled, no calendar event written, nothing sent to Apple Health.
 A dose *is* recorded where the task names a medication, because that is the
 app's own record rather than somebody else's. The rest belongs to whichever
 device the completion syncs to.
+
+The grocery writes lean on one property of this schema that is easy to get wrong from outside:
+**there is one catalog and it is also the list.** A `GroceryItem` is the shelf item and lives for
+ever; whether it is in a trolley right now is a separate membership row. So `add_grocery_item` on a
+name the user has bought before writes no new shelf item at all, it re-lists the one already there,
+with its aisle, purchase history, prices and pantry state intact. Singular and plural resolve to
+the same item, so "serrano pepper" finds an existing "Serrano peppers" instead of minting a
+near-duplicate that splits one shelf item in two.
+
+For the same reason `remove_from_grocery_list` parks rather than deletes, and there is deliberately
+no tool that deletes a shelf item: dropping one destroys a substitute or a price history with no
+undo, and it is not the sort of thing to do on a model's say-so.
 
 The three log tools take the same range: `days` counts back from today (7 by default), or pass
 `from`/`to` as `YYYY-MM-DD`. There is deliberately **no weight tool** — weight lives in Apple

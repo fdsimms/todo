@@ -163,26 +163,34 @@ export interface SerializedProject {
   title: string;
   notes?: string;
   deadline?: string;
-  /** Live members only. A completed one-off is done, not outstanding. */
+  /** Members finished, by the app's own reckoning. */
+  done: number;
+  /** Members in total. One per *series*, not one per row. */
+  total: number;
+  /** `total - done`, stated rather than left to be worked out. */
   outstanding: number;
 }
 
 export function listProjects(replica: Replica): SerializedProject[] {
-  const tasks = replica.tasks();
-
   // Archiving is an explicit "keep this, out of my way", so an archived project
   // is not part of the answer to "what am I working on".
-  return replica.projects().filter((p: Project) => !p.archived).map((p: Project) => ({
-    id: p.id,
-    title: p.title,
-    notes: p.notes || undefined,
-    deadline: p.deadline ?? undefined,
-    // Deliberately a plain count of live members rather than `projectProgress`'
-    // answer: that one collapses recurrence tombstones and series by identity,
-    // and reaching it means standing up useProjectStore. Phase 2 should use the
-    // real thing; until then this must not be reported as "progress".
-    outstanding: tasks.filter(t => t.projectId === p.id && !t.completed && !t.parentId).length,
-  }));
+  return replica.projects().filter((p: Project) => !p.archived).map((p: Project) => {
+    // The app's own progress read. A plain count of incomplete rows was what
+    // this reported before, and it disagrees with the app on every project
+    // holding a recurring member: each completion leaves a tombstone, so the
+    // denominator grew for ever and a project of five habits worked daily for a
+    // month read as hundreds of members.
+    const { done, total } = replica.projectProgress(p.id);
+    return {
+      id: p.id,
+      title: p.title,
+      notes: p.notes || undefined,
+      deadline: p.deadline ?? undefined,
+      done,
+      total,
+      outstanding: total - done,
+    };
+  });
 }
 
 export interface SerializedGroceryItem {
@@ -195,21 +203,29 @@ export interface SerializedGroceryItem {
   checked?: boolean;
 }
 
-export function listGroceryItems(
-  replica: Replica,
-  input: { onListOnly?: boolean } = {}
-): SerializedGroceryItem[] {
-  const items = replica.groceryItems();
-  const wanted = input.onListOnly === false ? items : items.filter((i: GroceryItem) => i.onList);
-
-  return wanted.map((i: GroceryItem) => ({
+/**
+ * One row's projection, shared by the list and by every write that reports what
+ * it did. Separate so a write cannot describe an item differently from the way
+ * a read does a moment later.
+ */
+export function serializeGroceryItem(i: GroceryItem): SerializedGroceryItem {
+  return {
     id: i.id,
     name: i.name,
     quantity: i.quantity || undefined,
     aisle: i.aisle || undefined,
     onList: i.onList,
     checked: i.checked ? true : undefined,
-  }));
+  };
+}
+
+export function listGroceryItems(
+  replica: Replica,
+  input: { onListOnly?: boolean } = {}
+): SerializedGroceryItem[] {
+  const items = replica.groceryItems();
+  const wanted = input.onListOnly === false ? items : items.filter((i: GroceryItem) => i.onList);
+  return wanted.map(serializeGroceryItem);
 }
 
 // ---------------------------------------------------------------------------
@@ -493,6 +509,52 @@ export function completeTask(
  * `deferUntil` and leaves `dueDate` alone, which is the opposite of what a
  * caller would assume from asking for a date. See `Replica.deferTask`.
  */
+export interface GroceryWriteResult {
+  item: SerializedGroceryItem;
+  /**
+   * What actually happened, in words.
+   *
+   * An add is three different events wearing one name — a shelf item minted, a
+   * known one put back in the trolley, a name already in the trolley touched —
+   * and a caller told only "ok" would report the wrong one. It matters most in
+   * the case that looks like a no-op: re-adding something already on the list
+   * deliberately leaves its tick alone, and that is worth saying rather than
+   * letting it read as a failed write.
+   */
+  outcome: string;
+}
+
+export function addGroceryItem(
+  replica: Replica,
+  name: string,
+  opts?: { quantity?: string | null; note?: string | null },
+): GroceryWriteResult {
+  const { item, isNew, wasOnList } = replica.addGroceryItem(name, opts);
+  const outcome = isNew
+    ? `Added "${item.name}" to the list, filed under ${item.aisle}.`
+    : wasOnList
+      ? `"${item.name}" was already on the list, so nothing moved. Its tick and its place in the aisle order are untouched.`
+      : `"${item.name}" was already in the catalog, so it went back on the list with the aisle and history it already had.`;
+  return { item: serializeGroceryItem(item), outcome };
+}
+
+export function setGroceryChecked(replica: Replica, id: string, checked: boolean): GroceryWriteResult {
+  const item = replica.setGroceryChecked(id, checked);
+  return {
+    item: serializeGroceryItem(item),
+    outcome: checked ? `Checked "${item.name}" off.` : `Un-checked "${item.name}".`,
+  };
+}
+
+export function removeFromGroceryList(replica: Replica, id: string): GroceryWriteResult {
+  const item = replica.removeFromGroceryList(id);
+  return {
+    item: serializeGroceryItem(item),
+    // Worth saying, because "remove" reads as a delete and this is not one.
+    outcome: `Took "${item.name}" off the list. It stays in the catalog with everything recorded on it, so adding it again brings its aisle and history back.`,
+  };
+}
+
 export function deferTask(replica: Replica, id: string, date: string | null): SerializedTask {
   const parsed = date === null ? null : new Date(date);
   if (parsed !== null && Number.isNaN(parsed.getTime())) {

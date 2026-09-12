@@ -59,6 +59,7 @@ function stubReplica(over: Partial<Replica> = {}): Replica {
     tasks: () => tasks,
     taskById: (id: string) => tasks.find(t => t.id === id) ?? null,
     projects: () => [],
+    projectProgress: () => ({ done: 0, total: 0 }),
     categories: () => [],
     groceryItems: () => [],
     isVisible: (t: Task) => t.id.startsWith('today'),
@@ -92,6 +93,9 @@ function stubReplica(over: Partial<Replica> = {}): Replica {
     createTask: () => { throw new Error('not stubbed'); },
     completeTask: () => { throw new Error('not stubbed'); },
     deferTask: () => { throw new Error('not stubbed'); },
+    addGroceryItem: () => { throw new Error('not stubbed'); },
+    setGroceryChecked: () => { throw new Error('not stubbed'); },
+    removeFromGroceryList: () => { throw new Error('not stubbed'); },
     deviceId: () => 'stub-device',
     syncable: () => true,
     ...over,
@@ -209,13 +213,23 @@ describe('listProjects', () => {
     expect(listProjects(stubReplica({ projects: () => projects })).map(p => p.id)).toEqual(['p1']);
   });
 
-  it('counts live top-level members only', () => {
-    const tasks = [
-      task({ id: 'a', title: 'Open', projectId: 'p1' }),
-      task({ id: 'b', title: 'Done', projectId: 'p1', completed: true }),
-      task({ id: 'c', title: 'Subtask', projectId: 'p1', parentId: 'a' }),
-    ];
-    expect(listProjects(withTasks(tasks, { projects: () => projects }))[0].outstanding).toBe(1);
+  // The counting itself is the app's own projectProgress, tested against a real
+  // database in replica.test.ts. What this layer owes is reporting it faithfully
+  // rather than recounting rows, which is what it used to do.
+  it('reports the progress the replica gives, and derives outstanding from it', () => {
+    const result = listProjects(stubReplica({
+      projects: () => projects,
+      projectProgress: () => ({ done: 3, total: 8 }),
+    }))[0];
+    expect(result).toMatchObject({ done: 3, total: 8, outstanding: 5 });
+  });
+
+  it('reports a finished project as nothing outstanding', () => {
+    const result = listProjects(stubReplica({
+      projects: () => projects,
+      projectProgress: () => ({ done: 4, total: 4 }),
+    }))[0];
+    expect(result.outstanding).toBe(0);
   });
 });
 

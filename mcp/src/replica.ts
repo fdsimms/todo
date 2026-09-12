@@ -64,6 +64,9 @@ type TemplateUtilsModule = typeof import('../../src/utils/templateUtils');
 type TaskDraftModule = typeof import('../../src/utils/taskDraft');
 type TaskCompletionModule = typeof import('../../src/utils/taskCompletion');
 type TaskMovesModule = typeof import('../../src/utils/taskMoves');
+type GroceryAddModule = typeof import('../../src/utils/groceryAdd');
+type GroceryAislesModule = typeof import('../../src/utils/groceryAisles');
+type GroceryParseModule = typeof import('../../src/utils/groceryParse');
 type IdModule = typeof import('../../src/utils/id');
 
 /** What a caller may say about a completion. `CompletionOptions` without the miss. */
@@ -71,6 +74,22 @@ export type CompletionOptions = Pick<
   import('../../src/utils/taskCompletion').CompletionOptions,
   'deliverableValue' | 'completedAt'
 >;
+
+/** What a caller may say about one grocery add, past the name. */
+export interface GroceryAddOptions {
+  quantity?: string | null;
+  note?: string | null;
+  /** Which trolley. Omitted or null is the list at home. */
+  listId?: string | null;
+}
+
+/** What an add did. `isNew` separates a minted shelf item from a re-listed one. */
+export interface GroceryAddOutcome {
+  item: GroceryItem;
+  isNew: boolean;
+  /** True when the row was already in some trolley, so this changed little. */
+  wasOnList: boolean;
+}
 
 /** What a completion did, past the row itself. */
 export interface CompletedResult {
@@ -101,6 +120,22 @@ export interface Replica {
   tasks(): Task[];
   taskById(id: string): Task | null;
   projects(): Project[];
+  /**
+   * How far through a project is, by the app's own reckoning.
+   *
+   * `projectProgress` rather than a count of incomplete members, because the
+   * two disagree on every project holding a recurring task or a dated series.
+   * A daily habit leaves one tombstone per completion, so counting rows grows
+   * the denominator for ever; the real read groups rows by identity (a
+   * `seriesId`, else the root of the `previousOccurrenceId` chain) and counts
+   * each once. It also excludes archived members from both sides, so an
+   * archived-but-incomplete task cannot cap a project below 100% for good.
+   *
+   * Safe to reach from here even though it lives in a store module: it is a
+   * top-level export taking the tasks as an argument, and `useProjectStore`'s
+   * own imports are clean of anything native.
+   */
+  projectProgress(projectId: string): { done: number; total: number };
   categories(): Category[];
   groceryItems(): GroceryItem[];
 
@@ -231,6 +266,53 @@ export interface Replica {
    */
   deferTask(id: string, date: Date | null): Task;
 
+  /**
+   * Put a name on the shopping list, exactly as typing it into the app would.
+   *
+   * `planGroceryAdd` (`src/utils/groceryAdd.ts`) decides everything; this only
+   * writes what it decided. The two rules worth knowing before reading the
+   * code, both from docs/arch/groceries.md:
+   *
+   * **There is one catalog and it is also the list.** A `GroceryItem` is the
+   * shelf item and lives for ever; `GroceryListEntry` is whether it is in a
+   * trolley right now. So adding a name the user has bought before writes no
+   * new row at all, it re-lists the row that is already there, with its aisle,
+   * its purchase history and its pantry state intact.
+   *
+   * **The find is not an equality test.** `catalogItemForKey` resolves
+   * singular against plural, so "serrano pepper" finds an existing "Serrano
+   * peppers" rather than minting a near-duplicate that splits one shelf item in
+   * two. This is the read the arch doc names as the mistake to avoid.
+   *
+   * What it does not do: the cart-hold animation, the undo, and the AI aisle
+   * classification a row landing in Other triggers on device. The last is the
+   * only one with teeth, and it is the right call here regardless — it is a
+   * network request to Anthropic, and a server quietly making them on the
+   * user's key because a model added milk is not a thing to do unasked.
+   */
+  addGroceryItem(name: string, opts?: GroceryAddOptions): GroceryAddOutcome;
+
+  /**
+   * Tick something off in the trolley, or un-tick it.
+   *
+   * Written straight through `dbSetGroceryListEntry` rather than through a
+   * builder, because unlike the add there is nothing to decide: checked lives
+   * on the membership, and that db function is also the only writer of the
+   * mirror columns on the item row (`dbSyncGroceryHomeColumns`), so the row and
+   * the entry cannot disagree.
+   */
+  setGroceryChecked(id: string, checked: boolean): GroceryItem;
+
+  /**
+   * Take something off the list, which parks it rather than deleting it.
+   *
+   * The catalog row stays, with everything anyone ever recorded on it. That is
+   * the app's own rule and not a shortcut: a row leaves only when asked, and
+   * dropping one wrongly destroys a substitute or a price history with no undo.
+   * A recipe's claim on the quantity ends with the shop, so that is cleared.
+   */
+  removeFromGroceryList(id: string): GroceryItem;
+
   deviceId(): string;
   /** False for a demo database. A demo database is never synced. */
   syncable(): boolean;
@@ -299,12 +381,16 @@ export function openReplica(path = process.env.TODO_DB_PATH ?? 'todo.db'): Repli
   const taskDraft = require('../../src/utils/taskDraft') as TaskDraftModule;
   const completion = require('../../src/utils/taskCompletion') as TaskCompletionModule;
   const moves = require('../../src/utils/taskMoves') as TaskMovesModule;
+  const groceryAdd = require('../../src/utils/groceryAdd') as GroceryAddModule;
+  const aisles = require('../../src/utils/groceryAisles') as GroceryAislesModule;
+  const parse = require('../../src/utils/groceryParse') as GroceryParseModule;
   const { generateId } = require('../../src/utils/id') as IdModule;
   const { useMedicationStore } = require('../../src/store/useMedicationStore') as typeof import('../../src/store/useMedicationStore');
   const { registerTaskSource } = require('../../src/utils/blockerRegistry') as typeof import('../../src/utils/blockerRegistry');
   const { registerPersonSource } = require('../../src/utils/peopleRegistry') as typeof import('../../src/utils/peopleRegistry');
   const { useSettingsStore } = require('../../src/store/useSettingsStore') as typeof import('../../src/store/useSettingsStore');
   const { useCategoryStore } = require('../../src/store/useCategoryStore') as typeof import('../../src/store/useCategoryStore');
+  const { projectProgress } = require('../../src/store/useProjectStore') as typeof import('../../src/store/useProjectStore');
   /* eslint-enable @typescript-eslint/no-require-imports */
 
   db.initDatabase();
@@ -343,6 +429,7 @@ export function openReplica(path = process.env.TODO_DB_PATH ?? 'todo.db'): Repli
 
     tasks,
     projects,
+    projectProgress: (projectId: string) => projectProgress(projectId, tasks()),
     taskById: (id: string) => tasks().find(t => t.id === id) ?? null,
     categories: () => db.dbGetAllCategories(),
     groceryItems: () => db.dbGetAllGroceryItems(),
@@ -533,6 +620,93 @@ export function openReplica(path = process.env.TODO_DB_PATH ?? 'todo.db'): Repli
       db.dbUpdateTask(moved);
       refresh();
       return moved;
+    },
+
+    addGroceryItem(name: string, opts?: GroceryAddOptions): GroceryAddOutcome {
+      if (!name.trim()) throw new Error('An item needs a name.');
+
+      const items = db.dbGetAllGroceryItems();
+      const entries = db.dbGetAllGroceryListEntries();
+      const plan = groceryAdd.planGroceryAdd(
+        name,
+        {
+          items,
+          itemProducts: db.dbGetAllItemProducts(),
+          listEntries: entries,
+          aisleOverrides: db.dbGetGroceryAisleOverrides(),
+          // The stored order alone is not the live one: normalizeAisleOrder
+          // re-appends the shipped defaults on every read, which is how a
+          // later version's bigger list arrives with no migration, and applies
+          // the hidden-aisle tombstones that stop a deleted one coming back.
+          // Skipping it would let placeAisle clamp a perfectly good aisle to
+          // Other on a device that has never reordered anything.
+          aisleOrder: aisles.normalizeAisleOrder(
+            db.dbGetGroceryAisleOrder(),
+            items.map(i => i.aisle),
+            db.dbGetGroceryHiddenAisles(),
+          ),
+          listId: opts?.listId ?? null,
+          now: new Date().toISOString(),
+        },
+        // Only the fields a caller here can state. A brand, a variant, a
+        // barcode category and a choice group all belong to paths with more
+        // context than a name typed at a server.
+        //
+        // Supplying an override means the parse is skipped, so the name has to
+        // be parsed out first or "2 gal milk" with an explicit note would file
+        // a shelf item called "2 gal milk".
+        opts?.quantity !== undefined || opts?.note !== undefined
+          ? (() => {
+            const parsed = parse.parseGroceryInput(name);
+            return {
+              name: parsed.name,
+              quantity: opts?.quantity ?? parsed.quantity,
+              note: opts?.note ?? null,
+            };
+          })()
+          : undefined,
+      );
+
+      if (plan.product) db.dbSetItemProduct(plan.product);
+      if (plan.isNew) db.dbInsertGroceryItem(plan.item);
+      else db.dbUpdateGroceryItem(plan.item);
+      // After the row, and the only writer of the item's mirror columns.
+      if (plan.entry) db.dbSetGroceryListEntry(plan.entry);
+
+      refresh();
+      return { item: plan.item, isNew: plan.isNew, wasOnList: plan.wasOnList };
+    },
+
+    setGroceryChecked(id: string, checked: boolean): GroceryItem {
+      const item = db.dbGetAllGroceryItems().find(i => i.id === id);
+      if (!item) throw new Error(`No grocery item with id ${id}.`);
+
+      // Checked belongs to a trolley, so there has to be one holding this item.
+      const entry = db.dbGetAllGroceryListEntries().find(e => e.itemId === id && e.listId === null);
+      if (!entry) throw new Error(`"${item.name}" is not on the list, so there is nothing to check off.`);
+
+      db.dbSetGroceryListEntry({ ...entry, checked });
+      refresh();
+      return db.dbGetAllGroceryItems().find(i => i.id === id)!;
+    },
+
+    removeFromGroceryList(id: string): GroceryItem {
+      const item = db.dbGetAllGroceryItems().find(i => i.id === id);
+      if (!item) throw new Error(`No grocery item with id ${id}.`);
+      if (!item.onList) throw new Error(`"${item.name}" is not on the list.`);
+
+      // A recipe's claim on the quantity ends with the shop, so it does not
+      // ride back onto the catalog row.
+      const parked: GroceryItem = {
+        ...item,
+        quantity: item.quantityFromRecipe ? null : item.quantity,
+        quantityFromRecipe: false,
+      };
+      db.dbUpdateGroceryItem(parked);
+      db.dbDeleteGroceryListEntry(id, null);
+
+      refresh();
+      return db.dbGetAllGroceryItems().find(i => i.id === id)!;
     },
 
     deviceId: () => db.dbGetDeviceId(),
