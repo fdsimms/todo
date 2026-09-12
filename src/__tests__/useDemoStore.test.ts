@@ -40,6 +40,7 @@ import { awaySpanOf, awayStatus, awayNights, nextAwayProject } from '../utils/aw
 import { pantryEntries } from '../utils/grocerySuggest';
 import { substituteQuantity, substitutesFor } from '../utils/itemSubs';
 import { standingSwapMap } from '../utils/standingSwaps';
+import { annotateSteps, stepIngredientLines } from '../utils/stepIngredients';
 import { coveringVariety, varietyIndex } from '../utils/itemVarieties';
 import { normalizeGtin } from '../utils/gtin';
 import { nutritionFor } from '../utils/foodNutrition';
@@ -47,6 +48,7 @@ import { classifyPlanned, plannedIngredientsForRecipe } from '../utils/mealPlanG
 import { activeComponents, activeIngredients, flattenRecipeIngredients, recipeMap } from '../utils/recipeComponents';
 import { catalogMatchSummary, matchIngredientsToCatalog } from '../utils/ingredientCatalogMatch';
 import { cookSteps, stepsFromNotes } from '../utils/cookMode';
+import type { Recipe } from '../types';
 import { kitchenEvents, kitchenHistoryDays } from '../utils/kitchenHistory';
 import { mealSlotSourceId, parseMealSlotSource } from '../utils/mealSlotTasks';
 import type { MealSlot } from '../types';
@@ -2850,6 +2852,65 @@ describe('demo seed — groceries, recipes, meals and the fridge', () => {
     const method = cookSteps(fromNotes!, byId);
     expect(method.some(s => s.fromNotes && s.whole)).toBe(true);
     expect(method.some(s => !s.fromNotes && !s.whole)).toBe(true);
+  });
+
+  it('seeds a method whose steps carry their own amounts and a swap', () => {
+    // The inline annotation (stepIngredients.ts) is derived rather than stored,
+    // so it only shows where a seeded method happens to name a seeded line —
+    // which is exactly how it reads as a feature the app doesn't have if the
+    // seed's prose drifts away from its ingredient lists.
+    const { items, itemSubs } = useGroceryStore.getState();
+    const swaps = standingSwapMap(itemSubs, items);
+    const { recipes } = useRecipeStore.getState();
+    const recipesById = recipeMap(recipes);
+
+    const read = (recipe: Recipe) => annotateSteps(
+      recipe.steps.map(s => ({ id: s.id, text: s.text, recipeId: recipe.id })),
+      stepIngredientLines(
+        flattenRecipeIngredients(recipe, recipesById, undefined, swaps),
+        1,
+        'asWritten',
+      ),
+    );
+    const notes = (recipe: Recipe) => [...read(recipe).values()]
+      .flat()
+      .flatMap(seg => (seg.kind === 'ingredient' ? [seg.note] : []));
+
+    // The substitution half: this recipe's milk line reads as oat milk, and its
+    // first step names milk.
+    expect(notes(recipes.find(r => r.name === 'Overnight oats')!))
+      .toContain('oat milk instead, 1 cup');
+
+    // The amount half, on the one recipe holding "brown sugar" and "sugar" as
+    // separate lines: the whisking step's "brown sugar" takes the longest match,
+    // and the frosting step's plain "sugar" goes to the line actually called
+    // that rather than to the alias the brown sugar line also offers.
+    const cake = notes(recipes.find(r => r.name.startsWith('Carrot cake'))!);
+    expect(cake).toContain('200 g');
+    expect(cake).toContain('400 g');
+    expect(cake).toContain('250 g');
+
+    // The shorter name a method actually uses, and the amount it spends over
+    // two steps: the line is "2 chicken breasts" and both steps say "chicken".
+    const stirFry = notes(recipes.find(r => r.name.includes('stir-fry'))!);
+    expect(stirFry.filter(note => note === '2 in total')).toHaveLength(2);
+
+    // And the refusal, on the method that reads "salt the steak on both sides":
+    // an ingredient name used as a verb never takes an amount.
+    const steak = recipes.find(r => r.name === 'Seared steak')
+      ?? recipes.find(r => r.notes.includes('salt the steak'))!;
+    const steakSteps = cookSteps(steak, recipesById).filter(s => s.whole);
+    const salted = annotateSteps(
+      steakSteps.map(s => ({ id: s.id, text: s.text, recipeId: s.recipe.id })),
+      stepIngredientLines(
+        flattenRecipeIngredients(steak, recipesById, undefined, swaps),
+        1,
+        'asWritten',
+      ),
+    );
+    expect([...salted.values()].flat().some(
+      seg => seg.kind === 'ingredient' && seg.text.toLowerCase() === 'salt'
+    )).toBe(false);
   });
 
   it('seeds recipe duration, cook history, attribution and a live timer', () => {

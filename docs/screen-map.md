@@ -41,7 +41,7 @@ components below.
 - `src/screens/PersonDetailScreen.tsx` — DetailHeader, EmptyState, InlineAction, PersonEditor, PersonHistorySheet, PersonNoteSheet
 - `src/screens/ProjectDetailScreen.tsx` — ApplyTemplateSheet, BulkActionBar, DeliverablePromptQueue, DeliverablePromptSheet, DetailHeader, EmptyState, Fab, GroupDropTarget, InlineAction, OfferBanner, PaintSelection, ProjectDecisions, +16 more
 - `src/screens/ProjectsScreen.tsx` — EmptyState, Fab, FabDropZones, ListBulkBar, PaintSelection, ProgressBar, ProjectCategoriesSheet, ProjectEditor, ProjectsOptionsMenu, QuickAddProjectModal, ReorderableList, ScreenHeader, +3 more
-- `src/screens/RecipeDetailScreen.tsx` — ComponentChoiceSheet, CookModeSheet, CountStepper, DetailHeader, EmptyState, IngredientCatalogMatchSheet, InlineAction, ListBulkBar, NumberPadAccessory, PillGroup, PlanMealSheet, PrepTaskSheet, +12 more
+- `src/screens/RecipeDetailScreen.tsx` — ComponentChoiceSheet, CookModeSheet, CountStepper, DetailHeader, EmptyState, IngredientCatalogMatchSheet, InlineAction, ListBulkBar, NumberPadAccessory, PillGroup, PlanMealSheet, PrepTaskSheet, +13 more
 - `src/screens/RecipesScreen.tsx` — ActiveTripBanner, EmptyState, Fab, FabDropZones, HubPills, InventRecipeSheet, ListBulkBar, PlanMealSheet, QuickAddNameSheet, RecipeCreateSheet, RecipeSortFilterSheet, RecipeSourcePicker, +6 more
 - `src/screens/RemindersScreen.tsx` — EmptyState, ScreenHeader, TaskEditor
 - `src/screens/SearchScreen.tsx` — EmptyState, HighlightedText, QuickAddModal, ScreenHeader, SearchField, TaskCheckbox, TaskEditor, TaskGroupEditor
@@ -241,6 +241,7 @@ Where each component can appear.
 - `src/components/StepMedication.tsx` — on ArchivedScreen, CalendarScreen, CategoryDetailScreen, ProjectDetailScreen, RemindersScreen, SearchScreen, StacksScreen, StuckScreen, TagsScreen, TemplateDetailScreen, TodayScreen
 - `src/components/StepMinutes.tsx` — on ArchivedScreen, CalendarScreen, CategoryDetailScreen, ProjectDetailScreen, RemindersScreen, SearchScreen, StacksScreen, StuckScreen, TagsScreen, TemplateDetailScreen, TodayScreen
 - `src/components/StepQuestion.tsx` — on ArchivedScreen, CalendarScreen, CategoryDetailScreen, ProjectDetailScreen, RemindersScreen, SearchScreen, StacksScreen, StuckScreen, TagsScreen, TemplateDetailScreen, TodayScreen
+- `src/components/StepText.tsx` — on RecipeDetailScreen
 - `src/components/StepTimerRow.tsx` — on RecipeDetailScreen
 - `src/components/SubstituteSheet.tsx` — on BackfillScreen, GroceryScreen, KitchenScreen, MealPlanScreen, RecipeDetailScreen
 - `src/components/SuggestMealsSheet.tsx` — on MealPlanScreen
