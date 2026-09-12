@@ -185,14 +185,14 @@ struct WidgetHeaderView: View {
                 .lineLimit(1)
                 .layoutPriority(1)
 
-            Spacer(minLength: 8)
-
             if let countLabel {
                 Text(countLabel)
                     .font(.system(size: 12))
                     .foregroundColor(palette.textSecondary)
                     .lineLimit(1)
             }
+
+            Spacer(minLength: 8)
 
             ForEach(shortcutLinks, id: \.label) { shortcut in
                 WidgetHeaderShortcutLink(shortcut: shortcut, color: palette.textSecondary)
