@@ -3,12 +3,13 @@ import { Modal, ScrollView, StyleSheet, Text, TouchableOpacity, View } from 'rea
 import { useShallow } from 'zustand/react/shallow';
 import { useTemplateStore } from '../store/useTemplateStore';
 import { useColors } from '../theme/ThemeContext';
-import { border, font, fontWeight, interaction, radius, spacing, type Colors } from '../theme';
+import { border, font, interaction, radius, spacing, type Colors } from '../theme';
 import { haptics } from '../utils/haptics';
 import { questionLabel, toggleItemCondition } from '../utils/templateQuestions';
 import type { TemplateItemCondition, TemplateQuestion } from '../types';
 import { EmptyState } from './EmptyState';
 import { SheetHeaderButton } from './SheetHeaderButton';
+import { SheetHeader } from './SheetHeader';
 
 interface Props {
   visible: boolean;
@@ -48,11 +49,11 @@ export function TemplateQuestionItemsSheet({ visible, templateId, question, onCl
   return (
     <Modal visible={visible} animationType="slide" presentationStyle="pageSheet" onRequestClose={onClose}>
       <View style={styles.root}>
-        <View style={styles.header}>
-          <View style={styles.headerSpacer} />
-          <Text style={styles.headerTitle} numberOfLines={1}>{questionLabel(question)}</Text>
-          <SheetHeaderButton label="Done" onPress={onClose} minWidth={56} />
-        </View>
+        <SheetHeader
+          title={questionLabel(question)}
+          left={<View style={styles.headerSpacer} />}
+          right={<SheetHeaderButton label="Done" onPress={onClose} minWidth={56} />}
+        />
 
         {leafItems.length === 0 ? (
           <View style={styles.emptyWrap}>
@@ -109,22 +110,6 @@ export function TemplateQuestionItemsSheet({ visible, templateId, question, onCl
 
 const makeStyles = (colors: Colors) => StyleSheet.create({
   root: { flex: 1, backgroundColor: colors.bg },
-  header: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'space-between',
-    paddingHorizontal: spacing.md,
-    paddingVertical: spacing.md,
-    borderBottomWidth: border.hairline,
-    borderBottomColor: colors.separator,
-  },
-  headerTitle: {
-    flex: 1,
-    textAlign: 'center',
-    color: colors.text,
-    fontSize: font.md,
-    fontWeight: fontWeight.semibold,
-  },
   // Matches Done's own minWidth, so the title stays optically centred.
   headerSpacer: { width: 56 },
   emptyWrap: { flex: 1, paddingHorizontal: spacing.md },

@@ -12,18 +12,25 @@ import Ionicons from '@expo/vector-icons/Ionicons';
 import { useShallow } from 'zustand/react/shallow';
 import type { Recipe } from '../types';
 import { useColors } from '../theme/ThemeContext';
-import { spacing, radius, font, fontWeight, border, iconSize, interaction, type Colors } from '../theme';
+import { spacing, radius, font, fontWeight, iconSize, interaction, type Colors } from '../theme';
 import { haptics } from '../utils/haptics';
 import { useRecipeStore } from '../store/useRecipeStore';
 import { describeRecipe, rankRecipes, sortRecipesForDisplay } from '../utils/recipeUtils';
 import { recipeMap, wouldCreateRecipeCycle } from '../utils/recipeComponents';
 import { EmptyState } from './EmptyState';
+import { SheetHeader } from './SheetHeader';
 import { SheetHeaderButton } from './SheetHeaderButton';
 
 interface Props {
   visible: boolean;
-  /** The recipe a component is being added to — excluded from the list, and the pivot for loop checks. */
-  recipe: Recipe;
+  /**
+   * The recipe a component is being added to — excluded from the list, and
+   * the pivot for loop checks. Null when that recipe doesn't exist yet (an
+   * import mid-flight, offering to link a reference before its parent is
+   * saved) — there's nothing yet for a candidate to already be a component of,
+   * or to loop back to, so both checks drop out and every recipe is eligible.
+   */
+  recipe: Recipe | null;
   onClose: () => void;
   onSelect: (component: Recipe) => void;
 }
@@ -47,26 +54,26 @@ export function RecipeComponentPicker({ visible, recipe, onClose, onSelect }: Pr
   useEffect(() => { if (visible) setQuery(''); }, [visible]);
 
   const alreadyUsed = useMemo(
-    () => new Set(recipe.components.map(c => c.recipeId)),
-    [recipe.components]
+    () => new Set(recipe ? recipe.components.map(c => c.recipeId) : []),
+    [recipe]
   );
 
   const candidates = useMemo(() => {
-    const byId = recipeMap(recipes);
+    const byId = recipe ? recipeMap(recipes) : null;
     const ranked = query.trim()
       ? rankRecipes(query, recipes)
       : sortRecipesForDisplay(recipes);
     return ranked
-      .filter(r => r.id !== recipe.id)
+      .filter(r => !recipe || r.id !== recipe.id)
       .map(candidate => ({
         recipe: candidate,
         reason: alreadyUsed.has(candidate.id)
           ? 'Already a component'
-          : wouldCreateRecipeCycle(byId, recipe.id, candidate.id)
+          : (recipe && byId && wouldCreateRecipeCycle(byId, recipe.id, candidate.id))
             ? 'Would create a loop'
             : null,
       }));
-  }, [recipes, recipe.id, query, alreadyUsed]);
+  }, [recipes, recipe, query, alreadyUsed]);
 
   const handleSelect = (candidate: Recipe) => {
     haptics.success();
@@ -77,14 +84,14 @@ export function RecipeComponentPicker({ visible, recipe, onClose, onSelect }: Pr
   return (
     <Modal visible={visible} animationType="slide" presentationStyle="pageSheet" onRequestClose={onClose}>
       <View style={styles.root}>
-        <View style={styles.header}>
-          <SheetHeaderButton label="Cancel" role="cancel" onPress={onClose} minWidth={60} />
-          <Text style={styles.headerTitle} numberOfLines={1}>Add a component</Text>
-          {/* Balances Cancel so the title stays optically centered. */}
-          <View style={styles.headerSpacer} />
-        </View>
+        <SheetHeader
+          title="Add a component"
+          left={<SheetHeaderButton label="Cancel" role="cancel" onPress={onClose} minWidth={60} />}
+          // Balances Cancel so the title stays optically centered.
+          right={<View style={styles.headerSpacer} />}
+        />
 
-        {recipes.length <= 1 ? (
+        {recipes.length <= (recipe ? 1 : 0) ? (
           <EmptyState
             icon="restaurant-outline"
             title="No other recipes"
@@ -155,16 +162,6 @@ export function RecipeComponentPicker({ visible, recipe, onClose, onSelect }: Pr
 
 const makeStyles = (colors: Colors) => StyleSheet.create({
   root: { flex: 1, backgroundColor: colors.bg },
-  header: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'space-between',
-    paddingHorizontal: spacing.md,
-    paddingVertical: spacing.md,
-    borderBottomWidth: border.hairline,
-    borderBottomColor: colors.separator,
-  },
-  headerTitle: { color: colors.text, fontSize: font.md, fontWeight: fontWeight.semibold },
   headerSpacer: { minWidth: 60 },
   searchWrap: {
     flexDirection: 'row',

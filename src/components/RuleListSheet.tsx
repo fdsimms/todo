@@ -10,6 +10,7 @@ import { animateLayout } from '../utils/layoutAnimation';
 import { useKeyboardInsetScroll } from '../hooks/useKeyboardInsetScroll';
 import { EmptyState } from './EmptyState';
 import { InlineAction } from './InlineAction';
+import { SheetHeader } from './SheetHeader';
 import { SheetHeaderButton } from './SheetHeaderButton';
 
 /** Same constraint EmptyState puts on its own icon. */
@@ -152,11 +153,11 @@ export function RuleListSheet<T extends EditableRule>({
   return (
     <Modal visible={visible} animationType="slide" presentationStyle="pageSheet" onRequestClose={close}>
       <View style={styles.root}>
-        <View style={styles.header}>
-          <View style={styles.headerSpacer} />
-          <Text style={styles.headerTitle}>{title}</Text>
-          <SheetHeaderButton label="Done" onPress={close} minWidth={56} />
-        </View>
+        <SheetHeader
+          title={title}
+          left={<View style={styles.headerSpacer} />}
+          right={<SheetHeaderButton label="Done" onPress={close} minWidth={56} />}
+        />
 
         <ScrollView
           ref={keyboardScroll.ref}
@@ -262,16 +263,6 @@ export function RuleListSheet<T extends EditableRule>({
 function makeStyles(colors: Colors) {
   return StyleSheet.create({
     root: { flex: 1, backgroundColor: colors.bg },
-    header: {
-      flexDirection: 'row',
-      alignItems: 'center',
-      justifyContent: 'space-between',
-      paddingHorizontal: spacing.md,
-      paddingVertical: spacing.md,
-      borderBottomWidth: border.hairline,
-      borderBottomColor: colors.separator,
-    },
-    headerTitle: { flex: 1, textAlign: 'center', color: colors.text, fontSize: font.md, fontWeight: fontWeight.semibold },
     headerSpacer: { width: 56 },
     list: { padding: spacing.md, paddingBottom: spacing.xl },
     // Full-height content container so EmptyState's own `flex: 1` has room to

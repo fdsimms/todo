@@ -40,7 +40,7 @@ const UNIT_SYSTEM_SUMMARY: Record<string, string | null> = {
  * seven screenfuls with no landmarks and no way to find anything but scrolling
  * past it. Everything still exists; it's a tap away instead of a scroll away,
  * and the search field is there for when you don't know which group something
- * lives in — which, with ten of them, is most of the time.
+ * lives in — which, with thirteen of them, is most of the time.
  *
  * Search opens onto the *row* it matched rather than onto the group holding it
  * (see `./settings/SettingsFocus`), which is what keeps a group's size from

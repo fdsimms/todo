@@ -37,7 +37,7 @@
  * Health's, and this module never stores one.
  */
 
-import { differenceInCalendarDays } from 'date-fns';
+import { differenceInCalendarDays } from 'date-fns/differenceInCalendarDays';
 import { dayKeyToDate } from './dateUtils';
 import { MAX_WEIGHT_KG, unitToKg, type WeightPoint, type WeightUnit } from './weightLog';
 

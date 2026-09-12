@@ -1,4 +1,14 @@
-import React, { useCallback, useEffect, useMemo, useState } from 'react';
+// Builds a whole new recipe out of a photo or a paste — the Recipes screen's
+// import entry. One component of ~1,020 lines, so grep a landmark rather than
+// reading it start to finish:
+//
+//   ==== <name> ====        the section banners through the logic half
+//   makeStyles              styles, at the bottom
+//
+// See the doc comment on RecipeCreateSheet below for how this differs from
+// RecipeExtractSheet (which fills in a recipe that already exists) and what
+// each source — paste, link, photo — gets for free.
+import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import {
   Alert,
   Modal,
@@ -9,7 +19,6 @@ import {
   ActivityIndicator,
   StyleSheet,
 } from 'react-native';
-import Ionicons from '@expo/vector-icons/Ionicons';
 import { useShallow } from 'zustand/react/shallow';
 import { useKeyboardInsetScroll } from '../hooks/useKeyboardInsetScroll';
 import { useColors } from '../theme/ThemeContext';
@@ -31,10 +40,12 @@ import { describeImportError, isRetryableImportError } from '../services/recipeP
 import {
   normalizeIngredient, cleanRecipeName, formatServingsRange, parseServingsRange,
 } from '../utils/recipeUtils';
+import { describeKeepDays } from '../utils/leftovers';
 import { groceryNameKey } from '../utils/groceryParse';
 import { sourceFieldsFor, sourcePlanFor } from '../utils/recipeProvenance';
 import { aisleForName } from '../utils/groceryAisles';
 import { sectionsOf } from '../utils/recipeSections';
+import { SheetHeader } from './SheetHeader';
 import { SheetHeaderButton } from './SheetHeaderButton';
 import { EmptyState } from './EmptyState';
 import { RecipeSourcePicker, type RecipeInputMode } from './RecipeSourcePicker';
@@ -49,6 +60,7 @@ import { useRecipeImportSource } from '../hooks/useRecipeImportSource';
 import { useRecipeComponentImports } from '../hooks/useRecipeComponentImports';
 import { ImportedComponentRow } from './ImportedComponentRow';
 import { coveredIngredients, importableReferences } from '../utils/recipeImportComponents';
+import { MAX_RECIPE_PHOTOS } from '../utils/recipePhoto';
 import { haptics } from '../utils/haptics';
 import { InlineAction } from './InlineAction';
 
@@ -117,6 +129,7 @@ interface Props {
 export function RecipeCreateSheet({
   visible, initialMode = 'photo', initialUrl = null, onClose, onCreated,
 }: Props) {
+  // ==== store bindings ====
   const colors = useColors();
   const styles = useMemo(() => makeStyles(colors), [colors]);
   const aisleOrder = useGroceryStore(useShallow(s => s.aisleOrder));
@@ -128,6 +141,7 @@ export function RecipeCreateSheet({
   const setServings = useRecipeStore(s => s.setServings);
   const setRecipeYield = useRecipeStore(s => s.setRecipeYield);
   const setEstimatedMinutes = useRecipeStore(s => s.setEstimatedMinutes);
+  const setLeftoverKeepDays = useRecipeStore(s => s.setLeftoverKeepDays);
   const setSourceUrl = useRecipeStore(s => s.setSourceUrl);
   const setSource = useRecipeStore(s => s.setSource);
   const setAuthor = useRecipeStore(s => s.setAuthor);
@@ -139,6 +153,7 @@ export function RecipeCreateSheet({
   const updatePrepTask = useRecipeStore(s => s.updatePrepTask);
   const addStructuredIngredients = useRecipeStore(s => s.addStructuredIngredients);
 
+  // ==== local state: the review list's working copies ====
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
   // Whether the error state offers a retry or a way back to the input —
@@ -172,6 +187,7 @@ export function RecipeCreateSheet({
   const [servingsText, setServingsText] = useState('');
   const [minutesText, setMinutesText] = useState('');
   const [yieldText, setYieldText] = useState('');
+  const [leftoverKeepDaysText, setLeftoverKeepDaysText] = useState('');
   const [siteName, setSiteName] = useState('');
   const [sourceAuthor, setSourceAuthor] = useState('');
   const [sourcePageText, setSourcePageText] = useState('');
@@ -183,9 +199,10 @@ export function RecipeCreateSheet({
   // Whichever add-menu item opened it — "Paste text", "From a link" and "From
   // a photo" all land here, and each opens on its own tab rather than making
   // that tap feel ignored. Every other tab is still one tap away.
-  const input = useRecipeImportSource(initialMode);
+  const input = useRecipeImportSource(initialMode, undefined, MAX_RECIPE_PHOTOS);
   const { resolveSource, reset: resetInput, setMode, setUrl } = input;
 
+  // ==== derived data: referenced-recipe candidates, coverage, sections ====
   // "…and there's a salsa verde on page 45." Nothing is filtered out here for
   // an existing parent, because there isn't one yet — see importableReferences.
   const candidates = useMemo(
@@ -208,6 +225,7 @@ export function RecipeCreateSheet({
     [ingredients],
   );
 
+  // ==== reset, and syncing the sheet's tabs to the add-menu selection ====
   const reset = useCallback(() => {
     setLoading(false);
     setError(null);
@@ -226,6 +244,7 @@ export function RecipeCreateSheet({
     setServingsText('');
     setMinutesText('');
     setYieldText('');
+    setLeftoverKeepDaysText('');
     setSiteName('');
     setSourceAuthor('');
     resetInput();
@@ -235,6 +254,13 @@ export function RecipeCreateSheet({
   useEffect(() => {
     if (!visible) reset();
   }, [visible, reset]);
+
+  // `run` below awaits a network call that easily outlives a cancel — the
+  // sheet stays mounted (only its Modal hides), so nothing stops that promise
+  // once the user discards. Read inside the promise continuation, never as a
+  // dependency, so a cancel mid-request is seen without re-running `run`.
+  const visibleRef = useRef(visible);
+  useEffect(() => { visibleRef.current = visible; }, [visible]);
 
   // `input` keeps its own `mode` and `url` state, and both only pick up the
   // props on first mount — while this sheet stays mounted for the screen's whole
@@ -252,6 +278,7 @@ export function RecipeCreateSheet({
     if (initialUrl) setUrl(initialUrl);
   }, [visible, initialMode, initialUrl, setMode, setUrl]);
 
+  // ==== running the extraction ====
   const run = useCallback(async () => {
     setLoading(true);
     setError(null);
@@ -260,13 +287,20 @@ export function RecipeCreateSheet({
       const resolved = await resolveSource();
       if (!resolved) return;
       const result = await extractRecipe(resolved.source, [...aisleOrder]);
+      // Canceled while the request was in flight: don't repopulate a sheet
+      // the user already discarded — it would silently reappear filled in
+      // the next time this sheet opens.
+      if (!visibleRef.current) return;
       setExtracted(result);
       setIngredients(result.ingredients);
       // The page's own title is the better answer when the model didn't give
       // one — a page that says what it's called is not a recipe with no name.
       setName(result.name || resolved.page?.title || '');
       setAccepted(new Set(result.ingredients.map((_, i) => i)));
-      setApplyDetails(result.servings !== null || result.prepMinutes !== null || result.recipeYield !== null);
+      setApplyDetails(
+        result.servings !== null || result.prepMinutes !== null || result.recipeYield !== null
+          || result.leftoverKeepDays !== null,
+      );
       const methodStepsFound = (resolved.page?.steps.length ?? 0) > 0
         ? resolved.page!.steps
         : result.steps;
@@ -277,6 +311,7 @@ export function RecipeCreateSheet({
       setServingsText(formatServingsRange(result.servings, result.servingsMax) ?? '');
       setMinutesText(result.prepMinutes !== null ? String(result.prepMinutes) : '');
       setYieldText(result.recipeYield ?? '');
+      setLeftoverKeepDaysText(result.leftoverKeepDays !== null ? String(result.leftoverKeepDays) : '');
       const { page } = resolved;
       // Ticked whatever the source: there's nothing of the user's own here for
       // it to land on top of, whether the fields below arrive pre-filled from
@@ -288,13 +323,16 @@ export function RecipeCreateSheet({
       setSourcePageText(source.page);
       setImportedSourceType(source.sourceType);
     } catch (e) {
-      setError(describeImportError(e));
-      setCanRetry(isRetryableImportError(e));
+      if (visibleRef.current) {
+        setError(describeImportError(e));
+        setCanRetry(isRetryableImportError(e));
+      }
     } finally {
       setLoading(false);
     }
   }, [resolveSource, aisleOrder]);
 
+  // ==== ingredient review: toggling, editing, marking already-have ====
   const toggle = (index: number) => {
     setAccepted(prev => {
       const next = new Set(prev);
@@ -333,6 +371,7 @@ export function RecipeCreateSheet({
     }));
   };
 
+  // ==== name entry and duplicate detection ====
   // Checked as they type rather than on tap, so the way out ("Open it", or just
   // keep typing) is visible before the button they'd reach for is disabled.
   const cleaned = cleanRecipeName(name);
@@ -350,6 +389,7 @@ export function RecipeCreateSheet({
     return recipes.find(r => r.sourceUrl === url) ?? null;
   }, [input.page, recipes]);
 
+  // ==== steps and prep-task review ====
   const toggleIn = (
     setter: React.Dispatch<React.SetStateAction<Set<number>>>,
   ) => (index: number) => setter(prev => {
@@ -371,6 +411,7 @@ export function RecipeCreateSheet({
     setPrepTasks(prev => prev.map((task, i) => (i === index ? { ...task, ...patch } : task)));
   };
 
+  // ==== creating the recipe ====
   const handleCreate = () => {
     if (!extracted || !cleaned || duplicate || urlDuplicate) return;
     const recipe = addRecipe(cleaned);
@@ -426,6 +467,11 @@ export function RecipeCreateSheet({
       if (minutes > 0) setEstimatedMinutes(recipe.id, minutes);
       const yieldValue = pendingText('details:yield', yieldText).trim();
       if (yieldValue) setRecipeYield(recipe.id, yieldValue);
+      const keepDaysRaw = pendingText('details:leftoverKeepDays', leftoverKeepDaysText).trim();
+      if (keepDaysRaw) {
+        const keepDays = parseInt(keepDaysRaw, 10);
+        if (!Number.isNaN(keepDays)) setLeftoverKeepDays(recipe.id, keepDays);
+      }
     }
     // A link's URL comes from the page and isn't editable; the rest are,
     // whether they arrived pre-filled from structured markup, were read off a
@@ -484,7 +530,7 @@ export function RecipeCreateSheet({
       || !!name.trim()
       || !!input.text.trim()
       || !!input.url.trim()
-      || !!input.photo;
+      || input.photos.length > 0;
     if (!dirty) { onClose(); return; }
     Alert.alert(
       'Discard changes?',
@@ -496,6 +542,7 @@ export function RecipeCreateSheet({
     );
   };
 
+  // ==== row labels and meta text for the review list ====
   // One checkbox applying up to three facts has to name all it has, and it
   // reads out exactly what the row shows rather than a second phrasing of it.
   // Reads the boxes, not `extracted`, so it stays true once they're edited.
@@ -504,6 +551,10 @@ export function RecipeCreateSheet({
     if (servingsText) parts.push(`Serves ${servingsText}`);
     if (minutesText) parts.push(`about ${minutesText} min`);
     if (yieldText) parts.push(`makes ${yieldText}`);
+    const keepDaysNum = parseInt(leftoverKeepDaysText, 10);
+    if (leftoverKeepDaysText && !Number.isNaN(keepDaysNum)) {
+      parts.push(`leftovers keep ${describeKeepDays(keepDaysNum).toLowerCase()}`);
+    }
     if (parts.length === 0) return '';
     const [first, ...rest] = parts;
     return [first.charAt(0).toUpperCase() + first.slice(1), ...rest].join(', ');
@@ -513,7 +564,8 @@ export function RecipeCreateSheet({
   // boxes decides what it applies. Emptying them must not unmount the row
   // mid-edit — there'd be no way to type a value back in.
   const foundDetails = !!extracted
-    && (extracted.servings !== null || extracted.prepMinutes !== null || extracted.recipeYield !== null);
+    && (extracted.servings !== null || extracted.prepMinutes !== null || extracted.recipeYield !== null
+      || extracted.leftoverKeepDays !== null);
 
   // Nothing to append after: this recipe doesn't exist yet.
   const methodMeta = methodRowMeta(acceptedSteps.size, steps.length, false);
@@ -530,6 +582,7 @@ export function RecipeCreateSheet({
   const backLabel = input.usingLink ? 'Change the link' : 'Go back';
   const goBack = () => { setError(null); setExtracted(null); };
 
+  // ==== render. Everything below is JSX ====
   /**
    * The referenced-recipes block, above the ingredients it changes the meaning
    * of. Above rather than below because accepting one unticks a line further
@@ -553,8 +606,10 @@ export function RecipeCreateSheet({
               candidate={candidate}
               state={components.stateFor(candidate.key)}
               accepted={components.accepted.has(candidate.key)}
+              parent={null}
               onToggle={() => components.toggle(candidate.key)}
               onImport={source => components.importFrom(candidate.key, source)}
+              onLink={picked => components.linkTo(candidate.key, picked)}
             />
           ))}
         </View>
@@ -569,7 +624,7 @@ export function RecipeCreateSheet({
           <ActivityIndicator color={colors.purple} />
           <Text style={styles.loadingText}>
             {input.fetching ? 'Opening the page…'
-              : input.usingPhoto ? 'Reading the photo…'
+              : input.usingPhoto ? `Reading the photo${input.photos.length > 1 ? 's' : ''}…`
               : 'Reading the recipe…'}
           </Text>
         </View>
@@ -606,13 +661,14 @@ export function RecipeCreateSheet({
             onChangeText={input.setText}
             url={input.url}
             onChangeUrl={input.setUrl}
-            photo={input.photo}
+            photos={input.photos}
             onPickPhoto={input.pick}
             onClearPhoto={input.clearPhoto}
+            maxPhotos={input.maxPhotos}
             picking={input.picking}
             ctaLabel={
               input.usingLink ? 'Get the recipe'
-                : input.usingPhoto ? 'Read the photo'
+                : input.usingPhoto ? 'Read the photo' + (input.photos.length > 1 ? 's' : '')
                 : 'Read the recipe'
             }
             onRun={run}
@@ -629,7 +685,7 @@ export function RecipeCreateSheet({
             icon="checkmark-circle-outline"
             title="Nothing found"
             subtitle={input.usingPhoto
-              ? 'Nothing readable turned up in that photo. Try again in better light, or paste the text instead.'
+              ? `Nothing readable turned up in ${input.photos.length > 1 ? 'those photos' : 'that photo'}. Try again in better light, or paste the text instead.`
               : input.usingLink
               ? 'No recipe turned up on that page. Copy the recipe from it and paste it instead.'
               : 'No recipe turned up in that text.'}
@@ -747,6 +803,22 @@ export function RecipeCreateSheet({
                 maxLength={RECIPE_SOURCE_MAX_LENGTH}
                 numberOfLines={1}
               />
+            </View>
+            <View style={styles.detailFields}>
+              <Text style={styles.detailSep}>Leftovers keep</Text>
+              <InlineEditableText
+                edits={edits}
+                editKey="details:leftoverKeepDays"
+                value={leftoverKeepDaysText}
+                onCommit={setLeftoverKeepDaysText}
+                allowEmpty
+                textStyle={styles.detailValue}
+                placeholder="e.g. 4"
+                accessibilityLabel="leftovers keep, days"
+                maxLength={3}
+                numberOfLines={1}
+              />
+              <Text style={styles.detailSep}>days</Text>
             </View>
           </ImportApplyRow>
         )}
@@ -875,19 +947,19 @@ export function RecipeCreateSheet({
   return (
     <Modal visible={visible} animationType="slide" presentationStyle="pageSheet" onRequestClose={handleCancel}>
       <View style={styles.root}>
-        <View style={styles.header}>
-          <SheetHeaderButton label="Cancel" role="cancel" onPress={handleCancel} minWidth={72} />
-          <View style={styles.headerTitleWrap}>
-            <Ionicons name="sparkles" size={14} color={colors.purple} />
-            <Text style={styles.headerTitle}>Import a recipe</Text>
-          </View>
-          <SheetHeaderButton
-            label="Create"
-            onPress={handleCreate}
-            disabled={!canCreate}
-            minWidth={72}
-          />
-        </View>
+        <SheetHeader
+          title="Import a recipe"
+          icon="sparkles"
+          left={<SheetHeaderButton label="Cancel" role="cancel" onPress={handleCancel} minWidth={72} />}
+          right={
+            <SheetHeaderButton
+              label="Create"
+              onPress={handleCreate}
+              disabled={!canCreate}
+              minWidth={72}
+            />
+          }
+        />
         {renderBody()}
       </View>
     </Modal>
@@ -906,8 +978,6 @@ function makeStyles(colors: Colors) {
       borderBottomWidth: border.hairline,
       borderBottomColor: colors.separator,
     },
-    headerTitleWrap: { flexDirection: 'row', alignItems: 'center', gap: spacing.xs },
-    headerTitle: { color: colors.text, fontSize: font.md, fontWeight: fontWeight.semibold },
     centered: { flex: 1, alignItems: 'center', justifyContent: 'center', padding: spacing.xl, gap: spacing.md },
     loadingText: { color: colors.textSecondary, fontSize: font.md, textAlign: 'center' },
     intro: {

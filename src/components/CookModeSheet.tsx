@@ -44,6 +44,7 @@ import { animateLayout } from '../utils/layoutAnimation';
 import { clampStepIndex, cookSteps, describeStepPosition } from '../utils/cookMode';
 import { formatStepDuration, stepDurationOffers } from '../utils/stepTimers';
 import { flattenRecipeIngredients } from '../utils/recipeComponents';
+import { ingredientHeadings } from '../utils/recipeSections';
 import { describeStandingSwap, standingSwapMap } from '../utils/standingSwaps';
 import { onHandNameKeys } from '../utils/grocerySuggest';
 import { formatScale, isUnscaled, scaleQuantity } from '../utils/recipeScale';
@@ -147,6 +148,10 @@ export function CookModeSheet({ visible, recipe, recipesById, scale, onClose }: 
     () => flattenRecipeIngredients(recipe, recipesById, { onHand }, standingSwaps),
     [recipe, recipesById, standingSwaps, onHand]
   );
+  // Which headings each line opens: the component's name where one starts, and
+  // the recipe's own section label where one does. Both are inferred from the
+  // flat list rather than stored on it — see ingredientHeadings.
+  const headings = useMemo(() => ingredientHeadings(ingredients), [ingredients]);
 
   // ==== screen state: where the cook is, the ask panel, the ingredient fold ====
   // Whether there's anything to gather before the method starts. A recipe
@@ -548,12 +553,21 @@ export function CookModeSheet({ visible, recipe, recipesById, scale, onClose }: 
                     const scaled = scaleQuantity(flat.ingredient.quantity, scale);
                     const converted = convertQuantity(scaled.text, unitSystem);
                     const marked = scaled.scaled || converted.converted || !!flat.swappedFrom;
-                    const previous = ingredients[position - 1];
-                    const heading =
-                      flat.depth > 0 && previous?.recipe.id !== flat.recipe.id ? flat.recipe.name : null;
+                    const heading = headings[position];
+                    // A hairline above a section the way the recipe screen
+                    // draws one, except at the top of the list and except
+                    // directly under a component's name: the name is already
+                    // the boundary there, and a rule between the two would
+                    // read as a separator rather than as a heading and the
+                    // heading under it.
+                    const rule = position > 0 && !heading.dish && !!heading.section;
                     return (
                       <View key={`${flat.recipe.id}:${flat.ingredient.id}`}>
-                        {!!heading && <Text style={styles.panelHeading}>{heading}</Text>}
+                        {rule && <View style={styles.panelDivider} />}
+                        {heading.dish && <Text style={styles.panelHeading}>{flat.recipe.name}</Text>}
+                        {!!heading.section && (
+                          <Text style={styles.panelHeading}>{heading.section}</Text>
+                        )}
                         <View style={styles.panelRow}>
                           <View style={styles.panelRowText}>
                             <Text style={styles.panelName}>{flat.ingredient.name}</Text>
@@ -864,6 +878,11 @@ const makeStyles = (colors: Colors) => StyleSheet.create({
   // a small screen — the two things a cook needs with their hands full.
   panelList: {
     maxHeight: 220,
+    marginTop: spacing.sm,
+  },
+  panelDivider: {
+    height: StyleSheet.hairlineWidth,
+    backgroundColor: colors.separator,
     marginTop: spacing.sm,
   },
   panelHeading: {

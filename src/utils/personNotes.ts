@@ -13,9 +13,8 @@ import type { PersonNote, PersonNoteKind } from '../types';
  * slice of this, shipped early so the first nudge anybody sees is warm; this is
  * the rest of it.
  *
- * Three kinds, and each has exactly one place it shows up, which is what keeps
- * them from blurring: a `note` on the person's own screen, a `gift` carried
- * onto the birthday task, a `food` note shown on a meal they're a guest at.
+ * Three kinds, and each has its own heading on the person's own screen so they
+ * don't blur together — `gift` is additionally carried onto the birthday task.
  *
  * **Nothing here scores, ranks, counts or grades anybody.** It sorts notes,
  * says which have gone stale, and hands each kind to its one reader. A count of
@@ -49,7 +48,7 @@ export const PERSON_NOTE_HEADINGS: Record<PersonNoteKind, string> = {
 export const PERSON_NOTE_HINTS: Record<PersonNoteKind, string> = {
   note: 'Something to remember. Shows on their page.',
   gift: 'Something to get them. Shows on their birthday task.',
-  food: "Something about what they eat. Shows on a meal they're a guest at.",
+  food: 'Something about what they eat. Shows on their page.',
 };
 
 /** A note that is still live: not filed away, and with something in it. */
@@ -150,36 +149,4 @@ export function giftIdeasText(
     .map(n => n.text.trim());
   if (ideas.length === 0) return '';
   return ideas.map(text => `• ${text}`).join('\n');
-}
-
-/**
- * What the guests at one meal can't or won't eat, ready to render.
- *
- * The kitchen half of the app paying off in a way it could not without both
- * halves: remembering that Ansley cannot eat shellfish, at the moment you are
- * deciding what to cook her, is care rather than measurement.
- *
- * Named, because "one guest has a note" is useless and the name is the whole
- * value. Stale food notes are dropped for `giftIdeasText`'s reason — a dated
- * one ("dairy-free until March") that has passed is no longer true.
- */
-export interface GuestFoodNote {
-  personId: string;
-  name: string;
-  text: string;
-}
-
-export function guestFoodNotes(
-  notes: readonly PersonNote[],
-  guests: readonly { id: string; name: string }[],
-  today: Date
-): GuestFoodNote[] {
-  const out: GuestFoodNote[] = [];
-  for (const guest of guests) {
-    for (const note of notesOfKind(notes, guest.id, 'food', today)) {
-      if (isStaleNote(note, today)) continue;
-      out.push({ personId: guest.id, name: guest.name, text: note.text.trim() });
-    }
-  }
-  return out;
 }

@@ -49,7 +49,7 @@ export function EditorRow({ icon, label, value, hint, caption, expanded, onPress
       accessibilityState={expanded === undefined ? undefined : { expanded }}
     >
       <Ionicons name={icon as never} size={18} color={value ? colors.accent : colors.textSecondary} />
-      <View style={styles.content}>
+      <View style={[styles.content, !value && styles.contentNoValue]}>
         <Text style={styles.label}>{label}</Text>
         {!!hint && !value && !hideHelpText && <Text style={styles.hint}>{hint}</Text>}
         {!!caption && !!value && <Text style={styles.hint}>{caption}</Text>}
@@ -86,6 +86,12 @@ const makeStyles = (colors: Colors) => StyleSheet.create({
   // first (it already truncates via numberOfLines), not force the label to
   // wrap mid-word.
   content: { flexGrow: 1, flexShrink: 0 },
+  // With no value on the row, there's nothing on the other side competing
+  // for space (see `content`'s own comment) — so the hint below the label
+  // needs to be free to shrink to the row's actual width, or it lays out at
+  // its own unwrapped width and overflows past the screen edge instead of
+  // wrapping.
+  contentNoValue: { flexShrink: 1 },
   label: { color: colors.text, fontSize: font.md },
   hint: { color: colors.textSecondary, fontSize: font.xs, marginTop: 1 },
   valueRow: { flexDirection: 'row', alignItems: 'center', gap: spacing.xs, flexShrink: 1 },

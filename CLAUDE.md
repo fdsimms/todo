@@ -448,17 +448,17 @@ them source rather than tests. The ten biggest source files:
 Grep for the symbol and read the surrounding range; reading any of them end to end costs more
 context than the rest of the task will. `docs/module-map.md` says which file owns what.
 
-The suite is **321 test files**, and `npm test` runs all of them in well under a minute.
+The suite is **322 test files**, and `npm test` runs all of them in well under a minute.
 `npx tsc --noEmit` is a few seconds once `.tsbuildinfo` exists, so run both, every time.
 
 <!-- END GENERATED: repo-stats -->
 
-**The thirteen single-component files carry their own map.** `TaskEditor.tsx`, `TodayScreen.tsx`,
+**The fourteen single-component files carry their own map.** `TaskEditor.tsx`, `TodayScreen.tsx`,
 `TaskItem.tsx`, `QuickAddModal.tsx`, `MealPlanScreen.tsx`, `RecipeDetailScreen.tsx`,
-`GroceryItemSheet.tsx`, `TemplateItemEditor.tsx`, `LogbookScreen.tsx`, `GroceryScreen.tsx`,
-`SuggestMealsSheet.tsx`, `FoodLogEntrySheet.tsx` and `CookModeSheet.tsx` are each one component
-holding most of the file, so there are almost no top-level symbols to grep for — `TaskEditor.tsx`
-has six in 4,200 lines and `RecipeDetailScreen.tsx` has two in 1,900.
+`RecipeCreateSheet.tsx`, `GroceryItemSheet.tsx`, `TemplateItemEditor.tsx`, `LogbookScreen.tsx`,
+`GroceryScreen.tsx`, `SuggestMealsSheet.tsx`, `FoodLogEntrySheet.tsx` and `CookModeSheet.tsx` are
+each one component holding most of the file, so there are almost no top-level symbols to grep
+for — `TaskEditor.tsx` has six in 4,200 lines and `RecipeDetailScreen.tsx` has two in 1,900.
 Each opens with a short header comment saying what's where, and its logic half is divided by
 `// ==== <name> ====` banners; `grep -n '// ===='` on one of them is its table of contents. The
 banners stop at the JSX, because a `//` comment can't go inside a `return (`: past the render

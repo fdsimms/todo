@@ -1,4 +1,4 @@
-import React, { useCallback, useEffect, useMemo, useState } from 'react';
+import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import {
   Alert,
   Modal,
@@ -15,6 +15,7 @@ import Ionicons from '@expo/vector-icons/Ionicons';
 import { useKeyboardInsetScroll } from '../hooks/useKeyboardInsetScroll';
 import { useColors } from '../theme/ThemeContext';
 import { spacing, radius, font, fontWeight, border, iconSize, interaction, type Colors } from '../theme';
+import { SheetHeader } from './SheetHeader';
 import { SheetHeaderButton } from './SheetHeaderButton';
 import { SegmentedControl } from './SegmentedControl';
 import { EmptyState } from './EmptyState';
@@ -118,6 +119,13 @@ export function EventImportSheet({ visible, onClose, onImported }: Props) {
     if (!visible) reset();
   }, [visible, reset]);
 
+  // `run` below awaits a network call that easily outlives a cancel — the
+  // sheet stays mounted (only its Modal hides), so nothing stops that promise
+  // once `onClose` fires. Read inside the promise continuation, never as a
+  // dependency, so a cancel mid-request is seen without re-running `run`.
+  const visibleRef = useRef(visible);
+  useEffect(() => { visibleRef.current = visible; }, [visible]);
+
   const pick = useCallback(async (source: RecipePhotoSource) => {
     setPicking(true);
     setPhotoError(null);
@@ -180,13 +188,17 @@ export function EventImportSheet({ visible, onClose, onImported }: Props) {
     setTriedEmpty(false);
     try {
       const events = await extractCalendarEvents(mode === 'photo' ? photo! : text);
+      // Canceled while the request was in flight: the sheet already told the
+      // user its work was discarded, so a late success must not turn around
+      // and pop the task editor open behind its back — see `visibleRef`.
+      if (!visibleRef.current) return;
       if (events.length === 0) {
         setTriedEmpty(true);
         return;
       }
       finish(events);
     } catch (e) {
-      setError(describeAIError(e));
+      if (visibleRef.current) setError(describeAIError(e));
     } finally {
       setLoading(false);
     }
@@ -377,14 +389,12 @@ export function EventImportSheet({ visible, onClose, onImported }: Props) {
   return (
     <Modal visible={visible} animationType="slide" presentationStyle="pageSheet" onRequestClose={handleCancel}>
       <View style={styles.root}>
-        <View style={styles.header}>
-          <SheetHeaderButton label="Cancel" role="cancel" onPress={handleCancel} minWidth={64} />
-          <View style={styles.headerTitleWrap}>
-            <Ionicons name="sparkles" size={14} color={colors.purple} />
-            <Text style={styles.headerTitle}>Import event</Text>
-          </View>
-          <View style={styles.headerSpacer} />
-        </View>
+        <SheetHeader
+          title="Import event"
+          icon="sparkles"
+          left={<SheetHeaderButton label="Cancel" role="cancel" onPress={handleCancel} minWidth={64} />}
+          right={<View style={styles.headerSpacer} />}
+        />
         <ScrollView
           ref={keyboardScroll.ref}
           style={styles.scroll}
@@ -411,8 +421,6 @@ function makeStyles(colors: Colors) {
       borderBottomWidth: border.hairline,
       borderBottomColor: colors.separator,
     },
-    headerTitleWrap: { flexDirection: 'row', alignItems: 'center', gap: spacing.xs },
-    headerTitle: { color: colors.text, fontSize: font.md, fontWeight: fontWeight.semibold },
     headerSpacer: { minWidth: 64 },
     scroll: { flex: 1 },
     body: { flexGrow: 1, padding: spacing.md, paddingBottom: spacing.xl, gap: spacing.md },

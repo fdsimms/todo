@@ -17,6 +17,7 @@ import { linkAppLabel } from '../constants/linkApps';
 import { EmptyState } from './EmptyState';
 import { InlineAction } from './InlineAction';
 import { SheetHeaderButton } from './SheetHeaderButton';
+import { SheetHeader } from './SheetHeader';
 import { TitleRuleSheet } from './TitleRuleSheet';
 
 interface Props {
@@ -154,11 +155,11 @@ export function TitleRulesSheet({ visible, onClose }: Props) {
   return (
     <Modal visible={visible} animationType="slide" presentationStyle="pageSheet" onRequestClose={onClose}>
       <View style={styles.root}>
-        <View style={styles.header}>
-          <View style={styles.headerSpacer} />
-          <Text style={styles.headerTitle}>Title rules</Text>
-          <SheetHeaderButton label="Done" onPress={onClose} minWidth={56} />
-        </View>
+        <SheetHeader
+          title="Title rules"
+          left={<View style={styles.headerSpacer} />}
+          right={<SheetHeaderButton label="Done" onPress={onClose} minWidth={56} />}
+        />
 
         {titleRules.length === 0 ? (
           <ScrollView contentContainerStyle={styles.emptyWrap}>
@@ -293,22 +294,6 @@ export function TitleRulesSheet({ visible, onClose }: Props) {
 function makeStyles(colors: Colors) {
   return StyleSheet.create({
     root: { flex: 1, backgroundColor: colors.bg },
-    header: {
-      flexDirection: 'row',
-      alignItems: 'center',
-      justifyContent: 'space-between',
-      paddingHorizontal: spacing.md,
-      paddingVertical: spacing.md,
-      borderBottomWidth: border.hairline,
-      borderBottomColor: colors.separator,
-    },
-    headerTitle: {
-      flex: 1,
-      textAlign: 'center',
-      color: colors.text,
-      fontSize: font.md,
-      fontWeight: fontWeight.semibold,
-    },
     // Matches Done's own minWidth, so the title stays optically centred.
     headerSpacer: { width: 56 },
     emptyWrap: { flexGrow: 1, justifyContent: 'center', paddingHorizontal: spacing.md },

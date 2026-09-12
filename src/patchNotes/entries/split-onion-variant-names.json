@@ -1,0 +1,4 @@
+{
+  "message": "Splitting a recipe line like \"red or white onion\" into two ingredients now keeps the noun on both (red onion, white onion) for common produce variants, instead of dropping it from the first option",
+  "date": "2026-09-12"
+}

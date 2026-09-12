@@ -15,6 +15,7 @@ import {
 } from '../theme';
 import { itemsOnList } from '../utils/groceryLists';
 import { useGroceryStore } from '../store/useGroceryStore';
+import { SheetHeader } from './SheetHeader';
 import { SheetHeaderButton } from './SheetHeaderButton';
 import { InlineAction } from './InlineAction';
 import { haptics } from '../utils/haptics';
@@ -314,18 +315,11 @@ export function ShoppingTripSheet({ visible, onClose, onCreate, onStart, intent 
         onRequestClose={cancelCorrection}
       >
         <View style={styles.root}>
-          <View style={styles.header}>
-            <SheetHeaderButton
-              label="Back"
-              role="cancel"
-              onPress={cancelCorrection}
-              minWidth={72}
-            />
-            <Text style={styles.headerTitle} numberOfLines={1}>
-              {correctingShop.name}
-            </Text>
-            <SheetHeaderButton label="Save" onPress={saveCorrection} minWidth={72} />
-          </View>
+          <SheetHeader
+            title={correctingShop.name}
+            left={<SheetHeaderButton label="Back" role="cancel" onPress={cancelCorrection} minWidth={72} />}
+            right={<SheetHeaderButton label="Save" onPress={saveCorrection} minWidth={72} />}
+          />
 
           <ScrollView contentContainerStyle={styles.body}>
             <Text style={styles.intro}>
@@ -375,15 +369,17 @@ export function ShoppingTripSheet({ visible, onClose, onCreate, onStart, intent 
   return (
     <Modal visible={visible} animationType="slide" presentationStyle="pageSheet" onRequestClose={handleCancel}>
       <View style={styles.root}>
-        <View style={styles.header}>
-          <SheetHeaderButton label="Cancel" role="cancel" onPress={handleCancel} minWidth={72} />
-          <Text style={styles.headerTitle}>{startNow ? 'Start shopping' : 'Shopping trip'}</Text>
-          <SheetHeaderButton
-            label={startNow ? 'Start' : addLabel}
-            onPress={() => (startNow && startable ? onStart(startable) : handleCreate())}
-            minWidth={72}
-          />
-        </View>
+        <SheetHeader
+          title={startNow ? 'Start shopping' : 'Shopping trip'}
+          left={<SheetHeaderButton label="Cancel" role="cancel" onPress={handleCancel} minWidth={72} />}
+          right={
+            <SheetHeaderButton
+              label={startNow ? 'Start' : addLabel}
+              onPress={() => (startNow && startable ? onStart(startable) : handleCreate())}
+              minWidth={72}
+            />
+          }
+        />
 
         <ScrollView contentContainerStyle={styles.body}>
           <Text style={styles.intro}>
@@ -713,16 +709,6 @@ function capitalize(text: string): string {
 function makeStyles(colors: Colors) {
   return StyleSheet.create({
     root: { flex: 1, backgroundColor: colors.bg },
-    header: {
-      flexDirection: 'row',
-      alignItems: 'center',
-      justifyContent: 'space-between',
-      paddingHorizontal: spacing.md,
-      paddingVertical: spacing.md,
-      borderBottomWidth: border.hairline,
-      borderBottomColor: colors.separator,
-    },
-    headerTitle: { color: colors.text, fontSize: font.md, fontWeight: fontWeight.semibold },
     body: { padding: spacing.md, paddingBottom: spacing.xl },
     intro: { color: colors.textSecondary, fontSize: font.md, lineHeight: 21 },
     suggestion: {

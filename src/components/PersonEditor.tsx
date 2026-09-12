@@ -8,6 +8,7 @@ import { usePersonGroupStore } from '../store/usePersonGroupStore';
 import { PersonGroupEditor } from './PersonGroupEditor';
 import { BirthdayPicker } from './BirthdayPicker';
 import { SheetHeaderButton } from './SheetHeaderButton';
+import { SheetHeader } from './SheetHeader';
 import { NumberPadAccessory, NUMBER_PAD_ACCESSORY_ID } from './NumberPadAccessory';
 import { EditorRow } from './EditorRow';
 import { EditorSheet } from './EditorSheet';
@@ -194,13 +195,16 @@ export function PersonEditor({ visible, person, isNew, onClose }: Props) {
       scrollStyle={styles.scroll}
       scrollContentStyle={styles.scrollContent}
       header={
-        <>
-          <SheetHeaderButton label="Done" onPress={saveAndClose} />
-          <Text style={styles.headerTitle}>{isNew ? 'New person' : 'Edit person'}</Text>
-          <TouchableOpacity onPress={handleDelete} hitSlop={8} accessibilityRole="button" accessibilityLabel="Delete person">
-            <Ionicons name="trash-outline" size={20} color={colors.red} />
-          </TouchableOpacity>
-        </>
+        <SheetHeader
+          bare
+          title={isNew ? 'New person' : 'Edit person'}
+          left={<SheetHeaderButton label="Done" onPress={saveAndClose} />}
+          right={
+            <TouchableOpacity onPress={handleDelete} hitSlop={8} accessibilityRole="button" accessibilityLabel="Delete person">
+              <Ionicons name="trash-outline" size={20} color={colors.red} />
+            </TouchableOpacity>
+          }
+        />
       }
       footer={
         <>
@@ -500,7 +504,6 @@ const makeStyles = (colors: Colors) => StyleSheet.create({
     paddingHorizontal: spacing.lg, paddingVertical: spacing.md,
     borderBottomWidth: StyleSheet.hairlineWidth, borderBottomColor: colors.separator,
   },
-  headerTitle: { color: colors.text, fontSize: font.md, fontWeight: fontWeight.semibold },
   scroll: { flex: 1 },
   scrollContent: { padding: spacing.md, paddingBottom: 120 },
   titleInput: {

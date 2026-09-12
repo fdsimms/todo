@@ -21,9 +21,6 @@ import { type SegmentOption } from '../../components/SegmentedControl';
 import { PillGroup } from '../../components/PillGroup';
 import { TitleRulesSheet } from '../../components/TitleRulesSheet';
 import { makeSettingsStyles } from './settingsStyles';
-import {
-  SIMPLE_AREAS, SIMPLE_AREA_LABELS, SIMPLE_FEATURES, simpleFeaturesIn,
-} from '../../utils/simpleMode';
 import { haptics } from '../../utils/haptics';
 import { isScreenTimeSupported, screenTimeBridge } from '../../utils/screenTimeBridge';
 import { categoryLabel } from '../../utils/categoryLabel';
@@ -105,10 +102,7 @@ export function TasksProjectsSettings() {
   const setSimpleTaskForm = useSettingsStore(s => s.setSimpleTaskForm);
   const timerLiveActivity = useSettingsStore(s => s.timerLiveActivity);
   const setTimerLiveActivity = useSettingsStore(s => s.setTimerLiveActivity);
-  const kitchenEnabled = useSettingsStore(s => s.kitchenEnabled);
-  const setKitchenEnabled = useSettingsStore(s => s.setKitchenEnabled);
   const simpleMode = useSettingsStore(s => s.simpleMode);
-  const setSimpleMode = useSettingsStore(s => s.setSimpleMode);
   const defaultProjectNudgeCadenceDays = useSettingsStore(s => s.defaultProjectNudgeCadenceDays);
   const setDefaultProjectNudgeCadenceDays = useSettingsStore(s => s.setDefaultProjectNudgeCadenceDays);
   const newTaskDefaults = useSettingsStore(s => s.newTaskDefaults);
@@ -901,47 +895,6 @@ export function TasksProjectsSettings() {
           toggle={destinationForecastEnabled}
           onPress={() => setDestinationForecastEnabled(!destinationForecastEnabled)}
         />
-      </SettingsSection>
-
-      <SettingsSection
-        label="Feature areas"
-        footer="Neither switch deletes anything. Your tasks, lists, recipes and planned meals are kept exactly as they are, and turning either back on returns every feature as you left it. A task or item that already uses a hidden feature keeps showing it, so nothing you have set can go missing."
-      >
-        <SettingsRow
-          entryId="kitchenEnabled"
-          icon="cart-outline"
-          iconColor={kitchenEnabled ? colors.accent : undefined}
-          label="Groceries & meals"
-          hint={kitchenEnabled ? 'Shown in the tab bar' : 'Hidden from the tab bar'}
-          toggle={kitchenEnabled}
-          onPress={() => setKitchenEnabled(!kitchenEnabled)}
-        />
-        <View style={styles.sep} />
-        <SettingsRow
-          entryId="simpleMode"
-          icon="contract-outline"
-          iconColor={simpleMode ? colors.accent : undefined}
-          label="Simplified mode"
-          hint={simpleMode
-            ? `${SIMPLE_FEATURES.length} advanced features are hidden`
-            : 'Every feature is available'}
-          toggle={simpleMode}
-          onPress={() => setSimpleMode(!simpleMode)}
-        />
-        <View style={styles.sep} />
-        {/* The list is the setting's only honest description: "hides advanced
-            features" is not something anyone can act on without knowing which. */}
-        <SettingsRow icon="list-outline" label="What simplified mode hides" />
-        <View style={styles.simpleList}>
-          {SIMPLE_AREAS.map(area => (
-            <View key={area} style={styles.simpleArea}>
-              <Text style={styles.simpleAreaLabel}>{SIMPLE_AREA_LABELS[area]}</Text>
-              <Text style={styles.simpleAreaFeatures}>
-                {simpleFeaturesIn(area).map(f => f.label).join(', ')}
-              </Text>
-            </View>
-          ))}
-        </View>
       </SettingsSection>
 
       {/*

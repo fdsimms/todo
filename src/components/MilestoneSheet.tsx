@@ -6,6 +6,7 @@ import type { Milestone } from '../types';
 import { useMilestoneStore } from '../store/useMilestoneStore';
 import { EditorSheet } from './EditorSheet';
 import { EditorRow } from './EditorRow';
+import { SheetHeader } from './SheetHeader';
 import { SheetHeaderButton } from './SheetHeaderButton';
 import { WhenPicker } from './WhenPicker';
 import { useColors } from '../theme/ThemeContext';
@@ -95,19 +96,18 @@ export function MilestoneSheet({ visible, milestone, onClose }: Props) {
       scrollStyle={styles.scroll}
       scrollContentStyle={styles.scrollContent}
       header={
-        <>
-          <SheetHeaderButton label="Done" onPress={saveAndClose} />
-          <Text style={styles.headerTitle} numberOfLines={1}>
-            {milestone ? 'Edit milestone' : 'New milestone'}
-          </Text>
-          {milestone ? (
+        <SheetHeader
+          bare
+          title={milestone ? 'Edit milestone' : 'New milestone'}
+          left={<SheetHeaderButton label="Done" onPress={saveAndClose} />}
+          right={milestone ? (
             <TouchableOpacity onPress={handleDelete} hitSlop={8} accessibilityRole="button" accessibilityLabel="Delete milestone">
               <Ionicons name="trash-outline" size={20} color={colors.red} />
             </TouchableOpacity>
           ) : (
             <View style={styles.headerSpacer} />
           )}
-        </>
+        />
       }
       footer={
         <WhenPicker
@@ -152,10 +152,6 @@ const makeStyles = (colors: Colors) => StyleSheet.create({
     flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between',
     paddingHorizontal: spacing.md, paddingVertical: spacing.md,
     borderBottomWidth: StyleSheet.hairlineWidth, borderBottomColor: colors.separator,
-  },
-  headerTitle: {
-    flex: 1, textAlign: 'center', color: colors.text,
-    fontSize: font.md, fontWeight: fontWeight.semibold,
   },
   headerSpacer: { width: 20 },
   scroll: { flex: 1 },

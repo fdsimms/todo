@@ -1,4 +1,5 @@
-import { differenceInCalendarDays, subDays } from 'date-fns';
+import { differenceInCalendarDays } from 'date-fns/differenceInCalendarDays';
+import { subDays } from 'date-fns/subDays';
 import type { Task } from '../types';
 import { nextStreakRecord } from './streakRecord';
 

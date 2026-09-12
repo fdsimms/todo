@@ -34,7 +34,6 @@ function entry(date: string, overrides: Partial<MealPlanEntry> = {}): MealPlanEn
     cookedAt: null,
     leftoverId: null,
     recipeChoices: [],
-    personIds: [],
     recipeScale: 1,
     cookTask: null,
     shopTask: null,

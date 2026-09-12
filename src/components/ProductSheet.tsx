@@ -13,7 +13,7 @@ import {
 import { useShallow } from 'zustand/react/shallow';
 import { useGroceryStore } from '../store/useGroceryStore';
 import { useColors } from '../theme/ThemeContext';
-import { border, font, fontWeight, interaction, radius, spacing, type Colors } from '../theme';
+import { font, fontWeight, interaction, radius, spacing, type Colors } from '../theme';
 import {
   GROCERY_BRAND_MAX_LENGTH,
   GROCERY_PRODUCT_NOTE_MAX_LENGTH,
@@ -28,6 +28,7 @@ import { useKeyboardInsetScroll } from '../hooks/useKeyboardInsetScroll';
 import { NutritionPanelSheet } from './NutritionPanelSheet';
 import { PillGroup, type PillGroupOption } from './PillGroup';
 import { SegmentedControl } from './SegmentedControl';
+import { SheetHeader } from './SheetHeader';
 import { SheetHeaderButton } from './SheetHeaderButton';
 
 interface Props {
@@ -270,13 +271,11 @@ export function ProductSheet({ visible, itemId, editingProductId = null, onClose
   return (
     <Modal visible={visible} animationType="slide" presentationStyle="pageSheet" onRequestClose={handleCancel}>
       <View style={styles.root}>
-        <View style={styles.header}>
-          <SheetHeaderButton label="Cancel" role="cancel" onPress={handleCancel} minWidth={64} />
-          <Text style={styles.headerTitle} numberOfLines={1}>
-            {editing ? 'Edit product' : `Which ${item.name.toLowerCase()}?`}
-          </Text>
-          <SheetHeaderButton label="Save" onPress={handleSave} disabled={!canSave} minWidth={64} />
-        </View>
+        <SheetHeader
+          title={editing ? 'Edit product' : `Which ${item.name.toLowerCase()}?`}
+          left={<SheetHeaderButton label="Cancel" role="cancel" onPress={handleCancel} minWidth={64} />}
+          right={<SheetHeaderButton label="Save" onPress={handleSave} disabled={!canSave} minWidth={64} />}
+        />
 
         <ScrollView
           ref={keyboardScroll.ref}
@@ -511,22 +510,6 @@ function distinct(values: readonly (string | null)[]): string[] {
 
 const makeStyles = (colors: Colors) => StyleSheet.create({
   root: { flex: 1, backgroundColor: colors.bg },
-  header: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'space-between',
-    paddingHorizontal: spacing.md,
-    paddingVertical: spacing.md,
-    borderBottomWidth: border.hairline,
-    borderBottomColor: colors.separator,
-  },
-  headerTitle: {
-    flex: 1,
-    textAlign: 'center',
-    color: colors.text,
-    fontSize: font.md,
-    fontWeight: fontWeight.semibold,
-  },
   body: { flex: 1 },
   bodyContent: { padding: spacing.md, paddingBottom: spacing.xl * 2 },
   label: {
