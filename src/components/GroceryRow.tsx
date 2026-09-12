@@ -72,8 +72,21 @@ interface Props {
    * (only it has the whole list) and absent for an ordinary row. Its own line
    * rather than folded into the note: at the shelf it's the difference between
    * buying one of these and buying all of them.
+   *
+   * Suppressed when `choicePosition` is set — the stitched card and its "OR"
+   * divider already say this, and a row can't afford to say it twice.
    */
   alternatives?: string;
+  /**
+   * Set when this row sits directly next to its live either/or partner(s) —
+   * computed by the screen, which is the only thing that knows what's
+   * adjacent on screen (see `ListRow.choicePosition` in GroceryScreen). Draws
+   * this row as one segment of a single stitched card — shared background,
+   * only the outer corners of the run rounded, an "OR" divider after every
+   * segment but the last — instead of a standalone card with its own
+   * "or yellow cake mix" caption.
+   */
+  choicePosition?: 'first' | 'middle' | 'last';
   /**
    * "For “Change the water filter”" — the task whose supply this row is kept
    * stocked for, computed by the screen (only it can reach the task list) and
@@ -159,6 +172,7 @@ export const GroceryRow = React.memo(function GroceryRow({
   onSwipeSelect,
   onOpenSubstitutes,
   alternatives,
+  choicePosition,
   stockedFor,
   storeMarker,
   swapSubstituteId,
@@ -462,7 +476,7 @@ export const GroceryRow = React.memo(function GroceryRow({
               <Text style={styles.storeMarker} numberOfLines={1}>{storeMarker}</Text>
             )
           )}
-          {!!alternatives && (
+          {!!alternatives && !choicePosition && (
             <Text style={styles.alternatives} numberOfLines={1}>{alternatives}</Text>
           )}
         </View>
@@ -586,6 +600,9 @@ export const GroceryRow = React.memo(function GroceryRow({
         styles.itemWrapper,
         item.checked && styles.itemWrapperChecked,
         isActive && styles.itemWrapperActive,
+        choicePosition === 'first' && styles.itemWrapperChoiceFirst,
+        choicePosition === 'middle' && styles.itemWrapperChoiceMiddle,
+        choicePosition === 'last' && styles.itemWrapperChoiceLast,
       ]}
     >
       {/* SwipeableRow stays mounted through the selectionMode toggle rather
@@ -603,6 +620,18 @@ export const GroceryRow = React.memo(function GroceryRow({
       >
         {rowBody}
       </SwipeableRow>
+      {/* The seam between two stitched segments — everything but the last one
+          gets it. Decorative only: VoiceOver already gets nothing from the
+          "or …" caption this replaces (the row's own accessibilityLabel wins
+          over its child Text nodes), so this stays silent too rather than
+          being the first thing on the row to speak up. */}
+      {(choicePosition === 'first' || choicePosition === 'middle') && (
+        <View style={styles.choiceDivider} accessible={false} importantForAccessibility="no">
+          <View style={styles.choiceDividerLine} />
+          <Text style={styles.choiceDividerLabel}>OR</Text>
+          <View style={styles.choiceDividerLine} />
+        </View>
+      )}
     </View>
   );
 });
@@ -635,6 +664,51 @@ function makeStyles(colors: Colors) {
       // dissolves in light, where a white card at 55% just fades into the
       // #F2F2F7 page and the row stops looking like a row.
       backgroundColor: colors.bgSunken,
+    },
+    // A stitched either/or run: same background carried across every segment
+    // (itemWrapper's own bgSecondary already does that, unchanged), zero gap
+    // between segments, and only the run's own outer corners rounded — the
+    // rest read as one continuous card, which is the whole point.
+    itemWrapperChoiceFirst: {
+      marginBottom: 0,
+      borderBottomLeftRadius: 0,
+      borderBottomRightRadius: 0,
+    },
+    itemWrapperChoiceMiddle: {
+      marginTop: 0,
+      marginBottom: 0,
+      borderRadius: 0,
+    },
+    itemWrapperChoiceLast: {
+      marginTop: 0,
+      borderTopLeftRadius: 0,
+      borderTopRightRadius: 0,
+    },
+    choiceDivider: {
+      flexDirection: 'row',
+      alignItems: 'center',
+      gap: spacing.sm,
+      paddingHorizontal: spacing.md,
+      paddingBottom: spacing.sm,
+    },
+    choiceDividerLine: {
+      flex: 1,
+      height: border.hairline,
+      backgroundColor: colors.separator,
+    },
+    // Same accentSubtle-fill/accentText-foreground pairing InlineAction uses
+    // for its own pill — this is a badge, not a link, so it isn't bare accent
+    // text.
+    choiceDividerLabel: {
+      fontSize: font.xs,
+      fontWeight: fontWeight.bold,
+      letterSpacing: 0.5,
+      color: colors.accentText,
+      backgroundColor: colors.accentSubtle,
+      paddingHorizontal: spacing.sm,
+      paddingVertical: spacing.xxs,
+      borderRadius: radius.full,
+      overflow: 'hidden',
     },
     row: {
       flexDirection: 'row',
