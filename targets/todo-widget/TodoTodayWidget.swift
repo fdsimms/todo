@@ -223,6 +223,21 @@ struct TodoTodayWidgetEntryView: View {
         return parts.isEmpty ? nil : parts.joined(separator: " · ")
     }
 
+    /// A small widget's header already spends its 158pt on a glyph, a title
+    /// and the add button — there's nothing left to give the shortcut row.
+    private var showsShortcuts: Bool { family != .systemSmall }
+
+    /// Where else the Today widget can jump straight to. Groceries and Meal
+    /// plan, not every hub destination: this is a shortcut row on top of a
+    /// task list, not a second nav menu, and `groceriesURL`/`mealPlanURL` are
+    /// the two the Grocery and Kitchen widgets already use for the same trip.
+    private var shortcuts: [(symbolName: String, label: String, destination: URL)] {
+        [
+            (symbolName: "cart.fill", label: "Groceries", destination: groceriesURL),
+            (symbolName: "fork.knife", label: "Meal plan", destination: mealPlanURL),
+        ]
+    }
+
     private var gridView: some View {
         let palette = WidgetPalette.forScheme(colorScheme)
         let perColumn = WidgetLayout.rowsPerColumn(for: family)
@@ -231,31 +246,42 @@ struct TodoTodayWidgetEntryView: View {
         let shown = Array(tasks.prefix(perColumn * columns))
         let leftColumn = Array(shown.prefix(perColumn))
         let rightColumn = Array(shown.dropFirst(perColumn))
+        let showsShortcuts = showsShortcuts
+        let extraReserved: CGFloat = showsShortcuts
+            ? WidgetLayout.shortcutsHeight + WidgetLayout.shortcutsGap : 0
 
         return GeometryReader { geo in
-            let rowHeight = WidgetLayout.rowHeight(forWidgetHeight: geo.size.height, rows: perColumn)
+            let rowHeight = WidgetLayout.rowHeight(
+                forWidgetHeight: geo.size.height, rows: perColumn, extraReserved: extraReserved
+            )
             // The grid keeps all its slots whether or not they're filled, so
             // a two-task day and an eight-task day put the header, the first
             // row and the bottom edge in exactly the same places.
             let gridHeight = rowHeight * CGFloat(perColumn)
 
             WidgetFrame(header: header, holdsTop: !shown.isEmpty) {
-                Group {
-                    if shown.isEmpty {
-                        WidgetEmptyState(palette: palette, message: emptyStateMessage)
-                    } else {
-                        // Both columns are always laid out, even when the
-                        // right one is empty — otherwise the left column is
-                        // full-width on a light day and half-width on a busy
-                        // one, and titles truncate at a different point in
-                        // each. Same reason the grid keeps its empty slots.
-                        HStack(alignment: .top, spacing: WidgetLayout.columnGap) {
-                            columnView(leftColumn, palette: palette, rowHeight: rowHeight)
-                            if columns > 1 {
-                                columnView(rightColumn, palette: palette, rowHeight: rowHeight)
+                VStack(alignment: .leading, spacing: 0) {
+                    if showsShortcuts {
+                        WidgetShortcutRow(palette: palette, shortcuts: shortcuts)
+                            .padding(.bottom, WidgetLayout.shortcutsGap)
+                    }
+                    Group {
+                        if shown.isEmpty {
+                            WidgetEmptyState(palette: palette, message: emptyStateMessage)
+                        } else {
+                            // Both columns are always laid out, even when the
+                            // right one is empty — otherwise the left column is
+                            // full-width on a light day and half-width on a busy
+                            // one, and titles truncate at a different point in
+                            // each. Same reason the grid keeps its empty slots.
+                            HStack(alignment: .top, spacing: WidgetLayout.columnGap) {
+                                columnView(leftColumn, palette: palette, rowHeight: rowHeight)
+                                if columns > 1 {
+                                    columnView(rightColumn, palette: palette, rowHeight: rowHeight)
+                                }
                             }
+                            .frame(height: gridHeight, alignment: .top)
                         }
-                        .frame(height: gridHeight, alignment: .top)
                     }
                 }
             }

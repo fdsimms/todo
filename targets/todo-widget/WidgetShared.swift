@@ -31,6 +31,10 @@ enum WidgetLayout {
     /// on a big device that the grid stops reading as a grid.
     static let minRowHeight: CGFloat = 22
     static let maxRowHeight: CGFloat = 30
+    /// The shortcut row's own height and the gap below it, reserved out of
+    /// the grid the same way the header already is.
+    static let shortcutsHeight: CGFloat = 26
+    static let shortcutsGap: CGFloat = 8
 
     /// How many rows one column holds, per family. Medium's four is the number
     /// every other measurement here was tuned against; small is half a medium
@@ -47,9 +51,14 @@ enum WidgetLayout {
     /// `rows` equal slots. Measured rather than hardcoded because a
     /// medium widget is ~141pt tall on a 4" phone and ~170pt on a Max — a
     /// single row height that fits the tallest clips the shortest.
-    static func rowHeight(forWidgetHeight height: CGFloat, rows: Int) -> CGFloat {
+    ///
+    /// `extraReserved` is whatever else sits between the header and the grid
+    /// — the shortcut row, on the widgets that show one — so a row height
+    /// computed with it in the budget doesn't get pushed off the bottom edge
+    /// by a sibling `rowHeight(forWidgetHeight:rows:)` call that forgot it.
+    static func rowHeight(forWidgetHeight height: CGFloat, rows: Int, extraReserved: CGFloat = 0) -> CGFloat {
         guard rows > 0 else { return minRowHeight }
-        let available = height - topPadding - bottomPadding - headerHeight - headerGap
+        let available = height - topPadding - bottomPadding - headerHeight - headerGap - extraReserved
         return min(maxRowHeight, max(minRowHeight, available / CGFloat(rows)))
     }
 }
@@ -163,6 +172,59 @@ struct WidgetHeaderView: View {
             }
         }
         .frame(height: WidgetLayout.headerHeight)
+    }
+}
+
+/// One tinted pill in the shortcut row: an icon, a label, and a `Link` to
+/// another part of the app — the Today widget's own equivalent of the other
+/// widgets' whole-widget `.widgetURL`, for a destination that isn't the one
+/// this widget is already showing.
+struct WidgetShortcutButton: View {
+    let palette: WidgetPalette
+    let symbolName: String
+    let label: String
+    let destination: URL
+
+    var body: some View {
+        Link(destination: destination) {
+            HStack(spacing: 4) {
+                Image(systemName: symbolName)
+                    .font(.system(size: 11, weight: .semibold))
+                Text(label)
+                    .font(.system(size: 12, weight: .medium))
+                    .lineLimit(1)
+            }
+            .foregroundColor(palette.accent)
+            .frame(maxWidth: .infinity)
+            .frame(height: WidgetLayout.shortcutsHeight)
+            .background(
+                RoundedRectangle(cornerRadius: WidgetLayout.shortcutsHeight / 2, style: .continuous)
+                    .fill(palette.accent.opacity(0.15))
+            )
+        }
+        .accessibilityLabel(label)
+    }
+}
+
+/// The row of shortcut buttons under the header — everywhere else this widget
+/// can jump straight to. Only shown where there's room for it; see
+/// `showsShortcuts` at the call site.
+struct WidgetShortcutRow: View {
+    let palette: WidgetPalette
+    let shortcuts: [(symbolName: String, label: String, destination: URL)]
+
+    var body: some View {
+        HStack(spacing: WidgetLayout.columnGap) {
+            ForEach(shortcuts, id: \.label) { shortcut in
+                WidgetShortcutButton(
+                    palette: palette,
+                    symbolName: shortcut.symbolName,
+                    label: shortcut.label,
+                    destination: shortcut.destination
+                )
+            }
+        }
+        .frame(height: WidgetLayout.shortcutsHeight)
     }
 }
 
