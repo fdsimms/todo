@@ -39,6 +39,7 @@ import { ReorderableList, type RowScroller } from '../components/ReorderableList
 import { useScrollToTopOnTabPress } from '../hooks/useScrollToTopOnTabPress';
 import { ProgressBar } from '../components/ProgressBar';
 import { ProjectsOptionsMenu, type ProjectFilter } from '../components/ProjectsOptionsMenu';
+import { CookbookChecklistSheet } from '../components/CookbookChecklistSheet';
 import { ProjectCategoriesSheet } from '../components/ProjectCategoriesSheet';
 import { ListBulkBar } from '../components/ListBulkBar';
 import { SelectionDot } from '../components/SelectionDot';
@@ -121,6 +122,7 @@ export function ProjectsScreen() {
   const [quickAddVisible, setQuickAddVisible] = useState(false);
   const [optionsMenuVisible, setOptionsMenuVisible] = useState(false);
   const [categoriesSheetVisible, setCategoriesSheetVisible] = useState(false);
+  const [cookbookChecklistVisible, setCookbookChecklistVisible] = useState(false);
   const [bulkBarHeight, setBulkBarHeight] = useState(0);
 
   // Also reachable from the header, since both of a project row's own
@@ -595,11 +597,17 @@ export function ProjectsScreen() {
         archivedCount={archivedCount}
         categoryCount={projectCategories.length}
         onManageCategories={() => setCategoriesSheetVisible(true)}
+        onScanCookbook={() => setCookbookChecklistVisible(true)}
       />
 
       <ProjectCategoriesSheet
         visible={categoriesSheetVisible}
         onClose={() => setCategoriesSheetVisible(false)}
+      />
+
+      <CookbookChecklistSheet
+        visible={cookbookChecklistVisible}
+        onClose={() => setCookbookChecklistVisible(false)}
       />
 
       <QuickAddProjectModal

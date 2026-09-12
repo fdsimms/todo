@@ -2098,6 +2098,125 @@ function parseReceiptLines(raw: unknown): ReceiptLine[] {
   return result.slice(0, MAX_RECEIPT_LINES);
 }
 
+/** A cookbook rarely lists more titles than this; a longer read is clamped rather than dropped. */
+const MAX_COOKBOOK_TITLES = 120;
+/** Mirrors MAX_RECEIPT_CHARS — a table of contents is rarely longer than a receipt's printed rows. */
+const MAX_COOKBOOK_TOC_CHARS = 6_000;
+
+export interface ExtractedCookbookChecklist {
+  /** The book's own title, read off the same page when it's printed there. Empty when it isn't. */
+  cookbookTitle: string;
+  /** Every recipe title the contents page lists, in printed order. */
+  titles: string[];
+}
+
+/**
+ * Reads a cookbook's table of contents — pasted OCR text or a photo of the
+ * page — into a list of recipe titles, for `CookbookChecklistSheet` to build a
+ * checklist project from.
+ *
+ * Same split as `extractReceipt`: on-device Vision reads the page for free
+ * (`src/utils/cookbookOcr.ts`), and what reaches here is usually the printed
+ * rows rather than the photo. The prompt spends most of its length on what
+ * *isn't* a recipe title, because a contents page is mostly not one:
+ * section headers ("Breakfast", "Soups & Stews"), the introduction and index,
+ * and — the one a page number invites — the page number itself.
+ *
+ * **It extracts; it never decides.** Nothing here creates the checklist or its
+ * project — the sheet does that once the user has reviewed and edited every
+ * title, the same confirm-before-write rule `extractReceipt` follows.
+ */
+export async function extractCookbookChecklist(
+  source: string | RecipeImage,
+): Promise<ExtractedCookbookChecklist> {
+  const { apiKey, model } = requireFeature('cookbookChecklist');
+
+  const empty: ExtractedCookbookChecklist = { cookbookTitle: '', titles: [] };
+  const image = typeof source === 'string' ? null : source;
+  const text = typeof source === 'string' ? source.trim().slice(0, MAX_COOKBOOK_TOC_CHARS) : '';
+  if (image ? !image.base64 : !text) return empty;
+
+  const shared = [
+    'List only recipe titles — the names of individual dishes a cook would look up and make. Skip section and chapter headings ("Breakfast", "Soups & Stews", "Weeknight Dinners"), the book\'s own title and subtitle, the author\'s name, an introduction or foreword, an index, and page numbers.',
+    'Give each title exactly as printed, without the page number or the dots/spaces leading up to it. Keep the book\'s own capitalization and punctuation.',
+    'If the page also states the book\'s own title (a running head, a cover line), give it in cookbookTitle. Leave it empty if the page only lists recipes with nothing naming the book itself.',
+  ];
+
+  const prompt = image
+    ? [
+        'This is a photo of a cookbook\'s table of contents. Read it and extract the book\'s title, if stated, and every recipe title it lists.',
+        ...shared,
+        'If the photo is too blurry, too dark, cut off, or is not a table of contents at all, return an empty title and an empty list rather than guessing.',
+      ].join('\n\n')
+    : [
+        'Below is the text of a cookbook\'s table of contents, read off a photo of it by on-device text recognition. Extract the book\'s title, if stated, and every recipe title it lists.',
+        'One printed row per line, in the order they were printed. The recognition is good but not perfect and does not correct what it reads: expect confusions between similar characters (0 and O, 1 and l, 5 and S), split or joined words, and the occasional dropped character. Read through that the way you would read a smudged page rather than treating a garbled row as a different title than the one it plainly is.',
+        ...shared,
+        'If this is not a table of contents, or too little of it came through to tell what\'s listed, return an empty title and an empty list rather than guessing.',
+        `Table of contents:\n${text}`,
+      ].join('\n\n');
+
+  const data = await callAnthropic({
+    max_tokens: 4000,
+    tools: [{
+      name: 'extract_cookbook_checklist',
+      description: 'Extract a cookbook\'s title and the recipe titles listed in its table of contents',
+      input_schema: {
+        type: 'object',
+        properties: {
+          cookbookTitle: {
+            type: 'string',
+            description: 'The cookbook\'s own title, if the page states it. Empty string otherwise.',
+          },
+          titles: {
+            type: 'array',
+            description: 'Every recipe title the contents page lists, in printed order.',
+            items: {
+              type: 'string',
+              description: `A single recipe title, as printed, with no page number. Under ${RECIPE_NAME_MAX_LENGTH} characters.`,
+            },
+          },
+        },
+        required: ['cookbookTitle', 'titles'],
+      },
+    }],
+    tool_choice: { type: 'tool', name: 'extract_cookbook_checklist' },
+    messages: [{
+      role: 'user',
+      content: image
+        ? [
+            {
+              type: 'image',
+              source: { type: 'base64', media_type: image.mediaType, data: image.base64 },
+            },
+            { type: 'text', text: prompt },
+          ]
+        : prompt,
+    }],
+  }, apiKey, model, image ? IMAGE_REQUEST_TIMEOUT_MS : undefined);
+
+  const toolUse = data.content?.find(c => c.type === 'tool_use');
+  const input = toolUse?.input as { cookbookTitle?: unknown; titles?: unknown } | undefined;
+  if (!input) throw new Error('No suggestions returned');
+
+  const titles: string[] = [];
+  if (Array.isArray(input.titles)) {
+    for (const raw of input.titles) {
+      if (typeof raw !== 'string') continue;
+      const title = raw.trim().slice(0, RECIPE_NAME_MAX_LENGTH);
+      if (title) titles.push(title);
+      if (titles.length >= MAX_COOKBOOK_TITLES) break;
+    }
+  }
+
+  return {
+    cookbookTitle: typeof input.cookbookTitle === 'string'
+      ? input.cookbookTitle.trim().slice(0, RECIPE_NAME_MAX_LENGTH)
+      : '',
+    titles,
+  };
+}
+
 const MAX_CALENDAR_EVENTS = 20;
 // Mirrors MAX_RECIPE_CHARS — a confirmation page is rarely longer than a
 // recipe, and a runaway paste shouldn't balloon the request.
