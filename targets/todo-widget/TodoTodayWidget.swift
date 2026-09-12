@@ -150,6 +150,26 @@ struct TodoTodayWidgetEntryView: View {
 
     private var doneToday: Int { entry.result.snapshot?.doneToday ?? 0 }
 
+    /// A small widget's header already spends its 158pt on a glyph, a title
+    /// and the add button — there's no room left for shortcut links too.
+    private var showsShortcuts: Bool { family != .systemSmall }
+
+    /// Where else this widget can jump straight to. Not every hub destination:
+    /// these ride in the header alongside the add button, not a second nav
+    /// menu, and every URL here is one an existing task link, widget or Live
+    /// Activity already uses for the same trip — `groceriesURL`/`mealPlanURL`
+    /// by the Grocery and Kitchen widgets, `moodURL`/`foodLogURL` by the
+    /// mood check-in task and the deep link `isFoodLogUrl` handles.
+    private var shortcuts: [WidgetHeaderShortcut] {
+        guard showsShortcuts else { return [] }
+        return [
+            WidgetHeaderShortcut(symbolName: "cart.fill", label: "Groceries", destination: groceriesURL),
+            WidgetHeaderShortcut(symbolName: "fork.knife", label: "Meal plan", destination: mealPlanURL),
+            WidgetHeaderShortcut(symbolName: "face.smiling", label: "Mood", destination: moodURL),
+            WidgetHeaderShortcut(symbolName: "fork.knife.circle", label: "Food log", destination: foodLogURL),
+        ]
+    }
+
     private var header: WidgetHeaderView {
         WidgetHeaderView(
             palette: WidgetPalette.forScheme(colorScheme),
@@ -160,6 +180,7 @@ struct TodoTodayWidgetEntryView: View {
             // button in 158pt. The count is what gives way: it is the one piece
             // the rows below already imply.
             countLabel: tasks.isEmpty || family == .systemSmall ? nil : taskCountLabel(remaining),
+            shortcutLinks: shortcuts,
             actionURL: quickAddURL,
             actionLabel: "Add task"
         )

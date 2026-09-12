@@ -16,6 +16,7 @@ import {
   resetToKitchen,
   resetToPeople,
   resetToMood,
+  resetToFoodLog,
   resetToWeight,
   resetToProjectPull,
   resetToFocusSession,
@@ -318,6 +319,16 @@ export function moodUrlWantsLog(url: string): boolean {
   return value === '1' || value.toLowerCase() === 'true';
 }
 
+// `dundundun://foodlog` — the Today widget's food log shortcut, the peer of
+// `groceries`/`mealplan`/`kitchen`: a plain "open this screen" link with no
+// query params, since nothing writes this one asking for a specific entry or
+// sheet the way a task's own links do.
+const FOOD_LOG_RE = new RegExp(`^${SCHEME}:\\/\\/\\/?foodlog\\/?$`, 'i');
+
+export function isFoodLogUrl(url: string): boolean {
+  return typeof url === 'string' && FOOD_LOG_RE.test(url.trim());
+}
+
 // `dundundun://weight[?log=1]` — what the weigh-in request carries, the exact
 // shape the mood check-in's link takes and for a sharper version of its reason:
 // ticking the request off without recording anything loses a number that cannot
@@ -493,6 +504,7 @@ export function linkIconFor(url: string | null | undefined): string {
   if (isGroceriesUrl(url)) return 'cart-outline';
   if (isPeopleUrl(url)) return 'people-outline';
   if (isMoodUrl(url)) return 'happy-outline';
+  if (isFoodLogUrl(url)) return 'fast-food-outline';
   if (isWeightUrl(url)) return 'scale-outline';
   if (isProjectsUrl(url)) return 'briefcase-outline';
   if (isDeloadUrl(url)) return 'leaf-outline';
@@ -541,6 +553,10 @@ export function openInAppUrl(url: string | null | undefined): boolean {
   }
   if (isMoodUrl(url)) {
     resetToMood(moodUrlWantsLog(url));
+    return true;
+  }
+  if (isFoodLogUrl(url)) {
+    resetToFoodLog();
     return true;
   }
   if (isWeightUrl(url)) {

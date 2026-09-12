@@ -10,6 +10,7 @@ const mockResetToRecipeDetail = jest.fn();
 const mockResetToMealPlan = jest.fn();
 const mockResetToKitchen = jest.fn();
 const mockResetToPeople = jest.fn();
+const mockResetToFoodLog = jest.fn();
 const mockResetToProjectPull = jest.fn();
 const mockResetToDeload = jest.fn();
 const mockOpenQuickAdd = jest.fn();
@@ -62,6 +63,7 @@ jest.mock('../navigation/navigationRef', () => ({
   resetToMealPlan: (...args: unknown[]) => mockResetToMealPlan(...args),
   resetToKitchen: (...args: unknown[]) => mockResetToKitchen(...args),
   resetToPeople: (...args: unknown[]) => mockResetToPeople(...args),
+  resetToFoodLog: (...args: unknown[]) => mockResetToFoodLog(...args),
   resetToProjectPull: (...args: unknown[]) => mockResetToProjectPull(...args),
   resetToFocusSession: (...args: unknown[]) => mockResetToFocusSession(...args),
   resetToDeload: (...args: unknown[]) => mockResetToDeload(...args),
@@ -82,6 +84,7 @@ import {
   recipeUrlId,
   isPeopleUrl,
   peopleUrlPersonId,
+  isFoodLogUrl,
   isProjectsUrl,
   projectsUrlPullId,
   isDeloadUrl,
@@ -487,6 +490,7 @@ describe('linkIconFor', () => {
     expect(linkIconFor('dundundun://people?person=p1')).toBe('people-outline');
     expect(linkIconFor('dundundun://projects?pull=proj-1')).toBe('briefcase-outline');
     expect(linkIconFor('dundundun://deload')).toBe('leaf-outline');
+    expect(linkIconFor('dundundun://foodlog')).toBe('fast-food-outline');
   });
 
   it('falls back to the plain chain link for a real external URL', () => {
@@ -505,6 +509,7 @@ describe('openInAppUrl', () => {
     mockResetToMealPlan.mockClear();
     mockResetToKitchen.mockClear();
     mockResetToPeople.mockClear();
+    mockResetToFoodLog.mockClear();
     mockResetToProjectPull.mockClear();
     mockResetToDeload.mockClear();
     mockOpenQuickAdd.mockClear();
@@ -691,6 +696,21 @@ describe('openInAppUrl', () => {
     expect(mockResetToRecipes).toHaveBeenCalledTimes(1);
     expect(mockResetToMealPlan).not.toHaveBeenCalled();
     expect(mockResetToGroceries).not.toHaveBeenCalled();
+  });
+
+  // The Today widget's food log shortcut — a plain "open this screen" link,
+  // the same shape recipes/mealplan/kitchen already take.
+  it('opens the food log for the bare link', () => {
+    expect(isFoodLogUrl('dundundun://foodlog')).toBe(true);
+    expect(isFoodLogUrl('dundundun:///foodlog')).toBe(true);
+    expect(isFoodLogUrl('dundundun://foodlog/')).toBe(true);
+    expect(isFoodLogUrl('DUNDUNDUN://FoodLog')).toBe(true);
+    expect(isFoodLogUrl('dundundun://foodlog?date=2026-08-22')).toBe(false);
+    expect(isFoodLogUrl('dundundun://groceries')).toBe(false);
+
+    expect(openInAppUrl('dundundun://foodlog')).toBe(true);
+    expect(mockResetToFoodLog).toHaveBeenCalledTimes(1);
+    expect(mockResetToToday).not.toHaveBeenCalled();
   });
 
   // A meal-slot cook task's own link once the slot holds a recipe (see

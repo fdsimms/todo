@@ -105,18 +105,69 @@ struct AddButtonShape: Shape {
     }
 }
 
-/// One widget's title line: a tinted glyph, a name, an optional count, and an
-/// optional round button on the trailing edge.
+/// One entry in a header's `shortcutLinks`: a plain SF Symbol, no background,
+/// jumping straight to another part of the app.
+struct WidgetHeaderShortcut {
+    let symbolName: String
+    let label: String
+    let destination: URL
+}
+
+/// A shortcut's own button — same tap-target sizing as the add button beside
+/// it, but a bare glyph rather than a filled shape, so a row of two or three
+/// of these reads as secondary next to the header's one primary action.
+private struct WidgetHeaderShortcutLink: View {
+    let shortcut: WidgetHeaderShortcut
+    let color: Color
+
+    var body: some View {
+        Link(destination: shortcut.destination) {
+            Image(systemName: shortcut.symbolName)
+                .font(.system(size: 13))
+                .foregroundColor(color)
+                .frame(width: WidgetLayout.headerHeight, height: WidgetLayout.headerHeight)
+                .contentShape(Rectangle())
+        }
+        .accessibilityLabel(shortcut.label)
+    }
+}
+
+/// One widget's title line: a tinted glyph, a name, an optional count, any
+/// shortcut links, and an optional round button on the trailing edge.
 struct WidgetHeaderView: View {
     let palette: WidgetPalette
     let symbolName: String
     let symbolColor: Color
     let title: String
     let countLabel: String?
+    /// Icon-only buttons to other screens, shown before the add button.
+    /// Empty on the widgets and sizes with nothing to offer one — see
+    /// `showsShortcuts` at the Today widget's call site.
+    let shortcutLinks: [WidgetHeaderShortcut]
     /// Nil leaves the trailing slot empty — the kitchen widget has nothing for
     /// a button to do that its whole-widget tap doesn't already do.
     let actionURL: URL?
     let actionLabel: String
+
+    init(
+        palette: WidgetPalette,
+        symbolName: String,
+        symbolColor: Color,
+        title: String,
+        countLabel: String?,
+        shortcutLinks: [WidgetHeaderShortcut] = [],
+        actionURL: URL?,
+        actionLabel: String
+    ) {
+        self.palette = palette
+        self.symbolName = symbolName
+        self.symbolColor = symbolColor
+        self.title = title
+        self.countLabel = countLabel
+        self.shortcutLinks = shortcutLinks
+        self.actionURL = actionURL
+        self.actionLabel = actionLabel
+    }
 
     var body: some View {
         HStack(spacing: 6) {
@@ -124,7 +175,7 @@ struct WidgetHeaderView: View {
                 .foregroundColor(symbolColor)
                 .font(.system(size: 12))
             // layoutPriority for the same reason the task rows have it: the
-            // title names the widget, and the count and the button beside it
+            // title names the widget, and the count and the buttons beside it
             // are short and fixed. Without it a small family's 158pt row let
             // "11 tasks" and the button claim their width first and the title
             // came out as "T…", which is the one thing the header has to say.
@@ -134,13 +185,17 @@ struct WidgetHeaderView: View {
                 .lineLimit(1)
                 .layoutPriority(1)
 
-            Spacer(minLength: 8)
-
             if let countLabel {
                 Text(countLabel)
                     .font(.system(size: 12))
                     .foregroundColor(palette.textSecondary)
                     .lineLimit(1)
+            }
+
+            Spacer(minLength: 8)
+
+            ForEach(shortcutLinks, id: \.label) { shortcut in
+                WidgetHeaderShortcutLink(shortcut: shortcut, color: palette.textSecondary)
             }
 
             if let actionURL {
@@ -290,6 +345,8 @@ let openAppURL = URL(string: "dundundun://")!
 let groceriesURL = URL(string: "dundundun://groceries")!
 let mealPlanURL = URL(string: "dundundun://mealplan")!
 let kitchenURL = URL(string: "dundundun://kitchen")!
+let moodURL = URL(string: "dundundun://mood")!
+let foodLogURL = URL(string: "dundundun://foodlog")!
 
 // ==== Formatting ====
 
