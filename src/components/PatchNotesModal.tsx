@@ -12,6 +12,7 @@ import {
 } from 'react-native';
 import { SafeBlurView } from './SafeBlurView';
 import { ScrollEdgeFade } from './ScrollEdgeFade';
+import { EmptyState } from './EmptyState';
 import { SheetScrim } from './SheetScrim';
 import Ionicons from '@expo/vector-icons/Ionicons';
 import { format } from 'date-fns/format';
@@ -230,7 +231,11 @@ export function PatchNotesModal({ visible, onDismiss }: Props) {
               maxToRenderPerBatch={16}
               initialNumToRender={16}
               removeClippedSubviews
-              ListEmptyComponent={<Text style={styles.emptyText}>All caught up. Nothing left to review.</Text>}
+              ListEmptyComponent={(
+                <View style={styles.empty}>
+                  <EmptyState icon="checkmark-done-outline" title="All caught up" subtitle="Nothing left to review." />
+                </View>
+              )}
             />
             <ScrollEdgeFade edge="bottom" opacity={fade.bottomOpacity} color={colors.bgSecondary} />
           </View>
@@ -295,13 +300,7 @@ const makeStyles = (colors: Colors) => StyleSheet.create({
   notesScroll: {
     maxHeight: NOTES_MAX_HEIGHT,
   },
-  emptyText: {
-    color: colors.textTertiary,
-    fontSize: font.md,
-    textAlign: 'center',
-    paddingHorizontal: spacing.md,
-    paddingVertical: spacing.xl,
-  },
+  empty: { paddingVertical: spacing.xl },
   noteRow: {
     flexDirection: 'row',
     alignItems: 'center',

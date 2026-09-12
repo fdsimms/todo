@@ -1,4 +1,5 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import type { Recipe } from '../types';
 import { extractRecipe, type ExtractedRecipe } from '../services/aiSuggestions';
 import { useRecipeStore } from '../store/useRecipeStore';
 import { cleanRecipeName, normalizeIngredient } from '../utils/recipeUtils';
@@ -20,6 +21,8 @@ export type ComponentImportState =
   | { status: 'reading' }
   /** `photoCount` is how many photos the read combined — see `importFrom`. */
   | { status: 'read'; extracted: ExtractedRecipe; photoCount: number }
+  /** Picked by hand from the recipe box — see `linkTo`. */
+  | { status: 'linked'; recipe: Recipe }
   | { status: 'failed'; message: string };
 
 const IDLE: ComponentImportState = { status: 'idle' };
@@ -41,11 +44,17 @@ const IDLE: ComponentImportState = { status: 'idle' };
  * links all land together. Cancelling the sheet leaves no recipe behind, which
  * is the property that lets the offer be as forward as it is.
  *
- * **Photo only, deliberately.** The main import offers paste and link too,
- * because a recipe you're starting from scratch could come from anywhere. A
- * reference has already told us where it is: page 45 of the book in front of
- * you. Offering a paste box and a URL field for that is offering two dead ends
- * and a wider row to fit them in.
+ * **Photo only for creating a new one, deliberately.** The main import offers
+ * paste and link too, because a recipe you're starting from scratch could
+ * come from anywhere. A reference has already told us where it is: page 45 of
+ * the book in front of you. Offering a paste box and a URL field for that is
+ * offering two dead ends and a wider row to fit them in.
+ *
+ * **Matching is exact-name-only, so a reference can fail to match a recipe
+ * that's genuinely already in the box** — the page calls it one thing, the
+ * user saved it as another. `linkTo` is the escape hatch: picking a recipe by
+ * hand from the box behaves exactly like an automatic match (ticked, and
+ * `commitTo` links rather than creates), it's just chosen rather than found.
  *
  * **A second photo after a successful read adds a page rather than replacing
  * one**, the same page-turn case the main import's `photos` array exists for
@@ -152,6 +161,23 @@ export function useRecipeComponentImports(
     }
   }, [availableAisles, setState]);
 
+  /**
+   * The reference isn't a name match for anything in the box, but the user
+   * recognizes it as a recipe they already have under a different name —
+   * "Hongos Portobello y Soya Asada Tacos" on the page, "Mushroom tacos" in
+   * the box. `importableReferences`' own matching is exact-name-only, so this
+   * is the escape hatch for every reference it couldn't place on its own.
+   *
+   * Ticks the row for the same reason a successful read does: picking a
+   * recipe answers the question, and asking for a second confirmation would
+   * be asking the same thing twice.
+   */
+  const linkTo = useCallback((key: string, recipe: Recipe) => {
+    setState(key, { status: 'linked', recipe });
+    haptics.success();
+    setAccepted(prev => (prev.has(key) ? prev : new Set(prev).add(key)));
+  }, [setState]);
+
   const stateFor = useCallback(
     (key: string): ComponentImportState => states[key] ?? IDLE,
     [states],
@@ -167,7 +193,7 @@ export function useRecipeComponentImports(
     for (const candidate of candidates) {
       if (!accepted.has(candidate.key)) continue;
       const state = states[candidate.key];
-      if (candidate.match || state?.status === 'read') keys.add(candidate.key);
+      if (candidate.match || state?.status === 'read' || state?.status === 'linked') keys.add(candidate.key);
     }
     return keys;
   }, [candidates, accepted, states]);
@@ -214,6 +240,10 @@ export function useRecipeComponentImports(
       }
 
       const state = states[candidate.key];
+      if (state?.status === 'linked') {
+        store.addComponent(parentRecipeId, state.recipe.id);
+        continue;
+      }
       if (state?.status !== 'read') continue;
       const extracted = state.extracted;
       const name = cleanRecipeName(extracted.name || candidate.reference.name);
@@ -275,5 +305,5 @@ export function useRecipeComponentImports(
     setAccepted(new Set());
   }, []);
 
-  return { stateFor, accepted, acceptedKeys, toggle, importFrom, commitTo, reset };
+  return { stateFor, accepted, acceptedKeys, toggle, importFrom, linkTo, commitTo, reset };
 }

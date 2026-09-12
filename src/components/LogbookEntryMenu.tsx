@@ -113,12 +113,12 @@ export function LogbookEntryMenu({
 
       <Animated.View style={[styles.sheetOuter, { transform: [{ translateY }] }]}>
         <View style={styles.optionsCard}>
-          <TouchableOpacity style={styles.optionRow} onPress={markIncomplete} activeOpacity={interaction.activeOpacity}>
+          <TouchableOpacity style={styles.optionRow} onPress={markIncomplete} activeOpacity={interaction.activeOpacity} accessibilityRole="button">
             <Ionicons name="arrow-undo-outline" size={18} color={colors.accent} />
             <Text style={styles.optionLabel}>Mark Incomplete</Text>
           </TouchableOpacity>
           <View style={styles.inlineSep} />
-          <TouchableOpacity style={styles.optionRow} onPress={openCalendar} activeOpacity={interaction.activeOpacity}>
+          <TouchableOpacity style={styles.optionRow} onPress={openCalendar} activeOpacity={interaction.activeOpacity} accessibilityRole="button">
             <Ionicons name="calendar-outline" size={18} color={colors.accent} />
             <Text style={styles.optionLabel}>Change completion date</Text>
           </TouchableOpacity>
@@ -129,6 +129,7 @@ export function LogbookEntryMenu({
                 style={styles.optionRow}
                 onPress={() => { haptics.tap(); closeThen(onEditAnswer); }}
                 activeOpacity={interaction.activeOpacity}
+                accessibilityRole="button"
               >
                 <Ionicons name="help" size={18} color={colors.accent} />
                 <Text style={styles.optionLabel}>{hasAnswer ? 'Edit Answer' : 'Add Answer'}</Text>
@@ -150,7 +151,7 @@ export function LogbookEntryMenu({
           </TouchableOpacity>
         </View>
 
-        <TouchableOpacity style={styles.cancelCard} onPress={dismiss} activeOpacity={interaction.activeOpacity}>
+        <TouchableOpacity style={styles.cancelCard} onPress={dismiss} activeOpacity={interaction.activeOpacity} accessibilityRole="button">
           <Text style={styles.cancelLabel}>Cancel</Text>
         </TouchableOpacity>
       </Animated.View>

@@ -1218,8 +1218,9 @@ export function initDatabase(): void {
     // rather than added to the CREATE TABLE above, so an install that already
     // has the people table picks it up.
     "ALTER TABLE people ADD COLUMN ask_about TEXT NOT NULL DEFAULT ''",
-    // Who a planned meal is for (#2077). Empty for every meal planned before
-    // this shipped, which reads as "nobody named" rather than as missing data.
+    // Was "who a planned meal is for" (#2077); the feature was removed and
+    // nothing reads or writes this column anymore. Left in place rather than
+    // reverted, per this file's migration convention.
     "ALTER TABLE meal_plan_entries ADD COLUMN person_ids TEXT NOT NULL DEFAULT '[]'",
     // When a person's cadence was last turned on — see Person.cadenceSetAt.
     // Null on every existing row, including everybody already opted in today;
@@ -4750,9 +4751,6 @@ function rowToMealPlanEntry(row: Record<string, unknown>): MealPlanEntry {
     cookedAt: (row.cooked_at as string) ?? null,
     leftoverId: (row.leftover_id as string) ?? null,
     recipeChoices: parseRecipeChoices(row.recipe_choices),
-    // Reused rather than a second parser: both are "a JSON array of ids, and
-    // anything else reads as none", which is the whole contract.
-    personIds: parseRecipeChoices(row.person_ids),
     // Clamped rather than trusted: the column defaults to 1, but a restored
     // backup or a hand-edited row carrying 0 would otherwise render a meal with
     // no quantities at all.
@@ -5236,8 +5234,8 @@ export function dbGetMealPlanEntries(startKey: string, endKey: string): MealPlan
 
 export function dbInsertMealPlanEntry(entry: MealPlanEntry): void {
   db.runSync(
-    `INSERT INTO meal_plan_entries (id, date, slot, recipe_id, title, sort_order, created_at, cooked_at, leftover_id, recipe_choices, recipe_scale, cook_task, shop_task, log_meal, calendar_event_id, person_ids)
-     VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)`,
+    `INSERT INTO meal_plan_entries (id, date, slot, recipe_id, title, sort_order, created_at, cooked_at, leftover_id, recipe_choices, recipe_scale, cook_task, shop_task, log_meal, calendar_event_id)
+     VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)`,
     [
       entry.id, entry.date, entry.slot, entry.recipeId ?? null,
       entry.title, entry.sortOrder, entry.createdAt, entry.cookedAt ?? null,
@@ -5247,14 +5245,13 @@ export function dbInsertMealPlanEntry(entry: MealPlanEntry): void {
       entry.shopTask === null || entry.shopTask === undefined ? null : (entry.shopTask ? 1 : 0),
       entry.logMeal === null || entry.logMeal === undefined ? null : (entry.logMeal ? 1 : 0),
       entry.calendarEventId ?? null,
-      JSON.stringify(entry.personIds ?? []),
     ]
   );
 }
 
 export function dbUpdateMealPlanEntry(entry: MealPlanEntry): void {
   db.runSync(
-    `UPDATE meal_plan_entries SET date=?, slot=?, recipe_id=?, title=?, sort_order=?, cooked_at=?, leftover_id=?, recipe_choices=?, recipe_scale=?, cook_task=?, shop_task=?, log_meal=?, calendar_event_id=?, person_ids=? WHERE id=?`,
+    `UPDATE meal_plan_entries SET date=?, slot=?, recipe_id=?, title=?, sort_order=?, cooked_at=?, leftover_id=?, recipe_choices=?, recipe_scale=?, cook_task=?, shop_task=?, log_meal=?, calendar_event_id=? WHERE id=?`,
     [
       entry.date, entry.slot, entry.recipeId ?? null, entry.title, entry.sortOrder,
       entry.cookedAt ?? null, entry.leftoverId ?? null,
@@ -5263,7 +5260,6 @@ export function dbUpdateMealPlanEntry(entry: MealPlanEntry): void {
       entry.shopTask === null || entry.shopTask === undefined ? null : (entry.shopTask ? 1 : 0),
       entry.logMeal === null || entry.logMeal === undefined ? null : (entry.logMeal ? 1 : 0),
       entry.calendarEventId ?? null,
-      JSON.stringify(entry.personIds ?? []),
       entry.id,
     ]
   );

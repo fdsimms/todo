@@ -1,5 +1,5 @@
 /**
- * What Settings contains, as data — the ten groups and one record per
+ * What Settings contains, as data — the twelve groups and one record per
  * searchable row.
  *
  * This is a *search index*, not a description of the UI. It deliberately
@@ -363,7 +363,7 @@ export const SETTINGS_ENTRIES: SettingsEntry[] = [
   { id: 'fabHand', groupId: 'appearance', label: 'Add button', section: 'Theme',
     keywords: ['corner', 'left', 'right', 'handed', 'plus', 'fab'] },
   { id: 'typeface', groupId: 'appearance', label: 'Typeface', section: 'Typeface',
-    keywords: ['font', 'bricolage', 'fraunces', 'space grotesk', 'nunito', 'outfit', 'serif', 'mono'] },
+    keywords: ['font', 'bricolage', 'space grotesk', 'nunito', 'outfit', 'serif', 'mono'] },
   { id: 'appFontRandomize', groupId: 'appearance', label: 'Randomize', section: 'Typeface',
     keywords: ['font', 'shuffle', 'mix', 'rotate', 'cold start', 'launch'] },
   { id: 'haptics', groupId: 'appearance', label: 'Haptic feedback', section: 'Feedback',

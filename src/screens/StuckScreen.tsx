@@ -632,8 +632,8 @@ const makeStyles = (colors: Colors) => StyleSheet.create({
   },
   blockerBody: { flex: 1, minWidth: 0 },
   blockerOverline: {
-    color: colors.textTertiary,
-    fontSize: 11,
+    color: colors.textSecondary,
+    fontSize: font.xs,
     fontWeight: fontWeight.semibold,
     textTransform: 'uppercase',
     letterSpacing: 0.8,

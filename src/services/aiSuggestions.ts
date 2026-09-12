@@ -37,6 +37,7 @@ import {
 } from '../utils/backfillSuggest';
 import { amountFromPrintedText, type LabelColumn, type LabelReading } from '../utils/labelOcr';
 import { NUTRIENT_LABEL } from '../utils/foodNutrition';
+import { clampKeepDays } from '../utils/leftovers';
 import { useSettingsStore } from '../store/useSettingsStore';
 import { getLogicalToday, dayKeyOf } from '../utils/dateUtils';
 import type { AiFeatureId, AiModelId } from '../utils/aiFeatures';
@@ -1011,6 +1012,13 @@ export interface ExtractedRecipe {
    * can give both. Null when not stated.
    */
   recipeYield: string | null;
+  /**
+   * How many days the recipe says its own leftovers keep — "store for up to 4
+   * days", "keeps 3-4 days in the fridge" — the low end when a range is
+   * given. Clamped the same way `Recipe.leftoverKeepDays` is. Null when the
+   * recipe says nothing about storage, which is most recipes; never a guess.
+   */
+  leftoverKeepDays: number | null;
   ingredients: RecipeGroceryItem[];
   /**
    * Where the source says it's from — the four fields that map onto `Recipe`'s
@@ -1052,6 +1060,7 @@ function sharedRecipeInstructions(availableAisles: string[]): string[] {
     `Sections available: ${availableAisles.join(', ')}. Use "Other" only when nothing else fits.`,
     'If the recipe\'s own ingredient list is split into labelled components — "For the cake" / "For the frosting", "For the marinade" / "For the dish" — carry that label into each item\'s "component" field. Leave it empty when the recipe lists everything as one plain list.',
     'Set "optional" to true only when the recipe itself says so — "(optional)", "if desired", "if you have it", a garnish explicitly called not required. Leave it false otherwise, even for an item you\'d personally guess is skippable, like a garnish with nothing next to it saying so.',
+    'If the recipe says how long its own leftovers keep — "store in an airtight container for up to 4 days", "keeps 3-4 days in the fridge", "will keep for a week" — put that number of days in "leftoverKeepDays", the low end when a range is given. This is about the cooked dish afterward, not a raw ingredient\'s shelf life, a "best served immediately" note, or how long the dish takes to make. 0 when the recipe says nothing about storage, which is most recipes — never estimate one yourself.',
   ];
 }
 
@@ -1146,7 +1155,8 @@ export async function extractRecipe(
   const { apiKey, model } = requireFeature('recipeExtraction');
 
   const empty: ExtractedRecipe = {
-    name: '', servings: null, servingsMax: null, prepMinutes: null, recipeYield: null, ingredients: [],
+    name: '', servings: null, servingsMax: null, prepMinutes: null, recipeYield: null,
+    leftoverKeepDays: null, ingredients: [],
     sourceTitle: null, sourceAuthor: null, sourcePage: null, sourceType: null,
     references: [], steps: [], prepTasks: [],
   };
@@ -1230,6 +1240,10 @@ export async function extractRecipe(
             type: 'string',
             description: `What the recipe makes, when that isn't a plain serving count — "2 loaves", "3 cups", "2 dozen cookies". Independent of servings: give both when the recipe states both ("serves 8" and "makes 2 loaves"). Under ${RECIPE_SOURCE_MAX_LENGTH} characters. Empty string if not stated or if it's just a serving count already captured in "servings".`,
           },
+          leftoverKeepDays: {
+            type: 'integer',
+            description: 'How many days the recipe says its own leftovers keep, if it states this explicitly — the low end when a range is given ("keeps 3-4 days" -> 3). 0 if the recipe says nothing about storing leftovers, which is most recipes; never guess a number it doesn\'t give.',
+          },
           items: groceryItemsSchema(
             availableAisles,
             'The things a shopper needs to buy for this recipe.',
@@ -1309,6 +1323,7 @@ export async function extractRecipe(
   const toolUse = data.content?.find(c => c.type === 'tool_use');
   const input = toolUse?.input as {
     name?: unknown; servings?: unknown; servingsMax?: unknown; prepMinutes?: unknown; recipeYield?: unknown; items?: unknown;
+    leftoverKeepDays?: unknown;
     sourceTitle?: unknown; sourceAuthor?: unknown; sourcePage?: unknown; sourceKind?: unknown;
     referencedRecipes?: unknown; steps?: unknown; prepTasks?: unknown;
   } | undefined;
@@ -1330,6 +1345,9 @@ export async function extractRecipe(
   const recipeYield = typeof input.recipeYield === 'string' && input.recipeYield.trim()
     ? input.recipeYield.trim().slice(0, RECIPE_SOURCE_MAX_LENGTH)
     : null;
+  const leftoverKeepDays = typeof input.leftoverKeepDays === 'number' && input.leftoverKeepDays > 0
+    ? clampKeepDays(Math.round(input.leftoverKeepDays))
+    : null;
 
   const sourceTitle = includeSource ? parseExtractedSourceTitle(input.sourceTitle, name) : null;
   const sourceAuthor = includeSource ? sourceField(input.sourceAuthor) : null;
@@ -1339,7 +1357,7 @@ export async function extractRecipe(
     : null;
 
   return {
-    name, servings, servingsMax, prepMinutes, recipeYield,
+    name, servings, servingsMax, prepMinutes, recipeYield, leftoverKeepDays,
     sourceTitle, sourceAuthor, sourcePage, sourceType,
     ingredients: parseExtractedItems(input.items, availableAisles),
     references: includeReferences ? parseExtractedReferences(input.referencedRecipes) : [],

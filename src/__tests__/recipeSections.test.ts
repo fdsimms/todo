@@ -1,8 +1,10 @@
 import {
   allSectionsOf,
+  ingredientHeadings,
   parseEmptySections,
   sectionsFromMergedOrder,
   sectionsOf,
+  type FlatSectionRow,
   type SectionedRow,
   type SectionListEntry,
 } from '../utils/recipeSections';
@@ -106,5 +108,63 @@ describe('parseEmptySections', () => {
   it('drops non-strings, trims, and dedupes', () => {
     expect(parseEmptySections(JSON.stringify(['  For serving  ', 'For serving', 42, ''])))
       .toEqual(['For serving']);
+  });
+});
+
+describe('ingredientHeadings', () => {
+  const flat = (
+    recipeId: string,
+    depth: number,
+    section: string | null = null,
+  ): FlatSectionRow => ({ recipe: { id: recipeId }, depth, ingredient: { section } });
+
+  it('opens a section wherever the label changes, and not while it carries on', () => {
+    const headings = ingredientHeadings([
+      flat('r', 0, 'Sauce'),
+      flat('r', 0, 'Sauce'),
+      flat('r', 0, 'For serving'),
+    ]);
+    expect(headings.map(h => h.section)).toEqual(['Sauce', null, 'For serving']);
+    expect(headings.every(h => !h.dish)).toBe(true);
+  });
+
+  it('opens nothing for a list with no sections at all', () => {
+    const headings = ingredientHeadings([flat('r', 0), flat('r', 0)]);
+    expect(headings).toEqual([{ dish: false, section: null }, { dish: false, section: null }]);
+  });
+
+  it('opens a section again after a run of unsectioned lines', () => {
+    const headings = ingredientHeadings([
+      flat('r', 0, 'Sauce'),
+      flat('r', 0, null),
+      flat('r', 0, 'Sauce'),
+    ]);
+    expect(headings.map(h => h.section)).toEqual(['Sauce', null, 'Sauce']);
+  });
+
+  it("names a component's first line and not the root's", () => {
+    const headings = ingredientHeadings([
+      flat('root', 0), flat('mash', 1), flat('mash', 1),
+    ]);
+    expect(headings.map(h => h.dish)).toEqual([false, true, false]);
+  });
+
+  it('names a component whose lines open the list, with no root lines above them', () => {
+    expect(ingredientHeadings([flat('mash', 1)])[0].dish).toBe(true);
+  });
+
+  it("re-opens a section a component shares a label with the recipe above it", () => {
+    const headings = ingredientHeadings([
+      flat('root', 0, 'Sauce'),
+      flat('mash', 1, 'Sauce'),
+    ]);
+    expect(headings).toEqual([
+      { dish: false, section: 'Sauce' },
+      { dish: true, section: 'Sauce' },
+    ]);
+  });
+
+  it('is empty for an empty list', () => {
+    expect(ingredientHeadings([])).toEqual([]);
   });
 });

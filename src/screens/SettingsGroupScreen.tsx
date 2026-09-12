@@ -39,8 +39,8 @@ type RootStackParamList = {
 };
 
 /**
- * One route for all ten groups rather than ten routes: they differ only in
- * which component fills the scroll view, and ten registrations would mean ten
+ * One route for all twelve groups rather than twelve routes: they differ only in
+ * which component fills the scroll view, and twelve registrations would mean twelve
  * more entries in the navigator's pushed-route list too.
  *
  * It also takes an optional `entryId`, which is how a search result opens onto

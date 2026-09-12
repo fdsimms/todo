@@ -1,0 +1,4 @@
+{
+  "message": "Fixed the Remind me picker filling almost the whole screen. The title and Done/Clear buttons now stay in place, and only the options in between scroll.",
+  "date": "2026-09-12"
+}

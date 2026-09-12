@@ -20,7 +20,7 @@ import {
   nutritionLabelPhotoAiAvailable,
 } from '../services/aiSuggestions';
 import { MAX_MEAL_IDEAS } from '../utils/mealIdeas';
-import type { Task } from '../types';
+import { LEFTOVER_KEEP_DAYS_MAX, type Task } from '../types';
 
 // ---------------------------------------------------------------------------
 // Mocks
@@ -796,6 +796,7 @@ describe('extractRecipe', () => {
       servingsMax: null,
       prepMinutes: 45,
       recipeYield: null,
+      leftoverKeepDays: null,
       ingredients: [{ name: 'ground beef', quantity: '2 lb', aisle: 'Pantry', section: null, prep: null }],
       sourceTitle: null,
       sourceAuthor: null,
@@ -845,6 +846,42 @@ describe('extractRecipe', () => {
     );
     const result = await extractRecipe('some recipe', AISLES);
     expect(result.recipeYield).toBeNull();
+  });
+
+  it('reads how long the recipe says its leftovers keep, the low end of a range', async () => {
+    mockFetchOnce(
+      toolUseResponse('extract_recipe', {
+        name: 'Weeknight Chili',
+        leftoverKeepDays: 4,
+        items: [],
+      })
+    );
+    const result = await extractRecipe('some recipe', AISLES);
+    expect(result.leftoverKeepDays).toBe(4);
+  });
+
+  it('reads a zero leftoverKeepDays (nothing stated) as null', async () => {
+    mockFetchOnce(
+      toolUseResponse('extract_recipe', {
+        name: 'Chili',
+        leftoverKeepDays: 0,
+        items: [],
+      })
+    );
+    const result = await extractRecipe('some recipe', AISLES);
+    expect(result.leftoverKeepDays).toBeNull();
+  });
+
+  it('clamps a leftoverKeepDays past the sayable range', async () => {
+    mockFetchOnce(
+      toolUseResponse('extract_recipe', {
+        name: 'Preserves',
+        leftoverKeepDays: 500,
+        items: [],
+      })
+    );
+    const result = await extractRecipe('some recipe', AISLES);
+    expect(result.leftoverKeepDays).toBe(LEFTOVER_KEEP_DAYS_MAX);
   });
 
   it('reads the cross-references to other recipes off the page', async () => {
@@ -1037,7 +1074,8 @@ describe('extractRecipe', () => {
   it('does not call the network for empty text', async () => {
     const spy = jest.spyOn(global, 'fetch');
     await expect(extractRecipe('   ', AISLES)).resolves.toEqual({
-      name: '', servings: null, servingsMax: null, prepMinutes: null, recipeYield: null, ingredients: [],
+      name: '', servings: null, servingsMax: null, prepMinutes: null, recipeYield: null,
+      leftoverKeepDays: null, ingredients: [],
       sourceTitle: null, sourceAuthor: null, sourcePage: null, sourceType: null,
       references: [], steps: [], prepTasks: [],
     });
@@ -1254,6 +1292,7 @@ describe('extractRecipe', () => {
         servingsMax: null,
         prepMinutes: 45,
         recipeYield: null,
+        leftoverKeepDays: null,
         ingredients: [{ name: 'ground beef', quantity: '2 lb', aisle: 'Pantry', section: null, prep: null }],
         sourceTitle: null,
         sourceAuthor: null,
@@ -1284,7 +1323,8 @@ describe('extractRecipe', () => {
     it('does not call the network for an empty image', async () => {
       const spy = jest.spyOn(global, 'fetch');
       await expect(extractRecipe({ base64: '', mediaType: 'image/jpeg' }, AISLES)).resolves.toEqual({
-        name: '', servings: null, servingsMax: null, prepMinutes: null, recipeYield: null, ingredients: [],
+        name: '', servings: null, servingsMax: null, prepMinutes: null, recipeYield: null,
+        leftoverKeepDays: null, ingredients: [],
         sourceTitle: null, sourceAuthor: null, sourcePage: null, sourceType: null,
         references: [], steps: [], prepTasks: [],
       });
@@ -1409,7 +1449,8 @@ describe('extractRecipe', () => {
         { base64: '', mediaType: 'image/jpeg' },
         { base64: '', mediaType: 'image/jpeg' },
       ], AISLES)).resolves.toEqual({
-        name: '', servings: null, servingsMax: null, prepMinutes: null, recipeYield: null, ingredients: [],
+        name: '', servings: null, servingsMax: null, prepMinutes: null, recipeYield: null,
+        leftoverKeepDays: null, ingredients: [],
         sourceTitle: null, sourceAuthor: null, sourcePage: null, sourceType: null,
         references: [], steps: [], prepTasks: [],
       });

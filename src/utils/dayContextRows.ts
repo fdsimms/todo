@@ -1,4 +1,5 @@
-import { addDays, format } from 'date-fns';
+import { addDays } from 'date-fns/addDays';
+import { format } from 'date-fns/format';
 import type { BusyEvent } from './calendarBusy';
 import { isLiveEvent } from './calendarBusy';
 import type { ContextRow, MealPlanEntry, Recipe } from '../types';

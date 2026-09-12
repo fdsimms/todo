@@ -174,7 +174,7 @@ Where each component can appear.
 - `src/components/PersonGroupEditor.tsx` — on PeopleScreen, PersonDetailScreen
 - `src/components/PersonHistorySheet.tsx` — on PersonDetailScreen
 - `src/components/PersonNoteSheet.tsx` — on PersonDetailScreen
-- `src/components/PillGroup.tsx` — on ArchivedScreen, BackfillScreen, CalendarScreen, CategoryDetailScreen, GroceryScreen, KitchenScreen, MealPlanScreen, MedicationScreen, MoodHistoryScreen, MoodScreen, PeopleScreen, PersonDetailScreen, +14 more
+- `src/components/PillGroup.tsx` — on ArchivedScreen, BackfillScreen, CalendarScreen, CategoryDetailScreen, GroceryScreen, KitchenScreen, MedicationScreen, MoodHistoryScreen, MoodScreen, PeopleScreen, PersonDetailScreen, ProjectDetailScreen, +13 more
 - `src/components/PinIcon.tsx` — on ArchivedScreen, CalendarScreen, CategoryDetailScreen, ProjectDetailScreen, RemindersScreen, SearchScreen, StacksScreen, StuckScreen, TagsScreen, TodayScreen
 - `src/components/PlanMealSheet.tsx` — on MealPlanScreen, RecipeDetailScreen, RecipesScreen
 - `src/components/PostponeCheckBanner.tsx` — on ArchivedScreen, CalendarScreen, CategoryDetailScreen, FoodLogScreen, GroceryScreen, KitchenScreen, LogbookScreen, MealPlanScreen, MedicationScreen, MoodHistoryScreen, MoodScreen, PersonDetailScreen, +13 more
@@ -196,7 +196,7 @@ Where each component can appear.
 - `src/components/QuickSearchModal.tsx` — on TodayScreen
 - `src/components/ReceiptImportSheet.tsx` — on GroceryScreen, KitchenScreen
 - `src/components/RecipeChoiceChips.tsx` — on GroceryScreen, MealPlanScreen, RecipeDetailScreen
-- `src/components/RecipeComponentPicker.tsx` — on RecipeDetailScreen
+- `src/components/RecipeComponentPicker.tsx` — on RecipeDetailScreen, RecipesScreen
 - `src/components/RecipeCreateSheet.tsx` — on RecipesScreen
 - `src/components/RecipeEditor.tsx` — on RecipeDetailScreen
 - `src/components/RecipeExtractSheet.tsx` — on RecipeDetailScreen

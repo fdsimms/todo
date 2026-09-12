@@ -21,12 +21,6 @@ interface Props {
    * many meals that pose no either/or.
    */
   choices?: string;
-  /**
-   * Who this meal is for — describeGuests' answer, empty for the many meals
-   * that name nobody. Passed as a described string rather than as ids, the same
-   * way `choices` is: the row stays dumb and every caller shows the same words.
-   */
-  guests?: string;
   onPress: () => void;
   /**
    * Ticks the entry off, or back on — the same shortcut a task row's checkbox
@@ -112,7 +106,7 @@ interface Props {
  * absence a reader is expected to infer.
  */
 export function MealSlotRow({
-  entry, title, hasRecipe, choices, guests, onPress, onToggleCooked, selectionMode, selected, onSwipeSelect,
+  entry, title, hasRecipe, choices, onPress, onToggleCooked, selectionMode, selected, onSwipeSelect,
   onDragStart, dragging, surface,
 }: Props) {
   const colors = useColors();
@@ -165,7 +159,7 @@ export function MealSlotRow({
       accessibilityRole={selectionMode ? 'checkbox' : 'button'}
       accessibilityState={selectionMode ? { checked: !!selected } : undefined}
       accessibilityLabel={
-        [slotLabel(entry.slot), title, scaleLabel, guests ? `with ${guests}` : null, choices, cooked ? 'cooked' : null]
+        [slotLabel(entry.slot), title, scaleLabel, choices, cooked ? 'cooked' : null]
           .filter(Boolean).join(', ')
       }
       accessibilityHint={
@@ -205,16 +199,8 @@ export function MealSlotRow({
         {/* Appended to the caption rather than given a pill of its own: the row
             is already dense, and how big a batch it is ranks with the slot it
             sits in, not with the dish's name. */}
-        {/* Bounded, which it wasn't before guests joined it: slot + batch +
-            guests + a choice is four qualifiers, and unbounded they ran the row
-            to three caption lines under a two-line title. Two is the ceiling —
-            the sheet carries the full list, and a row is a summary. */}
         <Text style={styles.slot} numberOfLines={2}>
           {[slotLabel(entry.slot), scaleLabel].filter(Boolean).join(' · ')}
-          {/* Ahead of the choices, because who is coming changes what the row
-              means more than which side it comes with does. Same nested
-              treatment: a qualifier on the meal, not a line of its own. */}
-          {!!guests && <Text style={styles.choices}> · with {guests}</Text>}
           {!!choices && <Text style={styles.choices}> · {choices}</Text>}
         </Text>
       </View>

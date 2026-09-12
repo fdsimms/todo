@@ -222,7 +222,7 @@ export function AwayShiftSheet({ visible, tasks, from, to, projectTitle, onClose
           </TouchableOpacity>
         </View>
 
-        <TouchableOpacity style={styles.cancelCard} onPress={dismiss} activeOpacity={interaction.activeOpacity}>
+        <TouchableOpacity style={styles.cancelCard} onPress={dismiss} activeOpacity={interaction.activeOpacity} accessibilityRole="button">
           <Text style={styles.cancelLabel}>Leave them where they are</Text>
         </TouchableOpacity>
       </Animated.View>

@@ -1,5 +1,5 @@
-import React, { useMemo } from 'react';
-import { View, Text, StyleSheet } from 'react-native';
+import React, { useCallback, useMemo, useState } from 'react';
+import { View, Text, StyleSheet, type NativeSyntheticEvent, type TextLayoutEventData } from 'react-native';
 import Ionicons from '@expo/vector-icons/Ionicons';
 import { PressableScale } from './PressableScale';
 import { useColors } from '../theme/ThemeContext';
@@ -44,37 +44,67 @@ export function DetailHeader({
 }: Props) {
   const colors = useColors();
   const styles = useMemo(() => makeStyles(colors), [colors]);
+  // The title shares its row with the back chevron and (on a screen like
+  // Recipe with several icons) up to half a dozen fixed-width actions, which
+  // squeezes it to whatever's left over — for its whole height, not just its
+  // first line. A short title never notices; a long recipe/project/template
+  // name wrapped to a handful of narrow, cramped lines. Once a title is seen
+  // wrapping in that squeezed row, it's promoted to its own full-width row
+  // below instead. `wrapped` only ever turns on — flipping it back off on a
+  // re-measure at the wider width would just bounce the layout between the
+  // two states.
+  const [wrapped, setWrapped] = useState(false);
+  const handleTitleLayout = useCallback((e: NativeSyntheticEvent<TextLayoutEventData>) => {
+    if (e.nativeEvent.lines.length > 1) setWrapped(true);
+  }, []);
+
+  const backButton = (
+    <PressableScale
+      onPress={onBack}
+      hitSlop={8}
+      accessibilityRole="button"
+      accessibilityLabel={backAccessibilityLabel ?? (backIcon === 'close' ? 'Close' : 'Back')}
+    >
+      <Ionicons
+        name={backIcon === 'close' ? 'chevron-down' : 'chevron-back'}
+        size={24}
+        color={colors.textSecondary}
+      />
+    </PressableScale>
+  );
+
+  const titleText = (
+    <Text
+      style={[styles.title, !leading && !wrapped && styles.titleCentered]}
+      onTextLayout={handleTitleLayout}
+    >
+      {title}
+    </Text>
+  );
+  const titleContent = leading ? (
+    <View style={styles.titleBlock}>
+      {leading}
+      {titleText}
+    </View>
+  ) : titleText;
 
   return (
-    <View style={styles.header}>
-      <PressableScale
-        onPress={onBack}
-        hitSlop={8}
-        accessibilityRole="button"
-        accessibilityLabel={backAccessibilityLabel ?? (backIcon === 'close' ? 'Close' : 'Back')}
-      >
-        <Ionicons
-          name={backIcon === 'close' ? 'chevron-down' : 'chevron-back'}
-          size={24}
-          color={colors.textSecondary}
-        />
-      </PressableScale>
-
-      {leading ? (
-        <View style={styles.titleBlock}>
-          {leading}
-          <Text style={styles.title}>{title}</Text>
-        </View>
-      ) : (
-        <Text style={[styles.title, styles.titleCentered]}>{title}</Text>
-      )}
-
-      {actions ?? <View style={styles.spacer} />}
+    <View style={styles.container}>
+      <View style={[styles.header, wrapped && styles.headerWrapped]}>
+        {backButton}
+        {!wrapped && titleContent}
+        {actions ?? <View style={styles.spacer} />}
+      </View>
+      {wrapped && <View style={styles.wrappedTitleRow}>{titleContent}</View>}
     </View>
   );
 }
 
 const makeStyles = (colors: Colors) => StyleSheet.create({
+  container: {
+    borderBottomWidth: StyleSheet.hairlineWidth,
+    borderBottomColor: colors.separator,
+  },
   header: {
     flexDirection: 'row',
     alignItems: 'center',
@@ -82,8 +112,11 @@ const makeStyles = (colors: Colors) => StyleSheet.create({
     gap: spacing.sm,
     paddingHorizontal: spacing.md,
     paddingBottom: spacing.md,
-    borderBottomWidth: StyleSheet.hairlineWidth,
-    borderBottomColor: colors.separator,
+  },
+  headerWrapped: { paddingBottom: spacing.sm },
+  wrappedTitleRow: {
+    paddingHorizontal: spacing.md,
+    paddingBottom: spacing.md,
   },
   titleBlock: {
     flexDirection: 'row',

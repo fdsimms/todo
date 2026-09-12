@@ -1,0 +1,4 @@
+{
+  "message": "Ingredient amounts written as \"1½\" (how some recipe pages spell a fraction) now parse correctly, instead of being read as \"1\" with the fraction and the unit both dropped. Fixes cost, nutrition and scaling for ingredients pulled in from a recipe page or a shared recipe link.",
+  "date": "2026-09-12"
+}

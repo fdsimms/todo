@@ -60,6 +60,31 @@ export function bearerToken(header: string | undefined): string | null {
  * caller that supplied one. There is nothing to gain by telling somebody
  * probing the server which half they got right.
  */
+/** What a request is allowed to do, decided once from the token it presented. */
+export type AuthScope = 'read' | 'write';
+
+/**
+ * Which scope a token buys.
+ *
+ * The write token buys both, so a caller configured for writing does not also
+ * have to carry the read one. A read token never buys writing, which is the
+ * whole point of there being two.
+ *
+ * Returns null when the token matches neither, which the caller turns into the
+ * same 401 an absent token gets. An unset write token means nothing can write,
+ * by the same default-to-refusal rule as the rest of this file: a deployment
+ * that has not been told to accept writes does not accept them.
+ */
+export function scopeFor(
+  authorization: string | undefined,
+  readToken: string | undefined,
+  writeToken: string | undefined
+): AuthScope | null {
+  if (writeToken && authorize(authorization, writeToken).ok) return 'write';
+  if (readToken && authorize(authorization, readToken).ok) return 'read';
+  return null;
+}
+
 export function authorize(authorization: string | undefined, expected: string | undefined): AuthResult {
   const challenge = 'Bearer realm="todo-mcp"';
 

@@ -87,6 +87,8 @@ function stubReplica(over: Partial<Replica> = {}): Replica {
     // No store configured is the ordinary state for a replica pointed at a
     // file somebody copied, and the tool layer never calls this anyway.
     sync: async () => null,
+    templates: () => [],
+    createTemplate: () => { throw new Error('not stubbed'); },
     deviceId: () => 'stub-device',
     syncable: () => true,
     ...over,

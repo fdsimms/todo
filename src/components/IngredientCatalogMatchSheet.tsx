@@ -8,6 +8,7 @@ import { useGroceryStore } from '../store/useGroceryStore';
 import { useColors } from '../theme/ThemeContext';
 import { spacing, radius, font, fontWeight, iconSize, interaction, type Colors } from '../theme';
 import { haptics } from '../utils/haptics';
+import { InlineAction } from './InlineAction';
 import { animateLayout } from '../utils/layoutAnimation';
 import {
   catalogMatchSummary,
@@ -144,16 +145,11 @@ export function IngredientCatalogMatchSheet({
                   <Text style={styles.rowTarget} numberOfLines={1}>{match.suggestedName}</Text>
                 </View>
               </View>
-              <TouchableOpacity
-                style={styles.linkButton}
-                activeOpacity={interaction.activeOpacity}
+              <InlineAction
+                label="Link"
                 onPress={() => accept(ingredient, match)}
-                accessibilityRole="button"
                 accessibilityLabel={`Rename ${ingredient.name} to ${match.suggestedName}`}
-                accessibilityHint="Double tap to link this line to that item in your grocery catalog"
-              >
-                <Text style={styles.linkButtonText}>Link</Text>
-              </TouchableOpacity>
+              />
               <TouchableOpacity
                 onPress={() => { haptics.tap(); onEditIngredient(ingredient); }}
                 hitSlop={8}
@@ -250,13 +246,6 @@ function makeStyles(colors: Colors) {
     rowName: { flex: 1, fontSize: font.md, color: colors.text },
     rowArrow: { flexDirection: 'row', alignItems: 'center', gap: spacing.xs },
     rowTarget: { flex: 1, fontSize: font.sm, color: colors.textSecondary },
-    linkButton: {
-      backgroundColor: colors.accentSubtle,
-      borderRadius: radius.full,
-      paddingHorizontal: spacing.md,
-      paddingVertical: spacing.xs + 2,
-    },
-    linkButtonText: { fontSize: font.sm, fontWeight: fontWeight.semibold, color: colors.accent },
     hint: {
       fontSize: font.xs,
       color: colors.textTertiary,

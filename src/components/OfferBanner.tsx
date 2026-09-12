@@ -219,6 +219,9 @@ const makeStyles = (colors: Colors) => StyleSheet.create({
     gap: spacing.sm,
     marginHorizontal: spacing.md,
     marginTop: spacing.sm,
+    // Both sides: the list under it has no top margin of its own, so without
+    // this the first card sat flush against the banner.
+    marginBottom: spacing.sm,
     paddingVertical: spacing.sm,
     paddingLeft: spacing.md,
     paddingRight: spacing.sm,

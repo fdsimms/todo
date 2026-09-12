@@ -388,7 +388,7 @@ export function CategoryPickerSheet({ visible, onClose, title = 'Category', onSe
           </View>
         </View>
 
-        <TouchableOpacity style={styles.cancelCard} onPress={() => dismiss()} activeOpacity={interaction.activeOpacity}>
+        <TouchableOpacity style={styles.cancelCard} onPress={() => dismiss()} activeOpacity={interaction.activeOpacity} accessibilityRole="button">
           <Text style={styles.cancelLabel}>Cancel</Text>
         </TouchableOpacity>
       </Animated.View>

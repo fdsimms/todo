@@ -239,8 +239,6 @@ type FieldKey = 'stack' | 'category' | 'project' | 'tags' | 'people' | 'waitingO
 // spans, including the 25-minute pomodoro.
 const DURATION_PRESETS = [5, 10, 15, 25, 30, 45, 60] as const;
 
-const TITLE_TOKEN_ACCESSORY_ID = 'taskEditorTitleTokenAccessory';
-
 // Matches the inline subtask checkbox in TaskItem, so a subtask looks the same
 // whether it's read in the expanded row or in this editor.
 const SUBTASK_CHECKBOX_SIZE = 16;
@@ -396,6 +394,11 @@ export function TaskEditor({ visible, task, initialDraft, onClose }: Props) {
   // splice in a token, and deliberately not rendered — see the hook's note on
   // why feeding it back through `selection` breaks ordinary typing.
   const titleCaret = useTitleSelection(title);
+  // TitleTokenAccessory's floating bar (this field is multiline, which a
+  // real InputAccessoryView doesn't support — see that component's own
+  // note) has no native mechanism tying its visibility to focus, so this is
+  // the substitute.
+  const [titleFocused, setTitleFocused] = useState(false);
   const [notes, setNotes] = useState('');
   const [category, setCategory] = useState<string | null>(null);
   // Which stack the task will belong to once saved. Local like every other
@@ -2377,7 +2380,7 @@ export function TaskEditor({ visible, task, initialDraft, onClose }: Props) {
             onClose={() => setShowFollowUpTaskSheet(false)}
           />
           <NumberPadAccessory />
-          <TitleTokenAccessory nativeID={TITLE_TOKEN_ACCESSORY_ID} onInsert={insertTitleToken} />
+          <TitleTokenAccessory onInsert={insertTitleToken} floating focused={titleFocused} />
         </>
       }
     >
@@ -2434,7 +2437,8 @@ export function TaskEditor({ visible, task, initialDraft, onClose }: Props) {
           multiline blurOnSubmit
           selection={titleCaret.selection}
           onSelectionChange={titleCaret.onSelectionChange}
-          inputAccessoryViewID={Platform.OS === 'ios' ? TITLE_TOKEN_ACCESSORY_ID : undefined}
+          onFocus={() => setTitleFocused(true)}
+          onBlur={() => setTitleFocused(false)}
         />
       </View>
       )}
