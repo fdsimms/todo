@@ -747,4 +747,24 @@ describe('splitAlternativeNames', () => {
     expect(splitAlternativeNames('a, b, c, d, or e')).toBeNull();
     expect(splitAlternativeNames('garlic, Garlic, or garlic')).toBeNull();
   });
+
+  it('puts a recognized noun back on a bare modifier', () => {
+    expect(splitAlternativeNames('red or white onion')).toEqual(['red onion', 'white onion']);
+    expect(splitAlternativeNames('yellow or white onion')).toEqual(['yellow onion', 'white onion']);
+    expect(splitAlternativeNames('red or green pepper')).toEqual(['red pepper', 'green pepper']);
+    expect(splitAlternativeNames('russet or yukon gold potatoes'))
+      .toEqual(['russet potatoes', 'yukon gold potatoes']);
+    // Oxford-comma list form gets the same treatment.
+    expect(splitAlternativeNames('red, yellow, or green pepper'))
+      .toEqual(['red pepper', 'yellow pepper', 'green pepper']);
+  });
+
+  it('leaves an unrecognized modifier bare rather than guessing', () => {
+    // "shallot" isn't a known onion modifier — attaching "onion" to it would
+    // be wrong (a shallot isn't a kind of onion the way red/white/yellow are).
+    expect(splitAlternativeNames('shallot or white onion')).toEqual(['shallot', 'white onion']);
+    // The last option's noun has no entry at all.
+    expect(splitAlternativeNames('chicken or vegetable stock')).toEqual(['chicken', 'vegetable stock']);
+    expect(splitAlternativeNames('butter or olive oil')).toEqual(['butter', 'olive oil']);
+  });
 });
