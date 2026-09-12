@@ -416,7 +416,14 @@ export function ReorderableList<T>({
       scrollOffsetRef.current = 0;
       scrollRef.current?.scrollTo({ y: 0, animated: false });
     }
-  }, [data]);
+    // A stale keyboard inset left over from an inline field on a row that's
+    // now gone (see useKeyboardInsetScroll's own doc comment) shrinks the
+    // visible area an empty-state ListEmptyComponent centers within, so it
+    // reads as sitting high with a lot of dead space below it instead of
+    // centered. Only actually clears anything once the keyboard is confirmed
+    // down — see clearStaleInset.
+    if (data.length === 0) keyboardScroll.clearStaleInset();
+  }, [data, keyboardScroll.clearStaleInset]);
 
   // Cancel an in-progress drag only if the actual items changed underneath it.
   const dataKeySignature = data.map(keyExtractor).join('\u0000');
