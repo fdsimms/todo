@@ -4,7 +4,7 @@ import {
 } from 'react-native';
 import Ionicons from '@expo/vector-icons/Ionicons';
 import { useColors } from '../../theme/ThemeContext';
-import { interaction } from '../../theme';
+import { interaction, spacing } from '../../theme';
 import { useSettingsStore } from '../../store/useSettingsStore';
 import { makeSettingsStyles } from './settingsStyles';
 import { useSettingsFocusFlash } from './SettingsFocus';
@@ -98,7 +98,7 @@ export function SettingsRow({
         name={icon as never}
         size={18}
         color={iconColor ?? colors.textSecondary}
-        style={children != null ? { marginTop: 2 } : undefined}
+        style={children != null ? { marginTop: spacing.xxs } : undefined}
       />
       <View style={styles.rowContent}>
         <Text style={[styles.rowLabel, !!labelColor && { color: labelColor }]}>{label}</Text>

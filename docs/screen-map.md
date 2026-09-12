@@ -104,6 +104,7 @@ Where each component can appear.
 - `src/components/EditorRow.tsx` — on ArchivedScreen, CalendarScreen, CategoriesScreen, CategoryDetailScreen, MedicationScreen, MoodHistoryScreen, MoodScreen, PeopleScreen, PersonDetailScreen, ProjectDetailScreen, ProjectsScreen, RecipeDetailScreen, +10 more
 - `src/components/EditorSheet.tsx` — on ArchivedScreen, CalendarScreen, CategoryDetailScreen, MedicationScreen, MoodHistoryScreen, MoodScreen, PeopleScreen, PersonDetailScreen, ProjectDetailScreen, ProjectsScreen, RecipeDetailScreen, RemindersScreen, +10 more
 - `src/components/EmojiPickerSheet.tsx` — on CategoriesScreen, PeopleScreen, RecipesScreen, TagsScreen, TemplatesScreen
+- `src/components/EmptyNote.tsx` — on GroceryScreen
 - `src/components/EmptyState.tsx` — on ArchivedScreen, BackfillScreen, CalendarScreen, CategoriesScreen, CategoryDetailScreen, CookbookDetailScreen, CookbooksScreen, FoodLogScreen, GroceryScreen, KitchenScreen, LogbookScreen, MealPlanScreen, +23 more
 - `src/components/ErrorBoundary.tsx` — on app shell
 - `src/components/EstimateMealSheet.tsx` — on FoodLogScreen
@@ -228,6 +229,7 @@ Where each component can appear.
 - `src/components/SheetHeader.tsx` — on ArchivedScreen, BackfillScreen, CalendarScreen, CategoryDetailScreen, FoodLogScreen, GroceryScreen, KitchenScreen, MealPlanScreen, MedicationScreen, MoodHistoryScreen, MoodScreen, PeopleScreen, +17 more
 - `src/components/SheetHeaderButton.tsx` — on ArchivedScreen, BackfillScreen, CalendarScreen, CategoriesScreen, CategoryDetailScreen, CookbooksScreen, FoodLogScreen, GroceryScreen, KitchenScreen, LogbookScreen, MealPlanScreen, MedicationScreen, +20 more
 - `src/components/SheetScrim.tsx` — on ArchivedScreen, BackfillScreen, CalendarScreen, CategoriesScreen, CategoryDetailScreen, CookbooksScreen, FoodLogScreen, GroceryScreen, KitchenScreen, LogbookScreen, MealPlanScreen, MedicationScreen, +20 more
+- `src/components/SheetUndoBar.tsx` — on GroceryScreen, MealPlanScreen, RecipeDetailScreen
 - `src/components/ShoppingTripSheet.tsx` — on GroceryScreen
 - `src/components/SideMenuDrawer.tsx` — on app shell
 - `src/components/SimpleBulkBar.tsx` — on ArchivedScreen, LogbookScreen, PeopleScreen

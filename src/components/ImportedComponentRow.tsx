@@ -14,6 +14,7 @@ import type { ReferenceCandidate } from '../utils/recipeImportComponents';
 import type { ComponentImportState } from '../hooks/useRecipeComponentImports';
 import { MAX_RECIPE_PHOTOS, type RecipePhotoSource } from '../utils/recipePhoto';
 import { haptics } from '../utils/haptics';
+import { capitalize } from '../utils/capitalize';
 
 const CHECKBOX_SIZE = 22;
 
@@ -71,7 +72,7 @@ export function ImportedComponentRow({ candidate, state, accepted, parent, onTog
   const title = read?.name || reference.name;
   // The source's own words for where it is, capitalised for the start of a
   // line. Never restated in our words: "page 45" is what the book said.
-  const where = reference.reference.charAt(0).toUpperCase() + reference.reference.slice(1);
+  const where = capitalize(reference.reference);
 
   const detail = (() => {
     if (match) return 'already in your recipe box';
@@ -218,9 +219,9 @@ function makeStyles(colors: Colors) {
       gap: spacing.md,
       backgroundColor: colors.bgSecondary,
       marginHorizontal: spacing.md,
-      marginVertical: 2,
+      marginVertical: spacing.xxs,
       borderRadius: radius.md,
-      paddingVertical: 12,
+      paddingVertical: spacing.smd,
       paddingHorizontal: spacing.md,
     },
     // Keeps the badge and the spinner on the checkbox's own baseline, so the
@@ -251,7 +252,7 @@ function makeStyles(colors: Colors) {
     checkboxOn: { backgroundColor: colors.purple, borderColor: colors.purple },
     body: { flex: 1 },
     name: { fontSize: font.md, fontWeight: fontWeight.medium, color: colors.text },
-    meta: { fontSize: font.xs, color: colors.textTertiary, marginTop: 2 },
+    meta: { fontSize: font.xs, color: colors.textTertiary, marginTop: spacing.xxs },
     metaError: { color: colors.red },
     actions: { flexDirection: 'row', flexWrap: 'wrap', gap: spacing.sm, marginTop: spacing.sm },
   });

@@ -20,7 +20,7 @@ import { useColors } from '../theme/ThemeContext';
 import { spacing, font, fontWeight, radius, interaction, type Colors } from '../theme';
 import { haptics } from '../utils/haptics';
 import { buildCalendarGrid, weekdayHeaders } from '../utils/calendarGrid';
-import { dayKeyOf, dayKeyToDate } from '../utils/dateUtils';
+import { dayKeyOf, dayKeyToDate, getLogicalToday } from '../utils/dateUtils';
 import {
   buildDayBuckets,
   dayDetail,
@@ -93,8 +93,8 @@ export function CalendarScreen() {
   const calendarWindowStart = useCalendarStore(s => s.windowStart);
   const calendarWindowEnd = useCalendarStore(s => s.windowEnd);
 
-  const [displayMonth, setDisplayMonth] = useState(() => startOfMonth(new Date()));
-  const [selectedKey, setSelectedKey] = useState(() => dayKeyOf(new Date()));
+  const [displayMonth, setDisplayMonth] = useState(() => startOfMonth(getLogicalToday()));
+  const [selectedKey, setSelectedKey] = useState(() => dayKeyOf(getLogicalToday()));
   // Session-only, like the pinned block's `othersHidden`: which occurrences the
   // grid draws is a way of reading this month, not a preference about the app.
   const [projecting, setProjecting] = useState(true);
@@ -172,7 +172,10 @@ export function CalendarScreen() {
     [days, displayMonth, buckets],
   );
 
-  const todayKey = dayKeyOf(new Date());
+  // The logical day, so the cell ringed as "today" is the day the rest of the
+  // app is showing. Before a 02:00 day reset the calendar has already rolled
+  // over and Today has not.
+  const todayKey = dayKeyOf(getLogicalToday());
   const selectedDate = dayKeyToDate(selectedKey);
 
   /**
@@ -195,10 +198,20 @@ export function CalendarScreen() {
 
   const goToToday = () => {
     haptics.tap();
-    const now = new Date();
-    setDisplayMonth(startOfMonth(now));
-    setSelectedKey(dayKeyOf(now));
+    // Lands on the same day the "today" ring is drawn on, above.
+    const today = getLogicalToday();
+    setDisplayMonth(startOfMonth(today));
+    setSelectedKey(dayKeyOf(today));
   };
+
+  // One callback for all forty-two cells, so `DayCell`'s memo holds — see its
+  // own note. The cell hands its key back rather than each cell closing over
+  // its own.
+  const selectDay = useCallback((key: string) => {
+    haptics.tap();
+    setExpandedTaskId(null);
+    setSelectedKey(key);
+  }, []);
 
   // Every subtask on this screen, grouped once. Each row used to filter the
   // whole task list for its own children inline, which is O(tasks) per row and
@@ -320,6 +333,7 @@ export function CalendarScreen() {
             return (
               <DayCell
                 key={key}
+                dayKey={key}
                 day={day}
                 bucket={bucket}
                 weight={weightFor(dayLoads.get(key))}
@@ -328,11 +342,7 @@ export function CalendarScreen() {
                 isSelected={key === selectedKey}
                 colors={colors}
                 styles={styles}
-                onPress={() => {
-                  haptics.tap();
-                  setExpandedTaskId(null);
-                  setSelectedKey(key);
-                }}
+                onSelect={selectDay}
               />
             );
           })}
@@ -420,9 +430,21 @@ function dotColor(kind: DayMarkKind, colors: Colors): string {
   return colors.purple;
 }
 
-function DayCell({
-  day, bucket, weight, inMonth, isToday, isSelected, colors, styles, onPress,
+/**
+ * Memoized, and it takes its day key rather than a closure over it.
+ *
+ * Forty-two of these are mounted at once and the grid re-renders on every
+ * selection tap, so without the memo one tap re-rendered the whole month. The
+ * memo only pays off if the props are stable, which is why `onSelect` is one
+ * callback for every cell and the cell passes its own key back up — an inline
+ * `onPress` arrow is a fresh identity per cell per render and defeats it
+ * outright. Same rule, and the same failure, as `renderTaskRow`'s `rowKey` on
+ * Today.
+ */
+const DayCell = React.memo(function DayCell({
+  dayKey, day, bucket, weight, inMonth, isToday, isSelected, colors, styles, onSelect,
 }: {
+  dayKey: string;
   day: Date;
   bucket: DayBucket | undefined;
   weight: DayWeight | null;
@@ -431,8 +453,9 @@ function DayCell({
   isSelected: boolean;
   colors: Colors;
   styles: ReturnType<typeof makeStyles>;
-  onPress: () => void;
+  onSelect: (dayKey: string) => void;
 }) {
+  const onPress = () => onSelect(dayKey);
   const dots = bucket?.dots ?? [];
   return (
     <TouchableOpacity
@@ -498,7 +521,7 @@ function DayCell({
       </View>
     </TouchableOpacity>
   );
-}
+});
 
 /**
  * Filled for real work, faded once it's all ticked, hollow for a projection.
@@ -547,7 +570,7 @@ function makeStyles(colors: Colors) {
     },
     dayHeaders: {
       flexDirection: 'row',
-      marginBottom: 2,
+      marginBottom: spacing.xxs,
     },
     dayHeaderCell: {
       width: CELL_SIZE,
@@ -648,7 +671,7 @@ function makeStyles(colors: Colors) {
     },
     dotColumn: {
       flexDirection: 'column',
-      gap: 2,
+      gap: spacing.xxs,
       marginLeft: 3,
       // Offsets the weight slot the circle now stands on, so the dots stay
       // centred on the circle rather than on the taller stack beside them.
@@ -686,7 +709,7 @@ function makeStyles(colors: Colors) {
       color: colors.textTertiary,
       fontSize: font.sm,
       paddingHorizontal: spacing.md,
-      marginTop: 2,
+      marginTop: spacing.xxs,
     },
     detail: {
       flex: 1,

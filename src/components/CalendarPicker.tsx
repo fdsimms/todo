@@ -355,7 +355,7 @@ const makeStyles = (colors: Colors) => StyleSheet.create({
   },
   dayHeaders: {
     flexDirection: 'row',
-    marginBottom: 2,
+    marginBottom: spacing.xxs,
   },
   dayHeaderCell: {
     width: CELL_SIZE,
@@ -431,7 +431,7 @@ const makeStyles = (colors: Colors) => StyleSheet.create({
   timePickerHeader: {
     flexDirection: 'row',
     alignItems: 'center',
-    gap: 6,
+    gap: spacing.xsm,
     marginBottom: spacing.xs,
   },
   timePickerWidget: {

@@ -267,9 +267,9 @@ export function QuickSearchModal({ visible, onClose, onSelectTask, onOpenFullSea
 
   const dismiss = (then?: () => void) => {
     Animated.parallel([
-      Animated.timing(scaleAnim, { toValue: 0.94, duration: 120, useNativeDriver: true }),
-      Animated.timing(cardOpacity, { toValue: 0, duration: 120, useNativeDriver: true }),
-      Animated.timing(backdropOpacity, { toValue: 0, duration: 150, useNativeDriver: true }),
+      Animated.timing(scaleAnim, { toValue: 0.94, duration: animation.duration.dismiss, useNativeDriver: true }),
+      Animated.timing(cardOpacity, { toValue: 0, duration: animation.duration.dismiss, useNativeDriver: true }),
+      Animated.timing(backdropOpacity, { toValue: 0, duration: animation.duration.fast, useNativeDriver: true }),
     ]).start(() => {
       scaleAnim.setValue(0.94);
       cardOpacity.setValue(0);
@@ -381,7 +381,7 @@ const makeStyles = (colors: Colors) => StyleSheet.create({
   // row keeps the horizontal arrangement the Archived label needs.
   resultTap: {
     flex: 1,
-    gap: 2,
+    gap: spacing.xxs,
   },
   resultTitleRow: {
     flexDirection: 'row',
@@ -420,7 +420,7 @@ const makeStyles = (colors: Colors) => StyleSheet.create({
   // reads as part of the date otherwise, and the count is a fact about the
   // row rather than about the day it names.
   countPill: {
-    paddingHorizontal: 6,
+    paddingHorizontal: spacing.xsm,
     paddingVertical: 1,
     borderRadius: radius.full,
     backgroundColor: colors.bgSunken,
@@ -443,7 +443,7 @@ const makeStyles = (colors: Colors) => StyleSheet.create({
   noMatches: {
     color: colors.textTertiary,
     fontSize: font.sm,
-    paddingVertical: 12,
+    paddingVertical: spacing.smd,
     paddingHorizontal: spacing.xs,
   },
 

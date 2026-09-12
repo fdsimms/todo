@@ -576,10 +576,10 @@ const makeStyles = (colors: Colors) => StyleSheet.create({
   actionRow: { flexDirection: 'row', gap: spacing.sm, marginBottom: spacing.md },
   reachButton: {
     flex: 1,
-    flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 6,
+    flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: spacing.xsm,
     backgroundColor: colors.bgSecondary,
     borderRadius: radius.md,
-    paddingVertical: 12,
+    paddingVertical: spacing.smd,
   },
   reachLabel: { color: colors.accent, fontSize: font.sm, fontWeight: fontWeight.medium },
   summary: {
@@ -609,7 +609,7 @@ const makeStyles = (colors: Colors) => StyleSheet.create({
   card: { backgroundColor: colors.bgSecondary, borderRadius: radius.md, overflow: 'hidden' },
   entryRow: {
     flexDirection: 'row', alignItems: 'center', gap: spacing.sm,
-    paddingHorizontal: spacing.md, paddingVertical: 12,
+    paddingHorizontal: spacing.md, paddingVertical: spacing.smd,
   },
   entryTitle: { flex: 1, color: colors.text, fontSize: font.sm },
   noteText: { flex: 1, color: colors.text, fontSize: font.sm, lineHeight: 19 },
@@ -624,13 +624,13 @@ const makeStyles = (colors: Colors) => StyleSheet.create({
   // misfire that costs is tapping "don't ask again" when you meant "yes, that
   // was us".
   suggestActions: { flexDirection: 'row', alignItems: 'center', gap: spacing.md },
-  suggestText: { flex: 1, gap: 2 },
+  suggestText: { flex: 1, gap: spacing.xxs },
   // Deliberately not `entryTitle`: that one is `flex: 1` for a row, and reused
   // inside this column it would claim the leftover height instead of the width.
   suggestTitle: { color: colors.text, fontSize: font.sm },
   suggestHint: {
     color: colors.textTertiary, fontSize: font.xs, lineHeight: 17,
-    paddingHorizontal: spacing.md, paddingTop: 12, paddingBottom: 10,
+    paddingHorizontal: spacing.md, paddingTop: spacing.smd, paddingBottom: 10,
   },
   entryDate: { color: colors.textTertiary, fontSize: font.xs },
   emptyHistory: {

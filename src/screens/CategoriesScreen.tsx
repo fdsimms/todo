@@ -206,10 +206,10 @@ const makeStyles = (colors: Colors) => StyleSheet.create({
     alignItems: 'center',
     backgroundColor: colors.bgSecondary,
     marginHorizontal: spacing.md,
-    marginVertical: 2,
+    marginVertical: spacing.xxs,
     borderRadius: radius.md,
     paddingHorizontal: spacing.md,
-    paddingVertical: 12,
+    paddingVertical: spacing.smd,
     gap: spacing.md,
   },
   // Lifted look while being dragged, mirroring TaskItem's drag treatment.
@@ -220,7 +220,7 @@ const makeStyles = (colors: Colors) => StyleSheet.create({
   // row's own footprint (margin + radius).
   dropSlot: {
     marginHorizontal: spacing.md,
-    marginVertical: 2,
+    marginVertical: spacing.xxs,
     borderRadius: radius.md,
     backgroundColor: colors.bgSecondary,
     opacity: 0.55,

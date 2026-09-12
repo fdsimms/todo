@@ -230,10 +230,24 @@ export function ProjectDetailScreen() {
   const spotlightProgress = useSpotlightProgress(expandedTaskId !== null && !selectionMode);
 
   const project = projects.find(p => p.id === projectId) ?? null;
-  const projectTasks = project
-    ? allTasks.filter(t => t.projectId === project.id && t.parentId === null).sort((a, b) => a.sortOrder - b.sortOrder)
-    : [];
-  const incompleteProjectTasks = projectTasks.filter(t => !t.completed);
+  // Memoized because this walks the whole task list, and this screen
+  // re-renders on any screen state change (an expanded row, entering selection
+  // mode) rather than only on a task write. It also kept `copyText` below from
+  // ever hitting: a fresh array every render is a fresh dependency every
+  // render, so the memo re-ran every time while looking like it was working.
+  const projectTasks = useMemo(
+    () =>
+      project
+        ? allTasks
+            .filter(t => t.projectId === project.id && t.parentId === null)
+            .sort((a, b) => a.sortOrder - b.sortOrder)
+        : [],
+    [allTasks, project],
+  );
+  const incompleteProjectTasks = useMemo(
+    () => projectTasks.filter(t => !t.completed),
+    [projectTasks],
+  );
   const copyText = useMemo(
     () => incompleteProjectTasks.map(t => t.title).join('\n'),
     [incompleteProjectTasks],
@@ -1171,7 +1185,7 @@ const makeStyles = (colors: Colors) => StyleSheet.create({
   },
   forecastContent: { flex: 1 },
   forecastLine: { color: colors.text, fontSize: font.sm },
-  forecastGap: { color: colors.textSecondary, fontSize: font.xs, marginTop: 2 },
+  forecastGap: { color: colors.textSecondary, fontSize: font.xs, marginTop: spacing.xxs },
   listAddRow: {
     flexDirection: 'row',
     alignItems: 'center',
@@ -1224,7 +1238,7 @@ const makeStyles = (colors: Colors) => StyleSheet.create({
   notesPreviewIcon: {
     // Nudged down to sit on the text's cap height instead of its vertical
     // center.
-    marginTop: 2,
+    marginTop: spacing.xxs,
   },
   notesPreviewText: {
     flex: 1,
@@ -1273,10 +1287,10 @@ const makeStyles = (colors: Colors) => StyleSheet.create({
     justifyContent: 'space-between',
     backgroundColor: colors.bgSecondary,
     marginHorizontal: spacing.md,
-    marginVertical: 2,
+    marginVertical: spacing.xxs,
     borderRadius: radius.md,
     paddingHorizontal: spacing.md,
-    paddingVertical: 12,
+    paddingVertical: spacing.smd,
   },
   pickerRowText: {
     flex: 1,

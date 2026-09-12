@@ -131,5 +131,5 @@ const makeStyles = (colors: Colors) => StyleSheet.create({
   },
   rowText: { flex: 1 },
   rowName: { fontSize: font.md, fontWeight: fontWeight.medium, color: colors.text },
-  rowLocation: { fontSize: font.sm, color: colors.textSecondary, marginTop: 2 },
+  rowLocation: { fontSize: font.sm, color: colors.textSecondary, marginTop: spacing.xxs },
 });

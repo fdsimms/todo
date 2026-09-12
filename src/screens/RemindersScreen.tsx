@@ -1,4 +1,4 @@
-import React, { useMemo, useState } from 'react';
+import React, { useMemo, useState, useCallback } from 'react';
 import { View, Text, FlatList, TouchableOpacity, StyleSheet } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { useBottomTabBarHeight } from '@react-navigation/bottom-tabs';
@@ -50,10 +50,11 @@ export function RemindersScreen() {
     [projects],
   );
 
-  const openEditor = (task: Task) => {
+  // Stable, so `ReminderRow`'s memo holds through a screen-state change.
+  const openEditor = useCallback((task: Task) => {
     setEditingTask(task);
     setEditorVisible(true);
-  };
+  }, []);
 
   return (
     <View style={[styles.container, { paddingTop: insets.top }]}>
@@ -75,7 +76,7 @@ export function RemindersScreen() {
             task={item}
             categoryLabel={labelForCategory(item.category, getCategoryByName)}
             projectTitle={item.projectId ? projectTitlesById.get(item.projectId) ?? null : null}
-            onPress={() => openEditor(item)}
+            onPress={openEditor}
             styles={styles}
             colors={colors}
             cardShadow={shadows.card}
@@ -114,13 +115,15 @@ interface RowProps {
   task: Task;
   categoryLabel: string | null;
   projectTitle: string | null;
-  onPress: () => void;
+  // Takes the task it opens rather than the screen closing over it once per
+  // row, so one stable function serves every row and the memo holds.
+  onPress: (task: Task) => void;
   styles: ReturnType<typeof makeStyles>;
   colors: Colors;
   cardShadow: object;
 }
 
-function ReminderRow({ task, categoryLabel, projectTitle, onPress, styles, colors, cardShadow }: RowProps) {
+const ReminderRow = React.memo(function ReminderRow({ task, categoryLabel, projectTitle, onPress, styles, colors, cardShadow }: RowProps) {
   const title = displayTitleFor(task);
   // reminderTime is guaranteed set by upcomingReminders' own filter.
   const when = format(new Date(task.reminderTime!), 'EEE, MMM d · h:mm a');
@@ -128,7 +131,7 @@ function ReminderRow({ task, categoryLabel, projectTitle, onPress, styles, color
   return (
     <TouchableOpacity
       style={[styles.card, cardShadow]}
-      onPress={onPress}
+      onPress={() => onPress(task)}
       activeOpacity={interaction.activeOpacity}
       accessible
       accessibilityRole="button"
@@ -158,11 +161,11 @@ function ReminderRow({ task, categoryLabel, projectTitle, onPress, styles, color
       </View>
     </TouchableOpacity>
   );
-}
+});
 
 const makeStyles = (colors: Colors) => StyleSheet.create({
   container: { flex: 1, backgroundColor: colors.bg },
-  listContent: { paddingTop: 2, paddingBottom: 40 },
+  listContent: { paddingTop: spacing.xxs, paddingBottom: 40 },
   emptyContainer: { flexGrow: 1 },
   // The same inset-grouped card footprint as TaskItem rows / ArchivedScreen's.
   card: {
@@ -170,7 +173,7 @@ const makeStyles = (colors: Colors) => StyleSheet.create({
     alignItems: 'center',
     gap: spacing.sm,
     marginHorizontal: spacing.md,
-    marginVertical: 2,
+    marginVertical: spacing.xxs,
     paddingVertical: spacing.sm + 3,
     paddingHorizontal: spacing.md,
     borderRadius: radius.md,
@@ -188,7 +191,7 @@ const makeStyles = (colors: Colors) => StyleSheet.create({
     flexWrap: 'wrap',
     alignItems: 'center',
     gap: spacing.sm,
-    marginTop: 2,
+    marginTop: spacing.xxs,
   },
   metaChip: { flexDirection: 'row', alignItems: 'center', gap: 4, flexShrink: 1 },
   metaText: { color: colors.textSecondary, fontSize: font.xs },

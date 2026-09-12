@@ -135,7 +135,7 @@ export function MedicationScreen() {
           },
         ]}
       />
-      <HubPills hub="history" active="Medications" />
+      <HubPills hub="health" active="Medications" />
     </>
   );
 
@@ -272,7 +272,7 @@ const makeStyles = (colors: Colors) => StyleSheet.create({
   },
   card: {
     backgroundColor: colors.bgSecondary,
-    borderRadius: radius.lg,
+    borderRadius: radius.md,
     paddingHorizontal: spacing.md,
     marginBottom: spacing.md,
   },
@@ -298,7 +298,7 @@ const makeStyles = (colors: Colors) => StyleSheet.create({
   medMeta: {
     fontSize: font.sm,
     color: colors.textSecondary,
-    marginTop: 2,
+    marginTop: spacing.xxs,
   },
   medTrend: {
     fontSize: font.sm,
@@ -319,7 +319,7 @@ const makeStyles = (colors: Colors) => StyleSheet.create({
   doseMeta: {
     fontSize: font.sm,
     color: colors.textSecondary,
-    marginTop: 2,
+    marginTop: spacing.xxs,
   },
   moreNote: {
     fontSize: font.xs,

@@ -8,7 +8,7 @@ import { useGroceryStore } from '../store/useGroceryStore';
 import { useSettingsStore } from '../store/useSettingsStore';
 import { useTaskStore } from '../store/useTaskStore';
 import { earliestUnplannedSlot, recipeIndex } from '../utils/mealPlan';
-import { dayKeyOf, dayKeyToDate } from '../utils/dateUtils';
+import { dayKeyOf, dayKeyToDate, getLogicalToday } from '../utils/dateUtils';
 import { prepTaskDraftsForMeal } from '../utils/recipeUtils';
 import { onHandNameKeys } from '../utils/grocerySuggest';
 import { haptics } from '../utils/haptics';
@@ -43,7 +43,9 @@ export function usePlanMeal() {
    * to take.
    */
   const earliestUnplannedSlotToday = useCallback((): MealSlot => {
-    const todayKey = dayKeyOf(new Date());
+    // The logical day: this places a meal, and before the day reset the day
+    // the user is still in is yesterday by the clock.
+    const todayKey = dayKeyOf(getLogicalToday());
     return earliestUnplannedSlot(entriesForDayLive(todayKey), todayKey, mealSlotsEnabled);
   }, [entriesForDayLive, mealSlotsEnabled]);
 

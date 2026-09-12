@@ -951,9 +951,9 @@ function makeStyles(colors: Colors) {
     rowDivided: { borderTopWidth: border.hairline, borderTopColor: colors.separator },
     rowBody: { flex: 1 },
     rowTitle: { color: colors.text, fontSize: font.md },
-    rowLabel: { color: colors.textTertiary, fontSize: font.xs, marginTop: 2 },
-    rowWeak: { color: colors.orange, fontSize: font.xs, marginTop: 2 },
-    rowRemembered: { color: colors.textSecondary, fontSize: font.xs, marginTop: 2 },
+    rowLabel: { color: colors.textTertiary, fontSize: font.xs, marginTop: spacing.xxs },
+    rowWeak: { color: colors.orange, fontSize: font.xs, marginTop: spacing.xxs },
+    rowRemembered: { color: colors.textSecondary, fontSize: font.xs, marginTop: spacing.xxs },
     rowSkipped: { color: colors.textSecondary, fontSize: font.sm },
     rowPrice: { color: colors.text, fontSize: font.md, fontVariant: ['tabular-nums'] },
     rowPriceOff: {

@@ -101,7 +101,7 @@ const makeStyles = (colors: Colors) => StyleSheet.create({
   emoji: { fontSize: font.lg, width: 28, textAlign: 'center' },
   body: { flex: 1 },
   title: { fontSize: font.md, fontWeight: fontWeight.medium, color: colors.text },
-  meta: { fontSize: font.xs, color: colors.textSecondary, marginTop: 2 },
+  meta: { fontSize: font.xs, color: colors.textSecondary, marginTop: spacing.xxs },
   highlight: { fontSize: font.sm, color: colors.accent, fontWeight: fontWeight.medium, marginTop: spacing.xs },
   symptoms: { fontSize: font.sm, color: colors.textSecondary, marginTop: spacing.xs },
   contextTags: { fontSize: font.sm, color: colors.textTertiary, marginTop: spacing.xs },

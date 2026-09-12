@@ -1,6 +1,7 @@
 import type { Effort, FollowUpTaskDraft, Priority, Task, TimeOfDay } from '../types';
 import { ordinal } from './ordinal';
 import { EFFORT_LABELS, PRIORITY_LABELS } from '../types';
+import { capitalize } from './capitalize';
 
 /**
  * "Follow-up task" — every Nth completion of a task adds a separate one-off task.
@@ -295,6 +296,3 @@ export function describeFollowUpTaskDraft(
   return `${parts.length} details`;
 }
 
-function capitalize(s: string): string {
-  return s.charAt(0).toUpperCase() + s.slice(1);
-}

@@ -208,7 +208,7 @@ const makeStyles = (colors: Colors) => StyleSheet.create({
     backgroundColor: colors.bgTertiary,
     borderRadius: radius.md,
   },
-  optionContent: { flex: 1, gap: 2 },
+  optionContent: { flex: 1, gap: spacing.xxs },
   optionLabel: { color: colors.text, fontSize: font.md },
   optionHint: { color: colors.textSecondary, fontSize: font.sm, lineHeight: 18 },
   toggle: {

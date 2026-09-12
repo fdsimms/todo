@@ -211,7 +211,7 @@ const makeStyles = (colors: Colors) => StyleSheet.create({
   fieldBox: {
     color: colors.text, fontSize: font.md,
     backgroundColor: colors.bgTertiary, borderRadius: radius.sm,
-    paddingHorizontal: 12,
+    paddingHorizontal: spacing.smd,
     // Height rather than lineHeight — see the TextInput note in CLAUDE.md.
     height: 36,
   },

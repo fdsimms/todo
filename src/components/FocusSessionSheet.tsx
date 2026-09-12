@@ -744,7 +744,7 @@ const makeStyles = (colors: Colors) => StyleSheet.create({
     fontSize: font.sm,
     lineHeight: lineHeight.sm,
     textAlign: 'center',
-    marginTop: 2,
+    marginTop: spacing.xxs,
   },
   clock: {
     color: colors.text,
@@ -754,7 +754,7 @@ const makeStyles = (colors: Colors) => StyleSheet.create({
     marginTop: spacing.lg,
   },
   clockDone: { color: colors.orange },
-  clockCaption: { color: colors.textTertiary, fontSize: font.sm, marginTop: 2 },
+  clockCaption: { color: colors.textTertiary, fontSize: font.sm, marginTop: spacing.xxs },
   progressWrap: { alignSelf: 'stretch', marginTop: spacing.lg },
   doneNote: {
     color: colors.textSecondary,
@@ -794,7 +794,7 @@ const makeStyles = (colors: Colors) => StyleSheet.create({
     gap: 4,
     backgroundColor: colors.bgSecondary,
     borderRadius: radius.md,
-    paddingVertical: 12,
+    paddingVertical: spacing.smd,
   },
   secondaryLabel: { color: colors.textSecondary, fontSize: font.xs, fontWeight: fontWeight.medium },
 

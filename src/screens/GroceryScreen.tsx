@@ -1255,7 +1255,7 @@ export function GroceryScreen() {
           selectionMode={selectionMode}
           selected={selectedIds.has(row.item.id)}
           onSelect={toggleSelection}
-          onSwipeSelect={id => enterSelectionMode(id)}
+          onSwipeSelect={enterSelectionMode}
           alternatives={alternativeCaptionById.get(row.item.id)}
           stockedFor={stockedForById.get(row.item.id)}
           product={preferredProductById.get(row.item.id)}
@@ -1268,7 +1268,7 @@ export function GroceryScreen() {
         />
       );
     },
-    [styles, colors, cartOpen, collapsedGroups, toggleGroupCollapsed, handleToggle, handleEdit, handleOpenSubstitutes, handleSwapForSubstitute, zoneByKey, selectionMode, selectedIds, toggleSelection, enterSelectionMode, alternativeCaptionById, stockedForById, storeMarkers, tripPriceById, handleSetTripPrice]
+    [styles, colors, cartOpen, collapsedGroups, toggleGroupCollapsed, handleToggle, handleEdit, handleOpenSubstitutes, handleSwapForSubstitute, zoneByKey, grouped.kind, selectionMode, selectedIds, toggleSelection, enterSelectionMode, alternativeCaptionById, stockedForById, storeMarkers, tripPriceById, handleSetTripPrice]
   );
 
   // The "Start shopping" card, mounted either as the list's header or as a
@@ -1629,7 +1629,7 @@ function makeStyles(colors: Colors) {
       // Matches GroceryRow's own card geometry, so the gap that opens is
       // exactly the shape of the row about to land in it.
       marginHorizontal: spacing.md,
-      marginVertical: 2,
+      marginVertical: spacing.xxs,
       borderRadius: radius.md,
       backgroundColor: colors.bgSecondary,
       opacity: 0.55,
@@ -1649,7 +1649,7 @@ function makeStyles(colors: Colors) {
     groupSectionHeaderLeft: {
       flexDirection: 'row',
       alignItems: 'center',
-      gap: 6,
+      gap: spacing.xsm,
     },
     cartHeader: {
       flexDirection: 'row',

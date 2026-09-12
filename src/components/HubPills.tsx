@@ -148,7 +148,7 @@ const makeStyles = (colors: Colors) => StyleSheet.create({
   scroll: { flexGrow: 0, flexShrink: 0 },
   pills: {
     flexDirection: 'row', alignItems: 'center', gap: spacing.xs,
-    paddingHorizontal: spacing.md, paddingTop: 6, paddingBottom: spacing.sm,
+    paddingHorizontal: spacing.md, paddingTop: spacing.xsm, paddingBottom: spacing.sm,
   },
   pill: {
     paddingHorizontal: spacing.md, paddingVertical: spacing.sm,

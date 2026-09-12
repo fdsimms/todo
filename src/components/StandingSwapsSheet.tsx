@@ -144,7 +144,7 @@ function makeStyles(colors: Colors) {
     },
     body: { flex: 1 },
     name: { color: colors.text, fontSize: font.md },
-    meta: { color: colors.textTertiary, fontSize: font.xs, marginTop: 2 },
+    meta: { color: colors.textTertiary, fontSize: font.xs, marginTop: spacing.xxs },
     off: {
       backgroundColor: colors.bgTertiary,
       borderRadius: radius.sm,

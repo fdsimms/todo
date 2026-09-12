@@ -162,6 +162,12 @@ export function FoodLogScreen() {
 
   const dayEntries = useMemo(() => entries.filter(e => e.dayKey === dayKey), [entries, dayKey]);
   const sections = useMemo(() => foodLogSections(dayEntries), [dayEntries]);
+  // Keyed once rather than searched per header row: `renderItem` ran a `find`
+  // over the sections for every header it drew.
+  const sectionBySlot = useMemo(
+    () => new Map(sections.map(s => [s.slot, s])),
+    [sections],
+  );
   const totals = useMemo(() => foodLogTotals(dayEntries), [dayEntries]);
 
   // The flat row list ReorderableList actually drags — a header opens each
@@ -215,10 +221,29 @@ export function FoodLogScreen() {
   }, [exitSelection, todayKey]);
 
 
+  const handleDelete = useCallback((id: string, label: string) => {
+    Alert.alert(
+      `Forget ${label}?`,
+      'This removes it from the day\'s totals.',
+      [
+        { text: 'Cancel', style: 'cancel' },
+        {
+          text: 'Forget',
+          style: 'destructive',
+          onPress: () => {
+            haptics.warning();
+            animateLayout();
+            removeEntry(id);
+          },
+        },
+      ],
+    );
+  }, [removeEntry]);
+
   // The "…" on a row is a real menu, not a synonym for delete: an accidental
   // tap must not open a destructive confirm with nothing to say what's about
   // to happen. Move reuses the same slot list the bulk bar's own panel does.
-  const handleOpenMenu = (entry: FoodLogEntry) => {
+  const handleOpenMenu = useCallback((entry: FoodLogEntry) => {
     const moveButtons = MEAL_SLOTS
       .filter(s => s !== entry.slot)
       .map(s => ({
@@ -255,26 +280,7 @@ export function FoodLogScreen() {
       { text: 'Forget', style: 'destructive', onPress: () => handleDelete(entry.id, entry.label) },
       { text: 'Cancel', style: 'cancel' },
     ]);
-  };
-
-  const handleDelete = (id: string, label: string) => {
-    Alert.alert(
-      `Forget ${label}?`,
-      'This removes it from the day\'s totals.',
-      [
-        { text: 'Cancel', style: 'cancel' },
-        {
-          text: 'Forget',
-          style: 'destructive',
-          onPress: () => {
-            haptics.warning();
-            animateLayout();
-            removeEntry(id);
-          },
-        },
-      ],
-    );
-  };
+  }, [moveEntries, updateEntry, handleDelete]);
 
   const handleBulkDelete = () => {
     const ids = Array.from(selectedIds);
@@ -357,7 +363,7 @@ export function FoodLogScreen() {
           // primary-add list screen — selecting is reached by swiping a row.
         ]}
       />
-      <HubPills hub="kitchen" active="FoodLog" />
+      <HubPills hub="health" active="FoodLog" />
 
       <View style={styles.dayNav}>
         <TouchableOpacity
@@ -503,7 +509,7 @@ export function FoodLogScreen() {
             }
             renderItem={({ item, drag, isActive }) => {
               if (item.type === 'header') {
-                const section = sections.find(s => s.slot === item.slot);
+                const section = sectionBySlot.get(item.slot);
                 const slotLabel = item.slot ? MEAL_SLOT_LABELS[item.slot] : 'Other';
                 return (
                   <View style={styles.sectionHeader}>
@@ -535,9 +541,9 @@ export function FoodLogScreen() {
                   drag={selectionMode ? undefined : drag}
                   styles={styles}
                   colors={colors}
-                  onToggleSelect={() => toggleSelection(item.entry.id)}
-                  onSwipeSelect={() => enterSelectionMode(item.entry.id)}
-                  onOpenMenu={() => handleOpenMenu(item.entry)}
+                  onToggleSelect={toggleSelection}
+                  onSwipeSelect={enterSelectionMode}
+                  onOpenMenu={handleOpenMenu}
                 />
               );
             }}
@@ -675,11 +681,11 @@ function makeStyles(colors: Colors) {
     dayNavButton: { padding: spacing.sm },
     dayNavCenter: { alignItems: 'center', paddingVertical: spacing.xs, paddingHorizontal: spacing.md },
     dayNavDateText: { color: colors.text, fontSize: font.md, fontWeight: fontWeight.semibold },
-    dayNavBackText: { color: colors.accent, fontSize: font.xs, marginTop: 2 },
+    dayNavBackText: { color: colors.accent, fontSize: font.xs, marginTop: spacing.xxs },
     scrollContent: { flexGrow: 1, paddingHorizontal: spacing.md },
     totalsCard: {
       backgroundColor: colors.bgSecondary,
-      borderRadius: radius.lg,
+      borderRadius: radius.md,
       padding: spacing.md,
       gap: spacing.sm,
       marginBottom: spacing.lg,
@@ -729,7 +735,7 @@ function makeStyles(colors: Colors) {
       paddingHorizontal: spacing.md,
       paddingVertical: spacing.md,
     },
-    entryText: { gap: 2 },
+    entryText: { gap: spacing.xxs },
     entryTitle: { color: colors.text, fontSize: font.md },
     entryMeta: { color: colors.textSecondary, fontSize: font.sm },
     entryMenuButton: { paddingHorizontal: spacing.md, paddingVertical: spacing.md },
@@ -748,7 +754,7 @@ function makeStyles(colors: Colors) {
  * `SwipeableRow`'s own doc comment), and there's no per-entry editor to hang
  * it off, so the bulk bar is the only other route.
  */
-function FoodLogRow({
+const FoodLogRow = React.memo(function FoodLogRow({
   entry, isActive, selectionMode, selected, drag, styles, colors, onToggleSelect, onSwipeSelect, onOpenMenu,
 }: {
   entry: FoodLogEntry;
@@ -758,11 +764,17 @@ function FoodLogRow({
   drag?: () => void;
   styles: ReturnType<typeof makeStyles>;
   colors: Colors;
-  onToggleSelect: () => void;
-  onSwipeSelect: () => void;
-  onOpenMenu: () => void;
+  // Each takes what it acts on rather than being closed over it, so the screen
+  // can hand every row the same stable function and the memo above holds. An
+  // inline arrow per row is a fresh identity per render and defeats it, which
+  // is the same rule `renderTaskRow`'s `rowKey` exists for on Today.
+  onToggleSelect: (entryId: string) => void;
+  onSwipeSelect: (entryId: string) => void;
+  onOpenMenu: (entry: FoodLogEntry) => void;
 }) {
   const paintRef = usePaintSelectionRow(entry.id);
+  // Bound once per row rather than per render of the list above it.
+  const toggleSelect = () => onToggleSelect(entry.id);
   const rowBody = (
     <View
       ref={paintRef}
@@ -776,7 +788,7 @@ function FoodLogRow({
         // but the touchable itself must stay enabled so onLongPress still
         // starts a drag; a `disabled` row swallows every gesture, drag
         // included, not just the tap.
-        onPress={selectionMode ? onToggleSelect : undefined}
+        onPress={selectionMode ? toggleSelect : undefined}
         onLongPress={drag}
         delayLongPress={interaction.delayLongPress}
         accessibilityRole={selectionMode ? 'checkbox' : undefined}
@@ -790,12 +802,12 @@ function FoodLogRow({
       </TouchableOpacity>
       {selectionMode ? (
         <View style={styles.entrySelectDot}>
-          <SelectionDot selected={selected} onPress={onToggleSelect} />
+          <SelectionDot selected={selected} onPress={toggleSelect} />
         </View>
       ) : (
         <TouchableOpacity
           style={styles.entryMenuButton}
-          onPress={onOpenMenu}
+          onPress={() => onOpenMenu(entry)}
           hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
           accessibilityRole="button"
           accessibilityLabel={`More options for ${entry.label}`}
@@ -809,9 +821,9 @@ function FoodLogRow({
     <SwipeableRow
       style={styles.entryRowSwipe}
       enabled={!selectionMode}
-      selectAction={{ onSelect: onSwipeSelect, accessibilityLabel: `Select ${entry.label}` }}
+      selectAction={{ onSelect: () => onSwipeSelect(entry.id), accessibilityLabel: `Select ${entry.label}` }}
     >
       {rowBody}
     </SwipeableRow>
   );
-}
+});

@@ -2378,7 +2378,7 @@ const makeStyles = (colors: Colors) => StyleSheet.create({
     alignItems: 'center',
     gap: spacing.sm,
     paddingHorizontal: spacing.md,
-    paddingVertical: 12,
+    paddingVertical: spacing.smd,
     marginHorizontal: spacing.sm,
     marginVertical: spacing.xs,
     borderRadius: radius.md,
@@ -2429,7 +2429,7 @@ const makeStyles = (colors: Colors) => StyleSheet.create({
     alignItems: 'flex-start',
     gap: spacing.sm,
     paddingHorizontal: spacing.md,
-    paddingVertical: 12,
+    paddingVertical: spacing.smd,
   },
   ingredientDragging: {
     backgroundColor: colors.bgTertiary,
@@ -2449,7 +2449,7 @@ const makeStyles = (colors: Colors) => StyleSheet.create({
   stepTimerNote: {
     color: colors.textTertiary,
     fontSize: font.xs,
-    marginTop: 2,
+    marginTop: spacing.xxs,
   },
   // `textSecondary` rather than the tertiary the timer line uses: this is a
   // sentence to read, where that is a label saying what a parse found.
@@ -2527,7 +2527,7 @@ const makeStyles = (colors: Colors) => StyleSheet.create({
     color: colors.textSecondary,
     fontSize: font.xs,
     fontWeight: fontWeight.medium,
-    marginTop: 2,
+    marginTop: spacing.xxs,
   },
   // Accent, matching the tint a scaled or converted quantity pill takes: both
   // mean "the app's words, not the recipe's". Brighter than `alternativeNote`
@@ -2537,7 +2537,7 @@ const makeStyles = (colors: Colors) => StyleSheet.create({
     color: colors.accent,
     fontSize: font.xs,
     fontWeight: fontWeight.medium,
-    marginTop: 2,
+    marginTop: spacing.xxs,
   },
   choiceHeader: {
     flexDirection: 'row',
@@ -2582,7 +2582,7 @@ const makeStyles = (colors: Colors) => StyleSheet.create({
     gap: spacing.xs,
     backgroundColor: colors.accentSubtle,
     borderRadius: radius.sm,
-    paddingVertical: 2,
+    paddingVertical: spacing.xxs,
     paddingLeft: spacing.xs + 2,
     paddingRight: spacing.xs,
     marginTop: spacing.xs,
@@ -2609,7 +2609,7 @@ const makeStyles = (colors: Colors) => StyleSheet.create({
     gap: spacing.xs,
     backgroundColor: colors.accentSubtle,
     borderRadius: radius.sm,
-    paddingVertical: 2,
+    paddingVertical: spacing.xxs,
     paddingLeft: spacing.xs + 2,
     paddingRight: spacing.xs,
     marginTop: spacing.xs,
@@ -2672,7 +2672,7 @@ const makeStyles = (colors: Colors) => StyleSheet.create({
     marginTop: spacing.md,
     marginBottom: spacing.md,
   },
-  pasteBannerBody: { flex: 1, gap: 2 },
+  pasteBannerBody: { flex: 1, gap: spacing.xxs },
   pasteBannerTitle: { fontSize: font.sm, fontWeight: fontWeight.medium, color: colors.text },
   pasteBannerDetail: { fontSize: font.xs, color: colors.textSecondary },
   pasteBannerAction: { fontSize: font.md, fontWeight: fontWeight.semibold, color: colors.accent },
@@ -2702,7 +2702,7 @@ const makeStyles = (colors: Colors) => StyleSheet.create({
     backgroundColor: colors.bgTertiary,
     borderRadius: radius.sm,
     paddingHorizontal: spacing.sm,
-    paddingVertical: 2,
+    paddingVertical: spacing.xxs,
   },
   // A tint rather than the filled accent the chips use: every quantity in the
   // list is scaled at once, and a column of solid accent pills would read as a

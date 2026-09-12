@@ -355,19 +355,19 @@ const makeStyles = (colors: Colors) => StyleSheet.create({
     color: colors.text,
   },
   optionLabelActive: { color: colors.text, fontWeight: fontWeight.semibold },
-  optionHint: { color: colors.textTertiary, fontSize: font.sm, marginTop: 2 },
+  optionHint: { color: colors.textTertiary, fontSize: font.sm, marginTop: spacing.xxs },
   // Its own style rather than a second optionHint: this line is the reason the
   // row is worth tapping today, and running it into the hint above would read
   // as one long sentence about the workload.
   optionNote: {
     fontSize: font.xs,
     color: colors.textSecondary,
-    marginTop: 2,
+    marginTop: spacing.xxs,
   },
   toggle: {
     width: 44, height: 26, borderRadius: 13,
     backgroundColor: colors.bgTertiary,
-    justifyContent: 'center', padding: 2,
+    justifyContent: 'center', padding: spacing.xxs,
   },
   toggleOn: { backgroundColor: colors.accent },
   toggleKnob: {

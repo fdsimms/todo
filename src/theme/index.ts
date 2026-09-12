@@ -214,9 +214,29 @@ export function flattenOverlay(overlay: string, baseHex: string): string {
   return overlay;
 }
 
+/**
+ * The spacing scale. `xs` through `xl` double at each step, which is the
+ * backbone; `xxs`, `xsm` and `smd` fill the three gaps that step over the
+ * values real layouts kept needing.
+ *
+ * Those three were added after a sweep found ~980 raw numbers across 183
+ * files, four fifths of everything written, clustered almost entirely on 2,
+ * 6 and 12 — the gaps between 4 and 8, and between 8 and 16. A scale nobody
+ * can hit is a scale nobody uses, so the fix was to widen it rather than to
+ * keep converting call sites to the nearest wrong value.
+ *
+ * The values *between* these steps (1, 3, 5, 7, 10, 14) are deliberately not
+ * tokens and deliberately not rounded onto one: they're optical nudges
+ * (a chevron aligned against a cap height, a border's width taken back out
+ * of a padding) where the exact number is the point, and snapping them to a
+ * token would move pixels for the sake of tidiness.
+ */
 export const spacing = {
+  xxs: 2,
   xs: 4,
+  xsm: 6,
   sm: 8,
+  smd: 12,
   md: 16,
   lg: 24,
   xl: 32,
@@ -320,6 +340,15 @@ export const animation = {
     fast: 150,
     normal: 250,
     slow: 400,
+    /**
+     * A centered card dismissing itself — its scale and opacity, run against
+     * a backdrop that fades at `fast` so the card leaves fractionally ahead
+     * of the dimming behind it. The pair was written out as a literal
+     * 120/120/150 triad in all seven sheets that do this (quick add, quick
+     * search, the cook recap, …), which is the drift the tokens exist to
+     * stop; the backdrop half was already `fast` spelled as a number.
+     */
+    dismiss: 120,
   },
   spring: {
     snappy: { damping: 22, stiffness: 300, mass: 0.8 },

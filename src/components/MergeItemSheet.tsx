@@ -251,7 +251,7 @@ function makeStyles(colors: Colors) {
       marginBottom: spacing.sm,
     },
     rowName: { color: colors.text, fontSize: font.md },
-    rowMeta: { color: colors.textTertiary, fontSize: font.xs, marginTop: 2 },
+    rowMeta: { color: colors.textTertiary, fontSize: font.xs, marginTop: spacing.xxs },
     body: { padding: spacing.md },
     keepRow: {
       flexDirection: 'row',
@@ -265,7 +265,7 @@ function makeStyles(colors: Colors) {
     },
     keepBody: { flex: 1, marginRight: spacing.md },
     keepName: { color: colors.text, fontSize: font.md, fontWeight: fontWeight.medium },
-    keepMeta: { color: colors.textTertiary, fontSize: font.xs, marginTop: 2 },
+    keepMeta: { color: colors.textTertiary, fontSize: font.xs, marginTop: spacing.xxs },
     keepAction: { color: colors.accent, fontSize: font.md, fontWeight: fontWeight.semibold },
   });
 }

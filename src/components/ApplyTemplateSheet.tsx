@@ -827,7 +827,7 @@ const makeStyles = (colors: Colors) => StyleSheet.create({
     gap: spacing.xs,
   },
   answerPill: {
-    paddingHorizontal: 12,
+    paddingHorizontal: spacing.smd,
     paddingVertical: 7,
     borderRadius: radius.full,
     backgroundColor: colors.bgTertiary,
@@ -866,7 +866,7 @@ const makeStyles = (colors: Colors) => StyleSheet.create({
     alignItems: 'center',
     gap: spacing.md,
     paddingHorizontal: spacing.md,
-    paddingVertical: 12,
+    paddingVertical: spacing.smd,
   },
   itemContent: { flex: 1, gap: 1 },
   nestedTitleRow: { flexDirection: 'row', alignItems: 'center', gap: 5 },

@@ -206,12 +206,12 @@ const makeStyles = (colors: Colors, isDark: boolean, surface: 'page' | 'card') =
     // segment below with no surface of its own to be raised onto.
     backgroundColor: !isDark && surface === 'page' ? colors.bgSunken : colors.bgTertiary,
     borderRadius: radius.md,
-    padding: 2,
-    gap: 2,
+    padding: spacing.xxs,
+    gap: spacing.xxs,
   },
   // In grid mode the track stacks its rows; each row lays its own cells out.
   trackGrid: { flexDirection: 'column' },
-  row: { flexDirection: 'row', gap: 2 },
+  row: { flexDirection: 'row', gap: spacing.xxs },
   segment: {
     flex: 1,
     // Not `minTouchTarget`: a segment is wide, and a stack of 44pt tracks turns

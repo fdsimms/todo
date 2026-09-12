@@ -533,7 +533,7 @@ const styles = StyleSheet.create({
     gap: spacing.md,
     paddingHorizontal: spacing.sm,
     paddingVertical: 11,
-    marginVertical: 2,
+    marginVertical: spacing.xxs,
     borderRadius: radius.md,
   },
   iconWrap: {
@@ -551,12 +551,12 @@ const styles = StyleSheet.create({
   itemSubtitle: {
     fontSize: font.xs,
     lineHeight: 16,
-    marginTop: 2,
+    marginTop: spacing.xxs,
   },
   badge: {
     minWidth: 22,
-    paddingHorizontal: 6,
-    paddingVertical: 2,
+    paddingHorizontal: spacing.xsm,
+    paddingVertical: spacing.xxs,
     borderRadius: radius.full,
     alignItems: 'center',
     justifyContent: 'center',
