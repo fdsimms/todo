@@ -453,12 +453,12 @@ The suite is **320 test files**, and `npm test` runs all of them in well under a
 
 <!-- END GENERATED: repo-stats -->
 
-**The thirteen single-component files carry their own map.** `TaskEditor.tsx`, `TodayScreen.tsx`,
+**The fourteen single-component files carry their own map.** `TaskEditor.tsx`, `TodayScreen.tsx`,
 `TaskItem.tsx`, `QuickAddModal.tsx`, `MealPlanScreen.tsx`, `RecipeDetailScreen.tsx`,
-`GroceryItemSheet.tsx`, `TemplateItemEditor.tsx`, `LogbookScreen.tsx`, `GroceryScreen.tsx`,
-`SuggestMealsSheet.tsx`, `FoodLogEntrySheet.tsx` and `CookModeSheet.tsx` are each one component
-holding most of the file, so there are almost no top-level symbols to grep for — `TaskEditor.tsx`
-has six in 4,200 lines and `RecipeDetailScreen.tsx` has two in 1,900.
+`RecipeCreateSheet.tsx`, `GroceryItemSheet.tsx`, `TemplateItemEditor.tsx`, `LogbookScreen.tsx`,
+`GroceryScreen.tsx`, `SuggestMealsSheet.tsx`, `FoodLogEntrySheet.tsx` and `CookModeSheet.tsx` are
+each one component holding most of the file, so there are almost no top-level symbols to grep
+for — `TaskEditor.tsx` has six in 4,200 lines and `RecipeDetailScreen.tsx` has two in 1,900.
 Each opens with a short header comment saying what's where, and its logic half is divided by
 `// ==== <name> ====` banners; `grep -n '// ===='` on one of them is its table of contents. The
 banners stop at the JSX, because a `//` comment can't go inside a `return (`: past the render
