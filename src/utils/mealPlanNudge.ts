@@ -2,7 +2,7 @@ import { format } from 'date-fns/format';
 import type { MealPlanEntry, MealSlot, Task } from '../types';
 import type { WeekStart } from '../store/useSettingsStore';
 import { buildWeekDays } from './calendarGrid';
-import { dayKeyOf } from './dateUtils';
+import { dayKeyOf, getDayStart } from './dateUtils';
 import { generatedSourceOf, liveGeneratedTasksOfKind } from './generatedTasks';
 import { isKeyInRange } from './mealPlan';
 
@@ -221,7 +221,14 @@ export function dueMealPlanNudge(
   time: string,
   lastFiredWeekKey: string | null
 ): MealPlanNudgeDue | null {
-  const days = buildWeekDays(now, weekStartsOn);
+  // Anchored on the logical day rather than on the clock. Everything this
+  // function decides is a placement — which week is being nudged about, and
+  // what day the task it writes lands on — and before a 02:00 day reset the
+  // day the user is still in is yesterday by the calendar. `now` itself stays
+  // the real clock, because the trigger below is a time of day rather than a
+  // date.
+  const today = getDayStart(now);
+  const days = buildWeekDays(today, weekStartsOn);
   const weekKey = dayKeyOf(days[0]);
   if (weekKey === lastFiredWeekKey) return null;
 
@@ -235,7 +242,7 @@ export function dueMealPlanNudge(
   // doc comment for why, and the module comment for the mid-week-`weekday`
   // caveat.
   const targetDays = days;
-  const dueDate = new Date(now);
+  const dueDate = new Date(today);
   dueDate.setHours(12, 0, 0, 0);
 
   return {

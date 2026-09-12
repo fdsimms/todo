@@ -15,6 +15,7 @@ import {
 } from 'react-native';
 import Ionicons from '@expo/vector-icons/Ionicons';
 import { subDays } from 'date-fns/subDays';
+import { getLogicalToday } from '../utils/dateUtils';
 import type { Leftover } from '../types';
 import {
   LEFTOVER_KEEP_DAYS_DEFAULT,
@@ -752,7 +753,13 @@ export function LeftoverSheet({
 
 /** Local midday `n` days back — a put-away instant the chips can round-trip. */
 function instantDaysAgo(days: number): string {
-  const d = subDays(new Date(), days);
+  // Counted back from the logical day, not the calendar one: the chips say
+  // "today" and "yesterday", and before a 02:00 day reset the day the user is
+  // still in is yesterday by the clock. What this dates is a shelf life, so a
+  // day out here moves the use-by and the task that chases it. `daysAgoOf`
+  // below has to measure from the same anchor or the chip that comes back
+  // selected isn't the one that was tapped.
+  const d = subDays(getLogicalToday(), days);
   // Midday rather than now-minus-n-days so nudging "yesterday" late at night
   // can't land the instant on a third calendar day once the clock rolls over
   // mid-session. The time is never displayed; only its calendar day is read.
@@ -763,7 +770,8 @@ function instantDaysAgo(days: number): string {
 function daysAgoOf(storedAt: string): number {
   const then = new Date(storedAt);
   then.setHours(12, 0, 0, 0);
-  const now = new Date();
+  // The same anchor `instantDaysAgo` writes from — see the note there.
+  const now = getLogicalToday();
   now.setHours(12, 0, 0, 0);
   return Math.max(0, Math.round((+now - +then) / 86_400_000));
 }

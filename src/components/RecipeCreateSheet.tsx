@@ -62,6 +62,7 @@ import { ImportedComponentRow } from './ImportedComponentRow';
 import { coveredIngredients, importableReferences } from '../utils/recipeImportComponents';
 import { MAX_RECIPE_PHOTOS } from '../utils/recipePhoto';
 import { haptics } from '../utils/haptics';
+import { capitalize } from '../utils/capitalize';
 import { InlineAction } from './InlineAction';
 
 interface Props {
@@ -559,7 +560,7 @@ export function RecipeCreateSheet({
     }
     if (parts.length === 0) return '';
     const [first, ...rest] = parts;
-    return [first.charAt(0).toUpperCase() + first.slice(1), ...rest].join(', ');
+    return [capitalize(first), ...rest].join(', ');
   })();
 
   // What the run found decides whether the details row exists; what's in its

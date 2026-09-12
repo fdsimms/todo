@@ -24,6 +24,7 @@ import { SheetHeaderButton } from './SheetHeaderButton';
 import { SortableList } from './SortableList';
 import { EditorSheet } from './EditorSheet';
 import { CountStepper } from './CountStepper';
+import { capitalize } from '../utils/capitalize';
 
 // Ten hours, well past any real estimate. CountStepper needs a bound to
 // disable its + key at; the hand-rolled version it replaced had none.
@@ -523,10 +524,6 @@ export function FollowUpTaskSheet({ visible, taskTitle, draft, onSave, onClose }
       </View>
     </EditorSheet>
   );
-}
-
-function capitalize(s: string): string {
-  return s.charAt(0).toUpperCase() + s.slice(1);
 }
 
 const makeStyles = (colors: Colors) => StyleSheet.create({

@@ -64,6 +64,7 @@ import { EditorRow } from './EditorRow';
 import { EditorSheet } from './EditorSheet';
 import { NumberPadAccessory } from './NumberPadAccessory';
 import { CountStepper } from './CountStepper';
+import { capitalize } from '../utils/capitalize';
 
 // Ceilings for the two steppers whose hand-rolled versions had none. Both sit
 // well past any real value; CountStepper needs a bound to disable its + key
@@ -453,7 +454,6 @@ export function TemplateItemEditor({ visible, templateId, templateName, item, in
     setChainIndex(i => Math.min(i, Math.max(0, nextChain.length - 1)));
   };
 
-  const capitalize = (str: string) => str.charAt(0).toUpperCase() + str.slice(1);
   const timeOfDaySummary = timeSegments.length > 0
     ? timeSegments.map(capitalize).join(', ')
     : undefined;

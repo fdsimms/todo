@@ -9,6 +9,7 @@
  */
 
 import type { Project } from '../types';
+import { capitalize } from './capitalize';
 
 /**
  * What a project has been asked to do about going quiet: one question, three
@@ -157,5 +158,5 @@ export function describeCadence(days: number): string {
 
 /** The label on a unit pill. */
 export function cadenceUnitLabel(unit: CadenceUnit): string {
-  return unit.charAt(0).toUpperCase() + unit.slice(1);
+  return capitalize(unit);
 }

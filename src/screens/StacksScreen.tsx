@@ -1,4 +1,4 @@
-import React, { useMemo, useRef, useState } from 'react';
+import React, { useMemo, useRef, useState, useCallback } from 'react';
 import {
   View,
   Text,
@@ -100,10 +100,17 @@ export function StacksScreen() {
     return rosters;
   }, [allTasks]);
 
-  const openEditor = (group: TaskGroup) => {
+  const openEditor = useCallback((group: TaskGroup) => {
     setEditingGroup(group);
     setEditorVisible(true);
-  };
+  }, []);
+
+  // Stable and taking the stack it acts on, so `StackRow`'s memo holds — see
+  // its own note.
+  const handleOpenStack = useCallback((group: TaskGroup) => {
+    haptics.tap();
+    openEditor(group);
+  }, [openEditor]);
 
   const createStack = () => {
     animateLayout();
@@ -180,9 +187,9 @@ export function StacksScreen() {
       styles={styles}
       selectionMode={selectionMode}
       selected={selectedIds.has(group.id)}
-      onOpen={() => { haptics.tap(); openEditor(group); }}
-      onToggleSelect={() => toggleSelection(group.id)}
-      onSwipeSelect={() => enterSelectionMode(group.id)}
+      onOpen={handleOpenStack}
+      onToggleSelect={toggleSelection}
+      onSwipeSelect={enterSelectionMode}
     />
   );
 
@@ -278,7 +285,7 @@ export function StacksScreen() {
  * other list in the app; the selection dot sits at the trailing edge in place
  * of the chevron.
  */
-function StackRow({
+const StackRow = React.memo(function StackRow({
   group, roster, categories, colors, styles, selectionMode, selected, onOpen, onToggleSelect, onSwipeSelect,
 }: {
   group: TaskGroup;
@@ -288,9 +295,11 @@ function StackRow({
   styles: ReturnType<typeof makeStyles>;
   selectionMode: boolean;
   selected: boolean;
-  onOpen: () => void;
-  onToggleSelect: () => void;
-  onSwipeSelect: () => void;
+  // Each takes the stack it acts on rather than the screen closing over it once
+  // per row, so one stable function serves every row and the memo holds.
+  onOpen: (group: TaskGroup) => void;
+  onToggleSelect: (groupId: string) => void;
+  onSwipeSelect: (groupId: string) => void;
 }) {
   const paintRef = usePaintSelectionRow(group.id);
 
@@ -309,12 +318,12 @@ function StackRow({
     <SwipeableRow
       style={styles.card}
       enabled={!selectionMode}
-      selectAction={{ onSelect: onSwipeSelect, accessibilityLabel: `Select ${group.title}` }}
+      selectAction={{ onSelect: () => onSwipeSelect(group.id), accessibilityLabel: `Select ${group.title}` }}
     >
       <View ref={paintRef} style={[styles.row, selectionMode && selected && styles.rowSelected]}>
         <TouchableOpacity
           style={styles.rowMain}
-          onPress={() => (selectionMode ? onToggleSelect() : onOpen())}
+          onPress={() => (selectionMode ? onToggleSelect(group.id) : onOpen(group))}
           activeOpacity={interaction.activeOpacity}
           accessibilityRole={selectionMode ? 'checkbox' : 'button'}
           accessibilityState={selectionMode ? { checked: selected } : undefined}
@@ -342,14 +351,14 @@ function StackRow({
           </View>
         </TouchableOpacity>
         {selectionMode ? (
-          <SelectionDot selected={selected} onPress={onToggleSelect} />
+          <SelectionDot selected={selected} onPress={() => onToggleSelect(group.id)} />
         ) : (
           <Ionicons name="chevron-forward" size={16} color={colors.textTertiary} />
         )}
       </View>
     </SwipeableRow>
   );
-}
+});
 
 const makeStyles = (colors: Colors) => StyleSheet.create({
   container: {

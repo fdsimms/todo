@@ -16,6 +16,7 @@ import {
 } from '../utils/calendarHistory';
 import { dayKeyOf, getDayStart } from '../utils/dateUtils';
 import { useSettingsStore } from './useSettingsStore';
+import { createRefreshGuard } from '../utils/refreshGuard';
 
 /**
  * A rolling window of the device calendar, held in memory.
@@ -116,6 +117,16 @@ interface CalendarState {
   clear: () => void;
 }
 
+// Two windows read independently, so a guard each. See refreshGuard.ts: this
+// store had no in-flight protection at all, and it is the one with the most
+// triggers — the initial mount, the settings subscription and the foreground
+// listener all call `refresh`, and they routinely fire together. Two reads over
+// different windows could otherwise interleave their writes, and a read still
+// in flight when the feature was switched off would put the events back after
+// `clear` had dropped them.
+const windowGuard = createRefreshGuard();
+const pastGuard = createRefreshGuard();
+
 export const useCalendarStore = create<CalendarState>((set, get) => ({
   events: [],
   perCalendar: {},
@@ -150,7 +161,9 @@ export const useCalendarStore = create<CalendarState>((set, get) => ({
     // reads "today" the way every other list in the app does.
     const start = getDayStart(new Date(), dayResetTime);
     const end = addDays(start, CALENDAR_WINDOW_DAYS);
+    const token = windowGuard.begin();
     const result = await fetchEvents(readIds, start, end);
+    if (!windowGuard.isCurrent(token)) return;
     if (result === null) {
       // A failed read leaves the previous window (and per-calendar status) in
       // place rather than blanking it: yesterday's answer is better than a
@@ -194,7 +207,9 @@ export const useCalendarStore = create<CalendarState>((set, get) => ({
 
     // Deliberately to `now` rather than to the end of the day: an event later
     // today has not happened, and history is only ever about what has.
+    const token = pastGuard.begin();
     const result = await fetchEvents(calendarIds, pastWindowStart(now), now);
+    if (!pastGuard.isCurrent(token)) return;
     if (result === null) {
       set({ pastLoaded: false });
       return;
@@ -225,6 +240,8 @@ export const useCalendarStore = create<CalendarState>((set, get) => ({
   // reading off and back on must not hand back every offer the user already
   // turned down; the answers are theirs, where the events are the calendar's.
   clear() {
+    windowGuard.invalidate();
+    pastGuard.invalidate();
     set({
       events: [], perCalendar: {}, calendarsById: {}, windowStart: null, windowEnd: null, loaded: false,
       pastEvents: [], pastLoaded: false, pastReadAt: null,

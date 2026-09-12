@@ -412,6 +412,7 @@ file: the two maps are indexes, not write-ups.
 | either of a recipe's two timers, from any screen | `src/hooks/useRecipeTimer.ts` — see `docs/arch/recipes.md` |
 | a timer for the cooking step you're on | `src/utils/stepTimers.ts` + `src/store/useStepTimerStore.ts` — see `docs/arch/recipes.md` |
 | a recipe page shared in from another app's share sheet | `src/utils/sharedRecipeLinks.ts` + `targets/todo-share/` — see `docs/arch/recipes.md` |
+| a store that fills itself from outside the app, and a read that lands too late | `src/utils/refreshGuard.ts` — the calendar, the weather, Apple Health and Screen Time all await a device read and then write what came back. A generation token per independent read decides whether the answer is still the one being asked for; `clear()` moves it on, which is what stops a revoked read writing its data back after the user switched the feature off |
 | syncing between devices | `src/utils/syncEngine.ts` + `syncMerge.ts` + `cloudKitTransport.ts` + `src/store/useSyncStore.ts`. Two transports now, and `runSyncAll` runs them **sequentially** on purpose: they share one database across an `await`, so in parallel one pushes back what the other just applied |
 | syncing with something that isn't an Apple device | `src/utils/httpSyncTransport.ts` + `mcp/src/syncStore.ts` — see `docs/arch/mcp-server.md`. A payload store the user runs; it never parses a payload, which is what keeps the merge rules on the devices. Configuration is the opt-in (a URL in settings, a token in the keychain, both or neither) |
 | letting Claude read or write the app's data | `mcp/` — see `docs/arch/mcp-server.md`. Its own npm package, deliberately not a dependency of the app; it opens a `todo.db` in Node by putting `mcp/src/expoSqliteShim.ts` in front of `expo-sqlite`, so the whole of `src/db` and `src/utils` runs unchanged. It reads tasks, projects, groceries and the three day-keyed logs, and `create_template`/`create_task` write, behind a second token (`MCP_WRITE_TOKEN`) whose scope is decided per request. Nothing is deployed. **weight is structurally unreadable** (HealthKit is the record and there is no table), which is the health model working rather than a gap |
@@ -448,7 +449,7 @@ them source rather than tests. The ten biggest source files:
 Grep for the symbol and read the surrounding range; reading any of them end to end costs more
 context than the rest of the task will. `docs/module-map.md` says which file owns what.
 
-The suite is **322 test files**, and `npm test` runs all of them in well under a minute.
+The suite is **335 test files**, and `npm test` runs all of them in well under a minute.
 `npx tsc --noEmit` is a few seconds once `.tsbuildinfo` exists, so run both, every time.
 
 <!-- END GENERATED: repo-stats -->
@@ -1152,6 +1153,12 @@ deleted with it. Task drag on that list is untouched and still goes through `res
 ### Database schema / migrations
 
 `initDatabase()` in `src/db/database.ts` creates tables and runs a list of `ALTER TABLE ADD COLUMN` migrations wrapped in try/catch — they fail silently if the column already exists. When adding a new column, append it to the migrations array rather than modifying the `CREATE TABLE` statement.
+
+**An ALTER whose column already exists is skipped rather than thrown.** `initDatabase` reads each table's real columns once (`PRAGMA table_info`) and passes over any `ADD COLUMN` naming one that is already there, because by the second launch every one of them is a duplicate and a mature install was re-parsing and re-throwing all ~270 of them across the bridge before the first row was read. Only the statement's own text is consulted, so anything that isn't a plain `ADD COLUMN` is run and allowed to fail exactly as it did before. Adding a column still needs nothing but appending to the array.
+
+A schema version in `PRAGMA user_version` was the other way to do this and is deliberately not what shipped: it skips the loop entirely but has to be kept in step with the schema by hand, and anything that resets the tables without resetting the header (dropping every table to wipe the demo database, say) leaves it stamped and skips every migration on a schema that no longer has those columns. Reading the columns cannot desync from them.
+
+**The one-time backfills further down are each behind a `dbGetSetting('…_done')` flag**, including the five `tasks` backfills that used to be unguarded full scans on every launch. They were a no-op in what they wrote, never in what they cost: none of the columns they test is indexed.
 
 Tags and categories are stored as JSON arrays in each task row (`tags TEXT`, `category TEXT`). Tags are additionally tracked in a `tag_registry` key in the `settings` table, so a tag that exists but is currently unused doesn't disappear. Categories used to work the same way, but now live in their own `categories` table (they carry schedule/vacation fields a string list can't hold) — the `category_registry` setting is legacy, read only by the one-time migration in `initDatabase()` that backfills that table.
 

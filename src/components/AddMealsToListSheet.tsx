@@ -37,6 +37,7 @@ import { InlineAction } from './InlineAction';
 import { EmptyState } from './EmptyState';
 import { SubstituteSheet } from './SubstituteSheet';
 import { haptics } from '../utils/haptics';
+import { SheetUndoBar } from './SheetUndoBar';
 
 // Same value UndoBar uses for the same reason: long enough to read the label
 // and reach for the button, short enough not to overstay a moment already
@@ -120,7 +121,7 @@ const defaultExpandedSections = (): Set<PlanCategory> => new Set<PlanCategory>([
 export function AddMealsToListSheet({
   visible, entries, recipesById, range, title, stampWeekKey, onClose,
 }: Props) {
-  const { colors, shadows } = useTheme();
+  const { colors } = useTheme();
   const styles = useMemo(() => makeStyles(colors), [colors]);
   const insets = useSafeAreaInsets();
 
@@ -526,19 +527,11 @@ export function AddMealsToListSheet({
         )}
 
         {!!pantryUndo && (
-          <View
-            style={[styles.undoWrap, { bottom: insets.bottom + spacing.lg }]}
-            pointerEvents="box-none"
-          >
-            <View style={[styles.undoBar, shadows.fab]}>
-              <Text style={styles.undoLabel} numberOfLines={1}>{pantryUndo.label}</Text>
-              <InlineAction
-                label="Undo"
-                onPress={handlePantryUndo}
-                accessibilityLabel={`Undo: ${pantryUndo.label}`}
-              />
-            </View>
-          </View>
+          <SheetUndoBar
+            label={pantryUndo.label}
+            onUndo={handlePantryUndo}
+            bottom={insets.bottom + spacing.lg}
+          />
         )}
       </View>
 
@@ -667,26 +660,4 @@ const makeStyles = (colors: Colors) => StyleSheet.create({
   // Floats over the list rather than pushing it, the same way UndoBar floats
   // over the screen it answers for — a footer here would reflow the list on
   // every tap, and the sheet has no footer to begin with.
-  undoWrap: {
-    position: 'absolute',
-    left: spacing.md,
-    right: spacing.md,
-  },
-  undoBar: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'space-between',
-    gap: spacing.sm,
-    backgroundColor: colors.bgSunken,
-    borderRadius: radius.lg,
-    paddingVertical: spacing.sm,
-    paddingLeft: spacing.md,
-    paddingRight: spacing.sm,
-  },
-  undoLabel: {
-    flex: 1,
-    color: colors.text,
-    fontSize: font.md,
-    fontWeight: fontWeight.medium,
-  },
 });

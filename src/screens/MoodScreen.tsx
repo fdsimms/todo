@@ -57,6 +57,7 @@ import { MoodEntryRow } from '../components/MoodEntryRow';
 import { MoodExportSheet } from '../components/MoodExportSheet';
 import { MilestoneSheet } from '../components/MilestoneSheet';
 import { ContrastBars } from '../components/ContrastBars';
+import { capitalize } from '../utils/capitalize';
 
 /** How many days the chart shows. Two weeks fits a phone width at a readable bar. */
 const CHART_DAYS = 14;
@@ -780,7 +781,7 @@ export function MoodScreen() {
                     accessibilityLabel={`${row.segment}, average mood ${row.mood.toFixed(1)} across ${row.entryCount} ${row.entryCount === 1 ? 'entry' : 'entries'}`}
                   >
                     <Text style={styles.contrastLabel}>
-                      {row.segment.charAt(0).toUpperCase() + row.segment.slice(1)}
+                      {capitalize(row.segment)}
                     </Text>
                     <Text style={styles.contrastValue}>
                       {row.mood.toFixed(1)} · {row.entryCount} {row.entryCount === 1 ? 'entry' : 'entries'}

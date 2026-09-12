@@ -1,4 +1,4 @@
-import React, { useRef, useState, useMemo } from 'react';
+import React, { useRef, useState, useMemo, useCallback } from 'react';
 import {
   Alert,
   View,
@@ -384,26 +384,35 @@ export function ProjectsScreen() {
     setEditingProject(null);
   };
 
-  const handleQuickUnarchive = (project: Project) => {
+  // The row handlers are memoized and take the project they act on, rather
+  // than the screen closing over it once per row — see `ProjectRow`'s own note.
+  const handleQuickUnarchive = useCallback((project: Project) => {
     haptics.tap();
     animateLayout();
     unarchiveProject(project.id);
-  };
+  }, [unarchiveProject]);
 
-  const handleQuickUncomplete = (project: Project) => {
+  const handleQuickUncomplete = useCallback((project: Project) => {
     haptics.tap();
     animateLayout();
     uncompleteProject(project.id);
-  };
+  }, [uncompleteProject]);
 
   // Only reachable when projectProgress already reads every member done, so
   // there's nothing left open to ask about archiving — see ProjectEditor's
   // handleComplete for the version that has to.
-  const handleQuickComplete = (project: Project) => {
+  const handleQuickComplete = useCallback((project: Project) => {
     haptics.success();
     animateLayout();
     completeProject(project.id, { archiveRemaining: false });
-  };
+  }, [completeProject]);
+
+  const handleOpenProject = useCallback((project: Project) => {
+    if (selectionMode) { toggleSelection(project.id); return; }
+    (navigation as any).navigate('ProjectDetail', { projectId: project.id });
+  }, [selectionMode, toggleSelection, navigation]);
+
+  const handleEditProject = useCallback((project: Project) => setEditingProject(project), []);
 
   const renderRow = (item: ProjectListItem, drag?: () => void, isActive?: boolean) => {
     if (item.type === 'header') {
@@ -439,17 +448,13 @@ export function ProjectsScreen() {
         drag={drag}
         colors={colors}
         styles={styles}
-        onPress={() =>
-          selectionMode
-            ? toggleSelection(project.id)
-            : (navigation as any).navigate('ProjectDetail', { projectId: project.id })
-        }
-        onToggleSelect={() => toggleSelection(project.id)}
-        onSwipeSelect={() => enterSelectionMode(project.id)}
-        onQuickUnarchive={() => handleQuickUnarchive(project)}
-        onQuickUncomplete={() => handleQuickUncomplete(project)}
-        onQuickComplete={() => handleQuickComplete(project)}
-        onEdit={() => setEditingProject(project)}
+        onPress={handleOpenProject}
+        onToggleSelect={toggleSelection}
+        onSwipeSelect={enterSelectionMode}
+        onQuickUnarchive={handleQuickUnarchive}
+        onQuickUncomplete={handleQuickUncomplete}
+        onQuickComplete={handleQuickComplete}
+        onEdit={handleEditProject}
       />
     );
   };
@@ -624,7 +629,13 @@ export function ProjectsScreen() {
  * SwipeableRow sense — there's no single date being moved), so no
  * `whenAction`.
  */
-function ProjectRow({
+/**
+ * Memoized, and every handler takes the project it acts on rather than the
+ * screen closing over it once per row. An inline arrow is a fresh identity per
+ * render and defeats the memo outright, which is the same rule `renderTaskRow`
+ * follows on Today.
+ */
+const ProjectRow = React.memo(function ProjectRow({
   project, progress, pastWindow, caption, projectFilter, allDone,
   selectionMode, selected, isActive, drag, colors, styles,
   onPress, onToggleSelect, onSwipeSelect, onQuickUnarchive, onQuickUncomplete, onQuickComplete, onEdit,
@@ -641,24 +652,27 @@ function ProjectRow({
   drag?: () => void;
   colors: Colors;
   styles: ReturnType<typeof makeStyles>;
-  onPress: () => void;
-  onToggleSelect: () => void;
-  onSwipeSelect: () => void;
-  onQuickUnarchive: () => void;
-  onQuickUncomplete: () => void;
-  onQuickComplete: () => void;
-  onEdit: () => void;
+  onPress: (project: Project) => void;
+  onToggleSelect: (projectId: string) => void;
+  onSwipeSelect: (projectId: string) => void;
+  onQuickUnarchive: (project: Project) => void;
+  onQuickUncomplete: (project: Project) => void;
+  onQuickComplete: (project: Project) => void;
+  onEdit: (project: Project) => void;
 }) {
   // Excluded for the floating drag overlay's copy — it shares the dragged
   // row's id, and registering both would leave the real row's slot evicted
   // the moment the overlay unmounts.
   const paintRef = usePaintSelectionRow(isActive ? null : project.id);
+  // Bound once per row rather than once per render of the list above it.
+  const press = () => onPress(project);
+  const toggleSelect = () => onToggleSelect(project.id);
 
   return (
     <SwipeableRow
       style={styles.projectCard}
       enabled={!selectionMode}
-      selectAction={{ onSelect: onSwipeSelect, accessibilityLabel: `Select ${project.title}` }}
+      selectAction={{ onSelect: () => onSwipeSelect(project.id), accessibilityLabel: `Select ${project.title}` }}
     >
       <View ref={paintRef}>
         <TouchableOpacity
@@ -667,7 +681,7 @@ function ProjectRow({
             isActive && styles.projectRowActive,
             selectionMode && selected && styles.projectRowSelected,
           ]}
-          onPress={onPress}
+          onPress={press}
           // Reordering is off while selecting: the long press that would start a
           // drag is how a mis-tapped row gets picked up instead.
           onLongPress={selectionMode ? undefined : drag}
@@ -701,12 +715,12 @@ function ProjectRow({
                   bar. The dot takes the slot they vacate, which is the trailing
                   edge every selectable row in the app puts it on. */}
               {selectionMode ? (
-                <SelectionDot selected={selected} onPress={onToggleSelect} />
+                <SelectionDot selected={selected} onPress={toggleSelect} />
               ) : (
                 <>
                 {projectFilter === 'archived' && (
                   <TouchableOpacity
-                    onPress={onQuickUnarchive}
+                    onPress={() => onQuickUnarchive(project)}
                     hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
                     accessibilityRole="button"
                     accessibilityLabel={`Unarchive ${project.title}`}
@@ -716,7 +730,7 @@ function ProjectRow({
                 )}
                 {projectFilter === 'completed' && (
                   <TouchableOpacity
-                    onPress={onQuickUncomplete}
+                    onPress={() => onQuickUncomplete(project)}
                     hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
                     accessibilityRole="button"
                     accessibilityLabel={`Restore ${project.title} to active`}
@@ -726,7 +740,7 @@ function ProjectRow({
                 )}
                 {allDone && (
                   <TouchableOpacity
-                    onPress={onQuickComplete}
+                    onPress={() => onQuickComplete(project)}
                     hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
                     accessibilityRole="button"
                     accessibilityLabel={`Mark ${project.title} complete: every task is done`}
@@ -735,7 +749,7 @@ function ProjectRow({
                   </TouchableOpacity>
                 )}
                 <TouchableOpacity
-                  onPress={onEdit}
+                  onPress={() => onEdit(project)}
                   hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
                   accessibilityRole="button"
                   accessibilityLabel={`Edit ${project.title}`}
@@ -766,7 +780,7 @@ function ProjectRow({
       </View>
     </SwipeableRow>
   );
-}
+});
 
 const makeStyles = (colors: Colors) => StyleSheet.create({
   container: {
