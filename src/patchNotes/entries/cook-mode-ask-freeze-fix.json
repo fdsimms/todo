@@ -1,0 +1,4 @@
+{
+  "message": "Fixed a bug where finishing a recipe in Cook Mode with the \"Ask about this step\" field still open could leave the Today screen frozen",
+  "date": "2026-09-12"
+}
