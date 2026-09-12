@@ -1,9 +1,10 @@
 import { useSettingsStore } from '../store/useSettingsStore';
-import { dbGetSetting, dbSetSetting } from '../db/database';
+import { dbGetAllSettings, dbGetSetting, dbSetSetting } from '../db/database';
 import { loadAnthropicApiKey, saveAnthropicApiKey } from '../utils/secureApiKey';
 
 jest.mock('../db/database', () => ({
   dbGetSetting: jest.fn().mockReturnValue(null),
+  dbGetAllSettings: jest.fn(),
   dbSetSetting: jest.fn(),
 }));
 
@@ -21,6 +22,14 @@ jest.mock('../utils/secureApiKey', () => ({
 beforeEach(() => {
   jest.clearAllMocks();
   (dbGetSetting as jest.Mock).mockReturnValue(null);
+  // `initialize` reads the settings table in one go rather than a key at a
+  // time, but what each key answers is still the thing under test here — so
+  // the bulk read is stood up as a view over the per-key mock, and every test
+  // below goes on driving `dbGetSetting`. The real bulk read is covered in
+  // database.test.ts.
+  (dbGetAllSettings as jest.Mock).mockImplementation(() => ({
+    get: (key: string) => (dbGetSetting as jest.Mock)(key) ?? undefined,
+  }));
   (loadAnthropicApiKey as jest.Mock).mockResolvedValue('');
   useSettingsStore.setState({ dayResetTime: '00:00', themeMode: 'dark', anthropicApiKey: '', appLockEnabled: false, appLockGraceSeconds: 60, patchNotesQaStatus: {}, mealSlotStepEstimates: {}, initialized: false });
 });

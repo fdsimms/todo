@@ -149,7 +149,7 @@ const makeStyles = (colors: Colors) => StyleSheet.create({
   titleBlock: { flexShrink: 1 },
   overline: {
     color: colors.textTertiary, fontSize: font.xs, fontWeight: fontWeight.medium,
-    letterSpacing: 0.3, marginBottom: 2,
+    letterSpacing: 0.3, marginBottom: spacing.xxs,
   },
   title: {
     color: colors.text, fontSize: font.xxl, fontWeight: fontWeight.bold,
@@ -165,9 +165,9 @@ const makeStyles = (colors: Colors) => StyleSheet.create({
   // for 13pt text — the same reason the section-label rule moved off it.
   subtitle: {
     color: colors.textSecondary, fontSize: font.sm, fontWeight: fontWeight.medium,
-    marginTop: 2,
+    marginTop: spacing.xxs,
   },
-  actions: { flexDirection: 'row', gap: spacing.sm, alignItems: 'center', paddingBottom: 2 },
+  actions: { flexDirection: 'row', gap: spacing.sm, alignItems: 'center', paddingBottom: spacing.xxs },
   iconBtn: {
     width: 34, height: 34, borderRadius: 17,
     backgroundColor: colors.bgSecondary,

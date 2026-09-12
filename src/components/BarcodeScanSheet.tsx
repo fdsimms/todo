@@ -1261,8 +1261,8 @@ function makeStyles(colors: Colors) {
     rowBody: { flex: 1 },
     // No lineHeight: RN maps it onto the iOS paragraph style with no baseline
     // compensation, which drops the glyphs below the caret. See CLAUDE.md.
-    rowInput: { color: colors.text, fontSize: font.md, paddingVertical: 2 },
-    rowLabel: { color: colors.textTertiary, fontSize: font.xs, marginTop: 2 },
+    rowInput: { color: colors.text, fontSize: font.md, paddingVertical: spacing.xxs },
+    rowLabel: { color: colors.textTertiary, fontSize: font.xs, marginTop: spacing.xxs },
     // Wraps, because the caption now shares its line with up to three pills
     // and a long "Filed as …" sentence would otherwise squeeze them off the
     // right edge — see CLAUDE.md on text losing a row to its buttons.
@@ -1271,7 +1271,7 @@ function makeStyles(colors: Colors) {
       alignItems: 'center',
       flexWrap: 'wrap',
       gap: spacing.xs,
-      marginTop: 2,
+      marginTop: spacing.xxs,
     },
     rowCaption: { color: colors.textSecondary, fontSize: font.xs, flexShrink: 1 },
     // Indented to the row body's own left edge so the results read as belonging
@@ -1285,7 +1285,7 @@ function makeStyles(colors: Colors) {
     rowGtin: {
       color: colors.textTertiary,
       fontSize: font.xs,
-      marginTop: 2,
+      marginTop: spacing.xxs,
       fontVariant: ['tabular-nums'],
     },
     manualRow: { flexDirection: 'row', alignItems: 'center', gap: spacing.sm },

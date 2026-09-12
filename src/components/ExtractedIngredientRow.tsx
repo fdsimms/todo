@@ -34,8 +34,10 @@ interface Props {
   onEditSection: (section: string | null) => void;
   /**
    * Mints (or refreshes) a pantry-only catalog row for this ingredient's name
-   * and unticks the row — "I already have this, don't buy it" for a line the
-   * catalog search can't place. See the link panel's own comment below.
+   * — "I already have this in stock" for a line the catalog search can't
+   * place. See the link panel's own comment below. Doesn't touch whether the
+   * row is checked: the checkbox decides what's part of the recipe, which
+   * this has no opinion on.
    */
   onMarkAlreadyHave: () => void;
   /** Every section label already in play — this recipe's own plus this import's — offered as picks before falling back to typing a new one. */
@@ -83,8 +85,10 @@ interface Props {
  * `CatalogLinkPicker`'s search coming up empty is exactly the moment a line
  * needs it most — a thing the app has never seen is a thing it can't have
  * ranked as a probable match yet. It goes through `addToPantry`, so it mints
- * a catalog row rather than only ticking the box off, and unticks this row the
- * same way picking a search result does.
+ * a catalog row rather than only ticking the box off. It leaves the checkbox
+ * alone: whether the ingredient is stocked right now says nothing about
+ * whether the recipe needs it, and this row's checkbox is only ever about
+ * the latter.
  */
 export function ExtractedIngredientRow({
   row, edits, index, checked, onToggle, onEditName, onEditQuantity, onEditSection,
@@ -279,10 +283,10 @@ function makeStyles(colors: Colors) {
       gap: spacing.md,
       backgroundColor: colors.bgSecondary,
       marginHorizontal: spacing.md,
-      marginTop: 2,
-      marginBottom: 2,
+      marginTop: spacing.xxs,
+      marginBottom: spacing.xxs,
       borderRadius: radius.md,
-      paddingVertical: 12,
+      paddingVertical: spacing.smd,
       paddingHorizontal: spacing.md,
     },
     // Squares off the corners the link/section panel below sits against and
@@ -338,10 +342,10 @@ function makeStyles(colors: Colors) {
     },
     body: { flex: 1 },
     name: { fontSize: font.md, fontWeight: fontWeight.medium, color: colors.text },
-    meta: { fontSize: font.xs, color: colors.textTertiary, marginTop: 2 },
+    meta: { fontSize: font.xs, color: colors.textTertiary, marginTop: spacing.xxs },
     // Accent rather than tertiary: it explains a state the app put the row in,
     // where the aisle it replaces is just where the thing lives in the shop.
-    note: { fontSize: font.xs, color: colors.accent, marginTop: 2 },
+    note: { fontSize: font.xs, color: colors.accent, marginTop: spacing.xxs },
     // Width bound only. The pill this used to paint itself is now what every
     // editable value gets from `InlineEditableText`, and painting it here too
     // put a chip inside a chip.

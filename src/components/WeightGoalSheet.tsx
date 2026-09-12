@@ -644,7 +644,7 @@ const makeStyles = (colors: Colors) => StyleSheet.create({
     flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'space-between',
-    paddingVertical: 2,
+    paddingVertical: spacing.xxs,
   },
   workingLabel: { flex: 1, fontSize: font.sm, color: colors.textSecondary },
   workingValue: { fontSize: font.sm, fontWeight: fontWeight.semibold, color: colors.text },
@@ -668,7 +668,7 @@ const makeStyles = (colors: Colors) => StyleSheet.create({
     alignItems: 'center',
   },
   macroGrams: { fontSize: font.lg, fontWeight: fontWeight.bold, color: colors.text },
-  macroLabel: { fontSize: font.xs, color: colors.textSecondary, marginTop: 2 },
+  macroLabel: { fontSize: font.xs, color: colors.textSecondary, marginTop: spacing.xxs },
   macroPercent: { fontSize: font.xs, color: colors.textTertiary },
   footnote: { fontSize: font.sm, color: colors.textSecondary, lineHeight: 20 },
 });

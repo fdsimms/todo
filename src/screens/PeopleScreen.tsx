@@ -1,4 +1,4 @@
-import React, { useState, useMemo, useEffect } from 'react';
+import React, { useState, useMemo, useEffect, useCallback } from 'react';
 import { View, Text, TouchableOpacity, StyleSheet, Alert } from 'react-native';
 import { useNavigation, useRoute } from '@react-navigation/native';
 import { useBottomTabBarHeight } from '@react-navigation/bottom-tabs';
@@ -93,6 +93,15 @@ export function PeopleScreen() {
     selectionMode, selectedIds, enterSelectionMode, toggleSelection,
     exitSelection, selectAll, deselectAll, painting, paintProps,
   } = useRowSelection();
+
+  // One handler for every row, so `PersonRow`'s memo holds through a drag —
+  // see its own note. Selection is checked here rather than at the call site
+  // because the row no longer closes over `selectionMode`.
+  const openPerson = useCallback((personId: string) => {
+    if (selectionMode) { toggleSelection(personId); return; }
+    haptics.tap();
+    navigation.navigate('PersonDetail', { personId });
+  }, [selectionMode, toggleSelection, navigation]);
 
   const visiblePeople = useMemo(() => {
     const filtered = people.filter(p => p.archived === showArchived);
@@ -267,15 +276,11 @@ export function PeopleScreen() {
                   isActive={isActive}
                   selectionMode={selectionMode}
                   selected={selectedIds.has(person.id)}
-                  onPress={() => {
-                    if (selectionMode) { toggleSelection(person.id); return; }
-                    haptics.tap();
-                    navigation.navigate('PersonDetail', { personId: person.id });
-                  }}
+                  onPress={openPerson}
                   onLongPress={canDrag ? drag : undefined}
                   canDrag={canDrag}
-                  onToggleSelect={() => toggleSelection(person.id)}
-                  onSwipeSelect={() => enterSelectionMode(person.id)}
+                  onToggleSelect={toggleSelection}
+                  onSwipeSelect={enterSelectionMode}
                   styles={styles}
                   colors={colors}
                 />
@@ -372,13 +377,17 @@ interface PersonRowProps {
   isActive: boolean;
   selectionMode: boolean;
   selected: boolean;
-  onPress: () => void;
+  // Each takes the person it acts on rather than the screen closing over them
+  // per row, so one stable function serves every row and the memo below holds.
+  // This list is a ReorderableList, so without it a drag re-rendered every
+  // mounted row on every frame of the drag.
+  onPress: (personId: string) => void;
   onLongPress: (() => void) | undefined;
   // Drag is also off while sorted alphabetically (see canDrag at the call
   // site), which needs its own hint text distinct from selectionMode's.
   canDrag: boolean;
-  onToggleSelect: () => void;
-  onSwipeSelect: () => void;
+  onToggleSelect: (personId: string) => void;
+  onSwipeSelect: (personId: string) => void;
   styles: ReturnType<typeof makeStyles>;
   colors: Colors;
 }
@@ -388,17 +397,19 @@ interface PersonRowProps {
  * while bulk-selecting. Swipe left enters bulk selection, same contract as
  * every other list in the app; long press still reorders (see canDrag), and
  * swiping is disabled while already selecting so it can't fight the dot. */
-function PersonRow({
+const PersonRow = React.memo(function PersonRow({
   person, name, birthdayLabel, soon, isActive, selectionMode, selected,
   onPress, onLongPress, canDrag, onToggleSelect, onSwipeSelect, styles, colors,
 }: PersonRowProps) {
   const paintRef = usePaintSelectionRow(person.id);
+  const press = () => onPress(person.id);
+  const toggleSelect = () => onToggleSelect(person.id);
   const spokenMeta = birthdayLabel ? `Birthday ${birthdayLabel}` : null;
   return (
     <SwipeableRow
       style={styles.card}
       enabled={!selectionMode}
-      selectAction={{ onSelect: onSwipeSelect, accessibilityLabel: `Select ${name}` }}
+      selectAction={{ onSelect: () => onSwipeSelect(person.id), accessibilityLabel: `Select ${name}` }}
     >
       <View
         ref={paintRef}
@@ -406,7 +417,7 @@ function PersonRow({
       >
         <TouchableOpacity
           style={styles.rowBody}
-          onPress={onPress}
+          onPress={press}
           onLongPress={onLongPress}
           delayLongPress={interaction.delayLongPress}
           activeOpacity={interaction.activeOpacity}
@@ -437,14 +448,14 @@ function PersonRow({
           </View>
         </TouchableOpacity>
         {selectionMode ? (
-          <SelectionDot selected={selected} onPress={onToggleSelect} />
+          <SelectionDot selected={selected} onPress={toggleSelect} />
         ) : (
           <Ionicons name="chevron-forward" size={16} color={colors.textTertiary} />
         )}
       </View>
     </SwipeableRow>
   );
-}
+});
 
 const makeStyles = (colors: Colors) => StyleSheet.create({
   container: { flex: 1, backgroundColor: colors.bg },
@@ -482,7 +493,7 @@ const makeStyles = (colors: Colors) => StyleSheet.create({
   avatarText: { color: colors.accent, fontSize: font.md, fontWeight: fontWeight.semibold },
   info: { flex: 1 },
   name: { color: colors.text, fontSize: font.md },
-  metaRow: { flexDirection: 'row', alignItems: 'center', gap: 4, marginTop: 2 },
+  metaRow: { flexDirection: 'row', alignItems: 'center', gap: 4, marginTop: spacing.xxs },
   metaText: { color: colors.textTertiary, fontSize: font.xs },
   metaSoon: { color: colors.accent },
 });

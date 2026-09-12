@@ -52,9 +52,16 @@ import { format } from 'date-fns/format';
 // what's on screen while still keeping the recompute off every keystroke.
 const SEARCH_DEBOUNCE_MS = 180;
 
-function SearchResultItem({ result, onPress, onTicked, categories, styles, colors }: {
+/**
+ * Memoized, and every result row below it is, for one reason: this list
+ * re-renders on each keystroke once the query settles, and each row does
+ * range-highlighting work of its own. The memo only holds if the props keep
+ * their identity, so `onPress` takes what it opens rather than the screen
+ * closing over it per row.
+ */
+const SearchResultItem = React.memo(function SearchResultItem({ result, onPress, onTicked, categories, styles, colors }: {
   result: CollapsedOccurrence<SearchResult>;
-  onPress: () => void;
+  onPress: (task: Task) => void;
   onTicked: (taskId: string) => void;
   categories: Category[];
   styles: ReturnType<typeof makeStyles>;
@@ -115,7 +122,7 @@ function SearchResultItem({ result, onPress, onTicked, categories, styles, color
 
       <TouchableOpacity
         style={styles.resultContent}
-        onPress={onPress}
+        onPress={() => onPress(task)}
         activeOpacity={interaction.activeOpacity}
         // The content column only hugs its own text, so this puts the row's
         // vertical padding and its trailing inset back into the tap target.
@@ -205,11 +212,11 @@ function SearchResultItem({ result, onPress, onTicked, categories, styles, color
       </TouchableOpacity>
     </View>
   );
-}
+});
 
-function StackResultItem({ result, onPress, styles, colors }: {
+const StackResultItem = React.memo(function StackResultItem({ result, onPress, styles, colors }: {
   result: GroupSearchResult;
-  onPress: () => void;
+  onPress: (group: TaskGroup) => void;
   styles: ReturnType<typeof makeStyles>;
   colors: Colors;
 }) {
@@ -230,7 +237,7 @@ function StackResultItem({ result, onPress, styles, colors }: {
   return (
     <TouchableOpacity
       style={styles.resultRow}
-      onPress={onPress}
+      onPress={() => onPress(group)}
       activeOpacity={interaction.activeOpacity}
       accessibilityRole="button"
       accessibilityLabel={a11yLabel}
@@ -260,11 +267,11 @@ function StackResultItem({ result, onPress, styles, colors }: {
       </View>
     </TouchableOpacity>
   );
-}
+});
 
-function ProjectResultItem({ result, onPress, styles, colors }: {
+const ProjectResultItem = React.memo(function ProjectResultItem({ result, onPress, styles, colors }: {
   result: ProjectSearchResult;
-  onPress: () => void;
+  onPress: (projectId: string) => void;
   styles: ReturnType<typeof makeStyles>;
   colors: Colors;
 }) {
@@ -281,7 +288,7 @@ function ProjectResultItem({ result, onPress, styles, colors }: {
   return (
     <TouchableOpacity
       style={styles.resultRow}
-      onPress={onPress}
+      onPress={() => onPress(project.id)}
       activeOpacity={interaction.activeOpacity}
       accessibilityRole="button"
       accessibilityLabel={a11yLabel}
@@ -318,7 +325,7 @@ function ProjectResultItem({ result, onPress, styles, colors }: {
       </View>
     </TouchableOpacity>
   );
-}
+});
 
 export function SearchScreen() {
   const insets = useSafeAreaInsets();
@@ -504,19 +511,28 @@ export function SearchScreen() {
   // on every keystroke — the field is debounced but still runs a search per
   // character, and storing those would fill the list with the prefixes of one
   // word ("m", "mi", "mil", "milk") instead of the searches themselves.
-  const rememberQuery = () => pushRecentSearch(query);
+  const rememberQuery = useCallback(() => pushRecentSearch(query), [query]);
 
-  const openTask = (task: Task) => {
+  // The three below are handed to memoized rows, so they have to keep their
+  // identity across a render the query didn't change — see the note on
+  // `SearchResultItem`. Each takes what it opens rather than being closed over
+  // it, which is what lets one function serve every row.
+  const openTask = useCallback((task: Task) => {
     rememberQuery();
     setEditingTask(task);
     setEditorVisible(true);
-  };
+  }, [rememberQuery]);
 
-  const openGroup = (group: TaskGroup) => {
+  const openGroup = useCallback((group: TaskGroup) => {
     rememberQuery();
     setEditingGroup(group);
     setGroupEditorVisible(true);
-  };
+  }, [rememberQuery]);
+
+  const openProject = useCallback((projectId: string) => {
+    rememberQuery();
+    (navigation as any).navigate('ProjectDetail', { projectId });
+  }, [rememberQuery, navigation]);
 
   const handleQuickAddOpenFull = (draft: TaskDraft) => {
     setQuickAddVisible(false);
@@ -537,7 +553,7 @@ export function SearchScreen() {
       return (
         <StackResultItem
           result={item.result}
-          onPress={() => openGroup(item.result.group)}
+          onPress={openGroup}
           styles={styles}
           colors={colors}
         />
@@ -547,10 +563,7 @@ export function SearchScreen() {
       return (
         <ProjectResultItem
           result={item.result}
-          onPress={() => {
-            rememberQuery();
-            (navigation as any).navigate('ProjectDetail', { projectId: item.result.project.id });
-          }}
+          onPress={openProject}
           styles={styles}
           colors={colors}
         />
@@ -559,7 +572,7 @@ export function SearchScreen() {
     return (
       <SearchResultItem
         result={item.result}
-        onPress={() => openTask(item.result.task)}
+        onPress={openTask}
         onTicked={hold}
         categories={categories}
         styles={styles}
@@ -721,9 +734,9 @@ const makeStyles = (colors: Colors) => StyleSheet.create({
     alignItems: 'center',
     backgroundColor: colors.bgSecondary,
     marginHorizontal: spacing.md,
-    marginVertical: 2,
+    marginVertical: spacing.xxs,
     borderRadius: radius.md,
-    paddingVertical: 12,
+    paddingVertical: spacing.smd,
     paddingHorizontal: spacing.md,
     gap: spacing.sm,
   },
@@ -739,9 +752,9 @@ const makeStyles = (colors: Colors) => StyleSheet.create({
     alignItems: 'flex-start',
     backgroundColor: colors.bgSecondary,
     marginHorizontal: spacing.md,
-    marginVertical: 2,
+    marginVertical: spacing.xxs,
     borderRadius: radius.md,
-    paddingVertical: 12,
+    paddingVertical: spacing.smd,
     paddingRight: spacing.md,
     gap: spacing.sm,
   },
@@ -796,7 +809,7 @@ const makeStyles = (colors: Colors) => StyleSheet.create({
     flexDirection: 'row',
     alignItems: 'center',
     gap: 3,
-    paddingHorizontal: 6,
+    paddingHorizontal: spacing.xsm,
     paddingVertical: 1,
     borderRadius: radius.full,
     backgroundColor: colors.accentSubtle,
@@ -808,7 +821,7 @@ const makeStyles = (colors: Colors) => StyleSheet.create({
   // count wears. Enclosed rather than loose: "4 more dates" sitting next to
   // "Due Aug 26" otherwise reads as a qualifier on that date.
   countPill: {
-    paddingHorizontal: 6,
+    paddingHorizontal: spacing.xsm,
     paddingVertical: 1,
     borderRadius: radius.full,
     backgroundColor: colors.bgSunken,

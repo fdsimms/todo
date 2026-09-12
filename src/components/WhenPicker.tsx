@@ -1046,7 +1046,7 @@ const makeStyles = (colors: Colors) => StyleSheet.create({
   afterVacationInner: {
     flexDirection: 'row',
     alignItems: 'center',
-    gap: 6,
+    gap: spacing.xsm,
   },
   afterVacationLabel: {
     color: colors.text,
@@ -1056,9 +1056,9 @@ const makeStyles = (colors: Colors) => StyleSheet.create({
   suggestBanner: {
     flexDirection: 'row',
     alignItems: 'center',
-    gap: 6,
+    gap: spacing.xsm,
     marginTop: spacing.sm,
-    paddingHorizontal: 2,
+    paddingHorizontal: spacing.xxs,
   },
   suggestBannerText: {
     flex: 1,
@@ -1094,7 +1094,7 @@ const makeStyles = (colors: Colors) => StyleSheet.create({
   },
   dayHeaders: {
     flexDirection: 'row',
-    marginBottom: 2,
+    marginBottom: spacing.xxs,
   },
   dayHeaderCell: {
     width: CELL_SIZE,
@@ -1132,7 +1132,7 @@ const makeStyles = (colors: Colors) => StyleSheet.create({
   // the row it sits under" rather than in red or orange.
   weightSlot: {
     height: 3,
-    marginTop: 2,
+    marginTop: spacing.xxs,
     justifyContent: 'center',
   },
   weightBar: {

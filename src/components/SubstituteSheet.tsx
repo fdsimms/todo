@@ -806,7 +806,7 @@ function makeStyles(colors: Colors) {
       marginBottom: spacing.sm,
     },
     rowName: { color: colors.text, fontSize: font.md },
-    rowMeta: { color: colors.textTertiary, fontSize: font.xs, marginTop: 2 },
+    rowMeta: { color: colors.textTertiary, fontSize: font.xs, marginTop: spacing.xxs },
     recordedSection: { paddingHorizontal: spacing.md },
     recordedRow: {
       flexDirection: 'row',
@@ -843,7 +843,7 @@ function makeStyles(colors: Colors) {
     },
     pickedBody: { flex: 1 },
     pickedName: { color: colors.text, fontSize: font.md, fontWeight: fontWeight.medium },
-    pickedMeta: { color: colors.textTertiary, fontSize: font.xs, marginTop: 2 },
+    pickedMeta: { color: colors.textTertiary, fontSize: font.xs, marginTop: spacing.xxs },
     label: {
       color: colors.textSecondary,
       fontSize: font.xs,
@@ -903,7 +903,7 @@ function makeStyles(colors: Colors) {
     },
     toggleBody: { flex: 1 },
     toggleLabel: { color: colors.text, fontSize: font.md },
-    toggleHint: { color: colors.textTertiary, fontSize: font.xs, marginTop: 2 },
+    toggleHint: { color: colors.textTertiary, fontSize: font.xs, marginTop: spacing.xxs },
     actionRow: {
       flexDirection: 'row',
       alignItems: 'center',

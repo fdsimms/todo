@@ -776,7 +776,7 @@ const makeStyles = (colors: Colors) => StyleSheet.create({
   },
   dateRow: {
     paddingHorizontal: 14,
-    paddingVertical: 12,
+    paddingVertical: spacing.smd,
     flexDirection: 'row',
     alignItems: 'center',
     gap: spacing.sm,
@@ -838,7 +838,7 @@ const makeStyles = (colors: Colors) => StyleSheet.create({
   band: {
     backgroundColor: colors.warningBg,
     borderRadius: radius.md,
-    padding: 12,
+    padding: spacing.smd,
     color: colors.text,
     fontSize: font.sm,
     lineHeight: lineHeight.sm,
@@ -862,7 +862,7 @@ const makeStyles = (colors: Colors) => StyleSheet.create({
     borderWidth: border.md,
     borderColor: colors.textTertiary,
   },
-  taskContent: { flex: 1, gap: 2 },
+  taskContent: { flex: 1, gap: spacing.xxs },
   taskTitle: { color: colors.text, fontSize: font.md, lineHeight: lineHeight.md },
   taskTitleUnchecked: { color: colors.textSecondary },
   taskTitleBlocked: { color: colors.textTertiary },
@@ -915,7 +915,7 @@ const makeStyles = (colors: Colors) => StyleSheet.create({
     backgroundColor: colors.bgSecondary,
     borderRadius: radius.md,
     paddingHorizontal: 14,
-    paddingVertical: 12,
+    paddingVertical: spacing.smd,
     marginBottom: spacing.sm,
   },
 

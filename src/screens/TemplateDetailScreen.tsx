@@ -1,4 +1,4 @@
-import React, { useEffect, useMemo, useState } from 'react';
+import React, { useEffect, useMemo, useState, useCallback } from 'react';
 import {
   View,
   Text,
@@ -108,11 +108,17 @@ export function TemplateDetailScreen() {
     [template, templatesById]
   );
 
-  const openNestedPicker = (replacingItemId: string | null) => {
+  const openNestedPicker = useCallback((replacingItemId: string | null) => {
     haptics.tap();
     setNestedPickerReplacingId(replacingItemId);
     setNestedPickerVisible(true);
-  };
+  }, []);
+
+  // Stable and taking what it opens, so `TemplateItemRow`'s memo holds — see
+  // the note on its handler props.
+  const handleOpenRefTemplate = useCallback((refTemplateId: string) => {
+    (navigation as any).navigate('TemplateDetail', { templateId: refTemplateId });
+  }, [navigation]);
 
   const handleNestedTemplateSelected = (target: TaskTemplate) => {
     if (!templateId) return;
@@ -338,20 +344,6 @@ export function TemplateDetailScreen() {
           const broken = brokenItemIds.has(item.id);
           const missingRefsLabel = describeMissingRefs(findMissingRefs(item, allCategories, allTags));
 
-          const handlePress = () => {
-            if (selectionMode) {
-              toggleItemSelection(item.id);
-            } else if (broken) {
-              // Broken rows expose Replace/Remove inline instead of navigating.
-              return;
-            } else if (resolvedRefTemplate) {
-              haptics.tap();
-              (navigation as any).navigate('TemplateDetail', { templateId: resolvedRefTemplate.id });
-            } else {
-              openItemEditor(item);
-            }
-          };
-
           return (
             <View>
               {showHeader && group && (
@@ -380,10 +372,12 @@ export function TemplateDetailScreen() {
                   isActive={isActive}
                   selectionMode={selectionMode}
                   selected={selectedItemIds.has(item.id)}
-                  onPress={handlePress}
-                  onDelete={() => handleDeleteItem(item.id)}
-                  onSwipeSelect={() => enterSelectionMode(item.id)}
-                  onReplace={() => openNestedPicker(item.id)}
+                  onToggleSelect={toggleItemSelection}
+                  onOpenRefTemplate={handleOpenRefTemplate}
+                  onOpenItem={openItemEditor}
+                  onDelete={handleDeleteItem}
+                  onSwipeSelect={enterSelectionMode}
+                  onReplace={openNestedPicker}
                 />
               )}
             </View>
@@ -495,8 +489,9 @@ export function TemplateDetailScreen() {
 }
 
 /** Item row: swipe left reveals Select (enters bulk mode). */
-function TemplateItemRow({
-  item, hint, categoryEmoji, missingRefsLabel, conditionLabels, resolvedRefTemplate, broken, colors, styles, drag, isActive, selectionMode, selected, onPress, onDelete, onSwipeSelect, onReplace,
+const TemplateItemRow = React.memo(function TemplateItemRow({
+  item, hint, categoryEmoji, missingRefsLabel, conditionLabels, resolvedRefTemplate, broken, colors, styles, drag, isActive, selectionMode, selected,
+  onToggleSelect, onOpenRefTemplate, onOpenItem, onDelete, onSwipeSelect, onReplace,
 }: {
   item: TemplateItem;
   hint: string | null;
@@ -515,11 +510,31 @@ function TemplateItemRow({
   isActive: boolean;
   selectionMode: boolean;
   selected: boolean;
-  onPress: () => void;
-  onDelete: () => void;
-  onSwipeSelect: () => void;
-  onReplace: () => void;
+  // The row owns the tap branch rather than the screen building a closure per
+  // row for it: every condition that branch reads (`selectionMode`, `broken`,
+  // `resolvedRefTemplate`) is already a prop here, and a fresh closure per row
+  // would defeat the memo this component is wrapped in.
+  onToggleSelect: (itemId: string) => void;
+  onOpenRefTemplate: (templateId: string) => void;
+  onOpenItem: (item: TemplateItem) => void;
+  onDelete: (itemId: string) => void;
+  onSwipeSelect: (itemId: string) => void;
+  onReplace: (itemId: string) => void;
 }) {
+  // The branch the screen used to build per row. It reads exactly the props
+  // above, so it belongs here: a broken row exposes Replace/Remove inline
+  // rather than navigating anywhere.
+  const handlePress = () => {
+    if (selectionMode) { onToggleSelect(item.id); return; }
+    if (broken) return;
+    if (resolvedRefTemplate) {
+      haptics.tap();
+      onOpenRefTemplate(resolvedRefTemplate.id);
+      return;
+    }
+    onOpenItem(item);
+  };
+
   const isRef = resolvedRefTemplate !== null || broken;
   const refTitle = resolvedRefTemplate ? resolvedRefTemplate.name : item.refTemplateName || 'Nested template';
   const refCount = resolvedRefTemplate?.items.length ?? 0;
@@ -527,7 +542,7 @@ function TemplateItemRow({
   const rowBody = (
     <TouchableOpacity
       style={[styles.itemRow, isActive && styles.itemRowActive, broken && styles.itemRowBroken]}
-      onPress={onPress}
+      onPress={handlePress}
       onLongPress={selectionMode ? undefined : drag}
       delayLongPress={interaction.delayLongPress}
       activeOpacity={interaction.activeOpacity}
@@ -611,7 +626,7 @@ function TemplateItemRow({
       {!selectionMode && broken && (
         <View style={styles.brokenActions}>
           <TouchableOpacity
-            onPress={onReplace}
+            onPress={() => onReplace(item.id)}
             hitSlop={8}
             style={styles.brokenActionBtn}
             accessibilityRole="button"
@@ -621,7 +636,7 @@ function TemplateItemRow({
             <Text style={styles.brokenActionText}>Replace</Text>
           </TouchableOpacity>
           <TouchableOpacity
-            onPress={onDelete}
+            onPress={() => onDelete(item.id)}
             hitSlop={8}
             style={styles.brokenActionBtn}
             accessibilityRole="button"
@@ -634,7 +649,7 @@ function TemplateItemRow({
       )}
       {!selectionMode && !broken && isRef && (
         <TouchableOpacity
-          onPress={onReplace}
+          onPress={() => onReplace(item.id)}
           hitSlop={8}
           style={styles.rowButton}
           accessibilityRole="button"
@@ -658,12 +673,12 @@ function TemplateItemRow({
   return (
     <SwipeableRow
       style={styles.itemCard}
-      selectAction={{ onSelect: onSwipeSelect, accessibilityLabel: `Select ${item.title}` }}
+      selectAction={{ onSelect: () => onSwipeSelect(item.id), accessibilityLabel: `Select ${item.title}` }}
     >
       {rowBody}
     </SwipeableRow>
   );
-}
+});
 
 /** Collapsible header above a template item group. */
 function TemplateGroupHeader({
@@ -732,7 +747,7 @@ const makeStyles = (colors: Colors) => StyleSheet.create({
   // swipe panel. The row inside is flush to it.
   itemCard: {
     marginHorizontal: spacing.md,
-    marginVertical: 2,
+    marginVertical: spacing.xxs,
     borderRadius: radius.md,
     overflow: 'hidden',
   },
@@ -752,7 +767,7 @@ const makeStyles = (colors: Colors) => StyleSheet.create({
   },
   itemInfo: {
     flex: 1,
-    gap: 2,
+    gap: spacing.xxs,
   },
   itemTitle: {
     color: colors.text,
@@ -814,7 +829,7 @@ const makeStyles = (colors: Colors) => StyleSheet.create({
   },
   optionalBadge: {
     paddingHorizontal: 8,
-    paddingVertical: 2,
+    paddingVertical: spacing.xxs,
     borderRadius: radius.full,
     backgroundColor: colors.bgTertiary,
   },

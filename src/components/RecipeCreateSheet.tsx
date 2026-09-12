@@ -62,6 +62,7 @@ import { ImportedComponentRow } from './ImportedComponentRow';
 import { coveredIngredients, importableReferences } from '../utils/recipeImportComponents';
 import { MAX_RECIPE_PHOTOS } from '../utils/recipePhoto';
 import { haptics } from '../utils/haptics';
+import { capitalize } from '../utils/capitalize';
 import { InlineAction } from './InlineAction';
 
 interface Props {
@@ -346,11 +347,13 @@ export function RecipeCreateSheet({
   // the ingredient row's link panel — see ExtractedIngredientRow's own doc
   // comment. addToPantry mints the catalog row if this name has never been
   // seen before, which is exactly the case the panel's search comes up empty.
+  // Deliberately doesn't touch `accepted`: that set decides what belongs in
+  // the *recipe*, and "I already have this" is a pantry fact about right now
+  // — it says nothing about whether the ingredient is one the recipe needs.
   const markAlreadyHave = (index: number) => {
     const item = addToPantry(ingredients[index].name);
     if (!item) { haptics.error(); return; }
     haptics.success();
-    if (accepted.has(index)) toggle(index);
   };
 
   const editIngredient = (
@@ -557,7 +560,7 @@ export function RecipeCreateSheet({
     }
     if (parts.length === 0) return '';
     const [first, ...rest] = parts;
-    return [first.charAt(0).toUpperCase() + first.slice(1), ...rest].join(', ');
+    return [capitalize(first), ...rest].join(', ');
   })();
 
   // What the run found decides whether the details row exists; what's in its
@@ -1007,7 +1010,7 @@ function makeStyles(colors: Colors) {
       color: colors.textTertiary,
       fontSize: font.xs,
       paddingHorizontal: spacing.md,
-      paddingTop: 2,
+      paddingTop: spacing.xxs,
       paddingBottom: spacing.xs,
     },
     groupBlock: { marginBottom: spacing.sm },

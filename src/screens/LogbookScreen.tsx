@@ -1275,7 +1275,7 @@ const makeStyles = (colors: Colors) => StyleSheet.create({
     alignItems: 'center',
     gap: 3,
     height: lineHeight.xs,
-    paddingHorizontal: 6,
+    paddingHorizontal: spacing.xsm,
     borderRadius: radius.full,
     backgroundColor: colors.accentSubtle,
     flexShrink: 1,
@@ -1311,7 +1311,7 @@ const makeStyles = (colors: Colors) => StyleSheet.create({
     flexDirection: 'row',
     alignItems: 'center',
     gap: 5,
-    marginTop: 2,
+    marginTop: spacing.xxs,
   },
   categoryChip: {
     flexDirection: 'row',

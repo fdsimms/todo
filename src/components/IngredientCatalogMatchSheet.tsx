@@ -244,7 +244,7 @@ function makeStyles(colors: Colors) {
       gap: spacing.sm,
       paddingVertical: spacing.sm,
     },
-    rowBody: { flex: 1, gap: 2 },
+    rowBody: { flex: 1, gap: spacing.xxs },
     rowName: { flex: 1, fontSize: font.md, color: colors.text },
     rowArrow: { flexDirection: 'row', alignItems: 'center', gap: spacing.xs },
     rowTarget: { flex: 1, fontSize: font.sm, color: colors.textSecondary },

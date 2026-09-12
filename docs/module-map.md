@@ -45,6 +45,7 @@ name cannot say is where a component appears, and that is `docs/screen-map.md`.
 - `src/utils/calendarMonth.ts` — DayMarkKind, MARK_KINDS, DayMark, DotState, DayDot, DayBucket, MAX_PROJECTION_STEPS, canProject, projectOccurrences, nthOccurrence, +7 more
 - `src/utils/calendarReviewTasks.ts` — CALENDAR_REVIEW_TITLE, calendarReviewDayKey, wantsCalendarReview, calendarReviewEventsFor
 - `src/utils/calendarSync.ts` — CalendarPermission, getCalendarPermission, requestCalendarPermission, listEventCalendars, validCalendarIds, CalendarReadStatus, CalendarInfo, FetchEventsResult, fetchEvents, listWritableCalendars, +12 more
+- `src/utils/capitalize.ts` — capitalize
 - `src/utils/categoryBackfill.ts` — CategoryBackfillFieldId, CategoryBackfillFieldDef, CATEGORY_BACKFILL_FIELDS, isCategoryFieldMissing, isCategoryBackfillDismissed, categoryBackfillCandidates, categoryBackfillFieldCounts, dismissCategoryBackfillField
 - `src/utils/categoryLabel.ts` — categoryLabel
 - `src/utils/categoryOrder.ts` — moveCategory, alphabeticalCategories, sortCategoriesByTaskCount
@@ -228,6 +229,7 @@ name cannot say is where a component appears, and that is `docs/screen-map.md`.
 - `src/utils/recipeUrl.ts` — normalizeRecipeUrl, decodeEntities, htmlToText, metaContent, PageRecipe, parseIsoDuration, parseRecipeJsonLd, focusRecipeText, recipeToPlainText, ParsedRecipePage, +1 more
 - `src/utils/recipeUtils.ts` — parseRecipeIngredients, normalizeIngredient, makeIngredient, ingredientsFromText, mergeIngredients, remapIngredientKeyIn, parsePrepTasks, normalizePrepTask, parseSteps, normalizeStep, +46 more
 - `src/utils/recurrenceLabels.ts` — recurrenceUnitLabel, ORDINAL_OPTIONS, RecurrenceRule, describeTaskRecurrence, recurrenceRuleOf, describeRecurrence
+- `src/utils/refreshGuard.ts` — RefreshGuard, createRefreshGuard
 - `src/utils/reminderNudge.ts` — ReminderNudge, nudgeReminderPastMeeting
 - `src/utils/remindersImport.ts` — draftFromReminder, recurrenceFromRule, reminderTimeFromAlarms, scheduleToDraft, pendingImportFor, describePendingImport, isImportableList, reminderListOptions, findReminderList, sortRemindersByCreation, +12 more
 - `src/utils/remindersImportSync.ts` — RemindersPermission, ImportOutcome, lastImportOutcome, getRemindersPermission, requestRemindersPermission, listReminderLists, countImportableReminders, groceryMirrorSignature, importReminders, useRemindersImportSync
@@ -378,7 +380,7 @@ name cannot say is where a component appears, and that is `docs/screen-map.md`.
 
 ## `src/db`
 
-- `src/db/database.ts` — switchToDemoDatabase, switchToRealDatabase, isUsingDemoDatabase, initDatabase, BACKUP_TABLES, BACKUP_EXCLUDED_TABLES, dbTableColumns, dbExportTables, dbReplaceAllData, isSyncableDatabase, +191 more
+- `src/db/database.ts` — switchToDemoDatabase, switchToRealDatabase, isUsingDemoDatabase, initDatabase, BACKUP_TABLES, BACKUP_EXCLUDED_TABLES, dbTableColumns, dbExportTables, dbReplaceAllData, isSyncableDatabase, +192 more
 - `src/db/syncTracking.ts` — SyncTable, KEY_SEPARATOR, SYNC_TRACKED_TABLES, SYNC_EXCLUDED_TABLES, SYNCED_SETTING_KEYS, isSyncedSettingKey, SYNC_DELETIONS_TABLE, NOW_EXPR, TOMBSTONE_RETENTION_DAYS, rowKeyExpr, +5 more
 
 ## `src/services`

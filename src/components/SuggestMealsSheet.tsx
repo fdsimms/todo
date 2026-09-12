@@ -1052,23 +1052,23 @@ const makeStyles = (colors: Colors) => StyleSheet.create({
     gap: spacing.md,
     backgroundColor: colors.bgSecondary,
     marginHorizontal: spacing.md,
-    marginVertical: 2,
+    marginVertical: spacing.xxs,
     borderRadius: radius.md,
-    paddingVertical: 12,
+    paddingVertical: spacing.smd,
     paddingHorizontal: spacing.md,
   },
   rowDone: { opacity: 0.6 },
   // A picked-but-not-saved row, distinct from rowDone: still fully
   // interactive (tapping it again drops the pick), just visibly chosen.
   rowSelected: { backgroundColor: `${colors.accent}14` },
-  body: { flex: 1, gap: 2 },
+  body: { flex: 1, gap: spacing.xxs },
   name: { fontSize: font.md, fontWeight: fontWeight.medium, color: colors.text },
   meta: { fontSize: font.xs, color: colors.textTertiary, lineHeight: lineHeight.xs },
-  signalRow: { flexDirection: 'row', alignItems: 'center', gap: spacing.xs, marginTop: 2 },
+  signalRow: { flexDirection: 'row', alignItems: 'center', gap: spacing.xs, marginTop: spacing.xxs },
   pantryBadge: {
     borderRadius: radius.full,
     paddingHorizontal: spacing.sm,
-    paddingVertical: 2,
+    paddingVertical: spacing.xxs,
   },
   // Green tint once there's real purchase history behind the number — the
   // same "known and good news" treatment probablyHave gets everywhere else
@@ -1094,7 +1094,7 @@ const makeStyles = (colors: Colors) => StyleSheet.create({
   ideaTag: {
     borderRadius: radius.full,
     paddingHorizontal: spacing.sm,
-    paddingVertical: 2,
+    paddingVertical: spacing.xxs,
     backgroundColor: `${colors.purple}26`,
   },
   ideaTagText: { fontSize: font.xs, fontWeight: fontWeight.medium, color: colors.purple },
@@ -1103,9 +1103,9 @@ const makeStyles = (colors: Colors) => StyleSheet.create({
   ideaError: { fontSize: font.xs, color: colors.red, marginTop: spacing.xs },
 
   ideaSection: { marginTop: spacing.lg, paddingHorizontal: spacing.md, gap: spacing.sm },
-  cookAgainSection: { paddingTop: spacing.md, gap: 2 },
+  cookAgainSection: { paddingTop: spacing.md, gap: spacing.xxs },
   cookAgainHeader: { paddingHorizontal: spacing.md, marginBottom: spacing.xs },
-  fridgeSection: { paddingTop: spacing.md, paddingBottom: spacing.sm, gap: 2 },
+  fridgeSection: { paddingTop: spacing.md, paddingBottom: spacing.sm, gap: spacing.xxs },
   fridgeHeader: { paddingHorizontal: spacing.md, marginBottom: spacing.xs },
   // The same 8pt dot the fridge card uses, so one container reads the same on
   // both surfaces.
@@ -1149,7 +1149,7 @@ const makeStyles = (colors: Colors) => StyleSheet.create({
     alignItems: 'center',
     justifyContent: 'space-between',
     gap: spacing.md,
-    paddingVertical: 6,
+    paddingVertical: spacing.xsm,
     borderBottomWidth: border.hairline,
     borderBottomColor: colors.separator,
   },

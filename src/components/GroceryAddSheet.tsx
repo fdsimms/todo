@@ -88,9 +88,9 @@ export function GroceryAddSheet({ visible, onClose, seedAisle, onAdded }: Props)
 
   const dismiss = () => {
     Animated.parallel([
-      Animated.timing(scaleAnim, { toValue: 0.95, duration: 120, useNativeDriver: true }),
-      Animated.timing(sheetOpacity, { toValue: 0, duration: 120, useNativeDriver: true }),
-      Animated.timing(backdropOpacity, { toValue: 0, duration: 150, useNativeDriver: true }),
+      Animated.timing(scaleAnim, { toValue: 0.95, duration: animation.duration.dismiss, useNativeDriver: true }),
+      Animated.timing(sheetOpacity, { toValue: 0, duration: animation.duration.dismiss, useNativeDriver: true }),
+      Animated.timing(backdropOpacity, { toValue: 0, duration: animation.duration.fast, useNativeDriver: true }),
     ]).start(() => {
       scaleAnim.setValue(0.95);
       sheetOpacity.setValue(0);

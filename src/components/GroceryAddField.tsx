@@ -753,7 +753,7 @@ function makeStyles(colors: Colors) {
     toolChip: {
       flexDirection: 'row',
       alignItems: 'center',
-      gap: 6,
+      gap: spacing.xsm,
       paddingHorizontal: spacing.md,
       minHeight: interaction.pillHeight,
       borderRadius: radius.full,
@@ -835,7 +835,7 @@ function makeStyles(colors: Colors) {
     altSuggestionHint: {
       fontSize: font.xs,
       color: colors.textTertiary,
-      marginTop: 2,
+      marginTop: spacing.xxs,
     },
     status: {
       fontSize: font.sm,
@@ -859,7 +859,7 @@ function makeStyles(colors: Colors) {
     pantryOfferWhy: {
       fontSize: font.xs,
       color: colors.textTertiary,
-      marginTop: 2,
+      marginTop: spacing.xxs,
     },
     pantryOfferActions: {
       flexDirection: 'row',
@@ -885,7 +885,7 @@ function makeStyles(colors: Colors) {
       backgroundColor: colors.accentSubtle,
       borderRadius: radius.full,
       paddingLeft: spacing.sm,
-      paddingRight: 6,
+      paddingRight: spacing.xsm,
       paddingVertical: 3,
     },
     tokenChipText: {
@@ -915,7 +915,7 @@ function makeStyles(colors: Colors) {
       flexDirection: 'row',
       alignItems: 'center',
       gap: spacing.sm,
-      paddingVertical: 12,
+      paddingVertical: spacing.smd,
       paddingHorizontal: spacing.md,
       borderBottomWidth: border.thin,
       borderBottomColor: colors.separator,
@@ -943,7 +943,7 @@ function makeStyles(colors: Colors) {
       backgroundColor: colors.accentSubtle,
       borderRadius: radius.full,
       paddingHorizontal: spacing.sm,
-      paddingVertical: 2,
+      paddingVertical: spacing.xxs,
     },
     onListText: {
       fontSize: font.xs,

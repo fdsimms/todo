@@ -190,7 +190,7 @@ const makeStyles = (colors: Colors) => StyleSheet.create({
     marginHorizontal: spacing.md,
     marginTop: spacing.md,
     borderRadius: radius.md,
-    paddingVertical: 12,
+    paddingVertical: spacing.smd,
     paddingHorizontal: spacing.md,
   },
   centered: { flex: 1, alignItems: 'center', justifyContent: 'center', padding: spacing.xl, gap: spacing.md },
@@ -201,7 +201,7 @@ const makeStyles = (colors: Colors) => StyleSheet.create({
     alignItems: 'center',
     gap: spacing.md,
     paddingHorizontal: spacing.md,
-    paddingVertical: 12,
+    paddingVertical: spacing.smd,
   },
   rowIcon: {
     width: 32,
@@ -210,7 +210,7 @@ const makeStyles = (colors: Colors) => StyleSheet.create({
     alignItems: 'center',
     justifyContent: 'center',
   },
-  rowInfo: { flex: 1, gap: 2 },
+  rowInfo: { flex: 1, gap: spacing.xxs },
   rowName: { color: colors.text, fontSize: font.md, fontWeight: fontWeight.medium },
   rowHint: { color: colors.textTertiary, fontSize: font.xs },
   inlineSep: {

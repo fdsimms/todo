@@ -253,7 +253,7 @@ async function runAutoAisleClassification(batch: { id: string; name: string }[])
     updates.push({ ...item, aisle });
   }
   if (updates.length === 0) return;
-  for (const u of updates) dbUpdateGroceryItem(u);
+  dbTransaction(() => { for (const u of updates) dbUpdateGroceryItem(u); });
   const byId = new Map(updates.map(u => [u.id, u]));
   useGroceryStore.setState(s => ({ items: s.items.map(i => byId.get(i.id) ?? i) }));
 }
@@ -2021,7 +2021,7 @@ export const useGroceryStore = create<GroceryStore>((set, get) => ({
     }
     if (updates.length === 0) return;
 
-    for (const u of updates) dbUpdateGroceryItem(u);
+    dbTransaction(() => { for (const u of updates) dbUpdateGroceryItem(u); });
     const byId = new Map(updates.map(u => [u.id, u]));
     set(s => ({ items: s.items.map(i => byId.get(i.id) ?? i) }));
     writeMembership({ upsert: entries });
@@ -2209,7 +2209,7 @@ export const useGroceryStore = create<GroceryStore>((set, get) => ({
     }
     if (updates.length === 0) return;
 
-    for (const u of updates) dbUpdateGroceryItem(u);
+    dbTransaction(() => { for (const u of updates) dbUpdateGroceryItem(u); });
     // Every call here is a deliberate filing — the item sheet's picker, or a
     // reviewed-and-accepted AI tidy — so it's what gets remembered for the
     // next time this name is typed.
@@ -2927,7 +2927,7 @@ export const useGroceryStore = create<GroceryStore>((set, get) => ({
       frozenAt: null,
       openedAt: null,
     }));
-    for (const u of updates) dbUpdateGroceryItem(u);
+    dbTransaction(() => { for (const u of updates) dbUpdateGroceryItem(u); });
     const byId = new Map(updates.map(u => [u.id, u]));
     set(s => ({ items: s.items.map(i => byId.get(i.id) ?? i) }));
     // Marking a row out of it answers the same question a live "Use up X"
@@ -3261,7 +3261,7 @@ export const useGroceryStore = create<GroceryStore>((set, get) => ({
       // purchase gave it.
       expiresAt: expiresAtForOpening(i, when) ?? i.expiresAt,
     }));
-    for (const u of updates) dbUpdateGroceryItem(u);
+    dbTransaction(() => { for (const u of updates) dbUpdateGroceryItem(u); });
     const byId = new Map(updates.map(u => [u.id, u]));
     set(s => ({ items: s.items.map(i => byId.get(i.id) ?? i) }));
     // Same both-directions reconcile a single opening does: the new day can be
@@ -4160,7 +4160,7 @@ export const useGroceryStore = create<GroceryStore>((set, get) => ({
     }
     if (updates.length === 0 && entryUpdates.length === 0) return;
 
-    for (const u of updates) dbUpdateGroceryItem(u);
+    dbTransaction(() => { for (const u of updates) dbUpdateGroceryItem(u); });
     writeMembership({ upsert: entryUpdates });
     // Dragging a row into another aisle is the same statement the item sheet's
     // picker makes, so it's remembered the same way.
@@ -4194,7 +4194,7 @@ export const useGroceryStore = create<GroceryStore>((set, get) => ({
     if (aisleOrder.some(a => a !== from && a.toLowerCase() === trimmed.toLowerCase())) return false;
 
     const updates = items.filter(i => i.aisle === from).map(i => ({ ...i, aisle: trimmed }));
-    for (const u of updates) dbUpdateGroceryItem(u);
+    dbTransaction(() => { for (const u of updates) dbUpdateGroceryItem(u); });
 
     // The filings are stored by aisle *name*, so they have to move too or the
     // next time that name is typed it goes back to a section that's gone.
@@ -4262,7 +4262,7 @@ export const useGroceryStore = create<GroceryStore>((set, get) => ({
     // catalog row, and a row left pointing at a deleted section would drag it
     // back through normalizeAisleOrder's `used` pass the moment it resurfaced.
     const updates = items.filter(i => i.aisle === aisle).map(i => ({ ...i, aisle: OTHER_AISLE }));
-    for (const u of updates) dbUpdateGroceryItem(u);
+    dbTransaction(() => { for (const u of updates) dbUpdateGroceryItem(u); });
 
     const remembered = forgetRememberedAisle(aisleOverrides, aisle);
     if (remembered) dbSetGroceryAisleOverrides(remembered);

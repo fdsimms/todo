@@ -92,7 +92,7 @@ const makeStyles = (colors: Colors) => StyleSheet.create({
     gap: spacing.xs,
   },
   barSunken: { backgroundColor: colors.bgTertiary },
-  icon: { marginRight: 2 },
+  icon: { marginRight: spacing.xxs },
   input: {
     flex: 1,
     color: colors.text,

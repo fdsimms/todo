@@ -64,7 +64,7 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     gap: spacing.sm,
     paddingHorizontal: spacing.md,
-    paddingVertical: 12,
+    paddingVertical: spacing.smd,
   },
   icon: {
     width: iconSize.sm,

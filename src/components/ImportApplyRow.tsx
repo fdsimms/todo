@@ -216,7 +216,7 @@ export function ImportApplyRow({
 
 function makeStyles(colors: Colors) {
   return StyleSheet.create({
-    block: { marginVertical: 2 },
+    block: { marginVertical: spacing.xxs },
     row: {
       flexDirection: 'row',
       alignItems: 'center',
@@ -224,7 +224,7 @@ function makeStyles(colors: Colors) {
       backgroundColor: colors.bgSecondary,
       marginHorizontal: spacing.md,
       borderRadius: radius.md,
-      paddingVertical: 12,
+      paddingVertical: spacing.smd,
       paddingHorizontal: spacing.md,
     },
     checkbox: {
@@ -247,7 +247,7 @@ function makeStyles(colors: Colors) {
       marginTop: 1,
     },
     checkboxOn: { backgroundColor: colors.purple, borderColor: colors.purple },
-    body: { flex: 1, gap: 2 },
+    body: { flex: 1, gap: spacing.xxs },
     name: { fontSize: font.md, fontWeight: fontWeight.medium, color: colors.text },
     meta: { fontSize: font.xs, color: colors.textTertiary },
     disclosure: { paddingLeft: spacing.sm },
@@ -257,7 +257,7 @@ function makeStyles(colors: Colors) {
     preview: {
       backgroundColor: colors.bgSunken,
       marginHorizontal: spacing.md,
-      marginTop: 2,
+      marginTop: spacing.xxs,
       borderRadius: radius.md,
       paddingVertical: spacing.sm,
       paddingHorizontal: spacing.md,

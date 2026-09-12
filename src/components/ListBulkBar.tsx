@@ -297,7 +297,7 @@ const makeStyles = (colors: Colors) => StyleSheet.create({
     flexDirection: 'row',
     flexWrap: 'wrap',
     gap: spacing.sm,
-    paddingVertical: 2,
+    paddingVertical: spacing.xxs,
   },
   categoryChip: {
     flexDirection: 'row',
