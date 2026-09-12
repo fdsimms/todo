@@ -90,6 +90,8 @@ function stubReplica(over: Partial<Replica> = {}): Replica {
     templates: () => [],
     createTemplate: () => { throw new Error('not stubbed'); },
     createTask: () => { throw new Error('not stubbed'); },
+    completeTask: () => { throw new Error('not stubbed'); },
+    deferTask: () => { throw new Error('not stubbed'); },
     deviceId: () => 'stub-device',
     syncable: () => true,
     ...over,

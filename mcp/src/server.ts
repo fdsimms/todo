@@ -35,6 +35,8 @@ import {
   listMoodLogs,
   createTask,
   createTemplate,
+  completeTask,
+  deferTask,
   listProjects,
   listTasks,
   listTemplates,
@@ -267,6 +269,11 @@ function registerWriteTools(
       recurrenceInterval: z.number().int().positive().optional(),
       recurrenceDays: z.array(z.number().int().min(0).max(6)).optional(),
       parentId: z.string().nullable().optional().describe('Makes this a subtask of that task.'),
+      // Without this no task created here could ever ask a question, which
+      // makes complete_task's whole answer path unreachable for anything but a
+      // task the user made in the app.
+      deliverableKind: z.enum(['text', 'date', 'number']).nullable().optional()
+        .describe('Makes completing this task ask for an answer of that kind, recorded on the row.'),
     },
     async input => {
       try {
@@ -318,6 +325,44 @@ function registerWriteTools(
         // The validator's whole point is reporting every problem at once, so
         // the message is handed back rather than collapsed into "failed".
         return json({ error: e instanceof Error ? e.message : 'Could not create the template.' });
+      }
+    }
+  );
+
+  server.tool(
+    'complete_task',
+    "Complete a task. A recurring one spawns its next occurrence, a chain advances one step, and a dated series lays out its next set, so the result says what was created rather than only that the row is done. A task that asks a question on completion is refused unless deliverableValue is given, including explicitly null to complete it without an answer.",
+    {
+      id: z.string().min(1),
+      deliverableValue: z.string().nullable().optional()
+        .describe('The answer, for a task that asks one. Null completes it without an answer. Omitting it on a task that asks is refused.'),
+      completedAt: z.string().optional()
+        .describe('ISO date-time, for recording something done earlier. Defaults to now.'),
+    },
+    async ({ id, ...rest }) => {
+      try {
+        // 'deliverableValue' in options is what the refusal tests, so the key
+        // has to survive only when the caller actually sent it. Zod drops an
+        // omitted optional rather than setting it undefined, so this holds.
+        return json(await withWrite(() => completeTask(replica, id, rest)));
+      } catch (e) {
+        return json({ error: e instanceof Error ? e.message : 'Could not complete the task.' });
+      }
+    }
+  );
+
+  server.tool(
+    'defer_task',
+    'Move a task to a date, or clear its date with null. Pushing a recurring task out hides it until then without moving the schedule the rest of its occurrences come from; pulling one forward moves its date. The result is the whole task, since which field changed depends on which of those happened.',
+    {
+      id: z.string().min(1),
+      date: z.string().nullable().describe('ISO date-time, or null to leave the task with no date.'),
+    },
+    async ({ id, date }) => {
+      try {
+        return json(await withWrite(() => deferTask(replica, id, date)));
+      } catch (e) {
+        return json({ error: e instanceof Error ? e.message : 'Could not reschedule the task.' });
       }
     }
   );

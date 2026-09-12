@@ -46,6 +46,7 @@ import type {
 import type { FoodLogTotals } from '../../src/utils/foodLog';
 import type { SyncSummary } from '../../src/utils/syncEngine';
 import { DEFAULT_SCHEDULE, resolveRef, validateTemplatePlan, type TemplatePlan } from './templatePlan';
+import { deliverableRefusal } from './deliverableAsk';
 
 type DbModule = typeof import('../../src/db/database');
 type VisibilityModule = typeof import('../../src/utils/visibilityUtils');
@@ -61,7 +62,28 @@ type MoodHistoryModule = typeof import('../../src/utils/moodHistory');
 type MedicationModule = typeof import('../../src/utils/medicationLog');
 type TemplateUtilsModule = typeof import('../../src/utils/templateUtils');
 type TaskDraftModule = typeof import('../../src/utils/taskDraft');
+type TaskCompletionModule = typeof import('../../src/utils/taskCompletion');
+type TaskMovesModule = typeof import('../../src/utils/taskMoves');
 type IdModule = typeof import('../../src/utils/id');
+
+/** What a caller may say about a completion. `CompletionOptions` without the miss. */
+export type CompletionOptions = Pick<
+  import('../../src/utils/taskCompletion').CompletionOptions,
+  'deliverableValue' | 'completedAt'
+>;
+
+/** What a completion did, past the row itself. */
+export interface CompletedResult {
+  completed: Task;
+  /** The next occurrence or chain step, where one was spawned. */
+  nextTask: Task | null;
+  /** The every-Nth-completion task, where this completion earned one. */
+  followUpTask: Task | null;
+  /** The next set of a repeating dated series, where its last date just landed. */
+  rolledOver: Task[];
+  /** True when a dose was recorded against the medication the task names. */
+  loggedDose: boolean;
+}
 
 /** One task the way `fuzzySearch` ranked it, without the highlight ranges. */
 export interface ReplicaSearchHit {
@@ -168,6 +190,47 @@ export interface Replica {
    */
   createTask(draft: Partial<TaskDraft>): Task;
 
+  /**
+   * Complete one task, exactly as ticking it in the app would.
+   *
+   * Every row comes from `buildCompletion` (`src/utils/taskCompletion.ts`),
+   * which was lifted out of `useTaskStore.completeTask` for this. That matters
+   * more here than it did for `createTask`: a completion is not a flag, it is
+   * a streak judged against the recurrence's own cadence, a supply spent only
+   * when a person actually did the thing, a chain advanced by exactly one
+   * step, a repeat count a mid-chain step must not burn, and a dated series
+   * that rolls over as a whole set. A second implementation would have got one
+   * of those wrong silently.
+   *
+   * A dose is recorded alongside, where the task names a medication, because
+   * that is a write into the app's own record rather than device work. The
+   * device work is what stays behind: no reminder is cancelled or scheduled,
+   * no calendar event is written or deleted, nothing is sent to Apple Health,
+   * and none of the pending-prompt ids that drive the meal-log and use-up
+   * sheets are set. Those belong to whichever device the completion syncs to,
+   * and asking a person a question is not something a replica can do.
+   *
+   * Throws rather than completing when the task cannot be completed, and when
+   * it asks a question that was not answered. See `deliverableRefusal`.
+   */
+  completeTask(id: string, options?: CompletionOptions): CompletedResult;
+
+  /**
+   * Move a task to a date, as the app's own reschedule does.
+   *
+   * `scheduleMoveUpdates` (`src/utils/taskMoves.ts`) is what decides how, and
+   * the asymmetry it encodes is the whole reason this does not simply write
+   * `dueDate`: pushing a date-anchored task out writes `deferUntil`, a floor
+   * over the stored date, so the grid the rest of its future is measured from
+   * does not move; pulling one forward writes `dueDate` with
+   * `recurrenceAnchorDate` so the grid keeps its own anchor to step from.
+   * Collapsing the two is what made #1953 a bug.
+   *
+   * Passing null clears the date, which leaves an unscheduled task rather than
+   * deleting anything.
+   */
+  deferTask(id: string, date: Date | null): Task;
+
   deviceId(): string;
   /** False for a demo database. A demo database is never synced. */
   syncable(): boolean;
@@ -234,7 +297,10 @@ export function openReplica(path = process.env.TODO_DB_PATH ?? 'todo.db'): Repli
   const httpTransport = require('../../src/utils/httpSyncTransport') as HttpTransportModule;
   const templateUtils = require('../../src/utils/templateUtils') as TemplateUtilsModule;
   const taskDraft = require('../../src/utils/taskDraft') as TaskDraftModule;
+  const completion = require('../../src/utils/taskCompletion') as TaskCompletionModule;
+  const moves = require('../../src/utils/taskMoves') as TaskMovesModule;
   const { generateId } = require('../../src/utils/id') as IdModule;
+  const { useMedicationStore } = require('../../src/store/useMedicationStore') as typeof import('../../src/store/useMedicationStore');
   const { registerTaskSource } = require('../../src/utils/blockerRegistry') as typeof import('../../src/utils/blockerRegistry');
   const { registerPersonSource } = require('../../src/utils/peopleRegistry') as typeof import('../../src/utils/peopleRegistry');
   const { useSettingsStore } = require('../../src/store/useSettingsStore') as typeof import('../../src/store/useSettingsStore');
@@ -396,6 +462,77 @@ export function openReplica(path = process.env.TODO_DB_PATH ?? 'todo.db'): Repli
       db.dbInsertTask(task);
       refresh();
       return task;
+    },
+
+    completeTask(id: string, options?: CompletionOptions): CompletedResult {
+      const task = tasks().find(t => t.id === id);
+      if (!task) throw new Error(`No task with id ${id}.`);
+
+      const refusal = completion.completionRefusal(task);
+      if (refusal) throw new Error(refusal);
+
+      // Asked before the rows are built rather than after, so a task that
+      // cannot be completed at all reports that instead of reporting a
+      // missing answer it was never going to use.
+      const unanswered = deliverableRefusal(
+        deliverables.deliverableKindFor(task),
+        options !== undefined && 'deliverableValue' in options,
+        deliverables.chainStepDatedByAnswer(task)?.title ?? null,
+      );
+      if (unanswered) throw new Error(unanswered);
+
+      const settings = useSettingsStore.getState();
+      const built = completion.buildCompletion(task, options, {
+        dayResetTime: settings.dayResetTime,
+        vacationMode: settings.vacationMode,
+        now: new Date(),
+        allTasks: tasks(),
+        subtasks: tasks().filter(t => t.parentId === id),
+      });
+      // Unreachable: completionRefusal above is the same guard buildCompletion
+      // runs. Narrowing rather than asserting, so a rule added to one and not
+      // the other surfaces as a refusal rather than as a crash.
+      if (!built) throw new Error('That task cannot be completed.');
+
+      db.dbUpdateTask(built.completed);
+      for (const row of [
+        ...(built.nextTask ? [built.nextTask] : []),
+        ...built.nextSubtasks,
+        ...(built.followUpTask ? [built.followUpTask] : []),
+        ...built.followUpSubtasks,
+        ...built.rolledOver,
+      ]) {
+        db.dbInsertTask(row);
+      }
+
+      // The one cross-store write kept, because it is a record rather than a
+      // device effect: a dose taken is a fact about the person, and dropping
+      // it would make a medication task completed here invisible in the log
+      // that exists to count exactly these. Read through `medicationFor` so a
+      // chain step carrying its own medication records that one.
+      const dose = medication.medicationFor(task);
+      if (dose) useMedicationStore.getState().addLog({ ...dose, taskId: id, at: new Date() });
+
+      refresh();
+      return {
+        completed: built.completed,
+        nextTask: built.nextTask,
+        followUpTask: built.followUpTask,
+        rolledOver: built.rolledOver,
+        loggedDose: dose !== null,
+      };
+    },
+
+    deferTask(id: string, date: Date | null): Task {
+      const task = tasks().find(t => t.id === id);
+      if (!task) throw new Error(`No task with id ${id}.`);
+      if (task.completed) throw new Error('That task is already completed, so there is nothing to reschedule.');
+
+      const { dayResetTime } = useSettingsStore.getState();
+      const moved = { ...task, ...moves.scheduleMoveUpdates(task, date, dayResetTime) };
+      db.dbUpdateTask(moved);
+      refresh();
+      return moved;
     },
 
     deviceId: () => db.dbGetDeviceId(),

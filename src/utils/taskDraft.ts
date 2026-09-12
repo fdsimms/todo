@@ -27,7 +27,14 @@ import { useSettingsStore } from '../store/useSettingsStore';
 import { useCategoryStore } from '../store/useCategoryStore';
 import { resolveTitleRules } from './titleRules';
 import { taskKindOf, MIN_TARGET_COUNT, MAX_TARGET_COUNT } from './taskKinds';
-import { getCurrentDayStart, recurrenceAnchorDayFor, captureReminderOffset } from './dateUtils';
+import {
+  getCurrentDayStart,
+  recurrenceAnchorDayFor,
+  captureReminderOffset,
+  getReminderOffsetDate,
+  getDeadlineFromOffset,
+  getDeadlineFromMonthDay,
+} from './dateUtils';
 import { canHoldFollowUpTask } from './followUpTask';
 import { normalizeTargetUnit } from './quotaUnit';
 import { canHoldSupply, clampSupplyReorderAt, DEFAULT_SUPPLY_REORDER_AT } from './supply';
@@ -386,4 +393,123 @@ export function newTaskFromDraft(
   // 31st from its first row, or the first February clamps it away before
   // anything gets the chance to. See Task.recurrenceAnchorDay.
   return { ...task, recurrenceAnchorDay: recurrenceAnchorDayFor(task) };
+}
+
+/**
+ * Re-anchor a reminder onto a different day (or onto its offset from that day,
+ * see `Task.reminderOffsetDays`), keeping its time of day.
+ *
+ * A set of dates shares an hour, not a moment — copying the source row's
+ * `reminderTime` verbatim would fire every date's notification on the first
+ * one. Also recaptures `reminderUtcOffsetMinutes` for the moved instant, since
+ * a reminder re-anchored onto a different day may cross a DST boundary and
+ * land under a different UTC offset than the one its source row had (#1205).
+ */
+export function reanchorReminder(
+  reminderTime: string | null,
+  date: Date,
+  offsetDays: number | null = null
+): { reminderTime: string | null; reminderUtcOffsetMinutes: number | null } {
+  if (!reminderTime) return { reminderTime: null, reminderUtcOffsetMinutes: null };
+  const original = new Date(reminderTime);
+  const next = new Date(offsetDays !== null ? getReminderOffsetDate(date, offsetDays) : date);
+  next.setHours(original.getHours(), original.getMinutes(), 0, 0);
+  return { reminderTime: next.toISOString(), reminderUtcOffsetMinutes: next.getTimezoneOffset() };
+}
+
+type RecurrenceFields = Pick<
+  Task,
+  | 'recurrenceType' | 'recurrenceInterval' | 'recurrenceDays' | 'recurrenceMonthDay'
+  | 'recurrenceWeekOrdinal' | 'recurrenceAnchorDay' | 'recurrenceAnchorDate'
+  | 'recurrenceEndDate' | 'recurrenceCount'
+  | 'recurrenceFromCompletion' | 'showStreak' | 'streakRequiresWindow'
+  | 'supplyCount' | 'supplyUnit' | 'supplyRefillCount' | 'supplyReorderAt'
+  | 'supplyLeadDays' | 'supplyDeclinedAtCount' | 'supplyGroceryItemId'
+>;
+
+/**
+ * What a row of a dated series is *not*.
+ *
+ * A dated series and a recurrence rule are two schedules for one task, and a
+ * series row is deliberately an ordinary one-off (see `Task.seriesId`) — the
+ * set comes back, if it comes back at all, through `seriesMonthDays`. Left in
+ * place, a rule carried onto every row of the set and completing one date
+ * spawned an extra occurrence *inside the same series*: the set grew by a row
+ * per completion, and the next date edit deleted the rows it no longer
+ * recognised. So forming a series clears the rule rather than trying to run
+ * both.
+ */
+export const NO_RECURRENCE: RecurrenceFields = {
+  recurrenceType: 'none',
+  recurrenceInterval: 1,
+  recurrenceDays: [],
+  recurrenceMonthDay: null,
+  recurrenceWeekOrdinal: null,
+  recurrenceAnchorDay: null,
+  recurrenceAnchorDate: null,
+  recurrenceEndDate: null,
+  recurrenceCount: null,
+  recurrenceFromCompletion: false,
+  // A supply counts down by riding onto the successor completeTask spawns, and
+  // a series row spawns none (see canHoldSupply) — so a supply left on one
+  // would sit at its starting number for ever while the filters were actually
+  // being used, which is worse than not tracking it. Cleared with the rule for
+  // the same reason showStreak is: the state it describes stops existing.
+  supplyCount: null,
+  supplyUnit: null,
+  supplyRefillCount: null,
+  supplyReorderAt: DEFAULT_SUPPLY_REORDER_AT,
+  supplyLeadDays: null,
+  supplyDeclinedAtCount: null,
+  supplyGroceryItemId: null,
+  // Only a recurring task has a streak to show, and the editor only offers the
+  // toggle there — same reasoning as the showStreak reset in TaskEditor.
+  showStreak: false,
+  // Same reasoning as showStreak above: a series row is a one-off with no
+  // streak of its own, so nothing is left on for it to be late against.
+  streakRequiresWindow: false,
+};
+
+/**
+ * One row of a dated series (`Task.seriesId`).
+ *
+ * Every field but the date comes from the source row/draft; a relative
+ * deadline recomputes against this row's own date the same way it does for a
+ * new recurrence occurrence, while a fixed one is a single absolute target and
+ * carries over untouched.
+ */
+export function buildSeriesRow(
+  source: Partial<TaskDraft>,
+  date: Date,
+  seriesId: string,
+  repeat?: { monthDays: number[]; repeatMonths: number },
+  seedFromCategory = false,
+): Task {
+  const now = new Date().toISOString();
+  const base = newTaskFromDraft(source, now, 0, seedFromCategory);
+  return {
+    ...base,
+    ...NO_RECURRENCE,
+    dueDate: date.toISOString(),
+    // Each date stands on its own; a defer set on the row this was cloned
+    // from would otherwise hide every date behind that one day.
+    deferUntil: null,
+    pinned: false,
+    seriesId,
+    seriesMonthDays: repeat?.monthDays ?? [],
+    seriesRepeatMonths: repeat?.repeatMonths ?? 1,
+    // Cloned from a template row, which may itself have been spawned by a
+    // completion — inheriting that pointer would make this row read as the
+    // follow-up to a completion it has nothing to do with, and uncompleting
+    // that one would delete it. Callers that do want the link (the rollover in
+    // buildCompletion) set it themselves on top of this.
+    previousOccurrenceId: null,
+    deadline:
+      base.deadlineOffsetDays !== null
+        ? getDeadlineFromOffset(date, base.deadlineOffsetDays).toISOString()
+        : base.deadlineMonthDay !== null
+          ? getDeadlineFromMonthDay(date, base.deadlineMonthDay).toISOString()
+          : base.deadline,
+    ...reanchorReminder(base.reminderTime, date, base.reminderOffsetDays),
+  };
 }
