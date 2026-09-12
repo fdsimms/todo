@@ -867,9 +867,22 @@ can hit is a scale nobody uses, so the fix was to widen it rather than keep roun
 onto the nearest wrong value. **The values still *between* the steps (1, 3, 5, 7, 10, 14) are
 deliberately literals and deliberately not rounded onto a token** — they're optical nudges (a
 chevron aligned against a cap height, a border's width taken back out of a padding) where the exact
-number is the point. Radii and font sizes were left alone in that sweep and are their own
-questions: a `borderRadius` is usually geometry (half an element's size, for a circle) rather than
-a scale step.
+number is the point. Radii were left alone in that sweep and are their own question: a
+`borderRadius` is usually geometry (half an element's size, for a circle) rather than a scale step.
+Font sizes got the same treatment in their own pass — see below.
+
+**The font scale bottoms out at `xxs` (11), and nothing goes below it.** The same sweep run over
+type found one job — the caption: a badge count in a 16pt circle, the weekday letter under a chart
+bar, the hint trailing a pill, the chips on a task row — written as 9, 10 *and* 11 across ~26
+sites, none of them reaching for a token because the smallest one (`xs`, 12) was too big for a
+badge. Three sizes for one job is the same drift the spacing gaps were, and 9pt is below what a
+caption should ever be, so the fix was the same: widen the scale rather than keep rounding onto the
+nearest wrong literal. **A container too small to hold 11pt is the container that's wrong** — grow
+the box with `minWidth` + `paddingHorizontal` instead of shrinking the text back down, which is
+what `ScreenHeader`'s badge now does to match the three sibling badges (`HubPills`, Today's
+view-mode pills, `RecipeSourcePicker`'s thumb order) that already did. The one file that keeps
+literal sizes is `ErrorBoundary.tsx`, which sits outside `ThemeProvider` and can't import tokens at
+all; its own comment says so.
 
 **When adding a new element above/below existing ones, give it margin on both sides it needs, not just the side that happened to matter for its own layout.** A recurring mistake here: a new row/bar gets `marginTop` to clear whatever's above it, but no `marginBottom`, so the *next* element — which itself has no `marginTop` — ends up jammed right against it. `TaskEditor`'s field-search bar shipped exactly this way (`marginTop: spacing.md` only), and the group label right below it had no top margin of its own, so the two sat with zero gap between them. Don't assume the neighboring element already accounts for spacing on its side — check it, and default to `spacing.md` (16) between stacked blocks, `spacing.lg` (24) between denser groups, rather than shipping a cramped gap and letting it get caught in review.
 

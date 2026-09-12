@@ -1733,7 +1733,7 @@ const makeStyles = (colors: Colors) => StyleSheet.create({
   pillActiveNeutral: { backgroundColor: colors.bgQuaternary },
   pillText: { color: colors.text, fontSize: font.sm, fontWeight: '500' },
   pillTextActive: { color: colors.text, fontWeight: '600' },
-  pillHint: { color: colors.textTertiary, fontSize: 10, marginTop: spacing.xxs },
+  pillHint: { color: colors.textTertiary, fontSize: font.xxs, marginTop: spacing.xxs },
   /** One question's row of answers. Multi-select, so the pills fill with accent rather than taking the segmented track's raised treatment — several can be on at once. */
   conditionBlock: { gap: spacing.xs, marginTop: spacing.sm },
   conditionLabel: { color: colors.textSecondary, fontSize: font.xs },
@@ -1815,7 +1815,7 @@ const makeStyles = (colors: Colors) => StyleSheet.create({
     alignItems: 'center', justifyContent: 'center', flexShrink: 0,
   },
   chainItemDotActive: { backgroundColor: colors.accentFill },
-  chainItemDotText: { color: colors.textSecondary, fontSize: 11, fontWeight: '700' },
+  chainItemDotText: { color: colors.textSecondary, fontSize: font.xxs, fontWeight: '700' },
   chainItemDotTextActive: { color: colors.onAccent },
   chainItemTitle: { flex: 1 },
   chainItemTitleText: { color: colors.text, fontSize: font.md },

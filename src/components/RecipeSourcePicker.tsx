@@ -488,7 +488,7 @@ function makeStyles(colors: Colors) {
       alignItems: 'center',
       justifyContent: 'center',
     },
-    thumbOrderText: { color: colors.onAccent, fontSize: 10, fontWeight: fontWeight.semibold },
+    thumbOrderText: { color: colors.onAccent, fontSize: font.xxs, fontWeight: fontWeight.semibold },
     thumbClear: {
       position: 'absolute',
       top: 4,

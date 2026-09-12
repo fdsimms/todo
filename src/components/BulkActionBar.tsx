@@ -471,7 +471,7 @@ const makeStyles = (colors: Colors) => StyleSheet.create({
     minWidth: 56,
   },
   actionLabel: {
-    fontSize: 10,
+    fontSize: font.xxs,
     fontWeight: '600',
     letterSpacing: 0.2,
   },

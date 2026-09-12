@@ -392,7 +392,7 @@ const makeStyles = (colors: Colors) => StyleSheet.create({
     borderWidth: 1,
   },
   tagChipText: {
-    fontSize: 10,
+    fontSize: font.xxs,
     fontWeight: fontWeight.medium,
   },
   iconBtn: {
