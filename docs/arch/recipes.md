@@ -587,10 +587,20 @@ amount, and answering that in the unit they already had answers nothing.
 ## Cook mode (`cookMode.ts`) — the method one step at a time
 
 Every other kitchen surface here is built for *preparing* to cook. This is the twenty minutes of
-doing it: full screen, one step, the screen held awake, the cook timer in reach throughout. It is
-a **read plus one timer**, no schema change and nothing written — `cookSteps` derives the method,
-`CookModeSheet` draws it, and position and the ingredient panel's fold die with the modal.
+doing it: mise en place first, then one step at a time, full screen, the screen held awake, the
+cook timer in reach throughout. It is a **read plus one timer**, no schema change and nothing
+written — `cookSteps` derives the method, `CookModeSheet` draws it, and position and the
+ingredient panel's fold die with the modal.
 
+- **Mise en place is screen `-1`, not a step.** `CookModeSheet` opens on a full read of
+  `flattenRecipeIngredients` — the same list the tray's collapsed panel shows mid-step, just the
+  main event instead of folded behind a header — whenever there's anything to gather; a recipe
+  with a method but no ingredient lines skips straight to step 1. It isn't step 0 of `cookSteps`,
+  because it isn't a step of the method: it doesn't advance `describeStepPosition`'s count or the
+  progress bar, and the tray's own ingredient panel hides while it's on screen rather than showing
+  the same list twice. Step 1's Back returns to it instead of sitting disabled at the start of the
+  method, and it's what the sheet reopens on next time, the same "one sitting" reasoning that resets
+  the step position on close.
 - **It reads the nodes, not a fourth flatten.** `cookSteps` walks `cookedDishes` — the same
   component walk, the same once-per-recipe rule, the same choice resolution the ingredient and
   prep-task flatteners take. Writing a `flattenRecipeSteps` beside them would be a fourth copy of
