@@ -113,25 +113,6 @@ struct WidgetHeaderShortcut {
     let destination: URL
 }
 
-/// A shortcut's own button — same tap-target sizing as the add button beside
-/// it, but a bare glyph rather than a filled shape, so a row of two or three
-/// of these reads as secondary next to the header's one primary action.
-private struct WidgetHeaderShortcutLink: View {
-    let shortcut: WidgetHeaderShortcut
-    let color: Color
-
-    var body: some View {
-        Link(destination: shortcut.destination) {
-            Image(systemName: shortcut.symbolName)
-                .font(.system(size: 13))
-                .foregroundColor(color)
-                .frame(width: WidgetLayout.headerHeight, height: WidgetLayout.headerHeight)
-                .contentShape(Rectangle())
-        }
-        .accessibilityLabel(shortcut.label)
-    }
-}
-
 /// One widget's title line: a tinted glyph, a name, an optional count, any
 /// shortcut links, and an optional round button on the trailing edge.
 struct WidgetHeaderView: View {
@@ -194,8 +175,23 @@ struct WidgetHeaderView: View {
 
             Spacer(minLength: 8)
 
+            // Each Link is written directly here rather than through a helper
+            // view — WidgetKit's static tap-region pass can fail to see a Link
+            // nested inside a separate View type, and the app-side symptom is
+            // indistinguishable from no link at all: every one of these opened
+            // to wherever the app was last left, exactly what a bare app-icon
+            // tap does. The add button below has always been a Link written
+            // in place for the same reason (see its own comment); this now
+            // matches it.
             ForEach(shortcutLinks, id: \.label) { shortcut in
-                WidgetHeaderShortcutLink(shortcut: shortcut, color: palette.textSecondary)
+                Link(destination: shortcut.destination) {
+                    Image(systemName: shortcut.symbolName)
+                        .font(.system(size: 13))
+                        .foregroundColor(palette.textSecondary)
+                        .frame(width: WidgetLayout.headerHeight, height: WidgetLayout.headerHeight)
+                        .contentShape(Rectangle())
+                }
+                .accessibilityLabel(shortcut.label)
             }
 
             if let actionURL {
