@@ -272,7 +272,7 @@ export function KitchenScreen() {
   // for.
   const suggestionHeader = shownSuggestions.length === 0 ? null : (
     <View style={styles.suggestWrap}>
-      <Text style={styles.sectionTitle}>Cook this before it goes</Text>
+      <Text style={styles.sectionTitle}>Recipes for what's about to go</Text>
       {shownSuggestions.map(suggestion => (
         <TouchableOpacity
           key={suggestion.recipe.id}
