@@ -10,7 +10,7 @@ import {
   dbInsertFoodLogEntry,
   dbUpdateFoodLogEntry,
 } from '../db/database';
-import { retractFoodEntryFromHealth } from '../utils/healthFoodSync';
+import { logFoodEntryToHealth, retractFoodEntryFromHealth } from '../utils/healthFoodSync';
 import type { FoodNutrition } from '../types';
 
 jest.mock('react-native', () => ({ Platform: { OS: 'ios' } }));
@@ -48,6 +48,19 @@ jest.mock('../db/database', () => ({
 jest.mock('../utils/healthFoodSync', () => ({
   logFoodEntryToHealth: jest.fn(() => Promise.resolve({ outcome: 'unavailable', sampleIds: [] })),
   retractFoodEntryFromHealth: jest.fn(() => Promise.resolve(true)),
+}));
+
+// The real settings store reaches dbGetSetting/dbSetSetting, which the db mock
+// above deliberately does not carry. Only two members matter here: whether the
+// refusal has already been said, and the setter that records it.
+const mockSettingsState = {
+  healthFoodWriteRefusalSeen: false,
+  setHealthFoodWriteRefusalSeen: jest.fn((seen: boolean) => {
+    mockSettingsState.healthFoodWriteRefusalSeen = seen;
+  }),
+};
+jest.mock('../store/useSettingsStore', () => ({
+  useSettingsStore: { getState: () => mockSettingsState },
 }));
 
 jest.mock('../utils/dateUtils', () => ({
@@ -113,6 +126,79 @@ describe('initialize', () => {
     (dbCountFoodLogEntries as jest.Mock).mockReturnValueOnce(42);
     state().initialize();
     expect(state().totalCount).toBe(42);
+  });
+});
+
+/**
+ * The notice that Health is refusing meals (#2516).
+ *
+ * The write is fire-and-forget, so each case flushes the microtask queue before
+ * asserting. What is being pinned is the rule rather than the alert: the alert
+ * itself lives in HealthWriteRefusedNotice, which has no test because there is
+ * no renderer in this project.
+ */
+describe('addEntry, when Health refuses the write', () => {
+  const flush = () => new Promise(resolve => setTimeout(resolve, 0));
+  const outcome = (result: string) =>
+    (logFoodEntryToHealth as jest.Mock).mockResolvedValue({ outcome: result, sampleIds: [] });
+
+  beforeEach(() => {
+    mockSettingsState.healthFoodWriteRefusalSeen = false;
+    (mockSettingsState.setHealthFoodWriteRefusalSeen as jest.Mock).mockClear();
+    useFoodLogStore.setState({ pendingHealthWriteRefusal: false });
+  });
+
+  it('raises the notice and records that it was said', async () => {
+    outcome('refused');
+    state().addEntry(draft());
+    await flush();
+
+    expect(state().pendingHealthWriteRefusal).toBe(true);
+    expect(mockSettingsState.setHealthFoodWriteRefusalSeen).toHaveBeenCalledWith(true);
+  });
+
+  // The failure is ongoing and identical every time, so a notice per meal would
+  // be a nag about something already said.
+  it('says nothing the second time', async () => {
+    outcome('refused');
+    state().addEntry(draft());
+    await flush();
+    useFoodLogStore.setState({ pendingHealthWriteRefusal: false });
+
+    state().addEntry(draft());
+    await flush();
+    expect(state().pendingHealthWriteRefusal).toBe(false);
+  });
+
+  // What stops "once" meaning "never again": a write that lands re-arms it, so
+  // a breakage starting later gets its own notice.
+  it('re-arms once a write lands', async () => {
+    mockSettingsState.healthFoodWriteRefusalSeen = true;
+    (logFoodEntryToHealth as jest.Mock).mockResolvedValue({ outcome: 'written', sampleIds: ['s1'] });
+    state().addEntry(draft());
+    await flush();
+
+    expect(mockSettingsState.setHealthFoodWriteRefusalSeen).toHaveBeenCalledWith(false);
+    expect(mockSettingsState.healthFoodWriteRefusalSeen).toBe(false);
+  });
+
+  // `off` is the switch doing what it says, `unavailable` is a device with no
+  // Health at all, and `nothingToWrite` is an entry stating no figure, which is
+  // an ordinary thing to log. None of the three is a fault to report.
+  it.each(['off', 'unavailable', 'nothingToWrite'])('stays silent on %s', async result => {
+    outcome(result);
+    state().addEntry(draft());
+    await flush();
+
+    expect(state().pendingHealthWriteRefusal).toBe(false);
+    expect(mockSettingsState.setHealthFoodWriteRefusalSeen).not.toHaveBeenCalled();
+  });
+
+  it('still saves the entry, which is the reason the failure is invisible', async () => {
+    outcome('refused');
+    expect(state().addEntry(draft())).not.toBeNull();
+    await flush();
+    expect(dbInsertFoodLogEntry).toHaveBeenCalled();
   });
 });
 

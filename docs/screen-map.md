@@ -131,6 +131,7 @@ Where each component can appear.
 - `src/components/GroceryRow.tsx` — on GroceryScreen
 - `src/components/GroupDropTarget.tsx` — on ProjectDetailScreen, TodayScreen
 - `src/components/HealthRulesSheet.tsx` — on SettingsGroupScreen
+- `src/components/HealthWriteRefusedNotice.tsx` — on app shell
 - `src/components/HighlightedText.tsx` — on ArchivedScreen, CalendarScreen, CategoryDetailScreen, LogbookScreen, ProjectDetailScreen, RemindersScreen, SearchScreen, SettingsScreen, StacksScreen, StuckScreen, TagsScreen, TodayScreen
 - `src/components/HubPills.tsx` — on ArchivedScreen, CategoriesScreen, FoodLogScreen, GroceryScreen, KitchenScreen, LogbookScreen, MealPlanScreen, MedicationScreen, MoodScreen, PeopleScreen, RecipesScreen, StacksScreen, +4 more
 - `src/components/ImportApplyRow.tsx` — on RecipeDetailScreen, RecipesScreen

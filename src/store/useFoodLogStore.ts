@@ -14,6 +14,7 @@ import {
 import { generateId } from '../utils/id';
 import { dayKeyOf, getCurrentDayStart, getLogicalDayKey } from '../utils/dateUtils';
 import { logFoodEntryToHealth, retractFoodEntryFromHealth } from '../utils/healthFoodSync';
+import { useSettingsStore } from './useSettingsStore';
 
 /**
  * The food log — what was eaten, and when.
@@ -288,6 +289,22 @@ interface FoodLogStore {
    */
   pendingManualMealLog: PendingManualMealLog | null;
   setPendingManualMealLog: (pending: PendingManualMealLog | null) => void;
+
+  /**
+   * True when Health has just refused a meal and the person has not been told.
+   *
+   * Watched by `HealthWriteRefusedNotice` (mounted in AppNavigator beside
+   * `LogMealPrompt`), for the reason those two are mounted there rather than on
+   * a screen: a meal is logged from the food log, a meal plan square, a cook
+   * task's prompt or a nudge, and the notice has to reach whichever one the
+   * person is standing on.
+   *
+   * Session state, because it only means "there is something to say right
+   * now". Whether it has *already* been said is `healthFoodWriteRefusalSeen`
+   * in settings, which persists.
+   */
+  pendingHealthWriteRefusal: boolean;
+  setPendingHealthWriteRefusal: (pending: boolean) => void;
 }
 
 export const useFoodLogStore = create<FoodLogStore>((set, get) => ({
@@ -304,6 +321,7 @@ export const useFoodLogStore = create<FoodLogStore>((set, get) => ({
   initialized: false,
   pendingMealLog: null,
   pendingManualMealLog: null,
+  pendingHealthWriteRefusal: false,
 
   initialize() {
     // The current logical day, because that is what a day view opens on and it
@@ -419,11 +437,31 @@ export const useFoodLogStore = create<FoodLogStore>((set, get) => ({
     // place to add another.
     //
     // Fire-and-forget with a follow-up patch, because the write is a native
-    // round trip and this action is synchronous. A failure needs nothing done:
-    // the entry keeps its empty `healthSampleIds`, which is exactly what "wrote
-    // nothing, so there is nothing to retract" means.
+    // round trip and this action is synchronous. A failure needs no repair: the
+    // entry keeps its empty `healthSampleIds`, which is exactly what "wrote
+    // nothing, so there is nothing to retract" means. It does need *saying*,
+    // for the one outcome a person can act on — see the refusal branch below.
     void logFoodEntryToHealth(entry).then(({ outcome, sampleIds }) => {
+      const settings = useSettingsStore.getState();
+      // A refusal in practice means sharing was never granted in Health's own
+      // sheet, and it is invisible: the entry below saved either way, so the
+      // only sign is a meal that never arrives. Said once rather than per meal,
+      // and re-armed by a write that lands, so a later breakage is surfaced
+      // instead of being swallowed by having complained once already.
+      //
+      // The other three outcomes stay silent on purpose. `off` is the switch
+      // doing what it says, `unavailable` is a device with no Health at all (or
+      // demo mode), and `nothingToWrite` is an entry stating no figure, which
+      // is an ordinary thing to log and not a fault.
+      if (outcome === 'refused') {
+        if (!settings.healthFoodWriteRefusalSeen) {
+          settings.setHealthFoodWriteRefusalSeen(true);
+          set({ pendingHealthWriteRefusal: true });
+        }
+        return;
+      }
       if (outcome !== 'written') return;
+      if (settings.healthFoodWriteRefusalSeen) settings.setHealthFoodWriteRefusalSeen(false);
       // Written straight through rather than via `updateEntry`, which only
       // finds rows inside the loaded range: a meal backdated outside the window
       // on screen is stored and simply isn't in `entries`, and losing its ids
@@ -477,6 +515,10 @@ export const useFoodLogStore = create<FoodLogStore>((set, get) => ({
 
   setPendingManualMealLog(pending) {
     set({ pendingManualMealLog: pending });
+  },
+
+  setPendingHealthWriteRefusal(pending) {
+    set({ pendingHealthWriteRefusal: pending });
   },
 
   removeEntry(id) {
