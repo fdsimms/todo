@@ -1,6 +1,7 @@
 import React, { useMemo, useState, useEffect, useRef } from 'react';
 import {
   Alert,
+  Keyboard,
   Modal,
   View,
   Text,
@@ -168,15 +169,23 @@ export function ProjectCategoriesSheet({ visible, onClose }: Props) {
 
   const rows: Row[] = order.map(name => ({ id: name }));
 
+  // Closing while a rename/new-category field still holds focus is the same
+  // freeze bug fixed elsewhere: the keyboard's own dismiss animation races
+  // the Modal's and strands the touch handler on whatever's underneath.
+  const close = () => {
+    Keyboard.dismiss();
+    onClose();
+  };
+
   // fullScreen, not a page sheet: the sheet's own pull-down pan cancels the JS
   // touches this list's drag runs on. See EditorSheet's note (#1182).
   return (
-    <Modal visible={visible} animationType="slide" presentationStyle="fullScreen" onRequestClose={onClose}>
+    <Modal visible={visible} animationType="slide" presentationStyle="fullScreen" onRequestClose={close}>
       <View style={[styles.root, { paddingTop: insets.top }]}>
         <View style={styles.header}>
           <View style={styles.headerSpacer} />
           <Text style={styles.headerTitle}>Project categories</Text>
-          <SheetHeaderButton label="Done" onPress={onClose} minWidth={64} />
+          <SheetHeaderButton label="Done" onPress={close} minWidth={64} />
         </View>
 
         <ScrollView

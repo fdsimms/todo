@@ -2,6 +2,7 @@ import React, { useCallback, useEffect, useMemo, useState } from 'react';
 import {
   ActivityIndicator,
   FlatList,
+  Keyboard,
   Modal,
   StyleSheet,
   Text,
@@ -76,6 +77,14 @@ export function NutritionSearchSheet({ visible, itemName, onClose, onPick }: Pro
   const [errorSettingsEntryId, setErrorSettingsEntryId] = useState<string | null>(null);
   const [searched, setSearched] = useState(false);
 
+  // Closing while the search field still holds focus is the same freeze bug
+  // fixed elsewhere: the keyboard's own dismiss animation races the Modal's
+  // and strands the touch handler on whatever's underneath.
+  const close = () => {
+    Keyboard.dismiss();
+    onClose();
+  };
+
   const run = useCallback(async (text: string) => {
     const trimmed = text.trim();
     if (!trimmed) return;
@@ -101,7 +110,7 @@ export function NutritionSearchSheet({ visible, itemName, onClose, onPick }: Pro
     haptics.tap();
     (navigation as never as { navigate: (n: string, p: object) => void })
       .navigate('SettingsGroup', { groupId: 'privacyAi', entryId: errorSettingsEntryId });
-    onClose();
+    close();
   };
 
   // Opening with the item's own name already searched: the answer is nearly
@@ -136,7 +145,7 @@ export function NutritionSearchSheet({ visible, itemName, onClose, onPick }: Pro
       const portions = await fetchFoodPortions(row.candidate.fdcId);
       onPick({ ...hit.nutrition, portions }, row.candidate.description);
       haptics.success();
-      onClose();
+      close();
     } catch (e) {
       setError(describeFoodSearchError(e));
       setPicking(null);
@@ -174,12 +183,12 @@ export function NutritionSearchSheet({ visible, itemName, onClose, onPick }: Pro
       visible={visible}
       animationType="slide"
       presentationStyle="pageSheet"
-      onRequestClose={onClose}
+      onRequestClose={close}
     >
       <View style={styles.root}>
         <SheetHeader
           title="Find nutrition"
-          left={<SheetHeaderButton label="Cancel" role="cancel" onPress={onClose} minWidth={64} />}
+          left={<SheetHeaderButton label="Cancel" role="cancel" onPress={close} minWidth={64} />}
           right={<View style={styles.headerSpacer} />}
         />
 

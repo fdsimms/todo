@@ -296,10 +296,18 @@ export function CookModeSheet({ visible, recipe, recipesById, scale, onClose }: 
     setRawIndex(Math.max(0, index - 1));
   };
 
+  // Closing while the "Ask about this step" field still has focus races the
+  // keyboard's own dismiss animation against the Modal's and freezes whatever
+  // renders underneath — same bug as the sheets fixed for this elsewhere.
+  const close = () => {
+    Keyboard.dismiss();
+    onClose();
+  };
+
   const goNext = () => {
     if (atLast) {
       haptics.success();
-      onClose();
+      close();
       return;
     }
     haptics.tap();
@@ -308,12 +316,12 @@ export function CookModeSheet({ visible, recipe, recipesById, scale, onClose }: 
 
   // ==== render. Everything below is JSX ====
   return (
-    <Modal visible={visible} animationType="slide" presentationStyle="fullScreen" onRequestClose={onClose}>
+    <Modal visible={visible} animationType="slide" presentationStyle="fullScreen" onRequestClose={close}>
       <ScreenAwake />
       <View style={[styles.root, { paddingTop: insets.top }]}>
         <DetailHeader
           title={recipe.name}
-          onBack={onClose}
+          onBack={close}
           backIcon="close"
           backAccessibilityLabel="Leave cook mode"
           actions={

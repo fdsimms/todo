@@ -1,6 +1,7 @@
 import React, { useCallback, useEffect, useMemo, useState } from 'react';
 import {
   Alert,
+  Keyboard,
   Modal,
   View,
   Text,
@@ -152,6 +153,7 @@ export function CookbookChecklistSheet({ visible, onClose, onCreated }: Props) {
   const handleCreate = () => {
     const title = cookbookTitle.trim();
     if (!title || cleanTitles.length === 0) return;
+    Keyboard.dismiss();
     haptics.success();
     const project = createProject(title, { kind: 'list' });
     cleanTitles.forEach(recipeTitle => {
@@ -165,6 +167,7 @@ export function CookbookChecklistSheet({ visible, onClose, onCreated }: Props) {
   // A photographed page, a guessed title, or hand-typed edits are all real
   // work — a swipe-down would otherwise drop any of them with no dialog.
   const handleCancel = () => {
+    Keyboard.dismiss();
     const dirty = photos.length > 0 || step === 'review';
     if (!dirty) { onClose(); return; }
     Alert.alert(
