@@ -1,10 +1,14 @@
 import {
   formatQuantityAmount,
+  formatRational,
   inflectUnit,
+  multiplyRational,
   parseQuantity,
+  rational,
   rationalToNumber,
   unitKey,
   type Quantity,
+  type Rational,
 } from './quantity';
 
 /**
@@ -28,10 +32,14 @@ import {
  *    of text about to be saved (the AI/extract sheets, GroceryAddField's token)
  *    deliberately do NOT convert. A field you are about to write has to show
  *    what will be written.
- * 2. **Converted text is marked `≈`**, always, because every conversion here is
- *    rounded (rule 4). It's the one signal that the number is the app's and not
- *    the recipe's, and it costs one character at every render site rather than
- *    a styling change at each one.
+ * 2. **Converted text is marked `≈`**, always — because every cross-system
+ *    conversion here is rounded (rule 4), and, for the one same-system case
+ *    (stepping a cup or a tablespoon down to a finer unit — see
+ *    `stepDownUsVolume`), because it's still the app re-expressing an amount
+ *    the recipe didn't literally say, exact arithmetic or not. It's the one
+ *    signal that the number is the app's and not the recipe's, and it costs
+ *    one character at every render site rather than a styling change at each
+ *    one.
  * 3. **A closed table, never a guess** — the same discipline as groceryParse's
  *    unit whitelist. Mass and volume only. A count ("3", "x2", "4 cloves",
  *    "2 cans"), an unparseable amount ("a pinch") and a unit not in the table
@@ -250,6 +258,46 @@ function renderUs(base: number, dimension: Dimension): string | null {
 }
 
 // ---------------------------------------------------------------------------
+// Same-system volume tidy-up
+// ---------------------------------------------------------------------------
+
+/**
+ * A cup or a tablespoon a US kitchen doesn't have a fraction for — the case
+ * `convertOne` would otherwise leave alone, since the unit is already `us`
+ * and there's nothing to convert *to*. Scaling can turn "1 cup" into
+ * something like "1/5 cup", and a fifth shares no factor with 16 (a cup's
+ * exact tablespoon count) or 3 (a tablespoon's exact teaspoon count) — so no
+ * unit in this ladder ever turns it into a whole number, but "3 1/5 tbsp" is
+ * still something a tablespoon scoop can approximate and "1/5 cup" is not.
+ *
+ * Exact multiplication, never `renderUs`'s tolerance-based snap: that snap
+ * exists for an amount that was already approximate going in (a cross-system
+ * conversion), and applying it here would report "3 1/3 tbsp" for an amount
+ * that is exactly 3.2. `formatRational` still falls back to a decimal when
+ * even the finer unit doesn't land on a cooking fraction, same as it does for
+ * scaling's own rule 3 — an honest "3.2 tbsp" beats a wrong "3 1/3".
+ *
+ * Only steps down one level, and only under a whole unit: "2.4 cups" stays
+ * in cups, since spreading it as "2 cups + 6 2/5 tbsp" is a different, larger
+ * feature than this one.
+ */
+const VOLUME_STEP_DOWN: Record<string, { unit: string; factor: number }> = {
+  cup: { unit: 'tbsp', factor: 16 },
+  tbsp: { unit: 'tsp', factor: 3 },
+  tablespoon: { unit: 'tsp', factor: 3 },
+};
+
+function stepDownUsVolume(amount: Rational, unit: string): { text: string; unit: string } | null {
+  const step = VOLUME_STEP_DOWN[unit];
+  if (!step) return null;
+  if (rationalToNumber(amount) >= 1) return null;
+  if (amount.den === 1 || VOLUME_DENOMINATORS.includes(amount.den)) return null;
+
+  const stepped = multiplyRational(amount, rational(step.factor, 1));
+  return { text: formatRational(stepped, false), unit: inflectUnit(step.unit, rationalToNumber(stepped)) };
+}
+
+// ---------------------------------------------------------------------------
 // Converting a quantity string
 // ---------------------------------------------------------------------------
 
@@ -287,7 +335,14 @@ function convertOne(part: string, target: 'metric' | 'us'): ConvertedQuantity {
 
   if (!q.unit) return unchanged;
   const known = KNOWN_UNITS[q.unit];
-  if (!known || known.system === target) return unchanged;
+  if (!known) return unchanged;
+
+  if (known.system === target) {
+    if (target !== 'us' || known.dimension !== 'volume') return unchanged;
+    const stepped = stepDownUsVolume(q.amount, q.unit);
+    if (!stepped) return unchanged;
+    return { text: `${stepped.text} ${stepped.unit}${q.trailing}`, converted: true };
+  }
 
   const rendered = target === 'metric'
     ? renderMetric(value * known.base, known.dimension)
