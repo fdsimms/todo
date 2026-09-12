@@ -20,7 +20,7 @@ import { useColors } from '../theme/ThemeContext';
 import { spacing, font, fontWeight, radius, interaction, type Colors } from '../theme';
 import { haptics } from '../utils/haptics';
 import { buildCalendarGrid, weekdayHeaders } from '../utils/calendarGrid';
-import { dayKeyOf, dayKeyToDate } from '../utils/dateUtils';
+import { dayKeyOf, dayKeyToDate, getLogicalToday } from '../utils/dateUtils';
 import {
   buildDayBuckets,
   dayDetail,
@@ -93,8 +93,8 @@ export function CalendarScreen() {
   const calendarWindowStart = useCalendarStore(s => s.windowStart);
   const calendarWindowEnd = useCalendarStore(s => s.windowEnd);
 
-  const [displayMonth, setDisplayMonth] = useState(() => startOfMonth(new Date()));
-  const [selectedKey, setSelectedKey] = useState(() => dayKeyOf(new Date()));
+  const [displayMonth, setDisplayMonth] = useState(() => startOfMonth(getLogicalToday()));
+  const [selectedKey, setSelectedKey] = useState(() => dayKeyOf(getLogicalToday()));
   // Session-only, like the pinned block's `othersHidden`: which occurrences the
   // grid draws is a way of reading this month, not a preference about the app.
   const [projecting, setProjecting] = useState(true);
@@ -172,7 +172,10 @@ export function CalendarScreen() {
     [days, displayMonth, buckets],
   );
 
-  const todayKey = dayKeyOf(new Date());
+  // The logical day, so the cell ringed as "today" is the day the rest of the
+  // app is showing. Before a 02:00 day reset the calendar has already rolled
+  // over and Today has not.
+  const todayKey = dayKeyOf(getLogicalToday());
   const selectedDate = dayKeyToDate(selectedKey);
 
   /**
@@ -195,9 +198,10 @@ export function CalendarScreen() {
 
   const goToToday = () => {
     haptics.tap();
-    const now = new Date();
-    setDisplayMonth(startOfMonth(now));
-    setSelectedKey(dayKeyOf(now));
+    // Lands on the same day the "today" ring is drawn on, above.
+    const today = getLogicalToday();
+    setDisplayMonth(startOfMonth(today));
+    setSelectedKey(dayKeyOf(today));
   };
 
   // Every subtask on this screen, grouped once. Each row used to filter the

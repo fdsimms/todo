@@ -23,7 +23,7 @@ import { SafeBlurView } from './SafeBlurView';
 import { SheetHeaderButton } from './SheetHeaderButton';
 import { ScrollEdgeFade } from './ScrollEdgeFade';
 import { SheetScrim } from './SheetScrim';
-import { dayKeyOf } from '../utils/dateUtils';
+import { dayKeyOf, getLogicalToday } from '../utils/dateUtils';
 import { slotLabel, upcomingDays } from '../utils/mealPlan';
 import { useScrollEdgeFade } from '../hooks/useScrollEdgeFade';
 import { useSheetHiddenOffset } from '../hooks/useSheetHiddenOffset';
@@ -111,8 +111,12 @@ export function PlanMealSheet({ visible, title, defaultSlot, onPlan, onPlanned, 
   // Fixed for the life of one opening: a rolling window recomputed mid-render
   // would slide under the user at midnight, and the chips are already labelled
   // with their dates.
-  const [days, setDays] = useState<Date[]>(() => upcomingDays(new Date(), DAYS_OFFERED));
-  const [dayKey, setDayKey] = useState<string>(() => dayKeyOf(new Date()));
+  // The logical day rather than the calendar one: the first chip offered is
+  // "today", and before a 02:00 day reset the day the user is still in is
+  // yesterday by the clock. Planning a meal is a scheduling decision, so it
+  // lands where the rest of the app would put it.
+  const [days, setDays] = useState<Date[]>(() => upcomingDays(getLogicalToday(), DAYS_OFFERED));
+  const [dayKey, setDayKey] = useState<string>(() => dayKeyOf(getLogicalToday()));
   const [slot, setSlot] = useState<MealSlot>(defaultSlot);
   /** The row just written, or null while the button is still armed. */
   const [planned, setPlanned] = useState<MealPlanEntry | null>(null);
@@ -127,7 +131,7 @@ export function PlanMealSheet({ visible, title, defaultSlot, onPlan, onPlanned, 
 
   useEffect(() => {
     if (!visible) return;
-    const fresh = upcomingDays(new Date(), DAYS_OFFERED);
+    const fresh = upcomingDays(getLogicalToday(), DAYS_OFFERED);
     setDays(fresh);
     setDayKey(dayKeyOf(fresh[0]));
     setSlot(defaultSlotRef.current);

@@ -80,7 +80,7 @@ import { useTaskGroupStore } from '../store/useTaskGroupStore';
 import { categoryLabel } from '../utils/categoryLabel';
 import { useShallow } from 'zustand/react/shallow';
 import { isStreakAtRecord, nextStreakRecord, streakHint } from '../utils/streakRecord';
-import { formatDeadlineDate, formatScheduledDate, formatHHMM, formatTimeOfDay, hhmmToDate, dateToHHMM, getDeadlineFromOffset, getDeadlineFromMonthDay, describeDeadlineOffset, describeReminderOffset, getTaskDayStart, getCurrentDayStart, getLogicalNow, seriesMonthDaysFrom } from '../utils/dateUtils';
+import { formatDeadlineDate, formatScheduledDate, formatHHMM, formatTimeOfDay, hhmmToDate, dateToHHMM, getDeadlineFromOffset, getDeadlineFromMonthDay, describeDeadlineOffset, describeReminderOffset, getTaskDayStart, getCurrentDayStart, getLogicalNow, getLogicalToday, seriesMonthDaysFrom } from '../utils/dateUtils';
 import { generateId } from '../utils/id';
 import { findArchivedMatch } from '../utils/archiveMatch';
 import { parseTaskInput, describeSchedule, detectContactIntent, matchPersonMentions, getEditorMentionSuggestions, type MentionSuggestionCandidate } from '../utils/parseTaskInput';
@@ -1570,7 +1570,11 @@ export function TaskEditor({ visible, task, initialDraft, onClose }: Props) {
 
   const openPicker = (mode: PickerMode) => {
     if (mode === 'reminder') {
-      const defaultDate = dueDate ?? new Date();
+      // Copied rather than used directly: setHours below mutates, and mutating
+      // `dueDate` here would move the task's own date to 09:00 as a side effect
+      // of opening the reminder picker. The logical day when there is no date,
+      // for the reason every other default in this file gives.
+      const defaultDate = new Date(dueDate ?? getLogicalToday());
       defaultDate.setHours(9, 0, 0, 0);
       setPickerDate(reminderTime ?? defaultDate);
     }
@@ -1763,7 +1767,7 @@ export function TaskEditor({ visible, task, initialDraft, onClose }: Props) {
 
   const setRecurrenceEndOnDate = () => {
     setRecurrenceCount(null);
-    if (!recurrenceEndDate) setRecurrenceEndDate(addMonths(dueDate ?? new Date(), 1));
+    if (!recurrenceEndDate) setRecurrenceEndDate(addMonths(dueDate ?? getLogicalToday(), 1));
     setShowEndDatePicker(true);
   };
 
@@ -3600,7 +3604,7 @@ export function TaskEditor({ visible, task, initialDraft, onClose }: Props) {
                     <View style={styles.scheduleRow}>
                       <TouchableOpacity
                         style={[styles.schedulePill, deadlineMonthDay > 0 && styles.schedulePillActive]}
-                        onPress={() => setDeadlineMonthDay(deadlineMonthDay > 0 ? deadlineMonthDay : (dueDate ?? new Date()).getDate())}
+                        onPress={() => setDeadlineMonthDay(deadlineMonthDay > 0 ? deadlineMonthDay : (dueDate ?? getLogicalToday()).getDate())}
                       >
                         <Text style={[styles.schedulePillText, deadlineMonthDay > 0 && styles.schedulePillTextActive]}>
                           On a day
@@ -4015,7 +4019,7 @@ export function TaskEditor({ visible, task, initialDraft, onClose }: Props) {
                 onChangeDays={setRecurrenceDays}
                 recurrenceMonthDay={recurrenceMonthDay}
                 onChangeMonthDay={setRecurrenceMonthDay}
-                seedMonthDay={() => (dueDate ?? new Date()).getDate()}
+                seedMonthDay={() => (dueDate ?? getLogicalToday()).getDate()}
                 recurrenceFromCompletion={recurrenceFromCompletion}
                 onChangeFromCompletion={setRecurrenceFromCompletion}
                 recurrenceCount={recurrenceCount}
@@ -4023,7 +4027,7 @@ export function TaskEditor({ visible, task, initialDraft, onClose }: Props) {
                 weekOrdinal={{
                   value: recurrenceWeekOrdinal,
                   onChange: setRecurrenceWeekOrdinal,
-                  seedWeekday: () => (dueDate ?? new Date()).getDay(),
+                  seedWeekday: () => (dueDate ?? getLogicalToday()).getDay(),
                 }}
                 onSelectEndNever={setRecurrenceEndNever}
                 onSelectEndCount={setRecurrenceEndAfterCount}

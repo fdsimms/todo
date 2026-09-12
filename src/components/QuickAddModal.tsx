@@ -1314,7 +1314,7 @@ export function QuickAddModal({
       case 'monthDay':
         setRecurrenceWeekOrdinal(null);
         setRecurrenceMonthDay(
-          recurrenceMonthDay && recurrenceMonthDay > 0 ? recurrenceMonthDay : (dueDate ?? new Date()).getDate(),
+          recurrenceMonthDay && recurrenceMonthDay > 0 ? recurrenceMonthDay : (dueDate ?? getLogicalToday(dayResetTime)).getDate(),
         );
         break;
       case 'lastDay':
@@ -1324,7 +1324,7 @@ export function QuickAddModal({
       case 'weekday':
         setRecurrenceMonthDay(null);
         setRecurrenceWeekOrdinal(recurrenceWeekOrdinal ?? 1);
-        if (recurrenceDays.length === 0) setRecurrenceDays([(dueDate ?? new Date()).getDay()]);
+        if (recurrenceDays.length === 0) setRecurrenceDays([(dueDate ?? getLogicalToday(dayResetTime)).getDay()]);
         break;
     }
   };
