@@ -2466,6 +2466,16 @@ function seedRecipes(): DemoRecipes {
   if (mintSprigs) {
     updateIngredient(tea.id, mintSprigs.id, { purpose: 'garnish', optional: true, excludeFromNutrition: true });
   }
+  // A staple you'd already have, at a stated amount — stays on the recipe (and
+  // in Cook Mode) but never on a shopping list (RecipeIngredient.
+  // excludeFromShoppingList). Seeded for the same reason mint sprigs is above:
+  // without one, every reader that skips this flag — the two add-to-list
+  // sheets, the recipe page's own row — reads exactly as it did before the
+  // field existed.
+  const teaWater = addIngredient(tea.id, 'Water');
+  if (teaWater) {
+    updateIngredient(tea.id, teaWater.id, { quantity: '4 cups', excludeFromShoppingList: true });
+  }
 
   // --- Dinners -------------------------------------------------------------
   const stirFry = newRecipe('Weeknight chicken stir-fry');

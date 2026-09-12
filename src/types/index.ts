@@ -4762,6 +4762,15 @@ export interface RecipeIngredient {
   // ingredient wants counting in one recipe and not in another. Same
   // optional-boolean convention as noSwap/optional, for the same reason.
   excludeFromNutrition?: boolean;
+  // "This is a staple you'd already have, not something to shop for" — water at
+  // a stated amount, most often ("3/4 cup water" in a brine). Doesn't change
+  // what's on the recipe or hide the line anywhere it's shown
+  // (RecipeDetailScreen, Cook Mode); it only keeps the line out of a shopping-list
+  // add (plannedIngredientsForRecipe/collectPlannedIngredients in
+  // mealPlanGroceries.ts, suggestRecipeGroceries's callers). Same
+  // optional-boolean convention as noSwap/optional/excludeFromNutrition, for
+  // the same reason.
+  excludeFromShoppingList?: boolean;
 }
 
 // One recipe used as a part of another — "mashed potatoes" inside both "Steak

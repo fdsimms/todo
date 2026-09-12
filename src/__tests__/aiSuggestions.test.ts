@@ -1009,6 +1009,23 @@ describe('extractRecipe', () => {
     ]);
   });
 
+  it('reads the model\'s excludeFromShoppingList flag, and only carries it when true', async () => {
+    mockFetchOnce(
+      toolUseResponse('extract_recipe', {
+        name: 'Pickled Carrots',
+        items: [
+          { name: 'water', quantity: '3/4 cup', aisle: 'Pantry', excludeFromShoppingList: true },
+          { name: 'carrots', quantity: '2', aisle: 'Produce', excludeFromShoppingList: false },
+        ],
+      })
+    );
+    const result = await extractRecipe('some recipe', AISLES);
+    expect(result.ingredients).toEqual([
+      { name: 'water', quantity: '3/4 cup', aisle: 'Pantry', section: null, prep: null, excludeFromShoppingList: true },
+      { name: 'carrots', quantity: '2', aisle: 'Produce', section: null, prep: null },
+    ]);
+  });
+
   it('is null for servings and prep time the text did not state', async () => {
     mockFetchOnce(
       toolUseResponse('extract_recipe', { name: 'Chili', servings: 0, prepMinutes: 0, items: [] })

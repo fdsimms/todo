@@ -152,6 +152,10 @@ export function collectPlannedIngredients(
     // steak-with-roast on Friday shops for one side each night rather than both
     // twice. An entry that never answered resolves to the defaults.
     for (const flat of flattenRecipeIngredients(recipe, recipesById, { chosen: entry.recipeChoices, onHand }, swaps)) {
+      // A staple you'd already have (RecipeIngredient.excludeFromShoppingList,
+      // water at a stated amount most often) never becomes a shopping-list
+      // add — it stays on the recipe, this just skips it here.
+      if (flat.ingredient.excludeFromShoppingList) continue;
       out.push({
         name: flat.ingredient.name,
         nameKey: flat.ingredient.nameKey,
@@ -229,26 +233,30 @@ export function plannedIngredientsForRecipe(
 ): PlannedIngredient[] {
   const factor = normalizeScale(scale);
   const undecided = new Set(resolution?.undecided ?? []);
-  return flattenRecipeIngredients(recipe, recipesById, resolution, swaps).map(flat => ({
-    name: flat.ingredient.name,
-    nameKey: flat.ingredient.nameKey,
-    quantity: [
-      // Scaled before the join, never after: prep and purpose are prose and
-      // there is no amount in them to multiply.
-      scaleQuantity(flat.ingredient.quantity, factor).text,
-      flat.ingredient.prep,
-      flat.ingredient.purpose ? `for ${flat.ingredient.purpose}` : null,
-    ].filter(Boolean).join(', '),
-    aisle: flat.ingredient.aisle,
-    // The recipe the line is written on, so a row merged from a parent and one
-    // of its parts says which parts want it — see ClassifiedIngredient.sources.
-    source: flat.recipe.name,
-    recipeId: flat.recipe.id,
-    recipeTitle: flat.recipe.name,
-    choiceGroup: groupKeyIfUndecided(flat.recipe.id, flat.ingredient.choiceGroup, undecided),
-    swappedFrom: flat.swappedFrom ?? null,
-    ...(flat.ingredient.optional ? { optional: true } : {}),
-  }));
+  return flattenRecipeIngredients(recipe, recipesById, resolution, swaps)
+    // Same skip collectPlannedIngredients makes, for the same reason — see its
+    // own comment.
+    .filter(flat => !flat.ingredient.excludeFromShoppingList)
+    .map(flat => ({
+      name: flat.ingredient.name,
+      nameKey: flat.ingredient.nameKey,
+      quantity: [
+        // Scaled before the join, never after: prep and purpose are prose and
+        // there is no amount in them to multiply.
+        scaleQuantity(flat.ingredient.quantity, factor).text,
+        flat.ingredient.prep,
+        flat.ingredient.purpose ? `for ${flat.ingredient.purpose}` : null,
+      ].filter(Boolean).join(', '),
+      aisle: flat.ingredient.aisle,
+      // The recipe the line is written on, so a row merged from a parent and one
+      // of its parts says which parts want it — see ClassifiedIngredient.sources.
+      source: flat.recipe.name,
+      recipeId: flat.recipe.id,
+      recipeTitle: flat.recipe.name,
+      choiceGroup: groupKeyIfUndecided(flat.recipe.id, flat.ingredient.choiceGroup, undecided),
+      swappedFrom: flat.swappedFrom ?? null,
+      ...(flat.ingredient.optional ? { optional: true } : {}),
+    }));
 }
 
 /**

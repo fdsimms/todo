@@ -2385,6 +2385,19 @@ describe('demo seed — groceries, recipes, meals and the fridge', () => {
     expect(lines.some(l => l.id === excludedLine!.id)).toBe(false);
   });
 
+  it('seeds a staple ingredient kept off the shopping list', () => {
+    // Invisible without a seeded instance, same as the two cases above:
+    // nothing infers "this is a staple, not something to buy" from a plain
+    // ingredient line.
+    const recipes = useRecipeStore.getState().recipes;
+    const staple = recipes.flatMap(r => r.ingredients).find(i => i.excludeFromShoppingList);
+    expect(staple).toBeDefined();
+
+    const owner = recipes.find(r => r.ingredients.some(i => i.id === staple!.id))!;
+    const planned = plannedIngredientsForRecipe(owner);
+    expect(planned.some(p => p.nameKey === staple!.nameKey)).toBe(false);
+  });
+
   it('seeds substitutes in both directions', () => {
     const { items, itemSubs } = useGroceryStore.getState();
 
