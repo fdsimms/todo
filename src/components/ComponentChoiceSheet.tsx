@@ -1,11 +1,11 @@
 import React, { useEffect, useMemo, useState } from 'react';
-import { View, Text, TouchableOpacity, StyleSheet } from 'react-native';
+import { View, Text, StyleSheet } from 'react-native';
 import Ionicons from '@expo/vector-icons/Ionicons';
 import type { Recipe } from '../types';
 import { RECIPE_CHOICE_GROUP_MAX_LENGTH } from '../types';
 import { useRecipeStore } from '../store/useRecipeStore';
 import { useColors } from '../theme/ThemeContext';
-import { spacing, radius, font, fontWeight, iconSize, interaction, type Colors } from '../theme';
+import { spacing, radius, font, fontWeight, iconSize, type Colors } from '../theme';
 import { haptics } from '../utils/haptics';
 import { animateLayout } from '../utils/layoutAnimation';
 import { cleanChoiceGroup } from '../utils/recipeUtils';
@@ -13,6 +13,7 @@ import type { ResolvedComponent } from '../utils/recipeComponents';
 import { SheetHeaderButton } from './SheetHeaderButton';
 import { EditorSheet } from './EditorSheet';
 import { SegmentedControl } from './SegmentedControl';
+import { InlineAction } from './InlineAction';
 import { PillGroup } from './PillGroup';
 
 interface Props {
@@ -216,23 +217,20 @@ export function ComponentChoiceSheet({ visible, recipe, component, onClose }: Pr
               <Text style={styles.defaultText}>The usual choice for “{clean}”</Text>
             </View>
           ) : (
-            <TouchableOpacity
-              style={styles.defaultRow}
-              activeOpacity={interaction.activeOpacity}
-              onPress={() => {
-                haptics.tap();
-                // Saves the label first: a component being moved into a group by
-                // this very sheet has no group to be promoted within yet.
-                setComponentChoiceGroup(recipe.id, component.component.id, clean);
-                makeComponentDefault(recipe.id, component.component.id);
-                onClose();
-              }}
-              accessibilityRole="button"
-              accessibilityLabel={`Make ${name} the usual choice for ${clean}`}
-            >
-              <Ionicons name="ellipse-outline" size={iconSize.sm} color={colors.textTertiary} />
-              <Text style={styles.defaultActionText}>Make this the usual choice</Text>
-            </TouchableOpacity>
+            <View style={styles.defaultRow}>
+              <InlineAction
+                label="Make this the usual choice"
+                icon="checkmark-circle-outline"
+                onPress={() => {
+                  // Saves the label first: a component being moved into a group by
+                  // this very sheet has no group to be promoted within yet.
+                  setComponentChoiceGroup(recipe.id, component.component.id, clean);
+                  makeComponentDefault(recipe.id, component.component.id);
+                  onClose();
+                }}
+                accessibilityLabel={`Make ${name} the usual choice for ${clean}`}
+              />
+            </View>
           )}
           <Text style={styles.hint}>
             {defaultIngredientName
@@ -276,6 +274,5 @@ const makeStyles = (colors: Colors) => StyleSheet.create({
   },
   defaultRow: { flexDirection: 'row', alignItems: 'center', gap: spacing.sm, paddingVertical: spacing.xs },
   defaultText: { color: colors.text, fontSize: font.sm },
-  defaultActionText: { color: colors.accent, fontSize: font.sm, fontWeight: fontWeight.medium },
   hint: { color: colors.textTertiary, fontSize: font.xs, lineHeight: font.xs * 1.4 },
 });

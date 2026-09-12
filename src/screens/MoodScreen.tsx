@@ -830,8 +830,8 @@ export function MoodScreen() {
           <View style={styles.card}>
             {milestoneRows.length === 0 ? (
               <Text style={[styles.pending, styles.milestoneAddSpacing]}>
-                Mark the day something changed — starting a medicine, a new
-                job — and compare your mood before and after it.
+                Mark the day something changed (starting a medicine, a new
+                job) and compare your mood before and after it.
               </Text>
             ) : (
               <View style={styles.milestoneAddSpacing}>

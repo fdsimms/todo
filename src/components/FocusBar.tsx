@@ -109,7 +109,7 @@ export function FocusBar({ onOpen }: Props) {
       </TouchableOpacity>
 
       {!finished && (
-        <PressableScale
+        <PressableScale hitSlop={8}
           style={styles.button}
           onPress={() => {
             haptics.tap();

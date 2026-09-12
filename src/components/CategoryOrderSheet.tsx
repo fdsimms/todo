@@ -11,7 +11,7 @@ import Ionicons from '@expo/vector-icons/Ionicons';
 import { useShallow } from 'zustand/react/shallow';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { useColors } from '../theme/ThemeContext';
-import { spacing, radius, font, fontWeight, border, type Colors } from '../theme';
+import { spacing, radius, font, fontWeight, border, interaction, type Colors } from '../theme';
 import { useTaskStore } from '../store/useTaskStore';
 import { useCategoryStore } from '../store/useCategoryStore';
 import { alphabeticalCategories, sortCategoriesByTaskCount } from '../utils/categoryOrder';
@@ -177,7 +177,7 @@ export function CategoryOrderSheet({ visible, onClose }: Props) {
                     </View>
                     <TouchableOpacity
                       onLongPress={drag}
-                      delayLongPress={150}
+                      delayLongPress={interaction.delayLongPress}
                       hitSlop={8}
                       style={styles.dragHandle}
                       accessibilityRole="button"

@@ -4,6 +4,7 @@ import Ionicons from '@expo/vector-icons/Ionicons';
 import { useSettingsStore } from '../store/useSettingsStore';
 import { useColors } from '../theme/ThemeContext';
 import { border, font, fontWeight, iconSize, interaction, radius, spacing, type Colors } from '../theme';
+import { disclosureValue } from '../theme/textStyles';
 import { haptics } from '../utils/haptics';
 import { animateLayout } from '../utils/layoutAnimation';
 import { useKeyboardInsetScroll } from '../hooks/useKeyboardInsetScroll';
@@ -374,6 +375,6 @@ function makeNoticeStyles(colors: Colors) {
     body: { flex: 1 },
     title: { color: colors.text, fontSize: font.md, fontWeight: fontWeight.medium },
     hint: { color: colors.textSecondary, fontSize: font.xs, marginTop: 2, lineHeight: 16 },
-    value: { color: colors.accent, fontSize: font.sm },
+    value: disclosureValue(colors),
   });
 }
