@@ -8,7 +8,7 @@
 // See the doc comment on RecipeCreateSheet below for how this differs from
 // RecipeExtractSheet (which fills in a recipe that already exists) and what
 // each source — paste, link, photo — gets for free.
-import React, { useCallback, useEffect, useMemo, useState } from 'react';
+import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import {
   Alert,
   Modal,
@@ -254,6 +254,13 @@ export function RecipeCreateSheet({
     if (!visible) reset();
   }, [visible, reset]);
 
+  // `run` below awaits a network call that easily outlives a cancel — the
+  // sheet stays mounted (only its Modal hides), so nothing stops that promise
+  // once the user discards. Read inside the promise continuation, never as a
+  // dependency, so a cancel mid-request is seen without re-running `run`.
+  const visibleRef = useRef(visible);
+  useEffect(() => { visibleRef.current = visible; }, [visible]);
+
   // `input` keeps its own `mode` and `url` state, and both only pick up the
   // props on first mount — while this sheet stays mounted for the screen's whole
   // life. So a later tap on a different add-menu item (link vs. photo) changed
@@ -279,6 +286,10 @@ export function RecipeCreateSheet({
       const resolved = await resolveSource();
       if (!resolved) return;
       const result = await extractRecipe(resolved.source, [...aisleOrder]);
+      // Canceled while the request was in flight: don't repopulate a sheet
+      // the user already discarded — it would silently reappear filled in
+      // the next time this sheet opens.
+      if (!visibleRef.current) return;
       setExtracted(result);
       setIngredients(result.ingredients);
       // The page's own title is the better answer when the model didn't give
@@ -311,8 +322,10 @@ export function RecipeCreateSheet({
       setSourcePageText(source.page);
       setImportedSourceType(source.sourceType);
     } catch (e) {
-      setError(describeImportError(e));
-      setCanRetry(isRetryableImportError(e));
+      if (visibleRef.current) {
+        setError(describeImportError(e));
+        setCanRetry(isRetryableImportError(e));
+      }
     } finally {
       setLoading(false);
     }
@@ -592,8 +605,10 @@ export function RecipeCreateSheet({
               candidate={candidate}
               state={components.stateFor(candidate.key)}
               accepted={components.accepted.has(candidate.key)}
+              parent={null}
               onToggle={() => components.toggle(candidate.key)}
               onImport={source => components.importFrom(candidate.key, source)}
+              onLink={picked => components.linkTo(candidate.key, picked)}
             />
           ))}
         </View>

@@ -1,0 +1,4 @@
+{
+  "message": "Fixed Today getting stuck after canceling an event or recipe photo import while it was still reading",
+  "date": "2026-09-12"
+}
