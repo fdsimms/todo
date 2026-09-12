@@ -1,0 +1,4 @@
+{
+  "message": "Allowing Health access now asks about reading and writing together in one sheet, instead of two separate ones. This avoids an iOS bug where granting read access later could silently turn off write access you'd already granted for water, weight, or a nutrient.",
+  "date": "2026-09-12"
+}

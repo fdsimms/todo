@@ -32,13 +32,20 @@ import { requireNativeModule } from 'expo-modules-core';
  *   real Allowed/Not allowed/Not asked row for it — see
  *   `docs/arch/health-data.md` for why that would be dishonest for reads and
  *   isn't for this.
- * - **Read and write ask separately, on purpose.** One `requestAuthorization`
- *   call could ask for both a read type and a share type in the same sheet,
- *   but folding water's write ask into the existing read flow would mean
- *   somebody who only ever wanted to read steps gets asked about writing
- *   water too, the first time they tap "Turn on" for reading. Two asks, two
- *   switches (`healthReadEnabled` / `healthWriteEnabled`), same as the
- *   generator's own two-switch rule one level up.
+ * - **Read and write are still two switches, but one combined ask.**
+ *   `healthReadEnabled` / `healthWriteEnabled` stay independent — turning one
+ *   on doesn't turn the other on, and each still gates its own feature — but
+ *   `requestHealthAuthorization` and `requestHealthWriteAuthorization` both
+ *   now ask the native side for the full read *and* write type set in one
+ *   sheet, whichever of them is called. This used to be two asks specifically
+ *   so reading steps never put a water-sharing row in front of somebody who
+ *   only wanted steps, but iOS has been observed silently revoking an
+ *   existing write grant the moment read access for the same type is granted
+ *   later (undocumented, no API to prevent or reverse it — see
+ *   `docs/arch/health-data.md`). Asking for both together removes the one
+ *   sequence that triggers it: there is no later solo grant left to flip
+ *   anything, because both halves are decided in the same user action the
+ *   first time either switch is turned on.
  * - **Each write type earns its own review, and there are two.** `writeTypes`
  *   in the Swift module is deliberately not `readTypes`'s shape generalized —
  *   a new share type is a new consequence (a real sample lands in somebody's
@@ -203,10 +210,12 @@ export function healthRequestStatus(): Promise<HealthRequestStatus> {
 }
 
 /**
- * Present the Health permission sheet.
+ * Present the Health permission sheet, for both reading and writing at once —
+ * see the module note above for why this stopped being read-only.
  *
  * Resolving `requested` says the sheet was shown, not that anything was
- * allowed. The only way to find out whether a read works is to read.
+ * allowed. The only way to find out whether a read works is to read; the only
+ * way to find out whether a write works is `healthWriteAuthorizationStatus`.
  */
 export function requestHealthAuthorization(): Promise<HealthAuthorizationResult> {
   return degradeOnReject(() => nativeModule!.requestAuthorization(), 'unavailable');
@@ -229,11 +238,12 @@ export function healthWriteAuthorizationStatus(kind: HealthWriteKind): HealthWri
 }
 
 /**
- * Present the Health share sheet for dietary water. Resolving `requested`
- * says the sheet was shown, nothing about what was chosen — same shape as
- * `requestHealthAuthorization` — but unlike that one, the truth is available
- * right afterward: call `healthWriteAuthorizationStatus()` rather than
- * inferring anything from this call's own result.
+ * Present the Health share sheet for everything this app can write — and,
+ * same as `requestHealthAuthorization`, for everything it can read too, in
+ * the same sheet. Resolving `requested` says the sheet was shown, nothing
+ * about what was chosen; the truth is available right afterward by calling
+ * `healthWriteAuthorizationStatus()` rather than inferring anything from this
+ * call's own result.
  */
 export function requestHealthWriteAuthorization(): Promise<HealthAuthorizationResult> {
   return degradeOnReject(() => nativeModule!.requestWriteAuthorization(), 'unavailable');

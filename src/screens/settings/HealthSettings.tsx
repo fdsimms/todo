@@ -55,9 +55,16 @@ import { haptics } from '../../utils/haptics';
  * not at Health generally — so the write access rows below read exactly like
  * `CalendarSettings`' access row, not like the read access row above them.
  * It's a separate `SettingsSection` and a separate switch
- * (`healthWriteEnabled`) on purpose: reading steps and writing anything are two
- * different permissions with two different sheets, and folding them into one
- * switch would ask someone who only wanted the steps row about writing too.
+ * (`healthWriteEnabled`) so each still gates its own feature independently —
+ * but the two now share one native sheet. They used to raise two separate
+ * sheets, on the reasoning above (someone who only wanted the steps row
+ * shouldn't be asked about writing). That stopped being the whole story once
+ * iOS was observed silently revoking an existing write grant the moment read
+ * access for the same type is granted later, an undocumented OS bug with no
+ * API to prevent or reverse it. Asking for both together, from whichever
+ * switch is turned on first, removes the one sequence that triggers it —
+ * there is no later solo grant left to flip anything. See the module note in
+ * `modules/todo-health-bridge/index.ts` and `docs/arch/health-data.md`.
  *
  * **There is one app-level write switch but two access rows under it, and that
  * asymmetry is deliberate.** "May this app write to my Health record" is asked
@@ -146,13 +153,13 @@ export function HealthSettings() {
       bridge?.requestHealthAuthorization()
         .then(() => {
           refreshStatus();
-          // Also here, not just on focus/foreground — see refreshWriteStatus's
-          // own comment for why a read grant can silently cost write access on
-          // the types the two sides share (water, weight, the eight nutrients).
-          // Re-checking now is what turns "found out weeks later, confused"
-          // into "the row below already says Not allowed the moment you granted
-          // read", which is the one thing this app can still do about an OS
-          // bug it cannot prevent.
+          // This sheet now asks to write too (see the module note in
+          // modules/todo-health-bridge/index.ts) precisely so a read grant
+          // can no longer silently cost write access on the types the two
+          // sides share: both are decided in this one sheet, so there is no
+          // later solo read grant left to trigger the OS bug that used to
+          // cause that. Refreshed here as well as on focus/foreground so the
+          // rows below reflect whatever was just decided immediately.
           refreshWriteStatus();
           void refresh();
         })
@@ -177,14 +184,22 @@ export function HealthSettings() {
     setHealthWriteEnabled(next);
     // Same moment-of-asking rule the read toggle follows: turning this on is
     // the one unambiguous ask, so it's the one moment the sheet may appear.
-    // One sheet covers both share types (`requestWriteAuthorization` passes the
-    // whole of `writeTypes`), so it is worth raising if *either* is still
-    // unanswered.
+    // One sheet covers every share type (`requestHealthWriteAuthorization`
+    // passes the whole of `writeTypes`), so it is worth raising if *any* is
+    // still unanswered.
     if (next && (waterWriteStatus === 'notDetermined' || weightWriteStatus === 'notDetermined'
       || nutritionWriteStatus === 'notDetermined')) {
       const bridge = healthBridge();
       bridge?.requestHealthWriteAuthorization()
-        .then(() => refreshWriteStatus())
+        .then(() => {
+          refreshWriteStatus();
+          // This sheet now asks to read too (see the module note in
+          // modules/todo-health-bridge/index.ts on why), so a decision made
+          // from this toggle can change the read side just as much as a
+          // decision made from the read toggle above.
+          refreshStatus();
+          void refresh();
+        })
         .catch(() => refreshWriteStatus());
     }
   };
@@ -272,14 +287,11 @@ export function HealthSettings() {
             // anything is actually coming through.
             hint={
               requestStatus === 'shouldRequest'
-                ? healthWriteEnabled
-                  // iOS has been observed silently revoking write access to a
-                  // type (water, weight, a nutrient) the moment read access for
-                  // that same type is granted — see the note in
-                  // docs/arch/health-data.md. Worth saying here, before it
-                  // happens, since the write rows below only report it after.
-                  ? "Not asked yet. Allowing this can reset write access below for the types this app both reads and writes (water, weight, most nutrients), so check Log to Health afterward"
-                  : "Not asked yet. Nothing can be read until you allow it in Health"
+                // The sheet this raises asks about writing too now, not just
+                // reading — see the module note in modules/todo-health-bridge/
+                // index.ts for why. Said here so the extra rows in that sheet
+                // aren't a surprise, whether or not Log to Health is even on.
+                ? "Not asked yet. Allowing this also asks about writing to Health (water, weight, meals), in the same sheet"
                 : requestStatus === 'unnecessary'
                   ? "Already asked. To change what's shared, open Health, tap your profile picture, then Privacy, then Apps, then dundundun"
                   : requestStatus === 'unavailable'
@@ -476,7 +488,9 @@ function WriteAccessRow({ entryId, label, deniedHint, status, colors, onAsk }: W
       label={label}
       hint={
         status === 'notDetermined'
-          ? 'Not asked yet. Nothing can be written until you allow it in Health'
+          // Same combined sheet the read access row above raises — see the
+          // module note in modules/todo-health-bridge/index.ts.
+          ? 'Not asked yet. Allowing this also asks to read Apple Health, in the same sheet'
           : status === 'sharingDenied'
             ? deniedHint
             : allowed
