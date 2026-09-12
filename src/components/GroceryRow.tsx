@@ -469,7 +469,13 @@ export const GroceryRow = React.memo(function GroceryRow({
 
         {!!shownQuantity && (
           <View style={[styles.qtyPill, item.checked && styles.qtyPillChecked]}>
-            <Text style={[styles.qtyText, item.checked && styles.qtyTextChecked]} numberOfLines={1}>
+            {/* Two lines, capped by width rather than by lines: a quantity
+                carrying a recipe's prep instructions ("cut into ¼-inch-thick
+                rounds") is long enough that a wide, single-line pill starves
+                the name beside it down to a sliver. Same treatment
+                RecipeToListSheet's own quantity pill uses for the same
+                reason. */}
+            <Text style={[styles.qtyText, item.checked && styles.qtyTextChecked]} numberOfLines={2}>
               {shownQuantity}
             </Text>
           </View>
@@ -757,15 +763,19 @@ function makeStyles(colors: Colors) {
       borderRadius: radius.sm,
       paddingHorizontal: spacing.sm,
       paddingVertical: 3,
-      maxWidth: 160,
+      maxWidth: 90,
     },
     qtyPillChecked: {
       backgroundColor: 'transparent',
     },
+    // Centred for the two-line case: the pill takes the width of its longest
+    // line, so this only moves the shorter one and is a no-op on the
+    // single-line pills, which size to their own text.
     qtyText: {
       fontSize: font.sm,
       fontWeight: fontWeight.semibold,
       color: colors.textSecondary,
+      textAlign: 'center',
     },
     qtyTextChecked: {
       textDecorationLine: 'line-through',
