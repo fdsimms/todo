@@ -13,6 +13,7 @@ import React, { useEffect, useMemo, useState } from 'react';
 import {
   Alert,
   FlatList,
+  Keyboard,
   Modal,
   ScrollView,
   StyleSheet,
@@ -667,6 +668,7 @@ export function FoodLogEntrySheet({
       return;
     }
     haptics.success();
+    Keyboard.dismiss();
     onClose();
   };
 
@@ -693,13 +695,13 @@ export function FoodLogEntrySheet({
   };
 
   const handleCancel = () => {
-    if (!picked && !amount.trim()) { onClose(); return; }
+    if (!picked && !amount.trim()) { Keyboard.dismiss(); onClose(); return; }
     Alert.alert(
       'Discard changes?',
       'You have unsaved changes. Are you sure you want to discard them?',
       [
         { text: 'Keep editing', style: 'cancel' },
-        { text: 'Discard', style: 'destructive', onPress: onClose },
+        { text: 'Discard', style: 'destructive', onPress: () => { Keyboard.dismiss(); onClose(); } },
       ],
     );
   };
@@ -956,7 +958,7 @@ export function FoodLogEntrySheet({
                   <InlineAction
                     label="Scan a barcode"
                     icon="barcode-outline"
-                    onPress={() => { haptics.tap(); onScan(); }}
+                    onPress={() => { haptics.tap(); Keyboard.dismiss(); onScan(); }}
                   />
                 )}
                 {!!onEstimate && (
@@ -964,7 +966,7 @@ export function FoodLogEntrySheet({
                     label="Describe what you ate instead"
                     icon="sparkles-outline"
                     variant="neutral"
-                    onPress={() => { haptics.tap(); onEstimate(); }}
+                    onPress={() => { haptics.tap(); Keyboard.dismiss(); onEstimate(); }}
                   />
                 )}
               </View>
@@ -973,7 +975,7 @@ export function FoodLogEntrySheet({
               <TouchableOpacity
                 style={styles.declineMeal}
                 activeOpacity={interaction.activeOpacity}
-                onPress={() => { haptics.tap(); onDeclineMeal(); }}
+                onPress={() => { haptics.tap(); Keyboard.dismiss(); onDeclineMeal(); }}
                 accessibilityRole="button"
                 accessibilityLabel="Don't ask about this meal"
               >

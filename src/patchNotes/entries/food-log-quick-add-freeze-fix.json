@@ -1,0 +1,4 @@
+{
+  "message": "Fixed a bug where cancelling the \"What did you eat?\" sheet or adding a task from Quick Add could leave the screen behind it frozen",
+  "date": "2026-09-12"
+}
