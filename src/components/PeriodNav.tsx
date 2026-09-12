@@ -14,6 +14,13 @@ interface Props {
   prevAccessibilityLabel: string;
   nextAccessibilityLabel: string;
   /**
+   * A small caption under the label — "This week" — for the one case the
+   * label alone can't say: that the period on screen is the current one.
+   * Pass it only while that's true; omitting it (the default) leaves this
+   * row exactly as it was for every period that isn't.
+   */
+  sublabel?: string;
+  /**
    * Draws the arrows and label as one `bgSecondary` capsule instead of
    * spreading the arrows to the row's full width. The plain layout reads fine
    * under a header, where the title above already gives the row something to
@@ -46,17 +53,27 @@ export function PeriodNav({
   onNext,
   prevAccessibilityLabel,
   nextAccessibilityLabel,
+  sublabel,
   grouped = false,
 }: Props) {
   const colors = useColors();
   const styles = useMemo(() => makeStyles(colors), [colors]);
+
+  const labelBlock = sublabel ? (
+    <View style={styles.labelBlock}>
+      <Text style={styles.label}>{label}</Text>
+      <Text style={styles.sublabel}>{sublabel}</Text>
+    </View>
+  ) : (
+    <Text style={styles.label}>{label}</Text>
+  );
 
   const arrows = (
     <>
       <PressableScale hitSlop={8} style={styles.btn} onPress={onPrev} accessibilityLabel={prevAccessibilityLabel}>
         <Ionicons name="chevron-back" size={iconSize.md} color={colors.accent} />
       </PressableScale>
-      <Text style={styles.label}>{label}</Text>
+      {labelBlock}
       <PressableScale hitSlop={8} style={styles.btn} onPress={onNext} accessibilityLabel={nextAccessibilityLabel}>
         <Ionicons name="chevron-forward" size={iconSize.md} color={colors.accent} />
       </PressableScale>
@@ -98,6 +115,15 @@ const makeStyles = (colors: Colors) =>
       color: colors.text,
       fontSize: font.md,
       fontWeight: fontWeight.semibold,
+      textAlign: 'center',
+    },
+    labelBlock: {
+      alignItems: 'center',
+    },
+    sublabel: {
+      color: colors.textSecondary,
+      fontSize: font.xxs,
+      fontWeight: fontWeight.medium,
     },
     navGrouped: {
       alignItems: 'center',
