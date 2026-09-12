@@ -3414,55 +3414,55 @@ export const TaskItem = React.memo(function TaskItem({
               SwipeableRow's own clip defaulted to the same radius and kept
               that break alive after this wrapper gave its up; it's
               overflow-only now, and its radius comes from `style`. */}
-          {selectionMode ? (
+          {/* SwipeableRow stays mounted regardless of selectionMode or
+              spotlightDisabled — toggling between it and a plain
+              View/Pressable here used to remount rowBody (a different
+              element type at this tree position), which read as the whole
+              row flashing when any other task got tapped, and — worse, for
+              selectionMode specifically — unmounted the panel mid-close-
+              animation at the exact moment its own select action just fired,
+              which is what read as the swipe panel freezing instead of
+              sliding shut. Disabling the gesture and overlaying a dismiss-tap
+              Pressable keeps the same tree shape across both toggles.
+              Every caller ANDs spotlightDisabled with `!selectionMode`, so
+              the two conditions can't both need the overlay at once — it
+              only ever renders while selectionMode is false.
+              No select panel unless the screen can actually bulk-select: a
+              list without a bulk bar (Demo, say) would otherwise reveal an
+              accent panel whose handler is a no-op. */}
+          <SwipeableRow
+            enabled={!selectionMode && !spotlightDisabled}
+            selectAction={onSwipeSelect ? {
+              onSelect: () => onSwipeSelect(task.id),
+              accessibilityLabel: `Select ${task.title}`,
+            } : undefined}
+            // No reschedule panel on a notice: there's nothing a later date
+            // would mean for it, and the button that opens the same picker
+            // is gone from its panel for that reason (see `notice`).
+            whenAction={notice ? undefined : {
+              onAction: () => setShowWhenPicker(true),
+              accessibilityLabel: `Reschedule ${task.title}`,
+            }}
+          >
             <View>
-              {rowBody}
-            </View>
-          ) : (
-            // SwipeableRow stays mounted regardless of spotlightDisabled —
-            // toggling between it and a plain View/Pressable here used to
-            // remount rowBody (a different element type at this tree position)
-            // every time any other task got tapped, which read as the whole row
-            // flashing. Disabling the gesture and overlaying a dismiss-tap
-            // Pressable keeps the same tree shape across that toggle.
-            //
-            // No select panel unless the screen can actually bulk-select: a
-            // list without a bulk bar (Demo, say) would otherwise reveal an
-            // accent panel whose handler is a no-op.
-            <SwipeableRow
-              enabled={!spotlightDisabled}
-              selectAction={onSwipeSelect ? {
-                onSelect: () => onSwipeSelect(task.id),
-                accessibilityLabel: `Select ${task.title}`,
-              } : undefined}
-              // No reschedule panel on a notice: there's nothing a later date
-              // would mean for it, and the button that opens the same picker
-              // is gone from its panel for that reason (see `notice`).
-              whenAction={notice ? undefined : {
-                onAction: () => setShowWhenPicker(true),
-                accessibilityLabel: `Reschedule ${task.title}`,
-              }}
-            >
-              <View>
-                <View pointerEvents={spotlightDisabled ? 'none' : 'auto'}>
-                  {rowBody}
-                </View>
-                {spotlightDisabled && (
-                  // While another task is spotlighted this row must not react
-                  // to touches itself — any tap on it just dismisses the spotlight.
-                  // Hidden from accessibility for the same reason SpotlightOverlay's
-                  // own scrim is: it covers a row that is still there and still
-                  // labelled underneath it.
-                  <Pressable
-                    style={StyleSheet.absoluteFill}
-                    onPress={() => onPress(rowId)}
-                    accessibilityElementsHidden
-                    importantForAccessibility="no-hide-descendants"
-                  />
-                )}
+              <View pointerEvents={spotlightDisabled ? 'none' : 'auto'}>
+                {rowBody}
               </View>
-            </SwipeableRow>
-          )}
+              {spotlightDisabled && (
+                // While another task is spotlighted this row must not react
+                // to touches itself — any tap on it just dismisses the spotlight.
+                // Hidden from accessibility for the same reason SpotlightOverlay's
+                // own scrim is: it covers a row that is still there and still
+                // labelled underneath it.
+                <Pressable
+                  style={StyleSheet.absoluteFill}
+                  onPress={() => onPress(rowId)}
+                  accessibilityElementsHidden
+                  importantForAccessibility="no-hide-descendants"
+                />
+              )}
+            </View>
+          </SwipeableRow>
           {expandedPanel}
           {/* A scrim drawn on top of the row rather than fading the row's own
               opacity — fading the whole card washes out low-contrast text
