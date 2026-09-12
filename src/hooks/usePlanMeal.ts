@@ -29,6 +29,7 @@ import { haptics } from '../utils/haptics';
  */
 export function usePlanMeal() {
   const planMeal = useMealPlanStore(s => s.planMeal);
+  const setRecipeScale = useMealPlanStore(s => s.setRecipeScale);
   const entriesForDayLive = useMealPlanStore(s => s.entriesForDayLive);
   const mealSlotsEnabled = useSettingsStore(useShallow(s => s.mealSlotsEnabled));
   const recipes = useRecipeStore(useShallow(s => s.recipes));
@@ -128,11 +129,24 @@ export function usePlanMeal() {
    * Does *not* offer prep tasks itself — the caller decides when its own sheet
    * is out of the way, and some callers plan several meals in a row before any
    * of that is appropriate.
+   *
+   * `scale`, when given, is applied right after the entry is created — a
+   * second write rather than a `planMeal` draft field, since every other
+   * caller here plans as-written and `MealPlanEntry.recipeScale` already
+   * defaults to 1 on its own. This is the one path that plans *from* a number
+   * already chosen elsewhere (the recipe screen's "plan this shop" offer), so
+   * the entry it returns carries that scale rather than the 1 it was created
+   * with.
    */
   const planRecipe = useCallback(
-    (recipe: Recipe, dateKey: string, slot: MealSlot): MealPlanEntry | null =>
-      planMeal({ date: dateKey, slot, recipeId: recipe.id, title: recipe.name }),
-    [planMeal]
+    (recipe: Recipe, dateKey: string, slot: MealSlot, scale?: number): MealPlanEntry | null => {
+      const entry = planMeal({ date: dateKey, slot, recipeId: recipe.id, title: recipe.name });
+      if (!entry) return null;
+      if (scale == null || scale === 1) return entry;
+      setRecipeScale(entry.id, scale);
+      return { ...entry, recipeScale: scale };
+    },
+    [planMeal, setRecipeScale]
   );
 
   return { planRecipe, offerPrepTasks, offerPrepTasksForEach, earliestUnplannedSlotToday };
