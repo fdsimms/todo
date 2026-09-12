@@ -619,15 +619,9 @@ is not "maintain relationship #4", it is "Ansley starts the new job in September
 ask her about it". `Person.askAbout` shipped a one-field slice of this early, so
 the first nudge anybody sees is warm rather than clock-driven; this is the rest.
 
-**Three kinds, each with exactly one place it shows up**, which is what keeps
-them from blurring into one another and is what each kind's hint in the sheet
-actually says:
-
-| Kind | Where it lands |
-|---|---|
-| `note` | The person's own screen |
-| `gift` | The birthday task, as its notes |
-| `food` | A meal they're a guest at |
+**Each kind has its own heading on the person's own screen, and `gift` also
+lands somewhere second** — the birthday task, as its notes — which is what
+each kind's hint in the sheet actually says.
 
 - **Rows rather than fields on `Person`**, unlike `askAbout` beside them. The
   argument this doc makes for `Task.personIds` being a JSON array does not
@@ -682,24 +676,15 @@ one line this whole section exists to obey.
   where nobody sees it" — this file holds the same line one step earlier: it
   never builds a `Map<personId, count>` on the way to a total, because a
   structure that *could* answer "who did I see most" is the disease this doc
-  exists to prevent whether or not a line of it ever reaches the screen. Two
-  plain integers, nothing keyed by a person id.
-- **Two independent facts, not one.** Time spent with somebody (a completed
-  top-level task naming them — the same two filters `personHistory()` uses:
-  `isRealCompletion`, so a miss stored as completed doesn't count, and
-  top-level only, so a subtask doesn't multiply one occasion) and meals cooked
-  with a guest (a `MealPlanEntry` gated on `cookedAt`, since a planned dinner
-  that never happened is not a time you had people over). Each renders only
-  when it has something to say, so a year with hosting but no tagged tasks (or
-  the reverse) still says the half that's true.
+  exists to prevent whether or not a line of it ever reaches the screen. One
+  plain integer, nothing keyed by a person id.
+- **One fact: time spent with somebody** — a completed top-level task naming
+  them, the same two filters `personHistory()` uses: `isRealCompletion`, so a
+  miss stored as completed doesn't count, and top-level only, so a subtask
+  doesn't multiply one occasion.
 - **Never a zero.** "You spent time with people 0 times this year" is the same
   debt "94 days ago" is (rule 2) — the sentence is either a cheerful fact or it
   says nothing.
-- **The meal count is its own SQLite read, not `useMealPlanStore.entries`.**
-  That store holds whatever window the meal plan screen last loaded, and a
-  calendar year is wider than the app ever loads on its own. Same shape
-  `cookingCounts`/`refreshCookingCounts` already use for the identical reason,
-  one integer stored rather than a year of rows kept around to produce it.
 
 ## Waiting on a person
 
@@ -740,43 +725,6 @@ refusing outright would be the app deciding you cannot reschedule seeing a
 friend. It sits last, so a pinned or urgent task still reports the harder reason
 it cannot move at all. The label names the fact and judges nothing, and
 `lookAhead` inherits it for free by asking the same helper.
-
-## Guests on a planned meal
-
-`MealPlanEntry.personIds` and `mealGuests.ts`. The tie-in no other app can have,
-because no other app holds both halves: once a meal knows who is coming, a
-dietary note has somewhere to be useful (#2047) and somebody's own screen can
-say "dinner here on Thursday" without anything having been ticked off.
-
-- **The same JSON array `Task.personIds` uses**, and partly for the same reason:
-  `planMeal` copies an entry's shape around and a JSON column rides every copy
-  for free. Resolve-or-shrug at every reader, like `recipeId` and `leftoverId`
-  on the same row.
-- **The picker never creates a person.** Rule 3: adding somebody is a deliberate
-  act performed on the People screen, and a picker that could invent one from a
-  meal sheet is the thin end of a list you did not write. It is `PillGroup` with
-  no `onCreate`, so the affordance does not exist rather than being refused.
-- **Nothing shows when nobody has been added yet.** An empty guest picker is a
-  prompt to start filing your friends, which is the failure mode the whole doc
-  is about. The block renders only once the People screen has somebody in it.
-- **Copying a week forward drops the guests.** They sit on `cookedAt`'s side of
-  the line rather than `recipeScale`'s: who came on Tuesday is a fact about that
-  night, not about the dish, and a copied week claiming the same four people are
-  coming again is the app asserting something about other people's plans.
-  Re-inviting is a thing you do, and it is two taps on the copied meal.
-- **The meal's generated task does not carry them**, and this is the trap worth
-  naming. A `mealSlot` task is a chain, and completing a step spawns the next
-  row with `personIds` riding the `...effective` spread — one dinner would land
-  in a guest's history three times, which is exactly the "four times the
-  evidence for one afternoon" `personHistory` excludes subtasks to avoid. What a
-  *cooked* meal should write instead is #2078.
-- **A guest's own screen reads the meals straight from SQLite**, not off
-  `useMealPlanStore.entries`, which holds whatever week the meal plan screen last
-  showed. Same call `dbGetMealPlanEntry` makes for the same reason: loading a
-  different range into `entries` would move that screen's week out from under it.
-- **Nothing counts how often somebody comes over.** `mealGuests.ts` resolves ids
-  to names and answers "which meals name this person"; there is no derivation of
-  frequency, and adding one is the disease this doc exists to prevent.
 
 ## The birthday picker is three wheels, not a calendar (#2103)
 
@@ -866,9 +814,11 @@ answer is a set of them, not one.
   builds from an item, the same scope every other per-run override in
   `applyTemplate` — `groupId`, `parentId`, `projectId` — already has.
 - **The picker is `PillGroup` with no `onCreate`, and it disappears entirely
-  when nobody has been added on the People screen yet** — the same two rules
-  "Guests on a planned meal" above states for the identical reason: rule 3
-  again. Here that means the one question row goes missing rather than a whole
+  when nobody has been added on the People screen yet** — rule 3 again: adding
+  somebody is a deliberate act performed on the People screen, and a picker
+  that could invent one, or that sits there empty as a prompt to start filing
+  friends, is the thing this doc rules out. Here that means the one question
+  row goes missing rather than a whole
   block, since a template can ask a `'people'` question alongside an ordinary
   one and the other question still has to render. `ApplyTemplateSheet` filters
   it out of `visibleQuestions` before render, not just visually hides it, so a
@@ -973,9 +923,9 @@ it lives and what it asks.
   a cadence of 0, so "opted in to nothing" is unrepresentable rather than left
   to the caller to avoid.
 - **The pool renders nothing at all until somebody has been added.** Not three
-  rows reading "set for everyone" over an empty list. Same rule the meal guest
-  picker and the template `'people'` question follow, for the same reason: an
-  empty people surface is a prompt to start filing your friends.
+  rows reading "set for everyone" over an empty list. Same rule the template
+  `'people'` question follows, for the same reason: an empty people surface is
+  a prompt to start filing your friends.
 
 ## Groups: a couple counted once
 

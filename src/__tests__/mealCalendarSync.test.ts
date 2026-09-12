@@ -32,7 +32,6 @@ const BASE: MealPlanEntry = {
   cookedAt: null,
   leftoverId: null,
   recipeChoices: [],
-  personIds: [],
   recipeScale: 1,
   cookTask: null,
   shopTask: null,

@@ -4,7 +4,6 @@ import {
   PERSON_NOTE_LABELS,
   describeNoteDay,
   giftIdeasText,
-  guestFoodNotes,
   isLiveNote,
   isStaleNote,
   notesFor,
@@ -183,41 +182,6 @@ describe('giftIdeasText', () => {
   });
 });
 
-describe('guestFoodNotes', () => {
-  const guests = [{ id: 'p1', name: 'Ansley' }, { id: 'p2', name: 'Dustin' }];
-
-  it('names who each note is about', () => {
-    const rows = [note({ kind: 'food', text: 'No shellfish', personId: 'p2' })];
-    expect(guestFoodNotes(rows, guests, today))
-      .toEqual([{ personId: 'p2', name: 'Dustin', text: 'No shellfish' }]);
-  });
-
-  it('is empty when no guest has one', () => {
-    expect(guestFoodNotes([note({ kind: 'note' })], guests, today)).toEqual([]);
-    expect(guestFoodNotes([], guests, today)).toEqual([]);
-  });
-
-  it('ignores a food note about somebody who is not coming', () => {
-    const rows = [note({ kind: 'food', text: 'Vegetarian', personId: 'p9' })];
-    expect(guestFoodNotes(rows, guests, today)).toEqual([]);
-  });
-
-  it('drops one whose day has passed, since it is no longer true', () => {
-    const rows = [note({ kind: 'food', text: 'Dairy-free for now', relevantOn: iso(2026, 3, 1) })];
-    expect(guestFoodNotes(rows, guests, today)).toEqual([]);
-  });
-
-  it('carries several notes for one guest, and several guests', () => {
-    const rows = [
-      note({ kind: 'food', text: 'No shellfish', personId: 'p1' }),
-      note({ kind: 'food', text: 'Hates coriander', personId: 'p1' }),
-      note({ kind: 'food', text: 'Vegetarian', personId: 'p2' }),
-    ];
-    expect(guestFoodNotes(rows, guests, today).map(n => n.text))
-      .toEqual(['No shellfish', 'Hates coriander', 'Vegetarian']);
-  });
-});
-
 describe('the kind copy', () => {
   it('names every kind and says where it turns up', () => {
     for (const kind of ['note', 'gift', 'food'] as PersonNoteKind[]) {
@@ -230,7 +194,7 @@ describe('the kind copy', () => {
   // name, so each hint has to say it — that's the whole job of the line.
   it('says where each one shows', () => {
     expect(PERSON_NOTE_HINTS.gift).toMatch(/birthday/i);
-    expect(PERSON_NOTE_HINTS.food).toMatch(/meal/i);
+    expect(PERSON_NOTE_HINTS.food).toMatch(/page/i);
     expect(PERSON_NOTE_HINTS.note).toMatch(/page/i);
   });
 });

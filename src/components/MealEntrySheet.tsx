@@ -13,7 +13,6 @@ import {
 } from 'react-native';
 import Ionicons from '@expo/vector-icons/Ionicons';
 import { format } from 'date-fns/format';
-import { useShallow } from 'zustand/react/shallow';
 import type { MealPlanEntry, MealSlot } from '../types';
 import { MEAL_SLOTS, RECIPE_NAME_MAX_LENGTH } from '../types';
 import { useColors, useTheme } from '../theme/ThemeContext';
@@ -27,13 +26,8 @@ import { dayKeyOf } from '../utils/dateUtils';
 import { slotLabel } from '../utils/mealPlan';
 import type { ChoiceGroup } from '../utils/recipeComponents';
 import { RecipeScaleChips } from './RecipeScaleChips';
-import { PillGroup } from './PillGroup';
 import { ScrollEdgeFade } from './ScrollEdgeFade';
 import { SheetScrim } from './SheetScrim';
-import { usePersonStore, displayNameOf } from '../store/usePersonStore';
-import { usePersonNoteStore } from '../store/usePersonNoteStore';
-import { guestFoodNotes } from '../utils/personNotes';
-import { getCurrentDayStart } from '../utils/dateUtils';
 import { useScrollEdgeFade } from '../hooks/useScrollEdgeFade';
 import { useSheetHiddenOffset } from '../hooks/useSheetHiddenOffset';
 
@@ -77,13 +71,6 @@ interface Props {
   baseServings?: number | null;
   /** The high end of a range, for the "recipe says serves 4-6" caption. */
   baseServingsMax?: number | null;
-  /**
-   * Records who this meal is for — see MealPlanEntry.personIds. Absent (with
-   * the block) when nobody has been added on the People screen yet, since a
-   * picker with nothing in it is a prompt to start filing your friends, which
-   * is exactly what `docs/arch/people.md` rule 3 rules out.
-   */
-  onSetGuests?: (personIds: string[]) => void;
   /**
    * Ticks the meal off, or back on. Present either way now — the action used
    * to vanish once an entry was cooked, so the sheet could get you into that
@@ -153,7 +140,7 @@ const TOP_INSET = 72;
 
 export function MealEntrySheet({
   visible, entry, title, weekDays, onMove, onMoveFurther, onRemove, onRename, choiceGroups = [], onChoose,
-  onScale, baseServings, baseServingsMax, onSetGuests, onSetCooked, onOpenRecipe, onAddToList, onAddPrepTasks,
+  onScale, baseServings, baseServingsMax, onSetCooked, onOpenRecipe, onAddToList, onAddPrepTasks,
   onLogLeftovers,
   onFinishLeftover, onSetCookTask, hasCookTask = false, onClose,
 }: Props) {
@@ -163,33 +150,6 @@ export function MealEntrySheet({
   const fade = useScrollEdgeFade();
   const { height: windowHeight } = useWindowDimensions();
   const cooked = !!entry?.cookedAt;
-
-  // Archived people are out of the picker but never stripped off a meal that
-  // already names them — the same split TaskEditor makes, and for the same
-  // reason: filing somebody away is about the list, not about last Tuesday.
-  const people = usePersonStore(useShallow(s => s.people.filter(p => !p.archived)));
-  const guestIds = entry?.personIds ?? [];
-
-  /**
-   * What the guests at this meal can't or won't eat.
-   *
-   * The kitchen half of the app paying off in a way it could not without both
-   * halves (#2047): remembering that Ansley cannot eat shellfish, at the moment
-   * you are deciding what to cook her, is care rather than measurement.
-   *
-   * Read off every person rather than the filtered picker list, so an archived
-   * guest already on the meal still brings their note with them — filing
-   * somebody away is about the People screen's list, not about what they eat.
-   */
-  const allPeople = usePersonStore(useShallow(s => s.people));
-  const allNotes = usePersonNoteStore(useShallow(s => s.notes));
-  const foodNotes = useMemo(() => {
-    if (guestIds.length === 0) return [];
-    const guests = allPeople
-      .filter(p => guestIds.includes(p.id))
-      .map(p => ({ id: p.id, name: displayNameOf(p) }));
-    return guestFoodNotes(allNotes, guests, getCurrentDayStart());
-  }, [allNotes, allPeople, guestIds.join(',')]);
 
   const hiddenY = useSheetHiddenOffset();
 
@@ -329,56 +289,6 @@ export function MealEntrySheet({
                 // flush to the card edge while every label above them is inset.
                 style={styles.scaleChips}
               />
-            </View>
-          )}
-
-          {/* Under the batch chips and above the choice groups: all three say
-              what gets cooked rather than where the meal sits, and who is
-              coming is the one a cook decides first. `PillGroup` rather than a
-              raw pill row because the people list has no ceiling — it caps
-              itself and grows a filter — and deliberately with no `onCreate`,
-              so somebody can be picked here but never invented here. */}
-          {!!onSetGuests && people.length > 0 && (
-            <View style={styles.guestBlock}>
-              <Text style={styles.label}>Guests</Text>
-              {/* The inset lives here because PillGroup carries none of its own
-                  — same reason scaleChips does it for RecipeScaleChips, and
-                  without it the pills sit flush to the card edge while the
-                  label above them is inset 16pt. */}
-              <View style={styles.guestPills}>
-              <PillGroup
-                noun="guest"
-                surface="card"
-                options={people.map(p => ({
-                  key: p.id,
-                  label: displayNameOf(p),
-                  selected: guestIds.includes(p.id),
-                  accessibilityLabel: `${displayNameOf(p)} is coming`,
-                  onPress: () => {
-                    haptics.tap();
-                    onSetGuests(
-                      guestIds.includes(p.id)
-                        ? guestIds.filter(id => id !== p.id)
-                        : [...guestIds, p.id]
-                    );
-                  },
-                }))}
-              />
-              </View>
-              {/* Directly under the guests, because it is a consequence of them
-                  and reads as nonsense anywhere else. Stated flatly and with
-                  nobody's name in a warning colour: this is a thing you wrote
-                  down, not an alert. */}
-              {foodNotes.length > 0 && (
-                <View style={styles.foodNotes}>
-                  {foodNotes.map((note, i) => (
-                    <Text key={`${note.personId}:${i}`} style={styles.foodNote}>
-                      <Text style={styles.foodNoteName}>{note.name}</Text>
-                      {`  ${note.text}`}
-                    </Text>
-                  ))}
-                </View>
-              )}
             </View>
           )}
 
@@ -689,11 +599,6 @@ const makeStyles = (colors: Colors) => StyleSheet.create({
     paddingTop: spacing.md,
     paddingBottom: spacing.sm,
   },
-  guestBlock: { marginBottom: spacing.sm },
-  guestPills: { paddingHorizontal: spacing.md },
-  foodNotes: { paddingHorizontal: spacing.md, paddingTop: spacing.sm, gap: 3 },
-  foodNote: { color: colors.textSecondary, fontSize: font.sm, lineHeight: 18 },
-  foodNoteName: { color: colors.text, fontWeight: fontWeight.medium },
   scaleBlock: { paddingBottom: spacing.xs },
   scaleChips: { paddingHorizontal: spacing.md },
   chips: {

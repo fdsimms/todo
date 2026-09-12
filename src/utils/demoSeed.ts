@@ -1760,27 +1760,12 @@ function seedPeople(today: Date): void {
   const photos = addTask({ title: 'Photos from the trip' });
   updateTask(photos.id, { waitingOnPersonId: dustin.id });
 
-  // Two of them are coming for dinner tomorrow (#2077). Guests are the tie-in
-  // that makes the kitchen half and the people half one app, and a meal with
-  // nobody on it reads as a feature this app doesn't have — so one seeded meal
-  // carries them, which is also what puts a row under COMING UP on Ansley's and
-  // Mom's own screens without anything having been ticked off.
-  if (seededSalmonNightId) {
-    useMealPlanStore.getState().setMealGuests(seededSalmonNightId, [ansley.id, mom.id]);
-  }
-  // Cooked for eight, so a guest already fits the plan without inventing a
-  // new meal — and it's the one that gives the year-in-review stat something
-  // to count, since the salmon dinner above deliberately isn't cooked yet.
-  if (seededSteakNightId) {
-    useMealPlanStore.getState().setMealGuests(seededSteakNightId, [dustin.id]);
-  }
-
   // The memory layer (#2047), which is rule 7 and the part that makes this a
   // feature you like rather than one you tolerate. Every kind gets one, and
   // each one lands somewhere: the gift ideas ride onto Dustin's birthday task
   // (his birthday is two days away, so that task genuinely exists), the food
-  // notes show on the salmon dinner those two are guests at, and the dated one
-  // is what a note able to go stale actually looks like.
+  // notes show on each person's own page, and the dated one is what a note
+  // able to go stale actually looks like.
   const { addNote } = usePersonNoteStore.getState();
   addNote(dustin.id, 'gift', 'The bouldering gym membership');
   addNote(dustin.id, 'gift', 'A proper chalk bag');
@@ -3717,23 +3702,6 @@ function seedMealPlanNudgeStack(
   });
 }
 
-/**
- * Tomorrow's dinner, handed to `seedPeople` so it can name guests on it.
- *
- * A module-level handoff rather than a return value because the meals are
- * seeded behind the kitchen switch and the people are not, so the two calls
- * can't be chained — and null when the kitchen half is off, which the guest
- * seeding reads as "nothing to be a guest at".
- */
-let seededSalmonNightId: string | null = null;
-/**
- * The steak dinner four days ago, handed to `seedPeople` for the same reason
- * `seededSalmonNightId` is — but this one is already cooked, so it's what
- * gives the year-in-review stat (#2092) something to count. The salmon dinner
- * deliberately isn't it: that one has to stay uncooked for COMING UP.
- */
-let seededSteakNightId: string | null = null;
-
 function seedMealPlanAndFridge(recipes: DemoRecipes, today: Date): void {
   const { loadRange, planMeal, setCooked, setRecipeScale, setRecipeChoices, stampAddedToList } =
     useMealPlanStore.getState();
@@ -3808,7 +3776,6 @@ function seedMealPlanAndFridge(recipes: DemoRecipes, today: Date): void {
     const roasted = componentIdFor(recipes.steak, recipes.roasties);
     if (roasted) setRecipeChoices(steakNight.id, [roasted]);
   }
-  seededSteakNightId = steakNight?.id ?? null;
   const stirFryNight = cooked(-1, 'dinner', {
     title: 'Weeknight chicken stir-fry',
     recipeId: recipes.stirFry,
@@ -3926,7 +3893,6 @@ function seedMealPlanAndFridge(recipes: DemoRecipes, today: Date): void {
   // Captured for the shopping task seeded at the end of this function — it's
   // the night the kitchen can't currently make.
   const salmonNight = plan(1, 'dinner', { title: 'Lemon garlic salmon', recipeId: recipes.salmon });
-  seededSalmonNightId = salmonNight?.id ?? null;
 
   // Freeform — planning doesn't require a recipe, and a night that just says
   // "eating out" holds its place and counts like any other.
