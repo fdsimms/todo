@@ -21,14 +21,14 @@ import {
   type FoodLogListItem,
 } from '../utils/foodLog';
 import {
+  describeWater,
   describeWaterDay,
-  describeWaterMl,
   waterEntryOf,
   waterHelping,
+  waterInUnit,
+  waterRange,
+  waterToMl,
   waterTotalMl,
-  WATER_MAX_ML,
-  WATER_MIN_ML,
-  WATER_STEP_ML,
 } from '../utils/waterLog';
 import { NUTRIENT_LABEL } from '../utils/foodNutrition';
 import { describeAgainstTarget, targetProgress } from '../utils/nutritionTargets';
@@ -120,6 +120,8 @@ export function FoodLogScreen() {
   const moveEntries = useFoodLogStore(s => s.moveEntries);
   const reorderEntries = useFoodLogStore(s => s.reorderEntries);
   const nutritionTargets = useSettingsStore(useShallow(s => s.nutritionTargets));
+  const waterUnit = useSettingsStore(s => s.waterUnit);
+  const setWaterUnit = useSettingsStore(s => s.setWaterUnit);
   // Only for the catalog picker below; the scan flow keeps its own reads.
   const items = useGroceryStore(useShallow(s => s.items));
   const itemProducts = useGroceryStore(useShallow(s => s.itemProducts));
@@ -442,7 +444,9 @@ export function FoodLogScreen() {
   }, [addEntry, reviseEntry, removeEntry]);
 
   const handleWaterChange = (next: number | null) => {
-    const ml = next ?? 0;
+    // The stepper walks whole units of whatever is picked; millilitres is what
+    // is stored, so the conversion happens here and nowhere downstream.
+    const ml = waterToMl(next, waterUnit);
     setPendingWaterMl(ml);
     pendingWater.current = { ml, entryId: waterEntry?.id ?? null, at: loggingAt };
     if (waterTimer.current !== null) clearTimeout(waterTimer.current);
@@ -461,7 +465,8 @@ export function FoodLogScreen() {
     ? (pendingWaterMl > 0 ? pendingWaterMl : null)
     : storedWaterMl;
   const shownDayWaterMl = dayWaterMl - (storedWaterMl ?? 0) + (shownWaterMl ?? 0);
-  const waterLine = describeWaterDay(shownDayWaterMl, shownWaterMl, nutritionTargets.waterMl);
+  const waterLine = describeWaterDay(shownDayWaterMl, shownWaterMl, nutritionTargets.waterMl, waterUnit);
+  const waterBounds = waterRange(waterUnit);
 
   const handleReorder = (reordered: FoodLogListItem[]) => {
     const resolved = resolveFoodLogDrop(reordered);
@@ -674,17 +679,37 @@ export function FoodLogScreen() {
                 <View style={styles.waterRow}>
                   <Ionicons name="water-outline" size={iconSize.sm} color={colors.textSecondary} />
                   <Text style={styles.waterLabel}>Water</Text>
+                  {/* Two pills rather than a `SegmentedControl`: a unit beside
+                      a stepper is one of the cases that component's own doc
+                      comment lists as deliberately staying pills. */}
+                  {(['ml', 'flOz'] as const).map(u => (
+                    <TouchableOpacity
+                      key={u}
+                      style={[styles.waterUnit, waterUnit === u && styles.waterUnitOn]}
+                      activeOpacity={interaction.activeOpacity}
+                      onPress={() => { haptics.tap(); commitWater(); setWaterUnit(u); }}
+                      accessibilityRole="button"
+                      accessibilityState={{ selected: waterUnit === u }}
+                      accessibilityLabel={u === 'ml' ? 'Show water in millilitres' : 'Show water in fluid ounces'}
+                    >
+                      <Text style={[styles.waterUnitText, waterUnit === u && styles.waterUnitTextOn]}>
+                        {u === 'ml' ? 'ml' : 'fl oz'}
+                      </Text>
+                    </TouchableOpacity>
+                  ))}
                   <CountStepper
-                    value={shownWaterMl}
+                    value={waterInUnit(shownWaterMl, waterUnit)}
                     onChange={handleWaterChange}
-                    min={WATER_MIN_ML}
-                    max={WATER_MAX_ML}
-                    step={WATER_STEP_ML}
+                    min={waterBounds.min}
+                    max={waterBounds.max}
+                    step={waterBounds.step}
                     allowNull
                     emptyLabel="None"
-                    format={describeWaterMl}
+                    format={n => describeWater(waterToMl(n, waterUnit), waterUnit)}
                     label="Water"
-                    describeValue={n => (n === null ? 'No water logged' : describeWaterMl(n))}
+                    describeValue={n => (n === null
+                      ? 'No water logged'
+                      : describeWater(waterToMl(n, waterUnit), waterUnit))}
                   />
                 </View>
                 {/* Written by `describeWaterDay` rather than
@@ -916,6 +941,19 @@ function makeStyles(colors: Colors) {
     // Takes the row, so the stepper sits hard against the trailing edge where
     // every other control on this screen does.
     waterLabel: { flex: 1, color: colors.text, fontSize: font.sm },
+    waterUnit: {
+      paddingHorizontal: spacing.sm,
+      paddingVertical: spacing.xs,
+      borderRadius: radius.full,
+      backgroundColor: colors.bgTertiary,
+    },
+    // Neutral rather than accent-filled, which is what `TaskEditor`'s own water
+    // unit pills already do: this picks how a number is shown, and an accent
+    // fill would make it the loudest thing on a card whose point is the figure
+    // and its bar.
+    waterUnitOn: { backgroundColor: colors.bgQuaternary },
+    waterUnitText: { color: colors.text, fontSize: font.xs, fontWeight: fontWeight.medium },
+    waterUnitTextOn: { fontWeight: fontWeight.semibold },
     waterTarget: { color: colors.textSecondary, fontSize: font.xs },
     totalBlock: { gap: spacing.xs },
     totalRow: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between' },

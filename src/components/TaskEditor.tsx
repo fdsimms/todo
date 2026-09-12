@@ -495,9 +495,13 @@ export function TaskEditor({ visible, task, initialDraft, onClose }: Props) {
   // Display-only, and not read from the task: logHealthAmount is always held
   // and written in millilitres (what logTaskHealthValue actually sends to
   // Health), and this just picks what the stepper below shows and steps in.
-  // Every sheet opens back at ml, same as the amount always opens back at
-  // whatever the task itself has.
-  const [waterLogUnit, setWaterLogUnit] = useState<'ml' | 'flOz'>('ml');
+  //
+  // A setting rather than the local state this used to be, shared with the food
+  // log's own water card (`waterUnit`). Two local copies of one preference is
+  // two answers to the same question, and the card is pressed several times a
+  // day, so a choice that resets on every mount is one nobody can have.
+  const waterLogUnit = useSettingsStore(s => s.waterUnit);
+  const setWaterLogUnit = useSettingsStore(s => s.setWaterUnit);
   const [medicationName, setMedicationName] = useState<string | null>(null);
   // Held as the typed string rather than a number so a half-typed "2." isn't
   // thrown away mid-keystroke; parsed once, on save.

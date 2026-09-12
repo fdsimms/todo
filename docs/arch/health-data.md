@@ -657,6 +657,16 @@ Three things about it are worth not re-deriving:
   ids the previous write had not finished stamping back. The day view holds the
   pending figure for 600ms and lands it once.
 
+`waterUnit` in settings decides whether the two water steppers — the card and a
+task's "log to Health" amount — show millilitres or fluid ounces. It is display
+only, exactly as `weightUnit` is against what HealthKit hands back: `waterMl` is
+stored in millilitres whichever is picked, and the conversion happens at the one
+call site rather than anywhere downstream. It is a setting rather than the local
+state `TaskEditor` used to hold, because two local copies of one preference are
+two answers to the same question and the card is pressed several times a day.
+Ounces step by 8, which is the glass the unit is counted in: the millilitre step
+converted would be 8.45 and would put a decimal on every figure on the card.
+
 ### One thing about the read side worth writing down here
 
 `bestSum` takes **the largest single source, not the sum** of them. Two apps

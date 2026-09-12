@@ -1,9 +1,13 @@
 import {
+  describeWater,
   describeWaterDay,
   describeWaterMl,
   isWaterEntry,
   waterEntryOf,
   waterHelping,
+  waterInUnit,
+  waterRange,
+  waterToMl,
   waterTotalMl,
   WATER_MAX_ML,
   WATER_MIN_ML,
@@ -133,6 +137,47 @@ describe('describeWaterMl', () => {
 
   it('answers something for a broken figure rather than throwing', () => {
     expect(describeWaterMl(Number.NaN)).toBe('0 ml');
+  });
+});
+
+describe('the two units', () => {
+  it('steps in whole fluid ounces rather than the millilitre step converted', () => {
+    // 250ml is 8.45 fl oz, which would put a decimal on every figure. 8 is the
+    // glass the unit is actually counted in.
+    expect(waterRange('ml')).toEqual({ min: 250, max: 6000, step: 250 });
+    expect(waterRange('flOz')).toEqual({ min: 8, max: 200, step: 8 });
+  });
+
+  it('reads a stored volume as whole units of the picked one', () => {
+    expect(waterInUnit(1250, 'ml')).toBe(1250);
+    expect(waterInUnit(1250, 'flOz')).toBe(42);
+  });
+
+  it('has no number to show for a day with no water', () => {
+    expect(waterInUnit(null, 'flOz')).toBeNull();
+    expect(waterInUnit(0, 'ml')).toBeNull();
+  });
+
+  it('converts the stepper\'s number back to what is stored', () => {
+    expect(waterToMl(1250, 'ml')).toBe(1250);
+    expect(waterToMl(42, 'flOz')).toBe(1242);
+    expect(waterToMl(null, 'flOz')).toBe(0);
+  });
+
+  it('round-trips lossily in ounces, which is the cost of counting in them', () => {
+    const back = waterToMl(waterInUnit(1250, 'flOz'), 'flOz');
+    expect(back).not.toBe(1250);
+    expect(Math.abs(back - 1250)).toBeLessThan(15);
+  });
+
+  it('stays in ounces all the way up, since there is no bigger unit a drink uses', () => {
+    expect(describeWater(1500, 'ml')).toBe('1.5 L');
+    expect(describeWater(1500, 'flOz')).toBe('51 fl oz');
+    expect(describeWater(250, 'flOz')).toBe('8 fl oz');
+  });
+
+  it('writes the target comparison in the picked unit too', () => {
+    expect(describeWaterDay(1500, 1500, 2000, 'flOz')).toBe('51 fl oz of 68 fl oz');
   });
 });
 

@@ -1,6 +1,7 @@
 import type { FoodLogEntry, FoodNutrition, NutrientKey } from '../types';
 import { NUTRIENT_KEYS } from '../types';
 import { NUTRITION_TARGET_RANGES } from './nutritionTargets';
+import { flOzToMl, mlToFlOz } from './foodNutrition';
 
 /**
  * A day's water, as one food log entry.
@@ -34,12 +35,36 @@ import { NUTRITION_TARGET_RANGES } from './nutritionTargets';
  * they drank.
  */
 
+/**
+ * Which unit a stepper of water shows, `waterUnit` in settings.
+ *
+ * Display only: `waterMl` is stored in millilitres whichever is picked, the
+ * same split `WeightUnit` keeps against what HealthKit hands back. Water is the
+ * one nutrient this is worth having for — nobody asks for a stepper in fluid
+ * ounces of sodium.
+ */
+export type WaterUnit = 'ml' | 'flOz';
+
 /** How much one press of the day's stepper moves it, in ml. */
 export const WATER_STEP_ML = NUTRITION_TARGET_RANGES.waterMl.step;
 
 /** The smallest and largest a day's water can be stepped to, in ml. */
 export const WATER_MIN_ML = NUTRITION_TARGET_RANGES.waterMl.min;
 export const WATER_MAX_ML = NUTRITION_TARGET_RANGES.waterMl.max;
+
+/**
+ * The same range in fluid ounces, as whole ounces.
+ *
+ * **A step of its own rather than the millilitre step converted**, which would
+ * be 8.45 fl oz and would make every figure on the card a decimal. 8 fl oz is
+ * the glass the unit is actually counted in, and the bounds are rounded to it
+ * so a press always lands on the grid `CountStepper` steps along. The range
+ * covers the same real span the millilitre one does: 8 fl oz is about 237ml and
+ * 200 is about 5.9 litres.
+ */
+export const WATER_STEP_FL_OZ = 8;
+export const WATER_MIN_FL_OZ = 8;
+export const WATER_MAX_FL_OZ = 200;
 
 /**
  * Whether this entry is the day's water rather than something eaten.
@@ -106,6 +131,45 @@ export function describeWaterMl(ml: number): string {
 }
 
 /**
+ * The same volume in whichever unit the person picked.
+ *
+ * Fluid ounces stay whole and stay ounces all the way up: there is no bigger US
+ * unit a drink is counted in, and "1.6 quarts" is not how anybody says it.
+ */
+export function describeWater(ml: number, unit: WaterUnit): string {
+  if (unit === 'ml') return describeWaterMl(ml);
+  if (!Number.isFinite(ml)) return '0 fl oz';
+  return `${Math.round(mlToFlOz(ml))} fl oz`;
+}
+
+/** What a stepper in `unit` steps by and between. */
+export function waterRange(unit: WaterUnit): { min: number; max: number; step: number } {
+  return unit === 'flOz'
+    ? { min: WATER_MIN_FL_OZ, max: WATER_MAX_FL_OZ, step: WATER_STEP_FL_OZ }
+    : { min: WATER_MIN_ML, max: WATER_MAX_ML, step: WATER_STEP_ML };
+}
+
+/**
+ * A stored volume as the stepper's own number, or null when there is none.
+ *
+ * Whole units, because that is what the stepper walks in and a value carrying a
+ * decimal would step off the grid on the first press. Reading 1,250 ml as 42
+ * fl oz and pressing + writes 1,479 ml rather than 1,487: the round trip is
+ * lossy by a few millilitres and is supposed to be, since working in ounces is
+ * a choice to count in ounces.
+ */
+export function waterInUnit(ml: number | null, unit: WaterUnit): number | null {
+  if (ml === null || !Number.isFinite(ml) || ml <= 0) return null;
+  return unit === 'flOz' ? Math.round(mlToFlOz(ml)) : Math.round(ml);
+}
+
+/** The stepper's own number back in millilitres, which is what is stored. */
+export function waterToMl(value: number | null, unit: WaterUnit): number {
+  if (value === null || !Number.isFinite(value) || value <= 0) return 0;
+  return unit === 'flOz' ? Math.round(flOzToMl(value)) : Math.round(value);
+}
+
+/**
  * The line under the day's stepper: how the day reads against a target, or what
  * else was drunk, or nothing.
  *
@@ -134,13 +198,14 @@ export function describeWaterDay(
   dayMl: number,
   rowMl: number | null,
   target: number | undefined,
+  unit: WaterUnit = 'ml',
 ): string | null {
   if (!(dayMl > 0)) return null;
   if (target !== undefined && target > 0) {
-    return `${describeWaterMl(dayMl)} of ${describeWaterMl(target)}`;
+    return `${describeWater(dayMl, unit)} of ${describeWater(target, unit)}`;
   }
   if (dayMl === (rowMl ?? 0)) return null;
-  return `${describeWaterMl(dayMl)} today`;
+  return `${describeWater(dayMl, unit)} today`;
 }
 
 /** The three fields a water entry carries that are about the water itself. */
