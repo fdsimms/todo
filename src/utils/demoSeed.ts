@@ -904,6 +904,20 @@ export function seedDemoData(): void {
   const doctor = createProject('Questions for Dr. Okafor', { kind: 'list' });
   updateProject(doctor.id, { category: 'Ideas' });
 
+  // What `CookbookChecklistSheet` builds from a photo of a table of contents:
+  // a list-kind project named for the book, one item per recipe, some already
+  // checked off. Seeded with a couple already cooked so the checklist reads as
+  // progress through a book rather than as an ordinary uncompleted list —
+  // that's the whole feature this exists to demo.
+  const cookbook = createProject('Six Seasons', { kind: 'list' });
+  updateProject(cookbook.id, { category: 'Ideas' });
+  ['Grilled Asparagus with Anchovy', 'Sugar Snaps with Mint', 'Roast Chicken with Crispy Bread Salad',
+    'Corn Chaat', 'Slow-Roasted Tomatoes'].forEach((title, i) => {
+    const t = addTask({ title });
+    addExistingToProject(t.id, cookbook.id);
+    if (i < 2) completeTask(t.id);
+  });
+
   // A trip, so the away span is visible as a thing the app has rather than as
   // two empty rows in the project editor (see Project.awayStart). Everything
   // it buys is invisible until a project carries dates: the card's countdown,

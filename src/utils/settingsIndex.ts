@@ -236,6 +236,9 @@ const AI_FEATURE_KEYWORDS: Record<AiFeatureId, string[]> = {
     'claude', 'model', 'nutrition panel', 'nutrition facts', 'calories', 'barcode',
     'product', 'curved', 'glare', 'blurry',
   ],
+  cookbookChecklist: [
+    'claude', 'model', 'table of contents', 'recipes',
+  ],
 };
 
 /** One entry per row `PrivacyAiSettings` actually renders, in the same order. */

@@ -1313,6 +1313,22 @@ describe('demo mode', () => {
     expect(members.every(t => !t.dueDate)).toBe(true);
   });
 
+  it('seeds a cookbook checklist with some recipes already cooked', () => {
+    // What CookbookChecklistSheet builds from a photo of a table of
+    // contents: a list-kind project named for the book, one item per
+    // recipe. Seeded with a mix of completed and outstanding rows so it
+    // reads as progress through a book rather than as an ordinary list.
+    useDemoStore.getState().enterDemoMode();
+
+    const cookbook = useProjectStore.getState().projects.find(p => p.title === 'Six Seasons');
+    expect(cookbook?.kind).toBe('list');
+
+    const members = useTaskStore.getState().tasks.filter(t => t.projectId === cookbook?.id);
+    expect(members.length).toBeGreaterThan(2);
+    expect(members.some(t => t.completed)).toBe(true);
+    expect(members.some(t => !t.completed)).toBe(true);
+  });
+
   it('seeds a running list that never offers to mark itself complete', () => {
     // Gift ideas doubles as the demo instance of Project.ongoing — a list
     // nobody expects to reach a finish line, unlike Kitchen refresh above.

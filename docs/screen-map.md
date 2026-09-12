@@ -40,9 +40,9 @@ components below.
 - `src/screens/PeopleScreen.tsx` — ContactPickerSheet, EmptyState, Fab, HubPills, PaintSelection, PersonEditor, QuickAddNameSheet, ReorderableList, ScreenHeader, SelectionDot, SimpleBulkBar, SwipeableRow, +1 more
 - `src/screens/PersonDetailScreen.tsx` — DetailHeader, EmptyState, InlineAction, PersonEditor, PersonHistorySheet, PersonNoteSheet
 - `src/screens/ProjectDetailScreen.tsx` — ApplyTemplateSheet, BulkActionBar, DeliverablePromptQueue, DeliverablePromptSheet, DetailHeader, EmptyState, Fab, GroupDropTarget, InlineAction, OfferBanner, PaintSelection, ProjectDecisions, +16 more
-- `src/screens/ProjectsScreen.tsx` — EmptyState, Fab, FabDropZones, ListBulkBar, PaintSelection, ProgressBar, ProjectCategoriesSheet, ProjectEditor, ProjectsOptionsMenu, QuickAddProjectModal, ReorderableList, ScreenHeader, +3 more
+- `src/screens/ProjectsScreen.tsx` — CookbookChecklistSheet, EmptyState, Fab, FabDropZones, ListBulkBar, PaintSelection, ProgressBar, ProjectCategoriesSheet, ProjectEditor, ProjectsOptionsMenu, QuickAddProjectModal, ReorderableList, +4 more
 - `src/screens/RecipeDetailScreen.tsx` — ComponentChoiceSheet, CookModeSheet, CountStepper, DetailHeader, EmptyState, IngredientCatalogMatchSheet, InlineAction, ListBulkBar, NumberPadAccessory, PillGroup, PlanMealSheet, PrepTaskSheet, +13 more
-- `src/screens/RecipesScreen.tsx` — ActiveTripBanner, EmptyState, Fab, FabDropZones, HubPills, InventRecipeSheet, ListBulkBar, PlanMealSheet, QuickAddNameSheet, RecipeCreateSheet, RecipeSortFilterSheet, RecipeSourcePicker, +6 more
+- `src/screens/RecipesScreen.tsx` — ActiveTripBanner, CookbookChecklistSheet, EmptyState, Fab, FabDropZones, HubPills, InventRecipeSheet, ListBulkBar, PlanMealSheet, QuickAddNameSheet, RecipeCreateSheet, RecipeSortFilterSheet, +7 more
 - `src/screens/RemindersScreen.tsx` — EmptyState, ScreenHeader, TaskEditor
 - `src/screens/SearchScreen.tsx` — EmptyState, HighlightedText, QuickAddModal, ScreenHeader, SearchField, TaskCheckbox, TaskEditor, TaskGroupEditor
 - `src/screens/SettingsGroupScreen.tsx` — AboutSettings, AppearanceSettings, CalendarSettings, CompletionCalendarSettings, DataResetSettings, DayTimeSettings, DeadlineCalendarSettings, DetailHeader, FeatureAreasSettings, GeneratedTasksSection, HealthSettings, KitchenSettings, +8 more
@@ -89,6 +89,7 @@ Where each component can appear.
 - `src/components/CookModeSheet.tsx` — on RecipeDetailScreen
 - `src/components/CookRecap.tsx` — on app shell
 - `src/components/CookRecapSheet.tsx` — on app shell
+- `src/components/CookbookChecklistSheet.tsx` — on ProjectsScreen, RecipesScreen
 - `src/components/CookbookEditor.tsx` — on CookbooksScreen
 - `src/components/CookbookMergeSheet.tsx` — on CookbooksScreen
 - `src/components/CountStepper.tsx` — on ArchivedScreen, BackfillScreen, CalendarScreen, CategoryDetailScreen, FoodLogScreen, GroceryScreen, KitchenScreen, MealPlanScreen, PeopleScreen, PersonDetailScreen, ProjectDetailScreen, ProjectsScreen, +13 more
@@ -104,7 +105,7 @@ Where each component can appear.
 - `src/components/EditorRow.tsx` — on ArchivedScreen, CalendarScreen, CategoriesScreen, CategoryDetailScreen, MedicationScreen, MoodHistoryScreen, MoodScreen, PeopleScreen, PersonDetailScreen, ProjectDetailScreen, ProjectsScreen, RecipeDetailScreen, +10 more
 - `src/components/EditorSheet.tsx` — on ArchivedScreen, CalendarScreen, CategoryDetailScreen, MedicationScreen, MoodHistoryScreen, MoodScreen, PeopleScreen, PersonDetailScreen, ProjectDetailScreen, ProjectsScreen, RecipeDetailScreen, RemindersScreen, +10 more
 - `src/components/EmojiPickerSheet.tsx` — on CategoriesScreen, PeopleScreen, RecipesScreen, TagsScreen, TemplatesScreen
-- `src/components/EmptyNote.tsx` — on GroceryScreen
+- `src/components/EmptyNote.tsx` — on GroceryScreen, ProjectsScreen, RecipesScreen
 - `src/components/EmptyState.tsx` — on ArchivedScreen, BackfillScreen, CalendarScreen, CategoriesScreen, CategoryDetailScreen, CookbookDetailScreen, CookbooksScreen, FoodLogScreen, GroceryScreen, KitchenScreen, LogbookScreen, MealPlanScreen, +23 more
 - `src/components/ErrorBoundary.tsx` — on app shell
 - `src/components/EstimateMealSheet.tsx` — on FoodLogScreen, app shell
@@ -206,7 +207,7 @@ Where each component can appear.
 - `src/components/RecipePickerSheet.tsx` — on CalendarScreen, CategoryDetailScreen, MealPlanScreen, ProjectDetailScreen, SearchScreen, TagsScreen, TodayScreen
 - `src/components/RecipeScaleChips.tsx` — on GroceryScreen, MealPlanScreen, RecipeDetailScreen
 - `src/components/RecipeSortFilterSheet.tsx` — on RecipesScreen
-- `src/components/RecipeSourcePicker.tsx` — on GroceryScreen, KitchenScreen, RecipeDetailScreen, RecipesScreen
+- `src/components/RecipeSourcePicker.tsx` — on GroceryScreen, KitchenScreen, ProjectsScreen, RecipeDetailScreen, RecipesScreen
 - `src/components/RecipeSourceSheet.tsx` — on GroceryScreen
 - `src/components/RecipeTagFilterSheet.tsx` — on RecipesScreen
 - `src/components/RecipeTimerRow.tsx` — on RecipeDetailScreen
