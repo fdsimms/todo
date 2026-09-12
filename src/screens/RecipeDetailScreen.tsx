@@ -72,7 +72,6 @@ import { haptics } from '../utils/haptics';
 import { animateLayout } from '../utils/layoutAnimation';
 import { pickRecipeImage, resolveRecipeImagePath, type RecipePhotoSource } from '../utils/recipePhoto';
 import { describeRecipe, totalMinutes } from '../utils/recipeUtils';
-import { dayKeyOf, getLogicalToday } from '../utils/dateUtils';
 import { buildIngredientsText, buildRecipeShareText } from '../utils/shareText';
 import { allSectionsOf, sectionsFromMergedOrder, type SectionListEntry } from '../utils/recipeSections';
 import { PillGroup } from '../components/PillGroup';
@@ -334,6 +333,11 @@ export function RecipeDetailScreen() {
   const [editingPrepTask, setEditingPrepTask] = useState<RecipePrepTask | null>(null);
   const [addToListVisible, setAddToListVisible] = useState(false);
   const [planVisible, setPlanVisible] = useState(false);
+  // Set only by the post-shop "plan this" offer below, never by the footer's
+  // own Plan button — that one plans as-written, same as it always has.
+  // Cleared on every close, confirmed or cancelled, so a later plain "Plan"
+  // never inherits a scale left over from an earlier scaled shop.
+  const [pendingPlanScale, setPendingPlanScale] = useState<number | null>(null);
   const { planRecipe, offerPrepTasks, earliestUnplannedSlotToday } = usePlanMeal();
   const [extractVisible, setExtractVisible] = useState(false);
   const [cookModeVisible, setCookModeVisible] = useState(false);
@@ -665,29 +669,18 @@ export function RecipeDetailScreen() {
   // The bridge from an ad-hoc shop to the one place a scale actually lasts.
   // `scale` above is deliberately screen state — reopening this recipe later
   // starts over at 1× — so a half-batch shopped for here and cooked from a
-  // fresh visit tonight has nothing telling Cook Mode it was ever anything
-  // but as-written. Planning the meal is the existing, already-round-tripping
-  // fix (MealPlanEntry.recipeScale), so this just offers it at the one moment
-  // the number is still on screen. Only worth asking at all when the shop
-  // wasn't as-written — 1× already matches Cook Mode's own default.
+  // fresh visit has nothing telling Cook Mode it was ever anything but
+  // as-written. Planning the meal is the existing, already-round-tripping fix
+  // (MealPlanEntry.recipeScale), so this just opens the same day/slot picker
+  // the footer's own "Plan" button does, with the scale just shopped for
+  // riding along into whichever night gets picked. Only worth offering at all
+  // when the shop wasn't as-written — 1× already matches Cook Mode's own
+  // default, and PlanMealSheet's own "any day" chips are the same picker
+  // either way, not a narrower "tonight only" shortcut.
   const offerPlanForScaledShop = (shoppedScale: number) => {
     if (shoppedScale === 1) return;
-    Alert.alert(
-      'Plan this for tonight?',
-      `Plan ${recipe.name} at ${formatScale(shoppedScale)} so Cook Mode remembers the batch size.`,
-      [
-        { text: 'Not now', style: 'cancel' },
-        {
-          text: 'Plan for tonight',
-          onPress: () => {
-            const entry = planRecipe(
-              recipe, dayKeyOf(getLogicalToday()), earliestUnplannedSlotToday(), shoppedScale
-            );
-            if (entry) offerPrepTasks(entry);
-          },
-        },
-      ]
-    );
+    setPendingPlanScale(shoppedScale);
+    setPlanVisible(true);
   };
 
   const confirmRemoveComponent = (resolved: ResolvedComponent) => {
@@ -2192,12 +2185,12 @@ export function RecipeDetailScreen() {
 
       <PlanMealSheet
         visible={planVisible}
-        title={recipe.name}
+        title={pendingPlanScale != null ? `${recipe.name} (${formatScale(pendingPlanScale)})` : recipe.name}
         defaultSlot={earliestUnplannedSlotToday()}
-        onPlan={(dateKey, slot) => planRecipe(recipe, dateKey, slot)}
+        onPlan={(dateKey, slot) => planRecipe(recipe, dateKey, slot, pendingPlanScale ?? undefined)}
         // After the dismissal, never before — see PlanRecipeSheet.onPlanned.
         onPlanned={offerPrepTasks}
-        onClose={() => setPlanVisible(false)}
+        onClose={() => { setPlanVisible(false); setPendingPlanScale(null); }}
       />
 
       <RecipeToListSheet

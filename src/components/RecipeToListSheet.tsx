@@ -94,12 +94,12 @@ interface Props {
    * added — a nothing-to-add close never calls it — and only wired up by the
    * recipe screen's ad-hoc add, which is the one caller with no lasting place
    * for that scale to live (see the `scale` state above). It's what lets that
-   * screen turn around and offer "plan this for tonight", which does have one
+   * screen turn around and offer planning it onto a day, which does have one
    * (`MealPlanEntry.recipeScale`), rather than the number being gone the
    * moment this sheet closes. Deferred to the alert's own button, not fired
-   * before it, so a second alert doesn't collide with this sheet's — see
-   * usePlanMeal's `offerPrepTasks` doc comment for the same "already
-   * presenting" reason.
+   * before it, so opening that other sheet doesn't collide with this one's
+   * still-open alert — see usePlanMeal's `offerPrepTasks` doc comment for the
+   * same "already presenting" reason.
    */
   onAdded?: (scale: number) => void;
   onClose: () => void;
