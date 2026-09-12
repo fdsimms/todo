@@ -196,7 +196,7 @@ Where each component can appear.
 - `src/components/QuickSearchModal.tsx` — on TodayScreen
 - `src/components/ReceiptImportSheet.tsx` — on GroceryScreen, KitchenScreen
 - `src/components/RecipeChoiceChips.tsx` — on GroceryScreen, MealPlanScreen, RecipeDetailScreen
-- `src/components/RecipeComponentPicker.tsx` — on RecipeDetailScreen
+- `src/components/RecipeComponentPicker.tsx` — on RecipeDetailScreen, RecipesScreen
 - `src/components/RecipeCreateSheet.tsx` — on RecipesScreen
 - `src/components/RecipeEditor.tsx` — on RecipeDetailScreen
 - `src/components/RecipeExtractSheet.tsx` — on RecipeDetailScreen
