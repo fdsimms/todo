@@ -199,3 +199,84 @@ describe('markHistoryHandled', () => {
     expect(useCalendarStore.getState().handledHistory['e-1']).toBe('2026-08-27');
   });
 });
+
+/**
+ * Reads that overlap, and reads that outlive the switch that started them.
+ *
+ * This store has the most triggers of the four that read from outside the app:
+ * the initial mount, the settings subscription and the foreground listener all
+ * call `refresh`, and they routinely fire together. See `refreshGuard.ts`.
+ */
+describe('a read that is no longer the current one', () => {
+  const deferredRead = () => {
+    let release: (v: unknown) => void = () => {};
+    (fetchEvents as jest.Mock).mockReturnValueOnce(
+      new Promise(resolve => {
+        release = resolve;
+      })
+    );
+    return { release: (v: unknown) => release(v) };
+  };
+
+  it('does not put the events back after the feature was switched off', async () => {
+    const first = deferredRead();
+    const inFlight = useCalendarStore.getState().refresh();
+    useCalendarStore.getState().clear();
+    first.release(readResult());
+    await inFlight;
+
+    const state = useCalendarStore.getState();
+    expect(state.events).toEqual([]);
+    expect(state.loaded).toBe(false);
+    expect(state.windowStart).toBeNull();
+  });
+
+  it('does not put the past window back either', async () => {
+    const first = deferredRead();
+    const inFlight = useCalendarStore.getState().refreshPast();
+    useCalendarStore.getState().clear();
+    first.release(readResult());
+    await inFlight;
+
+    expect(useCalendarStore.getState().pastEvents).toEqual([]);
+    expect(useCalendarStore.getState().pastLoaded).toBe(false);
+  });
+
+  // Two refreshes in flight over different windows: the one that started last
+  // is the one asking the current question, so it is the one that wins however
+  // the two resolve.
+  it('lets the later of two overlapping reads win', async () => {
+    const first = deferredRead();
+    const stale = useCalendarStore.getState().refresh();
+
+    (fetchEvents as jest.Mock).mockResolvedValue(readResult([event('current')]));
+    await useCalendarStore.getState().refresh();
+
+    first.release(readResult([event('stale')]));
+    await stale;
+
+    expect(useCalendarStore.getState().events.map(e => e.id)).toEqual(['current']);
+  });
+
+  // A failed read leaves the previous window in place rather than blanking it,
+  // but only while it is still the read anyone is waiting on.
+  it('does not blank a newer window with an older read failing', async () => {
+    const first = deferredRead();
+    const stale = useCalendarStore.getState().refresh();
+
+    (fetchEvents as jest.Mock).mockResolvedValue(readResult([event('current')]));
+    await useCalendarStore.getState().refresh();
+
+    first.release(null);
+    await stale;
+
+    expect(useCalendarStore.getState().loaded).toBe(true);
+  });
+
+  it('lets the next read write normally after a clear', async () => {
+    useCalendarStore.getState().clear();
+    (fetchEvents as jest.Mock).mockResolvedValue(readResult());
+    await useCalendarStore.getState().refresh();
+    expect(useCalendarStore.getState().loaded).toBe(true);
+  });
+});

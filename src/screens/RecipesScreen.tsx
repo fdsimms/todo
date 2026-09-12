@@ -1053,7 +1053,7 @@ const makeStyles = (colors: Colors) => StyleSheet.create({
   sectionHeaderLeft: {
     flexDirection: 'row',
     alignItems: 'center',
-    gap: 6,
+    gap: spacing.xsm,
   },
   sectionHeaderText: {
     color: colors.textSecondary,
@@ -1087,7 +1087,7 @@ const makeStyles = (colors: Colors) => StyleSheet.create({
   itemWrapper: {
     backgroundColor: colors.bgSecondary,
     marginHorizontal: spacing.md,
-    marginVertical: 2,
+    marginVertical: spacing.xxs,
     borderRadius: radius.md,
     overflow: 'hidden',
   },
@@ -1098,7 +1098,7 @@ const makeStyles = (colors: Colors) => StyleSheet.create({
     flexDirection: 'row',
     alignItems: 'center',
     paddingHorizontal: spacing.md,
-    paddingVertical: 12,
+    paddingVertical: spacing.smd,
     gap: spacing.md,
   },
   // Opaque, not a translucent tint directly: this can be applied the instant
@@ -1111,7 +1111,7 @@ const makeStyles = (colors: Colors) => StyleSheet.create({
   // own footprint (margin + radius), same treatment as Today's dropSlot.
   dropSlot: {
     marginHorizontal: spacing.md,
-    marginVertical: 2,
+    marginVertical: spacing.xxs,
     borderRadius: radius.md,
     backgroundColor: colors.bgSecondary,
     opacity: 0.55,

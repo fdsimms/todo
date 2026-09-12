@@ -946,12 +946,12 @@ function makeStyles(colors: Colors) {
       gap: spacing.md,
       backgroundColor: colors.bgSecondary,
       borderRadius: radius.md,
-      paddingVertical: 12,
+      paddingVertical: spacing.smd,
       paddingHorizontal: spacing.md,
     },
     suggestBody: { flex: 1, minWidth: 0 },
     suggestName: { fontSize: font.md, fontWeight: fontWeight.medium, color: colors.text },
-    suggestMeta: { fontSize: font.xs, color: colors.textTertiary, marginTop: 2 },
+    suggestMeta: { fontSize: font.xs, color: colors.textTertiary, marginTop: spacing.xxs },
     sectionHeader: {
       paddingHorizontal: spacing.md,
       paddingTop: spacing.md,
@@ -970,9 +970,9 @@ function makeStyles(colors: Colors) {
       gap: spacing.md,
       backgroundColor: colors.bgSecondary,
       marginHorizontal: spacing.md,
-      marginVertical: 2,
+      marginVertical: spacing.xxs,
       borderRadius: radius.md,
-      paddingVertical: 12,
+      paddingVertical: spacing.smd,
       paddingHorizontal: spacing.md,
     },
     rowActive: {
@@ -984,7 +984,7 @@ function makeStyles(colors: Colors) {
       // Matches the row geometry above, so the gap that opens is exactly the
       // shape of the row about to land in it.
       marginHorizontal: spacing.md,
-      marginVertical: 2,
+      marginVertical: spacing.xxs,
       borderRadius: radius.md,
       backgroundColor: colors.bgSecondary,
       opacity: 0.55,
@@ -995,19 +995,19 @@ function makeStyles(colors: Colors) {
     // have.
     dropHint: {
       marginHorizontal: spacing.md,
-      marginVertical: 2,
+      marginVertical: spacing.xxs,
       borderRadius: radius.md,
       borderWidth: border.sm,
       borderStyle: 'dashed',
       borderColor: colors.separator,
-      paddingVertical: 12,
+      paddingVertical: spacing.smd,
       paddingHorizontal: spacing.md,
     },
     dropHintText: { fontSize: font.sm, color: colors.textTertiary },
     body: { flex: 1 },
     name: { fontSize: font.md, fontWeight: fontWeight.medium, color: colors.text },
-    meta: { fontSize: font.xs, color: colors.textTertiary, marginTop: 2 },
+    meta: { fontSize: font.xs, color: colors.textTertiary, marginTop: spacing.xxs },
     metaBox: { color: colors.textSecondary, fontWeight: fontWeight.medium },
-    outButton: { padding: 2 },
+    outButton: { padding: spacing.xxs },
   });
 }

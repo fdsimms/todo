@@ -550,7 +550,7 @@ function makeStyles(colors: Colors) {
       flexDirection: 'row',
       alignItems: 'center',
       justifyContent: 'space-between',
-      paddingVertical: 2,
+      paddingVertical: spacing.xxs,
     },
     countedDetailLabel: { fontSize: font.sm, color: colors.textSecondary },
     countedDetailAmount: { fontSize: font.sm, fontWeight: fontWeight.medium, color: colors.text },

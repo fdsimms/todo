@@ -1,4 +1,4 @@
-import React, { useMemo, useState } from 'react';
+import React, { useMemo, useState, useCallback } from 'react';
 import { View, Text, FlatList, TouchableOpacity, Alert, StyleSheet } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { useBottomTabBarHeight } from '@react-navigation/bottom-tabs';
@@ -157,10 +157,11 @@ export function StuckScreen() {
   // finishing it from this screen quietly loses the answer.
   const [promptTask, setPromptTask] = useState<Task | null>(null);
 
-  const openEditor = (task: Task) => {
+  // Stable, so `WaiterRow`'s memo holds through a screen-state change.
+  const openEditor = useCallback((task: Task) => {
     setEditingTask(task);
     setEditorVisible(true);
-  };
+  }, []);
 
   // waitingTasks already sorts by blockedById, so equal keys arrive adjacent
   // and this only has to break the runs apart.
@@ -233,14 +234,14 @@ export function StuckScreen() {
     return parts.length > 0 ? parts.join(' · ') : undefined;
   }, [waitingTasks.length, driftEntries.length]);
 
-  const release = (task: Task) => {
+  const release = useCallback((task: Task) => {
     haptics.tap();
     animateLayout();
     // Both, always: a task held by a person and a task alike leaves this screen
     // by the same button, and clearing only the one the row happened to be
     // filed under would leave it waiting on the other with nothing on screen.
     updateTask(task.id, { blockedById: null, waitingOnPersonId: null });
-  };
+  }, [updateTask]);
 
   const finishBlocker = (blocker: Task) => {
     if (asksOnCompletion(blocker)) {
@@ -350,8 +351,8 @@ export function StuckScreen() {
                 task={task}
                 categoryLabel={labelForCategory(task.category, getCategoryByName)}
                 dateLabel={formatTaskDate(task, dayResetTime)}
-                onPress={() => openEditor(task)}
-                onRelease={() => release(task)}
+                onPress={openEditor}
+                onRelease={release}
                 styles={styles}
                 colors={colors}
                 cardShadow={shadows.card}
@@ -415,8 +416,8 @@ export function StuckScreen() {
               task={task}
               categoryLabel={labelForCategory(task.category, getCategoryByName)}
               dateLabel={formatTaskDate(task, dayResetTime)}
-              onPress={() => openEditor(task)}
-              onRelease={() => release(task)}
+              onPress={openEditor}
+              onRelease={release}
               styles={styles}
               colors={colors}
               cardShadow={shadows.card}
@@ -534,20 +535,22 @@ interface WaiterRowProps {
   task: Task;
   categoryLabel: string | null;
   dateLabel: string | null;
-  onPress: () => void;
-  onRelease: () => void;
+  // Each takes the task it acts on rather than the screen closing over it once
+  // per row, so one stable function serves every row and the memo holds.
+  onPress: (task: Task) => void;
+  onRelease: (task: Task) => void;
   styles: ReturnType<typeof makeStyles>;
   colors: Colors;
   cardShadow: object;
 }
 
-function WaiterRow({ task, categoryLabel, dateLabel, onPress, onRelease, styles, colors, cardShadow }: WaiterRowProps) {
+const WaiterRow = React.memo(function WaiterRow({ task, categoryLabel, dateLabel, onPress, onRelease, styles, colors, cardShadow }: WaiterRowProps) {
   const title = displayTitleFor(task);
   return (
     <View style={[styles.card, cardShadow]}>
       <TouchableOpacity
         style={styles.cardBody}
-        onPress={onPress}
+        onPress={() => onPress(task)}
         activeOpacity={interaction.activeOpacity}
         accessible
         accessibilityRole="button"
@@ -574,7 +577,7 @@ function WaiterRow({ task, categoryLabel, dateLabel, onPress, onRelease, styles,
       </TouchableOpacity>
       <TouchableOpacity
         style={styles.releaseButton}
-        onPress={onRelease}
+        onPress={() => onRelease(task)}
         hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
         activeOpacity={interaction.activeOpacity}
         accessibilityRole="button"
@@ -584,7 +587,7 @@ function WaiterRow({ task, categoryLabel, dateLabel, onPress, onRelease, styles,
       </TouchableOpacity>
     </View>
   );
-}
+});
 
 const makeStyles = (colors: Colors) => StyleSheet.create({
   container: { flex: 1, backgroundColor: colors.bg },
@@ -676,7 +679,7 @@ const makeStyles = (colors: Colors) => StyleSheet.create({
     lineHeight: lineHeight.md,
     fontWeight: fontWeight.regular,
   },
-  metaRow: { flexDirection: 'row', flexWrap: 'wrap', alignItems: 'center', gap: spacing.sm, marginTop: 2 },
+  metaRow: { flexDirection: 'row', flexWrap: 'wrap', alignItems: 'center', gap: spacing.sm, marginTop: spacing.xxs },
   metaChip: { flexDirection: 'row', alignItems: 'center', gap: 4, flexShrink: 1 },
   metaText: { color: colors.textSecondary, fontSize: font.xs },
   releaseButton: {
@@ -696,5 +699,5 @@ const makeStyles = (colors: Colors) => StyleSheet.create({
     borderBottomColor: colors.separator,
   },
   driftTitle: { color: colors.text, fontSize: font.md, fontWeight: fontWeight.medium },
-  driftMeta: { color: colors.textTertiary, fontSize: font.xs, marginTop: 2 },
+  driftMeta: { color: colors.textTertiary, fontSize: font.xs, marginTop: spacing.xxs },
 });

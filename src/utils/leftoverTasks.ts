@@ -38,7 +38,13 @@ import { getCurrentDayStart } from './dateUtils';
  * from the moment it's logged, so "soon" already means "look at this now".
  */
 export function wantsUseUpTask(leftover: Leftover, enabled: boolean): boolean {
-  return wantsGeneratedTask(leftover.useUpTask, enabled, needsAttention(leftover));
+  // `needsAttention` defaults its own `now` to a bare `new Date()`, which
+  // flips at real midnight rather than at the user's `dayResetTime` — this is
+  // the scheduling decision that creates the task, so it gets the logical
+  // day instead. `freshnessOf`/`needsAttention`'s other callers (the fridge
+  // card's badge, the hub pill) are display, not scheduling, and keep the
+  // wall clock on purpose — see the grace-window note in CLAUDE.md.
+  return wantsGeneratedTask(leftover.useUpTask, enabled, needsAttention(leftover, getCurrentDayStart()));
 }
 
 /** What a use-up task is called. Built off `leftover.title`, same as the other two. */

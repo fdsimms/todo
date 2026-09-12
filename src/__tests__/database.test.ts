@@ -9,6 +9,7 @@
 import {
   initDatabase,
   dbGetSetting,
+  dbGetAllSettings,
   dbSetSetting,
   dbGetAllTasks,
   dbInsertTask,
@@ -538,6 +539,29 @@ describe('dbGetSetting / dbSetSetting', () => {
     dbSetSetting('b', '2');
     expect(dbGetSetting('a')).toBe('1');
     expect(dbGetSetting('b')).toBe('2');
+  });
+});
+
+describe('dbGetAllSettings', () => {
+  it('returns every stored key in one read', () => {
+    dbSetSetting('a', '1');
+    dbSetSetting('b', '2');
+    const all = dbGetAllSettings();
+    expect(all.get('a')).toBe('1');
+    expect(all.get('b')).toBe('2');
+  });
+
+  it('agrees with dbGetSetting on a missing key', () => {
+    expect(dbGetAllSettings().get('nonexistent')).toBeUndefined();
+    expect(dbGetSetting('nonexistent')).toBeNull();
+  });
+
+  // A Map rather than an object literal, so a stored key that happens to name
+  // something on Object.prototype reads as absent rather than as a function.
+  it('does not answer for keys it never stored', () => {
+    expect(dbGetAllSettings().get('constructor')).toBeUndefined();
+    dbSetSetting('constructor', 'stored');
+    expect(dbGetAllSettings().get('constructor')).toBe('stored');
   });
 });
 

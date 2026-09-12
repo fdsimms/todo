@@ -120,7 +120,7 @@ const makeStyles = (colors: Colors) => StyleSheet.create({
   headline: {
     flexDirection: 'row',
     alignItems: 'flex-start',
-    gap: 6,
+    gap: spacing.xsm,
   },
   headlineText: {
     flex: 1,

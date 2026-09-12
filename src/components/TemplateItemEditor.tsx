@@ -64,6 +64,7 @@ import { EditorRow } from './EditorRow';
 import { EditorSheet } from './EditorSheet';
 import { NumberPadAccessory } from './NumberPadAccessory';
 import { CountStepper } from './CountStepper';
+import { capitalize } from '../utils/capitalize';
 
 // Ceilings for the two steppers whose hand-rolled versions had none. Both sit
 // well past any real value; CountStepper needs a bound to disable its + key
@@ -453,7 +454,6 @@ export function TemplateItemEditor({ visible, templateId, templateName, item, in
     setChainIndex(i => Math.min(i, Math.max(0, nextChain.length - 1)));
   };
 
-  const capitalize = (str: string) => str.charAt(0).toUpperCase() + str.slice(1);
   const timeOfDaySummary = timeSegments.length > 0
     ? timeSegments.map(capitalize).join(', ')
     : undefined;
@@ -1733,12 +1733,12 @@ const makeStyles = (colors: Colors) => StyleSheet.create({
   pillActiveNeutral: { backgroundColor: colors.bgQuaternary },
   pillText: { color: colors.text, fontSize: font.sm, fontWeight: '500' },
   pillTextActive: { color: colors.text, fontWeight: '600' },
-  pillHint: { color: colors.textTertiary, fontSize: 10, marginTop: 2 },
+  pillHint: { color: colors.textTertiary, fontSize: 10, marginTop: spacing.xxs },
   /** One question's row of answers. Multi-select, so the pills fill with accent rather than taking the segmented track's raised treatment — several can be on at once. */
   conditionBlock: { gap: spacing.xs, marginTop: spacing.sm },
   conditionLabel: { color: colors.textSecondary, fontSize: font.xs },
   conditionPill: {
-    paddingHorizontal: 12, paddingVertical: spacing.sm,
+    paddingHorizontal: spacing.smd, paddingVertical: spacing.sm,
     borderRadius: radius.full, backgroundColor: colors.bgTertiary,
   },
   conditionPillOn: { backgroundColor: colors.accentFill },
@@ -1774,7 +1774,7 @@ const makeStyles = (colors: Colors) => StyleSheet.create({
   optionHint: { color: colors.textTertiary, fontSize: font.xs, marginTop: 1 },
   sep: { height: StyleSheet.hairlineWidth, backgroundColor: colors.separator, marginLeft: spacing.md + 18 + spacing.md },
   setBtn: {
-    paddingHorizontal: 12, paddingVertical: 5,
+    paddingHorizontal: spacing.smd, paddingVertical: 5,
     borderRadius: radius.full, backgroundColor: colors.bgTertiary,
   },
   setOffsetText: { color: colors.accent, fontSize: font.sm, fontWeight: '600' },
@@ -1808,7 +1808,7 @@ const makeStyles = (colors: Colors) => StyleSheet.create({
     paddingVertical: 7,
     borderBottomWidth: StyleSheet.hairlineWidth, borderBottomColor: colors.separator,
   },
-  chainItemIndexBtn: { padding: 2 },
+  chainItemIndexBtn: { padding: spacing.xxs },
   chainItemDot: {
     width: 22, height: 22, borderRadius: 11,
     backgroundColor: colors.bgTertiary,
@@ -1824,13 +1824,13 @@ const makeStyles = (colors: Colors) => StyleSheet.create({
   chainInputRow: { flexDirection: 'row', alignItems: 'center', gap: spacing.sm, paddingVertical: 7 },
   chainInput: {
     flex: 1, color: colors.text, fontSize: font.md,
-    borderBottomWidth: 1, borderBottomColor: colors.accent, paddingVertical: 2,
+    borderBottomWidth: 1, borderBottomColor: colors.accent, paddingVertical: spacing.xxs,
   },
   /** A single-line text field inside a CollapsibleField, matching TaskEditor's. */
   fieldBox: {
     color: colors.text, fontSize: font.md,
     backgroundColor: colors.bgTertiary, borderRadius: radius.sm,
-    paddingHorizontal: 12,
+    paddingHorizontal: spacing.smd,
     // Height rather than lineHeight — see the TextInput note in CLAUDE.md.
     height: 36,
   },

@@ -108,9 +108,9 @@ export function QuickAddNameSheet({
 
   const dismiss = (after?: () => void) => {
     Animated.parallel([
-      Animated.timing(scaleAnim, { toValue: 0.95, duration: 120, useNativeDriver: true }),
-      Animated.timing(sheetOpacity, { toValue: 0, duration: 120, useNativeDriver: true }),
-      Animated.timing(backdropOpacity, { toValue: 0, duration: 150, useNativeDriver: true }),
+      Animated.timing(scaleAnim, { toValue: 0.95, duration: animation.duration.dismiss, useNativeDriver: true }),
+      Animated.timing(sheetOpacity, { toValue: 0, duration: animation.duration.dismiss, useNativeDriver: true }),
+      Animated.timing(backdropOpacity, { toValue: 0, duration: animation.duration.fast, useNativeDriver: true }),
     ]).start(() => {
       scaleAnim.setValue(0.95);
       sheetOpacity.setValue(0);
@@ -265,7 +265,7 @@ const makeStyles = (colors: Colors) => StyleSheet.create({
     flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'center',
-    gap: 6,
+    gap: spacing.xsm,
     paddingVertical: 10,
     backgroundColor: colors.bgTertiary,
     borderRadius: radius.md,

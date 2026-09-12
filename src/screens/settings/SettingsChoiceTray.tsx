@@ -102,7 +102,7 @@ const makeStyles = (colors: Colors) => StyleSheet.create({
     backgroundColor: colors.bgSunken,
     paddingVertical: spacing.sm,
     paddingHorizontal: spacing.md,
-    gap: 2,
+    gap: spacing.xxs,
   },
   caption: {
     color: colors.textSecondary, fontSize: font.xs, fontWeight: fontWeight.semibold,
@@ -117,5 +117,5 @@ const makeStyles = (colors: Colors) => StyleSheet.create({
   optionTextGroup: { flexShrink: 1 },
   optionText: { color: colors.text, fontSize: font.md },
   optionTextSelected: { color: colors.accent, fontWeight: fontWeight.medium },
-  optionSubtitle: { color: colors.textTertiary, fontSize: font.xs, marginTop: 2 },
+  optionSubtitle: { color: colors.textTertiary, fontSize: font.xs, marginTop: spacing.xxs },
 });

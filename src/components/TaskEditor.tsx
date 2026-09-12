@@ -80,7 +80,7 @@ import { useTaskGroupStore } from '../store/useTaskGroupStore';
 import { categoryLabel } from '../utils/categoryLabel';
 import { useShallow } from 'zustand/react/shallow';
 import { isStreakAtRecord, nextStreakRecord, streakHint } from '../utils/streakRecord';
-import { formatDeadlineDate, formatScheduledDate, formatHHMM, formatTimeOfDay, hhmmToDate, dateToHHMM, getDeadlineFromOffset, getDeadlineFromMonthDay, describeDeadlineOffset, describeReminderOffset, getTaskDayStart, getCurrentDayStart, getLogicalNow, seriesMonthDaysFrom } from '../utils/dateUtils';
+import { formatDeadlineDate, formatScheduledDate, formatHHMM, formatTimeOfDay, hhmmToDate, dateToHHMM, getDeadlineFromOffset, getDeadlineFromMonthDay, describeDeadlineOffset, describeReminderOffset, getTaskDayStart, getCurrentDayStart, getLogicalNow, getLogicalToday, seriesMonthDaysFrom } from '../utils/dateUtils';
 import { generateId } from '../utils/id';
 import { findArchivedMatch } from '../utils/archiveMatch';
 import { parseTaskInput, describeSchedule, detectContactIntent, matchPersonMentions, getEditorMentionSuggestions, type MentionSuggestionCandidate } from '../utils/parseTaskInput';
@@ -125,6 +125,7 @@ import { InlineTimePicker } from '../screens/settings/InlineTimePicker';
 import { PRIORITY_SEGMENTS } from '../utils/prioritySegments';
 import { describeRecurrence } from '../utils/recurrenceLabels';
 import { KNOWN_LINK_APPS, linkAppsFor } from '../constants/linkApps';
+import { capitalize } from '../utils/capitalize';
 
 /** The kind picker's segments. The hint under the track says what the pick does. */
 const TASK_KIND_SEGMENTS = TASK_KIND_META.map(meta => ({
@@ -1586,7 +1587,11 @@ export function TaskEditor({ visible, task, initialDraft, onClose }: Props) {
 
   const openPicker = (mode: PickerMode) => {
     if (mode === 'reminder') {
-      const defaultDate = dueDate ?? new Date();
+      // Copied rather than used directly: setHours below mutates, and mutating
+      // `dueDate` here would move the task's own date to 09:00 as a side effect
+      // of opening the reminder picker. The logical day when there is no date,
+      // for the reason every other default in this file gives.
+      const defaultDate = new Date(dueDate ?? getLogicalToday());
       defaultDate.setHours(9, 0, 0, 0);
       setPickerDate(reminderTime ?? defaultDate);
     }
@@ -1779,7 +1784,7 @@ export function TaskEditor({ visible, task, initialDraft, onClose }: Props) {
 
   const setRecurrenceEndOnDate = () => {
     setRecurrenceCount(null);
-    if (!recurrenceEndDate) setRecurrenceEndDate(addMonths(dueDate ?? new Date(), 1));
+    if (!recurrenceEndDate) setRecurrenceEndDate(addMonths(dueDate ?? getLogicalToday(), 1));
     setShowEndDatePicker(true);
   };
 
@@ -2027,7 +2032,6 @@ export function TaskEditor({ visible, task, initialDraft, onClose }: Props) {
     return `${formatQuotaProgress(0, targetCount ?? 0, targetUnit)} a day: one every ${quotaIntervalMinutes} minutes, ${from} to ${to}${scope}.`;
   })();
 
-  const capitalize = (s: string) => s.charAt(0).toUpperCase() + s.slice(1);
   const timeOfDaySummary = timeSegments.length > 0
     ? timeSegments.map(capitalize).join(', ')
     : undefined;
@@ -2678,7 +2682,7 @@ export function TaskEditor({ visible, task, initialDraft, onClose }: Props) {
                   value={durationText}
                   onChangeText={t => { setDurationText(t); applyDuration(t, durationUnit); }}
                   keyboardType="number-pad"
-                  placeholder="0"
+                  placeholder="Amount"
                   placeholderTextColor={colors.textTertiary}
                   inputAccessoryViewID={Platform.OS === 'ios' ? NUMBER_PAD_ACCESSORY_ID : undefined}
                 />
@@ -3675,7 +3679,7 @@ export function TaskEditor({ visible, task, initialDraft, onClose }: Props) {
                     <View style={styles.scheduleRow}>
                       <TouchableOpacity
                         style={[styles.schedulePill, deadlineMonthDay > 0 && styles.schedulePillActive]}
-                        onPress={() => setDeadlineMonthDay(deadlineMonthDay > 0 ? deadlineMonthDay : (dueDate ?? new Date()).getDate())}
+                        onPress={() => setDeadlineMonthDay(deadlineMonthDay > 0 ? deadlineMonthDay : (dueDate ?? getLogicalToday()).getDate())}
                       >
                         <Text style={[styles.schedulePillText, deadlineMonthDay > 0 && styles.schedulePillTextActive]}>
                           On a day
@@ -4090,7 +4094,7 @@ export function TaskEditor({ visible, task, initialDraft, onClose }: Props) {
                 onChangeDays={setRecurrenceDays}
                 recurrenceMonthDay={recurrenceMonthDay}
                 onChangeMonthDay={setRecurrenceMonthDay}
-                seedMonthDay={() => (dueDate ?? new Date()).getDate()}
+                seedMonthDay={() => (dueDate ?? getLogicalToday()).getDate()}
                 recurrenceFromCompletion={recurrenceFromCompletion}
                 onChangeFromCompletion={setRecurrenceFromCompletion}
                 recurrenceCount={recurrenceCount}
@@ -4098,7 +4102,7 @@ export function TaskEditor({ visible, task, initialDraft, onClose }: Props) {
                 weekOrdinal={{
                   value: recurrenceWeekOrdinal,
                   onChange: setRecurrenceWeekOrdinal,
-                  seedWeekday: () => (dueDate ?? new Date()).getDay(),
+                  seedWeekday: () => (dueDate ?? getLogicalToday()).getDay(),
                 }}
                 onSelectEndNever={setRecurrenceEndNever}
                 onSelectEndCount={setRecurrenceEndAfterCount}
@@ -4999,7 +5003,7 @@ export function TaskEditor({ visible, task, initialDraft, onClose }: Props) {
                   value={customEffortText}
                   onChangeText={t => { setCustomEffortText(t); applyCustomEffort(t, customEffortUnit); }}
                   keyboardType="number-pad"
-                  placeholder="0"
+                  placeholder="Amount"
                   placeholderTextColor={colors.textTertiary}
                   inputAccessoryViewID={Platform.OS === 'ios' ? NUMBER_PAD_ACCESSORY_ID : undefined}
                   autoFocus
@@ -5490,7 +5494,7 @@ const makeStyles = (colors: Colors) => StyleSheet.create({
   mentionSuggestionRow: {
     flexDirection: 'row',
     flexWrap: 'wrap',
-    gap: 6,
+    gap: spacing.xsm,
     marginHorizontal: spacing.md,
     marginTop: -4,
     marginBottom: spacing.sm,
@@ -5498,9 +5502,9 @@ const makeStyles = (colors: Colors) => StyleSheet.create({
   scheduleBannerBtn: {
     flexDirection: 'row',
     alignItems: 'center',
-    gap: 6,
+    gap: spacing.xsm,
     maxWidth: '100%',
-    paddingHorizontal: 12,
+    paddingHorizontal: spacing.smd,
     paddingVertical: 7,
     borderRadius: radius.md,
     backgroundColor: colors.accentFill,
@@ -5546,7 +5550,7 @@ const makeStyles = (colors: Colors) => StyleSheet.create({
   tagRow: { flexDirection: 'row', flexWrap: 'wrap', gap: spacing.sm, alignItems: 'center' },
   tagChip: {
     flexDirection: 'row', alignItems: 'center', gap: 4,
-    paddingHorizontal: 12, minHeight: interaction.pillHeight,
+    paddingHorizontal: spacing.smd, minHeight: interaction.pillHeight,
     borderRadius: radius.full,
   },
   tagDot: { width: 6, height: 6, borderRadius: 3 },
@@ -5568,7 +5572,7 @@ const makeStyles = (colors: Colors) => StyleSheet.create({
   blocksRemove: { padding: 4 },
   tagSuggestions: { flexDirection: 'row', flexWrap: 'wrap', gap: spacing.xs, marginTop: spacing.sm },
   tagSuggestion: {
-    paddingHorizontal: 12, minHeight: interaction.pillHeight,
+    paddingHorizontal: spacing.smd, minHeight: interaction.pillHeight,
     justifyContent: 'center',
     borderRadius: radius.full, backgroundColor: colors.bgTertiary,
   },
@@ -5585,14 +5589,14 @@ const makeStyles = (colors: Colors) => StyleSheet.create({
   kindHint: { color: colors.textSecondary, fontSize: font.xs, marginTop: spacing.sm, lineHeight: 16 },
   pillText: { color: colors.text, fontSize: font.sm, fontWeight: '500' },
   pillTextActive: { color: colors.text, fontWeight: '600' },
-  pillHint: { color: colors.textSecondary, fontSize: font.xs, marginTop: 2 },
+  pillHint: { color: colors.textSecondary, fontSize: font.xs, marginTop: spacing.xxs },
   customEffortRow: {
     flexDirection: 'row', alignItems: 'center', gap: spacing.sm, marginTop: spacing.sm,
   },
   customEffortInput: {
     color: colors.text, fontSize: font.md, fontWeight: '600',
     backgroundColor: colors.bgTertiary, borderRadius: radius.sm,
-    paddingHorizontal: 12, paddingVertical: 8, minWidth: 72, textAlign: 'center',
+    paddingHorizontal: spacing.smd, paddingVertical: 8, minWidth: 72, textAlign: 'center',
   },
   // A track next to the number it labels, so it takes a width rather than
   // stretching across the row the way one owning a line does.
@@ -5681,7 +5685,7 @@ const makeStyles = (colors: Colors) => StyleSheet.create({
   fieldBox: {
     color: colors.text, fontSize: font.md,
     backgroundColor: colors.bgTertiary, borderRadius: radius.sm,
-    paddingHorizontal: 12,
+    paddingHorizontal: spacing.smd,
     // Height rather than lineHeight — see the TextInput note in CLAUDE.md.
     height: 36,
   },
@@ -5766,7 +5770,7 @@ const makeStyles = (colors: Colors) => StyleSheet.create({
     paddingHorizontal: spacing.md, paddingBottom: spacing.md,
   },
   schedulePill: {
-    paddingHorizontal: 12, paddingVertical: 5,
+    paddingHorizontal: spacing.smd, paddingVertical: 5,
     borderRadius: radius.full, backgroundColor: colors.bgTertiary,
   },
   schedulePillActive: { backgroundColor: colors.accent },
@@ -5796,7 +5800,7 @@ const makeStyles = (colors: Colors) => StyleSheet.create({
   // The read-only breakdown shown in Duration once the subtasks carry the
   // countdown between them. Numbered rather than bulleted because the order is
   // the order the timer runs through them in.
-  splitList: { gap: 2 },
+  splitList: { gap: spacing.xxs },
   splitRow: {
     flexDirection: 'row', alignItems: 'center', gap: spacing.sm,
     paddingVertical: 4,
@@ -5813,7 +5817,7 @@ const makeStyles = (colors: Colors) => StyleSheet.create({
   },
   splitTotalRow: {
     borderTopWidth: StyleSheet.hairlineWidth, borderTopColor: colors.separator,
-    marginTop: 2,
+    marginTop: spacing.xxs,
   },
   splitTotalLabel: {
     flex: 1,
@@ -5833,7 +5837,7 @@ const makeStyles = (colors: Colors) => StyleSheet.create({
     paddingVertical: 7,
     borderBottomWidth: StyleSheet.hairlineWidth, borderBottomColor: colors.separator,
   },
-  subtaskCheck: { padding: 2 },
+  subtaskCheck: { padding: spacing.xxs },
   subtaskBox: {
     width: SUBTASK_CHECKBOX_SIZE,
     height: SUBTASK_CHECKBOX_SIZE,
@@ -5869,7 +5873,7 @@ const makeStyles = (colors: Colors) => StyleSheet.create({
   subtaskInput: {
     flex: 1, color: colors.text, fontSize: font.md,
     borderBottomWidth: 1, borderBottomColor: colors.accent,
-    paddingVertical: 2,
+    paddingVertical: spacing.xxs,
   },
   chainHeader: {
     flexDirection: 'row', alignItems: 'center', gap: spacing.sm,
@@ -5880,7 +5884,7 @@ const makeStyles = (colors: Colors) => StyleSheet.create({
     paddingVertical: 7,
     borderBottomWidth: StyleSheet.hairlineWidth, borderBottomColor: colors.separator,
   },
-  chainItemIndexBtn: { padding: 2 },
+  chainItemIndexBtn: { padding: spacing.xxs },
   chainItemDot: {
     width: 22, height: 22, borderRadius: 11,
     backgroundColor: colors.bgTertiary,
@@ -5910,7 +5914,7 @@ const makeStyles = (colors: Colors) => StyleSheet.create({
   chainInput: {
     flex: 1, color: colors.text, fontSize: font.md,
     borderBottomWidth: 1, borderBottomColor: colors.accent,
-    paddingVertical: 2,
+    paddingVertical: spacing.xxs,
   },
   chainCurrentHint: {
     color: colors.textSecondary, fontSize: font.xs, lineHeight: 16,

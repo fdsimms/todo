@@ -371,7 +371,7 @@ const makeStyles = (colors: Colors) => StyleSheet.create({
     alignItems: 'center',
     justifyContent: 'center',
   },
-  info: { flex: 1, gap: 2 },
+  info: { flex: 1, gap: spacing.xxs },
   title: {
     color: colors.text,
     fontSize: font.md,

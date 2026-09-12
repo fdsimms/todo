@@ -418,10 +418,10 @@ const makeStyles = (colors: Colors) => StyleSheet.create({
     alignItems: 'center',
     backgroundColor: colors.bgSecondary,
     marginHorizontal: spacing.md,
-    marginVertical: 2,
+    marginVertical: spacing.xxs,
     borderRadius: radius.md,
     paddingHorizontal: spacing.md,
-    paddingVertical: 12,
+    paddingVertical: spacing.smd,
     gap: spacing.md,
   },
   tagIcon: {

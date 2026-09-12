@@ -217,7 +217,7 @@ const makeStyles = (colors: Colors) => StyleSheet.create({
     color: colors.text,
   },
   optionLabelActive: { color: colors.text, fontWeight: fontWeight.semibold },
-  optionHint: { color: colors.textTertiary, fontSize: font.sm, marginTop: 2 },
+  optionHint: { color: colors.textTertiary, fontSize: font.sm, marginTop: spacing.xxs },
   cancelCard: {
     backgroundColor: colors.bgSecondary,
     borderRadius: radius.lg,

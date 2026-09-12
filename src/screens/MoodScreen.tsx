@@ -57,6 +57,7 @@ import { MoodEntryRow } from '../components/MoodEntryRow';
 import { MoodExportSheet } from '../components/MoodExportSheet';
 import { MilestoneSheet } from '../components/MilestoneSheet';
 import { ContrastBars } from '../components/ContrastBars';
+import { capitalize } from '../utils/capitalize';
 
 /** How many days the chart shows. Two weeks fits a phone width at a readable bar. */
 const CHART_DAYS = 14;
@@ -439,7 +440,7 @@ export function MoodScreen() {
           },
         ]}
       />
-      <HubPills hub="history" active="Mood" />
+      <HubPills hub="health" active="Mood" />
 
       {logs.length === 0 ? (
         <EmptyState
@@ -780,7 +781,7 @@ export function MoodScreen() {
                     accessibilityLabel={`${row.segment}, average mood ${row.mood.toFixed(1)} across ${row.entryCount} ${row.entryCount === 1 ? 'entry' : 'entries'}`}
                   >
                     <Text style={styles.contrastLabel}>
-                      {row.segment.charAt(0).toUpperCase() + row.segment.slice(1)}
+                      {capitalize(row.segment)}
                     </Text>
                     <Text style={styles.contrastValue}>
                       {row.mood.toFixed(1)} · {row.entryCount} {row.entryCount === 1 ? 'entry' : 'entries'}
@@ -959,12 +960,12 @@ const makeStyles = (colors: Colors) => StyleSheet.create({
   statCell: {
     flex: 1,
     backgroundColor: colors.bgSecondary,
-    borderRadius: radius.lg,
+    borderRadius: radius.md,
     paddingVertical: spacing.md,
     alignItems: 'center',
   },
   statValue: { fontSize: font.xl, fontWeight: fontWeight.bold, color: colors.text },
-  statLabel: { fontSize: font.xs, color: colors.textSecondary, marginTop: 2, textAlign: 'center' },
+  statLabel: { fontSize: font.xs, color: colors.textSecondary, marginTop: spacing.xxs, textAlign: 'center' },
   sectionTitle: {
     fontSize: font.xs,
     fontWeight: fontWeight.semibold,
@@ -974,7 +975,7 @@ const makeStyles = (colors: Colors) => StyleSheet.create({
   },
   card: {
     backgroundColor: colors.bgSecondary,
-    borderRadius: radius.lg,
+    borderRadius: radius.md,
     padding: spacing.md,
     marginBottom: spacing.lg,
   },
@@ -991,7 +992,7 @@ const makeStyles = (colors: Colors) => StyleSheet.create({
   splitRow: { flexDirection: 'row', marginTop: spacing.md },
   splitCell: { flex: 1, alignItems: 'center' },
   splitValue: { fontSize: font.lg, fontWeight: fontWeight.bold, color: colors.text },
-  splitLabel: { fontSize: font.xs, color: colors.textSecondary, marginTop: 2 },
+  splitLabel: { fontSize: font.xs, color: colors.textSecondary, marginTop: spacing.xxs },
   contrastRow: {
     flexDirection: 'row',
     alignItems: 'center',
@@ -1009,7 +1010,7 @@ const makeStyles = (colors: Colors) => StyleSheet.create({
   },
   linkBody: { flex: 1 },
   linkLabel: { fontSize: font.sm, color: colors.text },
-  linkMeta: { fontSize: font.xs, color: colors.textSecondary, marginTop: 2 },
+  linkMeta: { fontSize: font.xs, color: colors.textSecondary, marginTop: spacing.xxs },
   // Space before the "Add milestone" action below, whichever branch (the
   // empty-state text or the row list) sits above it.
   milestoneAddSpacing: { marginBottom: spacing.md },

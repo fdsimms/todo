@@ -63,8 +63,8 @@ export function TaskGroupTray({ children }: Props) {
 const makeStyles = (colors: Colors) => StyleSheet.create({
   tray: {
     marginHorizontal: spacing.md,
-    marginTop: 2,
-    marginBottom: 2,
+    marginTop: spacing.xxs,
+    marginBottom: spacing.xxs,
     paddingHorizontal: TRAY_PAD,
     // No vertical padding: the gaps above and below the children live inside
     // TaskGroupBody, where AnimatedCollapsible takes them away with the rest

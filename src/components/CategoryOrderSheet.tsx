@@ -214,9 +214,9 @@ const makeStyles = (colors: Colors) => StyleSheet.create({
     gap: spacing.md,
     backgroundColor: colors.bgSecondary,
     marginHorizontal: spacing.md,
-    marginVertical: 2,
+    marginVertical: spacing.xxs,
     borderRadius: radius.md,
-    paddingVertical: 12,
+    paddingVertical: spacing.smd,
     paddingHorizontal: spacing.md,
   },
   rowIcon: {
@@ -227,7 +227,7 @@ const makeStyles = (colors: Colors) => StyleSheet.create({
     justifyContent: 'center',
   },
   rowIconEmoji: { fontSize: 16 },
-  rowInfo: { flex: 1, gap: 2 },
+  rowInfo: { flex: 1, gap: spacing.xxs },
   rowLabel: { color: colors.text, fontSize: font.md, fontWeight: fontWeight.medium },
   rowCount: { color: colors.textTertiary, fontSize: font.xs },
   dragHandle: {

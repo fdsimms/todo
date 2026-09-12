@@ -424,9 +424,9 @@ function makeStyles(colors: Colors) {
       gap: spacing.md,
       backgroundColor: colors.bgSecondary,
       marginHorizontal: spacing.md,
-      marginVertical: 2,
+      marginVertical: spacing.xxs,
       borderRadius: radius.md,
-      paddingVertical: 12,
+      paddingVertical: spacing.smd,
       paddingHorizontal: spacing.md,
     },
     checkbox: {
@@ -441,7 +441,7 @@ function makeStyles(colors: Colors) {
     checkboxOn: { backgroundColor: colors.purple, borderColor: colors.purple },
     body: { flex: 1 },
     name: { fontSize: font.md, fontWeight: fontWeight.medium, color: colors.text },
-    meta: { fontSize: font.xs, color: colors.textTertiary, marginTop: 2 },
+    meta: { fontSize: font.xs, color: colors.textTertiary, marginTop: spacing.xxs },
     qtyPill: {
       backgroundColor: colors.bgTertiary,
       borderRadius: radius.sm,

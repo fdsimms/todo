@@ -366,7 +366,7 @@ const makeStyles = (colors: Colors) => StyleSheet.create({
     alignItems: 'center',
     gap: spacing.md,
     paddingLeft: spacing.md,
-    paddingVertical: 12,
+    paddingVertical: spacing.smd,
   },
   rowContent: { flex: 1, gap: 1 },
   rowTitle: { color: colors.text, fontSize: font.md, lineHeight: lineHeight.md },
@@ -376,7 +376,7 @@ const makeStyles = (colors: Colors) => StyleSheet.create({
   rowReason: { flexShrink: 1 },
   swapBtn: {
     paddingHorizontal: spacing.md,
-    paddingVertical: 12,
+    paddingVertical: spacing.smd,
     alignSelf: 'stretch',
     justifyContent: 'center',
   },
