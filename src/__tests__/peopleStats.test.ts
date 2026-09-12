@@ -1,4 +1,4 @@
-import type { MealPlanEntry, Task } from '../types';
+import type { Task } from '../types';
 
 // peopleStats reaches dayKeyOf in dateUtils, which reaches the settings store.
 // The same stub the other pure tests use — nothing here reads a setting.
@@ -6,10 +6,7 @@ jest.mock('../store/useSettingsStore', () => ({
   useSettingsStore: { getState: () => ({ dayResetTime: '00:00', weekStartsOn: 0 }) },
 }));
 import {
-  describeMealsTogether,
   describeTimeTogether,
-  mealYearRange,
-  mealsTogetherInRange,
   taskYearRange,
   timeTogetherInRange,
 } from '../utils/peopleStats';
@@ -66,17 +63,6 @@ function task(over: Partial<Task> = {}): Task {
   };
 }
 
-function entry(over: Partial<MealPlanEntry> = {}): MealPlanEntry {
-  seq += 1;
-  return {
-    id: `m${seq}`, date: '2026-06-01', slot: 'dinner', recipeId: null, title: 'Dinner',
-    sortOrder: 1, createdAt: iso(2026, 1, 1), cookedAt: iso(2026, 6, 1), leftoverId: null,
-    recipeChoices: [], personIds: ['p1'], recipeScale: 1, cookTask: null, shopTask: null, logMeal: null,
-    calendarEventId: null,
-    ...over,
-  };
-}
-
 describe('timeTogetherInRange', () => {
   it('counts a completed task naming somebody, in range', () => {
     expect(timeTogetherInRange([task({ personIds: ['p1'] })], iso(2026, 1, 1), iso(2026, 12, 31))).toBe(1);
@@ -119,28 +105,6 @@ describe('timeTogetherInRange', () => {
   });
 });
 
-describe('mealsTogetherInRange', () => {
-  it('counts a cooked meal with a guest, in range', () => {
-    expect(mealsTogetherInRange([entry()], '2026-01-01', '2026-12-31')).toBe(1);
-  });
-
-  it('excludes a meal with no guest', () => {
-    expect(mealsTogetherInRange([entry({ personIds: [] })], '2026-01-01', '2026-12-31')).toBe(0);
-  });
-
-  it('excludes a planned meal that was never cooked', () => {
-    expect(mealsTogetherInRange([entry({ cookedAt: null })], '2026-01-01', '2026-12-31')).toBe(0);
-  });
-
-  it('excludes a date outside the range', () => {
-    expect(mealsTogetherInRange([entry({ date: '2025-12-31' })], '2026-01-01', '2026-12-31')).toBe(0);
-  });
-
-  it('counts several guests on one meal as one meal', () => {
-    expect(mealsTogetherInRange([entry({ personIds: ['p1', 'p2'] })], '2026-01-01', '2026-12-31')).toBe(1);
-  });
-});
-
 describe('describeTimeTogether', () => {
   it('is null for nothing to say, never a zero', () => {
     expect(describeTimeTogether(0)).toBeNull();
@@ -155,33 +119,12 @@ describe('describeTimeTogether', () => {
   });
 });
 
-describe('describeMealsTogether', () => {
-  it('is null for nothing to say', () => {
-    expect(describeMealsTogether(0)).toBeNull();
-  });
-
-  it('is singular for one', () => {
-    expect(describeMealsTogether(1)).toBe('You had people over for a meal this year.');
-  });
-
-  it('is plural otherwise', () => {
-    expect(describeMealsTogether(4)).toBe('You had people over for 4 meals this year.');
-  });
-});
-
-describe('taskYearRange / mealYearRange', () => {
+describe('taskYearRange', () => {
   it('starts on January 1st and ends on the given day', () => {
     const today = new Date(2026, 7, 25, 14, 30);
     const { startIso, endIso } = taskYearRange(today);
     expect(new Date(startIso).getMonth()).toBe(0);
     expect(new Date(startIso).getDate()).toBe(1);
     expect(endIso).toBe(today.toISOString());
-  });
-
-  it('agrees with taskYearRange about which year, as day keys', () => {
-    const today = new Date(2026, 0, 1, 0, 30);
-    const { startKey, endKey } = mealYearRange(today);
-    expect(startKey).toBe('2026-01-01');
-    expect(endKey).toBe('2026-01-01');
   });
 });

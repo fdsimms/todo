@@ -79,7 +79,7 @@ import { isStaleNote } from '../utils/personNotes';
 import { personBackfillFieldCounts, PERSON_BACKFILL_FIELDS } from '../utils/peopleBackfill';
 import { itemBackfillFieldCounts, ITEM_BACKFILL_FIELDS } from '../utils/itemBackfill';
 import { recipeBackfillFieldCounts, RECIPE_BACKFILL_FIELDS } from '../utils/recipeBackfill';
-import { mealYearRange, taskYearRange, timeTogetherInRange } from '../utils/peopleStats';
+import { taskYearRange, timeTogetherInRange } from '../utils/peopleStats';
 import { PERSON_NOTE_KINDS } from '../types';
 import { useLeftoverStore } from '../store/useLeftoverStore';
 import { useSettingsStore } from '../store/useSettingsStore';
@@ -1571,14 +1571,6 @@ describe('demo seed — people', () => {
     expect(tasks.some(t => t.personIds.length > 1)).toBe(true);
   });
 
-  // Guests are the tie-in between the kitchen half and the people half, and a
-  // meal plan with nobody on it reads as a feature the app doesn't have.
-  it('seeds an upcoming meal with guests on it', () => {
-    const withGuests = useMealPlanStore.getState().entries.filter(e => e.personIds.length > 0);
-    expect(withGuests.length).toBeGreaterThan(0);
-    expect(withGuests.some(e => !e.cookedAt)).toBe(true);
-  });
-
   // It hides from Today the way a blocked task does, so the Waiting screen's
   // person sections have something to show.
   it('seeds a task waiting on somebody', () => {
@@ -1589,21 +1581,13 @@ describe('demo seed — people', () => {
     expect(person!.archived).toBe(false);
   });
 
-  // Both facts already fall out of the existing seed with no new rows: the
-  // completed "Coffee with Mom" and the cooked, guested salmon dinner. A
-  // regression guard rather than new demo content.
+  // Already falls out of the existing seed with no new rows: the completed
+  // "Coffee with Mom". A regression guard rather than new demo content.
   it('has a year in review to show, from the existing seed alone', () => {
     const today = getCurrentDayStart();
     const { startIso, endIso } = taskYearRange(today);
     const timeCount = timeTogetherInRange(useTaskStore.getState().tasks, startIso, endIso);
     expect(timeCount).toBeGreaterThan(0);
-
-    // entries only holds whatever ±14-day window seeding loaded — the real
-    // read goes through the same DB-backed action Stats uses, the same call
-    // refreshCookingCounts already makes for the same reason.
-    const { startKey, endKey } = mealYearRange(today);
-    useMealPlanStore.getState().refreshPeopleYearMealCount(startKey, endKey);
-    expect(useMealPlanStore.getState().peopleYearMealCount).toBeGreaterThan(0);
   });
 
   it('seeds a note of every kind, since each one lands somewhere different', () => {
@@ -2003,23 +1987,6 @@ describe('demo seed — people', () => {
     expect(generated).toHaveLength(0);
   });
 
-  it('seeds a food note on somebody who is a guest at a seeded meal', () => {
-    const notes = usePersonNoteStore.getState().notes.filter(n => n.kind === 'food');
-    const guestIds = new Set(useMealPlanStore.getState().entries.flatMap(e => e.personIds));
-    expect(notes.some(n => guestIds.has(n.personId))).toBe(true);
-  });
-
-  it("seeds a meal that shows on its guests' own screens", () => {
-    const todayKey = dayKeyOf(new Date());
-    // Specifically an uncooked meal's guest — a cooked one (the steak night,
-    // seeded for the year-in-review stat) has already happened and rightly
-    // has nothing upcoming.
-    const guest = useMealPlanStore.getState().entries
-      .filter(e => !e.cookedAt)
-      .flatMap(e => e.personIds)
-      .find(Boolean)!;
-    expect(useMealPlanStore.getState().guestMealsFor(guest, todayKey, 60).length).toBeGreaterThan(0);
-  });
 });
 
 describe('demo seed — groceries, recipes, meals and the fridge', () => {

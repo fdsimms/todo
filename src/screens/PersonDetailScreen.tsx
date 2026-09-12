@@ -6,7 +6,6 @@ import Ionicons from '@expo/vector-icons/Ionicons';
 import { useShallow } from 'zustand/react/shallow';
 import { usePersonStore, displayNameOf } from '../store/usePersonStore';
 import { useCalendarStore } from '../store/useCalendarStore';
-import { useMealPlanStore } from '../store/useMealPlanStore';
 import { usePersonNoteStore } from '../store/usePersonNoteStore';
 import { useSettingsStore } from '../store/useSettingsStore';
 import { useTaskStore } from '../store/useTaskStore';
@@ -20,9 +19,7 @@ import { useColors } from '../theme/ThemeContext';
 import { spacing, font, fontWeight, radius, interaction, iconSize, type Colors } from '../theme';
 import { haptics } from '../utils/haptics';
 import { animateLayout } from '../utils/layoutAnimation';
-import { dayKeyOf, dayKeyToDate, getCurrentDayStart } from '../utils/dateUtils';
-import { slotLabel } from '../utils/mealPlan';
-import type { GuestMeal } from '../utils/mealGuests';
+import { dayKeyOf, getCurrentDayStart } from '../utils/dateUtils';
 import type { PersonNote, PersonNoteKind } from '../types';
 import { PERSON_NOTE_KINDS } from '../types';
 import { suggestedHistoryEvents } from '../utils/calendarHistory';
@@ -51,15 +48,6 @@ import {
 type RootStackParamList = {
   PersonDetail: { personId: string };
 };
-
-/**
- * How far ahead to look for meals they are a guest at.
- *
- * Two months: a meal plan is written a week or two out, and the read is one
- * range query rather than anything held in memory, so the horizon costs
- * essentially nothing and a dinner somebody planned early still shows.
- */
-const GUEST_MEAL_HORIZON_DAYS = 60;
 
 /** How many calendar offers show before the rest go behind "Show N more". */
 const SUGGESTION_PREVIEW_COUNT = 5;
@@ -131,7 +119,6 @@ export function PersonDetailScreen() {
   const handledHistory = useCalendarStore(s => s.handledHistory);
   const markHistoryHandled = useCalendarStore(s => s.markHistoryHandled);
   const [showAllSuggestions, setShowAllSuggestions] = useState(false);
-  const [guestMeals, setGuestMeals] = useState<GuestMeal[]>([]);
   const allNotes = usePersonNoteStore(useShallow(s => s.notes));
   const [noteSheet, setNoteSheet] = useState<{ note: PersonNote | null; kind: PersonNoteKind } | null>(null);
   // Two separate flags rather than one union: an in-progress add has no
@@ -139,18 +126,6 @@ export function PersonDetailScreen() {
   // ambiguous between "closed" and "adding".
   const [addingHistory, setAddingHistory] = useState(false);
   const [editingHistoryEntry, setEditingHistoryEntry] = useState<HistoryEntry | null>(null);
-  // Meal plan entries are read straight from SQLite rather than off the meal
-  // plan store's `entries`, which holds whatever week that screen last showed
-  // — see guestMealsFor. Re-read whenever a meal changes, so naming a guest on
-  // the meal plan and coming straight here shows it.
-  const mealEntries = useMealPlanStore(useShallow(s => s.entries));
-  const guestMealsFor = useMealPlanStore(s => s.guestMealsFor);
-
-  useEffect(() => {
-    setGuestMeals(
-      guestMealsFor(personId, dayKeyOf(getCurrentDayStart()), GUEST_MEAL_HORIZON_DAYS)
-    );
-  }, [personId, guestMealsFor, mealEntries]);
 
   // The one fetch, on open. `refreshPast` is never called on foreground: the
   // past window costs a quarter of events and nothing outside this screen reads
@@ -163,35 +138,18 @@ export function PersonDetailScreen() {
   const last = lastTogether(history);
   const daysSince = daysSinceTogether(last, today);
 
-  /**
-   * Tasks and planned meals, merged and sorted by the day each falls on.
-   *
-   * Sorted on the day key rather than on the task's ISO instant, since a meal
-   * has no time of day to compare with — `MealPlanEntry.date` is a calendar day
-   * on purpose. A task and a dinner on the same day tie, and the task leads,
-   * which is the order they were already in.
-   */
+  /** Tasks naming this person that are still ahead, sorted by the day each falls on. */
   const comingUp = useMemo(() => {
-    const rows: { key: string; title: string; when: string; icon: 'calendar-outline' | 'restaurant-outline'; day: string }[] = [
-      ...upcoming.map(entry => ({
+    const rows: { key: string; title: string; when: string; icon: 'calendar-outline'; day: string }[] =
+      upcoming.map(entry => ({
         key: `task:${entry.taskId}`,
         title: entry.title,
         when: new Date(entry.on).toLocaleDateString(undefined, { month: 'short', day: 'numeric' }),
         icon: 'calendar-outline' as const,
         day: dayKeyOf(new Date(entry.on)),
-      })),
-      ...guestMeals.map(meal => ({
-        key: `meal:${meal.entryId}`,
-        title: meal.title,
-        // The slot rather than a bare date: "Thu · Dinner" says what kind of
-        // evening it is, which is most of what the row is worth.
-        when: `${dayKeyToDate(meal.date).toLocaleDateString(undefined, { month: 'short', day: 'numeric' })} · ${slotLabel(meal.slot)}`,
-        icon: 'restaurant-outline' as const,
-        day: meal.date,
-      })),
-    ];
+      }));
     return rows.sort((a, b) => a.day.localeCompare(b.day));
-  }, [upcoming, guestMeals]);
+  }, [upcoming]);
 
   /**
    * The three kinds, each with its own heading, and each shown only when it
@@ -404,9 +362,9 @@ export function PersonDetailScreen() {
         {/* The notes themselves. Everything above `noteSections` says what this
             renders and why; it went missing from the JSX while the memo and its
             four helpers stayed, so a note could be written, stored, synced and
-            backed up but never read back. Gift and food notes still reached
-            their own destinations (the birthday task, a meal's guests), which
-            is why only the plain kind looked like it simply wasn't saving. */}
+            backed up but never read back. A gift note still reached its own
+            destination (the birthday task), which is why only the plain kind
+            looked like it simply wasn't saving. */}
         {noteSections.map(section => (
           <React.Fragment key={section.kind}>
             <Text style={styles.groupLabel}>{PERSON_NOTE_HEADINGS[section.kind]}</Text>
@@ -443,10 +401,6 @@ export function PersonDetailScreen() {
           </React.Fragment>
         ))}
 
-        {/* Tasks and planned meals in one list, because "what is coming up with
-            this person" is one question and two sections answering it in date
-            order separately would read as two. A meal is not a task and never
-            becomes one — it keeps its own glyph and says which meal it is. */}
         {comingUp.length > 0 && (
           <>
             <Text style={styles.groupLabel}>COMING UP</Text>

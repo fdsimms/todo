@@ -36,7 +36,6 @@ import { onHandNameKeys } from '../utils/grocerySuggest';
 import { generateId } from '../utils/id';
 import { normalizeScale } from '../utils/recipeScale';
 import { mealCookCounts, type CookingWindow, type MealCookCounts } from '../utils/cookingStats';
-import { mealsTogetherInRange } from '../utils/peopleStats';
 import { totalMinutes } from '../utils/recipeUtils';
 import {
   cleanMealTitle,
@@ -56,8 +55,6 @@ import {
 import { countPlannedSlots } from '../utils/mealPlanNudge';
 import { mealSlotDrift, mealSlotSourceId, mealSlotTaskDraft } from '../utils/mealSlotTasks';
 import { dayKeyOf, dayKeyToDate, getLogicalToday } from '../utils/dateUtils';
-import { upcomingMealsWithGuest, type GuestMeal } from '../utils/mealGuests';
-import { addDays } from 'date-fns/addDays';
 import { differenceInCalendarDays } from 'date-fns/differenceInCalendarDays';
 import { setHours } from 'date-fns/setHours';
 
@@ -91,12 +88,6 @@ export interface MealPlanDraft {
    * MealPlanEntry.logMeal. Omitted (or null) leaves it to the setting.
    */
   logMeal?: boolean | null;
-  /**
-   * Who the meal is for, for a caller that already knows at plan time — a
-   * copied meal, a template. Omitted for every ordinary plan, where guests are
-   * named afterwards from the meal's own sheet.
-   */
-  personIds?: string[];
 }
 
 /**
@@ -318,28 +309,6 @@ interface MealPlanStore extends UndoHistoryActions {
   cookingCounts: MealCookCounts | null;
 
   /**
-   * This year's cooked meals with a guest — see `peopleStats.ts`. Null until
-   * the reader asks (#2092), the same "nobody has looked" starting state
-   * `cookingCounts` uses.
-   *
-   * A count, not rows, for the reason `cookingCounts` is: a year of entries is
-   * read to produce it and nothing keeps them, so this stays one integer
-   * however much a year held.
-   */
-  peopleYearMealCount: number | null;
-
-  /**
-   * Recounts `peopleYearMealCount` from SQLite over `[startKey, endKey]`.
-   *
-   * Its own read rather than a widening of `refreshCookingCounts`'s window:
-   * that one is a rolling 30 days for "what have you been cooking lately",
-   * this is a calendar year for "your year", and the two questions don't share
-   * an answer. Pull, not push, same as `refreshCookingCounts` — the reader
-   * (Stats) calls this when it's actually looking.
-   */
-  refreshPeopleYearMealCount: (startKey: string, endKey: string) => void;
-
-  /**
    * Recounts `cookingCounts` from SQLite over the given window.
    *
    * **Pull, not push**, like the refresh above it: the reader calls this when
@@ -407,28 +376,6 @@ interface MealPlanStore extends UndoHistoryActions {
    * unlike markCooked, nothing downstream counts it.
    */
   setRecipeChoices: (id: string, recipeChoices: string[]) => void;
-
-  /**
-   * Records who this meal is for — see MealPlanEntry.personIds and
-   * `docs/arch/people.md`. Replaces rather than merges, since the picker hands
-   * back the whole list.
-   *
-   * Allowed on an already-cooked entry, for the reason setRecipeChoices is:
-   * it's a note about the meal, and remembering on Wednesday that Ansley was
-   * there on Tuesday is a fair edit rather than a claim about the future.
-   */
-  setMealGuests: (id: string, personIds: string[]) => void;
-
-  /**
-   * The meals ahead that name this person, straight from SQLite.
-   *
-   * Off `entries` on purpose, the same call `dbGetMealPlanEntry` makes for the
-   * same reason: this store's window is whatever week the meal plan screen last
-   * showed, and a person's screen asks a different question over a different
-   * range. Loading that range into `entries` would move the meal plan screen's
-   * week out from under it.
-   */
-  guestMealsFor: (personId: string, todayKey: string, horizonDays: number) => GuestMeal[];
 
   /**
    * Records that this meal is being cooked at some multiple of the recipe —
@@ -674,7 +621,6 @@ export const useMealPlanStore = create<MealPlanStore>((set, get) => ({
   plannedSlotCounts: {},
   shopWindowEntries: [],
   cookingCounts: null,
-  peopleYearMealCount: null,
   cookHistory: null,
   initialized: false,
   lastAction: null,
@@ -700,7 +646,6 @@ export const useMealPlanStore = create<MealPlanStore>((set, get) => ({
         entries: sortMealEntries(dbGetMealPlanEntries(rangeStart, rangeEnd)),
         addedToListAt,
         cookingCounts: null,
-        peopleYearMealCount: null,
         cookHistory: null,
         initialized: true,
       });
@@ -712,7 +657,6 @@ export const useMealPlanStore = create<MealPlanStore>((set, get) => ({
       entries: [],
       addedToListAt,
       cookingCounts: null,
-      peopleYearMealCount: null,
       cookHistory: null,
       initialized: true,
     });
@@ -775,12 +719,6 @@ export const useMealPlanStore = create<MealPlanStore>((set, get) => ({
     set({ shopWindowEntries: rows });
   },
 
-  refreshPeopleYearMealCount(startKey, endKey) {
-    const next = mealsTogetherInRange(dbGetMealPlanEntries(startKey, endKey), startKey, endKey);
-    if (get().peopleYearMealCount === next) return;
-    set({ peopleYearMealCount: next });
-  },
-
   refreshCookingCounts(window) {
     const next = mealCookCounts(
       dbGetMealPlanEntries(window.startKey, window.endKey),
@@ -833,9 +771,6 @@ export const useMealPlanStore = create<MealPlanStore>((set, get) => ({
       slot: draft.slot,
       recipeId: draft.recipeId ?? null,
       title,
-      // Nobody named, which is what almost every meal says. Guests are added
-      // afterwards from the meal's own sheet — see setMealGuests.
-      personIds: draft.personIds ?? [],
       // Ordered against SQLite's answer for that slot rather than against
       // `entries`, so planning into a day outside the loaded window still lands
       // at the end of it instead of colliding on 1.
@@ -988,19 +923,6 @@ export const useMealPlanStore = create<MealPlanStore>((set, get) => ({
     const chosen: MealPlanEntry = { ...entry, recipeChoices };
     dbUpdateMealPlanEntry(chosen);
     set(s => ({ entries: s.entries.map(e => e.id === id ? chosen : e) }));
-  },
-
-  guestMealsFor(personId, todayKey, horizonDays) {
-    const end = dayKeyOf(addDays(dayKeyToDate(todayKey), horizonDays));
-    return upcomingMealsWithGuest(dbGetMealPlanEntries(todayKey, end), personId, todayKey);
-  },
-
-  setMealGuests(id, personIds) {
-    const entry = get().entries.find(e => e.id === id);
-    if (!entry) return;
-    const next: MealPlanEntry = { ...entry, personIds };
-    dbUpdateMealPlanEntry(next);
-    set(s => ({ entries: s.entries.map(e => e.id === id ? next : e) }));
   },
 
   setRecipeScale(id, scale) {
