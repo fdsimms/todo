@@ -232,7 +232,7 @@ export function WeightScreen() {
           },
         ]}
       />
-      <HubPills hub="history" active="Weight" />
+      <HubPills hub="health" active="Weight" />
     </>
   );
 

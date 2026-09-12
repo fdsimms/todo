@@ -135,7 +135,7 @@ export function MedicationScreen() {
           },
         ]}
       />
-      <HubPills hub="history" active="Medications" />
+      <HubPills hub="health" active="Medications" />
     </>
   );
 
