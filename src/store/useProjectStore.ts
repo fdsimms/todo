@@ -173,7 +173,7 @@ interface ProjectStore {
   initialized: boolean;
   initialize: () => void;
   createProject: (title: string, options?: CreateProjectOptions) => Project;
-  updateProject: (id: string, patch: Partial<Pick<Project, 'title' | 'notes' | 'deadline' | 'category' | 'nudgeCadenceDays' | 'autoSchedule' | 'nudgeOptIn' | 'weekendSource' | 'reviewDeclinedAt' | 'backfillDismissedFields' | 'kind' | 'ongoing' | 'awayStart' | 'awayEnd' | 'awayPauses' | 'awayPauseDeclinedFor' | 'destination' | 'awayListId' | 'awayListDeclinedFor'>>) => void;
+  updateProject: (id: string, patch: Partial<Pick<Project, 'title' | 'notes' | 'deadline' | 'category' | 'nudgeCadenceDays' | 'autoSchedule' | 'nudgeOptIn' | 'weekendSource' | 'reviewDeclinedAt' | 'reviewedAt' | 'backfillDismissedFields' | 'kind' | 'ongoing' | 'awayStart' | 'awayEnd' | 'awayPauses' | 'awayPauseDeclinedFor' | 'destination' | 'awayListId' | 'awayListDeclinedFor'>>) => void;
   /** Filing several projects at once from the Projects screen's bulk bar. */
   bulkSetProjectCategory: (ids: string[], category: string | null) => void;
   getProjectById: (id: string) => Project | null;
@@ -210,7 +210,7 @@ interface ProjectStore {
  * Only the fields somebody actually decides *at creation*. Everything else on
  * `Project` is either an opt-in that must start off (`awayPauses`,
  * `weekendSource`, `autoSchedule`), seeded from a setting (`nudgeCadenceDays`),
- * or a runtime stamp (`completedAt`, `reviewDeclinedAt`) — none of which a
+ * or a runtime stamp (`completedAt`, `reviewDeclinedAt`, `reviewedAt`) — none of which a
  * caller has an opinion about yet. Adding one here means a caller can answer
  * it; that is the bar.
  */
@@ -275,6 +275,7 @@ export const useProjectStore = create<ProjectStore>((set, get) => ({
       // Project.weekendSource.
       weekendSource: false,
       reviewDeclinedAt: null,
+      reviewedAt: null,
       backfillDismissedFields: [],
       // Presentation only — a list's members are ordinary tasks in an ordinary
       // project, and every field above means the same thing either way. See
