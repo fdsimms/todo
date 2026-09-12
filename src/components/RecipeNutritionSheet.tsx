@@ -414,7 +414,7 @@ export function RecipeNutritionSheet({ visible, reading, onClose }: Props) {
                           onPress={() => { haptics.tap(); setSearchLine(line); }}
                         />
                         <InlineAction
-                          label="Type in a label"
+                          label="Add nutrition info"
                           variant="neutral"
                           onPress={() => { haptics.tap(); setPanelLine(line); }}
                         />
