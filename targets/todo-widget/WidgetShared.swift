@@ -345,6 +345,8 @@ let openAppURL = URL(string: "dundundun://")!
 let groceriesURL = URL(string: "dundundun://groceries")!
 let mealPlanURL = URL(string: "dundundun://mealplan")!
 let kitchenURL = URL(string: "dundundun://kitchen")!
+let moodURL = URL(string: "dundundun://mood")!
+let foodLogURL = URL(string: "dundundun://foodlog")!
 
 // ==== Formatting ====
 

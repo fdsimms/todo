@@ -52,6 +52,15 @@ export function resetToRecipes(): void {
   navigationRef.navigate('Recipes');
 }
 
+// Where `dundundun://foodlog` lands — the Today widget's food log shortcut.
+// Bare like resetToRecipes: there's no logging sheet to stamp open on
+// arrival the way resetToMood's `log=1` does, since nothing writes this link
+// with a request to log something specific — it's a plain "open the diary".
+export function resetToFoodLog(): void {
+  if (!navigationRef.isReady()) return;
+  navigationRef.navigate('FoodLog');
+}
+
 // Where `dundundun://recipe?id=…` lands — a meal-slot cook task's own link
 // once the slot holds a recipe (mealSlotTasks.recipeLinkUrl). Recipes first,
 // always, so the back chevron on RecipeDetail has somewhere to go — the same

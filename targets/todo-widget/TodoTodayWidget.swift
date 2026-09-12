@@ -154,15 +154,19 @@ struct TodoTodayWidgetEntryView: View {
     /// and the add button — there's no room left for shortcut links too.
     private var showsShortcuts: Bool { family != .systemSmall }
 
-    /// Where else this widget can jump straight to. Groceries and Meal plan,
-    /// not every hub destination: these ride in the header alongside the add
-    /// button, not a second nav menu, and `groceriesURL`/`mealPlanURL` are the
-    /// two the Grocery and Kitchen widgets already use for the same trip.
+    /// Where else this widget can jump straight to. Not every hub destination:
+    /// these ride in the header alongside the add button, not a second nav
+    /// menu, and every URL here is one an existing task link, widget or Live
+    /// Activity already uses for the same trip — `groceriesURL`/`mealPlanURL`
+    /// by the Grocery and Kitchen widgets, `moodURL`/`foodLogURL` by the
+    /// mood check-in task and the deep link `isFoodLogUrl` handles.
     private var shortcuts: [WidgetHeaderShortcut] {
         guard showsShortcuts else { return [] }
         return [
             WidgetHeaderShortcut(symbolName: "cart.fill", label: "Groceries", destination: groceriesURL),
             WidgetHeaderShortcut(symbolName: "fork.knife", label: "Meal plan", destination: mealPlanURL),
+            WidgetHeaderShortcut(symbolName: "face.smiling", label: "Mood", destination: moodURL),
+            WidgetHeaderShortcut(symbolName: "fork.knife.circle", label: "Food log", destination: foodLogURL),
         ]
     }
 
