@@ -438,7 +438,7 @@ function makeStyles(colors: Colors) {
     figure: { flexDirection: 'row', alignItems: 'baseline', justifyContent: 'space-between' },
     figureLabel: { color: colors.text, fontSize: font.sm },
     figureValue: { color: colors.text, fontSize: font.sm, fontWeight: fontWeight.medium },
-    ingredient: { gap: 2 },
+    ingredient: { gap: spacing.xxs },
     ingredientLabel: {
       color: colors.textSecondary,
       fontSize: font.xs,

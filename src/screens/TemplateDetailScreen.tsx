@@ -747,7 +747,7 @@ const makeStyles = (colors: Colors) => StyleSheet.create({
   // swipe panel. The row inside is flush to it.
   itemCard: {
     marginHorizontal: spacing.md,
-    marginVertical: 2,
+    marginVertical: spacing.xxs,
     borderRadius: radius.md,
     overflow: 'hidden',
   },
@@ -767,7 +767,7 @@ const makeStyles = (colors: Colors) => StyleSheet.create({
   },
   itemInfo: {
     flex: 1,
-    gap: 2,
+    gap: spacing.xxs,
   },
   itemTitle: {
     color: colors.text,
@@ -829,7 +829,7 @@ const makeStyles = (colors: Colors) => StyleSheet.create({
   },
   optionalBadge: {
     paddingHorizontal: 8,
-    paddingVertical: 2,
+    paddingVertical: spacing.xxs,
     borderRadius: radius.full,
     backgroundColor: colors.bgTertiary,
   },

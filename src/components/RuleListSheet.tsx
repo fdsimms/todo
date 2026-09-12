@@ -276,7 +276,7 @@ function makeStyles(colors: Colors) {
     body: { flex: 1 },
     name: { color: colors.text, fontSize: font.md },
     nameOff: { color: colors.textSecondary },
-    meta: { color: colors.textTertiary, fontSize: font.xs, marginTop: 2 },
+    meta: { color: colors.textTertiary, fontSize: font.xs, marginTop: spacing.xxs },
     toggle: { width: 46, height: 27, borderRadius: 14, backgroundColor: colors.bgQuaternary, justifyContent: 'center', paddingHorizontal: 3 },
     toggleKnob: { width: 21, height: 21, borderRadius: 11, backgroundColor: colors.bg },
     toggleKnobOn: { backgroundColor: colors.bg, alignSelf: 'flex-end' },
@@ -365,7 +365,7 @@ function makeNoticeStyles(colors: Colors) {
     },
     body: { flex: 1 },
     title: { color: colors.text, fontSize: font.md, fontWeight: fontWeight.medium },
-    hint: { color: colors.textSecondary, fontSize: font.xs, marginTop: 2, lineHeight: 16 },
+    hint: { color: colors.textSecondary, fontSize: font.xs, marginTop: spacing.xxs, lineHeight: 16 },
     value: disclosureValue(colors),
   });
 }

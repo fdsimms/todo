@@ -563,7 +563,7 @@ const makeStyles = (colors: Colors) => StyleSheet.create({
   pillActiveNeutral: { backgroundColor: colors.bgQuaternary },
   pillText: { color: colors.text, fontSize: font.sm, fontWeight: '500' },
   pillTextActive: { color: colors.text, fontWeight: '600' },
-  pillHint: { color: colors.textTertiary, fontSize: 10, marginTop: 2 },
+  pillHint: { color: colors.textTertiary, fontSize: 10, marginTop: spacing.xxs },
   tagRow: { flexDirection: 'row', flexWrap: 'wrap', gap: spacing.sm, alignItems: 'center' },
   tagChip: {
     flexDirection: 'row', alignItems: 'center', gap: 4,
@@ -611,7 +611,7 @@ const makeStyles = (colors: Colors) => StyleSheet.create({
   subtaskInputRow: { flexDirection: 'row', alignItems: 'center', gap: spacing.sm, paddingVertical: 7 },
   subtaskInput: {
     flex: 1, color: colors.text, fontSize: font.md,
-    borderBottomWidth: 1, borderBottomColor: colors.accent, paddingVertical: 2,
+    borderBottomWidth: 1, borderBottomColor: colors.accent, paddingVertical: spacing.xxs,
   },
   /** Lifts an InlineAction off the list it appends to, and keeps it from stretching in a column. */
   optionRow: {

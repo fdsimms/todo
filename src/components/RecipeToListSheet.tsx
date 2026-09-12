@@ -840,7 +840,7 @@ const makeStyles = (colors: Colors) => StyleSheet.create({
     flexDirection: 'row',
     alignItems: 'center',
     gap: spacing.md,
-    paddingVertical: 12,
+    paddingVertical: spacing.smd,
   },
   checkbox: {
     width: CHECKBOX_SIZE,
@@ -853,7 +853,7 @@ const makeStyles = (colors: Colors) => StyleSheet.create({
   },
   checkboxOn: { backgroundColor: colors.accentFill, borderColor: colors.accent },
   checkboxDisabled: { opacity: 0.4 },
-  body: { flex: 1, gap: 2 },
+  body: { flex: 1, gap: spacing.xxs },
   name: { fontSize: font.md, fontWeight: fontWeight.medium, color: colors.text },
   nameDisabled: { color: colors.textSecondary },
   sources: { fontSize: font.xs, color: colors.textTertiary },
@@ -887,7 +887,7 @@ const makeStyles = (colors: Colors) => StyleSheet.create({
   subsButton: {
     flexDirection: 'row',
     alignItems: 'center',
-    gap: 2,
+    gap: spacing.xxs,
     paddingHorizontal: spacing.sm,
     paddingVertical: spacing.sm,
     borderRadius: radius.full,

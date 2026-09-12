@@ -679,7 +679,7 @@ const makeStyles = (colors: Colors) => StyleSheet.create({
     lineHeight: lineHeight.md,
     fontWeight: fontWeight.regular,
   },
-  metaRow: { flexDirection: 'row', flexWrap: 'wrap', alignItems: 'center', gap: spacing.sm, marginTop: 2 },
+  metaRow: { flexDirection: 'row', flexWrap: 'wrap', alignItems: 'center', gap: spacing.sm, marginTop: spacing.xxs },
   metaChip: { flexDirection: 'row', alignItems: 'center', gap: 4, flexShrink: 1 },
   metaText: { color: colors.textSecondary, fontSize: font.xs },
   releaseButton: {
@@ -699,5 +699,5 @@ const makeStyles = (colors: Colors) => StyleSheet.create({
     borderBottomColor: colors.separator,
   },
   driftTitle: { color: colors.text, fontSize: font.md, fontWeight: fontWeight.medium },
-  driftMeta: { color: colors.textTertiary, fontSize: font.xs, marginTop: 2 },
+  driftMeta: { color: colors.textTertiary, fontSize: font.xs, marginTop: spacing.xxs },
 });

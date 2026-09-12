@@ -211,11 +211,11 @@ const makeStyles = (colors: Colors) => StyleSheet.create({
   timerBtn: {
     flexDirection: 'row',
     alignItems: 'center',
-    gap: 6,
+    gap: spacing.xsm,
     backgroundColor: colors.accentFill,
     borderRadius: radius.sm,
     paddingHorizontal: spacing.sm,
-    paddingVertical: 6,
+    paddingVertical: spacing.xsm,
   },
   timerBtnRunning: {
     backgroundColor: colors.orange,

@@ -295,7 +295,7 @@ const makeStyles = (colors: Colors) => StyleSheet.create({
     flex: 1,
   },
   hideReviewedButton: {
-    padding: 2,
+    padding: spacing.xxs,
   },
   notesScroll: {
     maxHeight: NOTES_MAX_HEIGHT,
@@ -310,7 +310,7 @@ const makeStyles = (colors: Colors) => StyleSheet.create({
   },
   noteTextCol: {
     flex: 1,
-    gap: 2,
+    gap: spacing.xxs,
   },
   noteMessage: {
     color: colors.text,
@@ -326,7 +326,7 @@ const makeStyles = (colors: Colors) => StyleSheet.create({
     gap: spacing.sm,
   },
   qaButton: {
-    padding: 2,
+    padding: spacing.xxs,
   },
   sep: {
     height: border.hairline,

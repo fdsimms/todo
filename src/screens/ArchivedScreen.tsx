@@ -364,7 +364,7 @@ const ArchivedRow = React.memo(function ArchivedRow({
 const makeStyles = (colors: Colors) => StyleSheet.create({
   container: { flex: 1, backgroundColor: colors.bg },
   searchBar: { marginHorizontal: spacing.md, marginBottom: spacing.sm },
-  listContent: { paddingTop: 2 },
+  listContent: { paddingTop: spacing.xxs },
   emptyContainer: { flexGrow: 1 },
   // The same inset-grouped card footprint as TaskItem rows. These rows open
   // the editor on tap, which is the interaction that treatment stands for —
@@ -374,7 +374,7 @@ const makeStyles = (colors: Colors) => StyleSheet.create({
     alignItems: 'center',
     gap: spacing.sm,
     marginHorizontal: spacing.md,
-    marginVertical: 2,
+    marginVertical: spacing.xxs,
     paddingVertical: spacing.sm + 3,
     paddingHorizontal: spacing.md,
     borderRadius: radius.md,
@@ -398,7 +398,7 @@ const makeStyles = (colors: Colors) => StyleSheet.create({
     flexWrap: 'wrap',
     alignItems: 'center',
     gap: spacing.sm,
-    marginTop: 2,
+    marginTop: spacing.xxs,
   },
   metaChip: { flexDirection: 'row', alignItems: 'center', gap: 4, flexShrink: 1 },
   metaText: { color: colors.textSecondary, fontSize: font.xs },

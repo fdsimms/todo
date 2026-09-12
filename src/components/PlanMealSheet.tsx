@@ -379,7 +379,7 @@ const makeStyles = (colors: Colors) => StyleSheet.create({
   dayChip: {
     flex: 1,
     alignItems: 'center',
-    gap: 2,
+    gap: spacing.xxs,
     paddingVertical: 8,
     borderRadius: radius.md,
     backgroundColor: colors.bgTertiary,

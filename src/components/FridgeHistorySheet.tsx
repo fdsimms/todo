@@ -262,7 +262,7 @@ const makeStyles = (colors: Colors) => StyleSheet.create({
     paddingTop: spacing.md,
     paddingBottom: spacing.sm,
   },
-  headerText: { flexShrink: 1, gap: 2 },
+  headerText: { flexShrink: 1, gap: spacing.xxs },
   heading: {
     color: colors.text,
     fontSize: font.lg,

@@ -1155,7 +1155,7 @@ function makeStyles(colors: Colors) {
       paddingVertical: spacing.md,
       marginBottom: spacing.sm,
     },
-    rowText: { flex: 1, gap: 2 },
+    rowText: { flex: 1, gap: spacing.xxs },
     rowTitle: { color: colors.text, fontSize: font.md },
     rowMeta: { color: colors.textSecondary, fontSize: font.sm },
   });

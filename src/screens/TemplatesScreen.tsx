@@ -571,7 +571,7 @@ const makeStyles = (colors: Colors) => StyleSheet.create({
   tplItemWrapper: {
     backgroundColor: colors.bgSecondary,
     marginHorizontal: spacing.md,
-    marginVertical: 2,
+    marginVertical: spacing.xxs,
     borderRadius: radius.md,
     overflow: 'hidden',
   },
@@ -591,7 +591,7 @@ const makeStyles = (colors: Colors) => StyleSheet.create({
   },
   dropSlot: {
     marginHorizontal: spacing.md,
-    marginVertical: 2,
+    marginVertical: spacing.xxs,
     borderRadius: radius.md,
     backgroundColor: colors.bgSecondary,
     opacity: 0.55,
@@ -613,7 +613,7 @@ const makeStyles = (colors: Colors) => StyleSheet.create({
   },
   tplInfo: {
     flex: 1,
-    gap: 2,
+    gap: spacing.xxs,
   },
   tplNameRow: {
     flexDirection: 'row',

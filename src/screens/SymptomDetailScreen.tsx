@@ -371,13 +371,13 @@ const makeStyles = (colors: Colors) => StyleSheet.create({
   statCell: {
     flex: 1,
     backgroundColor: colors.bgSecondary,
-    borderRadius: radius.lg,
+    borderRadius: radius.md,
     paddingVertical: spacing.md,
     paddingHorizontal: spacing.xs,
     alignItems: 'center',
   },
   statValue: { fontSize: font.lg, fontWeight: fontWeight.bold, color: colors.text },
-  statLabel: { fontSize: font.xs, color: colors.textSecondary, marginTop: 2, textAlign: 'center' },
+  statLabel: { fontSize: font.xs, color: colors.textSecondary, marginTop: spacing.xxs, textAlign: 'center' },
   sectionTitle: {
     fontSize: font.xs,
     fontWeight: fontWeight.semibold,
@@ -387,7 +387,7 @@ const makeStyles = (colors: Colors) => StyleSheet.create({
   },
   card: {
     backgroundColor: colors.bgSecondary,
-    borderRadius: radius.lg,
+    borderRadius: radius.md,
     padding: spacing.md,
     marginBottom: spacing.lg,
   },
@@ -409,5 +409,5 @@ const makeStyles = (colors: Colors) => StyleSheet.create({
   splitRow: { flexDirection: 'row' },
   splitCell: { flex: 1, alignItems: 'center' },
   splitValue: { fontSize: font.lg, fontWeight: fontWeight.bold, color: colors.text },
-  splitLabel: { fontSize: font.xs, color: colors.textSecondary, marginTop: 2 },
+  splitLabel: { fontSize: font.xs, color: colors.textSecondary, marginTop: spacing.xxs },
 });

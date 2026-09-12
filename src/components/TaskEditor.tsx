@@ -5494,7 +5494,7 @@ const makeStyles = (colors: Colors) => StyleSheet.create({
   mentionSuggestionRow: {
     flexDirection: 'row',
     flexWrap: 'wrap',
-    gap: 6,
+    gap: spacing.xsm,
     marginHorizontal: spacing.md,
     marginTop: -4,
     marginBottom: spacing.sm,
@@ -5502,9 +5502,9 @@ const makeStyles = (colors: Colors) => StyleSheet.create({
   scheduleBannerBtn: {
     flexDirection: 'row',
     alignItems: 'center',
-    gap: 6,
+    gap: spacing.xsm,
     maxWidth: '100%',
-    paddingHorizontal: 12,
+    paddingHorizontal: spacing.smd,
     paddingVertical: 7,
     borderRadius: radius.md,
     backgroundColor: colors.accentFill,
@@ -5550,7 +5550,7 @@ const makeStyles = (colors: Colors) => StyleSheet.create({
   tagRow: { flexDirection: 'row', flexWrap: 'wrap', gap: spacing.sm, alignItems: 'center' },
   tagChip: {
     flexDirection: 'row', alignItems: 'center', gap: 4,
-    paddingHorizontal: 12, minHeight: interaction.pillHeight,
+    paddingHorizontal: spacing.smd, minHeight: interaction.pillHeight,
     borderRadius: radius.full,
   },
   tagDot: { width: 6, height: 6, borderRadius: 3 },
@@ -5572,7 +5572,7 @@ const makeStyles = (colors: Colors) => StyleSheet.create({
   blocksRemove: { padding: 4 },
   tagSuggestions: { flexDirection: 'row', flexWrap: 'wrap', gap: spacing.xs, marginTop: spacing.sm },
   tagSuggestion: {
-    paddingHorizontal: 12, minHeight: interaction.pillHeight,
+    paddingHorizontal: spacing.smd, minHeight: interaction.pillHeight,
     justifyContent: 'center',
     borderRadius: radius.full, backgroundColor: colors.bgTertiary,
   },
@@ -5589,14 +5589,14 @@ const makeStyles = (colors: Colors) => StyleSheet.create({
   kindHint: { color: colors.textSecondary, fontSize: font.xs, marginTop: spacing.sm, lineHeight: 16 },
   pillText: { color: colors.text, fontSize: font.sm, fontWeight: '500' },
   pillTextActive: { color: colors.text, fontWeight: '600' },
-  pillHint: { color: colors.textSecondary, fontSize: font.xs, marginTop: 2 },
+  pillHint: { color: colors.textSecondary, fontSize: font.xs, marginTop: spacing.xxs },
   customEffortRow: {
     flexDirection: 'row', alignItems: 'center', gap: spacing.sm, marginTop: spacing.sm,
   },
   customEffortInput: {
     color: colors.text, fontSize: font.md, fontWeight: '600',
     backgroundColor: colors.bgTertiary, borderRadius: radius.sm,
-    paddingHorizontal: 12, paddingVertical: 8, minWidth: 72, textAlign: 'center',
+    paddingHorizontal: spacing.smd, paddingVertical: 8, minWidth: 72, textAlign: 'center',
   },
   // A track next to the number it labels, so it takes a width rather than
   // stretching across the row the way one owning a line does.
@@ -5685,7 +5685,7 @@ const makeStyles = (colors: Colors) => StyleSheet.create({
   fieldBox: {
     color: colors.text, fontSize: font.md,
     backgroundColor: colors.bgTertiary, borderRadius: radius.sm,
-    paddingHorizontal: 12,
+    paddingHorizontal: spacing.smd,
     // Height rather than lineHeight — see the TextInput note in CLAUDE.md.
     height: 36,
   },
@@ -5770,7 +5770,7 @@ const makeStyles = (colors: Colors) => StyleSheet.create({
     paddingHorizontal: spacing.md, paddingBottom: spacing.md,
   },
   schedulePill: {
-    paddingHorizontal: 12, paddingVertical: 5,
+    paddingHorizontal: spacing.smd, paddingVertical: 5,
     borderRadius: radius.full, backgroundColor: colors.bgTertiary,
   },
   schedulePillActive: { backgroundColor: colors.accent },
@@ -5800,7 +5800,7 @@ const makeStyles = (colors: Colors) => StyleSheet.create({
   // The read-only breakdown shown in Duration once the subtasks carry the
   // countdown between them. Numbered rather than bulleted because the order is
   // the order the timer runs through them in.
-  splitList: { gap: 2 },
+  splitList: { gap: spacing.xxs },
   splitRow: {
     flexDirection: 'row', alignItems: 'center', gap: spacing.sm,
     paddingVertical: 4,
@@ -5817,7 +5817,7 @@ const makeStyles = (colors: Colors) => StyleSheet.create({
   },
   splitTotalRow: {
     borderTopWidth: StyleSheet.hairlineWidth, borderTopColor: colors.separator,
-    marginTop: 2,
+    marginTop: spacing.xxs,
   },
   splitTotalLabel: {
     flex: 1,
@@ -5837,7 +5837,7 @@ const makeStyles = (colors: Colors) => StyleSheet.create({
     paddingVertical: 7,
     borderBottomWidth: StyleSheet.hairlineWidth, borderBottomColor: colors.separator,
   },
-  subtaskCheck: { padding: 2 },
+  subtaskCheck: { padding: spacing.xxs },
   subtaskBox: {
     width: SUBTASK_CHECKBOX_SIZE,
     height: SUBTASK_CHECKBOX_SIZE,
@@ -5873,7 +5873,7 @@ const makeStyles = (colors: Colors) => StyleSheet.create({
   subtaskInput: {
     flex: 1, color: colors.text, fontSize: font.md,
     borderBottomWidth: 1, borderBottomColor: colors.accent,
-    paddingVertical: 2,
+    paddingVertical: spacing.xxs,
   },
   chainHeader: {
     flexDirection: 'row', alignItems: 'center', gap: spacing.sm,
@@ -5884,7 +5884,7 @@ const makeStyles = (colors: Colors) => StyleSheet.create({
     paddingVertical: 7,
     borderBottomWidth: StyleSheet.hairlineWidth, borderBottomColor: colors.separator,
   },
-  chainItemIndexBtn: { padding: 2 },
+  chainItemIndexBtn: { padding: spacing.xxs },
   chainItemDot: {
     width: 22, height: 22, borderRadius: 11,
     backgroundColor: colors.bgTertiary,
@@ -5914,7 +5914,7 @@ const makeStyles = (colors: Colors) => StyleSheet.create({
   chainInput: {
     flex: 1, color: colors.text, fontSize: font.md,
     borderBottomWidth: 1, borderBottomColor: colors.accent,
-    paddingVertical: 2,
+    paddingVertical: spacing.xxs,
   },
   chainCurrentHint: {
     color: colors.textSecondary, fontSize: font.xs, lineHeight: 16,

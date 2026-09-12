@@ -215,7 +215,7 @@ const makeStyles = (colors: Colors) => StyleSheet.create({
     justifyContent: 'center',
     backgroundColor: colors.accentSubtle,
   },
-  rowInfo: { flex: 1, gap: 2 },
+  rowInfo: { flex: 1, gap: spacing.xxs },
   rowName: { color: colors.text, fontSize: font.md, fontWeight: fontWeight.medium },
   rowHint: { color: colors.textTertiary, fontSize: font.xs },
   cancelCard: {

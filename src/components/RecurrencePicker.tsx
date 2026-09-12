@@ -332,7 +332,7 @@ const makeStyles = (colors: Colors) => StyleSheet.create({
   },
   // The Repeat row is its own separator, and there's nothing above the group
   // to divide it from.
-  groupFirst: { borderTopWidth: 0, paddingTop: 2 },
+  groupFirst: { borderTopWidth: 0, paddingTop: spacing.xxs },
   // The app-wide section-header treatment (see the note in CLAUDE.md on
   // uppercase headers), so a group inside the card labels itself the same way
   // a group of cards does.

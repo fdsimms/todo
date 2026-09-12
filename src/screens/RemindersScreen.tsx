@@ -165,7 +165,7 @@ const ReminderRow = React.memo(function ReminderRow({ task, categoryLabel, proje
 
 const makeStyles = (colors: Colors) => StyleSheet.create({
   container: { flex: 1, backgroundColor: colors.bg },
-  listContent: { paddingTop: 2, paddingBottom: 40 },
+  listContent: { paddingTop: spacing.xxs, paddingBottom: 40 },
   emptyContainer: { flexGrow: 1 },
   // The same inset-grouped card footprint as TaskItem rows / ArchivedScreen's.
   card: {
@@ -173,7 +173,7 @@ const makeStyles = (colors: Colors) => StyleSheet.create({
     alignItems: 'center',
     gap: spacing.sm,
     marginHorizontal: spacing.md,
-    marginVertical: 2,
+    marginVertical: spacing.xxs,
     paddingVertical: spacing.sm + 3,
     paddingHorizontal: spacing.md,
     borderRadius: radius.md,
@@ -191,7 +191,7 @@ const makeStyles = (colors: Colors) => StyleSheet.create({
     flexWrap: 'wrap',
     alignItems: 'center',
     gap: spacing.sm,
-    marginTop: 2,
+    marginTop: spacing.xxs,
   },
   metaChip: { flexDirection: 'row', alignItems: 'center', gap: 4, flexShrink: 1 },
   metaText: { color: colors.textSecondary, fontSize: font.xs },

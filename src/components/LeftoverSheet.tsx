@@ -909,7 +909,7 @@ const makeStyles = (colors: Colors) => StyleSheet.create({
     paddingTop: spacing.md,
     marginBottom: spacing.md,
   },
-  keepText: { flex: 1, gap: 2 },
+  keepText: { flex: 1, gap: spacing.xxs },
   weightField: { flexDirection: 'row', alignItems: 'center', gap: spacing.xs },
   weightInput: {
     color: colors.text,

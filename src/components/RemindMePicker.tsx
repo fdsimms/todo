@@ -627,7 +627,7 @@ const makeStyles = (colors: Colors, windowHeight: number) => StyleSheet.create({
   },
   dayHeaders: {
     flexDirection: 'row',
-    marginBottom: 2,
+    marginBottom: spacing.xxs,
   },
   dayHeaderCell: {
     width: CELL_SIZE,

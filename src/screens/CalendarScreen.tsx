@@ -570,7 +570,7 @@ function makeStyles(colors: Colors) {
     },
     dayHeaders: {
       flexDirection: 'row',
-      marginBottom: 2,
+      marginBottom: spacing.xxs,
     },
     dayHeaderCell: {
       width: CELL_SIZE,
@@ -671,7 +671,7 @@ function makeStyles(colors: Colors) {
     },
     dotColumn: {
       flexDirection: 'column',
-      gap: 2,
+      gap: spacing.xxs,
       marginLeft: 3,
       // Offsets the weight slot the circle now stands on, so the dots stay
       // centred on the circle rather than on the taller stack beside them.
@@ -709,7 +709,7 @@ function makeStyles(colors: Colors) {
       color: colors.textTertiary,
       fontSize: font.sm,
       paddingHorizontal: spacing.md,
-      marginTop: 2,
+      marginTop: spacing.xxs,
     },
     detail: {
       flex: 1,

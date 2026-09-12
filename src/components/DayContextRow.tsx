@@ -234,7 +234,7 @@ const makeStyles = (colors: Colors) => StyleSheet.create({
   // the card itself.
   card: {
     marginHorizontal: spacing.md,
-    marginVertical: 2,
+    marginVertical: spacing.xxs,
     borderRadius: radius.md,
     backgroundColor: colors.bgSecondary,
   },
@@ -276,7 +276,7 @@ const makeStyles = (colors: Colors) => StyleSheet.create({
   },
   content: {
     flex: 1,
-    gap: 2,
+    gap: spacing.xxs,
   },
   title: {
     color: colors.text,

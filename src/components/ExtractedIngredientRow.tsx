@@ -283,10 +283,10 @@ function makeStyles(colors: Colors) {
       gap: spacing.md,
       backgroundColor: colors.bgSecondary,
       marginHorizontal: spacing.md,
-      marginTop: 2,
-      marginBottom: 2,
+      marginTop: spacing.xxs,
+      marginBottom: spacing.xxs,
       borderRadius: radius.md,
-      paddingVertical: 12,
+      paddingVertical: spacing.smd,
       paddingHorizontal: spacing.md,
     },
     // Squares off the corners the link/section panel below sits against and
@@ -342,10 +342,10 @@ function makeStyles(colors: Colors) {
     },
     body: { flex: 1 },
     name: { fontSize: font.md, fontWeight: fontWeight.medium, color: colors.text },
-    meta: { fontSize: font.xs, color: colors.textTertiary, marginTop: 2 },
+    meta: { fontSize: font.xs, color: colors.textTertiary, marginTop: spacing.xxs },
     // Accent rather than tertiary: it explains a state the app put the row in,
     // where the aisle it replaces is just where the thing lives in the shop.
-    note: { fontSize: font.xs, color: colors.accent, marginTop: 2 },
+    note: { fontSize: font.xs, color: colors.accent, marginTop: spacing.xxs },
     // Width bound only. The pill this used to paint itself is now what every
     // editable value gets from `InlineEditableText`, and painting it here too
     // put a chip inside a chip.

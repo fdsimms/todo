@@ -333,7 +333,7 @@ const makeStyles = (colors: Colors) => StyleSheet.create({
   resultCard: { backgroundColor: colors.bgSecondary, borderRadius: radius.md, overflow: 'hidden' },
   resultRow: {
     flexDirection: 'row', alignItems: 'center', gap: spacing.md,
-    paddingHorizontal: spacing.md, paddingVertical: 12,
+    paddingHorizontal: spacing.md, paddingVertical: spacing.smd,
   },
   resultLabel: { color: colors.text, fontSize: font.md },
   highlight: { color: colors.accent, fontWeight: fontWeight.bold },
