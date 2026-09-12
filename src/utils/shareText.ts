@@ -1,6 +1,7 @@
 import { format } from 'date-fns/format';
 import type { GroceryItem, MealPlanEntry, Recipe, RecipeIngredient } from '../types';
 import { flattenRecipeIngredients } from './recipeComponents';
+import { ingredientHeadings } from './recipeSections';
 import { describeAttribution, formatServings, totalMinutes } from './recipeUtils';
 import { formatDuration } from './effort';
 import { scaleQuantity } from './recipeScale';
@@ -42,7 +43,8 @@ function formatShareIngredientLine(
 /**
  * A recipe as text — name, servings/time, every ingredient (a composed
  * recipe's components included, each under its own heading — see
- * `flattenRecipeIngredients`), the method, and attribution.
+ * `flattenRecipeIngredients` — and under the recipe's own section headings
+ * where it has them), the method, and attribution.
  *
  * `scale`/`unitSystem` default to as-written/asWritten so a caller with
  * nothing to say about either still gets a sensible share; pass the screen's
@@ -82,14 +84,17 @@ export function buildRecipeShareText(
   const flat = flattenRecipeIngredients(recipe, recipesById);
   if (flat.length > 0) {
     lines.push('', 'Ingredients:');
-    let headingFor: string | null = null;
-    for (const line of flat) {
-      if (line.recipe.id !== recipe.id && line.recipe.id !== headingFor) {
-        lines.push(`For the ${line.recipe.name}:`);
-        headingFor = line.recipe.id;
-      }
+    // Component names and the recipe's own section headings, both inferred
+    // from the flat list by the one walk every surface that flattens shares
+    // (ingredientHeadings). A section reads as its own line rather than as a
+    // "For the …" — the recipe wrote that label, so it travels as written.
+    const headings = ingredientHeadings(flat);
+    flat.forEach((line, index) => {
+      if (headings[index].dish) lines.push(`For the ${line.recipe.name}:`);
+      const section = headings[index].section;
+      if (section) lines.push(`${section}:`);
       lines.push(`- ${formatShareIngredientLine(line.ingredient, scale, unitSystem)}`);
-    }
+    });
   }
 
   if (recipe.steps.length > 0) {
@@ -116,9 +121,10 @@ export function buildRecipeShareText(
  *
  * Deliberately none of the furniture `buildRecipeShareText` adds, because
  * every piece of it becomes a bogus ingredient on the other side: no recipe
- * name, no servings line, no `Ingredients:` header, no `- ` bullets, and no
- * `For the cake:` component headings. What travels is N lines for N
- * ingredients, so a parser reading line by line gets N ingredients.
+ * name, no servings line, no `Ingredients:` header, no `- ` bullets, and
+ * neither kind of heading — not the `For the cake:` a component opens, nor
+ * the recipe's own `For the frosting:` sections. What travels is N lines for
+ * N ingredients, so a parser reading line by line gets N ingredients.
  *
  * Everything else matches the recipe share: components are flattened in (in
  * order, just without their headings), choice groups resolve to their
