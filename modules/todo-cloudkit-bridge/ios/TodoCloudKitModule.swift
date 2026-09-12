@@ -210,7 +210,7 @@ public class TodoCloudKitModule: Module {
         _ = moreComing
         promise.resolve([
           "payloads": payloads,
-          "cursor": Self.encodeToken(token),
+          "cursor": Self.encodeToken(token) as Any,
         ])
       case .failure(let error):
         // A token the server has forgotten (records aged out, or the zone was

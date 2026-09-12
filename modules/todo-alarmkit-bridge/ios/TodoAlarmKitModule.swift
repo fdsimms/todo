@@ -123,7 +123,7 @@ public class TodoAlarmKitModule: Module {
         TodoAlarmKitExceptionCatcher.runCatchingExceptions {
           Task {
             do {
-              try await AlarmManager.shared.cancel(id: uuid)
+              try AlarmManager.shared.cancel(id: uuid)
               succeeded = true
             } catch {
               // Cancelling an alarm that doesn't exist (already fired,
