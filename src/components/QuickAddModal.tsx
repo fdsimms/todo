@@ -588,7 +588,7 @@ export function QuickAddModal({
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [ruleFill, visible]);
 
-  /** "“expense” · Work · #receipts" — the word that fired, and what it filled in. */
+  /** "“expense” → Work · #receipts" — the word that fired, and what it filled in. */
   const ruleCaption = useMemo(() => {
     if (!ruleFill) return null;
     const targets = describeTitleRuleTargets(
@@ -598,7 +598,10 @@ export function QuickAddModal({
       ruleFill.linkUrl ? linkLabel(ruleFill.linkUrl) : null,
     );
     const word = ruleFill.matched[0].match.keyword;
-    return targets ? `“${word}” · ${targets}` : `“${word}”`;
+    // An arrow rather than the "·" describeTitleRuleTargets uses between its
+    // own parts: those are a flat list (category · project · tag), but the
+    // word causes the targets, and a dot doesn't say that.
+    return targets ? `“${word}” → ${targets}` : `“${word}”`;
   }, [ruleFill, categories, projects]);
 
   // Natural-language scheduling: detect a trailing date/recurrence phrase in

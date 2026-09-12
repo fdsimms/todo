@@ -1087,7 +1087,7 @@ export function GroceryItemSheet({
                   search, which is the answer most foods have.
                 */}
                 <InlineAction
-                  label={item.nutrition ? 'Edit these figures' : 'Type in a label'}
+                  label={item.nutrition ? 'Edit these figures' : 'Add nutrition info'}
                   variant="neutral"
                   onPress={() => { haptics.tap(); setNutritionPanelOpen(true); }}
                 />

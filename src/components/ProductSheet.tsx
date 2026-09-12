@@ -395,10 +395,10 @@ export function ProductSheet({ visible, itemId, editingProductId = null, onClose
                   activeOpacity={interaction.activeOpacity}
                   onPress={() => { haptics.tap(); setPanelOpen(true); }}
                   accessibilityRole="button"
-                  accessibilityLabel={editing.nutrition ? 'Edit these figures' : 'Type in a label'}
+                  accessibilityLabel={editing.nutrition ? 'Edit these figures' : 'Add nutrition info'}
                 >
                   <Text style={styles.actionText}>
-                    {editing.nutrition ? 'Edit these figures' : 'Type in a label'}
+                    {editing.nutrition ? 'Edit these figures' : 'Add nutrition info'}
                   </Text>
                 </TouchableOpacity>
                 {!!editing.nutrition && (

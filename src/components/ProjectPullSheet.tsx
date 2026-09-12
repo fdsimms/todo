@@ -80,6 +80,7 @@ export function ProjectPullSheet({ visible, todaysTasks, scopeProjectIds, onClos
   const forgivVacationStreaks = useTaskStore(s => s.forgivVacationStreaks);
   const setVacationMode = useSettingsStore(s => s.setVacationMode);
   const completeTask = useTaskStore(s => s.completeTask);
+  const updateProject = useProjectStore(s => s.updateProject);
 
   // The one review task this opening is answering, when it's scoped to a
   // single project — i.e. opened from that project's own "Review X" task
@@ -268,10 +269,19 @@ export function ProjectPullSheet({ visible, todaysTasks, scopeProjectIds, onClos
   // without pulling anything in, the same bookkeeping a pull would leave
   // behind (projectsReviewedToday), but as a deliberate choice rather than
   // whatever a direct tap on the task's own checkbox used to do silently.
+  //
+  // Also stamps Project.reviewedAt, which lastTouchedAt (utils/projectPull.ts)
+  // treats as a touch — without it the project has nothing left to pull by
+  // definition, stays stalled, and the very next sweep writes an identical
+  // review task back the moment projectsReviewedToday's same-day window
+  // closes. Stamping it restarts the quiet clock from now, so the next review
+  // waits out the project's own nudgeCadenceDays, same as if a pulled task had
+  // run its course.
   const handleSkip = () => {
-    if (!reviewTaskId) return;
+    if (!reviewTaskId || !scopeProjectIds?.[0]) return;
     haptics.success();
     completeTask(reviewTaskId, { completedAt: new Date().toISOString() });
+    updateProject(scopeProjectIds[0], { reviewedAt: new Date().toISOString() });
     dismiss();
   };
 

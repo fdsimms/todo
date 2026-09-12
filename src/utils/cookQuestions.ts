@@ -2,6 +2,7 @@ import { RECIPE_STEP_NOTE_MAX_LENGTH } from '../types';
 import type { CookStep } from './cookMode';
 import type { FlatIngredient } from './recipeComponents';
 import { scaleQuantity } from './recipeScale';
+import { stepNamesIngredient } from './stepIngredients';
 import { convertQuantity, type UnitSystem } from './unitConvert';
 
 /**
@@ -157,39 +158,23 @@ export function suggestedCookQuestions(
  * The ingredient this step names, if it names one — longest match first.
  *
  * Longest first so "brown sugar" wins over "sugar" in a recipe holding both: the
- * chip is only useful if it names the thing the cook is looking at. Matching is
- * whole-word on the ingredient's own name, which is deliberately strict — a
- * chip offering a substitute for something the step never mentioned reads as the
- * app having misread the sentence.
+ * chip is only useful if it names the thing the cook is looking at.
+ *
+ * Whether a step names an ingredient at all is `stepNamesIngredient`'s
+ * (`stepIngredients.ts`) — the same question the annotation on the step text
+ * asks, and two answers to it would be two things one sentence could mean. A
+ * chip offering a substitute for a word the annotation above it left unmarked
+ * reads as one of the two having misread the step.
  */
 function ingredientNamedIn(
   stepText: string,
   ingredientNames: readonly string[],
 ): string | null {
-  const haystack = stepText.toLowerCase();
   const candidates = ingredientNames
     .map(name => name.trim().toLowerCase())
     .filter(Boolean)
     .sort((a, b) => b.length - a.length);
-  for (const name of candidates) {
-    // Word boundaries by hand rather than a RegExp: an ingredient name is user
-    // text and can hold any of `.`, `(`, `+` or `*`, so building a pattern out
-    // of it would need escaping to do the same job.
-    let from = 0;
-    while (from <= haystack.length - name.length) {
-      const at = haystack.indexOf(name, from);
-      if (at < 0) break;
-      const before = at === 0 ? ' ' : haystack[at - 1];
-      const after = at + name.length >= haystack.length ? ' ' : haystack[at + name.length];
-      if (!isWordChar(before) && !isWordChar(after)) return name;
-      from = at + 1;
-    }
-  }
-  return null;
-}
-
-function isWordChar(ch: string): boolean {
-  return /[a-z0-9]/.test(ch);
+  return candidates.find(name => stepNamesIngredient(stepText, name)) ?? null;
 }
 
 /**

@@ -676,9 +676,9 @@ ingredient panel's fold die with the modal.
   invisible must not hold a once-a-second interval open.
 - **Quantities are the panel's, never the step's.** The ingredient panel runs the same
   scale-then-convert pipeline the recipe row does (exact multiplication first, rounding conversion
-  second), so a halved recipe reads correctly mid-step. The step text renders exactly as written:
-  nothing parses amounts back out of a sentence, and per-step amounts wait for the ingredient
-  references #1695 deferred.
+  second), so a halved recipe reads correctly mid-step. Nothing parses an amount back *out* of a
+  sentence: what a step says about an ingredient it names comes from that ingredient's own line,
+  through the same pipeline — see Ingredient references below.
 - **Nothing is ticked off by itself.** Finishing the last step closes the sheet and logs nothing —
   logging a cook time is the timer's own ✓, the same call `timer.ts` makes about a countdown.
 - **`useKeepAwake` is called from inside the Modal's content** (`ScreenAwake`), not at the top of
@@ -690,6 +690,79 @@ ingredient panel's fold die with the modal.
   that happens *now*, so it leads, and hidden outright when the recipe has no method rather than
   offered greyed out. Its arrival is why the primary shortened to "Add to list": three buttons
   don't fit a 390pt line at the old label.
+
+### Ingredient references (`stepIngredients.ts`) — the amount the step already implies
+
+A method sentence names its ingredients but not their amounts, and the amounts sit in a panel the
+cook folded away two steps ago. So a step's own words get a parenthetical after each ingredient it
+names: what this cooking's amount comes to, and what a standing swap means you are actually
+reaching for. `StepText` draws it in both places a step is read — cook mode's big one-at-a-time
+text and the recipe screen's step rows — because the thing worth keeping identical is which half of
+the sentence is the app's. It takes the accent colour and nothing else, the mark a scaled or
+converted amount already carries on the ingredient row.
+
+Display only, like everything else here: the recipe row is untouched, the step's text is untouched,
+and the amounts come from the ingredient lines rather than out of the prose.
+
+The whole module is refusals, because the failure mode is a wrong number beside an ingredient in a
+method somebody is following with their hands full.
+
+- **The recipe's own vocabulary, and nothing else.** A step is matched against the lines of the
+  recipe it is *written on* — a step of the mash against the mash's list — on the name the recipe
+  gave the line, which for a swapped line is `swappedFrom` rather than what it now reads as: the
+  method says "milk" because it was written before the swap existed. No lexicon and no stemming:
+  nothing outside the recipe's own list can put a word under an amount. `stepNamesIngredient` is
+  the one matcher, shared with `cookQuestions`' substitute chip — two opinions about whether a
+  sentence names an ingredient would read as one of them having misread it.
+- **A line also answers to a shorter form of its own name, through two closed tables.** A method
+  rarely repeats a line's full name: the recipe says "2 chicken breasts" and the step says "slice
+  the chicken", the recipe says "1 red bell pepper" and the step says "add the pepper". Strict
+  matching alone is silent on most of a real method, which is why this exists rather than being
+  the refusal it started as. `CUTS` comes off the end (chicken breasts, salmon fillets, pork
+  chops) and `MODIFIERS` comes off the front (red, bell, rolled, fresh, unsalted). **Adjectives
+  and cuts, never "the last word"** — that is the entire safety argument, since "soy", "olive" and
+  "chicken" name what the thing *is*: "soy sauce" never answers to "sauce", so a step reducing a
+  pan sauce cannot pick up the soy line's amount. "sweet", "hot", "smoked", "toasted" and
+  "roasted" are left out of `MODIFIERS` for the same reason one level down — a sweet potato is not
+  a potato. Two more guards: **an alias two lines share is dropped outright** ("olive oil" and
+  "sesame oil" both offer "oil", so neither gets it — dropped rather than merged, because it was
+  inferred rather than written), and **a line's real name outranks another line's alias**, so
+  plain "sugar" belongs to the sugar line rather than to the brown sugar one. The residual is a
+  step using a word the recipe never did: "season with salt and pepper" in a recipe whose only
+  pepper is a bell one takes that line's amount. Wrong, and cheap.
+- **Whole words, longest first, one per ingredient per step.** "brown sugar" beats "sugar" in a
+  recipe holding both, and a claimed span is never matched into again, so the "sugar" line can
+  still annotate its own standalone mention further along. One per *line* rather than per name it
+  answers to, so "sear the chicken breasts, then slice the chicken" is one ingredient mentioned
+  twice — and the same identity is what "spent across several steps" below counts on. Repeating it
+  on the *next* step isn't repetition, since cook mode shows one step at a time; repeating it
+  twice in one sentence is.
+- **A name used as a verb takes nothing.** "Butter the dish" is a step about greasing a tin. The
+  tell is the word after: an ingredient noun is essentially never followed straight by "the", "a"
+  or "an" and a verb taking an object nearly always is, and the one noun reading of that shape is a
+  trailing time clause ("serve over the rice the next day") where the name carries its own
+  determiner. So a name with a determiner in front of it is a thing whatever follows it.
+- **An amount the method spends across several steps says "in total".** A line's amount is what the
+  *recipe* calls for, and pinning it unqualified to one of the four steps that use it is a claim
+  nobody made. Saying it as the total is honest at every one of them, and it has to be said at
+  every one of them because the cook can only see one. This is the load-bearing rule: it is why the
+  whole method is read before any one step's parenthetical is written, and why there is no
+  per-step version of this function.
+- **A name two of one recipe's lines share loses its amount.** Which of the two salts a step means
+  is unanswerable, and their sum is not what either line says. The swap survives where both lines
+  agree on it, which is the ordinary case since a standing rule is keyed on the catalog item.
+- **An amount the sentence already gives is not repeated.** "Add 200 g sugar (200 g)" is what a
+  naive version prints. At 2x the same step correctly reads "Add 200 g sugar (400 g)", which is
+  precisely the case this exists for, and the check finds nothing because the string genuinely
+  differs. The swapped name gets the same treatment, so a step already saying "oat milk" isn't told
+  to use oat milk.
+- **A bare count of one says nothing.** "half the lemon (1)" tells a cook nothing the singular
+  noun didn't, and the spread form is worse: "in total" implies an amount being divided and there
+  is no unit for it to be divided into. Every other count says something ("carrots (3)"), and
+  anything carrying a unit or a container always does ("asparagus (1 bunch)").
+- **A mention with nothing to say still claims its span.** A line carrying neither an amount nor a
+  swap produces no parenthetical, but it is matched and skipped rather than dropped from the
+  candidate list — otherwise "sugar" would annotate the tail of an amount-less "brown sugar".
 
 ### Asking about a step (`cookQuestions.ts`) — the question the method raised
 

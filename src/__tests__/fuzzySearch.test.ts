@@ -508,6 +508,7 @@ const makeProject = (overrides: Partial<Project> = {}): Project => ({
   nudgeOptIn: false,
   weekendSource: false,
   reviewDeclinedAt: null,
+  reviewedAt: null,
   backfillDismissedFields: [],
   kind: 'project' as const,
   awayStart: null,
