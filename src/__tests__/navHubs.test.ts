@@ -4,7 +4,7 @@ import {
 } from '../utils/navHubs';
 import { SIMPLE_HIDDEN_SCREENS } from '../utils/simpleMode';
 
-const FULL = { kitchenEnabled: true, simpleMode: false, counts: { stacks: 3, templates: 2, people: 4, mood: 5, foodLog: 6 } };
+const FULL = { kitchenEnabled: true, simpleMode: false, counts: { stacks: 3, templates: 2, people: 4, mood: 5, medications: 2, foodLog: 6 } };
 const routesOf = (rows: ReturnType<typeof visibleMenuRows>) => rows.map(rowEntryRoute);
 
 describe('the menu as data', () => {
@@ -36,8 +36,8 @@ describe('the menu as data', () => {
     }
   });
 
-  it('fits on a phone: eleven rows with everything switched on', () => {
-    expect(visibleMenuRows(FULL)).toHaveLength(11);
+  it('fits on a phone: twelve rows with everything switched on', () => {
+    expect(visibleMenuRows(FULL)).toHaveLength(12);
   });
 
   it('opens a hub row on its first member', () => {
@@ -48,6 +48,7 @@ describe('the menu as data', () => {
   it('files a hub member under its hub, and a plain row under none', () => {
     expect(hubForRoute('Logbook')?.id).toBe('history');
     expect(hubForRoute('Recipes')?.id).toBe('kitchen');
+    expect(hubForRoute('Mood')?.id).toBe('health');
     expect(hubForRoute('Search')).toBeUndefined();
   });
 });
@@ -67,6 +68,14 @@ describe('the kitchen switch', () => {
       expect(found).not.toContain(member.route);
     }
   });
+
+  // Food log used to be a kitchen-hub member and disappeared along with
+  // groceries; it moved to the health hub precisely so logging what you ate
+  // isn't tied to the shopping feature.
+  it('leaves Food log reachable once the kitchen switch is off', () => {
+    const found = menuDestinations({ ...FULL, kitchenEnabled: false }).map(d => d.route);
+    expect(found).toContain('FoodLog');
+  });
 });
 
 describe('simplified mode', () => {
@@ -83,12 +92,22 @@ describe('simplified mode', () => {
   // reach that state — every one of them keeps at least one always-shown
   // screen. This pins that, so a future hub built entirely out of lenses is
   // caught here rather than shipping as a row that opens onto nothing.
-  it('leaves every hub standing, on the emptiest install simplified mode allows', () => {
-    const bare = { ...SIMPLE, counts: { stacks: 0, templates: 0, people: 0, mood: 0 } };
+  it('leaves every hub standing, on the emptiest install simplified mode allows — except Health', () => {
+    // Health is the one hub every one of whose members can be gone at once:
+    // Weight is a lens and simple mode drops it unconditionally, and Mood,
+    // Medications and Food log are all content screens that need a log entry
+    // to survive. The other three hubs keep at least one always-shown screen
+    // (Categories, Logbook, Groceries…), so this is the case the comment on
+    // the loop below was written to catch, now that it can actually happen.
+    const bare = { ...SIMPLE, counts: { stacks: 0, templates: 0, people: 0, mood: 0, medications: 0, foodLog: 0 } };
     for (const hub of NAV_HUBS) {
+      if (hub.id === 'health') continue;
       expect(`${hub.id}: ${visibleHubMembers(hub, true, bare.counts).length > 0}`).toBe(`${hub.id}: true`);
     }
+    expect(visibleHubMembers(NAV_HUBS.find(h => h.id === 'health')!, true, bare.counts)).toHaveLength(0);
     expect(routesOf(visibleMenuRows(bare))).toContain('Categories');
+    // And the empty hub drops its row entirely, per visibleMenuRows.
+    expect(visibleMenuRows(bare).some(r => r.kind === 'hub' && r.hub.id === 'health')).toBe(false);
   });
 
   it('keeps a content screen only while it holds something', () => {
@@ -110,10 +129,10 @@ describe('simplified mode', () => {
     expect(visibleHubMembers(kitchen, true, FULL.counts).map(m => m.route)).not.toContain('Kitchen');
   });
 
-  it('drops Mood once it holds nothing, like the other three content screens', () => {
-    const history = NAV_HUBS.find(h => h.id === 'history')!;
-    const withEntries = visibleHubMembers(history, true, { ...FULL.counts, mood: 2 }).map(m => m.route);
-    const without = visibleHubMembers(history, true, { ...FULL.counts, mood: 0 }).map(m => m.route);
+  it('drops Mood once it holds nothing, like the other content screens', () => {
+    const health = NAV_HUBS.find(h => h.id === 'health')!;
+    const withEntries = visibleHubMembers(health, true, { ...FULL.counts, mood: 2 }).map(m => m.route);
+    const without = visibleHubMembers(health, true, { ...FULL.counts, mood: 0 }).map(m => m.route);
     expect(withEntries).toContain('Mood');
     expect(without).not.toContain('Mood');
   });
@@ -128,6 +147,8 @@ describe('the subtitle under a hub row', () => {
   it('names every member it holds', () => {
     const organize = NAV_HUBS.find(h => h.id === 'organize')!;
     expect(hubSubtitle(organize)).toBe('Categories, Tags, People, Stacks, Templates');
+    const health = NAV_HUBS.find(h => h.id === 'health')!;
+    expect(hubSubtitle(health)).toBe('Mood, Medications, Weight, Food log');
   });
 
   // The whole point of building it from the members rather than writing it
@@ -135,10 +156,11 @@ describe('the subtitle under a hub row', () => {
   // user finds out about one tap later.
   it('stays honest when simplified mode takes members away', () => {
     const row = visibleMenuRows({ ...FULL, simpleMode: true }).find(
-      r => r.kind === 'hub' && r.hub.id === 'history');
-    // Stats is a lens and goes unconditionally; Mood is a content screen and
-    // stays only because FULL.counts has entries in it.
-    expect(row && row.kind === 'hub' && hubSubtitle(row.hub)).toBe('Logbook, Mood, Archived');
+      r => r.kind === 'hub' && r.hub.id === 'health');
+    // Weight is a lens and goes unconditionally; Mood, Medications and Food
+    // log are content screens and stay only because FULL.counts has entries
+    // in each of them.
+    expect(row && row.kind === 'hub' && hubSubtitle(row.hub)).toBe('Mood, Medications, Food log');
   });
 });
 
