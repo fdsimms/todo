@@ -526,7 +526,8 @@ export function RecipeExtractSheet({ visible, recipe, onClose }: Props) {
    * list appears to edit itself.
    */
   const renderReferences = () => {
-    if (candidates.length === 0) return null;
+    const visibleCandidates = candidates.filter(c => !components.dismissed.has(c.key));
+    if (visibleCandidates.length === 0) return null;
     return (
       <>
         <Text style={styles.groupLabel}>OTHER RECIPES THIS ONE USES</Text>
@@ -536,7 +537,7 @@ export function RecipeExtractSheet({ visible, recipe, onClose }: Props) {
         {/* Its own bottom margin: the ingredient rows below have none of their
             own, and a 2pt gap would read as one continuous list. */}
         <View style={styles.groupBlock}>
-          {candidates.map(candidate => (
+          {visibleCandidates.map(candidate => (
             <ImportedComponentRow
               key={candidate.key}
               candidate={candidate}
@@ -546,6 +547,7 @@ export function RecipeExtractSheet({ visible, recipe, onClose }: Props) {
               onToggle={() => components.toggle(candidate.key)}
               onImport={source => components.importFrom(candidate.key, source)}
               onLink={picked => components.linkTo(candidate.key, picked)}
+              onDismiss={() => components.dismiss(candidate.key)}
             />
           ))}
         </View>
