@@ -137,7 +137,7 @@ export function SegmentedControl<T extends string | number | boolean | null>({
   options, value, onChange, columns, label, surface = 'card',
 }: Props<T>) {
   const colors = useColors();
-  const { isDark } = useTheme();
+  const { isDark, shadows } = useTheme();
   const styles = useMemo(() => makeStyles(colors, isDark, surface), [colors, isDark, surface]);
 
   const renderSegment = (opt: SegmentOption<T>) => {
@@ -147,7 +147,11 @@ export function SegmentedControl<T extends string | number | boolean | null>({
         key={String(opt.value)}
         style={[
           styles.segment,
+          // The lift is `shadows.card`, applied here rather than in the style
+          // below because that one knows the theme but not the shadow tokens.
+          // It had been written out by hand as the same five properties.
           selected && styles.segmentSelected,
+          selected && shadows.card,
           opt.disabled && styles.segmentDisabled,
         ]}
         onPress={() => {
@@ -231,11 +235,6 @@ const makeStyles = (colors: Colors, isDark: boolean, surface: 'page' | 'card') =
    */
   segmentSelected: {
     backgroundColor: isDark ? colors.bgQuaternary : colors.bgSecondary,
-    shadowColor: '#000',
-    shadowOffset: { width: 0, height: 1 },
-    shadowOpacity: isDark ? 0.35 : 0.1,
-    shadowRadius: 3,
-    elevation: 3,
   },
   segmentDisabled: { opacity: 0.4 },
   dot: { width: 8, height: 8, borderRadius: 4 },

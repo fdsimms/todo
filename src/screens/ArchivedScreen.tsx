@@ -1,4 +1,4 @@
-import React, { useMemo, useState } from 'react';
+import React, { useMemo, useState, useCallback } from 'react';
 import { View, Text, FlatList, TouchableOpacity, StyleSheet, Alert } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { useBottomTabBarHeight } from '@react-navigation/bottom-tabs';
@@ -81,11 +81,11 @@ export function ArchivedScreen() {
     );
   }, [sorted, query]);
 
-  const restore = (id: string) => {
+  const restore = useCallback((id: string) => {
     haptics.tap();
     animateLayout();
     unarchiveTask(id);
-  };
+  }, [unarchiveTask]);
 
   const handleBulkRestore = () => {
     const ids = Array.from(selectedIds);
@@ -125,10 +125,21 @@ export function ArchivedScreen() {
     );
   };
 
-  const openEditor = (task: Task) => {
+  const openEditor = useCallback((task: Task) => {
     setEditingTask(task);
     setEditorVisible(true);
-  };
+  }, []);
+
+  // The row handlers are stable and take what they act on, so `ArchivedRow`'s
+  // memo holds through a screen-state change — see its own note.
+  const handleRowPress = useCallback((task: Task) => {
+    if (selectionMode) { toggleSelection(task.id); return; }
+    openEditor(task);
+  }, [selectionMode, toggleSelection, openEditor]);
+
+  const handleRowLongPress = useCallback((taskId: string) => {
+    if (!selectionMode) enterSelectionMode(taskId);
+  }, [selectionMode, enterSelectionMode]);
 
   const listBottomPadding = selectionMode
     ? tabBarHeight + spacing.sm + bulkBarHeight + spacing.sm
@@ -186,10 +197,10 @@ export function ArchivedScreen() {
               projectTitle={item.projectId ? projectNamesById.get(item.projectId) ?? null : null}
               selectionMode={selectionMode}
               selected={selectedIds.has(item.id)}
-              onPress={() => (selectionMode ? toggleSelection(item.id) : openEditor(item))}
-              onLongPress={() => !selectionMode && enterSelectionMode(item.id)}
-              onToggleSelect={() => toggleSelection(item.id)}
-              onRestore={() => restore(item.id)}
+              onPress={handleRowPress}
+              onLongPress={handleRowLongPress}
+              onToggleSelect={toggleSelection}
+              onRestore={restore}
               styles={styles}
               colors={colors}
               cardShadow={shadows.card}
@@ -262,16 +273,18 @@ interface RowProps {
   projectTitle: string | null;
   selectionMode: boolean;
   selected: boolean;
-  onPress: () => void;
-  onLongPress: () => void;
-  onToggleSelect: () => void;
-  onRestore: () => void;
+  // Each takes the task it acts on rather than the screen closing over it once
+  // per row, so one stable function serves every row and the memo holds.
+  onPress: (task: Task) => void;
+  onLongPress: (taskId: string) => void;
+  onToggleSelect: (taskId: string) => void;
+  onRestore: (taskId: string) => void;
   styles: ReturnType<typeof makeStyles>;
   colors: Colors;
   cardShadow: object;
 }
 
-function ArchivedRow({
+const ArchivedRow = React.memo(function ArchivedRow({
   task, categoryLabel, projectTitle, selectionMode, selected,
   onPress, onLongPress, onToggleSelect, onRestore, styles, colors, cardShadow,
 }: RowProps) {
@@ -287,8 +300,8 @@ function ArchivedRow({
     <View ref={paintRef} style={[styles.card, cardShadow, selected && styles.cardSelected]}>
       <TouchableOpacity
         style={styles.cardBody}
-        onPress={onPress}
-        onLongPress={onLongPress}
+        onPress={() => onPress(task)}
+        onLongPress={() => onLongPress(task.id)}
         delayLongPress={interaction.delayLongPress}
         activeOpacity={interaction.activeOpacity}
         accessible
@@ -331,11 +344,11 @@ function ArchivedRow({
       </TouchableOpacity>
 
       {selectionMode ? (
-        <SelectionDot selected={selected} onPress={onToggleSelect} />
+        <SelectionDot selected={selected} onPress={() => onToggleSelect(task.id)} />
       ) : (
         <TouchableOpacity
           style={styles.restoreButton}
-          onPress={onRestore}
+          onPress={() => onRestore(task.id)}
           hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
           activeOpacity={interaction.activeOpacity}
           accessibilityRole="button"
@@ -346,7 +359,7 @@ function ArchivedRow({
       )}
     </View>
   );
-}
+});
 
 const makeStyles = (colors: Colors) => StyleSheet.create({
   container: { flex: 1, backgroundColor: colors.bg },
