@@ -1,6 +1,7 @@
 import React, { useMemo, useState, useEffect, useCallback } from 'react';
 import {
   Alert,
+  Keyboard,
   Modal,
   View,
   Text,
@@ -195,19 +196,20 @@ export function GroceryCatalogSheet({ visible, onClose }: Props) {
     if (selected.size === 0) return;
     addExistingMany([...selected]);
     haptics.success();
+    Keyboard.dismiss();
     onClose();
   };
 
   // Picks made here aren't written anywhere until Add — a swipe-down with a
   // selection on screen would otherwise throw it away with no way back.
   const handleCancel = () => {
-    if (selected.size === 0) { onClose(); return; }
+    if (selected.size === 0) { Keyboard.dismiss(); onClose(); return; }
     Alert.alert(
       'Discard selection?',
       `The ${selected.size} ${selected.size === 1 ? 'item' : 'items'} you picked won’t be added to your list.`,
       [
         { text: 'Keep editing', style: 'cancel' },
-        { text: 'Discard', style: 'destructive', onPress: onClose },
+        { text: 'Discard', style: 'destructive', onPress: () => { Keyboard.dismiss(); onClose(); } },
       ],
     );
   };

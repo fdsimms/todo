@@ -1,6 +1,7 @@
 import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import {
   Alert,
+  Keyboard,
   Modal,
   View,
   Text,
@@ -759,6 +760,7 @@ export function BarcodeScanSheet({ visible, onClose, onApply, context }: Props) 
         .filter(d => d.existingItemId !== null && !!d.label)
         .map(d => ({ shopId: null, rawText: d.label, itemId: d.existingItemId as string })),
     ]);
+    Keyboard.dismiss();
     onApply(itemIds, toAdd, frozenItemIds, products, gtinLinks);
   }, [rows, matches, items, itemProducts, onApply, rememberAliases, gtinProductFor]);
 
@@ -849,13 +851,13 @@ export function BarcodeScanSheet({ visible, onClose, onApply, context }: Props) 
   // with no dialog.
   const handleCancel = () => {
     const dirty = rows.length > 0 || manual.trim() !== '';
-    if (!dirty) { onClose(); return; }
+    if (!dirty) { Keyboard.dismiss(); onClose(); return; }
     Alert.alert(
       'Discard changes?',
       'You have unsaved changes. Are you sure you want to discard them?',
       [
         { text: 'Keep editing', style: 'cancel' },
-        { text: 'Discard', style: 'destructive', onPress: onClose },
+        { text: 'Discard', style: 'destructive', onPress: () => { Keyboard.dismiss(); onClose(); } },
       ],
     );
   };

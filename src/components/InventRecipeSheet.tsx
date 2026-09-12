@@ -1,6 +1,6 @@
 import React, { useCallback, useEffect, useMemo, useState } from 'react';
 import {
-  Alert, Modal, View, Text, TextInput, TouchableOpacity, ScrollView, ActivityIndicator, StyleSheet,
+  Alert, Keyboard, Modal, View, Text, TextInput, TouchableOpacity, ScrollView, ActivityIndicator, StyleSheet,
 } from 'react-native';
 import { useShallow } from 'zustand/react/shallow';
 import Ionicons from '@expo/vector-icons/Ionicons';
@@ -146,6 +146,7 @@ export function InventRecipeSheet({ visible, onClose, onCreated }: Props) {
       });
       haptics.success();
       setCreatingKey(null);
+      Keyboard.dismiss();
       onClose();
       onCreated(recipe.id);
     } catch (e) {
@@ -166,13 +167,13 @@ export function InventRecipeSheet({ visible, onClose, onCreated }: Props) {
   // otherwise drop with no dialog.
   const handleCancel = () => {
     const dirty = hints.trim() !== '' || ideas.length > 0;
-    if (!dirty) { onClose(); return; }
+    if (!dirty) { Keyboard.dismiss(); onClose(); return; }
     Alert.alert(
       'Discard changes?',
       'You have unsaved changes. Are you sure you want to discard them?',
       [
         { text: 'Keep editing', style: 'cancel' },
-        { text: 'Discard', style: 'destructive', onPress: onClose },
+        { text: 'Discard', style: 'destructive', onPress: () => { Keyboard.dismiss(); onClose(); } },
       ],
     );
   };

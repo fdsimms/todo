@@ -137,6 +137,7 @@ export function TemplateItemQuickAdd({ visible, templateId, templateName, onClos
 
   /** Fades the sheet out, closes it, then runs `after` — see the note above. */
   const dismiss = (after?: () => void) => {
+    Keyboard.dismiss();
     Animated.parallel([
       Animated.timing(scaleAnim, { toValue: 0.95, duration: animation.duration.dismiss, useNativeDriver: true }),
       Animated.timing(sheetOpacity, { toValue: 0, duration: animation.duration.dismiss, useNativeDriver: true }),

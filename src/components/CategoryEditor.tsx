@@ -208,6 +208,7 @@ export function CategoryEditor({ visible, category, onClose }: Props) {
   };
 
   const saveAndClose = () => {
+    Keyboard.dismiss();
     if (!category) { onClose(); return; }
 
     // Everything below is keyed by the category's *current* name, so the
@@ -254,7 +255,7 @@ export function CategoryEditor({ visible, category, onClose }: Props) {
       message: taskCount > 0
         ? `Remove "${category}" from ${taskCount} ${taskCount === 1 ? 'task' : 'tasks'}? They'll become uncategorized. This can be undone with shake-to-undo.`
         : `Delete "${category}"? This can be undone with shake-to-undo.`,
-      onConfirm: () => { animateLayout(); deleteCategory(category); onClose(); },
+      onConfirm: () => { Keyboard.dismiss(); animateLayout(); deleteCategory(category); onClose(); },
     });
   };
 

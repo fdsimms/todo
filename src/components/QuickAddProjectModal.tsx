@@ -149,6 +149,7 @@ export function QuickAddProjectModal({
   }, [visible]);
 
   const dismiss = () => {
+    Keyboard.dismiss();
     Animated.parallel([
       Animated.timing(scaleAnim, { toValue: 0.95, duration: animation.duration.dismiss, useNativeDriver: true }),
       Animated.timing(sheetOpacity, { toValue: 0, duration: animation.duration.dismiss, useNativeDriver: true }),

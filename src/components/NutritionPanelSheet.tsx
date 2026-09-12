@@ -1,6 +1,7 @@
 import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import {
   Alert,
+  Keyboard,
   Modal,
   ScrollView,
   StyleSheet,
@@ -318,6 +319,7 @@ export function NutritionPanelSheet({ visible, foodName, nutrition, onClose, onS
       return;
     }
     haptics.success();
+    Keyboard.dismiss();
     onSave(buildPanelNutrition(form, nutrition));
     onClose();
   };
@@ -338,13 +340,13 @@ export function NutritionPanelSheet({ visible, foodName, nutrition, onClose, onS
   );
 
   const handleCancel = () => {
-    if (!panelFormDirty(form, baseline.current)) { onClose(); return; }
+    if (!panelFormDirty(form, baseline.current)) { Keyboard.dismiss(); onClose(); return; }
     Alert.alert(
       'Discard changes?',
       'You have unsaved changes. Are you sure you want to discard them?',
       [
         { text: 'Keep editing', style: 'cancel' },
-        { text: 'Discard', style: 'destructive', onPress: onClose },
+        { text: 'Discard', style: 'destructive', onPress: () => { Keyboard.dismiss(); onClose(); } },
       ],
     );
   };

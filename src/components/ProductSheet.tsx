@@ -2,6 +2,7 @@ import React, { useEffect, useMemo, useState } from 'react';
 import { format } from 'date-fns/format';
 import {
   Alert,
+  Keyboard,
   Modal,
   ScrollView,
   StyleSheet,
@@ -217,6 +218,7 @@ export function ProductSheet({ visible, itemId, editingProductId = null, onClose
       // no-duplicates rule working, not a failure to record anything.
     }
     haptics.success();
+    Keyboard.dismiss();
     onClose();
   };
 
@@ -229,13 +231,13 @@ export function ProductSheet({ visible, itemId, editingProductId = null, onClose
       || variant.trim() !== (editing?.variant ?? '')
       || note !== (editing?.note ?? '')
       || rating !== (editing?.rating ?? null);
-    if (!dirty) { onClose(); return; }
+    if (!dirty) { Keyboard.dismiss(); onClose(); return; }
     Alert.alert(
       'Discard changes?',
       'You have unsaved changes. Are you sure you want to discard them?',
       [
         { text: 'Keep editing', style: 'cancel' },
-        { text: 'Discard', style: 'destructive', onPress: onClose },
+        { text: 'Discard', style: 'destructive', onPress: () => { Keyboard.dismiss(); onClose(); } },
       ],
     );
   };
@@ -256,6 +258,7 @@ export function ProductSheet({ visible, itemId, editingProductId = null, onClose
           style: 'destructive',
           onPress: () => {
             haptics.warning();
+            Keyboard.dismiss();
             deleteProduct(editing.id);
             onClose();
           },
@@ -426,6 +429,7 @@ export function ProductSheet({ visible, itemId, editingProductId = null, onClose
                   activeOpacity={interaction.activeOpacity}
                   onPress={() => {
                     haptics.tap();
+                    Keyboard.dismiss();
                     setPreferredProduct(item.id, editing.id);
                     onClose();
                   }}

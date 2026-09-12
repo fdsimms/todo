@@ -1,5 +1,5 @@
 import React, { useEffect, useMemo, useRef, useState } from 'react';
-import { Modal, View, Text, TextInput, TouchableOpacity, ScrollView, Animated, StyleSheet, useWindowDimensions } from 'react-native';
+import { Keyboard, Modal, View, Text, TextInput, TouchableOpacity, ScrollView, Animated, StyleSheet, useWindowDimensions } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import Ionicons from '@expo/vector-icons/Ionicons';
 import { useShallow } from 'zustand/react/shallow';
@@ -192,6 +192,7 @@ export function CookRecapSheet({
   // for Skip, the backdrop tap, and the hardware back button alike; `handleDone`
   // is the one path that commits ticks first.
   const dismiss = () => {
+    Keyboard.dismiss();
     Animated.parallel([
       Animated.timing(scaleAnim, { toValue: 0.95, duration: animation.duration.dismiss, useNativeDriver: true }),
       Animated.timing(sheetOpacity, { toValue: 0, duration: animation.duration.dismiss, useNativeDriver: true }),

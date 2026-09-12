@@ -1,5 +1,5 @@
 import React, { useMemo, useState } from 'react';
-import { Modal, View, Text, TextInput, TouchableOpacity, ScrollView, StyleSheet } from 'react-native';
+import { Keyboard, Modal, View, Text, TextInput, TouchableOpacity, ScrollView, StyleSheet } from 'react-native';
 import Ionicons from '@expo/vector-icons/Ionicons';
 import { useShallow } from 'zustand/react/shallow';
 import { useColors } from '../theme/ThemeContext';
@@ -55,18 +55,21 @@ export function RecipeSourceSheet({ visible, allowAIImport, onPickSaved, onImpor
   const reset = () => setQuery('');
 
   const handleClose = () => {
+    Keyboard.dismiss();
     reset();
     onClose();
   };
 
   const pickSaved = (recipe: Recipe) => {
     haptics.tap();
+    Keyboard.dismiss();
     reset();
     onPickSaved(recipe);
   };
 
   const importWithAI = () => {
     haptics.tap();
+    Keyboard.dismiss();
     reset();
     onImportWithAI();
   };

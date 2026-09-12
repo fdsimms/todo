@@ -5,6 +5,7 @@ import {
   Text,
   TextInput,
   TouchableOpacity,
+  Keyboard,
   KeyboardAvoidingView,
   Platform,
   StyleSheet,
@@ -65,6 +66,7 @@ export function CookbookEditor({ visible, cookbookId, onClose }: Props) {
   }, [cookbookId]);
 
   const saveAndClose = () => {
+    Keyboard.dismiss();
     if (!cookbookId || !cookbook) { onClose(); return; }
     const trimmedTitle = title.trim();
     const trimmedAuthor = author.trim() || null;
@@ -94,7 +96,7 @@ export function CookbookEditor({ visible, cookbookId, onClose }: Props) {
       message: recipeCount > 0
         ? `Unlink "${cookbook?.title}" from ${recipeCount} ${recipeCount === 1 ? 'recipe' : 'recipes'}? They'll keep their author and title text, just not the link to this book.`
         : `Delete "${cookbook?.title}"?`,
-      onConfirm: () => { deleteCookbook(cookbookId); onClose(); },
+      onConfirm: () => { Keyboard.dismiss(); deleteCookbook(cookbookId); onClose(); },
     });
   };
 

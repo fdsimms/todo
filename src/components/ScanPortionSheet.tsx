@@ -1,6 +1,7 @@
 import React, { useEffect, useMemo, useState } from 'react';
 import {
   Alert,
+  Keyboard,
   Modal,
   ScrollView,
   StyleSheet,
@@ -132,13 +133,13 @@ export function ScanPortionSheet({ visible, foods, slot, at, mealPlanEntryId, on
   const handleCancel = () => {
     // Measured against what actually resolved, so a field typed into and then
     // cleared is not something a swipe-down would lose.
-    if (resolved.size === 0) { onClose(); return; }
+    if (resolved.size === 0) { Keyboard.dismiss(); onClose(); return; }
     Alert.alert(
       'Discard changes?',
       'You have unsaved changes. Are you sure you want to discard them?',
       [
         { text: 'Keep editing', style: 'cancel' },
-        { text: 'Discard', style: 'destructive', onPress: onClose },
+        { text: 'Discard', style: 'destructive', onPress: () => { Keyboard.dismiss(); onClose(); } },
       ],
     );
   };
@@ -163,6 +164,7 @@ export function ScanPortionSheet({ visible, foods, slot, at, mealPlanEntryId, on
       });
     }
     haptics.success();
+    Keyboard.dismiss();
     onClose();
   };
 

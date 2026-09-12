@@ -1,5 +1,5 @@
 import React, { useMemo, useState } from 'react';
-import { Modal, View, Text, TextInput, TouchableOpacity, ScrollView, StyleSheet } from 'react-native';
+import { Keyboard, Modal, View, Text, TextInput, TouchableOpacity, ScrollView, StyleSheet } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import Ionicons from '@expo/vector-icons/Ionicons';
 import type { Person } from '../types';
@@ -40,6 +40,7 @@ export function TripPlannerSheet({ visible, people, onPickPerson, onClose }: Pro
   const matches = useMemo(() => peopleNearLocation(people, query), [people, query]);
 
   const handleClose = () => {
+    Keyboard.dismiss();
     setQuery('');
     onClose();
   };
@@ -89,7 +90,7 @@ export function TripPlannerSheet({ visible, people, onPickPerson, onClose }: Pro
                 key={person.id}
                 style={styles.row}
                 activeOpacity={interaction.activeOpacity}
-                onPress={() => { haptics.tap(); onPickPerson(person.id); }}
+                onPress={() => { haptics.tap(); Keyboard.dismiss(); onPickPerson(person.id); }}
                 accessibilityRole="button"
                 accessibilityLabel={`Open ${displayNameOf(person)}`}
               >
