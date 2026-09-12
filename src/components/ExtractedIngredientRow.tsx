@@ -34,8 +34,10 @@ interface Props {
   onEditSection: (section: string | null) => void;
   /**
    * Mints (or refreshes) a pantry-only catalog row for this ingredient's name
-   * and unticks the row — "I already have this, don't buy it" for a line the
-   * catalog search can't place. See the link panel's own comment below.
+   * — "I already have this in stock" for a line the catalog search can't
+   * place. See the link panel's own comment below. Doesn't touch whether the
+   * row is checked: the checkbox decides what's part of the recipe, which
+   * this has no opinion on.
    */
   onMarkAlreadyHave: () => void;
   /** Every section label already in play — this recipe's own plus this import's — offered as picks before falling back to typing a new one. */
@@ -83,8 +85,10 @@ interface Props {
  * `CatalogLinkPicker`'s search coming up empty is exactly the moment a line
  * needs it most — a thing the app has never seen is a thing it can't have
  * ranked as a probable match yet. It goes through `addToPantry`, so it mints
- * a catalog row rather than only ticking the box off, and unticks this row the
- * same way picking a search result does.
+ * a catalog row rather than only ticking the box off. It leaves the checkbox
+ * alone: whether the ingredient is stocked right now says nothing about
+ * whether the recipe needs it, and this row's checkbox is only ever about
+ * the latter.
  */
 export function ExtractedIngredientRow({
   row, edits, index, checked, onToggle, onEditName, onEditQuantity, onEditSection,
