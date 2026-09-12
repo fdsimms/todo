@@ -813,7 +813,7 @@ const makeStyles = (colors: Colors) => StyleSheet.create({
   stripFill: { backgroundColor: colors.textTertiary, width: '100%' },
   stripFillBusy: { backgroundColor: colors.orange },
   stripFillFull: { backgroundColor: colors.red },
-  stripLetter: { color: colors.textTertiary, fontSize: 9 },
+  stripLetter: { color: colors.textTertiary, fontSize: font.xxs },
   crowding: { color: colors.textSecondary, fontSize: font.xs, marginTop: 9 },
 
   sectionHeader: {

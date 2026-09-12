@@ -344,6 +344,6 @@ const makeStyles = (colors: Colors) => StyleSheet.create({
   chipDot: { width: 7, height: 7, borderRadius: 4 },
   chipText: { color: colors.text, fontSize: font.sm, fontWeight: fontWeight.medium },
   chipTextActive: { color: colors.onAccent, fontWeight: fontWeight.semibold },
-  chipHint: { color: colors.textTertiary, fontSize: 10 },
+  chipHint: { color: colors.textTertiary, fontSize: font.xxs },
   chipHintActive: { color: colors.onAccent + 'aa' },
 });

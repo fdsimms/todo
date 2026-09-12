@@ -983,7 +983,7 @@ const makeStyles = (colors: Colors) => StyleSheet.create({
   chartCol: { flex: 1, alignItems: 'center' },
   barTrack: { width: 12, height: BAR_HEIGHT, justifyContent: 'flex-end' },
   bar: { width: 12, borderRadius: 4 },
-  barLabel: { marginTop: 4, color: colors.textTertiary, fontSize: 10, fontWeight: '500' },
+  barLabel: { marginTop: 4, color: colors.textTertiary, fontSize: font.xxs, fontWeight: '500' },
   barLabelToday: { color: colors.accent, fontWeight: fontWeight.semibold },
   chartCaption: { fontSize: font.xs, color: colors.textTertiary, marginTop: spacing.sm },
   pending: { fontSize: font.sm, color: colors.textSecondary, lineHeight: 20 },

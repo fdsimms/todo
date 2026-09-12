@@ -463,15 +463,24 @@ const makeStyles = (colors: Colors) => StyleSheet.create({
     justifyContent: 'space-around',
     paddingBottom: spacing.xs,
   },
+  // The row holds up to six of these (Complete and Pin are both conditional),
+  // and it neither wraps nor shrinks, so its width has to be affordable at the
+  // narrowest phone: the card leaves 323pt of content at 390pt, and six at the
+  // old minWidth 56 plus 8pt of padding each side needed ~348pt. They spilled
+  // past the card's own border on both ends, worse as label widths grew. 44 is
+  // the iOS minimum tap target and the padding rides on the row's space-around
+  // distribution instead, which brings six to ~280pt. flexShrink lets a future
+  // seventh degrade by narrowing rather than by hanging outside the card.
   actionBtn: {
     alignItems: 'center',
     gap: 4,
     paddingVertical: spacing.xs,
-    paddingHorizontal: spacing.sm,
-    minWidth: 56,
+    paddingHorizontal: spacing.xs,
+    minWidth: 44,
+    flexShrink: 1,
   },
   actionLabel: {
-    fontSize: 10,
+    fontSize: font.xxs,
     fontWeight: '600',
     letterSpacing: 0.2,
   },

@@ -4003,7 +4003,7 @@ const makeStyles = (colors: Colors) => StyleSheet.create({
   },
   timerPillText: {
     color: colors.onAccent,
-    fontSize: 11,
+    fontSize: font.xxs,
     fontWeight: fontWeight.semibold,
     fontVariant: ['tabular-nums'],
   },
@@ -4105,7 +4105,7 @@ const makeStyles = (colors: Colors) => StyleSheet.create({
   // and the ones that do are only worth reading while the timer is going.
   subtaskSegment: {
     color: colors.textSecondary,
-    fontSize: 11,
+    fontSize: font.xxs,
     fontVariant: ['tabular-nums'],
     flexShrink: 0,
   },
@@ -4205,7 +4205,7 @@ const makeStyles = (colors: Colors) => StyleSheet.create({
   },
   chainStepListDotText: {
     color: colors.textSecondary,
-    fontSize: 9,
+    fontSize: font.xxs,
     fontWeight: fontWeight.semibold,
   },
   chainStepListDotTextActive: {
@@ -4235,17 +4235,17 @@ const makeStyles = (colors: Colors) => StyleSheet.create({
   },
   chainBadgeText: {
     color: colors.accent,
-    fontSize: 11,
+    fontSize: font.xxs,
     fontWeight: fontWeight.semibold,
   },
   subtaskBadgeText: {
     color: colors.textSecondary,
-    fontSize: 11,
+    fontSize: font.xxs,
     fontWeight: fontWeight.semibold,
   },
   countdownLabel: {
     color: colors.textSecondary,
-    fontSize: 11,
+    fontSize: font.xxs,
     fontWeight: fontWeight.semibold,
     // The digits change every second — without tabular figures the chip's
     // width twitches on each tick.
@@ -4264,7 +4264,7 @@ const makeStyles = (colors: Colors) => StyleSheet.create({
   // mean ready.
   plannedMealsLabel: {
     color: colors.textSecondary,
-    fontSize: 11,
+    fontSize: font.xxs,
     fontWeight: fontWeight.semibold,
   },
   plannedMealsLabelReady: {
@@ -4290,14 +4290,14 @@ const makeStyles = (colors: Colors) => StyleSheet.create({
   // threshold a project crosses into being handled, only the task being ticked.
   quietLabel: {
     color: colors.accent,
-    fontSize: 11,
+    fontSize: font.xxs,
     fontWeight: fontWeight.semibold,
   },
   // Trails the countdown in the chip, so the number stays the thing the eye
   // lands on and a long subtask title truncates instead of pushing it out.
   countdownSegment: {
     color: colors.textSecondary,
-    fontSize: 11,
+    fontSize: font.xxs,
     flexShrink: 1,
   },
   deadlineBadge: {
@@ -4308,7 +4308,7 @@ const makeStyles = (colors: Colors) => StyleSheet.create({
     maxWidth: 110,
   },
   deadlineBadgeText: {
-    fontSize: 11,
+    fontSize: font.xxs,
     fontWeight: fontWeight.semibold,
     fontVariant: ['tabular-nums'],
   },

@@ -70,7 +70,9 @@ export class ErrorBoundary extends React.Component<Props, State> {
 }
 
 // Sits outside ThemeProvider (it must catch errors ThemeProvider itself could
-// throw), so it can't reach theme tokens — hardcoded colors are deliberate here.
+// throw), so it can't reach theme tokens — the hardcoded colors AND sizes are
+// deliberate here, and a sweep converting literals onto `spacing`/`font` should
+// keep skipping this file rather than reaching for an import it can't have.
 const styles = StyleSheet.create({
   container: {
     flex: 1,

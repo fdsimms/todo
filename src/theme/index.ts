@@ -259,7 +259,22 @@ export const radius = {
  */
 export const checkboxRadius = (size: number) => Math.round(size / 3);
 
+/**
+ * `xxs` is the caption floor — the badge count in a 16pt circle, the weekday
+ * letter under a chart bar, the hint trailing a pill, the chip labels on a task
+ * row. It was added the same way `spacing`'s three in-between steps were, and
+ * for the same reason: a sweep found this one job written as 9, 10 *and* 11
+ * across ~26 sites, none of them reaching for a token because the smallest one
+ * (`xs`, 12) was too big for a badge. Three sizes for one job is drift, and 9pt
+ * is below what a caption should ever be, so the fix was to widen the scale
+ * rather than keep rounding call sites onto the nearest wrong literal.
+ *
+ * Nothing goes below it. A container too small to hold 11pt is the container
+ * that's wrong — a badge box grows with `minWidth` + `paddingHorizontal`
+ * instead (see `ScreenHeader`'s badge, and the three siblings it now matches).
+ */
 export const font = {
+  xxs: 11,
   xs: 12,
   sm: 13,
   md: 15,
