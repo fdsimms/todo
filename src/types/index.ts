@@ -715,6 +715,20 @@ export interface Project {
   // reason declinedToday gives — a fortnightly project would bury the offer for
   // two weeks over one tap.
   reviewDeclinedAt: string | null;
+  // When the user last told the pull sheet "nothing to pull" for this project
+  // (ProjectPullSheet's "Nothing to pull, mark reviewed", reachable only from
+  // the project's own review task — see reviewTaskId there). Unlike
+  // reviewDeclinedAt above, this is a deliberate "I looked, there's genuinely
+  // nothing" rather than a swiped-away "not today", so it means more than one
+  // day of quiet: lastTouchedAt (utils/projectPull.ts) treats it as a touch,
+  // the same way a member's completedAt is, so the quiet clock restarts from
+  // here rather than from whatever was last completed. Without that, marking
+  // a project reviewed only silenced it for the rest of the logical day
+  // (projectsReviewedToday), and the very next sweep wrote an identical review
+  // task back — a stalled project with nothing left to pull stays stalled by
+  // definition, so "nothing to pull" only ever bought one day of quiet
+  // instead of the project's own nudgeCadenceDays.
+  reviewedAt: string | null;
   /**
    * Which Backfill fields (see `src/utils/projectBackfill.ts`) this project
    * has been told to stop asking about — same mechanism and same reasoning

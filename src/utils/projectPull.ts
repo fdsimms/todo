@@ -211,9 +211,17 @@ function declinedToday(members: readonly Task[], todayStart: Date): boolean {
  * a completion is a touch regardless of what happened to the row afterward —
  * falling back to the project's creation so a project that has never had a
  * completion still ages.
+ *
+ * `reviewedAt` counts too, and for the same reason a completion does: marking
+ * a project reviewed ("Nothing to pull, mark reviewed" in ProjectPullSheet) is
+ * a deliberate statement that the project was looked at just now, not merely
+ * that today's offer was dismissed (see Project.reviewedAt vs
+ * reviewDeclinedAt). Without it, a project with nothing left to pull would
+ * stay stalled by definition and get re-asked on the very next sweep.
  */
 export function lastTouchedAt(project: Project, allMembers: readonly Task[]): string {
   let latest = project.createdAt;
+  if (project.reviewedAt && project.reviewedAt > latest) latest = project.reviewedAt;
   for (const t of allMembers) {
     if (t.completedAt && t.completedAt > latest) latest = t.completedAt;
   }

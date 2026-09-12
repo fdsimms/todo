@@ -2829,10 +2829,10 @@ export function BackfillScreen() {
                 style={styles.neutralButton}
                 onPress={() => { haptics.tap(); setNutritionPanelOpen(true); }}
                 accessibilityRole="button"
-                accessibilityLabel={`Type in a nutrition label for ${currentItem.name}`}
+                accessibilityLabel={`Add nutrition info for ${currentItem.name}`}
               >
                 <Ionicons name="create-outline" size={iconSize.md} color={colors.text} />
-                <Text style={styles.neutralButtonText}>Type in a label</Text>
+                <Text style={styles.neutralButtonText}>Add nutrition info</Text>
               </PressableScale>
             </View>
           )}

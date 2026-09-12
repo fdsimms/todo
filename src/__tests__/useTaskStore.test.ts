@@ -453,6 +453,7 @@ const makeProject = (overrides: Partial<import('../types').Project> = {}): impor
   nudgeOptIn: true,
   weekendSource: false,
   reviewDeclinedAt: null,
+  reviewedAt: null,
   backfillDismissedFields: [],
   kind: 'project' as const,
   awayStart: null,
