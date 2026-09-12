@@ -1,0 +1,4 @@
+{
+  "message": "Fixed a bug where paging Meal plan back to a previous week snapped straight back to the current week",
+  "date": "2026-09-12"
+}

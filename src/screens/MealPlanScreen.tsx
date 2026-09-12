@@ -827,6 +827,14 @@ export function MealPlanScreen() {
 
   const onThisWeek = isSameWeek(anchor, new Date(), { weekStartsOn });
 
+  // `days` at the moment the screen was last focused (or paged), read by the
+  // focus effect below without making it re-fire on every page(). Kept as a
+  // ref rather than in the effect's own deps for exactly that reason.
+  const daysRef = useRef(days);
+  useEffect(() => {
+    daysRef.current = days;
+  }, [days]);
+
   // `anchor` is set once at mount and this screen never unmounts
   // (enableScreens(false) parks a blurred tab rather than tearing it down —
   // see the ResourceSavingView note in CLAUDE.md), so left alone it goes
@@ -838,18 +846,24 @@ export function MealPlanScreen() {
   // silently undone. A week that's already current needs nothing. Mirrors
   // GroceryScreen's checkTripExpiry: a memo whose inputs haven't changed
   // won't re-render itself away, so this has to be an effect, not a value.
+  //
+  // The callback depends on `weekStartsOn`, not `days` — `useFocusEffect`
+  // re-runs its effect whenever the callback's identity changes while the
+  // screen is still focused, not only on a real focus transition, so a
+  // `days`-keyed callback fired this same reset on every single page(-1):
+  // paging into the past looked identical to the app snapping straight
+  // back, because that's exactly what was happening. Reading the day
+  // through `daysRef` keeps the check honest without retriggering it.
   useFocusEffect(
     useCallback(() => {
       const thisWeekStart = buildWeekDays(new Date(), weekStartsOn)[0];
-      if (isBefore(days[0], thisWeekStart)) {
+      if (isBefore(daysRef.current[0], thisWeekStart)) {
         setAnchor(new Date());
         setCollapsedDays(new Set());
         setPreviousDaysExpanded(false);
       }
-      // days[0] alone decides this — weekStartsOn only changes which day a
-      // week starts on, not whether the anchor's week is in the past.
       // eslint-disable-next-line react-hooks/exhaustive-deps
-    }, [days])
+    }, [weekStartsOn])
   );
 
   // A selection is scoped to the week on screen — the store's bulk methods
@@ -1707,6 +1721,7 @@ export function MealPlanScreen() {
                 <View style={styles.weekNav}>
                   <PeriodNav
                     label={describeWeekRange(days)}
+                    sublabel={onThisWeek ? 'This week' : undefined}
                     onPrev={() => page(-1)}
                     onNext={() => page(1)}
                     prevAccessibilityLabel="Previous week"
