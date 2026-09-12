@@ -14,6 +14,7 @@ import { useFoodLogStore } from '../store/useFoodLogStore';
 import { dayKeyOf, dayKeyToDate, getCurrentDayStart } from '../utils/dateUtils';
 import {
   describeFoodLogEntry,
+  foodLogEntryEdit,
   foodLogSections,
   foodLogTotals,
   resolveFoodLogDrop,
@@ -92,6 +93,7 @@ export function FoodLogScreen() {
   const loadRange = useFoodLogStore(s => s.loadRange);
   const removeEntry = useFoodLogStore(s => s.removeEntry);
   const updateEntry = useFoodLogStore(s => s.updateEntry);
+  const reviseEntry = useFoodLogStore(s => s.reviseEntry);
   const removeEntries = useFoodLogStore(s => s.removeEntries);
   const moveEntries = useFoodLogStore(s => s.moveEntries);
   const reorderEntries = useFoodLogStore(s => s.reorderEntries);
@@ -120,6 +122,11 @@ export function FoodLogScreen() {
    * the meal's own figures moves with it.
    */
   const [linkingEntry, setLinkingEntry] = useState<FoodLogEntry | null>(null);
+  /**
+   * The entry being corrected, which reopens the add sheet on it rather than
+   * on an empty form. Null the rest of the time.
+   */
+  const [editingEntry, setEditingEntry] = useState<FoodLogEntry | null>(null);
   const [seedRecipeId, setSeedRecipeId] = useState<string | null>(null);
   // Plain useRowSelection, same as Templates/Projects/People: there is
   // nothing recurrence- or meal-plan-aware to reuse useTaskSelection's delete
@@ -240,6 +247,38 @@ export function FoodLogScreen() {
     );
   }, [removeEntry]);
 
+  /**
+   * The one correction an entry with no panel behind it can take.
+   *
+   * It changes the row's own words and the name its Health sample carries, and
+   * measures nothing, so none of the refusals `foodLogEntryEdit` makes apply to
+   * it. Through `reviseEntry` rather than `updateEntry` for exactly that second
+   * half: the label is part of what Health was told.
+   */
+  const handleRename = useCallback((entry: FoodLogEntry) => {
+    Alert.prompt(
+      'Rename entry',
+      'What this was. It does not change the figures.',
+      [
+        { text: 'Cancel', style: 'cancel' },
+        {
+          text: 'Save',
+          onPress: (text?: string) => {
+            const trimmed = (text ?? '').trim();
+            // A blank or a no-op closes rather than being refused: the old name
+            // is still there and still correct, the same call the app's other
+            // renames make.
+            if (!trimmed || trimmed === entry.label) return;
+            reviseEntry(entry.id, { label: trimmed });
+            haptics.success();
+          },
+        },
+      ],
+      'plain-text',
+      entry.label,
+    );
+  }, [reviseEntry]);
+
   // The "…" on a row is a real menu, not a synonym for delete: an accidental
   // tap must not open a destructive confirm with nothing to say what's about
   // to happen. Move reuses the same slot list the bulk bar's own panel does.
@@ -254,6 +293,13 @@ export function FoodLogScreen() {
       moveButtons.push({ text: 'Other', onPress: () => { haptics.tap(); moveEntries([entry.id], null); } });
     }
     Alert.alert(entry.label, undefined, [
+      // Edit reopens the sheet and re-measures, which needs a panel to measure
+      // against; `foodLogEntryEdit` is where that rule lives rather than here.
+      // An entry without one still gets its words back, since renaming is the
+      // one correction that claims nothing about how much was eaten.
+      foodLogEntryEdit(entry)
+        ? { text: 'Edit', onPress: () => setEditingEntry(entry) }
+        : { text: 'Rename', onPress: () => handleRename(entry) },
       {
         text: 'Move to meal',
         onPress: () => Alert.alert('Move to meal', undefined, [
@@ -280,7 +326,7 @@ export function FoodLogScreen() {
       { text: 'Forget', style: 'destructive', onPress: () => handleDelete(entry.id, entry.label) },
       { text: 'Cancel', style: 'cancel' },
     ]);
-  }, [moveEntries, updateEntry, handleDelete]);
+  }, [moveEntries, updateEntry, handleDelete, handleRename]);
 
   const handleBulkDelete = () => {
     const ids = Array.from(selectedIds);
@@ -589,6 +635,18 @@ export function FoodLogScreen() {
         onClose={() => { setAddOpen(false); setSeedRecipeId(null); }}
         onEstimate={estimateRoute !== 'unavailable' ? () => { setAddOpen(false); setEstimateOpen(true); } : undefined}
         onScan={() => { setAddOpen(false); setScanOpen(true); }}
+      />
+      {/* The same sheet, reopened on an entry rather than on an empty form. A
+          second mount rather than a flag on the one above, so an add halfway
+          through and a correction can't share a set of fields. It offers
+          neither Describe nor Scan: both are ways of answering "what did you
+          eat" from scratch, and this already has that answer. */}
+      <FoodLogEntrySheet
+        visible={editingEntry !== null}
+        editing={editingEntry}
+        slot={editingEntry?.slot ?? null}
+        at={loggingAt}
+        onClose={() => setEditingEntry(null)}
       />
       <ScanToLogFlow
         visible={scanOpen}

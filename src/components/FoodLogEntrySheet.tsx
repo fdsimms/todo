@@ -9,7 +9,7 @@
 // nothing is offered that has no panel, and no amount is logged that cannot be
 // measured against one. See also `foodLog.ts` for the scaling and
 // `docs/arch/health-data.md` for why a wrong figure here is expensive.
-import React, { useEffect, useMemo, useState } from 'react';
+import React, { useEffect, useMemo, useRef, useState } from 'react';
 import {
   Alert,
   FlatList,
@@ -26,13 +26,13 @@ import Ionicons from '@expo/vector-icons/Ionicons';
 import { useShallow } from 'zustand/react/shallow';
 import { useColors } from '../theme/ThemeContext';
 import { border, font, fontWeight, iconSize, interaction, radius, spacing, type Colors } from '../theme';
-import { MEAL_SLOTS, MEAL_SLOT_LABELS, type FoodNutrition, type GroceryItem, type MealSlot } from '../types';
+import { MEAL_SLOTS, MEAL_SLOT_LABELS, type FoodLogEntry, type FoodNutrition, type GroceryItem, type MealSlot } from '../types';
 import { useGroceryStore } from '../store/useGroceryStore';
 import { useRecipeStore } from '../store/useRecipeStore';
 import { useFoodLogStore, type FoodLogDraft } from '../store/useFoodLogStore';
 import { subDays } from 'date-fns/subDays';
 import { addCustomPortion, catalogPanelWrite, nutritionFor } from '../utils/foodNutrition';
-import { combineFoodNutrition, helpingNutrition, recipeHelpingNutrition, scalePanelToAmount } from '../utils/foodLog';
+import { combineFoodNutrition, foodLogEntryEdit, helpingNutrition, recipeHelpingNutrition, scalePanelToAmount } from '../utils/foodLog';
 import { cookedDishGrams, mealHelping, servingGrams, weighedHelping } from '../utils/mealLog';
 import { perServing, recipeNutrition, recipeNutritionLines, type NutritionLine } from '../utils/recipeNutrition';
 import { describeProduct } from '../utils/groceryProduct';
@@ -101,12 +101,38 @@ import { SheetHeaderButton } from './SheetHeaderButton';
  * always optional. `combineFoodNutrition` folds whichever lines got an answer
  * into the dish's own figures; the rest are left out exactly as the recipe
  * page already leaves them out.
+ *
+ * **Correcting an entry is this same sheet, reopened on it** (`editing`), and
+ * that is the whole reason a wrong portion is no longer a delete and a retype.
+ * A second, smaller editor was the alternative and would have had to grow its
+ * own amount field, its own portion hints and its own refusal copy, and could
+ * offer neither the weigh-it rescue above nor a dish's varying lines — which
+ * is the drift `InlineAction` and `RuleListSheet` exist to undo, one sheet up.
+ * Reopening here also means a corrected amount is measured by the code that
+ * measured the original, rather than multiplied out of figures that are
+ * already one helping's worth. `foodLogEntryEdit` decides which entries can
+ * come back at all and what their amount field opens on.
  */
 
 interface Props {
   visible: boolean;
   /** Which meal it lands in, chosen by the section the add came from. */
   slot: MealSlot | null;
+  /**
+   * An existing entry to correct rather than a new one to write.
+   *
+   * The sheet opens on that entry's own food, with its amount and its meal
+   * already in the fields, and Save patches the row through `reviseEntry`
+   * instead of inserting one. The row keeps its id, so its place in the day
+   * and the meal plan square it points back at both survive the correction.
+   *
+   * A caller offers this only for an entry `foodLogEntryEdit` accepts. The one
+   * case that still opens unseeded is a food whose catalog row or recipe has
+   * since been deleted: the list has nothing to pick, so the search field
+   * opens on the entry's own name and whatever is chosen replaces it. That is
+   * the honest answer for a food the app no longer has.
+   */
+  editing?: FoodLogEntry | null;
   /** The logical day being logged, so a backdated entry lands where it is shown. */
   at: Date;
   /**
@@ -225,7 +251,7 @@ interface Candidate {
 }
 
 export function FoodLogEntrySheet({
-  visible, slot, at, seedRecipeId, initialQuery, mealPlanEntryId, onClose, onEstimate, onScan, onDeclineMeal,
+  visible, slot, at, seedRecipeId, initialQuery, mealPlanEntryId, editing, onClose, onEstimate, onScan, onDeclineMeal,
 }: Props) {
   const colors = useColors();
   const styles = useMemo(() => makeStyles(colors), [colors]);
@@ -240,6 +266,7 @@ export function FoodLogEntrySheet({
   const nonFoodAisles = useGroceryStore(useShallow(s => s.nonFoodAisles));
   const recipes = useRecipeStore(useShallow(s => s.recipes));
   const addEntry = useFoodLogStore(s => s.addEntry);
+  const reviseEntry = useFoodLogStore(s => s.reviseEntry);
   const setItemNutrition = useGroceryStore(s => s.setItemNutrition);
   const setProductNutrition = useGroceryStore(s => s.setProductNutrition);
   const ensureCatalogItem = useGroceryStore(s => s.ensureCatalogItem);
@@ -416,6 +443,53 @@ export function FoodLogEntrySheet({
     const today = getCurrentDayStart();
     setRecency(foodLogRecency(recentEntries(dayKeyOf(subDays(today, 90)), dayKeyOf(today))));
   }, [visible, recentEntries]);
+
+  // ==== reopening an existing entry ====
+  /**
+   * What a correction opened on, so Cancel can tell one that has changed
+   * something from one that has only been looked at, and so the seeding below
+   * happens once per opening rather than on every rebuild of `candidates`.
+   *
+   * Null for an ordinary add, where an untouched sheet is simply an empty one.
+   */
+  const seededRef = useRef<{ id: string; key: string | null; amount: string; slot: MealSlot | null } | null>(null);
+
+  useEffect(() => {
+    if (!visible) { seededRef.current = null; return; }
+    if (!editing || seededRef.current?.id === editing.id) return;
+
+    const plan = foodLogEntryEdit(editing);
+    // Matched on the entry's own links rather than on a candidate key, so this
+    // file and `foodLog.ts` need not agree on a string format. Most specific
+    // first, the order `foodLogEntryEdit` reads them in; the last arm rules
+    // out a box, whose row is the one above it.
+    const candidate = candidates.find(c => (
+      editing.recipeId ? c.recipeId === editing.recipeId
+        : editing.productId ? c.productId === editing.productId
+          : c.itemId === editing.itemId && c.productId === null
+    ));
+
+    // Recorded either way, so a food that could not be seeded is attempted
+    // once rather than on every catalog write while the sheet sits open.
+    seededRef.current = {
+      id: editing.id,
+      key: candidate?.key ?? null,
+      amount: plan && candidate ? plan.amount : '',
+      slot: editing.slot,
+    };
+    setChosenSlot(editing.slot);
+
+    if (!plan || !candidate) {
+      // The catalog row or the recipe is gone, so there is nothing to reopen
+      // on. Opening the search on the entry's own name is all this can offer,
+      // and is still the delete and the retype it replaces, minus the delete.
+      setQuery(editing.label);
+      return;
+    }
+    setPicked(candidate);
+    setAmount(plan.amount);
+    if (plan.dishMeasure) setDishMeasure(plan.dishMeasure);
+  }, [visible, editing, candidates]);
 
   const results = useMemo(() => {
     const key = groceryNameKey(query);
@@ -651,7 +725,7 @@ export function FoodLogEntrySheet({
     const quantity = answeredExtras.length > 0
       ? `${measured}, plus ${answeredExtras.join(', ')}`
       : measured;
-    const draft: FoodLogDraft = {
+    const measurement = {
       label: picked.label,
       quantity,
       grams: built.grams,
@@ -660,12 +734,20 @@ export function FoodLogEntrySheet({
       recipeId: picked.recipeId,
       itemId: picked.itemId,
       productId: picked.productId,
-      mealPlanEntryId: mealPlanEntryId ?? null,
-      at,
     };
-    if (!addEntry(draft)) {
-      haptics.error();
-      return;
+    if (editing) {
+      // `reviseEntry` rather than `updateEntry`, because this reaches the
+      // figures: the samples the entry already wrote to Health are retracted
+      // and the corrected ones written in their place. The row keeps its id,
+      // so its position in the day and the meal plan square it points back at
+      // both survive the correction.
+      reviseEntry(editing.id, measurement);
+    } else {
+      const draft: FoodLogDraft = { ...measurement, mealPlanEntryId: mealPlanEntryId ?? null, at };
+      if (!addEntry(draft)) {
+        haptics.error();
+        return;
+      }
     }
     haptics.success();
     Keyboard.dismiss();
@@ -695,7 +777,19 @@ export function FoodLogEntrySheet({
   };
 
   const handleCancel = () => {
-    if (!picked && !amount.trim()) { Keyboard.dismiss(); onClose(); return; }
+    // A correction opens with fields already filled, so "nothing typed yet"
+    // is not what clean means for one: it is measured against what the entry
+    // was seeded with instead. Otherwise every look at an entry would end in
+    // a discard confirm.
+    const seeded = seededRef.current;
+    const answeredExtra = Object.values(varyingAmounts).some(v => v.trim());
+    const dirty = seeded
+      ? (picked?.key ?? null) !== seeded.key
+        || amount.trim() !== seeded.amount
+        || chosenSlot !== seeded.slot
+        || answeredExtra
+      : !!picked || !!amount.trim();
+    if (!dirty) { Keyboard.dismiss(); onClose(); return; }
     Alert.alert(
       'Discard changes?',
       'You have unsaved changes. Are you sure you want to discard them?',
@@ -730,9 +824,11 @@ export function FoodLogEntrySheet({
           <View style={styles.headerRow}>
             <SheetHeaderButton label="Cancel" role="cancel" onPress={handleCancel} minWidth={64} />
             {!picked && (
-              <Text style={styles.headerTitle} numberOfLines={1}>What did you eat?</Text>
+              <Text style={styles.headerTitle} numberOfLines={1}>
+                {editing ? 'What was it?' : 'What did you eat?'}
+              </Text>
             )}
-            <SheetHeaderButton label="Add" onPress={handleSave} disabled={!built} minWidth={64} />
+            <SheetHeaderButton label={editing ? 'Save' : 'Add'} onPress={handleSave} disabled={!built} minWidth={64} />
           </View>
           {/* Full width of the header rather than squeezed between the two
               buttons, so a long scanned product name gets far more room

@@ -421,6 +421,83 @@ export function describeFoodLogEntry(entry: FoodLogEntry): string {
   return parts.join(' · ');
 }
 
+/** What reopening an entry puts back in the entry sheet's amount field. */
+export interface FoodLogEntryEdit {
+  /** The text the amount field opens on. */
+  amount: string;
+  /** Which question a dish's amount field is asking. Null for a food. */
+  dishMeasure: 'weight' | 'servings' | null;
+}
+
+/**
+ * How an entry reopens for correction, or null when it cannot be reopened.
+ *
+ * **An amount is re-measured against the food's own panel, never multiplied out
+ * of the stored figures.** What an entry holds is one helping: `basis` is
+ * always `perServing`, the amounts are what was actually eaten, and `portions`
+ * was emptied when the helping was built. So "make it 2 cups instead of 1" has
+ * no arithmetic available to it here, and correcting an amount means running
+ * `scalePanelToAmount` over the panel again. That panel is reachable only
+ * through the entry's own links, which is what decides the refusals below.
+ *
+ * Four entries get null, and each is a case where an edit would have to invent
+ * something:
+ *
+ * - **No link at all.** A described meal the model estimated, or a food a
+ *   database answered and nobody filed. There is no panel to measure a new
+ *   amount against, and offering the figures as fields to retype would put an
+ *   unmeasured panel into a health record.
+ * - **Answered "Anything else?" lines.** What was typed against each varying
+ *   line of a dish is not stored, only the line's name in `quantity`, so the
+ *   sheet would reopen with them blank and a save would silently drop them.
+ * - **A dish whose helping does not parse.** `describeHelping` writes the five
+ *   phrasings read back below, and anything else means the amount field has no
+ *   number to open on.
+ * - **No amount recorded at all**, which nothing writes today and which would
+ *   otherwise reopen on an empty field claiming to be the entry's own.
+ *
+ * `atISO` and `dayKey` stay out of this entirely, as `updateEntry` already
+ * says: they were stamped together from one instant under one reset time, and
+ * re-dating means a new entry.
+ */
+export function foodLogEntryEdit(entry: FoodLogEntry): FoodLogEntryEdit | null {
+  if (entry.quantity.includes(', plus ')) return null;
+
+  // The helping says how it was measured; `quantity` is the fallback for a row
+  // written before a panel carried the text, and reads the same for a food.
+  const typed = (entry.nutrition.servingText ?? entry.quantity).trim();
+  if (!typed) return null;
+
+  if (entry.recipeId) {
+    const dish = dishAmountFrom(typed);
+    return dish && { amount: dish.amount, dishMeasure: dish.dishMeasure };
+  }
+  if (entry.productId || entry.itemId) return { amount: typed, dishMeasure: null };
+  return null;
+}
+
+/**
+ * The number and the measure behind one of `describeHelping`'s phrasings, or
+ * `weighedHelping`'s weight.
+ *
+ * Read back rather than stored, because what a dish's amount field holds is a
+ * bare number and the entry records the sentence it became. "The whole dish"
+ * and "half the dish" are what an unserved dish says instead of a servings
+ * count, and both are ordinary numbers to that field: `mealHelping` decides
+ * which words to use from the dish, not from what was typed.
+ */
+function dishAmountFrom(text: string): { amount: string; dishMeasure: 'weight' | 'servings' } | null {
+  const grams = /^(\d+(?:\.\d+)?) g$/.exec(text);
+  if (grams) return { amount: grams[1], dishMeasure: 'weight' };
+  if (text === 'the whole dish') return { amount: '1', dishMeasure: 'servings' };
+  if (text === 'half the dish') return { amount: '0.5', dishMeasure: 'servings' };
+  const ofDish = /^(\d+(?:\.\d+)?) of the dish$/.exec(text);
+  if (ofDish) return { amount: ofDish[1], dishMeasure: 'servings' };
+  const servings = /^(\d+(?:\.\d+)?) servings?$/.exec(text);
+  if (servings) return { amount: servings[1], dishMeasure: 'servings' };
+  return null;
+}
+
 /**
  * How each provenance reads on a row.
  *

@@ -11,7 +11,7 @@ import {
   dbUpdateFoodLogEntry,
 } from '../db/database';
 import { logFoodEntryToHealth, retractFoodEntryFromHealth } from '../utils/healthFoodSync';
-import type { FoodNutrition } from '../types';
+import type { FoodLogEntry, FoodNutrition } from '../types';
 
 jest.mock('react-native', () => ({ Platform: { OS: 'ios' } }));
 
@@ -298,6 +298,153 @@ describe('updateEntry', () => {
     const entry = state().addEntry(draft({ itemId: 'item-a' }))!;
     state().updateEntry(entry.id, { itemId: null, productId: null });
     expect(state().entries[0].itemId).toBeNull();
+  });
+});
+
+/**
+ * Correcting an entry (#2514).
+ *
+ * The rule being pinned is the one `updateEntry`'s doc has always stated and
+ * nothing exercised: a correction reaching the figures retracts what Health was
+ * told and writes the corrected version, rather than patching the row and
+ * leaving a medical record stating the meal as first typed.
+ */
+describe('reviseEntry', () => {
+  const flush = () => new Promise(resolve => setTimeout(resolve, 0));
+
+  beforeEach(() => {
+    (retractFoodEntryFromHealth as jest.Mock).mockResolvedValue(true);
+    (logFoodEntryToHealth as jest.Mock).mockResolvedValue({ outcome: 'unavailable', sampleIds: [] });
+  });
+
+  /**
+   * Puts an entry where `reviseEntry`'s own read will find it.
+   *
+   * Built rather than logged through `addEntry`, whose own fire-and-forget
+   * Health write would land mid-test and stamp sample ids nobody asked about.
+   */
+  function stored(overrides: Partial<FoodLogEntry> = {}): FoodLogEntry {
+    const entry: FoodLogEntry = {
+      id: 'e1',
+      dayKey: '2026-04-02',
+      atISO: '2026-04-02T09:00:00.000Z',
+      slot: 'breakfast',
+      label: 'Porridge',
+      recipeId: null,
+      itemId: 'item-a',
+      productId: null,
+      mealPlanEntryId: null,
+      quantity: '1 bowl',
+      grams: 250,
+      nutrition: panel(),
+      healthSampleIds: [],
+      sortOrder: 0,
+      createdAt: '2026-04-02T09:00:00.000Z',
+      ...overrides,
+    };
+    (dbGetFoodLogEntry as jest.Mock).mockReturnValue(entry);
+    useFoodLogStore.setState({ entries: [entry], rangeStart: '2026-04-02', rangeEnd: '2026-04-02' });
+    return entry;
+  }
+
+  it('writes the corrected helping to the row', () => {
+    const entry = stored();
+    state().reviseEntry(entry.id, {
+      quantity: '2 bowls',
+      grams: 500,
+      nutrition: panel({ amounts: { calorieKcal: 400 } }),
+    });
+    expect(state().entries[0].quantity).toBe('2 bowls');
+    expect(state().entries[0].grams).toBe(500);
+    expect(state().entries[0].nutrition.amounts.calorieKcal).toBe(400);
+    expect(dbUpdateFoodLogEntry).toHaveBeenCalled();
+  });
+
+  it('leaves the instant and its day key alone, same as updateEntry', () => {
+    const entry = stored();
+    state().reviseEntry(entry.id, { nutrition: panel({ amounts: { calorieKcal: 400 } }) });
+    expect(state().entries[0].dayKey).toBe(entry.dayKey);
+    expect(state().entries[0].atISO).toBe(entry.atISO);
+  });
+
+  it('shrugs at an id that is not stored', () => {
+    (dbGetFoodLogEntry as jest.Mock).mockReturnValue(null);
+    state().reviseEntry('nope', { quantity: '2 bowls' });
+    expect(dbUpdateFoodLogEntry).not.toHaveBeenCalled();
+  });
+
+  it('retracts the old samples and writes the corrected figures, in that order', async () => {
+    const entry = stored({ healthSampleIds: ['sample-a'] });
+    const order: string[] = [];
+    // Resolved on a timer, and recorded when it resolves rather than when it is
+    // called, so a version that fired both at once would record them the other
+    // way round and fail here.
+    (retractFoodEntryFromHealth as jest.Mock).mockImplementation(
+      () => new Promise(resolve => setTimeout(() => { order.push('retract'); resolve(true); }, 0)),
+    );
+    (logFoodEntryToHealth as jest.Mock).mockImplementation(async () => {
+      order.push('write');
+      return { outcome: 'written', sampleIds: ['sample-b'] };
+    });
+
+    state().reviseEntry(entry.id, { nutrition: panel({ amounts: { calorieKcal: 400 } }) });
+    await flush();
+
+    expect(retractFoodEntryFromHealth).toHaveBeenCalledWith(['sample-a']);
+    expect(order).toEqual(['retract', 'write']);
+    expect(state().entries[0].healthSampleIds).toEqual(['sample-b']);
+  });
+
+  it('writes the corrected figures even when the retract fails', async () => {
+    // Health's own record is something the person can delete there. Skipping
+    // the write would instead leave Health holding only what was just corrected.
+    const entry = stored({ healthSampleIds: ['sample-a'] });
+    (retractFoodEntryFromHealth as jest.Mock).mockResolvedValue(false);
+    (logFoodEntryToHealth as jest.Mock).mockResolvedValue({ outcome: 'written', sampleIds: ['sample-b'] });
+
+    state().reviseEntry(entry.id, { nutrition: panel({ amounts: { calorieKcal: 400 } }) });
+    await flush();
+
+    expect(logFoodEntryToHealth).toHaveBeenCalled();
+  });
+
+  it('clears the stale sample ids as the row is written, not after the retract returns', () => {
+    // Nothing should ever be left pointing at samples already on their way out.
+    const entry = stored({ healthSampleIds: ['sample-a'] });
+    state().reviseEntry(entry.id, { nutrition: panel({ amounts: { calorieKcal: 400 } }) });
+    expect(state().entries[0].healthSampleIds).toEqual([]);
+  });
+
+  it('rewrites Health when only the label changed, since that is what a sample is named', async () => {
+    const entry = stored({ healthSampleIds: ['sample-a'] });
+    state().reviseEntry(entry.id, { label: 'Oatmeal' });
+    await flush();
+    expect(retractFoodEntryFromHealth).toHaveBeenCalledWith(['sample-a']);
+  });
+
+  it('leaves Health alone when the correction changed nothing it holds', async () => {
+    // Moving the meal or re-filing the item changed no figure Health ever saw,
+    // and rewriting anyway would churn a medical record for free.
+    const entry = stored({ healthSampleIds: ['sample-a'] });
+    state().reviseEntry(entry.id, { slot: 'lunch', itemId: 'item-b' });
+    await flush();
+
+    expect(retractFoodEntryFromHealth).not.toHaveBeenCalled();
+    expect(logFoodEntryToHealth).not.toHaveBeenCalled();
+    expect(state().entries[0].slot).toBe('lunch');
+    expect(state().entries[0].healthSampleIds).toEqual(['sample-a']);
+  });
+
+  it('raises the refusal notice the same way a fresh log does', async () => {
+    mockSettingsState.healthFoodWriteRefusalSeen = false;
+    useFoodLogStore.setState({ pendingHealthWriteRefusal: false });
+    const entry = stored();
+    (logFoodEntryToHealth as jest.Mock).mockResolvedValue({ outcome: 'refused', sampleIds: [] });
+
+    state().reviseEntry(entry.id, { nutrition: panel({ amounts: { calorieKcal: 400 } }) });
+    await flush();
+
+    expect(state().pendingHealthWriteRefusal).toBe(true);
   });
 });
 
