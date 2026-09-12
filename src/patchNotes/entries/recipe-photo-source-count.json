@@ -1,0 +1,4 @@
+{
+  "message": "Importing a recipe from a photo now keeps a parenthetical source count on an ingredient's amount, like \"3 oz (from about 2 limes)\", instead of dropping it.",
+  "date": "2026-09-12"
+}
