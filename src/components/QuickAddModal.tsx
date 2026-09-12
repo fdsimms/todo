@@ -320,9 +320,9 @@ export function QuickAddModal({
   // of the wrong screen, then the sheet vanishing over it a beat later.
   const dismiss = (onDone?: () => void) => {
     Animated.parallel([
-      Animated.timing(scaleAnim, { toValue: 0.95, duration: 120, useNativeDriver: true }),
-      Animated.timing(sheetOpacity, { toValue: 0, duration: 120, useNativeDriver: true }),
-      Animated.timing(backdropOpacity, { toValue: 0, duration: 150, useNativeDriver: true }),
+      Animated.timing(scaleAnim, { toValue: 0.95, duration: animation.duration.dismiss, useNativeDriver: true }),
+      Animated.timing(sheetOpacity, { toValue: 0, duration: animation.duration.dismiss, useNativeDriver: true }),
+      Animated.timing(backdropOpacity, { toValue: 0, duration: animation.duration.fast, useNativeDriver: true }),
     ]).start(() => {
       scaleAnim.setValue(0.95);
       sheetOpacity.setValue(0);
@@ -2668,7 +2668,7 @@ const makeStyles = (colors: Colors, sheetMaxHeight: number) => StyleSheet.create
     fontWeight: fontWeight.medium,
     backgroundColor: colors.bgTertiary,
     borderRadius: radius.full,
-    paddingHorizontal: 12,
+    paddingHorizontal: spacing.smd,
     // Matches presetChip's box so the custom field sits level with the pills.
     // Height rather than lineHeight — see the TextInput note in CLAUDE.md.
     height: interaction.pillHeight,
@@ -2811,8 +2811,8 @@ const makeStyles = (colors: Colors, sheetMaxHeight: number) => StyleSheet.create
     flexDirection: 'row',
     alignItems: 'center',
     alignSelf: 'flex-start',
-    gap: 6,
-    paddingHorizontal: 12,
+    gap: spacing.xsm,
+    paddingHorizontal: spacing.smd,
     paddingVertical: 7,
     borderRadius: radius.md,
     backgroundColor: colors.accentFill,
@@ -2820,10 +2820,10 @@ const makeStyles = (colors: Colors, sheetMaxHeight: number) => StyleSheet.create
   tooltipCandidateRow: {
     flexDirection: 'row',
     alignSelf: 'flex-start',
-    gap: 6,
+    gap: spacing.xsm,
   },
   tooltipCandidatePill: {
-    paddingHorizontal: 12,
+    paddingHorizontal: spacing.smd,
     paddingVertical: 7,
     borderRadius: radius.md,
     backgroundColor: colors.accentFill,
@@ -2889,7 +2889,7 @@ const makeStyles = (colors: Colors, sheetMaxHeight: number) => StyleSheet.create
     fontWeight: fontWeight.medium,
     backgroundColor: colors.bgTertiary,
     borderRadius: radius.full,
-    paddingHorizontal: 12,
+    paddingHorizontal: spacing.smd,
     // Matches inlineCustomInput / presetChip so it sits level with the stepper.
     // Height rather than lineHeight — see the TextInput note in CLAUDE.md.
     height: interaction.pillHeight,
@@ -2944,7 +2944,7 @@ const makeStyles = (colors: Colors, sheetMaxHeight: number) => StyleSheet.create
     fontWeight: fontWeight.medium,
     backgroundColor: colors.bgTertiary,
     borderRadius: radius.sm,
-    paddingHorizontal: 12,
+    paddingHorizontal: spacing.smd,
     paddingVertical: 7,
     minWidth: 110,
   },
@@ -3009,12 +3009,12 @@ const makeStyles = (colors: Colors, sheetMaxHeight: number) => StyleSheet.create
     paddingVertical: 4,
   },
   suggestionsScroll: {
-    marginTop: 2,
+    marginTop: spacing.xxs,
   },
   suggestionsRow: {
     flexDirection: 'row',
     gap: spacing.xs,
-    paddingBottom: 2,
+    paddingBottom: spacing.xxs,
   },
   suggestionChip: {
     flexDirection: 'row',
@@ -3071,7 +3071,7 @@ const makeStyles = (colors: Colors, sheetMaxHeight: number) => StyleSheet.create
     flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'center',
-    gap: 6,
+    gap: spacing.xsm,
     paddingVertical: 10,
     backgroundColor: colors.bgTertiary,
     borderRadius: radius.md,
@@ -3092,7 +3092,7 @@ const makeStyles = (colors: Colors, sheetMaxHeight: number) => StyleSheet.create
   footerMore: {
     flexDirection: 'row',
     alignItems: 'center',
-    gap: 6,
+    gap: spacing.xsm,
     paddingVertical: 10,
     paddingHorizontal: spacing.sm,
   },
@@ -3122,7 +3122,7 @@ const makeStyles = (colors: Colors, sheetMaxHeight: number) => StyleSheet.create
   linkAppRow: {
     flexDirection: 'row',
     gap: spacing.xs,
-    paddingBottom: 2,
+    paddingBottom: spacing.xxs,
   },
   linkAppChip: {
     flexDirection: 'row',

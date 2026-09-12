@@ -1171,7 +1171,7 @@ const makeStyles = (colors: Colors) => StyleSheet.create({
   },
   forecastContent: { flex: 1 },
   forecastLine: { color: colors.text, fontSize: font.sm },
-  forecastGap: { color: colors.textSecondary, fontSize: font.xs, marginTop: 2 },
+  forecastGap: { color: colors.textSecondary, fontSize: font.xs, marginTop: spacing.xxs },
   listAddRow: {
     flexDirection: 'row',
     alignItems: 'center',
@@ -1224,7 +1224,7 @@ const makeStyles = (colors: Colors) => StyleSheet.create({
   notesPreviewIcon: {
     // Nudged down to sit on the text's cap height instead of its vertical
     // center.
-    marginTop: 2,
+    marginTop: spacing.xxs,
   },
   notesPreviewText: {
     flex: 1,
@@ -1273,10 +1273,10 @@ const makeStyles = (colors: Colors) => StyleSheet.create({
     justifyContent: 'space-between',
     backgroundColor: colors.bgSecondary,
     marginHorizontal: spacing.md,
-    marginVertical: 2,
+    marginVertical: spacing.xxs,
     borderRadius: radius.md,
     paddingHorizontal: spacing.md,
-    paddingVertical: 12,
+    paddingVertical: spacing.smd,
   },
   pickerRowText: {
     flex: 1,

@@ -284,7 +284,7 @@ function makeStyles(colors: Colors) {
       borderRadius: radius.md,
       padding: spacing.sm,
     },
-    warningBody: { flex: 1, gap: 2, alignItems: 'flex-start' },
+    warningBody: { flex: 1, gap: spacing.xxs, alignItems: 'flex-start' },
     warningTitle: {
       color: colors.text,
       fontSize: font.sm,

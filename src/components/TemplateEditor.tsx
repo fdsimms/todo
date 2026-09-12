@@ -562,10 +562,10 @@ const makeStyles = (colors: Colors) => StyleSheet.create({
   },
   optionContent: { flex: 1 },
   optionLabel: { color: colors.text, fontSize: font.md },
-  optionHint: { color: colors.textTertiary, fontSize: font.xs, marginTop: 2 },
+  optionHint: { color: colors.textTertiary, fontSize: font.xs, marginTop: spacing.xxs },
   toggle: {
     width: 44, height: 26, borderRadius: radius.full,
-    backgroundColor: colors.bgQuaternary, padding: 2, justifyContent: 'center',
+    backgroundColor: colors.bgQuaternary, padding: spacing.xxs, justifyContent: 'center',
   },
   toggleOn: { backgroundColor: colors.accent },
   toggleKnob: {
@@ -642,7 +642,7 @@ const makeStyles = (colors: Colors) => StyleSheet.create({
   },
   questionText: {
     flex: 1,
-    gap: 2,
+    gap: spacing.xxs,
   },
   questionTitle: {
     color: colors.text,

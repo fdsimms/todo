@@ -15,6 +15,7 @@ import {
 } from '../theme';
 import { itemsOnList } from '../utils/groceryLists';
 import { useGroceryStore } from '../store/useGroceryStore';
+import { EmptyNote } from './EmptyNote';
 import { SheetHeader } from './SheetHeader';
 import { SheetHeaderButton } from './SheetHeaderButton';
 import { InlineAction } from './InlineAction';
@@ -619,13 +620,10 @@ export function ShoppingTripSheet({ visible, onClose, onCreate, onStart, intent 
           )}
 
           {shops.length === 0 && (
-            <View style={styles.emptyNote}>
-              <Ionicons name="storefront-outline" size={iconSize.md} color={colors.textTertiary} />
-              <Text style={styles.emptyText}>
-                No stores yet. Name one when you finish a trip and this starts telling you which of
-                them has what.
-              </Text>
-            </View>
+            <EmptyNote icon="storefront-outline">
+              No stores yet. Name one when you finish a trip and this starts telling you which of
+              them has what.
+            </EmptyNote>
           )}
         </ScrollView>
       </View>
@@ -728,7 +726,7 @@ function makeStyles(colors: Colors) {
       fontWeight: fontWeight.semibold,
       lineHeight: 21,
     },
-    suggestionSub: { color: colors.textSecondary, fontSize: font.sm, marginTop: 2, lineHeight: 19 },
+    suggestionSub: { color: colors.textSecondary, fontSize: font.sm, marginTop: spacing.xxs, lineHeight: 19 },
     suggestionAction: { marginTop: spacing.md },
     startAction: { alignSelf: 'flex-start', marginTop: spacing.xs },
     label: {
@@ -783,15 +781,5 @@ function makeStyles(colors: Colors) {
     correctAction: { alignSelf: 'flex-start', marginTop: spacing.md, marginBottom: spacing.sm },
     footerLine: { color: colors.textSecondary, fontSize: font.sm, lineHeight: 19 },
     footerNote: { color: colors.textTertiary, fontSize: font.sm, marginTop: spacing.xs, lineHeight: 19 },
-    emptyNote: {
-      flexDirection: 'row',
-      alignItems: 'flex-start',
-      gap: spacing.md,
-      backgroundColor: colors.bgSecondary,
-      borderRadius: radius.md,
-      padding: spacing.md,
-      marginTop: spacing.lg,
-    },
-    emptyText: { flex: 1, fontSize: font.sm, color: colors.textTertiary },
   });
 }

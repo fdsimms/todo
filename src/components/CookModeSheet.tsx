@@ -797,7 +797,7 @@ const makeStyles = (colors: Colors) => StyleSheet.create({
     backgroundColor: colors.accent + '26',
     borderRadius: radius.sm,
     paddingHorizontal: spacing.sm,
-    paddingVertical: 2,
+    paddingVertical: spacing.xxs,
   },
   scaleChipText: {
     color: colors.accent,
@@ -898,7 +898,7 @@ const makeStyles = (colors: Colors) => StyleSheet.create({
     flexDirection: 'row',
     alignItems: 'center',
     gap: spacing.sm,
-    paddingVertical: 6,
+    paddingVertical: spacing.xsm,
   },
   panelRowText: {
     flex: 1,
@@ -911,18 +911,18 @@ const makeStyles = (colors: Colors) => StyleSheet.create({
     color: colors.accent,
     fontSize: font.xs,
     fontWeight: fontWeight.medium,
-    marginTop: 2,
+    marginTop: spacing.xxs,
   },
   panelPrep: {
     color: colors.textTertiary,
     fontSize: font.xs,
-    marginTop: 2,
+    marginTop: spacing.xxs,
   },
   qtyPill: {
     backgroundColor: colors.bgTertiary,
     borderRadius: radius.sm,
     paddingHorizontal: spacing.sm,
-    paddingVertical: 2,
+    paddingVertical: spacing.xxs,
   },
   qtyPillMarked: { backgroundColor: colors.accent + '26' },
   qtyText: {
@@ -980,12 +980,12 @@ const makeStyles = (colors: Colors) => StyleSheet.create({
     color: colors.accent,
     fontSize: font.sm,
     fontWeight: fontWeight.medium,
-    marginTop: 2,
+    marginTop: spacing.xxs,
   },
   misePrep: {
     color: colors.textTertiary,
     fontSize: font.sm,
-    marginTop: 2,
+    marginTop: spacing.xxs,
   },
   miseQtyPill: {
     backgroundColor: colors.bgTertiary,

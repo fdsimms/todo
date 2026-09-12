@@ -491,12 +491,12 @@ const makeStyles = (colors: Colors) => StyleSheet.create({
   statCell: {
     flex: 1,
     backgroundColor: colors.bgSecondary,
-    borderRadius: radius.lg,
+    borderRadius: radius.md,
     paddingVertical: spacing.md,
     alignItems: 'center',
   },
   statValue: { fontSize: font.xl, fontWeight: fontWeight.bold, color: colors.text },
-  statLabel: { fontSize: font.xs, color: colors.textSecondary, marginTop: 2, textAlign: 'center' },
+  statLabel: { fontSize: font.xs, color: colors.textSecondary, marginTop: spacing.xxs, textAlign: 'center' },
   rangeRow: { marginBottom: spacing.md },
   sectionTitle: {
     fontSize: font.xs,
@@ -507,7 +507,7 @@ const makeStyles = (colors: Colors) => StyleSheet.create({
   },
   card: {
     backgroundColor: colors.bgSecondary,
-    borderRadius: radius.lg,
+    borderRadius: radius.md,
     padding: spacing.md,
     marginBottom: spacing.lg,
   },

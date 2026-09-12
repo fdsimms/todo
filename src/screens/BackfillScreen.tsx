@@ -3344,11 +3344,11 @@ const makeStyles = (colors: Colors) => StyleSheet.create({
     justifyContent: 'center',
     flexShrink: 0,
   },
-  fieldBody: { flex: 1, minWidth: 0, gap: 2 },
+  fieldBody: { flex: 1, minWidth: 0, gap: spacing.xxs },
   fieldLabel: { color: colors.text, fontSize: font.md, fontWeight: fontWeight.semibold },
   fieldHint: { color: colors.textSecondary, fontSize: font.xs, lineHeight: lineHeight.xs },
-  fieldCount: { color: colors.textSecondary, fontSize: font.xs, marginTop: 2 },
-  fieldCountDone: { color: colors.textTertiary, fontSize: font.xs, marginTop: 2 },
+  fieldCount: { color: colors.textSecondary, fontSize: font.xs, marginTop: spacing.xxs },
+  fieldCountDone: { color: colors.textTertiary, fontSize: font.xs, marginTop: spacing.xxs },
 
   progress: {
     color: colors.textTertiary,
@@ -3375,7 +3375,7 @@ const makeStyles = (colors: Colors) => StyleSheet.create({
     flexWrap: 'wrap',
     alignItems: 'center',
     gap: spacing.sm,
-    marginTop: 2,
+    marginTop: spacing.xxs,
   },
   metaChip: { flexDirection: 'row', alignItems: 'center', gap: 4, flexShrink: 1 },
   metaText: { color: colors.textSecondary, fontSize: font.xs },
@@ -3390,14 +3390,14 @@ const makeStyles = (colors: Colors) => StyleSheet.create({
     backgroundColor: colors.bgSecondary,
   },
   pillText: { color: colors.text, fontSize: font.md, fontWeight: fontWeight.semibold },
-  pillHint: { color: colors.textTertiary, fontSize: font.xs, marginTop: 2 },
+  pillHint: { color: colors.textTertiary, fontSize: font.xs, marginTop: spacing.xxs },
   pillActive: { backgroundColor: colors.accentSubtle },
 
   customRow: { flexDirection: 'row', alignItems: 'center', gap: spacing.sm, marginTop: spacing.sm },
   customInput: {
     color: colors.text, fontSize: font.md, fontWeight: fontWeight.semibold,
     backgroundColor: colors.bgTertiary, borderRadius: radius.sm,
-    paddingHorizontal: 12, paddingVertical: 8, minWidth: 72, textAlign: 'center',
+    paddingHorizontal: spacing.smd, paddingVertical: 8, minWidth: 72, textAlign: 'center',
   },
   // A track next to the number it labels, so it takes a width rather than
   // stretching across the row — same call TaskEditor's own unitToggle makes.

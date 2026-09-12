@@ -482,7 +482,7 @@ const makeStyles = (colors: Colors) => StyleSheet.create({
   avatarText: { color: colors.accent, fontSize: font.md, fontWeight: fontWeight.semibold },
   info: { flex: 1 },
   name: { color: colors.text, fontSize: font.md },
-  metaRow: { flexDirection: 'row', alignItems: 'center', gap: 4, marginTop: 2 },
+  metaRow: { flexDirection: 'row', alignItems: 'center', gap: 4, marginTop: spacing.xxs },
   metaText: { color: colors.textTertiary, fontSize: font.xs },
   metaSoon: { color: colors.accent },
 });

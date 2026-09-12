@@ -398,7 +398,7 @@ const makeStyles = (colors: Colors) => StyleSheet.create({
     color: colors.textTertiary,
     fontSize: font.xs,
     paddingHorizontal: spacing.md,
-    paddingTop: 2,
+    paddingTop: spacing.xxs,
     paddingBottom: spacing.sm,
   },
   searchWrap: {
@@ -435,7 +435,7 @@ const makeStyles = (colors: Colors) => StyleSheet.create({
     alignItems: 'center',
     justifyContent: 'center',
   },
-  rowInfo: { flex: 1, gap: 2 },
+  rowInfo: { flex: 1, gap: spacing.xxs },
   rowName: { color: colors.text, fontSize: font.md, fontWeight: '500' },
   rowHint: { color: colors.textTertiary, fontSize: font.xs },
   inlineSep: {

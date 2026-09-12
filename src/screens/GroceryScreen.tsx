@@ -1629,7 +1629,7 @@ function makeStyles(colors: Colors) {
       // Matches GroceryRow's own card geometry, so the gap that opens is
       // exactly the shape of the row about to land in it.
       marginHorizontal: spacing.md,
-      marginVertical: 2,
+      marginVertical: spacing.xxs,
       borderRadius: radius.md,
       backgroundColor: colors.bgSecondary,
       opacity: 0.55,
@@ -1649,7 +1649,7 @@ function makeStyles(colors: Colors) {
     groupSectionHeaderLeft: {
       flexDirection: 'row',
       alignItems: 'center',
-      gap: 6,
+      gap: spacing.xsm,
     },
     cartHeader: {
       flexDirection: 'row',

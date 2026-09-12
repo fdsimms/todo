@@ -325,9 +325,9 @@ const makeStyles = (colors: Colors) => StyleSheet.create({
   card: { backgroundColor: colors.bgSecondary, borderRadius: radius.md, overflow: 'hidden' },
   row: {
     flexDirection: 'row', alignItems: 'center', gap: spacing.sm,
-    paddingHorizontal: spacing.md, paddingVertical: 12,
+    paddingHorizontal: spacing.md, paddingVertical: spacing.smd,
   },
-  rowText: { flex: 1, gap: 2 },
+  rowText: { flex: 1, gap: spacing.xxs },
   rowName: { color: colors.text, fontSize: font.md },
   rowMeta: { color: colors.textTertiary, fontSize: font.xs },
   sep: { height: StyleSheet.hairlineWidth, backgroundColor: colors.separator, marginLeft: spacing.md },

@@ -794,7 +794,7 @@ const makeStyles = (colors: Colors) => StyleSheet.create({
   // a rounded row leaves its revealed panel square-cornered behind it.
   projectCard: {
     marginHorizontal: spacing.md,
-    marginVertical: 2,
+    marginVertical: spacing.xxs,
     borderRadius: radius.md,
   },
   // Flush, so it slides over the swipe panel rather than beside it.
@@ -803,7 +803,7 @@ const makeStyles = (colors: Colors) => StyleSheet.create({
     alignItems: 'center',
     backgroundColor: colors.bgSecondary,
     paddingHorizontal: spacing.md,
-    paddingVertical: 12,
+    paddingVertical: spacing.smd,
     gap: spacing.md,
   },
   projectRowActive: {
@@ -818,14 +818,14 @@ const makeStyles = (colors: Colors) => StyleSheet.create({
   },
   dropSlot: {
     marginHorizontal: spacing.md,
-    marginVertical: 2,
+    marginVertical: spacing.xxs,
     borderRadius: radius.md,
     backgroundColor: colors.bgSecondary,
     opacity: 0.55,
   },
   projectInfo: {
     flex: 1,
-    gap: 6,
+    gap: spacing.xsm,
   },
   projectTitleRow: {
     flexDirection: 'row',
@@ -919,10 +919,10 @@ const makeStyles = (colors: Colors) => StyleSheet.create({
     justifyContent: 'space-between',
     backgroundColor: colors.bgSecondary,
     marginHorizontal: spacing.md,
-    marginVertical: 2,
+    marginVertical: spacing.xxs,
     borderRadius: radius.md,
     paddingHorizontal: spacing.md,
-    paddingVertical: 12,
+    paddingVertical: spacing.smd,
   },
   pickerRowText: {
     flex: 1,

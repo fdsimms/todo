@@ -3611,7 +3611,7 @@ export const TaskItem = React.memo(function TaskItem({
 const makeStyles = (colors: Colors) => StyleSheet.create({
   itemWrapper: {
     marginHorizontal: spacing.md,
-    marginVertical: 2,
+    marginVertical: spacing.xxs,
     borderRadius: radius.md,
     backgroundColor: colors.bgSecondary,
   },
@@ -3677,7 +3677,7 @@ const makeStyles = (colors: Colors) => StyleSheet.create({
   },
   circleWrapper: {
     marginLeft: spacing.md,
-    padding: 2,
+    padding: spacing.xxs,
   },
   circle: {
     width: CHECKBOX_SIZE,
@@ -3771,7 +3771,7 @@ const makeStyles = (colors: Colors) => StyleSheet.create({
   },
   content: {
     flex: 1,
-    gap: 2,
+    gap: spacing.xxs,
   },
   title: {
     color: colors.text,
@@ -3800,7 +3800,7 @@ const makeStyles = (colors: Colors) => StyleSheet.create({
   titleRow: {
     flexDirection: 'row',
     alignItems: 'center',
-    gap: 6,
+    gap: spacing.xsm,
   },
   titleFlex: {
     flexShrink: 1,
@@ -3836,7 +3836,7 @@ const makeStyles = (colors: Colors) => StyleSheet.create({
     gap: spacing.xs,
     // Sits a touch clear of the meta line above it: this is a control, not one
     // more thing the row is reporting about itself.
-    marginTop: 2,
+    marginTop: spacing.xxs,
   },
   importChip: {
     flexDirection: 'row',
@@ -3970,7 +3970,7 @@ const makeStyles = (colors: Colors) => StyleSheet.create({
     backgroundColor: colors.accentFill,
   },
   rowTimerGlyphPlay: {
-    marginLeft: 2,
+    marginLeft: spacing.xxs,
   },
   timerRunningGroup: {
     flexDirection: 'row',
@@ -3986,7 +3986,7 @@ const makeStyles = (colors: Colors) => StyleSheet.create({
     gap: 3,
     backgroundColor: colors.accentFill,
     borderRadius: radius.sm,
-    paddingHorizontal: 6,
+    paddingHorizontal: spacing.xsm,
     paddingVertical: 3,
   },
   timerPillReady: {
@@ -4031,7 +4031,7 @@ const makeStyles = (colors: Colors) => StyleSheet.create({
     paddingVertical: spacing.xs,
   },
   expandSection: {
-    gap: 6,
+    gap: spacing.xsm,
     paddingVertical: spacing.xs,
   },
   // Indents the subtask list so its checkbox lines up under the task's own
@@ -4047,7 +4047,7 @@ const makeStyles = (colors: Colors) => StyleSheet.create({
   sectionDivider: {
     borderTopWidth: border.hairline,
     borderTopColor: colors.separator,
-    marginTop: 2,
+    marginTop: spacing.xxs,
   },
   subtaskRow: {
     flexDirection: 'row',
@@ -4116,7 +4116,7 @@ const makeStyles = (colors: Colors) => StyleSheet.create({
     opacity: 0.5,
   },
   subtaskDeleteBtn: {
-    padding: 2,
+    padding: spacing.xxs,
   },
   recurrenceRow: {
     flexDirection: 'row',
@@ -4135,7 +4135,7 @@ const makeStyles = (colors: Colors) => StyleSheet.create({
   // The icon has to sit at the text's cap-height, not centered against
   // however many lines the title wraps to below it.
   followUpTaskSourceIcon: {
-    marginTop: 2,
+    marginTop: spacing.xxs,
   },
   followUpTaskSourceText: {
     flex: 1,
@@ -4162,7 +4162,7 @@ const makeStyles = (colors: Colors) => StyleSheet.create({
   streakBadge: {
     flexDirection: 'row',
     alignItems: 'center',
-    gap: 2,
+    gap: spacing.xxs,
   },
   expandMetaActive: {
     color: colors.accent,
@@ -4172,7 +4172,7 @@ const makeStyles = (colors: Colors) => StyleSheet.create({
     flex: 1,
   },
   chainStepsList: {
-    gap: 2,
+    gap: spacing.xxs,
     paddingVertical: spacing.xs,
     paddingLeft: spacing.sm,
   },
@@ -4225,7 +4225,7 @@ const makeStyles = (colors: Colors) => StyleSheet.create({
     backgroundColor: colors.accentSubtle,
     borderRadius: radius.sm,
     paddingHorizontal: 5,
-    paddingVertical: 2,
+    paddingVertical: spacing.xxs,
   },
   chainBadgeText: {
     color: colors.accent,
@@ -4277,7 +4277,7 @@ const makeStyles = (colors: Colors) => StyleSheet.create({
   quietChip: {
     backgroundColor: colors.accentSubtle,
     paddingHorizontal: spacing.sm,
-    paddingVertical: 2,
+    paddingVertical: spacing.xxs,
     borderRadius: radius.full,
   },
   // No ready colour, unlike the meal-plan counter it sits in for: there is no
@@ -4297,7 +4297,7 @@ const makeStyles = (colors: Colors) => StyleSheet.create({
   deadlineBadge: {
     flexDirection: 'row',
     alignItems: 'center',
-    gap: 2,
+    gap: spacing.xxs,
     flexShrink: 1,
     maxWidth: 110,
   },

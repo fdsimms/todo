@@ -959,12 +959,12 @@ const makeStyles = (colors: Colors) => StyleSheet.create({
   statCell: {
     flex: 1,
     backgroundColor: colors.bgSecondary,
-    borderRadius: radius.lg,
+    borderRadius: radius.md,
     paddingVertical: spacing.md,
     alignItems: 'center',
   },
   statValue: { fontSize: font.xl, fontWeight: fontWeight.bold, color: colors.text },
-  statLabel: { fontSize: font.xs, color: colors.textSecondary, marginTop: 2, textAlign: 'center' },
+  statLabel: { fontSize: font.xs, color: colors.textSecondary, marginTop: spacing.xxs, textAlign: 'center' },
   sectionTitle: {
     fontSize: font.xs,
     fontWeight: fontWeight.semibold,
@@ -974,7 +974,7 @@ const makeStyles = (colors: Colors) => StyleSheet.create({
   },
   card: {
     backgroundColor: colors.bgSecondary,
-    borderRadius: radius.lg,
+    borderRadius: radius.md,
     padding: spacing.md,
     marginBottom: spacing.lg,
   },
@@ -991,7 +991,7 @@ const makeStyles = (colors: Colors) => StyleSheet.create({
   splitRow: { flexDirection: 'row', marginTop: spacing.md },
   splitCell: { flex: 1, alignItems: 'center' },
   splitValue: { fontSize: font.lg, fontWeight: fontWeight.bold, color: colors.text },
-  splitLabel: { fontSize: font.xs, color: colors.textSecondary, marginTop: 2 },
+  splitLabel: { fontSize: font.xs, color: colors.textSecondary, marginTop: spacing.xxs },
   contrastRow: {
     flexDirection: 'row',
     alignItems: 'center',
@@ -1009,7 +1009,7 @@ const makeStyles = (colors: Colors) => StyleSheet.create({
   },
   linkBody: { flex: 1 },
   linkLabel: { fontSize: font.sm, color: colors.text },
-  linkMeta: { fontSize: font.xs, color: colors.textSecondary, marginTop: 2 },
+  linkMeta: { fontSize: font.xs, color: colors.textSecondary, marginTop: spacing.xxs },
   // Space before the "Add milestone" action below, whichever branch (the
   // empty-state text or the row list) sits above it.
   milestoneAddSpacing: { marginBottom: spacing.md },

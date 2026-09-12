@@ -1098,7 +1098,7 @@ const makeStyles = (colors: Colors) => StyleSheet.create({
   },
   toggleBody: {
     flex: 1,
-    gap: 2,
+    gap: spacing.xxs,
   },
   toggleLabel: {
     color: colors.text,
@@ -1106,7 +1106,7 @@ const makeStyles = (colors: Colors) => StyleSheet.create({
   },
   catalogBody: {
     flex: 1,
-    gap: 2,
+    gap: spacing.xxs,
   },
   addToCatalogButton: {
     marginTop: spacing.xs,

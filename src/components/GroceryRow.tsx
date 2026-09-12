@@ -606,7 +606,7 @@ function makeStyles(colors: Colors) {
     itemWrapper: {
       backgroundColor: colors.bgSecondary,
       marginHorizontal: spacing.md,
-      marginVertical: 2,
+      marginVertical: spacing.xxs,
       borderRadius: radius.md,
       overflow: 'hidden',
     },
@@ -697,7 +697,7 @@ function makeStyles(colors: Colors) {
     nameError: {
       fontSize: font.sm,
       color: colors.red,
-      marginTop: 2,
+      marginTop: spacing.xxs,
     },
     // The fourth caption treatment, and the loudest of them — semibold on
     // textSecondary, where `alternatives` is medium on the same colour and both
@@ -750,7 +750,7 @@ function makeStyles(colors: Colors) {
     note: {
       fontSize: font.sm,
       color: colors.textTertiary,
-      marginTop: 2,
+      marginTop: spacing.xxs,
     },
     qtyPill: {
       backgroundColor: colors.bgTertiary,

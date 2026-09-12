@@ -892,7 +892,7 @@ function makeStyles(colors: Colors) {
       color: colors.textTertiary,
       fontSize: font.xs,
       paddingHorizontal: spacing.md,
-      paddingTop: 2,
+      paddingTop: spacing.xxs,
       paddingBottom: spacing.xs,
     },
     groupBlock: { marginBottom: spacing.sm },

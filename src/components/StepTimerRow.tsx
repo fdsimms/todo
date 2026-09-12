@@ -170,11 +170,11 @@ const makeStyles = (colors: Colors) => StyleSheet.create({
   primaryBtn: {
     flexDirection: 'row',
     alignItems: 'center',
-    gap: 6,
+    gap: spacing.xsm,
     backgroundColor: colors.accentFill,
     borderRadius: radius.sm,
     paddingHorizontal: spacing.sm,
-    paddingVertical: 6,
+    paddingVertical: spacing.xsm,
   },
   primaryBtnRunning: {
     backgroundColor: colors.orange,
@@ -187,7 +187,7 @@ const makeStyles = (colors: Colors) => StyleSheet.create({
   secondaryBtn: {
     minWidth: 28,
     height: 28,
-    paddingHorizontal: 6,
+    paddingHorizontal: spacing.xsm,
     borderRadius: radius.full,
     backgroundColor: colors.bgTertiary,
     alignItems: 'center',

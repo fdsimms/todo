@@ -236,7 +236,7 @@ const makeStyles = (colors: Colors) => StyleSheet.create({
   row: {
     flexDirection: 'row', alignItems: 'center', gap: spacing.sm,
     backgroundColor: colors.bgSecondary,
-    marginHorizontal: spacing.md, marginVertical: 2,
+    marginHorizontal: spacing.md, marginVertical: spacing.xxs,
     borderRadius: radius.md, paddingHorizontal: spacing.md, paddingVertical: spacing.md,
   },
   rowRejected: { opacity: 0.55 },

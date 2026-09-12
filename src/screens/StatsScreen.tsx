@@ -1263,7 +1263,7 @@ const makeStyles = (colors: Colors) =>
     },
     instanceMain: {
       flex: 1,
-      gap: 2,
+      gap: spacing.xxs,
     },
     instanceTitle: {
       color: colors.text,
@@ -1308,6 +1308,6 @@ const makeStyles = (colors: Colors) =>
       fontSize: font.xs,
       fontWeight: '500',
       textAlign: 'right',
-      marginTop: 2,
+      marginTop: spacing.xxs,
     },
   });

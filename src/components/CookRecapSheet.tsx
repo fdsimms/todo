@@ -193,9 +193,9 @@ export function CookRecapSheet({
   // is the one path that commits ticks first.
   const dismiss = () => {
     Animated.parallel([
-      Animated.timing(scaleAnim, { toValue: 0.95, duration: 120, useNativeDriver: true }),
-      Animated.timing(sheetOpacity, { toValue: 0, duration: 120, useNativeDriver: true }),
-      Animated.timing(backdropOpacity, { toValue: 0, duration: 150, useNativeDriver: true }),
+      Animated.timing(scaleAnim, { toValue: 0.95, duration: animation.duration.dismiss, useNativeDriver: true }),
+      Animated.timing(sheetOpacity, { toValue: 0, duration: animation.duration.dismiss, useNativeDriver: true }),
+      Animated.timing(backdropOpacity, { toValue: 0, duration: animation.duration.fast, useNativeDriver: true }),
     ]).start(() => onClose());
   };
 
@@ -620,7 +620,7 @@ const makeStyles = (colors: Colors, sheetMaxHeight: number) => StyleSheet.create
     flexDirection: 'row',
     alignItems: 'center',
     gap: spacing.md,
-    paddingVertical: 12,
+    paddingVertical: spacing.smd,
     paddingHorizontal: spacing.md,
   },
   checkbox: {
@@ -633,7 +633,7 @@ const makeStyles = (colors: Colors, sheetMaxHeight: number) => StyleSheet.create
     justifyContent: 'center',
   },
   checkboxOn: { backgroundColor: colors.accentFill, borderColor: colors.accent },
-  rowBody: { flex: 1, gap: 2 },
+  rowBody: { flex: 1, gap: spacing.xxs },
   name: { fontSize: font.md, fontWeight: fontWeight.medium, color: colors.text },
   reason: { fontSize: font.xs, color: colors.textTertiary },
   qtyPill: {

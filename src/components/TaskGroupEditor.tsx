@@ -657,7 +657,7 @@ const makeStyles = (colors: Colors) => StyleSheet.create({
   existingSearch: {
     color: colors.text, fontSize: font.sm,
     backgroundColor: colors.bgQuaternary, borderRadius: radius.md,
-    paddingHorizontal: spacing.sm, paddingVertical: 6, marginBottom: spacing.xs,
+    paddingHorizontal: spacing.sm, paddingVertical: spacing.xsm, marginBottom: spacing.xs,
   },
   existingRow: {
     flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between',

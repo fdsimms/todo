@@ -364,7 +364,7 @@ const makeStyles = (colors: Colors) => StyleSheet.create({
   // a rounded row leaves its revealed panel square-cornered behind it.
   card: {
     marginHorizontal: spacing.md,
-    marginVertical: 2,
+    marginVertical: spacing.xxs,
     borderRadius: radius.md,
   },
   // Same inset-grouped card footprint as TaskItem / the Categories rows,
@@ -374,7 +374,7 @@ const makeStyles = (colors: Colors) => StyleSheet.create({
     alignItems: 'center',
     backgroundColor: colors.bgSecondary,
     paddingHorizontal: spacing.md,
-    paddingVertical: 12,
+    paddingVertical: spacing.smd,
     gap: spacing.md,
   },
   // Opaque, not a translucent tint directly: this can be applied the instant
