@@ -3538,6 +3538,14 @@ export interface GroceryItem {
   // at each (re)listing and never refreshed in between, resolve-or-shrug like
   // every other cross-row pointer here — a later recipe rename or delete
   // doesn't touch it.
+  //
+  // **Scoped to the list membership it's about, not to the row.** It answers
+  // "why is this on my list right now", so removeFromList/removeFromListMany
+  // and finishShopping all clear it alongside quantityFromRecipe (same
+  // reasoning: the shop it was for is over). A row that falls off the list
+  // and comes back later gets re-credited on that re-add, same as any other
+  // "fallen off every list" case above — it never carries a stale credit for
+  // a recipe from a shop that already happened.
   sourceRecipeId: string | null;
   sourceRecipeTitle: string | null;
   // "apples or pears" — two rows you'll pick between at the shelf, sharing this
