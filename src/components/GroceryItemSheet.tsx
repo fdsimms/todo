@@ -1932,7 +1932,7 @@ function makeStyles(colors: Colors) {
     // where the chevron already is — two glyphs at the same end read as one
     // control with a decoration on it.
     productNameRow: { flexDirection: 'row', alignItems: 'center', gap: spacing.xs },
-    subMeta: { color: colors.textTertiary, fontSize: font.xs, marginTop: 2 },
+    subMeta: { color: colors.textTertiary, fontSize: font.xs, marginTop: spacing.xxs },
     // Clears the last row, and gives the field's own bottom padding something
     // to sit under rather than jamming the pill against the separator below.
     subAdd: { marginTop: spacing.sm, alignSelf: 'flex-start' },
@@ -2052,7 +2052,7 @@ function makeStyles(colors: Colors) {
     stepperHint: { flex: 1, fontSize: font.sm, color: colors.textTertiary },
     actionBody: { flex: 1 },
     actionLabel: { fontSize: font.md, fontWeight: fontWeight.medium, color: colors.text },
-    actionHint: { fontSize: font.sm, color: colors.textTertiary, marginTop: 2 },
+    actionHint: { fontSize: font.sm, color: colors.textTertiary, marginTop: spacing.xxs },
     footnote: {
       fontSize: font.sm,
       color: colors.textTertiary,

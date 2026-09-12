@@ -4498,7 +4498,7 @@ const makeStyles = (colors: Colors) => StyleSheet.create({
   // clipped it rather than the other way round.
   viewModePills: {
     flexDirection: 'row', alignItems: 'center', gap: spacing.sm,
-    paddingHorizontal: spacing.md, paddingTop: 6, paddingBottom: 4,
+    paddingHorizontal: spacing.md, paddingTop: spacing.xsm, paddingBottom: 4,
   },
   viewModePill: {
     paddingHorizontal: spacing.md, paddingVertical: spacing.sm,
@@ -4530,8 +4530,8 @@ const makeStyles = (colors: Colors) => StyleSheet.create({
   // evening/night, or a time window) — no full section break, so same-day
   // segments read as one day rather than several unrelated blocks (#1162).
   laterSubHeader: {
-    flexDirection: 'row', alignItems: 'center', gap: 6,
-    paddingHorizontal: spacing.md, paddingTop: spacing.sm, paddingBottom: 2,
+    flexDirection: 'row', alignItems: 'center', gap: spacing.xsm,
+    paddingHorizontal: spacing.md, paddingTop: spacing.sm, paddingBottom: spacing.xxs,
     backgroundColor: colors.bg,
   },
   laterSubHeaderDot: {
@@ -4546,7 +4546,7 @@ const makeStyles = (colors: Colors) => StyleSheet.create({
     backgroundColor: colors.bg,
   },
   categorySectionHeaderLeft: {
-    flexDirection: 'row', alignItems: 'center', gap: 6,
+    flexDirection: 'row', alignItems: 'center', gap: spacing.xsm,
   },
   focusSectionHeader: {
     flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between',
@@ -4590,7 +4590,7 @@ const makeStyles = (colors: Colors) => StyleSheet.create({
   // card's footprint (margin + radius).
   dropSlot: {
     marginHorizontal: spacing.md,
-    marginVertical: 2,
+    marginVertical: spacing.xxs,
     borderRadius: radius.md,
     backgroundColor: colors.bgSecondary,
     opacity: 0.55,
@@ -4600,7 +4600,7 @@ const makeStyles = (colors: Colors) => StyleSheet.create({
   // inset (see TaskGroupTray), and a slot 16pt narrower than the row it
   // stands in for reads as a different, smaller thing.
   stackDropSlot: {
-    marginVertical: 2,
+    marginVertical: spacing.xxs,
     borderRadius: radius.md,
     backgroundColor: colors.bgSecondary,
     opacity: 0.55,

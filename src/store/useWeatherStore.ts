@@ -6,6 +6,7 @@ import { getCurrentLocation } from '../utils/weatherLocation';
 import { fetchWeatherSnapshot, type WeatherSnapshot } from '../services/weatherLookup';
 import { isDemoModeActive } from '../utils/demoState';
 import { useSettingsStore } from './useSettingsStore';
+import { createRefreshGuard } from '../utils/refreshGuard';
 
 /**
  * Today's weather, held in memory — the weather-generator equivalent of
@@ -27,6 +28,10 @@ interface WeatherState {
   clear: () => void;
 }
 
+// One read, so one guard. See refreshGuard.ts: the snapshot must not be
+// written back after the feature was switched off mid-fetch.
+const snapshotGuard = createRefreshGuard();
+
 export const useWeatherStore = create<WeatherState>((set, get) => ({
   snapshot: null,
   snapshotDayKey: null,
@@ -38,6 +43,7 @@ export const useWeatherStore = create<WeatherState>((set, get) => ({
     const todayKey = dayKeyOf(getCurrentDayStart());
     if (get().snapshotDayKey === todayKey) return;
     set({ refreshing: true });
+    const token = snapshotGuard.begin();
     try {
       // Never requests permission — see getCurrentLocation. A refresh that
       // finds nothing granted simply leaves today without a snapshot, the
@@ -47,6 +53,7 @@ export const useWeatherStore = create<WeatherState>((set, get) => ({
       if (!location) return;
       const snapshot = await fetchWeatherSnapshot(location);
       if (!snapshot) return;
+      if (!snapshotGuard.isCurrent(token)) return;
       set({ snapshot, snapshotDayKey: todayKey });
     } finally {
       set({ refreshing: false });
@@ -54,6 +61,7 @@ export const useWeatherStore = create<WeatherState>((set, get) => ({
   },
 
   clear() {
+    snapshotGuard.invalidate();
     set({ snapshot: null, snapshotDayKey: null });
   },
 }));

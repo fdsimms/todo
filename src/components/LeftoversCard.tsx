@@ -367,7 +367,7 @@ const makeStyles = (colors: Colors) => StyleSheet.create({
     flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'space-between',
-    paddingBottom: 2,
+    paddingBottom: spacing.xxs,
   },
   headerLeft: {
     flexDirection: 'row',

@@ -320,9 +320,9 @@ export function QuickAddModal({
   // of the wrong screen, then the sheet vanishing over it a beat later.
   const dismiss = (onDone?: () => void) => {
     Animated.parallel([
-      Animated.timing(scaleAnim, { toValue: 0.95, duration: 120, useNativeDriver: true }),
-      Animated.timing(sheetOpacity, { toValue: 0, duration: 120, useNativeDriver: true }),
-      Animated.timing(backdropOpacity, { toValue: 0, duration: 150, useNativeDriver: true }),
+      Animated.timing(scaleAnim, { toValue: 0.95, duration: animation.duration.dismiss, useNativeDriver: true }),
+      Animated.timing(sheetOpacity, { toValue: 0, duration: animation.duration.dismiss, useNativeDriver: true }),
+      Animated.timing(backdropOpacity, { toValue: 0, duration: animation.duration.fast, useNativeDriver: true }),
     ]).start(() => {
       scaleAnim.setValue(0.95);
       sheetOpacity.setValue(0);
@@ -396,6 +396,18 @@ export function QuickAddModal({
   const [matchW, setMatchW] = useState<number | null>(null);
   const [tooltipRowW, setTooltipRowW] = useState(0);
   const [bubbleW, setBubbleW] = useState(0);
+  // Per-pill x/width for a multi-candidate suggestion row (ambiguousMention/
+  // mentionSuggestion), so the caret below can aim at whichever pill sits
+  // under the matched text instead of the raw pixel offset — which can land
+  // in the gap between two pills, where there's nothing for it to touch.
+  const [candidateLayouts, setCandidateLayouts] = useState<{ x: number; width: number }[]>([]);
+  const setCandidateLayoutAt = (i: number, layout: { x: number; width: number }) => {
+    setCandidateLayouts(prev => {
+      const next = prev.slice();
+      next[i] = layout;
+      return next;
+    });
+  };
   const tooltipAnim = useRef(new Animated.Value(0)).current;
   const hadParse = useRef(false);
   const [whenPickerVisible, setWhenPickerVisible] = useState(false);
@@ -640,6 +652,19 @@ export function QuickAddModal({
       : null),
     [title, parsed, categoryTagsParsed, ambiguousMention, people, groupTokens]
   );
+  // Identifies the current candidate row (if any) by its pills, so the reset
+  // below only fires when the row actually changes shape — a new token, a
+  // different candidate list, or no row at all — rather than on every
+  // keystroke. Without it, a stale per-pill layout from a previous,
+  // differently-sized row could misdirect the caret aimed at a new one.
+  const candidateRowKey = ambiguousMention
+    ? `amb:${ambiguousMention.start}:${ambiguousMention.candidates.map(c => c.id).join(',')}`
+    : mentionSuggestion
+      ? `sug:${mentionSuggestion.start}:${mentionSuggestion.candidates.map(c => c.id).join(',')}`
+      : null;
+  useEffect(() => {
+    setCandidateLayouts([]);
+  }, [candidateRowKey]);
   // "clean the garage !urgent" — a "!word" token naming a priority
   // (parsePriorityInput), same single tooltip slot and same sigil-token
   // shape as the category/tag check above, just checked after the ambiguous
@@ -818,8 +843,23 @@ export function QuickAddModal({
   if (activeMatch && prefixW != null && matchW != null) {
     const center = Math.min((prefixW + matchW) / 2, Math.max(inputW - 8, 0));
     bubbleLeft = Math.min(Math.max(center - bubbleW / 2, 0), Math.max(tooltipRowW - bubbleW, 0));
+    const rawAim = center - bubbleLeft;
+    // A multi-candidate row has gaps between its pills (tooltipCandidateRow's
+    // own `gap`), and the raw aim point can land in one — floating the caret
+    // over nothing rather than a pill it visibly touches. Snap to whichever
+    // pill is actually nearest instead.
+    let aim = rawAim;
+    let nearestDist = Infinity;
+    for (const layout of candidateLayouts) {
+      if (!layout) continue;
+      const dist = Math.abs(layout.x + layout.width / 2 - rawAim);
+      if (dist < nearestDist) {
+        nearestDist = dist;
+        aim = layout.x + layout.width / 2;
+      }
+    }
     caretLeft = Math.min(
-      Math.max(center - bubbleLeft - CARET_W / 2, 10),
+      Math.max(aim - CARET_W / 2, 10),
       Math.max(bubbleW - CARET_W - 10, 10),
     );
   }
@@ -1314,7 +1354,7 @@ export function QuickAddModal({
       case 'monthDay':
         setRecurrenceWeekOrdinal(null);
         setRecurrenceMonthDay(
-          recurrenceMonthDay && recurrenceMonthDay > 0 ? recurrenceMonthDay : (dueDate ?? new Date()).getDate(),
+          recurrenceMonthDay && recurrenceMonthDay > 0 ? recurrenceMonthDay : (dueDate ?? getLogicalToday(dayResetTime)).getDate(),
         );
         break;
       case 'lastDay':
@@ -1324,7 +1364,7 @@ export function QuickAddModal({
       case 'weekday':
         setRecurrenceMonthDay(null);
         setRecurrenceWeekOrdinal(recurrenceWeekOrdinal ?? 1);
-        if (recurrenceDays.length === 0) setRecurrenceDays([(dueDate ?? new Date()).getDay()]);
+        if (recurrenceDays.length === 0) setRecurrenceDays([(dueDate ?? getLogicalToday(dayResetTime)).getDay()]);
         break;
     }
   };
@@ -1632,12 +1672,13 @@ export function QuickAddModal({
                     style={styles.tooltipCandidateRow}
                     onLayout={e => setBubbleW(e.nativeEvent.layout.width)}
                   >
-                    {ambiguousMention.candidates.map(candidate => (
+                    {ambiguousMention.candidates.map((candidate, i) => (
                       <PressableScale
                         key={candidate.id}
                         style={styles.tooltipCandidatePill}
                         haptic
                         onPress={() => applyAmbiguousCandidate(candidate.id)}
+                        onLayout={e => setCandidateLayoutAt(i, { x: e.nativeEvent.layout.x, width: e.nativeEvent.layout.width })}
                       >
                         <Text style={styles.tooltipText} numberOfLines={1}>{candidate.name}</Text>
                       </PressableScale>
@@ -1652,12 +1693,13 @@ export function QuickAddModal({
                     style={styles.tooltipCandidateRow}
                     onLayout={e => setBubbleW(e.nativeEvent.layout.width)}
                   >
-                    {mentionSuggestion.candidates.map(candidate => (
+                    {mentionSuggestion.candidates.map((candidate, i) => (
                       <PressableScale
                         key={candidate.id}
                         style={styles.tooltipCandidatePill}
                         haptic
                         onPress={() => applyMentionSuggestion(candidate)}
+                        onLayout={e => setCandidateLayoutAt(i, { x: e.nativeEvent.layout.x, width: e.nativeEvent.layout.width })}
                       >
                         <Text style={styles.tooltipText} numberOfLines={1}>{candidate.name}</Text>
                       </PressableScale>
@@ -2668,7 +2710,7 @@ const makeStyles = (colors: Colors, sheetMaxHeight: number) => StyleSheet.create
     fontWeight: fontWeight.medium,
     backgroundColor: colors.bgTertiary,
     borderRadius: radius.full,
-    paddingHorizontal: 12,
+    paddingHorizontal: spacing.smd,
     // Matches presetChip's box so the custom field sits level with the pills.
     // Height rather than lineHeight — see the TextInput note in CLAUDE.md.
     height: interaction.pillHeight,
@@ -2811,8 +2853,8 @@ const makeStyles = (colors: Colors, sheetMaxHeight: number) => StyleSheet.create
     flexDirection: 'row',
     alignItems: 'center',
     alignSelf: 'flex-start',
-    gap: 6,
-    paddingHorizontal: 12,
+    gap: spacing.xsm,
+    paddingHorizontal: spacing.smd,
     paddingVertical: 7,
     borderRadius: radius.md,
     backgroundColor: colors.accentFill,
@@ -2820,10 +2862,10 @@ const makeStyles = (colors: Colors, sheetMaxHeight: number) => StyleSheet.create
   tooltipCandidateRow: {
     flexDirection: 'row',
     alignSelf: 'flex-start',
-    gap: 6,
+    gap: spacing.xsm,
   },
   tooltipCandidatePill: {
-    paddingHorizontal: 12,
+    paddingHorizontal: spacing.smd,
     paddingVertical: 7,
     borderRadius: radius.md,
     backgroundColor: colors.accentFill,
@@ -2889,7 +2931,7 @@ const makeStyles = (colors: Colors, sheetMaxHeight: number) => StyleSheet.create
     fontWeight: fontWeight.medium,
     backgroundColor: colors.bgTertiary,
     borderRadius: radius.full,
-    paddingHorizontal: 12,
+    paddingHorizontal: spacing.smd,
     // Matches inlineCustomInput / presetChip so it sits level with the stepper.
     // Height rather than lineHeight — see the TextInput note in CLAUDE.md.
     height: interaction.pillHeight,
@@ -2944,7 +2986,7 @@ const makeStyles = (colors: Colors, sheetMaxHeight: number) => StyleSheet.create
     fontWeight: fontWeight.medium,
     backgroundColor: colors.bgTertiary,
     borderRadius: radius.sm,
-    paddingHorizontal: 12,
+    paddingHorizontal: spacing.smd,
     paddingVertical: 7,
     minWidth: 110,
   },
@@ -3009,12 +3051,12 @@ const makeStyles = (colors: Colors, sheetMaxHeight: number) => StyleSheet.create
     paddingVertical: 4,
   },
   suggestionsScroll: {
-    marginTop: 2,
+    marginTop: spacing.xxs,
   },
   suggestionsRow: {
     flexDirection: 'row',
     gap: spacing.xs,
-    paddingBottom: 2,
+    paddingBottom: spacing.xxs,
   },
   suggestionChip: {
     flexDirection: 'row',
@@ -3071,7 +3113,7 @@ const makeStyles = (colors: Colors, sheetMaxHeight: number) => StyleSheet.create
     flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'center',
-    gap: 6,
+    gap: spacing.xsm,
     paddingVertical: 10,
     backgroundColor: colors.bgTertiary,
     borderRadius: radius.md,
@@ -3092,7 +3134,7 @@ const makeStyles = (colors: Colors, sheetMaxHeight: number) => StyleSheet.create
   footerMore: {
     flexDirection: 'row',
     alignItems: 'center',
-    gap: 6,
+    gap: spacing.xsm,
     paddingVertical: 10,
     paddingHorizontal: spacing.sm,
   },
@@ -3122,7 +3164,7 @@ const makeStyles = (colors: Colors, sheetMaxHeight: number) => StyleSheet.create
   linkAppRow: {
     flexDirection: 'row',
     gap: spacing.xs,
-    paddingBottom: 2,
+    paddingBottom: spacing.xxs,
   },
   linkAppChip: {
     flexDirection: 'row',

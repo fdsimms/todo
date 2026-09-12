@@ -530,7 +530,7 @@ const makeStyles = (colors: Colors) => StyleSheet.create({
   },
   fieldRow: {
     flexDirection: 'row', alignItems: 'center', gap: spacing.md,
-    paddingHorizontal: spacing.md, paddingVertical: 12,
+    paddingHorizontal: spacing.md, paddingVertical: spacing.smd,
   },
   fieldLabel: { color: colors.text, fontSize: font.md, width: 92 },
   fieldLabelWide: { color: colors.text, fontSize: font.md, width: 84 },
@@ -593,10 +593,10 @@ const makeStyles = (colors: Colors) => StyleSheet.create({
   },
   optionContent: { flex: 1 },
   optionLabel: { color: colors.text, fontSize: font.md },
-  optionHint: { color: colors.textTertiary, fontSize: font.xs, marginTop: 2 },
+  optionHint: { color: colors.textTertiary, fontSize: font.xs, marginTop: spacing.xxs },
   toggle: {
     width: 44, height: 26, borderRadius: radius.full,
-    backgroundColor: colors.bgQuaternary, padding: 2, justifyContent: 'center',
+    backgroundColor: colors.bgQuaternary, padding: spacing.xxs, justifyContent: 'center',
   },
   toggleOn: { backgroundColor: colors.accent },
   toggleKnob: {

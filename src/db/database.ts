@@ -102,7 +102,6 @@ export function switchToDemoDatabase(): void {
   for (const { name } of tables) {
     demo.execSync(`DROP TABLE IF EXISTS "${name}"`);
   }
-
   db = demo;
 }
 
@@ -1524,6 +1523,11 @@ export function initDatabase(): void {
     'ALTER TABLE tasks ADD COLUMN medication_name TEXT',
     'ALTER TABLE tasks ADD COLUMN medication_amount REAL',
     'ALTER TABLE tasks ADD COLUMN medication_unit TEXT',
+    // grocery_list_items is keyed (item_id, list_id), so list_id is the
+    // trailing column of that index and nothing can seek on it alone — every
+    // read of "what is on this list" was a full scan of the membership table,
+    // which grows with catalog size times number of lists.
+    'CREATE INDEX IF NOT EXISTS idx_grocery_list_items_list ON grocery_list_items(list_id)',
     // NULL on every existing row, which reads as "never marked reviewed" —
     // the state that lets the review task keep appearing exactly as it always
     // has. See Project.reviewedAt.
@@ -1570,43 +1574,52 @@ export function initDatabase(): void {
   }
   try { dbPruneSyncDeletions(); } catch (_) { /* nothing to prune */ }
 
-  // Backfill seen_at for tasks that predate the "new" dot feature so they
-  // don't all light up as new the moment this ships — treat them as already
-  // seen as of their creation. New rows always insert with seen_at set, so
-  // this only ever touches legacy rows and is a no-op after the first run.
-  try { db.runSync('UPDATE tasks SET seen_at = created_at WHERE seen_at IS NULL'); } catch (_) {}
+  // The five task backfills below are behind one flag, the same shape every
+  // other one-time migration in this function uses. They are a no-op in rows
+  // written from the second launch on, but not in cost: none of the columns
+  // they test is indexed, so each is a full scan of `tasks` on every cold
+  // start. The flag is what makes "a no-op after the first run" true of the
+  // work as well as of the result.
+  if (dbGetSetting('task_backfill_seen_generated_done') !== '1') {
+    // Backfill seen_at for tasks that predate the "new" dot feature so they
+    // don't all light up as new the moment this ships — treat them as already
+    // seen as of their creation. New rows always insert with seen_at set, so
+    // this only ever touches legacy rows and is a no-op after the first run.
+    try { db.runSync('UPDATE tasks SET seen_at = created_at WHERE seen_at IS NULL'); } catch (_) {}
 
-  // Backfill generated_kind/generated_source_id from the three per-generator
-  // columns they replaced, same shape as the seen_at backfill above: guarded on
-  // the new column being NULL, so it touches only legacy rows and is a no-op
-  // from the second launch onwards. Nothing writes the old columns any more, so
-  // a row that misses this pass would read as a task nobody generated — the
-  // meal would spawn a second cook task, and the first would stop being
-  // rewritten when the meal moved.
-  for (const [kind, column] of [
-    ['mealCook', 'meal_entry_id'],
-    ['groceryUseUp', 'grocery_item_id'],
-    ['leftoverUseUp', 'leftover_id'],
-  ] as const) {
+    // Backfill generated_kind/generated_source_id from the three per-generator
+    // columns they replaced, same shape as the seen_at backfill above: guarded on
+    // the new column being NULL, so it touches only legacy rows and is a no-op
+    // from the second launch onwards. Nothing writes the old columns any more, so
+    // a row that misses this pass would read as a task nobody generated — the
+    // meal would spawn a second cook task, and the first would stop being
+    // rewritten when the meal moved.
+    for (const [kind, column] of [
+      ['mealCook', 'meal_entry_id'],
+      ['groceryUseUp', 'grocery_item_id'],
+      ['leftoverUseUp', 'leftover_id'],
+    ] as const) {
+      try {
+        db.runSync(
+          `UPDATE tasks SET generated_kind = ?, generated_source_id = ${column}
+           WHERE generated_kind IS NULL AND ${column} IS NOT NULL`,
+          [kind]
+        );
+      } catch (_) { /* column never existed on this install */ }
+    }
+    // The nudge had no back-pointer at all: it was recognised by its link, which
+    // is what `hasLiveMealPlanNudgeTask` used to match on. Anything carrying that
+    // link is what the old check would have counted, so this preserves the
+    // dedupe rule exactly — including for a task the user happened to write with
+    // the same link, which the old rule also counted.
     try {
       db.runSync(
-        `UPDATE tasks SET generated_kind = ?, generated_source_id = ${column}
-         WHERE generated_kind IS NULL AND ${column} IS NOT NULL`,
-        [kind]
+        `UPDATE tasks SET generated_kind = 'mealPlanNudge'
+         WHERE generated_kind IS NULL AND link_url = 'dundundun://mealplan'`
       );
-    } catch (_) { /* column never existed on this install */ }
+    } catch (_) {}
+    dbSetSetting('task_backfill_seen_generated_done', '1');
   }
-  // The nudge had no back-pointer at all: it was recognised by its link, which
-  // is what `hasLiveMealPlanNudgeTask` used to match on. Anything carrying that
-  // link is what the old check would have counted, so this preserves the
-  // dedupe rule exactly — including for a task the user happened to write with
-  // the same link, which the old rule also counted.
-  try {
-    db.runSync(
-      `UPDATE tasks SET generated_kind = 'mealPlanNudge'
-       WHERE generated_kind IS NULL AND link_url = 'dundundun://mealplan'`
-    );
-  } catch (_) {}
 
   // One-time migration: populate categories table from legacy category_registry setting
   const catCount = db.getFirstSync<{ n: number }>('SELECT COUNT(*) AS n FROM categories')?.n ?? 0;
@@ -2324,6 +2337,19 @@ export function dbPruneSyncDeletions(olderThanDays = TOMBSTONE_RETENTION_DAYS): 
 
 export function dbGetSetting(key: string): string | null {
   return db.getFirstSync<{ value: string }>('SELECT value FROM settings WHERE key = ?', [key])?.value ?? null;
+}
+
+/**
+ * The whole settings table in one read. `useSettingsStore.initialize` wants
+ * ~180 keys on the synchronous startup path, and asking for them one at a time
+ * is ~180 round trips through the bridge for a table small enough to fit in a
+ * single statement. Returns a Map rather than an object so a key that collides
+ * with something on Object.prototype can't be read as a value that was never
+ * stored.
+ */
+export function dbGetAllSettings(): Map<string, string> {
+  const rows = db.getAllSync<{ key: string; value: string }>('SELECT key, value FROM settings');
+  return new Map(rows.map(r => [r.key, r.value]));
 }
 
 export function dbSetSetting(key: string, value: string): void {

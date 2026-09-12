@@ -41,6 +41,7 @@ import { InlineAction } from './InlineAction';
 import { EmptyState } from './EmptyState';
 import { SubstituteSheet } from './SubstituteSheet';
 import { haptics } from '../utils/haptics';
+import { SheetUndoBar } from './SheetUndoBar';
 
 // How long the in-sheet "marked in pantry" undo stays up. Same value UndoBar
 // uses for the same reason: long enough to read the label and reach for the
@@ -145,7 +146,7 @@ export function RecipeToListSheet({
   initialSelection = 'all',
   onClose,
 }: Props) {
-  const { colors, shadows } = useTheme();
+  const { colors } = useTheme();
   const styles = useMemo(() => makeStyles(colors), [colors]);
   const insets = useSafeAreaInsets();
 
@@ -731,19 +732,11 @@ export function RecipeToListSheet({
         )}
 
         {!!pantryUndo && (
-          <View
-            style={[styles.undoWrap, { bottom: insets.bottom + spacing.lg }]}
-            pointerEvents="box-none"
-          >
-            <View style={[styles.undoBar, shadows.fab]}>
-              <Text style={styles.undoLabel} numberOfLines={1}>{pantryUndo.label}</Text>
-              <InlineAction
-                label="Undo"
-                onPress={handlePantryUndo}
-                accessibilityLabel={`Undo: ${pantryUndo.label}`}
-              />
-            </View>
-          </View>
+          <SheetUndoBar
+            label={pantryUndo.label}
+            onUndo={handlePantryUndo}
+            bottom={insets.bottom + spacing.lg}
+          />
         )}
       </View>
 
@@ -847,7 +840,7 @@ const makeStyles = (colors: Colors) => StyleSheet.create({
     flexDirection: 'row',
     alignItems: 'center',
     gap: spacing.md,
-    paddingVertical: 12,
+    paddingVertical: spacing.smd,
   },
   checkbox: {
     width: CHECKBOX_SIZE,
@@ -860,7 +853,7 @@ const makeStyles = (colors: Colors) => StyleSheet.create({
   },
   checkboxOn: { backgroundColor: colors.accentFill, borderColor: colors.accent },
   checkboxDisabled: { opacity: 0.4 },
-  body: { flex: 1, gap: 2 },
+  body: { flex: 1, gap: spacing.xxs },
   name: { fontSize: font.md, fontWeight: fontWeight.medium, color: colors.text },
   nameDisabled: { color: colors.textSecondary },
   sources: { fontSize: font.xs, color: colors.textTertiary },
@@ -894,7 +887,7 @@ const makeStyles = (colors: Colors) => StyleSheet.create({
   subsButton: {
     flexDirection: 'row',
     alignItems: 'center',
-    gap: 2,
+    gap: spacing.xxs,
     paddingHorizontal: spacing.sm,
     paddingVertical: spacing.sm,
     borderRadius: radius.full,
@@ -908,26 +901,4 @@ const makeStyles = (colors: Colors) => StyleSheet.create({
   // Floats over the list rather than pushing it, the same way UndoBar floats
   // over the screen it answers for — a footer here would reflow the list on
   // every tap, and the sheet has no footer to begin with.
-  undoWrap: {
-    position: 'absolute',
-    left: spacing.md,
-    right: spacing.md,
-  },
-  undoBar: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'space-between',
-    gap: spacing.sm,
-    backgroundColor: colors.bgSunken,
-    borderRadius: radius.lg,
-    paddingVertical: spacing.sm,
-    paddingLeft: spacing.md,
-    paddingRight: spacing.sm,
-  },
-  undoLabel: {
-    flex: 1,
-    color: colors.text,
-    fontSize: font.md,
-    fontWeight: fontWeight.medium,
-  },
 });

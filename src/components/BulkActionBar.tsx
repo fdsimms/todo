@@ -492,7 +492,7 @@ const makeStyles = (colors: Colors) => StyleSheet.create({
     flexDirection: 'row',
     alignItems: 'center',
     gap: spacing.sm,
-    paddingVertical: 12,
+    paddingVertical: spacing.smd,
     paddingHorizontal: spacing.sm,
     backgroundColor: colors.bgTertiary,
     borderRadius: radius.md,
@@ -550,7 +550,7 @@ const makeStyles = (colors: Colors) => StyleSheet.create({
   },
   tagScrollContent: {
     gap: spacing.sm,
-    paddingVertical: 2,
+    paddingVertical: spacing.xxs,
   },
   tagChip: {
     flexDirection: 'row',

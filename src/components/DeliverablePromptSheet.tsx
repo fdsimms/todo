@@ -406,7 +406,7 @@ const makeStyles = (colors: Colors) => StyleSheet.create({
     paddingTop: spacing.sm,
   },
   pill: {
-    paddingHorizontal: 12,
+    paddingHorizontal: spacing.smd,
     paddingVertical: 7,
     borderRadius: radius.full,
     backgroundColor: colors.bgTertiary,

@@ -323,7 +323,7 @@ function makeStyles(colors: Colors) {
     body: { flex: 1 },
     name: { color: colors.text, fontSize: font.md },
     nameOff: { color: colors.textSecondary },
-    meta: { color: colors.textTertiary, fontSize: font.xs, marginTop: 2 },
+    meta: { color: colors.textTertiary, fontSize: font.xs, marginTop: spacing.xxs },
     toggle: {
       width: 46, height: 27, borderRadius: 14,
       backgroundColor: colors.bgQuaternary, justifyContent: 'center', paddingHorizontal: 3,

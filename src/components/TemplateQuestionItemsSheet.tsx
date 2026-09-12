@@ -125,7 +125,7 @@ const makeStyles = (colors: Colors) => StyleSheet.create({
   itemTitle: { color: colors.text, fontSize: font.md },
   pillRow: { flexDirection: 'row', flexWrap: 'wrap', gap: spacing.xs },
   pill: {
-    paddingHorizontal: 12, paddingVertical: spacing.sm,
+    paddingHorizontal: spacing.smd, paddingVertical: spacing.sm,
     borderRadius: radius.full, backgroundColor: colors.bgTertiary,
   },
   pillOn: { backgroundColor: colors.accentFill },

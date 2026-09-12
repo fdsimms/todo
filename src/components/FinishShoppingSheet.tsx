@@ -18,6 +18,7 @@ import { useGroceryStore } from '../store/useGroceryStore';
 import { useSettingsStore } from '../store/useSettingsStore';
 import { useKeyboardInsetScroll } from '../hooks/useKeyboardInsetScroll';
 import { resolveActiveTrip } from '../utils/activeTrip';
+import { EmptyNote } from './EmptyNote';
 import { SheetHeader } from './SheetHeader';
 import { SheetHeaderButton } from './SheetHeaderButton';
 import { NumberPadAccessory, NUMBER_PAD_ACCESSORY_ID } from './NumberPadAccessory';
@@ -549,13 +550,10 @@ export function FinishShoppingSheet({
           </View>
 
           {shops.length === 0 && (
-            <View style={styles.emptyNote}>
-              <Ionicons name="storefront-outline" size={iconSize.md} color={colors.textTertiary} />
-              <Text style={styles.emptyText}>
-                No stores yet. Add one and this trip gets filed against it. After a trip or two,
-                the catalog can show you what each store carries.
-              </Text>
-            </View>
+            <EmptyNote icon="storefront-outline">
+              No stores yet. Add one and this trip gets filed against it. After a trip or two,
+              the catalog can show you what each store carries.
+            </EmptyNote>
           )}
 
           {/* A purchase from outside the store's range. The one thing that
@@ -805,7 +803,7 @@ function makeStyles(colors: Colors) {
       gap: spacing.sm,
     },
     substituteLabel: { fontSize: font.sm, color: colors.textTertiary },
-    priceName: { flex: 1, gap: 2 },
+    priceName: { flex: 1, gap: spacing.xxs },
     rowQuantity: { color: colors.textTertiary, fontSize: font.sm },
     // A bordered box rather than a bare input: it's the only thing on this
     // sheet you type into, and an unmarked one reads as a label until tapped.
@@ -840,16 +838,6 @@ function makeStyles(colors: Colors) {
       justifyContent: 'center',
     },
     checkOn: { backgroundColor: colors.red, borderColor: colors.red },
-    emptyNote: {
-      flexDirection: 'row',
-      alignItems: 'flex-start',
-      gap: spacing.md,
-      backgroundColor: colors.bgSecondary,
-      borderRadius: radius.md,
-      padding: spacing.md,
-      marginTop: spacing.lg,
-    },
-    emptyText: { flex: 1, fontSize: font.sm, color: colors.textTertiary },
     // Margin on both sides: the store picker sits above and the leftovers
     // label below, and neither carries a top margin of its own.
     rangeCard: {

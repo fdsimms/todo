@@ -334,8 +334,8 @@ const makeStyles = (colors: Colors) => StyleSheet.create({
     backgroundColor: colors.bgSecondary,
     borderRadius: radius.md,
     paddingHorizontal: spacing.md,
-    paddingVertical: 12,
-    marginVertical: 2,
+    paddingVertical: spacing.smd,
+    marginVertical: spacing.xxs,
   },
   rowIcon: {
     width: 32,
@@ -352,15 +352,15 @@ const makeStyles = (colors: Colors) => StyleSheet.create({
     fontWeight: fontWeight.medium,
     borderBottomWidth: 1,
     borderBottomColor: colors.accent,
-    paddingVertical: 2,
+    paddingVertical: spacing.xxs,
     // A height rather than a lineHeight: RN maps lineHeight onto the iOS
     // paragraph style with no baseline offset, so the glyphs sit low in the
     // field while the caret stays centred. See CLAUDE.md.
     minHeight: 24,
   },
-  rowCount: { color: colors.textTertiary, fontSize: font.xs, marginTop: 2 },
-  rowButton: { padding: 2 },
-  dragHandle: { padding: 2 },
+  rowCount: { color: colors.textTertiary, fontSize: font.xs, marginTop: spacing.xxs },
+  rowButton: { padding: spacing.xxs },
+  dragHandle: { padding: spacing.xxs },
   addRow: { marginTop: spacing.md, flexDirection: 'row' },
   addInput: {
     flex: 1,

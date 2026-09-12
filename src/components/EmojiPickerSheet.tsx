@@ -314,7 +314,7 @@ const makeStyles = (colors: Colors) => StyleSheet.create({
   },
   titleText: { flex: 1 },
   sheetTitle: { color: colors.text, fontSize: font.lg, fontWeight: fontWeight.semibold },
-  sheetHint: { color: colors.textTertiary, fontSize: font.xs, paddingTop: 2 },
+  sheetHint: { color: colors.textTertiary, fontSize: font.xs, paddingTop: spacing.xxs },
   removeLabel: { color: colors.red, fontSize: font.sm, fontWeight: fontWeight.medium, paddingTop: 3 },
   searchWrap: {
     flexDirection: 'row', alignItems: 'center', gap: spacing.xs,
@@ -358,13 +358,13 @@ const makeStyles = (colors: Colors) => StyleSheet.create({
   // Emoji sit high in their line box; a little extra height keeps the descender
   // of the glyph from clipping the way it did on task rows.
   cellEmoji: { fontSize: 26, lineHeight: 34, textAlign: 'center' },
-  emptyWrap: { alignItems: 'center', gap: 2, paddingHorizontal: spacing.lg, paddingBottom: spacing.lg },
+  emptyWrap: { alignItems: 'center', gap: spacing.xxs, paddingHorizontal: spacing.lg, paddingBottom: spacing.lg },
   emptyTitle: { color: colors.text, fontSize: font.md, fontWeight: fontWeight.semibold },
   emptySub: { color: colors.textTertiary, fontSize: font.sm, textAlign: 'center' },
   sep: { height: StyleSheet.hairlineWidth, backgroundColor: colors.separator },
   keyboardRow: {
     flexDirection: 'row', alignItems: 'center', gap: spacing.xs,
-    paddingHorizontal: spacing.md, paddingVertical: 12,
+    paddingHorizontal: spacing.md, paddingVertical: spacing.smd,
   },
   keyboardLabel: { color: colors.text, fontSize: font.sm, fontWeight: fontWeight.medium },
   keyboardSub: { color: colors.textTertiary, fontSize: font.xs, flex: 1 },

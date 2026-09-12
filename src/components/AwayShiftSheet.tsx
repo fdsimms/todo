@@ -244,7 +244,7 @@ const makeStyles = (colors: Colors) => StyleSheet.create({
   row: { flexDirection: 'row', alignItems: 'center', gap: spacing.sm, paddingVertical: spacing.sm },
   rowContent: { flex: 1 },
   rowTitle: { fontSize: font.md, color: colors.text },
-  rowMeta: { fontSize: font.xs, color: colors.textSecondary, marginTop: 2 },
+  rowMeta: { fontSize: font.xs, color: colors.textSecondary, marginTop: spacing.xxs },
   applyBtn: { marginTop: spacing.md, backgroundColor: colors.accent, borderRadius: radius.md, paddingVertical: spacing.sm, alignItems: 'center' },
   applyBtnOff: { backgroundColor: colors.bgTertiary },
   applyLabel: { fontSize: font.md, fontWeight: fontWeight.semibold, color: colors.onAccent },

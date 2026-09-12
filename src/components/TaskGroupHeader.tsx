@@ -372,7 +372,7 @@ const makeStyles = (colors: Colors) => StyleSheet.create({
     fontWeight: fontWeight.semibold,
     // Nudged onto the title's baseline; centring it on a 17pt line leaves it
     // sitting visibly high against the cap height.
-    marginTop: 2,
+    marginTop: spacing.xxs,
   },
   summary: {
     color: colors.textTertiary,
@@ -386,7 +386,7 @@ const makeStyles = (colors: Colors) => StyleSheet.create({
     marginTop: 4,
   },
   tagChip: {
-    paddingHorizontal: 6,
+    paddingHorizontal: spacing.xsm,
     paddingVertical: 1,
     borderRadius: radius.full,
     borderWidth: 1,

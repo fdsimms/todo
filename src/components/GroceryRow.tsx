@@ -469,7 +469,13 @@ export const GroceryRow = React.memo(function GroceryRow({
 
         {!!shownQuantity && (
           <View style={[styles.qtyPill, item.checked && styles.qtyPillChecked]}>
-            <Text style={[styles.qtyText, item.checked && styles.qtyTextChecked]} numberOfLines={1}>
+            {/* Two lines, capped by width rather than by lines: a quantity
+                carrying a recipe's prep instructions ("cut into ¼-inch-thick
+                rounds") is long enough that a wide, single-line pill starves
+                the name beside it down to a sliver. Same treatment
+                RecipeToListSheet's own quantity pill uses for the same
+                reason. */}
+            <Text style={[styles.qtyText, item.checked && styles.qtyTextChecked]} numberOfLines={2}>
               {shownQuantity}
             </Text>
           </View>
@@ -496,7 +502,11 @@ export const GroceryRow = React.memo(function GroceryRow({
                 keyboardType="number-pad"
                 returnKeyType="done"
                 inputAccessoryViewID={Platform.OS === 'ios' ? NUMBER_PAD_ACCESSORY_ID : undefined}
-                placeholder="0.00"
+                // Names the field rather than showing a formatted number.
+                // Placeholder text is textTertiary, the same grey a hint uses,
+                // so "0.00" sitting in a price box reads as a price already
+                // saved rather than as an empty field.
+                placeholder="Price"
                 placeholderTextColor={colors.textTertiary}
                 maxLength={PRICE_INPUT_MAX_LENGTH}
                 accessibilityLabel={`Price for ${item.name}`}
@@ -606,7 +616,7 @@ function makeStyles(colors: Colors) {
     itemWrapper: {
       backgroundColor: colors.bgSecondary,
       marginHorizontal: spacing.md,
-      marginVertical: 2,
+      marginVertical: spacing.xxs,
       borderRadius: radius.md,
       overflow: 'hidden',
     },
@@ -697,7 +707,7 @@ function makeStyles(colors: Colors) {
     nameError: {
       fontSize: font.sm,
       color: colors.red,
-      marginTop: 2,
+      marginTop: spacing.xxs,
     },
     // The fourth caption treatment, and the loudest of them — semibold on
     // textSecondary, where `alternatives` is medium on the same colour and both
@@ -750,22 +760,26 @@ function makeStyles(colors: Colors) {
     note: {
       fontSize: font.sm,
       color: colors.textTertiary,
-      marginTop: 2,
+      marginTop: spacing.xxs,
     },
     qtyPill: {
       backgroundColor: colors.bgTertiary,
       borderRadius: radius.sm,
       paddingHorizontal: spacing.sm,
       paddingVertical: 3,
-      maxWidth: 160,
+      maxWidth: 90,
     },
     qtyPillChecked: {
       backgroundColor: 'transparent',
     },
+    // Centred for the two-line case: the pill takes the width of its longest
+    // line, so this only moves the shorter one and is a no-op on the
+    // single-line pills, which size to their own text.
     qtyText: {
       fontSize: font.sm,
       fontWeight: fontWeight.semibold,
       color: colors.textSecondary,
+      textAlign: 'center',
     },
     qtyTextChecked: {
       textDecorationLine: 'line-through',

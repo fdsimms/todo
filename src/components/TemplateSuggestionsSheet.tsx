@@ -241,11 +241,11 @@ const makeStyles = (colors: Colors) => StyleSheet.create({
   row: {
     flexDirection: 'row', alignItems: 'center', gap: spacing.md,
     backgroundColor: colors.bgSecondary,
-    marginHorizontal: spacing.md, marginVertical: 2,
+    marginHorizontal: spacing.md, marginVertical: spacing.xxs,
     borderRadius: radius.md, paddingHorizontal: spacing.md, paddingVertical: spacing.md,
   },
   rowRejected: { opacity: 0.55 },
-  rowInfo: { flex: 1, gap: 2 },
+  rowInfo: { flex: 1, gap: spacing.xxs },
   rowTitle: { color: colors.text, fontSize: font.md },
   rowNotes: { color: colors.textTertiary, fontSize: font.sm },
   rowTextRejected: { textDecorationLine: 'line-through' },

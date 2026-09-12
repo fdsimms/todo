@@ -655,7 +655,7 @@ const makeStyles = (colors: Colors) =>
       flexDirection: 'row',
       alignItems: 'center',
       marginHorizontal: spacing.md,
-      marginVertical: 2,
+      marginVertical: spacing.xxs,
       paddingVertical: spacing.sm + 2,
       paddingHorizontal: spacing.md,
       borderRadius: radius.md,

@@ -1,0 +1,4 @@
+{
+  "message": "Marking an imported ingredient as \"already have it\" no longer removes it from the recipe — it still lands in the ingredient list, since not having to buy it doesn't mean the recipe doesn't use it.",
+  "date": "2026-09-12"
+}

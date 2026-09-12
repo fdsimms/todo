@@ -166,7 +166,7 @@ const makeStyles = (colors: Colors) => StyleSheet.create({
     flexDirection: 'row',
     alignItems: 'center',
     paddingHorizontal: spacing.md,
-    paddingVertical: 12,
+    paddingVertical: spacing.smd,
     gap: spacing.md,
   },
   checkbox: {
@@ -179,7 +179,7 @@ const makeStyles = (colors: Colors) => StyleSheet.create({
     justifyContent: 'center',
   },
   checkboxOn: { backgroundColor: colors.accentFill, borderColor: colors.accent },
-  body: { flex: 1, gap: 2 },
+  body: { flex: 1, gap: spacing.xxs },
   name: { fontSize: font.md, fontWeight: fontWeight.medium, color: colors.text },
   sources: { fontSize: font.xs, color: colors.textTertiary },
   offsetPill: {

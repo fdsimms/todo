@@ -223,10 +223,10 @@ const makeStyles = (colors: Colors) => StyleSheet.create({
   },
   toggleContent: { flex: 1 },
   toggleLabel: { color: colors.text, fontSize: font.sm },
-  toggleHint: { color: colors.textTertiary, fontSize: font.xs, marginTop: 2 },
+  toggleHint: { color: colors.textTertiary, fontSize: font.xs, marginTop: spacing.xxs },
   toggle: {
     width: 44, height: 26, borderRadius: radius.full,
-    backgroundColor: colors.bgQuaternary, padding: 2, justifyContent: 'center',
+    backgroundColor: colors.bgQuaternary, padding: spacing.xxs, justifyContent: 'center',
   },
   toggleOn: { backgroundColor: colors.accent },
   toggleKnob: {

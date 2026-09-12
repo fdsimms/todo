@@ -1,4 +1,4 @@
-import React, { useRef, useState, useMemo } from 'react';
+import React, { useRef, useState, useMemo, useCallback } from 'react';
 import {
   View,
   Text,
@@ -106,6 +106,26 @@ export function TemplatesScreen() {
   } = useRowSelection();
 
   const applyTemplateObj = templates.find(t => t.id === applyTemplateId) ?? null;
+
+  // Stable and taking the template they act on, so `TemplateRow`'s memo holds
+  // through a screen-state change — see its own note.
+  const handleRowPress = useCallback((template: TaskTemplate) => {
+    if (selectionMode) { toggleSelection(template.id); return; }
+    (navigation as any).navigate('TemplateDetail', { templateId: template.id });
+  }, [selectionMode, toggleSelection, navigation]);
+
+  const handleRowEdit = useCallback((template: TaskTemplate) => setEditingTemplate(template), []);
+
+  const handleRowApply = useCallback((template: TaskTemplate) => {
+    // An empty template has nothing to run, so this opens it to be filled in
+    // rather than applying nothing.
+    if (template.items.length === 0) {
+      (navigation as any).navigate('TemplateDetail', { templateId: template.id });
+      return;
+    }
+    haptics.tap();
+    setApplyTemplateId(template.id);
+  }, [navigation]);
   const templatesById = useMemo(() => new Map(templates.map(t => [t.id, t])), [templates]);
 
   const templateCategoryOrder = useMemo(
@@ -312,21 +332,10 @@ export function TemplatesScreen() {
                 drag={selectionMode ? undefined : drag}
                 selectionMode={selectionMode}
                 selected={selectedIds.has(tpl.id)}
-                onPress={() =>
-                  selectionMode
-                    ? toggleSelection(tpl.id)
-                    : (navigation as any).navigate('TemplateDetail', { templateId: tpl.id })
-                }
-                onEdit={() => setEditingTemplate(tpl)}
-                onSwipeSelect={() => enterSelectionMode(tpl.id)}
-                onApply={() => {
-                  if (tpl.items.length === 0) {
-                    (navigation as any).navigate('TemplateDetail', { templateId: tpl.id });
-                    return;
-                  }
-                  haptics.tap();
-                  setApplyTemplateId(tpl.id);
-                }}
+                onPress={handleRowPress}
+                onEdit={handleRowEdit}
+                onSwipeSelect={enterSelectionMode}
+                onApply={handleRowApply}
               />
             </FabDropZone>
           );
@@ -413,7 +422,7 @@ export function TemplatesScreen() {
  * *right* — the direction that reschedules everywhere else — and now lives in
  * TemplateEditor behind the ⋯ button, or in the bulk bar.
  */
-function TemplateRow({
+const TemplateRow = React.memo(function TemplateRow({
   template, broken, missingRefs, colors, styles, drag, selectionMode, selected, onPress, onEdit, onApply, onSwipeSelect,
 }: {
   template: TaskTemplate;
@@ -427,15 +436,17 @@ function TemplateRow({
   drag?: () => void;
   selectionMode: boolean;
   selected: boolean;
-  onPress: () => void;
-  onEdit: () => void;
-  onApply: () => void;
-  onSwipeSelect: () => void;
+  // Each takes the template it acts on rather than the screen closing over it
+  // once per row, so one stable function serves every row and the memo holds.
+  onPress: (template: TaskTemplate) => void;
+  onEdit: (template: TaskTemplate) => void;
+  onApply: (template: TaskTemplate) => void;
+  onSwipeSelect: (templateId: string) => void;
 }) {
   const rowBody = (
     <TouchableOpacity
       style={[styles.tplRow, selectionMode && selected && styles.tplRowSelected]}
-      onPress={onPress}
+      onPress={() => onPress(template)}
       onLongPress={drag}
       delayLongPress={interaction.delayLongPress}
       activeOpacity={interaction.activeOpacity}
@@ -491,7 +502,7 @@ function TemplateRow({
       {!selectionMode && (
         <>
           <TouchableOpacity
-            onPress={onEdit}
+            onPress={() => onEdit(template)}
             style={styles.rowButton}
             activeOpacity={interaction.activeOpacity}
             hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
@@ -501,7 +512,7 @@ function TemplateRow({
             <Ionicons name="ellipsis-horizontal" size={16} color={colors.textTertiary} />
           </TouchableOpacity>
           <TouchableOpacity
-            onPress={onApply}
+            onPress={() => onApply(template)}
             style={styles.rowButton}
             activeOpacity={interaction.activeOpacity}
             hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
@@ -519,14 +530,14 @@ function TemplateRow({
     <View style={styles.tplItemWrapper}>
       {selectionMode ? rowBody : (
         <SwipeableRow
-          selectAction={{ onSelect: onSwipeSelect, accessibilityLabel: `Select ${template.name}` }}
+          selectAction={{ onSelect: () => onSwipeSelect(template.id), accessibilityLabel: `Select ${template.name}` }}
         >
           {rowBody}
         </SwipeableRow>
       )}
     </View>
   );
-}
+});
 
 const makeStyles = (colors: Colors) => StyleSheet.create({
   container: {
@@ -560,7 +571,7 @@ const makeStyles = (colors: Colors) => StyleSheet.create({
   tplItemWrapper: {
     backgroundColor: colors.bgSecondary,
     marginHorizontal: spacing.md,
-    marginVertical: 2,
+    marginVertical: spacing.xxs,
     borderRadius: radius.md,
     overflow: 'hidden',
   },
@@ -580,7 +591,7 @@ const makeStyles = (colors: Colors) => StyleSheet.create({
   },
   dropSlot: {
     marginHorizontal: spacing.md,
-    marginVertical: 2,
+    marginVertical: spacing.xxs,
     borderRadius: radius.md,
     backgroundColor: colors.bgSecondary,
     opacity: 0.55,
@@ -602,7 +613,7 @@ const makeStyles = (colors: Colors) => StyleSheet.create({
   },
   tplInfo: {
     flex: 1,
-    gap: 2,
+    gap: spacing.xxs,
   },
   tplNameRow: {
     flexDirection: 'row',
