@@ -859,6 +859,18 @@ Today, Later, Unscheduled and Inbox are **not** separate screens — they're fou
 
 `src/theme/index.ts` exports design tokens (`spacing`, `radius`, `font`, `fontWeight`, `border`, `iconSize`, `animation`, `interaction`) and two color palettes (`darkColors`, `lightColors`). Components consume colors via `useColors()` or `useTheme()` (which also exposes theme-aware `shadows`) from `src/theme/ThemeContext.tsx`. The top-level `colors` export is kept only for non-themed static uses.
 
+**The spacing scale has eight steps, not five.** `xs` (4) through `xl` (32) double at each step and
+are the backbone; `xxs` (2), `xsm` (6) and `smd` (12) fill the gaps between 4 and 8, and between 8
+and 16. Those three were added after a sweep found ~980 raw numbers across 183 files — four fifths
+of every spacing value written — clustered almost entirely on exactly those gaps: a scale nobody
+can hit is a scale nobody uses, so the fix was to widen it rather than keep rounding call sites
+onto the nearest wrong value. **The values still *between* the steps (1, 3, 5, 7, 10, 14) are
+deliberately literals and deliberately not rounded onto a token** — they're optical nudges (a
+chevron aligned against a cap height, a border's width taken back out of a padding) where the exact
+number is the point. Radii and font sizes were left alone in that sweep and are their own
+questions: a `borderRadius` is usually geometry (half an element's size, for a circle) rather than
+a scale step.
+
 **When adding a new element above/below existing ones, give it margin on both sides it needs, not just the side that happened to matter for its own layout.** A recurring mistake here: a new row/bar gets `marginTop` to clear whatever's above it, but no `marginBottom`, so the *next* element — which itself has no `marginTop` — ends up jammed right against it. `TaskEditor`'s field-search bar shipped exactly this way (`marginTop: spacing.md` only), and the group label right below it had no top margin of its own, so the two sat with zero gap between them. Don't assume the neighboring element already accounts for spacing on its side — check it, and default to `spacing.md` (16) between stacked blocks, `spacing.lg` (24) between denser groups, rather than shipping a cramped gap and letting it get caught in review.
 
 **Never put a `numberOfLines={1}` name/title next to one or more action buttons in the same flex row — an identifying piece of text has to win the row, or say the row's own thing on its own line.** `RecipeNutritionSheet`'s "Not in your catalog" row did this: an ingredient name shared a `flexDirection: 'row'` with two `InlineAction` pills, the pills claimed their full label width first, and whatever was left over went to the name — "Monkfruit sweetener" truncated down to "Monkfrui…", the one piece of information the row exists to show. `numberOfLines={1}` is fine; a fixed-width sibling eating the row before the flexible text gets a fair share of it is the bug, and it gets worse as more buttons are added. The fix is the same shape `RecipeNutritionSheet`'s own sibling section ("Not counted") already used two dozen lines above the bug: stack the name on its own full-width row, put the actions in a `flexWrap: 'wrap'` row underneath. If a name truly has to share a row with something else (an icon, a count, a chevron), the something else should be the thing that's short and fixed, never a button whose label can grow, and the name gets `flex: 1` in a row with nothing else claiming width ahead of it. Check this whenever a row pairs a data-derived string (an ingredient, a task title, a store name, anything the user typed or picked) with one or more `InlineAction`/button siblings in the same row.
@@ -917,6 +929,20 @@ exception, because its Modal is a small centered card rather than a full scrolla
   buttons, and **both are accent**: two of the twelve hand-rolled copies this replaced had drifted
   to a grey Cancel. `minWidth` reserves matching width on the light side so the title stays
   optically centered.
+- `SheetHeader` (`src/components/SheetHeader.tsx`) — the row that button sits in: Cancel/Back on
+  the left, Save/Done on the right, the title centered between them. `SheetHeaderButton` unified
+  the buttons and left the row around them hand-written in every sheet in the app — about thirty
+  distinct row layouts in about fifteen title styles — so this is that row, written once. 63 sheets
+  use it. The title **always** centers itself (`flex: 1`), which is a small correctness fix over
+  what it replaced: a title that merely sat between two same-width buttons drifted off-centre the
+  moment either label changed length. `left`/`right` take whatever a sheet needs (a button, a
+  spacer `View`, or a row of two controls); `icon` adds the sparkle the AI-generated sheets put
+  before their titles; `size="lg"` is for the handful whose title reads larger. **`bare` is for a
+  sheet built on `EditorSheet`**, whose `headerStyle` already supplies the row — that one passes
+  `bare` and keeps its own `header:` style, since several of those differ on padding and border on
+  purpose. The ~20 sheets still hand-rolling a header are the ones whose padding, border or title
+  shape genuinely differs (a popover card, a left-aligned heading, a title with a subtitle under
+  it); forcing those into this shape would be a visual change rather than a deduplication.
 - `disclosureValue(colors)` (`src/theme/textStyles.ts`) — the right-aligned "currently set to" text
   in `EditorRow`, `CollapsibleField` and the Settings rows. Spread it and add layout on top. It's a
   shared style rather than four local ones because it had been written as `value` / `summary` /
@@ -953,6 +979,14 @@ exception, because its Modal is a small centered card rather than a full scrolla
   more than once, and each fix means finding and swapping a call site after the fact instead of
   writing it right the first time.
 - `EmptyState` (`src/components/EmptyState.tsx`) — every empty list: tinted icon circle + title + subtitle + optional CTA, animates in on mount. **When rendering inside a `ScrollView`, the ScrollView must have `flex: 1` and its `contentContainerStyle` must use `flexGrow: 1`**, so the content container expands to fill available space and the centered view can actually center vertically. Without that, the empty state content sits at the top of the sheet — the flex:1 on the centered view has nothing to fill. See `EventImportSheet.tsx` for the pattern.
+- `EmptyNote` (`src/components/EmptyNote.tsx`) — the same idea as `EmptyState`, for a section that
+  is empty while the rest of the sheet still has content above and below it ("No stores yet. Name
+  one when you finish a trip…"). An icon, a line of text, one card. **Reach for it rather than
+  `EmptyState` whenever the empty thing is one section rather than the whole screen**: that one
+  needs a viewport to centre itself in (`flex: 1`, an 88pt icon circle, a title), so inside a
+  scrolling sheet it towers over the two lines it is explaining and fights the content around it.
+  Its text is `textSecondary` for the reason `EmptyState`'s own subtitle is — this says what's
+  missing and how to fix it, which is information, not a dim aside.
 - `PinIcon` (`src/components/PinIcon.tsx`) — the pin glyph everywhere pinning is shown or toggled
   (task row, bulk bar, editor's Pin row, category pin-all, Pinned Tasks header),
   and the **one** icon in the app that isn't an Ionicons name. Ionicons has no thumbtack: its `pin`
