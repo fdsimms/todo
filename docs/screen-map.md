@@ -107,7 +107,7 @@ Where each component can appear.
 - `src/components/EmptyNote.tsx` — on GroceryScreen
 - `src/components/EmptyState.tsx` — on ArchivedScreen, BackfillScreen, CalendarScreen, CategoriesScreen, CategoryDetailScreen, CookbookDetailScreen, CookbooksScreen, FoodLogScreen, GroceryScreen, KitchenScreen, LogbookScreen, MealPlanScreen, +23 more
 - `src/components/ErrorBoundary.tsx` — on app shell
-- `src/components/EstimateMealSheet.tsx` — on FoodLogScreen
+- `src/components/EstimateMealSheet.tsx` — on FoodLogScreen, app shell
 - `src/components/EventImportSheet.tsx` — on TodayScreen
 - `src/components/ExtractedIngredientRow.tsx` — on RecipeDetailScreen, RecipesScreen
 - `src/components/Fab.tsx` — on CategoriesScreen, FoodLogScreen, GroceryScreen, PeopleScreen, ProjectDetailScreen, ProjectsScreen, RecipesScreen, StacksScreen, TagsScreen, TemplateDetailScreen, TemplatesScreen, TodayScreen

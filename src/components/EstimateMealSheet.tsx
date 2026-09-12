@@ -71,12 +71,19 @@ interface Props {
   slot: MealSlot | null;
   /** The logical day being logged, so a backdated estimate lands where it is shown. */
   at: Date;
+  /**
+   * The planned meal this estimate is logging, carried onto whatever gets
+   * saved — same field `FoodLogEntrySheet`'s own `mealPlanEntryId` prop
+   * writes, for a caller reached from a meal-plan prompt rather than the
+   * plain "add a food" flow. Omitted (or null) for every other caller.
+   */
+  mealPlanEntryId?: string | null;
   onClose: () => void;
   /** Offered instead of estimating, when the description names one. See the note above. */
   onPickRecipe: (recipeId: string) => void;
 }
 
-export function EstimateMealSheet({ visible, slot, at, onClose, onPickRecipe }: Props) {
+export function EstimateMealSheet({ visible, slot, at, mealPlanEntryId, onClose, onPickRecipe }: Props) {
   const colors = useColors();
   const styles = useMemo(() => makeStyles(colors), [colors]);
   const keyboardScroll = useKeyboardInsetScroll<ScrollView>();
@@ -162,6 +169,7 @@ export function EstimateMealSheet({ visible, slot, at, onClose, onPickRecipe }: 
       nutrition,
       slot: chosenSlot,
       at,
+      mealPlanEntryId: mealPlanEntryId ?? null,
     });
     if (!written) { haptics.error(); return; }
     haptics.success();

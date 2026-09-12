@@ -2,6 +2,8 @@ import React, { useState } from 'react';
 import { useFoodLogStore } from '../store/useFoodLogStore';
 import { useLeftoverStore } from '../store/useLeftoverStore';
 import { useMealPlanStore } from '../store/useMealPlanStore';
+import { useAiRoute } from '../hooks/useOnDeviceAi';
+import { EstimateMealSheet } from './EstimateMealSheet';
 import { FoodLogEntrySheet } from './FoodLogEntrySheet';
 import { ScanToLogFlow } from './ScanToLogFlow';
 import type { MealSlot } from '../types';
@@ -40,12 +42,21 @@ import type { MealSlot } from '../types';
  * scan being on another screen's header meant it wasn't reachable at all. The
  * scan carries the meal it is logging (`mealPlanEntryId`), so what it writes
  * is linked exactly as a searched entry would be.
+ *
+ * **So is describing it, same gate and same handoff `FoodLogScreen`'s own
+ * sparkles action uses** (`estimateRoute !== 'unavailable'`) — a meal-plan
+ * prompt is as likely to be a takeout order nobody's going to find in a
+ * search as anything logged from the food log screen. `EstimateMealSheet`
+ * gets the same `mealPlanEntryId` the search path already carries, so an
+ * estimate logged from here links back to the meal exactly as a searched
+ * entry would.
  */
 export function LogMealEntrySheet() {
   const pending = useFoodLogStore(s => s.pendingManualMealLog);
   const setPending = useFoodLogStore(s => s.setPendingManualMealLog);
   const pendingFinishLeftoverId = useLeftoverStore(s => s.pendingFinishLeftoverId);
   const setLogMeal = useMealPlanStore(s => s.setLogMeal);
+  const estimateRoute = useAiRoute('nutritionEstimate');
 
   const mealPlanEntryId = pending?.mealPlanEntryId ?? null;
 
@@ -63,19 +74,36 @@ export function LogMealEntrySheet() {
     { slot: MealSlot | null; at: Date; mealPlanEntryId: string | null } | null
   >(null);
 
+  /** Same shape as `scan` above, for the describe-instead handoff. */
+  const [estimate, setEstimate] = useState<
+    { slot: MealSlot | null; at: Date; mealPlanEntryId: string | null } | null
+  >(null);
+
+  /**
+   * A dish the estimate sheet matched to something already in the recipe
+   * box, handed back to `FoodLogEntrySheet` already picked — same
+   * `seedRecipeId` handoff `FoodLogScreen` uses for its own estimate sheet.
+   */
+  const [seedRecipeId, setSeedRecipeId] = useState<string | null>(null);
+
   return (
     <>
       <FoodLogEntrySheet
-        visible={!!pending && !pendingFinishLeftoverId && !scan}
+        visible={!!pending && !pendingFinishLeftoverId && !scan && !estimate}
         slot={pending?.slot ?? null}
         at={new Date()}
+        seedRecipeId={seedRecipeId}
         initialQuery={pending?.label ?? ''}
         mealPlanEntryId={mealPlanEntryId}
-        onClose={() => setPending(null)}
+        onClose={() => { setPending(null); setSeedRecipeId(null); }}
         onScan={() => {
           setScan({ slot: pending?.slot ?? null, at: new Date(), mealPlanEntryId });
           setPending(null);
         }}
+        onEstimate={estimateRoute !== 'unavailable' ? () => {
+          setEstimate({ slot: pending?.slot ?? null, at: new Date(), mealPlanEntryId });
+          setPending(null);
+        } : undefined}
         onDeclineMeal={mealPlanEntryId ? () => {
           setLogMeal(mealPlanEntryId, false);
           setPending(null);
@@ -87,6 +115,18 @@ export function LogMealEntrySheet() {
         at={scan?.at ?? new Date()}
         mealPlanEntryId={scan?.mealPlanEntryId ?? null}
         onClose={() => setScan(null)}
+      />
+      <EstimateMealSheet
+        visible={!!estimate}
+        slot={estimate?.slot ?? null}
+        at={estimate?.at ?? new Date()}
+        mealPlanEntryId={estimate?.mealPlanEntryId ?? null}
+        onClose={() => setEstimate(null)}
+        onPickRecipe={recipeId => {
+          setSeedRecipeId(recipeId);
+          setPending({ label: '', slot: estimate?.slot ?? null, mealPlanEntryId: estimate?.mealPlanEntryId ?? null });
+          setEstimate(null);
+        }}
       />
     </>
   );
