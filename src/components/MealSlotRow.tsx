@@ -146,8 +146,8 @@ export function MealSlotRow({
         // in `styles` — `surface` is a runtime prop, and a translucent
         // background here would otherwise let SwipeableRow's still-open
         // panel show through for the instant between a swipe-select commit
-        // and this row's SwipeableRow unmounting below (`if (selectionMode)
-        // return rowBody`). See the note on `flattenOverlay`.
+        // and `enabled` turning the gesture off below. See the note on
+        // `flattenOverlay`.
         selectionMode && selected && { backgroundColor: flattenOverlay(colors.accent + '1A', surface ?? colors.bgSecondary) },
       ]}
       onPress={onPress}
@@ -241,11 +241,14 @@ export function MealSlotRow({
   // Swipe stays off entirely in selection mode, same as the header controls
   // it sits beside — a finger reaching for the row is reaching to toggle it,
   // not to open a select panel that only re-enters the mode it's already in.
-  if (selectionMode) return rowBody;
-
+  // SwipeableRow stays mounted through that toggle rather than swapping for a
+  // bare rowBody: swapping it unmounts the panel mid-close-animation (the
+  // very moment its own select action just fired), which is what read as the
+  // swipe panel freezing instead of sliding shut. `enabled` turns the gesture
+  // off without disturbing the mount.
   return (
     <SwipeableRow
-      enabled={!dragging}
+      enabled={!dragging && !selectionMode}
       selectAction={onSwipeSelect ? {
         onSelect: () => onSwipeSelect(entry.id),
         accessibilityLabel: `Select ${title}`,
