@@ -72,10 +72,11 @@ import { haptics } from '../utils/haptics';
 import { animateLayout } from '../utils/layoutAnimation';
 import { pickRecipeImage, resolveRecipeImagePath, type RecipePhotoSource } from '../utils/recipePhoto';
 import { describeRecipe, totalMinutes } from '../utils/recipeUtils';
+import { dayKeyOf, getLogicalToday } from '../utils/dateUtils';
 import { buildIngredientsText, buildRecipeShareText } from '../utils/shareText';
 import { allSectionsOf, sectionsFromMergedOrder, type SectionListEntry } from '../utils/recipeSections';
 import { PillGroup } from '../components/PillGroup';
-import { describeUnscaled, scaleQuantity } from '../utils/recipeScale';
+import { describeUnscaled, formatScale, scaleQuantity } from '../utils/recipeScale';
 import { convertQuantity } from '../utils/unitConvert';
 import { RecipeScaleChips } from '../components/RecipeScaleChips';
 import { RecipeChoiceChips } from '../components/RecipeChoiceChips';
@@ -659,6 +660,34 @@ export function RecipeDetailScreen() {
     if (shoppableCount === 0) return;
     haptics.tap();
     setAddToListVisible(true);
+  };
+
+  // The bridge from an ad-hoc shop to the one place a scale actually lasts.
+  // `scale` above is deliberately screen state — reopening this recipe later
+  // starts over at 1× — so a half-batch shopped for here and cooked from a
+  // fresh visit tonight has nothing telling Cook Mode it was ever anything
+  // but as-written. Planning the meal is the existing, already-round-tripping
+  // fix (MealPlanEntry.recipeScale), so this just offers it at the one moment
+  // the number is still on screen. Only worth asking at all when the shop
+  // wasn't as-written — 1× already matches Cook Mode's own default.
+  const offerPlanForScaledShop = (shoppedScale: number) => {
+    if (shoppedScale === 1) return;
+    Alert.alert(
+      'Plan this for tonight?',
+      `Plan ${recipe.name} at ${formatScale(shoppedScale)} so Cook Mode remembers the batch size.`,
+      [
+        { text: 'Not now', style: 'cancel' },
+        {
+          text: 'Plan for tonight',
+          onPress: () => {
+            const entry = planRecipe(
+              recipe, dayKeyOf(getLogicalToday()), earliestUnplannedSlotToday(), shoppedScale
+            );
+            if (entry) offerPrepTasks(entry);
+          },
+        },
+      ]
+    );
   };
 
   const confirmRemoveComponent = (resolved: ResolvedComponent) => {
@@ -2176,6 +2205,7 @@ export function RecipeDetailScreen() {
         recipe={recipe}
         recipesById={recipesById}
         initialScale={scale}
+        onAdded={offerPlanForScaledShop}
         onClose={() => setAddToListVisible(false)}
       />
 

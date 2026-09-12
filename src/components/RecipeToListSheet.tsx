@@ -88,6 +88,20 @@ interface Props {
    * the banner did. Those lines are still listed and still tickable by hand.
    */
   initialSelection?: 'all' | 'restock';
+  /**
+   * Fires once the sheet's own "On the list" alert is dismissed, with the
+   * scale the shop was made at. Only meaningful when something was actually
+   * added — a nothing-to-add close never calls it — and only wired up by the
+   * recipe screen's ad-hoc add, which is the one caller with no lasting place
+   * for that scale to live (see the `scale` state above). It's what lets that
+   * screen turn around and offer "plan this for tonight", which does have one
+   * (`MealPlanEntry.recipeScale`), rather than the number being gone the
+   * moment this sheet closes. Deferred to the alert's own button, not fired
+   * before it, so a second alert doesn't collide with this sheet's — see
+   * usePlanMeal's `offerPrepTasks` doc comment for the same "already
+   * presenting" reason.
+   */
+  onAdded?: (scale: number) => void;
   onClose: () => void;
 }
 
@@ -144,6 +158,7 @@ export function RecipeToListSheet({
   initialChoices,
   initialScale,
   initialSelection = 'all',
+  onAdded,
   onClose,
 }: Props) {
   const { colors } = useTheme();
@@ -450,9 +465,11 @@ export function RecipeToListSheet({
     const parts = [`Added ${result.added.length}`];
     if (result.alreadyOnList.length > 0) parts.push(`${result.alreadyOnList.length} already on your list`);
     if (result.skippedInCart.length > 0) parts.push(`${result.skippedInCart.length} already in your cart`);
+    const added = result.added.length > 0;
     Alert.alert(
-      result.added.length > 0 ? 'On the list' : 'Nothing to add',
-      parts.join(' · ')
+      added ? 'On the list' : 'Nothing to add',
+      parts.join(' · '),
+      added && onAdded ? [{ text: 'OK', onPress: () => onAdded(scale) }] : undefined
     );
     onClose();
   };
