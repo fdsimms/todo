@@ -128,6 +128,14 @@ export function normalizeIngredient(raw: unknown): RecipeIngredient | null {
   if (r.noSwap === true) normalized.noSwap = true;
   // Same rule, same reason: most lines are needed, not a garnish.
   if (r.optional === true) normalized.optional = true;
+  // Same rule again — a small amount the recipe's own figures were never
+  // meant to include (see RecipeIngredient.excludeFromNutrition). This was
+  // missing here, which meant the flag was silently dropped on every reload
+  // once the ingredient round-tripped through storage as JSON.
+  if (r.excludeFromNutrition === true) normalized.excludeFromNutrition = true;
+  // Same rule again — a staple you'd already have, not something to shop for
+  // (see RecipeIngredient.excludeFromShoppingList).
+  if (r.excludeFromShoppingList === true) normalized.excludeFromShoppingList = true;
   if (typeof r.dismissedCatalogSuggestion === 'string' && r.dismissedCatalogSuggestion) {
     normalized.dismissedCatalogSuggestion = r.dismissedCatalogSuggestion;
   }

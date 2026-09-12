@@ -1,0 +1,4 @@
+{
+  "message": "Recipes now list water when a recipe states an amount for it (like a pickling brine), instead of leaving it out entirely — it just won't show up on your shopping list, since nobody needs to buy water",
+  "date": "2026-09-12"
+}

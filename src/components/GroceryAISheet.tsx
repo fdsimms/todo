@@ -149,7 +149,12 @@ export function GroceryAISheet({ visible, mode, onClose }: Props) {
       // A link is fetched first; a paste and a photo resolve to themselves.
       const resolved = await resolveRecipeSource();
       if (!resolved) return;
-      const rows = await suggestRecipeGroceries(resolved.source, [...aisleOrder]);
+      // A staple like water at a stated amount (RecipeGroceryItem.
+      // excludeFromShoppingList) has nowhere to be kept visible in this
+      // shopping-only sheet, unlike a saved recipe's own ingredient list — so
+      // it's dropped here rather than offered as something to buy.
+      const rows = (await suggestRecipeGroceries(resolved.source, [...aisleOrder]))
+        .filter(r => !r.excludeFromShoppingList);
       setRecipeRows(rows);
       setAccepted(new Set(rows.map((_, i) => i)));
     } catch (e) {

@@ -785,6 +785,13 @@ export interface RecipeGroceryItem {
    * it's true.
    */
   optional?: boolean;
+  /**
+   * True for a staple already on hand rather than something to shop for —
+   * water used at a stated amount, most often. Read straight into
+   * RecipeIngredient.excludeFromShoppingList by normalizeIngredient. Same
+   * "written only when true" rule as `optional` above.
+   */
+  excludeFromShoppingList?: boolean;
 }
 
 /** Same validation `suggestRecipeGroceries` always applied, now shared with extractRecipe. */
@@ -795,7 +802,7 @@ function parseExtractedItems(
   const items = raw as Array<
     {
       name?: unknown; quantity?: unknown; aisle?: unknown; component?: unknown; prep?: unknown;
-      optional?: unknown;
+      optional?: unknown; excludeFromShoppingList?: unknown;
     }
   > | undefined;
   if (!items) return [];
@@ -830,6 +837,7 @@ function parseExtractedItems(
       // Same "written only when true" rule normalizeIngredient itself keeps
       // for this field — an absent/false model answer just isn't carried.
       ...(item.optional === true && { optional: true }),
+      ...(item.excludeFromShoppingList === true && { excludeFromShoppingList: true }),
     });
   }
   return result.slice(0, MAX_RECIPE_ITEMS);
@@ -927,6 +935,10 @@ function groceryItemsSchema(availableAisles: string[], description: string) {
         optional: {
           type: 'boolean',
           description: 'True when the recipe itself marks this ingredient as optional — "(optional)", "if desired/available", "or leave it out", a garnish called out as not required. False for everything else, including anything you merely think a cook could skip; only the recipe\'s own wording counts.',
+        },
+        excludeFromShoppingList: {
+          type: 'boolean',
+          description: 'True for a staple already on hand rather than something to shop for — water used at a stated amount, most often. False for everything else, salt/pepper/cooking oil included: those still sometimes need buying. Still give the line its stated amount; this only keeps it off a shopping list.',
         },
       },
       required: ['name', 'quantity', 'aisle'],
@@ -1056,7 +1068,7 @@ export interface ExtractedRecipe {
  */
 function sharedRecipeInstructions(availableAisles: string[]): string[] {
   return [
-    'Name each shopping item the way a shop would label it, not the way the recipe prepares it — "garlic" rather than "3 cloves garlic, minced". Keep the recipe\'s own quantity and unit as stated, with the prep instruction moved to the "prep" field instead of "name" or "quantity" — "4 cloves" or "3 cloves", not "1 bulb", with "minced" in "prep". Never substitute your own guess at a purchasable equivalent; the recipe\'s stated amount is what the cook actually needs, and a bulb doesn\'t reliably yield a fixed number of cloves. Ignore the method when deciding what goes on the shopping list, and skip water.',
+    'Name each shopping item the way a shop would label it, not the way the recipe prepares it — "garlic" rather than "3 cloves garlic, minced". Keep the recipe\'s own quantity and unit as stated, with the prep instruction moved to the "prep" field instead of "name" or "quantity" — "4 cloves" or "3 cloves", not "1 bulb", with "minced" in "prep". Never substitute your own guess at a purchasable equivalent; the recipe\'s stated amount is what the cook actually needs, and a bulb doesn\'t reliably yield a fixed number of cloves. Ignore the method when deciding what goes on the shopping list, with one exception: if the recipe calls for a stated amount of water — in its own ingredient list, or only in the method ("combine 3/4 cup water and the vinegar") — include it as its own line with that amount, and set "excludeFromShoppingList" to true, since nobody needs to buy water. Skip water entirely when no amount is ever stated for it.',
     `Sections available: ${availableAisles.join(', ')}. Use "Other" only when nothing else fits.`,
     'If the recipe\'s own ingredient list is split into labelled components — "For the cake" / "For the frosting", "For the marinade" / "For the dish" — carry that label into each item\'s "component" field. Leave it empty when the recipe lists everything as one plain list.',
     'Set "optional" to true only when the recipe itself says so — "(optional)", "if desired", "if you have it", a garnish explicitly called not required. Leave it false otherwise, even for an item you\'d personally guess is skippable, like a garnish with nothing next to it saying so.',
@@ -1625,7 +1637,7 @@ export async function draftMealRecipe(
       content: [
         `Write a full home-cooked recipe for a meal called "${name}". There is no written recipe — draft a straightforward home version of it: what to buy and how to make it.`,
         `Quantities should feed ${serves}. Give the amount in the quantity field, and name each item the way a shop would label it, not the way the dish prepares it — "garlic" rather than "3 cloves garlic, minced". Abbreviate tablespoon/teaspoon as "tbsp"/"tsp".`,
-        'Cover what the dish genuinely needs and stop there: the everyday version rather than an elaborate one, no optional garnishes, and skip water. Include salt, pepper and cooking oil only when the dish actually turns on them.',
+        'Cover what the dish genuinely needs and stop there: the everyday version rather than an elaborate one, no optional garnishes. If the method you write calls for a stated amount of water (boiling pasta, making a brine), include it as its own line with that amount, and set "excludeFromShoppingList" to true, since nobody needs to buy water — skip it entirely if no step needs a specific amount. Include salt, pepper and cooking oil only when the dish actually turns on them.',
         `Sections available: ${availableAisles.join(', ')}. Use "Other" only when nothing else fits.`,
         'Write the method as an ordered list of steps a home cook could actually follow — plain and specific, not padded with commentary.',
         'Separately, list any "prep tasks": things that genuinely have to start well ahead of cooking because they need lead time — soaking dried beans overnight, marinating or brining meat overnight, thawing something frozen, proofing a dough overnight. Do NOT list routine same-day steps just because they happen early in the method — chopping vegetables, mixing dry ingredients, preheating the oven. Return an empty list when nothing needs advance lead time.',

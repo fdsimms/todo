@@ -210,6 +210,19 @@ describe('collectPlannedIngredients', () => {
     expect(result[1].excludeFromNutrition).toBe(true);
   });
 
+  it('drops a line marked excludeFromShoppingList entirely, rather than carrying a flag through', () => {
+    const brine = recipe('Pickled carrots', [
+      ing('Carrots', { quantity: '2' }),
+      ing('Water', { quantity: '3/4 cup', excludeFromShoppingList: true }),
+    ]);
+    const recipesById = new Map([[brine.id, brine]]);
+    const entries = [entry('2026-08-11', brine.id)]; // Tuesday
+
+    const result = collectPlannedIngredients(entries, recipesById, RANGE);
+
+    expect(result.map(r => r.name)).toEqual(['Carrots']);
+  });
+
   it('scales each entry by its own factor, leaving the others alone', () => {
     const ragu = recipe('Ragù', [ing('Onions', { quantity: '2' }), ing('Salt', { quantity: 'a pinch' })]);
     const recipesById = new Map([[ragu.id, ragu]]);
@@ -364,6 +377,14 @@ describe('plannedIngredientsForRecipe', () => {
       .toEqual(['4', '6 cloves']);
     expect(plannedIngredientsForRecipe(ragu, undefined, undefined, 0.5).map(p => p.quantity))
       .toEqual(['1', '1 1/2 cloves']);
+  });
+
+  it('drops a line marked excludeFromShoppingList entirely, rather than carrying a flag through', () => {
+    const brine = recipe('Pickled carrots', [
+      ing('Carrots', { quantity: '2' }),
+      ing('Water', { quantity: '3/4 cup', excludeFromShoppingList: true }),
+    ]);
+    expect(plannedIngredientsForRecipe(brine).map(p => p.name)).toEqual(['Carrots']);
   });
 
   it('scales the quantity but not the prep clause riding with it', () => {
