@@ -18,6 +18,7 @@ import { confirmDelete } from '../utils/confirmDelete';
 import { animateLayout } from '../utils/layoutAnimation';
 import { normalizePlaceholderName } from '../utils/templateUtils';
 import { EditorSheet } from './EditorSheet';
+import { SheetHeader } from './SheetHeader';
 import { SheetHeaderButton } from './SheetHeaderButton';
 import { SegmentedControl } from './SegmentedControl';
 import { InlineAction } from './InlineAction';
@@ -164,11 +165,12 @@ export function TemplateQuestionSheet({ visible, templateId, question, onClose }
       scrollStyle={styles.scroll}
       scrollContentStyle={styles.scrollContent}
       header={
-        <>
-          <SheetHeaderButton label="Cancel" role="cancel" onPress={onClose} minWidth={60} />
-          <Text style={styles.headerTitle}>{question ? 'Edit Question' : 'New Question'}</Text>
-          <SheetHeaderButton label="Save" onPress={save} minWidth={60} />
-        </>
+        <SheetHeader
+          bare
+          title={question ? 'Edit Question' : 'New Question'}
+          left={<SheetHeaderButton label="Cancel" role="cancel" onPress={onClose} minWidth={60} />}
+          right={<SheetHeaderButton label="Save" onPress={save} minWidth={60} />}
+        />
       }
     >
       <TextInput
@@ -345,11 +347,6 @@ const makeStyles = (colors: Colors) => StyleSheet.create({
     paddingBottom: spacing.md,
     borderBottomWidth: StyleSheet.hairlineWidth,
     borderBottomColor: colors.separator,
-  },
-  headerTitle: {
-    color: colors.text,
-    fontSize: font.md,
-    fontWeight: fontWeight.semibold,
   },
   scroll: {
     flex: 1,

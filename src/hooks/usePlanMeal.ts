@@ -84,9 +84,12 @@ export function usePlanMeal() {
     );
     if (drafts.length === 0) { onDone?.(); return; }
     const one = drafts.length === 1;
+    const message = one
+      ? `${recipe.name} has 1 prep step: ${drafts[0].title}. Add it to your tasks?`
+      : `${recipe.name} has ${drafts.length} prep steps:\n${drafts.map(d => `• ${d.title}`).join('\n')}\n\nAdd them to your tasks?`;
     Alert.alert(
       'Add prep tasks?',
-      `${recipe.name} has ${drafts.length} prep step${one ? '' : 's'}. Add ${one ? 'it' : 'them'} to your tasks?`,
+      message,
       [
         { text: 'Not now', style: 'cancel', onPress: onDone },
         {

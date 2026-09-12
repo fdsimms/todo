@@ -1,0 +1,4 @@
+{
+  "message": "Fixed the #, @, and ! keyboard bar not appearing when editing a task's title in the full editor, so it now works there the same as in quick add",
+  "date": "2026-09-12"
+}

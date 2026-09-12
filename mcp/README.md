@@ -1,7 +1,7 @@
 # todo-mcp
 
-An MCP server over a replica of the app's database. **Phase 0: read-only, nothing deployed, and
-the sync that would keep the replica current does not exist yet.** The design, the phases and the
+An MCP server over a replica of the app's database. **Phase 2: the replica syncs, and one tool
+writes. Nothing is deployed behind real auth.** The design, the phases and the
 reasoning are in [`docs/arch/mcp-server.md`](../docs/arch/mcp-server.md); read that first, this
 file is only how to run it.
 
@@ -10,15 +10,37 @@ file is only how to run it.
 ```bash
 cd mcp
 npm install
-TODO_DB_PATH=/path/to/todo.db MCP_AUTH_TOKEN=$(openssl rand -hex 32) npm start
+TODO_DB_PATH=./todo.db \
+  MCP_AUTH_TOKEN=$(openssl rand -hex 32) \
+  SYNC_STORE_PATH=./payloads.db \
+  SYNC_AUTH_TOKEN=$(openssl rand -hex 32) \
+  SYNC_URL=http://localhost:8787 \
+  SYNC_TOKEN=<the same SYNC_AUTH_TOKEN> \
+  npm start
 ```
 
-It listens on `:8787` (`PORT` to change it) and speaks Streamable HTTP at `POST /mcp`. It runs
-straight off the TypeScript through `tsx`; there is no build step, because there is nothing to
-deploy to yet.
+It listens on `:8787` (`PORT` to change it) and serves two things: Streamable HTTP at `POST /mcp`
+for Claude, and the payload store at `/sync/push` and `/sync/pull` for your devices. One process,
+two tokens, because they answer to different callers and must not share a secret.
 
-`TODO_DB_PATH` is a SQLite file with the app's schema. Until phase 1 there is no automatic way to
-get one, so today it means a copy taken off a device or a simulator.
+| Variable | What it is |
+|---|---|
+| `TODO_DB_PATH` | The replica. Created empty if absent, then filled by the first sync. |
+| `MCP_AUTH_TOKEN` | Claude's bearer token, read-only. Unset means every MCP request is refused. |
+| `MCP_WRITE_TOKEN` | A second token that also permits writing. Unset means the server is read-only, and a read-scoped caller never even sees the write tools. |
+| `SYNC_STORE_PATH` | Where payloads are kept. Unset means the store is not mounted at all. |
+| `SYNC_AUTH_TOKEN` | Your devices' bearer token, for `/sync/*`. |
+| `SYNC_URL`, `SYNC_TOKEN` | Where the *replica itself* syncs to. Usually this same server. |
+
+Then in the app: Settings → Data & reset → Sync, put the server's address in **Sync server** and
+the `SYNC_AUTH_TOKEN` in **Sync server token**. Both are needed; either alone does nothing. iCloud
+sync is unaffected and keeps running alongside.
+
+That also removes the old chore of copying a `todo.db` off a device by hand. Point the server at a
+path that does not exist yet and the first sync fills it.
+
+It runs straight off the TypeScript through `tsx`; there is no build step, because there is nothing
+to deploy to yet.
 
 **`MCP_AUTH_TOKEN` is not optional.** With it unset the server starts and refuses every request,
 which is deliberate: the alternative default is a server that serves an entire task history to
@@ -27,7 +49,7 @@ Do not put this on a public address.
 
 ## Tools
 
-All read-only.
+Read-only except the last, which needs `MCP_WRITE_TOKEN`.
 
 | Tool | What it answers |
 |---|---|
@@ -39,8 +61,29 @@ All read-only.
 | `list_food_log` | Logged food over a day range, with summed nutrients. |
 | `list_mood_logs` | Mood check-ins: rating, symptoms, context tags, notes. |
 | `list_medication_logs` | Doses recorded, scheduled and as-needed. |
+| `list_templates` | Stored templates: name, item count, groups, and the questions a run asks. |
+| `create_template` | **Write.** Builds a whole template in one call. Needs `MCP_WRITE_TOKEN`. |
+| `create_task` | **Write.** Adds one task, with the app's own defaults and title rules applied. |
+| `complete_task` | **Write.** Ticks one off, spawning whatever that spawns: the next occurrence, the next chain step, the next set of a dated series. |
+| `defer_task` | **Write.** Moves a task to a date, or clears its date. |
 
-The last three take the same range: `days` counts back from today (7 by default), or pass
+`complete_task` refuses two things rather than doing them quietly, and both are
+deliberate. A task that **cannot** be completed says so: a negative habit has no
+completion (record a slip instead) and a recurring task shown early cannot be
+completed ahead of its own day. And a task that **asks a question** on
+completion is sent back for an answer rather than completing without one,
+because a model in a conversation is the one caller that could have asked and
+did not. Passing `deliverableValue: null` completes it without an answer, which
+is what the app's own "Complete Without Answering" does. See
+[`src/deliverableAsk.ts`](src/deliverableAsk.ts).
+
+What `complete_task` does **not** do is the device half: no reminder is
+cancelled or scheduled, no calendar event written, nothing sent to Apple Health.
+A dose *is* recorded where the task names a medication, because that is the
+app's own record rather than somebody else's. The rest belongs to whichever
+device the completion syncs to.
+
+The three log tools take the same range: `days` counts back from today (7 by default), or pass
 `from`/`to` as `YYYY-MM-DD`. There is deliberately **no weight tool** — weight lives in Apple
 Health and the app stores no copy, so a replica over SQLite has nothing to read. See the arch doc.
 

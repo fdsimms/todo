@@ -6,6 +6,7 @@ import {
   TextInput,
   TouchableOpacity,
   ActivityIndicator,
+  ScrollView,
   StyleSheet,
 } from 'react-native';
 import Ionicons from '@expo/vector-icons/Ionicons';
@@ -38,9 +39,16 @@ interface Props {
   onChangeText: (text: string) => void;
   url: string;
   onChangeUrl: (url: string) => void;
-  photo: RecipePhoto | null;
+  /**
+   * In reading order — for a cookbook recipe that runs across a page turn,
+   * the front page first. `useRecipeImportSource` hands `extractRecipe` this
+   * same array, unwrapped or not, so the order chosen here is the order read.
+   */
+  photos: RecipePhoto[];
   onPickPhoto: (source: RecipePhotoSource) => void;
-  onClearPhoto: () => void;
+  onClearPhoto: (index: number) => void;
+  /** How many photos this caller will accept before the add buttons disappear. */
+  maxPhotos: number;
   /** True while the picker/downscale is running — the shutter is slow enough to notice. */
   picking?: boolean;
   /**
@@ -84,9 +92,10 @@ export function RecipeSourcePicker({
   onChangeText,
   url,
   onChangeUrl,
-  photo,
+  photos,
   onPickPhoto,
   onClearPhoto,
+  maxPhotos,
   picking = false,
   photoOnly = false,
   photoHint,
@@ -110,7 +119,7 @@ export function RecipeSourcePicker({
   const ready =
     paste ? !!text.trim() && !bareUrl
     : link ? !!normalizeRecipeUrl(typedUrl)
-    : !!photo;
+    : photos.length > 0;
 
   const useLinkTab = () => {
     haptics.tap();
@@ -195,41 +204,114 @@ export function RecipeSourcePicker({
               : 'Works on most recipe sites. Some build their page in the browser. For those, copy the recipe and paste it instead.'}
           </Text>
         </View>
-      ) : photo ? (
-        <View style={styles.preview}>
-          <Image
-            source={{ uri: `data:${photo.mediaType};base64,${photo.base64}` }}
-            style={styles.previewImage}
-            resizeMode="cover"
-            accessibilityIgnoresInvertColors
-          />
-          <TouchableOpacity
-            style={styles.previewClear}
-            activeOpacity={interaction.activeOpacity}
-            onPress={() => { haptics.tap(); onClearPhoto(); }}
-            accessibilityRole="button"
-            accessibilityLabel="Remove this photo"
-          >
-            <Ionicons name="close" size={iconSize.sm} color={colors.onAccent} />
-          </TouchableOpacity>
-        </View>
+      ) : maxPhotos <= 1 ? (
+        // A caller that never asks for more than one (the receipt scanner) —
+        // the original single big preview, unchanged.
+        photos[0] ? (
+          <View style={styles.preview}>
+            <Image
+              source={{ uri: `data:${photos[0].mediaType};base64,${photos[0].base64}` }}
+              style={styles.previewImage}
+              resizeMode="cover"
+              accessibilityIgnoresInvertColors
+            />
+            <TouchableOpacity
+              hitSlop={8}
+              style={styles.previewClear}
+              activeOpacity={interaction.activeOpacity}
+              onPress={() => { haptics.tap(); onClearPhoto(0); }}
+              accessibilityRole="button"
+              accessibilityLabel="Remove this photo"
+            >
+              <Ionicons name="close" size={iconSize.sm} color={colors.onAccent} />
+            </TouchableOpacity>
+          </View>
+        ) : (
+          <View style={styles.photoChoices}>
+            {picking ? (
+              <View style={styles.picking}>
+                <ActivityIndicator color={colors.accent} />
+                <Text style={styles.pickingText}>Getting the photo ready…</Text>
+              </View>
+            ) : (
+              <>
+                {renderPhotoButton('camera', 'Take a photo', 'camera-outline')}
+                {renderPhotoButton('library', 'Choose a photo', 'images-outline')}
+                {renderPhotoButton('clipboard', 'Paste image', 'copy-outline')}
+                <Text style={styles.photoHint}>
+                  {photoHint
+                    ?? 'Works on a cookbook page, a recipe card, a clipping: anything with the ingredients readable.'}
+                </Text>
+              </>
+            )}
+          </View>
+        )
       ) : (
-        <View style={styles.photoChoices}>
-          {picking ? (
-            <View style={styles.picking}>
-              <ActivityIndicator color={colors.accent} />
-              <Text style={styles.pickingText}>Getting the photo ready…</Text>
+        // Up to `maxPhotos` — a cookbook recipe that runs across a page turn.
+        // Order is reading order: `photos[0]` is the front page, and there's
+        // no reorder gesture, so getting it wrong means removing and re-adding.
+        <View style={styles.photoSection}>
+          {photos.length > 0 && (
+            <ScrollView
+              horizontal
+              showsHorizontalScrollIndicator={false}
+              contentContainerStyle={styles.thumbRow}
+            >
+              {photos.map((item, i) => (
+                <View key={item.sourceUri} style={styles.thumbWrap}>
+                  <Image
+                    source={{ uri: `data:${item.mediaType};base64,${item.base64}` }}
+                    style={styles.thumbImage}
+                    resizeMode="cover"
+                    accessibilityIgnoresInvertColors
+                  />
+                  {photos.length > 1 && (
+                    <View style={styles.thumbOrder} pointerEvents="none">
+                      <Text style={styles.thumbOrderText}>{i + 1}</Text>
+                    </View>
+                  )}
+                  <TouchableOpacity
+                    hitSlop={12}
+                    style={styles.thumbClear}
+                    activeOpacity={interaction.activeOpacity}
+                    onPress={() => { haptics.tap(); onClearPhoto(i); }}
+                    accessibilityRole="button"
+                    accessibilityLabel={`Remove photo ${i + 1}`}
+                  >
+                    <Ionicons name="close" size={iconSize.xs} color={colors.onAccent} />
+                  </TouchableOpacity>
+                </View>
+              ))}
+            </ScrollView>
+          )}
+
+          {photos.length < maxPhotos && (
+            <View style={photos.length === 0 ? styles.photoChoices : styles.photoChoicesCompact}>
+              {picking ? (
+                <View style={styles.picking}>
+                  <ActivityIndicator color={colors.accent} />
+                  <Text style={styles.pickingText}>Getting the photo ready…</Text>
+                </View>
+              ) : (
+                <>
+                  {renderPhotoButton(
+                    'camera', photos.length ? 'Take another photo' : 'Take a photo', 'camera-outline',
+                  )}
+                  {renderPhotoButton(
+                    'library', photos.length ? 'Choose another photo' : 'Choose a photo', 'images-outline',
+                  )}
+                  {renderPhotoButton(
+                    'clipboard', photos.length ? 'Paste another image' : 'Paste image', 'copy-outline',
+                  )}
+                  <Text style={styles.photoHint}>
+                    {photos.length > 0
+                      ? 'Add another photo if the recipe continues onto another page.'
+                      : (photoHint
+                        ?? 'Works on a cookbook page, a recipe card, a clipping: anything with the ingredients readable.')}
+                  </Text>
+                </>
+              )}
             </View>
-          ) : (
-            <>
-              {renderPhotoButton('camera', 'Take a photo', 'camera-outline')}
-              {renderPhotoButton('library', 'Choose a photo', 'images-outline')}
-              {renderPhotoButton('clipboard', 'Paste image', 'copy-outline')}
-              <Text style={styles.photoHint}>
-                {photoHint
-                  ?? 'Works on a cookbook page, a recipe card, a clipping: anything with the ingredients readable.'}
-              </Text>
-            </>
           )}
         </View>
       )}
@@ -381,6 +463,53 @@ function makeStyles(colors: Colors) {
       justifyContent: 'center',
       borderWidth: border.hairline,
       borderColor: colors.separator,
+    },
+    photoSection: { gap: spacing.sm },
+    thumbRow: { gap: spacing.sm },
+    thumbWrap: {
+      width: 84,
+      height: 112,
+      borderRadius: radius.md,
+      backgroundColor: colors.bgSecondary,
+      overflow: 'hidden',
+    },
+    thumbImage: { width: '100%', height: '100%' },
+    // Order only matters once there's more than one photo to place in a
+    // sequence — see thumbWrap's sibling check.
+    thumbOrder: {
+      position: 'absolute',
+      left: spacing.xs,
+      bottom: spacing.xs,
+      minWidth: 16,
+      height: 16,
+      paddingHorizontal: 4,
+      borderRadius: 8,
+      backgroundColor: colors.backdrop,
+      alignItems: 'center',
+      justifyContent: 'center',
+    },
+    thumbOrderText: { color: colors.onAccent, fontSize: 10, fontWeight: fontWeight.semibold },
+    thumbClear: {
+      position: 'absolute',
+      top: 4,
+      right: 4,
+      width: 20,
+      height: 20,
+      borderRadius: 10,
+      backgroundColor: colors.backdrop,
+      alignItems: 'center',
+      justifyContent: 'center',
+      borderWidth: border.hairline,
+      borderColor: colors.separator,
+    },
+    // No minHeight: this sits under a thumbnail row that already carries the
+    // section's height, unlike `photoChoices`, which is the whole section
+    // before any photo exists.
+    photoChoicesCompact: {
+      backgroundColor: colors.bgSecondary,
+      borderRadius: radius.md,
+      padding: spacing.md,
+      gap: spacing.sm,
     },
     runBtn: {
       flexDirection: 'row',

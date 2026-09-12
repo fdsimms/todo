@@ -5,13 +5,14 @@ import { useShallow } from 'zustand/react/shallow';
 import { useGroceryStore } from '../store/useGroceryStore';
 import { useRecipeStore } from '../store/useRecipeStore';
 import { useColors } from '../theme/ThemeContext';
-import { border, font, fontWeight, iconSize, interaction, radius, spacing, type Colors } from '../theme';
+import { font, fontWeight, iconSize, interaction, radius, spacing, type Colors } from '../theme';
 import { groceryNameKey } from '../utils/groceryParse';
 import { recipesUsingIngredient } from '../utils/recipeComponents';
 import { haptics } from '../utils/haptics';
 import { confirmDelete } from '../utils/confirmDelete';
 import { EmptyState } from './EmptyState';
 import { SheetHeaderButton } from './SheetHeaderButton';
+import { SheetHeader } from './SheetHeader';
 import type { GroceryItem } from '../types';
 
 interface Props {
@@ -138,11 +139,11 @@ export function MergeItemSheet({ visible, itemId, initialPickedId, onClose, onMe
   return (
     <Modal visible={visible} animationType="slide" presentationStyle="pageSheet" onRequestClose={handleClose}>
       <View style={styles.root}>
-        <View style={styles.header}>
-          <SheetHeaderButton label="Cancel" role="cancel" onPress={handleClose} minWidth={64} />
-          <Text style={styles.headerTitle} numberOfLines={1}>Merge {item.name}</Text>
-          <View style={styles.headerSpacer} />
-        </View>
+        <SheetHeader
+          title={`Merge ${item.name}`}
+          left={<SheetHeaderButton label="Cancel" role="cancel" onPress={handleClose} minWidth={64} />}
+          right={<View style={styles.headerSpacer} />}
+        />
 
         {picked ? (
           <View style={styles.body}>
@@ -219,22 +220,6 @@ export function MergeItemSheet({ visible, itemId, initialPickedId, onClose, onMe
 function makeStyles(colors: Colors) {
   return StyleSheet.create({
     root: { flex: 1, backgroundColor: colors.bg },
-    header: {
-      flexDirection: 'row',
-      alignItems: 'center',
-      justifyContent: 'space-between',
-      paddingHorizontal: spacing.md,
-      paddingVertical: spacing.md,
-      borderBottomWidth: border.hairline,
-      borderBottomColor: colors.separator,
-    },
-    headerTitle: {
-      flex: 1,
-      textAlign: 'center',
-      color: colors.text,
-      fontSize: font.md,
-      fontWeight: fontWeight.semibold,
-    },
     headerSpacer: { minWidth: 64 },
     caption: {
       color: colors.textSecondary,

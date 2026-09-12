@@ -102,13 +102,6 @@ export function switchToDemoDatabase(): void {
   for (const { name } of tables) {
     demo.execSync(`DROP TABLE IF EXISTS "${name}"`);
   }
-  // Dropping the tables takes the schema with them, so the schema version has
-  // to go too. It lives in the file header rather than in a table, so it is the
-  // one thing the loop above cannot clear — and left stamped, initDatabase's
-  // version guard would skip every migration and rebuild the demo on the bare
-  // CREATE TABLE columns, without any that were added by an ALTER since.
-  demo.execSync('PRAGMA user_version = 0');
-
   db = demo;
 }
 
@@ -583,7 +576,10 @@ export function initDatabase(): void {
     );
   `);
 
-  // Migrations for existing installs (safe to run multiple times — fails silently if column exists)
+  // Migrations for existing installs (safe to run multiple times — a column
+  // that is already there is skipped, and anything that still slips through
+  // fails silently). Appending here is still the way to add a column, never by
+  // editing the CREATE TABLE above.
   const migrations = [
     'ALTER TABLE tasks ADD COLUMN focused INTEGER NOT NULL DEFAULT 0',
     'ALTER TABLE tasks ADD COLUMN priority INTEGER NOT NULL DEFAULT 0',
@@ -1221,8 +1217,9 @@ export function initDatabase(): void {
     // rather than added to the CREATE TABLE above, so an install that already
     // has the people table picks it up.
     "ALTER TABLE people ADD COLUMN ask_about TEXT NOT NULL DEFAULT ''",
-    // Who a planned meal is for (#2077). Empty for every meal planned before
-    // this shipped, which reads as "nobody named" rather than as missing data.
+    // Was "who a planned meal is for" (#2077); the feature was removed and
+    // nothing reads or writes this column anymore. Left in place rather than
+    // reverted, per this file's migration convention.
     "ALTER TABLE meal_plan_entries ADD COLUMN person_ids TEXT NOT NULL DEFAULT '[]'",
     // When a person's cadence was last turned on — see Person.cadenceSetAt.
     // Null on every existing row, including everybody already opted in today;
@@ -1329,6 +1326,16 @@ export function initDatabase(): void {
     // do, so an install upgrading into it reads exactly as it did. See
     // Project.kind.
     "ALTER TABLE projects ADD COLUMN kind TEXT NOT NULL DEFAULT 'project'",
+    // The one statement here that isn't an ADD COLUMN. 'opaque' is gone from
+    // ReceiptStyle, and a store that prints prices without item names is now a
+    // store whose receipt can't be read: 'none', not 'itemized'. Left to
+    // rowToShop's fallback they would come back as 'itemized' and the sheet
+    // would offer to spend a request reading paper with nothing on it to match.
+    // Idempotent like the ALTERs around it, so it costs a no-op UPDATE on every
+    // later launch rather than needing a schema version to guard it, and it
+    // runs before the sync triggers are installed (below) so it stays a local
+    // repair on each device rather than a change to push.
+    "UPDATE grocery_shops SET receipt_style = 'none' WHERE receipt_style = 'opaque'",
     // Empty on a session already in flight when the app upgrades into this
     // column: what its earlier steps cost was never recorded, and inventing a
     // figure for them would put a made-up number into Stats on the very first
@@ -1522,40 +1529,33 @@ export function initDatabase(): void {
     // which grows with catalog size times number of lists.
     'CREATE INDEX IF NOT EXISTS idx_grocery_list_items_list ON grocery_list_items(list_id)',
   ];
-  // The migration list is append-only, so its length is the schema version:
-  // a launch whose stored version already matches has every column in the list
-  // and can skip the loop outright. Without this, a mature install re-parsed
-  // and re-threw every ALTER in the array on each cold start, which is a few
-  // hundred exceptions across the bridge before the first row is read. The
-  // count rather than an index into the list because an entry inserted in the
-  // middle still has to run everywhere: any change to the length re-runs the
-  // whole (idempotent) list rather than only its tail. An edit that swaps one
-  // statement for another without changing the count is the one thing this
-  // can't see, which is why the list is appended to and never rewritten.
-  // Not a schema change but a data repair, which is why it sits outside the
-  // version guard below rather than in the list with the ALTERs. 'opaque' is
-  // gone from ReceiptStyle, and a store that prints prices without item names
-  // is now a store whose receipt can't be read: 'none', not 'itemized'. Left to
-  // rowToShop's fallback they would come back as 'itemized' and the sheet would
-  // offer to spend a request reading paper with nothing on it to match. It has
-  // to run on every launch rather than once, because a row carrying the retired
-  // value can still arrive after this device has migrated — from a sync peer on
-  // an older build, or a restored backup. It runs before the sync triggers are
-  // installed (below) so it stays a local repair on each device rather than a
-  // change to push.
-  try {
-    db.runSync("UPDATE grocery_shops SET receipt_style = 'none' WHERE receipt_style = 'opaque'");
-  } catch (_) { /* table predates this install */ }
-
-  const schemaVersion =
-    db.getFirstSync<{ user_version: number }>('PRAGMA user_version')?.user_version ?? 0;
-  if (schemaVersion !== migrations.length) {
-    for (const sql of migrations) {
-      try { db.runSync(sql); } catch (_) { /* column already exists */ }
+  // Asking SQLite for a table's columns once is cheaper than handing it every
+  // ALTER for that table and catching the duplicate-column error, and by the
+  // second launch every one of them is a duplicate. The statement's own text
+  // is the only thing consulted, so a migration this can't read (anything but
+  // a plain ADD COLUMN) is simply run and allowed to fail exactly as before.
+  const columnsOf = new Map<string, Set<string>>();
+  const hasColumn = (table: string, column: string): boolean => {
+    let columns = columnsOf.get(table);
+    if (!columns) {
+      // Empty for a table that doesn't exist, which lands on the ALTER and its
+      // catch below — the same path that case took before.
+      columns = new Set(
+        db.getAllSync<{ name: string }>(`PRAGMA table_info(${table})`).map(r => r.name)
+      );
+      columnsOf.set(table, columns);
     }
-    // Interpolated rather than bound: PRAGMA doesn't take parameters. The
-    // value is an array length, so there is nothing user-supplied in it.
-    try { db.runSync(`PRAGMA user_version = ${migrations.length}`); } catch (_) {}
+    return columns.has(column);
+  };
+  for (const sql of migrations) {
+    const addColumn = /^ALTER TABLE (\w+) ADD COLUMN (\w+)\b/.exec(sql);
+    if (addColumn && hasColumn(addColumn[1], addColumn[2])) continue;
+    try {
+      db.runSync(sql);
+      // So a column this pass just added isn't re-read from a stale set if the
+      // list ever names it twice.
+      if (addColumn) columnsOf.get(addColumn[1])?.add(addColumn[2]);
+    } catch (_) { /* column already exists */ }
   }
 
   // Change tracking for multi-device sync. Ordered deliberately: the columns
@@ -4777,9 +4777,6 @@ function rowToMealPlanEntry(row: Record<string, unknown>): MealPlanEntry {
     cookedAt: (row.cooked_at as string) ?? null,
     leftoverId: (row.leftover_id as string) ?? null,
     recipeChoices: parseRecipeChoices(row.recipe_choices),
-    // Reused rather than a second parser: both are "a JSON array of ids, and
-    // anything else reads as none", which is the whole contract.
-    personIds: parseRecipeChoices(row.person_ids),
     // Clamped rather than trusted: the column defaults to 1, but a restored
     // backup or a hand-edited row carrying 0 would otherwise render a meal with
     // no quantities at all.
@@ -5263,8 +5260,8 @@ export function dbGetMealPlanEntries(startKey: string, endKey: string): MealPlan
 
 export function dbInsertMealPlanEntry(entry: MealPlanEntry): void {
   db.runSync(
-    `INSERT INTO meal_plan_entries (id, date, slot, recipe_id, title, sort_order, created_at, cooked_at, leftover_id, recipe_choices, recipe_scale, cook_task, shop_task, log_meal, calendar_event_id, person_ids)
-     VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)`,
+    `INSERT INTO meal_plan_entries (id, date, slot, recipe_id, title, sort_order, created_at, cooked_at, leftover_id, recipe_choices, recipe_scale, cook_task, shop_task, log_meal, calendar_event_id)
+     VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)`,
     [
       entry.id, entry.date, entry.slot, entry.recipeId ?? null,
       entry.title, entry.sortOrder, entry.createdAt, entry.cookedAt ?? null,
@@ -5274,14 +5271,13 @@ export function dbInsertMealPlanEntry(entry: MealPlanEntry): void {
       entry.shopTask === null || entry.shopTask === undefined ? null : (entry.shopTask ? 1 : 0),
       entry.logMeal === null || entry.logMeal === undefined ? null : (entry.logMeal ? 1 : 0),
       entry.calendarEventId ?? null,
-      JSON.stringify(entry.personIds ?? []),
     ]
   );
 }
 
 export function dbUpdateMealPlanEntry(entry: MealPlanEntry): void {
   db.runSync(
-    `UPDATE meal_plan_entries SET date=?, slot=?, recipe_id=?, title=?, sort_order=?, cooked_at=?, leftover_id=?, recipe_choices=?, recipe_scale=?, cook_task=?, shop_task=?, log_meal=?, calendar_event_id=?, person_ids=? WHERE id=?`,
+    `UPDATE meal_plan_entries SET date=?, slot=?, recipe_id=?, title=?, sort_order=?, cooked_at=?, leftover_id=?, recipe_choices=?, recipe_scale=?, cook_task=?, shop_task=?, log_meal=?, calendar_event_id=? WHERE id=?`,
     [
       entry.date, entry.slot, entry.recipeId ?? null, entry.title, entry.sortOrder,
       entry.cookedAt ?? null, entry.leftoverId ?? null,
@@ -5290,7 +5286,6 @@ export function dbUpdateMealPlanEntry(entry: MealPlanEntry): void {
       entry.shopTask === null || entry.shopTask === undefined ? null : (entry.shopTask ? 1 : 0),
       entry.logMeal === null || entry.logMeal === undefined ? null : (entry.logMeal ? 1 : 0),
       entry.calendarEventId ?? null,
-      JSON.stringify(entry.personIds ?? []),
       entry.id,
     ]
   );

@@ -34,11 +34,13 @@ import {
 import { OTHER_AISLE } from '../utils/groceryAisles';
 import { groceryNameKey } from '../utils/groceryParse';
 import { catalogItemForKey } from '../utils/groceryPlural';
+import { SheetHeader } from './SheetHeader';
 import { SheetHeaderButton } from './SheetHeaderButton';
 import { EmptyState } from './EmptyState';
 import { RecipeSourcePicker } from './RecipeSourcePicker';
 import { describeImportError, isRetryableImportError } from '../services/recipePage';
 import { useRecipeImportSource } from '../hooks/useRecipeImportSource';
+import { MAX_RECIPE_PHOTOS } from '../utils/recipePhoto';
 import { haptics } from '../utils/haptics';
 import { GROCERY_NAME_MAX_LENGTH } from '../types';
 
@@ -96,7 +98,7 @@ export function GroceryAISheet({ visible, mode, onClose }: Props) {
   const [tidyRows, setTidyRows] = useState<TidyRow[]>([]);
   const [recipeRows, setRecipeRows] = useState<RecipeGroceryItem[]>([]);
   const [accepted, setAccepted] = useState<Set<number>>(new Set());
-  const recipeInput = useRecipeImportSource();
+  const recipeInput = useRecipeImportSource('paste', undefined, MAX_RECIPE_PHOTOS);
   const { resolveSource: resolveRecipeSource, reset: resetRecipeInput } = recipeInput;
 
   // Anything currently sitting in the catch-all and on the list — the exact
@@ -236,7 +238,7 @@ export function GroceryAISheet({ visible, mode, onClose }: Props) {
     const dirty = rowCount > 0
       || !!recipeInput.text.trim()
       || !!recipeInput.url.trim()
-      || !!recipeInput.photo;
+      || recipeInput.photos.length > 0;
     if (!dirty) { onClose(); return; }
     Alert.alert(
       'Discard changes?',
@@ -263,7 +265,7 @@ export function GroceryAISheet({ visible, mode, onClose }: Props) {
           <Text style={styles.loadingText}>
             {mode === 'tidy' ? 'Working out where these live…'
               : recipeInput.fetching ? 'Opening the page…'
-              : recipeInput.usingPhoto ? 'Reading the photo…'
+              : recipeInput.usingPhoto ? `Reading the photo${recipeInput.photos.length > 1 ? 's' : ''}…`
               : 'Reading the recipe…'}
           </Text>
         </View>
@@ -295,9 +297,10 @@ export function GroceryAISheet({ visible, mode, onClose }: Props) {
             onChangeText={recipeInput.setText}
             url={recipeInput.url}
             onChangeUrl={recipeInput.setUrl}
-            photo={recipeInput.photo}
+            photos={recipeInput.photos}
             onPickPhoto={recipeInput.pick}
             onClearPhoto={recipeInput.clearPhoto}
+            maxPhotos={recipeInput.maxPhotos}
             picking={recipeInput.picking}
             ctaLabel="Find the items"
             onRun={runRecipe}
@@ -369,25 +372,23 @@ export function GroceryAISheet({ visible, mode, onClose }: Props) {
   return (
     <Modal visible={visible} animationType="slide" presentationStyle="pageSheet" onRequestClose={handleCancel}>
       <View style={styles.root}>
-        <View style={styles.header}>
-          <SheetHeaderButton label="Cancel" role="cancel" onPress={handleCancel} minWidth={72} />
-          <View style={styles.headerTitleWrap}>
-            <Ionicons name="sparkles" size={14} color={colors.purple} />
-            <Text style={styles.headerTitle}>
-              {mode === 'tidy' ? 'Sort into aisles' : 'From a recipe'}
-            </Text>
-          </View>
-          <SheetHeaderButton
-            label={
-              rowCount > 0
-                ? `${mode === 'tidy' ? 'Move' : 'Add'} ${accepted.size}`
-                : mode === 'tidy' ? 'Move' : 'Add'
-            }
-            onPress={handleApply}
-            disabled={!canApply}
-            minWidth={72}
-          />
-        </View>
+        <SheetHeader
+          title={mode === 'tidy' ? 'Sort into aisles' : 'From a recipe'}
+          icon="sparkles"
+          left={<SheetHeaderButton label="Cancel" role="cancel" onPress={handleCancel} minWidth={72} />}
+          right={
+            <SheetHeaderButton
+              label={
+                rowCount > 0
+                  ? `${mode === 'tidy' ? 'Move' : 'Add'} ${accepted.size}`
+                  : mode === 'tidy' ? 'Move' : 'Add'
+              }
+              onPress={handleApply}
+              disabled={!canApply}
+              minWidth={72}
+            />
+          }
+        />
         {renderBody()}
       </View>
     </Modal>
@@ -406,8 +407,6 @@ function makeStyles(colors: Colors) {
       borderBottomWidth: border.hairline,
       borderBottomColor: colors.separator,
     },
-    headerTitleWrap: { flexDirection: 'row', alignItems: 'center', gap: spacing.xs },
-    headerTitle: { color: colors.text, fontSize: font.md, fontWeight: fontWeight.semibold },
     centered: { flex: 1, alignItems: 'center', justifyContent: 'center', padding: spacing.xl, gap: spacing.md },
     loadingText: { color: colors.textSecondary, fontSize: font.md, textAlign: 'center' },
     intro: {

@@ -228,6 +228,44 @@ import sheets rather than hand-copied into each, since they are the same sheet t
   no title stays a plain classification — a `Cookbook` row with an empty title is one nobody can
   pick.
 
+## More than one photo for a page turn (`recipePhoto.ts`, `extractRecipe`)
+
+A cookbook recipe routinely runs onto a second page mid-ingredient-list or mid-method, so a single
+photo of "the recipe" is sometimes only half of it. `RecipeSource` (`aiSuggestions.ts`) is
+`string | RecipeImage | RecipeImage[]`, and `extractRecipe` sends every array entry as its own
+image block, in the order given, asking the model to read them as one continuous recipe rather
+than extracting each on its own. A bare `RecipeImage` still works exactly as before — it's
+normalized to a one-entry array internally, so nothing about the single-photo path changed.
+
+- **Order is capture order, and there is no reorder gesture.** `photos[0]` is the front page.
+  Getting a page out of order means removing it and re-adding it in the right place, not dragging
+  a thumbnail — a set of at most 4 photos, built once per import and thrown away the moment the
+  sheet closes, doesn't carry its own weight for a drag list.
+- **`MAX_RECIPE_PHOTOS` (`recipePhoto.ts`) caps it at 4.** Generous enough for an awkward
+  multi-page clipping, but each entry is its own image block, so cost and upload time both scale
+  with the count — an unbounded array would let one import become an arbitrarily expensive
+  request. `IMAGE_REQUEST_TIMEOUT_MS` grows by `ADDITIONAL_IMAGE_TIMEOUT_MS` per photo past the
+  first, since only the upload compounds — the model's own startup and vision prefill happen once
+  for the whole request, not once per photo.
+- **`useRecipeImportSource`'s `maxPhotos` param is what tells a receipt from a recipe.** Default 1
+  keeps the receipt scanner's existing one-document behavior — `pick` replaces rather than
+  appends, and there is nothing to remove but the whole photo — while `RecipeExtractSheet`,
+  `RecipeCreateSheet` and `GroceryAISheet`'s recipe mode all pass `MAX_RECIPE_PHOTOS`. A receipt
+  that's genuinely two pages already has its own answer (fold it flat, see `ReceiptImportSheet`'s
+  hint), so it was deliberately left alone rather than given the same array.
+- **`RecipeSourcePicker` renders two different photo layouts off that same `maxPhotos`, not two
+  components.** At 1 it's the original single big preview; above 1 it's a horizontal strip of
+  thumbnails (each numbered and individually removable) with the add buttons relabeled "…another
+  photo" and hidden once the cap is reached. Forking the component would have meant keeping two
+  copies of the paste/link tabs and the run button in step; the receipt scanner's exact current
+  look falls out of `maxPhotos <= 1` for free.
+- **The referenced-component import (`useRecipeComponentImports.ts`) gets the same capability, on
+  its own bookkeeping.** A photo taken while a reference already shows a read result is *added* to
+  it and the combined set is re-read; a photo taken after a failure starts over, since a failed
+  read has nothing worth combining with and "try again" should mean exactly that. That distinction
+  is carried in a plain ref (`photosRef`/`statesRef`) rather than component state, because nothing
+  there needs a render just to remember the last status.
+
 ## Component recipes read off a photo (`recipeImportComponents.ts`)
 
 A cookbook page routinely points at another recipe in the same book: "1 cup salsa verde
@@ -335,6 +373,17 @@ choosable before anything's filed under it.
   update the internal hover state, mirroring `ReorderableList`'s same-named prop but with the
   payload this list's caller actually needs. Nothing about the drag itself changes for a caller that
   doesn't pass it.
+- **Every surface that flattens a composed recipe reads its sections too, through one walk
+  (`ingredientHeadings`).** The detail screen infers a heading from adjacent rows' labels; the
+  three surfaces that show a *flattened* list (cook mode's ingredient panel, the recipe share
+  text, the suggest-meals preview) were each doing half of that — inferring the component's name
+  at a recipe boundary and dropping `section` entirely, so a recipe that says Sauce, then For the
+  tofu, then For serving read as one undifferentiated run exactly where someone is cooking from
+  it. The walk returns both kinds of boundary per line and lets each surface word them (a bare
+  caption in the panel, `For the mash:` in a share), because the wording is all they disagreed
+  about. **A recipe boundary resets the section walk**: two recipes' section labels are separate
+  vocabularies that happen to collide, so a component opening with "Sauce" under a root whose last
+  line was also "Sauce" gets its own heading rather than reading as a continuation.
 
 ## Linking an ingredient to an existing item (`CatalogLinkPicker.tsx`)
 
@@ -587,10 +636,20 @@ amount, and answering that in the unit they already had answers nothing.
 ## Cook mode (`cookMode.ts`) — the method one step at a time
 
 Every other kitchen surface here is built for *preparing* to cook. This is the twenty minutes of
-doing it: full screen, one step, the screen held awake, the cook timer in reach throughout. It is
-a **read plus one timer**, no schema change and nothing written — `cookSteps` derives the method,
-`CookModeSheet` draws it, and position and the ingredient panel's fold die with the modal.
+doing it: mise en place first, then one step at a time, full screen, the screen held awake, the
+cook timer in reach throughout. It is a **read plus one timer**, no schema change and nothing
+written — `cookSteps` derives the method, `CookModeSheet` draws it, and position and the
+ingredient panel's fold die with the modal.
 
+- **Mise en place is screen `-1`, not a step.** `CookModeSheet` opens on a full read of
+  `flattenRecipeIngredients` — the same list the tray's collapsed panel shows mid-step, just the
+  main event instead of folded behind a header — whenever there's anything to gather; a recipe
+  with a method but no ingredient lines skips straight to step 1. It isn't step 0 of `cookSteps`,
+  because it isn't a step of the method: it doesn't advance `describeStepPosition`'s count or the
+  progress bar, and the tray's own ingredient panel hides while it's on screen rather than showing
+  the same list twice. Step 1's Back returns to it instead of sitting disabled at the start of the
+  method, and it's what the sheet reopens on next time, the same "one sitting" reasoning that resets
+  the step position on close.
 - **It reads the nodes, not a fourth flatten.** `cookSteps` walks `cookedDishes` — the same
   component walk, the same once-per-recipe rule, the same choice resolution the ingredient and
   prep-task flatteners take. Writing a `flattenRecipeSteps` beside them would be a fourth copy of

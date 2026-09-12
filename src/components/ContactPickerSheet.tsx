@@ -6,6 +6,7 @@ import {
 import Ionicons from '@expo/vector-icons/Ionicons';
 import { EditorSheet } from './EditorSheet';
 import { SheetHeaderButton } from './SheetHeaderButton';
+import { SheetHeader } from './SheetHeader';
 import { useColors } from '../theme/ThemeContext';
 import { spacing, radius, font, fontWeight, iconSize, interaction, type Colors } from '../theme';
 import { haptics } from '../utils/haptics';
@@ -171,11 +172,12 @@ export function ContactPickerSheet({ visible, onPick, onClose }: Props) {
       scrollStyle={styles.scroll}
       scrollContentStyle={styles.scrollContent}
       header={
-        <>
-          <SheetHeaderButton label="Done" onPress={onClose} />
-          <Text style={styles.headerTitle}>From contacts</Text>
-          <View style={styles.headerSpacer} />
-        </>
+        <SheetHeader
+          bare
+          title="From contacts"
+          left={<SheetHeaderButton label="Done" onPress={onClose} />}
+          right={<View style={styles.headerSpacer} />}
+        />
       }
     >
       {permission === 'granted' && scope === null ? (
@@ -300,10 +302,6 @@ const makeStyles = (colors: Colors) => StyleSheet.create({
     flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between',
     paddingHorizontal: spacing.md, paddingVertical: spacing.md,
     borderBottomWidth: StyleSheet.hairlineWidth, borderBottomColor: colors.separator,
-  },
-  headerTitle: {
-    flex: 1, textAlign: 'center', color: colors.text,
-    fontSize: font.md, fontWeight: fontWeight.semibold,
   },
   // Matches "Done" so the title stays optically centred, the same job
   // SheetHeaderButton's own minWidth does on the other side.

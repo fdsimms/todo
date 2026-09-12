@@ -648,7 +648,7 @@ export function WhenPicker({
                 styles={styles}
                 colors={colors}
                 icon="star"
-                iconColor="#FFD60A"
+                iconColor={colors.warning}
                 label="Today"
                 pending={pendingKey === 'today'}
                 popAnim={popAnim}
@@ -953,7 +953,7 @@ const makeStyles = (colors: Colors) => StyleSheet.create({
     fontSize: font.xs,
     fontWeight: fontWeight.semibold,
     textTransform: 'uppercase',
-    letterSpacing: 0.5,
+    letterSpacing: 0.8,
     marginBottom: spacing.xs + 2,
   },
   nlSection: {

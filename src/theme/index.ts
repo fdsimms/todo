@@ -361,25 +361,24 @@ export const getShadows = (isDark: boolean) => ({
     elevation: 8,
   },
   /**
-   * A card floating over the screen on its own: the date, reminder and
-   * birthday pickers. Bigger and lower than `card`, and cast downwards where
-   * `sheet` casts up, because this one is a slab in the middle of the screen
-   * rather than a surface rising off the bottom edge. Its four call sites each
-   * hand-rolled the same five properties with a fixed 0.35 opacity, which is
-   * the dark-mode value and far too heavy on a light background.
+   * A centered popover card over a dimmed page — the date/time/birthday
+   * pickers. Deeper and softer than `card` because it floats well clear of
+   * the page rather than sitting on it. Was written out by hand in four
+   * pickers at the dark opacity regardless of theme, which in light left a
+   * charcoal halo round a white card.
    */
   popover: {
     shadowColor: '#000',
     shadowOffset: { width: 0, height: 8 },
-    shadowOpacity: isDark ? 0.35 : 0.12,
+    shadowOpacity: isDark ? 0.35 : 0.18,
     shadowRadius: 20,
     elevation: 12,
   },
-  /** The side menu, which casts sideways rather than down. */
+  /** The side menu's trailing edge, cast sideways onto the page it covers. */
   drawer: {
     shadowColor: '#000',
     shadowOffset: { width: 6, height: 0 },
-    shadowOpacity: isDark ? 0.35 : 0.12,
+    shadowOpacity: isDark ? 0.35 : 0.15,
     shadowRadius: 16,
     elevation: 20,
   },

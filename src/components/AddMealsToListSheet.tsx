@@ -32,6 +32,7 @@ import { onHandNameKeys } from '../utils/grocerySuggest';
 import { describeSubstitutes, substitutesFor, type Substitute } from '../utils/itemSubs';
 import { convertQuantity } from '../utils/unitConvert';
 import { SheetHeaderButton } from './SheetHeaderButton';
+import { SheetHeader } from './SheetHeader';
 import { InlineAction } from './InlineAction';
 import { EmptyState } from './EmptyState';
 import { SubstituteSheet } from './SubstituteSheet';
@@ -334,16 +335,18 @@ export function AddMealsToListSheet({
   return (
     <Modal visible={visible} animationType="slide" presentationStyle="pageSheet" onRequestClose={handleCancel}>
       <View style={styles.root}>
-        <View style={styles.header}>
-          <SheetHeaderButton label="Cancel" role="cancel" onPress={handleCancel} minWidth={72} />
-          <Text style={styles.headerTitle} numberOfLines={1}>{title}</Text>
-          <SheetHeaderButton
-            label={addCount > 0 ? `Add ${addCount}` : 'Add'}
-            onPress={handleAdd}
-            disabled={addCount === 0}
-            minWidth={72}
-          />
-        </View>
+        <SheetHeader
+          title={title}
+          left={<SheetHeaderButton label="Cancel" role="cancel" onPress={handleCancel} minWidth={72} />}
+          right={
+            <SheetHeaderButton
+              label={addCount > 0 ? `Add ${addCount}` : 'Add'}
+              onPress={handleAdd}
+              disabled={addCount === 0}
+              minWidth={72}
+            />
+          }
+        />
 
         {nothingToShow ? (
           <View style={styles.centered}>
@@ -547,24 +550,6 @@ export function AddMealsToListSheet({
 
 const makeStyles = (colors: Colors) => StyleSheet.create({
   root: { flex: 1, backgroundColor: colors.bg },
-  header: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'space-between',
-    paddingHorizontal: spacing.md,
-    paddingVertical: spacing.md,
-    borderBottomWidth: border.hairline,
-    borderBottomColor: colors.separator,
-  },
-  // flex + centred so a longer scope name ("Add Wednesday to list") truncates
-  // rather than shoving the Cancel/Add buttons out of the row.
-  headerTitle: {
-    flex: 1,
-    textAlign: 'center',
-    color: colors.text,
-    fontSize: font.md,
-    fontWeight: fontWeight.semibold,
-  },
   centered: { flex: 1, alignItems: 'center', justifyContent: 'center', padding: spacing.xl },
   list: { padding: spacing.md, paddingBottom: spacing.xl, gap: spacing.md },
   section: { gap: spacing.xs },

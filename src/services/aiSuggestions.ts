@@ -31,8 +31,13 @@ import {
   type NutritionEstimate, type RawNutritionEstimate,
 } from '../utils/nutritionEstimate';
 import { isUnscaled } from '../utils/recipeScale';
+import {
+  readSuggestions, suggestibleEstimateMinutes,
+  type BackfillSuggestion, type SuggestibleBackfillFieldId, type SuggestionExample, type SuggestionTask,
+} from '../utils/backfillSuggest';
 import { amountFromPrintedText, type LabelColumn, type LabelReading } from '../utils/labelOcr';
 import { NUTRIENT_LABEL } from '../utils/foodNutrition';
+import { clampKeepDays } from '../utils/leftovers';
 import { useSettingsStore } from '../store/useSettingsStore';
 import { getLogicalToday, dayKeyOf } from '../utils/dateUtils';
 import type { AiFeatureId, AiModelId } from '../utils/aiFeatures';
@@ -52,6 +57,14 @@ const REQUEST_TIMEOUT_MS = 15_000;
  * on a shot the user just framed is the worst failure this feature has.
  */
 const IMAGE_REQUEST_TIMEOUT_MS = 40_000;
+/**
+ * Extra headroom per photo beyond the first, when `extractRecipe` is sent more
+ * than one (a cookbook recipe photographed across a page turn — see
+ * `MAX_RECIPE_PHOTOS`). Smaller than the base budget above because only the
+ * upload time compounds with each extra photo; the model startup and vision
+ * prefill the base already covers happens once for the whole request.
+ */
+const ADDITIONAL_IMAGE_TIMEOUT_MS = 15_000;
 
 interface AnthropicResponse {
   stop_reason?: string;
@@ -411,6 +424,117 @@ export async function suggestSubtasks(
     result.push({ title });
   }
   return result.slice(0, MAX_SUBTASK_SUGGESTIONS);
+}
+
+/**
+ * Values for the field the Backfill screen is currently asking about, for a
+ * batch of the tasks in its queue.
+ *
+ * One request for the whole visible queue rather than one per card, the same
+ * call `suggestGroceryAisles` makes and for the same reason: the screen is a
+ * fast loop through a long list, and a second of waiting on every card would
+ * cost more than the answer saves. What comes back is a suggestion *per task*,
+ * which the screen shows as an already-picked chip. Nothing is written here.
+ *
+ * Two fields, and the reasoning for which is in `backfillSuggest.ts` rather
+ * than repeated here. Both answer inside a closed set — the user's own
+ * categories, or the effort buckets the card already shows — so the schema
+ * constrains the answer and `readSuggestions` refuses anything outside it
+ * anyway.
+ *
+ * The prompt's real content is `examples`: a dozen of the user's own
+ * already-answered tasks. Without them this is a model guessing at a generic
+ * taxonomy, and "Pay rent" lands in whichever of Home/Money/Admin it happens to
+ * like; with them it is matching a pattern the person has already established.
+ */
+export async function suggestBackfillValues(
+  field: SuggestibleBackfillFieldId,
+  tasks: SuggestionTask[],
+  examples: SuggestionExample[],
+  categoryNames: string[] = [],
+): Promise<Map<string, BackfillSuggestion>> {
+  if (tasks.length === 0) return new Map();
+  if (field === 'category' && categoryNames.length === 0) return new Map();
+  const { apiKey, model } = requireFeature('backfillSuggestions');
+
+  const isCategory = field === 'category';
+  const minutes = suggestibleEstimateMinutes();
+  // Numbered from 1 and matched back by position — see readSuggestions on why
+  // the index rather than the title is what identifies a task here.
+  const taskList = tasks
+    .map((t, i) => `${i + 1}. ${t.title}${t.notes ? ` — ${t.notes}` : ''}`)
+    .join('\n');
+  const examplePart = examples.length > 0
+    ? `${isCategory ? 'How I file tasks already' : 'How I have sized tasks already'}:\n${
+        examples.map(e => `- "${e.title}" → ${e.value}`).join('\n')}`
+    : null;
+
+  const valueProperty = isCategory
+    ? {
+        category: {
+          type: 'string',
+          description: `The category it belongs in. Must be exactly one of: ${categoryNames.join(', ')}.`,
+        },
+      }
+    : {
+        minutes: {
+          type: 'number',
+          enum: minutes,
+          description: `How long it takes, as one of these durations in minutes: ${minutes.join(', ')}. Pick the closest.`,
+        },
+      };
+
+  const data = await callAnthropic({
+    max_tokens: 1500,
+    tools: [{
+      name: 'suggest_values',
+      description: isCategory
+        ? 'Assign each task to the category it belongs in'
+        : 'Say roughly how long each task takes',
+      input_schema: {
+        type: 'object',
+        properties: {
+          suggestions: {
+            type: 'array',
+            description: 'One entry per task you can answer for. Leave a task out entirely rather than guessing at one you cannot place.',
+            items: {
+              type: 'object',
+              properties: {
+                index: {
+                  type: 'integer',
+                  description: 'The number the task was given in the list, copied exactly.',
+                },
+                ...valueProperty,
+              },
+              required: ['index', isCategory ? 'category' : 'minutes'],
+            },
+          },
+        },
+        required: ['suggestions'],
+      },
+    }],
+    tool_choice: { type: 'tool', name: 'suggest_values' },
+    messages: [{
+      role: 'user',
+      content: [
+        isCategory
+          ? 'File each of these tasks of mine into one of my own categories.'
+          : 'Say roughly how long each of these tasks of mine takes, start to finish.',
+        isCategory ? `My categories: ${categoryNames.join(', ')}.` : null,
+        examplePart,
+        isCategory
+          ? 'Match how I have been filing things rather than a tidier scheme of your own. If none of my categories is a reasonable fit for a task, leave that task out of your answer instead of forcing it somewhere.'
+          : 'Judge the work itself, not how urgent it sounds. If a task is too vague to size honestly, leave it out of your answer instead of guessing.',
+        `Tasks:\n${taskList}`,
+      ].filter(Boolean).join('\n\n'),
+    }],
+  }, apiKey, model);
+
+  const toolUse = data.content?.find(c => c.type === 'tool_use');
+  const input = toolUse?.input as { suggestions?: unknown } | undefined;
+  if (!input?.suggestions) throw new Error('No suggestions returned');
+
+  return readSuggestions(input.suggestions, field, tasks, categoryNames);
 }
 
 // ─── Groceries ──────────────────────────────────────────────────────────────
@@ -860,12 +984,18 @@ export interface RecipeImage {
 }
 
 /**
- * Pasted text, or a photo of the page it's printed on. Everything past the
- * message body — the tool, the schema, the validation — is identical for both,
- * which is the whole reason this is one function taking a union rather than two
- * functions sharing a helper.
+ * Pasted text, or one or more photos of the page(s) it's printed on. Everything
+ * past the message body — the tool, the schema, the validation — is identical
+ * across all three, which is the whole reason this is one function taking a
+ * union rather than two (or three) functions sharing a helper.
+ *
+ * The array case is a single recipe read off more than one photo — a cookbook
+ * page that runs across a page turn, a card photographed front and back — not
+ * several unrelated recipes. `extractRecipe` sends every entry as its own image
+ * block, in the order given, and asks the model to read them as one continuous
+ * source.
  */
-export type RecipeSource = string | RecipeImage;
+export type RecipeSource = string | RecipeImage | RecipeImage[];
 
 export interface ExtractedRecipe {
   /** Empty when the text didn't give one. */
@@ -882,6 +1012,13 @@ export interface ExtractedRecipe {
    * can give both. Null when not stated.
    */
   recipeYield: string | null;
+  /**
+   * How many days the recipe says its own leftovers keep — "store for up to 4
+   * days", "keeps 3-4 days in the fridge" — the low end when a range is
+   * given. Clamped the same way `Recipe.leftoverKeepDays` is. Null when the
+   * recipe says nothing about storage, which is most recipes; never a guess.
+   */
+  leftoverKeepDays: number | null;
   ingredients: RecipeGroceryItem[];
   /**
    * Where the source says it's from — the four fields that map onto `Recipe`'s
@@ -923,6 +1060,7 @@ function sharedRecipeInstructions(availableAisles: string[]): string[] {
     `Sections available: ${availableAisles.join(', ')}. Use "Other" only when nothing else fits.`,
     'If the recipe\'s own ingredient list is split into labelled components — "For the cake" / "For the frosting", "For the marinade" / "For the dish" — carry that label into each item\'s "component" field. Leave it empty when the recipe lists everything as one plain list.',
     'Set "optional" to true only when the recipe itself says so — "(optional)", "if desired", "if you have it", a garnish explicitly called not required. Leave it false otherwise, even for an item you\'d personally guess is skippable, like a garnish with nothing next to it saying so.',
+    'If the recipe says how long its own leftovers keep — "store in an airtight container for up to 4 days", "keeps 3-4 days in the fridge", "will keep for a week" — put that number of days in "leftoverKeepDays", the low end when a range is given. This is about the cooked dish afterward, not a raw ingredient\'s shelf life, a "best served immediately" note, or how long the dish takes to make. 0 when the recipe says nothing about storage, which is most recipes — never estimate one yourself.',
   ];
 }
 
@@ -985,10 +1123,16 @@ function methodInstructions(): string[] {
  * working exactly as it did before this existed.
  *
  * A photo changes exactly two things: the message content becomes a block
- * array with the image first (the ordering Anthropic recommends for a single
- * image), and the instructions gain a paragraph about page furniture and one
- * about refusing to guess at an illegible shot. The text path still sends a
- * bare string, so its request body is byte-for-byte what it always was.
+ * array with the image(s) first (the ordering Anthropic recommends), and the
+ * instructions gain a paragraph about page furniture and one about refusing to
+ * guess at an illegible shot. The text path still sends a bare string, so its
+ * request body is byte-for-byte what it always was.
+ *
+ * **More than one photo is one recipe read across several images, not several
+ * recipes** — a cookbook page that runs across a page turn, most often (see
+ * `MAX_RECIPE_PHOTOS`). Every entry becomes its own image block, in the order
+ * given, and the prompt asks the model to treat them as one continuous source
+ * rather than extracting each on its own.
  *
  * **`includeReferences` gates the cross-references to other recipes** on the
  * same terms as `includeMethod` below: `suggestRecipeGroceries` has nowhere to
@@ -1011,14 +1155,21 @@ export async function extractRecipe(
   const { apiKey, model } = requireFeature('recipeExtraction');
 
   const empty: ExtractedRecipe = {
-    name: '', servings: null, servingsMax: null, prepMinutes: null, recipeYield: null, ingredients: [],
+    name: '', servings: null, servingsMax: null, prepMinutes: null, recipeYield: null,
+    leftoverKeepDays: null, ingredients: [],
     sourceTitle: null, sourceAuthor: null, sourcePage: null, sourceType: null,
     references: [], steps: [], prepTasks: [],
   };
-  const image = typeof source === 'string' ? null : source;
+  // A bare image normalizes to a one-entry array so the rest of this function
+  // has exactly two shapes to handle, not three. Filtered for a usable
+  // `base64` up front — a degenerate entry (there shouldn't be one, given
+  // where these come from) drops out here rather than reaching the request.
+  const rawImages = typeof source === 'string' ? null : Array.isArray(source) ? source : [source];
+  const images = rawImages ? rawImages.filter(img => !!img.base64) : null;
   const text = typeof source === 'string' ? source.trim().slice(0, MAX_RECIPE_CHARS) : '';
   // Same "nothing in, no network call" guard for both sources.
-  if (image ? !image.base64 : !text) return empty;
+  if (images ? images.length === 0 : !text) return empty;
+  const multiPhoto = !!images && images.length > 1;
 
   const foundLine = `its shopping list${includeMethod ? ', and its method' : ''}`;
   // Page furniture is junk to the recipe and provenance to the book, so which
@@ -1028,15 +1179,17 @@ export async function extractRecipe(
   const pageFurniture = includeSource
     ? 'Keep anything that is not part of this recipe out of the recipe: headnotes and stories, photo captions, and text bleeding in from a facing page. Page numbers, running heads and chapter titles are not part of the recipe either, and must never appear in its name, ingredients or method — but they are what says where it came from, so read them into the source fields described below rather than discarding them.'
     : 'Ignore anything on the page that is not part of this recipe: page numbers, running heads, chapter titles, headnotes and stories, photo captions, and text bleeding in from a facing page.';
-  const prompt = image
+  const prompt = images
     ? [
-        `This is a photo of a recipe — a cookbook page, a recipe card, a handwritten note, or a screen. Read it and extract the recipe: its name, how many it serves (or what it makes, if that's how the source states it — "2 loaves", "3 cups", "2 dozen cookies"), its total prep/cook time, and ${foundLine}.`,
-        `${pageFurniture} If the page shows more than one recipe, extract only the most prominent one — the one whose title and ingredient list are most complete — and never merge ingredients across recipes. Ingredient lists are often set in two columns; read down each column rather than across.`,
+        multiPhoto
+          ? `These are ${images.length} photos of the same recipe, in reading order — for example a cookbook page and the page it continues onto after a page turn. Read them together as one continuous recipe and extract it: its name, how many it serves (or what it makes, if that's how the source states it — "2 loaves", "3 cups", "2 dozen cookies"), its total prep/cook time, and ${foundLine}.`
+          : `This is a photo of a recipe — a cookbook page, a recipe card, a handwritten note, or a screen. Read it and extract the recipe: its name, how many it serves (or what it makes, if that's how the source states it — "2 loaves", "3 cups", "2 dozen cookies"), its total prep/cook time, and ${foundLine}.`,
+        `${pageFurniture} If the ${multiPhoto ? 'photos show' : 'page shows'} more than one recipe, extract only the most prominent one — the one whose title and ingredient list are most complete — and never merge ingredients across recipes. Ingredient lists are often set in two columns; read down each column rather than across.`,
         ...sharedRecipeInstructions(availableAisles),
         ...(includeSource ? sourceInstructions() : []),
         ...(includeReferences ? referenceInstructions() : []),
         ...(includeMethod ? methodInstructions() : []),
-        'If the photo is too blurry, too dark, cut off, or otherwise unreadable, return an empty name and an empty item list rather than guessing. Never invent an ingredient, step, or prep task you cannot actually read.',
+        `If ${multiPhoto ? 'a photo is' : 'the photo is'} too blurry, too dark, cut off, or otherwise unreadable, return an empty name and an empty item list rather than guessing. Never invent an ingredient, step, or prep task you cannot actually read.`,
       ].join('\n\n')
     : [
         `Extract this recipe: its name, how many it serves (or what it makes, if that's how the source states it — "2 loaves", "3 cups", "2 dozen cookies"), its total prep/cook time, and ${foundLine}.`,
@@ -1047,12 +1200,12 @@ export async function extractRecipe(
         `Recipe:\n${text}`,
       ].join('\n\n');
 
-  const content = image
+  const content = images
     ? [
-        {
+        ...images.map(image => ({
           type: 'image',
           source: { type: 'base64', media_type: image.mediaType, data: image.base64 },
-        },
+        })),
         { type: 'text', text: prompt },
       ]
     : prompt;
@@ -1086,6 +1239,10 @@ export async function extractRecipe(
           recipeYield: {
             type: 'string',
             description: `What the recipe makes, when that isn't a plain serving count — "2 loaves", "3 cups", "2 dozen cookies". Independent of servings: give both when the recipe states both ("serves 8" and "makes 2 loaves"). Under ${RECIPE_SOURCE_MAX_LENGTH} characters. Empty string if not stated or if it's just a serving count already captured in "servings".`,
+          },
+          leftoverKeepDays: {
+            type: 'integer',
+            description: 'How many days the recipe says its own leftovers keep, if it states this explicitly — the low end when a range is given ("keeps 3-4 days" -> 3). 0 if the recipe says nothing about storing leftovers, which is most recipes; never guess a number it doesn\'t give.',
           },
           items: groceryItemsSchema(
             availableAisles,
@@ -1161,11 +1318,12 @@ export async function extractRecipe(
     }],
     tool_choice: { type: 'tool', name: 'extract_recipe' },
     messages: [{ role: 'user', content }],
-  }, apiKey, model, image ? IMAGE_REQUEST_TIMEOUT_MS : undefined);
+  }, apiKey, model, images ? IMAGE_REQUEST_TIMEOUT_MS + (images.length - 1) * ADDITIONAL_IMAGE_TIMEOUT_MS : undefined);
 
   const toolUse = data.content?.find(c => c.type === 'tool_use');
   const input = toolUse?.input as {
     name?: unknown; servings?: unknown; servingsMax?: unknown; prepMinutes?: unknown; recipeYield?: unknown; items?: unknown;
+    leftoverKeepDays?: unknown;
     sourceTitle?: unknown; sourceAuthor?: unknown; sourcePage?: unknown; sourceKind?: unknown;
     referencedRecipes?: unknown; steps?: unknown; prepTasks?: unknown;
   } | undefined;
@@ -1187,6 +1345,9 @@ export async function extractRecipe(
   const recipeYield = typeof input.recipeYield === 'string' && input.recipeYield.trim()
     ? input.recipeYield.trim().slice(0, RECIPE_SOURCE_MAX_LENGTH)
     : null;
+  const leftoverKeepDays = typeof input.leftoverKeepDays === 'number' && input.leftoverKeepDays > 0
+    ? clampKeepDays(Math.round(input.leftoverKeepDays))
+    : null;
 
   const sourceTitle = includeSource ? parseExtractedSourceTitle(input.sourceTitle, name) : null;
   const sourceAuthor = includeSource ? sourceField(input.sourceAuthor) : null;
@@ -1196,7 +1357,7 @@ export async function extractRecipe(
     : null;
 
   return {
-    name, servings, servingsMax, prepMinutes, recipeYield,
+    name, servings, servingsMax, prepMinutes, recipeYield, leftoverKeepDays,
     sourceTitle, sourceAuthor, sourcePage, sourceType,
     ingredients: parseExtractedItems(input.items, availableAisles),
     references: includeReferences ? parseExtractedReferences(input.referencedRecipes) : [],

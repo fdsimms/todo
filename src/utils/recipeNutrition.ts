@@ -15,6 +15,7 @@ import { flattenRecipeIngredients, type ChoiceResolution } from './recipeCompone
 import { normalizeScale, scaleQuantity } from './recipeScale';
 import { NO_STANDING_SWAPS, type StandingSwapMap } from './standingSwaps';
 import { onHandNameKeys } from './grocerySuggest';
+import { measureQuantity } from './unitConvert';
 
 /**
  * What a recipe, or a week of planned meals, is made of.
@@ -22,7 +23,11 @@ import { onHandNameKeys } from './grocerySuggest';
  * **Deliberately `recipeCost.ts` with a different per-line value.** Read that
  * file first: it already solved flattening, resolution, per-line refusal,
  * coverage and the declining-rather-than-answering rule, and every one of
- * those applies here unchanged. What is new is below.
+ * those applies here unchanged, with one exception noted where it lives
+ * (`resolveLine`'s staple carve-out — a staple has no marginal *cost* at any
+ * quantity, which cost's own exclusion is right to rely on, but it still has
+ * real calories once the amount is more than a dash). What else is new is
+ * below.
  *
  * **Coverage is per nutrient, not just per line**, which is the difference from
  * cost and the easiest thing to get wrong. A cost is one number and a line
@@ -64,7 +69,7 @@ export interface RecipeNutrition {
   reported: Partial<Record<NutrientKey, number>>;
   /** Lines that resolved to an amount of a food whose panel is known… */
   covered: number;
-  /** …out of how many the dish calls for, staples excluded from both sides. */
+  /** …out of how many the dish calls for, negligible staples excluded from both sides (see `resolveLine`). */
   lines: number;
   /**
    * How many servings *this* total is, which is the recipe's own count times
@@ -135,6 +140,30 @@ interface LineResolution {
 }
 
 /**
+ * Grams at or above which a staple's own line is too much to wave through
+ * unmeasured, the way a dash of salt is.
+ *
+ * Scoped to *mass* on purpose: a weight measures the same amount regardless
+ * of what food it's naming (`measureQuantity` below needs no food-specific
+ * density for it, unlike a volume), so "1 lb" is unambiguously not a pinch.
+ * Volume and counts ("2 tbsp", "3 cloves") are left alone — that's how salt,
+ * pepper and spices are actually written in most recipes, and it's the case
+ * this exclusion exists for. No science past the number itself: a packet of
+ * yeast ("7 g") or a knob of butter ("20 g") stay comfortably under it, and a
+ * recipe calling for a pound of something (453 g) — the case that surfaced
+ * this, sugar marked "Always have it" in a recipe that actually uses a pound
+ * of it — clears it easily. Same kind of threshold as `MIN_LINE_COVERAGE`
+ * below: it has to be picked somewhere.
+ */
+const STAPLE_BULK_THRESHOLD_G = 100;
+
+/** Whether a staple's own line names a weight too large to treat as negligible. */
+function isBulkStapleQuantity(quantity: string): boolean {
+  const measured = measureQuantity(quantity);
+  return measured !== null && measured.dimension === 'mass' && measured.base >= STAPLE_BULK_THRESHOLD_G;
+}
+
+/**
  * Where one line got to, or null for a staple.
  *
  * **The one place the per-line rule lives**, read by the fold below and by
@@ -146,7 +175,16 @@ interface LineResolution {
  *
  * A staple is null rather than a state of its own: it is excluded from *both*
  * sides of the coverage fraction, so it is not a line that failed, it is not a
- * line at all. Salt missing a nutrition panel is not a gap in a dish's figures.
+ * line at all. Salt missing a nutrition panel is not a gap in a dish's figures
+ * — **unless the line itself says otherwise**. `isBulkStapleQuantity` is the
+ * one exception: a staple written in a genuinely large weight is treated as an
+ * ordinary ingredient (falling through to `unmatched`/`noPanel`/`unmeasured`/
+ * `covered` below) rather than silently dropped, because a pound of something
+ * is a real contribution to a dish's figures whether or not it's also
+ * something the cook always keeps stocked. `recipeCost.ts` doesn't need this
+ * — being stocked already, rather than bought for this recipe, is a reason a
+ * staple has no marginal *cost* here at any quantity, which is a different
+ * claim from "this amount has no calories".
  */
 function resolveLine(
   nameKey: string,
@@ -160,7 +198,7 @@ function resolveLine(
   // needs sits right there.
   const resolved = byKey.has(nameKey) ? nameKey : resolvePluralKey(nameKey, byKey.keys());
   const item = resolved ? byKey.get(resolved) : undefined;
-  if (item?.isStaple) return null;
+  if (item?.isStaple && !isBulkStapleQuantity(quantity)) return null;
   if (!item) return { state: 'unmatched', item: null, product: null, nutrition: null, multiplier: null };
 
   const product = productFor(item);
@@ -278,7 +316,7 @@ export function recipeNutrition(
 export interface RecipeNutritionReading {
   /** The rollup, or null while too little of the dish is known to total it. */
   nutrition: RecipeNutrition | null;
-  /** Every line that counts toward the fraction, staples excluded. */
+  /** Every line that counts toward the fraction, negligible staples excluded. */
   lines: NutritionLine[];
   gaps: NutritionGaps;
 }
@@ -346,8 +384,9 @@ export interface NutritionLine extends LineResolution {
  * own rules would eventually disagree with the count that sent someone looking
  * for them.
  *
- * Staples are absent, exactly as they are absent from both sides of that
- * fraction.
+ * A negligible staple is absent, exactly as it's absent from both sides of
+ * that fraction — but one written in a bulk weight isn't (see `resolveLine`),
+ * so it shows up here like any other line, gap and all.
  *
  * **A dish with an undecided either/or comes back empty**, matching the
  * refusal `recipeNutrition` already makes and for the same reason: both
@@ -538,7 +577,7 @@ export function describeRecipeNutrition(nutrition: RecipeNutrition | null): stri
 export interface NutritionGaps {
   /** Lines that reached the total. */
   covered: number;
-  /** Lines the dish calls for, staples excluded — the denominator on screen. */
+  /** Lines the dish calls for, negligible staples excluded — the denominator on screen. */
   total: number;
   /**
    * The lines somebody can answer from the recipe page: a catalog row missing

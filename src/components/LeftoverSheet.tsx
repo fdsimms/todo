@@ -530,25 +530,16 @@ export function LeftoverSheet({
           )}
 
           <Text style={styles.label}>Put away</Text>
-          <View style={styles.chips}>
-            {PUT_AWAY_CHOICES.map(days => {
-              const on = storedDaysAgo === days;
-              return (
-                <TouchableOpacity
-                  key={days}
-                  style={[styles.chip, on && styles.chipOn]}
-                  onPress={() => pickDaysAgo(days)}
-                  activeOpacity={interaction.activeOpacity}
-                  accessibilityRole="button"
-                  accessibilityState={{ selected: on }}
-                  accessibilityLabel={`Put away ${PUT_AWAY_SPOKEN[days]}`}
-                >
-                  <Text style={[styles.chipText, on && styles.chipTextOn]}>
-                    {PUT_AWAY_LABELS[days]}
-                  </Text>
-                </TouchableOpacity>
-              );
-            })}
+          <View style={styles.destination}>
+            <SegmentedControl
+              options={PUT_AWAY_CHOICES.map(days => ({
+                value: days,
+                label: PUT_AWAY_LABELS[days],
+                accessibilityLabel: `Put away ${PUT_AWAY_SPOKEN[days]}`,
+              }))}
+              value={storedDaysAgo}
+              onChange={pickDaysAgo}
+            />
           </View>
           {/* Older than the chips offer, so the row still reads honestly rather
               than showing four unselected chips and no explanation. */}
@@ -865,25 +856,6 @@ const makeStyles = (colors: Colors) => StyleSheet.create({
     paddingTop: spacing.md,
     paddingBottom: spacing.sm,
   },
-  chips: {
-    flexDirection: 'row',
-    flexWrap: 'wrap',
-    gap: spacing.xs,
-    paddingHorizontal: spacing.md,
-  },
-  chip: {
-    paddingHorizontal: spacing.md,
-    paddingVertical: 7,
-    borderRadius: radius.full,
-    backgroundColor: colors.bgTertiary,
-  },
-  chipOn: { backgroundColor: colors.accentFill },
-  chipText: {
-    color: colors.text,
-    fontSize: font.sm,
-    fontWeight: fontWeight.medium,
-  },
-  chipTextOn: { color: colors.onAccent },
   hint: {
     color: colors.textSecondary,
     fontSize: font.sm,

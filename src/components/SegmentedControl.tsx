@@ -147,11 +147,7 @@ export function SegmentedControl<T extends string | number | boolean | null>({
         key={String(opt.value)}
         style={[
           styles.segment,
-          // The lift is `shadows.card`, applied here rather than in the style
-          // below because that one knows the theme but not the shadow tokens.
-          // It had been written out by hand as the same five properties.
-          selected && styles.segmentSelected,
-          selected && shadows.card,
+          selected && [styles.segmentSelected, shadows.card],
           opt.disabled && styles.segmentDisabled,
         ]}
         onPress={() => {

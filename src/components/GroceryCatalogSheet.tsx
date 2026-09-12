@@ -32,6 +32,7 @@ import { rankedCatalogItems, catalogPruneCandidates, rankGrocerySuggestions } fr
 import { linkCounts } from '../utils/groceryFacts';
 import { itemIdsForShop, itemCountsByShop, primaryShopFor } from '../utils/groceryShops';
 import { formatPrice, describePriceContext, lastPriceFor } from '../utils/groceryPrice';
+import { SheetHeader } from './SheetHeader';
 import { SheetHeaderButton } from './SheetHeaderButton';
 import { EmptyState } from './EmptyState';
 import { InlineAction } from './InlineAction';
@@ -312,16 +313,18 @@ export function GroceryCatalogSheet({ visible, onClose }: Props) {
   return (
     <Modal visible={visible} animationType="slide" presentationStyle="pageSheet" onRequestClose={handleCancel}>
       <View style={styles.root}>
-        <View style={styles.header}>
-          <SheetHeaderButton label="Cancel" role="cancel" onPress={handleCancel} minWidth={72} />
-          <Text style={styles.headerTitle}>Grocery catalog</Text>
-          <SheetHeaderButton
-            label={selected.size > 0 ? `Add ${selected.size}` : 'Add'}
-            onPress={handleAdd}
-            disabled={selected.size === 0}
-            minWidth={72}
-          />
-        </View>
+        <SheetHeader
+          title="Grocery catalog"
+          left={<SheetHeaderButton label="Cancel" role="cancel" onPress={handleCancel} minWidth={72} />}
+          right={
+            <SheetHeaderButton
+              label={selected.size > 0 ? `Add ${selected.size}` : 'Add'}
+              onPress={handleAdd}
+              disabled={selected.size === 0}
+              minWidth={72}
+            />
+          }
+        />
 
         <View style={styles.searchWrap}>
           <Ionicons name="search" size={iconSize.sm} color={colors.textTertiary} />
@@ -428,16 +431,6 @@ export function GroceryCatalogSheet({ visible, onClose }: Props) {
 function makeStyles(colors: Colors) {
   return StyleSheet.create({
     root: { flex: 1, backgroundColor: colors.bg },
-    header: {
-      flexDirection: 'row',
-      alignItems: 'center',
-      justifyContent: 'space-between',
-      paddingHorizontal: spacing.md,
-      paddingVertical: spacing.md,
-      borderBottomWidth: border.hairline,
-      borderBottomColor: colors.separator,
-    },
-    headerTitle: { color: colors.text, fontSize: font.md, fontWeight: fontWeight.semibold },
     searchWrap: {
       flexDirection: 'row',
       alignItems: 'center',

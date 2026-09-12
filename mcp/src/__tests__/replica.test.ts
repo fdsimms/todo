@@ -53,6 +53,13 @@ function insert(row: { id: string; title: string; dueDate?: string; deferUntil?:
   );
 }
 
+/** A local calendar day, for comparing two dates without a timezone fight. */
+function dayOf(iso: string | null): string {
+  if (!iso) return '';
+  const d = new Date(iso);
+  return `${d.getFullYear()}-${d.getMonth() + 1}-${d.getDate()}`;
+}
+
 describe('the replica', () => {
   let replica: ReturnType<typeof openReplica>;
 
@@ -179,6 +186,123 @@ describe('the replica', () => {
     expect(replica.shiftDayKey('2026-01-01', -1)).toBe('2025-12-31');
   });
 
+  it('builds a whole template, resolving group keys and question names to ids', () => {
+    const built = replica.createTemplate({
+      name: 'Trip',
+      category: 'Home',
+      container: 'project',
+      anchorsAreAway: true,
+      groups: [{ key: 'clothes', title: 'Clothes' }],
+      questions: [
+        { name: 'trip', prompt: 'What kind of trip?', kind: 'choice', options: ['Work', 'Holiday'] },
+        { name: 'nights', prompt: 'How many nights?', kind: 'number', fromDates: 'nights' },
+      ],
+      items: [
+        { title: 'Shirts', groupKey: 'clothes', dueOffsetDays: -1 },
+        { title: 'Laptop', conditions: [{ question: 'trip', values: ['Work'] }] },
+      ],
+    });
+
+    expect(built).toMatchObject({ name: 'Trip', category: 'Home', applyContainer: 'project', anchorsAreAway: true });
+
+    // The two cross-references the caller wrote as a key and a name now point
+    // at ids it could not have known, which is the whole job of the applier.
+    const group = built.itemGroups[0];
+    const choice = built.questions.find(q => q.name === 'trip')!;
+    expect(built.items.find(i => i.title === 'Shirts')!.groupId).toBe(group.id);
+    expect(built.items.find(i => i.title === 'Laptop')!.conditions).toEqual([
+      { questionId: choice.id, values: ['Work'] },
+    ]);
+    expect(choice.id).not.toBe('trip');
+  });
+
+  it('leaves the field defaults to the app\'s own normalizer', () => {
+    const built = replica.createTemplate({ name: 'Bare', items: [{ title: 'One thing' }] });
+    const item = built.items[0];
+
+    // Restating these in the tool would be a second copy of normalizeTemplateItem
+    // to keep in step with the app.
+    expect(item).toMatchObject({
+      anchor: 'start',
+      optional: false,
+      polarity: 'positive',
+      recurrenceType: 'none',
+      recurrenceInterval: 1,
+      priority: 0,
+      tags: [],
+      conditions: [],
+    });
+    expect(item.id).toEqual(expect.any(String));
+  });
+
+  it('nests one template inside another, by name', () => {
+    const packing = replica.createTemplate({ name: 'Packing list', items: [{ title: 'Socks' }] });
+    const trip = replica.createTemplate({
+      name: 'Trip with packing',
+      items: [{ title: 'Bring the packing list', refTemplate: 'Packing list' }],
+    });
+
+    const ref = trip.items[0];
+    expect(ref.refTemplateId).toBe(packing.id);
+    // Carried so a broken reference can still say what it pointed at.
+    expect(ref.refTemplateName).toBe('Packing list');
+  });
+
+  it('writes nothing at all when the plan is invalid', () => {
+    const before = replica.templates().length;
+    expect(() =>
+      replica.createTemplate({
+        name: 'Broken',
+        items: [{ title: 'Thing', groupKey: 'nope' }],
+      })
+    ).toThrow('does not define');
+
+    // A half-built template is worse than none: it looks finished in the list.
+    expect(replica.templates()).toHaveLength(before);
+  });
+
+  it('reports every problem in one throw', () => {
+    expect(() => replica.createTemplate({ name: '', items: [] })).toThrow(/name is required.*at least one item/);
+  });
+
+  it('creates a task through the app\'s own builder, defaults and all', () => {
+    const task = replica.createTask({ title: 'Water the plants', category: 'Home' });
+
+    expect(task).toMatchObject({ title: 'Water the plants', category: 'Home', completed: false });
+    // newTaskFromDraft's doing, not the tool's: an id, a created stamp, and the
+    // hundred other fields at their defaults. A tool restating any of these
+    // would be a second copy to keep in step.
+    expect(task.id).toEqual(expect.any(String));
+    expect(task.createdAt).toEqual(expect.any(String));
+    expect(task.recurrenceType).toBe('none');
+    expect(task.tags).toEqual([]);
+
+    // And it is really in the database, not just returned.
+    replica.refresh();
+    expect(replica.taskById(task.id)?.title).toBe('Water the plants');
+  });
+
+  it('gives each new task the next sort order rather than colliding on one', () => {
+    const first = replica.createTask({ title: 'First' });
+    const second = replica.createTask({ title: 'Second' });
+    expect(second.sortOrder).toBeGreaterThan(first.sortOrder);
+  });
+
+  it('refuses a task with no title', () => {
+    expect(() => replica.createTask({ title: '   ' })).toThrow('needs a title');
+  });
+
+  it('leaves the reminder to the device that receives it', () => {
+    // addTask schedules a notification around this; the replica deliberately
+    // does not, because it has no notification centre and the phone's own
+    // rebuildNotificationQueue reschedules from every task after a sync.
+    const task = replica.createTask({
+      title: 'Call the dentist',
+      reminderTime: '2099-01-01T09:00:00.000Z',
+    });
+    expect(task.reminderTime).toBe('2099-01-01T09:00:00.000Z');
+  });
+
   it('clears cached reads on refresh, so a sync landing mid-session is seen', () => {
     insert({ id: 'first', title: 'First' });
     replica.refresh();
@@ -189,6 +313,217 @@ describe('the replica', () => {
     expect(replica.tasks()).toHaveLength(1);
     replica.refresh();
     expect(replica.tasks()).toHaveLength(2);
+  });
+
+  // ==== completing ====
+
+  it('completes a plain task and spawns nothing', () => {
+    const task = replica.createTask({ title: 'Hang the picture' });
+    const result = replica.completeTask(task.id, {});
+
+    expect(result.completed.completed).toBe(true);
+    expect(result.completed.completedAt).toEqual(expect.any(String));
+    expect(result.nextTask).toBeNull();
+    expect(result.rolledOver).toEqual([]);
+  });
+
+  // The reason the whole completion core was lifted out of useTaskStore rather
+  // than reimplemented: a recurring task whose successor never appears reads
+  // as a daily habit that stopped after one day.
+  it('spawns the next occurrence of a recurring task, on the next date', () => {
+    const today = new Date();
+    today.setHours(12, 0, 0, 0);
+    const tomorrow = new Date(today);
+    tomorrow.setDate(tomorrow.getDate() + 1);
+
+    const task = replica.createTask({
+      title: 'Water the plants',
+      recurrenceType: 'daily',
+      dueDate: today.toISOString(),
+    });
+    const result = replica.completeTask(task.id, {});
+
+    expect(result.nextTask).not.toBeNull();
+    expect(dayOf(result.nextTask!.dueDate)).toBe(dayOf(tomorrow.toISOString()));
+    // A fresh row rather than the same one moved: the completed one stays as
+    // the record of that day.
+    expect(result.nextTask!.id).not.toBe(task.id);
+    expect(result.nextTask!.completed).toBe(false);
+    // Both rows are in the database, which is what a device will pull.
+    replica.refresh();
+    expect(replica.tasks()).toHaveLength(2);
+  });
+
+  // getNextDueDate's { catchUp: true }, which completeTask passes because it is
+  // placing a real row. Without it, finishing a task months late spawns a
+  // successor dated months ago: overdue on arrival, and one completion per
+  // missed occurrence to work back to the present.
+  it('walks a long-overdue recurrence up to the present rather than into the past', () => {
+    const task = replica.createTask({
+      title: 'Water the plants',
+      recurrenceType: 'daily',
+      dueDate: '2026-03-01T12:00:00.000Z',
+    });
+    const result = replica.completeTask(task.id, {});
+
+    // Today or later, not "the day after the one it was last due". It lands on
+    // today rather than in the future because catchUp walks the rule's own
+    // grid up to the present rather than past it.
+    const next = new Date(result.nextTask!.dueDate!);
+    const todayStart = new Date();
+    todayStart.setHours(0, 0, 0, 0);
+    expect(next.getTime()).toBeGreaterThanOrEqual(todayStart.getTime());
+  });
+
+  it('advances a chain one step rather than finishing the task', () => {
+    const task = replica.createTask({
+      title: 'Laundry',
+      chainEnabled: true,
+      chainItems: [
+        { id: 'c1', title: 'Wash', estimatedMinutes: null },
+        { id: 'c2', title: 'Dry', estimatedMinutes: null },
+      ],
+    });
+    const result = replica.completeTask(task.id, {});
+
+    expect(result.nextTask).not.toBeNull();
+    expect(result.nextTask!.chainIndex).toBe(1);
+  });
+
+  it('spends one unit of a supply, and only because a person did the thing', () => {
+    const task = replica.createTask({
+      title: 'Replace the filter',
+      recurrenceType: 'monthly',
+      dueDate: '2026-03-01T12:00:00.000Z',
+      supplyCount: 3,
+    });
+    const result = replica.completeTask(task.id, {});
+    expect(result.nextTask!.supplyCount).toBe(2);
+  });
+
+  it('records a dose for a task that names a medication', () => {
+    const task = replica.createTask({ title: 'Ibuprofen', medicationName: 'Ibuprofen' });
+    expect(replica.completeTask(task.id, {}).loggedDose).toBe(true);
+
+    const task2 = replica.createTask({ title: 'Hang the picture' });
+    expect(replica.completeTask(task2.id, {}).loggedDose).toBe(false);
+  });
+
+  it('refuses a task that is already completed', () => {
+    const task = replica.createTask({ title: 'Once' });
+    replica.completeTask(task.id, {});
+    replica.refresh();
+    expect(() => replica.completeTask(task.id, {})).toThrow(/already completed/);
+  });
+
+  // There is no tap that finishes "don't smoke" — see Task.polarity. The store
+  // returns silently here; over MCP that would read as success.
+  it('refuses a negative habit, and says what to do instead', () => {
+    const task = replica.createTask({ title: 'No biting nails', polarity: 'negative' });
+    expect(() => replica.completeTask(task.id, {})).toThrow(/slip/);
+  });
+
+  it('refuses a recurring task that is not due yet', () => {
+    const task = replica.createTask({
+      title: 'Next week',
+      recurrenceType: 'weekly',
+      dueDate: '2099-01-01T12:00:00.000Z',
+    });
+    expect(() => replica.completeTask(task.id, {})).toThrow(/not due yet/);
+  });
+
+  it('refuses an unknown id rather than doing nothing', () => {
+    expect(() => replica.completeTask('nope', {})).toThrow(/No task with id/);
+  });
+
+  // ==== the question a completion asks ====
+
+  it('refuses to complete a task that asks a question with no answer', () => {
+    const task = replica.createTask({ title: 'Pick a colour', deliverableKind: 'text' });
+    // No deliverableValue key at all: nobody asked.
+    expect(() => replica.completeTask(task.id)).toThrow(/asks a question/);
+    expect(() => replica.completeTask(task.id, {})).toThrow(/asks a question/);
+  });
+
+  it('records an answer that was given', () => {
+    const task = replica.createTask({ title: 'Pick a colour', deliverableKind: 'text' });
+    const result = replica.completeTask(task.id, { deliverableValue: 'Green' });
+    expect(result.completed.deliverableValue).toBe('Green');
+  });
+
+  // The app may never *require* an answer, so declining has to get through.
+  // What is refused above is a caller that never offered the choice.
+  it('accepts an explicit decline', () => {
+    const task = replica.createTask({ title: 'Pick a colour', deliverableKind: 'text' });
+    const result = replica.completeTask(task.id, { deliverableValue: null });
+    expect(result.completed.completed).toBe(true);
+    expect(result.completed.deliverableValue).toBeNull();
+  });
+
+  it('checks whether a task can be completed at all before asking for an answer', () => {
+    // Both wrong at once. The refusal that matters is the one the caller can
+    // do nothing about, not the one it could fix by asking.
+    const task = replica.createTask({
+      title: 'Next week',
+      recurrenceType: 'weekly',
+      dueDate: '2099-01-01T12:00:00.000Z',
+      deliverableKind: 'text',
+    });
+    expect(() => replica.completeTask(task.id)).toThrow(/not due yet/);
+  });
+
+  // ==== rescheduling ====
+
+  it('moves a plain task by writing its date', () => {
+    const task = replica.createTask({ title: 'Call back', dueDate: '2026-03-01T12:00:00.000Z' });
+    const moved = replica.deferTask(task.id, new Date('2026-03-05T12:00:00.000Z'));
+    expect(moved.dueDate?.slice(0, 10)).toBe('2026-03-05');
+    expect(moved.deferUntil).toBeNull();
+  });
+
+  // The asymmetry scheduleMoveUpdates exists for (#1953). Pushing a recurring
+  // task out must not rebase every future occurrence onto the new day.
+  it('pushes a recurring task out with a defer, leaving its schedule anchored', () => {
+    const task = replica.createTask({
+      title: 'Water the plants',
+      recurrenceType: 'daily',
+      dueDate: '2026-03-01T12:00:00.000Z',
+    });
+    const moved = replica.deferTask(task.id, new Date('2026-03-04T12:00:00.000Z'));
+
+    expect(moved.deferUntil?.slice(0, 10)).toBe('2026-03-04');
+    // The grid the rest of its future is measured from has not moved.
+    expect(moved.dueDate?.slice(0, 10)).toBe('2026-03-01');
+  });
+
+  it('pulls a recurring task forward by moving its date, keeping the grid anchor', () => {
+    const task = replica.createTask({
+      title: 'Water the plants',
+      recurrenceType: 'daily',
+      dueDate: '2026-03-10T12:00:00.000Z',
+    });
+    const moved = replica.deferTask(task.id, new Date('2026-03-08T12:00:00.000Z'));
+
+    // A defer cannot pull a task in front of its own date, so the date moves.
+    expect(moved.dueDate?.slice(0, 10)).toBe('2026-03-08');
+    expect(moved.deferUntil).toBeNull();
+    // ...and the schedule keeps its own anchor to step from.
+    expect(moved.recurrenceAnchorDate?.slice(0, 10)).toBe('2026-03-10');
+  });
+
+  it('clears a date rather than deleting anything', () => {
+    const task = replica.createTask({ title: 'Someday', dueDate: '2026-03-01T12:00:00.000Z' });
+    const moved = replica.deferTask(task.id, null);
+    expect(moved.dueDate).toBeNull();
+    replica.refresh();
+    expect(replica.taskById(task.id)).not.toBeNull();
+  });
+
+  it('refuses to reschedule a completed task', () => {
+    const task = replica.createTask({ title: 'Done' });
+    replica.completeTask(task.id, {});
+    replica.refresh();
+    expect(() => replica.deferTask(task.id, new Date())).toThrow(/already completed/);
   });
 });
 

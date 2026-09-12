@@ -75,7 +75,7 @@ public class TodoScreenTimeBridgeModule: Module {
           switch AuthorizationCenter.shared.authorizationStatus {
           case .notDetermined: result = "notDetermined"
           case .denied: result = "denied"
-          case .approved: result = "approved"
+          case .approved, .approvedWithDataAccess: result = "approved"
           @unknown default: result = "unavailable"
           }
         }

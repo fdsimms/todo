@@ -6,8 +6,9 @@ import { formatTimeOfDay } from '../utils/dateUtils';
 import { directionsUrl } from '../utils/maps';
 import { haptics } from '../utils/haptics';
 import { useColors } from '../theme/ThemeContext';
-import { spacing, radius, font, fontWeight, border, iconSize, type Colors } from '../theme';
+import { spacing, radius, font, fontWeight, iconSize, type Colors } from '../theme';
 import { SheetHeaderButton } from './SheetHeaderButton';
+import { SheetHeader } from './SheetHeader';
 import { PressableScale } from './PressableScale';
 import { SegmentedControl } from './SegmentedControl';
 import { useEventReminderStore } from '../store/useEventReminderStore';
@@ -92,11 +93,11 @@ export function TodayEventsSheet({ visible, onClose, events, calendarsById }: Pr
   return (
     <Modal visible={visible} animationType="slide" presentationStyle="pageSheet" onRequestClose={onClose}>
       <View style={styles.root}>
-        <View style={styles.header}>
-          <View style={styles.headerSpacer} />
-          <Text style={styles.headerTitle}>Today’s events</Text>
-          <SheetHeaderButton label="Done" onPress={onClose} minWidth={64} />
-        </View>
+        <SheetHeader
+          title="Today’s events"
+          left={<View style={styles.headerSpacer} />}
+          right={<SheetHeaderButton label="Done" onPress={onClose} minWidth={64} />}
+        />
 
         <ScrollView contentContainerStyle={styles.list}>
           {events.map(event => {
@@ -142,7 +143,7 @@ export function TodayEventsSheet({ visible, onClose, events, calendarsById }: Pr
                   </View>
                   <View style={styles.rowActions}>
                     {!event.allDay && (
-                      <PressableScale
+                      <PressableScale hitSlop={8}
                         style={styles.actionButton}
                         onPress={() => toggleExpanded(key)}
                         haptic
@@ -159,7 +160,7 @@ export function TodayEventsSheet({ visible, onClose, events, calendarsById }: Pr
                         />
                       </PressableScale>
                     )}
-                    <PressableScale
+                    <PressableScale hitSlop={8}
                       style={styles.actionButton}
                       onPress={() => (hidden ? unhideEvent(event) : hideEvent(event))}
                       haptic
@@ -209,17 +210,7 @@ export function TodayEventsSheet({ visible, onClose, events, calendarsById }: Pr
 
 const makeStyles = (colors: Colors) => StyleSheet.create({
   root: { flex: 1, backgroundColor: colors.bg },
-  header: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'space-between',
-    paddingHorizontal: spacing.md,
-    paddingVertical: spacing.md,
-    borderBottomWidth: border.hairline,
-    borderBottomColor: colors.separator,
-  },
   headerSpacer: { width: 64 },
-  headerTitle: { color: colors.text, fontSize: font.md, fontWeight: fontWeight.semibold },
   list: { paddingTop: spacing.md, paddingBottom: spacing.xl },
   // Same inset-grouped card footprint as CategoryOrderSheet's rows.
   row: {

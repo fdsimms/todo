@@ -26,6 +26,7 @@ import { getLogicalToday } from '../utils/dateUtils';
 import { useTaskStore } from '../store/useTaskStore';
 import { useSettingsStore } from '../store/useSettingsStore';
 import { EditorSheet } from './EditorSheet';
+import { SheetHeader } from './SheetHeader';
 import { SheetHeaderButton } from './SheetHeaderButton';
 import { SegmentedControl } from './SegmentedControl';
 import { PillGroup } from './PillGroup';
@@ -251,11 +252,12 @@ export function MoodLogSheet({ visible, editing = null, onClose }: Props) {
       scrollStyle={styles.scroll}
       scrollContentStyle={styles.scrollContent}
       header={
-        <>
-          <SheetHeaderButton label="Cancel" role="cancel" onPress={onClose} minWidth={64} />
-          <Text style={styles.headerTitle}>{editing ? 'Edit entry' : 'How are you doing?'}</Text>
-          <SheetHeaderButton label="Save" onPress={save} disabled={!canSave} minWidth={64} />
-        </>
+        <SheetHeader
+          bare
+          title={editing ? 'Edit entry' : 'How are you doing?'}
+          left={<SheetHeaderButton label="Cancel" role="cancel" onPress={onClose} minWidth={64} />}
+          right={<SheetHeaderButton label="Save" onPress={save} disabled={!canSave} minWidth={64} />}
+        />
       }
     >
       {/* Only for a new entry: an existing one's day is fixed by design (see
@@ -377,13 +379,6 @@ const makeStyles = (colors: Colors) => StyleSheet.create({
     justifyContent: 'space-between',
     paddingHorizontal: spacing.md,
     paddingBottom: spacing.sm,
-  },
-  headerTitle: {
-    flex: 1,
-    textAlign: 'center',
-    fontSize: font.md,
-    fontWeight: fontWeight.semibold,
-    color: colors.text,
   },
   scroll: { flex: 1 },
   scrollContent: { padding: spacing.md, paddingBottom: spacing.xl },

@@ -8,7 +8,7 @@ import { useColors } from '../theme/ThemeContext';
 import { spacing, radius, font, fontWeight, iconSize, interaction, type Colors } from '../theme';
 import { haptics } from '../utils/haptics';
 import { addCustomPortion, NUTRIENT_LABEL } from '../utils/foodNutrition';
-import { weighableLine, type LineWeighing } from '../utils/ingredientGrams';
+import { unfixableQuantityReason, weighableLine, type LineWeighing } from '../utils/ingredientGrams';
 import {
   lineContribution,
   perServing,
@@ -22,6 +22,7 @@ import { NumberPadAccessory, NUMBER_PAD_ACCESSORY_ID } from './NumberPadAccessor
 import { NutritionPanelSheet } from './NutritionPanelSheet';
 import { NutritionSearchSheet } from './NutritionSearchSheet';
 import { SheetHeaderButton } from './SheetHeaderButton';
+import { SheetHeader } from './SheetHeader';
 
 /**
  * A dish's whole nutrition panel, and the ingredients it couldn't count.
@@ -49,7 +50,12 @@ import { SheetHeaderButton } from './SheetHeaderButton';
  * already offers for exactly this, in the same words: find the food in a
  * database, or copy the label off the packet. Figures that can't be measured
  * against the amount asked for get a scale, and only when `weighableLine` has
- * confirmed that weighing would actually settle it.
+ * confirmed that weighing would actually settle it. **The two refusals
+ * `unfixableQuantityReason` names — no amount at all ("several cloves"), or a
+ * counted container ("2 14 oz cans")** — get neither: nothing on the food's
+ * side could ever relate either one to a weight, so the row says the actual
+ * fix is rewriting the recipe's own line rather than offering a button
+ * ("Edit these figures", a scale) that would only look like one.
  *
  * **Filling in figures writes to the grocery catalog, never to the recipe.**
  * What is missing is a fact about a food, not about this dish, so filling it
@@ -143,6 +149,11 @@ export function RecipeNutritionSheet({ visible, reading, onClose }: Props) {
         line.state === 'unmeasured' && line.nutrition && line.item
           ? weighableLine(line.quantity, line.prep, line.nutrition, line.item.name)
           : null,
+      // Null whenever a food's figures (or a scale) could still answer the
+      // line — set only for the two refusals that are never about the food,
+      // where nothing offered below can help and the fix is rewriting the
+      // recipe's own line instead. See `unfixableQuantityReason`.
+      unfixable: line.state === 'unmeasured' ? unfixableQuantityReason(line.quantity) : null,
     })),
     [gaps.fillable],
   );
@@ -215,7 +226,7 @@ export function RecipeNutritionSheet({ visible, reading, onClose }: Props) {
   const countLine =
     gaps.total === 0
       ? null
-      : `Counted from ${gaps.covered} of ${gaps.total} ingredients. Staples, and any ingredient marked not to count, aren't counted on either side.`;
+      : `Counted from ${gaps.covered} of ${gaps.total} ingredients.`;
 
   return (
     <EditorSheet
@@ -226,11 +237,13 @@ export function RecipeNutritionSheet({ visible, reading, onClose }: Props) {
       scrollStyle={styles.scroll}
       scrollContentStyle={styles.scrollContent}
       header={
-        <>
-          <SheetHeaderButton label="Done" onPress={onClose} minWidth={40} />
-          <Text style={styles.headerTitle}>Nutrition</Text>
-          <View style={styles.headerSpacer} />
-        </>
+        <SheetHeader
+          bare
+          title="Nutrition"
+          size="lg"
+          left={<SheetHeaderButton label="Done" onPress={onClose} minWidth={40} />}
+          right={<View style={styles.headerSpacer} />}
+        />
       }
       footer={
         <>
@@ -349,7 +362,7 @@ export function RecipeNutritionSheet({ visible, reading, onClose }: Props) {
         <>
           <Text style={styles.groupLabel}>NOT COUNTED</Text>
           <View style={styles.card}>
-            {fillable.map(({ line, weighing }, index) => (
+            {fillable.map(({ line, weighing, unfixable }, index) => (
               <View key={line.id} style={[styles.gapRow, index > 0 && styles.gapRowRuled]}>
                 <Text style={styles.gapName} numberOfLines={1}>
                   {line.quantity ? `${line.quantity} ${line.name}` : line.name}
@@ -359,7 +372,11 @@ export function RecipeNutritionSheet({ visible, reading, onClose }: Props) {
                     ? 'Nothing recorded for this food yet.'
                     : weighing
                       ? `No weight recorded for ${weighing.text}.`
-                      : "This amount can't be matched to its figures. Check the serving size on them."}
+                      : unfixable === 'noAmount'
+                        ? "This amount doesn't have a number in it, so there's nothing to relate to a weight. Edit the ingredient in the recipe to give it one, like \"3 cloves\" instead of \"several\"."
+                        : unfixable === 'countedContainer'
+                          ? "This is a count of containers, not how much is in one, so there's no figure that answers it. Edit the ingredient in the recipe to say how much one holds."
+                          : "This amount can't be matched to its figures. Check the serving size on them."}
                 </Text>
 
                 {weighingId === line.id && weighing ? (
@@ -408,7 +425,7 @@ export function RecipeNutritionSheet({ visible, reading, onClose }: Props) {
                         icon="scale-outline"
                         onPress={() => startWeighing(line)}
                       />
-                    ) : (
+                    ) : unfixable ? null : (
                       <InlineAction
                         label="Edit these figures"
                         variant="neutral"
@@ -487,7 +504,6 @@ function makeStyles(colors: Colors) {
       borderBottomWidth: 1,
       borderBottomColor: colors.separator,
     },
-    headerTitle: { fontSize: font.lg, fontWeight: fontWeight.semibold, color: colors.text },
     headerSpacer: { minWidth: 40 },
     scroll: { flex: 1 },
     scrollContent: { padding: spacing.md, paddingBottom: spacing.xl },

@@ -5,13 +5,14 @@ import {
   getDataScannerView, isDataScannerAvailable, type DataScannerScan,
 } from 'todo-datascanner-bridge';
 import { useColors } from '../theme/ThemeContext';
-import { border, font, fontWeight, radius, spacing, type Colors } from '../theme';
+import { font, radius, spacing, type Colors } from '../theme';
 import type { FoodNutrition } from '../types';
 import { lookupGtin, describeLookupError } from '../services/productLookup';
 import { normalizeGtin } from '../utils/gtin';
 import { haptics } from '../utils/haptics';
 import { InlineAction } from './InlineAction';
 import { SheetHeaderButton } from './SheetHeaderButton';
+import { SheetHeader } from './SheetHeader';
 
 /**
  * One barcode, scanned once, handed back as whatever nutrition its database
@@ -149,11 +150,11 @@ export function NutritionBarcodeScanSheet({ visible, onClose, onFound }: Props) 
   return (
     <Modal visible={visible} animationType="slide" presentationStyle="pageSheet" onRequestClose={onClose}>
       <View style={styles.root}>
-        <View style={styles.header}>
-          <SheetHeaderButton label="Cancel" role="cancel" onPress={onClose} minWidth={64} />
-          <Text style={styles.headerTitle}>Scan a barcode</Text>
-          <View style={styles.headerSpacer} />
-        </View>
+        <SheetHeader
+          title="Scan a barcode"
+          left={<SheetHeaderButton label="Cancel" role="cancel" onPress={onClose} minWidth={64} />}
+          right={<View style={styles.headerSpacer} />}
+        />
 
         {camera()}
 
@@ -184,16 +185,6 @@ export function NutritionBarcodeScanSheet({ visible, onClose, onFound }: Props) 
 function makeStyles(colors: Colors) {
   return StyleSheet.create({
     root: { flex: 1, backgroundColor: colors.bg },
-    header: {
-      flexDirection: 'row',
-      alignItems: 'center',
-      justifyContent: 'space-between',
-      paddingHorizontal: spacing.md,
-      paddingVertical: spacing.md,
-      borderBottomWidth: border.hairline,
-      borderBottomColor: colors.separator,
-    },
-    headerTitle: { color: colors.text, fontSize: font.md, fontWeight: fontWeight.semibold },
     headerSpacer: { minWidth: 64 },
     cameraWrap: {
       height: 260,

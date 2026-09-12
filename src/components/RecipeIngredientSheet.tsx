@@ -34,6 +34,7 @@ import { allSectionsOf } from '../utils/recipeSections';
 import { standingSwapMap } from '../utils/standingSwaps';
 import { disclosureValue } from '../theme/textStyles';
 import { SheetHeaderButton } from './SheetHeaderButton';
+import { SheetHeader } from './SheetHeader';
 import { EditorSheet } from './EditorSheet';
 import { PillGroup } from './PillGroup';
 import { GroceryItemSheet } from './GroceryItemSheet';
@@ -426,11 +427,12 @@ export function RecipeIngredientSheet({ visible, recipeId, ingredient, onClose }
       scrollStyle={styles.scroll}
       scrollContentStyle={styles.scrollContent}
       header={
-        <>
-          <SheetHeaderButton label="Done" onPress={saveAndClose} minWidth={40} />
-          <Text style={styles.headerTitle}>Ingredient</Text>
-          <View style={styles.headerSpacer} />
-        </>
+        <SheetHeader
+          bare
+          title="Ingredient"
+          left={<SheetHeaderButton label="Done" onPress={saveAndClose} minWidth={40} />}
+          right={<View style={styles.headerSpacer} />}
+        />
       }
     >
       <View style={styles.sectionCard}>
@@ -1008,11 +1010,6 @@ const makeStyles = (colors: Colors) => StyleSheet.create({
     paddingVertical: spacing.md,
     borderBottomWidth: 1,
     borderBottomColor: colors.separator,
-  },
-  headerTitle: {
-    color: colors.text,
-    fontSize: font.md,
-    fontWeight: fontWeight.semibold,
   },
   // Balances the Done button so the title stays optically centered.
   headerSpacer: {

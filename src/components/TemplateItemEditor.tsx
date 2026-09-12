@@ -742,7 +742,7 @@ export function TemplateItemEditor({ visible, templateId, templateName, item, in
                   themeVariant={isDark ? 'dark' : 'light'}
                 />
                 <View style={styles.intervalRow}>
-                  <TouchableOpacity
+                  <TouchableOpacity hitSlop={8}
                     style={styles.intervalBtn}
                     onPress={() => setWindowPickerMode('none')}
                     accessibilityRole="button"
@@ -750,7 +750,7 @@ export function TemplateItemEditor({ visible, templateId, templateName, item, in
                   >
                     <Ionicons name="close" size={16} color={colors.textSecondary} />
                   </TouchableOpacity>
-                  <TouchableOpacity
+                  <TouchableOpacity hitSlop={8}
                     style={styles.intervalBtn}
                     onPress={confirmWindowPicker}
                     accessibilityRole="button"
@@ -1068,7 +1068,7 @@ export function TemplateItemEditor({ visible, templateId, templateName, item, in
                     themeVariant={isDark ? 'dark' : 'light'}
                   />
                   <View style={styles.intervalRow}>
-                    <TouchableOpacity
+                    <TouchableOpacity hitSlop={8}
                       style={styles.intervalBtn}
                       onPress={() => setPenaltyPickerOpen(false)}
                       accessibilityRole="button"
@@ -1076,7 +1076,7 @@ export function TemplateItemEditor({ visible, templateId, templateName, item, in
                     >
                       <Ionicons name="close" size={16} color={colors.textSecondary} />
                     </TouchableOpacity>
-                    <TouchableOpacity
+                    <TouchableOpacity hitSlop={8}
                       style={styles.intervalBtn}
                       onPress={confirmPenaltyPicker}
                       accessibilityRole="button"
@@ -1634,7 +1634,7 @@ function OffsetRow({
       </View>
       {offset !== null && (
         <View style={styles.intervalRow}>
-          <TouchableOpacity
+          <TouchableOpacity hitSlop={8}
             style={styles.intervalBtn}
             onPress={() => onChange(offset - 1)}
             accessibilityRole="button"
@@ -1643,7 +1643,7 @@ function OffsetRow({
             <Ionicons name="remove" size={16} color={colors.text} />
           </TouchableOpacity>
           <Text style={styles.intervalValue}>{formatOffsetWithAnchor(offset, anchor)}</Text>
-          <TouchableOpacity
+          <TouchableOpacity hitSlop={8}
             style={styles.intervalBtn}
             onPress={() => onChange(offset + 1)}
             accessibilityRole="button"

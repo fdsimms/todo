@@ -478,6 +478,61 @@ const PREP_CLAUSE_WORDS = new Set([
 ]);
 
 /**
+ * A bare modifier word, mapped to the head noun(s) it's short for when a
+ * recipe drops the noun off every option but the last — "red or white onion"
+ * meaning red onion or white onion, not "red" (whatever that is) or white
+ * onion. Curated and short on purpose, the same discipline UNITS and
+ * PREP_CLAUSE_WORDS follow: it only has to cover the shapes recipes actually
+ * write ("red or white onion", "russet or yukon gold potatoes"), not every
+ * modifier of every food. Extend it when a real recipe line turns up a gap.
+ *
+ * Keyed by the noun (so the same modifier can mean different things for
+ * different nouns without the two lists interfering), not by the modifier —
+ * see `distributeVarietyNoun` for how it's read.
+ */
+const VARIETY_MODIFIERS: Record<string, string[]> = {
+  onion: ['red', 'white', 'yellow', 'sweet', 'green', 'spring', 'purple', 'pearl'],
+  onions: ['red', 'white', 'yellow', 'sweet', 'green', 'spring', 'purple', 'pearl'],
+  pepper: ['red', 'green', 'yellow', 'orange', 'bell', 'poblano', 'banana', 'cubanelle'],
+  peppers: ['red', 'green', 'yellow', 'orange', 'bell', 'poblano', 'banana', 'cubanelle'],
+  potato: ['russet', 'yukon gold', 'red', 'white', 'sweet', 'fingerling', 'baby', 'new'],
+  potatoes: ['russet', 'yukon gold', 'red', 'white', 'sweet', 'fingerling', 'baby', 'new'],
+  rice: ['white', 'brown', 'jasmine', 'basmati', 'wild', 'arborio'],
+  sugar: ['white', 'brown', 'granulated', 'powdered', 'cane'],
+  beans: ['black', 'pinto', 'kidney', 'red', 'white', 'cannellini', 'garbanzo', 'navy', 'lima'],
+  lentils: ['red', 'green', 'brown', 'yellow', 'black'],
+  cabbage: ['red', 'green', 'napa', 'savoy'],
+};
+
+/**
+ * Puts a noun back on whichever bare options dropped it, when the last
+ * option names one `VARIETY_MODIFIERS` recognizes — "red or white onion" →
+ * `['red onion', 'white onion']`. Only ever adds the noun the *last* option
+ * already carries, verbatim (same casing, same word), and only to an option
+ * that is nothing but a known modifier for that exact noun; every other
+ * option is left exactly as split. That's what keeps this from becoming the
+ * general guess splitAlternativeNames' own doc comment warns against: an
+ * unrecognized modifier (or a noun with no entry here at all, "vegetable
+ * stock", "olive oil") leaves the parts untouched.
+ */
+function distributeVarietyNoun(parts: string[]): string[] {
+  const last = parts[parts.length - 1];
+  const lastWords = last.split(/\s+/);
+  if (lastWords.length < 2) return parts;
+  const noun = lastWords[lastWords.length - 1];
+  const modifiers = VARIETY_MODIFIERS[groceryNameKey(noun)];
+  if (!modifiers) return parts;
+  const modifierSet = new Set(modifiers.map(m => m.toLowerCase()));
+  let changed = false;
+  const distributed = parts.map((part, i) => {
+    if (i === parts.length - 1 || !modifierSet.has(part.toLowerCase())) return part;
+    changed = true;
+    return `${part} ${noun}`;
+  });
+  return changed ? distributed : parts;
+}
+
+/**
  * "cheddar or manchego" → `['cheddar', 'manchego']`, and null for anything that
  * isn't a genuine either/or.
  *
@@ -490,15 +545,19 @@ const PREP_CLAUSE_WORDS = new Set([
  * app notices the line wants to be two.
  *
  * **It only ever feeds a suggestion the user confirms, and that's load-bearing
- * rather than timidity.** The split is deliberately verbatim — "chicken or
+ * rather than timidity.** The split is verbatim by default — "chicken or
  * vegetable stock" comes back as `['chicken', 'vegetable stock']`, not the
  * `['chicken stock', 'vegetable stock']` a person means. Distributing that
  * trailing noun is unsafe in general and the counterexample is the same shape:
  * "butter or olive oil" would become "butter oil". Nothing here can tell those
- * two apart without knowing what the words mean, so the honest move is to show
- * the parts and let the user fix the one case that needs it — the same call
- * splitPrep makes about leading prep words, and the same reason
- * suggestShorterCatalogName confirms against the catalog rather than guessing.
+ * two apart without knowing what the words mean, so the honest move for an
+ * unrecognized noun is to show the parts and let the user fix the one case
+ * that needs it — the same call splitPrep makes about leading prep words, and
+ * the same reason suggestShorterCatalogName confirms against the catalog
+ * rather than guessing. `distributeVarietyNoun` is the one curated exception:
+ * for the closed, common set of nouns `VARIETY_MODIFIERS` names, "the words
+ * mean" is known rather than guessed, so "red or white onion" is put back
+ * together rather than left for someone to notice "red" alone is wrong.
  *
  * Matches "or" only as a whole word, so "oregano" and "orange" are safe.
  * Deliberately does not split on "/": a slash is a fraction far more often than
@@ -528,7 +587,7 @@ export function splitAlternativeNames(name: string): string[] | null {
   // Two spellings of one thing aren't two things to choose between.
   const keys = parts.map(groceryNameKey);
   if (new Set(keys).size !== keys.length) return null;
-  return parts;
+  return distributeVarietyNoun(parts);
 }
 
 function firstWord(part: string): string {

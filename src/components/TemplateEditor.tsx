@@ -30,6 +30,7 @@ import { EditorRow } from './EditorRow';
 import { InlineTimePicker } from '../screens/settings/InlineTimePicker';
 import { InlineAction } from './InlineAction';
 import { SheetHeaderButton } from './SheetHeaderButton';
+import { SheetHeader } from './SheetHeader';
 import { EditorSheet } from './EditorSheet';
 import { TemplateQuestionSheet } from './TemplateQuestionSheet';
 
@@ -150,18 +151,21 @@ export function TemplateEditor({ visible, template, onClose }: Props) {
       scrollStyle={styles.scroll}
       scrollContentStyle={styles.scrollContent}
       header={
-        <>
-          <SheetHeaderButton label="Done" onPress={saveAndClose} minWidth={40} />
-          <Text style={styles.headerTitle}>Edit template</Text>
-          <TouchableOpacity
-            onPress={handleDelete}
-            hitSlop={8}
-            accessibilityRole="button"
-            accessibilityLabel={`Delete template ${template.name}`}
-          >
-            <Ionicons name="trash-outline" size={20} color={colors.red} />
-          </TouchableOpacity>
-        </>
+        <SheetHeader
+          bare
+          title="Edit template"
+          left={<SheetHeaderButton label="Done" onPress={saveAndClose} minWidth={40} />}
+          right={
+            <TouchableOpacity
+              onPress={handleDelete}
+              hitSlop={8}
+              accessibilityRole="button"
+              accessibilityLabel={`Delete template ${template.name}`}
+            >
+              <Ionicons name="trash-outline" size={20} color={colors.red} />
+            </TouchableOpacity>
+          }
+        />
       }
     >
       <TextInput
@@ -531,11 +535,6 @@ const makeStyles = (colors: Colors) => StyleSheet.create({
     paddingBottom: spacing.md,
     borderBottomWidth: StyleSheet.hairlineWidth,
     borderBottomColor: colors.separator,
-  },
-  headerTitle: {
-    color: colors.text,
-    fontSize: font.md,
-    fontWeight: fontWeight.semibold,
   },
   scroll: {
     flex: 1,

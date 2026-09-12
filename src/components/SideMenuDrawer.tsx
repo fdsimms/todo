@@ -58,8 +58,8 @@ interface Props {
  * It held eighteen flat rows, which is about twice what a phone fits, so half
  * of it lived under a fold nothing announced and the fix for that was a
  * scroll-edge fade and a flashed scrollbar — both of which say "there is more"
- * without making any of it easier to reach. Eight rows fit, and four of them
- * are hubs standing in for thirteen destinations. What goes where, and why,
+ * without making any of it easier to reach. Eleven rows fit, and three of them
+ * are hubs standing in for sixteen destinations. What goes where, and why,
  * is `navHubs.ts`; this file is the drawing.
  *
  * Two things carry the weight of the collapse:
@@ -119,10 +119,10 @@ export function SideMenuDrawer({ visible, onClose, onNavigate, onOpenSettings, a
   const dragOffsetX = useRef(new Animated.Value(0)).current;
   const [isRendered, setIsRendered] = useState(false);
   const pendingActionRef = useRef<(() => void) | null>(null);
-  // Eight rows and a footer fit on every phone this runs on, so the fade and
+  // Eleven rows and a footer fit on every phone this runs on, so the fade and
   // the flashed scrollbar are no longer load-bearing — they stay because the
   // *search results* can be longer than the list they replace, and because a
-  // large accessibility text size can push even eight rows past the fold.
+  // large accessibility text size can push even eleven rows past the fold.
   const listRef = useRef<ScrollView>(null);
   const fade = useScrollEdgeFade();
   // Settings navigates to a whole new screen, so the drawer's own close
@@ -144,11 +144,11 @@ export function SideMenuDrawer({ visible, onClose, onNavigate, onOpenSettings, a
           Animated.timing(dragOffsetX, { toValue: 0, duration: 0, useNativeDriver: true }).start();
           onClose();
         } else {
-          Animated.spring(dragOffsetX, { toValue: 0, damping: 20, stiffness: 200, useNativeDriver: true }).start();
+          Animated.spring(dragOffsetX, { toValue: 0, ...animation.spring.smooth, useNativeDriver: true }).start();
         }
       },
       onPanResponderTerminate: () => {
-        Animated.spring(dragOffsetX, { toValue: 0, damping: 20, stiffness: 200, useNativeDriver: true }).start();
+        Animated.spring(dragOffsetX, { toValue: 0, ...animation.spring.smooth, useNativeDriver: true }).start();
       },
     })
   ).current;
@@ -166,8 +166,7 @@ export function SideMenuDrawer({ visible, onClose, onNavigate, onOpenSettings, a
       Animated.parallel([
         Animated.spring(translateX, {
           toValue: 0,
-          damping: 28,
-          stiffness: 220,
+          ...animation.spring.smooth,
           useNativeDriver: true,
         }),
         Animated.timing(backdropOpacity, {
@@ -196,8 +195,7 @@ export function SideMenuDrawer({ visible, onClose, onNavigate, onOpenSettings, a
         : [
             Animated.spring(translateX, {
               toValue: -DRAWER_WIDTH,
-              damping: 30,
-              stiffness: 280,
+              ...animation.spring.snappy,
               useNativeDriver: true,
             }),
             Animated.timing(backdropOpacity, {

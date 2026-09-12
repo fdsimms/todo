@@ -22,7 +22,7 @@
  * for anyone who never opens this setting.
  */
 
-export type AppFont = 'system' | 'bricolage' | 'fraunces' | 'spaceGrotesk' | 'nunito' | 'outfit';
+export type AppFont = 'system' | 'bricolage' | 'spaceGrotesk' | 'nunito' | 'outfit';
 
 /** The weights the app actually uses. Every bundled family ships a face for each. */
 export type FontWeightKey = 400 | 500 | 600 | 700;
@@ -60,12 +60,6 @@ export const APP_FONT_OPTIONS: AppFontOption[] = [
     label: 'Bricolage',
     hint: 'Editorial and a little wonky. Narrow enough that long titles still fit.',
     faces: facesFor('BricolageGrotesque'),
-  },
-  {
-    id: 'fraunces',
-    label: 'Fraunces',
-    hint: 'A warm, soft-edged serif. Turns the list into something more like a journal.',
-    faces: facesFor('Fraunces'),
   },
   {
     id: 'spaceGrotesk',

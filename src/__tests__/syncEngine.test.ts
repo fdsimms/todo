@@ -6,7 +6,7 @@
  * convergence test that used made-up merge rules would prove nothing about
  * whether two devices actually agree.
  */
-import { runSync, hasChanges, type SyncLocal, type SyncTransport } from '../utils/syncEngine';
+import { runSync, runSyncAll, summarizeRuns, hasChanges, type SyncLocal, type SyncTransport } from '../utils/syncEngine';
 import {
   SYNC_FORMAT,
   emptyApplyReport,
@@ -373,5 +373,90 @@ describe('two devices converge', () => {
 
     expect(idle.pushed).toBe(false);
     expect(idle.applied).toMatchObject({ inserted: 0, updated: 0, deleted: 0 });
+  });
+});
+
+describe('runSyncAll', () => {
+  /** A second store, so a device can have two destinations that share nothing. */
+  const twoStores = () => [new FakeCloud(), new FakeCloud()] as const;
+
+  it('reaches every store, and keeps their cursors apart', async () => {
+    const [icloud, server] = twoStores();
+    // The names are what the cursors are keyed by, so two transports sharing
+    // one would read each other's position and skip payloads.
+    Object.defineProperty(server, 'name', { value: 'server' });
+
+    const phone = new FakeDevice('phone');
+    phone.write('t1', 'Buy milk', '2026-01-01T00:00:00.000Z');
+
+    const runs = await runSyncAll([icloud, server], phone);
+
+    expect(runs.map(r => r.transport)).toEqual(['fake', 'server']);
+    expect(icloud.entries).toHaveLength(1);
+    expect(server.entries).toHaveLength(1);
+    expect(phone.cursors.get('fake:push')).toBeDefined();
+    expect(phone.cursors.get('server:push')).toBeDefined();
+  });
+
+  it('carries on when one store is down', async () => {
+    const [icloud, server] = twoStores();
+    Object.defineProperty(server, 'name', { value: 'server' });
+    icloud.pushThrows = true;
+
+    const phone = new FakeDevice('phone');
+    phone.write('t1', 'Buy milk', '2026-01-01T00:00:00.000Z');
+
+    const runs = await runSyncAll([icloud, server], phone);
+
+    // A laptop being off is not a reason to skip iCloud, and the reverse.
+    expect(runs[0].result.status).toBe('failed');
+    expect(runs[1].result.status).toBe('ok');
+    expect(server.entries).toHaveLength(1);
+  });
+
+  it('is a no-op for no transports', async () => {
+    expect(await runSyncAll([], new FakeDevice('phone'))).toEqual([]);
+  });
+});
+
+describe('summarizeRuns', () => {
+  const run = (transport: string, over: Partial<import('../utils/syncEngine').SyncRunResult>) => ({
+    transport,
+    result: {
+      status: 'ok' as const,
+      pushed: false,
+      applied: { inserted: 0, updated: 0, skipped: 0, deleted: 0, deletionsRefused: 0 },
+      unreadable: 0,
+      ...over,
+    },
+  });
+
+  it('adds up what every store applied', () => {
+    const summary = summarizeRuns([
+      run('fake', { applied: { inserted: 2, updated: 1, skipped: 0, deleted: 0, deletionsRefused: 0 } }),
+      run('server', { applied: { inserted: 1, updated: 0, skipped: 0, deleted: 3, deletionsRefused: 0 } }),
+    ]);
+
+    expect(summary.applied).toMatchObject({ inserted: 3, updated: 1, deleted: 3 });
+    expect(summary.ok).toBe(true);
+    expect(summary.problem).toBeNull();
+  });
+
+  it('names the transport in a failure, because "Sync failed" is unactionable with two', () => {
+    const summary = summarizeRuns([
+      run('server', { status: 'failed', reason: 'The sync server did not respond.' }),
+      run('fake', {}),
+    ]);
+
+    // Still ok, because iCloud got through — and the problem still shows, since
+    // half a sync is exactly the state worth telling somebody about.
+    expect(summary.ok).toBe(true);
+    expect(summary.problem).toBe('server: The sync server did not respond.');
+  });
+
+  it('reports no problem when every store merely skipped', () => {
+    const summary = summarizeRuns([run('fake', { status: 'skipped', reason: 'Demo mode.' })]);
+    expect(summary.ok).toBe(false);
+    expect(summary.problem).toBeNull();
   });
 });

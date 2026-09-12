@@ -1,4 +1,4 @@
 {
-  "message": "A recipe's either/or ingredients (like \"firm tofu or extra-firm tofu\") now default to whichever alternative you already have on hand, instead of always assuming the first-listed one, and shopping lists, cost, and nutrition all follow. You can still pick the other one yourself at any time.",
+  "message": "A recipe's either/or ingredients (like \"firm tofu or extra-firm tofu\") now default to whichever alternative you already have on hand, instead of always assuming the first-listed one, so shopping lists, cost, and nutrition all follow. You can still pick the other one yourself at any time.",
   "date": "2026-09-11"
 }

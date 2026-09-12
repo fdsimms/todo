@@ -714,7 +714,7 @@ function makeStyles(colors: Colors) {
       textTransform: 'uppercase',
     },
     sectionTotal: { color: colors.textSecondary, fontSize: font.xs },
-    entryRowSwipe: { borderRadius: radius.md, marginBottom: spacing.sm },
+    entryRowSwipe: { borderRadius: radius.md, marginBottom: spacing.xs },
     entryRow: {
       flexDirection: 'row',
       alignItems: 'center',

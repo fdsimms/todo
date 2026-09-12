@@ -21,6 +21,7 @@ import { EmptyState } from './EmptyState';
 import { useColors, useTheme } from '../theme/ThemeContext';
 import { spacing, radius, font, fontWeight, border, animation, interaction, type Colors } from '../theme';
 import { haptics } from '../utils/haptics';
+import { SegmentedControl } from './SegmentedControl';
 import { useRecipeStore } from '../store/useRecipeStore';
 import { useLeftoverStore } from '../store/useLeftoverStore';
 import { rankRecipes, describeRecipe, cleanRecipeName, sortRecipesForDisplay } from '../utils/recipeUtils';
@@ -389,23 +390,12 @@ export function RecipePickerSheet({ visible, dayKey, dayLabel, defaultSlot, forc
               : 'Pick a recipe, or type whatever it is. “Leftovers” is a plan too.'}
           </Text>
 
-          <View style={styles.chips}>
-            {MEAL_SLOTS.map(s => {
-              const on = s === slot;
-              return (
-                <TouchableOpacity
-                  key={s}
-                  style={[styles.chip, on && styles.chipOn]}
-                  onPress={() => { haptics.tap(); setSlot(s); }}
-                  activeOpacity={interaction.activeOpacity}
-                  accessibilityRole="button"
-                  accessibilityState={{ selected: on }}
-                  accessibilityLabel={slotLabel(s)}
-                >
-                  <Text style={[styles.chipText, on && styles.chipTextOn]}>{slotLabel(s)}</Text>
-                </TouchableOpacity>
-              );
-            })}
+          <View style={styles.segment}>
+            <SegmentedControl
+              options={MEAL_SLOTS.map(s => ({ value: s, label: slotLabel(s) }))}
+              value={slot}
+              onChange={setSlot}
+            />
           </View>
 
           <View style={styles.presetRow}>
@@ -554,7 +544,7 @@ export function RecipePickerSheet({ visible, dayKey, dayLabel, defaultSlot, forc
         {/* "Cancel" until something's actually been planned, "Done" once it
             has — closing no longer un-plans a pick, so calling that Cancel
             past the first one would be a promise the tap doesn't keep. */}
-        <TouchableOpacity style={styles.cancelCard} onPress={dismiss} activeOpacity={interaction.activeOpacity}>
+        <TouchableOpacity style={styles.cancelCard} onPress={dismiss} activeOpacity={interaction.activeOpacity} accessibilityRole="button">
           <Text style={styles.cancelLabel}>{planned.length > 0 ? 'Done' : 'Cancel'}</Text>
         </TouchableOpacity>
       </Animated.View>
@@ -609,30 +599,7 @@ const makeStyles = (colors: Colors) => StyleSheet.create({
     paddingTop: 2,
     paddingBottom: spacing.sm,
   },
-  chips: {
-    flexDirection: 'row',
-    flexWrap: 'wrap',
-    gap: spacing.xs,
-    paddingHorizontal: spacing.md,
-    paddingBottom: spacing.sm,
-  },
-  chip: {
-    paddingHorizontal: spacing.md,
-    paddingVertical: 7,
-    borderRadius: radius.full,
-    backgroundColor: colors.bgTertiary,
-  },
-  chipOn: {
-    backgroundColor: colors.accentFill,
-  },
-  chipText: {
-    color: colors.text,
-    fontSize: font.sm,
-    fontWeight: fontWeight.medium,
-  },
-  chipTextOn: {
-    color: colors.onAccent,
-  },
+  segment: { paddingHorizontal: spacing.md, paddingBottom: spacing.sm },
   presetRow: {
     flexDirection: 'row',
     flexWrap: 'wrap',

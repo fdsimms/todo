@@ -167,21 +167,27 @@ export function RemindMePicker({ visible, value, kind, dueDate = null, offsetDay
       <View style={styles.backdrop}>
         <SheetScrim onPress={onCancel} />
         <View style={[styles.card, shadows.popover]}>
+          {/* Header — pinned outside the scroll, so the title and close
+              button are always reachable no matter how far down the picker
+              options below have scrolled (this card easily runs taller than
+              the screen once the time spinner and AlarmKit's Ring As
+              section are both showing). */}
+          <View style={styles.header}>
+            <View style={styles.headerSpacer} />
+            <Text style={styles.headerTitle}>Remind me</Text>
+            <TouchableOpacity onPress={onCancel} hitSlop={10} style={styles.closeBtn} accessibilityRole="button" accessibilityLabel="Close">
+              <Ionicons name="close" size={20} color={colors.textSecondary} />
+            </TouchableOpacity>
+          </View>
+
+          <View style={styles.scrollWrap}>
           <ScrollView
+            style={styles.scroll}
             showsVerticalScrollIndicator={false}
             bounces={false}
             keyboardShouldPersistTaps="handled"
             {...fade.scrollProps}
           >
-            {/* Header */}
-            <View style={styles.header}>
-              <View style={styles.headerSpacer} />
-              <Text style={styles.headerTitle}>Remind me</Text>
-              <TouchableOpacity onPress={onCancel} hitSlop={10} style={styles.closeBtn} accessibilityRole="button" accessibilityLabel="Close">
-                <Ionicons name="close" size={20} color={colors.textSecondary} />
-              </TouchableOpacity>
-            </View>
-
             {/* On a date vs before the task's own due date — only offered
                 when there's a due date to count back from. */}
             {!!dueDate && (
@@ -445,29 +451,34 @@ export function RemindMePicker({ visible, value, kind, dueDate = null, offsetDay
               </>
             )}
 
-            {/* Done button */}
+            <View style={styles.sectionGap} />
+          </ScrollView>
+          <ScrollEdgeFade edge="bottom" opacity={fade.bottomOpacity} color={colors.bgSecondary} />
+          </View>
+
+          {/* Footer — Done/Clear pinned outside the scroll, so confirming or
+              clearing a reminder never needs scrolling to find. */}
+          <View style={styles.footer}>
             <TouchableOpacity
               style={[styles.doneBtn, !canConfirm && styles.doneBtnDisabled]}
               onPress={confirm}
               disabled={!canConfirm}
               activeOpacity={interaction.activeOpacity}
+              accessibilityRole="button"
+              accessibilityState={{ disabled: !canConfirm }}
             >
               <Text style={styles.doneBtnLabel}>Done</Text>
             </TouchableOpacity>
 
-            {/* Clear button */}
             {onClear && (
               <>
                 <View style={styles.sectionGapSm} />
-                <TouchableOpacity style={styles.clearBtn} onPress={onClear} activeOpacity={interaction.activeOpacity}>
+                <TouchableOpacity style={styles.clearBtn} onPress={onClear} activeOpacity={interaction.activeOpacity} accessibilityRole="button">
                   <Text style={styles.clearLabel}>Clear reminder</Text>
                 </TouchableOpacity>
               </>
             )}
-
-            <View style={styles.sectionGap} />
-          </ScrollView>
-          <ScrollEdgeFade edge="bottom" opacity={fade.bottomOpacity} color={colors.bgSecondary} />
+          </View>
         </View>
       </View>
     </Modal>
@@ -484,7 +495,6 @@ const makeStyles = (colors: Colors, windowHeight: number) => StyleSheet.create({
   },
   card: {
     width: CARD_WIDTH,
-    maxHeight: windowHeight * 0.88,
     backgroundColor: colors.bgSecondary,
     borderRadius: radius.lg,
     overflow: 'hidden',
@@ -496,6 +506,24 @@ const makeStyles = (colors: Colors, windowHeight: number) => StyleSheet.create({
     paddingTop: spacing.md,
     paddingBottom: spacing.sm,
     paddingHorizontal: spacing.md,
+  },
+  // Bare wrapper — its only job is being ScrollEdgeFade's position:
+  // relative anchor, now that the footer sits after it rather than inside
+  // the scroll (see ScrollEdgeFade's own doc comment on where it expects
+  // to be placed).
+  scrollWrap: {},
+  // Capped well short of the screen rather than left to grow with its
+  // content: this picker's options (calendar, time spinner, timezone
+  // toggle, AlarmKit's Ring As section) easily add up to more than one
+  // screen's worth on their own, and the header/footer above and below
+  // this need their own room too. That used to leave the card as tall as
+  // the screen allowed, with Done buried at the bottom of one long scroll.
+  scroll: {
+    maxHeight: windowHeight * 0.5,
+  },
+  footer: {
+    paddingTop: spacing.sm,
+    paddingBottom: spacing.md,
   },
   headerSpacer: {
     width: 28,
@@ -535,7 +563,7 @@ const makeStyles = (colors: Colors, windowHeight: number) => StyleSheet.create({
     fontSize: font.xs,
     fontWeight: fontWeight.semibold,
     textTransform: 'uppercase',
-    letterSpacing: 0.5,
+    letterSpacing: 0.8,
     marginBottom: spacing.xs + 2,
   },
   modeSection: {

@@ -1,10 +1,11 @@
-import { useCallback, useEffect, useMemo, useState } from 'react';
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import type { Recipe } from '../types';
 import { extractRecipe, type ExtractedRecipe } from '../services/aiSuggestions';
 import { useRecipeStore } from '../store/useRecipeStore';
 import { cleanRecipeName, normalizeIngredient } from '../utils/recipeUtils';
 import { groceryNameKey } from '../utils/groceryParse';
 import { describeImportError } from '../services/recipePage';
-import { pickRecipePhoto, type RecipePhotoSource } from '../utils/recipePhoto';
+import { pickRecipePhoto, MAX_RECIPE_PHOTOS, type RecipePhoto, type RecipePhotoSource } from '../utils/recipePhoto';
 import type { ReferenceCandidate } from '../utils/recipeImportComponents';
 import { alertPhotoAccessDenied } from './useRecipeImportSource';
 import { haptics } from '../utils/haptics';
@@ -18,7 +19,10 @@ export type ComponentImportState =
   /** The picker is open, or its downscale is still running. */
   | { status: 'picking' }
   | { status: 'reading' }
-  | { status: 'read'; extracted: ExtractedRecipe }
+  /** `photoCount` is how many photos the read combined — see `importFrom`. */
+  | { status: 'read'; extracted: ExtractedRecipe; photoCount: number }
+  /** Picked by hand from the recipe box — see `linkTo`. */
+  | { status: 'linked'; recipe: Recipe }
   | { status: 'failed'; message: string };
 
 const IDLE: ComponentImportState = { status: 'idle' };
@@ -40,11 +44,25 @@ const IDLE: ComponentImportState = { status: 'idle' };
  * links all land together. Cancelling the sheet leaves no recipe behind, which
  * is the property that lets the offer be as forward as it is.
  *
- * **Photo only, deliberately.** The main import offers paste and link too,
- * because a recipe you're starting from scratch could come from anywhere. A
- * reference has already told us where it is: page 45 of the book in front of
- * you. Offering a paste box and a URL field for that is offering two dead ends
- * and a wider row to fit them in.
+ * **Photo only for creating a new one, deliberately.** The main import offers
+ * paste and link too, because a recipe you're starting from scratch could
+ * come from anywhere. A reference has already told us where it is: page 45 of
+ * the book in front of you. Offering a paste box and a URL field for that is
+ * offering two dead ends and a wider row to fit them in.
+ *
+ * **Matching is exact-name-only, so a reference can fail to match a recipe
+ * that's genuinely already in the box** — the page calls it one thing, the
+ * user saved it as another. `linkTo` is the escape hatch: picking a recipe by
+ * hand from the box behaves exactly like an automatic match (ticked, and
+ * `commitTo` links rather than creates), it's just chosen rather than found.
+ *
+ * **A second photo after a successful read adds a page rather than replacing
+ * one**, the same page-turn case the main import's `photos` array exists for
+ * — page 45 can run onto page 46 same as any other. A photo taken after a
+ * *failure* instead starts over: the row has nothing usable to combine with,
+ * and the simplest recovery is to try again from scratch. `photosRef`/
+ * `statesRef` carry that distinction without going through React state, since
+ * nothing here needs a render just to remember what the last status was.
  */
 export function useRecipeComponentImports(
   candidates: readonly ReferenceCandidate[],
@@ -52,6 +70,8 @@ export function useRecipeComponentImports(
 ) {
   const [states, setStates] = useState<Record<string, ComponentImportState>>({});
   const [accepted, setAccepted] = useState<Set<string>>(new Set());
+  const statesRef = useRef<Record<string, ComponentImportState>>({});
+  const photosRef = useRef<Record<string, RecipePhoto[]>>({});
 
   // Which candidates exist is decided by the run that produced them, so the
   // ticks are seeded from the run rather than from a tap. A reference the user
@@ -61,6 +81,8 @@ export function useRecipeComponentImports(
   // unticked, because there is nothing yet to tick *for*.
   const seed = candidates.map(c => `${c.key}:${c.match?.id ?? ''}`).join('|');
   useEffect(() => {
+    statesRef.current = {};
+    photosRef.current = {};
     setStates({});
     setAccepted(new Set(candidates.filter(c => c.match).map(c => c.key)));
     // `seed` stands in for the candidate list: a new array identity every
@@ -69,6 +91,7 @@ export function useRecipeComponentImports(
   }, [seed]);
 
   const setState = useCallback((key: string, state: ComponentImportState) => {
+    statesRef.current = { ...statesRef.current, [key]: state };
     setStates(prev => ({ ...prev, [key]: state }));
   }, []);
 
@@ -88,8 +111,16 @@ export function useRecipeComponentImports(
    * page 45 has answered the question, and making them tick a box to confirm
    * the answer they just gave is a second ask for the same thing. Untick is
    * still right there if the read came back wrong.
+   *
+   * A photo taken while the row already shows a read result is *added* to it
+   * rather than replacing it — the page-turn case `MAX_RECIPE_PHOTOS` caps —
+   * and the combined set is re-read as one recipe. Any other prior status
+   * (idle, or a failed read) starts a fresh one-photo set instead: a failure
+   * has nothing worth combining with, and "try again" should mean exactly
+   * that rather than "add to whatever didn't work".
    */
   const importFrom = useCallback(async (key: string, source: RecipePhotoSource) => {
+    const appending = statesRef.current[key]?.status === 'read';
     setState(key, { status: 'picking' });
     let photo;
     try {
@@ -110,22 +141,42 @@ export function useRecipeComponentImports(
       return;
     }
 
+    const photos = (appending ? [...(photosRef.current[key] ?? []), photo] : [photo]).slice(0, MAX_RECIPE_PHOTOS);
+    photosRef.current = { ...photosRef.current, [key]: photos };
+
     setState(key, { status: 'reading' });
     try {
       // The method comes across, same as it does for a recipe imported on its
       // own — page 45 is a whole recipe, not an ingredient list. References do
       // not: a component that points at a *third* page has nowhere to offer
       // that, and a row that grows its own rows is a flow with no bottom.
-      const extracted = await extractRecipe(photo, [...availableAisles], {
+      const extracted = await extractRecipe(photos, [...availableAisles], {
         includeReferences: false,
       });
-      setState(key, { status: 'read', extracted });
+      setState(key, { status: 'read', extracted, photoCount: photos.length });
       haptics.success();
       setAccepted(prev => (prev.has(key) ? prev : new Set(prev).add(key)));
     } catch (e) {
       setState(key, { status: 'failed', message: describeImportError(e) });
     }
   }, [availableAisles, setState]);
+
+  /**
+   * The reference isn't a name match for anything in the box, but the user
+   * recognizes it as a recipe they already have under a different name —
+   * "Hongos Portobello y Soya Asada Tacos" on the page, "Mushroom tacos" in
+   * the box. `importableReferences`' own matching is exact-name-only, so this
+   * is the escape hatch for every reference it couldn't place on its own.
+   *
+   * Ticks the row for the same reason a successful read does: picking a
+   * recipe answers the question, and asking for a second confirmation would
+   * be asking the same thing twice.
+   */
+  const linkTo = useCallback((key: string, recipe: Recipe) => {
+    setState(key, { status: 'linked', recipe });
+    haptics.success();
+    setAccepted(prev => (prev.has(key) ? prev : new Set(prev).add(key)));
+  }, [setState]);
 
   const stateFor = useCallback(
     (key: string): ComponentImportState => states[key] ?? IDLE,
@@ -142,7 +193,7 @@ export function useRecipeComponentImports(
     for (const candidate of candidates) {
       if (!accepted.has(candidate.key)) continue;
       const state = states[candidate.key];
-      if (candidate.match || state?.status === 'read') keys.add(candidate.key);
+      if (candidate.match || state?.status === 'read' || state?.status === 'linked') keys.add(candidate.key);
     }
     return keys;
   }, [candidates, accepted, states]);
@@ -189,6 +240,10 @@ export function useRecipeComponentImports(
       }
 
       const state = states[candidate.key];
+      if (state?.status === 'linked') {
+        store.addComponent(parentRecipeId, state.recipe.id);
+        continue;
+      }
       if (state?.status !== 'read') continue;
       const extracted = state.extracted;
       const name = cleanRecipeName(extracted.name || candidate.reference.name);
@@ -244,9 +299,11 @@ export function useRecipeComponentImports(
   }, [candidates, accepted, states]);
 
   const reset = useCallback(() => {
+    statesRef.current = {};
+    photosRef.current = {};
     setStates({});
     setAccepted(new Set());
   }, []);
 
-  return { stateFor, accepted, acceptedKeys, toggle, importFrom, commitTo, reset };
+  return { stateFor, accepted, acceptedKeys, toggle, importFrom, linkTo, commitTo, reset };
 }

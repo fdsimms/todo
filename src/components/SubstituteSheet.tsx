@@ -15,7 +15,7 @@ import { useShallow } from 'zustand/react/shallow';
 import { useGroceryStore } from '../store/useGroceryStore';
 import { useSettingsStore } from '../store/useSettingsStore';
 import { useColors } from '../theme/ThemeContext';
-import { border, font, fontWeight, iconSize, interaction, radius, spacing, type Colors } from '../theme';
+import { font, fontWeight, iconSize, interaction, radius, spacing, type Colors } from '../theme';
 import { groceryNameKey } from '../utils/groceryParse';
 import { catalogItemForKey } from '../utils/groceryPlural';
 import { describeSubstituteLink, substituteQuantity, substitutesFor } from '../utils/itemSubs';
@@ -29,6 +29,7 @@ import { GROCERY_NAME_MAX_LENGTH } from '../types';
 import { haptics } from '../utils/haptics';
 import { EmptyState } from './EmptyState';
 import { InlineAction } from './InlineAction';
+import { SheetHeader } from './SheetHeader';
 import { SheetHeaderButton } from './SheetHeaderButton';
 
 interface Props {
@@ -405,21 +406,25 @@ export function SubstituteSheet({ visible, itemId, editingSubItemId = null, onSw
   return (
     <Modal visible={visible} animationType="slide" presentationStyle="pageSheet" onRequestClose={handleCancel}>
       <View style={styles.root}>
-        <View style={styles.header}>
-          <SheetHeaderButton
-            label={reviewingId ? 'Back' : 'Cancel'}
-            role="cancel"
-            onPress={reviewingId ? handleBack : handleCancel}
-            minWidth={64}
-          />
-          <Text style={styles.headerTitle} numberOfLines={1}>Instead of {item.name}</Text>
-          <SheetHeaderButton
-            label={editing ? 'Save' : 'Add'}
-            onPress={handleConfirm}
-            disabled={!picked}
-            minWidth={64}
-          />
-        </View>
+        <SheetHeader
+          title={`Instead of ${item.name}`}
+          left={
+            <SheetHeaderButton
+              label={reviewingId ? 'Back' : 'Cancel'}
+              role="cancel"
+              onPress={reviewingId ? handleBack : handleCancel}
+              minWidth={64}
+            />
+          }
+          right={
+            <SheetHeaderButton
+              label={editing ? 'Save' : 'Add'}
+              onPress={handleConfirm}
+              disabled={!picked}
+              minWidth={64}
+            />
+          }
+        />
 
         {picked ? (
           <View style={styles.body}>
@@ -770,22 +775,6 @@ export function SubstituteSheet({ visible, itemId, editingSubItemId = null, onSw
 function makeStyles(colors: Colors) {
   return StyleSheet.create({
     root: { flex: 1, backgroundColor: colors.bg },
-    header: {
-      flexDirection: 'row',
-      alignItems: 'center',
-      justifyContent: 'space-between',
-      paddingHorizontal: spacing.md,
-      paddingVertical: spacing.md,
-      borderBottomWidth: border.hairline,
-      borderBottomColor: colors.separator,
-    },
-    headerTitle: {
-      flex: 1,
-      textAlign: 'center',
-      color: colors.text,
-      fontSize: font.md,
-      fontWeight: fontWeight.semibold,
-    },
     caption: {
       color: colors.textSecondary,
       fontSize: font.sm,

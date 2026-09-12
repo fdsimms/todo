@@ -508,7 +508,7 @@ function ReviewRow({
           const active = entry.answer === answer;
           const tint = colors[meta.colorKey];
           return (
-            <PressableScale
+            <PressableScale hitSlop={8}
               key={answer}
               onPress={() => onChange(answer)}
               accessibilityRole="button"
@@ -521,7 +521,7 @@ function ReviewRow({
           );
         })}
       </View>
-      <PressableScale
+      <PressableScale hitSlop={8}
         onPress={onUndo}
         accessibilityRole="button"
         accessibilityLabel={`Undo ${entry.item.name}`}

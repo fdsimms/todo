@@ -3,11 +3,27 @@
 // src/patchNotes/entries/. Runs automatically via npm lifecycle hooks
 // (postinstall, pretest, prestart/preandroid/preios) so the generated file
 // is never committed and never conflicts between branches.
+//
+// Only the newest SHIPPED_ENTRY_LIMIT entries are written — see the comment
+// on that constant.
 const fs = require('fs');
 const path = require('path');
 
 const entriesDir = path.join(__dirname, '..', 'src', 'patchNotes', 'entries');
 const outFile = path.join(__dirname, '..', 'src', 'utils', 'patchNotesData.ts');
+
+// How many of the newest entries get compiled into the app.
+//
+// Every entry here is a string in the Hermes bytecode that every user
+// downloads and keeps, and one fragment lands per user-facing PR — around
+// 1,250 a month at the rate this repo moves, about 220 bytes each. Uncapped,
+// What's New was 1,558 entries and 346 KB on its way to several MB a year,
+// for a list nobody scrolls to the bottom of.
+//
+// The fragments themselves are never deleted: src/patchNotes/entries/ stays
+// the full record, and raising this number brings the older ones straight
+// back. Only what ships is bounded.
+const SHIPPED_ENTRY_LIMIT = 400;
 
 const files = fs.readdirSync(entriesDir).filter(f => f.endsWith('.json'));
 
@@ -25,7 +41,9 @@ entries.sort((a, b) => {
   return a.file < b.file ? 1 : -1;
 });
 
-const body = entries
+const shipped = entries.slice(0, SHIPPED_ENTRY_LIMIT);
+
+const body = shipped
   .map(e => `  { id: ${JSON.stringify(e.id)}, message: ${JSON.stringify(e.message)}, date: ${JSON.stringify(e.date)} },`)
   .join('\n');
 
@@ -40,4 +58,8 @@ ${body}
 `;
 
 fs.writeFileSync(outFile, output);
-console.log(`build-patch-notes: wrote ${entries.length} entries to ${path.relative(process.cwd(), outFile)}`);
+const dropped = entries.length - shipped.length;
+console.log(
+  `build-patch-notes: wrote ${shipped.length} entries to ${path.relative(process.cwd(), outFile)}` +
+    (dropped > 0 ? ` (${dropped} older ones held back by SHIPPED_ENTRY_LIMIT)` : '')
+);

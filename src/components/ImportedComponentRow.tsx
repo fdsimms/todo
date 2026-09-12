@@ -1,4 +1,4 @@
-import React, { useMemo } from 'react';
+import React, { useMemo, useState } from 'react';
 import { View, Text, TouchableOpacity, ActivityIndicator, StyleSheet } from 'react-native';
 import Ionicons from '@expo/vector-icons/Ionicons';
 import { useColors } from '../theme/ThemeContext';
@@ -7,10 +7,12 @@ import {
   type Colors,
 } from '../theme';
 import { InlineAction } from './InlineAction';
+import { RecipeComponentPicker } from './RecipeComponentPicker';
 import { formatServingsRange } from '../utils/recipeUtils';
+import type { Recipe } from '../types';
 import type { ReferenceCandidate } from '../utils/recipeImportComponents';
 import type { ComponentImportState } from '../hooks/useRecipeComponentImports';
-import type { RecipePhotoSource } from '../utils/recipePhoto';
+import { MAX_RECIPE_PHOTOS, type RecipePhotoSource } from '../utils/recipePhoto';
 import { haptics } from '../utils/haptics';
 import { capitalize } from '../utils/capitalize';
 
@@ -20,8 +22,12 @@ interface Props {
   candidate: ReferenceCandidate;
   state: ComponentImportState;
   accepted: boolean;
+  /** The recipe this reference is being imported into, or null before it exists yet (RecipeCreateSheet). Passed straight through to RecipeComponentPicker. */
+  parent: Recipe | null;
   onToggle: () => void;
   onImport: (source: RecipePhotoSource) => void;
+  /** The user picked an existing recipe by hand — see `linkTo` on the hook. */
+  onLink: (recipe: Recipe) => void;
 }
 
 /**
@@ -42,16 +48,25 @@ interface Props {
  * anything. The name shown is the *photographed page's* own title rather than
  * the word the first page used for it, because that is what the new recipe will
  * be called.
+ *
+ * **The automatic match is exact-name-only, so it misses the common case where
+ * the box already has this recipe under a different name.** "Find in recipe
+ * box" is the row's manual answer to that — the same `RecipeComponentPicker`
+ * the recipe screen's own "Add a component" uses, so a name typed once ranks
+ * the whole box the same way either entry point does. Picking one behaves like
+ * an automatic match from there on: ticked, and shown as already in the box.
  */
-export function ImportedComponentRow({ candidate, state, accepted, onToggle, onImport }: Props) {
+export function ImportedComponentRow({ candidate, state, accepted, parent, onToggle, onImport, onLink }: Props) {
   const colors = useColors();
   const styles = useMemo(() => makeStyles(colors), [colors]);
+  const [pickerVisible, setPickerVisible] = useState(false);
 
   const { reference, match } = candidate;
   const read = state.status === 'read' ? state.extracted : null;
+  const linked = state.status === 'linked' ? state.recipe : null;
   // Tickable exactly when there's something to tick for: a recipe to link, or
   // one that's been read and is about to be created.
-  const tickable = !!match || !!read;
+  const tickable = !!match || !!read || !!linked;
   const busy = state.status === 'picking' || state.status === 'reading';
 
   const title = read?.name || reference.name;
@@ -61,13 +76,18 @@ export function ImportedComponentRow({ candidate, state, accepted, onToggle, onI
 
   const detail = (() => {
     if (match) return 'already in your recipe box';
+    // Named, because unlike an automatic match the two names are usually
+    // different — that's exactly why this reference needed a manual pick.
+    if (linked) return `linked to “${linked.name}”`;
     if (state.status === 'picking') return 'getting the photo ready';
     if (state.status === 'reading') return 'reading the photo';
     if (state.status === 'failed') return state.message;
     if (read) {
       const count = `${read.ingredients.length} ingredient${read.ingredients.length === 1 ? '' : 's'}`;
       const serves = formatServingsRange(read.servings, read.servingsMax);
-      return serves ? `${count}, serves ${serves}` : count;
+      const base = serves ? `${count}, serves ${serves}` : count;
+      const photoCount = state.status === 'read' ? state.photoCount : 1;
+      return photoCount > 1 ? `${base}, from ${photoCount} photos` : base;
     }
     return 'not in your recipe box yet';
   })();
@@ -78,9 +98,11 @@ export function ImportedComponentRow({ candidate, state, accepted, onToggle, onI
   /**
    * The same pair the source picker offers, with the camera leading: the
    * reference points at a page of the book already in the reader's hands.
+   * "Find in recipe box" rides along beside them — same row, same tap cost —
+   * for the reader who turns the page and realizes they don't need to.
    *
    * A row that has already been read drops the second button. Both fit on one
-   * line at 390pt only while the first is short, and "Take another photo"
+   * line at 390pt only while the first is short, and "Add the next page"
    * beside "Choose a photo" wraps — a row that is already answered doesn't
    * need two ways to answer it again.
    */
@@ -112,6 +134,14 @@ export function ImportedComponentRow({ candidate, state, accepted, onToggle, onI
         haptic
         accessibilityLabel={`Paste an image of ${title}`}
       />
+      <InlineAction
+        label="Find in recipe box"
+        icon="search-outline"
+        variant="neutral"
+        onPress={() => setPickerVisible(true)}
+        haptic
+        accessibilityLabel={`Find ${title} in your recipe box`}
+      />
     </View>
   );
 
@@ -123,7 +153,29 @@ export function ImportedComponentRow({ candidate, state, accepted, onToggle, onI
       </Text>
       {state.status === 'idle' && !match && renderPhotoButtons('Take a photo')}
       {state.status === 'failed' && renderPhotoButtons('Try again')}
-      {!!read && renderPhotoButtons('Take another photo', false)}
+      {/* Adds a page to the read rather than redoing it — see importFrom's
+          append-on-read rule — so it drops out once the cap is reached the
+          same way the main import's own add buttons do. */}
+      {state.status === 'read' && state.photoCount < MAX_RECIPE_PHOTOS
+        && renderPhotoButtons('Add the next page', false)}
+      {!!linked && (
+        <View style={styles.actions}>
+          <InlineAction
+            label="Choose a different recipe"
+            icon="search-outline"
+            variant="neutral"
+            onPress={() => setPickerVisible(true)}
+            haptic
+            accessibilityLabel={`Choose a different recipe for ${title}`}
+          />
+        </View>
+      )}
+      <RecipeComponentPicker
+        visible={pickerVisible}
+        recipe={parent}
+        onClose={() => setPickerVisible(false)}
+        onSelect={onLink}
+      />
     </View>
   );
 

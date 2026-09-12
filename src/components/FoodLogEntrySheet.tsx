@@ -29,7 +29,7 @@ import { MEAL_SLOTS, MEAL_SLOT_LABELS, type FoodNutrition, type GroceryItem, typ
 import { useGroceryStore } from '../store/useGroceryStore';
 import { useRecipeStore } from '../store/useRecipeStore';
 import { useFoodLogStore, type FoodLogDraft } from '../store/useFoodLogStore';
-import { subDays } from 'date-fns';
+import { subDays } from 'date-fns/subDays';
 import { addCustomPortion, catalogPanelWrite, nutritionFor } from '../utils/foodNutrition';
 import { combineFoodNutrition, helpingNutrition, recipeHelpingNutrition, scalePanelToAmount } from '../utils/foodLog';
 import { cookedDishGrams, mealHelping, servingGrams, weighedHelping } from '../utils/mealLog';
@@ -799,7 +799,7 @@ export function FoodLogEntrySheet({
                 ? dishWeightHint
                 : portionExamples.length > 0
                   ? `A weight (like 100g), or one of this food's stated portions: ${portionExamples.join(', ')}. Anything else is refused rather than guessed at.`
-                  : 'A weight, like 100g. This food has no stated portions, so type an amount by volume or count and you can weigh it once to add it.'}
+                  : 'A weight, like 100g. This food has no stated portions. Type an amount by volume or count and you can weigh it once to add it.'}
             </Text>
 
             {!!amount.trim() && !built && (

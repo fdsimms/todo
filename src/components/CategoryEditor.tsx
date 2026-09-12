@@ -32,16 +32,16 @@ import { dateToHHMM, hhmmToDate } from '../utils/clockTime';
 import { firstEmoji } from '../utils/emojiInput';
 import { sameTimeSegments } from '../utils/visibilityUtils';
 import { SheetHeaderButton } from './SheetHeaderButton';
+import { useKeyboardInsetScroll } from '../hooks/useKeyboardInsetScroll';
 import { InlineTimePicker } from '../screens/settings/InlineTimePicker';
 import type { TimeOfDay } from '../types';
-import { capitalize } from '../utils/capitalize';
-import { useKeyboardInsetScroll } from '../hooks/useKeyboardInsetScroll';
 
 const DEFAULT_DAYS = [1, 2, 3, 4, 5];
 const DEFAULT_START = '09:00';
 const DEFAULT_END = '18:00';
 const TIME_SEGMENTS: TimeOfDay[] = ['morning', 'afternoon', 'evening', 'night'];
 
+const capitalize = (s: string) => s.charAt(0).toUpperCase() + s.slice(1);
 
 interface Props {
   visible: boolean;
@@ -63,9 +63,6 @@ export function CategoryEditor({ visible, category, onClose }: Props) {
   const colors = useColors();
   const { isDark } = useTheme();
   const styles = useMemo(() => makeStyles(colors), [colors]);
-  // Not KeyboardAvoidingView: this is a pageSheet whose ScrollView holds text
-  // inputs, which is exactly what this hook is for. The two fight each other
-  // — see the hook's own doc comment.
   const keyboardScroll = useKeyboardInsetScroll<ScrollView>();
 
   const cat = useCategoryStore(s => (category ? s.getCategoryByName(category) : null));

@@ -42,6 +42,16 @@ export interface SerializedTask {
   chainStep?: string;
   /** The question this task asks when it is completed, if it asks one. */
   asksOnCompletion?: string;
+  /**
+   * The answer recorded against this occurrence, where one was given.
+   *
+   * Absent both when the task asks nothing and when it asks but was completed
+   * without an answer, which is the same absence the app draws — a declined
+   * question leaves no value. Per-occurrence rather than per-task: a recurring
+   * decision task's log is the log of its answers, not one answer copied
+   * forward.
+   */
+  answer?: string;
   recurring?: boolean;
   pinned?: boolean;
   /**
@@ -83,6 +93,7 @@ export function serializeTask(replica: Replica, task: Task): SerializedTask {
     estimatedMinutes: replica.estimatedMinutes(task) ?? undefined,
     chainStep: step?.title,
     asksOnCompletion: replica.deliverableKind(task) ?? undefined,
+    answer: task.deliverableValue ?? undefined,
     recurring: task.recurrenceType !== 'none' ? true : undefined,
     pinned: task.pinned ? true : undefined,
     blocked: replica.isBlocked(task) ? true : undefined,

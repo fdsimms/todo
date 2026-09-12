@@ -308,6 +308,36 @@ export function panelMultiplier(
   return nutrition.servingGrams ? grams / nutrition.servingGrams : null;
 }
 
+/**
+ * A reason `panelMultiplier` refuses that is never about the food, so no
+ * amount of correcting a panel or weighing a portion could ever answer it.
+ *
+ * Every *other* reason it says no — a missing portion, a per-100ml panel
+ * with no density, a per-serving panel with no serving weight — is answered
+ * by the food's own side: "Edit these figures" fixes the panel, and
+ * `weighableLine` offers a scale for the portion table. These two aren't
+ * that. The line itself is what needs rewriting, on the recipe, not on the
+ * food:
+ *
+ * - `'noAmount'` — no number at all, the same refusal `parseQuantity` makes
+ *   for "several cloves" or "to taste". With nothing to multiply, no figure
+ *   the food could carry would relate the line to a weight.
+ * - `'countedContainer'` — "2 14 oz cans" names how many tins, not how much
+ *   is in one, and `gramsForLine`/`panelMultiplier` refuse it on every basis
+ *   for exactly that reason (see the comment above the `container` check in
+ *   `gramsForLine`). What's missing is how much *one* tin holds, which the
+ *   line doesn't say and no per-100g/ml/serving figure can stand in for.
+ */
+export type UnfixableQuantity = 'noAmount' | 'countedContainer';
+
+/** Which of the two food-independent refusals `quantity` hits, or null if neither does. */
+export function unfixableQuantityReason(quantity: string): UnfixableQuantity | null {
+  const parsed = parseQuantity(quantity);
+  if (parsed.amount === null) return 'noAmount';
+  if (parsed.container && parsed.container.count !== null) return 'countedContainer';
+  return null;
+}
+
 /** What one line of a refused amount could be weighed as, to make it answerable. */
 export interface LineWeighing {
   /** The portion row to record it against — the unit the line names, or the food itself. */

@@ -40,6 +40,7 @@ import { useGroceryStore } from '../store/useGroceryStore';
 import { useRecipeStore } from '../store/useRecipeStore';
 import { recipesUsingIngredient } from '../utils/recipeComponents';
 import { useKeyboardInsetScroll } from '../hooks/useKeyboardInsetScroll';
+import { SheetHeader } from './SheetHeader';
 import { SheetHeaderButton } from './SheetHeaderButton';
 import { NumberPadAccessory, NUMBER_PAD_ACCESSORY_ID } from './NumberPadAccessory';
 import { ItemDisposalOffer } from './ItemDisposalOffer';
@@ -1464,25 +1465,27 @@ export function GroceryItemSheet({
       onDismiss={handleDone}
     >
       <View style={styles.root}>
-        <View style={styles.header}>
-          <TouchableOpacity
-            onPress={toggleSearch}
-            hitSlop={8}
-            style={styles.headerSearchButton}
-            activeOpacity={interaction.activeOpacity}
-            accessibilityRole="button"
-            accessibilityLabel={searchOpen ? 'Close field search' : 'Find a field'}
-            accessibilityState={{ expanded: searchOpen }}
-          >
-            <Ionicons
-              name={searchOpen ? 'close' : 'search'}
-              size={iconSize.sm}
-              color={searchOpen ? colors.accent : colors.textSecondary}
-            />
-          </TouchableOpacity>
-          <Text style={styles.headerTitle}>Item</Text>
-          <SheetHeaderButton label="Done" onPress={handleDone} minWidth={64} />
-        </View>
+        <SheetHeader
+          title="Item"
+          left={
+            <TouchableOpacity
+              onPress={toggleSearch}
+              hitSlop={8}
+              style={styles.headerSearchButton}
+              activeOpacity={interaction.activeOpacity}
+              accessibilityRole="button"
+              accessibilityLabel={searchOpen ? 'Close field search' : 'Find a field'}
+              accessibilityState={{ expanded: searchOpen }}
+            >
+              <Ionicons
+                name={searchOpen ? 'close' : 'search'}
+                size={iconSize.sm}
+                color={searchOpen ? colors.accent : colors.textSecondary}
+              />
+            </TouchableOpacity>
+          }
+          right={<SheetHeaderButton label="Done" onPress={handleDone} minWidth={64} />}
+        />
 
         {/* Scoped to the row on screen: the pantry list mounts the same
             component unscoped, and an offer raised there is that screen's to
@@ -1910,16 +1913,6 @@ function makeStyles(colors: Colors) {
     nutritionDetail: { color: colors.textSecondary, fontSize: font.sm, lineHeight: 18 },
     nutritionActions: { flexDirection: 'row', gap: spacing.sm, flexWrap: 'wrap' },
     root: { flex: 1, backgroundColor: colors.bg },
-    header: {
-      flexDirection: 'row',
-      alignItems: 'center',
-      justifyContent: 'space-between',
-      paddingHorizontal: spacing.md,
-      paddingVertical: spacing.md,
-      borderBottomWidth: border.hairline,
-      borderBottomColor: colors.separator,
-    },
-    headerTitle: { color: colors.text, fontSize: font.md, fontWeight: fontWeight.semibold },
     // Same 64 width the plain spacer held, now the field-search toggle — still
     // matches Done's own minWidth, so the title stays centered the way
     // GroceryAislesSheet's single-button header does.
