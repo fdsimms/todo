@@ -86,6 +86,21 @@ describe('wantsUseUpTask', () => {
       wantsUseUpTask(leftover({ keepUntil: '2026-08-14', finishedAt: '2026-08-12T00:00:00.000Z', outcome: 'eaten' }), true)
     ).toBe(false);
   });
+
+  it('waits for dayResetTime rather than real midnight, during the grace window', () => {
+    // 00:30 real time on the 14th, but dayResetTime is 02:00 — logical today
+    // is still the 13th, so a leftover due the 15th has two days left, not
+    // one, and shouldn't be urgent yet. Reading the bare wall clock instead
+    // (what this regressed to once) puts it a day ahead of schedule and
+    // fires the task during the grace window, before its own day arrives.
+    settingsState.dayResetTime = '02:00';
+    try {
+      jest.setSystemTime(new Date('2026-08-14T00:30:00.000Z'));
+      expect(wantsUseUpTask(leftover({ keepUntil: '2026-08-15' }), true)).toBe(false);
+    } finally {
+      settingsState.dayResetTime = '00:00';
+    }
+  });
 });
 
 describe('useUpTaskTitle', () => {
