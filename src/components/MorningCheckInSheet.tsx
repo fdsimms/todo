@@ -111,7 +111,7 @@ export function MorningCheckInSheet({ visible, onClose, tasks }: Props) {
                       <View style={styles.row}>
                         <Text style={styles.rowTitle} numberOfLines={1}>{task.title}</Text>
                         <View style={styles.choice}>
-                          <TouchableOpacity
+                          <TouchableOpacity hitSlop={8}
                             style={[styles.choiceBtn, styles.choiceBtnNo]}
                             activeOpacity={interaction.activeOpacity}
                             onPress={() => answerNo(task)}
@@ -120,7 +120,7 @@ export function MorningCheckInSheet({ visible, onClose, tasks }: Props) {
                           >
                             <Ionicons name="close" size={iconSize.sm} color={colors.red} />
                           </TouchableOpacity>
-                          <TouchableOpacity
+                          <TouchableOpacity hitSlop={8}
                             style={[styles.choiceBtn, styles.choiceBtnYes]}
                             activeOpacity={interaction.activeOpacity}
                             onPress={() => answerYes(task)}
@@ -168,7 +168,7 @@ function makeStyles(colors: Colors) {
     listEmpty: { flexGrow: 1, padding: spacing.md, paddingBottom: spacing.xl },
     groupBlock: { marginBottom: spacing.md },
     groupLabel: {
-      color: colors.textTertiary,
+      color: colors.textSecondary,
       fontSize: font.xs,
       fontWeight: fontWeight.semibold,
       textTransform: 'uppercase',

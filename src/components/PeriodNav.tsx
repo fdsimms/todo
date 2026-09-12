@@ -53,11 +53,11 @@ export function PeriodNav({
 
   const arrows = (
     <>
-      <PressableScale style={styles.btn} onPress={onPrev} accessibilityLabel={prevAccessibilityLabel}>
+      <PressableScale hitSlop={8} style={styles.btn} onPress={onPrev} accessibilityLabel={prevAccessibilityLabel}>
         <Ionicons name="chevron-back" size={iconSize.md} color={colors.accent} />
       </PressableScale>
       <Text style={styles.label}>{label}</Text>
-      <PressableScale style={styles.btn} onPress={onNext} accessibilityLabel={nextAccessibilityLabel}>
+      <PressableScale hitSlop={8} style={styles.btn} onPress={onNext} accessibilityLabel={nextAccessibilityLabel}>
         <Ionicons name="chevron-forward" size={iconSize.md} color={colors.accent} />
       </PressableScale>
     </>

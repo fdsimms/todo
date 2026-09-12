@@ -17,7 +17,7 @@ import { subMonths } from 'date-fns/subMonths';
 import { isSameMonth } from 'date-fns/isSameMonth';
 import { isSameDay } from 'date-fns/isSameDay';
 import { format } from 'date-fns/format';
-import { useColors } from '../theme/ThemeContext';
+import { useColors, useTheme } from '../theme/ThemeContext';
 import { spacing, radius, font, fontWeight, border, interaction, animation, type Colors } from '../theme';
 import { haptics } from '../utils/haptics';
 import {
@@ -198,6 +198,7 @@ export function WhenPicker({
   postponeTaskId, onBreakUp, nlEnabled,
 }: Props) {
   const colors = useColors();
+  const { shadows } = useTheme();
   const styles = useMemo(() => makeStyles(colors), [colors]);
   const tasks = useTaskStore(s => s.tasks);
   const projects = useProjectStore(useShallow(s => s.projects));
@@ -568,7 +569,7 @@ export function WhenPicker({
           pointerEvents="none"
         />
         <SheetScrim onPress={onCancel} />
-        <Animated.View style={[styles.card, { opacity: enterAnim, transform: [{ scale: cardScale }] }]}>
+        <Animated.View style={[styles.card, shadows.popover, { opacity: enterAnim, transform: [{ scale: cardScale }] }]}>
           {/* Header */}
           <View style={styles.header}>
             <SheetHeaderButton label="Cancel" role="cancel" onPress={onCancel} minWidth={28} />
@@ -647,7 +648,7 @@ export function WhenPicker({
                 styles={styles}
                 colors={colors}
                 icon="star"
-                iconColor="#FFD60A"
+                iconColor={colors.warning}
                 label="Today"
                 pending={pendingKey === 'today'}
                 popAnim={popAnim}
@@ -927,11 +928,6 @@ const makeStyles = (colors: Colors) => StyleSheet.create({
     backgroundColor: colors.bgSecondary,
     borderRadius: radius.lg,
     overflow: 'hidden',
-    shadowColor: '#000',
-    shadowOffset: { width: 0, height: 8 },
-    shadowOpacity: 0.35,
-    shadowRadius: 20,
-    elevation: 12,
   },
   header: {
     flexDirection: 'row',
@@ -957,7 +953,7 @@ const makeStyles = (colors: Colors) => StyleSheet.create({
     fontSize: font.xs,
     fontWeight: fontWeight.semibold,
     textTransform: 'uppercase',
-    letterSpacing: 0.5,
+    letterSpacing: 0.8,
     marginBottom: spacing.xs + 2,
   },
   nlSection: {

@@ -167,7 +167,7 @@ export function ProjectsOptionsMenu({
           </TouchableOpacity>
         </View>
 
-        <TouchableOpacity style={styles.cancelCard} onPress={dismiss} activeOpacity={interaction.activeOpacity}>
+        <TouchableOpacity style={styles.cancelCard} onPress={dismiss} activeOpacity={interaction.activeOpacity} accessibilityRole="button">
           <Text style={styles.cancelLabel}>Close</Text>
         </TouchableOpacity>
       </Animated.View>

@@ -278,7 +278,7 @@ export function HealthSettings() {
                   // that same type is granted — see the note in
                   // docs/arch/health-data.md. Worth saying here, before it
                   // happens, since the write rows below only report it after.
-                  ? "Not asked yet. Allowing this can reset write access below for the types this app both reads and writes (water, weight, most nutrients) — check Log to Health afterward"
+                  ? "Not asked yet. Allowing this can reset write access below for the types this app both reads and writes (water, weight, most nutrients), so check Log to Health afterward"
                   : "Not asked yet. Nothing can be read until you allow it in Health"
                 : requestStatus === 'unnecessary'
                   ? "Already asked. To change what's shared, open Health, tap your profile picture, then Privacy, then Apps, then dundundun"

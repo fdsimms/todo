@@ -183,7 +183,7 @@ export function QuickAddNameSheet({
               autoCapitalize={autoCapitalize}
               blurOnSubmit={false}
             />
-            <TouchableOpacity
+            <TouchableOpacity hitSlop={8}
               style={[styles.addBtn, !trimmedName && styles.addBtnDisabled]}
               onPress={handleAdd}
               disabled={!trimmedName}

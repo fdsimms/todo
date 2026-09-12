@@ -22,8 +22,14 @@ import { SheetHeaderButton } from './SheetHeaderButton';
 
 interface Props {
   visible: boolean;
-  /** The recipe a component is being added to — excluded from the list, and the pivot for loop checks. */
-  recipe: Recipe;
+  /**
+   * The recipe a component is being added to — excluded from the list, and
+   * the pivot for loop checks. Null when that recipe doesn't exist yet (an
+   * import mid-flight, offering to link a reference before its parent is
+   * saved) — there's nothing yet for a candidate to already be a component of,
+   * or to loop back to, so both checks drop out and every recipe is eligible.
+   */
+  recipe: Recipe | null;
   onClose: () => void;
   onSelect: (component: Recipe) => void;
 }
@@ -47,26 +53,26 @@ export function RecipeComponentPicker({ visible, recipe, onClose, onSelect }: Pr
   useEffect(() => { if (visible) setQuery(''); }, [visible]);
 
   const alreadyUsed = useMemo(
-    () => new Set(recipe.components.map(c => c.recipeId)),
-    [recipe.components]
+    () => new Set(recipe ? recipe.components.map(c => c.recipeId) : []),
+    [recipe]
   );
 
   const candidates = useMemo(() => {
-    const byId = recipeMap(recipes);
+    const byId = recipe ? recipeMap(recipes) : null;
     const ranked = query.trim()
       ? rankRecipes(query, recipes)
       : sortRecipesForDisplay(recipes);
     return ranked
-      .filter(r => r.id !== recipe.id)
+      .filter(r => !recipe || r.id !== recipe.id)
       .map(candidate => ({
         recipe: candidate,
         reason: alreadyUsed.has(candidate.id)
           ? 'Already a component'
-          : wouldCreateRecipeCycle(byId, recipe.id, candidate.id)
+          : (recipe && byId && wouldCreateRecipeCycle(byId, recipe.id, candidate.id))
             ? 'Would create a loop'
             : null,
       }));
-  }, [recipes, recipe.id, query, alreadyUsed]);
+  }, [recipes, recipe, query, alreadyUsed]);
 
   const handleSelect = (candidate: Recipe) => {
     haptics.success();
@@ -84,7 +90,7 @@ export function RecipeComponentPicker({ visible, recipe, onClose, onSelect }: Pr
           <View style={styles.headerSpacer} />
         </View>
 
-        {recipes.length <= 1 ? (
+        {recipes.length <= (recipe ? 1 : 0) ? (
           <EmptyState
             icon="restaurant-outline"
             title="No other recipes"

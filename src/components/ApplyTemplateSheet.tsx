@@ -394,7 +394,7 @@ export function ApplyTemplateSheet({ visible, template, onClose, projectId, onAp
       return (
         <View>
           <View style={[styles.itemRow, indent]}>
-            <TouchableOpacity
+            <TouchableOpacity hitSlop={11}
               onPress={() => toggleNode(node)}
               activeOpacity={interaction.activeOpacity}
               accessibilityRole="checkbox"
@@ -596,6 +596,8 @@ export function ApplyTemplateSheet({ visible, template, onClose, projectId, onAp
             onPress={handleApply}
             disabled={selectedCount === 0}
             activeOpacity={interaction.activeOpacity}
+            accessibilityRole="button"
+            accessibilityState={{ disabled: selectedCount === 0 }}
           >
             <Text style={[styles.applyBtnText, selectedCount === 0 && styles.applyBtnTextDisabled]}>
               {selectedCount === 0
@@ -605,7 +607,7 @@ export function ApplyTemplateSheet({ visible, template, onClose, projectId, onAp
           </TouchableOpacity>
         </View>
 
-        <TouchableOpacity style={styles.cancelCard} onPress={() => dismiss()} activeOpacity={interaction.activeOpacity}>
+        <TouchableOpacity style={styles.cancelCard} onPress={() => dismiss()} activeOpacity={interaction.activeOpacity} accessibilityRole="button">
           <Text style={styles.cancelLabel}>Cancel</Text>
         </TouchableOpacity>
       </Animated.View>
