@@ -135,6 +135,9 @@ export function RecipeIngredientSheet({ visible, recipeId, ingredient, onClose }
   // Left out of this recipe's nutrition total on purpose — a garnish or a
   // small amount that doesn't move the figures (RecipeIngredient.excludeFromNutrition).
   const [excludeFromNutrition, setExcludeFromNutrition] = useState(false);
+  // A staple you'd already have, not something to shop for — water at a
+  // stated amount, most often (RecipeIngredient.excludeFromShoppingList).
+  const [excludeFromShoppingList, setExcludeFromShoppingList] = useState(false);
   // Nested rather than a sibling: a Modal presents from its React parent's view
   // controller, so a sibling would ask this sheet's own presenter for a second
   // presentation while this one is up. Same call GroceryCatalogSheet makes, and it's
@@ -161,6 +164,7 @@ export function RecipeIngredientSheet({ visible, recipeId, ingredient, onClose }
     setNoSwap(!!ingredient.noSwap);
     setOptional(!!ingredient.optional);
     setExcludeFromNutrition(!!ingredient.excludeFromNutrition);
+    setExcludeFromShoppingList(!!ingredient.excludeFromShoppingList);
     setEditingItemId(null);
     setLinkOpen(false);
     setAltLinkOpen(false);
@@ -242,6 +246,7 @@ export function RecipeIngredientSheet({ visible, recipeId, ingredient, onClose }
       noSwap,
       optional,
       excludeFromNutrition,
+      excludeFromShoppingList,
     });
     onClose();
   };
@@ -653,6 +658,30 @@ export function RecipeIngredientSheet({ visible, recipeId, ingredient, onClose }
             <Text style={styles.hint}>
               Leaves this line out of the recipe's nutrition total. For an amount too small
               to matter, like a garnish.
+            </Text>
+          </View>
+        </TouchableOpacity>
+
+        <View style={styles.separator} />
+
+        <TouchableOpacity
+          style={styles.toggleRow}
+          activeOpacity={interaction.activeOpacity}
+          onPress={() => { haptics.tap(); setExcludeFromShoppingList(v => !v); }}
+          accessibilityRole="switch"
+          accessibilityState={{ checked: excludeFromShoppingList }}
+          accessibilityLabel="Don't add to shopping list"
+        >
+          <Ionicons
+            name={excludeFromShoppingList ? 'checkbox' : 'square-outline'}
+            size={iconSize.md}
+            color={excludeFromShoppingList ? colors.accent : colors.textSecondary}
+          />
+          <View style={styles.toggleBody}>
+            <Text style={styles.toggleLabel}>Don't add to shopping list</Text>
+            <Text style={styles.hint}>
+              A staple you'd already have, like water at a stated amount. Stays on the
+              recipe; just never offered as something to buy.
             </Text>
           </View>
         </TouchableOpacity>

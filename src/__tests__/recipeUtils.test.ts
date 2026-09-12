@@ -171,6 +171,35 @@ describe('parseRecipeIngredients', () => {
     expect('optional' in plain[0]).toBe(false);
   });
 
+  it('keeps a line’s excludeFromNutrition flag, and writes the key only when it is set', () => {
+    // This flag used to be missing from normalizeIngredient's rebuild
+    // entirely, so it was silently dropped on every reload — same failure
+    // mode noSwap/optional guard against above.
+    const excluded = JSON.parse(JSON.stringify(parseRecipeIngredients(JSON.stringify([
+      { id: 'a', name: 'Mint sprigs', nameKey: 'mint sprigs', quantity: '', excludeFromNutrition: true },
+    ]))));
+    expect(excluded[0].excludeFromNutrition).toBe(true);
+
+    const plain = parseRecipeIngredients(JSON.stringify([
+      { id: 'a', name: 'Mint sprigs', nameKey: 'mint sprigs', quantity: '' },
+    ]));
+    expect('excludeFromNutrition' in plain[0]).toBe(false);
+  });
+
+  it('keeps a line’s excludeFromShoppingList flag, and writes the key only when it is set', () => {
+    // Same rebuild-field-by-field reasoning as noSwap/optional above — a
+    // staple like water at a stated amount, not something to shop for.
+    const excluded = JSON.parse(JSON.stringify(parseRecipeIngredients(JSON.stringify([
+      { id: 'a', name: 'Water', nameKey: 'water', quantity: '3/4 cup', excludeFromShoppingList: true },
+    ]))));
+    expect(excluded[0].excludeFromShoppingList).toBe(true);
+
+    const plain = parseRecipeIngredients(JSON.stringify([
+      { id: 'a', name: 'Water', nameKey: 'water', quantity: '3/4 cup' },
+    ]));
+    expect('excludeFromShoppingList' in plain[0]).toBe(false);
+  });
+
   it('keeps a permanently dismissed catalog/split suggestion, and writes the key only when it is set', () => {
     // Same rebuild-field-by-field reasoning as noSwap/optional above — a
     // dismissal that stopped surviving a reload of the recipe is the bug
