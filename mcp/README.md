@@ -63,6 +63,25 @@ Read-only except the last, which needs `MCP_WRITE_TOKEN`.
 | `list_medication_logs` | Doses recorded, scheduled and as-needed. |
 | `list_templates` | Stored templates: name, item count, groups, and the questions a run asks. |
 | `create_template` | **Write.** Builds a whole template in one call. Needs `MCP_WRITE_TOKEN`. |
+| `create_task` | **Write.** Adds one task, with the app's own defaults and title rules applied. |
+| `complete_task` | **Write.** Ticks one off, spawning whatever that spawns: the next occurrence, the next chain step, the next set of a dated series. |
+| `defer_task` | **Write.** Moves a task to a date, or clears its date. |
+
+`complete_task` refuses two things rather than doing them quietly, and both are
+deliberate. A task that **cannot** be completed says so: a negative habit has no
+completion (record a slip instead) and a recurring task shown early cannot be
+completed ahead of its own day. And a task that **asks a question** on
+completion is sent back for an answer rather than completing without one,
+because a model in a conversation is the one caller that could have asked and
+did not. Passing `deliverableValue: null` completes it without an answer, which
+is what the app's own "Complete Without Answering" does. See
+[`src/deliverableAsk.ts`](src/deliverableAsk.ts).
+
+What `complete_task` does **not** do is the device half: no reminder is
+cancelled or scheduled, no calendar event written, nothing sent to Apple Health.
+A dose *is* recorded where the task names a medication, because that is the
+app's own record rather than somebody else's. The rest belongs to whichever
+device the completion syncs to.
 
 The three log tools take the same range: `days` counts back from today (7 by default), or pass
 `from`/`to` as `YYYY-MM-DD`. There is deliberately **no weight tool** — weight lives in Apple

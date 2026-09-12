@@ -33,7 +33,10 @@ import {
   listGroceryItems,
   listMedicationLogs,
   listMoodLogs,
+  createTask,
   createTemplate,
+  completeTask,
+  deferTask,
   listProjects,
   listTasks,
   listTemplates,
@@ -246,6 +249,43 @@ function registerWriteTools(
   withWrite: <T>(fn: () => T) => Promise<T>
 ): void {
   server.tool(
+    'create_task',
+    "Add a task. The app's own defaults apply (a default category, its time-of-day segment, title rules), so the result reports what the task actually became rather than only its id.",
+    {
+      title: z.string().min(1),
+      notes: z.string().optional(),
+      category: z.string().nullable().optional(),
+      tags: z.array(z.string()).optional(),
+      projectId: z.string().nullable().optional(),
+      dueDate: z.string().nullable().optional().describe('ISO date-time.'),
+      deferUntil: z.string().nullable().optional().describe('ISO date-time. Hides the task until then.'),
+      deadline: z.string().nullable().optional().describe('ISO date-time. Informational; does not affect visibility.'),
+      reminderTime: z.string().nullable().optional().describe('ISO date-time.'),
+      timeSegments: z.array(z.enum(['morning', 'afternoon', 'evening'])).optional(),
+      priority: z.number().int().min(0).max(4).optional(),
+      effort: z.number().int().min(0).max(6).optional(),
+      estimatedMinutes: z.number().int().positive().nullable().optional(),
+      recurrenceType: z.string().optional().describe("'none', 'daily', 'weekly', 'monthly', 'yearly' and the app's other rule kinds."),
+      recurrenceInterval: z.number().int().positive().optional(),
+      recurrenceDays: z.array(z.number().int().min(0).max(6)).optional(),
+      parentId: z.string().nullable().optional().describe('Makes this a subtask of that task.'),
+      // Without this no task created here could ever ask a question, which
+      // makes complete_task's whole answer path unreachable for anything but a
+      // task the user made in the app.
+      deliverableKind: z.enum(['text', 'date', 'number']).nullable().optional()
+        .describe('Makes completing this task ask for an answer of that kind, recorded on the row.'),
+    },
+    async input => {
+      try {
+        // eslint-disable-next-line @typescript-eslint/no-explicit-any
+        return json(await withWrite(() => createTask(replica, input as any)));
+      } catch (e) {
+        return json({ error: e instanceof Error ? e.message : 'Could not create the task.' });
+      }
+    }
+  );
+
+  server.tool(
     'create_template',
     'Create a task template: its items, item groups, the questions a run asks, an optional firing schedule, and references to other templates. Everything is created in one call; an invalid plan creates nothing and reports every problem at once.',
     {
@@ -285,6 +325,44 @@ function registerWriteTools(
         // The validator's whole point is reporting every problem at once, so
         // the message is handed back rather than collapsed into "failed".
         return json({ error: e instanceof Error ? e.message : 'Could not create the template.' });
+      }
+    }
+  );
+
+  server.tool(
+    'complete_task',
+    "Complete a task. A recurring one spawns its next occurrence, a chain advances one step, and a dated series lays out its next set, so the result says what was created rather than only that the row is done. A task that asks a question on completion is refused unless deliverableValue is given, including explicitly null to complete it without an answer.",
+    {
+      id: z.string().min(1),
+      deliverableValue: z.string().nullable().optional()
+        .describe('The answer, for a task that asks one. Null completes it without an answer. Omitting it on a task that asks is refused.'),
+      completedAt: z.string().optional()
+        .describe('ISO date-time, for recording something done earlier. Defaults to now.'),
+    },
+    async ({ id, ...rest }) => {
+      try {
+        // 'deliverableValue' in options is what the refusal tests, so the key
+        // has to survive only when the caller actually sent it. Zod drops an
+        // omitted optional rather than setting it undefined, so this holds.
+        return json(await withWrite(() => completeTask(replica, id, rest)));
+      } catch (e) {
+        return json({ error: e instanceof Error ? e.message : 'Could not complete the task.' });
+      }
+    }
+  );
+
+  server.tool(
+    'defer_task',
+    'Move a task to a date, or clear its date with null. Pushing a recurring task out hides it until then without moving the schedule the rest of its occurrences come from; pulling one forward moves its date. The result is the whole task, since which field changed depends on which of those happened.',
+    {
+      id: z.string().min(1),
+      date: z.string().nullable().describe('ISO date-time, or null to leave the task with no date.'),
+    },
+    async ({ id, date }) => {
+      try {
+        return json(await withWrite(() => deferTask(replica, id, date)));
+      } catch (e) {
+        return json({ error: e instanceof Error ? e.message : 'Could not reschedule the task.' });
       }
     }
   );
