@@ -2,6 +2,7 @@ import {
   combineFoodNutrition,
   describeFoodLogEntry,
   describeFoodLogTotals,
+  foodLogEntryEdit,
   foodLogSections,
   foodLogTotals,
   nutrientContributions,
@@ -439,6 +440,80 @@ describe('nutrientContributions', () => {
       { entry: stated, amount: 2 },
       { entry: unstated, amount: null },
     ]);
+  });
+});
+
+describe('foodLogEntryEdit', () => {
+  it('reopens a catalog food on the amount it was logged with', () => {
+    const row = entry({ itemId: 'item-milk', quantity: '1 cup' });
+    expect(foodLogEntryEdit(row)).toEqual({ amount: '1 cup', dishMeasure: null });
+  });
+
+  it('prefers the helping\'s own text over the entry\'s quantity', () => {
+    // `quantity` is what the row renders and the helping is what was measured.
+    // They match for every food today, so the helping is the one to trust.
+    const row = entry({
+      itemId: 'item-milk',
+      quantity: 'one cup-ish',
+      nutrition: panel({ basis: 'perServing', servingText: '1 cup' }),
+    });
+    expect(foodLogEntryEdit(row)?.amount).toBe('1 cup');
+  });
+
+  it('reopens a box on its own row', () => {
+    const row = entry({ itemId: 'item-bread', productId: 'prod-sourdough', quantity: '2 slices' });
+    expect(foodLogEntryEdit(row)).toEqual({ amount: '2 slices', dishMeasure: null });
+  });
+
+  it('refuses an entry with no link, since there is no panel left to measure against', () => {
+    // A described meal the model estimated, or a database food nobody filed.
+    expect(foodLogEntryEdit(entry({ quantity: 'a bowl of ramen' }))).toBeNull();
+  });
+
+  it('refuses an entry carrying answered "Anything else?" lines', () => {
+    // What was typed against each line isn't stored, only its name, so
+    // reopening would show them blank and a save would drop them.
+    const row = entry({ recipeId: 'r1', quantity: '2 servings, plus baguette' });
+    expect(foodLogEntryEdit(row)).toBeNull();
+  });
+
+  it('refuses an entry with no amount recorded at all', () => {
+    const row = entry({ itemId: 'item-milk', quantity: '  ' });
+    expect(foodLogEntryEdit(row)).toBeNull();
+  });
+
+  it('reads a dish logged in servings back to a number', () => {
+    const row = entry({
+      recipeId: 'r1',
+      quantity: '2 servings',
+      nutrition: panel({ basis: 'perServing', servingText: '2 servings' }),
+    });
+    expect(foodLogEntryEdit(row)).toEqual({ amount: '2', dishMeasure: 'servings' });
+  });
+
+  it('reads the singular serving too', () => {
+    const row = entry({ recipeId: 'r1', quantity: '1 serving' });
+    expect(foodLogEntryEdit(row)).toEqual({ amount: '1', dishMeasure: 'servings' });
+  });
+
+  it('reads a weighed plate back as grams', () => {
+    const row = entry({ recipeId: 'r1', quantity: '320 g' });
+    expect(foodLogEntryEdit(row)).toEqual({ amount: '320', dishMeasure: 'weight' });
+  });
+
+  it('reads the phrasings an unserved dish uses instead of a servings count', () => {
+    // `describeHelping` writes these for a dish with no servings count. The
+    // amount field only ever held a number, so that is what comes back.
+    const whole = entry({ recipeId: 'r1', quantity: 'the whole dish' });
+    const half = entry({ recipeId: 'r1', quantity: 'half the dish' });
+    const part = entry({ recipeId: 'r1', quantity: '1.5 of the dish' });
+    expect(foodLogEntryEdit(whole)).toEqual({ amount: '1', dishMeasure: 'servings' });
+    expect(foodLogEntryEdit(half)).toEqual({ amount: '0.5', dishMeasure: 'servings' });
+    expect(foodLogEntryEdit(part)).toEqual({ amount: '1.5', dishMeasure: 'servings' });
+  });
+
+  it('refuses a dish whose helping does not parse', () => {
+    expect(foodLogEntryEdit(entry({ recipeId: 'r1', quantity: 'a big plate' }))).toBeNull();
   });
 });
 

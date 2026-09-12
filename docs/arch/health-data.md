@@ -587,14 +587,43 @@ authorization *is* observable where read authorization is not. But it only helps
 somebody who already suspects something, and the person this fails is precisely
 the one with no reason to look.
 
-### There is still no edit path, and adding one has an obligation
+### Correcting an entry, and the obligation that came with it
 
-The food log UI adds and deletes; it does not edit. `updateEntry` exists, is
-unused by any screen, and is deliberately dumb — it is what the write above
-calls back into to store the ids, so a retract-and-rewrite there would chase
-its own tail. **If an edit path ever reaches `nutrition` or `label`, it must
-retract the old samples and write new ones**, in that order, rather than
+The food log used to add and delete only, so a mistyped portion meant forgetting
+the entry and walking back through the picker. It edits now (#2514), and the
+rule this section carried for a year is what the edit is built around:
+`updateEntry` stays deliberately dumb — it is what the write above calls back
+into to store the ids, so a retract-and-rewrite there would chase its own tail —
+and **a correction reaching `nutrition` or `label` goes through `reviseEntry`,
+which retracts the old samples and writes new ones**, in that order, rather than
 patching the row and leaving Health stating the meal as first typed.
+
+Four things hold it in place, and each is a way the edit could have written
+something nobody measured:
+
+- **The amount is re-measured, never multiplied.** What an entry stores is one
+  helping: `basis` is always `perServing`, the amounts are what was eaten, and
+  `portions` was emptied when the helping was built. So "make it 2 cups instead
+  of 1" has no arithmetic available to it, and correcting an amount means
+  running `scalePanelToAmount` over the food's own panel again. That panel is
+  reachable only through the entry's links, which is what `foodLogEntryEdit`
+  decides on.
+- **An entry with no link cannot be corrected, and is not offered the action.**
+  A described meal the model estimated, or a database food nobody filed, has no
+  panel left to measure against. Offering its figures as fields to retype was
+  the obvious alternative and is the one thing this must not do: a hand-typed
+  panel going into a medical record is exactly the unmeasured claim the rest of
+  this document refuses.
+- **The rewrite is skipped when nothing Health holds changed.** Moving the meal
+  or re-filing the item touches no figure Health ever saw, and rewriting anyway
+  would churn somebody's medical record for a field it never got.
+- **A failed retract does not cancel the write.** The stale sample stays in
+  Health, exactly as it does when a delete's retract fails, and is something the
+  person can remove there. Skipping the write over it would leave Health holding
+  only the figures that were just corrected, which is the worse of the two.
+
+`atISO` and `dayKey` stay unpatchable on both paths. They were stamped together
+from one instant under one reset time, and re-dating means a new entry.
 
 ### One thing about the read side worth writing down here
 

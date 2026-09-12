@@ -14,6 +14,7 @@ import { useFoodLogStore } from '../store/useFoodLogStore';
 import { dayKeyOf, dayKeyToDate, getCurrentDayStart } from '../utils/dateUtils';
 import {
   describeFoodLogEntry,
+  foodLogEntryEdit,
   foodLogSections,
   foodLogTotals,
   resolveFoodLogDrop,
@@ -120,6 +121,11 @@ export function FoodLogScreen() {
    * the meal's own figures moves with it.
    */
   const [linkingEntry, setLinkingEntry] = useState<FoodLogEntry | null>(null);
+  /**
+   * The entry being corrected, which reopens the add sheet on it rather than
+   * on an empty form. Null the rest of the time.
+   */
+  const [editingEntry, setEditingEntry] = useState<FoodLogEntry | null>(null);
   const [seedRecipeId, setSeedRecipeId] = useState<string | null>(null);
   // Plain useRowSelection, same as Templates/Projects/People: there is
   // nothing recurrence- or meal-plan-aware to reuse useTaskSelection's delete
@@ -254,6 +260,13 @@ export function FoodLogScreen() {
       moveButtons.push({ text: 'Other', onPress: () => { haptics.tap(); moveEntries([entry.id], null); } });
     }
     Alert.alert(entry.label, undefined, [
+      // Offered only for an entry that can actually reopen. A described meal
+      // or a database food nobody filed has no panel left to measure a
+      // corrected amount against, and `foodLogEntryEdit` is where that rule
+      // lives rather than here.
+      ...(foodLogEntryEdit(entry)
+        ? [{ text: 'Edit', onPress: () => setEditingEntry(entry) }]
+        : []),
       {
         text: 'Move to meal',
         onPress: () => Alert.alert('Move to meal', undefined, [
@@ -589,6 +602,18 @@ export function FoodLogScreen() {
         onClose={() => { setAddOpen(false); setSeedRecipeId(null); }}
         onEstimate={estimateRoute !== 'unavailable' ? () => { setAddOpen(false); setEstimateOpen(true); } : undefined}
         onScan={() => { setAddOpen(false); setScanOpen(true); }}
+      />
+      {/* The same sheet, reopened on an entry rather than on an empty form. A
+          second mount rather than a flag on the one above, so an add halfway
+          through and a correction can't share a set of fields. It offers
+          neither Describe nor Scan: both are ways of answering "what did you
+          eat" from scratch, and this already has that answer. */}
+      <FoodLogEntrySheet
+        visible={editingEntry !== null}
+        editing={editingEntry}
+        slot={editingEntry?.slot ?? null}
+        at={loggingAt}
+        onClose={() => setEditingEntry(null)}
       />
       <ScanToLogFlow
         visible={scanOpen}

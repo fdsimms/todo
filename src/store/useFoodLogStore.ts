@@ -1,5 +1,6 @@
 import { create } from 'zustand';
 import type { FoodLogEntry, FoodNutrition, MealSlot } from '../types';
+import { NUTRIENT_KEYS } from '../types';
 import {
   dbBulkDeleteFoodLogEntries,
   dbBulkSetFoodLogSlot,
@@ -13,7 +14,7 @@ import {
 } from '../db/database';
 import { generateId } from '../utils/id';
 import { dayKeyOf, getCurrentDayStart, getLogicalDayKey } from '../utils/dateUtils';
-import { logFoodEntryToHealth, retractFoodEntryFromHealth } from '../utils/healthFoodSync';
+import { logFoodEntryToHealth, retractFoodEntryFromHealth, type FoodWriteResult } from '../utils/healthFoodSync';
 import { useSettingsStore } from './useSettingsStore';
 
 /**
@@ -157,7 +158,10 @@ export interface PendingManualMealLog {
 export type FoodLogPatch = Partial<
   Pick<
     FoodLogEntry,
-    'label' | 'quantity' | 'grams' | 'nutrition' | 'slot' | 'sortOrder' | 'itemId' | 'productId'
+    // `recipeId` is patchable for `reviseEntry`'s sake alone: correcting an
+    // entry can also correct what was eaten, and a dish re-picked as a food
+    // would otherwise keep pointing at the recipe it is no longer about.
+    'label' | 'quantity' | 'grams' | 'nutrition' | 'slot' | 'sortOrder' | 'itemId' | 'productId' | 'recipeId'
   >
 >;
 
@@ -245,6 +249,19 @@ interface FoodLogStore {
   addEntry: (draft: FoodLogDraft) => FoodLogEntry | null;
   updateEntry: (id: string, patch: FoodLogPatch) => void;
   /**
+   * Correct an entry, Health included.
+   *
+   * `updateEntry`'s counterpart for the half of a row that is a claim about
+   * what somebody ate rather than about where it is filed. Where that one is
+   * deliberately dumb, this one retracts the samples the entry already wrote
+   * and writes the corrected figures in their place, which is the pair its
+   * doc names: `retractFoodEntryFromHealth` then `logFoodEntryToHealth`.
+   *
+   * `atISO` and `dayKey` stay unpatchable here too. They were stamped together
+   * from one instant under one reset time, and re-dating means a new entry.
+   */
+  reviseEntry: (id: string, patch: FoodLogPatch) => void;
+  /**
    * Forget an entry.
    *
    * Once something writes nutrients to Health this is also where those samples
@@ -305,6 +322,67 @@ interface FoodLogStore {
    */
   pendingHealthWriteRefusal: boolean;
   setPendingHealthWriteRefusal: (pending: boolean) => void;
+}
+
+/** How this module hands state back, so the helper below can share it. */
+type FoodLogSet = (
+  partial: Partial<FoodLogStore> | ((s: FoodLogStore) => Partial<FoodLogStore>),
+) => void;
+
+/**
+ * Files what Health said about one entry: its sample ids, or the one refusal
+ * worth saying out loud.
+ *
+ * Shared by the two paths that write, so a meal logged and a meal corrected
+ * are reported identically. A refusal in practice means sharing was never
+ * granted in Health's own sheet, and it is invisible: the row saved either
+ * way, so the only sign is a meal that never arrives. Said once rather than
+ * per meal, and re-armed by a write that lands, so a later breakage is
+ * surfaced instead of being swallowed by having complained once already.
+ *
+ * The other three outcomes stay silent on purpose. `off` is the switch doing
+ * what it says, `unavailable` is a device with no Health at all (or demo
+ * mode), and `nothingToWrite` is an entry stating no figure, which is an
+ * ordinary thing to log and not a fault.
+ *
+ * The row is rewritten straight through rather than via `updateEntry`, which
+ * only finds rows inside the loaded range: a meal backdated outside the window
+ * on screen is stored and simply isn't in `entries`, and losing its ids would
+ * mean samples that can never be retracted. It is rebuilt from the entry the
+ * caller already holds, so no read is needed either.
+ */
+function recordHealthWrite(entry: FoodLogEntry, result: FoodWriteResult, set: FoodLogSet): void {
+  const settings = useSettingsStore.getState();
+  if (result.outcome === 'refused') {
+    if (!settings.healthFoodWriteRefusalSeen) {
+      settings.setHealthFoodWriteRefusalSeen(true);
+      set({ pendingHealthWriteRefusal: true });
+    }
+    return;
+  }
+  if (result.outcome !== 'written') return;
+  if (settings.healthFoodWriteRefusalSeen) settings.setHealthFoodWriteRefusalSeen(false);
+
+  dbUpdateFoodLogEntry({ ...entry, healthSampleIds: result.sampleIds });
+  const stamp = (e: FoodLogEntry) =>
+    (e.id === entry.id ? { ...e, healthSampleIds: result.sampleIds } : e);
+  set(s => ({
+    entries: s.entries.map(stamp),
+    windowEntries: s.windowEntries.map(stamp),
+    insightEntries: s.insightEntries.map(stamp),
+  }));
+}
+
+/**
+ * Whether a correction changed anything Health is holding.
+ *
+ * Compared per nutrient over `NUTRIENT_KEYS` rather than by stringifying the
+ * record, so two panels built in different orders can't read as different and
+ * cost somebody a needless rewrite of their own medical record.
+ */
+function healthFiguresDiffer(before: FoodLogEntry, after: FoodLogEntry): boolean {
+  if (before.label !== after.label) return true;
+  return NUTRIENT_KEYS.some(key => before.nutrition.amounts[key] !== after.nutrition.amounts[key]);
 }
 
 export const useFoodLogStore = create<FoodLogStore>((set, get) => ({
@@ -429,7 +507,8 @@ export const useFoodLogStore = create<FoodLogStore>((set, get) => ({
       set(s => ({ insightEntries: [...s.insightEntries, entry].sort(byInstant) }));
     }
 
-    // The one trigger. `logFoodEntryToHealth` is called from here and from
+    // One of the two triggers, the other being `reviseEntry` correcting what
+    // this one wrote. `logFoodEntryToHealth` is called from those two and from
     // nowhere else, the same single-writer rule the water write keeps and for
     // the same reason: a caller that looped it into a save, a sweep or a sync
     // pass would put meals nobody ate into somebody's medical record. It owns
@@ -440,41 +519,8 @@ export const useFoodLogStore = create<FoodLogStore>((set, get) => ({
     // round trip and this action is synchronous. A failure needs no repair: the
     // entry keeps its empty `healthSampleIds`, which is exactly what "wrote
     // nothing, so there is nothing to retract" means. It does need *saying*,
-    // for the one outcome a person can act on — see the refusal branch below.
-    void logFoodEntryToHealth(entry).then(({ outcome, sampleIds }) => {
-      const settings = useSettingsStore.getState();
-      // A refusal in practice means sharing was never granted in Health's own
-      // sheet, and it is invisible: the entry below saved either way, so the
-      // only sign is a meal that never arrives. Said once rather than per meal,
-      // and re-armed by a write that lands, so a later breakage is surfaced
-      // instead of being swallowed by having complained once already.
-      //
-      // The other three outcomes stay silent on purpose. `off` is the switch
-      // doing what it says, `unavailable` is a device with no Health at all (or
-      // demo mode), and `nothingToWrite` is an entry stating no figure, which
-      // is an ordinary thing to log and not a fault.
-      if (outcome === 'refused') {
-        if (!settings.healthFoodWriteRefusalSeen) {
-          settings.setHealthFoodWriteRefusalSeen(true);
-          set({ pendingHealthWriteRefusal: true });
-        }
-        return;
-      }
-      if (outcome !== 'written') return;
-      if (settings.healthFoodWriteRefusalSeen) settings.setHealthFoodWriteRefusalSeen(false);
-      // Written straight through rather than via `updateEntry`, which only
-      // finds rows inside the loaded range: a meal backdated outside the window
-      // on screen is stored and simply isn't in `entries`, and losing its ids
-      // would mean samples that can never be retracted. The row is rebuilt from
-      // the entry this closure already holds, so no read is needed either.
-      dbUpdateFoodLogEntry({ ...entry, healthSampleIds: sampleIds });
-      const stamp = (e: FoodLogEntry) => (e.id === entry.id ? { ...e, healthSampleIds: sampleIds } : e);
-      set(s => ({
-        entries: s.entries.map(stamp),
-        windowEntries: s.windowEntries.map(stamp),
-        insightEntries: s.insightEntries.map(stamp),
-      }));
-    });
+    // for the one outcome a person can act on — see `recordHealthWrite`.
+    void logFoodEntryToHealth(entry).then(result => recordHealthWrite(entry, result, set));
 
     return entry;
   },
@@ -488,10 +534,9 @@ export const useFoodLogStore = create<FoodLogStore>((set, get) => ({
    * provenance and reaches neither `nutrition` nor `label` — so the rule below
    * still holds and is still unexercised.
    *
-   * **If an edit path ever reaches `nutrition` or `label`, it must retract the
-   * old samples and write new ones**, not patch the row and leave Health
-   * stating the meal as first typed. `retractFoodEntryFromHealth` then
-   * `logFoodEntryToHealth` is the pair, in that order.
+   * **An edit path reaching `nutrition` or `label` goes through `reviseEntry`
+   * instead**, which retracts the old samples and writes new ones rather than
+   * patching the row and leaving Health stating the meal as first typed.
    */
   updateEntry(id, patch) {
     const entry = get().entries.find(e => e.id === id);
@@ -507,6 +552,45 @@ export const useFoodLogStore = create<FoodLogStore>((set, get) => ({
       windowEntries: s.windowEntries.map(e => (e.id === id ? updated : e)),
       insightEntries: s.insightEntries.map(e => (e.id === id ? updated : e)),
     }));
+  },
+
+  reviseEntry(id, patch) {
+    // Read from SQLite rather than from `entries`, the rule every other write
+    // here keeps: a backdated entry outside the window on screen is an
+    // ordinary row, and finding it only when it happens to be loaded would
+    // leave a correction silently doing nothing.
+    const current = dbGetFoodLogEntry(id);
+    if (!current) return;
+
+    const updated: FoodLogEntry = { ...current, ...patch };
+    const rewrites = healthFiguresDiffer(current, updated);
+    // Cleared as the row is written rather than once the retract comes back,
+    // so nothing is ever left pointing at samples already on their way out.
+    if (rewrites) updated.healthSampleIds = [];
+
+    dbUpdateFoodLogEntry(updated);
+    const swap = (e: FoodLogEntry) => (e.id === id ? updated : e);
+    set(s => ({
+      entries: s.entries.map(swap),
+      windowEntries: s.windowEntries.map(swap),
+      insightEntries: s.insightEntries.map(swap),
+    }));
+
+    // A correction that moved the meal or re-filed the item changed nothing
+    // Health is holding, and rewriting anyway would churn somebody's medical
+    // record for a field it never saw.
+    if (!rewrites) return;
+
+    const stale = current.healthSampleIds;
+    void (async () => {
+      // In that order, and the write happens either way. A retract that fails
+      // leaves the old sample in Health exactly as a failed retract on delete
+      // does, which is something the person can remove there; skipping the
+      // write over it would instead leave Health holding only the figures that
+      // were just corrected.
+      if (stale.length > 0) await retractFoodEntryFromHealth(stale);
+      recordHealthWrite(updated, await logFoodEntryToHealth(updated), set);
+    })();
   },
 
   setPendingMealLog(pending) {
