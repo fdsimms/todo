@@ -1,0 +1,4 @@
+{
+  "message": "Fixed the Location field's description running off the edge of the screen in the task editor instead of wrapping onto a second line",
+  "date": "2026-09-12"
+}

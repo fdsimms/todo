@@ -142,7 +142,7 @@ export function TodayEventsSheet({ visible, onClose, events, calendarsById }: Pr
                   </View>
                   <View style={styles.rowActions}>
                     {!event.allDay && (
-                      <PressableScale
+                      <PressableScale hitSlop={8}
                         style={styles.actionButton}
                         onPress={() => toggleExpanded(key)}
                         haptic
@@ -159,7 +159,7 @@ export function TodayEventsSheet({ visible, onClose, events, calendarsById }: Pr
                         />
                       </PressableScale>
                     )}
-                    <PressableScale
+                    <PressableScale hitSlop={8}
                       style={styles.actionButton}
                       onPress={() => (hidden ? unhideEvent(event) : hideEvent(event))}
                       haptic

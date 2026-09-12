@@ -1,4 +1,4 @@
 {
-  "message": "Fixed \"Open Settings\" under Health access opening iOS Settings, where Health sharing never shows up — it now opens the Health app instead",
+  "message": "Fixed \"Open Settings\" under Health access opening iOS Settings, where Health sharing never shows up. It now opens the Health app instead",
   "date": "2026-09-10"
 }

@@ -19,6 +19,7 @@ import { MEAL_SLOTS, RECIPE_NAME_MAX_LENGTH } from '../types';
 import { useColors, useTheme } from '../theme/ThemeContext';
 import { spacing, radius, font, fontWeight, border, animation, interaction, iconSize, type Colors } from '../theme';
 import { haptics } from '../utils/haptics';
+import { SegmentedControl } from './SegmentedControl';
 import { SafeBlurView } from './SafeBlurView';
 import { InlineAction } from './InlineAction';
 import { SheetActionRow } from './SheetActionRow';
@@ -452,23 +453,12 @@ export function MealEntrySheet({
           )}
 
           <Text style={styles.label}>Meal</Text>
-          <View style={[styles.chips, styles.chipsLast]}>
-            {MEAL_SLOTS.map(slot => {
-              const on = entry?.slot === slot;
-              return (
-                <TouchableOpacity
-                  key={slot}
-                  style={[styles.chip, on && styles.chipOn]}
-                  onPress={() => { haptics.tap(); onMove({ slot }); }}
-                  activeOpacity={interaction.activeOpacity}
-                  accessibilityRole="button"
-                  accessibilityState={{ selected: on }}
-                  accessibilityLabel={slotLabel(slot)}
-                >
-                  <Text style={[styles.chipText, on && styles.chipTextOn]}>{slotLabel(slot)}</Text>
-                </TouchableOpacity>
-              );
-            })}
+          <View style={styles.chipsLast}>
+            <SegmentedControl
+              options={MEAL_SLOTS.map(slot => ({ value: slot, label: slotLabel(slot) }))}
+              value={entry?.slot ?? null}
+              onChange={slot => { if (slot) onMove({ slot }); }}
+            />
           </View>
 
           {!!onSetCooked && (
@@ -713,6 +703,7 @@ const makeStyles = (colors: Colors) => StyleSheet.create({
     paddingHorizontal: spacing.md,
   },
   chipsLast: {
+    paddingHorizontal: spacing.md,
     marginBottom: spacing.md,
   },
   furtherRow: {

@@ -67,7 +67,7 @@ const BEFORE_DAYS_MAX = 60;
 
 export function RemindMePicker({ visible, value, kind, dueDate = null, offsetDays = null, anchor = 'wallClock', onConfirm, onClear, onCancel }: Props) {
   const colors = useColors();
-  const { isDark } = useTheme();
+  const { isDark, shadows } = useTheme();
   // Reactive, unlike the width above: read once at module load, a stale
   // height would cap the card against a screen that no longer matches the
   // one it's actually rendering on.
@@ -166,7 +166,7 @@ export function RemindMePicker({ visible, value, kind, dueDate = null, offsetDay
     >
       <View style={styles.backdrop}>
         <SheetScrim onPress={onCancel} />
-        <View style={styles.card}>
+        <View style={[styles.card, shadows.popover]}>
           {/* Header — pinned outside the scroll, so the title and close
               button are always reachable no matter how far down the picker
               options below have scrolled (this card easily runs taller than
@@ -464,6 +464,8 @@ export function RemindMePicker({ visible, value, kind, dueDate = null, offsetDay
               onPress={confirm}
               disabled={!canConfirm}
               activeOpacity={interaction.activeOpacity}
+              accessibilityRole="button"
+              accessibilityState={{ disabled: !canConfirm }}
             >
               <Text style={styles.doneBtnLabel}>Done</Text>
             </TouchableOpacity>
@@ -471,7 +473,7 @@ export function RemindMePicker({ visible, value, kind, dueDate = null, offsetDay
             {onClear && (
               <>
                 <View style={styles.sectionGapSm} />
-                <TouchableOpacity style={styles.clearBtn} onPress={onClear} activeOpacity={interaction.activeOpacity}>
+                <TouchableOpacity style={styles.clearBtn} onPress={onClear} activeOpacity={interaction.activeOpacity} accessibilityRole="button">
                   <Text style={styles.clearLabel}>Clear reminder</Text>
                 </TouchableOpacity>
               </>
@@ -496,11 +498,6 @@ const makeStyles = (colors: Colors, windowHeight: number) => StyleSheet.create({
     backgroundColor: colors.bgSecondary,
     borderRadius: radius.lg,
     overflow: 'hidden',
-    shadowColor: '#000',
-    shadowOffset: { width: 0, height: 8 },
-    shadowOpacity: 0.35,
-    shadowRadius: 20,
-    elevation: 12,
   },
   header: {
     flexDirection: 'row',
@@ -566,7 +563,7 @@ const makeStyles = (colors: Colors, windowHeight: number) => StyleSheet.create({
     fontSize: font.xs,
     fontWeight: fontWeight.semibold,
     textTransform: 'uppercase',
-    letterSpacing: 0.5,
+    letterSpacing: 0.8,
     marginBottom: spacing.xs + 2,
   },
   modeSection: {

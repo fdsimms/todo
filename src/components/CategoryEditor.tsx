@@ -7,8 +7,6 @@ import {
   TouchableOpacity,
   ScrollView,
   Keyboard,
-  KeyboardAvoidingView,
-  Platform,
   StyleSheet,
   Alert,
 } from 'react-native';
@@ -34,6 +32,7 @@ import { dateToHHMM, hhmmToDate } from '../utils/clockTime';
 import { firstEmoji } from '../utils/emojiInput';
 import { sameTimeSegments } from '../utils/visibilityUtils';
 import { SheetHeaderButton } from './SheetHeaderButton';
+import { useKeyboardInsetScroll } from '../hooks/useKeyboardInsetScroll';
 import { InlineTimePicker } from '../screens/settings/InlineTimePicker';
 import type { TimeOfDay } from '../types';
 
@@ -64,6 +63,7 @@ export function CategoryEditor({ visible, category, onClose }: Props) {
   const colors = useColors();
   const { isDark } = useTheme();
   const styles = useMemo(() => makeStyles(colors), [colors]);
+  const keyboardScroll = useKeyboardInsetScroll<ScrollView>();
 
   const cat = useCategoryStore(s => (category ? s.getCategoryByName(category) : null));
   const setCategorySchedule = useCategoryStore(s => s.setCategorySchedule);
@@ -262,7 +262,7 @@ export function CategoryEditor({ visible, category, onClose }: Props) {
 
   return (
     <Modal visible={visible} animationType="slide" presentationStyle="pageSheet" onRequestClose={saveAndClose}>
-      <KeyboardAvoidingView style={styles.root} behavior={Platform.OS === 'ios' ? 'padding' : undefined}>
+      <View style={styles.root}>
         <View style={styles.header}>
           <SheetHeaderButton label="Done" onPress={saveAndClose} />
           <Text style={styles.headerTitle}>Edit category</Text>
@@ -271,7 +271,13 @@ export function CategoryEditor({ visible, category, onClose }: Props) {
           </TouchableOpacity>
         </View>
 
-        <ScrollView style={styles.scroll} contentContainerStyle={styles.scrollContent} keyboardShouldPersistTaps="handled">
+        <ScrollView
+          ref={keyboardScroll.ref}
+          style={styles.scroll}
+          contentContainerStyle={styles.scrollContent}
+          keyboardShouldPersistTaps="handled"
+          {...keyboardScroll.props}
+        >
           <View style={styles.identityRow}>
             <PressableScale
               style={styles.emojiWell}
@@ -491,7 +497,7 @@ export function CategoryEditor({ visible, category, onClose }: Props) {
           onSelect={picked => setEmoji(picked ?? '')}
           onClose={() => setEmojiPickerOpen(false)}
         />
-      </KeyboardAvoidingView>
+      </View>
     </Modal>
   );
 }

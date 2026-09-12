@@ -1,5 +1,5 @@
 /**
- * What Settings contains, as data — the ten groups and one record per
+ * What Settings contains, as data — the twelve groups and one record per
  * searchable row.
  *
  * This is a *search index*, not a description of the UI. It deliberately

@@ -58,7 +58,12 @@ async function request(config: HttpSyncConfig, path: string, init: RequestInit):
   try {
     const response = await fetch(`${origin(config.url)}${path}`, {
       ...init,
-      signal: controller.signal,
+      // Cast because this file is typechecked by two programs with different
+      // libs: the app's (React Native's `AbortSignal`) and `mcp/`'s (Node's
+      // global one), which disagree on `onabort`'s nullability. The value is
+      // the runtime's own controller either way, so the cast is to whichever
+      // type the program compiling it already believes in.
+      signal: controller.signal as unknown as RequestInit['signal'],
       headers: {
         ...init.headers,
         'content-type': 'application/json',
