@@ -131,7 +131,23 @@ type ListRow =
   | { type: 'recipeHeader'; key: string; label: string; count: number }
   | { type: 'unavailableHeader'; key: string; groupKey: string; count: number }
   | { type: 'cartHeader'; key: string; count: number }
-  | { type: 'item'; key: string; item: GroceryItem; inCart: boolean; unavailableHere: boolean };
+  | {
+      type: 'item';
+      key: string;
+      item: GroceryItem;
+      inCart: boolean;
+      unavailableHere: boolean;
+      /**
+       * Set when this row sits directly next to its live either/or partner(s)
+       * — same `choiceGroup`, nothing between them — so GroceryRow can draw
+       * the run as one stitched card instead of two lookalike ones (see the
+       * pass that sets this, below). Undefined for every ordinary row, and
+       * for a choice pair that isn't adjacent right now (a manual reorder
+       * split them, say), which falls back to the plain "or …" caption it
+       * always had.
+       */
+      choicePosition?: 'first' | 'middle' | 'last';
+    };
 
 // The add button, naming what a release right now would do.
 function AddGroceryFabWithDropLabel({
@@ -594,6 +610,20 @@ export function GroceryScreen() {
           out.push({ type: 'item', key: item.id, item, inCart: true, unavailableHere: false });
         }
       }
+    }
+    // Stitch adjacent either/or options into one run — see `choicePosition`.
+    // A header always separates rows from different aisles/recipes/cart
+    // buckets, so "adjacent in `out`" already means "adjacent on screen,
+    // same section" with no extra bookkeeping.
+    for (let i = 0; i < out.length; i++) {
+      const row = out[i];
+      if (row.type !== 'item' || !row.item.choiceGroup) continue;
+      const prev = out[i - 1];
+      const prevPaired = prev?.type === 'item' && prev.item.choiceGroup === row.item.choiceGroup;
+      const next = out[i + 1];
+      const nextPaired = next?.type === 'item' && next.item.choiceGroup === row.item.choiceGroup;
+      if (!prevPaired && !nextPaired) continue;
+      row.choicePosition = prevPaired ? (nextPaired ? 'middle' : 'last') : 'first';
     }
     return out;
   }, [grouped, inCart, cartOpen, storeMarkers, collapsedGroups]);
@@ -1257,6 +1287,7 @@ export function GroceryScreen() {
           onSelect={toggleSelection}
           onSwipeSelect={enterSelectionMode}
           alternatives={alternativeCaptionById.get(row.item.id)}
+          choicePosition={row.choicePosition}
           stockedFor={stockedForById.get(row.item.id)}
           product={preferredProductById.get(row.item.id)}
           storeMarker={storeMarkers.get(row.item.id)?.text}
