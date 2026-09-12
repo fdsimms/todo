@@ -156,7 +156,7 @@ export function buildMcpServer(replica: Replica, scope: AuthScope = 'read'): Mcp
     }
   );
 
-  server.tool('list_projects', 'Active projects and how many live tasks each still has.', {}, async () =>
+  server.tool('list_projects', "Active projects and how far through each one is. The counts are the app's own: a recurring member counts once however many times it has recurred, and a dated series counts once rather than once per date.", {}, async () =>
     json(await withFresh(() => listProjects(replica)))
   );
 

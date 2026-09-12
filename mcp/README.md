@@ -1,7 +1,7 @@
 # todo-mcp
 
-An MCP server over a replica of the app's database. **Phase 2: the replica syncs, and one tool
-writes. Nothing is deployed behind real auth.** The design, the phases and the
+An MCP server over a replica of the app's database. **Phase 2: the replica syncs, and it writes.
+Nothing is deployed behind real auth.** The design, the phases and the
 reasoning are in [`docs/arch/mcp-server.md`](../docs/arch/mcp-server.md); read that first, this
 file is only how to run it.
 
@@ -49,14 +49,14 @@ Do not put this on a public address.
 
 ## Tools
 
-Read-only except the last, which needs `MCP_WRITE_TOKEN`.
+Read-only except the four marked **Write**, which need `MCP_WRITE_TOKEN`.
 
 | Tool | What it answers |
 |---|---|
 | `list_tasks` | Tasks in one of the app's lenses: `today`, `later`, `unscheduled`, `inbox`, `all`. Filters by category, tag, project. |
 | `search_tasks` | The app's own fuzzy ranking over titles, notes and project names. |
 | `get_task` | One task, with its subtasks, chain steps, project, and why it is not on Today. |
-| `list_projects` | Active projects and how many live tasks each has. |
+| `list_projects` | Active projects and how far through each one is, counting a recurring member once rather than once per completion. |
 | `list_grocery_items` | The grocery list, or the whole catalog with `onListOnly: false`. |
 | `list_food_log` | Logged food over a day range, with summed nutrients. |
 | `list_mood_logs` | Mood check-ins: rating, symptoms, context tags, notes. |

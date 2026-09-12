@@ -303,6 +303,46 @@ describe('the replica', () => {
     expect(task.reminderTime).toBe('2099-01-01T09:00:00.000Z');
   });
 
+  // ==== project progress ====
+
+  // The read listProjects reports. A plain count of incomplete rows disagrees
+  // with it on exactly this case, which is why the tool was changed to ask.
+  it('counts a project member once however many times it has recurred', () => {
+    mockRaw.runSync(
+      'INSERT INTO projects (id, title, created_at) VALUES (?,?,?)',
+      ['p1', 'Habits', '2026-01-01T00:00:00.000Z']
+    );
+    // One habit, worked three times: two tombstones chained back to the first
+    // row, plus the live occurrence.
+    insert({ id: 'h1', title: 'Water the plants' });
+    insert({ id: 'h2', title: 'Water the plants' });
+    insert({ id: 'h3', title: 'Water the plants' });
+    mockRaw.runSync('UPDATE tasks SET project_id = ? WHERE id IN (?,?,?)', ['p1', 'h1', 'h2', 'h3']);
+    mockRaw.runSync("UPDATE tasks SET completed = 1, completed_at = ? WHERE id IN (?,?)",
+      ['2026-03-01T00:00:00.000Z', 'h1', 'h2']);
+    mockRaw.runSync('UPDATE tasks SET previous_occurrence_id = ? WHERE id = ?', ['h1', 'h2']);
+    mockRaw.runSync('UPDATE tasks SET previous_occurrence_id = ? WHERE id = ?', ['h2', 'h3']);
+    replica.refresh();
+
+    // One member, not three, and not done while its live row is outstanding.
+    expect(replica.projectProgress('p1')).toEqual({ done: 0, total: 1 });
+  });
+
+  it('counts a finished one-off as done', () => {
+    mockRaw.runSync(
+      'INSERT INTO projects (id, title, created_at) VALUES (?,?,?)',
+      ['p2', 'Kitchen', '2026-01-01T00:00:00.000Z']
+    );
+    insert({ id: 'a', title: 'Pick tiles' });
+    insert({ id: 'b', title: 'Order tiles' });
+    mockRaw.runSync('UPDATE tasks SET project_id = ? WHERE id IN (?,?)', ['p2', 'a', 'b']);
+    mockRaw.runSync("UPDATE tasks SET completed = 1, completed_at = ? WHERE id = ?",
+      ['2026-03-01T00:00:00.000Z', 'a']);
+    replica.refresh();
+
+    expect(replica.projectProgress('p2')).toEqual({ done: 1, total: 2 });
+  });
+
   it('clears cached reads on refresh, so a sync landing mid-session is seen', () => {
     insert({ id: 'first', title: 'First' });
     replica.refresh();

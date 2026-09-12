@@ -163,26 +163,34 @@ export interface SerializedProject {
   title: string;
   notes?: string;
   deadline?: string;
-  /** Live members only. A completed one-off is done, not outstanding. */
+  /** Members finished, by the app's own reckoning. */
+  done: number;
+  /** Members in total. One per *series*, not one per row. */
+  total: number;
+  /** `total - done`, stated rather than left to be worked out. */
   outstanding: number;
 }
 
 export function listProjects(replica: Replica): SerializedProject[] {
-  const tasks = replica.tasks();
-
   // Archiving is an explicit "keep this, out of my way", so an archived project
   // is not part of the answer to "what am I working on".
-  return replica.projects().filter((p: Project) => !p.archived).map((p: Project) => ({
-    id: p.id,
-    title: p.title,
-    notes: p.notes || undefined,
-    deadline: p.deadline ?? undefined,
-    // Deliberately a plain count of live members rather than `projectProgress`'
-    // answer: that one collapses recurrence tombstones and series by identity,
-    // and reaching it means standing up useProjectStore. Phase 2 should use the
-    // real thing; until then this must not be reported as "progress".
-    outstanding: tasks.filter(t => t.projectId === p.id && !t.completed && !t.parentId).length,
-  }));
+  return replica.projects().filter((p: Project) => !p.archived).map((p: Project) => {
+    // The app's own progress read. A plain count of incomplete rows was what
+    // this reported before, and it disagrees with the app on every project
+    // holding a recurring member: each completion leaves a tombstone, so the
+    // denominator grew for ever and a project of five habits worked daily for a
+    // month read as hundreds of members.
+    const { done, total } = replica.projectProgress(p.id);
+    return {
+      id: p.id,
+      title: p.title,
+      notes: p.notes || undefined,
+      deadline: p.deadline ?? undefined,
+      done,
+      total,
+      outstanding: total - done,
+    };
+  });
 }
 
 export interface SerializedGroceryItem {

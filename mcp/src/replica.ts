@@ -101,6 +101,22 @@ export interface Replica {
   tasks(): Task[];
   taskById(id: string): Task | null;
   projects(): Project[];
+  /**
+   * How far through a project is, by the app's own reckoning.
+   *
+   * `projectProgress` rather than a count of incomplete members, because the
+   * two disagree on every project holding a recurring task or a dated series.
+   * A daily habit leaves one tombstone per completion, so counting rows grows
+   * the denominator for ever; the real read groups rows by identity (a
+   * `seriesId`, else the root of the `previousOccurrenceId` chain) and counts
+   * each once. It also excludes archived members from both sides, so an
+   * archived-but-incomplete task cannot cap a project below 100% for good.
+   *
+   * Safe to reach from here even though it lives in a store module: it is a
+   * top-level export taking the tasks as an argument, and `useProjectStore`'s
+   * own imports are clean of anything native.
+   */
+  projectProgress(projectId: string): { done: number; total: number };
   categories(): Category[];
   groceryItems(): GroceryItem[];
 
@@ -305,6 +321,7 @@ export function openReplica(path = process.env.TODO_DB_PATH ?? 'todo.db'): Repli
   const { registerPersonSource } = require('../../src/utils/peopleRegistry') as typeof import('../../src/utils/peopleRegistry');
   const { useSettingsStore } = require('../../src/store/useSettingsStore') as typeof import('../../src/store/useSettingsStore');
   const { useCategoryStore } = require('../../src/store/useCategoryStore') as typeof import('../../src/store/useCategoryStore');
+  const { projectProgress } = require('../../src/store/useProjectStore') as typeof import('../../src/store/useProjectStore');
   /* eslint-enable @typescript-eslint/no-require-imports */
 
   db.initDatabase();
@@ -343,6 +360,7 @@ export function openReplica(path = process.env.TODO_DB_PATH ?? 'todo.db'): Repli
 
     tasks,
     projects,
+    projectProgress: (projectId: string) => projectProgress(projectId, tasks()),
     taskById: (id: string) => tasks().find(t => t.id === id) ?? null,
     categories: () => db.dbGetAllCategories(),
     groceryItems: () => db.dbGetAllGroceryItems(),
