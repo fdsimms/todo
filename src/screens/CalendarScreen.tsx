@@ -204,6 +204,15 @@ export function CalendarScreen() {
     setSelectedKey(dayKeyOf(today));
   };
 
+  // One callback for all forty-two cells, so `DayCell`'s memo holds — see its
+  // own note. The cell hands its key back rather than each cell closing over
+  // its own.
+  const selectDay = useCallback((key: string) => {
+    haptics.tap();
+    setExpandedTaskId(null);
+    setSelectedKey(key);
+  }, []);
+
   // Every subtask on this screen, grouped once. Each row used to filter the
   // whole task list for its own children inline, which is O(tasks) per row and
   // — worse — handed the memoized row a fresh array on every render.
@@ -324,6 +333,7 @@ export function CalendarScreen() {
             return (
               <DayCell
                 key={key}
+                dayKey={key}
                 day={day}
                 bucket={bucket}
                 weight={weightFor(dayLoads.get(key))}
@@ -332,11 +342,7 @@ export function CalendarScreen() {
                 isSelected={key === selectedKey}
                 colors={colors}
                 styles={styles}
-                onPress={() => {
-                  haptics.tap();
-                  setExpandedTaskId(null);
-                  setSelectedKey(key);
-                }}
+                onSelect={selectDay}
               />
             );
           })}
@@ -424,9 +430,21 @@ function dotColor(kind: DayMarkKind, colors: Colors): string {
   return colors.purple;
 }
 
-function DayCell({
-  day, bucket, weight, inMonth, isToday, isSelected, colors, styles, onPress,
+/**
+ * Memoized, and it takes its day key rather than a closure over it.
+ *
+ * Forty-two of these are mounted at once and the grid re-renders on every
+ * selection tap, so without the memo one tap re-rendered the whole month. The
+ * memo only pays off if the props are stable, which is why `onSelect` is one
+ * callback for every cell and the cell passes its own key back up — an inline
+ * `onPress` arrow is a fresh identity per cell per render and defeats it
+ * outright. Same rule, and the same failure, as `renderTaskRow`'s `rowKey` on
+ * Today.
+ */
+const DayCell = React.memo(function DayCell({
+  dayKey, day, bucket, weight, inMonth, isToday, isSelected, colors, styles, onSelect,
 }: {
+  dayKey: string;
   day: Date;
   bucket: DayBucket | undefined;
   weight: DayWeight | null;
@@ -435,8 +453,9 @@ function DayCell({
   isSelected: boolean;
   colors: Colors;
   styles: ReturnType<typeof makeStyles>;
-  onPress: () => void;
+  onSelect: (dayKey: string) => void;
 }) {
+  const onPress = () => onSelect(dayKey);
   const dots = bucket?.dots ?? [];
   return (
     <TouchableOpacity
@@ -502,7 +521,7 @@ function DayCell({
       </View>
     </TouchableOpacity>
   );
-}
+});
 
 /**
  * Filled for real work, faded once it's all ticked, hollow for a projection.

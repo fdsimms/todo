@@ -496,7 +496,11 @@ export const GroceryRow = React.memo(function GroceryRow({
                 keyboardType="number-pad"
                 returnKeyType="done"
                 inputAccessoryViewID={Platform.OS === 'ios' ? NUMBER_PAD_ACCESSORY_ID : undefined}
-                placeholder="0.00"
+                // Names the field rather than showing a formatted number.
+                // Placeholder text is textTertiary, the same grey a hint uses,
+                // so "0.00" sitting in a price box reads as a price already
+                // saved rather than as an empty field.
+                placeholder="Price"
                 placeholderTextColor={colors.textTertiary}
                 maxLength={PRICE_INPUT_MAX_LENGTH}
                 accessibilityLabel={`Price for ${item.name}`}

@@ -80,6 +80,7 @@ import {
 } from '../utils/nutritionStats';
 import { NUTRIENT_LABEL } from '../utils/foodNutrition';
 import { useFoodLogStore } from '../store/useFoodLogStore';
+import { capitalize } from '../utils/capitalize';
 
 const BAR_HEIGHT = 96;
 // The window the focus summary rows describe. Matches HABIT_DAYS below rather
@@ -130,10 +131,6 @@ function StaggerIn({ index, children }: { index: number; children: React.ReactNo
       {children}
     </Animated.View>
   );
-}
-
-function capitalize(s: string): string {
-  return s.charAt(0).toUpperCase() + s.slice(1);
 }
 
 function expectedCount(recurrenceType: string, interval: number): number {

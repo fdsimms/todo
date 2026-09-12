@@ -77,7 +77,7 @@ interface Props {
 export function SideMenuDrawer({ visible, onClose, onNavigate, onOpenSettings, activeTab }: Props) {
   const colors = useColors();
   const insets = useSafeAreaInsets();
-  const { isDark } = useTheme();
+  const { isDark, shadows } = useTheme();
   // A scalar, so it's referentially stable and needs no useShallow. Counts
   // what's still to buy — items already in the trolley aren't a reason to go.
   const groceryCount = useGroceryStore(s => listRemainingCount(s.listEntries, s.activeListId));
@@ -268,6 +268,7 @@ export function SideMenuDrawer({ visible, onClose, onNavigate, onOpenSettings, a
         <Animated.View
           style={[
             styles.drawer,
+            shadows.drawer,
             {
               width: DRAWER_WIDTH,
               borderRightColor: colors.separator,
@@ -497,11 +498,6 @@ const styles = StyleSheet.create({
     top: 0,
     bottom: 0,
     borderRightWidth: StyleSheet.hairlineWidth,
-    shadowColor: '#000',
-    shadowOffset: { width: 6, height: 0 },
-    shadowOpacity: 0.35,
-    shadowRadius: 16,
-    elevation: 20,
     overflow: 'hidden',
   },
   header: {

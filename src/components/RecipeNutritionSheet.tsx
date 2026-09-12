@@ -462,7 +462,7 @@ export function RecipeNutritionSheet({ visible, reading, onClose }: Props) {
             <Text style={styles.hint}>
               These lines don't match anything in your grocery catalog, so there's nowhere
               to keep figures for them yet. Adding one lets you set a brand, a price or
-              figures for it — most one-off ingredients are fine left as they are.
+              figures for it. Most one-off ingredients are fine left as they are.
             </Text>
           </View>
         </>

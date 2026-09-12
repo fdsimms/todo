@@ -48,6 +48,7 @@ import { useRecipeComponentImports } from '../hooks/useRecipeComponentImports';
 import { ImportedComponentRow } from './ImportedComponentRow';
 import { coveredIngredients, importableReferences } from '../utils/recipeImportComponents';
 import { haptics } from '../utils/haptics';
+import { capitalize } from '../utils/capitalize';
 
 interface Props {
   visible: boolean;
@@ -428,7 +429,7 @@ export function RecipeExtractSheet({ visible, recipe, onClose }: Props) {
     if (yieldText) parts.push(`makes ${yieldText}`);
     if (parts.length === 0) return '';
     const [first, ...rest] = parts;
-    return [first.charAt(0).toUpperCase() + first.slice(1), ...rest].join(', ');
+    return [capitalize(first), ...rest].join(', ');
   })();
 
 

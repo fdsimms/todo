@@ -250,7 +250,7 @@ export function ProjectCategoriesSheet({ visible, onClose }: Props) {
                       </TouchableOpacity>
                       <TouchableOpacity
                         onLongPress={drag}
-                        delayLongPress={150}
+                        delayLongPress={interaction.delayLongPress}
                         hitSlop={8}
                         style={styles.dragHandle}
                         accessibilityRole="button"

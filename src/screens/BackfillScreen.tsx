@@ -2877,7 +2877,7 @@ function FieldControl({
               value={customText}
               onChangeText={onCustomTextChange}
               keyboardType="number-pad"
-              placeholder="0"
+              placeholder="Amount"
               placeholderTextColor={colors.textSecondary}
               inputAccessoryViewID={Platform.OS === 'ios' ? NUMBER_PAD_ACCESSORY_ID : undefined}
               autoFocus

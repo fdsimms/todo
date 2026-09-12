@@ -124,6 +124,7 @@ import { InlineTimePicker } from '../screens/settings/InlineTimePicker';
 import { PRIORITY_SEGMENTS } from '../utils/prioritySegments';
 import { describeRecurrence } from '../utils/recurrenceLabels';
 import { KNOWN_LINK_APPS, linkAppsFor } from '../constants/linkApps';
+import { capitalize } from '../utils/capitalize';
 
 /** The kind picker's segments. The hint under the track says what the pick does. */
 const TASK_KIND_SEGMENTS = TASK_KIND_META.map(meta => ({
@@ -2015,7 +2016,6 @@ export function TaskEditor({ visible, task, initialDraft, onClose }: Props) {
     return `${formatQuotaProgress(0, targetCount ?? 0, targetUnit)} a day: one every ${quotaIntervalMinutes} minutes, ${from} to ${to}${scope}.`;
   })();
 
-  const capitalize = (s: string) => s.charAt(0).toUpperCase() + s.slice(1);
   const timeOfDaySummary = timeSegments.length > 0
     ? timeSegments.map(capitalize).join(', ')
     : undefined;
@@ -2662,7 +2662,7 @@ export function TaskEditor({ visible, task, initialDraft, onClose }: Props) {
                   value={durationText}
                   onChangeText={t => { setDurationText(t); applyDuration(t, durationUnit); }}
                   keyboardType="number-pad"
-                  placeholder="0"
+                  placeholder="Amount"
                   placeholderTextColor={colors.textTertiary}
                   inputAccessoryViewID={Platform.OS === 'ios' ? NUMBER_PAD_ACCESSORY_ID : undefined}
                 />
@@ -4928,7 +4928,7 @@ export function TaskEditor({ visible, task, initialDraft, onClose }: Props) {
                   value={customEffortText}
                   onChangeText={t => { setCustomEffortText(t); applyCustomEffort(t, customEffortUnit); }}
                   keyboardType="number-pad"
-                  placeholder="0"
+                  placeholder="Amount"
                   placeholderTextColor={colors.textTertiary}
                   inputAccessoryViewID={Platform.OS === 'ios' ? NUMBER_PAD_ACCESSORY_ID : undefined}
                   autoFocus

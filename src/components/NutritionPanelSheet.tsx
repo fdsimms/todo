@@ -1,9 +1,7 @@
 import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import {
   Alert,
-  KeyboardAvoidingView,
   Modal,
-  Platform,
   ScrollView,
   StyleSheet,
   Text,
@@ -38,6 +36,7 @@ import { NumberPadAccessory, NUMBER_PAD_ACCESSORY_ID } from './NumberPadAccessor
 import { NutritionBarcodeScanSheet } from './NutritionBarcodeScanSheet';
 import { SegmentedControl } from './SegmentedControl';
 import { SheetHeaderButton } from './SheetHeaderButton';
+import { useKeyboardInsetScroll } from '../hooks/useKeyboardInsetScroll';
 
 /**
  * Typing in a label panel by hand, for the food no database has.
@@ -150,6 +149,10 @@ const COLUMN_ORDINAL = ['First column', 'Second column', 'Third column'];
 export function NutritionPanelSheet({ visible, foodName, nutrition, onClose, onSave }: Props) {
   const colors = useColors();
   const styles = useMemo(() => makeStyles(colors), [colors]);
+  // The hook rather than KeyboardAvoidingView, which this file's own header
+  // comment already cited the rule for: a pageSheet with inputs inside its
+  // ScrollView wants the inset, and the two approaches fight.
+  const keyboardScroll = useKeyboardInsetScroll<ScrollView>();
 
   const [form, setForm] = useState<PanelForm>(() => panelFormFrom(nutrition));
   // What the sheet opened saying, so the discard guard compares against the
@@ -357,16 +360,14 @@ export function NutritionPanelSheet({ visible, foodName, nutrition, onClose, onS
           <SheetHeaderButton label="Save" onPress={handleSave} minWidth={64} />
         </View>
 
-        <KeyboardAvoidingView
+        <ScrollView
+          ref={keyboardScroll.ref}
           style={styles.flex}
-          behavior={Platform.OS === 'ios' ? 'padding' : undefined}
+          contentContainerStyle={styles.body}
+          keyboardShouldPersistTaps="handled"
+          keyboardDismissMode="interactive"
+          {...keyboardScroll.props}
         >
-          <ScrollView
-            style={styles.flex}
-            contentContainerStyle={styles.body}
-            keyboardShouldPersistTaps="handled"
-            keyboardDismissMode="interactive"
-          >
             <Text style={styles.intro}>
               Copy the numbers off the package label. Leave a field blank if the label
               doesn't list it. Blank means unknown, which is not the same as zero.
@@ -502,8 +503,7 @@ export function NutritionPanelSheet({ visible, foodName, nutrition, onClose, onS
                 that the label didn't say.
               </Text>
             )}
-          </ScrollView>
-        </KeyboardAvoidingView>
+        </ScrollView>
         <NumberPadAccessory />
       </View>
       <NutritionBarcodeScanSheet

@@ -354,10 +354,34 @@ export const getShadows = (isDark: boolean) => ({
     elevation: 3,
   },
   fab: {
+    shadowColor: '#000',
     shadowOffset: { width: 0, height: 4 },
     shadowOpacity: isDark ? 0.55 : 0.30,
     shadowRadius: 10,
     elevation: 8,
+  },
+  /**
+   * A card floating over the screen on its own: the date, reminder and
+   * birthday pickers. Bigger and lower than `card`, and cast downwards where
+   * `sheet` casts up, because this one is a slab in the middle of the screen
+   * rather than a surface rising off the bottom edge. Its four call sites each
+   * hand-rolled the same five properties with a fixed 0.35 opacity, which is
+   * the dark-mode value and far too heavy on a light background.
+   */
+  popover: {
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 8 },
+    shadowOpacity: isDark ? 0.35 : 0.12,
+    shadowRadius: 20,
+    elevation: 12,
+  },
+  /** The side menu, which casts sideways rather than down. */
+  drawer: {
+    shadowColor: '#000',
+    shadowOffset: { width: 6, height: 0 },
+    shadowOpacity: isDark ? 0.35 : 0.12,
+    shadowRadius: 16,
+    elevation: 20,
   },
   sheet: {
     shadowColor: '#000',

@@ -70,7 +70,7 @@ const MIN_DATE = new Date(1900, 0, 1);
 
 export function BirthdayPicker({ visible, month, day, year, onConfirm, onClear, onCancel }: Props) {
   const colors = useColors();
-  const { isDark } = useTheme();
+  const { isDark, shadows } = useTheme();
   const styles = useMemo(() => makeStyles(colors), [colors]);
 
   const [date, setDate] = useState(() => new Date());
@@ -122,7 +122,7 @@ export function BirthdayPicker({ visible, month, day, year, onConfirm, onClear, 
           pointerEvents="none"
         />
         <SheetScrim onPress={onCancel} />
-        <Animated.View style={[styles.card, { opacity: enterAnim, transform: [{ scale: cardScale }] }]}>
+        <Animated.View style={[styles.card, shadows.popover, { opacity: enterAnim, transform: [{ scale: cardScale }] }]}>
           <View style={styles.header}>
             <SheetHeaderButton label="Cancel" role="cancel" onPress={onCancel} minWidth={28} />
             <Text style={styles.headerTitle}>Birthday</Text>
@@ -189,11 +189,6 @@ const makeStyles = (colors: Colors) => StyleSheet.create({
     backgroundColor: colors.bgSecondary,
     borderRadius: radius.lg,
     overflow: 'hidden',
-    shadowColor: '#000',
-    shadowOffset: { width: 0, height: 8 },
-    shadowOpacity: 0.35,
-    shadowRadius: 20,
-    elevation: 12,
   },
   header: {
     flexDirection: 'row',
