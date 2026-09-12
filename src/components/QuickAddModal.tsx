@@ -71,7 +71,7 @@ import { TitleTokenAccessory } from './TitleTokenAccessory';
 import { HighlightedText } from './HighlightedText';
 import { suggestTitles } from '../utils/titleSuggestions';
 import { findArchivedMatch } from '../utils/archiveMatch';
-import { parseTaskInput, describeSchedule, parseLinkInput, parsePhoneInput, parseEmailInput, parseDurationInput, parseSupplyInput, parseCategoryAndTagsInput, parsePriorityInput, matchPersonMentions, findAmbiguousMention, getMentionSuggestions, applyMentionOverrides, type ParsedCategoryAndTags, type MentionSuggestionCandidate } from '../utils/parseTaskInput';
+import { parseTaskInput, describeSchedule, parseLinkInput, parsePhoneInput, parseEmailInput, parseDurationInput, parseSupplyInput, parseCategoryAndTagsInput, parsePriorityInput, matchPersonMentions, findAmbiguousMention, getMentionSuggestions, applyMentionOverrides, withTrailingSpace, type ParsedCategoryAndTags, type MentionSuggestionCandidate } from '../utils/parseTaskInput';
 import { mergeRanges } from '../utils/ranges';
 import { usePersonStore } from '../store/usePersonStore';
 import { usePersonGroupStore } from '../store/usePersonGroupStore';
@@ -872,8 +872,9 @@ export function QuickAddModal({
     if (!parsed) return;
     haptics.success();
     animateLayout();
-    setTitle(parsed.cleanTitle);
-    titleCaret.moveCaret(parsed.cleanTitle);
+    const nextTitle = withTrailingSpace(parsed.cleanTitle);
+    setTitle(nextTitle);
+    titleCaret.moveCaret(nextTitle);
     setDueDate(parsed.schedule.dueDate);
     setDeadline(parsed.schedule.deadline ?? null);
     setTimeSegments(parsed.schedule.timeSegments);
@@ -892,8 +893,9 @@ export function QuickAddModal({
     if (!categoryTagsParsed) return;
     haptics.success();
     animateLayout();
-    setTitle(categoryTagsParsed.cleanTitle);
-    titleCaret.moveCaret(categoryTagsParsed.cleanTitle);
+    const nextTitle = withTrailingSpace(categoryTagsParsed.cleanTitle);
+    setTitle(nextTitle);
+    titleCaret.moveCaret(nextTitle);
     if (categoryTagsParsed.category) setCategory(categoryTagsParsed.category);
     if (categoryTagsParsed.tags.length > 0) {
       setTags(prev => [...new Set([...prev, ...categoryTagsParsed.tags])]);
@@ -951,8 +953,9 @@ export function QuickAddModal({
     if (!priorityParsed) return;
     haptics.success();
     animateLayout();
-    setTitle(priorityParsed.cleanTitle);
-    titleCaret.moveCaret(priorityParsed.cleanTitle);
+    const nextTitle = withTrailingSpace(priorityParsed.cleanTitle);
+    setTitle(nextTitle);
+    titleCaret.moveCaret(nextTitle);
     setPriority(priorityParsed.priority);
   };
 
@@ -960,8 +963,9 @@ export function QuickAddModal({
     if (!linkParsed) return;
     haptics.success();
     animateLayout();
-    setTitle(linkParsed.cleanTitle);
-    titleCaret.moveCaret(linkParsed.cleanTitle);
+    const nextTitle = withTrailingSpace(linkParsed.cleanTitle);
+    setTitle(nextTitle);
+    titleCaret.moveCaret(nextTitle);
     setLinkUrl(linkParsed.url);
   };
 
@@ -970,8 +974,9 @@ export function QuickAddModal({
     if (!phoneParsed) return;
     haptics.success();
     animateLayout();
-    setTitle(phoneParsed.cleanTitle);
-    titleCaret.moveCaret(phoneParsed.cleanTitle);
+    const nextTitle = withTrailingSpace(phoneParsed.cleanTitle);
+    setTitle(nextTitle);
+    titleCaret.moveCaret(nextTitle);
     setPhoneNumber(phoneParsed.number);
   };
 
@@ -980,8 +985,9 @@ export function QuickAddModal({
     if (!emailParsed) return;
     haptics.success();
     animateLayout();
-    setTitle(emailParsed.cleanTitle);
-    titleCaret.moveCaret(emailParsed.cleanTitle);
+    const nextTitle = withTrailingSpace(emailParsed.cleanTitle);
+    setTitle(nextTitle);
+    titleCaret.moveCaret(nextTitle);
     setEmailAddress(emailParsed.address);
   };
 
@@ -993,8 +999,9 @@ export function QuickAddModal({
     if (!durationParsed) return;
     haptics.success();
     animateLayout();
-    setTitle(durationParsed.cleanTitle);
-    titleCaret.moveCaret(durationParsed.cleanTitle);
+    const nextTitle = withTrailingSpace(durationParsed.cleanTitle);
+    setTitle(nextTitle);
+    titleCaret.moveCaret(nextTitle);
     setType('timed');
     setTimedMinutes(durationParsed.minutes);
     setCustomTimedText('');
@@ -1004,8 +1011,9 @@ export function QuickAddModal({
     if (!supplyParsed) return;
     haptics.success();
     animateLayout();
-    setTitle(supplyParsed.cleanTitle);
-    titleCaret.moveCaret(supplyParsed.cleanTitle);
+    const nextTitle = withTrailingSpace(supplyParsed.cleanTitle);
+    setTitle(nextTitle);
+    titleCaret.moveCaret(nextTitle);
     setSupplyCount(clampSupplyCount(supplyParsed.count));
     setSupplyUnit(supplyParsed.unit ?? '');
   };

@@ -21,6 +21,17 @@ import { looksLikePhoneNumber } from './phone';
  * (via useSettingsStore), which this module must stay free of to keep parsing
  * pure and Jest-testable without native module mocks.
  */
+/**
+ * Every `cleanTitle` here is trimmed, so accepting a suggestion whose match
+ * sat at the end of the title leaves the caret right against the last word
+ * with no space to type into. Callers applying a suggestion to a live title
+ * field should route the result through this first, so the caret lands
+ * ready for the next word instead of butting up against the one before it.
+ */
+export function withTrailingSpace(cleanTitle: string): string {
+  return cleanTitle ? `${cleanTitle} ` : cleanTitle;
+}
+
 function nthWeekdayOfMonth(monthDate: Date, weekday: number, ordinal: number): Date {
   if (ordinal === -1) {
     const last = lastDayOfMonth(monthDate);

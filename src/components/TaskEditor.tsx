@@ -83,7 +83,7 @@ import { isStreakAtRecord, nextStreakRecord, streakHint } from '../utils/streakR
 import { formatDeadlineDate, formatScheduledDate, formatHHMM, formatTimeOfDay, hhmmToDate, dateToHHMM, getDeadlineFromOffset, getDeadlineFromMonthDay, describeDeadlineOffset, describeReminderOffset, getTaskDayStart, getCurrentDayStart, getLogicalNow, getLogicalToday, seriesMonthDaysFrom } from '../utils/dateUtils';
 import { generateId } from '../utils/id';
 import { findArchivedMatch } from '../utils/archiveMatch';
-import { parseTaskInput, describeSchedule, detectContactIntent, matchPersonMentions, getEditorMentionSuggestions, type MentionSuggestionCandidate } from '../utils/parseTaskInput';
+import { parseTaskInput, describeSchedule, detectContactIntent, matchPersonMentions, getEditorMentionSuggestions, withTrailingSpace, type MentionSuggestionCandidate } from '../utils/parseTaskInput';
 import { groupMentionTokens } from '../utils/peopleRegistry';
 import { mergeRanges } from '../utils/ranges';
 import { HighlightedText } from './HighlightedText';
@@ -1041,8 +1041,9 @@ export function TaskEditor({ visible, task, initialDraft, onClose }: Props) {
     if (!parsedSchedule) return;
     haptics.success();
     animateLayout();
-    setTitle(parsedSchedule.cleanTitle);
-    titleCaret.moveCaret(parsedSchedule.cleanTitle);
+    const nextTitle = withTrailingSpace(parsedSchedule.cleanTitle);
+    setTitle(nextTitle);
+    titleCaret.moveCaret(nextTitle);
     setDueDate(parsedSchedule.schedule.dueDate);
     if (parsedSchedule.schedule.deadline) {
       setDeadline(parsedSchedule.schedule.deadline);
