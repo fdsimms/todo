@@ -343,6 +343,111 @@ describe('the replica', () => {
     expect(replica.projectProgress('p2')).toEqual({ done: 1, total: 2 });
   });
 
+  // ==== groceries ====
+
+  describe('the grocery list', () => {
+    beforeEach(() => {
+      mockRaw.runSync('DELETE FROM grocery_items');
+      mockRaw.runSync('DELETE FROM grocery_list_items');
+      replica.refresh();
+    });
+
+    it('mints a shelf item and puts it in the trolley', () => {
+      const { item, isNew } = replica.addGroceryItem('milk');
+      expect(isNew).toBe(true);
+      expect(item.name).toBe('milk');
+      expect(item.onList).toBe(true);
+      // Filed by the app's own lexicon rather than left unplaced.
+      expect(item.aisle).toBe('Dairy & Eggs');
+
+      replica.refresh();
+      expect(replica.groceryItems().map(i => i.name)).toEqual(['milk']);
+    });
+
+    it('splits a leading amount off the name', () => {
+      const { item } = replica.addGroceryItem('2 gal milk');
+      expect(item.name).toBe('milk');
+      expect(item.quantity).toBe('2 gal');
+    });
+
+    it('takes a quantity stated separately without it becoming the name', () => {
+      const { item } = replica.addGroceryItem('milk', { quantity: '1 pint' });
+      expect(item.name).toBe('milk');
+      expect(item.quantity).toBe('1 pint');
+    });
+
+    // The whole reason the catalog and the list are one thing: a name bought
+    // before comes back with everything recorded on it.
+    it('re-lists a parked row rather than minting a second', () => {
+      const first = replica.addGroceryItem('milk').item;
+      replica.removeFromGroceryList(first.id);
+      replica.refresh();
+
+      const again = replica.addGroceryItem('milk');
+      expect(again.isNew).toBe(false);
+      expect(again.item.id).toBe(first.id);
+      expect(again.item.onList).toBe(true);
+      replica.refresh();
+      expect(replica.groceryItems()).toHaveLength(1);
+    });
+
+    // The read the arch doc names as the mistake to avoid.
+    it('resolves a singular onto the plural row already there', () => {
+      const peppers = replica.addGroceryItem('Serrano peppers').item;
+      const again = replica.addGroceryItem('serrano pepper');
+
+      expect(again.isNew).toBe(false);
+      expect(again.item.id).toBe(peppers.id);
+      // ...and does not rename it, since nameKey is derived from name.
+      expect(again.item.name).toBe('Serrano peppers');
+    });
+
+    // The membership is left exactly as it was, which is what stops a re-add
+    // shuffling the walk order. The row's own `checked` mirror is cleared, and
+    // that asymmetry is the app's existing behaviour rather than this tool's:
+    // see the note in planGroceryAdd.
+    it('does not disturb the membership of something already on the list', () => {
+      const milk = replica.addGroceryItem('milk').item;
+      replica.setGroceryChecked(milk.id, true);
+      replica.refresh();
+
+      const again = replica.addGroceryItem('milk');
+      expect(again.wasOnList).toBe(true);
+      expect(again.isNew).toBe(false);
+      expect(again.item.id).toBe(milk.id);
+    });
+
+    it('checks off and un-checks', () => {
+      const milk = replica.addGroceryItem('milk').item;
+      expect(replica.setGroceryChecked(milk.id, true).checked).toBe(true);
+      expect(replica.setGroceryChecked(milk.id, false).checked).toBe(false);
+    });
+
+    it('refuses to check off something that is not in the trolley', () => {
+      const milk = replica.addGroceryItem('milk').item;
+      replica.removeFromGroceryList(milk.id);
+      replica.refresh();
+      expect(() => replica.setGroceryChecked(milk.id, true)).toThrow(/not on the list/);
+    });
+
+    // Parks, never deletes. Dropping a row wrongly destroys a price history or
+    // a substitute with no undo.
+    it('parks a row rather than deleting it', () => {
+      const milk = replica.addGroceryItem('milk').item;
+      const parked = replica.removeFromGroceryList(milk.id);
+
+      expect(parked.onList).toBe(false);
+      replica.refresh();
+      expect(replica.groceryItems().map(i => i.id)).toEqual([milk.id]);
+    });
+
+    it('refuses an unknown id rather than doing nothing', () => {
+      expect(() => replica.addGroceryItem('   ')).toThrow(/needs a name/);
+      expect(() => replica.setGroceryChecked('nope', true)).toThrow(/No grocery item/);
+      expect(() => replica.removeFromGroceryList('nope')).toThrow(/No grocery item/);
+    });
+  });
+
   it('clears cached reads on refresh, so a sync landing mid-session is seen', () => {
     insert({ id: 'first', title: 'First' });
     replica.refresh();

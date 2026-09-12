@@ -78,6 +78,7 @@ import { catalogItemForKey } from '../utils/groceryPlural';
 import { hasUserFacts, factSignature, linkCounts } from '../utils/groceryFacts';
 import { describeQuantities, mergeQuantities } from '../utils/mealPlanGroceries';
 import { defaultOnHandUntil, OUT_OF_IT_UNTIL } from '../utils/grocerySuggest';
+import { ensureProductFor, newItemRow, nextSortOrder, planGroceryAdd } from '../utils/groceryAdd';
 import type { PantryReviewAnswer } from '../utils/pantryReview';
 import { wantsShelfLifePrompt, type DisposalOutcome } from '../utils/itemDisposal';
 import { expiresAtForOpening, expiresAtForPurchase } from '../utils/groceryShelfLife';
@@ -1355,10 +1356,6 @@ interface GroceryStore extends UndoHistoryActions {
   rememberedAisleFor: (name: string) => string | null;
 }
 
-function nextSortOrder(items: GroceryItem[]): number {
-  return items.reduce((m, i) => Math.max(m, i.sortOrder), 0) + 1;
-}
-
 /**
  * The links that have to stop being standing for `itemId → subItemId` to be —
  * this item's other substitutes, and the reverse row.
@@ -1379,185 +1376,6 @@ function clearOtherStandingLinks(
       (l.itemId === itemId && l.subItemId !== subItemId)
       || (l.itemId === subItemId && l.subItemId === itemId))
     .map(l => ({ ...l, standing: false }));
-}
-
-/**
- * Find-or-create one box under an item, without writing anything.
- *
- * Find rather than always-create, because `productKeyFor` is the identity and
- * the UNIQUE index enforces it: typing "Arnold's" on a row that already has an
- * Arnold's product means *that* product, not a second one that would split its
- * rating and its purchase count in two. The same rule as addByName's own
- * find-or-insert on `nameKey`, one level down.
- *
- * Null when neither half names anything — a product with no brand and no
- * variant is the item itself, so there's nothing to create. Callers read that
- * as "the user cleared the field", not as a failure.
- *
- * Pure, so the caller owns the db write and the `set()`; both call sites need
- * to do slightly different things with the result.
- */
-function ensureProductFor(
-  itemId: string,
-  brand: string | null,
-  variant: string | null,
-  products: readonly ItemProduct[],
-  createdAt: string
-): { product: ItemProduct; created: boolean } | null {
-  const productKey = productKeyFor(brand, variant);
-  if (!productKey) return null;
-  const existing = products.find(p => p.itemId === itemId && p.productKey === productKey);
-  // The stored spelling is left alone on a match, the way addByName's own
-  // find-or-insert deliberately does *not*: an item's name is the label on a
-  // row the user is looking at, while a product's is a value they picked from
-  // their own list — re-typing "arnolds" under a product filed as "Arnold's"
-  // is a match, not a correction. Editing the spelling is the product sheet's
-  // job, where the field shows what it's about to change.
-  if (existing) return { product: existing, created: false };
-  return {
-    created: true,
-    product: {
-      id: generateId(),
-      itemId,
-      brand,
-      variant,
-      productKey,
-      // Never inferred, in either direction. A box you just named is one you
-      // have no opinion about yet, and buying something is not liking it.
-      rating: null,
-      note: '',
-      purchaseCount: 0,
-      lastPurchasedAt: null,
-      // A box nobody has said anything about yet, which is the honest state of
-      // one being minted: it defers to its item on all four until the user
-      // says otherwise. Naming a box is not a claim to be holding one.
-      onHandUntil: null,
-      expiresAt: null,
-      frozenAt: null,
-      openedAt: null,
-      // Defers to the item's, same as the four above. A box named by hand says
-      // nothing about what is in it; a scanned one gets its label panel from
-      // the lookup rather than from being minted here.
-      nutrition: null,
-      // Never set here, even on the scan path that has a barcode in hand.
-      // Claiming one has to release it from whichever box held it before, so
-      // it goes through `linkScannedGtins` rather than riding an insert.
-      gtin: null,
-      createdAt,
-    },
-  };
-}
-
-/**
- * A brand-new catalog row, with every field nobody passes in already decided.
- *
- * Both insert paths go through it — addByName's list add and addToPantry's
- * off-list one — so there's still exactly one place that knows what a fresh row
- * looks like, and a column added later can't reach only one of them. The two
- * differ in `onList`/`onHandUntil`, which is why those are the
- * fields with no default here.
- */
-function newItemRow(fields: {
-  name: string;
-  nameKey: string;
-  aisle: string;
-  sortOrder: number;
-  createdAt: string;
-  onList: boolean;
-  quantity?: string | null;
-  note?: string | null;
-  choiceGroup?: string | null;
-  /** See GroceryItem.nameFromScan. Only the barcode path passes this. */
-  nameFromScan?: boolean;
-  source?: { recipeId: string; recipeTitle: string };
-  onHandUntil?: string | null;
-}): GroceryItem {
-  return {
-    id: generateId(),
-    name: fields.name,
-    nameKey: fields.nameKey,
-    // A fresh row has no products and so no preference. A brand typed into
-    // GroceryAddField's chip becomes a real ItemProduct *after* the row exists
-    // (addByName does that, since it needs the item's id), which is why this
-    // isn't a field on the factory the way quantity and note are.
-    //
-    // Nothing is ever *parsed* out of the typed line: "Good Culture cottage
-    // cheese" typed as a name is still just a name — see ItemProduct.brand.
-    preferredProductId: null,
-    // A preference is not a rule — see GroceryItem.productStrict. Nothing
-    // infers this, including from a product being named.
-    productStrict: false,
-    aisle: fields.aisle,
-    quantity: fields.quantity ?? null,
-    // Never true from this path — a fresh row's quantity, if any, came from
-    // whatever the caller typed or parsed, not from addFromPlan's recipe-owned
-    // write, which always goes through setQuantity's fromRecipe option instead.
-    quantityFromRecipe: false,
-    note: fields.note ?? '',
-    // A mirror of the home entry from here on (see GroceryItem.onList), and
-    // true here only because the caller is about to write one. The membership
-    // itself is `joinList`'s job, not this factory's — a row exists in the
-    // catalog whether or not it is in anybody's trolley.
-    onList: fields.onList,
-    checked: false,
-    sortOrder: fields.sortOrder,
-    purchaseCount: 0,
-    lastAddedAt: fields.onList ? fields.createdAt : null,
-    lastPurchasedAt: null,
-    createdAt: fields.createdAt,
-    onHandUntil: fields.onHandUntil ?? null,
-    // A genuinely new row is attributed here; a row reused via addByName's
-    // `existing` branch never reaches this factory and is restamped there
-    // instead, per the field's doc comment on GroceryItem.
-    choiceGroup: fields.choiceGroup ?? null,
-    sourceRecipeId: fields.source?.recipeId ?? null,
-    sourceRecipeTitle: fields.source?.recipeTitle ?? null,
-    isStaple: false,
-    // Nothing on the *list* has a use-by date: adding a name is a plan to buy
-    // it, and the shelf life doesn't start until it's in the fridge.
-    // finishShopping is what stamps this — see expiresAtForPurchase.
-    expiresAt: null,
-    // Nothing is created frozen: the freezer is somewhere the user puts a
-    // thing they already have, not a state a name arrives in. Same for opened —
-    // a name typed onto the list is a plan to buy, not a jar on the counter.
-    frozenAt: null,
-    openedAt: null,
-    runningLowAt: null,
-    // No one has corrected the lexicon guess for this row yet.
-    shelfLifeDays: null,
-    useUpTask: null,
-    // Nothing infers a variety declaration — the user says so, on the item
-    // sheet. See GroceryItem.varietyOfKey.
-    varietyOfKey: null,
-    // Nobody has been asked about a row that didn't exist a moment ago, and a
-    // brand-new row can't have a lapsed purchase reading to be asked about.
-    pantryCheckDeclinedAt: null,
-    pantryReviewedAt: null,
-    // Nothing has left the pantry yet, because nothing has been in it. See
-    // GroceryItem.usedUpCount.
-    usedUpCount: 0,
-    spoiledCount: 0,
-    lastSpoiledAt: null,
-    // Same reasoning as expiresAt: a name typed onto the list is a plan to buy
-    // something, and nothing has been paid for it yet. finishShopping and the
-    // item sheet are the two things that ever set a price.
-    lastPriceMinor: null,
-    lastPricedAt: null,
-    lastPriceQuantity: null,
-    priceHistory: [],
-    // Unknown, which is a different thing from "contains nothing" — see
-    // FoodNutrition.amounts. Nothing is inferred from a name: knowing a row is
-    // called "onion" is not knowing what an onion is made of, and a lookup
-    // (or a person) has to say so before this holds anything.
-    nutrition: null,
-    // Nobody has dismissed a Backfill screen field on a row that didn't exist
-    // a moment ago.
-    backfillDismissedFields: [],
-    // False for every path but the barcode one, and false there too unless the
-    // user left the proposed name alone — a name somebody typed is a name
-    // somebody chose. See GroceryItem.nameFromScan.
-    nameFromScan: fields.nameFromScan ?? false,
-  };
 }
 
 /** One reviewed line on its way to the list. `aisle` null means "no opinion". */
@@ -2092,163 +1910,56 @@ export const useGroceryStore = create<GroceryStore>((set, get) => ({
    * instead, so a ten-line paste doesn't leave only the last line undoable.
    */
   addByName(raw, override, source, opts) {
-    const { name, quantity } = override ?? parseGroceryInput(raw);
-    const note = override?.note?.trim() || null;
-    const choiceGroup = override?.choiceGroup?.trim() || null;
-    const brand = override?.brand?.trim() || null;
-    const variant = override?.variant?.trim() || null;
-    const sourceAisle = override?.aisle?.trim() || null;
-    // A name with no letters or digits ("???") normalises to an empty key.
-    // Falling back to the raw text keeps the key unique, which matters: two
-    // such rows would collide on the UNIQUE index and the *second* insert
-    // would throw out of whatever was calling — a paste, or the Reminders
-    // drain mid-batch.
-    const key = groceryNameKey(name) || name.trim().toLowerCase();
-    const now = new Date().toISOString();
-    // Exact key first, then the singular/plural of it — "serrano pepper"
-    // against a catalog holding Serrano peppers is that row, not a second one
-    // splitting its purchase count and its aisle in two. See groceryPlural.ts;
-    // nothing about the stored key changes, this is only how a name finds it.
-    const existing = catalogItemForKey(key, get().items) ?? undefined;
-    const wasOnList = existing?.onList === true;
-    // `in` rather than `??`, because null is a real answer here — the list at
-    // home — and the Reminders mirror passes exactly that. See the option's own
-    // note on the interface above.
-    const targetListId = opts && 'listId' in opts ? opts.listId ?? null : get().activeListId;
-
-    if (existing) {
-      const updated: GroceryItem = {
-        ...existing,
-        // The typed name wins — capitalisation and wording are the user's.
-        // Only on an exact key, though: a row found through its plural keeps
-        // the name it has, because `nameKey` is derived from `name` and every
-        // reader trusts that. Renaming Serrano peppers to "serrano pepper"
-        // here would leave the row keyed for a name it no longer carries.
-        name: existing.nameKey === key ? name || existing.name : existing.name,
-        // Both are the home entry's mirror and are recomputed from the
-        // entries by the `joinList` below — set here only so the row this
-        // returns is already right for a caller that reads it straight back.
-        onList: existing.onList || targetListId === null,
-        checked: targetListId === null ? false : existing.checked,
-        // Only overwrite the quantity when this add actually carried one;
-        // typing "milk" to re-add shouldn't wipe the "2 gal" set last week.
-        quantity: quantity ?? existing.quantity,
-        // A quantity typed here is the user's own — see
-        // GroceryItem.quantityFromRecipe — so it takes ownership exactly like
-        // setQuantity does. Left alone when nothing was typed, so a re-add
-        // with no amount doesn't strip a still-standing recipe ownership.
-        quantityFromRecipe: quantity ? false : existing.quantityFromRecipe,
-        // Same rule the quantity above follows, and for the same reason:
-        // re-adding a known item without saying why must not wipe the note
-        // that's been on it since last time.
-        note: note ?? existing.note,
-        // Same rule again: adding "apples or pears" when apples is already on
-        // the list makes that row one option of the new pair, but a plain
-        // re-add of apples must not dissolve a pair it's already in.
-        choiceGroup: choiceGroup ?? existing.choiceGroup,
-        lastAddedAt: now,
-        // A row still on some list is a standing item the user owns, same as
-        // note/quantity above — a recipe re-adding it doesn't relabel it. But a
-        // row that had fallen off every list is functionally a fresh add: the
-        // recipe that put it back on is the reason it's there, and crediting a
-        // stale recipe (possibly cooked and forgotten) is actively misleading.
-        // See GroceryItem.sourceRecipeId.
-        sourceRecipeId: !wasOnList && source ? source.recipeId : existing.sourceRecipeId,
-        sourceRecipeTitle: !wasOnList && source ? source.recipeTitle : existing.sourceRecipeTitle,
-      };
-      // And the same rule again for the box: GroceryAddField's Brand/Variant
-      // chips are the only caller that passes these, and only when the user
-      // actually typed into one — so a bare re-add leaves whatever preference
-      // the row already had. Naming one here both files it under the item and
-      // makes it the preference, since typing it into the add field is a
-      // statement about what you're going shopping for.
-      const ensured = ensureProductFor(existing.id, brand, variant, get().itemProducts, now);
-      if (ensured) {
-        updated.preferredProductId = ensured.product.id;
-        if (ensured.created) dbSetItemProduct(ensured.product);
-      }
-      dbUpdateGroceryItem(updated);
-      set(s => ({
-        items: s.items.map(i => (i.id === existing.id ? updated : i)),
-        itemProducts: ensured?.created ? [...s.itemProducts, ensured.product] : s.itemProducts,
-        cartHoldIds: s.cartHoldIds.filter(x => x !== existing.id),
-      }));
-      // The membership itself, after the row is patched. **Joins rather than
-      // moves**: a row already in the trolley at home stays there when it is
-      // added to the Airbnb list, which is the whole reason membership is a
-      // table (see GroceryListEntry). Re-adding to a list it is already in is a
-      // no-op on the entry, so the tick and the walk-order slot it already had
-      // survive — typing "milk" twice must not un-tick the milk in your cart.
-      joinList(existing.id, targetListId, now);
-      // An either/or is this trolley's, so a group named by the add is written
-      // onto the entry rather than the row (see GroceryListEntry.choiceGroup).
-      if (choiceGroup) {
-        const entry = entryFor(get().listEntries, existing.id, targetListId);
-        if (entry) writeMembership({ upsert: [{ ...entry, choiceGroup }] });
-      }
-      if (opts?.registerUndo !== false && !wasOnList) {
-        get().setLastAction({
-          label: `Added "${updated.name}"`,
-          undo: () => get().removeFromList(updated.id),
-        });
-      }
-      return updated;
-    }
-
-    const item = newItemRow({
-      name,
-      nameKey: key,
-      // Where the user put it last time beats where the lexicon thinks it
-      // goes — the lexicon is a guess about groceries, this is a fact about
-      // their shop. (An item still in the catalog never reaches here: it
-      // carries its own aisle, and the branch above keeps it.)
-      //
-      // placeAisle has the last word because neither source knows which aisles
-      // still exist: naming a deleted one here would bring its section back.
-      //
-      // A barcode source's own category is the third and weakest of the three,
-      // so it only ever answers where both of the others were silent — see the
-      // `aisle` override's note.
-      aisle: placeAisle(
-        get().aisleOverrides[key] ?? aisleForName(name) ?? sourceAisle,
-        get().aisleOrder
-      ),
-      quantity,
-      note,
-      onList: true,
-      sortOrder: nextSortOrder(get().items),
-      createdAt: now,
-      choiceGroup,
+    // What this add does, decided before anything is written. The rules — the
+    // singular/plural find, the three-way aisle precedence, and which fields a
+    // re-add is allowed to overwrite — live in utils/groceryAdd.ts so the MCP
+    // server can add to the list from Node without reaching this store. See
+    // that file's header.
+    //
+    // `in` rather than `??` for the list, because null is a real answer — the
+    // list at home — and the Reminders mirror passes exactly that.
+    const plan = planGroceryAdd(
+      raw,
+      {
+        items: get().items,
+        itemProducts: get().itemProducts,
+        listEntries: get().listEntries,
+        aisleOverrides: get().aisleOverrides,
+        aisleOrder: get().aisleOrder,
+        listId: opts && 'listId' in opts ? opts.listId ?? null : get().activeListId,
+        now: new Date().toISOString(),
+      },
+      override,
       source,
-      nameFromScan: override?.nameFromScan === true,
-    });
-    // After the row exists, because a product hangs off an item id. Nothing
-    // is ever parsed out of the typed name to get here — see ItemProduct.brand.
-    const ensured = ensureProductFor(item.id, brand, variant, get().itemProducts, now);
-    if (ensured) item.preferredProductId = ensured.product.id;
-    dbInsertGroceryItem(item);
-    if (ensured?.created) dbSetItemProduct(ensured.product);
+    );
+    const { item, isNew, entry, product, wasOnList } = plan;
+
+    if (product) dbSetItemProduct(product);
+    if (isNew) dbInsertGroceryItem(item);
+    else dbUpdateGroceryItem(item);
     set(s => ({
-      items: [...s.items, item],
-      itemProducts: ensured?.created ? [...s.itemProducts, ensured.product] : s.itemProducts,
+      items: isNew ? [...s.items, item] : s.items.map(i => (i.id === item.id ? item : i)),
+      itemProducts: product ? [...s.itemProducts, product] : s.itemProducts,
+      cartHoldIds: s.cartHoldIds.filter(x => x !== item.id),
     }));
-    // Same two writes the existing branch above makes, and in the same order:
-    // the row first, then its membership of the list being added to.
-    joinList(item.id, targetListId, now);
-    if (choiceGroup) {
-      const entry = entryFor(get().listEntries, item.id, targetListId);
-      if (entry) writeMembership({ upsert: [{ ...entry, choiceGroup }] });
-    }
-    if (opts?.registerUndo !== false) {
+    // The membership itself, after the row. Null means that list already holds
+    // it, which is a no-op on purpose: the tick and the walk-order slot it
+    // already had survive, so typing "milk" twice must not un-tick the milk in
+    // your cart.
+    if (entry) writeMembership({ upsert: [entry] });
+
+    if (opts?.registerUndo !== false && (isNew || !wasOnList)) {
       get().setLastAction({
         label: `Added "${item.name}"`,
-        // This call minted the row, so undoing it takes the row with it —
-        // unless something has been recorded on it in the meantime. An empty
-        // `preexisting` says "this id is new"; undoForAdds does the rest.
-        undo: get().undoForAdds([item.id], EMPTY_IDS),
+        // A minted row is taken back with the undo, unless something has been
+        // recorded on it in the meantime; a re-listed one only parks. An empty
+        // `preexisting` says "this id is new"; undoForAdds owns the split.
+        undo: isNew
+          ? get().undoForAdds([item.id], EMPTY_IDS)
+          : () => get().removeFromList(item.id),
       });
     }
-    if (item.aisle === OTHER_AISLE) scheduleAutoAisleClassification(item.id, item.name);
+    if (isNew && item.aisle === OTHER_AISLE) scheduleAutoAisleClassification(item.id, item.name);
     return item;
   },
 

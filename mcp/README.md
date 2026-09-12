@@ -49,7 +49,7 @@ Do not put this on a public address.
 
 ## Tools
 
-Read-only except the four marked **Write**, which need `MCP_WRITE_TOKEN`.
+Read-only except those marked **Write**, which need `MCP_WRITE_TOKEN`.
 
 | Tool | What it answers |
 |---|---|
@@ -66,6 +66,9 @@ Read-only except the four marked **Write**, which need `MCP_WRITE_TOKEN`.
 | `create_task` | **Write.** Adds one task, with the app's own defaults and title rules applied. |
 | `complete_task` | **Write.** Ticks one off, spawning whatever that spawns: the next occurrence, the next chain step, the next set of a dated series. |
 | `defer_task` | **Write.** Moves a task to a date, or clears its date. |
+| `add_grocery_item` | **Write.** Puts something on the list, re-using the shelf item the user already has where there is one. |
+| `check_off_grocery_item` | **Write.** Ticks something off in the trolley, or un-ticks it. |
+| `remove_from_grocery_list` | **Write.** Takes something off the list. Does not delete it. |
 
 `complete_task` refuses two things rather than doing them quietly, and both are
 deliberate. A task that **cannot** be completed says so: a negative habit has no
@@ -82,6 +85,18 @@ cancelled or scheduled, no calendar event written, nothing sent to Apple Health.
 A dose *is* recorded where the task names a medication, because that is the
 app's own record rather than somebody else's. The rest belongs to whichever
 device the completion syncs to.
+
+The grocery writes lean on one property of this schema that is easy to get wrong from outside:
+**there is one catalog and it is also the list.** A `GroceryItem` is the shelf item and lives for
+ever; whether it is in a trolley right now is a separate membership row. So `add_grocery_item` on a
+name the user has bought before writes no new shelf item at all, it re-lists the one already there,
+with its aisle, purchase history, prices and pantry state intact. Singular and plural resolve to
+the same item, so "serrano pepper" finds an existing "Serrano peppers" instead of minting a
+near-duplicate that splits one shelf item in two.
+
+For the same reason `remove_from_grocery_list` parks rather than deletes, and there is deliberately
+no tool that deletes a shelf item: dropping one destroys a substitute or a price history with no
+undo, and it is not the sort of thing to do on a model's say-so.
 
 The three log tools take the same range: `days` counts back from today (7 by default), or pass
 `from`/`to` as `YYYY-MM-DD`. There is deliberately **no weight tool** — weight lives in Apple

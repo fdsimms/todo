@@ -752,8 +752,18 @@ describe('addByName', () => {
     expect(useGroceryStore.getState().items).toHaveLength(2);
   });
 
-  it('un-checks a checked row that gets re-added', () => {
+  // Re-adding milk you have already put in your cart is not a statement that
+  // you have not put it in your cart. This used to clear the tick on the row
+  // while leaving it set on the entry, so the two disagreed and the screen
+  // showed the wrong one.
+  it('keeps the tick on a row that is already in the trolley', () => {
     seed([makeItem({ name: 'Milk', onList: true, checked: true })]);
+    useGroceryStore.getState().addByName('milk');
+    expect(useGroceryStore.getState().items[0].checked).toBe(true);
+  });
+
+  it('leaves a re-listed row unticked, having no tick to keep', () => {
+    seed([makeItem({ name: 'Milk', onList: false, checked: false })]);
     useGroceryStore.getState().addByName('milk');
     expect(useGroceryStore.getState().items[0].checked).toBe(false);
   });
@@ -2700,6 +2710,31 @@ describe('addFromPlan', () => {
     // Opaque, not the recipe's label — a grocery row renders no heading for a
     // group, and two shops of one recipe must not merge weeks apart.
     expect(serrano.choiceGroup).not.toBe('r1:Pepper');
+  });
+
+  // The either/or has to reach a row that is already in the trolley, which is
+  // the likeliest case: you add apples, then decide apples-or-pears. Writing
+  // the group only onto a freshly created entry would drop the pairing exactly
+  // when somebody meant it.
+  it('pairs an item already on the list into a new either/or', () => {
+    seed([]);
+    const apples = useGroceryStore.getState().addByName('Apples');
+    expect(useGroceryStore.getState().itemById(apples.id)!.choiceGroup).toBeNull();
+
+    useGroceryStore.getState().addByName('Apples', {
+      name: 'Apples',
+      quantity: null,
+      choiceGroup: 'pair-1',
+    });
+
+    // Asserted on the *entry*, which is where an either/or lives: it belongs to
+    // this trolley rather than to the item (see GroceryListEntry.choiceGroup).
+    // The row's own column is a mirror, and branch A happens to write it either
+    // way, so checking the item would pass without the membership write that
+    // actually makes the pair.
+    const entry = useGroceryStore.getState().listEntries
+      .find(e => e.itemId === apples.id && e.listId === null);
+    expect(entry?.choiceGroup).toBe('pair-1');
   });
 
   it('gives two different groups two different ids', () => {
