@@ -632,6 +632,18 @@ amount, and answering that in the unit they already had answers nothing.
 - **A merged quantity is converted part by part** (`' · '`, what `mergeQuantities` emits when it
   won't add two measurements together), with one `≈` on the front. Converting only the leading
   measurement would leave the rest of the string as a stray tail.
+- **The one same-system case: a cup or tablespoon with no measuring-set fraction steps down a
+  level.** Scaling can turn "1 cup" into something like "1/5 cup" (see `recipeScale`'s rule 3 and
+  4 — exact rational arithmetic, no guessing), and a fifth is not a fraction any cup or tablespoon
+  in a real measuring set is marked with. `stepDownUsVolume` catches this under the `us` system
+  setting: below a whole cup (or tablespoon), if the amount's denominator isn't in
+  `VOLUME_DENOMINATORS`, it re-expresses the amount one unit down — cup to tablespoon, tablespoon
+  to teaspoon — by **exact** multiplication (a cup is exactly 16 tbsp, a tablespoon exactly 3 tsp),
+  never `renderUs`'s tolerance-based snap, which exists for an amount that was already approximate
+  going in and would misreport an exact 3.2 as "3 1/3". It still gets `≈`, exact or not, because
+  it's still the app re-expressing an amount the recipe didn't say. Bounded to under a whole unit
+  on purpose — "2.4 cups" stays in cups, since spreading it as "2 cups + 6 2/5 tbsp" is a mixed-unit
+  feature this doesn't attempt.
 
 ## Cook mode (`cookMode.ts`) — the method one step at a time
 

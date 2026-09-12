@@ -94,6 +94,41 @@ describe('convertQuantity — to US', () => {
     expect(convertQuantity('2 cups', 'us')).toEqual({ text: '2 cups', converted: false });
     expect(convertQuantity('1 lb', 'us')).toEqual({ text: '1 lb', converted: false });
   });
+
+  it('leaves a cup or tablespoon fraction alone when it is one a measuring set has', () => {
+    expect(convertQuantity('1/2 cup', 'us')).toEqual({ text: '1/2 cup', converted: false });
+    expect(convertQuantity('1/3 cup', 'us')).toEqual({ text: '1/3 cup', converted: false });
+    expect(convertQuantity('1/4 tbsp', 'us')).toEqual({ text: '1/4 tbsp', converted: false });
+  });
+
+  it('leaves a whole or larger amount in cups, even a decimal one', () => {
+    expect(convertQuantity('2.4 cups', 'us')).toEqual({ text: '2.4 cups', converted: false });
+    expect(convertQuantity('1 cup', 'us')).toEqual({ text: '1 cup', converted: false });
+  });
+
+  it('steps a cup fraction with no measuring-set denominator down to tablespoons, exactly', () => {
+    // A fifth shares no factor with 16, so it can't become a whole tablespoon
+    // count or a cooking fraction of one either — but 3.2 tbsp is still
+    // closer to measurable than 1/5 cup.
+    expect(us('1/5 cup')).toBe('≈3.2 tbsp');
+    // 1/6 cup is exactly 2 2/3 tbsp.
+    expect(us('1/6 cup')).toBe('≈2 2/3 tbsp');
+  });
+
+  it('steps a tablespoon fraction with no measuring-set denominator down to teaspoons', () => {
+    expect(us('1/6 tbsp')).toBe('≈1/2 tsp');
+    expect(us('1/6 tablespoon')).toBe('≈1/2 tsp');
+  });
+
+  it('falls back to a decimal when even the finer unit has no clean fraction', () => {
+    // 1/7 cup is 16/7 tbsp, which lands on no cooking fraction either.
+    expect(us('1/7 cup')).toBe('≈2.29 tbsp');
+  });
+
+  it('carries the trailing clause and inflects the stepped-down unit', () => {
+    expect(us('1/5 cup, packed')).toBe('≈3.2 tbsp, packed');
+    expect(us('1/16 cup')).toBe('≈1 tbsp');
+  });
 });
 
 describe('convertQuantity — what it refuses', () => {
