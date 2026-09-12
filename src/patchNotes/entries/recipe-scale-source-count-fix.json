@@ -1,0 +1,4 @@
+{
+  "message": "Doubling or halving a recipe no longer leaves a stale parenthetical count like \"(from about 2 limes)\" on a scaled amount — it's dropped instead of quietly lying about how much you'll need.",
+  "date": "2026-09-12"
+}
