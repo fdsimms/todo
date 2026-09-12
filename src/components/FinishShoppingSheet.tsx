@@ -1,5 +1,5 @@
 import React, { useMemo, useRef, useState, useEffect } from 'react';
-import { Alert, Modal, Platform, View, Text, TextInput, TouchableOpacity, ScrollView, StyleSheet } from 'react-native';
+import { Alert, Keyboard, Modal, Platform, View, Text, TextInput, TouchableOpacity, ScrollView, StyleSheet } from 'react-native';
 import Ionicons from '@expo/vector-icons/Ionicons';
 import { useShallow } from 'zustand/react/shallow';
 import { useColors } from '../theme/ThemeContext';
@@ -315,18 +315,19 @@ export function FinishShoppingSheet({
     const dirty = selected !== initialSelectedRef.current
       || unavailable.length > 0
       || Object.values(priceText).some(t => t.trim() !== '');
-    if (!dirty) { onClose(); return; }
+    if (!dirty) { Keyboard.dismiss(); onClose(); return; }
     Alert.alert(
       'Discard changes?',
       'What you entered about this trip will be lost.',
       [
         { text: 'Keep editing', style: 'cancel' },
-        { text: 'Discard', style: 'destructive', onPress: onClose },
+        { text: 'Discard', style: 'destructive', onPress: () => { Keyboard.dismiss(); onClose(); } },
       ],
     );
   };
 
   const handleFinish = () => {
+    Keyboard.dismiss();
     // Anything that doesn't parse is dropped rather than blocking the finish.
     // The trip is the thing being recorded; a price is an aside, and refusing
     // to end someone's shop over a typo in one would invert that.

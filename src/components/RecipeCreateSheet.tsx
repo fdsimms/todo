@@ -11,6 +11,7 @@
 import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import {
   Alert,
+  Keyboard,
   Modal,
   View,
   Text,
@@ -422,7 +423,7 @@ export function RecipeCreateSheet({
       // The store refused a name the live check said was free — the box changed
       // under a sheet left open. Land them on the recipe they were after.
       const existing = recipes.find(r => r.nameKey === groceryNameKey(cleaned));
-      if (existing) { onClose(); onCreated(existing.id, input.page?.url ?? null); }
+      if (existing) { Keyboard.dismiss(); onClose(); onCreated(existing.id, input.page?.url ?? null); }
       return;
     }
     // Tapping Create can beat a field's own blur, so every value below is read
@@ -517,6 +518,7 @@ export function RecipeCreateSheet({
       });
     }
     haptics.success();
+    Keyboard.dismiss();
     // Close first, then navigate: a navigate fired from under a live pageSheet
     // renders the destination behind the sheet.
     onClose();
@@ -534,13 +536,13 @@ export function RecipeCreateSheet({
       || !!input.text.trim()
       || !!input.url.trim()
       || input.photos.length > 0;
-    if (!dirty) { onClose(); return; }
+    if (!dirty) { Keyboard.dismiss(); onClose(); return; }
     Alert.alert(
       'Discard changes?',
       'You have unsaved changes. Are you sure you want to discard them?',
       [
         { text: 'Keep editing', style: 'cancel' },
-        { text: 'Discard', style: 'destructive', onPress: onClose },
+        { text: 'Discard', style: 'destructive', onPress: () => { Keyboard.dismiss(); onClose(); } },
       ],
     );
   };
@@ -728,6 +730,7 @@ export function RecipeCreateSheet({
                 // it turned out to already be in the box, and this lands them
                 // on it. A queue entry the caller can now drop.
                 onPress={() => {
+                  Keyboard.dismiss();
                   onClose();
                   onCreated(duplicate.id, input.page?.url ?? null);
                 }}
@@ -743,6 +746,7 @@ export function RecipeCreateSheet({
               <InlineAction
                 label="Open it"
                 onPress={() => {
+                  Keyboard.dismiss();
                   onClose();
                   onCreated(urlDuplicate.id, input.page?.url ?? null);
                 }}

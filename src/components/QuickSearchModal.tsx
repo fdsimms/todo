@@ -1,5 +1,6 @@
 import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import {
+  Keyboard,
   Modal,
   View,
   Text,
@@ -266,6 +267,7 @@ export function QuickSearchModal({ visible, onClose, onSelectTask, onOpenFullSea
   }, [visible]);
 
   const dismiss = (then?: () => void) => {
+    Keyboard.dismiss();
     Animated.parallel([
       Animated.timing(scaleAnim, { toValue: 0.94, duration: animation.duration.dismiss, useNativeDriver: true }),
       Animated.timing(cardOpacity, { toValue: 0, duration: animation.duration.dismiss, useNativeDriver: true }),

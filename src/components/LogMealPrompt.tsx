@@ -1,5 +1,5 @@
 import React, { useEffect, useMemo, useState } from 'react';
-import { KeyboardAvoidingView, Modal, Platform, StyleSheet, Text, TextInput, TouchableOpacity, View } from 'react-native';
+import { Keyboard, KeyboardAvoidingView, Modal, Platform, StyleSheet, Text, TextInput, TouchableOpacity, View } from 'react-native';
 import { useShallow } from 'zustand/react/shallow';
 import { useColors } from '../theme/ThemeContext';
 import { border, font, fontWeight, interaction, radius, spacing, type Colors } from '../theme';
@@ -145,7 +145,7 @@ export function LogMealPrompt() {
 
   if (!pending || !figures || pendingFinishLeftoverId) return null;
 
-  const close = () => setPending(null);
+  const close = () => { Keyboard.dismiss(); setPending(null); };
 
   const handleLog = () => {
     if (!helping) return;

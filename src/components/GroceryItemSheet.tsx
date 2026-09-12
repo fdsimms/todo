@@ -10,6 +10,7 @@
 import React, { useMemo, useState, useEffect, useRef } from 'react';
 import { format } from 'date-fns/format';
 import {
+  Keyboard,
   Modal,
   Platform,
   View,
@@ -486,6 +487,7 @@ export function GroceryItemSheet({
     commitQuantity();
     commitNote();
     commitPrice(priceKey);
+    Keyboard.dismiss();
     onClose();
   };
 
@@ -668,6 +670,7 @@ export function GroceryItemSheet({
       onConfirm: () => {
         deleteItem(item.id);
         haptics.warning();
+        Keyboard.dismiss();
         onClose();
       },
     });
@@ -1792,6 +1795,7 @@ export function GroceryItemSheet({
               onPress={() => {
                 removeFromList(item.id);
                 haptics.tap();
+                Keyboard.dismiss();
                 onClose();
               }}
               accessibilityRole="button"

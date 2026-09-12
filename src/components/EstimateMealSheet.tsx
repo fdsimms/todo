@@ -2,6 +2,7 @@ import React, { useEffect, useMemo, useState } from 'react';
 import {
   ActivityIndicator,
   Alert,
+  Keyboard,
   Modal,
   ScrollView,
   StyleSheet,
@@ -173,6 +174,7 @@ export function EstimateMealSheet({ visible, slot, at, mealPlanEntryId, onClose,
     });
     if (!written) { haptics.error(); return; }
     haptics.success();
+    Keyboard.dismiss();
     onClose();
   };
 
@@ -203,13 +205,13 @@ export function EstimateMealSheet({ visible, slot, at, mealPlanEntryId, onClose,
   };
 
   const handleCancel = () => {
-    if (!description.trim() && !estimate) { onClose(); return; }
+    if (!description.trim() && !estimate) { Keyboard.dismiss(); onClose(); return; }
     Alert.alert(
       'Discard changes?',
       'You have unsaved changes. Are you sure you want to discard them?',
       [
         { text: 'Keep editing', style: 'cancel' },
-        { text: 'Discard', style: 'destructive', onPress: onClose },
+        { text: 'Discard', style: 'destructive', onPress: () => { Keyboard.dismiss(); onClose(); } },
       ],
     );
   };

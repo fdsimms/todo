@@ -1,5 +1,5 @@
 import React, { useEffect, useMemo, useState, type ReactNode } from 'react';
-import { Modal, ScrollView, StyleSheet, Text, TextInput, TouchableOpacity, View } from 'react-native';
+import { Keyboard, Modal, ScrollView, StyleSheet, Text, TextInput, TouchableOpacity, View } from 'react-native';
 import Ionicons from '@expo/vector-icons/Ionicons';
 import { useSettingsStore } from '../store/useSettingsStore';
 import { useColors } from '../theme/ThemeContext';
@@ -120,6 +120,7 @@ export function RuleListSheet<T extends EditableRule>({
   // both route through `close`, but a parent that hides the sheet by any other
   // means would otherwise leave the row open for next time.
   const close = () => {
+    Keyboard.dismiss();
     setExpandedId(null);
     onClose();
   };

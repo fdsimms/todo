@@ -1,6 +1,7 @@
 import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import {
   Alert,
+  Keyboard,
   Modal,
   View,
   Text,
@@ -149,6 +150,7 @@ export function EventImportSheet({ visible, onClose, onImported }: Props) {
 
   const finish = useCallback((events: ExtractedCalendarEvent[]) => {
     haptics.success();
+    Keyboard.dismiss();
     onImported(events);
     onClose();
   }, [onImported, onClose]);
@@ -208,13 +210,13 @@ export function EventImportSheet({ visible, onClose, onImported }: Props) {
   // would otherwise drop it with no dialog.
   const handleCancel = () => {
     const dirty = !!text.trim() || !!photo;
-    if (!dirty) { onClose(); return; }
+    if (!dirty) { Keyboard.dismiss(); onClose(); return; }
     Alert.alert(
       'Discard changes?',
       'You have unsaved changes. Are you sure you want to discard them?',
       [
         { text: 'Keep editing', style: 'cancel' },
-        { text: 'Discard', style: 'destructive', onPress: onClose },
+        { text: 'Discard', style: 'destructive', onPress: () => { Keyboard.dismiss(); onClose(); } },
       ],
     );
   };

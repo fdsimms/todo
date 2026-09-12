@@ -1,5 +1,6 @@
 import React, { useEffect, useMemo, useState } from 'react';
 import {
+  Keyboard,
   Modal,
   View,
   Text,
@@ -77,16 +78,22 @@ export function RecipeComponentPicker({ visible, recipe, onClose, onSelect }: Pr
 
   const handleSelect = (candidate: Recipe) => {
     haptics.success();
+    Keyboard.dismiss();
     onSelect(candidate);
     onClose();
   };
 
+  const handleCancel = () => {
+    Keyboard.dismiss();
+    onClose();
+  };
+
   return (
-    <Modal visible={visible} animationType="slide" presentationStyle="pageSheet" onRequestClose={onClose}>
+    <Modal visible={visible} animationType="slide" presentationStyle="pageSheet" onRequestClose={handleCancel}>
       <View style={styles.root}>
         <SheetHeader
           title="Add a component"
-          left={<SheetHeaderButton label="Cancel" role="cancel" onPress={onClose} minWidth={60} />}
+          left={<SheetHeaderButton label="Cancel" role="cancel" onPress={handleCancel} minWidth={60} />}
           // Balances Cancel so the title stays optically centered.
           right={<View style={styles.headerSpacer} />}
         />

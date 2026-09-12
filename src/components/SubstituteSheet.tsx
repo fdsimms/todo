@@ -3,6 +3,7 @@ import {
   ActivityIndicator,
   Alert,
   FlatList,
+  Keyboard,
   Modal,
   StyleSheet,
   Text,
@@ -332,6 +333,7 @@ export function SubstituteSheet({ visible, itemId, editingSubItemId = null, onSw
     // never ticking it, or reviewing a link is a way to add one you can't undo.
     if (!bothWays && editingSub?.isMutual) unlinkItemSub(picked.id, item.id);
     haptics.success();
+    Keyboard.dismiss();
     onClose();
   };
 
@@ -347,13 +349,13 @@ export function SubstituteSheet({ visible, itemId, editingSubItemId = null, onSw
       || standing !== baseline.standing
       || ratioFrom !== baseline.ratioFrom
       || ratioTo !== baseline.ratioTo;
-    if (!dirty) { onClose(); return; }
+    if (!dirty) { Keyboard.dismiss(); onClose(); return; }
     Alert.alert(
       'Discard changes?',
       'You have unsaved changes. Are you sure you want to discard them?',
       [
         { text: 'Keep editing', style: 'cancel' },
-        { text: 'Discard', style: 'destructive', onPress: onClose },
+        { text: 'Discard', style: 'destructive', onPress: () => { Keyboard.dismiss(); onClose(); } },
       ],
     );
   };
@@ -373,6 +375,7 @@ export function SubstituteSheet({ visible, itemId, editingSubItemId = null, onSw
   // do once it's applied.
   const handleSwap = (subItemId: string) => {
     onSwap?.(subItemId);
+    Keyboard.dismiss();
     onClose();
   };
 
@@ -380,6 +383,7 @@ export function SubstituteSheet({ visible, itemId, editingSubItemId = null, onSw
     if (!item || !picked) return;
     unlinkItemSub(item.id, picked.id);
     haptics.tap();
+    Keyboard.dismiss();
     onClose();
   };
 

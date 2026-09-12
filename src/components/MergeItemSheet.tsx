@@ -1,5 +1,5 @@
 import React, { useEffect, useMemo, useState } from 'react';
-import { FlatList, Modal, StyleSheet, Text, TextInput, TouchableOpacity, View } from 'react-native';
+import { FlatList, Keyboard, Modal, StyleSheet, Text, TextInput, TouchableOpacity, View } from 'react-native';
 import Ionicons from '@expo/vector-icons/Ionicons';
 import { useShallow } from 'zustand/react/shallow';
 import { useGroceryStore } from '../store/useGroceryStore';
@@ -89,6 +89,7 @@ export function MergeItemSheet({ visible, itemId, initialPickedId, onClose, onMe
   };
 
   const handleClose = () => {
+    Keyboard.dismiss();
     reset();
     onClose();
   };
@@ -115,6 +116,7 @@ export function MergeItemSheet({ visible, itemId, initialPickedId, onClose, onMe
       onConfirm: () => {
         mergeItems(loser.id, survivor.id);
         haptics.warning();
+        Keyboard.dismiss();
         reset();
         onMerged(survivor.id);
       },
