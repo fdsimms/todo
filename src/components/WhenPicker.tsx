@@ -1,6 +1,7 @@
 import React, { useMemo, useRef, useState, useEffect } from 'react';
 import {
   Alert,
+  Keyboard,
   Modal,
   View,
   Text,
@@ -360,6 +361,10 @@ export function WhenPicker({
   const confirmWithFeedback = (date: Date | null, key: string) => {
     if (pendingRef.current) return;
     pendingRef.current = true;
+    // The free-text field can still hold focus when a calendar day or quick
+    // button is tapped — closing without this races the keyboard's own
+    // dismiss animation against the Modal's and freezes whatever's underneath.
+    Keyboard.dismiss();
     setPendingKey(key);
     if (date) setDisplayMonth(startOfMonth(date));
     haptics.success();
@@ -419,6 +424,7 @@ export function WhenPicker({
   // having to tap a calendar day just to commit the change.
   const handleSave = () => {
     if (pendingRef.current) return;
+    Keyboard.dismiss();
     haptics.tap();
     onConfirm(value ?? null, segments);
   };
@@ -490,6 +496,14 @@ export function WhenPicker({
     }
   };
 
+  // Closing while the free-text field still holds focus is the same freeze
+  // bug fixed elsewhere: the keyboard's own dismiss animation races the
+  // Modal's and strands the touch handler on whatever's underneath.
+  const cancel = () => {
+    Keyboard.dismiss();
+    onCancel();
+  };
+
   const postponeActions = useMemo<PostponeCheckAction[]>(() => {
     if (!postponeTask) return [];
     const actions: PostponeCheckAction[] = [];
@@ -515,7 +529,7 @@ export function WhenPicker({
               // Not destructive styling: archiving keeps the task, and dressing
               // a filing away up as a deletion is how a real one stops being
               // read (same call RemindersCaptureSettings makes).
-              onPress: () => { archiveTask(postponeTask.id); onCancel(); },
+              onPress: () => { archiveTask(postponeTask.id); cancel(); },
             },
           ],
         );
@@ -550,7 +564,7 @@ export function WhenPicker({
       });
     }
     return actions;
-  }, [postponeTask, onBreakUp, archiveTask, updateTask, onCancel, reachOutOfferActive, reachOutPerson, updatePersonRecord]);
+  }, [postponeTask, onBreakUp, archiveTask, updateTask, cancel, reachOutOfferActive, reachOutPerson, updatePersonRecord]);
 
   const suggestionLabel = suggestion
     ? `${format(new Date(`${suggestion.key}T12:00:00`), 'EEE, MMM d')}: ${suggestion.reason}`
@@ -561,18 +575,18 @@ export function WhenPicker({
       visible={visible}
       animationType="none"
       transparent
-      onRequestClose={onCancel}
+      onRequestClose={cancel}
     >
       <View style={styles.backdrop}>
         <Animated.View
           style={[StyleSheet.absoluteFill, styles.dim, { opacity: enterAnim }]}
           pointerEvents="none"
         />
-        <SheetScrim onPress={onCancel} />
+        <SheetScrim onPress={cancel} />
         <Animated.View style={[styles.card, shadows.popover, { opacity: enterAnim, transform: [{ scale: cardScale }] }]}>
           {/* Header */}
           <View style={styles.header}>
-            <SheetHeaderButton label="Cancel" role="cancel" onPress={onCancel} minWidth={28} />
+            <SheetHeaderButton label="Cancel" role="cancel" onPress={cancel} minWidth={28} />
             <Text style={styles.headerTitle}>{title}</Text>
             <SheetHeaderButton label="Save" onPress={handleSave} style={styles.headerSaveText} />
           </View>
@@ -868,7 +882,7 @@ export function WhenPicker({
           {onClear && (
             <>
               <View style={styles.sectionGap} />
-              <TouchableOpacity style={styles.clearBtn} onPress={onClear} activeOpacity={interaction.activeOpacity}>
+              <TouchableOpacity style={styles.clearBtn} onPress={() => { Keyboard.dismiss(); onClear(); }} activeOpacity={interaction.activeOpacity}>
                 <Text style={styles.clearLabel}>Clear</Text>
               </TouchableOpacity>
             </>

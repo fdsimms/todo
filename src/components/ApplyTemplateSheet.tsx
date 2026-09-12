@@ -1,5 +1,6 @@
 import React, { useRef, useEffect, useMemo, useState } from 'react';
 import {
+  Keyboard,
   Modal,
   View,
   Text,
@@ -221,6 +222,7 @@ export function ApplyTemplateSheet({ visible, template, onClose, projectId, onAp
   }, [answersKey, visible, tree]);
 
   const dismiss = (onDismissed?: () => void) => {
+    Keyboard.dismiss();
     Animated.parallel([
       Animated.spring(translateY, {
         toValue: hiddenY,

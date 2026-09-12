@@ -4,6 +4,7 @@ import {
   Text,
   FlatList,
   TouchableOpacity,
+  Keyboard,
   StyleSheet,
   Modal,
   type GestureResponderEvent,
@@ -286,18 +287,20 @@ export function TagsScreen() {
           onClose={() => setQuickAddVisible(false)}
         />
 
-        {/* Tag detail modal */}
+        {/* Tag detail modal. Rows are TaskItem, whose own inline title/subtask
+            fields can still hold focus when the sheet closes — dismiss the
+            keyboard first, same freeze bug fixed elsewhere. */}
         <Modal
           visible={selectedTag !== null}
           animationType="slide"
           presentationStyle="pageSheet"
-          onRequestClose={() => { setSelectedTag(null); if (selectionMode) exitSelection(); }}
+          onRequestClose={() => { Keyboard.dismiss(); setSelectedTag(null); if (selectionMode) exitSelection(); }}
         >
           <View style={[styles.detailRoot, { paddingTop: insets.top + spacing.md }]}>
             <DetailHeader
               title={selectedTag ?? ''}
               backIcon="close"
-              onBack={() => { setSelectedTag(null); if (selectionMode) exitSelection(); }}
+              onBack={() => { Keyboard.dismiss(); setSelectedTag(null); if (selectionMode) exitSelection(); }}
               leading={selectedTag ? (
                 <View style={[styles.tagIconSm, { backgroundColor: tagColor(selectedTag) + '22' }]}>
                   <Ionicons name="pricetag" size={14} color={tagColor(selectedTag)} />

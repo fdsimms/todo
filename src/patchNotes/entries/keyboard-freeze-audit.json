@@ -1,0 +1,4 @@
+{
+  "message": "Fixed nine more places a sheet could freeze the app if it closed while a text field was still focused: list settings, remind-me, project categories, cookbook checklist, apply template, nutrition search, the date picker, and the add-existing-task and tag-detail screens",
+  "date": "2026-09-12"
+}

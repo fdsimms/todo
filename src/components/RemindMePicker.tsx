@@ -1,5 +1,6 @@
 import React, { useState, useEffect, useMemo } from 'react';
 import {
+  Keyboard,
   Modal,
   View,
   Text,
@@ -141,6 +142,7 @@ export function RemindMePicker({ visible, value, kind, dueDate = null, offsetDay
   };
 
   const confirm = () => {
+    Keyboard.dismiss();
     if (mode === 'before') {
       if (!dueDate) return;
       const result = getReminderOffsetDate(dueDate, beforeDays);
@@ -154,6 +156,14 @@ export function RemindMePicker({ visible, value, kind, dueDate = null, offsetDay
     onConfirm(result, selectedKind, null, selectedAnchor);
   };
 
+  // Closing while the natural-language field still holds focus is the same
+  // freeze bug fixed elsewhere: the keyboard's own dismiss animation races
+  // the Modal's and strands the touch handler on whatever's underneath.
+  const cancel = () => {
+    Keyboard.dismiss();
+    onCancel();
+  };
+
   const canConfirm = mode === 'before' ? !!dueDate : !!selectedDate;
 
   return (
@@ -161,11 +171,11 @@ export function RemindMePicker({ visible, value, kind, dueDate = null, offsetDay
       visible={visible}
       animationType="fade"
       transparent
-      onRequestClose={onCancel}
+      onRequestClose={cancel}
       onShow={() => setPickerReady(true)}
     >
       <View style={styles.backdrop}>
-        <SheetScrim onPress={onCancel} />
+        <SheetScrim onPress={cancel} />
         <View style={[styles.card, shadows.popover]}>
           {/* Header — pinned outside the scroll, so the title and close
               button are always reachable no matter how far down the picker
@@ -175,7 +185,7 @@ export function RemindMePicker({ visible, value, kind, dueDate = null, offsetDay
           <View style={styles.header}>
             <View style={styles.headerSpacer} />
             <Text style={styles.headerTitle}>Remind me</Text>
-            <TouchableOpacity onPress={onCancel} hitSlop={10} style={styles.closeBtn} accessibilityRole="button" accessibilityLabel="Close">
+            <TouchableOpacity onPress={cancel} hitSlop={10} style={styles.closeBtn} accessibilityRole="button" accessibilityLabel="Close">
               <Ionicons name="close" size={20} color={colors.textSecondary} />
             </TouchableOpacity>
           </View>
@@ -473,7 +483,7 @@ export function RemindMePicker({ visible, value, kind, dueDate = null, offsetDay
             {onClear && (
               <>
                 <View style={styles.sectionGapSm} />
-                <TouchableOpacity style={styles.clearBtn} onPress={onClear} activeOpacity={interaction.activeOpacity} accessibilityRole="button">
+                <TouchableOpacity style={styles.clearBtn} onPress={() => { Keyboard.dismiss(); onClear(); }} activeOpacity={interaction.activeOpacity} accessibilityRole="button">
                   <Text style={styles.clearLabel}>Clear reminder</Text>
                 </TouchableOpacity>
               </>

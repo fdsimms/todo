@@ -5,6 +5,7 @@ import {
   TouchableOpacity,
   TextInput,
   FlatList,
+  Keyboard,
   StyleSheet,
   Modal,
   type GestureResponderEvent,
@@ -1003,7 +1004,7 @@ export function ProjectDetailScreen() {
           visible={showExistingPicker}
           animationType="slide"
           presentationStyle="pageSheet"
-          onRequestClose={() => setShowExistingPicker(false)}
+          onRequestClose={() => { Keyboard.dismiss(); setShowExistingPicker(false); }}
         >
           <View style={[styles.pickerRoot, { paddingTop: insets.top + spacing.md }]}>
             {/* Deliberately not `DetailHeader`: that's the back-chevron bar a
@@ -1018,7 +1019,7 @@ export function ProjectDetailScreen() {
                 <SheetHeaderButton
                   label="Cancel"
                   role="cancel"
-                  onPress={() => setShowExistingPicker(false)}
+                  onPress={() => { Keyboard.dismiss(); setShowExistingPicker(false); }}
                   accessibilityLabel="Close"
                 />
               }

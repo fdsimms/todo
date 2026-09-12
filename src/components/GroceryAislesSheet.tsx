@@ -1,5 +1,6 @@
 import React, { useMemo, useState, useEffect } from 'react';
 import {
+  Keyboard,
   Modal,
   View,
   Text,
@@ -237,6 +238,7 @@ export function GroceryAislesSheet({ visible, onClose }: Props) {
   // whichever one is mid-edit instead of dropping it, same fix as
   // GroceryItemSheet's Done button.
   const handleDone = () => {
+    Keyboard.dismiss();
     commitRename();
     commitAisleRename();
     onClose();
