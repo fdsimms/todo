@@ -1921,6 +1921,36 @@ export const TaskItem = React.memo(function TaskItem({
               pointerEvents="none"
             />
           )}
+          {/* quotaFill's bottom edge sits at the padding box, not the border
+              box (see its own comment), which leaves the border-width strip
+              at the very bottom to the border ring. The ring's inner edge
+              curves at the corners, the fill's edge doesn't, and the mismatch
+              between them is a sliver of the row's own background peeking
+              through right where the two corners meet. This cap is a fixed,
+              unanimated patch over just that strip — sized off the height
+              animation itself so it's absent until the fill actually reaches
+              the bottom — rather than extending quotaFill's own bottom, which
+              would reopen the top hairline the sibling comment already
+              explains. */}
+          {showQuotaMeter && (
+            <Animated.View
+              style={[
+                styles.quotaFillCap,
+                {
+                  opacity: quotaFill.interpolate({
+                    inputRange: [0, 0.01, 1],
+                    outputRange: [0, 1, 1],
+                    extrapolate: 'clamp',
+                  }),
+                  backgroundColor: quotaDone.interpolate({
+                    inputRange: [0, 1],
+                    outputRange: [colors.accent, colors.green],
+                  }),
+                },
+              ]}
+              pointerEvents="none"
+            />
+          )}
           {showPaceMark && (
             <View
               style={[styles.quotaPaceMark, { bottom: `${quotaPaceLevel * 100}%` }]}
@@ -1931,10 +1961,13 @@ export const TaskItem = React.memo(function TaskItem({
               rest rather than animated — this is a row that mounted already
               completed (Calendar's day list), not a live meter run. */}
           {!showQuotaMeter && quotaPartial && (
-            <View
-              style={[styles.quotaFill, { height: `${Math.round(quotaFraction(task) * 100)}%`, backgroundColor: colors.accent }]}
-              pointerEvents="none"
-            />
+            <>
+              <View
+                style={[styles.quotaFill, { height: `${Math.round(quotaFraction(task) * 100)}%`, backgroundColor: colors.accent }]}
+                pointerEvents="none"
+              />
+              <View style={[styles.quotaFillCap, { backgroundColor: colors.accent }]} pointerEvents="none" />
+            </>
           )}
         </Animated.View>
 
@@ -3752,6 +3785,19 @@ const makeStyles = (colors: Colors) => StyleSheet.create({
     left: -border.md,
     right: -border.md,
     bottom: 0,
+    borderRadius: 0,
+  },
+  // Patches the corner sliver quotaFill's own comment accepts — see the call
+  // site. Fixed to the border's own width rather than animated, and pinned
+  // to the true outer edge on every side (unlike quotaFill, which only does
+  // that left/right) since it's covering the border ring itself, not racing
+  // the water line.
+  quotaFillCap: {
+    position: 'absolute',
+    left: -border.md,
+    right: -border.md,
+    bottom: -border.md,
+    height: border.md,
     borderRadius: 0,
   },
   // The pace line: same full-width, edge-to-edge treatment as quotaFill so it
