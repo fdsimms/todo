@@ -70,6 +70,10 @@ export function useRecipeComponentImports(
 ) {
   const [states, setStates] = useState<Record<string, ComponentImportState>>({});
   const [accepted, setAccepted] = useState<Set<string>>(new Set());
+  // Rows the user has explicitly waved off — "not this one" rather than
+  // "haven't gotten to it yet". A dismissed row never renders again for this
+  // run, so it also never gets ticked back on by a later photo or link.
+  const [dismissed, setDismissed] = useState<Set<string>>(new Set());
   const statesRef = useRef<Record<string, ComponentImportState>>({});
   const photosRef = useRef<Record<string, RecipePhoto[]>>({});
 
@@ -85,6 +89,7 @@ export function useRecipeComponentImports(
     photosRef.current = {};
     setStates({});
     setAccepted(new Set(candidates.filter(c => c.match).map(c => c.key)));
+    setDismissed(new Set());
     // `seed` stands in for the candidate list: a new array identity every
     // render would otherwise re-seed the ticks out from under the user.
     // eslint-disable-next-line react-hooks/exhaustive-deps
@@ -100,6 +105,23 @@ export function useRecipeComponentImports(
       const next = new Set(prev);
       if (next.has(key)) next.delete(key);
       else next.add(key);
+      return next;
+    });
+  }, []);
+
+  /**
+   * "Not this one" — drop the row entirely rather than leave it unticked.
+   * An unticked row still sits in the sheet forever with nothing to do about
+   * it; dismissing removes it from the list, same as never having been
+   * offered. Also clears anything already accepted for it, so a match ticked
+   * on open doesn't sneak back in via `acceptedKeys` once its row is gone.
+   */
+  const dismiss = useCallback((key: string) => {
+    setDismissed(prev => (prev.has(key) ? prev : new Set(prev).add(key)));
+    setAccepted(prev => {
+      if (!prev.has(key)) return prev;
+      const next = new Set(prev);
+      next.delete(key);
       return next;
     });
   }, []);
@@ -303,7 +325,8 @@ export function useRecipeComponentImports(
     photosRef.current = {};
     setStates({});
     setAccepted(new Set());
+    setDismissed(new Set());
   }, []);
 
-  return { stateFor, accepted, acceptedKeys, toggle, importFrom, linkTo, commitTo, reset };
+  return { stateFor, accepted, acceptedKeys, dismissed, toggle, dismiss, importFrom, linkTo, commitTo, reset };
 }

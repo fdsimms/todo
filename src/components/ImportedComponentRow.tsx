@@ -3,7 +3,7 @@ import { View, Text, TouchableOpacity, ActivityIndicator, StyleSheet } from 'rea
 import Ionicons from '@expo/vector-icons/Ionicons';
 import { useColors } from '../theme/ThemeContext';
 import {
-  spacing, radius, font, fontWeight, border, iconSize, checkboxRadius,
+  spacing, radius, font, fontWeight, border, iconSize, checkboxRadius, interaction,
   type Colors,
 } from '../theme';
 import { InlineAction } from './InlineAction';
@@ -28,6 +28,8 @@ interface Props {
   onImport: (source: RecipePhotoSource) => void;
   /** The user picked an existing recipe by hand — see `linkTo` on the hook. */
   onLink: (recipe: Recipe) => void;
+  /** "Not this one" — removes the row from the list. See `dismiss` on the hook. */
+  onDismiss: () => void;
 }
 
 /**
@@ -56,7 +58,7 @@ interface Props {
  * the whole box the same way either entry point does. Picking one behaves like
  * an automatic match from there on: ticked, and shown as already in the box.
  */
-export function ImportedComponentRow({ candidate, state, accepted, parent, onToggle, onImport, onLink }: Props) {
+export function ImportedComponentRow({ candidate, state, accepted, parent, onToggle, onImport, onLink, onDismiss }: Props) {
   const colors = useColors();
   const styles = useMemo(() => makeStyles(colors), [colors]);
   const [pickerVisible, setPickerVisible] = useState(false);
@@ -207,6 +209,16 @@ export function ImportedComponentRow({ candidate, state, accepted, parent, onTog
         </View>
       )}
       {body}
+      <TouchableOpacity
+        onPress={() => { haptics.tap(); onDismiss(); }}
+        disabled={busy}
+        activeOpacity={interaction.activeOpacity}
+        hitSlop={8}
+        accessibilityRole="button"
+        accessibilityLabel={`Dismiss ${title}`}
+      >
+        <Ionicons name="close-circle-outline" size={iconSize.md} color={colors.textTertiary} />
+      </TouchableOpacity>
     </View>
   );
 }
