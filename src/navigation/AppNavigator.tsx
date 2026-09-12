@@ -48,6 +48,7 @@ import { UndoBar } from '../components/UndoBar';
 import { UseUpResolveSheet } from '../components/UseUpResolveSheet';
 import { FinishLeftoverPrompt } from '../components/FinishLeftoverPrompt';
 import { LogMealPrompt } from '../components/LogMealPrompt';
+import { HealthWriteRefusedNotice } from '../components/HealthWriteRefusedNotice';
 import { LogMealEntrySheet } from '../components/LogMealEntrySheet';
 import { CookRecap } from '../components/CookRecap';
 import { useColors } from '../theme/ThemeContext';
@@ -476,6 +477,7 @@ export default function AppNavigator() {
           for the reason noted there.) */}
       <FinishLeftoverPrompt />
       <LogMealPrompt />
+      <HealthWriteRefusedNotice />
       <UseUpResolveSheet />
       {/* Mounted once here rather than on the two screens a meal is ticked off
           from, which is what the offers it replaced did. A banner rendered

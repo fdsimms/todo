@@ -555,6 +555,38 @@ case, so the write patches through `dbUpdateFoodLogEntry` directly and the
 delete reads the row back with `dbGetFoodLogEntry`. Finding a row only when it
 happens to be loaded would strand its samples.
 
+### A refused write is the one outcome worth saying out loud
+
+`FoodWriteResult` has five arms and `addEntry` acted on one of them for a while,
+which made the most important failure completely silent (#2516). The entry saves
+either way, which is right, so a refusal leaves no trace at all: the only
+evidence is a meal that never turns up in Health. Somebody who switched
+`healthWriteEnabled` on and never granted sharing in Health's own sheet loses
+every meal and is told nothing.
+
+`refused` now raises a notice (`HealthWriteRefusedNotice`, mounted in
+AppNavigator beside `LogMealPrompt` because a meal is logged from four different
+places). Three rules hold it in place:
+
+- **Once, not per meal.** The failure is ongoing and identical every time, so a
+  notice per meal is a nag about something already said. `healthFoodWriteRefusalSeen`
+  is what records it, and it is bookkeeping rather than a preference, which is
+  why no screen offers it.
+- **A write that lands clears it.** That is what stops "once" from meaning
+  "never again": a breakage starting six months later gets its own notice
+  instead of being swallowed by having complained then.
+- **The other three arms stay silent, deliberately.** `off` is the switch doing
+  what it says, `unavailable` is a device with no Health at all (or demo mode),
+  and `nothingToWrite` is an entry stating no figure, which is an ordinary thing
+  to log. None of them is a fault, and reporting them would train the notice to
+  be ignored before it ever carried the one that matters.
+
+**Settings was already telling the truth and it was not enough.** The
+nutrition-write access row reports the real authorization status, because write
+authorization *is* observable where read authorization is not. But it only helps
+somebody who already suspects something, and the person this fails is precisely
+the one with no reason to look.
+
 ### There is still no edit path, and adding one has an obligation
 
 The food log UI adds and deletes; it does not edit. `updateEntry` exists, is

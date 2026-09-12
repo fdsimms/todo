@@ -903,6 +903,23 @@ interface SettingsStore {
   // add a way to be refused twice for the same reason.
   healthWriteEnabled: boolean;
 
+  /**
+   * Whether the person has already been told that Health is refusing the meals
+   * this app tries to write, with nothing having gone in since.
+   *
+   * Bookkeeping rather than a preference, which is why no screen offers it. A
+   * refused write is invisible by construction: the food log entry saves either
+   * way, so the only sign is a meal that never reaches Health. Somebody who
+   * turned "Log to Health" on and never granted sharing in Health's own sheet
+   * loses every meal silently, and Settings' nutrition-write row only helps a
+   * person who already suspects something.
+   *
+   * So the notice fires once rather than per meal, and a successful write
+   * clears this so a *later* breakage is surfaced again instead of being
+   * swallowed by having complained once years ago.
+   */
+  healthFoodWriteRefusalSeen: boolean;
+
   // Whether a weight is shown and typed in kilograms or pounds.
   //
   // Its own setting rather than a read of `unitSystem`, which is the recipe
@@ -1441,6 +1458,7 @@ interface SettingsStore {
   setCalendarReadEnabled: (on: boolean) => void;
   setHealthReadEnabled: (on: boolean) => void;
   setHealthWriteEnabled: (on: boolean) => void;
+  setHealthFoodWriteRefusalSeen: (seen: boolean) => void;
   setWeightUnit: (unit: WeightUnit) => void;
   /** Sets the weight goal, or clears it with null. */
   setWeightGoal: (goal: WeightGoal | null) => void;
@@ -1618,6 +1636,7 @@ const DEFAULT_SETTINGS = {
   calendarReadEnabled: false,
   healthReadEnabled: false,
   healthWriteEnabled: false,
+  healthFoodWriteRefusalSeen: false,
   weightUnit: 'kg' as WeightUnit,
   healthTasks: false,
   reminderMeetingNudgeEnabled: true,
@@ -2020,6 +2039,7 @@ export const useSettingsStore = create<SettingsStore>((set, get) => ({
   mealCalendarId: null,
   healthReadEnabled: false,
   healthWriteEnabled: false,
+  healthFoodWriteRefusalSeen: false,
   weightUnit: 'kg',
   weightGoal: null,
   bodyProfile: { ...EMPTY_BODY_PROFILE },
@@ -2320,6 +2340,7 @@ export const useSettingsStore = create<SettingsStore>((set, get) => ({
     const mealCalendarId = dbGetSetting('mealCalendarId') || null;
     const healthReadEnabled = dbGetSetting('healthReadEnabled') === 'true';
     const healthWriteEnabled = dbGetSetting('healthWriteEnabled') === 'true';
+    const healthFoodWriteRefusalSeen = dbGetSetting('healthFoodWriteRefusalSeen') === 'true';
     // Anything that isn't 'lb' reads as kilograms, so a stored value from a
     // future unit this build doesn't know about degrades to the default rather
     // than to undefined.
@@ -2538,7 +2559,7 @@ export const useSettingsStore = create<SettingsStore>((set, get) => ({
     const newTaskDefaults = parseNewTaskDefaults(dbGetSetting('newTaskDefaults'));
     const titleRules = parseTitleRules(dbGetSetting('titleRules'));
     const lastVisitedScreen = dbGetSetting('lastVisitedScreen') || null;
-    set({ dayResetTime: resetTime, morningStart, afternoonStart, eveningStart, nightStart, activeHoursStart, activeHoursEnd, quietHoursStart, quietHoursEnd, themeMode, appFont, appFontRandomize, appFontPool, dailyAgendaEnabled, dailyAgendaTime, tripReminderEnabled, backgroundRefreshEnabled, use24HourTime, weekStartsOn, fabHand, hapticsEnabled, shakeToUndoEnabled, confirmBeforeDeleting, sortOption, filterPriorities, filterEfforts, filterHasReminder, recipeSortOption, recipeLovedOnly, appLockEnabled, appLockGraceSeconds, vacationMode, vacationStart, vacationEnd, vacationDrivenBy, activeListDrivenBy, destinationForecastEnabled, autoRemoveExpiredTasks, autoCompleteProjectsOnDone, postponeCheckEnabled, postponeCheckThreshold, focusWorkCapMinutes, focusDefaultWorkMinutes, focusRestAfterTasks, focusRestAfterMinutes, focusRestMinutes, focusLongRestEvery, focusLongRestMinutes, focusShieldEnabled, penaltyShieldEnabled, gateShieldEnabled, penaltyShieldUntil, penaltyShieldReason, completedRetentionDays, defaultReminderLeadMinutes, hideCategories, collapsedCategories, collapsedRecipeSections, collapsedGroceryGroups, recentSearches, simpleTaskForm, simpleMode, hideHelpText, tipsEnabled, seenTips, lastTipShown, timerLiveActivity, tripLiveActivity, focusLiveActivity, kitchenEnabled, mealsOnToday, kitchenOnToday, unitSystem, currencySymbol, mealCookTasks, mealCookTaskCategory, mealSlotsEnabled, mealSlotTasksWrittenThroughDayKey, mealSlotStepEstimates, cookRecapEnabled, restockOfferEnabled, productLookupEnabled, groceryUseUpTasks, groceryUseUpLeadDays, groceryUseUpTaskCategory, leftoverUseUpTasks, leftoverUseUpTaskCategory, useUpTaskCap, remindersImportEnabled, remindersImportListId, remindersImportConfirmedListId, remindersImportDelete, remindersImportReview, groceryImportEnabled, groceryImportListId, groceryImportConfirmedListId, groceryImportDelete, groceryImportTwoWay, calendarReadEnabled, calendarIds, vacationHiddenCalendarIds, calendarEventCategory, reminderMeetingNudgeEnabled, calendarPeopleHistory, deadlineCalendarId, completionCalendarId, mealCalendarId, healthReadEnabled, healthWriteEnabled, weightUnit, weightGoal, bodyProfile, healthCategory, healthTasks, healthTaskCategory, healthRules, projectReviewTasks, projectReviewTaskCategory, birthdayTasks, birthdayLeadDays, birthdayTaskCategory, birthdayGiftTasks, birthdayGiftLeadDays, birthdayGiftTaskCategory, reachOutTasks, reachOutTaskCategory, pantryCheckTasks, pantryCheckTaskCategory, pantryReviewTasks, pantryReviewTaskCategory, pantryReviewLastDayKey, lastDeloadAppliedDayKey, mealShortfallTasks, mealLogPrompt, nutritionTargets, mealShortfallLeadDays, mealShortfallTaskCategory, mealLogNudgeTasks, mealLogNudgeTaskCategory, supplyReorderTasks, calendarReviewTasks, calendarReviewLastDayKey, calendarReviewTimeSegment, weatherTasks, weatherTaskCategory, weatherRules, screenTimeTasks, screenTimeTaskCategory, screenTimeRules, moodLogTasks, moodLogTaskCategory, moodLogLastDayKey, morningCheckInLastDayKey, moodLogTimeSegments, moodNudgeTasks, moodNudgeTaskCategory, moodNudgeAfterDays, moodNudgeLastDayKey, weekendNudgeTasks, weekendNudgeTaskCategory, weekendNudgeLeadDays, weekendNudgeLastWeekendKey, weighInTasks, weighInTaskCategory, weighInEveryDays, weighInLastDayKey, patchNotesQaStatus, aiFeatureConfig, onDeviceAiEnabled, defaultProjectNudgeCadenceDays, mealPlanNudgeEnabled, mealPlanNudgeIgnoresVacation, mealPlanNudgeWeekday, mealPlanNudgeTime, mealPlanNudgeLastFiredWeekKey, mealPlanNudgeGroupId, mealPlanNudgeTaskCategory, newTaskDefaults, titleRules, lastVisitedScreen, initialized: true });
+    set({ dayResetTime: resetTime, morningStart, afternoonStart, eveningStart, nightStart, activeHoursStart, activeHoursEnd, quietHoursStart, quietHoursEnd, themeMode, appFont, appFontRandomize, appFontPool, dailyAgendaEnabled, dailyAgendaTime, tripReminderEnabled, backgroundRefreshEnabled, use24HourTime, weekStartsOn, fabHand, hapticsEnabled, shakeToUndoEnabled, confirmBeforeDeleting, sortOption, filterPriorities, filterEfforts, filterHasReminder, recipeSortOption, recipeLovedOnly, appLockEnabled, appLockGraceSeconds, vacationMode, vacationStart, vacationEnd, vacationDrivenBy, activeListDrivenBy, destinationForecastEnabled, autoRemoveExpiredTasks, autoCompleteProjectsOnDone, postponeCheckEnabled, postponeCheckThreshold, focusWorkCapMinutes, focusDefaultWorkMinutes, focusRestAfterTasks, focusRestAfterMinutes, focusRestMinutes, focusLongRestEvery, focusLongRestMinutes, focusShieldEnabled, penaltyShieldEnabled, gateShieldEnabled, penaltyShieldUntil, penaltyShieldReason, completedRetentionDays, defaultReminderLeadMinutes, hideCategories, collapsedCategories, collapsedRecipeSections, collapsedGroceryGroups, recentSearches, simpleTaskForm, simpleMode, hideHelpText, tipsEnabled, seenTips, lastTipShown, timerLiveActivity, tripLiveActivity, focusLiveActivity, kitchenEnabled, mealsOnToday, kitchenOnToday, unitSystem, currencySymbol, mealCookTasks, mealCookTaskCategory, mealSlotsEnabled, mealSlotTasksWrittenThroughDayKey, mealSlotStepEstimates, cookRecapEnabled, restockOfferEnabled, productLookupEnabled, groceryUseUpTasks, groceryUseUpLeadDays, groceryUseUpTaskCategory, leftoverUseUpTasks, leftoverUseUpTaskCategory, useUpTaskCap, remindersImportEnabled, remindersImportListId, remindersImportConfirmedListId, remindersImportDelete, remindersImportReview, groceryImportEnabled, groceryImportListId, groceryImportConfirmedListId, groceryImportDelete, groceryImportTwoWay, calendarReadEnabled, calendarIds, vacationHiddenCalendarIds, calendarEventCategory, reminderMeetingNudgeEnabled, calendarPeopleHistory, deadlineCalendarId, completionCalendarId, mealCalendarId, healthReadEnabled, healthWriteEnabled, healthFoodWriteRefusalSeen, weightUnit, weightGoal, bodyProfile, healthCategory, healthTasks, healthTaskCategory, healthRules, projectReviewTasks, projectReviewTaskCategory, birthdayTasks, birthdayLeadDays, birthdayTaskCategory, birthdayGiftTasks, birthdayGiftLeadDays, birthdayGiftTaskCategory, reachOutTasks, reachOutTaskCategory, pantryCheckTasks, pantryCheckTaskCategory, pantryReviewTasks, pantryReviewTaskCategory, pantryReviewLastDayKey, lastDeloadAppliedDayKey, mealShortfallTasks, mealLogPrompt, nutritionTargets, mealShortfallLeadDays, mealShortfallTaskCategory, mealLogNudgeTasks, mealLogNudgeTaskCategory, supplyReorderTasks, calendarReviewTasks, calendarReviewLastDayKey, calendarReviewTimeSegment, weatherTasks, weatherTaskCategory, weatherRules, screenTimeTasks, screenTimeTaskCategory, screenTimeRules, moodLogTasks, moodLogTaskCategory, moodLogLastDayKey, morningCheckInLastDayKey, moodLogTimeSegments, moodNudgeTasks, moodNudgeTaskCategory, moodNudgeAfterDays, moodNudgeLastDayKey, weekendNudgeTasks, weekendNudgeTaskCategory, weekendNudgeLeadDays, weekendNudgeLastWeekendKey, weighInTasks, weighInTaskCategory, weighInEveryDays, weighInLastDayKey, patchNotesQaStatus, aiFeatureConfig, onDeviceAiEnabled, defaultProjectNudgeCadenceDays, mealPlanNudgeEnabled, mealPlanNudgeIgnoresVacation, mealPlanNudgeWeekday, mealPlanNudgeTime, mealPlanNudgeLastFiredWeekKey, mealPlanNudgeGroupId, mealPlanNudgeTaskCategory, newTaskDefaults, titleRules, lastVisitedScreen, initialized: true });
   },
 
   /**
@@ -3511,6 +3532,11 @@ export const useSettingsStore = create<SettingsStore>((set, get) => ({
   setHealthWriteEnabled(on: boolean) {
     dbSetSetting('healthWriteEnabled', on ? 'true' : 'false');
     set({ healthWriteEnabled: on });
+  },
+
+  setHealthFoodWriteRefusalSeen(seen: boolean) {
+    dbSetSetting('healthFoodWriteRefusalSeen', seen ? 'true' : 'false');
+    set({ healthFoodWriteRefusalSeen: seen });
   },
 
   setWeightUnit(unit: WeightUnit) {
