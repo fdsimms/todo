@@ -628,6 +628,45 @@ something nobody measured:
 `atISO` and `dayKey` stay unpatchable on both paths. They were stamped together
 from one instant under one reset time, and re-dating means a new entry.
 
+### Water is the food log's, not a third write
+
+Water had a target and no way to fill it (#2515): a full `NutrientKey` with a
+unit, a range, a targets-sheet row, a parser arm and a rule here, and nothing in
+the app that could log a glass. The day view has a stepper for it now, and what
+it writes is an **ordinary food log entry** — `waterHelping` builds the helping,
+`addEntry` stores it, and `logFoodEntryToHealth` is what puts it in Health,
+under every guard a meal gets and with the same sample ids to retract by. The
+bridge already mapped `waterMl` onto `.dietaryWater` in the same
+`writeFoodSamples` call, so none of this is new native ground.
+
+Three things about it are worth not re-deriving:
+
+- **It is deliberately not a second water write beside `logHealthMetric`.** That
+  one is a task recording a nutrient when it is ticked, and this is somebody
+  saying what they drank. Two mechanisms for one fact is what the issue was
+  partly about; the answer was to give the log the one it was missing, not to
+  fold the task side into it and make a caffeine task a meal.
+- **One entry a day, stepped, rather than one per glass.** Eight glasses is
+  eight rows in the meal sections the day view exists to show. What that costs
+  is that the Health sample is dated at the first glass and carries the day's
+  volume, where Apple's own Health app records each one at its own moment: a
+  fact about *when*, not about how much.
+- **Every step goes through `reviseEntry`, so the running total is settled
+  before it is written.** A held stepper key walks a step every 40ms, and
+  committing each one would fire a retract and a write per step, each retracting
+  ids the previous write had not finished stamping back. The day view holds the
+  pending figure for 600ms and lands it once.
+
+`waterUnit` in settings decides whether the two water steppers — the card and a
+task's "log to Health" amount — show millilitres or fluid ounces. It is display
+only, exactly as `weightUnit` is against what HealthKit hands back: `waterMl` is
+stored in millilitres whichever is picked, and the conversion happens at the one
+call site rather than anywhere downstream. It is a setting rather than the local
+state `TaskEditor` used to hold, because two local copies of one preference are
+two answers to the same question and the card is pressed several times a day.
+Ounces step by 8, which is the glass the unit is counted in: the millilitre step
+converted would be 8.45 and would put a decimal on every figure on the card.
+
 ### One thing about the read side worth writing down here
 
 `bestSum` takes **the largest single source, not the sum** of them. Two apps
