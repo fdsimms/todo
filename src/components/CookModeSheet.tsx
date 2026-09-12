@@ -1,3 +1,14 @@
+// Cook mode: mise en place, then the method one step at a time. One component
+// of ~1,000 lines, so grep a landmark below rather than reading it start to
+// finish:
+//
+//   ==== <name> ====        the section banners through the logic half
+//   ScreenAwake              the keep-awake helper, just below the component
+//   makeStyles               styles, at the bottom
+//
+// The design argument is in the doc comment on CookModeSheet itself: nothing
+// here writes to the recipe, and the whole screen is built around hands that
+// are wet and a phone that's asleep.
 import React, { useCallback, useEffect, useMemo, useState } from 'react';
 import {
   ActivityIndicator, Keyboard, Modal, View, Text, ScrollView, TextInput, TouchableOpacity,
@@ -98,6 +109,7 @@ interface Props {
  * deliberately deferred.
  */
 export function CookModeSheet({ visible, recipe, recipesById, scale, onClose }: Props) {
+  // ==== store bindings and derived data: the method, the ingredients ====
   const colors = useColors();
   const styles = useMemo(() => makeStyles(colors), [colors]);
   const insets = useSafeAreaInsets();
@@ -136,6 +148,14 @@ export function CookModeSheet({ visible, recipe, recipesById, scale, onClose }: 
     [recipe, recipesById, standingSwaps, onHand]
   );
 
+  // ==== screen state: where the cook is, the ask panel, the ingredient fold ====
+  // Whether there's anything to gather before the method starts. A recipe
+  // with a method but no ingredient lines (rare, but the two are independent
+  // fields) has nothing for a mise en place screen to show.
+  const hasIngredients = ingredients.length > 0;
+
+  // -1 is the mise en place screen, ahead of step 0 — screen state like the
+  // step position itself, reset the same way on close.
   const [rawIndex, setRawIndex] = useState(0);
   const [ingredientsOpen, setIngredientsOpen] = useState(false);
   // One question at a time, about the step on screen, and none of it outlives
@@ -151,20 +171,23 @@ export function CookModeSheet({ visible, recipe, recipesById, scale, onClose }: 
   // The method is read live off the store, so it can shrink underneath a cook
   // whose recipe is being edited on the screen behind this — clamping at read
   // time is what keeps a stale index off the end of it.
-  const index = clampStepIndex(rawIndex, steps.length);
+  const atMise = rawIndex === -1;
+  const index = atMise ? -1 : clampStepIndex(rawIndex, steps.length);
   const step = index >= 0 ? steps[index] : null;
 
-  // Back to the top of the method for the next open. A cooking is one sitting,
+  // ==== effects: resetting on close, clearing the ask panel per step ====
+  // Back to the top for the next open — the mise en place screen where there's
+  // something to gather, step 1 where there isn't. A cooking is one sitting,
   // and handing someone step 6 of a dish they started yesterday is worse than
-  // handing them step 1. Reset on the way *out* rather than on the way in, so
-  // the state is already clean before the first frame is drawn — resetting on
-  // open would paint the old step for a frame first.
+  // handing them the start. Reset on the way *out* rather than on the way in,
+  // so the state is already clean before the first frame is drawn — resetting
+  // on open would paint the old step for a frame first.
   useEffect(() => {
     if (!visible) {
-      setRawIndex(0);
+      setRawIndex(hasIngredients ? -1 : 0);
       setIngredientsOpen(false);
     }
-  }, [visible]);
+  }, [visible, hasIngredients]);
 
   // An answer belongs to the sentence it was given about, so moving off that
   // step takes it with it — including a half-typed question, which on the next
@@ -178,6 +201,7 @@ export function CookModeSheet({ visible, recipe, recipesById, scale, onClose }: 
     setAskError(null);
   }, [stepId]);
 
+  // ==== the "ask about this step" flow ====
   // Read off the step being shown, and only that one: parsing the whole method
   // up front would cost every open of the sheet a pass over text nobody is
   // looking at, and the offer is only ever made about the step on screen.
@@ -231,10 +255,22 @@ export function CookModeSheet({ visible, recipe, recipesById, scale, onClose }: 
     }
   }, [asking, recipe.name, steps, index, ingredients, scale, unitSystem, keyboardScroll.ref]);
 
+  // ==== navigation: mise en place, then step to step ====
   const atLast = index >= 0 && index === steps.length - 1;
+
+  const startCooking = () => {
+    haptics.tap();
+    setRawIndex(0);
+  };
 
   const goBack = () => {
     haptics.tap();
+    // Step 1's Back returns to the mise en place screen when there was one to
+    // leave, rather than sitting disabled at the start of the method.
+    if (index === 0 && hasIngredients) {
+      setRawIndex(-1);
+      return;
+    }
     setRawIndex(Math.max(0, index - 1));
   };
 
@@ -248,6 +284,7 @@ export function CookModeSheet({ visible, recipe, recipesById, scale, onClose }: 
     setRawIndex(index + 1);
   };
 
+  // ==== render. Everything below is JSX ====
   return (
     <Modal visible={visible} animationType="slide" presentationStyle="fullScreen" onRequestClose={onClose}>
       <ScreenAwake />
@@ -270,7 +307,56 @@ export function CookModeSheet({ visible, recipe, recipesById, scale, onClose }: 
           }
         />
 
-        {step === null ? (
+        {atMise ? (
+          <ScrollView style={styles.stepScrollView} contentContainerStyle={styles.stepScroll}>
+            <Text style={styles.miseTitle}>Mise en place</Text>
+            <Text style={styles.miseSubtitle}>
+              Everything this recipe needs, before you start cooking.
+            </Text>
+            <View style={styles.miseCard}>
+              {ingredients.map((flat, position) => {
+                // Same scale-then-convert pipeline the panel below runs, and
+                // the same component grouping — this is that same list, just
+                // read before the method rather than during it.
+                const scaled = scaleQuantity(flat.ingredient.quantity, scale);
+                const converted = convertQuantity(scaled.text, unitSystem);
+                const marked = scaled.scaled || converted.converted || !!flat.swappedFrom;
+                const previous = ingredients[position - 1];
+                const heading =
+                  flat.depth > 0 && previous?.recipe.id !== flat.recipe.id ? flat.recipe.name : null;
+                const last = position === ingredients.length - 1;
+                return (
+                  <View key={`${flat.recipe.id}:${flat.ingredient.id}`}>
+                    {!!heading && <Text style={styles.miseHeading}>{heading}</Text>}
+                    <View style={[styles.miseRow, last && styles.miseRowLast]}>
+                      <View style={styles.miseRowText}>
+                        <Text style={styles.miseName}>{flat.ingredient.name}</Text>
+                        {!!flat.swappedFrom && (
+                          <Text style={styles.miseSwap} numberOfLines={1}>
+                            {describeStandingSwap(flat.swappedFrom)}
+                          </Text>
+                        )}
+                        {!!flat.ingredient.prep && (
+                          <Text style={styles.misePrep}>{flat.ingredient.prep}</Text>
+                        )}
+                      </View>
+                      {!!converted.text && (
+                        <View style={[styles.miseQtyPill, marked && styles.miseQtyPillMarked]}>
+                          <Text
+                            style={[styles.miseQtyText, marked && styles.miseQtyTextMarked]}
+                            numberOfLines={1}
+                          >
+                            {converted.text}
+                          </Text>
+                        </View>
+                      )}
+                    </View>
+                  </View>
+                );
+              })}
+            </View>
+          </ScrollView>
+        ) : step === null ? (
           <EmptyState
             icon="book-outline"
             title="No method written down"
@@ -430,7 +516,9 @@ export function CookModeSheet({ visible, recipe, recipesById, scale, onClose }: 
         )}
 
         <View style={[styles.tray, { paddingBottom: insets.bottom + spacing.sm }]}>
-          {ingredients.length > 0 && (
+          {/* Hidden on the mise en place screen itself — that's this same list,
+              already on screen in full, not folded behind a header to tap. */}
+          {ingredients.length > 0 && !atMise && (
             <View style={styles.panel}>
               <TouchableOpacity
                 style={styles.panelHeader}
@@ -533,15 +621,28 @@ export function CookModeSheet({ visible, recipe, recipesById, scale, onClose }: 
             <RecipeTimerRow verb="Cook" {...cookTimer} />
           </View>
 
-          {step !== null && (
+          {atMise ? (
             <View style={styles.controls}>
               <TouchableOpacity
-                style={[styles.control, index === 0 && styles.controlOff]}
+                style={styles.controlPrimary}
+                activeOpacity={interaction.activeOpacity}
+                onPress={startCooking}
+                accessibilityRole="button"
+                accessibilityLabel="Start cooking"
+              >
+                <Text style={styles.controlPrimaryText}>Start Cooking</Text>
+                <Ionicons name="chevron-forward" size={iconSize.sm} color={colors.onAccent} />
+              </TouchableOpacity>
+            </View>
+          ) : step !== null && (
+            <View style={styles.controls}>
+              <TouchableOpacity
+                style={[styles.control, index === 0 && !hasIngredients && styles.controlOff]}
                 activeOpacity={interaction.activeOpacity}
                 onPress={goBack}
-                disabled={index === 0}
+                disabled={index === 0 && !hasIngredients}
                 accessibilityRole="button"
-                accessibilityLabel="Previous step"
+                accessibilityLabel={index === 0 && hasIngredients ? 'Back to mise en place' : 'Previous step'}
               >
                 <Ionicons name="chevron-back" size={iconSize.sm} color={colors.accent} />
                 <Text style={styles.controlText}>Back</Text>
@@ -810,6 +911,76 @@ const makeStyles = (colors: Colors) => StyleSheet.create({
     fontSize: font.sm,
   },
   qtyTextMarked: { color: colors.accent, fontWeight: fontWeight.medium },
+  // The mise en place screen: the same ingredient list the tray's collapsed
+  // panel shows mid-step, but this is the one place it's the main event —
+  // bigger type, one row per line with a divider, meant to be read from
+  // across the counter while gathering rather than glanced at one-handed.
+  miseTitle: {
+    color: colors.text,
+    fontSize: font.xxl,
+    fontWeight: fontWeight.semibold,
+  },
+  miseSubtitle: {
+    color: colors.textSecondary,
+    fontSize: font.md,
+    lineHeight: lineHeight.md,
+    marginTop: spacing.xs,
+    marginBottom: spacing.lg,
+  },
+  miseCard: {
+    backgroundColor: colors.bgSecondary,
+    borderRadius: radius.md,
+    paddingHorizontal: spacing.md,
+  },
+  miseHeading: {
+    color: colors.textSecondary,
+    fontSize: font.xs,
+    fontWeight: fontWeight.semibold,
+    letterSpacing: 0.8,
+    textTransform: 'uppercase',
+    marginTop: spacing.md,
+    marginBottom: spacing.xs,
+  },
+  miseRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: spacing.md,
+    paddingVertical: spacing.md,
+    borderBottomWidth: StyleSheet.hairlineWidth,
+    borderBottomColor: colors.separator,
+  },
+  miseRowLast: { borderBottomWidth: 0 },
+  miseRowText: {
+    flex: 1,
+  },
+  miseName: {
+    color: colors.text,
+    fontSize: font.lg,
+  },
+  miseSwap: {
+    color: colors.accent,
+    fontSize: font.sm,
+    fontWeight: fontWeight.medium,
+    marginTop: 2,
+  },
+  misePrep: {
+    color: colors.textTertiary,
+    fontSize: font.sm,
+    marginTop: 2,
+  },
+  miseQtyPill: {
+    backgroundColor: colors.bgTertiary,
+    borderRadius: radius.sm,
+    paddingHorizontal: spacing.sm,
+    paddingVertical: spacing.xs,
+  },
+  miseQtyPillMarked: { backgroundColor: colors.accent + '26' },
+  miseQtyText: {
+    color: colors.textSecondary,
+    fontSize: font.md,
+    fontWeight: fontWeight.medium,
+  },
+  miseQtyTextMarked: { color: colors.accent },
   timerCard: {
     backgroundColor: colors.bgSecondary,
     borderRadius: radius.md,
