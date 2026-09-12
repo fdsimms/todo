@@ -2372,6 +2372,17 @@ function seedRecipes(): DemoRecipes {
   // filed under it (Recipe.emptySections), so it shows up on the recipe with
   // nothing under it until something is.
   addEmptySection(cake.id, 'For serving');
+  // A method on the one recipe here that has sections, because cook mode's
+  // ingredient panel is where those headings now do their work (it reads the
+  // recipe's own sections, not just a component's name) — and a recipe with
+  // no steps and no notes has no cook mode to open.
+  [
+    'Heat the oven to 180°C and line a 9-inch cake pan.',
+    'Whisk the eggs with the brown sugar, then fold in the flour, cinnamon and grated carrot.',
+    'Bake for 35 minutes, until a skewer comes out clean.',
+    'Beat the cream cheese, butter and sugar together while the cake cools.',
+    'Frost the cake once it is completely cool.',
+  ].forEach(text => addStep(cake.id, text));
   setRecipeYield(cake.id, '1 9-inch cake');
   setServings(cake.id, 12);
   setEstimatedMinutes(cake.id, 45);

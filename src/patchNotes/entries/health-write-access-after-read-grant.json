@@ -1,4 +1,4 @@
 {
-  "message": "The Apple Health section now re-checks write access right after you grant read access, and warns beforehand if turning on reading could reset write access you'd already granted for water, weight, or nutrition — a real iOS behavior, not something this app can prevent, but it now surfaces sooner.",
+  "message": "The Apple Health section now re-checks write access right after you grant read access, and warns beforehand if turning on reading could reset write access you'd already granted for water, weight, or nutrition. That is a real iOS behavior, not something this app can prevent, but it now surfaces sooner.",
   "date": "2026-09-11"
 }

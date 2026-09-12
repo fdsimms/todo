@@ -312,7 +312,7 @@ export function EventImportSheet({ visible, onClose, onImported }: Props) {
               resizeMode="cover"
               accessibilityIgnoresInvertColors
             />
-            <TouchableOpacity
+            <TouchableOpacity hitSlop={8}
               style={styles.previewClear}
               activeOpacity={interaction.activeOpacity}
               onPress={() => { haptics.tap(); setPhoto(null); }}

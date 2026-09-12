@@ -203,7 +203,7 @@ export function RecipeSourcePicker({
             resizeMode="cover"
             accessibilityIgnoresInvertColors
           />
-          <TouchableOpacity
+          <TouchableOpacity hitSlop={8}
             style={styles.previewClear}
             activeOpacity={interaction.activeOpacity}
             onPress={() => { haptics.tap(); onClearPhoto(); }}

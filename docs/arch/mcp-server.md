@@ -3,10 +3,9 @@
 An MCP server that lets Claude read this app's data (#100). The code is `mcp/`; the parts of it
 that are ordinary TypeScript are tested by the repo's own jest run, alongside everything else.
 
-**Status: phase 1.** The replica is a real sync peer. It opens a `todo.db` in Node, exchanges
-changes with a payload store the user runs, and serves a read-only tool surface over the result.
-Nothing writes through MCP yet and nothing is deployed behind real auth. The phases are at the
-bottom of this file.
+**Status: phase 2.** The replica is a real sync peer, and it can write: `create_template` is the
+first tool that changes anything, behind its own token. Nothing is deployed behind real auth. The
+phases are at the bottom of this file.
 
 It runs. The server has been exercised end to end against a file database, and a change made on one
 side reaches the other through the store. What has *not* been exercised is a public deployment,
@@ -111,13 +110,14 @@ scope on a `TurboModuleRegistry` lookup that has no native side to find.
 bare `better-sqlite3` handle is that `rowToTask` and its ~150 siblings come along, with every JSON
 column, every `0`/`1` boolean and every legacy fallback (`parseTimeSegments`' plain-string path,
 the `cycle_*` columns behind `chain*`) already handled. A tool that queries `SELECT * FROM tasks`
-directly is reimplementing all of that, badly, in a file nobody will remember to update. The same
-goes the other way for phase 2: writes go through `dbUpdateTask` and friends or they do not
-participate in sync tracking, and a write that skips `updated_at` is a write the phone will never
-hear about.
+directly is reimplementing all of that, badly, in a file nobody will remember to update. The same goes
+the other way for a write: go through `dbUpdateTask` and friends rather than hand-rolling the SQL,
+so the row is shaped the way every reader expects. Sync tracking itself needs no help — the
+`*_sync_stamp_insert`/`_update` triggers stamp `updated_at` on any write that does not carry one,
+which is why a write does not have to go through a *store* to be seen (see phase 2 below).
 
-**Stores are fine to use; they are plain zustand and they read the db.** `useSettingsStore` and
-`useCategoryStore` in particular have to be initialized before anything calls `isTaskVisible`,
+**Some stores are fine to use; they are plain zustand and they read the db.** `useSettingsStore`
+and `useCategoryStore` in particular have to be initialized before anything calls `isTaskVisible`,
 which reads `dayResetTime` from the first and schedules from the second. `openReplica()` does that
 and registers the blocker/person sources, because a half-hydrated visibility check is worse than a
 refused one: it answers, and it answers wrong.
@@ -222,6 +222,59 @@ calls a model makes to answer one question, short enough that somebody who just 
 off on their phone and turned to Claude sees it. A failure is swallowed: a store that is down
 should mean slightly stale answers, not no answers.
 
+## Phase 2: the first write
+
+`create_template` builds a whole template from one plan: its items, item groups,
+the questions a run asks, an optional firing schedule, and references to other templates.
+`mcp/src/templatePlan.ts` is the input shape and its validation; `replica.createTemplate` applies
+it. Read `docs/arch/template-questions.md` before changing any of it, since the rules a plan is
+validated against are that file's.
+
+**A plan names things rather than pointing at them.** An item sits in an item group and a condition
+rides on a question, both by generated id, and a caller cannot know an id that does not exist yet.
+So groups carry an author-chosen `key`, questions are referenced by `name`, and applying resolves
+both. The alternative is four round trips with a half-built template in the user's list between
+each.
+
+**Validation exists because the normalizers are tolerant.** `normalizeTemplateItem` and
+`normalizeTemplateQuestion` coerce: an unknown `kind` becomes `'text'`, an unknown `anchor` becomes
+`'start'`. That is right for their real job, reading a blob written by an older build, and wrong
+for authoring, where `kind: 'choise'` would silently ship a template that looks right in the list
+and behaves differently on every run. Every check in `validateTemplatePlan` is one the normalizer
+would have swallowed or a cross-reference it cannot see, and **every problem is reported at once**,
+since fixing one per round trip is what a single call was meant to avoid.
+
+**Cycles are deliberately not checked.** `wouldCreateCycle` matters when an *existing* template
+gains a reference, because the target may already reach back. A template being created cannot be
+the target of anything, since nothing that exists can name an id that has not been minted. Whatever
+adds `update_template` has to add the guard with it.
+
+### Written through the db layer, not the store
+
+This is the opposite of the rule demo seeding follows, and for once that is correct.
+
+`useTemplateStore` is unreachable from Node: it imports `useTaskStore` → `useFocusStore` →
+`notifications.ts` → `expo-notifications`, a native module with nothing to bind to. The settings
+and category stores `openReplica` hydrates have no such chain, which is why those work.
+
+And it costs nothing, because what the store would have bought is not the store's to give.
+`updated_at` is stamped by the SQLite trigger `templates_sync_stamp_insert` on any insert that does
+not carry one, so a template written through `dbInsertTemplate` syncs exactly like one the app
+wrote. A whole template is a single row, so one insert is *more* atomic than the store's
+group-then-question-then-item sequence, not less.
+
+### Writes have their own token
+
+`MCP_WRITE_TOKEN`, separate from `MCP_AUTH_TOKEN`. The write token buys both scopes so one
+credential suffices; the read token never buys writing, which is the whole point of there being
+two. Unset means the server is read-only, by the same default-to-refusal rule as the rest of
+`auth.ts`.
+
+The scoping is per request rather than per handler, which the architecture made easy: the transport
+is stateless, so `buildMcpServer` already runs once per request with that request's scope known. A
+read-scoped caller does not see the write tools in `tools/list` at all, so there is nothing for a
+model to attempt and be refused.
+
 ### The privacy consequence, stated plainly
 
 CLAUDE.md says there is no backend and every piece of user data lives on device. **A hosted MCP
@@ -250,14 +303,16 @@ default is that they do.
   file. Ran locally, against a database file the user supplied.
 - **Phase 1 (here).** The payload store, `httpSyncTransport`, `runSyncAll`, and the Settings rows
   to configure it. The replica is current instead of a snapshot.
-- **Phase 2. Writes.** Create, complete, defer, add to the grocery list, through the `db*`
-  functions so they carry `updated_at` and get picked up by `dbSyncChangesSince`. Now worth doing,
-  because there is somewhere for a write to go.
+- **Phase 2 (here).** The first write: `create_template`, the write token, and the per-request
+  scoping. Templates first because a template is a *definition* — creating one fires no
+  notification, spawns no successor and completes nothing, so it is the write with the least
+  machinery behind it. Creating and completing *tasks* is the next step and is where
+  `completeTask`'s open question below has to be answered.
 - **Phase 3. Hosting.** Real OAuth, a deployment, and the Settings surface that admits to the copy.
 
-Phase 2 has a design question of its own that is worth thinking about before it starts, rather than
-discovering: a model completing a recurring task spawns a successor, a model completing a chain
-step spawns the next step, and a model completing a task with a deliverable is the one caller that
-cannot be asked a question. `completeTask`'s rule is that an omitted `deliverableValue` means
-"nobody asked", which is right for the missed sweep and the quota rollover and is not obviously
-right for a model that could have asked.
+Task writes still have that design question waiting, and template creation did not touch it: a
+model completing a recurring task spawns a successor, a model completing a chain step spawns the
+next step, and a model completing a task with a deliverable is the one caller that cannot be asked
+a question. `completeTask`'s rule is that an omitted `deliverableValue` means "nobody asked", which
+is right for the missed sweep and the quota rollover and is not obviously right for a model that
+could have asked.

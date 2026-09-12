@@ -101,3 +101,59 @@ export function allSectionsOf(
   const usedSet = new Set(used);
   return [...used, ...emptySections.filter(s => !usedSet.has(s))];
 }
+
+/** One flattened ingredient line, as the heading walk below reads it. */
+export interface FlatSectionRow {
+  /** The recipe the line is written on — see `FlatIngredient.recipe`. */
+  recipe: { id: string };
+  /** 0 for the root's own lines, 1 for a direct component's, and so on. */
+  depth: number;
+  ingredient: { section: string | null };
+}
+
+/** Which headings open on one line of a flattened list — see `ingredientHeadings`. */
+export interface IngredientHeading {
+  /**
+   * True where the line's own recipe changes and isn't the root: a component's
+   * lines start here. The caller draws the name, because the three surfaces
+   * word it differently ("For the mash:" in a share, the bare name in a panel).
+   */
+  dish: boolean;
+  /** The section heading opening on this line, null where it carries on the one above or has none. */
+  section: string | null;
+}
+
+/**
+ * The headings a *flattened* ingredient list opens, line by line — a component's
+ * name where one starts, and the `section` label where one does.
+ *
+ * `RecipeDetailScreen` infers a populated heading for the recipe's own lines
+ * (see the module note above); every surface that flattens components in was
+ * inferring the component heading the same way and dropping sections on the
+ * floor, so a cook-mode panel read "garlic, ginger, soy sauce…" as one run
+ * where the recipe itself says Sauce and then For serving. This is that same
+ * one-pass inference, for the list that has both kinds of boundary in it.
+ *
+ * **A recipe boundary resets the section walk.** Two recipes' section labels
+ * are separate vocabularies that happen to collide — a component opening with
+ * "Sauce" under a root whose last line was also "Sauce" is a new heading, not
+ * a continuation of somebody else's.
+ */
+export function ingredientHeadings(
+  rows: readonly FlatSectionRow[],
+): IngredientHeading[] {
+  const out: IngredientHeading[] = [];
+  let prevRecipeId: string | null = null;
+  let prevSection: string | null = null;
+  for (const row of rows) {
+    if (row.recipe.id !== prevRecipeId) prevSection = null;
+    const label = row.ingredient.section;
+    out.push({
+      dish: row.depth > 0 && row.recipe.id !== prevRecipeId,
+      section: label && label !== prevSection ? label : null,
+    });
+    prevRecipeId = row.recipe.id;
+    prevSection = label;
+  }
+  return out;
+}

@@ -909,7 +909,7 @@ export function BarcodeScanSheet({ visible, onClose, onApply, context }: Props) 
                 return (
                   <View key={row.key} style={index > 0 ? styles.rowDivided : undefined}>
                   <View style={styles.row}>
-                    <TouchableOpacity
+                    <TouchableOpacity hitSlop={11}
                       style={[
                         styles.check,
                         styles.rowControl,
