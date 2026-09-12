@@ -1,3 +1,13 @@
+// Builds a whole new recipe out of a photo or a paste — the Recipes screen's
+// import entry. One component of ~1,020 lines, so grep a landmark rather than
+// reading it start to finish:
+//
+//   ==== <name> ====        the section banners through the logic half
+//   makeStyles              styles, at the bottom
+//
+// See the doc comment on RecipeCreateSheet below for how this differs from
+// RecipeExtractSheet (which fills in a recipe that already exists) and what
+// each source — paste, link, photo — gets for free.
 import React, { useCallback, useEffect, useMemo, useState } from 'react';
 import {
   Alert,
@@ -33,6 +43,7 @@ import { describeImportError, isRetryableImportError } from '../services/recipeP
 import {
   normalizeIngredient, cleanRecipeName, formatServingsRange, parseServingsRange,
 } from '../utils/recipeUtils';
+import { describeKeepDays } from '../utils/leftovers';
 import { groceryNameKey } from '../utils/groceryParse';
 import { sourceFieldsFor, sourcePlanFor } from '../utils/recipeProvenance';
 import { aisleForName } from '../utils/groceryAisles';
@@ -118,6 +129,7 @@ interface Props {
 export function RecipeCreateSheet({
   visible, initialMode = 'photo', initialUrl = null, onClose, onCreated,
 }: Props) {
+  // ==== store bindings ====
   const colors = useColors();
   const styles = useMemo(() => makeStyles(colors), [colors]);
   const aisleOrder = useGroceryStore(useShallow(s => s.aisleOrder));
@@ -129,6 +141,7 @@ export function RecipeCreateSheet({
   const setServings = useRecipeStore(s => s.setServings);
   const setRecipeYield = useRecipeStore(s => s.setRecipeYield);
   const setEstimatedMinutes = useRecipeStore(s => s.setEstimatedMinutes);
+  const setLeftoverKeepDays = useRecipeStore(s => s.setLeftoverKeepDays);
   const setSourceUrl = useRecipeStore(s => s.setSourceUrl);
   const setSource = useRecipeStore(s => s.setSource);
   const setAuthor = useRecipeStore(s => s.setAuthor);
@@ -140,6 +153,7 @@ export function RecipeCreateSheet({
   const updatePrepTask = useRecipeStore(s => s.updatePrepTask);
   const addStructuredIngredients = useRecipeStore(s => s.addStructuredIngredients);
 
+  // ==== local state: the review list's working copies ====
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
   // Whether the error state offers a retry or a way back to the input —
@@ -173,6 +187,7 @@ export function RecipeCreateSheet({
   const [servingsText, setServingsText] = useState('');
   const [minutesText, setMinutesText] = useState('');
   const [yieldText, setYieldText] = useState('');
+  const [leftoverKeepDaysText, setLeftoverKeepDaysText] = useState('');
   const [siteName, setSiteName] = useState('');
   const [sourceAuthor, setSourceAuthor] = useState('');
   const [sourcePageText, setSourcePageText] = useState('');
@@ -187,6 +202,7 @@ export function RecipeCreateSheet({
   const input = useRecipeImportSource(initialMode);
   const { resolveSource, reset: resetInput, setMode, setUrl } = input;
 
+  // ==== derived data: referenced-recipe candidates, coverage, sections ====
   // "…and there's a salsa verde on page 45." Nothing is filtered out here for
   // an existing parent, because there isn't one yet — see importableReferences.
   const candidates = useMemo(
@@ -209,6 +225,7 @@ export function RecipeCreateSheet({
     [ingredients],
   );
 
+  // ==== reset, and syncing the sheet's tabs to the add-menu selection ====
   const reset = useCallback(() => {
     setLoading(false);
     setError(null);
@@ -227,6 +244,7 @@ export function RecipeCreateSheet({
     setServingsText('');
     setMinutesText('');
     setYieldText('');
+    setLeftoverKeepDaysText('');
     setSiteName('');
     setSourceAuthor('');
     resetInput();
@@ -253,6 +271,7 @@ export function RecipeCreateSheet({
     if (initialUrl) setUrl(initialUrl);
   }, [visible, initialMode, initialUrl, setMode, setUrl]);
 
+  // ==== running the extraction ====
   const run = useCallback(async () => {
     setLoading(true);
     setError(null);
@@ -267,7 +286,10 @@ export function RecipeCreateSheet({
       // one — a page that says what it's called is not a recipe with no name.
       setName(result.name || resolved.page?.title || '');
       setAccepted(new Set(result.ingredients.map((_, i) => i)));
-      setApplyDetails(result.servings !== null || result.prepMinutes !== null || result.recipeYield !== null);
+      setApplyDetails(
+        result.servings !== null || result.prepMinutes !== null || result.recipeYield !== null
+          || result.leftoverKeepDays !== null,
+      );
       const methodStepsFound = (resolved.page?.steps.length ?? 0) > 0
         ? resolved.page!.steps
         : result.steps;
@@ -278,6 +300,7 @@ export function RecipeCreateSheet({
       setServingsText(formatServingsRange(result.servings, result.servingsMax) ?? '');
       setMinutesText(result.prepMinutes !== null ? String(result.prepMinutes) : '');
       setYieldText(result.recipeYield ?? '');
+      setLeftoverKeepDaysText(result.leftoverKeepDays !== null ? String(result.leftoverKeepDays) : '');
       const { page } = resolved;
       // Ticked whatever the source: there's nothing of the user's own here for
       // it to land on top of, whether the fields below arrive pre-filled from
@@ -296,6 +319,7 @@ export function RecipeCreateSheet({
     }
   }, [resolveSource, aisleOrder]);
 
+  // ==== ingredient review: toggling, editing, marking already-have ====
   const toggle = (index: number) => {
     setAccepted(prev => {
       const next = new Set(prev);
@@ -334,6 +358,7 @@ export function RecipeCreateSheet({
     }));
   };
 
+  // ==== name entry and duplicate detection ====
   // Checked as they type rather than on tap, so the way out ("Open it", or just
   // keep typing) is visible before the button they'd reach for is disabled.
   const cleaned = cleanRecipeName(name);
@@ -351,6 +376,7 @@ export function RecipeCreateSheet({
     return recipes.find(r => r.sourceUrl === url) ?? null;
   }, [input.page, recipes]);
 
+  // ==== steps and prep-task review ====
   const toggleIn = (
     setter: React.Dispatch<React.SetStateAction<Set<number>>>,
   ) => (index: number) => setter(prev => {
@@ -372,6 +398,7 @@ export function RecipeCreateSheet({
     setPrepTasks(prev => prev.map((task, i) => (i === index ? { ...task, ...patch } : task)));
   };
 
+  // ==== creating the recipe ====
   const handleCreate = () => {
     if (!extracted || !cleaned || duplicate || urlDuplicate) return;
     const recipe = addRecipe(cleaned);
@@ -427,6 +454,11 @@ export function RecipeCreateSheet({
       if (minutes > 0) setEstimatedMinutes(recipe.id, minutes);
       const yieldValue = pendingText('details:yield', yieldText).trim();
       if (yieldValue) setRecipeYield(recipe.id, yieldValue);
+      const keepDaysRaw = pendingText('details:leftoverKeepDays', leftoverKeepDaysText).trim();
+      if (keepDaysRaw) {
+        const keepDays = parseInt(keepDaysRaw, 10);
+        if (!Number.isNaN(keepDays)) setLeftoverKeepDays(recipe.id, keepDays);
+      }
     }
     // A link's URL comes from the page and isn't editable; the rest are,
     // whether they arrived pre-filled from structured markup, were read off a
@@ -497,6 +529,7 @@ export function RecipeCreateSheet({
     );
   };
 
+  // ==== row labels and meta text for the review list ====
   // One checkbox applying up to three facts has to name all it has, and it
   // reads out exactly what the row shows rather than a second phrasing of it.
   // Reads the boxes, not `extracted`, so it stays true once they're edited.
@@ -505,6 +538,10 @@ export function RecipeCreateSheet({
     if (servingsText) parts.push(`Serves ${servingsText}`);
     if (minutesText) parts.push(`about ${minutesText} min`);
     if (yieldText) parts.push(`makes ${yieldText}`);
+    const keepDaysNum = parseInt(leftoverKeepDaysText, 10);
+    if (leftoverKeepDaysText && !Number.isNaN(keepDaysNum)) {
+      parts.push(`leftovers keep ${describeKeepDays(keepDaysNum).toLowerCase()}`);
+    }
     if (parts.length === 0) return '';
     const [first, ...rest] = parts;
     return [first.charAt(0).toUpperCase() + first.slice(1), ...rest].join(', ');
@@ -514,7 +551,8 @@ export function RecipeCreateSheet({
   // boxes decides what it applies. Emptying them must not unmount the row
   // mid-edit — there'd be no way to type a value back in.
   const foundDetails = !!extracted
-    && (extracted.servings !== null || extracted.prepMinutes !== null || extracted.recipeYield !== null);
+    && (extracted.servings !== null || extracted.prepMinutes !== null || extracted.recipeYield !== null
+      || extracted.leftoverKeepDays !== null);
 
   // Nothing to append after: this recipe doesn't exist yet.
   const methodMeta = methodRowMeta(acceptedSteps.size, steps.length, false);
@@ -531,6 +569,7 @@ export function RecipeCreateSheet({
   const backLabel = input.usingLink ? 'Change the link' : 'Go back';
   const goBack = () => { setError(null); setExtracted(null); };
 
+  // ==== render. Everything below is JSX ====
   /**
    * The referenced-recipes block, above the ingredients it changes the meaning
    * of. Above rather than below because accepting one unticks a line further
@@ -756,6 +795,22 @@ export function RecipeCreateSheet({
                 maxLength={RECIPE_SOURCE_MAX_LENGTH}
                 numberOfLines={1}
               />
+            </View>
+            <View style={styles.detailFields}>
+              <Text style={styles.detailSep}>Leftovers keep</Text>
+              <InlineEditableText
+                edits={edits}
+                editKey="details:leftoverKeepDays"
+                value={leftoverKeepDaysText}
+                onCommit={setLeftoverKeepDaysText}
+                allowEmpty
+                textStyle={styles.detailValue}
+                placeholder="e.g. 4"
+                accessibilityLabel="leftovers keep, days"
+                maxLength={3}
+                numberOfLines={1}
+              />
+              <Text style={styles.detailSep}>days</Text>
             </View>
           </ImportApplyRow>
         )}
