@@ -1782,7 +1782,18 @@ export const useTaskStore = create<TaskStore>((set, get) => ({
     const rolled = expired.filter(isLiveRecurring);
     const doomed = expired.filter(t => !isLiveRecurring(t));
 
-    rolled.forEach(t => get().skipNextRecurrence(t.id));
+    // One WAL transaction for the whole roll-forward rather than one per row.
+    // Each skipNextRecurrence ends in an updateTask, which is an ~85-column
+    // UPDATE plus its sync trigger, and this runs unattended at launch over
+    // however many windows closed while the app was shut.
+    //
+    // Safe despite updateTask scheduling a reminder: withTransactionSync runs
+    // its body synchronously and every scheduleTaskReminder call in this store
+    // is deliberately fire-and-forget, so the transaction commits before any
+    // of those promises resolve. It is the db writes that are batched, not the
+    // notification work. The per-row set() stays, because collapsing that would
+    // mean reimplementing skipNextRecurrence's own rules out here.
+    dbTransaction(() => rolled.forEach(t => get().skipNextRecurrence(t.id)));
     // skipGeneratedOptOut: this runs unattended at startup — a window closing
     // on its own is the app tidying up, not the user declining the source.
     if (doomed.length > 0) get().bulkDeleteTasks(doomed.map(t => t.id), { skipGeneratedOptOut: true });
