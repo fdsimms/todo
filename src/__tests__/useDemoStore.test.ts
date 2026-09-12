@@ -30,6 +30,7 @@ import { OTHER_AISLE } from '../utils/groceryAisles';
 import { useGroceryStore } from '../store/useGroceryStore';
 import { useFoodLogStore } from '../store/useFoodLogStore';
 import { describeFoodLogEntry, foodLogTotals, scalePanelToAmount } from '../utils/foodLog';
+import { isWaterEntry } from '../utils/waterLog';
 import { foodDayInputs, hasNutritionData, nutrientAverages, nutritionCounts, sourceMix } from '../utils/nutritionStats';
 import { packageHelping } from '../utils/scanPortion';
 import { targetedNutrients } from '../utils/nutritionTargets';
@@ -1866,11 +1867,41 @@ describe('demo seed — people', () => {
     expect(counts.daysComplete < counts.daysLogged).toBe(true);
   });
 
-  it('leaves today out of the seeded log, so nothing averages a partial day', () => {
+  /**
+   * Water is carved out of the three rules below, and it is one carve-out
+   * rather than three coincidences: they are rules about *food*, and a water
+   * row is the one entry that is not any.
+   *
+   * It states a volume somebody typed, so there is no panel to recompute it
+   * from and nothing to drift; it is filed against no item, so "unfiled means
+   * estimated" is not about it; and it sits on today on purpose, because the
+   * stepper it belongs to is what the food log opens onto. That last one keeps
+   * the rule it looks like it breaks: `nutrientAverages` drops today itself,
+   * and `foodDayInputs` refuses a day logged this thinly, so no average ever
+   * sees it.
+   */
+  const seededFood = () => useFoodLogStore.getState().windowEntries.filter(e => !isWaterEntry(e));
+
+  it('leaves today out of the seeded food log, so nothing averages a partial day', () => {
     const window = cookingWindow(getLogicalToday(), 30);
     useFoodLogStore.getState().loadWindow(window.startKey, window.endKey);
     const todayKey = dayKeyOf(getCurrentDayStart());
-    expect(useFoodLogStore.getState().windowEntries.some(e => e.dayKey === todayKey)).toBe(false);
+    expect(seededFood().some(e => e.dayKey === todayKey)).toBe(false);
+  });
+
+  it('seeds today\'s water, since the stepper is what the day view opens onto', () => {
+    const window = cookingWindow(getLogicalToday(), 30);
+    useFoodLogStore.getState().loadWindow(window.startKey, window.endKey);
+    const todayKey = dayKeyOf(getCurrentDayStart());
+    const water = useFoodLogStore.getState().windowEntries.filter(isWaterEntry);
+    expect(water).toHaveLength(1);
+    expect(water[0].dayKey).toBe(todayKey);
+    // Part-way rather than met, so the bar under the stepper says something,
+    // and short of the target the seed sets beside it.
+    expect(water[0].nutrition.amounts.waterMl).toBeGreaterThan(0);
+    expect(water[0].nutrition.amounts.waterMl).toBeLessThan(
+      useSettingsStore.getState().nutritionTargets.waterMl as number,
+    );
   });
 
   it('seeds enough of a log for an average to be worth reading', () => {
@@ -1892,7 +1923,7 @@ describe('demo seed — people', () => {
     const items = useGroceryStore.getState().items;
     const products = useGroceryStore.getState().itemProducts;
     let checked = 0;
-    for (const e of useFoodLogStore.getState().windowEntries) {
+    for (const e of seededFood()) {
       // A cooked dish is measured from its ingredients rather than from any one
       // panel, and carries a recipe instead of an item. Its own arithmetic is
       // pinned by the source assertion below.
@@ -1924,8 +1955,7 @@ describe('demo seed — people', () => {
     // got. It carries no item and no recipe, which is what an estimate is.
     const window = cookingWindow(getLogicalToday(), 30);
     useFoodLogStore.getState().loadWindow(window.startKey, window.endKey);
-    const eatenOut = useFoodLogStore.getState().windowEntries
-      .filter(e => !e.itemId && !e.recipeId);
+    const eatenOut = seededFood().filter(e => !e.itemId && !e.recipeId);
     expect(eatenOut).toHaveLength(1);
     expect(eatenOut[0].nutrition.source).toBe('estimated');
     expect(describeFoodLogEntry(eatenOut[0])).toContain('estimated');

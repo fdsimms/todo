@@ -38,6 +38,7 @@ import {
   weighInNotes,
 } from './weightTasks';
 import { helpingNutrition, scalePanelToAmount } from './foodLog';
+import { waterHelping } from './waterLog';
 import { cookedDishGrams, mealHelping, weighedHelping } from './mealLog';
 import { perServing, recipeNutrition } from './recipeNutrition';
 import { recipeMap } from './recipeComponents';
@@ -1458,6 +1459,10 @@ function seedFoodLog(today: Date): void {
   const { setNutritionTarget } = useSettingsStore.getState();
   setNutritionTarget('calorieKcal', 2000);
   setNutritionTarget('proteinG', 60);
+  // Three, and water is the third because its card is the one figure on the day
+  // view you press rather than read: without a target it is a stepper with no
+  // bar under it, which shows the control and not the point of it.
+  setNutritionTarget('waterMl', 2000);
   const { items } = useGroceryStore.getState();
 
   /**
@@ -1658,6 +1663,27 @@ function seedFoodLog(today: Date): void {
       slot: 'lunch',
       at,
     });
+  }
+
+  /**
+   * Today's water, part-way to its target.
+   *
+   * **On today rather than back in the run**, because the water card is what
+   * somebody handed the phone actually opens the food log onto, and a stepper
+   * reading "None" over an empty bar is the feature looking unused rather than
+   * working. Part-way rather than met, so the bar says something.
+   *
+   * One row for the day, which is the feature: `waterHelping` builds exactly
+   * what a run of presses would have left behind, and `isWaterEntry` is what
+   * lets the stepper pick it back up. Nothing is hand-written here either.
+   */
+  {
+    const built = waterHelping(1250);
+    if (built) {
+      const at = new Date(today);
+      at.setHours(11, 0, 0, 0);
+      addEntry({ ...built, grams: null, slot: null, at });
+    }
   }
 
   for (const meal of meals) {

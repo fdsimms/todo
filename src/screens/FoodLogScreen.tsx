@@ -1,4 +1,4 @@
-import React, { useCallback, useEffect, useMemo, useState } from 'react';
+import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { Alert, StyleSheet, Text, TouchableOpacity, View } from 'react-native';
 import Ionicons from '@expo/vector-icons/Ionicons';
 import { SafeAreaView } from 'react-native-safe-area-context';
@@ -20,6 +20,16 @@ import {
   resolveFoodLogDrop,
   type FoodLogListItem,
 } from '../utils/foodLog';
+import {
+  describeWaterDay,
+  describeWaterMl,
+  waterEntryOf,
+  waterHelping,
+  waterTotalMl,
+  WATER_MAX_ML,
+  WATER_MIN_ML,
+  WATER_STEP_ML,
+} from '../utils/waterLog';
 import { NUTRIENT_LABEL } from '../utils/foodNutrition';
 import { describeAgainstTarget, targetProgress } from '../utils/nutritionTargets';
 import { useSettingsStore } from '../store/useSettingsStore';
@@ -44,6 +54,7 @@ import { SwipeableRow } from '../components/SwipeableRow';
 import { SelectionDot } from '../components/SelectionDot';
 import { PaintSelectionProvider, usePaintSelectionRow } from '../components/PaintSelection';
 import { ListBulkBar } from '../components/ListBulkBar';
+import { CountStepper } from '../components/CountStepper';
 import { Fab, FAB_SIZE } from '../components/Fab';
 import { useRowSelection } from '../hooks/useRowSelection';
 
@@ -83,6 +94,14 @@ import { useRowSelection } from '../hooks/useRowSelection';
  * all resolve it, so dragging is off for the duration of a selection.
  */
 
+/**
+ * How long a run of water presses has to settle before it is written down.
+ *
+ * Longer than the stepper's own fastest repeat (40ms, see `holdRepeatDelay`),
+ * so a held key commits once rather than once per step.
+ */
+const WATER_COMMIT_MS = 600;
+
 export function FoodLogScreen() {
   const colors = useColors();
   const styles = useMemo(() => makeStyles(colors), [colors]);
@@ -94,6 +113,9 @@ export function FoodLogScreen() {
   const removeEntry = useFoodLogStore(s => s.removeEntry);
   const updateEntry = useFoodLogStore(s => s.updateEntry);
   const reviseEntry = useFoodLogStore(s => s.reviseEntry);
+  // Only the water card writes through this one; every other entry on this
+  // screen is created by a sheet that holds its own binding.
+  const addEntry = useFoodLogStore(s => s.addEntry);
   const removeEntries = useFoodLogStore(s => s.removeEntries);
   const moveEntries = useFoodLogStore(s => s.moveEntries);
   const reorderEntries = useFoodLogStore(s => s.reorderEntries);
@@ -357,6 +379,90 @@ export function FoodLogScreen() {
     exitSelection();
   };
 
+  // ==== the day's water ====
+  /**
+   * The row the stepper walks, and the figure the card reports.
+   *
+   * They are deliberately two numbers. The stepper owns one entry (see
+   * `isWaterEntry`), while the day's water is every entry that stated any —
+   * a bottle picked out of the catalog counts toward the target and must not
+   * be folded into the row a press rewrites.
+   */
+  const waterEntry = useMemo(() => waterEntryOf(dayEntries), [dayEntries]);
+  const storedWaterMl = waterEntry?.nutrition.amounts.waterMl ?? null;
+  const dayWaterMl = useMemo(() => waterTotalMl(dayEntries), [dayEntries]);
+
+  /**
+   * What a run of presses is heading for, before it is written down.
+   *
+   * A held stepper key walks a step every 40ms at full speed, and committing
+   * each one would fire a retract and a write at HealthKit per step, each
+   * retracting ids the previous write had not finished stamping back. So the
+   * card renders the pending figure and `commitWater` lands it once the presses
+   * stop. 600ms is comfortably longer than the fastest repeat.
+   *
+   * The pending value carries its own row and day rather than reading them back
+   * at commit time, so a flush triggered by leaving the screen, or by stepping
+   * to another day mid-run, writes what was pressed onto the day it was pressed
+   * on.
+   */
+  const [pendingWaterMl, setPendingWaterMl] = useState<number | null>(null);
+  const pendingWater = useRef<{ ml: number; entryId: string | null; at: Date } | null>(null);
+  const waterTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
+
+  const commitWater = useCallback(() => {
+    if (waterTimer.current !== null) { clearTimeout(waterTimer.current); waterTimer.current = null; }
+    const pending = pendingWater.current;
+    pendingWater.current = null;
+    setPendingWaterMl(null);
+    if (!pending) return;
+
+    const built = waterHelping(pending.ml);
+    // Null means the stepper was walked back to nothing. The row goes rather
+    // than storing a zero: "drank none" and "did not log" are one absence
+    // everywhere else in this tree, and deleting is also what retracts the
+    // sample Health is holding.
+    if (!built) {
+      if (pending.entryId) removeEntry(pending.entryId);
+      return;
+    }
+    if (pending.entryId) reviseEntry(pending.entryId, built);
+    else {
+      addEntry({
+        ...built,
+        grams: null,
+        slot: null,
+        recipeId: null,
+        itemId: null,
+        productId: null,
+        mealPlanEntryId: null,
+        at: pending.at,
+      });
+    }
+  }, [addEntry, reviseEntry, removeEntry]);
+
+  const handleWaterChange = (next: number | null) => {
+    const ml = next ?? 0;
+    setPendingWaterMl(ml);
+    pendingWater.current = { ml, entryId: waterEntry?.id ?? null, at: loggingAt };
+    if (waterTimer.current !== null) clearTimeout(waterTimer.current);
+    waterTimer.current = setTimeout(commitWater, WATER_COMMIT_MS);
+  };
+
+  // Leaving the screen mid-run still writes what was pressed. Unmount only:
+  // stepping to another day doesn't need one, since the pending value carries
+  // the day it belongs to and the timer lands it there regardless.
+  useEffect(() => () => { commitWater(); }, [commitWater]);
+
+  // What the card shows while a run settles. The stepper reads its own row and
+  // the line under it reads the day, so a pending press has to move both or the
+  // figure against the target lags a second behind the number being pressed.
+  const shownWaterMl = pendingWaterMl !== null
+    ? (pendingWaterMl > 0 ? pendingWaterMl : null)
+    : storedWaterMl;
+  const shownDayWaterMl = dayWaterMl - (storedWaterMl ?? 0) + (shownWaterMl ?? 0);
+  const waterLine = describeWaterDay(shownDayWaterMl, shownWaterMl, nutritionTargets.waterMl);
+
   const handleReorder = (reordered: FoodLogListItem[]) => {
     const resolved = resolveFoodLogDrop(reordered);
     reorderEntries(resolved.map(e => ({ id: e.id, slot: e.slot, sortOrder: e.sortOrder })));
@@ -368,7 +474,11 @@ export function FoodLogScreen() {
 
   // Every nutrient the day actually stated, and the two the card leads with.
   // Absent stays absent in both — see foodLogTotals.
-  const statedKeys = NUTRIENT_KEYS.filter(k => totals.total[k] !== undefined);
+  //
+  // Water is dropped here because the card below it says the same figure
+  // against the same target and can be pressed. Left in, it read twice on
+  // every day anybody drank anything, once as a row nothing could act on.
+  const statedKeys = NUTRIENT_KEYS.filter(k => k !== 'waterMl' && totals.total[k] !== undefined);
   const shownKeys = allNutrients
     ? statedKeys
     : statedKeys.filter(k => k === 'calorieKcal' || k === 'proteinG');
@@ -483,6 +593,7 @@ export function FoodLogScreen() {
             onHoverChange={haptics.dragTick}
             onReorder={handleReorder}
             ListHeaderComponent={
+              <>
               <View style={styles.totalsCard}>
                 {shownKeys.map(key => (
                   <View key={key} style={styles.totalBlock}>
@@ -549,6 +660,51 @@ export function FoodLogScreen() {
                   />
                 )}
               </View>
+
+              {/* Water is its own card because it is the one figure on this
+                  screen you add to rather than read. It had a unit, a target
+                  range, a targets-sheet row and a parser arm and no way at all
+                  to log a glass, so the bar sat at zero all day (#2515).
+
+                  A stepper rather than a row of glass-size pills, which is
+                  `CountStepper`'s own argument: pills have to pick a size and a
+                  ceiling for everyone, and half a bottle is then unsayable. −
+                  at the floor clears the day, which is the undo. */}
+              <View style={styles.waterCard}>
+                <View style={styles.waterRow}>
+                  <Ionicons name="water-outline" size={iconSize.sm} color={colors.textSecondary} />
+                  <Text style={styles.waterLabel}>Water</Text>
+                  <CountStepper
+                    value={shownWaterMl}
+                    onChange={handleWaterChange}
+                    min={WATER_MIN_ML}
+                    max={WATER_MAX_ML}
+                    step={WATER_STEP_ML}
+                    allowNull
+                    emptyLabel="None"
+                    format={describeWaterMl}
+                    label="Water"
+                    describeValue={n => (n === null ? 'No water logged' : describeWaterMl(n))}
+                  />
+                </View>
+                {/* Written by `describeWaterDay` rather than
+                    `describeAgainstTarget`, so both halves come out in the same
+                    shape the stepper above uses — see its note. It withholds on
+                    a day with no water, and when the stepper has already said
+                    the figure. */}
+                {waterLine !== null && <Text style={styles.waterTarget}>{waterLine}</Text>}
+                {nutritionTargets.waterMl !== undefined && shownDayWaterMl > 0 && (
+                  <View style={styles.targetTrack}>
+                    <View
+                      style={[
+                        styles.targetFill,
+                        { width: `${targetProgress('waterMl', shownDayWaterMl, nutritionTargets) * 100}%` },
+                      ]}
+                    />
+                  </View>
+                )}
+              </View>
+              </>
             }
             ListFooterComponent={
               <View style={{ height: selectionMode ? selectionListPadding : tabBarHeight + FAB_SIZE + spacing.xl }} />
@@ -746,8 +902,21 @@ function makeStyles(colors: Colors) {
       borderRadius: radius.md,
       padding: spacing.md,
       gap: spacing.sm,
-      marginBottom: spacing.lg,
+      // Was spacing.lg, back when the first meal section was what came next.
+      // Two cards in one block sit a step closer than a block sits to the list.
+      marginBottom: spacing.md,
     },
+    waterCard: {
+      backgroundColor: colors.bgSecondary,
+      borderRadius: radius.md,
+      padding: spacing.md,
+      gap: spacing.sm,
+    },
+    waterRow: { flexDirection: 'row', alignItems: 'center', gap: spacing.sm },
+    // Takes the row, so the stepper sits hard against the trailing edge where
+    // every other control on this screen does.
+    waterLabel: { flex: 1, color: colors.text, fontSize: font.sm },
+    waterTarget: { color: colors.textSecondary, fontSize: font.xs },
     totalBlock: { gap: spacing.xs },
     totalRow: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between' },
     targetTrack: { height: 4, borderRadius: 2, backgroundColor: colors.separator, overflow: 'hidden' },
