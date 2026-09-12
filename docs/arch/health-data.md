@@ -608,12 +608,15 @@ something nobody measured:
   running `scalePanelToAmount` over the food's own panel again. That panel is
   reachable only through the entry's links, which is what `foodLogEntryEdit`
   decides on.
-- **An entry with no link cannot be corrected, and is not offered the action.**
-  A described meal the model estimated, or a database food nobody filed, has no
+- **An entry with no link is not offered the editor, only a rename.** A
+  described meal the model estimated, or a database food nobody filed, has no
   panel left to measure against. Offering its figures as fields to retype was
   the obvious alternative and is the one thing this must not do: a hand-typed
   panel going into a medical record is exactly the unmeasured claim the rest of
-  this document refuses.
+  this document refuses. Renaming is carved out because it claims nothing about
+  how much was eaten — it changes the row's own words and the name its sample
+  carries, which is why it still goes through `reviseEntry` rather than
+  `updateEntry`.
 - **The rewrite is skipped when nothing Health holds changed.** Moving the meal
   or re-filing the item touches no figure Health ever saw, and rewriting anyway
   would churn somebody's medical record for a field it never got.

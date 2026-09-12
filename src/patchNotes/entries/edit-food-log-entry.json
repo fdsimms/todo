@@ -1,4 +1,4 @@
 {
-  "message": "Correct a food log entry instead of deleting it and logging it again. Tap the \"…\" on a row and choose Edit. The amount is measured against the food again, and anything already written to Apple Health is corrected with it.",
+  "message": "Correct a food log entry instead of deleting it and logging it again. Tap the \"…\" on a row and choose Edit. The amount is measured against the food again, and anything already written to Apple Health is corrected with it. A described meal, which has no food to measure against, can still be renamed.",
   "date": "2026-09-12"
 }
