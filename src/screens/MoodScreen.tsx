@@ -439,7 +439,7 @@ export function MoodScreen() {
           },
         ]}
       />
-      <HubPills hub="history" active="Mood" />
+      <HubPills hub="health" active="Mood" />
 
       {logs.length === 0 ? (
         <EmptyState
