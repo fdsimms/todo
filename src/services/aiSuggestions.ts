@@ -910,7 +910,7 @@ function groceryItemsSchema(availableAisles: string[], description: string) {
         },
         quantity: {
           type: 'string',
-          description: 'The recipe\'s own amount, as written, with any prep instruction moved to the "prep" field instead — "4 cloves", "2 cups", "1 tbsp", "2 tsp" — not a converted purchasable size ("1 bulb" for "4 cloves" is wrong). Abbreviate tablespoon/teaspoon as "tbsp"/"tsp". Empty string if the recipe does not say.',
+          description: 'The recipe\'s own amount, as written, with any prep instruction moved to the "prep" field instead — "4 cloves", "2 cups", "1 tbsp", "2 tsp" — not a converted purchasable size ("1 bulb" for "4 cloves" is wrong). Abbreviate tablespoon/teaspoon as "tbsp"/"tsp". If the recipe gives a parenthetical source count for the amount — "(from about 2 limes)", "(1 medium onion)" — append it after the amount, e.g. "3 oz (from about 2 limes)". Empty string if the recipe does not say.',
         },
         aisle: {
           type: 'string',
