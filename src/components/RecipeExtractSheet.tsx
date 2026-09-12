@@ -879,7 +879,7 @@ function makeStyles(colors: Colors) {
       paddingBottom: spacing.sm,
     },
     list: { paddingTop: spacing.md, paddingBottom: spacing.xl },
-    detailFields: { flexDirection: 'row', alignItems: 'center', gap: spacing.xs },
+    detailFields: { flexDirection: 'row', flexWrap: 'wrap', alignItems: 'center', gap: spacing.xs },
     // `text`, not `textSecondary`: every one of these sits on its own chip
     // now, and the chrome between them (`detailSep`) is what stays grey. It
     // used to be the other way round — the static "·"/"min"/"Makes" were
