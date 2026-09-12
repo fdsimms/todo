@@ -430,6 +430,39 @@ behind one bearer token today, which is adequate for a laptop and is not adequat
 should decide whether the health logs need their own consent separate from the rest, and the honest
 default is that they do.
 
+### What the privacy label has to say
+
+Concretely, so phase 3 is not left deriving it under deadline. The app ships no privacy manifest
+today (`app.json` carries none), so this is the whole of the record.
+
+**Nothing changes while no sync server is configured.** The URL and the token are both required and
+both empty by default, iCloud is a private CloudKit database on the user's own Apple ID, and the
+three existing network calls are unchanged. The label question is entirely about the sync server
+being switched on.
+
+**What leaves the device when it is.** `SYNC_TRACKED_TABLES` is the authority, and it is broad: the
+tasks and their notes, projects, categories, tags and templates, the people layer (names, and the
+phone numbers and email addresses a task or a person carries), the grocery catalog with its prices
+and purchase history, recipes and the meal plan, and the three day-keyed logs. In Apple's
+categories that is at least **User Content**, **Contact Info**, **Health & Fitness** and
+**Purchases**, all of it linked to the person using the app.
+
+**The log tables are the reason this is not a routine declaration.** Mood, medication and food are
+health records in the sense a label means it. Weight is the one thing that cannot travel, because
+HealthKit is the record and there is no table to sync; that is the health model working rather than
+an omission.
+
+**The open question is whether a server the user runs counts as collection at all.** Apple asks
+what the developer and its partners collect, and here the developer receives nothing: the box is
+the user's, the address is theirs, and nothing reports back. That is a real argument and it is not
+obviously the winning one, because the data does leave the device and is stored beyond the session.
+**Do not settle this from the code.** It wants Apple's current guidance read at the time, and if it
+stays ambiguous the safe declaration is the honest one rather than the narrow one.
+
+**A second consent for the health logs is still undecided**, and the section above already says the
+honest default is that they need one. Worth noting that the Settings copy now names them explicitly
+on both destinations, which is the minimum; a separate switch would be the next step up from that.
+
 ## Phases
 
 - **Phase 0 (done).** The replica, the read-only tools, the serializer, the auth seam, and this
