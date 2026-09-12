@@ -91,6 +91,11 @@ function line(...parts: (string | false | null | undefined)[]): string {
  */
 export function settingsSummaries(s: SettingsSummaryInput): Record<SettingsGroupId, string> {
   return {
+    featureAreas: line(
+      !s.kitchenEnabled && 'Groceries & meals hidden',
+      s.simpleMode && 'Simplified mode on',
+    ) || 'Everything on',
+
     appearance: line(
       THEME_LABELS[s.themeMode] ?? 'Dark',
       s.fontLabel,
@@ -117,9 +122,6 @@ export function settingsSummaries(s: SettingsSummaryInput): Record<SettingsGroup
     ) || 'Off. Say “Hey Siri, remind me to…”',
 
     tasksProjects: line(
-      // Leads, because it changes what the rest of the group even contains —
-      // several of the things named below aren't rows any more once it's on.
-      s.simpleMode && 'Simplified mode on',
       s.vacationMode && 'Vacation on',
       s.autoRemoveExpiredTasks !== null && (
         s.autoRemoveExpiredTasks === 0

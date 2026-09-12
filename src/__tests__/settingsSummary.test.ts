@@ -34,16 +34,24 @@ const summarise = (over: Partial<SettingsSummaryInput> = {}) =>
   settingsSummaries({ ...defaults, ...over });
 
 describe('settingsSummaries', () => {
-  it('leads the tasks group with simplified mode, which changes what the group holds', () => {
-    expect(summarise({ simpleMode: true })!.tasksProjects).toMatch(/^Simplified mode on/);
-    expect(summarise({ simpleMode: false })!.tasksProjects).not.toContain('Simplified');
-  });
-
   it('describes every group', () => {
     const summaries = summarise();
     for (const group of SETTINGS_GROUPS) {
       expect(summaries[group.id].trim()).not.toBe('');
     }
+  });
+
+  describe('featureAreas', () => {
+    it('says everything is on by default', () => {
+      expect(summarise().featureAreas).toBe('Everything on');
+    });
+
+    it('names each switch once it is off/on', () => {
+      expect(summarise({ kitchenEnabled: false }).featureAreas).toBe('Groceries & meals hidden');
+      expect(summarise({ simpleMode: true }).featureAreas).toBe('Simplified mode on');
+      expect(summarise({ kitchenEnabled: false, simpleMode: true }).featureAreas)
+        .toBe('Groceries & meals hidden · Simplified mode on');
+    });
   });
 
   describe('appearance', () => {

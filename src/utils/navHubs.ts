@@ -1,5 +1,5 @@
 /**
- * What the side menu contains, as data — ten rows, three of which are hubs.
+ * What the side menu contains, as data — eleven rows, three of which are hubs.
  *
  * The menu used to be eighteen flat rows of equal weight, about twice what
  * fits on a phone, so half of it lived below a fold nothing announced. Reading
@@ -145,6 +145,15 @@ export const NAV_MENU_ROWS: readonly NavMenuRow[] = [
     kind: 'screen',
     icon: 'search-outline',
     destination: { route: 'Search', label: 'Search', keywords: ['find', 'look up'] },
+  },
+  // A tab, but not otherwise reachable from the drawer or its search — the one
+  // main surface that wasn't. Placed with the other questions about your own
+  // tasks rather than down by Organize/History, since a project is a kind of
+  // task list, not something a task belongs to after the fact.
+  {
+    kind: 'screen',
+    icon: 'briefcase-outline',
+    destination: { route: 'Projects', label: 'Projects' },
   },
   {
     kind: 'screen',
