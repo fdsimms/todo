@@ -171,6 +171,7 @@ const PROJECT_BASE: Project = {
   nudgeOptIn: true,
   weekendSource: false,
   reviewDeclinedAt: null,
+  reviewedAt: null,
   backfillDismissedFields: [],
   kind: 'project' as const,
   awayStart: null,
@@ -226,6 +227,26 @@ describe('findProjectStalls', () => {
     ];
 
     expect(findProjectStalls([makeProject()], tasks)).toHaveLength(0);
+  });
+
+  // "Nothing to pull, mark reviewed" (ProjectPullSheet) stamps reviewedAt —
+  // it must buy the project's own cadence, not just today, or the very next
+  // sweep writes back an identical review task.
+  it('is not stalled right after being marked reviewed, even with undated members', () => {
+    const project = makeProject({ reviewedAt: subDays(new Date(), 2).toISOString() });
+    const tasks = [makeTask({ id: 'a' }), makeTask({ id: 'b' })];
+
+    expect(findProjectStalls([project], tasks)).toHaveLength(0);
+  });
+
+  it('stalls again once quiet for the full cadence past the review', () => {
+    const project = makeProject({ reviewedAt: subDays(new Date(), 15).toISOString() });
+    const tasks = [makeTask({ id: 'a' }), makeTask({ id: 'b' })];
+
+    const stalls = findProjectStalls([project], tasks);
+
+    expect(stalls).toHaveLength(1);
+    expect(stalls[0].quietDays).toBe(15);
   });
 
   it('ignores archived members when deciding, but counts their completions as a touch', () => {
@@ -452,6 +473,21 @@ describe('lastTouchedAt', () => {
     ];
 
     expect(lastTouchedAt(makeProject(), members)).toBe(recent);
+  });
+
+  it('counts a "mark reviewed" stamp as a touch, restarting the quiet clock', () => {
+    const reviewedAt = subDays(new Date(), 2).toISOString();
+    const project = makeProject({ reviewedAt });
+
+    expect(lastTouchedAt(project, [makeTask({ id: 'a' })])).toBe(reviewedAt);
+  });
+
+  it('still prefers a newer completion over an older reviewedAt stamp', () => {
+    const completedAt = subDays(new Date(), 1).toISOString();
+    const project = makeProject({ reviewedAt: subDays(new Date(), 10).toISOString() });
+    const members = [makeTask({ id: 'a', completed: true, completedAt })];
+
+    expect(lastTouchedAt(project, members)).toBe(completedAt);
   });
 });
 

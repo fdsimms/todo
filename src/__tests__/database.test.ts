@@ -1721,6 +1721,7 @@ describe('Projects', () => {
     nudgeOptIn: true,
     weekendSource: false,
     reviewDeclinedAt: null,
+    reviewedAt: null,
     backfillDismissedFields: [],
     kind: 'project' as const,
     awayStart: null,
@@ -1776,6 +1777,14 @@ describe('Projects', () => {
     const [p] = dbGetAllProjects();
     expect(p.nudgeCadenceDays).toBe(0);
     expect(p.autoSchedule).toBe(false);
+  });
+
+  it('round-trips reviewedAt, both on insert and on update', () => {
+    dbInsertProject(makeProject({ id: 'p-reviewed', reviewedAt: '2026-02-01T00:00:00.000Z' }));
+    expect(dbGetAllProjects().find(row => row.id === 'p-reviewed')?.reviewedAt).toBe('2026-02-01T00:00:00.000Z');
+
+    dbUpdateProject(makeProject({ id: 'p-reviewed', reviewedAt: null }));
+    expect(dbGetAllProjects().find(row => row.id === 'p-reviewed')?.reviewedAt).toBeNull();
   });
 
   it('round-trips nudgeOptIn, defaulting existing rows to false', () => {
@@ -1967,6 +1976,7 @@ describe('backup and restore', () => {
       nudgeOptIn: true,
       weekendSource: false,
       reviewDeclinedAt: null,
+      reviewedAt: null,
       backfillDismissedFields: [],
       kind: 'project' as const,
       awayStart: null,

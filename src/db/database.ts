@@ -1524,6 +1524,10 @@ export function initDatabase(): void {
     'ALTER TABLE tasks ADD COLUMN medication_name TEXT',
     'ALTER TABLE tasks ADD COLUMN medication_amount REAL',
     'ALTER TABLE tasks ADD COLUMN medication_unit TEXT',
+    // NULL on every existing row, which reads as "never marked reviewed" —
+    // the state that lets the review task keep appearing exactly as it always
+    // has. See Project.reviewedAt.
+    'ALTER TABLE projects ADD COLUMN reviewed_at TEXT',
   ];
   // Asking SQLite for a table's columns once is cheaper than handing it every
   // ALTER for that table and catching the duplicate-column error, and by the
@@ -5473,6 +5477,7 @@ function rowToProject(row: Record<string, unknown>): Project {
     nudgeOptIn: Boolean(row.nudge_opt_in),
     weekendSource: Boolean(row.weekend_source),
     reviewDeclinedAt: (row.review_declined_at as string) ?? null,
+    reviewedAt: (row.reviewed_at as string) ?? null,
     backfillDismissedFields: JSON.parse((row.backfill_dismissed_fields as string) ?? '[]') as string[],
     // Anything unrecognised reads as an ordinary project rather than throwing:
     // a column added later, or a row from a peer on a newer build, must not
@@ -5495,14 +5500,14 @@ export function dbGetAllProjects(): Project[] {
 
 export function dbInsertProject(project: Project): void {
   db.runSync(
-    'INSERT INTO projects (id, title, notes, target_end_date, category, sort_order, archived, archived_at, completed, completed_at, ongoing, created_at, nudge_cadence_days, auto_schedule, nudge_opt_in, weekend_source, review_declined_at, backfill_dismissed_fields, kind, away_start, away_end, away_pauses, away_pause_declined_for, destination, away_list_id, away_list_declined_for) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)',
+    'INSERT INTO projects (id, title, notes, target_end_date, category, sort_order, archived, archived_at, completed, completed_at, ongoing, created_at, nudge_cadence_days, auto_schedule, nudge_opt_in, weekend_source, review_declined_at, reviewed_at, backfill_dismissed_fields, kind, away_start, away_end, away_pauses, away_pause_declined_for, destination, away_list_id, away_list_declined_for) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)',
     [
       project.id, project.title, project.notes, project.deadline,
       project.category, project.sortOrder, project.archived ? 1 : 0, project.archivedAt,
       project.completed ? 1 : 0, project.completedAt, project.ongoing ? 1 : 0, project.createdAt,
       project.nudgeCadenceDays, project.autoSchedule ? 1 : 0, project.nudgeOptIn ? 1 : 0,
       project.weekendSource ? 1 : 0,
-      project.reviewDeclinedAt, JSON.stringify(project.backfillDismissedFields), project.kind,
+      project.reviewDeclinedAt, project.reviewedAt, JSON.stringify(project.backfillDismissedFields), project.kind,
       project.awayStart, project.awayEnd,
       project.awayPauses ? 1 : 0, project.awayPauseDeclinedFor, project.destination,
       project.awayListId, project.awayListDeclinedFor,
@@ -5512,14 +5517,14 @@ export function dbInsertProject(project: Project): void {
 
 export function dbUpdateProject(project: Project): void {
   db.runSync(
-    'UPDATE projects SET title=?, notes=?, target_end_date=?, category=?, sort_order=?, archived=?, archived_at=?, completed=?, completed_at=?, ongoing=?, nudge_cadence_days=?, auto_schedule=?, nudge_opt_in=?, weekend_source=?, review_declined_at=?, backfill_dismissed_fields=?, kind=?, away_start=?, away_end=?, away_pauses=?, away_pause_declined_for=?, destination=?, away_list_id=?, away_list_declined_for=? WHERE id=?',
+    'UPDATE projects SET title=?, notes=?, target_end_date=?, category=?, sort_order=?, archived=?, archived_at=?, completed=?, completed_at=?, ongoing=?, nudge_cadence_days=?, auto_schedule=?, nudge_opt_in=?, weekend_source=?, review_declined_at=?, reviewed_at=?, backfill_dismissed_fields=?, kind=?, away_start=?, away_end=?, away_pauses=?, away_pause_declined_for=?, destination=?, away_list_id=?, away_list_declined_for=? WHERE id=?',
     [
       project.title, project.notes, project.deadline,
       project.category, project.sortOrder, project.archived ? 1 : 0, project.archivedAt,
       project.completed ? 1 : 0, project.completedAt, project.ongoing ? 1 : 0,
       project.nudgeCadenceDays, project.autoSchedule ? 1 : 0, project.nudgeOptIn ? 1 : 0,
       project.weekendSource ? 1 : 0,
-      project.reviewDeclinedAt, JSON.stringify(project.backfillDismissedFields), project.kind,
+      project.reviewDeclinedAt, project.reviewedAt, JSON.stringify(project.backfillDismissedFields), project.kind,
       project.awayStart, project.awayEnd,
       project.awayPauses ? 1 : 0, project.awayPauseDeclinedFor, project.destination,
       project.awayListId, project.awayListDeclinedFor, project.id,
