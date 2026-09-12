@@ -114,7 +114,7 @@ describe('resolveFontFace', () => {
     expect(resolveFontFace('nunito', '400')).toBe('Nunito_400Regular');
     expect(resolveFontFace('nunito', '600')).toBe('Nunito_600SemiBold');
     expect(resolveFontFace('bricolage', 'bold')).toBe('BricolageGrotesque_700Bold');
-    expect(resolveFontFace('fraunces', undefined)).toBe('Fraunces_400Regular');
+    expect(resolveFontFace('outfit', undefined)).toBe('Outfit_400Regular');
     expect(resolveFontFace('spaceGrotesk', '500')).toBe('SpaceGrotesk_500Medium');
     expect(resolveFontFace('outfit', '700')).toBe('Outfit_700Bold');
   });
@@ -160,9 +160,9 @@ describe('pickRandomAppFont', () => {
   });
 
   it('picks by index off the injected random source', () => {
-    const pool: AppFont[] = ['bricolage', 'fraunces', 'nunito'];
+    const pool: AppFont[] = ['bricolage', 'outfit', 'nunito'];
     expect(pickRandomAppFont(pool, () => 0)).toBe('bricolage');
-    expect(pickRandomAppFont(pool, () => 0.5)).toBe('fraunces');
+    expect(pickRandomAppFont(pool, () => 0.5)).toBe('outfit');
     // Just under 1, not 1 itself — Math.random()'s own range — so the last
     // index is reachable without ever rounding up past the array's end.
     expect(pickRandomAppFont(pool, () => 0.999)).toBe('nunito');

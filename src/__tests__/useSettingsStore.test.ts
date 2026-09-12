@@ -127,15 +127,15 @@ describe('initialize', () => {
     (dbGetSetting as jest.Mock).mockImplementation((key: string) => {
       if (key === 'appFont') return 'nunito';
       if (key === 'appFontRandomize') return 'true';
-      if (key === 'appFontPool') return JSON.stringify(['fraunces']);
+      if (key === 'appFontPool') return JSON.stringify(['outfit']);
       return null;
     });
     useSettingsStore.getState().initialize();
-    expect(useSettingsStore.getState().appFont).toBe('fraunces');
+    expect(useSettingsStore.getState().appFont).toBe('outfit');
     // Written back so every other reader of the 'appFont' key — widget sync,
     // sync tracking, the next preload — sees the pick without knowing
     // randomization exists.
-    expect(dbSetSetting).toHaveBeenCalledWith('appFont', 'fraunces');
+    expect(dbSetSetting).toHaveBeenCalledWith('appFont', 'outfit');
   });
 
   it('leaves appFont as stored when randomize is on but the pool is empty', () => {
