@@ -56,6 +56,14 @@ const REQUEST_TIMEOUT_MS = 15_000;
  * on a shot the user just framed is the worst failure this feature has.
  */
 const IMAGE_REQUEST_TIMEOUT_MS = 40_000;
+/**
+ * Extra headroom per photo beyond the first, when `extractRecipe` is sent more
+ * than one (a cookbook recipe photographed across a page turn — see
+ * `MAX_RECIPE_PHOTOS`). Smaller than the base budget above because only the
+ * upload time compounds with each extra photo; the model startup and vision
+ * prefill the base already covers happens once for the whole request.
+ */
+const ADDITIONAL_IMAGE_TIMEOUT_MS = 15_000;
 
 interface AnthropicResponse {
   stop_reason?: string;
@@ -975,12 +983,18 @@ export interface RecipeImage {
 }
 
 /**
- * Pasted text, or a photo of the page it's printed on. Everything past the
- * message body — the tool, the schema, the validation — is identical for both,
- * which is the whole reason this is one function taking a union rather than two
- * functions sharing a helper.
+ * Pasted text, or one or more photos of the page(s) it's printed on. Everything
+ * past the message body — the tool, the schema, the validation — is identical
+ * across all three, which is the whole reason this is one function taking a
+ * union rather than two (or three) functions sharing a helper.
+ *
+ * The array case is a single recipe read off more than one photo — a cookbook
+ * page that runs across a page turn, a card photographed front and back — not
+ * several unrelated recipes. `extractRecipe` sends every entry as its own image
+ * block, in the order given, and asks the model to read them as one continuous
+ * source.
  */
-export type RecipeSource = string | RecipeImage;
+export type RecipeSource = string | RecipeImage | RecipeImage[];
 
 export interface ExtractedRecipe {
   /** Empty when the text didn't give one. */
@@ -1100,10 +1114,16 @@ function methodInstructions(): string[] {
  * working exactly as it did before this existed.
  *
  * A photo changes exactly two things: the message content becomes a block
- * array with the image first (the ordering Anthropic recommends for a single
- * image), and the instructions gain a paragraph about page furniture and one
- * about refusing to guess at an illegible shot. The text path still sends a
- * bare string, so its request body is byte-for-byte what it always was.
+ * array with the image(s) first (the ordering Anthropic recommends), and the
+ * instructions gain a paragraph about page furniture and one about refusing to
+ * guess at an illegible shot. The text path still sends a bare string, so its
+ * request body is byte-for-byte what it always was.
+ *
+ * **More than one photo is one recipe read across several images, not several
+ * recipes** — a cookbook page that runs across a page turn, most often (see
+ * `MAX_RECIPE_PHOTOS`). Every entry becomes its own image block, in the order
+ * given, and the prompt asks the model to treat them as one continuous source
+ * rather than extracting each on its own.
  *
  * **`includeReferences` gates the cross-references to other recipes** on the
  * same terms as `includeMethod` below: `suggestRecipeGroceries` has nowhere to
@@ -1130,10 +1150,16 @@ export async function extractRecipe(
     sourceTitle: null, sourceAuthor: null, sourcePage: null, sourceType: null,
     references: [], steps: [], prepTasks: [],
   };
-  const image = typeof source === 'string' ? null : source;
+  // A bare image normalizes to a one-entry array so the rest of this function
+  // has exactly two shapes to handle, not three. Filtered for a usable
+  // `base64` up front — a degenerate entry (there shouldn't be one, given
+  // where these come from) drops out here rather than reaching the request.
+  const rawImages = typeof source === 'string' ? null : Array.isArray(source) ? source : [source];
+  const images = rawImages ? rawImages.filter(img => !!img.base64) : null;
   const text = typeof source === 'string' ? source.trim().slice(0, MAX_RECIPE_CHARS) : '';
   // Same "nothing in, no network call" guard for both sources.
-  if (image ? !image.base64 : !text) return empty;
+  if (images ? images.length === 0 : !text) return empty;
+  const multiPhoto = !!images && images.length > 1;
 
   const foundLine = `its shopping list${includeMethod ? ', and its method' : ''}`;
   // Page furniture is junk to the recipe and provenance to the book, so which
@@ -1143,15 +1169,17 @@ export async function extractRecipe(
   const pageFurniture = includeSource
     ? 'Keep anything that is not part of this recipe out of the recipe: headnotes and stories, photo captions, and text bleeding in from a facing page. Page numbers, running heads and chapter titles are not part of the recipe either, and must never appear in its name, ingredients or method — but they are what says where it came from, so read them into the source fields described below rather than discarding them.'
     : 'Ignore anything on the page that is not part of this recipe: page numbers, running heads, chapter titles, headnotes and stories, photo captions, and text bleeding in from a facing page.';
-  const prompt = image
+  const prompt = images
     ? [
-        `This is a photo of a recipe — a cookbook page, a recipe card, a handwritten note, or a screen. Read it and extract the recipe: its name, how many it serves (or what it makes, if that's how the source states it — "2 loaves", "3 cups", "2 dozen cookies"), its total prep/cook time, and ${foundLine}.`,
-        `${pageFurniture} If the page shows more than one recipe, extract only the most prominent one — the one whose title and ingredient list are most complete — and never merge ingredients across recipes. Ingredient lists are often set in two columns; read down each column rather than across.`,
+        multiPhoto
+          ? `These are ${images.length} photos of the same recipe, in reading order — for example a cookbook page and the page it continues onto after a page turn. Read them together as one continuous recipe and extract it: its name, how many it serves (or what it makes, if that's how the source states it — "2 loaves", "3 cups", "2 dozen cookies"), its total prep/cook time, and ${foundLine}.`
+          : `This is a photo of a recipe — a cookbook page, a recipe card, a handwritten note, or a screen. Read it and extract the recipe: its name, how many it serves (or what it makes, if that's how the source states it — "2 loaves", "3 cups", "2 dozen cookies"), its total prep/cook time, and ${foundLine}.`,
+        `${pageFurniture} If the ${multiPhoto ? 'photos show' : 'page shows'} more than one recipe, extract only the most prominent one — the one whose title and ingredient list are most complete — and never merge ingredients across recipes. Ingredient lists are often set in two columns; read down each column rather than across.`,
         ...sharedRecipeInstructions(availableAisles),
         ...(includeSource ? sourceInstructions() : []),
         ...(includeReferences ? referenceInstructions() : []),
         ...(includeMethod ? methodInstructions() : []),
-        'If the photo is too blurry, too dark, cut off, or otherwise unreadable, return an empty name and an empty item list rather than guessing. Never invent an ingredient, step, or prep task you cannot actually read.',
+        `If ${multiPhoto ? 'a photo is' : 'the photo is'} too blurry, too dark, cut off, or otherwise unreadable, return an empty name and an empty item list rather than guessing. Never invent an ingredient, step, or prep task you cannot actually read.`,
       ].join('\n\n')
     : [
         `Extract this recipe: its name, how many it serves (or what it makes, if that's how the source states it — "2 loaves", "3 cups", "2 dozen cookies"), its total prep/cook time, and ${foundLine}.`,
@@ -1162,12 +1190,12 @@ export async function extractRecipe(
         `Recipe:\n${text}`,
       ].join('\n\n');
 
-  const content = image
+  const content = images
     ? [
-        {
+        ...images.map(image => ({
           type: 'image',
           source: { type: 'base64', media_type: image.mediaType, data: image.base64 },
-        },
+        })),
         { type: 'text', text: prompt },
       ]
     : prompt;
@@ -1276,7 +1304,7 @@ export async function extractRecipe(
     }],
     tool_choice: { type: 'tool', name: 'extract_recipe' },
     messages: [{ role: 'user', content }],
-  }, apiKey, model, image ? IMAGE_REQUEST_TIMEOUT_MS : undefined);
+  }, apiKey, model, images ? IMAGE_REQUEST_TIMEOUT_MS + (images.length - 1) * ADDITIONAL_IMAGE_TIMEOUT_MS : undefined);
 
   const toolUse = data.content?.find(c => c.type === 'tool_use');
   const input = toolUse?.input as {
