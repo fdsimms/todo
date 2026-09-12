@@ -90,8 +90,8 @@ describe('annotateSteps', () => {
       expect(annotateSteps(steps, [line('butter', '115 g')]).size).toBe(0);
     });
 
-    it('does not read a longer ingredient off a shorter step word', () => {
-      const steps = [step('Slice the chicken thin.')];
+    it('does not read a longer ingredient off an unrelated step word', () => {
+      const steps = [step('Slice the shallots thin.')];
       expect(annotateSteps(steps, [line('chicken breasts', '2')]).size).toBe(0);
     });
 
@@ -116,6 +116,63 @@ describe('annotateSteps', () => {
     it('skips a name shorter than two characters', () => {
       const steps = [step('Add a splash of water.')];
       expect(annotateSteps(steps, [line('a', '1 cup')]).size).toBe(0);
+    });
+  });
+
+  describe('a shorter name the method actually uses', () => {
+    it('drops a trailing cut, so the chicken finds chicken breasts', () => {
+      const steps = [step('Slice the chicken thin.')];
+      expect(readOne(steps, [line('chicken breasts', '2')]))
+        .toBe('Slice the chicken (2) thin.');
+    });
+
+    it('drops leading modifiers, so the pepper finds red bell pepper', () => {
+      const steps = [step('Add the pepper and fry for two minutes.')];
+      expect(readOne(steps, [line('red bell pepper', '1 large')]))
+        .toBe('Add the pepper (1 large) and fry for two minutes.');
+    });
+
+    it('drops both at once', () => {
+      const steps = [step('Pat the salmon dry.')];
+      expect(readOne(steps, [line('fresh salmon fillets', '2')]))
+        .toBe('Pat the salmon (2) dry.');
+    });
+
+    // The tables are adjectives and cuts, not "the last word" — "soy" says what
+    // the thing is, so a pan sauce never takes the soy line's amount.
+    it('refuses a shorter form the tables do not license', () => {
+      const steps = [step('Simmer until the sauce thickens.')];
+      expect(annotateSteps(steps, [line('soy sauce', '2 tbsp')]).size).toBe(0);
+    });
+
+    it('refuses a modifier that makes it a different ingredient', () => {
+      const steps = [step('Mash the potato with butter.')];
+      expect(annotateSteps(steps, [line('sweet potato', '2 lb')]).size).toBe(0);
+    });
+
+    it('drops a shorter form two lines both offer', () => {
+      const steps = [step('Heat the oil in a pan.')];
+      const lines = [line('olive oil', '2 tbsp'), line('sesame oil', '1 tsp')];
+      expect(annotateSteps(steps, lines).size).toBe(0);
+    });
+
+    it('gives a real name to the line actually called that', () => {
+      const steps = [step('Beat in the sugar.')];
+      expect(readOne(steps, [line('brown sugar', '200 g'), line('sugar', '400 g')]))
+        .toBe('Beat in the sugar (400 g).');
+    });
+
+    it('counts a line named twice in one step once', () => {
+      const steps = [step('Sear the chicken breasts, then slice the chicken.')];
+      expect(readOne(steps, [line('chicken breasts', '2')]))
+        .toBe('Sear the chicken breasts (2), then slice the chicken.');
+    });
+
+    it('counts the full name and a shorter one as one line spread over two steps', () => {
+      const steps = [step('Sear the chicken breasts.'), step('Slice the chicken.')];
+      const annotated = annotateSteps(steps, [line('chicken breasts', '2')]);
+      expect(rendered(annotated.get(steps[0].id))).toBe('Sear the chicken breasts (2 in total).');
+      expect(rendered(annotated.get(steps[1].id))).toBe('Slice the chicken (2 in total).');
     });
   });
 

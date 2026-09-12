@@ -17,16 +17,28 @@
  *   matched against the ingredient lines of the recipe it is *written on*, on
  *   the name the recipe gave the line — `swappedFrom` for a line a standing
  *   swap renamed, since the method was written in the recipe's words rather
- *   than in the swap's. No lexicon, no stemming, no near-miss: "chicken" does
- *   not find "chicken breasts", and that silence is the correct answer rather
- *   than a gap to close by guessing. Same call `ingredientNamedIn`
- *   (`cookQuestions.ts`) already makes about its substitute chip, which is why
- *   the two now share one matcher rather than holding two opinions.
+ *   than in the swap's. No lexicon and no stemming: nothing outside the
+ *   recipe's own list can put a word under an amount.
+ * - **A line also answers to a shorter form of its own name**, and only through
+ *   two closed tables (`CUTS`, `MODIFIERS`): "slice the chicken" finds "chicken
+ *   breasts", "add the pepper" finds "red bell pepper". Without this the
+ *   annotation is silent on most of a real method, since a method rarely
+ *   repeats a line's full name. The tables are adjectives and cuts rather than
+ *   a rule about the first or last word, which is what keeps "soy sauce" from
+ *   answering to "sauce" and lending its amount to a pan sauce. **An alias two
+ *   lines share is dropped outright** — "olive oil" and "sesame oil" both offer
+ *   "oil", so neither gets it — and a line's real name always outranks another
+ *   line's alias, so plain "sugar" belongs to the sugar line rather than to the
+ *   brown sugar one. The residual is a step using a word the recipe never did:
+ *   "season with salt and pepper" in a recipe whose only pepper is a bell one
+ *   takes that line's amount, which is wrong and cheap.
  * - **Whole words, longest first.** "brown sugar" wins over "sugar" in a recipe
  *   holding both, and a claimed span is never matched into again, so the
  *   "sugar" line can still annotate a second, standalone mention further along.
  *   Word boundaries are checked by hand rather than through a `RegExp`, because
  *   an ingredient name is user text and can hold any of `.`, `(`, `+` or `*`.
+ *   `stepNamesIngredient` is this rule shared with `cookQuestions`' substitute
+ *   chip, so one sentence can't be read two ways by two features on one screen.
  * - **One annotation per ingredient per step**, on its first mention. Cook mode
  *   shows one step at a time, so saying it again on the *next* step is not
  *   repetition — the cook cannot see the previous one — but saying it twice in
@@ -119,9 +131,56 @@ const DETERMINERS = new Set([
 /** What a name is followed by when it's being used as an instruction. */
 const VERB_OBJECTS = new Set(['the', 'a', 'an']);
 
+/**
+ * Words that describe an ingredient without saying what it is.
+ *
+ * Dropping these off the front of a name is how "the pepper" finds "red bell
+ * pepper" and "the oats" finds "rolled oats" (see `aliasesFor`). It is a closed
+ * table of *adjectives* rather than a rule about the last word, and that
+ * distinction is the whole safety of it: "soy", "olive" and "chicken" name what
+ * the thing is, so "soy sauce" never reduces to "sauce" and a step reducing a
+ * pan sauce never picks up the soy line's amount.
+ *
+ * Left out on purpose, each because the modifier makes it a different
+ * ingredient rather than a described one: "sweet" (a sweet potato is not a
+ * potato), "hot" (hot sauce is not sauce), "smoked", "toasted", "roasted".
+ */
+const MODIFIERS = new Set([
+  'red', 'green', 'yellow', 'orange', 'purple', 'white', 'black', 'brown',
+  'golden', 'large', 'small', 'medium', 'baby', 'bell', 'heavy', 'light',
+  'fresh', 'dried', 'frozen', 'canned', 'tinned', 'ground', 'whole', 'rolled',
+  'boneless', 'skinless', 'unsalted', 'salted', 'plain', 'ripe', 'raw',
+  'organic', 'free-range', 'extra', 'extra-virgin', 'virgin', 'all-purpose',
+  'low-fat', 'reduced-fat', 'fat-free', 'nonfat', 'skim',
+]);
+
+/**
+ * Words naming which part of a thing, which the thing's own name precedes.
+ *
+ * Dropping these off the *end* is the other half of `aliasesFor`, and the half
+ * `MODIFIERS` can't do: "chicken breasts" and "salmon fillets" carry their
+ * identity in the first word, not the last, so a step saying "the chicken"
+ * needs the trailing cut taken off rather than a leading adjective.
+ */
+const CUTS = new Set([
+  'breast', 'breasts', 'thigh', 'thighs', 'fillet', 'fillets', 'filet',
+  'filets', 'steak', 'steaks', 'chop', 'chops', 'cutlet', 'cutlets',
+  'tender', 'tenders', 'leg', 'legs', 'wing', 'wings', 'loin', 'shank',
+  'shanks', 'drumstick', 'drumsticks',
+]);
+
 interface Candidate {
-  /** The lower-cased name, which is also what gets matched. */
+  /** The lower-cased text that gets matched: the line's own name, or an alias of it. */
   key: string;
+  /**
+   * The line's own name, whatever `key` is.
+   *
+   * Everything about *which line* a mention belongs to reads this rather than
+   * `key`: how many of the method's steps spend it (so a step saying "chicken
+   * breasts" and one saying "chicken" are one line used twice, not two lines
+   * used once), and the one-mention-per-step rule.
+   */
+  id: string;
   swappedTo: string | null;
   quantity: string;
 }
@@ -187,7 +246,7 @@ export function annotateSteps(
   const spread = new Map<string, number>();
   for (const { step, mentions } of found) {
     for (const mention of mentions) {
-      const key = spreadKey(step.recipeId, mention.candidate.key);
+      const key = spreadKey(step.recipeId, mention.candidate.id);
       spread.set(key, (spread.get(key) ?? 0) + 1);
     }
   }
@@ -200,7 +259,7 @@ export function annotateSteps(
         note: describeMention(
           mention.candidate,
           step.text,
-          (spread.get(spreadKey(step.recipeId, mention.candidate.key)) ?? 0) > 1,
+          (spread.get(spreadKey(step.recipeId, mention.candidate.id)) ?? 0) > 1,
         ),
       }))
       // A mention with nothing to say still claimed its span — that is what
@@ -234,19 +293,57 @@ function spreadKey(recipeId: string, name: string): string {
 }
 
 /**
- * The lines each recipe offers, longest name first so the longest match wins.
+ * The shorter names a method might call this line by.
+ *
+ * A recipe writes "2 chicken breasts" and its method says "slice the chicken";
+ * it writes "1 red bell pepper" and says "add the pepper". Matching only the
+ * line's full name leaves those silent, which is most of a real method. So a
+ * name also answers to what's left after dropping trailing cut words and then
+ * leading descriptive ones, each off a closed table — see `CUTS` and
+ * `MODIFIERS` for why it is those two tables rather than "the last word", which
+ * would turn a pan sauce into the soy sauce line.
+ *
+ * Longest first, and never the whole name (that's the line's own key). The
+ * caller drops any alias that collides with another line, which is the guard
+ * that matters: "olive oil" and "sesame oil" both offer "oil", so a step saying
+ * "the oil" gets nothing from either.
+ */
+function aliasesFor(name: string): string[] {
+  const words = name.split(/\s+/).filter(Boolean);
+  let current = words;
+  while (current.length > 1 && CUTS.has(current[current.length - 1])) current = current.slice(0, -1);
+  const out: string[] = [];
+  if (current.length !== words.length) out.push(current.join(' '));
+  while (current.length > 1 && MODIFIERS.has(current[0])) {
+    current = current.slice(1);
+    out.push(current.join(' '));
+  }
+  return [...new Set(out)].filter(alias => alias !== name && alias.length >= MIN_NAME_LENGTH);
+}
+
+/**
+ * The names each recipe answers to, longest first so the longest match wins,
+ * and the line's own names ahead of any alias whatever their length.
+ *
+ * The two tiers never compete: a recipe holding both "sugar" and "brown sugar"
+ * gives "sugar" to the line actually called that, not to the alias the other
+ * one offers. Only after every real name has claimed what it names does an
+ * alias get a look at what's left.
  *
  * A name two of one recipe's lines share keeps only what both agree on: the
  * amount goes outright (which of the two salts a step means is unanswerable,
  * and their sum is not what either line says), and the swap survives only where
  * both were rewritten the same way — the ordinary case, since a standing rule
  * is keyed on the catalog item and so reaches both, and the exception is one
- * line carrying `noSwap`.
+ * line carrying `noSwap`. **An alias two lines share is dropped outright**
+ * rather than merged: it was inferred rather than written, so there is no
+ * reading of it worth keeping once it stops naming one thing.
  */
 function candidatesByRecipe(
   lines: readonly StepIngredientLine[],
 ): Map<string, Candidate[]> {
   const byRecipe = new Map<string, Map<string, Candidate>>();
+  const aliasesByRecipe = new Map<string, Map<string, Candidate | null>>();
   for (const line of lines) {
     const key = line.name.trim().toLowerCase();
     if (key.length < MIN_NAME_LENGTH) continue;
@@ -260,26 +357,59 @@ function candidatesByRecipe(
     // from a catalog row differing from the recipe's line by case or spacing.
     const swappedTo = swapped && swapped.toLowerCase() !== key ? swapped : null;
     const existing = group.get(key);
-    group.set(key, existing === undefined
-      ? { key, swappedTo, quantity: line.quantity.trim() }
-      : { key, swappedTo: existing.swappedTo === swappedTo ? swappedTo : null, quantity: '' });
+    const candidate: Candidate = existing === undefined
+      ? { key, id: key, swappedTo, quantity: line.quantity.trim() }
+      : {
+        key,
+        id: key,
+        swappedTo: existing.swappedTo === swappedTo ? swappedTo : null,
+        quantity: '',
+      };
+    group.set(key, candidate);
+
+    let aliases = aliasesByRecipe.get(line.recipeId);
+    if (!aliases) {
+      aliases = new Map<string, Candidate | null>();
+      aliasesByRecipe.set(line.recipeId, aliases);
+    }
+    for (const alias of aliasesFor(key)) {
+      // Null means "two lines offered this", which is how it stays dropped even
+      // if a third line offers it as well.
+      aliases.set(alias, aliases.has(alias) ? null : { ...candidate, key: alias });
+    }
   }
-  return new Map(
-    [...byRecipe].map(([recipeId, group]) => [
-      recipeId,
-      [...group.values()].sort((a, b) => b.key.length - a.key.length),
-    ]),
-  );
+
+  return new Map([...byRecipe].map(([recipeId, group]) => {
+    const own = [...group.values()].sort((a, b) => b.key.length - a.key.length);
+    const aliases = [...(aliasesByRecipe.get(recipeId)?.values() ?? [])]
+      // An alias that is some other line's real name belongs to that line, and
+      // that line is already in `own` — this is the "brown sugar" case in a
+      // recipe that also calls for plain sugar.
+      .filter((c): c is Candidate => c !== null && !group.has(c.key))
+      // The candidate captured before the duplicate-name merge above could be
+      // holding an amount that merge went on to drop, so read it back.
+      .map(c => ({ ...c, ...group.get(c.id)!, key: c.key }))
+      .sort((a, b) => b.key.length - a.key.length);
+    return [recipeId, [...own, ...aliases]];
+  }));
 }
 
-/** Where this step names each of the recipe's lines, at most once apiece. */
+/**
+ * Where this step names each of the recipe's lines, at most once apiece.
+ *
+ * Once per *line*, not once per name it answers to: a step saying "sear the
+ * chicken breasts, then slice the chicken" is one ingredient mentioned twice.
+ */
 function mentionsIn(text: string, candidates: readonly Candidate[]): Mention[] {
   if (candidates.length === 0) return [];
   const haystack = text.toLowerCase();
   const claimed: Mention[] = [];
+  const spoken = new Set<string>();
   for (const candidate of candidates) {
+    if (spoken.has(candidate.id)) continue;
     const at = firstWholeWord(haystack, candidate.key, claimed);
     if (at === null) continue;
+    spoken.add(candidate.id);
     claimed.push({ start: at, end: at + candidate.key.length, candidate });
   }
   return claimed;
