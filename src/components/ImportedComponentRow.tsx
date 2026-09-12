@@ -12,7 +12,7 @@ import { formatServingsRange } from '../utils/recipeUtils';
 import type { Recipe } from '../types';
 import type { ReferenceCandidate } from '../utils/recipeImportComponents';
 import type { ComponentImportState } from '../hooks/useRecipeComponentImports';
-import type { RecipePhotoSource } from '../utils/recipePhoto';
+import { MAX_RECIPE_PHOTOS, type RecipePhotoSource } from '../utils/recipePhoto';
 import { haptics } from '../utils/haptics';
 
 const CHECKBOX_SIZE = 22;
@@ -84,7 +84,9 @@ export function ImportedComponentRow({ candidate, state, accepted, parent, onTog
     if (read) {
       const count = `${read.ingredients.length} ingredient${read.ingredients.length === 1 ? '' : 's'}`;
       const serves = formatServingsRange(read.servings, read.servingsMax);
-      return serves ? `${count}, serves ${serves}` : count;
+      const base = serves ? `${count}, serves ${serves}` : count;
+      const photoCount = state.status === 'read' ? state.photoCount : 1;
+      return photoCount > 1 ? `${base}, from ${photoCount} photos` : base;
     }
     return 'not in your recipe box yet';
   })();
@@ -99,7 +101,7 @@ export function ImportedComponentRow({ candidate, state, accepted, parent, onTog
    * for the reader who turns the page and realizes they don't need to.
    *
    * A row that has already been read drops the second button. Both fit on one
-   * line at 390pt only while the first is short, and "Take another photo"
+   * line at 390pt only while the first is short, and "Add the next page"
    * beside "Choose a photo" wraps — a row that is already answered doesn't
    * need two ways to answer it again.
    */
@@ -150,7 +152,11 @@ export function ImportedComponentRow({ candidate, state, accepted, parent, onTog
       </Text>
       {state.status === 'idle' && !match && renderPhotoButtons('Take a photo')}
       {state.status === 'failed' && renderPhotoButtons('Try again')}
-      {!!read && renderPhotoButtons('Take another photo', false)}
+      {/* Adds a page to the read rather than redoing it — see importFrom's
+          append-on-read rule — so it drops out once the cap is reached the
+          same way the main import's own add buttons do. */}
+      {state.status === 'read' && state.photoCount < MAX_RECIPE_PHOTOS
+        && renderPhotoButtons('Add the next page', false)}
       {!!linked && (
         <View style={styles.actions}>
           <InlineAction

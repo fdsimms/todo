@@ -228,6 +228,44 @@ import sheets rather than hand-copied into each, since they are the same sheet t
   no title stays a plain classification — a `Cookbook` row with an empty title is one nobody can
   pick.
 
+## More than one photo for a page turn (`recipePhoto.ts`, `extractRecipe`)
+
+A cookbook recipe routinely runs onto a second page mid-ingredient-list or mid-method, so a single
+photo of "the recipe" is sometimes only half of it. `RecipeSource` (`aiSuggestions.ts`) is
+`string | RecipeImage | RecipeImage[]`, and `extractRecipe` sends every array entry as its own
+image block, in the order given, asking the model to read them as one continuous recipe rather
+than extracting each on its own. A bare `RecipeImage` still works exactly as before — it's
+normalized to a one-entry array internally, so nothing about the single-photo path changed.
+
+- **Order is capture order, and there is no reorder gesture.** `photos[0]` is the front page.
+  Getting a page out of order means removing it and re-adding it in the right place, not dragging
+  a thumbnail — a set of at most 4 photos, built once per import and thrown away the moment the
+  sheet closes, doesn't carry its own weight for a drag list.
+- **`MAX_RECIPE_PHOTOS` (`recipePhoto.ts`) caps it at 4.** Generous enough for an awkward
+  multi-page clipping, but each entry is its own image block, so cost and upload time both scale
+  with the count — an unbounded array would let one import become an arbitrarily expensive
+  request. `IMAGE_REQUEST_TIMEOUT_MS` grows by `ADDITIONAL_IMAGE_TIMEOUT_MS` per photo past the
+  first, since only the upload compounds — the model's own startup and vision prefill happen once
+  for the whole request, not once per photo.
+- **`useRecipeImportSource`'s `maxPhotos` param is what tells a receipt from a recipe.** Default 1
+  keeps the receipt scanner's existing one-document behavior — `pick` replaces rather than
+  appends, and there is nothing to remove but the whole photo — while `RecipeExtractSheet`,
+  `RecipeCreateSheet` and `GroceryAISheet`'s recipe mode all pass `MAX_RECIPE_PHOTOS`. A receipt
+  that's genuinely two pages already has its own answer (fold it flat, see `ReceiptImportSheet`'s
+  hint), so it was deliberately left alone rather than given the same array.
+- **`RecipeSourcePicker` renders two different photo layouts off that same `maxPhotos`, not two
+  components.** At 1 it's the original single big preview; above 1 it's a horizontal strip of
+  thumbnails (each numbered and individually removable) with the add buttons relabeled "…another
+  photo" and hidden once the cap is reached. Forking the component would have meant keeping two
+  copies of the paste/link tabs and the run button in step; the receipt scanner's exact current
+  look falls out of `maxPhotos <= 1` for free.
+- **The referenced-component import (`useRecipeComponentImports.ts`) gets the same capability, on
+  its own bookkeeping.** A photo taken while a reference already shows a read result is *added* to
+  it and the combined set is re-read; a photo taken after a failure starts over, since a failed
+  read has nothing worth combining with and "try again" should mean exactly that. That distinction
+  is carried in a plain ref (`photosRef`/`statesRef`) rather than component state, because nothing
+  there needs a render just to remember the last status.
+
 ## Component recipes read off a photo (`recipeImportComponents.ts`)
 
 A cookbook page routinely points at another recipe in the same book: "1 cup salsa verde

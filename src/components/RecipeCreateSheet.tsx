@@ -60,6 +60,7 @@ import { useRecipeImportSource } from '../hooks/useRecipeImportSource';
 import { useRecipeComponentImports } from '../hooks/useRecipeComponentImports';
 import { ImportedComponentRow } from './ImportedComponentRow';
 import { coveredIngredients, importableReferences } from '../utils/recipeImportComponents';
+import { MAX_RECIPE_PHOTOS } from '../utils/recipePhoto';
 import { haptics } from '../utils/haptics';
 import { InlineAction } from './InlineAction';
 
@@ -198,7 +199,7 @@ export function RecipeCreateSheet({
   // Whichever add-menu item opened it — "Paste text", "From a link" and "From
   // a photo" all land here, and each opens on its own tab rather than making
   // that tap feel ignored. Every other tab is still one tap away.
-  const input = useRecipeImportSource(initialMode);
+  const input = useRecipeImportSource(initialMode, undefined, MAX_RECIPE_PHOTOS);
   const { resolveSource, reset: resetInput, setMode, setUrl } = input;
 
   // ==== derived data: referenced-recipe candidates, coverage, sections ====
@@ -529,7 +530,7 @@ export function RecipeCreateSheet({
       || !!name.trim()
       || !!input.text.trim()
       || !!input.url.trim()
-      || !!input.photo;
+      || input.photos.length > 0;
     if (!dirty) { onClose(); return; }
     Alert.alert(
       'Discard changes?',
@@ -623,7 +624,7 @@ export function RecipeCreateSheet({
           <ActivityIndicator color={colors.purple} />
           <Text style={styles.loadingText}>
             {input.fetching ? 'Opening the page…'
-              : input.usingPhoto ? 'Reading the photo…'
+              : input.usingPhoto ? `Reading the photo${input.photos.length > 1 ? 's' : ''}…`
               : 'Reading the recipe…'}
           </Text>
         </View>
@@ -660,13 +661,14 @@ export function RecipeCreateSheet({
             onChangeText={input.setText}
             url={input.url}
             onChangeUrl={input.setUrl}
-            photo={input.photo}
+            photos={input.photos}
             onPickPhoto={input.pick}
             onClearPhoto={input.clearPhoto}
+            maxPhotos={input.maxPhotos}
             picking={input.picking}
             ctaLabel={
               input.usingLink ? 'Get the recipe'
-                : input.usingPhoto ? 'Read the photo'
+                : input.usingPhoto ? 'Read the photo' + (input.photos.length > 1 ? 's' : '')
                 : 'Read the recipe'
             }
             onRun={run}
@@ -683,7 +685,7 @@ export function RecipeCreateSheet({
             icon="checkmark-circle-outline"
             title="Nothing found"
             subtitle={input.usingPhoto
-              ? 'Nothing readable turned up in that photo. Try again in better light, or paste the text instead.'
+              ? `Nothing readable turned up in ${input.photos.length > 1 ? 'those photos' : 'that photo'}. Try again in better light, or paste the text instead.`
               : input.usingLink
               ? 'No recipe turned up on that page. Copy the recipe from it and paste it instead.'
               : 'No recipe turned up in that text.'}

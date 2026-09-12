@@ -40,6 +40,7 @@ import { EmptyState } from './EmptyState';
 import { RecipeSourcePicker } from './RecipeSourcePicker';
 import { describeImportError, isRetryableImportError } from '../services/recipePage';
 import { useRecipeImportSource } from '../hooks/useRecipeImportSource';
+import { MAX_RECIPE_PHOTOS } from '../utils/recipePhoto';
 import { haptics } from '../utils/haptics';
 import { GROCERY_NAME_MAX_LENGTH } from '../types';
 
@@ -97,7 +98,7 @@ export function GroceryAISheet({ visible, mode, onClose }: Props) {
   const [tidyRows, setTidyRows] = useState<TidyRow[]>([]);
   const [recipeRows, setRecipeRows] = useState<RecipeGroceryItem[]>([]);
   const [accepted, setAccepted] = useState<Set<number>>(new Set());
-  const recipeInput = useRecipeImportSource();
+  const recipeInput = useRecipeImportSource('paste', undefined, MAX_RECIPE_PHOTOS);
   const { resolveSource: resolveRecipeSource, reset: resetRecipeInput } = recipeInput;
 
   // Anything currently sitting in the catch-all and on the list — the exact
@@ -237,7 +238,7 @@ export function GroceryAISheet({ visible, mode, onClose }: Props) {
     const dirty = rowCount > 0
       || !!recipeInput.text.trim()
       || !!recipeInput.url.trim()
-      || !!recipeInput.photo;
+      || recipeInput.photos.length > 0;
     if (!dirty) { onClose(); return; }
     Alert.alert(
       'Discard changes?',
@@ -264,7 +265,7 @@ export function GroceryAISheet({ visible, mode, onClose }: Props) {
           <Text style={styles.loadingText}>
             {mode === 'tidy' ? 'Working out where these live…'
               : recipeInput.fetching ? 'Opening the page…'
-              : recipeInput.usingPhoto ? 'Reading the photo…'
+              : recipeInput.usingPhoto ? `Reading the photo${recipeInput.photos.length > 1 ? 's' : ''}…`
               : 'Reading the recipe…'}
           </Text>
         </View>
@@ -296,9 +297,10 @@ export function GroceryAISheet({ visible, mode, onClose }: Props) {
             onChangeText={recipeInput.setText}
             url={recipeInput.url}
             onChangeUrl={recipeInput.setUrl}
-            photo={recipeInput.photo}
+            photos={recipeInput.photos}
             onPickPhoto={recipeInput.pick}
             onClearPhoto={recipeInput.clearPhoto}
+            maxPhotos={recipeInput.maxPhotos}
             picking={recipeInput.picking}
             ctaLabel="Find the items"
             onRun={runRecipe}

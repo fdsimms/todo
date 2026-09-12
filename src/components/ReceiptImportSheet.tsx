@@ -257,7 +257,8 @@ export function ReceiptImportSheet({ visible, onClose, onApply, context }: Props
   const [readOffline, setReadOffline] = useState(false);
 
   const input = useRecipeImportSource('photo', 'read a receipt');
-  const { photo, reset: resetInput } = input;
+  const { photos, reset: resetInput } = input;
+  const photo = photos[0] ?? null;
 
   const reset = useCallback(() => {
     setLoading(false);
@@ -675,9 +676,10 @@ export function ReceiptImportSheet({ visible, onClose, onApply, context }: Props
             onChangeText={() => {}}
             url=""
             onChangeUrl={() => {}}
-            photo={photo}
+            photos={photos}
             onPickPhoto={input.pick}
             onClearPhoto={input.clearPhoto}
+            maxPhotos={input.maxPhotos}
             picking={input.picking}
             ctaLabel="Read the receipt"
             onRun={run}
