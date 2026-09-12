@@ -37,6 +37,7 @@ import { DetailHeader } from '../components/DetailHeader';
 import { EmptyState } from '../components/EmptyState';
 import { InlineAction } from '../components/InlineAction';
 import { StepTimerRow } from '../components/StepTimerRow';
+import { StepText } from '../components/StepText';
 import { CountStepper } from '../components/CountStepper';
 import { PressableScale } from '../components/PressableScale';
 import { SortableList, type SortableRenderItem } from '../components/SortableList';
@@ -91,6 +92,7 @@ import {
   type ResolvedComponent,
 } from '../utils/recipeComponents';
 import { applyStandingSwap, describeStandingSwap, standingSwapMap } from '../utils/standingSwaps';
+import { annotateSteps, stepIngredientLines, type StepSegment } from '../utils/stepIngredients';
 import { describeRecipeCost, estimateRecipeCost } from '../utils/recipeCost';
 import { describeCookedWeight } from '../utils/mealLog';
 import {
@@ -213,6 +215,30 @@ export function RecipeDetailScreen() {
   const choiceGroups = useMemo(
     () => (recipe ? recipeChoiceGroups(recipe, recipesById, choiceResolution) : []),
     [recipe, recipesById, choiceResolution]
+  );
+
+  // What each step's own sentence is worth: the amount this reading of the
+  // recipe needs, and any standing swap, named where the ingredient is
+  // (`stepIngredients.ts`). The whole method at once rather than per row,
+  // because an amount the method spends across several steps has to say so at
+  // every one of them, which isn't knowable from one sentence.
+  //
+  // Only the recipe's own steps are rendered here, but the flattened list is
+  // what's handed over: the matcher scopes a step to the lines of the recipe it
+  // is written on, so a component's potatoes can't lend their amount to the
+  // meal's own method.
+  const annotatedSteps = useMemo(
+    () => (recipe
+      ? annotateSteps(
+        recipe.steps.map(s => ({ id: s.id, text: s.text, recipeId: recipe.id })),
+        stepIngredientLines(
+          flattenRecipeIngredients(recipe, recipesById, choiceResolution, standingSwaps),
+          scale,
+          unitSystem,
+        ),
+      )
+      : new Map<string, StepSegment[]>()),
+    [recipe, recipesById, choiceResolution, standingSwaps, scale, unitSystem]
   );
 
   // Only lines that *have* a quantity can fail to scale; a line with none was
@@ -1284,7 +1310,14 @@ export function RecipeDetailScreen() {
         accessibilityLabel={step.text}
         accessibilityHint="Double tap to edit"
       >
-        <Text style={styles.ingredientName}>{step.text}</Text>
+        {/* The recipe's own sentence, with the amounts and swaps it implies
+            marked in it — the same treatment and the same rule cook mode
+            reads by, so the method says one thing in both places. */}
+        <StepText
+          text={step.text}
+          segments={annotatedSteps.get(step.id)}
+          style={styles.ingredientName}
+        />
         {/* What cook mode will offer for this step, said on the row so the
             reading is visible before anyone is standing at a stove — and so a
             step the parse gets nothing out of is obvious while it's still

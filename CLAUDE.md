@@ -409,6 +409,7 @@ file: the two maps are indexes, not write-ups.
 | reading a `quantity` string at all — amounts, units, containers | `src/utils/quantity.ts` — see `docs/arch/recipes.md` |
 | reading a recipe out one step at a time while cooking | `src/utils/cookMode.ts` + `src/components/CookModeSheet.tsx` — see `docs/arch/recipes.md` |
 | asking about the cooking step you're on, and keeping the answer | `src/utils/cookQuestions.ts` + `askCookQuestion` — see `docs/arch/recipes.md` |
+| the amount and the swap a step's own sentence implies | `src/utils/stepIngredients.ts` + `src/components/StepText.tsx` — see `docs/arch/recipes.md`. Refusals all the way down: the recipe's own vocabulary only, whole words, a name used as a verb takes nothing, and an amount the method spends over several steps says so |
 | either of a recipe's two timers, from any screen | `src/hooks/useRecipeTimer.ts` — see `docs/arch/recipes.md` |
 | a timer for the cooking step you're on | `src/utils/stepTimers.ts` + `src/store/useStepTimerStore.ts` — see `docs/arch/recipes.md` |
 | a recipe page shared in from another app's share sheet | `src/utils/sharedRecipeLinks.ts` + `targets/todo-share/` — see `docs/arch/recipes.md` |
@@ -442,13 +443,13 @@ them source rather than tests. The ten biggest source files:
 
 `store/useTaskStore.ts` (8.6k), `components/TaskEditor.tsx` (5.9k), `db/database.ts` (5.8k),
 `types/index.ts` (5.8k), `store/useGroceryStore.ts` (5.4k), `screens/TodayScreen.tsx` (4.6k),
-`components/TaskItem.tsx` (4.3k), `utils/demoSeed.ts` (4.0k),
+`components/TaskItem.tsx` (4.3k), `utils/demoSeed.ts` (4.1k),
 `store/useSettingsStore.ts` (3.8k), `screens/BackfillScreen.tsx` (3.5k).
 
 Grep for the symbol and read the surrounding range; reading any of them end to end costs more
 context than the rest of the task will. `docs/module-map.md` says which file owns what.
 
-The suite is **317 test files**, and `npm test` runs all of them in well under a minute.
+The suite is **318 test files**, and `npm test` runs all of them in well under a minute.
 `npx tsc --noEmit` is a few seconds once `.tsbuildinfo` exists, so run both, every time.
 
 <!-- END GENERATED: repo-stats -->

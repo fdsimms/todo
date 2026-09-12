@@ -617,9 +617,9 @@ a **read plus one timer**, no schema change and nothing written — `cookSteps` 
   invisible must not hold a once-a-second interval open.
 - **Quantities are the panel's, never the step's.** The ingredient panel runs the same
   scale-then-convert pipeline the recipe row does (exact multiplication first, rounding conversion
-  second), so a halved recipe reads correctly mid-step. The step text renders exactly as written:
-  nothing parses amounts back out of a sentence, and per-step amounts wait for the ingredient
-  references #1695 deferred.
+  second), so a halved recipe reads correctly mid-step. Nothing parses an amount back *out* of a
+  sentence: what a step says about an ingredient it names comes from that ingredient's own line,
+  through the same pipeline — see Ingredient references below.
 - **Nothing is ticked off by itself.** Finishing the last step closes the sheet and logs nothing —
   logging a cook time is the timer's own ✓, the same call `timer.ts` makes about a countdown.
 - **`useKeepAwake` is called from inside the Modal's content** (`ScreenAwake`), not at the top of
@@ -631,6 +631,57 @@ a **read plus one timer**, no schema change and nothing written — `cookSteps` 
   that happens *now*, so it leads, and hidden outright when the recipe has no method rather than
   offered greyed out. Its arrival is why the primary shortened to "Add to list": three buttons
   don't fit a 390pt line at the old label.
+
+### Ingredient references (`stepIngredients.ts`) — the amount the step already implies
+
+A method sentence names its ingredients but not their amounts, and the amounts sit in a panel the
+cook folded away two steps ago. So a step's own words get a parenthetical after each ingredient it
+names: what this cooking's amount comes to, and what a standing swap means you are actually
+reaching for. `StepText` draws it in both places a step is read — cook mode's big one-at-a-time
+text and the recipe screen's step rows — because the thing worth keeping identical is which half of
+the sentence is the app's. It takes the accent colour and nothing else, the mark a scaled or
+converted amount already carries on the ingredient row.
+
+Display only, like everything else here: the recipe row is untouched, the step's text is untouched,
+and the amounts come from the ingredient lines rather than out of the prose.
+
+The whole module is refusals, because the failure mode is a wrong number beside an ingredient in a
+method somebody is following with their hands full.
+
+- **The recipe's own vocabulary, and nothing else.** A step is matched against the lines of the
+  recipe it is *written on* — a step of the mash against the mash's list — on the name the recipe
+  gave the line, which for a swapped line is `swappedFrom` rather than what it now reads as: the
+  method says "milk" because it was written before the swap existed. No lexicon, no stemming, no
+  near miss. "chicken" does not find "chicken breasts", and that silence is the answer rather than
+  a gap to close by guessing. `stepNamesIngredient` is the one matcher, shared with
+  `cookQuestions`' substitute chip — two opinions about whether a sentence names an ingredient
+  would read as one of them having misread it.
+- **Whole words, longest first, one per ingredient per step.** "brown sugar" beats "sugar" in a
+  recipe holding both, and a claimed span is never matched into again, so the "sugar" line can
+  still annotate its own standalone mention further along. Repeating it on the *next* step isn't
+  repetition, since cook mode shows one step at a time; repeating it twice in one sentence is.
+- **A name used as a verb takes nothing.** "Butter the dish" is a step about greasing a tin. The
+  tell is the word after: an ingredient noun is essentially never followed straight by "the", "a"
+  or "an" and a verb taking an object nearly always is, and the one noun reading of that shape is a
+  trailing time clause ("serve over the rice the next day") where the name carries its own
+  determiner. So a name with a determiner in front of it is a thing whatever follows it.
+- **An amount the method spends across several steps says "in total".** A line's amount is what the
+  *recipe* calls for, and pinning it unqualified to one of the four steps that use it is a claim
+  nobody made. Saying it as the total is honest at every one of them, and it has to be said at
+  every one of them because the cook can only see one. This is the load-bearing rule: it is why the
+  whole method is read before any one step's parenthetical is written, and why there is no
+  per-step version of this function.
+- **A name two of one recipe's lines share loses its amount.** Which of the two salts a step means
+  is unanswerable, and their sum is not what either line says. The swap survives where both lines
+  agree on it, which is the ordinary case since a standing rule is keyed on the catalog item.
+- **An amount the sentence already gives is not repeated.** "Add 200 g sugar (200 g)" is what a
+  naive version prints. At 2x the same step correctly reads "Add 200 g sugar (400 g)", which is
+  precisely the case this exists for, and the check finds nothing because the string genuinely
+  differs. The swapped name gets the same treatment, so a step already saying "oat milk" isn't told
+  to use oat milk.
+- **A mention with nothing to say still claims its span.** A line carrying neither an amount nor a
+  swap produces no parenthetical, but it is matched and skipped rather than dropped from the
+  candidate list — otherwise "sugar" would annotate the tail of an amount-less "brown sugar".
 
 ### Asking about a step (`cookQuestions.ts`) — the question the method raised
 

@@ -2314,6 +2314,19 @@ function seedRecipes(): DemoRecipes {
   setServings(oats.id, 2);
   setPrepMinutes(oats.id, 10);
   setVote(oats.id, 'liked');
+  // The standing swap said in the method rather than only in the ingredient
+  // list: this recipe's milk line reads as oat milk, and step one names milk,
+  // so it is the one place the inline annotation's substitution half is visible
+  // (see stepIngredients.ts). Step one also gives the amount, and "the oats"
+  // deliberately gets nothing — the line is called "rolled oats", and refusing
+  // a near-miss is the rule rather than a gap. The notes above stop rendering
+  // as the method now that there are steps, which is the trade: the fallback
+  // itself is still on show, on the steak below that has no steps at all.
+  [
+    'Stir the oats into the milk and leave the jar overnight.',
+    'In the morning, fold in the yogurt and honey.',
+    'Top with the blueberries.',
+  ].forEach(text => addStep(oats.id, text));
 
   const sandwich = newRecipe('Turkey and avocado sandwich');
   addIngredientsFromText(
@@ -2376,6 +2389,17 @@ function seedRecipes(): DemoRecipes {
   setServings(cake.id, 12);
   setEstimatedMinutes(cake.id, 45);
   setPrepMinutes(cake.id, 30);
+  // The other half of the inline annotation, and this is the recipe for it: it
+  // holds "brown sugar" and "sugar" as separate lines, so longest-match-wins is
+  // doing real work here rather than being a claim in a comment, and its flour
+  // is spent across two steps — the case that reads "250 g in total" instead of
+  // pinning the whole amount to either one. Written in metric like the rest of
+  // this recipe, so the Units setting converts these amounts too.
+  [
+    'Whisk the eggs and brown sugar until thick, then fold in half the flour.',
+    'Add the carrots and cinnamon with the rest of the flour, then bake for 40 minutes at 350F.',
+    'Beat the cream cheese with the butter and sugar, then spread it over the cooled cake.',
+  ].forEach(text => addStep(cake.id, text));
   // The cookbook attribution shape — the only one a page number means anything
   // for. It's a real Cookbook row rather than two strings, which is invisible
   // on one recipe and the whole point on two: the shortbread below is the same

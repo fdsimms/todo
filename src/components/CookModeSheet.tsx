@@ -25,6 +25,7 @@ import { ProgressBar } from './ProgressBar';
 import { RecipeTimerRow } from './RecipeTimerRow';
 import { NumberPadAccessory } from './NumberPadAccessory';
 import { StepTimerRow } from './StepTimerRow';
+import { StepText } from './StepText';
 import { InlineAction } from './InlineAction';
 import { useColors } from '../theme/ThemeContext';
 import { spacing, font, fontWeight, lineHeight, radius, iconSize, interaction, type Colors } from '../theme';
@@ -33,6 +34,7 @@ import { animateLayout } from '../utils/layoutAnimation';
 import { clampStepIndex, cookSteps, describeStepPosition } from '../utils/cookMode';
 import { formatStepDuration, stepDurationOffers } from '../utils/stepTimers';
 import { flattenRecipeIngredients } from '../utils/recipeComponents';
+import { annotateSteps, stepIngredientLines } from '../utils/stepIngredients';
 import { describeStandingSwap, standingSwapMap } from '../utils/standingSwaps';
 import { onHandNameKeys } from '../utils/grocerySuggest';
 import { formatScale, isUnscaled, scaleQuantity } from '../utils/recipeScale';
@@ -92,10 +94,13 @@ interface Props {
  * Quantities in the ingredient panel run through the active scale *and* the
  * `unitSystem` setting, in that order (exact multiplication, then the rounding
  * conversion) — a halved recipe has to read correctly mid-step, which is the
- * whole reason `Recipe.steps` is structured rather than a blob. The steps
- * themselves are shown exactly as written: nothing parses amounts back out of a
- * sentence, and per-step amounts wait for the ingredient references #1695
- * deliberately deferred.
+ * whole reason `Recipe.steps` is structured rather than a blob. The step text
+ * is still the recipe's own words, but it now carries the same two facts inline
+ * where the ingredient is named: what this cooking's amount comes to, and what
+ * a standing swap means you're actually reaching for (`stepIngredients.ts`).
+ * Nothing is parsed back *out* of the sentence — the amounts come from the
+ * ingredient lines, and a step whose wording the matcher can't place silently
+ * keeps its own words.
  */
 export function CookModeSheet({ visible, recipe, recipesById, scale, onClose }: Props) {
   const colors = useColors();
@@ -182,6 +187,18 @@ export function CookModeSheet({ visible, recipe, recipesById, scale, onClose }: 
   // up front would cost every open of the sheet a pass over text nobody is
   // looking at, and the offer is only ever made about the step on screen.
   const offers = useMemo(() => (step === null ? [] : stepDurationOffers(step)), [step]);
+
+  // The whole method at once, unlike the durations above: what a line's amount
+  // *means* depends on whether the method spends it in one step or several, so
+  // there is no reading one step's sentence on its own. Cheap enough to do on
+  // open — it's a scan of the steps against this recipe's own ingredient names.
+  const annotated = useMemo(
+    () => annotateSteps(
+      steps.map(s => ({ id: s.id, text: s.text, recipeId: s.recipe.id })),
+      stepIngredientLines(ingredients, scale, unitSystem),
+    ),
+    [steps, ingredients, scale, unitSystem]
+  );
 
   // Which engine would answer, so the entry point can't exist for a call that
   // would refuse — `routeForFeature` has no on-device arm for this one (a free
@@ -300,7 +317,11 @@ export function CookModeSheet({ visible, recipe, recipesById, scale, onClose }: 
                   <Text style={styles.attributionText} numberOfLines={1}>{step.recipe.name}</Text>
                 </View>
               )}
-              <Text style={styles.stepText}>{step.text}</Text>
+              {/* The recipe's own sentence, with the amount this cooking needs
+                  and any standing swap named where the ingredient is. The
+                  ingredient panel below holds the same two facts, and folded
+                  away it holds them where nobody mid-step is looking. */}
+              <StepText text={step.text} segments={annotated.get(step.id)} style={styles.stepText} />
               {/* Said out loud, because the split is the app's and not the
                   cook's: a recipe whose method lives in notes gets read as
                   steps here, and that has to be legible as a fallback rather
