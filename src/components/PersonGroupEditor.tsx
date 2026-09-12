@@ -6,6 +6,7 @@ import { TITLE_MAX_LENGTH } from '../types';
 import { usePersonStore, displayNameOf } from '../store/usePersonStore';
 import { usePersonGroupStore } from '../store/usePersonGroupStore';
 import { SheetHeaderButton } from './SheetHeaderButton';
+import { SheetHeader } from './SheetHeader';
 import { EditorSheet } from './EditorSheet';
 import { PillGroup } from './PillGroup';
 import { useColors } from '../theme/ThemeContext';
@@ -107,13 +108,16 @@ export function PersonGroupEditor({ visible, person, onClose }: Props) {
         scrollStyle={styles.scroll}
         scrollContentStyle={styles.scrollContent}
         header={
-          <>
-            <SheetHeaderButton label="Done" onPress={saveAndClose} />
-            <Text style={styles.headerTitle}>Group</Text>
-            <TouchableOpacity onPress={handleDeleteGroup} hitSlop={8} accessibilityRole="button" accessibilityLabel="Delete group">
-              <Ionicons name="trash-outline" size={20} color={colors.red} />
-            </TouchableOpacity>
-          </>
+          <SheetHeader
+            bare
+            title="Group"
+            left={<SheetHeaderButton label="Done" onPress={saveAndClose} />}
+            right={
+              <TouchableOpacity onPress={handleDeleteGroup} hitSlop={8} accessibilityRole="button" accessibilityLabel="Delete group">
+                <Ionicons name="trash-outline" size={20} color={colors.red} />
+              </TouchableOpacity>
+            }
+          />
         }
       >
         <TextInput
@@ -158,11 +162,12 @@ export function PersonGroupEditor({ visible, person, onClose }: Props) {
       scrollStyle={styles.scroll}
       scrollContentStyle={styles.scrollContent}
       header={
-        <>
-          <SheetHeaderButton label="Cancel" role="cancel" onPress={onClose} />
-          <Text style={styles.headerTitle}>Group</Text>
-          <View style={{ minWidth: 44 }} />
-        </>
+        <SheetHeader
+          bare
+          title="Group"
+          left={<SheetHeaderButton label="Cancel" role="cancel" onPress={onClose} />}
+          right={<View style={{ minWidth: 44 }} />}
+        />
       }
     >
       <Text style={styles.groupLabel}>NEW GROUP</Text>
@@ -221,7 +226,6 @@ const makeStyles = (colors: Colors) => StyleSheet.create({
     paddingHorizontal: spacing.lg, paddingVertical: spacing.md,
     borderBottomWidth: StyleSheet.hairlineWidth, borderBottomColor: colors.separator,
   },
-  headerTitle: { color: colors.text, fontSize: font.md, fontWeight: fontWeight.semibold },
   scroll: { flex: 1 },
   scrollContent: { padding: spacing.md, paddingBottom: 120 },
   titleInput: {

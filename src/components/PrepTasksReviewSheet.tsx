@@ -17,6 +17,7 @@ import {
 import { formatOffsetLabel } from '../utils/templateUtils';
 import { flattenRecipePrepTasks, type ChoiceResolution, type FlatPrepTask } from '../utils/recipeComponents';
 import { SheetHeaderButton } from './SheetHeaderButton';
+import { SheetHeader } from './SheetHeader';
 import { haptics } from '../utils/haptics';
 
 const CHECKBOX_SIZE = 22;
@@ -95,16 +96,18 @@ export function PrepTasksReviewSheet({ visible, recipe, recipesById, resolution,
   return (
     <Modal visible={visible} animationType="slide" presentationStyle="pageSheet" onRequestClose={handleCancel}>
       <View style={styles.root}>
-        <View style={styles.header}>
-          <SheetHeaderButton label="Cancel" role="cancel" onPress={handleCancel} minWidth={72} />
-          <Text style={styles.headerTitle} numberOfLines={1}>Prep tasks</Text>
-          <SheetHeaderButton
-            label={addCount > 0 ? `Add ${addCount}` : 'Add'}
-            onPress={handleAdd}
-            disabled={addCount === 0}
-            minWidth={72}
-          />
-        </View>
+        <SheetHeader
+          title="Prep tasks"
+          left={<SheetHeaderButton label="Cancel" role="cancel" onPress={handleCancel} minWidth={72} />}
+          right={
+            <SheetHeaderButton
+              label={addCount > 0 ? `Add ${addCount}` : 'Add'}
+              onPress={handleAdd}
+              disabled={addCount === 0}
+              minWidth={72}
+            />
+          }
+        />
 
         <ScrollView contentContainerStyle={styles.list}>
           <View style={styles.card}>
@@ -148,16 +151,6 @@ export function PrepTasksReviewSheet({ visible, recipe, recipesById, resolution,
 
 const makeStyles = (colors: Colors) => StyleSheet.create({
   root: { flex: 1, backgroundColor: colors.bg },
-  header: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'space-between',
-    paddingHorizontal: spacing.md,
-    paddingVertical: spacing.md,
-    borderBottomWidth: border.hairline,
-    borderBottomColor: colors.separator,
-  },
-  headerTitle: { flex: 1, textAlign: 'center', color: colors.text, fontSize: font.md, fontWeight: fontWeight.semibold },
   list: { padding: spacing.md, paddingBottom: spacing.xl },
   card: {
     backgroundColor: colors.bgSecondary,

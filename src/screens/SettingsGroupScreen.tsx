@@ -8,6 +8,7 @@ import { DetailHeader } from '../components/DetailHeader';
 import { settingsGroup, type SettingsGroupId } from '../utils/settingsIndex';
 import { settingsFocusScrollTarget } from '../utils/settingsFocusScroll';
 import { SettingsFocusProvider, type MeasurableRow } from './settings/SettingsFocus';
+import { FeatureAreasSettings } from './settings/FeatureAreasSettings';
 import { AppearanceSettings } from './settings/AppearanceSettings';
 import { DayTimeSettings } from './settings/DayTimeSettings';
 import { NotificationSettings } from './settings/NotificationSettings';
@@ -39,8 +40,8 @@ type RootStackParamList = {
 };
 
 /**
- * One route for all twelve groups rather than twelve routes: they differ only in
- * which component fills the scroll view, and twelve registrations would mean twelve
+ * One route for all thirteen groups rather than thirteen routes: they differ only in
+ * which component fills the scroll view, and thirteen registrations would mean thirteen
  * more entries in the navigator's pushed-route list too.
  *
  * It also takes an optional `entryId`, which is how a search result opens onto
@@ -118,6 +119,7 @@ export function SettingsGroupScreen() {
         >
           <View ref={contentRef} collapsable={false}>
           <SettingsFocusProvider focusedEntryId={focusedEntryId} reportRow={reportRow}>
+          {groupId === 'featureAreas' && <FeatureAreasSettings />}
           {groupId === 'appearance' && <AppearanceSettings />}
           {groupId === 'dayTime' && <DayTimeSettings />}
           {groupId === 'notifications' && <NotificationSettings />}

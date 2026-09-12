@@ -1,5 +1,5 @@
 /**
- * What the side menu contains, as data — ten rows, three of which are hubs.
+ * What the side menu contains, as data — twelve rows, four of which are hubs.
  *
  * The menu used to be eighteen flat rows of equal weight, about twice what
  * fits on a phone, so half of it lived below a fold nothing announced. Reading
@@ -19,12 +19,13 @@
  * exactly this drift one level down.)
  *
  * **Ordering is by what you came for, not by resemblance.** Tasks, Search,
- * Calendar, Stuck and Reminders are the questions about your own tasks — what
- * is on today, where is that one, what falls when, what is not moving, what
- * will ring. Groceries follows as the other working surface. Organize and
- * History are the two
- * shelves: things a task can belong to, and things that already happened.
- * Tips is last because it's reference material, and sits next to Settings.
+ * Projects, Calendar, Stuck and Reminders are the questions about your own
+ * tasks — what is on today, where is that one, what falls when, what is not
+ * moving, what will ring. Groceries follows as the other working surface.
+ * Organize and History are the two shelves: things a task can belong to, and
+ * things that already happened. Health comes right after — its own shelf, for
+ * things logged about *you* rather than about a task — and Tips is last
+ * because it's reference material, and sits next to Settings.
  *
  * **This is also the search index**, via `menuDestinations` — every hub member
  * is reachable by name from the find field even though it no longer has a row.
@@ -47,7 +48,7 @@ export interface NavContentCounts {
   foodLog?: number;
 }
 
-export type NavHubId = 'kitchen' | 'organize' | 'history';
+export type NavHubId = 'kitchen' | 'organize' | 'history' | 'health';
 
 export interface NavDestination {
   /** Route name in the bottom-tab navigator. */
@@ -95,7 +96,10 @@ const KITCHEN_HUB: NavHub = {
     // still `Kitchen` — the same split as "Stack" over `TaskGroup`, and the
     // reason is written up where the label was chosen.
     { route: 'Kitchen', label: 'Pantry', keywords: ['fridge', 'freezer', 'kitchen', 'inventory', 'use by'] },
-    { route: 'FoodLog', label: 'Food log', keywords: ['ate', 'eaten', 'calories', 'diary', 'nutrition', 'macros'] },
+    // Food log moved out to its own Health hub (below) — logging what you ate
+    // is a health record, not a kitchen-shopping task, and tying it to
+    // `kitchenEnabled` meant switching off groceries took your food diary
+    // with it.
   ],
 };
 
@@ -119,14 +123,30 @@ const HISTORY_HUB: NavHub = {
   members: [
     { route: 'Logbook', label: 'Logbook', keywords: ['done', 'completed', 'finished'] },
     { route: 'Stats', label: 'Stats', keywords: ['numbers', 'charts', 'streaks', 'progress'] },
-    { route: 'Mood', label: 'Mood', keywords: ['feelings', 'symptoms', 'how i feel'] },
-    { route: 'Medications', label: 'Medications', keywords: ['medicine', 'pills', 'tablets', 'dose', 'supplement', 'inhaler', 'painkiller'] },
-    { route: 'Weight', label: 'Weight', keywords: ['scale', 'kg', 'lb', 'pounds', 'body', 'mass'] },
     { route: 'Archived', label: 'Archived', keywords: ['paused', 'filed', 'put away'] },
   ],
 };
 
-export const NAV_HUBS: readonly NavHub[] = [KITCHEN_HUB, ORGANIZE_HUB, HISTORY_HUB];
+// Mood, Medications and Weight used to sit in History alongside Logbook and
+// Stats, on the reasoning that all five are "things that already happened" —
+// but a completed task and a mood entry aren't the same kind of history, and
+// the pill row was the widest in the app for it. This groups the health logs
+// on their own, and gives Food log (which used to live in the kitchen hub,
+// switched off along with groceries) a home that isn't tied to a shopping
+// feature.
+const HEALTH_HUB: NavHub = {
+  id: 'health',
+  label: 'Health',
+  icon: 'heart-outline',
+  members: [
+    { route: 'Mood', label: 'Mood', keywords: ['feelings', 'symptoms', 'how i feel'] },
+    { route: 'Medications', label: 'Medications', keywords: ['medicine', 'pills', 'tablets', 'dose', 'supplement', 'inhaler', 'painkiller'] },
+    { route: 'Weight', label: 'Weight', keywords: ['scale', 'kg', 'lb', 'pounds', 'body', 'mass'] },
+    { route: 'FoodLog', label: 'Food log', keywords: ['ate', 'eaten', 'calories', 'diary', 'nutrition', 'macros'] },
+  ],
+};
+
+export const NAV_HUBS: readonly NavHub[] = [KITCHEN_HUB, ORGANIZE_HUB, HISTORY_HUB, HEALTH_HUB];
 
 export const NAV_MENU_ROWS: readonly NavMenuRow[] = [
   {
@@ -145,6 +165,15 @@ export const NAV_MENU_ROWS: readonly NavMenuRow[] = [
     kind: 'screen',
     icon: 'search-outline',
     destination: { route: 'Search', label: 'Search', keywords: ['find', 'look up'] },
+  },
+  // A tab, but not otherwise reachable from the drawer or its search — the one
+  // main surface that wasn't. Placed with the other questions about your own
+  // tasks rather than down by Organize/History, since a project is a kind of
+  // task list, not something a task belongs to after the fact.
+  {
+    kind: 'screen',
+    icon: 'briefcase-outline',
+    destination: { route: 'Projects', label: 'Projects' },
   },
   {
     kind: 'screen',
@@ -188,6 +217,7 @@ export const NAV_MENU_ROWS: readonly NavMenuRow[] = [
   { kind: 'hub', hub: KITCHEN_HUB },
   { kind: 'hub', hub: ORGANIZE_HUB },
   { kind: 'hub', hub: HISTORY_HUB },
+  { kind: 'hub', hub: HEALTH_HUB },
   {
     kind: 'screen',
     icon: 'bulb-outline',

@@ -39,13 +39,13 @@ components below.
 - `src/screens/MoodScreen.tsx` — ContrastBars, EmptyState, HubPills, InlineAction, MilestoneSheet, MoodEntryRow, MoodExportSheet, MoodLogSheet, ScreenHeader
 - `src/screens/PeopleScreen.tsx` — ContactPickerSheet, EmptyState, Fab, HubPills, PaintSelection, PersonEditor, QuickAddNameSheet, ReorderableList, ScreenHeader, SelectionDot, SimpleBulkBar, SwipeableRow, +1 more
 - `src/screens/PersonDetailScreen.tsx` — DetailHeader, EmptyState, InlineAction, PersonEditor, PersonHistorySheet, PersonNoteSheet
-- `src/screens/ProjectDetailScreen.tsx` — ApplyTemplateSheet, BulkActionBar, DeliverablePromptQueue, DeliverablePromptSheet, DetailHeader, EmptyState, Fab, GroupDropTarget, InlineAction, OfferBanner, PaintSelection, ProjectDecisions, +15 more
+- `src/screens/ProjectDetailScreen.tsx` — ApplyTemplateSheet, BulkActionBar, DeliverablePromptQueue, DeliverablePromptSheet, DetailHeader, EmptyState, Fab, GroupDropTarget, InlineAction, OfferBanner, PaintSelection, ProjectDecisions, +16 more
 - `src/screens/ProjectsScreen.tsx` — EmptyState, Fab, FabDropZones, ListBulkBar, PaintSelection, ProgressBar, ProjectCategoriesSheet, ProjectEditor, ProjectsOptionsMenu, QuickAddProjectModal, ReorderableList, ScreenHeader, +3 more
 - `src/screens/RecipeDetailScreen.tsx` — ComponentChoiceSheet, CookModeSheet, CountStepper, DetailHeader, EmptyState, IngredientCatalogMatchSheet, InlineAction, ListBulkBar, NumberPadAccessory, PillGroup, PlanMealSheet, PrepTaskSheet, +12 more
 - `src/screens/RecipesScreen.tsx` — ActiveTripBanner, EmptyState, Fab, FabDropZones, HubPills, InventRecipeSheet, ListBulkBar, PlanMealSheet, QuickAddNameSheet, RecipeCreateSheet, RecipeSortFilterSheet, RecipeSourcePicker, +6 more
 - `src/screens/RemindersScreen.tsx` — EmptyState, ScreenHeader, TaskEditor
 - `src/screens/SearchScreen.tsx` — EmptyState, HighlightedText, QuickAddModal, ScreenHeader, SearchField, TaskCheckbox, TaskEditor, TaskGroupEditor
-- `src/screens/SettingsGroupScreen.tsx` — AboutSettings, AppearanceSettings, CalendarSettings, CompletionCalendarSettings, DataResetSettings, DayTimeSettings, DeadlineCalendarSettings, DetailHeader, GeneratedTasksSection, HealthSettings, KitchenSettings, MealCalendarSettings, +7 more
+- `src/screens/SettingsGroupScreen.tsx` — AboutSettings, AppearanceSettings, CalendarSettings, CompletionCalendarSettings, DataResetSettings, DayTimeSettings, DeadlineCalendarSettings, DetailHeader, FeatureAreasSettings, GeneratedTasksSection, HealthSettings, KitchenSettings, +8 more
 - `src/screens/SettingsScreen.tsx` — DetailHeader, HighlightedText, SearchField
 - `src/screens/StacksScreen.tsx` — CategoryPicker, EmptyState, Fab, HubPills, ListBulkBar, PaintSelection, ScreenHeader, SelectionDot, SwipeableRow, TaskGroupEditor
 - `src/screens/StatsScreen.tsx` — EmptyState, HubPills, PressableScale, ScreenHeader
@@ -225,6 +225,7 @@ Where each component can appear.
 - `src/components/SelectionDot.tsx` — on ArchivedScreen, CalendarScreen, CategoryDetailScreen, FoodLogScreen, LogbookScreen, PeopleScreen, ProjectDetailScreen, ProjectsScreen, StacksScreen, TagsScreen, TodayScreen
 - `src/components/SharedLinkBanner.tsx` — on RecipesScreen
 - `src/components/SheetActionRow.tsx` — on KitchenScreen, MealPlanScreen, app shell
+- `src/components/SheetHeader.tsx` — on ArchivedScreen, BackfillScreen, CalendarScreen, CategoryDetailScreen, FoodLogScreen, GroceryScreen, KitchenScreen, MealPlanScreen, MedicationScreen, MoodHistoryScreen, MoodScreen, PeopleScreen, +17 more
 - `src/components/SheetHeaderButton.tsx` — on ArchivedScreen, BackfillScreen, CalendarScreen, CategoriesScreen, CategoryDetailScreen, CookbooksScreen, FoodLogScreen, GroceryScreen, KitchenScreen, LogbookScreen, MealPlanScreen, MedicationScreen, +20 more
 - `src/components/SheetScrim.tsx` — on ArchivedScreen, BackfillScreen, CalendarScreen, CategoriesScreen, CategoryDetailScreen, CookbooksScreen, FoodLogScreen, GroceryScreen, KitchenScreen, LogbookScreen, MealPlanScreen, MedicationScreen, +20 more
 - `src/components/ShoppingTripSheet.tsx` — on GroceryScreen
@@ -282,6 +283,7 @@ Where each component can appear.
 - `src/screens/settings/DataResetSettings.tsx` — on SettingsGroupScreen
 - `src/screens/settings/DayTimeSettings.tsx` — on SettingsGroupScreen
 - `src/screens/settings/DeadlineCalendarSettings.tsx` — on SettingsGroupScreen
+- `src/screens/settings/FeatureAreasSettings.tsx` — on SettingsGroupScreen
 - `src/screens/settings/GeneratedTasksSection.tsx` — on SettingsGroupScreen
 - `src/screens/settings/HealthSettings.tsx` — on SettingsGroupScreen
 - `src/screens/settings/InlineTimePicker.tsx` — on ArchivedScreen, CalendarScreen, CategoriesScreen, CategoryDetailScreen, ProjectDetailScreen, RemindersScreen, SearchScreen, SettingsGroupScreen, StacksScreen, StuckScreen, TagsScreen, TemplateDetailScreen, +2 more

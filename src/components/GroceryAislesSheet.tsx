@@ -24,6 +24,7 @@ import {
 import { itemsOnList } from '../utils/groceryLists';
 import { useGroceryStore } from '../store/useGroceryStore';
 import { ReorderableList } from './ReorderableList';
+import { SheetHeader } from './SheetHeader';
 import { SheetHeaderButton } from './SheetHeaderButton';
 import { InlineAction } from './InlineAction';
 import { PillGroup } from './PillGroup';
@@ -246,11 +247,11 @@ export function GroceryAislesSheet({ visible, onClose }: Props) {
   return (
     <Modal visible={visible} animationType="slide" presentationStyle="fullScreen" onRequestClose={handleDone}>
       <View style={[styles.root, { paddingTop: insets.top }]}>
-        <View style={styles.header}>
-          <View style={styles.headerSpacer} />
-          <Text style={styles.headerTitle}>List settings</Text>
-          <SheetHeaderButton label="Done" onPress={handleDone} minWidth={64} />
-        </View>
+        <SheetHeader
+          title="List settings"
+          left={<View style={styles.headerSpacer} />}
+          right={<SheetHeaderButton label="Done" onPress={handleDone} minWidth={64} />}
+        />
 
         {/* `surface="page"` because this sheet's root is `colors.bg`, the same
             reason the Group by control below is wrapped in a card. */}
@@ -782,17 +783,7 @@ function GroupByTab({ styles, groupBy, onChange }: GroupByTabProps) {
 function makeStyles(colors: Colors) {
   return StyleSheet.create({
     root: { flex: 1, backgroundColor: colors.bg },
-    header: {
-      flexDirection: 'row',
-      alignItems: 'center',
-      justifyContent: 'space-between',
-      paddingHorizontal: spacing.md,
-      paddingVertical: spacing.md,
-      borderBottomWidth: border.hairline,
-      borderBottomColor: colors.separator,
-    },
     headerSpacer: { width: 64 },
-    headerTitle: { color: colors.text, fontSize: font.md, fontWeight: fontWeight.semibold },
     intro: {
       color: colors.textTertiary,
       fontSize: font.sm,

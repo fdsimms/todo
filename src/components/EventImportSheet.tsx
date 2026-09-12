@@ -15,6 +15,7 @@ import Ionicons from '@expo/vector-icons/Ionicons';
 import { useKeyboardInsetScroll } from '../hooks/useKeyboardInsetScroll';
 import { useColors } from '../theme/ThemeContext';
 import { spacing, radius, font, fontWeight, border, iconSize, interaction, type Colors } from '../theme';
+import { SheetHeader } from './SheetHeader';
 import { SheetHeaderButton } from './SheetHeaderButton';
 import { SegmentedControl } from './SegmentedControl';
 import { EmptyState } from './EmptyState';
@@ -388,14 +389,12 @@ export function EventImportSheet({ visible, onClose, onImported }: Props) {
   return (
     <Modal visible={visible} animationType="slide" presentationStyle="pageSheet" onRequestClose={handleCancel}>
       <View style={styles.root}>
-        <View style={styles.header}>
-          <SheetHeaderButton label="Cancel" role="cancel" onPress={handleCancel} minWidth={64} />
-          <View style={styles.headerTitleWrap}>
-            <Ionicons name="sparkles" size={14} color={colors.purple} />
-            <Text style={styles.headerTitle}>Import event</Text>
-          </View>
-          <View style={styles.headerSpacer} />
-        </View>
+        <SheetHeader
+          title="Import event"
+          icon="sparkles"
+          left={<SheetHeaderButton label="Cancel" role="cancel" onPress={handleCancel} minWidth={64} />}
+          right={<View style={styles.headerSpacer} />}
+        />
         <ScrollView
           ref={keyboardScroll.ref}
           style={styles.scroll}
@@ -422,8 +421,6 @@ function makeStyles(colors: Colors) {
       borderBottomWidth: border.hairline,
       borderBottomColor: colors.separator,
     },
-    headerTitleWrap: { flexDirection: 'row', alignItems: 'center', gap: spacing.xs },
-    headerTitle: { color: colors.text, fontSize: font.md, fontWeight: fontWeight.semibold },
     headerSpacer: { minWidth: 64 },
     scroll: { flex: 1 },
     body: { flexGrow: 1, padding: spacing.md, paddingBottom: spacing.xl, gap: spacing.md },

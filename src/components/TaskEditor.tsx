@@ -106,6 +106,7 @@ import { CategoryPickerList } from './CategoryPicker';
 import { deliverableMeta } from '../utils/deliverables';
 import { InlineAction } from './InlineAction';
 import { SearchField } from './SearchField';
+import { SheetHeader } from './SheetHeader';
 import { SheetHeaderButton } from './SheetHeaderButton';
 import { EditorRow } from './EditorRow';
 import { EditorGroup } from './EditorGroup';
@@ -2213,31 +2214,34 @@ export function TaskEditor({ visible, task, initialDraft, onClose }: Props) {
       scrollContentStyle={styles.scrollContent}
       scrollEnabled={!draggingRow}
       header={
-        <>
-          <SheetHeaderButton label="Cancel" role="cancel" onPress={handleCancel} />
-          <Text style={styles.headerTitle}>{task ? 'Edit task' : 'New task'}</Text>
-          <View style={styles.headerRight}>
-            <TouchableOpacity
-              onPress={toggleSearch}
-              hitSlop={8}
-              activeOpacity={interaction.activeOpacity}
-              accessibilityRole="button"
-              accessibilityLabel={searchOpen ? 'Close field search' : 'Find a field'}
-              accessibilityState={{ expanded: searchOpen }}
-            >
-              <Ionicons
-                name={searchOpen ? 'close' : 'search'}
-                size={iconSize.sm}
-                color={searchOpen ? colors.accent : colors.textSecondary}
+        <SheetHeader
+          bare
+          title={task ? 'Edit task' : 'New task'}
+          left={<SheetHeaderButton label="Cancel" role="cancel" onPress={handleCancel} />}
+          right={
+            <View style={styles.headerRight}>
+              <TouchableOpacity
+                onPress={toggleSearch}
+                hitSlop={8}
+                activeOpacity={interaction.activeOpacity}
+                accessibilityRole="button"
+                accessibilityLabel={searchOpen ? 'Close field search' : 'Find a field'}
+                accessibilityState={{ expanded: searchOpen }}
+              >
+                <Ionicons
+                  name={searchOpen ? 'close' : 'search'}
+                  size={iconSize.sm}
+                  color={searchOpen ? colors.accent : colors.textSecondary}
+                />
+              </TouchableOpacity>
+              <SheetHeaderButton
+                label={task ? 'Save' : 'Add'}
+                onPress={save}
+                disabled={!title.trim()}
               />
-            </TouchableOpacity>
-            <SheetHeaderButton
-              label={task ? 'Save' : 'Add'}
-              onPress={save}
-              disabled={!title.trim()}
-            />
-          </View>
-        </>
+            </View>
+          }
+        />
       }
       footer={
         <>
@@ -5444,7 +5448,6 @@ const makeStyles = (colors: Colors) => StyleSheet.create({
     paddingHorizontal: spacing.md, paddingVertical: spacing.md,
     borderBottomWidth: StyleSheet.hairlineWidth, borderBottomColor: colors.separator,
   },
-  headerTitle: { color: colors.text, fontSize: font.md, fontWeight: '600' },
   headerRight: { flexDirection: 'row', alignItems: 'center', gap: spacing.md },
   fieldSearch: { marginHorizontal: spacing.md, marginTop: spacing.md, marginBottom: spacing.md },
   searchEmpty: {

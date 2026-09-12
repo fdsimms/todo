@@ -160,8 +160,11 @@ const makeStyles = (colors: Colors) => StyleSheet.create({
   // Optically centred against the cap height rather than the line box, which
   // the xxl line height makes noticeably taller than the glyphs.
   titleChevron: { marginTop: 3 },
+  // textSecondary, not textTertiary: this carries information (a task count, a
+  // workload total), and textTertiary's ~3:1 contrast is under the 4.5:1 bar
+  // for 13pt text — the same reason the section-label rule moved off it.
   subtitle: {
-    color: colors.textTertiary, fontSize: font.sm, fontWeight: fontWeight.medium,
+    color: colors.textSecondary, fontSize: font.sm, fontWeight: fontWeight.medium,
     marginTop: 2,
   },
   actions: { flexDirection: 'row', gap: spacing.sm, alignItems: 'center', paddingBottom: 2 },

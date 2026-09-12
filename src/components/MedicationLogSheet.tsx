@@ -8,6 +8,7 @@ import { EditorSheet } from './EditorSheet';
 import { EditorRow } from './EditorRow';
 import { PillGroup } from './PillGroup';
 import { SegmentedControl } from './SegmentedControl';
+import { SheetHeader } from './SheetHeader';
 import { SheetHeaderButton } from './SheetHeaderButton';
 import { WhenPicker } from './WhenPicker';
 import { useColors } from '../theme/ThemeContext';
@@ -161,19 +162,18 @@ export function MedicationLogSheet({ visible, log, onClose }: Props) {
       scrollStyle={styles.scroll}
       scrollContentStyle={styles.scrollContent}
       header={
-        <>
-          <SheetHeaderButton label="Cancel" role="cancel" onPress={onClose} />
-          <Text style={styles.headerTitle} numberOfLines={1}>
-            {log ? 'Edit dose' : 'Record a dose'}
-          </Text>
-          {log ? (
+        <SheetHeader
+          bare
+          title={log ? 'Edit dose' : 'Record a dose'}
+          left={<SheetHeaderButton label="Cancel" role="cancel" onPress={onClose} />}
+          right={log ? (
             <TouchableOpacity onPress={handleDelete} hitSlop={8} accessibilityRole="button" accessibilityLabel="Delete dose">
               <Ionicons name="trash-outline" size={20} color={colors.red} />
             </TouchableOpacity>
           ) : (
             <SheetHeaderButton label="Save" onPress={handleSave} disabled={!canSave} />
           )}
-        </>
+        />
       }
       footer={
         <WhenPicker
@@ -279,10 +279,6 @@ const makeStyles = (colors: Colors) => StyleSheet.create({
     flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between',
     paddingHorizontal: spacing.md, paddingVertical: spacing.md,
     borderBottomWidth: StyleSheet.hairlineWidth, borderBottomColor: colors.separator,
-  },
-  headerTitle: {
-    flex: 1, textAlign: 'center', color: colors.text,
-    fontSize: font.md, fontWeight: fontWeight.semibold,
   },
   scroll: { flex: 1 },
   scrollContent: { padding: spacing.md, paddingBottom: 120 },

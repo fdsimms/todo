@@ -12,12 +12,13 @@ import Ionicons from '@expo/vector-icons/Ionicons';
 import { useShallow } from 'zustand/react/shallow';
 import type { Recipe } from '../types';
 import { useColors } from '../theme/ThemeContext';
-import { spacing, radius, font, fontWeight, border, iconSize, interaction, type Colors } from '../theme';
+import { spacing, radius, font, fontWeight, iconSize, interaction, type Colors } from '../theme';
 import { haptics } from '../utils/haptics';
 import { useRecipeStore } from '../store/useRecipeStore';
 import { describeRecipe, rankRecipes, sortRecipesForDisplay } from '../utils/recipeUtils';
 import { recipeMap, wouldCreateRecipeCycle } from '../utils/recipeComponents';
 import { EmptyState } from './EmptyState';
+import { SheetHeader } from './SheetHeader';
 import { SheetHeaderButton } from './SheetHeaderButton';
 
 interface Props {
@@ -83,12 +84,12 @@ export function RecipeComponentPicker({ visible, recipe, onClose, onSelect }: Pr
   return (
     <Modal visible={visible} animationType="slide" presentationStyle="pageSheet" onRequestClose={onClose}>
       <View style={styles.root}>
-        <View style={styles.header}>
-          <SheetHeaderButton label="Cancel" role="cancel" onPress={onClose} minWidth={60} />
-          <Text style={styles.headerTitle} numberOfLines={1}>Add a component</Text>
-          {/* Balances Cancel so the title stays optically centered. */}
-          <View style={styles.headerSpacer} />
-        </View>
+        <SheetHeader
+          title="Add a component"
+          left={<SheetHeaderButton label="Cancel" role="cancel" onPress={onClose} minWidth={60} />}
+          // Balances Cancel so the title stays optically centered.
+          right={<View style={styles.headerSpacer} />}
+        />
 
         {recipes.length <= (recipe ? 1 : 0) ? (
           <EmptyState
@@ -161,16 +162,6 @@ export function RecipeComponentPicker({ visible, recipe, onClose, onSelect }: Pr
 
 const makeStyles = (colors: Colors) => StyleSheet.create({
   root: { flex: 1, backgroundColor: colors.bg },
-  header: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'space-between',
-    paddingHorizontal: spacing.md,
-    paddingVertical: spacing.md,
-    borderBottomWidth: border.hairline,
-    borderBottomColor: colors.separator,
-  },
-  headerTitle: { color: colors.text, fontSize: font.md, fontWeight: fontWeight.semibold },
   headerSpacer: { minWidth: 60 },
   searchWrap: {
     flexDirection: 'row',

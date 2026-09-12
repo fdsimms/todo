@@ -11,11 +11,12 @@ import Ionicons from '@expo/vector-icons/Ionicons';
 import { useShallow } from 'zustand/react/shallow';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { useColors } from '../theme/ThemeContext';
-import { spacing, radius, font, fontWeight, border, interaction, type Colors } from '../theme';
+import { spacing, radius, font, fontWeight, interaction, type Colors } from '../theme';
 import { useTaskStore } from '../store/useTaskStore';
 import { useCategoryStore } from '../store/useCategoryStore';
 import { alphabeticalCategories, sortCategoriesByTaskCount } from '../utils/categoryOrder';
 import { SheetHeaderButton } from './SheetHeaderButton';
+import { SheetHeader } from './SheetHeader';
 import { InlineAction } from './InlineAction';
 import { EmptyState } from './EmptyState';
 import { SortableList } from './SortableList';
@@ -109,11 +110,11 @@ export function CategoryOrderSheet({ visible, onClose }: Props) {
   return (
     <Modal visible={visible} animationType="slide" presentationStyle="fullScreen" onRequestClose={onClose}>
       <View style={[styles.root, { paddingTop: insets.top }]}>
-        <View style={styles.header}>
-          <View style={styles.headerSpacer} />
-          <Text style={styles.headerTitle}>Category order</Text>
-          <SheetHeaderButton label="Done" onPress={onClose} minWidth={64} />
-        </View>
+        <SheetHeader
+          title="Category order"
+          left={<View style={styles.headerSpacer} />}
+          right={<SheetHeaderButton label="Done" onPress={onClose} minWidth={64} />}
+        />
 
         {order.length === 0 ? (
           <EmptyState
@@ -198,17 +199,7 @@ export function CategoryOrderSheet({ visible, onClose }: Props) {
 
 const makeStyles = (colors: Colors) => StyleSheet.create({
   root: { flex: 1, backgroundColor: colors.bg },
-  header: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'space-between',
-    paddingHorizontal: spacing.md,
-    paddingVertical: spacing.md,
-    borderBottomWidth: border.hairline,
-    borderBottomColor: colors.separator,
-  },
   headerSpacer: { width: 64 },
-  headerTitle: { color: colors.text, fontSize: font.md, fontWeight: fontWeight.semibold },
   introWrap: { paddingHorizontal: spacing.md, paddingBottom: spacing.md },
   intro: { color: colors.textTertiary, fontSize: font.sm },
   introActions: { flexDirection: 'row', flexWrap: 'wrap', gap: spacing.sm, marginTop: spacing.md },

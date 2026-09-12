@@ -35,6 +35,7 @@ import { normalizeScale } from '../utils/recipeScale';
 import { convertQuantity } from '../utils/unitConvert';
 import { RecipeScaleChips } from './RecipeScaleChips';
 import { RecipeChoiceChips } from './RecipeChoiceChips';
+import { SheetHeader } from './SheetHeader';
 import { SheetHeaderButton } from './SheetHeaderButton';
 import { InlineAction } from './InlineAction';
 import { EmptyState } from './EmptyState';
@@ -461,16 +462,18 @@ export function RecipeToListSheet({
   return (
     <Modal visible={visible} animationType="slide" presentationStyle="pageSheet" onRequestClose={handleCancel}>
       <View style={styles.root}>
-        <View style={styles.header}>
-          <SheetHeaderButton label="Cancel" role="cancel" onPress={handleCancel} minWidth={72} />
-          <Text style={styles.headerTitle} numberOfLines={1}>{recipe?.name ?? 'Add to list'}</Text>
-          <SheetHeaderButton
-            label={addCount > 0 ? `Add ${addCount}` : 'Add'}
-            onPress={handleAdd}
-            disabled={addCount === 0}
-            minWidth={72}
-          />
-        </View>
+        <SheetHeader
+          title={recipe?.name ?? 'Add to list'}
+          left={<SheetHeaderButton label="Cancel" role="cancel" onPress={handleCancel} minWidth={72} />}
+          right={
+            <SheetHeaderButton
+              label={addCount > 0 ? `Add ${addCount}` : 'Add'}
+              onPress={handleAdd}
+              disabled={addCount === 0}
+              minWidth={72}
+            />
+          }
+        />
 
         {/* Above the choice chips: how much you're making applies to the whole
             shop, while a choice applies to one group within it. */}
@@ -759,16 +762,6 @@ export function RecipeToListSheet({
 
 const makeStyles = (colors: Colors) => StyleSheet.create({
   root: { flex: 1, backgroundColor: colors.bg },
-  header: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'space-between',
-    paddingHorizontal: spacing.md,
-    paddingVertical: spacing.md,
-    borderBottomWidth: border.hairline,
-    borderBottomColor: colors.separator,
-  },
-  headerTitle: { flex: 1, textAlign: 'center', color: colors.text, fontSize: font.md, fontWeight: fontWeight.semibold },
   centered: { flex: 1, alignItems: 'center', justifyContent: 'center', padding: spacing.xl },
   list: { padding: spacing.md, paddingBottom: spacing.xl, gap: spacing.md },
   // Above the list rather than in it: this decides what the list *is*, so it

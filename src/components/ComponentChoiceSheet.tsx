@@ -11,6 +11,7 @@ import { animateLayout } from '../utils/layoutAnimation';
 import { cleanChoiceGroup } from '../utils/recipeUtils';
 import type { ResolvedComponent } from '../utils/recipeComponents';
 import { SheetHeaderButton } from './SheetHeaderButton';
+import { SheetHeader } from './SheetHeader';
 import { EditorSheet } from './EditorSheet';
 import { SegmentedControl } from './SegmentedControl';
 import { InlineAction } from './InlineAction';
@@ -116,11 +117,13 @@ export function ComponentChoiceSheet({ visible, recipe, component, onClose }: Pr
       scrollStyle={styles.scroll}
       scrollContentStyle={styles.scrollContent}
       header={
-        <>
-          <SheetHeaderButton label="Done" onPress={saveAndClose} minWidth={40} />
-          <Text style={styles.headerTitle} numberOfLines={1}>{name}</Text>
-          <View style={styles.headerSpacer} />
-        </>
+        <SheetHeader
+          bare
+          title={name}
+          numberOfLines={1}
+          left={<SheetHeaderButton label="Done" onPress={saveAndClose} minWidth={40} />}
+          right={<View style={styles.headerSpacer} />}
+        />
       }
     >
       <View style={styles.sectionCard}>
@@ -254,7 +257,6 @@ const makeStyles = (colors: Colors) => StyleSheet.create({
     borderBottomWidth: 1,
     borderBottomColor: colors.separator,
   },
-  headerTitle: { color: colors.text, fontSize: font.md, fontWeight: fontWeight.semibold, flex: 1, textAlign: 'center' },
   headerSpacer: { width: 40 },
   scroll: { flex: 1 },
   scrollContent: { padding: spacing.md, gap: spacing.md, paddingBottom: spacing.xl * 2 },

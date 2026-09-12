@@ -26,6 +26,7 @@ import {
 import { useGroceryStore } from '../store/useGroceryStore';
 import { useSettingsStore } from '../store/useSettingsStore';
 import { useKeyboardInsetScroll } from '../hooks/useKeyboardInsetScroll';
+import { SheetHeader } from './SheetHeader';
 import { SheetHeaderButton } from './SheetHeaderButton';
 import { PillGroup } from './PillGroup';
 import { SegmentedControl } from './SegmentedControl';
@@ -836,22 +837,22 @@ export function ReceiptImportSheet({ visible, onClose, onApply, context }: Props
     <>
       <Modal visible={visible} animationType="slide" presentationStyle="pageSheet" onRequestClose={handleCancel}>
         <View style={styles.root}>
-          <View style={styles.header}>
-            <SheetHeaderButton label="Cancel" role="cancel" onPress={handleCancel} minWidth={64} />
-            <Text style={styles.headerTitle}>
-              {pantry ? 'Receipt into pantry' : 'Scan a receipt'}
-            </Text>
-            {receipt && receipt.lines.length > 0 ? (
-              <SheetHeaderButton
-                label={pantry ? 'Add' : 'Apply'}
-                onPress={handleApply}
-                disabled={acceptedCount === 0}
-                minWidth={64}
-              />
-            ) : (
-              <View style={styles.headerSpacer} />
-            )}
-          </View>
+          <SheetHeader
+            title={pantry ? 'Receipt into pantry' : 'Scan a receipt'}
+            left={<SheetHeaderButton label="Cancel" role="cancel" onPress={handleCancel} minWidth={64} />}
+            right={
+              receipt && receipt.lines.length > 0 ? (
+                <SheetHeaderButton
+                  label={pantry ? 'Add' : 'Apply'}
+                  onPress={handleApply}
+                  disabled={acceptedCount === 0}
+                  minWidth={64}
+                />
+              ) : (
+                <View style={styles.headerSpacer} />
+              )
+            }
+          />
 
           <ScrollView
             ref={keyboardScroll.ref}
@@ -882,16 +883,6 @@ export function ReceiptImportSheet({ visible, onClose, onApply, context }: Props
 function makeStyles(colors: Colors) {
   return StyleSheet.create({
     root: { flex: 1, backgroundColor: colors.bg },
-    header: {
-      flexDirection: 'row',
-      alignItems: 'center',
-      justifyContent: 'space-between',
-      paddingHorizontal: spacing.md,
-      paddingVertical: spacing.md,
-      borderBottomWidth: border.hairline,
-      borderBottomColor: colors.separator,
-    },
-    headerTitle: { color: colors.text, fontSize: font.md, fontWeight: fontWeight.semibold },
     headerSpacer: { minWidth: 64 },
     body: { padding: spacing.md, paddingBottom: spacing.xl },
     // `RecipeSourcePicker` renders its intro/photo-card/CTA as bare siblings and

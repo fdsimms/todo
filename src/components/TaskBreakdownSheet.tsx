@@ -15,6 +15,7 @@ import { spacing, radius, font, lineHeight, interaction, type Colors } from '../
 import { haptics } from '../utils/haptics';
 import { useTaskStore } from '../store/useTaskStore';
 import { suggestSubtasks, describeAIError, type SubtaskSuggestion } from '../services/aiSuggestions';
+import { SheetHeader } from './SheetHeader';
 import { SheetHeaderButton } from './SheetHeaderButton';
 import { EmptyState } from './EmptyState';
 
@@ -139,18 +140,18 @@ export function TaskBreakdownSheet({ visible, taskId, onClose }: Props) {
       onRequestClose={handleCancel}
     >
       <View style={styles.root}>
-        <View style={styles.header}>
-          <SheetHeaderButton label="Cancel" role="cancel" onPress={handleCancel} />
-          <View style={styles.headerTitleWrap}>
-            <Ionicons name="sparkles" size={14} color={colors.purple} />
-            <Text style={styles.headerTitle}>Break it up</Text>
-          </View>
-          <SheetHeaderButton
-            label={acceptedCount > 0 ? `Add ${acceptedCount}` : 'Add'}
-            onPress={handleAdd}
-            disabled={!canAdd}
-          />
-        </View>
+        <SheetHeader
+          title="Break it up"
+          icon="sparkles"
+          left={<SheetHeaderButton label="Cancel" role="cancel" onPress={handleCancel} />}
+          right={
+            <SheetHeaderButton
+              label={acceptedCount > 0 ? `Add ${acceptedCount}` : 'Add'}
+              onPress={handleAdd}
+              disabled={!canAdd}
+            />
+          }
+        />
 
         {loading ? (
           <View style={styles.centered}>
@@ -225,8 +226,6 @@ const makeStyles = (colors: Colors) => StyleSheet.create({
     paddingHorizontal: spacing.md, paddingVertical: spacing.md,
     borderBottomWidth: StyleSheet.hairlineWidth, borderBottomColor: colors.separator,
   },
-  headerTitleWrap: { flexDirection: 'row', alignItems: 'center', gap: spacing.xs },
-  headerTitle: { color: colors.text, fontSize: font.md, fontWeight: '600' },
   centered: { flex: 1, alignItems: 'center', justifyContent: 'center', padding: spacing.xl, gap: spacing.md },
   loadingText: { color: colors.textSecondary, fontSize: font.md, textAlign: 'center' },
   list: { paddingTop: spacing.md, paddingBottom: 120 },

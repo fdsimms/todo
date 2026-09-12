@@ -18,6 +18,7 @@ import { useGroceryStore } from '../store/useGroceryStore';
 import { useSettingsStore } from '../store/useSettingsStore';
 import { useKeyboardInsetScroll } from '../hooks/useKeyboardInsetScroll';
 import { resolveActiveTrip } from '../utils/activeTrip';
+import { SheetHeader } from './SheetHeader';
 import { SheetHeaderButton } from './SheetHeaderButton';
 import { NumberPadAccessory, NUMBER_PAD_ACCESSORY_ID } from './NumberPadAccessory';
 import { PillGroup } from './PillGroup';
@@ -459,11 +460,11 @@ export function FinishShoppingSheet({
   return (
     <Modal visible={visible} animationType="slide" presentationStyle="pageSheet" onRequestClose={handleCancel}>
       <View style={styles.root}>
-        <View style={styles.header}>
-          <SheetHeaderButton label="Cancel" role="cancel" onPress={handleCancel} minWidth={64} />
-          <Text style={styles.headerTitle}>Finish shopping</Text>
-          <SheetHeaderButton label="Finish" onPress={handleFinish} minWidth={64} />
-        </View>
+        <SheetHeader
+          title="Finish shopping"
+          left={<SheetHeaderButton label="Cancel" role="cancel" onPress={handleCancel} minWidth={64} />}
+          right={<SheetHeaderButton label="Finish" onPress={handleFinish} minWidth={64} />}
+        />
 
         <ScrollView
           ref={keyboardScroll.ref}
@@ -765,16 +766,6 @@ export function FinishShoppingSheet({
 function makeStyles(colors: Colors) {
   return StyleSheet.create({
     root: { flex: 1, backgroundColor: colors.bg },
-    header: {
-      flexDirection: 'row',
-      alignItems: 'center',
-      justifyContent: 'space-between',
-      paddingHorizontal: spacing.md,
-      paddingVertical: spacing.md,
-      borderBottomWidth: border.hairline,
-      borderBottomColor: colors.separator,
-    },
-    headerTitle: { color: colors.text, fontSize: font.md, fontWeight: fontWeight.semibold },
     body: { padding: spacing.md, paddingBottom: spacing.xl },
     // No margin of its own: the intro above already carries `spacing.md`
     // beneath it and the section label below carries the same above it, which

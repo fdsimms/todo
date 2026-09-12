@@ -6,6 +6,7 @@ import { useColors } from '../theme/ThemeContext';
 import { spacing, radius, font, fontWeight, border, interaction, type Colors } from '../theme';
 import { useRecipeStore } from '../store/useRecipeStore';
 import { rankRecipes, describeRecipe, sortRecipesForDisplay } from '../utils/recipeUtils';
+import { SheetHeader } from './SheetHeader';
 import { SheetHeaderButton } from './SheetHeaderButton';
 import { EmptyState } from './EmptyState';
 import { haptics } from '../utils/haptics';
@@ -73,11 +74,11 @@ export function RecipeSourceSheet({ visible, allowAIImport, onPickSaved, onImpor
   return (
     <Modal visible={visible} animationType="slide" presentationStyle="pageSheet" onRequestClose={handleClose}>
       <View style={styles.root}>
-        <View style={styles.header}>
-          <SheetHeaderButton label="Cancel" role="cancel" onPress={handleClose} minWidth={72} />
-          <Text style={styles.headerTitle}>From a recipe</Text>
-          <View style={{ minWidth: 72 }} />
-        </View>
+        <SheetHeader
+          title="From a recipe"
+          left={<SheetHeaderButton label="Cancel" role="cancel" onPress={handleClose} minWidth={72} />}
+          right={<View style={{ minWidth: 72 }} />}
+        />
 
         {recipes.length > 0 && (
           <View style={styles.searchWrap}>
@@ -165,16 +166,6 @@ export function RecipeSourceSheet({ visible, allowAIImport, onPickSaved, onImpor
 
 const makeStyles = (colors: Colors) => StyleSheet.create({
   root: { flex: 1, backgroundColor: colors.bg },
-  header: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'space-between',
-    paddingHorizontal: spacing.md,
-    paddingVertical: spacing.md,
-    borderBottomWidth: border.hairline,
-    borderBottomColor: colors.separator,
-  },
-  headerTitle: { color: colors.text, fontSize: font.md, fontWeight: fontWeight.semibold },
   searchWrap: {
     flexDirection: 'row',
     alignItems: 'center',

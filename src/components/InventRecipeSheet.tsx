@@ -12,6 +12,7 @@ import {
 import { suggestMealIdeas, draftMealRecipe, describeAIError } from '../services/aiSuggestions';
 import { useRecipeStore } from '../store/useRecipeStore';
 import { useGroceryStore } from '../store/useGroceryStore';
+import { SheetHeader } from './SheetHeader';
 import { SheetHeaderButton } from './SheetHeaderButton';
 import { InlineAction } from './InlineAction';
 import { useKeyboardInsetScroll } from '../hooks/useKeyboardInsetScroll';
@@ -228,14 +229,12 @@ export function InventRecipeSheet({ visible, onClose, onCreated }: Props) {
   return (
     <Modal visible={visible} animationType="slide" presentationStyle="pageSheet" onRequestClose={handleCancel}>
       <View style={styles.root}>
-        <View style={styles.header}>
-          <SheetHeaderButton label="Cancel" role="cancel" onPress={handleCancel} minWidth={72} />
-          <View style={styles.headerTitleWrap}>
-            <Ionicons name="sparkles" size={14} color={colors.purple} />
-            <Text style={styles.headerTitle}>Invent a recipe</Text>
-          </View>
-          <View style={styles.headerSpacer} />
-        </View>
+        <SheetHeader
+          title="Invent a recipe"
+          icon="sparkles"
+          left={<SheetHeaderButton label="Cancel" role="cancel" onPress={handleCancel} minWidth={72} />}
+          right={<View style={styles.headerSpacer} />}
+        />
 
         <ScrollView
           ref={keyboardScroll.ref}
@@ -313,8 +312,6 @@ const makeStyles = (colors: Colors) => StyleSheet.create({
     borderBottomWidth: border.hairline,
     borderBottomColor: colors.separator,
   },
-  headerTitleWrap: { flexDirection: 'row', alignItems: 'center', gap: spacing.xs },
-  headerTitle: { color: colors.text, fontSize: font.md, fontWeight: fontWeight.semibold },
   // Balances the Cancel button's own minWidth so the title stays centered.
   headerSpacer: { width: 72 },
   list: { padding: spacing.md, paddingBottom: spacing.xl, gap: spacing.sm },

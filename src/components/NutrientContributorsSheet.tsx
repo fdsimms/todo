@@ -1,11 +1,12 @@
 import React, { useMemo } from 'react';
 import { FlatList, Modal, StyleSheet, Text, View, type ListRenderItem } from 'react-native';
 import { useColors } from '../theme/ThemeContext';
-import { border, font, fontWeight, radius, spacing, type Colors } from '../theme';
+import { font, fontWeight, radius, spacing, type Colors } from '../theme';
 import type { FoodLogEntry, NutrientKey } from '../types';
 import { nutrientContributions, type NutrientContribution } from '../utils/foodLog';
 import { NUTRIENT_LABEL } from '../utils/foodNutrition';
 import { SheetHeaderButton } from './SheetHeaderButton';
+import { SheetHeader } from './SheetHeader';
 
 /**
  * Which of a day's entries put what toward one nutrient.
@@ -54,13 +55,11 @@ export function NutrientContributorsSheet({ visible, nutrientKey, entries, onClo
       onRequestClose={onClose}
     >
       <View style={styles.root}>
-        <View style={styles.header}>
-          <SheetHeaderButton label="Close" role="cancel" onPress={onClose} minWidth={60} />
-          <Text style={styles.headerTitle}>
-            {nutrientKey ? NUTRIENT_LABEL[nutrientKey].label : ''}
-          </Text>
-          <View style={{ minWidth: 60 }} />
-        </View>
+        <SheetHeader
+          title={nutrientKey ? NUTRIENT_LABEL[nutrientKey].label : ''}
+          left={<SheetHeaderButton label="Close" role="cancel" onPress={onClose} minWidth={60} />}
+          right={<View style={{ minWidth: 60 }} />}
+        />
         <FlatList
           data={contributions}
           keyExtractor={c => c.entry.id}
@@ -75,23 +74,6 @@ export function NutrientContributorsSheet({ visible, nutrientKey, entries, onClo
 function makeStyles(colors: Colors) {
   return StyleSheet.create({
     root: { flex: 1, backgroundColor: colors.bg },
-    header: {
-      flexDirection: 'row',
-      alignItems: 'center',
-      justifyContent: 'space-between',
-      gap: spacing.sm,
-      paddingHorizontal: spacing.md,
-      paddingVertical: spacing.md,
-      borderBottomWidth: border.hairline,
-      borderBottomColor: colors.separator,
-    },
-    headerTitle: {
-      flex: 1,
-      color: colors.text,
-      fontSize: font.md,
-      fontWeight: fontWeight.semibold,
-      textAlign: 'center',
-    },
     list: { padding: spacing.md, gap: spacing.sm },
     row: {
       flexDirection: 'row',

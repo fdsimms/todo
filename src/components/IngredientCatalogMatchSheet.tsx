@@ -16,6 +16,7 @@ import {
   type IngredientCatalogMatch,
 } from '../utils/ingredientCatalogMatch';
 import { EditorSheet } from './EditorSheet';
+import { SheetHeader } from './SheetHeader';
 import { SheetHeaderButton } from './SheetHeaderButton';
 import { EmptyState } from './EmptyState';
 
@@ -114,11 +115,13 @@ export function IngredientCatalogMatchSheet({
       scrollStyle={styles.scroll}
       scrollContentStyle={isEmpty ? styles.scrollContentEmpty : styles.scrollContent}
       header={
-        <>
-          <SheetHeaderButton label="Done" onPress={onClose} minWidth={40} />
-          <Text style={styles.headerTitle}>In your grocery catalog</Text>
-          <View style={styles.headerSpacer} />
-        </>
+        <SheetHeader
+          bare
+          title="In your grocery catalog"
+          size="lg"
+          left={<SheetHeaderButton label="Done" onPress={onClose} minWidth={40} />}
+          right={<View style={styles.headerSpacer} />}
+        />
       }
     >
       <Text style={styles.count}>
@@ -208,7 +211,6 @@ function makeStyles(colors: Colors) {
       borderBottomWidth: 1,
       borderBottomColor: colors.separator,
     },
-    headerTitle: { fontSize: font.lg, fontWeight: fontWeight.semibold, color: colors.text },
     headerSpacer: { minWidth: 40 },
     scroll: { flex: 1 },
     scrollContent: { padding: spacing.md, paddingBottom: spacing.xl },

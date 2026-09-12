@@ -10,7 +10,7 @@ import {
   View,
 } from 'react-native';
 import { useColors } from '../theme/ThemeContext';
-import { border, font, fontWeight, interaction, radius, spacing, type Colors } from '../theme';
+import { font, fontWeight, interaction, radius, spacing, type Colors } from '../theme';
 import { MEAL_SLOTS, MEAL_SLOT_LABELS, type FoodNutrition, type MealSlot } from '../types';
 import { useFoodLogStore } from '../store/useFoodLogStore';
 import { useKeyboardInsetScroll } from '../hooks/useKeyboardInsetScroll';
@@ -18,6 +18,7 @@ import { packageChoices, packageHelping } from '../utils/scanPortion';
 import { scalePanelToAmount } from '../utils/foodLog';
 import { haptics } from '../utils/haptics';
 import { SegmentedControl } from './SegmentedControl';
+import { SheetHeader } from './SheetHeader';
 import { SheetHeaderButton } from './SheetHeaderButton';
 
 /**
@@ -168,16 +169,18 @@ export function ScanPortionSheet({ visible, foods, slot, at, mealPlanEntryId, on
   return (
     <Modal visible={visible} animationType="slide" presentationStyle="pageSheet" onRequestClose={handleCancel}>
       <View style={styles.root}>
-        <View style={styles.header}>
-          <SheetHeaderButton label="Cancel" role="cancel" onPress={handleCancel} minWidth={64} />
-          <Text style={styles.headerTitle}>How much?</Text>
-          <SheetHeaderButton
-            label="Log"
-            onPress={handleLog}
-            disabled={loggable.length === 0}
-            minWidth={64}
-          />
-        </View>
+        <SheetHeader
+          title="How much?"
+          left={<SheetHeaderButton label="Cancel" role="cancel" onPress={handleCancel} minWidth={64} />}
+          right={
+            <SheetHeaderButton
+              label="Log"
+              onPress={handleLog}
+              disabled={loggable.length === 0}
+              minWidth={64}
+            />
+          }
+        />
 
         <ScrollView
           ref={keyboardScroll.ref}
@@ -264,16 +267,6 @@ export function ScanPortionSheet({ visible, foods, slot, at, mealPlanEntryId, on
 function makeStyles(colors: Colors) {
   return StyleSheet.create({
     root: { flex: 1, backgroundColor: colors.bg },
-    header: {
-      flexDirection: 'row',
-      alignItems: 'center',
-      justifyContent: 'space-between',
-      paddingHorizontal: spacing.md,
-      paddingVertical: spacing.md,
-      borderBottomWidth: border.hairline,
-      borderBottomColor: colors.separator,
-    },
-    headerTitle: { color: colors.text, fontSize: font.md, fontWeight: fontWeight.semibold },
     body: { flex: 1 },
     bodyContent: { padding: spacing.md, paddingBottom: spacing.xl, gap: spacing.md },
     card: {
