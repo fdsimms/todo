@@ -1333,7 +1333,7 @@ export function RecipeDetailScreen() {
       </TouchableOpacity>
       <TouchableOpacity
         onLongPress={drag}
-        delayLongPress={150}
+        delayLongPress={interaction.delayLongPress}
         hitSlop={10}
         accessibilityRole="button"
         accessibilityLabel={`Reorder step ${displayIndex + 1}`}
@@ -2298,6 +2298,9 @@ const makeStyles = (colors: Colors) => StyleSheet.create({
     letterSpacing: 0.8,
     textTransform: 'uppercase',
     marginTop: spacing.md,
+    // The hint or card under a label carries no top margin, so the label owns
+    // the gap on both sides.
+    marginBottom: spacing.sm,
   },
   // The Ingredients label and its copy/share buttons on one line. The row
   // carries the label's own top margin, so the label goes flush inside it and
@@ -2307,9 +2310,11 @@ const makeStyles = (colors: Colors) => StyleSheet.create({
     alignItems: 'center',
     justifyContent: 'space-between',
     marginTop: spacing.md,
+    marginBottom: spacing.sm,
   },
   sectionLabelFlush: {
     marginTop: 0,
+    marginBottom: 0,
   },
   ingredientsHeaderActions: {
     flexDirection: 'row',

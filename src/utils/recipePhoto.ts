@@ -38,6 +38,16 @@ export const MAX_PHOTO_EDGE = 1568;
 /** JPEG quality for the downscaled copy. Text on a page survives this easily. */
 const PHOTO_COMPRESS = 0.7;
 
+/**
+ * How many photos one recipe import may accumulate — enough for a cookbook
+ * recipe that runs across a page turn (front page, back page), or a card
+ * photographed front and back, with slack for an awkward multi-page clipping.
+ * Not unlimited: each photo is its own image block in the request, so the cost
+ * and the upload time both scale with the count — see `extractRecipe`'s
+ * multi-photo path and `ADDITIONAL_IMAGE_TIMEOUT_MS`.
+ */
+export const MAX_RECIPE_PHOTOS = 4;
+
 export type RecipePhotoSource = 'camera' | 'library' | 'clipboard';
 
 export interface RecipePhoto extends RecipeImage {

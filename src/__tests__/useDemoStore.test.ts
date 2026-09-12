@@ -81,7 +81,7 @@ import { isStaleNote } from '../utils/personNotes';
 import { personBackfillFieldCounts, PERSON_BACKFILL_FIELDS } from '../utils/peopleBackfill';
 import { itemBackfillFieldCounts, ITEM_BACKFILL_FIELDS } from '../utils/itemBackfill';
 import { recipeBackfillFieldCounts, RECIPE_BACKFILL_FIELDS } from '../utils/recipeBackfill';
-import { mealYearRange, taskYearRange, timeTogetherInRange } from '../utils/peopleStats';
+import { taskYearRange, timeTogetherInRange } from '../utils/peopleStats';
 import { PERSON_NOTE_KINDS } from '../types';
 import { useLeftoverStore } from '../store/useLeftoverStore';
 import { useSettingsStore } from '../store/useSettingsStore';
@@ -1573,14 +1573,6 @@ describe('demo seed — people', () => {
     expect(tasks.some(t => t.personIds.length > 1)).toBe(true);
   });
 
-  // Guests are the tie-in between the kitchen half and the people half, and a
-  // meal plan with nobody on it reads as a feature the app doesn't have.
-  it('seeds an upcoming meal with guests on it', () => {
-    const withGuests = useMealPlanStore.getState().entries.filter(e => e.personIds.length > 0);
-    expect(withGuests.length).toBeGreaterThan(0);
-    expect(withGuests.some(e => !e.cookedAt)).toBe(true);
-  });
-
   // It hides from Today the way a blocked task does, so the Waiting screen's
   // person sections have something to show.
   it('seeds a task waiting on somebody', () => {
@@ -1591,21 +1583,13 @@ describe('demo seed — people', () => {
     expect(person!.archived).toBe(false);
   });
 
-  // Both facts already fall out of the existing seed with no new rows: the
-  // completed "Coffee with Mom" and the cooked, guested salmon dinner. A
-  // regression guard rather than new demo content.
+  // Already falls out of the existing seed with no new rows: the completed
+  // "Coffee with Mom". A regression guard rather than new demo content.
   it('has a year in review to show, from the existing seed alone', () => {
     const today = getCurrentDayStart();
     const { startIso, endIso } = taskYearRange(today);
     const timeCount = timeTogetherInRange(useTaskStore.getState().tasks, startIso, endIso);
     expect(timeCount).toBeGreaterThan(0);
-
-    // entries only holds whatever ±14-day window seeding loaded — the real
-    // read goes through the same DB-backed action Stats uses, the same call
-    // refreshCookingCounts already makes for the same reason.
-    const { startKey, endKey } = mealYearRange(today);
-    useMealPlanStore.getState().refreshPeopleYearMealCount(startKey, endKey);
-    expect(useMealPlanStore.getState().peopleYearMealCount).toBeGreaterThan(0);
   });
 
   it('seeds a note of every kind, since each one lands somewhere different', () => {
@@ -2005,23 +1989,6 @@ describe('demo seed — people', () => {
     expect(generated).toHaveLength(0);
   });
 
-  it('seeds a food note on somebody who is a guest at a seeded meal', () => {
-    const notes = usePersonNoteStore.getState().notes.filter(n => n.kind === 'food');
-    const guestIds = new Set(useMealPlanStore.getState().entries.flatMap(e => e.personIds));
-    expect(notes.some(n => guestIds.has(n.personId))).toBe(true);
-  });
-
-  it("seeds a meal that shows on its guests' own screens", () => {
-    const todayKey = dayKeyOf(new Date());
-    // Specifically an uncooked meal's guest — a cooked one (the steak night,
-    // seeded for the year-in-review stat) has already happened and rightly
-    // has nothing upcoming.
-    const guest = useMealPlanStore.getState().entries
-      .filter(e => !e.cookedAt)
-      .flatMap(e => e.personIds)
-      .find(Boolean)!;
-    expect(useMealPlanStore.getState().guestMealsFor(guest, todayKey, 60).length).toBeGreaterThan(0);
-  });
 });
 
 describe('demo seed — groceries, recipes, meals and the fridge', () => {
@@ -2856,7 +2823,12 @@ describe('demo seed — groceries, recipes, meals and the fridge', () => {
     expect(activeComponents(stirFry).some(c => c.choiceGroup === 'Rice')).toBe(false);
 
     // The ingredient-line detail the parser splits out, and the editor's labels.
-    expect(recipes.some(r => r.ingredients.some(i => i.section))).toBe(true);
+    // The sectioned recipe carries a method too: cook mode's ingredient panel
+    // heads its lines by section, and a recipe with no steps and no notes has
+    // no cook mode to show that in.
+    const sectioned = recipes.filter(r => r.ingredients.some(i => i.section));
+    expect(sectioned.length).toBeGreaterThan(0);
+    expect(sectioned.some(r => r.steps.length > 0 || r.notes)).toBe(true);
     expect(recipes.some(r => r.ingredients.some(i => i.prep))).toBe(true);
     expect(recipes.some(r => r.ingredients.some(i => i.purpose))).toBe(true);
     // A heading declared ahead of anything filed under it — see Recipe.emptySections.
@@ -2910,12 +2882,18 @@ describe('demo seed — groceries, recipes, meals and the fridge', () => {
       .toContain('oat milk instead, 1 cup');
 
     // The amount half, on the one recipe holding "brown sugar" and "sugar" as
-    // separate lines — so the longest match wins rather than "sugar" claiming
-    // the tail of the other — and spending its flour over two steps.
+    // separate lines: the whisking step's "brown sugar" takes the longest match,
+    // and the frosting step's plain "sugar" goes to the line actually called
+    // that rather than to the alias the brown sugar line also offers.
     const cake = notes(recipes.find(r => r.name.startsWith('Carrot cake'))!);
     expect(cake).toContain('200 g');
     expect(cake).toContain('400 g');
-    expect(cake.filter(note => note === '250 g in total')).toHaveLength(2);
+    expect(cake).toContain('250 g');
+
+    // The shorter name a method actually uses, and the amount it spends over
+    // two steps: the line is "2 chicken breasts" and both steps say "chicken".
+    const stirFry = notes(recipes.find(r => r.name.includes('stir-fry'))!);
+    expect(stirFry.filter(note => note === '2 in total')).toHaveLength(2);
 
     // And the refusal, on the method that reads "salt the steak on both sides":
     // an ingredient name used as a verb never takes an amount.

@@ -12,7 +12,7 @@ import {
 import Ionicons from '@expo/vector-icons/Ionicons';
 import { useNavigation } from '@react-navigation/native';
 import { useColors } from '../theme/ThemeContext';
-import { border, font, fontWeight, iconSize, interaction, radius, spacing, type Colors } from '../theme';
+import { font, iconSize, interaction, radius, spacing, type Colors } from '../theme';
 import { rankFoodCandidates, type RankedFood } from '../utils/foodSearchMatch';
 import {
   describeFoodSearchError,
@@ -24,6 +24,7 @@ import {
 import { haptics } from '../utils/haptics';
 import { EmptyState } from './EmptyState';
 import { SheetHeaderButton } from './SheetHeaderButton';
+import { SheetHeader } from './SheetHeader';
 import type { FoodNutrition } from '../types';
 
 /**
@@ -176,11 +177,11 @@ export function NutritionSearchSheet({ visible, itemName, onClose, onPick }: Pro
       onRequestClose={onClose}
     >
       <View style={styles.root}>
-        <View style={styles.header}>
-          <SheetHeaderButton label="Cancel" role="cancel" onPress={onClose} minWidth={64} />
-          <Text style={styles.headerTitle}>Find nutrition</Text>
-          <View style={styles.headerSpacer} />
-        </View>
+        <SheetHeader
+          title="Find nutrition"
+          left={<SheetHeaderButton label="Cancel" role="cancel" onPress={onClose} minWidth={64} />}
+          right={<View style={styles.headerSpacer} />}
+        />
 
         <View style={styles.searchRow}>
           <Ionicons name="search" size={iconSize.sm} color={colors.textTertiary} />
@@ -230,16 +231,6 @@ export function NutritionSearchSheet({ visible, itemName, onClose, onPick }: Pro
 function makeStyles(colors: Colors) {
   return StyleSheet.create({
     root: { flex: 1, backgroundColor: colors.bg },
-    header: {
-      flexDirection: 'row',
-      alignItems: 'center',
-      justifyContent: 'space-between',
-      paddingHorizontal: spacing.md,
-      paddingVertical: spacing.md,
-      borderBottomWidth: border.hairline,
-      borderBottomColor: colors.separator,
-    },
-    headerTitle: { color: colors.text, fontSize: font.md, fontWeight: fontWeight.semibold },
     headerSpacer: { minWidth: 64 },
     searchRow: {
       flexDirection: 'row',

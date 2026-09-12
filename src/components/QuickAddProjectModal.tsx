@@ -296,7 +296,7 @@ export function QuickAddProjectModal({
               maxLength={TITLE_MAX_LENGTH}
               blurOnSubmit={false}
             />
-            <TouchableOpacity
+            <TouchableOpacity hitSlop={8}
               style={[styles.addBtn, !title.trim() && styles.addBtnDisabled]}
               onPress={handleAdd}
               disabled={!title.trim()}

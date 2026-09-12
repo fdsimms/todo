@@ -46,6 +46,38 @@ describe('parseQuantity — the amount', () => {
   });
 });
 
+describe('parseQuantity — Unicode vulgar fractions', () => {
+  it('reads a whole number glued straight to the glyph, the shape decodeEntities writes', () => {
+    expect(amount('1½ cups')).toBe(1.5);
+    expect(amount('1¼ cups')).toBe(1.25);
+    expect(amount('2¾ cups')).toBe(2.75);
+  });
+
+  it('reads the glyph alone, with no whole number in front', () => {
+    expect(amount('½ cup')).toBe(0.5);
+    expect(amount('⅓ cup')).toBe(1 / 3);
+  });
+
+  it('still finds the unit after the glyph, not just the amount', () => {
+    const q = parseQuantity('1½ cups');
+    expect(q.unit).toBe('cup');
+    expect(q.unitWritten).toBe('cups');
+    expect(q.rest).toBe('cups');
+  });
+
+  it('is never read as a decimal', () => {
+    expect(parseQuantity('1½ cups').decimal).toBe(false);
+  });
+
+  it('covers every glyph decodeEntities can produce', () => {
+    expect(amount('1⅔ cups')).toBeCloseTo(5 / 3);
+    expect(amount('1⅛ cups')).toBe(1.125);
+    expect(amount('1⅜ cups')).toBe(1.375);
+    expect(amount('1⅝ cups')).toBe(1.625);
+    expect(amount('1⅞ cups')).toBe(1.875);
+  });
+});
+
 describe('parseQuantity — the unit', () => {
   it('splits the unit word off the prose that follows it', () => {
     const q = parseQuantity('1 cup, packed');

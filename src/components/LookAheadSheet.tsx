@@ -13,6 +13,7 @@ import { addDays } from 'date-fns/addDays';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { SafeBlurView } from './SafeBlurView';
 import { SheetHeaderButton } from './SheetHeaderButton';
+import { SheetHeader } from './SheetHeader';
 import { WhenPicker } from './WhenPicker';
 import { ScrollEdgeFade } from './ScrollEdgeFade';
 import { SheetScrim } from './SheetScrim';
@@ -647,18 +648,19 @@ export function LookAheadSheet({ visible, onClose }: Props) {
         ]}
       >
         <View style={styles.card}>
-          <View style={styles.header}>
-            <SheetHeaderButton
-              label={mode === 'move' ? 'Back' : 'Close'}
-              role="cancel"
-              onPress={mode === 'move' ? leaveMoveMode : dismiss}
-              minWidth={64}
-            />
-            <Text style={styles.sheetTitle} numberOfLines={1}>
-              {mode === 'move' ? 'Move out of the way' : 'Look ahead'}
-            </Text>
-            <View style={styles.headerSpacer} />
-          </View>
+          <SheetHeader
+            size="lg"
+            title={mode === 'move' ? 'Move out of the way' : 'Look ahead'}
+            left={
+              <SheetHeaderButton
+                label={mode === 'move' ? 'Back' : 'Close'}
+                role="cancel"
+                onPress={mode === 'move' ? leaveMoveMode : dismiss}
+                minWidth={64}
+              />
+            }
+            right={<View style={styles.headerSpacer} />}
+          />
 
           <View style={styles.scrollWrap}>
           <ScrollView
@@ -760,16 +762,6 @@ const makeStyles = (colors: Colors) => StyleSheet.create({
     borderRadius: radius.md,
     padding: 14,
   },
-  header: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'space-between',
-    paddingHorizontal: spacing.md,
-    paddingVertical: 14,
-    borderBottomWidth: border.hairline,
-    borderBottomColor: colors.separator,
-  },
-  sheetTitle: { color: colors.text, fontSize: font.lg, fontWeight: fontWeight.semibold },
   headerSpacer: { width: 64 },
   // Holds the list and the band together so the band anchors to the list's
   // own bottom edge rather than the card's, which is below the actions.

@@ -9,6 +9,7 @@ import { border, font, fontWeight, iconSize, interaction, radius, spacing, type 
 import { haptics } from '../utils/haptics';
 import { standingSwaps, type StandingSwap } from '../utils/standingSwaps';
 import { EmptyState } from './EmptyState';
+import { SheetHeader } from './SheetHeader';
 import { SheetHeaderButton } from './SheetHeaderButton';
 
 interface Props {
@@ -49,11 +50,11 @@ export function StandingSwapsSheet({ visible, onClose }: Props) {
   return (
     <Modal visible={visible} animationType="slide" presentationStyle="pageSheet" onRequestClose={onClose}>
       <View style={styles.root}>
-        <View style={styles.header}>
-          <View style={styles.headerSpacer} />
-          <Text style={styles.headerTitle}>Standing swaps</Text>
-          <SheetHeaderButton label="Done" onPress={onClose} minWidth={56} />
-        </View>
+        <SheetHeader
+          title="Standing swaps"
+          left={<View style={styles.headerSpacer} />}
+          right={<SheetHeaderButton label="Done" onPress={onClose} minWidth={56} />}
+        />
 
         {swaps.length === 0 ? (
           <View style={styles.emptyWrap}>
@@ -127,22 +128,6 @@ function captionFor(swap: StandingSwap): string | null {
 function makeStyles(colors: Colors) {
   return StyleSheet.create({
     root: { flex: 1, backgroundColor: colors.bg },
-    header: {
-      flexDirection: 'row',
-      alignItems: 'center',
-      justifyContent: 'space-between',
-      paddingHorizontal: spacing.md,
-      paddingVertical: spacing.md,
-      borderBottomWidth: border.hairline,
-      borderBottomColor: colors.separator,
-    },
-    headerTitle: {
-      flex: 1,
-      textAlign: 'center',
-      color: colors.text,
-      fontSize: font.md,
-      fontWeight: fontWeight.semibold,
-    },
     // Matches Done's own minWidth, so the title stays optically centred.
     headerSpacer: { width: 56 },
     emptyWrap: { flex: 1, paddingHorizontal: spacing.md },

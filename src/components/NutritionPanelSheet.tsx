@@ -1,9 +1,7 @@
 import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import {
   Alert,
-  KeyboardAvoidingView,
   Modal,
-  Platform,
   ScrollView,
   StyleSheet,
   Text,
@@ -38,6 +36,8 @@ import { NumberPadAccessory, NUMBER_PAD_ACCESSORY_ID } from './NumberPadAccessor
 import { NutritionBarcodeScanSheet } from './NutritionBarcodeScanSheet';
 import { SegmentedControl } from './SegmentedControl';
 import { SheetHeaderButton } from './SheetHeaderButton';
+import { SheetHeader } from './SheetHeader';
+import { useKeyboardInsetScroll } from '../hooks/useKeyboardInsetScroll';
 
 /**
  * Typing in a label panel by hand, for the food no database has.
@@ -150,6 +150,7 @@ const COLUMN_ORDINAL = ['First column', 'Second column', 'Third column'];
 export function NutritionPanelSheet({ visible, foodName, nutrition, onClose, onSave }: Props) {
   const colors = useColors();
   const styles = useMemo(() => makeStyles(colors), [colors]);
+  const keyboardScroll = useKeyboardInsetScroll<ScrollView>();
 
   const [form, setForm] = useState<PanelForm>(() => panelFormFrom(nutrition));
   // What the sheet opened saying, so the discard guard compares against the
@@ -351,21 +352,20 @@ export function NutritionPanelSheet({ visible, foodName, nutrition, onClose, onS
   return (
     <Modal visible={visible} animationType="slide" presentationStyle="pageSheet" onRequestClose={handleCancel}>
       <View style={styles.root}>
-        <View style={styles.header}>
-          <SheetHeaderButton label="Cancel" role="cancel" onPress={handleCancel} minWidth={64} />
-          <Text style={styles.headerTitle} numberOfLines={1}>{foodName}</Text>
-          <SheetHeaderButton label="Save" onPress={handleSave} minWidth={64} />
-        </View>
+        <SheetHeader
+          title={foodName}
+          left={<SheetHeaderButton label="Cancel" role="cancel" onPress={handleCancel} minWidth={64} />}
+          right={<SheetHeaderButton label="Save" onPress={handleSave} minWidth={64} />}
+        />
 
-        <KeyboardAvoidingView
-          style={styles.flex}
-          behavior={Platform.OS === 'ios' ? 'padding' : undefined}
-        >
+        <View style={styles.flex}>
           <ScrollView
+            ref={keyboardScroll.ref}
             style={styles.flex}
             contentContainerStyle={styles.body}
             keyboardShouldPersistTaps="handled"
             keyboardDismissMode="interactive"
+            {...keyboardScroll.props}
           >
             <Text style={styles.intro}>
               Copy the numbers off the package label. Leave a field blank if the label
@@ -503,7 +503,7 @@ export function NutritionPanelSheet({ visible, foodName, nutrition, onClose, onS
               </Text>
             )}
           </ScrollView>
-        </KeyboardAvoidingView>
+        </View>
         <NumberPadAccessory />
       </View>
       <NutritionBarcodeScanSheet
@@ -519,22 +519,6 @@ function makeStyles(colors: Colors) {
   return StyleSheet.create({
     root: { flex: 1, backgroundColor: colors.bg },
     flex: { flex: 1 },
-    header: {
-      flexDirection: 'row',
-      alignItems: 'center',
-      justifyContent: 'space-between',
-      paddingHorizontal: spacing.md,
-      paddingVertical: spacing.md,
-      borderBottomWidth: border.hairline,
-      borderBottomColor: colors.separator,
-    },
-    headerTitle: {
-      flex: 1,
-      textAlign: 'center',
-      color: colors.text,
-      fontSize: font.md,
-      fontWeight: fontWeight.semibold,
-    },
     body: { padding: spacing.md, paddingBottom: spacing.xl, gap: spacing.sm },
     intro: { color: colors.textSecondary, fontSize: font.sm, lineHeight: 18, marginBottom: spacing.sm },
     // Margin on both sides it needs: the group label below has no top margin of

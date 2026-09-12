@@ -354,10 +354,33 @@ export const getShadows = (isDark: boolean) => ({
     elevation: 3,
   },
   fab: {
+    shadowColor: '#000',
     shadowOffset: { width: 0, height: 4 },
     shadowOpacity: isDark ? 0.55 : 0.30,
     shadowRadius: 10,
     elevation: 8,
+  },
+  /**
+   * A centered popover card over a dimmed page — the date/time/birthday
+   * pickers. Deeper and softer than `card` because it floats well clear of
+   * the page rather than sitting on it. Was written out by hand in four
+   * pickers at the dark opacity regardless of theme, which in light left a
+   * charcoal halo round a white card.
+   */
+  popover: {
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 8 },
+    shadowOpacity: isDark ? 0.35 : 0.18,
+    shadowRadius: 20,
+    elevation: 12,
+  },
+  /** The side menu's trailing edge, cast sideways onto the page it covers. */
+  drawer: {
+    shadowColor: '#000',
+    shadowOffset: { width: 6, height: 0 },
+    shadowOpacity: isDark ? 0.35 : 0.15,
+    shadowRadius: 16,
+    elevation: 20,
   },
   sheet: {
     shadowColor: '#000',

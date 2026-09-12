@@ -11,7 +11,7 @@ import {
   View,
 } from 'react-native';
 import { useColors } from '../theme/ThemeContext';
-import { border, font, fontWeight, interaction, radius, spacing, type Colors } from '../theme';
+import { font, fontWeight, interaction, radius, spacing, type Colors } from '../theme';
 import { MEAL_SLOTS, MEAL_SLOT_LABELS, NUTRIENT_KEYS, type MealSlot } from '../types';
 import { useFoodLogStore } from '../store/useFoodLogStore';
 import { useRecipeStore } from '../store/useRecipeStore';
@@ -30,6 +30,7 @@ import { useKeyboardInsetScroll } from '../hooks/useKeyboardInsetScroll';
 import { InlineAction } from './InlineAction';
 import { SegmentedControl } from './SegmentedControl';
 import { SheetHeaderButton } from './SheetHeaderButton';
+import { SheetHeader } from './SheetHeader';
 
 /**
  * "Cheeseburger and fries at Five Guys", read into figures to confirm.
@@ -211,11 +212,11 @@ export function EstimateMealSheet({ visible, slot, at, onClose, onPickRecipe }: 
   return (
     <Modal visible={visible} animationType="slide" presentationStyle="pageSheet" onRequestClose={handleCancel}>
       <View style={styles.root}>
-        <View style={styles.header}>
-          <SheetHeaderButton label="Cancel" role="cancel" onPress={handleCancel} minWidth={64} />
-          <Text style={styles.headerTitle} numberOfLines={1}>Estimate a meal</Text>
-          <SheetHeaderButton label="Log" onPress={handleLog} disabled={!estimate} minWidth={64} />
-        </View>
+        <SheetHeader
+          title="Estimate a meal"
+          left={<SheetHeaderButton label="Cancel" role="cancel" onPress={handleCancel} minWidth={64} />}
+          right={<SheetHeaderButton label="Log" onPress={handleLog} disabled={!estimate} minWidth={64} />}
+        />
 
         <ScrollView
           ref={keyboardScroll.ref}
@@ -405,16 +406,6 @@ export function EstimateMealSheet({ visible, slot, at, onClose, onPickRecipe }: 
 function makeStyles(colors: Colors) {
   return StyleSheet.create({
     root: { flex: 1, backgroundColor: colors.bg },
-    header: {
-      flexDirection: 'row',
-      alignItems: 'center',
-      justifyContent: 'space-between',
-      paddingHorizontal: spacing.md,
-      paddingVertical: spacing.md,
-      borderBottomWidth: border.hairline,
-      borderBottomColor: colors.separator,
-    },
-    headerTitle: { flex: 1, textAlign: 'center', color: colors.text, fontSize: font.md, fontWeight: fontWeight.semibold },
     body: { flex: 1 },
     bodyContent: { padding: spacing.md, paddingBottom: spacing.xl, gap: spacing.md },
     label: {

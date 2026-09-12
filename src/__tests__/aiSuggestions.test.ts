@@ -20,7 +20,7 @@ import {
   nutritionLabelPhotoAiAvailable,
 } from '../services/aiSuggestions';
 import { MAX_MEAL_IDEAS } from '../utils/mealIdeas';
-import type { Task } from '../types';
+import { LEFTOVER_KEEP_DAYS_MAX, type Task } from '../types';
 
 // ---------------------------------------------------------------------------
 // Mocks
@@ -796,6 +796,7 @@ describe('extractRecipe', () => {
       servingsMax: null,
       prepMinutes: 45,
       recipeYield: null,
+      leftoverKeepDays: null,
       ingredients: [{ name: 'ground beef', quantity: '2 lb', aisle: 'Pantry', section: null, prep: null }],
       sourceTitle: null,
       sourceAuthor: null,
@@ -845,6 +846,42 @@ describe('extractRecipe', () => {
     );
     const result = await extractRecipe('some recipe', AISLES);
     expect(result.recipeYield).toBeNull();
+  });
+
+  it('reads how long the recipe says its leftovers keep, the low end of a range', async () => {
+    mockFetchOnce(
+      toolUseResponse('extract_recipe', {
+        name: 'Weeknight Chili',
+        leftoverKeepDays: 4,
+        items: [],
+      })
+    );
+    const result = await extractRecipe('some recipe', AISLES);
+    expect(result.leftoverKeepDays).toBe(4);
+  });
+
+  it('reads a zero leftoverKeepDays (nothing stated) as null', async () => {
+    mockFetchOnce(
+      toolUseResponse('extract_recipe', {
+        name: 'Chili',
+        leftoverKeepDays: 0,
+        items: [],
+      })
+    );
+    const result = await extractRecipe('some recipe', AISLES);
+    expect(result.leftoverKeepDays).toBeNull();
+  });
+
+  it('clamps a leftoverKeepDays past the sayable range', async () => {
+    mockFetchOnce(
+      toolUseResponse('extract_recipe', {
+        name: 'Preserves',
+        leftoverKeepDays: 500,
+        items: [],
+      })
+    );
+    const result = await extractRecipe('some recipe', AISLES);
+    expect(result.leftoverKeepDays).toBe(LEFTOVER_KEEP_DAYS_MAX);
   });
 
   it('reads the cross-references to other recipes off the page', async () => {
@@ -1037,7 +1074,8 @@ describe('extractRecipe', () => {
   it('does not call the network for empty text', async () => {
     const spy = jest.spyOn(global, 'fetch');
     await expect(extractRecipe('   ', AISLES)).resolves.toEqual({
-      name: '', servings: null, servingsMax: null, prepMinutes: null, recipeYield: null, ingredients: [],
+      name: '', servings: null, servingsMax: null, prepMinutes: null, recipeYield: null,
+      leftoverKeepDays: null, ingredients: [],
       sourceTitle: null, sourceAuthor: null, sourcePage: null, sourceType: null,
       references: [], steps: [], prepTasks: [],
     });
@@ -1254,6 +1292,7 @@ describe('extractRecipe', () => {
         servingsMax: null,
         prepMinutes: 45,
         recipeYield: null,
+        leftoverKeepDays: null,
         ingredients: [{ name: 'ground beef', quantity: '2 lb', aisle: 'Pantry', section: null, prep: null }],
         sourceTitle: null,
         sourceAuthor: null,
@@ -1284,7 +1323,8 @@ describe('extractRecipe', () => {
     it('does not call the network for an empty image', async () => {
       const spy = jest.spyOn(global, 'fetch');
       await expect(extractRecipe({ base64: '', mediaType: 'image/jpeg' }, AISLES)).resolves.toEqual({
-        name: '', servings: null, servingsMax: null, prepMinutes: null, recipeYield: null, ingredients: [],
+        name: '', servings: null, servingsMax: null, prepMinutes: null, recipeYield: null,
+        leftoverKeepDays: null, ingredients: [],
         sourceTitle: null, sourceAuthor: null, sourcePage: null, sourceType: null,
         references: [], steps: [], prepTasks: [],
       });
@@ -1345,6 +1385,110 @@ describe('extractRecipe', () => {
       await expect(suggestRecipeGroceries(PHOTO, AISLES)).resolves.toEqual([
         { name: 'ground beef', quantity: '2 lb', aisle: 'Pantry', section: null, prep: null },
       ]);
+    });
+  });
+
+  describe('from multiple photos', () => {
+    const PAGE_ONE = { base64: 'UGFnZTE=', mediaType: 'image/jpeg' as const };
+    const PAGE_TWO = { base64: 'UGFnZTI=', mediaType: 'image/jpeg' as const };
+
+    it('sends every photo as its own image block, in order, ahead of the text block', async () => {
+      const spy = mockFetchOnce(toolUseResponse('extract_recipe', { name: 'Chili', items: [] }));
+      await extractRecipe([PAGE_ONE, PAGE_TWO], AISLES);
+
+      const body = JSON.parse((spy.mock.calls[0][1] as RequestInit).body as string);
+      const content = body.messages[0].content;
+      expect(content).toHaveLength(3);
+      expect(content[0]).toEqual({
+        type: 'image',
+        source: { type: 'base64', media_type: 'image/jpeg', data: 'UGFnZTE=' },
+      });
+      expect(content[1]).toEqual({
+        type: 'image',
+        source: { type: 'base64', media_type: 'image/jpeg', data: 'UGFnZTI=' },
+      });
+      expect(content[2].type).toBe('text');
+    });
+
+    it('asks the model to read them as one continuous recipe, in reading order', async () => {
+      const spy = mockFetchOnce(toolUseResponse('extract_recipe', { name: 'Chili', items: [] }));
+      await extractRecipe([PAGE_ONE, PAGE_TWO], AISLES);
+
+      const body = JSON.parse((spy.mock.calls[0][1] as RequestInit).body as string);
+      const text = body.messages[0].content[2].text;
+      expect(text).toContain('2 photos of the same recipe, in reading order');
+      expect(text).toContain('page turn');
+    });
+
+    it('does not use the multi-photo wording for a single-entry array', async () => {
+      const spy = mockFetchOnce(toolUseResponse('extract_recipe', { name: 'Chili', items: [] }));
+      await extractRecipe([PAGE_ONE], AISLES);
+
+      const body = JSON.parse((spy.mock.calls[0][1] as RequestInit).body as string);
+      const text = body.messages[0].content[1].text;
+      expect(text).toContain('This is a photo of a recipe');
+    });
+
+    it('returns the same shape a single photo does', async () => {
+      mockFetchOnce(
+        toolUseResponse('extract_recipe', {
+          name: 'Weeknight Chili',
+          items: [{ name: 'ground beef', quantity: '2 lb', aisle: 'Pantry' }],
+        })
+      );
+      const result = await extractRecipe([PAGE_ONE, PAGE_TWO], AISLES);
+      expect(result.name).toBe('Weeknight Chili');
+      expect(result.ingredients).toEqual([
+        { name: 'ground beef', quantity: '2 lb', aisle: 'Pantry', section: null, prep: null },
+      ]);
+    });
+
+    it('does not call the network when every photo is empty', async () => {
+      const spy = jest.spyOn(global, 'fetch');
+      await expect(extractRecipe([
+        { base64: '', mediaType: 'image/jpeg' },
+        { base64: '', mediaType: 'image/jpeg' },
+      ], AISLES)).resolves.toEqual({
+        name: '', servings: null, servingsMax: null, prepMinutes: null, recipeYield: null,
+        leftoverKeepDays: null, ingredients: [],
+        sourceTitle: null, sourceAuthor: null, sourcePage: null, sourceType: null,
+        references: [], steps: [], prepTasks: [],
+      });
+      expect(spy).not.toHaveBeenCalled();
+    });
+
+    it('drops an empty entry and reads the rest', async () => {
+      const spy = mockFetchOnce(toolUseResponse('extract_recipe', { name: 'Chili', items: [] }));
+      await extractRecipe([PAGE_ONE, { base64: '', mediaType: 'image/jpeg' }], AISLES);
+
+      const body = JSON.parse((spy.mock.calls[0][1] as RequestInit).body as string);
+      // One image plus the text block — the empty entry never reaches the request.
+      expect(body.messages[0].content).toHaveLength(2);
+    });
+
+    it('allows more time than a single photo before aborting', async () => {
+      jest.useFakeTimers();
+      jest.spyOn(global, 'fetch').mockImplementation((_url, init) => {
+        return new Promise((_resolve, reject) => {
+          (init as RequestInit).signal?.addEventListener('abort', () => {
+            const err = new Error('Aborted');
+            err.name = 'AbortError';
+            reject(err);
+          });
+        });
+      });
+
+      const promise = extractRecipe([PAGE_ONE, PAGE_TWO], AISLES);
+      const assertion = expect(promise).rejects.toThrow('Request timed out');
+
+      // Past the single-photo 40s budget, and still in flight.
+      let settled = false;
+      void promise.catch(() => { settled = true; });
+      await jest.advanceTimersByTimeAsync(40_000);
+      expect(settled).toBe(false);
+
+      await jest.advanceTimersByTimeAsync(15_000);
+      await assertion;
     });
   });
 });

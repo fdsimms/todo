@@ -431,7 +431,6 @@ const makeStyles = (colors: Colors) => StyleSheet.create({
   dragCard: {
     backgroundColor: colors.bgSecondary,
     borderRadius: radius.md,
-    shadowColor: '#000',
   },
   moreRow: {
     borderTopWidth: StyleSheet.hairlineWidth,

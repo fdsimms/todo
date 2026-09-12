@@ -22,6 +22,7 @@ import { PRIORITY_SEGMENTS } from '../utils/prioritySegments';
 import { SegmentedControl, type SegmentOption } from './SegmentedControl';
 import { CollapsibleField } from './CollapsibleField';
 import { InlineAction } from './InlineAction';
+import { SheetHeader } from './SheetHeader';
 import { SheetHeaderButton } from './SheetHeaderButton';
 import { EditorSheet } from './EditorSheet';
 
@@ -166,13 +167,12 @@ export function TitleRuleSheet({ visible, rule, onSave, onDelete, onClose }: Pro
       scrollStyle={styles.scroll}
       scrollContentStyle={styles.scrollContent}
       header={
-        <>
-          <SheetHeaderButton label="Cancel" role="cancel" onPress={onClose} minWidth={64} />
-          <View style={styles.headerTitleWrap}>
-            <Text style={styles.headerTitle}>{rule ? 'Edit rule' : 'New rule'}</Text>
-          </View>
-          <SheetHeaderButton label="Done" onPress={save} disabled={!!blocked} minWidth={64} />
-        </>
+        <SheetHeader
+          bare
+          title={rule ? 'Edit rule' : 'New rule'}
+          left={<SheetHeaderButton label="Cancel" role="cancel" onPress={onClose} minWidth={64} />}
+          right={<SheetHeaderButton label="Done" onPress={save} disabled={!!blocked} minWidth={64} />}
+        />
       }
     >
       <Text style={styles.groupLabel}>When a title…</Text>
@@ -520,8 +520,6 @@ const makeStyles = (colors: Colors) => StyleSheet.create({
     paddingHorizontal: spacing.md, paddingVertical: spacing.md,
     borderBottomWidth: StyleSheet.hairlineWidth, borderBottomColor: colors.separator,
   },
-  headerTitleWrap: { flex: 1, alignItems: 'center', paddingHorizontal: spacing.sm },
-  headerTitle: { color: colors.text, fontSize: font.md, fontWeight: '600' },
   scroll: { flex: 1 },
   scrollContent: { paddingTop: spacing.md, paddingBottom: 120 },
   groupLabel: {

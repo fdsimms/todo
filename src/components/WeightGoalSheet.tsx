@@ -35,6 +35,7 @@ import {
 } from '../utils/energyBudget';
 import { EditorSheet } from './EditorSheet';
 import { SegmentedControl } from './SegmentedControl';
+import { SheetHeader } from './SheetHeader';
 import { SheetHeaderButton } from './SheetHeaderButton';
 import { CountStepper } from './CountStepper';
 import { InlineAction } from './InlineAction';
@@ -242,11 +243,12 @@ export function WeightGoalSheet({ visible, onClose, currentKg }: Props) {
       scrollStyle={styles.scroll}
       scrollContentStyle={styles.scrollContent}
       header={
-        <>
-          <SheetHeaderButton label="Cancel" role="cancel" onPress={onClose} minWidth={64} />
-          <Text style={styles.headerTitle}>Weight goal</Text>
-          <SheetHeaderButton label="Save" onPress={save} disabled={!canSave} minWidth={64} />
-        </>
+        <SheetHeader
+          bare
+          title="Weight goal"
+          left={<SheetHeaderButton label="Cancel" role="cancel" onPress={onClose} minWidth={64} />}
+          right={<SheetHeaderButton label="Save" onPress={save} disabled={!canSave} minWidth={64} />}
+        />
       }
     >
       {startKg === null ? (
@@ -587,7 +589,6 @@ const makeStyles = (colors: Colors) => StyleSheet.create({
     paddingHorizontal: spacing.md,
     paddingVertical: spacing.sm,
   },
-  headerTitle: { fontSize: font.md, fontWeight: fontWeight.semibold, color: colors.text },
   scroll: { flex: 1 },
   scrollContent: { padding: spacing.md, paddingBottom: spacing.xl },
   sectionTitle: {

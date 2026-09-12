@@ -19,6 +19,7 @@ import { MEAL_SLOTS } from '../types';
 import { useColors, useTheme } from '../theme/ThemeContext';
 import { spacing, radius, font, fontWeight, border, animation, interaction, iconSize, type Colors } from '../theme';
 import { haptics } from '../utils/haptics';
+import { SegmentedControl } from './SegmentedControl';
 import { SafeBlurView } from './SafeBlurView';
 import { SheetHeaderButton } from './SheetHeaderButton';
 import { ScrollEdgeFade } from './ScrollEdgeFade';
@@ -257,23 +258,12 @@ export function PlanMealSheet({ visible, title, defaultSlot, onPlan, onPlanned, 
           </View>
 
           <Text style={styles.label}>Meal</Text>
-          <View style={styles.chips}>
-            {MEAL_SLOTS.map(s => {
-              const on = s === slot;
-              return (
-                <TouchableOpacity
-                  key={s}
-                  style={[styles.chip, on && styles.chipOn]}
-                  onPress={() => { haptics.tap(); setSlot(s); setPlanned(null); }}
-                  activeOpacity={interaction.activeOpacity}
-                  accessibilityRole="button"
-                  accessibilityState={{ selected: on }}
-                  accessibilityLabel={slotLabel(s)}
-                >
-                  <Text style={[styles.chipText, on && styles.chipTextOn]}>{slotLabel(s)}</Text>
-                </TouchableOpacity>
-              );
-            })}
+          <View style={styles.segment}>
+            <SegmentedControl
+              options={MEAL_SLOTS.map(s => ({ value: s, label: slotLabel(s) }))}
+              value={slot}
+              onChange={s => { setSlot(s); setPlanned(null); }}
+            />
           </View>
 
           {planned ? (
@@ -381,6 +371,7 @@ const makeStyles = (colors: Colors) => StyleSheet.create({
     gap: spacing.xs,
     paddingHorizontal: spacing.md,
   },
+  segment: { paddingHorizontal: spacing.md },
   dayChip: {
     flex: 1,
     alignItems: 'center',
@@ -399,19 +390,8 @@ const makeStyles = (colors: Colors) => StyleSheet.create({
     fontSize: font.sm,
     fontWeight: fontWeight.medium,
   },
-  chip: {
-    paddingHorizontal: spacing.md,
-    paddingVertical: 7,
-    borderRadius: radius.full,
-    backgroundColor: colors.bgTertiary,
-  },
   chipOn: {
     backgroundColor: colors.accentFill,
-  },
-  chipText: {
-    color: colors.text,
-    fontSize: font.sm,
-    fontWeight: fontWeight.medium,
   },
   chipTextOn: {
     color: colors.onAccent,

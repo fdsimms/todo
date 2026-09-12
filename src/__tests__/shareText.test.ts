@@ -145,6 +145,34 @@ describe('buildRecipeShareText', () => {
     expect(lines[ingredientsAt + 3]).toBe('- 2 tbsp Butter');
   });
 
+  it("opens each of the recipe's own section headings where it changes", () => {
+    const r = recipe('r1', 'Carrot cake', {
+      ingredients: [
+        ing('Flour', { section: 'For the cake' }),
+        ing('Eggs', { section: 'For the cake' }),
+        ing('Cream cheese', { section: 'For the frosting' }),
+      ],
+    });
+    const lines = buildRecipeShareText(r, recipeMap([r])).split('\n');
+    const at = lines.indexOf('Ingredients:');
+    expect(lines.slice(at + 1, at + 6)).toEqual([
+      'For the cake:', '- Flour', '- Eggs', 'For the frosting:', '- Cream cheese',
+    ]);
+  });
+
+  it("re-opens a section a component shares a label with the recipe above it", () => {
+    const mash = recipe('r2', 'Mash', { ingredients: [ing('Butter', { section: 'To finish' })] });
+    const steak = recipe('r1', 'Steak with mash', {
+      ingredients: [ing('Parsley', { section: 'To finish' })],
+      components: [link('r2', 'Mash')],
+    });
+    const lines = buildRecipeShareText(steak, recipeMap([steak, mash])).split('\n');
+    const at = lines.indexOf('Ingredients:');
+    expect(lines.slice(at + 1, at + 6)).toEqual([
+      'To finish:', '- Parsley', 'For the Mash:', 'To finish:', '- Butter',
+    ]);
+  });
+
   it('numbers steps when the recipe has them', () => {
     const r = recipe('r1', 'Toast', {
       steps: [{ id: 's1', text: 'Toast the bread.' }, { id: 's2', text: 'Butter it.' }],
@@ -272,7 +300,7 @@ describe('buildWeekPlanShareText', () => {
     return {
       id: `m-${++seq}`, date, slot, recipeId: null, title: 'Meal', sortOrder: 1,
       createdAt: '2026-01-01T00:00:00.000Z', cookedAt: null, leftoverId: null,
-      recipeChoices: [], personIds: [], recipeScale: 1, cookTask: null, shopTask: null, logMeal: null, calendarEventId: null,
+      recipeChoices: [], recipeScale: 1, cookTask: null, shopTask: null, logMeal: null, calendarEventId: null,
       ...overrides,
     };
   }

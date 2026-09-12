@@ -22,6 +22,7 @@ import { NumberPadAccessory, NUMBER_PAD_ACCESSORY_ID } from './NumberPadAccessor
 import { NutritionPanelSheet } from './NutritionPanelSheet';
 import { NutritionSearchSheet } from './NutritionSearchSheet';
 import { SheetHeaderButton } from './SheetHeaderButton';
+import { SheetHeader } from './SheetHeader';
 
 /**
  * A dish's whole nutrition panel, and the ingredients it couldn't count.
@@ -236,11 +237,13 @@ export function RecipeNutritionSheet({ visible, reading, onClose }: Props) {
       scrollStyle={styles.scroll}
       scrollContentStyle={styles.scrollContent}
       header={
-        <>
-          <SheetHeaderButton label="Done" onPress={onClose} minWidth={40} />
-          <Text style={styles.headerTitle}>Nutrition</Text>
-          <View style={styles.headerSpacer} />
-        </>
+        <SheetHeader
+          bare
+          title="Nutrition"
+          size="lg"
+          left={<SheetHeaderButton label="Done" onPress={onClose} minWidth={40} />}
+          right={<View style={styles.headerSpacer} />}
+        />
       }
       footer={
         <>
@@ -476,7 +479,7 @@ export function RecipeNutritionSheet({ visible, reading, onClose }: Props) {
             <Text style={styles.hint}>
               These lines don't match anything in your grocery catalog, so there's nowhere
               to keep figures for them yet. Adding one lets you set a brand, a price or
-              figures for it — most one-off ingredients are fine left as they are.
+              figures for it. Most one-off ingredients are fine left as they are.
             </Text>
           </View>
         </>
@@ -501,7 +504,6 @@ function makeStyles(colors: Colors) {
       borderBottomWidth: 1,
       borderBottomColor: colors.separator,
     },
-    headerTitle: { fontSize: font.lg, fontWeight: fontWeight.semibold, color: colors.text },
     headerSpacer: { minWidth: 40 },
     scroll: { flex: 1 },
     scrollContent: { padding: spacing.md, paddingBottom: spacing.xl },

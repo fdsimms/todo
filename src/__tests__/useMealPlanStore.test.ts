@@ -145,7 +145,6 @@ function entry(
     cookedAt: null,
     leftoverId: null,
     recipeChoices: [],
-    personIds: [],
     recipeScale: 1,
     cookTask: null,
     shopTask: null,
@@ -283,36 +282,6 @@ describe('refreshPlannedSlotCounts', () => {
     useMealPlanStore.getState().refreshPlannedSlotCounts(['2026-08-11']);
 
     expect(counts()).toBe(first);
-  });
-});
-
-describe('refreshPeopleYearMealCount', () => {
-  it('is null until something asks — an absent count is not a zero', () => {
-    expect(useMealPlanStore.getState().peopleYearMealCount).toBeNull();
-  });
-
-  it('counts a cooked meal with a guest out of the database, not the loaded week', () => {
-    loadWeek([entry('2026-03-05', 'dinner')]);
-    (dbGetMealPlanEntries as jest.Mock).mockReturnValue([
-      entry('2026-06-01', 'dinner', { cookedAt: '2026-06-01T19:00:00.000Z', personIds: ['p1'] }),
-      entry('2026-06-02', 'dinner', { cookedAt: '2026-06-02T19:00:00.000Z', personIds: [] }),
-      entry('2026-06-03', 'dinner', { personIds: ['p1'] }),
-    ]);
-
-    useMealPlanStore.getState().refreshPeopleYearMealCount('2026-01-01', '2026-12-31');
-
-    expect(useMealPlanStore.getState().peopleYearMealCount).toBe(1);
-    expect(dbGetMealPlanEntries).toHaveBeenLastCalledWith('2026-01-01', '2026-12-31');
-  });
-
-  it('does not re-render on an unchanged count', () => {
-    (dbGetMealPlanEntries as jest.Mock).mockReturnValue([
-      entry('2026-06-01', 'dinner', { cookedAt: '2026-06-01T19:00:00.000Z', personIds: ['p1'] }),
-    ]);
-    useMealPlanStore.getState().refreshPeopleYearMealCount('2026-01-01', '2026-12-31');
-    const before = useMealPlanStore.getState();
-    useMealPlanStore.getState().refreshPeopleYearMealCount('2026-01-01', '2026-12-31');
-    expect(useMealPlanStore.getState()).toBe(before);
   });
 });
 
@@ -855,35 +824,6 @@ describe('setRecipeChoices', () => {
 
     useMealPlanStore.getState().setRecipeChoices('gone', ['c-roast']);
 
-    expect(dbUpdateMealPlanEntry).not.toHaveBeenCalled();
-  });
-});
-
-describe('setMealGuests', () => {
-  it('records who is coming and writes it back', () => {
-    const dinner = entry('2026-08-05', 'dinner');
-    loadWeek([dinner]);
-
-    useMealPlanStore.getState().setMealGuests(dinner.id, ['p1', 'p2']);
-
-    expect(getEntries().find(e => e.id === dinner.id)!.personIds).toEqual(['p1', 'p2']);
-    expect(dbUpdateMealPlanEntry).toHaveBeenCalledWith(
-      expect.objectContaining({ id: dinner.id, personIds: ['p1', 'p2'] })
-    );
-  });
-
-  it('replaces rather than merges, so unticking somebody removes them', () => {
-    const dinner = entry('2026-08-05', 'dinner', { personIds: ['p1', 'p2'] });
-    loadWeek([dinner]);
-
-    useMealPlanStore.getState().setMealGuests(dinner.id, ['p1']);
-
-    expect(getEntries().find(e => e.id === dinner.id)!.personIds).toEqual(['p1']);
-  });
-
-  it('is a no-op for an entry that is not loaded', () => {
-    loadWeek([]);
-    useMealPlanStore.getState().setMealGuests('missing', ['p1']);
     expect(dbUpdateMealPlanEntry).not.toHaveBeenCalled();
   });
 });

@@ -7,6 +7,7 @@ import { haptics } from '../utils/haptics';
 import { useSheetHiddenOffset } from '../hooks/useSheetHiddenOffset';
 import { SheetScrim } from './SheetScrim';
 import { SheetHeaderButton } from './SheetHeaderButton';
+import { SheetHeader } from './SheetHeader';
 import { SegmentedControl } from './SegmentedControl';
 import { PressableScale } from './PressableScale';
 import { logsInDayRange } from '../utils/moodHistory';
@@ -117,11 +118,12 @@ export function MoodExportSheet({ visible, logs, onClose }: {
           <SheetScrim onPress={dismiss} />
         </Animated.View>
         <Animated.View style={[styles.sheet, { transform: [{ translateY }] }]}>
-          <View style={styles.header}>
-            <SheetHeaderButton label="Cancel" role="cancel" onPress={dismiss} minWidth={64} />
-            <Text style={styles.title}>Export</Text>
-            <View style={styles.headerSpacer} />
-          </View>
+          <SheetHeader
+            size="lg"
+            title="Export"
+            left={<SheetHeaderButton label="Cancel" role="cancel" onPress={dismiss} minWidth={64} />}
+            right={<View style={styles.headerSpacer} />}
+          />
 
           <View style={styles.body}>
             <Text style={styles.hint}>
@@ -166,12 +168,6 @@ const makeStyles = (colors: Colors) => StyleSheet.create({
     borderTopRightRadius: radius.lg,
     paddingBottom: 40,
   },
-  header: {
-    flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between',
-    paddingHorizontal: spacing.md, paddingVertical: spacing.md,
-    borderBottomWidth: StyleSheet.hairlineWidth, borderBottomColor: colors.separator,
-  },
-  title: { color: colors.text, fontSize: font.lg, fontWeight: fontWeight.semibold },
   headerSpacer: { minWidth: 64 },
   body: { padding: spacing.md, gap: spacing.md },
   hint: { fontSize: font.sm, color: colors.textSecondary, lineHeight: 20 },

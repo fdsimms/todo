@@ -6,6 +6,9 @@ import { pickRecipePhoto, type RecipePhoto, type RecipePhotoSource } from '../ut
 import type { RecipeInputMode } from '../components/RecipeSourcePicker';
 import { haptics } from '../utils/haptics';
 
+/** Every call site that doesn't opt into more — a receipt is one document, not several pages to combine. */
+const DEFAULT_MAX_PHOTOS = 1;
+
 export interface ResolvedRecipeSource {
   /** What `extractRecipe` reads — the pasted text, the photo, or the page's. */
   source: RecipeSource;
@@ -57,6 +60,13 @@ export function alertPhotoAccessDenied(
  * each sheet's own `run()` would be three copies of the same two-step. The
  * sheets stayed one line different from what they were: `input.source` became
  * `await input.resolveSource()`.
+ *
+ * **`photos` is an array for every caller, even the ones that only ever hold
+ * one.** `maxPhotos` is what tells them apart: the default of 1 keeps the
+ * receipt scanner's "one document" behavior (`pick` replaces rather than
+ * appends, and there is nothing to remove but the whole thing), while a recipe
+ * import sheet passes `MAX_RECIPE_PHOTOS` to let a cookbook page that runs
+ * across a page turn be photographed as more than one image.
  */
 export function useRecipeImportSource(
   initialMode: RecipeInputMode = 'paste',
@@ -68,11 +78,13 @@ export function useRecipeImportSource(
    * off a page" is simply the wrong sentence.
    */
   purpose = 'read a recipe off a page',
+  /** How many photos `pick` will accumulate before it stops adding more. */
+  maxPhotos = DEFAULT_MAX_PHOTOS,
 ) {
   const [mode, setMode] = useState<RecipeInputMode>(initialMode);
   const [text, setText] = useState('');
   const [url, setUrl] = useState('');
-  const [photo, setPhoto] = useState<RecipePhoto | null>(null);
+  const [photos, setPhotos] = useState<RecipePhoto[]>([]);
   const [picking, setPicking] = useState(false);
   const [photoError, setPhotoError] = useState<string | null>(null);
   const [fetching, setFetching] = useState(false);
@@ -82,7 +94,7 @@ export function useRecipeImportSource(
     setMode(initialMode);
     setText('');
     setUrl('');
-    setPhoto(null);
+    setPhotos([]);
     setPicking(false);
     setPhotoError(null);
     setFetching(false);
@@ -96,7 +108,10 @@ export function useRecipeImportSource(
       const result = await pickRecipePhoto(source);
       if (result.status === 'ok') {
         haptics.success();
-        setPhoto(result.photo);
+        // `maxPhotos === 1` keeps the old replace-on-pick behavior rather than
+        // ever holding two — a receipt re-photographed is a correction, not a
+        // second page.
+        setPhotos(prev => (maxPhotos > 1 ? [...prev, result.photo] : [result.photo]).slice(0, maxPhotos));
       } else if (result.status === 'denied') {
         alertPhotoAccessDenied(source, result.canAskAgain, purpose);
       } else if (result.status === 'failed') {
@@ -106,11 +121,12 @@ export function useRecipeImportSource(
     } finally {
       setPicking(false);
     }
-  }, [purpose]);
+  }, [purpose, maxPhotos]);
 
-  const clearPhoto = useCallback(() => {
-    setPhoto(null);
+  /** Drops one photo by index, or every photo when called with none. */
+  const clearPhoto = useCallback((index?: number) => {
     setPhotoError(null);
+    setPhotos(prev => (index === undefined ? [] : prev.filter((_, i) => i !== index)));
   }, []);
 
   /**
@@ -128,7 +144,9 @@ export function useRecipeImportSource(
     // Cleared up front so a second run can never attribute its recipe to the
     // page the *previous* run fetched.
     setPage(null);
-    if (mode === 'photo') return photo ? { source: photo, page: null } : null;
+    // extractRecipe treats a one-entry array exactly like a bare image, so
+    // there's no need to unwrap it back to a single object here.
+    if (mode === 'photo') return photos.length ? { source: photos, page: null } : null;
     if (mode === 'paste') return text.trim() ? { source: text, page: null } : null;
 
     const typed = url.trim();
@@ -141,13 +159,14 @@ export function useRecipeImportSource(
     } finally {
       setFetching(false);
     }
-  }, [mode, photo, text, url]);
+  }, [mode, photos, text, url]);
 
   return {
     mode, setMode,
     text, setText,
     url, setUrl,
-    photo, clearPhoto,
+    photos, clearPhoto,
+    maxPhotos,
     picking, pick,
     photoError,
     /** True only while the page request is in flight, not during extraction. */

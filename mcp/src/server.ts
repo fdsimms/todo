@@ -22,7 +22,7 @@ import { McpServer } from '@modelcontextprotocol/sdk/server/mcp.js';
 import { StreamableHTTPServerTransport } from '@modelcontextprotocol/sdk/server/streamableHttp.js';
 import { z } from 'zod';
 
-import { authorize } from './auth';
+import { authorize, scopeFor, type AuthScope } from './auth';
 import { installExpoSqliteShim, openReplica, type Replica } from './replica';
 import { openSyncStore, DEFAULT_RETENTION_DAYS, type SyncStore } from './syncStore';
 import {
@@ -33,10 +33,16 @@ import {
   listGroceryItems,
   listMedicationLogs,
   listMoodLogs,
+  createTask,
+  createTemplate,
+  completeTask,
+  deferTask,
   listProjects,
   listTasks,
+  listTemplates,
   searchTasks,
 } from './tools';
+import { ANCHORS, CONTAINERS, QUESTION_KINDS, QUESTION_SOURCES, SCHEDULE_FREQUENCIES } from './templatePlan';
 
 /** `YYYY-MM-DD`, the shape every day-keyed table stores and sorts on. */
 const dayKey = z.string().regex(/^\d{4}-\d{2}-\d{2}$/, 'Expected YYYY-MM-DD.');
@@ -62,7 +68,16 @@ function json(value: unknown) {
   return { content: [{ type: 'text' as const, text: JSON.stringify(value, null, 2) }] };
 }
 
-export function buildMcpServer(replica: Replica): McpServer {
+/**
+ * Write tools are registered per request, only for a caller that presented the
+ * write token.
+ *
+ * Cheap to do here because the transport is stateless, so this runs once per
+ * request with that request's scope already known — and stronger than a check
+ * inside each handler: a read-scoped caller does not see the write tools in
+ * `tools/list` at all, so there is nothing for a model to try and be refused.
+ */
+export function buildMcpServer(replica: Replica, scope: AuthScope = 'read'): McpServer {
   const server = new McpServer({ name: 'todo', version: '0.1.0' });
 
   // Every handler refreshes first. The replica caches reads for the length of a
@@ -78,17 +93,36 @@ export function buildMcpServer(replica: Replica): McpServer {
   // next question will not pick up. A failure is swallowed on purpose — a store
   // that is down should mean slightly stale answers, not no answers.
   let lastSyncAt = 0;
-  const withFresh = async <T>(fn: () => T): Promise<T> => {
-    if (Date.now() - lastSyncAt > SYNC_THROTTLE_MS) {
-      lastSyncAt = Date.now();
-      try {
-        await replica.sync();
-      } catch (e) {
-        console.error('Replica sync failed; answering from the database as it stands', e);
-      }
+  const exchange = async (): Promise<void> => {
+    lastSyncAt = Date.now();
+    try {
+      await replica.sync();
+    } catch (e) {
+      console.error('Replica sync failed; answering from the database as it stands', e);
     }
+  };
+
+  const withFresh = async <T>(fn: () => T): Promise<T> => {
+    if (Date.now() - lastSyncAt > SYNC_THROTTLE_MS) await exchange();
     replica.refresh();
     return fn();
+  };
+
+  /**
+   * A write, then a push, ignoring the throttle.
+   *
+   * The throttle is about not spending a round trip per *read*, and a write is
+   * the opposite case: `withFresh` syncs before the tool runs, so a write
+   * performed inside one has missed its own push and would sit in the replica
+   * until something else happened to call a tool. That is up to ten seconds of
+   * a template that exists on the server and nowhere else, which to the person
+   * who asked for it is indistinguishable from the call having failed.
+   */
+  const withWrite = async <T>(fn: () => T): Promise<T> => {
+    replica.refresh();
+    const result = fn();
+    await exchange();
+    return result;
   };
 
   server.tool(
@@ -154,7 +188,184 @@ export function buildMcpServer(replica: Replica): McpServer {
     async input => json(await withFresh(() => listMedicationLogs(replica, input)))
   );
 
+  server.tool(
+    'list_templates',
+    'Stored task templates: name, category, how many items, the item groups, and the questions a run asks. Use this to find a template to nest inside another.',
+    {},
+    async () => json(await withFresh(() => listTemplates(replica)))
+  );
+
+  if (scope === 'write') registerWriteTools(server, replica, withWrite);
+
   return server;
+}
+
+/**
+ * The zod mirror of `TemplatePlan`.
+ *
+ * Deliberately not generated from the TypeScript: what the model needs is the
+ * `.describe()` on each field, and those are documentation rather than types.
+ * The two are kept in step by `templatePlan.test.ts` exercising the same shapes.
+ */
+const conditionSchema = z.object({
+  question: z.string().describe('The name of a choice question defined in this plan.'),
+  values: z.array(z.string()).min(1).describe('Which of that question\'s options switch this item on.'),
+});
+
+const itemSchema = z.object({
+  title: z.string().min(1),
+  notes: z.string().optional(),
+  optional: z.boolean().optional().describe('Starts unticked in a run. A condition replaces this rather than stacking with it.'),
+  anchor: z.enum(ANCHORS as unknown as [string, ...string[]]).optional().describe('Which anchor date the offsets below count from.'),
+  dueOffsetDays: z.number().int().nullable().optional(),
+  deferOffsetDays: z.number().int().nullable().optional(),
+  deadlineOffsetDays: z.number().int().nullable().optional(),
+  windowStart: z.string().nullable().optional().describe('HH:MM.'),
+  windowEnd: z.string().nullable().optional().describe('HH:MM.'),
+  reminderOffsetMinutes: z.number().int().nullable().optional(),
+  timeSegments: z.array(z.enum(['morning', 'afternoon', 'evening'])).optional(),
+  tags: z.array(z.string()).optional(),
+  category: z.string().nullable().optional(),
+  priority: z.number().int().min(0).max(4).optional(),
+  effort: z.number().int().min(0).max(6).optional(),
+  estimatedMinutes: z.number().int().positive().nullable().optional(),
+  recurrenceType: z.string().optional(),
+  recurrenceInterval: z.number().int().positive().optional(),
+  recurrenceDays: z.array(z.number().int().min(0).max(6)).optional(),
+  recurrenceMonthDay: z.number().int().min(1).max(31).nullable().optional(),
+  recurrenceFromCompletion: z.boolean().optional(),
+  vacationPause: z.boolean().optional(),
+  excludeFromSuggestions: z.boolean().optional(),
+  gatesApps: z.boolean().optional(),
+  subtasks: z.array(z.object({ id: z.string(), title: z.string() })).optional(),
+  groupKey: z.string().optional().describe('The key of a group defined in this plan.'),
+  conditions: z.array(conditionSchema).optional(),
+  refTemplate: z.string().optional().describe('An existing template id, or its name when unique, to nest here.'),
+});
+
+function registerWriteTools(
+  server: McpServer,
+  replica: Replica,
+  withWrite: <T>(fn: () => T) => Promise<T>
+): void {
+  server.tool(
+    'create_task',
+    "Add a task. The app's own defaults apply (a default category, its time-of-day segment, title rules), so the result reports what the task actually became rather than only its id.",
+    {
+      title: z.string().min(1),
+      notes: z.string().optional(),
+      category: z.string().nullable().optional(),
+      tags: z.array(z.string()).optional(),
+      projectId: z.string().nullable().optional(),
+      dueDate: z.string().nullable().optional().describe('ISO date-time.'),
+      deferUntil: z.string().nullable().optional().describe('ISO date-time. Hides the task until then.'),
+      deadline: z.string().nullable().optional().describe('ISO date-time. Informational; does not affect visibility.'),
+      reminderTime: z.string().nullable().optional().describe('ISO date-time.'),
+      timeSegments: z.array(z.enum(['morning', 'afternoon', 'evening'])).optional(),
+      priority: z.number().int().min(0).max(4).optional(),
+      effort: z.number().int().min(0).max(6).optional(),
+      estimatedMinutes: z.number().int().positive().nullable().optional(),
+      recurrenceType: z.string().optional().describe("'none', 'daily', 'weekly', 'monthly', 'yearly' and the app's other rule kinds."),
+      recurrenceInterval: z.number().int().positive().optional(),
+      recurrenceDays: z.array(z.number().int().min(0).max(6)).optional(),
+      parentId: z.string().nullable().optional().describe('Makes this a subtask of that task.'),
+      // Without this no task created here could ever ask a question, which
+      // makes complete_task's whole answer path unreachable for anything but a
+      // task the user made in the app.
+      deliverableKind: z.enum(['text', 'date', 'number']).nullable().optional()
+        .describe('Makes completing this task ask for an answer of that kind, recorded on the row.'),
+    },
+    async input => {
+      try {
+        // eslint-disable-next-line @typescript-eslint/no-explicit-any
+        return json(await withWrite(() => createTask(replica, input as any)));
+      } catch (e) {
+        return json({ error: e instanceof Error ? e.message : 'Could not create the task.' });
+      }
+    }
+  );
+
+  server.tool(
+    'create_template',
+    'Create a task template: its items, item groups, the questions a run asks, an optional firing schedule, and references to other templates. Everything is created in one call; an invalid plan creates nothing and reports every problem at once.',
+    {
+      name: z.string().min(1),
+      category: z.string().nullable().optional(),
+      container: z.enum(CONTAINERS as unknown as [string, ...string[]]).optional()
+        .describe('What a run puts the tasks in: none, a stack, a project, or one task with subtasks.'),
+      anchorsAreAway: z.boolean().optional().describe('Whether the anchor dates mean a period away from home.'),
+      groups: z.array(z.object({
+        key: z.string().min(1).describe('Your own handle for this group, used by an item groupKey.'),
+        title: z.string().min(1),
+      })).optional(),
+      questions: z.array(z.object({
+        name: z.string().optional().describe('The {blank} this fills. Omit for a people question, which fills none.'),
+        prompt: z.string(),
+        kind: z.enum(QUESTION_KINDS as unknown as [string, ...string[]]),
+        options: z.array(z.string()).optional().describe('Required for a choice, at least two. The first is the default.'),
+        defaultValue: z.string().optional(),
+        fromDates: z.enum(QUESTION_SOURCES as unknown as [string, ...string[]]).optional()
+          .describe('A number question can take its answer off the anchor dates: days or nights.'),
+      })).optional(),
+      schedule: z.object({
+        frequency: z.enum(SCHEDULE_FREQUENCIES as unknown as [string, ...string[]]),
+        weekday: z.number().int().min(0).max(6).optional(),
+        monthDay: z.number().int().min(1).max(31).optional(),
+        month: z.number().int().min(0).max(11).optional(),
+        time: z.string().optional().describe('HH:MM.'),
+        anchorSpanDays: z.number().int().nullable().optional(),
+      }).nullable().optional(),
+      items: z.array(itemSchema).min(1),
+    },
+    async input => {
+      try {
+        // eslint-disable-next-line @typescript-eslint/no-explicit-any
+        return json(await withWrite(() => createTemplate(replica, input as any)));
+      } catch (e) {
+        // The validator's whole point is reporting every problem at once, so
+        // the message is handed back rather than collapsed into "failed".
+        return json({ error: e instanceof Error ? e.message : 'Could not create the template.' });
+      }
+    }
+  );
+
+  server.tool(
+    'complete_task',
+    "Complete a task. A recurring one spawns its next occurrence, a chain advances one step, and a dated series lays out its next set, so the result says what was created rather than only that the row is done. A task that asks a question on completion is refused unless deliverableValue is given, including explicitly null to complete it without an answer.",
+    {
+      id: z.string().min(1),
+      deliverableValue: z.string().nullable().optional()
+        .describe('The answer, for a task that asks one. Null completes it without an answer. Omitting it on a task that asks is refused.'),
+      completedAt: z.string().optional()
+        .describe('ISO date-time, for recording something done earlier. Defaults to now.'),
+    },
+    async ({ id, ...rest }) => {
+      try {
+        // 'deliverableValue' in options is what the refusal tests, so the key
+        // has to survive only when the caller actually sent it. Zod drops an
+        // omitted optional rather than setting it undefined, so this holds.
+        return json(await withWrite(() => completeTask(replica, id, rest)));
+      } catch (e) {
+        return json({ error: e instanceof Error ? e.message : 'Could not complete the task.' });
+      }
+    }
+  );
+
+  server.tool(
+    'defer_task',
+    'Move a task to a date, or clear its date with null. Pushing a recurring task out hides it until then without moving the schedule the rest of its occurrences come from; pulling one forward moves its date. The result is the whole task, since which field changed depends on which of those happened.',
+    {
+      id: z.string().min(1),
+      date: z.string().nullable().describe('ISO date-time, or null to leave the task with no date.'),
+    },
+    async ({ id, date }) => {
+      try {
+        return json(await withWrite(() => deferTask(replica, id, date)));
+      } catch (e) {
+        return json({ error: e instanceof Error ? e.message : 'Could not reschedule the task.' });
+      }
+    }
+  );
 }
 
 /**
@@ -227,8 +438,13 @@ async function main(): Promise<void> {
   }
 
   app.post('/mcp', async (req: Request, res: Response) => {
-    const verdict = authorize(req.header('authorization'), process.env.MCP_AUTH_TOKEN);
-    if (!verdict.ok) {
+    const scope = scopeFor(
+      req.header('authorization'),
+      process.env.MCP_AUTH_TOKEN,
+      process.env.MCP_WRITE_TOKEN
+    );
+    if (scope === null) {
+      const verdict = authorize(req.header('authorization'), process.env.MCP_AUTH_TOKEN);
       if (verdict.challenge) res.set('WWW-Authenticate', verdict.challenge);
       res.status(401).json({ error: verdict.reason });
       return;
@@ -240,13 +456,14 @@ async function main(): Promise<void> {
     const transport = new StreamableHTTPServerTransport({ sessionIdGenerator: undefined });
     res.on('close', () => void transport.close());
 
-    await buildMcpServer(replica).connect(transport);
+    await buildMcpServer(replica, scope).connect(transport);
     await transport.handleRequest(req, res, req.body);
   });
 
   app.listen(PORT, () => {
     console.error(`todo MCP server on :${PORT}, serving ${replica.path}`);
     if (!process.env.MCP_AUTH_TOKEN) console.error('MCP_AUTH_TOKEN is unset: every MCP request will be refused.');
+    if (!process.env.MCP_WRITE_TOKEN) console.error('MCP_WRITE_TOKEN is unset: this server is read-only.');
     if (!process.env.SYNC_STORE_PATH) {
       console.error('SYNC_STORE_PATH is unset: the sync store is not mounted, so the replica cannot be a peer.');
     } else if (!process.env.SYNC_AUTH_TOKEN) {

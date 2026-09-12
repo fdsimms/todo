@@ -1,5 +1,5 @@
 /**
- * What Settings contains, as data — the ten groups and one record per
+ * What Settings contains, as data — the thirteen groups and one record per
  * searchable row.
  *
  * This is a *search index*, not a description of the UI. It deliberately
@@ -37,6 +37,7 @@ import { AI_FEATURES, type AiFeatureId } from './aiFeatures';
 import { GENERATED_KIND_LIST, type GeneratedKind } from './generatedTasks';
 
 export type SettingsGroupId =
+  | 'featureAreas'
   | 'appearance'
   | 'dayTime'
   | 'notifications'
@@ -76,12 +77,19 @@ export interface SettingsGroup {
    *
    * The switch itself must never live in a group carrying this, for the reason
    * its own entry is unflagged: it would be a setting with no way back. It
-   * stays under Feature areas in Tasks & projects.
+   * lives in its own Feature areas group instead.
    */
   kitchenOnly?: boolean;
 }
 
 export const SETTINGS_GROUPS: SettingsGroup[] = [
+  // First, not filed under Tasks & projects where it used to sit: these two
+  // switches decide what the rest of the app even shows (a tab, a drawer hub,
+  // every SIMPLE_FEATURES row), so they want to be found before the group
+  // whose size they were adding to, not after eleven other sections of it.
+  // Purple because they were split out of Tasks & projects, which keeps it —
+  // the two groups aren't adjacent, so the reuse doesn't read as an accident.
+  { id: 'featureAreas', title: 'Feature areas', icon: 'apps-outline', tint: 'purple' },
   { id: 'appearance', title: 'Appearance', icon: 'color-palette-outline', tint: 'accent' },
   { id: 'dayTime', title: 'Day & time', icon: 'sunny-outline', tint: 'orange' },
   { id: 'notifications', title: 'Notifications', icon: 'notifications-outline', tint: 'red' },
@@ -363,7 +371,7 @@ export const SETTINGS_ENTRIES: SettingsEntry[] = [
   { id: 'fabHand', groupId: 'appearance', label: 'Add button', section: 'Theme',
     keywords: ['corner', 'left', 'right', 'handed', 'plus', 'fab'] },
   { id: 'typeface', groupId: 'appearance', label: 'Typeface', section: 'Typeface',
-    keywords: ['font', 'bricolage', 'fraunces', 'space grotesk', 'nunito', 'outfit', 'serif', 'mono'] },
+    keywords: ['font', 'bricolage', 'space grotesk', 'nunito', 'outfit', 'serif', 'mono'] },
   { id: 'appFontRandomize', groupId: 'appearance', label: 'Randomize', section: 'Typeface',
     keywords: ['font', 'shuffle', 'mix', 'rotate', 'cold start', 'launch'] },
   { id: 'haptics', groupId: 'appearance', label: 'Haptic feedback', section: 'Feedback',
@@ -625,13 +633,13 @@ export const SETTINGS_ENTRIES: SettingsEntry[] = [
   // has to stay that way — a row that hid itself when switched off would be a
   // setting with no way back, which is now also why it can't live in the
   // Groceries & meals group its rows moved to.
-  { id: 'kitchenEnabled', groupId: 'tasksProjects', label: 'Groceries & meals', section: 'Feature areas',
+  { id: 'kitchenEnabled', groupId: 'featureAreas', label: 'Groceries & meals', section: 'Feature areas',
     keywords: ['grocery', 'recipes', 'meal plan', 'shopping', 'food', 'cooking',
       'hide', 'remove', 'disable', 'turn off', 'menu', 'drawer', 'tab bar'] },
   // The other master switch, and unflagged for the same reason. Keyworded for
   // the features it removes as well as for what it is: someone who wants
   // chains or the focus timer gone will search for those, not for "simplified".
-  { id: 'simpleMode', groupId: 'tasksProjects', label: 'Simplified mode', section: 'Feature areas',
+  { id: 'simpleMode', groupId: 'featureAreas', label: 'Simplified mode', section: 'Feature areas',
     keywords: ['simple', 'simplify', 'basic', 'minimal', 'declutter', 'overwhelming', 'advanced',
       'hide', 'remove', 'disable', 'turn off', 'chains', 'timed', 'daily target', 'quota',
       'focus', 'pomodoro', 'stacks', 'templates', 'stats', 'drift', 'backfill', 'waiting',

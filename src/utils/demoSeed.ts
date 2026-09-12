@@ -1760,27 +1760,12 @@ function seedPeople(today: Date): void {
   const photos = addTask({ title: 'Photos from the trip' });
   updateTask(photos.id, { waitingOnPersonId: dustin.id });
 
-  // Two of them are coming for dinner tomorrow (#2077). Guests are the tie-in
-  // that makes the kitchen half and the people half one app, and a meal with
-  // nobody on it reads as a feature this app doesn't have — so one seeded meal
-  // carries them, which is also what puts a row under COMING UP on Ansley's and
-  // Mom's own screens without anything having been ticked off.
-  if (seededSalmonNightId) {
-    useMealPlanStore.getState().setMealGuests(seededSalmonNightId, [ansley.id, mom.id]);
-  }
-  // Cooked for eight, so a guest already fits the plan without inventing a
-  // new meal — and it's the one that gives the year-in-review stat something
-  // to count, since the salmon dinner above deliberately isn't cooked yet.
-  if (seededSteakNightId) {
-    useMealPlanStore.getState().setMealGuests(seededSteakNightId, [dustin.id]);
-  }
-
   // The memory layer (#2047), which is rule 7 and the part that makes this a
   // feature you like rather than one you tolerate. Every kind gets one, and
   // each one lands somewhere: the gift ideas ride onto Dustin's birthday task
   // (his birthday is two days away, so that task genuinely exists), the food
-  // notes show on the salmon dinner those two are guests at, and the dated one
-  // is what a note able to go stale actually looks like.
+  // notes show on each person's own page, and the dated one is what a note
+  // able to go stale actually looks like.
   const { addNote } = usePersonNoteStore.getState();
   addNote(dustin.id, 'gift', 'The bouldering gym membership');
   addNote(dustin.id, 'gift', 'A proper chalk bag');
@@ -2317,11 +2302,11 @@ function seedRecipes(): DemoRecipes {
   // The standing swap said in the method rather than only in the ingredient
   // list: this recipe's milk line reads as oat milk, and step one names milk,
   // so it is the one place the inline annotation's substitution half is visible
-  // (see stepIngredients.ts). Step one also gives the amount, and "the oats"
-  // deliberately gets nothing — the line is called "rolled oats", and refusing
-  // a near-miss is the rule rather than a gap. The notes above stop rendering
-  // as the method now that there are steps, which is the trade: the fallback
-  // itself is still on show, on the steak below that has no steps at all.
+  // (see stepIngredients.ts). Step one is also where the shorter-name rule
+  // shows: the line is called "rolled oats" and the step says "the oats", which
+  // is how a method actually reads. The notes above stop rendering as the
+  // method now that there are steps, which is the trade: the fallback itself is
+  // still on show, on the steak below that has no steps at all.
   [
     'Stir the oats into the milk and leave the jar overnight.',
     'In the morning, fold in the yogurt and honey.',
@@ -2385,21 +2370,25 @@ function seedRecipes(): DemoRecipes {
   // filed under it (Recipe.emptySections), so it shows up on the recipe with
   // nothing under it until something is.
   addEmptySection(cake.id, 'For serving');
+  // A method on the one recipe here that has sections, because cook mode's
+  // ingredient panel is where those headings now do their work (it reads the
+  // recipe's own sections, not just a component's name) — and a recipe with
+  // no steps and no notes has no cook mode to open. It carries the inline
+  // amounts too (stepIngredients.ts), and this is the recipe that shows the one
+  // rule a single ingredient list can't: it holds "brown sugar" and "sugar" as
+  // separate lines, so the frosting step's plain "sugar" has to go to the line
+  // actually called that rather than to the alias the other one offers.
+  [
+    'Heat the oven to 180°C and line a 9-inch cake pan.',
+    'Whisk the eggs with the brown sugar, then fold in the flour, cinnamon and grated carrot.',
+    'Bake for 35 minutes, until a skewer comes out clean.',
+    'Beat the cream cheese, butter and sugar together while the cake cools.',
+    'Frost the cake once it is completely cool.',
+  ].forEach(text => addStep(cake.id, text));
   setRecipeYield(cake.id, '1 9-inch cake');
   setServings(cake.id, 12);
   setEstimatedMinutes(cake.id, 45);
   setPrepMinutes(cake.id, 30);
-  // The other half of the inline annotation, and this is the recipe for it: it
-  // holds "brown sugar" and "sugar" as separate lines, so longest-match-wins is
-  // doing real work here rather than being a claim in a comment, and its flour
-  // is spent across two steps — the case that reads "250 g in total" instead of
-  // pinning the whole amount to either one. Written in metric like the rest of
-  // this recipe, so the Units setting converts these amounts too.
-  [
-    'Whisk the eggs and brown sugar until thick, then fold in half the flour.',
-    'Add the carrots and cinnamon with the rest of the flour, then bake for 40 minutes at 350F.',
-    'Beat the cream cheese with the butter and sugar, then spread it over the cooled cake.',
-  ].forEach(text => addStep(cake.id, text));
   // The cookbook attribution shape — the only one a page number means anything
   // for. It's a real Cookbook row rather than two strings, which is invisible
   // on one recipe and the whole point on two: the shortbread below is the same
@@ -3730,23 +3719,6 @@ function seedMealPlanNudgeStack(
   });
 }
 
-/**
- * Tomorrow's dinner, handed to `seedPeople` so it can name guests on it.
- *
- * A module-level handoff rather than a return value because the meals are
- * seeded behind the kitchen switch and the people are not, so the two calls
- * can't be chained — and null when the kitchen half is off, which the guest
- * seeding reads as "nothing to be a guest at".
- */
-let seededSalmonNightId: string | null = null;
-/**
- * The steak dinner four days ago, handed to `seedPeople` for the same reason
- * `seededSalmonNightId` is — but this one is already cooked, so it's what
- * gives the year-in-review stat (#2092) something to count. The salmon dinner
- * deliberately isn't it: that one has to stay uncooked for COMING UP.
- */
-let seededSteakNightId: string | null = null;
-
 function seedMealPlanAndFridge(recipes: DemoRecipes, today: Date): void {
   const { loadRange, planMeal, setCooked, setRecipeScale, setRecipeChoices, stampAddedToList } =
     useMealPlanStore.getState();
@@ -3821,7 +3793,6 @@ function seedMealPlanAndFridge(recipes: DemoRecipes, today: Date): void {
     const roasted = componentIdFor(recipes.steak, recipes.roasties);
     if (roasted) setRecipeChoices(steakNight.id, [roasted]);
   }
-  seededSteakNightId = steakNight?.id ?? null;
   const stirFryNight = cooked(-1, 'dinner', {
     title: 'Weeknight chicken stir-fry',
     recipeId: recipes.stirFry,
@@ -3939,7 +3910,6 @@ function seedMealPlanAndFridge(recipes: DemoRecipes, today: Date): void {
   // Captured for the shopping task seeded at the end of this function — it's
   // the night the kitchen can't currently make.
   const salmonNight = plan(1, 'dinner', { title: 'Lemon garlic salmon', recipeId: recipes.salmon });
-  seededSalmonNightId = salmonNight?.id ?? null;
 
   // Freeform — planning doesn't require a recipe, and a night that just says
   // "eating out" holds its place and counts like any other.
