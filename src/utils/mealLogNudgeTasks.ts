@@ -65,7 +65,7 @@ export const MAX_MEAL_LOG_NUDGE_TASKS = 3;
  * to trade off against a lead time: a longer window only ever adds rows
  * naming staler meals, never earlier warning of anything.
  */
-export const MEAL_LOG_NUDGE_LOOKBACK_DAYS = 3;
+export const MEAL_LOG_NUDGE_LOOKBACK_DAYS = 1;
 
 /** The row's title — the verb and the meal together, like `mealShortfallTitle`. */
 export function mealLogNudgeTitle(dayKey: string, slot: MealSlot, title: string): string {

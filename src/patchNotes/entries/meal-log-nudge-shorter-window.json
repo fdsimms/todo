@@ -1,0 +1,4 @@
+{
+  "message": "The \"Log [meal]\" reminder for a meal you didn't log now only looks back 1 day instead of 3, so fewer stale ones pile up on Today",
+  "date": "2026-09-13"
+}

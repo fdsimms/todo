@@ -116,7 +116,7 @@ describe('wantedMealLogNudges', () => {
   it('does not care whether the meal was ever marked cooked', () => {
     const missed = entry('2026-08-21', { cookedAt: null });
     const cooked = entry('2026-08-20', { cookedAt: '2026-08-20T19:00:00.000Z' });
-    const wants = wantedMealLogNudges([missed, cooked], new Set(), TODAY);
+    const wants = wantedMealLogNudges([missed, cooked], new Set(), TODAY, 3);
     expect(wants.map(w => w.entryId)).toEqual(expect.arrayContaining([missed.id, cooked.id]));
   });
 
@@ -128,7 +128,7 @@ describe('wantedMealLogNudges', () => {
   it('orders the oldest meal first', () => {
     const older = entry('2026-08-19', { title: 'Older' });
     const newer = entry('2026-08-21', { title: 'Newer' });
-    const wants = wantedMealLogNudges([newer, older], new Set(), TODAY);
+    const wants = wantedMealLogNudges([newer, older], new Set(), TODAY, 3);
     expect(wants.map(w => w.entryId)).toEqual([older.id, newer.id]);
   });
 
@@ -176,7 +176,7 @@ describe('staleMealLogNudgeTasks', () => {
       entry('2026-08-19'), entry('2026-08-20'), entry('2026-08-21'), entry('2026-08-21', { slot: 'lunch' }),
     ];
     const tasks = meals.map(m => task({ generatedSourceId: m.id }));
-    expect(staleMealLogNudgeTasks(tasks, meals, new Set(), TODAY)).toEqual([]);
+    expect(staleMealLogNudgeTasks(tasks, meals, new Set(), TODAY, 3)).toEqual([]);
   });
 
   it('ignores completed and archived rows, and other generators', () => {
