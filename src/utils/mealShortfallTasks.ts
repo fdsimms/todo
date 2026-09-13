@@ -79,7 +79,7 @@ export const MAX_MEAL_SHORTFALL_TASKS = 3;
  * renamed project is.
  */
 export function mealShortfallTitle(dayKey: string, slot: MealSlot, recipeName: string): string {
-  return `Shop for ${recipeName} (${format(dayKeyToDate(dayKey), 'EEE')} ${slotLabel(slot)})`;
+  return `Shop for ${recipeName} (${format(dayKeyToDate(dayKey), 'EEEE')} ${slotLabel(slot)})`;
 }
 
 /**
