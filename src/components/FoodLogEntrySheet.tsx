@@ -617,9 +617,16 @@ export function FoodLogEntrySheet({
   // placeholder was suggesting an amount this specific food often can't
   // measure, which is the whole complaint. Falls back to a weight, since mass
   // is the one amount every food can always be logged by.
-  const portionExamples = useMemo(() => {
+  //
+  // Every stated portion, not a slice of the first few: this is a "preset
+  // beside a free input" (the amount field still takes a typed weight), which
+  // stays chips rather than becoming a `SegmentedControl` — see that
+  // component's own doc comment. The table a source states is already the
+  // short, closed set the chips read as; there's no separate cap to apply on
+  // top of it.
+  const portionChoices = useMemo(() => {
     if (!picked || picked.kind !== 'food' || !picked.panel) return [];
-    return picked.panel.portions.slice(0, 3).map(p => {
+    return picked.panel.portions.map(p => {
       const count = Number.isInteger(p.amount) ? String(p.amount) : p.amount.toFixed(2).replace(/0+$/, '').replace(/\.$/, '');
       return `${count} ${p.label}`;
     });
@@ -877,13 +884,33 @@ export function FoodLogEntrySheet({
                 />
               </View>
             )}
+            {portionChoices.length > 0 && (
+              <View style={styles.portionChips}>
+                {portionChoices.map(choice => {
+                  const on = amount.trim() === choice;
+                  return (
+                    <TouchableOpacity
+                      key={choice}
+                      style={[styles.portionChip, on && styles.portionChipOn]}
+                      activeOpacity={interaction.activeOpacity}
+                      onPress={() => { haptics.tap(); setAmount(choice); }}
+                      accessibilityRole="button"
+                      accessibilityState={{ selected: on }}
+                      accessibilityLabel={choice}
+                    >
+                      <Text style={[styles.portionChipText, on && styles.portionChipTextOn]}>{choice}</Text>
+                    </TouchableOpacity>
+                  );
+                })}
+              </View>
+            )}
             <TextInput
               style={styles.input}
               value={amount}
               onChangeText={setAmount}
               placeholder={
                 picked.kind !== 'dish'
-                  ? `e.g. ${portionExamples[0] ?? '100g'}`
+                  ? `e.g. ${portionChoices[0] ?? '100g'}`
                   : dishMeasure === 'weight' ? 'e.g. 320 (grams)' : 'e.g. 1.5'
               }
               placeholderTextColor={colors.textTertiary}
@@ -903,8 +930,8 @@ export function FoodLogEntrySheet({
             <Text style={styles.hint}>
               {picked.kind === 'dish'
                 ? dishWeightHint
-                : portionExamples.length > 0
-                  ? `A weight (like 100g), or one of this food's stated portions: ${portionExamples.join(', ')}. Anything else is refused rather than guessed at.`
+                : portionChoices.length > 0
+                  ? 'Tap a stated portion above, or type a weight (like 100g). Anything else is refused rather than guessed at.'
                   : 'A weight, like 100g. This food has no stated portions. Type an amount by volume or count and you can weigh it once to add it.'}
             </Text>
 
@@ -1165,6 +1192,16 @@ function makeStyles(colors: Colors) {
     // Margin on both sides: the label above has none of its own below it, and
     // the amount field below has only spacing.xs of its own.
     measureRow: { marginTop: spacing.sm, marginBottom: spacing.xs },
+    portionChips: { flexDirection: 'row', flexWrap: 'wrap', gap: spacing.xs, marginTop: spacing.sm },
+    portionChip: {
+      borderRadius: radius.full,
+      paddingHorizontal: spacing.md,
+      paddingVertical: spacing.sm,
+      backgroundColor: colors.bgSecondary,
+    },
+    portionChipOn: { backgroundColor: colors.accentFill },
+    portionChipText: { color: colors.text, fontSize: font.sm },
+    portionChipTextOn: { color: colors.onAccent, fontWeight: fontWeight.medium },
     input: {
       color: colors.text,
       fontSize: font.md,
