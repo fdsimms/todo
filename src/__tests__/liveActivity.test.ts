@@ -112,7 +112,7 @@ const BASE: Task = {
   timedMinutes: null,
   timerElapsedSeconds: 0,
   healthMetric: null,
-  healthTarget: null, completionTimerMinutes: null, completionTimerNote: null, logHealthMetric: null, logHealthAmount: null, medicationName: null, medicationAmount: null, medicationUnit: null,
+  healthTarget: null, completionTimerMinutes: null, completionTimerNote: null, completionTimerStartedAt: null, logHealthMetric: null, logHealthAmount: null, medicationName: null, medicationAmount: null, medicationUnit: null,
   actualMinutes: null,
   previousOccurrenceId: null,
   seriesId: null,
@@ -229,6 +229,54 @@ describe('buildTimerRuns', () => {
 
   it('ignores an archived task, even mid-timer', () => {
     const tasks = [makeTask({ timerStartedAt: startedAgo(5), archived: true })];
+    expect(buildTimerRuns(tasks, [], [], { enabled: true })).toEqual([]);
+  });
+
+  it('ignores a task with no completion timer running', () => {
+    const tasks = [makeTask({ completionTimerStartedAt: null })];
+    expect(buildTimerRuns(tasks, [], [], { enabled: true })).toEqual([]);
+  });
+
+  it('builds a completion timer run for a completed task with one running', () => {
+    const tasks = [makeTask({
+      id: 'iron',
+      title: 'Take iron pill',
+      completed: true,
+      completionTimerMinutes: 120,
+      completionTimerNote: "Don't eat for 2 hours",
+      completionTimerStartedAt: startedAgo(0),
+    })];
+    const [run] = buildTimerRuns(tasks, [], [], { enabled: true });
+    expect(run).toEqual({
+      key: 'completionTimer:iron',
+      kind: 'completionTimer',
+      itemId: 'iron',
+      title: 'Take iron pill',
+      subtitle: "Don't eat for 2 hours",
+      symbolName: 'bell.fill',
+      startedAtMs: NOW,
+      targetEndMs: NOW + 120 * 60 * 1000,
+    });
+  });
+
+  it('gives a completion timer with no note an empty subtitle', () => {
+    const tasks = [makeTask({
+      completed: true,
+      completionTimerMinutes: 30,
+      completionTimerNote: null,
+      completionTimerStartedAt: startedAgo(0),
+    })];
+    const [run] = buildTimerRuns(tasks, [], [], { enabled: true });
+    expect(run.subtitle).toBe('');
+  });
+
+  it('ignores an archived task even with a completion timer running', () => {
+    const tasks = [makeTask({
+      completed: true,
+      archived: true,
+      completionTimerMinutes: 30,
+      completionTimerStartedAt: startedAgo(0),
+    })];
     expect(buildTimerRuns(tasks, [], [], { enabled: true })).toEqual([]);
   });
 

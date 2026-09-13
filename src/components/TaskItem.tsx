@@ -1513,6 +1513,10 @@ export const TaskItem = React.memo(function TaskItem({
             text: 'Set reminder',
             onPress: () => {
               scheduleCompletionTimer(task);
+              // Gives the Live Activity (see src/utils/liveActivity.ts) a
+              // start time to render a live countdown from, alongside the
+              // notification scheduled above.
+              useTaskStore.getState().startCompletionTimer(task.id);
               runCompletion();
             },
           },

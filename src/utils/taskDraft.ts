@@ -343,6 +343,7 @@ export function newTaskFromDraft(
     healthTarget: draft.healthTarget ?? null,
     completionTimerMinutes: draft.completionTimerMinutes ?? null,
     completionTimerNote: draft.completionTimerNote ?? null,
+    completionTimerStartedAt: null,
     logHealthMetric: draft.logHealthMetric ?? null,
     logHealthAmount: draft.logHealthAmount ?? null,
     medicationName: draft.medicationName ?? null,

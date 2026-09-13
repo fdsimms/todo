@@ -2,6 +2,7 @@
 // this suite only exercises the URL parsing + dispatch logic, so stub them out
 // (mirrors notifications.test.ts's react-native mock).
 const mockAddTask = jest.fn();
+const mockDismissCompletionTimer = jest.fn();
 const mockSuccess = jest.fn();
 const mockResetToToday = jest.fn();
 const mockResetToGroceries = jest.fn();
@@ -31,7 +32,7 @@ jest.mock('react-native', () => ({
   },
 }));
 jest.mock('../store/useTaskStore', () => ({
-  useTaskStore: { getState: () => ({ addTask: mockAddTask }) },
+  useTaskStore: { getState: () => ({ addTask: mockAddTask, dismissCompletionTimer: mockDismissCompletionTimer }) },
 }));
 jest.mock('../store/useWidgetCompletionStore', () => ({
   useWidgetCompletionStore: { getState: () => ({ enqueue: mockEnqueueWidgetCompletion }) },
@@ -406,6 +407,7 @@ describe('stopTimerUrlKey', () => {
     expect(stopTimerUrlKey('dundundun://stopTimer?key=cook:r1')).toBe('cook:r1');
     expect(stopTimerUrlKey('dundundun://stopTimer?key=prep:r1')).toBe('prep:r1');
     expect(stopTimerUrlKey('dundundun://stopTimer?key=step:st1')).toBe('step:st1');
+    expect(stopTimerUrlKey('dundundun://stopTimer?key=completionTimer:iron')).toBe('completionTimer:iron');
   });
 
   it('is null with no key, or for a different link', () => {
@@ -602,6 +604,18 @@ describe('openInAppUrl', () => {
     expect(mockStopCookTimer).not.toHaveBeenCalled();
     expect(mockStopPrepTimer).not.toHaveBeenCalled();
     expect(mockFinishCookForRecipe).not.toHaveBeenCalled();
+    expect(mockResetToRecipeDetail).not.toHaveBeenCalled();
+  });
+
+  it('dismisses a completion timer for a completionTimer: key, without opening anything', () => {
+    // Same "nothing to log, nowhere to open" shape as the step timer above —
+    // the task this reminder is about was already completed long before Done
+    // was tapped, and the notification alongside it is untouched.
+    expect(openInAppUrl('dundundun://stopTimer?key=completionTimer:iron')).toBe(true);
+    expect(mockDismissCompletionTimer).toHaveBeenCalledWith('iron');
+    expect(mockRemoveStepTimer).not.toHaveBeenCalled();
+    expect(mockStopCookTimer).not.toHaveBeenCalled();
+    expect(mockStopPrepTimer).not.toHaveBeenCalled();
     expect(mockResetToRecipeDetail).not.toHaveBeenCalled();
   });
 
