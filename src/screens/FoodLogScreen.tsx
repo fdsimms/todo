@@ -120,6 +120,7 @@ export function FoodLogScreen() {
   const moveEntries = useFoodLogStore(s => s.moveEntries);
   const reorderEntries = useFoodLogStore(s => s.reorderEntries);
   const nutritionTargets = useSettingsStore(useShallow(s => s.nutritionTargets));
+  const foodLogPinnedNutrients = useSettingsStore(useShallow(s => s.foodLogPinnedNutrients));
   const waterUnit = useSettingsStore(s => s.waterUnit);
   const setWaterUnit = useSettingsStore(s => s.setWaterUnit);
   // Only for the catalog picker below; the scan flow keeps its own reads.
@@ -477,8 +478,9 @@ export function FoodLogScreen() {
   // bar — same arithmetic every other bulk-selecting list uses.
   const selectionListPadding = tabBarHeight + spacing.sm + bulkBarHeight + spacing.sm;
 
-  // Every nutrient the day actually stated, and the two the card leads with.
-  // Absent stays absent in both — see foodLogTotals.
+  // Every nutrient the day actually stated, and the ones the card leads with —
+  // foodLogPinnedNutrients, chosen in the Nutrition sheet (defaults to
+  // calories and protein). Absent stays absent in both — see foodLogTotals.
   //
   // Water is dropped here because the card below it says the same figure
   // against the same target and can be pressed. Left in, it read twice on
@@ -486,7 +488,7 @@ export function FoodLogScreen() {
   const statedKeys = NUTRIENT_KEYS.filter(k => k !== 'waterMl' && totals.total[k] !== undefined);
   const shownKeys = allNutrients
     ? statedKeys
-    : statedKeys.filter(k => k === 'calorieKcal' || k === 'proteinG');
+    : statedKeys.filter(k => foodLogPinnedNutrients.includes(k));
 
   return (
     <SafeAreaView style={styles.root} edges={['top']}>
@@ -518,7 +520,7 @@ export function FoodLogScreen() {
           {
             icon: 'flag-outline',
             onPress: () => { haptics.tap(); setTargetsOpen(true); },
-            accessibilityLabel: 'Daily targets',
+            accessibilityLabel: 'Nutrition settings',
           },
           // Plain logging moved to the FAB below, same as every other
           // primary-add list screen — selecting is reached by swiping a row.

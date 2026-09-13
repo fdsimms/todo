@@ -1,7 +1,10 @@
 import {
+  DEFAULT_FOOD_LOG_PINNED_NUTRIENTS,
   NUTRITION_TARGET_RANGES,
   describeAgainstTarget,
+  parseFoodLogPinnedNutrients,
   parseNutritionTargets,
+  serializeFoodLogPinnedNutrients,
   serializeNutritionTargets,
   targetProgress,
   targetedNutrients,
@@ -88,6 +91,35 @@ describe('describeAgainstTarget', () => {
 
   it('keeps a real zero, which is a stated figure rather than an absence', () => {
     expect(describeAgainstTarget('caffeineMg', 0, { caffeineMg: 400 })).toBe('0 of 400mg');
+  });
+});
+
+describe('parseFoodLogPinnedNutrients', () => {
+  it('defaults to calories and protein for an install that never chose', () => {
+    expect(parseFoodLogPinnedNutrients(null)).toEqual(DEFAULT_FOOD_LOG_PINNED_NUTRIENTS);
+    expect(parseFoodLogPinnedNutrients(undefined)).toEqual(DEFAULT_FOOD_LOG_PINNED_NUTRIENTS);
+  });
+
+  it('keeps a stored empty array empty, since that is a real choice', () => {
+    expect(parseFoodLogPinnedNutrients('[]')).toEqual([]);
+  });
+
+  it('reads what somebody chose', () => {
+    expect(parseFoodLogPinnedNutrients('["fiberG","sodiumMg"]')).toEqual(['fiberG', 'sodiumMg']);
+  });
+
+  it('drops a nutrient this build has no unit for, and water', () => {
+    expect(parseFoodLogPinnedNutrients('["unobtainium","waterMl","proteinG"]')).toEqual(['proteinG']);
+  });
+
+  it('falls back to the default on a malformed or non-array blob', () => {
+    expect(parseFoodLogPinnedNutrients('not json')).toEqual(DEFAULT_FOOD_LOG_PINNED_NUTRIENTS);
+    expect(parseFoodLogPinnedNutrients('{"calorieKcal":true}')).toEqual(DEFAULT_FOOD_LOG_PINNED_NUTRIENTS);
+  });
+
+  it('round-trips through its own serializer', () => {
+    const keys = ['fatG', 'sugarG'] as const;
+    expect(parseFoodLogPinnedNutrients(serializeFoodLogPinnedNutrients([...keys]))).toEqual(keys);
   });
 });
 

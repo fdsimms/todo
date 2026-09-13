@@ -164,3 +164,37 @@ export function targetProgress(
 function round(amount: number): number {
   return Math.round(amount * 10) / 10;
 }
+
+/**
+ * What the Food log's totals card shows before "Show every nutrient" is
+ * tapped, on an install that has never chosen otherwise — the same pair the
+ * card always showed before this was configurable.
+ */
+export const DEFAULT_FOOD_LOG_PINNED_NUTRIENTS: NutrientKey[] = ['calorieKcal', 'proteinG'];
+
+/**
+ * The pinned-nutrient set a stored blob actually carries.
+ *
+ * **Falls back to the default only when nothing was ever stored.** A stored
+ * empty array is a real choice ("show nothing above the fold") and stays
+ * empty — `JSON.stringify([])` is the truthy string `"[]"`, so it's never
+ * confused with the unset `null`/`undefined` a fresh install reads. Water is
+ * dropped the same way `statedKeys` drops it in the Food log itself: it has
+ * its own card and reads twice otherwise.
+ */
+export function parseFoodLogPinnedNutrients(raw: string | null | undefined): NutrientKey[] {
+  if (!raw) return [...DEFAULT_FOOD_LOG_PINNED_NUTRIENTS];
+  try {
+    const parsed = JSON.parse(raw) as unknown;
+    if (!Array.isArray(parsed)) return [...DEFAULT_FOOD_LOG_PINNED_NUTRIENTS];
+    return parsed.filter(
+      (key): key is NutrientKey => NUTRIENT_KEYS.includes(key as NutrientKey) && key !== 'waterMl',
+    );
+  } catch {
+    return [...DEFAULT_FOOD_LOG_PINNED_NUTRIENTS];
+  }
+}
+
+export function serializeFoodLogPinnedNutrients(keys: NutrientKey[]): string {
+  return JSON.stringify(keys);
+}
