@@ -57,7 +57,7 @@ function task(overrides: Partial<Task> & { generatedSourceId: string | null }): 
 describe('mealLogNudgeTitle', () => {
   it('names the verb, the dish, and the night and slot', () => {
     expect(mealLogNudgeTitle('2026-08-19', 'breakfast', 'Overnight oats'))
-      .toBe('Log Overnight oats (Wed Breakfast)');
+      .toBe('Log Overnight oats (Wednesday Breakfast)');
   });
 });
 
