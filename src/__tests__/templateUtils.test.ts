@@ -66,6 +66,7 @@ const makeItem = (overrides: Partial<TemplateItem> = {}): TemplateItem => ({
   medicationName: null,
   medicationAmount: null,
   medicationUnit: null,
+  logMealSlot: null,
   deliverableKind: null,
   chainEnabled: false,
   chainItems: [],

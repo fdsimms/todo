@@ -1713,6 +1713,12 @@ describe('demo seed — people', () => {
     expect(medicationFor(chained!)).toMatchObject({ name: 'Levothyroxine', unit: 'mcg' });
   });
 
+  it('seeds a plain task that logs to the food log on completion', () => {
+    const logTask = useTaskStore.getState().tasks.find(t => t.title === 'Log breakfast');
+    expect(logTask).toBeDefined();
+    expect(logTask!.logMealSlot).toBe('breakfast');
+  });
+
   it('seeds enough as-needed doses for the frequency card to draw', () => {
     // frequencyTrend needs the log to have been running for both of its
     // fortnights and MIN_TREND_DOSES across them, so a seed that only covered

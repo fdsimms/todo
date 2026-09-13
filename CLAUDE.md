@@ -451,7 +451,7 @@ file: the two maps are indexes, not write-ups.
 **Read narrowly.** 60 files are over 1,000 lines, 41 of
 them source rather than tests. The ten biggest source files:
 
-`store/useTaskStore.ts` (7.6k), `components/TaskEditor.tsx` (6.0k), `db/database.ts` (5.9k),
+`store/useTaskStore.ts` (7.7k), `components/TaskEditor.tsx` (6.0k), `db/database.ts` (5.9k),
 `types/index.ts` (5.9k), `store/useGroceryStore.ts` (5.1k), `screens/TodayScreen.tsx` (4.6k),
 `components/TaskItem.tsx` (4.4k), `utils/demoSeed.ts` (4.1k),
 `store/useSettingsStore.ts` (3.8k), `screens/BackfillScreen.tsx` (3.6k).
