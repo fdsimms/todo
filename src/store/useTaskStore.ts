@@ -2990,6 +2990,11 @@ export const useTaskStore = create<TaskStore>((set, get) => ({
         useFoodLogStore.getState().setPendingManualMealLog({
           label: displayTitleFor(task),
           slot: task.logMealSlot,
+          // The day this task was scheduled for, same call offerMealLog makes
+          // from a meal plan entry's own date — a task with no due date (an
+          // undated "Pack lunch") has no day to be planned for, so it falls
+          // back to today rather than a grace-window-unsafe `new Date()`.
+          dayKey: task.dueDate ? dayKeyOf(new Date(task.dueDate)) : dayKeyOf(getCurrentDayStart()),
           mealPlanEntryId: null,
         });
       }
