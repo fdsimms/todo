@@ -44,8 +44,6 @@ export function KitchenSettings() {
   const simpleMode = useSettingsStore(s => s.simpleMode);
   const mealsOnToday = useSettingsStore(s => s.mealsOnToday);
   const setMealsOnToday = useSettingsStore(s => s.setMealsOnToday);
-  const kitchenOnToday = useSettingsStore(s => s.kitchenOnToday);
-  const setKitchenOnToday = useSettingsStore(s => s.setKitchenOnToday);
   const cookRecapEnabled = useSettingsStore(s => s.cookRecapEnabled);
   const mealLogPrompt = useSettingsStore(s => s.mealLogPrompt);
   const nutritionTargets = useSettingsStore(useShallow(s => s.nutritionTargets));
@@ -81,7 +79,7 @@ export function KitchenSettings() {
     <>
       <SettingsSection
         label="Meals on Today"
-        footer="A planned meal that doesn't have one of the tasks from Automatic tasks shows as a plain row here instead, filed under the same category as meal tasks, and so does anything in the pantry about to go off, above it. Neither can be checked off; tapping opens the meal plan or the pantry."
+        footer="A planned meal that doesn't have one of the tasks from Automatic tasks shows as a plain row here instead, filed under the same category as meal tasks. It can't be checked off; tapping opens the meal plan."
       >
         {/* A toggle rather than a track of two: one bounded choice with two
             answers is what a switch is for, and the two shapes this used to
@@ -99,22 +97,11 @@ export function KitchenSettings() {
           onPress={() => setMealsOnToday(mealsOnToday === 'inline' ? 'off' : 'inline')}
           accessibilityLabel="Show the day's meals"
         />
-        {/* Filed in this section rather than under Automatic tasks, because
-            it is not a task the app adds: nothing is written, and the row
-            leaves when the food does. What it shares with the meals is where
-            it lands — the same category, at the top of the same section. */}
-        {!simpleMode && (
-        <SettingsRow
-          entryId="kitchenOnToday"
-          icon="nutrition-outline"
-          iconColor={kitchenOnToday ? colors.accent : undefined}
-          label="Show what needs using up"
-          hint="A row on the day something in the pantry is down to its last day, unless it already has a use-up task."
-          toggle={kitchenOnToday}
-          onPress={() => setKitchenOnToday(!kitchenOnToday)}
-          accessibilityLabel="Show what needs using up"
-        />
-        )}
+        {/* No "needs using up" row here any more (#1689 retired): unlike a
+            meal or an event, a perishable is either used up or it isn't, so an
+            uncheckable, un-dismissible row about it was worse than the real
+            "Use up X" task the Automatic tasks section already offers a
+            switch for. */}
         <SettingsRow
           entryId="nutritionTargets"
           icon="flag-outline"

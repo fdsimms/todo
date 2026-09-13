@@ -230,11 +230,11 @@ const CONTEXT_COPY: Record<ScanContext, {
     // A log has no fridge and no freezer: it records that something was eaten,
     // which is the opposite of where a thing is being kept.
     freezer: false,
-    matched: name => `Known as \u201C${name}\u201D`,
+    matched: name => `Matches \u201C${name}\u201D`,
     picked: name => `Filed as \u201C${name}\u201D`,
-    scannedBefore: name => `Known as \u201C${name}\u201D, as you scanned it before`,
-    matchedBefore: name => `Known as \u201C${name}\u201D, as you matched it before`,
-    offList: name => `Known as \u201C${name}\u201D`,
+    scannedBefore: name => `Matches \u201C${name}\u201D, as you scanned it before`,
+    matchedBefore: name => `Matches \u201C${name}\u201D, as you matched it before`,
+    offList: name => `Matches \u201C${name}\u201D`,
   },
 };
 
@@ -907,8 +907,8 @@ export function BarcodeScanSheet({ visible, onClose, onApply, context }: Props) 
                 const boxCount = rowBoxes.length;
                 const resolvedName = rowItem?.name ?? null;
                 const boxLabel = row.pickedProductId
-                  ? describeProduct(rowBoxes.find(b => b.id === row.pickedProductId)) ?? 'Which box'
-                  : 'Which box';
+                  ? describeProduct(rowBoxes.find(b => b.id === row.pickedProductId)) ?? 'Pick a product'
+                  : 'Pick a product';
                 return (
                   <View key={row.key} style={index > 0 ? styles.rowDivided : undefined}>
                   <View style={styles.row}>
@@ -1038,7 +1038,7 @@ export function BarcodeScanSheet({ visible, onClose, onApply, context }: Props) 
                               icon="cube-outline"
                               variant="neutral"
                               onPress={() => setPicking(p => (p?.key === row.key && p.mode === 'box' ? null : { key: row.key, mode: 'box' }))}
-                              accessibilityLabel={`Choose which box of ${resolvedName ?? 'this item'} this is`}
+                              accessibilityLabel={`Choose which product of ${resolvedName ?? 'this item'} this is`}
                               style={styles.confirmPill}
                             />
                           )}

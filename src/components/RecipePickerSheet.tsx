@@ -16,7 +16,6 @@ import {
 import Ionicons from '@expo/vector-icons/Ionicons';
 import { useShallow } from 'zustand/react/shallow';
 import { SafeBlurView } from './SafeBlurView';
-import { InlineAction } from './InlineAction';
 import { EmptyState } from './EmptyState';
 import { useColors, useTheme } from '../theme/ThemeContext';
 import { spacing, radius, font, fontWeight, border, animation, interaction, type Colors } from '../theme';
@@ -117,16 +116,6 @@ let lastPickedSlot: MealSlot | null = null;
 
 /** Kept clear above the lifted sheet so its title never slides under the status bar. */
 const TOP_INSET = 72;
-
-/** Quick-pick shortcuts for the free-text plan — the non-recipe nights that come up
- * often enough to skip typing. Tapping one commits it exactly like tapping a recipe
- * row does; picking any of these is already a complete answer, not a draft to edit.
- *
- * "Leftovers" survives the arrival of the leftovers tracker rather than being
- * replaced by it: plenty of leftovers were never logged, and a night planned as
- * the bare word is still a complete answer. The tracked ones are offered *above*
- * it as their own rows — the generic chip is the floor, not the only option. */
-const PRESET_PLANS = ['Leftovers', 'Takeout', 'Eating out'];
 
 /**
  * Puts something on a night: a recipe from the box, a tracked leftover out of
@@ -398,22 +387,6 @@ export function RecipePickerSheet({ visible, dayKey, dayLabel, defaultSlot, forc
             />
           </View>
 
-          <View style={styles.presetRow}>
-            {PRESET_PLANS.map(preset => {
-              const pickedId = pickedThisSlot.get(`t:${preset.toLowerCase()}`);
-              return (
-                <InlineAction
-                  key={preset}
-                  label={preset}
-                  icon={pickedId ? 'checkmark' : undefined}
-                  variant={pickedId ? 'neutral' : 'accent'}
-                  onPress={() => (pickedId ? unpick(pickedId) : pick(null, preset))}
-                  accessibilityLabel={pickedId ? `Remove ${preset} from ${slotLabel(slot)}` : `Plan ${preset}`}
-                />
-              );
-            })}
-          </View>
-
           <View style={styles.searchWrap}>
             <Ionicons name="search" size={15} color={colors.textTertiary} />
             <TextInput
@@ -600,13 +573,6 @@ const makeStyles = (colors: Colors) => StyleSheet.create({
     paddingBottom: spacing.sm,
   },
   segment: { paddingHorizontal: spacing.md, paddingBottom: spacing.sm },
-  presetRow: {
-    flexDirection: 'row',
-    flexWrap: 'wrap',
-    gap: spacing.xs,
-    paddingHorizontal: spacing.md,
-    paddingBottom: spacing.sm,
-  },
   searchWrap: {
     flexDirection: 'row',
     alignItems: 'center',

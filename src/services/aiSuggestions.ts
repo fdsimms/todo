@@ -2584,7 +2584,8 @@ export async function readLabelPhotoWithAi(image: RecipeImage): Promise<LabelRea
     'Give each nutrient\'s figure exactly as printed, value and unit together ("7g", "490mg", "<0.5g") — do not convert a unit or compute a figure from a percentage. Leave a field empty if the panel does not print that nutrient at all; only write a figure for one the panel actually states, including one it states as zero.',
     'A panel sometimes prints more than one column of figures side by side, typically "per 100g" and "per serving". Read every column it prints, left to right, and give what that column\'s own heading states — per100g, per100ml, or perServing. Leave a column\'s basis empty only when the panel genuinely does not head it.',
     'The serving line, when printed, states a size ("2 cookies", "1 oz (28g)") — give it verbatim in servingText, and the gram weight separately in servingGrams if it states one in parentheses.',
-    'Ignore the %DV column entirely; it is not a figure to report. Ignore "Calories from Fat", "Trans Fat", "Added Sugars", and every vitamin or mineral row — this app has no field for any of them.',
+    'Ignore the %DV column entirely; it is not a figure to report. Ignore "Calories from Fat", "Trans Fat", and "Added Sugars" — this app has no field for any of them.',
+    'The mineral rows at the foot of a US panel are read: give calcium, iron and potassium as printed, in the amount column and never the %DV one. Ignore every other vitamin and mineral row, vitamin D included — this app has no field for those.',
     'If the photo does not show a nutrition panel at all, or is too illegible to make out real figures, return an empty columns array rather than guessing.',
   ].join('\n\n');
 
