@@ -255,7 +255,7 @@ export function catalogPanelWrite(
  * A one-line summary of a stored panel, for a row that shows what it has.
  *
  * Calories lead because they are what somebody is looking for, and the count
- * that follows is how many of the ten this food actually reports — a figure
+ * that follows is how many of the thirteen this food actually reports — a figure
  * worth showing because plenty of real rows carry a great many nutrients and
  * no energy at all. Null for no record, which a caller renders as the field
  * being empty rather than as a food containing nothing.
@@ -293,6 +293,9 @@ export const NUTRIENT_LABEL: Record<NutrientKey, { label: string; unit: string }
   sugarG: { label: 'Total sugars', unit: 'g' },
   proteinG: { label: 'Protein', unit: 'g' },
   sodiumMg: { label: 'Sodium', unit: 'mg' },
+  calciumMg: { label: 'Calcium', unit: 'mg' },
+  ironMg: { label: 'Iron', unit: 'mg' },
+  potassiumMg: { label: 'Potassium', unit: 'mg' },
   caffeineMg: { label: 'Caffeine', unit: 'mg' },
   waterMl: { label: 'Water', unit: 'ml' },
 };

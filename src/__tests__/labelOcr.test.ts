@@ -347,17 +347,49 @@ describe('readNutritionLabel', () => {
       expect(reading.columns[0].amounts.fatG).toBe(6);
     });
 
-    it('drops the vitamin and mineral rows a US panel prints below protein', () => {
+    it('reads the three mineral rows a US panel prints below protein', () => {
       const reading = readNutritionLabel(panel([
         ['Calories', '140'],
         ['Total Fat', '6g'],
         ['Protein', '1g'],
-        ['Vitamin D', '0mcg'],
         ['Calcium', '20mg'],
         ['Iron', '0.9mg'],
         ['Potassium', '65mg'],
       ]))!;
-      expect(reading.columns[0].amounts).toEqual({ calorieKcal: 140, fatG: 6, proteinG: 1 });
+      expect(reading.columns[0].amounts).toEqual({
+        calorieKcal: 140, fatG: 6, proteinG: 1,
+        calciumMg: 20, ironMg: 0.9, potassiumMg: 65,
+      });
+    });
+
+    it('drops the vitamin rows, vitamin D included, which have no field', () => {
+      // The one mandatory row with nowhere to go: a US panel prints vitamin D
+      // beside the three minerals and both sources state it as a default zero
+      // far more often than as a reading. See the note on `NutrientKey`.
+      const reading = readNutritionLabel(panel([
+        ['Calories', '140'],
+        ['Total Fat', '6g'],
+        ['Protein', '1g'],
+        ['Vitamin D', '2mcg'],
+        ['Vitamin A', '90mcg'],
+        ['Calcium', '20mg'],
+      ]))!;
+      expect(reading.columns[0].amounts).toEqual({
+        calorieKcal: 140, fatG: 6, proteinG: 1, calciumMg: 20,
+      });
+    });
+
+    it('takes a mineral row\'s amount column and never its %DV', () => {
+      // Every US mineral row prints "260mg 20%" — the percentage is not a
+      // figure, and taking it would file a fifth of a daily value as
+      // milligrams.
+      const reading = readNutritionLabel(panel([
+        ['Calories', '140'],
+        ['Calcium', '260mg 20%'],
+        ['Iron', '6mg 30%'],
+      ]))!;
+      expect(reading.columns[0].amounts.calciumMg).toBe(260);
+      expect(reading.columns[0].amounts.ironMg).toBe(6);
     });
 
     it('drops the old "Calories from Fat" line rather than reading it as fat', () => {

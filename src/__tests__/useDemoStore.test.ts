@@ -1794,6 +1794,25 @@ describe('demo seed — people', () => {
     expect(filed.length).toBeGreaterThan(0);
   });
 
+  it('seeds the three minerals, fully on one food and partly on another', () => {
+    // A capability with no seeded row reads as one the app hasn't got, and
+    // these are exactly the fields that are invisible until something fills
+    // them. Both halves matter: an enriched loaf states the whole mineral
+    // block, and yogurt states two thirds of it, which is what stops the
+    // panel reading as all-or-nothing. Iron absent from the yogurt is the
+    // absent-is-not-zero rule showing through on a real food.
+    const items = useGroceryStore.getState().items;
+    const bread = items.find(i => i.name === 'Bread');
+    expect(bread?.nutrition?.amounts).toMatchObject({
+      calciumMg: 150, ironMg: 3.6, potassiumMg: 115,
+    });
+
+    const yogurt = items.find(i => i.name === 'Greek yogurt');
+    expect(yogurt?.nutrition?.amounts.calciumMg).toBe(110);
+    expect(yogurt?.nutrition?.amounts.potassiumMg).toBe(141);
+    expect(yogurt?.nutrition?.amounts.ironMg).toBeUndefined();
+  });
+
   it('seeds several days, since one day averages to itself', () => {
     // The Stats read averages over days, so a single seeded day gives a section
     // that can only ever say "1 of 30" — a feature that reads as broken rather
