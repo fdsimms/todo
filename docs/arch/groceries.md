@@ -1392,8 +1392,8 @@ nothing to backfill.
   `classifyPlanned` re-files the line under the catalog's own key before classifying — with no
   `swappedFrom`, since this is the same thing spelled the other way rather than a swap —
   `recipeReadiness` counts it as covered, `recipeCost` prices it, `useUpRecipes` offers the recipe
-  for the dying row, `plannedUsesToday` pairs the two, and the import review's own link icon
-  (`ExtractedIngredientRow`) reports what the store will actually do on save. Plural tolerance in
+  for the dying row, and the import review's own link icon (`ExtractedIngredientRow`) reports what
+  the store will actually do on save. Plural tolerance in
   `matchWeight` is untouched and still does its own job: that one is autocomplete, where a wrong
   guess costs a keystroke.
 

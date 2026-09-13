@@ -137,9 +137,12 @@ const MIN_LABEL_ROWS = 3;
  * right — the total fat row read as 0g because the trans fat row below it was
  * the last one to match.
  *
- * The vitamin and mineral rows are here rather than unmatched because a future
- * micronutrient panel is the obvious next widening of `NutrientKey`, and a rule
- * that quietly starts matching them would be a surprise rather than a feature.
+ * The vitamin rows are here rather than unmatched because the rest of a
+ * micronutrient panel is the next widening of `NutrientKey` that could happen,
+ * and a rule that quietly starts matching them would be a surprise rather than
+ * a feature. Calcium, iron and potassium have since left this list for
+ * `ROW_TARGETS`, which is what #2430 decided; vitamin D stays ignored, and the
+ * note on `NutrientKey` says why it is the one mandatory row with no field.
  */
 const IGNORED_ROW: readonly RegExp[] = [
   /\btrans\b/,
@@ -151,9 +154,6 @@ const IGNORED_ROW: readonly RegExp[] = [
   /\bsugar\s*alcohols?\b/,
   /\bcalories\s*from\b/,
   /\bvitamin\b/,
-  /\bcalcium\b/,
-  /\biron\b/,
-  /\bpotassium\b/,
   /\bdaily\s*values?\b/,
   /\bservings?\s*per\s*(container|pack)/,
 ];
@@ -184,6 +184,9 @@ const ROW_TARGETS: readonly { target: NutrientKey | 'salt'; pattern: RegExp }[] 
   { target: 'salt', pattern: /\bsalt\b/ },
   { target: 'fatG', pattern: /\bfat\b/ },
   { target: 'calorieKcal', pattern: /\b(calories?|energy)\b/ },
+  { target: 'calciumMg', pattern: /\bcalcium\b/ },
+  { target: 'ironMg', pattern: /\biron\b/ },
+  { target: 'potassiumMg', pattern: /\bpotassium\b/ },
   { target: 'caffeineMg', pattern: /\bcaffeine\b/ },
   { target: 'waterMl', pattern: /\bwater\b/ },
 ];

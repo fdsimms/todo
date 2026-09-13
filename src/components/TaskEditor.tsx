@@ -281,6 +281,9 @@ const LOG_HEALTH_VALUE_STEPS: Record<NutrientKey, { step: number; max: number }>
   fiberG: { step: 1, max: 30 },
   sugarG: { step: 1, max: 50 },
   sodiumMg: { step: 100, max: 3000 },
+  calciumMg: { step: 50, max: 1500 },
+  ironMg: { step: 1, max: 30 },
+  potassiumMg: { step: 50, max: 2000 },
   caffeineMg: { step: 10, max: 500 },
   waterMl: { step: 50, max: 1000 },
 };

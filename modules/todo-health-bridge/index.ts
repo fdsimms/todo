@@ -95,9 +95,9 @@ export type HealthWriteStatus = 'unavailable' | 'notDetermined' | 'sharingDenied
  * individually and somebody can allow water and refuse weight in the same
  * sheet. One status for "writing" would be wrong for whoever split them.
  *
- * `nutrition` is ten share types behind one key, since a meal is written as
- * one correlation of ten samples and there is no useful row to draw for each
- * nutrient separately. Its status is the weakest of the ten — see the native
+ * `nutrition` is thirteen share types behind one key, since a meal is written
+ * as one correlation of thirteen samples and there is no useful row to draw for
+ * each nutrient separately. Its status is the weakest of the thirteen — see the native
  * `writeAuthorizationStatus`, which explains why under-claiming is the right
  * direction to be wrong in.
  */
@@ -257,9 +257,9 @@ export function requestHealthWriteAuthorization(): Promise<HealthAuthorizationRe
  * (`nutrientWriteTable`) resolves it against, so a task logging water this
  * way and a food log entry stating water land in Health under the identical
  * share type. This is the generalization of what used to be a
- * water-only `writeWaterSample`: every one of the ten nutrients already had a
+ * water-only `writeWaterSample`: every one of the thirteen nutrients already had a
  * share type from the food-log write, so a task naming one of them needed no
- * new native surface, only a single-sample write next to the ten-sample one.
+ * new native surface, only a single-sample write next to the many-sample one.
  *
  * Resolves `false` for every reason there's nothing to report success for
  * (no native half, not authorized, an unrecognized key, a non-positive
