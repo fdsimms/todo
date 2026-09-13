@@ -2018,10 +2018,17 @@ export function TodayScreen() {
     if (kitchenOnToday && kitchenEntries.length > 0) {
       rows.push(...kitchenContextRows(kitchenEntries, {
         category: mealCookTaskCategory,
+        // A 'product' entry's own id is the box (ItemProduct.id), but
+        // groceryUseUp tasks are always keyed on the parent GroceryItem
+        // (reconcileUseUpTask reads from useGroceryStore's items, never from
+        // itemProducts) — so a box has to be checked against `itemId`, its
+        // catalog row, or a live item-level task never registers and the row
+        // sits here forever even with the generator on and a task already
+        // showing for the same food.
         hasUseUpTask: (entry: KitchenEntry) => !!liveGeneratedTask(
           allTasks,
           entry.kind === 'leftover' ? 'leftoverUseUp' : 'groceryUseUp',
-          entry.sourceId,
+          entry.kind === 'product' ? entry.itemId : entry.sourceId,
         ),
         plannedUses: kitchenPlannedUses,
       }));
