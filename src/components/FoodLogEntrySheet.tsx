@@ -33,7 +33,7 @@ import { useRecipeStore } from '../store/useRecipeStore';
 import { useFoodLogStore, type FoodLogDraft } from '../store/useFoodLogStore';
 import { subDays } from 'date-fns/subDays';
 import { addCustomPortion, catalogPanelWrite, nutritionFor } from '../utils/foodNutrition';
-import { combineFoodNutrition, foodLogEntryEdit, helpingNutrition, recipeHelpingNutrition, scalePanelToAmount } from '../utils/foodLog';
+import { amountExample, amountHint, combineFoodNutrition, foodLogEntryEdit, helpingNutrition, recipeHelpingNutrition, scalePanelToAmount } from '../utils/foodLog';
 import { cookedDishGrams, mealHelping, servingGrams, weighedHelping } from '../utils/mealLog';
 import { perServing, recipeNutrition, recipeNutritionLines, type NutritionLine } from '../utils/recipeNutrition';
 import { describeProduct } from '../utils/groceryProduct';
@@ -613,17 +613,15 @@ export function FoodLogEntrySheet({
       + (per !== null ? `, so a serving is about ${per} g.` : '.');
   }, [picked, dishMeasure]);
 
-  // Listed from the food's own table rather than a fixed "e.g. 1 cup" — that
-  // placeholder was suggesting an amount this specific food often can't
-  // measure, which is the whole complaint. Falls back to a weight, since mass
-  // is the one amount every food can always be logged by.
-  //
   // Every stated portion, not a slice of the first few: this is a "preset
   // beside a free input" (the amount field still takes a typed weight), which
   // stays chips rather than becoming a `SegmentedControl` — see that
   // component's own doc comment. The table a source states is already the
   // short, closed set the chips read as; there's no separate cap to apply on
-  // top of it.
+  // top of it. The placeholder and hint below use `amountHint`/`amountExample`
+  // instead of this list directly, since those are basis-aware in a way a
+  // plain "the food's own portions" isn't — a per-100ml panel needs its own
+  // wording even though it states no portions at all.
   const portionChoices = useMemo(() => {
     if (!picked || picked.kind !== 'food' || !picked.panel) return [];
     return picked.panel.portions.map(p => {
@@ -910,7 +908,7 @@ export function FoodLogEntrySheet({
               onChangeText={setAmount}
               placeholder={
                 picked.kind !== 'dish'
-                  ? `e.g. ${portionChoices[0] ?? '100g'}`
+                  ? `e.g. ${picked.panel ? amountExample(picked.panel) : '100g'}`
                   : dishMeasure === 'weight' ? 'e.g. 320 (grams)' : 'e.g. 1.5'
               }
               placeholderTextColor={colors.textTertiary}
@@ -932,7 +930,13 @@ export function FoodLogEntrySheet({
                 ? dishWeightHint
                 : portionChoices.length > 0
                   ? 'Tap a stated portion above, or type a weight (like 100g). Anything else is refused rather than guessed at.'
-                  : 'A weight, like 100g. This food has no stated portions. Type an amount by volume or count and you can weigh it once to add it.'}
+                  : picked.panel
+                    ? `${amountHint(picked.panel)}${
+                      picked.panel.basis === 'per100ml'
+                        ? ''
+                        : ' Type an amount by volume or count and you can weigh it once to add it.'
+                    }`
+                    : 'A weight, like 100g.'}
             </Text>
 
             {!!amount.trim() && !built && (
@@ -941,7 +945,9 @@ export function FoodLogEntrySheet({
                   ? (dishMeasure === 'weight'
                     ? `Enter what was on your plate, in grams, up to the ${picked.cookedGrams} g the whole dish weighs.`
                     : 'Enter how many servings you had.')
-                  : 'This food has no way to weigh that amount, so the figures would be a guess. Try a weight, or an amount it states a portion for.'}
+                  : `This food has no way to measure that amount, so the figures would be a guess. ${
+                    picked.panel ? amountHint(picked.panel) : 'Try a weight, or an amount it states a portion for.'
+                  }`}
               </Text>
             )}
 

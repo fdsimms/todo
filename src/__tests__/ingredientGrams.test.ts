@@ -87,6 +87,13 @@ describe('a line written as a volume', () => {
   it('refuses a prep the table does not name', () => {
     expect(grams('2 cups', 'julienned')).toBeNull();
   });
+
+  it('measures fl oz through the same density as cups, once it is a recognised volume', () => {
+    // A cup of flour is 125g and a fluid ounce is a cup's own eighth, so 8 fl
+    // oz should come back to the same weight as "1 cup" above.
+    expect(grams('8 fl oz', null, FLOUR)).toBeCloseTo(125, 4);
+    expect(grams('4 fl oz', null, FLOUR)).toBeCloseTo(62.5, 4);
+  });
 });
 
 describe('a line written as a count', () => {
@@ -329,5 +336,18 @@ describe('panelMultiplier and servings', () => {
 
   it('refuses a zero or negative serving count', () => {
     expect(panelMultiplier('0 servings', null, panel({ basis: 'perServing' }))).toBeNull();
+  });
+
+  it('measures fl oz directly against a per-100ml panel, no portion table needed', () => {
+    // A liquid needs no density: 12 fl oz is ~354.88 ml of it, straight off
+    // the label's own basis.
+    expect(panelMultiplier('12 fl oz', null, panel({ basis: 'per100ml' })))
+      .toBeCloseTo(3.5488235475, 6);
+  });
+
+  it('still refuses a bare weight against a per-100ml panel', () => {
+    // Oat milk's own drink is per 100ml, and a weight is a fact nobody
+    // measured — this must not silently treat "12g" as "12ml".
+    expect(panelMultiplier('12g', null, panel({ basis: 'per100ml' }))).toBeNull();
   });
 });

@@ -1,0 +1,4 @@
+{
+  "message": "Logging food now accepts fluid ounces, converted against a food's own cup measurements just like tablespoons or teaspoons. The scanned-item and food-log amount fields also now say up front what amounts will actually work for that food, instead of only after typing something that doesn't.",
+  "date": "2026-09-13"
+}
