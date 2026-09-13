@@ -48,6 +48,7 @@ describe('the menu as data', () => {
   it('files a hub member under its hub, and a plain row under none', () => {
     expect(hubForRoute('Logbook')?.id).toBe('history');
     expect(hubForRoute('Recipes')?.id).toBe('kitchen');
+    expect(hubForRoute('FoodLog')?.id).toBe('kitchen');
     expect(hubForRoute('Mood')?.id).toBe('health');
     expect(hubForRoute('Search')).toBeUndefined();
   });
@@ -69,12 +70,14 @@ describe('the kitchen switch', () => {
     }
   });
 
-  // Food log used to be a kitchen-hub member and disappeared along with
-  // groceries; it moved to the health hub precisely so logging what you ate
-  // isn't tied to the shopping feature.
-  it('leaves Food log reachable once the kitchen switch is off', () => {
+  // Food log briefly lived in the health hub so it wouldn't disappear along
+  // with groceries; it moved back to the kitchen hub because a tap from Meal
+  // plan landing on a screen with no pill row back to Groceries/Recipes/
+  // Pantry read as leaving the app. It now takes the kitchen switch with it,
+  // same as the other three members.
+  it('takes Food log with it when the kitchen switch is off', () => {
     const found = menuDestinations({ ...FULL, kitchenEnabled: false }).map(d => d.route);
-    expect(found).toContain('FoodLog');
+    expect(found).not.toContain('FoodLog');
   });
 });
 
@@ -94,11 +97,11 @@ describe('simplified mode', () => {
   // caught here rather than shipping as a row that opens onto nothing.
   it('leaves every hub standing, on the emptiest install simplified mode allows — except Health', () => {
     // Health is the one hub every one of whose members can be gone at once:
-    // Weight is a lens and simple mode drops it unconditionally, and Mood,
-    // Medications and Food log are all content screens that need a log entry
-    // to survive. The other three hubs keep at least one always-shown screen
-    // (Categories, Logbook, Groceries…), so this is the case the comment on
-    // the loop below was written to catch, now that it can actually happen.
+    // Weight is a lens and simple mode drops it unconditionally, and Mood and
+    // Medications are both content screens that need a log entry to survive.
+    // The other three hubs keep at least one always-shown screen (Categories,
+    // Logbook, Groceries…), so this is the case the comment on the loop below
+    // was written to catch, now that it can actually happen.
     const bare = { ...SIMPLE, counts: { stacks: 0, templates: 0, people: 0, mood: 0, medications: 0, foodLog: 0 } };
     for (const hub of NAV_HUBS) {
       if (hub.id === 'health') continue;
@@ -148,7 +151,7 @@ describe('the subtitle under a hub row', () => {
     const organize = NAV_HUBS.find(h => h.id === 'organize')!;
     expect(hubSubtitle(organize)).toBe('Categories, Tags, People, Stacks, Templates');
     const health = NAV_HUBS.find(h => h.id === 'health')!;
-    expect(hubSubtitle(health)).toBe('Mood, Medications, Weight, Food log');
+    expect(hubSubtitle(health)).toBe('Mood, Medications, Weight');
   });
 
   // The whole point of building it from the members rather than writing it
@@ -157,10 +160,9 @@ describe('the subtitle under a hub row', () => {
   it('stays honest when simplified mode takes members away', () => {
     const row = visibleMenuRows({ ...FULL, simpleMode: true }).find(
       r => r.kind === 'hub' && r.hub.id === 'health');
-    // Weight is a lens and goes unconditionally; Mood, Medications and Food
-    // log are content screens and stay only because FULL.counts has entries
-    // in each of them.
-    expect(row && row.kind === 'hub' && hubSubtitle(row.hub)).toBe('Mood, Medications, Food log');
+    // Weight is a lens and goes unconditionally; Mood and Medications are
+    // content screens and stay only because FULL.counts has entries in each.
+    expect(row && row.kind === 'hub' && hubSubtitle(row.hub)).toBe('Mood, Medications');
   });
 });
 

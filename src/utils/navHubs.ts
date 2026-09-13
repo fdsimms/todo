@@ -96,10 +96,14 @@ const KITCHEN_HUB: NavHub = {
     // still `Kitchen` — the same split as "Stack" over `TaskGroup`, and the
     // reason is written up where the label was chosen.
     { route: 'Kitchen', label: 'Pantry', keywords: ['fridge', 'freezer', 'kitchen', 'inventory', 'use by'] },
-    // Food log moved out to its own Health hub (below) — logging what you ate
-    // is a health record, not a kitchen-shopping task, and tying it to
-    // `kitchenEnabled` meant switching off groceries took your food diary
-    // with it.
+    // Food log moved back here from its own Health hub: what you log there is
+    // what you planned and shopped for here, and a tap from Meal plan landing
+    // on a screen with no way back to the other three kitchen pills read as
+    // leaving the app rather than switching tabs. `kitchenEnabled` off does
+    // take it with the rest of the hub, same as the other three — a food
+    // diary tied to groceries you've switched off is the accepted cost of
+    // that connection.
+    { route: 'FoodLog', label: 'Food log', keywords: ['ate', 'eaten', 'calories', 'diary', 'nutrition', 'macros'] },
   ],
 };
 
@@ -131,9 +135,10 @@ const HISTORY_HUB: NavHub = {
 // Stats, on the reasoning that all five are "things that already happened" —
 // but a completed task and a mood entry aren't the same kind of history, and
 // the pill row was the widest in the app for it. This groups the health logs
-// on their own, and gives Food log (which used to live in the kitchen hub,
-// switched off along with groceries) a home that isn't tied to a shopping
-// feature.
+// on their own. Food log used to live here too, on the reasoning that logging
+// what you ate is a health record rather than a kitchen-shopping task; it
+// moved back to the kitchen hub (above) once that meant a tap from Meal plan
+// landed on a screen with no pill row back to Groceries/Recipes/Pantry.
 const HEALTH_HUB: NavHub = {
   id: 'health',
   label: 'Health',
@@ -142,7 +147,6 @@ const HEALTH_HUB: NavHub = {
     { route: 'Mood', label: 'Mood', keywords: ['feelings', 'symptoms', 'how i feel'] },
     { route: 'Medications', label: 'Medications', keywords: ['medicine', 'pills', 'tablets', 'dose', 'supplement', 'inhaler', 'painkiller'] },
     { route: 'Weight', label: 'Weight', keywords: ['scale', 'kg', 'lb', 'pounds', 'body', 'mass'] },
-    { route: 'FoodLog', label: 'Food log', keywords: ['ate', 'eaten', 'calories', 'diary', 'nutrition', 'macros'] },
   ],
 };
 
