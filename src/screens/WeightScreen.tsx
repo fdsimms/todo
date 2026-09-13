@@ -273,12 +273,15 @@ export function WeightScreen() {
         <LogWeightSheet visible={logOpen} onClose={closeLog} />
         {/* Mounted here as well as in the main branch: the header (and so its
             goal action) is shared by every branch, and a button whose sheet
-            isn't mounted does nothing at all. The sheet's own first line is
-            what says a goal needs a weigh-in to measure from. */}
+            isn't mounted does nothing at all. The sheet's own first line says
+            a goal needs a weigh-in to measure from, and `onLogWeight` is what
+            lets someone actually record one without first backing out to this
+            screen's own empty state. */}
         <WeightGoalSheet
           visible={goalOpen}
           onClose={() => setGoalOpen(false)}
           currentKg={latest?.kilograms ?? null}
+          onLogWeight={openLog}
         />
       </View>
     );
@@ -439,6 +442,7 @@ export function WeightScreen() {
         visible={goalOpen}
         onClose={() => setGoalOpen(false)}
         currentKg={latest?.kilograms ?? null}
+        onLogWeight={openLog}
       />
     </View>
   );

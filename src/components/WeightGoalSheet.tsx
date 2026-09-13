@@ -67,9 +67,15 @@ interface Props {
   onClose: () => void;
   /** The most recent weigh-in, for seeding the starting weight of a new goal. */
   currentKg: number | null;
+  /**
+   * Opens the weigh-in sheet, for the dead end below. Omit where there's
+   * nowhere else to send someone (there isn't one on every screen that opens
+   * this sheet) and the plain explanation is all there is to show.
+   */
+  onLogWeight?: () => void;
 }
 
-export function WeightGoalSheet({ visible, onClose, currentKg }: Props) {
+export function WeightGoalSheet({ visible, onClose, currentKg, onLogWeight }: Props) {
   const colors = useColors();
   const styles = useMemo(() => makeStyles(colors), [colors]);
 
@@ -252,10 +258,19 @@ export function WeightGoalSheet({ visible, onClose, currentKg }: Props) {
       }
     >
       {startKg === null ? (
-        <Text style={styles.footnote}>
-          Record a weight first. A goal is measured from where you started, so
-          there is nothing to set one against yet.
-        </Text>
+        <>
+          <Text style={styles.footnote}>
+            Record a weight first. A goal is measured from where you started, so
+            there is nothing to set one against yet.
+          </Text>
+          {onLogWeight && (
+            <InlineAction
+              icon="add-circle-outline"
+              label="Record a weight"
+              onPress={() => { haptics.tap(); onClose(); onLogWeight(); }}
+            />
+          )}
+        </>
       ) : (
         <>
           <Text style={styles.sectionTitle}>THE GOAL</Text>
@@ -670,5 +685,5 @@ const makeStyles = (colors: Colors) => StyleSheet.create({
   macroGrams: { fontSize: font.lg, fontWeight: fontWeight.bold, color: colors.text },
   macroLabel: { fontSize: font.xs, color: colors.textSecondary, marginTop: spacing.xxs },
   macroPercent: { fontSize: font.xs, color: colors.textTertiary },
-  footnote: { fontSize: font.sm, color: colors.textSecondary, lineHeight: 20 },
+  footnote: { fontSize: font.sm, color: colors.textSecondary, lineHeight: 20, marginBottom: spacing.md },
 });
