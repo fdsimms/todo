@@ -4341,6 +4341,7 @@ export function TodayScreen() {
           visible={pullVisible}
           todaysTasks={visibleTasks}
           scopeProjectIds={pullScopeProjectIds}
+          onOpenProject={projectId => navigation.navigate({ name: 'ProjectDetail', params: { projectId } } as never)}
           onClose={() => {
             setPullVisible(false);
             setPullScopeProjectIds(undefined);

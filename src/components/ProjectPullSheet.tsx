@@ -41,6 +41,14 @@ interface Props {
    * not an invitation to browse every stalled project on the board.
    */
   scopeProjectIds?: readonly string[];
+  /**
+   * Opens the named project's own detail screen — wired up so a review task's
+   * "nothing to pull" moment still has somewhere to go look. Only rendered
+   * when the sheet is scoped to exactly one project: a board-wide opening has
+   * as many candidate projects as rows, and a single link can't stand for all
+   * of them.
+   */
+  onOpenProject?: (projectId: string) => void;
   onClose: () => void;
 }
 
@@ -69,7 +77,7 @@ interface Props {
  * doesn't (outside the expanded case, which has no need for it), so it gets
  * its own visible affordance instead of a third gesture.
  */
-export function ProjectPullSheet({ visible, todaysTasks, scopeProjectIds, onClose }: Props) {
+export function ProjectPullSheet({ visible, todaysTasks, scopeProjectIds, onOpenProject, onClose }: Props) {
   const colors = useColors();
   const { isDark } = useTheme();
   const styles = useMemo(() => makeStyles(colors), [colors]);
@@ -97,6 +105,13 @@ export function ProjectPullSheet({ visible, todaysTasks, scopeProjectIds, onClos
   const reviewTaskId = scopeProjectIds?.length === 1
     ? liveGeneratedTask(allTasks, 'projectReview', scopeProjectIds[0])?.id ?? null
     : null;
+
+  // Looked up rather than read off a proposal — a project with nothing left
+  // to pull has no proposal row to read a title from, and that's exactly the
+  // case this link is for.
+  const scopedProject = scopeProjectIds?.length === 1
+    ? projects.find(p => p.id === scopeProjectIds[0])
+    : undefined;
 
   // The plan is computed once per opening, not derived live: it's a snapshot
   // the user is deciding on, and re-running it as the store changes underneath
@@ -285,6 +300,13 @@ export function ProjectPullSheet({ visible, todaysTasks, scopeProjectIds, onClos
     dismiss();
   };
 
+  const handleGoToProject = () => {
+    if (!scopedProject || !onOpenProject) return;
+    haptics.tap();
+    onOpenProject(scopedProject.id);
+    dismiss();
+  };
+
   // Same sequence Settings uses to turn vacation mode off (protected streaks
   // are forgiven first, or a paused daily habit would read as broken the
   // moment the pause lifts). Rebuilds the plan in place rather than closing
@@ -421,6 +443,20 @@ export function ProjectPullSheet({ visible, todaysTasks, scopeProjectIds, onClos
             )}
           </View>
 
+          {scopedProject && onOpenProject && (
+            <TouchableOpacity
+              style={styles.projectLink}
+              onPress={handleGoToProject}
+              activeOpacity={interaction.activeOpacity}
+              accessibilityRole="button"
+              accessibilityLabel={`Open ${scopedProject.title}`}
+            >
+              <Ionicons name="briefcase-outline" size={iconSize.sm} color={colors.accent} />
+              <Text style={styles.projectLinkText} numberOfLines={1}>{scopedProject.title}</Text>
+              <Ionicons name="chevron-forward" size={iconSize.sm} color={colors.accent} />
+            </TouchableOpacity>
+          )}
+
           {plan.proposals.length === 0 ? (
             <>
               <Text style={styles.emptyHint}>
@@ -553,6 +589,15 @@ const makeStyles = (colors: Colors) => StyleSheet.create({
   },
   sheetTitle: { color: colors.text, fontSize: font.lg, fontWeight: fontWeight.semibold },
   overflow: { color: colors.textTertiary, fontSize: font.xs },
+  projectLink: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    alignSelf: 'flex-start',
+    gap: spacing.xs,
+    marginHorizontal: spacing.md,
+    marginBottom: spacing.sm,
+  },
+  projectLinkText: { color: colors.accent, fontSize: font.sm, fontWeight: fontWeight.medium },
   hint: {
     color: colors.textTertiary,
     fontSize: font.xs,
