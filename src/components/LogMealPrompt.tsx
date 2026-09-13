@@ -17,6 +17,7 @@ import {
   weighedHelping,
 } from '../utils/mealLog';
 import { helpingNutrition } from '../utils/foodLog';
+import { dayKeyToDate } from '../utils/dateUtils';
 import { haptics } from '../utils/haptics';
 import { CountStepper } from './CountStepper';
 import { NumberPadAccessory, NUMBER_PAD_ACCESSORY_ID } from './NumberPadAccessory';
@@ -151,6 +152,11 @@ export function LogMealPrompt() {
     if (!helping) return;
     const nutrition = helpingNutrition(helping.amounts, helping.servingText, helping.grams);
     if (!nutrition) { haptics.error(); return; }
+    // Anchored at noon, never at the day key's own midnight — see the same
+    // normalising `dayLoad.ts` does before handing a day key to anything
+    // dayResetTime-sensitive, which addEntry's own getLogicalDayKey is.
+    const at = dayKeyToDate(pending.dayKey);
+    at.setHours(12, 0, 0, 0);
     addEntry({
       label: pending.label,
       quantity: helping.servingText,
@@ -160,6 +166,7 @@ export function LogMealPrompt() {
       slot: pending.slot,
       recipeId: pending.recipeId,
       mealPlanEntryId: pending.mealPlanEntryId,
+      at,
     });
     haptics.success();
     close();

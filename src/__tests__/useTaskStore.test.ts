@@ -12826,7 +12826,7 @@ describe('completing a meal task offers to log it', () => {
     useTaskStore.getState().completeTask(task.id);
 
     expect(useFoodLogStore.getState().pendingManualMealLog).toEqual({
-      label: 'Eating out', slot: 'dinner', mealPlanEntryId: 'm-2',
+      label: 'Eating out', slot: 'dinner', dayKey: '2026-08-22', mealPlanEntryId: 'm-2',
     });
     expect(useFoodLogStore.getState().pendingMealLog).toBeNull();
   });

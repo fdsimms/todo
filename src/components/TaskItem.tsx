@@ -54,6 +54,7 @@ import { activeSegment, segmentPhase, segmentRemaining, timerSegments } from '..
 import { isStreakAtRecord } from '../utils/streakRecord';
 import { isTaskWindowActive, isTaskExpired, effectiveWindowEnd, isRecurrenceNotYetDue, isMissableMealPlanTask, isTaskNew, isTaskVisible, isQuotaTask, isQuotaPartial, quotaRidesOutTheDay, isOnPaceQuota, quotaLeavesTodayAfterLog, quotaNextDueAt, quotaFraction, quotaPaceFraction, quotaUnitsToPace, activeChainStepTitle, displayTitleFor } from '../utils/visibilityUtils';
 import { asksOnCompletion } from '../utils/deliverables';
+import { offersMealLogOnCompletion } from '../utils/completionTap';
 import { describeTaskRecurrence } from '../utils/recurrenceLabels';
 import { chainPreview, isChainFinish } from '../utils/chain';
 import { formatQuotaProgress } from '../utils/quotaUnit';
@@ -1137,6 +1138,15 @@ export const TaskItem = React.memo(function TaskItem({
   // asked anyway, since the tap reports a slip and completeTask refuses.
   const asksOnComplete = asksOnCompletion(task) && !task.completed && !isNegative;
 
+  // Completing this ticks it normally, but a "what did you eat?" prompt
+  // follows right after — the meal-slot chain's own "Eat" step, or a
+  // mealLogNudge task about a meal from a previous day. See
+  // offersMealLogOnCompletion's own doc comment for why this gets its own
+  // glyph rather than joining asksOnComplete's "?": that one means the tap
+  // doesn't complete anything until it's answered, and this one always does.
+  const mealLogPromptEnabled = useSettingsStore(s => s.mealLogPrompt);
+  const offersMealLog = offersMealLogOnCompletion(task, mealLogPromptEnabled);
+
   const slipped = isNegative && !isCleanToday(task, getCurrentDayStart());
   const slipsLoggedToday = isNegative ? slipsToday(task, getCurrentDayStart()) : 0;
 
@@ -1865,6 +1875,8 @@ export const TaskItem = React.memo(function TaskItem({
                       ? `${task.title}, opens the project review`
                     : asksOnComplete
                       ? `Complete ${task.title}, asks for an answer`
+                    : offersMealLog
+                      ? `Complete ${task.title}, offers to log it`
                       : `Complete ${task.title}`
         }
         accessibilityHint={
@@ -2026,6 +2038,13 @@ export const TaskItem = React.memo(function TaskItem({
             // completes anything," which is exactly what happens here too —
             // a review task's tap opens the pull sheet instead of completing.
             <Ionicons name="help" size={iconSize.xs} color={colors.textSecondary} />
+          )}
+          {!completing && !completionLocked && offersMealLog && (
+            // A different glyph from "?" on purpose — see
+            // offersMealLogOnCompletion's doc comment. "restaurant" is the
+            // icon every other meal/food-log entry point in the app already
+            // uses (GroceryScreen, FoodLogScreen, RecipesScreen, …).
+            <Ionicons name="restaurant" size={iconSize.xs} color={colors.textSecondary} />
           )}
         </View>
       </TouchableOpacity>

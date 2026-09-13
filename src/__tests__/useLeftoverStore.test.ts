@@ -9,6 +9,7 @@ import {
 } from '../db/database';
 import type { Leftover, Task } from '../types';
 import { daysInFridge, isLiveLeftover, keepDaysBetween, needsAttention } from '../utils/leftovers';
+import { dayKeyOf, getLogicalToday } from '../utils/dateUtils';
 
 jest.mock('react-native', () => ({ Platform: { OS: 'ios' } }));
 
@@ -609,7 +610,7 @@ describe('the meal-log offer a finished container raises', () => {
     useLeftoverStore.getState().finishLeftover('lo-a', 'eaten');
 
     expect(useFoodLogStore.getState().pendingManualMealLog).toEqual({
-      label: 'Takeout curry', slot: null, mealPlanEntryId: null,
+      label: 'Takeout curry', slot: null, dayKey: dayKeyOf(getLogicalToday()), mealPlanEntryId: null,
     });
     expect(useFoodLogStore.getState().pendingMealLog).toBeNull();
   });

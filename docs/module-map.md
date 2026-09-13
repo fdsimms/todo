@@ -55,7 +55,7 @@ name cannot say is where a component appears, and that is `docs/screen-map.md`.
 - `src/utils/clockTime.ts` — hhmmToDate, logicalDayStart, taskDayStart, formatHHMM, clockTimeToken, dateToHHMM
 - `src/utils/cloudKitTransport.ts` — CLOUDKIT_SOURCE, isCloudKitSyncAvailable, cloudKitUnavailableReason, cloudKitTransport
 - `src/utils/completionCalendarSync.ts` — logTaskCompletionToCalendar
-- `src/utils/completionTap.ts` — CompletionTap, completionTapFor
+- `src/utils/completionTap.ts` — CompletionTap, completionTapFor, offersMealLogOnCompletion
 - `src/utils/confirmDelete.ts` — confirmDelete
 - `src/utils/contactsAccess.ts` — ContactsPermission, getContactsPermission, ContactsAccessScope, getContactsAccessScope, requestContactsPermission, toCandidate, searchContacts, fetchLimitedContacts
 - `src/utils/contactsImport.ts` — MIN_CONTACT_QUERY_LENGTH, MAX_CONTACT_RESULTS, ContactCandidate, ContactPersonDraft, contactBirthday, normalizePhone, alreadyAdded, canSearchContacts, rankContacts, browsableContacts, +3 more

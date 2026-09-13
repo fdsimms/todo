@@ -1,4 +1,4 @@
-import { completionTapFor } from '../utils/completionTap';
+import { completionTapFor, offersMealLogOnCompletion } from '../utils/completionTap';
 import type { Task } from '../types';
 
 const mockSettingsState = {
@@ -319,5 +319,63 @@ describe('completionTapFor', () => {
       completed: true,
     } as Task;
     expect(completionTapFor(reviewTask)).toBe('uncomplete');
+  });
+});
+
+describe('offersMealLogOnCompletion', () => {
+  const eatStep = {
+    ...baseTask,
+    generatedKind: 'mealSlot',
+    generatedSourceId: '2025-06-10#lunch',
+    chainEnabled: false,
+    chainIndex: 0,
+    chainItems: [{ id: 'lunch-eat', title: 'Eat lunch', estimatedMinutes: null }],
+  } as Task;
+
+  const chooseStep = {
+    ...baseTask,
+    generatedKind: 'mealSlot',
+    generatedSourceId: '2025-06-10#lunch',
+    chainEnabled: true,
+    chainIndex: 0,
+    chainItems: [
+      { id: 'lunch-choose', title: 'Choose lunch', estimatedMinutes: null },
+      { id: 'lunch-prepare', title: 'Prepare lunch', estimatedMinutes: null },
+      { id: 'lunch-eat', title: 'Eat lunch', estimatedMinutes: null },
+    ],
+  } as Task;
+
+  const nudgeTask = {
+    ...baseTask,
+    generatedKind: 'mealLogNudge',
+    generatedSourceId: 'entry-1',
+  } as Task;
+
+  it('is true for a meal-slot chain\'s last step, with the setting on', () => {
+    expect(offersMealLogOnCompletion(eatStep, true)).toBe(true);
+  });
+
+  it('is false for the same task with the setting off', () => {
+    expect(offersMealLogOnCompletion(eatStep, false)).toBe(false);
+  });
+
+  it('is false for a meal-slot chain\'s unanswered "Choose" step', () => {
+    expect(offersMealLogOnCompletion(chooseStep, true)).toBe(false);
+  });
+
+  it('is true for a mealLogNudge task, with the setting on', () => {
+    expect(offersMealLogOnCompletion(nudgeTask, true)).toBe(true);
+  });
+
+  it('is false for a mealLogNudge task with the setting off', () => {
+    expect(offersMealLogOnCompletion(nudgeTask, false)).toBe(false);
+  });
+
+  it('is false once the task is already completed', () => {
+    expect(offersMealLogOnCompletion({ ...eatStep, completed: true }, true)).toBe(false);
+  });
+
+  it('is false for an ordinary task', () => {
+    expect(offersMealLogOnCompletion(baseTask as Task, true)).toBe(false);
   });
 });

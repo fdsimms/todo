@@ -9,6 +9,7 @@ import {
   dbPurgeOldLeftovers,
 } from '../db/database';
 import { generateId } from '../utils/id';
+import { dayKeyOf, getLogicalToday } from '../utils/dateUtils';
 import {
   cleanLeftoverTitle,
   isLiveLeftover,
@@ -424,6 +425,9 @@ export const useLeftoverStore = create<LeftoverStore>((set, get) => ({
           // A container has no meal of the day: it was eaten whenever it was
           // eaten, and inventing a slot would file it under one it wasn't in.
           slot: null,
+          // Finishing a leftover is a right-now action, unlike a meal-plan
+          // entry's own fixed day — so this is always today.
+          dayKey: dayKeyOf(getLogicalToday()),
           recipeId: leftover.recipeId,
           mealPlanEntryId: null,
           // The stored portion is whatever was left over, which the recipe's own
@@ -443,6 +447,7 @@ export const useLeftoverStore = create<LeftoverStore>((set, get) => ({
         useFoodLogStore.getState().setPendingManualMealLog({
           label: leftover.title,
           slot: null,
+          dayKey: dayKeyOf(getLogicalToday()),
           mealPlanEntryId: null,
         });
       }
