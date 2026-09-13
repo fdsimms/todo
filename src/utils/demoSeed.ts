@@ -10,6 +10,7 @@ import { usePersonStore } from '../store/usePersonStore';
 import { usePersonGroupStore } from '../store/usePersonGroupStore';
 import { usePersonNoteStore } from '../store/usePersonNoteStore';
 import { useFoodLogStore } from '../store/useFoodLogStore';
+import { useSavedMealsStore } from '../store/useSavedMealsStore';
 import { useMoodStore } from '../store/useMoodStore';
 import { useMilestoneStore } from '../store/useMilestoneStore';
 import { useMedicationStore } from '../store/useMedicationStore';
@@ -1708,6 +1709,37 @@ function seedFoodLog(today: Date): void {
       itemId: item.id,
       at,
     });
+  }
+
+  /**
+   * One saved meal, built from panels already on the day rather than logged
+   * for it — a feature with no row here reads as a feature the app doesn't
+   * have, same rule every other capability in this file follows. "Milk" and
+   * "Greek yogurt" are two of the breakfasts logged above, so this reads as
+   * somebody noticing their own repeated morning and bundling it, which is
+   * exactly the feature.
+   */
+  {
+    const savedMealItems = ['Milk', 'Greek yogurt']
+      .map(name => {
+        const item = items.find(i => i.name === name);
+        if (!item?.nutrition) return null;
+        const built = scalePanelToAmount(item.nutrition, '1 cup', null);
+        if (!built) return null;
+        return {
+          label: item.name,
+          recipeId: null,
+          itemId: item.id,
+          productId: null,
+          quantity: '1 cup',
+          grams: built.grams,
+          nutrition: built.nutrition,
+        };
+      })
+      .filter((i): i is NonNullable<typeof i> => i !== null);
+    if (savedMealItems.length > 0) {
+      useSavedMealsStore.getState().addMeal('Usual breakfast', savedMealItems);
+    }
   }
 }
 

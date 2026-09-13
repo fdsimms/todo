@@ -3430,6 +3430,46 @@ export interface FoodLogEntry {
   createdAt: string;
 }
 
+/**
+ * One food within a `SavedMeal`, shaped like the parts of a `FoodLogEntry`
+ * that re-logging needs and none of the parts that are about where it landed
+ * (`slot`, `atISO`, `sortOrder`) — those are decided fresh each time the meal
+ * is logged again, not carried from the entries it was built from.
+ *
+ * `nutrition` is a snapshot, same rule and same reason as `FoodLogEntry.nutrition`:
+ * editing the recipe or catalog row next month must not change what a saved
+ * meal logs today.
+ */
+export interface SavedMealItem {
+  label: string;
+  recipeId: string | null;
+  itemId: string | null;
+  productId: string | null;
+  quantity: string;
+  grams: number | null;
+  nutrition: FoodNutrition;
+}
+
+/**
+ * Several food log entries, bundled under one name so the whole combination
+ * can be logged again with one tap instead of re-finding and re-amounting
+ * each food.
+ *
+ * Deliberately not a trimmed `Recipe`: a recipe is a dish with steps,
+ * sourcing and planning fields this has no use for, and building one that
+ * way would either drag that machinery in unused or need a second "list of
+ * foods with amounts" shape living beside the one `Recipe.ingredients`
+ * already is. This is closer to `FoodLogDraft` repeated N times — the
+ * bulk-select bar's "Save as meal" action is the one place it's built, from
+ * whichever entries are selected.
+ */
+export interface SavedMeal {
+  id: string;
+  name: string;
+  items: SavedMealItem[];
+  createdAt: string;
+}
+
 export interface GroceryItem {
   id: string;
   // What the user last typed — the label. "Whole milk" and "milk" reading

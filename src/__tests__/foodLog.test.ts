@@ -9,10 +9,11 @@ import {
   helpingNutrition,
   recipeHelpingNutrition,
   resolveFoodLogDrop,
+  savedMealCalories,
   scalePanelToAmount,
   type FoodLogListItem,
 } from '../utils/foodLog';
-import type { FoodLogEntry, FoodNutrition, NutrientKey } from '../types';
+import type { FoodLogEntry, FoodNutrition, NutrientKey, SavedMealItem } from '../types';
 
 const NOW = new Date('2026-04-02T18:30:00.000Z');
 
@@ -250,6 +251,40 @@ describe('foodLogTotals', () => {
     const totals = foodLogTotals([]);
     expect(totals.total).toEqual({});
     expect(totals.entries).toBe(0);
+  });
+});
+
+function savedItem(overrides: Partial<SavedMealItem> = {}): SavedMealItem {
+  return {
+    label: 'Milk',
+    recipeId: null,
+    itemId: null,
+    productId: null,
+    quantity: '1 cup',
+    grams: 244,
+    nutrition: panel({ basis: 'perServing', amounts: { calorieKcal: 100 } }),
+    ...overrides,
+  };
+}
+
+describe('savedMealCalories', () => {
+  it('adds up what each item states', () => {
+    const total = savedMealCalories([
+      savedItem({ nutrition: panel({ amounts: { calorieKcal: 100 } }) }),
+      savedItem({ nutrition: panel({ amounts: { calorieKcal: 250 } }) }),
+    ]);
+    expect(total).toBe(350);
+  });
+
+  it('answers null rather than zero when nothing in it states calories', () => {
+    const total = savedMealCalories([
+      savedItem({ nutrition: panel({ amounts: { proteinG: 5 } }) }),
+    ]);
+    expect(total).toBeNull();
+  });
+
+  it('answers null for an empty meal', () => {
+    expect(savedMealCalories([])).toBeNull();
   });
 });
 

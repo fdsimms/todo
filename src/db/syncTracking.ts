@@ -86,6 +86,12 @@ export const SYNC_TRACKED_TABLES: readonly SyncTable[] = [
   // once and edited rarely, and its nutrition is a snapshot nothing recomputes,
   // so last-writer-wins is a no-op on almost every row.
   { name: 'food_logs', key: ['id'] },
+  // Saved meals. Built from food_logs entries and read the same way they are
+  // — a phone missing them offers a shorter list of "log again" shortcuts
+  // than the one actually built, which is silent rather than wrong, but a
+  // meal saved on one phone should show up on the other. Written once and
+  // rarely edited, so last-writer-wins is a no-op on almost every row.
+  { name: 'saved_meals', key: ['id'] },
   { name: 'person_groups', key: ['id'] },
   { name: 'categories', key: ['id'] },
   { name: 'project_categories', key: ['id'] },

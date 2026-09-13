@@ -1,5 +1,5 @@
 import * as SQLite from 'expo-sqlite';
-import type { Cookbook, DeliverableKind, FoodLogEntry, GeneratedKind, LoggedSymptom, MedicationLog, Milestone, MoodLevel, MoodLog, NutrientKey, Person, PersonGroup, PersonNote, PersonNoteKind, Task, Category, GroceryItem, GroceryList, GroceryListEntry, GtinLookup, ItemProduct, ItemShopLink, ItemSubLink, Leftover, MealPlanEntry, MealSlot, Recipe, RecipeMealType, RecipeSourceType, RecipeVote, ReceiptStyle, Shop, StoreAlias, TaskGroup, FocusSession, FocusSessionRecord, FocusStep, FocusStepRecord, Project, ProjectCategory, TaskTemplate, TemplateCategory, TemplateContainer, TemplateItem, TemplateItemGroup, TemplateQuestion, TemplateSchedule, TimeOfDay } from '../types';
+import type { Cookbook, DeliverableKind, FoodLogEntry, GeneratedKind, LoggedSymptom, MedicationLog, Milestone, MoodLevel, MoodLog, NutrientKey, Person, PersonGroup, PersonNote, PersonNoteKind, Task, Category, GroceryItem, GroceryList, GroceryListEntry, GtinLookup, ItemProduct, ItemShopLink, ItemSubLink, Leftover, MealPlanEntry, MealSlot, Recipe, RecipeMealType, RecipeSourceType, RecipeVote, ReceiptStyle, SavedMeal, SavedMealItem, Shop, StoreAlias, TaskGroup, FocusSession, FocusSessionRecord, FocusStep, FocusStepRecord, Project, ProjectCategory, TaskTemplate, TemplateCategory, TemplateContainer, TemplateItem, TemplateItemGroup, TemplateQuestion, TemplateSchedule, TimeOfDay } from '../types';
 import { DEFAULT_NUDGE_CADENCE_DAYS, MEAL_SLOTS, NUTRIENT_KEYS, PERSON_NOTE_KINDS, RECIPE_MEAL_TYPES, RECIPE_SOURCE_TYPES, isReceiptStyle } from '../types';
 import { generateId } from '../utils/id';
 import { appendPriceObservation, parsePriceHistory } from '../utils/priceHistory';
@@ -362,6 +362,19 @@ export function initDatabase(): void {
       grams REAL,
       nutrition TEXT NOT NULL,
       health_sample_ids TEXT NOT NULL DEFAULT '[]',
+      created_at TEXT NOT NULL
+    );
+
+    -- Several food_logs entries bundled under a name so they can be logged
+    -- again in one tap — see SavedMeal in types/index.ts. items is the whole
+    -- list of SavedMealItem as one JSON blob rather than a child table: there
+    -- is nothing here that is ever queried by one item's own fields, only
+    -- read or written as the whole meal, the same call chainItems makes on
+    -- tasks.
+    CREATE TABLE IF NOT EXISTS saved_meals (
+      id TEXT PRIMARY KEY NOT NULL,
+      name TEXT NOT NULL,
+      items TEXT NOT NULL,
       created_at TEXT NOT NULL
     );
 
@@ -1924,6 +1937,9 @@ export const BACKUP_TABLES = [
   // Its pointers all run the other way and all dangle freely, so it has no
   // ordering requirement against the tables above it.
   'food_logs',
+  // Also standalone: a saved meal points at nothing and nothing points at it,
+  // beside food_logs for the same reason as the entries it's built from.
+  'saved_meals',
   'task_groups',
   'grocery_shops',
   // Before grocery_items: an entry points at one, so restoring the lists first
@@ -5252,6 +5268,69 @@ export function dbBulkUpdateFoodLogPlacement(
 export function dbCountFoodLogEntries(): number {
   const row = db.getFirstSync<{ n: number }>('SELECT COUNT(*) AS n FROM food_logs');
   return row?.n ?? 0;
+}
+
+/**
+ * Reads a saved meal's items back out of its JSON blob, resolve-or-shrug per
+ * item the way rowToFoodLogEntry reads a nutrition panel: an item whose
+ * nutrition doesn't parse is dropped rather than failing the whole meal, and
+ * a meal with nothing left to log after that is dropped too — same as an
+ * entry with no figures, there is nothing here a re-log could write.
+ */
+function rowToSavedMeal(row: Record<string, unknown>): SavedMeal | null {
+  let items: SavedMealItem[] = [];
+  try {
+    const parsed = JSON.parse((row.items as string) ?? '[]');
+    if (Array.isArray(parsed)) {
+      items = parsed
+        .map((raw): SavedMealItem | null => {
+          if (!raw || typeof raw !== 'object') return null;
+          const r = raw as Record<string, unknown>;
+          const label = typeof r.label === 'string' ? r.label : '';
+          if (!label) return null;
+          const nutrition = parseFoodNutrition(JSON.stringify(r.nutrition ?? null));
+          if (!nutrition) return null;
+          return {
+            label,
+            recipeId: typeof r.recipeId === 'string' ? r.recipeId : null,
+            itemId: typeof r.itemId === 'string' ? r.itemId : null,
+            productId: typeof r.productId === 'string' ? r.productId : null,
+            quantity: typeof r.quantity === 'string' ? r.quantity : '',
+            grams: typeof r.grams === 'number' && Number.isFinite(r.grams) ? r.grams : null,
+            nutrition,
+          };
+        })
+        .filter((i): i is SavedMealItem => i !== null);
+    }
+  } catch {
+    // Same shrug every other JSON column here takes.
+  }
+  if (items.length === 0) return null;
+  return {
+    id: row.id as string,
+    name: row.name as string,
+    items,
+    createdAt: row.created_at as string,
+  };
+}
+
+/** Every saved meal, newest first — there is no window to page through this one. */
+export function dbGetSavedMeals(): SavedMeal[] {
+  const rows = db.getAllSync<Record<string, unknown>>(
+    'SELECT * FROM saved_meals ORDER BY created_at DESC'
+  );
+  return rows.map(rowToSavedMeal).filter((m): m is SavedMeal => m !== null);
+}
+
+export function dbInsertSavedMeal(meal: SavedMeal): void {
+  db.runSync(
+    'INSERT INTO saved_meals (id, name, items, created_at) VALUES (?, ?, ?, ?)',
+    [meal.id, meal.name, JSON.stringify(meal.items), meal.createdAt]
+  );
+}
+
+export function dbDeleteSavedMeal(id: string): void {
+  db.runSync('DELETE FROM saved_meals WHERE id = ?', [id]);
 }
 
 export function dbGetMealPlanEntry(id: string): MealPlanEntry | null {
