@@ -1120,6 +1120,13 @@ export function TodayScreen() {
           // After rolloverQuotas/sweepOvershootQuotas: either can complete and
           // spawn members, which changes what a project counts as scheduled.
           useTaskStore.getState().dripStalledProjects();
+          // The weekly "Plan meals for the week" nudge fires purely by time
+          // passing (a weekday/time trigger), and a phone that's merely
+          // foregrounded — not force-quit — never sees another cold start to
+          // catch it on. Without this it depended entirely on a true cold
+          // launch or the OS's own background refresh actually running, which
+          // for most people is close to never.
+          useTaskStore.getState().checkMealPlanNudge();
           // A project goes quiet purely by time passing, and stops being quiet
           // the moment anything in it is dated — including from the review
           // task's own row, which nothing else would then clear. Same reason
@@ -1159,6 +1166,11 @@ export function TodayScreen() {
           // still missed one" the stacks note warns about. This pass re-runs the
           // predicate instead. After checkMealSlotTasks, which can plan a meal.
           useTaskStore.getState().checkMealShortfallTasks();
+          // The reverse-window sibling of the pass above, same trigger and the
+          // same missing-cold-start problem: a planned meal a few days behind
+          // that never got logged should ask about it without waiting for a
+          // force-quit.
+          useTaskStore.getState().checkMealLogNudgeTasks();
           // And the same for a supply whose lead time has come round while the
           // app sat in the background — a phone left open for a fortnight
           // never sees another cold start, and the whole point of a lead time
