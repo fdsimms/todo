@@ -552,6 +552,10 @@ export function buildCompletion(
             : task.supplyCount,
         timerStartedAt: null, // fresh occurrence isn't running; actualMinutes/estimate carry via ...effective
         timerElapsedSeconds: 0, // countdown restarts from the top; timedMinutes carries via ...effective
+        // The successor hasn't been completed yet, so it has no completion
+        // timer running either — completionTimerMinutes/Note carry via
+        // ...effective, same split as timerStartedAt above.
+        completionTimerStartedAt: null,
         // healthMetric/healthTarget carry via ...effective too, and need no
         // reset: readiness is derived against today's reading rather than
         // stored, so tomorrow's occurrence starts unready on its own.

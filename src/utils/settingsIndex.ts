@@ -622,7 +622,7 @@ export const SETTINGS_ENTRIES: SettingsEntry[] = [
   { id: 'penaltyShieldActive', iosOnly: true, requires: 'penaltyShield', groupId: 'tasksProjects', label: 'Blocked until', section: 'Focus sessions', simple: true,
     keywords: ['screen time', 'penalty', 'locked out', 'how long', 'end early', 'unblock'] },
   { id: 'timerLiveActivity', iosOnly: true, groupId: 'tasksProjects', label: 'Live Activity while timing', section: 'Timers',
-    keywords: ['lock screen', 'dynamic island', 'timer', 'stopwatch', 'cooking', 'recipe', 'countdown'] },
+    keywords: ['lock screen', 'dynamic island', 'timer', 'stopwatch', 'cooking', 'recipe', 'countdown', 'completion timer', 'reminder'] },
   { id: 'autoRemoveExpired', groupId: 'tasksProjects', label: 'Auto-remove expired tasks', section: 'Time-limited tasks',
     keywords: ['window', 'delete'], simple: true },
   { id: 'vacationMode', groupId: 'tasksProjects', label: 'Vacation mode', section: 'Vacation',

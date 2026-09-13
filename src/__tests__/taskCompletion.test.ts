@@ -65,7 +65,7 @@ const makeTask = (overrides: Partial<Task> = {}): Task => ({
   archived: false, archivedAt: null, timerStartedAt: null, actualMinutes: null,
   timedMinutes: null, timerElapsedSeconds: 0,
   healthMetric: null,
-  healthTarget: null, completionTimerMinutes: null, completionTimerNote: null, logHealthMetric: null, logHealthAmount: null, medicationName: null, medicationAmount: null, medicationUnit: null,
+  healthTarget: null, completionTimerMinutes: null, completionTimerNote: null, completionTimerStartedAt: null, logHealthMetric: null, logHealthAmount: null, medicationName: null, medicationAmount: null, medicationUnit: null,
   previousOccurrenceId: null,
   seriesId: null, seriesMonthDays: [], seriesRepeatMonths: 1, seriesDefaults: null,
   postponeCount: 0, postponeMuted: false, driftingSince: null,
@@ -183,6 +183,21 @@ describe('buildCompletion', () => {
       const { nextTask } = build(task);
       expect(nextTask!.deferUntil).toBeNull();
       expect(nextTask!.recurrenceAnchorDate).toBeNull();
+    });
+
+    // A completion timer running on the row that was just completed is not a
+    // fact about the fresh occurrence, which hasn't been completed yet — only
+    // completionTimerMinutes/Note (the setting) carry via ...effective.
+    it('does not inherit a completion timer running on the completed occurrence', () => {
+      const task = makeTask({
+        recurrenceType: 'daily',
+        dueDate: '2026-03-10T12:00:00.000Z',
+        completionTimerMinutes: 120,
+        completionTimerStartedAt: '2026-03-10T12:00:00.000Z',
+      });
+      const { nextTask } = build(task);
+      expect(nextTask!.completionTimerStartedAt).toBeNull();
+      expect(nextTask!.completionTimerMinutes).toBe(120);
     });
 
     it('starts a fresh occurrence with no answer to the question it still asks', () => {

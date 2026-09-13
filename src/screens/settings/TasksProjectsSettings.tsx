@@ -766,7 +766,7 @@ export function TasksProjectsSettings() {
       {Platform.OS === 'ios' && (
         <SettingsSection
           label="Timers"
-          footer="Requires iOS 17. Ends the moment you pause, stop, or (for a task) complete it. Resuming starts a fresh one."
+          footer="Requires iOS 17. Ends the moment you pause, stop, or (for a task) complete it, or dismiss a completion timer's own reminder. Resuming a timer starts a fresh one."
         >
           <SettingsRow
             entryId="timerLiveActivity"
@@ -774,7 +774,7 @@ export function TasksProjectsSettings() {
             iconColor={timerLiveActivity ? colors.accent : undefined}
             label="Live Activity while timing"
             hint={timerLiveActivity
-              ? 'A running task timer or recipe cook/prep timer shows on the Lock Screen and Dynamic Island'
+              ? 'A running task timer, recipe cook/prep timer, or completion timer reminder shows on the Lock Screen and Dynamic Island'
               : 'Timers stay in the app only'}
             toggle={timerLiveActivity}
             onPress={() => setTimerLiveActivity(!timerLiveActivity)}

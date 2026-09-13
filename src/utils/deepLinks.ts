@@ -630,6 +630,15 @@ export function openInAppUrl(url: string | null | undefined): boolean {
     // the key names the timer, and the pan it was set for is as likely to be
     // one step of a dish somebody is still cooking as the end of anything.
     else if (key?.startsWith('step:')) useStepTimerStore.getState().remove(key.slice('step:'.length));
+    // A completion timer's Done ends its countdown early without touching
+    // the task (already completed, long before this fired) or the pending
+    // notification scheduleCompletionTimer set up alongside it — same
+    // relationship a Timer app activity has to the alarm it's counting down
+    // to. Nowhere to open: the reminder this dismisses is about something
+    // already done, not a screen to jump back into.
+    else if (key?.startsWith('completionTimer:')) {
+      useTaskStore.getState().dismissCompletionTimer(key.slice('completionTimer:'.length));
+    }
     return true;
   }
   if (isOpenAppUrl(url)) {

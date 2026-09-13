@@ -53,6 +53,7 @@ import {
   scheduleTaskReminder,
   cancelTaskReminder,
   rescheduleAllReminders,
+  cancelCompletionTimer,
 } from '../utils/notifications';
 import { syncDeadlineEvent } from '../utils/deadlineCalendarSync';
 import { logTaskCompletionToCalendar } from '../utils/completionCalendarSync';
@@ -393,7 +394,7 @@ const makeTask = (overrides: Partial<Task> = {}): Task => ({
   timedMinutes: null,
   timerElapsedSeconds: 0,
   healthMetric: null,
-  healthTarget: null, completionTimerMinutes: null, completionTimerNote: null, logHealthMetric: null, logHealthAmount: null, medicationName: null, medicationAmount: null, medicationUnit: null,
+  healthTarget: null, completionTimerMinutes: null, completionTimerNote: null, completionTimerStartedAt: null, logHealthMetric: null, logHealthAmount: null, medicationName: null, medicationAmount: null, medicationUnit: null,
   actualMinutes: null,
   previousOccurrenceId: null,
   seriesId: null,
@@ -2971,6 +2972,19 @@ describe('uncompleteTask', () => {
     });
     useTaskStore.getState().uncompleteTask('t1');
     expect(deleteCalendarEvent).not.toHaveBeenCalled();
+  });
+
+  it('cancels a running completion timer and clears completionTimerStartedAt', () => {
+    useTaskStore.setState({
+      tasks: [makeTask({
+        id: 't1', completed: true, completedAt: 'now',
+        completionTimerMinutes: 120, completionTimerStartedAt: 'now',
+      })],
+    });
+    useTaskStore.getState().uncompleteTask('t1');
+    expect(cancelCompletionTimer).toHaveBeenCalledWith('t1');
+    const task = useTaskStore.getState().tasks[0];
+    expect(task.completionTimerStartedAt).toBeNull();
   });
 
   it('removes the untouched follow-up occurrence spawned by the completion', () => {
@@ -9386,6 +9400,29 @@ describe('timers', () => {
     useTaskStore.getState().discardTimer('a');
     const task = useTaskStore.getState().tasks.find(t => t.id === 'a')!;
     expect(task.timerStartedAt).toBeNull();
+  });
+
+  it('startCompletionTimer sets completionTimerStartedAt on the task', () => {
+    useTaskStore.setState({ tasks: [makeTask({ id: 'a', completionTimerMinutes: 120 })] });
+    useTaskStore.getState().startCompletionTimer('a');
+    const task = useTaskStore.getState().tasks.find(t => t.id === 'a')!;
+    expect(task.completionTimerStartedAt).not.toBeNull();
+  });
+
+  it('dismissCompletionTimer clears completionTimerStartedAt', () => {
+    useTaskStore.setState({
+      tasks: [makeTask({ id: 'a', completionTimerMinutes: 120, completionTimerStartedAt: new Date().toISOString() })],
+    });
+    useTaskStore.getState().dismissCompletionTimer('a');
+    const task = useTaskStore.getState().tasks.find(t => t.id === 'a')!;
+    expect(task.completionTimerStartedAt).toBeNull();
+  });
+
+  it('dismissCompletionTimer is a no-op when no completion timer is running', () => {
+    useTaskStore.setState({ tasks: [makeTask({ id: 'a', completionTimerStartedAt: null })] });
+    useTaskStore.getState().dismissCompletionTimer('a');
+    const task = useTaskStore.getState().tasks.find(t => t.id === 'a')!;
+    expect(task.completionTimerStartedAt).toBeNull();
   });
 
   // Timing a task exists to correct its estimate, so a measurement replaces

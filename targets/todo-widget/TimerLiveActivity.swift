@@ -20,8 +20,11 @@ import SwiftUI
 // opens the app from a Live Activity — every non-interactive tap on this
 // activity, and the whole of TripLiveActivity.swift, already goes through
 // one — so the Done button is one too: `dundundun://completeTask?id=<id>`
-// for a task, `dundundun://stopTimer?key=<key>` for a recipe's cook/prep
-// timer, both handled in src/utils/deepLinks.ts.
+// for a task's own running timer, `dundundun://stopTimer?key=<key>` for
+// everything else (a recipe's cook/prep timer, a cooking step timer, and a
+// completion timer's countdown, which dismisses rather than stops anything —
+// see the 'completionTimer' branch in src/utils/deepLinks.ts), both handled
+// there.
 //
 // Done means done, not "stop the clock": for a cook timer the JS side records
 // the cooking as well as the time, so the meal is ticked off the plan and the
