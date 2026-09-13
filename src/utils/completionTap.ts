@@ -1,7 +1,8 @@
 import type { Task } from '../types';
 import { isQuotaTask, isRecurrenceNotYetDue } from './visibilityUtils';
 import { asksOnCompletion } from './deliverables';
-import { activeMealSlotStepId } from './mealSlotTasks';
+import { activeMealSlotStepId, completesMealSlot, mealSlotOf } from './mealSlotTasks';
+import { mealLogNudgeEntryId } from './mealLogNudgeTasks';
 import { isNegativeTask } from './negativeHabits';
 import { projectReviewProjectId } from './projectReviewTasks';
 
@@ -72,4 +73,25 @@ export function completionTapFor(task: Task): CompletionTap {
   if (projectReviewProjectId(task)) return 'review-project';
   if (asksOnCompletion(task)) return 'ask';
   return 'complete';
+}
+
+/**
+ * Whether completing this task raises `offerMealLog`'s "what did you eat?"
+ * prompt afterward — the meal-slot chain's own last step ("Eat <dish>"), or a
+ * `mealLogNudge` task asking about a meal from a previous day (see
+ * `offerMealLog` in `useTaskStore.ts`). Unlike every `CompletionTap` value
+ * above, the tap still completes the task normally; this only says a sheet
+ * follows it, which is why it's a separate boolean rather than another
+ * `CompletionTap` case.
+ *
+ * Approximated off the task's own fields and the settings flag alone — the
+ * per-meal "don't ask" opt-out (`MealPlanEntry.logMeal`) is only known once
+ * `offerMealLog` reads the meal plan entry at completion time, which a list
+ * row can't repeat on every render. So a meal already told not to ask can
+ * still show this, on the rare meal declined individually rather than through
+ * the settings switch.
+ */
+export function offersMealLogOnCompletion(task: Task, mealLogPromptEnabled: boolean): boolean {
+  if (!mealLogPromptEnabled || task.completed) return false;
+  return (mealSlotOf(task) !== null && completesMealSlot(task)) || mealLogNudgeEntryId(task) !== null;
 }

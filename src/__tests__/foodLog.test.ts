@@ -1,4 +1,6 @@
 import {
+  amountExample,
+  amountHint,
   combineFoodNutrition,
   describeFoodLogEntry,
   describeFoodLogTotals,
@@ -7,6 +9,7 @@ import {
   foodLogTotals,
   nutrientContributions,
   helpingNutrition,
+  portionExamples,
   recipeHelpingNutrition,
   resolveFoodLogDrop,
   savedMealCalories,
@@ -549,6 +552,52 @@ describe('foodLogEntryEdit', () => {
 
   it('refuses a dish whose helping does not parse', () => {
     expect(foodLogEntryEdit(entry({ recipeId: 'r1', quantity: 'a big plate' }))).toBeNull();
+  });
+});
+
+describe('portionExamples', () => {
+  it('lists the food\'s own stated portions, up to the limit', () => {
+    expect(portionExamples(panel())).toEqual(['1 cup']);
+    expect(portionExamples(panel({ portions: [] }))).toEqual([]);
+  });
+});
+
+describe('amountHint / amountExample', () => {
+  it('says a weight and the food\'s own portions, for a per-100g panel', () => {
+    expect(amountHint(panel())).toBe(
+      'A weight (like 100g), or one of this food\'s stated portions: 1 cup.',
+    );
+    expect(amountExample(panel())).toBe('1 cup');
+  });
+
+  it('falls back to a plain weight when there are no stated portions', () => {
+    expect(amountHint(panel({ portions: [] }))).toBe(
+      'A weight, like 100g. This food has no stated portions.',
+    );
+    expect(amountExample(panel({ portions: [] }))).toBe('100g');
+  });
+
+  it('never suggests a weight for a per-100ml drink, which panelMultiplier refuses', () => {
+    expect(amountHint(panel({ basis: 'per100ml', portions: [] })))
+      .toBe('A volume, like 250 ml or 1 cup.');
+    expect(amountExample(panel({ basis: 'per100ml', portions: [] }))).toBe('250ml');
+  });
+
+  it('mentions servings too, once a per-100ml panel states a serving weight', () => {
+    expect(amountHint(panel({ basis: 'per100ml', servingGrams: 240, portions: [] })))
+      .toBe('A volume, like 250 ml or 1 cup, or a number of servings.');
+  });
+
+  it('asks for a serving count from a perServing panel with no serving weight', () => {
+    expect(amountHint(panel({ basis: 'perServing', servingGrams: null, portions: [] })))
+      .toBe('A number of servings, like 1 serving. This food states no weight per serving to measure anything else against.');
+    expect(amountExample(panel({ basis: 'perServing', servingGrams: null, portions: [] })))
+      .toBe('1 serving');
+  });
+
+  it('falls back to a weight for a perServing panel that does state its serving weight', () => {
+    expect(amountHint(panel({ basis: 'perServing', servingGrams: 30, portions: [] })))
+      .toBe('A weight, like 100g. This food has no stated portions.');
   });
 });
 

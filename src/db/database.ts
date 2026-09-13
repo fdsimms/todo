@@ -1551,6 +1551,9 @@ export function initDatabase(): void {
     // Null on every existing row: no completion timer is running until one is
     // started. See Task.completionTimerStartedAt.
     'ALTER TABLE tasks ADD COLUMN completion_timer_started_at TEXT',
+    // Which meal slot completing this task logs to the food log. NULL on
+    // every existing row, which is the feature being off. See Task.logMealSlot.
+    'ALTER TABLE tasks ADD COLUMN log_meal_slot TEXT',
   ];
   // Asking SQLite for a table's columns once is cheaper than handing it every
   // ALTER for that table and catching the duplicate-column error, and by the
@@ -2517,6 +2520,12 @@ function rowToTask(row: Record<string, unknown>): Task {
     medicationUnit: (row.medication_name as string | null)
       ? ((row.medication_unit as string | null) || null)
       : null,
+    // Narrowed the same way logHealthMetric above is: an unrecognized column
+    // value reads as "not logging", the safe answer for a row this build
+    // can't place.
+    logMealSlot: (MEAL_SLOTS as readonly string[]).includes(row.log_meal_slot as string)
+      ? (row.log_meal_slot as MealSlot)
+      : null,
     timerElapsedSeconds: (row.timer_elapsed_seconds as number | null) ?? 0,
     previousOccurrenceId: (row.previous_occurrence_id as string | null) ?? null,
     seriesId: (row.series_id as string | null) ?? null,
@@ -2589,8 +2598,8 @@ export function dbInsertTask(task: Task): void {
       prior_best_streak, reminder_time_anchor, reminder_utc_offset_minutes, polarity, slip_count, slip_date,
       health_metric, health_target, completion_timer_minutes, completion_timer_note, completion_timer_started_at, log_health_metric, log_health_amount,
       penalty_minutes, penalty_cutoff_time, penalty_fired_at, gates_apps,
-      medication_name, medication_amount, medication_unit
-    ) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)`,
+      medication_name, medication_amount, medication_unit, log_meal_slot
+    ) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)`,
     [
       task.id, task.title, task.notes, task.completed ? 1 : 0,
       task.completedAt, task.createdAt, task.seenAt, task.dueDate, task.deadline, task.deadlineOffsetDays ?? null, task.deadlineMonthDay ?? null, task.deferUntil,
@@ -2682,6 +2691,7 @@ export function dbInsertTask(task: Task): void {
       task.medicationName ?? null,
       task.medicationAmount ?? null,
       task.medicationUnit ?? null,
+      task.logMealSlot ?? null,
     ]
   );
 }
@@ -2712,7 +2722,7 @@ export function dbUpdateTask(task: Task): void {
       prior_best_streak=?, reminder_time_anchor=?, reminder_utc_offset_minutes=?, polarity=?, slip_count=?, slip_date=?,
       health_metric=?, health_target=?, completion_timer_minutes=?, completion_timer_note=?, completion_timer_started_at=?, log_health_metric=?, log_health_amount=?,
       penalty_minutes=?, penalty_cutoff_time=?, penalty_fired_at=?, gates_apps=?,
-      medication_name=?, medication_amount=?, medication_unit=?
+      medication_name=?, medication_amount=?, medication_unit=?, log_meal_slot=?
     WHERE id=?`,
     [
       task.title, task.notes, task.completed ? 1 : 0, task.completedAt, task.seenAt,
@@ -2805,6 +2815,7 @@ export function dbUpdateTask(task: Task): void {
       task.medicationName ?? null,
       task.medicationAmount ?? null,
       task.medicationUnit ?? null,
+      task.logMealSlot ?? null,
       task.id,
     ]
   );

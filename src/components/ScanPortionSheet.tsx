@@ -16,7 +16,7 @@ import { MEAL_SLOTS, MEAL_SLOT_LABELS, type FoodNutrition, type MealSlot } from 
 import { useFoodLogStore } from '../store/useFoodLogStore';
 import { useKeyboardInsetScroll } from '../hooks/useKeyboardInsetScroll';
 import { packageChoices, packageHelping } from '../utils/scanPortion';
-import { scalePanelToAmount } from '../utils/foodLog';
+import { amountExample, amountHint, scalePanelToAmount } from '../utils/foodLog';
 import { haptics } from '../utils/haptics';
 import { SegmentedControl } from './SegmentedControl';
 import { SheetHeader } from './SheetHeader';
@@ -237,10 +237,13 @@ export function ScanPortionSheet({ visible, foods, slot, at, mealPlanEntryId, on
                   style={styles.input}
                   value={typed}
                   onChangeText={text => setAnswers(a => ({ ...a, [food.key]: { kind: 'typed', text } }))}
-                  placeholder="e.g. 150g, 2 cups"
+                  placeholder={`e.g. ${amountExample(food.panel)}`}
                   placeholderTextColor={colors.textTertiary}
                   accessibilityLabel={`Amount of ${food.label}`}
                 />
+                {/* What will actually resolve, said before it's typed rather
+                    than only after a refusal. */}
+                <Text style={styles.hint}>{amountHint(food.panel)}</Text>
                 {/* What the answer works out to, or why it doesn't. An amount
                     the food's own portion table can't measure is refused here
                     rather than at Log, since the field is what needs changing. */}
@@ -250,7 +253,7 @@ export function ScanPortionSheet({ visible, foods, slot, at, mealPlanEntryId, on
                       ? outcome.nutrition.amounts.calorieKcal !== undefined
                         ? `${Math.round(outcome.nutrition.amounts.calorieKcal)} cal`
                         : 'Measured'
-                      : 'That amount can’t be measured against this label.'}
+                      : 'That amount can’t be measured against this label. See the note above.'}
                   </Text>
                 )}
               </View>
@@ -296,6 +299,7 @@ function makeStyles(colors: Colors) {
       color: colors.text,
       fontSize: font.md,
     },
+    hint: { color: colors.textTertiary, fontSize: font.sm },
     outcome: { color: colors.textSecondary, fontSize: font.sm },
     outcomeRefused: { color: colors.textTertiary },
     groupLabel: {

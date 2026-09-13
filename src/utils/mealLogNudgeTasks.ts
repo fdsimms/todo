@@ -69,7 +69,7 @@ export const MEAL_LOG_NUDGE_LOOKBACK_DAYS = 3;
 
 /** The row's title — the verb and the meal together, like `mealShortfallTitle`. */
 export function mealLogNudgeTitle(dayKey: string, slot: MealSlot, title: string): string {
-  return `Log ${title} (${format(dayKeyToDate(dayKey), 'EEE')} ${slotLabel(slot)})`;
+  return `Log ${title} (${format(dayKeyToDate(dayKey), 'EEEE')} ${slotLabel(slot)})`;
 }
 
 /** The meal plan entry a log-nudge task speaks for, or null for any other task. */

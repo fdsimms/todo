@@ -605,6 +605,7 @@ function offerMealLog(loggable: MealPlanEntry): void {
     useFoodLogStore.getState().setPendingMealLog({
       label: loggable.title,
       slot: loggable.slot,
+      dayKey: loggable.date,
       recipeId: loggable.recipeId,
       mealPlanEntryId: loggable.id,
       scale: loggable.recipeScale,
@@ -618,6 +619,7 @@ function offerMealLog(loggable: MealPlanEntry): void {
     useFoodLogStore.getState().setPendingManualMealLog({
       label: loggable.title,
       slot: loggable.slot,
+      dayKey: loggable.date,
       mealPlanEntryId: loggable.id,
     });
   }
@@ -2978,7 +2980,19 @@ export const useTaskStore = create<TaskStore>((set, get) => ({
     if (!missed) {
       const loggableEntryId = cookedEntryId ?? logNudgeEntryId;
       const loggable = loggableEntryId ? dbGetMealPlanEntry(loggableEntryId) : null;
-      if (loggable) offerMealLog(loggable);
+      if (loggable) {
+        offerMealLog(loggable);
+      } else if (task.logMealSlot) {
+        // An arbitrary task ("Log breakfast", "Pack lunch") opted into the
+        // same offer, but names no recipe and no meal-plan entry — so it
+        // always gets the manual search sheet, never the auto-computed
+        // prompt offerMealLog uses for a recipe-backed meal above.
+        useFoodLogStore.getState().setPendingManualMealLog({
+          label: displayTitleFor(task),
+          slot: task.logMealSlot,
+          mealPlanEntryId: null,
+        });
+      }
     }
 
     // Ticking a "Use up X" task off is the moment the user can say what
@@ -6103,6 +6117,7 @@ export const useTaskStore = create<TaskStore>((set, get) => ({
       medicationName: null,
       medicationAmount: null,
       medicationUnit: null,
+      logMealSlot: null,
       parentId,
       groupId: null,
       projectId: null,
@@ -6307,6 +6322,7 @@ export const useTaskStore = create<TaskStore>((set, get) => ({
       medicationName: null,
       medicationAmount: null,
       medicationUnit: null,
+      logMealSlot: null,
       parentId: null,
       groupId,
       projectId: null,

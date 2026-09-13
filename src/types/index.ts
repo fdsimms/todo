@@ -1582,6 +1582,16 @@ export interface Task {
   medicationName: string | null;
   medicationAmount: number | null;
   medicationUnit: string | null;
+  // Which meal slot completing this task logs to the food log, or null when
+  // it logs nothing — "Log breakfast", "Pack lunch", any task whose own tick
+  // is the moment a meal happened. Deliberately not a silent write like
+  // logHealthMetric/medicationName above: an arbitrary task names no food and
+  // no amount, so there's nothing to log yet, only an offer worth making.
+  // completeTask raises the same manual-entry prompt (`pendingManualMealLog`)
+  // a meal-plan task's own completion does (see offerMealLog), prefilled with
+  // this slot and the task's title, rather than writing a FoodLogEntry
+  // outright — see FoodLogEntrySheet.tsx.
+  logMealSlot: MealSlot | null;
   deferUntil: string | null;
   timeSegments: TimeOfDay[];
   windowStart: string | null; // "HH:MM" — task only becomes visible/active from this time on its day
@@ -2737,6 +2747,10 @@ export interface TemplateItem {
   medicationName: string | null;
   medicationAmount: number | null;
   medicationUnit: string | null;
+  // Seeds Task.logMealSlot, same reasoning as the medication triple above: a
+  // daily "Log breakfast" routine would otherwise need its slot re-picked by
+  // hand on every application.
+  logMealSlot: MealSlot | null;
 
   // What the task created from this item asks for when it's completed, or null
   // for the ordinary "ticking it is the whole answer" item. Another field

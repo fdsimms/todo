@@ -103,6 +103,13 @@ export interface PendingMealLog {
   label: string;
   /** Which meal it was, when the moment knows. */
   slot: MealSlot | null;
+  /**
+   * The day the meal was planned for, as a `YYYY-MM-DD` key — so an offer
+   * raised from a stale meal-log-nudge task (see `mealLogNudgeTasks.ts`)
+   * logs the entry against the day the meal actually happened, not whatever
+   * day it happens to be answered on.
+   */
+  dayKey: string;
   /** The dish, for its figures. Null for a leftover whose source no longer resolves. */
   recipeId: string | null;
   /** The planned meal this came from, or null for a leftover. */
@@ -141,6 +148,8 @@ export interface PendingManualMealLog {
   label: string;
   /** Which meal it was, when the moment knows. */
   slot: MealSlot | null;
+  /** The day the meal was planned for, as a `YYYY-MM-DD` key — see `PendingMealLog.dayKey`. */
+  dayKey: string;
   /** The planned meal this came from, so the entry it logs can point back at it. */
   mealPlanEntryId: string | null;
 }

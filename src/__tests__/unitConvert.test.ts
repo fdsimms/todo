@@ -49,6 +49,13 @@ describe('convertQuantity — to metric', () => {
     expect(convertQuantity('1 kg', 'metric')).toEqual({ text: '1 kg', converted: false });
     expect(convertQuantity('250 ml', 'metric')).toEqual({ text: '250 ml', converted: false });
   });
+
+  it('converts fl oz, the one ounce that is a volume rather than a weight', () => {
+    expect(metric('1 fl oz')).toBe('≈30 ml');
+    expect(metric('12 fl oz')).toBe('≈350 ml');
+    // A bare "oz" stays mass and converts to grams, unaffected.
+    expect(metric('12 oz')).toBe('≈340 g');
+  });
 });
 
 describe('convertQuantity — to US', () => {
@@ -218,12 +225,20 @@ describe('unitFactor', () => {
     expect(unitFactor('tsp', 'clove')).toBeNull();
     expect(unitFactor('can', 'bunch')).toBeNull();
   });
+
+  it('relates fl oz to the rest of the US volume ladder, as its own unit from oz', () => {
+    expect(unitFactor('cup', 'fl oz')).toBe(8);
+    expect(unitFactor('fl oz', 'tbsp')).toBe(2);
+    // Different dimension: a bare "oz" is mass, never volume, so it converts
+    // to nothing against fl oz.
+    expect(unitFactor('fl oz', 'oz')).toBeNull();
+  });
 });
 
 describe('describeUnitFamily', () => {
   it('names the family a unit converts inside of', () => {
-    expect(describeUnitFamily('tsp')).toBe('volume, like tsp, tbsp or cups');
-    expect(describeUnitFamily('cups')).toBe('volume, like tsp, tbsp or cups');
+    expect(describeUnitFamily('tsp')).toBe('volume, like tsp, tbsp, cups or fl oz');
+    expect(describeUnitFamily('cups')).toBe('volume, like tsp, tbsp, cups or fl oz');
     expect(describeUnitFamily('ml')).toBe('volume, like ml or L');
     expect(describeUnitFamily('lb')).toBe('weight, like oz or lbs');
     expect(describeUnitFamily('kg')).toBe('weight, like g or kg');

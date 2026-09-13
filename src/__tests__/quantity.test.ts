@@ -105,6 +105,24 @@ describe('parseQuantity — the unit', () => {
     expect(q.unit).toBeNull();
     expect(q.trailing).toBe(', medium');
   });
+
+  it('reads "fl oz" as one unit, not "fl" with "oz" left over', () => {
+    const q = parseQuantity('12 fl oz');
+    expect(q.unit).toBe('fl oz');
+    expect(q.unitWritten).toBe('fl oz');
+    expect(q.trailing).toBe('');
+  });
+
+  it('reads every spelling of a fluid ounce to the same unit key', () => {
+    expect(parseQuantity('1 fl. oz.').unit).toBe('fl oz');
+    expect(parseQuantity('1 fl.oz').unit).toBe('fl oz');
+    expect(parseQuantity('1 fluid ounce').unit).toBe('fl oz');
+    expect(parseQuantity('2 fluid ounces').unit).toBe('fl oz');
+  });
+
+  it('keeps a bare "oz" as its own unit, unaffected by the fl oz addition', () => {
+    expect(parseQuantity('4 oz').unit).toBe('oz');
+  });
 });
 
 describe('parseQuantity — containers', () => {

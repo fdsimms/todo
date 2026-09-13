@@ -18,8 +18,8 @@ import {
 } from 'react-native';
 import Ionicons from '@expo/vector-icons/Ionicons';
 import DateTimePicker from '@react-native-community/datetimepicker';
-import type { Priority, Effort, TimeOfDay, TemplateAnchor, TemplateItem, TemplateItemCondition, RecurrenceType, ChainItem, DeliverableKind, Polarity } from '../types';
-import { PRIORITY_LABELS, EFFORT_LABELS, EFFORT_HINTS, TITLE_MAX_LENGTH } from '../types';
+import type { Priority, Effort, TimeOfDay, TemplateAnchor, TemplateItem, TemplateItemCondition, RecurrenceType, ChainItem, DeliverableKind, Polarity, MealSlot } from '../types';
+import { PRIORITY_LABELS, EFFORT_LABELS, EFFORT_HINTS, TITLE_MAX_LENGTH, MEAL_SLOTS, MEAL_SLOT_LABELS } from '../types';
 import { useColors, useTheme } from '../theme/ThemeContext';
 import { spacing, radius, font, interaction, type Colors } from '../theme';
 import { haptics } from '../utils/haptics';
@@ -87,7 +87,7 @@ const MEDICATION_NAME_MAX_LENGTH = 60;
 /** Matches TaskEditor's own cap on the completion timer's note. */
 const COMPLETION_TIMER_NOTE_MAX_LENGTH = 120;
 
-type FieldKey = 'blanks' | 'conditions' | 'category' | 'tags' | 'priority' | 'effort' | 'subtasks' | 'chainSteps' | 'deliverable' | 'completionTimer' | 'penalty' | 'medication';
+type FieldKey = 'blanks' | 'conditions' | 'category' | 'tags' | 'priority' | 'effort' | 'subtasks' | 'chainSteps' | 'deliverable' | 'completionTimer' | 'penalty' | 'medication' | 'logMealSlot';
 
 interface Props {
   visible: boolean;
@@ -153,6 +153,7 @@ export function TemplateItemEditor({ visible, templateId, templateName, item, in
   // half-typed "2." isn't thrown away mid-keystroke.
   const [medicationAmount, setMedicationAmount] = useState('');
   const [medicationUnit, setMedicationUnit] = useState<string | null>(null);
+  const [logMealSlot, setLogMealSlot] = useState<MealSlot | null>(null);
   const [penaltyMinutes, setPenaltyMinutes] = useState<number | null>(null);
   const [gatesApps, setGatesApps] = useState(false);
   const [penaltyCutoffTime, setPenaltyCutoffTime] = useState<string | null>(null);
@@ -222,6 +223,7 @@ export function TemplateItemEditor({ visible, templateId, templateName, item, in
       setMedicationAmount(seeded !== null ? String(seeded) : '');
     }
     setMedicationUnit(item?.medicationUnit ?? draft?.medicationUnit ?? null);
+    setLogMealSlot(item?.logMealSlot ?? draft?.logMealSlot ?? null);
     setPenaltyMinutes(item?.penaltyMinutes ?? draft?.penaltyMinutes ?? null);
     setGatesApps(item?.gatesApps ?? draft?.gatesApps ?? false);
     setPenaltyCutoffTime(item?.penaltyCutoffTime ?? draft?.penaltyCutoffTime ?? null);
@@ -370,6 +372,7 @@ export function TemplateItemEditor({ visible, templateId, templateName, item, in
       // unit to read the number in — the same pairing TaskEditor saves.
       medicationAmount: resolveMedicationAmount(),
       medicationUnit: resolveMedicationAmount() !== null ? medicationUnit : null,
+      logMealSlot,
       penaltyMinutes,
       // Cleared on an avoid-item for the reason TaskEditor clears it: an
       // avoid-task is never completed, so a gate on one could never be met.
@@ -1011,6 +1014,26 @@ export function TemplateItemEditor({ visible, templateId, templateName, item, in
               />
             </>
           )}
+        </CollapsibleField>
+        <View style={styles.sep} />
+        {/* Seeds Task.logMealSlot — same reasoning as the medication row
+            above: a "Log breakfast" routine template shouldn't need its slot
+            re-picked by hand on every application. */}
+        <CollapsibleField
+          label="Log to food log"
+          summary={logMealSlot ? `Offers to log ${MEAL_SLOT_LABELS[logMealSlot].toLowerCase()} when completed` : undefined}
+          hint="Tasks made from this item offer to add an entry to your food log, for the slot below, each time they're completed."
+          expanded={fieldOpen('logMealSlot')}
+          onToggle={() => toggleField('logMealSlot')}
+        >
+          <SegmentedControl<MealSlot>
+            options={MEAL_SLOTS.map(slot => ({ value: slot, label: MEAL_SLOT_LABELS[slot] }))}
+            value={logMealSlot ?? 'breakfast'}
+            onChange={next => { haptics.tap(); setLogMealSlot(prev => (prev === next ? null : next)); }}
+            columns={2}
+            label="Meal"
+            surface="card"
+          />
         </CollapsibleField>
         <View style={styles.sep} />
         <TouchableOpacity
