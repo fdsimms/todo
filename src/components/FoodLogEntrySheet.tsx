@@ -33,7 +33,7 @@ import { useRecipeStore } from '../store/useRecipeStore';
 import { useFoodLogStore, type FoodLogDraft } from '../store/useFoodLogStore';
 import { subDays } from 'date-fns/subDays';
 import { addCustomPortion, catalogPanelWrite, nutritionFor } from '../utils/foodNutrition';
-import { amountExample, amountHint, combineFoodNutrition, foodLogEntryEdit, helpingNutrition, portionExamples as foodPortionExamples, recipeHelpingNutrition, scalePanelToAmount } from '../utils/foodLog';
+import { amountExample, amountHint, combineFoodNutrition, foodLogEntryEdit, helpingNutrition, recipeHelpingNutrition, scalePanelToAmount } from '../utils/foodLog';
 import { cookedDishGrams, mealHelping, servingGrams, weighedHelping } from '../utils/mealLog';
 import { perServing, recipeNutrition, recipeNutritionLines, type NutritionLine } from '../utils/recipeNutrition';
 import { describeProduct } from '../utils/groceryProduct';
@@ -613,11 +613,21 @@ export function FoodLogEntrySheet({
       + (per !== null ? `, so a serving is about ${per} g.` : '.');
   }, [picked, dishMeasure]);
 
-  // Falls back to a weight, since mass is the one amount every food can
-  // always be logged by, when the panel states no portions of its own.
-  const portionExamples = useMemo(() => {
+  // Every stated portion, not a slice of the first few: this is a "preset
+  // beside a free input" (the amount field still takes a typed weight), which
+  // stays chips rather than becoming a `SegmentedControl` — see that
+  // component's own doc comment. The table a source states is already the
+  // short, closed set the chips read as; there's no separate cap to apply on
+  // top of it. The placeholder and hint below use `amountHint`/`amountExample`
+  // instead of this list directly, since those are basis-aware in a way a
+  // plain "the food's own portions" isn't — a per-100ml panel needs its own
+  // wording even though it states no portions at all.
+  const portionChoices = useMemo(() => {
     if (!picked || picked.kind !== 'food' || !picked.panel) return [];
-    return foodPortionExamples(picked.panel);
+    return picked.panel.portions.map(p => {
+      const count = Number.isInteger(p.amount) ? String(p.amount) : p.amount.toFixed(2).replace(/0+$/, '').replace(/\.$/, '');
+      return `${count} ${p.label}`;
+    });
   }, [picked]);
 
   const handleSaveWeighedPortion = () => {
@@ -872,6 +882,26 @@ export function FoodLogEntrySheet({
                 />
               </View>
             )}
+            {portionChoices.length > 0 && (
+              <View style={styles.portionChips}>
+                {portionChoices.map(choice => {
+                  const on = amount.trim() === choice;
+                  return (
+                    <TouchableOpacity
+                      key={choice}
+                      style={[styles.portionChip, on && styles.portionChipOn]}
+                      activeOpacity={interaction.activeOpacity}
+                      onPress={() => { haptics.tap(); setAmount(choice); }}
+                      accessibilityRole="button"
+                      accessibilityState={{ selected: on }}
+                      accessibilityLabel={choice}
+                    >
+                      <Text style={[styles.portionChipText, on && styles.portionChipTextOn]}>{choice}</Text>
+                    </TouchableOpacity>
+                  );
+                })}
+              </View>
+            )}
             <TextInput
               style={styles.input}
               value={amount}
@@ -898,15 +928,15 @@ export function FoodLogEntrySheet({
             <Text style={styles.hint}>
               {picked.kind === 'dish'
                 ? dishWeightHint
-                : picked.panel
-                  ? `${amountHint(picked.panel)}${
-                    picked.panel.basis === 'per100ml'
-                      ? ''
-                      : portionExamples.length > 0
-                        ? ' Anything else is refused rather than guessed at.'
+                : portionChoices.length > 0
+                  ? 'Tap a stated portion above, or type a weight (like 100g). Anything else is refused rather than guessed at.'
+                  : picked.panel
+                    ? `${amountHint(picked.panel)}${
+                      picked.panel.basis === 'per100ml'
+                        ? ''
                         : ' Type an amount by volume or count and you can weigh it once to add it.'
-                  }`
-                  : 'A weight, like 100g.'}
+                    }`
+                    : 'A weight, like 100g.'}
             </Text>
 
             {!!amount.trim() && !built && (
@@ -1168,6 +1198,16 @@ function makeStyles(colors: Colors) {
     // Margin on both sides: the label above has none of its own below it, and
     // the amount field below has only spacing.xs of its own.
     measureRow: { marginTop: spacing.sm, marginBottom: spacing.xs },
+    portionChips: { flexDirection: 'row', flexWrap: 'wrap', gap: spacing.xs, marginTop: spacing.sm },
+    portionChip: {
+      borderRadius: radius.full,
+      paddingHorizontal: spacing.md,
+      paddingVertical: spacing.sm,
+      backgroundColor: colors.bgSecondary,
+    },
+    portionChipOn: { backgroundColor: colors.accentFill },
+    portionChipText: { color: colors.text, fontSize: font.sm },
+    portionChipTextOn: { color: colors.onAccent, fontWeight: fontWeight.medium },
     input: {
       color: colors.text,
       fontSize: font.md,

@@ -200,6 +200,47 @@ describe('readOffNutrition', () => {
     expect(read.amounts.carbsG).toBe(0);
   });
 
+  it('reads the three minerals out of grams, like every other OFF mass field', () => {
+    // `<nutrient>_100g` is normalised to grams whatever the contributor typed,
+    // so a 260mg calcium figure arrives as 0.26 and has to come back out as mg.
+    const cereal = {
+      nutriments: {
+        proteins_100g: 9, calcium_100g: 0.26, iron_100g: 0.0081, potassium_100g: 0.2,
+      },
+    };
+    const read = readOffNutrition(cereal, 'x', RECORDED_AT)!;
+    expect(read.amounts.calciumMg).toBe(260);
+    expect(read.amounts.ironMg).toBe(8.1);
+    expect(read.amounts.potassiumMg).toBe(200);
+  });
+
+  it('keeps a mineral zero, which is an ordinary reading rather than a default', () => {
+    // The three minerals are deliberately not in OFF_UNINFORMATIVE_ZERO: they
+    // state a real figure on about two thirds of products, so a zero from one
+    // of them is a measurement and dropping it would discard data. Caffeine's
+    // rule is earned by that field never once carrying a real value.
+    const read = readOffNutrition(
+      { nutriments: { calcium_100g: 0, iron_100g: 0, potassium_100g: 0 } },
+      'x',
+      RECORDED_AT,
+    )!;
+    expect(read.amounts.calciumMg).toBe(0);
+    expect(read.amounts.ironMg).toBe(0);
+    expect(read.amounts.potassiumMg).toBe(0);
+  });
+
+  it('records no vitamin D, the one mandatory row with no key', () => {
+    // 57% present against 16% above zero in the same sample, so most of its
+    // zeros are defaults and the rest are readings, with nothing to tell them
+    // apart. See the note on `NutrientKey`.
+    const read = readOffNutrition(
+      { nutriments: { proteins_100g: 5, 'vitamin-d_100g': 0 } },
+      'x',
+      RECORDED_AT,
+    )!;
+    expect(Object.keys(read.amounts)).toEqual(['proteinG']);
+  });
+
   it('refuses a product whose only figure was an uninformative zero', () => {
     // Nothing left to record, which is the same answer as a panel with no
     // fields at all rather than an entry carrying one invented zero.
@@ -387,6 +428,38 @@ const CHEERIOS = {
 };
 
 describe('readFdcNutrition', () => {
+  it('files the three minerals under the ids consecutive with sodium', () => {
+    // The one part of FDC_NUTRIENT_KEYS not read off a live response: calcium,
+    // iron, potassium and sodium are one consecutive run (1087, 1089, 1092,
+    // 1093), and 1093 is confirmed. This pins the other three against that
+    // run, so a wrong id fails here rather than parsing to nothing in the
+    // field. See the note on FDC_NUTRIENT_KEYS.
+    const food = {
+      servingSize: 30,
+      servingSizeUnit: 'GRM',
+      foodNutrients: [
+        fdcNutrient(1087, 'MG', 260),
+        fdcNutrient(1089, 'MG', 8.1),
+        fdcNutrient(1092, 'MG', 200),
+        fdcNutrient(1093, 'MG', 487),
+      ],
+    };
+    const read = readFdcNutrition(food, RECORDED_AT)!;
+    expect(read.amounts).toEqual({
+      calciumMg: 260, ironMg: 8.1, potassiumMg: 200, sodiumMg: 487,
+    });
+  });
+
+  it('converts a mineral stated in micrograms rather than passing it through', () => {
+    // A unit carried across unconverted is the thousand-fold error with no
+    // symptom, which is the whole reason the conversion lives in one place.
+    const read = readFdcNutrition(
+      { foodNutrients: [fdcNutrient(1089, 'UG', 8100)] },
+      RECORDED_AT,
+    )!;
+    expect(read.amounts.ironMg).toBe(8.1);
+  });
+
   it('keeps a zero caffeine, unlike the Open Food Facts path', () => {
     // The uninformative-zero rule is deliberately scoped to one source. FDC's
     // figures are lab-measured, so a zero there is a measurement rather than a

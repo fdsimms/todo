@@ -10,8 +10,8 @@ import { SpotlightScrim } from './SpotlightOverlay';
 interface Props {
   row: ContextRow;
   /**
-   * Opens the day's events, the meal plan, or the kitchen. Omit for a row with
-   * nowhere to go.
+   * Opens the day's events or the meal plan. Omit for a row with nowhere to
+   * go.
    */
   onPress?: () => void;
   /**
@@ -23,8 +23,8 @@ interface Props {
 }
 
 /**
- * A row on Today that isn't a task — a calendar event, a meal with no meal task
- * behind it (#1571), or something in the kitchen about to be wasted (#1689).
+ * A row on Today that isn't a task — a calendar event, or a meal with no meal
+ * task behind it (#1571).
  *
  * **It is styled as an ordinary task row, and the glyph is the only tell.**
  * Card surface, card margins, card shadow, `TaskItem`'s own paddings, a
@@ -39,15 +39,6 @@ interface Props {
  * inset cards reads as a *different list* wedged into this one, and the seam is
  * loudest in exactly the section that has most of them (Meals). Blending in
  * costs the at-a-glance distinction and buys back one list.
- *
- * **A kitchen row is a reading and has no button either** (#1689). It says what
- * the kitchen is right now — "Spinach · Use by today", and when the day's plan
- * would eat it, "Use by today · For Chili". Ticking it would have to mean
- * one of "eaten"/"thrown out" or one of "got it"/"out of it", which are the
- * two-way questions `KitchenScreen` already refuses to guess at with one glyph,
- * so the row opens the kitchen and lets it ask. The *task* version of the same
- * food — "Use up X" — is the tickable one, and this row is dropped whenever it
- * exists (see `kitchenContextRows`).
  *
  * **A meal's glyph is a button, and it's drawn as one** — the fork and knife
  * sits inside a rounded box borrowed from the checkbox (`checkboxRadius`,
@@ -94,22 +85,17 @@ export function DayContextRow({ row, onPress, onMarkCooked }: Props) {
   const { colors, shadows } = useTheme();
   const styles = useMemo(() => makeStyles(colors), [colors]);
 
-  // Five sources now, and only one whose glyph varies per row rather than per
-  // kind. `nutrition-outline` rather than a second fork-and-knife for the
-  // kitchen: a meal is something you're going to cook and a bag of spinach is
-  // something in a drawer, and at 16pt two cutlery glyphs side by side in one
-  // section are indistinguishable. `footsteps-outline` rather than the heart
-  // the Settings group wears: a heart at 16pt in a list of tasks reads as a
-  // favourite, and what the row is about is walking rather than health in
-  // general. Weather reads `row.weatherIcon` instead of a fixed name — see
-  // `ContextRow.weatherIcon` for why that one field carries it rather than a
-  // sixth branch here.
+  // Four sources now, and only one whose glyph varies per row rather than per
+  // kind. `footsteps-outline` rather than the heart the Settings group wears:
+  // a heart at 16pt in a list of tasks reads as a favourite, and what the row
+  // is about is walking rather than health in general. Weather reads
+  // `row.weatherIcon` instead of a fixed name — see `ContextRow.weatherIcon`
+  // for why that one field carries it rather than a fifth branch here.
   //
   // Meal is the fall-through arm because it was here first, and that is worth
-  // knowing before adding a sixth kind: a new one added without an arm
+  // knowing before adding a fifth kind: a new one added without an arm
   // silently draws cutlery.
   const glyphName = row.kind === 'event' ? 'calendar-outline'
-    : row.kind === 'kitchen' ? 'nutrition-outline'
     : row.kind === 'health' ? 'footsteps-outline'
     : row.kind === 'weather' ? (row.weatherIcon ?? 'cloud-outline')
     : 'restaurant-outline';
@@ -186,9 +172,7 @@ export function DayContextRow({ row, onPress, onMarkCooked }: Props) {
               accessibilityRole="button"
               accessibilityLabel={`${row.title}, ${row.caption}`}
               accessibilityHint={
-                row.kind === 'event' ? "Opens the day's events"
-                : row.kind === 'kitchen' ? 'Opens Pantry'
-                : 'Opens Meal plan'
+                row.kind === 'event' ? "Opens the day's events" : 'Opens Meal plan'
               }
             >
               {body}

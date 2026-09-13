@@ -190,7 +190,7 @@ const stale = (
 
 describe('mealShortfallTitle', () => {
   it('names the verb, the dish, and the night and slot, so the row is not read as a task to cook', () => {
-    expect(mealShortfallTitle('2026-08-25', 'dinner', 'Ragù')).toBe('Shop for Ragù (Tue Dinner)');
+    expect(mealShortfallTitle('2026-08-25', 'dinner', 'Ragù')).toBe('Shop for Ragù (Tuesday Dinner)');
   });
 
   it('distinguishes two nights planning the same dish', () => {
@@ -325,7 +325,7 @@ describe('wantedMealShortfalls', () => {
     const r = ragu();
     const e = entry('2026-08-23', r.id);
     expect(shortfalls([e], rows(r))).toEqual([
-      { entryId: e.id, title: 'Shop for Ragù (Sun Dinner)', dayKey: '2026-08-23', missingCount: 1 },
+      { entryId: e.id, title: 'Shop for Ragù (Sunday Dinner)', dayKey: '2026-08-23', missingCount: 1 },
     ]);
   });
 
@@ -355,7 +355,7 @@ describe('wantedMealShortfalls', () => {
     const small = recipe('Ragù', [ing('Onions')]);
     const by = new Map([[big.id, big], [small.id, small]]);
     const result = shortfalls([entry('2026-08-24', big.id), entry(TODAY, small.id)], by);
-    expect(result.map(w => w.title)).toEqual(['Shop for Ragù (Sat Dinner)', 'Shop for Curry (Mon Dinner)']);
+    expect(result.map(w => w.title)).toEqual(['Shop for Ragù (Saturday Dinner)', 'Shop for Curry (Monday Dinner)']);
   });
 
   it('orders two meals on one day the way the day reads', () => {
