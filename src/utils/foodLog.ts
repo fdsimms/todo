@@ -139,6 +139,67 @@ export function scalePanelToAmount(
 }
 
 /**
+ * Amounts this food's own portion table can measure — "1 cup", "2 tbsp" — for
+ * a hint that says what will actually resolve before someone types something
+ * `scalePanelToAmount` has to refuse.
+ *
+ * Listed from the panel rather than a fixed example like "1 cup": that
+ * placeholder was suggesting a measure a given food often can't answer
+ * (`FoodLogEntrySheet`'s "e.g. 1 cup" placeholder read as a promise on a
+ * per-100ml panel with no stated portions), which is the exact complaint this
+ * exists to fix. A weight in grams is left off — every food answers that one,
+ * portion table or not, and the caller's own copy already says so.
+ */
+export function portionExamples(panel: FoodNutrition, limit = 3): string[] {
+  return panel.portions.slice(0, limit).map(p => {
+    const count = Number.isInteger(p.amount) ? String(p.amount) : p.amount.toFixed(2).replace(/0+$/, '').replace(/\.$/, '');
+    return `${count} ${p.label}`;
+  });
+}
+
+/**
+ * What actually resolves against this panel, in a sentence — the same
+ * question `weighableLine`'s offer answers for one refused line, said up
+ * front instead of only after a refusal.
+ *
+ * **Basis-specific, not "a weight always works".** `panelMultiplier` refuses
+ * a gram amount against a `per100ml` panel outright — a drink's weight is
+ * a fact nobody here has, the same reason `servingGrams` is null for one —
+ * so a hint that named grams for every food would be wrong for exactly the
+ * foods (drinks) most likely to reach for it. Volume, by contrast, needs no
+ * portion row for a `per100ml` panel: it's measured directly, `fl oz`
+ * included since `unitConvert.ts` now carries it.
+ */
+export function amountHint(panel: FoodNutrition): string {
+  if (panel.basis === 'per100ml') {
+    return panel.servingGrams
+      ? 'A volume, like 250 ml or 1 cup, or a number of servings.'
+      : 'A volume, like 250 ml or 1 cup.';
+  }
+  if (panel.basis === 'perServing' && panel.servingGrams === null) {
+    return 'A number of servings, like 1 serving. This food states no weight per serving to measure anything else against.';
+  }
+  const examples = portionExamples(panel);
+  return examples.length > 0
+    ? `A weight (like 100g), or one of this food's stated portions: ${examples.join(', ')}.`
+    : 'A weight, like 100g. This food has no stated portions.';
+}
+
+/**
+ * One example amount this panel will actually accept, for an "e.g." field
+ * placeholder — the single-value counterpart to `amountHint`, and basis-aware
+ * for the same reason: a per-100ml panel's placeholder has to be a volume,
+ * never the "100g" that `panelMultiplier` refuses for it.
+ */
+export function amountExample(panel: FoodNutrition): string {
+  const [first] = portionExamples(panel, 1);
+  if (first) return first;
+  if (panel.basis === 'per100ml') return '250ml';
+  if (panel.basis === 'perServing' && panel.servingGrams === null) return '1 serving';
+  return '100g';
+}
+
+/**
  * What some number of helpings of a cooked dish works out to.
  *
  * **Takes the dish's per-serving figures, not the dish**, so this module needs

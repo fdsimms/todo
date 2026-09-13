@@ -1,3 +1,4 @@
+import { ML_PER_FL_OZ } from './foodNutrition';
 import {
   formatQuantityAmount,
   formatRational,
@@ -90,10 +91,13 @@ const ML_PER_GALLON = 3785.411784;
  * spellings of an inflected word ("cup"/"cups", "lb"/"lbs") land on one entry.
  *
  * Volumes are US customary, which is what "cup" means in every recipe this app
- * will meet. Deliberately absent: `oz` is mass here and only mass — the parser
- * has no "fl oz" in its whitelist, so there is no ambiguous ounce to resolve —
- * and every count word (dozen, clove, can, bunch, slice, head, pack) is absent
- * because there is nothing to convert it to.
+ * will meet. `oz` on its own is mass, never volume — a bare ounce is genuinely
+ * ambiguous in general English, and every recipe/grocery line this table has
+ * ever met means weight by it. `fl oz` is the one place that ambiguity is
+ * resolved rather than dodged: `quantity.ts`'s parser reads it as its own
+ * two-word unit before the bare-word match ever runs, so it never collides
+ * with plain `oz`. Every count word (dozen, clove, can, bunch, slice, head,
+ * pack) is still absent, because there is nothing to convert it to.
  */
 const KNOWN_UNITS: Record<string, KnownUnit> = {
   oz: { dimension: 'mass', system: 'us', base: GRAMS_PER_OUNCE },
@@ -108,6 +112,11 @@ const KNOWN_UNITS: Record<string, KnownUnit> = {
   tbsp: { dimension: 'volume', system: 'us', base: ML_PER_TBSP },
   tablespoon: { dimension: 'volume', system: 'us', base: ML_PER_TBSP },
   cup: { dimension: 'volume', system: 'us', base: ML_PER_CUP },
+  // `ML_PER_FL_OZ` is `foodNutrition.ts`'s own constant, not a second one
+  // written out here — a fluid ounce converted by one factor for a recipe
+  // line and a slightly different one for a health write would be two
+  // answers for the same amount.
+  'fl oz': { dimension: 'volume', system: 'us', base: ML_PER_FL_OZ },
   pt: { dimension: 'volume', system: 'us', base: ML_PER_PINT },
   pint: { dimension: 'volume', system: 'us', base: ML_PER_PINT },
   qt: { dimension: 'volume', system: 'us', base: ML_PER_QUART },
@@ -497,7 +506,7 @@ export function unitFactor(from: string, to: string): number | null {
  * the table if a unit is added there.
  */
 const UNIT_FAMILIES: Record<string, string> = {
-  'volume:us': 'volume, like tsp, tbsp or cups',
+  'volume:us': 'volume, like tsp, tbsp, cups or fl oz',
   'volume:metric': 'volume, like ml or L',
   'mass:us': 'weight, like oz or lbs',
   'mass:metric': 'weight, like g or kg',

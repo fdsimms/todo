@@ -379,6 +379,16 @@ const TRAILING_COUNT = /^x\s*(\d+)$/i;
  */
 const LEADING_WORD = /^[a-z]+/i;
 
+/**
+ * The one two-word unit this module knows, tried before `LEADING_WORD` so
+ * "fl oz" doesn't read as the unit "fl" with "oz" left over in `trailing` —
+ * which used to make every fluid-ounce amount unmeasurable, since neither
+ * word alone is a unit `unitConvert`'s table recognises. Keyed to the same
+ * canonical `'fl oz'` regardless of which of the three spellings was typed,
+ * matching how `unitKey` collapses a plural onto its singular.
+ */
+const FLUID_OUNCE = /^fl\.?\s*oz\.?\b|^fluid\s+ounces?\b/i;
+
 /** A bare sized container's trailing half — "oz can" out of "14 oz can". */
 const BARE_CONTAINER = /^([a-z]+)\.?\s+([a-z]+)$/i;
 
@@ -532,6 +542,11 @@ export function parseQuantity(raw: string): Quantity {
         trailing: tail.slice(rangeWord[0].length),
       };
     }
+  }
+
+  const flOz = FLUID_OUNCE.exec(rest);
+  if (flOz) {
+    return { ...base, unit: 'fl oz', unitWritten: flOz[0], trailing: rest.slice(flOz[0].length) };
   }
 
   const word = LEADING_WORD.exec(rest);
