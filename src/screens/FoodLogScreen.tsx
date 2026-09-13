@@ -108,10 +108,25 @@ export function FoodLogScreen() {
   const colors = useColors();
   const styles = useMemo(() => makeStyles(colors), [colors]);
   const tabBarHeight = useBottomTabBarHeight();
-  const route = useRoute<{ key: string; name: string; params?: { openAdd?: number } }>();
+  const route = useRoute<{
+    key: string;
+    name: string;
+    params?: {
+      openAdd?: number;
+      /**
+       * Jump straight to one entry — the meal plan's "View in Food Log"
+       * action, pointing back at whichever row `matchMealPlanEntry` or
+       * `offerMealLog` linked to that planned meal. `nonce` is the same
+       * stamped-timestamp idiom `openAdd` uses, so opening a second entry
+       * from the plan while this screen is already up still fires.
+       */
+      openEntry?: { dayKey: string; entryId: string; nonce: number };
+    };
+  }>();
 
   const entries = useFoodLogStore(useShallow(s => s.entries));
   const loadRange = useFoodLogStore(s => s.loadRange);
+  const recentEntries = useFoodLogStore(s => s.recentEntries);
   const removeEntry = useFoodLogStore(s => s.removeEntry);
   const updateEntry = useFoodLogStore(s => s.updateEntry);
   const reviseEntry = useFoodLogStore(s => s.reviseEntry);
@@ -198,6 +213,16 @@ export function FoodLogScreen() {
     setAddingSlot(null);
     setAddOpen(true);
   }, [route.params?.openAdd, handledOpenAdd]);
+
+  const [handledOpenEntry, setHandledOpenEntry] = useState<number | undefined>(undefined);
+  useEffect(() => {
+    const openEntry = route.params?.openEntry;
+    if (!openEntry || openEntry.nonce === handledOpenEntry) return;
+    setHandledOpenEntry(openEntry.nonce);
+    setDayKey(openEntry.dayKey);
+    const found = recentEntries(openEntry.dayKey, openEntry.dayKey).find(e => e.id === openEntry.entryId);
+    if (found) setEditingEntry(found);
+  }, [route.params?.openEntry, handledOpenEntry, recentEntries]);
 
   const dayEntries = useMemo(() => entries.filter(e => e.dayKey === dayKey), [entries, dayKey]);
   const sections = useMemo(() => foodLogSections(dayEntries), [dayEntries]);

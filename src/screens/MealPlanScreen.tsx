@@ -70,6 +70,7 @@ import {
 import { useGroceryStore } from '../store/useGroceryStore';
 import { useSettingsStore } from '../store/useSettingsStore';
 import { useTaskStore } from '../store/useTaskStore';
+import { useFoodLogStore } from '../store/useFoodLogStore';
 import { useColors } from '../theme/ThemeContext';
 import { spacing, font, fontWeight, lineHeight, radius, border, animation, interaction, iconSize, type Colors } from '../theme';
 import { haptics } from '../utils/haptics';
@@ -422,6 +423,18 @@ export function MealPlanScreen() {
   // just made — the row itself is re-read from the store on every render.
   const [selectedId, setSelectedId] = useState<string | null>(null);
   const selected = entries.find(e => e.id === selectedId) ?? null;
+  const recentFoodLogEntries = useFoodLogStore(s => s.recentEntries);
+  /**
+   * The food log row this planned meal has already been logged as, if any —
+   * `FoodLogEntry.mealPlanEntryId` read back the other direction. Read
+   * straight from SQLite rather than the food log store's loaded window,
+   * since that window follows whichever day the Food Log screen itself last
+   * showed and has no reason to include the week this screen has open.
+   */
+  const loggedEntry = useMemo(
+    () => (selected ? recentFoodLogEntries(selected.date, selected.date).find(e => e.mealPlanEntryId === selected.id) ?? null : null),
+    [selected, recentFoodLogEntries]
+  );
   /**
    * What an "add these to the list" tap asked for — the whole week, or one
    * day. Three scopes exist (a meal, a day, a week) and the other two share
@@ -1991,6 +2004,13 @@ export function MealPlanScreen() {
         baseServings={selectedRecipe?.servings}
         baseServingsMax={selectedRecipe?.servingsMax}
         onSetCooked={selected ? cooked => setCooked(selected, cooked) : undefined}
+        onViewFoodLogEntry={
+          loggedEntry
+            ? () => navigation.navigate('FoodLog', {
+                openEntry: { dayKey: loggedEntry.dayKey, entryId: loggedEntry.id, nonce: Date.now() },
+              })
+            : undefined
+        }
         onOpenRecipe={
           selected?.recipeId && recipesById.has(selected.recipeId)
             ? () => navigation.navigate('RecipeDetail', { recipeId: selected.recipeId })

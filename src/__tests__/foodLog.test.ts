@@ -7,6 +7,7 @@ import {
   foodLogEntryEdit,
   foodLogSections,
   foodLogTotals,
+  matchMealPlanEntry,
   nutrientContributions,
   helpingNutrition,
   portionExamples,
@@ -16,7 +17,7 @@ import {
   scalePanelToAmount,
   type FoodLogListItem,
 } from '../utils/foodLog';
-import type { FoodLogEntry, FoodNutrition, NutrientKey, SavedMealItem } from '../types';
+import type { FoodLogEntry, FoodNutrition, MealPlanEntry, NutrientKey, SavedMealItem } from '../types';
 
 const NOW = new Date('2026-04-02T18:30:00.000Z');
 
@@ -57,7 +58,30 @@ function entry(overrides: Partial<FoodLogEntry> = {}): FoodLogEntry {
   };
 }
 
-beforeEach(() => { seq = 0; });
+let planSeq = 0;
+function planEntry(overrides: Partial<MealPlanEntry> = {}): MealPlanEntry {
+  planSeq += 1;
+  return {
+    id: `plan${planSeq}`,
+    date: '2026-04-02',
+    slot: 'breakfast',
+    recipeId: null,
+    title: `Meal ${planSeq}`,
+    sortOrder: 0,
+    createdAt: '2026-04-02T00:00:00.000Z',
+    cookedAt: null,
+    leftoverId: null,
+    recipeChoices: [],
+    recipeScale: 1,
+    cookTask: null,
+    shopTask: null,
+    logMeal: null,
+    calendarEventId: null,
+    ...overrides,
+  };
+}
+
+beforeEach(() => { seq = 0; planSeq = 0; });
 
 describe('scalePanelToAmount', () => {
   it('scales a per-100g panel through the food\'s own portion table', () => {
@@ -478,6 +502,53 @@ describe('nutrientContributions', () => {
       { entry: stated, amount: 2 },
       { entry: unstated, amount: null },
     ]);
+  });
+});
+
+describe('matchMealPlanEntry', () => {
+  it('matches on a shared recipeId when it names exactly one candidate', () => {
+    const dinner = planEntry({ slot: 'dinner', recipeId: 'r1' });
+    const lunch = planEntry({ slot: 'lunch', recipeId: 'r2' });
+    const match = matchMealPlanEntry([dinner, lunch], new Set(), { slot: null, recipeId: 'r1' });
+    expect(match).toBe(dinner);
+  });
+
+  it('refuses a recipeId shared by two candidates rather than guessing', () => {
+    // The same dish cooked twice in one day (leftovers for lunch too) — no
+    // way to tell which one a log with no other signal belongs to.
+    const first = planEntry({ slot: 'dinner', recipeId: 'r1' });
+    const second = planEntry({ slot: 'lunch', recipeId: 'r1' });
+    expect(matchMealPlanEntry([first, second], new Set(), { slot: null, recipeId: 'r1' })).toBeNull();
+  });
+
+  it('falls back to slot when there is no recipeId to go on', () => {
+    const breakfast = planEntry({ slot: 'breakfast' });
+    const dinner = planEntry({ slot: 'dinner' });
+    const match = matchMealPlanEntry([breakfast, dinner], new Set(), { slot: 'dinner', recipeId: null });
+    expect(match).toBe(dinner);
+  });
+
+  it('refuses a slot with more than one candidate', () => {
+    // Chicken and a salad both planned for dinner (#1461's "two things on
+    // one dinner is real") — slot alone can't say which was logged.
+    const chicken = planEntry({ slot: 'dinner' });
+    const salad = planEntry({ slot: 'dinner' });
+    expect(matchMealPlanEntry([chicken, salad], new Set(), { slot: 'dinner', recipeId: null })).toBeNull();
+  });
+
+  it('never matches a slot of null — the sheet\'s own "no meal" answer', () => {
+    const dinner = planEntry({ slot: 'dinner' });
+    expect(matchMealPlanEntry([dinner], new Set(), { slot: null, recipeId: null })).toBeNull();
+  });
+
+  it('excludes a candidate another food log entry already claims', () => {
+    const dinner = planEntry({ slot: 'dinner' });
+    const match = matchMealPlanEntry([dinner], new Set([dinner.id]), { slot: 'dinner', recipeId: null });
+    expect(match).toBeNull();
+  });
+
+  it('returns null against an empty plan', () => {
+    expect(matchMealPlanEntry([], new Set(), { slot: 'dinner', recipeId: 'r1' })).toBeNull();
   });
 });
 
