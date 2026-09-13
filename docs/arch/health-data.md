@@ -724,9 +724,9 @@ That also answers the switch question, which is why there is **no
 `healthOnToday` beside it**. A cleared category is a real answer rather than a
 missing one, so clearing it is how somebody says "read Health, but not onto my
 list", and the reading stays visible in Settings. Two switches would only give
-them a way to contradict each other. `kitchenOnToday` and `mealsOnToday` exist
-because their areas are on by default and have many surfaces; this one is an
-explicit opt-in with exactly one.
+them a way to contradict each other. `mealsOnToday` exists because its area is
+on by default and has many surfaces; this one is an explicit opt-in with
+exactly one.
 
 **Three inputs draw no row**, and only one of them is a choice:
 

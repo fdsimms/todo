@@ -1,0 +1,4 @@
+{
+  "message": "Fixed: a pantry item tracked as a specific brand/box no longer keeps showing a \"needs using up\" row on Today after it already has a real use-up task.",
+  "date": "2026-09-13"
+}
