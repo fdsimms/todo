@@ -42,8 +42,8 @@ import { addDays } from 'date-fns/addDays';
 import { subDays } from 'date-fns/subDays';
 import { subMinutes } from 'date-fns/subMinutes';
 import { differenceInCalendarDays } from 'date-fns/differenceInCalendarDays';
-import type { Task, Priority, Effort, FollowUpTaskDraft, RecurrenceType, ChainItem, DeliverableKind, TimeOfDay, ReminderKind, Polarity, QuotaPeriod, NutrientKey } from '../types';
-import { PRIORITY_LABELS, EFFORT_LABELS, TITLE_MAX_LENGTH, NUTRIENT_KEYS } from '../types';
+import type { Task, Priority, Effort, FollowUpTaskDraft, RecurrenceType, ChainItem, DeliverableKind, TimeOfDay, ReminderKind, Polarity, QuotaPeriod, NutrientKey, MealSlot } from '../types';
+import { PRIORITY_LABELS, EFFORT_LABELS, TITLE_MAX_LENGTH, NUTRIENT_KEYS, MEAL_SLOTS, MEAL_SLOT_LABELS } from '../types';
 import { NUTRIENT_LABEL, mlToFlOz, flOzToMl } from '../utils/foodNutrition';
 import { useColors, useTheme } from '../theme/ThemeContext';
 import { spacing, radius, font, border, interaction, animation, checkboxRadius, iconSize, type Colors } from '../theme';
@@ -203,6 +203,7 @@ export interface TaskDraft {
   medicationName?: string | null;
   medicationAmount?: number | null;
   medicationUnit?: string | null;
+  logMealSlot?: MealSlot | null;
   phoneNumber?: string | null;
   emailAddress?: string | null;
   location?: string | null;
@@ -236,7 +237,7 @@ type DraftSubtask = { id: string; title: string; completed: boolean; timedMinute
 /** A medication name is a label on a row, not a prescription line. */
 const MEDICATION_NAME_MAX_LENGTH = 60;
 
-type FieldKey = 'stack' | 'category' | 'project' | 'tags' | 'people' | 'waitingOnPerson' | 'priority' | 'effort' | 'duration' | 'subtasks' | 'chainSteps' | 'deliverable' | 'completionTimer' | 'logHealthValue' | 'medication';
+type FieldKey = 'stack' | 'category' | 'project' | 'tags' | 'people' | 'waitingOnPerson' | 'priority' | 'effort' | 'duration' | 'subtasks' | 'chainSteps' | 'deliverable' | 'completionTimer' | 'logHealthValue' | 'medication' | 'logMealSlot';
 
 // Presets for the Duration field, in minutes — the common "do this for a bit"
 // spans, including the 25-minute pomodoro.
@@ -513,6 +514,7 @@ export function TaskEditor({ visible, task, initialDraft, onClose }: Props) {
   // thrown away mid-keystroke; parsed once, on save.
   const [medicationAmount, setMedicationAmount] = useState('');
   const [medicationUnit, setMedicationUnit] = useState<string | null>(null);
+  const [logMealSlot, setLogMealSlot] = useState<MealSlot | null>(null);
   const [blockedById, setBlockedById] = useState<string | null>(null);
   const [waitingOnPersonId, setWaitingOnPersonId] = useState<string | null>(null);
   const [deliverableKind, setDeliverableKind] = useState<DeliverableKind | null>(null);
@@ -769,6 +771,7 @@ export function TaskEditor({ visible, task, initialDraft, onClose }: Props) {
       setMedicationName(task.medicationName ?? null);
       setMedicationAmount(task.medicationAmount !== null ? String(task.medicationAmount) : '');
       setMedicationUnit(task.medicationUnit ?? null);
+      setLogMealSlot(task.logMealSlot ?? null);
       setPhoneNumber(task.phoneNumber ?? null);
       setEmailAddress(task.emailAddress ?? null);
       setLocation(task.location ?? null);
@@ -814,6 +817,7 @@ export function TaskEditor({ visible, task, initialDraft, onClose }: Props) {
           : ''
       );
       setMedicationUnit(initialDraft?.medicationUnit ?? null);
+      setLogMealSlot(initialDraft?.logMealSlot ?? null);
       setPhoneNumber(initialDraft?.phoneNumber ?? null);
       setEmailAddress(initialDraft?.emailAddress ?? null);
       setLocation(initialDraft?.location ?? null);
@@ -933,6 +937,7 @@ export function TaskEditor({ visible, task, initialDraft, onClose }: Props) {
         return stored !== null && stored !== undefined ? String(stored) : '';
       })(),
       medicationUnit: task ? (task.medicationUnit ?? null) : (initialDraft?.medicationUnit ?? null),
+      logMealSlot: task ? (task.logMealSlot ?? null) : (initialDraft?.logMealSlot ?? null),
       phoneNumber: task ? (task.phoneNumber ?? null) : (initialDraft?.phoneNumber ?? null),
       emailAddress: task ? (task.emailAddress ?? null) : (initialDraft?.emailAddress ?? null),
       location: task ? (task.location ?? null) : (initialDraft?.location ?? null),
@@ -1279,6 +1284,7 @@ export function TaskEditor({ visible, task, initialDraft, onClose }: Props) {
       // without a unit is unreadable in a dose.
       medicationAmount: resolveMedicationAmount(),
       medicationUnit: resolveMedicationAmount() !== null ? medicationUnit : null,
+      logMealSlot,
       phoneNumber: resolvePhoneNumber(),
       emailAddress: resolveEmailAddress(),
       location: resolveLocation(),
@@ -1852,6 +1858,7 @@ export function TaskEditor({ visible, task, initialDraft, onClose }: Props) {
       medicationName,
       medicationAmount,
       medicationUnit,
+      logMealSlot,
       phoneNumber,
       emailAddress,
       location,
@@ -3477,6 +3484,50 @@ export function TaskEditor({ visible, task, initialDraft, onClose }: Props) {
                     />
                   </>
                 )}
+              </CollapsibleField>
+            ),
+          },
+          // The fifth "what does completing this mean" row. Unlike the two
+          // above it never writes anything by itself — a plain task names no
+          // food and no amount, so completing it raises the same manual
+          // search-sheet offer a meal-plan task's own completion does (see
+          // offerMealLog in useTaskStore.ts), prefilled with this slot and
+          // the task's own title. It needs no Settings switch for the same
+          // reason the medication row above doesn't: picking a slot here is
+          // itself the opt-in.
+          {
+            key: 'logMealSlot', label: 'Log to food log', set: logMealSlot !== null,
+            keywords: ['food', 'meal', 'eat', 'nutrition', 'breakfast', 'lunch', 'dinner', 'snack', 'diet'],
+            node: (
+              <CollapsibleField
+                label="Log to food log"
+                summary={logMealSlot ? `Offers to log ${MEAL_SLOT_LABELS[logMealSlot].toLowerCase()} when completed` : undefined}
+                hint="Offers to add an entry to your food log, for the slot below, each time you complete this task."
+                expanded={fieldOpen('logMealSlot')}
+                onToggle={() => toggleField('logMealSlot')}
+                right={logMealSlot !== null ? (
+                  <TouchableOpacity
+                    onPress={() => {
+                      haptics.tap();
+                      setLogMealSlot(null);
+                      closeField('logMealSlot');
+                    }}
+                    hitSlop={8}
+                    accessibilityRole="button"
+                    accessibilityLabel="Clear log to food log"
+                  >
+                    <Ionicons name="close-circle" size={16} color={colors.textSecondary} />
+                  </TouchableOpacity>
+                ) : undefined}
+              >
+                <SegmentedControl<MealSlot>
+                  options={MEAL_SLOTS.map(slot => ({ value: slot, label: MEAL_SLOT_LABELS[slot] }))}
+                  value={logMealSlot ?? 'breakfast'}
+                  onChange={next => { haptics.tap(); setLogMealSlot(next); }}
+                  columns={2}
+                  label="Meal"
+                  surface="card"
+                />
               </CollapsibleField>
             ),
           },

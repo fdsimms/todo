@@ -409,6 +409,18 @@ export function seedDemoData(): void {
     ],
   });
 
+  // Task.logMealSlot: a plain task, unlike the meal-plan/chain slots above,
+  // that opts into the same "log this meal" offer completing it. Left live
+  // and never completed, same reasoning as Pills above — completing it would
+  // raise the food-log prompt rather than demonstrate the setting.
+  addTask({
+    title: 'Log breakfast',
+    notes: 'Completing this offers to add an entry to your food log.',
+    category: 'Health',
+    dueDate: today.toISOString(),
+    logMealSlot: 'breakfast',
+  });
+
   // A chain step that asks a question and *places the next step with the
   // answer* — the one thing a chain can do with a deliverable that a plain
   // task can't. Left live on its first step so the tap does the whole thing:

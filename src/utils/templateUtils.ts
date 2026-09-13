@@ -68,6 +68,7 @@ export function normalizeTemplateItem(raw: Partial<TemplateItem>): TemplateItem 
     medicationName: raw.medicationName ?? null,
     medicationAmount: raw.medicationAmount ?? null,
     medicationUnit: raw.medicationUnit ?? null,
+    logMealSlot: raw.logMealSlot ?? null,
     estimatedMinutes: raw.estimatedMinutes ?? null,
     completionTimerMinutes: raw.completionTimerMinutes ?? null,
     completionTimerNote: raw.completionTimerNote ?? null,
@@ -202,6 +203,7 @@ export function buildDraftsFromTemplate(
       medicationName: item.medicationName,
       medicationAmount: item.medicationAmount,
       medicationUnit: item.medicationUnit,
+      logMealSlot: item.logMealSlot,
       // The question only — createTask never reads a draft's deliverableValue,
       // so an applied item always starts with the decision still to make.
       deliverableKind: item.deliverableKind,

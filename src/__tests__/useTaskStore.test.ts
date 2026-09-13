@@ -394,7 +394,7 @@ const makeTask = (overrides: Partial<Task> = {}): Task => ({
   timedMinutes: null,
   timerElapsedSeconds: 0,
   healthMetric: null,
-  healthTarget: null, completionTimerMinutes: null, completionTimerNote: null, completionTimerStartedAt: null, logHealthMetric: null, logHealthAmount: null, medicationName: null, medicationAmount: null, medicationUnit: null,
+  healthTarget: null, completionTimerMinutes: null, completionTimerNote: null, completionTimerStartedAt: null, logHealthMetric: null, logHealthAmount: null, medicationName: null, medicationAmount: null, medicationUnit: null, logMealSlot: null,
   actualMinutes: null,
   previousOccurrenceId: null,
   seriesId: null,
@@ -12860,6 +12860,38 @@ describe('completing a meal task offers to log it', () => {
     useTaskStore.getState().completeTask(nudgeTask.id);
 
     expect(useFoodLogStore.getState().pendingManualMealLog?.mealPlanEntryId).toBe('m-2');
+  });
+});
+
+describe('Task.logMealSlot offers to log an arbitrary task to the food log', () => {
+  beforeEach(() => {
+    useFoodLogStore.setState({ pendingMealLog: null, pendingManualMealLog: null });
+  });
+
+  it('offers the manual search sheet, prefilled with the task title and slot', () => {
+    const task = useTaskStore.getState().addTask({ title: 'Log breakfast', logMealSlot: 'breakfast' });
+
+    useTaskStore.getState().completeTask(task.id);
+
+    expect(useFoodLogStore.getState().pendingManualMealLog).toEqual({
+      label: 'Log breakfast', slot: 'breakfast', mealPlanEntryId: null,
+    });
+  });
+
+  it('does nothing for an ordinary task with no slot set', () => {
+    const task = useTaskStore.getState().addTask({ title: 'Do the dishes' });
+
+    useTaskStore.getState().completeTask(task.id);
+
+    expect(useFoodLogStore.getState().pendingManualMealLog).toBeNull();
+  });
+
+  it('does not offer on a missed completion', () => {
+    const task = useTaskStore.getState().addTask({ title: 'Log breakfast', logMealSlot: 'breakfast' });
+
+    useTaskStore.getState().completeTask(task.id, { missed: true });
+
+    expect(useFoodLogStore.getState().pendingManualMealLog).toBeNull();
   });
 });
 
