@@ -1,14 +1,19 @@
 import React, { useMemo } from 'react';
-import { Modal, ScrollView, StyleSheet, Text, View } from 'react-native';
+import { Modal, ScrollView, StyleSheet, Text, TouchableOpacity, View } from 'react-native';
+import Ionicons from '@expo/vector-icons/Ionicons';
 import { useShallow } from 'zustand/react/shallow';
 import { useColors } from '../theme/ThemeContext';
-import { border, font, fontWeight, radius, spacing, type Colors } from '../theme';
+import { border, font, fontWeight, iconSize, interaction, radius, spacing, type Colors } from '../theme';
 import { NUTRIENT_KEYS, type NutrientKey } from '../types';
 import { useSettingsStore } from '../store/useSettingsStore';
 import { NUTRITION_TARGET_RANGES } from '../utils/nutritionTargets';
 import { NUTRIENT_LABEL } from '../utils/foodNutrition';
+import { haptics } from '../utils/haptics';
 import { CountStepper } from './CountStepper';
 import { SheetHeaderButton } from './SheetHeaderButton';
+
+/** Every nutrient the Food log's own card can show — water has its own card. */
+const PINNABLE_NUTRIENTS = NUTRIENT_KEYS.filter(k => k !== 'waterMl');
 
 /**
  * A daily figure to aim at, per nutrient.
@@ -45,19 +50,60 @@ export function NutritionTargetsSheet({ visible, onClose }: Props) {
 
   const targets = useSettingsStore(useShallow(s => s.nutritionTargets));
   const setNutritionTarget = useSettingsStore(s => s.setNutritionTarget);
+  const pinnedNutrients = useSettingsStore(useShallow(s => s.foodLogPinnedNutrients));
+  const setFoodLogPinnedNutrients = useSettingsStore(s => s.setFoodLogPinnedNutrients);
 
   const set = (key: NutrientKey, value: number | null) => setNutritionTarget(key, value);
+
+  const togglePinned = (key: NutrientKey) => {
+    haptics.tap();
+    const next = pinnedNutrients.includes(key)
+      ? pinnedNutrients.filter(k => k !== key)
+      : [...pinnedNutrients, key];
+    setFoodLogPinnedNutrients(next);
+  };
 
   return (
     <Modal visible={visible} animationType="slide" presentationStyle="pageSheet" onRequestClose={onClose}>
       <View style={styles.root}>
         <View style={styles.header}>
           <View style={styles.headerSpacer} />
-          <Text style={styles.headerTitle}>Daily targets</Text>
+          <Text style={styles.headerTitle}>Nutrition</Text>
           <SheetHeaderButton label="Done" onPress={onClose} minWidth={64} />
         </View>
 
         <ScrollView style={styles.body} contentContainerStyle={styles.bodyContent}>
+          <View>
+            <Text style={styles.sectionLabel}>Shown on Food log</Text>
+            <Text style={styles.intro}>
+              Which of these the totals card shows before "Show every nutrient" is tapped.
+            </Text>
+            <View style={styles.pinnedCard}>
+              {PINNABLE_NUTRIENTS.map((key, i) => {
+                const pinned = pinnedNutrients.includes(key);
+                return (
+                  <TouchableOpacity
+                    key={key}
+                    style={[styles.pinnedRow, i === PINNABLE_NUTRIENTS.length - 1 && styles.pinnedRowLast]}
+                    activeOpacity={interaction.activeOpacity}
+                    onPress={() => togglePinned(key)}
+                    accessibilityRole="checkbox"
+                    accessibilityState={{ checked: pinned }}
+                    accessibilityLabel={`Show ${NUTRIENT_LABEL[key].label} on the Food log`}
+                  >
+                    <Ionicons
+                      name={pinned ? 'checkmark-circle' : 'ellipse-outline'}
+                      size={iconSize.md}
+                      color={pinned ? colors.accent : colors.textTertiary}
+                    />
+                    <Text style={styles.pinnedRowLabel}>{NUTRIENT_LABEL[key].label}</Text>
+                  </TouchableOpacity>
+                );
+              })}
+            </View>
+          </View>
+
+          <Text style={styles.sectionLabel}>Daily targets</Text>
           <Text style={styles.intro}>
             A figure to read the day's total against. Nothing is set to begin with, and
             nothing is suggested: these are yours to choose or to leave alone.
@@ -106,7 +152,30 @@ function makeStyles(colors: Colors) {
     headerSpacer: { minWidth: 64 },
     body: { flex: 1 },
     bodyContent: { padding: spacing.md, paddingBottom: spacing.xl, gap: spacing.md },
-    intro: { color: colors.textSecondary, fontSize: font.sm, lineHeight: 18 },
+    intro: { color: colors.textSecondary, fontSize: font.sm, lineHeight: 18, marginBottom: spacing.sm },
+    sectionLabel: {
+      color: colors.textSecondary,
+      fontSize: font.xs,
+      fontWeight: fontWeight.semibold,
+      letterSpacing: 0.8,
+      textTransform: 'uppercase',
+      marginBottom: spacing.xs,
+    },
+    pinnedCard: {
+      backgroundColor: colors.bgSecondary,
+      borderRadius: radius.md,
+    },
+    pinnedRow: {
+      flexDirection: 'row',
+      alignItems: 'center',
+      gap: spacing.sm,
+      paddingHorizontal: spacing.md,
+      paddingVertical: spacing.sm,
+      borderBottomWidth: border.hairline,
+      borderBottomColor: colors.separator,
+    },
+    pinnedRowLast: { borderBottomWidth: 0 },
+    pinnedRowLabel: { color: colors.text, fontSize: font.sm },
     row: {
       backgroundColor: colors.bgSecondary,
       borderRadius: radius.md,
