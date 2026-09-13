@@ -84,6 +84,8 @@ const PENALTY_MAX_MINUTES = 24 * 60;
 /** Editor sections that collapse to a one-line summary of their current value. */
 /** Matches TaskEditor's own cap: a label on a row, not a prescription line. */
 const MEDICATION_NAME_MAX_LENGTH = 60;
+/** Matches TaskEditor's own cap on the completion timer's note. */
+const COMPLETION_TIMER_NOTE_MAX_LENGTH = 120;
 
 type FieldKey = 'blanks' | 'conditions' | 'category' | 'tags' | 'priority' | 'effort' | 'subtasks' | 'chainSteps' | 'deliverable' | 'completionTimer' | 'penalty' | 'medication';
 
@@ -145,6 +147,7 @@ export function TemplateItemEditor({ visible, templateId, templateName, item, in
   const [effort, setEffort] = useState<Effort>(0);
   const [estimatedMinutes, setEstimatedMinutes] = useState<number | null>(null);
   const [completionTimerMinutes, setCompletionTimerMinutes] = useState<number | null>(null);
+  const [completionTimerNote, setCompletionTimerNote] = useState<string | null>(null);
   const [medicationName, setMedicationName] = useState<string | null>(null);
   // The typed string, parsed once on save — same call TaskEditor makes, so a
   // half-typed "2." isn't thrown away mid-keystroke.
@@ -212,6 +215,7 @@ export function TemplateItemEditor({ visible, templateId, templateName, item, in
     setEffort(item?.effort ?? draft?.effort ?? 0);
     setEstimatedMinutes(item?.estimatedMinutes ?? draft?.estimatedMinutes ?? null);
     setCompletionTimerMinutes(item?.completionTimerMinutes ?? draft?.completionTimerMinutes ?? null);
+    setCompletionTimerNote(item?.completionTimerNote ?? draft?.completionTimerNote ?? null);
     setMedicationName(item?.medicationName ?? draft?.medicationName ?? null);
     {
       const seeded = item?.medicationAmount ?? draft?.medicationAmount ?? null;
@@ -360,6 +364,7 @@ export function TemplateItemEditor({ visible, templateId, templateName, item, in
       effort,
       estimatedMinutes,
       completionTimerMinutes,
+      completionTimerNote,
       medicationName: resolveMedicationName(),
       // Both halves dropped unless there is a name to attach them to and a
       // unit to read the number in — the same pairing TaskEditor saves.
@@ -925,7 +930,9 @@ export function TemplateItemEditor({ visible, templateId, templateName, item, in
         <View style={styles.sep} />
         <CollapsibleField
           label="Completion timer"
-          summary={completionTimerMinutes !== null ? `${formatDuration(completionTimerMinutes)} after completing` : undefined}
+          summary={completionTimerMinutes !== null
+            ? [`${formatDuration(completionTimerMinutes)} after completing`, completionTimerNote || null].filter(Boolean).join(': ')
+            : undefined}
           hint="Asks to set a reminder this long after a task made from this item is completed, e.g. a two-hour wait before eating after a medication."
           expanded={fieldOpen('completionTimer')}
           onToggle={() => toggleField('completionTimer')}
@@ -942,6 +949,18 @@ export function TemplateItemEditor({ visible, templateId, templateName, item, in
             format={formatDuration}
             describeValue={n => (n === null ? 'off' : formatDuration(n))}
           />
+          {completionTimerMinutes !== null && (
+            <TextInput
+              style={[styles.fieldBox, styles.medicationAmountInput]}
+              value={completionTimerNote ?? ''}
+              onChangeText={text => setCompletionTimerNote(text || null)}
+              placeholder="e.g. Don't eat for 2 hours"
+              placeholderTextColor={colors.textTertiary}
+              maxLength={COMPLETION_TIMER_NOTE_MAX_LENGTH}
+              returnKeyType="done"
+              accessibilityLabel="What this reminder is for"
+            />
+          )}
         </CollapsibleField>
         <View style={styles.sep} />
         {/* Beside the completion timer, whose own hint already names a

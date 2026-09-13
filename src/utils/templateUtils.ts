@@ -70,6 +70,7 @@ export function normalizeTemplateItem(raw: Partial<TemplateItem>): TemplateItem 
     medicationUnit: raw.medicationUnit ?? null,
     estimatedMinutes: raw.estimatedMinutes ?? null,
     completionTimerMinutes: raw.completionTimerMinutes ?? null,
+    completionTimerNote: raw.completionTimerNote ?? null,
     deliverableKind: raw.deliverableKind ?? null,
     chainEnabled: raw.chainEnabled ?? false,
     chainItems: parseChainItems(raw.chainItems),
@@ -189,6 +190,7 @@ export function buildDraftsFromTemplate(
       polarity: item.polarity,
       estimatedMinutes: item.estimatedMinutes,
       completionTimerMinutes: item.completionTimerMinutes,
+      completionTimerNote: item.completionTimerNote,
       // The cost only, for the reason the question below carries without its
       // answer: an applied item starts owing nothing, whatever the item it
       // came from has been charged in the past.

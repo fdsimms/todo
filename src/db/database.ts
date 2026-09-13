@@ -1532,6 +1532,9 @@ export function initDatabase(): void {
     // the state that lets the review task keep appearing exactly as it always
     // has. See Project.reviewedAt.
     'ALTER TABLE projects ADD COLUMN reviewed_at TEXT',
+    // Null on every existing row: a completion timer with no note falls back
+    // to the generic notification body. See Task.completionTimerNote.
+    'ALTER TABLE tasks ADD COLUMN completion_timer_note TEXT',
   ];
   // Asking SQLite for a table's columns once is cheaper than handing it every
   // ALTER for that table and catching the duplicate-column error, and by the
@@ -2469,6 +2472,7 @@ function rowToTask(row: Record<string, unknown>): Task {
       : null,
     healthTarget: (row.health_target as number | null) ?? null,
     completionTimerMinutes: (row.completion_timer_minutes as number | null) ?? null,
+    completionTimerNote: (row.completion_timer_note as string | null) ?? null,
     // Narrowed the same way healthMetric above is: an unrecognized column value
     // reads as "not logging", the safe answer for a row this build can't place.
     // The log_water_ml fallback is for a row written before this generalized
@@ -2563,10 +2567,10 @@ export function dbInsertTask(task: Task): void {
       person_ids, waiting_on_person_id, reminder_offset_days, exclude_from_suggestions,
       quota_interval_minutes, quota_reminders, quota_started_at, quota_always_visible, quota_period, location,
       prior_best_streak, reminder_time_anchor, reminder_utc_offset_minutes, polarity, slip_count, slip_date,
-      health_metric, health_target, completion_timer_minutes, log_health_metric, log_health_amount,
+      health_metric, health_target, completion_timer_minutes, completion_timer_note, log_health_metric, log_health_amount,
       penalty_minutes, penalty_cutoff_time, penalty_fired_at, gates_apps,
       medication_name, medication_amount, medication_unit
-    ) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)`,
+    ) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)`,
     [
       task.id, task.title, task.notes, task.completed ? 1 : 0,
       task.completedAt, task.createdAt, task.seenAt, task.dueDate, task.deadline, task.deadlineOffsetDays ?? null, task.deadlineMonthDay ?? null, task.deferUntil,
@@ -2647,6 +2651,7 @@ export function dbInsertTask(task: Task): void {
       task.healthMetric ?? null,
       task.healthTarget ?? null,
       task.completionTimerMinutes ?? null,
+      task.completionTimerNote ?? null,
       task.logHealthMetric ?? null,
       task.logHealthAmount ?? null,
       task.penaltyMinutes ?? null,
@@ -2684,7 +2689,7 @@ export function dbUpdateTask(task: Task): void {
       person_ids=?, waiting_on_person_id=?, reminder_offset_days=?, exclude_from_suggestions=?,
       quota_interval_minutes=?, quota_reminders=?, quota_started_at=?, quota_always_visible=?, quota_period=?, location=?,
       prior_best_streak=?, reminder_time_anchor=?, reminder_utc_offset_minutes=?, polarity=?, slip_count=?, slip_date=?,
-      health_metric=?, health_target=?, completion_timer_minutes=?, log_health_metric=?, log_health_amount=?,
+      health_metric=?, health_target=?, completion_timer_minutes=?, completion_timer_note=?, log_health_metric=?, log_health_amount=?,
       penalty_minutes=?, penalty_cutoff_time=?, penalty_fired_at=?, gates_apps=?,
       medication_name=?, medication_amount=?, medication_unit=?
     WHERE id=?`,
@@ -2768,6 +2773,7 @@ export function dbUpdateTask(task: Task): void {
       task.healthMetric ?? null,
       task.healthTarget ?? null,
       task.completionTimerMinutes ?? null,
+      task.completionTimerNote ?? null,
       task.logHealthMetric ?? null,
       task.logHealthAmount ?? null,
       task.penaltyMinutes ?? null,

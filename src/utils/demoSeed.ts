@@ -674,8 +674,14 @@ export function seedDemoData(): void {
   updateTask(omega3.id, { dueDate: today.toISOString() });
   // Iron needs food kept away for a couple of hours either side, so it's
   // also the seed's one example of a completion timer — see
-  // Task.completionTimerMinutes.
-  updateTask(iron.id, { dueDate: today.toISOString(), completionTimerMinutes: 120 });
+  // Task.completionTimerMinutes. The note is what the reminder is *for*,
+  // since a bare "It's time" would otherwise leave that unsaid — see
+  // Task.completionTimerNote.
+  updateTask(iron.id, {
+    dueDate: today.toISOString(),
+    completionTimerMinutes: 120,
+    completionTimerNote: "Don't eat for 2 hours",
+  });
   // Pinned as a whole via the stack editor's pin button, so the Pinned Tasks
   // block shows a copy of all three alongside the lone pinned task above.
   pinGroup(supplements.id);

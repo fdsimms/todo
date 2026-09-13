@@ -197,6 +197,7 @@ export interface TaskDraft {
   groupId?: string | null;
   linkUrl?: string | null;
   completionTimerMinutes?: number | null;
+  completionTimerNote?: string | null;
   logHealthMetric?: NutrientKey | null;
   logHealthAmount?: number | null;
   medicationName?: string | null;
@@ -256,6 +257,7 @@ const MAX_STREAK_COUNT = 9999;
 // reasoning as the two ceilings above.
 const COMPLETION_TIMER_STEP_MINUTES = 15;
 const MAX_COMPLETION_TIMER_MINUTES = 24 * 60;
+const COMPLETION_TIMER_NOTE_MAX_LENGTH = 120;
 // How long a failed task can block apps for. The floor is a quarter-hour
 // because iOS refuses a very short monitored interval (DeviceActivity throws
 // `intervalTooShort`), so a 5-minute block is a promise this could not keep
@@ -490,6 +492,7 @@ export function TaskEditor({ visible, task, initialDraft, onClose }: Props) {
   const [excludeFromSuggestions, setExcludeFromSuggestions] = useState(false);
   const [linkUrl, setLinkUrl] = useState<string | null>(null);
   const [completionTimerMinutes, setCompletionTimerMinutes] = useState<number | null>(null);
+  const [completionTimerNote, setCompletionTimerNote] = useState<string | null>(null);
   const [logHealthMetric, setLogHealthMetric] = useState<NutrientKey | null>(null);
   const [logHealthAmount, setLogHealthAmount] = useState<number | null>(null);
   // Display-only, and not read from the task: logHealthAmount is always held
@@ -757,6 +760,7 @@ export function TaskEditor({ visible, task, initialDraft, onClose }: Props) {
       setStreakRequiresWindow(task.streakRequiresWindow ?? false);
       setLinkUrl(task.linkUrl ?? null);
       setCompletionTimerMinutes(task.completionTimerMinutes ?? null);
+      setCompletionTimerNote(task.completionTimerNote ?? null);
       setLogHealthMetric(task.logHealthMetric ?? null);
       setLogHealthAmount(task.logHealthAmount ?? null);
       setMedicationName(task.medicationName ?? null);
@@ -797,6 +801,7 @@ export function TaskEditor({ visible, task, initialDraft, onClose }: Props) {
       setStreakRequiresWindow(false);
       setLinkUrl(initialDraft?.linkUrl ?? null);
       setCompletionTimerMinutes(initialDraft?.completionTimerMinutes ?? null);
+      setCompletionTimerNote(initialDraft?.completionTimerNote ?? null);
       setLogHealthMetric(initialDraft?.logHealthMetric ?? null);
       setLogHealthAmount(initialDraft?.logHealthAmount ?? null);
       setMedicationName(initialDraft?.medicationName ?? null);
@@ -914,6 +919,7 @@ export function TaskEditor({ visible, task, initialDraft, onClose }: Props) {
       streakRequiresWindow: task?.streakRequiresWindow ?? false,
       linkUrl: task ? (task.linkUrl ?? null) : (initialDraft?.linkUrl ?? null),
       completionTimerMinutes: task ? (task.completionTimerMinutes ?? null) : (initialDraft?.completionTimerMinutes ?? null),
+      completionTimerNote: task ? (task.completionTimerNote ?? null) : (initialDraft?.completionTimerNote ?? null),
       logHealthMetric: task ? (task.logHealthMetric ?? null) : (initialDraft?.logHealthMetric ?? null),
       logHealthAmount: task ? (task.logHealthAmount ?? null) : (initialDraft?.logHealthAmount ?? null),
       medicationName: task ? (task.medicationName ?? null) : (initialDraft?.medicationName ?? null),
@@ -1261,6 +1267,7 @@ export function TaskEditor({ visible, task, initialDraft, onClose }: Props) {
       streakRequiresWindow: recurrenceType !== 'none' && streakRequiresWindow,
       linkUrl: resolveLinkUrl(),
       completionTimerMinutes,
+      completionTimerNote,
       logHealthMetric,
       logHealthAmount,
       medicationName: resolveMedicationName(),
@@ -1836,6 +1843,7 @@ export function TaskEditor({ visible, task, initialDraft, onClose }: Props) {
       streakRequiresWindow,
       linkUrl,
       completionTimerMinutes,
+      completionTimerNote,
       logHealthMetric,
       logHealthAmount,
       medicationName,
@@ -4003,12 +4011,14 @@ export function TaskEditor({ visible, task, initialDraft, onClose }: Props) {
           },
           {
             key: 'completionTimer', label: 'Completion timer', set: completionTimerMinutes !== null,
-            keywords: ['timer', 'alarm', 'after', 'later', 'reminder', 'wait'],
+            keywords: ['timer', 'alarm', 'after', 'later', 'reminder', 'wait', 'note', 'context', 'purpose', 'why'],
             node: (
               <>
             <CollapsibleField
               label="Completion timer"
-              summary={completionTimerMinutes !== null ? `${formatDuration(completionTimerMinutes)} after completing` : undefined}
+              summary={completionTimerMinutes !== null
+                ? [`${formatDuration(completionTimerMinutes)} after completing`, completionTimerNote || null].filter(Boolean).join(': ')
+                : undefined}
               hint="Asks to set a reminder this long after you complete the task, e.g. a two-hour wait before eating after a medication."
               expanded={fieldOpen('completionTimer')}
               onToggle={() => toggleField('completionTimer')}
@@ -4025,6 +4035,18 @@ export function TaskEditor({ visible, task, initialDraft, onClose }: Props) {
                 format={formatDuration}
                 describeValue={n => (n === null ? 'off' : formatDuration(n))}
               />
+              {completionTimerMinutes !== null && (
+                <TextInput
+                  style={[styles.fieldBox, styles.completionTimerNoteInput]}
+                  value={completionTimerNote ?? ''}
+                  onChangeText={text => setCompletionTimerNote(text || null)}
+                  placeholder="e.g. Don't eat for 2 hours"
+                  placeholderTextColor={colors.textTertiary}
+                  maxLength={COMPLETION_TIMER_NOTE_MAX_LENGTH}
+                  returnKeyType="done"
+                  accessibilityLabel="What this reminder is for"
+                />
+              )}
             </CollapsibleField>
               </>
             ),
@@ -5698,6 +5720,8 @@ const makeStyles = (colors: Colors) => StyleSheet.create({
   targetUnitInput: { flex: 1 },
   /** Sits between the medication's name and its unit row. */
   medicationAmountInput: { marginTop: spacing.sm, marginBottom: spacing.sm },
+  /** Sits below the completion timer's stepper. */
+  completionTimerNoteInput: { marginTop: spacing.sm },
   /** The count in its read-out state, where a cadence is deriving it. */
   targetDerivedCount: { color: colors.text, fontSize: font.md, fontWeight: '500' },
   /**
