@@ -23,6 +23,7 @@ import {
   View,
 } from 'react-native';
 import Ionicons from '@expo/vector-icons/Ionicons';
+import { useNavigation } from '@react-navigation/native';
 import { useShallow } from 'zustand/react/shallow';
 import { useColors } from '../theme/ThemeContext';
 import { border, font, fontWeight, iconSize, interaction, radius, spacing, type Colors } from '../theme';
@@ -46,7 +47,7 @@ import { useKeyboardInsetScroll } from '../hooks/useKeyboardInsetScroll';
 import { CatalogLinkPicker } from './CatalogLinkPicker';
 import { EmptyState } from './EmptyState';
 import { InlineAction } from './InlineAction';
-import { NutritionSearchSheet } from './NutritionSearchSheet';
+import { NutritionSearchSheet, navigateToFoodSearchSettings } from './NutritionSearchSheet';
 import { NumberPadAccessory, NUMBER_PAD_ACCESSORY_ID } from './NumberPadAccessory';
 import { SegmentedControl, type SegmentOption } from './SegmentedControl';
 import { SheetHeaderButton } from './SheetHeaderButton';
@@ -255,6 +256,7 @@ export function FoodLogEntrySheet({
 }: Props) {
   const colors = useColors();
   const styles = useMemo(() => makeStyles(colors), [colors]);
+  const navigation = useNavigation();
   // Lifts the amount field (which autofocuses, so the keyboard is already up
   // when this half renders) clear of the keyboard instead of leaving it to a
   // plain ScrollView — same mechanism as every other keyboard-heavy sheet.
@@ -776,7 +778,11 @@ export function FoodLogEntrySheet({
     setAmount('');
   };
 
-  const handleCancel = () => {
+  // The dirty check and confirm behind both Cancel and "Open Settings" from
+  // the nested NutritionSearchSheet — the latter needs to close this whole
+  // sheet too (see that sheet's own onOpenSettings note), and shouldn't
+  // silently drop a draft any more than Cancel does.
+  const requestClose = (onClosed: () => void) => {
     // A correction opens with fields already filled, so "nothing typed yet"
     // is not what clean means for one: it is measured against what the entry
     // was seeded with instead. Otherwise every look at an entry would end in
@@ -789,16 +795,18 @@ export function FoodLogEntrySheet({
         || chosenSlot !== seeded.slot
         || answeredExtra
       : !!picked || !!amount.trim();
-    if (!dirty) { Keyboard.dismiss(); onClose(); return; }
+    if (!dirty) { Keyboard.dismiss(); onClosed(); return; }
     Alert.alert(
       'Discard changes?',
       'You have unsaved changes. Are you sure you want to discard them?',
       [
         { text: 'Keep editing', style: 'cancel' },
-        { text: 'Discard', style: 'destructive', onPress: () => { Keyboard.dismiss(); onClose(); } },
+        { text: 'Discard', style: 'destructive', onPress: () => { Keyboard.dismiss(); onClosed(); } },
       ],
     );
   };
+
+  const handleCancel = () => requestClose(onClose);
 
   // ==== render. Everything below is JSX ====
   const renderRow = ({ item }: { item: Candidate }) => (
@@ -1107,6 +1115,10 @@ export function FoodLogEntrySheet({
         itemName={query}
         onClose={() => setDbSearchOpen(false)}
         onPick={handleDbPick}
+        onOpenSettings={entryId => {
+          setDbSearchOpen(false);
+          requestClose(() => { onClose(); navigateToFoodSearchSettings(navigation, entryId); });
+        }}
       />
       <NumberPadAccessory />
     </Modal>

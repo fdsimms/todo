@@ -1,0 +1,4 @@
+{
+  "message": "Fixed the nutrition search's Open Settings button doing nothing when the search was opened from inside another sheet (a grocery item, a food log entry, a recipe's nutrition panel). It now closes every sheet on top of it before opening Settings.",
+  "date": "2026-09-13"
+}

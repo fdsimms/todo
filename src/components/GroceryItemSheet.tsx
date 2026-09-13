@@ -120,6 +120,13 @@ interface Props {
   /** Closes the sheet and opens the recipe this item came from. */
   onOpenRecipe?: (recipeId: string) => void;
   /**
+   * Closes the sheet and opens the Settings row that fixes a nutrition
+   * search error — see the note on `NutritionSearchSheet`'s own
+   * `onOpenSettings`. Required, since this sheet always has a food-search
+   * error to hand off once its own `NutritionSearchSheet` hits one.
+   */
+  onOpenSettings: (entryId: string) => void;
+  /**
    * Whether that recipe is still there. The pointer is a snapshot and doesn't
    * cascade, so a row can outlive it — in which case the line stays as the
    * plain caption it always was rather than becoming a button to nowhere.
@@ -143,7 +150,7 @@ interface Props {
  * than on a swipe.
  */
 export function GroceryItemSheet({
-  visible, itemId, onClose, onOpenRecipe, recipeExists, initialField,
+  visible, itemId, onClose, onOpenRecipe, onOpenSettings, recipeExists, initialField,
 }: Props) {
   // ==== store bindings ====
   const colors = useColors();
@@ -1892,6 +1899,11 @@ export function GroceryItemSheet({
         itemName={item.name}
         onClose={() => setNutritionSearchOpen(false)}
         onPick={nutrition => setItemNutrition(item.id, nutrition)}
+        onOpenSettings={entryId => {
+          setNutritionSearchOpen(false);
+          onClose();
+          onOpenSettings(entryId);
+        }}
       />
       <NutritionPanelSheet
         visible={nutritionPanelOpen}

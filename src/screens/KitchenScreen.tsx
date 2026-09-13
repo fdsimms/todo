@@ -56,6 +56,7 @@ import { EmptyState } from '../components/EmptyState';
 import { InlineAction } from '../components/InlineAction';
 import { PressableScale } from '../components/PressableScale';
 import { GroceryItemSheet, type CollapsibleFieldKey } from '../components/GroceryItemSheet';
+import { navigateToFoodSearchSettings } from '../components/NutritionSearchSheet';
 import { ItemDisposalOffer } from '../components/ItemDisposalOffer';
 import { LeftoverSheet } from '../components/LeftoverSheet';
 import { PantryReviewSheet } from '../components/PantryReviewSheet';
@@ -843,6 +844,11 @@ export function KitchenScreen() {
           setOpenItemId(null);
           setOpenItemField('pantry');
           navigation.navigate('RecipeDetail', { recipeId });
+        }}
+        onOpenSettings={entryId => {
+          setOpenItemId(null);
+          setOpenItemField('pantry');
+          navigateToFoodSearchSettings(navigation, entryId);
         }}
         recipeExists={recipeId => recipes.some(r => r.id === recipeId)}
         // Opened on the Pantry pills, since that's what a catalog row here is:

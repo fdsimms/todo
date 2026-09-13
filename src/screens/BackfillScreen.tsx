@@ -2,6 +2,7 @@ import React, { useEffect, useMemo, useRef, useState } from 'react';
 import { View, Text, TextInput, TouchableOpacity, ScrollView, FlatList, StyleSheet, Platform, Alert, ActivityIndicator } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { useBottomTabBarHeight } from '@react-navigation/bottom-tabs';
+import { useNavigation } from '@react-navigation/native';
 import Ionicons from '@expo/vector-icons/Ionicons';
 import { useShallow } from 'zustand/react/shallow';
 import { format } from 'date-fns/format';
@@ -23,7 +24,7 @@ import { PillGroup } from '../components/PillGroup';
 import { InlineAction } from '../components/InlineAction';
 import { SubstituteSheet } from '../components/SubstituteSheet';
 import { NutritionPanelSheet } from '../components/NutritionPanelSheet';
-import { NutritionSearchSheet } from '../components/NutritionSearchSheet';
+import { NutritionSearchSheet, navigateToFoodSearchSettings } from '../components/NutritionSearchSheet';
 import { NumberPadAccessory, NUMBER_PAD_ACCESSORY_ID } from '../components/NumberPadAccessory';
 import { RemindMePicker } from '../components/RemindMePicker';
 import { BirthdayPicker } from '../components/BirthdayPicker';
@@ -313,6 +314,7 @@ interface SessionEntry {
 }
 
 export function BackfillScreen() {
+  const navigation = useNavigation();
   const insets = useSafeAreaInsets();
   // A hidden tab (see AppNavigator), so the real bottom tab bar sits behind
   // this screen and its height has to be cleared like any other hidden-tab
@@ -2893,6 +2895,10 @@ export function BackfillScreen() {
         itemName={currentItem?.name ?? ''}
         onClose={() => setNutritionSearchOpen(false)}
         onPick={(nutrition, description) => applyNutrition(nutrition, description)}
+        onOpenSettings={entryId => {
+          setNutritionSearchOpen(false);
+          navigateToFoodSearchSettings(navigation, entryId);
+        }}
       />
       <NutritionPanelSheet
         visible={nutritionPanelOpen}
