@@ -121,6 +121,7 @@ import { buildDayBuckets } from '../utils/calendarMonth';
 import { buildDayLoads } from '../utils/dayLoad';
 import { hasLogOnDay, hasLoggedSince } from '../utils/moodLog';
 import { useFoodLogStore } from './useFoodLogStore';
+import { useSavedMealsStore } from './useSavedMealsStore';
 import { useMoodStore } from './useMoodStore';
 import { useMilestoneStore } from './useMilestoneStore';
 import { useMedicationStore } from './useMedicationStore';
@@ -1706,6 +1707,10 @@ export const useTaskStore = create<TaskStore>((set, get) => ({
     // a food log left pointed at the previous database would show a demo
     // session's invented meals as somebody's own record of what they ate.
     useFoodLogStore.getState().initialize();
+    // Beside the food log it's built from, for the same demo-mode stakes: a
+    // saved meal left pointed at the previous database would offer a demo
+    // session's invented combination as something to log again for real.
+    useSavedMealsStore.getState().initialize();
     useTemplateCategoryStore.getState().initialize();
     // Groceries ride this fan-out rather than being initialized from App.tsx,
     // and that placement is load-bearing: enterDemoMode/exitDemoMode and
@@ -2985,6 +2990,11 @@ export const useTaskStore = create<TaskStore>((set, get) => ({
         useFoodLogStore.getState().setPendingManualMealLog({
           label: displayTitleFor(task),
           slot: task.logMealSlot,
+          // The day this task was scheduled for, same call offerMealLog makes
+          // from a meal plan entry's own date — a task with no due date (an
+          // undated "Pack lunch") has no day to be planned for, so it falls
+          // back to today rather than a grace-window-unsafe `new Date()`.
+          dayKey: task.dueDate ? dayKeyOf(new Date(task.dueDate)) : dayKeyOf(getCurrentDayStart()),
           mealPlanEntryId: null,
         });
       }

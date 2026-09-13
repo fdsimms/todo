@@ -29,6 +29,7 @@ import { itemsOnList } from '../utils/groceryLists';
 import { OTHER_AISLE } from '../utils/groceryAisles';
 import { useGroceryStore } from '../store/useGroceryStore';
 import { useFoodLogStore } from '../store/useFoodLogStore';
+import { useSavedMealsStore } from '../store/useSavedMealsStore';
 import { describeFoodLogEntry, foodLogTotals, scalePanelToAmount } from '../utils/foodLog';
 import { isWaterEntry } from '../utils/waterLog';
 import { foodDayInputs, hasNutritionData, nutrientAverages, nutritionCounts, sourceMix } from '../utils/nutritionStats';
@@ -1779,6 +1780,15 @@ describe('demo seed — people', () => {
     const entries = useFoodLogStore.getState().entries;
     expect(entries.length).toBeGreaterThan(1);
     expect(entries.every(e => e.dayKey === yesterdayKey)).toBe(true);
+  });
+
+  it('seeds a saved meal, so "log it again" reads as a feature the app has', () => {
+    const meals = useSavedMealsStore.getState().meals;
+    expect(meals.length).toBeGreaterThan(0);
+    const meal = meals.find(m => m.name === 'Usual breakfast');
+    expect(meal).toBeDefined();
+    expect(meal?.items.length).toBeGreaterThan(0);
+    expect(meal?.items.every(i => Object.keys(i.nutrition.amounts).length > 0)).toBe(true);
   });
 
   it('seeds a food that is in the catalog only because it was eaten', () => {

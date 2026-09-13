@@ -11,6 +11,7 @@ import { useColors } from '../theme/ThemeContext';
 import { flattenOverlay, font, fontWeight, iconSize, interaction, radius, spacing, type Colors } from '../theme';
 import { MEAL_SLOTS, MEAL_SLOT_ICONS, MEAL_SLOT_LABELS, type FoodLogEntry, type MealSlot } from '../types';
 import { useFoodLogStore } from '../store/useFoodLogStore';
+import { useSavedMealsStore } from '../store/useSavedMealsStore';
 import { dayKeyOf, dayKeyToDate, getCurrentDayStart } from '../utils/dateUtils';
 import {
   describeFoodLogEntry,
@@ -46,6 +47,7 @@ import { HubPills } from '../components/HubPills';
 import { InlineAction } from '../components/InlineAction';
 import { ScreenHeader, type ScreenHeaderAction } from '../components/ScreenHeader';
 import { FoodLogEntrySheet } from '../components/FoodLogEntrySheet';
+import { SavedMealsSheet } from '../components/SavedMealsSheet';
 import { NutrientContributorsSheet } from '../components/NutrientContributorsSheet';
 import { NutritionTargetsSheet } from '../components/NutritionTargetsSheet';
 import { WhenPicker } from '../components/WhenPicker';
@@ -119,6 +121,10 @@ export function FoodLogScreen() {
   const removeEntries = useFoodLogStore(s => s.removeEntries);
   const moveEntries = useFoodLogStore(s => s.moveEntries);
   const reorderEntries = useFoodLogStore(s => s.reorderEntries);
+  const savedMeals = useSavedMealsStore(useShallow(s => s.meals));
+  const addSavedMealFromEntries = useSavedMealsStore(s => s.addFromEntries);
+  const removeSavedMeal = useSavedMealsStore(s => s.removeMeal);
+  const logSavedMeal = useSavedMealsStore(s => s.logMeal);
   const nutritionTargets = useSettingsStore(useShallow(s => s.nutritionTargets));
   const foodLogPinnedNutrients = useSettingsStore(useShallow(s => s.foodLogPinnedNutrients));
   const waterUnit = useSettingsStore(s => s.waterUnit);
@@ -136,6 +142,7 @@ export function FoodLogScreen() {
   const [addOpen, setAddOpen] = useState(false);
   const [scanOpen, setScanOpen] = useState(false);
   const [estimateOpen, setEstimateOpen] = useState(false);
+  const [savedMealsOpen, setSavedMealsOpen] = useState(false);
   /**
    * The entry whose catalog row is being chosen, or null.
    *
@@ -380,6 +387,36 @@ export function FoodLogScreen() {
     moveEntries(Array.from(selectedIds), label === null ? null : mealSlotLabelToSlot.get(label) ?? null);
     haptics.tap();
     exitSelection();
+  };
+
+  /**
+   * Bundles the selected entries into a saved meal — a shortcut to log the
+   * same combination again, not a change to anything already logged. The
+   * selection is left as it is on Cancel and cleared only once a name is
+   * actually given, the same rule `Alert.prompt` gives every other rename
+   * here (see `handleRename`).
+   */
+  const handleBulkSaveMeal = () => {
+    const ids = new Set(selectedIds);
+    const selected = dayEntries.filter(e => ids.has(e.id));
+    Alert.prompt(
+      'Save as meal',
+      'Name this combination so you can log it again in one tap.',
+      [
+        { text: 'Cancel', style: 'cancel' },
+        {
+          text: 'Save',
+          onPress: (text?: string) => {
+            const name = (text ?? '').trim();
+            if (!name) return;
+            addSavedMealFromEntries(name, selected);
+            haptics.success();
+            exitSelection();
+          },
+        },
+      ],
+      'plain-text',
+    );
   };
 
   // ==== the day's water ====
@@ -800,6 +837,7 @@ export function FoodLogScreen() {
             onSet: handleBulkMove,
           }}
           actions={[
+            { key: 'saveMeal', icon: 'bookmark', label: 'Save as meal', onPress: handleBulkSaveMeal },
             { key: 'delete', icon: 'trash', label: 'Delete', tone: 'destructive', onPress: handleBulkDelete },
           ]}
           onSelectAll={() => selectAll(dayEntries.map(e => e.id))}
@@ -818,6 +856,7 @@ export function FoodLogScreen() {
         onClose={() => { setAddOpen(false); setSeedRecipeId(null); }}
         onEstimate={estimateRoute !== 'unavailable' ? () => { setAddOpen(false); setEstimateOpen(true); } : undefined}
         onScan={() => { setAddOpen(false); setScanOpen(true); }}
+        onSavedMeal={savedMeals.length > 0 ? () => { setAddOpen(false); setSavedMealsOpen(true); } : undefined}
       />
       {/* The same sheet, reopened on an entry rather than on an empty form. A
           second mount rather than a flag on the one above, so an add halfway
@@ -850,6 +889,16 @@ export function FoodLogScreen() {
           setSeedRecipeId(recipeId);
           setAddOpen(true);
         }}
+      />
+      <SavedMealsSheet
+        visible={savedMealsOpen}
+        meals={savedMeals}
+        onLog={meal => {
+          logSavedMeal(meal, addingSlot, loggingAt);
+          setSavedMealsOpen(false);
+        }}
+        onDelete={meal => removeSavedMeal(meal.id)}
+        onClose={() => setSavedMealsOpen(false)}
       />
       {/* Provenance only: the entry's own figures are a snapshot of what was
           eaten and must not follow the pointer. See `FoodLogPatch`. */}

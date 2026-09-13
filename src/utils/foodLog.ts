@@ -1,4 +1,4 @@
-import type { FoodLogEntry, FoodNutrition, MealSlot, NutrientKey } from '../types';
+import type { FoodLogEntry, FoodNutrition, MealSlot, NutrientKey, SavedMealItem } from '../types';
 import { MEAL_SLOTS, NUTRIENT_KEYS } from '../types';
 import { gramsForLine, panelMultiplier } from './ingredientGrams';
 import { parseQuantity, rationalToNumber } from './quantity';
@@ -338,6 +338,23 @@ export function foodLogTotals(entries: readonly FoodLogEntry[]): FoodLogTotals {
     }
   }
   return { total, reported, entries: entries.length };
+}
+
+/**
+ * A saved meal's total calories, or null when nothing in it states any —
+ * same absent-versus-zero rule `foodLogTotals` keeps, just for one nutrient
+ * and one meal rather than a whole day's report. This is a caption, not a
+ * total somebody logs against, so it doesn't need the per-nutrient count
+ * `foodLogTotals` carries.
+ */
+export function savedMealCalories(items: readonly SavedMealItem[]): number | null {
+  let total: number | null = null;
+  for (const item of items) {
+    const amount = item.nutrition.amounts.calorieKcal;
+    if (amount === undefined) continue;
+    total = round((total ?? 0) + amount);
+  }
+  return total;
 }
 
 /**

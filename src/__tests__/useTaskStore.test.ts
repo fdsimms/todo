@@ -1,4 +1,5 @@
 import { isStreakAtRecord } from '../utils/streakRecord';
+import { dayKeyOf, getCurrentDayStart } from '../utils/dateUtils';
 import { useTaskStore } from '../store/useTaskStore';
 import { useMedicationStore } from '../store/useMedicationStore';
 import { useSettingsStore } from '../store/useSettingsStore';
@@ -111,6 +112,9 @@ jest.mock('../db/database', () => ({
   dbCountFoodLogEntries: jest.fn().mockReturnValue(0),
   dbInsertFoodLogEntry: jest.fn(),
   dbUpdateFoodLogEntry: jest.fn(),
+  dbGetSavedMeals: jest.fn().mockReturnValue([]),
+  dbInsertSavedMeal: jest.fn(),
+  dbDeleteSavedMeal: jest.fn(),
   dbDeleteFoodLogEntry: jest.fn(),
   dbInsertPersonNote: jest.fn(),
   dbUpdatePersonNote: jest.fn(),
@@ -12873,9 +12877,24 @@ describe('Task.logMealSlot offers to log an arbitrary task to the food log', () 
 
     useTaskStore.getState().completeTask(task.id);
 
+    // An undated task has no day it was planned for, so this falls back to
+    // today — see the dayKey comment at the call site in useTaskStore.ts.
     expect(useFoodLogStore.getState().pendingManualMealLog).toEqual({
-      label: 'Log breakfast', slot: 'breakfast', mealPlanEntryId: null,
+      label: 'Log breakfast', slot: 'breakfast', mealPlanEntryId: null, dayKey: dayKeyOf(getCurrentDayStart()),
     });
+  });
+
+  it('offers it against the task\'s own due date, not the day it happens to be completed on', () => {
+    jest.useFakeTimers();
+    jest.setSystemTime(new Date(2026, 3, 10, 10, 0, 0));
+    const task = useTaskStore.getState().addTask({
+      title: 'Log breakfast', logMealSlot: 'breakfast', dueDate: new Date(2026, 3, 5).toISOString(),
+    });
+
+    useTaskStore.getState().completeTask(task.id);
+
+    expect(useFoodLogStore.getState().pendingManualMealLog?.dayKey).toBe(dayKeyOf(new Date(2026, 3, 5)));
+    jest.useRealTimers();
   });
 
   it('does nothing for an ordinary task with no slot set', () => {

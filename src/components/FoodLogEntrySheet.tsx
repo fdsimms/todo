@@ -180,6 +180,15 @@ interface Props {
    */
   onScan?: () => void;
   /**
+   * Opens the saved-meals list — the fourth way in, beside searching,
+   * describing and scanning. Logs several entries at once rather than one,
+   * so unlike the other three it never hands control back to this sheet: the
+   * caller closes this one and opens `SavedMealsSheet` in its place, same
+   * split `onEstimate`/`onScan` already draw. Omitted by a caller with
+   * nowhere to send it, or nothing yet saved to offer.
+   */
+  onSavedMeal?: () => void;
+  /**
    * "Don't ask about this meal" — the manual sheet's counterpart to
    * `LogMealPrompt`'s own secondary button of the same name. Present only
    * while there's a meal to decline: `LogMealEntrySheet` supplies it exactly
@@ -252,7 +261,7 @@ interface Candidate {
 }
 
 export function FoodLogEntrySheet({
-  visible, slot, at, seedRecipeId, initialQuery, mealPlanEntryId, editing, onClose, onEstimate, onScan, onDeclineMeal,
+  visible, slot, at, seedRecipeId, initialQuery, mealPlanEntryId, editing, onClose, onEstimate, onScan, onSavedMeal, onDeclineMeal,
 }: Props) {
   const colors = useColors();
   const styles = useMemo(() => makeStyles(colors), [colors]);
@@ -1089,13 +1098,21 @@ export function FoodLogEntrySheet({
                 autoCorrect={false}
               />
             </View>
-            {(!!onScan || !!onEstimate) && (
+            {(!!onScan || !!onEstimate || !!onSavedMeal) && (
               <View style={styles.actionRow}>
                 {!!onScan && (
                   <InlineAction
                     label="Scan a barcode"
                     icon="barcode-outline"
                     onPress={() => { haptics.tap(); Keyboard.dismiss(); onScan(); }}
+                  />
+                )}
+                {!!onSavedMeal && (
+                  <InlineAction
+                    label="Log a saved meal"
+                    icon="bookmark-outline"
+                    variant="neutral"
+                    onPress={() => { haptics.tap(); Keyboard.dismiss(); onSavedMeal(); }}
                   />
                 )}
                 {!!onEstimate && (
