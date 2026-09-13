@@ -60,10 +60,8 @@ import { useDemoStore } from '../store/useDemoStore';
 import {
   eventContextRows,
   mealContextRows,
-  kitchenContextRows,
   healthContextRows,
   weatherContextRows,
-  plannedUsesToday,
   insertContextRows,
   withoutContextRows,
 } from '../utils/dayContextRows';
@@ -74,9 +72,6 @@ import { DeliverablePromptQueue } from '../components/DeliverablePromptQueue';
 import { useTaskStore } from '../store/useTaskStore';
 import { useLeftoverStore } from '../store/useLeftoverStore';
 import { useTemplateStore } from '../store/useTemplateStore';
-import { useGroceryStore } from '../store/useGroceryStore';
-import { kitchenInventory, type KitchenEntry } from '../utils/kitchenInventory';
-import { standingSwapMap } from '../utils/standingSwaps';
 import { useWidgetCompletionStore } from '../store/useWidgetCompletionStore';
 import { useTaskSelection } from '../hooks/useTaskSelection';
 import { featureHidden, visibleLenses } from '../utils/simpleMode';
@@ -1925,44 +1920,6 @@ export function TodayScreen() {
     [hiddenEventsByKey]
   );
 
-  /**
-   * What's about to be wasted, and which of today's meals would eat it (#1689).
-   *
-   * Read straight off the two stores rather than through a new one: the whole
-   * feature is the #1670 derivation rendered somewhere else, and giving it its
-   * own state here is how a second inventory model starts. `minuteTick` is in
-   * the deps because the ladder is against the clock — nothing mutates a store
-   * when a use-by day arrives — and the same tick already refreshes the events.
-   *
-   * Gated on `kitchenEnabled` at the point of use, like `mealsOnToday` above:
-   * with the groceries/meals area put away Today says nothing about food, and
-   * the setting is left alone so turning the area back on restores it.
-   */
-  const storedKitchenOnToday = useSettingsStore(s => s.kitchenOnToday);
-  // Simplified mode takes the pantry with it (`pantryTracking`), and a row
-  // warning that something is about to go off is only useful when there is a
-  // screen to go and deal with it on.
-  const kitchenOnToday = kitchenEnabled && storedKitchenOnToday
-    && !featureHidden('pantryTracking', simpleMode);
-  const groceryItems = useGroceryStore(useShallow(s => s.items));
-  const itemSubs = useGroceryStore(useShallow(s => s.itemSubs));
-  const kitchenEntries = useMemo(
-    () => (kitchenOnToday ? kitchenInventory(groceryItems, leftovers, new Date()) : []),
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-    [kitchenOnToday, groceryItems, leftovers, minuteTick]
-  );
-  // Swapped, because the fridge holds what was actually bought: with "always
-  // use oat milk for milk" on, the recipe line reads oat milk and oat milk is
-  // the carton going off. Same map every shopping read builds.
-  const standingSwaps = useMemo(
-    () => standingSwapMap(itemSubs, groceryItems),
-    [itemSubs, groceryItems]
-  );
-  const kitchenPlannedUses = useMemo(
-    () => plannedUsesToday(kitchenEntries, todayMealEntries ?? [], recipesById, standingSwaps),
-    [kitchenEntries, todayMealEntries, recipesById, standingSwaps]
-  );
-
   const contextRows = useMemo(() => {
     const rows: ContextRow[] = [];
     // Leads, above the calendar and the food. It is the only one of the four
@@ -2010,29 +1967,6 @@ export function TodayScreen() {
         isHidden: isEventHidden,
       }));
     }
-    // The kitchen leads the meals it shares a section with, and that ordering
-    // is the answer to "warning or plan first" (#1689): insertContextRows keeps
-    // the order rows are pushed in, so what's about to be wasted sits at the
-    // top of the section holding the day's food. Reading down from there — the
-    // spinach, then the dinner that would eat it — is the pairing.
-    if (kitchenOnToday && kitchenEntries.length > 0) {
-      rows.push(...kitchenContextRows(kitchenEntries, {
-        category: mealCookTaskCategory,
-        // A 'product' entry's own id is the box (ItemProduct.id), but
-        // groceryUseUp tasks are always keyed on the parent GroceryItem
-        // (reconcileUseUpTask reads from useGroceryStore's items, never from
-        // itemProducts) — so a box has to be checked against `itemId`, its
-        // catalog row, or a live item-level task never registers and the row
-        // sits here forever even with the generator on and a task already
-        // showing for the same food.
-        hasUseUpTask: (entry: KitchenEntry) => !!liveGeneratedTask(
-          allTasks,
-          entry.kind === 'leftover' ? 'leftoverUseUp' : 'groceryUseUp',
-          entry.kind === 'product' ? entry.itemId : entry.sourceId,
-        ),
-        plannedUses: kitchenPlannedUses,
-      }));
-    }
     if (mealsOnToday === 'inline' && todayMealEntries) {
       rows.push(...mealContextRows(todayMealEntries, recipesById, {
         category: mealCookTaskCategory,
@@ -2051,7 +1985,6 @@ export function TodayScreen() {
     todayCalendarEvents, calendarEventCategory, use24HourTime, eventCalendarTags,
     isEventHidden,
     mealsOnToday, todayMealEntries, recipesById, mealCookTaskCategory, allTasks,
-    kitchenOnToday, kitchenEntries, kitchenPlannedUses,
     healthToday, healthCategory, dayResetTime,
     weatherSnapshot, weatherSnapshotDayKey, weatherTaskCategory,
     minuteTick,
@@ -2822,12 +2755,6 @@ export function TodayScreen() {
           row={item.row}
           onPress={
             item.row.kind === 'event' ? () => setEventsSheetVisible(true)
-            // Every kitchen row lands in the same place, per-item and summary
-            // alike: the merged inventory is where both halves are corrected,
-            // and it asks the two-way question a row's glyph can't (#1689).
-            // Same navigation openMealPlan below makes for a meal row — the
-            // Kitchen screen is a hub tab now, not a sheet this screen owns.
-            : item.row.kind === 'kitchen' ? () => navigation.navigate('Kitchen' as never)
             // A health row has nowhere to go, which the prop supports and which
             // is the honest answer here: the number came from another app, this
             // one holds no detail behind it, and opening Health would be a task

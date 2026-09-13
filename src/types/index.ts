@@ -5742,33 +5742,23 @@ export interface ContextRow {
   id: string;
   /**
    * The row this was built from — a `MealPlanEntry.id` for a meal, a
-   * `BusyEvent.id` for an event, a `GroceryItem.id` or `Leftover.id` for a
-   * kitchen row. Its own field rather than `id` with the prefix peeled off at
-   * the call site: `id` is a list key and owes nothing to whatever made it, and
-   * a screen re-deriving a store key by string surgery is how the two quietly
-   * stop matching.
+   * `BusyEvent.id` for an event. Its own field rather than `id` with the
+   * prefix peeled off at the call site: `id` is a list key and owes nothing to
+   * whatever made it, and a screen re-deriving a store key by string surgery
+   * is how the two quietly stop matching.
    *
-   * Empty on the one row that summarizes several — see `kitchenContextRows`,
-   * where "3 things to use up" is built from no single source and has none to
-   * name. Nothing dereferences it: every kitchen row opens the same sheet.
-   * Empty on a health row too, and there for good: the reading names a day
-   * rather than a row, and there is no record anywhere in this app it could
-   * point at.
+   * Empty on a health row: the reading names a day rather than a row, and
+   * there is no record anywhere in this app it could point at.
    */
   sourceId: string;
-  kind: 'event' | 'meal' | 'kitchen' | 'health' | 'weather';
+  kind: 'event' | 'meal' | 'health' | 'weather';
   title: string;
   /**
-   * The caption under the title — "4:15 PM", "All day", "Now", "Dinner", "Use
-   * by today". A single string rather than a time plus a formatter, because the
-   * cases don't share a format and the row would otherwise need to know which
-   * it had. They all say *when*, which is what lets the row caption them with
-   * one glyph — a kitchen row's use-by day included, since that is the whole of
-   * what makes it worth a row.
-   *
-   * A kitchen row is the one that can carry a second clause ("Use by today ·
-   * For Chili"), and only for the pairing this feature exists for: the thing
-   * that's dying, next to the meal already planned to eat it.
+   * The caption under the title — "4:15 PM", "All day", "Now", "Dinner". A
+   * single string rather than a time plus a formatter, because the cases
+   * don't share a format and the row would otherwise need to know which it
+   * had. They all say *when*, which is what lets the row caption them with
+   * one glyph.
    */
   caption: string;
   /** Which category section this files under; null = the header-less loose group. */
@@ -5782,10 +5772,10 @@ export interface ContextRow {
   now: boolean;
   /**
    * The calendar an event row came from, when it's worth saying — null for
-   * every meal and kitchen row, and for an event when only one calendar is
-   * being read (see `eventContextRows`'s `calendarsById`). With one calendar
-   * chosen, every event already comes from it; the tag only earns its place
-   * once a second source makes "which one" a real question.
+   * every meal row, and for an event when only one calendar is being read
+   * (see `eventContextRows`'s `calendarsById`). With one calendar chosen,
+   * every event already comes from it; the tag only earns its place once a
+   * second source makes "which one" a real question.
    */
   calendarTag: { name: string; color: string } | null;
   /**

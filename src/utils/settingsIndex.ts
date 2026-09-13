@@ -727,9 +727,6 @@ export const SETTINGS_ENTRIES: SettingsEntry[] = [
   // copy of one answer. `simple` still applies — that's a different switch.
   { id: 'mealsOnToday', groupId: 'kitchen', label: 'Show the day\'s meals', section: 'Meals on Today',
     keywords: ['meal plan', 'dinner', 'menu', 'today', 'hide meals', 'leftovers', 'takeaway'] },
-  { id: 'kitchenOnToday', groupId: 'kitchen', label: 'Show what needs using up', section: 'Meals on Today',
-    keywords: ['fridge', 'kitchen', 'expiry', 'use by', 'spoil', 'waste', 'leftovers', 'pantry', 'today'],
-    simple: true },
   { id: 'cookRecapEnabled', groupId: 'kitchen', label: 'Ask after cooking', section: 'Meals on Today',
     keywords: ['rate', 'rating', 'review', 'leftovers', 'used up', 'out of', 'sheet', 'prompt', 'cooked'] },
   { id: 'restockOfferEnabled', requires: 'cookRecapEnabled', groupId: 'kitchen', label: 'Restock after cooking', section: 'Meals on Today',
