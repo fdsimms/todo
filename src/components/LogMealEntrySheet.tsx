@@ -3,10 +3,18 @@ import { useFoodLogStore } from '../store/useFoodLogStore';
 import { useLeftoverStore } from '../store/useLeftoverStore';
 import { useMealPlanStore } from '../store/useMealPlanStore';
 import { useAiRoute } from '../hooks/useOnDeviceAi';
+import { dayKeyOf, dayKeyToDate, getLogicalToday } from '../utils/dateUtils';
 import { EstimateMealSheet } from './EstimateMealSheet';
 import { FoodLogEntrySheet } from './FoodLogEntrySheet';
 import { ScanToLogFlow } from './ScanToLogFlow';
 import type { MealSlot } from '../types';
+
+/** Noon on the meal's own day — see the note at the call site. */
+function dayKeyAtNoon(dayKey: string): Date {
+  const at = dayKeyToDate(dayKey);
+  at.setHours(12, 0, 0, 0);
+  return at;
+}
 
 /**
  * `pendingManualMealLog`'s own mount — the search sheet's counterpart to
@@ -67,16 +75,17 @@ export function LogMealEntrySheet() {
    * scanner and bringing it back: cancelling a scan leaves nothing half-done
    * either way, and that is the same thing tapping Scan on the food log screen
    * does to its own picker. The slot, the day and the meal are captured here
-   * because they are gone from `pending` a moment later, and `at` is stamped
-   * once so a long scan session still logs against the moment it started.
+   * because they are gone from `pending` a moment later — carrying `dayKey`
+   * rather than a stamped `at` keeps it the meal's own day even when that day
+   * isn't today, which a stamped `new Date()` never could.
    */
   const [scan, setScan] = useState<
-    { slot: MealSlot | null; at: Date; mealPlanEntryId: string | null } | null
+    { slot: MealSlot | null; dayKey: string; mealPlanEntryId: string | null } | null
   >(null);
 
   /** Same shape as `scan` above, for the describe-instead handoff. */
   const [estimate, setEstimate] = useState<
-    { slot: MealSlot | null; at: Date; mealPlanEntryId: string | null } | null
+    { slot: MealSlot | null; dayKey: string; mealPlanEntryId: string | null } | null
   >(null);
 
   /**
@@ -91,17 +100,17 @@ export function LogMealEntrySheet() {
       <FoodLogEntrySheet
         visible={!!pending && !pendingFinishLeftoverId && !scan && !estimate}
         slot={pending?.slot ?? null}
-        at={new Date()}
+        at={pending ? dayKeyAtNoon(pending.dayKey) : new Date()}
         seedRecipeId={seedRecipeId}
         initialQuery={pending?.label ?? ''}
         mealPlanEntryId={mealPlanEntryId}
         onClose={() => { setPending(null); setSeedRecipeId(null); }}
         onScan={() => {
-          setScan({ slot: pending?.slot ?? null, at: new Date(), mealPlanEntryId });
+          setScan({ slot: pending?.slot ?? null, dayKey: pending?.dayKey ?? dayKeyOf(getLogicalToday()), mealPlanEntryId });
           setPending(null);
         }}
         onEstimate={estimateRoute !== 'unavailable' ? () => {
-          setEstimate({ slot: pending?.slot ?? null, at: new Date(), mealPlanEntryId });
+          setEstimate({ slot: pending?.slot ?? null, dayKey: pending?.dayKey ?? dayKeyOf(getLogicalToday()), mealPlanEntryId });
           setPending(null);
         } : undefined}
         onDeclineMeal={mealPlanEntryId ? () => {
@@ -112,19 +121,24 @@ export function LogMealEntrySheet() {
       <ScanToLogFlow
         visible={!!scan}
         slot={scan?.slot ?? null}
-        at={scan?.at ?? new Date()}
+        at={scan ? dayKeyAtNoon(scan.dayKey) : new Date()}
         mealPlanEntryId={scan?.mealPlanEntryId ?? null}
         onClose={() => setScan(null)}
       />
       <EstimateMealSheet
         visible={!!estimate}
         slot={estimate?.slot ?? null}
-        at={estimate?.at ?? new Date()}
+        at={estimate ? dayKeyAtNoon(estimate.dayKey) : new Date()}
         mealPlanEntryId={estimate?.mealPlanEntryId ?? null}
         onClose={() => setEstimate(null)}
         onPickRecipe={recipeId => {
           setSeedRecipeId(recipeId);
-          setPending({ label: '', slot: estimate?.slot ?? null, mealPlanEntryId: estimate?.mealPlanEntryId ?? null });
+          setPending({
+            label: '',
+            slot: estimate?.slot ?? null,
+            dayKey: estimate?.dayKey ?? dayKeyOf(getLogicalToday()),
+            mealPlanEntryId: estimate?.mealPlanEntryId ?? null,
+          });
           setEstimate(null);
         }}
       />

@@ -604,6 +604,7 @@ function offerMealLog(loggable: MealPlanEntry): void {
     useFoodLogStore.getState().setPendingMealLog({
       label: loggable.title,
       slot: loggable.slot,
+      dayKey: loggable.date,
       recipeId: loggable.recipeId,
       mealPlanEntryId: loggable.id,
       scale: loggable.recipeScale,
@@ -617,6 +618,7 @@ function offerMealLog(loggable: MealPlanEntry): void {
     useFoodLogStore.getState().setPendingManualMealLog({
       label: loggable.title,
       slot: loggable.slot,
+      dayKey: loggable.date,
       mealPlanEntryId: loggable.id,
     });
   }
