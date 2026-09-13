@@ -40,10 +40,10 @@ function truncate(title: string): string {
   return title.length > TITLE_MAX ? `${title.slice(0, TITLE_MAX - 1)}…` : title;
 }
 
-export type TimerRunKind = 'task' | 'cook' | 'prep' | 'step';
+export type TimerRunKind = 'task' | 'cook' | 'prep' | 'step' | 'completionTimer';
 
 export interface TimerRun {
-  /** How the native side tells which activities are still wanted — 'task:<id>' | 'cook:<id>' | 'prep:<id>'. */
+  /** How the native side tells which activities are still wanted — 'task:<id>' | 'cook:<id>' | 'prep:<id>' | 'step:<id>' | 'completionTimer:<id>'. */
   key: string;
   kind: TimerRunKind;
   itemId: string; // task id, recipe id for cook/prep, or step timer id
@@ -87,6 +87,33 @@ export function buildTimerRuns(
       title: truncate(displayTitleFor(task)),
       subtitle: '',
       symbolName: 'timer',
+      startedAtMs,
+      targetEndMs,
+    });
+  }
+
+  // A completed task's own reminder-after-completion (Task.completionTimerMinutes/
+  // completionTimerNote), rendered as a live countdown to when the
+  // notification scheduleCompletionTimer scheduled will fire — see
+  // notifications.ts. Its own loop rather than folded into the one above:
+  // that one deliberately skips completed tasks, and this is the one source
+  // that only exists *because* its task is already done.
+  for (const task of tasks) {
+    if (task.completionTimerStartedAt === null || task.archived) continue;
+    const startedAtMs = new Date(task.completionTimerStartedAt).getTime();
+    // Clamped for the same reason every other countdown here is: an inverted
+    // range crashes the extension, not just renders wrong.
+    const targetEndMs = Math.max(
+      startedAtMs,
+      startedAtMs + (task.completionTimerMinutes ?? 0) * 60000,
+    );
+    runs.push({
+      key: `completionTimer:${task.id}`,
+      kind: 'completionTimer',
+      itemId: task.id,
+      title: truncate(displayTitleFor(task)),
+      subtitle: task.completionTimerNote ? truncate(task.completionTimerNote) : '',
+      symbolName: 'bell.fill',
       startedAtMs,
       targetEndMs,
     });

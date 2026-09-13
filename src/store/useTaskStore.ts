@@ -1478,6 +1478,10 @@ interface TaskStore extends UndoHistoryActions {
   startTimer: (id: string) => void;
   stopTimer: (id: string) => void;
   discardTimer: (id: string) => void;
+  /** Marks a completion timer's countdown as begun — see Task.completionTimerStartedAt. */
+  startCompletionTimer: (id: string) => void;
+  /** Ends a completion timer's Live Activity early without touching its still-pending notification. */
+  dismissCompletionTimer: (id: string) => void;
   // Timed tasks only: pause banks the running segment without logging it, so
   // the countdown can be resumed later; reset throws the banked time away.
   pauseTimer: (id: string) => void;
@@ -3165,6 +3169,10 @@ export const useTaskStore = create<TaskStore>((set, get) => ({
       // Un-completing means the completion the event logged didn't actually
       // happen, so there's nothing left for it to record.
       completionCalendarEventId: null,
+      // The completion timer this task's own completion may have started no
+      // longer means anything once that completion is undone — cleared
+      // alongside cancelCompletionTimer below, which ends its Live Activity.
+      completionTimerStartedAt: null,
     };
     if (task.completionCalendarEventId) deleteCalendarEvent(task.completionCalendarEventId);
     // The dose this completion recorded goes with it. Unlike the Apple Health
@@ -5921,6 +5929,26 @@ export const useTaskStore = create<TaskStore>((set, get) => ({
     get().updateTask(id, { timerStartedAt: null });
   },
 
+  // Paired with scheduleCompletionTimer (src/utils/notifications.ts), which
+  // schedules the notification — this is the other half, giving
+  // liveActivity.ts a start time to render a live countdown from. The two
+  // are separate calls, not one, so the Live Activity can be dismissed
+  // (dismissCompletionTimer below) without touching the still-pending
+  // notification.
+  startCompletionTimer(id) {
+    get().updateTask(id, { completionTimerStartedAt: new Date().toISOString() });
+  },
+
+  // The Live Activity's own Done button — ends the countdown early. Reminder
+  // kept: the notification set up alongside it still fires later, same as
+  // dismissing a Timer app activity doesn't cancel the alarm it was counting
+  // down to.
+  dismissCompletionTimer(id) {
+    const task = get().tasks.find(t => t.id === id);
+    if (!task || task.completionTimerStartedAt === null) return;
+    get().updateTask(id, { completionTimerStartedAt: null });
+  },
+
   pauseTimer(id) {
     const task = get().tasks.find(t => t.id === id);
     if (!task || task.timerStartedAt === null) return;
@@ -6105,7 +6133,7 @@ export const useTaskStore = create<TaskStore>((set, get) => ({
       timedMinutes: null,
       timerElapsedSeconds: 0,
       healthMetric: null,
-      healthTarget: null, completionTimerMinutes: null, completionTimerNote: null, logHealthMetric: null, logHealthAmount: null,
+      healthTarget: null, completionTimerMinutes: null, completionTimerNote: null, completionTimerStartedAt: null, logHealthMetric: null, logHealthAmount: null,
       previousOccurrenceId: null,
       seriesId: null,
       seriesMonthDays: [],
@@ -6309,7 +6337,7 @@ export const useTaskStore = create<TaskStore>((set, get) => ({
       timedMinutes: null,
       timerElapsedSeconds: 0,
       healthMetric: null,
-      healthTarget: null, completionTimerMinutes: null, completionTimerNote: null, logHealthMetric: null, logHealthAmount: null,
+      healthTarget: null, completionTimerMinutes: null, completionTimerNote: null, completionTimerStartedAt: null, logHealthMetric: null, logHealthAmount: null,
       previousOccurrenceId: null,
       seriesId: null,
       seriesMonthDays: [],
