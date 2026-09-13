@@ -38,6 +38,7 @@ import { SheetHeader } from './SheetHeader';
 import { EditorSheet } from './EditorSheet';
 import { PillGroup } from './PillGroup';
 import { GroceryItemSheet } from './GroceryItemSheet';
+import { navigateToFoodSearchSettings } from './NutritionSearchSheet';
 import { CatalogLinkPicker } from './CatalogLinkPicker';
 import { InlineAction } from './InlineAction';
 
@@ -1019,6 +1020,11 @@ export function RecipeIngredientSheet({ visible, recipeId, ingredient, onClose }
           setEditingItemId(null);
           onClose();
           navigation.navigate('RecipeDetail', { recipeId: openRecipeId });
+        }}
+        onOpenSettings={entryId => {
+          setEditingItemId(null);
+          onClose();
+          navigateToFoodSearchSettings(navigation, entryId);
         }}
         recipeExists={openRecipeId => allRecipes.some(r => r.id === openRecipeId)}
       />

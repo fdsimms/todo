@@ -39,6 +39,7 @@ import { EmptyState } from './EmptyState';
 import { InlineAction } from './InlineAction';
 import { PillGroup } from './PillGroup';
 import { GroceryItemSheet } from './GroceryItemSheet';
+import { navigateToFoodSearchSettings } from './NutritionSearchSheet';
 import { haptics } from '../utils/haptics';
 import { confirmDelete } from '../utils/confirmDelete';
 import type { GroceryItem } from '../types';
@@ -422,6 +423,11 @@ export function GroceryCatalogSheet({ visible, onClose }: Props) {
             setEditingId(null);
             onClose();
             navigation.navigate('RecipeDetail', { recipeId });
+          }}
+          onOpenSettings={entryId => {
+            setEditingId(null);
+            onClose();
+            navigateToFoodSearchSettings(navigation, entryId);
           }}
           recipeExists={recipeId => recipes.some(r => r.id === recipeId)}
         />

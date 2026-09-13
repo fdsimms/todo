@@ -1,6 +1,7 @@
 import React, { useMemo, useState } from 'react';
 import { View, Text, TextInput, TouchableOpacity, StyleSheet } from 'react-native';
 import Ionicons from '@expo/vector-icons/Ionicons';
+import { useNavigation } from '@react-navigation/native';
 import { NUTRIENT_KEYS, type FoodNutrition, type NutrientKey } from '../types';
 import { useGroceryStore } from '../store/useGroceryStore';
 import { useRecipeStore } from '../store/useRecipeStore';
@@ -20,7 +21,7 @@ import { GroceryItemSheet } from './GroceryItemSheet';
 import { InlineAction } from './InlineAction';
 import { NumberPadAccessory, NUMBER_PAD_ACCESSORY_ID } from './NumberPadAccessory';
 import { NutritionPanelSheet } from './NutritionPanelSheet';
-import { NutritionSearchSheet } from './NutritionSearchSheet';
+import { NutritionSearchSheet, navigateToFoodSearchSettings } from './NutritionSearchSheet';
 import { SheetHeaderButton } from './SheetHeaderButton';
 import { SheetHeader } from './SheetHeader';
 
@@ -109,6 +110,7 @@ function formatAmount(key: NutrientKey, amount: number): string {
 export function RecipeNutritionSheet({ visible, reading, onClose }: Props) {
   const colors = useColors();
   const styles = useMemo(() => makeStyles(colors), [colors]);
+  const navigation = useNavigation();
 
   const setItemNutrition = useGroceryStore(s => s.setItemNutrition);
   const setProductNutrition = useGroceryStore(s => s.setProductNutrition);
@@ -252,6 +254,11 @@ export function RecipeNutritionSheet({ visible, reading, onClose }: Props) {
             itemName={searchLine?.item?.name ?? ''}
             onClose={() => setSearchLine(null)}
             onPick={next => { if (searchLine) writePanel(searchLine, next); }}
+            onOpenSettings={entryId => {
+              setSearchLine(null);
+              onClose();
+              navigateToFoodSearchSettings(navigation, entryId);
+            }}
           />
           <NutritionPanelSheet
             visible={panelLine !== null}
@@ -264,6 +271,11 @@ export function RecipeNutritionSheet({ visible, reading, onClose }: Props) {
             visible={newItemId !== null}
             itemId={newItemId}
             onClose={() => setNewItemId(null)}
+            onOpenSettings={entryId => {
+              setNewItemId(null);
+              onClose();
+              navigateToFoodSearchSettings(navigation, entryId);
+            }}
           />
           <NumberPadAccessory />
         </>

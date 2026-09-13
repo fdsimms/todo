@@ -43,6 +43,7 @@ import { GroceryRow } from '../components/GroceryRow';
 import { GroceryCatalogSheet } from '../components/GroceryCatalogSheet';
 import { SubstituteSheet } from '../components/SubstituteSheet';
 import { GroceryItemSheet } from '../components/GroceryItemSheet';
+import { navigateToFoodSearchSettings } from '../components/NutritionSearchSheet';
 import { GroceryAislesSheet } from '../components/GroceryAislesSheet';
 import { FinishShoppingSheet } from '../components/FinishShoppingSheet';
 import { GroceryListSheet } from '../components/GroceryListSheet';
@@ -1613,6 +1614,10 @@ export function GroceryScreen() {
         onOpenRecipe={recipeId => {
           setEditingId(null);
           openRecipe(recipeId);
+        }}
+        onOpenSettings={entryId => {
+          setEditingId(null);
+          navigateToFoodSearchSettings(navigation, entryId);
         }}
         recipeExists={recipeId => recipeIds.has(recipeId)}
       />

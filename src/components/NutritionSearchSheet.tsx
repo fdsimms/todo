@@ -11,7 +11,6 @@ import {
   View,
 } from 'react-native';
 import Ionicons from '@expo/vector-icons/Ionicons';
-import { useNavigation } from '@react-navigation/native';
 import { useColors } from '../theme/ThemeContext';
 import { font, iconSize, interaction, radius, spacing, type Colors } from '../theme';
 import { rankFoodCandidates, type RankedFood } from '../utils/foodSearchMatch';
@@ -48,6 +47,19 @@ import type { FoodNutrition } from '../types';
  * immediately, so the only thing a swipe-down can lose is a half-typed search
  * term. That is the other valid answer to the `pageSheet` `onRequestClose`
  * rule, not a workaround — same call `GroceryItemSheet` itself makes.
+ *
+ * **"Open Settings" is the caller's job, not this sheet's.** This sheet is
+ * routinely nested inside another Modal (`GroceryItemSheet`, `FoodLogEntrySheet`,
+ * `RecipeNutritionSheet`, and `GroceryItemSheet` again nested a level further
+ * inside `RecipeIngredientSheet`/`GroceryCatalogSheet`/`RecipeNutritionSheet`).
+ * Closing only this sheet and navigating leaves every ancestor Modal still
+ * presented on top of the Settings screen that just got pushed behind it —
+ * the button read as doing nothing, and dismissing the stack of sheets
+ * afterward could freeze the app the same way the stacked-Modal notes
+ * elsewhere in this file's rules describe. `onOpenSettings` mirrors
+ * `GroceryItemSheet`'s own `onOpenRecipe`: the callback is handed the row to
+ * open, and the caller closes itself (and forwards to its own ancestor, if
+ * it has one) before navigating.
  */
 
 interface Props {
@@ -62,12 +74,22 @@ interface Props {
    * the panel.
    */
   onPick: (nutrition: FoodNutrition, description: string) => void;
+  /**
+   * Closes this sheet (and any ancestor sheet the caller is itself nested
+   * in) and opens the Settings row named by `entryId`. See the note above.
+   */
+  onOpenSettings: (entryId: string) => void;
 }
 
-export function NutritionSearchSheet({ visible, itemName, onClose, onPick }: Props) {
+/** Where "Open Settings" from this sheet always lands — one row in one group. */
+export function navigateToFoodSearchSettings(navigation: unknown, entryId: string) {
+  (navigation as never as { navigate: (n: string, p: object) => void })
+    .navigate('SettingsGroup', { groupId: 'privacyAi', entryId });
+}
+
+export function NutritionSearchSheet({ visible, itemName, onClose, onPick, onOpenSettings }: Props) {
   const colors = useColors();
   const styles = useMemo(() => makeStyles(colors), [colors]);
-  const navigation = useNavigation();
 
   const [query, setQuery] = useState(itemName);
   const [hits, setHits] = useState<FoodSearchHit[]>([]);
@@ -103,14 +125,14 @@ export function NutritionSearchSheet({ visible, itemName, onClose, onPick }: Pro
     }
   }, []);
 
-  // The sheet's own dismiss, then the row that fixes the error — mirrors
-  // FocusSetupSheet's openSettings: close first so the pushed screen shows
-  // once this sheet is gone, not stacked behind it.
+  // Closing is entirely the caller's job — see the note on `onOpenSettings`
+  // above. This just dismisses the keyboard (the search field may still hold
+  // it) and hands the row off.
   const openSettings = () => {
     haptics.tap();
-    (navigation as never as { navigate: (n: string, p: object) => void })
-      .navigate('SettingsGroup', { groupId: 'privacyAi', entryId: errorSettingsEntryId });
-    close();
+    if (!errorSettingsEntryId) return;
+    Keyboard.dismiss();
+    onOpenSettings(errorSettingsEntryId);
   };
 
   // Opening with the item's own name already searched: the answer is nearly
