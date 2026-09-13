@@ -190,10 +190,11 @@ merged while the switches didn't.
   read row's necessarily vaguer "have you been asked" phrasing.
 - **Granting read access could silently cost write access, for the types the
   two sides share, and this app still cannot reverse it once it has
-  happened.** `readTypes` and `writeTypes` overlap on nine of the app's twelve
+  happened.** `readTypes` and `writeTypes` overlap on nine of the app's fifteen
   HealthKit types — water, body mass, and the eight nutrients
   `writeNutrientSample` shares with the food-log write (everything except
-  carbs and total fat, which are write-only and never read). Apple's docs say
+  carbs, total fat and the three minerals, which are write-only and never
+  read). Apple's docs say
   read and write authorization for one type are independent, but in practice,
   granting the *read* sheet for a type that already had *write* access — as a
   **separate, later** request — could flip that write access to
@@ -436,14 +437,16 @@ writes it to Health, which this app reads back. Nothing about the nature of the
 fact changes when the app recording it changes. What changes is the failure
 mode, and everything below is about that.
 
-### Ten write types, and carbs and total fat are two of them
+### Thirteen write types, and five of them are written and never read
 
 `writeTypes` went from two to twelve in one review. The ten nutrients are one
-capability rather than ten decisions, and they were argued for together.
+capability rather than ten decisions, and they were argued for together. #2430
+added three more — calcium, iron and potassium — and that was its own review,
+below.
 
-**Two of the ten are written and never read.** Carbohydrate and total fat are
-not in `readTypes`, no `HealthRuleMetric` watches them, and no screen shows
-them. They are written anyway, and that is a decision made out loud rather than
+**Five of the thirteen are written and never read.** Carbohydrate, total fat
+and the three minerals are not in `readTypes`, no `HealthRuleMetric` watches
+them, and no screen shows them. They are written anyway, and that is a decision made out loud rather than
 by whatever the write loop happened to iterate over: the consumer is not this
 app. A meal that reaches the Health app with no carbohydrate line reads as
 incomplete rather than as deliberate, and every other app reading that record
@@ -457,6 +460,52 @@ both sides. **No conversion happens on either side of that bridge.**
 `nutritionParse.ts` already did the unit arithmetic once, and a second opinion
 about units in a second language is how a sodium figure lands a thousand times
 too high.
+
+### The three minerals, and the twenty-odd that aren't here
+
+#2430 asked whether the rest of a micronutrient panel could join them, and the
+answer is a measurement rather than a preference. 200 US products from Open
+Food Facts, counted per nutrient: coverage tracks US label law, not nutrition.
+The four minerals and vitamins the FDA has mandated on a panel since 2016 carry
+a figure on most products; everything outside that list falls off a cliff.
+Vitamin B12 is stated on 8% of products, folate on 4%, magnesium on 10% — and
+those are precisely the nutrients somebody tracking for a medical reason came
+for. A full panel over this data would be a screen of blanks, occasionally
+populated with a wrong zero: vitamin K and choline were *present* on 27% and
+66% of the sample with **no non-zero value on any product at all**, choline
+included on mayonnaise. So the panel is three minerals rather than twenty-odd,
+and that is the source's limit rather than a staged rollout.
+
+**Vitamin D is the fourth mandatory one and is deliberately not here.** It is
+present on 57% and above zero on 16%, so most of its zeros are bulk defaults
+and a few are readings, with nothing in the field to tell them apart. It cannot
+take `OFF_UNINFORMATIVE_ZERO`'s treatment either: that rule earns its refusal
+by a field having never once carried a real value, which is what makes dropping
+every zero safe, and vitamin D's 16% breaks exactly that. Writing a figure that
+is wrong-zero five times in six into a medical record is the failure this
+document exists about, so the nutrient waits for a source that states it.
+
+**They cost three write types and no read types.** A read type is the expensive
+one: it widens the permission sheet for a feature nobody asked for, and this
+app never re-prompts, so a sheet is a thing you get one shot at. Nothing here
+watches calcium, so nothing reads it.
+
+**An existing install has to be asked again, and the design already handles
+it.** Three types nobody was ever asked about drop
+`writeAuthorizationStatus("nutrition")` to `notDetermined`, because it reports
+the weakest answer across the set — so the Health settings row goes from
+"Allowed" back to un-asked and offers the ask, which is the only way a re-ask
+can happen given that nothing raises the sheet by itself.
+
+**One refusal was added with them.** `writeFoodSamples` now skips any type the
+app is not authorized to share, rather than putting it in the correlation. A
+meal is saved as one `HKCorrelation`, so if an unauthorized member fails the
+save it plausibly fails all of it — meaning three newly-added types could have
+stopped an existing install recording meals at all, silently. Whether HealthKit
+rejects such a correlation outright or drops the member is not documented and
+could not be verified, and the filter is correct either way: under the first
+reading it is the difference between a partial meal and no meal, and under the
+second it changes nothing.
 
 ### Absent stays absent, and here it matters most
 
@@ -1110,7 +1159,7 @@ once the checkpoint-hour and direction mechanisms both already generalized
 past three, which is why `HEALTH_METRIC_INFO` exists as a table rather than
 five more hand-written switch branches.
 
-**None of this bears on `writeTypes`, which is at twelve and follows a
+**None of this bears on `writeTypes`, which is at thirteen and follows a
 stricter version of the same "don't add until earned" rule.** A twelfth read
 metric costs a bigger permission sheet; a further write type costs a real
 sample landing in somebody's actual Health record if anything about it is

@@ -127,10 +127,10 @@ const BASIS_OPTIONS = (['per100g', 'per100ml', 'perServing'] as const).map(value
 /**
  * A plausible figure for each nutrient, so the example reads as an example.
  *
- * One number per field rather than a repeated "e.g. 0": a greyed 0 in ten boxes
- * is indistinguishable from ten saved zeroes at a glance, which is the exact
- * confusion this form exists to avoid. These are roughly a slice of bread,
- * which is a food most people can sanity-check against.
+ * One number per field rather than a repeated "e.g. 0": a greyed 0 in every
+ * box is indistinguishable from a form full of saved zeroes at a glance, which
+ * is the exact confusion this form exists to avoid. These are roughly a slice
+ * of bread, which is a food most people can sanity-check against.
  */
 const PLACEHOLDER: Record<NutrientKey, string> = {
   calorieKcal: 'e.g. 265',
@@ -141,6 +141,9 @@ const PLACEHOLDER: Record<NutrientKey, string> = {
   sugarG: 'e.g. 5',
   proteinG: 'e.g. 9',
   sodiumMg: 'e.g. 490',
+  calciumMg: 'e.g. 150',
+  ironMg: 'e.g. 3.6',
+  potassiumMg: 'e.g. 115',
   caffeineMg: 'e.g. 0',
   waterMl: 'e.g. 36',
 };

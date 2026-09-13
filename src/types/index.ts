@@ -3053,8 +3053,8 @@ export interface GroceryListEntry {
 }
 
 /**
- * The ten nutrients a food can be recorded as holding, keyed the way the health
- * rules already key theirs.
+ * The thirteen nutrients a food can be recorded as holding, keyed the way the
+ * health rules already key theirs.
  *
  * **Eight of these are `HealthRuleMetric`'s own nutrient keys, character for
  * character**, and that alignment is the point rather than a coincidence.
@@ -3066,12 +3066,44 @@ export interface GroceryListEntry {
  * the containment, so a ninth metric over there can't quietly end up with no
  * home here.
  *
- * **`carbsG` and `fatG` are the two that aren't**, and they are deliberately
- * not added to `HealthRuleMetric` to match: a rule metric costs a HealthKit
- * read type and a wider permission sheet (see the note beside `readTypes` in
- * the bridge), and nobody has asked to be nudged about carbohydrate. They are
- * here because a label panel prints them, and a food record dropping them would
- * be visibly missing two of the numbers on the packet.
+ * **`carbsG` and `fatG` are two of the five that aren't**, and they are
+ * deliberately not added to `HealthRuleMetric` to match: a rule metric costs a
+ * HealthKit read type and a wider permission sheet (see the note beside
+ * `readTypes` in the bridge), and nobody has asked to be nudged about
+ * carbohydrate. They are here because a label panel prints them, and a food
+ * record dropping them would be visibly missing two of the numbers on the
+ * packet. The three minerals below are here on the same terms.
+ *
+ * **`calciumMg`, `ironMg` and `potassiumMg` are the three minerals, and they
+ * are three rather than the four a US label prints.** #2430 asked whether the
+ * Cronometer panel — twenty-odd vitamins and minerals — is reachable from the
+ * two sources this app queries, and measured it: 200 US products from Open
+ * Food Facts, counted per nutrient. The answer is that coverage tracks US
+ * label law rather than nutrition. The nutrients that make a micronutrient
+ * tracker worth using are the ones that are missing (vitamin B12 8%, folate
+ * 4%, magnesium 10%), while the minerals the FDA has mandated on a panel
+ * since 2016 carry a real figure on about two thirds of products: calcium
+ * 68%, iron 64%, potassium 68%. So these three are here and the rest of the
+ * panel is not, which is a decision about the data rather than about the
+ * design.
+ *
+ * **Vitamin D is the fourth mandatory one and is deliberately absent.** It is
+ * present on 57% of that sample and above zero on 16%, so 41% of products
+ * state an explicit zero — the shape of a bulk-defaulted field rather than a
+ * measurement. It cannot be filtered the way `OFF_UNINFORMATIVE_ZERO` filters
+ * choline either, because that rule earns its refusal by the field never once
+ * carrying a real value, and vitamin D does carry one 16% of the time. A zero
+ * that is sometimes true and usually a default is a figure this app cannot
+ * read honestly, and a wrong zero written to a health record is the failure
+ * `docs/arch/health-data.md` is entirely about. So it waits for a source that
+ * states it properly.
+ *
+ * **The three are written to Health and never read from it**, which is
+ * `carbsG` and `fatG`'s arrangement rather than a new one: a rule metric costs
+ * a HealthKit *read* type and a wider permission sheet, and nothing in this app
+ * watches calcium. They are written because the consumer isn't this app — a
+ * meal reaching the Health app with the label's mineral block missing reads as
+ * incomplete rather than deliberate.
  *
  * The unit is in the name, the same convention the health metrics use, because
  * a figure stored in one unit and read in another is the bug with no symptom
@@ -3079,11 +3111,20 @@ export interface GroceryListEntry {
  */
 export type NutrientKey =
   | 'calorieKcal' | 'proteinG' | 'carbsG' | 'fatG' | 'satFatG'
-  | 'fiberG' | 'sugarG' | 'sodiumMg' | 'caffeineMg' | 'waterMl';
+  | 'fiberG' | 'sugarG' | 'sodiumMg'
+  | 'calciumMg' | 'ironMg' | 'potassiumMg'
+  | 'caffeineMg' | 'waterMl';
 
-/** Every `NutrientKey`, in the order a nutrition label prints them. */
+/**
+ * Every `NutrientKey`, in the order a nutrition label prints them — which is
+ * why the three minerals sit together after sodium, where a US panel prints
+ * its own mineral block, and why caffeine and water trail the lot: no label
+ * prints either.
+ */
 export const NUTRIENT_KEYS: readonly NutrientKey[] = [
-  'calorieKcal', 'fatG', 'satFatG', 'carbsG', 'fiberG', 'sugarG', 'proteinG', 'sodiumMg', 'caffeineMg', 'waterMl',
+  'calorieKcal', 'fatG', 'satFatG', 'carbsG', 'fiberG', 'sugarG', 'proteinG', 'sodiumMg',
+  'calciumMg', 'ironMg', 'potassiumMg',
+  'caffeineMg', 'waterMl',
 ];
 
 /**

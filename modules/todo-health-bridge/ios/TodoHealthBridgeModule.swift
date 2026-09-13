@@ -159,14 +159,19 @@ public class TodoHealthBridgeModule: Module {
   /// is recorded in. The keys are `NutrientKey` from `src/types/index.ts`, so a
   /// figure crosses the bridge under the same name it has on both sides.
   ///
-  /// **Ten, not the eight `readTypes` collects.** Carbohydrate and total fat
-  /// are written but never read: nothing in this app watches them, no rule
-  /// fires on them, and no screen shows them from Health. They are here because
-  /// the consumer isn't this app — a meal that reaches the Health app with no
-  /// carbohydrate line reads as incomplete rather than as deliberate, and every
-  /// other app reading this record expects the macros together. That is a
-  /// decision made out loud rather than by whatever the write loop happened to
-  /// iterate over; see `docs/arch/health-data.md`.
+  /// **Thirteen, not the eight `readTypes` collects.** Carbohydrate, total fat
+  /// and the three minerals are written but never read: nothing in this app
+  /// watches them, no rule fires on them, and no screen shows them from Health.
+  /// They are here because the consumer isn't this app — a meal that reaches
+  /// the Health app with no carbohydrate line reads as incomplete rather than
+  /// as deliberate, and every other app reading this record expects the macros
+  /// together. That is a decision made out loud rather than by whatever the
+  /// write loop happened to iterate over; see `docs/arch/health-data.md`.
+  ///
+  /// **Calcium, iron and potassium, and no other micronutrient** — the three
+  /// the US mandates on a label and therefore the three the barcode sources
+  /// actually carry a figure for. #2430 has the coverage numbers and the note
+  /// on `NutrientKey` has the reasoning, vitamin D's absence included.
   ///
   /// The units are each nutrient's own, matching what `NutrientKey`'s name
   /// already says it stores — the JS side does no conversion on the way here,
@@ -182,6 +187,9 @@ public class TodoHealthBridgeModule: Module {
     ("fiberG", .dietaryFiber, HKUnit.gram()),
     ("sugarG", .dietarySugar, HKUnit.gram()),
     ("sodiumMg", .dietarySodium, HKUnit.gramUnit(with: .milli)),
+    ("calciumMg", .dietaryCalcium, HKUnit.gramUnit(with: .milli)),
+    ("ironMg", .dietaryIron, HKUnit.gramUnit(with: .milli)),
+    ("potassiumMg", .dietaryPotassium, HKUnit.gramUnit(with: .milli)),
     ("caffeineMg", .dietaryCaffeine, HKUnit.gramUnit(with: .milli)),
     ("waterMl", .dietaryWater, HKUnit.literUnit(with: .milli)),
   ]
@@ -196,10 +204,11 @@ public class TodoHealthBridgeModule: Module {
   /// "writing" would be a lie as soon as somebody allowed one and refused the
   /// other.
   ///
-  /// A list rather than one type, because `"nutrition"` is ten of them: a meal
-  /// is written as one correlation of ten samples, and Health asks about each
-  /// share type separately inside that one sheet. What the settings row does
-  /// with ten answers is `writeAuthorizationStatus`'s problem, not this one's.
+  /// A list rather than one type, because `"nutrition"` is thirteen of them: a
+  /// meal is written as one correlation of thirteen samples, and Health asks
+  /// about each share type separately inside that one sheet. What the settings
+  /// row does with thirteen answers is `writeAuthorizationStatus`'s problem,
+  /// not this one's.
   private static func writeTypes(for key: String) -> [HKQuantityType] {
     switch key {
     case "water":
@@ -428,9 +437,16 @@ public class TodoHealthBridgeModule: Module {
       var resolved = false
       // The weakest answer across the types wins, which matters only for
       // `"nutrition"` and is the same "never claim more than is true" call
-      // `bestSum` makes on the read side. Somebody who allowed nine nutrients
+      // `bestSum` makes on the read side. Somebody who allowed twelve nutrients
       // and refused sugar has a row that should send them to the Health app,
       // not one saying "Allowed" over a meal that will land incomplete.
+      //
+      // This is also what tells an existing install that the mineral types
+      // added in #2430 were never asked about: three types it has no answer
+      // for drop the row back to `notDetermined`, which is the state the row
+      // already renders an ask for. The app never raises the sheet by itself
+      // (see `authorizationRequestStatus`), so being visibly un-asked is the
+      // only way that re-ask can happen.
       var denied = false
       var undetermined = false
       TodoHealthExceptionCatcher.runCatchingExceptions {
@@ -617,6 +633,24 @@ public class TodoHealthBridgeModule: Module {
       }
 
       let when = Self.parseISO(atISO) ?? Date()
+
+      // Resolved in one pass inside the catcher rather than per nutrient in
+      // the loop below, for the reason the type doc gives: `store` is
+      // HealthKit, HealthKit raises NSExceptions, and Swift cannot catch one
+      // at all — so every call into it goes through here, the same shape
+      // `writeAuthorizationStatus` uses for this same query. An exception part
+      // way through leaves an empty set, which writes nothing rather than
+      // writing something unauthorized.
+      var shareable = Set<HKQuantityType>()
+      TodoHealthExceptionCatcher.runCatchingExceptions {
+        for entry in Self.nutrientWriteTable {
+          guard let type = HKQuantityType.quantityType(forIdentifier: entry.identifier) else { continue }
+          if self.store.authorizationStatus(for: type) == .sharingAuthorized {
+            shareable.insert(type)
+          }
+        }
+      }
+
       var samples = Set<HKSample>()
       for entry in Self.nutrientWriteTable {
         // `as? Double` alone would drop a whole number, which JSONSerialization
@@ -626,6 +660,23 @@ public class TodoHealthBridgeModule: Module {
         let value = number.doubleValue
         guard value.isFinite, value >= 0,
               let type = HKQuantityType.quantityType(forIdentifier: entry.identifier) else { continue }
+        // A type this app may not share is left out of the correlation rather
+        // than put into it, and that is what keeps one refused nutrient from
+        // costing the whole meal. The samples go to Health as a single
+        // `HKCorrelation`, so if an unauthorized member fails the save, it
+        // fails all of it: an install that granted the ten macros before the
+        // three minerals of #2430 existed would have stopped recording meals
+        // altogether, with nothing on screen to say why.
+        //
+        // **Which of those two things an unauthorized member actually does is
+        // not settled here.** Apple documents `authorizationStatus(for:)` as
+        // truthful for share types, which is what this reads, but does not
+        // document whether `save` rejects such a correlation outright or drops
+        // the member — and it could not be checked from where this was
+        // written. The filter is correct either way: under the first it is the
+        // difference between a partial meal and no meal, and under the second
+        // it changes nothing.
+        guard shareable.contains(type) else { continue }
         let quantity = HKQuantity(unit: entry.unit, doubleValue: value)
         samples.insert(HKQuantitySample(type: type, quantity: quantity, start: when, end: when))
       }

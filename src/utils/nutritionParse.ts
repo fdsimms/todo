@@ -46,6 +46,9 @@ export const NUTRIENT_STORED_UNIT: Record<NutrientKey, NutrientSourceUnit> = {
   fiberG: 'g',
   sugarG: 'g',
   sodiumMg: 'mg',
+  calciumMg: 'mg',
+  ironMg: 'mg',
+  potassiumMg: 'mg',
   caffeineMg: 'mg',
   waterMl: 'ml',
 };
@@ -106,6 +109,9 @@ const PER_100_CEILING: Record<NutrientKey, number> = {
   fiberG: 100,
   sugarG: 100,
   sodiumMg: 100_000,
+  calciumMg: 100_000,
+  ironMg: 100_000,
+  potassiumMg: 100_000,
   caffeineMg: 100_000,
   waterMl: 100,
 };
@@ -284,6 +290,17 @@ function readSourceText(value: unknown): string | null {
  * vitamin K and choline measured 27% and 66% present in the same sample with
  * **no non-zero value on any product**, choline including on mayonnaise, which
  * is one of the more choline-dense things in a supermarket.
+ *
+ * **The three minerals do not join it, and vitamin D is not read at all.**
+ * Calcium, iron and potassium state a real figure on about two thirds of that
+ * same sample, so a zero from one of them is an ordinary reading and dropping
+ * it would discard measurements. Vitamin D is the one that would have wanted
+ * this rule and cannot have it: 57% present against 16% above zero means most
+ * of its zeros are defaults, but the 16% proves the field does sometimes carry
+ * a measurement, and this rule earns its refusal only where a field has never
+ * once carried one. A nutrient whose zeros are sometimes true and usually not
+ * is unreadable either way round, which is why `NutrientKey` has no vitamin D
+ * for this to be asked about.
  */
 const OFF_UNINFORMATIVE_ZERO: ReadonlySet<NutrientKey> = new Set<NutrientKey>(['caffeineMg']);
 
@@ -314,6 +331,9 @@ const OFF_FIELDS: Record<Exclude<NutrientKey, 'sodiumMg'>, { field: string; unit
   satFatG: { field: 'saturated-fat_100g', unit: 'g' },
   fiberG: { field: 'fiber_100g', unit: 'g' },
   sugarG: { field: 'sugars_100g', unit: 'g' },
+  calciumMg: { field: 'calcium_100g', unit: 'g' },
+  ironMg: { field: 'iron_100g', unit: 'g' },
+  potassiumMg: { field: 'potassium_100g', unit: 'g' },
   caffeineMg: { field: 'caffeine_100g', unit: 'g' },
   waterMl: { field: 'water_100g', unit: 'g' },
 };
@@ -460,6 +480,17 @@ export function readOffNutrition(
  * Energy is 1008 rather than the `2047`/`2048` Atwater variants, which only
  * some datasets carry. Sugar is 2000 ("Total Sugars"), which is what the
  * Branded dataset uses.
+ *
+ * **The three mineral ids are the one exception to "read off a live
+ * response", and it is flagged rather than hidden.** FoodData Central was
+ * unreachable when they were added (#2430), so 1087/1089/1092 come from the
+ * documented nutrient-number block that the already-verified `1093` for sodium
+ * sits inside — calcium, iron, potassium and sodium are consecutive entries of
+ * one run, in that order. That is corroboration and not a reading, so it is
+ * the thing to check first if a mineral ever files under the wrong name or
+ * never appears at all: a wrong id here parses to nothing, silently, on every
+ * food. The other ids in this table were each confirmed against a real
+ * response and are not in question.
  */
 const FDC_NUTRIENT_KEYS: Record<number, NutrientKey> = {
   1008: 'calorieKcal',
@@ -470,6 +501,9 @@ const FDC_NUTRIENT_KEYS: Record<number, NutrientKey> = {
   1079: 'fiberG',
   2000: 'sugarG',
   1093: 'sodiumMg',
+  1087: 'calciumMg',
+  1089: 'ironMg',
+  1092: 'potassiumMg',
   1057: 'caffeineMg',
   1051: 'waterMl',
 };

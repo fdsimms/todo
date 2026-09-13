@@ -44,6 +44,19 @@ import { NUTRIENT_LABEL } from './foodNutrition';
  * The `default` here is what a stepper opens on when somebody first adds a
  * target for that nutrient. It is **not** a target: nothing is stored until
  * they accept it, and the map's own default is empty.
+ *
+ * **The three minerals open on the Daily Value the packet itself prints, and
+ * that is the whole reason they are allowed to open on anything.** #2430 asked
+ * whether targets here would mean shipping a table of RDAs, which vary by age,
+ * sex and medical condition and would be the app having an opinion about a
+ * body — the line `docs/arch/health-data.md` draws around every metric it
+ * rules out. 1300mg of calcium, 18mg of iron and 4700mg of potassium are not
+ * that: they are the reference figures US label law fixes the %DV column
+ * against, so they are already printed on the food somebody is holding. The
+ * app is repeating the packet rather than assessing the person, which is the
+ * same thing every other figure in this table does (2300mg of sodium is the
+ * label's number too). Nothing here is recommended, nothing is stored unasked,
+ * and a person who needs a different figure types one.
  */
 export const NUTRITION_TARGET_RANGES: Record<
   NutrientKey,
@@ -57,6 +70,9 @@ export const NUTRITION_TARGET_RANGES: Record<
   sugarG: { min: 5, max: 300, step: 5, default: 50 },
   proteinG: { min: 10, max: 400, step: 5, default: 60 },
   sodiumMg: { min: 200, max: 6000, step: 100, default: 2300 },
+  calciumMg: { min: 100, max: 3000, step: 50, default: 1300 },
+  ironMg: { min: 2, max: 60, step: 1, default: 18 },
+  potassiumMg: { min: 500, max: 8000, step: 100, default: 4700 },
   caffeineMg: { min: 20, max: 1000, step: 10, default: 400 },
   waterMl: { min: 250, max: 6000, step: 250, default: 2000 },
 };

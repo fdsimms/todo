@@ -3018,7 +3018,15 @@ function seedGroceries(recipes: DemoRecipes, today: Date): void {
     basis: 'per100g',
     servingGrams: null,
     servingText: null,
-    amounts: { calorieKcal: 265, proteinG: 9, carbsG: 49, fatG: 3.2, fiberG: 2.7, sugarG: 5, sodiumMg: 490 },
+    amounts: {
+      calorieKcal: 265, proteinG: 9, carbsG: 49, fatG: 3.2, fiberG: 2.7, sugarG: 5, sodiumMg: 490,
+      // The three minerals, on the one food here that would really state all
+      // of them: an enriched boxed loaf prints its own mineral block, and an
+      // FDC panel is the source that actually carries them (#2430). Without a
+      // seeded row seeing this, the mineral fields read as fields the app
+      // doesn't have rather than ones nothing has filled in.
+      calciumMg: 150, ironMg: 3.6, potassiumMg: 115,
+    },
     portions: [{ amount: 1, label: 'slice', grams: 28 }],
     source: 'fdc',
     sourceId: '172686',
@@ -3043,7 +3051,14 @@ function seedGroceries(recipes: DemoRecipes, today: Date): void {
       basis: 'per100g',
       servingGrams: null,
       servingText: null,
-      amounts: { calorieKcal: 59, proteinG: 10, carbsG: 3.6, fatG: 0.4, sugarG: 3.2, sodiumMg: 36 },
+      // Calcium and potassium and no iron, which is the ordinary case rather
+      // than a thin one: a real panel states some of the block and not the
+      // rest, and a day's total has to be able to show a nutrient partially
+      // covered. Yogurt genuinely carries no iron worth declaring.
+      amounts: {
+        calorieKcal: 59, proteinG: 10, carbsG: 3.6, fatG: 0.4, sugarG: 3.2, sodiumMg: 36,
+        calciumMg: 110, potassiumMg: 141,
+      },
       portions: [{ amount: 1, label: 'cup', grams: 245 }],
       source: 'fdc',
       sourceId: '170903',
