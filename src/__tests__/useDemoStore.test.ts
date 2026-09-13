@@ -1156,6 +1156,13 @@ describe('demo mode', () => {
     expect(withTimer.length).toBeGreaterThan(0);
   });
 
+  it('seeds the completion timer with a note explaining what it is for', () => {
+    useDemoStore.getState().enterDemoMode();
+    const withNote = useTaskStore.getState().tasks.filter(t => t.completionTimerNote !== null);
+
+    expect(withNote.length).toBeGreaterThan(0);
+  });
+
   it('seeds a reminder that keeps ringing until the task is completed', () => {
     useDemoStore.getState().enterDemoMode();
     const persistent = useTaskStore.getState().tasks.filter(t => t.reminderKind === 'persistent');

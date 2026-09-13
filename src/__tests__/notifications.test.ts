@@ -97,6 +97,7 @@ import {
   cancelQuotaNudges,
   quotaNudgeTasks,
   MAX_QUOTA_NUDGES_AHEAD,
+  scheduleCompletionTimer,
 } from '../utils/notifications';
 import { scheduleNativeAlarm, cancelNativeAlarm } from 'todo-alarmkit-bridge';
 import { setDemoModeActive } from '../utils/demoState';
@@ -196,7 +197,7 @@ const makeTask = (overrides: Partial<Task> = {}): Task => ({
   timedMinutes: null,
   timerElapsedSeconds: 0,
   healthMetric: null,
-  healthTarget: null, completionTimerMinutes: null, logHealthMetric: null, logHealthAmount: null, medicationName: null, medicationAmount: null, medicationUnit: null,
+  healthTarget: null, completionTimerMinutes: null, completionTimerNote: null, logHealthMetric: null, logHealthAmount: null, medicationName: null, medicationAmount: null, medicationUnit: null,
   actualMinutes: null,
   previousOccurrenceId: null,
   seriesId: null,
@@ -410,6 +411,31 @@ describe('scheduleTaskReminder', () => {
   });
 });
 
+// ─── scheduleCompletionTimer ──────────────────────────────────────────────────
+
+describe('scheduleCompletionTimer', () => {
+  it('does nothing when completionTimerMinutes is null', async () => {
+    await scheduleCompletionTimer(makeTask({ completionTimerMinutes: null }));
+    expect(Notifications.scheduleNotificationAsync).not.toHaveBeenCalled();
+  });
+
+  it('uses completionTimerNote as the body when set', async () => {
+    await scheduleCompletionTimer(
+      makeTask({ completionTimerMinutes: 120, completionTimerNote: "Don't eat for 2 hours" })
+    );
+    const arg = (Notifications.scheduleNotificationAsync as jest.Mock).mock.calls[0][0];
+    expect(arg.content.body).toBe("Don't eat for 2 hours");
+  });
+
+  it('falls back to the generic body when no note is set', async () => {
+    await scheduleCompletionTimer(
+      makeTask({ title: 'Take iron pill', completionTimerMinutes: 120, completionTimerNote: null })
+    );
+    const arg = (Notifications.scheduleNotificationAsync as jest.Mock).mock.calls[0][0];
+    expect(arg.content.body).toBe('It\'s time. You completed "Take iron pill" a while ago.');
+  });
+});
+
 // ─── cancelTaskReminder ───────────────────────────────────────────────────────
 
 describe('cancelTaskReminder', () => {
@@ -563,7 +589,7 @@ describe('scheduleTimerAlarm', () => {
         timedMinutes: 15,
         timerElapsedSeconds: 10 * 60,
         healthMetric: null,
-        healthTarget: null, completionTimerMinutes: null, logHealthMetric: null, logHealthAmount: null, medicationName: null, medicationAmount: null, medicationUnit: null,
+        healthTarget: null, completionTimerMinutes: null, completionTimerNote: null, logHealthMetric: null, logHealthAmount: null, medicationName: null, medicationAmount: null, medicationUnit: null,
         timerStartedAt: new Date().toISOString(),
       })
     );
@@ -589,7 +615,7 @@ describe('scheduleTimerAlarm', () => {
         timedMinutes: 15,
         timerElapsedSeconds: 20 * 60,
         healthMetric: null,
-        healthTarget: null, completionTimerMinutes: null, logHealthMetric: null, logHealthAmount: null, medicationName: null, medicationAmount: null, medicationUnit: null,
+        healthTarget: null, completionTimerMinutes: null, completionTimerNote: null, logHealthMetric: null, logHealthAmount: null, medicationName: null, medicationAmount: null, medicationUnit: null,
         timerStartedAt: new Date().toISOString(),
       })
     );

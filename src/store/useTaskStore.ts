@@ -257,7 +257,7 @@ import {
 // isLiveRecurring / CLAUDE.md recurrence docs for why).
 export const CONTENT_FIELDS: (keyof Task)[] = [
   'title', 'notes', 'tags', 'category', 'priority', 'effort',
-  'estimatedMinutes', 'timedMinutes', 'healthMetric', 'healthTarget', 'windowStart', 'windowEnd', 'timeSegments', 'reminderTime', 'reminderKind', 'reminderOffsetDays', 'linkUrl', 'phoneNumber', 'emailAddress', 'location', 'completionTimerMinutes',
+  'estimatedMinutes', 'timedMinutes', 'healthMetric', 'healthTarget', 'windowStart', 'windowEnd', 'timeSegments', 'reminderTime', 'reminderKind', 'reminderOffsetDays', 'linkUrl', 'phoneNumber', 'emailAddress', 'location', 'completionTimerMinutes', 'completionTimerNote',
   // The question, not the answer — `deliverableValue` is per-occurrence data
   // like progressCount and is deliberately absent, or a scope:'occurrence'
   // edit would capture one date's answer as the default for every date after.
@@ -6105,7 +6105,7 @@ export const useTaskStore = create<TaskStore>((set, get) => ({
       timedMinutes: null,
       timerElapsedSeconds: 0,
       healthMetric: null,
-      healthTarget: null, completionTimerMinutes: null, logHealthMetric: null, logHealthAmount: null,
+      healthTarget: null, completionTimerMinutes: null, completionTimerNote: null, logHealthMetric: null, logHealthAmount: null,
       previousOccurrenceId: null,
       seriesId: null,
       seriesMonthDays: [],
@@ -6309,7 +6309,7 @@ export const useTaskStore = create<TaskStore>((set, get) => ({
       timedMinutes: null,
       timerElapsedSeconds: 0,
       healthMetric: null,
-      healthTarget: null, completionTimerMinutes: null, logHealthMetric: null, logHealthAmount: null,
+      healthTarget: null, completionTimerMinutes: null, completionTimerNote: null, logHealthMetric: null, logHealthAmount: null,
       previousOccurrenceId: null,
       seriesId: null,
       seriesMonthDays: [],

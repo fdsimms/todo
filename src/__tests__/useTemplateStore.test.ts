@@ -71,7 +71,7 @@ const makeItem = (overrides: Partial<TemplateItem> = {}): TemplateItem => ({
   recurrenceCount: null,
   vacationPause: false, excludeFromSuggestions: false,
   estimatedMinutes: null,
-  completionTimerMinutes: null,
+  completionTimerMinutes: null, completionTimerNote: null,
   penaltyMinutes: null,
   penaltyCutoffTime: null,
   gatesApps: false,
