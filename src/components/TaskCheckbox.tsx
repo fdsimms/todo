@@ -10,7 +10,7 @@ import { useMealPlanStore } from '../store/useMealPlanStore';
 import { usePlanMeal } from '../hooks/usePlanMeal';
 import { useColors } from '../theme/ThemeContext';
 import { animation, border, checkboxRadius, iconSize, interaction, spacing, type Colors } from '../theme';
-import { completionTapFor } from '../utils/completionTap';
+import { completionTapFor, offersMealLogOnCompletion } from '../utils/completionTap';
 import { openInAppUrl } from '../utils/deepLinks';
 import { isQuotaPartial, quotaFraction } from '../utils/visibilityUtils';
 import { isCleanToday } from '../utils/negativeHabits';
@@ -73,6 +73,7 @@ export function TaskCheckbox({ task, taskLabel, onTicked }: Props) {
   const logQuotaUnit = useTaskStore(s => s.logQuotaUnit);
   const logSlip = useTaskStore(s => s.logSlip);
   const penaltyShieldEnabled = useSettingsStore(s => s.penaltyShieldEnabled);
+  const mealLogPromptEnabled = useSettingsStore(s => s.mealLogPrompt);
   const planMeal = useMealPlanStore(s => s.planMeal);
   const removeMealPlanEntry = useMealPlanStore(s => s.removeEntry);
   const { offerPrepTasksForEach } = usePlanMeal();
@@ -82,6 +83,10 @@ export function TaskCheckbox({ task, taskLabel, onTicked }: Props) {
   const scale = useRef(new Animated.Value(1)).current;
 
   const action = completionTapFor(task);
+  // Ticks normally, then offerMealLog's "what did you eat?" sheet follows —
+  // see offersMealLogOnCompletion's own doc comment for why this is a
+  // separate flag rather than another `action` case.
+  const offersMealLog = offersMealLogOnCompletion(task, mealLogPromptEnabled);
   const label = taskLabel ?? task.title;
   const fraction = quotaFraction(task);
 
@@ -274,6 +279,12 @@ export function TaskCheckbox({ task, taskLabel, onTicked }: Props) {
                 // xs rather than sm: a "?" is tall where the repeat glyph is wide
                 // and short, so the same nominal size crowds a 20pt box.
                 <Ionicons name="help" size={iconSize.xs} color={colors.textTertiary} />
+              )}
+              {action === 'complete' && offersMealLog && (
+                // A different glyph from "?" on purpose — see TaskItem's own
+                // comment and offersMealLogOnCompletion's doc comment: this
+                // tap completes normally, a sheet just follows it.
+                <Ionicons name="restaurant" size={iconSize.xs} color={colors.textTertiary} />
               )}
             </View>
           </View>
