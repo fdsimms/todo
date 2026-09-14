@@ -1,6 +1,5 @@
 import React, { useEffect, useMemo, useRef, useState } from 'react';
 import {
-  Modal,
   View,
   Text,
   TextInput,
@@ -13,6 +12,7 @@ import {
   StyleSheet,
   useWindowDimensions,
 } from 'react-native';
+import { SheetModal } from './SheetModal';
 import Ionicons from '@expo/vector-icons/Ionicons';
 import { useShallow } from 'zustand/react/shallow';
 import { SafeBlurView } from './SafeBlurView';
@@ -345,7 +345,7 @@ export function RecipePickerSheet({ visible, dayKey, dayLabel, defaultSlot, forc
   };
 
   return (
-    <Modal visible={visible} animationType="none" transparent onRequestClose={dismiss}>
+    <SheetModal visible={visible} animationType="none" transparent onRequestClose={dismiss}>
       <Animated.View style={[StyleSheet.absoluteFill, { opacity: backdropOpacity }]} pointerEvents="none">
         <SafeBlurView intensity={isDark ? 20 : 15} tint="dark" style={StyleSheet.absoluteFill} />
         <View style={[StyleSheet.absoluteFill, styles.backdropDim]} />
@@ -521,7 +521,7 @@ export function RecipePickerSheet({ visible, dayKey, dayLabel, defaultSlot, forc
           <Text style={styles.cancelLabel}>{planned.length > 0 ? 'Done' : 'Cancel'}</Text>
         </TouchableOpacity>
       </Animated.View>
-    </Modal>
+    </SheetModal>
   );
 }
 

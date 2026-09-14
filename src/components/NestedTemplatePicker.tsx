@@ -1,12 +1,12 @@
 import React, { useMemo } from 'react';
 import {
-  Modal,
   View,
   Text,
   TouchableOpacity,
   ScrollView,
   StyleSheet,
 } from 'react-native';
+import { SheetModal } from './SheetModal';
 import Ionicons from '@expo/vector-icons/Ionicons';
 import { useColors } from '../theme/ThemeContext';
 import { spacing, radius, font, interaction, type Colors } from '../theme';
@@ -49,7 +49,7 @@ export function NestedTemplatePicker({ visible, currentTemplateId, onClose, onSe
   };
 
   return (
-    <Modal
+    <SheetModal
       visible={visible}
       animationType="slide"
       presentationStyle="pageSheet"
@@ -105,7 +105,7 @@ export function NestedTemplatePicker({ visible, currentTemplateId, onClose, onSe
           </ScrollView>
         )}
       </View>
-    </Modal>
+    </SheetModal>
   );
 }
 

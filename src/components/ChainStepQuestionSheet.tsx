@@ -1,5 +1,6 @@
 import React, { useEffect, useMemo, useRef, useState } from 'react';
-import { Animated, Modal, StyleSheet, Text, TouchableOpacity, View } from 'react-native';
+import { Animated, StyleSheet, Text, TouchableOpacity, View } from 'react-native';
+import { SheetModal } from './SheetModal';
 import Ionicons from '@expo/vector-icons/Ionicons';
 import type { ChainItem, DeliverableKind } from '../types';
 import { deliverableMeta } from '../utils/deliverables';
@@ -94,7 +95,7 @@ export function ChainStepQuestionSheet({ visible, step, nextStepTitle, onSave, o
   };
 
   return (
-    <Modal visible={visible} animationType="none" transparent onRequestClose={() => dismiss(onClose)}>
+    <SheetModal visible={visible} animationType="none" transparent onRequestClose={() => dismiss(onClose)}>
       <Animated.View style={[StyleSheet.absoluteFill, { opacity: backdropOpacity }]} pointerEvents="none">
         <SafeBlurView intensity={isDark ? 20 : 15} tint="dark" style={StyleSheet.absoluteFill} />
         <View style={[StyleSheet.absoluteFill, styles.backdropDim]} />
@@ -152,7 +153,7 @@ export function ChainStepQuestionSheet({ visible, step, nextStepTitle, onSave, o
           )}
         </View>
       </Animated.View>
-    </Modal>
+    </SheetModal>
   );
 }
 

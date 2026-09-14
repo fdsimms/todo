@@ -1,5 +1,6 @@
 import React, { useEffect, useMemo, useState } from 'react';
-import { FlatList, Keyboard, Modal, StyleSheet, Text, TextInput, TouchableOpacity, View } from 'react-native';
+import { FlatList, Keyboard, StyleSheet, Text, TextInput, TouchableOpacity, View } from 'react-native';
+import { SheetModal } from './SheetModal';
 import Ionicons from '@expo/vector-icons/Ionicons';
 import { useShallow } from 'zustand/react/shallow';
 import { useGroceryStore } from '../store/useGroceryStore';
@@ -139,7 +140,7 @@ export function MergeItemSheet({ visible, itemId, initialPickedId, onClose, onMe
   );
 
   return (
-    <Modal visible={visible} animationType="slide" presentationStyle="pageSheet" onRequestClose={handleClose}>
+    <SheetModal visible={visible} animationType="slide" presentationStyle="pageSheet" onRequestClose={handleClose}>
       <View style={styles.root}>
         <SheetHeader
           title={`Merge ${item.name}`}
@@ -215,7 +216,7 @@ export function MergeItemSheet({ visible, itemId, initialPickedId, onClose, onMe
           </>
         )}
       </View>
-    </Modal>
+    </SheetModal>
   );
 }
 

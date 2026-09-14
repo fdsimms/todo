@@ -2,7 +2,6 @@ import React, { useEffect, useMemo, useRef, useState } from 'react';
 import {
   Animated,
   Dimensions,
-  Modal,
   PanResponder,
   ScrollView,
   StyleSheet,
@@ -10,6 +9,7 @@ import {
   TouchableOpacity,
   View,
 } from 'react-native';
+import { SheetModal } from './SheetModal';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { SafeBlurView } from './SafeBlurView';
 import { ScrollEdgeFade } from './ScrollEdgeFade';
@@ -241,7 +241,7 @@ export function SideMenuDrawer({ visible, onClose, onNavigate, onOpenSettings, a
   if (!isRendered) return null;
 
   return (
-    <Modal
+    <SheetModal
       visible={isRendered}
       transparent
       animationType="none"
@@ -410,7 +410,7 @@ export function SideMenuDrawer({ visible, onClose, onNavigate, onOpenSettings, a
           </View>
         </Animated.View>
       </View>
-    </Modal>
+    </SheetModal>
   );
 }
 

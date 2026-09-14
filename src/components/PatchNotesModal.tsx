@@ -1,6 +1,5 @@
 import React, { useRef, useEffect, useMemo, useState, useCallback } from 'react';
 import {
-  Modal,
   View,
   Text,
   TouchableOpacity,
@@ -10,6 +9,7 @@ import {
   StyleSheet,
   Dimensions,
 } from 'react-native';
+import { SheetModal } from './SheetModal';
 import { SafeBlurView } from './SafeBlurView';
 import { ScrollEdgeFade } from './ScrollEdgeFade';
 import { EmptyState } from './EmptyState';
@@ -174,7 +174,7 @@ export function PatchNotesModal({ visible, onDismiss }: Props) {
   ).current;
 
   return (
-    <Modal
+    <SheetModal
       visible={visible}
       animationType="none"
       transparent
@@ -245,7 +245,7 @@ export function PatchNotesModal({ visible, onDismiss }: Props) {
           </TouchableOpacity>
         </Animated.View>
       </View>
-    </Modal>
+    </SheetModal>
   );
 }
 

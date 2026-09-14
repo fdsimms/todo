@@ -11,9 +11,16 @@
 // are wet and a phone that's asleep.
 import React, { useCallback, useEffect, useMemo, useState } from 'react';
 import {
-  ActivityIndicator, Keyboard, Modal, View, Text, ScrollView, TextInput, TouchableOpacity,
+  ActivityIndicator,
+  Keyboard,
+  View,
+  Text,
+  ScrollView,
+  TextInput,
+  TouchableOpacity,
   StyleSheet,
 } from 'react-native';
+import { SheetModal } from './SheetModal';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { useKeepAwake } from 'expo-keep-awake';
 import Ionicons from '@expo/vector-icons/Ionicons';
@@ -316,7 +323,7 @@ export function CookModeSheet({ visible, recipe, recipesById, scale, onClose }: 
 
   // ==== render. Everything below is JSX ====
   return (
-    <Modal visible={visible} animationType="slide" presentationStyle="fullScreen" onRequestClose={close}>
+    <SheetModal visible={visible} animationType="slide" presentationStyle="fullScreen" onRequestClose={close}>
       <ScreenAwake />
       <View style={[styles.root, { paddingTop: insets.top }]}>
         <DetailHeader
@@ -713,7 +720,7 @@ export function CookModeSheet({ visible, recipe, recipesById, scale, onClose }: 
             mounted in. */}
         <NumberPadAccessory />
       </View>
-    </Modal>
+    </SheetModal>
   );
 }
 

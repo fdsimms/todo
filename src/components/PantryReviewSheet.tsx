@@ -2,13 +2,13 @@ import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import {
   Animated,
   Dimensions,
-  Modal,
   PanResponder,
   ScrollView,
   StyleSheet,
   Text,
   View,
 } from 'react-native';
+import { SheetModal } from './SheetModal';
 import Ionicons from '@expo/vector-icons/Ionicons';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { useColors, useTheme } from '../theme/ThemeContext';
@@ -296,7 +296,7 @@ export function PantryReviewSheet({ visible, onClose }: Props) {
   };
 
   return (
-    <Modal visible={visible} animationType="slide" presentationStyle="fullScreen" onRequestClose={onClose}>
+    <SheetModal visible={visible} animationType="slide" presentationStyle="fullScreen" onRequestClose={onClose}>
       <View style={[styles.root, { paddingTop: insets.top }]}>
         <View style={styles.header}>
           <View>
@@ -441,7 +441,7 @@ export function PantryReviewSheet({ visible, onClose }: Props) {
           </>
         )}
       </View>
-    </Modal>
+    </SheetModal>
   );
 }
 

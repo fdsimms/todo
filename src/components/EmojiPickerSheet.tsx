@@ -1,6 +1,5 @@
 import React, { useRef, useEffect, useMemo, useState } from 'react';
 import {
-  Modal,
   View,
   Text,
   TextInput,
@@ -12,6 +11,7 @@ import {
   Platform,
   StyleSheet,
 } from 'react-native';
+import { SheetModal } from './SheetModal';
 import Ionicons from '@expo/vector-icons/Ionicons';
 import { SafeBlurView } from './SafeBlurView';
 import { SheetScrim } from './SheetScrim';
@@ -137,7 +137,7 @@ export function EmojiPickerSheet({ visible, value, title = 'Choose an emoji', hi
   };
 
   return (
-    <Modal visible={visible} animationType="none" transparent onRequestClose={() => dismiss()}>
+    <SheetModal visible={visible} animationType="none" transparent onRequestClose={() => dismiss()}>
       <Animated.View style={[StyleSheet.absoluteFill, { opacity: backdropOpacity }]} pointerEvents="none">
         <SafeBlurView intensity={isDark ? 20 : 15} tint="dark" style={StyleSheet.absoluteFill} />
         <View style={[StyleSheet.absoluteFill, styles.backdropDim]} />
@@ -292,7 +292,7 @@ export function EmojiPickerSheet({ visible, value, title = 'Choose an emoji', hi
           <Text style={styles.cancelLabel}>Cancel</Text>
         </TouchableOpacity>
       </Animated.View>
-    </Modal>
+    </SheetModal>
   );
 }
 

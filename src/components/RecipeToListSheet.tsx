@@ -1,5 +1,6 @@
 import React, { useEffect, useMemo, useRef, useState } from 'react';
-import { Alert, Modal, View, Text, TouchableOpacity, ScrollView, StyleSheet } from 'react-native';
+import { Alert, View, Text, TouchableOpacity, ScrollView, StyleSheet } from 'react-native';
+import { SheetModal } from './SheetModal';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import Ionicons from '@expo/vector-icons/Ionicons';
 import { useShallow } from 'zustand/react/shallow';
@@ -478,7 +479,7 @@ export function RecipeToListSheet({
   const nothingToShow = classified.length === 0;
 
   return (
-    <Modal visible={visible} animationType="slide" presentationStyle="pageSheet" onRequestClose={handleCancel}>
+    <SheetModal visible={visible} animationType="slide" presentationStyle="pageSheet" onRequestClose={handleCancel}>
       <View style={styles.root}>
         <SheetHeader
           title={recipe?.name ?? 'Add to list'}
@@ -766,7 +767,7 @@ export function RecipeToListSheet({
         itemId={subsItemId}
         onClose={() => setSubsItemId(null)}
       />
-    </Modal>
+    </SheetModal>
   );
 }
 

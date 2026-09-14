@@ -1,5 +1,6 @@
 import React, { useMemo, useRef, useState, useEffect } from 'react';
-import { Alert, Keyboard, Modal, Platform, View, Text, TextInput, TouchableOpacity, ScrollView, StyleSheet } from 'react-native';
+import { Alert, Keyboard, Platform, View, Text, TextInput, TouchableOpacity, ScrollView, StyleSheet } from 'react-native';
+import { SheetModal } from './SheetModal';
 import Ionicons from '@expo/vector-icons/Ionicons';
 import { useShallow } from 'zustand/react/shallow';
 import { useColors } from '../theme/ThemeContext';
@@ -460,7 +461,7 @@ export function FinishShoppingSheet({
   };
 
   return (
-    <Modal visible={visible} animationType="slide" presentationStyle="pageSheet" onRequestClose={handleCancel}>
+    <SheetModal visible={visible} animationType="slide" presentationStyle="pageSheet" onRequestClose={handleCancel}>
       <View style={styles.root}>
         <SheetHeader
           title="Finish shopping"
@@ -758,7 +759,7 @@ export function FinishShoppingSheet({
         </ScrollView>
         <NumberPadAccessory />
       </View>
-    </Modal>
+    </SheetModal>
   );
 }
 

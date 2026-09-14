@@ -1,7 +1,6 @@
 import React, { useState, useEffect, useCallback, useMemo } from 'react';
 import {
   Alert,
-  Modal,
   View,
   Text,
   TouchableOpacity,
@@ -9,6 +8,7 @@ import {
   ActivityIndicator,
   StyleSheet,
 } from 'react-native';
+import { SheetModal } from './SheetModal';
 import Ionicons from '@expo/vector-icons/Ionicons';
 import {  } from '../types';
 import { useColors } from '../theme/ThemeContext';
@@ -138,7 +138,7 @@ export function TemplateSuggestionsSheet({ visible, templateId, templateName, ex
   const canAdd = !loading && acceptedCount > 0;
 
   return (
-    <Modal
+    <SheetModal
       visible={visible}
       animationType="slide"
       presentationStyle="pageSheet"
@@ -219,7 +219,7 @@ export function TemplateSuggestionsSheet({ visible, templateId, templateName, ex
           </ScrollView>
         )}
       </View>
-    </Modal>
+    </SheetModal>
   );
 }
 

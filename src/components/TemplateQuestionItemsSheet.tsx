@@ -1,5 +1,6 @@
 import React, { useMemo } from 'react';
-import { Modal, ScrollView, StyleSheet, Text, TouchableOpacity, View } from 'react-native';
+import { ScrollView, StyleSheet, Text, TouchableOpacity, View } from 'react-native';
+import { SheetModal } from './SheetModal';
 import { useShallow } from 'zustand/react/shallow';
 import { useTemplateStore } from '../store/useTemplateStore';
 import { useColors } from '../theme/ThemeContext';
@@ -47,7 +48,7 @@ export function TemplateQuestionItemsSheet({ visible, templateId, question, onCl
   };
 
   return (
-    <Modal visible={visible} animationType="slide" presentationStyle="pageSheet" onRequestClose={onClose}>
+    <SheetModal visible={visible} animationType="slide" presentationStyle="pageSheet" onRequestClose={onClose}>
       <View style={styles.root}>
         <SheetHeader
           title={questionLabel(question)}
@@ -104,7 +105,7 @@ export function TemplateQuestionItemsSheet({ visible, templateId, question, onCl
           </ScrollView>
         )}
       </View>
-    </Modal>
+    </SheetModal>
   );
 }
 

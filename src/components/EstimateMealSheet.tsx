@@ -3,7 +3,6 @@ import {
   ActivityIndicator,
   Alert,
   Keyboard,
-  Modal,
   ScrollView,
   StyleSheet,
   Text,
@@ -11,6 +10,7 @@ import {
   TouchableOpacity,
   View,
 } from 'react-native';
+import { SheetModal } from './SheetModal';
 import { useColors } from '../theme/ThemeContext';
 import { font, fontWeight, interaction, radius, spacing, type Colors } from '../theme';
 import { MEAL_SLOTS, MEAL_SLOT_LABELS, NUTRIENT_KEYS, type MealSlot } from '../types';
@@ -229,7 +229,7 @@ export function EstimateMealSheet({ visible, slot, at, mealPlanEntryId, onClose,
   const shown = estimate ? NUTRIENT_KEYS.filter(k => estimate.amounts[k] !== undefined) : [];
 
   return (
-    <Modal visible={visible} animationType="slide" presentationStyle="pageSheet" onRequestClose={handleCancel}>
+    <SheetModal visible={visible} animationType="slide" presentationStyle="pageSheet" onRequestClose={handleCancel}>
       <View style={styles.root}>
         <SheetHeader
           title="Estimate a meal"
@@ -418,7 +418,7 @@ export function EstimateMealSheet({ visible, slot, at, mealPlanEntryId, onClose,
           )}
         </ScrollView>
       </View>
-    </Modal>
+    </SheetModal>
   );
 }
 

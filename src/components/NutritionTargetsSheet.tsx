@@ -1,5 +1,6 @@
 import React, { useMemo } from 'react';
-import { Modal, ScrollView, StyleSheet, Text, TouchableOpacity, View } from 'react-native';
+import { ScrollView, StyleSheet, Text, TouchableOpacity, View } from 'react-native';
+import { SheetModal } from './SheetModal';
 import Ionicons from '@expo/vector-icons/Ionicons';
 import { useShallow } from 'zustand/react/shallow';
 import { useColors } from '../theme/ThemeContext';
@@ -64,7 +65,7 @@ export function NutritionTargetsSheet({ visible, onClose }: Props) {
   };
 
   return (
-    <Modal visible={visible} animationType="slide" presentationStyle="pageSheet" onRequestClose={onClose}>
+    <SheetModal visible={visible} animationType="slide" presentationStyle="pageSheet" onRequestClose={onClose}>
       <View style={styles.root}>
         <View style={styles.header}>
           <View style={styles.headerSpacer} />
@@ -132,7 +133,7 @@ export function NutritionTargetsSheet({ visible, onClose }: Props) {
           })}
         </ScrollView>
       </View>
-    </Modal>
+    </SheetModal>
   );
 }
 

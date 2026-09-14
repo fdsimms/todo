@@ -1,5 +1,6 @@
 import React, { useMemo, useState } from 'react';
-import { Modal, View, Text, ScrollView, StyleSheet, Linking } from 'react-native';
+import { View, Text, ScrollView, StyleSheet, Linking } from 'react-native';
+import { SheetModal } from './SheetModal';
 import Ionicons from '@expo/vector-icons/Ionicons';
 import type { BusyEvent } from '../utils/calendarBusy';
 import { formatTimeOfDay } from '../utils/dateUtils';
@@ -91,7 +92,7 @@ export function TodayEventsSheet({ visible, onClose, events, calendarsById }: Pr
   };
 
   return (
-    <Modal visible={visible} animationType="slide" presentationStyle="pageSheet" onRequestClose={onClose}>
+    <SheetModal visible={visible} animationType="slide" presentationStyle="pageSheet" onRequestClose={onClose}>
       <View style={styles.root}>
         <SheetHeader
           title="Today’s events"
@@ -204,7 +205,7 @@ export function TodayEventsSheet({ visible, onClose, events, calendarsById }: Pr
           })}
         </ScrollView>
       </View>
-    </Modal>
+    </SheetModal>
   );
 }
 

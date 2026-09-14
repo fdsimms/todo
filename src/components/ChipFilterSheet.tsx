@@ -1,7 +1,14 @@
 import React, { useEffect, useMemo, useRef } from 'react';
 import {
-  Modal, View, Text, TouchableOpacity, ScrollView, StyleSheet, PanResponder, Animated,
+  View,
+  Text,
+  TouchableOpacity,
+  ScrollView,
+  StyleSheet,
+  PanResponder,
+  Animated,
 } from 'react-native';
+import { SheetModal } from './SheetModal';
 import Ionicons from '@expo/vector-icons/Ionicons';
 import { useColors } from '../theme/ThemeContext';
 import { spacing, radius, font, fontWeight, interaction, animation, type Colors } from '../theme';
@@ -104,7 +111,7 @@ export function ChipFilterSheet({ visible, onClose, title = 'Filter', groups, on
   const activeCount = groups.reduce((n, g) => n + g.selected.length, 0);
 
   return (
-    <Modal visible={visible} animationType="none" transparent onRequestClose={dismiss}>
+    <SheetModal visible={visible} animationType="none" transparent onRequestClose={dismiss}>
       <View style={styles.modalRoot}>
         <Animated.View style={[styles.overlay, { opacity: backdropOpacity }]}>
           <SheetScrim onPress={dismiss} />
@@ -188,7 +195,7 @@ export function ChipFilterSheet({ visible, onClose, title = 'Filter', groups, on
           />
         </Animated.View>
       </View>
-    </Modal>
+    </SheetModal>
   );
 }
 

@@ -1,7 +1,6 @@
 import React, { useState, useEffect, useMemo, useCallback } from 'react';
 import {
   Alert,
-  Modal,
   View,
   Text,
   TouchableOpacity,
@@ -9,6 +8,7 @@ import {
   ActivityIndicator,
   StyleSheet,
 } from 'react-native';
+import { SheetModal } from './SheetModal';
 import Ionicons from '@expo/vector-icons/Ionicons';
 import { useShallow } from 'zustand/react/shallow';
 import { useColors } from '../theme/ThemeContext';
@@ -375,7 +375,7 @@ export function GroceryAISheet({ visible, mode, onClose }: Props) {
   };
 
   return (
-    <Modal visible={visible} animationType="slide" presentationStyle="pageSheet" onRequestClose={handleCancel}>
+    <SheetModal visible={visible} animationType="slide" presentationStyle="pageSheet" onRequestClose={handleCancel}>
       <View style={styles.root}>
         <SheetHeader
           title={mode === 'tidy' ? 'Sort into aisles' : 'From a recipe'}
@@ -396,7 +396,7 @@ export function GroceryAISheet({ visible, mode, onClose }: Props) {
         />
         {renderBody()}
       </View>
-    </Modal>
+    </SheetModal>
   );
 }
 

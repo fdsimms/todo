@@ -1,7 +1,6 @@
 import React, { useCallback, useEffect, useMemo, useState } from 'react';
 import {
   Alert,
-  Modal,
   View,
   Text,
   TouchableOpacity,
@@ -9,6 +8,7 @@ import {
   ActivityIndicator,
   StyleSheet,
 } from 'react-native';
+import { SheetModal } from './SheetModal';
 import Ionicons from '@expo/vector-icons/Ionicons';
 import { useShallow } from 'zustand/react/shallow';
 import { useColors } from '../theme/ThemeContext';
@@ -837,7 +837,7 @@ export function ReceiptImportSheet({ visible, onClose, onApply, context }: Props
 
   return (
     <>
-      <Modal visible={visible} animationType="slide" presentationStyle="pageSheet" onRequestClose={handleCancel}>
+      <SheetModal visible={visible} animationType="slide" presentationStyle="pageSheet" onRequestClose={handleCancel}>
         <View style={styles.root}>
           <SheetHeader
             title={pantry ? 'Receipt into pantry' : 'Scan a receipt'}
@@ -865,7 +865,7 @@ export function ReceiptImportSheet({ visible, onClose, onApply, context }: Props
             {body()}
           </ScrollView>
         </View>
-      </Modal>
+      </SheetModal>
       <WhenPicker
         visible={datePickerOpen}
         value={purchasedDate}

@@ -1,5 +1,6 @@
 import React, { useEffect, useMemo, useState } from 'react';
-import { Modal, ScrollView, StyleSheet, Text, TouchableOpacity, View } from 'react-native';
+import { ScrollView, StyleSheet, Text, TouchableOpacity, View } from 'react-native';
+import { SheetModal } from './SheetModal';
 import Ionicons from '@expo/vector-icons/Ionicons';
 import { useShallow } from 'zustand/react/shallow';
 import type { TitleRule } from '../types';
@@ -153,7 +154,7 @@ export function TitleRulesSheet({ visible, onClose }: Props) {
   );
 
   return (
-    <Modal visible={visible} animationType="slide" presentationStyle="pageSheet" onRequestClose={onClose}>
+    <SheetModal visible={visible} animationType="slide" presentationStyle="pageSheet" onRequestClose={onClose}>
       <View style={styles.root}>
         <SheetHeader
           title="Title rules"
@@ -287,7 +288,7 @@ export function TitleRulesSheet({ visible, onClose }: Props) {
           onClose={() => setEditingId(undefined)}
         />
       </View>
-    </Modal>
+    </SheetModal>
   );
 }
 

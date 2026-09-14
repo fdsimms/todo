@@ -1,5 +1,6 @@
 import React, { useMemo } from 'react';
-import { Modal, ScrollView, StyleSheet, Text, TouchableOpacity, View } from 'react-native';
+import { ScrollView, StyleSheet, Text, TouchableOpacity, View } from 'react-native';
+import { SheetModal } from './SheetModal';
 import Ionicons from '@expo/vector-icons/Ionicons';
 import { useShallow } from 'zustand/react/shallow';
 import { useGroceryStore } from '../store/useGroceryStore';
@@ -48,7 +49,7 @@ export function StandingSwapsSheet({ visible, onClose }: Props) {
   };
 
   return (
-    <Modal visible={visible} animationType="slide" presentationStyle="pageSheet" onRequestClose={onClose}>
+    <SheetModal visible={visible} animationType="slide" presentationStyle="pageSheet" onRequestClose={onClose}>
       <View style={styles.root}>
         <SheetHeader
           title="Standing swaps"
@@ -107,7 +108,7 @@ export function StandingSwapsSheet({ visible, onClose }: Props) {
           </ScrollView>
         )}
       </View>
-    </Modal>
+    </SheetModal>
   );
 }
 

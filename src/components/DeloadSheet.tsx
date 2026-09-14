@@ -1,6 +1,5 @@
 import React, { useRef, useEffect, useMemo, useState } from 'react';
 import {
-  Modal,
   View,
   Text,
   TouchableOpacity,
@@ -9,6 +8,7 @@ import {
   PanResponder,
   StyleSheet,
 } from 'react-native';
+import { SheetModal } from './SheetModal';
 import Ionicons from '@expo/vector-icons/Ionicons';
 import { SafeBlurView } from './SafeBlurView';
 import { useColors, useTheme } from '../theme/ThemeContext';
@@ -278,7 +278,7 @@ export function DeloadSheet({ visible, todaysTasks, notes, onClose }: Props) {
   };
 
   return (
-    <Modal visible={visible} animationType="none" transparent onRequestClose={dismiss}>
+    <SheetModal visible={visible} animationType="none" transparent onRequestClose={dismiss}>
       <Animated.View style={[StyleSheet.absoluteFill, { opacity: backdropOpacity }]} pointerEvents="none">
         <SafeBlurView intensity={isDark ? 20 : 15} tint="dark" style={StyleSheet.absoluteFill} />
         <View style={[StyleSheet.absoluteFill, styles.backdropDim]} />
@@ -393,7 +393,7 @@ export function DeloadSheet({ visible, todaysTasks, notes, onClose }: Props) {
         }}
         onCancel={restoreSheet}
       />
-    </Modal>
+    </SheetModal>
   );
 }
 

@@ -9,7 +9,6 @@
 import React, { useState, useEffect, useRef, useMemo } from 'react';
 import {
   Alert,
-  Modal,
   View,
   Text,
   TextInput,
@@ -21,6 +20,7 @@ import {
   ScrollView,
   useWindowDimensions,
 } from 'react-native';
+import { SheetModal } from './SheetModal';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { SafeBlurView } from './SafeBlurView';
 import Ionicons from '@expo/vector-icons/Ionicons';
@@ -1504,7 +1504,7 @@ export function QuickAddModal({
   // ==== render. Everything below is JSX ====
   return (
     <>
-    <Modal
+    <SheetModal
       visible={visible}
       animationType="none"
       transparent
@@ -2548,7 +2548,7 @@ export function QuickAddModal({
         onConfirm={applyActiveParse}
         confirmVisible={confirmVisible}
       />
-    </Modal>
+    </SheetModal>
     {/* newTaskDefaults.openEditorAfterQuickAdd hand-off — see createTask. A
         sibling of the sheet above rather than something rendered inside it,
         so it stays mounted (and visible) once the sheet has closed. */}

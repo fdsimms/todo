@@ -1,12 +1,12 @@
 import React, { useMemo, useState, useEffect } from 'react';
 import {
-  Modal,
   View,
   Text,
   ScrollView,
   TouchableOpacity,
   StyleSheet,
 } from 'react-native';
+import { SheetModal } from './SheetModal';
 import Ionicons from '@expo/vector-icons/Ionicons';
 import { useShallow } from 'zustand/react/shallow';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
@@ -108,7 +108,7 @@ export function CategoryOrderSheet({ visible, onClose }: Props) {
   // fullScreen, not a page sheet: the sheet's own pull-down pan cancels the JS
   // touches this list's drag runs on. See EditorSheet's note (#1182).
   return (
-    <Modal visible={visible} animationType="slide" presentationStyle="fullScreen" onRequestClose={onClose}>
+    <SheetModal visible={visible} animationType="slide" presentationStyle="fullScreen" onRequestClose={onClose}>
       <View style={[styles.root, { paddingTop: insets.top }]}>
         <SheetHeader
           title="Category order"
@@ -193,7 +193,7 @@ export function CategoryOrderSheet({ visible, onClose }: Props) {
           </ScrollView>
         )}
       </View>
-    </Modal>
+    </SheetModal>
   );
 }
 

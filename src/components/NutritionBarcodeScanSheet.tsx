@@ -1,5 +1,6 @@
 import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
-import { ActivityIndicator, Modal, StyleSheet, Text, View } from 'react-native';
+import { ActivityIndicator, StyleSheet, Text, View } from 'react-native';
+import { SheetModal } from './SheetModal';
 import { CameraView, useCameraPermissions } from 'expo-camera';
 import {
   getDataScannerView, isDataScannerAvailable, type DataScannerScan,
@@ -148,7 +149,7 @@ export function NutritionBarcodeScanSheet({ visible, onClose, onFound }: Props) 
   };
 
   return (
-    <Modal visible={visible} animationType="slide" presentationStyle="pageSheet" onRequestClose={onClose}>
+    <SheetModal visible={visible} animationType="slide" presentationStyle="pageSheet" onRequestClose={onClose}>
       <View style={styles.root}>
         <SheetHeader
           title="Scan a barcode"
@@ -178,7 +179,7 @@ export function NutritionBarcodeScanSheet({ visible, onClose, onFound }: Props) 
           )}
         </View>
       </View>
-    </Modal>
+    </SheetModal>
   );
 }
 

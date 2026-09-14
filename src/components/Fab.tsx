@@ -1,5 +1,6 @@
 import React, { useMemo, useRef, useState } from 'react';
-import { Animated, Modal, PanResponder, StyleSheet, Text, View } from 'react-native';
+import { Animated, PanResponder, StyleSheet, Text, View } from 'react-native';
+import { SheetModal } from './SheetModal';
 import Ionicons from '@expo/vector-icons/Ionicons';
 import { PressableScale } from './PressableScale';
 import { SheetScrim } from './SheetScrim';
@@ -384,7 +385,7 @@ export function FabMenuOverlay({
   const styles = useMemo(() => makeStyles(colors, hand), [colors, hand]);
 
   return (
-    <Modal visible={visible} transparent animationType="none" onRequestClose={onDismiss}>
+    <SheetModal visible={visible} transparent animationType="none" onRequestClose={onDismiss}>
       <SheetScrim onPress={onDismiss}>
         <Animated.View style={[StyleSheet.absoluteFill, styles.backdrop, { opacity: anim }]} />
       </SheetScrim>
@@ -431,7 +432,7 @@ export function FabMenuOverlay({
           <Ionicons name="close" size={fabGlyphSize(size)} color={colors.onAccent} />
         </PressableScale>
       </View>
-    </Modal>
+    </SheetModal>
   );
 }
 

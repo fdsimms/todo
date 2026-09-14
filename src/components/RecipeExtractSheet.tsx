@@ -1,13 +1,13 @@
 import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import {
   Alert,
-  Modal,
   View,
   Text,
   ScrollView,
   ActivityIndicator,
   StyleSheet,
 } from 'react-native';
+import { SheetModal } from './SheetModal';
 import { useKeyboardInsetScroll } from '../hooks/useKeyboardInsetScroll';
 import { useShallow } from 'zustand/react/shallow';
 import { RECIPE_PAGE_MAX_LENGTH, RECIPE_SOURCE_MAX_LENGTH, type Recipe, type RecipeSourceType } from '../types';
@@ -837,7 +837,7 @@ export function RecipeExtractSheet({ visible, recipe, onClose }: Props) {
   };
 
   return (
-    <Modal visible={visible} animationType="slide" presentationStyle="pageSheet" onRequestClose={handleCancel}>
+    <SheetModal visible={visible} animationType="slide" presentationStyle="pageSheet" onRequestClose={handleCancel}>
       <View style={styles.root}>
         <SheetHeader
           title="From a recipe"
@@ -854,7 +854,7 @@ export function RecipeExtractSheet({ visible, recipe, onClose }: Props) {
         />
         {renderBody()}
       </View>
-    </Modal>
+    </SheetModal>
   );
 }
 

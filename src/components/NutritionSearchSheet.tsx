@@ -3,13 +3,13 @@ import {
   ActivityIndicator,
   FlatList,
   Keyboard,
-  Modal,
   StyleSheet,
   Text,
   TextInput,
   TouchableOpacity,
   View,
 } from 'react-native';
+import { SheetModal } from './SheetModal';
 import Ionicons from '@expo/vector-icons/Ionicons';
 import { useColors } from '../theme/ThemeContext';
 import { font, iconSize, interaction, radius, spacing, type Colors } from '../theme';
@@ -201,7 +201,7 @@ export function NutritionSearchSheet({ visible, itemName, onClose, onPick, onOpe
   };
 
   return (
-    <Modal
+    <SheetModal
       visible={visible}
       animationType="slide"
       presentationStyle="pageSheet"
@@ -255,7 +255,7 @@ export function NutritionSearchSheet({ visible, itemName, onClose, onPick, onOpe
           }
         />
       </View>
-    </Modal>
+    </SheetModal>
   );
 }
 

@@ -1,7 +1,6 @@
 import React, { useEffect, useMemo, useState } from 'react';
 import {
   Keyboard,
-  Modal,
   View,
   Text,
   TextInput,
@@ -9,6 +8,7 @@ import {
   ScrollView,
   StyleSheet,
 } from 'react-native';
+import { SheetModal } from './SheetModal';
 import Ionicons from '@expo/vector-icons/Ionicons';
 import { useShallow } from 'zustand/react/shallow';
 import type { Recipe } from '../types';
@@ -89,7 +89,7 @@ export function RecipeComponentPicker({ visible, recipe, onClose, onSelect }: Pr
   };
 
   return (
-    <Modal visible={visible} animationType="slide" presentationStyle="pageSheet" onRequestClose={handleCancel}>
+    <SheetModal visible={visible} animationType="slide" presentationStyle="pageSheet" onRequestClose={handleCancel}>
       <View style={styles.root}>
         <SheetHeader
           title="Add a component"
@@ -163,7 +163,7 @@ export function RecipeComponentPicker({ visible, recipe, onClose, onSelect }: Pr
           </>
         )}
       </View>
-    </Modal>
+    </SheetModal>
   );
 }
 

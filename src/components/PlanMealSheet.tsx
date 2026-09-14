@@ -1,6 +1,5 @@
 import React, { useEffect, useMemo, useRef, useState } from 'react';
 import {
-  Modal,
   View,
   Text,
   TouchableOpacity,
@@ -10,6 +9,7 @@ import {
   StyleSheet,
   useWindowDimensions,
 } from 'react-native';
+import { SheetModal } from './SheetModal';
 import Ionicons from '@expo/vector-icons/Ionicons';
 import { format } from 'date-fns/format';
 import { isToday } from 'date-fns/isToday';
@@ -204,7 +204,7 @@ export function PlanMealSheet({ visible, title, defaultSlot, onPlan, onPlanned, 
   };
 
   return (
-    <Modal visible={visible} animationType="none" transparent onRequestClose={close}>
+    <SheetModal visible={visible} animationType="none" transparent onRequestClose={close}>
       <Animated.View style={[StyleSheet.absoluteFill, { opacity: backdropOpacity }]} pointerEvents="none">
         <SafeBlurView intensity={isDark ? 20 : 15} tint="dark" style={StyleSheet.absoluteFill} />
         <View style={[StyleSheet.absoluteFill, styles.backdropDim]} />
@@ -300,7 +300,7 @@ export function PlanMealSheet({ visible, title, defaultSlot, onPlan, onPlanned, 
         <ScrollEdgeFade edge="bottom" opacity={fade.bottomOpacity} color={colors.bgSecondary} />
         </View>
       </Animated.View>
-    </Modal>
+    </SheetModal>
   );
 }
 

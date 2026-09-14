@@ -6,9 +6,9 @@ import {
   TouchableOpacity,
   Keyboard,
   StyleSheet,
-  Modal,
   type GestureResponderEvent,
 } from 'react-native';
+import { SheetModal } from '../components/SheetModal';
 import { useFocusEffect } from '@react-navigation/native';
 import { useBottomTabBarHeight } from '@react-navigation/bottom-tabs';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
@@ -290,7 +290,7 @@ export function TagsScreen() {
         {/* Tag detail modal. Rows are TaskItem, whose own inline title/subtask
             fields can still hold focus when the sheet closes — dismiss the
             keyboard first, same freeze bug fixed elsewhere. */}
-        <Modal
+        <SheetModal
           visible={selectedTag !== null}
           animationType="slide"
           presentationStyle="pageSheet"
@@ -387,7 +387,7 @@ export function TagsScreen() {
               />
             )}
           </View>
-        </Modal>
+        </SheetModal>
 
         <DeliverablePromptQueue {...queueProps} />
 

@@ -1,6 +1,5 @@
 import React, { useState, useEffect, useMemo } from 'react';
 import {
-  Modal,
   View,
   Text,
   TextInput,
@@ -10,6 +9,7 @@ import {
   StyleSheet,
   Alert,
 } from 'react-native';
+import { SheetModal } from './SheetModal';
 import Ionicons from '@expo/vector-icons/Ionicons';
 import { useTaskStore } from '../store/useTaskStore';
 import { useCategoryStore } from '../store/useCategoryStore';
@@ -262,7 +262,7 @@ export function CategoryEditor({ visible, category, onClose }: Props) {
   if (!category) return null;
 
   return (
-    <Modal visible={visible} animationType="slide" presentationStyle="pageSheet" onRequestClose={saveAndClose}>
+    <SheetModal visible={visible} animationType="slide" presentationStyle="pageSheet" onRequestClose={saveAndClose}>
       <View style={styles.root}>
         <View style={styles.header}>
           <SheetHeaderButton label="Done" onPress={saveAndClose} />
@@ -499,7 +499,7 @@ export function CategoryEditor({ visible, category, onClose }: Props) {
           onClose={() => setEmojiPickerOpen(false)}
         />
       </View>
-    </Modal>
+    </SheetModal>
   );
 }
 

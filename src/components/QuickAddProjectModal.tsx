@@ -1,7 +1,6 @@
 import React, { useState, useEffect, useRef, useMemo } from 'react';
 import {
   Alert,
-  Modal,
   View,
   Text,
   TextInput,
@@ -11,6 +10,7 @@ import {
   Keyboard,
   Platform,
 } from 'react-native';
+import { SheetModal } from './SheetModal';
 import Ionicons from '@expo/vector-icons/Ionicons';
 import { SafeBlurView } from './SafeBlurView';
 import { WhenPicker } from './WhenPicker';
@@ -243,7 +243,7 @@ export function QuickAddProjectModal({
   };
 
   return (
-    <Modal visible={visible} animationType="none" transparent onRequestClose={dismiss}>
+    <SheetModal visible={visible} animationType="none" transparent onRequestClose={dismiss}>
       <Animated.View style={[StyleSheet.absoluteFill, { opacity: backdropOpacity }]} pointerEvents="none">
         <SafeBlurView intensity={isDark ? 20 : 15} tint="dark" style={StyleSheet.absoluteFill} />
         <View style={[StyleSheet.absoluteFill, styles.backdropDim]} />
@@ -413,7 +413,7 @@ export function QuickAddProjectModal({
         onClear={() => { setDeadline(null); setDeadlinePickerVisible(false); }}
         onCancel={() => setDeadlinePickerVisible(false)}
       />
-    </Modal>
+    </SheetModal>
   );
 }
 

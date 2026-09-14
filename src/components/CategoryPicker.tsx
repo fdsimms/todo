@@ -9,7 +9,6 @@
 // The filter and the keyboard rules live in src/utils/categoryPicker.ts.
 import React, { useEffect, useMemo, useRef, useState } from 'react';
 import {
-  Modal,
   View,
   Text,
   TextInput,
@@ -22,6 +21,7 @@ import {
   StyleSheet,
   useWindowDimensions,
 } from 'react-native';
+import { SheetModal } from './SheetModal';
 import Ionicons from '@expo/vector-icons/Ionicons';
 import { SafeBlurView } from './SafeBlurView';
 import { ScrollEdgeFade } from './ScrollEdgeFade';
@@ -356,7 +356,7 @@ export function CategoryPickerSheet({ visible, onClose, title = 'Category', onSe
   ).current;
 
   return (
-    <Modal visible={visible} animationType="none" transparent onRequestClose={() => dismiss()}>
+    <SheetModal visible={visible} animationType="none" transparent onRequestClose={() => dismiss()}>
       <Animated.View style={[StyleSheet.absoluteFill, { opacity: backdropOpacity }]} pointerEvents="none">
         <SafeBlurView intensity={isDark ? 20 : 15} tint="dark" style={StyleSheet.absoluteFill} />
         <View style={[StyleSheet.absoluteFill, styles.backdropDim]} />
@@ -392,7 +392,7 @@ export function CategoryPickerSheet({ visible, onClose, title = 'Category', onSe
           <Text style={styles.cancelLabel}>Cancel</Text>
         </TouchableOpacity>
       </Animated.View>
-    </Modal>
+    </SheetModal>
   );
 }
 

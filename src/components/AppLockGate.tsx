@@ -1,5 +1,6 @@
 import React, { useCallback, useEffect, useMemo, useState } from 'react';
-import { Alert, AppState, Modal, StyleSheet, Text, View } from 'react-native';
+import { Alert, AppState, StyleSheet, Text, View } from 'react-native';
+import { SheetModal } from './SheetModal';
 import Ionicons from '@expo/vector-icons/Ionicons';
 import { useSettingsStore } from '../store/useSettingsStore';
 import { isAppLocked, useAppLockStore } from '../store/useAppLockStore';
@@ -112,7 +113,7 @@ export function AppLockGate() {
   }, [locked, attemptUnlock]);
 
   return (
-    <Modal
+    <SheetModal
       visible={locked || shielded}
       animationType="fade"
       statusBarTranslucent
@@ -146,7 +147,7 @@ export function AppLockGate() {
           </>
         )}
       </View>
-    </Modal>
+    </SheetModal>
   );
 }
 

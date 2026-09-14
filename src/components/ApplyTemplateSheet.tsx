@@ -1,7 +1,6 @@
 import React, { useRef, useEffect, useMemo, useState } from 'react';
 import {
   Keyboard,
-  Modal,
   View,
   Text,
   TextInput,
@@ -11,6 +10,7 @@ import {
   PanResponder,
   StyleSheet,
 } from 'react-native';
+import { SheetModal } from './SheetModal';
 import { SafeBlurView } from './SafeBlurView';
 import Ionicons from '@expo/vector-icons/Ionicons';
 import { useColors } from '../theme/ThemeContext';
@@ -461,7 +461,7 @@ export function ApplyTemplateSheet({ visible, template, onClose, projectId, onAp
   };
 
   return (
-    <Modal
+    <SheetModal
       visible={visible}
       animationType="none"
       transparent
@@ -632,7 +632,7 @@ export function ApplyTemplateSheet({ visible, template, onClose, projectId, onAp
         }}
         onCancel={restoreSheet}
       />
-    </Modal>
+    </SheetModal>
   );
 }
 

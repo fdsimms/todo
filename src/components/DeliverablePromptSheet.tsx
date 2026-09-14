@@ -2,7 +2,6 @@ import React, { useEffect, useMemo, useRef, useState } from 'react';
 import {
   Animated,
   Keyboard,
-  Modal,
   Platform,
   StyleSheet,
   Text,
@@ -10,6 +9,7 @@ import {
   TouchableOpacity,
   View,
 } from 'react-native';
+import { SheetModal } from './SheetModal';
 import Ionicons from '@expo/vector-icons/Ionicons';
 import type { Task } from '../types';
 import { useColors, useTheme } from '../theme/ThemeContext';
@@ -199,7 +199,7 @@ export function DeliverablePromptSheet({ visible, task, mode = 'complete', onCon
   const dateLabel = normalized ? formatDeliverableValue(kind, normalized) : null;
 
   return (
-    <Modal visible={visible} animationType="none" transparent onRequestClose={() => dismiss(onCancel)}>
+    <SheetModal visible={visible} animationType="none" transparent onRequestClose={() => dismiss(onCancel)}>
       <Animated.View style={[StyleSheet.absoluteFill, { opacity: backdropOpacity }]} pointerEvents="none">
         <SafeBlurView intensity={isDark ? 20 : 15} tint="dark" style={StyleSheet.absoluteFill} />
         <View style={[StyleSheet.absoluteFill, styles.backdropDim]} />
@@ -330,7 +330,7 @@ export function DeliverablePromptSheet({ visible, task, mode = 'complete', onCon
           onCancel={() => setPickerOpen(false)}
         />
       )}
-    </Modal>
+    </SheetModal>
   );
 }
 
