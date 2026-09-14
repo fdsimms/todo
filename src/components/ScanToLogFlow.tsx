@@ -214,7 +214,14 @@ export function ScanToLogFlow({ visible, slot, at, mealPlanEntryId, onClose, onL
   return (
     <>
       <BarcodeScanSheet
-        visible={visible}
+        // Hidden once the scan has produced something to portion or a panel to
+        // fill in. `BarcodeScanSheet` reports its result through `onApply`
+        // without closing itself, so without this the scanner is still
+        // presented when the sheet below opens — and these are siblings, so
+        // both present from the same view controller, which can only present
+        // one. The second is refused silently. Same rule as the note on
+        // `LogMealEntrySheet`.
+        visible={visible && session === null && panelFor === null}
         context="log"
         onClose={onClose}
         onApply={handleScanApply}

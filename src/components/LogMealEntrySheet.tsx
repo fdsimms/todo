@@ -59,15 +59,31 @@ function dayKeyAtNoon(dayKey: string): Date {
  * estimate logged from here links back to the meal exactly as a searched
  * entry would.
  *
- * **`pending` stays put while Scan or Describe is open, same as
- * `FoodLogScreen`'s own search sheet stays open behind its database
- * search.** Opening either used to clear it, closing this sheet outright —
- * so backing out of a scan or an estimate landed on the food log with
- * nothing, rather than back where you started, and every one of these
- * detours read as leaving the flow rather than a step inside it. Now only a
- * completed Log does that (`onLogged` on both, mirroring
- * `EstimateMealSheet`'s own doc comment on the prop), and cancelling either
- * reveals this sheet again exactly as it was left.
+ * **`pending` stays put while Scan or Describe is open, but this sheet is
+ * hidden for the duration.** Opening either used to clear `pending`, closing
+ * this sheet outright — so backing out of a scan or an estimate landed on the
+ * food log with nothing, rather than back where you started. Keeping
+ * `pending` is what fixes that: only a completed Log clears it (`onLogged` on
+ * both), so cancelling either brings this sheet back. The *hiding* is a
+ * separate, non-negotiable thing, and conflating the two is what broke this.
+ *
+ * **Two of these may never be presented at once, and "it stays open behind
+ * the database search" is not the precedent it looks like.** iOS presents a
+ * Modal from `[self reactViewController]` — the nearest view controller up
+ * the responder chain — and a view controller can present only one thing at
+ * a time. `NutritionSearchSheet` works *because it is rendered inside*
+ * `FoodLogEntrySheet`'s own Modal, so it presents from that sheet's view
+ * controller, which is presenting nothing. `ScanToLogFlow` and
+ * `EstimateMealSheet` are rendered out here as *siblings*, so they present
+ * from the root view controller, which is already presenting this sheet.
+ * UIKit refuses, nothing appears, and RN has already flipped its internal
+ * `_isPresented` — so the flow is wedged with no error to point at it. That
+ * shipped for real: both buttons did nothing and froze the food log.
+ *
+ * So a sheet raised from this one hides it, and a sheet raised from *that*
+ * one hides it in turn (`ScanToLogFlow` does the same for its scanner).
+ * Nesting the Modal inside the one below it is the only other way, and it is
+ * what `NutritionSearchSheet` does; a sibling has to hide.
  */
 export function LogMealEntrySheet() {
   const pending = useFoodLogStore(s => s.pendingManualMealLog);
@@ -108,7 +124,15 @@ export function LogMealEntrySheet() {
   return (
     <>
       <FoodLogEntrySheet
-        visible={!!pending && !pendingFinishLeftoverId}
+        // Hidden while Scan or Describe is up, and that is not optional: iOS
+        // presents each of these from `[self reactViewController]`, which for
+        // a Modal rendered out here is the *root* view controller. A UIKit
+        // view controller can present only one thing at a time, so asking the
+        // root to present a second sheet while this one is still up is
+        // refused outright — nothing appears, and RN has already set its own
+        // `_isPresented` flag, so the flow wedges. `pending` deliberately
+        // stays set, which is what brings this sheet back on cancel.
+        visible={!!pending && !pendingFinishLeftoverId && !scan && !estimate}
         slot={pending?.slot ?? null}
         at={pending ? dayKeyAtNoon(pending.dayKey) : new Date()}
         seedRecipeId={seedRecipeId}

@@ -881,7 +881,14 @@ export function FoodLogScreen() {
       )}
 
       <FoodLogEntrySheet
-        visible={addOpen}
+        // Hidden while any of the three sheets it can raise is up. They are
+        // rendered as siblings here, so iOS presents them from the root view
+        // controller, which can only present one thing at a time — leave this
+        // one up and the second is refused with nothing shown and RN's own
+        // `_isPresented` already flipped, which wedges the screen. `addOpen`
+        // stays true so cancelling any of them comes back here. See the note
+        // on `LogMealEntrySheet`, which had the identical bug.
+        visible={addOpen && !scanOpen && !estimateOpen && !savedMealsOpen}
         slot={addingSlot}
         at={loggingAt}
         seedRecipeId={seedRecipeId}
