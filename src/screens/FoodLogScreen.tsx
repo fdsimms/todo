@@ -32,7 +32,7 @@ import {
   waterTotalMl,
 } from '../utils/waterLog';
 import { NUTRIENT_LABEL } from '../utils/foodNutrition';
-import { describeAgainstTarget, targetProgress } from '../utils/nutritionTargets';
+import { describeAgainstTarget, targetProgress, targetStatus, type TargetStatus } from '../utils/nutritionTargets';
 import { useSettingsStore } from '../store/useSettingsStore';
 import { NUTRIENT_KEYS, type NutrientKey } from '../types';
 import { haptics } from '../utils/haptics';
@@ -676,16 +676,25 @@ export function FoodLogScreen() {
                       )}
                     </View>
                   </TouchableOpacity>
-                  {/* One colour at both ends, because whether being over a target
-                      is good or bad is not knowable: somebody tracking protein
-                      wants to reach it and somebody tracking sodium wants to stay
-                      under, and nothing here is told which. */}
+                  {/* Colored by distance from the target, never by direction:
+                      whether being over a target is good or bad is not knowable
+                      (somebody tracking protein wants to reach it, somebody
+                      tracking sodium wants to stay under it), so `under` and
+                      `over` get different but equally neutral colors and only
+                      `met` — landing on the number chosen — gets green. See
+                      `targetStatus`. */}
                   {nutritionTargets[key] !== undefined && (
                     <View style={styles.targetTrack}>
                       <View
                         style={[
                           styles.targetFill,
-                          { width: `${targetProgress(key, totals.total[key], nutritionTargets) * 100}%` },
+                          {
+                            width: `${targetProgress(key, totals.total[key], nutritionTargets) * 100}%`,
+                            backgroundColor: targetStatusColor(
+                              targetStatus(key, totals.total[key], nutritionTargets),
+                              colors,
+                            ),
+                          },
                         ]}
                       />
                     </View>
@@ -762,7 +771,13 @@ export function FoodLogScreen() {
                     <View
                       style={[
                         styles.targetFill,
-                        { width: `${targetProgress('waterMl', shownDayWaterMl, nutritionTargets) * 100}%` },
+                        {
+                          width: `${targetProgress('waterMl', shownDayWaterMl, nutritionTargets) * 100}%`,
+                          backgroundColor: targetStatusColor(
+                            targetStatus('waterMl', shownDayWaterMl, nutritionTargets),
+                            colors,
+                          ),
+                        },
                       ]}
                     />
                   </View>
@@ -956,6 +971,20 @@ export function FoodLogScreen() {
       />
     </SafeAreaView>
   );
+}
+
+/**
+ * The bar's fill color for a target status. Blue and orange rather than
+ * green/red for `under`/`over` — see `targetStatus`'s own doc comment: the
+ * app doesn't know whether over or under is the direction someone wants, so
+ * neither reads as good or bad. `met` is green because that's not a value
+ * judgement about the nutrient, only that the day landed on the number the
+ * person chose to aim at.
+ */
+function targetStatusColor(status: TargetStatus, colors: Colors): string {
+  if (status === 'met') return colors.green;
+  if (status === 'over') return colors.orange;
+  return colors.accent;
 }
 
 function makeStyles(colors: Colors) {

@@ -149,7 +149,8 @@ export function describeAgainstTarget(
  * **Whether being over a target is good or bad is not this module's business
  * and is not knowable.** Somebody tracking protein wants to reach it and
  * somebody tracking sodium wants to stay under, and the app is not told which.
- * So the bar is one colour and carries no judgement at either end.
+ * `targetStatus` below reads distance from the target, never a direction, for
+ * exactly that reason.
  */
 export function targetProgress(
   key: NutrientKey,
@@ -159,6 +160,38 @@ export function targetProgress(
   const target = targets[key];
   if (target === undefined || total === undefined || target <= 0) return 0;
   return Math.min(1, Math.max(0, total / target));
+}
+
+/**
+ * How far above or below the target the day landed. `'met'` covers a band
+ * around the target rather than the exact figure, because a target is typed
+ * in as a round number and a day that lands at 1,980 of a 2,000 target hasn't
+ * missed it in any sense a person would recognize.
+ *
+ * **Direction-agnostic on purpose, same as `targetProgress`.** This says only
+ * how far the total sits from the number the person chose, never whether
+ * that's good — the app still doesn't know if reaching this particular
+ * nutrient is the point (protein) or staying under it is (sodium), so
+ * `'under'` and `'over'` are not colored as better or worse than each other.
+ * `'met'` marks that the day landed on the number chosen, not that the
+ * number itself was the right one to choose.
+ */
+export type TargetStatus = 'under' | 'met' | 'over';
+
+/** The band around a target, as a fraction of it, that still counts as met. */
+export const TARGET_MET_TOLERANCE = 0.1;
+
+export function targetStatus(
+  key: NutrientKey,
+  total: number | undefined,
+  targets: NutritionTargets,
+): TargetStatus {
+  const target = targets[key];
+  if (target === undefined || target <= 0) return 'under';
+  const ratio = (total ?? 0) / target;
+  if (ratio < 1 - TARGET_MET_TOLERANCE) return 'under';
+  if (ratio > 1 + TARGET_MET_TOLERANCE) return 'over';
+  return 'met';
 }
 
 function round(amount: number): number {
