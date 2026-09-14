@@ -82,9 +82,17 @@ interface Props {
   onClose: () => void;
   /** Offered instead of estimating, when the description names one. See the note above. */
   onPickRecipe: (recipeId: string) => void;
+  /**
+   * Fired right before `onClose` on a successful Log, and only then — a
+   * caller that keeps its own "what did you eat?" sheet open underneath this
+   * one (rather than closing it to open this) uses this to close that sheet
+   * too, so a completed estimate doesn't reveal it again. Cancelling leaves
+   * it unfired, which is what lets that sheet stay in place.
+   */
+  onLogged?: () => void;
 }
 
-export function EstimateMealSheet({ visible, slot, at, mealPlanEntryId, onClose, onPickRecipe }: Props) {
+export function EstimateMealSheet({ visible, slot, at, mealPlanEntryId, onClose, onPickRecipe, onLogged }: Props) {
   const colors = useColors();
   const styles = useMemo(() => makeStyles(colors), [colors]);
   const keyboardScroll = useKeyboardInsetScroll<ScrollView>();
@@ -175,6 +183,7 @@ export function EstimateMealSheet({ visible, slot, at, mealPlanEntryId, onClose,
     if (!written) { haptics.error(); return; }
     haptics.success();
     Keyboard.dismiss();
+    onLogged?.();
     onClose();
   };
 

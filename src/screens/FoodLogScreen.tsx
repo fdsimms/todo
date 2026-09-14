@@ -885,9 +885,9 @@ export function FoodLogScreen() {
         at={loggingAt}
         seedRecipeId={seedRecipeId}
         onClose={() => { setAddOpen(false); setSeedRecipeId(null); }}
-        onEstimate={estimateRoute !== 'unavailable' ? () => { setAddOpen(false); setEstimateOpen(true); } : undefined}
-        onScan={() => { setAddOpen(false); setScanOpen(true); }}
-        onSavedMeal={savedMeals.length > 0 ? () => { setAddOpen(false); setSavedMealsOpen(true); } : undefined}
+        onEstimate={estimateRoute !== 'unavailable' ? () => setEstimateOpen(true) : undefined}
+        onScan={() => setScanOpen(true)}
+        onSavedMeal={savedMeals.length > 0 ? () => setSavedMealsOpen(true) : undefined}
       />
       {/* The same sheet, reopened on an entry rather than on an empty form. A
           second mount rather than a flag on the one above, so an add halfway
@@ -906,12 +906,17 @@ export function FoodLogScreen() {
         slot={addingSlot}
         at={loggingAt}
         onClose={() => setScanOpen(false)}
+        // Closes the "What did you eat?" sheet underneath too, only once a
+        // scan actually logs something — cancelling leaves it open, same as
+        // backing out of its own database search does.
+        onLogged={() => setAddOpen(false)}
       />
       <EstimateMealSheet
         visible={estimateOpen}
         slot={addingSlot}
         at={loggingAt}
         onClose={() => setEstimateOpen(false)}
+        onLogged={() => setAddOpen(false)}
         onPickRecipe={recipeId => {
           // Handed to the picker rather than logged here: a recipe is logged in
           // servings, which is a question this sheet has not asked. Seeded, so
@@ -927,6 +932,7 @@ export function FoodLogScreen() {
         onLog={meal => {
           logSavedMeal(meal, addingSlot, loggingAt);
           setSavedMealsOpen(false);
+          setAddOpen(false);
         }}
         onDelete={meal => removeSavedMeal(meal.id)}
         onClose={() => setSavedMealsOpen(false)}
