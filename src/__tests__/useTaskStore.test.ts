@@ -6470,6 +6470,31 @@ describe('skipNextRecurrence', () => {
     expect(updated.title).toBe('Series title');
     expect(updated.seriesDefaults).toBeNull();
   });
+
+  // Same rule for a scheduled mid-chain step landing on its own next date —
+  // see the postponeCount describe block below for the plain recurrence case.
+  it('resets postponeCount when a scheduled mid-chain step rolls onto its own next date', () => {
+    const task = makeTask({
+      id: 't1',
+      recurrenceType: 'daily',
+      recurrenceInterval: 1,
+      dueDate: new Date(2025, 5, 10, 0, 0, 0).toISOString(),
+      chainEnabled: true,
+      chainStepOnSchedule: true,
+      chainItems: [
+        { id: 'a', title: 'Step A', estimatedMinutes: null },
+        { id: 'b', title: 'Step B', estimatedMinutes: null },
+      ],
+      chainIndex: 0,
+      postponeCount: 5,
+      driftingSince: new Date(2025, 5, 1).toISOString(),
+    });
+    useTaskStore.setState({ tasks: [task] });
+    useTaskStore.getState().skipNextRecurrence('t1');
+    const updated = useTaskStore.getState().tasks[0];
+    expect(updated.postponeCount).toBe(0);
+    expect(updated.driftingSince).toBeNull();
+  });
 });
 
 // ─── markMissed ─────────────────────────────────────────────────────────────
@@ -12515,12 +12540,17 @@ describe('postponeCount', () => {
     expect(useTaskStore.getState().tasks[0].postponeCount).toBe(2);
   });
 
-  it('does not count a recurrence skip', () => {
+  it('does not count a recurrence skip as a push, but resets it onto the next occurrence', () => {
+    // Rolling forward — whether the user tapped Skip or sweepExpiredTasks did
+    // it unattended at launch — is landing on a fresh occurrence, same as
+    // completeTask's successor: it must not read as one more push, and the
+    // run against the occurrence that was skipped must not carry over onto
+    // the one taking its place.
     useTaskStore.setState({
       tasks: [dueToday({ recurrenceType: 'daily', postponeCount: 2 })],
     });
     useTaskStore.getState().skipNextRecurrence('a');
-    expect(useTaskStore.getState().tasks[0].postponeCount).toBe(2);
+    expect(useTaskStore.getState().tasks[0].postponeCount).toBe(0);
   });
 
   it('gives a recurring successor a clean count but keeps the mute', () => {

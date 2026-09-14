@@ -5774,6 +5774,12 @@ export const useTaskStore = create<TaskStore>((set, get) => ({
         deferUntil: null,
         reminderTime: stepReminderTime,
         reminderUtcOffsetMinutes: stepReminderUtcOffsetMinutes,
+        // Same as completeTask's successor: this step is landing on a new
+        // day, so it starts that day with no pushes against it yet — the
+        // count belongs to the occurrence that was skipped, not the one
+        // taking its place.
+        postponeCount: 0,
+        driftingSince: null,
       }, SKIP_POSTPONE);
       return;
     }
@@ -5804,6 +5810,12 @@ export const useTaskStore = create<TaskStore>((set, get) => ({
       reminderUtcOffsetMinutes: nextReminderUtcOffsetMinutes,
       chainIndex: nextChainIndex,
       recurrenceCount: task.recurrenceCount !== null ? task.recurrenceCount - 1 : null,
+      // Same as completeTask's successor: rolling forward to the next
+      // occurrence — whether the user chose to skip it or sweepExpiredTasks
+      // rolled it forward unattended — starts a fresh run with no pushes
+      // against it yet.
+      postponeCount: 0,
+      driftingSince: null,
     }, SKIP_POSTPONE);
   },
 
