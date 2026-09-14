@@ -269,7 +269,7 @@ export function EstimateMealSheet({ visible, slot, at, mealPlanEntryId, onClose,
                   key={recipe.id}
                   style={styles.recipeRow}
                   activeOpacity={interaction.activeOpacity}
-                  onPress={() => { haptics.tap(); onPickRecipe(recipe.id); }}
+                  onPress={() => { haptics.tap(); Keyboard.dismiss(); onPickRecipe(recipe.id); }}
                   accessibilityRole="button"
                   accessibilityLabel={`Log ${recipe.name} instead`}
                 >
