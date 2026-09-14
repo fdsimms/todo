@@ -1,7 +1,6 @@
 import React, { useState, useEffect, useMemo } from 'react';
 import {
   Keyboard,
-  Modal,
   View,
   Text,
   TextInput,
@@ -11,6 +10,7 @@ import {
   ScrollView,
   useWindowDimensions,
 } from 'react-native';
+import { SheetModal } from './SheetModal';
 import DateTimePicker from '@react-native-community/datetimepicker';
 import { ALARM_RING_INTERVAL_MINUTES } from '../utils/alarmChain';
 import Ionicons from '@expo/vector-icons/Ionicons';
@@ -167,7 +167,7 @@ export function RemindMePicker({ visible, value, kind, dueDate = null, offsetDay
   const canConfirm = mode === 'before' ? !!dueDate : !!selectedDate;
 
   return (
-    <Modal
+    <SheetModal
       visible={visible}
       animationType="fade"
       transparent
@@ -491,7 +491,7 @@ export function RemindMePicker({ visible, value, kind, dueDate = null, offsetDay
           </View>
         </View>
       </View>
-    </Modal>
+    </SheetModal>
   );
 }
 

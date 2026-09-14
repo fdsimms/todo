@@ -1,11 +1,11 @@
 import React from 'react';
 import {
-  Modal,
   View,
   ScrollView,
   type StyleProp,
   type ViewStyle,
 } from 'react-native';
+import { SheetModal } from './SheetModal';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { useKeyboardInsetScroll } from '../hooks/useKeyboardInsetScroll';
 
@@ -100,7 +100,7 @@ export function EditorSheet({
   const keyboardScroll = useKeyboardInsetScroll<ScrollView>();
 
   return (
-    <Modal
+    <SheetModal
       visible={visible}
       animationType="slide"
       presentationStyle="fullScreen"
@@ -132,6 +132,6 @@ export function EditorSheet({
 
         {footer}
       </View>
-    </Modal>
+    </SheetModal>
   );
 }

@@ -1,5 +1,6 @@
 import React, { useEffect, useMemo, useState, type ReactNode } from 'react';
-import { Keyboard, Modal, ScrollView, StyleSheet, Text, TextInput, TouchableOpacity, View } from 'react-native';
+import { Keyboard, ScrollView, StyleSheet, Text, TextInput, TouchableOpacity, View } from 'react-native';
+import { SheetModal } from './SheetModal';
 import Ionicons from '@expo/vector-icons/Ionicons';
 import { useSettingsStore } from '../store/useSettingsStore';
 import { useColors } from '../theme/ThemeContext';
@@ -152,7 +153,7 @@ export function RuleListSheet<T extends EditableRule>({
   };
 
   return (
-    <Modal visible={visible} animationType="slide" presentationStyle="pageSheet" onRequestClose={close}>
+    <SheetModal visible={visible} animationType="slide" presentationStyle="pageSheet" onRequestClose={close}>
       <View style={styles.root}>
         <SheetHeader
           title={title}
@@ -257,7 +258,7 @@ export function RuleListSheet<T extends EditableRule>({
           <InlineAction icon="add" label="New rule" onPress={addRule} style={styles.addBtn} />
         </ScrollView>
       </View>
-    </Modal>
+    </SheetModal>
   );
 }
 

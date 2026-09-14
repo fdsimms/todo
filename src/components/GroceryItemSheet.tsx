@@ -8,10 +8,10 @@
 // The open-ended pill grids here go through PillGroup, which caps itself past
 // eight; see docs/arch/groceries.md for what aisles, shops and substitutes mean.
 import React, { useMemo, useState, useEffect, useRef } from 'react';
-import { format } from 'date-fns/format';
+import {
+  format } from 'date-fns/format';
 import {
   Keyboard,
-  Modal,
   Platform,
   View,
   Text,
@@ -22,6 +22,7 @@ import {
   Alert,
   type LayoutChangeEvent,
 } from 'react-native';
+import { SheetModal } from './SheetModal';
 import Ionicons from '@expo/vector-icons/Ionicons';
 import { useShallow } from 'zustand/react/shallow';
 import { useTaskStore } from '../store/useTaskStore';
@@ -334,9 +335,9 @@ export function GroceryItemSheet({
     // flips visible to false), and an unstyled Modal here defaults to a
     // native white background, flashing behind the close animation (#1618).
     return (
-      <Modal visible={visible} animationType="slide" presentationStyle="pageSheet" onRequestClose={onClose}>
+      <SheetModal visible={visible} animationType="slide" presentationStyle="pageSheet" onRequestClose={onClose}>
         <View style={styles.root} />
-      </Modal>
+      </SheetModal>
     );
   }
 
@@ -1467,7 +1468,7 @@ export function GroceryItemSheet({
 
   // ==== render. Everything below is JSX ====
   return (
-    <Modal
+    <SheetModal
       visible={visible}
       animationType="slide"
       presentationStyle="pageSheet"
@@ -1913,7 +1914,7 @@ export function GroceryItemSheet({
         onSave={nutrition => setItemNutrition(item.id, nutrition)}
       />
       <NumberPadAccessory />
-    </Modal>
+    </SheetModal>
   );
 }
 

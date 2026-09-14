@@ -1,12 +1,12 @@
 import React, { useRef, useEffect, useMemo } from 'react';
 import {
-  Modal,
   View,
   Text,
   TouchableOpacity,
   Animated,
   StyleSheet,
 } from 'react-native';
+import { SheetModal } from './SheetModal';
 import Ionicons from '@expo/vector-icons/Ionicons';
 import { useColors } from '../theme/ThemeContext';
 import { spacing, radius, font, fontWeight, border, animation, interaction, type Colors } from '../theme';
@@ -122,7 +122,7 @@ export function TodayOptionsMenu({
   };
 
   return (
-    <Modal visible={visible} animationType="none" transparent onRequestClose={dismiss}>
+    <SheetModal visible={visible} animationType="none" transparent onRequestClose={dismiss}>
       <Animated.View style={[StyleSheet.absoluteFill, styles.backdropDim, { opacity: backdropOpacity }]} pointerEvents="none" />
       <SheetScrim onPress={dismiss} />
 
@@ -313,7 +313,7 @@ export function TodayOptionsMenu({
           <Text style={styles.cancelLabel}>Close</Text>
         </TouchableOpacity>
       </Animated.View>
-    </Modal>
+    </SheetModal>
   );
 }
 

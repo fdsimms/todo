@@ -1,5 +1,6 @@
 import React, { useMemo } from 'react';
-import { Modal, ScrollView, StyleSheet, Text, TouchableOpacity, View } from 'react-native';
+import { ScrollView, StyleSheet, Text, TouchableOpacity, View } from 'react-native';
+import { SheetModal } from './SheetModal';
 import Ionicons from '@expo/vector-icons/Ionicons';
 import { useTaskStore } from '../store/useTaskStore';
 import { useTaskGroupStore } from '../store/useTaskGroupStore';
@@ -79,7 +80,7 @@ export function MorningCheckInSheet({ visible, onClose, tasks }: Props) {
   };
 
   return (
-    <Modal visible={visible} animationType="slide" presentationStyle="pageSheet" onRequestClose={onClose}>
+    <SheetModal visible={visible} animationType="slide" presentationStyle="pageSheet" onRequestClose={onClose}>
       <View style={styles.root}>
         <View style={styles.header}>
           <Text style={styles.eyebrow}>Yesterday</Text>
@@ -140,7 +141,7 @@ export function MorningCheckInSheet({ visible, onClose, tasks }: Props) {
           )}
         </ScrollView>
       </View>
-    </Modal>
+    </SheetModal>
   );
 }
 

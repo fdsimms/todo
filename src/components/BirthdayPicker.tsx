@@ -1,13 +1,13 @@
 import React, { useEffect, useMemo, useRef, useState } from 'react';
 import {
   Animated,
-  Modal,
   View,
   Text,
   TouchableOpacity,
   StyleSheet,
   Dimensions,
 } from 'react-native';
+import { SheetModal } from './SheetModal';
 import DateTimePicker from '@react-native-community/datetimepicker';
 import { useColors, useTheme } from '../theme/ThemeContext';
 import { spacing, radius, font, fontWeight, interaction, animation, type Colors } from '../theme';
@@ -109,7 +109,7 @@ export function BirthdayPicker({ visible, month, day, year, onConfirm, onClear, 
   };
 
   return (
-    <Modal
+    <SheetModal
       visible={visible}
       animationType="none"
       transparent
@@ -170,7 +170,7 @@ export function BirthdayPicker({ visible, month, day, year, onConfirm, onClear, 
           </TouchableOpacity>
         </Animated.View>
       </View>
-    </Modal>
+    </SheetModal>
   );
 }
 

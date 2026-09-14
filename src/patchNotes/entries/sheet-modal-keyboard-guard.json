@@ -1,0 +1,4 @@
+{
+  "message": "Sheets with a text field can no longer freeze the app when they close while the keyboard is up. Every sheet in the app is now covered, not just the ones that had been fixed one at a time",
+  "date": "2026-09-14"
+}

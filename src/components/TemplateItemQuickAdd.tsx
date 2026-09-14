@@ -3,7 +3,6 @@ import {
   Alert,
   Animated,
   Keyboard,
-  Modal,
   Platform,
   StyleSheet,
   Text,
@@ -11,6 +10,7 @@ import {
   TouchableOpacity,
   View,
 } from 'react-native';
+import { SheetModal } from './SheetModal';
 import { SafeBlurView } from './SafeBlurView';
 import Ionicons from '@expo/vector-icons/Ionicons';
 import { useColors, useTheme } from '../theme/ThemeContext';
@@ -197,7 +197,7 @@ export function TemplateItemQuickAdd({ visible, templateId, templateName, onClos
   const handleAddNested = () => dismiss(() => onAddNested());
 
   return (
-    <Modal visible={visible} animationType="none" transparent onRequestClose={() => dismiss()}>
+    <SheetModal visible={visible} animationType="none" transparent onRequestClose={() => dismiss()}>
       <Animated.View style={[StyleSheet.absoluteFill, { opacity: backdropOpacity }]} pointerEvents="none">
         <SafeBlurView intensity={isDark ? 20 : 15} tint="dark" style={StyleSheet.absoluteFill} />
         <View style={[StyleSheet.absoluteFill, styles.backdropDim]} />
@@ -442,7 +442,7 @@ export function TemplateItemQuickAdd({ visible, templateId, templateName, onClos
           </View>
         </Animated.View>
       </View>
-    </Modal>
+    </SheetModal>
   );
 }
 

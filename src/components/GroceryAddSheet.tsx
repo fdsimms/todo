@@ -1,11 +1,11 @@
 import React, { useEffect, useMemo, useRef, useState } from 'react';
 import {
   Animated,
-  Modal,
   StyleSheet,
   Text,
   View,
 } from 'react-native';
+import { SheetModal } from './SheetModal';
 import { SafeBlurView } from './SafeBlurView';
 import { SheetHeaderButton } from './SheetHeaderButton';
 import { GroceryAddField, type GroceryAddFieldHandle } from './GroceryAddField';
@@ -110,7 +110,7 @@ export function GroceryAddSheet({ visible, onClose, seedAisle, onAdded }: Props)
   };
 
   return (
-    <Modal visible={visible} animationType="none" transparent onRequestClose={dismiss}>
+    <SheetModal visible={visible} animationType="none" transparent onRequestClose={dismiss}>
       <Animated.View style={[StyleSheet.absoluteFill, { opacity: backdropOpacity }]} pointerEvents="none">
         <SafeBlurView intensity={isDark ? 20 : 15} tint="dark" style={StyleSheet.absoluteFill} />
         <View style={[StyleSheet.absoluteFill, styles.backdropDim]} />
@@ -148,7 +148,7 @@ export function GroceryAddSheet({ visible, onClose, seedAisle, onAdded }: Props)
           />
         </Animated.View>
       </View>
-    </Modal>
+    </SheetModal>
   );
 }
 

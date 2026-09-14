@@ -1,5 +1,6 @@
 import React, { useEffect, useMemo, useState } from 'react';
-import { Alert, Modal, View, Text, TouchableOpacity, ScrollView, StyleSheet } from 'react-native';
+import { Alert, View, Text, TouchableOpacity, ScrollView, StyleSheet } from 'react-native';
+import { SheetModal } from './SheetModal';
 import Ionicons from '@expo/vector-icons/Ionicons';
 import type { Recipe } from '../types';
 import { useColors } from '../theme/ThemeContext';
@@ -94,7 +95,7 @@ export function PrepTasksReviewSheet({ visible, recipe, recipesById, resolution,
   };
 
   return (
-    <Modal visible={visible} animationType="slide" presentationStyle="pageSheet" onRequestClose={handleCancel}>
+    <SheetModal visible={visible} animationType="slide" presentationStyle="pageSheet" onRequestClose={handleCancel}>
       <View style={styles.root}>
         <SheetHeader
           title="Prep tasks"
@@ -145,7 +146,7 @@ export function PrepTasksReviewSheet({ visible, recipe, recipesById, resolution,
           </View>
         </ScrollView>
       </View>
-    </Modal>
+    </SheetModal>
   );
 }
 

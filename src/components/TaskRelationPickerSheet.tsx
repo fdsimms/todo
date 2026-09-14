@@ -1,6 +1,5 @@
 import React, { useRef, useEffect, useMemo, useState } from 'react';
 import {
-  Modal,
   View,
   Text,
   TextInput,
@@ -13,6 +12,7 @@ import {
   StyleSheet,
   useWindowDimensions,
 } from 'react-native';
+import { SheetModal } from './SheetModal';
 import { SafeBlurView } from './SafeBlurView';
 import { SheetScrim } from './SheetScrim';
 import { EmptyState } from './EmptyState';
@@ -269,7 +269,7 @@ export function TaskRelationPickerSheet({ visible, onClose, relation, taskId, co
   };
 
   return (
-    <Modal visible={visible} animationType="none" transparent onRequestClose={() => dismiss()}>
+    <SheetModal visible={visible} animationType="none" transparent onRequestClose={() => dismiss()}>
       <Animated.View style={[StyleSheet.absoluteFill, { opacity: backdropOpacity }]} pointerEvents="none">
         <SafeBlurView intensity={isDark ? 20 : 15} tint="dark" style={StyleSheet.absoluteFill} />
         <View style={[StyleSheet.absoluteFill, styles.backdropDim]} />
@@ -347,7 +347,7 @@ export function TaskRelationPickerSheet({ visible, onClose, relation, taskId, co
           <Text style={styles.cancelLabel}>Cancel</Text>
         </TouchableOpacity>
       </Animated.View>
-    </Modal>
+    </SheetModal>
   );
 }
 

@@ -1,5 +1,6 @@
 import React, { useEffect, useMemo, useRef, useState } from 'react';
-import { Modal, View, Text, StyleSheet, Animated, Alert, ActivityIndicator } from 'react-native';
+import { View, Text, StyleSheet, Animated, Alert, ActivityIndicator } from 'react-native';
+import { SheetModal } from './SheetModal';
 import type { MoodLog } from '../types';
 import { useColors } from '../theme/ThemeContext';
 import { spacing, radius, font, fontWeight, animation, type Colors } from '../theme';
@@ -112,7 +113,7 @@ export function MoodExportSheet({ visible, logs, onClose }: {
   };
 
   return (
-    <Modal visible={visible} animationType="none" transparent onRequestClose={dismiss}>
+    <SheetModal visible={visible} animationType="none" transparent onRequestClose={dismiss}>
       <View style={styles.modalRoot}>
         <Animated.View style={[styles.overlay, { opacity: backdropOpacity }]}>
           <SheetScrim onPress={dismiss} />
@@ -155,7 +156,7 @@ export function MoodExportSheet({ visible, logs, onClose }: {
           </View>
         </Animated.View>
       </View>
-    </Modal>
+    </SheetModal>
   );
 }
 

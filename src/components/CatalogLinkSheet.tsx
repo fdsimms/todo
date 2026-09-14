@@ -1,5 +1,6 @@
 import React, { useEffect, useMemo, useState } from 'react';
-import { Modal, ScrollView, StyleSheet, Text, View } from 'react-native';
+import { ScrollView, StyleSheet, Text, View } from 'react-native';
+import { SheetModal } from './SheetModal';
 import { useColors } from '../theme/ThemeContext';
 import { border, font, fontWeight, spacing, type Colors } from '../theme';
 import type { GroceryItem, ItemProduct } from '../types';
@@ -70,7 +71,7 @@ export function CatalogLinkSheet({
   };
 
   return (
-    <Modal visible={visible} animationType="slide" presentationStyle="pageSheet" onRequestClose={onClose}>
+    <SheetModal visible={visible} animationType="slide" presentationStyle="pageSheet" onRequestClose={onClose}>
       <View style={styles.root}>
         <View style={styles.header}>
           <SheetHeaderButton
@@ -111,7 +112,7 @@ export function CatalogLinkSheet({
           )}
         </ScrollView>
       </View>
-    </Modal>
+    </SheetModal>
   );
 }
 

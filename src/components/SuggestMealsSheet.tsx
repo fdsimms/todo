@@ -1,7 +1,16 @@
 import React, { useCallback, useEffect, useMemo, useState } from 'react';
 import {
-  Alert, Keyboard, Modal, View, Text, TextInput, TouchableOpacity, ScrollView, ActivityIndicator, StyleSheet,
+  Alert,
+  Keyboard,
+  View,
+  Text,
+  TextInput,
+  TouchableOpacity,
+  ScrollView,
+  ActivityIndicator,
+  StyleSheet,
 } from 'react-native';
+import { SheetModal } from './SheetModal';
 import { useShallow } from 'zustand/react/shallow';
 import { useNavigation } from '@react-navigation/native';
 import Ionicons from '@expo/vector-icons/Ionicons';
@@ -818,7 +827,7 @@ export function SuggestMealsSheet({
   };
 
   return (
-    <Modal visible={visible} animationType="slide" presentationStyle="pageSheet" onRequestClose={handleCancel}>
+    <SheetModal visible={visible} animationType="slide" presentationStyle="pageSheet" onRequestClose={handleCancel}>
       <View style={styles.root}>
         <SheetHeader
           title="Suggest meals"
@@ -937,7 +946,7 @@ export function SuggestMealsSheet({
             Modal would ask the screen behind this one to present a second
             sheet while this one is already up (same reasoning as
             GroceryItemSheet inside GroceryCatalogSheet, see CLAUDE.md). */}
-        <Modal
+        <SheetModal
           visible={!!previewRecipe}
           animationType="slide"
           presentationStyle="pageSheet"
@@ -1013,9 +1022,9 @@ export function SuggestMealsSheet({
               </ScrollView>
             </View>
           )}
-        </Modal>
+        </SheetModal>
       </View>
-    </Modal>
+    </SheetModal>
   );
 }
 

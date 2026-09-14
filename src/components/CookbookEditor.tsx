@@ -1,6 +1,5 @@
 import React, { useState, useEffect, useMemo } from 'react';
 import {
-  Modal,
   View,
   Text,
   TextInput,
@@ -11,6 +10,7 @@ import {
   StyleSheet,
   Alert,
 } from 'react-native';
+import { SheetModal } from './SheetModal';
 import Ionicons from '@expo/vector-icons/Ionicons';
 import { useRecipeStore } from '../store/useRecipeStore';
 import { SheetHeaderButton } from './SheetHeaderButton';
@@ -117,7 +117,7 @@ export function CookbookEditor({ visible, cookbookId, onClose }: Props) {
   if (!cookbook) return null;
 
   return (
-    <Modal visible={visible} animationType="slide" presentationStyle="pageSheet" onRequestClose={saveAndClose}>
+    <SheetModal visible={visible} animationType="slide" presentationStyle="pageSheet" onRequestClose={saveAndClose}>
       <KeyboardAvoidingView style={styles.root} behavior={Platform.OS === 'ios' ? 'padding' : undefined}>
         <View style={styles.header}>
           <SheetHeaderButton label="Done" onPress={saveAndClose} />
@@ -184,7 +184,7 @@ export function CookbookEditor({ visible, cookbookId, onClose }: Props) {
           onSelect={handleMergeSelect}
         />
       )}
-    </Modal>
+    </SheetModal>
   );
 }
 

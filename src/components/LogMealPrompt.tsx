@@ -1,5 +1,6 @@
 import React, { useEffect, useMemo, useState } from 'react';
-import { Keyboard, KeyboardAvoidingView, Modal, Platform, StyleSheet, Text, TextInput, TouchableOpacity, View } from 'react-native';
+import { Keyboard, KeyboardAvoidingView, Platform, StyleSheet, Text, TextInput, TouchableOpacity, View } from 'react-native';
+import { SheetModal } from './SheetModal';
 import { useShallow } from 'zustand/react/shallow';
 import { useColors } from '../theme/ThemeContext';
 import { border, font, fontWeight, interaction, radius, spacing, type Colors } from '../theme';
@@ -182,7 +183,7 @@ export function LogMealPrompt() {
   };
 
   return (
-    <Modal visible animationType="fade" transparent onRequestClose={close}>
+    <SheetModal visible animationType="fade" transparent onRequestClose={close}>
       <NumberPadAccessory />
       <KeyboardAvoidingView
         style={styles.backdrop}
@@ -274,7 +275,7 @@ export function LogMealPrompt() {
           </View>
         </View>
       </KeyboardAvoidingView>
-    </Modal>
+    </SheetModal>
   );
 }
 

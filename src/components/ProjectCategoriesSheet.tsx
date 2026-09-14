@@ -2,7 +2,6 @@ import React, { useMemo, useState, useEffect, useRef } from 'react';
 import {
   Alert,
   Keyboard,
-  Modal,
   View,
   Text,
   TextInput,
@@ -10,6 +9,7 @@ import {
   TouchableOpacity,
   StyleSheet,
 } from 'react-native';
+import { SheetModal } from './SheetModal';
 import Ionicons from '@expo/vector-icons/Ionicons';
 import { useShallow } from 'zustand/react/shallow';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
@@ -180,7 +180,7 @@ export function ProjectCategoriesSheet({ visible, onClose }: Props) {
   // fullScreen, not a page sheet: the sheet's own pull-down pan cancels the JS
   // touches this list's drag runs on. See EditorSheet's note (#1182).
   return (
-    <Modal visible={visible} animationType="slide" presentationStyle="fullScreen" onRequestClose={close}>
+    <SheetModal visible={visible} animationType="slide" presentationStyle="fullScreen" onRequestClose={close}>
       <View style={[styles.root, { paddingTop: insets.top }]}>
         <View style={styles.header}>
           <View style={styles.headerSpacer} />
@@ -300,7 +300,7 @@ export function ProjectCategoriesSheet({ visible, onClose }: Props) {
           </View>
         </ScrollView>
       </View>
-    </Modal>
+    </SheetModal>
   );
 }
 

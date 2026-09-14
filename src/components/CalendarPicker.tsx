@@ -1,13 +1,13 @@
 import React, { useState, useEffect, useMemo, useRef } from 'react';
 import {
   Animated,
-  Modal,
   View,
   Text,
   TouchableOpacity,
   StyleSheet,
   Dimensions,
 } from 'react-native';
+import { SheetModal } from './SheetModal';
 import DateTimePicker from '@react-native-community/datetimepicker';
 import Ionicons from '@expo/vector-icons/Ionicons';
 import { startOfMonth } from 'date-fns/startOfMonth';
@@ -143,7 +143,7 @@ export function CalendarPicker({
   const canConfirm = multiple ? true : !!selectedDate;
 
   return (
-    <Modal
+    <SheetModal
       visible={visible}
       animationType="none"
       transparent
@@ -282,7 +282,7 @@ export function CalendarPicker({
           <View style={styles.bottomSpacer} />
         </Animated.View>
       </View>
-    </Modal>
+    </SheetModal>
   );
 }
 

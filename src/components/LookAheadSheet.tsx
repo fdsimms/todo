@@ -1,6 +1,5 @@
 import React, { useEffect, useMemo, useRef, useState } from 'react';
 import {
-  Modal,
   View,
   Text,
   TouchableOpacity,
@@ -8,6 +7,7 @@ import {
   Animated,
   StyleSheet,
 } from 'react-native';
+import { SheetModal } from './SheetModal';
 import Ionicons from '@expo/vector-icons/Ionicons';
 import { addDays } from 'date-fns/addDays';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
@@ -631,7 +631,7 @@ export function LookAheadSheet({ visible, onClose }: Props) {
   const canMove = windowTasks.length > 0 && returnDay !== null;
 
   return (
-    <Modal visible={visible} animationType="none" transparent onRequestClose={dismiss}>
+    <SheetModal visible={visible} animationType="none" transparent onRequestClose={dismiss}>
       <Animated.View
         style={[StyleSheet.absoluteFill, { opacity: backdropOpacity }]}
         pointerEvents="none"
@@ -736,7 +736,7 @@ export function LookAheadSheet({ visible, onClose }: Props) {
         }}
         onCancel={() => setPicking(null)}
       />
-    </Modal>
+    </SheetModal>
   );
 }
 

@@ -1,7 +1,6 @@
 import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import {
   Keyboard,
-  Modal,
   View,
   Text,
   TextInput,
@@ -10,6 +9,7 @@ import {
   StyleSheet,
   Platform,
 } from 'react-native';
+import { SheetModal } from './SheetModal';
 import Ionicons from '@expo/vector-icons/Ionicons';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { SafeBlurView } from './SafeBlurView';
@@ -295,7 +295,7 @@ export function QuickSearchModal({ visible, onClose, onSelectTask, onOpenFullSea
   const showNoMatches = trimmed.length > 0 && results.length === 0;
 
   return (
-    <Modal visible={visible} animationType="none" transparent onRequestClose={() => dismiss()}>
+    <SheetModal visible={visible} animationType="none" transparent onRequestClose={() => dismiss()}>
       <Animated.View style={[StyleSheet.absoluteFill, { opacity: backdropOpacity }]} pointerEvents="none">
         <SafeBlurView intensity={isDark ? 20 : 15} tint="dark" style={StyleSheet.absoluteFill} />
         <View style={[StyleSheet.absoluteFill, styles.backdropDim]} />
@@ -352,7 +352,7 @@ export function QuickSearchModal({ visible, onClose, onSelectTask, onOpenFullSea
           )}
         </Animated.View>
       </View>
-    </Modal>
+    </SheetModal>
   );
 }
 

@@ -2,7 +2,6 @@ import React, { useMemo, useRef, useState, useEffect } from 'react';
 import {
   Alert,
   Keyboard,
-  Modal,
   View,
   Text,
   TextInput,
@@ -11,6 +10,7 @@ import {
   Dimensions,
   Animated,
 } from 'react-native';
+import { SheetModal } from './SheetModal';
 import Ionicons from '@expo/vector-icons/Ionicons';
 import { startOfMonth } from 'date-fns/startOfMonth';
 import { addMonths } from 'date-fns/addMonths';
@@ -571,7 +571,7 @@ export function WhenPicker({
     : null;
 
   return (
-    <Modal
+    <SheetModal
       visible={visible}
       animationType="none"
       transparent
@@ -889,7 +889,7 @@ export function WhenPicker({
           )}
         </Animated.View>
       </View>
-    </Modal>
+    </SheetModal>
   );
 }
 

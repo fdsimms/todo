@@ -4,13 +4,13 @@ import {
   Alert,
   FlatList,
   Keyboard,
-  Modal,
   StyleSheet,
   Text,
   TextInput,
   TouchableOpacity,
   View,
 } from 'react-native';
+import { SheetModal } from './SheetModal';
 import Ionicons from '@expo/vector-icons/Ionicons';
 import { useShallow } from 'zustand/react/shallow';
 import { useGroceryStore } from '../store/useGroceryStore';
@@ -408,7 +408,7 @@ export function SubstituteSheet({ visible, itemId, editingSubItemId = null, onSw
   );
 
   return (
-    <Modal visible={visible} animationType="slide" presentationStyle="pageSheet" onRequestClose={handleCancel}>
+    <SheetModal visible={visible} animationType="slide" presentationStyle="pageSheet" onRequestClose={handleCancel}>
       <View style={styles.root}>
         <SheetHeader
           title={`Instead of ${item.name}`}
@@ -772,7 +772,7 @@ export function SubstituteSheet({ visible, itemId, editingSubItemId = null, onSw
           </>
         )}
       </View>
-    </Modal>
+    </SheetModal>
   );
 }
 

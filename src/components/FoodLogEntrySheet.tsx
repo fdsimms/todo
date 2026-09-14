@@ -14,7 +14,6 @@ import {
   Alert,
   FlatList,
   Keyboard,
-  Modal,
   ScrollView,
   StyleSheet,
   Text,
@@ -22,6 +21,7 @@ import {
   TouchableOpacity,
   View,
 } from 'react-native';
+import { SheetModal } from './SheetModal';
 import Ionicons from '@expo/vector-icons/Ionicons';
 import { useNavigation } from '@react-navigation/native';
 import { useShallow } from 'zustand/react/shallow';
@@ -861,7 +861,7 @@ export function FoodLogEntrySheet({
   );
 
   return (
-    <Modal visible={visible} animationType="slide" presentationStyle="pageSheet" onRequestClose={handleCancel}>
+    <SheetModal visible={visible} animationType="slide" presentationStyle="pageSheet" onRequestClose={handleCancel}>
       <View style={styles.root}>
         <View style={styles.header}>
           <View style={styles.headerRow}>
@@ -1192,7 +1192,7 @@ export function FoodLogEntrySheet({
         }}
       />
       <NumberPadAccessory />
-    </Modal>
+    </SheetModal>
   );
 }
 

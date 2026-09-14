@@ -1,5 +1,6 @@
 import React, { useMemo } from 'react';
-import { FlatList, Modal, StyleSheet, Text, View, type ListRenderItem } from 'react-native';
+import { FlatList, StyleSheet, Text, View, type ListRenderItem } from 'react-native';
+import { SheetModal } from './SheetModal';
 import { useColors } from '../theme/ThemeContext';
 import { font, fontWeight, radius, spacing, type Colors } from '../theme';
 import type { FoodLogEntry, NutrientKey } from '../types';
@@ -48,7 +49,7 @@ export function NutrientContributorsSheet({ visible, nutrientKey, entries, onClo
   );
 
   return (
-    <Modal
+    <SheetModal
       visible={visible}
       animationType="slide"
       presentationStyle="pageSheet"
@@ -67,7 +68,7 @@ export function NutrientContributorsSheet({ visible, nutrientKey, entries, onClo
           contentContainerStyle={styles.list}
         />
       </View>
-    </Modal>
+    </SheetModal>
   );
 }
 

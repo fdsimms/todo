@@ -1,5 +1,6 @@
 import React, { useEffect, useMemo, useRef, useState } from 'react';
-import { Keyboard, Modal, View, Text, TextInput, TouchableOpacity, ScrollView, Animated, StyleSheet, useWindowDimensions } from 'react-native';
+import { Keyboard, View, Text, TextInput, TouchableOpacity, ScrollView, Animated, StyleSheet, useWindowDimensions } from 'react-native';
+import { SheetModal } from './SheetModal';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import Ionicons from '@expo/vector-icons/Ionicons';
 import { useShallow } from 'zustand/react/shallow';
@@ -322,7 +323,7 @@ export function CookRecapSheet({
   const showBuy = restockRows.length > 0;
 
   return (
-    <Modal visible={visible} animationType="none" transparent onRequestClose={dismiss}>
+    <SheetModal visible={visible} animationType="none" transparent onRequestClose={dismiss}>
       <NumberPadAccessory />
       <Animated.View style={[StyleSheet.absoluteFill, { opacity: backdropOpacity }]} pointerEvents="none">
         <SafeBlurView intensity={isDark ? 20 : 15} tint="dark" style={StyleSheet.absoluteFill} />
@@ -542,7 +543,7 @@ export function CookRecapSheet({
       </View>
 
       {children}
-    </Modal>
+    </SheetModal>
   );
 }
 

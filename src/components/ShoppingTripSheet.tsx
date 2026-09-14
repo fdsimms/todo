@@ -1,5 +1,6 @@
 import React, { useMemo, useState, useEffect, useRef, useCallback } from 'react';
-import { Alert, Modal, View, Text, TouchableOpacity, ScrollView, StyleSheet } from 'react-native';
+import { Alert, View, Text, TouchableOpacity, ScrollView, StyleSheet } from 'react-native';
+import { SheetModal } from './SheetModal';
 import Ionicons from '@expo/vector-icons/Ionicons';
 import { useShallow } from 'zustand/react/shallow';
 import { useColors } from '../theme/ThemeContext';
@@ -309,7 +310,7 @@ export function ShoppingTripSheet({ visible, onClose, onCreate, onStart, intent 
   if (correctingShop) {
     const known = correctingEntry?.itemIds.length ?? 0;
     return (
-      <Modal
+      <SheetModal
         visible={visible}
         animationType="slide"
         presentationStyle="pageSheet"
@@ -363,12 +364,12 @@ export function ShoppingTripSheet({ visible, onClose, onCreate, onStart, intent 
             </Text>
           </ScrollView>
         </View>
-      </Modal>
+      </SheetModal>
     );
   }
 
   return (
-    <Modal visible={visible} animationType="slide" presentationStyle="pageSheet" onRequestClose={handleCancel}>
+    <SheetModal visible={visible} animationType="slide" presentationStyle="pageSheet" onRequestClose={handleCancel}>
       <View style={styles.root}>
         <SheetHeader
           title={startNow ? 'Start shopping' : 'Shopping trip'}
@@ -627,7 +628,7 @@ export function ShoppingTripSheet({ visible, onClose, onCreate, onStart, intent 
           )}
         </ScrollView>
       </View>
-    </Modal>
+    </SheetModal>
   );
 }
 

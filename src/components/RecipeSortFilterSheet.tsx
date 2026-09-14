@@ -1,6 +1,5 @@
 import React, { useEffect, useMemo, useRef } from 'react';
 import {
-  Modal,
   View,
   Text,
   TouchableOpacity,
@@ -9,6 +8,7 @@ import {
   PanResponder,
   Animated,
 } from 'react-native';
+import { SheetModal } from './SheetModal';
 import Ionicons from '@expo/vector-icons/Ionicons';
 import type { RecipeSortOption } from '../types';
 import { useColors } from '../theme/ThemeContext';
@@ -126,7 +126,7 @@ export function RecipeSortFilterSheet({
   };
 
   return (
-    <Modal
+    <SheetModal
       visible={visible}
       animationType="none"
       transparent
@@ -215,7 +215,7 @@ export function RecipeSortFilterSheet({
           />
         </Animated.View>
       </View>
-    </Modal>
+    </SheetModal>
   );
 }
 

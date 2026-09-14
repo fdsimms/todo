@@ -7,9 +7,9 @@ import {
   FlatList,
   Keyboard,
   StyleSheet,
-  Modal,
   type GestureResponderEvent,
 } from 'react-native';
+import { SheetModal } from '../components/SheetModal';
 import { ReorderableList } from '../components/ReorderableList';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { useNavigation, useRoute, type RouteProp } from '@react-navigation/native';
@@ -1000,7 +1000,7 @@ export function ProjectDetailScreen() {
         {/* Add-existing-task picker — nested inside this screen's own tree
             (not a sibling top-level Modal), same nested-modal-stacking risk as
             the old Projects detail Modal. */}
-        <Modal
+        <SheetModal
           visible={showExistingPicker}
           animationType="slide"
           presentationStyle="pageSheet"
@@ -1056,7 +1056,7 @@ export function ProjectDetailScreen() {
               }
             />
           </View>
-        </Modal>
+        </SheetModal>
 
         {!selectionMode && (
           <FabMenu

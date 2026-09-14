@@ -2,13 +2,13 @@ import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import {
   Alert,
   Keyboard,
-  Modal,
   ScrollView,
   StyleSheet,
   Text,
   TextInput,
   View,
 } from 'react-native';
+import { SheetModal } from './SheetModal';
 import { useColors } from '../theme/ThemeContext';
 import { border, font, fontWeight, radius, spacing, type Colors } from '../theme';
 import { NUTRIENT_KEYS, type FoodNutrition, type NutrientKey } from '../types';
@@ -355,7 +355,7 @@ export function NutritionPanelSheet({ visible, foodName, nutrition, onClose, onS
   };
 
   return (
-    <Modal visible={visible} animationType="slide" presentationStyle="pageSheet" onRequestClose={handleCancel}>
+    <SheetModal visible={visible} animationType="slide" presentationStyle="pageSheet" onRequestClose={handleCancel}>
       <View style={styles.root}>
         <SheetHeader
           title={foodName}
@@ -516,7 +516,7 @@ export function NutritionPanelSheet({ visible, foodName, nutrition, onClose, onS
         onClose={() => setScanning(false)}
         onFound={handleBarcodeFound}
       />
-    </Modal>
+    </SheetModal>
   );
 }
 

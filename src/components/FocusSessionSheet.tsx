@@ -1,5 +1,6 @@
 import React, { useMemo, useState } from 'react';
-import { Alert, Linking, Modal, View, Text, ScrollView, TouchableOpacity, StyleSheet } from 'react-native';
+import { Alert, Linking, View, Text, ScrollView, TouchableOpacity, StyleSheet } from 'react-native';
+import { SheetModal } from './SheetModal';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { useNavigation } from '@react-navigation/native';
 import Ionicons from '@expo/vector-icons/Ionicons';
@@ -624,7 +625,7 @@ export function FocusSessionSheet({ visible, onClose }: Props) {
   };
 
   return (
-    <Modal visible={visible} animationType="slide" presentationStyle="fullScreen" onRequestClose={handleClose}>
+    <SheetModal visible={visible} animationType="slide" presentationStyle="fullScreen" onRequestClose={handleClose}>
       <View style={[styles.container, { paddingTop: insets.top }]}>
         <View style={styles.header}>
           <TouchableOpacity
@@ -669,7 +670,7 @@ export function FocusSessionSheet({ visible, onClose }: Props) {
       </View>
 
       <DeliverablePromptQueue {...queueProps} />
-    </Modal>
+    </SheetModal>
   );
 }
 

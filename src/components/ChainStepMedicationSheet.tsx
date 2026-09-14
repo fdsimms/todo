@@ -1,7 +1,15 @@
 import React, { useEffect, useMemo, useRef, useState } from 'react';
 import {
-  Animated, Keyboard, KeyboardAvoidingView, Modal, Platform, StyleSheet, Text, TextInput, View,
+  Animated,
+  Keyboard,
+  KeyboardAvoidingView,
+  Platform,
+  StyleSheet,
+  Text,
+  TextInput,
+  View,
 } from 'react-native';
+import { SheetModal } from './SheetModal';
 import type { ChainItem } from '../types';
 import { useColors, useTheme } from '../theme/ThemeContext';
 import { spacing, radius, font, fontWeight, animation, type Colors } from '../theme';
@@ -103,7 +111,7 @@ export function ChainStepMedicationSheet({
   };
 
   return (
-    <Modal visible={visible} animationType="none" transparent onRequestClose={() => dismiss(onClose)}>
+    <SheetModal visible={visible} animationType="none" transparent onRequestClose={() => dismiss(onClose)}>
       <Animated.View style={[StyleSheet.absoluteFill, { opacity: backdropOpacity }]} pointerEvents="none">
         <SafeBlurView intensity={isDark ? 20 : 15} tint="dark" style={StyleSheet.absoluteFill} />
         <View style={[StyleSheet.absoluteFill, styles.backdropDim]} />
@@ -167,7 +175,7 @@ export function ChainStepMedicationSheet({
           </View>
         </Animated.View>
       </KeyboardAvoidingView>
-    </Modal>
+    </SheetModal>
   );
 }
 

@@ -1,9 +1,9 @@
 import React, { useEffect, useMemo, useState } from 'react';
-import { format } from 'date-fns/format';
+import {
+  format } from 'date-fns/format';
 import {
   Alert,
   Keyboard,
-  Modal,
   ScrollView,
   StyleSheet,
   Text,
@@ -11,6 +11,7 @@ import {
   TouchableOpacity,
   View,
 } from 'react-native';
+import { SheetModal } from './SheetModal';
 import { useShallow } from 'zustand/react/shallow';
 import { useGroceryStore } from '../store/useGroceryStore';
 import { useColors } from '../theme/ThemeContext';
@@ -272,7 +273,7 @@ export function ProductSheet({ visible, itemId, editingProductId = null, onClose
   const isPreferred = !!editing && item.preferredProductId === editing.id;
 
   return (
-    <Modal visible={visible} animationType="slide" presentationStyle="pageSheet" onRequestClose={handleCancel}>
+    <SheetModal visible={visible} animationType="slide" presentationStyle="pageSheet" onRequestClose={handleCancel}>
       <View style={styles.root}>
         <SheetHeader
           title={editing ? 'Edit product' : `Which ${item.name.toLowerCase()}?`}
@@ -461,7 +462,7 @@ export function ProductSheet({ visible, itemId, editingProductId = null, onClose
           onSave={nutrition => setProductNutrition(editing.id, nutrition)}
         />
       )}
-    </Modal>
+    </SheetModal>
   );
 }
 

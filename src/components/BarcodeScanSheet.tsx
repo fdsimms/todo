@@ -2,7 +2,6 @@ import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import {
   Alert,
   Keyboard,
-  Modal,
   View,
   Text,
   TextInput,
@@ -11,6 +10,7 @@ import {
   ActivityIndicator,
   StyleSheet,
 } from 'react-native';
+import { SheetModal } from './SheetModal';
 import Ionicons from '@expo/vector-icons/Ionicons';
 import { CameraView, useCameraPermissions } from 'expo-camera';
 import {
@@ -863,7 +863,7 @@ export function BarcodeScanSheet({ visible, onClose, onApply, context }: Props) 
   };
 
   return (
-    <Modal visible={visible} animationType="slide" presentationStyle="pageSheet" onRequestClose={handleCancel}>
+    <SheetModal visible={visible} animationType="slide" presentationStyle="pageSheet" onRequestClose={handleCancel}>
       <View style={styles.root}>
         <SheetHeader
           title={CONTEXT_COPY[context].title}
@@ -1189,7 +1189,7 @@ export function BarcodeScanSheet({ visible, onClose, onApply, context }: Props) 
           </View>
         </ScrollView>
       </View>
-    </Modal>
+    </SheetModal>
   );
 }
 

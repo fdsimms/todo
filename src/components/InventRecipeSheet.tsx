@@ -1,7 +1,16 @@
 import React, { useCallback, useEffect, useMemo, useState } from 'react';
 import {
-  Alert, Keyboard, Modal, View, Text, TextInput, TouchableOpacity, ScrollView, ActivityIndicator, StyleSheet,
+  Alert,
+  Keyboard,
+  View,
+  Text,
+  TextInput,
+  TouchableOpacity,
+  ScrollView,
+  ActivityIndicator,
+  StyleSheet,
 } from 'react-native';
+import { SheetModal } from './SheetModal';
 import { useShallow } from 'zustand/react/shallow';
 import Ionicons from '@expo/vector-icons/Ionicons';
 import { useColors } from '../theme/ThemeContext';
@@ -228,7 +237,7 @@ export function InventRecipeSheet({ visible, onClose, onCreated }: Props) {
   };
 
   return (
-    <Modal visible={visible} animationType="slide" presentationStyle="pageSheet" onRequestClose={handleCancel}>
+    <SheetModal visible={visible} animationType="slide" presentationStyle="pageSheet" onRequestClose={handleCancel}>
       <View style={styles.root}>
         <SheetHeader
           title="Invent a recipe"
@@ -297,7 +306,7 @@ export function InventRecipeSheet({ visible, onClose, onCreated }: Props) {
           {ideas.map(renderIdeaRow)}
         </ScrollView>
       </View>
-    </Modal>
+    </SheetModal>
   );
 }
 

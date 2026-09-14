@@ -12,7 +12,6 @@ import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import {
   Alert,
   Keyboard,
-  Modal,
   View,
   Text,
   TextInput,
@@ -21,6 +20,7 @@ import {
   ActivityIndicator,
   StyleSheet,
 } from 'react-native';
+import { SheetModal } from './SheetModal';
 import Ionicons from '@expo/vector-icons/Ionicons';
 import { useShallow } from 'zustand/react/shallow';
 import { useKeyboardInsetScroll } from '../hooks/useKeyboardInsetScroll';
@@ -1087,7 +1087,7 @@ export function RecipeCreateSheet({
   };
 
   return (
-    <Modal visible={visible} animationType="slide" presentationStyle="pageSheet" onRequestClose={handleCancel}>
+    <SheetModal visible={visible} animationType="slide" presentationStyle="pageSheet" onRequestClose={handleCancel}>
       <View style={styles.root}>
         <SheetHeader
           title="Import a recipe"
@@ -1104,7 +1104,7 @@ export function RecipeCreateSheet({
         />
         {renderBody()}
       </View>
-    </Modal>
+    </SheetModal>
   );
 }
 
