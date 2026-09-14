@@ -58,6 +58,16 @@ function dayKeyAtNoon(dayKey: string): Date {
  * gets the same `mealPlanEntryId` the search path already carries, so an
  * estimate logged from here links back to the meal exactly as a searched
  * entry would.
+ *
+ * **`pending` stays put while Scan or Describe is open, same as
+ * `FoodLogScreen`'s own search sheet stays open behind its database
+ * search.** Opening either used to clear it, closing this sheet outright —
+ * so backing out of a scan or an estimate landed on the food log with
+ * nothing, rather than back where you started, and every one of these
+ * detours read as leaving the flow rather than a step inside it. Now only a
+ * completed Log does that (`onLogged` on both, mirroring
+ * `EstimateMealSheet`'s own doc comment on the prop), and cancelling either
+ * reveals this sheet again exactly as it was left.
  */
 export function LogMealEntrySheet() {
   const pending = useFoodLogStore(s => s.pendingManualMealLog);
@@ -98,7 +108,7 @@ export function LogMealEntrySheet() {
   return (
     <>
       <FoodLogEntrySheet
-        visible={!!pending && !pendingFinishLeftoverId && !scan && !estimate}
+        visible={!!pending && !pendingFinishLeftoverId}
         slot={pending?.slot ?? null}
         at={pending ? dayKeyAtNoon(pending.dayKey) : new Date()}
         seedRecipeId={seedRecipeId}
@@ -107,11 +117,9 @@ export function LogMealEntrySheet() {
         onClose={() => { setPending(null); setSeedRecipeId(null); }}
         onScan={() => {
           setScan({ slot: pending?.slot ?? null, dayKey: pending?.dayKey ?? dayKeyOf(getLogicalToday()), mealPlanEntryId });
-          setPending(null);
         }}
         onEstimate={estimateRoute !== 'unavailable' ? () => {
           setEstimate({ slot: pending?.slot ?? null, dayKey: pending?.dayKey ?? dayKeyOf(getLogicalToday()), mealPlanEntryId });
-          setPending(null);
         } : undefined}
         onDeclineMeal={mealPlanEntryId ? () => {
           setLogMeal(mealPlanEntryId, false);
@@ -124,6 +132,7 @@ export function LogMealEntrySheet() {
         at={scan ? dayKeyAtNoon(scan.dayKey) : new Date()}
         mealPlanEntryId={scan?.mealPlanEntryId ?? null}
         onClose={() => setScan(null)}
+        onLogged={() => setPending(null)}
       />
       <EstimateMealSheet
         visible={!!estimate}
@@ -131,14 +140,9 @@ export function LogMealEntrySheet() {
         at={estimate ? dayKeyAtNoon(estimate.dayKey) : new Date()}
         mealPlanEntryId={estimate?.mealPlanEntryId ?? null}
         onClose={() => setEstimate(null)}
+        onLogged={() => setPending(null)}
         onPickRecipe={recipeId => {
           setSeedRecipeId(recipeId);
-          setPending({
-            label: '',
-            slot: estimate?.slot ?? null,
-            dayKey: estimate?.dayKey ?? dayKeyOf(getLogicalToday()),
-            mealPlanEntryId: estimate?.mealPlanEntryId ?? null,
-          });
           setEstimate(null);
         }}
       />

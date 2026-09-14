@@ -44,12 +44,18 @@ interface Props {
   mealPlanEntryId?: string | null;
   /** The scanner closed, by cancelling or by being handed on. */
   onClose: () => void;
+  /**
+   * Fired right before the final `onClose` of a successful Log in
+   * `ScanPortionSheet`, and only then — see `EstimateMealSheet`'s own
+   * `onLogged` for why a caller wants this kept apart from `onClose`.
+   */
+  onLogged?: () => void;
 }
 
 /** A stable empty list, so a closed amount sheet doesn't remount on every render. */
 const EMPTY_FOODS: ScannedFood[] = [];
 
-export function ScanToLogFlow({ visible, slot, at, mealPlanEntryId, onClose }: Props) {
+export function ScanToLogFlow({ visible, slot, at, mealPlanEntryId, onClose, onLogged }: Props) {
   const items = useGroceryStore(useShallow(s => s.items));
   const ensureCatalogItem = useGroceryStore(s => s.ensureCatalogItem);
   const addProduct = useGroceryStore(s => s.addProduct);
@@ -220,6 +226,7 @@ export function ScanToLogFlow({ visible, slot, at, mealPlanEntryId, onClose }: P
         at={session?.at ?? at}
         mealPlanEntryId={session?.mealPlanEntryId ?? null}
         onClose={() => setSession(null)}
+        onLogged={onLogged}
       />
       <NutritionPanelSheet
         visible={panelFor !== null}

@@ -76,6 +76,12 @@ interface Props {
    */
   mealPlanEntryId?: string | null;
   onClose: () => void;
+  /**
+   * Fired right before `onClose` on a successful Log, and only then — see
+   * `EstimateMealSheet`'s own `onLogged` for why this is a separate prop
+   * from `onClose` rather than one more thing `onClose` means.
+   */
+  onLogged?: () => void;
 }
 
 /** What one card is currently answering. `null` is the untouched state. */
@@ -83,7 +89,7 @@ type Answer =
   | { kind: 'choice'; servings: number; label: string }
   | { kind: 'typed'; text: string };
 
-export function ScanPortionSheet({ visible, foods, slot, at, mealPlanEntryId, onClose }: Props) {
+export function ScanPortionSheet({ visible, foods, slot, at, mealPlanEntryId, onClose, onLogged }: Props) {
   const colors = useColors();
   const styles = useMemo(() => makeStyles(colors), [colors]);
   const addEntry = useFoodLogStore(s => s.addEntry);
@@ -165,6 +171,7 @@ export function ScanPortionSheet({ visible, foods, slot, at, mealPlanEntryId, on
     }
     haptics.success();
     Keyboard.dismiss();
+    onLogged?.();
     onClose();
   };
 
