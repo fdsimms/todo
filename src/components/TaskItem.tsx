@@ -238,6 +238,8 @@ interface Props {
   onApplyImport?: (id: string) => void;
   /** Drop that suggestion and leave the task as dictated. */
   onDismissImport?: (id: string) => void;
+  /** Opens the task's project when its chip (showProject) is tapped. The chip renders inert without it. */
+  onOpenProject?: (projectId: string) => void;
 }
 
 /**
@@ -283,6 +285,7 @@ export const TaskItem = React.memo(function TaskItem({
   onApplyImport,
   onDismissImport,
   onSubtaskDragStateChange,
+  onOpenProject,
 }: Props) {
   // What a press reports back: this row, not necessarily this task (see the
   // prop's note). Everything else about the row still speaks in task ids.
@@ -2490,10 +2493,21 @@ export const TaskItem = React.memo(function TaskItem({
               </View>
             )}
             {showProject && projectTitle && (
-              <View style={styles.metaChip}>
-                <Ionicons name="briefcase-outline" size={iconSize.xs} color={colors.textSecondary} />
-                <Text style={styles.projectLabel} numberOfLines={1}>{projectTitle}</Text>
-              </View>
+              onOpenProject ? (
+                <PressableScale
+                  style={styles.metaChip}
+                  onPress={() => onOpenProject(task.projectId!)}
+                  accessibilityLabel={`Open project ${projectTitle}`}
+                >
+                  <Ionicons name="briefcase-outline" size={iconSize.xs} color={colors.textSecondary} />
+                  <Text style={styles.projectLabel} numberOfLines={1}>{projectTitle}</Text>
+                </PressableScale>
+              ) : (
+                <View style={styles.metaChip}>
+                  <Ionicons name="briefcase-outline" size={iconSize.xs} color={colors.textSecondary} />
+                  <Text style={styles.projectLabel} numberOfLines={1}>{projectTitle}</Text>
+                </View>
+              )
             )}
             {showCategory && task.category && (
               <View style={styles.metaChip}>

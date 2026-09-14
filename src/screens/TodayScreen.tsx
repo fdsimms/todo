@@ -1521,6 +1521,10 @@ export function TodayScreen() {
     useTaskStore.getState().dismissPendingImport(id);
   }, []);
 
+  const handleOpenProject = useCallback((projectId: string) => {
+    navigation.navigate({ name: 'ProjectDetail', params: { projectId } } as never);
+  }, [navigation]);
+
   const handleQuickAddOpenFull = (draft: TaskDraft) => {
     // The draft carries everything the sheet had, including the seeded
     // category; only the placement is let go of, and the editor has no notion
@@ -2618,6 +2622,7 @@ export function TodayScreen() {
         // dripStalledProjects, which the user never saw run — is otherwise a
         // title with no explanation of where it came from.
         showProject
+        onOpenProject={handleOpenProject}
         // Handed to the row rather than bound here in an arrow: a fresh arrow
         // per row per render defeats TaskItem's memo, and on this screen that
         // means every mounted row re-renders on every store write — including
@@ -2815,6 +2820,7 @@ export function TodayScreen() {
         indented={opts?.indented}
         showCategory
         showProject
+        onOpenProject={handleOpenProject}
         onPress={handleRowPress}
         expanded={expandedTaskId === task.id}
         spotlightDisabled={expandedTaskId !== null && expandedTaskId !== task.id && !selectionMode}
@@ -3691,6 +3697,7 @@ export function TodayScreen() {
                     onSwipeSelect={handleRowSwipeSelect}
                     showCategory
                     showProject
+                    onOpenProject={handleOpenProject}
                     showGroup
                     showActions={false}
                     highlighted={item.task.id === flashTaskId}
@@ -4012,6 +4019,7 @@ export function TodayScreen() {
                     onSwipeSelect={handleRowSwipeSelect}
                     showCategory
                     showProject
+                    onOpenProject={handleOpenProject}
                     highlighted={item.id === flashTaskId}
                   />
                 </FabDropZone>

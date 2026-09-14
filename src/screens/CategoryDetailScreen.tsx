@@ -153,6 +153,10 @@ export function CategoryDetailScreen() {
     setEditorVisible(true);
   }, []);
 
+  const handleOpenProject = useCallback((projectId: string) => {
+    navigation.navigate({ name: 'ProjectDetail', params: { projectId } } as never);
+  }, [navigation]);
+
   const handleRowSwipeSelect = useCallback((id: string) => {
     setExpandedTaskId(null);
     enterSelectionMode(id);
@@ -256,6 +260,7 @@ export function CategoryDetailScreen() {
                   onSelect={toggleSelection}
                   onSwipeSelect={handleRowSwipeSelect}
                   showProject
+                  onOpenProject={handleOpenProject}
                 />
               );
             }}
