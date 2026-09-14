@@ -7,6 +7,7 @@ import {
   serializeFoodLogPinnedNutrients,
   serializeNutritionTargets,
   targetProgress,
+  targetStatus,
   targetedNutrients,
 } from '../utils/nutritionTargets';
 import { NUTRIENT_KEYS } from '../types';
@@ -137,5 +138,34 @@ describe('targetProgress', () => {
   it('draws empty when nothing is known', () => {
     expect(targetProgress('calorieKcal', undefined, { calorieKcal: 2000 })).toBe(0);
     expect(targetProgress('calorieKcal', 1000, {})).toBe(0);
+  });
+});
+
+describe('targetStatus', () => {
+  it('reads under for a total well short of the target', () => {
+    expect(targetStatus('calorieKcal', 1000, { calorieKcal: 2000 })).toBe('under');
+  });
+
+  it('reads over for a total well past the target', () => {
+    expect(targetStatus('calorieKcal', 3000, { calorieKcal: 2000 })).toBe('over');
+  });
+
+  it('reads met inside the tolerance band on either side, not just on the number itself', () => {
+    expect(targetStatus('calorieKcal', 2000, { calorieKcal: 2000 })).toBe('met');
+    expect(targetStatus('calorieKcal', 1950, { calorieKcal: 2000 })).toBe('met');
+    expect(targetStatus('calorieKcal', 2050, { calorieKcal: 2000 })).toBe('met');
+  });
+
+  it('reads under/over right at the edge of the band', () => {
+    expect(targetStatus('calorieKcal', 1799, { calorieKcal: 2000 })).toBe('under');
+    expect(targetStatus('calorieKcal', 2201, { calorieKcal: 2000 })).toBe('over');
+  });
+
+  it('reads under for nothing logged, same as an empty progress bar', () => {
+    expect(targetStatus('calorieKcal', undefined, { calorieKcal: 2000 })).toBe('under');
+  });
+
+  it('reads under when there is no target, so a caller with no track drawn gets a harmless default', () => {
+    expect(targetStatus('calorieKcal', 1840, {})).toBe('under');
   });
 });
