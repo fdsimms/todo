@@ -9,7 +9,7 @@ import {
   type GestureResponderEvent,
 } from 'react-native';
 import { SheetModal } from '../components/SheetModal';
-import { useFocusEffect } from '@react-navigation/native';
+import { useFocusEffect, useNavigation } from '@react-navigation/native';
 import { useBottomTabBarHeight } from '@react-navigation/bottom-tabs';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import Ionicons from '@expo/vector-icons/Ionicons';
@@ -49,6 +49,7 @@ import type { Task } from '../types';
 const NO_SUBTASKS: Task[] = [];
 
 export function TagsScreen() {
+  const navigation = useNavigation();
   const insets = useSafeAreaInsets();
   const tabBarHeight = useBottomTabBarHeight();
   const [bulkBarHeight, setBulkBarHeight] = useState(0);
@@ -186,6 +187,10 @@ export function TagsScreen() {
     setExpandedTaskId(null);
     enterSelectionMode(id);
   }, [enterSelectionMode]);
+
+  const handleOpenProject = useCallback((projectId: string) => {
+    navigation.navigate({ name: 'ProjectDetail', params: { projectId } } as never);
+  }, [navigation]);
 
   const tagTasks = selectedTag ? tasksByTag(selectedTag) : [];
 
@@ -347,6 +352,7 @@ export function TagsScreen() {
                       onSelect={toggleSelection}
                       onSwipeSelect={handleRowSwipeSelect}
                       showProject
+                      onOpenProject={handleOpenProject}
                     />
                   );
                 }}
