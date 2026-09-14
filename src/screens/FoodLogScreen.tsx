@@ -665,15 +665,6 @@ export function FoodLogScreen() {
                         {describeAgainstTarget(key, totals.total[key], nutritionTargets)
                           ?? `${Math.round(totals.total[key] as number).toLocaleString()}${NUTRIENT_LABEL[key].unit === 'cal' ? '' : NUTRIENT_LABEL[key].unit}`}
                       </Text>
-                      {/* What the figure speaks for. Without it a total built from
-                          three of seven entries reads as the day's — and against a
-                          target it would overstate the day rather than merely
-                          being vague. */}
-                      {(totals.reported[key] ?? 0) < totals.entries && (
-                        <Text style={styles.totalCoverage}>
-                          from {totals.reported[key] ?? 0} of {totals.entries}
-                        </Text>
-                      )}
                     </View>
                   </TouchableOpacity>
                   {/* Colored by distance from the target, never by direction:
@@ -1042,7 +1033,6 @@ function makeStyles(colors: Colors) {
     totalLabel: { color: colors.text, fontSize: font.sm },
     totalRight: { flexDirection: 'row', alignItems: 'baseline', gap: spacing.sm },
     totalValue: { color: colors.text, fontSize: font.md, fontWeight: fontWeight.semibold },
-    totalCoverage: { color: colors.textSecondary, fontSize: font.xs },
     sectionHeader: {
       flexDirection: 'row',
       alignItems: 'center',
