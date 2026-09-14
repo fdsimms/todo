@@ -33,13 +33,14 @@ import { useRecipeStore } from '../store/useRecipeStore';
 import { useFoodLogStore, type FoodLogDraft } from '../store/useFoodLogStore';
 import { subDays } from 'date-fns/subDays';
 import { addCustomPortion, catalogPanelWrite, nutritionFor } from '../utils/foodNutrition';
-import { amountExample, amountHint, combineFoodNutrition, foodLogEntryEdit, helpingNutrition, recipeHelpingNutrition, scalePanelToAmount } from '../utils/foodLog';
+import { amountExample, amountHint, combineFoodNutrition, foodLogEntryEdit, helpingNutrition, matchMealPlanEntry, recipeHelpingNutrition, scalePanelToAmount } from '../utils/foodLog';
 import { cookedDishGrams, mealHelping, servingGrams, weighedHelping } from '../utils/mealLog';
 import { perServing, recipeNutrition, recipeNutritionLines, type NutritionLine } from '../utils/recipeNutrition';
 import { describeProduct } from '../utils/groceryProduct';
 import { isNonFoodAisle } from '../utils/groceryAisles';
 import { groceryNameKey } from '../utils/groceryParse';
-import { dayKeyOf, getCurrentDayStart } from '../utils/dateUtils';
+import { dayKeyOf, getCurrentDayStart, getLogicalDayKey } from '../utils/dateUtils';
+import { useMealPlanStore } from '../store/useMealPlanStore';
 import { foodLogRecency, rankByRecency } from '../utils/foodLogRecents';
 import { haptics } from '../utils/haptics';
 import { weighableLine } from '../utils/ingredientGrams';
@@ -759,7 +760,27 @@ export function FoodLogEntrySheet({
       // both survive the correction.
       reviseEntry(editing.id, measurement);
     } else {
-      const draft: FoodLogDraft = { ...measurement, mealPlanEntryId: mealPlanEntryId ?? null, at };
+      // A caller that already knows the planned meal (`LogMealEntrySheet`,
+      // the estimate sheet's offer) says so via the prop; a plain manual log
+      // has none, so it gets one last chance at `matchMealPlanEntry` before
+      // settling for null — see that function's doc comment for why this
+      // stays a guess rather than something the store attempts on every save.
+      const resolvedMealPlanEntryId = mealPlanEntryId ?? (() => {
+        const dayKey = getLogicalDayKey(at);
+        const dayPlan = useMealPlanStore.getState().entriesForDayLive(dayKey);
+        if (dayPlan.length === 0) return null;
+        const alreadyLinked = new Set(
+          recentEntries(dayKey, dayKey)
+            .map(e => e.mealPlanEntryId)
+            .filter((id): id is string => id != null),
+        );
+        const match = matchMealPlanEntry(dayPlan, alreadyLinked, {
+          slot: chosenSlot,
+          recipeId: measurement.recipeId,
+        });
+        return match?.id ?? null;
+      })();
+      const draft: FoodLogDraft = { ...measurement, mealPlanEntryId: resolvedMealPlanEntryId, at };
       if (!addEntry(draft)) {
         haptics.error();
         return;

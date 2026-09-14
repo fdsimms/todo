@@ -78,6 +78,15 @@ interface Props {
    * state and not back out of it (#1361).
    */
   onSetCooked?: (cooked: boolean) => void;
+  /**
+   * Jumps to the food log entry this meal was already logged as — present
+   * only once one exists (see `MealPlanScreen`'s `loggedEntry`, matched by
+   * `FoodLogEntry.mealPlanEntryId`). A meal that hasn't been logged yet, or
+   * whose log was typed by hand and never matched back, shows nothing here
+   * rather than an offer to log it — that's `onSetCooked`'s job at the
+   * moment cooking finishes, not a standing action on every meal.
+   */
+  onViewFoodLogEntry?: () => void;
   /** Present only while the entry's recipe still resolves. */
   onOpenRecipe?: () => void;
   /**
@@ -141,7 +150,7 @@ const TOP_INSET = 72;
 
 export function MealEntrySheet({
   visible, entry, title, weekDays, onMove, onMoveFurther, onRemove, onRename, choiceGroups = [], onChoose,
-  onScale, baseServings, baseServingsMax, onSetCooked, onOpenRecipe, onAddToList, onAddPrepTasks,
+  onScale, baseServings, baseServingsMax, onSetCooked, onViewFoodLogEntry, onOpenRecipe, onAddToList, onAddPrepTasks,
   onLogLeftovers,
   onFinishLeftover, onSetCookTask, hasCookTask = false, onClose,
 }: Props) {
@@ -386,6 +395,19 @@ export function MealEntrySheet({
                   dismiss(() => onSetCooked(next));
                 }}
                 accessibilityLabel={cooked ? 'Mark this meal not cooked' : 'Mark this meal cooked'}
+              />
+            </>
+          )}
+
+          {!!onViewFoodLogEntry && (
+            <>
+              <View style={styles.sep} />
+              <SheetActionRow
+                icon="journal-outline"
+                color={colors.accent}
+                label="View in Food Log"
+                onPress={() => { haptics.tap(); dismiss(onViewFoodLogEntry); }}
+                accessibilityLabel="View this meal's food log entry"
               />
             </>
           )}

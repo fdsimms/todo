@@ -1,4 +1,4 @@
-import type { FoodLogEntry, FoodNutrition, MealSlot, NutrientKey, SavedMealItem } from '../types';
+import type { FoodLogEntry, FoodNutrition, MealPlanEntry, MealSlot, NutrientKey, SavedMealItem } from '../types';
 import { MEAL_SLOTS, NUTRIENT_KEYS } from '../types';
 import { gramsForLine, panelMultiplier } from './ingredientGrams';
 import { parseQuantity, rationalToNumber } from './quantity';
@@ -574,6 +574,52 @@ function dishAmountFrom(text: string): { amount: string; dishMeasure: 'weight' |
   const servings = /^(\d+(?:\.\d+)?) servings?$/.exec(text);
   if (servings) return { amount: servings[1], dishMeasure: 'servings' };
   return null;
+}
+
+/**
+ * Which planned meal a manually-typed entry probably belongs to, if any.
+ *
+ * `FoodLogEntry.mealPlanEntryId` is stamped for free when a log starts from
+ * `offerMealLog`'s prompt, but a food typed straight into the plain log never
+ * gets one — a known, accepted gap `mealLogNudgeTasks.ts` already names
+ * ("logged by hand", the same shape `mealPlanEntryId`'s own doc comment calls
+ * "resolve-or-shrug"). This is the other half of that shrug: a caller with a
+ * day's plan entries in hand can offer a confident guess instead of leaving
+ * the field null forever.
+ *
+ * Deliberately conservative — a wrong guess re-points a real record, so this
+ * only answers when unambiguous:
+ * - `alreadyLinked` excludes any plan entry a food log row already claims,
+ *   so a second lunch logged the same day doesn't steal the first one's slot.
+ * - A `recipeId` in common decides it outright when it points at exactly one
+ *   remaining candidate; more than one (a recipe cooked twice today) is
+ *   treated as no signal rather than guessed at.
+ * - Otherwise the day's `slot` alone has to name exactly one remaining
+ *   candidate. A `slot` of `null` (the sheet's "no meal" option) never
+ *   matches anything — there is nothing to be confident about.
+ *
+ * Takes plain data rather than reaching into a store, same restraint this
+ * module's own doc comment states for `recipeNutrition.ts`: the caller reads
+ * the day's plan entries and its own already-logged rows, and this stays
+ * exercisable with no database standing up behind it.
+ */
+export function matchMealPlanEntry(
+  dayPlan: MealPlanEntry[],
+  alreadyLinked: ReadonlySet<string>,
+  logged: { slot: MealSlot | null; recipeId: string | null },
+): MealPlanEntry | null {
+  const unclaimed = dayPlan.filter(entry => !alreadyLinked.has(entry.id));
+  if (unclaimed.length === 0) return null;
+
+  if (logged.recipeId) {
+    const byRecipe = unclaimed.filter(entry => entry.recipeId === logged.recipeId);
+    if (byRecipe.length === 1) return byRecipe[0];
+    if (byRecipe.length > 1) return null;
+  }
+
+  if (!logged.slot) return null;
+  const bySlot = unclaimed.filter(entry => entry.slot === logged.slot);
+  return bySlot.length === 1 ? bySlot[0] : null;
 }
 
 /**
