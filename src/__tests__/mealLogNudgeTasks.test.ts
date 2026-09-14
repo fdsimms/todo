@@ -1,7 +1,5 @@
 import type { MealPlanEntry, Task } from '../types';
 import {
-  MAX_MEAL_LOG_NUDGE_TASKS,
-  MEAL_LOG_NUDGE_LOOKBACK_DAYS,
   isWithinLogNudgeWindow,
   mealLogNudgeEntryId,
   mealLogNudgeLinkUrl,
@@ -120,6 +118,13 @@ describe('wantedMealLogNudges', () => {
     expect(wants.map(w => w.entryId)).toEqual(expect.arrayContaining([missed.id, cooked.id]));
   });
 
+  it('does not cap the set — every wanted meal in the window gets a row', () => {
+    const meals = [
+      entry('2026-08-19'), entry('2026-08-20'), entry('2026-08-21'), entry('2026-08-21', { slot: 'lunch' }),
+    ];
+    expect(wantedMealLogNudges(meals, new Set(), TODAY, 3)).toHaveLength(4);
+  });
+
   it('skips a meal that has been told not to ask', () => {
     const meal = entry('2026-08-21', { logMeal: false });
     expect(wantedMealLogNudges([meal], new Set(), TODAY)).toEqual([]);
@@ -132,13 +137,6 @@ describe('wantedMealLogNudges', () => {
     expect(wants.map(w => w.entryId)).toEqual([older.id, newer.id]);
   });
 
-  it('caps the set', () => {
-    const meals = [
-      entry('2026-08-19'), entry('2026-08-20'), entry('2026-08-21'), entry('2026-08-21', { slot: 'lunch' }),
-    ];
-    expect(wantedMealLogNudges(meals, new Set(), TODAY, MEAL_LOG_NUDGE_LOOKBACK_DAYS, 2)).toHaveLength(2);
-    expect(MAX_MEAL_LOG_NUDGE_TASKS).toBeGreaterThan(0);
-  });
 });
 
 describe('staleMealLogNudgeTasks', () => {
@@ -171,7 +169,7 @@ describe('staleMealLogNudgeTasks', () => {
     expect(staleMealLogNudgeTasks([t], [meal], new Set(), TODAY)).toEqual([t]);
   });
 
-  it('is judged on the predicate alone, never on the cap', () => {
+  it('leaves every task whose meal is still wanted, with no cap on how many', () => {
     const meals = [
       entry('2026-08-19'), entry('2026-08-20'), entry('2026-08-21'), entry('2026-08-21', { slot: 'lunch' }),
     ];

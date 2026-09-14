@@ -147,7 +147,7 @@ name cannot say is where a component appears, and that is `docs/screen-map.md`.
 - `src/utils/mealCalendarSync.ts` — mealEventTitle, mealEventFields, syncMealEvent
 - `src/utils/mealIdeas.ts` — MIN_MEAL_IDEAS, MAX_MEAL_IDEAS, RECENT_MEAL_DAYS, MealIdea, RawMealIdea, mealTitleKey, clampIdeaCount, dedupeMealIdeas, MealSuggestion, mergeMealSuggestions, +6 more
 - `src/utils/mealLog.ts` — DishFigures, MealHelping, wantsMealLogPrompt, defaultHelpings, mealHelping, servingGrams, weighedHelping, cookedDishGrams, describeCookedWeight, COOKED_WEIGHT_MIN_G, +4 more
-- `src/utils/mealLogNudgeTasks.ts` — MAX_MEAL_LOG_NUDGE_TASKS, MEAL_LOG_NUDGE_LOOKBACK_DAYS, mealLogNudgeTitle, mealLogNudgeEntryId, mealLogNudgeLinkUrl, isWithinLogNudgeWindow, MealLogNudgeWant, wantedMealLogNudges, staleMealLogNudgeTasks
+- `src/utils/mealLogNudgeTasks.ts` — MEAL_LOG_NUDGE_LOOKBACK_DAYS, mealLogNudgeTitle, mealLogNudgeEntryId, mealLogNudgeLinkUrl, isWithinLogNudgeWindow, MealLogNudgeWant, wantedMealLogNudges, staleMealLogNudgeTasks
 - `src/utils/mealPlan.ts` — slotRank, slotLabel, sortMealEntries, entriesForDay, cookEntryForRecipe, earliestUnplannedSlot, entriesForSlot, nextSortOrder, upcomingDays, daysWithoutMeal, +16 more
 - `src/utils/mealPlanGroceries.ts` — PlannedIngredient, collectPlannedIngredients, hasShoppableMeals, plannedIngredientsForRecipe, parseQuantityAmount, mergeQuantities, describeQuantities, PlanCategory, ClassifiedIngredient, classifyPlanned, +4 more
 - `src/utils/mealPlanNudge.ts` — DEFAULT_MEAL_PLAN_NUDGE_WEEKDAY, DEFAULT_MEAL_PLAN_NUDGE_TIME, MEAL_PLAN_NUDGE_LINK_URL, mealPlanNudgeLinkUrl, MEAL_PLAN_NUDGE_SLOTS, MEAL_PLAN_NUDGE_SLOT_COUNT, countPlannedSlots, mealPlanNudgeDayKey, MealPlanNudgeDue, MealPlanNudgeDay, +3 more

@@ -41,11 +41,15 @@ import { shiftDayKey, slotLabel, slotRank } from './mealPlan';
  *
  * **Modelled on `mealShortfallTasks.ts`.** Same shape: a want/stale pair run
  * off the creation predicate re-run rather than a mutation intercepted, a row
- * per `MealPlanEntry`, a cap, and — the one thing borrowed outright — "a
- * finished one blocks for ever" (`blocksOnFinished` in `checkMealLogNudgeTasks`):
- * a meal is one event, and having addressed today's ask about Monday's
- * breakfast, a second row asking again would be inventing a reason nothing
- * changed to raise.
+ * per `MealPlanEntry`, and — the one thing borrowed outright — "a finished one
+ * blocks for ever" (`blocksOnFinished` in `checkMealLogNudgeTasks`): a meal is
+ * one event, and having addressed today's ask about Monday's breakfast, a
+ * second row asking again would be inventing a reason nothing changed to
+ * raise. **Unlike `mealShortfallTasks.ts`, there is no row cap** — a shortfall
+ * is competing for shelf space against every other thing the shopping list
+ * could ask about, where a meal log nudge is bounded by the window alone: a
+ * cap on top of that window just staggered a day's meals into batches,
+ * dribbling the next one in only once the current batch was cleared.
  *
  * **Bounded on both ends, the reverse of a shopping task's window.**
  * `mealShortfallTasks` looks ahead because the meal hasn't happened yet; this
@@ -55,9 +59,6 @@ import { shiftDayKey, slotLabel, slotRank } from './mealPlan';
  * and the honest answer is "I don't remember", which is not a question worth
  * a row on Today.
  */
-
-/** Row ceiling, matching `MAX_MEAL_SHORTFALL_TASKS`. */
-export const MAX_MEAL_LOG_NUDGE_TASKS = 3;
 
 /**
  * How many days in the past a meal is still worth asking about — not a
@@ -133,8 +134,7 @@ export function wantedMealLogNudges(
   entries: readonly MealPlanEntry[],
   loggedEntryIds: ReadonlySet<string>,
   todayKey: string,
-  lookbackDays: number = MEAL_LOG_NUDGE_LOOKBACK_DAYS,
-  cap: number = MAX_MEAL_LOG_NUDGE_TASKS
+  lookbackDays: number = MEAL_LOG_NUDGE_LOOKBACK_DAYS
 ): MealLogNudgeWant[] {
   const wants: { entry: MealPlanEntry; title: string }[] = [];
   for (const entry of entries) {
@@ -150,7 +150,6 @@ export function wantedMealLogNudges(
         slotRank(a.entry.slot) - slotRank(b.entry.slot) ||
         a.title.localeCompare(b.title)
     )
-    .slice(0, Math.max(0, cap))
     .map(({ entry, title }) => ({ entryId: entry.id, title, dayKey: entry.date }));
 }
 
@@ -158,9 +157,8 @@ export function wantedMealLogNudges(
  * The log-nudge tasks sitting there whose reason has gone — the entry was
  * deleted, told not to ask (from either moment that can write it), moved out
  * of the window in either direction, or logged since (through this very task
- * or otherwise). Judged on the predicate alone, never on the cap, the same
- * split `staleMealShortfallTasks` draws and for its reason: losing a contest
- * for one of three slots must not delete a row the user already deferred.
+ * or otherwise). There is no cap here to draw the split against (see the
+ * module header) — every live task is judged on this predicate alone.
  *
  * A completed task is in neither reading, and neither is an archived one —
  * `blocksOnFinished` is what keeps a finished one from being replaced, not
