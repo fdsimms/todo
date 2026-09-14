@@ -176,7 +176,7 @@ export function ScanPortionSheet({ visible, foods, slot, at, mealPlanEntryId, on
   };
 
   return (
-    <SheetModal visible={visible} animationType="slide" presentationStyle="pageSheet" onRequestClose={handleCancel}>
+    <SheetModal name="How much did you have?" visible={visible} animationType="slide" presentationStyle="pageSheet" onRequestClose={handleCancel}>
       <View style={styles.root}>
         <SheetHeader
           title="How much?"

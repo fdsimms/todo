@@ -1,8 +1,30 @@
-import React, { useEffect, useRef, useState } from 'react';
+import React, { useContext, useEffect, useId, useMemo, useRef, useState } from 'react';
 import { Keyboard, Modal } from 'react-native';
-import { nextSheetVisibility } from '../utils/sheetModal';
+import {
+  createPresentationLevel,
+  nextSheetVisibility,
+  registerPresentation,
+  releasePresentation,
+  type PresentationLevel,
+} from '../utils/sheetModal';
 
-type Props = React.ComponentProps<typeof Modal>;
+type Props = React.ComponentProps<typeof Modal> & {
+  /**
+   * What to call this sheet when the sibling-Modal check below reports it.
+   * Development only, and optional: without one the check still fires, it
+   * just has a less helpful name to print. Worth setting on a sheet that
+   * raises another.
+   */
+  name?: string;
+};
+
+/**
+ * One presenting view controller's worth of sheets. The default stands for the
+ * root view controller, which is what a Modal rendered in the ordinary screen
+ * tree presents from; each `SheetModal` supplies a fresh one to its own
+ * children, since a Modal nested inside it presents from *its* controller.
+ */
+const PresentationLevelContext = React.createContext<PresentationLevel>(createPresentationLevel());
 
 /**
  * `Modal`, with the keyboard guaranteed to be gone before it closes.
@@ -63,8 +85,28 @@ type Props = React.ComponentProps<typeof Modal>;
  * Call sites may still dismiss the keyboard themselves; several do, from
  * before this existed. That is harmless (the keyboard starts moving a touch
  * sooner) and is no longer load-bearing, so new code does not need it.
+ *
+ * ## It also catches two sheets presented from the same place (dev only)
+ *
+ * The second bug this component is positioned to catch: iOS presents a Modal
+ * from `[self reactViewController]`, and a view controller can present only
+ * one thing at a time. Two Modals that are *siblings* share a presenting
+ * controller, so the second is refused with nothing shown and no error, while
+ * RN has already set `_isPresented` — the flow wedges and users report a
+ * frozen screen. A Modal rendered *inside* another presents from that sheet's
+ * own controller and is fine.
+ *
+ * Nothing in the JSX distinguishes the two, which is exactly how the food
+ * log's Scan and Describe buttons shipped doing nothing at all: a sheet was
+ * moved from nested to sibling in the name of keeping the one underneath
+ * open. So each `SheetModal` registers with the level it presents from and
+ * supplies a fresh level to its own children, and a clash is reported in
+ * `__DEV__`. It reports rather than intervenes: hiding one automatically
+ * would paper over a real mistake, and which of the two fixes applies (hide
+ * the sheet below, or nest inside it) depends on whether what is typed into
+ * the sheet below has to survive.
  */
-export function SheetModal({ visible = true, children, ...rest }: Props) {
+export function SheetModal({ visible = true, children, name, ...rest }: Props) {
   const [shown, setShown] = useState(visible === true);
 
   // The opening edge, taken during render so it lands in this same commit
@@ -93,5 +135,28 @@ export function SheetModal({ visible = true, children, ...rest }: Props) {
   shownRef.current = shown;
   useEffect(() => () => { if (shownRef.current) Keyboard.dismiss(); }, []);
 
-  return <Modal visible={shown} {...rest}>{children}</Modal>;
+  // The view controller this sheet presents *from*, and the one its own
+  // children would present from. See `PresentationLevelContext`.
+  const parentLevel = useContext(PresentationLevelContext);
+  const ownLevel = useMemo(() => createPresentationLevel(), []);
+  const id = useId();
+
+  // Development only: a second sheet asking the same view controller is
+  // refused by iOS with nothing shown and no error, so this is the only thing
+  // that says so. It reports rather than intervenes — hiding one automatically
+  // would paper over a real mistake, and the fix differs per call site.
+  useEffect(() => {
+    if (!__DEV__ || !shown) return;
+    const clash = registerPresentation(parentLevel, id, name ?? rest.testID ?? 'an unnamed sheet');
+    if (clash) console.error(`SheetModal: ${clash}`);
+    return () => releasePresentation(parentLevel, id);
+  }, [shown, parentLevel, id, name, rest.testID]);
+
+  return (
+    <Modal visible={shown} {...rest}>
+      <PresentationLevelContext.Provider value={ownLevel}>
+        {children}
+      </PresentationLevelContext.Provider>
+    </Modal>
+  );
 }

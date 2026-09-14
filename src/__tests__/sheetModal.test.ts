@@ -1,4 +1,9 @@
-import { nextSheetVisibility } from '../utils/sheetModal';
+import {
+  createPresentationLevel,
+  nextSheetVisibility,
+  registerPresentation,
+  releasePresentation,
+} from '../utils/sheetModal';
 
 describe('nextSheetVisibility', () => {
   it('does nothing while the modal already agrees with the prop', () => {
@@ -54,3 +59,52 @@ describe('nextSheetVisibility', () => {
 });
 
 type SheetStep = { shown: boolean; dismissKeyboard: boolean };
+
+describe('presentation levels', () => {
+  it('says nothing about the only sheet at a level', () => {
+    const level = createPresentationLevel();
+    expect(registerPresentation(level, 'a', 'Scan')).toBeNull();
+  });
+
+  it('reports a second sheet presented from the same place', () => {
+    const level = createPresentationLevel();
+    registerPresentation(level, 'a', 'What did you eat?');
+    const message = registerPresentation(level, 'b', 'Estimate a meal');
+    expect(message).toContain('What did you eat?');
+    expect(message).toContain('Estimate a meal');
+  });
+
+  it('stays quiet once the first has gone', () => {
+    // Hiding the sheet underneath is one of the two fixes, so the check has
+    // to agree that the hand-off it produces is fine.
+    const level = createPresentationLevel();
+    registerPresentation(level, 'a', 'What did you eat?');
+    releasePresentation(level, 'a');
+    expect(registerPresentation(level, 'b', 'Estimate a meal')).toBeNull();
+  });
+
+  it('treats separate levels as unrelated', () => {
+    // The nested case: a sheet inside another presents from that sheet's own
+    // view controller, which is presenting nothing. It must not be reported.
+    const root = createPresentationLevel();
+    const inner = createPresentationLevel();
+    registerPresentation(root, 'a', 'What did you eat?');
+    expect(registerPresentation(inner, 'b', 'Search a food database')).toBeNull();
+  });
+
+  it('lets a sheet re-register itself without tripping', () => {
+    const level = createPresentationLevel();
+    registerPresentation(level, 'a', 'Scan');
+    expect(registerPresentation(level, 'a', 'Scan')).toBeNull();
+  });
+
+  it('names every sheet already there', () => {
+    const level = createPresentationLevel();
+    registerPresentation(level, 'a', 'One');
+    releasePresentation(level, 'a');
+    registerPresentation(level, 'b', 'Two');
+    const message = registerPresentation(level, 'c', 'Three');
+    expect(message).toContain('Two');
+    expect(message).not.toContain('One');
+  });
+});

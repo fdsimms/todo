@@ -59,15 +59,30 @@ function dayKeyAtNoon(dayKey: string): Date {
  * estimate logged from here links back to the meal exactly as a searched
  * entry would.
  *
- * **`pending` stays put while Scan or Describe is open, same as
- * `FoodLogScreen`'s own search sheet stays open behind its database
- * search.** Opening either used to clear it, closing this sheet outright —
- * so backing out of a scan or an estimate landed on the food log with
- * nothing, rather than back where you started, and every one of these
- * detours read as leaving the flow rather than a step inside it. Now only a
- * completed Log does that (`onLogged` on both, mirroring
- * `EstimateMealSheet`'s own doc comment on the prop), and cancelling either
- * reveals this sheet again exactly as it was left.
+ * **`pending` stays put while Scan or Describe is open, and they are handed
+ * to `FoodLogEntrySheet` as `overlays` so they render inside its Modal.**
+ * Opening either used to clear `pending`, closing this sheet outright — so
+ * backing out of a scan or an estimate landed on the food log with nothing,
+ * rather than back where you started. Keeping `pending` is what fixes that:
+ * only a completed Log clears it (`onLogged` on both), so cancelling either
+ * reveals this sheet again exactly as it was left, typed query included.
+ *
+ * **Rendering them out here as siblings is what broke this, and "it stays
+ * open behind the database search" is not the precedent it looked like.**
+ * iOS presents a Modal from `[self reactViewController]` — the nearest view
+ * controller up the responder chain — and a view controller can present only
+ * one thing at a time. `NutritionSearchSheet` works *because it is rendered
+ * inside* `FoodLogEntrySheet`'s own Modal, so it presents from that sheet's
+ * view controller, which is presenting nothing. As siblings, these two
+ * presented from the *root* view controller, which was already presenting
+ * this sheet: UIKit refused, nothing appeared, and RN had already flipped its
+ * internal `_isPresented`, so the flow wedged with no error to point at it.
+ * Both buttons did nothing and froze the food log.
+ *
+ * Hiding this sheet for the duration is the other fix and is what
+ * `ScanToLogFlow` does internally for its own scanner. It is the wrong one
+ * here: a hidden Modal unmounts its children once it finishes dismissing, so
+ * a cancelled scan would hand back an empty search field.
  */
 export function LogMealEntrySheet() {
   const pending = useFoodLogStore(s => s.pendingManualMealLog);
@@ -106,8 +121,7 @@ export function LogMealEntrySheet() {
   const [seedRecipeId, setSeedRecipeId] = useState<string | null>(null);
 
   return (
-    <>
-      <FoodLogEntrySheet
+    <FoodLogEntrySheet
         visible={!!pending && !pendingFinishLeftoverId}
         slot={pending?.slot ?? null}
         at={pending ? dayKeyAtNoon(pending.dayKey) : new Date()}
@@ -125,27 +139,30 @@ export function LogMealEntrySheet() {
           setLogMeal(mealPlanEntryId, false);
           setPending(null);
         } : undefined}
-      />
-      <ScanToLogFlow
-        visible={!!scan}
-        slot={scan?.slot ?? null}
-        at={scan ? dayKeyAtNoon(scan.dayKey) : new Date()}
-        mealPlanEntryId={scan?.mealPlanEntryId ?? null}
-        onClose={() => setScan(null)}
-        onLogged={() => setPending(null)}
-      />
-      <EstimateMealSheet
-        visible={!!estimate}
-        slot={estimate?.slot ?? null}
-        at={estimate ? dayKeyAtNoon(estimate.dayKey) : new Date()}
-        mealPlanEntryId={estimate?.mealPlanEntryId ?? null}
-        onClose={() => setEstimate(null)}
-        onLogged={() => setPending(null)}
-        onPickRecipe={recipeId => {
-          setSeedRecipeId(recipeId);
-          setEstimate(null);
-        }}
-      />
-    </>
+        overlays={
+          <>
+            <ScanToLogFlow
+              visible={!!scan}
+              slot={scan?.slot ?? null}
+              at={scan ? dayKeyAtNoon(scan.dayKey) : new Date()}
+              mealPlanEntryId={scan?.mealPlanEntryId ?? null}
+              onClose={() => setScan(null)}
+              onLogged={() => setPending(null)}
+            />
+            <EstimateMealSheet
+              visible={!!estimate}
+              slot={estimate?.slot ?? null}
+              at={estimate ? dayKeyAtNoon(estimate.dayKey) : new Date()}
+              mealPlanEntryId={estimate?.mealPlanEntryId ?? null}
+              onClose={() => setEstimate(null)}
+              onLogged={() => setPending(null)}
+              onPickRecipe={recipeId => {
+                setSeedRecipeId(recipeId);
+                setEstimate(null);
+              }}
+            />
+          </>
+        }
+    />
   );
 }
