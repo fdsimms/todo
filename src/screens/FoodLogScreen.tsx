@@ -32,6 +32,7 @@ import {
   waterTotalMl,
 } from '../utils/waterLog';
 import { NUTRIENT_LABEL } from '../utils/foodNutrition';
+import { AnimatedCollapsible } from '../components/AnimatedCollapsible';
 import { describeAgainstTarget, targetProgress, targetStatus, type TargetStatus } from '../utils/nutritionTargets';
 import { useSettingsStore } from '../store/useSettingsStore';
 import { NUTRIENT_KEYS, type NutrientKey } from '../types';
@@ -1081,10 +1082,15 @@ function makeStyles(colors: Colors) {
     },
     sectionTotal: { color: colors.textSecondary, fontSize: font.xs },
     entryRowSwipe: { borderRadius: radius.md, marginBottom: spacing.xs },
+    // Holds the row's own background (and the selected/active overrides
+    // below) so it spans both the tappable row and the nutrient panel that
+    // can expand underneath it — one continuous card, not two.
+    entryOuter: {
+      backgroundColor: colors.bgSecondary,
+    },
     entryRow: {
       flexDirection: 'row',
       alignItems: 'center',
-      backgroundColor: colors.bgSecondary,
     },
     // Opaque, not `colors.accentSubtle` directly: this can be applied the
     // instant a swipe-select commits, while `SwipeableRow`'s own panel is
@@ -1106,6 +1112,14 @@ function makeStyles(colors: Colors) {
     entryMeta: { color: colors.textSecondary, fontSize: font.sm },
     entryMenuButton: { paddingHorizontal: spacing.md, paddingVertical: spacing.md },
     entrySelectDot: { paddingHorizontal: spacing.md },
+    entryNutrients: {
+      paddingHorizontal: spacing.md,
+      paddingBottom: spacing.md,
+      gap: spacing.xxs,
+    },
+    entryNutrientRow: { flexDirection: 'row', justifyContent: 'space-between' },
+    entryNutrientLabel: { color: colors.textSecondary, fontSize: font.sm },
+    entryNutrientValue: { color: colors.text, fontSize: font.sm },
     dropSlot: { borderRadius: radius.md, backgroundColor: colors.bgTertiary, marginBottom: spacing.sm },
   });
 }
@@ -1119,6 +1133,11 @@ function makeStyles(colors: Colors) {
  * forget a single entry: deleting doesn't belong on a swipe (see
  * `SwipeableRow`'s own doc comment), and there's no per-entry editor to hang
  * it off, so the bulk bar is the only other route.
+ *
+ * Outside selection mode, a tap expands the row in place to list the
+ * nutrients `entry.nutrition` actually states — the amounts eaten, not the
+ * per-100g panel. `onLongPress={drag}` still starts a reorder drag either
+ * way, so expanding never fights it.
  */
 const FoodLogRow = React.memo(function FoodLogRow({
   entry, isActive, selectionMode, selected, drag, styles, colors, onToggleSelect, onSwipeSelect, onOpenMenu,
@@ -1139,47 +1158,67 @@ const FoodLogRow = React.memo(function FoodLogRow({
   onOpenMenu: (entry: FoodLogEntry) => void;
 }) {
   const paintRef = usePaintSelectionRow(entry.id);
+  const [expanded, setExpanded] = useState(false);
   // Bound once per row rather than per render of the list above it.
   const toggleSelect = () => onToggleSelect(entry.id);
+  const toggleExpand = () => { haptics.tap(); setExpanded(e => !e); };
+  const statedKeys = NUTRIENT_KEYS.filter(key => entry.nutrition.amounts[key] !== undefined);
   const rowBody = (
     <View
       ref={paintRef}
-      style={[styles.entryRow, selectionMode && selected && styles.entryRowSelected, isActive && styles.entryRowActive]}
+      style={[styles.entryOuter, selectionMode && selected && styles.entryRowSelected, isActive && styles.entryRowActive]}
     >
-      <TouchableOpacity
-        style={styles.entryContent}
-        activeOpacity={interaction.activeOpacity}
-        // Outside selection mode the row has never been tappable — the "…"
-        // button is the affordance and there's no per-entry editor to open —
-        // but the touchable itself must stay enabled so onLongPress still
-        // starts a drag; a `disabled` row swallows every gesture, drag
-        // included, not just the tap.
-        onPress={selectionMode ? toggleSelect : undefined}
-        onLongPress={drag}
-        delayLongPress={interaction.delayLongPress}
-        accessibilityRole={selectionMode ? 'checkbox' : undefined}
-        accessibilityState={selectionMode ? { checked: selected } : undefined}
-        accessibilityLabel={`${entry.label}. ${describeFoodLogEntry(entry)}`}
-      >
-        <View style={styles.entryText}>
-          <Text style={styles.entryTitle}>{entry.label}</Text>
-          <Text style={styles.entryMeta}>{describeFoodLogEntry(entry)}</Text>
-        </View>
-      </TouchableOpacity>
-      {selectionMode ? (
-        <View style={styles.entrySelectDot}>
-          <SelectionDot selected={selected} onPress={toggleSelect} />
-        </View>
-      ) : (
+      <View style={styles.entryRow}>
         <TouchableOpacity
-          style={styles.entryMenuButton}
-          onPress={() => onOpenMenu(entry)}
-          hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
-          accessibilityRole="button"
-          accessibilityLabel={`More options for ${entry.label}`}
+          style={styles.entryContent}
+          activeOpacity={interaction.activeOpacity}
+          // Outside selection mode the tap expands the nutrient panel below;
+          // the touchable stays enabled either way so onLongPress still
+          // starts a drag — a `disabled` row swallows every gesture, drag
+          // included, not just the tap.
+          onPress={selectionMode ? toggleSelect : toggleExpand}
+          onLongPress={drag}
+          delayLongPress={interaction.delayLongPress}
+          accessibilityRole={selectionMode ? 'checkbox' : undefined}
+          accessibilityState={selectionMode ? { checked: selected } : { expanded }}
+          accessibilityLabel={`${entry.label}. ${describeFoodLogEntry(entry)}`}
+          accessibilityHint={selectionMode ? undefined : (expanded ? 'Hides nutrients' : 'Shows nutrients')}
         >
-          <Ionicons name="ellipsis-horizontal" size={iconSize.sm} color={colors.textTertiary} />
+          <View style={styles.entryText}>
+            <Text style={styles.entryTitle}>{entry.label}</Text>
+            <Text style={styles.entryMeta}>{describeFoodLogEntry(entry)}</Text>
+          </View>
         </TouchableOpacity>
+        {selectionMode ? (
+          <View style={styles.entrySelectDot}>
+            <SelectionDot selected={selected} onPress={toggleSelect} />
+          </View>
+        ) : (
+          <TouchableOpacity
+            style={styles.entryMenuButton}
+            onPress={() => onOpenMenu(entry)}
+            hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
+            accessibilityRole="button"
+            accessibilityLabel={`More options for ${entry.label}`}
+          >
+            <Ionicons name="ellipsis-horizontal" size={iconSize.sm} color={colors.textTertiary} />
+          </TouchableOpacity>
+        )}
+      </View>
+      {statedKeys.length > 0 && (
+        <AnimatedCollapsible expanded={expanded}>
+          <View style={styles.entryNutrients}>
+            {statedKeys.map(key => (
+              <View key={key} style={styles.entryNutrientRow}>
+                <Text style={styles.entryNutrientLabel}>{NUTRIENT_LABEL[key].label}</Text>
+                <Text style={styles.entryNutrientValue}>
+                  {Math.round(entry.nutrition.amounts[key] as number).toLocaleString()}
+                  {NUTRIENT_LABEL[key].unit === 'cal' ? '' : NUTRIENT_LABEL[key].unit}
+                </Text>
+              </View>
+            ))}
+          </View>
+        </AnimatedCollapsible>
       )}
     </View>
   );

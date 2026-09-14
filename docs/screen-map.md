@@ -29,7 +29,7 @@ components below.
 - `src/screens/CategoryDetailScreen.tsx` — BulkActionBar, DeliverablePromptQueue, DetailHeader, EmptyState, PaintSelection, PinIcon, SpotlightOverlay, TaskEditor, TaskItem
 - `src/screens/CookbookDetailScreen.tsx` — DetailHeader, EmptyState
 - `src/screens/CookbooksScreen.tsx` — CookbookEditor, EmptyState, ScreenHeader
-- `src/screens/FoodLogScreen.tsx` — CatalogLinkSheet, CountStepper, EmptyState, EstimateMealSheet, Fab, FoodLogEntrySheet, HubPills, InlineAction, ListBulkBar, NutrientContributorsSheet, NutritionTargetsSheet, PaintSelection, +7 more
+- `src/screens/FoodLogScreen.tsx` — AnimatedCollapsible, CatalogLinkSheet, CountStepper, EmptyState, EstimateMealSheet, Fab, FoodLogEntrySheet, HubPills, InlineAction, ListBulkBar, NutrientContributorsSheet, NutritionTargetsSheet, +8 more
 - `src/screens/GroceryScreen.tsx` — ActiveTripBanner, BarcodeScanSheet, EmptyState, Fab, FabDropZones, FinishShoppingSheet, GroceryAISheet, GroceryAddSheet, GroceryAislesSheet, GroceryCatalogSheet, GroceryItemSheet, GroceryListSheet, +13 more
 - `src/screens/KitchenScreen.tsx` — ActiveTripBanner, BarcodeScanSheet, EmptyState, GroceryItemSheet, HubPills, InlineAction, ItemDisposalOffer, LeftoverSheet, PantryReviewSheet, PressableScale, ReceiptImportSheet, ReorderableList, +2 more
 - `src/screens/LogbookScreen.tsx` — DeliverablePromptSheet, EmptyState, HighlightedText, HubPills, LogbookEntryMenu, LogbookFilterSheet, PaintSelection, ScreenHeader, SearchField, SegmentedControl, SelectionDot, SimpleBulkBar, +1 more
@@ -65,7 +65,7 @@ Where each component can appear.
 - `src/components/ActiveTripBanner.tsx` — on GroceryScreen, KitchenScreen, MealPlanScreen, RecipesScreen
 - `src/components/AddMealsToListSheet.tsx` — on MealPlanScreen
 - `src/components/AddTaskFab.tsx` — on TodayScreen
-- `src/components/AnimatedCollapsible.tsx` — on ProjectDetailScreen, RecipeDetailScreen, RecipesScreen, TodayScreen
+- `src/components/AnimatedCollapsible.tsx` — on FoodLogScreen, ProjectDetailScreen, RecipeDetailScreen, RecipesScreen, TodayScreen
 - `src/components/AppLockGate.tsx` — on app shell
 - `src/components/ApplyTemplateSheet.tsx` — on ProjectDetailScreen, TemplateDetailScreen, TemplatesScreen, TodayScreen
 - `src/components/AwayShiftSheet.tsx` — on ProjectDetailScreen, ProjectsScreen
