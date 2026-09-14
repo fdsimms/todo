@@ -59,6 +59,7 @@ import { describeTaskRecurrence } from '../utils/recurrenceLabels';
 import { chainPreview, isChainFinish } from '../utils/chain';
 import { formatQuotaProgress } from '../utils/quotaUnit';
 import { clampSupplyReorderAt, describeSupply } from '../utils/supply';
+import { followUpTaskRule, completionsUntilFollowUpTask } from '../utils/followUpTask';
 import { haptics } from '../utils/haptics';
 import { openInAppUrl, linkIconFor, isDeloadUrl } from '../utils/deepLinks';
 import { parseHealthSourceId } from '../utils/healthRules';
@@ -963,7 +964,7 @@ export const TaskItem = React.memo(function TaskItem({
   // sections a notice can actually reach are its notes and its own inline
   // block: no notice kind is timed, recurring, chained or in a series. A
   // notice kind that grew any of those would need this to become a count.
-  const panelSectionAbove = showSubtaskSection || task.notes.length > 0 || !!task.followUpTaskSourceTitle;
+  const panelSectionAbove = showSubtaskSection || task.notes.length > 0 || !!task.followUpTaskSourceTitle || followUpTaskRule(task) !== null;
   // What's left in a notice's panel once task management is gone: its notes,
   // any subtasks it already had, and the kind's own inline block. With none of
   // those the panel is empty, so the row doesn't expand at all rather than
@@ -1190,6 +1191,14 @@ export const TaskItem = React.memo(function TaskItem({
   // be the row's answer to "when". The count is the number that changes on the
   // tap you just made.
   const supplyLabel = isNegative ? null : describeSupply(task);
+  // The follow-up task rule this task is running, and how many completions are
+  // left before it fires — read straight off the row's own tally rather than
+  // recomputed, same as the supply count above. Only worth showing once a
+  // title makes the rule live (see followUpTaskRule).
+  const followUpRule = followUpTaskRule(task);
+  const followUpCompletionsLeft = followUpRule
+    ? completionsUntilFollowUpTask(task.followUpTaskTally, followUpRule.everyN)
+    : null;
   // Tinted once the supply is at or under its own threshold, which is the same
   // moment the app starts asking for more — so the chip and the reorder task
   // can't disagree about whether this is low.
@@ -2751,6 +2760,20 @@ export const TaskItem = React.memo(function TaskItem({
               </View>
             )}
 
+            {/* The other direction: this task carries its own follow-up rule.
+                Reads the tally straight off the row (followUpCompletionsLeft),
+                same number the editor's stepper is building toward, so a
+                pre-existing task with the rule already running says where it
+                stands without opening the editor to find out. */}
+            {followUpRule !== null && followUpCompletionsLeft !== null && (
+              <View style={[styles.calendarReviewEventRow, styles.followUpTaskSourceRow]}>
+                <Ionicons name="sparkles-outline" size={12} color={colors.textSecondary} style={styles.followUpTaskSourceIcon} />
+                <Text style={[styles.expandMeta, styles.followUpTaskSourceText]}>
+                  {followUpCompletionsLeft} more {followUpCompletionsLeft === 1 ? 'completion' : 'completions'} until “{followUpRule.title}” is added
+                </Text>
+              </View>
+            )}
+
             {task.notes.length > 0 && (
               <Text style={styles.expandNotes}>{task.notes}</Text>
             )}
@@ -2765,7 +2788,7 @@ export const TaskItem = React.memo(function TaskItem({
             <View style={[
               styles.expandSection,
               styles.subtaskSection,
-              (task.notes.length > 0 || !!task.followUpTaskSourceTitle) && styles.sectionDivider,
+              (task.notes.length > 0 || !!task.followUpTaskSourceTitle || followUpRule !== null) && styles.sectionDivider,
             ]}>
               {subtasks.length > 0 && (
                 <SortableList
