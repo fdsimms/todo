@@ -59,31 +59,30 @@ function dayKeyAtNoon(dayKey: string): Date {
  * estimate logged from here links back to the meal exactly as a searched
  * entry would.
  *
- * **`pending` stays put while Scan or Describe is open, but this sheet is
- * hidden for the duration.** Opening either used to clear `pending`, closing
- * this sheet outright — so backing out of a scan or an estimate landed on the
- * food log with nothing, rather than back where you started. Keeping
- * `pending` is what fixes that: only a completed Log clears it (`onLogged` on
- * both), so cancelling either brings this sheet back. The *hiding* is a
- * separate, non-negotiable thing, and conflating the two is what broke this.
+ * **`pending` stays put while Scan or Describe is open, and they are handed
+ * to `FoodLogEntrySheet` as `overlays` so they render inside its Modal.**
+ * Opening either used to clear `pending`, closing this sheet outright — so
+ * backing out of a scan or an estimate landed on the food log with nothing,
+ * rather than back where you started. Keeping `pending` is what fixes that:
+ * only a completed Log clears it (`onLogged` on both), so cancelling either
+ * reveals this sheet again exactly as it was left, typed query included.
  *
- * **Two of these may never be presented at once, and "it stays open behind
- * the database search" is not the precedent it looks like.** iOS presents a
- * Modal from `[self reactViewController]` — the nearest view controller up
- * the responder chain — and a view controller can present only one thing at
- * a time. `NutritionSearchSheet` works *because it is rendered inside*
- * `FoodLogEntrySheet`'s own Modal, so it presents from that sheet's view
- * controller, which is presenting nothing. `ScanToLogFlow` and
- * `EstimateMealSheet` are rendered out here as *siblings*, so they present
- * from the root view controller, which is already presenting this sheet.
- * UIKit refuses, nothing appears, and RN has already flipped its internal
- * `_isPresented` — so the flow is wedged with no error to point at it. That
- * shipped for real: both buttons did nothing and froze the food log.
+ * **Rendering them out here as siblings is what broke this, and "it stays
+ * open behind the database search" is not the precedent it looked like.**
+ * iOS presents a Modal from `[self reactViewController]` — the nearest view
+ * controller up the responder chain — and a view controller can present only
+ * one thing at a time. `NutritionSearchSheet` works *because it is rendered
+ * inside* `FoodLogEntrySheet`'s own Modal, so it presents from that sheet's
+ * view controller, which is presenting nothing. As siblings, these two
+ * presented from the *root* view controller, which was already presenting
+ * this sheet: UIKit refused, nothing appeared, and RN had already flipped its
+ * internal `_isPresented`, so the flow wedged with no error to point at it.
+ * Both buttons did nothing and froze the food log.
  *
- * So a sheet raised from this one hides it, and a sheet raised from *that*
- * one hides it in turn (`ScanToLogFlow` does the same for its scanner).
- * Nesting the Modal inside the one below it is the only other way, and it is
- * what `NutritionSearchSheet` does; a sibling has to hide.
+ * Hiding this sheet for the duration is the other fix and is what
+ * `ScanToLogFlow` does internally for its own scanner. It is the wrong one
+ * here: a hidden Modal unmounts its children once it finishes dismissing, so
+ * a cancelled scan would hand back an empty search field.
  */
 export function LogMealEntrySheet() {
   const pending = useFoodLogStore(s => s.pendingManualMealLog);
@@ -122,17 +121,8 @@ export function LogMealEntrySheet() {
   const [seedRecipeId, setSeedRecipeId] = useState<string | null>(null);
 
   return (
-    <>
-      <FoodLogEntrySheet
-        // Hidden while Scan or Describe is up, and that is not optional: iOS
-        // presents each of these from `[self reactViewController]`, which for
-        // a Modal rendered out here is the *root* view controller. A UIKit
-        // view controller can present only one thing at a time, so asking the
-        // root to present a second sheet while this one is still up is
-        // refused outright — nothing appears, and RN has already set its own
-        // `_isPresented` flag, so the flow wedges. `pending` deliberately
-        // stays set, which is what brings this sheet back on cancel.
-        visible={!!pending && !pendingFinishLeftoverId && !scan && !estimate}
+    <FoodLogEntrySheet
+        visible={!!pending && !pendingFinishLeftoverId}
         slot={pending?.slot ?? null}
         at={pending ? dayKeyAtNoon(pending.dayKey) : new Date()}
         seedRecipeId={seedRecipeId}
@@ -149,27 +139,30 @@ export function LogMealEntrySheet() {
           setLogMeal(mealPlanEntryId, false);
           setPending(null);
         } : undefined}
-      />
-      <ScanToLogFlow
-        visible={!!scan}
-        slot={scan?.slot ?? null}
-        at={scan ? dayKeyAtNoon(scan.dayKey) : new Date()}
-        mealPlanEntryId={scan?.mealPlanEntryId ?? null}
-        onClose={() => setScan(null)}
-        onLogged={() => setPending(null)}
-      />
-      <EstimateMealSheet
-        visible={!!estimate}
-        slot={estimate?.slot ?? null}
-        at={estimate ? dayKeyAtNoon(estimate.dayKey) : new Date()}
-        mealPlanEntryId={estimate?.mealPlanEntryId ?? null}
-        onClose={() => setEstimate(null)}
-        onLogged={() => setPending(null)}
-        onPickRecipe={recipeId => {
-          setSeedRecipeId(recipeId);
-          setEstimate(null);
-        }}
-      />
-    </>
+        overlays={
+          <>
+            <ScanToLogFlow
+              visible={!!scan}
+              slot={scan?.slot ?? null}
+              at={scan ? dayKeyAtNoon(scan.dayKey) : new Date()}
+              mealPlanEntryId={scan?.mealPlanEntryId ?? null}
+              onClose={() => setScan(null)}
+              onLogged={() => setPending(null)}
+            />
+            <EstimateMealSheet
+              visible={!!estimate}
+              slot={estimate?.slot ?? null}
+              at={estimate ? dayKeyAtNoon(estimate.dayKey) : new Date()}
+              mealPlanEntryId={estimate?.mealPlanEntryId ?? null}
+              onClose={() => setEstimate(null)}
+              onLogged={() => setPending(null)}
+              onPickRecipe={recipeId => {
+                setSeedRecipeId(recipeId);
+                setEstimate(null);
+              }}
+            />
+          </>
+        }
+    />
   );
 }

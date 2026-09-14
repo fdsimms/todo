@@ -56,7 +56,7 @@ export function SavedMealsSheet({ visible, meals, onLog, onDelete, onClose }: Pr
   };
 
   return (
-    <SheetModal visible={visible} animationType="slide" presentationStyle="pageSheet" onRequestClose={onClose}>
+    <SheetModal name="Saved meals" visible={visible} animationType="slide" presentationStyle="pageSheet" onRequestClose={onClose}>
       <View style={styles.root}>
         <SheetHeader
           title="Saved meals"

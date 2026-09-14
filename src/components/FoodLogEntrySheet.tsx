@@ -199,6 +199,28 @@ interface Props {
    * to the caller, same split `onEstimate` already draws.
    */
   onDeclineMeal?: () => void;
+  /**
+   * The sheets `onScan`/`onEstimate`/`onSavedMeal` raise, rendered **inside**
+   * this sheet's own Modal rather than beside it in the caller.
+   *
+   * That placement is the whole point and is not a tidiness choice. iOS
+   * presents a Modal from `[self reactViewController]`, the nearest view
+   * controller up the responder chain, and one view controller can present
+   * only one thing at a time. A sheet rendered as this one's *sibling* asks
+   * the root view controller to present while it is already presenting this
+   * sheet: UIKit refuses, nothing appears, and RN has already set its own
+   * `_isPresented`, so the flow wedges with no error. Rendered in here it
+   * presents from this sheet's view controller, which is presenting nothing,
+   * exactly as `NutritionSearchSheet` below already does.
+   *
+   * Nesting rather than hiding this sheet is what keeps what the user typed:
+   * a hidden Modal unmounts its children once it finishes dismissing, so the
+   * search field would come back empty from a cancelled scan.
+   *
+   * The caller still owns the sheets and their state and passes them through;
+   * only where they render is fixed here.
+   */
+  overlays?: React.ReactNode;
 }
 
 /** The two ways of saying how much of a dish was eaten. */
@@ -263,6 +285,7 @@ interface Candidate {
 
 export function FoodLogEntrySheet({
   visible, slot, at, seedRecipeId, initialQuery, mealPlanEntryId, editing, onClose, onEstimate, onScan, onSavedMeal, onDeclineMeal,
+  overlays,
 }: Props) {
   const colors = useColors();
   const styles = useMemo(() => makeStyles(colors), [colors]);
@@ -861,7 +884,7 @@ export function FoodLogEntrySheet({
   );
 
   return (
-    <SheetModal visible={visible} animationType="slide" presentationStyle="pageSheet" onRequestClose={handleCancel}>
+    <SheetModal name="What did you eat?" visible={visible} animationType="slide" presentationStyle="pageSheet" onRequestClose={handleCancel}>
       <View style={styles.root}>
         <View style={styles.header}>
           <View style={styles.headerRow}>
@@ -1191,6 +1214,7 @@ export function FoodLogEntrySheet({
           requestClose(() => { onClose(); navigateToFoodSearchSettings(navigation, entryId); });
         }}
       />
+      {overlays}
       <NumberPadAccessory />
     </SheetModal>
   );

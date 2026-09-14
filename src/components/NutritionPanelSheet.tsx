@@ -355,7 +355,7 @@ export function NutritionPanelSheet({ visible, foodName, nutrition, onClose, onS
   };
 
   return (
-    <SheetModal visible={visible} animationType="slide" presentationStyle="pageSheet" onRequestClose={handleCancel}>
+    <SheetModal name="Nutrition panel" visible={visible} animationType="slide" presentationStyle="pageSheet" onRequestClose={handleCancel}>
       <View style={styles.root}>
         <SheetHeader
           title={foodName}

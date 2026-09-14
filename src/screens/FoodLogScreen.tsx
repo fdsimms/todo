@@ -881,14 +881,7 @@ export function FoodLogScreen() {
       )}
 
       <FoodLogEntrySheet
-        // Hidden while any of the three sheets it can raise is up. They are
-        // rendered as siblings here, so iOS presents them from the root view
-        // controller, which can only present one thing at a time — leave this
-        // one up and the second is refused with nothing shown and RN's own
-        // `_isPresented` already flipped, which wedges the screen. `addOpen`
-        // stays true so cancelling any of them comes back here. See the note
-        // on `LogMealEntrySheet`, which had the identical bug.
-        visible={addOpen && !scanOpen && !estimateOpen && !savedMealsOpen}
+        visible={addOpen}
         slot={addingSlot}
         at={loggingAt}
         seedRecipeId={seedRecipeId}
@@ -896,6 +889,52 @@ export function FoodLogScreen() {
         onEstimate={estimateRoute !== 'unavailable' ? () => setEstimateOpen(true) : undefined}
         onScan={() => setScanOpen(true)}
         onSavedMeal={savedMeals.length > 0 ? () => setSavedMealsOpen(true) : undefined}
+        // Inside that sheet's own Modal, not beside it: as siblings these
+        // presented from the root view controller, which was already
+        // presenting the sheet, so iOS refused and Scan/Describe/Saved meals
+        // silently did nothing and wedged the screen. See `overlays`' own note
+        // on `FoodLogEntrySheet`. The sheet stays visible underneath, so
+        // cancelling any of them returns to it with the query still typed.
+        overlays={
+          <>
+            <ScanToLogFlow
+              visible={scanOpen}
+              slot={addingSlot}
+              at={loggingAt}
+              onClose={() => setScanOpen(false)}
+              // Closes the "What did you eat?" sheet underneath too, only once
+              // a scan actually logs something — cancelling leaves it open,
+              // same as backing out of its own database search does.
+              onLogged={() => setAddOpen(false)}
+            />
+            <EstimateMealSheet
+              visible={estimateOpen}
+              slot={addingSlot}
+              at={loggingAt}
+              onClose={() => setEstimateOpen(false)}
+              onLogged={() => setAddOpen(false)}
+              onPickRecipe={recipeId => {
+                // Handed to the picker rather than logged here: a recipe is
+                // logged in servings, which is a question this sheet has not
+                // asked. Seeded, so the offer lands on the dish rather than on
+                // a list to search again.
+                setEstimateOpen(false);
+                setSeedRecipeId(recipeId);
+              }}
+            />
+            <SavedMealsSheet
+              visible={savedMealsOpen}
+              meals={savedMeals}
+              onLog={meal => {
+                logSavedMeal(meal, addingSlot, loggingAt);
+                setSavedMealsOpen(false);
+                setAddOpen(false);
+              }}
+              onDelete={meal => removeSavedMeal(meal.id)}
+              onClose={() => setSavedMealsOpen(false)}
+            />
+          </>
+        }
       />
       {/* The same sheet, reopened on an entry rather than on an empty form. A
           second mount rather than a flag on the one above, so an add halfway
@@ -908,42 +947,6 @@ export function FoodLogScreen() {
         slot={editingEntry?.slot ?? null}
         at={loggingAt}
         onClose={() => setEditingEntry(null)}
-      />
-      <ScanToLogFlow
-        visible={scanOpen}
-        slot={addingSlot}
-        at={loggingAt}
-        onClose={() => setScanOpen(false)}
-        // Closes the "What did you eat?" sheet underneath too, only once a
-        // scan actually logs something — cancelling leaves it open, same as
-        // backing out of its own database search does.
-        onLogged={() => setAddOpen(false)}
-      />
-      <EstimateMealSheet
-        visible={estimateOpen}
-        slot={addingSlot}
-        at={loggingAt}
-        onClose={() => setEstimateOpen(false)}
-        onLogged={() => setAddOpen(false)}
-        onPickRecipe={recipeId => {
-          // Handed to the picker rather than logged here: a recipe is logged in
-          // servings, which is a question this sheet has not asked. Seeded, so
-          // the offer lands on the dish rather than on a list to search again.
-          setEstimateOpen(false);
-          setSeedRecipeId(recipeId);
-          setAddOpen(true);
-        }}
-      />
-      <SavedMealsSheet
-        visible={savedMealsOpen}
-        meals={savedMeals}
-        onLog={meal => {
-          logSavedMeal(meal, addingSlot, loggingAt);
-          setSavedMealsOpen(false);
-          setAddOpen(false);
-        }}
-        onDelete={meal => removeSavedMeal(meal.id)}
-        onClose={() => setSavedMealsOpen(false)}
       />
       {/* Provenance only: the entry's own figures are a snapshot of what was
           eaten and must not follow the pointer. See `FoodLogPatch`. */}

@@ -863,7 +863,7 @@ export function BarcodeScanSheet({ visible, onClose, onApply, context }: Props) 
   };
 
   return (
-    <SheetModal visible={visible} animationType="slide" presentationStyle="pageSheet" onRequestClose={handleCancel}>
+    <SheetModal name="Barcode scan" visible={visible} animationType="slide" presentationStyle="pageSheet" onRequestClose={handleCancel}>
       <View style={styles.root}>
         <SheetHeader
           title={CONTEXT_COPY[context].title}

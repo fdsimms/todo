@@ -202,6 +202,7 @@ export function NutritionSearchSheet({ visible, itemName, onClose, onPick, onOpe
 
   return (
     <SheetModal
+      name="Food database search"
       visible={visible}
       animationType="slide"
       presentationStyle="pageSheet"

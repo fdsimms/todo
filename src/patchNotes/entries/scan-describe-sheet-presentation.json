@@ -1,4 +1,4 @@
 {
-  "message": "Fixed \"Scan a barcode\" and \"Describe what you ate instead\" doing nothing and freezing the food log. Both sheets now open properly, and cancelling one returns you to what you were logging",
+  "message": "Fixed \"Scan a barcode\" and \"Describe what you ate instead\" doing nothing and freezing the food log. Both open properly now, and backing out of either returns you to what you were logging with what you typed still there",
   "date": "2026-09-14"
 }
