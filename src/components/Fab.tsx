@@ -1,4 +1,4 @@
-import React, { useMemo, useRef, useState } from 'react';
+import React, { useEffect, useMemo, useRef, useState } from 'react';
 import { Animated, PanResponder, StyleSheet, Text, View } from 'react-native';
 import { SheetModal } from './SheetModal';
 import Ionicons from '@expo/vector-icons/Ionicons';
@@ -495,17 +495,32 @@ export function FabMenu({
     Animated.spring(anim, { toValue: 1, ...animation.spring.bouncy, useNativeDriver: true }).start();
   };
 
-  const close = (onDismissed?: () => void) => {
+  // The key a menu item was tapped for, held until `menuVisible` has actually
+  // reached `false` before firing `onSelect`. Calling it in the same commit
+  // that closes the menu raced FabMenuOverlay's SheetModal (which holds its
+  // own closing edge one extra commit to dismiss the keyboard first) against
+  // whatever sheet `onSelect` opens next: both Modals ended up visible: true
+  // in the same commit, and iOS silently refuses the second one — see the
+  // sibling-Modal note on SheetModal.tsx. Waiting for the effect below keeps
+  // the close and the open in separate commits.
+  const pendingSelectRef = useRef<string | null>(null);
+
+  const close = () => {
     Animated.timing(anim, { toValue: 0, duration: animation.duration.fast, useNativeDriver: true })
-      .start(() => {
-        setMenuVisible(false);
-        onDismissed?.();
-      });
+      .start(() => setMenuVisible(false));
   };
+
+  useEffect(() => {
+    if (menuVisible || !pendingSelectRef.current) return;
+    const key = pendingSelectRef.current;
+    pendingSelectRef.current = null;
+    onSelect(key);
+  }, [menuVisible, onSelect]);
 
   const handleSelect = (key: string) => {
     haptics.tap();
-    close(() => onSelect(key));
+    pendingSelectRef.current = key;
+    close();
   };
 
   return (
