@@ -1,0 +1,4 @@
+{
+  "message": "Typing an amount like \".5 tsp\" (no leading zero) is now read correctly instead of being refused as unmeasurable",
+  "date": "2026-09-14"
+}

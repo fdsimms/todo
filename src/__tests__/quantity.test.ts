@@ -21,12 +21,14 @@ describe('parseQuantity — the amount', () => {
     expect(amount('1 1/2 cups')).toBe(1.5);
     expect(amount('1.5 kg')).toBe(1.5);
     expect(amount('2lb')).toBe(2);
+    expect(amount('.5 tsp')).toBe(0.5);
   });
 
   it('remembers which notation it was written in', () => {
     expect(parseQuantity('1.5 kg').decimal).toBe(true);
     expect(parseQuantity('1 1/2 cups').decimal).toBe(false);
     expect(parseQuantity('2 cups').decimal).toBe(false);
+    expect(parseQuantity('.5 tsp').decimal).toBe(true);
   });
 
   it('is null for everything a reader has to refuse', () => {

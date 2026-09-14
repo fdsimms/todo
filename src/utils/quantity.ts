@@ -367,7 +367,7 @@ const UNICODE_FRACTION = new RegExp(`^(\\d*)([${UNICODE_FRACTION_CHARS}])`);
 // look like a bare decimal's leading digit too ("1½" vs "1.5").
 const MIXED_NUMBER = /^(\d+)\s+(\d+)\/(\d+)/;
 const FRACTION = /^(\d+)\/(\d+)/;
-const DECIMAL = /^\d+(?:\.\d+)?/;
+const DECIMAL = /^(?:\d+(?:\.\d+)?|\.\d+)/;
 
 /** parseGroceryInput's trailing-count notation, on its own. */
 const TRAILING_COUNT = /^x\s*(\d+)$/i;
