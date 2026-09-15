@@ -176,6 +176,18 @@ export function TagsScreen() {
     });
   }, []);
 
+  /**
+   * The one way out of the tag sheet, and the one place that also closes what
+   * is nested inside it. `SheetModal` holds a sheet's closing edge while
+   * anything is presented from it, so clearing only `selectedTag` would leave
+   * this sheet held open behind an editor nobody can see past.
+   */
+  const closeTagDetail = useCallback(() => {
+    setEditorVisible(false);
+    setSelectedTag(null);
+    if (selectionMode) exitSelection();
+  }, [selectionMode, exitSelection]);
+
   const handleRowEdit = useCallback((id: string) => {
     const task = useTaskStore.getState().tasks.find(t => t.id === id);
     if (!task) return;
@@ -299,13 +311,13 @@ export function TagsScreen() {
           visible={selectedTag !== null}
           animationType="slide"
           presentationStyle="pageSheet"
-          onRequestClose={() => { Keyboard.dismiss(); setSelectedTag(null); if (selectionMode) exitSelection(); }}
+          onRequestClose={() => { Keyboard.dismiss(); closeTagDetail(); }}
         >
           <View style={[styles.detailRoot, { paddingTop: insets.top + spacing.md }]}>
             <DetailHeader
               title={selectedTag ?? ''}
               backIcon="close"
-              onBack={() => { Keyboard.dismiss(); setSelectedTag(null); if (selectionMode) exitSelection(); }}
+              onBack={() => { Keyboard.dismiss(); closeTagDetail(); }}
               leading={selectedTag ? (
                 <View style={[styles.tagIconSm, { backgroundColor: tagColor(selectedTag) + '22' }]}>
                   <Ionicons name="pricetag" size={14} color={tagColor(selectedTag)} />
@@ -393,18 +405,28 @@ export function TagsScreen() {
               />
             )}
           </View>
+
+          {/* Both are nested inside the tag sheet rather than sitting beside
+              it, because both are only ever raised from inside it: the editor
+              from a row's pencil (onEdit above), the prompt queue from this
+              bulk bar's Complete. As siblings they asked the screen's root
+              view controller to present a second sheet while it was already
+              presenting this one, which iOS refuses silently — the pencil did
+              nothing and the flow wedged, and a bulk completion asked its
+              deliverable questions of nobody. Nested rather than hidden so the
+              list's scroll offset, the expanded row and the selection survive;
+              a hidden sheet's children unmount. See SheetModal. */}
+          <DeliverablePromptQueue {...queueProps} />
+
+          <TaskEditor
+            visible={editorVisible}
+            task={editingTask}
+            onClose={() => {
+              setEditorVisible(false);
+              setExpandedTaskId(null);
+            }}
+          />
         </SheetModal>
-
-        <DeliverablePromptQueue {...queueProps} />
-
-        <TaskEditor
-          visible={editorVisible}
-          task={editingTask}
-          onClose={() => {
-            setEditorVisible(false);
-            setExpandedTaskId(null);
-          }}
-        />
       </View>
     </SpotlightProvider>
   );

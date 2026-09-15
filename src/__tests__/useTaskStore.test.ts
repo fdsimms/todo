@@ -13789,6 +13789,39 @@ describe('putTaskOnCalendar', () => {
     expect(sync.presentTimeBlockCreate).not.toHaveBeenCalled();
   });
 
+  // The guard the three automatic calendar syncs already had, and the one
+  // write past SQLite that was missing it. The system sheet asking for
+  // confirmation is not an exemption: the demo database is discarded, so a
+  // block created from seeded fiction strands a real event on a real calendar
+  // with the only pointer to it about to go.
+  it('never opens the event sheet while demo mode is active', async () => {
+    setDemoModeActive(true);
+    try {
+      useTaskStore.setState({ tasks: [blockable()] });
+
+      await expect(useTaskStore.getState().putTaskOnCalendar('report')).resolves.toBe(false);
+
+      expect(sync.presentTimeBlockCreate).not.toHaveBeenCalled();
+      expect(sync.presentTimeBlockEdit).not.toHaveBeenCalled();
+      expect(rowOf('report').timeBlockEventId).toBeNull();
+    } finally {
+      setDemoModeActive(false);
+    }
+  });
+
+  it('does not reopen an existing block in demo mode either', async () => {
+    setDemoModeActive(true);
+    try {
+      useTaskStore.setState({ tasks: [blockable({ timeBlockEventId: 'ev-1' })] });
+
+      await expect(useTaskStore.getState().putTaskOnCalendar('report')).resolves.toBe(false);
+
+      expect(sync.presentTimeBlockEdit).not.toHaveBeenCalled();
+    } finally {
+      setDemoModeActive(false);
+    }
+  });
+
   it('opens the edit sheet, not a second sheet, once a block exists', async () => {
     useTaskStore.setState({ tasks: [blockable({ timeBlockEventId: 'ev-1' })] });
     sync.presentTimeBlockEdit.mockResolvedValueOnce({ saved: true, deleted: false, eventId: 'ev-1' });

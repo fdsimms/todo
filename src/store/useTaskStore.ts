@@ -2221,6 +2221,15 @@ export const useTaskStore = create<TaskStore>((set, get) => ({
    * only one of them means the day is free.
    */
   async putTaskOnCalendar(id) {
+    // The same guard the three automatic calendar syncs keep, and the one
+    // write past SQLite that had been missing it. A system sheet asking for
+    // confirmation is not the exemption it looks like: the demo database is
+    // thrown away, so a block created from seeded fiction leaves a real event
+    // on a real calendar with the only pointer to it (timeBlockEventId) about
+    // to be discarded — undeletable from inside the app, by the rule that a
+    // block is deleted from the edit sheet this id opens.
+    if (isDemoModeActive()) return false;
+
     const task = get().tasks.find(t => t.id === id);
     if (!task) return false;
 

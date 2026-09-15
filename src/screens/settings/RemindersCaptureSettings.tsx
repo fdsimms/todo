@@ -20,7 +20,7 @@ import { SettingsRow } from './SettingsRow';
 import { SettingsChoiceTray } from './SettingsChoiceTray';
 import { makeSettingsStyles } from './settingsStyles';
 import { ReminderCapturesSheet } from '../../components/ReminderCapturesSheet';
-import { activeReminderCaptures } from '../../utils/reminderCaptures';
+import { activeReminderCaptures, captureListIds } from '../../utils/reminderCaptures';
 
 /**
  * Apple Reminders import — labelled in full throughout, because "reminders"
@@ -96,11 +96,28 @@ export function RemindersCaptureSettings() {
   const [importResult, setImportResult] = useState<string | null>(null);
   const selectedReminderList = findReminderList(reminderLists ?? [], remindersImportListId);
   const selectedGroceryList = findReminderList(reminderLists ?? [], groceryImportListId);
-  // The two destinations must be disjoint: handledIds is global, so a list
-  // wired to both would send each reminder to whichever drain reached it
-  // first — a coin toss between the Inbox and the grocery list.
-  const taskListChoices = reminderListOptions(reminderLists ?? [], groceryImportListId);
-  const groceryListChoices = reminderListOptions(reminderLists ?? [], remindersImportListId);
+  // Every destination must be disjoint: handledIds is one flat set across the
+  // whole drain, so a list wired to two of them would send each reminder to
+  // whichever target `drainTargets` reached first — a coin toss, and a silent
+  // one, since by the time a drain reads the list it cannot tell which
+  // destination was meant.
+  //
+  // The captures count here, not just these two legs against each other. They
+  // were left out, so a list already confirmed for a capture was still offered
+  // on these rows: picking it put the Inbox leg first, which imported and (by
+  // default) deleted every reminder, leaving the capture's own target to fetch
+  // a list that had already been handled. Dictated meals landed as plain Inbox
+  // tasks with no filing, and nothing said so. `ReminderCapturesSheet` has
+  // always excluded both directions; this is the other half of it.
+  const captureLists = captureListIds(reminderCaptures);
+  const taskListChoices = reminderListOptions(reminderLists ?? [], [
+    ...(groceryImportListId ? [groceryImportListId] : []),
+    ...captureLists,
+  ]);
+  const groceryListChoices = reminderListOptions(reminderLists ?? [], [
+    ...(remindersImportListId ? [remindersImportListId] : []),
+    ...captureLists,
+  ]);
   const lastImport = lastImportOutcome();
   /**
    * How many captures are actually running, not how many rows exist. A row with
