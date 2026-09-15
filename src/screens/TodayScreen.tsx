@@ -74,7 +74,7 @@ import { useLeftoverStore } from '../store/useLeftoverStore';
 import { useTemplateStore } from '../store/useTemplateStore';
 import { useWidgetCompletionStore } from '../store/useWidgetCompletionStore';
 import { useTaskSelection } from '../hooks/useTaskSelection';
-import { featureHidden, visibleLenses } from '../utils/simpleMode';
+import { featureHidden, featureShown, visibleLenses } from '../utils/simpleMode';
 import { useKeyboardInsetScroll } from '../hooks/useKeyboardInsetScroll';
 import { useElevatedCellRenderer } from '../hooks/useElevatedCellRenderer';
 import { useMealPlanNudgeProgress } from '../hooks/useMealPlanNudgeProgress';
@@ -122,6 +122,7 @@ import { TemplateAppliedToast } from '../components/TemplateAppliedToast';
 import { SortFilterSheet } from '../components/SortFilterSheet';
 import { SavedViewEditorSheet } from '../components/SavedViewEditorSheet';
 import { clausesFromFilters } from '../utils/savedViews';
+import { useSavedViewStore } from '../store/useSavedViewStore';
 import { TodayOptionsMenu } from '../components/TodayOptionsMenu';
 import { CategoryOrderSheet } from '../components/CategoryOrderSheet';
 import { DeloadSheet } from '../components/DeloadSheet';
@@ -1455,6 +1456,13 @@ export function TodayScreen() {
     setFilterVisible(false);
     navigation.navigate({ name: 'SavedViews' } as never);
   }, [navigation]);
+
+  // Simplified mode takes the advanced half away, and a saved view is that.
+  // `set` is the count rather than a flag for the reason featureShown exists:
+  // somebody who kept a view before switching the mode on keeps the way back
+  // to it, rather than having it hidden with no way to reach it.
+  const savedViewCount = useSavedViewStore(s => s.views.length);
+  const savedViewsShown = featureShown('savedViews', simpleMode, savedViewCount > 0);
 
   // Later, Unscheduled and Inbox get the reminder filter too (#1798), but not
   // priority/effort or sort — those stay Today-only, since Later/Unscheduled
@@ -4269,8 +4277,8 @@ export function TodayScreen() {
           onEffortsChange={setFilterEfforts}
           hasReminder={filterHasReminder}
           onHasReminderChange={setFilterHasReminder}
-          onSaveAsView={handleSaveAsView}
-          onOpenSavedViews={handleOpenSavedViews}
+          onSaveAsView={savedViewsShown ? handleSaveAsView : undefined}
+          onOpenSavedViews={savedViewsShown ? handleOpenSavedViews : undefined}
         />
 
         {/* Opened from the filter sheet, which closes in the same commit:

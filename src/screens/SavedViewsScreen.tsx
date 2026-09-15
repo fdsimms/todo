@@ -1,10 +1,11 @@
 import React, { useCallback, useMemo, useState } from 'react';
-import { FlatList, StyleSheet, Text, TouchableOpacity, View } from 'react-native';
+import { StyleSheet, Text, TouchableOpacity, View } from 'react-native';
 import { useNavigation } from '@react-navigation/native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import Ionicons from '@expo/vector-icons/Ionicons';
 import { useShallow } from 'zustand/react/shallow';
 import { DetailHeader } from '../components/DetailHeader';
+import { ReorderableList } from '../components/ReorderableList';
 import { EmptyState } from '../components/EmptyState';
 import { SavedViewEditorSheet } from '../components/SavedViewEditorSheet';
 import { useSavedViewStore } from '../store/useSavedViewStore';
@@ -65,6 +66,11 @@ export function SavedViewsScreen() {
     navigation.navigate({ name: 'SavedViewDetail', params: { viewId } } as never);
   }, [navigation]);
 
+  const reorderViews = useSavedViewStore(s => s.reorderViews);
+  const handleReorder = useCallback((next: SavedView[]) => {
+    reorderViews(next.map(v => v.id));
+  }, [reorderViews]);
+
   const handleCreate = () => {
     setEditingView(null);
     setEditorVisible(true);
@@ -87,19 +93,25 @@ export function SavedViewsScreen() {
         }
       />
 
-      <FlatList
+      <ReorderableList
         data={views}
         keyExtractor={v => v.id}
+        onReorder={handleReorder}
         contentContainerStyle={[styles.listContent, views.length === 0 && styles.emptyContent]}
-        renderItem={({ item }) => {
+        renderItem={({ item, drag, isActive }) => {
           const count = counts.get(item.id) ?? 0;
           return (
             <TouchableOpacity
-              style={styles.row}
+              // Opaque while dragging rather than a translucent tint: the drag
+              // overlay paints no background of its own, so a see-through row
+              // shows whatever is behind it for the length of the animation.
+              style={[styles.row, isActive && styles.rowActive]}
               activeOpacity={interaction.activeOpacity}
               onPress={() => openView(item.id)}
+              onLongPress={drag}
+              delayLongPress={interaction.delayLongPress}
               accessibilityRole="button"
-              accessibilityLabel={`${item.name}, ${count} ${count === 1 ? 'task' : 'tasks'}`}
+              accessibilityLabel={`${item.name}, ${count} ${count === 1 ? 'task' : 'tasks'}. Hold to reorder.`}
             >
               <View style={[styles.rowIcon, { backgroundColor: colors.accentSubtle }]}>
                 <Ionicons name={item.icon as never} size={18} color={colors.accent} />
@@ -152,6 +164,9 @@ const makeStyles = (colors: Colors) => StyleSheet.create({
     borderWidth: border.hairline,
     borderColor: colors.separator,
     padding: spacing.md,
+  },
+  rowActive: {
+    backgroundColor: colors.bgTertiary,
   },
   rowIcon: {
     width: 34,
