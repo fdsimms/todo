@@ -32,6 +32,8 @@ export function NotificationSettings() {
   const dailyAgendaEnabled = useSettingsStore(s => s.dailyAgendaEnabled);
   const setDailyAgendaEnabled = useSettingsStore(s => s.setDailyAgendaEnabled);
   const dailyAgendaTime = useSettingsStore(s => s.dailyAgendaTime);
+  const dailyAgendaSpoken = useSettingsStore(s => s.dailyAgendaSpoken);
+  const setDailyAgendaSpoken = useSettingsStore(s => s.setDailyAgendaSpoken);
   const setDailyAgendaTime = useSettingsStore(s => s.setDailyAgendaTime);
   // The trip reminder is about a shopping trip, which only exists while the
   // grocery area does — and the index has always flagged it `kitchen`, so with
@@ -287,6 +289,18 @@ export function NotificationSettings() {
               onConfirm={confirmPicker}
             />
           )}
+          <View style={styles.sep} />
+          <SettingsRow
+            entryId="dailyAgendaSpoken"
+            icon="volume-high-outline"
+            iconColor={dailyAgendaSpoken ? colors.accent : undefined}
+            label="Read it aloud"
+            hint={dailyAgendaSpoken
+              ? 'Tapping the notification reads the agenda out'
+              : 'Tapping the notification opens the app without sound'}
+            toggle={dailyAgendaSpoken}
+            onPress={() => setDailyAgendaSpoken(!dailyAgendaSpoken)}
+          />
         </>
       )}
 
