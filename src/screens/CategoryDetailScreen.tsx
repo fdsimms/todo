@@ -22,10 +22,12 @@ import { useCategoryStore } from '../store/useCategoryStore';
 import { useShallow } from 'zustand/react/shallow';
 import { TaskItem } from '../components/TaskItem';
 import { SpotlightProvider, useSpotlightProgress } from '../components/SpotlightOverlay';
-import { TaskEditor } from '../components/TaskEditor';
+import { TaskEditor, type TaskDraft } from '../components/TaskEditor';
 import { EmptyState } from '../components/EmptyState';
 import { BulkActionBar } from '../components/BulkActionBar';
 import { DetailHeader } from '../components/DetailHeader';
+import { Fab } from '../components/Fab';
+import { QuickAddModal } from '../components/QuickAddModal';
 import { useColors } from '../theme/ThemeContext';
 import { spacing, interaction, type Colors } from '../theme';
 import { haptics } from '../utils/haptics';
@@ -62,6 +64,8 @@ export function CategoryDetailScreen() {
 
   const [editorVisible, setEditorVisible] = useState(false);
   const [editingTask, setEditingTask] = useState<Task | null>(null);
+  const [editorInitialDraft, setEditorInitialDraft] = useState<Partial<TaskDraft> | null>(null);
+  const [quickAddVisible, setQuickAddVisible] = useState(false);
   const [expandedTaskId, setExpandedTaskId] = useState<string | null>(null);
   // True while a subtask inside the expanded row is mid-drag; the list has to
   // stop scrolling for the duration (see TaskItem.onSubtaskDragStateChange).
@@ -156,6 +160,16 @@ export function CategoryDetailScreen() {
   const handleOpenProject = useCallback((projectId: string) => {
     navigation.navigate({ name: 'ProjectDetail', params: { projectId } } as never);
   }, [navigation]);
+
+  // Quick add's category chip already seeds the new task into this category —
+  // "More details" just carries the same seed into the full editor instead of
+  // dropping it.
+  const handleQuickAddOpenFull = (draft: TaskDraft) => {
+    setQuickAddVisible(false);
+    setEditingTask(null);
+    setEditorInitialDraft({ ...draft, category });
+    setEditorVisible(true);
+  };
 
   const handleRowSwipeSelect = useCallback((id: string) => {
     setExpandedTaskId(null);
@@ -274,11 +288,25 @@ export function CategoryDetailScreen() {
             }
             ListFooterComponentStyle={categoryTasks.length === 0 ? undefined : styles.listFooterCell}
             ListEmptyComponent={
-              <EmptyState icon="folder-outline" title="No active tasks" subtitle="Tasks filed under this category show up here. Completed ones are in the Logbook." />
+              <EmptyState
+                icon="folder-outline"
+                title="No active tasks"
+                subtitle="Tasks filed under this category show up here. Completed ones are in the Logbook."
+                actionLabel="Add a task"
+                onAction={() => { haptics.tap(); setQuickAddVisible(true); }}
+              />
             }
           />
         </PaintSelectionProvider>
         </View>
+
+        {!selectionMode && (
+          <Fab
+            onPress={() => setQuickAddVisible(true)}
+            accessibilityLabel="Add task"
+            bottom={insets.bottom + spacing.xl}
+          />
+        )}
 
         {selectionMode && (
           <BulkActionBar
@@ -306,10 +334,20 @@ export function CategoryDetailScreen() {
         <TaskEditor
           visible={editorVisible}
           task={editingTask}
+          initialDraft={editorInitialDraft}
           onClose={() => {
             setEditorVisible(false);
             setExpandedTaskId(null);
+            setEditorInitialDraft(null);
           }}
+        />
+
+        <QuickAddModal
+          visible={quickAddVisible}
+          onClose={() => setQuickAddVisible(false)}
+          onOpenFull={handleQuickAddOpenFull}
+          seed={{ category }}
+          seedLabel={category}
         />
       </View>
     </SpotlightProvider>
