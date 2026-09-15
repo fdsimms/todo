@@ -52,8 +52,16 @@ describe('parsePendingReachOut', () => {
     expect(parsePendingReachOut(JSON.stringify({ personId: '', kind: 'call', at: AT }))).toBeNull();
   });
 
+  it('reads all three kinds back', () => {
+    for (const kind of ['call', 'text', 'email'] as const) {
+      expect(parsePendingReachOut(JSON.stringify({ personId: 'p1', kind, at: AT }))?.kind).toBe(kind);
+    }
+  });
+
+  // The link button is deliberately not a kind — see the type's own note.
   it('refuses a kind it does not recognise', () => {
-    expect(parsePendingReachOut(JSON.stringify({ personId: 'p1', kind: 'email', at: AT }))).toBeNull();
+    expect(parsePendingReachOut(JSON.stringify({ personId: 'p1', kind: 'link', at: AT }))).toBeNull();
+    expect(parsePendingReachOut(JSON.stringify({ personId: 'p1', kind: 'visited', at: AT }))).toBeNull();
   });
 
   it('refuses a timestamp that is not a date', () => {
@@ -123,6 +131,7 @@ describe('copy', () => {
   it('names the entry in plain past tense', () => {
     expect(reachOutHistoryTitle('call', 'Sarah')).toBe('Called Sarah');
     expect(reachOutHistoryTitle('text', 'Dustin')).toBe('Texted Dustin');
+    expect(reachOutHistoryTitle('email', 'Ansley')).toBe('Emailed Ansley');
   });
 
   // The prompt shows exactly what would be written, so the title it quotes has

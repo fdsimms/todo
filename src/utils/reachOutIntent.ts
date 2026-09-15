@@ -1,7 +1,8 @@
 import { format } from 'date-fns/format';
 
 /**
- * The tap on Call or Text, held until you come back to say whether it counted.
+ * The tap on Call, Text or Email, held until you come back to say whether it
+ * counted.
  *
  * **Nothing here reads a call log or a message, because iOS has no such read
  * to offer.** CallKit's `CXCall` carries `uuid`, `isOutgoing`, `hasConnected`,
@@ -15,14 +16,16 @@ import { format } from 'date-fns/format';
  * app rather than per person.
  *
  * So the only observable fact available is one the app produces itself: you
- * tapped its own Call button. That is what makes this the right side of the
- * arch doc's "any reading of messages, call logs, or calendar attendees"
- * (`docs/arch/people.md`) rather than an exception to it — nothing is read.
+ * tapped its own Call, Text or Email button. That is what makes this the right
+ * side of the arch doc's "any reading of messages, call logs, or calendar
+ * attendees" (`docs/arch/people.md`) rather than an exception to it — nothing
+ * is read.
  *
  * And a tap is an intention, not an event. It cannot tell a call that connected
- * from a number that rang out, and it sees nothing dialled from the Phone app
- * itself, which is most of them. So it is never written down on its own: the
- * user is asked first, and only the answer becomes history. Same three beats as
+ * from a number that rang out, or a sent mail from a draft abandoned in the
+ * compose window, and it sees nothing dialled from the Phone app itself, which
+ * is most of them. So it is never written down on its own: the user is asked
+ * first, and only the answer becomes history. Same three beats as
  * `probablyHaveReason` and as the calendar offer sitting on that very screen —
  * guess what you cannot verify, carry the reason, and ask.
  *
@@ -30,8 +33,16 @@ import { format } from 'date-fns/format';
  * is exercisable without standing up the settings store.
  */
 
-/** Which button was tapped. Both open a URL the system handles and return nothing. */
-export type ReachOutKind = 'call' | 'text';
+/**
+ * Which button was tapped. All three open a URL the system handles and return
+ * nothing, which is the whole reason a tap is the end of what the app can know.
+ *
+ * The link button is deliberately not one of them. It opens a chat app for some
+ * people and a plain profile for others, so there is no one past-tense sentence
+ * it could be written up as, and guessing between "messaged" and "looked at
+ * their page" is exactly the kind of invention this feature refuses.
+ */
+export type ReachOutKind = 'call' | 'text' | 'email';
 
 /** A tap waiting to be confirmed. At most one exists at a time. */
 export interface PendingReachOut {
@@ -77,7 +88,7 @@ export function parsePendingReachOut(raw: string | null | undefined): PendingRea
   if (typeof parsed !== 'object' || parsed === null) return null;
   const { personId, kind, at } = parsed as Record<string, unknown>;
   if (typeof personId !== 'string' || personId.length === 0) return null;
-  if (kind !== 'call' && kind !== 'text') return null;
+  if (kind !== 'call' && kind !== 'text' && kind !== 'email') return null;
   if (typeof at !== 'string' || Number.isNaN(Date.parse(at))) return null;
   return { personId, kind, at };
 }
@@ -134,6 +145,12 @@ export function isStampFromEarlierLaunch(
   return at < processStartMs;
 }
 
+const PAST_TENSE: Record<ReachOutKind, string> = {
+  call: 'Called',
+  text: 'Texted',
+  email: 'Emailed',
+};
+
 /**
  * What the history entry is called once the user says yes.
  *
@@ -145,7 +162,7 @@ export function isStampFromEarlierLaunch(
  * read back.
  */
 export function reachOutHistoryTitle(kind: ReachOutKind, name: string): string {
-  return `${kind === 'call' ? 'Called' : 'Texted'} ${name}`;
+  return `${PAST_TENSE[kind]} ${name}`;
 }
 
 /**

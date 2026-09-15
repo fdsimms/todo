@@ -630,10 +630,13 @@ Three smaller decisions worth not re-deriving:
   whichever database is live, so demo mode is correct with no wiring, and a
   value read at most twice per visit has nothing for a cache to buy.
 
-**Email and the link button deliberately do not participate.** Opening a
-profile is not reaching out, and an email begun and never sent would be
-recorded as one that was — the same false positive the prompt exists to put a
-question in front of, except with nothing to notice it by.
+**The link button deliberately does not participate**, and it is the one
+exclusion worth keeping. It opens a chat app for some people and a plain
+profile for others, so there is no single past-tense sentence the entry could
+be written as, and "looked at their page" is not reaching out. Call, Text and
+Email all are, so all three stamp. Email carries a false positive of its own —
+a draft abandoned in the compose window reads exactly like a sent one — but
+that is precisely what the prompt is for, and the answer costs one tap.
 
 
 ## Filling one person in from Contacts
