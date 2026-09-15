@@ -4,6 +4,7 @@ import { useBottomTabBarHeight } from '@react-navigation/bottom-tabs';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { useFocusEffect } from '@react-navigation/native';
 import Ionicons from '@expo/vector-icons/Ionicons';
+import { addDays } from 'date-fns/addDays';
 import { addMonths } from 'date-fns/addMonths';
 import { format } from 'date-fns/format';
 import { isSameMonth } from 'date-fns/isSameMonth';
@@ -20,7 +21,7 @@ import { useColors } from '../theme/ThemeContext';
 import { spacing, font, fontWeight, radius, interaction, type Colors } from '../theme';
 import { haptics } from '../utils/haptics';
 import { buildCalendarGrid, weekdayHeaders } from '../utils/calendarGrid';
-import { dayKeyOf, dayKeyToDate, getLogicalToday } from '../utils/dateUtils';
+import { dayKeyOf, dayKeyToDate, getDayStart, getLogicalToday } from '../utils/dateUtils';
 import {
   buildDayBuckets,
   dayDetail,
@@ -37,6 +38,12 @@ import {
   type DayWeight,
 } from '../utils/dayLoad';
 import { useCalendarStore } from '../store/useCalendarStore';
+import { useMealPlanStore } from '../store/useMealPlanStore';
+import { DayTimeline } from '../components/DayTimeline';
+import { buildDayTimeline } from '../utils/dayTimeline';
+import { eventsIn } from '../utils/calendarBusy';
+import { entriesForDay } from '../utils/mealPlan';
+import { isDemoModeActive } from '../utils/demoState';
 import { useProjectStore } from '../store/useProjectStore';
 import { useShallow } from 'zustand/react/shallow';
 import { awaySpanOf, type AwaySpan } from '../utils/awayDates';
@@ -58,6 +65,12 @@ const WEIGHT_SLOT_GAP = 2;
 // One shared empty array for a task with no subtasks — a fresh `[]` per row per
 // render is exactly the identity churn the grouping below exists to avoid.
 const NO_SUBTASKS: Task[] = [];
+
+type CalendarViewMode = 'month' | 'day';
+const VIEW_MODES: { value: CalendarViewMode; label: string }[] = [
+  { value: 'month', label: 'Month' },
+  { value: 'day', label: 'Day' },
+];
 
 /**
  * A month at a time.
@@ -98,6 +111,9 @@ export function CalendarScreen() {
   // Session-only, like the pinned block's `othersHidden`: which occurrences the
   // grid draws is a way of reading this month, not a preference about the app.
   const [projecting, setProjecting] = useState(true);
+  // Month or one day on a clock. Session-only for the same reason `projecting`
+  // is: which way you are reading this month is not a preference about the app.
+  const [viewMode, setViewMode] = useState<CalendarViewMode>('month');
   const [expandedTaskId, setExpandedTaskId] = useState<string | null>(null);
   const [editingTask, setEditingTask] = useState<Task | null>(null);
   const [editorVisible, setEditorVisible] = useState(false);
@@ -105,6 +121,10 @@ export function CalendarScreen() {
 
   // Collapse an expanded row on the way out, so it isn't still open on return.
   useFocusEffect(useCallback(() => () => setExpandedTaskId(null), []));
+
+  const use24Hour = useSettingsStore(s => s.use24HourTime);
+  const mealEntries = useMealPlanStore(useShallow(s => s.entries));
+
 
   const projects = useProjectStore(useShallow(s => s.projects));
   const days = useMemo(() => buildCalendarGrid(displayMonth, weekStartsOn), [displayMonth, weekStartsOn]);
@@ -137,6 +157,46 @@ export function CalendarScreen() {
   const taskById = useMemo(() => new Map(allTasks.map(t => [t.id, t])), [allTasks]);
   const detail = useMemo(() => dayDetail(buckets.get(selectedKey), taskById), [buckets, selectedKey, taskById]);
   const summary = summarizeDay(detail);
+  // Noon-anchored, never the key's midnight: under a non-midnight reset the
+  // day's start is the reset time on that date, and anchoring from midnight
+  // lands on the day before. Same derivation buildDayLoads makes.
+  const selectedDayStart = useMemo(() => {
+    const noon = dayKeyToDate(selectedKey);
+    noon.setHours(12, 0, 0, 0);
+    return getDayStart(noon, dayResetTime);
+  }, [selectedKey, dayResetTime]);
+
+  // "Couldn't read" and "nothing on" are different answers, and the store's
+  // window is only a fortnight wide — so a day past it reports unknown rather
+  // than drawing a confidently empty axis.
+  const dayBusyKnown = useMemo(() => {
+    if (!calendarReadEnabled || !calendarLoaded || isDemoModeActive()) return false;
+    if (!calendarWindowStart || !calendarWindowEnd) return false;
+    return selectedDayStart >= new Date(calendarWindowStart)
+      && selectedDayStart < new Date(calendarWindowEnd);
+  }, [calendarReadEnabled, calendarLoaded, calendarWindowStart, calendarWindowEnd, selectedDayStart]);
+
+  const dayEvents = useMemo(
+    () => (dayBusyKnown ? eventsIn(calendarEvents, selectedDayStart, addDays(selectedDayStart, 1)) : []),
+    [dayBusyKnown, calendarEvents, selectedDayStart],
+  );
+
+  const dayTimeline = useMemo(() => {
+    // A task can be in more than one of the three lists (due today with a
+    // deadline today), and it is still one row on the axis.
+    const seen = new Set<string>();
+    const tasks: Task[] = [];
+    for (const task of [...detail.due, ...detail.deadline, ...detail.defer]) {
+      if (seen.has(task.id)) continue;
+      seen.add(task.id);
+      tasks.push(task);
+    }
+    return buildDayTimeline({ dayStart: selectedDayStart, tasks, events: dayEvents });
+  }, [detail, selectedDayStart, dayEvents]);
+
+  const dayMeals = useMemo(() => entriesForDay(mealEntries, selectedKey), [mealEntries, selectedKey]);
+
+
 
   /**
    * How much each day holds, over the buckets the grid already built (#1791).
@@ -176,6 +236,18 @@ export function CalendarScreen() {
   // app is showing. Before a 02:00 day reset the calendar has already rolled
   // over and Today has not.
   const todayKey = dayKeyOf(getLogicalToday());
+  // Only drawn on the day you are actually in.
+  const nowMinutes = selectedKey === todayKey
+    ? Math.round((Date.now() - selectedDayStart.getTime()) / 60000)
+    : null;
+
+  // A day holding an event or a meal is not an empty day, even with no task on
+  // it, and one the calendar could not be read for has something to say too.
+  const dayEmpty = detail.isEmpty
+    && dayTimeline.entries.length === 0
+    && dayTimeline.allDay.length === 0
+    && dayMeals.length === 0
+    && dayBusyKnown;
   const selectedDate = dayKeyToDate(selectedKey);
 
   /**
@@ -187,6 +259,15 @@ export function CalendarScreen() {
    * 1st otherwise, keeps the two halves of the screen talking about the same
    * month at all times.
    */
+  // Stepping a day carries the month with it: the buckets are built over the
+  // displayed month's grid, so a day outside it would resolve to nothing.
+  const stepDay = (delta: number) => {
+    haptics.tap();
+    const next = addDays(dayKeyToDate(selectedKey), delta);
+    setSelectedKey(dayKeyOf(next));
+    if (!isSameMonth(next, displayMonth)) setDisplayMonth(startOfMonth(next));
+  };
+
   const stepMonth = (delta: number) => {
     haptics.tap();
     const next = addMonths(displayMonth, delta);
@@ -309,14 +390,49 @@ export function CalendarScreen() {
         ]}
       />
 
-      <PeriodNav
-        label={format(displayMonth, 'MMMM yyyy')}
-        onPrev={() => stepMonth(-1)}
-        onNext={() => stepMonth(1)}
-        prevAccessibilityLabel="Previous month"
-        nextAccessibilityLabel="Next month"
-      />
+      {/* Same shape as Today's own lens pills. Deliberately not HubPills:
+          these switch a sub-view rather than navigating. */}
+      <View style={styles.viewModePills}>
+        {VIEW_MODES.map(mode => {
+          const active = viewMode === mode.value;
+          return (
+            <TouchableOpacity
+              key={mode.value}
+              style={[styles.viewModePill, active && styles.viewModePillActive]}
+              activeOpacity={interaction.activeOpacity}
+              onPress={() => { haptics.tap(); setViewMode(mode.value); }}
+              accessibilityRole="tab"
+              accessibilityState={{ selected: active }}
+              accessibilityLabel={`${mode.label} view`}
+            >
+              <Text style={[styles.viewModePillText, active && styles.viewModePillTextActive]}>
+                {mode.label}
+              </Text>
+            </TouchableOpacity>
+          );
+        })}
+      </View>
 
+      {viewMode === 'month' ? (
+        <PeriodNav
+          label={format(displayMonth, 'MMMM yyyy')}
+          onPrev={() => stepMonth(-1)}
+          onNext={() => stepMonth(1)}
+          prevAccessibilityLabel="Previous month"
+          nextAccessibilityLabel="Next month"
+        />
+      ) : (
+        <PeriodNav
+          label={format(selectedDate, 'EEEE, MMMM d')}
+          sublabel={selectedKey === todayKey ? 'Today' : undefined}
+          onPrev={() => stepDay(-1)}
+          onNext={() => stepDay(1)}
+          prevAccessibilityLabel="Previous day"
+          nextAccessibilityLabel="Next day"
+        />
+      )}
+
+      {viewMode === 'month' && (
       <View style={styles.calendar}>
         <View style={styles.dayHeaders}>
           {dayHeaders.map((d, i) => (
@@ -348,10 +464,13 @@ export function CalendarScreen() {
           })}
         </View>
       </View>
+      )}
 
       <View style={styles.detailHeader}>
         <View style={styles.detailHeading}>
-          <Text style={styles.detailDate}>{format(selectedDate, 'EEEE, MMMM d')}</Text>
+          {viewMode === 'month' && (
+            <Text style={styles.detailDate}>{format(selectedDate, 'EEEE, MMMM d')}</Text>
+          )}
           {summary !== '' && <Text style={styles.detailSummary}>{summary}</Text>}
         </View>
         {/* How many, then how much. Its own line rather than a third clause on
@@ -370,7 +489,7 @@ export function CalendarScreen() {
         }
         showsVerticalScrollIndicator={false}
       >
-        {detail.isEmpty ? (
+        {(viewMode === 'day' ? dayEmpty : detail.isEmpty) ? (
           <EmptyState
             icon="calendar-clear-outline"
             title="Nothing on this day"
@@ -379,9 +498,24 @@ export function CalendarScreen() {
           />
         ) : (
           <>
-            {renderRows('Due', detail.due)}
-            {renderRows('Deadline', detail.deadline)}
-            {renderRows('Returning', detail.defer)}
+            {viewMode === 'day' && (
+              <>
+                <DayTimeline
+                  dayStart={selectedDayStart}
+                  timeline={dayTimeline}
+                  meals={dayMeals}
+                  busyKnown={dayBusyKnown}
+                  use24Hour={use24Hour}
+                  nowMinutes={nowMinutes}
+                  onPressTask={handleRowPress}
+                />
+                {/* Everything the axis refused to place, as real rows. */}
+                {renderRows('No time set', dayTimeline.unplaced)}
+              </>
+            )}
+            {viewMode === 'month' && renderRows('Due', detail.due)}
+            {viewMode === 'month' && renderRows('Deadline', detail.deadline)}
+            {viewMode === 'month' && renderRows('Returning', detail.defer)}
             {detail.expected.length > 0 && (
               <View style={styles.section}>
                 <Text style={styles.sectionLabel}>Expected</Text>
@@ -567,6 +701,33 @@ function makeStyles(colors: Colors) {
     },
     calendar: {
       paddingHorizontal: spacing.md,
+    },
+    // Matches Today's own lens pills rather than inventing a second treatment.
+    viewModePills: {
+      flexDirection: 'row',
+      alignItems: 'center',
+      gap: spacing.sm,
+      paddingHorizontal: spacing.md,
+      paddingTop: spacing.xsm,
+      paddingBottom: 4,
+    },
+    viewModePill: {
+      paddingHorizontal: spacing.md,
+      paddingVertical: spacing.sm,
+      borderRadius: radius.full,
+      backgroundColor: colors.bgSecondary,
+    },
+    viewModePillActive: {
+      backgroundColor: colors.accentFill,
+    },
+    viewModePillText: {
+      color: colors.textSecondary,
+      fontSize: font.sm,
+      fontWeight: fontWeight.medium,
+    },
+    viewModePillTextActive: {
+      color: colors.onAccent,
+      fontWeight: fontWeight.semibold,
     },
     dayHeaders: {
       flexDirection: 'row',

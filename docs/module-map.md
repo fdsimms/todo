@@ -52,7 +52,7 @@ name cannot say is where a component appears, and that is `docs/screen-map.md`.
 - `src/utils/categoryPicker.ts` — CategoryOption, CategoryFilterResult, optionLabel, filterCategories, CategorySubmit, resolveCategorySubmit
 - `src/utils/categorySchedule.ts` — DAY_LABELS, FULL_DAY_NAMES, formatScheduleTime, formatScheduleDays, formatCategorySchedule
 - `src/utils/chain.ts` — ChainCarrier, ChainCompletionCarrier, activeChainStep, nextChainStep, nextChainStepTitle, parseChainItems, ChainPreview, chainPreview, isChainFinish
-- `src/utils/clockTime.ts` — hhmmToDate, logicalDayStart, taskDayStart, formatHHMM, clockTimeToken, dateToHHMM
+- `src/utils/clockTime.ts` — hhmmToDate, logicalDayStart, taskDayStart, hhmmMinutes, effectiveWindowEndTime, formatHHMM, clockTimeToken, dateToHHMM
 - `src/utils/cloudKitTransport.ts` — CLOUDKIT_SOURCE, isCloudKitSyncAvailable, cloudKitUnavailableReason, cloudKitTransport
 - `src/utils/completionCalendarSync.ts` — logTaskCompletionToCalendar
 - `src/utils/completionTap.ts` — CompletionTap, completionTapFor, offersMealLogOnCompletion
@@ -70,6 +70,7 @@ name cannot say is where a component appears, and that is `docs/screen-map.md`.
 - `src/utils/dayContextRows.ts` — eventContextRows, mealContextRows, healthContextRows, weatherContextRows, insertContextRows, withoutContextRows
 - `src/utils/dayLoad.ts` — BUSY_DAY_MINUTES, FULL_DAY_MINUTES, ASSUMED_TASK_MINUTES, DayWeight, DayLoad, BuildDayLoadsOptions, buildDayLoads, weightFor, describeDayWeight, describeDayLoad
 - `src/utils/daySegments.ts` — DAY_SEGMENT_KEYS, DaySegmentKey, DaySegmentTimes, applyDaySegmentTime, daySegmentsInOrder
+- `src/utils/dayTimeline.ts` — MINUTES_IN_DAY, DEFAULT_FIRST_HOUR, DEFAULT_LAST_HOUR, TimelineEntry, DayTimeline, DayTimelineInput, clockToDayMinutes, instantToDayMinutes, buildDayTimeline
 - `src/utils/deadlineCalendarSync.ts` — syncDeadlineEvent
 - `src/utils/deepLinks.ts` — AddTaskLink, parseAddTaskUrl, handleIncomingUrl, isQuickAddUrl, isOpenAppUrl, isGroceriesUrl, groceriesUrlFinish, isRecipesUrl, isRecipeUrl, recipeUrlId, +27 more
 - `src/utils/deliverables.ts` — DELIVERABLE_TEXT_MAX_LENGTH, DELIVERABLE_META, deliverableMeta, DeliverableSource, deliverableKindFor, asksOnCompletion, chainStepDatedByAnswer, deliverableDate, normalizeDeliverableValue, formatDeliverableValue, +1 more

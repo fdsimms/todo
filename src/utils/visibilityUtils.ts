@@ -1,6 +1,7 @@
 import { addDays } from 'date-fns/addDays';
 import type { Task, TimeOfDay, Category } from '../types';
 import { getCurrentDayStart, getTaskDayStart, getDayStart, hhmmToDate, getNextDueDate } from './dateUtils';
+import { effectiveWindowEndTime } from './clockTime';
 import type { ExpiredTaskGraceDays } from './expiredTaskGrace';
 import { useSettingsStore } from '../store/useSettingsStore';
 import { useCategoryStore } from '../store/useCategoryStore';
@@ -294,11 +295,6 @@ export function hasDayArrived(task: Task): boolean {
   return true;
 }
 
-function hhmmMinutes(hhmm: string): number {
-  const [h, m] = hhmm.split(':').map(Number);
-  return h * 60 + m;
-}
-
 // The task's closing time, or null when its window doesn't close on the task's
 // own day. Both window gates anchor to one logical day (see
 // getWindowThreshold), so an end that isn't after the start — "22:00–02:00",
@@ -311,9 +307,7 @@ function hhmmMinutes(hhmm: string): number {
 // Same shape as the end <= start guard in getQuotaSpan, and for the same
 // reason — a span that doesn't resolve on one day can't be divided by.
 export function effectiveWindowEnd(task: Task): string | null {
-  if (!task.windowEnd) return null;
-  if (task.windowStart && hhmmMinutes(task.windowEnd) <= hhmmMinutes(task.windowStart)) return null;
-  return task.windowEnd;
+  return effectiveWindowEndTime(task.windowStart, task.windowEnd);
 }
 
 // Order used only to find the boundary *after* the latest segment a task is
