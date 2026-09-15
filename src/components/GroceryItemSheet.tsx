@@ -1074,11 +1074,29 @@ export function GroceryItemSheet({
           >
             <View style={styles.nutritionField}>
               {item.nutrition ? (
-                <Text style={styles.nutritionDetail}>
-                  {item.nutrition.portions.length > 0
-                    ? 'Recipe amounts written as a cup, a tablespoon or a count can be converted to a weight for this food.'
-                    : "Only recipe amounts already written as a weight, like grams or ounces, can use this — a cup or a count can't be converted yet."}
-                </Text>
+                item.nutrition.portions.length > 0 ? (
+                  // Shows the food's actual stated portions, the same way
+                  // FoodLogEntrySheet's portionChip row does, rather than a
+                  // sentence describing that portions exist in the abstract.
+                  <View style={styles.nutritionPortions}>
+                    {item.nutrition.portions.map((portion, index) => {
+                      const count = Number.isInteger(portion.amount)
+                        ? String(portion.amount)
+                        : portion.amount.toFixed(2).replace(/0+$/, '').replace(/\.$/, '');
+                      return (
+                        <View key={`${portion.label}-${index}`} style={styles.nutritionPortionChip}>
+                          <Text style={styles.nutritionPortionText}>
+                            {count} {portion.label} · {Math.round(portion.grams)}g
+                          </Text>
+                        </View>
+                      );
+                    })}
+                  </View>
+                ) : (
+                  <Text style={styles.nutritionDetail}>
+                    No stated portions — only a weight, like grams or ounces, can be used in a recipe.
+                  </Text>
+                )
               ) : (
                 <Text style={styles.nutritionDetail}>
                   Nothing recorded. A recipe using this ingredient counts it as uncovered
@@ -1928,6 +1946,14 @@ function makeStyles(colors: Colors) {
   return StyleSheet.create({
     nutritionField: { gap: spacing.sm },
     nutritionDetail: { color: colors.textSecondary, fontSize: font.sm, lineHeight: 18 },
+    nutritionPortions: { flexDirection: 'row', flexWrap: 'wrap', gap: spacing.xs },
+    nutritionPortionChip: {
+      backgroundColor: colors.bgTertiary,
+      borderRadius: radius.full,
+      paddingHorizontal: spacing.sm,
+      paddingVertical: spacing.xs,
+    },
+    nutritionPortionText: { color: colors.textSecondary, fontSize: font.xs },
     nutritionActions: { flexDirection: 'row', gap: spacing.sm, flexWrap: 'wrap' },
     root: { flex: 1, backgroundColor: colors.bg },
     // Same 64 width the plain spacer held, now the field-search toggle — still
