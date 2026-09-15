@@ -1,0 +1,4 @@
+{
+  "message": "\"Don't count this\" on a recipe's Nutrition sheet used to make an ingredient disappear with no way back, while the sheet still claimed every ingredient had been counted. It now lists what you've left out, with a button to count it again, and stops claiming full coverage once something's excluded",
+  "date": "2026-09-15"
+}

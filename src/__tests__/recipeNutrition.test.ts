@@ -5,6 +5,7 @@ import {
   describeNutritionCoverage,
   describeRecipeNutrition,
   describeWeekNutrition,
+  excludedNutritionLines,
   lineContribution,
   nutritionGaps,
   perServing,
@@ -622,6 +623,20 @@ describe('recipeNutritionLines', () => {
     expect(lines[0].recipeId).toBe(dish.id);
   });
 
+  it('names an excluded line rather than dropping it with no trace', () => {
+    const dish = recipe('Stew', [
+      ing('Chicken', { quantity: '200 g' }),
+      ing('Basil', { quantity: '1 handful', excludeFromNutrition: true }),
+    ]);
+    const lines = excludedNutritionLines(dish);
+    expect(lines).toEqual([{ id: expect.any(String), recipeId: dish.id, name: 'Basil' }]);
+  });
+
+  it('says nothing is excluded once nobody has left anything out', () => {
+    const dish = recipe('Stew', [ing('Chicken', { quantity: '200 g' })]);
+    expect(excludedNutritionLines(dish)).toEqual([]);
+  });
+
   it('comes back empty for an either/or nobody has decided, matching the rollup', () => {
     const dish = recipe('Salsa', [
       ing('Serrano', { quantity: '100 g', choiceGroup: 'Pepper' }),
@@ -732,5 +747,16 @@ describe('readRecipeNutrition', () => {
     expect(read.gaps.total).toBe(read.nutrition!.lines);
     expect(read.gaps.covered).toBe(read.nutrition!.covered);
     expect(read.lines).toHaveLength(2);
+  });
+
+  it('carries excluded lines alongside the reading, outside the coverage fraction', () => {
+    const dish = recipe('Stew', [
+      ing('Chicken', { quantity: '200 g' }),
+      ing('Basil', { quantity: '1 handful', excludeFromNutrition: true }),
+    ]);
+    const catalog = [item({ name: 'Chicken', nutrition: panel() })];
+    const read = readRecipeNutrition(dish, catalog);
+    expect(read.excluded.map(l => l.name)).toEqual(['Basil']);
+    expect(read.gaps.total).toBe(1);
   });
 });
