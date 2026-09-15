@@ -14,10 +14,19 @@ jest.mock('../db/database', () => ({
   dbInsertPersonNote: jest.fn(),
   dbUpdatePersonNote: jest.fn(),
   dbDeletePersonNote: jest.fn(),
+  // Backed by a real map rather than bare spies: the pending reach-out stamp
+  // keeps no in-memory copy on purpose (see the store), so a write that went
+  // nowhere would make every read below pass for the wrong reason.
+  dbGetSetting: jest.fn((key: string) => mockSettingsTable.get(key) ?? null),
+  dbSetSetting: jest.fn((key: string, value: string) => { mockSettingsTable.set(key, value); }),
+  dbDeleteSetting: jest.fn((key: string) => { mockSettingsTable.delete(key); }),
 }));
+
+const mockSettingsTable = new Map<string, string>();
 
 beforeEach(() => {
   jest.clearAllMocks();
+  mockSettingsTable.clear();
   resetReplayForTests();
   usePersonStore.setState({ people: [], initialized: false, undoStack: [], redoStack: [], lastAction: null });
   usePersonNoteStore.setState({ notes: [], initialized: false });
@@ -231,6 +240,74 @@ describe('freeing a deleted group\'s members', () => {
     usePersonStore.getState().createPerson('A');
     jest.clearAllMocks();
     usePersonStore.getState().clearGroupMembership('nonexistent');
+    expect(dbUpdatePerson).not.toHaveBeenCalled();
+  });
+});
+
+describe('the pending reach-out stamp', () => {
+  // The app cannot read a call log on iOS at all — see the header of
+  // src/utils/reachOutIntent.ts — so what it records is its own button being
+  // tapped, and then asks. These pin the store half of that.
+  const now = new Date('2026-09-15T14:30:00.000Z');
+
+  it('is empty until somebody taps Call or Text', () => {
+    expect(usePersonStore.getState().peekPendingReachOut('p1', now)).toBeNull();
+  });
+
+  it('comes back for the person whose button was tapped', () => {
+    usePersonStore.getState().notePendingReachOut('p1', 'call');
+    const pending = usePersonStore.getState().peekPendingReachOut('p1', new Date());
+    expect(pending).toMatchObject({ personId: 'p1', kind: 'call' });
+  });
+
+  it('remembers which of the two buttons it was', () => {
+    usePersonStore.getState().notePendingReachOut('p1', 'text');
+    expect(usePersonStore.getState().peekPendingReachOut('p1', new Date())?.kind).toBe('text');
+  });
+
+  // A question about one friend arriving on another's page would be the app
+  // volunteering a comparison nobody asked for.
+  it('stays quiet on somebody else\'s screen', () => {
+    usePersonStore.getState().notePendingReachOut('p1', 'call');
+    expect(usePersonStore.getState().peekPendingReachOut('p2', new Date())).toBeNull();
+  });
+
+  it('goes quiet once the window has passed', () => {
+    usePersonStore.getState().notePendingReachOut('p1', 'call');
+    const tomorrow = new Date(Date.now() + 24 * 60 * 60 * 1000);
+    expect(usePersonStore.getState().peekPendingReachOut('p1', tomorrow)).toBeNull();
+  });
+
+  // Two un-answered taps means the first was already left unconfirmed, and the
+  // honest reading of that is "no" rather than a backlog of questions.
+  it('keeps only the most recent tap', () => {
+    usePersonStore.getState().notePendingReachOut('p1', 'call');
+    usePersonStore.getState().notePendingReachOut('p2', 'text');
+    expect(usePersonStore.getState().peekPendingReachOut('p1', new Date())).toBeNull();
+    expect(usePersonStore.getState().peekPendingReachOut('p2', new Date())?.kind).toBe('text');
+  });
+
+  it('is gone once it has been answered', () => {
+    usePersonStore.getState().notePendingReachOut('p1', 'call');
+    usePersonStore.getState().clearPendingReachOut();
+    expect(usePersonStore.getState().peekPendingReachOut('p1', new Date())).toBeNull();
+  });
+
+  // No cached copy is the whole reason demo mode needs no `reload` here, unlike
+  // useSharedLinkStore and useStepTimerStore — every read follows whichever
+  // database is live. Swapping the table out from under the store stands in for
+  // that swap.
+  it('reads the live database rather than a copy of it', () => {
+    usePersonStore.getState().notePendingReachOut('p1', 'call');
+    mockSettingsTable.clear();
+    expect(usePersonStore.getState().peekPendingReachOut('p1', new Date())).toBeNull();
+  });
+
+  // Nothing about the stamp may touch the person's own row: it is a fact about
+  // a tap, never one about them.
+  it('writes nothing to the person', () => {
+    const person = usePersonStore.getState().createPerson('Dustin');
+    usePersonStore.getState().notePendingReachOut(person.id, 'call');
     expect(dbUpdatePerson).not.toHaveBeenCalled();
   });
 });

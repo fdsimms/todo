@@ -6,8 +6,18 @@ import {
   dbUpdatePerson,
   dbDeletePerson,
   dbBatchUpdatePersonSortOrders,
+  dbGetSetting,
+  dbSetSetting,
+  dbDeleteSetting,
 } from '../db/database';
 import { generateId } from '../utils/id';
+import {
+  isReachOutPromptLive,
+  parsePendingReachOut,
+  serializePendingReachOut,
+  type PendingReachOut,
+  type ReachOutKind,
+} from '../utils/reachOutIntent';
 import { registerPersonSource } from '../utils/peopleRegistry';
 import { usePersonNoteStore } from './usePersonNoteStore';
 import { undoHistoryActions, type UndoHistoryActions, type UndoHistoryState } from '../utils/undoHistory';
@@ -103,7 +113,37 @@ interface PersonStore extends UndoHistoryState, UndoHistoryActions {
    * a person store change never has to import the group store back.
    */
   clearGroupMembership: (groupId: string) => void;
+
+  /**
+   * Stamps a tap on Call or Text, to be confirmed when the user comes back.
+   *
+   * See `src/utils/reachOutIntent.ts` for why a tap is the only thing there is
+   * to record here, and why it is asked about rather than written down.
+   *
+   * **The three actions below hold nothing in memory, and that is the design
+   * rather than an omission.** Every one of them reads or writes the `settings`
+   * table on the spot, so they follow whichever database is live — which is
+   * what makes demo mode correct for free. `useSharedLinkStore` and
+   * `useStepTimerStore` are the two stores that do keep a cached copy of a
+   * settings-backed value, and both had to be given a `reload` that
+   * `useDemoStore` calls by hand on the way in *and* the way out, because
+   * otherwise the real value stays on screen inside the demo and the demo's
+   * writes land on it. A stamp read fresh each time cannot desync from the
+   * database it came out of, and it is read at most twice per visit to a
+   * person's screen, so there is nothing for a cache to buy.
+   */
+  notePendingReachOut: (personId: string, kind: ReachOutKind) => void;
+  /**
+   * The stamp worth asking this person about right now, or null when there
+   * isn't one, it belongs to somebody else, or it has gone stale.
+   */
+  peekPendingReachOut: (personId: string, now: Date) => PendingReachOut | null;
+  /** Drops the stamp, however it got answered. */
+  clearPendingReachOut: () => void;
 }
+
+/** One row in `settings`, holding at most one un-answered tap. */
+const PENDING_REACH_OUT_KEY = 'pendingReachOut';
 
 export const usePersonStore = create<PersonStore>((set, get) => ({
   people: [],
@@ -237,6 +277,45 @@ export const usePersonStore = create<PersonStore>((set, get) => ({
     set({
       people: get().people.map(p => (p.groupId === groupId ? { ...p, groupId: null } : p)),
     });
+  },
+
+  notePendingReachOut(personId, kind) {
+    // `new Date()` deliberately, not a logical-day helper: this is a timestamp
+    // of something that just happened, which is the case CLAUDE.md's
+    // grace-window rule explicitly sets apart from placing a task on a day.
+    const pending: PendingReachOut = { personId, kind, at: new Date().toISOString() };
+    try {
+      // Replaces any earlier stamp rather than queueing beside it. Two
+      // un-answered taps means the first one was already left unconfirmed, and
+      // the honest reading of that is "no", not a backlog of questions waiting
+      // on the next person's screen.
+      dbSetSetting(PENDING_REACH_OUT_KEY, serializePendingReachOut(pending));
+    } catch {
+      // The tap still opens the dialler; all that is lost is being asked about
+      // it afterwards, which is the same outcome as answering "Not now".
+    }
+  },
+
+  peekPendingReachOut(personId, now) {
+    let pending: PendingReachOut | null = null;
+    try {
+      pending = parsePendingReachOut(dbGetSetting(PENDING_REACH_OUT_KEY));
+    } catch {
+      return null;
+    }
+    return isReachOutPromptLive(pending, personId, now) ? pending : null;
+  },
+
+  clearPendingReachOut() {
+    try {
+      // Deletes the row rather than storing a tombstone, the same treatment an
+      // emptied registry gets: the settings table stays honest about which
+      // features have ever been used.
+      dbDeleteSetting(PENDING_REACH_OUT_KEY);
+    } catch {
+      // Worst case the stamp outlives its window and is dropped unasked by
+      // `isReachOutPromptLive` instead.
+    }
   },
 }));
 
