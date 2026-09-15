@@ -14,8 +14,10 @@ import { useSettingsStore } from '../store/useSettingsStore';
 import { ScreenHeader } from '../components/ScreenHeader';
 import { EmptyState } from '../components/EmptyState';
 import { TaskItem } from '../components/TaskItem';
-import { TaskEditor } from '../components/TaskEditor';
+import { TaskEditor, type TaskDraft } from '../components/TaskEditor';
 import { PeriodNav } from '../components/PeriodNav';
+import { Fab } from '../components/Fab';
+import { QuickAddModal } from '../components/QuickAddModal';
 import { useColors } from '../theme/ThemeContext';
 import { spacing, font, fontWeight, radius, interaction, type Colors } from '../theme';
 import { haptics } from '../utils/haptics';
@@ -102,6 +104,8 @@ export function CalendarScreen() {
   const [expandedTaskId, setExpandedTaskId] = useState<string | null>(null);
   const [editingTask, setEditingTask] = useState<Task | null>(null);
   const [editorVisible, setEditorVisible] = useState(false);
+  const [editorInitialDraft, setEditorInitialDraft] = useState<Partial<TaskDraft> | null>(null);
+  const [quickAddVisible, setQuickAddVisible] = useState(false);
   const [draggingSubtask, setDraggingSubtask] = useState(false);
 
   // Collapse an expanded row on the way out, so it isn't still open on return.
@@ -254,6 +258,16 @@ export function CalendarScreen() {
     setEditorVisible(true);
   }, []);
 
+  // Quick add already seeds the selected day onto the draft's own date field
+  // (see the seed prop below) — "More details" just carries the same draft
+  // into the full editor instead of dropping it.
+  const handleQuickAddOpenFull = (draft: TaskDraft) => {
+    setQuickAddVisible(false);
+    setEditingTask(null);
+    setEditorInitialDraft(draft);
+    setEditorVisible(true);
+  };
+
   const renderRows = (label: string, tasks: Task[]) => {
     if (tasks.length === 0) return null;
     return (
@@ -379,6 +393,8 @@ export function CalendarScreen() {
             title="Nothing on this day"
             subtitle="Tasks land here from a due date, a deadline, or the day a task moved to Later comes back."
             bottomOffset={tabBarHeight}
+            actionLabel="Add a task"
+            onAction={() => setQuickAddVisible(true)}
           />
         ) : (
           <>
@@ -408,13 +424,29 @@ export function CalendarScreen() {
         )}
       </ScrollView>
 
+      <Fab
+        onPress={() => setQuickAddVisible(true)}
+        accessibilityLabel="Add task"
+        bottom={insets.bottom + tabBarHeight + spacing.md}
+      />
+
       <TaskEditor
         visible={editorVisible}
         task={editingTask}
+        initialDraft={editorInitialDraft}
         onClose={() => {
           setEditorVisible(false);
           setExpandedTaskId(null);
+          setEditorInitialDraft(null);
         }}
+      />
+
+      <QuickAddModal
+        visible={quickAddVisible}
+        onClose={() => setQuickAddVisible(false)}
+        onOpenFull={handleQuickAddOpenFull}
+        seed={{ dueDate: selectedDate.toISOString() }}
+        seedLabel={format(selectedDate, 'MMM d')}
       />
     </View>
   );
