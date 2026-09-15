@@ -52,7 +52,7 @@ name cannot say is where a component appears, and that is `docs/screen-map.md`.
 - `src/utils/categoryPicker.ts` — CategoryOption, CategoryFilterResult, optionLabel, filterCategories, CategorySubmit, resolveCategorySubmit
 - `src/utils/categorySchedule.ts` — DAY_LABELS, FULL_DAY_NAMES, formatScheduleTime, formatScheduleDays, formatCategorySchedule
 - `src/utils/chain.ts` — ChainCarrier, ChainCompletionCarrier, activeChainStep, nextChainStep, nextChainStepTitle, parseChainItems, ChainPreview, chainPreview, isChainFinish
-- `src/utils/clockTime.ts` — hhmmToDate, logicalDayStart, taskDayStart, formatHHMM, clockTimeToken, dateToHHMM
+- `src/utils/clockTime.ts` — hhmmToDate, logicalDayStart, taskDayStart, hhmmMinutes, effectiveWindowEndTime, formatHHMM, clockTimeToken, dateToHHMM
 - `src/utils/cloudKitTransport.ts` — CLOUDKIT_SOURCE, isCloudKitSyncAvailable, cloudKitUnavailableReason, cloudKitTransport
 - `src/utils/completionCalendarSync.ts` — logTaskCompletionToCalendar
 - `src/utils/completionTap.ts` — CompletionTap, completionTapFor, offersMealLogOnCompletion
@@ -70,6 +70,7 @@ name cannot say is where a component appears, and that is `docs/screen-map.md`.
 - `src/utils/dayContextRows.ts` — eventContextRows, mealContextRows, healthContextRows, weatherContextRows, insertContextRows, withoutContextRows
 - `src/utils/dayLoad.ts` — BUSY_DAY_MINUTES, FULL_DAY_MINUTES, ASSUMED_TASK_MINUTES, assumedMinutesFor, DayWeight, DayLoad, BuildDayLoadsOptions, buildDayLoads, weightFor, describeDayWeight, +1 more
 - `src/utils/daySegments.ts` — DAY_SEGMENT_KEYS, DaySegmentKey, DaySegmentTimes, applyDaySegmentTime, daySegmentsInOrder
+- `src/utils/dayTimeline.ts` — MINUTES_IN_DAY, DEFAULT_FIRST_HOUR, DEFAULT_LAST_HOUR, TimelineEntry, DayTimeline, DayTimelineInput, clockToDayMinutes, instantToDayMinutes, buildDayTimeline
 - `src/utils/deadlineCalendarSync.ts` — syncDeadlineEvent
 - `src/utils/deepLinks.ts` — AddTaskLink, parseAddTaskUrl, handleIncomingUrl, isQuickAddUrl, isOpenAppUrl, isGroceriesUrl, groceriesUrlFinish, isRecipesUrl, isRecipeUrl, recipeUrlId, +27 more
 - `src/utils/deliverables.ts` — DELIVERABLE_TEXT_MAX_LENGTH, DELIVERABLE_META, deliverableMeta, DeliverableSource, deliverableKindFor, asksOnCompletion, chainStepDatedByAnswer, deliverableDate, normalizeDeliverableValue, formatDeliverableValue, +1 more
@@ -308,6 +309,7 @@ name cannot say is where a component appears, and that is `docs/screen-map.md`.
 - `src/utils/useSyncOnForeground.ts` — useSyncOnForeground
 - `src/utils/useUpRecipes.ts` — UseUpRecipe, useUpRecipes, describeUseUpRecipe
 - `src/utils/visibilityUtils.ts` — isTaskBlocked, isHeldBack, VisibleAtPass, beginVisibleAtPass, isHiddenForVacation, isCategoryScheduledDay, sameTimeSegments, timeSegmentThreshold, currentTimeSegment, hasDayArrived, +34 more
+- `src/utils/waterExerciseBoost.ts` — WaterExerciseBoost, WATER_EXERCISE_BOOST_MINUTES_RANGE, WATER_EXERCISE_BOOST_ML_RANGE, parseWaterExerciseBoost, serializeWaterExerciseBoost, effectiveWaterTargetMl, waterExerciseBoostApplies
 - `src/utils/waterLog.ts` — WaterUnit, WATER_STEP_ML, WATER_MIN_ML, WATER_MAX_ML, WATER_STEP_FL_OZ, WATER_MIN_FL_OZ, WATER_MAX_FL_OZ, isWaterEntry, waterEntryOf, waterTotalMl, +8 more
 - `src/utils/weatherCondition.ts` — classifyWeather, weatherIconFor, weatherConditionAdjective, weatherConditionNoun
 - `src/utils/weatherLocation.ts` — LocationPermission, getLocationPermission, requestLocationPermission, DeviceLocation, getCurrentLocation
