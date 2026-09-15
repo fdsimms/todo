@@ -6,7 +6,9 @@
  * its refusals are `healthBridge`'s, and the rule they enforce is written up in
  * `docs/arch/health-data.md`.
  */
-import { useHealthStore } from '../store/useHealthStore';
+import { useHealthStore, EXERCISE_LIVE_WINDOW_DAYS } from '../store/useHealthStore';
+import { useSettingsStore } from '../store/useSettingsStore';
+import { getCurrentDayStart } from '../utils/dateUtils';
 import { healthBridge } from '../utils/healthBridge';
 
 // Same reason every other store test stubs it: the real module drags
@@ -153,6 +155,80 @@ describe('a read that lands after access was dropped', () => {
     await useHealthStore.getState().refreshWeight();
     release([reading()]);
     await inFlight;
+    expect(useHealthStore.getState().today?.steps).toBe(4200);
+  });
+});
+
+describe('the exercise live-metric window', () => {
+  // `exerciseMinutesSeenRecently` is what lets an absent exercise figure be
+  // read as a real zero. See judgedReadingValue in healthRules.ts.
+  const todayStart = () => getCurrentDayStart();
+
+  function withExerciseRule() {
+    useSettingsStore.setState({
+      healthRules: [{
+        id: 'r1', metric: 'exerciseMinutes', threshold: 20,
+        title: 'Go for a walk', enabled: true, lastFiredDayKey: null,
+      }],
+    });
+  }
+
+  afterEach(() => { useSettingsStore.setState({ healthRules: [] }); });
+
+  it('reads one bucket and claims nothing when no rule wants the window', () => {
+    // Nobody pays for a fortnight-wide query to serve a feature they are not
+    // using.
+    return useHealthStore.getState().refresh().then(() => {
+      expect(bridge.readDailyHealth).toHaveBeenCalledWith(expect.any(String), 1);
+      expect(useHealthStore.getState().today?.exerciseMinutesSeenRecently).toBe(false);
+    });
+  });
+
+  it('widens to the window when a rule needs it', async () => {
+    withExerciseRule();
+    bridge.readDailyHealth.mockResolvedValue([
+      reading({ start: todayStart().toISOString(), exerciseMinutes: null }),
+    ]);
+    await useHealthStore.getState().refresh();
+    expect(bridge.readDailyHealth).toHaveBeenCalledWith(
+      expect.any(String), EXERCISE_LIVE_WINDOW_DAYS,
+    );
+  });
+
+  it('counts the metric live when any day in the window recorded it', async () => {
+    withExerciseRule();
+    bridge.readDailyHealth.mockResolvedValue([
+      reading({ start: '2026-01-01T00:00:00.000Z', exerciseMinutes: 31 }),
+      reading({ start: todayStart().toISOString(), exerciseMinutes: null }),
+    ]);
+    await useHealthStore.getState().refresh();
+    expect(useHealthStore.getState().today?.exerciseMinutesSeenRecently).toBe(true);
+    // And today itself is still the absent one, not the day that had 31.
+    expect(useHealthStore.getState().today?.exerciseMinutes).toBeNull();
+  });
+
+  it('counts it dead when the whole window recorded nothing', async () => {
+    // Somebody with no device recording exercise, who must never be told they
+    // did none.
+    withExerciseRule();
+    bridge.readDailyHealth.mockResolvedValue([
+      reading({ start: '2026-01-01T00:00:00.000Z', exerciseMinutes: null }),
+      reading({ start: todayStart().toISOString(), exerciseMinutes: null }),
+    ]);
+    await useHealthStore.getState().refresh();
+    expect(useHealthStore.getState().today?.exerciseMinutesSeenRecently).toBe(false);
+  });
+
+  it('falls back to the last bucket rather than reading null when no day key matches', async () => {
+    // The native read's own note: if the buckets ever stop lining up, a bare
+    // find would make every day read null, and an absent value here is
+    // indistinguishable from a refusal.
+    withExerciseRule();
+    bridge.readDailyHealth.mockResolvedValue([
+      reading({ start: '2020-01-01T00:00:00.000Z', steps: 1 }),
+      reading({ start: '2020-01-02T00:00:00.000Z', steps: 4200 }),
+    ]);
+    await useHealthStore.getState().refresh();
     expect(useHealthStore.getState().today?.steps).toBe(4200);
   });
 });
