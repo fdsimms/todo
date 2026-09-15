@@ -162,14 +162,14 @@ export function GroceryItemSheet({
   const clearChoice = useGroceryStore(s => s.clearChoice);
   const setItemNutrition = useGroceryStore(s => s.setItemNutrition);
   // Named siblings, live ones only — the same read GroceryScreen does for the
-  // row caption, phrased as a sentence here because the sheet has the room.
-  const alternativeNames = useGroceryStore(s => {
-    if (!item?.choiceGroup) return null;
-    const names = s.items
+  // row caption. Shown as chips below the hint rather than joined into it, so
+  // the actual alternatives are visible rather than described.
+  const alternativeNames = useGroceryStore(useShallow(s => {
+    if (!item?.choiceGroup) return [];
+    return s.items
       .filter(i => i.id !== item.id && i.choiceGroup === item.choiceGroup && i.onList)
       .map(i => i.name);
-    return names.length > 0 ? names.join(' or ') : null;
-  });
+  }));
   // The reverse of sourceRecipeTitle below: not where this row was first
   // created from, but every recipe that calls for it right now. See
   // recipesUsingIngredient.
@@ -1074,11 +1074,29 @@ export function GroceryItemSheet({
           >
             <View style={styles.nutritionField}>
               {item.nutrition ? (
-                <Text style={styles.nutritionDetail}>
-                  {item.nutrition.portions.length > 0
-                    ? `${item.nutrition.portions.length} stated portions, so a recipe line written as a cup or a count can become a weight.`
-                    : 'No stated portions, so only lines already written as a weight can use this.'}
-                </Text>
+                item.nutrition.portions.length > 0 ? (
+                  // Shows the food's actual stated portions, the same way
+                  // FoodLogEntrySheet's portionChip row does, rather than a
+                  // sentence describing that portions exist in the abstract.
+                  <View style={styles.infoChipRow}>
+                    {item.nutrition.portions.map((portion, index) => {
+                      const count = Number.isInteger(portion.amount)
+                        ? String(portion.amount)
+                        : portion.amount.toFixed(2).replace(/0+$/, '').replace(/\.$/, '');
+                      return (
+                        <View key={`${portion.label}-${index}`} style={styles.infoChip}>
+                          <Text style={styles.infoChipText}>
+                            {count} {portion.label} · {Math.round(portion.grams)}g
+                          </Text>
+                        </View>
+                      );
+                    })}
+                  </View>
+                ) : (
+                  <Text style={styles.nutritionDetail}>
+                    No stated portions — only a weight, like grams or ounces, can be used in a recipe.
+                  </Text>
+                )
               ) : (
                 <Text style={styles.nutritionDetail}>
                   Nothing recorded. A recipe using this ingredient counts it as uncovered
@@ -1218,7 +1236,7 @@ export function GroceryItemSheet({
                 : frozen
                   ? 'In the freezer, so the use-by date is paused and there’s no use-up task. Taking it out starts the countdown again from a fresh shelf life.'
                   : item.isStaple
-                    ? 'Treated as on hand at all times, and kept out of the way in its own group when a recipe adds ingredients to the list.'
+                    ? 'Treated as on hand at all times. When a recipe adds ingredients to your list, this is filed under Always have instead of the shopping list.'
                     : onHandPast
                       ? 'Marked out of it. Won’t show as probably-have until you buy it again.'
                       : 'Decided automatically from purchase history when this comes up in a week plan.'
@@ -1599,12 +1617,18 @@ export function GroceryItemSheet({
               correction, not a shopping decision — at the shelf you resolve the
               choice by ticking one (see resolveChoice), and that needs no
               second control. */}
-          {!!alternativeNames && !featureHidden('itemChoices', simpleMode) && (
+          {alternativeNames.length > 0 && !featureHidden('itemChoices', simpleMode) && (
             <View style={styles.choiceBlock}>
               <Text style={styles.hint}>
-                Either/or with {alternativeNames}. Check one off at the store and
-                the rest come off the list.
+                Either/or — check one off at the store and the rest come off the list.
               </Text>
+              <View style={styles.infoChipRow}>
+                {alternativeNames.map(name => (
+                  <View key={name} style={styles.infoChip}>
+                    <Text style={styles.infoChipText}>{name}</Text>
+                  </View>
+                ))}
+              </View>
               <InlineAction
                 label="Not an either/or"
                 icon="unlink-outline"
@@ -1928,6 +1952,14 @@ function makeStyles(colors: Colors) {
   return StyleSheet.create({
     nutritionField: { gap: spacing.sm },
     nutritionDetail: { color: colors.textSecondary, fontSize: font.sm, lineHeight: 18 },
+    infoChipRow: { flexDirection: 'row', flexWrap: 'wrap', gap: spacing.xs },
+    infoChip: {
+      backgroundColor: colors.bgTertiary,
+      borderRadius: radius.full,
+      paddingHorizontal: spacing.sm,
+      paddingVertical: spacing.xs,
+    },
+    infoChipText: { color: colors.textSecondary, fontSize: font.xs },
     nutritionActions: { flexDirection: 'row', gap: spacing.sm, flexWrap: 'wrap' },
     root: { flex: 1, backgroundColor: colors.bg },
     // Same 64 width the plain spacer held, now the field-search toggle — still
