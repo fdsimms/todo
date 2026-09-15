@@ -171,6 +171,13 @@ export function FoodLogScreen() {
   const [addOpen, setAddOpen] = useState(false);
   const [scanOpen, setScanOpen] = useState(false);
   const [estimateOpen, setEstimateOpen] = useState(false);
+  /**
+   * The description the estimate sheet opens on. Empty from the header action,
+   * which is a cold start with nothing typed yet; whatever was in the food
+   * search when it came up empty, from the "Describe what you ate instead"
+   * route — see `FoodLogEntrySheet`'s `onEstimate`.
+   */
+  const [estimateSeed, setEstimateSeed] = useState('');
   const [savedMealsOpen, setSavedMealsOpen] = useState(false);
   /**
    * The entry whose catalog row is being chosen, or null.
@@ -608,7 +615,7 @@ export function FoodLogScreen() {
           // color-wand instead.
           ...(estimateRoute !== 'unavailable' ? [{
             icon: 'sparkles-outline',
-            onPress: () => { haptics.tap(); setAddingSlot(null); setEstimateOpen(true); },
+            onPress: () => { haptics.tap(); setAddingSlot(null); setEstimateSeed(''); setEstimateOpen(true); },
             accessibilityLabel: 'Estimate a meal from a description',
           } satisfies ScreenHeaderAction] : []),
           {
@@ -922,7 +929,7 @@ export function FoodLogScreen() {
         at={loggingAt}
         seedRecipeId={seedRecipeId}
         onClose={() => { setAddOpen(false); setSeedRecipeId(null); }}
-        onEstimate={estimateRoute !== 'unavailable' ? () => setEstimateOpen(true) : undefined}
+        onEstimate={estimateRoute !== 'unavailable' ? query => { setEstimateSeed(query); setEstimateOpen(true); } : undefined}
         onScan={() => setScanOpen(true)}
         onSavedMeal={savedMeals.length > 0 ? () => setSavedMealsOpen(true) : undefined}
         // Inside that sheet's own Modal, not beside it: as siblings these
@@ -947,6 +954,7 @@ export function FoodLogScreen() {
               visible={estimateOpen}
               slot={addingSlot}
               at={loggingAt}
+              initialDescription={estimateSeed}
               onClose={() => setEstimateOpen(false)}
               onLogged={() => setAddOpen(false)}
               onPickRecipe={recipeId => {

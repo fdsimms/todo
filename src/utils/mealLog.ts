@@ -1,4 +1,4 @@
-import type { MealPlanEntry, NutrientKey } from '../types';
+import type { MealPlanEntry, MealSlot, NutrientKey } from '../types';
 import { NUTRIENT_KEYS } from '../types';
 
 /**
@@ -295,3 +295,27 @@ export function describeHelping(helpings: number, countsServings: boolean): stri
 function trim(value: number): string {
   return Number.isInteger(value) ? String(value) : String(Math.round(value * 100) / 100);
 }
+
+/**
+ * Which meal an hour of the clock belongs to.
+ *
+ * For a caller that has a *moment* and needs a slot, with nobody around to ask
+ * — a reminder dictated to Siri at 19:40 and drained the next morning
+ * (`captureDraftFields`). Deliberately not `segmentForHour`'s three buckets
+ * (`parseTaskInput.ts`): that one answers a task's time-of-day and has no
+ * fourth answer, and the fourth is the one that matters here, since the hours
+ * either side of midnight are the ones a person is least likely to call a meal.
+ *
+ * The boundaries are a guess and are meant to be — every caller hands the
+ * answer to a sheet the user can change it in, and the point is to open that
+ * sheet on the right row rather than to be right. Snack takes the two ends of
+ * the day rather than breakfast taking the small hours, because "a thing eaten
+ * at 2am" is a snack far more often than it is breakfast.
+ */
+export function slotForHour(hour: number): MealSlot {
+  if (hour >= 5 && hour < 11) return 'breakfast';
+  if (hour >= 11 && hour < 16) return 'lunch';
+  if (hour >= 16 && hour < 22) return 'dinner';
+  return 'snack';
+}
+

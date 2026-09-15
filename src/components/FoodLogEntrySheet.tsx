@@ -167,8 +167,17 @@ interface Props {
    * the estimate sheet. Omitted by a caller that has nowhere to send that
    * (no API key, no on-device engine) — same gate `FoodLogScreen`'s own
    * sparkles action uses, just read by the caller instead of duplicated here.
+   *
+   * **It carries whatever is in the search field**, so the estimate sheet opens
+   * on the dish rather than on an empty box. This is the one route by which a
+   * composed or homemade thing gets logged at all — a grilled cheese with
+   * mozzarella is in no barcode source and no food database — and it is
+   * reached *after* a search has come up empty, so the words have already been
+   * typed once. Two callers, two sources for the same string and neither needs
+   * a second mechanism: `initialQuery` seeds this field from a meal's own name
+   * (`LogMealEntrySheet`), and anything typed since replaces it.
    */
-  onEstimate?: () => void;
+  onEstimate?: (query: string) => void;
   /**
    * Opens the barcode scanner, handing off to `ScanToLogFlow` — the third way
    * in, beside searching and describing. Omitted by a caller with nowhere to
@@ -1164,7 +1173,7 @@ export function FoodLogEntrySheet({
                     label="Describe what you ate instead"
                     icon="sparkles-outline"
                     variant="neutral"
-                    onPress={() => { haptics.tap(); Keyboard.dismiss(); onEstimate(); }}
+                    onPress={() => { haptics.tap(); Keyboard.dismiss(); onEstimate(query); }}
                   />
                 )}
               </View>

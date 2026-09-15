@@ -149,3 +149,64 @@ reminders that need writing or updating, then the deletes. And `isDemoModeActive
 this and the drain, which it didn't before: demo mode swaps the whole database, so an ungated pass
 pushes a seeded list into the user's real Reminders list, or drains real reminders into rows that
 are about to be thrown away.
+
+## Capture lists — any number of further destinations
+
+`reminderCaptures` (one JSON settings row, rules in `src/utils/reminderCaptures.ts`, UI in
+`ReminderCapturesSheet`) is an open set of further lists the drain reads, each filed somewhere of
+its own: a meal, a project, a category, a tag. "Hey Siri, add grilled cheese with mozzarella to my
+Food list."
+
+**Every capture files a task, and that is the whole reason this was small rather than a rewrite.**
+`Sink` is still `'task' | 'grocery'`; what a capture adds is a `filing` on the `DrainTarget`, which
+becomes `Partial<TaskDraft>` (`captureDraftFields`) spread onto the draft the drain already builds.
+Nothing that destroys the user's reminders was touched, and `takenNames`,
+`isReminderAlreadyPresent` and the create branch needed no new arm.
+
+**The obvious design was a list of app *areas*, and it is not available.** A dictated title is a
+complete record for a task and for a grocery row and for nothing else here. A `FoodLogEntry` refuses
+to exist without at least one nutrition figure (`addEntry` in `useFoodLogStore.ts`, and the panel is
+non-nullable on that type where it is nullable on `GroceryItem`/`ItemProduct`/`Recipe`), a weight has
+no table at all, a mood is a number. So the food arm does **not** write to the food log: it stamps
+`Task.logMealSlot`, and ticking the task raises the food log's own manual-entry sheet, prefilled,
+which is what that field already existed to do.
+
+That refusal is worth keeping rather than re-deriving, because the entry-shaped version fails
+quietly in two directions at once. `foodDayInputs` states a nutrient for a day only when *every*
+entry that day states it (`nutritionStats.ts`), so one figure-less row silently drops the whole day
+out of every nutrient average and out of `foodMoodContrasts` — while `labels` still carries the
+food, so `symptomFoodContrasts` counts it as a day the person ate the thing. The comment that read
+"somebody typed it, so a day carrying one is a day they were using the app"
+(`moodInsights.ts`) is the premise an unconfirmed dictation breaks.
+
+Five rules hold the rest of it in place:
+
+- **`confirmedListId` is not a duplicate of `listId`**, per capture, for the reason the two fixed
+  legs have it: importing deletes the user's reminders, so a drain runs only against a list they
+  confirmed by name and exact count. **Changing where a capture files, or whether it deletes, clears
+  that confirmation**, because the alert named both — an answer given about the food log is not an
+  answer about a project, and re-pointing a confirmed list would otherwise start filing and deleting
+  on the strength of a sentence about something else.
+- **`drainableReminderCaptures` is one predicate asked twice**, by the early-out that decides
+  whether the import is on at all and by the target builder. Those disagreeing is a bug this file
+  has already had once: a leg the early-out counts and the builder drops reports `'no-list'` ("the
+  list you chose has gone") for a list sitting right there. A meal capture stands down with
+  `kitchenEnabled` and would have re-introduced it as a second copy of the gate.
+- **The meal slot comes from the reminder's `creationDate`**, not from when the drain ran, so a
+  dinner dictated at 19:40 on Tuesday and drained on Wednesday morning is still dinner
+  (`reminderCreatedAt` → `slotForHour`). That field is genuinely optional in EventKit, and the
+  drain's own clock stands in when it is absent — named rather than hidden, because it is the best
+  available answer rather than a good one. A capture can also be pinned to one meal.
+- **A filing never carries a date.** Filing is not scheduling: a project-list capture is exactly the
+  undated running list `ProjectKind` `'list'` exists for, and dating it would put a sentence nobody
+  has read onto Today. The schedule a reminder *does* imply still rides `pendingImport` as before,
+  and the filing is applied *after* it, so a list pointed at a project keeps that whatever words are
+  in one reminder.
+- **Lists stay disjoint N ways, not pairwise.** `handledReminderIds` flattens every list into one
+  set, so a list feeding two destinations sends each reminder to whichever drain reached it first.
+  `reminderListOptions` therefore takes a set of exclusions (`captureListIds` plus the two fixed
+  legs' own ids) rather than the single `excludeId` that was enough for two.
+
+`resetToDefaults` clears every capture's list and confirmation by hand, keeping the title and
+filing — an array can't round-trip through `DEFAULT_SETTINGS`, and the hazard is the one the two
+fixed legs are cleared for.
