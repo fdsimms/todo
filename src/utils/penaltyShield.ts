@@ -153,6 +153,92 @@ export function extendShieldUntil(current: string | null, candidate: Date): stri
 }
 
 /**
+ * The minutes finishing this task gives back, or null when it gives back
+ * nothing.
+ *
+ * **A credit shortens a block that is already being served; it never buys time
+ * you were not otherwise blocked from.** That distinction is the whole design.
+ * The inverse of a penalty is the penalty coming off, and anything that hands
+ * out unblocked minutes on its own is a rewards feature wearing this one's
+ * clothes — it would mean the app blocking apps it had no reason to block, so
+ * that finishing something could unblock them.
+ *
+ * Which is why the credit is not a number of its own: it is *this task's own*
+ * `penaltyMinutes`, given back by the task that charged them. You cannot
+ * manufacture one, because there is nothing to credit until this row has
+ * actually cost you something.
+ *
+ * Four refusals, and each is one of `penaltyChargeFor`'s read backwards:
+ *
+ * - **Never charged, nothing to give back.** No `penaltyFiredAt` means this row
+ *   has taken nothing from anybody, and finishing it on time is the ordinary
+ *   case rather than a transaction.
+ * - **A charge that was recorded but never served gives nothing**, tested the
+ *   same way `penaltyChargeFor` decides not to serve it: a charge whose cutoff
+ *   falls outside the logical day being asked about bought no block, and
+ *   refunding a block that was never imposed is inventing credit. The two rules
+ *   have to agree, or a week away from the app would come back as seven
+ *   unserved charges that could each be cashed in.
+ * - **Once only.** `penaltyCreditedAt` is the stamp, so completing, undoing and
+ *   completing again yields one credit. Without it the whole feature is a
+ *   button that prints minutes.
+ * - **A negative task never credits.** There is nothing to *do* that undoes a
+ *   slip — that is what makes it a slip — so the only way to claim one would be
+ *   retracting the record, which is exactly what `undoSlip` refuses to pay for.
+ *   A credit model that hands back what `undoSlip` will not is the same hole
+ *   from the other side.
+ */
+export function penaltyCreditFor(
+  task: Task,
+  now: Date,
+  dayResetTime: string,
+): number | null {
+  if (task.penaltyMinutes === null) return null;
+  if (task.polarity === 'negative') return null;
+  if (task.penaltyFiredAt === null) return null;
+  if (task.penaltyCreditedAt !== null) return null;
+
+  // The mirror of `penaltyChargeFor`'s `servable`: a charge stamped for a
+  // cutoff outside today's logical day was let go rather than served.
+  const firedAt = new Date(task.penaltyFiredAt);
+  if (logicalDayStart(now, dayResetTime) > firedAt) return null;
+
+  return task.penaltyMinutes;
+}
+
+/**
+ * Take `minutes` off a standing block, and never off anything else.
+ *
+ * The inverse of `extendShieldUntil`, and deliberately its mirror in the one
+ * way that matters: that one keeps the later end so a second failure cannot
+ * shorten the first's block, and this one floors at `now` so a credit cannot
+ * push the end *before* the present and bank the difference against a future
+ * charge. Minutes already served are spent; only what is left can come back.
+ *
+ * Null out means no block, which is the same value `penaltyShieldUntil` holds
+ * when nothing is being served — so a credit that covers the whole remainder
+ * ends the block rather than leaving a stale instant behind.
+ *
+ * It knows nothing about the gate or the focus shield, and must not: those are
+ * two of the three reasons `appShield` ORs together, and a credit earned
+ * against a penalty has no business clearing a block somebody's own gate is
+ * holding. Shortening this one value is what keeps that true by construction.
+ */
+export function creditShieldUntil(
+  until: string | null,
+  minutes: number,
+  now: Date,
+): string | null {
+  if (until === null) return null;
+  const end = new Date(until);
+  // Already run out: there is nothing left to give back, and moving the
+  // instant further into the past would do nothing but confuse a later read.
+  if (end <= now) return until;
+  const credited = new Date(end.getTime() - minutes * 60_000);
+  return credited <= now ? null : credited.toISOString();
+}
+
+/**
  * Whether a penalty block should be in force at this moment.
  *
  * Every arm but one returns false, the same asymmetry `shieldWanted` has in
