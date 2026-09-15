@@ -1,6 +1,5 @@
-import { differenceInCalendarDays } from 'date-fns/differenceInCalendarDays';
-import { startOfDay } from 'date-fns/startOfDay';
 import { PRIORITY_LABELS, type Task, type TimeOfDay } from '../types';
+import { overdueDayCount } from './clockTime';
 import { getCurrentDayStart, getDeadlineCountdown, getLogicalToday } from './dateUtils';
 import { sumEstimatedMinutes } from './effort';
 import { useSettingsStore } from '../store/useSettingsStore';
@@ -178,14 +177,13 @@ export function buildPinContext(completedTasks: Task[] = []): PinContext {
  * Days a task is late by, in calendar days on the logical day boundary.
  * Positive = overdue, 0 = due today, negative = not due yet, null = no date.
  *
- * All local-time arithmetic. The version this replaced compared
- * `new Date().toISOString().split('T')[0]` against `dueDate.split('T')[0]`,
- * which is off by a day everywhere east of UTC+12 — `dueDate` is stored at
- * local noon, so its UTC date is the *next* day there.
+ * The arithmetic moved to the store-free clockTime module so savedViews.ts
+ * could share it rather than fork it; the reasoning about why it is local-time
+ * rather than a comparison of ISO date halves lives there now.
  */
 export function overdueDays(task: Task, todayStart: Date): number | null {
   if (!task.dueDate) return null;
-  return differenceInCalendarDays(todayStart, startOfDay(new Date(task.dueDate)));
+  return overdueDayCount(task.dueDate, todayStart);
 }
 
 function dueScore(task: Task, ctx: PinContext): number {

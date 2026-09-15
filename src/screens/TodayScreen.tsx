@@ -31,7 +31,7 @@ import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import Ionicons from '@expo/vector-icons/Ionicons';
 import { PinIcon } from '../components/PinIcon';
 import { format } from 'date-fns/format';
-import type { ContextRow, Task, TaskGroup, TaskTemplate, Category, TimeOfDay } from '../types';
+import type { ContextRow, SavedViewClause, Task, TaskGroup, TaskTemplate, Category, TimeOfDay } from '../types';
 import { isTaskNew, isTaskVisible, isUnscheduledTask, isInboxTask, isDismissedToday, isRelevantToGroupToday, groupRoster } from '../utils/visibilityUtils';
 import { type CreatedTaskDestination } from '../utils/createdTaskPlacement';
 import { completedOnDay, describeAllClear } from '../utils/allClear';
@@ -120,6 +120,8 @@ import { TemplatePickerSheet } from '../components/TemplatePickerSheet';
 import { ApplyTemplateSheet } from '../components/ApplyTemplateSheet';
 import { TemplateAppliedToast } from '../components/TemplateAppliedToast';
 import { SortFilterSheet } from '../components/SortFilterSheet';
+import { SavedViewEditorSheet } from '../components/SavedViewEditorSheet';
+import { clausesFromFilters } from '../utils/savedViews';
 import { TodayOptionsMenu } from '../components/TodayOptionsMenu';
 import { CategoryOrderSheet } from '../components/CategoryOrderSheet';
 import { DeloadSheet } from '../components/DeloadSheet';
@@ -622,6 +624,9 @@ export function TodayScreen() {
   const [pullingToSearch, setPullingToSearch] = useState(false);
   const [quickSearchVisible, setQuickSearchVisible] = useState(false);
   const [filterVisible, setFilterVisible] = useState(false);
+  // Non-null while the "save as view" form is open, holding the clauses the
+  // filters it was opened from stand for.
+  const [saveViewClauses, setSaveViewClauses] = useState<SavedViewClause[] | null>(null);
   const [optionsMenuVisible, setOptionsMenuVisible] = useState(false);
   const [focusSetupVisible, setFocusSetupVisible] = useState(false);
   // Which entry point opened the setup sheet — whether it should seed from
@@ -1433,6 +1438,23 @@ export function TodayScreen() {
   // through this filter at all (upcomingTaskIds is unfiltered), so this only
   // applies to the main Today list's group rows below.
   const groupTallyFiltered = filterPriorities.length > 0 || filterEfforts.length > 0 || filterHasReminder;
+
+  // Both close the filter sheet first: a sheet raised while it is still
+  // visible would be a second Modal presented from a view controller already
+  // presenting one, which silently does nothing.
+  const handleSaveAsView = useCallback(() => {
+    setFilterVisible(false);
+    setSaveViewClauses(clausesFromFilters({
+      priorities: filterPriorities,
+      efforts: filterEfforts,
+      hasReminder: filterHasReminder,
+    }));
+  }, [filterPriorities, filterEfforts, filterHasReminder]);
+
+  const handleOpenSavedViews = useCallback(() => {
+    setFilterVisible(false);
+    navigation.navigate({ name: 'SavedViews' } as never);
+  }, [navigation]);
 
   // Later, Unscheduled and Inbox get the reminder filter too (#1798), but not
   // priority/effort or sort — those stay Today-only, since Later/Unscheduled
@@ -4247,6 +4269,18 @@ export function TodayScreen() {
           onEffortsChange={setFilterEfforts}
           hasReminder={filterHasReminder}
           onHasReminderChange={setFilterHasReminder}
+          onSaveAsView={handleSaveAsView}
+          onOpenSavedViews={handleOpenSavedViews}
+        />
+
+        {/* Opened from the filter sheet, which closes in the same commit:
+            two sibling Modals visible at once is the presentation trap. */}
+        <SavedViewEditorSheet
+          visible={saveViewClauses !== null}
+          view={null}
+          initialClauses={saveViewClauses ?? undefined}
+          onClose={() => setSaveViewClauses(null)}
+          onCreated={viewId => navigation.navigate({ name: 'SavedViewDetail', params: { viewId } } as never)}
         />
 
         <TodayOptionsMenu

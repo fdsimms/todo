@@ -74,6 +74,7 @@ jest.mock('../db/database', () => ({
   dbUpdateCategory: jest.fn(),
   dbDeleteCategory: jest.fn(),
   dbGetAllTaskGroups: jest.fn().mockReturnValue([]),
+  dbGetAllSavedViews: jest.fn().mockReturnValue([]),
   dbGetFocusSession: jest.fn().mockReturnValue(null),
   dbSaveFocusSession: jest.fn(),
   dbClearFocusSession: jest.fn(),

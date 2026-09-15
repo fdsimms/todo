@@ -27,6 +27,8 @@ import { SymptomDetailScreen } from '../screens/SymptomDetailScreen';
 import { ArchivedScreen } from '../screens/ArchivedScreen';
 import { BackfillScreen } from '../screens/BackfillScreen';
 import { StuckScreen } from '../screens/StuckScreen';
+import { SavedViewsScreen } from '../screens/SavedViewsScreen';
+import { SavedViewDetailScreen } from '../screens/SavedViewDetailScreen';
 import { RemindersScreen } from '../screens/RemindersScreen';
 import { TemplatesScreen } from '../screens/TemplatesScreen';
 import { RecipesScreen } from '../screens/RecipesScreen';
@@ -125,6 +127,10 @@ const KITCHEN_SCREENS: ReadonlySet<string> = new Set(
 // drawer's current selection.
 const PUSHED_ROUTES = new Set([
   'Settings', 'SettingsGroup', 'TemplateDetail', 'ProjectDetail', 'CategoryDetail',
+  // Saved views has no menu row (see NAV_EXTRA_DESTINATIONS): it is opened
+  // from Today's filter sheet, and from the drawer's find field, which is why
+  // navigateToTab below has to leave the tab highlight alone for these.
+  'SavedViews', 'SavedViewDetail',
   'RecipeDetail', 'PersonDetail', 'CookbookDetail',
   // Reached from the Mood screen rather than from the menu. Both are the mood
   // log read at a narrower grain — every entry there is, and one symptom —
@@ -332,7 +338,7 @@ export default function AppNavigator() {
   ).current;
 
   const handleDrawerNavigate = useCallback((tabName: string) => {
-    setActiveTab(tabName);
+    if (!PUSHED_ROUTES.has(tabName)) setActiveTab(tabName);
     navRef.current?.navigate(tabName as never);
   }, []);
 
@@ -421,6 +427,16 @@ export default function AppNavigator() {
           <RootStack.Screen
             name="CategoryDetail"
             component={CategoryDetailScreen}
+            options={{ presentation: 'card' }}
+          />
+          <RootStack.Screen
+            name="SavedViews"
+            component={SavedViewsScreen}
+            options={{ presentation: 'card' }}
+          />
+          <RootStack.Screen
+            name="SavedViewDetail"
+            component={SavedViewDetailScreen}
             options={{ presentation: 'card' }}
           />
           <RootStack.Screen

@@ -1,11 +1,12 @@
 import * as SQLite from 'expo-sqlite';
-import type { Cookbook, DeliverableKind, FoodLogEntry, GeneratedKind, LoggedSymptom, MedicationLog, Milestone, MoodLevel, MoodLog, NutrientKey, Person, PersonGroup, PersonNote, PersonNoteKind, Task, Category, GroceryItem, GroceryList, GroceryListEntry, GtinLookup, ItemProduct, ItemShopLink, ItemSubLink, Leftover, MealPlanEntry, MealSlot, Recipe, RecipeMealType, RecipeSourceType, RecipeVote, ReceiptStyle, SavedMeal, SavedMealItem, Shop, StoreAlias, TaskGroup, FocusSession, FocusSessionRecord, FocusStep, FocusStepRecord, Project, ProjectCategory, TaskTemplate, TemplateCategory, TemplateContainer, TemplateItem, TemplateItemGroup, TemplateQuestion, TemplateSchedule, TimeOfDay } from '../types';
+import type { Cookbook, DeliverableKind, FoodLogEntry, GeneratedKind, LoggedSymptom, MedicationLog, Milestone, MoodLevel, MoodLog, NutrientKey, Person, PersonGroup, PersonNote, PersonNoteKind, Task, Category, GroceryItem, GroceryList, GroceryListEntry, GtinLookup, ItemProduct, ItemShopLink, ItemSubLink, Leftover, MealPlanEntry, MealSlot, Recipe, RecipeMealType, RecipeSourceType, RecipeVote, ReceiptStyle, SavedMeal, SavedMealItem, SavedView, Shop, StoreAlias, TaskGroup, FocusSession, FocusSessionRecord, FocusStep, FocusStepRecord, Project, ProjectCategory, TaskTemplate, TemplateCategory, TemplateContainer, TemplateItem, TemplateItemGroup, TemplateQuestion, TemplateSchedule, TimeOfDay } from '../types';
 import { DEFAULT_NUDGE_CADENCE_DAYS, MEAL_SLOTS, NUTRIENT_KEYS, PERSON_NOTE_KINDS, RECIPE_MEAL_TYPES, RECIPE_SOURCE_TYPES, isReceiptStyle } from '../types';
 import { generateId } from '../utils/id';
 import { appendPriceObservation, parsePriceHistory } from '../utils/priceHistory';
 import { parseFoodNutrition, serializeFoodNutrition } from '../utils/foodNutrition';
 import { parseUnavailableProductIds, productKeyFor } from '../utils/groceryProduct';
 import { parseChainItems } from '../utils/chain';
+import { parseSavedViewClauses, serializeSavedViewClauses } from '../utils/savedViews';
 import { parseFollowUpTaskDraft } from '../utils/followUpTask';
 import { cookbookKey, parseRecipeIngredients, parsePrepTasks, parseSteps } from '../utils/recipeUtils';
 import { parseRecipeTags } from '../utils/recipeTags';
@@ -584,6 +585,22 @@ export function initDatabase(): void {
       slot TEXT NOT NULL,
       recipe_id TEXT,
       title TEXT NOT NULL,
+      sort_order REAL NOT NULL DEFAULT 0,
+      created_at TEXT NOT NULL
+    );
+
+    -- A named, reusable lens over the task list. See SavedView in types for
+    -- the shape and utils/savedViews.ts for what a clause means.
+    -- The clauses column is the JSON array of predicates; it is read back via
+    -- parseSavedViewClauses rather than a bare JSON.parse, because this one is
+    -- parsed while mapping rows and a throw would take every later view with
+    -- it. The category names, project ids and tags inside it are soft
+    -- references that are allowed to dangle.
+    CREATE TABLE IF NOT EXISTS saved_views (
+      id TEXT PRIMARY KEY NOT NULL,
+      name TEXT NOT NULL,
+      icon TEXT NOT NULL,
+      clauses TEXT NOT NULL DEFAULT '[]',
       sort_order REAL NOT NULL DEFAULT 0,
       created_at TEXT NOT NULL
     );
@@ -1917,6 +1934,11 @@ export const BACKUP_TABLES = [
   'project_categories',
   'template_categories',
   'projects',
+  // After categories and projects: a view's clauses name categories by name
+  // and projects by id. They are ids inside JSON rather than foreign keys and
+  // are allowed to dangle (an unknown project renders as "a project"), so this
+  // is about keeping related rows together rather than a restore requirement.
+  'saved_views',
   // Before people: a person's group_id points at one of these, so restoring
   // groups first means a restored person never names a group that isn't
   // there yet.
@@ -3248,6 +3270,68 @@ export function dbUpdateTaskGroup(group: TaskGroup): void {
 
 export function dbDeleteTaskGroup(id: string): void {
   db.runSync('DELETE FROM task_groups WHERE id = ?', [id]);
+}
+
+// ─── Saved views ────────────────────────────────────────────────────────────
+
+function rowToSavedView(row: Record<string, unknown>): SavedView {
+  return {
+    id: row.id as string,
+    name: row.name as string,
+    icon: row.icon as string,
+    clauses: parseSavedViewClauses((row.clauses as string) ?? '[]'),
+    sortOrder: row.sort_order as number,
+    createdAt: row.created_at as string,
+  };
+}
+
+export function dbGetAllSavedViews(): SavedView[] {
+  const rows = db.getAllSync<Record<string, unknown>>(
+    'SELECT * FROM saved_views ORDER BY sort_order ASC, name ASC'
+  );
+  return rows.map(rowToSavedView);
+}
+
+/** The slot a new view takes: the bottom of the list, like a new category. */
+export function dbNextSavedViewSortOrder(): number {
+  const max = db.getFirstSync<{ m: number }>(
+    'SELECT COALESCE(MAX(sort_order), 0) AS m FROM saved_views'
+  )?.m ?? 0;
+  return max + 1;
+}
+
+export function dbInsertSavedView(view: SavedView): void {
+  db.runSync(
+    'INSERT INTO saved_views (id, name, icon, clauses, sort_order, created_at) VALUES (?,?,?,?,?,?)',
+    [
+      view.id, view.name, view.icon, serializeSavedViewClauses(view.clauses),
+      view.sortOrder, view.createdAt,
+    ]
+  );
+}
+
+export function dbUpdateSavedView(view: SavedView): void {
+  db.runSync(
+    'UPDATE saved_views SET name=?, icon=?, clauses=?, sort_order=? WHERE id=?',
+    [
+      view.name, view.icon, serializeSavedViewClauses(view.clauses),
+      view.sortOrder, view.id,
+    ]
+  );
+}
+
+export function dbDeleteSavedView(id: string): void {
+  db.runSync('DELETE FROM saved_views WHERE id = ?', [id]);
+}
+
+export function dbBatchUpdateSavedViewSortOrders(
+  updates: { id: string; sortOrder: number }[]
+): void {
+  db.withTransactionSync(() => {
+    for (const { id, sortOrder } of updates) {
+      db.runSync('UPDATE saved_views SET sort_order = ? WHERE id = ?', [sortOrder, id]);
+    }
+  });
 }
 
 // ─── Focus sessions ─────────────────────────────────────────────────────────

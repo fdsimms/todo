@@ -15,6 +15,7 @@ import { useMoodStore } from '../store/useMoodStore';
 import { useMilestoneStore } from '../store/useMilestoneStore';
 import { useMedicationStore } from '../store/useMedicationStore';
 import { useTaskGroupStore } from '../store/useTaskGroupStore';
+import { useSavedViewStore } from '../store/useSavedViewStore';
 import { useGroceryStore } from '../store/useGroceryStore';
 import { useRecipeStore } from '../store/useRecipeStore';
 import { useStepTimerStore } from '../store/useStepTimerStore';
@@ -126,6 +127,22 @@ export function seedDemoData(): void {
     setCategoryEmoji(name, emoji);
   });
   ['bills', 'quick', 'reading', 'admin'].forEach(addTag);
+
+  // --- Saved views ---------------------------------------------------------
+  // A view is invisible until one exists, so the seed carries two. The first
+  // is built from dimensions the filter sheet already has, which is where
+  // "save as view" comes from; the second uses a category and an overdue
+  // clause the sheet has no control for at all, which is the half that says
+  // why a view is more than the filter row it was saved from.
+  const { createView } = useSavedViewStore.getState();
+  createView('Quick wins', 'flash-outline', [
+    { kind: 'effort', values: [1, 2] },
+    { kind: 'heldBack', heldBack: false },
+  ]);
+  createView('Overdue errands', 'cart-outline', [
+    { kind: 'category', values: ['Errands'] },
+    { kind: 'overdue', overdue: true },
+  ]);
 
   // --- Recent searches -----------------------------------------------------
   // The Search screen's empty-field state is the recents list, so with nothing

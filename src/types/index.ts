@@ -489,6 +489,68 @@ export interface TaskGroup {
 }
 
 /**
+ * A saved view: a named, reusable lens over the task list (#2679).
+ *
+ * The filter state this joins was three settings on `useSettingsStore` —
+ * `filterPriorities`, `filterEfforts`, `filterHasReminder` — plus a sort, all
+ * of them global and shared by Today, Later, Unscheduled and Inbox. One state,
+ * no name, nothing kept, so "under 10 minutes and nothing blocked" had to be
+ * re-derived by hand every time or never got asked at all.
+ *
+ * A view is a name and a set of clauses. The rules for matching them live in
+ * `src/utils/savedViews.ts`, which is deliberately store-free; this is only the
+ * shape.
+ */
+export interface SavedView {
+  id: string;
+  name: string;
+  // An Ionicons glyph, picked from the closed set in utils/savedViews.ts. Not
+  // free text: it is drawn at iconSize.sm in a tinted circle, and a name the
+  // library doesn't have renders as nothing at all.
+  icon: string;
+  clauses: SavedViewClause[];
+  // The user's own order, same number space and same convention as Category —
+  // REAL, assigned max + 1 on create, renumbered by a batch update on reorder.
+  sortOrder: number;
+  createdAt: string;
+}
+
+/**
+ * One predicate in a saved view.
+ *
+ * **The set is closed on purpose.** Every variant reads a field that already
+ * exists on Task, and the matcher is a switch the compiler checks for
+ * exhaustiveness, so adding a clause is one variant, one case and one control.
+ * The alternative was a query language — a grammar, a parser, and an operator
+ * set that grows whenever somebody wants one more — which is a far larger
+ * thing to own and a far worse thing to draw: the editor renders one control
+ * per kind precisely because the kinds can be enumerated.
+ *
+ * **Clauses AND; values within a clause OR.** "Work or Home, and high
+ * priority" is the shape people mean, and it is the shape the existing filter
+ * sheet already implies with its multi-select chip rows. There is deliberately
+ * no OR between clauses: that needs a tree rather than a list, and a tree
+ * needs an editor nobody has asked for.
+ *
+ * The two-position clauses carry their own boolean rather than there being a
+ * `not` wrapper, for the same reason. "Has no reminder" is a control with two
+ * settings; negation in general is the tree again.
+ */
+export type SavedViewClause =
+  | { kind: 'category'; values: string[] }  // category names, as stored on Task.category
+  | { kind: 'tag'; values: string[] }
+  | { kind: 'project'; values: string[] }   // project ids
+  | { kind: 'priority'; values: Priority[] }
+  | { kind: 'effort'; values: Effort[] }
+  | { kind: 'maxMinutes'; minutes: number }
+  | { kind: 'overdue'; overdue: boolean }
+  | { kind: 'hasReminder'; hasReminder: boolean }
+  | { kind: 'heldBack'; heldBack: boolean }
+  | { kind: 'undated'; undated: boolean };
+
+export type SavedViewClauseKind = SavedViewClause['kind'];
+
+/**
  * One stretch of a focus session — either work on a task, or a break.
  *
  * A session is a *plan*: an ordered list of these, built once when the session

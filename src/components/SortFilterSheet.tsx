@@ -19,6 +19,7 @@ import { useScrollEdgeFade } from '../hooks/useScrollEdgeFade';
 import { useSheetHiddenOffset } from '../hooks/useSheetHiddenOffset';
 import { ScrollEdgeFade } from './ScrollEdgeFade';
 import { SheetScrim } from './SheetScrim';
+import { InlineAction } from './InlineAction';
 
 interface Props {
   visible: boolean;
@@ -31,6 +32,13 @@ interface Props {
   onEffortsChange: (e: Effort[]) => void;
   hasReminder: boolean;
   onHasReminderChange: (on: boolean) => void;
+  /**
+   * Keeps the filters currently set as a named view. Optional: the sheet is
+   * mounted in more than one place, and only Today has somewhere to keep them.
+   */
+  onSaveAsView?: () => void;
+  /** Opens the list of saved views. */
+  onOpenSavedViews?: () => void;
   /**
    * Later, Unscheduled and Inbox share this sheet with Today (#1798), but only
    * the reminder filter reaches those three views — sort and priority/effort
@@ -56,7 +64,7 @@ function toggle<T>(arr: T[], item: T): T[] {
 
 export function SortFilterSheet({
   visible, onClose, sort, onSortChange, priorities, onPrioritiesChange, efforts, onEffortsChange,
-  hasReminder, onHasReminderChange, remindersOnly = false,
+  hasReminder, onHasReminderChange, onSaveAsView, onOpenSavedViews, remindersOnly = false,
 }: Props) {
   const colors = useColors();
   const styles = useMemo(() => makeStyles(colors), [colors]);
@@ -274,6 +282,30 @@ export function SortFilterSheet({
                 </Text>
               </TouchableOpacity>
             </View>
+
+            {/* Saved views: keeping this set of filters, and getting back to
+                one kept earlier. The sheet is where filtering happens, which
+                is why the feature is reached from here rather than from a
+                side-menu row of its own. */}
+            {(onSaveAsView || onOpenSavedViews) && (
+              <View style={styles.savedViews}>
+                {onSaveAsView && (
+                  <InlineAction
+                    label="Save as view"
+                    icon="bookmark-outline"
+                    onPress={onSaveAsView}
+                    disabled={activeCount === 0}
+                  />
+                )}
+                {onOpenSavedViews && (
+                  <InlineAction
+                    label="Saved views"
+                    variant="neutral"
+                    onPress={onOpenSavedViews}
+                  />
+                )}
+              </View>
+            )}
           </ScrollView>
           <ScrollEdgeFade
             edge="bottom"
@@ -288,6 +320,15 @@ export function SortFilterSheet({
 }
 
 const makeStyles = (colors: Colors) => StyleSheet.create({
+  // Both margins: the reminder chips above carry no bottom margin of their
+  // own, and the sheet's own bottom padding is not a gap between blocks.
+  savedViews: {
+    flexDirection: 'row',
+    flexWrap: 'wrap',
+    gap: spacing.sm,
+    marginTop: spacing.lg,
+    marginBottom: spacing.sm,
+  },
   modalRoot: { flex: 1, justifyContent: 'flex-end' },
   overlay: { ...StyleSheet.absoluteFill, backgroundColor: colors.backdrop },
   sheet: {
