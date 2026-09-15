@@ -279,11 +279,17 @@ export function describePantryDoubt(card: PantryReviewCard): string | null {
 }
 
 /**
- * What the finished state says. Names the cap's leftovers rather than letting
- * a capped pass read as having covered the cupboard.
+ * What the finished state says. Names the cap's leftovers, and a session's
+ * own skips, rather than letting either read as having covered the cupboard
+ * — the same reasoning behind naming `omitted` at all, extended to a skip a
+ * person chose rather than one the cap forced.
  */
-export function describePantryReviewDone(answered: number, omitted: number): string {
+export function describePantryReviewDone(answered: number, skipped: number, omitted: number): string {
   const things = answered === 1 ? '1 thing' : `${answered} things`;
-  const head = answered === 0 ? 'Nothing checked' : `Checked ${things}`;
+  let head = answered === 0 ? 'Nothing checked' : `Checked ${things}`;
+  if (skipped > 0) {
+    const skippedThings = skipped === 1 ? '1 skipped' : `${skipped} skipped`;
+    head = `${head}, ${skippedThings}`;
+  }
   return omitted > 0 ? `${head}. ${omitted} more to go through next time.` : `${head}.`;
 }

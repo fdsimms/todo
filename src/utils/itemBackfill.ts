@@ -61,7 +61,7 @@ export const ITEM_BACKFILL_FIELDS: ItemBackfillFieldDef[] = [
   },
   {
     id: 'variety',
-    label: 'Variety of',
+    label: 'Counts as',
     hint: 'The general ingredient this item counts as, like white onion for onion, so a recipe naming the general ingredient accepts it.',
   },
   {

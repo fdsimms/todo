@@ -23,6 +23,7 @@ import { useProjectCategoryStore } from '../store/useProjectCategoryStore';
 import { isHeldBack, isQuotaOnPace, isTaskVisible } from '../utils/visibilityUtils';
 import { isMorningCheckInCandidate } from '../utils/morningCheckIn';
 import { useTaskGroupStore } from '../store/useTaskGroupStore';
+import { calibrationFrom, MIN_CALIBRATION_SAMPLES } from '../utils/estimateCalibration';
 import { useFocusStore } from '../store/useFocusStore';
 import { useUnattendedStore } from '../store/useUnattendedStore';
 import { isFocusRunning } from '../utils/focusPlan';
@@ -505,6 +506,17 @@ describe('demo mode', () => {
     expect(useCategoryStore.getState().categories.length).toBeGreaterThan(0);
     expect(s.tagRegistry.length).toBeGreaterThan(0);
 
+    useDemoStore.getState().exitDemoMode();
+  });
+
+  // The Stats section says nothing below MIN_CALIBRATION_SAMPLES, so seeding
+  // four timed tasks would look identical to seeding none. Asserting the
+  // derived read rather than the row count is what pins that.
+  it('seeds enough timed history for a calibration to exist', () => {
+    useDemoStore.getState().enterDemoMode();
+    const calibration = calibrationFrom(useTaskStore.getState().tasks);
+    expect(calibration).not.toBeNull();
+    expect(calibration!.samples).toBeGreaterThanOrEqual(MIN_CALIBRATION_SAMPLES);
     useDemoStore.getState().exitDemoMode();
   });
 
