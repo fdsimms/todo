@@ -1255,7 +1255,11 @@ describe('scheduleDailyAgenda', () => {
     const arg = agendaCall();
     expect(arg.content.title).toBe('Today');
     expect(arg.content.body).toBe('1 due');
-    expect(arg.content.data).toEqual({ dailyAgenda: true });
+    // The spoken line rides along so a tap can read it out without recounting
+    // against a store that may not have loaded yet. It is the spoken wording,
+    // not the written body: the separator in "1 due · 2 carried over" is a mark
+    // that only exists on a screen.
+    expect(arg.content.data).toEqual({ dailyAgenda: true, agendaSpoken: 'Today: 1 task due.' });
   });
 
   // The agenda was the one scheduled notification quiet hours didn't cover, and

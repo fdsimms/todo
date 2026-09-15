@@ -1,4 +1,4 @@
-import { agendaCounts, agendaBody, nextAgendaTime } from '../utils/dailyAgenda';
+import { agendaCounts, agendaBody, agendaSpokenBody, nextAgendaTime } from '../utils/dailyAgenda';
 import type { Task } from '../types';
 
 jest.mock('../store/useSettingsStore', () => ({
@@ -171,5 +171,52 @@ describe('nextAgendaTime', () => {
     const next = nextAgendaTime(new Date(2026, 7, 6, 6, 0, 45, 123), '08:00');
     expect(next.getSeconds()).toBe(0);
     expect(next.getMilliseconds()).toBe(0);
+  });
+});
+
+describe('agendaSpokenBody', () => {
+  it('names what is being counted, where the written body only counts', () => {
+    // "3 due" is a fragment you scan, not a sentence anybody says.
+    expect(agendaSpokenBody({ due: 3, carriedOver: 0, deadlines: 0 }))
+      .toBe('Today: 3 tasks due.');
+  });
+
+  it('joins with "and" rather than the written body\'s middle dot', () => {
+    // A middle dot is a mark that exists only on a screen.
+    expect(agendaBody({ due: 3, carriedOver: 2, deadlines: 0 }))
+      .toBe('3 due · 2 carried over');
+    expect(agendaSpokenBody({ due: 3, carriedOver: 2, deadlines: 0 }))
+      .toBe('Today: 3 tasks due and 2 carried over from earlier.');
+  });
+
+  it('uses a comma list for three', () => {
+    expect(agendaSpokenBody({ due: 3, carriedOver: 2, deadlines: 1 }))
+      .toBe('Today: 3 tasks due, 2 carried over from earlier, and 1 deadline.');
+  });
+
+  it('spells out "carried over", the one phrase that needs its context spoken', () => {
+    expect(agendaSpokenBody({ due: 0, carriedOver: 2, deadlines: 0 }))
+      .toBe('Today: 2 carried over from earlier.');
+  });
+
+  it('gets the singulars right', () => {
+    expect(agendaSpokenBody({ due: 1, carriedOver: 0, deadlines: 1 }))
+      .toBe('Today: 1 task due and 1 deadline.');
+  });
+
+  it('says nothing on an empty day, like the written body', () => {
+    // The one thing worse than a notification on an empty day is a voice
+    // announcing it.
+    expect(agendaSpokenBody({ due: 0, carriedOver: 0, deadlines: 0 })).toBeNull();
+  });
+
+  it('ends with a full stop, so the synthesiser\'s intonation falls', () => {
+    const spoken = agendaSpokenBody({ due: 2, carriedOver: 0, deadlines: 0 });
+    expect(spoken?.endsWith('.')).toBe(true);
+  });
+
+  it('never carries the written separator', () => {
+    const spoken = agendaSpokenBody({ due: 3, carriedOver: 2, deadlines: 1 });
+    expect(spoken).not.toContain('·');
   });
 });

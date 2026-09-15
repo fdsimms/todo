@@ -415,6 +415,8 @@ export const SETTINGS_ENTRIES: SettingsEntry[] = [
     keywords: ['morning summary', 'digest', 'notification'] },
   { id: 'dailyAgendaTime', requires: 'dailyAgenda', groupId: 'notifications', label: 'Send it at', section: 'Notifications',
     keywords: ['agenda time'] },
+  { id: 'dailyAgendaSpoken', requires: 'dailyAgenda', groupId: 'notifications', label: 'Read it aloud', section: 'Notifications',
+    keywords: ['speak', 'spoken', 'voice', 'out loud', 'text to speech', 'audio', 'hear'] },
   // The five rows below had no entry at all, which made the group's own subject
   // unsearchable: "quiet hours" and "do not disturb" are among the most likely
   // things anybody types into this field, and neither found anything.
