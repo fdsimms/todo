@@ -1,4 +1,6 @@
+import { differenceInCalendarDays } from 'date-fns/differenceInCalendarDays';
 import { format } from 'date-fns/format';
+import { startOfDay } from 'date-fns/startOfDay';
 
 /**
  * Clock-time helpers for the "HH:MM" strings settings and schedules are stored
@@ -55,6 +57,24 @@ export function taskDayStart(date: Date, dayResetTime: string): Date {
 }
 
 /**
+ * Calendar days a due date is late by. Positive = overdue, 0 = due today,
+ * negative = not due yet.
+ *
+ * The math lives here rather than beside its first caller so a store-free
+ * module can share it rather than fork it — the same split getTaskDayStart
+ * makes with taskDayStart above. `overdueDays` in pinSuggest.ts is this with a
+ * Task in front of it, and savedViews.ts reads it directly because importing
+ * pinSuggest would pull the settings and category stores, and so expo-sqlite,
+ * into a module that exists to stay inside Jest's node environment.
+ *
+ * All local-time arithmetic. Comparing the date halves of two ISO strings is
+ * off by a day everywhere east of UTC+12, since dueDate is stored at local
+ * noon and its UTC date is the next day there.
+ */
+export function overdueDayCount(dueDate: string, todayStart: Date): number {
+  return differenceInCalendarDays(todayStart, startOfDay(new Date(dueDate)));
+}
+
 /** Minutes past midnight for an "HH:MM" clock time. */
 export function hhmmMinutes(hhmm: string): number {
   const [h, m] = hhmm.split(':').map(Number);

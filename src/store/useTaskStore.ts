@@ -33,6 +33,7 @@ import { useSettingsStore } from './useSettingsStore';
 import { useCategoryStore, ensureCalendarEventCategory, ensureHealthCategory, ensureGeneratedTaskCategories, ensureGeneratedTaskCategory } from './useCategoryStore';
 import { useTemplateStore } from './useTemplateStore';
 import { useTaskGroupStore } from './useTaskGroupStore';
+import { useSavedViewStore } from './useSavedViewStore';
 import { useFocusStore } from './useFocusStore';
 import { useUnattendedStore } from './useUnattendedStore';
 import { useProjectStore, projectProgress } from './useProjectStore';
@@ -1748,6 +1749,11 @@ export const useTaskStore = create<TaskStore>((set, get) => ({
     useTaskGroupStore.getState().initialize();
     useProjectStore.getState().initialize();
     useProjectCategoryStore.getState().initialize();
+    // Beside the other task-metadata stores, and on the fan-out for the same
+    // swap-the-database reason: a saved view is a lens over tasks, so a list
+    // left pointed at the previous database would filter the new one with the
+    // old one's views.
+    useSavedViewStore.getState().initialize();
     // Rides the same fan-out as everything below it, and for the identical
     // swap-the-database reason: a person list left pointed at the previous
     // database while tasks showed the new one would render demo tasks naming
