@@ -36,7 +36,7 @@ import { useCalendarStore } from '../store/useCalendarStore';
 import { usePersonStore, displayNameOf } from '../store/usePersonStore';
 import { computeSnoozeSuggestion } from '../utils/snoozeEngine';
 import { buildDayBuckets } from '../utils/calendarMonth';
-import { buildDayLoads, describeDayWeight, weightFor, type DayLoad } from '../utils/dayLoad';
+import { assumedMinutesFor, buildDayLoads, describeDayWeight, weightFor, type DayLoad } from '../utils/dayLoad';
 import { awaySpanOf, type AwaySpan } from '../utils/awayDates';
 import { useProjectStore } from '../store/useProjectStore';
 import { useShallow } from 'zustand/react/shallow';
@@ -81,7 +81,7 @@ const BLANK_SNOOZE_TASK: Task = {
   quotaIntervalMinutes: null, quotaReminders: false, quotaStartedAt: null, quotaAlwaysVisible: false,
   quotaPeriod: 'day',
   healthMetric: null,
-  healthTarget: null, completionTimerMinutes: null, completionTimerNote: null, completionTimerStartedAt: null, logHealthMetric: null, logHealthAmount: null, medicationName: null, medicationAmount: null, medicationUnit: null, logMealSlot: null,
+  healthTarget: null, completionTimerMinutes: null, completionTimerNote: null, completionTimerStartedAt: null, logHealthMetric: null, logHealthAmount: null, medicationName: null, medicationAmount: null, medicationUnit: null, logMealSlot: null, estimateBeforeTiming: null,
 };
 
 interface Props {
@@ -347,6 +347,7 @@ export function WhenPicker({
         : null,
       awaySpans,
       dayResetTime,
+      assumedTaskMinutes: assumedMinutesFor(tasks),
     });
   }, [visible, calendarDays, tasks, dayResetTime, calendarReadEnabled, calendarLoaded, calendarEvents,
       calendarWindowStart, calendarWindowEnd, awaySpans]);
