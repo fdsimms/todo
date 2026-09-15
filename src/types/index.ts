@@ -2750,7 +2750,38 @@ export interface Task {
 // source, so a series row or a template application can't inherit a count.
 // followUpTaskTally is the same kind of thing — the rule (followUpTaskEveryN,
 // followUpTaskTitle) is the draft's to set, the progress toward it is not.
-export type TaskDraft = Omit<Task, 'id' | 'createdAt' | 'seenAt' | 'completed' | 'completedAt' | 'streakCount' | 'streakDate' | 'previousStreakCount' | 'previousStreakDate' | 'priorBestStreak' | 'slipCount' | 'slipDate' | 'penaltyFiredAt' | 'penaltyCreditedAt' | 'archived' | 'archivedAt' | 'postponeCount' | 'postponeMuted' | 'driftingSince' | 'followUpTaskTally' | 'previousFollowUpTaskTally' | 'calendarEventId' | 'completionCalendarEventId' | 'timeBlockEventId' | 'backfillDismissedFields'>;
+// One key per line, deliberately, and not to be re-joined. See the note on
+// the settings load in useSettingsStore.ts: every runtime-only field added
+// to Task is added here too, so one line is a guaranteed conflict between
+// any two branches adding a field at once.
+export type TaskDraft = Omit<
+  Task,
+  | 'id'
+  | 'createdAt'
+  | 'seenAt'
+  | 'completed'
+  | 'completedAt'
+  | 'streakCount'
+  | 'streakDate'
+  | 'previousStreakCount'
+  | 'previousStreakDate'
+  | 'priorBestStreak'
+  | 'slipCount'
+  | 'slipDate'
+  | 'penaltyFiredAt'
+  | 'penaltyCreditedAt'
+  | 'archived'
+  | 'archivedAt'
+  | 'postponeCount'
+  | 'postponeMuted'
+  | 'driftingSince'
+  | 'followUpTaskTally'
+  | 'previousFollowUpTaskTally'
+  | 'calendarEventId'
+  | 'completionCalendarEventId'
+  | 'timeBlockEventId'
+  | 'backfillDismissedFields'
+>;
 
 // Which of the template's two anchor dates an item's offsets are relative
 // to — e.g. "pack" anchored to the trip's end date, "request time off"

@@ -65,7 +65,7 @@ export function PeopleScreen() {
   const updatePerson = usePersonStore(s => s.updatePerson);
   const reorderPeople = usePersonStore(s => s.reorderPeople);
   const applyPersonArchived = usePersonStore(s => s.applyPersonArchived);
-  const removePersonRow = usePersonStore(s => s.removePersonRow);
+  const bulkRemovePeople = usePersonStore(s => s.bulkRemovePeople);
   const birthdayLeadDays = useSettingsStore(s => s.birthdayLeadDays);
 
   // Only ever the person just created from "More details" — an existing one is
@@ -139,7 +139,7 @@ export function PeopleScreen() {
           style: 'destructive',
           onPress: () => {
             animateLayout();
-            ids.forEach(id => removePersonRow(id));
+            bulkRemovePeople(ids);
             exitSelection();
           },
         },

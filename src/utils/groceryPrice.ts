@@ -473,6 +473,120 @@ export function describeListEstimate(estimate: ListEstimate, symbol: string): st
 }
 
 /**
+ * What is in the cart so far, as opposed to what the list will cost.
+ *
+ * The sibling of `estimateListTotal` and deliberately a second function rather
+ * than a flag on that one: they answer two different questions with the same
+ * shape, the way `describeRecipeCost` and `describeWeekCost` split one body by
+ * noun. That one is about a list you are looking at before you leave; this is
+ * about a trolley you are pushing.
+ *
+ * Staples are skipped for exactly the reason they are there: salt is on the
+ * list because a recipe named it, and letting it drag the coverage fraction
+ * down would make a fully-priced trolley look half-known.
+ *
+ * Checked rather than time-stamped against the trip's start, because a tick is
+ * the only record there is — an item carries no `checkedAt` — and
+ * `finishShopping` clears what is checked, so a trip normally begins with an
+ * empty trolley. A row left ticked from a shop nobody finished is still, on
+ * any honest reading, in the cart.
+ */
+export function estimateCartTotal(items: readonly GroceryItem[]): ListEstimate {
+  let totalMinor = 0;
+  let priced = 0;
+  let total = 0;
+  for (const item of items) {
+    if (!item.onList || !item.checked || item.isStaple) continue;
+    total += 1;
+    if (item.lastPriceMinor === null) continue;
+    totalMinor += item.lastPriceMinor;
+    priced += 1;
+  }
+  return { totalMinor, priced, total };
+}
+
+/**
+ * Whether the trolley has passed the budget — and the asymmetry that makes
+ * this honest rather than merely arithmetic.
+ *
+ * A running total built from some of the rows is a **floor**: the real number
+ * is at least this and possibly more. That makes the two verdicts unequal, and
+ * treating them as equal is the whole trap this function exists to avoid.
+ *
+ * - **Over is sayable at any coverage.** If the rows that *do* have prices
+ *   already add up past the budget, nothing the unpriced rows could cost would
+ *   bring it back under. The claim is safe however little of the trolley is
+ *   priced.
+ * - **Under is only sayable when everything is priced.** "You have $36 left"
+ *   with two unpriced items in the trolley is a number that could be wrong by
+ *   any amount, in the direction that matters. So it is withheld.
+ *
+ * Null is therefore a real third answer and not a failure: budget set, not yet
+ * over, coverage incomplete. The caller still shows the total and the
+ * coverage; what it does not do is offer a verdict it cannot stand behind.
+ * Same discipline `priceStandingFor` runs on — silence, never a guess.
+ */
+export type CartBudgetStanding = 'over' | 'under';
+
+export function cartBudgetStanding(
+  estimate: ListEstimate,
+  budgetMinor: number | null,
+): CartBudgetStanding | null {
+  if (budgetMinor === null || estimate.priced === 0) return null;
+  if (estimate.totalMinor > budgetMinor) return 'over';
+  return estimate.priced === estimate.total ? 'under' : null;
+}
+
+/**
+ * The banner's line: what is in the cart, against the budget if there is one,
+ * and always how much of the trolley the number covers.
+ *
+ * `≈` for `describeListEstimate`'s reason — this is the app's arithmetic over
+ * prices typed on earlier trips, not a figure anybody has been quoted — and
+ * null until something priced is in the cart, since "≈ $0.00 · 0 of 4 priced"
+ * says less than silence does.
+ *
+ * The coverage clause is dropped only when a verdict has replaced it, and only
+ * where that is honest: a full-coverage "under" says `$36.60 left`, which
+ * already implies every row was counted. An "over" keeps the coverage, because
+ * it can be claimed on partial coverage (see `cartBudgetStanding`) and hiding
+ * that would make a floor read as a measurement.
+ *
+ * It reports and does not judge: "over" here is a fact about two numbers, in
+ * the register `describePriceStanding` uses, and nothing in this file gets to
+ * have an opinion about a shop or a person.
+ */
+export function describeCartTotal(
+  estimate: ListEstimate,
+  budgetMinor: number | null,
+  symbol: string,
+): string | null {
+  if (estimate.priced === 0) return null;
+  const total = formatPrice(estimate.totalMinor, symbol);
+  const coverage = estimate.priced === estimate.total
+    ? null
+    : `${estimate.priced} of ${estimate.total} priced`;
+
+  if (budgetMinor === null) {
+    return coverage ? `≈ ${total} in cart · ${coverage}` : `≈ ${total} in cart`;
+  }
+
+  const budget = formatPrice(budgetMinor, symbol);
+  const standing = cartBudgetStanding(estimate, budgetMinor);
+  if (standing === 'over') {
+    const by = formatPrice(estimate.totalMinor - budgetMinor, symbol);
+    return coverage
+      ? `≈ ${total} of ${budget} · ${by} over · ${coverage}`
+      : `≈ ${total} of ${budget} · ${by} over`;
+  }
+  if (standing === 'under') {
+    return `≈ ${total} of ${budget} · ${formatPrice(budgetMinor - estimate.totalMinor, symbol)} left`;
+  }
+  // Budget set, not over, and not everything is priced — the third answer.
+  return `≈ ${total} of ${budget} · ${coverage}`;
+}
+
+/**
  * The one place the "which price do I seed a field with" rule lives: what this
  * item cost at *this* store if it's been priced there, else what it cost
  * anywhere. Standing in Costco, last week's Costco price is the number worth

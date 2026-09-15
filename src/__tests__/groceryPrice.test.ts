@@ -1,10 +1,13 @@
 import {
   cheapestShopFor,
+  cartBudgetStanding,
+  describeCartTotal,
   describeListEstimate,
   describePriceAge,
   describePriceContext,
   describePriceStanding,
   describeShopPrices,
+  estimateCartTotal,
   estimateListTotal,
   formatPrice,
   formatPriceInput,
@@ -714,5 +717,112 @@ describe('a preferred product scopes the run', () => {
       priceHistory: mixed,
     });
     expect(lastPricedAmountFor(bread, null, [])).toEqual({ minor: 349, quantity: '1 loaf' });
+  });
+});
+
+describe('estimateCartTotal', () => {
+  const cart = (...items: GroceryItem[]) => estimateCartTotal(items);
+
+  it('counts what is ticked, where estimateListTotal counts the whole list', () => {
+    const items = [
+      makeItem({ id: 'a', onList: true, checked: true, lastPriceMinor: 429 }),
+      makeItem({ id: 'b', onList: true, checked: false, lastPriceMinor: 999 }),
+    ];
+    expect(estimateCartTotal(items)).toEqual({ totalMinor: 429, priced: 1, total: 1 });
+    // The sibling still answers about the list, unchanged.
+    expect(estimateListTotal(items)).toEqual({ totalMinor: 1428, priced: 2, total: 2 });
+  });
+
+  it('ignores anything off the list', () => {
+    expect(cart(makeItem({ onList: false, checked: true, lastPriceMinor: 500 })))
+      .toEqual({ totalMinor: 0, priced: 0, total: 0 });
+  });
+
+  it('skips staples entirely, so they cannot drag the coverage down', () => {
+    // Salt is on the list because a recipe named it, not because anybody is
+    // buying salt today.
+    expect(cart(
+      makeItem({ id: 'a', onList: true, checked: true, lastPriceMinor: 429 }),
+      makeItem({ id: 'b', onList: true, checked: true, isStaple: true, lastPriceMinor: null }),
+    )).toEqual({ totalMinor: 429, priced: 1, total: 1 });
+  });
+
+  it('counts an unpriced row against coverage rather than dropping it', () => {
+    // A total that silently omitted the unpriced half would be worse than no
+    // total at all.
+    expect(cart(
+      makeItem({ id: 'a', onList: true, checked: true, lastPriceMinor: 429 }),
+      makeItem({ id: 'b', onList: true, checked: true, lastPriceMinor: null }),
+    )).toEqual({ totalMinor: 429, priced: 1, total: 2 });
+  });
+});
+
+describe('cartBudgetStanding — the asymmetry', () => {
+  // A running total built from some of the rows is a floor, so the two
+  // verdicts are not equally sayable.
+
+  it('says over on partial coverage, because nothing unpriced could undo it', () => {
+    expect(cartBudgetStanding({ totalMinor: 7000, priced: 3, total: 9 }, 6000)).toBe('over');
+  });
+
+  it('refuses to say under on partial coverage', () => {
+    // "You have $36 left" with two unpriced rows in the trolley is a number
+    // that could be wrong by any amount, in the direction that matters.
+    expect(cartBudgetStanding({ totalMinor: 2400, priced: 3, total: 9 }, 6000)).toBeNull();
+  });
+
+  it('says under once everything is priced', () => {
+    expect(cartBudgetStanding({ totalMinor: 2400, priced: 9, total: 9 }, 6000)).toBe('under');
+  });
+
+  it('treats exactly on budget as under rather than over', () => {
+    expect(cartBudgetStanding({ totalMinor: 6000, priced: 9, total: 9 }, 6000)).toBe('under');
+  });
+
+  it('says nothing with no budget, and nothing with nothing priced', () => {
+    expect(cartBudgetStanding({ totalMinor: 2400, priced: 9, total: 9 }, null)).toBeNull();
+    expect(cartBudgetStanding({ totalMinor: 0, priced: 0, total: 4 }, 6000)).toBeNull();
+  });
+});
+
+describe('describeCartTotal', () => {
+  it('says nothing until something priced is in the trolley', () => {
+    expect(describeCartTotal({ totalMinor: 0, priced: 0, total: 4 }, null, '$')).toBeNull();
+    expect(describeCartTotal({ totalMinor: 0, priced: 0, total: 4 }, 6000, '$')).toBeNull();
+  });
+
+  it('shows the total against nothing when no budget is set', () => {
+    expect(describeCartTotal({ totalMinor: 2400, priced: 4, total: 4 }, null, '$'))
+      .toBe('≈ $24.00 in cart');
+  });
+
+  it('always states coverage when it is partial', () => {
+    expect(describeCartTotal({ totalMinor: 2400, priced: 3, total: 5 }, null, '$'))
+      .toBe('≈ $24.00 in cart · 3 of 5 priced');
+  });
+
+  it('keeps coverage on an over verdict, since over can be claimed on a floor', () => {
+    expect(describeCartTotal({ totalMinor: 7000, priced: 3, total: 9 }, 6000, '$'))
+      .toBe('≈ $70.00 of $60.00 · $10.00 over · 3 of 9 priced');
+  });
+
+  it('drops coverage on an under verdict, which only happens at full coverage', () => {
+    expect(describeCartTotal({ totalMinor: 2400, priced: 9, total: 9 }, 6000, '$'))
+      .toBe('≈ $24.00 of $60.00 · $36.00 left');
+  });
+
+  it('offers no verdict when it is neither over nor fully priced', () => {
+    // The third answer: budget set, not over, coverage incomplete.
+    expect(describeCartTotal({ totalMinor: 2400, priced: 3, total: 9 }, 6000, '$'))
+      .toBe('≈ $24.00 of $60.00 · 3 of 9 priced');
+  });
+
+  it('marks every figure as an estimate', () => {
+    // The app's own arithmetic over prices typed on earlier trips, not a
+    // figure anybody was quoted.
+    for (const budget of [null, 6000]) {
+      expect(describeCartTotal({ totalMinor: 2400, priced: 3, total: 9 }, budget, '$'))
+        .toMatch(/^≈ /);
+    }
   });
 });

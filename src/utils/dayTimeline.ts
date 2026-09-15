@@ -94,6 +94,49 @@ export function clockToDayMinutes(hhmm: string, dayStart: Date): number {
     : minutes + MINUTES_IN_DAY - startOfDay;
 }
 
+/**
+ * Minutes from the day's start, signed and unclamped — negative before the
+ * day, past `MINUTES_IN_DAY` after it. `instantToDayMinutes` is this with the
+ * out-of-range answers thrown away, which is right for a task's own reminder
+ * (it is on one day or it isn't) and wrong for an event, which can straddle
+ * the boundary. See `placeEvent`.
+ */
+function dayOffsetMinutes(iso: string, dayStart: Date): number | null {
+  const at = new Date(iso).getTime();
+  if (!Number.isFinite(at)) return null;
+  return Math.round((at - dayStart.getTime()) / 60000);
+}
+
+/**
+ * Where an event sits on this day's axis, clipped to it at *both* ends.
+ *
+ * `eventsIn` selects by overlap rather than containment, so an event can begin
+ * before this day as easily as it can run past the end of it — a shift from
+ * 22:00 to 06:00 is on both days. Only the trailing overrun used to be
+ * clamped; a leading one made `instantToDayMinutes` answer null and the event
+ * was skipped outright, so the hours it covers drew as free and the Day view
+ * disagreed with the day-load figure beside it, which clips overlaps properly.
+ *
+ * A zero-length event is an `instant`, the same answer the time-block branch
+ * above already gives it. Without that it fails the `end > start` test and
+ * draws as a block running to midnight.
+ *
+ * Null means the event doesn't touch this day at all, which `eventsIn` should
+ * already have excluded — this is the guard for a caller that hasn't.
+ */
+function placeEvent(
+  event: BusyEvent,
+  dayStart: Date,
+): { start: number; end: number; instant: boolean } | null {
+  const rawStart = dayOffsetMinutes(event.start, dayStart);
+  const rawEnd = dayOffsetMinutes(event.end, dayStart);
+  if (rawStart === null || rawEnd === null) return null;
+  if (rawStart >= MINUTES_IN_DAY || rawEnd <= 0) return null;
+  const start = Math.max(0, rawStart);
+  const end = Math.min(MINUTES_IN_DAY, rawEnd);
+  return { start, end, instant: end <= start };
+}
+
 /** An instant as minutes from the day's start, or null when it isn't in it. */
 export function instantToDayMinutes(iso: string, dayStart: Date): number | null {
   const at = new Date(iso).getTime();
@@ -225,18 +268,18 @@ export function buildDayTimeline({ dayStart, tasks, events }: DayTimelineInput):
 
   for (const event of timed) {
     if (blockedEventIds.has(event.id)) continue;
-    const start = instantToDayMinutes(event.start, dayStart);
-    if (start === null) continue;
-    const end = instantToDayMinutes(event.end, dayStart);
+    // Clipped to the day at both ends rather than dropped when it overruns
+    // either of them: it really is on this day, it just doesn't begin or
+    // finish on it. See placeEvent.
+    const placed = placeEvent(event, dayStart);
+    if (!placed) continue;
     entries.push({
       key: `event:${event.id}`,
       kind: 'event',
       title: event.title,
-      startMinutes: start,
-      // An event running past the day's end is clamped to it rather than
-      // dropped: it really is on this day, it just doesn't finish on it.
-      endMinutes: end !== null && end > start ? end : MINUTES_IN_DAY,
-      instant: false,
+      startMinutes: placed.start,
+      endMinutes: placed.end,
+      instant: placed.instant,
       taskId: null,
       eventId: event.id,
       lane: 0,
