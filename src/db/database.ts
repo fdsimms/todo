@@ -1230,10 +1230,13 @@ export function initDatabase(): void {
     // rather than added to the CREATE TABLE above, so an install that already
     // has the people table picks it up.
     "ALTER TABLE people ADD COLUMN ask_about TEXT NOT NULL DEFAULT ''",
-    // Was "who a planned meal is for" (#2077); the feature was removed and
-    // nothing reads or writes this column anymore. Left in place rather than
-    // reverted, per this file's migration convention.
-    "ALTER TABLE meal_plan_entries ADD COLUMN person_ids TEXT NOT NULL DEFAULT '[]'",
+    // `meal_plan_entries.person_ids` was "who a planned meal is for" (#2077).
+    // The feature was removed and nothing reads or writes the column, so the
+    // ALTER that used to sit here is gone and new installs never create it.
+    // Installs that already ran it keep the column: it is NOT NULL DEFAULT
+    // '[]', nothing selects it by name, and both the restore and the sync
+    // apply path intersect incoming columns against the live schema
+    // (`projectRow`), so the two shapes interoperate untouched.
     // When a person's cadence was last turned on — see Person.cadenceSetAt.
     // Null on every existing row, including everybody already opted in today;
     // those keep reading as "no cadence-set anchor" (the reach-out pass falls
