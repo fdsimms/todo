@@ -317,7 +317,7 @@ export function SideMenuDrawer({ visible, onClose, onNavigate, onOpenSettings, a
                   const isActive = isRowActive(row);
                   const badge = badgeFor(row);
                   const label = row.kind === 'screen' ? row.destination.label : row.hub.label;
-                  const icon = row.kind === 'screen' ? row.icon : row.hub.icon;
+                  const icon = row.kind === 'screen' ? row.destination.icon : row.hub.icon;
                   const subtitle = row.kind === 'hub' ? hubSubtitle(row.hub) : null;
                   return (
                     <DrawerItemAppear key={label} index={index}>

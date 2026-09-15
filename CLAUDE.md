@@ -442,6 +442,7 @@ file: the two maps are indexes, not write-ups.
 | search ranking and the quick-search sheet | `src/utils/fuzzySearch.ts` + `src/utils/quickSearch.ts` |
 | the numbers on the Stats screen | `src/utils/stats.ts` (+ `cookingStats.ts`, `nutritionStats.ts`) |
 | planning a week of work | `src/utils/weekPlan.ts` |
+| the wheel on the More tab, and what it holds | `src/utils/featureWheel.ts` (geometry + hit test) + `src/components/FeatureWheel.tsx` + `featureWheelRoutes`. Read the geometry note first: a full 360° ring cannot be placed on a phone, which is why it is a fan, and the slot cap is a property of the reachable arc rather than a product call |
 | anything not listed here, in the logic layer | `docs/module-map.md` — every logic module and what it exports |
 | which screen shows a component, or what's on a screen | `docs/screen-map.md` — both directions, generated from the JSX |
 
@@ -454,12 +455,12 @@ them source rather than tests. The ten biggest source files:
 `store/useTaskStore.ts` (7.7k), `components/TaskEditor.tsx` (6.0k), `db/database.ts` (6.0k),
 `types/index.ts` (5.9k), `store/useGroceryStore.ts` (5.1k), `screens/TodayScreen.tsx` (4.6k),
 `components/TaskItem.tsx` (4.5k), `utils/demoSeed.ts` (4.2k),
-`store/useSettingsStore.ts` (3.8k), `screens/BackfillScreen.tsx` (3.6k).
+`store/useSettingsStore.ts` (3.9k), `screens/BackfillScreen.tsx` (3.6k).
 
 Grep for the symbol and read the surrounding range; reading any of them end to end costs more
 context than the rest of the task will. `docs/module-map.md` says which file owns what.
 
-The suite is **342 test files**, and `npm test` runs all of them in well under a minute.
+The suite is **343 test files**, and `npm test` runs all of them in well under a minute.
 `npx tsc --noEmit` is a few seconds once `.tsbuildinfo` exists, so run both, every time.
 
 <!-- END GENERATED: repo-stats -->
@@ -860,6 +861,20 @@ Four things follow from that and are worth not re-deriving:
 - **The drawer has a find field, and it is not optional decoration.** A hub hides four or five destinations behind one label, so without it, consolidating the menu would have made "Drift" strictly *harder* to reach than it was as its own row. `menuDestinations` flattens the same rows the menu draws into the index, so a screen the menu is hiding is not findable either — a result opening a feature you switched off is a way back into it that the switch didn't intend.
 - **Route sets are derived, not listed twice.** `DRAWER_TABS`, `RESTORABLE_SCREENS` and `KITCHEN_SCREENS` all come off `NAV_MENU_ROWS`/`NAV_HUBS`. Adding a screen to the menu is one edit.
 - **A hub row drops out when every member is gone**, and simplified mode is the only thing that can do that today. Pantry's disappearance under that mode used to be a hand-written special case in `initialScreenFromSettings` plus a second `featureHidden` call inside the pills; it is now just `screen: 'Kitchen'` on the `pantryTracking` feature, so one gate answers for the menu row, the pill and the cold-launch restore alike.
+
+**The wheel on More is a shortcut over the menu, never a replacement for it.** Pressing the
+More tab and dragging blooms `FeatureWheel`, a fan of up to six destinations selected by
+*direction*; a plain tap still opens the drawer with everything in it. That split is the whole
+licence for the feature: a flick-and-release cannot be driven by VoiceOver or Switch Control and
+asks for fine motor control a list of rows doesn't, so nothing may ever be reachable only that
+way. Two things follow and are worth not re-deriving. Its zone **claims the tab's touch outright
+and re-issues the tap itself** — an overlay that declines on start doesn't hand the press to the
+button underneath, because responder negotiation runs over the hit view and its *ancestors* and
+that button is a sibling; declining would drop the press and break the More tab. And it is
+**not a `Modal`**, which is what keeps the drag alive (#1182). What it holds comes from
+`navHubs.ts` through `wheelDestinations`, so simplified mode and `kitchenEnabled` take a slot away
+here exactly as they take a row out of the menu, and the order is the user's own and is never
+re-ranked — the angle is the thing somebody learns.
 
 `StuckScreen` is the merge of what were the Waiting and Drift rows — both were lists of tasks held out of the daily lists, differing only in whether something else or you are holding them, and `DriftScreen` opened by saying it was "the same shape and same reasoning as WaitingScreen". `BackfillScreen` briefly moved to Settings ("Data & reset" → Fill in) as a pushed `RootStack` card, on the reasoning that it fills in empty fields across tasks, categories, projects, people and grocery items rather than being a task list — but that buried a feature people reach for often behind four taps, so it's a standalone menu row again (a hidden tab, same as Stuck and Calendar), shown unconditionally in simplified mode as one of the "lens" screens (see `simpleMode.ts`).
 

@@ -51,6 +51,7 @@ import {
 } from '../utils/birthdayTasks';
 import { DEFAULT_MEAL_SLOTS_ENABLED } from '../utils/mealSlotTasks';
 import { parseRetentionDays, type RetentionDays } from '../utils/retention';
+import { DEFAULT_WHEEL_ROUTES } from '../utils/navHubs';
 import { addRecentSearch, parseRecentSearches } from '../utils/recentSearches';
 import { parseExpiredTaskGrace, serializeExpiredTaskGrace, type ExpiredTaskGraceDays } from '../utils/expiredTaskGrace';
 import { DEFAULT_APP_LOCK_GRACE_SECONDS, parseGraceSeconds } from '../utils/appLock';
@@ -546,6 +547,24 @@ interface SettingsStore {
   // install is unchanged. Deliberately kept out of DEFAULT_SETTINGS — see the
   // note there.
   kitchenEnabled: boolean;
+  /**
+   * The radial shortcut on the More tab (`FeatureWheel`). Defaults on, read
+   * `!== 'false'` like the rest, and kept out of DEFAULT_SETTINGS alongside
+   * `featureWheelRoutes` below: the pair is one feature, and the array half
+   * mechanically cannot go in, so resetting only the switch would put an empty
+   * wheel back rather than the one somebody had.
+   */
+  featureWheelEnabled: boolean;
+  /**
+   * Which screens the wheel holds, in the order the user put them — the angle
+   * a slot sits at is what somebody learns, so this is never re-ranked by
+   * anything. Route names, resolved against the live menu by
+   * `wheelDestinations`, so an unknown or withdrawn one simply doesn't draw.
+   *
+   * Out of DEFAULT_SETTINGS for the mechanical reason the note there gives:
+   * it is an array, and everything in that table goes back through `String()`.
+   */
+  featureWheelRoutes: string[];
   mealsOnToday: MealsOnToday;
   // Which units recipe and grocery amounts are *shown* in — see
   // src/utils/unitConvert.ts. Display only: the quantity stored on the recipe
@@ -1465,6 +1484,8 @@ interface SettingsStore {
   setTripLiveActivity: (on: boolean) => void;
   setFocusLiveActivity: (on: boolean) => void;
   setKitchenEnabled: (on: boolean) => void;
+  setFeatureWheelEnabled: (on: boolean) => void;
+  setFeatureWheelRoutes: (routes: string[]) => void;
   setRemindersImportEnabled: (on: boolean) => void;
   setRemindersImportListId: (id: string | null) => void;
   setRemindersImportConfirmedListId: (id: string | null) => void;
@@ -1812,6 +1833,31 @@ function parseCalendarIds(raw: string | null): string[] {
  * is read before them, so dropping unknown names here would forget a collapse
  * every launch. `TodayScreen` prunes against what actually rendered.
  */
+/**
+ * The wheel's slots.
+ *
+ * A row that has never been written means "never configured", which is the
+ * default fan — but a stored `'[]'` means somebody deliberately emptied it,
+ * and that has to survive a relaunch. So the missing case is checked before
+ * the parse rather than folded into it.
+ *
+ * Route names are not validated against the navigator here, deliberately:
+ * `wheelDestinations` already drops a route it cannot reach, and dropping one
+ * at load time would quietly rewrite the stored list when a screen is
+ * temporarily hidden (simplified mode, `kitchenEnabled`) and never put it back
+ * when the screen returns. Same call `parseCalendarIds` makes.
+ */
+function parseWheelRoutes(raw: string | null): string[] {
+  if (raw === null || raw === '') return [...DEFAULT_WHEEL_ROUTES];
+  try {
+    const parsed = JSON.parse(raw);
+    if (!Array.isArray(parsed)) return [...DEFAULT_WHEEL_ROUTES];
+    return parsed.filter((route): route is string => typeof route === 'string' && route.length > 0);
+  } catch {
+    return [...DEFAULT_WHEEL_ROUTES];
+  }
+}
+
 function parseCategoryNames(raw: string | null): string[] {
   if (!raw) return [];
   try {
@@ -2015,6 +2061,8 @@ export const useSettingsStore = create<SettingsStore>((set, get) => ({
   collapsedRecipeSections: [],
   collapsedGroceryGroups: [],
   kitchenEnabled: true,
+  featureWheelEnabled: true,
+  featureWheelRoutes: [...DEFAULT_WHEEL_ROUTES],
   mealsOnToday: 'inline',
   unitSystem: 'asWritten',
   currencySymbol: DEFAULT_CURRENCY_SYMBOL,
@@ -2241,6 +2289,9 @@ export const useSettingsStore = create<SettingsStore>((set, get) => ({
     // Same `!== 'false'`: the groceries/recipes/meal plan area is on unless
     // someone has turned it off, so no existing install loses it.
     const kitchenEnabled = dbGetSetting('kitchenEnabled') !== 'false';
+    // Same `!== 'false'`: the wheel is on unless someone has turned it off.
+    const featureWheelEnabled = dbGetSetting('featureWheelEnabled') !== 'false';
+    const featureWheelRoutes = parseWheelRoutes(dbGetSetting('featureWheelRoutes'));
     const storedMealsOnToday = dbGetSetting('mealsOnToday');
     // 'strip' and 'block' are the retired values (see MealsOnToday). Anything
     // that isn't 'off' means "show me the day's meals", which is now one shape
@@ -2583,7 +2634,7 @@ export const useSettingsStore = create<SettingsStore>((set, get) => ({
     const newTaskDefaults = parseNewTaskDefaults(dbGetSetting('newTaskDefaults'));
     const titleRules = parseTitleRules(dbGetSetting('titleRules'));
     const lastVisitedScreen = dbGetSetting('lastVisitedScreen') || null;
-    set({ dayResetTime: resetTime, morningStart, afternoonStart, eveningStart, nightStart, activeHoursStart, activeHoursEnd, quietHoursStart, quietHoursEnd, themeMode, appFont, appFontRandomize, appFontPool, dailyAgendaEnabled, dailyAgendaTime, tripReminderEnabled, backgroundRefreshEnabled, use24HourTime, weekStartsOn, fabHand, hapticsEnabled, shakeToUndoEnabled, confirmBeforeDeleting, sortOption, filterPriorities, filterEfforts, filterHasReminder, recipeSortOption, recipeLovedOnly, appLockEnabled, appLockGraceSeconds, vacationMode, vacationStart, vacationEnd, vacationDrivenBy, activeListDrivenBy, destinationForecastEnabled, autoRemoveExpiredTasks, autoCompleteProjectsOnDone, postponeCheckEnabled, postponeCheckThreshold, focusWorkCapMinutes, focusDefaultWorkMinutes, focusRestAfterTasks, focusRestAfterMinutes, focusRestMinutes, focusLongRestEvery, focusLongRestMinutes, focusShieldEnabled, penaltyShieldEnabled, gateShieldEnabled, penaltyShieldUntil, penaltyShieldReason, completedRetentionDays, defaultReminderLeadMinutes, hideCategories, collapsedCategories, collapsedRecipeSections, collapsedGroceryGroups, recentSearches, simpleTaskForm, simpleMode, hideHelpText, tipsEnabled, seenTips, lastTipShown, timerLiveActivity, tripLiveActivity, focusLiveActivity, kitchenEnabled, mealsOnToday, unitSystem, currencySymbol, mealCookTasks, mealCookTaskCategory, mealSlotsEnabled, mealSlotTasksWrittenThroughDayKey, mealSlotStepEstimates, cookRecapEnabled, restockOfferEnabled, productLookupEnabled, groceryUseUpTasks, groceryUseUpLeadDays, groceryUseUpTaskCategory, leftoverUseUpTasks, leftoverUseUpTaskCategory, useUpTaskCap, remindersImportEnabled, remindersImportListId, remindersImportConfirmedListId, remindersImportDelete, remindersImportReview, groceryImportEnabled, groceryImportListId, groceryImportConfirmedListId, groceryImportDelete, groceryImportTwoWay, calendarReadEnabled, calendarIds, vacationHiddenCalendarIds, calendarEventCategory, reminderMeetingNudgeEnabled, calendarPeopleHistory, deadlineCalendarId, completionCalendarId, mealCalendarId, healthReadEnabled, healthWriteEnabled, healthFoodWriteRefusalSeen, weightUnit, waterUnit, weightGoal, bodyProfile, healthCategory, healthTasks, healthTaskCategory, healthRules, projectReviewTasks, projectReviewTaskCategory, birthdayTasks, birthdayLeadDays, birthdayTaskCategory, birthdayGiftTasks, birthdayGiftLeadDays, birthdayGiftTaskCategory, reachOutTasks, reachOutTaskCategory, pantryCheckTasks, pantryCheckTaskCategory, pantryReviewTasks, pantryReviewTaskCategory, pantryReviewLastDayKey, lastDeloadAppliedDayKey, mealShortfallTasks, mealLogPrompt, nutritionTargets, foodLogPinnedNutrients, mealShortfallLeadDays, mealShortfallTaskCategory, mealLogNudgeTasks, mealLogNudgeTaskCategory, supplyReorderTasks, calendarReviewTasks, calendarReviewLastDayKey, calendarReviewTimeSegment, weatherTasks, weatherTaskCategory, weatherRules, screenTimeTasks, screenTimeTaskCategory, screenTimeRules, moodLogTasks, moodLogTaskCategory, moodLogLastDayKey, morningCheckInLastDayKey, moodLogTimeSegments, moodNudgeTasks, moodNudgeTaskCategory, moodNudgeAfterDays, moodNudgeLastDayKey, weekendNudgeTasks, weekendNudgeTaskCategory, weekendNudgeLeadDays, weekendNudgeLastWeekendKey, weighInTasks, weighInTaskCategory, weighInEveryDays, weighInLastDayKey, patchNotesQaStatus, aiFeatureConfig, onDeviceAiEnabled, defaultProjectNudgeCadenceDays, mealPlanNudgeEnabled, mealPlanNudgeIgnoresVacation, mealPlanNudgeWeekday, mealPlanNudgeTime, mealPlanNudgeLastFiredWeekKey, mealPlanNudgeGroupId, mealPlanNudgeTaskCategory, newTaskDefaults, titleRules, lastVisitedScreen, initialized: true });
+    set({ dayResetTime: resetTime, morningStart, afternoonStart, eveningStart, nightStart, activeHoursStart, activeHoursEnd, quietHoursStart, quietHoursEnd, themeMode, appFont, appFontRandomize, appFontPool, dailyAgendaEnabled, dailyAgendaTime, tripReminderEnabled, backgroundRefreshEnabled, use24HourTime, weekStartsOn, fabHand, hapticsEnabled, shakeToUndoEnabled, confirmBeforeDeleting, sortOption, filterPriorities, filterEfforts, filterHasReminder, recipeSortOption, recipeLovedOnly, appLockEnabled, appLockGraceSeconds, vacationMode, vacationStart, vacationEnd, vacationDrivenBy, activeListDrivenBy, destinationForecastEnabled, autoRemoveExpiredTasks, autoCompleteProjectsOnDone, postponeCheckEnabled, postponeCheckThreshold, focusWorkCapMinutes, focusDefaultWorkMinutes, focusRestAfterTasks, focusRestAfterMinutes, focusRestMinutes, focusLongRestEvery, focusLongRestMinutes, focusShieldEnabled, penaltyShieldEnabled, gateShieldEnabled, penaltyShieldUntil, penaltyShieldReason, completedRetentionDays, defaultReminderLeadMinutes, hideCategories, collapsedCategories, collapsedRecipeSections, collapsedGroceryGroups, recentSearches, simpleTaskForm, simpleMode, hideHelpText, tipsEnabled, seenTips, lastTipShown, timerLiveActivity, tripLiveActivity, focusLiveActivity, kitchenEnabled, featureWheelEnabled, featureWheelRoutes, mealsOnToday, unitSystem, currencySymbol, mealCookTasks, mealCookTaskCategory, mealSlotsEnabled, mealSlotTasksWrittenThroughDayKey, mealSlotStepEstimates, cookRecapEnabled, restockOfferEnabled, productLookupEnabled, groceryUseUpTasks, groceryUseUpLeadDays, groceryUseUpTaskCategory, leftoverUseUpTasks, leftoverUseUpTaskCategory, useUpTaskCap, remindersImportEnabled, remindersImportListId, remindersImportConfirmedListId, remindersImportDelete, remindersImportReview, groceryImportEnabled, groceryImportListId, groceryImportConfirmedListId, groceryImportDelete, groceryImportTwoWay, calendarReadEnabled, calendarIds, vacationHiddenCalendarIds, calendarEventCategory, reminderMeetingNudgeEnabled, calendarPeopleHistory, deadlineCalendarId, completionCalendarId, mealCalendarId, healthReadEnabled, healthWriteEnabled, healthFoodWriteRefusalSeen, weightUnit, waterUnit, weightGoal, bodyProfile, healthCategory, healthTasks, healthTaskCategory, healthRules, projectReviewTasks, projectReviewTaskCategory, birthdayTasks, birthdayLeadDays, birthdayTaskCategory, birthdayGiftTasks, birthdayGiftLeadDays, birthdayGiftTaskCategory, reachOutTasks, reachOutTaskCategory, pantryCheckTasks, pantryCheckTaskCategory, pantryReviewTasks, pantryReviewTaskCategory, pantryReviewLastDayKey, lastDeloadAppliedDayKey, mealShortfallTasks, mealLogPrompt, nutritionTargets, foodLogPinnedNutrients, mealShortfallLeadDays, mealShortfallTaskCategory, mealLogNudgeTasks, mealLogNudgeTaskCategory, supplyReorderTasks, calendarReviewTasks, calendarReviewLastDayKey, calendarReviewTimeSegment, weatherTasks, weatherTaskCategory, weatherRules, screenTimeTasks, screenTimeTaskCategory, screenTimeRules, moodLogTasks, moodLogTaskCategory, moodLogLastDayKey, morningCheckInLastDayKey, moodLogTimeSegments, moodNudgeTasks, moodNudgeTaskCategory, moodNudgeAfterDays, moodNudgeLastDayKey, weekendNudgeTasks, weekendNudgeTaskCategory, weekendNudgeLeadDays, weekendNudgeLastWeekendKey, weighInTasks, weighInTaskCategory, weighInEveryDays, weighInLastDayKey, patchNotesQaStatus, aiFeatureConfig, onDeviceAiEnabled, defaultProjectNudgeCadenceDays, mealPlanNudgeEnabled, mealPlanNudgeIgnoresVacation, mealPlanNudgeWeekday, mealPlanNudgeTime, mealPlanNudgeLastFiredWeekKey, mealPlanNudgeGroupId, mealPlanNudgeTaskCategory, newTaskDefaults, titleRules, lastVisitedScreen, initialized: true });
   },
 
   /**
@@ -3329,6 +3380,20 @@ export const useSettingsStore = create<SettingsStore>((set, get) => ({
   setKitchenEnabled(on: boolean) {
     dbSetSetting('kitchenEnabled', on ? 'true' : 'false');
     set({ kitchenEnabled: on });
+  },
+
+  setFeatureWheelEnabled(on: boolean) {
+    dbSetSetting('featureWheelEnabled', on ? 'true' : 'false');
+    set({ featureWheelEnabled: on });
+  },
+
+  // Written whole, like setWeatherRules: the sheet editing this holds the full
+  // list and hands it back complete. An empty array serializes as '[]' rather
+  // than '', which is what lets parseWheelRoutes tell a cleared wheel from one
+  // nobody has touched.
+  setFeatureWheelRoutes(routes: string[]) {
+    dbSetSetting('featureWheelRoutes', JSON.stringify(routes));
+    set({ featureWheelRoutes: routes });
   },
 
   setMealsOnToday(mode: MealsOnToday) {

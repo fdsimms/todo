@@ -53,6 +53,17 @@ export type NavHubId = 'kitchen' | 'organize' | 'history' | 'health';
 export interface NavDestination {
   /** Route name in the bottom-tab navigator. */
   route: string;
+  /**
+   * Ionicons glyph name.
+   *
+   * It lives on the destination rather than on the menu row because a hub's
+   * *members* need one too: the drawer never drew them (a hub row shows the
+   * hub's own icon and names its members in a subtitle), but `FeatureWheel`
+   * draws one chip per destination and a hub member is as likely to be on it
+   * as a stand-alone screen. A screen row's icon is this one, so there is no
+   * second field on `NavMenuRow` to disagree with it.
+   */
+  icon: string;
   /** What the user calls it: the pill label, and the row label where it stands alone. */
   label: string;
   /**
@@ -80,7 +91,7 @@ export interface NavHub {
 }
 
 export type NavMenuRow =
-  | { kind: 'screen'; icon: string; kitchen?: boolean; destination: NavDestination }
+  | { kind: 'screen'; kitchen?: boolean; destination: NavDestination }
   | { kind: 'hub'; hub: NavHub };
 
 const KITCHEN_HUB: NavHub = {
@@ -89,13 +100,13 @@ const KITCHEN_HUB: NavHub = {
   icon: 'cart-outline',
   kitchen: true,
   members: [
-    { route: 'Groceries', label: 'Groceries', keywords: ['shopping', 'list', 'cart', 'trolley', 'buy'] },
-    { route: 'Recipes', label: 'Recipes', keywords: ['cook', 'cooking', 'ingredients'] },
-    { route: 'MealPlan', label: 'Meal plan', keywords: ['meals', 'week', 'dinner', 'leftovers'] },
+    { route: 'Groceries', label: 'Groceries', icon: 'cart-outline', keywords: ['shopping', 'list', 'cart', 'trolley', 'buy'] },
+    { route: 'Recipes', label: 'Recipes', icon: 'book-outline', keywords: ['cook', 'cooking', 'ingredients'] },
+    { route: 'MealPlan', label: 'Meal plan', icon: 'restaurant-outline', keywords: ['meals', 'week', 'dinner', 'leftovers'] },
     // "Pantry" is the display label; the route and everything behind it is
     // still `Kitchen` — the same split as "Stack" over `TaskGroup`, and the
     // reason is written up where the label was chosen.
-    { route: 'Kitchen', label: 'Pantry', keywords: ['fridge', 'freezer', 'kitchen', 'inventory', 'use by'] },
+    { route: 'Kitchen', label: 'Pantry', icon: 'basket-outline', keywords: ['fridge', 'freezer', 'kitchen', 'inventory', 'use by'] },
     // Food log moved back here from its own Health hub: what you log there is
     // what you planned and shopped for here, and a tap from Meal plan landing
     // on a screen with no way back to the other three kitchen pills read as
@@ -103,7 +114,7 @@ const KITCHEN_HUB: NavHub = {
     // take it with the rest of the hub, same as the other three — a food
     // diary tied to groceries you've switched off is the accepted cost of
     // that connection.
-    { route: 'FoodLog', label: 'Food log', keywords: ['ate', 'eaten', 'calories', 'diary', 'nutrition', 'macros'] },
+    { route: 'FoodLog', label: 'Food log', icon: 'nutrition-outline', keywords: ['ate', 'eaten', 'calories', 'diary', 'nutrition', 'macros'] },
   ],
 };
 
@@ -112,11 +123,11 @@ const ORGANIZE_HUB: NavHub = {
   label: 'Organize',
   icon: 'albums-outline',
   members: [
-    { route: 'Categories', label: 'Categories', keywords: ['areas', 'lists', 'groups'] },
-    { route: 'Tags', label: 'Tags', keywords: ['labels'] },
-    { route: 'People', label: 'People', keywords: ['contacts', 'birthdays', 'friends', 'family'] },
-    { route: 'Stacks', label: 'Stacks', keywords: ['groups', 'routines', 'bundles'] },
-    { route: 'Templates', label: 'Templates', keywords: ['presets', 'checklists', 'reusable'] },
+    { route: 'Categories', label: 'Categories', icon: 'folder-outline', keywords: ['areas', 'lists', 'groups'] },
+    { route: 'Tags', label: 'Tags', icon: 'pricetag-outline', keywords: ['labels'] },
+    { route: 'People', label: 'People', icon: 'people-outline', keywords: ['contacts', 'birthdays', 'friends', 'family'] },
+    { route: 'Stacks', label: 'Stacks', icon: 'layers-outline', keywords: ['groups', 'routines', 'bundles'] },
+    { route: 'Templates', label: 'Templates', icon: 'copy-outline', keywords: ['presets', 'checklists', 'reusable'] },
   ],
 };
 
@@ -125,9 +136,9 @@ const HISTORY_HUB: NavHub = {
   label: 'History',
   icon: 'time-outline',
   members: [
-    { route: 'Logbook', label: 'Logbook', keywords: ['done', 'completed', 'finished'] },
-    { route: 'Stats', label: 'Stats', keywords: ['numbers', 'charts', 'streaks', 'progress'] },
-    { route: 'Archived', label: 'Archived', keywords: ['paused', 'filed', 'put away'] },
+    { route: 'Logbook', label: 'Logbook', icon: 'checkmark-done-outline', keywords: ['done', 'completed', 'finished'] },
+    { route: 'Stats', label: 'Stats', icon: 'stats-chart-outline', keywords: ['numbers', 'charts', 'streaks', 'progress'] },
+    { route: 'Archived', label: 'Archived', icon: 'archive-outline', keywords: ['paused', 'filed', 'put away'] },
   ],
 };
 
@@ -144,9 +155,9 @@ const HEALTH_HUB: NavHub = {
   label: 'Health',
   icon: 'heart-outline',
   members: [
-    { route: 'Mood', label: 'Mood', keywords: ['feelings', 'symptoms', 'how i feel'] },
-    { route: 'Medications', label: 'Medications', keywords: ['medicine', 'pills', 'tablets', 'dose', 'supplement', 'inhaler', 'painkiller'] },
-    { route: 'Weight', label: 'Weight', keywords: ['scale', 'kg', 'lb', 'pounds', 'body', 'mass'] },
+    { route: 'Mood', label: 'Mood', icon: 'happy-outline', keywords: ['feelings', 'symptoms', 'how i feel'] },
+    { route: 'Medications', label: 'Medications', icon: 'medkit-outline', keywords: ['medicine', 'pills', 'tablets', 'dose', 'supplement', 'inhaler', 'painkiller'] },
+    { route: 'Weight', label: 'Weight', icon: 'scale-outline', keywords: ['scale', 'kg', 'lb', 'pounds', 'body', 'mass'] },
   ],
 };
 
@@ -155,9 +166,9 @@ export const NAV_HUBS: readonly NavHub[] = [KITCHEN_HUB, ORGANIZE_HUB, HISTORY_H
 export const NAV_MENU_ROWS: readonly NavMenuRow[] = [
   {
     kind: 'screen',
-    icon: 'checkbox-outline',
     destination: {
-      route: 'Today',
+            route: 'Today',
+      icon: 'checkbox-outline',
       label: 'Tasks',
       keywords: ['today', 'later', 'unscheduled', 'inbox', 'list'],
     },
@@ -167,8 +178,7 @@ export const NAV_MENU_ROWS: readonly NavMenuRow[] = [
   // full screen.
   {
     kind: 'screen',
-    icon: 'search-outline',
-    destination: { route: 'Search', label: 'Search', keywords: ['find', 'look up'] },
+    destination: { route: 'Search', label: 'Search', icon: 'search-outline', keywords: ['find', 'look up'] },
   },
   // A tab, but not otherwise reachable from the drawer or its search — the one
   // main surface that wasn't. Placed with the other questions about your own
@@ -176,31 +186,29 @@ export const NAV_MENU_ROWS: readonly NavMenuRow[] = [
   // task list, not something a task belongs to after the fact.
   {
     kind: 'screen',
-    icon: 'briefcase-outline',
-    destination: { route: 'Projects', label: 'Projects' },
+    destination: { route: 'Projects', label: 'Projects', icon: 'briefcase-outline' },
   },
   {
     kind: 'screen',
-    icon: 'calendar-outline',
-    destination: { route: 'Calendar', label: 'Calendar', keywords: ['month', 'dates', 'schedule'] },
+    destination: { route: 'Calendar', label: 'Calendar', icon: 'calendar-outline', keywords: ['month', 'dates', 'schedule'] },
   },
   // The fourth question about your own tasks, and the last one that gets a row
   // of its own: what has stopped moving. Waiting and Drift were two rows and
   // are now two sections of one screen — see `StuckScreen`.
   {
     kind: 'screen',
-    icon: 'file-tray-full-outline',
     destination: {
       route: 'Stuck',
+      icon: 'file-tray-full-outline',
       label: 'Stuck',
       keywords: ['waiting', 'blocked', 'drift', 'drifting', 'postponed', 'pushed', 'stalled', 'on hold'],
     },
   },
   {
     kind: 'screen',
-    icon: 'alarm-outline',
     destination: {
       route: 'Reminders',
+      icon: 'alarm-outline',
       label: 'Reminders',
       keywords: ['upcoming', 'alerts', 'notifications', 'alarm'],
     },
@@ -211,9 +219,9 @@ export const NAV_MENU_ROWS: readonly NavMenuRow[] = [
   // as Calendar and Stuck (see simpleMode.ts).
   {
     kind: 'screen',
-    icon: 'flash-outline',
     destination: {
       route: 'Backfill',
+      icon: 'flash-outline',
       label: 'Backfill',
       keywords: ['fill in', 'missing', 'empty fields', 'estimates', 'categories', 'tidy up'],
     },
@@ -224,8 +232,7 @@ export const NAV_MENU_ROWS: readonly NavMenuRow[] = [
   { kind: 'hub', hub: HEALTH_HUB },
   {
     kind: 'screen',
-    icon: 'bulb-outline',
-    destination: { route: 'Tips', label: 'Tips', keywords: ['help', 'how to', 'guide'] },
+    destination: { route: 'Tips', label: 'Tips', icon: 'bulb-outline', keywords: ['help', 'how to', 'guide'] },
   },
 ];
 
@@ -327,4 +334,56 @@ export function searchMenu(destinations: NavSearchResult[], terms: string[]): Na
     const haystacks = [d.label, ...(d.keywords ?? []), ...(d.hubLabel ? [d.hubLabel] : [])];
     return terms.every(term => haystacks.some(h => h.toLowerCase().includes(term)));
   });
+}
+
+/**
+ * What the feature wheel holds out of the box: the working surfaces somebody
+ * opens every day, rather than the shelves they file things on.
+ *
+ * Ordered near-vertical first, because that end of the arc is the shortest
+ * flick — so the order here is roughly "how often", not menu order. It is only
+ * a starting point: the set and its order are `featureWheelRoutes` in
+ * settings, and the whole point of a loadout is that it is the user's.
+ *
+ * `Recipes` rather than `Calendar` or `Pantry` for the sixth slot on the same
+ * reasoning as the other five: it is a place you go to *do* something, where
+ * Calendar and Pantry are places you go to look something up, and looking
+ * something up is what the drawer's find field is already good at.
+ */
+export const DEFAULT_WHEEL_ROUTES: readonly string[] = [
+  'Today', 'Groceries', 'MealPlan', 'FoodLog', 'Mood', 'Recipes',
+];
+
+/**
+ * The slots to draw, resolved against the same gates the menu uses.
+ *
+ * Built on `menuDestinations` rather than on a table of its own, so a screen
+ * simplified mode or `kitchenEnabled` has taken away cannot be reached from
+ * the wheel either. That symmetry is the one the drawer's find field already
+ * keeps, and it matters more here: the wheel is a gesture with no labels to
+ * read until it opens, so a slot leading somewhere the app has withdrawn
+ * would be a dead direction the user had already learnt.
+ *
+ * Order is the caller's, never the menu's — direction is the whole feature, so
+ * the slots sit where the user put them. Unknown and withdrawn routes are
+ * dropped rather than substituted: a fan of five is a fine fan, and shuffling
+ * a replacement into somebody's muscle memory is worse than a gap.
+ */
+export function wheelDestinations(
+  routes: readonly string[],
+  options: NavMenuOptions,
+  maxSlots: number,
+): NavDestination[] {
+  const available = new Map(menuDestinations(options).map(d => [d.route, d]));
+  const out: NavDestination[] = [];
+  const seen = new Set<string>();
+  for (const route of routes) {
+    if (seen.has(route)) continue;
+    const destination = available.get(route);
+    if (!destination) continue;
+    seen.add(route);
+    out.push(destination);
+    if (out.length >= maxSlots) break;
+  }
+  return out;
 }

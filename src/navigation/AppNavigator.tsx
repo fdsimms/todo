@@ -41,6 +41,7 @@ import { CategoryDetailScreen } from '../screens/CategoryDetailScreen';
 import { PersonDetailScreen } from '../screens/PersonDetailScreen';
 import { TipsScreen } from '../screens/TipsScreen';
 import { SideMenuDrawer } from '../components/SideMenuDrawer';
+import { FeatureWheel } from '../components/FeatureWheel';
 import { SettingsScreen } from '../screens/SettingsScreen';
 import { SettingsGroupScreen } from '../screens/SettingsGroupScreen';
 import { DemoBanner } from '../components/DemoBanner';
@@ -461,6 +462,13 @@ export default function AppNavigator() {
           {...edgePanResponder.panHandlers}
         />
       )}
+      {/* The other gesture zone hung off this navigator, and the same shape as
+          the edge swipe above it: an absolutely positioned View with a
+          PanResponder, deliberately not a Modal (a drag inside a pageSheet
+          Modal doesn't work at all — see FeatureWheel's own note and #1182).
+          Gated on !menuOpen for the reason the edge zone is: the drawer covers
+          the tab bar, so there is nothing to bloom out of while it's open. */}
+      {!menuOpen && <FeatureWheel onNavigate={handleDrawerNavigate} onOpenMenu={openMenu} />}
       {/* Outside the NavigationContainer so it stays put across every screen
           and modal — demo mode isn't a place you navigate to, it's a state
           the whole app is in. */}
