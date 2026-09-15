@@ -231,3 +231,34 @@ export function parseFoodLogPinnedNutrients(raw: string | null | undefined): Nut
 export function serializeFoodLogPinnedNutrients(keys: NutrientKey[]): string {
   return JSON.stringify(keys);
 }
+
+/**
+ * Every nutrient a logged meal writes to Health, on an install that has never
+ * chosen otherwise — all thirteen, matching what `healthFoodSync.ts` always
+ * wrote before which ones to write became a choice.
+ */
+export const DEFAULT_HEALTH_WRITE_NUTRIENTS: NutrientKey[] = [...NUTRIENT_KEYS];
+
+/**
+ * The Health write-selection a stored blob actually carries.
+ *
+ * Same shape as `parseFoodLogPinnedNutrients` above and for the same reason:
+ * falls back to the default (here, every nutrient) only when the setting was
+ * never written at all, so an install that predates this choice keeps writing
+ * everything it always did. A stored empty array is a real, distinct choice —
+ * "write nothing a meal states" — and stays empty.
+ */
+export function parseHealthWriteNutrients(raw: string | null | undefined): NutrientKey[] {
+  if (!raw) return [...DEFAULT_HEALTH_WRITE_NUTRIENTS];
+  try {
+    const parsed = JSON.parse(raw) as unknown;
+    if (!Array.isArray(parsed)) return [...DEFAULT_HEALTH_WRITE_NUTRIENTS];
+    return parsed.filter((key): key is NutrientKey => NUTRIENT_KEYS.includes(key as NutrientKey));
+  } catch {
+    return [...DEFAULT_HEALTH_WRITE_NUTRIENTS];
+  }
+}
+
+export function serializeHealthWriteNutrients(keys: NutrientKey[]): string {
+  return JSON.stringify(keys);
+}

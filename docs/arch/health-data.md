@@ -521,6 +521,35 @@ is a real statement. The filter is `writableFoodAmounts`
 (`healthFoodSync.ts`), which is pure and tested for exactly this reason — the
 rest of that file is a native call nothing can test.
 
+### Which nutrients may be written is a second, separate choice
+
+Whether a meal may write *anything* is `healthWriteEnabled`. Which of the
+thirteen it may carry along is `healthWriteNutrients` (`useSettingsStore`,
+parsed by `parseHealthWriteNutrients` in `nutritionTargets.ts`, alongside the
+Food log's own pinned-nutrient selection it's modelled on) — a person managing
+sodium for blood pressure may want that written and calcium left out, or the
+reverse, and the two switches this file already has answer neither question.
+
+**Defaults to all thirteen, so an install that predates the choice keeps
+writing exactly what it always did.** A stored empty array is a real, distinct
+choice — "write nothing a meal states" — the same distinction
+`parseFoodLogPinnedNutrients` draws for the card above the fold, and
+`parseHealthWriteNutrients` only falls back to the default when the setting
+was never written at all.
+
+**The filter runs in `logFoodEntryToHealth`, not in `writableFoodAmounts`.**
+That keeps the pure, tested absent-is-not-zero rule about the entry alone, and
+lets a person's own choice sit beside it rather than inside it — the same
+separation of concerns the rest of this file draws between what a reading may
+claim and what a write may do. An entry whose every stated figure is excluded
+reports `nothingToWrite`, the same outcome as an entry with nothing to write
+in the first place; either way, nothing reached Health.
+
+**It has no bearing on the other two writes.** A task naming
+`Task.logHealthMetric` already picks one nutrient explicitly when it's set up,
+so there is nothing left to opt out of; a recorded weight isn't a nutrient at
+all.
+
 ### Sample identity, which is the actual work
 
 This is the first thing in the app that can un-write, and the reason this was
