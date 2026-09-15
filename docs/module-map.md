@@ -124,7 +124,7 @@ name cannot say is where a component appears, and that is `docs/screen-map.md`.
 - `src/utils/healthBridge.ts` — HealthBridge, healthBridge, isHealthSupported, openHealthApp
 - `src/utils/healthCompletionSync.ts` — logTaskHealthValue
 - `src/utils/healthFoodSync.ts` — FoodWriteResult, writableFoodAmounts, logFoodEntryToHealth, retractFoodEntryFromHealth
-- `src/utils/healthRules.ts` — HEALTH_NUTRIENT_METRICS, usesCheckpoint, HEALTH_RULE_TITLE_MAX_LENGTH, HEALTH_THRESHOLDS, HEALTH_METRIC_DIRECTION, healthRuleDirection, HEALTH_METRIC_EARLIEST_HOUR, HEALTH_METRICS, healthRuleCheckpointHour, HealthRuleReading, +19 more
+- `src/utils/healthRules.ts` — HEALTH_NUTRIENT_METRICS, usesCheckpoint, HEALTH_RULE_TITLE_MAX_LENGTH, HEALTH_THRESHOLDS, HEALTH_METRIC_DIRECTION, healthRuleDirection, HEALTH_METRIC_EARLIEST_HOUR, HEALTH_METRICS, healthRuleCheckpointHour, HealthRuleReading, +21 more
 - `src/utils/healthTarget.ts` — HealthTargetState, HealthTargetReading, HEALTH_TARGET_RANGES, hasHealthTarget, healthTargetValue, healthTargetProgress, isHealthTargetReady, describeHealthTarget
 - `src/utils/healthWeightSync.ts` — WeightWriteResult, logWeightToHealth
 - `src/utils/hiddenEvents.ts` — HiddenEvent, hiddenEventKey, hiddenEventFromEvent, isHiddenEventStale, pruneStaleHiddenEvents
@@ -180,6 +180,7 @@ name cannot say is where a component appears, and that is `docs/screen-map.md`.
 - `src/utils/ordinal.ts` — ordinal
 - `src/utils/paintSelect.ts` — PaintRowRect, PAINT_GUTTER_WIDTH, ROW_HIT_SLOP, isInPaintGutter, rowIdAtY, rowIdsBetween
 - `src/utils/pantryCheckTasks.ts` — MAX_PANTRY_CHECK_TASKS, PANTRY_CHECK_GRACE_DAYS, pantryCheckTitle, pantryCheckItemId, pantryCheckLinkUrl, pantryCheckLapse, pantryCheckAnswers, PantryCheckWant, wantedPantryChecks, stalePantryCheckTasks
+- `src/utils/pantryIndex.ts` — PantryIndexEntry, MAX_PANTRY_INDEX_ENTRIES, buildPantryIndex, QueuedDisposal, parseQueuedDisposals, resolveQueuedPantryItem
 - `src/utils/pantryReview.ts` — PantryReviewAnswer, MAX_PANTRY_REVIEW_CARDS, PANTRY_REVIEW_QUIET_DAYS, PantryDoubt, PantryReviewCard, PantryReviewDeck, buildPantryReviewDeck, describeLastPurchase, describePantryDoubt, describePantryReviewDone
 - `src/utils/pantryReviewTasks.ts` — PANTRY_REVIEW_TITLE, PANTRY_REVIEW_LINK_URL, MIN_PANTRY_REVIEW_CARDS, PANTRY_REVIEW_CADENCE_DAYS, pantryReviewDayKey, pantryReviewCadenceElapsed, wantsPantryReview, stalePantryReviewTasks
 - `src/utils/parseNaturalDate.ts` — WEEKDAYS, MONTHS, ClockTime, strip, extractTime, extractDayPart, DatePart, monthDay, parseDatePart, parseNaturalDate
@@ -332,7 +333,7 @@ name cannot say is where a component appears, and that is `docs/screen-map.md`.
 - `src/store/useFocusStore.ts` — useFocusStore
 - `src/store/useFoodLogStore.ts` — FOOD_INSIGHT_DAYS, FoodLogDraft, PendingMealLog, PendingManualMealLog, FoodLogPatch, FoodLogPlacement, useFoodLogStore
 - `src/store/useGroceryStore.ts` — PlannedRow, PlanAddResult, useGroceryStore
-- `src/store/useHealthStore.ts` — HealthDay, HEALTH_HISTORY_DAYS, WEIGHT_HISTORY_DAYS, useHealthStore, useHealthSync
+- `src/store/useHealthStore.ts` — HealthDay, EXERCISE_LIVE_WINDOW_DAYS, HEALTH_HISTORY_DAYS, WEIGHT_HISTORY_DAYS, useHealthStore, useHealthSync
 - `src/store/useHiddenEventsStore.ts` — useHiddenEventsStore
 - `src/store/useLeftoverStore.ts` — LeftoverDraft, useLeftoverStore
 - `src/store/useMealPlanStore.ts` — MealPlanDraft, CookRecap, useMealPlanStore
