@@ -9,6 +9,12 @@ import { NUTRIENT_KEYS, type NutrientKey } from '../types';
 import { useSettingsStore } from '../store/useSettingsStore';
 import { NUTRITION_TARGET_RANGES } from '../utils/nutritionTargets';
 import { NUTRIENT_LABEL } from '../utils/foodNutrition';
+import { describeWater } from '../utils/waterLog';
+import {
+  WATER_EXERCISE_BOOST_ML_RANGE,
+  WATER_EXERCISE_BOOST_MINUTES_RANGE,
+  type WaterExerciseBoost,
+} from '../utils/waterExerciseBoost';
 import { haptics } from '../utils/haptics';
 import { CountStepper } from './CountStepper';
 import { SheetHeaderButton } from './SheetHeaderButton';
@@ -53,6 +59,24 @@ export function NutritionTargetsSheet({ visible, onClose }: Props) {
   const setNutritionTarget = useSettingsStore(s => s.setNutritionTarget);
   const pinnedNutrients = useSettingsStore(useShallow(s => s.foodLogPinnedNutrients));
   const setFoodLogPinnedNutrients = useSettingsStore(s => s.setFoodLogPinnedNutrients);
+  const waterUnit = useSettingsStore(s => s.waterUnit);
+  const healthReadEnabled = useSettingsStore(s => s.healthReadEnabled);
+  const waterExerciseBoost = useSettingsStore(useShallow(s => s.waterExerciseBoost));
+  const setWaterExerciseBoost = useSettingsStore(s => s.setWaterExerciseBoost);
+
+  const toggleWaterExerciseBoost = () => {
+    haptics.tap();
+    setWaterExerciseBoost(
+      waterExerciseBoost
+        ? null
+        : { minExerciseMinutes: WATER_EXERCISE_BOOST_MINUTES_RANGE.default, boostMl: WATER_EXERCISE_BOOST_ML_RANGE.default },
+    );
+  };
+
+  const setBoostField = (field: keyof WaterExerciseBoost, value: number) => {
+    if (!waterExerciseBoost) return;
+    setWaterExerciseBoost({ ...waterExerciseBoost, [field]: value });
+  };
 
   const set = (key: NutrientKey, value: number | null) => setNutritionTarget(key, value);
 
@@ -131,6 +155,69 @@ export function NutritionTargetsSheet({ visible, onClose }: Props) {
               </View>
             );
           })}
+
+          {targets.waterMl !== undefined && (
+            <View>
+              <Text style={styles.sectionLabel}>Water on exercise days</Text>
+              {!healthReadEnabled ? (
+                <View style={styles.boostNotice}>
+                  <Ionicons name="heart-outline" size={iconSize.sm} color={colors.textSecondary} />
+                  <Text style={styles.boostNoticeText}>
+                    Turn on Apple Health reading in Settings to raise today's water target on a day
+                    with exercise logged.
+                  </Text>
+                </View>
+              ) : (
+                <View style={styles.boostCard}>
+                  <TouchableOpacity
+                    style={styles.boostToggleRow}
+                    activeOpacity={interaction.activeOpacity}
+                    onPress={toggleWaterExerciseBoost}
+                    accessibilityRole="checkbox"
+                    accessibilityState={{ checked: waterExerciseBoost !== null }}
+                    accessibilityLabel="Raise the water target after exercise"
+                  >
+                    <Ionicons
+                      name={waterExerciseBoost ? 'checkmark-circle' : 'ellipse-outline'}
+                      size={iconSize.md}
+                      color={waterExerciseBoost ? colors.accent : colors.textTertiary}
+                    />
+                    <Text style={styles.boostToggleLabel}>Raise after exercise</Text>
+                  </TouchableOpacity>
+                  {waterExerciseBoost && (
+                    <View style={styles.boostFields}>
+                      <View style={styles.boostFieldRow}>
+                        <Text style={styles.boostFieldLabel}>After this much exercise</Text>
+                        <CountStepper
+                          value={waterExerciseBoost.minExerciseMinutes}
+                          onChange={n => setBoostField('minExerciseMinutes', n ?? WATER_EXERCISE_BOOST_MINUTES_RANGE.default)}
+                          min={WATER_EXERCISE_BOOST_MINUTES_RANGE.min}
+                          max={WATER_EXERCISE_BOOST_MINUTES_RANGE.max}
+                          step={WATER_EXERCISE_BOOST_MINUTES_RANGE.step}
+                          format={n => `${n} min`}
+                          label="Exercise minutes threshold"
+                          describeValue={n => `${n} minutes`}
+                        />
+                      </View>
+                      <View style={styles.boostFieldRow}>
+                        <Text style={styles.boostFieldLabel}>Raise the target by</Text>
+                        <CountStepper
+                          value={waterExerciseBoost.boostMl}
+                          onChange={n => setBoostField('boostMl', n ?? WATER_EXERCISE_BOOST_ML_RANGE.default)}
+                          min={WATER_EXERCISE_BOOST_ML_RANGE.min}
+                          max={WATER_EXERCISE_BOOST_ML_RANGE.max}
+                          step={WATER_EXERCISE_BOOST_ML_RANGE.step}
+                          format={n => describeWater(n, waterUnit)}
+                          label="Water target boost amount"
+                          describeValue={n => describeWater(n ?? WATER_EXERCISE_BOOST_ML_RANGE.default, waterUnit)}
+                        />
+                      </View>
+                    </View>
+                  )}
+                </View>
+              )}
+            </View>
+          )}
         </ScrollView>
       </View>
     </SheetModal>
@@ -184,5 +271,33 @@ function makeStyles(colors: Colors) {
       gap: spacing.sm,
     },
     rowLabel: { color: colors.text, fontSize: font.sm, fontWeight: fontWeight.medium },
+    boostNotice: {
+      flexDirection: 'row',
+      alignItems: 'flex-start',
+      gap: spacing.sm,
+      backgroundColor: colors.bgSecondary,
+      borderRadius: radius.md,
+      padding: spacing.md,
+    },
+    boostNoticeText: { flex: 1, color: colors.textSecondary, fontSize: font.sm, lineHeight: 18 },
+    boostCard: {
+      backgroundColor: colors.bgSecondary,
+      borderRadius: radius.md,
+    },
+    boostToggleRow: {
+      flexDirection: 'row',
+      alignItems: 'center',
+      gap: spacing.sm,
+      padding: spacing.md,
+    },
+    boostToggleLabel: { color: colors.text, fontSize: font.sm },
+    boostFields: {
+      borderTopWidth: border.hairline,
+      borderTopColor: colors.separator,
+      padding: spacing.md,
+      gap: spacing.sm,
+    },
+    boostFieldRow: { gap: spacing.sm },
+    boostFieldLabel: { color: colors.text, fontSize: font.sm, fontWeight: fontWeight.medium },
   });
 }
