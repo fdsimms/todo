@@ -562,3 +562,86 @@ describe('reorderEntries', () => {
     expect(state().entries.find(e => e.id === b.id)).toMatchObject({ slot: 'lunch', sortOrder: 1 });
   });
 });
+
+/**
+ * Re-dating an entry (#2532). `moveEntry` is a delete-and-reinsert, per
+ * `foodLogEntryEdit`'s own doc comment: the instant and its day key were
+ * stamped together and re-dating means a new entry, not a patch.
+ */
+describe('moveEntry', () => {
+  const flush = () => new Promise(resolve => setTimeout(resolve, 0));
+
+  beforeEach(() => {
+    (logFoodEntryToHealth as jest.Mock).mockResolvedValue({ outcome: 'unavailable', sampleIds: [] });
+    (retractFoodEntryFromHealth as jest.Mock).mockResolvedValue(true);
+  });
+
+  it('moves the entry to the new day under a fresh id, keeping its figures and meal-plan link', () => {
+    state().loadRange('2026-04-01', '2026-04-03');
+    const original = state().addEntry(draft({
+      label: 'Porridge', at: new Date(2026, 3, 2, 9, 0), mealPlanEntryId: 'plan-1',
+    }))!;
+    (dbGetFoodLogEntry as jest.Mock).mockReturnValue(original);
+
+    const moved = state().moveEntry(original.id, new Date(2026, 3, 1, 9, 0))!;
+
+    expect(dbDeleteFoodLogEntry).toHaveBeenCalledWith(original.id);
+    expect(moved.id).not.toBe(original.id);
+    expect(moved.dayKey).toBe('2026-04-01');
+    expect(moved.label).toBe('Porridge');
+    expect(moved.mealPlanEntryId).toBe('plan-1');
+    expect(state().entries.find(e => e.id === original.id)).toBeUndefined();
+    expect(state().entries.find(e => e.id === moved.id)).toBeDefined();
+  });
+
+  it('retracts the old Health sample and writes a fresh one at the new instant', async () => {
+    state().loadRange('2026-04-01', '2026-04-03');
+    const original = state().addEntry(draft({ at: new Date(2026, 3, 2, 9, 0) }))!;
+    (dbGetFoodLogEntry as jest.Mock).mockReturnValue({ ...original, healthSampleIds: ['sample-a'] });
+    (logFoodEntryToHealth as jest.Mock).mockResolvedValue({ outcome: 'written', sampleIds: ['sample-b'] });
+
+    state().moveEntry(original.id, new Date(2026, 3, 1, 9, 0));
+    await flush();
+
+    expect(retractFoodEntryFromHealth).toHaveBeenCalledWith(['sample-a']);
+    expect(logFoodEntryToHealth).toHaveBeenCalled();
+  });
+
+  it('shrugs at an id that is not stored', () => {
+    (dbGetFoodLogEntry as jest.Mock).mockReturnValue(null);
+    const result = state().moveEntry('nope', new Date(2026, 3, 1));
+    expect(result).toBeNull();
+    expect(dbDeleteFoodLogEntry).not.toHaveBeenCalled();
+  });
+});
+
+/**
+ * Duplicating a previous meal onto another day (#2532). Unlike `moveEntry`,
+ * the source entry is left untouched and the copy drops `mealPlanEntryId` —
+ * it did not fulfil whatever meal the original was planned against.
+ */
+describe('duplicateEntry', () => {
+  it('copies the entry onto the new day, leaving the original alone', () => {
+    state().loadRange('2026-04-01', '2026-04-03');
+    const original = state().addEntry(draft({
+      label: 'Porridge', at: new Date(2026, 3, 2, 9, 0), mealPlanEntryId: 'plan-1',
+    }))!;
+    (dbGetFoodLogEntry as jest.Mock).mockReturnValue(original);
+
+    const copy = state().duplicateEntry(original.id, new Date(2026, 3, 3, 9, 0))!;
+
+    expect(copy.id).not.toBe(original.id);
+    expect(copy.dayKey).toBe('2026-04-03');
+    expect(copy.label).toBe('Porridge');
+    expect(copy.mealPlanEntryId).toBeNull();
+    expect(dbDeleteFoodLogEntry).not.toHaveBeenCalled();
+    expect(state().entries.find(e => e.id === original.id)).toBeDefined();
+    expect(state().entries.find(e => e.id === copy.id)).toBeDefined();
+  });
+
+  it('shrugs at an id that is not stored', () => {
+    (dbGetFoodLogEntry as jest.Mock).mockReturnValue(null);
+    const result = state().duplicateEntry('nope', new Date(2026, 3, 1));
+    expect(result).toBeNull();
+  });
+});

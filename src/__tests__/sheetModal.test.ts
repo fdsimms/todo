@@ -1,8 +1,10 @@
 import {
+  canHideSheet,
   createPresentationLevel,
   nextSheetVisibility,
   registerPresentation,
   releasePresentation,
+  subscribePresentation,
 } from '../utils/sheetModal';
 
 describe('nextSheetVisibility', () => {
@@ -106,5 +108,72 @@ describe('presentation levels', () => {
     const message = registerPresentation(level, 'c', 'Three');
     expect(message).toContain('Two');
     expect(message).not.toContain('One');
+  });
+});
+
+describe('canHideSheet', () => {
+  it('lets a sheet with nothing above it go', () => {
+    expect(canHideSheet(createPresentationLevel())).toBe(true);
+  });
+
+  it('holds a sheet back while it is presenting something', () => {
+    // The blank-frozen-sheet bug: logging from the nested Scan or Describe
+    // sheet closed the picker underneath and the sheet itself in one commit,
+    // so iOS tore the inner view controller down with its presenter while RN
+    // still thought it was presented, orphaning it on screen.
+    const level = createPresentationLevel();
+    registerPresentation(level, 'estimate', 'Estimate a meal');
+    expect(canHideSheet(level)).toBe(false);
+  });
+
+  it('lets it go again once the sheet above has gone', () => {
+    const level = createPresentationLevel();
+    registerPresentation(level, 'estimate', 'Estimate a meal');
+    releasePresentation(level, 'estimate');
+    expect(canHideSheet(level)).toBe(true);
+  });
+});
+
+describe('subscribePresentation', () => {
+  it('reports a sheet arriving and leaving', () => {
+    const level = createPresentationLevel();
+    const seen: boolean[] = [];
+    subscribePresentation(level, () => seen.push(canHideSheet(level)));
+    registerPresentation(level, 'a', 'Scan');
+    releasePresentation(level, 'a');
+    // False on the way in, true on the way out: the second is what wakes the
+    // sheet below and lets its own dismissal proceed.
+    expect(seen).toEqual([false, true]);
+  });
+
+  it('stays quiet when nothing actually changed', () => {
+    // A re-register of the same id and a release of one never there must not
+    // wake the sheet below, or a settled pair re-renders each other forever.
+    const level = createPresentationLevel();
+    registerPresentation(level, 'a', 'Scan');
+    let calls = 0;
+    subscribePresentation(level, () => { calls += 1; });
+    registerPresentation(level, 'a', 'Scan');
+    releasePresentation(level, 'nobody');
+    expect(calls).toBe(0);
+  });
+
+  it('stops reporting once unsubscribed', () => {
+    const level = createPresentationLevel();
+    let calls = 0;
+    const off = subscribePresentation(level, () => { calls += 1; });
+    off();
+    registerPresentation(level, 'a', 'Scan');
+    expect(calls).toBe(0);
+  });
+
+  it('survives a listener unsubscribing while being notified', () => {
+    // React cleans effects up mid-notification, so the walk is over a copy.
+    const level = createPresentationLevel();
+    let calls = 0;
+    const off = subscribePresentation(level, () => { calls += 1; off(); });
+    subscribePresentation(level, () => { calls += 1; });
+    expect(() => registerPresentation(level, 'a', 'Scan')).not.toThrow();
+    expect(calls).toBe(2);
   });
 });

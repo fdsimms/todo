@@ -105,6 +105,17 @@ import { useRowSelection } from '../hooks/useRowSelection';
  */
 const WATER_COMMIT_MS = 600;
 
+/**
+ * A chosen day, at an entry's own time of day — so re-dating or duplicating
+ * a breakfast still lands as a breakfast rather than at noon.
+ */
+function atTimeOf(entry: FoodLogEntry, day: Date): Date {
+  const source = new Date(entry.atISO);
+  const at = new Date(day);
+  at.setHours(source.getHours(), source.getMinutes(), source.getSeconds(), source.getMilliseconds());
+  return at;
+}
+
 export function FoodLogScreen() {
   const colors = useColors();
   const styles = useMemo(() => makeStyles(colors), [colors]);
@@ -136,6 +147,8 @@ export function FoodLogScreen() {
   const addEntry = useFoodLogStore(s => s.addEntry);
   const removeEntries = useFoodLogStore(s => s.removeEntries);
   const moveEntries = useFoodLogStore(s => s.moveEntries);
+  const moveEntry = useFoodLogStore(s => s.moveEntry);
+  const duplicateEntry = useFoodLogStore(s => s.duplicateEntry);
   const reorderEntries = useFoodLogStore(s => s.reorderEntries);
   const savedMeals = useSavedMealsStore(useShallow(s => s.meals));
   const addSavedMealFromEntries = useSavedMealsStore(s => s.addFromEntries);
@@ -176,6 +189,10 @@ export function FoodLogScreen() {
    */
   const [editingEntry, setEditingEntry] = useState<FoodLogEntry | null>(null);
   const [seedRecipeId, setSeedRecipeId] = useState<string | null>(null);
+  /** The entry whose day is being corrected, opening the "Re-date" picker on it. */
+  const [redatingEntry, setRedatingEntry] = useState<FoodLogEntry | null>(null);
+  /** The entry being copied onto another day, opening the "Duplicate to" picker on it. */
+  const [duplicatingEntry, setDuplicatingEntry] = useState<FoodLogEntry | null>(null);
   // Plain useRowSelection, same as Templates/Projects/People: there is
   // nothing recurrence- or meal-plan-aware to reuse useTaskSelection's delete
   // flow for, only a confirm.
@@ -337,6 +354,23 @@ export function FoodLogScreen() {
     );
   }, [reviseEntry]);
 
+  /**
+   * Fixes an entry logged against the wrong day — pending on the day it's
+   * confirmed for, via `redatingEntry` and the `WhenPicker` mounted below.
+   */
+  const handleRedate = useCallback((entry: FoodLogEntry, date: Date) => {
+    haptics.tap();
+    exitSelection();
+    moveEntry(entry.id, atTimeOf(entry, date));
+  }, [moveEntry, exitSelection]);
+
+  /** Copies an entry onto another day, leaving the original where it is. */
+  const handleDuplicate = useCallback((entry: FoodLogEntry, date: Date) => {
+    haptics.success();
+    exitSelection();
+    duplicateEntry(entry.id, atTimeOf(entry, date));
+  }, [duplicateEntry, exitSelection]);
+
   // The "…" on a row is a real menu, not a synonym for delete: an accidental
   // tap must not open a destructive confirm with nothing to say what's about
   // to happen. Move reuses the same slot list the bulk bar's own panel does.
@@ -381,6 +415,8 @@ export function FoodLogScreen() {
           },
         }]
         : []),
+      { text: 'Re-date…', onPress: () => setRedatingEntry(entry) },
+      { text: 'Duplicate to…', onPress: () => setDuplicatingEntry(entry) },
       { text: 'Forget', style: 'destructive', onPress: () => handleDelete(entry.id, entry.label) },
       { text: 'Cancel', style: 'cancel' },
     ]);
@@ -1001,6 +1037,39 @@ export function FoodLogScreen() {
           setDayKey(dayKeyOf(date));
         }}
         onCancel={() => setDayPickerOpen(false)}
+      />
+      {/* Re-dating an entry moves it rather than editing it in place — see
+          `moveEntry`'s own doc comment for why. Seeded on the entry's current
+          day, same as the header's own picker seeds on the day on screen. */}
+      <WhenPicker
+        visible={redatingEntry !== null}
+        value={redatingEntry ? dayKeyToDate(redatingEntry.dayKey) : new Date()}
+        title="Re-date entry"
+        showTimeOfDay={false}
+        showSuggest={false}
+        allowFuture={false}
+        onConfirm={date => {
+          const entry = redatingEntry;
+          setRedatingEntry(null);
+          if (!date || !entry) return;
+          handleRedate(entry, date);
+        }}
+        onCancel={() => setRedatingEntry(null)}
+      />
+      <WhenPicker
+        visible={duplicatingEntry !== null}
+        value={new Date()}
+        title="Duplicate to"
+        showTimeOfDay={false}
+        showSuggest={false}
+        allowFuture={false}
+        onConfirm={date => {
+          const entry = duplicatingEntry;
+          setDuplicatingEntry(null);
+          if (!date || !entry) return;
+          handleDuplicate(entry, date);
+        }}
+        onCancel={() => setDuplicatingEntry(null)}
       />
     </SafeAreaView>
   );
