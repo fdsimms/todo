@@ -50,9 +50,9 @@ export function classifyWeather(weatherCode: number, tempF: number): WeatherCond
 }
 
 /**
- * The glyph a forecast row draws for `weatherCode`, for `weatherContextRows`
- * (`dayContextRows.ts`). Sky only, in the same priority `classifyWeather`
- * checks in — cold/hot have no icon of their own, since a forecast row is
+ * The glyph for `weatherCode`, used for Today's header weather reading
+ * (`TodayScreen.tsx`). Sky only, in the same priority `classifyWeather`
+ * checks in — cold/hot have no icon of their own, since the header is
  * already stating the temperature as a number and a second, wordless way of
  * saying "cold" would just be a thermometer next to one.
  */

@@ -1,5 +1,3 @@
-import { addDays } from 'date-fns/addDays';
-import { format } from 'date-fns/format';
 import type { BusyEvent } from './calendarBusy';
 import { isLiveEvent } from './calendarBusy';
 import type { ContextRow, MealPlanEntry, Recipe } from '../types';
@@ -8,7 +6,6 @@ import type { CategoryListItem, TodayListItem } from './taskGrouping';
 import { LATER_TODAY_LABEL } from './taskGrouping';
 import { formatTimeOfDay } from './dateUtils';
 import { titleForEntry } from './mealPlan';
-import { weatherIconFor, weatherConditionAdjective, weatherConditionNoun } from './weatherCondition';
 
 /**
  * The day's calendar events and planned meals, as rows in the task list
@@ -119,7 +116,6 @@ export function eventContextRows(
         category,
         now: running,
         calendarTag: calendar ? { name: calendar.title, color: calendar.color } : null,
-        weatherIcon: null,
       },
       allDay: event.allDay,
       start,
@@ -173,7 +169,6 @@ export function mealContextRows(
       category: opts.category,
       now: false,
       calendarTag: null,
-      weatherIcon: null,
     }));
 }
 
@@ -232,74 +227,7 @@ export function healthContextRows(
     category: opts.category,
     now: false,
     calendarTag: null,
-    weatherIcon: null,
   }];
-}
-
-/**
- * Today's reading and tomorrow's forecast, as rows (fourth source, alongside
- * events/meals/health).
- *
- * **A reading, like health, so it never ticks and never opens anything** —
- * see `ContextRow`'s note on that pair. It files under `weatherTaskCategory`,
- * the same category the "sunny -> sunscreen"-style rule tasks already land
- * in (`weatherTasks.ts`), rather than owning a category of its own: the two
- * are already the same subject on the same screen, and collapsing "Weather"
- * is meant to take the forecast with it.
- *
- * **Stale by day, the same check `checkWeatherTasks` makes.** `snapshot` and
- * `snapshotDayKey` are `useWeatherStore`'s own two fields rather than one
- * merged shape, because a snapshot fetched yesterday and never refreshed is
- * exactly what `snapshotDayKey` exists to catch — a reading from the wrong
- * logical day is not an answer for this one.
- *
- * **One row for today, a second only once tomorrow's forecast parsed.**
- * Nothing here decides how many days to show past that — `WeatherSnapshot`
- * only ever carries the one day ahead (`weatherLookup.ts`'s `forecast_days`),
- * so a longer strip is a decision for that module to make first.
- */
-export function weatherContextRows(
-  snapshot: {
-    weatherCode: number;
-    tempF: number;
-    todayHighF: number | null;
-    todayLowF: number | null;
-    tomorrow: { weatherCode: number; highF: number; lowF: number } | null;
-  } | null,
-  opts: { todayKey: string; snapshotDayKey: string | null; category: string | null; now: Date },
-): ContextRow[] {
-  if (!snapshot) return [];
-  if (opts.snapshotDayKey !== opts.todayKey) return [];
-
-  const rows: ContextRow[] = [{
-    id: 'weather-today',
-    sourceId: '',
-    kind: 'weather',
-    title: `${Math.round(snapshot.tempF)}° and ${weatherConditionAdjective(snapshot.weatherCode)}`,
-    caption: snapshot.todayHighF !== null && snapshot.todayLowF !== null
-      ? `Today · H:${Math.round(snapshot.todayHighF)}° L:${Math.round(snapshot.todayLowF)}°`
-      : 'Today',
-    category: opts.category,
-    now: false,
-    calendarTag: null,
-    weatherIcon: weatherIconFor(snapshot.weatherCode),
-  }];
-
-  if (snapshot.tomorrow) {
-    rows.push({
-      id: 'weather-tomorrow',
-      sourceId: '',
-      kind: 'weather',
-      title: `${weatherConditionNoun(snapshot.tomorrow.weatherCode)} tomorrow`,
-      caption: `${format(addDays(opts.now, 1), 'EEE')} · H:${Math.round(snapshot.tomorrow.highF)}° L:${Math.round(snapshot.tomorrow.lowF)}°`,
-      category: opts.category,
-      now: false,
-      calendarTag: null,
-      weatherIcon: weatherIconFor(snapshot.tomorrow.weatherCode),
-    });
-  }
-
-  return rows;
 }
 
 /**

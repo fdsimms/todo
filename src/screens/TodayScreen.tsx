@@ -61,7 +61,6 @@ import {
   eventContextRows,
   mealContextRows,
   healthContextRows,
-  weatherContextRows,
   insertContextRows,
   withoutContextRows,
 } from '../utils/dayContextRows';
@@ -144,6 +143,8 @@ import { addDays } from 'date-fns/addDays';
 import { useCalendarStore } from '../store/useCalendarStore';
 import { useHealthStore } from '../store/useHealthStore';
 import { useWeatherStore } from '../store/useWeatherStore';
+import { weatherConditionAdjective, weatherIconFor } from '../utils/weatherCondition';
+import { capitalize } from '../utils/capitalize';
 import { eventsIn, type BusyEvent } from '../utils/calendarBusy';
 import { useHiddenEventsStore } from '../store/useHiddenEventsStore';
 import { hiddenEventKey } from '../utils/hiddenEvents';
@@ -1376,13 +1377,22 @@ export function TodayScreen() {
   const healthCategory = useSettingsStore(s => s.healthCategory);
   const healthToday = useHealthStore(s => s.today);
 
-  // Today's reading and tomorrow's forecast, filed under the same category the
-  // "sunny -> sunscreen"-style rule tasks land in (`weatherTaskCategory`) —
-  // that's also this row's off switch, and `useWeatherSync` in App.tsx is what
-  // keeps the snapshot current, same split useHealthSync draws above.
+  // Today's reading, shown as a concise "68° Sunny" next to the header title
+  // rather than as a row in the list. Gated on `weatherTaskCategory` the same
+  // way the row it replaced was — that's the weather feature's own off switch
+  // (see useSettingsStore) — and `useWeatherSync` in App.tsx is what keeps the
+  // snapshot current, same split useHealthSync draws above.
   const weatherTaskCategory = useSettingsStore(s => s.weatherTaskCategory);
   const weatherSnapshot = useWeatherStore(s => s.snapshot);
   const weatherSnapshotDayKey = useWeatherStore(s => s.snapshotDayKey);
+  const headerWeather = weatherTaskCategory
+    && weatherSnapshot
+    && weatherSnapshotDayKey === getLogicalDayKey(new Date(), dayResetTime)
+    ? {
+        label: `${Math.round(weatherSnapshot.tempF)}° ${capitalize(weatherConditionAdjective(weatherSnapshot.weatherCode))}`,
+        icon: weatherIconFor(weatherSnapshot.weatherCode),
+      }
+    : undefined;
 
   // The second line the same menu can carry, and the health feature's only
   // reach into Today beyond its own row. Gated on the *read* rather than on the
@@ -1990,18 +2000,6 @@ export function TodayScreen() {
         category: healthCategory,
       }));
     }
-    // Same gate as health above, and the same reason: a cleared category is
-    // this row's off switch, and it's also what keeps a demo session from
-    // reading a real snapshot left in the store by a previous one — the demo
-    // database has never had a weatherTaskCategory of its own.
-    if (weatherTaskCategory) {
-      rows.push(...weatherContextRows(weatherSnapshot, {
-        todayKey: getLogicalDayKey(new Date(), dayResetTime),
-        snapshotDayKey: weatherSnapshotDayKey,
-        category: weatherTaskCategory,
-        now: new Date(),
-      }));
-    }
     // No category means nowhere to put them — see ensureCalendarEventCategory
     // for why a cleared setting is a real answer rather than a missing one.
     if (calendarEventCategory) {
@@ -2032,7 +2030,6 @@ export function TodayScreen() {
     isEventHidden,
     mealsOnToday, todayMealEntries, recipesById, mealCookTaskCategory, allTasks,
     healthToday, healthCategory, dayResetTime,
-    weatherSnapshot, weatherSnapshotDayKey, weatherTaskCategory,
     minuteTick,
   ]);
 
@@ -2809,10 +2806,6 @@ export function TodayScreen() {
             // already read. The arm is explicit rather than left to fall
             // through, because the fall-through is the meal plan.
             : item.row.kind === 'health' ? undefined
-            // A weather row has nowhere to go either, for the same reason a
-            // health row doesn't: the reading came from another service and
-            // this row already shows the whole of what's known about it.
-            : item.row.kind === 'weather' ? undefined
             : openMealPlan
           }
           onMarkCooked={
@@ -3567,6 +3560,14 @@ export function TodayScreen() {
           overline={viewMode === 'today' ? today : undefined}
           subtitle={workloadSubtitle}
           actions={headerActions}
+          titleAdornment={
+            viewMode === 'today' && headerWeather ? (
+              <View style={styles.headerWeather}>
+                <Ionicons name={headerWeather.icon} size={16} color={colors.textSecondary} />
+                <Text style={styles.headerWeatherText}>{headerWeather.label}</Text>
+              </View>
+            ) : undefined
+          }
         />
 
         {/* View mode switcher */}
@@ -4472,6 +4473,8 @@ export function TodayScreen() {
 
 const makeStyles = (colors: Colors) => StyleSheet.create({
   container: { flex: 1, backgroundColor: colors.bg },
+  headerWeather: { flexDirection: 'row', alignItems: 'center', gap: spacing.xxs },
+  headerWeatherText: { fontSize: font.md, fontWeight: fontWeight.medium, color: colors.textSecondary },
   clearBtn: {
     paddingHorizontal: spacing.md, paddingVertical: 7,
     borderRadius: radius.full, backgroundColor: colors.bgSecondary,
