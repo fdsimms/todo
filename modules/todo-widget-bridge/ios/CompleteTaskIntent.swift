@@ -87,6 +87,17 @@ struct CompleteTaskIntent: AppIntent {
     @available(iOS 26.0, *)
     static var supportedModes: IntentModes { .foreground(.immediate) }
 
+    // With the type compiled into both targets, the system picks whichever
+    // target is available unless told otherwise, and only one of them can bring
+    // the app forward. supportedModes above already implies the answer, since
+    // the extension cannot satisfy .foreground at all; this states it outright
+    // so the routing doesn't rest on that inference. iOS 27+ only, so it is a
+    // belt for the newest OS rather than the mechanism — 26 relies on
+    // supportedModes, and the file's presence in the app target is what both
+    // versions actually need.
+    @available(iOS 27.0, *)
+    static var allowedExecutionTargets: IntentExecutionTargets { .main }
+
     @Parameter(title: "Task ID")
     var taskId: String
 
