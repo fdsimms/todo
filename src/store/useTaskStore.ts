@@ -169,7 +169,7 @@ import { quotaRunSpan, quotaTargetForInterval, quotaDueTimesAfter, isQuotaRunOve
 import { MIN_TARGET_COUNT, MAX_TARGET_COUNT, taskKindOf } from '../utils/taskKinds';
 import { nextStreakRecord } from '../utils/streakRecord';
 import { isNegativeTask, slipPatch, undoSlipPatch, cleanDayPatch } from '../utils/negativeHabits';
-import { extendShieldUntil, penaltyChargeFor, slipPenaltyUntil } from '../utils/penaltyShield';
+import { creditShieldUntil, extendShieldUntil, penaltyChargeFor, penaltyCreditFor, slipPenaltyUntil } from '../utils/penaltyShield';
 import { isTaskVisible, isTaskNew, isTaskDeferred, isUpcomingToday, isHeldBack, isHiddenForVacation, isVisibleApartFromVacation, isTaskExpired, isTaskSweepable, isRecurrenceNotYetDue, isLiveRecurring, isMissableMealPlanTask, isInboxTask, isUnscheduledTask, isWaitingTask, isRelevantToGroupToday, groupRoster, hasNoDateSignal, isQuotaTask, isQuotaOnPace, quotaRidesOutTheDay, isMissed, sameTimeSegments, isCompletionOnTime, isCategoryScheduledDay, currentTimeSegment, timeSegmentThreshold, displayTitleFor } from '../utils/visibilityUtils';
 import { retentionCutoff, selectPurgeableTaskIds } from '../utils/retention';
 import { categoryLabel } from '../utils/categoryLabel';
@@ -298,6 +298,40 @@ function chargePenaltyShield(until: Date, reason: string): void {
   // the shield screen would otherwise credit a block to the wrong task.
   if (next === settings.penaltyShieldUntil) return;
   settings.setPenaltyShieldUntil(next, reason);
+}
+
+/**
+ * The other direction: finishing a task you were charged for takes that charge
+ * off the block being served.
+ *
+ * Returns the stamp to write onto the row, or null when nothing was credited —
+ * so the caller records a credit only where one actually happened, and a second
+ * completion of the same row cannot claim it again.
+ *
+ * It writes the *same one setting* `chargePenaltyShield` writes, which is what
+ * makes the composition safe without any work: `appShield` ORs the penalty, the
+ * gate and the focus shield, so shortening this value cannot lift a gate
+ * somebody's own task is holding or end a focus session early. A credit that
+ * reached past this setting would be a different and much worse feature.
+ *
+ * The reason line is deliberately left alone. It names whatever charge owns the
+ * end of the block, and a credit that shortens the block without ending it has
+ * not changed whose block it is.
+ */
+function creditPenaltyShield(task: Task, now: Date): string | null {
+  const settings = useSettingsStore.getState();
+  if (!settings.penaltyShieldEnabled) return null;
+  const minutes = penaltyCreditFor(task, now, settings.dayResetTime);
+  if (minutes === null) return null;
+
+  const next = creditShieldUntil(settings.penaltyShieldUntil, minutes, now);
+  // Stamped even when the block had already run out. The charge has been
+  // answered by doing the thing, and leaving the row unstamped would let the
+  // same credit be claimed against a *later* block it did nothing to earn.
+  if (next !== settings.penaltyShieldUntil) {
+    settings.setPenaltyShieldUntil(next, next === null ? null : settings.penaltyShieldReason);
+  }
+  return now.toISOString();
 }
 
 /**
@@ -2816,6 +2850,15 @@ export const useTaskStore = create<TaskStore>((set, get) => ({
     const { completed, nextTask, nextSubtasks, followUpTask, followUpSubtasks, rolledOver } = built;
 
     if (task.pinned) pendingUnpinIds.push(id);
+
+    // Doing the thing after it cost you takes that cost back off the block.
+    // Read off the pre-completion row rather than `completed`, because the
+    // whole question is whether *this* row was charged — and computed before
+    // the write so the stamp rides along on it rather than needing a second
+    // update. See penaltyCreditFor for the four things it refuses.
+    const creditedAt = creditPenaltyShield(task, now);
+    if (creditedAt !== null) completed.penaltyCreditedAt = creditedAt;
+
     dbUpdateTask(completed);
     // A completed row has nothing left to be late for — its deadline event,
     // if it had one, is deleted rather than left dangling on the calendar.
@@ -3604,6 +3647,7 @@ export const useTaskStore = create<TaskStore>((set, get) => ({
         // Same as completeTask's successor: the stamp is per-occurrence, and
         // carrying it would leave this row unable to be charged at all.
         penaltyFiredAt: null,
+        penaltyCreditedAt: null,
         autoScheduledAt: null,
         createdAt: now,
         seenAt: now,
@@ -6211,6 +6255,7 @@ export const useTaskStore = create<TaskStore>((set, get) => ({
       penaltyMinutes: null,
       penaltyCutoffTime: null,
       penaltyFiredAt: null,
+      penaltyCreditedAt: null,
       gatesApps: false,
       medicationName: null,
       medicationAmount: null,
@@ -6417,6 +6462,7 @@ export const useTaskStore = create<TaskStore>((set, get) => ({
       penaltyMinutes: null,
       penaltyCutoffTime: null,
       penaltyFiredAt: null,
+      penaltyCreditedAt: null,
       gatesApps: false,
       medicationName: null,
       medicationAmount: null,
