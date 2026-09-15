@@ -8,12 +8,13 @@ import { useMealPlanStore } from '../store/useMealPlanStore';
 import { useRecipeStore } from '../store/useRecipeStore';
 import { useSettingsStore } from '../store/useSettingsStore';
 import { useWidgetCompletionStore } from '../store/useWidgetCompletionStore';
-import { resetToToday } from '../navigation/navigationRef';
+import { resetToKitchen, resetToToday } from '../navigation/navigationRef';
 import { buildWidgetSnapshot } from './widgetSnapshot';
 import { completedOnDay } from './allClear';
 import { getLogicalDayKey } from './dateUtils';
 import { kitchenInventory } from './kitchenInventory';
 import { listedAnywhere } from './groceryLists';
+import { buildPantryIndex, parseQueuedDisposals, resolveQueuedPantryItem } from './pantryIndex';
 import { widgetBridge } from './widgetBridge';
 import { haptics } from './haptics';
 
@@ -85,6 +86,55 @@ async function processPendingAddTasks(): Promise<void> {
     haptics.success();
   } catch {
     // A build predating drainPendingAddTasks — no-op.
+  }
+}
+
+// Applies what MarkDisposedIntent queued — "mark bananas as used up", said to
+// Siri. Same drain-on-launch/foreground shape as the two above, and the same
+// demo-mode reasoning: a drain is the half that would lose something, so a
+// sentence said while demo mode is on waits for the next real foreground.
+//
+// **The pair of store calls is the in-app flow composed, not a shortcut around
+// it.** Marking a row out and saying how it went are two steps in the app too:
+// the ✕ on a pantry row calls `markOutOfMany` with no outcome, and the banner
+// it raises is what calls `recordDisposal`. Running them in that order here
+// gets the box's cleared expiry/frozen/opened stamps, the dropped "Use up X"
+// task and the undo entry from the first, and the counter, the spoiled stamp
+// and the shelf-life offer from the second — with `markOutOfMany`'s undo
+// snapshot taken ahead of both, so one undo still restores the row whole.
+//
+// A count of 0 back from the mark means the row was already out of it, and
+// the answer is to record nothing: a second disposal for one box would be
+// evidence of something that didn't happen, and `itemDisposal.ts` is explicit
+// that these counts are the record rather than an estimate.
+async function processPendingDisposals(): Promise<void> {
+  const bridge = widgetBridge();
+  if (!bridge) return;
+  try {
+    const queued = parseQueuedDisposals(await bridge.drainPendingDisposals());
+    if (queued.length === 0) return;
+    let applied = 0;
+    for (const entry of queued) {
+      // Re-read rather than destructuring once: each pass writes `items`, and
+      // a stale array would resolve the next name against the catalog as it
+      // stood before.
+      const { items, markOutOfMany, recordDisposal } = useGroceryStore.getState();
+      const item = resolveQueuedPantryItem(entry, items);
+      if (!item) continue;
+      if (markOutOfMany([item.id], undefined) === 0) continue;
+      recordDisposal(item.id, entry.outcome);
+      applied += 1;
+    }
+    if (applied === 0) return;
+    haptics.success();
+    // Silent otherwise, mirroring processPendingAddTasks: the row is already
+    // correct and there is nothing to look at. The exception is the shelf-life
+    // offer, which `recordDisposal` raises for a repeatedly-wasted item and
+    // which only `KitchenScreen` and `GroceryItemSheet` mount — left where the
+    // app happened to be, it would be a question asked into an empty room.
+    if (useGroceryStore.getState().disposalOffer) resetToKitchen();
+  } catch {
+    // A build predating drainPendingDisposals — no-op.
   }
 }
 
@@ -161,6 +211,22 @@ function writeSnapshotNow(): void {
   });
 
   writeToNativeBridge(JSON.stringify(snapshot));
+
+  // Rides the same debounce and the same store read rather than taking a
+  // subscription of its own: every write that could change the index is a
+  // grocery write, and this function is already woken by all of them.
+  //
+  // **Skipped entirely while the grocery store is uninitialized**, which is the
+  // one case where writing would be worse than not writing: `items` is empty
+  // before the load, and an empty index is indistinguishable from an empty
+  // catalog — Siri would answer "I don't have that" for everything the user
+  // owns until the next grocery write happened to land. The snapshot above
+  // handles the same gap by contributing null for a section it can't speak
+  // for; a file has no null, so it keeps the last true one.
+  if (grocery.initialized) {
+    const bridge = widgetBridge();
+    bridge?.writePantryIndex(JSON.stringify(buildPantryIndex(grocery.items))).catch(() => {});
+  }
 }
 
 let debounceTimer: ReturnType<typeof setTimeout> | null = null;
@@ -227,7 +293,11 @@ export function useWidgetSync(): void {
     // the debounced write above like any other mutation would — no separate
     // write path needed for the drain itself, just an initial one below in
     // case there was nothing to drain.
-    Promise.all([processPendingWidgetCompletions(), processPendingAddTasks()]).finally(() => {
+    Promise.all([
+      processPendingWidgetCompletions(),
+      processPendingAddTasks(),
+      processPendingDisposals(),
+    ]).finally(() => {
       // Deferred rather than called synchronously during mount — avoids
       // making the very first native module call while the app (and its
       // native module registry) is still mid-launch.
@@ -235,16 +305,18 @@ export function useWidgetSync(): void {
     });
 
     // Tapping a checkbox in the widget (CompleteTaskIntent, in
-    // TodoTodayWidget.swift) or the Action Button (AddTaskIntent) opens the
-    // app to apply what it queued, but if the app was already running in the
-    // background this effect doesn't remount — only a fresh 'active'
-    // AppState transition tells us to drain again. Both drains are safe to
-    // call with nothing queued.
+    // TodoTodayWidget.swift), the Action Button (AddTaskIntent) or saying a
+    // disposal to Siri (MarkDisposedIntent) opens the app to apply what it
+    // queued, but if the app was already running in the background this effect
+    // doesn't remount — only a fresh 'active' AppState transition tells us to
+    // drain again. All three drains are safe to call with nothing queued.
     const subscription = AppState.addEventListener('change', state => {
       if (state === 'active') {
-        Promise.all([processPendingWidgetCompletions(), processPendingAddTasks()]).finally(
-          scheduleSnapshotWrite
-        );
+        Promise.all([
+          processPendingWidgetCompletions(),
+          processPendingAddTasks(),
+          processPendingDisposals(),
+        ]).finally(scheduleSnapshotWrite);
       }
     });
 
