@@ -224,8 +224,8 @@ it only when you changed one of those. **CI runs `npx tsc --noEmit`, `npm test`,
 not just the tests.
 
 **The three generated docs are the single most common reason a PR goes red, and the failure is
-entirely avoidable.** `docs/module-map.md`, `docs/screen-map.md` and the `repo-stats` block in this
-file are generated from the tree and committed, and CI re-runs their generators with `--check` and
+entirely avoidable.** `docs/module-map.md`, `docs/screen-map.md` and `docs/repo-stats.md`
+are generated from the tree and committed, and CI re-runs their generators with `--check` and
 fails if the committed copy differs. They are not optional bookkeeping and not a separate chore:
 **regenerating them and committing the result is part of finishing the change, in the same
 commit** — which is what `npm run verify` does for you, so the reliable way to never hit this is
@@ -235,7 +235,7 @@ to run that rather than its parts. Concretely:
   `src/db` or `src/services` changes `docs/module-map.md`.** That's most PRs in this repo. A new
   helper in an existing file counts; so does deleting a dead one. Components and screens don't
   (the map deliberately skips them).
-- **Adding a file to `src/`, or pushing one across 1,000 lines, changes the `repo-stats` block.**
+- **Adding a file to `src/`, or pushing one across 1,000 lines, changes `docs/repo-stats.md`.**
   A new test file moves the suite count, which is why a pure test-only PR can still fail this.
 - **Adding a component or a screen, or rendering an existing one somewhere new, changes
   `docs/screen-map.md`.** The edge it records is a JSX tag, so adding `<EmptyState />` to a screen
@@ -253,8 +253,7 @@ to run that rather than its parts. Concretely:
   tree*, so the loop passing locally is not the signal — an uncommitted regenerated file looks
   exactly like a passing run right up until CI compares against what you actually pushed. That is
   the whole failure mode: the tests were green every single time.
-- **Never hand-edit any of them, and never edit inside the `repo-stats` markers in this file.**
-  Fix the source and regenerate.
+- **Never hand-edit any of them.** Fix the source and regenerate.
 
 One missed regeneration doesn't stay one red PR, which is why the rule above is worth this much
 space. The checks used to run on pull requests only, so a merge that skipped them left `main`
@@ -265,8 +264,8 @@ touched no exports, pull `main` and regenerate before hunting through your own d
 
 **Never resolve a merge conflict in any of them by hand, and don't trust a clean merge of them
 either.** All three are one line per fact — one per module in the map, one per screen or component
-in the screen map, one per statistic in the `repo-stats` block — so git merges them line by line and a merge of two individually correct
-generations is not itself a correct generation. A `+N more` counter is a per-line summary, so a
+in the screen map, one per statistic in the repo stats — so git merges them line by line and a
+merge of two individually correct generations is not itself a correct generation. A `+N more` counter is a per-line summary, so a
 merge takes one side's number instead of recounting (`db/database.ts` sat at `+122` against an
 actual `+125` for weeks); a newly added module's line is placed next to whichever context each
 side had, so it can land out of the generator's own sort order, which is what put
@@ -274,13 +273,28 @@ side had, so it can land out of the generator's own sort order, which is what pu
 other way. Neither shows up as a conflict, and `git status` stays clean, because the file is
 committed and unchanged. The fix is always the same: rerun the generator, never edit the file.
 
-`npm install` wires up two things that make that mostly automatic (`scripts/setup-git-hooks.js`,
-run from `postinstall`, which sets `core.hooksPath` to `.githooks/`). The merge driver in
-`.gitattributes` keeps the generated content out of the line merge entirely, and `.githooks/`
-regenerates after a merge and blocks a push whose generated docs are stale. They are a safety
-net, not a guarantee: they are per-clone git config, so a clone that never ran `npm install`
-doesn't have them, and GitHub's own merge button runs neither. CI's `--check` steps stay the
-real gate.
+**`.gitattributes` marks all three `merge=union`, and that choice is load-bearing.** Union keeps
+both sides' lines rather than conflicting. For a file that is one line per fact that is usually
+right outright, and where it isn't (both sides rewrote the same `+N more` counter) the result is
+a duplicate line, which the post-merge hook regenerates away and CI catches. Never blocking,
+never silently wrong for long.
+
+What it replaced is the cautionary tale. A custom `generated-doc` driver regenerated these
+properly, but a custom driver has to be registered per clone (`scripts/setup-git-hooks.js`, from
+`postinstall`) and **GitHub's servers run no postinstall**. So every open PR showed a conflict in
+these files after every merge to `main`, while the same merge was clean on any developer's
+machine — a merge that succeeds locally was not evidence the PR was mergeable, and the fix each
+time was a manual merge and a wasted CI run per PR. Union is built into git and needs no config,
+so GitHub applies it too. Reproduce the old failure with
+`git -c merge.generated-doc.driver= merge <branch>` if you ever need to see it.
+
+`CLAUDE.md` is deliberately not in that list: it is prose, where union would duplicate paragraphs
+rather than facts. Its generated numbers moved to `docs/repo-stats.md` for exactly that reason.
+
+`npm install` still sets `core.hooksPath` to `.githooks/`, which regenerates after a merge and
+blocks a push whose generated docs are stale. That half is still per-clone and still a safety net
+rather than a guarantee: a clone that never ran `npm install` doesn't have it. CI's `--check`
+steps stay the real gate.
 
 There is no ESLint or Prettier config. Match the style of the file you're in; don't reformat
 untouched lines.
@@ -439,26 +453,16 @@ file: the two maps are indexes, not write-ups.
 | the wheel on the tab bar, and what it holds | `src/utils/featureWheel.ts` (geometry + hit test) + `src/components/FeatureWheel.tsx` + `wheelSlots` in `navHubs.ts` + `featureWheelRoutes`. Read the geometry note first: a full 360° ring cannot be placed on a phone, which is why it is a fan, and the slot cap is a property of the reachable arc rather than a product call |
 | anything not listed here, in the logic layer | `docs/module-map.md` — every logic module and what it exports |
 | which screen shows a component, or what's on a screen | `docs/screen-map.md` — both directions, generated from the JSX |
+| how big a file is before you open it, and how many suites there are | `docs/repo-stats.md` — generated from the tree |
 
-<!-- BEGIN GENERATED: repo-stats -->
-<!-- Regenerated by scripts/check-doc-stats.js. Run it after adding or growing a file. -->
+**Read narrowly.** Dozens of files here are over 1,000 lines, and reading any of them end to
+end costs more context than the rest of the task will. Grep for the symbol and read the
+surrounding range instead; `docs/module-map.md` says which file owns what.
 
-**Read narrowly.** 62 files are over 1,000 lines, 43 of
-them source rather than tests. The ten biggest source files:
-
-`store/useTaskStore.ts` (7.9k), `db/database.ts` (6.1k), `types/index.ts` (6.1k),
-`components/TaskEditor.tsx` (6.0k), `store/useGroceryStore.ts` (5.2k),
-`screens/TodayScreen.tsx` (4.6k), `components/TaskItem.tsx` (4.5k),
-`store/useSettingsStore.ts` (4.2k), `utils/demoSeed.ts` (4.2k),
-`screens/BackfillScreen.tsx` (3.6k).
-
-Grep for the symbol and read the surrounding range; reading any of them end to end costs more
-context than the rest of the task will. `docs/module-map.md` says which file owns what.
-
-The suite is **351 test files**, and `npm test` runs all of them in well under a minute.
-`npx tsc --noEmit` is a few seconds once `.tsbuildinfo` exists, so run both, every time.
-
-<!-- END GENERATED: repo-stats -->
+**`docs/repo-stats.md` has the current figures** — how many test suites there are, which files
+are over 1,000 lines, and the ten biggest source files by name. It is generated from the tree
+and checked in CI, so it is the one place those numbers are worth reading. They used to sit in
+this file as a marked block; see the note on `.gitattributes` above for why they moved.
 
 **The fourteen single-component files carry their own map.** `TaskEditor.tsx`, `TodayScreen.tsx`,
 `TaskItem.tsx`, `QuickAddModal.tsx`, `MealPlanScreen.tsx`, `RecipeDetailScreen.tsx`,

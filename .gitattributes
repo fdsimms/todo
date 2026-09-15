@@ -1,9 +1,20 @@
-# The three docs generated from the tree and committed. Merging them line by line
-# produces a file the generator would never emit, cleanly and with no signal —
-# see scripts/merge-generated-doc.js for what that looks like and why. The
-# driver is registered per clone by scripts/setup-git-hooks.js (npm postinstall);
-# without it git falls back to a normal merge, so this is a safety net rather
-# than a guarantee, and CI's --check steps stay the real gate.
-docs/module-map.md merge=generated-doc
-docs/screen-map.md merge=generated-doc
-CLAUDE.md merge=generated-doc
+# The three docs generated from the tree and committed.
+#
+# `union` keeps both sides' lines instead of conflicting. For a file that is one
+# line per fact that is usually the right answer outright, and where it isn't
+# (both sides rewrote the same `+N more` counter) the result is a duplicate line
+# that the post-merge hook regenerates away and CI's --check catches. Never
+# blocking, never silently wrong for long.
+#
+# It replaced a custom `generated-doc` driver that regenerated properly but had
+# to be registered per clone (npm postinstall), which GitHub's servers do not
+# run: every open PR showed a conflict in these files on every merge to main,
+# while the same merge was clean on any developer's machine. `union` is built
+# into git and needs no config, so GitHub honors it too.
+#
+# CLAUDE.md is deliberately NOT here. It is prose, where union would duplicate
+# paragraphs rather than facts; the generated numbers that used to live in it
+# are docs/repo-stats.md for exactly that reason.
+docs/module-map.md merge=union
+docs/screen-map.md merge=union
+docs/repo-stats.md merge=union

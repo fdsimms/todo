@@ -82,7 +82,7 @@ import { KNOWN_LINK_APPS, linkAppsFor } from '../constants/linkApps';
 import { tagColor } from '../utils/tagColor';
 import { formatPhoneInput } from '../utils/phone';
 import { format } from 'date-fns/format';
-import { getLogicalToday, getLogicalTomorrow, getLogicalNow } from '../utils/dateUtils';
+import { getLogicalToday, getLogicalTomorrow, getLogicalNow, formatTimeOfDay } from '../utils/dateUtils';
 import { EFFORT_MINUTES, effortToMinutes, minutesToEffort, formatDuration } from '../utils/effort';
 import { TaskEditor, type TaskDraft } from './TaskEditor';
 import { RECURRENCE_LABELS, onlyNewestWeekday } from './RecurrencePicker';
@@ -345,6 +345,13 @@ export function QuickAddModal({
   const [dueDate, setDueDate] = useState<Date | null>(null);
   const [deadline, setDeadline] = useState<Date | null>(null);
   const [timeSegments, setTimeSegments] = useState<TimeOfDay[]>([]);
+  // A reminder actually accepted off the offer below — nothing sets this on
+  // its own, so an explicit clock time never schedules a notification
+  // without a person choosing to.
+  const [reminderTime, setReminderTime] = useState<Date | null>(null);
+  // A pending suggestion, live only until the offer row is tapped or
+  // dismissed — see applyParse, which is the only thing that sets it.
+  const [reminderOffer, setReminderOffer] = useState<Date | null>(null);
   // No field of its own in this sheet — see the seed prop's doc comment.
   const [windowStart, setWindowStart] = useState<string | null>(null);
   const [windowEnd, setWindowEnd] = useState<string | null>(null);
@@ -451,6 +458,8 @@ export function QuickAddModal({
     setPhoneNumber(null);
     setEmailAddress(null);
     setDeadline(null);
+    setReminderTime(null);
+    setReminderOffer(null);
     setType(initialType);
     setTimedMinutes(initialType === 'timed' ? DEFAULT_TIMED_MINUTES : null);
     setCustomTimedText('');
@@ -887,6 +896,30 @@ export function QuickAddModal({
     setRecurrenceEndDate(parsed.schedule.recurrenceEndDate ?? null);
     setRecurrenceCount(parsed.schedule.recurrenceCount ?? null);
     setRecurrenceFromCompletion(parsed.schedule.recurrenceFromCompletion ?? false);
+    // A literal clock reading ("5pm") is otherwise discarded entirely —
+    // dueDate lands on noon and timeSegments only keeps the coarse
+    // morning/afternoon/evening bucket (see ParsedSchedule.explicitClockTime).
+    // Surface it as something to accept rather than silently scheduling a
+    // notification for it.
+    if (parsed.schedule.explicitClockTime && !reminderTime) {
+      const suggested = new Date(parsed.schedule.dueDate);
+      suggested.setHours(parsed.schedule.explicitClockTime.h, parsed.schedule.explicitClockTime.m, 0, 0);
+      setReminderOffer(suggested);
+    } else {
+      setReminderOffer(null);
+    }
+  };
+
+  const acceptReminderOffer = () => {
+    if (!reminderOffer) return;
+    haptics.success();
+    setReminderTime(reminderOffer);
+    setReminderOffer(null);
+  };
+
+  const dismissReminderOffer = () => {
+    haptics.tap();
+    setReminderOffer(null);
   };
 
   // Apply the detected "#category"/"#tag" tokens and strip them from the title.
@@ -1152,6 +1185,7 @@ export function QuickAddModal({
       dueDate: dueDate?.toISOString() ?? null,
       deadline: deadline?.toISOString() ?? null,
       timeSegments,
+      reminderTime: reminderTime?.toISOString() ?? null,
       tags: resolveTags(),
       personIds,
       category: resolveCategory(),
@@ -1256,6 +1290,7 @@ export function QuickAddModal({
       ...baked,
       dueDate,
       timeSegments,
+      reminderTime,
       tags: resolveTags(),
       personIds,
       category: resolveCategory(),
@@ -1769,6 +1804,55 @@ export function QuickAddModal({
                 )}
               </View>
             </Animated.View>
+          )}
+
+          {/* A schedule chip that named a literal clock time offers turning
+              it into an actual reminder — accepting or dismissing either way
+              leaves the schedule chip's own dueDate/segment alone. See
+              applyParse and ParsedSchedule.explicitClockTime. */}
+          {!!reminderOffer && (
+            <View style={styles.reminderRow}>
+              <Ionicons name="notifications-outline" size={13} color={colors.textSecondary} />
+              <Text style={styles.reminderText} numberOfLines={1}>
+                Remind you at {formatTimeOfDay(reminderOffer)} too?
+              </Text>
+              <TouchableOpacity
+                onPress={acceptReminderOffer}
+                hitSlop={8}
+                accessibilityRole="button"
+                accessibilityLabel={`Remind me at ${formatTimeOfDay(reminderOffer)}`}
+              >
+                <Text style={styles.reminderAccept}>Remind me</Text>
+              </TouchableOpacity>
+              <TouchableOpacity
+                onPress={dismissReminderOffer}
+                hitSlop={8}
+                accessibilityRole="button"
+                accessibilityLabel="Dismiss reminder suggestion"
+              >
+                <Ionicons name="close-circle" size={15} color={colors.textTertiary} />
+              </TouchableOpacity>
+            </View>
+          )}
+
+          {/* The accepted reminder, with a way to take it back — the same
+              row shape as the offer above, once the offer's own two actions
+              have collapsed to one. */}
+          {!reminderOffer && !!reminderTime && (
+            <View style={styles.reminderRow}>
+              <Ionicons name="notifications" size={13} color={colors.accent} />
+              <Text style={styles.reminderText} numberOfLines={1}>
+                Reminder set for {formatTimeOfDay(reminderTime)}
+              </Text>
+              <TouchableOpacity
+                onPress={() => { haptics.tap(); setReminderTime(null); }}
+                hitSlop={8}
+                accessibilityRole="button"
+                accessibilityLabel="Remove reminder"
+              >
+                <Ionicons name="close-circle" size={15} color={colors.textTertiary} />
+              </TouchableOpacity>
+            </View>
           )}
 
           {/* What a title rule just filled in. Not a tooltip: the tooltips
@@ -2841,6 +2925,12 @@ const makeStyles = (colors: Colors, sheetMaxHeight: number) => StyleSheet.create
     marginTop: spacing.xs, marginBottom: spacing.sm,
   },
   ruleText: { flex: 1, color: colors.textSecondary, fontSize: font.xs },
+  reminderRow: {
+    flexDirection: 'row', alignItems: 'center', gap: spacing.xs,
+    marginTop: spacing.xs, marginBottom: spacing.sm,
+  },
+  reminderText: { flex: 1, color: colors.textSecondary, fontSize: font.xs },
+  reminderAccept: { color: colors.accent, fontSize: font.xs, fontWeight: fontWeight.semibold },
   tooltipRow: {
     marginTop: -4,
     marginBottom: spacing.sm,

@@ -5,6 +5,7 @@ import {
   dbUpdatePersonGroup,
   dbDeletePersonGroup,
 } from '../db/database';
+import { resetReplayForTests } from '../utils/undoHistory';
 
 jest.mock('../db/database', () => ({
   dbGetAllPersonGroups: jest.fn().mockReturnValue([]),
@@ -20,8 +21,9 @@ jest.mock('../db/database', () => ({
 
 beforeEach(() => {
   jest.clearAllMocks();
-  usePersonGroupStore.setState({ groups: [], initialized: false });
-  usePersonStore.setState({ people: [], initialized: false });
+  resetReplayForTests();
+  usePersonGroupStore.setState({ groups: [], initialized: false, undoStack: [], redoStack: [], lastAction: null });
+  usePersonStore.setState({ people: [], initialized: false, undoStack: [], redoStack: [], lastAction: null });
 });
 
 describe('a new group', () => {
@@ -88,5 +90,28 @@ describe('deleting a group', () => {
     expect(usePersonStore.getState().people).toHaveLength(2);
     expect(usePersonStore.getState().getPersonById(dustin.id)?.groupId).toBeNull();
     expect(usePersonStore.getState().getPersonById(ansley.id)?.groupId).toBeNull();
+  });
+
+  it('can be undone, members restored to it', () => {
+    const group = usePersonGroupStore.getState().createGroup('Household');
+    const dustin = usePersonStore.getState().createPerson('Dustin');
+    usePersonStore.getState().updatePerson(dustin.id, { groupId: group.id });
+
+    usePersonGroupStore.getState().removeGroupRow(group.id);
+    expect(usePersonGroupStore.getState().groups).toEqual([]);
+    expect(usePersonStore.getState().getPersonById(dustin.id)?.groupId).toBeNull();
+
+    usePersonGroupStore.getState().undoLastAction();
+
+    expect(usePersonGroupStore.getState().groups.map(g => g.id)).toEqual([group.id]);
+    expect(usePersonStore.getState().getPersonById(dustin.id)?.groupId).toBe(group.id);
+  });
+
+  it('can be redone after an undo', () => {
+    const group = usePersonGroupStore.getState().createGroup('Household');
+    usePersonGroupStore.getState().removeGroupRow(group.id);
+    usePersonGroupStore.getState().undoLastAction();
+    usePersonGroupStore.getState().redoLastUndone();
+    expect(usePersonGroupStore.getState().groups).toEqual([]);
   });
 });
