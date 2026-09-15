@@ -370,7 +370,7 @@ export function TemplateEditor({ visible, template, onClose }: Props) {
             <>
               <EditorRow
                 icon="alarm-outline"
-                label="From"
+                label="Runs at"
                 value={formatHHMM(schedule.time)}
                 expanded={timePickerOpen}
                 onPress={() => {

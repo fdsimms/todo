@@ -13,6 +13,7 @@ import { MEAL_SLOTS, MEAL_SLOT_ICONS, MEAL_SLOT_LABELS, type FoodLogEntry, type 
 import { useFoodLogStore } from '../store/useFoodLogStore';
 import { useSavedMealsStore } from '../store/useSavedMealsStore';
 import { dayKeyOf, dayKeyToDate, getCurrentDayStart } from '../utils/dateUtils';
+import { slotForHour } from '../utils/mealLog';
 import {
   describeFoodLogEntry,
   foodLogEntryEdit,
@@ -223,6 +224,25 @@ export function FoodLogScreen() {
   // anything against.
   const [targetsOpen, setTargetsOpen] = useState(false);
 
+  const todayKey = dayKeyOf(getCurrentDayStart());
+  const isToday = dayKey === todayKey;
+  const dayDate = dayKeyToDate(dayKey);
+  // The instant a new entry is stamped with. Today logs at the real moment;
+  // another day logs at midday, which is inside that logical day whichever way
+  // the reset time falls. Same reasoning `getLogicalToday` uses for noon.
+  const loggingAt = useMemo(() => {
+    if (isToday) return new Date();
+    const noon = new Date(dayDate);
+    noon.setHours(12, 0, 0, 0);
+    return noon;
+  }, [isToday, dayDate]);
+
+  // Which meal to open the entry sheet on when nothing else picked one for it
+  // (the FAB, the empty state, Meal plan's "Log food"). A guess rather than a
+  // write — see slotForHour's own doc comment — so it only saves the extra tap
+  // to the slot chip a person would otherwise make themselves.
+  const guessedSlot = useMemo(() => slotForHour(loggingAt.getHours()), [loggingAt]);
+
   useEffect(() => {
     loadRange(dayKey, dayKey);
   }, [dayKey, loadRange]);
@@ -235,9 +255,9 @@ export function FoodLogScreen() {
   useEffect(() => {
     if (route.params?.openAdd === undefined || route.params.openAdd === handledOpenAdd) return;
     setHandledOpenAdd(route.params.openAdd);
-    setAddingSlot(null);
+    setAddingSlot(guessedSlot);
     setAddOpen(true);
-  }, [route.params?.openAdd, handledOpenAdd]);
+  }, [route.params?.openAdd, handledOpenAdd, guessedSlot]);
 
   const [handledOpenEntry, setHandledOpenEntry] = useState<number | undefined>(undefined);
   useEffect(() => {
@@ -282,19 +302,6 @@ export function FoodLogScreen() {
     () => new Map(MEAL_SLOTS.map(s => [MEAL_SLOT_LABELS[s], s])),
     []
   );
-
-  const todayKey = dayKeyOf(getCurrentDayStart());
-  const isToday = dayKey === todayKey;
-  const dayDate = dayKeyToDate(dayKey);
-  // The instant a new entry is stamped with. Today logs at the real moment;
-  // another day logs at midday, which is inside that logical day whichever way
-  // the reset time falls. Same reasoning `getLogicalToday` uses for noon.
-  const loggingAt = useMemo(() => {
-    if (isToday) return new Date();
-    const noon = new Date(dayDate);
-    noon.setHours(12, 0, 0, 0);
-    return noon;
-  }, [isToday, dayDate]);
 
   const step = useCallback((days: number) => {
     haptics.tap();
@@ -688,7 +695,7 @@ export function FoodLogScreen() {
           title={isToday ? 'Nothing logged today' : 'Nothing logged that day'}
           subtitle="A food can be logged once it has nutrition on it, so its figures are the food's own rather than a guess."
           actionLabel="Log something"
-          onAction={() => { haptics.tap(); setAddingSlot(null); setAddOpen(true); }}
+          onAction={() => { haptics.tap(); setAddingSlot(guessedSlot); setAddOpen(true); }}
           bottomOffset={tabBarHeight}
         />
       ) : (
@@ -896,7 +903,7 @@ export function FoodLogScreen() {
           something you're doing mid-selection anyway. */}
       {!selectionMode && (
         <Fab
-          onPress={() => { setAddingSlot(null); setAddOpen(true); }}
+          onPress={() => { setAddingSlot(guessedSlot); setAddOpen(true); }}
           accessibilityLabel="Log something you ate"
           bottom={tabBarHeight + spacing.md}
         />
@@ -928,6 +935,7 @@ export function FoodLogScreen() {
         slot={addingSlot}
         at={loggingAt}
         seedRecipeId={seedRecipeId}
+        allowBurst
         onClose={() => { setAddOpen(false); setSeedRecipeId(null); }}
         onEstimate={estimateRoute !== 'unavailable' ? query => { setEstimateSeed(query); setEstimateOpen(true); } : undefined}
         onScan={() => setScanOpen(true)}
