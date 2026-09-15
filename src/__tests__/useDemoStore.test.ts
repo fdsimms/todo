@@ -25,6 +25,7 @@ import { isMorningCheckInCandidate } from '../utils/morningCheckIn';
 import { useTaskGroupStore } from '../store/useTaskGroupStore';
 import { useSavedViewStore } from '../store/useSavedViewStore';
 import { filterTasksForView } from '../utils/savedViews';
+import { calibrationFrom, MIN_CALIBRATION_SAMPLES } from '../utils/estimateCalibration';
 import { useFocusStore } from '../store/useFocusStore';
 import { isFocusRunning } from '../utils/focusPlan';
 import { itemsOnList } from '../utils/groceryLists';
@@ -538,7 +539,16 @@ describe('demo mode', () => {
     useDemoStore.getState().exitDemoMode();
     expect(useSavedViewStore.getState().views).toEqual([]);
   });
-
+  // The Stats section says nothing below MIN_CALIBRATION_SAMPLES, so seeding
+  // four timed tasks would look identical to seeding none. Asserting the
+  // derived read rather than the row count is what pins that.
+  it('seeds enough timed history for a calibration to exist', () => {
+    useDemoStore.getState().enterDemoMode();
+    const calibration = calibrationFrom(useTaskStore.getState().tasks);
+    expect(calibration).not.toBeNull();
+    expect(calibration!.samples).toBeGreaterThanOrEqual(MIN_CALIBRATION_SAMPLES);
+    useDemoStore.getState().exitDemoMode();
+  });
   // A list is drawn differently from a project and is otherwise the same row,
   // so the only thing that can make the feature visible in demo mode is a
   // project actually carrying kind: 'list'. Behaviour is asserted alongside:

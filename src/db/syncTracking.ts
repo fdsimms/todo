@@ -232,6 +232,8 @@ export const SYNCED_SETTING_KEYS: readonly string[] = [
   'mealsOnToday',
   'calendarEventCategory',
   'kitchenEnabled',
+  'featureWheelEnabled',
+  'featureWheelRoutes',
   'unitSystem',
   'currencySymbol',
 

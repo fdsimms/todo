@@ -9,6 +9,7 @@ import { settingsGroup, type SettingsGroupId } from '../utils/settingsIndex';
 import { settingsFocusScrollTarget } from '../utils/settingsFocusScroll';
 import { SettingsFocusProvider, type MeasurableRow } from './settings/SettingsFocus';
 import { FeatureAreasSettings } from './settings/FeatureAreasSettings';
+import { FeatureWheelSettings } from './settings/FeatureWheelSettings';
 import { AppearanceSettings } from './settings/AppearanceSettings';
 import { DayTimeSettings } from './settings/DayTimeSettings';
 import { NotificationSettings } from './settings/NotificationSettings';
@@ -120,6 +121,7 @@ export function SettingsGroupScreen() {
           <View ref={contentRef} collapsable={false}>
           <SettingsFocusProvider focusedEntryId={focusedEntryId} reportRow={reportRow}>
           {groupId === 'featureAreas' && <FeatureAreasSettings />}
+          {groupId === 'featureAreas' && <FeatureWheelSettings />}
           {groupId === 'appearance' && <AppearanceSettings />}
           {groupId === 'dayTime' && <DayTimeSettings />}
           {groupId === 'notifications' && <NotificationSettings />}

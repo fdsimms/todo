@@ -325,19 +325,27 @@ export function isImportableList(list: ReminderList | undefined): boolean {
 /**
  * The picker's options: reminder lists we could actually import from.
  *
- * `excludeId` is how the two destinations (tasks, groceries) stay disjoint.
- * They must be, and it isn't cosmetic: the handled record is read as one set
- * across every list, so a list wired
- * to both would send each reminder to whichever drain reached it first — a
- * coin toss between the Inbox and the grocery list.
+ * `exclude` is how the destinations stay disjoint. They must be, and it isn't
+ * cosmetic: the handled record is read as one set across every list, so a list
+ * wired to two of them would send each reminder to whichever drain reached it
+ * first — a coin toss between the Inbox and the grocery list.
+ *
+ * It takes a list rather than one id because the set of destinations stopped
+ * being two: `reminderCaptures` is an open set the user builds
+ * (`utils/reminderCaptures.ts`), so "every other list already in use" is the
+ * exclusion, and `captureListIds` is what assembles it. A single id still works
+ * and is what the two fixed legs pass.
  */
 export function reminderListOptions(
   lists: ReminderList[],
-  excludeId: string | null = null
+  exclude: string | readonly string[] | null = null
 ): ReminderList[] {
+  const excluded = new Set(
+    exclude === null ? [] : typeof exclude === 'string' ? [exclude] : exclude
+  );
   return lists
     .filter(isImportableList)
-    .filter(list => !excludeId || list.id !== excludeId)
+    .filter(list => !excluded.has(list.id))
     .sort((a, b) => a.title.localeCompare(b.title));
 }
 
@@ -359,6 +367,22 @@ export function findReminderList(
  */
 function creationTime(reminder: Reminder): number | null {
   return toDate(reminder.creationDate)?.getTime() ?? null;
+}
+
+/**
+ * When the reminder was dictated, for a caller that needs the moment rather
+ * than the ordering — a meal capture deriving which meal it was
+ * (`captureDraftFields`).
+ *
+ * Null rather than a stand-in when EventKit stated none, for the reason the
+ * note above gives: the field is genuinely optional, and a caller that
+ * substitutes its own clock should do so knowing that is what it is doing. The
+ * drain passes its own `now`, which is the right answer for a list drained
+ * moments after it was spoken into and the wrong one for a backlog.
+ */
+export function reminderCreatedAt(reminder: Reminder): Date | null {
+  const at = creationTime(reminder);
+  return at === null ? null : new Date(at);
 }
 
 /**

@@ -15,6 +15,12 @@ interface Props {
   /** Let − at the floor clear the value instead of sticking there. */
   allowNull?: boolean;
   /**
+   * Where + lands from empty, if not `min` — see `StepRange.start`. Only
+   * matters together with `allowNull`; there's nothing to seed a start for
+   * on a stepper whose floor is never empty to begin with.
+   */
+  start?: number;
+  /**
    * How much one press moves the value. Default 1.
    *
    * For a number whose useful granularity isn't 1 — minutes, where stepping a
@@ -67,6 +73,7 @@ export function CountStepper({
   min,
   max,
   allowNull = false,
+  start,
   step = 1,
   emptyLabel = 'Off',
   format = String,
@@ -77,7 +84,7 @@ export function CountStepper({
   const colors = useColors();
   const styles = makeStyles(colors);
 
-  const range: StepRange = { min, max, allowNull };
+  const range: StepRange = { min, max, allowNull, start };
 
   // The repeat timer fires outside React's render cycle, so it reads the live
   // value and callback from here rather than from a stale closure.
@@ -96,7 +103,7 @@ export function CountStepper({
 
   useEffect(() => stop, [stop]);
 
-  const start = (delta: number) => {
+  const startRepeat = (delta: number) => {
     stop();
     tick.current = 0;
 
@@ -135,7 +142,7 @@ export function CountStepper({
     return (
       <PressableScale
         style={[styles.key, !enabled && styles.keyDisabled]}
-        onPressIn={() => enabled && start(delta)}
+        onPressIn={() => enabled && startRepeat(delta)}
         onPressOut={stop}
         disabled={!enabled}
         accessibilityLabel={`${verb} ${label.toLowerCase()}`}

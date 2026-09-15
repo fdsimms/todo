@@ -397,6 +397,37 @@ describe('resetToDefaults', () => {
     expect(state.tripLiveActivity).toBe(true);
   });
 
+  /**
+   * The reason this is tested rather than left to DEFAULT_SETTINGS' mechanical
+   * array rule: importing *deletes* the user's reminders, so a reset that left
+   * a confirmed-list id in place would let the capture start draining again
+   * without anybody re-answering the alert that names the list and the count.
+   * The two fixed legs are cleared by hand for exactly this, and a capture is
+   * the same hazard in an array.
+   */
+  it('clears every capture list and its confirmation, keeping the captures themselves', () => {
+    useSettingsStore.getState().setReminderCaptures([{
+      id: 'c1',
+      title: 'Food',
+      enabled: true,
+      listId: 'list-food',
+      confirmedListId: 'list-food',
+      deleteAfterImport: true,
+      filing: { kind: 'meal', slot: null },
+    }]);
+
+    useSettingsStore.getState().resetToDefaults();
+
+    const captures = useSettingsStore.getState().reminderCaptures;
+    expect(captures).toHaveLength(1);
+    // The preference survives; what it was allowed to do does not.
+    expect(captures[0].title).toBe('Food');
+    expect(captures[0].filing).toEqual({ kind: 'meal', slot: null });
+    expect(captures[0].listId).toBeNull();
+    expect(captures[0].confirmedListId).toBeNull();
+    expect(dbSetSetting).toHaveBeenCalledWith('reminderCaptures', JSON.stringify(captures));
+  });
+
   it('persists each default to the database', () => {
     useSettingsStore.getState().resetToDefaults();
     expect(dbSetSetting).toHaveBeenCalledWith('themeMode', 'dark');
@@ -1414,6 +1445,29 @@ describe('restockOfferEnabled', () => {
     useSettingsStore.getState().setRestockOfferEnabled(false);
     expect(dbSetSetting).toHaveBeenCalledWith('restockOfferEnabled', 'false');
     expect(useSettingsStore.getState().restockOfferEnabled).toBe(false);
+  });
+});
+
+describe('keepOpenAfterFoodLog', () => {
+  // Off by default, same reasoning as simpleMode below: an install that
+  // predates the setting keeps the close-on-save behavior it already had.
+  it('defaults to off when nothing is stored', () => {
+    useSettingsStore.getState().initialize();
+    expect(useSettingsStore.getState().keepOpenAfterFoodLog).toBe(false);
+  });
+
+  it('only turns on for an explicit "true"', () => {
+    (dbGetSetting as jest.Mock).mockImplementation((key: string) =>
+      key === 'keepOpenAfterFoodLog' ? 'true' : null,
+    );
+    useSettingsStore.getState().initialize();
+    expect(useSettingsStore.getState().keepOpenAfterFoodLog).toBe(true);
+  });
+
+  it('round-trips through setKeepOpenAfterFoodLog', () => {
+    useSettingsStore.getState().setKeepOpenAfterFoodLog(true);
+    expect(dbSetSetting).toHaveBeenCalledWith('keepOpenAfterFoodLog', 'true');
+    expect(useSettingsStore.getState().keepOpenAfterFoodLog).toBe(true);
   });
 });
 

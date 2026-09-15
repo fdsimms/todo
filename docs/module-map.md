@@ -68,7 +68,7 @@ name cannot say is where a component appears, and that is `docs/screen-map.md`.
 - `src/utils/dailyAgendaSync.ts` — useDailyAgendaSync
 - `src/utils/dateUtils.ts` — getDayStart, getCurrentDayStart, getLogicalDayKey, dayKeyOf, dayKeyToDate, getTaskDayStart, formatHHMM, formatTimeOfDay, getWeekStart, getLogicalToday, +23 more
 - `src/utils/dayContextRows.ts` — eventContextRows, mealContextRows, healthContextRows, weatherContextRows, insertContextRows, withoutContextRows
-- `src/utils/dayLoad.ts` — BUSY_DAY_MINUTES, FULL_DAY_MINUTES, ASSUMED_TASK_MINUTES, DayWeight, DayLoad, BuildDayLoadsOptions, buildDayLoads, weightFor, describeDayWeight, describeDayLoad
+- `src/utils/dayLoad.ts` — BUSY_DAY_MINUTES, FULL_DAY_MINUTES, ASSUMED_TASK_MINUTES, assumedMinutesFor, DayWeight, DayLoad, BuildDayLoadsOptions, buildDayLoads, weightFor, describeDayWeight, +1 more
 - `src/utils/daySegments.ts` — DAY_SEGMENT_KEYS, DaySegmentKey, DaySegmentTimes, applyDaySegmentTime, daySegmentsInOrder
 - `src/utils/deadlineCalendarSync.ts` — syncDeadlineEvent
 - `src/utils/deepLinks.ts` — AddTaskLink, parseAddTaskUrl, handleIncomingUrl, isQuickAddUrl, isOpenAppUrl, isGroceriesUrl, groceriesUrlFinish, isRecipesUrl, isRecipeUrl, recipeUrlId, +27 more
@@ -77,15 +77,17 @@ name cannot say is where a component appears, and that is `docs/screen-map.md`.
 - `src/utils/demoSeed.ts` — seedDemoData
 - `src/utils/demoState.ts` — isDemoModeActive, setDemoModeActive
 - `src/utils/editorSearch.ts` — EditorSearchable, editorSearchTerms, matchesEditorQuery, filterEditorRows
-- `src/utils/effort.ts` — applyMeasuredTime, formatStopwatch, EFFORT_MINUTES, effortToMinutes, minutesToEffort, EstimateSource, estimatedMinutesFor, measuredTimeAppliesTo, SuggestionCarrier, measuredTimeWorthSuggesting, +4 more
+- `src/utils/effort.ts` — MeasuredTimeUpdate, applyMeasuredTime, formatStopwatch, EFFORT_MINUTES, effortToMinutes, minutesToEffort, EstimateSource, estimatedMinutesFor, measuredTimeAppliesTo, SuggestionCarrier, +5 more
 - `src/utils/email.ts` — mailtoUrl, isEmailable
 - `src/utils/emojiCatalog.ts` — EmojiEntry, EmojiGroup, EMOJI_GROUPS, ALL_EMOJI, searchEmoji
 - `src/utils/emojiInput.ts` — firstEmoji, isSingleEmoji
 - `src/utils/energyBudget.ts` — BodySex, ActivityLevel, ACTIVITY_FACTOR, ACTIVITY_LABEL, ACTIVITY_LEVELS, BodyProfile, EMPTY_BODY_PROFILE, MIN_HEIGHT_CM, MAX_HEIGHT_CM, MIN_BIRTH_YEAR, +22 more
+- `src/utils/estimateCalibration.ts` — MIN_CALIBRATION_SAMPLES, MIN_SANE_RATIO, MAX_SANE_RATIO, EstimateCalibration, calibrationPairs, calibrationFrom, calibratedAssumedMinutes, describeCalibration
 - `src/utils/eventReminders.ts` — EventReminder, EVENT_REMINDER_OFFSETS, eventReminderKey, reminderFromEvent, reminderTriggerDate, isReminderStale, pruneStaleReminders, describeEventReminderOffset
 - `src/utils/eventTextParse.ts` — MAX_EVENT_TEXT_CHARS, ParsedEventText, parseEventText
 - `src/utils/expiredTaskGrace.ts` — ExpiredTaskGraceDays, EXPIRED_TASK_GRACE_OPTIONS, expiredTaskGraceLabel, parseExpiredTaskGrace, serializeExpiredTaskGrace
 - `src/utils/fabDrop.ts` — ScheduleInfo, DropZone, ZoneRect, FabDropIntent, zoneKey, ZONE_HIT_SLOP, TAIL_HIT_SLOP, zoneAtY, DEFAULT_DROP_SLOT, slotAtX, +13 more
+- `src/utils/featureWheel.ts` — WHEEL_MAX_SLOTS, WHEEL_DEAD_ZONE, WheelGeometry, wheelGeometry, wheelStep, wheelSlotAngles, wheelPoint, wheelSlotAt, wheelWedgePath, clampLabelX, +3 more
 - `src/utils/fieldBackfill.ts` — BackfillFieldId, BackfillFieldDef, BACKFILL_FIELDS, backfillFieldsFor, BackfillCandidatesOptions, isFieldMissing, isBackfillDismissed, backfillCandidates, backfillFieldCounts, dismissBackfillField, +2 more
 - `src/utils/focusLiveActivity.ts` — FocusRun, buildFocusRun, useFocusLiveActivitySync
 - `src/utils/focusPlan.ts` — FocusPlanTask, FocusPlanOptions, plannedTaskMinutes, splitMinutes, buildFocusPlan, normalizePlanTail, currentFocusStep, isFocusSessionFinished, isFocusRunning, focusStepElapsed, +17 more
@@ -146,7 +148,7 @@ name cannot say is where a component appears, and that is `docs/screen-map.md`.
 - `src/utils/maps.ts` — directionsUrl, isMappable
 - `src/utils/mealCalendarSync.ts` — mealEventTitle, mealEventFields, syncMealEvent
 - `src/utils/mealIdeas.ts` — MIN_MEAL_IDEAS, MAX_MEAL_IDEAS, RECENT_MEAL_DAYS, MealIdea, RawMealIdea, mealTitleKey, clampIdeaCount, dedupeMealIdeas, MealSuggestion, mergeMealSuggestions, +6 more
-- `src/utils/mealLog.ts` — DishFigures, MealHelping, wantsMealLogPrompt, defaultHelpings, mealHelping, servingGrams, weighedHelping, cookedDishGrams, describeCookedWeight, COOKED_WEIGHT_MIN_G, +4 more
+- `src/utils/mealLog.ts` — DishFigures, MealHelping, wantsMealLogPrompt, defaultHelpings, mealHelping, servingGrams, weighedHelping, cookedDishGrams, describeCookedWeight, COOKED_WEIGHT_MIN_G, +5 more
 - `src/utils/mealLogNudgeTasks.ts` — MEAL_LOG_NUDGE_LOOKBACK_DAYS, mealLogNudgeTitle, mealLogNudgeEntryId, mealLogNudgeLinkUrl, isWithinLogNudgeWindow, MealLogNudgeWant, wantedMealLogNudges, staleMealLogNudgeTasks
 - `src/utils/mealPlan.ts` — slotRank, slotLabel, sortMealEntries, entriesForDay, cookEntryForRecipe, earliestUnplannedSlot, entriesForSlot, nextSortOrder, upcomingDays, daysWithoutMeal, +16 more
 - `src/utils/mealPlanGroceries.ts` — PlannedIngredient, collectPlannedIngredients, hasShoppableMeals, plannedIngredientsForRecipe, parseQuantityAmount, mergeQuantities, describeQuantities, PlanCategory, ClassifiedIngredient, classifyPlanned, +4 more
@@ -163,7 +165,7 @@ name cannot say is where a component appears, and that is `docs/screen-map.md`.
 - `src/utils/moodLog.ts` — MOOD_LEVELS, LOW_MOOD_AT_OR_BELOW, DEFAULT_CONTEXT_TAGS, SYMPTOM_SEVERITIES, moodLabel, moodEmoji, severityLabel, symptomKey, withSymptom, withoutSymptom, +12 more
 - `src/utils/moodTasks.ts` — MOOD_LOG_TITLE, MOOD_NUDGE_TITLE, DEFAULT_MOOD_NUDGE_AFTER_DAYS, MOOD_NUDGE_COOLDOWN_DAYS, moodLogDayKey, moodLogSegmentOf, moodLogSourceId, moodNudgeDayKey, wantsMoodNudge, daysBetweenKeys, +2 more
 - `src/utils/morningCheckIn.ts` — isMorningCheckInCandidate, morningCheckInTasks
-- `src/utils/navHubs.ts` — NavContentCounts, NavHubId, NavDestination, NavHub, NavMenuRow, NAV_HUBS, NAV_MENU_ROWS, hubForRoute, visibleHubMembers, NavMenuOptions, +8 more
+- `src/utils/navHubs.ts` — NavContentCounts, NavHubId, NavDestination, NavHub, NavMenuRow, NAV_HUBS, NAV_MENU_ROWS, hubForRoute, visibleHubMembers, NavMenuOptions, +14 more
 - `src/utils/negativeHabits.ts` — NegativeHabitFields, isNegativeTask, slipsToday, isCleanToday, slipPatch, undoSlipPatch, cleanDayPatch
 - `src/utils/notificationTapSync.ts` — useNotificationTapSync
 - `src/utils/notifications.ts` — isWithinQuietHours, deferPastQuietHours, TASK_REMINDER_CATEGORY, COMPLETE_ACTION_IDENTIFIER, SNOOZE_ACTION_IDENTIFIER, SNOOZE_MINUTES, requestNotificationPermissions, NotificationPermission, getNotificationPermission, scheduleTaskReminder, +30 more
@@ -231,8 +233,9 @@ name cannot say is where a component appears, and that is `docs/screen-map.md`.
 - `src/utils/recipeUtils.ts` — parseRecipeIngredients, normalizeIngredient, makeIngredient, ingredientsFromText, mergeIngredients, remapIngredientKeyIn, parsePrepTasks, normalizePrepTask, parseSteps, normalizeStep, +46 more
 - `src/utils/recurrenceLabels.ts` — recurrenceUnitLabel, ORDINAL_OPTIONS, RecurrenceRule, describeTaskRecurrence, recurrenceRuleOf, describeRecurrence
 - `src/utils/refreshGuard.ts` — RefreshGuard, createRefreshGuard
+- `src/utils/reminderCaptures.ts` — CAPTURE_TITLE_MAX_LENGTH, MAX_REMINDER_CAPTURES, makeReminderCapture, parseReminderCaptures, serializeReminderCaptures, activeReminderCaptures, drainableReminderCaptures, captureListIds, captureDraftFields, describeReminderCaptureFiling
 - `src/utils/reminderNudge.ts` — ReminderNudge, nudgeReminderPastMeeting
-- `src/utils/remindersImport.ts` — draftFromReminder, recurrenceFromRule, reminderTimeFromAlarms, scheduleToDraft, pendingImportFor, describePendingImport, isImportableList, reminderListOptions, findReminderList, sortRemindersByCreation, +12 more
+- `src/utils/remindersImport.ts` — draftFromReminder, recurrenceFromRule, reminderTimeFromAlarms, scheduleToDraft, pendingImportFor, describePendingImport, isImportableList, reminderListOptions, findReminderList, reminderCreatedAt, +13 more
 - `src/utils/remindersImportSync.ts` — RemindersPermission, ImportOutcome, lastImportOutcome, getRemindersPermission, requestRemindersPermission, listReminderLists, countImportableReminders, groceryMirrorSignature, importReminders, useRemindersImportSync
 - `src/utils/reorder.ts` — moveItem, dropIndexFromTranslation, cumulativeOffsets, rowDragOffset, rowIndexAtContentY, dragRange, dragTranslation, clampCardToSlots, reorderSubset
 - `src/utils/retention.ts` — RetentionDays, RETENTION_OPTIONS, retentionLabel, parseRetentionDays, retentionCutoff, selectPurgeableTaskIds, selectPurgeableFocusSessionIds, retentionDeletionSummary

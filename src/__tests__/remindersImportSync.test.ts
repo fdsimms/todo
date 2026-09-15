@@ -134,6 +134,14 @@ const LIST = {
   source: { id: 's', name: 'iCloud', type: 'CalDAV' },
 };
 
+/** A second list, for the capture cases — a capture may never share one. */
+const FOOD_LIST = {
+  id: 'list-food',
+  title: 'Food',
+  allowsModifications: true,
+  source: { id: 's', name: 'iCloud', type: 'CalDAV' },
+};
+
 function reminder(id: string, overrides: Partial<Reminder> = {}): Reminder {
   return { id, title: `Task ${id}`, completed: false, ...overrides };
 }
@@ -175,6 +183,9 @@ beforeEach(() => {
     remindersImportReview: true,
     remindersImportDelete: true,
     groceryImportDelete: true,
+    // Always an array in the real store, so it is one here — drainTargets
+    // reads it unconditionally.
+    reminderCaptures: [],
     initialized: true,
   };
   mockCalendar.getRemindersPermissionsAsync.mockResolvedValue({
@@ -513,6 +524,7 @@ const GROCERY_LIST = {
 /** Points settings at the grocery list only, with the task import off. */
 function groceryOnly() {
   mockSettings = {
+    reminderCaptures: [],
     // The groceries area is on unless a test says otherwise — drainTargets
     // reads it alongside groceryImportEnabled, so an absent key would silently
     // drop the grocery destination from every case below.
@@ -634,6 +646,7 @@ describe('importReminders — the grocery destination', () => {
 
   it('drains both destinations in one pass, each to its own sink', async () => {
     mockSettings = {
+      reminderCaptures: [],
       kitchenEnabled: true,
       remindersImportEnabled: true,
       remindersImportListId: LIST.id,
@@ -664,6 +677,7 @@ describe('importReminders — the grocery destination', () => {
   // One misconfigured destination must not strand the other.
   it('still drains groceries when the task list has gone missing', async () => {
     mockSettings = {
+      reminderCaptures: [],
       kitchenEnabled: true,
       remindersImportEnabled: true,
       remindersImportListId: 'a-list-that-vanished',
@@ -1211,6 +1225,249 @@ describe('importReminders — demo mode', () => {
     await freshSync().importReminders();
 
     expect(mockCalendar.createReminderAsync).not.toHaveBeenCalled();
+    expect(mockCalendar.deleteReminderAsync).not.toHaveBeenCalled();
+  });
+});
+
+/**
+ * The extra capture lists. These are the *task* sink with fields stamped on the
+ * draft, which is the whole reason the feature is small — so what these pin
+ * down is the filing, the gating, and the two things a capture must never do:
+ * write to the food log itself, or run against a list it hasn't been confirmed
+ * for.
+ */
+describe('importReminders — capture lists', () => {
+  function foodCapture(over: Record<string, unknown> = {}) {
+    return {
+      id: 'cap-food',
+      title: 'Food',
+      enabled: true,
+      listId: FOOD_LIST.id,
+      confirmedListId: FOOD_LIST.id,
+      deleteAfterImport: true,
+      filing: { kind: 'meal', slot: null },
+      ...over,
+    };
+  }
+
+  beforeEach(() => {
+    mockCalendar.getCalendarsAsync.mockResolvedValue([LIST, FOOD_LIST]);
+  });
+
+  it('files a dictated food as a task carrying the meal offer, not as a food log entry', async () => {
+    mockSettings.remindersImportEnabled = false;
+    mockSettings.reminderCaptures = [foodCapture()];
+    mockCalendar.getRemindersAsync.mockResolvedValue([
+      // 19:40, so the slot comes out as dinner.
+      reminder('a', { title: 'Grilled cheese with mozzarella', creationDate: '2026-09-15T19:40:00.000+00:00' }),
+    ]);
+
+    const outcome = await freshSync().importReminders();
+
+    expect(outcome.reason).toBe('ok');
+    expect(outcome.imported).toBe(1);
+    expect(mockAddTask).toHaveBeenCalledTimes(1);
+    const saved = mockAddTask.mock.calls[0][0];
+    expect(saved.title).toBe('Grilled cheese with mozzarella');
+    expect(saved.logMealSlot).toBe('dinner');
+    // The offer and nothing else. An entry with no nutrition figure is refused
+    // by addEntry outright, and one staged unconfirmed would make the day read
+    // as logged to every nutrition read in the app.
+    expect(saved.dueDate).toBeUndefined();
+    expect(saved.category).toBeUndefined();
+    expect(saved.projectId).toBeUndefined();
+  });
+
+  it('derives the meal from when it was dictated, not from when the drain ran', async () => {
+    mockSettings.remindersImportEnabled = false;
+    mockSettings.reminderCaptures = [foodCapture()];
+    mockCalendar.getRemindersAsync.mockResolvedValue([
+      reminder('a', { title: 'Porridge', creationDate: '2026-09-15T08:05:00.000+00:00' }),
+    ]);
+
+    await freshSync().importReminders();
+
+    expect(mockAddTask.mock.calls[0][0].logMealSlot).toBe('breakfast');
+  });
+
+  it('honours a capture pinned to one meal', async () => {
+    mockSettings.remindersImportEnabled = false;
+    mockSettings.reminderCaptures = [foodCapture({ filing: { kind: 'meal', slot: 'lunch' } })];
+    mockCalendar.getRemindersAsync.mockResolvedValue([
+      reminder('a', { title: 'Soup', creationDate: '2026-09-15T20:00:00.000+00:00' }),
+    ]);
+
+    await freshSync().importReminders();
+
+    expect(mockAddTask.mock.calls[0][0].logMealSlot).toBe('lunch');
+  });
+
+  it('files into a project without dating it, which is what a running list is for', async () => {
+    mockSettings.remindersImportEnabled = false;
+    mockSettings.reminderCaptures = [foodCapture({
+      id: 'cap-wish',
+      filing: { kind: 'project', projectId: 'proj-wish' },
+    })];
+    mockCalendar.getRemindersAsync.mockResolvedValue([reminder('a', { title: 'Sourdough book' })]);
+
+    await freshSync().importReminders();
+
+    const saved = mockAddTask.mock.calls[0][0];
+    expect(saved.projectId).toBe('proj-wish');
+    expect(saved.dueDate).toBeUndefined();
+    expect(saved.deferUntil).toBeUndefined();
+    expect(saved.logMealSlot).toBeUndefined();
+  });
+
+  it('files under a category, and tags with a tag', async () => {
+    mockSettings.remindersImportEnabled = false;
+    mockSettings.reminderCaptures = [foodCapture({ filing: { kind: 'category', category: 'Home' } })];
+    mockCalendar.getRemindersAsync.mockResolvedValue([reminder('a', { title: 'Change the filter' })]);
+    await freshSync().importReminders();
+    expect(mockAddTask.mock.calls[0][0].category).toBe('Home');
+
+    mockAddTask.mockClear();
+    mockSettings.reminderCaptures = [foodCapture({ filing: { kind: 'tag', tag: 'errand' } })];
+    mockCalendar.getRemindersAsync.mockResolvedValue([reminder('b', { title: 'Post the parcel' })]);
+    await freshSync().importReminders();
+    expect(mockAddTask.mock.calls[0][0].tags).toEqual(['errand']);
+  });
+
+  /**
+   * The filing is applied after the parsed schedule, so a list pointed at a
+   * project keeps that whatever words happen to be in one reminder.
+   */
+  it('keeps the schedule suggestion alongside the filing', async () => {
+    mockSettings.remindersImportEnabled = false;
+    mockSettings.reminderCaptures = [foodCapture({
+      filing: { kind: 'category', category: 'Home' },
+    })];
+    mockCalendar.getRemindersAsync.mockResolvedValue([
+      reminder('a', { title: 'Change the filter', dueDate: '2026-09-20T12:00:00.000+00:00' }),
+    ]);
+
+    await freshSync().importReminders();
+
+    const saved = mockAddTask.mock.calls[0][0];
+    expect(saved.category).toBe('Home');
+    expect(saved.pendingImport).toBeTruthy();
+  });
+
+  it('stays off until its own list is confirmed', async () => {
+    mockSettings.remindersImportEnabled = false;
+    mockSettings.reminderCaptures = [foodCapture({ confirmedListId: null })];
+    mockCalendar.getRemindersAsync.mockResolvedValue([reminder('a')]);
+
+    const outcome = await freshSync().importReminders();
+
+    expect(outcome.reason).toBe('off');
+    expect(mockAddTask).not.toHaveBeenCalled();
+    expect(mockCalendar.deleteReminderAsync).not.toHaveBeenCalled();
+  });
+
+  it('stays off when the confirmation was given for a different list', async () => {
+    mockSettings.remindersImportEnabled = false;
+    mockSettings.reminderCaptures = [foodCapture({ confirmedListId: 'some-other-list' })];
+    mockCalendar.getRemindersAsync.mockResolvedValue([reminder('a')]);
+
+    const outcome = await freshSync().importReminders();
+
+    expect(outcome.reason).toBe('off');
+    expect(mockAddTask).not.toHaveBeenCalled();
+  });
+
+  it('stays off while switched off, leaving the reminders alone', async () => {
+    mockSettings.remindersImportEnabled = false;
+    mockSettings.reminderCaptures = [foodCapture({ enabled: false })];
+    mockCalendar.getRemindersAsync.mockResolvedValue([reminder('a')]);
+
+    const outcome = await freshSync().importReminders();
+
+    expect(outcome.reason).toBe('off');
+    expect(mockCalendar.deleteReminderAsync).not.toHaveBeenCalled();
+  });
+
+  /**
+   * A meal capture feeds the food log's own prompt, so it goes with the area
+   * that owns it — and the target is dropped rather than the row cleared, so
+   * turning the area back on resumes instead of re-asking.
+   */
+  it('stands down a meal capture while the kitchen area is off', async () => {
+    mockSettings.remindersImportEnabled = false;
+    mockSettings.kitchenEnabled = false;
+    mockSettings.reminderCaptures = [foodCapture()];
+    mockCalendar.getRemindersAsync.mockResolvedValue([reminder('a')]);
+
+    const outcome = await freshSync().importReminders();
+
+    expect(outcome.reason).toBe('off');
+    expect(mockCalendar.deleteReminderAsync).not.toHaveBeenCalled();
+  });
+
+  it('leaves a non-meal capture running while the kitchen area is off', async () => {
+    mockSettings.remindersImportEnabled = false;
+    mockSettings.kitchenEnabled = false;
+    mockSettings.reminderCaptures = [foodCapture({
+      filing: { kind: 'tag', tag: 'errand' },
+    })];
+    mockCalendar.getRemindersAsync.mockResolvedValue([reminder('a', { title: 'Post the parcel' })]);
+
+    const outcome = await freshSync().importReminders();
+
+    expect(outcome.reason).toBe('ok');
+    expect(mockAddTask.mock.calls[0][0].tags).toEqual(['errand']);
+  });
+
+  it('creates the task before deleting the reminder, same order as every other leg', async () => {
+    mockSettings.remindersImportEnabled = false;
+    mockSettings.reminderCaptures = [foodCapture()];
+    mockCalendar.getRemindersAsync.mockResolvedValue([reminder('a')]);
+    const order: string[] = [];
+    mockAddTask.mockImplementation(() => order.push('addTask'));
+    mockCalendar.deleteReminderAsync.mockImplementation(async () => { order.push('delete'); });
+
+    await freshSync().importReminders();
+
+    expect(order).toEqual(['addTask', 'delete']);
+  });
+
+  it('leaves the reminder in place when the capture says not to delete', async () => {
+    mockSettings.remindersImportEnabled = false;
+    mockSettings.reminderCaptures = [foodCapture({ deleteAfterImport: false })];
+    mockCalendar.getRemindersAsync.mockResolvedValue([reminder('a', { title: 'Grilled cheese' })]);
+
+    await freshSync().importReminders();
+
+    expect(mockAddTask).toHaveBeenCalledTimes(1);
+    expect(mockCalendar.deleteReminderAsync).not.toHaveBeenCalled();
+  });
+
+  it('drains a capture alongside the Inbox leg, each to its own list', async () => {
+    mockSettings.reminderCaptures = [foodCapture()];
+    mockCalendar.getRemindersAsync.mockImplementation(async (ids: string[]) =>
+      ids[0] === FOOD_LIST.id
+        ? [reminder('f', { title: 'Grilled cheese', creationDate: '2026-09-15T12:30:00.000+00:00' })]
+        : [reminder('t', { title: 'Call the dentist' })]
+    );
+
+    const outcome = await freshSync().importReminders();
+
+    expect(outcome.imported).toBe(2);
+    const byTitle = new Map(mockAddTask.mock.calls.map(c => [c[0].title, c[0]]));
+    expect(byTitle.get('Call the dentist')!.logMealSlot).toBeUndefined();
+    expect(byTitle.get('Grilled cheese')!.logMealSlot).toBe('lunch');
+  });
+
+  it('does nothing at all under demo mode', async () => {
+    mockSettings.remindersImportEnabled = false;
+    mockSettings.reminderCaptures = [foodCapture()];
+    mockDemoMode = true;
+    mockCalendar.getRemindersAsync.mockResolvedValue([reminder('a')]);
+
+    const outcome = await freshSync().importReminders();
+
+    expect(outcome.reason).toBe('off');
+    expect(mockAddTask).not.toHaveBeenCalled();
     expect(mockCalendar.deleteReminderAsync).not.toHaveBeenCalled();
   });
 });

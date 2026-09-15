@@ -22,7 +22,6 @@ const SWIFT_FILES = [
   'TodoTodayWidget.swift',
   'TodoGroceryWidget.swift',
   'TodoKitchenWidget.swift',
-  'CompleteTaskIntent.swift',
   'TimerLiveActivity.swift',
   'TripLiveActivity.swift',
   'FocusLiveActivity.swift',
@@ -30,16 +29,26 @@ const SWIFT_FILES = [
 // Files that must compile into BOTH this extension and the app. The
 // canonical copy lives with the bridge module, where TodoWidgetBridge.podspec's
 // `**/*.{h,m,swift}` glob already compiles it into the app; it's copied in
-// here so both processes get the identical declaration. ActivityKit pairs an
-// Activity started by the app with the ActivityConfiguration that renders it
-// by the attributes type's *name* and a Codable round-trip of its properties,
-// so any drift between two hand-maintained copies would show up only as a
-// Live Activity that starts and then never appears. One file, copied.
+// here so both processes get the identical declaration.
+//
+// Two unrelated reasons land a file in this list:
+//
+// - The three ActivityAttributes files: ActivityKit pairs an Activity started
+//   by the app with the ActivityConfiguration that renders it by the attributes
+//   type's *name* and a Codable round-trip of its properties, so any drift
+//   between two hand-maintained copies would show up only as a Live Activity
+//   that starts and then never appears. One file, copied.
+// - CompleteTaskIntent: an AppIntent that brings the app to the foreground has
+//   to be compiled into the app target, because a widget extension can only run
+//   intents in the background (see docs/native-targets.md). It still has to
+//   compile here too, since TodoTodayWidget.swift's `Button(intent:)` names the
+//   type. Extension-only is what silently broke the widget checkbox.
 const BRIDGE_SOURCE_DIR = path.join(__dirname, '..', 'modules', 'todo-widget-bridge', 'ios');
 const SHARED_SWIFT_FILES = [
   'TimerActivityAttributes.swift',
   'TripActivityAttributes.swift',
   'FocusActivityAttributes.swift',
+  'CompleteTaskIntent.swift',
 ];
 
 const ALL_SWIFT_FILES = [
@@ -116,9 +125,10 @@ const withWidgetExtension = config => {
       frameworks: [
         'WidgetKit.framework',
         'SwiftUI.framework',
-        // CompleteTaskIntent.swift's Button(intent:)-driven interactive
-        // checkbox needs this — App Intents-based widget interactivity is
-        // iOS 17+, matching DEPLOYMENT_TARGET above.
+        // The Button(intent:)-driven interactive checkbox in
+        // TodoTodayWidget.swift needs this — App Intents-based widget
+        // interactivity is iOS 17+, matching DEPLOYMENT_TARGET above. (The
+        // intent itself is in SHARED_SWIFT_FILES, compiled into both targets.)
         'AppIntents.framework',
         // TimerLiveActivity.swift's `import ActivityKit`. Not weak-linked here
         // the way the app-side podspec does it — this target's deployment

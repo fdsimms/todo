@@ -99,8 +99,8 @@ public class TodoWidgetBridgeModule: Module {
     }
 
     // Reads and clears the queue of task ids the widget's checkbox
-    // (CompleteTaskIntent, in the widget extension process) has
-    // optimistically marked complete. The widget can't reach the app's
+    // (CompleteTaskIntent, in this module) has optimistically marked
+    // complete. The intent can't reach the app's
     // SQLite database or the JS logic for recurrence/streaks/chains, so it
     // only queues an id; this is where that queue actually gets applied via
     // the real completeTask() — see useWidgetSync() in widgetSync.ts, which

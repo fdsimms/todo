@@ -6,6 +6,7 @@ import { useSettingsStore } from '../store/useSettingsStore';
 import { useColors } from '../theme/ThemeContext';
 import { border, font, fontWeight, iconSize, interaction, radius, spacing, type Colors } from '../theme';
 import { disclosureValue } from '../theme/textStyles';
+import { confirmDelete } from '../utils/confirmDelete';
 import { haptics } from '../utils/haptics';
 import { animateLayout } from '../utils/layoutAnimation';
 import { useKeyboardInsetScroll } from '../hooks/useKeyboardInsetScroll';
@@ -138,10 +139,21 @@ export function RuleListSheet<T extends EditableRule>({
     onChange(rules.map(r => (r.id === id ? { ...r, ...patch } : r)));
   };
 
-  const remove = (id: string) => {
-    animateLayout();
-    onChange(rules.filter(r => r.id !== id));
-    setExpandedId(current => (current === id ? null : current));
+  // `addRule` a few lines below fires a haptic on the way in; this is the
+  // matching one on the way out, plus the confirm every other simple delete
+  // in the app shows (`confirmDelete`) — a fully configured rule used to
+  // vanish on one tap with nothing to undo it.
+  const remove = (rule: T) => {
+    haptics.warning();
+    confirmDelete({
+      title: 'Delete rule',
+      message: `"${rule.title || 'Untitled rule'}" is removed. This can't be undone.`,
+      onConfirm: () => {
+        animateLayout();
+        onChange(rules.filter(r => r.id !== rule.id));
+        setExpandedId(current => (current === rule.id ? null : current));
+      },
+    });
   };
 
   const addRule = () => {
@@ -241,7 +253,7 @@ export function RuleListSheet<T extends EditableRule>({
                         <TouchableOpacity
                           style={styles.deleteRow}
                           activeOpacity={interaction.activeOpacity}
-                          onPress={() => remove(rule.id)}
+                          onPress={() => remove(rule)}
                           accessibilityRole="button"
                           accessibilityLabel="Delete rule"
                         >

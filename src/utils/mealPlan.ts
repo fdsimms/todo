@@ -31,7 +31,6 @@ export function slotRank(slot: MealSlot): number {
 export function slotLabel(slot: MealSlot): string {
   return MEAL_SLOT_LABELS[slot] ?? 'Meal';
 }
-
 /**
  * Reading order for a set of entries: by day, then down the day, then by the
  * order within one meal.

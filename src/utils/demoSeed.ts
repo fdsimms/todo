@@ -96,6 +96,7 @@ export function seedDemoData(): void {
     addSubtask,
     updateTask,
     completeTask,
+    setMeasuredTime,
     addNewGroupedTask,
     addExistingToProject,
     addTag,
@@ -482,6 +483,25 @@ export function seedDemoData(): void {
     dueDate: today.toISOString(),
     location: '156 William Street, 11th Floor',
     effort: 1,
+  });
+
+  // --- Timed history -------------------------------------------------------
+  // Five tasks that were estimated and then timed. estimateCalibration.ts says
+  // nothing at all below MIN_CALIBRATION_SAMPLES, so a seed with fewer would
+  // read as the feature being absent rather than unused. Timed through
+  // setMeasuredTime rather than by writing the column, so the demo exercises
+  // the real capture and can't drift from it.
+  const TIMED_HISTORY: [string, string, number, number][] = [
+    ['Write the sprint update', 'Work', 30, 45],
+    ['Clear the inbox', 'Work', 20, 35],
+    ['Review the budget', 'Work', 60, 75],
+    ['Tidy the garage', 'Home', 45, 90],
+    ['Renew the insurance', 'Home', 15, 20],
+  ];
+  TIMED_HISTORY.forEach(([title, category, estimate, actual]) => {
+    const timedTask = addTask({ title, category, estimatedMinutes: estimate });
+    setMeasuredTime(timedTask.id, actual);
+    completeTask(timedTask.id);
   });
 
   // The other two kinds the editor's Kind picker offers. Without a row apiece

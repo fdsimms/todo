@@ -1,0 +1,4 @@
+{
+  "message": "Cleaned up a handful of confusing labels: the quiet-hours \"set from awake hours\" hint now says what it does in plain terms, a grocery item's \"Variety of\" field is now \"Counts as\", a template's schedule time no longer reads like a range (\"From\" is now \"Runs at\"), and \"Unticking\" a medication row is now \"Unchecking\".",
+  "date": "2026-09-15"
+}

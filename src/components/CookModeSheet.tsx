@@ -313,7 +313,10 @@ export function CookModeSheet({ visible, recipe, recipesById, scale, onClose }: 
 
   const goNext = () => {
     if (atLast) {
-      haptics.success();
+      // Finishing the whole method should read as more than one more step
+      // done — same distinction TaskItem/TaskCheckbox draw for a chain's
+      // last task, borrowed here for a recipe's last step.
+      haptics.chainFinish();
       close();
       return;
     }

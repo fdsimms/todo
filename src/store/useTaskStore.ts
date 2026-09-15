@@ -119,7 +119,7 @@ import {
   weekendSourceProjects,
 } from '../utils/weekendTasks';
 import { buildDayBuckets } from '../utils/calendarMonth';
-import { buildDayLoads } from '../utils/dayLoad';
+import { assumedMinutesFor, buildDayLoads } from '../utils/dayLoad';
 import { hasLogOnDay, hasLoggedSince } from '../utils/moodLog';
 import { useFoodLogStore } from './useFoodLogStore';
 import { useSavedMealsStore } from './useSavedMealsStore';
@@ -5548,6 +5548,7 @@ export const useTaskStore = create<TaskStore>((set, get) => ({
           ? { start: new Date(calendar.windowStart), end: new Date(calendar.windowEnd) }
           : null,
         dayResetTime: settings.dayResetTime,
+        assumedTaskMinutes: assumedMinutesFor(tasks),
       },
     );
     const bare = isWeekendBare(window, loads, weekendPlanCount(window, buckets, taskById));
@@ -5960,7 +5961,9 @@ export const useTaskStore = create<TaskStore>((set, get) => ({
     get().updateTask(id, {
       timerStartedAt: null,
       timerElapsedSeconds: 0,
-      ...applyMeasuredTime(minutes),
+      // `task` is the row as it stands before the overwrite, which is exactly
+      // what applyMeasuredTime needs to keep the guess being replaced.
+      ...applyMeasuredTime(minutes, task),
     });
   },
 
@@ -6008,7 +6011,7 @@ export const useTaskStore = create<TaskStore>((set, get) => ({
   setMeasuredTime(id, minutes) {
     const task = get().tasks.find(t => t.id === id);
     if (!task) return;
-    get().updateTask(id, applyMeasuredTime(minutes));
+    get().updateTask(id, applyMeasuredTime(minutes, task));
   },
 
   reorderTasks(orderedIds) {
@@ -6141,6 +6144,7 @@ export const useTaskStore = create<TaskStore>((set, get) => ({
       medicationAmount: null,
       medicationUnit: null,
       logMealSlot: null,
+      estimateBeforeTiming: null,
       parentId,
       groupId: null,
       projectId: null,
@@ -6346,6 +6350,7 @@ export const useTaskStore = create<TaskStore>((set, get) => ({
       medicationAmount: null,
       medicationUnit: null,
       logMealSlot: null,
+      estimateBeforeTiming: null,
       parentId: null,
       groupId,
       projectId: null,

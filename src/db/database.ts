@@ -1247,10 +1247,13 @@ export function initDatabase(): void {
     // rather than added to the CREATE TABLE above, so an install that already
     // has the people table picks it up.
     "ALTER TABLE people ADD COLUMN ask_about TEXT NOT NULL DEFAULT ''",
-    // Was "who a planned meal is for" (#2077); the feature was removed and
-    // nothing reads or writes this column anymore. Left in place rather than
-    // reverted, per this file's migration convention.
-    "ALTER TABLE meal_plan_entries ADD COLUMN person_ids TEXT NOT NULL DEFAULT '[]'",
+    // `meal_plan_entries.person_ids` was "who a planned meal is for" (#2077).
+    // The feature was removed and nothing reads or writes the column, so the
+    // ALTER that used to sit here is gone and new installs never create it.
+    // Installs that already ran it keep the column: it is NOT NULL DEFAULT
+    // '[]', nothing selects it by name, and both the restore and the sync
+    // apply path intersect incoming columns against the live schema
+    // (`projectRow`), so the two shapes interoperate untouched.
     // When a person's cadence was last turned on — see Person.cadenceSetAt.
     // Null on every existing row, including everybody already opted in today;
     // those keep reading as "no cadence-set anchor" (the reach-out pass falls
@@ -1571,6 +1574,11 @@ export function initDatabase(): void {
     // Which meal slot completing this task logs to the food log. NULL on
     // every existing row, which is the feature being off. See Task.logMealSlot.
     'ALTER TABLE tasks ADD COLUMN log_meal_slot TEXT',
+    // Null on every existing row, and null is the honest answer for them: the
+    // estimate that stood when a task was timed was never recorded before
+    // this, so nothing can be said about how those guesses compared. See
+    // Task.estimateBeforeTiming.
+    'ALTER TABLE tasks ADD COLUMN estimate_before_timing INTEGER',
   ];
   // Asking SQLite for a table's columns once is cheaper than handing it every
   // ALTER for that table and catching the duplicate-column error, and by the
@@ -2507,6 +2515,7 @@ function rowToTask(row: Record<string, unknown>): Task {
     excludeFromSuggestions: Boolean(row.exclude_from_suggestions),
     timerStartedAt: (row.timer_started_at as string | null) ?? null,
     actualMinutes: (row.actual_minutes as number | null) ?? null,
+    estimateBeforeTiming: (row.estimate_before_timing as number | null) ?? null,
     timedMinutes: (row.timed_minutes as number | null) ?? null,
     // Narrowed rather than cast: a column holding anything else is a row this
     // build doesn't understand, and "not a health-target task" is the safe read
@@ -2620,8 +2629,9 @@ export function dbInsertTask(task: Task): void {
       prior_best_streak, reminder_time_anchor, reminder_utc_offset_minutes, polarity, slip_count, slip_date,
       health_metric, health_target, completion_timer_minutes, completion_timer_note, completion_timer_started_at, log_health_metric, log_health_amount,
       penalty_minutes, penalty_cutoff_time, penalty_fired_at, gates_apps,
-      medication_name, medication_amount, medication_unit, log_meal_slot
-    ) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)`,
+      medication_name, medication_amount, medication_unit, log_meal_slot,
+      estimate_before_timing
+    ) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)`,
     [
       task.id, task.title, task.notes, task.completed ? 1 : 0,
       task.completedAt, task.createdAt, task.seenAt, task.dueDate, task.deadline, task.deadlineOffsetDays ?? null, task.deadlineMonthDay ?? null, task.deferUntil,
@@ -2714,6 +2724,7 @@ export function dbInsertTask(task: Task): void {
       task.medicationAmount ?? null,
       task.medicationUnit ?? null,
       task.logMealSlot ?? null,
+      task.estimateBeforeTiming ?? null,
     ]
   );
 }
@@ -2744,7 +2755,8 @@ export function dbUpdateTask(task: Task): void {
       prior_best_streak=?, reminder_time_anchor=?, reminder_utc_offset_minutes=?, polarity=?, slip_count=?, slip_date=?,
       health_metric=?, health_target=?, completion_timer_minutes=?, completion_timer_note=?, completion_timer_started_at=?, log_health_metric=?, log_health_amount=?,
       penalty_minutes=?, penalty_cutoff_time=?, penalty_fired_at=?, gates_apps=?,
-      medication_name=?, medication_amount=?, medication_unit=?, log_meal_slot=?
+      medication_name=?, medication_amount=?, medication_unit=?, log_meal_slot=?,
+      estimate_before_timing=?
     WHERE id=?`,
     [
       task.title, task.notes, task.completed ? 1 : 0, task.completedAt, task.seenAt,
@@ -2838,6 +2850,7 @@ export function dbUpdateTask(task: Task): void {
       task.medicationAmount ?? null,
       task.medicationUnit ?? null,
       task.logMealSlot ?? null,
+      task.estimateBeforeTiming ?? null,
       task.id,
     ]
   );

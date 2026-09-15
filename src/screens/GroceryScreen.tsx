@@ -883,7 +883,9 @@ export function GroceryScreen() {
       // about what it bought, so they have to land on the same rows in the same
       // pass that takes them off the list. scanFrozenIds rides along the same
       // way, for the same reason — see finishShopping's own doc comment.
-      if (finishShopping(shopId, priceById, purchasedAt, scanFrozenIds) > 0) haptics.success();
+      // A whole trip closing out is more than one more item ticked off, same
+      // distinction chainFinish already draws for a task chain's last step.
+      if (finishShopping(shopId, priceById, purchasedAt, scanFrozenIds) > 0) haptics.chainFinish();
       // Consumed either way: an id finishShopping didn't end up touching
       // (marked unavailable, substituted away) was never going to be applied
       // on some later trip either.
