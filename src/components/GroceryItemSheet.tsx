@@ -1076,8 +1076,8 @@ export function GroceryItemSheet({
               {item.nutrition ? (
                 <Text style={styles.nutritionDetail}>
                   {item.nutrition.portions.length > 0
-                    ? `${item.nutrition.portions.length} stated portions, so a recipe line written as a cup or a count can become a weight.`
-                    : 'No stated portions, so only lines already written as a weight can use this.'}
+                    ? 'Recipe amounts written as a cup, a tablespoon or a count can be converted to a weight for this food.'
+                    : "Only recipe amounts already written as a weight, like grams or ounces, can use this — a cup or a count can't be converted yet."}
                 </Text>
               ) : (
                 <Text style={styles.nutritionDetail}>
@@ -1218,7 +1218,7 @@ export function GroceryItemSheet({
                 : frozen
                   ? 'In the freezer, so the use-by date is paused and there’s no use-up task. Taking it out starts the countdown again from a fresh shelf life.'
                   : item.isStaple
-                    ? 'Treated as on hand at all times, and kept out of the way in its own group when a recipe adds ingredients to the list.'
+                    ? 'Treated as on hand at all times. When a recipe adds ingredients to your list, this is filed under Always have instead of the shopping list.'
                     : onHandPast
                       ? 'Marked out of it. Won’t show as probably-have until you buy it again.'
                       : 'Decided automatically from purchase history when this comes up in a week plan.'
