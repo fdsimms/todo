@@ -25,6 +25,7 @@ import { WeightScreen } from '../screens/WeightScreen';
 import { MoodHistoryScreen } from '../screens/MoodHistoryScreen';
 import { SymptomDetailScreen } from '../screens/SymptomDetailScreen';
 import { ArchivedScreen } from '../screens/ArchivedScreen';
+import { UnattendedLogScreen } from '../screens/UnattendedLogScreen';
 import { BackfillScreen } from '../screens/BackfillScreen';
 import { StuckScreen } from '../screens/StuckScreen';
 import { RemindersScreen } from '../screens/RemindersScreen';
@@ -264,6 +265,7 @@ const MainTabs = React.memo(function MainTabs({
       <Tab.Screen name="Backfill" component={BackfillScreen} options={HIDDEN} />
       <Tab.Screen name="Reminders" component={RemindersScreen} options={HIDDEN} />
       <Tab.Screen name="Archived" component={ArchivedScreen} options={HIDDEN} />
+      <Tab.Screen name="UnattendedLog" component={UnattendedLogScreen} options={HIDDEN} />
       <Tab.Screen name="Tips" component={TipsScreen} options={HIDDEN} />
     </Tab.Navigator>
   );

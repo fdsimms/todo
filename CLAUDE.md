@@ -352,6 +352,7 @@ file: the two maps are indexes, not write-ups.
 | bulk selection | `src/hooks/useTaskSelection.ts` + `src/components/BulkActionBar.tsx` |
 | reminders | `src/utils/notifications.ts` |
 | how long completed tasks are kept | `src/utils/retention.ts` + `purgeOldCompletedTasks` in `useTaskStore` |
+| the record of what the app wrote or deleted unattended | `src/utils/unattendedLedger.ts` + `src/store/useUnattendedStore.ts` + `UnattendedEntry` in `src/types/index.ts`. Four write sites, all choke points: the create and both delete paths in `generatedTaskSync.ts`, plus `sweepExpiredTasks` and `purgeOldCompletedTasks`. Read its three refusals first — it records the *effect* and never the pass (27 idempotent catch-up steps run at every launch, background refresh and foreground return), it records nothing about the user, and a recurrence or quota successor is not an entry. The one table in the app with no "keep forever" answer available to it (`ledgerCutoff`) |
 | how you're feeling, and what that looks like against your tasks | `src/utils/moodLog.ts` + `src/utils/moodInsights.ts` + `src/utils/moodTasks.ts` — see `docs/arch/mood-log.md` |
 | reading the mood log back — the whole history, one symptom, or a file for a doctor | `src/utils/moodHistory.ts` + `src/utils/moodExport.ts` — see `docs/arch/mood-log.md` |
 | marking the day something changed (started a medicine, a new job) and comparing mood before/after it | `src/store/useMilestoneStore.ts` + `milestoneMoodContrast` in `src/utils/moodInsights.ts` — see `docs/arch/mood-log.md` |
@@ -452,15 +453,16 @@ file: the two maps are indexes, not write-ups.
 **Read narrowly.** 61 files are over 1,000 lines, 42 of
 them source rather than tests. The ten biggest source files:
 
-`store/useTaskStore.ts` (7.7k), `components/TaskEditor.tsx` (6.0k), `types/index.ts` (6.0k),
-`db/database.ts` (6.0k), `store/useGroceryStore.ts` (5.1k), `screens/TodayScreen.tsx` (4.6k),
-`components/TaskItem.tsx` (4.5k), `utils/demoSeed.ts` (4.2k),
-`store/useSettingsStore.ts` (4.0k), `screens/BackfillScreen.tsx` (3.6k).
+`store/useTaskStore.ts` (7.7k), `db/database.ts` (6.0k), `types/index.ts` (6.0k),
+`components/TaskEditor.tsx` (6.0k), `store/useGroceryStore.ts` (5.1k),
+`screens/TodayScreen.tsx` (4.6k), `components/TaskItem.tsx` (4.5k),
+`utils/demoSeed.ts` (4.2k), `store/useSettingsStore.ts` (4.0k),
+`screens/BackfillScreen.tsx` (3.6k).
 
 Grep for the symbol and read the surrounding range; reading any of them end to end costs more
 context than the rest of the task will. `docs/module-map.md` says which file owns what.
 
-The suite is **344 test files**, and `npm test` runs all of them in well under a minute.
+The suite is **346 test files**, and `npm test` runs all of them in well under a minute.
 `npx tsc --noEmit` is a few seconds once `.tsbuildinfo` exists, so run both, every time.
 
 <!-- END GENERATED: repo-stats -->

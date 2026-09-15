@@ -1,5 +1,5 @@
 import * as SQLite from 'expo-sqlite';
-import type { Cookbook, DeliverableKind, FoodLogEntry, GeneratedKind, LoggedSymptom, MedicationLog, Milestone, MoodLevel, MoodLog, NutrientKey, Person, PersonGroup, PersonNote, PersonNoteKind, Task, Category, GroceryItem, GroceryList, GroceryListEntry, GtinLookup, ItemProduct, ItemShopLink, ItemSubLink, Leftover, MealPlanEntry, MealSlot, Recipe, RecipeMealType, RecipeSourceType, RecipeVote, ReceiptStyle, SavedMeal, SavedMealItem, Shop, StoreAlias, TaskGroup, FocusSession, FocusSessionRecord, FocusStep, FocusStepRecord, Project, ProjectCategory, TaskTemplate, TemplateCategory, TemplateContainer, TemplateItem, TemplateItemGroup, TemplateQuestion, TemplateSchedule, TimeOfDay } from '../types';
+import type { Cookbook, DeliverableKind, FoodLogEntry, GeneratedKind, LoggedSymptom, MedicationLog, Milestone, MoodLevel, MoodLog, NutrientKey, Person, PersonGroup, PersonNote, PersonNoteKind, Task, Category, GroceryItem, GroceryList, GroceryListEntry, GtinLookup, ItemProduct, ItemShopLink, ItemSubLink, Leftover, MealPlanEntry, MealSlot, Recipe, RecipeMealType, RecipeSourceType, RecipeVote, ReceiptStyle, SavedMeal, SavedMealItem, Shop, StoreAlias, TaskGroup, FocusSession, FocusSessionRecord, FocusStep, FocusStepRecord, Project, ProjectCategory, TaskTemplate, TemplateCategory, TemplateContainer, TemplateItem, TemplateItemGroup, TemplateQuestion, TemplateSchedule, TimeOfDay, UnattendedAction, UnattendedEntry } from '../types';
 import { DEFAULT_NUDGE_CADENCE_DAYS, MEAL_SLOTS, NUTRIENT_KEYS, PERSON_NOTE_KINDS, RECIPE_MEAL_TYPES, RECIPE_SOURCE_TYPES, isReceiptStyle } from '../types';
 import { generateId } from '../utils/id';
 import { appendPriceObservation, parsePriceHistory } from '../utils/priceHistory';
@@ -213,6 +213,26 @@ export function initDatabase(): void {
       planned_work_minutes REAL NOT NULL DEFAULT 0,
       steps TEXT NOT NULL DEFAULT '[]',
       completed_task_ids TEXT NOT NULL DEFAULT '[]'
+    );
+
+    -- What an unattended pass did, one row per effect, written once and never
+    -- updated -- the same invariant as focus_session_log above.
+    --
+    -- Only effects: a row exists where a task actually appeared or went, never
+    -- where a pass merely ran. The catch-up list is 27 idempotent steps and
+    -- runs at every launch, every background refresh and every foreground
+    -- return, so recording passes would fill this with repeats and call it
+    -- history. See UnattendedEntry in types, and ledgerCutoff in
+    -- utils/retention.ts for the bound -- this is the one table in the app that
+    -- may never be kept forever, because nothing but a ceiling bounds it.
+    CREATE TABLE IF NOT EXISTS unattended_log (
+      id TEXT PRIMARY KEY NOT NULL,
+      at TEXT NOT NULL,
+      action TEXT NOT NULL,
+      kind TEXT,
+      title TEXT NOT NULL DEFAULT '',
+      task_id TEXT,
+      row_count INTEGER NOT NULL DEFAULT 1
     );
 
     CREATE TABLE IF NOT EXISTS projects (
@@ -1363,6 +1383,7 @@ export function initDatabase(): void {
     // rather than part of the CREATE for the usual reason: a device that got
     // the table from an earlier build still picks the index up.
     'CREATE INDEX IF NOT EXISTS idx_focus_session_log_ended ON focus_session_log(ended_at)',
+    'CREATE INDEX IF NOT EXISTS idx_unattended_log_at ON unattended_log(at)',
     // See Project.ongoing — a running list with no finish line, so the
     // "Mark Complete" banner never offers itself for it.
     'ALTER TABLE projects ADD COLUMN ongoing INTEGER NOT NULL DEFAULT 0',
@@ -1972,6 +1993,11 @@ export const BACKUP_TABLES = [
   // true account of that session. Restoring in this order simply means the
   // rows they name are usually there.
   'focus_session_log',
+  // Beside focus_session_log for its reason: append-only rows nothing else
+  // points at. Its `task_id` is provenance inside a row rather than a foreign
+  // key, and is allowed to dangle by design -- almost every task it names has
+  // been deleted, which is frequently the very thing the entry records.
+  'unattended_log',
   'settings',
 ] as const;
 
@@ -3357,6 +3383,67 @@ export function dbInsertFocusSessionRecord(record: FocusSessionRecord): void {
       record.plannedWorkMinutes, JSON.stringify(record.steps), JSON.stringify(record.completedTaskIds),
     ]
   );
+}
+
+// ─── Unattended ledger ──────────────────────────────────────────────────────
+
+function rowToUnattendedEntry(row: Record<string, unknown>): UnattendedEntry {
+  return {
+    id: row.id as string,
+    at: row.at as string,
+    action: row.action as UnattendedAction,
+    kind: (row.kind as GeneratedKind) ?? null,
+    title: (row.title as string) ?? '',
+    taskId: (row.task_id as string) ?? null,
+    count: (row.row_count as number) ?? 1,
+  };
+}
+
+/**
+ * The whole ledger, newest first — the same wholesale read
+ * `dbGetFocusSessionLog` makes, and for its reason. The table is bounded to 90
+ * days by `ledgerCutoff`, the screen groups it by day and offers a per-generator
+ * filter over the lot, and both of those want the full set rather than a window
+ * per section.
+ */
+export function dbGetUnattendedLog(): UnattendedEntry[] {
+  const rows = db.getAllSync<Record<string, unknown>>(
+    'SELECT * FROM unattended_log ORDER BY at DESC'
+  );
+  return rows.map(rowToUnattendedEntry);
+}
+
+/**
+ * Append entries.
+ *
+ * Takes a list rather than a single row because the two sweeps write in bulk:
+ * a launch after a week away can expire a dozen windows at once, and that is
+ * one transaction rather than a dozen. `INSERT OR REPLACE` for the reason
+ * `dbInsertFocusSessionRecord` uses it — an id that somehow arrives twice
+ * should leave one row rather than throwing inside an unattended pass.
+ */
+export function dbInsertUnattendedEntries(entries: readonly UnattendedEntry[]): void {
+  if (entries.length === 0) return;
+  dbTransaction(() => {
+    for (const e of entries) {
+      db.runSync(
+        `INSERT OR REPLACE INTO unattended_log
+           (id, at, action, kind, title, task_id, row_count)
+         VALUES (?,?,?,?,?,?,?)`,
+        [e.id, e.at, e.action, e.kind, e.title, e.taskId, e.count]
+      );
+    }
+  });
+}
+
+export function dbPruneUnattendedLog(cutoffIso: string): number {
+  const res = db.runSync('DELETE FROM unattended_log WHERE at < ?', [cutoffIso]);
+  return res.changes ?? 0;
+}
+
+/** Empties the ledger, for the screen's own "Clear" action. */
+export function dbClearUnattendedLog(): void {
+  db.runSync('DELETE FROM unattended_log');
 }
 
 // ─── Groceries ──────────────────────────────────────────────────────────────

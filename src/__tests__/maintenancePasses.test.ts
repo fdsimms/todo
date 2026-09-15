@@ -11,6 +11,7 @@ jest.mock('../store/useTemplateStore', () => ({ useTemplateStore: { getState: ()
 jest.mock('../store/useMealPlanStore', () => ({ useMealPlanStore: { getState: () => mockActions } }));
 jest.mock('../store/useLeftoverStore', () => ({ useLeftoverStore: { getState: () => mockActions } }));
 jest.mock('../store/useGroceryStore', () => ({ useGroceryStore: { getState: () => mockActions } }));
+jest.mock('../store/useUnattendedStore', () => ({ useUnattendedStore: { getState: () => mockActions } }));
 jest.mock('../store/useEventReminderStore', () => ({
   useEventReminderStore: { getState: () => ({ remindersByKey: {} }) },
 }));
@@ -70,6 +71,7 @@ describe('the three maintenance groups', () => {
       'purge old completed tasks',
       'purge old meal plan entries',
       'purge old leftovers',
+      'purge unattended ledger',
     ]);
   });
 

@@ -24,6 +24,7 @@ import { isHeldBack, isQuotaOnPace, isTaskVisible } from '../utils/visibilityUti
 import { isMorningCheckInCandidate } from '../utils/morningCheckIn';
 import { useTaskGroupStore } from '../store/useTaskGroupStore';
 import { useFocusStore } from '../store/useFocusStore';
+import { useUnattendedStore } from '../store/useUnattendedStore';
 import { isFocusRunning } from '../utils/focusPlan';
 import { itemsOnList } from '../utils/groceryLists';
 import { OTHER_AISLE } from '../utils/groceryAisles';
@@ -1570,6 +1571,21 @@ describe('demo seed — people', () => {
     // And it names nobody, so the app's own row can't enter a history meant to
     // hold what you actually did together.
     expect(birthdayTasks[0].personIds).toEqual([]);
+  });
+
+  // The Activity screen is empty until something the app did unattended has
+  // been recorded, and a feature with no row in the seed reads as one the app
+  // doesn't have. Seeded by the real generators rather than by hand: the seed
+  // already runs checkBirthdayTasks and checkReachOutTasks against the scratch
+  // database, so these are genuine entries about genuine writes, which is a
+  // stronger thing to show than a hand-written row would be.
+  it('records what its own generators did in the unattended ledger', () => {
+    const entries = useUnattendedStore.getState().entries;
+    expect(entries.length).toBeGreaterThan(0);
+    // Every entry names what wrote it. An unattributed row is the exact
+    // unaccountability the ledger exists to end.
+    expect(entries.every(e => e.kind !== null || e.action !== 'created')).toBe(true);
+    expect(entries.some(e => e.kind === 'birthday' && e.action === 'created')).toBe(true);
   });
 
   // This generator ships off, so it's written by hand rather than through

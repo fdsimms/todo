@@ -35,6 +35,7 @@ import { useCategoryStore, ensureCalendarEventCategory, ensureHealthCategory, en
 import { useTemplateStore } from './useTemplateStore';
 import { useTaskGroupStore } from './useTaskGroupStore';
 import { useFocusStore } from './useFocusStore';
+import { useUnattendedStore } from './useUnattendedStore';
 import { useProjectStore, projectProgress } from './useProjectStore';
 import { useProjectCategoryStore } from './useProjectCategoryStore';
 import { useTemplateCategoryStore } from './useTemplateCategoryStore';
@@ -1711,6 +1712,12 @@ export const useTaskStore = create<TaskStore>((set, get) => ({
     // saved meal left pointed at the previous database would offer a demo
     // session's invented combination as something to log again for real.
     useSavedMealsStore.getState().initialize();
+    // On the same fan-out for the plainest version of the reason: the ledger is
+    // an account of what the app did to *this* database, so one left pointed at
+    // the previous one would report a demo session's invented generators against
+    // the real list, and the passes that run moments later would append to a log
+    // belonging to a database they are not touching.
+    useUnattendedStore.getState().initialize();
     useTemplateCategoryStore.getState().initialize();
     // Groceries ride this fan-out rather than being initialized from App.tsx,
     // and that placement is load-bearing: enterDemoMode/exitDemoMode and
@@ -1807,7 +1814,23 @@ export const useTaskStore = create<TaskStore>((set, get) => ({
     dbTransaction(() => rolled.forEach(t => get().skipNextRecurrence(t.id)));
     // skipGeneratedOptOut: this runs unattended at startup — a window closing
     // on its own is the app tidying up, not the user declining the source.
-    if (doomed.length > 0) get().bulkDeleteTasks(doomed.map(t => t.id), { skipGeneratedOptOut: true });
+    if (doomed.length > 0) {
+      // Recorded before the delete, so the titles are still there to snapshot.
+      // Only the deleted rows: a recurring occurrence that was rolled forward
+      // still exists and nothing was taken, so an entry for it would report a
+      // loss that didn't happen. The entry says the window closed, which is all
+      // this sweep is entitled to claim — see the note above on why it refuses
+      // to call any of this a miss.
+      useUnattendedStore.getState().recordMany(
+        doomed.map(t => ({
+          action: 'expired' as const,
+          kind: t.generatedKind,
+          title: t.title,
+          taskId: t.id,
+        })),
+      );
+      get().bulkDeleteTasks(doomed.map(t => t.id), { skipGeneratedOptOut: true });
+    }
   },
 
   // Enforces the "keep completed tasks for" window — the only thing that has
@@ -1844,6 +1867,14 @@ export const useTaskStore = create<TaskStore>((set, get) => ({
     set(s => ({
       tasks: s.tasks.filter(t => !idSet.has(t.id) && (t.parentId === null || !idSet.has(t.parentId))),
     }));
+    // One entry for the set rather than one per row, and the only entry in the
+    // ledger that carries a count. A purge takes tombstones by the hundred on
+    // the launch after a window is first chosen, and a line per row would bury
+    // every other thing the app did that day under history the user already
+    // asked to be rid of.
+    useUnattendedStore.getState().record({
+      action: 'purged', kind: null, title: '', taskId: null, count: ids.length,
+    });
     return ids.length;
   },
 

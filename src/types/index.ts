@@ -679,6 +679,65 @@ export interface FocusSessionRecord {
   completedTaskIds: string[];
 }
 
+/**
+ * What an unattended pass did, recorded once, as it did it.
+ *
+ * Twenty generators, the expiry sweep and the completed-task purge all write
+ * or delete rows with nobody watching, and until this there was no account of
+ * any of it: a task appeared on Today with no way to ask where it came from,
+ * and one left with no way to ask what took it.
+ *
+ * Three rules decide what gets a row, and each of them is a refusal:
+ *
+ * 1. **The effect, never the pass.** The catch-up list is 27 steps and runs at
+ *    every launch, every background refresh and every return to the
+ *    foreground. Every generator is idempotent by construction, so almost all
+ *    of that work is a reconcile that changes nothing — logging the pass would
+ *    fill this table with repeats and call it history. A row is written where
+ *    something actually appeared or went.
+ * 2. **Nothing about the user.** This says what the app did. It records no
+ *    misses, no judgements and no inferences, for the same reason
+ *    `sweepExpiredTasks` refuses to call an expired window a miss: those are
+ *    claims about a person, and an unattended pass does not get to enter one
+ *    on their behalf.
+ * 3. **A successor is not an entry.** Completing a recurring task spawns the
+ *    next one, and a quota rollover spawns the next day's row. Those are the
+ *    user's own rule doing what they set it to do, which is execution rather
+ *    than a decision the app made. What belongs here is the writes nobody
+ *    asked for individually.
+ *
+ * Bounded by construction rather than by a setting — see `ledgerCutoff` in
+ * `src/utils/retention.ts` for why this one may not default to forever the way
+ * the Logbook's own window does.
+ */
+export type UnattendedAction = 'created' | 'cleared' | 'expired' | 'purged';
+
+export interface UnattendedEntry {
+  id: string;
+  /** When it happened, ISO. */
+  at: string;
+  action: UnattendedAction;
+  /** The generator responsible, or null for the two sweeps, which have none. */
+  kind: GeneratedKind | null;
+  /**
+   * The task's title as it read at the time.
+   *
+   * A snapshot rather than a lookup, and deliberately so: every row this names
+   * has been deleted or is about to be, so there would be nothing left to look
+   * it up from. Empty for a `purged` row, which accounts for a count rather
+   * than for one task.
+   */
+  title: string;
+  /**
+   * The row it was about. Provenance only, and allowed to dangle — a `created`
+   * entry outlives the task it names, and that is still a true account of the
+   * app having written it.
+   */
+  taskId: string | null;
+  /** How many rows this entry accounts for. 1 for all but `purged`. */
+  count: number;
+}
+
 // A themed, long-running collection of loosely-dated tasks the user tracks
 // and picks off over time (e.g. "Summer Bucket List") — independent of
 // TaskGroup (same-day cohorts), Category, and Tags, so a task can belong to

@@ -48,6 +48,13 @@ jest.mock('../store/useTaskStore', () => ({
   useTaskStore: { getState: () => mockTaskState },
 }));
 
+// The reconcile records what it wrote or took back into the unattended ledger.
+// Mocked for the reason the two above are: the real store reaches the database.
+const mockLedgerState = { recordGenerated: jest.fn() };
+jest.mock('../store/useUnattendedStore', () => ({
+  useUnattendedStore: { getState: () => mockLedgerState },
+}));
+
 function seedTask(overrides: Partial<Task> = {}): Task {
   const task = {
     id: 'existing',
@@ -423,5 +430,88 @@ describe('deleteGeneratedTaskQuietly', () => {
     // Clearing first would leave whatever deleteTask armed sitting there.
     expect(mockTaskState.setLastAction.mock.invocationCallOrder[0])
       .toBeGreaterThan(mockTaskState.deleteTask.mock.invocationCallOrder[0]);
+  });
+});
+
+describe('the unattended ledger', () => {
+  it('records a create, naming the generator and the title it wrote', () => {
+    reconcileGeneratedTask({
+      kind: 'groceryUseUp',
+      sourceId: 'g1',
+      wanted: true,
+      drift: () => null,
+      draft: () => ({ title: 'Use up Spinach' }),
+    });
+    expect(mockLedgerState.recordGenerated).toHaveBeenCalledWith(
+      'created',
+      expect.objectContaining({ title: 'Use up Spinach' }),
+    );
+  });
+
+  it('records nothing for a reconcile that changed nothing', () => {
+    // The rule the whole feature rests on: 27 idempotent passes run at every
+    // launch, every background refresh and every foreground return, so a ledger
+    // that logged passes would fill with repeats and call it history.
+    mockTaskState.tasks = [seedTask({ generatedKind: 'groceryUseUp', generatedSourceId: 'g1' })];
+    reconcileGeneratedTask({
+      kind: 'groceryUseUp',
+      sourceId: 'g1',
+      wanted: true,
+      drift: () => null,
+      draft: () => ({ title: 'Use up Spinach' }),
+    });
+    expect(mockLedgerState.recordGenerated).not.toHaveBeenCalled();
+  });
+
+  it('records nothing for a reconcile that only rewrote a drifted field', () => {
+    // An update is not an appearance. Nothing arrived and nothing went.
+    mockTaskState.tasks = [seedTask({ generatedKind: 'groceryUseUp', generatedSourceId: 'g1' })];
+    reconcileGeneratedTask({
+      kind: 'groceryUseUp',
+      sourceId: 'g1',
+      wanted: true,
+      drift: () => ({ dueDate: '2026-09-20T00:00:00.000Z' }),
+      draft: () => ({ title: 'Use up Spinach' }),
+    });
+    expect(mockTaskState.updateTask).toHaveBeenCalled();
+    expect(mockLedgerState.recordGenerated).not.toHaveBeenCalled();
+  });
+
+  it('records a clear from the source no longer wanting one', () => {
+    mockTaskState.tasks = [seedTask({ generatedKind: 'groceryUseUp', generatedSourceId: 'g1' })];
+    reconcileGeneratedTask({
+      kind: 'groceryUseUp',
+      sourceId: 'g1',
+      wanted: false,
+      drift: () => null,
+      draft: () => ({ title: 'Use up Spinach' }),
+    });
+    expect(mockLedgerState.recordGenerated).toHaveBeenCalledWith(
+      'cleared',
+      expect.objectContaining({ id: 'existing' }),
+    );
+  });
+
+  it('records a clear from the source being gone', () => {
+    mockTaskState.tasks = [seedTask({ generatedKind: 'groceryUseUp', generatedSourceId: 'g1' })];
+    dropGeneratedTask('groceryUseUp', 'g1');
+    expect(mockLedgerState.recordGenerated).toHaveBeenCalledWith(
+      'cleared',
+      expect.objectContaining({ id: 'existing' }),
+    );
+  });
+
+  it('reads the row before deleting it, since afterwards there is nothing to name', () => {
+    mockTaskState.tasks = [seedTask({ generatedKind: 'groceryUseUp', generatedSourceId: 'g1' })];
+    deleteGeneratedTaskQuietly('existing');
+    expect(mockLedgerState.recordGenerated).toHaveBeenCalledWith(
+      'cleared',
+      expect.objectContaining({ title: 'Use up Spinach' }),
+    );
+  });
+
+  it('records nothing when the row it was asked to delete is already gone', () => {
+    deleteGeneratedTaskQuietly('missing');
+    expect(mockLedgerState.recordGenerated).not.toHaveBeenCalled();
   });
 });

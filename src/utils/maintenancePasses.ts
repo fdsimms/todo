@@ -47,6 +47,7 @@ import { useMealPlanStore } from '../store/useMealPlanStore';
 import { useLeftoverStore } from '../store/useLeftoverStore';
 import { useGroceryStore } from '../store/useGroceryStore';
 import { useEventReminderStore } from '../store/useEventReminderStore';
+import { useUnattendedStore } from '../store/useUnattendedStore';
 import { rescheduleAllReminders } from './notifications';
 
 /** A named step, the shape `runStartupSequence` isolates one at a time. */
@@ -233,6 +234,13 @@ export function retentionPasses(): MaintenanceStep[] {
     // out — a container nobody said they finished survives this however old
     // it is, because that is exactly the one the nudge exists to surface.
     ['purge old leftovers', () => useLeftoverStore.getState().purgeOldLeftovers()],
+    // And the ledger the passes above write into. Last of all, so a launch's
+    // own entries are already in the table when its bound is applied — and
+    // separate from purgeOldCompletedTasks rather than folded into it because
+    // that one returns early when retention is off, and this bound may not:
+    // the ledger is the one table in the app with no "keep forever" answer
+    // available to it (see ledgerCutoff).
+    ['purge unattended ledger', () => useUnattendedStore.getState().purgeOldEntries()],
   ];
 }
 
