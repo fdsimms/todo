@@ -24,11 +24,14 @@ import {
   ACTIVITY_LEVELS,
   EMPTY_BODY_PROFILE,
   MACRO_PRESETS,
+  MAX_HEIGHT_CM,
+  MIN_BIRTH_YEAR,
+  MIN_HEIGHT_CM,
   calorieBudget,
-  formatHeight,
+  cmToFeetInches,
+  feetInchesToCm,
   isProfileComplete,
   macroGrams,
-  parseHeightInput,
   type ActivityLevel,
   type BodyProfile,
   type BodySex,
@@ -39,6 +42,11 @@ import { SheetHeader } from './SheetHeader';
 import { SheetHeaderButton } from './SheetHeaderButton';
 import { CountStepper } from './CountStepper';
 import { InlineAction } from './InlineAction';
+
+// The feet stepper's bounds, derived from the same cm bounds the kg stepper
+// uses — so the two units can't drift into disagreeing about the range.
+const MIN_HEIGHT_FEET = cmToFeetInches(MIN_HEIGHT_CM).feet;
+const MAX_HEIGHT_FEET = cmToFeetInches(MAX_HEIGHT_CM).feet;
 
 /**
  * Setting a weight goal, and the calorie figure it implies.
@@ -87,13 +95,19 @@ export function WeightGoalSheet({ visible, onClose, currentKg, onLogWeight }: Pr
   const setBodyProfile = useSettingsStore(s => s.setBodyProfile);
   const setNutritionTarget = useSettingsStore(s => s.setNutritionTarget);
 
+  const currentYear = getLogicalToday().getFullYear();
+
   const [direction, setDirection] = useState<WeightGoalDirection>('lose');
   const [targetText, setTargetText] = useState('');
   // In the *display* unit. Converted on save, so switching kg/lb while the
   // sheet is shut can't leave a half-converted number in the field.
   const [rate, setRate] = useState<number | null>(RATE_RANGE[unit].default);
-  const [heightText, setHeightText] = useState('');
-  const [birthYearText, setBirthYearText] = useState('');
+  // Canonical when weighing in kg; the ft/in pair when weighing in lb. Only
+  // one of the two is live at a time (`unit`), the other stays at its seed.
+  const [heightCmVal, setHeightCmVal] = useState<number | null>(null);
+  const [heightFeet, setHeightFeet] = useState<number | null>(null);
+  const [heightInches, setHeightInches] = useState(0);
+  const [birthYear, setBirthYear] = useState<number | null>(null);
   const [sex, setSex] = useState<BodySex | null>(null);
   const [activity, setActivity] = useState<ActivityLevel>('sedentary');
   // Nothing preselected, and not persisted: a split is a one-off choice made
@@ -107,8 +121,18 @@ export function WeightGoalSheet({ visible, onClose, currentKg, onLogWeight }: Pr
   useEffect(() => {
     if (!visible) return;
     const profile = storedProfile ?? EMPTY_BODY_PROFILE;
-    setHeightText(profile.heightCm === null ? '' : formatHeightForInput(profile.heightCm, unit));
-    setBirthYearText(profile.birthYear === null ? '' : String(profile.birthYear));
+    if (profile.heightCm === null) {
+      setHeightCmVal(null);
+      setHeightFeet(null);
+      setHeightInches(0);
+    } else if (unit === 'kg') {
+      setHeightCmVal(Math.round(profile.heightCm));
+    } else {
+      const { feet, inches } = cmToFeetInches(profile.heightCm);
+      setHeightFeet(feet);
+      setHeightInches(inches);
+    }
+    setBirthYear(profile.birthYear);
     setSex(profile.sex);
     setActivity(profile.activity);
     setMacroPresetId(null);
@@ -152,8 +176,9 @@ export function WeightGoalSheet({ visible, onClose, currentKg, onLogWeight }: Pr
   const restarting = storedGoal === null || startKg !== storedGoal.startKg;
 
   const profile: BodyProfile = {
-    heightCm: parseHeightInput(heightText, unit),
-    birthYear: parseBirthYear(birthYearText),
+    heightCm:
+      unit === 'kg' ? heightCmVal : heightFeet === null ? null : feetInchesToCm(heightFeet, heightInches),
+    birthYear,
     sex,
     activity,
   };
@@ -350,34 +375,52 @@ export function WeightGoalSheet({ visible, onClose, currentKg, onLogWeight }: Pr
 
             <View style={styles.field}>
               <Text style={styles.fieldLabel}>Height</Text>
-              <View style={styles.inputRow}>
-                <TextInput
-                  style={styles.input}
-                  value={heightText}
-                  onChangeText={setHeightText}
-                  keyboardType={unit === 'kg' ? 'decimal-pad' : 'default'}
-                  placeholder={unit === 'kg' ? 'e.g. 178' : "e.g. 5'10"}
-                  placeholderTextColor={colors.textTertiary}
-                  accessibilityLabel="Height"
+              {unit === 'kg' ? (
+                <CountStepper
+                  value={heightCmVal}
+                  onChange={setHeightCmVal}
+                  min={MIN_HEIGHT_CM}
+                  max={MAX_HEIGHT_CM}
+                  allowNull
+                  format={n => `${n} cm`}
+                  label="Height"
                 />
-                <Text style={styles.unit}>{unit === 'kg' ? 'cm' : 'ft/in'}</Text>
-              </View>
+              ) : (
+                <View style={styles.inputRow}>
+                  <CountStepper
+                    value={heightFeet}
+                    onChange={next => {
+                      setHeightFeet(next);
+                      if (next === null) setHeightInches(0);
+                    }}
+                    min={MIN_HEIGHT_FEET}
+                    max={MAX_HEIGHT_FEET}
+                    allowNull
+                    format={n => `${n}′`}
+                    label="Height, feet"
+                  />
+                  <CountStepper
+                    value={heightInches}
+                    onChange={next => setHeightInches(next ?? 0)}
+                    min={0}
+                    max={11}
+                    format={n => `${n}″`}
+                    label="Height, inches"
+                  />
+                </View>
+              )}
             </View>
 
             <View style={styles.field}>
               <Text style={styles.fieldLabel}>Year of birth</Text>
-              <View style={styles.inputRow}>
-                <TextInput
-                  style={styles.input}
-                  value={birthYearText}
-                  onChangeText={setBirthYearText}
-                  keyboardType="number-pad"
-                  maxLength={4}
-                  placeholder="e.g. 1990"
-                  placeholderTextColor={colors.textTertiary}
-                  accessibilityLabel="Year of birth"
-                />
-              </View>
+              <CountStepper
+                value={birthYear}
+                onChange={setBirthYear}
+                min={MIN_BIRTH_YEAR}
+                max={currentYear}
+                allowNull
+                label="Year of birth"
+              />
             </View>
 
             <View style={styles.field}>
@@ -556,22 +599,6 @@ function MacroCell({ styles, label, grams, percent }: MacroCellProps) {
       <Text style={styles.macroPercent}>{percent}%</Text>
     </View>
   );
-}
-
-/** The stored height, in the form the field accepts back. */
-function formatHeightForInput(heightCm: number, unit: WeightUnit): string {
-  if (unit === 'kg') return String(Math.round(heightCm));
-  // The display form carries prime marks the parser also accepts, so round-trips.
-  return formatHeight(heightCm, 'lb');
-}
-
-/** A year, or null — four digits, and not one nobody could have been born in. */
-function parseBirthYear(text: string): number | null {
-  const trimmed = text.trim();
-  if (!/^\d{4}$/.test(trimmed)) return null;
-  const year = Number(trimmed);
-  if (year < 1900 || year > new Date().getFullYear()) return null;
-  return year;
 }
 
 /**
