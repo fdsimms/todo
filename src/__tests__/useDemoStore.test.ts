@@ -1657,6 +1657,40 @@ describe('demo seed — people', () => {
     expect(tasks.some(t => t.completed)).toBe(true);
   });
 
+  // The task-row half of the same feature: tapping Call there only stamps when
+  // the row names exactly one person, so the seed needs a row that does.
+  it('seeds a task you can tap Call on that names exactly one person', () => {
+    const tasks = useTaskStore.getState().tasks;
+    const callable = tasks.filter(t => t.phoneNumber && t.personIds.length === 1 && !t.completed);
+    expect(callable.length).toBeGreaterThan(0);
+  });
+
+  // And the refusal beside it: a number with nobody in the people list named is
+  // exactly the case that must not guess at somebody.
+  it('seeds a task with a number and nobody named, which stamps nothing', () => {
+    const tasks = useTaskStore.getState().tasks;
+    expect(tasks.some(t => t.phoneNumber && t.personIds.length === 0)).toBe(true);
+  });
+
+  // What a confirmed tap on Call leaves behind (#2046) — an ordinary completed
+  // task, which is the whole design. The prompt that writes it can't be seeded:
+  // it's a transient stamp waiting on a tap, not a row.
+  it('seeds a call that was added to somebody\'s history', () => {
+    const called = useTaskStore.getState().tasks.find(t => t.title === 'Called Mom');
+    expect(called).toBeDefined();
+    expect(called!.completed).toBe(true);
+    expect(called!.personIds).toHaveLength(1);
+  });
+
+  // The seeded reach-out nudge measures against the *newest* entry, so a call
+  // seeded ahead of the backdated coffee would silence it.
+  it('keeps the seeded call behind the coffee, so the reach-out nudge still fires', () => {
+    const tasks = useTaskStore.getState().tasks;
+    const called = tasks.find(t => t.title === 'Called Mom')!;
+    const coffee = tasks.find(t => t.title === 'Coffee with Mom')!;
+    expect(Date.parse(called.completedAt!)).toBeLessThan(Date.parse(coffee.completedAt!));
+  });
+
   it('seeds a task naming more than one person, which a single field could not hold', () => {
     const tasks = useTaskStore.getState().tasks;
     expect(tasks.some(t => t.personIds.length > 1)).toBe(true);

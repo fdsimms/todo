@@ -1911,6 +1911,19 @@ function seedPeople(today: Date): void {
   const beach = addTask({ title: 'Beach day with @Household', dueDate: addDays(today, 5).toISOString() });
   updateTask(beach.id, { personIds: [dustin.id, ansley.id] });
 
+  // A row you can actually tap Call on (#2046). It needs a number *and* exactly
+  // one person named: "Call the dentist about the crown" above has the number
+  // and nobody in the list, which is the refusal rather than the feature, so
+  // without this one the task-row half reads as absent. Left incomplete on
+  // purpose — only a completed row counts as history, so this can't disturb the
+  // reach-out nudge the backdated coffee below sets up.
+  const callMom = addTask({
+    title: 'Call Mom about Thanksgiving',
+    dueDate: today.toISOString(),
+    phoneNumber: '555 0106',
+  });
+  updateTask(callMom.id, { personIds: [mom.id] });
+
   const coffee = addTask({ title: 'Coffee with Mom' });
   updateTask(coffee.id, { personIds: [mom.id] });
   completeTask(coffee.id);
@@ -1919,6 +1932,21 @@ function seedPeople(today: Date): void {
   // because nothing completes a task *in the past* — the honest alternative
   // would be seeding no reminder at all, and then the feature reads as absent.
   updateTask(coffee.id, { completedAt: addDays(today, -20).toISOString() });
+
+  // A call that got confirmed (#2046). Mom has a phoneNumber above, so her
+  // screen draws the Call and Text buttons, and this is what one of them leaves
+  // behind once the "Add to history?" prompt is answered — an ordinary
+  // completed task, deliberately indistinguishable from the coffee above. The
+  // prompt itself is the half that can't be seeded: it's a transient stamp
+  // waiting on a tap, and arming one would fire an alert about an invented
+  // phone call the moment somebody opened her screen.
+  const calledMom = addTask({ title: 'Called Mom' });
+  updateTask(calledMom.id, { personIds: [mom.id] });
+  completeTask(calledMom.id);
+  // Backdated *behind* the coffee on purpose. `lastTogether` is the newest
+  // entry, so a recent call here would silence the very reach-out nudge the
+  // coffee's own -20 exists to make fire.
+  updateTask(calledMom.id, { completedAt: addDays(today, -25).toISOString() });
 
   // Something you're waiting on somebody for (#2087). It hides from Today the
   // way a task blocked on another task does, so without a seeded one the

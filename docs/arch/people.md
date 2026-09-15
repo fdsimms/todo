@@ -108,7 +108,10 @@ Every one of these is a thing a similar app does.
 - Red, or any colour meaning late, on anything to do with a person.
 - A banner, tab badge, or header count about people.
 - Any reading of messages, call logs, or calendar **attendees**. Event *titles*
-  are a different read and are in scope; again see below.
+  are a different read and are in scope; again see below. Note that iOS offers
+  no call-log or message read to refuse in the first place — see "Tapping Call
+  or Text, and the question that follows" for what is available instead, and
+  why recording the app's own button being tapped is not this rule bending.
 - Anything leaving the device.
 
 ## Where the two lines actually fall
@@ -551,6 +554,112 @@ assertion.
   inside a demo and the gate has to be explicit. The second half is a plain bug
   it also avoids: the answer would be written into the scratch settings table,
   so a dismissal made in a demo is lost and the real install is asked again.
+
+## Tapping Call or Text, and the question that follows
+
+`reachOutIntent.ts` (the rules), `usePersonStore`'s three `*PendingReachOut`
+actions (the stamp), `useReachOutPrompt` (the question), and
+`useTaskStore.addCompletedTask` (the answer). The buttons are on
+`PersonDetailScreen` and on a task row carrying a phone number or an email
+address. The sibling of the calendar offer above, arriving from the other
+direction: that one guesses from something you wrote, this one from something
+you tapped.
+
+**Start with what iOS does not allow, because it is the whole reason this is
+shaped the way it is.** There is no way to detect that you called or texted
+anybody, and the platform is not merely missing a history API:
+
+- **CallKit** hands out `CXCall` objects carrying `uuid`, `isOutgoing`,
+  `hasConnected`, `hasEnded` and `isOnHold`, and nothing else. There is no
+  number and no identity on it at all, so even during a call, with the app
+  foregrounded, it cannot say who. `CXCallObserver` observes calls *in
+  progress* while the app runs; nothing enumerates past ones.
+- **Messages** has no read API whatsoever. IdentityLookup is the one extension
+  point nearby and its own framework page describes it as managing "unwanted
+  SMS messages and spam calls" — it fires for senders who are *not* in your
+  contacts, which is exactly the complement of the set this feature is about,
+  and its extension is sandboxed away from the containing app regardless.
+- **Contacts** stores no last-contacted date, and **Screen Time** reports usage
+  per app rather than per person.
+
+So the Never list's "any reading of messages, call logs, or calendar
+attendees" is not being bent here, and it could not be even if somebody wanted
+to. **Nothing is read.** What exists instead is a fact the app produces itself:
+its own Call button was tapped, on a screen naming one person.
+
+Three rules hold the rest of it in place.
+
+**A tap is an intention, so it is never written down on its own.** It cannot
+distinguish a call that connected from a number that rang out, and it is blind
+to every call placed from the Phone app directly, which is most of them. So it
+is stamped, and on the way back the user is asked, and only the answer becomes
+history. `probablyHaveReason` and `pantryCheck` again, and the calendar offer
+one section up: guess what you cannot verify, carry the reason, and ask. The
+prompt shows the entry it would write in full, title and time, because what has
+to be checked is whether it happened and only the user can check it.
+
+**The answer is an ordinary completed task, through the same writer the other
+ways in use** — `useTaskStore.addCompletedTask`, which moved into the store once
+it had four callers, two of them not on a screen that could own it. No
+interactions table, no second kind of record, and nothing marking it as
+machine-suggested afterwards: once confirmed it is not a guess any more, which
+is the rule `acceptSuggestion` already follows.
+
+**The prompt is mounted at the app root, not on a screen, and that is the one
+place this feature is allowed to speak up where it wasn't invited.** The tap and
+the answer happen in different places: Call on "Call Mom" from Today hands off to
+the dialler and comes back to Today, so a question waiting on Mom's page would
+usually expire unasked. It is allowed because of what it is. The calendar offer
+one section up still may never prompt on Today, and the line between them is
+that it volunteers an observation about your life, which is the kind of thing
+that grades you, while this confirms an action you took thirty seconds ago and
+tells you nothing you did not already know. It carries no count, no colour and
+no claim about the friendship, and "Not now" leaves no mark.
+
+**A task row only stamps when it names exactly one person.** A row with no
+`personIds` has nobody to write an entry against, and one naming several holds a
+single number belonging to one of them with nothing to say which. Resolve-or-
+shrug, as everywhere else a person id is read here: shrugging costs a prompt
+nobody gets, guessing costs a wrong entry in somebody's history.
+
+**"Not now" leaves no mark, and that is deliberate.** There is no declined
+stamp here as there is for the reach-out nudge (`reachOutDeclinedAt`,
+`reachOutOfferDeclinedAt`), because those record a decision about being
+reminded and this would record one about a phone call that, as far as the app
+can tell, may simply not have happened. A tap you did not confirm is not a
+decision about anybody.
+
+Three smaller decisions worth not re-deriving:
+
+- **Coming back from the background is the trigger, not opening the screen.** A
+  tap does not mean the app ever went away: iOS puts its own "call this number?"
+  sheet in front of a `tel:` hand-off, and cancelling it leaves the app exactly
+  where it was. A screen that asked about any live stamp it found on mount would
+  therefore greet somebody with a question about the call they had just
+  cancelled. So mount asks only about a stamp that outlived the process which
+  wrote it (`isStampFromEarlierLaunch`), which is the one case with no
+  transition coming: the long call during which iOS reclaimed the app. Anything
+  newer waits for a real foreground.
+- **The stamp is cleared before the alert goes up, not from its buttons.** A
+  second foreground while the alert is still on screen would otherwise stack a
+  duplicate. The failure that leaves open — the app dying mid-question and
+  never asking again — is the one worth having, since an unanswered question
+  already means no.
+- **It keeps no in-memory copy**, unlike `useSharedLinkStore` and
+  `useStepTimerStore`, the two other stores holding settings-backed state.
+  Both of those had to be given a `reload` that `useDemoStore` calls by hand on
+  the way in and the way out. Reading the `settings` row on the spot follows
+  whichever database is live, so demo mode is correct with no wiring, and a
+  value read at most twice per visit has nothing for a cache to buy.
+
+**The link button deliberately does not participate**, and it is the one
+exclusion worth keeping. It opens a chat app for some people and a plain
+profile for others, so there is no single past-tense sentence the entry could
+be written as, and "looked at their page" is not reaching out. Call, Text and
+Email all are, so all three stamp. Email carries a false positive of its own —
+a draft abandoned in the compose window reads exactly like a sent one — but
+that is precisely what the prompt is for, and the answer costs one tap.
+
 
 ## Filling one person in from Contacts
 

@@ -30,6 +30,7 @@ import {
   notesOfKind,
 } from '../utils/personNotes';
 import { telUrl, smsUrl } from '../utils/phone';
+import { type ReachOutKind } from '../utils/reachOutIntent';
 import { tasksNaming } from '../utils/peopleRegistry';
 import {
   hasBirthday,
@@ -94,9 +95,8 @@ export function PersonDetailScreen() {
   const styles = useMemo(() => makeStyles(colors), [colors]);
 
   const person = usePersonStore(s => s.people.find(p => p.id === route.params.personId) ?? null);
-  const addTask = useTaskStore(s => s.addTask);
+  const addCompletedTask = useTaskStore(s => s.addCompletedTask);
   const updateTask = useTaskStore(s => s.updateTask);
-  const completeTask = useTaskStore(s => s.completeTask);
   const deleteTask = useTaskStore(s => s.deleteTask);
   // The index rather than a scan: `Task.personIds` is an array on the row (see
   // the field note), so this is the reverse direction and it is rebuilt only
@@ -113,6 +113,7 @@ export function PersonDetailScreen() {
   // the whole list: with two Dustins on file, "Dinner w/ Dustin" names neither,
   // and filing one away doesn't make the title any clearer about which.
   const allPeople = usePersonStore(useShallow(s => s.people));
+  const notePendingReachOut = usePersonStore(s => s.notePendingReachOut);
   const calendarReadEnabled = useSettingsStore(s => s.calendarReadEnabled);
   const calendarPeopleHistory = useSettingsStore(s => s.calendarPeopleHistory);
   const pastEvents = useCalendarStore(useShallow(s => s.pastEvents));
@@ -199,23 +200,39 @@ export function PersonDetailScreen() {
   };
 
   /**
+   * The three buttons that are an attempt to reach somebody, rather than a way
+   * of looking them up.
+   *
+   * The stamp is written *before* the hand-off, not after: `openURL` is the
+   * point where this screen stops being in control, and on a device that puts
+   * the call through immediately the app can be backgrounded before anything
+   * queued behind it would have run.
+   *
+   * **The link button deliberately doesn't go through here**, and it is the one
+   * exclusion worth keeping. It opens a chat app for some people and a plain
+   * profile for others, so there is no single past-tense sentence the entry
+   * could be written as — and "looked at their page" is not reaching out. Email
+   * carries a false positive of its own (a draft abandoned in the compose
+   * window reads exactly like a sent one), but that is what the prompt is for:
+   * the question is asked, and an honest "Not now" costs one tap.
+   */
+  const reachOut = (kind: ReachOutKind, url: string | null) => {
+    if (!url) return;
+    notePendingReachOut(person.id, kind);
+    open(url);
+  };
+
+  /**
    * Writes one thing you did into the history.
    *
    * **An ordinary completed task, never a second kind of record** — the whole
-   * reason there is no interactions table, see `docs/arch/people.md`. Both ways
-   * in go through here, the manual "Add to history" row and an accepted
-   * calendar offer, so an accepted guess is indistinguishable afterwards from
-   * something you ticked off yourself. That is the point: once you have
-   * confirmed it, it is not a guess any more.
-   *
-   * `completeTask` stamps the moment it runs, so a backdated entry has its
-   * `completedAt` written afterwards — the same `updateTask` the Logbook's own
-   * "change the date" makes, and the field `personHistory` actually reads.
+   * reason there is no interactions table, see `docs/arch/people.md`. The rule
+   * itself moved to `useTaskStore.addCompletedTask` once a confirmed tap on
+   * Call became a fourth caller, two of which aren't on this screen; what is
+   * left here is the name this screen knows it by.
    */
   const recordTogether = (title: string, at: Date, personIds: string[]) => {
-    const task = addTask({ title, dueDate: at.toISOString(), personIds });
-    completeTask(task.id);
-    updateTask(task.id, { completedAt: at.toISOString() });
+    addCompletedTask(title, at, personIds);
   };
 
   /**
@@ -308,12 +325,12 @@ export function PersonDetailScreen() {
           <View style={styles.actionRow}>
             {person.phoneNumber && (
               <>
-                <ReachButton icon="call-outline" label="Call" onPress={() => open(telUrl(person.phoneNumber))} styles={styles} colors={colors} />
-                <ReachButton icon="chatbubble-outline" label="Text" onPress={() => open(smsUrl(person.phoneNumber))} styles={styles} colors={colors} />
+                <ReachButton icon="call-outline" label="Call" onPress={() => reachOut('call', telUrl(person.phoneNumber))} styles={styles} colors={colors} />
+                <ReachButton icon="chatbubble-outline" label="Text" onPress={() => reachOut('text', smsUrl(person.phoneNumber))} styles={styles} colors={colors} />
               </>
             )}
             {person.email && (
-              <ReachButton icon="mail-outline" label="Email" onPress={() => open(`mailto:${person.email}`)} styles={styles} colors={colors} />
+              <ReachButton icon="mail-outline" label="Email" onPress={() => reachOut('email', `mailto:${person.email}`)} styles={styles} colors={colors} />
             )}
             {person.linkUrl && (
               <ReachButton icon="link-outline" label="Open" onPress={() => open(person.linkUrl)} styles={styles} colors={colors} />
