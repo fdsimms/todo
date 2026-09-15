@@ -87,6 +87,7 @@ export type SimpleFeatureId =
   | 'workloadSubtitle'
   | 'unscheduledLens'
   | 'paintSelect'
+  | 'savedViews'
   | 'weeklyReview'
   // The kitchen's deep end. The list, the catalog, aisles, recipes and the
   // meal plan all stay — this is the machinery underneath them.
@@ -194,6 +195,11 @@ export const SIMPLE_FEATURES: readonly SimpleFeature[] = [
   { id: 'workloadSubtitle', label: 'The workload line under the title', area: 'today' },
   { id: 'unscheduledLens', label: 'The Unscheduled view', area: 'today' },
   { id: 'paintSelect', label: 'Drag to select a run of tasks', area: 'today' },
+  // Reached from Today's filter sheet rather than a menu row, so it is gated
+  // at its two buttons rather than by `screenShown` — there is no route for
+  // that one to match. `featureShown`'s `set` arm carries the usual rule:
+  // somebody who already kept a view keeps the way back to it.
+  { id: 'savedViews', label: 'Saved views', area: 'today' },
   { id: 'weeklyReview', label: 'The weekly review', area: 'today' },
 
   { id: 'barcodeScanning', label: 'Barcode scanning', area: 'kitchen' },

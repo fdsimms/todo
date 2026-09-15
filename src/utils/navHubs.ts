@@ -301,6 +301,35 @@ export interface NavSearchResult extends NavDestination {
  * result opening a screen the menu has decided you don't want is a way back
  * into a feature you switched off.
  */
+/**
+ * Destinations the find field can reach that the menu deliberately does not
+ * draw a row for.
+ *
+ * The menu is twelve rows because that is what fits on a phone, and the hubs
+ * exist to keep it there — so a surface that doesn't earn a row still needs
+ * *some* way to be found by name, or it is reachable only from whichever
+ * screen happens to link to it. Saved views is the first of these: it is
+ * opened from Today's filter sheet, where filtering already happens, and
+ * would otherwise be invisible to somebody who knows it exists and is looking
+ * for it.
+ *
+ * These are RootStack cards rather than tabs, so opening one leaves the tab
+ * highlight where it was — see PUSHED_ROUTES in AppNavigator.
+ */
+export const NAV_EXTRA_DESTINATIONS: readonly NavDestination[] = [
+  {
+    route: 'SavedViews',
+    // A funnel, because that is the idea and that is where it is reached from:
+    // Today's filter sheet. Required rather than optional now that
+    // `FeatureWheel` draws a chip per destination — and a chip here works
+    // without further care, since `handleDrawerNavigate` already declines to
+    // move the tab highlight for a PUSHED_ROUTES name.
+    icon: 'funnel-outline',
+    label: 'Saved views',
+    keywords: ['filter', 'filters', 'lens', 'preset', 'smart list', 'saved search'],
+  },
+];
+
 export function menuDestinations(options: NavMenuOptions): NavSearchResult[] {
   const out: NavSearchResult[] = [];
   for (const row of visibleMenuRows(options)) {
@@ -310,6 +339,10 @@ export function menuDestinations(options: NavMenuOptions): NavSearchResult[] {
     }
     for (const member of row.hub.members) out.push({ ...member, hubLabel: row.hub.label });
   }
+  // Appended rather than interleaved: these have no row, so there is no
+  // position in the menu for them to hold, and the find field is the only
+  // place they appear.
+  for (const extra of NAV_EXTRA_DESTINATIONS) out.push({ ...extra, hubLabel: null });
   return out;
 }
 

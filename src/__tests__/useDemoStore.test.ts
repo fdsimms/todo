@@ -29,6 +29,8 @@ import {
 } from '../utils/weeklyReview';
 import { isMorningCheckInCandidate } from '../utils/morningCheckIn';
 import { useTaskGroupStore } from '../store/useTaskGroupStore';
+import { useSavedViewStore } from '../store/useSavedViewStore';
+import { filterTasksForView } from '../utils/savedViews';
 import { calibrationFrom, MIN_CALIBRATION_SAMPLES } from '../utils/estimateCalibration';
 import { useFocusStore } from '../store/useFocusStore';
 import { isFocusRunning } from '../utils/focusPlan';
@@ -511,10 +513,39 @@ describe('demo mode', () => {
     expect(useTaskGroupStore.getState().groups.length).toBeGreaterThan(0);
     expect(useCategoryStore.getState().categories.length).toBeGreaterThan(0);
     expect(s.tagRegistry.length).toBeGreaterThan(0);
+    expect(useSavedViewStore.getState().views.length).toBeGreaterThan(0);
 
     useDemoStore.getState().exitDemoMode();
   });
 
+  // A saved view is a predicate and nothing else, so the only way to tell it
+  // is seeded correctly is to run it: a view that matches nothing reads in
+  // demo mode as a feature that doesn't work, not as one nobody has used.
+  it('seeds saved views that actually match seeded tasks', () => {
+    useDemoStore.getState().enterDemoMode();
+    const views = useSavedViewStore.getState().views;
+    expect(views.map(v => v.name)).toContain('Quick wins');
+
+    const quickWins = views.find(v => v.name === 'Quick wins')!;
+    const matched = filterTasksForView(
+      useTaskStore.getState().tasks,
+      quickWins.clauses,
+      { todayStart: getCurrentDayStart(), heldBack: isHeldBack },
+    );
+    expect(matched.length).toBeGreaterThan(0);
+
+    useDemoStore.getState().exitDemoMode();
+  });
+
+  // The swap is what the whole demo mode rests on, and a store initialized
+  // outside useTaskStore.initialize()'s fan-out keeps its rows pointed at the
+  // database that just went away.
+  it('empties saved views again on the way out of demo mode', () => {
+    useDemoStore.getState().enterDemoMode();
+    expect(useSavedViewStore.getState().views.length).toBeGreaterThan(0);
+    useDemoStore.getState().exitDemoMode();
+    expect(useSavedViewStore.getState().views).toEqual([]);
+  });
   // The Stats section says nothing below MIN_CALIBRATION_SAMPLES, so seeding
   // four timed tasks would look identical to seeding none. Asserting the
   // derived read rather than the row count is what pins that.
@@ -525,7 +556,6 @@ describe('demo mode', () => {
     expect(calibration!.samples).toBeGreaterThanOrEqual(MIN_CALIBRATION_SAMPLES);
     useDemoStore.getState().exitDemoMode();
   });
-
   // A list is drawn differently from a project and is otherwise the same row,
   // so the only thing that can make the feature visible in demo mode is a
   // project actually carrying kind: 'list'. Behaviour is asserted alongside:
