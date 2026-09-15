@@ -1539,6 +1539,8 @@ export function initDatabase(): void {
     'ALTER TABLE tasks ADD COLUMN penalty_minutes INTEGER',
     'ALTER TABLE tasks ADD COLUMN penalty_cutoff_time TEXT',
     'ALTER TABLE tasks ADD COLUMN penalty_fired_at TEXT',
+    // Beside it, and per-occurrence for its reason: the charge given back.
+    'ALTER TABLE tasks ADD COLUMN penalty_credited_at TEXT',
     // The other direction from the three above: not what failing costs, but
     // what has to be done before the apps unblock at all. 0 on every existing
     // row, which is the feature being off. See Task.gatesApps.
@@ -2540,6 +2542,7 @@ function rowToTask(row: Record<string, unknown>): Task {
     penaltyMinutes: (row.penalty_minutes as number | null) ?? null,
     penaltyCutoffTime: (row.penalty_cutoff_time as string | null) ?? null,
     penaltyFiredAt: (row.penalty_fired_at as string | null) ?? null,
+    penaltyCreditedAt: (row.penalty_credited_at as string | null) ?? null,
     gatesApps: row.gates_apps === 1,
     // A blank name reads as "not logging", so a row that somehow stored one
     // can't write nameless doses. The amount is kept only alongside a name,
@@ -2628,10 +2631,10 @@ export function dbInsertTask(task: Task): void {
       quota_interval_minutes, quota_reminders, quota_started_at, quota_always_visible, quota_period, location,
       prior_best_streak, reminder_time_anchor, reminder_utc_offset_minutes, polarity, slip_count, slip_date,
       health_metric, health_target, completion_timer_minutes, completion_timer_note, completion_timer_started_at, log_health_metric, log_health_amount,
-      penalty_minutes, penalty_cutoff_time, penalty_fired_at, gates_apps,
+      penalty_minutes, penalty_cutoff_time, penalty_fired_at, penalty_credited_at, gates_apps,
       medication_name, medication_amount, medication_unit, log_meal_slot,
       estimate_before_timing
-    ) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)`,
+    ) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)`,
     [
       task.id, task.title, task.notes, task.completed ? 1 : 0,
       task.completedAt, task.createdAt, task.seenAt, task.dueDate, task.deadline, task.deadlineOffsetDays ?? null, task.deadlineMonthDay ?? null, task.deferUntil,
@@ -2719,6 +2722,7 @@ export function dbInsertTask(task: Task): void {
       task.penaltyMinutes ?? null,
       task.penaltyCutoffTime ?? null,
       task.penaltyFiredAt ?? null,
+      task.penaltyCreditedAt ?? null,
       task.gatesApps ? 1 : 0,
       task.medicationName ?? null,
       task.medicationAmount ?? null,
@@ -2754,7 +2758,7 @@ export function dbUpdateTask(task: Task): void {
       quota_interval_minutes=?, quota_reminders=?, quota_started_at=?, quota_always_visible=?, quota_period=?, location=?,
       prior_best_streak=?, reminder_time_anchor=?, reminder_utc_offset_minutes=?, polarity=?, slip_count=?, slip_date=?,
       health_metric=?, health_target=?, completion_timer_minutes=?, completion_timer_note=?, completion_timer_started_at=?, log_health_metric=?, log_health_amount=?,
-      penalty_minutes=?, penalty_cutoff_time=?, penalty_fired_at=?, gates_apps=?,
+      penalty_minutes=?, penalty_cutoff_time=?, penalty_fired_at=?, penalty_credited_at=?, gates_apps=?,
       medication_name=?, medication_amount=?, medication_unit=?, log_meal_slot=?,
       estimate_before_timing=?
     WHERE id=?`,
@@ -2845,6 +2849,7 @@ export function dbUpdateTask(task: Task): void {
       task.penaltyMinutes ?? null,
       task.penaltyCutoffTime ?? null,
       task.penaltyFiredAt ?? null,
+      task.penaltyCreditedAt ?? null,
       task.gatesApps ? 1 : 0,
       task.medicationName ?? null,
       task.medicationAmount ?? null,

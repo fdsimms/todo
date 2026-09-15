@@ -1,0 +1,4 @@
+{
+  "message": "A blocked-app penalty can now be earned back. Finishing a task after its cutoff has passed takes that task's own block off what is left, so doing it ten minutes late gives back most of it and doing it two hours late gives back nothing. It only ever shortens a penalty you are already serving, and it never lifts a block a gate or a focus session is holding.",
+  "date": "2026-09-15"
+}

@@ -312,7 +312,7 @@ export function seedDemoData(): void {
   useSettingsStore.getState().setGateShieldEnabled(true);
   addTask({
     title: 'Morning walk',
-    notes: 'Holds your apps two ways. The ones you picked in Settings stay blocked until this is done, and if 8am passes with it still undone they stay blocked for two hours on top of that.',
+    notes: 'Holds your apps two ways. The ones you picked in Settings stay blocked until this is done, and if 8am passes with it still undone they stay blocked for two hours on top of that. Doing it late takes what is left of that block back off.',
     gatesApps: true,
     category: 'Health',
     dueDate: today.toISOString(),
@@ -324,6 +324,14 @@ export function seedDemoData(): void {
     penaltyCutoffTime: '08:00',
   });
   updateTask(noSnacking.id, { penaltyMinutes: 60 });
+
+  // The *credit* is deliberately not seeded, and this is the one capability in
+  // this PR with no row of its own. It is only visible against a block being
+  // served, and the seed's existing rule is that a fresh demo shows what a cost
+  // looks like rather than somebody already serving one — which is a
+  // first-impression decision that outranks demonstrating the refund. The walk's
+  // own notes say what finishing late does instead, so the capability is at
+  // least stated where the cost is.
 
   addTask({
     title: 'Read a chapter of the Le Guin',
