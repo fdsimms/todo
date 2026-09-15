@@ -426,6 +426,77 @@ export interface HealthRule {
   lastFiredDayKey: string | null;
 }
 
+/**
+ * How a capture target files what it creates, beyond the words in the reminder
+ * itself.
+ *
+ * Every arm here lands an ordinary `Task`, and that is the whole reason this
+ * feature is small. The two destinations that predate it (`remindersImport*`
+ * for the Inbox, `groceryImport*` for the grocery list) each had to answer
+ * "what row does a dictated sentence become"; these answer only "how is that
+ * task filed", which is a field on a draft the drain already builds.
+ *
+ * It is deliberately not a list of *app areas*. A dictated title is a complete
+ * record for a task and for a grocery row, and for nothing else in this app —
+ * a `FoodLogEntry` refuses to exist without a nutrition figure
+ * (`useFoodLogStore.addEntry`), a weight has no table at all, a mood is a
+ * number. So `meal` below does not write to the food log: it stamps
+ * `logMealSlot` and lets the tick raise the offer that field already exists to
+ * raise. See `docs/arch/reminders-import.md`.
+ */
+export type ReminderCaptureFiling =
+  /**
+   * Lands in the Inbox carrying `Task.logMealSlot`, so ticking it offers the
+   * food log's own manual-entry sheet prefilled with the dictated words.
+   *
+   * The slot is derived from when the reminder was *created* rather than being
+   * fixed per list, so one "Food" list serves every meal of the day: dictate at
+   * 08:00 and it is breakfast, at 19:00 and it is dinner. `null` means derive
+   * it; a real slot pins the whole list to one meal for somebody who wants
+   * that.
+   */
+  | { kind: 'meal'; slot: MealSlot | null }
+  /** Lands in a project — meant for `ProjectKind` `'list'`, a running list with no dates. */
+  | { kind: 'project'; projectId: string }
+  /** Lands in a task category. */
+  | { kind: 'category'; category: string }
+  /** Lands carrying one tag. */
+  | { kind: 'tag'; tag: string };
+
+/**
+ * One extra Reminders list the app drains, beyond the two that have their own
+ * settings rows.
+ *
+ * **One JSON settings row holding a list, rather than four flat settings per
+ * destination.** `remindersImport*` and `groceryImport*` are four keys each
+ * because they are two fixed features; this is an open set the user builds, so
+ * the same shape would mean a migration per capture. Same call `healthRules`
+ * and `weatherRules` make, and `RuleListSheet` is already the UI for it.
+ *
+ * `confirmedListId` is not a duplicate of `listId`, and dropping it would be
+ * the one unsafe edit here: importing *deletes* the user's reminders, so a
+ * drain may only ever run against a list they confirmed by name and count, and
+ * keying the confirmation on the id is what makes re-pointing a capture at a
+ * different list ask again rather than silently swallowing a fresh backlog.
+ */
+export interface ReminderCapture {
+  id: string;
+  /** What the user calls this capture. Shown in settings; never written to a task. */
+  title: string;
+  /** Off keeps the row and its confirmation while draining nothing. */
+  enabled: boolean;
+  listId: string | null;
+  /** The list the confirmation alert was answered for — see the note above. */
+  confirmedListId: string | null;
+  /**
+   * `remindersImportDelete`'s twin, per capture, and the default is inverted
+   * from that one. A capture's list is usually a dictation inbox the user wants
+   * emptied, so on; it is exposed per row because a shared list is not.
+   */
+  deleteAfterImport: boolean;
+  filing: ReminderCaptureFiling;
+}
+
 // A lightweight, collapsible label for grouping several independent tasks
 // together (e.g. "Take supplements" grouping Coq10/Vitamin D/Iron, each on
 // its own schedule). Deliberately NOT a Task — it has no dueDate, recurrence,

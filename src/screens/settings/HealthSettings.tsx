@@ -8,6 +8,8 @@ import { useHealthStore } from '../../store/useHealthStore';
 import { useCategoryStore, ensureHealthCategory } from '../../store/useCategoryStore';
 import { categoryLabel } from '../../utils/categoryLabel';
 import { PillGroup } from '../../components/PillGroup';
+import { NUTRIENT_KEYS } from '../../types';
+import { NUTRIENT_LABEL } from '../../utils/foodNutrition';
 import { healthBridge, isHealthSupported, openHealthApp } from '../../utils/healthBridge';
 import type { WeightUnit } from '../../utils/weightLog';
 import { dayKeyOf, getCurrentDayStart } from '../../utils/dateUtils';
@@ -79,6 +81,8 @@ export function HealthSettings() {
   const setHealthReadEnabled = useSettingsStore(s => s.setHealthReadEnabled);
   const healthWriteEnabled = useSettingsStore(s => s.healthWriteEnabled);
   const setHealthWriteEnabled = useSettingsStore(s => s.setHealthWriteEnabled);
+  const healthWriteNutrients = useSettingsStore(useShallow(s => s.healthWriteNutrients));
+  const setHealthWriteNutrients = useSettingsStore(s => s.setHealthWriteNutrients);
   const healthCategory = useSettingsStore(s => s.healthCategory);
   const setHealthCategory = useSettingsStore(s => s.setHealthCategory);
   const weightUnit = useSettingsStore(s => s.weightUnit);
@@ -202,6 +206,14 @@ export function HealthSettings() {
         })
         .catch(() => refreshWriteStatus());
     }
+  };
+
+  const toggleWriteNutrient = (key: (typeof NUTRIENT_KEYS)[number]) => {
+    haptics.tap();
+    const next = healthWriteNutrients.includes(key)
+      ? healthWriteNutrients.filter(k => k !== key)
+      : [...healthWriteNutrients, key];
+    setHealthWriteNutrients(next);
   };
 
   const askForWriteAccess = async () => {
@@ -362,7 +374,7 @@ export function HealthSettings() {
 
     <SettingsSection
       label="Log to Health"
-      footer="Writes a dietary water sample when a task you've set up to log it is completed, a body mass sample when you record a weight, and a meal's nutrition when you add it to the food log. These are the only things this app ever writes to Health, and nothing else is touched. Deleting a food log entry removes what it wrote."
+      footer="Writes a dietary water sample when a task you've set up to log it is completed, a body mass sample when you record a weight, and a meal's nutrition when you add it to the food log. These are the only things this app ever writes to Health, and nothing else is touched. Deleting a food log entry removes what it wrote. Which nutrients a logged meal is allowed to carry into Health is picked below; nothing a meal doesn't state is ever written, whatever's selected there."
     >
       <SettingsRow
         entryId="healthWrite"
@@ -406,6 +418,26 @@ export function HealthSettings() {
             colors={colors}
             onAsk={askForWriteAccess}
           />
+          <View style={styles.sep} />
+          <SettingsRow
+            entryId="healthWriteNutrients"
+            icon="nutrition-outline"
+            label="Nutrients written per meal"
+            hint="Which of these a logged meal is allowed to carry into Health"
+            tight
+          />
+          <View style={styles.pillGroupRow}>
+            <PillGroup
+              noun="nutrient"
+              options={NUTRIENT_KEYS.map(key => ({
+                key,
+                label: NUTRIENT_LABEL[key].label,
+                selected: healthWriteNutrients.includes(key),
+                accessibilityLabel: `Write ${NUTRIENT_LABEL[key].label} to Health`,
+                onPress: () => toggleWriteNutrient(key),
+              }))}
+            />
+          </View>
         </>
       )}
     </SettingsSection>

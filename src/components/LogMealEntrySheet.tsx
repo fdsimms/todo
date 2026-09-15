@@ -108,9 +108,15 @@ export function LogMealEntrySheet() {
     { slot: MealSlot | null; dayKey: string; mealPlanEntryId: string | null } | null
   >(null);
 
-  /** Same shape as `scan` above, for the describe-instead handoff. */
+  /**
+   * Same shape as `scan` above, for the describe-instead handoff, plus the
+   * words to open on. Those come from the search field rather than from
+   * `pending.label` directly: the field starts as the meal's own name
+   * (`initialQuery`) and anything typed since is a better description of what
+   * was actually eaten than the plan's title is.
+   */
   const [estimate, setEstimate] = useState<
-    { slot: MealSlot | null; dayKey: string; mealPlanEntryId: string | null } | null
+    { slot: MealSlot | null; dayKey: string; mealPlanEntryId: string | null; description: string } | null
   >(null);
 
   /**
@@ -132,8 +138,8 @@ export function LogMealEntrySheet() {
         onScan={() => {
           setScan({ slot: pending?.slot ?? null, dayKey: pending?.dayKey ?? dayKeyOf(getLogicalToday()), mealPlanEntryId });
         }}
-        onEstimate={estimateRoute !== 'unavailable' ? () => {
-          setEstimate({ slot: pending?.slot ?? null, dayKey: pending?.dayKey ?? dayKeyOf(getLogicalToday()), mealPlanEntryId });
+        onEstimate={estimateRoute !== 'unavailable' ? query => {
+          setEstimate({ slot: pending?.slot ?? null, dayKey: pending?.dayKey ?? dayKeyOf(getLogicalToday()), mealPlanEntryId, description: query });
         } : undefined}
         onDeclineMeal={mealPlanEntryId ? () => {
           setLogMeal(mealPlanEntryId, false);
@@ -154,6 +160,7 @@ export function LogMealEntrySheet() {
               slot={estimate?.slot ?? null}
               at={estimate ? dayKeyAtNoon(estimate.dayKey) : new Date()}
               mealPlanEntryId={estimate?.mealPlanEntryId ?? null}
+              initialDescription={estimate?.description}
               onClose={() => setEstimate(null)}
               onLogged={() => setPending(null)}
               onPickRecipe={recipeId => {

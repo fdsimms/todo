@@ -451,6 +451,9 @@ export const SETTINGS_ENTRIES: SettingsEntry[] = [
     kitchen: true },
   { id: 'groceryImportDelete', groupId: 'capture', label: 'Delete after adding to Groceries', section: 'Apple Reminders',
     keywords: ['remove', 'keep', 'leave', 'duplicate', 'shopping', 'mirror'], kitchen: true },
+  { id: 'reminderCaptures', groupId: 'capture', label: 'Capture lists', section: 'Apple Reminders',
+    keywords: ['food', 'food log', 'meal', 'ate', 'siri', 'dictate', 'voice', 'project', 'wish list',
+      'category', 'tag', 'another list', 'extra list'] },
   { id: 'importNow', groupId: 'capture', label: 'Import now', section: 'Apple Reminders',
     keywords: ['sync', 'refresh'] },
 
@@ -499,6 +502,8 @@ export const SETTINGS_ENTRIES: SettingsEntry[] = [
     keywords: ['permission', 'allow', 'authorize', 'grant', 'sharing', 'body', 'mass'] },
   { id: 'healthNutritionWriteAccess', groupId: 'health', label: 'Nutrition-write access', section: 'Log to Health',
     keywords: ['permission', 'allow', 'authorize', 'grant', 'sharing', 'food', 'meal', 'calories', 'macros'] },
+  { id: 'healthWriteNutrients', groupId: 'health', label: 'Nutrients written per meal', section: 'Log to Health',
+    keywords: ['optional', 'choose', 'select', 'exclude', 'protein', 'sodium', 'fat', 'fiber', 'sugar', 'calcium', 'iron', 'potassium', 'caffeine', 'water', 'macros'] },
   { id: 'weightGoal', groupId: 'health', label: 'Weight goal', section: 'Weight', keywords: ['target', 'lose', 'gain', 'maintain', 'calories', 'tdee', 'deficit', 'macros', 'protein', 'bmr', 'rate', 'lb per week'] },
   { id: 'weightUnit', groupId: 'health', label: 'Weight unit', section: 'Weight',
     keywords: ['kg', 'kilograms', 'lb', 'pounds', 'scale', 'body', 'mass', 'metric', 'imperial'] },

@@ -19,6 +19,8 @@ import { SettingsSection } from './SettingsSection';
 import { SettingsRow } from './SettingsRow';
 import { SettingsChoiceTray } from './SettingsChoiceTray';
 import { makeSettingsStyles } from './settingsStyles';
+import { ReminderCapturesSheet } from '../../components/ReminderCapturesSheet';
+import { activeReminderCaptures } from '../../utils/reminderCaptures';
 
 /**
  * Apple Reminders import — labelled in full throughout, because "reminders"
@@ -51,6 +53,7 @@ export function RemindersCaptureSettings() {
   const setGroceryImportDelete = useSettingsStore(s => s.setGroceryImportDelete);
   const groceryImportTwoWay = useSettingsStore(s => s.groceryImportTwoWay);
   const setGroceryImportTwoWay = useSettingsStore(s => s.setGroceryImportTwoWay);
+  const reminderCaptures = useSettingsStore(s => s.reminderCaptures);
 
   const colors = useColors();
   const styles = useMemo(() => makeSettingsStyles(colors), [colors]);
@@ -88,6 +91,7 @@ export function RemindersCaptureSettings() {
     animateLayout();
     set(!open);
   };
+  const [capturesOpen, setCapturesOpen] = useState(false);
   const [importBusy, setImportBusy] = useState(false);
   const [importResult, setImportResult] = useState<string | null>(null);
   const selectedReminderList = findReminderList(reminderLists ?? [], remindersImportListId);
@@ -98,6 +102,19 @@ export function RemindersCaptureSettings() {
   const taskListChoices = reminderListOptions(reminderLists ?? [], groceryImportListId);
   const groceryListChoices = reminderListOptions(reminderLists ?? [], remindersImportListId);
   const lastImport = lastImportOutcome();
+  /**
+   * How many captures are actually running, not how many rows exist. A row with
+   * no list picked, or one whose confirmation was cleared by changing where it
+   * files, is configured but inert — and saying "3" for it would be the row
+   * claiming reminders are coming in when none are. Same distinction
+   * `activeReminderCaptures` draws for the drain.
+   */
+  const activeCaptureCount = activeReminderCaptures(reminderCaptures).length;
+  const captureSummary = reminderCaptures.length === 0
+    ? 'None'
+    : activeCaptureCount === reminderCaptures.length
+      ? `${activeCaptureCount} on`
+      : `${activeCaptureCount} of ${reminderCaptures.length} on`;
 
   // The list row is also shown while its picker is open with the import still
   // off — that's the first-enable sequence, where choosing a list comes
@@ -591,11 +608,44 @@ export function RemindersCaptureSettings() {
       </>
       )}
 
+      {remindersPermission === 'granted' && (
+        <>
+          <View style={styles.sep} />
+          <SettingsRow
+            entryId="reminderCaptures"
+            icon="mic-outline"
+            iconColor={colors.accent}
+            label="Capture lists"
+            hint="Send other Reminders lists to your food log, a project, a category or a tag."
+            value={captureSummary}
+            chevron
+            onPress={() => { setImportResult(null); setCapturesOpen(true); }}
+            accessibilityLabel="Capture lists, extra Reminders lists to import from"
+          />
+        </>
+      )}
+
+      <ReminderCapturesSheet
+        visible={capturesOpen}
+        onClose={() => setCapturesOpen(false)}
+        reminderLists={reminderLists}
+        // The two fixed legs' lists. A capture may never also point at one:
+        // the handled record is read as one flat set across every list, so a
+        // list feeding two destinations would send each reminder to whichever
+        // drain reached it first.
+        reservedListIds={[remindersImportListId, groceryImportListId].filter((id): id is string => !!id)}
+      />
+
       {/* There's no change notification to subscribe to, so a reminder
           that syncs in from a Mac or Watch while the app is already
           open has nothing to wake the import. */}
       {remindersPermission === 'granted'
-        && ((remindersImportEnabled && selectedReminderList) || (groceryImportEnabled && selectedGroceryList)) && (
+        && ((remindersImportEnabled && selectedReminderList)
+          || (groceryImportEnabled && selectedGroceryList)
+          // A capture is a leg like any other, and somebody who set one up and
+          // nothing else still needs the manual pull — see the note above about
+          // there being no change notification to wake a drain.
+          || activeCaptureCount > 0) && (
         <>
           <View style={styles.sep} />
           <SettingsRow

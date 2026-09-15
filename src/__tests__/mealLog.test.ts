@@ -7,6 +7,7 @@ import {
   describeHelping,
   mealHelping,
   servingGrams,
+  slotForHour,
   wantsMealLogPrompt,
   weighedHelping,
   type DishFigures,
@@ -236,5 +237,38 @@ describe('describeHelping', () => {
 describe('defaultHelpings', () => {
   it('offers one, which is a serving or a dish depending on what the recipe said', () => {
     expect(defaultHelpings()).toBe(1);
+  });
+});
+
+describe('slotForHour', () => {
+  it('reads the middle of each meal as that meal', () => {
+    expect(slotForHour(8)).toBe('breakfast');
+    expect(slotForHour(13)).toBe('lunch');
+    expect(slotForHour(19)).toBe('dinner');
+  });
+
+  it('puts both ends of the day in snack rather than stretching breakfast', () => {
+    // "A thing eaten at 2am" is a snack far more often than it is breakfast,
+    // and the same goes the other way at 23:00.
+    expect(slotForHour(0)).toBe('snack');
+    expect(slotForHour(2)).toBe('snack');
+    expect(slotForHour(4)).toBe('snack');
+    expect(slotForHour(22)).toBe('snack');
+    expect(slotForHour(23)).toBe('snack');
+  });
+
+  it('is exact on every boundary, so no hour falls between two meals', () => {
+    expect(slotForHour(5)).toBe('breakfast');
+    expect(slotForHour(10)).toBe('breakfast');
+    expect(slotForHour(11)).toBe('lunch');
+    expect(slotForHour(15)).toBe('lunch');
+    expect(slotForHour(16)).toBe('dinner');
+    expect(slotForHour(21)).toBe('dinner');
+  });
+
+  it('answers for every hour of the day', () => {
+    for (let hour = 0; hour < 24; hour += 1) {
+      expect(['breakfast', 'lunch', 'dinner', 'snack']).toContain(slotForHour(hour));
+    }
   });
 });
