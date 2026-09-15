@@ -1,4 +1,4 @@
-import React, { useMemo, useState } from 'react';
+import React, { useEffect, useMemo, useState } from 'react';
 import { View, Text, ScrollView, StyleSheet, Linking } from 'react-native';
 import { SheetModal } from './SheetModal';
 import Ionicons from '@expo/vector-icons/Ionicons';
@@ -21,6 +21,9 @@ import {
 import { useHiddenEventsStore } from '../store/useHiddenEventsStore';
 import { hiddenEventKey } from '../utils/hiddenEvents';
 import { animateLayout } from '../utils/layoutAnimation';
+import { useTaskStore } from '../store/useTaskStore';
+import { useSettingsStore } from '../store/useSettingsStore';
+import { taskFieldsFromEvent } from '../utils/calendarEventImport';
 
 /** `null` is the "no reminder" segment — distinct from 0, which is a real offset (at start time). */
 type OffsetChoice = number | null;
@@ -72,6 +75,22 @@ export function TodayEventsSheet({ visible, onClose, events, calendarsById }: Pr
   const hideEvent = useHiddenEventsStore(s => s.hideEvent);
   const unhideEvent = useHiddenEventsStore(s => s.unhideEvent);
   const [expandedKey, setExpandedKey] = useState<string | null>(null);
+  // Which rows have had a task added *from this sheet, since it opened*, and
+  // deliberately nothing more. It is feedback for a tap, not a claim that the
+  // task still exists: nothing links a task to the event it was copied from
+  // (that would be a `Task` column and a reconcile, which is the event-rule
+  // generator's job, not this button's), so the honest scope of the record is
+  // the one interaction it is confirming. Tapping twice adds two tasks, the
+  // same as tapping "+" twice anywhere else does.
+  const [addedKeys, setAddedKeys] = useState<readonly string[]>([]);
+
+  // Closing forgets which rows were ticked, so reopening never shows a
+  // checkmark against a task the user may since have deleted — the mark says
+  // "you just added one", and once the sheet has gone it has nothing left to
+  // be about. Same call `RuleListSheet` makes about its own expanded row.
+  useEffect(() => {
+    if (!visible) setAddedKeys([]);
+  }, [visible]);
 
   const toggleExpanded = (key: string) => {
     animateLayout();
@@ -80,6 +99,27 @@ export function TodayEventsSheet({ visible, onClose, events, calendarsById }: Pr
 
   // Same no-canOpenURL, silently-ignore-failure pattern as TaskItem's
   // link/call/text/email buttons — see maps.ts for why https: needs no check.
+  // Copies one event onto the task list, filed under the same category the
+  // day's own event rows already render under (`calendarEventCategory`) — the
+  // task and the event it came from are one subject to the person reading
+  // Today, the call `calendarReviewTasks.ts` makes for its own row.
+  //
+  // Writes the task outright rather than opening `TaskEditor` pre-filled the
+  // way an imported confirmation does. Two reasons: there is nothing to review
+  // (the date is the event's own, not a read of anything), and adding a task
+  // for each of three back-to-back meetings should not cost three round trips
+  // out of this list and back.
+  const addTaskForEvent = (event: BusyEvent, key: string) => {
+    haptics.success();
+    const category = useSettingsStore.getState().calendarEventCategory;
+    useTaskStore.getState().addTask({
+      ...taskFieldsFromEvent(event),
+      category: category ?? undefined,
+    });
+    animateLayout();
+    setAddedKeys(keys => (keys.includes(key) ? keys : [...keys, key]));
+  };
+
   const openDirections = async (location: string) => {
     const url = directionsUrl(location);
     if (!url) return;
@@ -143,6 +183,17 @@ export function TodayEventsSheet({ visible, onClose, events, calendarsById }: Pr
                     )}
                   </View>
                   <View style={styles.rowActions}>
+                    <PressableScale hitSlop={8}
+                      style={styles.actionButton}
+                      onPress={() => addTaskForEvent(event, key)}
+                      accessibilityLabel={`Add a task for ${event.title || 'this event'}`}
+                    >
+                      <Ionicons
+                        name={addedKeys.includes(key) ? 'checkmark-circle' : 'add-circle-outline'}
+                        size={iconSize.sm}
+                        color={addedKeys.includes(key) ? colors.green : colors.textTertiary}
+                      />
+                    </PressableScale>
                     {!event.allDay && (
                       <PressableScale hitSlop={8}
                         style={styles.actionButton}

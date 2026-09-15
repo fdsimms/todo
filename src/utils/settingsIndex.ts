@@ -312,6 +312,8 @@ const GENERATED_KEYWORDS: Record<GeneratedKind, string[]> = {
     'tidy up', 'catch up', 'sunday', 'generated', 'automatic'],
   weather: ['sunny', 'rainy', 'snowy', 'cold', 'hot', 'sunscreen', 'umbrella', 'coat', 'forecast',
     'location', 'temperature', 'generated', 'automatic'],
+  eventTask: ['meeting', 'appointment', 'flight', 'travel', 'title', 'rule', 'rules', 'match',
+    'prep', 'prepare', 'lead time', 'days before', 'generated', 'automatic'],
   // No bare 'weigh': already a substring of this generator's own label
   // ("Ask for a weigh-in"). 'scale' and 'weight' are the words somebody
   // actually types, and neither is in the label.
@@ -582,6 +584,9 @@ export const SETTINGS_ENTRIES: SettingsEntry[] = [
   { id: 'weatherRules', groupId: 'generated', label: 'Rules', section: 'Weather-based tasks',
     keywords: ['sunny', 'rainy', 'snowy', 'cold', 'hot', 'sunscreen', 'umbrella', 'coat',
       'forecast', 'location', 'condition', 'weather rule'] },
+  { id: 'eventRules', groupId: 'generated', label: 'Rules', section: 'Calendar event tasks',
+    keywords: ['calendar', 'event', 'meeting', 'appointment', 'flight', 'travel', 'title',
+      'word', 'match', 'days before', 'lead time', 'prep', 'pack', 'event rule'] },
   { id: 'screenTimeRules', groupId: 'generated', label: 'Rules', section: 'Screen time tasks',
     keywords: ['screen time', 'usage', 'phone', 'apps', 'threshold', 'minutes', 'distraction',
       'social media', 'doomscroll', 'limit', 'screen time rule'] },

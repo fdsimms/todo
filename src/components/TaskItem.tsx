@@ -77,6 +77,7 @@ import { useNowTick } from '../hooks/useNowTick';
 import { useReduceMotion } from '../utils/useReduceMotion';
 import { useTaskStore } from '../store/useTaskStore';
 import { useSettingsStore } from '../store/useSettingsStore';
+import { taskFieldsFromEvent } from '../utils/calendarEventImport';
 import { useMealPlanStore } from '../store/useMealPlanStore';
 import { MEAL_PLAN_NUDGE_SLOT_COUNT, mealPlanNudgeDayKey } from '../utils/mealPlanNudge';
 import { activeMealSlotStepId, mealSlotOf, parseMealSlotSource } from '../utils/mealSlotTasks';
@@ -3087,11 +3088,31 @@ export const TaskItem = React.memo(function TaskItem({
                   calendarReviewEvents.map(event => (
                     <View key={event.id} style={styles.calendarReviewEventRow}>
                       <Ionicons name="calendar-outline" size={12} color={colors.textSecondary} />
-                      <Text style={styles.expandMeta} numberOfLines={1}>
+                      <Text style={[styles.expandMeta, styles.calendarReviewEventTitle]} numberOfLines={1}>
                         {event.allDay ? 'All day' : formatTimeOfDay(new Date(event.start))}
                         {' · '}
                         {event.title || 'Event'}
                       </Text>
+                      {/* The one thing this panel could never do: answer its
+                          own question with work. Reaches the stores directly
+                          rather than taking a callback prop, the same way the
+                          Sync row below does — a fresh closure per row would
+                          cost every TaskItem on the list its memo. */}
+                      <TouchableOpacity
+                        onPress={() => {
+                          haptics.success();
+                          const category = useSettingsStore.getState().calendarEventCategory;
+                          useTaskStore.getState().addTask({
+                            ...taskFieldsFromEvent(event),
+                            category: category ?? undefined,
+                          });
+                        }}
+                        hitSlop={8}
+                        accessibilityRole="button"
+                        accessibilityLabel={`Add a task for ${event.title || 'this event'}`}
+                      >
+                        <Ionicons name="add-circle-outline" size={12} color={colors.accent} />
+                      </TouchableOpacity>
                     </View>
                   ))
                 ) : (
@@ -4304,6 +4325,12 @@ const makeStyles = (colors: Colors) => StyleSheet.create({
     flexDirection: 'row',
     alignItems: 'center',
     gap: 5,
+  },
+  // The event's name wins the row; the add button is the short fixed sibling
+  // beside it. See CLAUDE.md on why a numberOfLines={1} name may not share a
+  // flex row with anything whose width can grow.
+  calendarReviewEventTitle: {
+    flex: 1,
   },
   calendarReviewSyncRow: {
     flexDirection: 'row',
