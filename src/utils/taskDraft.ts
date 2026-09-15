@@ -337,6 +337,7 @@ export function newTaskFromDraft(
     excludeFromSuggestions: draft.excludeFromSuggestions ?? false,
     timerStartedAt: draft.timerStartedAt ?? null,
     actualMinutes: draft.actualMinutes ?? null,
+    estimateBeforeTiming: draft.estimateBeforeTiming ?? null,
     timedMinutes: draft.timedMinutes ?? null,
     timerElapsedSeconds: draft.timerElapsedSeconds ?? 0,
     healthMetric: draft.healthMetric ?? null,

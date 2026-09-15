@@ -5,6 +5,7 @@ import type { DayBucket } from './calendarMonth';
 import { dayKeyOf, dayKeyToDate, getDayStart } from './dateUtils';
 import { isAwayDay, type AwaySpan } from './awayDates';
 import { estimatedMinutesFor, formatDuration } from './effort';
+import { calibrationFrom, calibratedAssumedMinutes } from './estimateCalibration';
 
 /**
  * How full a day already is, for every day of a grid (#1791).
@@ -69,6 +70,23 @@ export const FULL_DAY_MINUTES = BUSY_DAY_MINUTES * 2;
  */
 export const ASSUMED_TASK_MINUTES = 30;
 
+/**
+ * The figure every workload read should charge a task carrying no estimate.
+ *
+ * Lives here rather than in `estimateCalibration.ts` because that module is
+ * deliberately store-free and importing this one for the constant would drag
+ * the whole calendar/settings chain into it, taking its tests out of Jest's
+ * node environment. This direction is free: that module imports nothing but
+ * types.
+ *
+ * One call rather than four copies of the expression, since the four callers
+ * of `buildDayLoads` all want the same answer and a disagreement between them
+ * would show up as two screens quoting different totals for one day.
+ */
+export function assumedMinutesFor(tasks: readonly Task[]): number {
+  return calibratedAssumedMinutes(ASSUMED_TASK_MINUTES, calibrationFrom(tasks));
+}
+
 /** How heavy a day is, when it's heavy enough to be worth saying. */
 /**
  * What a day's cue says. `'away'` is not a heavier `'full'` — it answers a
@@ -122,6 +140,16 @@ export interface DayLoad {
 }
 
 export interface BuildDayLoadsOptions {
+  /**
+   * What to charge a task that carries no estimate at all. Defaults to
+   * `ASSUMED_TASK_MINUTES`, so a caller that says nothing behaves as before.
+   *
+   * Callers pass a calibrated figure (see `estimateCalibration.ts`) so the gap
+   * is filled with what this person's timed work actually takes rather than
+   * with 30 for everyone. It fills the *gap* only: a task whose minutes
+   * somebody typed keeps them exactly.
+   */
+  assumedTaskMinutes?: number;
   /** Rows by id, for the estimates the buckets' marks don't carry. */
   taskById: ReadonlyMap<string, Task>;
   /**
@@ -176,7 +204,10 @@ export function buildDayLoads(
   buckets: ReadonlyMap<string, DayBucket>,
   options: BuildDayLoadsOptions,
 ): Map<string, DayLoad> {
-  const { taskById, busyEvents = [], busyWindow = null, awaySpans = [], dayResetTime } = options;
+  const {
+    taskById, busyEvents = [], busyWindow = null, awaySpans = [], dayResetTime,
+    assumedTaskMinutes = ASSUMED_TASK_MINUTES,
+  } = options;
   const loads = new Map<string, DayLoad>();
 
   for (const day of days) {
@@ -196,7 +227,7 @@ export function buildDayLoads(
         if (countedProjected.has(mark.taskId)) continue;
         countedProjected.add(mark.taskId);
         load.projected += 1;
-        projectedMinutes += (task ? estimatedMinutesFor(task) : null) ?? ASSUMED_TASK_MINUTES;
+        projectedMinutes += (task ? estimatedMinutesFor(task) : null) ?? assumedTaskMinutes;
         continue;
       }
 
@@ -228,7 +259,7 @@ export function buildDayLoads(
     }
 
     load.rankedMinutes =
-      load.taskMinutes + load.unestimated * ASSUMED_TASK_MINUTES + projectedMinutes + load.busyMinutes;
+      load.taskMinutes + load.unestimated * assumedTaskMinutes + projectedMinutes + load.busyMinutes;
     // Deliberately after rankedMinutes and not part of it: being away is not a
     // quantity of work, and every reader that sums those minutes must go on
     // reading the same number it always did.

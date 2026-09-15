@@ -218,7 +218,7 @@ export function CookbookChecklistSheet({ visible, onClose, onCreated }: Props) {
                 maxPhotos={1}
                 picking={input.picking}
                 photoOnly
-                photoHint="Works on a printed contents page — one or two columns of recipe titles and page numbers."
+                photoHint="Works on a printed contents page: one or two columns of recipe titles and page numbers."
                 ctaLabel={processing ? 'Reading…' : 'Read table of contents'}
                 onRun={run}
               />

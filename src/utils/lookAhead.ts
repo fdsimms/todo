@@ -5,6 +5,7 @@ import type { BusyEvent } from './calendarBusy';
 import { buildDayBuckets, dayDetail, projectOccurrences, type DayBucket } from './calendarMonth';
 import {
   ASSUMED_TASK_MINUTES,
+  assumedMinutesFor,
   BUSY_DAY_MINUTES,
   buildDayLoads,
   weightFor,
@@ -233,7 +234,10 @@ export function buildLookAhead(
     dayResetTime,
     projecting: true,
   });
-  const loads = buildDayLoads(days, buckets, { taskById, busyEvents, busyWindow, dayResetTime });
+  const loads = buildDayLoads(days, buckets, {
+    taskById, busyEvents, busyWindow, dayResetTime,
+    assumedTaskMinutes: assumedMinutesFor(tasks),
+  });
 
   const lookAheadDays: LookAheadDay[] = days.map(date => {
     const key = dayKeyOf(date);

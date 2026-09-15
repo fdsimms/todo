@@ -3445,7 +3445,7 @@ export function TaskEditor({ visible, task, initialDraft, onClose }: Props) {
                         .filter(Boolean).join(', ')
                     : undefined
                 }
-                hint="Records a dose in your medication log each time you complete this task. Unticking it takes the dose back."
+                hint="Records a dose in your medication log each time you complete this task. Unchecking it takes the dose back."
                 expanded={fieldOpen('medication')}
                 onToggle={() => toggleField('medication')}
               >

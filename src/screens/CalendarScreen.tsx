@@ -30,6 +30,7 @@ import {
   type DotState,
 } from '../utils/calendarMonth';
 import {
+  assumedMinutesFor,
   buildDayLoads,
   describeDayLoad,
   describeDayWeight,
@@ -149,6 +150,7 @@ export function CalendarScreen() {
    * the grid has stopped drawing would be answering about a different month
    * than the one on screen.
    */
+  const assumedTaskMinutes = useMemo(() => assumedMinutesFor(allTasks), [allTasks]);
   const dayLoads = useMemo(() => buildDayLoads(days, buckets, {
     taskById,
     busyEvents: calendarReadEnabled && calendarLoaded ? calendarEvents : [],
@@ -157,8 +159,9 @@ export function CalendarScreen() {
       : null,
     awaySpans,
     dayResetTime,
+    assumedTaskMinutes,
   }), [days, buckets, taskById, awaySpans, calendarReadEnabled, calendarLoaded, calendarEvents,
-       calendarWindowStart, calendarWindowEnd, dayResetTime]);
+       calendarWindowStart, calendarWindowEnd, dayResetTime, assumedTaskMinutes]);
   const selectedLoad = describeDayLoad(dayLoads.get(selectedKey));
 
   // Outstanding across the displayed month only — the grid's leading and
