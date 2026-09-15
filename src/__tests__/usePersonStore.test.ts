@@ -1,5 +1,7 @@
 import { usePersonStore, blankPerson, displayNameOf } from '../store/usePersonStore';
+import { usePersonNoteStore } from '../store/usePersonNoteStore';
 import { dbInsertPerson, dbUpdatePerson, dbDeletePerson, dbBatchUpdatePersonSortOrders } from '../db/database';
+import { resetReplayForTests } from '../utils/undoHistory';
 import type { Person } from '../types';
 
 jest.mock('../db/database', () => ({
@@ -8,11 +10,17 @@ jest.mock('../db/database', () => ({
   dbUpdatePerson: jest.fn(),
   dbDeletePerson: jest.fn(),
   dbBatchUpdatePersonSortOrders: jest.fn(),
+  dbGetAllPersonNotes: jest.fn().mockReturnValue([]),
+  dbInsertPersonNote: jest.fn(),
+  dbUpdatePersonNote: jest.fn(),
+  dbDeletePersonNote: jest.fn(),
 }));
 
 beforeEach(() => {
   jest.clearAllMocks();
-  usePersonStore.setState({ people: [], initialized: false });
+  resetReplayForTests();
+  usePersonStore.setState({ people: [], initialized: false, undoStack: [], redoStack: [], lastAction: null });
+  usePersonNoteStore.setState({ notes: [], initialized: false });
 });
 
 describe('a new person', () => {
@@ -153,6 +161,54 @@ describe('deleting', () => {
     usePersonStore.getState().removePersonRow(a.id);
     usePersonStore.getState().restorePerson(a as Person);
     expect(usePersonStore.getState().people.map(p => p.id)).toEqual([a.id, b.id]);
+  });
+
+  it('can be undone, notes and all', () => {
+    const person = usePersonStore.getState().createPerson('Dustin');
+    usePersonNoteStore.getState().addNote(person.id, 'note', 'Loves margaritas');
+
+    usePersonStore.getState().removePersonRow(person.id);
+    expect(usePersonStore.getState().people).toEqual([]);
+    expect(usePersonNoteStore.getState().notes).toEqual([]);
+
+    usePersonStore.getState().undoLastAction();
+
+    expect(usePersonStore.getState().people.map(p => p.id)).toEqual([person.id]);
+    expect(usePersonNoteStore.getState().notes.map(n => n.text)).toEqual(['Loves margaritas']);
+  });
+
+  it('can be redone after an undo', () => {
+    const person = usePersonStore.getState().createPerson('Dustin');
+    usePersonStore.getState().removePersonRow(person.id);
+    usePersonStore.getState().undoLastAction();
+    usePersonStore.getState().redoLastUndone();
+    expect(usePersonStore.getState().people).toEqual([]);
+  });
+});
+
+describe('deleting several at once', () => {
+  it('removes every row named', () => {
+    const a = usePersonStore.getState().createPerson('A');
+    const b = usePersonStore.getState().createPerson('B');
+    const c = usePersonStore.getState().createPerson('C');
+    usePersonStore.getState().bulkRemovePeople([a.id, b.id]);
+    expect(usePersonStore.getState().people.map(p => p.id)).toEqual([c.id]);
+  });
+
+  // One entry for the whole batch, same shape as bulkDeleteGroups in
+  // useTaskStore — otherwise each person's own delete would leave its own
+  // entry underneath and one undo would only bring back the last of them.
+  it('undoes the whole batch in a single step', () => {
+    const a = usePersonStore.getState().createPerson('A');
+    const b = usePersonStore.getState().createPerson('B');
+    const c = usePersonStore.getState().createPerson('C');
+    usePersonStore.getState().bulkRemovePeople([a.id, b.id]);
+
+    expect(usePersonStore.getState().undoStack).toHaveLength(1);
+    usePersonStore.getState().undoLastAction();
+
+    expect(usePersonStore.getState().people.map(p => p.id).sort()).toEqual([a.id, b.id, c.id].sort());
+    expect(usePersonStore.getState().undoStack).toEqual([]);
   });
 });
 
