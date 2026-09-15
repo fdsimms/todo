@@ -83,7 +83,7 @@ const MESSAGES: Record<RecipePageErrorCode, string> = {
   serverError: 'That site is having problems. Try again shortly.',
   notHtml: 'That link isn’t a web page. Paste the recipe text instead.',
   tooLarge: 'That page is too big to read. Paste the recipe text instead.',
-  noRecipe: 'Nothing readable came back from that page — some sites build the recipe in the browser. Open it, copy the recipe, and paste it instead.',
+  noRecipe: 'Nothing readable came back from that page. Some sites build the recipe in the browser, so open it, copy the recipe, and paste it instead.',
 };
 
 /**
