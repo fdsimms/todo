@@ -24,7 +24,7 @@ components below.
 
 - `src/screens/ArchivedScreen.tsx` — EmptyState, HubPills, PaintSelection, ScreenHeader, SearchField, SelectionDot, SimpleBulkBar, TaskEditor
 - `src/screens/BackfillScreen.tsx` — BirthdayPicker, CategoryPicker, CountStepper, DetailHeader, EmptyState, InlineAction, NumberPadAccessory, NutritionPanelSheet, NutritionSearchSheet, PillGroup, PressableScale, RemindMePicker, +3 more
-- `src/screens/CalendarScreen.tsx` — EmptyState, PeriodNav, ScreenHeader, TaskEditor, TaskItem
+- `src/screens/CalendarScreen.tsx` — DayTimeline, EmptyState, PeriodNav, ScreenHeader, TaskEditor, TaskItem
 - `src/screens/CategoriesScreen.tsx` — CategoryEditor, EmptyState, Fab, HubPills, QuickAddNameSheet, ReorderableList, ScreenHeader
 - `src/screens/CategoryDetailScreen.tsx` — BulkActionBar, DeliverablePromptQueue, DetailHeader, EmptyState, PaintSelection, PinIcon, SpotlightOverlay, TaskEditor, TaskItem
 - `src/screens/CookbookDetailScreen.tsx` — DetailHeader, EmptyState
@@ -97,6 +97,7 @@ Where each component can appear.
 - `src/components/CountStepper.tsx` — on ArchivedScreen, BackfillScreen, CalendarScreen, CategoryDetailScreen, FoodLogScreen, GroceryScreen, KitchenScreen, MealPlanScreen, PeopleScreen, PersonDetailScreen, ProjectDetailScreen, ProjectsScreen, +15 more
 - `src/components/CreatedTaskToast.tsx` — on TodayScreen
 - `src/components/DayContextRow.tsx` — on TodayScreen
+- `src/components/DayTimeline.tsx` — on CalendarScreen
 - `src/components/DeliverableKindPicker.tsx` — on ArchivedScreen, CalendarScreen, CategoryDetailScreen, ProjectDetailScreen, RemindersScreen, SavedViewDetailScreen, SearchScreen, StacksScreen, StuckScreen, TagsScreen, TemplateDetailScreen, TodayScreen
 - `src/components/DeliverablePromptQueue.tsx` — on CategoryDetailScreen, ProjectDetailScreen, SavedViewDetailScreen, TagsScreen, TodayScreen
 - `src/components/DeliverablePromptSheet.tsx` — on CalendarScreen, CategoryDetailScreen, LogbookScreen, ProjectDetailScreen, SavedViewDetailScreen, SearchScreen, StuckScreen, TagsScreen, TodayScreen

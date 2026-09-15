@@ -35,7 +35,9 @@ import {
 import { NUTRIENT_LABEL } from '../utils/foodNutrition';
 import { AnimatedCollapsible } from '../components/AnimatedCollapsible';
 import { describeAgainstTarget, targetProgress, targetStatus, type TargetStatus } from '../utils/nutritionTargets';
+import { effectiveWaterTargetMl, waterExerciseBoostApplies } from '../utils/waterExerciseBoost';
 import { useSettingsStore } from '../store/useSettingsStore';
+import { useHealthStore } from '../store/useHealthStore';
 import { NUTRIENT_KEYS, type NutrientKey } from '../types';
 import { haptics } from '../utils/haptics';
 import { animateLayout } from '../utils/layoutAnimation';
@@ -159,6 +161,8 @@ export function FoodLogScreen() {
   const foodLogPinnedNutrients = useSettingsStore(useShallow(s => s.foodLogPinnedNutrients));
   const waterUnit = useSettingsStore(s => s.waterUnit);
   const setWaterUnit = useSettingsStore(s => s.setWaterUnit);
+  const waterExerciseBoost = useSettingsStore(useShallow(s => s.waterExerciseBoost));
+  const exerciseMinutesToday = useHealthStore(s => s.today?.exerciseMinutes ?? null);
   // Only for the catalog picker below; the scan flow keeps its own reads.
   const items = useGroceryStore(useShallow(s => s.items));
   const itemProducts = useGroceryStore(useShallow(s => s.itemProducts));
@@ -579,7 +583,21 @@ export function FoodLogScreen() {
     ? (pendingWaterMl > 0 ? pendingWaterMl : null)
     : storedWaterMl;
   const shownDayWaterMl = dayWaterMl - (storedWaterMl ?? 0) + (shownWaterMl ?? 0);
-  const waterLine = describeWaterDay(shownDayWaterMl, shownWaterMl, nutritionTargets.waterMl, waterUnit);
+  // Only applies while looking at today — exercise minutes are a live reading
+  // about today specifically, and history.ts carries no per-day exercise
+  // figure to judge a past day's target against (see waterExerciseBoost.ts).
+  const effectiveWaterTarget = isToday
+    ? effectiveWaterTargetMl(nutritionTargets.waterMl, exerciseMinutesToday, waterExerciseBoost)
+    : nutritionTargets.waterMl;
+  const waterBoostApplied = isToday && waterExerciseBoostApplies(exerciseMinutesToday, waterExerciseBoost);
+  const appliedWaterBoostMl = waterBoostApplied ? waterExerciseBoost?.boostMl ?? null : null;
+  const waterTargets = useMemo(
+    () => (effectiveWaterTarget === nutritionTargets.waterMl
+      ? nutritionTargets
+      : { ...nutritionTargets, waterMl: effectiveWaterTarget }),
+    [nutritionTargets, effectiveWaterTarget],
+  );
+  const waterLine = describeWaterDay(shownDayWaterMl, shownWaterMl, effectiveWaterTarget, waterUnit);
   const waterBounds = waterRange(waterUnit);
 
   const handleReorder = (reordered: FoodLogListItem[]) => {
@@ -833,15 +851,20 @@ export function FoodLogScreen() {
                     a day with no water, and when the stepper has already said
                     the figure. */}
                 {waterLine !== null && <Text style={styles.waterTarget}>{waterLine}</Text>}
-                {nutritionTargets.waterMl !== undefined && shownDayWaterMl > 0 && (
+                {appliedWaterBoostMl !== null && (
+                  <Text style={styles.waterTarget}>
+                    +{describeWater(appliedWaterBoostMl, waterUnit)} today — {exerciseMinutesToday} min of exercise logged
+                  </Text>
+                )}
+                {effectiveWaterTarget !== undefined && shownDayWaterMl > 0 && (
                   <View style={styles.targetTrack}>
                     <View
                       style={[
                         styles.targetFill,
                         {
-                          width: `${targetProgress('waterMl', shownDayWaterMl, nutritionTargets) * 100}%`,
+                          width: `${targetProgress('waterMl', shownDayWaterMl, waterTargets) * 100}%`,
                           backgroundColor: targetStatusColor(
-                            targetStatus('waterMl', shownDayWaterMl, nutritionTargets),
+                            targetStatus('waterMl', shownDayWaterMl, waterTargets),
                             colors,
                           ),
                         },

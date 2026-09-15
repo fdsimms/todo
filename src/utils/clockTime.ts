@@ -75,6 +75,36 @@ export function overdueDayCount(dueDate: string, todayStart: Date): number {
   return differenceInCalendarDays(todayStart, startOfDay(new Date(dueDate)));
 }
 
+/** Minutes past midnight for an "HH:MM" clock time. */
+export function hhmmMinutes(hhmm: string): number {
+  const [h, m] = hhmm.split(':').map(Number);
+  return (h || 0) * 60 + (m || 0);
+}
+
+/**
+ * A time window's closing time, or null when it doesn't close on its own day.
+ *
+ * Both window gates anchor to one logical day, so an end that isn't after the
+ * start — "22:00–02:00", a window running into the small hours — compares as
+ * already past from 02:00 onward. Treated as open-ended instead, which is what
+ * "from 10pm" means in practice.
+ *
+ * The rule lives here rather than beside its first caller so a store-free
+ * module can share it rather than fork it, the same split taskDayStart above
+ * already makes. `effectiveWindowEnd` in
+ * visibilityUtils.ts is this with a Task in front of it, and dayTimeline.ts
+ * reads it directly because importing that module would pull the settings and
+ * category stores into one that stays inside Jest's node environment.
+ */
+export function effectiveWindowEndTime(
+  windowStart: string | null,
+  windowEnd: string | null,
+): string | null {
+  if (!windowEnd) return null;
+  if (windowStart && hhmmMinutes(windowEnd) <= hhmmMinutes(windowStart)) return null;
+  return windowEnd;
+}
+
 /**
  * Formats an "HH:MM" clock time for display, e.g. "8:00 AM" — or "08:00" with
  * `use24Hour`.
