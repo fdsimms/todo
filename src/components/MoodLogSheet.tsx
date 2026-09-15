@@ -13,6 +13,7 @@ import {
   SYMPTOM_SEVERITIES,
   contextTagVocabulary,
   contextTagKey,
+  dayContextTags,
   moodLabel,
   symptomKey,
   symptomVocabulary,
@@ -22,7 +23,7 @@ import {
   withoutSymptom,
 } from '../utils/moodLog';
 import { useMoodStore } from '../store/useMoodStore';
-import { getLogicalToday } from '../utils/dateUtils';
+import { dayKeyOf, getCurrentDayStart, getLogicalToday } from '../utils/dateUtils';
 import { useTaskStore } from '../store/useTaskStore';
 import { useSettingsStore } from '../store/useSettingsStore';
 import { EditorSheet } from './EditorSheet';
@@ -114,13 +115,28 @@ export function MoodLogSheet({ visible, editing = null, onClose }: Props) {
     // yourself, and it comes right back off with one more tap. Only for a
     // fresh entry — editing an old one must not silently add a tag to it —
     // and only vacation mode, the one signal this reads today (see
-    // docs/arch/mood-log.md).
-    setContextTags(editing?.contextTags ?? (vacationMode ? ['Vacation'] : []));
+    // docs/arch/mood-log.md). Same offer for whatever context you already
+    // gave an earlier check-in today: a second entry the same day is usually
+    // still under the same circumstances, so those tags start picked too,
+    // rather than asking you to re-tap "Sick" for the fourth entry of a day
+    // you're unwell.
+    let seededTags = vacationMode ? ['Vacation'] : [];
+    if (!editing) {
+      const todayKey = dayKeyOf(getCurrentDayStart());
+      for (const tag of dayContextTags(logs, todayKey)) seededTags = withContextTag(seededTags, tag);
+    }
+    setContextTags(editing?.contextTags ?? seededTags);
     setNote(editing?.note ?? '');
     setDrafted([]);
     setDraftedContext([]);
     setDay(getLogicalToday());
     setPickerOpen(false);
+    // logs is deliberately not a dependency: it's read once, at the moment
+    // the sheet opens, for the seed above. Depending on it would re-run this
+    // reset on every store write while the sheet is open — including the
+    // one this same save produces — and wipe out whatever you were mid-way
+    // through entering.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [visible, editing, vacationMode]);
 
   const vocabulary = useMemo(() => symptomVocabulary(logs), [logs]);
