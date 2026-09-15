@@ -1109,6 +1109,13 @@ export const TaskItem = React.memo(function TaskItem({
   // time on this day, so there's no countdown to show (see effectiveWindowEnd).
   const windowEnd = effectiveWindowEnd(task);
   const deadlineDays = task.deadline ? getDeadlineCountdown(task.deadline) : null;
+  // A reminder is the one place this row otherwise names no clock time at
+  // all — dueDate is placement (a day, occasionally a segment), never an
+  // hour, so without this a task reminded at 5pm and one reminded at 9am
+  // read identically. Independent of showDate/scheduledIso on purpose: a
+  // reminder is its own fact about the task, the same way a deadline badge
+  // renders regardless of whether the scheduled chip is showing.
+  const reminderTimeLabel = task.reminderTime ? formatTimeOfDay(new Date(task.reminderTime)) : null;
   const deadlineColor =
     deadlineDays === null ? colors.textSecondary
     : deadlineDays < 0 ? colors.red
@@ -2149,7 +2156,7 @@ export const TaskItem = React.memo(function TaskItem({
             )}
           </View>
         )}
-        {(isQuota || supplyLabel !== null || timed || healthLabel !== null || mealSlot !== null || plannedMeals !== undefined || quietDays !== null || missingCount !== null || windowActive || windowExpired || showStreakChip || waitingCount > 0 || !!blockerTitle || !!waitingPersonName || autoScheduled || scheduledIso !== null || !!task.followUpTaskSourceTitle || (showGroup && groupTitle) || (showProject && projectTitle) || (showCategory && task.category) || subtaskCount > 0 || task.notes.length > 0) && (
+        {(isQuota || supplyLabel !== null || timed || healthLabel !== null || mealSlot !== null || plannedMeals !== undefined || quietDays !== null || missingCount !== null || windowActive || windowExpired || showStreakChip || waitingCount > 0 || !!blockerTitle || !!waitingPersonName || autoScheduled || scheduledIso !== null || reminderTimeLabel !== null || !!task.followUpTaskSourceTitle || (showGroup && groupTitle) || (showProject && projectTitle) || (showCategory && task.category) || subtaskCount > 0 || task.notes.length > 0) && (
           <View style={styles.metaRow}>
             {/* Leads the meta line: on the screens that ask for it, "when" is
                 what the row is being read for, and every other chip here
@@ -2170,6 +2177,20 @@ export const TaskItem = React.memo(function TaskItem({
                 />
                 <Text style={styles.scheduledLabel} numberOfLines={1}>
                   {formatScheduledDate(scheduledIso)}
+                </Text>
+              </View>
+            )}
+            {/* The hour a reminder actually fires at — see reminderTimeLabel's
+                own comment on why this exists regardless of the scheduled
+                chip above. */}
+            {reminderTimeLabel !== null && (
+              <View
+                style={styles.metaChip}
+                accessibilityLabel={`Reminder at ${reminderTimeLabel}`}
+              >
+                <Ionicons name="notifications-outline" size={iconSize.xs} color={colors.textSecondary} />
+                <Text style={styles.scheduledLabel} numberOfLines={1}>
+                  {reminderTimeLabel}
                 </Text>
               </View>
             )}
