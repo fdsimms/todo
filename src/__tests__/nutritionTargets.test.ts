@@ -1,10 +1,13 @@
 import {
   DEFAULT_FOOD_LOG_PINNED_NUTRIENTS,
+  DEFAULT_HEALTH_WRITE_NUTRIENTS,
   NUTRITION_TARGET_RANGES,
   describeAgainstTarget,
   parseFoodLogPinnedNutrients,
+  parseHealthWriteNutrients,
   parseNutritionTargets,
   serializeFoodLogPinnedNutrients,
+  serializeHealthWriteNutrients,
   serializeNutritionTargets,
   targetProgress,
   targetStatus,
@@ -121,6 +124,38 @@ describe('parseFoodLogPinnedNutrients', () => {
   it('round-trips through its own serializer', () => {
     const keys = ['fatG', 'sugarG'] as const;
     expect(parseFoodLogPinnedNutrients(serializeFoodLogPinnedNutrients([...keys]))).toEqual(keys);
+  });
+});
+
+describe('parseHealthWriteNutrients', () => {
+  it('defaults to every nutrient for an install that never chose', () => {
+    expect(parseHealthWriteNutrients(null)).toEqual(DEFAULT_HEALTH_WRITE_NUTRIENTS);
+    expect(parseHealthWriteNutrients(undefined)).toEqual(DEFAULT_HEALTH_WRITE_NUTRIENTS);
+    expect(DEFAULT_HEALTH_WRITE_NUTRIENTS).toEqual(NUTRIENT_KEYS);
+  });
+
+  it('keeps a stored empty array empty, since that is a real choice', () => {
+    expect(parseHealthWriteNutrients('[]')).toEqual([]);
+  });
+
+  it('reads what somebody chose, water included', () => {
+    // Unlike the pinned-nutrient selection, water is a real thing to exclude
+    // here: it goes through this same write when a food log entry logs one.
+    expect(parseHealthWriteNutrients('["fiberG","waterMl"]')).toEqual(['fiberG', 'waterMl']);
+  });
+
+  it('drops a nutrient this build has no unit for', () => {
+    expect(parseHealthWriteNutrients('["unobtainium","proteinG"]')).toEqual(['proteinG']);
+  });
+
+  it('falls back to the default on a malformed or non-array blob', () => {
+    expect(parseHealthWriteNutrients('not json')).toEqual(DEFAULT_HEALTH_WRITE_NUTRIENTS);
+    expect(parseHealthWriteNutrients('{"calorieKcal":true}')).toEqual(DEFAULT_HEALTH_WRITE_NUTRIENTS);
+  });
+
+  it('round-trips through its own serializer', () => {
+    const keys = ['fatG', 'sugarG'] as const;
+    expect(parseHealthWriteNutrients(serializeHealthWriteNutrients([...keys]))).toEqual(keys);
   });
 });
 

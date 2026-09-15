@@ -23,6 +23,16 @@ import { healthBridge } from './healthBridge';
  * write hands back the identifiers of what it saved, they live on
  * `FoodLogEntry.healthSampleIds`, and deleting the entry retracts them.
  *
+ * **Which nutrients may be written is its own choice, separate from whether
+ * any of them may.** `healthWriteEnabled` is the "may this app write to
+ * Health at all" switch; `healthWriteNutrients` (`useSettingsStore`, parsed by
+ * `parseHealthWriteNutrients` in `nutritionTargets.ts`) is which of the
+ * thirteen a meal is allowed to carry into a save, and defaults to all of
+ * them so an install that predates the choice keeps writing exactly what it
+ * always did. Filtering happens here rather than in `writableFoodAmounts`
+ * below, which stays about the absent-is-not-zero rule alone and nothing a
+ * person chose.
+ *
  * **Absent stays absent, and that rule is load-bearing here more than
  * anywhere.** A nutrient the entry does not state is not written. Writing a
  * zero would be this app putting into somebody's medical record a claim that a
@@ -57,7 +67,8 @@ export interface FoodWriteResult {
     | 'off'
     /** No native half: not iOS, no Health on this device, or demo mode. */
     | 'unavailable'
-    /** The entry states no figure anything could write. */
+    /** The entry states no figure anything could write, or none of what it
+     *  states is among the nutrients `healthWriteNutrients` selects. */
     | 'nothingToWrite'
     /** HealthKit refused the save, which in practice means sharing is not allowed. */
     | 'refused';
@@ -121,10 +132,14 @@ export async function logFoodEntryToHealth(entry: FoodLogEntry): Promise<FoodWri
   // session that was fiction, and it outlives the demo until somebody notices.
   if (isDemoModeActive()) return { outcome: 'unavailable', sampleIds: [] };
 
-  const { healthWriteEnabled } = useSettingsStore.getState();
+  const { healthWriteEnabled, healthWriteNutrients } = useSettingsStore.getState();
   if (!healthWriteEnabled) return { outcome: 'off', sampleIds: [] };
 
   const amounts = writableFoodAmounts(entry.nutrition);
+  const selected = new Set(healthWriteNutrients);
+  for (const key of Object.keys(amounts) as NutrientKey[]) {
+    if (!selected.has(key)) delete amounts[key];
+  }
   if (Object.keys(amounts).length === 0) return { outcome: 'nothingToWrite', sampleIds: [] };
 
   const bridge = healthBridge();

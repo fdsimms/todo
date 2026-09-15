@@ -1,8 +1,7 @@
 import Foundation
 import SwiftUI
 
-// Not `private` — CompleteTaskIntent.swift and the other widgets in this
-// target (same target) need these too.
+// Not `private` — the widgets in this target need these too.
 let appGroupID = "group.com.fdsimms.dundundun"
 let snapshotFileName = "widget_data.json"
 // Must match the same literal in TodoWidgetBridgeModule.swift — a separate
@@ -244,9 +243,13 @@ private func pendingCompletionsFileURL() -> URL? {
 // only apply once the app itself calls completeTask() — see
 // TodoWidgetBridgeModule's drainPendingCompletions). Used purely to render a
 // checked state immediately, in the brief window between the tap and the app
-// opening (CompleteTaskIntent.openAppWhenRun) to finish the job; the
-// underlying snapshot still lists these tasks until the app catches up and
-// writes a fresh one.
+// coming forward to finish the job; the underlying snapshot still lists these
+// tasks until the app catches up and writes a fresh one.
+//
+// Read-only here: the queue is *written* by CompleteTaskIntent, which lives in
+// the bridge module so it compiles into the app target too (it can't open the
+// app from this target — see docs/native-targets.md), and carries its own copy
+// of the write half.
 func loadPendingCompletionIds() -> Set<String> {
     guard let fileURL = pendingCompletionsFileURL(),
           let data = try? Data(contentsOf: fileURL),
@@ -254,18 +257,6 @@ func loadPendingCompletionIds() -> Set<String> {
         return []
     }
     return Set(ids)
-}
-
-func addPendingCompletion(taskId: String) {
-    guard let fileURL = pendingCompletionsFileURL() else { return }
-    var ids = loadPendingCompletionIds()
-    ids.insert(taskId)
-    guard let data = try? JSONEncoder().encode(Array(ids)) else { return }
-    try? FileManager.default.createDirectory(
-        at: fileURL.deletingLastPathComponent(),
-        withIntermediateDirectories: true
-    )
-    try? data.write(to: fileURL, options: .atomic)
 }
 
 // ==== Dates ====

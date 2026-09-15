@@ -1,4 +1,12 @@
-let mockSettings: { healthWriteEnabled: boolean } = { healthWriteEnabled: false };
+const ALL_NUTRIENT_KEYS = [
+  'calorieKcal', 'fatG', 'satFatG', 'carbsG', 'fiberG', 'sugarG', 'proteinG', 'sodiumMg',
+  'calciumMg', 'ironMg', 'potassiumMg', 'caffeineMg', 'waterMl',
+];
+
+let mockSettings: { healthWriteEnabled: boolean; healthWriteNutrients: readonly string[] } = {
+  healthWriteEnabled: false,
+  healthWriteNutrients: ALL_NUTRIENT_KEYS,
+};
 jest.mock('../store/useSettingsStore', () => ({
   useSettingsStore: { getState: () => mockSettings },
 }));
@@ -60,7 +68,7 @@ function entry(amounts: Partial<Record<NutrientKey, number>>, label = 'Chicken b
 
 beforeEach(() => {
   jest.clearAllMocks();
-  mockSettings = { healthWriteEnabled: true };
+  mockSettings = { healthWriteEnabled: true, healthWriteNutrients: ALL_NUTRIENT_KEYS };
   mockDemoActive = false;
   mockBridge = {
     writeFoodSamples: mockWriteFoodSamples,
@@ -135,12 +143,12 @@ describe('logFoodEntryToHealth', () => {
     // Belt and braces with healthBridge()'s own gate: a write leak puts a real
     // sample in a real record, sourced from fiction.
     mockDemoActive = true;
-    mockSettings = { healthWriteEnabled: true };
+    mockSettings = { healthWriteEnabled: true, healthWriteNutrients: ALL_NUTRIENT_KEYS };
     expect((await logFoodEntryToHealth(entry({ calorieKcal: 640 }))).outcome).toBe('unavailable');
   });
 
   it('writes nothing when the switch is off', async () => {
-    mockSettings = { healthWriteEnabled: false };
+    mockSettings = { healthWriteEnabled: false, healthWriteNutrients: ALL_NUTRIENT_KEYS };
     expect(await logFoodEntryToHealth(entry({ calorieKcal: 640 })))
       .toEqual({ outcome: 'off', sampleIds: [] });
     expect(mockWriteFoodSamples).not.toHaveBeenCalled();
@@ -148,6 +156,32 @@ describe('logFoodEntryToHealth', () => {
 
   it('writes nothing for an entry stating no usable figure', async () => {
     expect((await logFoodEntryToHealth(entry({ fatG: -1 }))).outcome).toBe('nothingToWrite');
+    expect(mockWriteFoodSamples).not.toHaveBeenCalled();
+  });
+
+  it('drops a nutrient the person has excluded from Health, keeping the rest', async () => {
+    mockSettings = { healthWriteEnabled: true, healthWriteNutrients: ['calorieKcal'] };
+    const result = await logFoodEntryToHealth(entry({ calorieKcal: 640, proteinG: 32, sodiumMg: 1100 }));
+    expect(result.outcome).toBe('written');
+    expect(mockWriteFoodSamples).toHaveBeenCalledWith(
+      'Chicken burrito',
+      '2026-09-10T12:47:00.000Z',
+      { calorieKcal: 640 },
+    );
+  });
+
+  it('reports nothingToWrite when every stated figure is excluded, not written', async () => {
+    mockSettings = { healthWriteEnabled: true, healthWriteNutrients: ['sodiumMg'] };
+    expect((await logFoodEntryToHealth(entry({ calorieKcal: 640, proteinG: 32 }))).outcome)
+      .toBe('nothingToWrite');
+    expect(mockWriteFoodSamples).not.toHaveBeenCalled();
+  });
+
+  it('writes nothing at all when the selection is stored empty', async () => {
+    // A stored empty array is a real, distinct choice ("write nothing a meal
+    // states"), not the unset default that falls back to every nutrient.
+    mockSettings = { healthWriteEnabled: true, healthWriteNutrients: [] };
+    expect((await logFoodEntryToHealth(entry({ calorieKcal: 640 }))).outcome).toBe('nothingToWrite');
     expect(mockWriteFoodSamples).not.toHaveBeenCalled();
   });
 
@@ -177,7 +211,7 @@ describe('retractFoodEntryFromHealth', () => {
   it('retracts even with the write switch off', async () => {
     // The one guard deliberately not shared with the write: somebody who turned
     // writing off has asked more clearly, not less, for their samples to go.
-    mockSettings = { healthWriteEnabled: false };
+    mockSettings = { healthWriteEnabled: false, healthWriteNutrients: ALL_NUTRIENT_KEYS };
     expect(await retractFoodEntryFromHealth(['corr-1'])).toBe(true);
     expect(mockDeleteHealthSamples).toHaveBeenCalled();
   });

@@ -284,6 +284,29 @@ interface FoodLogStore {
   /** Re-slot several entries at once — the bulk bar's Move to meal. */
   moveEntries: (ids: string[], slot: MealSlot | null) => void;
   /**
+   * Move an entry to a different day (or a different moment the same day).
+   *
+   * Not a patch: `reviseEntry` and `updateEntry` both keep `atISO`/`dayKey`
+   * off what they'll touch, per `foodLogEntryEdit`'s own doc comment — "they
+   * were stamped together from one instant under one reset time, and
+   * re-dating means a new entry." So this composes `removeEntry` (retracting
+   * the stale Health sample) and `addEntry` (writing a fresh one at the new
+   * instant) rather than adding a second path that pokes `atISO` in place,
+   * which is what would leave a HealthKit sample dated the old day while the
+   * app's own log said otherwise. `mealPlanEntryId` rides along — this is
+   * still the same meal, only its recorded moment was wrong.
+   */
+  moveEntry: (id: string, at: Date) => FoodLogEntry | null;
+  /**
+   * Log a copy of an entry onto another day (or another moment today).
+   *
+   * A new occurrence, not a correction: unlike `moveEntry`, the source entry
+   * is untouched, and `mealPlanEntryId` is dropped rather than carried over —
+   * a duplicate did not fulfil whatever meal the original was planned
+   * against.
+   */
+  duplicateEntry: (id: string, at: Date) => FoodLogEntry | null;
+  /**
    * Persists a drag: each touched entry's new slot and its new position in
    * the day's one running order. A drag that only reorders within a section
    * still goes through this — `slot` is simply unchanged for those rows.
@@ -691,5 +714,40 @@ export const useFoodLogStore = create<FoodLogStore>((set, get) => ({
         return u ? { ...e, slot: u.slot, sortOrder: u.sortOrder } : e;
       }),
     }));
+  },
+
+  moveEntry(id, at) {
+    const current = dbGetFoodLogEntry(id);
+    if (!current) return null;
+    get().removeEntry(id);
+    return get().addEntry({
+      label: current.label,
+      quantity: current.quantity,
+      grams: current.grams,
+      nutrition: current.nutrition,
+      slot: current.slot,
+      recipeId: current.recipeId,
+      itemId: current.itemId,
+      productId: current.productId,
+      mealPlanEntryId: current.mealPlanEntryId,
+      at,
+    });
+  },
+
+  duplicateEntry(id, at) {
+    const current = dbGetFoodLogEntry(id);
+    if (!current) return null;
+    return get().addEntry({
+      label: current.label,
+      quantity: current.quantity,
+      grams: current.grams,
+      nutrition: current.nutrition,
+      slot: current.slot,
+      recipeId: current.recipeId,
+      itemId: current.itemId,
+      productId: current.productId,
+      mealPlanEntryId: null,
+      at,
+    });
   },
 }));
