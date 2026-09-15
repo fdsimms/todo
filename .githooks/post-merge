@@ -1,9 +1,9 @@
 #!/bin/sh
-# The merge driver (scripts/merge-generated-doc.js) deliberately leaves the
-# generated docs holding whatever our side had, because during a content merge
-# the source tree they are generated *from* has not been written yet. This is
-# the other half: once the merge is done and src/ reflects both sides, rerun
-# the generators so the docs match the tree they now describe.
+# .gitattributes merges the generated docs with `union`, which never conflicts
+# but can leave a duplicated line where both sides rewrote the same fact — and
+# in any case the source tree the docs are generated *from* only reflects both
+# sides once the merge is done. So rerun the generators here, and let them say
+# what the docs should say.
 #
 # It leaves the result in the working tree rather than amending the merge
 # commit — a hook that rewrites a commit you did not ask it to rewrite is worse
@@ -12,13 +12,12 @@ node scripts/build-module-map.js >/dev/null 2>&1
 node scripts/check-doc-stats.js >/dev/null 2>&1
 node scripts/build-screen-map.js >/dev/null 2>&1
 
-if ! git diff --quiet -- docs/module-map.md docs/screen-map.md CLAUDE.md 2>/dev/null; then
+if ! git diff --quiet -- docs/module-map.md docs/screen-map.md docs/repo-stats.md 2>/dev/null; then
   echo
   echo "post-merge: the merge changed what the generated docs should say."
-  echo "  docs/module-map.md, docs/screen-map.md and/or the CLAUDE.md"
-  echo "  repo-stats block have been regenerated in your working tree."
-  echo "  Commit them with the merge:"
+  echo "  docs/module-map.md, docs/screen-map.md and/or docs/repo-stats.md"
+  echo "  have been regenerated in your working tree. Commit them with the merge:"
   echo
-  echo "    git add docs/module-map.md docs/screen-map.md CLAUDE.md && git commit --amend --no-edit"
+  echo "    git add docs/module-map.md docs/screen-map.md docs/repo-stats.md && git commit --amend --no-edit"
   echo
 fi
