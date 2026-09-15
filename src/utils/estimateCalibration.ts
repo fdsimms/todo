@@ -42,15 +42,89 @@ export interface EstimateCalibration {
   samples: number;
 }
 
-/** The usable (estimate, measurement) pairs on a set of tasks. */
+/**
+ * The rows of one repeating thing, keyed so each contributes a single pair.
+ *
+ * The same identity `projectProgress`'s `memberKey` groups by — a shared
+ * `seriesId`, else the root of the `previousOccurrenceId` chain — and written
+ * out again here rather than imported because the obvious source,
+ * `occurrenceFamilyKey` in `searchCollapse.ts`, reaches `dateUtils` and so
+ * `useSettingsStore`. This module is deliberately store-free (see the note on
+ * `assumedMinutesFor` in `dayLoad.ts`, which turns down the same import in the
+ * other direction), and a fourth copy of a six-line walk is the cheaper half
+ * of that trade.
+ *
+ * `occurrenceFamilyKey`'s third branch — a generated task's kind plus title —
+ * is deliberately *not* reproduced. A generator writes a fresh row per day
+ * with no pointer back, so nothing is carried forward into it: two timed meal
+ * slots really are two measurements.
+ */
+function timingFamilyKey(task: Task, byId: Map<string, Task>): string {
+  if (task.seriesId) return `series:${task.seriesId}`;
+  let root = task;
+  const seen = new Set<string>([root.id]);
+  while (root.previousOccurrenceId) {
+    const prev = byId.get(root.previousOccurrenceId);
+    // Same defensiveness memberKey keeps, for the same reason: this runs on a
+    // render path, so a loop that arrived some other way must not hang it.
+    if (!prev || seen.has(prev.id)) break;
+    seen.add(prev.id);
+    root = prev;
+  }
+  return `task:${root.id}`;
+}
+
+/**
+ * Which of a family's rows holds the live timing.
+ *
+ * A row that isn't completed yet is the family's current state and therefore
+ * newest: re-timing the live occurrence has to beat the tombstone whose
+ * now-superseded pair it had been carrying.
+ */
+function timingRecency(task: Task): number {
+  if (!task.completedAt) return Number.POSITIVE_INFINITY;
+  const at = new Date(task.completedAt).getTime();
+  return Number.isFinite(at) ? at : 0;
+}
+
+/**
+ * The usable (estimate, measurement) pairs on a set of tasks — **one per
+ * repeating thing, not one per row.**
+ *
+ * A recurrence successor is built as `{ ...effective, … }` and neither
+ * `estimateBeforeTiming` nor `actualMinutes` is in the override list;
+ * `taskCompletion.ts` says as much on the line that nulls `timerStartedAt`. So
+ * a single timing rides into every later occurrence *and* stays on every
+ * tombstone behind it, and completed rows are kept forever by default. Counted
+ * per row, one measurement on a daily task cleared `MIN_CALIBRATION_SAMPLES`
+ * by itself inside a week and kept climbing — "across 5 tasks" for one reading,
+ * with `calibratedAssumedMinutes` scaling every unestimated task in day-load,
+ * deload and look-ahead on the strength of it. A five-step chain got there
+ * within one day. That is the disease `projectProgress` documents and collapses
+ * for, and it is what made this module's own "two pairs is an anecdote" untrue.
+ *
+ * Each family contributes its newest row, so re-timing a task *replaces* its
+ * sample rather than adding one. That is the intended reading of `samples`,
+ * which counts timed tasks: repeat measurements of a single task are not the
+ * independent evidence the floor is there to insist on.
+ */
 export function calibrationPairs(
   tasks: readonly Task[],
 ): { estimated: number; actual: number }[] {
-  const pairs: { estimated: number; actual: number }[] = [];
+  const byId = new Map(tasks.map(t => [t.id, t]));
+
+  const newest = new Map<string, Task>();
   for (const task of tasks) {
-    const estimated = task.estimateBeforeTiming;
-    const actual = task.actualMinutes;
-    if (estimated === null || actual === null) continue;
+    if (task.estimateBeforeTiming === null || task.actualMinutes === null) continue;
+    const key = timingFamilyKey(task, byId);
+    const held = newest.get(key);
+    if (!held || timingRecency(task) >= timingRecency(held)) newest.set(key, task);
+  }
+
+  const pairs: { estimated: number; actual: number }[] = [];
+  for (const task of newest.values()) {
+    const estimated = task.estimateBeforeTiming!;
+    const actual = task.actualMinutes!;
     if (estimated <= 0 || actual <= 0) continue;
     const ratio = actual / estimated;
     if (ratio < MIN_SANE_RATIO || ratio > MAX_SANE_RATIO) continue;
