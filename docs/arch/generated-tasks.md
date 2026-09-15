@@ -674,6 +674,75 @@ the differences all come from one place: **the app cannot see usage.**
 - **It does not gate on vacation mode**, following `weather` rather than `mealPlanNudge`. A rule
   about your own phone use is sunscreen, not work: vacation is exactly when somebody might want it.
 
+## `eventTask` — the fourth rule the user wrote, and the first cued by text
+
+"When something on my calendar says *flight*, add a task to pack, two days before."
+`src/utils/eventTasks.ts` is `weatherTasks.ts` with the calendar in place of the forecast, and
+almost everything that differs follows from one thing: **a rule here is asked about a fortnight of
+events at once, where every other rule generator asks one question a day.**
+
+- **It may read a title, and that is a boundary settled elsewhere rather than here.**
+  `docs/arch/people.md`'s "Where the two lines actually fall" splits event *titles* from event
+  *attendees*: a title is what you typed about your own plans, an attendee list is everyone you
+  happen to sit in a room with. `BusyEvent` carries no attendee field and must not grow one. This
+  is the second reader of a title after `peopleNamedInTitle`, on the same terms.
+- **It is not the "guess is never written down" rule being relaxed.** That rule stops the app
+  deciding, off a title, that something is true — which is why `calendarHistory.ts` may only
+  *offer*. Nothing is inferred here: the user wrote the word and the task, so the app's whole
+  contribution is noticing the word is present. That is exactly where `weather` and `screenTime`
+  already stand, and it is why this one may write a row.
+- **It deliberately does not parse.** No date, no duration, no category and no priority is read out
+  of a title, and `parseTaskInput` is not reached for. That parser is built for text typed into this
+  app behind a sigil ("#home", "!high", "tmrw 5p"), and `calendarHistory.ts` already writes down the
+  asymmetry: a deliberate sigil earns a low bar, a title somebody wrote for another purpose gets the
+  higher one. An event also already carries a real date from EventKit, so the one field a parse
+  could plausibly contribute is the one needing it least.
+- **The match is whole-word and floored at three characters**, the same test and the same floor
+  `peopleNamedInTitle` uses, for the same reason: "gym" firing on "Gymnastics recital" is a rule
+  nobody can predict, and a rule nobody can predict is one nobody leaves on.
+- **The idempotency mark is a record, not a day key, and this is the one real departure.** A
+  weather rule can carry `lastFiredDayKey` because tomorrow is a different question. A rule here is
+  asked about every event in the window at once, so a day key cannot say *which* of them has been
+  answered. `eventTaskHandled` is therefore keyed by occurrence (`${eventId}|${eventStart}#${ruleId}`)
+  and valued by that occurrence's end.
+  - **This is not the growing `(kind, sourceId)` record this file rules out.** The objection there
+    is that a *generic* suppression record has nothing general to say about when an entry stops
+    mattering, so nothing can prune it. Here something can: an occurrence that is over is never
+    coming back, which is the expiry `pruneStaleReminders` and `pruneStaleHiddenEvents` already run
+    on. It is pruned on every sweep and again on settings load.
+  - **A non-matching pair is deliberately not marked.** Weather marks "considered and found not to
+    apply" because tomorrow is a fresh question; here the same event asked again tomorrow is the
+    same question, and an event renamed to match a rule should fire it.
+- **The occurrence key is the event id *and* its start.** EventKit shares one
+  `calendarItemIdentifier` across every instance of a recurring series, so keying on the id alone
+  would let one standing meeting's task suppress all thirteen. `EventReminder` and `HiddenEvent`
+  are both keyed this way already; this is the third.
+- **A rule fires on the day its task is due, not the day the event is spotted.** A two-day rule
+  against next Friday's flight matches today and is held until Wednesday — writing it now would put
+  a row on Today that is not about today. That hold is also what makes a fourteen-day window
+  sufficient: by the time a task is wanted, its event is at most `leadDays` away. `EVENT_LEAD_DAYS_MAX`
+  is `CALENDAR_WINDOW_DAYS` for exactly that reason, pinned by a test, since a longer lead would
+  produce a rule that silently never fires.
+- **An event vanishing from the window is not a reason to clear its task**, where a deleted *rule*
+  is. The difference is that "gone" is ambiguous: an occurrence leaves the window when it is
+  cancelled and also when it simply happens, and the second is the ordinary case. Reading it as
+  cancelled would delete the task on the morning after the flight it was written for.
+- **Nothing chases the event's date.** `drift` returns null, following the #1953 rule at the top of
+  this file: a reconcile that re-dates a row from anything but its source overwrites the field the
+  user is most likely to have changed by hand, and deferring one of these is exactly what somebody
+  would do.
+- **It ships off**, like every generator that adds a surface rather than replacing one, and it is
+  gated on `calendarReadEnabled` as well as its own switch — a switched-off calendar read must not
+  leave one part of the feature still writing rows.
+- **It does not pause on vacation**, following `weather` rather than `mealPlanNudge`. The test this
+  file sets is whether a generator *invents* work or reacts to something happening anyway; an event
+  already on the calendar is the second. Pausing would also take the feature away at the moment a
+  lead-time rule earns its keep, since the flight it is about is usually the one the vacation starts
+  with.
+- **It is gated on `isDemoModeActive()`** like the other real-device readers, and in demo mode it
+  would have nothing to read anyway — the demo database's calendar is never read. `demoSeed.ts`
+  seeds the shape directly.
+
 ## `weekendNudge` — the eighteenth, and the first that asks about a *span*
 
 A weekend with nothing on it becomes "Make plans for the weekend", raised on the

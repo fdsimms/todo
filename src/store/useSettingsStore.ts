@@ -21,7 +21,7 @@ import {
 } from '../utils/energyBudget';
 import { DEFAULT_WEIGH_IN_EVERY_DAYS, clampWeighInEveryDays } from '../utils/weightTasks';
 import { DEFAULT_APP_FONT, isAppFont, pickRandomAppFont, type AppFont } from '../theme/fonts';
-import type { SortOption, RecipeSortOption, Priority, Effort, MealSlot, TimeOfDay, TitleRule, WeatherRule, ScreenTimeRule, HealthRule, NutrientKey, ReminderCapture } from '../types';
+import type { SortOption, RecipeSortOption, Priority, Effort, MealSlot, TimeOfDay, TitleRule, WeatherRule, EventTaskRule, ScreenTimeRule, HealthRule, NutrientKey, ReminderCapture } from '../types';
 import {
   parseNutritionTargets,
   serializeNutritionTargets,
@@ -84,6 +84,13 @@ import {
 import { UNIT_SYSTEMS, type UnitSystem } from '../utils/unitConvert';
 import { parseTitleRules } from '../utils/titleRules';
 import { parseWeatherRules, defaultWeatherRules } from '../utils/weatherTasks';
+import {
+  parseEventRules,
+  defaultEventRules,
+  parseHandledEventTasks,
+  pruneHandledEventTasks,
+  type HandledEventTasks,
+} from '../utils/eventTasks';
 import { parseScreenTimeRules, defaultScreenTimeRules, serializeScreenTimeRules } from '../utils/screenTimeRules';
 import { parseHealthRules, defaultHealthRules, serializeHealthRules } from '../utils/healthRules';
 import { parseReminderCaptures, serializeReminderCaptures } from '../utils/reminderCaptures';
@@ -1291,6 +1298,28 @@ interface SettingsStore {
   // ...LastDayKey field here — the mark lives on the rule it belongs to,
   // which is also what keeps a deleted rule from leaving a mark behind.
   weatherRules: WeatherRule[];
+  // Whether a calendar event matching a rule gets its task (see
+  // src/utils/eventTasks.ts). Off for the reason weatherTasks is: it adds a
+  // surface nobody had. It also reads nothing new — the calendar window is
+  // already read for Today's own event rows — so unlike weather there is no
+  // fresh permission behind this switch, only whether the rules run.
+  eventTasks: boolean;
+  // Which category an event task files itself under, by name, or null for
+  // none — same setting shape as the other generators'.
+  eventTaskCategory: string | null;
+  // The rules themselves — "when an event says flight, add a task to pack".
+  // Kept out of DEFAULT_SETTINGS/resetToDefaults for the mechanical reason
+  // weatherRules is: it's an array, and String(value) doesn't round-trip one.
+  eventRules: EventTaskRule[];
+  // What the event generator has already written a task for, or considered and
+  // answered — keyed by `${eventId}|${eventStart}#${ruleId}`, valued by the
+  // occurrence's end instant so it prunes itself. This is the one rule
+  // generator whose mark can't live on the rule: weather/screenTime/health each
+  // ask one question a day and carry a `lastFiredDayKey`, where a rule here is
+  // asked about every event in a fourteen-day window at once. See
+  // `HandledEventTasks` in eventTasks.ts for why a bounded record is allowed
+  // where generatedTasks.ts rules out a generic one.
+  eventTaskHandled: HandledEventTasks;
   // Whether a Screen Time rule the OS reports crossed gets its task (see
   // src/utils/screenTimeRules.ts). Off for the same reason weatherTasks is,
   // with one more on top: it wants a Screen Time authorization the app doesn't
@@ -1643,6 +1672,10 @@ interface SettingsStore {
   setWeatherTasks: (on: boolean) => void;
   setWeatherTaskCategory: (category: string | null) => void;
   setWeatherRules: (rules: WeatherRule[]) => void;
+  setEventTasks: (on: boolean) => void;
+  setEventTaskCategory: (category: string | null) => void;
+  setEventRules: (rules: EventTaskRule[]) => void;
+  setEventTaskHandled: (handled: HandledEventTasks) => void;
   setScreenTimeTasks: (on: boolean) => void;
   setScreenTimeTaskCategory: (category: string | null) => void;
   setScreenTimeRules: (rules: ScreenTimeRule[]) => void;
@@ -2241,6 +2274,10 @@ export const useSettingsStore = create<SettingsStore>((set, get) => ({
   weatherTasks: false,
   weatherTaskCategory: null,
   weatherRules: [],
+  eventTasks: false,
+  eventTaskCategory: null,
+  eventRules: [],
+  eventTaskHandled: {},
   screenTimeTasks: false,
   screenTimeTaskCategory: null,
   screenTimeRules: [],
@@ -2615,6 +2652,20 @@ export const useSettingsStore = create<SettingsStore>((set, get) => ({
     // even an explicitly emptied list ('[]'), always wins.
     const storedWeatherRules = dbGetSetting('weatherRules');
     const weatherRules = storedWeatherRules ? parseWeatherRules(storedWeatherRules) : defaultWeatherRules();
+    const eventTasks = dbGetSetting('eventTasks') === 'true';
+    const eventTaskCategory = dbGetSetting('eventTaskCategory') || null;
+    // Same fall-back-to-shipped-defaults call weatherRules makes above, and an
+    // explicitly emptied list still wins.
+    const storedEventRules = dbGetSetting('eventRules');
+    const eventRules = storedEventRules ? parseEventRules(storedEventRules) : defaultEventRules();
+    // Pruned on load rather than only on the sweep, so an install that sat
+    // closed across a fortnight doesn't carry a window's worth of finished
+    // occurrences around until the next foreground — the same call
+    // useEventReminderStore makes about its own stale reminders.
+    const eventTaskHandled = pruneHandledEventTasks(
+      parseHandledEventTasks(dbGetSetting('eventTaskHandled')),
+      new Date(),
+    );
     const moodLogTasks = dbGetSetting('moodLogTasks') === 'true';
     const moodLogTaskCategory = dbGetSetting('moodLogTaskCategory') || null;
     const moodLogLastDayKey = dbGetSetting('moodLogLastDayKey') || null;
@@ -2802,6 +2853,10 @@ export const useSettingsStore = create<SettingsStore>((set, get) => ({
       defaultReminderLeadMinutes,
       destinationForecastEnabled,
       eveningStart,
+      eventRules,
+      eventTaskCategory,
+      eventTaskHandled,
+      eventTasks,
       fabHand,
       featureWheelEnabled,
       featureWheelRoutes,
@@ -3394,6 +3449,29 @@ export const useSettingsStore = create<SettingsStore>((set, get) => ({
   setWeatherRules(rules: WeatherRule[]) {
     dbSetSetting('weatherRules', JSON.stringify(rules));
     set({ weatherRules: rules });
+  },
+
+  setEventTasks(on: boolean) {
+    dbSetSetting('eventTasks', on ? 'true' : 'false');
+    set({ eventTasks: on });
+  },
+
+  setEventTaskCategory(category: string | null) {
+    dbSetSetting('eventTaskCategory', category ?? '');
+    set({ eventTaskCategory: category });
+  },
+
+  // Written whole, like setWeatherRules.
+  setEventRules(rules: EventTaskRule[]) {
+    dbSetSetting('eventRules', JSON.stringify(rules));
+    set({ eventRules: rules });
+  },
+
+  // State rather than a preference, the position mealPlanNudgeGroupId is in:
+  // written by checkEventTasks as it sweeps, never by anything a person taps.
+  setEventTaskHandled(handled: HandledEventTasks) {
+    dbSetSetting('eventTaskHandled', JSON.stringify(handled));
+    set({ eventTaskHandled: handled });
   },
 
   setScreenTimeTasks(on: boolean) {

@@ -149,6 +149,11 @@ export function catchUpPasses(): MaintenanceStep[] {
     // when-in-use permission string promises it never happens in the
     // background. It refuses on the snapshot's own day key instead.
     ['check weather tasks', () => tasks().checkWeatherTasks()],
+    // Beside it, and unlike the three around it this one *can* do real work at
+    // cold launch: the window it reads is whatever useCalendarSync last left
+    // behind, exactly as checkCalendarReviewTasks' is, and it refuses on
+    // `!calendar.loaded` rather than reading an unread window as an empty one.
+    ['check event tasks', () => tasks().checkEventTasks()],
     // Beside it, same trigger and the same near-no-op at cold launch: the
     // crossings it reads are only ever drained by useScreenTimeSync's own
     // effect, which has not run yet on the very first pass.
