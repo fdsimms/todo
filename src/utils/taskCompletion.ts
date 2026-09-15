@@ -466,6 +466,11 @@ export function buildCompletion(
         // however many mornings it went undone after that. The configuration
         // that decides the cost still carries via ...effective.
         penaltyFiredAt: null,
+        // And its pair, for the mirror of the same reason: a fresh row has
+        // taken nothing from anybody, so it has nothing to give back. Carried
+        // forward it would arrive already stamped as credited and could never
+        // give back a charge of its own.
+        penaltyCreditedAt: null,
         // Same reasoning one field up: the drip dated the occurrence that was
         // just completed, not this one, whose date came from the schedule.
         autoScheduledAt: null,
