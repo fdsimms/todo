@@ -133,6 +133,15 @@ export const SYNC_TRACKED_TABLES: readonly SyncTable[] = [
   // history on each phone, which is the reading nobody wants of "how much did
   // I actually focus this week". Ids are base36 from generateId().
   { name: 'focus_session_log', key: ['id'] },
+  // The unattended ledger. Same shape as focus_session_log and tracked for the
+  // same reason: rows written once and never updated, so last-writer-wins on a
+  // row that never changes is a no-op. They have to travel because the effects
+  // they record already do. Whichever device runs a pass first is the one that
+  // writes the task, and the other sees only the task arrive — so a ledger that
+  // stayed put would leave the second phone unable to say where any of it came
+  // from, which is the exact question this table exists to answer. Ids are
+  // base36 from generateId().
+  { name: 'unattended_log', key: ['id'] },
 ];
 
 /**

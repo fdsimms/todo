@@ -144,6 +144,65 @@ export function selectPurgeableFocusSessionIds(
 }
 
 /**
+ * The longest the unattended ledger is ever kept, in days.
+ *
+ * 90 rather than a setting, and never `null`. `completedRetentionDays` defaults
+ * to forever because a window that silently deletes the user's own history
+ * would be a data-loss feature — but this table is not the user's history, it
+ * is the app's record of itself, and "forever" there is the unbounded
+ * suppression record `generatedTasks.ts` argues against at length: a structure
+ * that grows with every pass and has no pruning pass of its own. Something has
+ * to bound it, and a setting nobody opens would not.
+ *
+ * Three months is what makes the ledger answer the question it exists for.
+ * "Where did this task come from" and "what took that one" are asked about
+ * something noticed recently; nobody scrolls to April to find out.
+ */
+export const LEDGER_MAX_DAYS = 90;
+
+/**
+ * The instant before which a ledger entry is old enough to purge.
+ *
+ * The *later* of the ledger's own ceiling and the user's retention window, so
+ * two rules hold at once. The ceiling means the table is bounded whether or not
+ * anybody ever opens Settings. The window means a shorter answer there also
+ * shortens this: somebody who asked the app to keep three months of history has
+ * not asked it to keep six months of notes *about* that history, and a ledger
+ * row naming a task the Logbook has already forgotten is a reference to
+ * nothing.
+ *
+ * Unlike `retentionCutoff` this never returns null. There is no "off" for a
+ * bound that exists to stop a table growing without end.
+ */
+export function ledgerCutoff(
+  days: RetentionDays,
+  now: Date = new Date(),
+  dayResetTime?: string
+): Date {
+  const ceiling = subDays(getDayStart(now, dayResetTime), LEDGER_MAX_DAYS);
+  const window = retentionCutoff(days, now, dayResetTime);
+  if (window === null) return ceiling;
+  return window.getTime() > ceiling.getTime() ? window : ceiling;
+}
+
+/**
+ * Ledger entries old enough to purge, under the cutoff above.
+ *
+ * As simple as `selectPurgeableFocusSessionIds` and for the same reason: an
+ * entry is a closed account of a moment that has passed, with no archiving, no
+ * answer to preserve and no parent to cascade from. The only question is
+ * whether it is inside the window.
+ */
+export function selectPurgeableUnattendedIds(
+  entries: readonly { id: string; at: string }[],
+  cutoff: Date,
+): string[] {
+  return entries
+    .filter(e => new Date(e.at).getTime() < cutoff.getTime())
+    .map(e => e.id);
+}
+
+/**
  * "12 completed tasks and 4 focus sessions" — what a window is about to take,
  * for the confirm dialog.
  *

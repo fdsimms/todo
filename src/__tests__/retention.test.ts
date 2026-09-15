@@ -6,7 +6,11 @@ import {
   selectPurgeableTaskIds,
   selectPurgeableFocusSessionIds,
   retentionDeletionSummary,
+  ledgerCutoff,
+  selectPurgeableUnattendedIds,
+  LEDGER_MAX_DAYS,
 } from '../utils/retention';
+import { differenceInCalendarDays } from 'date-fns/differenceInCalendarDays';
 import type { Task } from '../types';
 
 jest.mock('../store/useSettingsStore', () => ({
@@ -349,5 +353,59 @@ describe('retentionDeletionSummary', () => {
 
   it('is empty when nothing is going, which is the caller’s cue not to ask', () => {
     expect(retentionDeletionSummary(0, 0)).toBe('');
+  });
+});
+
+describe('ledgerCutoff', () => {
+  const now = new Date('2026-09-15T10:00:00');
+
+  it('bounds the ledger at 90 days when retention is off', () => {
+    // The whole point: `null` means forever for the Logbook and may never mean
+    // forever here, because nothing else stops this table growing.
+    const cutoff = ledgerCutoff(null, now);
+    expect(differenceInCalendarDays(now, cutoff)).toBe(LEDGER_MAX_DAYS);
+  });
+
+  it('takes the user’s window when it is shorter than the ceiling', () => {
+    // Not that 90 and the 3-month option happen to coincide — 30 is a window
+    // the settings screen does not offer but a synced device could hold.
+    const cutoff = ledgerCutoff(30, now);
+    expect(differenceInCalendarDays(now, cutoff)).toBe(30);
+  });
+
+  it('keeps the ceiling when the user’s window is longer', () => {
+    // A year of completions does not buy a year of notes about them.
+    const cutoff = ledgerCutoff(365, now);
+    expect(differenceInCalendarDays(now, cutoff)).toBe(LEDGER_MAX_DAYS);
+  });
+
+  it('never returns null, unlike retentionCutoff', () => {
+    expect(retentionCutoff(null, now)).toBeNull();
+    expect(ledgerCutoff(null, now)).toBeInstanceOf(Date);
+  });
+
+  it('anchors to the logical day, so the hour of the launch makes no difference', () => {
+    const morning = ledgerCutoff(null, new Date('2026-09-15T09:00:00'), '02:00');
+    const evening = ledgerCutoff(null, new Date('2026-09-15T23:00:00'), '02:00');
+    expect(morning.getTime()).toBe(evening.getTime());
+  });
+});
+
+describe('selectPurgeableUnattendedIds', () => {
+  const cutoff = new Date('2026-09-01T00:00:00');
+
+  it('takes only what is older than the cutoff', () => {
+    const entries = [
+      { id: 'old', at: '2026-08-30T12:00:00.000Z' },
+      { id: 'edge', at: cutoff.toISOString() },
+      { id: 'new', at: '2026-09-10T12:00:00.000Z' },
+    ];
+    // The edge stays: the rule is strictly older, the same comparison
+    // selectPurgeableFocusSessionIds makes.
+    expect(selectPurgeableUnattendedIds(entries, cutoff)).toEqual(['old']);
+  });
+
+  it('takes nothing from an empty ledger', () => {
+    expect(selectPurgeableUnattendedIds([], cutoff)).toEqual([]);
   });
 });

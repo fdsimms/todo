@@ -96,6 +96,14 @@ jest.mock('../store/useGroceryStore', () => ({
 jest.mock('../store/useEventReminderStore', () => ({
   useEventReminderStore: { getState: () => ({ remindersByKey: {} }) },
 }));
+// Imported by maintenancePasses for the retention group, which this refresh
+// deliberately never runs — mocked all the same, since the real store reaches
+// the database and the import happens either way.
+jest.mock('../store/useUnattendedStore', () => ({
+  useUnattendedStore: {
+    getState: () => ({ purgeOldEntries: mockRecord('purgeOldEntries') }),
+  },
+}));
 jest.mock('../store/useSyncStore', () => ({
   useSyncStore: { getState: () => mockSyncState },
 }));
@@ -160,14 +168,18 @@ describe('runBackgroundRefresh', () => {
 
   it('never deletes anything', () => {
     runBackgroundRefresh();
-    // The expiry sweep and the three purges are launch-only on purpose: nobody
+    // The expiry sweep and the four purges are launch-only on purpose: nobody
     // benefits from a row being deleted earlier, and a purge deliberately
     // bypasses the undo stack. See maintenancePasses.ts.
-    expect([...expiryPasses(), ...retentionPasses()]).toHaveLength(4);
+    expect([...expiryPasses(), ...retentionPasses()]).toHaveLength(5);
     expect(mockCalls).not.toContain('sweepExpiredTasks');
     expect(mockCalls).not.toContain('purgeOldCompletedTasks');
     expect(mockCalls).not.toContain('purgeOldMealPlanEntries');
     expect(mockCalls).not.toContain('purgeOldLeftovers');
+    // The ledger's own bound included, even though this run is what writes
+    // most of what it holds: the background pass may not delete, and trimming
+    // the log is still deleting.
+    expect(mockCalls).not.toContain('purgeOldEntries');
   });
 
   it('rebuilds the notification queue and the widget snapshot after the passes', () => {
