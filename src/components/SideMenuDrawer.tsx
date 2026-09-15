@@ -169,9 +169,12 @@ export function SideMenuDrawer({ visible, onClose, onNavigate, onOpenSettings, a
           ...animation.spring.smooth,
           useNativeDriver: true,
         }),
+        // `sheetBackdropOut`'s value, not `sheetBackdropIn`'s: a drawer
+        // sliding in reads faster than a bottom sheet rising, so it opens at
+        // the same pace the other sheets close at instead of their slower one.
         Animated.timing(backdropOpacity, {
           toValue: 1,
-          duration: 180,
+          duration: animation.duration.sheetBackdropOut,
           useNativeDriver: true,
         }),
       ]).start();
@@ -200,7 +203,7 @@ export function SideMenuDrawer({ visible, onClose, onNavigate, onOpenSettings, a
             }),
             Animated.timing(backdropOpacity, {
               toValue: 0,
-              duration: 180,
+              duration: animation.duration.sheetBackdropOut,
               useNativeDriver: true,
             }),
           ];

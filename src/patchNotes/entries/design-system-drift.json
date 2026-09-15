@@ -1,0 +1,4 @@
+{
+  "message": "Cleaned up some small visual inconsistencies: the reminder sheet's Ring As choice now matches the app's usual segmented control, task edit buttons press with the same feedback as everywhere else, and a few sheets' backdrop fades were quietly wired to nothing.",
+  "date": "2026-09-15"
+}

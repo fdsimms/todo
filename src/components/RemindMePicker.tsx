@@ -396,59 +396,16 @@ export function RemindMePicker({ visible, value, kind, dueDate = null, offsetDay
               <>
                 <View style={styles.kindSection}>
                   <Text style={styles.sectionLabel}>Ring As</Text>
-                  <View style={styles.kindToggle}>
-                    <TouchableOpacity
-                      style={[styles.kindOption, selectedKind === 'notification' && styles.kindOptionSelected]}
-                      onPress={() => setSelectedKind('notification')}
-                      activeOpacity={interaction.activeOpacity}
-                      accessibilityRole="button"
-                      accessibilityLabel="Notification"
-                      accessibilityState={{ selected: selectedKind === 'notification' }}
-                    >
-                      <Ionicons
-                        name="notifications"
-                        size={16}
-                        color={selectedKind === 'notification' ? colors.onAccent : colors.textSecondary}
-                      />
-                      <Text style={[styles.kindLabel, selectedKind === 'notification' && styles.kindLabelSelected]}>
-                        Notification
-                      </Text>
-                    </TouchableOpacity>
-                    <TouchableOpacity
-                      style={[styles.kindOption, selectedKind === 'alarm' && styles.kindOptionSelected]}
-                      onPress={() => setSelectedKind('alarm')}
-                      activeOpacity={interaction.activeOpacity}
-                      accessibilityRole="button"
-                      accessibilityLabel="Alarm"
-                      accessibilityState={{ selected: selectedKind === 'alarm' }}
-                    >
-                      <Ionicons
-                        name="alarm"
-                        size={16}
-                        color={selectedKind === 'alarm' ? colors.onAccent : colors.textSecondary}
-                      />
-                      <Text style={[styles.kindLabel, selectedKind === 'alarm' && styles.kindLabelSelected]} numberOfLines={1}>
-                        Alarm
-                      </Text>
-                    </TouchableOpacity>
-                    <TouchableOpacity
-                      style={[styles.kindOption, selectedKind === 'persistent' && styles.kindOptionSelected]}
-                      onPress={() => setSelectedKind('persistent')}
-                      activeOpacity={interaction.activeOpacity}
-                      accessibilityRole="button"
-                      accessibilityLabel="Alarm until done"
-                      accessibilityState={{ selected: selectedKind === 'persistent' }}
-                    >
-                      <Ionicons
-                        name="repeat"
-                        size={16}
-                        color={selectedKind === 'persistent' ? colors.onAccent : colors.textSecondary}
-                      />
-                      <Text style={[styles.kindLabel, selectedKind === 'persistent' && styles.kindLabelSelected]} numberOfLines={1}>
-                        Until done
-                      </Text>
-                    </TouchableOpacity>
-                  </View>
+                  <SegmentedControl<ReminderKind>
+                    label="Ring as"
+                    value={selectedKind}
+                    onChange={setSelectedKind}
+                    options={[
+                      { value: 'notification', label: 'Notification', icon: 'notifications' },
+                      { value: 'alarm', label: 'Alarm', icon: 'alarm' },
+                      { value: 'persistent', label: 'Until done', icon: 'repeat' },
+                    ]}
+                  />
                   <Text style={styles.kindHint}>
                     {selectedKind === 'persistent'
                       ? `Rings every ${ALARM_RING_INTERVAL_MINUTES} minutes for up to an hour, until you complete the task.`
@@ -706,39 +663,11 @@ const makeStyles = (colors: Colors, windowHeight: number) => StyleSheet.create({
   },
   kindSection: {
     marginHorizontal: spacing.md,
-    backgroundColor: colors.bgTertiary,
-    borderRadius: radius.md,
-    padding: spacing.sm,
-  },
-  kindToggle: {
-    flexDirection: 'row',
-    gap: spacing.xs,
-  },
-  kindOption: {
-    flex: 1,
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'center',
-    gap: spacing.xs,
-    paddingVertical: spacing.xs + 2,
-    borderRadius: radius.sm,
-    backgroundColor: colors.bgSecondary,
-  },
-  kindOptionSelected: {
-    backgroundColor: colors.accentFill,
-  },
-  kindLabel: {
-    color: colors.textSecondary,
-    fontSize: font.sm,
-    fontWeight: fontWeight.medium,
   },
   kindHint: {
     color: colors.textSecondary,
     fontSize: font.xs,
-    marginTop: spacing.xs,
-  },
-  kindLabelSelected: {
-    color: colors.onAccent,
+    marginTop: spacing.xs + 2,
   },
   doneBtn: {
     marginHorizontal: spacing.md,
