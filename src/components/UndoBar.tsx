@@ -5,6 +5,7 @@ import { useTaskStore } from '../store/useTaskStore';
 import { useGroceryStore } from '../store/useGroceryStore';
 import { useMealPlanStore } from '../store/useMealPlanStore';
 import { useLeftoverStore } from '../store/useLeftoverStore';
+import { usePersonStore } from '../store/usePersonStore';
 import { InlineAction } from './InlineAction';
 import { TAB_BAR_HEIGHT } from './DemoBanner';
 import { FAB_SIZE } from './Fab';
@@ -42,8 +43,8 @@ const VISIBLE_MS = 6000;
  * schedule reaching its end leaves no row to un-tick and nothing else on
  * screen saying it happened. Don't fold it back in with the rest.
  *
- * **One bar for four independent histories.** Mirrors `useShakeToUndo`:
- * offers whichever of the four stores' top entry is freshest, so a grocery
+ * **One bar for five independent histories.** Mirrors `useShakeToUndo`:
+ * offers whichever of the five stores' top entry is freshest, so a grocery
  * clear and a task delete can't both want the slot at once.
  *
  * **It stays up to offer the redo.** Undoing from the bar replaces it with
@@ -80,12 +81,17 @@ export function UndoBar() {
   const leftoverRedo = useLeftoverStore(s => topOf(s.redoStack));
   const undoLeftover = useLeftoverStore(s => s.undoLastAction);
   const redoLeftover = useLeftoverStore(s => s.redoLastUndone);
+  const personAction = usePersonStore(s => topOf(s.undoStack));
+  const personRedo = usePersonStore(s => topOf(s.redoStack));
+  const undoPerson = usePersonStore(s => s.undoLastAction);
+  const redoPerson = usePersonStore(s => s.redoLastUndone);
 
   const candidates = [
     { action: taskAction, redoEntry: taskRedo, undo: undoTask, redo: redoTask },
     { action: groceryAction, redoEntry: groceryRedo, undo: undoGrocery, redo: redoGrocery },
     { action: mealPlanAction, redoEntry: mealPlanRedo, undo: undoMealPlan, redo: redoMealPlan },
     { action: leftoverAction, redoEntry: leftoverRedo, undo: undoLeftover, redo: redoLeftover },
+    { action: personAction, redoEntry: personRedo, undo: undoPerson, redo: redoPerson },
   ];
   const freshestUndo = freshest(
     candidates.filter(c => c.action?.destructive),

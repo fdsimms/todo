@@ -103,6 +103,7 @@ jest.mock('../db/database', () => ({
   dbGetTripShopId: jest.fn().mockReturnValue(null),
   dbGetTripStartedAt: jest.fn().mockReturnValue(null),
   dbSetTrip: jest.fn(),
+  dbGetTripBudgetMinor: jest.fn().mockReturnValue(null),
   // Runs the body inline — these tests assert on store state, not on
   // transaction boundaries, and a no-op wrapper would silently skip the work.
   dbTransaction: jest.fn((fn: () => void) => fn()),
@@ -5725,8 +5726,47 @@ describe('the active trip', () => {
     const state = useGroceryStore.getState();
     expect(state.tripShopId).toBe(costco.id);
     expect(state.tripStartedAt).not.toBeNull();
-    expect(dbSetTrip).toHaveBeenCalledWith(costco.id, state.tripStartedAt);
+    expect(dbSetTrip).toHaveBeenCalledWith(costco.id, state.tripStartedAt, null);
     expect(scheduleTripReminder).toHaveBeenCalledWith('Costco', state.tripStartedAt);
+  });
+
+  it('carries a budget when one is given, and none when it is not', () => {
+    const costco = makeShop('Costco');
+    seed([], { shops: [costco] });
+
+    useGroceryStore.getState().startTrip(costco.id, 6000);
+    expect(useGroceryStore.getState().tripBudgetMinor).toBe(6000);
+  });
+
+  it('sets and clears a budget mid-shop', () => {
+    // A ceiling is decided at the shelf as often as before leaving, so it is
+    // not write-once.
+    const costco = makeShop('Costco');
+    seed([], { shops: [costco] });
+    useGroceryStore.getState().startTrip(costco.id);
+
+    useGroceryStore.getState().setTripBudget(4500);
+    expect(useGroceryStore.getState().tripBudgetMinor).toBe(4500);
+
+    useGroceryStore.getState().setTripBudget(null);
+    expect(useGroceryStore.getState().tripBudgetMinor).toBeNull();
+  });
+
+  it('refuses a budget with no trip to be a ceiling for', () => {
+    // Otherwise it would sit in settings until the next shop picked it up by
+    // accident.
+    seed([], { shops: [] });
+    useGroceryStore.getState().setTripBudget(4500);
+    expect(useGroceryStore.getState().tripBudgetMinor).toBeNull();
+  });
+
+  it('takes the budget with it when the trip ends', () => {
+    const costco = makeShop('Costco');
+    seed([], { shops: [costco] });
+    useGroceryStore.getState().startTrip(costco.id, 6000);
+
+    useGroceryStore.getState().endTrip();
+    expect(useGroceryStore.getState().tripBudgetMinor).toBeNull();
   });
 
   it('refuses to start a trip at a store that does not exist', () => {
@@ -5747,7 +5787,7 @@ describe('the active trip', () => {
 
     expect(useGroceryStore.getState().tripShopId).toBeNull();
     expect(useGroceryStore.getState().tripStartedAt).toBeNull();
-    expect(dbSetTrip).toHaveBeenCalledWith(null, null);
+    expect(dbSetTrip).toHaveBeenCalledWith(null, null, null);
     expect(cancelTripReminder).toHaveBeenCalled();
   });
 
@@ -5791,7 +5831,7 @@ describe('the active trip', () => {
     useGroceryStore.getState().checkTripExpiry();
 
     expect(useGroceryStore.getState().tripShopId).toBeNull();
-    expect(dbSetTrip).toHaveBeenCalledWith(null, null);
+    expect(dbSetTrip).toHaveBeenCalledWith(null, null, null);
     expect(cancelTripReminder).toHaveBeenCalled();
   });
 
@@ -5813,7 +5853,7 @@ describe('the active trip', () => {
 
     expect(useGroceryStore.getState().tripShopId).toBeNull();
     expect(useGroceryStore.getState().tripStartedAt).toBeNull();
-    expect(dbSetTrip).toHaveBeenCalledWith(null, null);
+    expect(dbSetTrip).toHaveBeenCalledWith(null, null, null);
     expect(cancelTripReminder).toHaveBeenCalled();
   });
 

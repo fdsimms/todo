@@ -1,0 +1,4 @@
+{
+  "message": "Timing comparisons now count each task once, instead of counting a repeating task again every time it comes round",
+  "date": "2026-09-15"
+}

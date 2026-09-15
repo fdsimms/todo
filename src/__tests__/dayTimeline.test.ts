@@ -155,6 +155,57 @@ describe('buildDayTimeline events', () => {
     expect(entries[0].endMinutes).toBe(MINUTES_IN_DAY);
   });
 
+  // The mirror of the case above, and the one that used to be dropped outright:
+  // `eventsIn` selects by overlap, so a night shift reaches this builder, and
+  // skipping it drew the morning it covers as free.
+  it('clamps an event that began before the day rather than dropping it', () => {
+    const overnight = makeEvent(
+      new Date(2026, 8, 14, 22).toISOString(),
+      at(6),
+      { id: 'e-night', title: 'Night shift' },
+    );
+    const { entries } = buildDayTimeline({ dayStart: MIDNIGHT, tasks: [], events: [overnight] });
+    expect(entries).toHaveLength(1);
+    expect(entries[0]).toMatchObject({ eventId: 'e-night', startMinutes: 0, endMinutes: 6 * 60 });
+    expect(entries[0].instant).toBe(false);
+  });
+
+  it('clamps an event that straddles the day at both ends', () => {
+    const through = makeEvent(
+      new Date(2026, 8, 14, 20).toISOString(),
+      new Date(2026, 8, 16, 3).toISOString(),
+      { id: 'e-through' },
+    );
+    const { entries } = buildDayTimeline({ dayStart: MIDNIGHT, tasks: [], events: [through] });
+    expect(entries[0]).toMatchObject({ startMinutes: 0, endMinutes: MINUTES_IN_DAY });
+  });
+
+  // Under a 04:00 reset, "the day" runs 04:00–04:00, so yesterday's evening is
+  // genuinely before this day starts and gets the same clamp.
+  it('clamps against the logical day start, not midnight', () => {
+    const early = makeEvent(at(2), at(6), { id: 'e-early' });
+    const { entries } = buildDayTimeline({ dayStart: FOUR_AM, tasks: [], events: [early] });
+    expect(entries[0]).toMatchObject({ startMinutes: 0, endMinutes: 2 * 60 });
+  });
+
+  it('leaves out an event that finished before the day began', () => {
+    const yesterday = makeEvent(
+      new Date(2026, 8, 14, 9).toISOString(),
+      new Date(2026, 8, 14, 10).toISOString(),
+      { id: 'e-yesterday' },
+    );
+    const { entries } = buildDayTimeline({ dayStart: MIDNIGHT, tasks: [], events: [yesterday] });
+    expect(entries).toEqual([]);
+  });
+
+  // Without this it failed the `end > start` test and fell through to the
+  // trailing clamp, drawing a mark on the axis as a block to midnight.
+  it('draws a zero-length event as an instant, not a block to midnight', () => {
+    const mark = makeEvent(at(10), at(10), { id: 'e-mark', title: 'Renewal date' });
+    const { entries } = buildDayTimeline({ dayStart: MIDNIGHT, tasks: [], events: [mark] });
+    expect(entries[0]).toMatchObject({ startMinutes: 600, endMinutes: 600, instant: true });
+  });
+
   // The event owns the time and the task is the actionable half, so a blocked
   // out task is one entry, not two.
   it('draws a time-blocked task once, at the event hours', () => {
