@@ -371,6 +371,16 @@ export const animation = {
      * stop; the backdrop half was already `fast` spelled as a number.
      */
     dismiss: 120,
+    /**
+     * A bottom sheet's own backdrop dimming, paired with the `spring.smooth`
+     * open / `spring.sheetDismiss` close it runs alongside — the same drift
+     * `dismiss` above stops, for a different shape of sheet. Nine of them
+     * (CategoryPicker, GroceryListSheet, PatchNotesModal, the sort/filter and
+     * picker sheets, SideMenuDrawer, TaskRelationPickerSheet) had this
+     * written out as the same 200/180 pair, wired to nothing.
+     */
+    sheetBackdropIn: 200,
+    sheetBackdropOut: 180,
   },
   spring: {
     snappy: { damping: 22, stiffness: 300, mass: 0.8 },
