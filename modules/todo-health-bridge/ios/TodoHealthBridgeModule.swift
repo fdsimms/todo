@@ -95,6 +95,12 @@ public class TodoHealthBridgeModule: Module {
     if let sleep = HKCategoryType.categoryType(forIdentifier: .sleepAnalysis) {
       types.insert(sleep)
     }
+    // Apple Exercise Time: a cumulative quantity like steps, so it rides the
+    // same summed collection query rather than an HKWorkout sample walk. iOS
+    // 9.3+, comfortably under this pod's floor.
+    if let exercise = HKQuantityType.quantityType(forIdentifier: .appleExerciseTime) {
+      types.insert(exercise)
+    }
     if let sodium = HKQuantityType.quantityType(forIdentifier: .dietarySodium) {
       types.insert(sodium)
     }
@@ -841,6 +847,7 @@ public class TodoHealthBridgeModule: Module {
 
       var steps = [Double?](repeating: nil, count: days)
       var sleepMinutes = [Double?](repeating: nil, count: days)
+      var exerciseMinutes = [Double?](repeating: nil, count: days)
       var sodiumMg = [Double?](repeating: nil, count: days)
       var proteinG = [Double?](repeating: nil, count: days)
       var satFatG = [Double?](repeating: nil, count: days)
@@ -862,7 +869,7 @@ public class TodoHealthBridgeModule: Module {
       // reads all ten. Each array has exactly one writer, so this is the whole
       // of the sharing.
       let tally = DispatchQueue(label: "TodoHealthBridge.readDailyHealth")
-      var pending = 10
+      var pending = 11
       let finish = {
         tally.async {
           pending -= 1
@@ -870,7 +877,9 @@ public class TodoHealthBridgeModule: Module {
           let entries: [String] = (0..<days).map { i in
             let part: (Double?) -> String = { $0.map { "\(Int($0.rounded()))" } ?? "null" }
             return "{\"start\":\"\(Self.formatISO(starts[i]))\",\"steps\":\(part(steps[i])),"
-              + "\"sleepMinutes\":\(part(sleepMinutes[i])),\"sodiumMg\":\(part(sodiumMg[i])),"
+              + "\"sleepMinutes\":\(part(sleepMinutes[i])),"
+              + "\"exerciseMinutes\":\(part(exerciseMinutes[i])),"
+              + "\"sodiumMg\":\(part(sodiumMg[i])),"
               + "\"proteinG\":\(part(proteinG[i])),\"satFatG\":\(part(satFatG[i])),\"fiberG\":\(part(fiberG[i])),"
               + "\"sugarG\":\(part(sugarG[i])),\"caffeineMg\":\(part(caffeineMg[i])),\"waterMl\":\(part(waterMl[i])),"
               + "\"calorieKcal\":\(part(calorieKcal[i]))}"
@@ -896,6 +905,13 @@ public class TodoHealthBridgeModule: Module {
         self.runDietQuery(
           identifier: .stepCount, unit: .count(), anchor: anchor, end: end, starts: starts,
           write: { i, value in steps[i] = value }, finish: finish
+        )
+        // Beside steps rather than among the nutrients: it is the other thing
+        // a body did, and it is summed in minutes rather than read off a food
+        // label. `HKUnit.minute()` is a non-throwing class func returning Self.
+        self.runDietQuery(
+          identifier: .appleExerciseTime, unit: .minute(), anchor: anchor, end: end, starts: starts,
+          write: { i, value in exerciseMinutes[i] = value }, finish: finish
         )
         self.runDietQuery(
           identifier: .dietarySodium, unit: HKUnit.gramUnit(with: .milli), anchor: anchor, end: end, starts: starts,
