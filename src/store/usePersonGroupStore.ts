@@ -9,6 +9,7 @@ import {
 import { generateId } from '../utils/id';
 import { registerPersonGroupSource } from '../utils/peopleRegistry';
 import { usePersonStore } from './usePersonStore';
+import { undoHistoryActions, type UndoHistoryActions, type UndoHistoryState } from '../utils/undoHistory';
 
 /**
  * Couples and households — see the "Groups" section of `docs/arch/people.md`.
@@ -20,7 +21,7 @@ import { usePersonStore } from './usePersonStore';
  * `docs/arch/people.md` keeps the People list itself from becoming a second
  * place to rank anybody.
  */
-interface PersonGroupStore {
+interface PersonGroupStore extends UndoHistoryState, UndoHistoryActions {
   groups: PersonGroup[];
   initialized: boolean;
   initialize: () => void;
@@ -30,11 +31,17 @@ interface PersonGroupStore {
   getGroupById: (id: string) => PersonGroup | null;
   /** Deletes the group and frees its members — nobody in it is deleted. */
   removeGroupRow: (id: string) => void;
+  /** Reinserts a group under its original id — the undo half of removeGroupRow. */
+  restoreGroup: (group: PersonGroup) => void;
 }
 
 export const usePersonGroupStore = create<PersonGroupStore>((set, get) => ({
   groups: [],
   initialized: false,
+  undoStack: [],
+  redoStack: [],
+  lastAction: null,
+  ...undoHistoryActions(set, get),
 
   initialize() {
     set({ groups: dbGetAllPersonGroups(), initialized: true });
@@ -82,12 +89,35 @@ export const usePersonGroupStore = create<PersonGroupStore>((set, get) => ({
   },
 
   removeGroupRow(id) {
+    const group = get().groups.find(g => g.id === id);
+    // Snapshotted before the unlink, so the undo below can put each member
+    // back in the group they were actually in rather than guessing.
+    const memberIds = usePersonStore.getState().people
+      .filter(p => p.groupId === id)
+      .map(p => p.id);
+
     // Frees every member first — a person is never deleted by this, only
     // unlinked, the same shrug-not-cascade rule the rest of the people layer
     // uses for a dangling pointer.
     usePersonStore.getState().clearGroupMembership(id);
     dbDeletePersonGroup(id);
     set({ groups: get().groups.filter(g => g.id !== id) });
+
+    if (!group) return;
+    get().setLastAction({
+      label: `Deleted ${group.name}`,
+      destructive: true,
+      undo: () => {
+        get().restoreGroup(group);
+        memberIds.forEach(personId => usePersonStore.getState().updatePerson(personId, { groupId: id }));
+      },
+      redo: () => get().removeGroupRow(id),
+    });
+  },
+
+  restoreGroup(group) {
+    dbInsertPersonGroup(group);
+    set({ groups: [...get().groups, group].sort((a, b) => a.sortOrder - b.sortOrder) });
   },
 }));
 
