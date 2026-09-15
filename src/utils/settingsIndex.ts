@@ -459,6 +459,15 @@ export const SETTINGS_ENTRIES: SettingsEntry[] = [
   { id: 'importNow', groupId: 'capture', label: 'Import now', section: 'Apple Reminders',
     keywords: ['sync', 'refresh'] },
 
+  // The app's own App Intents, which need no Reminders list and no setup —
+  // a separate section from everything above for that reason.
+  { id: 'siriAddTask', groupId: 'capture', label: 'Add a task', section: 'Siri shortcuts',
+    keywords: ['siri', 'voice', 'hey siri', 'shortcut', 'shortcuts', 'action button', 'dictate',
+      'speak', 'say'] },
+  { id: 'siriMarkUsedUp', groupId: 'capture', label: 'Mark something used up', section: 'Siri shortcuts',
+    keywords: ['siri', 'voice', 'hey siri', 'shortcut', 'shortcuts', 'action button', 'say',
+      'gone bad', 'finished', 'spoiled', 'pantry', 'groceries'], kitchen: true },
+
   // Calendar (iOS). "Google" earns a keyword on every row: it's what people
   // will search for, and it appears in none of the labels — the app reads
   // EventKit calendars and never asks which service is behind one.

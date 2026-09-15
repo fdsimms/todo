@@ -1,6 +1,7 @@
 import type { HealthRule } from '../types';
 import type { HealthRuleReading } from '../utils/healthRules';
 import {
+  HEALTH_METRICS,
   HEALTH_METRIC_EARLIEST_HOUR,
   HEALTH_THRESHOLDS,
   SHORT_SLEEP_HOURS,
@@ -8,13 +9,16 @@ import {
   clampHealthThreshold,
   defaultHealthRules,
   describeHealthRule,
+  anyExerciseRule,
   formatCheckpointHour,
+  healthMetricAmount,
   healthMetricLabel,
   healthRuleCheckpointHour,
   healthRuleDirection,
   healthRuleIdOf,
   healthSourceId,
   healthTaskNote,
+  judgedReadingValue,
   nutrientReadingNote,
   parseHealthRules,
   parseHealthSourceId,
@@ -22,6 +26,7 @@ import {
   ruleShortfallToday,
   serializeHealthRules,
   shortSleepDeloadNote,
+  usesCheckpoint,
   healthTaskLinkUrl,
 } from '../utils/healthRules';
 
@@ -42,6 +47,11 @@ function reading(over: Partial<HealthRuleReading> = {}): HealthRuleReading {
   return {
     steps: 9000,
     sleepHours: 8,
+    exerciseMinutes: 45,
+    // Seen by default, so a test overriding only exerciseMinutes is testing
+    // the comparison rather than the live-metric gate. The gate has its own
+    // block below.
+    exerciseMinutesSeenRecently: true,
     sodiumMg: 3000,
     proteinG: 60,
     satFatG: 10,
@@ -306,8 +316,14 @@ describe('ruleShortfallToday', () => {
   it('has full reading fixture coverage for every metric', () => {
     // Guards the `reading()` helper above itself: a metric missing from it
     // would silently test against `undefined` rather than a real number.
+    //
+    // Held against HEALTH_METRICS rather than a hand-written list, so a
+    // metric added there has to arrive here too — the hand-written copy was
+    // one more place to remember. `exerciseMinutesSeenRecently` is named
+    // separately because it is the one field on a reading that is not a
+    // reading; see judgedReadingValue.
     expect(Object.keys(full).sort()).toEqual(
-      ['steps', 'sleepHours', ...NUTRIENT_METRICS].sort(),
+      [...HEALTH_METRICS, 'exerciseMinutesSeenRecently'].sort(),
     );
   });
 });
@@ -527,5 +543,123 @@ describe('healthTaskNote', () => {
     for (const metric of NUTRIENT_METRICS) {
       expect(healthTaskNote(rule({ metric }), reading({ [metric]: null }))).toBeUndefined();
     }
+  });
+});
+
+describe('exercise minutes, and the live-metric gate', () => {
+  // The whole reason this metric needed a rule of its own. HealthKit writes no
+  // sample for a day that earned no exercise minutes, so a day of none reads
+  // exactly like a refusal — and a plain null-never-matches rule would fire on
+  // the day you managed eight minutes and stay silent on the day you did
+  // nothing, which is precisely backwards.
+
+  it('fires on a real shortfall, like any other floor', () => {
+    expect(ruleShortfallToday(
+      rule({ metric: 'exerciseMinutes', threshold: 20 }),
+      reading({ exerciseMinutes: 8 }),
+    )).toBe(true);
+  });
+
+  it('does not fire when the threshold is met', () => {
+    expect(ruleShortfallToday(
+      rule({ metric: 'exerciseMinutes', threshold: 20 }),
+      reading({ exerciseMinutes: 20 }),
+    )).toBe(false);
+  });
+
+  it('reads an absent figure as zero once the metric is known to be live', () => {
+    // The day the rule is most about.
+    expect(ruleShortfallToday(
+      rule({ metric: 'exerciseMinutes', threshold: 20 }),
+      reading({ exerciseMinutes: null, exerciseMinutesSeenRecently: true }),
+    )).toBe(true);
+  });
+
+  it('stays silent on an absent figure when nothing records the metric', () => {
+    // Somebody with no device recording exercise must never be told daily,
+    // for ever, that they did none. This is the case docs/arch/health-data.md
+    // is about: a refused read and a day with nothing recorded are one answer.
+    expect(ruleShortfallToday(
+      rule({ metric: 'exerciseMinutes', threshold: 20 }),
+      reading({ exerciseMinutes: null, exerciseMinutesSeenRecently: false }),
+    )).toBe(false);
+  });
+
+  it('leaves every other metric’s absence alone', () => {
+    // The gate is one named metric rather than a general "absence is zero"
+    // switch, precisely so it cannot be turned on for steps.
+    expect(ruleShortfallToday(
+      rule({ metric: 'steps', threshold: 3000 }),
+      reading({ steps: null, exerciseMinutesSeenRecently: true }),
+    )).toBe(false);
+  });
+});
+
+describe('judgedReadingValue', () => {
+  it('passes a present reading through untouched', () => {
+    expect(judgedReadingValue({ metric: 'exerciseMinutes' }, reading({ exerciseMinutes: 12 }))).toBe(12);
+    expect(judgedReadingValue({ metric: 'steps' }, reading({ steps: 500 }))).toBe(500);
+  });
+
+  it('turns an absent exercise figure into a zero only when the metric is live', () => {
+    expect(judgedReadingValue(
+      { metric: 'exerciseMinutes' },
+      reading({ exerciseMinutes: null, exerciseMinutesSeenRecently: true }),
+    )).toBe(0);
+    expect(judgedReadingValue(
+      { metric: 'exerciseMinutes' },
+      reading({ exerciseMinutes: null, exerciseMinutesSeenRecently: false }),
+    )).toBeNull();
+  });
+
+  it('never invents a zero for any other metric', () => {
+    for (const metric of HEALTH_METRICS) {
+      if (metric === 'exerciseMinutes') continue;
+      const blank = reading({ [metric]: null, exerciseMinutesSeenRecently: true });
+      expect(judgedReadingValue({ metric }, blank)).toBeNull();
+    }
+  });
+});
+
+describe('exercise minutes as a metric', () => {
+  it('accumulates over the day, so it takes no per-rule checkpoint', () => {
+    // The same shape steps and sleep have, which is why it joins them rather
+    // than the nutrients.
+    expect(usesCheckpoint('exerciseMinutes')).toBe(false);
+    expect(usesCheckpoint('steps')).toBe(false);
+    expect(usesCheckpoint('sodiumMg')).toBe(true);
+  });
+
+  it('waits until the day has had its chance, like steps', () => {
+    expect(HEALTH_METRIC_EARLIEST_HOUR.exerciseMinutes).toBe(HEALTH_METRIC_EARLIEST_HOUR.steps);
+  });
+
+  it('says the number with its noun', () => {
+    expect(healthMetricAmount('exerciseMinutes', 20)).toBe('20 minutes of exercise');
+    expect(healthMetricAmount('exerciseMinutes', 1)).toBe('1 minute of exercise');
+  });
+
+  it('describes a rule with its checkpoint, the way steps does', () => {
+    expect(describeHealthRule(rule({ metric: 'exerciseMinutes', threshold: 20 })))
+      .toContain('Under 20 minutes of exercise');
+  });
+
+  it('writes no reading note, because on a firing day the figure is usually an absence', () => {
+    // "Apple Health has recorded 0 minutes" would round a doubtful reading
+    // into a confident claim, which is the one thing the health rules may not
+    // do. Steps says nothing for its own version of this reason.
+    expect(healthTaskNote(
+      rule({ metric: 'exerciseMinutes', threshold: 20 }),
+      reading({ exerciseMinutes: null, exerciseMinutesSeenRecently: true }),
+    )).toBeUndefined();
+  });
+});
+
+describe('anyExerciseRule', () => {
+  it('is true only for an enabled exercise rule', () => {
+    expect(anyExerciseRule([rule({ metric: 'exerciseMinutes' })])).toBe(true);
+    expect(anyExerciseRule([rule({ metric: 'exerciseMinutes', enabled: false })])).toBe(false);
+    expect(anyExerciseRule([rule({ metric: 'steps' })])).toBe(false);
+    expect(anyExerciseRule([])).toBe(false);
   });
 });

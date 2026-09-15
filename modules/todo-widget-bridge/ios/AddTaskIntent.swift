@@ -93,6 +93,15 @@ struct AddTaskIntent: AppIntent {
 // AppEntity/AppEnum parameters, and title is a free-text String, so Xcode's
 // ExtractAppIntentsMetadata archive step rejects it ("AppEntity and AppEnum
 // are the only allowed types for title").
+//
+// The two disposal shortcuts below take the opposite shape, and the contrast is
+// the thing to read before adding a third. Each presets its own outcome on
+// MarkDisposedIntent (see MarkDisposedIntent.swift) so the phrase spells that
+// half out and interpolates only the item — which it *can* interpolate, because
+// the item is an AppEntity and this title is not. One sentence, no follow-up
+// question. Splitting them this way rather than interpolating the outcome enum
+// too is what keeps "used up" and "gone bad" sounding like things people say
+// instead of a form being filled in.
 struct DundundunShortcuts: AppShortcutsProvider {
     static var appShortcuts: [AppShortcut] {
         AppShortcut(
@@ -102,6 +111,23 @@ struct DundundunShortcuts: AppShortcutsProvider {
             ],
             shortTitle: "Add Task",
             systemImageName: "square.and.pencil"
+        )
+        AppShortcut(
+            intent: MarkDisposedIntent(outcome: .usedUp),
+            phrases: [
+                "Mark \(\.$item) as used up in \(.applicationName)",
+                "I used up \(\.$item) in \(.applicationName)",
+            ],
+            shortTitle: "Mark Used Up",
+            systemImageName: "checkmark.circle"
+        )
+        AppShortcut(
+            intent: MarkDisposedIntent(outcome: .spoiled),
+            phrases: [
+                "Mark \(\.$item) as gone bad in \(.applicationName)",
+            ],
+            shortTitle: "Mark Gone Bad",
+            systemImageName: "trash"
         )
     }
 }

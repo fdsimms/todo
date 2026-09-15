@@ -348,6 +348,7 @@ export function RemindersCaptureSettings() {
   };
 
   return (
+    <>
     <SettingsSection
       label="Apple Reminders"
       footer="Say “Hey Siri, remind me to…” and it lands here. Siri adds to whichever list is set as Default in Settings › Apps › Reminders, so point that at the list above. The title and notes come across as the task; a due date, repeat or alarm is read too, but it waits on the task in your Inbox until you accept it, so nothing schedules itself before you’ve seen it. Each reminder is deleted from the list once its task exists. Turn that off and they stay put, and anything whose name you already have is skipped instead. Completed reminders are left alone either way."
@@ -662,5 +663,51 @@ export function RemindersCaptureSettings() {
         </>
       )}
     </SettingsSection>
+
+    {/* The other way of talking to this app, and deliberately its own section
+        rather than more of the footer above: the two share a trigger word and
+        nothing else. Everything above routes through the Reminders app and
+        needs a list pointed at it before it does anything, while these are the
+        app's own shortcuts and work as soon as it is installed. Read as one
+        section, the setup instructions for the first would look like they
+        applied to the second.
+
+        Each row's hint is the phrase itself and `alwaysShowHint` carries it
+        past "Hide help text", which is the case that prop is for: these rows
+        have no control, so the hint is not an explanation of the row, it is
+        the whole row. Gated, both would read as bare labels naming a thing the
+        app can do without ever saying how. What each phrase can vary is in the
+        footer instead, which stays gated like every other footer. */}
+    <SettingsSection
+      label="Siri shortcuts"
+      footer={
+        'These work as soon as the app is installed, with nothing to switch on. '
+        + (kitchenEnabled
+          ? 'Name anything in your groceries in place of bananas, and say “as gone bad” instead if it spoiled. '
+          : '')
+        + 'The Shortcuts app is where to change the wording or put one on the Action Button.'
+      }
+    >
+      <SettingsRow
+        entryId="siriAddTask"
+        icon="mic-outline"
+        label="Add a task"
+        hint="“Hey Siri, add a task in dundundun”"
+        alwaysShowHint
+      />
+      {kitchenEnabled && (
+        <>
+          <View style={styles.sep} />
+          <SettingsRow
+            entryId="siriMarkUsedUp"
+            icon="checkmark-circle-outline"
+            label="Mark something used up"
+            hint="“Hey Siri, mark bananas as used up”"
+            alwaysShowHint
+          />
+        </>
+      )}
+    </SettingsSection>
+    </>
   );
 }
