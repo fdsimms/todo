@@ -2518,6 +2518,17 @@ export interface Task {
   // than guessed.
   actualMinutes: number | null;
 
+  // The estimate that stood when this task was timed, kept because
+  // applyMeasuredTime is about to overwrite it (#2681). Null means never
+  // timed, timed with no estimate to compare against, or timed again — a
+  // second measurement is being compared to the first one rather than to a
+  // guess, and that is not evidence about how somebody estimates.
+  //
+  // Read only in aggregate, by estimateCalibration.ts, and never shown against
+  // the single task it came from: one task running long says nothing, and
+  // saying it would turn a workload read into a judgement about the person.
+  estimateBeforeTiming: number | null;
+
   // Timed tasks ("play violin for 15 minutes") — a duration the task counts
   // down against. Once the countdown runs out the task reads as ready to
   // complete; it never blocks completion (see isTimerReady in utils/timer.ts).

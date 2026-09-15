@@ -705,7 +705,7 @@ export function GroceryItemSheet({
   const varietyOptions: PillGroupOption[] = [
     {
       key: '__not-a-variety__',
-      label: 'Not a variety',
+      label: 'Just itself',
       selected: !item.varietyOfKey,
       pinned: true,
       onPress: () => {
@@ -1365,8 +1365,8 @@ export function GroceryItemSheet({
     },
     {
       key: 'varietyOf',
-      label: 'Variety of',
-      keywords: ['kind', 'type', 'generic', 'general', 'counts as'],
+      label: 'Counts as',
+      keywords: ['kind', 'type', 'generic', 'general', 'variety of'],
       node: (
         <View onLayout={(e: LayoutChangeEvent) => {
           fieldYRefs.current.varietyOf = e.nativeEvent.layout.y;
@@ -1376,9 +1376,9 @@ export function GroceryItemSheet({
               different thing you'd tolerate, this says the item *is* the
               thing, more precisely named. See GroceryItem.varietyOfKey. */}
           <CollapsibleField
-            label="Variety of"
+            label="Counts as"
             summary={varietySummary}
-            emptySummary="Not a variety"
+            emptySummary="Just itself"
             hint={`The general ingredient this item counts as, like white onion for onion. A recipe line naming the general ingredient accepts ${item.name.toLowerCase()}.`}
             expanded={openField === 'varietyOf'}
             onToggle={() => toggleField('varietyOf')}

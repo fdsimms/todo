@@ -45,6 +45,11 @@ interface Props {
   onClose: () => void;
 }
 
+/** One card the deck has moved past — see the `history` state's own doc comment. */
+type PantryReviewHistoryEntry =
+  | { kind: 'answered'; item: GroceryItem; entry: GroceryListEntry | null; answer: PantryReviewAnswer }
+  | { kind: 'skipped'; item: GroceryItem };
+
 /**
  * The pantry review deck — one card per doubtful thing, answered by swiping.
  *
@@ -69,6 +74,13 @@ interface Props {
  * anyone who hasn't been told, so the buttons are the real control and the
  * gesture is the accelerator. They are also where the accessibility labels
  * live, which a bare pan gesture has nowhere to put.
+ *
+ * **Skip is button-only, the same as Undo.** Not every card has an honest
+ * "have/low/out" answer at the moment you're standing in front of the
+ * cupboard — deciding later has to be a real option, or the deck is a trap
+ * for the one card you can't currently answer. Skipping writes nothing, so a
+ * skipped row carries no undo of its own in the finished review list; the
+ * top-of-deck Undo still takes it back, same as it takes back an answer.
  */
 export function PantryReviewSheet({ visible, onClose }: Props) {
   const colors = useColors();
@@ -82,26 +94,29 @@ export function PantryReviewSheet({ visible, onClose }: Props) {
   const [deck, setDeck] = useState<PantryReviewDeck>(EMPTY_DECK);
   const [index, setIndex] = useState(0);
   /**
-   * One row snapshot per answered card, newest last — what Undo writes back,
-   * and what the finished screen's review list is built from.
+   * One entry per card the deck has moved past, newest last — what Undo
+   * unwinds, and what the finished screen's review list is built from.
    *
-   * Snapshots rather than a list of answers: the three answers aren't each
-   * other's opposites, so undoing "Running low" means restoring the
-   * `lastAddedAt` it may have changed and the trolley it may have put the row
-   * in, which only the row and its membership as they stood can say. Both, and
-   * not just the row: membership is a table now (see `GroceryListEntry`), so
-   * the item alone can't say whether it was already on this list.
+   * A card either got answered or got skipped, and only the first kind wrote
+   * anything: a `skipped` entry exists purely so `undo` and the progress
+   * count have one stack to read instead of two, and it carries nothing to
+   * revert — the row is exactly as the deck found it, unasked, still due for
+   * a card on the next pass.
+   *
+   * An `answered` entry snapshots the row rather than just naming the
+   * answer: the three answers aren't each other's opposites, so undoing
+   * "Running low" means restoring the `lastAddedAt` it may have changed and
+   * the trolley it may have put the row in, which only the row and its
+   * membership as they stood can say. Both, and not just the row: membership
+   * is a table now (see `GroceryListEntry`), so the item alone can't say
+   * whether it was already on this list.
    *
    * `answer` rides along so the review list can show and change what was
    * picked without re-deriving it from the row — the columns three answers
    * write aren't each other's inverses either (see `answerPantryReview`), so
    * there's no reading a row back into "have/low/out".
    */
-  const [history, setHistory] = useState<Array<{
-    item: GroceryItem;
-    entry: GroceryListEntry | null;
-    answer: PantryReviewAnswer;
-  }>>([]);
+  const [history, setHistory] = useState<PantryReviewHistoryEntry[]>([]);
 
   const pan = useRef(new Animated.ValueXY({ x: 0, y: 0 })).current;
   // Read by the responder callbacks, which are built once and would otherwise
@@ -134,12 +149,26 @@ export function PantryReviewSheet({ visible, onClose }: Props) {
       const entry = entryFor(state.listEntries, card.item.id, state.activeListId);
       haptics.tap();
       answerPantryReview(card.item.id, answer);
-      setHistory(h => [...h, { item: live ?? card.item, entry, answer }]);
+      setHistory(h => [...h, { kind: 'answered', item: live ?? card.item, entry, answer }]);
       setIndex(i => i + 1);
       pan.setValue({ x: 0, y: 0 });
     },
     [answerPantryReview, pan]
   );
+
+  /**
+   * Move past the front card without answering it — nothing is written, so
+   * the row is exactly as due for a card as it was before, next time the
+   * deck is opened.
+   */
+  const skip = useCallback(() => {
+    const card = deckRef.current.cards[indexRef.current];
+    if (!card) return;
+    haptics.tap();
+    setHistory(h => [...h, { kind: 'skipped', item: card.item }]);
+    setIndex(i => i + 1);
+    pan.setValue({ x: 0, y: 0 });
+  }, [pan]);
 
   /**
    * Fling the card out the way it was answered, then commit.
@@ -179,7 +208,7 @@ export function PantryReviewSheet({ visible, onClose }: Props) {
     if (history.length === 0) return;
     haptics.tap();
     const previous = history[history.length - 1];
-    revertPantryAnswer(previous.item, previous.entry);
+    if (previous.kind === 'answered') revertPantryAnswer(previous.item, previous.entry);
     setHistory(h => h.slice(0, -1));
     setIndex(i => Math.max(0, i - 1));
     pan.setValue({ x: 0, y: 0 });
@@ -199,7 +228,7 @@ export function PantryReviewSheet({ visible, onClose }: Props) {
   const undoReviewEntry = useCallback(
     (i: number) => {
       const entry = history[i];
-      if (!entry) return;
+      if (!entry || entry.kind !== 'answered') return;
       haptics.tap();
       revertPantryAnswer(entry.item, entry.entry);
       setHistory(h => h.filter((_, idx) => idx !== i));
@@ -220,11 +249,11 @@ export function PantryReviewSheet({ visible, onClose }: Props) {
   const changeReviewAnswer = useCallback(
     (i: number, answer: PantryReviewAnswer) => {
       const entry = history[i];
-      if (!entry || entry.answer === answer) return;
+      if (!entry || entry.kind !== 'answered' || entry.answer === answer) return;
       haptics.tap();
       revertPantryAnswer(entry.item, entry.entry);
       answerPantryReview(entry.item.id, answer);
-      setHistory(h => h.map((e, idx) => (idx === i ? { ...e, answer } : e)));
+      setHistory(h => h.map((e, idx) => (idx === i && e.kind === 'answered' ? { ...e, answer } : e)));
     },
     [answerPantryReview, history, revertPantryAnswer]
   );
@@ -275,10 +304,14 @@ export function PantryReviewSheet({ visible, onClose }: Props) {
 
   const cards = deck.cards;
   const card = cards[index];
-  // Equal to `index` while swiping (they advance together in `commit`/`undo`)
-  // and the one that keeps moving once the deck is finished, as the review
-  // list's own per-row Undo takes rows back out of it.
-  const answered = history.length;
+  // Equal to `index` while swiping (they advance together in `commit`/`skip`/
+  // `undo`) and the one that keeps moving once the deck is finished, as the
+  // review list's own per-row Undo takes rows back out of it. Answered and
+  // skipped both move the deck past a card, so this counts both — the label
+  // reads "reviewed" rather than "checked" for the same reason.
+  const reviewed = history.length;
+  const answered = history.filter(h => h.kind === 'answered').length;
+  const skipped = reviewed - answered;
   const finished = !card;
 
   const rotate = pan.x.interpolate({
@@ -309,10 +342,10 @@ export function PantryReviewSheet({ visible, onClose }: Props) {
         {cards.length > 0 && (
           <View style={styles.progress}>
             <View style={styles.track}>
-              <View style={[styles.fill, { width: `${(answered / cards.length) * 100}%` }]} />
+              <View style={[styles.fill, { width: `${(reviewed / cards.length) * 100}%` }]} />
             </View>
             <Text style={styles.progressText}>
-              {answered} of {cards.length} checked
+              {reviewed} of {cards.length} reviewed
             </Text>
           </View>
         )}
@@ -330,23 +363,25 @@ export function PantryReviewSheet({ visible, onClose }: Props) {
                 <Ionicons name="checkmark-done-outline" size={iconSize.lg} color={colors.textTertiary} />
               </View>
               <Text style={styles.reviewTitle}>All done</Text>
-              <Text style={styles.reviewSubtitle}>{describePantryReviewDone(answered, deck.omitted)}</Text>
+              <Text style={styles.reviewSubtitle}>{describePantryReviewDone(answered, skipped, deck.omitted)}</Text>
             </View>
-            {history.length > 0 && (
+            {answered > 0 && (
               <ScrollView
                 style={styles.reviewList}
                 contentContainerStyle={{ paddingBottom: insets.bottom + spacing.lg }}
               >
-                {history.map((entry, i) => (
-                  <ReviewRow
-                    key={entry.item.id}
-                    entry={entry}
-                    colors={colors}
-                    styles={styles}
-                    onChange={answer => changeReviewAnswer(i, answer)}
-                    onUndo={() => undoReviewEntry(i)}
-                  />
-                ))}
+                {history.map((entry, i) =>
+                  entry.kind !== 'answered' ? null : (
+                    <ReviewRow
+                      key={entry.item.id}
+                      entry={entry}
+                      colors={colors}
+                      styles={styles}
+                      onChange={answer => changeReviewAnswer(i, answer)}
+                      onUndo={() => undoReviewEntry(i)}
+                    />
+                  )
+                )}
               </ScrollView>
             )}
           </View>
@@ -357,42 +392,48 @@ export function PantryReviewSheet({ visible, onClose }: Props) {
                 .slice(index, index + 3)
                 .map((entry, offset) => ({ entry, offset }))
                 .reverse()
-                .map(({ entry, offset }) =>
-                  offset === 0 ? (
-                    <Animated.View
-                      key={entry.item.id}
-                      {...responder.panHandlers}
-                      style={[
-                        styles.card,
-                        shadows.card,
-                        { transform: [{ translateX: pan.x }, { translateY: pan.y }, { rotate }] },
-                      ]}
-                    >
-                      <Animated.View style={[styles.stamp, styles.stampOut, { opacity: stampOpacity('out') }]}>
-                        <Text style={[styles.stampText, { color: colors.red }]}>Out of it</Text>
-                      </Animated.View>
-                      <Animated.View style={[styles.stamp, styles.stampHave, { opacity: stampOpacity('have') }]}>
-                        <Text style={[styles.stampText, { color: colors.green }]}>Still have it</Text>
-                      </Animated.View>
-                      <Animated.View style={[styles.stamp, styles.stampLow, { opacity: stampOpacity('low') }]}>
-                        <Text style={[styles.stampText, { color: colors.orange }]}>Running low</Text>
-                      </Animated.View>
-                      <CardBody card={entry} styles={styles} />
-                    </Animated.View>
-                  ) : (
-                    <View
-                      key={entry.item.id}
-                      style={[
-                        styles.card,
-                        shadows.card,
-                        {
-                          transform: [{ scale: 1 - offset * 0.05 }, { translateY: -offset * 10 }],
-                          opacity: 1 - offset * 0.3,
-                        },
-                      ]}
-                    />
-                  )
-                )}
+                .map(({ entry, offset }) => (
+                  // Always the same component type at this key, front or
+                  // peeking — a card is promoted from a peeking `View` to the
+                  // driven `Animated.View` exactly once, on the swipe after
+                  // its own, and switching element type at an unchanged key
+                  // tears the view down and remounts it, reconnecting `pan`'s
+                  // native-driven node to a fresh native view in the same
+                  // commit as the reset that's supposed to zero it out. The
+                  // reconnect can race that reset, leaving the promoted card's
+                  // real content transformed out of sight and only the plain
+                  // card behind it showing — until something (backgrounding
+                  // the app) forces iOS to redraw every layer and catch it up.
+                  <Animated.View
+                    key={entry.item.id}
+                    {...(offset === 0 ? responder.panHandlers : null)}
+                    style={[
+                      styles.card,
+                      shadows.card,
+                      offset === 0
+                        ? { transform: [{ translateX: pan.x }, { translateY: pan.y }, { rotate }] }
+                        : {
+                            transform: [{ scale: 1 - offset * 0.05 }, { translateY: -offset * 10 }],
+                            opacity: 1 - offset * 0.3,
+                          },
+                    ]}
+                  >
+                    {offset === 0 && (
+                      <>
+                        <Animated.View style={[styles.stamp, styles.stampOut, { opacity: stampOpacity('out') }]}>
+                          <Text style={[styles.stampText, { color: colors.red }]}>Out of it</Text>
+                        </Animated.View>
+                        <Animated.View style={[styles.stamp, styles.stampHave, { opacity: stampOpacity('have') }]}>
+                          <Text style={[styles.stampText, { color: colors.green }]}>Still have it</Text>
+                        </Animated.View>
+                        <Animated.View style={[styles.stamp, styles.stampLow, { opacity: stampOpacity('low') }]}>
+                          <Text style={[styles.stampText, { color: colors.orange }]}>Running low</Text>
+                        </Animated.View>
+                        <CardBody card={entry} styles={styles} />
+                      </>
+                    )}
+                  </Animated.View>
+                ))}
             </View>
           </View>
         )}
@@ -432,6 +473,15 @@ export function PantryReviewSheet({ visible, onClose }: Props) {
                 tint={colors.green}
                 background={colors.green + '2E'}
                 onPress={() => flingOut('have')}
+                styles={styles}
+              />
+              <Action
+                icon="play-skip-forward-outline"
+                label="Skip"
+                small
+                tint={colors.textSecondary}
+                background={colors.bgTertiary}
+                onPress={skip}
                 styles={styles}
               />
             </View>
