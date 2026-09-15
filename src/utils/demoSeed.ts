@@ -63,6 +63,7 @@ import {
 } from './weekendTasks';
 import { weatherSourceId, defaultWeatherRules } from './weatherTasks';
 import { screenTimeSourceId, defaultScreenTimeRules } from './screenTimeRules';
+import { defaultEventRules, eventOccurrenceKey, eventTaskSourceId } from './eventTasks';
 import { healthSourceId, defaultHealthRules } from './healthRules';
 import { dueMealPlanNudge, mealPlanNudgeLinkUrl } from './mealPlanNudge';
 import { groceryNameKey } from './groceryParse';
@@ -1178,6 +1179,37 @@ export function seedDemoData(): void {
     dueDate: today.toISOString(),
     category: 'Screen Time',
     ...generatedBy('screenTime', screenTimeSourceId(dayKeyOf(today), walkRule.id)),
+  });
+
+  // An event task, seeded directly for the same reason the three above are:
+  // checkEventTasks refuses in demo mode, and it would have nothing to read
+  // anyway — the demo database's calendar is never read, so there is no event
+  // for a rule to match. What can honestly be shown is the shape: a task
+  // somebody's own rule wrote about something on their calendar, landing
+  // ahead of it rather than on the day.
+  //
+  // The occurrence key is invented rather than taken from a real event, which
+  // is the point: nothing here touches EventKit. It still goes through
+  // `eventTaskSourceId` so the seeded row can't drift from the shape
+  // `eventTaskRuleIdOf` reads back.
+  addCategory('Calendar');
+  setCategoryEmoji('Calendar', '📅');
+  useSettingsStore.getState().setEventTaskCategory('Calendar');
+  const eventRules = defaultEventRules();
+  useSettingsStore.getState().setEventRules(eventRules);
+  const [packRule] = eventRules;
+  const demoFlight = {
+    id: 'demo-flight',
+    start: addDays(today, packRule.leadDays).toISOString(),
+  };
+  addTask({
+    title: packRule.title,
+    dueDate: today.toISOString(),
+    category: 'Calendar',
+    ...generatedBy(
+      'eventTask',
+      eventTaskSourceId(eventOccurrenceKey(demoFlight), packRule.id),
+    ),
   });
 
   // A health task, seeded directly for the screen-time row's reason: the gate

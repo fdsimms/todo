@@ -127,6 +127,7 @@ export function SettingsScreen() {
       birthdayGiftTasks: settings.birthdayGiftTasks,
       reachOutTasks: settings.reachOutTasks,
       weatherTasks: settings.weatherTasks,
+      eventTasks: settings.eventTasks,
       screenTimeTasks: settings.screenTimeTasks,
     healthTasks: settings.healthTasks,
       moodLogTasks: settings.moodLogTasks,

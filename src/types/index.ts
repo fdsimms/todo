@@ -427,6 +427,60 @@ export interface HealthRule {
 }
 
 /**
+ * "When an event whose title says *flight* is on the calendar, add a task to
+ * pack, three days before it" — the fourth user-authored rule shape, after
+ * `WeatherRule`, `ScreenTimeRule` and `HealthRule` above, and the first
+ * matched against text rather than against a number or a named condition.
+ *
+ * **What it may read, and why that is settled.** The cue is the event's own
+ * `title`, never its attendees: `docs/arch/people.md`'s "Where the two lines
+ * actually fall" states that boundary for the one existing title reader
+ * (`peopleNamedInTitle`), and `BusyEvent` carries no attendee field precisely
+ * so the question cannot be reopened by accident. A title is what *you* typed
+ * about your own plans; an attendee list is everybody you happened to sit in
+ * a room with.
+ *
+ * **What keeps it clear of "a guess is never written down".** The same doc
+ * forbids the app deciding, off a title, that something is true. This does not
+ * decide anything: the user wrote the word to match and the task to write, so
+ * the app's whole contribution is noticing that the word is there. That is the
+ * position `WeatherRule` and `ScreenTimeRule` are already in, and it is why
+ * this reads titles where `calendarHistory.ts` — which infers — may only
+ * offer.
+ */
+export interface EventTaskRule {
+  id: string;
+  /**
+   * The word or phrase looked for in an event's title, matched
+   * case-insensitively and on **whole words only**, the same test
+   * `peopleNamedInTitle` applies for the same reason: a substring match makes
+   * "gym" fire on "Gymnastics recital", and a rule that fires on the wrong
+   * events is one nobody can trust enough to leave on.
+   *
+   * Floored at `EVENT_MATCH_MIN_LENGTH` (see `eventTasks.ts`) — a two-letter
+   * cue matches far too much to be a cue.
+   */
+  match: string;
+  /** The task's title, e.g. "Pack a bag". */
+  title: string;
+  /**
+   * How many days before the event the task lands on. 0 is the event's own
+   * day, which is what a "bring the slides" rule wants; a "pack" rule wants
+   * three.
+   *
+   * Capped at `EVENT_LEAD_DAYS_MAX`, and the ceiling is not a product call: it
+   * is `CALENDAR_WINDOW_DAYS`, how far ahead the app reads the calendar at
+   * all. A rule with a longer lead than the window could never fire, because
+   * the event would not be visible yet on the day the task was supposed to
+   * appear. See `eventTasks.ts`.
+   */
+  leadDays: number;
+  // Off keeps the rule written down but stops it firing, same as WeatherRule.
+  enabled: boolean;
+}
+
+
+/**
  * How a capture target files what it creates, beyond the words in the reminder
  * itself.
  *
@@ -1587,6 +1641,15 @@ export type GeneratedKind =
   // same "square on the calendar, not a row" position mealPlanNudge is in, and
   // for the same reason writeGeneratedOptOut has nothing to write for it.
   | 'calendarReview'
+  // A calendar event whose title matches a rule the user wrote — see
+  // src/utils/eventTasks.ts. Its source id is `${eventId}|${eventStart}#${ruleId}`:
+  // one *occurrence* of an event (EventKit shares one id across a whole
+  // recurring series, the same trap EventReminder and HiddenEvent are keyed
+  // around) and the rule that named it. Not `sourced` — a calendar event is
+  // not a row in this app, so there is nowhere to stamp an opt-out and the
+  // mark lives in settings (`eventTaskHandled`), the position calendarReview
+  // and the other three rule generators are already in.
+  | 'eventTask'
   // A recurring task whose supply of a consumable is nearly spent becomes
   // "Order more X". The first generator whose source is a *task* rather than a
   // row in another store — see src/utils/supply.ts.

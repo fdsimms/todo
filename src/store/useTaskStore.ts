@@ -265,6 +265,13 @@ import { useCalendarStore } from './useCalendarStore';
 import { useWeatherStore } from './useWeatherStore';
 import { classifyWeather } from '../utils/weatherCondition';
 import { weatherSourceId, parseWeatherSourceId, ruleMatchesToday } from '../utils/weatherTasks';
+import {
+  eventTaskRuleIdOf,
+  matchedEventTasks,
+  pruneHandledEventTasks,
+  type HandledEventTasks,
+} from '../utils/eventTasks';
+import { taskFieldsFromEvent } from '../utils/calendarEventImport';
 import { useScreenTimeStore } from './useScreenTimeStore';
 import { useHealthStore } from './useHealthStore';
 import { screenTimeSourceId, parseScreenTimeSourceId, crossingWantsTask } from '../utils/screenTimeRules';
@@ -517,6 +524,14 @@ function writeGeneratedOptOut(task: Task, value: false | null): void {
       // stops a swiped-away task coming straight back, and checkWeatherTasks
       // writes it unconditionally, the same order calendarReview's own mark
       // is written in.
+      return;
+    case 'eventTask':
+      // Nothing to write, and for two reasons rather than one: the rule lives
+      // in settings, and the other half of the source is a calendar event,
+      // which is not this app's row to stamp anything on at all. The mark is
+      // `eventTaskHandled`, written by checkEventTasks as it creates the task
+      // — which is also what stops a swiped-away one coming back, since the
+      // entry outlives the task and is pruned on the occurrence's own end.
       return;
     case 'screenTime':
       // Nothing to write either, and for the same reason: the source is a
@@ -1499,6 +1514,7 @@ interface TaskStore extends UndoHistoryActions {
    */
   checkCalendarReviewTasks: () => void;
   checkWeatherTasks: () => void;
+  checkEventTasks: () => void;
   checkScreenTimeTasks: () => void;
   checkHealthTasks: () => void;
   /**
@@ -5285,6 +5301,107 @@ export const useTaskStore = create<TaskStore>((set, get) => ({
       return { ...rule, lastFiredDayKey: todayKey };
     });
     if (rulesChanged) settings.setWeatherRules(nextRules);
+  },
+
+  /**
+   * The twenty-third generator, and the fourth whose source is a rule the user
+   * wrote — see `src/utils/eventTasks.ts`. Structurally it is
+   * `checkWeatherTasks` with the calendar in place of the forecast, and it
+   * parts company with it on exactly one thing: **the idempotency mark.**
+   *
+   * A weather rule asks one question a day, so it can carry its own
+   * `lastFiredDayKey` and spend it unconditionally before deciding. A rule here
+   * is asked about every event in a fourteen-day window at once, so a day key
+   * cannot say which of them has been answered. The mark is therefore a record
+   * keyed by occurrence (`eventTaskHandled`), written as a task is created, and
+   * pruned every sweep to occurrences that have not yet finished. That pruning
+   * is what keeps it clear of the growing-record path `generatedTasks.ts` rules
+   * out: the objection there is to a *generic* suppression record, which has
+   * nothing general to say about when an entry stops mattering. An occurrence
+   * that is over is never coming back.
+   *
+   * It is also why a non-matching pair is deliberately **not** marked. Weather
+   * marks "considered and found not to apply" because tomorrow is a different
+   * question; here the same event asked again tomorrow is the same question,
+   * and an event renamed to match a rule should fire it.
+   */
+  checkEventTasks() {
+    const settings = useSettingsStore.getState();
+    if (!settings.eventTasks) return;
+    // Same refusal checkCalendarReviewTasks makes, and it carries the same
+    // weight: a task written here would persist in the demo database as a
+    // claim about the real calendar, long after the demo session ends.
+    if (isDemoModeActive()) return;
+    // The read half of the calendar feature being off means there is no window
+    // to match against — and, more to the point, that the user has said not to
+    // read one.
+    if (!settings.calendarReadEnabled) return;
+    if (!settings.eventTaskCategory) return;
+
+    const calendar = useCalendarStore.getState();
+    // Not the same question as `events` being empty (see CalendarState.loaded).
+    // An unread window must not be read as "nothing is coming up" — the same
+    // refusal checkCalendarReviewTasks makes one method above.
+    if (!calendar.loaded) return;
+
+    const now = new Date();
+    const tasks = get().tasks;
+    const activeRuleIds = new Set(settings.eventRules.map(r => r.id));
+
+    // Clear a task whose rule has since been deleted, before deciding what is
+    // wanted — the same clear-before-create ordering every generator here uses.
+    //
+    // **An event vanishing from the window is deliberately not a reason to
+    // clear.** It is ambiguous in a way a deleted rule is not: an occurrence
+    // leaves the window when it is cancelled *and* when it simply happens, and
+    // the second is the ordinary case. Reading it as "cancelled" would delete
+    // the task on the morning after the flight it was written for, which is a
+    // row the user may well have deferred and is in any case theirs by then.
+    liveGeneratedTasksOfKind(tasks, 'eventTask')
+      .filter(task => {
+        const ruleId = eventTaskRuleIdOf(task);
+        return !ruleId || !activeRuleIds.has(ruleId);
+      })
+      .forEach(task => deleteGeneratedTaskQuietly(task.id));
+
+    const handled = pruneHandledEventTasks(settings.eventTaskHandled, now);
+    const matches = matchedEventTasks(settings.eventRules, calendar.events, now, handled);
+
+    // Pruning alone can change the record, so it is written back even when
+    // nothing matched — otherwise a finished occurrence's entry survives until
+    // the next sweep that happens to write one.
+    const nextHandled: HandledEventTasks = { ...handled };
+
+    for (const match of matches) {
+      reconcileGeneratedTask({
+        kind: 'eventTask',
+        sourceId: match.sourceId,
+        // Never false: the clear pass above already handles "not wanted", and
+        // a match that should not fire never reaches this loop.
+        wanted: true,
+        // The title is the rule's own and does not vary. The *date* could in
+        // principle chase the event moving, and deliberately does not: see the
+        // #1953 note in docs/arch/generated-tasks.md — a reconcile that
+        // re-dates a row from anything but its source silently overwrites the
+        // one field the user is most likely to have changed by hand, and
+        // deferring one of these is exactly what somebody would do.
+        drift: () => null,
+        draft: () => ({
+          ...taskFieldsFromEvent(match.event, match.rule.leadDays),
+          // The rule's title is what the task says; the event's is only what
+          // matched it.
+          title: match.rule.title,
+          category: settings.eventTaskCategory,
+          ...generatedBy('eventTask', match.sourceId),
+        }),
+      });
+      nextHandled[match.sourceId] = match.endsAt;
+    }
+
+    const changed = matches.length > 0
+      || Object.keys(nextHandled).length !== Object.keys(settings.eventTaskHandled).length;
+    if (changed) settings.setEventTaskHandled(nextHandled);
+    // No setLastAction, same reasoning as every other generator's sweep.
   },
 
   /**

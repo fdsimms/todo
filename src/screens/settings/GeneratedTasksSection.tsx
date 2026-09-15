@@ -50,6 +50,7 @@ import { SettingsRow } from './SettingsRow';
 import { SettingsSegments } from './SettingsSegments';
 import { InlineTimePicker } from './InlineTimePicker';
 import { WeatherRulesSheet } from '../../components/WeatherRulesSheet';
+import { EventRulesSheet } from '../../components/EventRulesSheet';
 import { ScreenTimeRulesSheet } from '../../components/ScreenTimeRulesSheet';
 import { HealthRulesSheet } from '../../components/HealthRulesSheet';
 import { PillGroup, type PillGroupOption } from '../../components/PillGroup';
@@ -156,6 +157,11 @@ export function GeneratedTasksSection() {
     () => s.weatherRules.filter(r => r.enabled).length,
     [s.weatherRules],
   );
+  const [eventRulesVisible, setEventRulesVisible] = useState(false);
+  const activeEventRuleCount = useMemo(
+    () => s.eventRules.filter(r => r.enabled).length,
+    [s.eventRules],
+  );
 
   const [screenTimeRulesVisible, setScreenTimeRulesVisible] = useState(false);
   const [healthRulesVisible, setHealthRulesVisible] = useState(false);
@@ -233,6 +239,7 @@ export function GeneratedTasksSection() {
       case 'birthdayGift': s.setBirthdayGiftTasks(next); break;
       case 'reachOut': s.setReachOutTasks(next); break;
       case 'weather': s.setWeatherTasks(next); break;
+      case 'eventTask': s.setEventTasks(next); break;
       case 'screenTime': s.setScreenTimeTasks(next); break;
       case 'health': s.setHealthTasks(next); break;
       case 'moodLog': s.setMoodLogTasks(next); break;
@@ -273,6 +280,7 @@ export function GeneratedTasksSection() {
       case 'supplyReorder': return null;
       case 'reachOut': return s.reachOutTaskCategory;
       case 'weather': return s.weatherTaskCategory;
+      case 'eventTask': return s.eventTaskCategory;
       case 'screenTime': return s.screenTimeTaskCategory;
       case 'health': return s.healthTaskCategory;
       case 'moodLog': return s.moodLogTaskCategory;
@@ -304,6 +312,7 @@ export function GeneratedTasksSection() {
       case 'calendarReview': s.setCalendarEventCategory(category); break;
       case 'reachOut': s.setReachOutTaskCategory(category); break;
       case 'weather': s.setWeatherTaskCategory(category); break;
+      case 'eventTask': s.setEventTaskCategory(category); break;
       case 'screenTime': s.setScreenTimeTaskCategory(category); break;
       case 'health': s.setHealthTaskCategory(category); break;
       case 'moodLog': s.setMoodLogTaskCategory(category); break;
@@ -776,6 +785,27 @@ export function GeneratedTasksSection() {
       );
     }
 
+    if (kind === 'eventTask') {
+      return (
+        <>
+          <View style={styles.sep} />
+          <SettingsRow
+            entryId="eventRules"
+            icon="list-outline"
+            iconColor={activeEventRuleCount > 0 ? colors.accent : undefined}
+            label="Rules"
+            hint="Which word in an event's title adds which task, and how far ahead."
+            value={
+              activeEventRuleCount === 0
+                ? 'None'
+                : activeEventRuleCount === 1 ? '1 rule' : `${activeEventRuleCount} rules`
+            }
+            onPress={() => { haptics.tap(); setEventRulesVisible(true); }}
+          />
+        </>
+      );
+    }
+
     if (kind === 'screenTime') {
       return (
         <>
@@ -924,6 +954,7 @@ export function GeneratedTasksSection() {
       )}
     </SettingsSection>
     <WeatherRulesSheet visible={weatherRulesVisible} onClose={() => setWeatherRulesVisible(false)} />
+    <EventRulesSheet visible={eventRulesVisible} onClose={() => setEventRulesVisible(false)} />
     <ScreenTimeRulesSheet visible={screenTimeRulesVisible} onClose={() => setScreenTimeRulesVisible(false)} />
     <HealthRulesSheet visible={healthRulesVisible} onClose={() => setHealthRulesVisible(false)} />
     </>

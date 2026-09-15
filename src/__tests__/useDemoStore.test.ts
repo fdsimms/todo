@@ -101,6 +101,7 @@ import { useSettingsStore } from '../store/useSettingsStore';
 import { shouldNudgePostpone, DEFAULT_POSTPONE_THRESHOLD, driftingTasks } from '../utils/postpone';
 import { initDatabase, isUsingDemoDatabase } from '../db/database';
 import { dayKeyOf, dayKeyToDate, getCurrentDayStart, getLogicalToday } from '../utils/dateUtils';
+import { eventTaskRuleIdOf } from '../utils/eventTasks';
 import { differenceInCalendarDays } from 'date-fns/differenceInCalendarDays';
 import { countPlannedSlots, MEAL_PLAN_NUDGE_SLOT_COUNT } from '../utils/mealPlanNudge';
 import { RECIPE_MEAL_TYPES, LEFTOVER_KEEP_DAYS_DEFAULT } from '../types';
@@ -3550,6 +3551,30 @@ describe('demo seed — groceries, recipes, meals and the fridge', () => {
     rules.filter(r => r.id !== firedRule!.id).forEach(r => {
       expect(r.lastFiredDayKey).toBeNull();
     });
+  });
+
+  it('seeds an event task and the rules alongside it', () => {
+    const { tasks } = useTaskStore.getState();
+    const settings = useSettingsStore.getState();
+
+    const rules = settings.eventRules;
+    expect(rules.length).toBeGreaterThan(0);
+
+    const task = tasks.find(t => t.generatedKind === 'eventTask');
+    expect(task).toBeDefined();
+    expect(task!.category).toBe('Calendar');
+    expect(settings.eventTaskCategory).toBe('Calendar');
+
+    // The row is one a rule wrote, so its title is the rule's and its source
+    // id parses back to that rule — the shape checkEventTasks writes, reached
+    // without touching EventKit.
+    const firedRule = rules.find(r => r.title === task!.title);
+    expect(firedRule).toBeDefined();
+    expect(eventTaskRuleIdOf(task!)).toBe(firedRule!.id);
+
+    // Nothing is marked handled: the demo never ran the sweep, and a seeded
+    // mark would be a claim about an occurrence that does not exist.
+    expect(settings.eventTaskHandled).toEqual({});
   });
 
   it('seeds a health task and the rules alongside it', () => {

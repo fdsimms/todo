@@ -148,6 +148,13 @@ export const GENERATED_KINDS: readonly GeneratedKind[] = [
   // add a task" is one idea and reading them apart is how you learn a third of
   // it.
   'health',
+  // The twenty-third, and the fourth of the rules the user wrote — beside the
+  // other three for their own stated reason: "rules that add a task" is one
+  // idea, and somebody meeting one of them in Settings should meet the rest.
+  // What it reads is the only thing new about it: the forecast, Screen Time
+  // and Health all report a number, where this one reads the words on an event
+  // already sitting in the calendar. See src/utils/eventTasks.ts.
+  'eventTask',
   // The sixteenth and seventeenth, appended as a pair for the reason birthday
   // and birthdayGift sit together: one subject with two lead-ins. Nothing else
   // here reads the mood log, so there is no existing generator either belongs
@@ -225,6 +232,7 @@ export type GeneratedEnabledKey =
   | 'reachOutTasks'
   | 'pantryReviewTasks'
   | 'weatherTasks'
+  | 'eventTasks'
   | 'screenTimeTasks'
   | 'healthTasks'
   | 'moodLogTasks'
@@ -725,6 +733,35 @@ export const GENERATED_KIND_SPECS: Record<GeneratedKind, GeneratedKindSpec> = {
     kitchen: false,
     categorized: true,
     defaultCategory: 'Health',
+  },
+  // The fourth rule the user wrote, and the first cued by text — see
+  // src/utils/eventTasks.ts. Structurally it is `weather` with the calendar in
+  // place of the forecast, and `writeGeneratedOptOut` has nothing to write for
+  // it for the same reason: the source is a rule in settings and an event in
+  // EventKit, neither of which is a row a decline could be stamped on.
+  //
+  // `pausedOnVacation: false`, with the same test the doc's own rule sets: a
+  // generator pauses when it *invents* something to do, and keeps running when
+  // it reacts to something that is happening anyway. An event on the calendar
+  // is the second kind, and pausing would take the feature away at exactly the
+  // moment a lead-time rule earns its keep — the flight this is about is
+  // usually the flight the vacation starts with.
+  //
+  // Ships off, like every generator that adds a surface rather than replacing
+  // one already on screen.
+  eventTask: {
+    kind: 'eventTask',
+    pausedOnVacation: false,
+    enabledKey: 'eventTasks',
+    label: 'Calendar event tasks',
+    onHint: 'A rule adds its task when an event on your calendar matches it',
+    offHint: 'Calendar events add no tasks',
+    icon: 'calendar-number-outline',
+    sourced: false,
+    notice: false,
+    kitchen: false,
+    categorized: true,
+    defaultCategory: 'Calendar',
   },
   // Ships off, like pantryCheck, mealShortfall and birthdayGift, and for the
   // reason all three do: it adds a surface nobody had rather than replacing one
