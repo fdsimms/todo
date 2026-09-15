@@ -7874,6 +7874,50 @@ describe('applyGroupCategory', () => {
     useTaskStore.setState({ tasks: [makeTask({ id: 'a', groupId: 'g1', category: 'Home' })] });
     expect(useTaskStore.getState().applyGroupCategory('g1', 'Home')).toEqual([]);
   });
+
+  // The roster collapses a series to one entry, and collapseSeries picks the
+  // date relevant *today* ahead of the earliest — so with an overdue date still
+  // outstanding, the entry is the later one and updateTask's series scope
+  // (which only reaches later dates) never gets to the overdue one. It kept the
+  // old category: a member filed under two categories at once, which is what
+  // the stack-owns-its-members'-category rule exists to stop.
+  it('re-files every live date of a series member, earlier ones included', () => {
+    const day = (n: number) => new Date(Date.now() + n * 86400000).toISOString();
+    useTaskStore.setState({
+      tasks: [
+        // Earlier by date but pushed out, so isTaskVisible is false and
+        // collapseSeries passes it over for the date that is live today. That
+        // ordering is the whole bug: the roster entry is the *later* row, and
+        // updateTask's series scope only walks forward from it.
+        makeTask({
+          id: 's-deferred', groupId: 'g1', category: 'Work', seriesId: 'set-1',
+          dueDate: day(-5), deferUntil: day(9),
+        }),
+        makeTask({ id: 's-now', groupId: 'g1', category: 'Work', seriesId: 'set-1', dueDate: day(0) }),
+      ],
+    });
+    useTaskStore.getState().applyGroupCategory('g1', 'Home');
+    const byId = (id: string) => useTaskStore.getState().tasks.find(t => t.id === id);
+    expect(byId('s-now')?.category).toBe('Home');
+    expect(byId('s-deferred')?.category).toBe('Home');
+  });
+
+  // The expansion is live rows only, the same line deleteGroup's cascade draws.
+  it('does not re-file a completed or archived date of a series member', () => {
+    const day = (n: number) => new Date(Date.now() + n * 86400000).toISOString();
+    useTaskStore.setState({
+      tasks: [
+        makeTask({ id: 's-done', groupId: 'g1', category: 'Work', seriesId: 'set-1', dueDate: day(-3), completed: true, completedAt: day(-3) }),
+        makeTask({ id: 's-filed', groupId: 'g1', category: 'Work', seriesId: 'set-1', dueDate: day(-2), archived: true }),
+        makeTask({ id: 's-live', groupId: 'g1', category: 'Work', seriesId: 'set-1', dueDate: day(0) }),
+      ],
+    });
+    useTaskStore.getState().applyGroupCategory('g1', 'Home');
+    const byId = (id: string) => useTaskStore.getState().tasks.find(t => t.id === id);
+    expect(byId('s-live')?.category).toBe('Home');
+    expect(byId('s-done')?.category).toBe('Work');
+    expect(byId('s-filed')?.category).toBe('Work');
+  });
 });
 
 describe('groupTasks', () => {
@@ -8737,13 +8781,17 @@ describe('bulkDefer', () => {
 });
 
 describe('bulkSetWhen', () => {
+  // The unpin rides in the row's own patch now rather than a separate
+  // dbBulkSetPinned batch, because each row's date move is decided
+  // individually (see bulkSetWhen's note) and they no longer share one write.
+  // What matters is unchanged: the pin is dropped, and it is persisted.
   it('unpins a pinned task moved to a different day', () => {
     useTaskStore.setState({
       tasks: [makeTask({ id: 'a', pinned: true, dueDate: new Date(2025, 5, 10).toISOString() })],
     });
     useTaskStore.getState().bulkSetWhen(['a'], new Date(2025, 5, 20), []);
     expect(useTaskStore.getState().tasks[0].pinned).toBe(false);
-    expect(dbBulkSetPinned).toHaveBeenCalledWith(['a'], false);
+    expect(dbUpdateTask).toHaveBeenCalledWith(expect.objectContaining({ id: 'a', pinned: false }));
   });
 
   it('unpins a pinned task whose date is cleared', () => {
@@ -8752,7 +8800,7 @@ describe('bulkSetWhen', () => {
     });
     useTaskStore.getState().bulkSetWhen(['a'], null, []);
     expect(useTaskStore.getState().tasks[0].pinned).toBe(false);
-    expect(dbBulkSetPinned).toHaveBeenCalledWith(['a'], false);
+    expect(dbUpdateTask).toHaveBeenCalledWith(expect.objectContaining({ id: 'a', pinned: false }));
   });
 
   it('leaves a pinned task alone when the day is unchanged', () => {
@@ -8762,13 +8810,12 @@ describe('bulkSetWhen', () => {
     });
     useTaskStore.getState().bulkSetWhen(['a'], new Date(2025, 5, 10, 18), []);
     expect(useTaskStore.getState().tasks[0].pinned).toBe(true);
-    expect(dbBulkSetPinned).not.toHaveBeenCalled();
   });
 
   it('leaves an unpinned task alone', () => {
     useTaskStore.setState({ tasks: [makeTask({ id: 'a', pinned: false })] });
     useTaskStore.getState().bulkSetWhen(['a'], new Date(2025, 5, 20), []);
-    expect(dbBulkSetPinned).not.toHaveBeenCalled();
+    expect(useTaskStore.getState().tasks[0].pinned).toBe(false);
   });
 
   // Same rule as bulkDefer above, and updateTask's transitionedIntoNew.
@@ -8794,6 +8841,75 @@ describe('bulkSetWhen', () => {
     });
     useTaskStore.getState().bulkSetWhen(['a'], future, []);
     expect(useTaskStore.getState().tasks[0].seenAt).toBe('2020-01-01T00:00:00.000Z');
+  });
+
+  // The bulk bar's When is the same gesture as a row's own date picker, so it
+  // has to make the same push/pull decision. It wrote a flat dueDate to every
+  // selected row instead, which is #1953 arriving by the other door: push one
+  // occurrence of a recurring task out and its whole future grid moved with it.
+  describe('a date-anchored task moves the way its own row picker moves it', () => {
+    const STORED = new Date(2025, 5, 10);
+
+    it('defers a recurring occurrence pushed out, leaving the grid alone', () => {
+      useTaskStore.setState({
+        tasks: [makeTask({ id: 'a', recurrenceType: 'weekly', dueDate: STORED.toISOString() })],
+      });
+      useTaskStore.getState().bulkSetWhen(['a'], new Date(2025, 5, 12), []);
+      const moved = useTaskStore.getState().tasks[0];
+      expect(moved.dueDate).toBe(STORED.toISOString());
+      expect(moved.deferUntil).toBe(new Date(2025, 5, 12).toISOString());
+    });
+
+    it('re-dates a recurring occurrence pulled forward, keeping the old grid anchor', () => {
+      useTaskStore.setState({
+        tasks: [makeTask({ id: 'a', recurrenceType: 'weekly', dueDate: STORED.toISOString() })],
+      });
+      useTaskStore.getState().bulkSetWhen(['a'], new Date(2025, 5, 8), []);
+      const moved = useTaskStore.getState().tasks[0];
+      expect(moved.dueDate).toBe(new Date(2025, 5, 8).toISOString());
+      expect(moved.recurrenceAnchorDate).toBe(STORED.toISOString());
+      expect(moved.deferUntil).toBeNull();
+    });
+
+    // A series member's date was hand-picked out of a set, and applyTaskDates
+    // reconciles by calendar day — a rewritten dueDate read as a dropped date
+    // and got the row deleted.
+    it('defers a series member pushed out rather than rewriting its date', () => {
+      useTaskStore.setState({
+        tasks: [makeTask({ id: 'a', seriesId: 'set-1', dueDate: STORED.toISOString() })],
+      });
+      useTaskStore.getState().bulkSetWhen(['a'], new Date(2025, 5, 15), []);
+      const moved = useTaskStore.getState().tasks[0];
+      expect(moved.dueDate).toBe(STORED.toISOString());
+      expect(moved.deferUntil).toBe(new Date(2025, 5, 15).toISOString());
+    });
+
+    it('still just re-dates a plain one-off', () => {
+      useTaskStore.setState({
+        tasks: [makeTask({ id: 'a', dueDate: STORED.toISOString() })],
+      });
+      useTaskStore.getState().bulkSetWhen(['a'], new Date(2025, 5, 20), []);
+      const moved = useTaskStore.getState().tasks[0];
+      expect(moved.dueDate).toBe(new Date(2025, 5, 20).toISOString());
+      expect(moved.deferUntil).toBeNull();
+    });
+
+    // One selection, two kinds of row: the whole reason the single shared
+    // dueDate write had to go.
+    it('decides per row across a mixed selection', () => {
+      useTaskStore.setState({
+        tasks: [
+          makeTask({ id: 'rec', recurrenceType: 'weekly', dueDate: STORED.toISOString() }),
+          makeTask({ id: 'plain', dueDate: STORED.toISOString() }),
+        ],
+      });
+      useTaskStore.getState().bulkSetWhen(['rec', 'plain'], new Date(2025, 5, 20), []);
+      const byId = (id: string) => useTaskStore.getState().tasks.find(t => t.id === id);
+      expect(byId('rec')?.dueDate).toBe(STORED.toISOString());
+      expect(byId('rec')?.deferUntil).toBe(new Date(2025, 5, 20).toISOString());
+      expect(byId('plain')?.dueDate).toBe(new Date(2025, 5, 20).toISOString());
+      expect(byId('plain')?.deferUntil).toBeNull();
+    });
   });
 });
 
@@ -12515,12 +12631,14 @@ describe('postponeCount', () => {
     const { tasks } = useTaskStore.getState();
     expect(tasks.find(t => t.id === 'a')?.postponeCount).toBe(2);
     expect(tasks.find(t => t.id === 'b')?.postponeCount).toBe(1);
-    // The count and the day it started from go in one write, so a batch can
-    // never leave a row claiming pushes with no start. The stamp is the *day*
-    // the task was leaving, not the instant it held — the screen renders a date.
-    expect(dbBatchUpdatePostponeCounts).toHaveBeenCalledWith([
-      { id: 'a', postponeCount: 2, driftingSince: new Date(2025, 5, 10).toISOString() },
-    ]);
+    // The count and the day it started from are one fact, so a row can never
+    // be left claiming pushes with no start. The stamp is the *day* the task
+    // was leaving, not the instant it held — the screen renders a date.
+    // Derived inside updateTask now rather than batched alongside a shared
+    // date write, since bulkSetWhen's rows no longer share one (see its note).
+    expect(tasks.find(t => t.id === 'a')?.driftingSince)
+      .toBe(new Date(2025, 5, 10).toISOString());
+    expect(tasks.find(t => t.id === 'b')?.driftingSince).toBeNull();
   });
 
   it('counts a bulk defer without being confused by the untouched dueDate', () => {
