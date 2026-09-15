@@ -94,8 +94,11 @@ export function ReminderCapturesSheet({ visible, onClose, reminderLists, reserve
   const captures = useSettingsStore(useShallow(s => s.reminderCaptures));
   const setCaptures = useSettingsStore(s => s.setReminderCaptures);
   const categories = useCategoryStore(useShallow(s => s.categories));
+  const addCategory = useCategoryStore(s => s.addCategory);
   const projects = useProjectStore(useShallow(s => s.projects));
+  const createProject = useProjectStore(s => s.createProject);
   const tagRegistry = useTaskStore(useShallow(s => s.tagRegistry));
+  const addTag = useTaskStore(s => s.addTag);
 
   /**
    * Which capture's list picker is open. Separate from `RuleListSheet`'s own
@@ -191,6 +194,69 @@ export function ReminderCapturesSheet({ visible, onClose, reminderLists, reserve
   ) => {
     haptics.tap();
     update({ filing, confirmedListId: null });
+  };
+
+  /**
+   * Making the thing a capture files into, from inside the capture editor.
+   *
+   * **Find-or-create, never a second row with the same name.** A name that is
+   * already taken selects what is there rather than being rejected: this is one
+   * field doing both jobs (`PillGroup`'s filter is also its create box), so
+   * typing a name you already have and being told off for it would be the
+   * control fighting itself. `addCategory` and `addTag` already behave this way
+   * on their own; the project arm matches them by hand, since `createProject`
+   * has no such check and two projects called "Wish List" in a picker is a
+   * choice nobody can make.
+   *
+   * A blank name is the one refusal, and it returns the message rather than
+   * creating: `PillGroup` keeps the field open when a string comes back.
+   *
+   * Creating goes through `changeFiling`, so it clears the confirmation the
+   * same way picking an existing one does. The alert named the destination, and
+   * a destination that did not exist when it was answered is a different
+   * destination.
+   */
+  const createProjectFiling = (
+    capture: ReminderCapture,
+    name: string,
+    update: (patch: Partial<ReminderCapture>) => void
+  ): string | void => {
+    const title = name.trim();
+    if (!title) return 'Give the project a name.';
+    const existing = projectOptions.find(p => p.title.toLowerCase() === title.toLowerCase());
+    // kind: 'list' because that is what a capture is for — a running list with
+    // no dates, which is exactly what ProjectKind 'list' exists for and what
+    // the filing refuses to date. A capture pointed at a dated project is
+    // still allowed; it just isn't what creating one from here should make.
+    const project = existing ?? createProject(title, { kind: 'list' });
+    changeFiling(capture, { kind: 'project', projectId: project.id }, update);
+  };
+
+  const createCategoryFiling = (
+    capture: ReminderCapture,
+    name: string,
+    update: (patch: Partial<ReminderCapture>) => void
+  ): string | void => {
+    const trimmed = name.trim();
+    if (!trimmed) return 'Give the category a name.';
+    // Returns the existing row when the name is taken, so this is find-or-create
+    // without a check of its own.
+    const category = addCategory(trimmed);
+    changeFiling(capture, { kind: 'category', category: category.name }, update);
+  };
+
+  const createTagFiling = (
+    capture: ReminderCapture,
+    name: string,
+    update: (patch: Partial<ReminderCapture>) => void
+  ): string | void => {
+    // Lowercased to match what addTag stores: it normalises on the way in, so
+    // filing under the raw text would point at a tag that isn't in the registry
+    // and read as "(deleted)" the moment the sheet re-rendered.
+    const tag = name.trim().toLowerCase();
+    if (!tag) return 'Give the tag a name.';
+    addTag(tag);
+    changeFiling(capture, { kind: 'tag', tag }, update);
   };
 
   const listNameFor = (capture: ReminderCapture): string | null =>
@@ -296,6 +362,7 @@ export function ReminderCapturesSheet({ visible, onClose, reminderLists, reserve
                 <Text style={styles.label}>WHICH PROJECT</Text>
                 <PillGroup
                   noun="project"
+                  onCreate={name => createProjectFiling(capture, name, update)}
                   options={projectOptions.map(project => ({
                     key: project.id,
                     label: project.title,
@@ -313,6 +380,7 @@ export function ReminderCapturesSheet({ visible, onClose, reminderLists, reserve
                 <PillGroup
                   noun="category"
                   pluralNoun="categories"
+                  onCreate={name => createCategoryFiling(capture, name, update)}
                   options={categories.map(category => ({
                     key: category.name,
                     label: category.name,
@@ -329,6 +397,7 @@ export function ReminderCapturesSheet({ visible, onClose, reminderLists, reserve
                 <Text style={styles.label}>WHICH TAG</Text>
                 <PillGroup
                   noun="tag"
+                  onCreate={name => createTagFiling(capture, name, update)}
                   options={tagRegistry.map(tag => ({
                     key: tag,
                     label: tag,
@@ -444,9 +513,11 @@ function nameOfFiling(
  *
  * A kind with nothing to point at yet (no projects, no tags) still switches,
  * carrying an empty target — the pills below it are then the obvious next step,
- * and `activeReminderCaptures` will not drain a capture whose confirmation the
+ * including "+ New {noun}" when there is nothing to pick yet at all, and
+ * `activeReminderCaptures` will not drain a capture whose confirmation the
  * switch just cleared. Refusing the tap instead would leave somebody pressing a
- * segment that does nothing.
+ * segment that does nothing, with no way from here to give it something to
+ * point at.
  */
 function defaultFiling(
   kind: FilingKind,
