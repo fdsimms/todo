@@ -2280,9 +2280,9 @@ export async function extractCalendarEvents(source: string | RecipeImage): Promi
   ];
   const prompt = image
     ? [
-        'This is a photo of an appointment confirmation, a booking, a ticket, or a travel itinerary. Read it and extract every distinct event it confirms — a single appointment is one event; an itinerary naming a flight and a hotel is two.',
+        'This is a photo of something confirming a scheduled event: an appointment confirmation, a booking, a ticket, a travel itinerary, or an in-app trip/order card showing a booked reservation (flight, bus, train, ride, table). It does not need to say the word "confirmation" or look like a document or email — a compact app screen with a route, a date, and a booked/confirmed status is just as valid a source as a printed page. Read it and extract every distinct event it confirms — a single appointment is one event; an itinerary naming a flight and a hotel is two.',
         ...eventFields,
-        'If the photo is too blurry, too dark, cut off, or isn\'t a confirmation of anything, return an empty list rather than guessing.',
+        'If the photo is too blurry, too dark, or cut off to read, or if it plainly shows no scheduled event at all (a menu, a receipt for goods, an unrelated screenshot), return an empty list rather than guessing. Don\'t withhold a reading just because the source is a small app card rather than a formal document — if it names what, when, and that it\'s booked, that\'s enough.',
       ].join('\n\n')
     : [
         'Read this pasted text and extract every distinct event it confirms — a single appointment is one event; an itinerary naming a flight and a hotel is two.',
