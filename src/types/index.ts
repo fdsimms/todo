@@ -1546,7 +1546,12 @@ export type GeneratedKind =
   // kind fires *because* a reading crossed a rule the user wrote, and this one
   // fires because there is no reading at all. Asking for data and reacting to
   // it are two different permissions, so they are two different switches.
-  | 'weighIn';
+  | 'weighIn'
+  // The weekly review: an offer to walk the inbox, what is stuck, what slipped
+  // and the week ahead in one pass, in an order where each answer narrows the
+  // next. The only generator that watches what the others leave behind rather
+  // than watching a thing of its own. See src/utils/weeklyReview.ts.
+  | 'weeklyReview';
 
 export interface Task {
   id: string;

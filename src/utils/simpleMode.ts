@@ -87,6 +87,7 @@ export type SimpleFeatureId =
   | 'workloadSubtitle'
   | 'unscheduledLens'
   | 'paintSelect'
+  | 'weeklyReview'
   // The kitchen's deep end. The list, the catalog, aisles, recipes and the
   // meal plan all stay — this is the machinery underneath them.
   | 'barcodeScanning'
@@ -193,6 +194,7 @@ export const SIMPLE_FEATURES: readonly SimpleFeature[] = [
   { id: 'workloadSubtitle', label: 'The workload line under the title', area: 'today' },
   { id: 'unscheduledLens', label: 'The Unscheduled view', area: 'today' },
   { id: 'paintSelect', label: 'Drag to select a run of tasks', area: 'today' },
+  { id: 'weeklyReview', label: 'The weekly review', area: 'today' },
 
   { id: 'barcodeScanning', label: 'Barcode scanning', area: 'kitchen' },
   { id: 'receiptImport', label: 'Receipt scanning', area: 'kitchen' },

@@ -305,6 +305,11 @@ const GENERATED_KEYWORDS: Record<GeneratedKind, string[]> = {
   // the index searches on its own.
   weekendNudge: ['saturday', 'sunday', 'friday', 'bare', 'free', 'plans',
     'planning', 'project', 'generated', 'automatic'],
+  // No 'weekly' or 'review': both are already in this generator's own label.
+  // The rest are what somebody looking for it would actually type, which is
+  // rarely the feature's name — it is the pile they want dealt with.
+  weeklyReview: ['inbox', 'stuck', 'slipped', 'overdue', 'plan the week', 'planning',
+    'tidy up', 'catch up', 'sunday', 'generated', 'automatic'],
   weather: ['sunny', 'rainy', 'snowy', 'cold', 'hot', 'sunscreen', 'umbrella', 'coat', 'forecast',
     'location', 'temperature', 'generated', 'automatic'],
   // No bare 'weigh': already a substring of this generator's own label

@@ -21,6 +21,12 @@ import { usePersonGroupStore } from '../store/usePersonGroupStore';
 import { useProjectStore, projectDecisions, projectProgress } from '../store/useProjectStore';
 import { useProjectCategoryStore } from '../store/useProjectCategoryStore';
 import { isHeldBack, isQuotaOnPace, isTaskVisible } from '../utils/visibilityUtils';
+import {
+  slippedTasks,
+  weeklyReviewStages,
+  weeklyReviewWorthOffering,
+  WEEKLY_REVIEW_URL,
+} from '../utils/weeklyReview';
 import { isMorningCheckInCandidate } from '../utils/morningCheckIn';
 import { useTaskGroupStore } from '../store/useTaskGroupStore';
 import { calibrationFrom, MIN_CALIBRATION_SAMPLES } from '../utils/estimateCalibration';
@@ -4002,6 +4008,36 @@ describe('demo seed — groceries, recipes, meals and the fridge', () => {
  * plan area away shouldn't get a demo full of shops and dinners they can't
  * open. It's the one branch in the seed, so it's checked from both sides.
  */
+describe('demo seed — the weekly review', () => {
+  beforeAll(freshDemo);
+
+  it('offers a review, written by the real generator rather than by hand', () => {
+    const review = useTaskStore.getState().tasks
+      .find(t => t.generatedKind === 'weeklyReview');
+    expect(review).toBeDefined();
+    // The link is most of the point of the row: without it the task is a title
+    // telling you to do something with no way to do it.
+    expect(review!.linkUrl).toBe(WEEKLY_REVIEW_URL);
+    expect(review!.generatedSourceId).not.toBeNull();
+  });
+
+  it('leaves it something to actually review', () => {
+    // A review offered over five empty piles is a screen congratulating
+    // somebody, which weeklyReviewWorthOffering exists to refuse — so if the
+    // row is there, the seed has to have given it work.
+    const tasks = useTaskStore.getState().tasks;
+    const input = {
+      inbox: useTaskStore.getState().inboxTasks(),
+      stuck: [...useTaskStore.getState().waitingTasks(), ...useTaskStore.getState().driftingTaskList()],
+      slipped: slippedTasks(tasks, isHeldBack),
+      heavyDays: 0,
+      openNights: 0,
+    };
+    expect(weeklyReviewWorthOffering(input)).toBe(true);
+    expect(weeklyReviewStages(input).length).toBeGreaterThan(2);
+  });
+});
+
 describe('demo seed — with the groceries area turned off', () => {
   // One seed again, this one taken with the setting already off, since what
   // the block asserts is what the seed leaves out. Spelled out rather than
