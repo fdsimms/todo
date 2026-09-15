@@ -36,7 +36,8 @@ beforeEach(() => {
 // Every field `readDailyHealth` reads besides `start`, so a test can build a
 // row without hand-listing all ten every time.
 const FIELDS = [
-  'steps', 'sleepMinutes', 'sodiumMg', 'proteinG', 'satFatG', 'fiberG', 'sugarG', 'caffeineMg', 'waterMl', 'calorieKcal',
+  'steps', 'sleepMinutes', 'exerciseMinutes',
+  'sodiumMg', 'proteinG', 'satFatG', 'fiberG', 'sugarG', 'caffeineMg', 'waterMl', 'calorieKcal',
 ] as const;
 
 /** One JSON row with `start` plus every field set from `values` (default 0 for the rest). */
@@ -55,12 +56,12 @@ describe('readDailyHealth', () => {
 
   it('reads a day through, every field', async () => {
     answering(`[${row('2026-08-04T00:00:00.000Z', {
-      steps: 4120, sleepMinutes: 437, sodiumMg: 1850, proteinG: 42, satFatG: 18,
+      steps: 4120, sleepMinutes: 437, exerciseMinutes: 34, sodiumMg: 1850, proteinG: 42, satFatG: 18,
       fiberG: 22, sugarG: 35, caffeineMg: 180, waterMl: 1900, calorieKcal: 2100,
     })}]`);
     await expect(readDailyHealth(ANCHOR, 1)).resolves.toEqual([{
       start: '2026-08-04T00:00:00.000Z',
-      steps: 4120, sleepMinutes: 437, sodiumMg: 1850, proteinG: 42, satFatG: 18,
+      steps: 4120, sleepMinutes: 437, exerciseMinutes: 34, sodiumMg: 1850, proteinG: 42, satFatG: 18,
       fiberG: 22, sugarG: 35, caffeineMg: 180, waterMl: 1900, calorieKcal: 2100,
     }]);
   });

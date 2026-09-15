@@ -12,6 +12,15 @@ interface TodoWidgetBridgeNativeModule {
   // Read-and-clear, same as drainPendingCompletions — see
   // src/utils/sharedRecipeLinks.ts.
   drainSharedLinks(): Promise<string[]>;
+  // The catalog rows MarkDisposedIntent's entity query matches a spoken item
+  // name against — see src/utils/pantryIndex.ts. Written for an extension to
+  // read rather than to hand it work, which is why it's separate from the
+  // widget snapshot above.
+  writePantryIndex(jsonString: string): Promise<boolean>;
+  // Disposals queued by MarkDisposedIntent ("mark bananas as used up"). A JSON
+  // string rather than an array because each entry is a record; read-and-clear,
+  // same as the drains above — see src/utils/widgetSync.ts.
+  drainPendingDisposals(): Promise<string>;
   // See src/utils/liveActivity.ts for the JSON shape (TimerRun[]) and the
   // reconciliation this drives.
   syncTimerLiveActivities(jsonString: string): Promise<boolean>;
@@ -39,6 +48,14 @@ export function drainPendingAddTasks(): Promise<string[]> {
 
 export function drainSharedLinks(): Promise<string[]> {
   return TodoWidgetBridge.drainSharedLinks();
+}
+
+export function writePantryIndex(jsonString: string): Promise<boolean> {
+  return TodoWidgetBridge.writePantryIndex(jsonString);
+}
+
+export function drainPendingDisposals(): Promise<string> {
+  return TodoWidgetBridge.drainPendingDisposals();
 }
 
 export function syncTimerLiveActivities(jsonString: string): Promise<boolean> {

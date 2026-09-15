@@ -840,6 +840,16 @@ export const TIPS: Tip[] = [
     keywords: ['siri', 'voice', 'apple reminders', 'import', 'capture'],
   },
   {
+    id: 'siri-shortcuts',
+    area: 'app',
+    icon: 'chatbox-ellipses-outline',
+    title: 'The app answers to Siri directly',
+    body: 'Say "Hey Siri, add a task in dundundun", or "mark bananas as used up" to cross something off your groceries. Neither needs setting up.',
+    link: { label: 'Open Settings', screen: 'Settings' },
+    keywords: ['siri', 'voice', 'hey siri', 'shortcut', 'shortcuts', 'action button', 'say',
+      'used up', 'gone bad', 'dictate'],
+  },
+  {
     id: 'calendar-busy',
     area: 'app',
     icon: 'today-outline',
