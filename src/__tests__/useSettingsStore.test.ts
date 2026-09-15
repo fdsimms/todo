@@ -1448,6 +1448,29 @@ describe('restockOfferEnabled', () => {
   });
 });
 
+describe('keepOpenAfterFoodLog', () => {
+  // Off by default, same reasoning as simpleMode below: an install that
+  // predates the setting keeps the close-on-save behavior it already had.
+  it('defaults to off when nothing is stored', () => {
+    useSettingsStore.getState().initialize();
+    expect(useSettingsStore.getState().keepOpenAfterFoodLog).toBe(false);
+  });
+
+  it('only turns on for an explicit "true"', () => {
+    (dbGetSetting as jest.Mock).mockImplementation((key: string) =>
+      key === 'keepOpenAfterFoodLog' ? 'true' : null,
+    );
+    useSettingsStore.getState().initialize();
+    expect(useSettingsStore.getState().keepOpenAfterFoodLog).toBe(true);
+  });
+
+  it('round-trips through setKeepOpenAfterFoodLog', () => {
+    useSettingsStore.getState().setKeepOpenAfterFoodLog(true);
+    expect(dbSetSetting).toHaveBeenCalledWith('keepOpenAfterFoodLog', 'true');
+    expect(useSettingsStore.getState().keepOpenAfterFoodLog).toBe(true);
+  });
+});
+
 describe('simpleMode', () => {
   // Off by default, unlike kitchenEnabled: it takes features away, so an
   // install that upgrades into it has to see the app it already had.
