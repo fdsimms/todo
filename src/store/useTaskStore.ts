@@ -13,7 +13,6 @@ import {
   dbBulkDeleteTasks,
   dbBulkSetPriority,
   dbBulkSetDefer,
-  dbBulkSetWhen,
   dbBulkSetTimeSegments,
   dbBulkSetCategory,
   dbBulkSetPinned,
@@ -118,6 +117,7 @@ import {
   weekendSourceProjects,
 } from '../utils/weekendTasks';
 import { buildDayBuckets } from '../utils/calendarMonth';
+import { scheduleMoveUpdates } from '../utils/taskMoves';
 import { assumedMinutesFor, buildDayLoads } from '../utils/dayLoad';
 import { hasLogOnDay, hasLoggedSince } from '../utils/moodLog';
 import { useFoodLogStore } from './useFoodLogStore';
@@ -1016,11 +1016,17 @@ function patchTasksById(tasks: Task[], updates: Map<string, Partial<Task>>): Tas
  * Per-task postpone counts for a bulk reschedule, persisted and returned so the
  * in-memory patch can carry them too.
  *
- * bulkSetWhen and bulkDefer set one date across a selection but land a
- * *different* count on each task, since the rule compares against where each one
- * was — so this can't ride along on dbBulkSetWhen / dbBulkSetDefer, which stay
- * single-purpose. Same split dbBatchUpdatePinnedOrders makes beside
- * bulkTogglePin. Only rows whose count actually moves are written.
+ * bulkDefer sets one date across a selection but lands a *different* count on
+ * each task, since the rule compares against where each one was — so this can't
+ * ride along on dbBulkSetDefer, which stays single-purpose. Same split
+ * dbBatchUpdatePinnedOrders makes beside bulkTogglePin. Only rows whose count
+ * actually moves are written.
+ *
+ * bulkSetWhen used to share this and no longer does: its rows stopped sharing a
+ * patch once each one's date move started going through scheduleMoveUpdates, so
+ * it re-dates through updateTask and the count is derived there. See its own
+ * note. This is deliberately not generalised to cover both again — the whole
+ * reason that path changed is that a selection is not one move.
  *
  * Carries driftingSince alongside, since the two are one fact (see
  * nextDriftingSince) and splitting them across two passes would let a batch
@@ -1029,10 +1035,10 @@ function patchTasksById(tasks: Task[], updates: Map<string, Partial<Task>>): Tas
 function bulkPostponeCounts(
   tasks: Task[],
   ids: string[],
-  // Partial on purpose: dbBulkSetDefer writes defer_until and nothing else,
-  // dbBulkSetWhen writes due_date and nothing else. Spelling the untouched
-  // field as an explicit null here would wipe it from the comparison and make
-  // every bulk defer look like it had cleared the task's due date.
+  // Partial on purpose: dbBulkSetDefer writes defer_until and nothing else.
+  // Spelling the untouched field as an explicit null here would wipe it from
+  // the comparison and make every bulk defer look like it had cleared the
+  // task's due date.
   next: Partial<Pick<Task, 'dueDate' | 'deferUntil'>>,
   dayResetTime: string,
 ): Map<string, { postponeCount: number; driftingSince: string | null }> {
@@ -2221,6 +2227,15 @@ export const useTaskStore = create<TaskStore>((set, get) => ({
    * only one of them means the day is free.
    */
   async putTaskOnCalendar(id) {
+    // The same guard the three automatic calendar syncs keep, and the one
+    // write past SQLite that had been missing it. A system sheet asking for
+    // confirmation is not the exemption it looks like: the demo database is
+    // thrown away, so a block created from seeded fiction leaves a real event
+    // on a real calendar with the only pointer to it (timeBlockEventId) about
+    // to be discarded — undeletable from inside the app, by the rule that a
+    // block is deleted from the edit sheet this id opens.
+    if (isDemoModeActive()) return false;
+
     const task = get().tasks.find(t => t.id === id);
     if (!task) return false;
 
@@ -6543,7 +6558,40 @@ export const useTaskStore = create<TaskStore>((set, get) => ({
   // the whole cascade; nothing here writes lastAction itself, since the
   // interesting label depends on what prompted the change.
   applyGroupCategory(groupId, category) {
-    const changed = get().groupRosterOf(groupId).filter(t => t.category !== category);
+    const roster = get().groupRosterOf(groupId);
+    // The roster names one row per member, and a dated series has several, so
+    // cascading over it alone re-files only whichever date spoke for the
+    // member. `updateTask`'s default series scope carries `category` (a
+    // CONTENT_FIELD) out to the set's *later* dates, which covers most of it —
+    // but it reaches nothing earlier, and the roster entry is not always the
+    // earliest row. `collapseSeries` ranks a date that is live today ahead of
+    // one that isn't, and only falls back to the earliest between two that
+    // rank the same; `isRelevantToGroupToday` is `isTaskVisible`, so an
+    // *earlier* date that is hidden loses to a later one that isn't. An
+    // overdue date is visible and so was never the problem: a **deferred** one
+    // is, which bulkSetWhen now makes routine, since pushing a series member
+    // out is exactly what it writes. That row kept the old category, leaving a
+    // member filed under two at once — the "renders under Home on Today and
+    // under Work everywhere else" state the stack-owns-its-members'-category
+    // rule exists to prevent, and it bites beyond the name because a Category
+    // carries scheduleDays and hideOnVacation too. Each roster entry is
+    // expanded back to its live sibling rows, the same way deleteGroup's
+    // cascade does and for the same reason. Completed and archived rows stay
+    // out: they're history, and the Logbook must keep the category they were
+    // finished under.
+    const series = new Set(
+      roster.map(t => t.seriesId).filter((id): id is string => id != null),
+    );
+    const members = new Map(roster.map(t => [t.id, t]));
+    if (series.size > 0) {
+      for (const child of get().groupChildrenOf(groupId)) {
+        if (child.seriesId && series.has(child.seriesId) && !child.completed && !child.archived) {
+          members.set(child.id, child);
+        }
+      }
+    }
+
+    const changed = [...members.values()].filter(t => t.category !== category);
     if (changed.length === 0) return [];
     const previous = changed.map(t => ({ id: t.id, category: t.category }));
     dbTransaction(() => {
@@ -7355,46 +7403,69 @@ export const useTaskStore = create<TaskStore>((set, get) => ({
     }
   },
 
+  /**
+   * The bulk bar's When, and the same gesture as a row's own date picker: one
+   * `WhenPicker`, one `(date, timeSegments)` payload. So it has to make the
+   * same decision that picker makes, and it used to write a flat `dueDate` to
+   * every selected row instead.
+   *
+   * That skipped both rules a date-anchored task depends on. Pushing a
+   * recurring occurrence out wrote `dueDate` where `scheduleMoveUpdates`
+   * writes `deferUntil`, rebasing the whole future grid — move one Tuesday to
+   * Thursday from the bulk bar and it was a Thursday task for ever, which is
+   * #1953 arriving by the other door. A series member had its hand-picked date
+   * silently rewritten, and the next `applyTaskDates` reconcile compares by
+   * calendar day, so the moved row read as dropped and was deleted. And going
+   * around `updateTask` left `recurrenceAnchorDate` and `recurrenceAnchorDay`
+   * untouched, so a monthly task bulk-moved from the 15th to the 3rd came back
+   * on the 15th while the row's own picker landed it on the 3rd: two UI paths
+   * for one action, giving two different schedules.
+   *
+   * So each row is re-dated through `updateTask` with the patch
+   * `scheduleMoveUpdates` decides for it, exactly as `TaskItem`'s picker does,
+   * including folding the unpin into the same patch. The single-statement
+   * `dbBulkSetWhen` fast path cannot serve it, because the whole point is that
+   * the rows no longer share one patch. `postponeCount`, `driftingSince` and
+   * `transitionedIntoNew` are all derived inside `updateTask`, and are more
+   * accurate for it: `bulkPostponeCounts` judged every row as a `dueDate` move,
+   * which is the wrong question for one being deferred.
+   *
+   * Wrapped in one transaction, the shape `applyGroupCategory` already uses for
+   * a per-row cascade. The selection is whatever a person tapped, so N is small.
+   */
   bulkSetWhen(ids, date, timeSegments) {
     if (ids.length === 0) return;
-    const dueDate = date ? date.toISOString() : null;
     const dayResetTime = useSettingsStore.getState().dayResetTime;
     const snapshots = ids
       .map(id => get().tasks.find(t => t.id === id))
       .filter((t): t is Task => t !== undefined)
       .map(t => ({ ...t }));
-    const counts = bulkPostponeCounts(
-      get().tasks, ids, { dueDate }, dayResetTime,
-    );
-    // Same rule as bulkDefer above, and updateTask's transitionedIntoNew.
-    const staleNew = snapshots
-      .filter(t => !isTaskNew(t) && isTaskNew({ ...t, dueDate, timeSegments }))
-      .map(t => t.id);
     // Same reasoning as bulkDefer above: moving a pinned task to a different
-    // day (or clearing its date entirely) drops the pin.
+    // day (or clearing its date entirely) drops the pin. Compared against the
+    // effective date, not the stored one, so a pinned recurring task's anchor
+    // doesn't read as "unchanged" when the visible day actually moved.
     const newDay = date ? getTaskDayStart(date, dayResetTime).getTime() : null;
-    const unpinIds = snapshots
-      .filter(t => t.pinned)
-      .filter(t => {
-        const prev = getEffectiveTaskDate(t, dayResetTime);
+    dbTransaction(() => {
+      snapshots.forEach(snapshot => {
+        const prev = getEffectiveTaskDate(snapshot, dayResetTime);
         const prevDay = prev ? getTaskDayStart(new Date(prev), dayResetTime).getTime() : null;
-        return prevDay !== newDay;
-      })
-      .map(t => t.id);
-    dbBulkSetWhen(ids, dueDate, timeSegments);
-    if (unpinIds.length > 0) dbBulkSetPinned(unpinIds, false);
-    if (counts.size > 0) {
-      dbBatchUpdatePostponeCounts([...counts].map(([id, moved]) => ({ id, ...moved })));
-    }
-    set(s => ({
-      tasks: patchTasks(s.tasks, ids, t => ({
-        dueDate,
-        timeSegments,
-        ...(unpinIds.includes(t.id) ? { pinned: false } : {}),
-        ...(counts.get(t.id) ?? {}),
-      })),
-    }));
-    get().markTasksSeen(staleNew);
+        const moved = snapshot.pinned && prevDay !== newDay;
+        get().updateTask(
+          snapshot.id,
+          {
+            ...scheduleMoveUpdates(snapshot, date, dayResetTime),
+            timeSegments,
+            ...(moved ? { pinned: false } : {}),
+          },
+          // The user picked this date a moment ago, so a task pulled onto today
+          // by it must not come back reading as unseen. Opt-in because the
+          // engine writers of these same fields want the opposite (see
+          // transitionedIntoNew); the row's own picker makes the same claim for
+          // the same reason, and this is the same gesture.
+          { markSeenOnBecomeVisible: true },
+        );
+      });
+    });
     if (snapshots.length > 0) {
       get().setLastAction({
         label: snapshots.length === 1 ? 'Task rescheduled' : `${snapshots.length} tasks rescheduled`,

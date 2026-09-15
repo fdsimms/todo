@@ -39,6 +39,122 @@ describe('calibrationPairs', () => {
   });
 });
 
+/**
+ * The successor a completion spawns is `{ ...effective }`, and neither half of
+ * the pair is overridden — so one timing rides into every later occurrence and
+ * stays on every tombstone behind it. Counted per row, one measurement cleared
+ * the sample floor by itself and kept climbing.
+ */
+describe('calibrationPairs collapses an occurrence family', () => {
+  /** A row in a recurrence chain: `prev` is the occurrence it replaced. */
+  function occurrence(
+    id: string,
+    prev: string | null,
+    estimate: number | null,
+    actual: number | null,
+    completedAt: string | null,
+  ): Task {
+    return {
+      id,
+      title: 'Walk',
+      previousOccurrenceId: prev,
+      estimateBeforeTiming: estimate,
+      actualMinutes: actual,
+      completedAt,
+    } as unknown as Task;
+  }
+
+  it('counts one timing once however many occurrences carried it forward', () => {
+    const chain = [
+      occurrence('d1', null, 20, 35, '2026-09-10T09:00:00Z'),
+      occurrence('d2', 'd1', 20, 35, '2026-09-11T09:00:00Z'),
+      occurrence('d3', 'd2', 20, 35, '2026-09-12T09:00:00Z'),
+      occurrence('d4', 'd3', 20, 35, '2026-09-13T09:00:00Z'),
+      occurrence('d5', 'd4', 20, 35, null),
+    ];
+    expect(calibrationPairs(chain)).toEqual([{ estimated: 20, actual: 35 }]);
+  });
+
+  // The floor exists so a ratio is never claimed off an anecdote. One reading
+  // copied into five rows is the anecdote, dressed as five.
+  it('does not let one carried-forward timing meet the sample floor', () => {
+    const chain = Array.from({ length: MIN_CALIBRATION_SAMPLES + 3 }, (_, i) =>
+      occurrence(`d${i}`, i === 0 ? null : `d${i - 1}`, 20, 35, `2026-09-${10 + i}T09:00:00Z`));
+    expect(calibrationFrom(chain)).toBeNull();
+  });
+
+  it('counts the dates of one series once', () => {
+    const series = ['s1', 's2', 's3'].map(id => ({
+      id,
+      title: 'Dog',
+      seriesId: 'set-1',
+      previousOccurrenceId: null,
+      estimateBeforeTiming: 30,
+      actualMinutes: 45,
+      completedAt: '2026-09-10T09:00:00Z',
+    } as unknown as Task));
+    expect(calibrationPairs(series)).toEqual([{ estimated: 30, actual: 45 }]);
+  });
+
+  // Re-timing replaces the family's sample rather than adding one, and the
+  // live row is the family's current state — so it has to beat the tombstone
+  // whose superseded pair it had been carrying.
+  it('takes the live occurrence when it has been timed again', () => {
+    const chain = [
+      occurrence('d1', null, 20, 35, '2026-09-10T09:00:00Z'),
+      occurrence('d2', 'd1', 20, 50, null),
+    ];
+    expect(calibrationPairs(chain)).toEqual([{ estimated: 20, actual: 50 }]);
+  });
+
+  it('takes the most recently completed row when every row is history', () => {
+    const chain = [
+      occurrence('d1', null, 20, 35, '2026-09-10T09:00:00Z'),
+      occurrence('d2', 'd1', 20, 50, '2026-09-11T09:00:00Z'),
+    ];
+    expect(calibrationPairs(chain)).toEqual([{ estimated: 20, actual: 50 }]);
+  });
+
+  it('still counts separate tasks separately', () => {
+    const tasks = [
+      occurrence('a1', null, 20, 35, '2026-09-10T09:00:00Z'),
+      occurrence('a2', 'a1', 20, 35, '2026-09-11T09:00:00Z'),
+      occurrence('b1', null, 60, 30, '2026-09-11T09:00:00Z'),
+    ];
+    expect(calibrationPairs(tasks)).toEqual([
+      { estimated: 20, actual: 35 },
+      { estimated: 60, actual: 30 },
+    ]);
+  });
+
+  // A generator writes a fresh row per day with no pointer back, so nothing is
+  // carried into it: two timed meal slots really are two measurements. This is
+  // the branch occurrenceFamilyKey has and timingFamilyKey deliberately omits.
+  it('counts generated tasks sharing a title separately', () => {
+    const generated = ['g1', 'g2'].map(id => ({
+      id,
+      title: 'Lunch',
+      generatedKind: 'mealSlot',
+      previousOccurrenceId: null,
+      estimateBeforeTiming: 15,
+      actualMinutes: 25,
+      completedAt: '2026-09-10T09:00:00Z',
+    } as unknown as Task));
+    expect(calibrationPairs(generated)).toHaveLength(2);
+  });
+
+  // The `seen` guard is about terminating, not about canonicalising a cycle —
+  // each row's walk stops one step short of where it started, so the two keys
+  // differ and neither is collapsed. That matches memberKey and
+  // occurrenceFamilyKey exactly; a loop is not a state anything writes, and
+  // the only requirement is that a render path doesn't hang on one.
+  it('survives a previousOccurrenceId loop without hanging', () => {
+    const a = occurrence('x', 'y', 20, 35, null);
+    const b = occurrence('y', 'x', 20, 35, null);
+    expect(calibrationPairs([a, b])).toHaveLength(2);
+  });
+});
+
 describe('calibrationFrom', () => {
   it('says nothing below the sample floor', () => {
     expect(calibrationFrom(pairsAt(1.5, MIN_CALIBRATION_SAMPLES - 1))).toBeNull();
