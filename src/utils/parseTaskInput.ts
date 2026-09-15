@@ -11,7 +11,7 @@ import { startOfDay } from 'date-fns/startOfDay';
 import { startOfMonth } from 'date-fns/startOfMonth';
 import type { Day } from 'date-fns';
 import type { Priority, RecurrenceType, TimeOfDay } from '../types';
-import { extractDayPart, extractTime, MONTHS, monthDay, parseDatePart, WEEKDAYS } from './parseNaturalDate';
+import { extractDayPart, extractTime, MONTHS, monthDay, parseDatePart, WEEKDAYS, type ClockTime } from './parseNaturalDate';
 import { looksLikePhoneNumber } from './phone';
 
 /**
@@ -88,6 +88,16 @@ export interface ParsedSchedule {
    * carries the countdown badge.
    */
   deadline?: Date;
+  /**
+   * The literal clock reading the phrase named ("5pm", "10:30am") — never set
+   * for a day-part word ("morning", "tonight") or an implied hour, since those
+   * name a representative bucket rather than a moment the user actually typed.
+   * Callers use this to offer turning the moment into a real reminder, which
+   * is the only way it survives: `dueDate` is always noon (see above) and
+   * `timeSegments` only ever holds the coarse morning/afternoon/evening
+   * bucket, so without this the clock reading itself is discarded entirely.
+   */
+  explicitClockTime?: ClockTime | null;
 }
 
 export interface ParsedTaskInput {
@@ -458,10 +468,12 @@ function parseRecurrenceSuffix(text: string, now: Date): ParsedSchedule | null {
     // Peel a trailing clock time / day part ("every tuesday at 6pm") into a segment.
     let segments: TimeOfDay[];
     let rest: string;
+    let explicitClockTime: ClockTime | null = null;
     const clock = extractTime(core);
     if (clock) {
       segments = [segmentForHour(clock.time.h)];
       rest = clock.rest;
+      explicitClockTime = clock.time;
     } else {
       const part = extractDayPart(core);
       if (!part) return null;
@@ -475,6 +487,7 @@ function parseRecurrenceSuffix(text: string, now: Date): ParsedSchedule | null {
     // rather than being silently swallowed.
     rest = rest.replace(/\bat\b/g, ' ').replace(/\bin the\b/g, ' ').replace(/\s+/g, ' ').trim();
     schedule = matchRecurrenceCore(rest, now, segments);
+    if (schedule) schedule = { ...schedule, explicitClockTime };
   }
   if (!schedule) return null;
 
@@ -509,11 +522,13 @@ function parseSuffix(text: string, now: Date, singleWord: boolean): ParsedSchedu
   let t = connector ? text.slice(connector[0].length) : text;
   let segments: TimeOfDay[] = [];
   let hasTime = false;
+  let explicitClockTime: ClockTime | null = null;
   const clock = extractTime(t);
   if (clock) {
     segments = [segmentForHour(clock.time.h)];
     t = clock.rest;
     hasTime = true;
+    explicitClockTime = clock.time;
   } else {
     const part = extractDayPart(t);
     if (part) {
@@ -548,6 +563,7 @@ function parseSuffix(text: string, now: Date, singleWord: boolean): ParsedSchedu
     recurrenceType: 'none',
     recurrenceInterval: 1,
     recurrenceDays: [],
+    explicitClockTime,
   };
 }
 
