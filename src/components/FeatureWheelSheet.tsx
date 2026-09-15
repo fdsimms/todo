@@ -18,7 +18,7 @@ import { usePersonStore } from '../store/usePersonStore';
 import { useFoodLogStore } from '../store/useFoodLogStore';
 import { useMoodStore } from '../store/useMoodStore';
 import { useMedicationStore } from '../store/useMedicationStore';
-import { menuDestinations, type NavSearchResult } from '../utils/navHubs';
+import { wheelCandidates, type WheelSlot } from '../utils/navHubs';
 import {
   WHEEL_MAX_SLOTS,
   addWheelRoute,
@@ -41,6 +41,13 @@ interface Row {
  * `WHEEL_MAX_SLOTS` and it is a property of the geometry rather than a product
  * decision — see `featureWheel.ts` — so a full wheel says so and refuses,
  * rather than dropping somebody's slot to make room for the new one.
+ *
+ * **A hub is one of the things you can add**, listed above the screens because
+ * it is the denser choice: one slot reaching four or five destinations, where
+ * spending three of six slots on History's three screens is the mistake the
+ * order is there to head off. Its members stay listed individually underneath,
+ * since putting one screen a flick away and the rest two is a real thing to
+ * want.
  *
  * **Order is the whole feature**, which is why the top list drags rather than
  * sorting itself: a slot's angle is what somebody learns, so nothing may
@@ -70,29 +77,29 @@ export function FeatureWheelSheet({ visible, onClose }: Props) {
   const medications = useMedicationStore(s => s.logs.length);
   const foodLog = useFoodLogStore(s => s.totalCount);
 
-  // Every destination the menu can reach, under the same gates — so a screen
-  // simplified mode has taken away can't be put on the wheel either.
+  // Every hub and every screen the menu can reach, under the same gates — so a
+  // screen simplified mode has taken away can't be put on the wheel either.
   const available = useMemo(
-    () => menuDestinations({
+    () => wheelCandidates({
       kitchenEnabled,
       simpleMode,
       counts: { stacks, templates, people, mood, medications, foodLog },
     }),
     [kitchenEnabled, simpleMode, stacks, templates, people, mood, medications, foodLog],
   );
-  const byRoute = useMemo(
-    () => new Map(available.map(d => [d.route, d])),
+  const byKey = useMemo(
+    () => new Map(available.map(slot => [slot.key, slot])),
     [available],
   );
 
   // A stored route the menu can't currently reach keeps its place in the list
   // rather than being dropped, so switching a feature area back on returns the
   // wheel as it was. It just has nothing to draw until then.
-  const chosen = routes.filter(route => byRoute.has(route)).slice(0, WHEEL_MAX_SLOTS);
-  const rest = available.filter(d => !routes.includes(d.route));
+  const chosen = routes.filter(key => byKey.has(key)).slice(0, WHEEL_MAX_SLOTS);
+  const rest = available.filter(slot => !routes.includes(slot.key));
   const full = chosen.length >= WHEEL_MAX_SLOTS;
 
-  const rows: Row[] = chosen.map(route => ({ id: route }));
+  const rows: Row[] = chosen.map(key => ({ id: key }));
 
   const handleReorder = (next: Row[]) => {
     haptics.tap();
@@ -113,8 +120,15 @@ export function FeatureWheelSheet({ visible, onClose }: Props) {
     setRoutes(next);
   };
 
-  const subtitleFor = (destination: NavSearchResult | undefined) =>
-    destination?.hubLabel ?? null;
+  /** What a row says under its name: what a hub holds, or where a screen lives. */
+  const metaFor = (slot: WheelSlot | undefined): string | null => {
+    if (!slot) return null;
+    if (slot.members) {
+      const n = slot.members.length;
+      return n === 1 ? '1 screen' : `${n} screens`;
+    }
+    return slot.hubLabel ?? null;
+  };
 
   return (
     <SheetModal
@@ -137,8 +151,9 @@ export function FeatureWheelSheet({ visible, onClose }: Props) {
           keyboardShouldPersistTaps="handled"
         >
           <Text style={styles.intro}>
-            Press the More tab and drag to open the wheel, then let go over one of these.
+            Press the tab bar and drag to open the wheel, then let go over one of these.
             The first slot is nearest straight up, so put the one you open most at the top.
+            A whole group counts as one slot: hold on it to open the screens inside.
             Up to {WHEEL_MAX_SLOTS}.
           </Text>
 
@@ -153,23 +168,23 @@ export function FeatureWheelSheet({ visible, onClose }: Props) {
               onReorder={handleReorder}
               onDragStateChange={setDragging}
               renderItem={(row, index, drag) => {
-                const destination = byRoute.get(row.id);
-                const hub = subtitleFor(destination);
+                const slot = byKey.get(row.id);
+                const meta = metaFor(slot);
                 return (
                   <View style={styles.row}>
                     <View style={[styles.rowIcon, { backgroundColor: colors.accentSubtle }]}>
                       <Ionicons
-                        name={(destination?.icon ?? 'ellipse-outline') as React.ComponentProps<typeof Ionicons>['name']}
+                        name={(slot?.icon ?? 'ellipse-outline') as React.ComponentProps<typeof Ionicons>['name']}
                         size={16}
                         color={colors.accent}
                       />
                     </View>
                     <View style={styles.rowInfo}>
                       <Text style={styles.rowLabel} numberOfLines={1}>
-                        {destination?.label ?? row.id}
+                        {slot?.label ?? row.id}
                       </Text>
                       <Text style={styles.rowMeta} numberOfLines={1}>
-                        {hub ? `Slot ${index + 1} · ${hub}` : `Slot ${index + 1}`}
+                        {meta ? `Slot ${index + 1} · ${meta}` : `Slot ${index + 1}`}
                       </Text>
                     </View>
                     <TouchableOpacity
@@ -178,7 +193,7 @@ export function FeatureWheelSheet({ visible, onClose }: Props) {
                       style={styles.iconButton}
                       activeOpacity={interaction.activeOpacity}
                       accessibilityRole="button"
-                      accessibilityLabel={`Take ${destination?.label ?? row.id} off the wheel`}
+                      accessibilityLabel={`Take ${slot?.label ?? row.id} off the wheel`}
                     >
                       <Ionicons name="close" size={18} color={colors.textSecondary} />
                     </TouchableOpacity>
@@ -188,7 +203,7 @@ export function FeatureWheelSheet({ visible, onClose }: Props) {
                       hitSlop={8}
                       style={styles.iconButton}
                       accessibilityRole="button"
-                      accessibilityLabel={`Reorder ${destination?.label ?? row.id}`}
+                      accessibilityLabel={`Reorder ${slot?.label ?? row.id}`}
                     >
                       <Ionicons name="reorder-three" size={20} color={colors.textTertiary} />
                     </TouchableOpacity>
@@ -209,28 +224,28 @@ export function FeatureWheelSheet({ visible, onClose }: Props) {
               Every screen the menu can reach is already on the wheel.
             </EmptyNote>
           ) : (
-            rest.map(destination => (
+            rest.map(slot => (
               <TouchableOpacity
-                key={destination.route}
+                key={slot.key}
                 style={[styles.row, full && styles.rowDisabled]}
-                onPress={() => add(destination.route)}
+                onPress={() => add(slot.key)}
                 disabled={full}
                 activeOpacity={interaction.activeOpacity}
                 accessibilityRole="button"
                 accessibilityState={{ disabled: full }}
-                accessibilityLabel={`Add ${destination.label} to the wheel`}
+                accessibilityLabel={`Add ${slot.label} to the wheel`}
               >
                 <View style={[styles.rowIcon, { backgroundColor: colors.bgTertiary }]}>
                   <Ionicons
-                    name={destination.icon as React.ComponentProps<typeof Ionicons>['name']}
+                    name={slot.icon as React.ComponentProps<typeof Ionicons>['name']}
                     size={16}
                     color={colors.textSecondary}
                   />
                 </View>
                 <View style={styles.rowInfo}>
-                  <Text style={styles.rowLabel} numberOfLines={1}>{destination.label}</Text>
-                  {destination.hubLabel && (
-                    <Text style={styles.rowMeta} numberOfLines={1}>{destination.hubLabel}</Text>
+                  <Text style={styles.rowLabel} numberOfLines={1}>{slot.label}</Text>
+                  {metaFor(slot) && (
+                    <Text style={styles.rowMeta} numberOfLines={1}>{metaFor(slot)}</Text>
                   )}
                 </View>
                 <View style={styles.iconButton}>

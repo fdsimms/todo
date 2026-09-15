@@ -653,7 +653,7 @@ export const SETTINGS_ENTRIES: SettingsEntry[] = [
   // before, so what somebody searches for is what it looks like.
   { id: 'featureWheelEnabled', groupId: 'featureAreas', label: 'Feature wheel', section: 'Feature wheel',
     keywords: ['radial', 'pie', 'ring', 'fan', 'arc', 'shortcut', 'gesture', 'drag', 'swipe',
-      'more tab', 'quick switch', 'navigation', 'jump'] },
+      'more tab', 'tab bar', 'quick switch', 'navigation', 'jump', 'left handed'] },
   // Nested under the switch above, so it drops out of search with it — see
   // `requires` and SettingsScreen's activeEntryIds.
   { id: 'featureWheelRoutes', requires: 'featureWheelEnabled', groupId: 'featureAreas', label: "What's on it", section: 'Feature wheel',

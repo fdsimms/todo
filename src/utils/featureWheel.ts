@@ -89,15 +89,40 @@ export interface WheelGeometry {
   outer: number;
 }
 
+/** Room a chip needs beyond the arc itself: its own half-width, plus a margin. */
+const CHIP_CLEARANCE = 40;
+
 /**
- * Radii for a given screen width. The chip arc is a fraction of the width
- * rather than a constant so the fan keeps roughly the same proportions from an
- * SE to a Max, clamped at both ends: below ~190 the labels collide, above ~260
- * the far end of the arc leaves the screen.
+ * Radii for a given screen width, and for the room the fan actually has.
+ *
+ * The chip arc is a fraction of the width rather than a constant, so the fan
+ * keeps roughly the same proportions from an SE to a Max, clamped at both ends:
+ * below ~190 the labels collide, above ~260 the far end leaves the screen.
+ *
+ * `availableWidth` is the distance from the anchor to the screen edge the fan
+ * opens towards, and it matters because the anchor is not always in a corner.
+ * The wheel blooms from whichever tab was pressed, and a middle tab has only
+ * half a screen to sweep into: the last slot sits `SWEEP_FAR` off vertical, so
+ * it reaches `sin(72°)` ≈ 0.95 of the radius sideways, and a corner-sized arc
+ * from the middle of the bar would put that chip past the edge. Omitted, the
+ * fan is assumed to have the whole width, which is what a corner anchor has.
+ *
+ * The 190 floor still wins over a cramped anchor. That is deliberate: below it
+ * the labels collide, which costs more than a chip sitting a few points tight,
+ * and `clampLabelX` already keeps the text on screen.
  */
-export function wheelGeometry(screenWidth: number): WheelGeometry {
-  const chip = Math.min(260, Math.max(190, Math.round(screenWidth * 0.64)));
-  return { dead: WHEEL_DEAD_ZONE, chip, label: chip + 56, outer: chip + 38 };
+export function wheelGeometry(
+  screenWidth: number,
+  availableWidth: number = screenWidth,
+): WheelGeometry {
+  const byScreen = Math.round(screenWidth * 0.64);
+  const byRoom = Math.round((availableWidth - CHIP_CLEARANCE) / Math.sin((SWEEP_FAR * Math.PI) / 180));
+  const chip = Math.min(260, Math.max(190, Math.min(byScreen, byRoom)));
+  // The wedge overhangs its chip rather than stopping at it, since the sector
+  // stays live further out — but only just. At `chip + 38` a drilled level
+  // holding three slots draws a wedge wide and long enough to become the
+  // loudest thing on screen, competing with the chips it is pointing at.
+  return { dead: WHEEL_DEAD_ZONE, chip, label: chip + 56, outer: chip + 16 };
 }
 
 /** Degrees between adjacent slots. Zero for a fan holding one slot or none. */

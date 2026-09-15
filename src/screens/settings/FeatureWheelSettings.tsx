@@ -14,8 +14,8 @@ import { haptics } from '../../utils/haptics';
  * Filed here rather than under Appearance because it answers the same question
  * the two switches above it do — which parts of the app you actually use — and
  * a shortcut to six screens is that question asked a third time. What it is
- * *not* is a way to reach anything: a plain tap on More still opens the full
- * menu, which is the whole reason the wheel is allowed to be a gesture.
+ * *not* is a way to reach anything: a plain tap still does what it always did,
+ * which is the whole reason the wheel is allowed to be a gesture.
  */
 export function FeatureWheelSettings() {
   const colors = useColors();
@@ -31,7 +31,7 @@ export function FeatureWheelSettings() {
     <>
       <SettingsSection
         label="Feature wheel"
-        footer="Tapping More still opens the full menu, with everything in it. The wheel is a shortcut over the top of that, not a replacement for it."
+        footer="Tapping a tab still does what it always did, and tapping More still opens the full menu with everything in it. The wheel is a shortcut over the top of that, not a replacement for it."
       >
         <SettingsRow
           entryId="featureWheelEnabled"
@@ -39,8 +39,8 @@ export function FeatureWheelSettings() {
           iconColor={enabled ? colors.accent : undefined}
           label="Feature wheel"
           hint={enabled
-            ? 'Press the More tab and drag to open it'
-            : 'The More tab only opens the menu'}
+            ? 'Press any tab and drag to open it'
+            : 'Tabs only switch screens'}
           toggle={enabled}
           onPress={() => setEnabled(!enabled)}
         />
@@ -49,7 +49,7 @@ export function FeatureWheelSettings() {
             entryId="featureWheelRoutes"
             icon="list-outline"
             label="What's on it"
-            hint={`Up to ${WHEEL_MAX_SLOTS} screens, in the order you put them`}
+            hint={`Up to ${WHEEL_MAX_SLOTS} screens or groups, in the order you put them`}
             value={count === 0 ? 'Nothing' : count === 1 ? '1 screen' : `${count} screens`}
             chevron
             onPress={() => { haptics.tap(); setSheetVisible(true); }}

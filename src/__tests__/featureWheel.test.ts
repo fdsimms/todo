@@ -221,3 +221,27 @@ describe('editing the wheel’s routes', () => {
     expect(addWheelRoute(full, 'g')).toBe(full);
   });
 });
+
+describe('wheelGeometry with a cramped anchor', () => {
+  it('shrinks the arc to the room the fan opens into', () => {
+    // A middle tab on a 390pt screen has about 244pt to sweep into.
+    expect(wheelGeometry(390, 244).chip).toBeLessThan(wheelGeometry(390).chip);
+  });
+
+  it('keeps the far slot on screen from a middle anchor', () => {
+    const anchorX = 146; // the Groceries tab, second of four
+    const available = 390 - anchorX;
+    const { chip } = wheelGeometry(390, available);
+    const far = wheelSlotAngles(6, false)[5];
+    const { x } = wheelPoint(anchorX, 700, chip, far);
+    expect(x + 29).toBeLessThan(390);
+  });
+
+  it('still takes the full arc when the anchor has a whole screen beside it', () => {
+    expect(wheelGeometry(390, 341).chip).toBe(250);
+  });
+
+  it('never shrinks below the label-collision floor, however cramped', () => {
+    expect(wheelGeometry(390, 60).chip).toBe(190);
+  });
+});

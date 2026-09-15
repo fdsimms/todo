@@ -355,35 +355,144 @@ export const DEFAULT_WHEEL_ROUTES: readonly string[] = [
 ];
 
 /**
+ * How a hub is written in `featureWheelRoutes`.
+ *
+ * A wheel slot is either one screen or a whole hub, and both live in the same
+ * stored `string[]` rather than in a second setting holding a second kind of
+ * thing. A prefix is enough to tell them apart because route names are
+ * navigator identifiers and none of them contains a colon, and keeping one
+ * list is what lets the order stay a single sequence the user drags: a hub and
+ * a screen compete for the same slots, which is the honest model, since on the
+ * wheel they cost exactly the same thing.
+ */
+export const WHEEL_HUB_PREFIX = 'hub:';
+
+/** The stored key for a hub slot. */
+export function wheelHubKey(id: NavHubId): string {
+  return `${WHEEL_HUB_PREFIX}${id}`;
+}
+
+/**
+ * One slot on the wheel: a screen, or a hub standing in for its members.
+ *
+ * Both shapes carry `route`, which is where *releasing* on the slot goes — for
+ * a hub that is its first live member, exactly what tapping its menu row does
+ * (`rowEntryRoute`). `members` is what drilling into it shows, and its presence
+ * is what makes a slot a hub; there is no kind flag, because every other field
+ * is the same and the drawing does not branch.
+ */
+export interface WheelSlot {
+  /** What `featureWheelRoutes` stores: a route name, or `hub:<id>`. */
+  key: string;
+  label: string;
+  icon: string;
+  /** Where releasing on this slot goes. */
+  route: string;
+  /** Present on a hub slot: the destinations drilling into it offers. */
+  members?: NavDestination[];
+  /** For a screen that lives in a hub, that hub's label. Null for the rest. */
+  hubLabel?: string | null;
+}
+
+/**
  * The slots to draw, resolved against the same gates the menu uses.
  *
- * Built on `menuDestinations` rather than on a table of its own, so a screen
- * simplified mode or `kitchenEnabled` has taken away cannot be reached from
- * the wheel either. That symmetry is the one the drawer's find field already
- * keeps, and it matters more here: the wheel is a gesture with no labels to
- * read until it opens, so a slot leading somewhere the app has withdrawn
- * would be a dead direction the user had already learnt.
+ * Built on `visibleMenuRows`/`menuDestinations` rather than on a table of its
+ * own, so a screen simplified mode or `kitchenEnabled` has taken away cannot be
+ * reached from the wheel either, and a hub whose every member is gone drops out
+ * rather than opening onto an empty arc. That symmetry is the one the drawer's
+ * find field already keeps, and it matters more here: the wheel is a gesture
+ * with no labels to read until it opens, so a slot leading somewhere the app
+ * has withdrawn would be a dead direction the user had already learnt.
  *
  * Order is the caller's, never the menu's — direction is the whole feature, so
- * the slots sit where the user put them. Unknown and withdrawn routes are
- * dropped rather than substituted: a fan of five is a fine fan, and shuffling
- * a replacement into somebody's muscle memory is worse than a gap.
+ * the slots sit where the user put them. Unknown and withdrawn keys are dropped
+ * rather than substituted: a fan of five is a fine fan, and shuffling a
+ * replacement into somebody's muscle memory is worse than a gap.
  */
-export function wheelDestinations(
-  routes: readonly string[],
+export function wheelSlots(
+  keys: readonly string[],
   options: NavMenuOptions,
   maxSlots: number,
-): NavDestination[] {
-  const available = new Map(menuDestinations(options).map(d => [d.route, d]));
-  const out: NavDestination[] = [];
+): WheelSlot[] {
+  const screens = new Map(menuDestinations(options).map(d => [d.route, d]));
+  const hubs = new Map<string, NavHub>();
+  for (const row of visibleMenuRows(options)) {
+    if (row.kind === 'hub') hubs.set(row.hub.id, row.hub);
+  }
+
+  const out: WheelSlot[] = [];
   const seen = new Set<string>();
-  for (const route of routes) {
-    if (seen.has(route)) continue;
-    const destination = available.get(route);
-    if (!destination) continue;
-    seen.add(route);
-    out.push(destination);
+  for (const key of keys) {
+    if (seen.has(key)) continue;
+    const slot = resolveWheelSlot(key, screens, hubs);
+    if (!slot) continue;
+    seen.add(key);
+    out.push(slot);
     if (out.length >= maxSlots) break;
+  }
+  return out;
+}
+
+function resolveWheelSlot(
+  key: string,
+  screens: Map<string, NavSearchResult>,
+  hubs: Map<string, NavHub>,
+): WheelSlot | null {
+  if (key.startsWith(WHEEL_HUB_PREFIX)) {
+    // `visibleMenuRows` has already narrowed each hub to its live members and
+    // dropped the ones left with none, so there is nothing to re-check here.
+    const hub = hubs.get(key.slice(WHEEL_HUB_PREFIX.length));
+    if (!hub) return null;
+    return {
+      key,
+      label: hub.label,
+      icon: hub.icon,
+      route: hub.members[0].route,
+      members: hub.members,
+    };
+  }
+  const destination = screens.get(key);
+  if (!destination) return null;
+  return {
+    key,
+    label: destination.label,
+    icon: destination.icon,
+    route: destination.route,
+    hubLabel: destination.hubLabel,
+  };
+}
+
+/**
+ * Every slot the wheel could hold, in menu order: each hub, then the screens.
+ *
+ * Hubs first because a hub is the denser choice — one slot for four or five
+ * destinations — and the picker's job is to make that visible before somebody
+ * spends three slots on History's three screens. A hub's members stay listed
+ * individually underneath, since putting one screen a flick away and the rest
+ * two is a real thing to want.
+ */
+export function wheelCandidates(options: NavMenuOptions): WheelSlot[] {
+  const rows = visibleMenuRows(options);
+  const out: WheelSlot[] = [];
+  for (const row of rows) {
+    if (row.kind !== 'hub') continue;
+    out.push({
+      key: wheelHubKey(row.hub.id),
+      label: row.hub.label,
+      icon: row.hub.icon,
+      route: row.hub.members[0].route,
+      members: row.hub.members,
+    });
+  }
+  for (const destination of menuDestinations(options)) {
+    out.push({
+      key: destination.route,
+      label: destination.label,
+      icon: destination.icon,
+      route: destination.route,
+      hubLabel: destination.hubLabel,
+    });
   }
   return out;
 }
