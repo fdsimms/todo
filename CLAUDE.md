@@ -9,13 +9,6 @@ exercised where applicable), open a PR automatically — don't wait to be asked.
 there's a concrete reason (work is incomplete, checks are red, or the user said to hold off);
 say why instead of opening one silently.
 
-**Don't subscribe to a PR's activity after opening it, unless the user asks.** The harness default
-is to call `subscribe_pr_activity` on every PR it opens and then babysit it — pushing fixes for CI
-failures and review comments on its own. That's not wanted here by default: open the PR, post the
-link, and end the turn. Watch a PR only when the user explicitly asks you to (or asks you to
-monitor, babysit, or autofix it) — subscribing on your own initiative turns a one-off PR into a
-standing commitment to drive it to green without being asked to.
-
 **Before pushing a follow-up fix to a PR you opened, check whether it already merged.** A build
 or submission failure reported after the fact (an EAS log, an App Store Connect rejection) often
 arrives once the PR that introduced the problem is already merged into `main` — `git fetch origin
@@ -384,6 +377,7 @@ file: the two maps are indexes, not write-ups.
 | the app asking whether you still have something | `src/utils/pantryCheckTasks.ts` — see `docs/arch/groceries.md` |
 | going through the whole pantry a card at a time | `src/utils/pantryReview.ts` + `src/components/PantryReviewSheet.tsx` — see `docs/arch/groceries.md` |
 | whether a thing got used up or went bad | `src/utils/itemDisposal.ts` — see `docs/arch/groceries.md` |
+| saying that to Siri ("mark bananas as used up") | `modules/todo-widget-bridge/ios/MarkDisposedIntent.swift` + `src/utils/pantryIndex.ts` — see `docs/native-targets.md`. The only intent here whose phrase carries a *value*, which is why it needs an `AppEntity` and so an App Group index to resolve one against: a phrase cannot interpolate a `String`. The mark itself still happens in JS on the next foreground, same queue-and-open-the-app shape the other two intents use |
 | scanning a barcode into the list | `src/utils/gtin.ts` + `src/services/productLookup.ts` + `src/utils/scanResolve.ts` |
 | how much of a cooked dish ended up on your plate | `Recipe.cookedWeightG` + `src/utils/mealLog.ts` — see `docs/arch/recipes.md`. The plate over the weighed dish is the fraction eaten; servings stay for every dish nobody has weighed |
 | writing down what you ate, and a day's totals | `src/utils/foodLog.ts` + `src/store/useFoodLogStore.ts` (+ `src/utils/nutritionTargets.ts` for the figure a total is read against) |

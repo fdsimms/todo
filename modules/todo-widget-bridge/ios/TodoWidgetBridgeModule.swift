@@ -20,6 +20,25 @@ private let pendingAddTasksFileName = "widget_pending_add_tasks.json"
 // on what a podspec costs a second target. The name is the widget's by history;
 // the job is the container's.
 private let sharedLinksFileName = "shared_recipe_links.json"
+// Both matching MarkDisposedIntent.swift — same target, file-scoped `private`,
+// same split-copy convention as the two above.
+//
+// The index is the one file here written *for* an extension to read rather
+// than to hand it work: MarkDisposedIntent's entity query resolves a spoken
+// item name against it, in a process with no way to open the app's SQLite.
+// See src/utils/pantryIndex.ts for what goes in it and why.
+private let pantryIndexFileName = "siri_pantry_index.json"
+private let pendingDisposalsFileName = "pending_disposals.json"
+
+// Mirrors what MarkDisposedIntent queues and what processPendingDisposals()
+// in widgetSync.ts expects back. `id` is optional because the entity query can
+// come up empty on a name the index didn't have — the name is queued either
+// way, and the JS side resolves it a second time against the live catalog.
+private struct PendingDisposalPayload: Codable {
+  let id: String?
+  let name: String
+  let outcome: String
+}
 
 // Mirrors the TimerRun shape written by src/utils/liveActivity.ts —
 // JSONDecoder maps camelCase keys onto these properties automatically.
@@ -98,6 +117,35 @@ public class TodoWidgetBridgeModule: Module {
       return succeeded
     }
 
+    // Writes the list of catalog rows MarkDisposedIntent's entity query matches
+    // a spoken name against (see pantryIndex.ts). Deliberately not folded into
+    // the widget snapshot above, which this otherwise resembles: that file is
+    // shaped by what the widget draws — `buildKitchen` keeps the few most
+    // urgent rows and carries no ids at all — and widening it to serve a
+    // different reader would make every widget timeline reload parse a payload
+    // it has no use for. No reloadAllTimelines() for the same reason; nothing
+    // on a home screen changes when this does.
+    AsyncFunction("writePantryIndex") { (jsonString: String) -> Bool in
+      var succeeded = false
+      TodoWidgetExceptionCatcher.runCatchingExceptions {
+        guard let containerURL = FileManager.default.containerURL(
+          forSecurityApplicationGroupIdentifier: appGroupID
+        ) else {
+          return
+        }
+
+        let directoryURL = containerURL.appendingPathComponent("Library/Application Support", isDirectory: true)
+        let fileURL = directoryURL.appendingPathComponent(pantryIndexFileName)
+
+        try? FileManager.default.createDirectory(at: directoryURL, withIntermediateDirectories: true)
+
+        guard let data = jsonString.data(using: .utf8) else { return }
+        try? data.write(to: fileURL, options: .atomic)
+        succeeded = true
+      }
+      return succeeded
+    }
+
     // Reads and clears the queue of task ids the widget's checkbox
     // (CompleteTaskIntent, in this module) has optimistically marked
     // complete. The intent can't reach the app's
@@ -152,6 +200,42 @@ public class TodoWidgetBridgeModule: Module {
         try? FileManager.default.removeItem(at: fileURL)
       }
       return titles
+    }
+
+    // Reads and clears the queue MarkDisposedIntent writes — "mark bananas as
+    // used up", spoken to Siri. Same read-and-delete shape as the two drains
+    // above and for the same reason: `markOutOfMany` clears the row's
+    // expiry/frozen/opened state, drops its live "Use up X" task and registers
+    // an undo entry, none of which this process can reach.
+    //
+    // Returns a JSON string rather than the `[String]` its neighbours return
+    // because each entry is a record, not a scalar. It is re-encoded from the
+    // decoded payloads rather than handed back verbatim so the JS side is
+    // guaranteed something parseable, and so a file corrupt enough to fail
+    // decoding is still deleted — left in place it would fail the same way on
+    // every launch, and the drain would never come back.
+    AsyncFunction("drainPendingDisposals") { () -> String in
+      var json = "[]"
+      TodoWidgetExceptionCatcher.runCatchingExceptions {
+        guard let containerURL = FileManager.default.containerURL(
+          forSecurityApplicationGroupIdentifier: appGroupID
+        ) else {
+          return
+        }
+
+        let fileURL = containerURL
+          .appendingPathComponent("Library/Application Support", isDirectory: true)
+          .appendingPathComponent(pendingDisposalsFileName)
+
+        guard let data = try? Data(contentsOf: fileURL) else { return }
+        defer { try? FileManager.default.removeItem(at: fileURL) }
+        guard let decoded = try? JSONDecoder().decode([PendingDisposalPayload].self, from: data) else {
+          return
+        }
+        guard let reencoded = try? JSONEncoder().encode(decoded) else { return }
+        json = String(data: reencoded, encoding: .utf8) ?? "[]"
+      }
+      return json
     }
 
     // Reads and clears the queue of recipe page URLs the share extension
