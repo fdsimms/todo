@@ -79,6 +79,21 @@ interface Props {
    * plain "add a food" flow. Omitted (or null) for every other caller.
    */
   mealPlanEntryId?: string | null;
+  /**
+   * What the description field starts as — the dish's own name, from whatever
+   * the caller already knew: a meal's title, or the words typed into the food
+   * search before it came up empty (`FoodLogEntrySheet`'s `onEstimate`).
+   *
+   * It seeds the field rather than estimating on open, and that distinction is
+   * the whole of it: a request costs Anthropic tokens, so the person still taps
+   * Estimate. Same call `sharedRecipeLinks` makes about a page waiting for a
+   * tap, and the reason `nutritionEstimate.ts` cites it.
+   *
+   * Read at the moment the sheet opens, like `slot` beside it. A caller that
+   * changes it while the sheet is up would otherwise rewrite a description
+   * somebody is part-way through editing.
+   */
+  initialDescription?: string;
   onClose: () => void;
   /** Offered instead of estimating, when the description names one. See the note above. */
   onPickRecipe: (recipeId: string) => void;
@@ -92,7 +107,7 @@ interface Props {
   onLogged?: () => void;
 }
 
-export function EstimateMealSheet({ visible, slot, at, mealPlanEntryId, onClose, onPickRecipe, onLogged }: Props) {
+export function EstimateMealSheet({ visible, slot, at, mealPlanEntryId, initialDescription, onClose, onPickRecipe, onLogged }: Props) {
   const colors = useColors();
   const styles = useMemo(() => makeStyles(colors), [colors]);
   const keyboardScroll = useKeyboardInsetScroll<ScrollView>();
@@ -114,9 +129,14 @@ export function EstimateMealSheet({ visible, slot, at, mealPlanEntryId, onClose,
   // description is a different candidate recipe.
   const [savedRecipeId, setSavedRecipeId] = useState<string | null>(null);
 
+  // `initialDescription` is deliberately not a dependency: it is read on the
+  // opening edge only, so a caller whose value changes underneath (the food
+  // search's own query keeps moving while its sheet sits open behind this one)
+  // cannot wipe an edit in progress. Same reason `defaultSlot` is held in a ref
+  // in `PlanMealSheet`; here `visible` already gates it.
   useEffect(() => {
     if (!visible) return;
-    setDescription('');
+    setDescription(initialDescription ?? '');
     setEstimate(null);
     setAnswers({});
     setLoading(false);

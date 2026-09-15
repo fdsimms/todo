@@ -451,6 +451,9 @@ export const SETTINGS_ENTRIES: SettingsEntry[] = [
     kitchen: true },
   { id: 'groceryImportDelete', groupId: 'capture', label: 'Delete after adding to Groceries', section: 'Apple Reminders',
     keywords: ['remove', 'keep', 'leave', 'duplicate', 'shopping', 'mirror'], kitchen: true },
+  { id: 'reminderCaptures', groupId: 'capture', label: 'Capture lists', section: 'Apple Reminders',
+    keywords: ['food', 'food log', 'meal', 'ate', 'siri', 'dictate', 'voice', 'project', 'wish list',
+      'category', 'tag', 'another list', 'extra list'] },
   { id: 'importNow', groupId: 'capture', label: 'Import now', section: 'Apple Reminders',
     keywords: ['sync', 'refresh'] },
 

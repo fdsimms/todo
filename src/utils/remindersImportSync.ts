@@ -31,6 +31,7 @@ import {
   parseHandledReminders,
   pendingImportFor,
   reconcileHandledReminders,
+  reminderCreatedAt,
   reminderListOptions,
   serializeHandledReminders,
   sortRemindersByCreation,
@@ -38,6 +39,8 @@ import {
   taskTitleKeys,
   type HandledReminderIndex,
 } from './remindersImport';
+import { captureDraftFields, drainableReminderCaptures } from './reminderCaptures';
+import type { ReminderCaptureFiling } from '../types';
 
 /**
  * Required where it's used rather than imported at the top. `expo-calendar`
@@ -310,12 +313,26 @@ type Sink = 'task' | 'grocery';
  * Where a drained list's reminders go. Two destinations exist because a
  * dictated "buy milk" and a dictated "call the dentist" want different homes,
  * and Siri can only tell them apart by which list you named.
+ *
+ * **`Sink` stays two-valued while the number of configured lists is open**, and
+ * that is the point of splitting `filing` off it rather than adding members
+ * here. A capture files an ordinary task; it does not introduce a third kind of
+ * row. Everything that branches on the sink — `takenNames`, the dedup in
+ * `isReminderAlreadyPresent`, the create in the loop below — therefore needed no
+ * new arm, and the parts of this file that destroy the user's reminders were
+ * left alone entirely.
  */
 interface DrainTarget {
   listId: string;
   sink: Sink;
   /** False when the user has asked for the reminders to be left in place. */
   deleteAfterImport: boolean;
+  /**
+   * How a `'task'` target files what it creates, beyond what the reminder says
+   * — a meal slot, a project, a category, a tag. Undefined for the Inbox leg
+   * and for every grocery target, which file nothing.
+   */
+  filing?: ReminderCaptureFiling;
 }
 
 /**
@@ -331,6 +348,7 @@ function drainTargets(): DrainTarget[] {
     groceryImportEnabled, groceryImportListId, groceryImportConfirmedListId,
     groceryImportDelete, groceryImportTwoWay,
     kitchenEnabled,
+    reminderCaptures,
   } = useSettingsStore.getState();
 
   const targets: DrainTarget[] = [];
@@ -340,6 +358,25 @@ function drainTargets(): DrainTarget[] {
       listId: remindersImportListId,
       sink: 'task',
       deleteAfterImport: remindersImportDelete,
+    });
+  }
+  // Every configured capture, each gated exactly as the two fixed legs are:
+  // switched on, a list picked, and *that* list confirmed. The gate lives in
+  // activeReminderCaptures so the settings UI and the drain can't disagree
+  // about which rows are live.
+  //
+  // Ordered after the Inbox leg and before groceries only because the array is
+  // built in that order; targets are independent, and each is drained in full
+  // before the next (see the loop). A capture pointed at a list another target
+  // already uses would be a coin toss between the two — the picker refuses it
+  // (`captureListIds`), which is where that has to be enforced, since by the
+  // time a drain reads the list it cannot tell which destination was meant.
+  for (const capture of drainableReminderCaptures(reminderCaptures, { kitchenEnabled })) {
+    targets.push({
+      listId: capture.listId!,
+      sink: 'task',
+      deleteAfterImport: capture.deleteAfterImport,
+      filing: capture.filing,
     });
   }
   // Two-way replaces this leg rather than running beside it — see mirrorOnce.
@@ -654,13 +691,23 @@ async function drainOnce(): Promise<ImportOutcome> {
     groceryImportEnabled,
     kitchenEnabled,
     remindersImportReview,
+    reminderCaptures,
     dayResetTime,
   } = useSettingsStore.getState();
   // The grocery half only counts while the area it feeds exists — the same
   // gate drainTargets applies below, repeated here so the two can't disagree.
   // Without it, turning the groceries area off reported 'no-list' ("the list
   // you chose has gone") for a list that is still perfectly there.
-  if (!remindersImportEnabled && !(groceryImportEnabled && kitchenEnabled)) return NOTHING('off');
+  // A configured capture counts as the feature being on, or somebody who only
+  // ever set up a "Food" list would be told the import is off while it drained
+  // perfectly well. It must be the same predicate drainTargets builds from and
+  // not merely a similar one — counting a capture the builder then drops is
+  // what reports 'no-list' ("the list you chose has gone") for a list that is
+  // sitting right there, which is the bug the grocery gate below carries its
+  // own note about. See drainableReminderCaptures.
+  const haveCaptures = drainableReminderCaptures(reminderCaptures, { kitchenEnabled }).length > 0;
+  if (!remindersImportEnabled && !haveCaptures
+      && !(groceryImportEnabled && kitchenEnabled)) return NOTHING('off');
 
   const targets = drainTargets();
   if (targets.length === 0) return NOTHING('no-list');
@@ -779,7 +826,22 @@ async function drainOnce(): Promise<ImportOutcome> {
             const scheduled = pending
               ? (remindersImportReview ? { pendingImport: pending } : pending)
               : null;
-            const saved = { ...draft, ...scheduled };
+            // The capture's own filing goes on last, so a list pointed at a
+            // project or a category can't have that overwritten by a schedule
+            // phrase somebody happened to dictate. It never collides in
+            // practice — pendingImportFor writes dates, repeats and reminder
+            // times, none of which a filing touches — but the precedence is
+            // worth being deliberate about rather than incidental: the list a
+            // reminder was spoken into is a choice the user made once and
+            // means every time, where the words in one reminder are about
+            // that reminder.
+            const filed = target.filing
+              // `now` stands in when EventKit stated no creation date. Only the
+              // meal arm reads it at all, and see reminderCreatedAt for why the
+              // substitution is named rather than hidden.
+              ? captureDraftFields(target.filing, reminderCreatedAt(reminder) ?? now)
+              : null;
+            const saved = { ...draft, ...scheduled, ...filed };
             addTask(saved);
             // The title as *stored*, which is the one a later pass will find in
             // the store — with review off that's the stripped one, not what was

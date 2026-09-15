@@ -16,7 +16,7 @@ import {
 } from '../utils/energyBudget';
 import { DEFAULT_WEIGH_IN_EVERY_DAYS, clampWeighInEveryDays } from '../utils/weightTasks';
 import { DEFAULT_APP_FONT, isAppFont, pickRandomAppFont, type AppFont } from '../theme/fonts';
-import type { SortOption, RecipeSortOption, Priority, Effort, MealSlot, TimeOfDay, TitleRule, WeatherRule, ScreenTimeRule, HealthRule, NutrientKey } from '../types';
+import type { SortOption, RecipeSortOption, Priority, Effort, MealSlot, TimeOfDay, TitleRule, WeatherRule, ScreenTimeRule, HealthRule, NutrientKey, ReminderCapture } from '../types';
 import {
   parseNutritionTargets,
   serializeNutritionTargets,
@@ -77,6 +77,7 @@ import { parseTitleRules } from '../utils/titleRules';
 import { parseWeatherRules, defaultWeatherRules } from '../utils/weatherTasks';
 import { parseScreenTimeRules, defaultScreenTimeRules, serializeScreenTimeRules } from '../utils/screenTimeRules';
 import { parseHealthRules, defaultHealthRules, serializeHealthRules } from '../utils/healthRules';
+import { parseReminderCaptures, serializeReminderCaptures } from '../utils/reminderCaptures';
 import { DEFAULT_MOOD_NUDGE_AFTER_DAYS } from '../utils/moodTasks';
 import type { LastTipShown } from '../utils/tips';
 
@@ -741,6 +742,17 @@ interface SettingsStore {
   // capture out of the Inbox and onto Today, and a voice note nobody has read
   // yet is exactly the thing that should not schedule itself.
   remindersImportReview: boolean;
+  // Any number of further Reminders lists, each filed somewhere of its own —
+  // "add grilled cheese to my Food list", "add the sourdough book to my Wish
+  // List". One JSON row holding a list rather than four flat keys per
+  // destination, because this is an open set the user builds: see
+  // ReminderCapture, and utils/reminderCaptures.ts for every rule about them.
+  //
+  // They are all *task* destinations. A dictated title is a complete record for
+  // a task and for a grocery row and for nothing else here, which is why the
+  // food arm stamps Task.logMealSlot and lets the tick raise the food log's own
+  // prompt rather than writing a FoodLogEntry nobody has confirmed.
+  reminderCaptures: ReminderCapture[];
   // Reading the device calendar, so the app knows what else is on a day. Off by
   // default and never inferred: turning it on prompts for calendar access,
   // which nothing else in the app has ever asked for.
@@ -1489,6 +1501,7 @@ interface SettingsStore {
   setHealthTasks: (on: boolean) => void;
   setHealthTaskCategory: (category: string | null) => void;
   setHealthRules: (rules: HealthRule[]) => void;
+  setReminderCaptures: (captures: ReminderCapture[]) => void;
   setCalendarIds: (ids: string[]) => void;
   setVacationHiddenCalendarIds: (ids: string[]) => void;
   setCalendarEventCategory: (category: string | null) => void;
@@ -2051,6 +2064,7 @@ export const useSettingsStore = create<SettingsStore>((set, get) => ({
   groceryImportDelete: true,
   groceryImportTwoWay: false,
   remindersImportReview: true,
+  reminderCaptures: [],
   calendarReadEnabled: false,
   calendarIds: [],
   vacationHiddenCalendarIds: [],
@@ -2345,6 +2359,7 @@ export const useSettingsStore = create<SettingsStore>((set, get) => ({
     const groceryImportConfirmedListId = dbGetSetting('groceryImportConfirmedListId') || null;
     const groceryImportDelete = dbGetSetting('groceryImportDelete') !== 'false';
     const groceryImportTwoWay = dbGetSetting('groceryImportTwoWay') === 'true';
+    const reminderCaptures = parseReminderCaptures(dbGetSetting('reminderCaptures'));
     const calendarReadEnabled = dbGetSetting('calendarReadEnabled') === 'true';
     const calendarIds = parseCalendarIds(dbGetSetting('calendarIds'));
     const vacationHiddenCalendarIds = parseCalendarIds(dbGetSetting('vacationHiddenCalendarIds'));
@@ -2583,7 +2598,7 @@ export const useSettingsStore = create<SettingsStore>((set, get) => ({
     const newTaskDefaults = parseNewTaskDefaults(dbGetSetting('newTaskDefaults'));
     const titleRules = parseTitleRules(dbGetSetting('titleRules'));
     const lastVisitedScreen = dbGetSetting('lastVisitedScreen') || null;
-    set({ dayResetTime: resetTime, morningStart, afternoonStart, eveningStart, nightStart, activeHoursStart, activeHoursEnd, quietHoursStart, quietHoursEnd, themeMode, appFont, appFontRandomize, appFontPool, dailyAgendaEnabled, dailyAgendaTime, tripReminderEnabled, backgroundRefreshEnabled, use24HourTime, weekStartsOn, fabHand, hapticsEnabled, shakeToUndoEnabled, confirmBeforeDeleting, sortOption, filterPriorities, filterEfforts, filterHasReminder, recipeSortOption, recipeLovedOnly, appLockEnabled, appLockGraceSeconds, vacationMode, vacationStart, vacationEnd, vacationDrivenBy, activeListDrivenBy, destinationForecastEnabled, autoRemoveExpiredTasks, autoCompleteProjectsOnDone, postponeCheckEnabled, postponeCheckThreshold, focusWorkCapMinutes, focusDefaultWorkMinutes, focusRestAfterTasks, focusRestAfterMinutes, focusRestMinutes, focusLongRestEvery, focusLongRestMinutes, focusShieldEnabled, penaltyShieldEnabled, gateShieldEnabled, penaltyShieldUntil, penaltyShieldReason, completedRetentionDays, defaultReminderLeadMinutes, hideCategories, collapsedCategories, collapsedRecipeSections, collapsedGroceryGroups, recentSearches, simpleTaskForm, simpleMode, hideHelpText, tipsEnabled, seenTips, lastTipShown, timerLiveActivity, tripLiveActivity, focusLiveActivity, kitchenEnabled, mealsOnToday, unitSystem, currencySymbol, mealCookTasks, mealCookTaskCategory, mealSlotsEnabled, mealSlotTasksWrittenThroughDayKey, mealSlotStepEstimates, cookRecapEnabled, restockOfferEnabled, productLookupEnabled, groceryUseUpTasks, groceryUseUpLeadDays, groceryUseUpTaskCategory, leftoverUseUpTasks, leftoverUseUpTaskCategory, useUpTaskCap, remindersImportEnabled, remindersImportListId, remindersImportConfirmedListId, remindersImportDelete, remindersImportReview, groceryImportEnabled, groceryImportListId, groceryImportConfirmedListId, groceryImportDelete, groceryImportTwoWay, calendarReadEnabled, calendarIds, vacationHiddenCalendarIds, calendarEventCategory, reminderMeetingNudgeEnabled, calendarPeopleHistory, deadlineCalendarId, completionCalendarId, mealCalendarId, healthReadEnabled, healthWriteEnabled, healthFoodWriteRefusalSeen, weightUnit, waterUnit, weightGoal, bodyProfile, healthCategory, healthTasks, healthTaskCategory, healthRules, projectReviewTasks, projectReviewTaskCategory, birthdayTasks, birthdayLeadDays, birthdayTaskCategory, birthdayGiftTasks, birthdayGiftLeadDays, birthdayGiftTaskCategory, reachOutTasks, reachOutTaskCategory, pantryCheckTasks, pantryCheckTaskCategory, pantryReviewTasks, pantryReviewTaskCategory, pantryReviewLastDayKey, lastDeloadAppliedDayKey, mealShortfallTasks, mealLogPrompt, nutritionTargets, foodLogPinnedNutrients, mealShortfallLeadDays, mealShortfallTaskCategory, mealLogNudgeTasks, mealLogNudgeTaskCategory, supplyReorderTasks, calendarReviewTasks, calendarReviewLastDayKey, calendarReviewTimeSegment, weatherTasks, weatherTaskCategory, weatherRules, screenTimeTasks, screenTimeTaskCategory, screenTimeRules, moodLogTasks, moodLogTaskCategory, moodLogLastDayKey, morningCheckInLastDayKey, moodLogTimeSegments, moodNudgeTasks, moodNudgeTaskCategory, moodNudgeAfterDays, moodNudgeLastDayKey, weekendNudgeTasks, weekendNudgeTaskCategory, weekendNudgeLeadDays, weekendNudgeLastWeekendKey, weighInTasks, weighInTaskCategory, weighInEveryDays, weighInLastDayKey, patchNotesQaStatus, aiFeatureConfig, onDeviceAiEnabled, defaultProjectNudgeCadenceDays, mealPlanNudgeEnabled, mealPlanNudgeIgnoresVacation, mealPlanNudgeWeekday, mealPlanNudgeTime, mealPlanNudgeLastFiredWeekKey, mealPlanNudgeGroupId, mealPlanNudgeTaskCategory, newTaskDefaults, titleRules, lastVisitedScreen, initialized: true });
+    set({ dayResetTime: resetTime, morningStart, afternoonStart, eveningStart, nightStart, activeHoursStart, activeHoursEnd, quietHoursStart, quietHoursEnd, themeMode, appFont, appFontRandomize, appFontPool, dailyAgendaEnabled, dailyAgendaTime, tripReminderEnabled, backgroundRefreshEnabled, use24HourTime, weekStartsOn, fabHand, hapticsEnabled, shakeToUndoEnabled, confirmBeforeDeleting, sortOption, filterPriorities, filterEfforts, filterHasReminder, recipeSortOption, recipeLovedOnly, appLockEnabled, appLockGraceSeconds, vacationMode, vacationStart, vacationEnd, vacationDrivenBy, activeListDrivenBy, destinationForecastEnabled, autoRemoveExpiredTasks, autoCompleteProjectsOnDone, postponeCheckEnabled, postponeCheckThreshold, focusWorkCapMinutes, focusDefaultWorkMinutes, focusRestAfterTasks, focusRestAfterMinutes, focusRestMinutes, focusLongRestEvery, focusLongRestMinutes, focusShieldEnabled, penaltyShieldEnabled, gateShieldEnabled, penaltyShieldUntil, penaltyShieldReason, completedRetentionDays, defaultReminderLeadMinutes, hideCategories, collapsedCategories, collapsedRecipeSections, collapsedGroceryGroups, recentSearches, simpleTaskForm, simpleMode, hideHelpText, tipsEnabled, seenTips, lastTipShown, timerLiveActivity, tripLiveActivity, focusLiveActivity, kitchenEnabled, mealsOnToday, unitSystem, currencySymbol, mealCookTasks, mealCookTaskCategory, mealSlotsEnabled, mealSlotTasksWrittenThroughDayKey, mealSlotStepEstimates, cookRecapEnabled, restockOfferEnabled, productLookupEnabled, groceryUseUpTasks, groceryUseUpLeadDays, groceryUseUpTaskCategory, leftoverUseUpTasks, leftoverUseUpTaskCategory, useUpTaskCap, remindersImportEnabled, remindersImportListId, remindersImportConfirmedListId, remindersImportDelete, remindersImportReview, groceryImportEnabled, groceryImportListId, groceryImportConfirmedListId, groceryImportDelete, groceryImportTwoWay, reminderCaptures, calendarReadEnabled, calendarIds, vacationHiddenCalendarIds, calendarEventCategory, reminderMeetingNudgeEnabled, calendarPeopleHistory, deadlineCalendarId, completionCalendarId, mealCalendarId, healthReadEnabled, healthWriteEnabled, healthFoodWriteRefusalSeen, weightUnit, waterUnit, weightGoal, bodyProfile, healthCategory, healthTasks, healthTaskCategory, healthRules, projectReviewTasks, projectReviewTaskCategory, birthdayTasks, birthdayLeadDays, birthdayTaskCategory, birthdayGiftTasks, birthdayGiftLeadDays, birthdayGiftTaskCategory, reachOutTasks, reachOutTaskCategory, pantryCheckTasks, pantryCheckTaskCategory, pantryReviewTasks, pantryReviewTaskCategory, pantryReviewLastDayKey, lastDeloadAppliedDayKey, mealShortfallTasks, mealLogPrompt, nutritionTargets, foodLogPinnedNutrients, mealShortfallLeadDays, mealShortfallTaskCategory, mealLogNudgeTasks, mealLogNudgeTaskCategory, supplyReorderTasks, calendarReviewTasks, calendarReviewLastDayKey, calendarReviewTimeSegment, weatherTasks, weatherTaskCategory, weatherRules, screenTimeTasks, screenTimeTaskCategory, screenTimeRules, moodLogTasks, moodLogTaskCategory, moodLogLastDayKey, morningCheckInLastDayKey, moodLogTimeSegments, moodNudgeTasks, moodNudgeTaskCategory, moodNudgeAfterDays, moodNudgeLastDayKey, weekendNudgeTasks, weekendNudgeTaskCategory, weekendNudgeLeadDays, weekendNudgeLastWeekendKey, weighInTasks, weighInTaskCategory, weighInEveryDays, weighInLastDayKey, patchNotesQaStatus, aiFeatureConfig, onDeviceAiEnabled, defaultProjectNudgeCadenceDays, mealPlanNudgeEnabled, mealPlanNudgeIgnoresVacation, mealPlanNudgeWeekday, mealPlanNudgeTime, mealPlanNudgeLastFiredWeekKey, mealPlanNudgeGroupId, mealPlanNudgeTaskCategory, newTaskDefaults, titleRules, lastVisitedScreen, initialized: true });
   },
 
   /**
@@ -3614,6 +3629,11 @@ export const useSettingsStore = create<SettingsStore>((set, get) => ({
     set({ healthRules: rules });
   },
 
+  setReminderCaptures(captures: ReminderCapture[]) {
+    dbSetSetting('reminderCaptures', serializeReminderCaptures(captures));
+    set({ reminderCaptures: captures });
+  },
+
   setCalendarIds(ids: string[]) {
     dbSetSetting('calendarIds', JSON.stringify(ids));
     set({ calendarIds: ids });
@@ -3797,6 +3817,19 @@ export const useSettingsStore = create<SettingsStore>((set, get) => ({
     // stale shadow the moment the same list was picked again — an edit made
     // while nothing was watching is not a change to mirror.
     dbSetSetting('groceryImportLinks', '');
+    // Every extra capture loses its list and its confirmation for the same
+    // reason the two fixed legs above do, and it has to be done by hand here
+    // for the same mechanical one (an array can't round-trip through
+    // DEFAULT_SETTINGS). The captures themselves survive — a title and a
+    // filing are a preference, and rebuilding them is not what reset asked to
+    // undo — but each is inert until its list is picked and confirmed again,
+    // which activeReminderCaptures enforces off `listId` alone.
+    const clearedCaptures = get().reminderCaptures.map(capture => ({
+      ...capture,
+      listId: null,
+      confirmedListId: null,
+    }));
+    dbSetSetting('reminderCaptures', serializeReminderCaptures(clearedCaptures));
     // Same reasoning as the two import list ids: reset stops the write
     // rather than leaving it pointed at a calendar reset didn't ask about.
     // Per-task deadlineOnCalendar flags aren't settings and aren't touched —
@@ -3813,6 +3846,7 @@ export const useSettingsStore = create<SettingsStore>((set, get) => ({
       deadlineCalendarId: null,
       completionCalendarId: null,
       mealCalendarId: null,
+      reminderCaptures: clearedCaptures,
     });
   },
 }));
