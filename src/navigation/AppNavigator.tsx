@@ -41,6 +41,7 @@ import { CategoryDetailScreen } from '../screens/CategoryDetailScreen';
 import { PersonDetailScreen } from '../screens/PersonDetailScreen';
 import { TipsScreen } from '../screens/TipsScreen';
 import { SideMenuDrawer } from '../components/SideMenuDrawer';
+import { FeatureWheel } from '../components/FeatureWheel';
 import { SettingsScreen } from '../screens/SettingsScreen';
 import { SettingsGroupScreen } from '../screens/SettingsGroupScreen';
 import { DemoBanner } from '../components/DemoBanner';
@@ -95,6 +96,11 @@ const MENU_ROUTES: ReadonlySet<string> = new Set(
   NAV_MENU_ROWS.flatMap(row =>
     row.kind === 'screen' ? [row.destination.route] : row.hub.members.map(m => m.route))
 );
+// The bottom bar, in bar order. `More` is last and isn't a screen (its press
+// opens the drawer), so it's deliberately not in VISIBLE_TABS below — but the
+// feature wheel's gesture zone covers the whole bar and re-issues each tab's
+// own tap, so it needs the row exactly as drawn, More included.
+const BOTTOM_TAB_ROUTES = ['Today', 'Groceries', 'Projects', 'More'] as const;
 const VISIBLE_TABS: ReadonlySet<string> = new Set(['Today', 'Groceries', 'Projects']);
 const DRAWER_TABS: ReadonlySet<string> = new Set(
   [...MENU_ROUTES].filter(r => !VISIBLE_TABS.has(r))
@@ -305,6 +311,15 @@ export default function AppNavigator() {
   const setLastVisitedScreen = useSettingsStore(s => s.setLastVisitedScreen);
   const navRef = navigationRef;
 
+  // Groceries drops out of the bar with kitchenEnabled, which changes how wide
+  // each remaining tab is — and the wheel's zone divides the bar by exactly
+  // this list to work out which tab a tap landed on.
+  const kitchenEnabled = useSettingsStore(s => s.kitchenEnabled);
+  const bottomTabRoutes = useMemo(
+    () => BOTTOM_TAB_ROUTES.filter(route => route !== 'Groceries' || kitchenEnabled),
+    [kitchenEnabled],
+  );
+
   const openMenu = useCallback(() => setMenuOpen(true), []);
   const closeMenu = useCallback(() => setMenuOpen(false), []);
   const openSettings = useCallback(() => {
@@ -459,6 +474,19 @@ export default function AppNavigator() {
         <View
           style={styles.edgeZone}
           {...edgePanResponder.panHandlers}
+        />
+      )}
+      {/* The other gesture zone hung off this navigator, and the same shape as
+          the edge swipe above it: an absolutely positioned View with a
+          PanResponder, deliberately not a Modal (a drag inside a pageSheet
+          Modal doesn't work at all — see FeatureWheel's own note and #1182).
+          Gated on !menuOpen for the reason the edge zone is: the drawer covers
+          the tab bar, so there is nothing to bloom out of while it's open. */}
+      {!menuOpen && (
+        <FeatureWheel
+          tabRoutes={bottomTabRoutes}
+          onNavigate={handleDrawerNavigate}
+          onOpenMenu={openMenu}
         />
       )}
       {/* Outside the NavigationContainer so it stays put across every screen
