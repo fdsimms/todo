@@ -33,8 +33,9 @@ function writeToNativeBridge(jsonString: string): void {
 }
 
 // Hands off task completions queued by the widget's checkbox
-// (CompleteTaskIntent, running in the separate widget extension process —
-// see modules/todo-widget-bridge) to TodayScreen via useWidgetCompletionStore,
+// (CompleteTaskIntent, in modules/todo-widget-bridge — it compiles into the
+// app target as well as the widget's, which is what lets it bring the app
+// forward at all) to TodayScreen via useWidgetCompletionStore,
 // which plays the same complete animation a normal in-app tap gets before
 // actually calling completeTask() (see TaskItem's autoComplete prop) — the
 // widget can only optimistically mark a task checked; it has no access to the

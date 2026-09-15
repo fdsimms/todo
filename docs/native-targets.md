@@ -82,18 +82,37 @@ plumbing moved into `lib/nativeTarget.js`.
   build time catches the omission, because the extension itself doesn't request activities, it
   only renders the ones the app process starts.
 - **An `AppShortcutsProvider` (the Action Button / Siri / Shortcuts entry point) must live in
-  the *main app* target, not an extension.** `targets/todo-widget/CompleteTaskIntent.swift` is
-  the pattern every other `AppIntent` here has followed — an intent living in the widget
-  extension, invoked by a `Button(intent:)` inside that extension's own SwiftUI. That's the
-  wrong home for one meant to show up in the system-wide Shortcuts/Action Button picker: an
-  `AppShortcutsProvider` declared in an extension only donates shortcuts for *that extension's*
-  own intents, not to the app as a whole. `AddTaskIntent` and its `AppShortcutsProvider`
-  (`modules/todo-widget-bridge/ios/AddTaskIntent.swift`) live in the widget-bridge module
-  instead, purely because that module's podspec already globs every `.swift` file there into
-  the main app target (see `TodoWidgetBridge.podspec`'s `s.source_files`) — no target-injection
-  plugin work needed, unlike a widget/share-extension addition. The intent still can't reach
-  the app's SQLite or JS logic any more than `CompleteTaskIntent` can, so it follows the same
-  App-Group-queue-then-`openAppWhenRun`-open-the-app shape.
+  the *main app* target, not an extension.** An `AppShortcutsProvider` declared in an extension
+  only donates shortcuts for *that extension's* own intents, not to the app as a whole, so it
+  never shows up in the system-wide Shortcuts/Action Button picker. `AddTaskIntent` and its
+  `AppShortcutsProvider` (`modules/todo-widget-bridge/ios/AddTaskIntent.swift`) live in the
+  widget-bridge module for this reason: that module's podspec already globs every `.swift` file
+  there into the main app target (see `TodoWidgetBridge.podspec`'s `s.source_files`) — no
+  target-injection plugin work needed, unlike a widget/share-extension addition. The intent
+  still can't reach the app's SQLite or JS logic, so it follows the
+  App-Group-queue-then-open-the-app shape.
+- **An `AppIntent` that brings the app to the foreground must compile into the main app target
+  too — an intent hosted *only* by a widget extension can never open the app.** Apple's
+  "Configuring the runtime behavior of your app intents" states it outright: code in a widget
+  extension (or an App Intents extension) runs only in the background. The foreground half is
+  not refused loudly — `perform()` still runs and still writes whatever it queued, so the tap
+  looks like it half-worked and the app simply never comes forward. `CompleteTaskIntent` (the
+  Today widget's checkbox) shipped extension-only and hit exactly this, and the first fix for it
+  was the wrong one: `openAppWhenRun` is deprecated in iOS 26 and its doc says setting it true
+  "generates an error if the app intent runs in an app extension", so the obvious reading is
+  that the deprecation broke it and the `@available(iOS 26.0, *) static var supportedModes:
+  IntentModes { .foreground(.immediate) }` replacement is the whole repair. It isn't — it
+  declares the *requirement* to be in the foreground, but if the only target hosting the intent
+  is the extension there is no process that can satisfy it, so nothing changes. Note the second
+  half of that same deprecation note, which is the actual rule: `openAppWhenRun` is still fine
+  "for app intents you run inside your app". The fix is target membership, not the property —
+  `CompleteTaskIntent.swift` now lives in `modules/todo-widget-bridge/ios/` (globbed into the
+  app by the podspec) *and* is listed in `withWidgetExtension.js`'s `SHARED_SWIFT_FILES` so the
+  extension, whose `Button(intent:)` names the type, still compiles it. Both properties are kept:
+  `supportedModes` for iOS 26+, `openAppWhenRun` for older. A file compiled into two targets
+  can't share the widget target's App Group helpers, so it carries its own file-private copy —
+  the convention `AddTaskIntent.swift` already follows. `allowedExecutionTargets` would let you
+  pin execution to `.main` explicitly, but it is **iOS 27+** and so no help for 26.
 - **The custom shield screen is two targets, not one, and the layout is not yours.** A
   `ShieldConfigurationDataSource` (`ManagedSettingsUI`) draws the screen and is *never told
   about a tap*; `ShieldAction` only ever reaches a `ShieldActionDelegate` (`ManagedSettings`),

@@ -46,7 +46,7 @@ private func addPendingTaskTitle(_ title: String) {
 
 // Backs the Action Button (and Siri, and the Shortcuts app) via the
 // AppShortcut declared below. Runs out of process from the RN/JS side the
-// same way CompleteTaskIntent does (targets/todo-widget/CompleteTaskIntent.swift)
+// same way CompleteTaskIntent does (CompleteTaskIntent.swift, beside this file)
 // and for the same reason — this Swift code has no way to reach the app's
 // SQLite database or the recurrence/streak/chain logic that addTask() runs in
 // JS — so it only queues the dictated title and opens the app
