@@ -1,5 +1,5 @@
 // The food log's entry sheet: pick a food, a box of one or a cooked dish, say
-// how much, and save it as a helping. One component of ~1,070 lines, so grep a
+// how much, and save it as a helping. One component of ~1,500 lines, so grep a
 // landmark rather than reading it start to finish:
 //
 //   ==== <name> ====        the section banners through the logic half
@@ -41,6 +41,7 @@ import { isNonFoodAisle } from '../utils/groceryAisles';
 import { groceryNameKey } from '../utils/groceryParse';
 import { dayKeyOf, getCurrentDayStart, getLogicalDayKey } from '../utils/dateUtils';
 import { useMealPlanStore } from '../store/useMealPlanStore';
+import { useSettingsStore } from '../store/useSettingsStore';
 import { foodLogRecency, rankByRecency } from '../utils/foodLogRecents';
 import { haptics } from '../utils/haptics';
 import { weighableLine } from '../utils/ingredientGrams';
@@ -161,6 +162,20 @@ interface Props {
    * adding an entry has no meal plan row to point back at.
    */
   mealPlanEntryId?: string | null;
+  /**
+   * Whether "Add another" may keep this sheet open after a save instead of
+   * closing it, for a caller with an open-ended run of foods to log rather
+   * than one thing to log and be done.
+   *
+   * Only the plain "add a food" mount sets this. `LogMealEntrySheet` and the
+   * estimate sheet's own reopen (`seedRecipeId`) each answer one particular
+   * planned or described meal — `mealPlanEntryId`/`initialQuery` name it —
+   * and closing once that's logged is the point, the same reasoning
+   * `QuickAddModal` gives for gating its own burst mode off a seeded sheet.
+   * Ignored whenever `editing` is set, regardless of what a caller passes: a
+   * correction is never a burst of one.
+   */
+  allowBurst?: boolean;
   onClose: () => void;
   /**
    * Offers to describe the meal instead of searching for it, handing off to
@@ -293,7 +308,7 @@ interface Candidate {
 }
 
 export function FoodLogEntrySheet({
-  visible, slot, at, seedRecipeId, initialQuery, mealPlanEntryId, editing, onClose, onEstimate, onScan, onSavedMeal, onDeclineMeal,
+  visible, slot, at, seedRecipeId, initialQuery, mealPlanEntryId, editing, allowBurst, onClose, onEstimate, onScan, onSavedMeal, onDeclineMeal,
   overlays,
 }: Props) {
   const colors = useColors();
@@ -303,6 +318,11 @@ export function FoodLogEntrySheet({
   // when this half renders) clear of the keyboard instead of leaving it to a
   // plain ScrollView — same mechanism as every other keyboard-heavy sheet.
   const keyboardScroll = useKeyboardInsetScroll<ScrollView>();
+  // The search field, refocused after a burst save — see handleSave.
+  const queryInputRef = useRef<TextInput>(null);
+  // Set by handleSave's burst branch, consumed by the effect below once the
+  // search field it wants to focus has actually mounted.
+  const pendingBurstFocus = useRef(false);
 
   // ==== store bindings ====
   const items = useGroceryStore(useShallow(s => s.items));
@@ -315,6 +335,13 @@ export function FoodLogEntrySheet({
   const setProductNutrition = useGroceryStore(s => s.setProductNutrition);
   const ensureCatalogItem = useGroceryStore(s => s.ensureCatalogItem);
   const recentEntries = useFoodLogStore(s => s.recentEntries);
+  const keepOpenAfterFoodLog = useSettingsStore(s => s.keepOpenAfterFoodLog);
+  const setKeepOpenAfterFoodLog = useSettingsStore(s => s.setKeepOpenAfterFoodLog);
+
+  // Whether this save should stay open for another food instead of closing —
+  // see `allowBurst`'s own doc comment for why a correction never takes this,
+  // whatever the caller passes.
+  const burstMode = !!allowBurst && !editing && keepOpenAfterFoodLog;
 
   // ==== local state (what is picked, how much, and which extra form is open) ====
   const [query, setQuery] = useState('');
@@ -332,6 +359,10 @@ export function FoodLogEntrySheet({
   // What was typed for each of a dish's amount-varies lines, keyed by the
   // recipe ingredient's own id. See `varyingLines` below.
   const [varyingAmounts, setVaryingAmounts] = useState<Record<string, string>>({});
+  // Foods filed since the sheet opened, while "Add another" is on — the
+  // sheet's own record of a burst, since nothing behind it is announcing
+  // them (see handleSave). Cleared with the rest of the fields on open.
+  const [burstAdded, setBurstAdded] = useState<string[]>([]);
 
   useEffect(() => {
     if (!visible) return;
@@ -341,8 +372,17 @@ export function FoodLogEntrySheet({
     setChosenSlot(slot);
     setDbSearchOpen(false);
     setCatalogPickOpen(false);
+    setBurstAdded([]);
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [visible, slot]);
+
+  // Fires once a burst save's reset has committed and the search field it
+  // wants to focus has actually mounted — see `pendingBurstFocus`'s own note.
+  useEffect(() => {
+    if (!pendingBurstFocus.current) return;
+    pendingBurstFocus.current = false;
+    queryInputRef.current?.focus();
+  }, [picked]);
 
   // Closes the "weigh it" form whenever the picked food or its panel changes
   // out from under it — including right after a weighed portion is saved,
@@ -476,16 +516,24 @@ export function FoodLogEntrySheet({
    * What has actually been eaten lately, read once when the sheet opens.
    *
    * A snapshot rather than a subscription: nothing that happens while this is
-   * open should reorder the list under the finger picking from it, and the one
-   * thing that could — saving an entry — closes the sheet anyway. Ninety days
-   * because the question is "what do you eat", which a fortnight answers badly
-   * for anything weekly.
+   * open should reorder the list under the finger picking from it. The one
+   * thing that could — saving an entry — closes the sheet anyway, unless
+   * burst mode kept it open for another food, which is exactly why
+   * `handleSave` retakes this same snapshot on that path: a burst continuing
+   * onto the search list is the "something happened while this stayed open"
+   * case this comment used to say couldn't occur. Ninety days because the
+   * question is "what do you eat", which a fortnight answers badly for
+   * anything weekly.
    */
   const [recency, setRecency] = useState(() => foodLogRecency([]));
-  useEffect(() => {
-    if (!visible) return;
+  const refreshRecency = () => {
     const today = getCurrentDayStart();
     setRecency(foodLogRecency(recentEntries(dayKeyOf(subDays(today, 90)), dayKeyOf(today))));
+  };
+  useEffect(() => {
+    if (!visible) return;
+    refreshRecency();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [visible, recentEntries]);
 
   // ==== reopening an existing entry ====
@@ -819,6 +867,28 @@ export function FoodLogEntrySheet({
       }
     }
     haptics.success();
+    // "Add another": file it and stay, ready for the next food, instead of
+    // closing. `chosenSlot` is deliberately left alone — a burst is usually
+    // one meal's worth of things — everything else resets the same way the
+    // `visible` effect above seeds a fresh open. `refreshRecency` retakes the
+    // snapshot `recency`'s own doc comment argues for, since this is the one
+    // path where something did happen while the sheet stayed open.
+    //
+    // The search field doesn't exist yet to focus: this runs while `picked`
+    // is still truthy, so the JSX is still on the amount-entry branch and
+    // `queryInputRef` points at nothing. `pendingBurstFocus` hands the actual
+    // `.focus()` to the effect below, which fires once the reset below has
+    // committed and the search field has mounted in its place.
+    if (burstMode) {
+      setBurstAdded(prev => [...prev, picked.label]);
+      setQuery(initialQuery ?? '');
+      setPicked(null);
+      setAmount('');
+      setDbSearchOpen(false);
+      refreshRecency();
+      pendingBurstFocus.current = true;
+      return;
+    }
     Keyboard.dismiss();
     onClose();
   };
@@ -1143,6 +1213,7 @@ export function FoodLogEntrySheet({
             <View style={styles.searchRow}>
               <Ionicons name="search" size={iconSize.sm} color={colors.textTertiary} />
               <TextInput
+                ref={queryInputRef}
                 style={styles.searchInput}
                 value={query}
                 onChangeText={setQuery}
@@ -1151,6 +1222,35 @@ export function FoodLogEntrySheet({
                 autoCorrect={false}
               />
             </View>
+            {/* Hidden for a caller answering one specific food (a correction,
+                a seeded dish, an already-known meal), same as this sheet's
+                other one-off affordances above. */}
+            {!!allowBurst && !editing && (
+              <View style={styles.burstRow}>
+                <TouchableOpacity
+                  style={[styles.keepOpenChip, keepOpenAfterFoodLog && styles.keepOpenChipOn]}
+                  onPress={() => { haptics.tap(); setKeepOpenAfterFoodLog(!keepOpenAfterFoodLog); }}
+                  activeOpacity={interaction.activeOpacity}
+                  accessibilityRole="switch"
+                  accessibilityState={{ checked: keepOpenAfterFoodLog }}
+                  accessibilityLabel="Add another"
+                >
+                  <Ionicons
+                    name={keepOpenAfterFoodLog ? 'checkmark-circle' : 'ellipse-outline'}
+                    size={15}
+                    color={keepOpenAfterFoodLog ? colors.accent : colors.textSecondary}
+                  />
+                  <Text style={[styles.keepOpenText, keepOpenAfterFoodLog && styles.keepOpenTextOn]}>
+                    Add another
+                  </Text>
+                </TouchableOpacity>
+                {burstAdded.length > 0 && (
+                  <Text style={styles.burstCount}>
+                    {burstAdded.length} added
+                  </Text>
+                )}
+              </View>
+            )}
             {(!!onScan || !!onEstimate || !!onSavedMeal) && (
               <View style={styles.actionRow}>
                 {!!onScan && (
@@ -1351,6 +1451,40 @@ function makeStyles(colors: Colors) {
       borderRadius: radius.md,
     },
     searchInput: { flex: 1, color: colors.text, fontSize: font.md, padding: 0 },
+    // Same shape as QuickAddModal's own burst row: the chip toggles the
+    // setting directly (no local on/off state of its own), and the count
+    // beside it only appears once there's something to count.
+    burstRow: {
+      flexDirection: 'row',
+      alignItems: 'center',
+      justifyContent: 'space-between',
+      marginHorizontal: spacing.md,
+      marginBottom: spacing.md,
+    },
+    keepOpenChip: {
+      flexDirection: 'row',
+      alignItems: 'center',
+      gap: spacing.xs,
+      paddingVertical: spacing.xs,
+      paddingHorizontal: spacing.sm,
+      borderRadius: radius.md,
+      backgroundColor: colors.bgTertiary,
+    },
+    keepOpenChipOn: {
+      backgroundColor: colors.accent + '22',
+    },
+    keepOpenText: {
+      color: colors.textSecondary,
+      fontSize: font.sm,
+    },
+    keepOpenTextOn: {
+      color: colors.accent,
+      fontWeight: fontWeight.semibold,
+    },
+    burstCount: {
+      color: colors.textSecondary,
+      fontSize: font.sm,
+    },
     // The three blocks above the list — field, actions, results — sat
     // spacing.sm apart, which is the same gap the result rows keep between
     // themselves, so the actions read as one more row of the list rather than

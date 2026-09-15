@@ -43,7 +43,7 @@ export function SavedMealsSheet({ visible, meals, onLog, onDelete, onClose }: Pr
   const handleDelete = (meal: SavedMeal) => {
     Alert.alert(
       `Forget "${meal.name}"?`,
-      'This does not touch anything already logged with it — only the shortcut to log it again.',
+      'This does not touch anything already logged with it. Only the shortcut to log it again is removed.',
       [
         { text: 'Cancel', style: 'cancel' },
         {
