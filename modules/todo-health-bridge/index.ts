@@ -137,6 +137,23 @@ export interface HealthDayReading {
   start: string;
   steps: number | null;
   sleepMinutes: number | null;
+  /**
+   * Minutes of Apple Exercise Time for the day, or null.
+   *
+   * Apple's own "every full minute of movement that equals or exceeds the
+   * intensity of a brisk walk", which is a cumulative quantity like steps and
+   * so rides the same summed collection query. Deliberately minutes of
+   * *anything* rather than of a named workout type: a type list would be a
+   * second closed set to keep in step with HealthKit's own, and the rules
+   * people write do not need it.
+   *
+   * Null carries more weight here than for any other metric on this record,
+   * because most people have days with genuinely no exercise on them — see
+   * `exerciseMinutesSeenRecently` on `HealthDay`, which is what lets an absent
+   * figure be read as a zero without telling somebody who has never recorded
+   * exercise that they did none.
+   */
+  exerciseMinutes: number | null;
   /** Milligrams of dietary sodium logged for the day, or null. Not read from
    * this app's own writes — nothing here writes to Health — but from whatever
    * food-logging app the person already uses; see the module note above. */
@@ -404,7 +421,7 @@ export async function readDailyHealth(
     for (const entry of parsed) {
       if (typeof entry !== 'object' || entry === null) continue;
       const {
-        start, steps, sleepMinutes, sodiumMg, proteinG, satFatG, fiberG, sugarG, caffeineMg, waterMl, calorieKcal,
+        start, steps, sleepMinutes, exerciseMinutes, sodiumMg, proteinG, satFatG, fiberG, sugarG, caffeineMg, waterMl, calorieKcal,
       } = entry as Record<string, unknown>;
       // A row with no instant cannot be filed under a day, so it is dropped
       // rather than guessed at — the same refusal the native side makes when
@@ -414,6 +431,7 @@ export async function readDailyHealth(
         start,
         steps: countOrNull(steps),
         sleepMinutes: countOrNull(sleepMinutes),
+        exerciseMinutes: countOrNull(exerciseMinutes),
         sodiumMg: countOrNull(sodiumMg),
         proteinG: countOrNull(proteinG),
         satFatG: countOrNull(satFatG),
