@@ -1,0 +1,4 @@
+{
+  "message": "A shopping trip can carry a budget. The trip banner now shows what is in the cart so far, and tapping it sets what that gets compared to. It always says how much of the cart it could price, and it will tell you when you have gone over but never claims you are under until everything in the cart has a price.",
+  "date": "2026-09-15"
+}
