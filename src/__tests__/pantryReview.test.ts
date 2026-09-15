@@ -309,15 +309,28 @@ describe('describeLastPurchase', () => {
 
 describe('describePantryReviewDone', () => {
   it('counts what was answered', () => {
-    expect(describePantryReviewDone(1, 0)).toBe('Checked 1 thing.');
-    expect(describePantryReviewDone(7, 0)).toBe('Checked 7 things.');
+    expect(describePantryReviewDone(1, 0, 0)).toBe('Checked 1 thing.');
+    expect(describePantryReviewDone(7, 0, 0)).toBe('Checked 7 things.');
   });
 
   it('names the cap leftovers rather than reading as a whole cupboard covered', () => {
-    expect(describePantryReviewDone(20, 4)).toBe('Checked 20 things. 4 more to go through next time.');
+    expect(describePantryReviewDone(20, 0, 4)).toBe('Checked 20 things. 4 more to go through next time.');
   });
 
   it('has an answer for a session nobody answered', () => {
-    expect(describePantryReviewDone(0, 0)).toBe('Nothing checked.');
+    expect(describePantryReviewDone(0, 0, 0)).toBe('Nothing checked.');
+  });
+
+  it('names what was skipped rather than folding it into what was answered', () => {
+    expect(describePantryReviewDone(5, 1, 0)).toBe('Checked 5 things, 1 skipped.');
+    expect(describePantryReviewDone(5, 3, 0)).toBe('Checked 5 things, 3 skipped.');
+  });
+
+  it('names a session that was all skips', () => {
+    expect(describePantryReviewDone(0, 4, 0)).toBe('Nothing checked, 4 skipped.');
+  });
+
+  it('combines a skip count with the cap leftovers', () => {
+    expect(describePantryReviewDone(15, 5, 4)).toBe('Checked 15 things, 5 skipped. 4 more to go through next time.');
   });
 });
