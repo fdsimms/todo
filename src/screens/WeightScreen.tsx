@@ -178,6 +178,7 @@ export function WeightScreen() {
   const remainingDays = goal !== null && goalWeightKg !== null
     ? daysToTarget(goal, goalWeightKg)
     : null;
+  const etaDate = remainingDays !== null ? addDays(getLogicalToday(), remainingDays) : null;
 
   // Against the *visible* slice, since its vertices are indexed into whatever
   // the chart was handed. The goal card above reads the whole series instead,
@@ -345,26 +346,52 @@ export function WeightScreen() {
                     <View style={[styles.goalFill, { width: `${progress.fraction * 100}%` }]} />
                   </View>
 
-                  <Text style={styles.goalLine}>
-                    {progress.reached
-                      ? `Reached, from ${formatWeight(goal.startKg, unit)}.`
-                      : `${formatWeight(Math.abs(progress.remainingKg), unit)} to go, from ${formatWeight(goal.startKg, unit)}.`}
-                  </Text>
-
-                  {/* Ahead and behind are said about the rate the user picked,
-                      never about them: no colour, no arrow, no advice. See the
-                      note at the top of weightGoal.ts. */}
-                  {pace !== null && goalDirection(goal) !== 'maintain' && !progress.reached && (
+                  {progress.reached ? (
                     <Text style={styles.goalLine}>
-                      {describePace(pace.aheadKg, unit)} Your pace would have put you at{' '}
-                      {formatWeight(pace.paceKg, unit)} by now.
+                      Reached, from {formatWeight(goal.startKg, unit)}.
                     </Text>
-                  )}
+                  ) : (
+                    <View style={styles.goalStatRow}>
+                      <Stat
+                        styles={styles}
+                        variant="card"
+                        value={formatWeight(Math.abs(progress.remainingKg), unit)}
+                        label="To go"
+                        accessibilityLabel={`${formatWeight(Math.abs(progress.remainingKg), unit)} to go, from ${formatWeight(goal.startKg, unit)}`}
+                      />
 
-                  {remainingDays !== null && (
-                    <Text style={styles.goalLine}>
-                      At this rate, {format(addDays(getLogicalToday(), remainingDays), 'MMM d, yyyy')}.
-                    </Text>
+                      {/* Ahead and behind are said about the rate the user
+                          picked, never about them: no colour, no arrow, no
+                          advice. See the note at the top of weightGoal.ts.
+                          Withheld on the day the goal was set — with zero
+                          days elapsed the pace line always matches the
+                          starting weight, so it has nothing to report yet. */}
+                      {pace !== null && pace.daysElapsed > 0 && goalDirection(goal) !== 'maintain' && (() => {
+                        const tile = paceTile(pace.aheadKg, unit);
+                        return (
+                          <Stat
+                            styles={styles}
+                            variant="card"
+                            value={tile.value}
+                            label={tile.label}
+                            accessibilityLabel={`${describePace(pace.aheadKg, unit)} Your pace would have put you at ${formatWeight(pace.paceKg, unit)} by now.`}
+                          />
+                        );
+                      })()}
+
+                      {etaDate !== null && (
+                        <Stat
+                          styles={styles}
+                          variant="card"
+                          value={format(
+                            etaDate,
+                            etaDate.getFullYear() === getLogicalToday().getFullYear() ? 'MMM d' : 'MMM d, yyyy',
+                          )}
+                          label="At this rate"
+                          accessibilityLabel={`At this rate, ${format(etaDate, 'MMMM d, yyyy')}.`}
+                        />
+                      )}
+                    </View>
                   )}
 
                   <Text style={styles.chartCaption}>
@@ -464,6 +491,20 @@ function describePace(aheadKg: number, unit: WeightUnit): string {
 }
 
 /**
+ * The same fact as {@link describePace}, split into a stat tile's value and
+ * label instead of a sentence — the number goes where every other tile on
+ * this screen puts its number, and the label carries which side of the pace
+ * line it's on rather than the word "pace" itself twice.
+ */
+function paceTile(aheadKg: number, unit: WeightUnit): { value: string; label: string } {
+  if (Math.abs(aheadKg) < ON_PACE_BAND_KG) return { value: 'On pace', label: 'Vs. your rate' };
+  return {
+    value: formatWeight(Math.abs(aheadKg), unit),
+    label: aheadKg > 0 ? 'Ahead of pace' : 'Behind pace',
+  };
+}
+
+/**
  * How close to the pace line counts as on it, in kilograms.
  *
  * A tenth of a kilogram, which is the precision a weight is displayed to: a gap
@@ -476,12 +517,19 @@ interface StatProps {
   value: string;
   label: string;
   accessibilityLabel: string;
+  /** 'card' sits inside a `bgSecondary` card, so its cell needs `bgTertiary`
+   * to read as a tile rather than disappear into the card behind it. */
+  variant?: 'screen' | 'card';
 }
 
-function Stat({ styles, value, label, accessibilityLabel }: StatProps) {
+function Stat({ styles, value, label, accessibilityLabel, variant = 'screen' }: StatProps) {
   return (
-    <View style={styles.statCell} accessible accessibilityLabel={accessibilityLabel}>
-      <Text style={styles.statValue}>{value}</Text>
+    <View
+      style={variant === 'card' ? styles.goalStatCell : styles.statCell}
+      accessible
+      accessibilityLabel={accessibilityLabel}
+    >
+      <Text style={variant === 'card' ? styles.goalStatValue : styles.statValue}>{value}</Text>
       <Text style={styles.statLabel}>{label}</Text>
     </View>
   );
@@ -528,5 +576,15 @@ const makeStyles = (colors: Colors) => StyleSheet.create({
   },
   goalFill: { height: '100%', borderRadius: radius.sm, backgroundColor: colors.accent },
   goalLine: { fontSize: font.sm, color: colors.textSecondary, lineHeight: 20 },
+  goalStatRow: { flexDirection: 'row', gap: spacing.sm },
+  goalStatCell: {
+    flex: 1,
+    backgroundColor: colors.bgTertiary,
+    borderRadius: radius.md,
+    paddingVertical: spacing.sm,
+    paddingHorizontal: spacing.xs,
+    alignItems: 'center',
+  },
+  goalStatValue: { fontSize: font.lg, fontWeight: fontWeight.bold, color: colors.text, textAlign: 'center' },
   finding: { fontSize: font.md, color: colors.text, lineHeight: 22 },
 });
