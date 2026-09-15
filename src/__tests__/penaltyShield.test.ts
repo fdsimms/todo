@@ -9,8 +9,10 @@
  */
 import type { Task } from '../types';
 import {
+  creditShieldUntil,
   extendShieldUntil,
   penaltyChargeFor,
+  penaltyCreditFor,
   penaltyCutoffAt,
   penaltyShieldWanted,
   slipPenaltyUntil,
@@ -26,6 +28,7 @@ const task = (over: Partial<Task>): Task => ({
   penaltyMinutes: 120,
   penaltyCutoffTime: null,
   penaltyFiredAt: null,
+  penaltyCreditedAt: null,
   dueDate: null,
   completed: false,
   archived: false,
@@ -116,6 +119,7 @@ describe('penaltyChargeFor', () => {
       dueDate: '2026-08-22T12:00:00',
       penaltyCutoffTime: '08:00',
       penaltyFiredAt: '2026-08-22T08:00:00.000Z',
+      penaltyCreditedAt: null,
     });
     expect(penaltyChargeFor(stamped, new Date(2026, 7, 22, 9, 0), '00:00', NOT_EXCUSED)).toBeNull();
   });
@@ -203,5 +207,104 @@ describe('penaltyShieldWanted', () => {
 
   it('is false with nothing being served', () => {
     expect(penaltyShieldWanted(null, true, now)).toBe(false);
+  });
+});
+
+describe('penaltyCreditFor', () => {
+  // Doing the thing after it cost you gives that cost back. Every refusal here
+  // is one of penaltyChargeFor's read backwards.
+  const CHARGED = '2026-08-22T18:00:00.000Z';
+  const now = new Date('2026-08-22T19:00:00.000Z');
+
+  it('gives back exactly what this task charged', () => {
+    // Not a number of its own: the inverse of the penalty is the penalty coming
+    // off, so you cannot manufacture a credit by finishing something cheap.
+    const t = task({ penaltyMinutes: 30, penaltyFiredAt: CHARGED });
+    expect(penaltyCreditFor(t, now, '00:00')).toBe(30);
+  });
+
+  it('gives back nothing for a row that was never charged', () => {
+    // Finishing on time is the ordinary case, not a transaction.
+    expect(penaltyCreditFor(task({ penaltyFiredAt: null }), now, '00:00')).toBeNull();
+  });
+
+  it('gives back nothing for a charge that was recorded but never served', () => {
+    // The mirror of penaltyChargeFor's own staleness rule: a cutoff outside
+    // today's logical day bought no block, and refunding a block that was never
+    // imposed is inventing credit.
+    const stale = task({ penaltyFiredAt: '2026-08-19T18:00:00.000Z' });
+    expect(penaltyCreditFor(stale, now, '00:00')).toBeNull();
+  });
+
+  it('gives back nothing twice', () => {
+    // Without the stamp the feature is a button that prints minutes.
+    const t = task({ penaltyFiredAt: CHARGED, penaltyCreditedAt: '2026-08-22T18:30:00.000Z' });
+    expect(penaltyCreditFor(t, now, '00:00')).toBeNull();
+  });
+
+  it('gives a negative task nothing, ever', () => {
+    // There is nothing to *do* that undoes a slip, so the only way to claim one
+    // would be retracting the record — which is exactly what undoSlip refuses
+    // to pay for. Handing it back here would be the same hole from the other
+    // side.
+    const t = task({ polarity: 'negative', penaltyFiredAt: CHARGED });
+    expect(penaltyCreditFor(t, now, '00:00')).toBeNull();
+  });
+
+  it('gives back nothing when the task carries no penalty at all', () => {
+    expect(penaltyCreditFor(task({ penaltyMinutes: null, penaltyFiredAt: CHARGED }), now, '00:00'))
+      .toBeNull();
+  });
+
+  it('follows dayResetTime, like the charge it mirrors', () => {
+    // 01:00 with a 02:00 reset is still the 22nd, so a charge stamped at 18:00
+    // on the 22nd is still in today's logical day and still creditable.
+    const t = task({ penaltyMinutes: 30, penaltyFiredAt: CHARGED });
+    expect(penaltyCreditFor(t, new Date('2026-08-23T01:00:00.000Z'), '02:00')).toBe(30);
+    // Past the reset it is yesterday's charge, and gone.
+    expect(penaltyCreditFor(t, new Date('2026-08-23T03:00:00.000Z'), '02:00')).toBeNull();
+  });
+});
+
+describe('creditShieldUntil', () => {
+  const now = new Date('2026-08-22T19:00:00.000Z');
+
+  it('takes the minutes off a standing block', () => {
+    const until = '2026-08-22T20:00:00.000Z';
+    expect(creditShieldUntil(until, 30, now)).toBe('2026-08-22T19:30:00.000Z');
+  });
+
+  it('ends the block when the credit covers what is left', () => {
+    // Null is the same value penaltyShieldUntil holds when nothing is served,
+    // so this ends the block rather than leaving a stale instant behind.
+    expect(creditShieldUntil('2026-08-22T19:20:00.000Z', 30, now)).toBeNull();
+  });
+
+  it('never pushes the end before now, so nothing can be banked', () => {
+    // The mirror of extendShieldUntil keeping the later end: that one stops a
+    // second failure shortening the first's block, this one stops a credit
+    // buying time against a charge that has not happened yet.
+    expect(creditShieldUntil('2026-08-22T19:10:00.000Z', 600, now)).toBeNull();
+  });
+
+  it('leaves a block that has already run out exactly as it found it', () => {
+    const spent = '2026-08-22T18:00:00.000Z';
+    expect(creditShieldUntil(spent, 30, now)).toBe(spent);
+  });
+
+  it('does nothing when there is no block', () => {
+    // A credit shortens a block; it never creates an unblocked window out of
+    // nothing. That distinction is the whole design.
+    expect(creditShieldUntil(null, 30, now)).toBeNull();
+  });
+
+  it('leaves the rest of a stacked block standing', () => {
+    // Two charges of 30 each; finishing one gives back 30 and the other's block
+    // keeps running. Composition through appShield's OR falls out of only ever
+    // touching this one value.
+    const until = '2026-08-22T20:00:00.000Z';
+    const after = creditShieldUntil(until, 30, now);
+    expect(after).toBe('2026-08-22T19:30:00.000Z');
+    expect(new Date(after!) > now).toBe(true);
   });
 });

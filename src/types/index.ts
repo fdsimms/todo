@@ -2274,10 +2274,34 @@ export interface Task {
    * charge is recorded on the row rather than as a day key in settings — a day
    * key cannot tell two tasks missed on the same day apart, which is the
    * unbounded mistake `generatedTasks.ts` argues against at length. It is also
-   * why completing a task late does not refund it: the stamp records that the
-   * cutoff passed with the task undone, and that stays true afterwards.
+   * why completing a task late never clears it: the stamp records that the
+   * cutoff passed with the task undone, and that stays true afterwards. What
+   * finishing late *can* do is take the remaining block off — see
+   * `penaltyCreditedAt` below, which is a separate stamp for exactly that
+   * reason. The record and the consequence are two different things, and only
+   * the second is refundable.
    */
   penaltyFiredAt: string | null;
+
+  /**
+   * When this row's charge was given back, or null while it still stands.
+   *
+   * Finishing a task you were charged for takes its own `penaltyMinutes` off
+   * the block being served (`penaltyCreditFor` / `creditShieldUntil`). This is
+   * the once-only stamp: without it, completing, undoing and completing again
+   * would print minutes.
+   *
+   * Deliberately *not* cleared by uncompleting, which is the same call
+   * `undoSlip` makes from the other side. A block already lifted is a
+   * consequence that has been served, and taking it back would mean a record
+   * correction re-imposing a block — punishing somebody for editing history
+   * rather than for missing anything.
+   *
+   * Per-occurrence like `penaltyFiredAt`, and never copied onto a successor for
+   * its reason: a fresh row has taken nothing from anybody and so has nothing
+   * to give back.
+   */
+  penaltyCreditedAt: string | null;
 
   /**
    * Keep the apps picked in Settings blocked for as long as this task is
@@ -2667,7 +2691,7 @@ export interface Task {
 // source, so a series row or a template application can't inherit a count.
 // followUpTaskTally is the same kind of thing — the rule (followUpTaskEveryN,
 // followUpTaskTitle) is the draft's to set, the progress toward it is not.
-export type TaskDraft = Omit<Task, 'id' | 'createdAt' | 'seenAt' | 'completed' | 'completedAt' | 'streakCount' | 'streakDate' | 'previousStreakCount' | 'previousStreakDate' | 'priorBestStreak' | 'slipCount' | 'slipDate' | 'penaltyFiredAt' | 'archived' | 'archivedAt' | 'postponeCount' | 'postponeMuted' | 'driftingSince' | 'followUpTaskTally' | 'previousFollowUpTaskTally' | 'calendarEventId' | 'completionCalendarEventId' | 'timeBlockEventId' | 'backfillDismissedFields'>;
+export type TaskDraft = Omit<Task, 'id' | 'createdAt' | 'seenAt' | 'completed' | 'completedAt' | 'streakCount' | 'streakDate' | 'previousStreakCount' | 'previousStreakDate' | 'priorBestStreak' | 'slipCount' | 'slipDate' | 'penaltyFiredAt' | 'penaltyCreditedAt' | 'archived' | 'archivedAt' | 'postponeCount' | 'postponeMuted' | 'driftingSince' | 'followUpTaskTally' | 'previousFollowUpTaskTally' | 'calendarEventId' | 'completionCalendarEventId' | 'timeBlockEventId' | 'backfillDismissedFields'>;
 
 // Which of the template's two anchor dates an item's offsets are relative
 // to — e.g. "pack" anchored to the trip's end date, "request time off"
