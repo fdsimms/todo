@@ -16,19 +16,55 @@ import { activeChainStep, isChainFinish, type ChainCarrier, type ChainCompletion
  * `actualMinutes` is kept, and after this it is always equal to the estimate.
  * All it does now is let the expanded task row and the Logbook say "Timed"
  * next to the number, i.e. that it was measured rather than guessed. Nothing
- * shows it as a second number, and nothing compares the two.
+ * shows it as a second number.
+ *
+ * What the overwrite costs is the comparison itself, which is destroyed at the
+ * moment it is made — so `estimateBeforeTiming` keeps the guess that stood
+ * (#2681). Per task that changes nothing; it exists only to be read in
+ * aggregate by `estimateCalibration.ts`.
  */
-export function applyMeasuredTime(minutes: number): {
+export interface MeasuredTimeUpdate {
   actualMinutes: number;
   estimatedMinutes: number;
   effort: Effort;
-} {
+  /**
+   * Present only when there is a guess worth keeping. Absent means *leave the
+   * stored value alone*, which is why this is an optional key on a patch
+   * rather than a nullable field always written: a second measurement must not
+   * blank the estimate the first one was compared against.
+   */
+  estimateBeforeTiming?: number | null;
+}
+
+export function applyMeasuredTime(
+  minutes: number,
+  /**
+   * What stood before the stopwatch was stopped. Omitted by callers that have
+   * nothing to say about it, which keeps the old one-argument behaviour.
+   */
+  before?: EstimateSource & { actualMinutes: number | null },
+): MeasuredTimeUpdate {
   const rounded = Math.max(1, Math.round(minutes));
-  return {
+  const update: MeasuredTimeUpdate = {
     actualMinutes: rounded,
     estimatedMinutes: rounded,
     effort: minutesToEffort(rounded),
   };
+  if (!before) return update;
+
+  // Only the first timing says anything about estimating. Time a task twice
+  // and the "estimate" standing the second time is the first measurement, so
+  // recording it would compare a clock against a clock and file the result as
+  // evidence about somebody's guessing.
+  if (before.actualMinutes !== null) return update;
+
+  // A task with neither an estimate nor an effort has no guess to keep. Absent
+  // is the honest record, and writing null would be indistinguishable from it
+  // while still counting as having been written.
+  const guess = estimatedMinutesFor(before);
+  if (guess === null) return update;
+
+  return { ...update, estimateBeforeTiming: guess };
 }
 
 /** Clock-style label for a live timer: `m:ss` under an hour, else `h:mm:ss`. */

@@ -26,6 +26,7 @@ import { spacing, font, fontWeight, radius, animation, type Colors } from '../th
 import { useReduceMotion } from '../utils/useReduceMotion';
 import { getRepeatedInstances, normalizeTitle } from '../utils/taskInstances';
 import { onTimeSummary } from '../utils/stats';
+import { calibrationFrom, describeCalibration } from '../utils/estimateCalibration';
 import { useShallow } from 'zustand/react/shallow';
 import { projectStats } from '../utils/projectStats';
 import { useProjectStore } from '../store/useProjectStore';
@@ -307,6 +308,10 @@ export function StatsScreen() {
   const missed = useMemo(() => mostMissed(tasks).slice(0, 10), [tasks]);
 
   const onTime = useMemo(() => onTimeSummary(tasks), [tasks]);
+  const calibrationLine = useMemo(
+    () => describeCalibration(calibrationFrom(tasks)),
+    [tasks],
+  );
 
   // --- Focus sessions -------------------------------------------------------
   // The one area here whose history is not the task list: a session's cost is
@@ -604,6 +609,22 @@ export function StatsScreen() {
                   <Text style={[styles.badgeText, { color: onTime.rate >= 0.8 ? colors.green : onTime.rate >= 0.5 ? colors.orange : colors.red }]}>
                     {Math.round(onTime.rate * 100)}%
                   </Text>
+                </View>
+              </View>
+            </View>
+            </StaggerIn>
+          )}
+
+          {/* How estimates compare to the clock. Deliberately no colour verdict,
+              unlike ON TIME above: this is a pace, not a pass mark, and the
+              number it moves is only the gap where no estimate was given. */}
+          {calibrationLine !== null && (
+            <StaggerIn index={4}>
+            <View style={styles.section}>
+              <Text style={styles.sectionTitle}>ESTIMATES AGAINST THE CLOCK</Text>
+              <View style={styles.card}>
+                <View style={styles.row}>
+                  <Text style={styles.rowText}>{calibrationLine}</Text>
                 </View>
               </View>
             </View>
