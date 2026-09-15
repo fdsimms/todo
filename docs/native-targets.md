@@ -139,3 +139,25 @@ plumbing moved into `lib/nativeTarget.js`.
   shortcut still runs fine from the Shortcuts app, Spotlight, and the Action Button's "Shortcut"
   picker — voice specifically is the only path that's silently unrouted, which makes this easy
   to ship half-working and only notice when someone actually says the phrase.
+- **An `AppShortcut` phrase can only interpolate an `AppEntity` or `AppEnum` parameter, never a
+  `String` — and that decides the whole shape of the feature, not just its wording.** A phrase
+  naming a `String` parameter is rejected at the `ExtractAppIntentsMetadata` archive step
+  ("AppEntity and AppEnum are the only allowed types for title"), which is an *archive*
+  failure: it survives every local check and surfaces on EAS. So a spoken value has two
+  possible homes and they cost very differently. Leave it out of the phrase and the intent
+  takes it as free text with a `requestValueDialog`, which is why "Add a task in dundundun"
+  asks a follow-up question (`AddTaskIntent.swift`) and needs nothing else. Put it *in* the
+  phrase — "Mark `<item>` as used up in dundundun" — and it has to be an entity, which drags in
+  an `EntityStringQuery` to resolve the spoken name against. That query runs in the same
+  process `perform()` does, with no SQLite and no JS, so it can only read the App Group: the
+  app writes a small `{id, name}` index on every catalog change and the query matches against
+  that file (`src/utils/pantryIndex.ts`, `MarkDisposedIntent.swift`). Budget an index, a write
+  path and a staleness story before choosing the inline phrasing.
+- **Match loosely in the query and resolve again in JS, rather than trying to be right once.**
+  The entity query returns *every* match in its best tier so Siri asks which was meant instead
+  of choosing silently, and the intent queues the resolved id **and** the spoken name. The id
+  is a pointer into a file written earlier, so it can name a row deleted or merged since, and
+  every store action here resolve-or-shrugs on an unknown id — which means the failure is a
+  no-op the user cannot tell apart from success. The JS drain re-resolves by name through the
+  app's own lookup when the id misses (`resolveQueuedPantryItem`), which is also where the
+  plural handling lives: nothing in Swift should reimplement `groceryNameKey`.

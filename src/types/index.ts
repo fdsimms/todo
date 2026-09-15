@@ -356,7 +356,7 @@ export interface ScreenTimeRule {
  * already ran, since utils reads types and never the reverse.
  */
 export type HealthRuleMetric =
-  | 'steps' | 'sleepHours'
+  | 'steps' | 'sleepHours' | 'exerciseMinutes'
   | 'sodiumMg' | 'proteinG' | 'satFatG' | 'fiberG' | 'sugarG' | 'caffeineMg' | 'waterMl' | 'calorieKcal';
 
 /**
@@ -3270,7 +3270,8 @@ type WithNutrientKeyHome<M extends NutrientKey> = M;
  * the two vocabularies, and both of them are declared in this file — which is
  * the reason `HealthRuleMetric` was moved here in the first place.
  */
-export type HealthNutrientMetric = WithNutrientKeyHome<Exclude<HealthRuleMetric, 'steps' | 'sleepHours'>>;
+export type HealthNutrientMetric =
+  WithNutrientKeyHome<Exclude<HealthRuleMetric, 'steps' | 'sleepHours' | 'exerciseMinutes'>>;
 
 /**
  * One stated portion of a food, and what it weighs — "1 cup, chopped = 160g".
