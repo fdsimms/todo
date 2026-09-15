@@ -100,7 +100,14 @@ export const darkColors: Colors = {
 };
 
 // A softer alternative to the near-black default dark theme — same
-// semantic colors, base surfaces tinted with a subdued purple instead of pure black.
+// semantic colors, base surfaces tinted with a subdued purple instead of pure
+// black. The accent is its own indigo rather than the system blue every other
+// palette uses: on these purple-tinted surfaces, blue read as a mismatched
+// color left over from the default theme rather than a deliberate choice.
+// Chosen a shade off `timeNight` (#5E5CE6, unchanged below) so a night-segment
+// pill and an accent button never coincidentally match; contrast against
+// `bgSecondary` and white fill text both land ahead of the numbers the
+// default blue family measures (see the two comments on `Colors` above).
 export const darkPurpleColors: Colors = {
   bg: '#16121F',
   bgSecondary: '#1F1A2C',
@@ -110,10 +117,10 @@ export const darkPurpleColors: Colors = {
   text: '#FFFFFF',
   textSecondary: '#9D93AD',
   textTertiary: '#6E6480',
-  accent: '#0A84FF',
-  accentSubtle: 'rgba(10, 132, 255, 0.15)',
-  accentText: '#3D9BFF',
-  accentFill: '#0970D9',
+  accent: '#7B6EF0',
+  accentSubtle: 'rgba(123, 110, 240, 0.15)',
+  accentText: '#9C92F5',
+  accentFill: '#6355D6',
   green: '#4C9A76',
   orange: '#FF9F0A',
   red: '#FF453A',
@@ -364,6 +371,16 @@ export const animation = {
      * stop; the backdrop half was already `fast` spelled as a number.
      */
     dismiss: 120,
+    /**
+     * A bottom sheet's own backdrop dimming, paired with the `spring.smooth`
+     * open / `spring.sheetDismiss` close it runs alongside — the same drift
+     * `dismiss` above stops, for a different shape of sheet. Nine of them
+     * (CategoryPicker, GroceryListSheet, PatchNotesModal, the sort/filter and
+     * picker sheets, SideMenuDrawer, TaskRelationPickerSheet) had this
+     * written out as the same 200/180 pair, wired to nothing.
+     */
+    sheetBackdropIn: 200,
+    sheetBackdropOut: 180,
   },
   spring: {
     snappy: { damping: 22, stiffness: 300, mass: 0.8 },

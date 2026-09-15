@@ -321,7 +321,7 @@ export function CategoryPickerSheet({ visible, onClose, title = 'Category', onSe
       keyboardOffset.setValue(-height);
       Animated.parallel([
         Animated.spring(translateY, { toValue: 0, ...animation.spring.smooth, useNativeDriver: true }),
-        Animated.timing(backdropOpacity, { toValue: 1, duration: 200, useNativeDriver: true }),
+        Animated.timing(backdropOpacity, { toValue: 1, duration: animation.duration.sheetBackdropIn, useNativeDriver: true }),
       ]).start();
     }
   }, [visible]);
@@ -330,7 +330,7 @@ export function CategoryPickerSheet({ visible, onClose, title = 'Category', onSe
     Keyboard.dismiss();
     Animated.parallel([
       Animated.spring(translateY, { toValue: hiddenY, ...animation.spring.sheetDismiss, useNativeDriver: true }),
-      Animated.timing(backdropOpacity, { toValue: 0, duration: 180, useNativeDriver: true }),
+      Animated.timing(backdropOpacity, { toValue: 0, duration: animation.duration.sheetBackdropOut, useNativeDriver: true }),
     ]).start(() => {
       // No re-arming setValue here — see useSheetHiddenOffset.
       onClose();
