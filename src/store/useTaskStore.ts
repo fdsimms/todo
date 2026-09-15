@@ -168,7 +168,39 @@ import { MIN_TARGET_COUNT, MAX_TARGET_COUNT, taskKindOf } from '../utils/taskKin
 import { nextStreakRecord } from '../utils/streakRecord';
 import { isNegativeTask, slipPatch, undoSlipPatch, cleanDayPatch } from '../utils/negativeHabits';
 import { creditShieldUntil, extendShieldUntil, penaltyChargeFor, penaltyCreditFor, slipPenaltyUntil } from '../utils/penaltyShield';
-import { isTaskVisible, isTaskNew, isTaskDeferred, isUpcomingToday, isHeldBack, isHiddenForVacation, isVisibleApartFromVacation, isTaskExpired, isTaskSweepable, isRecurrenceNotYetDue, isLiveRecurring, isMissableMealPlanTask, isInboxTask, isUnscheduledTask, isWaitingTask, isRelevantToGroupToday, groupRoster, hasNoDateSignal, isQuotaTask, isQuotaOnPace, quotaRidesOutTheDay, isMissed, sameTimeSegments, isCompletionOnTime, isCategoryScheduledDay, currentTimeSegment, timeSegmentThreshold, displayTitleFor } from '../utils/visibilityUtils';
+// One name per line, deliberately, and not to be re-joined. See the note
+// on the settings load in useSettingsStore.ts: this is a list every new
+// visibility helper is added to, so one line is a guaranteed conflict.
+import {
+  isTaskVisible,
+  isTaskNew,
+  isTaskDeferred,
+  isUpcomingToday,
+  isHeldBack,
+  isHiddenForVacation,
+  isVisibleApartFromVacation,
+  isTaskExpired,
+  isTaskSweepable,
+  isRecurrenceNotYetDue,
+  isLiveRecurring,
+  isMissableMealPlanTask,
+  isInboxTask,
+  isUnscheduledTask,
+  isWaitingTask,
+  isRelevantToGroupToday,
+  groupRoster,
+  hasNoDateSignal,
+  isQuotaTask,
+  isQuotaOnPace,
+  quotaRidesOutTheDay,
+  isMissed,
+  sameTimeSegments,
+  isCompletionOnTime,
+  isCategoryScheduledDay,
+  currentTimeSegment,
+  timeSegmentThreshold,
+  displayTitleFor,
+} from '../utils/visibilityUtils';
 import { retentionCutoff, selectPurgeableTaskIds } from '../utils/retention';
 import { categoryLabel } from '../utils/categoryLabel';
 import {
