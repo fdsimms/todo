@@ -32,6 +32,7 @@ import { GROCERY_NAME_MAX_LENGTH, RECIPE_SECTION_MAX_LENGTH, RECIPE_STEP_NOTE_MA
 import { useRecipeStore } from '../store/useRecipeStore';
 import { useGroceryStore } from '../store/useGroceryStore';
 import { useSettingsStore } from '../store/useSettingsStore';
+import { useFoodLogStore } from '../store/useFoodLogStore';
 import { useRowSelection } from '../hooks/useRowSelection';
 import { DetailHeader } from '../components/DetailHeader';
 import { EmptyState } from '../components/EmptyState';
@@ -102,6 +103,7 @@ import {
 } from '../utils/recipeNutrition';
 import { formatOffsetLabel } from '../utils/templateUtils';
 import { splitAlternativeNames, splitGroceryLines } from '../utils/groceryParse';
+import { dayKeyOf, getCurrentDayStart } from '../utils/dateUtils';
 
 type RootStackParamList = {
   RecipeDetail: { recipeId: string };
@@ -156,6 +158,7 @@ export function RecipeDetailScreen() {
   // catalog row's, and `nutritionFor` is where that precedence lives.
   const itemProducts = useGroceryStore(useShallow(s => s.itemProducts));
   const itemSubs = useGroceryStore(useShallow(s => s.itemSubs));
+  const setPendingMealLog = useFoodLogStore(s => s.setPendingMealLog);
 
   // The user's standing swaps — "always use oat milk for milk" (#1571). Shown
   // here as well as on the shopping read, because a cook reading the recipe
@@ -740,6 +743,27 @@ export function RecipeDetailScreen() {
     haptics.tap();
     const message = buildRecipeShareText(recipe, recipesById, { scale, unitSystem });
     Share.share({ message }).catch(() => {});
+  };
+
+  // Raises the same "how much did you have" prompt a finished meal-plan
+  // dinner does (LogMealPrompt, mounted globally) — reusing it rather than a
+  // bespoke sheet is what gets the weight-vs-servings choice, the refusal
+  // when nutrition can't be computed, and the actual food-log write for
+  // free. There's no meal-plan entry behind this, so mealPlanEntryId is
+  // null: nothing here is "cooked" or "missed", it's just a dish someone
+  // wants logged from the page they're looking at.
+  const handleLogToFoodLog = () => {
+    haptics.tap();
+    setPendingMealLog({
+      label: recipe.name,
+      slot: null,
+      dayKey: dayKeyOf(getCurrentDayStart()),
+      recipeId: recipe.id,
+      mealPlanEntryId: null,
+      scale,
+      choices,
+      grams: null,
+    });
   };
 
   // Skip Linking.canOpenURL — recipe links are always http(s), and openURL
@@ -1423,6 +1447,20 @@ export function RecipeDetailScreen() {
                   size={iconSize.md}
                   color={recipe.vote === 'loved' ? colors.orange : colors.textSecondary}
                 />
+              </TouchableOpacity>
+            )}
+            {/* Gated on nutrition actually being computable (same read
+                showNutritionRow above uses) rather than always shown: without
+                it, tapping this would raise LogMealPrompt only for the prompt
+                to immediately clear itself with nothing to show. */}
+            {!selectionMode && !!nutritionReading?.nutrition && (
+              <TouchableOpacity
+                onPress={handleLogToFoodLog}
+                hitSlop={8}
+                accessibilityRole="button"
+                accessibilityLabel={`Log ${recipe.name} to the food log`}
+              >
+                <Ionicons name="restaurant-outline" size={iconSize.md} color={colors.textSecondary} />
               </TouchableOpacity>
             )}
             {!selectionMode && (
