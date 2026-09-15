@@ -18,9 +18,15 @@ import { useKeyboardInsetScroll } from '../hooks/useKeyboardInsetScroll';
 import { packageChoices, packageHelping } from '../utils/scanPortion';
 import { amountExample, amountHint, scalePanelToAmount } from '../utils/foodLog';
 import { haptics } from '../utils/haptics';
+import { CountStepper } from './CountStepper';
 import { SegmentedControl } from './SegmentedControl';
 import { SheetHeader } from './SheetHeader';
 import { SheetHeaderButton } from './SheetHeaderButton';
+
+/** "1.5" not "1.5000000000000002", and "2" not "2.0". */
+function formatServings(n: number): string {
+  return Number.isInteger(n) ? String(n) : String(Math.round(n * 10) / 10);
+}
 
 /**
  * How much of each scanned package was eaten.
@@ -86,7 +92,14 @@ interface Props {
 
 /** What one card is currently answering. `null` is the untouched state. */
 type Answer =
-  | { kind: 'choice'; servings: number; label: string }
+  | {
+    kind: 'choice';
+    servings: number;
+    label: string;
+    /** The tapped choice's own servings/label, so scaling back to it restores its nice wording. */
+    baseServings: number;
+    baseLabel: string;
+  }
   | { kind: 'typed'; text: string };
 
 export function ScanPortionSheet({ visible, foods, slot, at, mealPlanEntryId, onClose, onLogged }: Props) {
@@ -229,7 +242,16 @@ export function ScanPortionSheet({ visible, foods, slot, at, mealPlanEntryId, on
                         activeOpacity={interaction.activeOpacity}
                         onPress={() => {
                           haptics.tap();
-                          setAnswers(a => ({ ...a, [food.key]: { kind: 'choice', servings: choice.servings, label: choice.label } }));
+                          setAnswers(a => ({
+                            ...a,
+                            [food.key]: {
+                              kind: 'choice',
+                              servings: choice.servings,
+                              label: choice.label,
+                              baseServings: choice.servings,
+                              baseLabel: choice.label,
+                            },
+                          }));
                         }}
                         accessibilityRole="button"
                         accessibilityState={{ selected: on }}
@@ -240,6 +262,37 @@ export function ScanPortionSheet({ visible, foods, slot, at, mealPlanEntryId, on
                     );
                   })}
                 </View>
+                {/* Only for the plain "1 serving" choice — its base count is
+                    always exactly 1 (see `packageChoices`), so whole-number
+                    steps land cleanly. The whole-package choice's own count
+                    is already a computed, possibly fractional number of
+                    servings, which `CountStepper`'s integer-only stepping
+                    (see its own doc comment) isn't built to scale further;
+                    the text field below still takes a typed amount for that. */}
+                {answer?.kind === 'choice' && answer.baseServings === 1 && (
+                  <View style={styles.servingsRow}>
+                    <Text style={styles.servingsLabel}>Servings</Text>
+                    <CountStepper
+                      value={answer.servings}
+                      onChange={next => {
+                        if (next === null) return;
+                        setAnswers(a => {
+                          const current = a[food.key];
+                          if (!current || current.kind !== 'choice') return a;
+                          const label = next === current.baseServings
+                            ? current.baseLabel
+                            : `${formatServings(next)} servings`;
+                          return { ...a, [food.key]: { ...current, servings: next, label } };
+                        });
+                      }}
+                      min={1}
+                      max={20}
+                      format={n => `${n}×`}
+                      describeValue={n => `${n ?? 0} serving${n === 1 ? '' : 's'}`}
+                      label="Servings"
+                    />
+                  </View>
+                )}
                 <TextInput
                   style={styles.input}
                   value={typed}
@@ -298,6 +351,8 @@ function makeStyles(colors: Colors) {
     choiceOn: { backgroundColor: colors.accent },
     choiceText: { color: colors.text, fontSize: font.sm },
     choiceTextOn: { color: colors.onAccent, fontWeight: fontWeight.medium },
+    servingsRow: { flexDirection: 'row', alignItems: 'center', gap: spacing.sm },
+    servingsLabel: { color: colors.textSecondary, fontSize: font.sm },
     input: {
       backgroundColor: colors.bgTertiary,
       borderRadius: radius.md,
