@@ -446,16 +446,16 @@ file: the two maps are indexes, not write-ups.
 **Read narrowly.** 62 files are over 1,000 lines, 43 of
 them source rather than tests. The ten biggest source files:
 
-`store/useTaskStore.ts` (7.8k), `db/database.ts` (6.1k), `types/index.ts` (6.0k),
+`store/useTaskStore.ts` (7.8k), `db/database.ts` (6.1k), `types/index.ts` (6.1k),
 `components/TaskEditor.tsx` (6.0k), `store/useGroceryStore.ts` (5.2k),
 `screens/TodayScreen.tsx` (4.6k), `components/TaskItem.tsx` (4.5k),
-`store/useSettingsStore.ts` (4.2k), `utils/demoSeed.ts` (4.2k),
+`utils/demoSeed.ts` (4.2k), `store/useSettingsStore.ts` (4.2k),
 `screens/BackfillScreen.tsx` (3.6k).
 
 Grep for the symbol and read the surrounding range; reading any of them end to end costs more
 context than the rest of the task will. `docs/module-map.md` says which file owns what.
 
-The suite is **348 test files**, and `npm test` runs all of them in well under a minute.
+The suite is **350 test files**, and `npm test` runs all of them in well under a minute.
 `npx tsc --noEmit` is a few seconds once `.tsbuildinfo` exists, so run both, every time.
 
 <!-- END GENERATED: repo-stats -->

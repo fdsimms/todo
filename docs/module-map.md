@@ -52,7 +52,7 @@ name cannot say is where a component appears, and that is `docs/screen-map.md`.
 - `src/utils/categoryPicker.ts` — CategoryOption, CategoryFilterResult, optionLabel, filterCategories, CategorySubmit, resolveCategorySubmit
 - `src/utils/categorySchedule.ts` — DAY_LABELS, FULL_DAY_NAMES, formatScheduleTime, formatScheduleDays, formatCategorySchedule
 - `src/utils/chain.ts` — ChainCarrier, ChainCompletionCarrier, activeChainStep, nextChainStep, nextChainStepTitle, parseChainItems, ChainPreview, chainPreview, isChainFinish
-- `src/utils/clockTime.ts` — hhmmToDate, logicalDayStart, taskDayStart, hhmmMinutes, effectiveWindowEndTime, formatHHMM, clockTimeToken, dateToHHMM
+- `src/utils/clockTime.ts` — hhmmToDate, logicalDayStart, taskDayStart, overdueDayCount, hhmmMinutes, effectiveWindowEndTime, formatHHMM, clockTimeToken, dateToHHMM
 - `src/utils/cloudKitTransport.ts` — CLOUDKIT_SOURCE, isCloudKitSyncAvailable, cloudKitUnavailableReason, cloudKitTransport
 - `src/utils/completionCalendarSync.ts` — logTaskCompletionToCalendar
 - `src/utils/completionTap.ts` — CompletionTap, completionTapFor, offersMealLogOnCompletion
@@ -166,7 +166,7 @@ name cannot say is where a component appears, and that is `docs/screen-map.md`.
 - `src/utils/moodLog.ts` — MOOD_LEVELS, LOW_MOOD_AT_OR_BELOW, DEFAULT_CONTEXT_TAGS, SYMPTOM_SEVERITIES, moodLabel, moodEmoji, severityLabel, symptomKey, withSymptom, withoutSymptom, +12 more
 - `src/utils/moodTasks.ts` — MOOD_LOG_TITLE, MOOD_NUDGE_TITLE, DEFAULT_MOOD_NUDGE_AFTER_DAYS, MOOD_NUDGE_COOLDOWN_DAYS, moodLogDayKey, moodLogSegmentOf, moodLogSourceId, moodNudgeDayKey, wantsMoodNudge, daysBetweenKeys, +2 more
 - `src/utils/morningCheckIn.ts` — isMorningCheckInCandidate, morningCheckInTasks
-- `src/utils/navHubs.ts` — NavContentCounts, NavHubId, NavDestination, NavHub, NavMenuRow, NAV_HUBS, NAV_MENU_ROWS, hubForRoute, visibleHubMembers, NavMenuOptions, +13 more
+- `src/utils/navHubs.ts` — NavContentCounts, NavHubId, NavDestination, NavHub, NavMenuRow, NAV_HUBS, NAV_MENU_ROWS, hubForRoute, visibleHubMembers, NavMenuOptions, +14 more
 - `src/utils/negativeHabits.ts` — NegativeHabitFields, isNegativeTask, slipsToday, isCleanToday, slipPatch, undoSlipPatch, cleanDayPatch
 - `src/utils/notificationTapSync.ts` — useNotificationTapSync
 - `src/utils/notifications.ts` — isWithinQuietHours, deferPastQuietHours, TASK_REMINDER_CATEGORY, COMPLETE_ACTION_IDENTIFIER, SNOOZE_ACTION_IDENTIFIER, SNOOZE_MINUTES, requestNotificationPermissions, NotificationPermission, getNotificationPermission, scheduleTaskReminder, +30 more
@@ -243,6 +243,7 @@ name cannot say is where a component appears, and that is `docs/screen-map.md`.
 - `src/utils/retention.ts` — RetentionDays, RETENTION_OPTIONS, retentionLabel, parseRetentionDays, retentionCutoff, selectPurgeableTaskIds, selectPurgeableFocusSessionIds, retentionDeletionSummary
 - `src/utils/rhythms.ts` — SegmentBoundaries, DEFAULT_BOUNDARIES, RhythmOptions, MIN_SAMPLES, segmentOf, HourRange, RhythmProfile, buildRhythmProfile, formatHour, formatHourRange, +3 more
 - `src/utils/rhythmsSettings.ts` — rhythmOptionsFromSettings
+- `src/utils/savedViews.ts` — SAVED_VIEW_CLAUSE_KINDS, savedViewClauseLabel, SAVED_VIEW_ICONS, DEFAULT_SAVED_VIEW_ICON, SavedViewContext, matchesClause, matchesSavedView, isSavedViewCandidate, filterTasksForView, SavedViewLabels, +11 more
 - `src/utils/scanPortion.ts` — PackageChoice, servingsPerPackage, packageChoices, packageHelping
 - `src/utils/scanResolve.ts` — ScannedItem, ScannedGtinLink, shopperNameFor, shorterNameSuggestions, nameFromScanFor, sourceLabelFor, variantFor, scannedItemFor, pluScannedItem, unknownScannedItem, +6 more
 - `src/utils/screenTimeBridge.ts` — ScreenTimeBridge, screenTimeBridge, isScreenTimeSupported
@@ -348,6 +349,7 @@ name cannot say is where a component appears, and that is `docs/screen-map.md`.
 - `src/store/useProjectStore.ts` — projectProgress, projectDecisions, isProjectPastWindow, CreateProjectOptions, useProjectStore
 - `src/store/useRecipeStore.ts` — CookStats, useRecipeStore
 - `src/store/useSavedMealsStore.ts` — useSavedMealsStore
+- `src/store/useSavedViewStore.ts` — useSavedViewStore
 - `src/store/useScreenTimeStore.ts` — useScreenTimeStore, useScreenTimeSync
 - `src/store/useSettingsStore.ts` — PatchNoteQaStatus, WeekStart, FabHand, MealsOnToday, NewTaskDefaults, DEFAULT_REMINDER_LEAD_OPTIONS, useSettingsStore
 - `src/store/useSharedLinkStore.ts` — useSharedLinkStore
@@ -391,7 +393,7 @@ name cannot say is where a component appears, and that is `docs/screen-map.md`.
 
 ## `src/db`
 
-- `src/db/database.ts` — switchToDemoDatabase, switchToRealDatabase, isUsingDemoDatabase, initDatabase, BACKUP_TABLES, BACKUP_EXCLUDED_TABLES, dbTableColumns, dbExportTables, dbReplaceAllData, isSyncableDatabase, +196 more
+- `src/db/database.ts` — switchToDemoDatabase, switchToRealDatabase, isUsingDemoDatabase, initDatabase, BACKUP_TABLES, BACKUP_EXCLUDED_TABLES, dbTableColumns, dbExportTables, dbReplaceAllData, isSyncableDatabase, +202 more
 - `src/db/syncTracking.ts` — SyncTable, KEY_SEPARATOR, SYNC_TRACKED_TABLES, SYNC_EXCLUDED_TABLES, SYNCED_SETTING_KEYS, isSyncedSettingKey, SYNC_DELETIONS_TABLE, NOW_EXPR, TOMBSTONE_RETENTION_DAYS, rowKeyExpr, +5 more
 
 ## `src/services`
