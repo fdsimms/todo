@@ -22,6 +22,7 @@ import { InlineAction } from './InlineAction';
 import { NumberPadAccessory, NUMBER_PAD_ACCESSORY_ID } from './NumberPadAccessory';
 import { NutritionPanelSheet } from './NutritionPanelSheet';
 import { NutritionSearchSheet, navigateToFoodSearchSettings } from './NutritionSearchSheet';
+import { RecipeIngredientSheet } from './RecipeIngredientSheet';
 import { SheetHeaderButton } from './SheetHeaderButton';
 import { SheetHeader } from './SheetHeader';
 
@@ -53,10 +54,13 @@ import { SheetHeader } from './SheetHeader';
  * against the amount asked for get a scale, and only when `weighableLine` has
  * confirmed that weighing would actually settle it. **The two refusals
  * `unfixableQuantityReason` names — no amount at all ("several cloves"), or a
- * counted container ("2 14 oz cans")** — get neither: nothing on the food's
- * side could ever relate either one to a weight, so the row says the actual
- * fix is rewriting the recipe's own line rather than offering a button
- * ("Edit these figures", a scale) that would only look like one.
+ * counted container ("2 14 oz cans")** — get neither "Edit these figures" nor
+ * a scale: nothing on the food's side could ever relate either one to a
+ * weight, and the actual fix is rewriting the recipe's own line. That fix
+ * gets its own button, "Edit recipe", which opens `RecipeIngredientSheet` for
+ * this line nested inside this one (rather than closing this sheet first) —
+ * it has nothing typed to lose underneath, so there's no reason to make the
+ * round trip feel like leaving.
  *
  * **Filling in figures writes to the grocery catalog, never to the recipe.**
  * What is missing is a fact about a food, not about this dish, so filling it
@@ -116,6 +120,11 @@ export function RecipeNutritionSheet({ visible, reading, onClose }: Props) {
   const setProductNutrition = useGroceryStore(s => s.setProductNutrition);
   const ensureCatalogItem = useGroceryStore(s => s.ensureCatalogItem);
   const updateIngredient = useRecipeStore(s => s.updateIngredient);
+  const editingIngredient = useRecipeStore(s =>
+    editingLine
+      ? s.recipes.find(r => r.id === editingLine.recipeId)?.ingredients.find(i => i.id === editingLine.id) ?? null
+      : null
+  );
 
   // Which line each nested sheet is open for, rather than a boolean and a
   // separate id: the two can't disagree if there is only one of them.
@@ -123,6 +132,9 @@ export function RecipeNutritionSheet({ visible, reading, onClose }: Props) {
   const [searchLine, setSearchLine] = useState<NutritionLine | null>(null);
   const [weighingId, setWeighingId] = useState<string | null>(null);
   const [weighGrams, setWeighGrams] = useState('');
+  // The unfixable line whose recipe text is being edited, nested inside this
+  // sheet rather than closing it first — see the doc comment above.
+  const [editingLine, setEditingLine] = useState<NutritionLine | null>(null);
   // Which COUNTED row is showing its full breakdown, one at a time.
   const [expandedId, setExpandedId] = useState<string | null>(null);
   // The catalog row `addToCatalog` just minted, so `GroceryItemSheet` can open
@@ -276,6 +288,12 @@ export function RecipeNutritionSheet({ visible, reading, onClose }: Props) {
               onClose();
               navigateToFoodSearchSettings(navigation, entryId);
             }}
+          />
+          <RecipeIngredientSheet
+            visible={editingLine !== null}
+            recipeId={editingLine?.recipeId ?? ''}
+            ingredient={editingIngredient}
+            onClose={() => setEditingLine(null)}
           />
           <NumberPadAccessory />
         </>
@@ -437,7 +455,15 @@ export function RecipeNutritionSheet({ visible, reading, onClose }: Props) {
                         icon="scale-outline"
                         onPress={() => startWeighing(line)}
                       />
-                    ) : unfixable ? null : (
+                    ) : unfixable ? (
+                      <InlineAction
+                        label="Edit recipe"
+                        icon="create-outline"
+                        variant="neutral"
+                        onPress={() => { haptics.tap(); setEditingLine(line); }}
+                        accessibilityLabel={`Edit ${line.name}'s amount in the recipe`}
+                      />
+                    ) : (
                       <InlineAction
                         label="Edit these figures"
                         variant="neutral"
