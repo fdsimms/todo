@@ -212,9 +212,23 @@ export function FocusSessionSheet({ visible, onClose }: Props) {
   // summary, since being caught up isn't the same as abandoning the task.
   const onPace = quotaTask ? isQuotaOnPace(quotaTask) : false;
 
+  // Ending a session early (the header's "End") and closing one out after
+  // working through the whole plan (renderFinished's "Finish") are opposite
+  // moments and used to share this handler with one haptic between them —
+  // completing a session buzzed identically to abandoning it. The header
+  // action stays the destructive-prompt warning; the finished state gets the
+  // same "whole routine done" pulse a chain's last task and a closed-out
+  // shopping trip get.
   const handleEnd = () => {
     clearPendingUndo();
     haptics.warning();
+    endSession();
+    onClose();
+  };
+
+  const handleFinish = () => {
+    clearPendingUndo();
+    haptics.chainFinish();
     endSession();
     onClose();
   };
@@ -394,7 +408,7 @@ export function FocusSessionSheet({ visible, onClose }: Props) {
           ))}
         </View>
       )}
-      <PressableScale style={styles.primaryBtn} onPress={handleEnd} accessibilityLabel="Finish session">
+      <PressableScale style={styles.primaryBtn} onPress={handleFinish} accessibilityLabel="Finish session">
         <Text style={styles.primaryBtnText}>Finish</Text>
       </PressableScale>
     </View>
