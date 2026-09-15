@@ -357,42 +357,48 @@ export function PantryReviewSheet({ visible, onClose }: Props) {
                 .slice(index, index + 3)
                 .map((entry, offset) => ({ entry, offset }))
                 .reverse()
-                .map(({ entry, offset }) =>
-                  offset === 0 ? (
-                    <Animated.View
-                      key={entry.item.id}
-                      {...responder.panHandlers}
-                      style={[
-                        styles.card,
-                        shadows.card,
-                        { transform: [{ translateX: pan.x }, { translateY: pan.y }, { rotate }] },
-                      ]}
-                    >
-                      <Animated.View style={[styles.stamp, styles.stampOut, { opacity: stampOpacity('out') }]}>
-                        <Text style={[styles.stampText, { color: colors.red }]}>Out of it</Text>
-                      </Animated.View>
-                      <Animated.View style={[styles.stamp, styles.stampHave, { opacity: stampOpacity('have') }]}>
-                        <Text style={[styles.stampText, { color: colors.green }]}>Still have it</Text>
-                      </Animated.View>
-                      <Animated.View style={[styles.stamp, styles.stampLow, { opacity: stampOpacity('low') }]}>
-                        <Text style={[styles.stampText, { color: colors.orange }]}>Running low</Text>
-                      </Animated.View>
-                      <CardBody card={entry} styles={styles} />
-                    </Animated.View>
-                  ) : (
-                    <View
-                      key={entry.item.id}
-                      style={[
-                        styles.card,
-                        shadows.card,
-                        {
-                          transform: [{ scale: 1 - offset * 0.05 }, { translateY: -offset * 10 }],
-                          opacity: 1 - offset * 0.3,
-                        },
-                      ]}
-                    />
-                  )
-                )}
+                .map(({ entry, offset }) => (
+                  // Always the same component type at this key, front or
+                  // peeking — a card is promoted from a peeking `View` to the
+                  // driven `Animated.View` exactly once, on the swipe after
+                  // its own, and switching element type at an unchanged key
+                  // tears the view down and remounts it, reconnecting `pan`'s
+                  // native-driven node to a fresh native view in the same
+                  // commit as the reset that's supposed to zero it out. The
+                  // reconnect can race that reset, leaving the promoted card's
+                  // real content transformed out of sight and only the plain
+                  // card behind it showing — until something (backgrounding
+                  // the app) forces iOS to redraw every layer and catch it up.
+                  <Animated.View
+                    key={entry.item.id}
+                    {...(offset === 0 ? responder.panHandlers : null)}
+                    style={[
+                      styles.card,
+                      shadows.card,
+                      offset === 0
+                        ? { transform: [{ translateX: pan.x }, { translateY: pan.y }, { rotate }] }
+                        : {
+                            transform: [{ scale: 1 - offset * 0.05 }, { translateY: -offset * 10 }],
+                            opacity: 1 - offset * 0.3,
+                          },
+                    ]}
+                  >
+                    {offset === 0 && (
+                      <>
+                        <Animated.View style={[styles.stamp, styles.stampOut, { opacity: stampOpacity('out') }]}>
+                          <Text style={[styles.stampText, { color: colors.red }]}>Out of it</Text>
+                        </Animated.View>
+                        <Animated.View style={[styles.stamp, styles.stampHave, { opacity: stampOpacity('have') }]}>
+                          <Text style={[styles.stampText, { color: colors.green }]}>Still have it</Text>
+                        </Animated.View>
+                        <Animated.View style={[styles.stamp, styles.stampLow, { opacity: stampOpacity('low') }]}>
+                          <Text style={[styles.stampText, { color: colors.orange }]}>Running low</Text>
+                        </Animated.View>
+                        <CardBody card={entry} styles={styles} />
+                      </>
+                    )}
+                  </Animated.View>
+                ))}
             </View>
           </View>
         )}
