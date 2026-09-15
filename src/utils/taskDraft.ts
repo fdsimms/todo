@@ -293,6 +293,7 @@ export function newTaskFromDraft(
     // earned it, so a new row — including the successor of one that was
     // charged — starts owing nothing.
     penaltyFiredAt: null,
+    penaltyCreditedAt: null,
     gatesApps: draft.gatesApps ?? false,
     polarity: resolvedPolarity,
     // On by default for a negative habit and off for everything else. A flame on

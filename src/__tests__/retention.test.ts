@@ -98,6 +98,7 @@ const makeTask = (overrides: Partial<Task> = {}): Task => ({
   penaltyMinutes: null,
   penaltyCutoffTime: null,
   penaltyFiredAt: null,
+  penaltyCreditedAt: null,
   gatesApps: false,
   showStreak: false,
   streakRequiresWindow: false,
