@@ -13,6 +13,7 @@ import { unfixableQuantityReason, weighableLine, type LineWeighing } from '../ut
 import {
   lineContribution,
   perServing,
+  type ExcludedNutritionLine,
   type NutritionLine,
   type RecipeNutritionReading,
 } from '../utils/recipeNutrition';
@@ -72,7 +73,12 @@ import { SheetHeader } from './SheetHeader';
  * says isn't a fact about the food (a handful of basil has real figures), it's
  * that this dish's total doesn't need them. So it's scoped to this recipe's
  * own line, the same way `noSwap` and `optional` already are, and every other
- * recipe calling for basil keeps counting it.
+ * recipe calling for basil keeps counting it. `excludedNutritionLines`
+ * (`recipeNutrition.ts`) is a second, purely cosmetic walk that names these
+ * lines without folding them back into the coverage fraction — the LEFT OUT
+ * section below reads it, so a line marked this way isn't gone for good, and
+ * the closing "every ingredient was counted" line stops claiming a total that
+ * an excluded line was never part of.
  *
 
  * **Rows leave as they are answered**, because the list is recomputed from the
@@ -142,7 +148,7 @@ export function RecipeNutritionSheet({ visible, reading, onClose }: Props) {
   // until the person fills something in.
   const [newItemId, setNewItemId] = useState<string | null>(null);
 
-  const { nutrition, gaps } = reading;
+  const { nutrition, gaps, excluded } = reading;
 
   // Per serving where the recipe said how many it makes, and the whole dish
   // where it didn't — the same choice `describeNutrition` makes, so the sheet
@@ -212,6 +218,12 @@ export function RecipeNutritionSheet({ visible, reading, onClose }: Props) {
   const excludeLine = (line: NutritionLine) => {
     haptics.tap();
     updateIngredient(line.recipeId, line.id, { excludeFromNutrition: true });
+  };
+
+  /** Undoes `excludeLine` — the only way back once a line has left every list above. */
+  const includeLine = (line: ExcludedNutritionLine) => {
+    haptics.tap();
+    updateIngredient(line.recipeId, line.id, { excludeFromNutrition: false });
   };
 
   const startWeighing = (line: NutritionLine) => {
@@ -523,8 +535,37 @@ export function RecipeNutritionSheet({ visible, reading, onClose }: Props) {
         </>
       )}
 
+      {excluded.length > 0 && (
+        <>
+          <Text style={styles.groupLabel}>LEFT OUT</Text>
+          <View style={styles.card}>
+            {excluded.map((line, index) => (
+              <View key={line.id} style={[styles.gapRow, index > 0 && styles.gapRowRuled]}>
+                <Text style={styles.gapName} numberOfLines={1}>{line.name}</Text>
+                <View style={styles.gapActions}>
+                  <InlineAction
+                    label="Count it after all"
+                    variant="neutral"
+                    onPress={() => includeLine(line)}
+                    accessibilityLabel={`Count ${line.name} in this recipe's nutrition total again`}
+                  />
+                </View>
+              </View>
+            ))}
+            <Text style={styles.hint}>
+              Marked "don't count this" — left out of the total above on purpose, not missing
+              any figures.
+            </Text>
+          </View>
+        </>
+      )}
+
       {fillable.length === 0 && gaps.unmatched.length === 0 && gaps.total > 0 && (
-        <Text style={styles.hint}>Every ingredient this dish calls for was counted.</Text>
+        <Text style={styles.hint}>
+          {excluded.length > 0
+            ? 'Everything else this dish calls for was counted.'
+            : 'Every ingredient this dish calls for was counted.'}
+        </Text>
       )}
     </EditorSheet>
   );

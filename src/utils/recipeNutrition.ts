@@ -319,6 +319,14 @@ export interface RecipeNutritionReading {
   /** Every line that counts toward the fraction, negligible staples excluded. */
   lines: NutritionLine[];
   gaps: NutritionGaps;
+  /**
+   * Lines the person deliberately left out, purely for display. Not part of
+   * `gaps` or the fraction it describes — an excluded line was never a gap,
+   * so listing it there would offer to fix something nobody asked to fix.
+   * This exists only so "don't count this" isn't a one-way door: a line that
+   * disappeared with no trace is a line nobody can reconsider or undo.
+   */
+  excluded: ExcludedNutritionLine[];
 }
 
 /**
@@ -345,6 +353,7 @@ export function readRecipeNutrition(
     lines,
     nutrition: fold(lines, recipe.servings === null ? null : recipe.servings * factor),
     gaps: nutritionGaps(lines),
+    excluded: excludedNutritionLines(recipe, recipesById, resolution, swaps),
   };
 }
 
@@ -429,6 +438,41 @@ export function recipeNutritionLines(
     });
   }
   return out;
+}
+
+/** A line left out of a dish's figures on purpose, named so it can be undone. */
+export interface ExcludedNutritionLine {
+  /** The recipe line's own id, unique across a flattened dish. */
+  id: string;
+  /** The recipe holding the ingredient — see `NutritionLine.recipeId`. */
+  recipeId: string;
+  name: string;
+}
+
+/**
+ * Every line of a dish marked `RecipeIngredient.excludeFromNutrition`.
+ *
+ * A second, much smaller walk rather than a state `recipeNutritionLines`
+ * returns for these lines too: that function's own tests and callers treat
+ * an excluded line exactly like a staple — "not a line that failed to count,
+ * not a line at all" — and folding it back in there would put it back into
+ * the coverage fraction's denominator, which is the one thing "don't count
+ * this" must never do. What's missing isn't a place in that fraction, it's
+ * anywhere at all that names what got left out, so a person can see it and
+ * change their mind. This is only that: no catalog resolution, no state,
+ * just which lines and what to call them.
+ */
+export function excludedNutritionLines(
+  recipe: Recipe,
+  recipesById: ReadonlyMap<string, Recipe> = new Map([[recipe.id, recipe]]),
+  resolution?: ChoiceResolution,
+  swaps: StandingSwapMap = NO_STANDING_SWAPS,
+): ExcludedNutritionLine[] {
+  const flat = flattenRecipeIngredients(recipe, recipesById, resolution, swaps);
+  if (flat.length === 0 || hasUnresolvedChoice(flat)) return [];
+  return flat
+    .filter(line => line.ingredient.excludeFromNutrition)
+    .map(line => ({ id: line.ingredient.id, recipeId: line.recipe.id, name: line.ingredient.name }));
 }
 
 /**
