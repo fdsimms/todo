@@ -1528,7 +1528,7 @@ export const TaskItem = React.memo(function TaskItem({
       await haptics.tap();
       Alert.alert(
         'Set a reminder?',
-        `Remind you in ${formatDuration(task.completionTimerMinutes)}?`,
+        `Remind you about "${displayTitleFor(task)}" in ${formatDuration(task.completionTimerMinutes)}?`,
         [
           { text: 'No thanks', style: 'cancel', onPress: () => runCompletion() },
           {
