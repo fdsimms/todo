@@ -60,10 +60,52 @@ export function nextSheetVisibility(visible: boolean, shown: boolean): SheetVisi
 export interface PresentationLevel {
   /** Presented sheet id to the label it registered under. */
   readonly presented: Map<string, string>;
+  /** Notified whenever that map changes. See `subscribePresentation`. */
+  readonly listeners: Set<() => void>;
 }
 
 export function createPresentationLevel(): PresentationLevel {
-  return { presented: new Map() };
+  return { presented: new Map(), listeners: new Set() };
+}
+
+/**
+ * Watches a level, so the sheet that owns it can tell when the sheet presented
+ * from it has gone. Returns the unsubscribe.
+ *
+ * This is what lets a sheet wait its turn (`canHideSheet` below) rather than
+ * dismissing while something is still presented on top of it.
+ */
+export function subscribePresentation(level: PresentationLevel, fn: () => void): () => void {
+  level.listeners.add(fn);
+  return () => { level.listeners.delete(fn); };
+}
+
+/**
+ * Whether a sheet may hand `visible: false` to its own `Modal` yet.
+ *
+ * **A sheet must not dismiss while something it is presenting is still up.**
+ * UIKit tears a presented view controller down along with its presenter, so
+ * dismissing both in one commit destroys the inner one's view controller
+ * behind RN's back: the inner `SheetModal` still believes it is presented,
+ * and `prepareForRecycle` then clears `_viewController` and `_isPresented`
+ * *without dismissing*, orphaning a view controller iOS is still showing.
+ * What is left on screen is an empty sheet that nothing can dismiss, because
+ * the React tree that owned it no longer holds a reference to it.
+ *
+ * That shipped: logging from the nested Scan or Describe sheet called
+ * `onLogged` (closing the picker underneath) and `onClose` (closing itself)
+ * in the same commit, and the food log came back as a blank frozen sheet.
+ *
+ * Holding the outer one back a commit is enough. The two dismissals are then
+ * issued in separate commits, innermost first, which is the order UIKit
+ * expects and the order RN's own bookkeeping stays consistent under.
+ */
+export function canHideSheet(level: PresentationLevel): boolean {
+  return level.presented.size === 0;
+}
+
+function notify(level: PresentationLevel): void {
+  for (const fn of [...level.listeners]) fn();
 }
 
 /**
@@ -79,7 +121,9 @@ export function registerPresentation(
   label: string,
 ): string | null {
   const others = [...level.presented.entries()].filter(([key]) => key !== id);
+  const had = level.presented.has(id);
   level.presented.set(id, label);
+  if (!had) notify(level);
   if (others.length === 0) return null;
   const already = others.map(([, name]) => name).join(', ');
   return (
@@ -93,5 +137,5 @@ export function registerPresentation(
 }
 
 export function releasePresentation(level: PresentationLevel, id: string): void {
-  level.presented.delete(id);
+  if (level.presented.delete(id)) notify(level);
 }
