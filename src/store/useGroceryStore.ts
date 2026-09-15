@@ -45,6 +45,7 @@ import {
   dbSetLastShopId,
   dbGetTripShopId,
   dbGetTripStartedAt,
+  dbGetTripBudgetMinor,
   dbSetTrip,
   dbGetGroceryAisleOverrides,
   dbSetGroceryAisleOverrides,
@@ -346,6 +347,16 @@ interface GroceryStore extends UndoHistoryActions {
    */
   tripShopId: string | null;
   tripStartedAt: string | null;
+  /**
+   * What this trip was meant to cost, in minor units, or null for no ceiling.
+   *
+   * Optional forever. Absent means the running total still shows and is simply
+   * compared to nothing — a budget is a thing you may want on one shop and not
+   * the next, so its absence is an ordinary state rather than a feature
+   * switched off. Belongs to the trip, so it is set when one starts and goes
+   * when one ends.
+   */
+  tripBudgetMinor: number | null;
   /**
    * name_key → the aisle the user last filed that item under. Consulted ahead
    * of the lexicon when a row is created, so a correction sticks even after the
@@ -1334,7 +1345,9 @@ interface GroceryStore extends UndoHistoryActions {
    * because a wrong guess marks up the whole list in the one place it has to
    * stay scannable one-handed.
    */
-  startTrip: (shopId: string) => void;
+  startTrip: (shopId: string, budgetMinor?: number | null) => void;
+  /** Set or clear the ceiling mid-shop. A no-op when no trip is running. */
+  setTripBudget: (budgetMinor: number | null) => void;
   /**
    * End it. Called by the Clear button, by finishing a shop, and by clearing
    * the list — a trip whose list just went away is over whatever else happened.
@@ -1654,6 +1667,7 @@ export const useGroceryStore = create<GroceryStore>((set, get) => ({
   lastShopId: null,
   tripShopId: null,
   tripStartedAt: null,
+  tripBudgetMinor: null,
   aisleOverrides: {},
   cartHoldIds: [],
   groceryGroupBy: 'aisle',
@@ -1703,6 +1717,7 @@ export const useGroceryStore = create<GroceryStore>((set, get) => ({
     );
     const tripShopId = storedTrip?.id ?? null;
     const tripStartedAt = tripShopId ? dbGetTripStartedAt() : null;
+    const tripBudgetMinor = tripShopId ? dbGetTripBudgetMinor() : null;
     // Repaired against the lists that exist, for the reason lastShopId above
     // is: the setting outlives the list it names, and a restore or a delete on
     // another device would otherwise leave the screen showing an empty trolley
@@ -1729,6 +1744,7 @@ export const useGroceryStore = create<GroceryStore>((set, get) => ({
       lastShopId,
       tripShopId,
       tripStartedAt,
+      tripBudgetMinor,
       cartHoldIds: [],
       groceryGroupBy: dbGetGroceryGroupBy(),
       lists,
@@ -4447,13 +4463,14 @@ export const useGroceryStore = create<GroceryStore>((set, get) => ({
     const wasTrip = get().tripShopId === id;
     dbDeleteGroceryShop(id);
     if (wasLast) dbSetLastShopId(null);
-    if (wasTrip) dbSetTrip(null, null);
+    if (wasTrip) dbSetTrip(null, null, null);
     set(s => ({
       shops: s.shops.filter(x => x.id !== id),
       itemShops: s.itemShops.filter(l => l.shopId !== id),
       lastShopId: wasLast ? null : s.lastShopId,
       tripShopId: wasTrip ? null : s.tripShopId,
       tripStartedAt: wasTrip ? null : s.tripStartedAt,
+      tripBudgetMinor: wasTrip ? null : s.tripBudgetMinor,
     }));
     if (wasTrip) cancelTripReminder();
   },
@@ -5067,23 +5084,32 @@ export const useGroceryStore = create<GroceryStore>((set, get) => ({
     set({ lastShopId: id });
   },
 
-  startTrip(shopId) {
+  startTrip(shopId, budgetMinor = null) {
     // Resolved against live state for the same reason finishShopping re-resolves
     // its shop: the picker that offered this id may have been open while the
     // store was deleted somewhere else.
     const shop = get().shops.find(s => s.id === shopId);
     if (!shop) return;
     const startedAt = new Date().toISOString();
-    dbSetTrip(shopId, startedAt);
-    set({ tripShopId: shopId, tripStartedAt: startedAt });
+    dbSetTrip(shopId, startedAt, budgetMinor);
+    set({ tripShopId: shopId, tripStartedAt: startedAt, tripBudgetMinor: budgetMinor });
     scheduleTripReminder(shop.name, startedAt);
   },
 
   endTrip() {
     if (!get().tripShopId && !get().tripStartedAt) return;
-    dbSetTrip(null, null);
-    set({ tripShopId: null, tripStartedAt: null });
+    dbSetTrip(null, null, null);
+    set({ tripShopId: null, tripStartedAt: null, tripBudgetMinor: null });
     cancelTripReminder();
+  },
+
+  // Guarded on a trip running, because a ceiling with nothing to be a ceiling
+  // for would sit in settings until the next shop picked it up by accident.
+  setTripBudget(budgetMinor) {
+    const { tripShopId, tripStartedAt } = get();
+    if (!tripShopId || !tripStartedAt) return;
+    dbSetTrip(tripShopId, tripStartedAt, budgetMinor);
+    set({ tripBudgetMinor: budgetMinor });
   },
 
   activeShop(now = new Date()) {

@@ -3578,6 +3578,7 @@ export function TaskEditor({ visible, task, initialDraft, onClose }: Props) {
                 <TouchableOpacity
                   style={[styles.schedulePill, !seriesRepeats && styles.schedulePillActive]}
                   onPress={() => setSeriesRepeats(false)}
+                  activeOpacity={interaction.activeOpacity}
                 >
                   <Text style={[styles.schedulePillText, !seriesRepeats && styles.schedulePillTextActive]}>
                     Just these dates
@@ -3586,6 +3587,7 @@ export function TaskEditor({ visible, task, initialDraft, onClose }: Props) {
                 <TouchableOpacity
                   style={[styles.schedulePill, seriesRepeats && styles.schedulePillActive]}
                   onPress={() => setSeriesRepeats(true)}
+                  activeOpacity={interaction.activeOpacity}
                 >
                   <Text style={[styles.schedulePillText, seriesRepeats && styles.schedulePillTextActive]}>
                     Every month
@@ -3660,6 +3662,7 @@ export function TaskEditor({ visible, task, initialDraft, onClose }: Props) {
                   <TouchableOpacity
                     style={[styles.schedulePill, deadlineOffsetDays === null && deadlineMonthDay === null && styles.schedulePillActive]}
                     onPress={() => { setDeadlineOffsetDays(null); setDeadlineMonthDay(null); }}
+                    activeOpacity={interaction.activeOpacity}
                   >
                     <Text style={[styles.schedulePillText, deadlineOffsetDays === null && deadlineMonthDay === null && styles.schedulePillTextActive]}>
                       Fixed date
@@ -3681,6 +3684,7 @@ export function TaskEditor({ visible, task, initialDraft, onClose }: Props) {
                         return 1;
                       });
                     }}
+                    activeOpacity={interaction.activeOpacity}
                   >
                     <Text style={[styles.schedulePillText, deadlineOffsetDays !== null && styles.schedulePillTextActive]}>
                       Relative to due
@@ -3690,6 +3694,7 @@ export function TaskEditor({ visible, task, initialDraft, onClose }: Props) {
                     <TouchableOpacity
                       style={[styles.schedulePill, deadlineMonthDay !== null && styles.schedulePillActive]}
                       onPress={() => { setDeadlineOffsetDays(null); setDeadlineMonthDay(prev => prev ?? -1); }}
+                      activeOpacity={interaction.activeOpacity}
                     >
                       <Text style={[styles.schedulePillText, deadlineMonthDay !== null && styles.schedulePillTextActive]}>
                         Day of month
@@ -3709,6 +3714,7 @@ export function TaskEditor({ visible, task, initialDraft, onClose }: Props) {
                       <TouchableOpacity
                         style={[styles.schedulePill, deadlineOffsetDays > 0 && styles.schedulePillActive]}
                         onPress={() => setDeadlineOffsetDays(d => Math.abs(d ?? 1) || 1)}
+                        activeOpacity={interaction.activeOpacity}
                       >
                         <Text style={[styles.schedulePillText, deadlineOffsetDays > 0 && styles.schedulePillTextActive]}>
                           Before due
@@ -3717,6 +3723,7 @@ export function TaskEditor({ visible, task, initialDraft, onClose }: Props) {
                       <TouchableOpacity
                         style={[styles.schedulePill, deadlineOffsetDays < 0 && styles.schedulePillActive]}
                         onPress={() => setDeadlineOffsetDays(d => -(Math.abs(d ?? 1) || 1))}
+                        activeOpacity={interaction.activeOpacity}
                       >
                         <Text style={[styles.schedulePillText, deadlineOffsetDays < 0 && styles.schedulePillTextActive]}>
                           After due
@@ -3747,6 +3754,7 @@ export function TaskEditor({ visible, task, initialDraft, onClose }: Props) {
                       <TouchableOpacity
                         style={[styles.schedulePill, deadlineMonthDay > 0 && styles.schedulePillActive]}
                         onPress={() => setDeadlineMonthDay(deadlineMonthDay > 0 ? deadlineMonthDay : (dueDate ?? getLogicalToday()).getDate())}
+                        activeOpacity={interaction.activeOpacity}
                       >
                         <Text style={[styles.schedulePillText, deadlineMonthDay > 0 && styles.schedulePillTextActive]}>
                           On a day
@@ -3755,6 +3763,7 @@ export function TaskEditor({ visible, task, initialDraft, onClose }: Props) {
                       <TouchableOpacity
                         style={[styles.schedulePill, deadlineMonthDay === -1 && styles.schedulePillActive]}
                         onPress={() => setDeadlineMonthDay(-1)}
+                        activeOpacity={interaction.activeOpacity}
                       >
                         <Text style={[styles.schedulePillText, deadlineMonthDay === -1 && styles.schedulePillTextActive]}>
                           Last day

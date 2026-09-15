@@ -5599,9 +5599,31 @@ export function dbGetTripStartedAt(): string | null {
   return dbGetSetting('grocery_trip_started_at') || null;
 }
 
-export function dbSetTrip(shopId: string | null, startedAt: string | null): void {
+/**
+ * The ceiling for the trip in flight, in minor units, or null for no ceiling.
+ *
+ * A property of the trip rather than of the list, which is the whole point: a
+ * list is what you mean to buy and a trip is one occasion of buying it, so the
+ * budget goes out with the shop id and the start time and is cleared with
+ * them. Stored beside those two rather than as a column for that reason.
+ */
+export function dbGetTripBudgetMinor(): number | null {
+  const raw = dbGetSetting('grocery_trip_budget_minor');
+  if (!raw) return null;
+  const n = Number(raw);
+  // Anything unreadable reads as no budget, the failure direction
+  // `parseRetentionDays` picks for its own garbled value: a ceiling nobody set
+  // is the safe wrong answer, where a ceiling invented out of a bad parse
+  // would report somebody over a number they never typed.
+  return Number.isFinite(n) && n >= 0 ? Math.round(n) : null;
+}
+
+export function dbSetTrip(
+  shopId: string | null, startedAt: string | null, budgetMinor: number | null = null,
+): void {
   dbSetSetting('grocery_trip_shop_id', shopId ?? '');
   dbSetSetting('grocery_trip_started_at', startedAt ?? '');
+  dbSetSetting('grocery_trip_budget_minor', budgetMinor === null ? '' : String(budgetMinor));
 }
 
 // ─── Projects ───────────────────────────────────────────────────────────────
