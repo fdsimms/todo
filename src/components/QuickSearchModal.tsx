@@ -18,9 +18,11 @@ import { SearchField } from './SearchField';
 import { InlineAction } from './InlineAction';
 import { useColors, useTheme } from '../theme/ThemeContext';
 import { spacing, radius, font, fontWeight, border, iconSize, animation, interaction, type Colors } from '../theme';
+import { useShallow } from 'zustand/react/shallow';
 import { useTaskStore } from '../store/useTaskStore';
 import { useProjectStore } from '../store/useProjectStore';
 import { useCategoryStore } from '../store/useCategoryStore';
+import { useSettingsStore } from '../store/useSettingsStore';
 import { categoryLabel } from '../utils/categoryLabel';
 import { quickSearch, QUICK_SEARCH_LIMIT } from '../utils/quickSearch';
 import type { SearchResult } from '../utils/fuzzySearch';
@@ -214,6 +216,9 @@ export function QuickSearchModal({ visible, onClose, onSelectTask, onOpenFullSea
 
   const tasks = useTaskStore(s => s.tasks);
   const projects = useProjectStore(s => s.projects);
+  const recentSearches = useSettingsStore(useShallow(s => s.recentSearches));
+  const pushRecentSearch = useSettingsStore(s => s.pushRecentSearch);
+  const clearRecentSearches = useSettingsStore(s => s.clearRecentSearches);
 
   const [query, setQuery] = useState('');
 
@@ -282,11 +287,13 @@ export function QuickSearchModal({ visible, onClose, onSelectTask, onOpenFullSea
 
   const handleSelect = (task: Task) => {
     haptics.tap();
+    pushRecentSearch(query);
     dismiss(() => onSelectTask(task));
   };
 
   const handleOpenFull = () => {
     haptics.tap();
+    pushRecentSearch(query);
     const handoff = query;
     dismiss(() => onOpenFullSearch(handoff));
   };
@@ -318,6 +325,39 @@ export function QuickSearchModal({ visible, onClose, onSelectTask, onOpenFullSea
             onChangeText={setQuery}
             onSubmitEditing={handleOpenFull}
           />
+
+          {/* Looking the same thing up twice is the common case here too — see
+              utils/recentSearches. Capped to the card's own quick-search limit
+              rather than the full 8 the setting keeps, for the same reason the
+              results list caps itself: an uncapped card isn't quick. */}
+          {trimmed.length === 0 && recentSearches.length > 0 && (
+            <View style={styles.recents}>
+              <View style={styles.recentsHeader}>
+                <Text style={styles.recentsLabel}>Recent</Text>
+                <TouchableOpacity
+                  onPress={clearRecentSearches}
+                  activeOpacity={interaction.activeOpacity}
+                  accessibilityRole="button"
+                  accessibilityLabel="Clear recent searches"
+                >
+                  <Text style={styles.recentsClear}>Clear</Text>
+                </TouchableOpacity>
+              </View>
+              {recentSearches.slice(0, QUICK_SEARCH_LIMIT).map(q => (
+                <TouchableOpacity
+                  key={q}
+                  style={styles.resultRow}
+                  onPress={() => setQuery(q)}
+                  activeOpacity={interaction.activeOpacity}
+                  accessibilityRole="button"
+                  accessibilityLabel={`Search again for ${q}`}
+                >
+                  <Ionicons name="time-outline" size={16} color={colors.textSecondary} />
+                  <Text style={styles.recentText} numberOfLines={1}>{q}</Text>
+                </TouchableOpacity>
+              ))}
+            </View>
+          )}
 
           {results.length > 0 && (
             <View style={styles.results}>
@@ -368,6 +408,32 @@ const makeStyles = (colors: Colors) => StyleSheet.create({
     backgroundColor: colors.bgSecondary,
     borderRadius: 20,
     padding: spacing.sm,
+  },
+
+  recents: { marginTop: spacing.xs },
+  recentsHeader: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    paddingHorizontal: spacing.xs,
+    paddingTop: spacing.xs,
+    paddingBottom: spacing.xxs,
+  },
+  recentsLabel: {
+    color: colors.textSecondary,
+    fontSize: font.xs,
+    fontWeight: fontWeight.semibold,
+    textTransform: 'uppercase',
+    letterSpacing: 0.8,
+  },
+  recentsClear: {
+    color: colors.accent,
+    fontSize: font.sm,
+  },
+  recentText: {
+    flex: 1,
+    color: colors.text,
+    fontSize: font.md,
   },
 
   results: { marginTop: spacing.xs },
