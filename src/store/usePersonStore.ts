@@ -134,10 +134,11 @@ interface PersonStore extends UndoHistoryState, UndoHistoryActions {
    */
   notePendingReachOut: (personId: string, kind: ReachOutKind) => void;
   /**
-   * The stamp worth asking this person about right now, or null when there
-   * isn't one, it belongs to somebody else, or it has gone stale.
+   * The stamp worth asking about right now, or null when there isn't one or it
+   * has gone stale. Not scoped to a person: the prompt fires wherever the user
+   * is and names whoever the stamp names — see `isReachOutPromptLive`.
    */
-  peekPendingReachOut: (personId: string, now: Date) => PendingReachOut | null;
+  peekPendingReachOut: (now: Date) => PendingReachOut | null;
   /** Drops the stamp, however it got answered. */
   clearPendingReachOut: () => void;
 }
@@ -296,14 +297,14 @@ export const usePersonStore = create<PersonStore>((set, get) => ({
     }
   },
 
-  peekPendingReachOut(personId, now) {
+  peekPendingReachOut(now) {
     let pending: PendingReachOut | null = null;
     try {
       pending = parsePendingReachOut(dbGetSetting(PENDING_REACH_OUT_KEY));
     } catch {
       return null;
     }
-    return isReachOutPromptLive(pending, personId, now) ? pending : null;
+    return isReachOutPromptLive(pending, now) ? pending : null;
   },
 
   clearPendingReachOut() {

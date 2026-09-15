@@ -67,6 +67,7 @@ import { pantryCheckItemId, pantryCheckLapse } from '../utils/pantryCheckTasks';
 import { pantryReviewDayKey } from '../utils/pantryReviewTasks';
 import { buildPantryReviewDeck } from '../utils/pantryReview';
 import { telUrl, smsUrl } from '../utils/phone';
+import { type ReachOutKind } from '../utils/reachOutIntent';
 import { mailtoUrl } from '../utils/email';
 import { directionsUrl } from '../utils/maps';
 import { animateLayout } from '../utils/layoutAnimation';
@@ -96,7 +97,7 @@ import {
 } from '../utils/projectReviewTasks';
 import { resolveBlocker, waitingCountFor } from '../utils/blockerRegistry';
 import { resolvePerson, peopleOn, groupMentionTokens } from '../utils/peopleRegistry';
-import { displayNameOf } from '../store/usePersonStore';
+import { displayNameOf, usePersonStore } from '../store/usePersonStore';
 import { matchPersonMentions } from '../utils/parseTaskInput';
 import { HighlightedText } from './HighlightedText';
 import { useCategoryStore } from '../store/useCategoryStore';
@@ -366,9 +367,32 @@ export const TaskItem = React.memo(function TaskItem({
   // holds nothing a dialler could use, and the button doesn't render at all.
   const callUrl = telUrl(task.phoneNumber);
   const textUrl = smsUrl(task.phoneNumber);
+  /**
+   * Stamps the tap so `useReachOutPrompt` can offer it as history when the user
+   * comes back — see `src/utils/reachOutIntent.ts` for why a tap is all the app
+   * can know, and `docs/arch/people.md` for the rules around asking.
+   *
+   * **Only when the row names exactly one person.** A task carrying no
+   * `personIds` has nobody to write a history entry against, and one naming
+   * several ("Call the plumber and @Mom") holds a single number that belongs to
+   * one of them with nothing to say which — resolve-or-shrug, the same as every
+   * other reader of a person id here. Shrugging costs a prompt nobody gets;
+   * guessing costs a wrong entry in somebody's history.
+   *
+   * Reached through `getState()` rather than a subscription on purpose: this
+   * row is memoized and on Today every one of them is mounted, so a store
+   * subscription for something only a tap ever reads would be paid on every
+   * render of every row.
+   */
+  const stampReachOut = (kind: ReachOutKind) => {
+    const named = peopleOn(task);
+    if (named.length !== 1) return;
+    usePersonStore.getState().notePendingReachOut(named[0].id, kind);
+  };
   const handleCall = async () => {
     if (!callUrl) return;
     haptics.tap();
+    stampReachOut('call');
     try {
       // Same reasoning as the link button: no canOpenURL check. tel: needs no
       // LSApplicationQueriesSchemes entry, and on a device with no phone (an
@@ -381,6 +405,7 @@ export const TaskItem = React.memo(function TaskItem({
   const handleText = async () => {
     if (!textUrl) return;
     haptics.tap();
+    stampReachOut('text');
     try {
       // Same reasoning as handleCall — sms: needs no
       // LSApplicationQueriesSchemes entry either.
@@ -413,6 +438,7 @@ export const TaskItem = React.memo(function TaskItem({
   const handleEmail = async () => {
     if (!emailUrl) return;
     haptics.tap();
+    stampReachOut('email');
     try {
       // Same reasoning as call/link: no canOpenURL check needed for mailto:.
       await Linking.openURL(emailUrl);

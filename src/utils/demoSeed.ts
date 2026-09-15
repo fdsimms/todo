@@ -1879,6 +1879,19 @@ function seedPeople(today: Date): void {
   const beach = addTask({ title: 'Beach day with @Household', dueDate: addDays(today, 5).toISOString() });
   updateTask(beach.id, { personIds: [dustin.id, ansley.id] });
 
+  // A row you can actually tap Call on (#2046). It needs a number *and* exactly
+  // one person named: "Call the dentist about the crown" above has the number
+  // and nobody in the list, which is the refusal rather than the feature, so
+  // without this one the task-row half reads as absent. Left incomplete on
+  // purpose — only a completed row counts as history, so this can't disturb the
+  // reach-out nudge the backdated coffee below sets up.
+  const callMom = addTask({
+    title: 'Call Mom about Thanksgiving',
+    dueDate: today.toISOString(),
+    phoneNumber: '555 0106',
+  });
+  updateTask(callMom.id, { personIds: [mom.id] });
+
   const coffee = addTask({ title: 'Coffee with Mom' });
   updateTask(coffee.id, { personIds: [mom.id] });
   completeTask(coffee.id);

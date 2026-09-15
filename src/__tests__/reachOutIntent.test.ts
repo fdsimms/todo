@@ -74,32 +74,35 @@ describe('isReachOutPromptLive', () => {
   const at = new Date(AT);
 
   it('is live immediately after the tap', () => {
-    expect(isReachOutPromptLive(pending(), 'p1', at)).toBe(true);
+    expect(isReachOutPromptLive(pending(), at)).toBe(true);
   });
 
   it('stays live right up to the edge of the window', () => {
     const edge = new Date(at.getTime() + REACH_OUT_PROMPT_WINDOW_MS);
-    expect(isReachOutPromptLive(pending(), 'p1', edge)).toBe(true);
+    expect(isReachOutPromptLive(pending(), edge)).toBe(true);
   });
 
   it('goes quiet one millisecond past it', () => {
     const past = new Date(at.getTime() + REACH_OUT_PROMPT_WINDOW_MS + 1);
-    expect(isReachOutPromptLive(pending(), 'p1', past)).toBe(false);
+    expect(isReachOutPromptLive(pending(), past)).toBe(false);
   });
 
-  // A question about one friend may not arrive on another's page.
-  it('stays quiet on somebody else\'s screen', () => {
-    expect(isReachOutPromptLive(pending(), 'p2', at)).toBe(false);
+  // Deliberately not scoped to a person: the prompt is mounted at the app root
+  // and asks wherever the user is, since a tap on a task row comes back to
+  // Today rather than to anybody's page. The alert names whoever the stamp
+  // names, so there is nothing for a screen to disambiguate.
+  it('does not care which person it names', () => {
+    expect(isReachOutPromptLive(pending({ personId: 'p2' }), at)).toBe(true);
   });
 
   it('is not live when there is nothing pending', () => {
-    expect(isReachOutPromptLive(null, 'p1', at)).toBe(false);
+    expect(isReachOutPromptLive(null, at)).toBe(false);
   });
 
   // A clock that moved backwards, not a tap from the future.
   it('stays live when the stamp reads as being ahead of now', () => {
     const earlier = new Date(at.getTime() - 60_000);
-    expect(isReachOutPromptLive(pending(), 'p1', earlier)).toBe(true);
+    expect(isReachOutPromptLive(pending(), earlier)).toBe(true);
   });
 });
 

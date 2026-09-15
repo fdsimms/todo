@@ -250,32 +250,27 @@ describe('the pending reach-out stamp', () => {
   // tapped, and then asks. These pin the store half of that.
   const now = new Date('2026-09-15T14:30:00.000Z');
 
-  it('is empty until somebody taps Call or Text', () => {
-    expect(usePersonStore.getState().peekPendingReachOut('p1', now)).toBeNull();
+  it('is empty until somebody taps Call, Text or Email', () => {
+    expect(usePersonStore.getState().peekPendingReachOut(now)).toBeNull();
   });
 
-  it('comes back for the person whose button was tapped', () => {
+  it('comes back naming the person whose button was tapped', () => {
     usePersonStore.getState().notePendingReachOut('p1', 'call');
-    const pending = usePersonStore.getState().peekPendingReachOut('p1', new Date());
-    expect(pending).toMatchObject({ personId: 'p1', kind: 'call' });
+    expect(usePersonStore.getState().peekPendingReachOut(new Date()))
+      .toMatchObject({ personId: 'p1', kind: 'call' });
   });
 
-  it('remembers which of the two buttons it was', () => {
-    usePersonStore.getState().notePendingReachOut('p1', 'text');
-    expect(usePersonStore.getState().peekPendingReachOut('p1', new Date())?.kind).toBe('text');
-  });
-
-  // A question about one friend arriving on another's page would be the app
-  // volunteering a comparison nobody asked for.
-  it('stays quiet on somebody else\'s screen', () => {
-    usePersonStore.getState().notePendingReachOut('p1', 'call');
-    expect(usePersonStore.getState().peekPendingReachOut('p2', new Date())).toBeNull();
+  it('remembers which of the three buttons it was', () => {
+    for (const kind of ['call', 'text', 'email'] as const) {
+      usePersonStore.getState().notePendingReachOut('p1', kind);
+      expect(usePersonStore.getState().peekPendingReachOut(new Date())?.kind).toBe(kind);
+    }
   });
 
   it('goes quiet once the window has passed', () => {
     usePersonStore.getState().notePendingReachOut('p1', 'call');
     const tomorrow = new Date(Date.now() + 24 * 60 * 60 * 1000);
-    expect(usePersonStore.getState().peekPendingReachOut('p1', tomorrow)).toBeNull();
+    expect(usePersonStore.getState().peekPendingReachOut(tomorrow)).toBeNull();
   });
 
   // Two un-answered taps means the first was already left unconfirmed, and the
@@ -283,14 +278,14 @@ describe('the pending reach-out stamp', () => {
   it('keeps only the most recent tap', () => {
     usePersonStore.getState().notePendingReachOut('p1', 'call');
     usePersonStore.getState().notePendingReachOut('p2', 'text');
-    expect(usePersonStore.getState().peekPendingReachOut('p1', new Date())).toBeNull();
-    expect(usePersonStore.getState().peekPendingReachOut('p2', new Date())?.kind).toBe('text');
+    const pending = usePersonStore.getState().peekPendingReachOut(new Date());
+    expect(pending).toMatchObject({ personId: 'p2', kind: 'text' });
   });
 
   it('is gone once it has been answered', () => {
     usePersonStore.getState().notePendingReachOut('p1', 'call');
     usePersonStore.getState().clearPendingReachOut();
-    expect(usePersonStore.getState().peekPendingReachOut('p1', new Date())).toBeNull();
+    expect(usePersonStore.getState().peekPendingReachOut(new Date())).toBeNull();
   });
 
   // No cached copy is the whole reason demo mode needs no `reload` here, unlike
@@ -300,7 +295,7 @@ describe('the pending reach-out stamp', () => {
   it('reads the live database rather than a copy of it', () => {
     usePersonStore.getState().notePendingReachOut('p1', 'call');
     mockSettingsTable.clear();
-    expect(usePersonStore.getState().peekPendingReachOut('p1', new Date())).toBeNull();
+    expect(usePersonStore.getState().peekPendingReachOut(new Date())).toBeNull();
   });
 
   // Nothing about the stamp may touch the person's own row: it is a fact about

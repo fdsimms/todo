@@ -17,6 +17,7 @@ import { useTaskDeepLinks } from './src/utils/deepLinks';
 import { useHomeScreenQuickActions } from './src/utils/quickActions';
 import { useWidgetSync } from './src/utils/widgetSync';
 import { useSharedRecipeLinks } from './src/hooks/useSharedRecipeLinks';
+import { useReachOutPrompt } from './src/hooks/useReachOutPrompt';
 import { useStepTimerStore } from './src/store/useStepTimerStore';
 import { useTimerLiveActivitySync } from './src/utils/liveActivity';
 import { useTripLiveActivitySync } from './src/utils/tripLiveActivity';
@@ -181,6 +182,13 @@ function AppRoot() {
   // ("Hey Siri, remind me to…"). Same ordering requirement as the deep links
   // above — the DB has to exist before an imported reminder is inserted.
   useRemindersImportSync();
+
+  // Asks whether a tap on somebody's Call, Text or Email button should go in
+  // their history. Lives at the root rather than on a screen because the tap
+  // and the answer happen in different places: Call on a task row hands off to
+  // the dialler and comes back to Today. Inert until somebody taps one of
+  // those buttons, and nothing is written without an answer.
+  useReachOutPrompt();
 
   // Keeps the in-memory window of device calendar events current. Inert until
   // the calendar read is switched on and a calendar picked; there's no

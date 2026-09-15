@@ -15016,3 +15016,48 @@ describe('a task that records a dose', () => {
     expect(useMedicationStore.getState().logs).toHaveLength(1);
   });
 });
+
+describe('addCompletedTask', () => {
+  // The one writer behind every entry in a person's history — the manual "Add
+  // to history" row, an accepted calendar offer, and a confirmed tap on Call,
+  // Text or Email. See docs/arch/people.md for why that is an ordinary task
+  // rather than a record of its own.
+  beforeEach(() => {
+    useTaskStore.setState({ tasks: [] });
+  });
+
+  it('creates a row that is already done', () => {
+    const at = new Date('2026-03-14T18:00:00.000Z');
+    const task = useTaskStore.getState().addCompletedTask('Called Mom', at, ['p1']);
+    const stored = useTaskStore.getState().tasks.find(t => t.id === task.id)!;
+    expect(stored.completed).toBe(true);
+    expect(stored.title).toBe('Called Mom');
+  });
+
+  // completeTask stamps the moment it runs, so the third call is what makes a
+  // thing that happened an hour ago read as having happened an hour ago. This
+  // is the field personHistory actually sorts and reports on.
+  it('dates it when it happened, not when it was recorded', () => {
+    const at = new Date('2026-03-14T18:00:00.000Z');
+    const task = useTaskStore.getState().addCompletedTask('Called Mom', at, ['p1']);
+    const stored = useTaskStore.getState().tasks.find(t => t.id === task.id)!;
+    expect(stored.completedAt).toBe(at.toISOString());
+  });
+
+  it('names the people it was with', () => {
+    const at = new Date('2026-03-14T18:00:00.000Z');
+    const task = useTaskStore.getState().addCompletedTask('Beach day', at, ['p1', 'p2']);
+    const stored = useTaskStore.getState().tasks.find(t => t.id === task.id)!;
+    expect(stored.personIds).toEqual(['p1', 'p2']);
+  });
+
+  // It is a plain task, so nothing downstream needs to learn a new shape —
+  // which is the entire argument for there being no interactions table.
+  it('is an ordinary top-level task with no recurrence of its own', () => {
+    const at = new Date('2026-03-14T18:00:00.000Z');
+    const task = useTaskStore.getState().addCompletedTask('Called Mom', at, ['p1']);
+    const stored = useTaskStore.getState().tasks.find(t => t.id === task.id)!;
+    expect(stored.parentId).toBeNull();
+    expect(stored.recurrenceType).toBe('none');
+  });
+});

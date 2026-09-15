@@ -383,6 +383,7 @@ name cannot say is where a component appears, and that is `docs/screen-map.md`.
 - `src/hooks/useOnDeviceAi.ts` — useOnDeviceAvailability, useAiRoute
 - `src/hooks/usePendingEdits.ts` — PendingEdits, usePendingEdits, useRegisterPendingEdit
 - `src/hooks/usePlanMeal.ts` — usePlanMeal
+- `src/hooks/useReachOutPrompt.ts` — useReachOutPrompt
 - `src/hooks/useRecipeComponentImports.ts` — ComponentImportState, useRecipeComponentImports
 - `src/hooks/useRecipeImportSource.ts` — ResolvedRecipeSource, alertPhotoAccessDenied, useRecipeImportSource
 - `src/hooks/useRecipeTimer.ts` — RecipeTimerBinding, useRecipeTimer

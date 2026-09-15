@@ -558,9 +558,12 @@ assertion.
 ## Tapping Call or Text, and the question that follows
 
 `reachOutIntent.ts` (the rules), `usePersonStore`'s three `*PendingReachOut`
-actions (the stamp), `PersonDetailScreen` (the prompt). The sibling of the
-calendar offer above, arriving from the other direction: that one guesses from
-something you wrote, this one from something you tapped.
+actions (the stamp), `useReachOutPrompt` (the question), and
+`useTaskStore.addCompletedTask` (the answer). The buttons are on
+`PersonDetailScreen` and on a task row carrying a phone number or an email
+address. The sibling of the calendar offer above, arriving from the other
+direction: that one guesses from something you wrote, this one from something
+you tapped.
 
 **Start with what iOS does not allow, because it is the whole reason this is
 shaped the way it is.** There is no way to detect that you called or texted
@@ -595,10 +598,29 @@ one section up: guess what you cannot verify, carry the reason, and ask. The
 prompt shows the entry it would write in full, title and time, because what has
 to be checked is whether it happened and only the user can check it.
 
-**The answer is an ordinary completed task, through the same `recordTogether`
-the other two ways in use.** No interactions table, no second kind of record,
-and nothing marking it as machine-suggested afterwards: once confirmed it is
-not a guess any more, which is the rule `acceptSuggestion` already follows.
+**The answer is an ordinary completed task, through the same writer the other
+ways in use** — `useTaskStore.addCompletedTask`, which moved into the store once
+it had four callers, two of them not on a screen that could own it. No
+interactions table, no second kind of record, and nothing marking it as
+machine-suggested afterwards: once confirmed it is not a guess any more, which
+is the rule `acceptSuggestion` already follows.
+
+**The prompt is mounted at the app root, not on a screen, and that is the one
+place this feature is allowed to speak up where it wasn't invited.** The tap and
+the answer happen in different places: Call on "Call Mom" from Today hands off to
+the dialler and comes back to Today, so a question waiting on Mom's page would
+usually expire unasked. It is allowed because of what it is. The calendar offer
+one section up still may never prompt on Today, and the line between them is
+that it volunteers an observation about your life, which is the kind of thing
+that grades you, while this confirms an action you took thirty seconds ago and
+tells you nothing you did not already know. It carries no count, no colour and
+no claim about the friendship, and "Not now" leaves no mark.
+
+**A task row only stamps when it names exactly one person.** A row with no
+`personIds` has nobody to write an entry against, and one naming several holds a
+single number belonging to one of them with nothing to say which. Resolve-or-
+shrug, as everywhere else a person id is read here: shrugging costs a prompt
+nobody gets, guessing costs a wrong entry in somebody's history.
 
 **"Not now" leaves no mark, and that is deliberate.** There is no declined
 stamp here as there is for the reach-out nudge (`reachOutDeclinedAt`,

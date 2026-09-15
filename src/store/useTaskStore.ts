@@ -1199,6 +1199,26 @@ interface TaskStore extends UndoHistoryActions {
   ) => Task;
   duplicateTask: (id: string) => Task | null;
   /**
+   * A row that is created already done, dated when it happened.
+   *
+   * The one writer behind every entry in a person's history — see
+   * `docs/arch/people.md`. **An ordinary completed task and never a second kind
+   * of record**, which is the whole reason there is no interactions table: what
+   * you did with somebody is a task you ticked off, so the same row serves the
+   * Logbook, Stats and `personHistory` with nothing new to teach any of them.
+   *
+   * Three calls rather than one because `completeTask` stamps the moment it
+   * runs, so a thing that happened an hour ago has its `completedAt` written
+   * afterwards — the same `updateTask` the Logbook's own "change the date"
+   * makes, and the field `personHistory` actually reads.
+   *
+   * It lives here rather than beside any one of its callers because there are
+   * now four (the manual "Add to history" row, an accepted calendar offer, and
+   * a confirmed tap on Call/Text/Email from either a person's page or a task
+   * row), two of which are not on a screen that could own it.
+   */
+  addCompletedTask: (title: string, at: Date, personIds: string[]) => Task;
+  /**
    * Opens the system event sheet to block out time for a task — the new-event
    * sheet when it has no block yet, the edit sheet for the one it has. Resolves
    * to whether the task now has a block; nothing is written unless the user
@@ -1973,6 +1993,14 @@ export const useTaskStore = create<TaskStore>((set, get) => ({
     scheduleTaskReminder(task);
     scheduleQuotaNudges(task);
     reconcileDeadlineEvent(task);
+    return task;
+  },
+
+  addCompletedTask(title, at, personIds) {
+    const iso = at.toISOString();
+    const task = get().addTask({ title, dueDate: iso, personIds });
+    get().completeTask(task.id);
+    get().updateTask(task.id, { completedAt: iso });
     return task;
   },
 

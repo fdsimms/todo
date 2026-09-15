@@ -1,5 +1,5 @@
-import React, { useEffect, useMemo, useRef, useState } from 'react';
-import { View, Text, TouchableOpacity, ScrollView, StyleSheet, Linking, Alert, AppState } from 'react-native';
+import React, { useEffect, useMemo, useState } from 'react';
+import { View, Text, TouchableOpacity, ScrollView, StyleSheet, Linking } from 'react-native';
 import { useNavigation, useRoute, type RouteProp } from '@react-navigation/native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import Ionicons from '@expo/vector-icons/Ionicons';
@@ -30,12 +30,7 @@ import {
   notesOfKind,
 } from '../utils/personNotes';
 import { telUrl, smsUrl } from '../utils/phone';
-import {
-  isStampFromEarlierLaunch,
-  reachOutHistoryTitle,
-  reachOutPromptMessage,
-  type ReachOutKind,
-} from '../utils/reachOutIntent';
+import { type ReachOutKind } from '../utils/reachOutIntent';
 import { tasksNaming } from '../utils/peopleRegistry';
 import {
   hasBirthday,
@@ -57,14 +52,6 @@ type RootStackParamList = {
 
 /** How many calendar offers show before the rest go behind "Show N more". */
 const SUGGESTION_PREVIEW_COUNT = 5;
-
-/**
- * Roughly when this launch began — module scope, so it is stamped as the
- * navigator registers the screen rather than when one is first opened.
- *
- * Read only by `isStampFromEarlierLaunch`, which explains what it is for.
- */
-const PROCESS_START_MS = Date.now();
 
 /**
  * One person: what you have done together, and what is coming up.
@@ -108,9 +95,8 @@ export function PersonDetailScreen() {
   const styles = useMemo(() => makeStyles(colors), [colors]);
 
   const person = usePersonStore(s => s.people.find(p => p.id === route.params.personId) ?? null);
-  const addTask = useTaskStore(s => s.addTask);
+  const addCompletedTask = useTaskStore(s => s.addCompletedTask);
   const updateTask = useTaskStore(s => s.updateTask);
-  const completeTask = useTaskStore(s => s.completeTask);
   const deleteTask = useTaskStore(s => s.deleteTask);
   // The index rather than a scan: `Task.personIds` is an array on the row (see
   // the field note), so this is the reverse direction and it is rebuilt only
@@ -191,109 +177,6 @@ export function PersonDetailScreen() {
     [pastEvents, allPeople, handledHistory, personId]
   );
 
-  /**
-   * Writes one thing you did into the history.
-   *
-   * **An ordinary completed task, never a second kind of record** — the whole
-   * reason there is no interactions table, see `docs/arch/people.md`. All three
-   * ways in go through here — the manual "Add to history" row, an accepted
-   * calendar offer, and a confirmed tap on Call or Text — so an accepted guess
-   * is indistinguishable afterwards from something you ticked off yourself.
-   * That is the point: once you have confirmed it, it is not a guess any more.
-   *
-   * `completeTask` stamps the moment it runs, so a backdated entry has its
-   * `completedAt` written afterwards — the same `updateTask` the Logbook's own
-   * "change the date" makes, and the field `personHistory` actually reads.
-   *
-   * It sits above the `!person` return below rather than beside its callers
-   * because the reach-out prompt is a hook and has to be declared up here.
-   */
-  const recordTogether = (title: string, at: Date, personIds: string[]) => {
-    const task = addTask({ title, dueDate: at.toISOString(), personIds });
-    completeTask(task.id);
-    updateTask(task.id, { completedAt: at.toISOString() });
-  };
-
-  // Rebuilt every render, since it closes over three store actions — so the
-  // effect below reaches it through a ref instead of naming it as a
-  // dependency, which would tear the AppState listener down and rebuild it on
-  // every unrelated render of this screen.
-  const recordTogetherRef = useRef(recordTogether);
-  recordTogetherRef.current = recordTogether;
-
-  /**
-   * The question a tap on Call or Text comes back to.
-   *
-   * The app cannot detect that you rang somebody — see the header of
-   * `src/utils/reachOutIntent.ts` for how thoroughly iOS closes that door — so
-   * what it has instead is the tap on its own button, which is an intention
-   * rather than an event. Asking is what converts the one into the other, and
-   * it is the same shape as the calendar offer further down this screen: the
-   * entry that would be written is shown in full, and nothing is saved until
-   * somebody says so.
-   *
-   * **This is the one prompt in the feature that arrives unasked, and it is
-   * only allowed because the user's own tap is what armed it, seconds earlier.**
-   * It says nothing about the friendship, carries no count and no colour, and
-   * "Not now" costs nothing and leaves no mark — there is no declined-stamp
-   * here as there is for the reach-out nudge, because a tap you didn't confirm
-   * is not a decision about anybody, just a call that didn't happen.
-   */
-  useEffect(() => {
-    const ask = (trigger: 'mount' | 'foreground'): void => {
-      const store = usePersonStore.getState();
-      const pending = store.peekPendingReachOut(personId, new Date());
-      if (!pending) return;
-      // Left where it is rather than cleared, so a genuine foreground later can
-      // still pick it up.
-      if (trigger === 'mount' && !isStampFromEarlierLaunch(pending, PROCESS_START_MS)) return;
-      const subject = store.getPersonById(personId);
-      if (!subject) return;
-      // Cleared *before* the alert rather than from its buttons, so it can only
-      // ever be asked once: a second foreground while the alert is still up
-      // would otherwise stack a duplicate on top of it. The failure this leaves
-      // open — the app dying mid-question and never asking again — is the one
-      // worth having, since a question nobody answered already means no.
-      store.clearPendingReachOut();
-      const at = new Date(pending.at);
-      const subjectName = displayNameOf(subject);
-      Alert.alert(
-        'Add to history?',
-        reachOutPromptMessage(pending.kind, subjectName, at),
-        [
-          { text: 'Not now', style: 'cancel' },
-          {
-            text: 'Add',
-            onPress: () => {
-              haptics.success();
-              animateLayout();
-              recordTogetherRef.current(
-                reachOutHistoryTitle(pending.kind, subjectName),
-                at,
-                [personId],
-              );
-            },
-          },
-        ],
-      );
-    };
-
-    // Two triggers, catching different things. The listener is the ordinary
-    // path: a call backgrounds the app and comes back to this same mounted
-    // screen. Mount covers the app having been reclaimed during a long call,
-    // which returns the user to the initial screen with no transition to hear —
-    // the question then waits on this person's own page until they navigate
-    // there, which is where the arch doc wants a history offer to live anyway.
-    // The two are not interchangeable, hence the trigger: see
-    // `isStampFromEarlierLaunch` for what asking at mount would otherwise do to
-    // somebody who cancelled iOS's own "call this number?" sheet.
-    ask('mount');
-    const subscription = AppState.addEventListener('change', state => {
-      if (state === 'active') ask('foreground');
-    });
-    return () => subscription.remove();
-  }, [personId]);
-
   if (!person) {
     // Deleted while the screen was open. Popping is better than an empty shell
     // with a name it can no longer resolve.
@@ -337,6 +220,19 @@ export function PersonDetailScreen() {
     if (!url) return;
     notePendingReachOut(person.id, kind);
     open(url);
+  };
+
+  /**
+   * Writes one thing you did into the history.
+   *
+   * **An ordinary completed task, never a second kind of record** — the whole
+   * reason there is no interactions table, see `docs/arch/people.md`. The rule
+   * itself moved to `useTaskStore.addCompletedTask` once a confirmed tap on
+   * Call became a fourth caller, two of which aren't on this screen; what is
+   * left here is the name this screen knows it by.
+   */
+  const recordTogether = (title: string, at: Date, personIds: string[]) => {
+    addCompletedTask(title, at, personIds);
   };
 
   /**

@@ -94,19 +94,27 @@ export function parsePendingReachOut(raw: string | null | undefined): PendingRea
 }
 
 /**
- * Whether this stamp is worth asking the given person about right now.
+ * Whether this stamp is still worth asking about at all.
  *
- * Scoped to one person on purpose. The prompt lives on somebody's own detail
- * screen, so a stamp for Sarah must stay silent while you are looking at Dustin
- * — the alternative is a question about one friend arriving on another's page,
- * which is the app volunteering a comparison nobody asked for.
+ * Deliberately **not** scoped to a person. The prompt used to live on one
+ * person's detail screen and so had to stay silent about anybody else, but a
+ * tap on a task row ("Call Mom" on Today) returns you to Today rather than to
+ * Mom's page, and a question that waited there for a visit would usually
+ * expire unasked. It asks wherever you are now, so the only question left is
+ * whether the stamp is fresh — and the alert names the person it is about, so
+ * there is nothing for a screen to disambiguate.
+ *
+ * That is allowed here and is still not allowed for the calendar offer one
+ * section up, which may never prompt on Today. The difference is what the two
+ * things are: that one volunteers an observation about your life, which is the
+ * kind of thing that grades you, and this one confirms an action you took
+ * thirty seconds ago and reports nothing you did not already know.
  */
 export function isReachOutPromptLive(
   pending: PendingReachOut | null,
-  personId: string,
   now: Date,
 ): boolean {
-  if (!pending || pending.personId !== personId) return false;
+  if (!pending) return false;
   const at = Date.parse(pending.at);
   if (Number.isNaN(at)) return false;
   const elapsed = now.getTime() - at;
