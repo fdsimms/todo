@@ -52,13 +52,19 @@ interface Props {
   onTitlePress?: () => void;
   /** Spoken label for the title button. Falls back to the title itself. */
   titleAccessibilityLabel?: string;
+  /**
+   * Small content rendered inline right after the title text, baseline-aligned
+   * — e.g. Today's concise weather reading ("68° Sunny"). Not supported
+   * alongside `onTitlePress`; nothing needs both today.
+   */
+  titleAdornment?: React.ReactNode;
 }
 
 /**
  * The standard large-title header used at the top of every screen, so
  * titles, counts and 34pt icon buttons render identically app-wide.
  */
-export function ScreenHeader({ title, subtitle, overline, actions, right, onTitlePress, titleAccessibilityLabel }: Props) {
+export function ScreenHeader({ title, subtitle, overline, actions, right, onTitlePress, titleAccessibilityLabel, titleAdornment }: Props) {
   const colors = useColors();
   const styles = useMemo(() => makeStyles(colors), [colors]);
 
@@ -84,6 +90,11 @@ export function ScreenHeader({ title, subtitle, overline, actions, right, onTitl
             <Text style={styles.title} numberOfLines={1}>{title}</Text>
             <Ionicons name="chevron-down" size={iconSize.sm} color={colors.textSecondary} style={styles.titleChevron} />
           </TouchableOpacity>
+        ) : titleAdornment != null ? (
+          <View style={styles.titleRow}>
+            <Text style={styles.title}>{title}</Text>
+            {titleAdornment}
+          </View>
         ) : (
           <Text style={styles.title}>{title}</Text>
         )}

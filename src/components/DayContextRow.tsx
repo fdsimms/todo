@@ -85,19 +85,16 @@ export function DayContextRow({ row, onPress, onMarkCooked }: Props) {
   const { colors, shadows } = useTheme();
   const styles = useMemo(() => makeStyles(colors), [colors]);
 
-  // Four sources now, and only one whose glyph varies per row rather than per
-  // kind. `footsteps-outline` rather than the heart the Settings group wears:
-  // a heart at 16pt in a list of tasks reads as a favourite, and what the row
-  // is about is walking rather than health in general. Weather reads
-  // `row.weatherIcon` instead of a fixed name — see `ContextRow.weatherIcon`
-  // for why that one field carries it rather than a fifth branch here.
+  // Three sources now, each with a glyph fixed per kind. `footsteps-outline`
+  // rather than the heart the Settings group wears: a heart at 16pt in a list
+  // of tasks reads as a favourite, and what the row is about is walking
+  // rather than health in general.
   //
   // Meal is the fall-through arm because it was here first, and that is worth
-  // knowing before adding a fifth kind: a new one added without an arm
+  // knowing before adding a fourth kind: a new one added without an arm
   // silently draws cutlery.
   const glyphName = row.kind === 'event' ? 'calendar-outline'
     : row.kind === 'health' ? 'footsteps-outline'
-    : row.kind === 'weather' ? (row.weatherIcon ?? 'cloud-outline')
     : 'restaurant-outline';
 
   const leading = onMarkCooked ? (

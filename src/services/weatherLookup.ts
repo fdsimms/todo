@@ -42,8 +42,7 @@ export interface WeatherSnapshot {
    * Today's own high/low, and tomorrow's forecast — null when the daily
    * fields didn't parse, which the current-only fields above never depended
    * on and still don't: a rule matches on `weatherCode`/`tempF` alone, so a
-   * forecast that failed to parse costs the Today row `weatherContextRows`
-   * draws and nothing else.
+   * forecast that failed to parse costs nothing but its own three fields.
    */
   todayHighF: number | null;
   todayLowF: number | null;
