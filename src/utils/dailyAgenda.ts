@@ -89,6 +89,61 @@ export function agendaBody(counts: AgendaCounts): string | null {
 }
 
 /**
+ * Joins a list the way somebody would say it, rather than the way a line of
+ * text separates things.
+ *
+ * Its own function because the comma-and rule is exactly what the written body
+ * has no use for and the spoken one cannot do without: a middle dot is a mark
+ * you see, and a list of two things read out with no "and" between them sounds
+ * like the sentence was cut off.
+ */
+function joinSpoken(parts: string[]): string {
+  if (parts.length === 1) return parts[0];
+  if (parts.length === 2) return `${parts[0]} and ${parts[1]}`;
+  return `${parts.slice(0, -1).join(', ')}, and ${parts[parts.length - 1]}`;
+}
+
+/**
+ * The same agenda, worded to be heard rather than read.
+ *
+ * Beside `agendaBody` rather than in a module of its own, so that anything
+ * changing what the agenda counts has both phrasings in front of it. Two
+ * registers of one sentence, the split `describeRecipeCost` and
+ * `describeWeekCost` already make by noun.
+ *
+ * It is a rewrite rather than the same string spoken, and that was the thing
+ * worth checking before assuming otherwise. The written body is
+ * `3 due · 2 carried over · 1 deadline`: three fragments a person scans in a
+ * notification, separated by a mark that exists only on a screen. Read out,
+ * the separator is either silence or the words "middle dot", and "three due"
+ * with no noun is not a sentence anybody says. So this one names what is being
+ * counted, joins with "and" (see `joinSpoken`), and ends with a full stop so
+ * the synthesiser's own intonation falls at the end instead of trailing.
+ *
+ * "carried over" gains "from earlier" for the same reason: on screen it sits
+ * next to the count that explains it, and out loud it is the only phrase here
+ * that doesn't say what it means on its own.
+ *
+ * Null on an empty day, exactly as `agendaBody` returns null, and for the same
+ * reason one step further: the one thing worse than a notification on a day
+ * with nothing on it is a voice announcing it.
+ */
+export function agendaSpokenBody(counts: AgendaCounts): string | null {
+  const parts: string[] = [];
+  if (counts.due > 0) {
+    parts.push(`${counts.due} task${counts.due === 1 ? '' : 's'} due`);
+  }
+  if (counts.carriedOver > 0) {
+    parts.push(`${counts.carriedOver} carried over from earlier`);
+  }
+  if (counts.deadlines > 0) {
+    parts.push(`${counts.deadlines} deadline${counts.deadlines === 1 ? '' : 's'}`);
+  }
+  if (parts.length === 0) return null;
+  return `Today: ${joinSpoken(parts)}.`;
+}
+
+/**
  * The next time the agenda should fire — today's occurrence of `hhmm` if it's
  * still ahead, otherwise tomorrow's.
  *

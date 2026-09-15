@@ -269,6 +269,11 @@ interface SettingsStore {
   // turn notifications off wholesale.
   dailyAgendaEnabled: boolean;
   dailyAgendaTime: string; // "HH:MM"
+  // Read the agenda out loud when its notification is tapped. Off by default,
+  // and more firmly than the row above it: sound starting on its own from a
+  // tap is a bigger thing to do unasked than a notification is, so this is a
+  // deliberate second answer rather than something dailyAgendaEnabled implies.
+  dailyAgendaSpoken: boolean;
   // The backstop for a trip left running — one notification, two hours after
   // it started, in case the persistent trip bar isn't enough because the app
   // isn't open to show it. Off by default, same reasoning as dailyAgendaEnabled.
@@ -1475,6 +1480,7 @@ interface SettingsStore {
   setAppFontPool: (pool: AppFont[]) => void;
   setDailyAgendaEnabled: (on: boolean) => void;
   setDailyAgendaTime: (time: string) => void;
+  setDailyAgendaSpoken: (on: boolean) => void;
   setTripReminderEnabled: (on: boolean) => void;
   setBackgroundRefreshEnabled: (on: boolean) => void;
   setUse24HourTime: (on: boolean) => void;
@@ -1687,6 +1693,7 @@ const DEFAULT_SETTINGS = {
   confirmBeforeDeleting: true,
   dailyAgendaEnabled: false,
   dailyAgendaTime: '08:00',
+  dailyAgendaSpoken: false,
   tripReminderEnabled: false,
   backgroundRefreshEnabled: true,
   autoCompleteProjectsOnDone: false,
@@ -2087,6 +2094,7 @@ export const useSettingsStore = create<SettingsStore>((set, get) => ({
   titleRules: [],
   dailyAgendaEnabled: false,
   dailyAgendaTime: '08:00',
+  dailyAgendaSpoken: false,
   tripReminderEnabled: false,
   backgroundRefreshEnabled: true,
   anthropicApiKey: '',
@@ -2310,6 +2318,7 @@ export const useSettingsStore = create<SettingsStore>((set, get) => ({
     const recipeLovedOnly = dbGetSetting('recipeLovedOnly') === 'true';
     const dailyAgendaEnabled = dbGetSetting('dailyAgendaEnabled') === 'true';
     const dailyAgendaTime = dbGetSetting('dailyAgendaTime') ?? '08:00';
+    const dailyAgendaSpoken = dbGetSetting('dailyAgendaSpoken') === 'true';
     const tripReminderEnabled = dbGetSetting('tripReminderEnabled') === 'true';
     // `!== 'false'` rather than `=== 'true'`: this defaults on, so an install
     // that predates the row reads as enabled rather than silently opting out.
@@ -2908,6 +2917,7 @@ export const useSettingsStore = create<SettingsStore>((set, get) => ({
       newTaskDefaults,
       titleRules,
       lastVisitedScreen,
+      dailyAgendaSpoken,
       initialized: true,
     });
   },
@@ -3003,6 +3013,11 @@ export const useSettingsStore = create<SettingsStore>((set, get) => ({
   setDailyAgendaTime(time: string) {
     dbSetSetting('dailyAgendaTime', time);
     set({ dailyAgendaTime: time });
+  },
+
+  setDailyAgendaSpoken(on: boolean) {
+    dbSetSetting('dailyAgendaSpoken', on ? 'true' : 'false');
+    set({ dailyAgendaSpoken: on });
   },
 
   setTripReminderEnabled(on: boolean) {

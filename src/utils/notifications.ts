@@ -12,7 +12,7 @@ import {
   isFocusSessionFinished,
 } from './focusPlan';
 import { displayTitleFor, isHiddenForVacation } from './visibilityUtils';
-import { agendaCounts, agendaBody, nextAgendaTime } from './dailyAgenda';
+import { agendaCounts, agendaBody, agendaSpokenBody, nextAgendaTime } from './dailyAgenda';
 import { useSettingsStore } from '../store/useSettingsStore';
 import { useCalendarStore } from '../store/useCalendarStore';
 import { nudgeReminderPastMeeting } from './reminderNudge';
@@ -559,7 +559,9 @@ const DAILY_AGENDA_ID = 'daily-agenda';
  * agenda switched off, or one whose day has nothing on it, costs nothing and
  * must not be reserved for.
  */
-function agendaRequest(tasks: Task[], now: Date): { when: Date; body: string } | null {
+function agendaRequest(
+  tasks: Task[], now: Date,
+): { when: Date; body: string; spoken: string | null } | null {
   const {
     dailyAgendaEnabled, dailyAgendaTime, dayResetTime, quietHoursStart, quietHoursEnd,
   } = useSettingsStore.getState();
@@ -581,10 +583,17 @@ function agendaRequest(tasks: Task[], now: Date): { when: Date; body: string } |
   );
   // Vacation-hidden tasks are filtered here rather than inside agendaCounts,
   // which stays free of store reads so it can be tested directly.
-  const body = agendaBody(
-    agendaCounts(tasks.filter(t => !isHiddenForVacation(t)), when, dayResetTime)
-  );
-  return body ? { when, body } : null;
+  const counts = agendaCounts(tasks.filter(t => !isHiddenForVacation(t)), when, dayResetTime);
+  const body = agendaBody(counts);
+  // Composed here and carried on the notification rather than recomputed when
+  // it is tapped, which is what makes the spoken line trustworthy: it says what
+  // this notification said, about the day this notification was for. A handler
+  // that re-counted would be reading whatever the store held at the moment of
+  // the tap — possibly empty, since a tap is also a cold launch — and would
+  // drift from the words on screen the moment anything was ticked off between
+  // the notification arriving and somebody reaching the phone.
+  const spoken = agendaSpokenBody(counts);
+  return body ? { when, body, spoken } : null;
 }
 
 export async function scheduleDailyAgenda(tasks: Task[]): Promise<void> {
@@ -599,7 +608,11 @@ export async function scheduleDailyAgenda(tasks: Task[]): Promise<void> {
     content: {
       title: 'Today',
       body: request.body,
-      data: { dailyAgenda: true },
+      // agendaSpoken rides along so a tap can read it out without recomputing
+      // (see agendaRequest). Null is a real value here rather than an omission:
+      // the two bodies can disagree about emptiness in principle, and a handler
+      // that fell back to the written body would speak a middle dot.
+      data: { dailyAgenda: true, agendaSpoken: request.spoken },
       sound: true,
       interruptionLevel: NUDGE_INTERRUPTION_LEVEL,
     },

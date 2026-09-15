@@ -4,6 +4,8 @@ import { useTaskStore } from '../store/useTaskStore';
 import { useWidgetCompletionStore } from '../store/useWidgetCompletionStore';
 import { resetToToday } from '../navigation/navigationRef';
 import { COMPLETE_ACTION_IDENTIFIER, SNOOZE_ACTION_IDENTIFIER, SNOOZE_MINUTES } from './notifications';
+import { useSettingsStore } from '../store/useSettingsStore';
+import { speakAgenda } from './agendaSpeech';
 
 // Tapping a reminder (or a fired AlarmKit alarm, which launches the app the
 // same way a notification tap does) used to do nothing app-specific — the
@@ -31,7 +33,25 @@ export function useNotificationTapSync(): void {
   useEffect(() => {
     const handle = (response: Notifications.NotificationResponse | null) => {
       if (!response) return;
-      const data = response.notification.request.content.data as { taskId?: string; dailyAgenda?: boolean } | undefined;
+      const data = response.notification.request.content.data as {
+        taskId?: string; dailyAgenda?: boolean; agendaSpoken?: string | null;
+      } | undefined;
+
+      // The agenda notification carries no taskId, so this has to come before
+      // the bail below — which is why the dailyAgenda flag had been declared
+      // here and never acted on.
+      //
+      // It speaks the line the notification was scheduled with rather than
+      // recounting: a tap is frequently a cold launch, so the stores may hold
+      // nothing yet, and anything ticked off since would make a fresh count
+      // disagree with the words the person is looking at. See agendaRequest.
+      if (data?.dailyAgenda) {
+        const line = data.agendaSpoken;
+        if (line && useSettingsStore.getState().dailyAgendaSpoken) speakAgenda(line);
+        resetToToday();
+        return;
+      }
+
       const taskId = data?.taskId;
       if (!taskId) return;
 
