@@ -38,6 +38,13 @@ describe('stepCount', () => {
     expect(stepCount(null, -1, clearable)).toBeNull();
   });
 
+  it('starts at a given point from empty instead of the floor, when one is set', () => {
+    const seeded = { ...clearable, start: 40 };
+    expect(stepCount(null, 1, seeded)).toBe(40);
+    // Going down from empty is still empty — a start point only answers "+".
+    expect(stepCount(null, -1, seeded)).toBeNull();
+  });
+
   it('walks an out-of-range value back in by one press', () => {
     expect(stepCount(500, -1, range)).toBe(99);
     expect(stepCount(1, 1, range)).toBe(2);
