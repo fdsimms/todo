@@ -1,11 +1,15 @@
-import React from 'react';
+import React, { useState } from 'react';
 import { Text, View, StyleSheet, TouchableOpacity } from 'react-native';
+import { useShallow } from 'zustand/react/shallow';
 import Ionicons from '@expo/vector-icons/Ionicons';
 import { useColors } from '../theme/ThemeContext';
 import { font, fontWeight, iconSize, interaction, radius, spacing, type Colors } from '../theme';
 import { PressableScale } from './PressableScale';
-import { listCheckedCount } from '../utils/groceryLists';
+import { itemsOnList, listCheckedCount } from '../utils/groceryLists';
 import { useGroceryStore } from '../store/useGroceryStore';
+import { useSettingsStore } from '../store/useSettingsStore';
+import { describeCartTotal, estimateCartTotal } from '../utils/groceryPrice';
+import { TripBudgetPrompt } from './TripBudgetPrompt';
 import { haptics } from '../utils/haptics';
 
 interface Props {
@@ -80,6 +84,18 @@ export function ActiveTripBanner({ shopName, onChange, onFinish, onClear }: Prop
   // Scoped to the active list, like everything else the trip touches: the
   // Finish button this number gates on finishes that list and no other.
   const checkedCount = useGroceryStore(s => listCheckedCount(s.listEntries, s.activeListId));
+  // Scoped to the active list the same way, and through `itemsOnList` rather
+  // than reading `checked` off `items`: that flag answers for the home list,
+  // and a trolley is per-list. See GroceryListEntry.
+  const cart = useGroceryStore(
+    useShallow(s => estimateCartTotal(itemsOnList(s.items, s.listEntries, s.activeListId))),
+  );
+  const budgetMinor = useGroceryStore(s => s.tripBudgetMinor);
+  const setTripBudget = useGroceryStore(s => s.setTripBudget);
+  const currencySymbol = useSettingsStore(s => s.currencySymbol);
+  const [budgetOpen, setBudgetOpen] = useState(false);
+
+  const totalLine = describeCartTotal(cart, budgetMinor, currencySymbol);
 
   const handleClear = () => {
     haptics.tap();
@@ -127,6 +143,38 @@ export function ActiveTripBanner({ shopName, onChange, onFinish, onClear }: Prop
         {checkedCount === 0 && clearButton}
       </View>
 
+      {/* The running total, and the one way to set what it is measured against.
+          Shown only once something priced is in the trolley: `describeCartTotal`
+          returns null before that, since a total of nothing says less than
+          silence. Tapping it is how a budget gets set, changed or cleared — see
+          TripBudgetPrompt for why the control lives here rather than at the
+          moment a trip starts. */}
+      {totalLine !== null && (
+        <TouchableOpacity
+          style={styles.totalRow}
+          onPress={() => { haptics.tap(); setBudgetOpen(true); }}
+          activeOpacity={interaction.activeOpacity}
+          accessibilityRole="button"
+          accessibilityLabel={
+            budgetMinor === null
+              ? `${totalLine}. Set a trip budget`
+              : `${totalLine}. Change the trip budget`
+          }
+        >
+          <Ionicons name="pricetag-outline" size={iconSize.xs} color={colors.textSecondary} />
+          {/* Wraps rather than truncating, which is not a style preference
+              here. The clause most at risk of being ellipsised off the end is
+              the coverage ("3 of 9 priced"), and a total that silently drops
+              how much of the trolley it covers is the exact thing this feature
+              refuses to ship — a floor reading as a measurement. Two lines is
+              enough for the longest form at any plausible amount, and the
+              banner is a sibling of the list rather than a fixed-height row, so
+              growing costs nothing. */}
+          <Text style={styles.totalText} numberOfLines={2}>{totalLine}</Text>
+          <Ionicons name="chevron-forward" size={iconSize.xs} color={colors.textTertiary} />
+        </TouchableOpacity>
+      )}
+
       {checkedCount > 0 && (
         <View style={styles.actionRow}>
           {clearButton}
@@ -140,6 +188,14 @@ export function ActiveTripBanner({ shopName, onChange, onFinish, onClear }: Prop
           </PressableScale>
         </View>
       )}
+
+      <TripBudgetPrompt
+        visible={budgetOpen}
+        budgetMinor={budgetMinor}
+        currencySymbol={currencySymbol}
+        onSave={setTripBudget}
+        onClose={() => setBudgetOpen(false)}
+      />
     </View>
   );
 }
@@ -170,6 +226,17 @@ const makeStyles = (colors: Colors) => StyleSheet.create({
   },
   text: { flexShrink: 1, color: colors.text, fontSize: font.md },
   shop: { fontWeight: fontWeight.bold },
+  totalRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: spacing.xs,
+    // Both sides, not just the top: the action row below has no top margin of
+    // its own, so a bare marginTop here would jam Finish against this line.
+    marginTop: spacing.sm,
+    marginBottom: spacing.sm,
+  },
+  // flex: 1 with only two fixed glyphs beside it, so the number wins the row.
+  totalText: { flex: 1, color: colors.textSecondary, fontSize: font.sm },
   actionRow: {
     flexDirection: 'row',
     alignItems: 'center',
