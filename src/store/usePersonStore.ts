@@ -1,5 +1,5 @@
 import { create } from 'zustand';
-import type { Person } from '../types';
+import type { Person, PersonNote } from '../types';
 import {
   dbGetAllPeople,
   dbInsertPerson,
@@ -10,6 +10,7 @@ import {
 import { generateId } from '../utils/id';
 import { registerPersonSource } from '../utils/peopleRegistry';
 import { usePersonNoteStore } from './usePersonNoteStore';
+import { undoHistoryActions, type UndoHistoryActions, type UndoHistoryState } from '../utils/undoHistory';
 
 /**
  * The people you want to keep track of — see `docs/arch/people.md`.
@@ -81,7 +82,7 @@ export type PersonPatch = Partial<Pick<Person,
   | 'location'
 >>;
 
-interface PersonStore {
+interface PersonStore extends UndoHistoryState, UndoHistoryActions {
   people: Person[];
   initialized: boolean;
   initialize: () => void;
@@ -94,6 +95,8 @@ interface PersonStore {
   applyPersonArchived: (id: string, archived: boolean, archivedAt?: string | null) => void;
   removePersonRow: (id: string) => void;
   restorePerson: (person: Person) => void;
+  /** Deletes several people at once, filed as a single undo entry. */
+  bulkRemovePeople: (ids: string[]) => void;
   /**
    * Frees every member of a deleted `PersonGroup` — called by
    * `usePersonGroupStore.removeGroupRow` rather than the other way around, so
@@ -105,6 +108,10 @@ interface PersonStore {
 export const usePersonStore = create<PersonStore>((set, get) => ({
   people: [],
   initialized: false,
+  undoStack: [],
+  redoStack: [],
+  lastAction: null,
+  ...undoHistoryActions(set, get),
 
   initialize() {
     set({ people: dbGetAllPeople(), initialized: true });
@@ -165,6 +172,11 @@ export const usePersonStore = create<PersonStore>((set, get) => ({
   },
 
   removePersonRow(id) {
+    const person = get().people.find(p => p.id === id);
+    // Snapshotted before the delete, so the undo below can put back exactly
+    // what was there rather than an empty history for them.
+    const notes = usePersonNoteStore.getState().notes.filter(n => n.personId === id);
+
     // Their notes go with them, and this is the one place the people layer
     // doesn't shrug at a dangling pointer. A note is *about* somebody and has
     // no meaning without them, unlike a task naming them, which is still a
@@ -174,6 +186,43 @@ export const usePersonStore = create<PersonStore>((set, get) => ({
     usePersonNoteStore.getState().removeNotesFor(id);
     dbDeletePerson(id);
     set({ people: get().people.filter(p => p.id !== id) });
+
+    if (!person) return;
+    get().setLastAction({
+      label: `Deleted ${displayNameOf(person)}`,
+      destructive: true,
+      undo: () => {
+        get().restorePerson(person);
+        notes.forEach(n => usePersonNoteStore.getState().restoreNote(n));
+      },
+      redo: () => get().removePersonRow(id),
+    });
+  },
+
+  // One undo entry for the batch, same shape as bulkDeleteGroups in
+  // useTaskStore: without `replacing`, each person's own removePersonRow
+  // would leave its own entry underneath, so undoing the batch would strand
+  // the rest of it one row at a time.
+  bulkRemovePeople(ids) {
+    const before = get().undoStack;
+    const people = ids.map(id => get().people.find(p => p.id === id)).filter((p): p is Person => p != null);
+    const notesByPerson = new Map(people.map(p => [p.id, usePersonNoteStore.getState().notes.filter(n => n.personId === p.id)]));
+    ids.forEach(id => get().removePersonRow(id));
+    if (people.length === 0) return;
+    const label = people.length === 1
+      ? `Deleted ${displayNameOf(people[0])}`
+      : `Deleted ${people.length} people`;
+    get().setLastAction({
+      label,
+      destructive: true,
+      undo: () => {
+        people.forEach(p => {
+          get().restorePerson(p);
+          (notesByPerson.get(p.id) ?? []).forEach(n => usePersonNoteStore.getState().restoreNote(n));
+        });
+      },
+      redo: () => ids.forEach(id => get().removePersonRow(id)),
+    }, { replacing: before });
   },
 
   restorePerson(person) {

@@ -91,6 +91,21 @@ describe('removeNotesFor', () => {
   });
 });
 
+describe('restoreNote', () => {
+  // The undo half of removeNote/removeNotesFor — usePersonStore's undo entry
+  // for a deleted person calls this per note it snapshotted.
+  it('reinserts a note under its original id', () => {
+    const note = state().addNote('p1', 'gift', 'The pottery class')!;
+    state().removeNotesFor('p1');
+    expect(state().notes).toEqual([]);
+
+    state().restoreNote(note);
+
+    expect(state().notes).toEqual([note]);
+    expect(dbInsertPersonNote).toHaveBeenCalledWith(note);
+  });
+});
+
 describe('initialize', () => {
   it('loads what the table holds', () => {
     (dbGetAllPersonNotes as jest.Mock).mockReturnValueOnce([
