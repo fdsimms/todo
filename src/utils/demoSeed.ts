@@ -3808,7 +3808,14 @@ function seedGroceries(recipes: DemoRecipes, today: Date): void {
   // in a third, and this demo has two stores anyone would shop at.
   //
   // Last, because `setActiveList` above ends a running trip.
-  startTrip(traderJoes.id);
+  //
+  // With a budget on it, since a trip without one compares its running total
+  // to nothing and the ceiling is invisible. $60 against a cart holding Milk
+  // at $3.49 and an unpriced Bananas puts the banner in the state worth
+  // showing: neither over nor fully priced, so it reports the total and the
+  // coverage and offers no verdict at all. That refusal is the feature — a
+  // seed that happened to be fully priced would demo the easy half.
+  startTrip(traderJoes.id, 6000);
 
   // ...and Milk already has its price for today's trip, priced the moment it
   // went in the cart — the capability this seed exists for. Bananas is left

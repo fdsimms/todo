@@ -37,6 +37,8 @@ interface PersonNoteStore {
   removeNote: (id: string) => void;
   /** Drops every note about somebody, for the delete that follows theirs. */
   removeNotesFor: (personId: string) => void;
+  /** Reinserts a note under its original id — the undo half of removeNote/removeNotesFor. */
+  restoreNote: (note: PersonNote) => void;
 }
 
 export const usePersonNoteStore = create<PersonNoteStore>((set, get) => ({
@@ -94,5 +96,10 @@ export const usePersonNoteStore = create<PersonNoteStore>((set, get) => ({
       dbDeletePersonNote(note.id);
     }
     set({ notes: get().notes.filter(n => n.personId !== personId) });
+  },
+
+  restoreNote(note) {
+    dbInsertPersonNote(note);
+    set({ notes: [...get().notes, note] });
   },
 }));

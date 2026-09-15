@@ -1,0 +1,4 @@
+{
+  "message": "Rescheduling several tasks at once now moves a repeating task the same way its own date picker does, instead of shifting every future occurrence with it",
+  "date": "2026-09-15"
+}

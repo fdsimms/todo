@@ -29,6 +29,7 @@ import { calibrationFrom, MIN_CALIBRATION_SAMPLES } from '../utils/estimateCalib
 import { useFocusStore } from '../store/useFocusStore';
 import { isFocusRunning } from '../utils/focusPlan';
 import { itemsOnList } from '../utils/groceryLists';
+import { cartBudgetStanding, describeCartTotal, estimateCartTotal } from '../utils/groceryPrice';
 import { OTHER_AISLE } from '../utils/groceryAisles';
 import { useGroceryStore } from '../store/useGroceryStore';
 import { useFoodLogStore } from '../store/useFoodLogStore';
@@ -4032,6 +4033,26 @@ describe('demo seed — groceries, recipes, meals and the fridge', () => {
  * plan area away shouldn't get a demo full of shops and dinners they can't
  * open. It's the one branch in the seed, so it's checked from both sides.
  */
+describe('demo seed — the trip budget', () => {
+  beforeAll(freshDemo);
+
+  it('puts a budget on the running trip, so the total is compared to something', () => {
+    expect(useGroceryStore.getState().tripShopId).not.toBeNull();
+    expect(useGroceryStore.getState().tripBudgetMinor).toBe(6000);
+  });
+
+  it('leaves the cart part-priced, which is the state worth demonstrating', () => {
+    // Neither over nor fully priced, so the banner reports the total and the
+    // coverage and offers no verdict. That refusal is the feature.
+    const { items, listEntries, activeListId, tripBudgetMinor } = useGroceryStore.getState();
+    const cart = estimateCartTotal(itemsOnList(items, listEntries, activeListId));
+    expect(cart.priced).toBeGreaterThan(0);
+    expect(cart.priced).toBeLessThan(cart.total);
+    expect(cartBudgetStanding(cart, tripBudgetMinor)).toBeNull();
+    expect(describeCartTotal(cart, tripBudgetMinor, '$')).toContain('priced');
+  });
+});
+
 describe('demo seed — with the groceries area turned off', () => {
   // One seed again, this one taken with the setting already off, since what
   // the block asserts is what the seed leaves out. Spelled out rather than

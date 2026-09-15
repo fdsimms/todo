@@ -865,19 +865,27 @@ export function ReceiptImportSheet({ visible, onClose, onApply, context }: Props
             {body()}
           </ScrollView>
         </View>
+
+        {/* Nested inside this sheet's own Modal, not beside it. As a sibling
+            both are presented from the screen's root view controller, which
+            can only present one thing — the picker silently never appeared and
+            the purchased-date row stayed dead for the rest of the flow. Nested
+            rather than hidden because the review body holds a whole receipt's
+            worth of un-applied state (what's checked, renamed, requantified),
+            and a hidden sheet's children unmount. See SheetModal. */}
+        <WhenPicker
+          visible={datePickerOpen}
+          value={purchasedDate}
+          title="Purchased"
+          showTimeOfDay={false}
+          showSuggest={false}
+          onConfirm={date => {
+            if (date) setPurchasedDate(date);
+            setDatePickerOpen(false);
+          }}
+          onCancel={() => setDatePickerOpen(false)}
+        />
       </SheetModal>
-      <WhenPicker
-        visible={datePickerOpen}
-        value={purchasedDate}
-        title="Purchased"
-        showTimeOfDay={false}
-        showSuggest={false}
-        onConfirm={date => {
-          if (date) setPurchasedDate(date);
-          setDatePickerOpen(false);
-        }}
-        onCancel={() => setDatePickerOpen(false)}
-      />
     </>
   );
 }
