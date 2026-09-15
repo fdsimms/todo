@@ -98,6 +98,23 @@ describe('parseTaskInput — one-off dates', () => {
     expect(r.schedule.timeSegments).toEqual(['evening']);
   });
 
+  it('carries a literal clock reading as explicitClockTime, in 24h', () => {
+    const r = parseTaskInput('start on beans at 5pm today', NOW)!;
+    expect(r.cleanTitle).toBe('start on beans');
+    expect(r.schedule.timeSegments).toEqual(['afternoon']);
+    expect(r.schedule.explicitClockTime).toEqual({ h: 17, m: 0 });
+  });
+
+  it('does not set explicitClockTime for a day-part word', () => {
+    const r = parseTaskInput('mow lawn saturday morning', NOW)!;
+    expect(r.schedule.explicitClockTime).toBeNull();
+  });
+
+  it('does not set explicitClockTime for "tonight" — a representative hour, not a typed one', () => {
+    const r = parseTaskInput('take out trash tonight', NOW)!;
+    expect(r.schedule.explicitClockTime).toBeNull();
+  });
+
   it('anchors due dates at noon so they stay in the intended logical day', () => {
     // Midnight due dates get reassigned to the previous logical day by
     // getDayStart when dayResetTime is after midnight; noon is immune.
@@ -360,6 +377,19 @@ describe('parseTaskInput — recurrence', () => {
     const tue = parseTaskInput('trash out every tuesday at 6pm', NOW)!;
     expect(tue.schedule.recurrenceDays).toEqual([2]);
     expect(tue.schedule.timeSegments).toEqual(['evening']);
+  });
+
+  it('carries the literal clock reading on a recurrence too', () => {
+    const r = parseTaskInput('journal every night at 10pm', NOW)!;
+    expect(r.schedule.explicitClockTime).toEqual({ h: 22, m: 0 });
+
+    const tue = parseTaskInput('trash out every tuesday at 6pm', NOW)!;
+    expect(tue.schedule.explicitClockTime).toEqual({ h: 18, m: 0 });
+  });
+
+  it('does not set explicitClockTime for "every morning" — a day-part word, not a typed clock reading', () => {
+    const r = parseTaskInput('meditate every morning', NOW)!;
+    expect(r.schedule.explicitClockTime).toBeFalsy();
   });
 
   it('maps interval synonyms', () => {
