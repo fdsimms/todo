@@ -8,6 +8,7 @@ import type { WeightPoint } from '../utils/weightLog';
 import { healthBridge } from '../utils/healthBridge';
 import { useSettingsStore } from './useSettingsStore';
 import { createRefreshGuard } from '../utils/refreshGuard';
+import { anyExerciseRule } from '../utils/healthRules';
 
 /**
  * What Apple Health says about today, held in memory.
@@ -85,9 +86,54 @@ export interface HealthDay {
   waterMl: number | null;
   /** Kilocalories logged for today so far, or null. Same rules as `sodiumMg`. */
   calorieKcal: number | null;
+  /**
+   * Minutes of Apple Exercise Time so far today, or null. Same rules as
+   * `steps`, and the metric where that null does the most damage.
+   */
+  exerciseMinutes: number | null;
+  /**
+   * Whether exercise minutes were recorded on any day of the trailing window
+   * — **not a reading about today**, and the one field on this record that
+   * isn't.
+   *
+   * It exists because `exerciseMinutes` is the metric where "absent" and
+   * "zero" come apart in a way steps never forced. A carried phone always
+   * records some steps, so a null step count really does mean a refusal or no
+   * device. Exercise minutes are different: most people have days with
+   * genuinely none, and HealthKit writes no sample for a day that earned none,
+   * so the honest reading of a null is ambiguous in a way that matters. Read
+   * as a refusal, a floor rule can never fire on the day it is most about;
+   * read as a zero, it fires every evening at everybody who has no device
+   * recording exercise and never will, which is exactly the failure
+   * `docs/arch/health-data.md` exists to prevent.
+   *
+   * This is what separates the two. Somebody whose devices have recorded
+   * exercise at some point in the window demonstrably has a device that
+   * records it, so today's silence is a real zero. Somebody with nothing in
+   * the whole window is told nothing at all.
+   *
+   * False whenever the window wasn't read — the safe direction, since the
+   * failure it buys is a rule that stays quiet.
+   */
+  exerciseMinutesSeenRecently: boolean;
   /** When this was read, for a caller that wants to say how fresh it is. */
   readAt: string;
 }
+
+/**
+ * How far back `refresh` looks to decide whether exercise minutes are a thing
+ * this person's devices record at all — see `exerciseMinutesSeenRecently`.
+ *
+ * Two weeks is round rather than measured, the same admission
+ * `HEALTH_METRIC_EARLIEST_HOUR` makes about its own 18:00. Long enough that
+ * somebody who exercises once a week still counts, short enough that a rule
+ * goes quiet after a fortnight of nothing rather than nagging indefinitely —
+ * and coming back on its own the first day anything is recorded again.
+ *
+ * The window is only read when a rule actually needs it (see `refresh`), so
+ * nobody pays for a wider query to serve a feature they aren't using.
+ */
+export const EXERCISE_LIVE_WINDOW_DAYS = 14;
 
 /**
  * How far back the history read goes.
@@ -190,12 +236,36 @@ export const useHealthStore = create<HealthState>((set, get) => ({
     set({ refreshing: true });
     const token = todayGuard.begin();
     try {
-      // One bucket, today's. The same call the history read uses rather than a
-      // second "just today" one: HealthKit has no future samples, so a bucket
-      // running to the end of today is today-so-far, and one query shape means
-      // the source de-duplication rule cannot drift between the two reads.
-      const [reading] = await bridge.readDailyHealth(dayStart.toISOString(), 1);
+      // Today's bucket, plus the trailing window when — and only when — a live
+      // exercise rule needs it (see `exerciseMinutesSeenRecently`). The same
+      // call the history read uses rather than a second "just today" one:
+      // HealthKit has no future samples, so a bucket running to the end of
+      // today is today-so-far, and one query shape means the source
+      // de-duplication rule cannot drift between the two reads.
+      const wantsWindow = anyExerciseRule(useSettingsStore.getState().healthRules);
+      const days = wantsWindow ? EXERCISE_LIVE_WINDOW_DAYS : 1;
+      const windowStart = wantsWindow ? addDays(dayStart, -(days - 1)) : dayStart;
+      const window = await bridge.readDailyHealth(windowStart.toISOString(), days);
       if (!todayGuard.isCurrent(token)) return;
+      // Today is the window's last bucket — the native side emits one entry per
+      // requested day from its own anchor, so the count is fixed and the final
+      // one is always today, widened or not (unwidened, it is also the first).
+      //
+      // The day-key match is tried first because it is better evidence, but it
+      // *falls back* rather than standing alone, and that is deliberate: the
+      // native read's own note warns that if its buckets ever stop lining up,
+      // "every day silently reads null ... and a feature whose absent value is
+      // indistinguishable from a refusal cannot afford a failure that looks
+      // like no data". A bare find would be exactly that failure.
+      const reading =
+        window.find(r => getLogicalDayKey(new Date(r.start)) === dayKey)
+        ?? window[window.length - 1]
+        ?? null;
+      // Today's own figure counts: a rule only consults this when today is
+      // null, so including it costs nothing and leaving it out would be an
+      // odd exception to explain.
+      const exerciseMinutesSeenRecently =
+        wantsWindow && window.some(r => r.exerciseMinutes !== null);
       // Written even when the numbers are null, and written as a whole day
       // rather than merged into the last one. A null answer is the current
       // truth rather than a failed read to paper over, and holding the last
@@ -214,6 +284,8 @@ export const useHealthStore = create<HealthState>((set, get) => ({
           caffeineMg: reading?.caffeineMg ?? null,
           waterMl: reading?.waterMl ?? null,
           calorieKcal: reading?.calorieKcal ?? null,
+          exerciseMinutes: reading?.exerciseMinutes ?? null,
+          exerciseMinutesSeenRecently,
           readAt: now.toISOString(),
         },
       });

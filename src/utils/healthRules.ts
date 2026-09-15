@@ -15,9 +15,17 @@ import { generatedSourceOf } from './generatedTasks';
 export const HEALTH_NUTRIENT_METRICS: readonly HealthNutrientMetric[] =
   ['sodiumMg', 'proteinG', 'satFatG', 'fiberG', 'sugarG', 'caffeineMg', 'waterMl', 'calorieKcal'];
 
-/** Whether `metric` uses a per-rule checkpoint hour and direction, rather than steps/sleep's fixed pair. */
+/**
+ * Whether `metric` uses a per-rule checkpoint hour and direction, rather than
+ * the fixed pair steps, sleep and exercise minutes share.
+ *
+ * Exercise minutes join steps rather than the nutrients because they are the
+ * same *shape* of number: a total that accumulates over a day, judged once
+ * when the day has had its chance, not a level checked at whichever hours a
+ * person cares about. See `HEALTH_METRIC_EARLIEST_HOUR`.
+ */
 export function usesCheckpoint(metric: HealthRuleMetric): boolean {
-  return metric !== 'steps' && metric !== 'sleepHours';
+  return metric !== 'steps' && metric !== 'sleepHours' && metric !== 'exerciseMinutes';
 }
 
 /**
@@ -46,7 +54,7 @@ interface HealthMetricInfo {
   amount: (n: number) => string;
 }
 
-const HEALTH_METRIC_INFO: Record<Exclude<HealthRuleMetric, 'steps' | 'sleepHours'>, HealthMetricInfo> = {
+const HEALTH_METRIC_INFO: Record<Exclude<HealthRuleMetric, 'steps' | 'sleepHours' | 'exerciseMinutes'>, HealthMetricInfo> = {
   sodiumMg: {
     label: 'Sodium',
     defaultDirection: 'under',
@@ -183,6 +191,13 @@ export const HEALTH_THRESHOLDS: Record<
 > = {
   steps: { min: 500, max: 30000, step: 500, default: 3000 },
   sleepHours: { min: 3, max: 12, step: 1, default: 6 },
+  // Fives, because that is how exercise targets are said — "twenty minutes",
+  // "half an hour" — and the useful range is one order of magnitude rather
+  // than steps' two, so it needs neither steps' five-hundreds nor sleep's
+  // whole units. The 150-minute ceiling is a week's worth of the usual public
+  // guidance in a single day, which is past anything a daily rule should be
+  // able to ask for.
+  exerciseMinutes: { min: 5, max: 150, step: 5, default: 20 },
   sodiumMg: HEALTH_METRIC_INFO.sodiumMg.threshold,
   proteinG: HEALTH_METRIC_INFO.proteinG.threshold,
   satFatG: HEALTH_METRIC_INFO.satFatG.threshold,
@@ -210,6 +225,7 @@ export const HEALTH_THRESHOLDS: Record<
 export const HEALTH_METRIC_DIRECTION: Record<HealthRuleMetric, 'under' | 'over'> = {
   steps: 'under',
   sleepHours: 'under',
+  exerciseMinutes: 'under',
   sodiumMg: HEALTH_METRIC_INFO.sodiumMg.defaultDirection,
   proteinG: HEALTH_METRIC_INFO.proteinG.defaultDirection,
   satFatG: HEALTH_METRIC_INFO.satFatG.defaultDirection,
@@ -268,6 +284,10 @@ export function healthRuleDirection(rule: Pick<HealthRule, 'metric' | 'direction
 export const HEALTH_METRIC_EARLIEST_HOUR: Record<HealthRuleMetric, number> = {
   steps: 18,
   sleepHours: 0,
+  // Steps' own hour, for steps' own reason: a total that accumulates all day
+  // means nothing until most of the day has gone, and "you have not exercised"
+  // at 9am is telling somebody off for not having had their day yet.
+  exerciseMinutes: 18,
   sodiumMg: HEALTH_METRIC_INFO.sodiumMg.defaultCheckpointHour,
   proteinG: HEALTH_METRIC_INFO.proteinG.defaultCheckpointHour,
   satFatG: HEALTH_METRIC_INFO.satFatG.defaultCheckpointHour,
@@ -279,7 +299,7 @@ export const HEALTH_METRIC_EARLIEST_HOUR: Record<HealthRuleMetric, number> = {
 };
 
 export const HEALTH_METRICS: readonly HealthRuleMetric[] =
-  ['steps', 'sleepHours', ...HEALTH_NUTRIENT_METRICS];
+  ['steps', 'sleepHours', 'exerciseMinutes', ...HEALTH_NUTRIENT_METRICS];
 
 /** The hour of the day a rule is judged from — its own, or the metric's fallback. */
 export function healthRuleCheckpointHour(rule: Pick<HealthRule, 'metric' | 'checkpointHour'>): number {
@@ -290,6 +310,16 @@ export function healthRuleCheckpointHour(rule: Pick<HealthRule, 'metric' | 'chec
 export interface HealthRuleReading {
   steps: number | null;
   sleepHours: number | null;
+  exerciseMinutes: number | null;
+  /**
+   * Whether this person's devices record exercise minutes at all — see
+   * `HealthDay.exerciseMinutesSeenRecently`, which is where it is worked out.
+   *
+   * The one field here that is not a reading about today, and the only reason
+   * a floor rule on exercise can fire at all. `judgedReadingValue` is what
+   * consumes it.
+   */
+  exerciseMinutesSeenRecently: boolean;
   sodiumMg: number | null;
   proteinG: number | null;
   satFatG: number | null;
@@ -300,14 +330,67 @@ export interface HealthRuleReading {
   calorieKcal: number | null;
 }
 
+/**
+ * The figure a rule is actually judged against, which is the raw reading for
+ * every metric but one.
+ *
+ * **Exercise minutes are the one metric where absent and zero come apart.**
+ * Every other reading here is null for three indistinguishable reasons — a
+ * refused read, a day with nothing recorded, a device that never records any
+ * — and `ruleShortfallToday` refuses to fire on any of them, because reading
+ * a refusal as a zero would tell somebody they had fallen short of a number
+ * they never agreed to share. For steps that refusal costs almost nothing: a
+ * carried phone records some, so a null step count really is a refusal or an
+ * absent device.
+ *
+ * Exercise is different in a way that breaks the useful rule. HealthKit
+ * writes no sample for a day that earned no exercise minutes, so a day of
+ * none reads exactly like a refusal — and "under 20 minutes by 6pm" would
+ * then fire on the day you managed eight and stay silent on the day you did
+ * nothing at all, which is precisely backwards.
+ *
+ * What separates them is whether this person's devices record the metric at
+ * all. A window with exercise recorded on some day is proof that they do, so
+ * today's silence is a real zero and may be judged. A window with nothing in
+ * it says nothing about today, and is left alone — which is what stops a
+ * floor rule telling an iPhone-only user every evening, for ever, that they
+ * did not exercise. See `HealthDay.exerciseMinutesSeenRecently`.
+ *
+ * Deliberately one named metric rather than a general "treat absence as zero"
+ * flag per metric: the argument above is about exercise's particular shape,
+ * and a flag would invite it being switched on for steps, where it is the
+ * exact failure `docs/arch/health-data.md` exists to prevent.
+ */
+export function judgedReadingValue(
+  rule: Pick<HealthRule, 'metric'>,
+  reading: HealthRuleReading,
+): number | null {
+  const raw = reading[rule.metric];
+  if (rule.metric !== 'exerciseMinutes' || raw !== null) return raw;
+  return reading.exerciseMinutesSeenRecently ? 0 : null;
+}
+
 function readingValue(rule: Pick<HealthRule, 'metric'>, reading: HealthRuleReading): number | null {
-  return reading[rule.metric];
+  return judgedReadingValue(rule, reading);
+}
+
+/**
+ * Whether any enabled rule watches exercise minutes.
+ *
+ * Read by `useHealthStore.refresh` to decide whether to widen its query to the
+ * trailing window at all, so nobody pays for a fortnight-wide read to serve a
+ * feature they are not using. Here rather than in the store because it is a
+ * fact about the rules, and this file is where every other one lives.
+ */
+export function anyExerciseRule(rules: readonly HealthRule[]): boolean {
+  return rules.some(r => r.enabled && r.metric === 'exerciseMinutes');
 }
 
 /** How a metric is named in the rule editor. */
 export function healthMetricLabel(metric: HealthRuleMetric): string {
   if (metric === 'steps') return 'Steps';
   if (metric === 'sleepHours') return 'Hours asleep';
+  if (metric === 'exerciseMinutes') return 'Minutes of exercise';
   return HEALTH_METRIC_INFO[metric].label;
 }
 
@@ -326,6 +409,9 @@ export function formatCheckpointHour(hour: number): string {
 export function healthMetricAmount(metric: HealthRuleMetric, n: number): string {
   if (metric === 'steps') return `${n.toLocaleString()} steps`;
   if (metric === 'sleepHours') return `${n} ${n === 1 ? 'hour' : 'hours'} asleep`;
+  if (metric === 'exerciseMinutes') {
+    return `${n} ${n === 1 ? 'minute' : 'minutes'} of exercise`;
+  }
   const info = HEALTH_METRIC_INFO[metric];
   return `${info.amount(n)} ${info.label.toLowerCase()}`;
 }
@@ -557,7 +643,7 @@ export function ruleShortfallToday(rule: HealthRule, reading: HealthRuleReading)
  * had three, one per nutrient that existed then, and it was already the
  * wrong shape to keep growing one function per metric).
  */
-export function nutrientReadingNote(metric: Exclude<HealthRuleMetric, 'steps' | 'sleepHours'>, value: number): string {
+export function nutrientReadingNote(metric: Exclude<HealthRuleMetric, 'steps' | 'sleepHours' | 'exerciseMinutes'>, value: number): string {
   const info = HEALTH_METRIC_INFO[metric];
   // Calories reads "2,000 calories today", not "2,000 of calories today" —
   // every other nutrient wants the "of" because its amount is a bare
@@ -584,6 +670,14 @@ export function nutrientReadingNote(metric: Exclude<HealthRuleMetric, 'steps' | 
 export function healthTaskNote(rule: HealthRule, reading: HealthRuleReading): string | undefined {
   if (rule.metric === 'steps') return undefined;
   if (rule.metric === 'sleepHours') return shortSleepDeloadNote(reading.sleepHours) ?? undefined;
+  // Exercise minutes go with steps rather than with the nutrients, and for a
+  // stronger version of steps' own reason. "Apple Health has recorded 0
+  // minutes of exercise today" restates the rule's own title back at somebody
+  // who already knows, and on the day a floor rule fires the figure is
+  // frequently an absence being read as a zero rather than a number anything
+  // recorded — which is exactly the sentence `docs/arch/health-data.md`
+  // forbids, one that rounds a doubtful reading into a confident claim.
+  if (rule.metric === 'exerciseMinutes') return undefined;
   const value = reading[rule.metric];
   return value === null ? undefined : nutrientReadingNote(rule.metric, value);
 }
