@@ -10,6 +10,7 @@ import {
 import { derivedId, spawnSeed } from '../utils/syncIds';
 import { useSettingsStore } from './useSettingsStore';
 import { useTaskStore } from './useTaskStore';
+import { useUnattendedStore } from './useUnattendedStore';
 
 /**
  * The write half of the generated-task mechanism — the reconcile every
@@ -53,8 +54,14 @@ export function deleteGeneratedTaskQuietly(
   opts: { skipOptOut?: boolean } = {}
 ): void {
   const store = useTaskStore.getState();
+  // Read before the delete, because after it there is nothing left to name.
+  // This is the single choke point for both delete paths — the `!wanted` branch
+  // of reconcileGeneratedTask and dropGeneratedTask — so recording here covers
+  // every generated row the app takes back.
+  const going = store.tasks.find(t => t.id === taskId);
   store.deleteTask(taskId, { skipGeneratedOptOut: opts.skipOptOut });
   store.setLastAction(null);
+  if (going) useUnattendedStore.getState().recordGenerated('cleared', going);
 }
 
 export interface ReconcileGeneratedOptions {
@@ -171,7 +178,13 @@ export function reconcileGeneratedTask(options: ReconcileGeneratedOptions): void
   // a title the app wrote, so a rule matching a word in it would be filing a
   // task against a phrase nobody typed — and each generator already has its
   // own "File them under" setting saying where its tasks go.
-  addTask(draft(), id, { skipCategoryDefault: true, skipTitleRules: true });
+  const created = addTask(draft(), id, { skipCategoryDefault: true, skipTitleRules: true });
+  // The one place a generator's create is recorded, and deliberately here
+  // rather than in each of the twenty passes: this is the only path any of them
+  // takes to a new row, and the three branches above have already ruled out
+  // every reconcile that changes nothing. A ledger entry means a task genuinely
+  // appeared, which is what makes the table history rather than a trace log.
+  useUnattendedStore.getState().recordGenerated('created', created);
 }
 
 /**

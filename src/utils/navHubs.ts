@@ -139,6 +139,18 @@ const HISTORY_HUB: NavHub = {
     { route: 'Logbook', label: 'Logbook', icon: 'checkmark-done-outline', keywords: ['done', 'completed', 'finished'] },
     { route: 'Stats', label: 'Stats', icon: 'stats-chart-outline', keywords: ['numbers', 'charts', 'streaks', 'progress'] },
     { route: 'Archived', label: 'Archived', icon: 'archive-outline', keywords: ['paused', 'filed', 'put away'] },
+    // What the app did unattended — the generators, the expiry sweep and the
+    // completed-task purge. In History because it is a record of things that
+    // happened, which is what the other three here are; the generators' own
+    // switches stay in Settings, and this says what they did. The keywords are
+    // the feature, the same way the task editor's are: nobody looking for it
+    // knows the word "unattended", they know "where did this task come from".
+    {
+      route: 'UnattendedLog',
+      label: 'Activity',
+      icon: 'pulse-outline',
+      keywords: ['automatic', 'generated', 'added', 'ledger', 'why', 'where from', 'audit', 'expired', 'purged'],
+    },
   ],
 };
 
