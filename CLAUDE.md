@@ -383,6 +383,7 @@ file: the two maps are indexes, not write-ups.
 | the app asking whether you still have something | `src/utils/pantryCheckTasks.ts` — see `docs/arch/groceries.md` |
 | going through the whole pantry a card at a time | `src/utils/pantryReview.ts` + `src/components/PantryReviewSheet.tsx` — see `docs/arch/groceries.md` |
 | whether a thing got used up or went bad | `src/utils/itemDisposal.ts` — see `docs/arch/groceries.md` |
+| saying that to Siri ("mark bananas as used up") | `modules/todo-widget-bridge/ios/MarkDisposedIntent.swift` + `src/utils/pantryIndex.ts` — see `docs/native-targets.md`. The only intent here whose phrase carries a *value*, which is why it needs an `AppEntity` and so an App Group index to resolve one against: a phrase cannot interpolate a `String`. The mark itself still happens in JS on the next foreground, same queue-and-open-the-app shape the other two intents use |
 | scanning a barcode into the list | `src/utils/gtin.ts` + `src/services/productLookup.ts` + `src/utils/scanResolve.ts` |
 | how much of a cooked dish ended up on your plate | `Recipe.cookedWeightG` + `src/utils/mealLog.ts` — see `docs/arch/recipes.md`. The plate over the weighed dish is the fraction eaten; servings stay for every dish nobody has weighed |
 | writing down what you ate, and a day's totals | `src/utils/foodLog.ts` + `src/store/useFoodLogStore.ts` (+ `src/utils/nutritionTargets.ts` for the figure a total is read against) |
@@ -460,7 +461,7 @@ them source rather than tests. The ten biggest source files:
 Grep for the symbol and read the surrounding range; reading any of them end to end costs more
 context than the rest of the task will. `docs/module-map.md` says which file owns what.
 
-The suite is **345 test files**, and `npm test` runs all of them in well under a minute.
+The suite is **346 test files**, and `npm test` runs all of them in well under a minute.
 `npx tsc --noEmit` is a few seconds once `.tsbuildinfo` exists, so run both, every time.
 
 <!-- END GENERATED: repo-stats -->

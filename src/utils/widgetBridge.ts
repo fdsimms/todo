@@ -33,8 +33,15 @@ import { isDemoModeActive } from './demoState';
  */
 export interface WidgetBridge {
   writeWidgetSnapshot: (jsonString: string) => Promise<boolean>;
+  writePantryIndex: (jsonString: string) => Promise<boolean>;
   drainPendingWidgetCompletions: () => Promise<string[]>;
   drainPendingAddTasks: () => Promise<string[]>;
+  /**
+   * A JSON string rather than an array, unlike its neighbours: each queued
+   * disposal is a record (`{ id, name, outcome }`), not a scalar. The native
+   * half re-encodes it from decoded payloads, so this is always parseable.
+   */
+  drainPendingDisposals: () => Promise<string>;
   drainSharedLinks: () => Promise<string[]>;
   syncTimerLiveActivities: (jsonString: string) => Promise<boolean>;
   syncTripLiveActivity: (jsonString: string) => Promise<boolean>;
