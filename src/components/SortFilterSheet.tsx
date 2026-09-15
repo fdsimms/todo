@@ -79,7 +79,7 @@ export function SortFilterSheet({
         }),
         Animated.timing(backdropOpacity, {
           toValue: 1,
-          duration: 200,
+          duration: animation.duration.sheetBackdropIn,
           useNativeDriver: true,
         }),
       ]).start();
@@ -95,7 +95,7 @@ export function SortFilterSheet({
       }),
       Animated.timing(backdropOpacity, {
         toValue: 0,
-        duration: 180,
+        duration: animation.duration.sheetBackdropOut,
         useNativeDriver: true,
       }),
     ]).start(() => {

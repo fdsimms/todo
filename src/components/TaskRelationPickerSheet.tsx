@@ -215,7 +215,7 @@ export function TaskRelationPickerSheet({ visible, onClose, relation, taskId, co
         }),
         Animated.timing(backdropOpacity, {
           toValue: 1,
-          duration: 200,
+          duration: animation.duration.sheetBackdropIn,
           useNativeDriver: true,
         }),
       ]).start();
@@ -232,7 +232,7 @@ export function TaskRelationPickerSheet({ visible, onClose, relation, taskId, co
       }),
       Animated.timing(backdropOpacity, {
         toValue: 0,
-        duration: 180,
+        duration: animation.duration.sheetBackdropOut,
         useNativeDriver: true,
       }),
     ]).start(() => {
