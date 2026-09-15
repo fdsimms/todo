@@ -14,6 +14,16 @@ export interface StepRange {
    * doesn't: there the mode *is* the quota, so there's nothing to clear to.
    */
   allowNull?: boolean;
+  /**
+   * Where a first press from empty lands, if not `min`. For most counters
+   * `min` already is the sensible landing spot (Daily target turning on at
+   * 2), which is why this defaults to it. It stops being sensible once the
+   * range's floor is a rare extreme rather than a plausible starting value —
+   * a birth year's `min` is 1900, an absurdity floor nobody was actually born
+   * near, so turning the field on at `min` meant the *next* several dozen
+   * presses were spent walking away from it before reaching a real year.
+   */
+  start?: number;
 }
 
 /** Pulls a value into range, for a stored number outside the current bounds. */
@@ -29,7 +39,7 @@ export function clampCount(value: number, range: StepRange): number {
  * then stepping away from it.
  */
 export function stepCount(value: number | null, delta: number, range: StepRange): number | null {
-  if (value === null) return delta > 0 ? range.min : null;
+  if (value === null) return delta > 0 ? (range.start ?? range.min) : null;
   const next = Math.round(value) + delta;
   if (next > range.max) return range.max;
   if (next < range.min) return range.allowNull ? null : range.min;

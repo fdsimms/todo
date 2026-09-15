@@ -48,6 +48,16 @@ import { InlineAction } from './InlineAction';
 const MIN_HEIGHT_FEET = cmToFeetInches(MIN_HEIGHT_CM).feet;
 const MAX_HEIGHT_FEET = cmToFeetInches(MAX_HEIGHT_CM).feet;
 
+// Where + lands the first time a stepper is turned on from empty, for the
+// two fields whose `min` is an absurdity floor rather than a plausible
+// value — 50cm and 1900 are there to catch nonsense, not to be landed on.
+// The midpoint of the field's own valid range is a starting point that
+// doesn't presume anything about who's using it, just splits the bound the
+// app already draws. Height's cm and feet starts are the same point in two
+// units, so switching `weightUnit` can't make the field seem to jump.
+const HEIGHT_START_CM = Math.round((MIN_HEIGHT_CM + MAX_HEIGHT_CM) / 2);
+const HEIGHT_START_FEET = cmToFeetInches(HEIGHT_START_CM).feet;
+
 /**
  * Setting a weight goal, and the calorie figure it implies.
  *
@@ -96,6 +106,10 @@ export function WeightGoalSheet({ visible, onClose, currentKg, onLogWeight }: Pr
   const setNutritionTarget = useSettingsStore(s => s.setNutritionTarget);
 
   const currentYear = getLogicalToday().getFullYear();
+  // Same reasoning as HEIGHT_START_CM above: the midpoint of the stepper's
+  // own range, not a guess about how old anyone actually is. Computed here
+  // rather than as a module constant because it moves with the day.
+  const birthYearStart = Math.round((MIN_BIRTH_YEAR + currentYear) / 2);
 
   const [direction, setDirection] = useState<WeightGoalDirection>('lose');
   const [targetText, setTargetText] = useState('');
@@ -382,6 +396,7 @@ export function WeightGoalSheet({ visible, onClose, currentKg, onLogWeight }: Pr
                   min={MIN_HEIGHT_CM}
                   max={MAX_HEIGHT_CM}
                   allowNull
+                  start={HEIGHT_START_CM}
                   format={n => `${n} cm`}
                   label="Height"
                 />
@@ -396,6 +411,7 @@ export function WeightGoalSheet({ visible, onClose, currentKg, onLogWeight }: Pr
                     min={MIN_HEIGHT_FEET}
                     max={MAX_HEIGHT_FEET}
                     allowNull
+                    start={HEIGHT_START_FEET}
                     format={n => `${n}′`}
                     label="Height, feet"
                   />
@@ -419,6 +435,7 @@ export function WeightGoalSheet({ visible, onClose, currentKg, onLogWeight }: Pr
                 min={MIN_BIRTH_YEAR}
                 max={currentYear}
                 allowNull
+                start={birthYearStart}
                 label="Year of birth"
               />
             </View>
