@@ -132,6 +132,7 @@ export function SettingsScreen() {
       moodLogTasks: settings.moodLogTasks,
       moodNudgeTasks: settings.moodNudgeTasks,
       weekendNudgeTasks: settings.weekendNudgeTasks,
+      weeklyReviewTasks: settings.weeklyReviewTasks,
       weighInTasks: settings.weighInTasks,
     }, settings.kitchenEnabled),
     [settings]

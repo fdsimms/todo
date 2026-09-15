@@ -52,6 +52,7 @@ const mockTaskState = {
   // during the pass is this call itself, and that's the only part this file
   // is testing.
   checkWeighInTasks: mockRecord('checkWeighInTasks'),
+  checkWeeklyReviewTasks: mockRecord('checkWeeklyReviewTasks'),
   checkBirthdayTasks: mockRecord('checkBirthdayTasks'),
   checkBirthdayGiftTasks: mockRecord('checkBirthdayGiftTasks'),
   checkReachOutTasks: mockRecord('checkReachOutTasks'),
@@ -159,7 +160,7 @@ describe('runBackgroundRefresh', () => {
       'checkCalendarReviewTasks', 'checkWeatherTasks', 'checkScreenTimeTasks', 'checkHealthTasks',
       'checkMoodTasks', 'checkWeekendNudgeTasks', 'checkWeighInTasks',
       'checkBirthdayTasks', 'checkBirthdayGiftTasks', 'checkReachOutTasks',
-      'reconcileAllLeftoverTasks', 'checkScheduledTemplates',
+      'reconcileAllLeftoverTasks', 'checkScheduledTemplates', 'checkWeeklyReviewTasks',
       'sweepTaskPenalties',
     ];
     expect(expected).toHaveLength(passNames.length);

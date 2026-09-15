@@ -286,6 +286,16 @@ export function resetToDeload(): void {
   navigationRef.navigate({ name: 'Today', params: { openDeload: Date.now() } });
 }
 
+// Where `dundundun://review` lands — the weekly review task's own link (see
+// utils/weeklyReview.ts). The same stamped-param handoff resetToDeload uses
+// and for its reason: WeeklyReviewSheet is mounted by TodayScreen and reads
+// every pile it walks live off the stores, so there is nothing to pass along
+// beyond opening it.
+export function resetToWeeklyReview(): void {
+  if (!navigationRef.isReady()) return;
+  navigationRef.navigate({ name: 'Today', params: { openWeeklyReview: Date.now() } });
+}
+
 export function resetToProjectPull(projectId?: string | null): void {
   if (!navigationRef.isReady()) return;
   navigationRef.navigate({

@@ -168,6 +168,12 @@ export const GENERATED_KINDS: readonly GeneratedKind[] = [
   // what puts it here, is the shape of the question: once in a while, record
   // something only you can record.
   'weighIn',
+  // The twenty-first, appended at the end rather than paired with anything.
+  // Every other generator here watches one thing and writes about it; this one
+  // watches the piles the other twenty leave behind and offers to walk them in
+  // an order. It has nothing in common with any single neighbour, and putting
+  // it beside one would suggest it did.
+  'weeklyReview',
 ];
 
 /**
@@ -224,7 +230,8 @@ export type GeneratedEnabledKey =
   | 'moodLogTasks'
   | 'moodNudgeTasks'
   | 'weekendNudgeTasks'
-  | 'weighInTasks';
+  | 'weighInTasks'
+  | 'weeklyReviewTasks';
 
 export interface GeneratedKindSpec {
   kind: GeneratedKind;
@@ -801,6 +808,32 @@ export const GENERATED_KIND_SPECS: Record<GeneratedKind, GeneratedKindSpec> = {
   // the write to record the answer. So the settings row is the permission and
   // `checkWeighInTasks` is what refuses when the two Health switches aren't
   // there to back it.
+  weeklyReview: {
+    kind: 'weeklyReview',
+    pausedOnVacation: true,
+    enabledKey: 'weeklyReviewTasks',
+    label: 'Offer a weekly review',
+    onHint: 'Adds a task once a week to walk the inbox, what is stuck and what slipped',
+    offHint: 'Nothing offers a weekly review',
+    icon: 'reader-outline',
+    // The week's own Monday day key — a square on the calendar rather than a
+    // row anything could be written back to, the position weekendNudge and
+    // calendarReview are already in, and the reason `writeGeneratedOptOut` has
+    // nothing to write for it. What stops a swiped-away row coming straight
+    // back is `weeklyReviewLastWeekKey`.
+    sourced: false,
+    // Not a notice. There is plenty to decide about this row, and pushing it
+    // from Sunday to Monday is an ordinary thing to want to do with it.
+    notice: false,
+    // The review's nights stage is the only kitchen-shaped thing about it, and
+    // that stage drops out on its own when the area is off (see
+    // `weeklyReviewStages`). The other four stages are the core task list, so a
+    // generator that stopped running with the kitchen hidden would take the
+    // inbox and the slipped pile with it.
+    kitchen: false,
+    categorized: true,
+    defaultCategory: 'Personal',
+  },
   weighIn: {
     kind: 'weighIn',
     // Paused on vacation, unlike moodLog beside it. A mood log is a personal

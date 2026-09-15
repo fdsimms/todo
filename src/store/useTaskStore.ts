@@ -94,7 +94,9 @@ import {
 // reason: the reference is inside an action body, by which time both modules
 // have finished loading.
 import { deleteGeneratedTaskQuietly, dropGeneratedTask, reconcileGeneratedTask } from './generatedTaskSync';
+import { reviewWeekKey, slippedTasks, wantsWeeklyReview, WEEKLY_REVIEW_URL } from '../utils/weeklyReview';
 import { generatedBy, generatedSourceOf, generatedTaskCountOf, generatorPausedForVacation, hasAnyGeneratedTask, liveGeneratedTask, liveGeneratedTasksOfKind } from '../utils/generatedTasks';
+import { featureHidden } from '../utils/simpleMode';
 import { CALENDAR_REVIEW_TITLE, calendarReviewDayKey, wantsCalendarReview } from '../utils/calendarReviewTasks';
 import { MOOD_LOG_TITLE, MOOD_NUDGE_TITLE, moodLogDayKey, moodLogSourceId, moodNudgeNotes, wantsMoodNudge } from '../utils/moodTasks';
 import {
@@ -1506,6 +1508,11 @@ interface TaskStore extends UndoHistoryActions {
   checkMoodTasks: () => void;
   /** The bare-weekend offer — see src/utils/weekendTasks.ts. */
   checkWeekendNudgeTasks: () => void;
+  /**
+   * Offer a weekly review — one pass over the inbox, what is stuck, what
+   * slipped and the week ahead. See src/utils/weeklyReview.ts.
+   */
+  checkWeeklyReviewTasks: () => void;
   /**
    * The weigh-in request — see src/utils/weightTasks.ts. The one generator pass
    * that takes a Health read of its own rather than judging a snapshot, so the
@@ -5633,6 +5640,77 @@ export const useTaskStore = create<TaskStore>((set, get) => ({
    * the sweep that follows somebody acting on the row would find its own
    * leftover and do nothing.
    */
+  // The twenty-first generator, and the only one that watches what the other
+  // twenty leave behind rather than watching a thing of its own. Everything it
+  // asks about already existed and already nudged on its own schedule; what
+  // was missing was walking them once, in an order. See weeklyReview.ts.
+  checkWeeklyReviewTasks() {
+    const settings = useSettingsStore.getState();
+    // Work the app invents, and vacation mode is the deliberate "hide work from
+    // me". Skipped without recording the week key, so a review declined here is
+    // offered for real the first launch after vacation ends.
+    if (generatorPausedForVacation('weeklyReview', settings.vacationMode)) return;
+    // The pass refuses as well as the settings row disappearing, which is the
+    // half that matters: a generator whose switch is hidden but which keeps
+    // writing is the "stranded behind a gate" bug five of them shipped with,
+    // and simplified mode takes away the Stuck screen and the Unscheduled lens
+    // that two of this review's own stages are about.
+    if (featureHidden('weeklyReview', settings.simpleMode)) return;
+    if (!settings.weeklyReviewTasks || !settings.weeklyReviewTaskCategory) return;
+
+    const tasks = get().tasks;
+    const weekKey = reviewWeekKey(new Date(), settings.weekStartsOn, settings.dayResetTime);
+
+    // The three piles it is worth offering *for*. The two `look` stages are
+    // deliberately not consulted here: a week that is merely busy is not a
+    // reason to write a task, and weeklyReviewWorthOffering says so.
+    const input = {
+      inbox: get().inboxTasks(),
+      stuck: [...get().waitingTasks(), ...get().driftingTaskList()],
+      slipped: slippedTasks(tasks, isHeldBack, new Date(), settings.dayResetTime),
+      heavyDays: 0,
+      openNights: 0,
+    };
+
+    // A live row whose week has rolled over is this week's business no longer.
+    // dropGeneratedTask rather than deleteGeneratedTaskQuietly, like
+    // projectReview's clear: the app tidying up after itself is not the user
+    // declining anything.
+    for (const task of liveGeneratedTasksOfKind(tasks, 'weeklyReview')) {
+      if (task.generatedSourceId !== weekKey) dropGeneratedTask('weeklyReview', task.generatedSourceId);
+    }
+
+    if (!wantsWeeklyReview(weekKey, settings.weeklyReviewLastWeekKey, input)) return;
+    // Marked before the row is written, the order every period-keyed generator
+    // uses: with no source row to stamp a decline onto, this mark is the only
+    // thing between a review swiped away on Tuesday and an identical one on
+    // Wednesday's first foreground sweep.
+    settings.setWeeklyReviewLastWeekKey(weekKey);
+
+    const dueDate = getCurrentDayStart();
+    dueDate.setHours(12, 0, 0, 0);
+
+    reconcileGeneratedTask({
+      kind: 'weeklyReview',
+      sourceId: weekKey,
+      wanted: true,
+      // Nothing about this row drifts: its title is fixed and its date is the
+      // day it was written. Returning null is how a caller says "leave it
+      // alone", which also means a review pushed to tomorrow stays there.
+      drift: () => null,
+      draft: () => ({
+        title: 'Review the week',
+        notes: 'The inbox, what is stuck, what slipped, and the week ahead, in one pass.',
+        category: settings.weeklyReviewTaskCategory,
+        dueDate: dueDate.toISOString(),
+        generatedKind: 'weeklyReview',
+        generatedSourceId: weekKey,
+        // The row that offers to walk the week opens the thing that walks it.
+        linkUrl: WEEKLY_REVIEW_URL,
+      }),
+    });
+  },
+
   checkWeekendNudgeTasks() {
     const settings = useSettingsStore.getState();
     // Work the app invents, and vacation mode is the deliberate "hide work
