@@ -1,0 +1,4 @@
+{
+  "message": "Fixed the food log freezing on a blank sheet after logging from the scan or describe sheets. The sheet underneath now waits for the one on top to close before it closes itself",
+  "date": "2026-09-15"
+}

@@ -1,10 +1,12 @@
 import React, { useContext, useEffect, useId, useMemo, useRef, useState } from 'react';
 import { Keyboard, Modal } from 'react-native';
 import {
+  canHideSheet,
   createPresentationLevel,
   nextSheetVisibility,
   registerPresentation,
   releasePresentation,
+  subscribePresentation,
   type PresentationLevel,
 } from '../utils/sheetModal';
 
@@ -105,9 +107,51 @@ const PresentationLevelContext = React.createContext<PresentationLevel>(createPr
  * would paper over a real mistake, and which of the two fixes applies (hide
  * the sheet below, or nest inside it) depends on whether what is typed into
  * the sheet below has to survive.
+ *
+ * ## And it sequences a nested pair's dismissal
+ *
+ * Nesting fixed the first bug and bought a second one. A sheet and the sheet
+ * it is presenting must not dismiss in the same commit: UIKit takes a
+ * presented view controller down along with its presenter, so the inner
+ * `SheetModal` is destroyed behind RN's back while it still believes it is
+ * presented, and `prepareForRecycle` then clears `_viewController` and
+ * `_isPresented` *without dismissing*. What is left is a view controller iOS
+ * is still showing that nothing holds a reference to: an empty sheet the user
+ * cannot dismiss, and the app reads as frozen.
+ *
+ * That is what logging from the nested Scan or Describe sheet did, since
+ * `handleLog` fires `onLogged` (closing the picker underneath) and `onClose`
+ * (closing itself) together. So the registry above is not only a development
+ * check: a sheet holds its own closing edge for as long as something is
+ * presented from it (`canHideSheet`), and `subscribePresentation` wakes it the
+ * moment that sheet leaves. The two dismissals then land in separate commits,
+ * innermost first, which is the order UIKit expects.
+ *
+ * This is why registration runs in production too, and why call sites are free
+ * to close both at once rather than having to sequence it themselves.
+ *
+ * What a call site owes in return: **closing a sheet has to close anything
+ * nested inside it too.** The hold waits for the inner sheet rather than
+ * overriding it, so clearing only the outer one leaves it held open. Every
+ * path today pairs them.
  */
 export function SheetModal({ visible = true, children, name, ...rest }: Props) {
   const [shown, setShown] = useState(visible === true);
+
+  // The view controller this sheet presents *from*, and the fresh one its own
+  // children present from. See `PresentationLevelContext`.
+  const parentLevel = useContext(PresentationLevelContext);
+  const ownLevel = useMemo(() => createPresentationLevel(), []);
+  const id = useId();
+
+  // Bumped whenever a sheet is presented from or dismissed at this sheet's own
+  // level, purely to re-run the closing effect below when the sheet above
+  // finally goes. The count itself is read from `ownLevel`, not from here.
+  const [above, setAbove] = useState(0);
+  useEffect(
+    () => subscribePresentation(ownLevel, () => setAbove(n => n + 1)),
+    [ownLevel],
+  );
 
   // The opening edge, taken during render so it lands in this same commit
   // (see above). Legal as a render-phase state adjustment because it is
@@ -119,12 +163,20 @@ export function SheetModal({ visible = true, children, name, ...rest }: Props) {
   // The closing edge, held one commit so the dismissal is queued behind the
   // keyboard's. Recomputed rather than closing over `opening`, which is a new
   // object every render and would re-run this constantly as a dependency.
+  //
+  // Held again, for as long as it takes, while a sheet this one is presenting
+  // is still up: dismissing a presenting view controller takes the presented
+  // one down with it behind RN's back, which is what left an empty sheet
+  // nothing could dismiss. `above` re-runs this the moment that sheet goes,
+  // so the two dismissals land in separate commits, innermost first. See
+  // `canHideSheet`.
   useEffect(() => {
     const step = nextSheetVisibility(visible === true, shown);
     if (!step || !step.dismissKeyboard) return;
+    if (!canHideSheet(ownLevel)) return;
     Keyboard.dismiss();
     setShown(step.shown);
-  }, [visible, shown]);
+  }, [visible, shown, above, ownLevel]);
 
   // A sheet torn down while still on screen closes the same way one that is
   // merely hidden does, so it needs the same dismissal — a parent dropping it
@@ -135,20 +187,15 @@ export function SheetModal({ visible = true, children, name, ...rest }: Props) {
   shownRef.current = shown;
   useEffect(() => () => { if (shownRef.current) Keyboard.dismiss(); }, []);
 
-  // The view controller this sheet presents *from*, and the one its own
-  // children would present from. See `PresentationLevelContext`.
-  const parentLevel = useContext(PresentationLevelContext);
-  const ownLevel = useMemo(() => createPresentationLevel(), []);
-  const id = useId();
-
-  // Development only: a second sheet asking the same view controller is
-  // refused by iOS with nothing shown and no error, so this is the only thing
-  // that says so. It reports rather than intervenes — hiding one automatically
-  // would paper over a real mistake, and the fix differs per call site.
+  // Registering is not a development-only courtesy: it is what tells the sheet
+  // *below* this one that it may not dismiss yet (see the closing effect). The
+  // warning on a clash is the part that only fires in `__DEV__`, and it reports
+  // rather than intervenes — hiding one automatically would paper over a real
+  // mistake, and which fix applies differs per call site.
   useEffect(() => {
-    if (!__DEV__ || !shown) return;
+    if (!shown) return;
     const clash = registerPresentation(parentLevel, id, name ?? rest.testID ?? 'an unnamed sheet');
-    if (clash) console.error(`SheetModal: ${clash}`);
+    if (__DEV__ && clash) console.error(`SheetModal: ${clash}`);
     return () => releasePresentation(parentLevel, id);
   }, [shown, parentLevel, id, name, rest.testID]);
 
