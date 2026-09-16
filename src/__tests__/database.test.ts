@@ -4091,7 +4091,7 @@ describe('the barcode cache', () => {
 // Recipes
 // ---------------------------------------------------------------------------
 
-// A recipe's INSERT and UPDATE each list forty-one columns by hand, so the
+// A recipe's INSERT and UPDATE each list forty-four columns by hand, so the
 // thing worth pinning is that the column list, the placeholders and the
 // argument array still agree — a mismatch there is a runtime throw with no
 // type error in front of it, and nothing else in the suite exercises this SQL.
@@ -4130,6 +4130,8 @@ describe('recipe rows', () => {
     cookCount: 0,
     lastCookedAt: null,
     vote: null,
+    upNext: false,
+    upNextOrder: 0,
     estimatedMinutes: null,
     timerStartedAt: null,
     timerElapsedSeconds: 0,

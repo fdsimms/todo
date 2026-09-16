@@ -63,6 +63,8 @@ function recipe(name: string, ingredients: RecipeIngredient[], overrides: Partia
     cookCount: 0,
     lastCookedAt: null,
     vote: null,
+    upNext: false,
+    upNextOrder: 0,
     estimatedMinutes: null,
     timerStartedAt: null,
     timerElapsedSeconds: 0,

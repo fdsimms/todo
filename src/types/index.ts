@@ -5579,6 +5579,25 @@ export interface Recipe {
    */
   vote: RecipeVote | null;
 
+  /**
+   * True while this recipe sits in the box's "Up Next" shelf — a small,
+   * manually-ordered queue of things you want to try but haven't put on a
+   * day yet. Independent of `vote` (an opinion about a recipe you've
+   * already cooked, set the first time it's marked cooked) and of the meal
+   * plan (a day it's actually scheduled onto) — this is neither: a recipe
+   * can be loved and up next and unscheduled all at once, or any
+   * combination of the three.
+   */
+  upNext: boolean;
+  /**
+   * Manual position within the Up Next shelf. Same number space Task.pinnedOrder
+   * uses: 0 means "never ranked" (every recipe starts here, so an install
+   * upgrading into this column reads exactly as it did before), and
+   * reorderUpNextRecipes renumbers the shelf from 1 on every drag. Meaningless
+   * while upNext is false.
+   */
+  upNextOrder: number;
+
   // Duration + cook timer + actual-time logging (#1091).
 
   /**

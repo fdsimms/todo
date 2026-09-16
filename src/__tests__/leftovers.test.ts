@@ -113,6 +113,8 @@ function makeRecipe(id: string, name: string, overrides: Partial<Recipe> = {}): 
     cookCount: 0,
     lastCookedAt: null,
     vote: null,
+    upNext: false,
+    upNextOrder: 0,
     ...overrides,
   };
 }

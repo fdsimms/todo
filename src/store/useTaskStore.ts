@@ -94,7 +94,7 @@ import {
 // reason: the reference is inside an action body, by which time both modules
 // have finished loading.
 import { deleteGeneratedTaskQuietly, dropGeneratedTask, reconcileGeneratedTask } from './generatedTaskSync';
-import { reviewWeekKey, slippedTasks, wantsWeeklyReview, WEEKLY_REVIEW_URL } from '../utils/weeklyReview';
+import { reviewWeekKey, slippedTasks, stuckPile, wantsWeeklyReview, WEEKLY_REVIEW_URL } from '../utils/weeklyReview';
 import { generatedBy, generatedSourceOf, generatedTaskCountOf, generatorPausedForVacation, hasAnyGeneratedTask, liveGeneratedTask, liveGeneratedTasksOfKind } from '../utils/generatedTasks';
 import { featureHidden } from '../utils/simpleMode';
 import { CALENDAR_REVIEW_TITLE, calendarReviewDayKey, wantsCalendarReview } from '../utils/calendarReviewTasks';
@@ -5952,7 +5952,7 @@ export const useTaskStore = create<TaskStore>((set, get) => ({
     // reason to write a task, and weeklyReviewWorthOffering says so.
     const input = {
       inbox: get().inboxTasks(),
-      stuck: [...get().waitingTasks(), ...get().driftingTaskList()],
+      stuck: stuckPile(get().waitingTasks(), get().driftingTaskList()),
       slipped: slippedTasks(tasks, isHeldBack, new Date(), settings.dayResetTime),
       heavyDays: 0,
       openNights: 0,

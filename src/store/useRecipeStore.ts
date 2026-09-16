@@ -6,6 +6,7 @@ import {
   dbInsertRecipe,
   dbUpdateRecipe,
   dbDeleteRecipe,
+  dbBatchUpdateRecipeUpNextOrders,
   dbGetAllCookbooks,
   dbInsertCookbook,
   dbUpdateCookbook,
@@ -184,6 +185,20 @@ interface RecipeStore {
    * MealPlanScreen.setCooked) — the same field either way.
    */
   setVote: (id: string, vote: RecipeVote | null) => void;
+  /**
+   * Adds or removes a recipe from the Up Next shelf. Stamps `upNextOrder` to
+   * one past the shelf's current max on the false→true transition only — the
+   * same "appends to the bottom, never reshuffles on an unrelated save" rule
+   * Task.pinnedOrder follows — and leaves it untouched on the way out, since
+   * a recipe removed and re-added later has no reason to remember its old slot.
+   */
+  setUpNext: (id: string, upNext: boolean) => void;
+  /**
+   * Hand-order the Up Next shelf. `orderedIds` is the shelf exactly as the
+   * user just dragged it — renumbers from 1 so no row is left on the 0 that
+   * means "never ranked". See useTaskStore.reorderPinnedTasks, same shape.
+   */
+  reorderUpNextRecipes: (orderedIds: string[]) => void;
   /**
    * Replaces a recipe's whole tag list — the editor holds a draft and commits
    * on Done, same as it does for meal type, so there's no per-tag add/remove
@@ -450,6 +465,8 @@ interface RecipeStore {
 
   recipeById: (id: string) => Recipe | undefined;
   cookbookById: (id: string | null | undefined) => Cookbook | undefined;
+  /** The Up Next shelf, in hand-ordered order. See Recipe.upNext/upNextOrder. */
+  upNextRecipes: () => Recipe[];
 }
 
 export const useRecipeStore = create<RecipeStore>((set, get) => ({
@@ -498,6 +515,8 @@ export const useRecipeStore = create<RecipeStore>((set, get) => ({
       cookCount: 0,
       lastCookedAt: null,
       vote: null,
+      upNext: false,
+      upNextOrder: 0,
       estimatedMinutes: null,
       timerStartedAt: null,
       timerElapsedSeconds: 0,
@@ -729,6 +748,23 @@ export const useRecipeStore = create<RecipeStore>((set, get) => ({
     const recipe = get().recipes.find(r => r.id === id);
     if (!recipe) return;
     save(set, { ...recipe, vote });
+  },
+
+  setUpNext(id, upNext) {
+    const recipe = get().recipes.find(r => r.id === id);
+    if (!recipe || recipe.upNext === upNext) return;
+    const upNextOrder = upNext ? nextUpNextOrder(get().recipes) : recipe.upNextOrder;
+    save(set, { ...recipe, upNext, upNextOrder });
+  },
+
+  reorderUpNextRecipes(orderedIds) {
+    if (orderedIds.length === 0) return;
+    const updates = orderedIds.map((id, index) => ({ id, upNextOrder: index + 1 }));
+    dbBatchUpdateRecipeUpNextOrders(updates);
+    const byId = new Map(updates.map(u => [u.id, u.upNextOrder]));
+    set(s => ({
+      recipes: s.recipes.map(r => (byId.has(r.id) ? { ...r, upNextOrder: byId.get(r.id)! } : r)),
+    }));
   },
 
   setTags(id, tags) {
@@ -1289,6 +1325,12 @@ export const useRecipeStore = create<RecipeStore>((set, get) => ({
     return get().recipes.find(r => r.id === id);
   },
 
+  upNextRecipes() {
+    return get().recipes
+      .filter(r => r.upNext)
+      .sort((a, b) => a.upNextOrder - b.upNextOrder || a.sortOrder - b.sortOrder);
+  },
+
   // Resolve-or-shrug, the same as every other cross-row pointer here: a link
   // naming a book that no longer exists reads as no link, not as an error.
   cookbookById(id) {
@@ -1347,4 +1389,14 @@ function save(set: SetRecipes, recipe: Recipe): void {
   };
   dbUpdateRecipe(next);
   set(s => ({ recipes: s.recipes.map(r => (r.id === next.id ? next : r)) }));
+}
+
+// Same shape as useTaskStore's nextPinnedOrder: one past the shelf's current
+// max, so a newly-added recipe appends to the bottom rather than the top.
+function nextUpNextOrder(recipes: Recipe[]): number {
+  let max = 0;
+  for (const r of recipes) {
+    if (r.upNext && r.upNextOrder > max) max = r.upNextOrder;
+  }
+  return max + 1;
 }
