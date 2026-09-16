@@ -170,15 +170,15 @@ export interface DatePart {
 // Spelled-out counts for relative-date phrases ("in three months", "two
 // weeks from now") — the digit forms ("in 3 months") are matched directly,
 // this only covers what someone types or dictates as a word.
-const NUMBER_WORDS: Record<string, number> = {
+export const NUMBER_WORDS: Record<string, number> = {
   two: 2, three: 3, four: 4, five: 5, six: 6,
   seven: 7, eight: 8, nine: 9, ten: 10, eleven: 11, twelve: 12,
 };
-const NUMBER_WORD_ALT = Object.keys(NUMBER_WORDS).join('|');
+export const NUMBER_WORD_ALT = Object.keys(NUMBER_WORDS).join('|');
 const UNIT_WORD = 'min(?:ute)?s?|hours?|hrs?|days?|weeks?|wks?|months?|years?|yrs?';
 const UNIT_WORD_SINGULAR = 'min(?:ute)?|hour|hr|day|week|wk|month|year|yr';
 
-function parseCount(token: string): number {
+export function parseCount(token: string): number {
   return NUMBER_WORDS[token] ?? parseInt(token, 10);
 }
 
