@@ -104,6 +104,42 @@ export function canHideSheet(level: PresentationLevel): boolean {
   return level.presented.size === 0;
 }
 
+/**
+ * Whether a sheet may hand `visible: true` to its own `Modal` yet.
+ *
+ * The same predicate as `canHideSheet` over a different level — the two names
+ * are two rules, not one function written twice. `canHideSheet` asks about the
+ * level a sheet presents *to* (may I go while I am holding something up?);
+ * this asks about the level it presents *from* (is the place I would appear
+ * already taken?).
+ *
+ * **A level holds one sheet at a time on the way in as much as on the way
+ * out**, because one view controller presents one thing. Without this the
+ * invariant was enforced nowhere: `SheetModal` defers every close by a commit
+ * to sequence the keyboard's dismissal, and defers no open at all, so a caller
+ * that closed one sheet and opened another in a single commit left a commit
+ * where both `Modal`s were `visible: true`. iOS refuses the second present,
+ * RN has already set `_isPresented`, and the sheet never appears — the flow
+ * wedges and users report the screen behind it as frozen.
+ *
+ * That idiom used to be safe and is written all over the app (~25 call sites):
+ * before the sweep to `SheetModal` a close reached the native `Modal` in the
+ * same commit as the other's open, so the dismissal was always issued first.
+ * The hold is what broke it, three times in three days — the Add button's menu
+ * doing nothing, the log-a-meal prompt freezing Today, the focus session
+ * freezing Today — each fixed at its own call site, which is the shape of rule
+ * this file exists to stop relying on.
+ *
+ * Holding the open rather than asking the call sites to sequence it restores
+ * the old ordering and improves on it: the dismissal goes out a commit *before*
+ * the present instead of alongside it. A sheet with no one above it opens in
+ * the commit it was asked to, exactly as before, which is the case
+ * `AppLockGate` needs and very nearly every case there is.
+ */
+export function canShowSheet(level: PresentationLevel): boolean {
+  return level.presented.size === 0;
+}
+
 function notify(level: PresentationLevel): void {
   for (const fn of [...level.listeners]) fn();
 }
@@ -127,12 +163,13 @@ export function registerPresentation(
   if (others.length === 0) return null;
   const already = others.map(([, name]) => name).join(', ');
   return (
-    `Two sheets are presented from the same place at once (${already}, and now ${label}). ` +
+    `Two sheets opened from the same place in one commit (${already}, and now ${label}). ` +
     'iOS presents each Modal from the nearest view controller above it, and one view ' +
-    'controller can present only one thing, so the second is refused: nothing appears and ' +
-    'the flow wedges with no error. Either hide the sheet underneath while this one is up, ' +
-    "or render this one inside it (React Native's Modal nests fine). See the sibling-Modal " +
-    'rule in CLAUDE.md.'
+    'controller can present only one thing, so they cannot both be up. This one stands ' +
+    'down and opens once the other has gone, which is what a hand-off wants and is not ' +
+    'what a pair meant to be up together wants: that one waits for a sheet that is never ' +
+    'going to close. Either hide the sheet underneath while this one is up, or render this ' +
+    "one inside it (React Native's Modal nests fine). See the sibling-Modal rule in CLAUDE.md."
   );
 }
 

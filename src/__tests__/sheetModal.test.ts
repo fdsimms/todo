@@ -1,5 +1,6 @@
 import {
   canHideSheet,
+  canShowSheet,
   createPresentationLevel,
   nextSheetVisibility,
   registerPresentation,
@@ -26,6 +27,11 @@ describe('nextSheetVisibility', () => {
     // the lock screen and its app-switcher shield cannot miss a frame, while
     // closing is the edge held back a commit. Collapsing the two into one
     // symmetric hold is the regression this pins.
+    //
+    // `canShowSheet` is not that hold coming back. This is about the keyboard,
+    // which only the closing edge has anything to dismiss; that is about the
+    // place a sheet appears in being taken, which is usually free — so an open
+    // with nothing in its way still lands in the commit it was asked for.
     expect(nextSheetVisibility(true, false)?.dismissKeyboard).toBe(false);
     expect(nextSheetVisibility(false, true)?.dismissKeyboard).toBe(true);
   });
@@ -131,6 +137,52 @@ describe('canHideSheet', () => {
     registerPresentation(level, 'estimate', 'Estimate a meal');
     releasePresentation(level, 'estimate');
     expect(canHideSheet(level)).toBe(true);
+  });
+});
+
+describe('canShowSheet', () => {
+  it('opens a sheet with nothing standing in its place', () => {
+    // The overwhelmingly common case, and the one AppLockGate depends on: an
+    // open is held only when it would actually collide, so the lock screen and
+    // its shield still land in the commit they were asked for.
+    expect(canShowSheet(createPresentationLevel())).toBe(true);
+  });
+
+  it('holds a sheet back while another is presented from the same place', () => {
+    const level = createPresentationLevel();
+    registerPresentation(level, 'setup', 'Focus setup');
+    expect(canShowSheet(level)).toBe(false);
+  });
+
+  it('lets the hand-off through once the first has gone', () => {
+    // Close one sheet and open another in one commit — what the app does in
+    // ~25 places, and what froze three flows in three days once the keyboard
+    // hold made the close land a commit late.
+    const level = createPresentationLevel();
+    registerPresentation(level, 'setup', 'Focus setup');
+    expect(canShowSheet(level)).toBe(false);
+    releasePresentation(level, 'setup');
+    expect(canShowSheet(level)).toBe(true);
+  });
+
+  it('says nothing about a sheet nested inside another', () => {
+    // A sheet rendered inside another presents from that sheet's own
+    // controller, which is presenting nothing, so the outer one being up must
+    // not hold it back.
+    const root = createPresentationLevel();
+    const inner = createPresentationLevel();
+    registerPresentation(root, 'outer', 'What did you eat?');
+    expect(canShowSheet(inner)).toBe(true);
+  });
+
+  it('agrees with canHideSheet about an empty level', () => {
+    // They are two rules over one invariant — a level holds one sheet — and
+    // differ only in which level the caller passes. Neither may drift into
+    // letting two sheets share a presenting view controller.
+    const level = createPresentationLevel();
+    expect(canShowSheet(level)).toBe(canHideSheet(level));
+    registerPresentation(level, 'a', 'One');
+    expect(canShowSheet(level)).toBe(canHideSheet(level));
   });
 });
 

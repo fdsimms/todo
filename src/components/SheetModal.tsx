@@ -2,6 +2,7 @@ import React, { useContext, useEffect, useId, useMemo, useRef, useState } from '
 import { Keyboard, Modal } from 'react-native';
 import {
   canHideSheet,
+  canShowSheet,
   createPresentationLevel,
   nextSheetVisibility,
   registerPresentation,
@@ -88,7 +89,7 @@ const PresentationLevelContext = React.createContext<PresentationLevel>(createPr
  * before this existed. That is harmless (the keyboard starts moving a touch
  * sooner) and is no longer load-bearing, so new code does not need it.
  *
- * ## It also catches two sheets presented from the same place (dev only)
+ * ## It also holds a sheet back until its place is free
  *
  * The second bug this component is positioned to catch: iOS presents a Modal
  * from `[self reactViewController]`, and a view controller can present only
@@ -102,11 +103,30 @@ const PresentationLevelContext = React.createContext<PresentationLevel>(createPr
  * log's Scan and Describe buttons shipped doing nothing at all: a sheet was
  * moved from nested to sibling in the name of keeping the one underneath
  * open. So each `SheetModal` registers with the level it presents from and
- * supplies a fresh level to its own children, and a clash is reported in
- * `__DEV__`. It reports rather than intervenes: hiding one automatically
- * would paper over a real mistake, and which of the two fixes applies (hide
- * the sheet below, or nest inside it) depends on whether what is typed into
- * the sheet below has to survive.
+ * supplies a fresh level to its own children.
+ *
+ * **A sheet whose level is taken holds its open until that sheet goes**
+ * (`canShowSheet`, the mirror of the `canHideSheet` hold below). This started
+ * as a `__DEV__` report that intervened in nothing, on the grounds that which
+ * fix applied differed per call site — and that was right for a pair meant to
+ * be up *together*, which is a real mistake with two possible fixes. It was
+ * wrong for the case that turned out to be everywhere: closing one sheet and
+ * opening another in a single commit, which the whole app does (~25 call
+ * sites) and which was *safe until this component existed*. A raw `Modal`
+ * took `visible: false` in the same commit as the other took `visible: true`,
+ * so the dismissal was always issued first; the one-commit keyboard hold
+ * below made the close late and left both `visible: true` for a commit.
+ * That shipped three freezes in three days — the Add button's menu, the
+ * log-a-meal prompt, the focus session — each fixed at its own call site.
+ * Holding the open is the same move this file's header makes about the
+ * keyboard: a rule with one call site per chance to forget is a rule that
+ * keeps losing, so the component keeps it instead.
+ *
+ * Two things follow. A sheet with nothing in its place still opens in the
+ * commit it was asked to, which is what `AppLockGate` needs. And a clash is
+ * still reported in `__DEV__`, because two sheets asked to be up *at once*
+ * (rather than handed off) is still a mistake — one of them now waits for a
+ * sheet that is never going to close.
  *
  * ## And it sequences a nested pair's dismissal
  *
@@ -136,13 +156,16 @@ const PresentationLevelContext = React.createContext<PresentationLevel>(createPr
  * path today pairs them.
  */
 export function SheetModal({ visible = true, children, name, ...rest }: Props) {
-  const [shown, setShown] = useState(visible === true);
-
   // The view controller this sheet presents *from*, and the fresh one its own
   // children present from. See `PresentationLevelContext`.
   const parentLevel = useContext(PresentationLevelContext);
   const ownLevel = useMemo(() => createPresentationLevel(), []);
   const id = useId();
+
+  // A sheet mounted already-open still waits its turn, which is what makes the
+  // gate cover the sheets that are mounted only while they are up rather than
+  // toggling `visible`.
+  const [shown, setShown] = useState(() => visible === true && canShowSheet(parentLevel));
 
   // Bumped whenever a sheet is presented from or dismissed at this sheet's own
   // level, purely to re-run the closing effect below when the sheet above
@@ -153,12 +176,34 @@ export function SheetModal({ visible = true, children, name, ...rest }: Props) {
     [ownLevel],
   );
 
+  // The same, for the level this sheet presents *from*: it wakes the opening
+  // effect below when whatever is standing in this sheet's place goes.
+  const [beside, setBeside] = useState(0);
+  useEffect(
+    () => subscribePresentation(parentLevel, () => setBeside(n => n + 1)),
+    [parentLevel],
+  );
+
   // The opening edge, taken during render so it lands in this same commit
   // (see above). Legal as a render-phase state adjustment because it is
   // guarded and touches nothing outside this component — the keyboard is
   // deliberately not involved on this edge, so there is no side effect here.
+  //
+  // Held while another sheet is presented from the same place, since a view
+  // controller presents one thing and iOS refuses the second silently. See
+  // `canShowSheet`: this is what lets a call site close one sheet and open
+  // another in a single commit, the way the whole app already does.
   const opening = nextSheetVisibility(visible === true, shown);
-  if (opening && !opening.dismissKeyboard) setShown(opening.shown);
+  if (opening && !opening.dismissKeyboard && canShowSheet(parentLevel)) setShown(opening.shown);
+
+  // The rest of that edge: an open held above lands here instead, once the
+  // sheet in the way has gone (`beside`).
+  useEffect(() => {
+    const step = nextSheetVisibility(visible === true, shown);
+    if (!step || step.dismissKeyboard) return;
+    if (!canShowSheet(parentLevel)) return;
+    setShown(step.shown);
+  }, [visible, shown, beside, parentLevel]);
 
   // The closing edge, held one commit so the dismissal is queued behind the
   // keyboard's. Recomputed rather than closing over `opening`, which is a new
@@ -195,7 +240,18 @@ export function SheetModal({ visible = true, children, name, ...rest }: Props) {
   useEffect(() => {
     if (!shown) return;
     const clash = registerPresentation(parentLevel, id, name ?? rest.testID ?? 'an unnamed sheet');
-    if (__DEV__ && clash) console.error(`SheetModal: ${clash}`);
+    if (clash) {
+      // The gate above reads the level during render and registration happens
+      // here, after the commit — so two sheets opened in the *same* commit
+      // both saw it free. Whichever registered first keeps the place; this one
+      // stands back down and reopens from the effect above once that one goes.
+      // Standing down rather than staying up is what keeps the invariant true
+      // in the one case the render-phase gate cannot see.
+      if (__DEV__) console.error(`SheetModal: ${clash}`);
+      releasePresentation(parentLevel, id);
+      setShown(false);
+      return;
+    }
     return () => releasePresentation(parentLevel, id);
   }, [shown, parentLevel, id, name, rest.testID]);
 
