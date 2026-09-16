@@ -111,11 +111,11 @@ plumbing moved into `lib/nativeTarget.js`.
   extension, whose `Button(intent:)` names the type, still compiles it. Both properties are kept:
   `supportedModes` for iOS 26+, `openAppWhenRun` for older. A file compiled into two targets
   can't share the widget target's App Group helpers, so it carries its own file-private copy —
-  the convention `AddTaskIntent.swift` already follows. `allowedExecutionTargets` (an `OptionSet`,
-  `.main` for the app process) states the routing outright rather than leaving it inferred from
-  `supportedModes`, and is set here too, but it is **iOS 27+**: it is a belt for the newest OS,
-  not the mechanism. On 26 the routing rests on `supportedModes` alone, and on every version what
-  actually matters is that the app target compiles the file at all.
+  the convention `AddTaskIntent.swift` already follows. `allowedExecutionTargets` would let you
+  pin execution to `.main` explicitly, but it is **iOS 27+** and so no help for 26 — and EAS's
+  build image doesn't carry the iOS 27 SDK yet, so referencing the type at all fails the build
+  even behind `@available`: that guard controls when code *runs*, not whether the SDK the
+  compiler is targeting has ever heard of the symbol. Wait for the SDK before adding it back.
 - **The custom shield screen is two targets, not one, and the layout is not yours.** A
   `ShieldConfigurationDataSource` (`ManagedSettingsUI`) draws the screen and is *never told
   about a tap*; `ShieldAction` only ever reaches a `ShieldActionDelegate` (`ManagedSettings`),
