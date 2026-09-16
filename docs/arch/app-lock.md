@@ -43,14 +43,22 @@ For the same reason the Settings toggle calls `unlock()` *before*
   cover whatever happens to be up. So the sheet that is up stands down instead and
   the gate presents into the space (`claimPresentation` in `sheetModal.ts`), with
   its own `visible` left alone so it comes back after the unlock.
-- **What that does not fix is the timing, and the fix for that half is native.**
-  Standing down costs a commit or two, and the snapshot wants the same one. A
-  window-level overlay added on `willResignActive` sits above every presented view
-  controller and needs nobody's permission, which is how an iOS privacy screen is
-  normally done; it is also native work that cannot be built or checked from the
-  sandbox this was written in. Until then the shield is late rather than absent,
-  and the lock itself — which only has to be up by the time somebody is looking —
-  is correct.
+- **The snapshot is covered natively, because standing a sheet down is too slow
+  for it.** Yielding costs a React commit or two and the app-switcher snapshot is
+  taken on the way out, so the JS path is late for exactly the half that cannot
+  afford to be. `modules/todo-privacy-shield` adds a `UIVisualEffectView`
+  straight to the app's own window on `willResignActive`: above every presented
+  view controller (their containers are subviews of that same window), no
+  permission, no entitlement, and up before the notification handler returns.
+  `AppLockGate` drives it with `appLockEnabled && !prompting` — the same
+  `prompting` nuance as everything else here, since iOS reports the app inactive
+  for the Face ID sheet itself and covering the app behind the prompt that
+  answers it is the one case it must not fire on.
+- **The two halves are complementary, not redundant.** The native cover is a
+  blur over the moment nobody is looking; the gate is the themed screen that is
+  still there when they are, and the only one of the two that can ask for Face
+  ID. An unlinked module (Android, a build without it) costs the cover and
+  leaves the lock working.
 - **No biometrics and no passcode enrolled fails open, out loud.** There is no
   second way in — no password, no account, no server — so the alternative is a
   task list nobody can ever open. It alerts rather than opening quietly, and

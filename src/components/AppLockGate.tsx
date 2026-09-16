@@ -5,6 +5,7 @@ import Ionicons from '@expo/vector-icons/Ionicons';
 import { useSettingsStore } from '../store/useSettingsStore';
 import { isAppLocked, useAppLockStore } from '../store/useAppLockStore';
 import { authenticateForAppLock } from '../utils/appLockAuth';
+import { setPrivacyShieldEnabled } from 'todo-privacy-shield';
 import { useColors } from '../theme/ThemeContext';
 import { font, fontWeight, lineHeight, radius, spacing, type Colors } from '../theme';
 import { PressableScale } from './PressableScale';
@@ -35,11 +36,17 @@ let warnedUnavailable = false;
  * cover whatever happens to be up, which is not something it can be a child of.
  *
  * So it `preempts` instead: the sheet that is up stands down, and this presents
- * into the space (see `claimPresentation`). What that cannot buy back is the
- * timing — standing down costs a commit or two, where the snapshot wants the
- * same one — and the fix for that half is a window-level native overlay, which
- * sits above every presented view controller and asks nobody. This is the half
- * that is possible from JS, and it is the difference between late and never.
+ * into the space (see `claimPresentation`). That fixes the lock, which only has
+ * to be up by the time somebody is looking.
+ *
+ * **The snapshot is covered natively instead**, by `todo-privacy-shield`, which
+ * adds a view straight to the app's own window on `willResignActive`. Standing
+ * a sheet down costs a React commit or two and the snapshot is taken on the way
+ * out, so the JS path is late for exactly the half that cannot afford to be. A
+ * view added to the window is above every presented view controller, needs no
+ * permission, and is up before the notification handler returns. The two are
+ * complementary rather than redundant: the native cover is over the moment
+ * nobody is looking, and this is the gate that is still there when they are.
  *
  * Two states share it:
  * - **locked** — the app is sealed until the prompt is passed. Cold start
@@ -119,6 +126,15 @@ export function AppLockGate() {
     });
     return () => sub.remove();
   }, [attemptUnlock]);
+
+  // The native cover, which is what actually reaches the app-switcher
+  // snapshot (see the note above). Off while the unlock prompt is up: iOS
+  // reports the app inactive for the Face ID sheet itself, and covering the app
+  // behind the prompt that answers it is the one moment this must not fire —
+  // the same nuance `prompting` already exists for below.
+  useEffect(() => {
+    setPrivacyShieldEnabled(appLockEnabled && !prompting);
+  }, [appLockEnabled, prompting]);
 
   // Cold start, and turning the setting on while already unlocked is not one:
   // `locked` only goes true here for a launch or an expired grace period.

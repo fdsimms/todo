@@ -1,0 +1,7 @@
+{
+  "name": "todo-privacy-shield",
+  "version": "1.0.0",
+  "description": "Local Expo module that covers the app's own window while it isn't frontmost, so the app-switcher snapshot isn't the task list.",
+  "main": "index.ts",
+  "private": true
+}
