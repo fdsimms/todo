@@ -3,10 +3,13 @@ import { Keyboard, Modal } from 'react-native';
 import {
   canHideSheet,
   canShowSheet,
+  claimPresentation,
   createPresentationLevel,
+  mustYieldSheet,
   nextSheetVisibility,
   registerPresentation,
   releasePresentation,
+  releasePresentationClaim,
   subscribePresentation,
   type PresentationLevel,
 } from '../utils/sheetModal';
@@ -19,6 +22,16 @@ type Props = React.ComponentProps<typeof Modal> & {
    * raises another.
    */
   name?: string;
+  /**
+   * Outranks every other sheet presented from the same place: they stand down
+   * so this one can present, and stay down until it goes.
+   *
+   * **The app lock, and nothing else.** See `claimPresentation` for why it has
+   * to exist — a lock screen that cannot present over an open editor is a lock
+   * screen that does not lock — and for what it cannot fix, which is the commit
+   * or two the standing down costs.
+   */
+  preempts?: boolean;
 };
 
 /**
@@ -155,7 +168,7 @@ const PresentationLevelContext = React.createContext<PresentationLevel>(createPr
  * overriding it, so clearing only the outer one leaves it held open. Every
  * path today pairs them.
  */
-export function SheetModal({ visible = true, children, name, ...rest }: Props) {
+export function SheetModal({ visible = true, children, name, preempts = false, ...rest }: Props) {
   // The view controller this sheet presents *from*, and the fresh one its own
   // children present from. See `PresentationLevelContext`.
   const parentLevel = useContext(PresentationLevelContext);
@@ -166,6 +179,11 @@ export function SheetModal({ visible = true, children, name, ...rest }: Props) {
   // gate cover the sheets that are mounted only while they are up rather than
   // toggling `visible`.
   const [shown, setShown] = useState(() => visible === true && canShowSheet(parentLevel));
+
+  // Whether something that outranks this sheet wants its place. Read during
+  // render rather than from an effect so it is fresh on the commit `beside`
+  // below wakes.
+  const yielding = mustYieldSheet(parentLevel, id);
 
   // Bumped whenever a sheet is presented from or dismissed at this sheet's own
   // level, purely to re-run the closing effect below when the sheet above
@@ -194,16 +212,44 @@ export function SheetModal({ visible = true, children, name, ...rest }: Props) {
   // `canShowSheet`: this is what lets a call site close one sheet and open
   // another in a single commit, the way the whole app already does.
   const opening = nextSheetVisibility(visible === true, shown);
-  if (opening && !opening.dismissKeyboard && canShowSheet(parentLevel)) setShown(opening.shown);
+  if (opening && !opening.dismissKeyboard && canShowSheet(parentLevel, id)) setShown(opening.shown);
 
   // The rest of that edge: an open held above lands here instead, once the
   // sheet in the way has gone (`beside`).
   useEffect(() => {
     const step = nextSheetVisibility(visible === true, shown);
     if (!step || step.dismissKeyboard) return;
-    if (!canShowSheet(parentLevel)) return;
+    if (!canShowSheet(parentLevel, id)) return;
     setShown(step.shown);
-  }, [visible, shown, beside, parentLevel]);
+  }, [visible, shown, beside, parentLevel, id]);
+
+  // Claiming the level this sheet presents from is how `preempts` clears a
+  // path: everything else there yields below, and nothing else opens until
+  // this lets go. Held while the sheet *wants* to be up rather than while it
+  // is, since the whole point is to be let in.
+  useEffect(() => {
+    if (!preempts || visible !== true) return;
+    claimPresentation(parentLevel, id);
+    return () => releasePresentationClaim(parentLevel, id);
+  }, [preempts, visible, parentLevel, id]);
+
+  // The other side of that. A sheet told to stand down passes the order to its
+  // own children first (they present from its controller, and UIKit takes a
+  // presented controller down with its presenter — see `canHideSheet`), then
+  // goes once they have. The keyboard leads, exactly as on any other close.
+  // `visible` is left alone throughout, so the opening edge above puts the
+  // sheet back when the claim is released.
+  useEffect(() => {
+    if (!yielding) return;
+    claimPresentation(ownLevel, id);
+    return () => releasePresentationClaim(ownLevel, id);
+  }, [yielding, ownLevel, id]);
+
+  useEffect(() => {
+    if (!shown || !yielding || !canHideSheet(ownLevel)) return;
+    Keyboard.dismiss();
+    setShown(false);
+  }, [shown, yielding, above, ownLevel]);
 
   // The closing edge, held one commit so the dismissal is queued behind the
   // keyboard's. Recomputed rather than closing over `opening`, which is a new

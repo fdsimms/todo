@@ -60,12 +60,14 @@ export function nextSheetVisibility(visible: boolean, shown: boolean): SheetVisi
 export interface PresentationLevel {
   /** Presented sheet id to the label it registered under. */
   readonly presented: Map<string, string>;
-  /** Notified whenever that map changes. See `subscribePresentation`. */
+  /** Ids that outrank everything else here. See `claimPresentation`. */
+  readonly claims: Set<string>;
+  /** Notified whenever either of those changes. See `subscribePresentation`. */
   readonly listeners: Set<() => void>;
 }
 
 export function createPresentationLevel(): PresentationLevel {
-  return { presented: new Map(), listeners: new Set() };
+  return { presented: new Map(), claims: new Set(), listeners: new Set() };
 }
 
 /**
@@ -136,8 +138,57 @@ export function canHideSheet(level: PresentationLevel): boolean {
  * the commit it was asked to, exactly as before, which is the case
  * `AppLockGate` needs and very nearly every case there is.
  */
-export function canShowSheet(level: PresentationLevel): boolean {
+export function canShowSheet(level: PresentationLevel, id?: string): boolean {
+  if (id !== undefined && mustYieldSheet(level, id)) return false;
   return level.presented.size === 0;
+}
+
+/**
+ * Says a sheet outranks its level: whatever is presented there stands down so
+ * this one can present, and nothing else opens there until it lets go.
+ *
+ * **The app lock is the only thing that claims one, and it has to.** Every
+ * screen-level sheet in this app presents from the root view controller —
+ * `RCTModalHostViewComponentView` presents from `[self reactViewController]`,
+ * the nearest one *above* the Modal, and `enableScreens(false)` means no screen
+ * is one. A view controller presents one thing at a time, so a lock screen
+ * asking to present over an open task editor was refused outright: leaving the
+ * app with any sheet up meant the shield never covered the app-switcher
+ * snapshot, and a resume past the grace period did not lock the app at all.
+ * `AppLockGate` chose a Modal over an overlay `View` precisely so it would
+ * cover an open editor, on the understanding that a later modal stacks above
+ * one already up. It doesn't; only a modal presented *by* that one does.
+ *
+ * Yielding is the only lever available from here. What it cannot fix is the
+ * timing: a sheet has to be told to go, and go, before the lock can present,
+ * which is a commit or two rather than the same one. For the snapshot that is
+ * a real cost, and the honest fix is a window-level native overlay, which sits
+ * above every presented view controller and needs no one's permission. This is
+ * the half that can be done in JS, and it turns "never" into "a moment later".
+ *
+ * A claim cascades: see `mustYieldSheet`.
+ */
+export function claimPresentation(level: PresentationLevel, id: string): void {
+  if (level.claims.has(id)) return;
+  level.claims.add(id);
+  notify(level);
+}
+
+export function releasePresentationClaim(level: PresentationLevel, id: string): void {
+  if (level.claims.delete(id)) notify(level);
+}
+
+/**
+ * Whether `id` has to give up its place at `level` to a claim it doesn't own.
+ *
+ * A yielding sheet claims *its own* level as it goes, which is what carries the
+ * order down a nest: its children yield first, so it is never dismissed while
+ * still presenting one of them (`canHideSheet`) — the orphaned view controller
+ * that leaves an empty sheet nothing can dismiss. Releasing its claim on the
+ * way back up lets them reopen in the same order they left.
+ */
+export function mustYieldSheet(level: PresentationLevel, id: string): boolean {
+  return level.claims.size > 0 && !level.claims.has(id);
 }
 
 function notify(level: PresentationLevel): void {
