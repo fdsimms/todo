@@ -13,6 +13,7 @@ import { useColors } from '../theme/ThemeContext';
 import { spacing, radius, font, fontWeight, type Colors } from '../theme';
 import { haptics } from '../utils/haptics';
 import { dayKeyToDate, getLogicalToday } from '../utils/dateUtils';
+import { navigateToSettingsEntry } from '../utils/settingsIndex';
 import {
   formatWeight,
   kgToUnit,
@@ -237,9 +238,11 @@ export function WeightScreen() {
     </>
   );
 
-  // Reading is off, so there is nothing to draw and nothing this screen can do
-  // about it from here — the switch and its permission sheet live in Settings,
-  // and a sweep is never allowed to raise that sheet.
+  // Reading is off, so there is nothing to draw. The switch itself stays in
+  // Settings — this screen must not flip it, and a sweep is never allowed to
+  // raise the permission sheet behind it — but naming a row without going to
+  // it left the reader to find it by name, so the button opens that row and
+  // lets them make the same deliberate tap there.
   if (!healthReadEnabled) {
     return (
       <View style={[styles.container, { paddingTop: insets.top }]}>
@@ -248,6 +251,8 @@ export function WeightScreen() {
           icon="scale-outline"
           title="Apple Health is off"
           subtitle="Turn on reading Apple Health in Settings to see your weight here. Anything you have already recorded, on a scale or in another app, shows up straight away."
+          actionLabel="Open Settings"
+          onAction={() => { haptics.tap(); navigateToSettingsEntry(navigationRef, 'healthRead'); }}
           bottomOffset={tabBarHeight}
         />
       </View>

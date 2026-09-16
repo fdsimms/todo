@@ -1,5 +1,6 @@
 import React, { useMemo, useState } from 'react';
 import { View, Text, TextInput, StyleSheet, Alert } from 'react-native';
+import { useNavigation } from '@react-navigation/native';
 import { format } from 'date-fns/format';
 import { useSettingsStore } from '../store/useSettingsStore';
 import { useHealthStore } from '../store/useHealthStore';
@@ -11,6 +12,7 @@ import { dayKeyOf, getCurrentDayStart, getLogicalToday } from '../utils/dateUtil
 import { logWeightToHealth } from '../utils/healthWeightSync';
 import { openHealthApp } from '../utils/healthBridge';
 import { parseWeightInput } from '../utils/weightLog';
+import { navigateToSettingsEntry } from '../utils/settingsIndex';
 import { EditorSheet } from './EditorSheet';
 import { EditorRow } from './EditorRow';
 import { SheetHeader } from './SheetHeader';
@@ -45,6 +47,7 @@ interface Props {
 export function LogWeightSheet({ visible, onClose }: Props) {
   const colors = useColors();
   const styles = useMemo(() => makeStyles(colors), [colors]);
+  const navigation = useNavigation();
   const unit = useSettingsStore(s => s.weightUnit);
   const refreshWeight = useHealthStore(s => s.refreshWeight);
 
@@ -90,9 +93,22 @@ export function LogWeightSheet({ visible, onClose }: Props) {
 
     haptics.error();
     if (result === 'off') {
+      // The switch this names is one of ours, so the button goes to that row
+      // rather than to the Health app the refusal below opens. The sheet
+      // closes first: it is full screen, and Settings would arrive behind it.
       Alert.alert(
         'Logging to Health is off',
         'Turn on "Log to Health" in Settings before recording a weight.',
+        [
+          { text: 'Not now', style: 'cancel' },
+          {
+            text: 'Open Settings',
+            onPress: () => {
+              close();
+              navigateToSettingsEntry(navigation, 'healthWrite');
+            },
+          },
+        ],
       );
       return;
     }
