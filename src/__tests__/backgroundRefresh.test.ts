@@ -57,6 +57,7 @@ const mockTaskState = {
   checkBirthdayTasks: mockRecord('checkBirthdayTasks'),
   checkBirthdayGiftTasks: mockRecord('checkBirthdayGiftTasks'),
   checkReachOutTasks: mockRecord('checkReachOutTasks'),
+  checkWaitingFollowUpTasks: mockRecord('checkWaitingFollowUpTasks'),
   sweepTaskPenalties: mockRecord('sweepTaskPenalties'),
   purgeOldCompletedTasks: mockRecord('purgeOldCompletedTasks'),
   tasks: [] as unknown[],
@@ -162,6 +163,7 @@ describe('runBackgroundRefresh', () => {
       'checkScreenTimeTasks', 'checkHealthTasks',
       'checkMoodTasks', 'checkWeekendNudgeTasks', 'checkWeighInTasks',
       'checkBirthdayTasks', 'checkBirthdayGiftTasks', 'checkReachOutTasks',
+      'checkWaitingFollowUpTasks',
       'reconcileAllLeftoverTasks', 'checkScheduledTemplates', 'checkWeeklyReviewTasks',
       'sweepTaskPenalties',
     ];

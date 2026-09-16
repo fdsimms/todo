@@ -334,6 +334,8 @@ function generatedCategorySetting(kind: GeneratedKind): {
       return { key: 'birthdayGiftTaskCategory', current: s.birthdayGiftTaskCategory, assign: s.setBirthdayGiftTaskCategory };
     case 'reachOut':
       return { key: 'reachOutTaskCategory', current: s.reachOutTaskCategory, assign: s.setReachOutTaskCategory };
+    case 'waitingFollowUp':
+      return { key: 'waitingFollowUpTaskCategory', current: s.waitingFollowUpTaskCategory, assign: s.setWaitingFollowUpTaskCategory };
     case 'weather':
       return { key: 'weatherTaskCategory', current: s.weatherTaskCategory, assign: s.setWeatherTaskCategory };
     case 'eventTask':

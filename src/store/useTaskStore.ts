@@ -248,7 +248,13 @@ import { usePersonStore } from './usePersonStore';
 import { usePersonGroupStore } from './usePersonGroupStore';
 import { usePersonNoteStore } from './usePersonNoteStore';
 import { giftIdeasText } from '../utils/personNotes';
-import { resolveBlocksEdit, waitingOn } from '../utils/blocking';
+import { resolveBlocksEdit, waitingOn, canWaitOn } from '../utils/blocking';
+import {
+  waitingFollowUpTaskId,
+  wantedWaitingFollowUps,
+  waitingFollowUpsHandledRecently,
+  staleWaitingFollowUpTasks,
+} from '../utils/waitingFollowUpTasks';
 import { scheduleTaskReminder, cancelTaskReminder, rescheduleAllReminders, scheduleTimerAlarm, cancelTimerAlarm, scheduleQuotaNudges, cancelQuotaNudges, cancelCompletionTimer } from '../utils/notifications';
 import { syncDeadlineEvent } from '../utils/deadlineCalendarSync';
 import { logTaskCompletionToCalendar } from '../utils/completionCalendarSync';
@@ -661,6 +667,29 @@ function writeGeneratedOptOut(task: Task, value: false | null): void {
       const stamp = value === false ? source.supplyCount : null;
       if (source.supplyDeclinedAtCount === stamp) return;
       const patched = { ...source, supplyDeclinedAtCount: stamp };
+      dbUpdateTask(patched);
+      useTaskStore.setState(s => ({
+        tasks: s.tasks.map(t => (t.id === sourceId ? patched : t)),
+      }));
+      return;
+    }
+    // A stamp like projectReview's and reachOut's: swiping "Follow up with X
+    // about Y" away means "not right now", not "never ask about this wait
+    // again" — there's no field that would mean the second thing anyway,
+    // since the wait itself is still open. Spent against the waiting task
+    // rather than the day, and read back by wantedWaitingFollowUps.
+    //
+    // The source is a *task*, so this writes directly into this store's own
+    // rows, the same shape supplyReorder's case takes and for the same
+    // reason: the caller is deleteTask mid-write, and routing a second store
+    // action through it would run the postpone derivation over a field that
+    // isn't one.
+    case 'waitingFollowUp': {
+      const source = useTaskStore.getState().tasks.find(t => t.id === sourceId);
+      if (!source) return;
+      const stamp = value === false ? new Date().toISOString() : null;
+      if (source.waitingFollowUpDeclinedAt === stamp) return;
+      const patched = { ...source, waitingFollowUpDeclinedAt: stamp };
       dbUpdateTask(patched);
       useTaskStore.setState(s => ({
         tasks: s.tasks.map(t => (t.id === sourceId ? patched : t)),
@@ -1487,6 +1516,7 @@ interface TaskStore extends UndoHistoryActions {
    * clear the ones whose reason has gone. See src/utils/reachOutTasks.ts.
    */
   checkReachOutTasks: () => void;
+  checkWaitingFollowUpTasks: () => void;
   /**
    * Write today's meal tasks, once per logical day — see the implementation
    * for why the day is both the unit and the whole opt-out.
@@ -2469,6 +2499,39 @@ export const useTaskStore = create<TaskStore>((set, get) => ({
         !('autoScheduledAt' in updates) &&
         t.autoScheduledAt !== null;
 
+      // When a wait on somebody starts (or starts over with somebody else),
+      // stamped so waitingFollowUpTasks.ts can answer "how long has this been
+      // going on" — nothing before Task.waitingOnPersonSince existed could.
+      // Derived from the edit rather than asked for, the same shape
+      // driftingSince takes beside postponeCount: every way `waitingOnPersonId`
+      // gets set — the editor's own row, a bulk edit, a sync merge — stamps it
+      // without its call site having to remember to.
+      //
+      // Only on the transition, never on a re-save of an already-waiting task
+      // (`updates.waitingOnPersonId === t.waitingOnPersonId`) — the editor
+      // writes the whole "Waiting on someone" field on every save, the same
+      // reason `pinnedOrder` above guards on the 0→1 edge rather than on the
+      // key being present. Restamping on every unrelated save would make
+      // every wait read as having started the moment it was last opened.
+      //
+      // An update naming the field itself wins outright (no derivation runs),
+      // which is what makes a whole-snapshot undo faithful: replaying a
+      // pre-write `{ ...task }` restores the stamp that was really there
+      // rather than a freshly re-derived one.
+      const waitingOnPersonChange =
+        'waitingOnPersonId' in updates &&
+        !('waitingOnPersonSince' in updates) &&
+        updates.waitingOnPersonId !== t.waitingOnPersonId
+          ? {
+              waitingOnPersonSince: updates.waitingOnPersonId ? new Date().toISOString() : null,
+              // A decline about the *previous* wait says nothing about a new
+              // one — carrying it forward would silence a fresh "waiting on
+              // Sam" nudge on the strength of a swipe made about "waiting on
+              // Alex".
+              waitingFollowUpDeclinedAt: null,
+            }
+          : undefined;
+
       // How many times the user has pushed this out (see utils/postpone.ts).
       // Derived from the move rather than asked for, so every hand-picked date —
       // the row's swipe, the editor's Date row — is counted without its call
@@ -2508,6 +2571,7 @@ export const useTaskStore = create<TaskStore>((set, get) => ({
         ...updates,
         seriesDefaults,
         ...(derivedPostpone ?? {}),
+        ...(waitingOnPersonChange ?? {}),
         ...(takenOver ? { autoScheduledAt: null } : {}),
         // Only on the transition, never on a re-save of an already-pinned
         // task: the editor writes `pinned: true` on every save of a pinned
@@ -4633,6 +4697,79 @@ export const useTaskStore = create<TaskStore>((set, get) => ({
   },
 
   /**
+   * "Follow up with X about Y" — a task waiting on somebody, waited on long
+   * enough, gets a task of its own. See src/utils/waitingFollowUpTasks.ts.
+   */
+  checkWaitingFollowUpTasks() {
+    const settings = useSettingsStore.getState();
+    // Work the app invents on the strength of a wait dragging on, not
+    // sunscreen — see GeneratedKindSpec.pausedOnVacation.
+    if (generatorPausedForVacation('waitingFollowUp', settings.vacationMode)) return;
+    if (!settings.waitingFollowUpTasks) return;
+
+    const tasks = get().tasks;
+    const people = usePersonStore.getState().people;
+    const today = getCurrentDayStart();
+
+    // Anything already ticked off or archived recently is left alone rather
+    // than handed straight back — see waitingFollowUpsHandledRecently.
+    const handled = waitingFollowUpsHandledRecently(tasks, today);
+    const wanted = wantedWaitingFollowUps(tasks, people, today, handled);
+
+    // Clear first, create second, and never the reverse — the same ordering
+    // checkProjectReviewTasks and checkReachOutTasks run on: the stale set
+    // includes the row for a wait the user has just released or finished from
+    // this very task, and a create pass running first would be deciding
+    // against a list that still held it.
+    //
+    // dropGeneratedTask, not deleteGeneratedTaskQuietly: that one routes
+    // through deleteTask, which writes the source's opt-out — here it would
+    // stamp waitingFollowUpDeclinedAt on a task the user never swiped away,
+    // silencing a future wait on the strength of the app's own tidying up.
+    staleWaitingFollowUpTasks(tasks, tasks, people).forEach(task =>
+      dropGeneratedTask('waitingFollowUp', waitingFollowUpTaskId(task))
+    );
+
+    if (wanted.length === 0) return;
+
+    ensureGeneratedTaskCategory('waitingFollowUp');
+    const category = useSettingsStore.getState().waitingFollowUpTaskCategory;
+    const dueDate = getCurrentDayStart();
+    dueDate.setHours(12, 0, 0, 0);
+
+    wanted.forEach(want => {
+      reconcileGeneratedTask({
+        kind: 'waitingFollowUp',
+        sourceId: want.taskId,
+        // Never false: the not-wanted half is decided over the whole set at
+        // once and was handled by the drop pass above.
+        wanted: true,
+        // Chases the title only, and only when it's actually changed — the
+        // waiting task renamed, or waitingOnPersonId repointed at somebody
+        // else since this row was written. Deliberately never the date: by
+        // the time a second sweep runs the user may have deferred this to
+        // Saturday.
+        drift: existing => (existing.title === want.title ? null : { title: want.title }),
+        draft: () => ({
+          title: want.title,
+          dueDate: dueDate.toISOString(),
+          linkUrl: personLinkUrl(want.personId),
+          // So the row's own call and text buttons work, the same as
+          // reachOut's: the whole point is that the nudge is one tap from
+          // actually doing the thing.
+          phoneNumber: want.phoneNumber,
+          category,
+          // No personIds, for the reason the birthday and reachOut tasks
+          // carry none: a task naming somebody is the record that something
+          // happened with them, and ticking this off would otherwise reset a
+          // clock this generator has no business touching.
+          ...generatedBy('waitingFollowUp', want.taskId),
+        }),
+      });
+    });
+  },
+
+  /**
    * Lay down meal tasks for the days ahead — one per meal the user says they
    * eat, for each day out to `MEAL_SLOT_TASK_DAYS`.
    *
@@ -6540,6 +6677,8 @@ export const useTaskStore = create<TaskStore>((set, get) => ({
       location: null,
       blockedById: null,
       waitingOnPersonId: null,
+      waitingOnPersonSince: null,
+      waitingFollowUpDeclinedAt: null,
       deliverableKind: null,
       deliverableValue: null,
       generatedKind: null,
@@ -6747,6 +6886,8 @@ export const useTaskStore = create<TaskStore>((set, get) => ({
       location: null,
       blockedById: null,
       waitingOnPersonId: null,
+      waitingOnPersonSince: null,
+      waitingFollowUpDeclinedAt: null,
       deliverableKind: null,
       deliverableValue: null,
       generatedKind: null,

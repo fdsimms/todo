@@ -378,6 +378,8 @@ export function newTaskFromDraft(
     location: draft.location ?? null,
     blockedById: draft.blockedById ?? null,
     waitingOnPersonId: null,
+    waitingOnPersonSince: null,
+    waitingFollowUpDeclinedAt: null,
     deliverableKind: draft.deliverableKind ?? null,
     // Never read off the draft: the question carries, the answer doesn't. A
     // template or a duplicate that arrived holding someone else's answer would

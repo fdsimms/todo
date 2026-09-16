@@ -418,6 +418,8 @@ const makeTask = (overrides: Partial<Task> = {}): Task => ({
   emailAddress: null, location: null,
   blockedById: null,
   waitingOnPersonId: null,
+  waitingOnPersonSince: null,
+  waitingFollowUpDeclinedAt: null,
   deliverableKind: null,
   deliverableValue: null,
   generatedKind: null,
@@ -1119,6 +1121,53 @@ describe('updateTask', () => {
     useTaskStore.setState({ tasks: [makeTask({ id: 't1' })] });
     useTaskStore.getState().updateTask('t1', { priority: 2, sortOrder: 5 });
     expect(syncDeadlineEvent).not.toHaveBeenCalled();
+  });
+
+  describe('waitingOnPersonSince', () => {
+    it('stamps it on the null → set transition', () => {
+      useTaskStore.setState({ tasks: [makeTask({ id: 't1', waitingOnPersonId: null })] });
+      useTaskStore.getState().updateTask('t1', { waitingOnPersonId: 'p1' });
+      const updated = useTaskStore.getState().tasks[0];
+      expect(updated.waitingOnPersonId).toBe('p1');
+      expect(updated.waitingOnPersonSince).not.toBeNull();
+    });
+
+    it('re-stamps when the wait is repointed at somebody else', () => {
+      useTaskStore.setState({
+        tasks: [makeTask({ id: 't1', waitingOnPersonId: 'p1', waitingOnPersonSince: '2025-01-01T00:00:00.000Z' })],
+      });
+      useTaskStore.getState().updateTask('t1', { waitingOnPersonId: 'p2' });
+      const updated = useTaskStore.getState().tasks[0];
+      expect(updated.waitingOnPersonSince).not.toBe('2025-01-01T00:00:00.000Z');
+    });
+
+    it('clears it, and the decline stamp beside it, when the wait ends', () => {
+      useTaskStore.setState({
+        tasks: [makeTask({
+          id: 't1', waitingOnPersonId: 'p1',
+          waitingOnPersonSince: '2025-01-01T00:00:00.000Z',
+          waitingFollowUpDeclinedAt: '2025-01-05T00:00:00.000Z',
+        })],
+      });
+      useTaskStore.getState().updateTask('t1', { waitingOnPersonId: null });
+      const updated = useTaskStore.getState().tasks[0];
+      expect(updated.waitingOnPersonSince).toBeNull();
+      expect(updated.waitingFollowUpDeclinedAt).toBeNull();
+    });
+
+    it('does not restamp on a re-save of an already-waiting task', () => {
+      useTaskStore.setState({
+        tasks: [makeTask({ id: 't1', waitingOnPersonId: 'p1', waitingOnPersonSince: '2025-01-01T00:00:00.000Z' })],
+      });
+      useTaskStore.getState().updateTask('t1', { waitingOnPersonId: 'p1', title: 'Renamed' });
+      expect(useTaskStore.getState().tasks[0].waitingOnPersonSince).toBe('2025-01-01T00:00:00.000Z');
+    });
+
+    it('an update naming the field itself wins outright, for a whole-snapshot undo', () => {
+      useTaskStore.setState({ tasks: [makeTask({ id: 't1', waitingOnPersonId: null })] });
+      useTaskStore.getState().updateTask('t1', { waitingOnPersonId: 'p1', waitingOnPersonSince: '2020-01-01T00:00:00.000Z' });
+      expect(useTaskStore.getState().tasks[0].waitingOnPersonSince).toBe('2020-01-01T00:00:00.000Z');
+    });
   });
 
   describe('scope: "occurrence" ("this task only")', () => {
@@ -4615,6 +4664,118 @@ describe('checkReachOutTasks', () => {
 
     expect(usePersonStore.getState().people[0].reachOutDeclinedAt).toBeNull();
     expect(useTaskStore.getState().tasks.find(t => t.id === taskId)).toBeDefined();
+  });
+});
+
+describe('checkWaitingFollowUpTasks', () => {
+  const { useSettingsStore } = jest.requireMock('../store/useSettingsStore') as {
+    useSettingsStore: { getState: jest.Mock };
+  };
+
+  const settings = (overrides: Record<string, unknown> = {}) => ({
+    dayResetTime: '00:00',
+    vacationMode: false,
+    waitingFollowUpTasks: true,
+    waitingFollowUpTaskCategory: 'People',
+    newTaskDefaults: { category: null, priority: null, effort: null, timeSegment: null, destination: 'today', openEditorAfterQuickAdd: false },
+    titleRules: [],
+    collapsedCategories: [],
+    ...overrides,
+  });
+
+  const daysAgo = (n: number) => new Date(Date.now() - n * 86_400_000).toISOString();
+
+  const person = (overrides: Partial<Person> = {}): Person => ({
+    id: 'p1', name: 'Dustin', nickname: '', notes: '', sortOrder: 1,
+    archived: false, archivedAt: null, createdAt: daysAgo(60),
+    birthdayMonth: null, birthdayDay: null, birthYear: null,
+    birthdayTaskOptOut: false, birthdayGiftTaskOptOut: false,
+    phoneNumber: null, email: null, linkUrl: null,
+    cadenceDays: 0, nudgeOptIn: false, cadenceSetAt: null,
+    reachOutDeclinedAt: null, reachOutOfferDeclinedAt: null, askAbout: '',
+    backfillDismissedFields: [],
+    groupId: null,
+    location: null,
+    ...overrides,
+  });
+
+  // Waited on for long enough to be due.
+  const waiting = (overrides: Record<string, unknown> = {}) => makeTask({
+    id: 'w1', title: 'Get the quote back',
+    waitingOnPersonId: 'p1', waitingOnPersonSince: daysAgo(8),
+    ...overrides,
+  });
+
+  const followUps = () =>
+    useTaskStore.getState().tasks.filter(t => t.generatedKind === 'waitingFollowUp' && !t.completed && !t.archived);
+
+  beforeEach(() => {
+    useSettingsStore.getState.mockReturnValue(settings());
+    useTaskStore.setState({ tasks: [waiting()] });
+    usePersonStore.setState({ people: [person()], initialized: true });
+  });
+
+  it('writes a follow-up task once a wait has gone on long enough', () => {
+    useTaskStore.getState().checkWaitingFollowUpTasks();
+    expect(followUps()).toHaveLength(1);
+    expect(followUps()[0].title).toBe('Follow up with Dustin about "Get the quote back"');
+  });
+
+  it('does nothing while the wait is younger than the threshold', () => {
+    useTaskStore.setState({ tasks: [waiting({ waitingOnPersonSince: daysAgo(2) })] });
+    useTaskStore.getState().checkWaitingFollowUpTasks();
+    expect(followUps()).toHaveLength(0);
+  });
+
+  it('does nothing with the setting off', () => {
+    useSettingsStore.getState.mockReturnValue(settings({ waitingFollowUpTasks: false }));
+    useTaskStore.getState().checkWaitingFollowUpTasks();
+    expect(followUps()).toHaveLength(0);
+  });
+
+  it('does nothing while vacation mode is on — a chore, not sunscreen', () => {
+    useSettingsStore.getState.mockReturnValue(settings({ vacationMode: true }));
+    useTaskStore.getState().checkWaitingFollowUpTasks();
+    expect(followUps()).toHaveLength(0);
+  });
+
+  // Same bug shape checkReachOutTasks/checkProjectReviewTasks each guard
+  // against: deleting the row must stamp the *waiting* task, not silently
+  // hand back an identical follow-up on the next sweep.
+  it('takes a deleted follow-up as a decline stamped on the waiting task', () => {
+    useTaskStore.getState().checkWaitingFollowUpTasks();
+    useTaskStore.getState().deleteTask(followUps()[0].id);
+
+    expect(useTaskStore.getState().tasks.find(t => t.id === 'w1')?.waitingFollowUpDeclinedAt).not.toBeNull();
+
+    useTaskStore.getState().checkWaitingFollowUpTasks();
+    expect(followUps()).toHaveLength(0);
+  });
+
+  it('asks again once the decline has held for its window', () => {
+    useTaskStore.getState().checkWaitingFollowUpTasks();
+    useTaskStore.getState().deleteTask(followUps()[0].id);
+    expect(followUps()).toHaveLength(0);
+
+    useTaskStore.getState().updateTask('w1', { waitingFollowUpDeclinedAt: daysAgo(8) }, { skipPostponeCount: true });
+    useTaskStore.getState().checkWaitingFollowUpTasks();
+    expect(followUps()).toHaveLength(1);
+  });
+
+  it('clears the follow-up once the waiting task is released', () => {
+    useTaskStore.getState().checkWaitingFollowUpTasks();
+    expect(followUps()).toHaveLength(1);
+
+    useTaskStore.getState().updateTask('w1', { waitingOnPersonId: null });
+    useTaskStore.getState().checkWaitingFollowUpTasks();
+    expect(followUps()).toHaveLength(0);
+  });
+
+  it('clears the follow-up once the waiting task completes', () => {
+    useTaskStore.getState().checkWaitingFollowUpTasks();
+    useTaskStore.getState().completeTask('w1');
+    useTaskStore.getState().checkWaitingFollowUpTasks();
+    expect(followUps()).toHaveLength(0);
   });
 });
 

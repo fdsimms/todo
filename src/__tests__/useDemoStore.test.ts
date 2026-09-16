@@ -1706,6 +1706,18 @@ describe('demo seed — people', () => {
     expect(person!.archived).toBe(false);
   });
 
+  // This generator ships off too, so it's written by hand rather than through
+  // checkWaitingFollowUpTasks — same reason the birthday-gift task above is.
+  it('puts a real waiting-follow-up task on the list, naming the wait it points at', () => {
+    const followUps = useTaskStore.getState().tasks.filter(t => t.generatedKind === 'waitingFollowUp');
+    expect(followUps).toHaveLength(1);
+    expect(followUps[0].title).toMatch(/^Follow up with /);
+    expect(followUps[0].personIds).toEqual([]);
+    const waitingTask = useTaskStore.getState().tasks
+      .find(t => t.id === followUps[0].generatedSourceId);
+    expect(waitingTask?.waitingOnPersonId).not.toBeNull();
+  });
+
   // Already falls out of the existing seed with no new rows: the completed
   // "Coffee with Mom". A regression guard rather than new demo content.
   it('has a year in review to show, from the existing seed alone', () => {

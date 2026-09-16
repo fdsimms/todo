@@ -1112,6 +1112,13 @@ interface SettingsStore {
   // opted in sees nothing either way.
   reachOutTasks: boolean;
   reachOutTaskCategory: string | null;
+  // Whether a task waiting on somebody, waited on long enough, gets a "Follow
+  // up with X about Y" task (see src/utils/waitingFollowUpTasks.ts). Defaults
+  // OFF, for pantryCheckTasks' reason: this adds a surface nobody asked for,
+  // where reachOutTasks/birthdayTasks each replaced or reused a recorded
+  // intent (an opted-in person, a birthday on file) that already existed.
+  waitingFollowUpTasks: boolean;
+  waitingFollowUpTaskCategory: string | null;
   // Whether an item the app has stopped being sure about gets a "Check if you
   // still have X" task (see src/utils/pantryCheckTasks.ts). Defaults OFF,
   // unlike projectReviewTasks above: that one replaced a banner that was
@@ -1649,6 +1656,8 @@ interface SettingsStore {
   setBirthdayGiftTaskCategory: (category: string | null) => void;
   setReachOutTasks: (on: boolean) => void;
   setReachOutTaskCategory: (category: string | null) => void;
+  setWaitingFollowUpTasks: (on: boolean) => void;
+  setWaitingFollowUpTaskCategory: (category: string | null) => void;
   setPantryCheckTasks: (on: boolean) => void;
   setPantryCheckTaskCategory: (category: string | null) => void;
   setPantryReviewTasks: (on: boolean) => void;
@@ -2261,6 +2270,8 @@ export const useSettingsStore = create<SettingsStore>((set, get) => ({
   birthdayGiftTaskCategory: null,
   reachOutTasks: true,
   reachOutTaskCategory: null,
+  waitingFollowUpTasks: false,
+  waitingFollowUpTaskCategory: null,
   pantryCheckTasks: false,
   pantryCheckTaskCategory: null,
   pantryReviewTasks: false,
@@ -2590,6 +2601,9 @@ export const useSettingsStore = create<SettingsStore>((set, get) => ({
     const birthdayGiftTaskCategory = dbGetSetting('birthdayGiftTaskCategory') || null;
     const reachOutTasks = dbGetSetting('reachOutTasks') !== 'false';
     const reachOutTaskCategory = dbGetSetting('reachOutTaskCategory') || null;
+    // `=== 'true'`, the opt-in reading — see the field's own doc comment.
+    const waitingFollowUpTasks = dbGetSetting('waitingFollowUpTasks') === 'true';
+    const waitingFollowUpTaskCategory = dbGetSetting('waitingFollowUpTaskCategory') || null;
     // `=== 'true'`, the opt-in reading the nudge takes rather than the one
     // above it: this generator adds a surface rather than replacing one, so an
     // install that has never been asked stays silent. See the field note.
@@ -2986,6 +3000,8 @@ export const useSettingsStore = create<SettingsStore>((set, get) => ({
       vacationHiddenCalendarIds,
       vacationMode,
       vacationStart,
+      waitingFollowUpTaskCategory,
+      waitingFollowUpTasks,
       waterExerciseBoost,
       waterUnit,
       weatherRules,
@@ -3311,6 +3327,16 @@ export const useSettingsStore = create<SettingsStore>((set, get) => ({
   setReachOutTaskCategory(category: string | null) {
     dbSetSetting('reachOutTaskCategory', category ?? '');
     set({ reachOutTaskCategory: category });
+  },
+
+  setWaitingFollowUpTasks(on: boolean) {
+    dbSetSetting('waitingFollowUpTasks', on ? 'true' : 'false');
+    set({ waitingFollowUpTasks: on });
+  },
+
+  setWaitingFollowUpTaskCategory(category: string | null) {
+    dbSetSetting('waitingFollowUpTaskCategory', category ?? '');
+    set({ waitingFollowUpTaskCategory: category });
   },
 
   setPantryCheckTasks(on: boolean) {
