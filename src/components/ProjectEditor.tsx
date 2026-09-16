@@ -16,7 +16,10 @@ import { useProjectCategoryStore } from '../store/useProjectCategoryStore';
 import { useShallow } from 'zustand/react/shallow';
 import { WhenPicker } from './WhenPicker';
 import { CollapsibleField } from './CollapsibleField';
+import { CategoryPickerList } from './CategoryPicker';
 import { PillGroup, type PillGroupOption } from './PillGroup';
+import { useCategoryStore } from '../store/useCategoryStore';
+import { categoryLabel } from '../utils/categoryLabel';
 import { useGroceryStore } from '../store/useGroceryStore';
 import { InlineAction } from './InlineAction';
 import { SheetHeaderButton } from './SheetHeaderButton';
@@ -99,6 +102,11 @@ export function ProjectEditor({ visible, project, isNew, onClose }: Props) {
   const [title, setTitle] = useState('');
   const [notes, setNotes] = useState('');
   const [category, setCategory] = useState<string | null>(null);
+  // The task category, deliberately a separate pool from the project category
+  // just above — see Project.defaultTaskCategory.
+  const [defaultTaskCategory, setDefaultTaskCategory] = useState<string | null>(null);
+  const [defaultTaskCategoryOpen, setDefaultTaskCategoryOpen] = useState(false);
+  const taskCategories = useCategoryStore(useShallow(s => s.categories));
   const [deadline, setDeadline] = useState<Date | null>(null);
   const [showDeadlinePicker, setShowDeadlinePicker] = useState(false);
   // The away span (see Project.awayStart). Held as two dates rather than one
@@ -170,6 +178,8 @@ export function ProjectEditor({ visible, project, isNew, onClose }: Props) {
     setTitle(project.title);
     setNotes(project.notes);
     setCategory(project.category);
+    setDefaultTaskCategory(project.defaultTaskCategory);
+    setDefaultTaskCategoryOpen(false);
     setDeadline(project.deadline ? new Date(project.deadline) : null);
     setAwayStart(project.awayStart ? new Date(project.awayStart) : null);
     setAwayEnd(project.awayEnd ? new Date(project.awayEnd) : null);
@@ -245,6 +255,7 @@ export function ProjectEditor({ visible, project, isNew, onClose }: Props) {
       title: trimmed || project.title,
       notes,
       category: resolveCategory(),
+      defaultTaskCategory,
       deadline: deadline ? deadline.toISOString() : null,
       // Stored at midday so a flight cannot move either boundary by a calendar
       // day, and the end is dropped without a start because on its own it is
@@ -480,6 +491,21 @@ export function ProjectEditor({ visible, project, isNew, onClose }: Props) {
               <InlineAction icon="add" label="New" accessibilityLabel="New category" onPress={() => setAddingCategory(true)} />
             )}
           </View>
+        </CollapsibleField>
+      </View>
+
+      <View style={styles.sectionCard}>
+        <CollapsibleField
+          label="Default task category"
+          summary={defaultTaskCategory ? categoryLabel(defaultTaskCategory, taskCategories) : undefined}
+          hint="A task added straight to this project starts in this category, unless it's given one of its own."
+          expanded={defaultTaskCategoryOpen}
+          onToggle={() => setDefaultTaskCategoryOpen(v => !v)}
+        >
+          <CategoryPickerList
+            value={defaultTaskCategory}
+            onSelect={cat => { setDefaultTaskCategory(cat); setDefaultTaskCategoryOpen(false); }}
+          />
         </CollapsibleField>
       </View>
 

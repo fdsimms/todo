@@ -81,7 +81,7 @@ Where each component can appear.
 - `src/components/CatalogLinkSheet.tsx` — on FoodLogScreen
 - `src/components/CategoryEditor.tsx` — on CategoriesScreen
 - `src/components/CategoryOrderSheet.tsx` — on TodayScreen
-- `src/components/CategoryPicker.tsx` — on ArchivedScreen, BackfillScreen, CalendarScreen, CategoryDetailScreen, ProjectDetailScreen, RemindersScreen, SavedViewDetailScreen, SearchScreen, StacksScreen, StuckScreen, TagsScreen, TodayScreen
+- `src/components/CategoryPicker.tsx` — on ArchivedScreen, BackfillScreen, CalendarScreen, CategoryDetailScreen, ProjectDetailScreen, ProjectsScreen, RemindersScreen, SavedViewDetailScreen, SearchScreen, StacksScreen, StuckScreen, TagsScreen, +1 more
 - `src/components/ChainStepMedicationSheet.tsx` — on ArchivedScreen, CalendarScreen, CategoryDetailScreen, ProjectDetailScreen, RemindersScreen, SavedViewDetailScreen, SearchScreen, StacksScreen, StuckScreen, TagsScreen, TemplateDetailScreen, TodayScreen
 - `src/components/ChainStepQuestionSheet.tsx` — on ArchivedScreen, CalendarScreen, CategoryDetailScreen, ProjectDetailScreen, RemindersScreen, SavedViewDetailScreen, SearchScreen, StacksScreen, StuckScreen, TagsScreen, TemplateDetailScreen, TodayScreen
 - `src/components/ChipFilterSheet.tsx` — on MoodHistoryScreen

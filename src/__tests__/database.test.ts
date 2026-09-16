@@ -1737,6 +1737,7 @@ describe('Projects', () => {
     notes: '',
     deadline: null,
     category: null,
+    defaultTaskCategory: null,
     sortOrder: 1,
     archived: false,
     archivedAt: null,
@@ -1998,7 +1999,7 @@ describe('backup and restore', () => {
     dbInsertTask(makeTask({ id: 't2', title: 'Pay rent', completed: true }));
     dbInsertProject({
       id: 'p1', title: 'Summer list', notes: '', deadline: null,
-      category: null, sortOrder: 1, archived: false, archivedAt: null, completed: false, completedAt: null,
+      category: null, defaultTaskCategory: null, sortOrder: 1, archived: false, archivedAt: null, completed: false, completedAt: null,
       ongoing: false,
       createdAt: '2025-01-01T00:00:00.000Z', nudgeCadenceDays: 14, autoSchedule: false,
       nudgeOptIn: true,

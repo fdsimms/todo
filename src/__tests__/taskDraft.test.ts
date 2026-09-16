@@ -25,6 +25,14 @@ jest.mock('../store/useCategoryStore', () => ({
   },
 }));
 
+jest.mock('../store/useProjectStore', () => ({
+  useProjectStore: {
+    getState: jest.fn(() => ({
+      getProjectById: jest.fn().mockReturnValue(null),
+    })),
+  },
+}));
+
 describe('reanchorReminder', () => {
   it('keeps the time of day while moving the day', () => {
     const moved = reanchorReminder('2026-03-01T09:30:00.000Z', new Date('2026-03-08T00:00:00.000Z'));

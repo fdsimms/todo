@@ -25,6 +25,7 @@ import type { Task, TaskDraft, TimeOfDay, Polarity } from '../types';
 import { generateId } from './id';
 import { useSettingsStore } from '../store/useSettingsStore';
 import { useCategoryStore } from '../store/useCategoryStore';
+import { useProjectStore } from '../store/useProjectStore';
 import { resolveTitleRules } from './titleRules';
 import { taskKindOf, MIN_TARGET_COUNT, MAX_TARGET_COUNT } from './taskKinds';
 import {
@@ -163,6 +164,13 @@ export function newTaskFromDraft(
   skipCategoryDefault = false,
 ): Task {
   const defaults = useSettingsStore.getState().newTaskDefaults;
+  // A project's own default (Project.defaultTaskCategory) outranks Settings'
+  // global one, but only when nothing more specific already named a category
+  // — an explicit draft.category (typed in the editor, a template item, a
+  // quick-add #tag) always wins, same as the global default it sits ahead of.
+  const projectDefaultCategory = draft.projectId
+    ? useProjectStore.getState().getProjectById(draft.projectId)?.defaultTaskCategory ?? null
+    : null;
   // An avoid-task is never completed (see Task.polarity), so it can only be the
   // plain kind: every other kind is a shape for *completing* something, and all
   // four of their mechanisms hang off a completion that will never come. The
@@ -265,7 +273,9 @@ export function newTaskFromDraft(
     supplyDeclinedAtCount: null,
     tags: draft.tags ?? [],
     personIds: draft.personIds ?? [],
-    category: skipCategoryDefault ? (draft.category ?? null) : (draft.category ?? defaults.category),
+    category: skipCategoryDefault
+      ? (draft.category ?? null)
+      : (draft.category ?? projectDefaultCategory ?? defaults.category),
     sortOrder,
     pinned: draft.pinned ?? false,
     pinnedOrder: 0,

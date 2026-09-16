@@ -910,6 +910,18 @@ export interface Project {
   // page. Independent of task Category — never affects the tasks inside the
   // project (their own categories, visibility, etc. are untouched).
   category: string | null;
+  // Name of a (task) Category, deliberately a different pool from the field
+  // just above. Every task created inside this project falls back to it —
+  // ahead of Settings' own newTaskDefaults.category — when nothing more
+  // specific names one: not the editor's own category field (a person typing
+  // a category wins outright), not a template item's (same rule), and not a
+  // quick-add `#tag` (parseCategoryAndTagsInput still resolves those first).
+  // See newTaskFromDraft, the one place this is read.
+  //
+  // Null by default, the "nominated, never inferred" rule every opt-in field
+  // on this type follows: a project gets no default until somebody names one,
+  // the same as weekendSource starting off and destination starting blank.
+  defaultTaskCategory: string | null;
   sortOrder: number;
   archived: boolean;
   archivedAt: string | null;
