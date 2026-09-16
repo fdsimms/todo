@@ -1285,6 +1285,7 @@ export function TodayScreen() {
   // them: they are the cost of lifting rows out, and nothing lifts rows out now.
 
   const handleSuggestedPins = (ids: string[]) => {
+    animateLayout();
     for (const id of ids) updateTask(id, { pinned: true });
   };
 
@@ -2597,7 +2598,7 @@ export function TodayScreen() {
     });
   }, [completeGroup, requestComplete]);
   const handleGroupDefer = useCallback((groupId: string, date: Date) => deferGroup(groupId, date), [deferGroup]);
-  const handleGroupPin = useCallback((groupId: string) => pinGroup(groupId), [pinGroup]);
+  const handleGroupPin = useCallback((groupId: string) => { animateLayout(); pinGroup(groupId); }, [pinGroup]);
   const handleGroupPressEdit = useCallback((groupId: string) => {
     const group = useTaskGroupStore.getState().getGroupById(groupId);
     if (!group) return;
@@ -4472,7 +4473,7 @@ export function TodayScreen() {
               groupTasks(ids, title, category);
               exitSelection();
             }}
-            onTogglePin={() => { bulkTogglePin(Array.from(selectedIds)); exitSelection(); }}
+            onTogglePin={() => { animateLayout(); bulkTogglePin(Array.from(selectedIds)); exitSelection(); }}
             allPinned={selectedIds.size > 0 && Array.from(selectedIds).every(
               id => allTasks.find(t => t.id === id)?.pinned,
             )}
