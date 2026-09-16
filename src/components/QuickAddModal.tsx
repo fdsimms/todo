@@ -1261,7 +1261,7 @@ export function QuickAddModal({
     if (archivedMatch) {
       Alert.alert(
         'Resume archived task?',
-        `You archived "${archivedMatch.title}" a while back. Resume it instead of creating a new one? History and stats carry over, but the streak restarts.`,
+        `You archived "${archivedMatch.title}" a while ago. Resume it instead of creating a new one? History and stats carry over, but the streak restarts.`,
         [
           { text: 'Create new', onPress: () => createTask(finalTitle) },
           {

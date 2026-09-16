@@ -385,7 +385,7 @@ export function describeShopCoverage(entry: ShopCoverage, total: number): string
         ? absent > 0
           ? 'Nothing on record here to go on'
           : 'Nothing on record here yet'
-        : 'None of your list seen here'
+        : 'Nothing on your list has been bought here'
       : known === total
         ? `All ${total} seen here`
         : `${known} of ${total} seen here`;

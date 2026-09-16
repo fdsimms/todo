@@ -203,7 +203,7 @@ export function SavedViewDetailScreen() {
         <EmptyState
           icon="bookmark-outline"
           title="This view is gone"
-          subtitle="It was deleted. Your tasks are untouched — a view only ever filtered them."
+          subtitle="It was deleted. Your tasks are unchanged."
         />
       </View>
     );

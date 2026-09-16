@@ -559,7 +559,7 @@ export function RecipeNutritionSheet({ visible, reading, onClose }: Props) {
               </View>
             ))}
             <Text style={styles.hint}>
-              Marked "don't count this" — left out of the total above on purpose, not missing
+              Marked "don't count this", so it's left out of the total above rather than missing
               any figures.
             </Text>
           </View>

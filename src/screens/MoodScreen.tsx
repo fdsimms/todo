@@ -533,18 +533,18 @@ export function MoodScreen() {
                 <View
                   style={styles.splitCell}
                   accessible
-                  accessibilityLabel={`${completion.completedOnGoodDays.toFixed(1)} tasks finished a day when your mood was good`}
+                  accessibilityLabel={`${completion.completedOnGoodDays.toFixed(1)} tasks finished on days when your mood was good`}
                 >
                   <Text style={styles.splitValue}>{completion.completedOnGoodDays.toFixed(1)}</Text>
-                  <Text style={styles.splitLabel}>a day when good</Text>
+                  <Text style={styles.splitLabel}>on good days</Text>
                 </View>
                 <View
                   style={styles.splitCell}
                   accessible
-                  accessibilityLabel={`${completion.completedOnLowDays.toFixed(1)} tasks finished a day when your mood was low`}
+                  accessibilityLabel={`${completion.completedOnLowDays.toFixed(1)} tasks finished on days when your mood was low`}
                 >
                   <Text style={styles.splitValue}>{completion.completedOnLowDays.toFixed(1)}</Text>
-                  <Text style={styles.splitLabel}>a day when low</Text>
+                  <Text style={styles.splitLabel}>on low days</Text>
                 </View>
               </View>
             )}

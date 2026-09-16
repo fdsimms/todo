@@ -161,7 +161,7 @@ export function TaskBreakdownSheet({ visible, taskId, onClose }: Props) {
         ) : error ? (
           <EmptyState
             icon="cloud-offline-outline"
-            title="Couldn’t work out the steps"
+            title="Couldn’t figure out the steps"
             subtitle={error}
             actionLabel="Try again"
             onAction={load}

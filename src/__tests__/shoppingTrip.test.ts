@@ -473,7 +473,7 @@ describe('describeShopCoverage', () => {
   });
 
   it('never claims a store lacks the list — only that nothing was seen', () => {
-    expect(describeShopCoverage(entry(0), 12)).toBe('None of your list seen here');
+    expect(describeShopCoverage(entry(0), 12)).toBe('Nothing on your list has been bought here');
   });
 
   it('distinguishes a store the app knows nothing about', () => {

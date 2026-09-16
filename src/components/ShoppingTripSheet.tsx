@@ -615,7 +615,7 @@ export function ShoppingTripSheet({ visible, onClose, onCreate, onStart, intent 
                 />
               )}
               <Text style={styles.footerNote}>
-                These counts are only what you’ve bought or noted. A store may well carry more.
+                These counts are only what you’ve bought or noted. A store may carry more.
               </Text>
             </View>
           )}

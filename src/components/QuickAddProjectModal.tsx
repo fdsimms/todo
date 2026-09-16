@@ -191,7 +191,7 @@ export function QuickAddProjectModal({
     if (archivedMatch) {
       Alert.alert(
         'Restore archived project?',
-        `You archived "${archivedMatch.title}" a while back. Restore it instead of starting a new one? Its tasks and progress come back with it.`,
+        `You archived "${archivedMatch.title}" a while ago. Restore it instead of starting a new one? Its tasks and progress come back with it.`,
         [
           { text: 'Create new', onPress: () => create(finalTitle) },
           {

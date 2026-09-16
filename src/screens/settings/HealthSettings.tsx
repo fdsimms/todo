@@ -456,7 +456,7 @@ export function HealthSettings() {
         icon="flag-outline"
         iconColor={weightGoal !== null ? colors.accent : undefined}
         label="Weight goal"
-        hint="Set a target weight and a rate, and work out a daily calorie figure."
+        hint="Set a target weight and a rate, and calculate a daily calorie figure."
         value={weightGoal === null
           ? 'None'
           : goalDirection(weightGoal) === 'maintain'

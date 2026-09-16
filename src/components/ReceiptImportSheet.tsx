@@ -626,7 +626,7 @@ export function ReceiptImportSheet({ visible, onClose, onApply, context }: Props
       <Text style={styles.label}>WHEN DID YOU SHOP?</Text>
       <Text style={styles.hint}>
         Everything checked gets dated when the trip actually happened, and any use-by day it
-        starts is worked out from there.
+        starts is calculated from there.
       </Text>
       <View style={styles.dateSection}>
         <TouchableOpacity
