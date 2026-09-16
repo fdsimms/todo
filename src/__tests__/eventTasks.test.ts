@@ -3,6 +3,7 @@ import {
   EVENT_MATCH_MIN_LENGTH,
   defaultEventRules,
   describeEventRule,
+  describeRuleMatches,
   eventIsRuleEligible,
   eventOccurrenceKey,
   eventTaskRuleIdOf,
@@ -14,6 +15,7 @@ import {
   parseHandledEventTasks,
   pruneHandledEventTasks,
   ruleMatchesTitle,
+  summarizeRuleAgainstEvents,
 } from '../utils/eventTasks';
 import { readFileSync } from 'fs';
 import { join } from 'path';
@@ -319,5 +321,165 @@ describe('describeEventRule', () => {
 
   it('says so when a rule has no cue yet', () => {
     expect(describeEventRule(rule({ match: '' }))).toBe('"anything" · same day');
+  });
+});
+
+// ─── plural tolerance ────────────────────────────────────────────────────────
+
+// The one widening of `ruleMatchesTitle`, and the case that motivated the
+// whole feature: "dentists" typed into a rule against "Dentist" on the
+// calendar used to be silence, with nothing anywhere saying why.
+describe('ruleMatchesTitle and plurals', () => {
+  it('fires a singular cue on a plural title', () => {
+    expect(ruleMatchesTitle(rule({ match: 'dentist' }), 'Dentists at 4')).toBe(true);
+  });
+
+  it('fires a plural cue on a singular title', () => {
+    expect(ruleMatchesTitle(rule({ match: 'dentists' }), 'Dentist checkup')).toBe(true);
+  });
+
+  it('handles the endings that are not a bare -s', () => {
+    expect(ruleMatchesTitle(rule({ match: 'class' }), 'Pottery classes')).toBe(true);
+    expect(ruleMatchesTitle(rule({ match: 'berries' }), 'Pick berry at the farm')).toBe(true);
+    expect(ruleMatchesTitle(rule({ match: 'box' }), 'Boxes arrive')).toBe(true);
+  });
+
+  // pluralKeyVariants varies the last word only, which is what a multi-word
+  // cue needs: "parent evening" pluralizes to "parent evenings", never
+  // "parents evening".
+  it('pluralizes the last word of a multi-word cue', () => {
+    expect(ruleMatchesTitle(rule({ match: 'parent evening' }), 'Parent evenings')).toBe(true);
+    expect(ruleMatchesTitle(rule({ match: 'parent evening' }), 'Parents evening')).toBe(false);
+  });
+
+  // The floor still holds: a stem shorter than the minimum cue is not a cue,
+  // so "bus" must not become "bu" and match half the calendar.
+  it('does not stem below the cue floor', () => {
+    expect(ruleMatchesTitle(rule({ match: 'bus' }), 'Bu ride')).toBe(false);
+    expect(ruleMatchesTitle(rule({ match: 'bus' }), 'Bus to the airport')).toBe(true);
+  });
+
+  // Plural tolerance is not fuzziness. A word that merely starts the same is
+  // still not a match, which is what keeps the rule predictable.
+  it('still refuses a word that only starts the same', () => {
+    expect(ruleMatchesTitle(rule({ match: 'gym' }), 'Gymnastics recital')).toBe(false);
+    expect(ruleMatchesTitle(rule({ match: 'dentist' }), 'Dentistry school talk')).toBe(false);
+  });
+
+  // The haystack was already flattened; the cue was not, so a cue typed with a
+  // double space could never match anything.
+  it('flattens whitespace in the cue as well as the title', () => {
+    expect(ruleMatchesTitle(rule({ match: 'parent  evening' }), 'Parent evening')).toBe(true);
+  });
+});
+
+// ─── summarizeRuleAgainstEvents ──────────────────────────────────────────────
+
+describe('summarizeRuleAgainstEvents', () => {
+  const now = new Date('2026-09-18T09:00:00.000Z');
+
+  it('counts every eligible event a cue matches, earliest first', () => {
+    const events = [
+      event({ id: 'b', title: 'Flight home', start: '2026-09-25T10:00:00.000Z' }),
+      event({ id: 'a', title: 'Flight to SFO', start: '2026-09-20T14:00:00.000Z' }),
+    ];
+    const summary = summarizeRuleAgainstEvents(rule({ match: 'flight' }), events, now);
+    expect(summary.matched.map(e => e.id)).toEqual(['a', 'b']);
+    expect(summary.nearMisses).toEqual([]);
+  });
+
+  // The same gate matchedEventTasks applies, so the count reports on exactly
+  // the events the rule could ever fire on.
+  it('ignores events the rule could never fire on', () => {
+    const events = [
+      event({ title: 'Flight home', start: '2026-09-18T08:00:00.000Z' }), // already started
+      event({ title: 'Flight to SFO', status: 'canceled' }),
+    ];
+    expect(summarizeRuleAgainstEvents(rule({ match: 'flight' }), events, now).matched).toEqual([]);
+  });
+
+  // Deliberately not filtered by leadDays or the handled record: this answers
+  // "does this cue find anything", not "is a task due today". Subtracting
+  // already-written tasks would make a working rule read as a broken one the
+  // day after it fired.
+  it('ignores the lead time', () => {
+    const summary = summarizeRuleAgainstEvents(
+      rule({ match: 'flight', leadDays: 14 }), [event()], now,
+    );
+    expect(summary.matched).toHaveLength(1);
+  });
+
+  it('reports a one-edit near miss', () => {
+    const events = [event({ title: 'Dentsit checkup' })];
+    const summary = summarizeRuleAgainstEvents(rule({ match: 'dentist' }), events, now);
+    expect(summary.matched).toEqual([]);
+    expect(summary.nearMisses.map(n => n.word)).toEqual(['dentsit']);
+  });
+
+  // The case the whole-word rule refuses on purpose. It stays refused; this is
+  // how somebody finds out about it rather than wondering.
+  it('reports a prefix near miss, which is what whole-word matching refuses', () => {
+    const events = [event({ title: 'Gymnastics recital' })];
+    const summary = summarizeRuleAgainstEvents(rule({ match: 'gym' }), events, now);
+    expect(summary.nearMisses.map(n => n.word)).toEqual(['gymnastics']);
+  });
+
+  // A plural is a match, not a near miss, so it must not be reported twice.
+  it('does not report a match as a near miss', () => {
+    const events = [event({ title: 'Dentists at 4' })];
+    const summary = summarizeRuleAgainstEvents(rule({ match: 'dentist' }), events, now);
+    expect(summary.matched).toHaveLength(1);
+    expect(summary.nearMisses).toEqual([]);
+  });
+
+  // One edit is too much of a three-letter word: "ham"/"jam" are both real.
+  it('will not call a short word a near miss on one edit alone', () => {
+    const events = [event({ title: 'Jam session' })];
+    expect(summarizeRuleAgainstEvents(rule({ match: 'ham' }), events, now).nearMisses).toEqual([]);
+  });
+
+  it('compares a multi-word cue against runs of the same length', () => {
+    const events = [event({ title: 'Annual parent evenings meeting' })];
+    const summary = summarizeRuleAgainstEvents(rule({ match: 'parent evening' }), events, now);
+    expect(summary.matched).toHaveLength(1);
+  });
+
+  // A half-typed rule, and the blank one "New rule" creates, are not mistakes.
+  it('reports nothing at all for a cue below the floor', () => {
+    const summary = summarizeRuleAgainstEvents(rule({ match: 'de' }), [event()], now);
+    expect(summary.cue).toBeNull();
+    expect(describeRuleMatches(summary)).toBeNull();
+  });
+
+  it('summarizes a disabled rule the same as an enabled one', () => {
+    const events = [event({ title: 'Flight to SFO' })];
+    const off = summarizeRuleAgainstEvents(rule({ match: 'flight', enabled: false }), events, now);
+    expect(off.matched).toHaveLength(1);
+  });
+});
+
+describe('describeRuleMatches', () => {
+  const now = new Date('2026-09-18T09:00:00.000Z');
+  const summarize = (match: string, titles: string[]) => summarizeRuleAgainstEvents(
+    rule({ match }),
+    titles.map((title, i) => event({ id: `e${i}`, title })),
+    now,
+  );
+
+  it('counts in the singular and the plural', () => {
+    expect(describeRuleMatches(summarize('flight', ['Flight to SFO'])))
+      .toBe('1 upcoming event matches');
+    expect(describeRuleMatches(summarize('flight', ['Flight to SFO', 'Flight home'])))
+      .toBe('2 upcoming events match');
+  });
+
+  it('names the closest event when nothing matched', () => {
+    expect(describeRuleMatches(summarize('dentist', ['Dentsit checkup'])))
+      .toBe('No upcoming events match. Closest: "Dentsit checkup"');
+  });
+
+  it('says so plainly when there is nothing close either', () => {
+    expect(describeRuleMatches(summarize('dentist', ['Standup'])))
+      .toBe('No upcoming events match');
   });
 });

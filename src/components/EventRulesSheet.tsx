@@ -2,6 +2,8 @@ import React, { useMemo } from 'react';
 import { StyleSheet, Text, TextInput, View } from 'react-native';
 import { useShallow } from 'zustand/react/shallow';
 import type { EventTaskRule } from '../types';
+import { useCalendarStore } from '../store/useCalendarStore';
+import { useDemoStore } from '../store/useDemoStore';
 import { useSettingsStore } from '../store/useSettingsStore';
 import { useColors } from '../theme/ThemeContext';
 import { font, fontWeight, radius, spacing, type Colors } from '../theme';
@@ -12,6 +14,8 @@ import {
   EVENT_MATCH_MIN_LENGTH,
   EVENT_RULE_TITLE_MAX_LENGTH,
   describeEventRule,
+  describeRuleMatches,
+  summarizeRuleAgainstEvents,
 } from '../utils/eventTasks';
 import { CountStepper } from './CountStepper';
 import { RuleListSheet } from './RuleListSheet';
@@ -31,6 +35,17 @@ interface Props {
  * separate questions, where a weather rule's condition and a screen time
  * rule's threshold are each the whole of what a rule says.
  *
+ * **Each row says what its rule currently finds**, which is the one thing
+ * this sheet does that the other two don't need. A weather rule's condition is
+ * checked against a forecast that changes daily, so "it hasn't fired" carries
+ * no information; an event rule is checked against a word the user typed
+ * against words they also typed, where "it hasn't fired" almost always means
+ * the two don't agree. Without the count, a cue with a typo in it and a cue
+ * with nothing to match are the same silence — which is exactly how "dentists"
+ * sits in Settings for a year not fetching the insurance card. See
+ * `summarizeRuleAgainstEvents`; the near miss under a zero count is an offer,
+ * never an edit.
+ *
  * **There is no permission card above the list**, unlike both of the others.
  * This reads nothing the app was not already reading for Today's own event
  * rows, so the only thing that can stop a rule firing is the calendar read
@@ -42,6 +57,36 @@ export function EventRulesSheet({ visible, onClose }: Props) {
   const styles = useMemo(() => makeStyles(colors), [colors]);
   const rules = useSettingsStore(useShallow(s => s.eventRules));
   const setRules = useSettingsStore(s => s.setEventRules);
+  const calendarReadEnabled = useSettingsStore(s => s.calendarReadEnabled);
+  const events = useCalendarStore(s => s.events);
+  const calendarLoaded = useCalendarStore(s => s.loaded);
+  const demoActive = useDemoStore(s => s.active);
+
+  // Three reasons to say nothing rather than "no upcoming events match", and
+  // they are the same distinction `dayBusyKnown` draws on the Calendar screen:
+  // a window nobody has read, a feature switched off, and demo mode's fiction
+  // are all cases where the app has no standing to report an absence. A count
+  // is only honest when the read behind it really happened.
+  const canReport = calendarReadEnabled && calendarLoaded && !demoActive;
+
+  // `now` is captured per render rather than per rule so every row is judged
+  // against one instant, and so a rule whose event starts mid-scroll doesn't
+  // drop out from under the row above it. Eligibility is a plain
+  // is-it-in-the-future test, so the grace window doesn't apply here — see
+  // `eventIsRuleEligible`.
+  const rowNote = useMemo(() => {
+    if (!canReport) return undefined;
+    const now = new Date();
+    return (rule: EventTaskRule) => {
+      const summary = summarizeRuleAgainstEvents(rule, events, now);
+      const text = describeRuleMatches(summary);
+      if (!text) return null;
+      // Only a rule that is on and finding nothing is worth tinting. A rule
+      // switched off is not failing at anything, and one that matches is fine.
+      const tone = rule.enabled && summary.matched.length === 0 ? 'warn' as const : 'quiet' as const;
+      return { text, tone };
+    };
+  }, [canReport, events]);
 
   return (
     <RuleListSheet<EventTaskRule>
@@ -62,6 +107,7 @@ export function EventRulesSheet({ visible, onClose }: Props) {
         enabled: true,
       })}
       describeRule={describeEventRule}
+      rowNote={rowNote}
       editorLabel="When an event's title has"
       renderEditor={(rule, update) => (
         <>

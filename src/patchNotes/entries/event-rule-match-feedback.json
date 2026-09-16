@@ -1,0 +1,4 @@
+{
+  "message": "Event rules now tell you how many upcoming events they match, and name the closest one when nothing does. They also match singular and plural, so a rule written \"dentists\" still finds \"Dentist\".",
+  "date": "2026-09-16"
+}
