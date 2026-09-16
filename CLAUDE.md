@@ -453,7 +453,6 @@ file: the two maps are indexes, not write-ups.
 | search ranking and the quick-search sheet | `src/utils/fuzzySearch.ts` + `src/utils/quickSearch.ts` |
 | the numbers on the Stats screen | `src/utils/stats.ts` (+ `cookingStats.ts`, `nutritionStats.ts`) |
 | planning a week of work | `src/utils/weekPlan.ts` |
-| the wheel above the tab bar, and what it holds | `src/utils/featureWheel.ts` (geometry + hit test) + `src/components/FeatureWheel.tsx` + `wheelSlots` in `navHubs.ts` + `featureWheelRoutes`. Read the geometry note first: a full 360° ring cannot be placed on a phone, which is why it is a fan, and the slot cap is a property of the reachable arc rather than a product call |
 | anything not listed here, in the logic layer | `docs/module-map.md` — every logic module and what it exports |
 | which screen shows a component, or what's on a screen | `docs/screen-map.md` — both directions, generated from the JSX |
 | how big a file is before you open it, and how many suites there are | `docs/repo-stats.md` — generated from the tree |
@@ -863,32 +862,6 @@ Four things follow from that and are worth not re-deriving:
 - **The drawer has a find field, and it is not optional decoration.** A hub hides four or five destinations behind one label, so without it, consolidating the menu would have made "Drift" strictly *harder* to reach than it was as its own row. `menuDestinations` flattens the same rows the menu draws into the index, so a screen the menu is hiding is not findable either — a result opening a feature you switched off is a way back into it that the switch didn't intend.
 - **Route sets are derived, not listed twice.** `DRAWER_TABS`, `RESTORABLE_SCREENS` and `KITCHEN_SCREENS` all come off `NAV_MENU_ROWS`/`NAV_HUBS`. Adding a screen to the menu is one edit.
 - **A hub row drops out when every member is gone**, and simplified mode is the only thing that can do that today. Pantry's disappearance under that mode used to be a hand-written special case in `initialScreenFromSettings` plus a second `featureHidden` call inside the pills; it is now just `screen: 'Kitchen'` on the `pantryTracking` feature, so one gate answers for the menu row, the pill and the cold-launch restore alike.
-
-**The wheel opens from its own small handle above the tab bar, and is a shortcut over the menu,
-never a replacement for it.** Pressing the handle and dragging blooms `FeatureWheel`, a fan of up
-to six slots selected by *direction*; a plain tap still switches tab, and a plain tap on More
-still opens the drawer with everything in it. That split is the whole licence for the feature: a
-flick-and-release cannot be driven by VoiceOver or Switch Control and asks for fine motor control
-a list of rows doesn't, so nothing may ever be reachable only that way — the handle is hidden from
-the accessibility tree for the same reason, and a plain tap on it does nothing. Four things follow
-and are worth not re-deriving. **It used to live on the tab bar itself** — pressing any tab and
-dragging, with a hold-before-drag delay added later so a fast tap that drifted a few pixels didn't
-bloom it unasked — which needed the zone to **claim the bar's touches outright and re-issue each
-tap itself**, since responder negotiation runs over the hit view and its *ancestors* and the tab
-buttons were siblings; declining would have dropped the press. Moving the gesture to its own
-handle removed that arbitration at the root: nothing else lives there, so there's nothing to
-protect a tap on and nothing to hold-delay a drag against, and the tab bar's own touch handling is
-untouched by this component. It blooms from that **fixed, centered handle**, with `openLeft`
-decided by **which way the drag first moves** rather than by where the touch landed — a handle
-narrow enough to be one small target puts every touch in roughly the same place, so the side
-pressed can't say which way to open, but the direction pulled can; `wheelGeometry` still gets
-handed half the screen as the room it has either way, the same accommodation a middle-tab anchor
-needed before. **A slot can be a whole hub**, stored in the same `string[]` as `hub:<id>`, where
-holding for `interaction.delayLongPress` swaps the arc for its members and releasing without
-waiting goes where its menu row goes. And it is **not a `Modal`**, which is what keeps the drag
-alive (#1182). What it holds comes from `navHubs.ts` through `wheelSlots`, so simplified mode and
-`kitchenEnabled` take a slot away here exactly as they take a row out of the menu, and the order
-is the user's own and is never re-ranked — the angle is the thing somebody learns.
 
 `StuckScreen` is the merge of what were the Waiting and Drift rows — both were lists of tasks held out of the daily lists, differing only in whether something else or you are holding them, and `DriftScreen` opened by saying it was "the same shape and same reasoning as WaitingScreen". `BackfillScreen` briefly moved to Settings ("Data & reset" → Fill in) as a pushed `RootStack` card, on the reasoning that it fills in empty fields across tasks, categories, projects, people and grocery items rather than being a task list — but that buried a feature people reach for often behind four taps, so it's a standalone menu row again (a hidden tab, same as Stuck and Calendar), shown unconditionally in simplified mode as one of the "lens" screens (see `simpleMode.ts`).
 

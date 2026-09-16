@@ -86,7 +86,6 @@ export function SettingsScreen() {
     if (settings.cookRecapEnabled) on.add('cookRecapEnabled');
     if (settings.mealLogPrompt) on.add('mealLogPrompt');
     if (settings.onDeviceAiEnabled) on.add('onDeviceAiEnabled');
-    if (settings.featureWheelEnabled) on.add('featureWheelEnabled');
     // Through the same rule the rows themselves use, so a generator whose read
     // is switched off takes its "File them under" row out of search too.
     for (const spec of GENERATED_KIND_LIST) {
