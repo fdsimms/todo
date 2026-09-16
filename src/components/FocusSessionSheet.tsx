@@ -34,6 +34,7 @@ import {
 } from '../utils/focusPlan';
 import { useFocusStore } from '../store/useFocusStore';
 import { useTaskStore } from '../store/useTaskStore';
+import { useSettingsStore } from '../store/useSettingsStore';
 import { useFocusSession } from '../hooks/useFocusSession';
 import { useAnswerFirstCompletion } from '../hooks/useAnswerFirstCompletion';
 import { asksOnCompletion } from '../utils/deliverables';
@@ -81,6 +82,7 @@ export function FocusSessionSheet({ visible, onClose }: Props) {
   const navigation = useNavigation();
 
   const { session, now } = useFocusSession();
+  const hideTimers = useSettingsStore(s => s.focusHideTimers);
   const tasks = useTaskStore(s => s.tasks);
   const completeTask = useTaskStore(s => s.completeTask);
   const setMeasuredTime = useTaskStore(s => s.setMeasuredTime);
@@ -499,15 +501,25 @@ export function FocusSessionSheet({ visible, onClose }: Props) {
 
           {/* The over-run counts up, and says so with a sign: the caption
               below carries "over 15m", but the number is what the eye lands
-              on and 2:07 alone reads as time remaining. */}
-          <Text style={[styles.clock, stepDone && styles.clockDone]}>
-            {stepDone ? `+${formatStopwatch(overBy)}` : formatStopwatch(remaining)}
-          </Text>
-          <Text style={styles.clockCaption}>
-            {stepDone
-              ? `over ${formatDuration(step.minutes)}`
-              : `of ${formatDuration(step.minutes)}${running ? '' : ' · paused'}`}
-          </Text>
+              on and 2:07 alone reads as time remaining. Hidden by
+              focusHideTimers for someone who finds a running countdown adds
+              pressure rather than helping — the step still ends and chimes
+              on its own schedule underneath either way. */}
+          {!hideTimers && (
+            <>
+              <Text style={[styles.clock, stepDone && styles.clockDone]}>
+                {stepDone ? `+${formatStopwatch(overBy)}` : formatStopwatch(remaining)}
+              </Text>
+              <Text style={styles.clockCaption}>
+                {stepDone
+                  ? `over ${formatDuration(step.minutes)}`
+                  : `of ${formatDuration(step.minutes)}${running ? '' : ' · paused'}`}
+              </Text>
+            </>
+          )}
+          {hideTimers && !running && (
+            <Text style={styles.clockCaption}>Paused</Text>
+          )}
 
           <View style={styles.progressWrap}>
             <ProgressBar progress={focusStepProgress(session, now)} />

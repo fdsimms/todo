@@ -225,6 +225,23 @@ here is the same three files those two need.
   *and* the session sheet opens: the store can answer "pause" or "next" on its
   own, and the sheet arriving on top is how you see that it did.
 
+## Hiding the countdown
+
+`focusHideTimers` (Settings) hides the countdown clock everywhere a session
+draws one: the big number and progress-bar-adjacent clock caption in
+`FocusSessionSheet`, the strip's clock on `FocusBar`, and — via a `hideTimers`
+field riding along in `FocusRun`/`FocusActivityAttributes` — every
+`FocusClockView` call site in the Live Activity. It is display-only: the
+underlying clock (`stepStartedAt`/`stepElapsedSeconds`) is untouched, so the
+chime still fires, over-run still counts internally, and "step 3 of 9" and
+every other non-time figure are unaffected. Someone who finds a visible
+countdown adds pressure gets the same session with the number taken away,
+not a different mechanism.
+
+Kept separate from `focusLiveActivity` (which turns the whole Lock Screen
+presence off) — turning off the number is a different want from turning off
+the presence, and the two compose freely.
+
 ## One mechanism for a task leaving the plan
 
 A task can stop being workable three ways: completed from inside the session,

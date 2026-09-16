@@ -308,6 +308,20 @@ describe('buildFocusRun', () => {
     });
   });
 
+  describe('hideTimers', () => {
+    it('defaults to false when the option is omitted', () => {
+      const run = buildFocusRun(makeSession(), TASKS, { enabled: true });
+      expect(run?.hideTimers).toBe(false);
+    });
+
+    it('carries the setting through to the payload, and into the key', () => {
+      const shown = buildFocusRun(makeSession(), TASKS, { enabled: true, hideTimers: false });
+      const hidden = buildFocusRun(makeSession(), TASKS, { enabled: true, hideTimers: true });
+      expect(hidden?.hideTimers).toBe(true);
+      expect(hidden?.key).not.toBe(shown?.key);
+    });
+  });
+
   describe('the advance button', () => {
     it('names the next task', () => {
       const run = buildFocusRun(makeSession({ stepIndex: 1 }), TASKS, { enabled: true });

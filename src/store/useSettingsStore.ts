@@ -549,6 +549,14 @@ interface SettingsStore {
   // Same idea again, for the focus session in flight (useFocusStore.ts) — see
   // src/utils/focusLiveActivity.ts. iOS 17+ only, defaults on.
   focusLiveActivity: boolean;
+  // Hides the countdown clock everywhere a focus session shows one — the big
+  // clock and progress bar in FocusSessionSheet, the strip on Today
+  // (FocusBar), and the Lock Screen / Dynamic Island Live Activity. The step
+  // still runs on the same clock underneath (the chime, the over-run, "step 3
+  // of 9") — this only stops a number from being the thing on screen, for
+  // someone who finds watching a countdown add pressure to the work rather
+  // than help it. Off by default, like every other display preference here.
+  focusHideTimers: boolean;
   // Whether the app shows the groceries / recipes / meal plan trio at all —
   // one switch for all three because they aren't separable: a meal plan entry
   // points at a recipe by id, and a recipe reaches the grocery catalog by
@@ -1603,6 +1611,7 @@ interface SettingsStore {
   setTimerLiveActivity: (on: boolean) => void;
   setTripLiveActivity: (on: boolean) => void;
   setFocusLiveActivity: (on: boolean) => void;
+  setFocusHideTimers: (on: boolean) => void;
   setKitchenEnabled: (on: boolean) => void;
   setFeatureWheelEnabled: (on: boolean) => void;
   setFeatureWheelRoutes: (routes: string[]) => void;
@@ -1779,6 +1788,7 @@ const DEFAULT_SETTINGS = {
   timerLiveActivity: true,
   tripLiveActivity: true,
   focusLiveActivity: true,
+  focusHideTimers: false,
   collapsedCategories: [] as string[],
   collapsedRecipeSections: [] as string[],
   collapsedGroceryGroups: [] as string[],
@@ -2194,6 +2204,7 @@ export const useSettingsStore = create<SettingsStore>((set, get) => ({
   timerLiveActivity: true,
   tripLiveActivity: true,
   focusLiveActivity: true,
+  focusHideTimers: false,
   collapsedCategories: [],
   collapsedRecipeSections: [],
   collapsedGroceryGroups: [],
@@ -2437,6 +2448,7 @@ export const useSettingsStore = create<SettingsStore>((set, get) => ({
     const tripLiveActivity = dbGetSetting('tripLiveActivity') !== 'false';
     // And again for the focus session's.
     const focusLiveActivity = dbGetSetting('focusLiveActivity') !== 'false';
+    const focusHideTimers = dbGetSetting('focusHideTimers') === 'true';
     // Same `!== 'false'`: the groceries/recipes/meal plan area is on unless
     // someone has turned it off, so no existing install loses it.
     const kitchenEnabled = dbGetSetting('kitchenEnabled') !== 'false';
@@ -2878,6 +2890,7 @@ export const useSettingsStore = create<SettingsStore>((set, get) => ({
       filterHasReminder,
       filterPriorities,
       focusDefaultWorkMinutes,
+      focusHideTimers,
       focusLiveActivity,
       focusLongRestEvery,
       focusLongRestMinutes,
@@ -3819,6 +3832,11 @@ export const useSettingsStore = create<SettingsStore>((set, get) => ({
   setFocusLiveActivity(on: boolean) {
     dbSetSetting('focusLiveActivity', on ? 'true' : 'false');
     set({ focusLiveActivity: on });
+  },
+
+  setFocusHideTimers(on: boolean) {
+    dbSetSetting('focusHideTimers', on ? 'true' : 'false');
+    set({ focusHideTimers: on });
   },
 
   // Nothing else is written here on purpose. Every kitchen setting downstream

@@ -94,6 +94,8 @@ export function TasksProjectsSettings() {
   const setFocusLongRestMinutes = useSettingsStore(s => s.setFocusLongRestMinutes);
   const focusLiveActivity = useSettingsStore(s => s.focusLiveActivity);
   const setFocusLiveActivity = useSettingsStore(s => s.setFocusLiveActivity);
+  const focusHideTimers = useSettingsStore(s => s.focusHideTimers);
+  const setFocusHideTimers = useSettingsStore(s => s.setFocusHideTimers);
   const noBreaks = focusRestsDisabled({ focusRestAfterTasks, focusRestAfterMinutes });
   const setPostponeCheckThreshold = useSettingsStore(s => s.setPostponeCheckThreshold);
   const hideCategories = useSettingsStore(s => s.hideCategories);
@@ -652,6 +654,19 @@ export function TasksProjectsSettings() {
             )}
           </>
         )}
+
+        <View style={styles.sep} />
+        <SettingsRow
+          entryId="focusHideTimers"
+          icon="eye-off-outline"
+          iconColor={focusHideTimers ? colors.accent : undefined}
+          label="Hide timers while focusing"
+          hint={focusHideTimers
+            ? 'The countdown is hidden everywhere a session shows one — the running session screen, the strip on Today, and the Lock Screen. The step still ends and chimes on schedule.'
+            : 'The countdown shows everywhere a session runs'}
+          toggle={focusHideTimers}
+          onPress={() => setFocusHideTimers(!focusHideTimers)}
+        />
 
         {Platform.OS === 'ios' && (
           <>

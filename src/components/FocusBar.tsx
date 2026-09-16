@@ -18,6 +18,7 @@ import {
 import { useFocusSession } from '../hooks/useFocusSession';
 import { useFocusStore } from '../store/useFocusStore';
 import { useTaskStore } from '../store/useTaskStore';
+import { useSettingsStore } from '../store/useSettingsStore';
 
 interface Props {
   /** Reopens the session sheet. */
@@ -44,6 +45,7 @@ export function FocusBar({ onOpen }: Props) {
   const styles = useMemo(() => makeStyles(colors), [colors]);
 
   const { session, now } = useFocusSession();
+  const hideTimers = useSettingsStore(s => s.focusHideTimers);
   const tasks = useTaskStore(s => s.tasks);
   const pause = useFocusStore(s => s.pause);
   const resume = useFocusStore(s => s.resume);
@@ -73,8 +75,10 @@ export function FocusBar({ onOpen }: Props) {
     : null;
 
   // An over-run step counts up rather than sitting at 0:00, so the strip says
-  // how long it's been waiting on you rather than just that it is.
-  const clock = finished
+  // how long it's been waiting on you rather than just that it is. Hidden by
+  // focusHideTimers, same as the session sheet's own clock — the pause
+  // control and the task title still work with no number in the strip.
+  const clock = finished || hideTimers
     ? null
     : stepDone
       ? `+${formatStopwatch(-remaining)}`
@@ -93,7 +97,7 @@ export function FocusBar({ onOpen }: Props) {
         accessibilityLabel={
           finished
             ? 'Focus session finished. Open it'
-            : `Focusing on ${label}${quotaCount ? `, ${quotaCount} logged` : ''}, ${clock} ${stepDone ? 'over' : 'left'}. Open the session`
+            : `Focusing on ${label}${quotaCount ? `, ${quotaCount} logged` : ''}${clock ? `, ${clock} ${stepDone ? 'over' : 'left'}` : ''}. Open the session`
         }
       >
         <Ionicons
