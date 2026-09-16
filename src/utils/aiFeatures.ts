@@ -7,13 +7,13 @@ export type AiFeatureId =
   | 'taskBreakdown' | 'templateSuggestions' | 'projectTaskSuggestions' | 'groceryAisles'
   | 'recipeExtraction' | 'mealIdeas' | 'substitutes' | 'receiptImport' | 'calendarImport'
   | 'cookHelp' | 'nutritionEstimate' | 'nutritionLabelPhoto' | 'backfillSuggestions'
-  | 'cookbookChecklist';
+  | 'cookbookChecklist' | 'recipeNutritionEstimate';
 
 export const AI_FEATURE_IDS: AiFeatureId[] = [
   'taskBreakdown', 'templateSuggestions', 'projectTaskSuggestions', 'groceryAisles',
   'recipeExtraction', 'mealIdeas', 'substitutes', 'receiptImport', 'calendarImport',
   'cookHelp', 'nutritionEstimate', 'nutritionLabelPhoto', 'backfillSuggestions',
-  'cookbookChecklist',
+  'cookbookChecklist', 'recipeNutritionEstimate',
 ];
 
 export type AiModelId = 'claude-haiku-4-5-20251001' | 'claude-sonnet-5' | 'claude-opus-5';
@@ -146,6 +146,15 @@ export const AI_FEATURES: AiFeatureMeta[] = [
     label: 'Cookbook checklist from a photo',
     hint: 'Reads a photo of a cookbook\'s table of contents into a checklist of its recipes',
   },
+  {
+    id: 'recipeNutritionEstimate',
+    label: 'Estimate a recipe\'s nutrition',
+    // Offered on the recipe's own nutrition sheet only once the ingredient
+    // rollup has come back with too little to total — see
+    // `recipeNutritionEstimate.ts`.
+    hint: 'Reads a recipe\'s ingredient list into nutrition figures when too few of them have catalog data yet',
+    kitchen: true,
+  },
 ];
 
 /**
@@ -238,5 +247,10 @@ export function defaultAiFeatureConfig(): AiFeatureConfigMap {
     // recipeExtraction, so a mediocre read costs an edit rather than a wrong
     // write.
     cookbookChecklist: { enabled: true, model: DEFAULT_AI_MODEL },
+    // Sonnet for the same reason `nutritionEstimate` picked it over the
+    // default: this also wants real-world judgment about how ingredients
+    // combine (a marinade mostly poured off, a batter's rise), which is where
+    // a smaller model confabulates most confidently.
+    recipeNutritionEstimate: { enabled: true, model: 'claude-sonnet-5' },
   };
 }

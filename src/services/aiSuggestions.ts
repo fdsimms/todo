@@ -30,6 +30,9 @@ import {
   ESTIMATE_DESCRIPTION_MAX_LENGTH, MAX_CONTEXT_FOODS, MAX_ESTIMATE_QUESTIONS, readNutritionEstimate,
   type EstimateContextFood, type NutritionEstimate, type RawNutritionEstimate,
 } from '../utils/nutritionEstimate';
+import {
+  readRecipeNutritionEstimate, type RawRecipeNutritionEstimate, type RecipeNutritionEstimate,
+} from '../utils/recipeNutritionEstimate';
 import { isUnscaled } from '../utils/recipeScale';
 import {
   readSuggestions, suggestibleEstimateMinutes,
@@ -2578,6 +2581,106 @@ export async function estimateMealNutrition(
   // telling somebody the description could not be read.
   if (!estimate) throw new Error('No estimate returned');
   return estimate;
+}
+
+/** Longest ingredient line this will send, matching a recipe line's own generous cap. */
+const RECIPE_ESTIMATE_LINE_MAX_LENGTH = 160;
+/** More lines than this and the request is trimmed rather than refused — see `estimateRecipeNutrition`. */
+const MAX_RECIPE_ESTIMATE_LINES = 60;
+
+/**
+ * Estimates what a whole recipe contains, from its title and ingredient
+ * list, for the case `recipeNutrition.ts` correctly declines to total: too
+ * many lines with no catalog figures behind them yet. See
+ * `recipeNutritionEstimate.ts` for what this may and may not claim — in
+ * particular, that it is a proposal shown in the sheet and never written
+ * anywhere.
+ *
+ * `ingredientLines` is the caller's own resolved reading (`NutritionLine`'s
+ * `quantity`/`name`/`prep`, already flattened through components and swaps
+ * and with staples and excluded lines dropped) rather than the recipe's raw
+ * `ingredients`, so the model sees exactly the dish `RecipeNutritionSheet` is
+ * asking about rather than re-deriving it.
+ */
+export async function estimateRecipeNutrition(
+  title: string,
+  servings: number | null,
+  ingredientLines: readonly string[],
+): Promise<RecipeNutritionEstimate> {
+  const { apiKey, model } = requireFeature('recipeNutritionEstimate');
+
+  const lines = ingredientLines
+    .map(line => line.trim().slice(0, RECIPE_ESTIMATE_LINE_MAX_LENGTH))
+    .filter(Boolean)
+    .slice(0, MAX_RECIPE_ESTIMATE_LINES);
+  if (lines.length === 0) throw new Error('No estimate returned');
+
+  const amountsSchema = {
+    type: 'object' as const,
+    description: 'Only the nutrients you have a view on. Omit the rest rather than sending zero.',
+    properties: {
+      calorieKcal: { type: 'number', description: 'Calories (kcal)' },
+      fatG: { type: 'number', description: 'Total fat in grams' },
+      satFatG: { type: 'number', description: 'Saturated fat in grams' },
+      carbsG: { type: 'number', description: 'Total carbohydrate in grams' },
+      fiberG: { type: 'number', description: 'Dietary fiber in grams' },
+      sugarG: { type: 'number', description: 'Total sugars in grams' },
+      proteinG: { type: 'number', description: 'Protein in grams' },
+      sodiumMg: { type: 'number', description: 'Sodium in milligrams' },
+      caffeineMg: { type: 'number', description: 'Caffeine in milligrams' },
+      waterMl: { type: 'number', description: 'Water in millilitres' },
+    },
+  };
+
+  const servingsLine = servings
+    ? `It makes ${servings} serving${servings === 1 ? '' : 's'}.`
+    : "It doesn't say how many servings it makes.";
+
+  const data = await callAnthropic({
+    max_tokens: 500,
+    system: [
+      'You estimate what a whole home-cooked recipe contains, from its ingredient list, for someone whose own grocery data can\'t total it yet.',
+      'Give figures for the whole recipe as written — every ingredient line, at the quantity given — not per serving and not per 100g.',
+      'Account for cooking loss and waste where it plainly matters: a marinade mostly poured off, water that boils away, a peel or bone that isn\'t eaten. Otherwise assume the ingredients as listed are what ends up in the dish.',
+      'State only the nutrients you actually have a view on. Omit a field entirely rather than guessing a zero: an omitted nutrient reads as unknown, and a zero reads as a measurement that the dish contains none.',
+      'Set confidence honestly. A short list of plain, easily-quantified ingredients is high; a long or vaguely-quantified list ("a handful of", "to taste") is low.',
+      'Never comment on the dish. No opinion about whether it\'s healthy, heavy, large or small, no suggestion about what to change, and no advice of any kind. Return numbers and nothing else.',
+    ].join('\n'),
+    tools: [{
+      name: 'estimate_recipe',
+      description: 'Estimate the nutrition of a whole recipe from its ingredient list',
+      input_schema: {
+        type: 'object',
+        properties: {
+          amounts: amountsSchema,
+          confidence: { type: 'string', enum: ['high', 'medium', 'low'], description: 'How sure you are' },
+        },
+        required: ['amounts', 'confidence'],
+      },
+    }],
+    tool_choice: { type: 'tool', name: 'estimate_recipe' },
+    messages: [{
+      role: 'user',
+      content: `${title.trim().slice(0, TITLE_MAX_LENGTH) || 'This recipe'}. ${servingsLine}\n\nIngredients:\n${lines.map(l => `- ${l}`).join('\n')}`,
+    }],
+  }, apiKey, model);
+
+  const toolUse = data.content?.find(c => c.type === 'tool_use');
+  const estimate = readRecipeNutritionEstimate(toolUse?.input as RawRecipeNutritionEstimate | undefined);
+  if (!estimate) throw new Error('No estimate returned');
+  return estimate;
+}
+
+/**
+ * Whether `estimateRecipeNutrition` is worth offering right now — the same
+ * two checks `requireFeature('recipeNutritionEstimate')` makes, surfaced so
+ * `RecipeNutritionSheet` can decide whether to show the button at all rather
+ * than offering one that will only throw "AI feature disabled" or "no API
+ * key" at the person who taps it.
+ */
+export function recipeNutritionEstimateAvailable(): boolean {
+  const { anthropicApiKey, aiFeatureConfig } = useSettingsStore.getState();
+  return aiFeatureConfig.recipeNutritionEstimate.enabled && !!anthropicApiKey;
 }
 
 /** Whichever basis a column's own heading could state, plus "no heading". */

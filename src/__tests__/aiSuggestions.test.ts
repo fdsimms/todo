@@ -18,6 +18,8 @@ import {
   describeAIError,
   readLabelPhotoWithAi,
   nutritionLabelPhotoAiAvailable,
+  estimateRecipeNutrition,
+  recipeNutritionEstimateAvailable,
 } from '../services/aiSuggestions';
 import { MAX_MEAL_IDEAS } from '../utils/mealIdeas';
 import { LEFTOVER_KEEP_DAYS_MAX, type Task } from '../types';
@@ -35,6 +37,7 @@ const TEST_AI_FEATURE_CONFIG = {
   substitutes: { enabled: true, model: 'claude-haiku-4-5-20251001' },
   receiptImport: { enabled: true, model: 'claude-sonnet-5' },
   nutritionLabelPhoto: { enabled: true, model: 'claude-sonnet-5' },
+  recipeNutritionEstimate: { enabled: true, model: 'claude-sonnet-5' },
 };
 
 /**
@@ -2085,6 +2088,65 @@ describe('nutritionLabelPhotoAiAvailable', () => {
   it('is false with the feature switched off, even with a key', () => {
     mockSettings.aiFeatureConfig.nutritionLabelPhoto.enabled = false;
     expect(nutritionLabelPhotoAiAvailable()).toBe(false);
+  });
+});
+
+describe('recipeNutritionEstimateAvailable', () => {
+  it('is true with the feature on and a key configured', () => {
+    expect(recipeNutritionEstimateAvailable()).toBe(true);
+  });
+
+  it('is false with no key, even though the feature is on', () => {
+    mockSettings.anthropicApiKey = '';
+    expect(recipeNutritionEstimateAvailable()).toBe(false);
+  });
+
+  it('is false with the feature switched off, even with a key', () => {
+    mockSettings.aiFeatureConfig.recipeNutritionEstimate.enabled = false;
+    expect(recipeNutritionEstimateAvailable()).toBe(false);
+  });
+});
+
+describe('estimateRecipeNutrition', () => {
+  it('reads a complete reply', async () => {
+    mockFetchOnce(toolUseResponse('estimate_recipe', {
+      amounts: { calorieKcal: 1800, proteinG: 90 },
+      confidence: 'medium',
+    }));
+    const estimate = await estimateRecipeNutrition('Chili', 4, ['1 lb ground beef', '1 can kidney beans']);
+    expect(estimate).toEqual({ amounts: { calorieKcal: 1800, proteinG: 90 }, confidence: 'medium' });
+  });
+
+  it('sends the title, servings and ingredient lines in the prompt', async () => {
+    const spy = mockFetchOnce(toolUseResponse('estimate_recipe', { amounts: { calorieKcal: 1800 }, confidence: 'low' }));
+    await estimateRecipeNutrition('Chili', 4, ['1 lb ground beef', '1 can kidney beans']);
+    const body = JSON.parse((spy.mock.calls[0]?.[1] as RequestInit).body as string);
+    const prompt = body.messages[0].content as string;
+    expect(prompt).toContain('Chili');
+    expect(prompt).toContain('It makes 4 servings.');
+    expect(prompt).toContain('- 1 lb ground beef');
+    expect(prompt).toContain('- 1 can kidney beans');
+  });
+
+  it("says the recipe doesn't state servings rather than inventing a count", async () => {
+    const spy = mockFetchOnce(toolUseResponse('estimate_recipe', { amounts: { calorieKcal: 1800 }, confidence: 'low' }));
+    await estimateRecipeNutrition('Chili', null, ['1 lb ground beef']);
+    const body = JSON.parse((spy.mock.calls[0]?.[1] as RequestInit).body as string);
+    expect(body.messages[0].content).toContain("It doesn't say how many servings it makes.");
+  });
+
+  it('throws with no ingredient lines rather than asking about nothing', async () => {
+    await expect(estimateRecipeNutrition('Chili', 4, [])).rejects.toThrow('No estimate returned');
+  });
+
+  it('throws when the reply has no usable figures', async () => {
+    mockFetchOnce(toolUseResponse('estimate_recipe', { amounts: {}, confidence: 'low' }));
+    await expect(estimateRecipeNutrition('Chili', 4, ['1 lb ground beef'])).rejects.toThrow('No estimate returned');
+  });
+
+  it('throws when the feature is disabled', async () => {
+    mockSettings.aiFeatureConfig.recipeNutritionEstimate.enabled = false;
+    await expect(estimateRecipeNutrition('Chili', 4, ['1 lb ground beef'])).rejects.toThrow('AI feature disabled');
   });
 });
 
