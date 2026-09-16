@@ -1,10 +1,10 @@
-import React from 'react';
-import { View, StyleSheet } from 'react-native';
+import React, { useMemo } from 'react';
+import { View, Text, StyleSheet } from 'react-native';
 import { useShallow } from 'zustand/react/shallow';
 import type { HealthRule, HealthRuleMetric } from '../types';
 import { useSettingsStore } from '../store/useSettingsStore';
 import { useColors } from '../theme/ThemeContext';
-import { spacing } from '../theme';
+import { font, spacing, type Colors } from '../theme';
 import { haptics } from '../utils/haptics';
 import { generateId } from '../utils/id';
 import {
@@ -26,7 +26,7 @@ import {
 import { CountStepper } from './CountStepper';
 import { InlineAction } from './InlineAction';
 import { SegmentedControl } from './SegmentedControl';
-import { RuleListSheet, RuleSheetNoticeCard } from './RuleListSheet';
+import { RuleListSheet, RuleSheetNoticeCard, RuleFieldLabel } from './RuleListSheet';
 
 interface Props {
   visible: boolean;
@@ -69,17 +69,26 @@ const DIRECTION_OPTIONS: { value: 'under' | 'over'; label: string }[] = [
  *   sharing one.
  * - **Under/over is a per-rule choice for the same eight metrics**, not a
  *   fixed property read off the metric — a sodium ceiling (blood pressure) and
- *   a sodium floor (POTS) are both real diets, so the direction is a control
- *   next to the checkpoint hour rather than something only saturated fat,
- *   sugar or caffeine get to flip. The editor label itself changes with it
- *   (`healthRuleDirection`) rather than leaving the direction to the
- *   stepper's own wording — a ceiling that only the number below it says is a
- *   ceiling is easy to misread as one more floor.
+ *   a sodium floor (POTS) are both real diets, so it's its own control rather
+ *   than something only saturated fat, sugar or caffeine get to flip.
  * - **The read has to be on, and the card says so.** This is the one rules
  *   sheet whose feature needs a second switch elsewhere, and nothing else here
  *   would give that away: the rules look perfectly well formed either way.
  *   Same shape the weather sheet's location card uses, and it turns the read on
  *   from here rather than sending anybody to go and find it.
+ *
+ * **Four controls, four headers, no shared lead-in sentence.** `RuleListSheet`'s
+ * `editorLabel` is a single sentence above one control, which is what weather's
+ * condition picker and screen time's minutes stepper each are. Health's editor
+ * is up to four controls (Reading, Direction, Threshold, Checked from) for a
+ * nutrient rule, and a rule that used the same shared header ("On a day with
+ * less than") to introduce all four read like a sentence that had wandered off
+ * after its own second clause — the direction and checkpoint controls that
+ * follow the threshold had no header of their own at all. `editorLabel` here
+ * returns `''` (which `RuleListSheet` renders as nothing) and each control gets
+ * its own `RuleFieldLabel` instead, in the order a person would actually answer
+ * them: which reading, compared which way, against what number, checked from
+ * when.
  */
 export function HealthRulesSheet({ visible, onClose }: Props) {
   const colors = useColors();
@@ -87,6 +96,7 @@ export function HealthRulesSheet({ visible, onClose }: Props) {
   const setRules = useSettingsStore(s => s.setHealthRules);
   const healthReadEnabled = useSettingsStore(s => s.healthReadEnabled);
   const setHealthReadEnabled = useSettingsStore(s => s.setHealthReadEnabled);
+  const styles = useMemo(() => makeStyles(colors), [colors]);
 
   return (
     <RuleListSheet<HealthRule>
@@ -113,11 +123,10 @@ export function HealthRulesSheet({ visible, onClose }: Props) {
         lastFiredDayKey: null,
       })}
       describeRule={describeHealthRule}
-      editorLabel={rule => (healthRuleDirection(rule) === 'over'
-        ? 'On a day with more than'
-        : 'On a day with less than')}
+      editorLabel={() => ''}
       renderEditor={(rule, update) => (
         <View style={styles.editor}>
+          <RuleFieldLabel>Reading</RuleFieldLabel>
           <SegmentedControl<HealthRuleMetric>
             options={METRIC_OPTIONS}
             value={rule.metric}
@@ -127,7 +136,7 @@ export function HealthRulesSheet({ visible, onClose }: Props) {
               // "under 3,000 steps" to hours would leave a rule asking about
               // three thousand hours of sleep.
               threshold: clampHealthThreshold(metric, rule.threshold),
-              // Checkpoint hour and direction both only apply to the three
+              // Checkpoint hour and direction both only apply to the eight
               // nutrients, so both are only given a starting value the first
               // time a rule turns into one of them — everything else leaves
               // whatever the rule already carries alone.
@@ -142,6 +151,21 @@ export function HealthRulesSheet({ visible, onClose }: Props) {
             surface="card"
             columns={2}
           />
+
+          {usesCheckpoint(rule.metric) && (
+            <>
+              <RuleFieldLabel>Direction</RuleFieldLabel>
+              <SegmentedControl<'under' | 'over'>
+                options={DIRECTION_OPTIONS}
+                value={healthRuleDirection(rule)}
+                onChange={direction => update({ direction })}
+                label="Adds the task when the day is"
+                surface="card"
+              />
+            </>
+          )}
+
+          <RuleFieldLabel>Threshold</RuleFieldLabel>
           <CountStepper
             value={rule.threshold}
             onChange={next => update({
@@ -154,28 +178,27 @@ export function HealthRulesSheet({ visible, onClose }: Props) {
             label="Threshold"
             describeValue={n => healthMetricAmount(rule.metric, n ?? HEALTH_THRESHOLDS[rule.metric].default)}
           />
+
           {usesCheckpoint(rule.metric) && (
-            <SegmentedControl<'under' | 'over'>
-              options={DIRECTION_OPTIONS}
-              value={healthRuleDirection(rule)}
-              onChange={direction => update({ direction })}
-              label="Adds the task when the day is"
-              surface="card"
-            />
-          )}
-          {usesCheckpoint(rule.metric) && (
-            <CountStepper
-              value={healthRuleCheckpointHour(rule)}
-              onChange={next => update({
-                checkpointHour: clampCheckpointHour(next ?? HEALTH_METRIC_EARLIEST_HOUR[rule.metric]),
-              })}
-              min={0}
-              max={23}
-              step={1}
-              format={formatCheckpointHour}
-              label="Checked from"
-              describeValue={n => formatCheckpointHour(n ?? HEALTH_METRIC_EARLIEST_HOUR[rule.metric])}
-            />
+            <>
+              <RuleFieldLabel>Checked from</RuleFieldLabel>
+              <CountStepper
+                value={healthRuleCheckpointHour(rule)}
+                onChange={next => update({
+                  checkpointHour: clampCheckpointHour(next ?? HEALTH_METRIC_EARLIEST_HOUR[rule.metric]),
+                })}
+                min={0}
+                max={23}
+                step={1}
+                format={formatCheckpointHour}
+                label="Checked from"
+                describeValue={n => formatCheckpointHour(n ?? HEALTH_METRIC_EARLIEST_HOUR[rule.metric])}
+              />
+              <Text style={styles.hint}>
+                The rule isn't judged before this hour each day, since a nutrient target is often
+                checked more than once, such as a lunchtime floor and a separate, later one.
+              </Text>
+            </>
           )}
         </View>
       )}
@@ -206,6 +229,7 @@ export function HealthRulesSheet({ visible, onClose }: Props) {
   );
 }
 
-const styles = StyleSheet.create({
+const makeStyles = (colors: Colors) => StyleSheet.create({
   editor: { gap: spacing.sm },
+  hint: { color: colors.textSecondary, fontSize: font.xs, lineHeight: 16 },
 });

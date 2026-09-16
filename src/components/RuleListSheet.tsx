@@ -71,6 +71,12 @@ interface Props<T extends EditableRule> {
    * wording depends on the rule itself — health's ceiling rule reads "more
    * than" where every other rule here reads "less than" — a plain string
    * otherwise.
+   *
+   * An empty string (from either form) renders nothing, for a caller whose
+   * `renderEditor` carries several controls and labels each of them itself —
+   * a single lead-in sentence stops reading sensibly once there's more than
+   * one control under it. Weather and screen time's single-control editors
+   * still want the plain sentence and are unaffected.
    */
   editorLabel: string | ((rule: T) => string);
   renderEditor: (rule: T, update: (patch: Partial<T>) => void) => ReactNode;
@@ -236,9 +242,11 @@ export function RuleListSheet<T extends EditableRule>({
                     </View>
                     {expanded && (
                       <View style={styles.editor}>
-                        <Text style={styles.editorLabel}>
-                          {typeof editorLabel === 'function' ? editorLabel(rule) : editorLabel}
-                        </Text>
+                        {!!(typeof editorLabel === 'function' ? editorLabel(rule) : editorLabel) && (
+                          <Text style={styles.editorLabel}>
+                            {typeof editorLabel === 'function' ? editorLabel(rule) : editorLabel}
+                          </Text>
+                        )}
                         {renderEditor(rule, patch => update(rule.id, patch))}
                         <Text style={[styles.editorLabel, styles.editorLabelSpaced]}>Add this task</Text>
                         <TextInput
@@ -364,6 +372,18 @@ export function RuleSheetNoticeCard({
       {content}
     </TouchableOpacity>
   );
+}
+
+/**
+ * The same uppercase field-header style `editorLabel` renders above
+ * `renderEditor`, exported so a `renderEditor` with several controls — health
+ * rules' Reading/Direction/Threshold/Checked from — can label each one the
+ * same way rather than inventing its own header style per sheet.
+ */
+export function RuleFieldLabel({ children }: { children: string }) {
+  const colors = useColors();
+  const styles = useMemo(() => makeStyles(colors), [colors]);
+  return <Text style={styles.editorLabel}>{children}</Text>;
 }
 
 function makeNoticeStyles(colors: Colors) {
