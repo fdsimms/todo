@@ -165,6 +165,7 @@ function makeSession(overrides: Partial<FocusSession> = {}): FocusSession {
     stepElapsedSeconds: 0,
     completedTaskIds: [],
     stepLog: [],
+    hideTimers: false,
     ...overrides,
   };
 }
@@ -309,14 +310,13 @@ describe('buildFocusRun', () => {
   });
 
   describe('hideTimers', () => {
-    it('defaults to false when the option is omitted', () => {
-      const run = buildFocusRun(makeSession(), TASKS, { enabled: true });
-      expect(run?.hideTimers).toBe(false);
-    });
-
-    it('carries the setting through to the payload, and into the key', () => {
-      const shown = buildFocusRun(makeSession(), TASKS, { enabled: true, hideTimers: false });
-      const hidden = buildFocusRun(makeSession(), TASKS, { enabled: true, hideTimers: true });
+    // Read off the session, not passed as an option — it's stamped there once
+    // at start by the setup sheet's own override (see FocusSession.hideTimers)
+    // rather than re-read from Settings on every sync.
+    it('carries the session\'s own choice through to the payload, and into the key', () => {
+      const shown = buildFocusRun(makeSession({ hideTimers: false }), TASKS, { enabled: true });
+      const hidden = buildFocusRun(makeSession({ hideTimers: true }), TASKS, { enabled: true });
+      expect(shown?.hideTimers).toBe(false);
       expect(hidden?.hideTimers).toBe(true);
       expect(hidden?.key).not.toBe(shown?.key);
     });

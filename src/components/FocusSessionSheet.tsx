@@ -34,7 +34,6 @@ import {
 } from '../utils/focusPlan';
 import { useFocusStore } from '../store/useFocusStore';
 import { useTaskStore } from '../store/useTaskStore';
-import { useSettingsStore } from '../store/useSettingsStore';
 import { useFocusSession } from '../hooks/useFocusSession';
 import { useAnswerFirstCompletion } from '../hooks/useAnswerFirstCompletion';
 import { asksOnCompletion } from '../utils/deliverables';
@@ -82,7 +81,6 @@ export function FocusSessionSheet({ visible, onClose }: Props) {
   const navigation = useNavigation();
 
   const { session, now } = useFocusSession();
-  const hideTimers = useSettingsStore(s => s.focusHideTimers);
   const tasks = useTaskStore(s => s.tasks);
   const completeTask = useTaskStore(s => s.completeTask);
   const setMeasuredTime = useTaskStore(s => s.setMeasuredTime);
@@ -121,6 +119,10 @@ export function FocusSessionSheet({ visible, onClose }: Props) {
 
   if (!session) return null;
 
+  // Stamped on the session at start (the setup sheet's own override of
+  // settings' focusHideTimers), not re-read from Settings here — a session
+  // already running keeps the choice it was started with.
+  const hideTimers = session.hideTimers;
   const finished = isFocusSessionFinished(session);
   const step = currentFocusStep(session);
   const running = isFocusRunning(session);

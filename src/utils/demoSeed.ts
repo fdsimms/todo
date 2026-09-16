@@ -1381,6 +1381,7 @@ export function seedDemoData(): void {
       stepElapsedSeconds: (minutes - 3) * 60,
       completedTaskIds: [],
       stepLog: [],
+      hideTimers: false,
     };
     // Walked with the real advance, so every step is banked the way a session
     // banks one — including the breaks, which are left near-untouched so

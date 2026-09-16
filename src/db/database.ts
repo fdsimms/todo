@@ -1664,6 +1664,11 @@ export function initDatabase(): void {
     // Null on every existing row: nobody has swiped away a follow-up nudge
     // yet. See Task.waitingFollowUpDeclinedAt.
     'ALTER TABLE tasks ADD COLUMN waiting_follow_up_declined_at TEXT',
+    // 0 on a session already in flight when the app upgrades into this column
+    // — it started under whatever Settings said before the setup sheet had
+    // its own override, which is exactly what false means here. See
+    // FocusSession.hideTimers.
+    'ALTER TABLE focus_sessions ADD COLUMN hide_timers INTEGER NOT NULL DEFAULT 0',
   ];
   // Asking SQLite for a table's columns once is cheaper than handing it every
   // ALTER for that table and catching the duplicate-column error, and by the
@@ -3461,6 +3466,7 @@ function rowToFocusSession(row: Record<string, unknown>): FocusSession {
     // a build predating step_log is still sitting in this table on upgrade,
     // and it reads back with the column missing entirely.
     stepLog: JSON.parse((row.step_log as string) ?? '[]') as FocusStepRecord[],
+    hideTimers: row.hide_timers === 1,
   };
 }
 
@@ -3482,12 +3488,12 @@ export function dbSaveFocusSession(session: FocusSession): void {
     db.runSync('DELETE FROM focus_sessions');
     db.runSync(
       `INSERT INTO focus_sessions
-         (id, started_at, steps, step_index, step_started_at, step_elapsed_seconds, completed_task_ids, step_log)
-       VALUES (?,?,?,?,?,?,?,?)`,
+         (id, started_at, steps, step_index, step_started_at, step_elapsed_seconds, completed_task_ids, step_log, hide_timers)
+       VALUES (?,?,?,?,?,?,?,?,?)`,
       [
         session.id, session.startedAt, JSON.stringify(session.steps), session.stepIndex,
         session.stepStartedAt, session.stepElapsedSeconds, JSON.stringify(session.completedTaskIds),
-        JSON.stringify(session.stepLog),
+        JSON.stringify(session.stepLog), session.hideTimers ? 1 : 0,
       ]
     );
   });

@@ -18,7 +18,6 @@ import {
 import { useFocusSession } from '../hooks/useFocusSession';
 import { useFocusStore } from '../store/useFocusStore';
 import { useTaskStore } from '../store/useTaskStore';
-import { useSettingsStore } from '../store/useSettingsStore';
 
 interface Props {
   /** Reopens the session sheet. */
@@ -45,13 +44,14 @@ export function FocusBar({ onOpen }: Props) {
   const styles = useMemo(() => makeStyles(colors), [colors]);
 
   const { session, now } = useFocusSession();
-  const hideTimers = useSettingsStore(s => s.focusHideTimers);
   const tasks = useTaskStore(s => s.tasks);
   const pause = useFocusStore(s => s.pause);
   const resume = useFocusStore(s => s.resume);
 
   if (!session) return null;
 
+  // Stamped on the session at start — see FocusSessionSheet's own note.
+  const hideTimers = session.hideTimers;
   const finished = isFocusSessionFinished(session);
   const step = currentFocusStep(session);
   const running = isFocusRunning(session);

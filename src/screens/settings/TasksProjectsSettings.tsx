@@ -662,8 +662,8 @@ export function TasksProjectsSettings() {
           iconColor={focusHideTimers ? colors.accent : undefined}
           label="Hide timers while focusing"
           hint={focusHideTimers
-            ? 'The countdown is hidden everywhere a session shows one — the running session screen, the strip on Today, and the Lock Screen. The step still ends and chimes on schedule.'
-            : 'The countdown shows everywhere a session runs'}
+            ? 'By default, the countdown is hidden everywhere a session shows one — the running session screen, the strip on Today, and the Lock Screen. The step still ends and chimes on schedule. Change it for a single session from the start screen.'
+            : 'By default, the countdown shows everywhere a session runs. Change it for a single session from the start screen.'}
           toggle={focusHideTimers}
           onPress={() => setFocusHideTimers(!focusHideTimers)}
         />

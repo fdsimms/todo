@@ -4393,8 +4393,8 @@ export function TodayScreen() {
           pinnedSeed={focusFromPinned ? pinnedTasks : undefined}
           reachOutSeed={focusFromReachOuts ? reachOutTasks : undefined}
           onClose={() => setFocusSetupVisible(false)}
-          onStart={(queue, options) => {
-            startFocusSession(queue, options);
+          onStart={(queue, options, hideTimers) => {
+            startFocusSession(queue, options, hideTimers);
             setFocusSetupVisible(false);
             setFocusSessionVisible(true);
           }}

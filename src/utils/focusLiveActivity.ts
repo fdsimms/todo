@@ -74,7 +74,7 @@ export interface FocusRun {
   /** The button once it has: 'Next task' / 'Start break' / 'Finish'. */
   advanceLabel: string;
   advanceUrl: string;
-  /** Mirrors settings' focusHideTimers — the native side draws no clock at all. */
+  /** Mirrors the session's own hideTimers — the native side draws no clock at all. */
   hideTimers: boolean;
 }
 
@@ -94,7 +94,7 @@ function truncate(title: string): string {
 export function buildFocusRun(
   session: FocusSession | null,
   tasks: readonly Task[],
-  opts: { enabled: boolean; hideTimers?: boolean },
+  opts: { enabled: boolean },
 ): FocusRun | null {
   if (!opts.enabled || session === null || isFocusSessionFinished(session)) return null;
   const step = currentFocusStep(session);
@@ -149,7 +149,7 @@ export function buildFocusRun(
     primaryUrl: paused ? 'dundundun://focus?do=resume' : 'dundundun://focus?do=pause',
     advanceLabel,
     advanceUrl: 'dundundun://focus?do=next',
-    hideTimers: opts.hideTimers ?? false,
+    hideTimers: session.hideTimers,
   };
   return { key: JSON.stringify(run), ...run };
 }
@@ -187,11 +187,10 @@ export function useFocusLiveActivitySync(): void {
 
     const sync = () => {
       const enabled = useSettingsStore.getState().focusLiveActivity;
-      const hideTimers = useSettingsStore.getState().focusHideTimers;
       scheduleSync(buildFocusRun(
         useFocusStore.getState().session,
         useTaskStore.getState().tasks,
-        { enabled, hideTimers },
+        { enabled },
       ));
     };
 
@@ -202,10 +201,7 @@ export function useFocusLiveActivitySync(): void {
       if (state.tasks !== prevState.tasks) sync();
     });
     const unsubSettings = useSettingsStore.subscribe((state, prevState) => {
-      if (
-        state.focusLiveActivity !== prevState.focusLiveActivity ||
-        state.focusHideTimers !== prevState.focusHideTimers
-      ) sync();
+      if (state.focusLiveActivity !== prevState.focusLiveActivity) sync();
     });
 
     sync();

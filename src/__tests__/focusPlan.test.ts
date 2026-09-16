@@ -61,6 +61,7 @@ const session = (steps: FocusStep[], over: Partial<FocusSession> = {}): FocusSes
   stepElapsedSeconds: 0,
   completedTaskIds: [],
   stepLog: [],
+  hideTimers: false,
   ...over,
 });
 
