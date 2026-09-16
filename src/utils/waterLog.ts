@@ -29,10 +29,16 @@ import { flOzToMl, mlToFlOz } from './foodNutrition';
  * **Nothing here writes to Health directly.** A water entry goes through the
  * ordinary food log path, so it is `logFoodEntryToHealth` that writes it, the
  * bridge already maps `waterMl` onto `.dietaryWater`, and every guard that
- * applies to a meal applies here unchanged. This is deliberately *not* a second
- * water write beside the task completion one (`logHealthMetric`): that one is a
- * task recording a nutrient when it is ticked, and this is somebody saying what
- * they drank.
+ * applies to a meal applies here unchanged.
+ *
+ * **A water-logging task rides this same path rather than writing a second
+ * Health sample beside it.** `logTaskWaterToFoodLog`
+ * (`src/utils/healthCompletionSync.ts`) accumulates a completed task's amount
+ * onto today's row exactly as a second glass would, then calls the same
+ * `addEntry`/`reviseEntry` this file's own stepper does — so a "Drink water"
+ * task shows up in the food log, not just in Apple Health. Every other
+ * nutrient a task can log (caffeine, protein, …) still writes to Health only:
+ * water is the one metric that already had a food-log home to reuse.
  */
 
 /**

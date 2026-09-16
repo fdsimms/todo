@@ -3364,7 +3364,9 @@ export function TaskEditor({ visible, task, initialDraft, onClose }: Props) {
                   }
                   hint={
                     healthWriteEnabled
-                      ? 'Writes one sample to Apple Health each time you complete this task.'
+                      ? isWater
+                        ? 'Adds to today’s water in the food log, and writes it to Apple Health, each time you complete this task.'
+                        : 'Writes one sample to Apple Health each time you complete this task.'
                       : 'Turn on writing to Health in Settings › Health first'
                   }
                   expanded={healthWriteEnabled && fieldOpen('logHealthValue')}

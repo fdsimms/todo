@@ -740,11 +740,23 @@ bridge already mapped `waterMl` onto `.dietaryWater` in the same
 
 Three things about it are worth not re-deriving:
 
-- **It is deliberately not a second water write beside `logHealthMetric`.** That
-  one is a task recording a nutrient when it is ticked, and this is somebody
-  saying what they drank. Two mechanisms for one fact is what the issue was
-  partly about; the answer was to give the log the one it was missing, not to
-  fold the task side into it and make a caffeine task a meal.
+- **A water-logging task rides this same write rather than getting a second
+  one of its own.** This shipped as two mechanisms for one fact — a task
+  recording a nutrient when it is ticked, and somebody saying what they drank
+  — and for a while the two were kept deliberately apart, on the reasoning
+  that folding the task side in would make a caffeine task a meal. That held
+  right up until a real report: a "Drink water" task that logged to Health on
+  every completion and never once showed up in the food log a person actually
+  looks at, which reads as broken even though it was working as designed.
+  `logTaskWaterToFoodLog` (`src/utils/healthCompletionSync.ts`) is the fix,
+  and it's scoped to exactly the one nutrient that already had a food-log home
+  to reuse: it accumulates the task's amount onto today's row the same way a
+  second glass would, then calls the same `addEntry`/`reviseEntry` this
+  stepper does, so the Health write still happens in exactly one place
+  (`logFoodEntryToHealth`) rather than twice. Every other nutrient a task can
+  log (caffeine, protein, …) keeps writing to Health only — there is no
+  food-log entry a caffeine task could reuse without becoming a meal, so the
+  original reasoning still holds for the other nine.
 - **One entry a day, stepped, rather than one per glass.** Eight glasses is
   eight rows in the meal sections the day view exists to show. What that costs
   is that the Health sample is dated at the first glass and carries the day's
