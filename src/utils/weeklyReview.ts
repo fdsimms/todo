@@ -111,7 +111,7 @@ const STAGE_ORDER: readonly Omit<WeeklyReviewStage, 'count'>[] = [
     kind: 'clear',
     title: 'What slipped',
     icon: 'calendar-outline',
-    hint: 'Dated before today and still open. Move them to a day you mean it.',
+    hint: "Dated before today and still open. Move them to a day you'll actually do them.",
   },
   {
     id: 'week',

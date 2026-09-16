@@ -257,12 +257,6 @@ export function GeneratedTasksSection() {
     if (next) ensureGeneratedTaskCategory(kind, { force: true });
   };
 
-  // calendarReview's arm returns calendarEventCategory rather than a category
-  // of its own, for anything that calls this out of habit — but categorized:
-  // false means the "File them under" row is never rendered for it, so
-  // that arm is never actually reached in practice. supplyReorder is
-  // categorized: false for a different reason (it inherits the source task's
-  // own category — see checkSupplyReorderTasks) and so has no arm here at all.
   const categoryOf = (kind: GeneratedKind): string | null => {
     switch (kind) {
       case 'mealSlot':
@@ -275,10 +269,10 @@ export function GeneratedTasksSection() {
       case 'pantryReview': return s.pantryReviewTaskCategory;
       case 'mealShortfall': return s.mealShortfallTaskCategory;
       case 'mealLogNudge': return s.mealLogNudgeTaskCategory;
-      case 'calendarReview': return s.calendarEventCategory;
+      case 'calendarReview': return s.calendarReviewTaskCategory;
       case 'birthday': return s.birthdayTaskCategory;
       case 'birthdayGift': return s.birthdayGiftTaskCategory;
-      case 'supplyReorder': return null;
+      case 'supplyReorder': return s.supplyReorderTaskCategory;
       case 'reachOut': return s.reachOutTaskCategory;
       case 'waitingFollowUp': return s.waitingFollowUpTaskCategory;
       case 'weather': return s.weatherTaskCategory;
@@ -309,9 +303,7 @@ export function GeneratedTasksSection() {
       case 'mealLogNudge': s.setMealLogNudgeTaskCategory(category); break;
       case 'birthday': s.setBirthdayTaskCategory(category); break;
       case 'birthdayGift': s.setBirthdayGiftTaskCategory(category); break;
-      // Unreached — see categoryOf above — but a real, honest answer rather
-      // than a no-op: this is genuinely how calendarReview's category changes.
-      case 'calendarReview': s.setCalendarEventCategory(category); break;
+      case 'calendarReview': s.setCalendarReviewTaskCategory(category); break;
       case 'reachOut': s.setReachOutTaskCategory(category); break;
       case 'waitingFollowUp': s.setWaitingFollowUpTaskCategory(category); break;
       case 'weather': s.setWeatherTaskCategory(category); break;
@@ -323,11 +315,7 @@ export function GeneratedTasksSection() {
       case 'weekendNudge': s.setWeekendNudgeTaskCategory(category); break;
       case 'weeklyReview': s.setWeeklyReviewTaskCategory(category); break;
       case 'weighIn': s.setWeighInTaskCategory(category); break;
-      // Genuinely nothing to write: its task inherits the category of the task
-      // whose supply it is about (see checkSupplyReorderTasks), so there is no
-      // one global answer to store. categorized: false means the pills that
-      // would call this are never rendered for it.
-      case 'supplyReorder': break;
+      case 'supplyReorder': s.setSupplyReorderTaskCategory(category); break;
       // Exhaustive, unlike the switches above it, which are only exhaustive
       // because they return a value. This one returns void, so a missing arm is
       // not a typecheck failure but a silently dead category picker — which is

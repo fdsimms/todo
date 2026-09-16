@@ -183,24 +183,21 @@ describe('ensureGeneratedTaskCategory', () => {
     expect(s.groceryUseUpTaskCategory).toBeNull();
   });
 
-  // calendarReview reuses calendarEventCategory rather than owning a category
-  // setting (GeneratedKindSpec.categorized: false), so there's nothing for
-  // this to fill in even switched on — and, unlike every other kind, calling
-  // it must not throw.
-  it('leaves calendarReview alone, on or off', () => {
-    useSettingsStore.setState({ calendarReviewTasks: true });
-    expect(() => ensureGeneratedTaskCategory('calendarReview', { force: true })).not.toThrow();
-    expect(useCategoryStore.getState().categories).toEqual([]);
-    expect(() => ensureGeneratedTaskCategories()).not.toThrow();
+  // calendarReview owns a category setting of its own, same as every other
+  // generator, rather than reusing calendarEventCategory — see
+  // GeneratedKindSpec.categorized.
+  it('files calendarReview under its own category when switched on', () => {
+    useSettingsStore.setState({ calendarReviewTasks: true, calendarReadEnabled: true });
+    ensureGeneratedTaskCategory('calendarReview', { force: true });
+    expect(useSettingsStore.getState().calendarReviewTaskCategory).toBe('Calendar Events');
   });
 
-  // supplyReorder inherits the category of the task its supply is on
-  // (GeneratedKindSpec.categorized: false) rather than owning a category
-  // setting of its own, so there's nothing for this to fill in either.
-  it('leaves supplyReorder alone, on or off', () => {
+  // supplyReorder owns a category setting of its own too, same as every
+  // other generator, rather than inheriting the category of the task its
+  // supply is on.
+  it('files supplyReorder under its own category when switched on', () => {
     useSettingsStore.setState({ supplyReorderTasks: true });
-    expect(() => ensureGeneratedTaskCategory('supplyReorder', { force: true })).not.toThrow();
-    expect(useCategoryStore.getState().categories).toEqual([]);
-    expect(() => ensureGeneratedTaskCategories()).not.toThrow();
+    ensureGeneratedTaskCategory('supplyReorder', { force: true });
+    expect(useSettingsStore.getState().supplyReorderTaskCategory).toBe('Supplies');
   });
 });

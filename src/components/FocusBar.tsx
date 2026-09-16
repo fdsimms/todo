@@ -50,6 +50,8 @@ export function FocusBar({ onOpen }: Props) {
 
   if (!session) return null;
 
+  // Stamped on the session at start — see FocusSessionSheet's own note.
+  const hideTimers = session.hideTimers;
   const finished = isFocusSessionFinished(session);
   const step = currentFocusStep(session);
   const running = isFocusRunning(session);
@@ -73,8 +75,10 @@ export function FocusBar({ onOpen }: Props) {
     : null;
 
   // An over-run step counts up rather than sitting at 0:00, so the strip says
-  // how long it's been waiting on you rather than just that it is.
-  const clock = finished
+  // how long it's been waiting on you rather than just that it is. Hidden by
+  // focusHideTimers, same as the session sheet's own clock — the pause
+  // control and the task title still work with no number in the strip.
+  const clock = finished || hideTimers
     ? null
     : stepDone
       ? `+${formatStopwatch(-remaining)}`
@@ -93,7 +97,7 @@ export function FocusBar({ onOpen }: Props) {
         accessibilityLabel={
           finished
             ? 'Focus session finished. Open it'
-            : `Focusing on ${label}${quotaCount ? `, ${quotaCount} logged` : ''}, ${clock} ${stepDone ? 'over' : 'left'}. Open the session`
+            : `Focusing on ${label}${quotaCount ? `, ${quotaCount} logged` : ''}${clock ? `, ${clock} ${stepDone ? 'over' : 'left'}` : ''}. Open the session`
         }
       >
         <Ionicons

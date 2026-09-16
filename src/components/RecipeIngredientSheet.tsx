@@ -904,7 +904,7 @@ export function RecipeIngredientSheet({ visible, recipeId, ingredient, onClose }
         )}
         <Text style={styles.hint}>
           {siblingNames.length > 0
-            ? 'Either/or — you’ll buy one of these, never both.'
+            ? 'Either/or: you’ll buy one of these, never both.'
             : 'You haven’t listed any alternatives. Pick another ingredient to make this an either/or, decided at the store.'}
         </Text>
         {siblingNames.length > 0 && (

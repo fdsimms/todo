@@ -56,8 +56,13 @@ interface FocusStore {
   /**
    * Build a plan from `tasks`, in the order given, and start running it.
    * Replaces any session already in flight — there is only ever one.
+   *
+   * `hideTimers` is stamped onto the session at start and never re-read from
+   * Settings after that — the setup sheet's own override of
+   * `focusHideTimers`, same shape as its Breaks toggle. Defaults to false so
+   * every other caller (tests included) doesn't have to name it.
    */
-  startSession: (tasks: readonly Task[], options: FocusPlanOptions) => void;
+  startSession: (tasks: readonly Task[], options: FocusPlanOptions, hideTimers?: boolean) => void;
 
   pause: () => void;
   resume: () => void;
@@ -163,7 +168,7 @@ export const useFocusStore = create<FocusStore>((set, get) => ({
     if (get().session === stored) void scheduleFocusStepAlarm(stored);
   },
 
-  startSession(tasks, options) {
+  startSession(tasks, options, hideTimers = false) {
     const steps = buildFocusPlan([...tasks], options);
     // Before the empty-plan bail: a start that produces no plan changes
     // nothing, so the session already in flight is still in flight and must
@@ -182,6 +187,7 @@ export const useFocusStore = create<FocusStore>((set, get) => ({
       stepElapsedSeconds: 0,
       completedTaskIds: [],
       stepLog: [],
+      hideTimers,
     }, set);
   },
 

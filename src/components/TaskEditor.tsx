@@ -1150,7 +1150,7 @@ export function TaskEditor({ visible, task, initialDraft, onClose }: Props) {
       if (archivedMatch) {
         Alert.alert(
           'Resume archived task?',
-          `You archived "${archivedMatch.title}" a while back. Resume it instead of creating a new one? History and stats carry over, but the streak restarts.`,
+          `You archived "${archivedMatch.title}" a while ago. Resume it instead of creating a new one? History and stats carry over, but the streak restarts.`,
           [
             { text: 'Create new', onPress: () => proceedWithSave(effectiveChainItems, effectiveDraftSubtasks) },
             {
@@ -2753,7 +2753,7 @@ export function TaskEditor({ visible, task, initialDraft, onClose }: Props) {
                 icon="speedometer-outline"
                 label={quotaPeriod === 'week' ? 'Weekly target' : 'Daily target'}
                 hint={quotaPeriod === 'week'
-                  ? "Log it several times a week, on whichever days suit. The task hides while you're on pace and comes back when you fall behind."
+                  ? "Log it several times a week, on whichever days work. The task hides while you're on pace and comes back when you fall behind."
                   : "Log it several times a day. The task hides while you're on pace and comes back when you fall behind."}
                 value={targetCount !== null ? formatQuotaTarget(targetCount, targetUnit) : undefined}
                 expanded={showTargetCount}

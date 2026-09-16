@@ -377,12 +377,9 @@ one. Those three rules and the reasoning behind them are in
     user answered enough cards to put the deck under five, which would be the app taking the question
     back the moment it started being answered. Same split `stalePantryCheckTasks` draws against
     `PANTRY_CHECK_GRACE_DAYS`, and `staleProjectReviewTasks` against its own cap.
-  - **It has its own category setting**, unlike `calendarReview` which shares one. That kind shares
-    `calendarEventCategory` because the events it describes are already filed by it, so a second
-    setting could only agree or contradict. Here there is no prior owner, and sharing
-    `pantryCheckTaskCategory` would mean turning this on while the drip is off leaves it with nowhere
-    to file — an uncategorized task renders loose at the very top of Today, which is exactly where
-    these must not go.
+  - **It has its own category setting**, same as every generator — sharing `pantryCheckTaskCategory`
+    would mean turning this on while the drip is off leaves it with nowhere to file — an uncategorized
+    task renders loose at the very top of Today, which is exactly where these must not go.
   - **It ships off**, like `pantryCheck` and `mealShortfall`, for their reason: it adds a surface
     rather than replacing one that was already on screen.
 
@@ -401,12 +398,10 @@ one. Those three rules and the reasoning behind them are in
     moment a day is considered, *before* the "does tomorrow have anything on it" check, and covers
     every outcome: created, or found empty. A day already marked is never re-diagnosed, whatever the
     mark's reason.
-  - **It reuses `calendarEventCategory` rather than owning a category of its own**
-    (`GeneratedKindSpec.categorized: false` — the one so far). The task and the events it's asking
-    about are one subject to the person reading the list, and a second "File them under" setting
-    would only ever be able to agree with the first or contradict it. `ensureGeneratedTaskCategory`
-    and the two switches in `useCategoryStore.ts` it dispatches through both return early for this
-    kind rather than gaining a real arm — there is nothing of its own to ensure or point at.
+  - **It owns a category setting of its own** (`calendarReviewTaskCategory`, `categorized: true`),
+    same as every other generator, rather than reusing `calendarEventCategory`. It defaults to the
+    same "Calendar Events" name that setting does, so an install that upgrades into this files its
+    review task exactly where it always did — but the two settings can now be pointed apart.
   - **It fires on time passing, from the same two places `pantryCheck` does** (the launch sequence
     and the Today foreground sweep) — but unlike every other generator, it reads state
     (`useCalendarStore`) that nothing in the launch sequence populates synchronously; the window is
@@ -454,6 +449,15 @@ one. Those three rules and the reasoning behind them are in
     whatever snapshot is already there — it never fetches — so a cold launch before the first fetch
     resolves finds nothing to do, exactly as `calendarReview` does before `useCalendarSync`'s first
     read lands.
+  - **A rule matches on today's day-level forecast code as well as the instant the snapshot was
+    read at, not that instant alone.** The refresh above happens once a day, usually at the first
+    open — so a rule that only ever saw the live `current.weather_code` at that moment would warn
+    about rain no earlier than the moment it started falling, and often not even then, since the
+    per-rule mark (`lastFiredDayKey`) is spent the first time the rule is considered that day.
+    `checkWeatherTasks` unions `classifyWeather` over both `weatherCode` (the instant) and
+    `todayWeatherCode` (Open-Meteo's own summary for the whole day, `daily.weather_code[0]`), so
+    "rain due this afternoon" already matches on a dry morning's first read. It stays a look-ahead
+    rather than a second live poll: nothing here fetches again later in the day.
   - **No key, and that's a deliberate choice of provider, not an oversight.** Open-Meteo's forecast
     API needs none, which is the same "no key, no traffic" shape Open Food Facts plays as the
     keyless member of the barcode chain in `productLookup.ts` — made here the *only* source rather

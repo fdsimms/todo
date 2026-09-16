@@ -119,6 +119,10 @@ export function FocusSessionSheet({ visible, onClose }: Props) {
 
   if (!session) return null;
 
+  // Stamped on the session at start (the setup sheet's own override of
+  // settings' focusHideTimers), not re-read from Settings here — a session
+  // already running keeps the choice it was started with.
+  const hideTimers = session.hideTimers;
   const finished = isFocusSessionFinished(session);
   const step = currentFocusStep(session);
   const running = isFocusRunning(session);
@@ -499,15 +503,25 @@ export function FocusSessionSheet({ visible, onClose }: Props) {
 
           {/* The over-run counts up, and says so with a sign: the caption
               below carries "over 15m", but the number is what the eye lands
-              on and 2:07 alone reads as time remaining. */}
-          <Text style={[styles.clock, stepDone && styles.clockDone]}>
-            {stepDone ? `+${formatStopwatch(overBy)}` : formatStopwatch(remaining)}
-          </Text>
-          <Text style={styles.clockCaption}>
-            {stepDone
-              ? `over ${formatDuration(step.minutes)}`
-              : `of ${formatDuration(step.minutes)}${running ? '' : ' · paused'}`}
-          </Text>
+              on and 2:07 alone reads as time remaining. Hidden by
+              focusHideTimers for someone who finds a running countdown adds
+              pressure rather than helping — the step still ends and chimes
+              on its own schedule underneath either way. */}
+          {!hideTimers && (
+            <>
+              <Text style={[styles.clock, stepDone && styles.clockDone]}>
+                {stepDone ? `+${formatStopwatch(overBy)}` : formatStopwatch(remaining)}
+              </Text>
+              <Text style={styles.clockCaption}>
+                {stepDone
+                  ? `over ${formatDuration(step.minutes)}`
+                  : `of ${formatDuration(step.minutes)}${running ? '' : ' · paused'}`}
+              </Text>
+            </>
+          )}
+          {hideTimers && !running && (
+            <Text style={styles.clockCaption}>Paused</Text>
+          )}
 
           <View style={styles.progressWrap}>
             <ProgressBar progress={focusStepProgress(session, now)} />

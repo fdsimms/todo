@@ -74,6 +74,8 @@ export interface FocusRun {
   /** The button once it has: 'Next task' / 'Start break' / 'Finish'. */
   advanceLabel: string;
   advanceUrl: string;
+  /** Mirrors the session's own hideTimers — the native side draws no clock at all. */
+  hideTimers: boolean;
 }
 
 function truncate(title: string): string {
@@ -147,6 +149,7 @@ export function buildFocusRun(
     primaryUrl: paused ? 'dundundun://focus?do=resume' : 'dundundun://focus?do=pause',
     advanceLabel,
     advanceUrl: 'dundundun://focus?do=next',
+    hideTimers: session.hideTimers,
   };
   return { key: JSON.stringify(run), ...run };
 }

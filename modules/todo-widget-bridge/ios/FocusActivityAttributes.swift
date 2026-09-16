@@ -43,4 +43,5 @@ struct FocusActivityAttributes: ActivityAttributes {
     let primaryUrl: String
     let advanceLabel: String    // the button once it has: "Next task"/"Start break"/"Finish"
     let advanceUrl: String
+    let hideTimers: Bool        // mirrors settings' focusHideTimers — draw no clock at all
 }

@@ -523,6 +523,25 @@ describe('parseTaskInput — recurrence', () => {
     expect(r.schedule.recurrenceType).toBe('daily');
     expectDay(new Date(r.schedule.recurrenceEndDate!), 2025, 5, 20);
   });
+
+  it('treats a bare "for N days" with no frequency word as an implied daily repeat', () => {
+    const r = parseTaskInput('wear new contacts for three days', NOW)!;
+    expect(r.cleanTitle).toBe('wear new contacts');
+    expect(r.schedule.recurrenceType).toBe('daily');
+    expect(r.schedule.recurrenceInterval).toBe(1);
+    expectDay(r.schedule.dueDate, 2025, 5, 10);
+    expectDay(new Date(r.schedule.recurrenceEndDate!), 2025, 5, 13);
+  });
+
+  it('accepts a digit count for the same bare duration clause', () => {
+    const r = parseTaskInput('take vitamin d for 10 days', NOW)!;
+    expect(r.schedule.recurrenceType).toBe('daily');
+    expectDay(new Date(r.schedule.recurrenceEndDate!), 2025, 5, 20);
+  });
+
+  it('does not imply a repeat from a bare "for N times" with no frequency word', () => {
+    expect(parseTaskInput('call mom for 5 times', NOW)).toBeNull();
+  });
 });
 
 describe('describeSchedule', () => {

@@ -383,7 +383,7 @@ export function WeightGoalSheet({ visible, onClose, currentKg, onLogWeight }: Pr
           <Text style={styles.sectionTitle}>FOR THE CALORIE ESTIMATE</Text>
           <View style={styles.card}>
             <Text style={styles.help}>
-              Used only to work out the figure below. Nothing else in the app reads
+              Used only to calculate the figure below. Nothing else in the app reads
               these, and they are never sent anywhere or written to Apple Health.
             </Text>
 
@@ -548,7 +548,7 @@ export function WeightGoalSheet({ visible, onClose, currentKg, onLogWeight }: Pr
                 <Text style={styles.help}>
                   Optional, and nothing is picked for you. Each of these is a common
                   way to divide a day's calories, not a recommendation. Pick one to
-                  see what it works out to, or leave this alone and set the three
+                  see what it comes out to, or leave this alone and set the three
                   numbers yourself under Daily targets.
                 </Text>
 

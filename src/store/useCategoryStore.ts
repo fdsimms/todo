@@ -289,8 +289,8 @@ export function ensureHealthCategory(opts: { force?: boolean } = {}): void {
 
 /**
  * Each generator's category setting, as a pair this module can read and
- * write — null for a kind with no category setting of its own (see
- * `GeneratedKindSpec.categorized`).
+ * write. Returns null for a kind whose spec has `categorized: false` — see
+ * `GeneratedKindSpec.categorized`; every kind currently has one.
  */
 function generatedCategorySetting(kind: GeneratedKind): {
   key: string;
@@ -319,15 +319,10 @@ function generatedCategorySetting(kind: GeneratedKind): {
       return { key: 'mealShortfallTaskCategory', current: s.mealShortfallTaskCategory, assign: s.setMealShortfallTaskCategory };
     case 'mealLogNudge':
       return { key: 'mealLogNudgeTaskCategory', current: s.mealLogNudgeTaskCategory, assign: s.setMealLogNudgeTaskCategory };
-    // Inherits the source task's own category instead — see
-    // GeneratedKindSpec.categorized and checkSupplyReorderTasks.
-    // ensureGeneratedTaskCategory returns before this null is ever used.
     case 'supplyReorder':
-      return null;
-    // Reuses calendarEventCategory instead — see GeneratedKindSpec.categorized.
-    // ensureGeneratedTaskCategory returns before this null is ever used.
+      return { key: 'supplyReorderTaskCategory', current: s.supplyReorderTaskCategory, assign: s.setSupplyReorderTaskCategory };
     case 'calendarReview':
-      return null;
+      return { key: 'calendarReviewTaskCategory', current: s.calendarReviewTaskCategory, assign: s.setCalendarReviewTaskCategory };
     case 'birthday':
       return { key: 'birthdayTaskCategory', current: s.birthdayTaskCategory, assign: s.setBirthdayTaskCategory };
     case 'birthdayGift':

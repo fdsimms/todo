@@ -1,0 +1,4 @@
+{
+  "message": "Event rules can now match on several keywords at once, so one rule can fire on \"flight\" or \"layover\" instead of needing a separate rule for each",
+  "date": "2026-09-16"
+}

@@ -823,7 +823,7 @@ export function FoodLogScreen() {
                       onPress={() => { haptics.tap(); commitWater(); setWaterUnit(u); }}
                       accessibilityRole="button"
                       accessibilityState={{ selected: waterUnit === u }}
-                      accessibilityLabel={u === 'ml' ? 'Show water in millilitres' : 'Show water in fluid ounces'}
+                      accessibilityLabel={u === 'ml' ? 'Show water in milliliters' : 'Show water in fluid ounces'}
                     >
                       <Text style={[styles.waterUnitText, waterUnit === u && styles.waterUnitTextOn]}>
                         {u === 'ml' ? 'ml' : 'fl oz'}

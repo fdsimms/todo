@@ -459,7 +459,7 @@ export function RecipeEditor({ visible, recipe, onClose, onDeleted }: Props) {
           value={cookedWeightOpen
             ? undefined
             : (cookedWeight.trim() ? `${cookedWeight.trim()} g` : undefined)}
-          hint="What the whole finished dish weighs, as written. Logging a plate of it then works out from what your plate weighs instead of from servings."
+          hint="What the whole finished dish weighs, as written. Logging a plate of it is then measured from what your plate weighs instead of from servings."
           expanded={cookedWeightOpen}
           onPress={() => { animateLayout(); setCookedWeightOpen(v => !v); }}
           onClear={cookedWeight.trim()

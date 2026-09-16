@@ -273,7 +273,7 @@ describe('projectQuietDays', () => {
 
 describe('describeProjectQuiet', () => {
   it('says it plainly, and gets the singular right', () => {
-    expect(describeProjectQuiet(1)).toBe('Quiet 1 day');
-    expect(describeProjectQuiet(21)).toBe('Quiet 21 days');
+    expect(describeProjectQuiet(1)).toBe('Quiet for 1 day');
+    expect(describeProjectQuiet(21)).toBe('Quiet for 21 days');
   });
 });

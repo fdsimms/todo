@@ -73,7 +73,7 @@ interface Props {
    * being re-read from settings by the caller, so a session-only override
    * (see `breaksEnabled` below) actually reaches the plan the session runs.
    */
-  onStart: (tasks: Task[], options: FocusPlanOptions) => void;
+  onStart: (tasks: Task[], options: FocusPlanOptions, hideTimers: boolean) => void;
 }
 
 /**
@@ -122,6 +122,14 @@ interface Props {
  * "with both triggers off the plan is a straight run of work, which is a
  * legitimate thing to ask for"). The plan preview and `onStart` both read the
  * same `effectivePlanOptions`, so what's shown is exactly what runs.
+ *
+ * The Hide timer toggle is the same idea for `focusHideTimers`, and freer:
+ * unlike Breaks it isn't one-directional, since showing or hiding a number is
+ * cheap either way and neither direction needs extra configuration to make
+ * sense. It starts from whatever Settings says and can be flipped either way
+ * for just this run without writing back to Settings — `startSession` stamps
+ * the choice onto the session itself (`FocusSession.hideTimers`) rather than
+ * this sheet touching the setting.
  */
 export function FocusSetupSheet({ visible, tasks, allTasks, pinnedSeed, reachOutSeed, onClose, onStart }: Props) {
   const colors = useColors();
@@ -158,6 +166,15 @@ export function FocusSetupSheet({ visible, tasks, allTasks, pinnedSeed, reachOut
     focusRestAfterTasks: planOptions.restAfterTasks,
     focusRestAfterMinutes: planOptions.restAfterMinutes,
   });
+
+  /**
+   * Whether this session hides its countdown, separate from the Settings
+   * toggle. Reset on every open, seeded from Settings' own value — see the
+   * module note above for why this one runs both directions rather than only
+   * turning a setting off.
+   */
+  const settingsHideTimers = useSettingsStore(s => s.focusHideTimers);
+  const [hideTimersEnabled, setHideTimersEnabled] = useState(settingsHideTimers);
 
   const calendarReadEnabled = useSettingsStore(s => s.calendarReadEnabled);
   const calendarEvents = useCalendarStore(s => s.events);
@@ -238,6 +255,7 @@ export function FocusSetupSheet({ visible, tasks, allTasks, pinnedSeed, reachOut
     if (!visible) return;
     repick(windowMinutes);
     setBreaksEnabled(true);
+    setHideTimersEnabled(settingsHideTimers);
     translateY.setValue(hiddenY);
     backdropOpacity.setValue(0);
     Animated.parallel([
@@ -386,7 +404,7 @@ export function FocusSetupSheet({ visible, tasks, allTasks, pinnedSeed, reachOut
   const handleStart = () => {
     if (selected.length === 0) return;
     haptics.success();
-    onStart(selected, effectivePlanOptions);
+    onStart(selected, effectivePlanOptions, hideTimersEnabled);
     dismiss();
   };
 
@@ -601,6 +619,25 @@ export function FocusSetupSheet({ visible, tasks, allTasks, pinnedSeed, reachOut
               </View>
             </TouchableOpacity>
           )}
+
+          <TouchableOpacity
+            style={styles.breaksRow}
+            onPress={() => { haptics.tap(); setHideTimersEnabled(v => !v); }}
+            activeOpacity={interaction.activeOpacity}
+            accessibilityRole="switch"
+            accessibilityLabel="Hide timer"
+            accessibilityState={{ checked: hideTimersEnabled }}
+          >
+            <View style={styles.windowLabelWrap}>
+              <Text style={styles.windowLabel}>Hide timer</Text>
+              <Text style={styles.windowHint}>
+                {hideTimersEnabled ? 'No countdown for this session' : 'Shows a countdown, same as usual'}
+              </Text>
+            </View>
+            <View style={[styles.toggle, hideTimersEnabled && styles.toggleOn]}>
+              <View style={[styles.toggleKnob, hideTimersEnabled && styles.toggleKnobOn]} />
+            </View>
+          </TouchableOpacity>
 
           {slots.length === 0 ? (
             <Text style={styles.emptyHint}>

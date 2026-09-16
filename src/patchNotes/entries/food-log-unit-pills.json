@@ -1,0 +1,4 @@
+{
+  "message": "Logging a food's amount now picks the unit (cup, tsp, g, and so on) as a pill, and the field beside it just takes the number. A \"Something else\" pill brings back plain typing for a unit the food doesn't list",
+  "date": "2026-09-16"
+}

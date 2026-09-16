@@ -549,6 +549,14 @@ interface SettingsStore {
   // Same idea again, for the focus session in flight (useFocusStore.ts) — see
   // src/utils/focusLiveActivity.ts. iOS 17+ only, defaults on.
   focusLiveActivity: boolean;
+  // Hides the countdown clock everywhere a focus session shows one — the big
+  // clock and progress bar in FocusSessionSheet, the strip on Today
+  // (FocusBar), and the Lock Screen / Dynamic Island Live Activity. The step
+  // still runs on the same clock underneath (the chime, the over-run, "step 3
+  // of 9") — this only stops a number from being the thing on screen, for
+  // someone who finds watching a countdown add pressure to the work rather
+  // than help it. Off by default, like every other display preference here.
+  focusHideTimers: boolean;
   // Whether the app shows the groceries / recipes / meal plan trio at all —
   // one switch for all three because they aren't separable: a meal plan entry
   // points at a recipe by id, and a recipe reaches the grocery catalog by
@@ -1260,18 +1268,18 @@ interface SettingsStore {
   // and then being told nothing. An install with no supplies sees nothing
   // either way.
   supplyReorderTasks: boolean;
-  // No category setting of its own — see GeneratedKindSpec.categorized. Each
-  // reorder task inherits the category of the task its supply is on instead.
+  // Which category a supply reorder task files itself under, by name, or null
+  // for none — same setting shape as the other generators'.
+  supplyReorderTaskCategory: string | null;
   //
   // Whether a task appears once a day to review tomorrow's calendar (see
   // src/utils/calendarReviewTasks.ts). Defaults OFF, the pantryCheckTasks
   // reading rather than projectReviewTasks': this adds a surface nobody had
   // before, so a generator writing rows unasked has to be asked for.
-  //
-  // No category setting of its own — see GeneratedKindSpec.categorized. It
-  // files under calendarEventCategory instead, the setting the day's own
-  // calendar events already render under.
   calendarReviewTasks: boolean;
+  // Which category a calendar review task files itself under, by name, or
+  // null for none — same setting shape as the other generators'.
+  calendarReviewTaskCategory: string | null;
   // Idempotency state, not a preference — the day key (tomorrow's, as of the
   // most recent check) `checkCalendarReviewTasks` has already decided about,
   // whatever the outcome. Read only by that check, which compares it against
@@ -1603,6 +1611,7 @@ interface SettingsStore {
   setTimerLiveActivity: (on: boolean) => void;
   setTripLiveActivity: (on: boolean) => void;
   setFocusLiveActivity: (on: boolean) => void;
+  setFocusHideTimers: (on: boolean) => void;
   setKitchenEnabled: (on: boolean) => void;
   setFeatureWheelEnabled: (on: boolean) => void;
   setFeatureWheelRoutes: (routes: string[]) => void;
@@ -1675,7 +1684,9 @@ interface SettingsStore {
   setMealLogNudgeTasks: (on: boolean) => void;
   setMealLogNudgeTaskCategory: (category: string | null) => void;
   setSupplyReorderTasks: (on: boolean) => void;
+  setSupplyReorderTaskCategory: (category: string | null) => void;
   setCalendarReviewTasks: (on: boolean) => void;
+  setCalendarReviewTaskCategory: (category: string | null) => void;
   setCalendarReviewLastDayKey: (dayKey: string | null) => void;
   setCalendarReviewTimeSegment: (segment: TimeOfDay | null) => void;
   setWeatherTasks: (on: boolean) => void;
@@ -1779,6 +1790,7 @@ const DEFAULT_SETTINGS = {
   timerLiveActivity: true,
   tripLiveActivity: true,
   focusLiveActivity: true,
+  focusHideTimers: false,
   collapsedCategories: [] as string[],
   collapsedRecipeSections: [] as string[],
   collapsedGroceryGroups: [] as string[],
@@ -2194,6 +2206,7 @@ export const useSettingsStore = create<SettingsStore>((set, get) => ({
   timerLiveActivity: true,
   tripLiveActivity: true,
   focusLiveActivity: true,
+  focusHideTimers: false,
   collapsedCategories: [],
   collapsedRecipeSections: [],
   collapsedGroceryGroups: [],
@@ -2279,7 +2292,9 @@ export const useSettingsStore = create<SettingsStore>((set, get) => ({
   pantryReviewLastDayKey: null,
   lastDeloadAppliedDayKey: null,
   supplyReorderTasks: true,
+  supplyReorderTaskCategory: null,
   calendarReviewTasks: false,
+  calendarReviewTaskCategory: null,
   calendarReviewLastDayKey: null,
   calendarReviewTimeSegment: null,
   weatherTasks: false,
@@ -2437,6 +2452,7 @@ export const useSettingsStore = create<SettingsStore>((set, get) => ({
     const tripLiveActivity = dbGetSetting('tripLiveActivity') !== 'false';
     // And again for the focus session's.
     const focusLiveActivity = dbGetSetting('focusLiveActivity') !== 'false';
+    const focusHideTimers = dbGetSetting('focusHideTimers') === 'true';
     // Same `!== 'false'`: the groceries/recipes/meal plan area is on unless
     // someone has turned it off, so no existing install loses it.
     const kitchenEnabled = dbGetSetting('kitchenEnabled') !== 'false';
@@ -2648,9 +2664,11 @@ export const useSettingsStore = create<SettingsStore>((set, get) => ({
     // `!== 'false'` test rather than `=== 'true'`, same shape every other
     // on-by-default setting here uses.
     const supplyReorderTasks = dbGetSetting('supplyReorderTasks') !== 'false';
+    const supplyReorderTaskCategory = dbGetSetting('supplyReorderTaskCategory') || null;
     // `=== 'true'`, the same opt-in reading pantryCheckTasks takes and for the
     // same reason: this adds a surface rather than replacing one.
     const calendarReviewTasks = dbGetSetting('calendarReviewTasks') === 'true';
+    const calendarReviewTaskCategory = dbGetSetting('calendarReviewTaskCategory') || null;
     const calendarReviewLastDayKey = dbGetSetting('calendarReviewLastDayKey') || null;
     const storedCalendarReviewTimeSegment = dbGetSetting('calendarReviewTimeSegment');
     const calendarReviewTimeSegment =
@@ -2848,6 +2866,7 @@ export const useSettingsStore = create<SettingsStore>((set, get) => ({
       calendarPeopleHistory,
       calendarReadEnabled,
       calendarReviewLastDayKey,
+      calendarReviewTaskCategory,
       calendarReviewTasks,
       calendarReviewTimeSegment,
       collapsedCategories,
@@ -2878,6 +2897,7 @@ export const useSettingsStore = create<SettingsStore>((set, get) => ({
       filterHasReminder,
       filterPriorities,
       focusDefaultWorkMinutes,
+      focusHideTimers,
       focusLiveActivity,
       focusLongRestEvery,
       focusLongRestMinutes,
@@ -2985,6 +3005,7 @@ export const useSettingsStore = create<SettingsStore>((set, get) => ({
       simpleMode,
       simpleTaskForm,
       sortOption,
+      supplyReorderTaskCategory,
       supplyReorderTasks,
       themeMode,
       timerLiveActivity,
@@ -3443,9 +3464,19 @@ export const useSettingsStore = create<SettingsStore>((set, get) => ({
     set({ supplyReorderTasks: on });
   },
 
+  setSupplyReorderTaskCategory(category: string | null) {
+    dbSetSetting('supplyReorderTaskCategory', category ?? '');
+    set({ supplyReorderTaskCategory: category });
+  },
+
   setCalendarReviewTasks(on: boolean) {
     dbSetSetting('calendarReviewTasks', on ? 'true' : 'false');
     set({ calendarReviewTasks: on });
+  },
+
+  setCalendarReviewTaskCategory(category: string | null) {
+    dbSetSetting('calendarReviewTaskCategory', category ?? '');
+    set({ calendarReviewTaskCategory: category });
   },
 
   // Stored as '' for "nothing decided yet", matching mealPlanNudgeLastFiredWeekKey —
@@ -3819,6 +3850,11 @@ export const useSettingsStore = create<SettingsStore>((set, get) => ({
   setFocusLiveActivity(on: boolean) {
     dbSetSetting('focusLiveActivity', on ? 'true' : 'false');
     set({ focusLiveActivity: on });
+  },
+
+  setFocusHideTimers(on: boolean) {
+    dbSetSetting('focusHideTimers', on ? 'true' : 'false');
+    set({ focusHideTimers: on });
   },
 
   // Nothing else is written here on purpose. Every kitchen setting downstream

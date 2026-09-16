@@ -28,6 +28,12 @@ import SwiftUI
 // src/utils/deepLinks.ts, which applies the action and opens the session
 // sheet. Interactive controls work in the Lock Screen presentation and the
 // *expanded* island regions only, so the button appears in those two places.
+//
+// `attributes.hideTimers` mirrors settings' focusHideTimers (the same flag
+// that hides the in-app clock in FocusSessionSheet/FocusBar): every
+// FocusClockView call site is skipped outright rather than drawing a hidden
+// placeholder, so the layout collapses to the title/subtitle and button with
+// no clock-shaped gap where a number used to be.
 
 @available(iOS 17.0, *)
 private struct FocusActionButton: View {
@@ -137,12 +143,14 @@ private struct FocusLockScreenView: View {
                     Text(context.attributes.subtitle)
                         .font(.system(size: 12))
                         .foregroundColor(palette.textSecondary)
-                    FocusClockView(
-                        attributes: context.attributes,
-                        isStale: context.isStale,
-                        font: .system(size: 12).monospacedDigit(),
-                        color: overrun ? palette.orange : palette.textSecondary
-                    )
+                    if !context.attributes.hideTimers {
+                        FocusClockView(
+                            attributes: context.attributes,
+                            isStale: context.isStale,
+                            font: .system(size: 12).monospacedDigit(),
+                            color: overrun ? palette.orange : palette.textSecondary
+                        )
+                    }
                 }
             }
 
@@ -182,13 +190,15 @@ struct FocusLiveActivity: Widget {
                         .padding(.leading, 4)
                 }
                 DynamicIslandExpandedRegion(.trailing) {
-                    FocusClockView(
-                        attributes: context.attributes,
-                        isStale: context.isStale,
-                        font: .system(size: 15, weight: .semibold).monospacedDigit(),
-                        color: overrun ? palette.orange : palette.text
-                    )
-                    .padding(.trailing, 4)
+                    if !context.attributes.hideTimers {
+                        FocusClockView(
+                            attributes: context.attributes,
+                            isStale: context.isStale,
+                            font: .system(size: 15, weight: .semibold).monospacedDigit(),
+                            color: overrun ? palette.orange : palette.text
+                        )
+                        .padding(.trailing, 4)
+                    }
                 }
                 DynamicIslandExpandedRegion(.center) {
                     VStack(spacing: 2) {
@@ -218,15 +228,17 @@ struct FocusLiveActivity: Widget {
                 // Same maxWidth/scale reasoning as TimerLiveActivity's
                 // compactTrailing: a step's clock switches to h:mm:ss past an
                 // hour, which doesn't fit the 44 the digits alone would want.
-                FocusClockView(
-                    attributes: context.attributes,
-                    isStale: context.isStale,
-                    font: .system(size: 13).monospacedDigit(),
-                    color: overrun ? palette.orange : palette.textSecondary
-                )
-                .frame(maxWidth: 64)
-                .minimumScaleFactor(0.7)
-                .lineLimit(1)
+                if !context.attributes.hideTimers {
+                    FocusClockView(
+                        attributes: context.attributes,
+                        isStale: context.isStale,
+                        font: .system(size: 13).monospacedDigit(),
+                        color: overrun ? palette.orange : palette.textSecondary
+                    )
+                    .frame(maxWidth: 64)
+                    .minimumScaleFactor(0.7)
+                    .lineLimit(1)
+                }
             } minimal: {
                 Image(systemName: context.attributes.symbolName)
                     .foregroundColor(tint)

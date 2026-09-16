@@ -5298,12 +5298,9 @@ export const useTaskStore = create<TaskStore>((set, get) => ({
           // "How many did you get?" on completion, which is what puts the
           // units back. See the restock block in completeTask.
           deliverableKind: 'number' as const,
-          // Filed where the task it's for is filed, inherited the same way as
-          // linkUrl above — a filter tracked on a bathroom task and one
-          // tracked on a car task each want their own reorder task to land
-          // beside the task itself, not both funnelled into one shared
-          // "Supplies" category. See GeneratedKindSpec.categorized.
-          category: want.category,
+          // Filed under the generator's own "File them under" setting, same
+          // as every other generated kind — see GeneratedKindSpec.categorized.
+          category: settings.supplyReorderTaskCategory,
           ...generatedBy('supplyReorder', want.taskId),
         }),
       });
@@ -5336,15 +5333,10 @@ export const useTaskStore = create<TaskStore>((set, get) => ({
     // generator wrote would persist in the demo database as a fact about the
     // real calendar.
     if (isDemoModeActive()) return;
-    // Belt and braces alongside the `loaded` check below: calendarEventCategory
-    // is only ever populated while this is true (see ensureCalendarEventCategory),
-    // but this is the one generator that fires on time passing rather than on
-    // an edit to something the read produced, so without this it would be the
+    // This is the one generator that fires on time passing rather than on an
+    // edit to something the read produced, so without this it would be the
     // one part of a switched-off feature still writing rows onto Today.
     if (!settings.calendarReadEnabled) return;
-    // No category means nowhere to put it — the same rule eventContextRows
-    // follows for the day's own events.
-    if (!settings.calendarEventCategory) return;
 
     const calendar = useCalendarStore.getState();
     // Not the same question as `events` being empty — see CalendarState.loaded.
@@ -5391,7 +5383,7 @@ export const useTaskStore = create<TaskStore>((set, get) => ({
         title: CALENDAR_REVIEW_TITLE,
         dueDate: dueDate.toISOString(),
         timeSegments: settings.calendarReviewTimeSegment ? [settings.calendarReviewTimeSegment] : [],
-        category: settings.calendarEventCategory,
+        category: settings.calendarReviewTaskCategory,
         ...generatedBy('calendarReview', tomorrowKey),
       }),
     });
@@ -5436,7 +5428,19 @@ export const useTaskStore = create<TaskStore>((set, get) => ({
       })
       .forEach(task => deleteGeneratedTaskQuietly(task.id));
 
-    const conditions = classifyWeather(weather.snapshot.weatherCode, weather.snapshot.tempF);
+    // Unioned with today's day-level forecast code, not just the instant the
+    // snapshot was read at — a rule considered at the first read of the day
+    // (typically morning) would otherwise only ever see whatever the sky was
+    // doing right then, and rain due this afternoon would go unwarned about
+    // until it actually started, by which point the mark for today is often
+    // already spent. `todayWeatherCode` is Open-Meteo's own summary for the
+    // whole day, so this is a look-ahead rather than a second live reading.
+    const conditions = Array.from(new Set([
+      ...classifyWeather(weather.snapshot.weatherCode, weather.snapshot.tempF),
+      ...(weather.snapshot.todayWeatherCode != null
+        ? classifyWeather(weather.snapshot.todayWeatherCode, weather.snapshot.tempF)
+        : []),
+    ]));
     const dueDate = getCurrentDayStart();
     dueDate.setHours(12, 0, 0, 0);
 

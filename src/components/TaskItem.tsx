@@ -2252,20 +2252,6 @@ export const TaskItem = React.memo(function TaskItem({
                 </Text>
               </View>
             )}
-            {/* Marks a row added by another task's "follow-up task" rule.
-                Icon-only, no text — same call the notes chip makes just below
-                (see its own comment): the source task's title has no length
-                limit, so naming it here would mean either truncating an
-                arbitrarily long title mid-word or growing the row to fit it.
-                The full sentence lives in the expanded panel instead, where
-                it has room to wrap. `followUpTaskSourceTitle` is a snapshot
-                rather than a live lookup, so this keeps working once the
-                completion that spawned it is purged by retention. */}
-            {!!task.followUpTaskSourceTitle && (
-              <View style={styles.metaChip} accessibilityLabel={`Follow-up task, added from ${task.followUpTaskSourceTitle}`}>
-                <Ionicons name="sparkles" size={iconSize.xs} color={colors.textSecondary} />
-              </View>
-            )}
             {/* The other side of the same relationship. Only reachable where a
                 blocked task is still listed — Search, and a project's own screen. */}
             {!!blockerTitle && (
@@ -2742,6 +2728,7 @@ export const TaskItem = React.memo(function TaskItem({
         <TouchableOpacity
           onPress={() => {
             haptics.tap();
+            animateLayout();
             togglePin(task.id);
           }}
           hitSlop={8}

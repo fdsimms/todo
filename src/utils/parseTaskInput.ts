@@ -11,7 +11,7 @@ import { startOfDay } from 'date-fns/startOfDay';
 import { startOfMonth } from 'date-fns/startOfMonth';
 import type { Day } from 'date-fns';
 import type { Priority, RecurrenceType, TimeOfDay } from '../types';
-import { extractDayPart, extractTime, MONTHS, monthDay, parseDatePart, WEEKDAYS, type ClockTime } from './parseNaturalDate';
+import { extractDayPart, extractTime, MONTHS, monthDay, NUMBER_WORD_ALT, parseCount, parseDatePart, WEEKDAYS, type ClockTime } from './parseNaturalDate';
 import { looksLikePhoneNumber } from './phone';
 
 /**
@@ -438,8 +438,8 @@ function extractEndCondition(text: string, now: Date): { end: EndCondition; rest
   if ((m = text.match(/^(.*?)\s+for\s+(\d+)\s+(?:times|occurrences?)$/))) {
     return { end: { count: parseInt(m[2], 10) }, rest: m[1] };
   }
-  if ((m = text.match(/^(.*?)\s+for\s+(\d+)\s+(days?|weeks?|months?|years?)$/))) {
-    return { end: { durationN: parseInt(m[2], 10), durationUnit: m[3] }, rest: m[1] };
+  if ((m = text.match(new RegExp(`^(?:(.*?)\\s+)?for\\s+(\\d+|${NUMBER_WORD_ALT})\\s+(days?|weeks?|months?|years?)$`)))) {
+    return { end: { durationN: parseCount(m[2]), durationUnit: m[3] }, rest: m[1] ?? '' };
   }
   return null;
 }
@@ -463,8 +463,17 @@ function parseRecurrenceSuffix(text: string, now: Date): ParsedSchedule | null {
   const starting = extractStartingClause(t, now);
   const core = starting ? starting.rest : t;
 
-  let schedule = matchRecurrenceCore(core, now, []);
-  if (!schedule) {
+  // A bare duration clause with no recurrence phrase in front of it ("wear
+  // new contacts for three days") names no frequency, but the only sensible
+  // one for a task with no other schedule at all is daily — the clause is
+  // read as "keep doing this every day, for that long" rather than left
+  // unparsed. Count-based end conditions ("for 5 times") aren't covered: a
+  // bare count still doesn't say how often those 5 times happen.
+  let schedule: ParsedSchedule | null =
+    core.trim() === '' && endMatch?.end.durationN !== undefined && endMatch.end.durationUnit
+      ? recurrence('daily', 1, [], [], now)
+      : matchRecurrenceCore(core, now, []);
+  if (!schedule && core.trim() !== '') {
     // Peel a trailing clock time / day part ("every tuesday at 6pm") into a segment.
     let segments: TimeOfDay[];
     let rest: string;

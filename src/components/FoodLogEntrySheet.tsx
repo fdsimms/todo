@@ -255,6 +255,72 @@ const DISH_MEASURE_OPTIONS: SegmentOption<DishMeasure>[] = [
   { value: 'servings', label: 'By servings' },
 ];
 
+/**
+ * One unit a food's amount can be entered in, offered as a pill beside the
+ * amount field. `suffix` is what turns a typed number into the amount text
+ * `scalePanelToAmount` actually reads — a space before a word unit, none
+ * before "g", matching how those already read as amounts ("0.5 tsp", "100g").
+ */
+interface FoodUnitOption {
+  key: string;
+  label: string;
+  suffix: string;
+}
+
+/**
+ * Every unit this food's own panel can measure — its stated portions, plus
+ * grams and/or servings wherever `panelMultiplier` would actually resolve
+ * them (see `foodLog.ts#amountHint`, which this mirrors). Grams are left off
+ * a `per100ml` panel and a `perServing` one with no stated serving weight,
+ * because typing them would only ever be refused; a `serving` pill is offered
+ * only for a `perServing` panel, whose own figures already are one serving.
+ */
+function foodUnitOptionsFor(panel: FoodNutrition): FoodUnitOption[] {
+  const out: FoodUnitOption[] = [];
+  const seen = new Set<string>();
+  for (const p of panel.portions) {
+    const key = p.label.toLowerCase();
+    if (seen.has(key)) continue;
+    seen.add(key);
+    out.push({ key, label: p.label, suffix: ` ${p.label}` });
+  }
+  const gramsResolve = panel.basis === 'per100g' || (panel.basis === 'perServing' && panel.servingGrams !== null);
+  if (gramsResolve) out.push({ key: 'g', label: 'g', suffix: 'g' });
+  if (panel.basis === 'perServing') out.push({ key: 'serving', label: 'serving', suffix: ' serving' });
+  return out;
+}
+
+/** A typed number for a pill, turned into the amount text the rest of the sheet reads. */
+function composeFoodAmount(numberText: string, unit: FoodUnitOption | undefined): string {
+  const n = numberText.trim();
+  if (!n || !unit) return '';
+  return `${n}${unit.suffix}`;
+}
+
+/**
+ * The reverse of `composeFoodAmount`, for reopening a correction: what number
+ * and which of `options` a previously saved amount text was. Only recognises
+ * the exact shapes this sheet itself writes, so an amount saved before this
+ * split existed (a fraction, "1 lemon", a per100ml volume) simply doesn't
+ * match — the saved text is left as-is and still saves correctly untouched,
+ * it just can't be shown pre-filled in the split fields.
+ */
+function parseFoodAmount(raw: string, options: FoodUnitOption[]): { number: string; unitKey: string } | null {
+  const match = /^(\d+(?:\.\d+)?)\s*(.*)$/.exec(raw.trim());
+  if (!match) return null;
+  const [, numberText, unitText] = match;
+  const word = unitText.trim().toLowerCase();
+  if (!word) return null;
+  for (const option of options) {
+    if (option.key === 'g' ? (word === 'g' || word === 'gram' || word === 'grams') :
+      option.key === 'serving' ? word.startsWith('serving') :
+        word === option.label.toLowerCase()) {
+      return { number: numberText, unitKey: option.key };
+    }
+  }
+  return null;
+}
+
 /** What Save is about to write, once the typed amount resolves to something. */
 interface Built {
   nutrition: FoodNutrition;
@@ -347,6 +413,12 @@ export function FoodLogEntrySheet({
   const [query, setQuery] = useState('');
   const [picked, setPicked] = useState<Candidate | null>(null);
   const [amount, setAmount] = useState('');
+  // The split view of `amount` a food with a matched unit renders as: a unit
+  // pill plus a number-only field, kept in step with `amount` at every write
+  // rather than derived from it, so a value `parseFoodAmount` can't read back
+  // (see its own doc comment) doesn't lose what was actually typed or saved.
+  const [amountUnit, setAmountUnit] = useState<string | null>(null);
+  const [amountNumber, setAmountNumber] = useState('');
   // Which question the amount field is asking of a dish. Set from the picked
   // dish rather than remembered across picks — see `pickDish`.
   const [dishMeasure, setDishMeasure] = useState<DishMeasure>('servings');
@@ -369,6 +441,8 @@ export function FoodLogEntrySheet({
     setQuery(initialQuery ?? '');
     setPicked(null);
     setAmount('');
+    setAmountUnit(null);
+    setAmountNumber('');
     setChosenSlot(slot);
     setDbSearchOpen(false);
     setCatalogPickOpen(false);
@@ -510,6 +584,9 @@ export function FoodLogEntrySheet({
     const weigh = candidate.kind === 'dish' && candidate.cookedGrams !== null;
     setDishMeasure(weigh ? 'weight' : 'servings');
     setAmount(candidate.kind === 'dish' && !weigh ? '1' : '');
+    const options = candidate.kind === 'food' && candidate.panel ? foodUnitOptionsFor(candidate.panel) : [];
+    setAmountUnit(options[0]?.key ?? null);
+    setAmountNumber('');
   };
 
   /**
@@ -581,6 +658,14 @@ export function FoodLogEntrySheet({
     setPicked(candidate);
     setAmount(plan.amount);
     if (plan.dishMeasure) setDishMeasure(plan.dishMeasure);
+    const options = candidate.kind === 'food' && candidate.panel ? foodUnitOptionsFor(candidate.panel) : [];
+    const parsed = options.length > 0 ? parseFoodAmount(plan.amount, options) : null;
+    // A saved amount this sheet's own units can't reconstruct — a fraction, a
+    // per100ml volume, a weighed one-off — reopens on "Something else" with
+    // the exact text intact, rather than silently defaulting to the first
+    // pill with a blank number (see `parseFoodAmount`'s own doc comment).
+    setAmountUnit(parsed?.unitKey ?? (options.length > 0 ? 'other' : null));
+    setAmountNumber(parsed?.number ?? '');
   }, [visible, editing, candidates]);
 
   const results = useMemo(() => {
@@ -703,21 +788,17 @@ export function FoodLogEntrySheet({
       + (per !== null ? `, so a serving is about ${per} g.` : '.');
   }, [picked, dishMeasure]);
 
-  // Every stated portion, not a slice of the first few: this is a "preset
-  // beside a free input" (the amount field still takes a typed weight), which
-  // stays chips rather than becoming a `SegmentedControl` — see that
-  // component's own doc comment. The table a source states is already the
-  // short, closed set the chips read as; there's no separate cap to apply on
-  // top of it. The placeholder and hint below use `amountHint`/`amountExample`
-  // instead of this list directly, since those are basis-aware in a way a
-  // plain "the food's own portions" isn't — a per-100ml panel needs its own
-  // wording even though it states no portions at all.
-  const portionChoices = useMemo(() => {
+  // Every unit this food's panel can resolve — its stated portions, plus
+  // grams and/or servings wherever they'd actually work (`foodUnitOptionsFor`).
+  // A unit is a pill rather than a `SegmentedControl` — see that component's
+  // own doc comment — because it pairs with the free number beside it, the
+  // shape that doc comment itself calls out ("a unit beside a stepper").
+  // Empty only for the rare panel with no portions and no resolvable grams or
+  // servings (a `per100ml` panel with nothing stated), which keeps the plain
+  // free-text amount field below instead.
+  const foodUnitOptions = useMemo(() => {
     if (!picked || picked.kind !== 'food' || !picked.panel) return [];
-    return picked.panel.portions.map(p => {
-      const count = Number.isInteger(p.amount) ? String(p.amount) : p.amount.toFixed(2).replace(/0+$/, '').replace(/\.$/, '');
-      return `${count} ${p.label}`;
-    });
+    return foodUnitOptionsFor(picked.panel);
   }, [picked]);
 
   const handleSaveWeighedPortion = () => {
@@ -884,6 +965,8 @@ export function FoodLogEntrySheet({
       setQuery(initialQuery ?? '');
       setPicked(null);
       setAmount('');
+      setAmountUnit(null);
+      setAmountNumber('');
       setDbSearchOpen(false);
       refreshRecency();
       pendingBurstFocus.current = true;
@@ -913,6 +996,9 @@ export function FoodLogEntrySheet({
       dishServings: null,
     });
     setAmount('');
+    const options = foodUnitOptionsFor(nutrition);
+    setAmountUnit(options[0]?.key ?? null);
+    setAmountNumber('');
   };
 
   // The dirty check and confirm behind both Cancel and "Open Settings" from
@@ -1014,43 +1100,81 @@ export function FoodLogEntrySheet({
                 />
               </View>
             )}
-            {portionChoices.length > 0 && (
+            {picked.kind === 'food' && foodUnitOptions.length > 0 && (
               <View style={styles.portionChips}>
-                {portionChoices.map(choice => {
-                  const on = amount.trim() === choice;
+                {foodUnitOptions.map(option => {
+                  const on = amountUnit === option.key;
                   return (
                     <TouchableOpacity
-                      key={choice}
+                      key={option.key}
                       style={[styles.portionChip, on && styles.portionChipOn]}
                       activeOpacity={interaction.activeOpacity}
-                      onPress={() => { haptics.tap(); setAmount(choice); }}
+                      onPress={() => {
+                        haptics.tap();
+                        setAmountUnit(option.key);
+                        setAmount(composeFoodAmount(amountNumber, option));
+                      }}
                       accessibilityRole="button"
                       accessibilityState={{ selected: on }}
-                      accessibilityLabel={choice}
+                      accessibilityLabel={option.label}
                     >
-                      <Text style={[styles.portionChipText, on && styles.portionChipTextOn]}>{choice}</Text>
+                      <Text style={[styles.portionChipText, on && styles.portionChipTextOn]}>{option.label}</Text>
                     </TouchableOpacity>
                   );
                 })}
+                {/* The escape hatch for a unit this food's own panel doesn't
+                    state: swaps the number-only field below back to free
+                    text, so a novel amount can still be typed and, if it
+                    names a unit the panel can't resolve, weighed in via
+                    `weighable` — the same offer this sheet already makes for
+                    any refused amount. */}
+                <TouchableOpacity
+                  key="other"
+                  style={[styles.portionChip, amountUnit === 'other' && styles.portionChipOn]}
+                  activeOpacity={interaction.activeOpacity}
+                  onPress={() => { haptics.tap(); setAmountUnit('other'); setAmount(''); }}
+                  accessibilityRole="button"
+                  accessibilityState={{ selected: amountUnit === 'other' }}
+                  accessibilityLabel="Something else"
+                >
+                  <Text style={[styles.portionChipText, amountUnit === 'other' && styles.portionChipTextOn]}>
+                    Something else
+                  </Text>
+                </TouchableOpacity>
               </View>
             )}
             <TextInput
               style={styles.input}
-              value={amount}
-              onChangeText={setAmount}
+              value={picked.kind === 'food' && foodUnitOptions.length > 0 && amountUnit !== 'other' ? amountNumber : amount}
+              onChangeText={text => {
+                if (picked.kind === 'food' && foodUnitOptions.length > 0 && amountUnit !== 'other') {
+                  setAmountNumber(text);
+                  setAmount(composeFoodAmount(text, foodUnitOptions.find(o => o.key === amountUnit)));
+                } else {
+                  setAmount(text);
+                }
+              }}
               placeholder={
-                picked.kind !== 'dish'
-                  ? `e.g. ${picked.panel ? amountExample(picked.panel) : '100g'}`
-                  : dishMeasure === 'weight' ? 'e.g. 320 (grams)' : 'e.g. 1.5'
+                picked.kind === 'dish'
+                  ? (dishMeasure === 'weight' ? 'e.g. 320 (grams)' : 'e.g. 1.5')
+                  : foodUnitOptions.length > 0 && amountUnit !== 'other'
+                    ? 'Amount'
+                    : `e.g. ${picked.panel ? amountExample(picked.panel) : '100g'}`
               }
               placeholderTextColor={colors.textTertiary}
               autoFocus
-              keyboardType={picked.kind === 'dish' ? 'decimal-pad' : 'default'}
+              keyboardType={
+                picked.kind === 'dish' || (foodUnitOptions.length > 0 && amountUnit !== 'other')
+                  ? 'decimal-pad' : 'default'
+              }
               // The number pad has no return key, so without this there is no
               // way off it — the same accessory the weigh field below already
-              // passes. Omitted for a food, whose amount is typed words ("1
-              // cup") on the ordinary keyboard.
-              inputAccessoryViewID={picked.kind === 'dish' ? NUMBER_PAD_ACCESSORY_ID : undefined}
+              // passes. Omitted for the free-text field, whose amount is
+              // typed words ("1 cup", "250 ml") on the ordinary keyboard.
+              inputAccessoryViewID={
+                picked.kind === 'dish' || (foodUnitOptions.length > 0 && amountUnit !== 'other')
+                  ? NUMBER_PAD_ACCESSORY_ID : undefined
+              }
               accessibilityLabel={
                 picked.kind === 'dish' && dishMeasure === 'weight'
                   ? 'Weight on your plate in grams'
@@ -1060,8 +1184,8 @@ export function FoodLogEntrySheet({
             <Text style={styles.hint}>
               {picked.kind === 'dish'
                 ? dishWeightHint
-                : portionChoices.length > 0
-                  ? 'Tap a stated portion above, or type a weight (like 100g). Anything else is refused rather than guessed at.'
+                : foodUnitOptions.length > 0 && amountUnit !== 'other'
+                  ? 'Choose a unit above and type the amount. Anything else is refused rather than guessed at.'
                   : picked.panel
                     ? `${amountHint(picked.panel)}${
                       picked.panel.basis === 'per100ml'

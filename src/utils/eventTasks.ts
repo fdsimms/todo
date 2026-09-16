@@ -56,6 +56,17 @@ export const EVENT_MATCH_MAX_LENGTH = 60;
 export const EVENT_MATCH_MIN_LENGTH = 3;
 
 /**
+ * The most keywords a single rule may carry.
+ *
+ * Each one is its own whole-word test, and `ruleMatchesTitle` runs every one
+ * of them against every eligible event — a ceiling here is what keeps that
+ * bounded, the same reasoning `DEFAULT_PILL_LIMIT` applies to an open-ended
+ * pill grid. Six is generous for "flight / plane / layover / airport" and
+ * still small enough to read as one rule rather than a list.
+ */
+export const EVENT_RULE_MAX_MATCHES = 6;
+
+/**
  * The longest lead a rule may carry, and it is a mechanical ceiling rather
  * than a product one.
  *
@@ -78,8 +89,8 @@ export const EVENT_LEAD_DAYS_MAX = 14;
  */
 export function defaultEventRules(): EventTaskRule[] {
   return [
-    { id: generateId(), match: 'flight', title: 'Pack a bag', leadDays: 2, enabled: true },
-    { id: generateId(), match: 'dentist', title: 'Bring your insurance card', leadDays: 0, enabled: true },
+    { id: generateId(), matches: ['flight'], title: 'Pack a bag', leadDays: 2, enabled: true },
+    { id: generateId(), matches: ['dentist'], title: 'Bring your insurance card', leadDays: 0, enabled: true },
   ];
 }
 
@@ -88,6 +99,12 @@ export function defaultEventRules(): EventTaskRule[] {
  * `parseWeatherRules`: a malformed or missing stored value reads as "nothing
  * saved yet" rather than throwing, and a bad entry is dropped rather than
  * discarding the whole list.
+ *
+ * **Reads a legacy single `match` string as a one-entry `matches` array.**
+ * An install that saved rules before multi-keyword support shipped has
+ * `match: 'flight'` on disk, not `matches`; the array field wins when both
+ * are present (nothing writes both), so this is read-compatibility only —
+ * `setEventRules` always writes the new shape.
  */
 export function parseEventRules(raw: string | null | undefined): EventTaskRule[] {
   if (!raw) return [];
@@ -97,19 +114,28 @@ export function parseEventRules(raw: string | null | undefined): EventTaskRule[]
   const out: EventTaskRule[] = [];
   for (const entry of parsed) {
     if (!entry || typeof entry !== 'object' || Array.isArray(entry)) continue;
-    const r = entry as Partial<EventTaskRule>;
+    const r = entry as Partial<EventTaskRule> & { match?: unknown };
     const title = typeof r.title === 'string' ? r.title.trim().slice(0, EVENT_RULE_TITLE_MAX_LENGTH) : '';
-    const match = typeof r.match === 'string' ? r.match.trim().slice(0, EVENT_MATCH_MAX_LENGTH) : '';
+    const rawMatches = Array.isArray(r.matches)
+      ? r.matches
+      : typeof r.match === 'string' ? [r.match] : [];
+    const matches: string[] = [];
+    for (const m of rawMatches) {
+      if (typeof m !== 'string') continue;
+      const cue = m.trim().slice(0, EVENT_MATCH_MAX_LENGTH);
+      if (cue && !matches.some(existing => existing.toLowerCase() === cue.toLowerCase())) matches.push(cue);
+      if (matches.length >= EVENT_RULE_MAX_MATCHES) break;
+    }
     // Both halves are required: a rule with no cue matches everything and a
     // rule with no title has nothing to write. Dropped rather than repaired,
     // the call parseWeatherRules makes about a titleless entry.
-    if (!title || !match) continue;
+    if (!title || matches.length === 0) continue;
     const leadDays = typeof r.leadDays === 'number' && Number.isFinite(r.leadDays)
       ? Math.min(EVENT_LEAD_DAYS_MAX, Math.max(0, Math.round(r.leadDays)))
       : 0;
     out.push({
       id: typeof r.id === 'string' && r.id ? r.id : generateId(),
-      match,
+      matches,
       title,
       leadDays,
       enabled: r.enabled !== false,
@@ -136,6 +162,20 @@ function normalizeCue(cue: string): string {
 }
 
 /**
+ * A rule's keywords, normalized and with the unusable ones dropped.
+ *
+ * Below `EVENT_MATCH_MIN_LENGTH` a keyword is not a cue, and a rule part-way
+ * through being typed holds one of those rather than a mistake — which is why
+ * this returns a list to be counted rather than a boolean, and why an empty
+ * result reads as "nothing to say yet" everywhere it is consulted.
+ */
+function ruleCues(rule: EventTaskRule): string[] {
+  return rule.matches
+    .map(normalizeCue)
+    .filter(cue => cue.length >= EVENT_MATCH_MIN_LENGTH);
+}
+
+/**
  * Every spelling of a cue that should count as the same cue — the cue itself,
  * plus the singular or plural of its last word.
  *
@@ -159,30 +199,35 @@ function cueSpellings(cue: string): string[] {
   return [cue, ...pluralKeyVariants(cue)];
 }
 
+/** Whether one already-normalized cue appears as a whole word in a haystack. */
+function cueInHaystack(cue: string, haystack: string): boolean {
+  return cueSpellings(cue).some(spelling =>
+    new RegExp(`(?<![a-z0-9])${escapeRegExp(spelling)}(?![a-z0-9])`).test(haystack));
+}
+
 /**
- * Whether `rule`'s cue appears in an event title.
+ * Whether **any** of `rule`'s keywords appears in an event title.
  *
  * Whole-word and case-insensitive, the identical test `peopleNamedInTitle`
  * applies (`(?<![a-z0-9]) … (?![a-z0-9])`), so "gym" does not fire on
  * "Gymnastics recital" and "PT" would not fire on "Optometrist" even if the
  * length floor let it through. A multi-word cue ("parent evening") works the
  * same way, with runs of whitespace in the title flattened first so a wrapped
- * or double-spaced title still matches.
+ * or double-spaced title still matches. A rule with several keywords is an
+ * OR: "flight" or "layover" or "airport" each independently fire it.
  *
- * **Singular and plural count as the same cue** (see `cueSpellings`), in both
- * directions: a rule written "dentist" fires on "Dentists on Tuesday", and a
- * rule written "dentists" fires on "Dentist". That one tolerance was the
- * difference between a rule working and a rule silently doing nothing, and
- * unlike a scored match it cannot surprise you — no word gains a meaning it
- * did not have.
+ * **Singular and plural count as the same keyword** (see `cueSpellings`), in
+ * both directions: a rule written "dentist" fires on "Dentists on Tuesday",
+ * and a rule written "dentists" fires on "Dentist". That one tolerance was the
+ * difference between a keyword working and a keyword silently doing nothing,
+ * and unlike a scored match it cannot surprise you — no word gains a meaning
+ * it did not have. It applies per keyword, so it composes with the OR above
+ * rather than interacting with it.
  */
 export function ruleMatchesTitle(rule: EventTaskRule, title: string): boolean {
-  const cue = normalizeCue(rule.match);
-  if (cue.length < EVENT_MATCH_MIN_LENGTH) return false;
   const haystack = normalizeCue(title);
   if (!haystack) return false;
-  return cueSpellings(cue).some(spelling =>
-    new RegExp(`(?<![a-z0-9])${escapeRegExp(spelling)}(?![a-z0-9])`).test(haystack));
+  return ruleCues(rule).some(cue => cueInHaystack(cue, haystack));
 }
 
 /**
@@ -195,10 +240,14 @@ export function ruleMatchesTitle(rule: EventTaskRule, title: string): boolean {
  * testable without a renderer.
  */
 export function describeEventRule(rule: EventTaskRule): string {
-  const cue = rule.match.trim() || 'anything';
-  if (rule.leadDays === 0) return `"${cue}" · same day`;
-  if (rule.leadDays === 1) return `"${cue}" · 1 day before`;
-  return `"${cue}" · ${rule.leadDays} days before`;
+  const cues = rule.matches.map(m => m.trim()).filter(Boolean);
+  const words = cues.length > 0 ? cues.map(c => `"${c}"`) : ['"anything"'];
+  const cue = words.length === 1
+    ? words[0]
+    : `${words.slice(0, -1).join(', ')} or ${words[words.length - 1]}`;
+  if (rule.leadDays === 0) return `${cue} · same day`;
+  if (rule.leadDays === 1) return `${cue} · 1 day before`;
+  return `${cue} · ${rule.leadDays} days before`;
 }
 
 /**
@@ -416,16 +465,17 @@ export interface EventNearMiss {
 
 export interface RuleMatchSummary {
   /**
-   * The cue as it was compared, or null when the rule's cue is shorter than
-   * `EVENT_MATCH_MIN_LENGTH`.
+   * The rule's usable keywords, normalized — empty when it has none long
+   * enough to be a cue.
    *
-   * That null is load-bearing rather than tidiness: a rule the user is halfway
+   * Empty is load-bearing rather than tidiness: a rule the user is halfway
    * through typing, and the blank rule the "New rule" button creates, both
-   * have an unusable cue and an empty `matched` — identical to a finished rule
-   * that finds nothing. Without this field the sheet would greet every new
-   * rule with a warning about matching nothing, before it has been written.
+   * have no usable keyword and an empty `matched` — identical to a finished
+   * rule that finds nothing. Without this field the sheet would greet every
+   * new rule with a warning about matching nothing, before it has been
+   * written.
    */
-  cue: string | null;
+  cues: string[];
   /** Upcoming events this rule matches, earliest first. */
   matched: BusyEvent[];
   /**
@@ -484,8 +534,11 @@ function wordRuns(title: string, wordCount: number): string[] {
  *
  * Eligibility is `eventIsRuleEligible`, the same gate `matchedEventTasks`
  * applies, so the count reports on exactly the events the rule could ever fire
- * on. It deliberately ignores `leadDays` and the handled record: this answers
- * "does this cue find anything", not "is a task due today", and subtracting
+ * on. A rule is summarized as a whole rather than per keyword, matching how it
+ * fires: the keywords are an OR, so one of them finding something is the rule
+ * finding something. It deliberately ignores `leadDays` and the handled
+ * record: this answers "does this rule find anything", not "is a task due
+ * today", and subtracting
  * already-written tasks from the count would make a working rule read as a
  * broken one the day after it fired.
  *
@@ -498,13 +551,10 @@ export function summarizeRuleAgainstEvents(
   events: readonly BusyEvent[],
   now: Date,
 ): RuleMatchSummary {
-  const summary: RuleMatchSummary = { cue: null, matched: [], nearMisses: [] };
-  const cue = normalizeCue(rule.match);
-  if (cue.length < EVENT_MATCH_MIN_LENGTH) return summary;
-  summary.cue = cue;
+  const cues = ruleCues(rule);
+  const summary: RuleMatchSummary = { cues, matched: [], nearMisses: [] };
+  if (cues.length === 0) return summary;
 
-  const spellings = cueSpellings(cue);
-  const cueWords = cue.split(' ').length;
   const eligible = events
     .filter(event => eventIsRuleEligible(event, now))
     .sort((a, b) => Date.parse(a.start) - Date.parse(b.start));
@@ -514,11 +564,16 @@ export function summarizeRuleAgainstEvents(
       summary.matched.push(event);
       continue;
     }
-    // Compared against every spelling of the cue, so a rule written "dentists"
-    // still reports "Dentistry" as a near miss rather than only measuring from
-    // the plural the user happened to type.
-    const near = wordRuns(event.title, cueWords)
-      .find(run => spellings.some(spelling => isNearMiss(run, spelling)));
+    // Every keyword gets its own pass, against runs of its own word count, so
+    // a two-word keyword is compared with two-word runs and a one-word one
+    // with single words. Each is measured against all of its spellings too, so
+    // a rule written "dentists" still reports "Dentistry" as a near miss
+    // rather than only measuring from the plural the user happened to type.
+    // First hit wins; the line only has room to name one event anyway.
+    const near = cues
+      .flatMap(cue => wordRuns(event.title, cue.split(' ').length)
+        .filter(run => cueSpellings(cue).some(spelling => isNearMiss(run, spelling))))
+      .find(Boolean);
     if (near) summary.nearMisses.push({ event, word: near });
   }
   return summary;
@@ -530,12 +585,13 @@ export function summarizeRuleAgainstEvents(
  *
  * Null rather than "no matches" in two cases, and the distinction is the same
  * one `loaded` draws throughout `useCalendarStore`: a window that has not been
- * read is not an empty window. A cue too short to match anything is the other,
- * since that is what a half-typed rule looks like and it is not a mistake yet.
+ * read is not an empty window. A rule with no keyword long enough to match
+ * anything is the other, since that is what a half-typed rule looks like and
+ * it is not a mistake yet.
  */
 export function describeRuleMatches(summary: RuleMatchSummary): string | null {
-  const { cue, matched, nearMisses } = summary;
-  if (!cue) return null;
+  const { cues, matched, nearMisses } = summary;
+  if (cues.length === 0) return null;
   if (matched.length === 1) return '1 upcoming event matches';
   if (matched.length > 1) return `${matched.length} upcoming events match`;
   if (nearMisses.length > 0) {
