@@ -157,6 +157,107 @@ export function weeklyReviewStages(
     .filter(stage => stage.kind === 'look' || stage.count > 0);
 }
 
+/**
+ * The stuck pile: everything waiting, then everything drifting, each row once.
+ *
+ * The two halves are independent predicates — `isWaitingTask` asks whether
+ * something else holds the task, `driftingTaskList` asks how many times it has
+ * been pushed — so a blocked task that has also been moved five times is in
+ * both. Concatenated raw it rendered twice under one key, which is a duplicate
+ * React key as well as a row the user is asked about twice.
+ *
+ * Waiting first, and the order within each half is the one its own selector
+ * chose (by blocker, then worst drift first), because both are already sorted
+ * to say something and re-ranking the union would say less than either.
+ */
+export function stuckPile(
+  waiting: readonly Task[],
+  drifting: readonly Task[],
+): Task[] {
+  const seen = new Set<string>();
+  const out: Task[] = [];
+  for (const task of [...waiting, ...drifting]) {
+    if (seen.has(task.id)) continue;
+    seen.add(task.id);
+    out.push(task);
+  }
+  return out;
+}
+
+/** Which hold a stuck row is under. */
+export type StuckKind = 'blocker' | 'person' | 'drift';
+
+/**
+ * Which of the three holds this row, from the task's own fields.
+ *
+ * Drift needs no threshold restated here to be recognised: the pile is the
+ * waiting rows and the drifting rows, so a row nothing is waiting on is in it
+ * for the only other reason there is.
+ *
+ * A task held by a blocker *and* a person is filed under the blocker, which is
+ * the wait that ends on its own. Same rule `StuckScreen` files its trays by,
+ * and the same one `waitingTasks`' sort key already encodes.
+ */
+export function stuckKindOf(
+  task: Pick<Task, 'blockedById' | 'waitingOnPersonId'>,
+): StuckKind {
+  if (task.blockedById) return 'blocker';
+  if (task.waitingOnPersonId) return 'person';
+  return 'drift';
+}
+
+/**
+ * The line under a stuck row's title, saying which hold it is under.
+ *
+ * The stage's hint promises that knowing which is what decides the next step,
+ * and a column of bare titles is precisely what cannot say it. Wording is
+ * taken from the screen that already lists these rather than invented:
+ * "Waiting on" heads a blocker's tray on `StuckScreen`, and a drifting row
+ * there reads "Moved N times".
+ *
+ * Every branch has a fallback, because a name can be missing for reasons that
+ * are not bugs: a blocker resolves through `canBlock`, and a person can be
+ * archived. Saying "another task" is worse than naming it and better than a
+ * row that explains nothing.
+ */
+export function describeStuckRow(
+  kind: StuckKind,
+  opts: { blockerTitle?: string | null; personName?: string | null; postponeCount?: number } = {},
+): string {
+  switch (kind) {
+    case 'blocker':
+      return `Waiting on ${opts.blockerTitle || 'another task'}`;
+    case 'person':
+      return `Waiting on ${opts.personName || 'somebody'}`;
+    case 'drift': {
+      const count = opts.postponeCount ?? 0;
+      return count > 0 ? `Moved ${count} times` : 'Keeps getting moved';
+    }
+  }
+}
+
+/** The one action that ends a row's hold, and what to call it. */
+export interface StuckAction {
+  key: 'release' | 'today';
+  label: string;
+}
+
+/**
+ * What to offer a stuck row.
+ *
+ * The split is `StuckScreen`'s own, which is worth not re-deriving: a wait is
+ * held by something outside you and ends when you *release* it, while a drift
+ * is held by you and needs a decision rather than a release. So the one thing
+ * this stage can usefully offer differs by kind, and offering a date to a
+ * waiting row would answer the wrong question — the same reason `slippedTasks`
+ * hands held-back rows over to this stage in the first place.
+ */
+export function stuckActionFor(kind: StuckKind): StuckAction {
+  return kind === 'drift'
+    ? { key: 'today', label: 'Do it today' }
+    : { key: 'release', label: 'Stop waiting' };
+}
+
 /** The rows a stage is about. Empty for the two that only report a count. */
 export function weeklyReviewRows(
   stage: Pick<WeeklyReviewStage, 'id'>,
@@ -207,11 +308,20 @@ export function slippedTasks(
  * distinction `describePantryReviewDone` draws by reporting skipped and omitted
  * alongside answered. A review that reports its own length would congratulate
  * somebody for scrolling.
+ *
+ * Three verbs because the stages ask for three different things, and collapsing
+ * them would report a released wait as a move — which is the one thing the
+ * stuck stage exists to distinguish it from.
  */
-export function describeWeeklyReviewDone(filed: number, moved: number): string {
+export function describeWeeklyReviewDone(
+  filed: number,
+  moved: number,
+  unblocked: number = 0,
+): string {
   const parts: string[] = [];
   if (filed > 0) parts.push(`${filed} filed`);
   if (moved > 0) parts.push(`${moved} moved`);
+  if (unblocked > 0) parts.push(`${unblocked} unblocked`);
   if (parts.length === 0) return 'Nothing changed';
   return parts.join(', ');
 }
