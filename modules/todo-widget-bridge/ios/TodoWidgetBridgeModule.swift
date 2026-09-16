@@ -73,6 +73,7 @@ private struct FocusRunPayload: Codable {
   let primaryUrl: String
   let advanceLabel: String
   let advanceUrl: String
+  let hideTimers: Bool
 }
 
 public class TodoWidgetBridgeModule: Module {
@@ -476,7 +477,8 @@ public class TodoWidgetBridgeModule: Module {
           primaryLabel: run.primaryLabel,
           primaryUrl: run.primaryUrl,
           advanceLabel: run.advanceLabel,
-          advanceUrl: run.advanceUrl
+          advanceUrl: run.advanceUrl,
+          hideTimers: run.hideTimers
         )
         let staleDate: Date? = run.paused ? nil : max(targetEndAt, Date().addingTimeInterval(1))
         let content = ActivityContent(state: FocusActivityAttributes.ContentState(), staleDate: staleDate)

@@ -1602,6 +1602,7 @@ describe('scheduleFocusStepAlarm', () => {
     stepElapsedSeconds: 0,
     completedTaskIds: [],
     stepLog: [],
+    hideTimers: false,
   });
 
   it('mentions a break when one actually follows', async () => {

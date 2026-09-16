@@ -753,6 +753,15 @@ export interface FocusSession {
    * records the half it did.
    */
   stepLog: FocusStepRecord[];
+  /**
+   * Hides the countdown clock for this run only — the setup sheet's own
+   * override of settings' `focusHideTimers`, same shape as the Breaks toggle
+   * beside it. Stamped once at start from whatever Settings said at the time;
+   * changing Settings mid-session doesn't reach a session already running,
+   * same as every other focus setting (see "the plan is stored, not
+   * re-derived" in docs/arch/focus-sessions.md).
+   */
+  hideTimers: boolean;
 }
 
 /**

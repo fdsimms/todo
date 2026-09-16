@@ -25,6 +25,7 @@ const session = (over: Partial<FocusSession> = {}): FocusSession => ({
   stepElapsedSeconds: 0,
   completedTaskIds: [],
   stepLog: [],
+  hideTimers: false,
   ...over,
 });
 

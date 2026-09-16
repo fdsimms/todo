@@ -632,6 +632,8 @@ export const SETTINGS_ENTRIES: SettingsEntry[] = [
     keywords: ['pomodoro', 'focus', 'rest', 'how often'] },
   { id: 'focusLongRestMinutes', requires: 'focusLongRestEvery', groupId: 'tasksProjects', label: 'Long break length', section: 'Focus sessions', simple: true,
     keywords: ['pomodoro', 'focus', 'rest'] },
+  { id: 'focusHideTimers', groupId: 'tasksProjects', label: 'Hide timers while focusing', section: 'Focus sessions', simple: true,
+    keywords: ['pomodoro', 'session', 'countdown', 'clock'] },
   { id: 'focusLiveActivity', iosOnly: true, groupId: 'tasksProjects', label: 'Live Activity while focusing', section: 'Focus sessions', simple: true,
     keywords: ['pomodoro', 'session', 'lock screen', 'dynamic island', 'widget'] },
   // "Screen time" is the name most people have for this and appears nowhere in
