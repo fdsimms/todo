@@ -640,6 +640,14 @@ export function TodayScreen() {
   // FocusSetupSheet's `reachOutSeed` prop and the "…" menu's new row.
   const [focusFromReachOuts, setFocusFromReachOuts] = useState(false);
   const [focusSessionVisible, setFocusSessionVisible] = useState(false);
+  // Set when Start is tapped in the setup sheet, so the session sheet opens
+  // only once the setup sheet's own `visible` prop has actually gone false —
+  // never in the same commit. SheetModal defers every close by one commit to
+  // sequence the keyboard dismissal, but does not defer opening, so flipping
+  // both sheets' visibility together leaves a commit where both Modals are
+  // simultaneously visible=true, which iOS presents only one of and freezes
+  // the screen for the other. See the "Two sibling Modals" note in CLAUDE.md.
+  const [pendingFocusSessionStart, setPendingFocusSessionStart] = useState(false);
   const focusSession = useFocusStore(s => s.session);
   const startFocusSession = useFocusStore(s => s.startSession);
   const [categoryOrderVisible, setCategoryOrderVisible] = useState(false);
@@ -840,6 +848,17 @@ export function TodayScreen() {
     setHandledOpenFocus(route.params.openFocusSession);
     setFocusSessionVisible(true);
   }, [route.params?.openFocusSession, handledOpenFocus]);
+
+  // The other half of the hand-off from the setup sheet to the session sheet
+  // (see `pendingFocusSessionStart` above): wait for `focusSetupVisible` to
+  // actually land as false before opening the session sheet, rather than
+  // flipping both in the tap handler.
+  useEffect(() => {
+    if (pendingFocusSessionStart && !focusSetupVisible) {
+      setPendingFocusSessionStart(false);
+      setFocusSessionVisible(true);
+    }
+  }, [pendingFocusSessionStart, focusSetupVisible]);
 
   // The same handoff again, for a short-night health task's own link
   // (dundundun://deload — see utils/healthRules.ts). DeloadSheet already reads
@@ -4396,7 +4415,7 @@ export function TodayScreen() {
           onStart={(queue, options) => {
             startFocusSession(queue, options);
             setFocusSetupVisible(false);
-            setFocusSessionVisible(true);
+            setPendingFocusSessionStart(true);
           }}
         />
 
