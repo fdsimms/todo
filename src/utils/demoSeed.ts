@@ -2388,7 +2388,10 @@ function componentIdFor(parentId: string, childRecipeId: string): string | null 
  * of each of the features that are otherwise invisible: components (shared and
  * either/or), ingredient alternatives, sections, prep tasks, both duration
  * fields, a live cook timer, a hand-set step timer length, a step timer already
- * counting down, cook history, and all three attribution shapes.
+ * counting down, cook history, all three attribution shapes, and the Up Next
+ * shelf (two recipes neither cooked nor voted on yet, in a hand-picked order
+ * rather than creation order — so the shelf reads as deliberately ordered,
+ * not just "whatever was added last").
  */
 function seedRecipes(): DemoRecipes {
   const {
@@ -2401,6 +2404,8 @@ function seedRecipes(): DemoRecipes {
     updatePrepTask,
     setMealType,
     setVote,
+    setUpNext,
+    reorderUpNextRecipes,
     setTags,
     setNotes,
     setServings,
@@ -2859,6 +2864,14 @@ function seedRecipes(): DemoRecipes {
   if (rest) updatePrepTask(steak.id, rest.id, { offsetDays: 0, reminderOffsetMinutes: 45 });
   markCooked(steak.id);
   setVote(steak.id, 'loved');
+
+  // The Up Next shelf: recipes nobody's cooked, voted on, or put on the meal
+  // plan yet — exactly the "want to try, haven't picked a day" queue it's
+  // for. Reordered rather than left in creation order, so the shelf reads as
+  // something the user arranged rather than a byproduct of import order.
+  setUpNext(shortbread.id, true);
+  setUpNext(soup.id, true);
+  reorderUpNextRecipes([soup.id, shortbread.id]);
 
   // A recipe page saved from another app's share sheet, still waiting to be
   // imported — the banner at the top of Recipes. Seeded because the share
