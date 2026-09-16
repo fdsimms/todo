@@ -1,6 +1,9 @@
-import type { Task } from '../types';
+import type { FoodLogEntry, Task } from '../types';
 
-let mockSettings: { healthWriteEnabled: boolean } = { healthWriteEnabled: false };
+let mockSettings: { healthWriteEnabled: boolean; dayResetTime: string } = {
+  healthWriteEnabled: false,
+  dayResetTime: '00:00',
+};
 jest.mock('../store/useSettingsStore', () => ({
   useSettingsStore: { getState: () => mockSettings },
 }));
@@ -16,7 +19,48 @@ jest.mock('../utils/demoState', () => ({
   isDemoModeActive: () => mockDemoActive,
 }));
 
+let mockDayEntries: FoodLogEntry[] = [];
+jest.mock('../db/database', () => ({
+  dbGetFoodLogEntries: () => mockDayEntries,
+}));
+
+const mockAddEntry = jest.fn();
+const mockReviseEntry = jest.fn();
+jest.mock('../store/useFoodLogStore', () => ({
+  useFoodLogStore: { getState: () => ({ addEntry: mockAddEntry, reviseEntry: mockReviseEntry }) },
+}));
+
 import { logTaskHealthValue } from '../utils/healthCompletionSync';
+
+function waterEntry(waterMl: number, overrides: Partial<FoodLogEntry> = {}): FoodLogEntry {
+  return {
+    id: 'water-entry-1',
+    dayKey: '2026-09-16',
+    atISO: new Date('2026-09-16T08:00:00.000Z').toISOString(),
+    slot: null,
+    label: 'Water',
+    recipeId: null,
+    itemId: null,
+    productId: null,
+    mealPlanEntryId: null,
+    quantity: `${waterMl} ml`,
+    grams: null,
+    nutrition: {
+      basis: 'perServing',
+      servingGrams: null,
+      servingText: `${waterMl} ml`,
+      amounts: { waterMl },
+      source: 'manual',
+      sourceId: null,
+      portions: [],
+      recordedAt: new Date('2026-09-16T08:00:00.000Z').toISOString(),
+    },
+    healthSampleIds: [],
+    sortOrder: 0,
+    createdAt: new Date('2026-09-16T08:00:00.000Z').toISOString(),
+    ...overrides,
+  };
+}
 
 const BASE: Task = {
   id: 'task-1',
@@ -147,16 +191,17 @@ function makeTask(overrides: Partial<Task>): Task {
 
 beforeEach(() => {
   jest.clearAllMocks();
-  mockSettings = { healthWriteEnabled: true };
+  mockSettings = { healthWriteEnabled: true, dayResetTime: '00:00' };
   mockDemoActive = false;
   mockBridge = { writeNutrientSample: mockWriteNutrientSample };
   mockWriteNutrientSample.mockResolvedValue(true);
+  mockDayEntries = [];
 });
 
 describe('logTaskHealthValue', () => {
   it('does nothing when the setting is off', async () => {
     mockSettings.healthWriteEnabled = false;
-    const result = await logTaskHealthValue(makeTask({ logHealthMetric: 'waterMl', logHealthAmount: 250 }));
+    const result = await logTaskHealthValue(makeTask({ logHealthMetric: 'proteinG', logHealthAmount: 20 }));
     expect(result).toBe(false);
     expect(mockWriteNutrientSample).not.toHaveBeenCalled();
   });
@@ -168,38 +213,38 @@ describe('logTaskHealthValue', () => {
   });
 
   it('does nothing when a metric is set but no amount is', async () => {
-    const result = await logTaskHealthValue(makeTask({ logHealthMetric: 'waterMl', logHealthAmount: null }));
+    const result = await logTaskHealthValue(makeTask({ logHealthMetric: 'proteinG', logHealthAmount: null }));
     expect(result).toBe(false);
     expect(mockWriteNutrientSample).not.toHaveBeenCalled();
   });
 
   it('does nothing for a non-positive amount', async () => {
-    const result = await logTaskHealthValue(makeTask({ logHealthMetric: 'waterMl', logHealthAmount: 0 }));
+    const result = await logTaskHealthValue(makeTask({ logHealthMetric: 'proteinG', logHealthAmount: 0 }));
     expect(result).toBe(false);
     expect(mockWriteNutrientSample).not.toHaveBeenCalled();
   });
 
   it('writes the task’s own metric and amount and returns the bridge’s answer', async () => {
-    const result = await logTaskHealthValue(makeTask({ logHealthMetric: 'waterMl', logHealthAmount: 300 }));
-    expect(result).toBe(true);
-    expect(mockWriteNutrientSample).toHaveBeenCalledWith('waterMl', 300);
-  });
-
-  it('writes whichever nutrient the task named, not just water', async () => {
     const result = await logTaskHealthValue(makeTask({ logHealthMetric: 'proteinG', logHealthAmount: 20 }));
     expect(result).toBe(true);
     expect(mockWriteNutrientSample).toHaveBeenCalledWith('proteinG', 20);
   });
 
+  it('writes whichever nutrient the task named, not just water', async () => {
+    const result = await logTaskHealthValue(makeTask({ logHealthMetric: 'caffeineMg', logHealthAmount: 95 }));
+    expect(result).toBe(true);
+    expect(mockWriteNutrientSample).toHaveBeenCalledWith('caffeineMg', 95);
+  });
+
   it('reports false when the bridge is unavailable', async () => {
     mockBridge = null;
-    const result = await logTaskHealthValue(makeTask({ logHealthMetric: 'waterMl', logHealthAmount: 250 }));
+    const result = await logTaskHealthValue(makeTask({ logHealthMetric: 'proteinG', logHealthAmount: 250 }));
     expect(result).toBe(false);
   });
 
   it('reports whatever the bridge itself reports, including a refused write', async () => {
     mockWriteNutrientSample.mockResolvedValue(false);
-    const result = await logTaskHealthValue(makeTask({ logHealthMetric: 'waterMl', logHealthAmount: 250 }));
+    const result = await logTaskHealthValue(makeTask({ logHealthMetric: 'proteinG', logHealthAmount: 250 }));
     expect(result).toBe(false);
   });
 
@@ -208,5 +253,53 @@ describe('logTaskHealthValue', () => {
     const result = await logTaskHealthValue(makeTask({ logHealthMetric: 'waterMl', logHealthAmount: 250 }));
     expect(result).toBe(false);
     expect(mockWriteNutrientSample).not.toHaveBeenCalled();
+  });
+});
+
+describe('logTaskHealthValue — water rides the food log instead of a second Health write', () => {
+  it('creates today’s water entry when there is none yet, and never calls the bridge', async () => {
+    mockDayEntries = [];
+    const result = await logTaskHealthValue(makeTask({ logHealthMetric: 'waterMl', logHealthAmount: 250 }));
+    expect(result).toBe(true);
+    expect(mockWriteNutrientSample).not.toHaveBeenCalled();
+    expect(mockReviseEntry).not.toHaveBeenCalled();
+    expect(mockAddEntry).toHaveBeenCalledTimes(1);
+    expect(mockAddEntry.mock.calls[0][0].nutrition.amounts.waterMl).toBe(250);
+  });
+
+  it('accumulates onto today’s existing water entry rather than replacing it', async () => {
+    mockDayEntries = [waterEntry(500)];
+    const result = await logTaskHealthValue(makeTask({ logHealthMetric: 'waterMl', logHealthAmount: 250 }));
+    expect(result).toBe(true);
+    expect(mockAddEntry).not.toHaveBeenCalled();
+    expect(mockReviseEntry).toHaveBeenCalledTimes(1);
+    const [id, patch] = mockReviseEntry.mock.calls[0];
+    expect(id).toBe('water-entry-1');
+    expect(patch.nutrition.amounts.waterMl).toBe(750);
+  });
+
+  it('ignores a same-day entry that states more than water', async () => {
+    mockDayEntries = [
+      waterEntry(400, {
+        itemId: 'bottled-water',
+        nutrition: {
+          basis: 'perServing',
+          servingGrams: null,
+          servingText: '400 ml',
+          amounts: { waterMl: 400, sodiumMg: 5 },
+          source: 'manual',
+          sourceId: null,
+          portions: [],
+          recordedAt: new Date().toISOString(),
+        },
+      }),
+    ];
+    const result = await logTaskHealthValue(makeTask({ logHealthMetric: 'waterMl', logHealthAmount: 250 }));
+    expect(result).toBe(true);
+    // The bottled-water row isn't the stepper's own entry (isWaterEntry excludes
+    // anything with an itemId or a second nutrient), so this creates a new row
+    // rather than folding the task's amount into a logged food.
+    expect(mockAddEntry).toHaveBeenCalledTimes(1);
+    expect(mockAddEntry.mock.calls[0][0].nutrition.amounts.waterMl).toBe(250);
   });
 });
