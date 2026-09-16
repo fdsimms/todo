@@ -2,7 +2,9 @@ import type { BusyEvent } from './calendarBusy';
 import { isLiveEvent } from './calendarBusy';
 import type { EventTaskRule, Task } from '../types';
 import { generatedSourceOf } from './generatedTasks';
+import { pluralKeyVariants } from './groceryPlural';
 import { generateId } from './id';
+import { MIN_SIMILAR_LENGTH, isSingleTransposition, withinOneEdit } from './textSimilar';
 
 /**
  * Event rules — "when something on the calendar says *flight*, add a task to
@@ -148,6 +150,62 @@ function escapeRegExp(value: string): string {
 }
 
 /**
+ * A cue as it is compared against a title: trimmed, lowercased, and with runs
+ * of whitespace flattened.
+ *
+ * The flattening matters because `ruleMatchesTitle` already flattens the
+ * *haystack*, so without the matching call here a cue typed with a double
+ * space between its words ("parent  evening") could never match anything.
+ */
+function normalizeCue(cue: string): string {
+  return cue.trim().replace(/\s+/g, ' ').toLowerCase();
+}
+
+/**
+ * A rule's keywords, normalized and with the unusable ones dropped.
+ *
+ * Below `EVENT_MATCH_MIN_LENGTH` a keyword is not a cue, and a rule part-way
+ * through being typed holds one of those rather than a mistake — which is why
+ * this returns a list to be counted rather than a boolean, and why an empty
+ * result reads as "nothing to say yet" everywhere it is consulted.
+ */
+function ruleCues(rule: EventTaskRule): string[] {
+  return rule.matches
+    .map(normalizeCue)
+    .filter(cue => cue.length >= EVENT_MATCH_MIN_LENGTH);
+}
+
+/**
+ * Every spelling of a cue that should count as the same cue — the cue itself,
+ * plus the singular or plural of its last word.
+ *
+ * `pluralKeyVariants` is reused rather than reimplemented: it already knows
+ * about sibilants (box/boxes), -ies (berry/berries), -ves (knife/knives) and
+ * -oes (potato/potatoes), it varies the **last** word only so "parent evening"
+ * pluralizes correctly, and it refuses to stem below three characters, which
+ * is `EVENT_MATCH_MIN_LENGTH` by coincidence of both being the length below
+ * which a word fragment stops meaning anything. It lives in a grocery-named
+ * module and is domain-free; `foodSearchMatch.ts` already reaches for it from
+ * outside groceries for the same reason.
+ *
+ * This is deliberately *not* a general fuzzy match. A plural is the one
+ * difference between what somebody writes in a rule and what they write in a
+ * calendar that is reliably not a different word, so it is the one widening
+ * that costs nothing in predictability. Everything looser than this is
+ * reported by `summarizeRuleAgainstEvents` as a near miss instead, where the
+ * user decides rather than the app.
+ */
+function cueSpellings(cue: string): string[] {
+  return [cue, ...pluralKeyVariants(cue)];
+}
+
+/** Whether one already-normalized cue appears as a whole word in a haystack. */
+function cueInHaystack(cue: string, haystack: string): boolean {
+  return cueSpellings(cue).some(spelling =>
+    new RegExp(`(?<![a-z0-9])${escapeRegExp(spelling)}(?![a-z0-9])`).test(haystack));
+}
+
+/**
  * Whether **any** of `rule`'s keywords appears in an event title.
  *
  * Whole-word and case-insensitive, the identical test `peopleNamedInTitle`
@@ -157,16 +215,19 @@ function escapeRegExp(value: string): string {
  * same way, with runs of whitespace in the title flattened first so a wrapped
  * or double-spaced title still matches. A rule with several keywords is an
  * OR: "flight" or "layover" or "airport" each independently fire it.
+ *
+ * **Singular and plural count as the same keyword** (see `cueSpellings`), in
+ * both directions: a rule written "dentist" fires on "Dentists on Tuesday",
+ * and a rule written "dentists" fires on "Dentist". That one tolerance was the
+ * difference between a keyword working and a keyword silently doing nothing,
+ * and unlike a scored match it cannot surprise you — no word gains a meaning
+ * it did not have. It applies per keyword, so it composes with the OR above
+ * rather than interacting with it.
  */
 export function ruleMatchesTitle(rule: EventTaskRule, title: string): boolean {
-  const haystack = title.replace(/\s+/g, ' ').toLowerCase();
+  const haystack = normalizeCue(title);
   if (!haystack) return false;
-  return rule.matches.some(match => {
-    const cue = match.trim().toLowerCase();
-    if (cue.length < EVENT_MATCH_MIN_LENGTH) return false;
-    const pattern = new RegExp(`(?<![a-z0-9])${escapeRegExp(cue)}(?![a-z0-9])`);
-    return pattern.test(haystack);
-  });
+  return ruleCues(rule).some(cue => cueInHaystack(cue, haystack));
 }
 
 /**
@@ -375,4 +436,166 @@ export function leadTimeReached(event: BusyEvent, rule: EventTaskRule, now: Date
   const firesOn = new Date(start.getFullYear(), start.getMonth(), start.getDate() - rule.leadDays);
   const today = new Date(now.getFullYear(), now.getMonth(), now.getDate());
   return firesOn.getTime() <= today.getTime();
+}
+
+/**
+ * What a rule currently finds in the calendar window, and what it nearly
+ * found.
+ *
+ * **This is a feedback surface, not a second matcher.** Nothing here writes a
+ * task, widens `ruleMatchesTitle`, or feeds `matchedEventTasks`. It exists
+ * because a rule that matches nothing and a rule that has nothing to match are
+ * indistinguishable from the outside — both produce silence — and that
+ * ambiguity is the whole reason a mistyped cue can sit in Settings for months.
+ * Showing the count resolves it at the moment somebody is choosing the word.
+ *
+ * It sits on the "offer, never decide" side of the line `calendarHistory.ts`
+ * draws: a near miss is shown to a person who then edits their own rule or
+ * their own event, exactly as a history suggestion is shown rather than
+ * accepted on their behalf.
+ *
+ * Pure and `now`-injected like everything else in this file, so it is testable
+ * without a device.
+ */
+export interface EventNearMiss {
+  event: BusyEvent;
+  /** The word in the title that came close, as the title spells it. */
+  word: string;
+}
+
+export interface RuleMatchSummary {
+  /**
+   * The rule's usable keywords, normalized — empty when it has none long
+   * enough to be a cue.
+   *
+   * Empty is load-bearing rather than tidiness: a rule the user is halfway
+   * through typing, and the blank rule the "New rule" button creates, both
+   * have no usable keyword and an empty `matched` — identical to a finished
+   * rule that finds nothing. Without this field the sheet would greet every
+   * new rule with a warning about matching nothing, before it has been
+   * written.
+   */
+  cues: string[];
+  /** Upcoming events this rule matches, earliest first. */
+  matched: BusyEvent[];
+  /**
+   * Upcoming events holding a word close to the cue but not close enough to
+   * fire. Only ever populated for events that did *not* match.
+   */
+  nearMisses: EventNearMiss[];
+}
+
+/**
+ * Whether `word` is close enough to `cue` to be worth pointing at, given that
+ * it is already known not to match.
+ *
+ * Two tests, with different floors on purpose:
+ *
+ * - **Within one edit, or one adjacent transposition**, floored at
+ *   `MIN_SIMILAR_LENGTH` (4). Below that a single edit is most of the word,
+ *   and "ham"/"jam" are both real — the reasoning that floor was written for,
+ *   unchanged here. The transposition arm is what `withinOneEdit` refuses for
+ *   groceries and this wants: "dentsit" is a slip, not another word, and the
+ *   cost of naming it here is one line of text rather than a written row.
+ * - **One is a prefix of the other**, floored at `EVENT_MATCH_MIN_LENGTH` (3).
+ *   A shared prefix is far stronger evidence than a shared edit, so it earns
+ *   the lower floor, and it is what catches the case the whole-word rule
+ *   deliberately refuses: "gym" against "Gymnastics recital". That refusal
+ *   stays correct, and this is how somebody finds out about it rather than
+ *   wondering.
+ */
+function isNearMiss(word: string, cue: string): boolean {
+  if (word === cue) return false;
+  const shortest = Math.min(word.length, cue.length);
+  if (shortest >= MIN_SIMILAR_LENGTH
+    && (withinOneEdit(word, cue) || isSingleTransposition(word, cue))) return true;
+  return shortest >= EVENT_MATCH_MIN_LENGTH
+    && (word.startsWith(cue) || cue.startsWith(word));
+}
+
+/**
+ * The runs of `wordCount` consecutive words in a title, so a multi-word cue is
+ * compared against the same shape it is. A one-word cue reduces to the plain
+ * list of words.
+ */
+function wordRuns(title: string, wordCount: number): string[] {
+  const words = normalizeCue(title).split(' ').filter(Boolean);
+  if (wordCount < 1 || words.length < wordCount) return [];
+  const runs: string[] = [];
+  for (let i = 0; i + wordCount <= words.length; i++) {
+    runs.push(words.slice(i, i + wordCount).join(' '));
+  }
+  return runs;
+}
+
+/**
+ * Every eligible upcoming event a rule matches, plus the ones it nearly
+ * matched.
+ *
+ * Eligibility is `eventIsRuleEligible`, the same gate `matchedEventTasks`
+ * applies, so the count reports on exactly the events the rule could ever fire
+ * on. A rule is summarized as a whole rather than per keyword, matching how it
+ * fires: the keywords are an OR, so one of them finding something is the rule
+ * finding something. It deliberately ignores `leadDays` and the handled
+ * record: this answers "does this rule find anything", not "is a task due
+ * today", and subtracting
+ * already-written tasks from the count would make a working rule read as a
+ * broken one the day after it fired.
+ *
+ * A disabled rule is summarized the same as an enabled one. What the cue finds
+ * is a property of the cue, and somebody switching a rule back on wants to
+ * know that before they do it, not after.
+ */
+export function summarizeRuleAgainstEvents(
+  rule: EventTaskRule,
+  events: readonly BusyEvent[],
+  now: Date,
+): RuleMatchSummary {
+  const cues = ruleCues(rule);
+  const summary: RuleMatchSummary = { cues, matched: [], nearMisses: [] };
+  if (cues.length === 0) return summary;
+
+  const eligible = events
+    .filter(event => eventIsRuleEligible(event, now))
+    .sort((a, b) => Date.parse(a.start) - Date.parse(b.start));
+
+  for (const event of eligible) {
+    if (ruleMatchesTitle(rule, event.title)) {
+      summary.matched.push(event);
+      continue;
+    }
+    // Every keyword gets its own pass, against runs of its own word count, so
+    // a two-word keyword is compared with two-word runs and a one-word one
+    // with single words. Each is measured against all of its spellings too, so
+    // a rule written "dentists" still reports "Dentistry" as a near miss
+    // rather than only measuring from the plural the user happened to type.
+    // First hit wins; the line only has room to name one event anyway.
+    const near = cues
+      .flatMap(cue => wordRuns(event.title, cue.split(' ').length)
+        .filter(run => cueSpellings(cue).some(spelling => isNearMiss(run, spelling))))
+      .find(Boolean);
+    if (near) summary.nearMisses.push({ event, word: near });
+  }
+  return summary;
+}
+
+/**
+ * The summary read back as the line shown under a rule in `EventRulesSheet`,
+ * or null when there is nothing honest to say.
+ *
+ * Null rather than "no matches" in two cases, and the distinction is the same
+ * one `loaded` draws throughout `useCalendarStore`: a window that has not been
+ * read is not an empty window. A rule with no keyword long enough to match
+ * anything is the other, since that is what a half-typed rule looks like and
+ * it is not a mistake yet.
+ */
+export function describeRuleMatches(summary: RuleMatchSummary): string | null {
+  const { cues, matched, nearMisses } = summary;
+  if (cues.length === 0) return null;
+  if (matched.length === 1) return '1 upcoming event matches';
+  if (matched.length > 1) return `${matched.length} upcoming events match`;
+  if (nearMisses.length > 0) {
+    return `No upcoming events match. Closest: "${nearMisses[0].event.title}"`;
+  }
+  return 'No upcoming events match';
 }

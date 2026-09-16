@@ -67,6 +67,17 @@ interface Props<T extends EditableRule> {
   /** The secondary line under a rule's title, e.g. "After 30 min". */
   describeRule: (rule: T) => string;
   /**
+   * An optional third line under `describeRule`, saying what the rule is
+   * currently finding — "2 upcoming events match". `null` renders nothing, and
+   * a caller with nothing to report omits the prop entirely.
+   *
+   * `tone: 'warn'` tints it, for the case worth interrupting a scan over: a
+   * rule that is on and matching nothing. It is a note rather than free
+   * `ReactNode` because the row is a fixed three-line shape and a caller
+   * handed a slot would drift it.
+   */
+  rowNote?: (rule: T) => { text: string; tone: 'quiet' | 'warn' } | null;
+  /**
    * Uppercase label above `renderEditor`'s control. A function when the
    * wording depends on the rule itself — health's ceiling rule reads "more
    * than" where every other rule here reads "less than" — a plain string
@@ -103,6 +114,7 @@ export function RuleListSheet<T extends EditableRule>({
   onChange,
   makeRule,
   describeRule,
+  rowNote,
   editorLabel,
   renderEditor,
   titlePlaceholder,
@@ -214,12 +226,37 @@ export function RuleListSheet<T extends EditableRule>({
                           setExpandedId(expanded ? null : rule.id);
                         }}
                         accessibilityRole="button"
-                        accessibilityLabel={`Edit rule: ${describeRule(rule)}, ${rule.title || 'no title yet'}`}
+                        accessibilityLabel={[
+                          `Edit rule: ${describeRule(rule)}`,
+                          rule.title || 'no title yet',
+                          rowNote?.(rule)?.text,
+                        ].filter(Boolean).join(', ')}
                       >
                         <Text style={[styles.name, !rule.enabled && styles.nameOff]} numberOfLines={1}>
                           {rule.title || 'Untitled rule'}
                         </Text>
                         <Text style={styles.meta} numberOfLines={1}>{describeRule(rule)}</Text>
+                        {(() => {
+                          const note = rowNote?.(rule) ?? null;
+                          if (!note) return null;
+                          return (
+                            <Text
+                              style={[styles.note, note.tone === 'warn' && styles.noteWarn]}
+                              // Two lines, where the rows above it take one.
+                              // This is the only line here that can carry a
+                              // name the user did not write — an event title —
+                              // and at one line the boilerplate in front of it
+                              // ate the row: "Closest: \"Den…" is the whole
+                              // point of the sentence, truncated away. Same
+                              // rule as CLAUDE.md's note on a `numberOfLines`
+                              // name losing its row to a fixed-width sibling,
+                              // one axis over.
+                              numberOfLines={2}
+                            >
+                              {note.text}
+                            </Text>
+                          );
+                        })()}
                       </TouchableOpacity>
                       <TouchableOpacity
                         style={[
@@ -309,6 +346,8 @@ function makeStyles(colors: Colors) {
     body: { flex: 1 },
     name: { color: colors.text, fontSize: font.md },
     nameOff: { color: colors.textSecondary },
+    note: { color: colors.textSecondary, fontSize: font.xs, marginTop: spacing.xxs },
+    noteWarn: { color: colors.orange },
     meta: { color: colors.textTertiary, fontSize: font.xs, marginTop: spacing.xxs },
     toggle: { width: 46, height: 27, borderRadius: 14, backgroundColor: colors.bgQuaternary, justifyContent: 'center', paddingHorizontal: 3 },
     toggleKnob: { width: 21, height: 21, borderRadius: 11, backgroundColor: colors.bg },

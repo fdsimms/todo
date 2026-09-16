@@ -91,6 +91,7 @@ import { recipeMap } from '../utils/recipeComponents';
 import { standingSwapMap } from '../utils/standingSwaps';
 import { mealShortfallEntryId, mealShortfallRows } from '../utils/mealShortfallTasks';
 import { usePlanMeal } from '../hooks/usePlanMeal';
+import { useSheetMount } from '../hooks/useSheetMount';
 import {
   describeProjectQuiet,
   projectQuietDays,
@@ -936,6 +937,18 @@ export const TaskItem = React.memo(function TaskItem({
     activeMealSlotStepId(task)?.endsWith('-choose') ? parseMealSlotSource(task.generatedSourceId) : null;
   const planMeal = useMealPlanStore(s => s.planMeal);
   const removeMealPlanEntry = useMealPlanStore(s => s.removeEntry);
+
+  // Each of this row's four sheets is mounted on first use and kept, rather
+  // than mounted only while open — a row nobody opens one on still pays
+  // nothing (see useSheetMount, which is where the reason that mattered is
+  // written down), and one that has been opened closes through `visible` like
+  // every other sheet instead of being torn down mid-dismissal.
+  const whenPickerOpen = !selectionMode && showWhenPicker;
+  const mountWhenPicker = useSheetMount(whenPickerOpen);
+  const mountBreakdown = useSheetMount(showBreakdown);
+  const mountDeliverablePrompt = useSheetMount(showDeliverablePrompt);
+  const mealPickerOpen = showMealPicker && mealSlotChooseSource !== null;
+  const mountMealPicker = useSheetMount(mealPickerOpen);
 
   // A quiet project's review task: how long the project has actually been
   // silent, which is what the banner this replaced showed beside each name.
@@ -3630,14 +3643,16 @@ export const TaskItem = React.memo(function TaskItem({
         </Animated.View>
       </Reanimated.View>
 
-      {/* Mounted only while open. `Modal` renders nothing when it isn't
-          visible, so this costs no extra work on the way in — but an unopened
-          WhenPicker still ran its hooks, and one of them subscribes to the
-          whole task list for the Suggest button. A screenful of rows meant a
-          screenful of those re-rendering on every store write. */}
-      {!selectionMode && showWhenPicker && (
+      {/* Mounted on first open rather than always. `Modal` renders nothing
+          when it isn't visible, so this costs no extra work on the way in —
+          but an unopened WhenPicker still ran its hooks, and one of them
+          subscribes to the whole task list for the Suggest button. A
+          screenful of rows meant a screenful of those re-rendering on every
+          store write. It stays mounted afterwards so it can close through
+          `visible`; see useSheetMount. */}
+      {mountWhenPicker && (
         <WhenPicker
-          visible
+          visible={whenPickerOpen}
           // The effective date, not the stored one: a pushed recurring task
           // keeps its dueDate as the grid's anchor (see onConfirm), so opening
           // the picker on that would highlight the day it repeats on rather
@@ -3716,16 +3731,16 @@ export const TaskItem = React.memo(function TaskItem({
           onCancel={() => setShowWhenPicker(false)}
         />
       )}
-      {showBreakdown && (
+      {mountBreakdown && (
         <TaskBreakdownSheet
-          visible
+          visible={showBreakdown}
           taskId={task.id}
           onClose={() => setShowBreakdown(false)}
         />
       )}
-      {showDeliverablePrompt && (
+      {mountDeliverablePrompt && (
         <DeliverablePromptSheet
-          visible
+          visible={showDeliverablePrompt}
           task={task}
           onConfirm={value => {
             setShowDeliverablePrompt(false);
@@ -3736,9 +3751,9 @@ export const TaskItem = React.memo(function TaskItem({
           onCancel={() => setShowDeliverablePrompt(false)}
         />
       )}
-      {showMealPicker && mealSlotChooseSource && (
+      {mountMealPicker && mealSlotChooseSource && (
         <RecipePickerSheet
-          visible
+          visible={mealPickerOpen}
           dayKey={mealSlotChooseSource.dayKey}
           dayLabel={format(dayKeyToDate(mealSlotChooseSource.dayKey), 'EEEE')}
           defaultSlot={mealSlotChooseSource.slot}

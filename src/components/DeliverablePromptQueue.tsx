@@ -2,6 +2,7 @@ import React, { useEffect } from 'react';
 import { useTaskStore } from '../store/useTaskStore';
 import { animateLayout } from '../utils/layoutAnimation';
 import { DeliverablePromptSheet } from './DeliverablePromptSheet';
+import { useSheetSubject } from '../hooks/useSheetSubject';
 
 interface Props {
   /** The tasks still to ask about, in order. Always asks about the first one. */
@@ -29,8 +30,10 @@ interface Props {
  * where cancelling the second silently dropped the third would be its own
  * quiet loss, which is the thing this path exists to stop.
  *
- * Renders nothing while the queue is empty, so a host can mount it
- * unconditionally.
+ * Renders nothing until the first question, so a host can mount it
+ * unconditionally. After that the sheet stays in the tree and closes
+ * through `visible`, because a sheet unmounted while it is on screen
+ * skips SheetModal's ordered close (see useSheetSubject).
  */
 export function DeliverablePromptQueue({ ids, onResolved }: Props) {
   const tasks = useTaskStore(s => s.tasks);
@@ -46,18 +49,22 @@ export function DeliverablePromptQueue({ ids, onResolved }: Props) {
     if (head !== null && current === null) onResolved(head);
   }, [head, current]);
 
-  if (!current) return null;
+  // Held past the end of the run, so the last answer closes the sheet through
+  // `visible` instead of taking it out of the tree while it is still on
+  // screen. See useSheetSubject.
+  const shown = useSheetSubject(current);
+  if (!shown) return null;
 
   return (
     <DeliverablePromptSheet
-      visible
-      task={current}
+      visible={current !== null}
+      task={shown}
       onConfirm={value => {
         animateLayout();
-        completeTask(current.id, { deliverableValue: value });
-        onResolved(current.id);
+        completeTask(shown.id, { deliverableValue: value });
+        onResolved(shown.id);
       }}
-      onCancel={() => onResolved(current.id)}
+      onCancel={() => onResolved(shown.id)}
     />
   );
 }

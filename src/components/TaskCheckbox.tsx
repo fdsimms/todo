@@ -8,6 +8,7 @@ import { useSettingsStore } from '../store/useSettingsStore';
 import { confirmSlip } from '../utils/slipConfirm';
 import { useMealPlanStore } from '../store/useMealPlanStore';
 import { usePlanMeal } from '../hooks/usePlanMeal';
+import { useSheetMount } from '../hooks/useSheetMount';
 import { useColors } from '../theme/ThemeContext';
 import { animation, border, checkboxRadius, iconSize, interaction, spacing, type Colors } from '../theme';
 import { completionTapFor, offersMealLogOnCompletion } from '../utils/completionTap';
@@ -80,6 +81,10 @@ export function TaskCheckbox({ task, taskLabel, onTicked }: Props) {
 
   const [showPrompt, setShowPrompt] = useState(false);
   const [showMealPicker, setShowMealPicker] = useState(false);
+  // Both mounted on first open and kept, so each closes through `visible`
+  // rather than by leaving the tree. See useSheetMount.
+  const mountPrompt = useSheetMount(showPrompt);
+  const mountMealPicker = useSheetMount(showMealPicker);
   const scale = useRef(new Animated.Value(1)).current;
 
   const action = completionTapFor(task);
@@ -291,9 +296,9 @@ export function TaskCheckbox({ task, taskLabel, onTicked }: Props) {
         </Animated.View>
       </TouchableOpacity>
 
-      {showPrompt && (
+      {mountPrompt && (
         <DeliverablePromptSheet
-          visible
+          visible={showPrompt}
           task={task}
           onConfirm={value => {
             setShowPrompt(false);
@@ -302,12 +307,12 @@ export function TaskCheckbox({ task, taskLabel, onTicked }: Props) {
           onCancel={() => setShowPrompt(false)}
         />
       )}
-      {showMealPicker && (() => {
+      {mountMealPicker && (() => {
         const source = parseMealSlotSource(task.generatedSourceId);
         if (!source) return null;
         return (
           <RecipePickerSheet
-            visible
+            visible={showMealPicker}
             dayKey={source.dayKey}
             dayLabel={format(dayKeyToDate(source.dayKey), 'EEEE')}
             defaultSlot={source.slot}

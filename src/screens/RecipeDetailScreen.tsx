@@ -76,7 +76,7 @@ import { describeRecipe, totalMinutes } from '../utils/recipeUtils';
 import { buildIngredientsText, buildRecipeShareText } from '../utils/shareText';
 import { allSectionsOf, sectionsFromMergedOrder, type SectionListEntry } from '../utils/recipeSections';
 import { PillGroup } from '../components/PillGroup';
-import { describeUnscaled, formatScale, scaleQuantity } from '../utils/recipeScale';
+import { describeUnscaled, formatScale, normalizeScale, scaleQuantity } from '../utils/recipeScale';
 import { convertQuantity } from '../utils/unitConvert';
 import { RecipeScaleChips } from '../components/RecipeScaleChips';
 import { RecipeChoiceChips } from '../components/RecipeChoiceChips';
@@ -2213,6 +2213,8 @@ export function RecipeDetailScreen() {
         <RecipeNutritionSheet
           visible={nutritionSheetOpen}
           reading={nutritionReading}
+          recipeName={recipe.name}
+          servings={recipe.servings === null ? null : recipe.servings * normalizeScale(scale)}
           onClose={() => setNutritionSheetOpen(false)}
         />
       )}

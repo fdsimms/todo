@@ -1,0 +1,4 @@
+{
+  "message": "When too few of a recipe's ingredients have nutrition data to total it, its Nutrition sheet can now ask AI to estimate the whole dish from its ingredient list",
+  "date": "2026-09-16"
+}

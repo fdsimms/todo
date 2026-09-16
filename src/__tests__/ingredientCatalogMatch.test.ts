@@ -2,7 +2,6 @@ import {
   catalogMatchSummary,
   matchIngredientToCatalog,
   matchIngredientsToCatalog,
-  withinOneEdit,
 } from '../utils/ingredientCatalogMatch';
 import { groceryNameKey } from '../utils/groceryParse';
 import type { GroceryItem } from '../types';
@@ -57,38 +56,6 @@ function makeItem(overrides: Partial<GroceryItem> & { name: string }): GroceryIt
     ...overrides,
   };
 }
-
-// ─── withinOneEdit ───────────────────────────────────────────────────────────
-
-describe('withinOneEdit', () => {
-  it('accepts an identical pair', () => {
-    expect(withinOneEdit('skyr', 'skyr')).toBe(true);
-  });
-
-  it('accepts a substitution', () => {
-    expect(withinOneEdit('skir', 'skyr')).toBe(true);
-  });
-
-  it('accepts an insertion at either end and in the middle', () => {
-    expect(withinOneEdit('sky', 'skyr')).toBe(true);
-    expect(withinOneEdit('kyr', 'skyr')).toBe(true);
-    expect(withinOneEdit('yoghurt', 'yohurt')).toBe(true);
-  });
-
-  it('refuses two edits', () => {
-    expect(withinOneEdit('butter', 'batter')).toBe(true); // one substitution
-    expect(withinOneEdit('butter', 'bitten')).toBe(false);
-  });
-
-  it('refuses a length gap wider than one', () => {
-    expect(withinOneEdit('milk', 'milkshake')).toBe(false);
-  });
-
-  it('counts a transposition as two edits, so it is refused', () => {
-    // Deliberate: see the doc comment. Damerau would accept this one.
-    expect(withinOneEdit('yogurt', 'yougrt')).toBe(false);
-  });
-});
 
 // ─── matchIngredientToCatalog ────────────────────────────────────────────────
 

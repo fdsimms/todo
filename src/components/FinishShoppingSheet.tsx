@@ -111,6 +111,26 @@ interface Props {
    */
   onScanReceipt?: () => void;
   /**
+   * The receipt sheet `onScanReceipt` raises, rendered *inside* this sheet's
+   * own Modal rather than beside it.
+   *
+   * iOS presents each Modal from the nearest view controller above it, and a
+   * view controller presents one thing at a time — so a sheet raised over
+   * this one while it stays visible has to be a child of it, or it is refused
+   * and the action reads as dead. Beside it is what shipped, and "Scan a
+   * receipt" from this sheet did nothing at all.
+   *
+   * Nesting rather than hiding this sheet is what keeps the answers: the
+   * open-time seed above resets the store, the prices, the unavailable ticks
+   * and the substitutes every time `visible` goes true, so a sheet hidden for
+   * the detour would come back empty — which is the one thing `seedStamp`
+   * exists to avoid.
+   *
+   * The caller still owns the sheet and its state and passes it through; only
+   * where it renders is fixed here.
+   */
+  overlays?: React.ReactNode;
+  /**
    * Finishing a list you're away from home for, which records nothing — see
    * `GroceryList`. Every question below is about what a purchase *leaves
    * behind* (which store stocks this, what it cost, what they didn't have),
@@ -201,6 +221,7 @@ export function FinishShoppingSheet({
   seedPurchasedAt,
   seedStamp,
   onScanReceipt,
+  overlays,
   away = false,
   onClose,
   onFinished,
@@ -759,6 +780,7 @@ export function FinishShoppingSheet({
         </ScrollView>
         <NumberPadAccessory />
       </View>
+      {overlays}
     </SheetModal>
   );
 }

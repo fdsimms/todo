@@ -98,6 +98,23 @@ describe('readNutritionEstimate', () => {
     expect(readNutritionEstimate(reply({ basis: 'measured' }))?.basis).toBe('typical');
   });
 
+  it('believes "own" only when records were actually offered', () => {
+    // The one basis this side knows the truth of: a model given nothing to
+    // lean on cannot have leaned on anything. Demoted rather than dropped,
+    // since the figures may be fine and it is only the provenance that cannot
+    // stand.
+    expect(readNutritionEstimate(reply({ basis: 'own', attribution: '' }), true)?.basis).toBe('own');
+    expect(readNutritionEstimate(reply({ basis: 'own', attribution: '' }))?.basis).toBe('typical');
+    expect(readNutritionEstimate(reply({ basis: 'own', attribution: '' }), false)?.basis).toBe('typical');
+  });
+
+  it('attributes nothing to a publisher for figures off the user\'s own records', () => {
+    // Naming a chain beside figures taken from somebody's own log would
+    // attribute their record to a manufacturer.
+    expect(readNutritionEstimate(reply({ basis: 'own', attribution: 'Five Guys' }), true)?.attribution)
+      .toBeNull();
+  });
+
   it('drops an attribution the model did not earn', () => {
     // Naming a chain beside figures the model called typical would attribute a
     // guess to somebody.
@@ -206,11 +223,18 @@ describe('describeEstimate', () => {
       .toBe('Typical for this dish rather than a specific recipe. A rough guess.');
   });
 
+  it('says when the figures leaned on the user\'s own records', () => {
+    expect(describeEstimate(estimate({ basis: 'own', confidence: 'high' })))
+      .toBe('Worked out from figures already in your own records.');
+    expect(describeEstimate(estimate({ basis: 'own', confidence: 'medium' })))
+      .toBe('Worked out from figures already in your own records. Close, not exact.');
+  });
+
   it('never advises, never judges the food, and never quotes a figure', () => {
     // The rules this copy exists to keep, asserted directly, the way
     // moodInsights.test.ts asserts describeHealthInsight never gives advice.
     const every: NutritionEstimate[] = [];
-    for (const basis of ['published', 'typical'] as const) {
+    for (const basis of ['published', 'typical', 'own'] as const) {
       for (const confidence of ['high', 'medium', 'low'] as const) {
         for (const attribution of ['Five Guys', null]) {
           every.push(estimate({ basis, confidence, attribution }));

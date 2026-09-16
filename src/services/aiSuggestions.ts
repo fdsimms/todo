@@ -27,9 +27,12 @@ import {
   clampCookAnswer, COOK_QUESTION_MAX_LENGTH, type CookQuestionContext,
 } from '../utils/cookQuestions';
 import {
-  ESTIMATE_DESCRIPTION_MAX_LENGTH, MAX_ESTIMATE_QUESTIONS, readNutritionEstimate,
-  type NutritionEstimate, type RawNutritionEstimate,
+  ESTIMATE_DESCRIPTION_MAX_LENGTH, MAX_CONTEXT_FOODS, MAX_ESTIMATE_QUESTIONS, readNutritionEstimate,
+  type EstimateContextFood, type NutritionEstimate, type RawNutritionEstimate,
 } from '../utils/nutritionEstimate';
+import {
+  readRecipeNutritionEstimate, type RawRecipeNutritionEstimate, type RecipeNutritionEstimate,
+} from '../utils/recipeNutritionEstimate';
 import { isUnscaled } from '../utils/recipeScale';
 import {
   readSuggestions, suggestibleEstimateMinutes,
@@ -2446,12 +2449,40 @@ function parseExtractedCalendarEvents(raw: unknown): ExtractedCalendarEvent[] {
  * description names more than one thing — see `NutritionEstimate.breakdown`.
  * A total is one figure to trust or not; the pieces it's made of are each
  * something a person can actually eyeball against what they know.
+ *
+ * **`context` is the user's own figures, and it is for the meal that is not
+ * any one of them.** A description that simply names a food already logged,
+ * already scanned or already saved never reaches this call: `foodRecall.ts`
+ * offers that food first and hands its stored panel back whole, keeping the
+ * source it was recorded under. What is left over is composition — "half my
+ * chili recipe with rice" — where the parts are known and the whole is not,
+ * and where reasoning from the real figures beats recalling generic ones for
+ * the same dish. The result is still marked `estimated`, for the reason
+ * `EstimateBasis` sets out at length; `basis: 'own'` is what lets the sentence
+ * beside it say where the numbers came from.
+ *
+ * The extra instructions and the third `basis` value are added to the request
+ * only when something was actually offered, and `readNutritionEstimate` is
+ * told whether anything was, so a reply claiming `own` against an empty
+ * context is demoted rather than believed.
  */
-export async function estimateMealNutrition(description: string): Promise<NutritionEstimate> {
+export async function estimateMealNutrition(
+  description: string,
+  context: readonly EstimateContextFood[] = [],
+): Promise<NutritionEstimate> {
   const { apiKey, model } = requireFeature('nutritionEstimate');
 
   const asked = description.trim().slice(0, ESTIMATE_DESCRIPTION_MAX_LENGTH);
   if (!asked) throw new Error('No estimate returned');
+
+  // Named foods with their figures, for a description that refers to one of
+  // them — "half my chili recipe with rice" is the case, and it is the one
+  // `foodRecall` cannot answer because no single stored food is what was
+  // eaten. The keys are the schema's own, so they need no explaining.
+  const offered = context.slice(0, MAX_CONTEXT_FOODS);
+  const known = offered
+    .map(food => `- "${food.label}" (${food.quantity}): ${JSON.stringify(food.amounts)}`)
+    .join('\n');
 
   const amountsSchema = {
     type: 'object' as const,
@@ -2478,6 +2509,11 @@ export async function estimateMealNutrition(description: string): Promise<Nutrit
       'State only the nutrients you actually have a view on. Omit a field entirely rather than guessing a zero: an omitted nutrient reads as unknown, and a zero reads as a measurement that the food contains none.',
       'When the description names more than one component (separate foods, or an item plus a side), also split the total across a breakdown array, one entry per component named. Each entry states only the nutrients you have a view on for that component, same rule as the total. Skip the breakdown entirely for a single named item, or when you cannot split it sensibly.',
       'Set basis to "published" only when you are recalling figures a specific chain or manufacturer publishes, and name them in attribution. Otherwise set it to "typical" and leave attribution empty.',
+      ...(offered.length > 0 ? [
+        'You may be given figures the user already has, for foods they have logged before, packets in their kitchen, and recipes they have saved. When the description refers to one of them, reason from those figures rather than recalling generic ones for the same food, including when only part of it was eaten or it was eaten alongside something else.',
+        'Set basis to "own" when the figures you return lean on those records, and leave attribution empty for it: they are the user\'s own records rather than anything a manufacturer publishes. Use "published" or "typical" as usual for a meal the records say nothing about.',
+        'Do not comment on the records themselves, and do not correct them. They are what the user has measured.',
+      ] : []),
       'Set confidence honestly. A named chain item you know is high; a common dish described plainly is medium; anything vague is low.',
       'You may ask at most two questions, and only where the answer would move the figures a lot: the size, whether a side was regular or large, whether a dressing or sauce was on it. Each question needs at least two options to tap. Ask nothing if the description already settles it.',
       'Never comment on the food. No opinion about whether the meal was heavy, healthy, large or small, no suggestion about what to eat instead or later, and no advice of any kind. Return numbers and nothing else.',
@@ -2491,7 +2527,11 @@ export async function estimateMealNutrition(description: string): Promise<Nutrit
           label: { type: 'string', description: 'What to call this in a food diary, e.g. "Cheeseburger and fries, Five Guys"' },
           quantity: { type: 'string', description: 'The amount these figures are for, in words, e.g. "1 burger and a regular fries"' },
           amounts: amountsSchema,
-          basis: { type: 'string', enum: ['published', 'typical'], description: 'Where the figures come from' },
+          basis: {
+            type: 'string',
+            enum: offered.length > 0 ? ['published', 'typical', 'own'] : ['published', 'typical'],
+            description: 'Where the figures come from',
+          },
           confidence: { type: 'string', enum: ['high', 'medium', 'low'], description: 'How sure you are' },
           attribution: { type: 'string', description: 'Who publishes them, for basis "published". Empty otherwise.' },
           questions: {
@@ -2523,16 +2563,124 @@ export async function estimateMealNutrition(description: string): Promise<Nutrit
       },
     }],
     tool_choice: { type: 'tool', name: 'estimate_meal' },
-    messages: [{ role: 'user', content: `The meal:\n${asked}` }],
+    messages: [{
+      role: 'user',
+      content: known
+        ? `The meal:\n${asked}\n\nFigures the user already has:\n${known}`
+        : `The meal:\n${asked}`,
+    }],
   }, apiKey, model);
 
   const toolUse = data.content?.find(c => c.type === 'tool_use');
-  const estimate = readNutritionEstimate(toolUse?.input as RawNutritionEstimate | undefined);
+  const estimate = readNutritionEstimate(
+    toolUse?.input as RawNutritionEstimate | undefined,
+    offered.length > 0,
+  );
   // A reply with no figures or no name is refused rather than repaired: an
   // entry nobody could identify, or one carrying no numbers, is worse than
   // telling somebody the description could not be read.
   if (!estimate) throw new Error('No estimate returned');
   return estimate;
+}
+
+/** Longest ingredient line this will send, matching a recipe line's own generous cap. */
+const RECIPE_ESTIMATE_LINE_MAX_LENGTH = 160;
+/** More lines than this and the request is trimmed rather than refused — see `estimateRecipeNutrition`. */
+const MAX_RECIPE_ESTIMATE_LINES = 60;
+
+/**
+ * Estimates what a whole recipe contains, from its title and ingredient
+ * list, for the case `recipeNutrition.ts` correctly declines to total: too
+ * many lines with no catalog figures behind them yet. See
+ * `recipeNutritionEstimate.ts` for what this may and may not claim — in
+ * particular, that it is a proposal shown in the sheet and never written
+ * anywhere.
+ *
+ * `ingredientLines` is the caller's own resolved reading (`NutritionLine`'s
+ * `quantity`/`name`/`prep`, already flattened through components and swaps
+ * and with staples and excluded lines dropped) rather than the recipe's raw
+ * `ingredients`, so the model sees exactly the dish `RecipeNutritionSheet` is
+ * asking about rather than re-deriving it.
+ */
+export async function estimateRecipeNutrition(
+  title: string,
+  servings: number | null,
+  ingredientLines: readonly string[],
+): Promise<RecipeNutritionEstimate> {
+  const { apiKey, model } = requireFeature('recipeNutritionEstimate');
+
+  const lines = ingredientLines
+    .map(line => line.trim().slice(0, RECIPE_ESTIMATE_LINE_MAX_LENGTH))
+    .filter(Boolean)
+    .slice(0, MAX_RECIPE_ESTIMATE_LINES);
+  if (lines.length === 0) throw new Error('No estimate returned');
+
+  const amountsSchema = {
+    type: 'object' as const,
+    description: 'Only the nutrients you have a view on. Omit the rest rather than sending zero.',
+    properties: {
+      calorieKcal: { type: 'number', description: 'Calories (kcal)' },
+      fatG: { type: 'number', description: 'Total fat in grams' },
+      satFatG: { type: 'number', description: 'Saturated fat in grams' },
+      carbsG: { type: 'number', description: 'Total carbohydrate in grams' },
+      fiberG: { type: 'number', description: 'Dietary fiber in grams' },
+      sugarG: { type: 'number', description: 'Total sugars in grams' },
+      proteinG: { type: 'number', description: 'Protein in grams' },
+      sodiumMg: { type: 'number', description: 'Sodium in milligrams' },
+      caffeineMg: { type: 'number', description: 'Caffeine in milligrams' },
+      waterMl: { type: 'number', description: 'Water in millilitres' },
+    },
+  };
+
+  const servingsLine = servings
+    ? `It makes ${servings} serving${servings === 1 ? '' : 's'}.`
+    : "It doesn't say how many servings it makes.";
+
+  const data = await callAnthropic({
+    max_tokens: 500,
+    system: [
+      'You estimate what a whole home-cooked recipe contains, from its ingredient list, for someone whose own grocery data can\'t total it yet.',
+      'Give figures for the whole recipe as written — every ingredient line, at the quantity given — not per serving and not per 100g.',
+      'Account for cooking loss and waste where it plainly matters: a marinade mostly poured off, water that boils away, a peel or bone that isn\'t eaten. Otherwise assume the ingredients as listed are what ends up in the dish.',
+      'State only the nutrients you actually have a view on. Omit a field entirely rather than guessing a zero: an omitted nutrient reads as unknown, and a zero reads as a measurement that the dish contains none.',
+      'Set confidence honestly. A short list of plain, easily-quantified ingredients is high; a long or vaguely-quantified list ("a handful of", "to taste") is low.',
+      'Never comment on the dish. No opinion about whether it\'s healthy, heavy, large or small, no suggestion about what to change, and no advice of any kind. Return numbers and nothing else.',
+    ].join('\n'),
+    tools: [{
+      name: 'estimate_recipe',
+      description: 'Estimate the nutrition of a whole recipe from its ingredient list',
+      input_schema: {
+        type: 'object',
+        properties: {
+          amounts: amountsSchema,
+          confidence: { type: 'string', enum: ['high', 'medium', 'low'], description: 'How sure you are' },
+        },
+        required: ['amounts', 'confidence'],
+      },
+    }],
+    tool_choice: { type: 'tool', name: 'estimate_recipe' },
+    messages: [{
+      role: 'user',
+      content: `${title.trim().slice(0, TITLE_MAX_LENGTH) || 'This recipe'}. ${servingsLine}\n\nIngredients:\n${lines.map(l => `- ${l}`).join('\n')}`,
+    }],
+  }, apiKey, model);
+
+  const toolUse = data.content?.find(c => c.type === 'tool_use');
+  const estimate = readRecipeNutritionEstimate(toolUse?.input as RawRecipeNutritionEstimate | undefined);
+  if (!estimate) throw new Error('No estimate returned');
+  return estimate;
+}
+
+/**
+ * Whether `estimateRecipeNutrition` is worth offering right now — the same
+ * two checks `requireFeature('recipeNutritionEstimate')` makes, surfaced so
+ * `RecipeNutritionSheet` can decide whether to show the button at all rather
+ * than offering one that will only throw "AI feature disabled" or "no API
+ * key" at the person who taps it.
+ */
+export function recipeNutritionEstimateAvailable(): boolean {
+  const { anthropicApiKey, aiFeatureConfig } = useSettingsStore.getState();
+  return aiFeatureConfig.recipeNutritionEstimate.enabled && !!anthropicApiKey;
 }
 
 /** Whichever basis a column's own heading could state, plus "no heading". */
