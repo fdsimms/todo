@@ -152,7 +152,7 @@ export function DayTimeSettings() {
 
       <SettingsSection
         label="How times read"
-        footer={'Week start decides which day the month grids begin on, and what "this week" counts in Stats.'}
+        footer={'Week start decides which day each week begins on in the calendar, and what "this week" counts in Stats.'}
       >
         <SettingsRow
           entryId="use24HourTime"

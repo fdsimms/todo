@@ -33,7 +33,7 @@ export function FeatureWheelSettings() {
     <>
       <SettingsSection
         label="Feature wheel"
-        footer="Tapping a tab still does what it always did, and tapping More still opens the full menu with everything in it. The wheel is a shortcut over the top of that, not a replacement for it, opened from its own handle rather than the tabs themselves."
+        footer="A shortcut to the screens you choose, opened by pressing and dragging the handle above the tab bar rather than a tab."
       >
         <SettingsRow
           entryId="featureWheelEnabled"
