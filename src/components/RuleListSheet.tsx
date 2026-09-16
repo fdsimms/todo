@@ -234,11 +234,22 @@ export function RuleListSheet<T extends EditableRule>({
                       >
                         <View style={[styles.toggleKnob, rule.enabled && styles.toggleKnobOn]} />
                       </TouchableOpacity>
-                      <Ionicons
-                        name={expanded ? 'chevron-up' : 'chevron-down'}
-                        size={iconSize.sm}
-                        color={colors.textTertiary}
-                      />
+                      <TouchableOpacity
+                        activeOpacity={interaction.activeOpacity}
+                        onPress={() => {
+                          haptics.tap();
+                          animateLayout();
+                          setExpandedId(expanded ? null : rule.id);
+                        }}
+                        accessibilityRole="button"
+                        accessibilityLabel={expanded ? 'Collapse rule' : 'Expand rule'}
+                      >
+                        <Ionicons
+                          name={expanded ? 'chevron-up' : 'chevron-down'}
+                          size={iconSize.sm}
+                          color={colors.textTertiary}
+                        />
+                      </TouchableOpacity>
                     </View>
                     {expanded && (
                       <View style={styles.editor}>
