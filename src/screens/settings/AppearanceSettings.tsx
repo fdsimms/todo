@@ -98,7 +98,7 @@ export function AppearanceSettings() {
         entryId="typeface"
         footer={
           appFontRandomize
-            ? 'Picks one of the checked fonts at random every time the app cold starts.'
+            ? 'Picks one of the checked fonts at random each time you close and reopen the app.'
             : 'Changes every screen at once. These are bundled with the app, so nothing downloads.'
         }
       >
@@ -109,7 +109,7 @@ export function AppearanceSettings() {
           label="Randomize"
           hint={
             appFontRandomize
-              ? 'Switches to a random checked font below on each cold start'
+              ? 'Switches to a random checked font below each time you close and reopen the app'
               : 'Always use the font selected below'
           }
           toggle={appFontRandomize}
@@ -169,7 +169,7 @@ export function AppearanceSettings() {
           iconColor={hapticsEnabled ? colors.accent : undefined}
           label="Haptic feedback"
           hint={hapticsEnabled
-            ? 'The phone taps back on completions, drags and swipes'
+            ? 'Vibrates when you complete a task, drag a row, or swipe'
             : 'Nothing in the app vibrates'}
           toggle={hapticsEnabled}
           onPress={() => setHapticsEnabled(!hapticsEnabled)}
