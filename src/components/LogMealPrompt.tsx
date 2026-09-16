@@ -1,4 +1,4 @@
-import React, { useEffect, useMemo, useState } from 'react';
+import React, { useEffect, useMemo, useRef, useState } from 'react';
 import { Keyboard, KeyboardAvoidingView, Platform, StyleSheet, Text, TextInput, TouchableOpacity, View } from 'react-native';
 import { SheetModal } from './SheetModal';
 import { useShallow } from 'zustand/react/shallow';
@@ -124,20 +124,6 @@ export function LogMealPrompt() {
     };
   }, [pending, recipes, recipesById, items, itemProducts]);
 
-  // Weight leads for a dish somebody has weighed, and is simply unavailable
-  // for one nobody has: there is nothing to measure a plate against. Reset per
-  // opening rather than remembered, since the next meal is a different dish.
-  const canWeigh = figures?.cookedGrams !== null && figures?.cookedGrams !== undefined;
-  useEffect(() => {
-    setMeasure(canWeigh ? 'weight' : 'servings');
-  }, [pending, canWeigh]);
-
-  const plated = Number(platedText.trim().replace(',', '.'));
-  const helping = measure === 'weight' && canWeigh
-    ? weighedHelping(figures, Number.isFinite(plated) ? plated : 0)
-    : mealHelping(figures, helpings ?? 0);
-  const oneServing = figures ? servingGrams(figures) : null;
-
   // Nothing measurable came back, so there is no question worth asking. The
   // flag is cleared rather than left pending, or the next thing that sets one
   // would find it already occupied.
@@ -145,12 +131,44 @@ export function LogMealPrompt() {
     if (pending && !figures) setPending(null);
   }, [pending, figures, setPending]);
 
-  if (!pending || !figures || pendingFinishLeftoverId) return null;
+  // Declining clears `pending`/`figures` in the same commit that starts the
+  // close animation, but SheetModal keeps rendering this sheet's children
+  // through that animation (see its own doc comment) — it has to stay
+  // mounted and toggle `visible`, the way every other sheet in the app does,
+  // rather than being unmounted outright when there's nothing pending. This
+  // used to return null instead, tearing the whole SheetModal down rather
+  // than lowering `visible`, which raced the keyboard's dismissal against
+  // the Modal's own and froze the screen behind it. Holding the last real
+  // values is what gives the still-mounted sheet something sane to render
+  // while it fades out.
+  const lastPending = useRef(pending);
+  const lastFigures = useRef(figures);
+  if (pending && figures) {
+    lastPending.current = pending;
+    lastFigures.current = figures;
+  }
+  const shown = pending ?? lastPending.current;
+  const shownFigures = figures ?? lastFigures.current;
+  const visible = !!pending && !!figures && !pendingFinishLeftoverId;
+
+  // Weight leads for a dish somebody has weighed, and is simply unavailable
+  // for one nobody has: there is nothing to measure a plate against. Reset per
+  // opening rather than remembered, since the next meal is a different dish.
+  const canWeigh = shownFigures?.cookedGrams !== null && shownFigures?.cookedGrams !== undefined;
+  useEffect(() => {
+    setMeasure(canWeigh ? 'weight' : 'servings');
+  }, [pending, canWeigh]);
+
+  const plated = Number(platedText.trim().replace(',', '.'));
+  const helping = measure === 'weight' && canWeigh
+    ? weighedHelping(shownFigures, Number.isFinite(plated) ? plated : 0)
+    : mealHelping(shownFigures, helpings ?? 0);
+  const oneServing = shownFigures ? servingGrams(shownFigures) : null;
 
   const close = () => { Keyboard.dismiss(); setPending(null); };
 
   const handleLog = () => {
-    if (!helping) return;
+    if (!pending || !helping) return;
     const nutrition = helpingNutrition(helping.amounts, helping.servingText, helping.grams);
     if (!nutrition) { haptics.error(); return; }
     // Anchored at noon, never at the day key's own midnight — see the same
@@ -177,20 +195,22 @@ export function LogMealPrompt() {
     // The per-meal "no", written only when somebody says it in as many words.
     // Declining once is not declining for ever, which is why "Not this time"
     // above writes nothing at all.
-    if (pending.mealPlanEntryId) setLogMeal(pending.mealPlanEntryId, false);
+    if (pending?.mealPlanEntryId) setLogMeal(pending.mealPlanEntryId, false);
     haptics.tap();
     close();
   };
 
+  if (!shown) return null;
+
   return (
-    <SheetModal visible animationType="fade" transparent onRequestClose={close}>
+    <SheetModal visible={visible} animationType="fade" transparent onRequestClose={close}>
       <NumberPadAccessory />
       <KeyboardAvoidingView
         style={styles.backdrop}
         behavior={Platform.OS === 'ios' ? 'padding' : undefined}
       >
         <View style={styles.card}>
-          <Text style={styles.title}>Log {pending.label.toLowerCase()}?</Text>
+          <Text style={styles.title}>Log {shown.label.toLowerCase()}?</Text>
           <Text style={styles.body}>
             {helping
               ? `About ${Math.round(helping.amounts.calorieKcal ?? 0)} cal for ${helping.servingText}.`
@@ -225,9 +245,9 @@ export function LogMealPrompt() {
                 <Text style={styles.weightUnit}>g</Text>
               </View>
               <Text style={styles.hint}>
-                {pending.grams !== null
-                  ? `What the container weighed when you put it away. Change it if you didn't finish it all. The whole dish weighs ${figures.cookedGrams} g.`
-                  : `What was on your plate. The whole dish weighs ${figures.cookedGrams} g`
+                {shown.grams !== null
+                  ? `What the container weighed when you put it away. Change it if you didn't finish it all. The whole dish weighs ${shownFigures?.cookedGrams} g.`
+                  : `What was on your plate. The whole dish weighs ${shownFigures?.cookedGrams} g`
                     + (oneServing !== null ? `, so a serving is about ${oneServing} g.` : '.')}
               </Text>
             </>
@@ -243,7 +263,7 @@ export function LogMealPrompt() {
                 />
               </View>
               <Text style={styles.hint}>
-                {figures.perServing
+                {shownFigures?.perServing
                   ? 'In servings of the recipe as it was cooked.'
                   : 'This recipe doesn\'t say how many servings it makes, so this counts whole dishes.'}
               </Text>
@@ -261,7 +281,7 @@ export function LogMealPrompt() {
             >
               <Text style={styles.secondaryText}>Not this time</Text>
             </TouchableOpacity>
-            {!!pending.mealPlanEntryId && (
+            {!!shown.mealPlanEntryId && (
               <TouchableOpacity
                 style={styles.secondary}
                 activeOpacity={interaction.activeOpacity}
