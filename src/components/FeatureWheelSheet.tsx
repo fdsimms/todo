@@ -151,10 +151,10 @@ export function FeatureWheelSheet({ visible, onClose }: Props) {
           keyboardShouldPersistTaps="handled"
         >
           <Text style={styles.intro}>
-            Press the tab bar and drag to open the wheel, then let go over one of these.
-            The first slot is nearest straight up, so put the one you open most at the top.
-            A whole group counts as one slot: hold on it to open the screens inside.
-            Up to {WHEEL_MAX_SLOTS}.
+            Press the small handle above the tab bar and drag to open the wheel, then let go
+            over one of these. The first slot is nearest straight up, so put the one you open
+            most at the top. A whole group counts as one slot: hold on it to open the screens
+            inside. Up to {WHEEL_MAX_SLOTS}.
           </Text>
 
           <Text style={styles.sectionLabel}>ON THE WHEEL</Text>
