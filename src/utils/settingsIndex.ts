@@ -870,3 +870,28 @@ export function visibleSettingsEntries(
 export function settingsGroup(id: SettingsGroupId): SettingsGroup | undefined {
   return SETTINGS_GROUPS.find(g => g.id === id);
 }
+
+/**
+ * Opens the Settings row with this id, wherever it currently lives.
+ *
+ * **A hint that names a switch is a dead end until something takes you to
+ * it.** Copy like "turn on Log to Health in Settings first" asks the reader to
+ * hold a route in their head, leave what they were doing, and find a row by
+ * name among a few hundred — so the rows that say it now offer this instead.
+ *
+ * It takes the *entry* id rather than a `{ groupId, entryId }` pair because a
+ * call site knows the row it means and not the group holding it: five of them
+ * wrote that pair out by hand, and an entry moved to another group would have
+ * stranded every one of them somewhere plausible and wrong. The group is read
+ * off the entry, so the index stays the single answer to where a row lives.
+ *
+ * Returns false when no entry has that id — a caller can then leave its button
+ * out rather than navigate somewhere arbitrary.
+ */
+export function navigateToSettingsEntry(navigation: unknown, entryId: string): boolean {
+  const entry = SETTINGS_ENTRIES.find(e => e.id === entryId);
+  if (!entry) return false;
+  (navigation as never as { navigate: (name: string, params: object) => void })
+    .navigate('SettingsGroup', { groupId: entry.groupId, entryId });
+  return true;
+}

@@ -115,6 +115,7 @@ import { CountStepper } from './CountStepper';
 import { NumberPadAccessory, NUMBER_PAD_ACCESSORY_ID } from './NumberPadAccessory';
 import { TitleTokenAccessory } from './TitleTokenAccessory';
 import { FollowUpTaskSheet } from './FollowUpTaskSheet';
+import { CalendarChoiceSheet } from './CalendarChoiceSheet';
 import { TaskRelationPickerSheet } from './TaskRelationPickerSheet';
 import { describeBlocks } from '../utils/blocking';
 import { displayTitleFor, isMissableMealPlanTask } from '../utils/visibilityUtils';
@@ -603,6 +604,8 @@ export function TaskEditor({ visible, task, initialDraft, onClose }: Props) {
   // the list under it can be reordered or shortened while the sheet is up.
   const [questionStepId, setQuestionStepId] = useState<string | null>(null);
   const [medicationStepId, setMedicationStepId] = useState<string | null>(null);
+  // Which of the two "write this to a calendar" rows is asking for one.
+  const [calendarPickerFor, setCalendarPickerFor] = useState<'completion' | 'deadline' | null>(null);
   const [chainIndex, setChainIndex] = useState(0);
   const [chainStepOnSchedule, setChainStepOnSchedule] = useState(false);
   const [newChainItemTitle, setNewChainItemTitle] = useState('');
@@ -620,6 +623,8 @@ export function TaskEditor({ visible, task, initialDraft, onClose }: Props) {
   const reminderMeetingNudgeEnabled = useSettingsStore(s => s.reminderMeetingNudgeEnabled);
   const deadlineCalendarId = useSettingsStore(s => s.deadlineCalendarId);
   const completionCalendarId = useSettingsStore(s => s.completionCalendarId);
+  const setDeadlineCalendarId = useSettingsStore(s => s.setDeadlineCalendarId);
+  const setCompletionCalendarId = useSettingsStore(s => s.setCompletionCalendarId);
   const healthWriteEnabled = useSettingsStore(s => s.healthWriteEnabled);
   const use24HourTime = useSettingsStore(s => s.use24HourTime);
   const activeHoursStart = useSettingsStore(s => s.activeHoursStart);
@@ -2410,6 +2415,24 @@ export function TaskEditor({ visible, task, initialDraft, onClose }: Props) {
             onSave={setFollowUpTaskDraft}
             onClose={() => setShowFollowUpTaskSheet(false)}
           />
+          <CalendarChoiceSheet
+            visible={calendarPickerFor !== null}
+            title={calendarPickerFor === 'deadline' ? 'Add deadlines to' : 'Log completions to'}
+            selectedId={calendarPickerFor === 'deadline' ? deadlineCalendarId : completionCalendarId}
+            onSelect={id => {
+              if (calendarPickerFor === 'deadline') {
+                setDeadlineCalendarId(id);
+                // Picking one is the answer to the row that asked, so the
+                // toggle it was gating turns on rather than needing a second
+                // tap on the row they just tapped.
+                setDeadlineOnCalendar(id !== null);
+              } else {
+                setCompletionCalendarId(id);
+                setLogCompletionToCalendar(id !== null);
+              }
+            }}
+            onClose={() => setCalendarPickerFor(null)}
+          />
           <NumberPadAccessory />
           <TitleTokenAccessory onInsert={insertTitleToken} floating focused={titleFocused} />
         </>
@@ -3274,15 +3297,18 @@ export function TaskEditor({ visible, task, initialDraft, onClose }: Props) {
               <TouchableOpacity
                 style={styles.optionRow}
                 onPress={() => {
-                  if (!completionCalendarId) return;
                   haptics.tap();
+                  // With no calendar named yet the row asks for one rather
+                  // than doing nothing. It used to send the reader to
+                  // Settings, which from a sheet guarding unsaved edits meant
+                  // abandoning the task to follow the instruction.
+                  if (!completionCalendarId) { setCalendarPickerFor('completion'); return; }
                   setLogCompletionToCalendar(v => !v);
                 }}
                 activeOpacity={interaction.activeOpacity}
-                disabled={!completionCalendarId}
-                accessibilityRole="switch"
+                accessibilityRole={completionCalendarId ? 'switch' : 'button'}
                 accessibilityLabel="Log this task's completion to your calendar"
-                accessibilityState={{ checked: logCompletionToCalendar, disabled: !completionCalendarId }}
+                accessibilityState={completionCalendarId ? { checked: logCompletionToCalendar } : {}}
               >
                 <Ionicons
                   name="calendar-outline"
@@ -3294,12 +3320,16 @@ export function TaskEditor({ visible, task, initialDraft, onClose }: Props) {
                   <Text style={styles.optionHint}>
                     {completionCalendarId
                       ? 'A calendar event when you complete this task'
-                      : 'Pick a calendar to write to in Settings › Calendar first'}
+                      : 'Pick a calendar to write to'}
                   </Text>
                 </View>
-                <View style={[styles.toggle, logCompletionToCalendar && styles.toggleOn]}>
-                  <View style={[styles.toggleKnob, logCompletionToCalendar && styles.toggleKnobOn]} />
-                </View>
+                {completionCalendarId ? (
+                  <View style={[styles.toggle, logCompletionToCalendar && styles.toggleOn]}>
+                    <View style={[styles.toggleKnob, logCompletionToCalendar && styles.toggleKnobOn]} />
+                  </View>
+                ) : (
+                  <Ionicons name="chevron-forward" size={16} color={colors.textTertiary} />
+                )}
               </TouchableOpacity>
             ),
           },
@@ -3628,15 +3658,17 @@ export function TaskEditor({ visible, task, initialDraft, onClose }: Props) {
               <TouchableOpacity
                 style={styles.optionRow}
                 onPress={() => {
-                  if (!deadlineCalendarId) return;
                   haptics.tap();
+                  // Same as the completion row above: ask for the calendar
+                  // here rather than naming a Settings screen this sheet
+                  // can't be left for.
+                  if (!deadlineCalendarId) { setCalendarPickerFor('deadline'); return; }
                   setDeadlineOnCalendar(v => !v);
                 }}
                 activeOpacity={interaction.activeOpacity}
-                disabled={!deadlineCalendarId}
-                accessibilityRole="switch"
+                accessibilityRole={deadlineCalendarId ? 'switch' : 'button'}
                 accessibilityLabel="Add this deadline to your calendar"
-                accessibilityState={{ checked: deadlineOnCalendar, disabled: !deadlineCalendarId }}
+                accessibilityState={deadlineCalendarId ? { checked: deadlineOnCalendar } : {}}
               >
                 <Ionicons
                   name="calendar-outline"
@@ -3648,12 +3680,16 @@ export function TaskEditor({ visible, task, initialDraft, onClose }: Props) {
                   <Text style={styles.optionHint}>
                     {deadlineCalendarId
                       ? 'An all-day event on your calendar for this deadline'
-                      : 'Pick a calendar to write to in Settings › Calendar first'}
+                      : 'Pick a calendar to write to'}
                   </Text>
                 </View>
-                <View style={[styles.toggle, deadlineOnCalendar && styles.toggleOn]}>
-                  <View style={[styles.toggleKnob, deadlineOnCalendar && styles.toggleKnobOn]} />
-                </View>
+                {deadlineCalendarId ? (
+                  <View style={[styles.toggle, deadlineOnCalendar && styles.toggleOn]}>
+                    <View style={[styles.toggleKnob, deadlineOnCalendar && styles.toggleKnobOn]} />
+                  </View>
+                ) : (
+                  <Ionicons name="chevron-forward" size={16} color={colors.textTertiary} />
+                )}
               </TouchableOpacity>
             )}
             {recurrenceType !== 'none' && (deadline || deadlineOffsetDays !== null || deadlineMonthDay !== null) && (

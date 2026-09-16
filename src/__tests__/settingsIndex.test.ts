@@ -2,6 +2,7 @@ import {
   SETTINGS_GROUPS,
   SETTINGS_ENTRIES,
   settingsGroup,
+  navigateToSettingsEntry,
   visibleSettingsGroups,
   visibleSettingsEntries,
 } from '../utils/settingsIndex';
@@ -327,6 +328,30 @@ describe('settings index', () => {
       const on = visibleSettingsEntries('ios', false, true);
       for (const group of visibleSettingsGroups('ios', false)) {
         expect(on.filter(e => e.groupId === group.id).length).toBeGreaterThan(0);
+      }
+    });
+  });
+
+  describe('navigateToSettingsEntry', () => {
+    it('reads the group off the entry rather than trusting a caller', () => {
+      const navigate = jest.fn();
+      expect(navigateToSettingsEntry({ navigate }, 'healthWrite')).toBe(true);
+      expect(navigate).toHaveBeenCalledWith(
+        'SettingsGroup', { groupId: 'health', entryId: 'healthWrite' });
+    });
+
+    it('refuses an id no entry has, rather than landing somewhere arbitrary', () => {
+      const navigate = jest.fn();
+      expect(navigateToSettingsEntry({ navigate }, 'noSuchRow')).toBe(false);
+      expect(navigate).not.toHaveBeenCalled();
+    });
+
+    // Every id a jump is written against, checked against the index itself —
+    // a renamed row would otherwise only surface as a button that goes nowhere.
+    it('resolves every row the app links to from outside Settings', () => {
+      for (const id of ['healthWrite', 'healthRead', 'apiKey', 'deadlineCalendar',
+        'completionCalendar', 'mealCalendar']) {
+        expect(SETTINGS_ENTRIES.find(e => e.id === id)).toBeDefined();
       }
     });
   });

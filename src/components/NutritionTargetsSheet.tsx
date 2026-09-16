@@ -2,6 +2,7 @@ import React, { useMemo } from 'react';
 import { ScrollView, StyleSheet, Text, TouchableOpacity, View } from 'react-native';
 import { SheetModal } from './SheetModal';
 import Ionicons from '@expo/vector-icons/Ionicons';
+import { useNavigation } from '@react-navigation/native';
 import { useShallow } from 'zustand/react/shallow';
 import { useColors } from '../theme/ThemeContext';
 import { border, font, fontWeight, iconSize, interaction, radius, spacing, type Colors } from '../theme';
@@ -16,6 +17,7 @@ import {
   type WaterExerciseBoost,
 } from '../utils/waterExerciseBoost';
 import { haptics } from '../utils/haptics';
+import { navigateToSettingsEntry } from '../utils/settingsIndex';
 import { CountStepper } from './CountStepper';
 import { SheetHeaderButton } from './SheetHeaderButton';
 
@@ -54,6 +56,7 @@ interface Props {
 export function NutritionTargetsSheet({ visible, onClose }: Props) {
   const colors = useColors();
   const styles = useMemo(() => makeStyles(colors), [colors]);
+  const navigation = useNavigation();
 
   const targets = useSettingsStore(useShallow(s => s.nutritionTargets));
   const setNutritionTarget = useSettingsStore(s => s.setNutritionTarget);
@@ -160,13 +163,33 @@ export function NutritionTargetsSheet({ visible, onClose }: Props) {
             <View>
               <Text style={styles.sectionLabel}>Water on exercise days</Text>
               {!healthReadEnabled ? (
-                <View style={styles.boostNotice}>
+                // The whole card opens the row it names, rather than a button
+                // beside it: the sentence is already the thing to tap, and
+                // every field here commits as it is made, so closing costs
+                // nothing.
+                <TouchableOpacity
+                  style={styles.boostNotice}
+                  activeOpacity={interaction.activeOpacity}
+                  onPress={() => {
+                    haptics.tap();
+                    onClose();
+                    navigateToSettingsEntry(navigation, 'healthRead');
+                  }}
+                  accessibilityRole="button"
+                  accessibilityLabel="Turn on Apple Health reading in Settings"
+                  accessibilityHint="Opens the Read Apple Health setting"
+                >
                   <Ionicons name="heart-outline" size={iconSize.sm} color={colors.textSecondary} />
                   <Text style={styles.boostNoticeText}>
                     Turn on Apple Health reading in Settings to raise today's water target on a day
                     with exercise logged.
                   </Text>
-                </View>
+                  <Ionicons
+                    name="chevron-forward"
+                    size={iconSize.sm}
+                    color={colors.textTertiary}
+                  />
+                </TouchableOpacity>
               ) : (
                 <View style={styles.boostCard}>
                   <TouchableOpacity

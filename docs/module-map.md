@@ -258,7 +258,7 @@ name cannot say is where a component appears, and that is `docs/screen-map.md`.
 - `src/utils/secureApiKey.ts` — API_KEY_SECURE_KEY, API_KEY_LEGACY_SETTING, loadAnthropicApiKey, saveAnthropicApiKey, FDC_KEY_SECURE_KEY, GO_UPC_KEY_SECURE_KEY, SYNC_TOKEN_SECURE_KEY, loadSecureKey, saveSecureKey
 - `src/utils/segmentColumns.ts` — segmentRows
 - `src/utils/settingsFocusScroll.ts` — SETTINGS_FOCUS_PADDING, settingsFocusScrollTarget
-- `src/utils/settingsIndex.ts` — SettingsGroupId, SettingsTint, SettingsGroup, SETTINGS_GROUPS, SettingsEntry, SETTINGS_ENTRIES, visibleSettingsGroups, visibleSettingsEntries, settingsGroup
+- `src/utils/settingsIndex.ts` — SettingsGroupId, SettingsTint, SettingsGroup, SETTINGS_GROUPS, SettingsEntry, SETTINGS_ENTRIES, visibleSettingsGroups, visibleSettingsEntries, settingsGroup, navigateToSettingsEntry
 - `src/utils/settingsSearch.ts` — SettingsSearchResult, searchSettings
 - `src/utils/settingsSummary.ts` — SettingsSummaryInput, settingsSummaries
 - `src/utils/shakeDetect.ts` — ShakeSample, SHAKE_UPDATE_INTERVAL_MS, SHAKE_THRESHOLD_G, SHAKE_JOLTS_REQUIRED, SHAKE_WINDOW_MS, SHAKE_COOLDOWN_MS, SHAKE_ARM_DELAY_MS, ShakeState, createShakeState, armShakeState, +3 more
