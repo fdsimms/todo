@@ -400,8 +400,8 @@ export function WeightScreen() {
                   )}
 
                   <Text style={styles.chartCaption}>
-                    Measured from your weigh-ins in Apple Health. Reaching it
-                    completes nothing and nothing is written anywhere.
+                    Based on your weigh-ins in Apple Health. Reaching this goal
+                    doesn't complete a task or change anything else in the app.
                   </Text>
                 </>
               )}
