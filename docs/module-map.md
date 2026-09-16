@@ -86,7 +86,7 @@ name cannot say is where a component appears, and that is `docs/screen-map.md`.
 - `src/utils/energyBudget.ts` — BodySex, ActivityLevel, ACTIVITY_FACTOR, ACTIVITY_LABEL, ACTIVITY_LEVELS, BodyProfile, EMPTY_BODY_PROFILE, MIN_HEIGHT_CM, MAX_HEIGHT_CM, MIN_BIRTH_YEAR, +22 more
 - `src/utils/estimateCalibration.ts` — MIN_CALIBRATION_SAMPLES, MIN_SANE_RATIO, MAX_SANE_RATIO, EstimateCalibration, calibrationPairs, calibrationFrom, calibratedAssumedMinutes, describeCalibration
 - `src/utils/eventReminders.ts` — EventReminder, EVENT_REMINDER_OFFSETS, eventReminderKey, reminderFromEvent, reminderTriggerDate, isReminderStale, pruneStaleReminders, describeEventReminderOffset
-- `src/utils/eventTasks.ts` — EVENT_RULE_TITLE_MAX_LENGTH, EVENT_MATCH_MAX_LENGTH, EVENT_MATCH_MIN_LENGTH, EVENT_RULE_MAX_MATCHES, EVENT_LEAD_DAYS_MAX, defaultEventRules, parseEventRules, ruleMatchesTitle, describeEventRule, eventIsRuleEligible, +10 more
+- `src/utils/eventTasks.ts` — EVENT_RULE_TITLE_MAX_LENGTH, EVENT_MATCH_MAX_LENGTH, EVENT_MATCH_MIN_LENGTH, EVENT_RULE_MAX_MATCHES, EVENT_LEAD_DAYS_MAX, defaultEventRules, parseEventRules, ruleMatchesTitle, describeEventRule, eventIsRuleEligible, +14 more
 - `src/utils/eventTextParse.ts` — MAX_EVENT_TEXT_CHARS, ParsedEventText, parseEventText
 - `src/utils/expiredTaskGrace.ts` — ExpiredTaskGraceDays, EXPIRED_TASK_GRACE_OPTIONS, expiredTaskGraceLabel, parseExpiredTaskGrace, serializeExpiredTaskGrace
 - `src/utils/fabDrop.ts` — ScheduleInfo, DropZone, ZoneRect, FabDropIntent, zoneKey, ZONE_HIT_SLOP, TAIL_HIT_SLOP, zoneAtY, DEFAULT_DROP_SLOT, slotAtX, +13 more
@@ -133,7 +133,7 @@ name cannot say is where a component appears, and that is `docs/screen-map.md`.
 - `src/utils/hiddenEvents.ts` — HiddenEvent, hiddenEventKey, hiddenEventFromEvent, isHiddenEventStale, pruneStaleHiddenEvents
 - `src/utils/httpSyncTransport.ts` — HTTP_SYNC_SOURCE, SYNC_REQUEST_TIMEOUT_MS, HttpSyncConfig, isHttpSyncConfigured, httpSyncTransport, readPullBody
 - `src/utils/id.ts` — generateId
-- `src/utils/ingredientCatalogMatch.ts` — IngredientMatchReason, IngredientMatchKind, IngredientCatalogMatch, withinOneEdit, matchIngredientToCatalog, matchIngredientsToCatalog, CatalogMatchSummary, catalogMatchSummary
+- `src/utils/ingredientCatalogMatch.ts` — IngredientMatchReason, IngredientMatchKind, IngredientCatalogMatch, matchIngredientToCatalog, matchIngredientsToCatalog, CatalogMatchSummary, catalogMatchSummary
 - `src/utils/ingredientGrams.ts` — gramsForLine, panelMultiplier, UnfixableQuantity, unfixableQuantityReason, LineWeighing, weighableLine
 - `src/utils/itemBackfill.ts` — ItemBackfillFieldId, ItemBackfillFieldDef, ITEM_BACKFILL_FIELDS, isItemFieldMissing, isItemBackfillDismissed, itemBackfillCandidates, itemBackfillFieldCounts, dismissItemBackfillField
 - `src/utils/itemDisposal.ts` — DisposalOutcome, REPEAT_WASTE_THRESHOLD, disposalAnswerCount, describeDisposalHistory, wantsShelfLifePrompt
@@ -266,7 +266,7 @@ name cannot say is where a component appears, and that is `docs/screen-map.md`.
 - `src/utils/shakeDetect.ts` — ShakeSample, SHAKE_UPDATE_INTERVAL_MS, SHAKE_THRESHOLD_G, SHAKE_JOLTS_REQUIRED, SHAKE_WINDOW_MS, SHAKE_COOLDOWN_MS, SHAKE_ARM_DELAY_MS, ShakeState, createShakeState, armShakeState, +3 more
 - `src/utils/shareText.ts` — buildRecipeShareText, buildIngredientsText, buildGroceryListShareText, buildGroceryListText, buildWeekPlanShareText
 - `src/utils/sharedRecipeLinks.ts` — SHARED_LINK_QUEUE_CAP, mergeSharedLinks, parseSharedLinkQueue, serializeSharedLinkQueue, sharedLinkLabel
-- `src/utils/sheetModal.ts` — SheetVisibilityStep, nextSheetVisibility, PresentationLevel, createPresentationLevel, subscribePresentation, canHideSheet, registerPresentation, releasePresentation
+- `src/utils/sheetModal.ts` — SheetVisibilityStep, nextSheetVisibility, PresentationLevel, createPresentationLevel, subscribePresentation, canHideSheet, canShowSheet, claimPresentation, releasePresentationClaim, mustYieldSheet, +2 more
 - `src/utils/shelfLabel.ts` — ScanBox, ScanText, printedPricesIn, priceNearBarcode
 - `src/utils/shoppingTrip.ts` — MAX_TRIP_STOPS, ShopCoverage, TripPlan, TripSummary, planTrip, summarizeTrip, describeShopCoverage, joinNames
 - `src/utils/simpleMode.ts` — SimpleArea, SimpleFeatureId, SimpleFeature, SIMPLE_AREA_LABELS, SIMPLE_AREAS, SIMPLE_FEATURES, simpleFeaturesIn, featureHidden, featureShown, SIMPLE_HIDDEN_SCREENS, +10 more
@@ -300,6 +300,7 @@ name cannot say is where a component appears, and that is `docs/screen-map.md`.
 - `src/utils/templateSchedule.ts` — TemplateRunDue, DEFAULT_TEMPLATE_SCHEDULE_TIME, defaultTemplateSchedule, periodKeyFor, triggerDayFor, scheduledRunName, dueTemplateRun, ordinal, describeTemplateSchedule
 - `src/utils/templateUtils.ts` — TemplateAnchors, normalizeTemplateItem, normalizeTemplateQuestion, resolveOffsetDate, formatMinutesOffset, buildDraftsFromTemplate, formatOffsetLabel, anchorLabel, formatOffsetWithAnchor, reachableTemplateIds, +28 more
 - `src/utils/textSelection.ts` — TextSelection, clampSelection, caretAtEnd, spliceAtSelection
+- `src/utils/textSimilar.ts` — MIN_SIMILAR_LENGTH, withinOneEdit, isSingleTransposition
 - `src/utils/timeBlock.ts` — TimeBlockFields, TimeBlockContext, canTimeBlock, proposeTimeBlockStart, timeBlockFieldsFor, timeBlockUpdateFor
 - `src/utils/timer.ts` — TimerState, isTimedTask, isTimerRunning, timerElapsed, timerRemaining, timerProgress, isTimerReady
 - `src/utils/timerSegments.ts` — TimerSegment, SegmentPhase, SegmentSource, segmentMinutesOf, timerSegments, apportionedMinutes, activeSegmentIndex, activeSegment, segmentPhase, segmentRemaining
@@ -396,6 +397,8 @@ name cannot say is where a component appears, and that is `docs/screen-map.md`.
 - `src/hooks/useScrollToTopOnTabPress.ts` — useScrollToTopOnTabPress
 - `src/hooks/useSharedRecipeLinks.ts` — useSharedRecipeLinks
 - `src/hooks/useSheetHiddenOffset.ts` — useSheetHiddenOffset
+- `src/hooks/useSheetMount.ts` — useSheetMount
+- `src/hooks/useSheetSubject.ts` — useSheetSubject
 - `src/hooks/useStepTimers.ts` — StepTimersBinding, useStepTimers
 - `src/hooks/useTaskSelection.ts` — useTaskSelection
 - `src/hooks/useTipSignals.ts` — useTipSignals
@@ -403,7 +406,7 @@ name cannot say is where a component appears, and that is `docs/screen-map.md`.
 
 ## `src/db`
 
-- `src/db/database.ts` — switchToDemoDatabase, switchToRealDatabase, isUsingDemoDatabase, initDatabase, BACKUP_TABLES, BACKUP_EXCLUDED_TABLES, dbTableColumns, dbExportTables, dbReplaceAllData, isSyncableDatabase, +206 more
+- `src/db/database.ts` — switchToDemoDatabase, switchToRealDatabase, isUsingDemoDatabase, initDatabase, BACKUP_TABLES, BACKUP_EXCLUDED_TABLES, dbTableColumns, dbExportTables, dbReplaceAllData, isSyncableDatabase, +207 more
 - `src/db/syncTracking.ts` — SyncTable, KEY_SEPARATOR, SYNC_TRACKED_TABLES, SYNC_EXCLUDED_TABLES, SYNCED_SETTING_KEYS, isSyncedSettingKey, SYNC_DELETIONS_TABLE, NOW_EXPR, TOMBSTONE_RETENTION_DAYS, rowKeyExpr, +5 more
 
 ## `src/services`

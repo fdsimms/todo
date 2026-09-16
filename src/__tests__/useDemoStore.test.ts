@@ -3148,6 +3148,11 @@ describe('demo seed — groceries, recipes, meals and the fridge', () => {
     // against — so the box's "Loved first" sort has something to show.
     expect(recipes.some(r => r.vote === 'loved')).toBe(true);
     expect(recipes.some(r => r.vote === 'never')).toBe(true);
+    // The Up Next shelf: two recipes nobody's cooked or voted on yet, in a
+    // hand-picked order rather than creation order.
+    const upNext = useRecipeStore.getState().upNextRecipes();
+    expect(upNext.map(r => r.name)).toEqual(['Weeknight vegetable soup', 'Brown sugar shortbread']);
+    expect(upNext.every(r => r.cookCount === 0 && r.vote === null)).toBe(true);
     expect(recipes.some(r => r.timerStartedAt)).toBe(true);
     // All three attribution shapes — a URL, a byline, and a cookbook page.
     expect(recipes.some(r => r.sourceUrl)).toBe(true);

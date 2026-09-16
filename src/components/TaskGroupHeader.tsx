@@ -12,6 +12,7 @@ import { SpotlightScrim } from './SpotlightOverlay';
 import { SwipeableRow } from './SwipeableRow';
 import { AnimatedCollapsible } from './AnimatedCollapsible';
 import { PinIcon } from './PinIcon';
+import { useSheetMount } from '../hooks/useSheetMount';
 
 interface Props {
   group: TaskGroup;
@@ -80,6 +81,9 @@ export function TaskGroupHeader({
   const colors = useColors();
   const styles = useMemo(() => makeStyles(colors), [colors]);
   const [showDefer, setShowDefer] = useState(false);
+  // Mounted on first open and kept, so it closes through `visible` rather
+  // than by leaving the tree. See useSheetMount.
+  const mountDefer = useSheetMount(showDefer);
 
   const dueToday = useMemo(
     () => dueTodayOverride ?? groupRoster(allChildren).filter(isRelevantToGroupToday),
@@ -260,10 +264,10 @@ export function TaskGroupHeader({
         </View>
       </View>
 
-      {/* Mounted only while open — see the same note in TaskItem. */}
-      {showDefer && (
+      {/* Mounted on first open — see the same note in TaskItem. */}
+      {mountDefer && (
         <WhenPicker
-          visible
+          visible={showDefer}
           value={null}
           title="Reschedule"
           showTimeOfDay={false}

@@ -5,6 +5,7 @@ import { useRecipeStore } from '../store/useRecipeStore';
 import { useGroceryStore } from '../store/useGroceryStore';
 import { useLeftoverStore } from '../store/useLeftoverStore';
 import { useSettingsStore } from '../store/useSettingsStore';
+import { useSheetSubject } from '../hooks/useSheetSubject';
 import {
   classifyPlanned,
   consumedRows,
@@ -46,6 +47,11 @@ import { LeftoverSheet } from './LeftoverSheet';
  */
 export function CookRecap() {
   const recap = useMealPlanStore(s => s.cookRecap);
+  // The sheet closes through `visible` rather than by leaving the tree, so it
+  // still needs the cooking it is about for the commit it spends fading out.
+  // Everything the sheet *draws* reads this; the live recap still decides
+  // whether it is open, and still drives the clear below. See useSheetSubject.
+  const shownRecap = useSheetSubject(recap);
   const clearCookRecap = useMealPlanStore(s => s.clearCookRecap);
   const recipes = useRecipeStore(useShallow(s => s.recipes));
   const setVote = useRecipeStore(s => s.setVote);
@@ -68,20 +74,20 @@ export function CookRecap() {
   // Resolve-or-shrug, like every other cross-row pointer here: a recipe deleted
   // between cooking it and answering leaves a meal that can still have left
   // something in the fridge, and nothing else to say.
-  const recipe = recap?.recipeId ? recipesById.get(recap.recipeId) ?? null : null;
+  const recipe = shownRecap?.recipeId ? recipesById.get(shownRecap.recipeId) ?? null : null;
 
   const classified = useMemo(() => {
-    if (!recap || !recipe) return [];
+    if (!shownRecap || !recipe) return [];
     // Live, not persisted — matches cookedConsumption's own resolution, so
     // the recap names what was actually consumed (see ChoiceResolution.onHand).
     return classifyPlanned(
       plannedIngredientsForRecipe(
-        recipe, recipesById, { chosen: recap.choices, onHand: onHandNameKeys(items, new Date()) }, recap.scale, swaps
+        recipe, recipesById, { chosen: shownRecap.choices, onHand: onHandNameKeys(items, new Date()) }, shownRecap.scale, swaps
       ),
       items,
       new Date()
     );
-  }, [recap, recipe, recipesById, items, swaps]);
+  }, [shownRecap, recipe, recipesById, items, swaps]);
 
   const rows = useMemo(() => consumedRows(classified), [classified]);
 
@@ -97,8 +103,8 @@ export function CookRecap() {
    */
   const askCookedWeight = useMemo(() => {
     if (!recipe || recipe.cookedWeightG !== null) return false;
-    return recipeNutrition(recipe, items, itemProducts, recipesById, { chosen: recap?.choices ?? [] }) !== null;
-  }, [recipe, items, itemProducts, recipesById, recap]);
+    return recipeNutrition(recipe, items, itemProducts, recipesById, { chosen: shownRecap?.choices ?? [] }) !== null;
+  }, [recipe, items, itemProducts, recipesById, shownRecap]);
 
   const restockList = useMemo(
     () => (restockOfferEnabled ? restockRows(classified) : []),
@@ -119,28 +125,28 @@ export function CookRecap() {
    * itself before the answer landed.
    */
   const askVoteRef = useRef<{ entryId: string; ask: boolean } | null>(null);
-  if (recap && askVoteRef.current?.entryId !== recap.entryId) {
-    askVoteRef.current = { entryId: recap.entryId, ask: !!recipe && recipe.vote === null };
+  if (shownRecap && askVoteRef.current?.entryId !== shownRecap.entryId) {
+    askVoteRef.current = { entryId: shownRecap.entryId, ask: !!recipe && recipe.vote === null };
   }
-  const askVote = !!recap && !!askVoteRef.current?.ask;
+  const askVote = !!shownRecap && !!askVoteRef.current?.ask;
 
   const seed = useMemo(() => {
-    if (!recap) return null;
+    if (!shownRecap) return null;
     return {
-      title: recap.title,
-      recipeId: recap.recipeId,
-      sourceEntryId: recap.entryId,
+      title: shownRecap.title,
+      recipeId: shownRecap.recipeId,
+      sourceEntryId: shownRecap.entryId,
       // Under this cooking's own choices, so a night the roast potatoes won
       // never offers to log leftover mash — the mash was never made.
-      parts: leftoverPartsFor(recap.title, recipe ?? undefined, recipesById, { chosen: recap.choices }),
+      parts: leftoverPartsFor(shownRecap.title, recipe ?? undefined, recipesById, { chosen: shownRecap.choices }),
       // What the dish itself says it keeps for, so the usual log is still one
       // tap for a recipe that lasts a week rather than a stepper to correct
       // every time. A free-text meal has no recipe to ask and falls back.
       keepDays: leftoverKeepDaysFor(recipe ?? undefined),
     };
-  }, [recap, recipe, recipesById]);
+  }, [shownRecap, recipe, recipesById]);
 
-  const askLeftovers = !!recap?.canLogLeftovers;
+  const askLeftovers = !!shownRecap?.canLogLeftovers;
   const hasSomethingToAsk =
     askVote || askLeftovers || askCookedWeight || rows.length > 0 || restockList.length > 0;
 
@@ -175,16 +181,22 @@ export function CookRecap() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [recap, cookRecapEnabled, hasSomethingToAsk, leftoverVisible]);
 
-  if (!recap || !cookRecapEnabled || waiting || !hasSomethingToAsk) return null;
+  // Live: what the sheet is *for* right now. A recap that has been cleared,
+  // or is ranked behind the leftover alert, closes the sheet rather than
+  // taking it out of the tree while it is still on screen.
+  const open = !!recap && cookRecapEnabled && !waiting && hasSomethingToAsk;
+  if (!shownRecap) return null;
 
   return (
     <CookRecapSheet
       // Keyed to the cooking, so a second one arriving can't inherit the
-      // first's ticks — the sheet's own reset runs on `visible` going true, and
-      // this one never does.
-      key={recap.entryId}
-      visible
-      title={recap.title}
+      // first's ticks. The sheet's own reset runs on `visible` going true,
+      // which covers the one case this sheet reopens under the same key —
+      // coming back from the leftover alert it was ranked behind — and the key
+      // covers the case that reset can't see, a different cooking entirely.
+      key={shownRecap.entryId}
+      visible={open}
+      title={shownRecap.title}
       vote={
         askVote && recipe
           ? { value: recipe.vote, onChange: next => setVote(recipe.id, next) }
@@ -197,7 +209,7 @@ export function CookRecap() {
           // the recipe is what the recipe makes as written — a doubled Sunday
           // weighs twice that. `cookedDishGrams` multiplies it back out at
           // every later reading.
-          ? { onSet: grams => setCookedWeight(recipe.id, asWrittenCookedWeight(grams, recap.scale)) }
+          ? { onSet: grams => setCookedWeight(recipe.id, asWrittenCookedWeight(grams, shownRecap.scale)) }
           : undefined
       }
       rows={rows}
@@ -220,7 +232,7 @@ export function CookRecap() {
             weightG,
             // The one thing the sheet can't have changed: every container here
             // came out of that cooking, whichever part of it it is.
-            sourceEntryId: recap.entryId,
+            sourceEntryId: shownRecap.entryId,
           }))}
           // Never called: this only ever logs new containers. The rows it writes
           // are edited from the fridge, where the whole of that half already is.

@@ -35,6 +35,7 @@ import { SheetHeaderButton } from './SheetHeaderButton';
 import { WhenPicker } from './WhenPicker';
 import { SheetScrim } from './SheetScrim';
 import { useSheetHiddenOffset } from '../hooks/useSheetHiddenOffset';
+import { useSheetMount } from '../hooks/useSheetMount';
 
 type IoniconName = React.ComponentProps<typeof Ionicons>['name'];
 
@@ -109,6 +110,9 @@ export function DeliverablePromptSheet({ visible, task, mode = 'complete', onCon
   const inputRef = useRef<TextInput>(null);
   const [draft, setDraft] = useState('');
   const [pickerOpen, setPickerOpen] = useState(false);
+  // Mounted on first open and kept, so it closes through `visible` rather
+  // than by leaving the tree. See useSheetMount.
+  const mountPicker = useSheetMount(pickerOpen);
 
   useEffect(() => {
     const showEvent = Platform.OS === 'ios' ? 'keyboardWillShow' : 'keyboardDidShow';
@@ -314,9 +318,9 @@ export function DeliverablePromptSheet({ visible, task, mode = 'complete', onCon
           the controller its React parent belongs to, so a sibling would ask
           this sheet's own controller to present a second one while it's up.
           Same reason GroceryCatalogSheet nests GroceryItemSheet. */}
-      {pickerOpen && (
+      {mountPicker && (
         <WhenPicker
-          visible
+          visible={pickerOpen}
           value={normalized ? new Date(normalized) : null}
           title={displayTitleFor(task)}
           showTimeOfDay={false}

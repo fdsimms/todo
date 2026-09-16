@@ -47,6 +47,7 @@ import { LogbookFilterSheet } from '../components/LogbookFilterSheet';
 import { usePersonStore, displayNameOf } from '../store/usePersonStore';
 import { useTaskSelection } from '../hooks/useTaskSelection';
 import { useDebouncedValue } from '../hooks/useDebouncedValue';
+import { useSheetSubject } from '../hooks/useSheetSubject';
 import { useColors } from '../theme/ThemeContext';
 import { spacing, font, fontWeight, lineHeight, radius, iconSize, border, checkboxRadius, animation, interaction, flattenOverlay, type Colors } from '../theme';
 import { haptics } from '../utils/haptics';
@@ -259,6 +260,9 @@ export function LogbookScreen() {
   const answerTask = answerTaskId !== null
     ? completedTasks.find(t => t.id === answerTaskId) ?? null
     : null;
+  // Held so the sheet can close through `visible` rather than by leaving
+  // the tree while still on screen. See useSheetSubject.
+  const shownAnswerTask = useSheetSubject(answerTask);
   const [query, setQuery] = useState('');
   const [selectedCategory, setSelectedCategory] = useState<string | null>(null);
   const [selectedTag, setSelectedTag] = useState<string | null>(null);
@@ -734,13 +738,13 @@ export function LogbookScreen() {
         onClose={() => setMenuTask(null)}
       />
 
-      {answerTask && (
+      {shownAnswerTask && (
         <DeliverablePromptSheet
-          visible
-          task={answerTask}
+          visible={answerTask !== null}
+          task={shownAnswerTask}
           mode="edit"
           onConfirm={value => {
-            setDeliverableValue(answerTask.id, value);
+            setDeliverableValue(shownAnswerTask.id, value);
             setAnswerTaskId(null);
           }}
           onCancel={() => setAnswerTaskId(null)}

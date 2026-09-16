@@ -33,6 +33,24 @@ For the same reason the Settings toggle calls `unlock()` *before*
   over a backgrounded app is the app-switcher snapshot, and the user may have left
   with the task editor (itself a `Modal`) open — a sibling of the navigator renders
   *under* that.
+- **It `preempts`, because a later modal does not stack above an earlier one.**
+  This section used to say it did. Every screen-level sheet presents from the root
+  view controller (`enableScreens(false)` leaves no screen that is one), and a view
+  controller presents one thing at a time, so leaving the app with any sheet open
+  meant the gate was refused with nothing shown: no shield over the snapshot, and a
+  resume past the grace period that did not lock the app at all. Only a modal
+  presented *by* the open sheet stacks, and the gate cannot be that — it has to
+  cover whatever happens to be up. So the sheet that is up stands down instead and
+  the gate presents into the space (`claimPresentation` in `sheetModal.ts`), with
+  its own `visible` left alone so it comes back after the unlock.
+- **What that does not fix is the timing, and the fix for that half is native.**
+  Standing down costs a commit or two, and the snapshot wants the same one. A
+  window-level overlay added on `willResignActive` sits above every presented view
+  controller and needs nobody's permission, which is how an iOS privacy screen is
+  normally done; it is also native work that cannot be built or checked from the
+  sandbox this was written in. Until then the shield is late rather than absent,
+  and the lock itself — which only has to be up by the time somebody is looking —
+  is correct.
 - **No biometrics and no passcode enrolled fails open, out loud.** There is no
   second way in — no password, no account, no server — so the alternative is a
   task list nobody can ever open. It alerts rather than opening quietly, and

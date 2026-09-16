@@ -50,6 +50,8 @@ function recipe(name: string, overrides: Partial<Recipe> = {}): Recipe {
     cookCount: 0,
     lastCookedAt: null,
     vote: null,
+    upNext: false,
+    upNextOrder: 0,
     estimatedMinutes: null,
     timerStartedAt: null,
     timerElapsedSeconds: 0,

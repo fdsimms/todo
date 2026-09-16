@@ -19,6 +19,7 @@ import { EmptyState } from '../components/EmptyState';
 import { TaskGroupTray } from '../components/TaskGroupTray';
 import { DeliverablePromptSheet } from '../components/DeliverablePromptSheet';
 import { PostponeCheckActions, type PostponeCheckAction } from '../components/PostponeCheckBanner';
+import { useSheetSubject } from '../hooks/useSheetSubject';
 import { useTheme } from '../theme/ThemeContext';
 import { spacing, font, lineHeight, fontWeight, iconSize, radius, border, checkboxRadius, interaction, type Colors } from '../theme';
 import { haptics } from '../utils/haptics';
@@ -156,6 +157,11 @@ export function StuckScreen() {
   // one when it's ticked off (Task.deliverableKind) must ask here too, or
   // finishing it from this screen quietly loses the answer.
   const [promptTask, setPromptTask] = useState<Task | null>(null);
+  // Both sheets hold their subject so they can close through `visible`
+  // rather than by leaving the tree while still on screen. See
+  // useSheetSubject.
+  const shownPromptTask = useSheetSubject(promptTask);
+  const shownBreakdownId = useSheetSubject(breakdownId);
 
   // Stable, so `WaiterRow`'s memo holds through a screen-state change.
   const openEditor = useCallback((task: Task) => {
@@ -499,12 +505,12 @@ export function StuckScreen() {
         }
       />
 
-      {promptTask && (
+      {shownPromptTask && (
         <DeliverablePromptSheet
-          visible
-          task={promptTask}
+          visible={promptTask !== null}
+          task={shownPromptTask}
           onConfirm={value => {
-            const id = promptTask.id;
+            const id = shownPromptTask.id;
             setPromptTask(null);
             animateLayout();
             completeTask(id, { deliverableValue: value });
@@ -520,10 +526,10 @@ export function StuckScreen() {
         task={editingTask}
         onClose={() => setEditorVisible(false)}
       />
-      {breakdownId && (
+      {shownBreakdownId && (
         <TaskBreakdownSheet
-          visible
-          taskId={breakdownId}
+          visible={breakdownId !== null}
+          taskId={shownBreakdownId}
           onClose={() => setBreakdownId(null)}
         />
       )}
