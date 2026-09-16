@@ -903,15 +903,19 @@ export function RecipeIngredientSheet({ visible, recipeId, ingredient, onClose }
           )
         )}
         <Text style={styles.hint}>
-          {siblingNames.length > 0 ? (
-            <>
-              You'll buy this <Text style={styles.hintStrong}>or</Text>{' '}
-              {siblingNames.join(' or ')}, never both.
-            </>
-          ) : (
-            'You haven’t listed any alternatives. Pick another ingredient to make this an either/or, decided at the store.'
-          )}
+          {siblingNames.length > 0
+            ? 'Either/or — you’ll buy one of these, never both.'
+            : 'You haven’t listed any alternatives. Pick another ingredient to make this an either/or, decided at the store.'}
         </Text>
+        {siblingNames.length > 0 && (
+          <View style={styles.siblingChipRow}>
+            {siblingNames.map(sibling => (
+              <View key={sibling} style={styles.siblingChip}>
+                <Text style={styles.siblingChipText}>{sibling}</Text>
+              </View>
+            ))}
+          </View>
+        )}
         {siblingNames.length > 0 && (
           <TouchableOpacity
             style={styles.suggestionRow}
@@ -1162,9 +1166,21 @@ const makeStyles = (colors: Colors) => StyleSheet.create({
     fontSize: font.xs,
     lineHeight: font.xs * 1.4,
   },
-  hintStrong: {
+  siblingChipRow: {
+    flexDirection: 'row',
+    flexWrap: 'wrap',
+    gap: spacing.xs,
+    marginTop: spacing.xs,
+  },
+  siblingChip: {
+    backgroundColor: colors.bgTertiary,
+    borderRadius: radius.full,
+    paddingHorizontal: spacing.sm,
+    paddingVertical: spacing.xs,
+  },
+  siblingChipText: {
     color: colors.textSecondary,
-    fontWeight: fontWeight.semibold,
+    fontSize: font.xs,
   },
   groupNameRow: {
     flexDirection: 'row',
