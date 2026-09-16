@@ -1,6 +1,10 @@
 import {
+  describeStuckRow,
   describeWeeklyReviewDone,
   slippedTasks,
+  stuckActionFor,
+  stuckKindOf,
+  stuckPile,
   weeklyReviewRows,
   weeklyReviewStages,
   weeklyReviewWorthOffering,
@@ -114,6 +118,73 @@ describe('weeklyReviewRows', () => {
   });
 });
 
+describe('stuckPile', () => {
+  it('lists a task held both ways once, not twice', () => {
+    // isWaitingTask and driftingTaskList are independent predicates, so a
+    // blocked task pushed past the threshold is in both halves — concatenated
+    // raw that is a duplicate React key and a row asked about twice.
+    const both = withOverrides({ id: 'both', blockedById: 'x', postponeCount: 9 });
+    expect(stuckPile([both], [both]).map(t => t.id)).toEqual(['both']);
+  });
+
+  it('keeps waiting ahead of drifting, in each half’s own order', () => {
+    const wait = withOverrides({ id: 'w', blockedById: 'x' });
+    const drift = withOverrides({ id: 'd', postponeCount: 4 });
+    expect(stuckPile([wait], [drift]).map(t => t.id)).toEqual(['w', 'd']);
+  });
+});
+
+describe('stuckKindOf', () => {
+  it('files a task held by both under its blocker, the wait that ends on its own', () => {
+    expect(stuckKindOf({ blockedById: 'x', waitingOnPersonId: 'p' })).toBe('blocker');
+  });
+
+  it('reads a person wait when there is no blocker', () => {
+    expect(stuckKindOf({ blockedById: null, waitingOnPersonId: 'p' })).toBe('person');
+  });
+
+  it('reads anything nothing is waiting on as drift', () => {
+    // The pile is the waiting rows and the drifting rows, so a row in it with
+    // no wait is there for the only other reason there is.
+    expect(stuckKindOf({ blockedById: null, waitingOnPersonId: null })).toBe('drift');
+  });
+});
+
+describe('describeStuckRow', () => {
+  it('names what a row is waiting on', () => {
+    expect(describeStuckRow('blocker', { blockerTitle: 'Buy paint' })).toBe('Waiting on Buy paint');
+    expect(describeStuckRow('person', { personName: 'Dad' })).toBe('Waiting on Dad');
+  });
+
+  it('still says which hold it is under when the name has gone', () => {
+    // A blocker resolves through canBlock and a person can be archived, so a
+    // miss is not a bug and a row explaining nothing would be worse.
+    expect(describeStuckRow('blocker', {})).toBe('Waiting on another task');
+    expect(describeStuckRow('person', { personName: null })).toBe('Waiting on somebody');
+  });
+
+  it('counts a drift the way the screen that already lists them does', () => {
+    expect(describeStuckRow('drift', { postponeCount: 4 })).toBe('Moved 4 times');
+    expect(describeStuckRow('drift', {})).toBe('Keeps getting moved');
+  });
+});
+
+describe('stuckActionFor', () => {
+  it('releases a wait and asks a drift for a decision', () => {
+    // StuckScreen's own split: a wait is held by something outside you and
+    // ends when you release it, a drift is held by you and needs deciding.
+    expect(stuckActionFor('blocker').key).toBe('release');
+    expect(stuckActionFor('person').key).toBe('release');
+    expect(stuckActionFor('drift').key).toBe('today');
+  });
+
+  it('gives every kind a label, since the pill is the only thing on the row', () => {
+    for (const kind of ['blocker', 'person', 'drift'] as const) {
+      expect(stuckActionFor(kind).label.length).toBeGreaterThan(0);
+    }
+  });
+});
+
 describe('slippedTasks', () => {
   const never = () => false;
   const now = new Date('2026-09-15T10:00:00');
@@ -178,6 +249,13 @@ describe('describeWeeklyReviewDone', () => {
     expect(describeWeeklyReviewDone(4, 2)).toBe('4 filed, 2 moved');
     expect(describeWeeklyReviewDone(4, 0)).toBe('4 filed');
     expect(describeWeeklyReviewDone(0, 2)).toBe('2 moved');
+  });
+
+  it('keeps a released wait apart from a move', () => {
+    // The one distinction the stuck stage exists to draw, so collapsing the
+    // two verbs on the finished card would undo it at the last moment.
+    expect(describeWeeklyReviewDone(0, 0, 3)).toBe('3 unblocked');
+    expect(describeWeeklyReviewDone(1, 2, 3)).toBe('1 filed, 2 moved, 3 unblocked');
   });
 
   it('says so when nothing changed', () => {

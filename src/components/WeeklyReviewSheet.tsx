@@ -9,7 +9,9 @@ import { SheetHeaderButton } from './SheetHeaderButton';
 import { PressableScale } from './PressableScale';
 import { EmptyState } from './EmptyState';
 import { WhenPicker } from './WhenPicker';
+import { CategoryPickerSheet } from './CategoryPicker';
 import { useTaskStore } from '../store/useTaskStore';
+import { usePersonStore, displayNameOf } from '../store/usePersonStore';
 import { useSettingsStore } from '../store/useSettingsStore';
 import { useColors } from '../theme/ThemeContext';
 import { border, font, fontWeight, iconSize, radius, spacing, type Colors } from '../theme';
@@ -27,10 +29,15 @@ import { useCalendarStore } from '../store/useCalendarStore';
 import { useProjectStore } from '../store/useProjectStore';
 import { useMealPlanStore } from '../store/useMealPlanStore';
 import {
+  describeStuckRow,
   describeWeeklyReviewDone,
   slippedTasks,
+  stuckActionFor,
+  stuckKindOf,
+  stuckPile,
   weeklyReviewRows,
   weeklyReviewStages,
+  type StuckKind,
   type WeeklyReviewInput,
   type WeeklyReviewStage,
 } from '../utils/weeklyReview';
@@ -60,9 +67,16 @@ interface Props {
  *
  * What it does *not* do is reimplement the four surfaces it walks. Re-dating
  * goes through `scheduleMoveUpdates`, which is where the defer-versus-pull
- * asymmetry lives, and everything else is a read. A review that grew its own
- * way of moving a task would be a fifth half-implementation of the thing
- * `taskMoves.ts` exists to hold.
+ * asymmetry lives. A review that grew its own way of moving a task would be a
+ * fifth half-implementation of the thing `taskMoves.ts` exists to hold.
+ *
+ * **Every stage that lists rows offers the action that stage is asking for**,
+ * which is the rule the stuck stage broke: it listed titles and nothing else,
+ * so the one stage whose hint promises to tell two kinds of hold apart was the
+ * one that said neither which nor what to do about it. The action differs by
+ * what is holding the row rather than being a date for everything — see
+ * `stuckActionFor`, and `StuckScreen`'s own note on why a wait is released and
+ * a drift is decided.
  */
 export function WeeklyReviewSheet({ visible, onClose }: Props) {
   const colors = useColors();
@@ -74,6 +88,9 @@ export function WeeklyReviewSheet({ visible, onClose }: Props) {
   const waitingTasks = useTaskStore(s => s.waitingTasks);
   const driftingTaskList = useTaskStore(s => s.driftingTaskList);
   const updateTask = useTaskStore(s => s.updateTask);
+  // Subscribed so "Waiting on <name>" follows somebody being renamed or
+  // archived, the same read StuckScreen makes for its own wait headings.
+  const people = usePersonStore(useShallow(s => s.people));
   const dayResetTime = useSettingsStore(s => s.dayResetTime);
   const kitchenEnabled = useSettingsStore(s => s.kitchenEnabled);
 
@@ -134,13 +151,33 @@ export function WeeklyReviewSheet({ visible, onClose }: Props) {
   const [index, setIndex] = useState(0);
   const [filed, setFiled] = useState(0);
   const [moved, setMoved] = useState(0);
+  const [unblocked, setUnblocked] = useState(0);
   const [picking, setPicking] = useState<Task | null>(null);
+  const [filing, setFiling] = useState<Task | null>(null);
+
+  // What a stuck row is waiting on, by name. Both resolve-or-shrug: a blocker
+  // frees its waiters when it is deleted or completed and a person can be
+  // archived, so `describeStuckRow` is written to take a miss rather than this
+  // having to guarantee a hit.
+  //
+  // Built only while the sheet is up. TodayScreen mounts this component for
+  // the whole life of the screen, so an ungated walk of every task would run
+  // `displayTitleFor` over the lot on every task-store write to a sheet nobody
+  // is looking at.
+  const taskTitles = useMemo(
+    () => (visible ? new Map(tasks.map(t => [t.id, displayTitleFor(t)])) : new Map<string, string>()),
+    [visible, tasks],
+  );
+  const personNames = useMemo(
+    () => (visible ? new Map(people.map(p => [p.id, displayNameOf(p)])) : new Map<string, string>()),
+    [visible, people],
+  );
 
   // Recomputed from live state rather than held, which is what makes the
   // ordering pay off — see the note above.
   const input = useMemo<WeeklyReviewInput>(() => ({
     inbox: inboxTasks(),
-    stuck: [...waitingTasks(), ...driftingTaskList()],
+    stuck: stuckPile(waitingTasks(), driftingTaskList()),
     slipped: slippedTasks(tasks, isHeldBack, new Date(), dayResetTime),
     heavyDays,
     openNights,
@@ -160,13 +197,24 @@ export function WeeklyReviewSheet({ visible, onClose }: Props) {
     onClose();
     // Reset after the dismissal so the closing frame still shows the finished
     // card rather than snapping back to stage one on the way out.
-    setTimeout(() => { setIndex(0); setFiled(0); setMoved(0); }, 0);
+    setTimeout(() => { setIndex(0); setFiled(0); setMoved(0); setUnblocked(0); }, 0);
   }, [onClose]);
 
   const next = () => {
     haptics.tap();
     animateLayout();
     setIndex(i => i + 1);
+  };
+
+  // Skip is one tap from Next in the header, and a stage skipped by accident
+  // was otherwise only recoverable by closing the review and opening it again.
+  // Nothing is undone by going back: the stages are recomputed from live state
+  // on every render, so an earlier one re-derives around whatever the later
+  // ones already changed.
+  const back = () => {
+    haptics.tap();
+    animateLayout();
+    setIndex(i => Math.max(0, i - 1));
   };
 
   const moveTo = (task: Task, date: Date | null) => {
@@ -177,6 +225,35 @@ export function WeeklyReviewSheet({ visible, onClose }: Props) {
     // person did, and the finished card says which.
     if (stage?.id === 'inbox') setFiled(n => n + 1);
     else setMoved(n => n + 1);
+  };
+
+  // Giving an inbox task a category is the other half of what this stage's own
+  // hint asks for, and the one the sheet had no control for — so a task
+  // captured with no date *and* no category could only leave the pile by being
+  // dated, which is an answer to a question the person may not have.
+  const fileUnder = (task: Task, category: string | null) => {
+    haptics.tap();
+    animateLayout();
+    updateTask(task.id, { category });
+    setFiled(n => n + 1);
+  };
+
+  // The one action that ends a stuck row's hold, which differs by what is
+  // holding it: a wait is released, a drift is a decision (see stuckActionFor).
+  const resolveStuck = (task: Task, kind: StuckKind) => {
+    if (stuckActionFor(kind).key === 'today') {
+      // Through moveTo like every other date in this sheet, so the pull-forward
+      // rule stays in taskMoves.ts rather than being restated here.
+      moveTo(task, getLogicalToday(dayResetTime));
+      return;
+    }
+    haptics.tap();
+    animateLayout();
+    // Both, always: clearing only the one the row was filed under would leave
+    // it waiting on the other with nothing left on screen to say so. Same call
+    // StuckScreen's own release makes, for that reason.
+    updateTask(task.id, { blockedById: null, waitingOnPersonId: null });
+    setUnblocked(n => n + 1);
   };
 
   return (
@@ -220,7 +297,7 @@ export function WeeklyReviewSheet({ visible, onClose }: Props) {
             <EmptyState
               icon="checkmark-done-outline"
               title="That's the week"
-              subtitle={describeWeeklyReviewDone(filed, moved)}
+              subtitle={describeWeeklyReviewDone(filed, moved, unblocked)}
             />
           ) : (
             <>
@@ -244,52 +321,97 @@ export function WeeklyReviewSheet({ visible, onClose }: Props) {
                   </Text>
                 </View>
               ) : (
-                rows.map(task => (
-                  <View key={task.id} style={styles.row}>
-                    <Text style={styles.rowTitle} numberOfLines={2}>
-                      {displayTitleFor(task)}
-                    </Text>
-                    {/* A held-back task is shown and not offered a date: it has
-                        not slipped, it is waiting, and a date would answer the
-                        wrong question. Same line slippedTasks draws. */}
-                    {stage!.id !== 'stuck' && (
+                rows.map(task => {
+                  const title = displayTitleFor(task);
+                  // A held-back task is never offered a date: it has not
+                  // slipped, it is waiting, and a date would answer the wrong
+                  // question. Same line slippedTasks draws. What it is offered
+                  // instead is the action that ends the hold it is actually
+                  // under, which is what this stage's hint promises to tell it
+                  // apart — a column of bare titles said neither.
+                  const kind = stage!.id === 'stuck' ? stuckKindOf(task) : null;
+                  const action = kind ? stuckActionFor(kind) : null;
+                  return (
+                    <View key={task.id} style={styles.row}>
+                      <Text style={styles.rowTitle} numberOfLines={2}>{title}</Text>
+                      {kind && (
+                        <Text style={styles.rowMeta} numberOfLines={1}>
+                          {describeStuckRow(kind, {
+                            blockerTitle: task.blockedById ? taskTitles.get(task.blockedById) : null,
+                            personName: task.waitingOnPersonId ? personNames.get(task.waitingOnPersonId) : null,
+                            postponeCount: task.postponeCount,
+                          })}
+                        </Text>
+                      )}
                       <View style={styles.actions}>
-                        <PressableScale
-                          style={styles.action}
-                          onPress={() => moveTo(task, getLogicalToday(dayResetTime))}
-                          accessibilityLabel={`Move ${displayTitleFor(task)} to today`}
-                        >
-                          <Text style={styles.actionText}>Today</Text>
-                        </PressableScale>
-                        <PressableScale
-                          style={styles.action}
-                          onPress={() => moveTo(task, getLogicalTomorrow(dayResetTime))}
-                          accessibilityLabel={`Move ${displayTitleFor(task)} to tomorrow`}
-                        >
-                          <Text style={styles.actionText}>Tomorrow</Text>
-                        </PressableScale>
-                        <PressableScale
-                          style={styles.action}
-                          onPress={() => { haptics.tap(); setPicking(task); }}
-                          accessibilityLabel={`Pick a date for ${displayTitleFor(task)}`}
-                        >
-                          <Text style={styles.actionText}>Pick…</Text>
-                        </PressableScale>
+                        {kind && action ? (
+                          <PressableScale
+                            style={styles.action}
+                            onPress={() => resolveStuck(task, kind)}
+                            accessibilityLabel={`${action.label}: ${title}`}
+                          >
+                            <Text style={styles.actionText}>{action.label}</Text>
+                          </PressableScale>
+                        ) : (
+                          <>
+                            <PressableScale
+                              style={styles.action}
+                              onPress={() => moveTo(task, getLogicalToday(dayResetTime))}
+                              accessibilityLabel={`Move ${title} to today`}
+                            >
+                              <Text style={styles.actionText}>Today</Text>
+                            </PressableScale>
+                            <PressableScale
+                              style={styles.action}
+                              onPress={() => moveTo(task, getLogicalTomorrow(dayResetTime))}
+                              accessibilityLabel={`Move ${title} to tomorrow`}
+                            >
+                              <Text style={styles.actionText}>Tomorrow</Text>
+                            </PressableScale>
+                            <PressableScale
+                              style={styles.action}
+                              onPress={() => { haptics.tap(); setPicking(task); }}
+                              accessibilityLabel={`Pick a date for ${title}`}
+                            >
+                              <Text style={styles.actionText}>Pick…</Text>
+                            </PressableScale>
+                            {stage!.id === 'inbox' && (
+                              <PressableScale
+                                style={styles.action}
+                                onPress={() => { haptics.tap(); setFiling(task); }}
+                                accessibilityLabel={`Pick a category for ${title}`}
+                              >
+                                <Text style={styles.actionText}>Category…</Text>
+                              </PressableScale>
+                            )}
+                          </>
+                        )}
                       </View>
-                    )}
-                  </View>
-                ))
+                    </View>
+                  );
+                })
               )}
 
-              <PressableScale
-                style={styles.nextButton}
-                onPress={next}
-                accessibilityLabel={index === stages.length - 1 ? 'Finish the review' : 'Next stage'}
-              >
-                <Text style={styles.nextText}>
-                  {index === stages.length - 1 ? 'Finish' : 'Next'}
-                </Text>
-              </PressableScale>
+              <View style={styles.footer}>
+                {index > 0 && (
+                  <PressableScale
+                    style={styles.backButton}
+                    onPress={back}
+                    accessibilityLabel="Previous stage"
+                  >
+                    <Text style={styles.backText}>Back</Text>
+                  </PressableScale>
+                )}
+                <PressableScale
+                  style={styles.nextButton}
+                  onPress={next}
+                  accessibilityLabel={index === stages.length - 1 ? 'Finish the review' : 'Next stage'}
+                >
+                  <Text style={styles.nextText}>
+                    {index === stages.length - 1 ? 'Finish' : 'Next'}
+                  </Text>
+                </PressableScale>
+              </View>
             </>
           )}
         </ScrollView>
@@ -312,6 +434,22 @@ export function WeeklyReviewSheet({ visible, onClose }: Props) {
           // every caller that is only asking "what day" already turns off.
           showTimeOfDay={false}
           showSuggest={false}
+        />
+
+        {/* Nested for the same reason WhenPicker above is, and `showNone` off
+            because filing is the whole point here: an inbox task already has
+            no category, so "None" would be a row that changes nothing while
+            reading like an answer. */}
+        <CategoryPickerSheet
+          visible={filing !== null}
+          title="File under"
+          value={filing?.category ?? undefined}
+          showNone={false}
+          onSelect={(name: string | null) => {
+            if (filing) fileUnder(filing, name);
+            setFiling(null);
+          }}
+          onClose={() => setFiling(null)}
         />
       </View>
     </SheetModal>
@@ -369,6 +507,13 @@ const makeStyles = (colors: Colors) => StyleSheet.create({
     marginBottom: spacing.xs,
   },
   rowTitle: { fontSize: font.md, color: colors.text },
+  // Which hold a stuck row is under. `textSecondary` rather than the
+  // `textTertiary` StuckScreen's own drift line carries: there it is context
+  // beside a row that already offers its actions, here it is the thing the
+  // stage's hint promises to tell you, which is information rather than a dim
+  // aside. Same call EmptyNote's text makes, and it clears the contrast floor
+  // tertiary misses on this surface.
+  rowMeta: { fontSize: font.xs, color: colors.textSecondary, marginTop: spacing.xxs },
   // A wrapping row underneath the name rather than beside it, so the title
   // never loses the row to a set of buttons whose labels can grow. See the
   // note in CLAUDE.md about a numberOfLines title sharing a flex row.
@@ -385,8 +530,22 @@ const makeStyles = (colors: Colors) => StyleSheet.create({
     backgroundColor: colors.bgTertiary,
   },
   actionText: { fontSize: font.sm, color: colors.accent },
-  nextButton: {
+  footer: {
+    flexDirection: 'row',
+    gap: spacing.xs,
     marginTop: spacing.lg,
+  },
+  backButton: {
+    paddingVertical: spacing.smd,
+    paddingHorizontal: spacing.lg,
+    borderRadius: radius.md,
+    backgroundColor: colors.bgTertiary,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  backText: { fontSize: font.md, fontWeight: fontWeight.semibold, color: colors.accent },
+  nextButton: {
+    flex: 1,
     paddingVertical: spacing.smd,
     borderRadius: radius.md,
     backgroundColor: colors.accent,
