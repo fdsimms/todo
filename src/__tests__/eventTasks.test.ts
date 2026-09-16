@@ -1,6 +1,7 @@
 import {
   EVENT_LEAD_DAYS_MAX,
   EVENT_MATCH_MIN_LENGTH,
+  EVENT_RULE_MAX_MATCHES,
   defaultEventRules,
   describeEventRule,
   eventIsRuleEligible,
@@ -36,7 +37,7 @@ function event(over: Partial<BusyEvent> = {}): BusyEvent {
 }
 
 function rule(over: Partial<EventTaskRule> = {}): EventTaskRule {
-  return { id: 'r1', match: 'flight', title: 'Pack a bag', leadDays: 0, enabled: true, ...over };
+  return { id: 'r1', matches: ['flight'], title: 'Pack a bag', leadDays: 0, enabled: true, ...over };
 }
 
 describe('the lead-time ceiling', () => {
@@ -59,25 +60,25 @@ describe('the lead-time ceiling', () => {
 
 describe('ruleMatchesTitle', () => {
   it('matches a whole word, case-insensitively', () => {
-    expect(ruleMatchesTitle(rule({ match: 'flight' }), 'Flight to SFO')).toBe(true);
-    expect(ruleMatchesTitle(rule({ match: 'FLIGHT' }), 'evening flight home')).toBe(true);
+    expect(ruleMatchesTitle(rule({ matches: ['flight'] }), 'Flight to SFO')).toBe(true);
+    expect(ruleMatchesTitle(rule({ matches: ['FLIGHT'] }), 'evening flight home')).toBe(true);
   });
 
   // The whole reason this doesn't use `includes`. A rule nobody can predict is
   // a rule nobody leaves switched on.
   it('does not match inside a longer word', () => {
-    expect(ruleMatchesTitle(rule({ match: 'gym' }), 'Gymnastics recital')).toBe(false);
-    expect(ruleMatchesTitle(rule({ match: 'gym' }), 'Gym class')).toBe(true);
+    expect(ruleMatchesTitle(rule({ matches: ['gym'] }), 'Gymnastics recital')).toBe(false);
+    expect(ruleMatchesTitle(rule({ matches: ['gym'] }), 'Gym class')).toBe(true);
   });
 
   it('matches a multi-word cue, and flattens whitespace first', () => {
-    expect(ruleMatchesTitle(rule({ match: 'parent evening' }), 'Parent  evening (Y7)')).toBe(true);
-    expect(ruleMatchesTitle(rule({ match: 'parent evening' }), 'Parent\nevening')).toBe(true);
+    expect(ruleMatchesTitle(rule({ matches: ['parent evening'] }), 'Parent  evening (Y7)')).toBe(true);
+    expect(ruleMatchesTitle(rule({ matches: ['parent evening'] }), 'Parent\nevening')).toBe(true);
   });
 
   it('refuses a cue shorter than the floor', () => {
     expect(EVENT_MATCH_MIN_LENGTH).toBe(3);
-    expect(ruleMatchesTitle(rule({ match: 'pt' }), 'PT appointment')).toBe(false);
+    expect(ruleMatchesTitle(rule({ matches: ['pt'] }), 'PT appointment')).toBe(false);
   });
 
   it('refuses an empty title', () => {
@@ -86,8 +87,22 @@ describe('ruleMatchesTitle', () => {
 
   // A cue is user-typed, so it reaches the regex verbatim.
   it('treats a cue with regex characters as literal text', () => {
-    expect(ruleMatchesTitle(rule({ match: 'c++' }), 'c++ study group')).toBe(true);
-    expect(ruleMatchesTitle(rule({ match: 'a.c' }), 'abc')).toBe(false);
+    expect(ruleMatchesTitle(rule({ matches: ['c++'] }), 'c++ study group')).toBe(true);
+    expect(ruleMatchesTitle(rule({ matches: ['a.c'] }), 'abc')).toBe(false);
+  });
+
+  // The point of the feature: any one of several keywords fires the rule.
+  it('matches if any of several keywords appears', () => {
+    const r = rule({ matches: ['dentist', 'optometrist', 'checkup'] });
+    expect(ruleMatchesTitle(r, 'Optometrist appointment')).toBe(true);
+    expect(ruleMatchesTitle(r, 'Annual checkup')).toBe(true);
+    expect(ruleMatchesTitle(r, 'Dinner with friends')).toBe(false);
+  });
+
+  it('ignores a too-short keyword in a list while others still apply', () => {
+    const r = rule({ matches: ['pt', 'dentist'] });
+    expect(ruleMatchesTitle(r, 'PT session')).toBe(false);
+    expect(ruleMatchesTitle(r, 'Dentist visit')).toBe(true);
   });
 });
 
@@ -186,7 +201,7 @@ describe('matchedEventTasks', () => {
   });
 
   it('can pair one event with several rules', () => {
-    const rules = [rule(), rule({ id: 'r2', match: 'SFO', title: 'Print boarding pass' })];
+    const rules = [rule(), rule({ id: 'r2', matches: ['SFO'], title: 'Print boarding pass' })];
     expect(matchedEventTasks(rules, [event()], now, {})).toHaveLength(2);
   });
 
@@ -259,26 +274,48 @@ describe('source ids', () => {
 describe('parseEventRules', () => {
   it('reads a stored list back', () => {
     const rules = parseEventRules(JSON.stringify([
-      { id: 'r1', match: 'flight', title: 'Pack', leadDays: 2, enabled: true },
+      { id: 'r1', matches: ['flight'], title: 'Pack', leadDays: 2, enabled: true },
     ]));
-    expect(rules).toEqual([{ id: 'r1', match: 'flight', title: 'Pack', leadDays: 2, enabled: true }]);
+    expect(rules).toEqual([{ id: 'r1', matches: ['flight'], title: 'Pack', leadDays: 2, enabled: true }]);
   });
 
   // Both halves are required: no cue matches everything, no title has nothing
   // to write.
   it('drops an entry missing either half', () => {
-    expect(parseEventRules(JSON.stringify([{ id: 'r1', match: 'flight', title: '' }]))).toEqual([]);
-    expect(parseEventRules(JSON.stringify([{ id: 'r1', match: '', title: 'Pack' }]))).toEqual([]);
+    expect(parseEventRules(JSON.stringify([{ id: 'r1', matches: ['flight'], title: '' }]))).toEqual([]);
+    expect(parseEventRules(JSON.stringify([{ id: 'r1', matches: [], title: 'Pack' }]))).toEqual([]);
+    expect(parseEventRules(JSON.stringify([{ id: 'r1', matches: [''], title: 'Pack' }]))).toEqual([]);
+  });
+
+  // An install that saved rules before multi-keyword support shipped has a
+  // plain `match` string on disk, not `matches`.
+  it('reads a legacy single `match` string as a one-entry list', () => {
+    const [r] = parseEventRules(JSON.stringify([{ id: 'r1', match: 'flight', title: 'Pack' }]));
+    expect(r.matches).toEqual(['flight']);
+  });
+
+  it('reads several keywords, trims them, drops duplicates and empties', () => {
+    const [r] = parseEventRules(JSON.stringify([
+      { id: 'r1', matches: [' flight ', 'layover', 'Flight', ''], title: 'Pack' },
+    ]));
+    expect(r.matches).toEqual(['flight', 'layover']);
+  });
+
+  it('caps the keyword count at EVENT_RULE_MAX_MATCHES', () => {
+    const many = Array.from({ length: EVENT_RULE_MAX_MATCHES + 3 }, (_, i) => `word${i}`);
+    const [r] = parseEventRules(JSON.stringify([{ id: 'r1', matches: many, title: 'Pack' }]));
+    expect(r.matches).toHaveLength(EVENT_RULE_MAX_MATCHES);
+    expect(r.matches).toEqual(many.slice(0, EVENT_RULE_MAX_MATCHES));
   });
 
   it('clamps a lead time into range and rounds it', () => {
-    const [a] = parseEventRules(JSON.stringify([{ match: 'x1y', title: 'T', leadDays: 99 }]));
+    const [a] = parseEventRules(JSON.stringify([{ matches: ['x1y'], title: 'T', leadDays: 99 }]));
     expect(a.leadDays).toBe(EVENT_LEAD_DAYS_MAX);
-    const [b] = parseEventRules(JSON.stringify([{ match: 'x1y', title: 'T', leadDays: -4 }]));
+    const [b] = parseEventRules(JSON.stringify([{ matches: ['x1y'], title: 'T', leadDays: -4 }]));
     expect(b.leadDays).toBe(0);
-    const [c] = parseEventRules(JSON.stringify([{ match: 'x1y', title: 'T', leadDays: 2.6 }]));
+    const [c] = parseEventRules(JSON.stringify([{ matches: ['x1y'], title: 'T', leadDays: 2.6 }]));
     expect(c.leadDays).toBe(3);
-    const [d] = parseEventRules(JSON.stringify([{ match: 'x1y', title: 'T' }]));
+    const [d] = parseEventRules(JSON.stringify([{ matches: ['x1y'], title: 'T' }]));
     expect(d.leadDays).toBe(0);
   });
 
@@ -290,7 +327,7 @@ describe('parseEventRules', () => {
   });
 
   it('keeps a rule that only omits `enabled`, reading it as on', () => {
-    const [r] = parseEventRules(JSON.stringify([{ id: 'r1', match: 'flight', title: 'Pack' }]));
+    const [r] = parseEventRules(JSON.stringify([{ id: 'r1', matches: ['flight'], title: 'Pack' }]));
     expect(r.enabled).toBe(true);
   });
 });
@@ -303,9 +340,11 @@ describe('defaultEventRules', () => {
     expect(rules.length).toBeGreaterThan(0);
     expect(parseEventRules(JSON.stringify(rules))).toEqual(rules);
     for (const r of rules) {
-      expect(r.match.length).toBeGreaterThanOrEqual(EVENT_MATCH_MIN_LENGTH);
+      for (const cue of r.matches) {
+        expect(cue.length).toBeGreaterThanOrEqual(EVENT_MATCH_MIN_LENGTH);
+      }
       expect(r.leadDays).toBeLessThanOrEqual(EVENT_LEAD_DAYS_MAX);
-      expect(ruleMatchesTitle(r, `Morning ${r.match} thing`)).toBe(true);
+      expect(ruleMatchesTitle(r, `Morning ${r.matches[0]} thing`)).toBe(true);
     }
   });
 });
@@ -318,6 +357,14 @@ describe('describeEventRule', () => {
   });
 
   it('says so when a rule has no cue yet', () => {
-    expect(describeEventRule(rule({ match: '' }))).toBe('"anything" · same day');
+    expect(describeEventRule(rule({ matches: [] }))).toBe('"anything" · same day');
+  });
+
+  it('joins several keywords with "or"', () => {
+    expect(describeEventRule(rule({ matches: ['flight'], leadDays: 0 }))).toBe('"flight" · same day');
+    expect(describeEventRule(rule({ matches: ['flight', 'layover'] })))
+      .toBe('"flight" or "layover" · same day');
+    expect(describeEventRule(rule({ matches: ['flight', 'layover', 'airport'] })))
+      .toBe('"flight", "layover" or "airport" · same day');
   });
 });

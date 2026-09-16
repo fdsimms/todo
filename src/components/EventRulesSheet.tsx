@@ -1,15 +1,19 @@
-import React, { useMemo } from 'react';
-import { StyleSheet, Text, TextInput, View } from 'react-native';
+import React, { useMemo, useState } from 'react';
+import Ionicons from '@expo/vector-icons/Ionicons';
+import { StyleSheet, Text, TextInput, TouchableOpacity, View } from 'react-native';
 import { useShallow } from 'zustand/react/shallow';
 import type { EventTaskRule } from '../types';
 import { useSettingsStore } from '../store/useSettingsStore';
 import { useColors } from '../theme/ThemeContext';
-import { font, fontWeight, radius, spacing, type Colors } from '../theme';
+import { font, fontWeight, iconSize, interaction, radius, spacing, type Colors } from '../theme';
 import { generateId } from '../utils/id';
+import { haptics } from '../utils/haptics';
+import { animateLayout } from '../utils/layoutAnimation';
 import {
   EVENT_LEAD_DAYS_MAX,
   EVENT_MATCH_MAX_LENGTH,
   EVENT_MATCH_MIN_LENGTH,
+  EVENT_RULE_MAX_MATCHES,
   EVENT_RULE_TITLE_MAX_LENGTH,
   describeEventRule,
 } from '../utils/eventTasks';
@@ -49,14 +53,14 @@ export function EventRulesSheet({ visible, onClose }: Props) {
       onClose={onClose}
       title="Event rules"
       caption={
-        'A rule adds its task when an event on your calendar has the word you pick in its title. '
+        'A rule adds its task when an event on your calendar has one of the words you pick in its title. '
         + 'It reads the title only, never who was invited.'
       }
       rules={rules}
       onChange={setRules}
       makeRule={() => ({
         id: generateId(),
-        match: '',
+        matches: [],
         title: '',
         leadDays: 0,
         enabled: true,
@@ -65,19 +69,13 @@ export function EventRulesSheet({ visible, onClose }: Props) {
       editorLabel="When an event's title has"
       renderEditor={(rule, update) => (
         <>
-          <TextInput
-            style={styles.matchInput}
-            value={rule.match}
-            onChangeText={text => update({ match: text.slice(0, EVENT_MATCH_MAX_LENGTH) })}
-            placeholder="e.g. flight"
-            placeholderTextColor={colors.textTertiary}
-            maxLength={EVENT_MATCH_MAX_LENGTH}
-            autoCapitalize="none"
-            returnKeyType="done"
+          <MatchEditor
+            matches={rule.matches}
+            onChange={matches => update({ matches })}
           />
           <Text style={styles.hint}>
-            {`At least ${EVENT_MATCH_MIN_LENGTH} letters, matched as a whole word. "Gym" finds `
-            + '"Gym class" but not "Gymnastics".'}
+            {`At least ${EVENT_MATCH_MIN_LENGTH} letters each, matched as a whole word. "Gym" finds `
+            + '"Gym class" but not "Gymnastics". The rule fires if any of them appears.'}
           </Text>
           <Text style={[styles.editorLabel, styles.editorLabelSpaced]}>Days before the event</Text>
           <View style={styles.stepperRow}>
@@ -102,6 +100,82 @@ export function EventRulesSheet({ visible, onClose }: Props) {
   );
 }
 
+/**
+ * The keyword list for one rule — a chip per cue with an X to remove it, and
+ * a field to add another. Capped at `EVENT_RULE_MAX_MATCHES`: past that the
+ * field and its hint disappear, since a chip row past the ceiling has nowhere
+ * left to grow and a field with nothing it can do reads as broken rather than
+ * as a limit.
+ */
+function MatchEditor({
+  matches,
+  onChange,
+}: {
+  matches: readonly string[];
+  onChange: (matches: string[]) => void;
+}) {
+  const colors = useColors();
+  const styles = useMemo(() => makeStyles(colors), [colors]);
+  const [draft, setDraft] = useState('');
+
+  const atLimit = matches.length >= EVENT_RULE_MAX_MATCHES;
+
+  const commit = () => {
+    const cue = draft.trim();
+    if (!cue || atLimit) return;
+    if (matches.some(m => m.toLowerCase() === cue.toLowerCase())) {
+      setDraft('');
+      return;
+    }
+    haptics.tap();
+    animateLayout();
+    onChange([...matches, cue]);
+    setDraft('');
+  };
+
+  const remove = (index: number) => {
+    haptics.tap();
+    animateLayout();
+    onChange(matches.filter((_, i) => i !== index));
+  };
+
+  return (
+    <View>
+      {matches.length > 0 && (
+        <View style={styles.chips}>
+          {matches.map((cue, i) => (
+            <View key={`${cue}-${i}`} style={styles.chip}>
+              <Text style={styles.chipText}>{cue}</Text>
+              <TouchableOpacity
+                onPress={() => remove(i)}
+                activeOpacity={interaction.activeOpacity}
+                accessibilityRole="button"
+                accessibilityLabel={`Remove keyword ${cue}`}
+              >
+                <Ionicons name="close-circle" size={iconSize.sm} color={colors.textTertiary} />
+              </TouchableOpacity>
+            </View>
+          ))}
+        </View>
+      )}
+      {!atLimit && (
+        <TextInput
+          style={[styles.matchInput, matches.length > 0 && styles.matchInputSpaced]}
+          value={draft}
+          onChangeText={setDraft}
+          onSubmitEditing={commit}
+          onBlur={commit}
+          placeholder={matches.length === 0 ? 'e.g. flight' : 'Add another keyword'}
+          placeholderTextColor={colors.textTertiary}
+          maxLength={EVENT_MATCH_MAX_LENGTH}
+          autoCapitalize="none"
+          returnKeyType="done"
+        />
+      )}
+    </View>
+  );
+}
+
 function makeStyles(colors: Colors) {
   return StyleSheet.create({
     // Matches RuleListSheet's own title field, so the two inputs in one
@@ -114,6 +188,18 @@ function makeStyles(colors: Colors) {
       paddingHorizontal: spacing.md,
       paddingVertical: spacing.sm,
     },
+    matchInputSpaced: { marginTop: spacing.sm },
+    chips: { flexDirection: 'row', flexWrap: 'wrap', gap: spacing.sm },
+    chip: {
+      flexDirection: 'row',
+      alignItems: 'center',
+      gap: spacing.xs,
+      backgroundColor: colors.bgTertiary,
+      borderRadius: radius.full,
+      paddingHorizontal: spacing.sm + 2,
+      paddingVertical: spacing.xs,
+    },
+    chipText: { color: colors.text, fontSize: font.sm },
     hint: { color: colors.textSecondary, fontSize: font.xs, marginTop: spacing.xs },
     editorLabel: {
       color: colors.textSecondary,
