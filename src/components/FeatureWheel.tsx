@@ -566,7 +566,14 @@ function WheelOverlay({
   );
 }
 
-/** The highlight wedge for one slot: its own half-step either side, out past its chip. */
+/**
+ * The outer corner radius on the wedge's fillet — see `wheelWedgePath`. Big
+ * enough to round off visibly against the chip's own curve, small enough to
+ * stay a corner treatment rather than reshaping the wedge.
+ */
+const WEDGE_CORNER_RADIUS = 10;
+
+/** The highlight wedge for one slot: its own half-step either side, tucked under its chip. */
 function wheelWedge(
   anchor: Anchor,
   geo: ReturnType<typeof wheelGeometry>,
@@ -575,7 +582,9 @@ function wheelWedge(
 ): string {
   // A lone slot has no step to halve, so give it the sweep it actually owns.
   const half = (step === 0 ? 40 : Math.abs(step)) / 2;
-  return wheelWedgePath(anchor.x, anchor.y, geo.dead, geo.outer, angle - half, angle + half);
+  return wheelWedgePath(
+    anchor.x, anchor.y, geo.dead, geo.outer, angle - half, angle + half, WEDGE_CORNER_RADIUS,
+  );
 }
 
 function makeStyles(colors: Colors) {

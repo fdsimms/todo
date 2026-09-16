@@ -122,12 +122,16 @@ describe('wheelSlotAt', () => {
 });
 
 describe('wheelGeometry', () => {
-  it('orders the radii outwards from the dead zone', () => {
+  it('orders the radii outwards from the dead zone, with the wedge tucked short of the chip', () => {
     const g = wheelGeometry(390);
     expect(g.dead).toBe(WHEEL_DEAD_ZONE);
     expect(g.chip).toBeGreaterThan(g.dead);
-    expect(g.outer).toBeGreaterThan(g.chip);
-    expect(g.label).toBeGreaterThan(g.outer);
+    // The wedge's outer radius sits just inside the chip's own, so the chip's
+    // circle covers the wedge's corners rather than the wedge poking past it
+    // — see the comment above `wheelGeometry`'s return.
+    expect(g.outer).toBeLessThan(g.chip);
+    expect(g.outer).toBeGreaterThan(g.dead);
+    expect(g.label).toBeGreaterThan(g.chip);
   });
 
   it('scales with the screen, clamped at both ends', () => {
@@ -170,6 +174,30 @@ describe('wheelWedgePath', () => {
   it('reverses the sweep flag with the direction, so the two arcs close', () => {
     expect(wheelWedgePath(0, 0, 10, 20, -10, 10)).toContain('A20 20 0 0 1');
     expect(wheelWedgePath(0, 0, 10, 20, 10, -10)).toContain('A20 20 0 0 0');
+  });
+
+  it('leaves the sector sharp-cornered when no corner radius is given', () => {
+    const d = wheelWedgePath(0, 0, 10, 20, -10, 10);
+    expect(d).not.toContain('Q');
+  });
+
+  describe('with a corner radius', () => {
+    it('fillets the two outer corners with a Q curve on each, still closing the path', () => {
+      const d = wheelWedgePath(0, 0, 10, 20, -10, 10, 4);
+      expect(d.startsWith('M')).toBe(true);
+      expect(d.endsWith('Z')).toBe(true);
+      expect(d.match(/Q/g)).toHaveLength(2);
+      // Still one outer arc and one inner arc, same as the unrounded path.
+      expect(d.match(/A/g)).toHaveLength(2);
+    });
+
+    it('leaves the inner corners alone', () => {
+      const sharp = wheelWedgePath(0, 0, 10, 20, -10, 10);
+      const rounded = wheelWedgePath(0, 0, 10, 20, -10, 10, 4);
+      // Both paths still open and close on the same inner-radius point.
+      const start = sharp.split(' ')[0];
+      expect(rounded.startsWith(start)).toBe(true);
+    });
   });
 });
 
