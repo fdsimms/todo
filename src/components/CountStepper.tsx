@@ -1,11 +1,15 @@
-import React, { useCallback, useEffect, useRef } from 'react';
-import { StyleSheet, Text, View, type StyleProp, type ViewStyle } from 'react-native';
+import React, { useCallback, useEffect, useRef, useState } from 'react';
+import {
+  StyleSheet, Text, TextInput, View, type StyleProp, type ViewStyle,
+} from 'react-native';
 import Ionicons from '@expo/vector-icons/Ionicons';
 import { PressableScale } from './PressableScale';
 import { useColors } from '../theme/ThemeContext';
 import { font, fontWeight, iconSize, radius, spacing, type Colors } from '../theme';
 import { haptics } from '../utils/haptics';
-import { canStep, holdRepeatDelay, stepCount, type StepRange } from '../utils/stepper';
+import {
+  canStep, clampCount, holdRepeatDelay, stepCount, type StepRange,
+} from '../utils/stepper';
 
 interface Props {
   value: number | null;
@@ -53,6 +57,22 @@ interface Props {
  * thirty taps. Stepping happens on press-*in* — a stepper that waits for the
  * release feels broken next to iOS's own.
  *
+ * **The value itself is tappable, and turns into a plain numeric field.**
+ * `stepCount` deliberately steps first and clamps second (see its own doc
+ * comment) rather than snapping to the step's grid, so a value that started
+ * off-grid — typed in from elsewhere, or read off a source with its own
+ * precision — stays off-grid on every press after: a sodium target of 2,006
+ * steps to 2,106, 2,206, forever carrying that 6. Typing the number directly
+ * is the way out, and it's also just faster for a value someone is copying
+ * off a label or a doctor's note rather than counting up to. Tapping the
+ * digits shows the bare number (never the formatted string — `format` is a
+ * display concern, not something to parse back out), autofocuses and
+ * preselects it, and commits on blur or submit through `clampCount` — the
+ * same clamp a value arriving from outside the valid range already gets.
+ * An empty field commits `null` when `allowNull`, otherwise reverts silently:
+ * this is a correction, not a second confirm step, so there's no dialog for
+ * "leave the field or lose your typing".
+ *
  * **What this is not: a stepper whose value is a sentence.** #2132 swept the
  * hand-rolled copies onto this component and left two behind, both template
  * offset rows (`TemplateItemEditor`'s `OffsetRow`, `TemplateItemQuickAdd`'s due
@@ -85,6 +105,9 @@ export function CountStepper({
   const styles = makeStyles(colors);
 
   const range: StepRange = { min, max, allowNull, start };
+
+  const [editing, setEditing] = useState(false);
+  const [draft, setDraft] = useState('');
 
   // The repeat timer fires outside React's render cycle, so it reads the live
   // value and callback from here rather than from a stale closure.
@@ -137,6 +160,25 @@ export function CountStepper({
   const display = value === null ? emptyLabel : format(value);
   const spoken = describeValue ? describeValue(value) : display;
 
+  const openEditor = () => {
+    stop();
+    setDraft(value === null ? '' : String(value));
+    setEditing(true);
+  };
+
+  const commitEdit = () => {
+    setEditing(false);
+    const trimmed = draft.trim();
+    if (trimmed === '') {
+      if (range.allowNull) onChange(null);
+      return;
+    }
+    const parsed = Number(trimmed);
+    if (!Number.isFinite(parsed)) return;
+    const clamped = clampCount(parsed, range);
+    if (clamped !== value) onChange(clamped);
+  };
+
   const key = (delta: number, icon: 'remove' | 'add', verb: string) => {
     const enabled = canStep(value, delta, range);
     return (
@@ -160,12 +202,28 @@ export function CountStepper({
   return (
     <View style={[styles.wrap, style]}>
       {key(-step, 'remove', 'Decrease')}
-      <Text
-        style={[styles.value, value === null && styles.valueEmpty]}
-        accessibilityLabel={`${label}, ${spoken}`}
-      >
-        {display}
-      </Text>
+      {editing ? (
+        <TextInput
+          style={styles.valueInput}
+          value={draft}
+          onChangeText={setDraft}
+          onBlur={commitEdit}
+          onSubmitEditing={commitEdit}
+          keyboardType="number-pad"
+          autoFocus
+          selectTextOnFocus
+          accessibilityLabel={`${label}, editing`}
+        />
+      ) : (
+        <PressableScale style={styles.valuePress} onPress={openEditor}>
+          <Text
+            style={[styles.value, value === null && styles.valueEmpty]}
+            accessibilityLabel={`${label}, ${spoken}`}
+          >
+            {display}
+          </Text>
+        </PressableScale>
+      )}
       {key(step, 'add', 'Increase')}
     </View>
   );
@@ -183,6 +241,7 @@ const makeStyles = (colors: Colors) => StyleSheet.create({
     alignItems: 'center', justifyContent: 'center',
   },
   keyDisabled: { opacity: 0.4 },
+  valuePress: { paddingVertical: spacing.xs },
   value: {
     // Fits the widest value (99×) without the keys shifting as digits change.
     minWidth: 40, textAlign: 'center',
@@ -190,4 +249,10 @@ const makeStyles = (colors: Colors) => StyleSheet.create({
     fontVariant: ['tabular-nums'],
   },
   valueEmpty: { color: colors.textTertiary, fontWeight: fontWeight.medium },
+  // Same box as `value` so the keys don't shift when the field opens; padding
+  // 0 and no border keep it looking like the digits themselves, not a form.
+  valueInput: {
+    minWidth: 40, textAlign: 'center', padding: 0,
+    color: colors.text, fontSize: font.md, fontWeight: fontWeight.semibold,
+  },
 });
