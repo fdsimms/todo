@@ -61,10 +61,44 @@ const MAX_BREAKDOWN_ITEMS = 12;
  * Where the figures come from.
  *
  * `published` means a chain states these numbers; `typical` means the model is
- * reasoning about a dish in general. They are different claims and the copy
- * keeps them apart.
+ * reasoning about a dish in general; `own` means they lean on records the user
+ * already has. They are three different claims and the copy keeps them apart.
+ *
+ * **`own` is a claim about provenance, not about accuracy, and it is still an
+ * estimate.** `estimateToPanel` marks every result `estimated` whatever the
+ * basis, which is right even here: the app hands the model a saved dish's
+ * figures and the model composes something out of them ("half my chili with
+ * rice"), and a composition the app did not compute is a guess however good its
+ * inputs. `combineFoodNutrition` already makes exactly this call, forcing
+ * `estimated` for any entry built from more than one food. What `own` buys is
+ * that the sentence beside the figures can say where they came from, rather
+ * than a meal worked out from the user's own log reading identically to one
+ * guessed from nothing.
+ *
+ * It is also why the food that merely *is* one of those records never comes
+ * through here at all: `foodRecall.ts` offers it first and hands its stored
+ * panel back whole, source intact. This basis is for the cases recall cannot
+ * answer, which is the composition above and nothing else.
  */
-export type EstimateBasis = 'published' | 'typical';
+export type EstimateBasis = 'published' | 'typical' | 'own';
+
+/**
+ * One food the app already has figures for, offered to the model as reference.
+ *
+ * Deliberately the same three fields a row carries and nothing more: what it is
+ * called, how much of it these figures are for, and the figures. No source, no
+ * id, no confidence — the model is being told what a thing contains so it can
+ * reason about a portion of it, and everything else would either travel back
+ * misattributed or invite it to grade the user's own records.
+ */
+export interface EstimateContextFood {
+  label: string;
+  quantity: string;
+  amounts: Partial<Record<NutrientKey, number>>;
+}
+
+/** Enough to name what a description refers to, without becoming the prompt. */
+export const MAX_CONTEXT_FOODS = 6;
 
 /** How sure the model is, which is its own to state rather than ours to infer. */
 export type EstimateConfidence = 'high' | 'medium' | 'low';
@@ -222,8 +256,19 @@ function readBreakdown(value: unknown): EstimateIngredient[] {
  * that omits them or invents a value is treated as the vaguer claim rather
  * than the stronger one. Getting that backwards is the only way this default
  * could do harm.
+ *
+ * **`own` is refused unless records were actually offered**, which is what
+ * `gaveContext` is for. It is the one basis whose truth this side knows for
+ * certain: a model given nothing to lean on cannot have leaned on anything, so
+ * a reply claiming it either misread the request or is dressing a guess up as
+ * the user's own data. Demoted to `typical` rather than dropped, since the
+ * figures may be perfectly good; it is only the claim about where they came
+ * from that cannot stand.
  */
-export function readNutritionEstimate(raw: RawNutritionEstimate | null | undefined): NutritionEstimate | null {
+export function readNutritionEstimate(
+  raw: RawNutritionEstimate | null | undefined,
+  gaveContext = false,
+): NutritionEstimate | null {
   if (!raw || typeof raw !== 'object') return null;
   const label = text(raw.label);
   if (!label) return null;
@@ -241,7 +286,11 @@ export function readNutritionEstimate(raw: RawNutritionEstimate | null | undefin
     label,
     quantity: text(raw.quantity) ?? '1 serving',
     amounts,
-    basis: raw.basis === 'published' ? 'published' : 'typical',
+    basis: raw.basis === 'published'
+      ? 'published'
+      : raw.basis === 'own' && gaveContext
+        ? 'own'
+        : 'typical',
     confidence: raw.confidence === 'high' || raw.confidence === 'medium' ? raw.confidence : 'low',
     // Only meaningful for a published claim: naming a chain beside figures the
     // model admits are generic would attribute a guess to somebody.
@@ -271,7 +320,9 @@ export function describeEstimate(estimate: NutritionEstimate): string {
     ? estimate.attribution
       ? `Published figures for ${estimate.attribution}.`
       : 'Published figures for this dish.'
-    : 'Typical for this dish rather than a specific recipe.';
+    : estimate.basis === 'own'
+      ? 'Worked out from figures already in your own records.'
+      : 'Typical for this dish rather than a specific recipe.';
   const sure = estimate.confidence === 'high'
     ? ''
     : estimate.confidence === 'medium'

@@ -103,6 +103,7 @@ name cannot say is where a component appears, and that is `docs/screen-map.md`.
 - `src/utils/foodLog.ts` — FoodLogTotals, FoodLogSection, scalePanelToAmount, portionExamples, amountHint, amountExample, recipeHelpingNutrition, helpingNutrition, combineFoodNutrition, foodLogTotals, +11 more
 - `src/utils/foodLogRecents.ts` — FoodRecency, creditedKeys, foodLogRecency, rankByRecency
 - `src/utils/foodNutrition.ts` — parseFoodNutrition, serializeFoodNutrition, addCustomPortion, nutritionFor, CatalogPanelWrite, catalogPanelWrite, describeFoodPanel, NUTRIENT_LABEL, ML_PER_FL_OZ, mlToFlOz, +2 more
+- `src/utils/foodRecall.ts` — RECALL_MIN_QUERY, RECALL_LIMIT, RecalledFood, recallWeight, recallFoods, RecallCandidate, rankRecallCandidates, RecalledCatalogFood, RecallableItem, RecallableProduct, +3 more
 - `src/utils/foodSearchMatch.ts` — FoodCandidate, FoodMatchTier, RankedFood, rankFoodCandidates, unambiguousFood
 - `src/utils/freshness.ts` — daysUntilDay, freshnessFor, FRESHNESS_ORDER, freshnessRank, isUseUpSoon, describeUseBy, liveUseBy, describeOpenedOn, describeFrozenSince
 - `src/utils/fuzzySearch.ts` — SearchResult, fuzzySearch, ProjectSearchResult, searchProjects, GroupSearchResult, searchGroups
@@ -174,7 +175,7 @@ name cannot say is where a component appears, and that is `docs/screen-map.md`.
 - `src/utils/notifications.ts` — isWithinQuietHours, deferPastQuietHours, TASK_REMINDER_CATEGORY, COMPLETE_ACTION_IDENTIFIER, SNOOZE_ACTION_IDENTIFIER, SNOOZE_MINUTES, requestNotificationPermissions, NotificationPermission, getNotificationPermission, scheduleTaskReminder, +30 more
 - `src/utils/nowTick.ts` — NOW_TICK_MS, subscribeToNowTick, emitNowTick
 - `src/utils/nudgeCadence.ts` — NudgeMode, NUDGE_MODES, nudgeModeOf, nudgeFieldsFor, FALLBACK_CADENCE_DAYS, NUDGE_MODE_LABEL, describeNudge, CadenceUnit, CADENCE_UNITS, CADENCE_UNIT_DAYS, +7 more
-- `src/utils/nutritionEstimate.ts` — ESTIMATE_DESCRIPTION_MAX_LENGTH, MAX_ESTIMATE_QUESTIONS, EstimateBasis, EstimateConfidence, EstimateQuestion, EstimateIngredient, NutritionEstimate, RawNutritionEstimate, readNutritionEstimate, describeEstimate, +2 more
+- `src/utils/nutritionEstimate.ts` — ESTIMATE_DESCRIPTION_MAX_LENGTH, MAX_ESTIMATE_QUESTIONS, EstimateBasis, EstimateContextFood, MAX_CONTEXT_FOODS, EstimateConfidence, EstimateQuestion, EstimateIngredient, NutritionEstimate, RawNutritionEstimate, +4 more
 - `src/utils/nutritionPanelForm.ts` — PanelForm, PanelFieldKey, emptyPanelForm, panelFormFrom, readPanelNumber, invalidPanelFields, panelFormDirty, buildPanelNutrition, applyLabelReading, labelColumnFieldCount, +2 more
 - `src/utils/nutritionParse.ts` — NutrientSourceUnit, NUTRIENT_STORED_UNIT, SALT_TO_SODIUM, readSourceUnit, readSourceNumber, convertNutrientAmount, readOffNutrition, readFdcNutrition, readFdcPortions
 - `src/utils/nutritionStats.ts` — NutritionCounts, NutrientAverage, LoggedFood, SourceMix, EMPTY_NUTRITION_COUNTS, EMPTY_SOURCE_MIX, nutritionCounts, nutrientAverages, mostLoggedFoods, sourceMix, +2 more
@@ -228,6 +229,7 @@ name cannot say is where a component appears, and that is `docs/screen-map.md`.
 - `src/utils/recipeImportComponents.ts` — ReferenceCandidate, referencePageNumber, importableReferences, coveredIngredients
 - `src/utils/recipeImportPreview.ts` — ImportPreviewLine, methodRowMeta, prepTasksRowMeta, methodPreviewLines, prepTaskPreviewLines, previewToggleLabel
 - `src/utils/recipeNutrition.ts` — RecipeNutrition, NutritionLineState, recipeNutrition, RecipeNutritionReading, readRecipeNutrition, NutritionLine, recipeNutritionLines, ExcludedNutritionLine, excludedNutritionLines, lineContribution, +7 more
+- `src/utils/recipeNutritionEstimate.ts` — RecipeEstimateConfidence, RecipeNutritionEstimate, RawRecipeNutritionEstimate, readRecipeNutritionEstimate, describeRecipeNutritionEstimate
 - `src/utils/recipePhoto.ts` — MAX_PHOTO_EDGE, MAX_RECIPE_PHOTOS, RecipePhotoSource, RecipePhoto, RecipePhotoResult, photoTargetSize, CameraPermission, PhotoLibraryPermission, getCameraPermission, requestCameraPermission, +12 more
 - `src/utils/recipeProvenance.ts` — ExtractedSource, FetchedSourcePage, SourceFields, sourceFieldsFor, CookbookEditIntent, cookbookEditIntent, SourcePlan, sourcePlanFor
 - `src/utils/recipeScale.ts` — ScaledQuantity, scaleQuantity, RECIPE_SCALE_FACTORS, isUnscaled, normalizeScale, formatScale, scaleServings, factorForServings, targetServingsFor, describeUnscaled
@@ -408,7 +410,7 @@ name cannot say is where a component appears, and that is `docs/screen-map.md`.
 
 ## `src/services`
 
-- `src/services/aiSuggestions.ts` — describeAIError, TemplateItemSuggestion, suggestTemplateItems, ProjectTaskSuggestion, suggestProjectTasks, SubtaskSuggestion, suggestSubtasks, suggestBackfillValues, MAX_RECIPE_CHARS, suggestGroceryAisles, +24 more
+- `src/services/aiSuggestions.ts` — describeAIError, TemplateItemSuggestion, suggestTemplateItems, ProjectTaskSuggestion, suggestProjectTasks, SubtaskSuggestion, suggestSubtasks, suggestBackfillValues, MAX_RECIPE_CHARS, suggestGroceryAisles, +26 more
 - `src/services/foodSearch.ts` — FoodSearchHit, searchFoods, fetchFoodPortions, describeFoodSearchError, foodSearchErrorSettingsEntryId
 - `src/services/geocode.ts` — GeocodedPlace, geocodePlace
 - `src/services/onDeviceModel.ts` — isOnDeviceReady, onDeviceAvailability, describeOnDeviceAvailability, isOnDeviceErrorMessage, describeOnDeviceError, runOnDevice
