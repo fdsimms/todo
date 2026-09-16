@@ -130,7 +130,7 @@ export function projectQuietDays(
 
 /** The chip's own words. */
 export function describeProjectQuiet(quietDays: number): string {
-  return `Quiet ${quietDays} ${quietDays === 1 ? 'day' : 'days'}`;
+  return `Quiet for ${quietDays} ${quietDays === 1 ? 'day' : 'days'}`;
 }
 
 /**

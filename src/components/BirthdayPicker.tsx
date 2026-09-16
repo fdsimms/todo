@@ -129,7 +129,7 @@ export function BirthdayPicker({ visible, month, day, year, onConfirm, onClear, 
             <SheetHeaderButton label="Save" onPress={confirm} minWidth={28} />
           </View>
 
-          <Text style={styles.hint}>The year is optional, and it's never used to work out an age.</Text>
+          <Text style={styles.hint}>The year is optional, and it's never used to calculate an age.</Text>
 
           {pickerReady && (
             <DateTimePicker

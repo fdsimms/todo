@@ -611,7 +611,7 @@ export function seedDemoData(): void {
   // would be indistinguishable from a daily target nobody has started today.
   const runs = addTask({
     title: 'Go for a run',
-    notes: 'Three times a week, whichever days suit. The count resets when the week does, not overnight.',
+    notes: 'Three times a week, whichever days work. The count resets when the week does, not overnight.',
     category: 'Health',
     dueDate: today.toISOString(),
     targetCount: 3,
@@ -645,7 +645,7 @@ export function seedDemoData(): void {
     // no draft it reads "just the title", which is a capability nobody would
     // know to look for.
     followUpTaskDraft: {
-      notes: 'The tin lives in the case pocket.',
+      notes: 'The can lives in the case pocket.',
       category: 'Home',
       projectId: null,
       tags: ['upkeep'],
@@ -708,7 +708,7 @@ export function seedDemoData(): void {
   // decide whether to bring it back.
   const swim = addTask({
     title: 'Swim before work',
-    notes: 'Paused while the pool is closed for refurbishment.',
+    notes: 'Paused while the pool is closed for renovations.',
     category: 'Health',
     recurrenceType: 'weekly',
     recurrenceDays: [2, 4],
@@ -1009,7 +1009,7 @@ export function seedDemoData(): void {
   // trip three weeks out shows the setting without a demo session ever waking
   // up with half its tasks hidden.
   updateProject(lisbon.id, { awayPauses: true });
-  ['Renew passport', 'Book the airport parking', 'Sort out data roaming'].forEach((title, i) => {
+  ['Renew passport', 'Book the airport parking', 'Set up data roaming'].forEach((title, i) => {
     const t = addTask({ title, dueDate: addDays(today, 10 + i * 4).toISOString() });
     addExistingToProject(t.id, lisbon.id);
   });
@@ -1021,8 +1021,8 @@ export function seedDemoData(): void {
   completeTask(asked.id, {
     deliverableValue: 'Yes for the first two weeks. Call if it is still bad after that.',
   });
-  ['Ask about the MRI results', 'Whether to keep taking the iron tablets',
-    'Get the referral letter for physio'].forEach(title => {
+  ['Ask about the MRI results', 'Whether to keep taking the iron pills',
+    'Get the referral letter for physical therapy'].forEach(title => {
     const t = addTask({ title });
     addExistingToProject(t.id, doctor.id);
   });
@@ -1290,7 +1290,7 @@ export function seedDemoData(): void {
   // real archive.
   const basement = createProject('Basement declutter');
   updateProject(basement.id, { category: 'Around the house' });
-  ['Hire a skip', 'Sort the boxes by the stairs'].forEach(title => {
+  ['Rent a dumpster', 'Sort the boxes by the stairs'].forEach(title => {
     const t = addTask({ title, category: 'Home' });
     addExistingToProject(t.id, basement.id);
   });
@@ -1316,7 +1316,7 @@ export function seedDemoData(): void {
     effort: 4,
     deferUntil: addDays(today, 2).toISOString(),
   });
-  ['Book flights', 'Reserve the ryokan', 'Sort a JR pass'].forEach(title => {
+  ['Book flights', 'Reserve the ryokan', 'Get a JR pass'].forEach(title => {
     addSubtask(trip.id, title);
   });
 
@@ -2300,7 +2300,7 @@ function seedTemplates(): void {
     },
     // Anchored to the end date instead, and optional — the two item settings
     // that are otherwise only described in the editor's own hints.
-    { title: 'Unpack and put a wash on', anchor: 'end', dueOffsetDays: 1, optional: true },
+    { title: 'Unpack and start a load of laundry', anchor: 'end', dueOffsetDays: 1, optional: true },
   ];
   ITEMS.forEach(item => addItem(template.id, item));
 
@@ -2317,7 +2317,7 @@ function seedTemplates(): void {
   const reset = addTemplate('Sunday reset');
   const RESET_ITEMS: Partial<TemplateItem>[] = [
     { title: 'Sheets and towels', category: 'Home', dueOffsetDays: 0, effort: 2 },
-    { title: 'Bins out', category: 'Home', dueOffsetDays: 0, timeSegments: ['evening'] },
+    { title: 'Take the trash out', category: 'Home', dueOffsetDays: 0, timeSegments: ['evening'] },
     { title: 'Plan the week', category: 'Work', dueOffsetDays: 0, priority: 3 },
     { title: 'Water the plants', category: 'Home', dueOffsetDays: 0, optional: true },
   ];
@@ -3670,10 +3670,10 @@ function seedGroceries(recipes: DemoRecipes, today: Date): void {
   // writes no task at all. With only the unlinked case seeded, the entire
   // grocery side of the feature reads as something the app doesn't do.
   //
-  // Dishwasher tablets rather than a filter, because the linking is only ever
+  // Dishwasher pods rather than a filter, because the linking is only ever
   // the right answer for a thing you buy where you buy food — that's the whole
   // rule deciding which of the two answers a supply gets.
-  addToPantry('Dishwasher tablets');
+  addToPantry('Dishwasher pods');
   addTask({
     title: 'Run the dishwasher',
     notes: 'A supply stocked from the shopping list: one tablet a run, and the tablets go on the list when they get low.',
@@ -3685,13 +3685,13 @@ function seedGroceries(recipes: DemoRecipes, today: Date): void {
     supplyUnit: 'tablets',
     supplyRefillCount: 40,
     supplyReorderAt: 5,
-    supplyGroceryItemId: itemNamed('Dishwasher tablets').id,
+    supplyGroceryItemId: itemNamed('Dishwasher pods').id,
   });
   // Already low, so the row sits on the list saying what it's for. Written out
   // rather than left to the sweep for the reason the pantry check above is:
   // that pass runs on Today's focus, and a demo that only comes right after
   // the second screen visit is a demo of nothing.
-  setRunningLow(itemNamed('Dishwasher tablets').id, true, { registerUndo: false });
+  setRunningLow(itemNamed('Dishwasher pods').id, true, { registerUndo: false });
 
   // The use-by half. The three finished trips above already stamped a date on
   // everything the shelf-life lexicon recognises, so most of that is here for
@@ -4117,7 +4117,7 @@ function seedMealPlanAndFridge(recipes: DemoRecipes, today: Date): void {
   // Its keep-until is weeks past, which is exactly the point: nothing counts
   // down, nothing is red, and it sits under "In the freezer" beside the peas.
   const frozenChilli = logLeftover({
-    title: 'Beef chilli',
+    title: 'Beef chili',
     storedAt: subDays(today, 24).toISOString(),
     keepDays: 4,
   });

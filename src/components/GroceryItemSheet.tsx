@@ -1094,7 +1094,7 @@ export function GroceryItemSheet({
                   </View>
                 ) : (
                   <Text style={styles.nutritionDetail}>
-                    No stated portions — only a weight, like grams or ounces, can be used in a recipe.
+                    No stated portions. Only a weight, like grams or ounces, can be used in a recipe.
                   </Text>
                 )
               ) : (
@@ -1620,7 +1620,7 @@ export function GroceryItemSheet({
           {alternativeNames.length > 0 && !featureHidden('itemChoices', simpleMode) && (
             <View style={styles.choiceBlock}>
               <Text style={styles.hint}>
-                Either/or — check one off at the store and the rest come off the list.
+                Either/or: check one off at the store and the rest come off the list.
               </Text>
               <View style={styles.infoChipRow}>
                 {alternativeNames.map(name => (

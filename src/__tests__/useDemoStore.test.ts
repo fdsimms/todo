@@ -3725,7 +3725,7 @@ describe('demo seed — groceries, recipes, meals and the fridge', () => {
     const { tasks } = useTaskStore.getState();
     const { items } = useGroceryStore.getState();
 
-    const tablets = items.find(i => i.name === 'Dishwasher tablets')!;
+    const tablets = items.find(i => i.name === 'Dishwasher pods')!;
     const dishwasher = tasks.find(t => t.title === 'Run the dishwasher')!;
     expect(dishwasher.supplyGroceryItemId).toBe(tablets.id);
 

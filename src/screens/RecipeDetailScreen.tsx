@@ -1718,7 +1718,7 @@ export function RecipeDetailScreen() {
         )}
         {cookedWeightOpen && (
           <Text style={styles.inputHint}>
-            What the whole dish weighs, as written. Logging a plate of it then works out from
+            What the whole dish weighs, as written. Logging a plate of it is then measured from
             what your plate weighs instead of from servings.
           </Text>
         )}
@@ -1924,7 +1924,7 @@ export function RecipeDetailScreen() {
         {recipe.steps.length === 0 ? (
           <Text style={styles.hint}>
             Write the method as steps instead of one block of notes, and it stays legible
-            when the recipe's scaled or shown in a different unit. Notes still works if you'd
+            when the recipe's scaled or shown in a different unit. The notes field still works if you'd
             rather leave it as one block.
           </Text>
         ) : (
