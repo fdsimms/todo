@@ -96,10 +96,22 @@ export function TitleTokenAccessory({ nativeID, onInsert, onConfirm, confirmVisi
 
   useEffect(() => {
     if (Platform.OS !== 'ios' || !floating) return;
-    const showSub = Keyboard.addListener('keyboardWillShow', e => setKeyboardHeight(e.endCoordinates?.height ?? 0));
+    // `keyboardWillShow` alone reports the height at the moment the keyboard
+    // first appears, which goes stale the instant it changes shape without a
+    // full show/hide — switching to the "123" page to type "#" by hand, or
+    // the predictive-text row toggling on or off as the user types. Real
+    // `InputAccessoryView`s never need this: iOS keeps them glued to the
+    // keyboard's actual frame itself. `keyboardWillChangeFrame` is the same
+    // event UIKit fires for that, so it keeps this floating stand-in from
+    // drifting out of sync with a keyboard that's already up.
+    const updateHeight = (e: { endCoordinates?: { height: number } }) =>
+      setKeyboardHeight(e.endCoordinates?.height ?? 0);
+    const showSub = Keyboard.addListener('keyboardWillShow', updateHeight);
+    const changeSub = Keyboard.addListener('keyboardWillChangeFrame', updateHeight);
     const hideSub = Keyboard.addListener('keyboardWillHide', () => setKeyboardHeight(0));
     return () => {
       showSub.remove();
+      changeSub.remove();
       hideSub.remove();
     };
   }, [floating]);

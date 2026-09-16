@@ -1,0 +1,4 @@
+{
+  "message": "Fixed the #/@/! shortcut bar above the keyboard in the full task editor losing track of the keyboard's height when it changed shape (switching to the 123 keyboard, predictive text toggling), which could leave it out of position or unresponsive.",
+  "date": "2026-09-16"
+}
