@@ -3,6 +3,7 @@ import { groceryNameKey, suggestShorterCatalogName } from './groceryParse';
 import { pluralKeyVariants, resolvePluralKey } from './groceryPlural';
 import { rankGrocerySuggestions } from './grocerySuggest';
 import { varietyIndex } from './itemVarieties';
+import { MIN_SIMILAR_LENGTH, withinOneEdit } from './textSimilar';
 
 /**
  * What a recipe ingredient line resolves to in the grocery catalog, and — when
@@ -97,52 +98,6 @@ const NO_MATCH: IngredientCatalogMatch = {
   suggestedName: null,
   reason: null,
 };
-
-/**
- * Below this many characters a one-character edit is too much of the word to
- * be evidence of anything: at three characters "ham"/"jam"/"yam" are all
- * within one edit of each other and all real.
- */
-const MIN_SIMILAR_LENGTH = 4;
-
-/**
- * Whether two keys are within one insertion, deletion or substitution.
- *
- * Bounded at one on purpose rather than being a general edit distance with a
- * tunable threshold: two edits is where "lime"/"line"/"lint" and
- * "butter"/"batter" start colliding, and every one of those pairs is two real
- * groceries. One edit catches the transposition and the dropped letter that
- * actually happen when typing, and is cheap enough to run against the whole
- * catalog per line.
- *
- * Not Damerau — a transposition ("yoghurt"/"yogurth") counts as two
- * substitutions here and so is *not* offered. That's the conservative side of
- * the same trade, and the fuzzy picker (`CatalogLinkPicker`) is still there for
- * anything this declines.
- */
-export function withinOneEdit(a: string, b: string): boolean {
-  if (a === b) return true;
-  const [shorter, longer] = a.length <= b.length ? [a, b] : [b, a];
-  if (longer.length - shorter.length > 1) return false;
-
-  let i = 0;
-  let j = 0;
-  let edited = false;
-  while (i < shorter.length && j < longer.length) {
-    if (shorter[i] === longer[j]) {
-      i++;
-      j++;
-      continue;
-    }
-    if (edited) return false;
-    edited = true;
-    // Same length means a substitution (step both); different means the extra
-    // character is in `longer` alone (step only it).
-    if (shorter.length === longer.length) i++;
-    j++;
-  }
-  return true;
-}
 
 /**
  * The longest catalog name that is the *opening words* of this line.
