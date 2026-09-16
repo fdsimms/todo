@@ -68,6 +68,7 @@ import { SheetHeader } from '../components/SheetHeader';
 import { SearchField } from '../components/SearchField';
 import { DetailHeader } from '../components/DetailHeader';
 import { useCopyToClipboard } from '../hooks/useCopyToClipboard';
+import { useSheetSubject } from '../hooks/useSheetSubject';
 
 type RootStackParamList = {
   ProjectDetail: { projectId: string };
@@ -335,6 +336,9 @@ export function ProjectDetailScreen() {
   // identity), so it takes the whole task list rather than projectTasks.
   const decisions = useMemo(() => projectDecisions(projectId, allTasks), [projectId, allTasks]);
   const answerTask = answerTaskId !== null ? allTasks.find(t => t.id === answerTaskId) ?? null : null;
+  // Held so the sheet can close through `visible` rather than by leaving
+  // the tree while still on screen. See useSheetSubject.
+  const shownAnswerTask = useSheetSubject(answerTask);
 
   const onClose = () => {
     if (selectionMode) exitSelection();
@@ -1123,13 +1127,13 @@ export function ProjectDetailScreen() {
         {/* Correcting a decision from where it's read — the same sheet in the
             same mode the Logbook's ⋯ menu opens, so there's one place an
             answer is written and one way it's written. */}
-        {answerTask && (
+        {shownAnswerTask && (
           <DeliverablePromptSheet
-            visible
-            task={answerTask}
+            visible={answerTask !== null}
+            task={shownAnswerTask}
             mode="edit"
             onConfirm={value => {
-              setDeliverableValue(answerTask.id, value);
+              setDeliverableValue(shownAnswerTask.id, value);
               setAnswerTaskId(null);
             }}
             onCancel={() => setAnswerTaskId(null)}
