@@ -1467,10 +1467,8 @@ export function seedDemoData(): void {
     // like any other.
     deadline: addDays(today, 33).toISOString(),
     linkUrl: waterFilter.linkUrl,
-    // Inherited from the task above, same as linkUrl — a reorder task files
-    // wherever the task its supply is on files, not into a category of its
-    // own. See GeneratedKindSpec.categorized.
-    category: waterFilter.category,
+    // The generator's own default category — see GeneratedKindSpec.categorized.
+    category: 'Supplies',
     // Completing it asks how many arrived, pre-filled with the pack size, and
     // the answer is what puts the count back up.
     deliverableKind: 'number',

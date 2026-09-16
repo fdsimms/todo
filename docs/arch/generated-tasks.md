@@ -377,12 +377,9 @@ one. Those three rules and the reasoning behind them are in
     user answered enough cards to put the deck under five, which would be the app taking the question
     back the moment it started being answered. Same split `stalePantryCheckTasks` draws against
     `PANTRY_CHECK_GRACE_DAYS`, and `staleProjectReviewTasks` against its own cap.
-  - **It has its own category setting**, unlike `calendarReview` which shares one. That kind shares
-    `calendarEventCategory` because the events it describes are already filed by it, so a second
-    setting could only agree or contradict. Here there is no prior owner, and sharing
-    `pantryCheckTaskCategory` would mean turning this on while the drip is off leaves it with nowhere
-    to file — an uncategorized task renders loose at the very top of Today, which is exactly where
-    these must not go.
+  - **It has its own category setting**, same as every generator — sharing `pantryCheckTaskCategory`
+    would mean turning this on while the drip is off leaves it with nowhere to file — an uncategorized
+    task renders loose at the very top of Today, which is exactly where these must not go.
   - **It ships off**, like `pantryCheck` and `mealShortfall`, for their reason: it adds a surface
     rather than replacing one that was already on screen.
 
@@ -401,12 +398,10 @@ one. Those three rules and the reasoning behind them are in
     moment a day is considered, *before* the "does tomorrow have anything on it" check, and covers
     every outcome: created, or found empty. A day already marked is never re-diagnosed, whatever the
     mark's reason.
-  - **It reuses `calendarEventCategory` rather than owning a category of its own**
-    (`GeneratedKindSpec.categorized: false` — the one so far). The task and the events it's asking
-    about are one subject to the person reading the list, and a second "File them under" setting
-    would only ever be able to agree with the first or contradict it. `ensureGeneratedTaskCategory`
-    and the two switches in `useCategoryStore.ts` it dispatches through both return early for this
-    kind rather than gaining a real arm — there is nothing of its own to ensure or point at.
+  - **It owns a category setting of its own** (`calendarReviewTaskCategory`, `categorized: true`),
+    same as every other generator, rather than reusing `calendarEventCategory`. It defaults to the
+    same "Calendar Events" name that setting does, so an install that upgrades into this files its
+    review task exactly where it always did — but the two settings can now be pointed apart.
   - **It fires on time passing, from the same two places `pantryCheck` does** (the launch sequence
     and the Today foreground sweep) — but unlike every other generator, it reads state
     (`useCalendarStore`) that nothing in the launch sequence populates synchronously; the window is

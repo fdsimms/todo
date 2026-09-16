@@ -348,27 +348,18 @@ export interface GeneratedKindSpec {
   /**
    * Whether the user can choose a category to file this kind under.
    *
-   * `false` for two kinds. `calendarReview` reuses `calendarEventCategory`,
-   * the setting calendar-event context rows already file under, rather than
-   * owning a second "File them under" pair — the task this generator writes
-   * and the events it's asking about are the same category by construction,
-   * and a picker offering to disagree with that would be a setting with no
-   * honest answer. `supplyReorder` has no category setting for a different
-   * reason: its task always inherits the category of the task the supply
-   * belongs to (see `checkSupplyReorderTasks`), so there is no single global
-   * answer a picker could offer — a filter tracked on a bathroom task and one
-   * tracked on a car task each want their own reorder task filed where the
-   * task itself is, not both funnelled into one "Supplies" category.
+   * True for every kind — including `calendarReview` and `supplyReorder`,
+   * which used to share this out (`calendarReview` read
+   * `calendarEventCategory`, and `supplyReorder`'s task inherited the
+   * category of the task the supply belongs to; see `checkSupplyReorderTasks`
+   * for what that used to look like). Both now own a "File them under"
+   * setting of their own, same as every other generator, so every row in the
+   * Settings section behaves the same way.
    */
   categorized: boolean;
   /**
    * The category this kind files under until the user says otherwise, created
    * on the generator's first switch-on (see ensureGeneratedTaskCategory).
-   *
-   * Unused when `categorized` is false — there's no category of its own to
-   * default. For `supplyReorder` that's because each task's category comes
-   * from its own source task rather than from one setting shared by every
-   * reorder task.
    *
    * Not a cosmetic default. These settings shipped defaulting to *no* category,
    * and an uncategorized task renders in the header-less loose block at the
@@ -560,14 +551,12 @@ export const GENERATED_KIND_SPECS: Record<GeneratedKind, GeneratedKindSpec> = {
     // run with the area off, so the row has to go with it — the `true` half of
     // this flag's contract.
     kitchen: true,
-    // A category of its own, unlike calendarReview, even though it defaults to
-    // the same place pantryCheck files under. calendarReview shares a key
-    // because the events it describes are already filed by that setting, so a
-    // second one could only agree or contradict; here there is no such prior
-    // owner, and sharing pantryCheck's key would mean turning this generator on
-    // while the drip is off leaves it with nowhere to file — an uncategorized
-    // task renders loose at the very top of Today, which is exactly where these
-    // must not go.
+    // A category of its own, same as pantryCheck and every other generator —
+    // see GeneratedKindSpec.categorized. Defaults to the same place
+    // pantryCheck files under; sharing pantryCheck's key instead would mean
+    // turning this generator on while the drip is off leaves it with nowhere
+    // to file — an uncategorized task renders loose at the very top of Today,
+    // which is exactly where these must not go.
     categorized: true,
     defaultCategory: 'Groceries',
   },
@@ -614,10 +603,8 @@ export const GENERATED_KIND_SPECS: Record<GeneratedKind, GeneratedKindSpec> = {
     sourced: true,
     notice: false,
     kitchen: false,
-    // No "File them under" of its own — see GeneratedKindSpec.categorized.
-    // Each reorder task takes the category of the task its supply is on.
-    categorized: false,
-    defaultCategory: '',
+    categorized: true,
+    defaultCategory: 'Supplies',
   },
   mealShortfall: {
     kind: 'mealShortfall',
@@ -696,10 +683,8 @@ export const GENERATED_KIND_SPECS: Record<GeneratedKind, GeneratedKindSpec> = {
     // than being a piece of work, and it answers itself in the row.
     notice: true,
     kitchen: false,
-    // Reuses calendarEventCategory rather than owning a category of its own —
-    // see the field's doc comment above.
-    categorized: false,
-    defaultCategory: '',
+    categorized: true,
+    defaultCategory: 'Calendar Events',
   },
   // The fourteenth, and the first whose "source" is a rule the user wrote
   // rather than something else in the app — see src/utils/weatherTasks.ts.

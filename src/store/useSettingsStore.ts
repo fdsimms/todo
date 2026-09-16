@@ -1260,18 +1260,18 @@ interface SettingsStore {
   // and then being told nothing. An install with no supplies sees nothing
   // either way.
   supplyReorderTasks: boolean;
-  // No category setting of its own — see GeneratedKindSpec.categorized. Each
-  // reorder task inherits the category of the task its supply is on instead.
+  // Which category a supply reorder task files itself under, by name, or null
+  // for none — same setting shape as the other generators'.
+  supplyReorderTaskCategory: string | null;
   //
   // Whether a task appears once a day to review tomorrow's calendar (see
   // src/utils/calendarReviewTasks.ts). Defaults OFF, the pantryCheckTasks
   // reading rather than projectReviewTasks': this adds a surface nobody had
   // before, so a generator writing rows unasked has to be asked for.
-  //
-  // No category setting of its own — see GeneratedKindSpec.categorized. It
-  // files under calendarEventCategory instead, the setting the day's own
-  // calendar events already render under.
   calendarReviewTasks: boolean;
+  // Which category a calendar review task files itself under, by name, or
+  // null for none — same setting shape as the other generators'.
+  calendarReviewTaskCategory: string | null;
   // Idempotency state, not a preference — the day key (tomorrow's, as of the
   // most recent check) `checkCalendarReviewTasks` has already decided about,
   // whatever the outcome. Read only by that check, which compares it against
@@ -1675,7 +1675,9 @@ interface SettingsStore {
   setMealLogNudgeTasks: (on: boolean) => void;
   setMealLogNudgeTaskCategory: (category: string | null) => void;
   setSupplyReorderTasks: (on: boolean) => void;
+  setSupplyReorderTaskCategory: (category: string | null) => void;
   setCalendarReviewTasks: (on: boolean) => void;
+  setCalendarReviewTaskCategory: (category: string | null) => void;
   setCalendarReviewLastDayKey: (dayKey: string | null) => void;
   setCalendarReviewTimeSegment: (segment: TimeOfDay | null) => void;
   setWeatherTasks: (on: boolean) => void;
@@ -2279,7 +2281,9 @@ export const useSettingsStore = create<SettingsStore>((set, get) => ({
   pantryReviewLastDayKey: null,
   lastDeloadAppliedDayKey: null,
   supplyReorderTasks: true,
+  supplyReorderTaskCategory: null,
   calendarReviewTasks: false,
+  calendarReviewTaskCategory: null,
   calendarReviewLastDayKey: null,
   calendarReviewTimeSegment: null,
   weatherTasks: false,
@@ -2648,9 +2652,11 @@ export const useSettingsStore = create<SettingsStore>((set, get) => ({
     // `!== 'false'` test rather than `=== 'true'`, same shape every other
     // on-by-default setting here uses.
     const supplyReorderTasks = dbGetSetting('supplyReorderTasks') !== 'false';
+    const supplyReorderTaskCategory = dbGetSetting('supplyReorderTaskCategory') || null;
     // `=== 'true'`, the same opt-in reading pantryCheckTasks takes and for the
     // same reason: this adds a surface rather than replacing one.
     const calendarReviewTasks = dbGetSetting('calendarReviewTasks') === 'true';
+    const calendarReviewTaskCategory = dbGetSetting('calendarReviewTaskCategory') || null;
     const calendarReviewLastDayKey = dbGetSetting('calendarReviewLastDayKey') || null;
     const storedCalendarReviewTimeSegment = dbGetSetting('calendarReviewTimeSegment');
     const calendarReviewTimeSegment =
@@ -2848,6 +2854,7 @@ export const useSettingsStore = create<SettingsStore>((set, get) => ({
       calendarPeopleHistory,
       calendarReadEnabled,
       calendarReviewLastDayKey,
+      calendarReviewTaskCategory,
       calendarReviewTasks,
       calendarReviewTimeSegment,
       collapsedCategories,
@@ -2985,6 +2992,7 @@ export const useSettingsStore = create<SettingsStore>((set, get) => ({
       simpleMode,
       simpleTaskForm,
       sortOption,
+      supplyReorderTaskCategory,
       supplyReorderTasks,
       themeMode,
       timerLiveActivity,
@@ -3443,9 +3451,19 @@ export const useSettingsStore = create<SettingsStore>((set, get) => ({
     set({ supplyReorderTasks: on });
   },
 
+  setSupplyReorderTaskCategory(category: string | null) {
+    dbSetSetting('supplyReorderTaskCategory', category ?? '');
+    set({ supplyReorderTaskCategory: category });
+  },
+
   setCalendarReviewTasks(on: boolean) {
     dbSetSetting('calendarReviewTasks', on ? 'true' : 'false');
     set({ calendarReviewTasks: on });
+  },
+
+  setCalendarReviewTaskCategory(category: string | null) {
+    dbSetSetting('calendarReviewTaskCategory', category ?? '');
+    set({ calendarReviewTaskCategory: category });
   },
 
   // Stored as '' for "nothing decided yet", matching mealPlanNudgeLastFiredWeekKey —
