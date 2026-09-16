@@ -126,11 +126,6 @@ export function RecipeNutritionSheet({ visible, reading, onClose }: Props) {
   const setProductNutrition = useGroceryStore(s => s.setProductNutrition);
   const ensureCatalogItem = useGroceryStore(s => s.ensureCatalogItem);
   const updateIngredient = useRecipeStore(s => s.updateIngredient);
-  const editingIngredient = useRecipeStore(s =>
-    editingLine
-      ? s.recipes.find(r => r.id === editingLine.recipeId)?.ingredients.find(i => i.id === editingLine.id) ?? null
-      : null
-  );
 
   // Which line each nested sheet is open for, rather than a boolean and a
   // separate id: the two can't disagree if there is only one of them.
@@ -141,6 +136,17 @@ export function RecipeNutritionSheet({ visible, reading, onClose }: Props) {
   // The unfixable line whose recipe text is being edited, nested inside this
   // sheet rather than closing it first — see the doc comment above.
   const [editingLine, setEditingLine] = useState<NutritionLine | null>(null);
+  // Resolved here rather than beside the other store reads above, which is
+  // where this started: a selector closing over `editingLine` runs during the
+  // hook call, so declaring it before that state threw on every render.
+  // `RecipeIngredientSheet` wants the ingredient itself, and a component's
+  // recipe is its own row, so the walk is scoped by the line's own recipeId.
+  const editingIngredient = useRecipeStore(s =>
+    editingLine
+      ? s.recipes.find(r => r.id === editingLine.recipeId)?.ingredients
+        .find(i => i.id === editingLine.id) ?? null
+      : null
+  );
   // Which COUNTED row is showing its full breakdown, one at a time.
   const [expandedId, setExpandedId] = useState<string | null>(null);
   // The catalog row `addToCatalog` just minted, so `GroceryItemSheet` can open
