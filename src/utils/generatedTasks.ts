@@ -131,6 +131,12 @@ export const GENERATED_KINDS: readonly GeneratedKind[] = [
   // subject, not two unrelated rows to read past each other.
   'birthdayGift',
   'reachOut',
+  // Beside reachOut rather than appended at the end: to the person reading
+  // Settings, "a person you asked to be reminded about" and "a task you're
+  // waiting on somebody for" are both about not losing track of a person,
+  // and reading one without meeting the other is how somebody misses half of
+  // that idea.
+  'waitingFollowUp',
   // The fourteenth, appended rather than paired: nothing else here reads the
   // weather, so there's no existing generator it belongs beside.
   'weather',
@@ -230,6 +236,7 @@ export type GeneratedEnabledKey =
   | 'birthdayTasks'
   | 'birthdayGiftTasks'
   | 'reachOutTasks'
+  | 'waitingFollowUpTasks'
   | 'pantryReviewTasks'
   | 'weatherTasks'
   | 'eventTasks'
@@ -400,6 +407,34 @@ export const GENERATED_KIND_SPECS: Record<GeneratedKind, GeneratedKindSpec> = {
     notice: false,
     kitchen: false,
     categorized: true,
+    defaultCategory: 'People',
+  },
+  // Ships off, unlike reachOut just above it. That one's real gate is a
+  // recorded intent (a person explicitly opted in); a wait has no equivalent
+  // — every "Waiting on someone" is a candidate the moment it's old enough,
+  // so the setting is the only permission this generator has, and it has to
+  // be asked for. See src/utils/waitingFollowUpTasks.ts.
+  waitingFollowUp: {
+    kind: 'waitingFollowUp',
+    // A chore about a wait you're trying to move along, not sunscreen —
+    // vacation mode's "hide work from me" applies to this the way it does to
+    // projectReview, not the way it exempts reachOut (which is about the
+    // people you care about, full stop, regardless of a task).
+    pausedOnVacation: true,
+    enabledKey: 'waitingFollowUpTasks',
+    label: 'Follow-up reminders for waiting tasks',
+    onHint: 'A task waiting on somebody, waited on long enough, adds a task to follow up',
+    offHint: 'A task waiting on somebody adds no follow-up task',
+    icon: 'hourglass-outline',
+    // Sourced on the waiting task itself (Task.id), not on the person — see
+    // the GeneratedKind's own note on why.
+    sourced: true,
+    notice: false,
+    kitchen: false,
+    categorized: true,
+    // Beside reachOut's own default: to the person reading Today, a
+    // follow-up about somebody they're waiting on is the same kind of row as
+    // a catch-up nudge, not a new section.
     defaultCategory: 'People',
   },
   birthday: {

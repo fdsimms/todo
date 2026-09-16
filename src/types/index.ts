@@ -1681,6 +1681,14 @@ export type GeneratedKind =
   // opted in, which is what keeps "who am I neglecting" a question the app
   // never asks.
   | 'reachOut'
+  // A task waiting on a person (Task.waitingOnPersonId), waited on long
+  // enough, becomes "Follow up with X about Y" — see
+  // src/utils/waitingFollowUpTasks.ts. Sourced on the waiting task itself
+  // rather than the person, the same position 'supplyReorder' is in: a task
+  // is the thing that stops being wanted (completed, archived, released),
+  // not the person, and two different waits on the same person must each be
+  // able to ask.
+  | 'waitingFollowUp'
   // A user-configured rule ("sunny -> Put on sunscreen") matched against
   // today's weather — see src/utils/weatherTasks.ts. Its source id is a day
   // key and a rule id (`${dayKey}#${ruleId}`), the same "square on the
@@ -2244,6 +2252,30 @@ export interface Task {
    * land in his history.
    */
   waitingOnPersonId: string | null;
+
+  /**
+   * When `waitingOnPersonId` was last set — ISO, or null while the task isn't
+   * waiting on anybody. Stamped by `updateTask` on the transition (null/a
+   * different person → this one), the same "derived on the edit, not asked
+   * for" shape `driftingSince` uses beside `postponeCount`. What it's for:
+   * `waitingFollowUp` (see `src/utils/waitingFollowUpTasks.ts`) reads it to
+   * offer "Follow up with X about Y" once a wait has gone on long enough,
+   * which nothing before this could answer — there was no record of when a
+   * wait started, only that one was happening.
+   */
+  waitingOnPersonSince: string | null;
+
+  /**
+   * "Not now" on the `waitingFollowUp` nudge this task's own wait produced —
+   * ISO, or null. A self-expiring stamp like `Project.reviewDeclinedAt`,
+   * spent against `WAITING_FOLLOW_UP_DECLINE_DAYS` rather than the day: a
+   * nudge about somebody you're waiting on returning tomorrow morning reads
+   * as the app disagreeing with you about the wait, the same reasoning
+   * `Person.reachOutDeclinedAt` gives for its own week-long hold. Cleared
+   * whenever `waitingOnPersonId` changes, since a decline about one wait
+   * says nothing about the next.
+   */
+  waitingFollowUpDeclinedAt: string | null;
 
   /**
    * "Ask on completion" — a task whose completion means recording a decision
@@ -2905,6 +2937,8 @@ export type TaskDraft = Omit<
   | 'postponeCount'
   | 'postponeMuted'
   | 'driftingSince'
+  | 'waitingOnPersonSince'
+  | 'waitingFollowUpDeclinedAt'
   | 'followUpTaskTally'
   | 'previousFollowUpTaskTally'
   | 'calendarEventId'

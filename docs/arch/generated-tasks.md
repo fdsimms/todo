@@ -303,6 +303,47 @@ one. Those three rules and the reasoning behind them are in
     (`nudgeOptIn` + `cadenceDays`, both off on everybody), so an install where nobody has been opted
     in sees nothing new. The setting only decides whether the pass runs at all.
 
+- **`waitingFollowUp` is `reachOut` one shelf over, sourced on the task rather than the person.**
+  A task waiting on somebody (`Task.waitingOnPersonId`), waited on long enough, becomes "Follow up
+  with Dustin about 'Get the quote back'". See `src/utils/waitingFollowUpTasks.ts`.
+  - **Sourced on the waiting task's own id**, not the person — the one real departure from
+    `reachOut`'s shape. A person can be the far end of several independent waits at once, and it's
+    the *task* that stops wanting a nudge (released, completed, archived, deleted), not the person:
+    reading `personId` as the source would let two waits on the same person collide into one row,
+    and freeing one wait would silently clear the other's nudge too.
+  - **The decline stamp lives on the waiting task** (`Task.waitingFollowUpDeclinedAt`), the same
+    "written directly, bypassing `updateTask`" shape `supplyReorder`'s own opt-out takes in
+    `writeGeneratedOptOut` — the caller is `deleteTask` mid-write, and routing a second store action
+    through it would run the postpone derivation over a field that isn't one. Held for the same week
+    `reachOut` holds its own decline, for the same reason: a nudge about a wait ending tomorrow reads
+    as the app disagreeing with you about it.
+  - **`Task.waitingOnPersonSince` is what makes "waited long enough" answerable at all.** Nothing
+    before this generator recorded when a wait started, so it's stamped by `updateTask` itself on the
+    `waitingOnPersonId` transition (null/a different person → this one) — the same "derived on the
+    edit, not asked for" shape `driftingSince` takes beside `postponeCount`, guarded the same way
+    `pinnedOrder` is against restamping on every unrelated re-save of an already-waiting task. Cleared
+    back to null when the wait ends, and the decline stamp is cleared alongside it: a decline about
+    the *previous* wait says nothing about a fresh one.
+  - **The cap is two and the order is never re-ranked**, for `reachOut`'s own reason applied to a
+    task instead of a person: sorting the due set by longest-waiting would still be the app quietly
+    deciding whose wait matters most, just measured on the task rather than the person it's about.
+  - **A completed or archived follow-up holds its source for the decline window**, the same blind
+    spot `reachOutsHandledRecently` covers and for the same reason: ticking "Follow up with Dustin"
+    off answers *this* nudge, not the wait itself, which is still open until the task it names is
+    released or done.
+  - **Its stale pass judges against every currently-live wait**, not the capped set — losing the
+    contest for a slot is no reason to delete a row the user already deferred, same split every other
+    stale pass here draws.
+  - **The task carries no `personIds`**, for `reachOut`'s own reason: a task naming somebody is the
+    record that something happened with them, and ticking this off would otherwise reset a clock this
+    generator has no business touching.
+  - **It ships off**, unlike `reachOut` beside it. That one's real gate is a recorded intent (a
+    person explicitly opted in); a wait has no equivalent — every "Waiting on someone" is a candidate
+    the moment it's old enough, so the setting is the only permission this generator has.
+  - **It pauses on vacation**, unlike `reachOut`. A follow-up nudge is a chore about moving a wait
+    along, not sunscreen — the test this file sets throughout is whether a generator invents
+    something to *do*, and this one does.
+
 - **`pantryReview` is the thirteenth, and it is `calendarReview` one shelf over, not `pantryCheck`.**
   It asks the drip's question in bulk: one row, "Review what's in the pantry", opening a swipe deck
   over everything the app is currently unsure about (see `docs/arch/groceries.md` for the deck

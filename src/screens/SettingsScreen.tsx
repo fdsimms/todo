@@ -126,6 +126,7 @@ export function SettingsScreen() {
       birthdayTasks: settings.birthdayTasks,
       birthdayGiftTasks: settings.birthdayGiftTasks,
       reachOutTasks: settings.reachOutTasks,
+      waitingFollowUpTasks: settings.waitingFollowUpTasks,
       weatherTasks: settings.weatherTasks,
       eventTasks: settings.eventTasks,
       screenTimeTasks: settings.screenTimeTasks,

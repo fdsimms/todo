@@ -62,7 +62,7 @@ const BLANK_SNOOZE_TASK: Task = {
   supplyLeadDays: null, supplyDeclinedAtCount: null, supplyGroceryItemId: null,
   targetCount: null, progressCount: 0, targetUnit: null, allowOvershoot: false,
   tags: [], personIds: [], category: null, sortOrder: 0, pinned: false, pinnedOrder: 0, priority: 0, effort: 0,
-  estimatedMinutes: null, reminderTime: null, reminderKind: 'notification', reminderOffsetDays: null, reminderTimeAnchor: 'wallClock', reminderUtcOffsetMinutes: null, linkUrl: null, phoneNumber: null, emailAddress: null, location: null, blockedById: null, waitingOnPersonId: null, deliverableKind: null, deliverableValue: null, generatedKind: null, generatedSourceId: null,
+  estimatedMinutes: null, reminderTime: null, reminderKind: 'notification', reminderOffsetDays: null, reminderTimeAnchor: 'wallClock', reminderUtcOffsetMinutes: null, linkUrl: null, phoneNumber: null, emailAddress: null, location: null, blockedById: null, waitingOnPersonId: null, waitingOnPersonSince: null, waitingFollowUpDeclinedAt: null, deliverableKind: null, deliverableValue: null, generatedKind: null, generatedSourceId: null,
   deadlineOnCalendar: false, calendarEventId: null,
   logCompletionToCalendar: false, completionCalendarEventId: null,
   timeBlockEventId: null,

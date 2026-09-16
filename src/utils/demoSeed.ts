@@ -51,6 +51,7 @@ import { projectReviewLinkUrl, projectReviewTitle } from './projectReviewTasks';
 import { pantryCheckLinkUrl, pantryCheckTitle } from './pantryCheckTasks';
 import { PANTRY_REVIEW_LINK_URL, PANTRY_REVIEW_TITLE } from './pantryReviewTasks';
 import { birthdayGiftTitle, personLinkUrl } from './birthdayTasks';
+import { waitingFollowUpTitle } from './waitingFollowUpTasks';
 import { giftIdeasText } from './personNotes';
 import { mealShortfallLinkUrl, mealShortfallTitle } from './mealShortfallTasks';
 import { mealLogNudgeLinkUrl, mealLogNudgeTitle } from './mealLogNudgeTasks';
@@ -1954,6 +1955,23 @@ function seedPeople(today: Date): void {
   // and unlike a task blocker, nothing ends this on its own.
   const photos = addTask({ title: 'Photos from the trip' });
   updateTask(photos.id, { waitingOnPersonId: dustin.id });
+  // Backdated past WAITING_FOLLOW_UP_THRESHOLD_DAYS, so the follow-up task
+  // below is a real answer to "how long has this been going on" rather than
+  // a wait that only just started.
+  updateTask(photos.id, { waitingOnPersonSince: addDays(today, -10).toISOString() });
+  // The nudge itself (#2087), written by hand rather than through
+  // checkWaitingFollowUpTasks — that generator ships off, and this pass reads
+  // the real install's own setting, so relying on it would show the feature
+  // only to somebody who had already turned it on. Its title comes from the
+  // generator's own function so the two can never disagree about the words.
+  addTask({
+    title: waitingFollowUpTitle(dustin, photos),
+    dueDate: today.toISOString(),
+    linkUrl: personLinkUrl(dustin.id),
+    phoneNumber: dustin.phoneNumber,
+    category: 'People',
+    ...generatedBy('waitingFollowUp', photos.id),
+  });
 
   // The memory layer (#2047), which is rule 7 and the part that makes this a
   // feature you like rather than one you tolerate. Every kind gets one, and

@@ -271,6 +271,8 @@ const makeTask = (overrides: Partial<Task> = {}): Task => ({
   emailAddress: null, location: null,
   blockedById: null,
   waitingOnPersonId: null,
+  waitingOnPersonSince: null,
+  waitingFollowUpDeclinedAt: null,
   deliverableKind: null,
   deliverableValue: null,
   generatedKind: null,

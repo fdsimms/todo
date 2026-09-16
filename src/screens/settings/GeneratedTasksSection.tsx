@@ -238,6 +238,7 @@ export function GeneratedTasksSection() {
       case 'birthday': s.setBirthdayTasks(next); break;
       case 'birthdayGift': s.setBirthdayGiftTasks(next); break;
       case 'reachOut': s.setReachOutTasks(next); break;
+      case 'waitingFollowUp': s.setWaitingFollowUpTasks(next); break;
       case 'weather': s.setWeatherTasks(next); break;
       case 'eventTask': s.setEventTasks(next); break;
       case 'screenTime': s.setScreenTimeTasks(next); break;
@@ -279,6 +280,7 @@ export function GeneratedTasksSection() {
       case 'birthdayGift': return s.birthdayGiftTaskCategory;
       case 'supplyReorder': return null;
       case 'reachOut': return s.reachOutTaskCategory;
+      case 'waitingFollowUp': return s.waitingFollowUpTaskCategory;
       case 'weather': return s.weatherTaskCategory;
       case 'eventTask': return s.eventTaskCategory;
       case 'screenTime': return s.screenTimeTaskCategory;
@@ -311,6 +313,7 @@ export function GeneratedTasksSection() {
       // than a no-op: this is genuinely how calendarReview's category changes.
       case 'calendarReview': s.setCalendarEventCategory(category); break;
       case 'reachOut': s.setReachOutTaskCategory(category); break;
+      case 'waitingFollowUp': s.setWaitingFollowUpTaskCategory(category); break;
       case 'weather': s.setWeatherTaskCategory(category); break;
       case 'eventTask': s.setEventTaskCategory(category); break;
       case 'screenTime': s.setScreenTimeTaskCategory(category); break;

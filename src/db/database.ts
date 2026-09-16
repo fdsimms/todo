@@ -1658,6 +1658,12 @@ export function initDatabase(): void {
     // this, so nothing can be said about how those guesses compared. See
     // Task.estimateBeforeTiming.
     'ALTER TABLE tasks ADD COLUMN estimate_before_timing INTEGER',
+    // Null on every existing row: nothing before this recorded when a wait on
+    // a person started. See Task.waitingOnPersonSince.
+    'ALTER TABLE tasks ADD COLUMN waiting_on_person_since TEXT',
+    // Null on every existing row: nobody has swiped away a follow-up nudge
+    // yet. See Task.waitingFollowUpDeclinedAt.
+    'ALTER TABLE tasks ADD COLUMN waiting_follow_up_declined_at TEXT',
   ];
   // Asking SQLite for a table's columns once is cheaper than handing it every
   // ALTER for that table and catching the duplicate-column error, and by the
@@ -2535,6 +2541,8 @@ function rowToTask(row: Record<string, unknown>): Task {
     recurrenceAnchorDay: (row.recurrence_anchor_day as number | null) ?? null,
     recurrenceAnchorDate: (row.recurrence_anchor_date as string | null) ?? null,
     waitingOnPersonId: (row.waiting_on_person_id as string | null) ?? null,
+    waitingOnPersonSince: (row.waiting_on_person_since as string | null) ?? null,
+    waitingFollowUpDeclinedAt: (row.waiting_follow_up_declined_at as string | null) ?? null,
     recurrenceEndDate: (row.recurrence_end_date as string) ?? null,
     recurrenceCount: (row.recurrence_count as number | null) ?? null,
     recurrenceFromCompletion: Boolean(row.recurrence_from_completion),
@@ -2715,8 +2723,8 @@ export function dbInsertTask(task: Task): void {
       health_metric, health_target, completion_timer_minutes, completion_timer_note, completion_timer_started_at, log_health_metric, log_health_amount,
       penalty_minutes, penalty_cutoff_time, penalty_fired_at, penalty_credited_at, gates_apps,
       medication_name, medication_amount, medication_unit, log_meal_slot,
-      estimate_before_timing
-    ) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)`,
+      estimate_before_timing, waiting_on_person_since, waiting_follow_up_declined_at
+    ) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)`,
     [
       task.id, task.title, task.notes, task.completed ? 1 : 0,
       task.completedAt, task.createdAt, task.seenAt, task.dueDate, task.deadline, task.deadlineOffsetDays ?? null, task.deadlineMonthDay ?? null, task.deferUntil,
@@ -2811,6 +2819,8 @@ export function dbInsertTask(task: Task): void {
       task.medicationUnit ?? null,
       task.logMealSlot ?? null,
       task.estimateBeforeTiming ?? null,
+      task.waitingOnPersonSince ?? null,
+      task.waitingFollowUpDeclinedAt ?? null,
     ]
   );
 }
@@ -2842,7 +2852,7 @@ export function dbUpdateTask(task: Task): void {
       health_metric=?, health_target=?, completion_timer_minutes=?, completion_timer_note=?, completion_timer_started_at=?, log_health_metric=?, log_health_amount=?,
       penalty_minutes=?, penalty_cutoff_time=?, penalty_fired_at=?, penalty_credited_at=?, gates_apps=?,
       medication_name=?, medication_amount=?, medication_unit=?, log_meal_slot=?,
-      estimate_before_timing=?
+      estimate_before_timing=?, waiting_on_person_since=?, waiting_follow_up_declined_at=?
     WHERE id=?`,
     [
       task.title, task.notes, task.completed ? 1 : 0, task.completedAt, task.seenAt,
@@ -2938,6 +2948,8 @@ export function dbUpdateTask(task: Task): void {
       task.medicationUnit ?? null,
       task.logMealSlot ?? null,
       task.estimateBeforeTiming ?? null,
+      task.waitingOnPersonSince ?? null,
+      task.waitingFollowUpDeclinedAt ?? null,
       task.id,
     ]
   );

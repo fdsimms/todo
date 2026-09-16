@@ -197,6 +197,10 @@ export function catchUpPasses(): MaintenanceStep[] {
     // passing rather than a source changing. Does no work at all until
     // somebody has been opted in.
     ['check reach-out tasks', () => tasks().checkReachOutTasks()],
+    // Beside it, sharing its trigger (time passing, off by default) and its
+    // people-facing shape — a task waiting on somebody can go from "just
+    // asked" to "worth a nudge" purely by the clock moving.
+    ['check waiting follow-up tasks', () => tasks().checkWaitingFollowUpTasks()],
     // A leftover can age from "fresh" into "soon" purely by time passing too
     // — same trigger as the two passes above, and it reads the leftovers
     // initTasks' fan-out has already loaded. This used to run only on
