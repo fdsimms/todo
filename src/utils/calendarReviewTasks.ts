@@ -6,13 +6,9 @@ import { generatedSourceOf } from './generatedTasks';
 /**
  * The "look at tomorrow's calendar" offer, as a task.
  *
- * Files under `calendarEventCategory`, the same setting the day's own events
- * already render under on Today (see `eventContextRows` in
- * `dayContextRows.ts`) — the task and the events it's asking about are one
- * subject to the person reading the list, so a second, independent "File this
- * under" setting would only ever be able to agree with the first or confuse
- * the two. That's also why the kind is `categorized: false` in the registry:
- * there's no category of its own to pick.
+ * Files under `calendarReviewTaskCategory`, its own "File them under"
+ * setting in the registry (`categorized: true`), the same as every other
+ * generator — see `checkCalendarReviewTasks` in `useTaskStore.ts`.
  *
  * There is exactly one task at a time, unlike the meal-plan nudge's stack of
  * seven — "review tomorrow" is one day's question, not a week's — so unlike

@@ -3975,8 +3975,9 @@ describe('supplies', () => {
       expect(order.deliverableKind).toBe('number');
     });
 
-    it('files the order under the same category as the task it is for', () => {
-      addSupplyTask({ supplyCount: 1, category: 'Bathroom' });
+    it('files the order under the generator\'s own category setting', () => {
+      useSettingsStore.getState.mockReturnValue(settings({ supplyReorderTaskCategory: 'Bathroom' }));
+      addSupplyTask({ supplyCount: 1 });
 
       useTaskStore.getState().checkSupplyReorderTasks();
 
@@ -3984,8 +3985,9 @@ describe('supplies', () => {
       expect(order.category).toBe('Bathroom');
     });
 
-    it('leaves the order uncategorized when the task it is for has no category', () => {
-      addSupplyTask({ supplyCount: 1, category: null });
+    it('leaves the order uncategorized when the setting is "None"', () => {
+      useSettingsStore.getState.mockReturnValue(settings({ supplyReorderTaskCategory: null }));
+      addSupplyTask({ supplyCount: 1 });
 
       useTaskStore.getState().checkSupplyReorderTasks();
 
@@ -4796,7 +4798,7 @@ describe('checkCalendarReviewTasks', () => {
     dayResetTime: '00:00',
     calendarReviewTasks: true,
     calendarReadEnabled: true,
-    calendarEventCategory: 'Calendar Events',
+    calendarReviewTaskCategory: 'Calendar Events',
     calendarReviewLastDayKey: null as string | null,
     setCalendarReviewLastDayKey: jest.fn(),
     newTaskDefaults: { category: null, priority: null, effort: null, timeSegment: null, destination: 'today', openEditorAfterQuickAdd: false },
@@ -4896,13 +4898,14 @@ describe('checkCalendarReviewTasks', () => {
     expect(reviewTasks()).toHaveLength(0);
   });
 
-  it('is a no-op with nowhere to file the task', () => {
-    useSettingsStore.getState.mockReturnValue(settings({ calendarEventCategory: null }));
+  it('writes an uncategorized task when "None" is chosen, same as every other generator', () => {
+    useSettingsStore.getState.mockReturnValue(settings({ calendarReviewTaskCategory: null }));
     useCalendarStore.getState.mockReturnValue({ events: [tomorrowEvent()], loaded: true });
 
     useTaskStore.getState().checkCalendarReviewTasks();
 
-    expect(reviewTasks()).toHaveLength(0);
+    const [review] = reviewTasks();
+    expect(review.category).toBeNull();
   });
 
   // An empty array and a failed read look identical — only `loaded` tells them
