@@ -5436,7 +5436,19 @@ export const useTaskStore = create<TaskStore>((set, get) => ({
       })
       .forEach(task => deleteGeneratedTaskQuietly(task.id));
 
-    const conditions = classifyWeather(weather.snapshot.weatherCode, weather.snapshot.tempF);
+    // Unioned with today's day-level forecast code, not just the instant the
+    // snapshot was read at — a rule considered at the first read of the day
+    // (typically morning) would otherwise only ever see whatever the sky was
+    // doing right then, and rain due this afternoon would go unwarned about
+    // until it actually started, by which point the mark for today is often
+    // already spent. `todayWeatherCode` is Open-Meteo's own summary for the
+    // whole day, so this is a look-ahead rather than a second live reading.
+    const conditions = Array.from(new Set([
+      ...classifyWeather(weather.snapshot.weatherCode, weather.snapshot.tempF),
+      ...(weather.snapshot.todayWeatherCode != null
+        ? classifyWeather(weather.snapshot.todayWeatherCode, weather.snapshot.tempF)
+        : []),
+    ]));
     const dueDate = getCurrentDayStart();
     dueDate.setHours(12, 0, 0, 0);
 

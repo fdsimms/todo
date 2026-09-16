@@ -46,6 +46,15 @@ export interface WeatherSnapshot {
    */
   todayHighF: number | null;
   todayLowF: number | null;
+  /**
+   * Open-Meteo's own summary code for the whole of today (`daily.weather_code[0]`),
+   * distinct from `weatherCode` above which is only the instant the request was
+   * made. A rule matches on either — see `checkWeatherTasks` — so rain forecast
+   * for this afternoon can be warned about at this morning's first read, rather
+   * than only once it's actually falling. Null under the same conditions
+   * `todayHighF`/`todayLowF` are.
+   */
+  todayWeatherCode: number | null;
   tomorrow: { weatherCode: number; highF: number; lowF: number } | null;
 }
 
@@ -89,11 +98,20 @@ export async function fetchWeatherSnapshot(location: DeviceLocation): Promise<We
 
     const todayHighF = hasDailyDay(0) ? dailyHighs[0] : null;
     const todayLowF = hasDailyDay(0) ? dailyLows[0] : null;
+    const todayWeatherCode = hasDailyDay(0) ? dailyCodes[0] : null;
     const tomorrow = hasDailyDay(1)
       ? { weatherCode: dailyCodes[1], highF: dailyHighs[1], lowF: dailyLows[1] }
       : null;
 
-    return { weatherCode, tempF, fetchedAt: new Date().toISOString(), todayHighF, todayLowF, tomorrow };
+    return {
+      weatherCode,
+      tempF,
+      fetchedAt: new Date().toISOString(),
+      todayHighF,
+      todayLowF,
+      todayWeatherCode,
+      tomorrow,
+    };
   } catch {
     return null;
   } finally {

@@ -1,0 +1,4 @@
+{
+  "message": "Weather rules now also check the day's forecast, not just the moment the app last checked, so a \"bring an umbrella\" task can show up before it actually starts raining",
+  "date": "2026-09-16"
+}

@@ -454,6 +454,15 @@ one. Those three rules and the reasoning behind them are in
     whatever snapshot is already there — it never fetches — so a cold launch before the first fetch
     resolves finds nothing to do, exactly as `calendarReview` does before `useCalendarSync`'s first
     read lands.
+  - **A rule matches on today's day-level forecast code as well as the instant the snapshot was
+    read at, not that instant alone.** The refresh above happens once a day, usually at the first
+    open — so a rule that only ever saw the live `current.weather_code` at that moment would warn
+    about rain no earlier than the moment it started falling, and often not even then, since the
+    per-rule mark (`lastFiredDayKey`) is spent the first time the rule is considered that day.
+    `checkWeatherTasks` unions `classifyWeather` over both `weatherCode` (the instant) and
+    `todayWeatherCode` (Open-Meteo's own summary for the whole day, `daily.weather_code[0]`), so
+    "rain due this afternoon" already matches on a dry morning's first read. It stays a look-ahead
+    rather than a second live poll: nothing here fetches again later in the day.
   - **No key, and that's a deliberate choice of provider, not an oversight.** Open-Meteo's forecast
     API needs none, which is the same "no key, no traffic" shape Open Food Facts plays as the
     keyless member of the barcode chain in `productLookup.ts` — made here the *only* source rather

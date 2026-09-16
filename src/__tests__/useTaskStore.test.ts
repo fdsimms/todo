@@ -302,6 +302,9 @@ jest.mock('../utils/calendarSync', () => ({
 jest.mock('../store/useCalendarStore', () => ({
   useCalendarStore: { getState: jest.fn(() => ({ events: [], loaded: false })) },
 }));
+jest.mock('../store/useWeatherStore', () => ({
+  useWeatherStore: { getState: jest.fn(() => ({ snapshot: null, snapshotDayKey: null })) },
+}));
 
 jest.mock('react-native', () => ({
   Platform: { OS: 'ios' },
@@ -4978,6 +4981,119 @@ describe('checkCalendarReviewTasks', () => {
     useTaskStore.getState().checkCalendarReviewTasks();
 
     expect(reviewTasks()).toHaveLength(0);
+  });
+});
+
+// ─── checkWeatherTasks ──────────────────────────────────────────────────────
+
+describe('checkWeatherTasks', () => {
+  const { useSettingsStore } = jest.requireMock('../store/useSettingsStore') as {
+    useSettingsStore: { getState: jest.Mock };
+  };
+  const { useWeatherStore } = jest.requireMock('../store/useWeatherStore') as {
+    useWeatherStore: { getState: jest.Mock };
+  };
+
+  const TODAY_KEY = dayKeyOf(getCurrentDayStart());
+
+  const rainyRule = { id: 'rule-rain', condition: 'rainy' as const, title: 'Bring an umbrella', enabled: true, lastFiredDayKey: null as string | null };
+
+  const settings = (overrides: Record<string, unknown> = {}) => ({
+    dayResetTime: '00:00',
+    weatherTasks: true,
+    weatherTaskCategory: 'Weather',
+    weatherRules: [rainyRule],
+    setWeatherRules: jest.fn(),
+    newTaskDefaults: { category: null, priority: null, effort: null, timeSegment: null, destination: 'today', openEditorAfterQuickAdd: false },
+    titleRules: [],
+    collapsedCategories: [],
+    ...overrides,
+  });
+
+  const snapshot = (overrides: Record<string, unknown> = {}) => ({
+    weatherCode: 0, // clear at the moment of the read
+    tempF: 60,
+    fetchedAt: new Date().toISOString(),
+    todayHighF: 65,
+    todayLowF: 50,
+    todayWeatherCode: null,
+    tomorrow: null,
+    ...overrides,
+  });
+
+  const weatherTasks = () =>
+    useTaskStore.getState().tasks.filter(t => t.generatedKind === 'weather' && !t.completed && !t.archived);
+
+  beforeEach(() => {
+    useSettingsStore.getState.mockReturnValue(settings());
+    useWeatherStore.getState.mockReturnValue({ snapshot: snapshot(), snapshotDayKey: TODAY_KEY });
+    useTaskStore.setState({ tasks: [] });
+  });
+
+  afterEach(() => {
+    useWeatherStore.getState.mockReturnValue({ snapshot: null, snapshotDayKey: null });
+  });
+
+  it('writes a task when the current reading matches the rule', () => {
+    useWeatherStore.getState.mockReturnValue({ snapshot: snapshot({ weatherCode: 61 }), snapshotDayKey: TODAY_KEY });
+
+    useTaskStore.getState().checkWeatherTasks();
+
+    const [task] = weatherTasks();
+    expect(task.title).toBe('Bring an umbrella');
+    expect(task.category).toBe('Weather');
+  });
+
+  // The whole point of unioning against today's day-level forecast: a dry
+  // reading at the moment of the fetch (typically the first open of the day)
+  // must not be the only chance the rule gets to fire, or rain that starts
+  // later in the day goes unwarned about — see the note in checkWeatherTasks.
+  it('writes a task when only today\'s forecast code matches, not the instant reading', () => {
+    useWeatherStore.getState.mockReturnValue({
+      snapshot: snapshot({ weatherCode: 0, todayWeatherCode: 61 }),
+      snapshotDayKey: TODAY_KEY,
+    });
+
+    useTaskStore.getState().checkWeatherTasks();
+
+    expect(weatherTasks()).toHaveLength(1);
+  });
+
+  it('writes nothing when neither the instant nor the day forecast matches', () => {
+    useWeatherStore.getState.mockReturnValue({
+      snapshot: snapshot({ weatherCode: 0, todayWeatherCode: 0 }),
+      snapshotDayKey: TODAY_KEY,
+    });
+
+    useTaskStore.getState().checkWeatherTasks();
+
+    expect(weatherTasks()).toHaveLength(0);
+  });
+
+  it('is a no-op while the setting is off', () => {
+    useSettingsStore.getState.mockReturnValue(settings({ weatherTasks: false }));
+    useWeatherStore.getState.mockReturnValue({ snapshot: snapshot({ weatherCode: 61 }), snapshotDayKey: TODAY_KEY });
+
+    useTaskStore.getState().checkWeatherTasks();
+
+    expect(weatherTasks()).toHaveLength(0);
+  });
+
+  it('treats a snapshot from a previous logical day as unread', () => {
+    useWeatherStore.getState.mockReturnValue({ snapshot: snapshot({ weatherCode: 61 }), snapshotDayKey: '2000-01-01' });
+
+    useTaskStore.getState().checkWeatherTasks();
+
+    expect(weatherTasks()).toHaveLength(0);
+  });
+
+  it('does not pile up a second task on the next sweep', () => {
+    useWeatherStore.getState.mockReturnValue({ snapshot: snapshot({ weatherCode: 61 }), snapshotDayKey: TODAY_KEY });
+
+    useTaskStore.getState().checkWeatherTasks();
+    useTaskStore.getState().checkWeatherTasks();
+
+    expect(weatherTasks()).toHaveLength(1);
   });
 });
 
