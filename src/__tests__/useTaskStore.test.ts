@@ -457,6 +457,7 @@ const makeProject = (overrides: Partial<import('../types').Project> = {}): impor
   notes: '',
   deadline: null,
   category: null,
+  defaultTaskCategory: null,
   sortOrder: 1,
   archived: false,
   archivedAt: null,
@@ -1069,6 +1070,40 @@ describe('newTaskFromDraft: newTaskDefaults', () => {
       withDefaults({ category: 'Home', priority: null, effort: null, timeSegment: null, destination: 'today', openEditorAfterQuickAdd: false });
       const task = useTaskStore.getState().addTask({ title: 'Use up spinach', category: 'Leftovers' }, undefined, { skipCategoryDefault: true });
       expect(task.category).toBe('Leftovers');
+    });
+  });
+
+  // Project.defaultTaskCategory: a project's own default outranks Settings'
+  // global one, but only when nothing more specific already named a category.
+  describe("a project's own default task category", () => {
+    afterEach(() => { useProjectStore.setState({ projects: [] }); });
+
+    it('falls back to the project default ahead of the global one', () => {
+      withDefaults({ category: 'Home', priority: null, effort: null, timeSegment: null, destination: 'today', openEditorAfterQuickAdd: false });
+      useProjectStore.setState({ projects: [makeProject({ id: 'proj1', defaultTaskCategory: 'Renovation' })] });
+      const task = useTaskStore.getState().addTask({ title: 'Get quotes', projectId: 'proj1' });
+      expect(task.category).toBe('Renovation');
+    });
+
+    it('an explicit category still wins over the project default', () => {
+      useProjectStore.setState({ projects: [makeProject({ id: 'proj1', defaultTaskCategory: 'Renovation' })] });
+      const task = useTaskStore.getState().addTask({ title: 'Get quotes', projectId: 'proj1', category: 'Contractors' });
+      expect(task.category).toBe('Contractors');
+    });
+
+    it('falls through to the global default when the project has none set', () => {
+      withDefaults({ category: 'Home', priority: null, effort: null, timeSegment: null, destination: 'today', openEditorAfterQuickAdd: false });
+      useProjectStore.setState({ projects: [makeProject({ id: 'proj1', defaultTaskCategory: null })] });
+      const task = useTaskStore.getState().addTask({ title: 'Get quotes', projectId: 'proj1' });
+      expect(task.category).toBe('Home');
+    });
+
+    it('skipCategoryDefault bypasses the project default too', () => {
+      useProjectStore.setState({ projects: [makeProject({ id: 'proj1', defaultTaskCategory: 'Renovation' })] });
+      const task = useTaskStore.getState().addTask(
+        { title: 'Use up spinach', projectId: 'proj1', category: null }, undefined, { skipCategoryDefault: true },
+      );
+      expect(task.category).toBeNull();
     });
   });
 });

@@ -33,6 +33,7 @@ const makeProject = (overrides: Partial<Project> = {}): Project => ({
   notes: '',
   deadline: null,
   category: null,
+  defaultTaskCategory: null,
   sortOrder: 0,
   archived: false,
   archivedAt: null,

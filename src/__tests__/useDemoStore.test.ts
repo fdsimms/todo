@@ -3558,6 +3558,22 @@ describe('demo seed — groceries, recipes, meals and the fridge', () => {
     expect(nudge!.generatedSourceId).toBe(upcomingWeekend(getCurrentDayStart()).saturdayKey);
   });
 
+  it('seeds a project default task category and the task that picks it up', () => {
+    const { tasks } = useTaskStore.getState();
+    const { projects } = useProjectStore.getState();
+
+    // Invisible the same way weekendSource is until something reads it — here,
+    // the task added straight to the project below.
+    const kitchenRemodel = projects.find(p => p.defaultTaskCategory === 'Home');
+    expect(kitchenRemodel).toBeDefined();
+    expect(kitchenRemodel!.title).toBe('Kitchen remodel');
+
+    const quotes = tasks.find(t => t.title === 'Get quotes from contractors');
+    expect(quotes).toBeDefined();
+    expect(quotes!.projectId).toBe(kitchenRemodel!.id);
+    expect(quotes!.category).toBe('Home');
+  });
+
   it('seeds a weather task and the rules alongside it', () => {
     const { tasks } = useTaskStore.getState();
     const settings = useSettingsStore.getState();

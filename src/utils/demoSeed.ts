@@ -1119,6 +1119,12 @@ export function seedDemoData(): void {
   // kind of capability the demo has to make visible), and the row quoting it.
   const dayTrips = createProject('Day trips');
   updateProject(dayTrips.id, { category: 'Ideas', ongoing: true, weekendSource: true });
+  // Project.defaultTaskCategory, invisible the same way weekendSource is
+  // until something reads it — here, the next task added straight to the
+  // project below.
+  const kitchenRemodel = createProject('Kitchen remodel');
+  updateProject(kitchenRemodel.id, { defaultTaskCategory: 'Home' });
+  addTask({ title: 'Get quotes from contractors', projectId: kitchenRemodel.id });
   ['Drive out to the coast', 'Walk the ridge trail', 'That bakery two towns over'].forEach(title => {
     const t = addTask({ title });
     addExistingToProject(t.id, dayTrips.id);
