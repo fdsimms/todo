@@ -140,6 +140,7 @@ export function HealthRulesSheet({ visible, onClose }: Props) {
             })}
             label="Reading"
             surface="card"
+            columns={2}
           />
           <CountStepper
             value={rule.threshold}

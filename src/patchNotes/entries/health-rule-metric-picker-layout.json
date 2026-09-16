@@ -1,0 +1,4 @@
+{
+  "message": "Fixed the metric picker in Health rules truncating labels like \"Sodium\" and \"Protein\" down to a single letter.",
+  "date": "2026-09-16"
+}
