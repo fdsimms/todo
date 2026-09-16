@@ -451,16 +451,20 @@ export interface HealthRule {
 export interface EventTaskRule {
   id: string;
   /**
-   * The word or phrase looked for in an event's title, matched
-   * case-insensitively and on **whole words only**, the same test
-   * `peopleNamedInTitle` applies for the same reason: a substring match makes
-   * "gym" fire on "Gymnastics recital", and a rule that fires on the wrong
-   * events is one nobody can trust enough to leave on.
+   * The words or phrases looked for in an event's title — the rule fires if
+   * **any** of them appears, matched case-insensitively and on **whole words
+   * only**, the same test `peopleNamedInTitle` applies for the same reason: a
+   * substring match makes "gym" fire on "Gymnastics recital", and a rule that
+   * fires on the wrong events is one nobody can trust enough to leave on.
    *
-   * Floored at `EVENT_MATCH_MIN_LENGTH` (see `eventTasks.ts`) — a two-letter
-   * cue matches far too much to be a cue.
+   * Always at least one entry — a rule with none matches nothing and is
+   * dropped by `parseEventRules`, the same call an empty single `match` used
+   * to get. Each entry is floored at `EVENT_MATCH_MIN_LENGTH` and capped at
+   * `EVENT_RULE_MAX_MATCHES` entries (see `eventTasks.ts`) — a two-letter cue
+   * matches far too much to be a cue, and an unbounded list is a text field
+   * wearing a chip UI.
    */
-  match: string;
+  matches: string[];
   /** The task's title, e.g. "Pack a bag". */
   title: string;
   /**
