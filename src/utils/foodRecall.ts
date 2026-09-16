@@ -1,6 +1,9 @@
-import type { FoodLogEntry, FoodNutrition, MealSlot } from '../types';
+import type { FoodLogEntry, FoodNutrition, GroceryItem, ItemProduct, MealSlot } from '../types';
 import { groceryNameKey } from './groceryParse';
 import { matchWeight } from './grocerySuggest';
+import { nutritionFor } from './foodNutrition';
+import { describeProduct } from './groceryProduct';
+import { packageChoices, type PackageChoice } from './scanPortion';
 
 /**
  * Something already eaten, found again from the words describing it.
@@ -62,6 +65,20 @@ export const RECALL_LIMIT = 3;
  */
 const MIN_CONTAINED_LABEL = 4;
 
+/**
+ * What a containment hit is divided by, chosen so every one of them lands
+ * below `matchWeight`'s weakest direct rung (0.5, its out-of-order words).
+ *
+ * A direct hit means the characters the user actually typed appear in the
+ * name, which `matchWeight`'s own reasoning calls the stronger signal, so
+ * containment may order its own hits among themselves and must never outrank
+ * one. Halving was the first attempt and got this wrong: typing "good culture
+ * yogurt" put a bare "Yogurt" above "Yogurt, Good Culture low fat", because
+ * the short generic name sat inside the query at word-start (1.0) while the
+ * specific one matched only out of order (0.5).
+ */
+const CONTAINED_SCALE = 10;
+
 /** One food already eaten, with the most recent logging of it kept whole. */
 export interface RecalledFood {
   /** The normalized label the group shares, and its identity for a React key. */
@@ -96,18 +113,20 @@ export interface RecalledFood {
  * is longer than the "Chicken burrito bowl" it names, and nothing in the
  * forward direction can see that.
  *
- * The containment direction is deliberately worth half. It is the weaker
- * evidence of the two — the words matched are ones the user happened to
- * include rather than ones they set out to type — so it ranks under every
- * direct hit while still beating no hit at all, and it is gated on the label
- * being long enough to mean something on its own.
+ * The containment direction is deliberately scaled under the whole forward
+ * ladder rather than merely reduced. It is the weaker evidence of the two, the
+ * words matched being ones the user happened to include rather than ones they
+ * set out to type, so every containment hit ranks below every direct one while
+ * still beating no hit at all. See `CONTAINED_SCALE` for what getting that
+ * wrong looked like. It is also gated on the label being long enough to mean
+ * something on its own.
  */
 export function recallWeight(labelKey: string, queryKey: string): number {
   if (!labelKey || !queryKey) return 0;
   const direct = matchWeight(labelKey, queryKey);
   if (direct > 0) return direct;
   if (labelKey.length < MIN_CONTAINED_LABEL) return 0;
-  return matchWeight(queryKey, labelKey) / 2;
+  return matchWeight(queryKey, labelKey) / CONTAINED_SCALE;
 }
 
 /**
@@ -178,6 +197,129 @@ export function recallFoods(
     })
     .slice(0, limit)
     .map(scored => scored.food);
+}
+
+/** Anything that can be looked for by the words naming it. */
+export interface RecallCandidate {
+  /** Its identity, and the key `foodLogRecency` credits it under. */
+  key: string;
+  /** Its name, already through `groceryNameKey`. */
+  nameKey: string;
+}
+
+/**
+ * The candidates the description names, best match first.
+ *
+ * **Ties keep the order they arrived in**, which is how this composes with
+ * `rankByRecency`: a caller hands its candidates over already arranged by what
+ * has actually been eaten, and everything the weight cannot separate stays in
+ * that arrangement. Re-ranking here instead would throw away the only signal
+ * that distinguishes two packets of equal name.
+ */
+export function rankRecallCandidates<T extends RecallCandidate>(
+  candidates: readonly T[],
+  description: string,
+  limit = RECALL_LIMIT,
+): T[] {
+  const queryKey = groceryNameKey(description);
+  if (queryKey.length < RECALL_MIN_QUERY) return [];
+  return candidates
+    .map(candidate => ({ candidate, weight: recallWeight(candidate.nameKey, queryKey) }))
+    .filter(scored => scored.weight > 0)
+    .sort((a, b) => b.weight - a.weight)
+    .slice(0, limit)
+    .map(scored => scored.candidate);
+}
+
+/**
+ * A food in the catalog with figures already on it, and the one helping it can
+ * be logged as.
+ *
+ * The helping is settled here rather than asked for later. `ItemProduct` holds
+ * no pack size, so `packageChoices` can only ever offer the serving its panel
+ * states — the whole-package option needs a size to divide, and there is none
+ * to give it. A row is therefore one tap like a recalled entry, and a panel
+ * with no serving to speak of (per-100g with no serving weight) yields no
+ * choice at all and is left off the list rather than logged as some invented
+ * amount.
+ */
+export interface RecalledCatalogFood extends RecallCandidate {
+  /** What the row shows: the item, and which packet of it when that is known. */
+  label: string;
+  /** The panel as filed, whose `source` the helping carries through. */
+  nutrition: FoodNutrition;
+  choice: PackageChoice;
+  itemId: string;
+  productId: string | null;
+}
+
+/**
+ * Everything in the catalog that could be logged from its own figures.
+ *
+ * **A packet and the item it belongs to are both offered**, the call
+ * `creditedKeys` already makes: eating one of an item's boxes is eating the
+ * item, and floating the specific pot while leaving the generic food out would
+ * be the same complaint one level in. They carry the keys that function
+ * credits, so a caller can put `rankByRecency` in front of this directly.
+ */
+/** Only what naming and measuring a row needs, the `Pick` style `nutritionFor` keeps. */
+export type RecallableItem = Pick<GroceryItem, 'id' | 'name' | 'nutrition'>;
+export type RecallableProduct = Pick<ItemProduct, 'id' | 'itemId' | 'brand' | 'variant' | 'nutrition'>;
+
+export function catalogRecallFoods(
+  items: readonly RecallableItem[],
+  products: readonly RecallableProduct[] = [],
+): RecalledCatalogFood[] {
+  const out: RecalledCatalogFood[] = [];
+  const itemsById = new Map(items.map(item => [item.id, item]));
+
+  for (const product of products) {
+    const item = itemsById.get(product.itemId);
+    if (!item) continue;
+    const nutrition = nutritionFor(item, product);
+    if (!nutrition) continue;
+    const choice = packageChoices(nutrition, null)[0];
+    if (!choice) continue;
+    const described = describeProduct(product);
+    const label = described ? `${item.name}, ${described}` : item.name;
+    out.push({
+      key: `p:${product.id}`,
+      nameKey: groceryNameKey(label),
+      label,
+      nutrition,
+      choice,
+      itemId: item.id,
+      productId: product.id,
+    });
+  }
+
+  for (const item of items) {
+    const nutrition = nutritionFor(item, null);
+    if (!nutrition) continue;
+    const choice = packageChoices(nutrition, null)[0];
+    if (!choice) continue;
+    out.push({
+      key: `i:${item.id}`,
+      nameKey: groceryNameKey(item.name),
+      label: item.name,
+      nutrition,
+      choice,
+      itemId: item.id,
+      productId: null,
+    });
+  }
+
+  return out;
+}
+
+/**
+ * The catalog row's second line: where it came from and how much of it.
+ *
+ * Says the helping rather than any figure, the rule `describeRecall` keeps
+ * directly below and `describeEstimate` keeps for the same reason.
+ */
+export function describeCatalogRecall(food: RecalledCatalogFood): string {
+  return `In your kitchen, ${food.choice.label}`;
 }
 
 /**

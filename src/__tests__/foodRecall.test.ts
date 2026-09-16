@@ -1,11 +1,45 @@
 import {
   RECALL_MIN_QUERY,
+  catalogRecallFoods,
+  describeCatalogRecall,
   describeRecall,
+  rankRecallCandidates,
   recallFoods,
   recallWeight,
+  type RecallableItem,
+  type RecallableProduct,
   type RecalledFood,
 } from '../utils/foodRecall';
-import type { FoodLogEntry } from '../types';
+import type { FoodLogEntry, FoodNutrition } from '../types';
+
+function panel(overrides: Partial<FoodNutrition> = {}): FoodNutrition {
+  return {
+    basis: 'perServing',
+    servingGrams: 170,
+    servingText: '1 pot (170g)',
+    amounts: { calorieKcal: 120, proteinG: 15 },
+    portions: [],
+    source: 'openFoodFacts',
+    sourceId: '0894700010045',
+    recordedAt: '2026-04-01T00:00:00.000Z',
+    ...overrides,
+  };
+}
+
+function catalogItem(overrides: Partial<RecallableItem> = {}): RecallableItem {
+  return { id: 'i1', name: 'Yogurt', nutrition: panel(), ...overrides };
+}
+
+function catalogProduct(overrides: Partial<RecallableProduct> = {}): RecallableProduct {
+  return {
+    id: 'p1',
+    itemId: 'i1',
+    brand: 'Good Culture',
+    variant: 'low fat',
+    nutrition: panel(),
+    ...overrides,
+  };
+}
 
 let seq = 0;
 function entry(overrides: Partial<FoodLogEntry> = {}): FoodLogEntry {
@@ -49,16 +83,30 @@ describe('recallWeight', () => {
     expect(recallWeight('greek yogurt', 'yogurt')).toBe(2);
   });
 
-  it('finds a label sitting inside a longer description, at half weight', () => {
+  it('finds a label sitting inside a longer description', () => {
     // The direction a meal description actually runs: more words than the
     // stored label, not fewer.
-    expect(recallWeight('chicken burrito bowl', 'chicken burrito bowl with extra guac')).toBe(1.5);
+    expect(recallWeight('chicken burrito bowl', 'chicken burrito bowl with extra guac'))
+      .toBeGreaterThan(0);
   });
 
-  it('ranks a direct hit above a containment one', () => {
-    const direct = recallWeight('chicken burrito bowl', 'chicken burrito');
-    const contained = recallWeight('chicken burrito bowl', 'chicken burrito bowl with extra guac');
-    expect(direct).toBeGreaterThan(contained);
+  it('ranks every containment hit below every direct one', () => {
+    // Typed characters appearing in the name is the stronger signal, so the
+    // weakest direct rung still has to beat the strongest containment.
+    const weakestDirect = recallWeight('peanut butter', 'butter peanut');
+    const strongestContained = recallWeight('chicken burrito bowl', 'chicken burrito bowl with guac');
+    expect(weakestDirect).toBe(0.5);
+    expect(strongestContained).toBeLessThan(weakestDirect);
+    expect(strongestContained).toBeGreaterThan(0);
+  });
+
+  it('keeps a specific name above a generic one that merely sits in the query', () => {
+    // Halving the containment weight got this backwards: "Yogurt" is inside
+    // "good culture yogurt" at word-start, where the branded row matches only
+    // out of order.
+    const specific = recallWeight('yogurt good culture low fat', 'good culture yogurt');
+    const generic = recallWeight('yogurt', 'good culture yogurt');
+    expect(specific).toBeGreaterThan(generic);
   });
 
   it('refuses to look for a very short label inside a description', () => {
@@ -169,6 +217,88 @@ describe('recallFoods', () => {
 
   it('finds nothing in an empty log', () => {
     expect(recallFoods([], 'anything at all')).toEqual([]);
+  });
+});
+
+describe('rankRecallCandidates', () => {
+  const candidates = [
+    { key: 'a', nameKey: 'oat milk' },
+    { key: 'b', nameKey: 'oatcakes' },
+    { key: 'c', nameKey: 'sourdough' },
+  ];
+
+  it('keeps only what the description names', () => {
+    expect(rankRecallCandidates(candidates, 'oat').map(c => c.key)).toEqual(['a', 'b']);
+  });
+
+  it('says nothing for a query under the floor', () => {
+    expect(rankRecallCandidates(candidates, 'oa')).toEqual([]);
+  });
+
+  it('leaves equally-matched candidates in the order they arrived', () => {
+    // How this composes with rankByRecency: the caller arranges by what has
+    // actually been eaten, and the weight only ever promotes above that.
+    const eatenFirst = [candidates[1], candidates[0]];
+    expect(rankRecallCandidates(eatenFirst, 'oat').map(c => c.key)).toEqual(['b', 'a']);
+  });
+
+  it('caps what it returns', () => {
+    expect(rankRecallCandidates(candidates, 'oat', 1).map(c => c.key)).toEqual(['a']);
+  });
+});
+
+describe('catalogRecallFoods', () => {
+  it('offers the packet and the item it belongs to, under the keys recency credits', () => {
+    const found = catalogRecallFoods([catalogItem()], [catalogProduct()]);
+    expect(found.map(f => f.key)).toEqual(['p:p1', 'i:i1']);
+    expect(found[0].label).toBe('Yogurt, Good Culture low fat');
+    expect(found[1].label).toBe('Yogurt');
+    expect(found[0].productId).toBe('p1');
+    expect(found[1].productId).toBeNull();
+    expect(found.every(f => f.itemId === 'i1')).toBe(true);
+  });
+
+  it('leaves out a row with no figures on it', () => {
+    expect(catalogRecallFoods([catalogItem({ nutrition: null })], [])).toEqual([]);
+  });
+
+  it('leaves out a panel with no serving to log, rather than inventing an amount', () => {
+    // Per-100g with no serving weight: packageChoices can offer nothing, and
+    // the honest answer is to let the person type the amount.
+    const noServing = panel({ basis: 'per100g', servingGrams: null, servingText: null });
+    expect(catalogRecallFoods([catalogItem({ nutrition: noServing })], [])).toEqual([]);
+  });
+
+  it('drops a packet whose item is gone', () => {
+    const found = catalogRecallFoods([], [catalogProduct()]);
+    expect(found).toEqual([]);
+  });
+
+  it('names a packet by its item alone when there is nothing to describe it by', () => {
+    const bare = catalogProduct({ brand: null, variant: null });
+    expect(catalogRecallFoods([catalogItem()], [bare])[0].label).toBe('Yogurt');
+  });
+
+  it('prefers the packet\'s own panel over the item\'s', () => {
+    const item = catalogItem({ nutrition: panel({ amounts: { calorieKcal: 999 } }) });
+    const product = catalogProduct({ nutrition: panel({ amounts: { calorieKcal: 120 } }) });
+    expect(catalogRecallFoods([item], [product])[0].nutrition.amounts.calorieKcal).toBe(120);
+  });
+
+  it('puts the branded packet above the bare item when the brand is named', () => {
+    const found = rankRecallCandidates(
+      catalogRecallFoods([catalogItem()], [catalogProduct()]),
+      'good culture yogurt',
+    );
+    expect(found.map(f => f.label)).toEqual(['Yogurt, Good Culture low fat', 'Yogurt']);
+  });
+});
+
+describe('describeCatalogRecall', () => {
+  it('says where it came from and how much, and states no figure', () => {
+    const food = catalogRecallFoods([catalogItem({ nutrition: panel({ servingText: '170g' }) })], [])[0];
+    expect(describeCatalogRecall(food)).toBe('In your kitchen, 1 serving (170g)');
+    expect(describeCatalogRecall(food)).not.toContain('120');
   });
 });
 
