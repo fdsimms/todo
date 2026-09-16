@@ -4,6 +4,7 @@ import {
   dbInsertRecipe,
   dbUpdateRecipe,
   dbDeleteRecipe,
+  dbBatchUpdateRecipeUpNextOrders,
 } from '../db/database';
 import type { Recipe, RecipeIngredient } from '../types';
 import { LEFTOVER_KEEP_DAYS_MAX, RECIPE_STEP_NOTE_MAX_LENGTH } from '../types';
@@ -18,6 +19,7 @@ jest.mock('../db/database', () => ({
   dbInsertRecipe: jest.fn(),
   dbUpdateRecipe: jest.fn(),
   dbDeleteRecipe: jest.fn(),
+  dbBatchUpdateRecipeUpNextOrders: jest.fn(),
 }));
 
 let seq = 0;
@@ -50,6 +52,8 @@ function makeRecipe(name: string, overrides: Partial<Recipe> = {}): Recipe {
     cookCount: 0,
     lastCookedAt: null,
     vote: null,
+    upNext: false,
+    upNextOrder: 0,
     estimatedMinutes: null,
     timerStartedAt: null,
     timerElapsedSeconds: 0,
@@ -1278,6 +1282,80 @@ describe('bulkSetVote', () => {
     useRecipeStore.getState().bulkSetVote([r.id], 'loved');
 
     expect(dbUpdateRecipe).not.toHaveBeenCalled();
+  });
+});
+
+describe('setUpNext', () => {
+  it('adds a recipe to the shelf, stamping upNextOrder one past the current max', () => {
+    const a = makeRecipe('Ragu', { upNext: true, upNextOrder: 3 });
+    const b = makeRecipe('Soup');
+    seed([a, b]);
+
+    useRecipeStore.getState().setUpNext(b.id, true);
+
+    const updated = useRecipeStore.getState().recipeById(b.id)!;
+    expect(updated.upNext).toBe(true);
+    expect(updated.upNextOrder).toBe(4);
+    expect(dbUpdateRecipe).toHaveBeenCalled();
+  });
+
+  it('removes a recipe from the shelf without touching its old order', () => {
+    const a = makeRecipe('Ragu', { upNext: true, upNextOrder: 2 });
+    seed([a]);
+
+    useRecipeStore.getState().setUpNext(a.id, false);
+
+    const updated = useRecipeStore.getState().recipeById(a.id)!;
+    expect(updated.upNext).toBe(false);
+    expect(updated.upNextOrder).toBe(2);
+  });
+
+  it('writes nothing when the recipe already matches', () => {
+    const a = makeRecipe('Ragu', { upNext: true, upNextOrder: 1 });
+    seed([a]);
+
+    useRecipeStore.getState().setUpNext(a.id, true);
+
+    expect(dbUpdateRecipe).not.toHaveBeenCalled();
+  });
+
+  it('shrugs at an unknown recipe id', () => {
+    seed([]);
+    expect(() => useRecipeStore.getState().setUpNext('gone', true)).not.toThrow();
+  });
+});
+
+describe('reorderUpNextRecipes', () => {
+  it('renumbers the given order from 1', () => {
+    const a = makeRecipe('Ragu', { upNext: true, upNextOrder: 1 });
+    const b = makeRecipe('Soup', { upNext: true, upNextOrder: 2 });
+    seed([a, b]);
+
+    useRecipeStore.getState().reorderUpNextRecipes([b.id, a.id]);
+
+    expect(useRecipeStore.getState().recipeById(b.id)!.upNextOrder).toBe(1);
+    expect(useRecipeStore.getState().recipeById(a.id)!.upNextOrder).toBe(2);
+    expect(dbBatchUpdateRecipeUpNextOrders).toHaveBeenCalledWith([
+      { id: b.id, upNextOrder: 1 },
+      { id: a.id, upNextOrder: 2 },
+    ]);
+  });
+
+  it('writes nothing for an empty order', () => {
+    seed([makeRecipe('Ragu', { upNext: true, upNextOrder: 1 })]);
+    useRecipeStore.getState().reorderUpNextRecipes([]);
+    expect(dbBatchUpdateRecipeUpNextOrders).not.toHaveBeenCalled();
+  });
+});
+
+describe('upNextRecipes', () => {
+  it('returns only shelved recipes, ordered by upNextOrder', () => {
+    const a = makeRecipe('Ragu', { upNext: true, upNextOrder: 2 });
+    const b = makeRecipe('Soup', { upNext: true, upNextOrder: 1 });
+    const c = makeRecipe('Stew');
+    seed([a, b, c]);
+
+    expect(useRecipeStore.getState().upNextRecipes().map(r => r.id)).toEqual([b.id, a.id]);
   });
 });
 

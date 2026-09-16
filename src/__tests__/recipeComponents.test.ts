@@ -90,6 +90,8 @@ function recipe(id: string, name: string, overrides: Partial<Recipe> = {}): Reci
     cookCount: 0,
     lastCookedAt: null,
     vote: null,
+    upNext: false,
+    upNextOrder: 0,
   };
 }
 

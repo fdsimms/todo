@@ -45,6 +45,7 @@ import {
 import { type DragScroller, type DropZone, type FabDropIntent } from '../utils/fabDrop';
 import { ListBulkBar } from '../components/ListBulkBar';
 import { ReorderableList } from '../components/ReorderableList';
+import { SortableList } from '../components/SortableList';
 import { SwipeableRow } from '../components/SwipeableRow';
 import { useSettingsStore } from '../store/useSettingsStore';
 import { PlanMealSheet } from '../components/PlanMealSheet';
@@ -115,6 +116,14 @@ import { groceryNameKey } from '../utils/groceryParse';
  * The add button can be dragged into a section too, same FabDropZoneProvider
  * wiring ProjectsScreen uses over its own category-sectioned list — see the
  * comment above the button's drag handlers, below.
+ *
+ * The box's one exception to "no manual order" is the Up Next shelf — a
+ * small, hand-ordered queue of recipes you want to try but haven't put on a
+ * day yet (Recipe.upNext/upNextOrder), independent of both `vote` and the
+ * meal plan. It renders above the box as the active list's own
+ * `ListHeaderComponent`, hidden during search and selection, and reorders
+ * with its own SortableList rather than folding into ReorderableList's own
+ * drag — see the doc comment on upNextBlock, below.
  */
 
 /** "tagged x, y" / "loved" / "tagged x, y and loved" — for the empty state. */
@@ -162,6 +171,13 @@ export function RecipesScreen() {
   const bulkSetVote = useRecipeStore(s => s.bulkSetVote);
   const bulkSetMealType = useRecipeStore(s => s.bulkSetMealType);
   const setMealType = useRecipeStore(s => s.setMealType);
+  const upNextRecipes = useRecipeStore(useShallow(s => s.upNextRecipes()));
+  const setUpNext = useRecipeStore(s => s.setUpNext);
+  const reorderUpNextRecipes = useRecipeStore(s => s.reorderUpNextRecipes);
+  // See onDragStateChange on SortableList: whichever main list is rendering
+  // below has to stand down while the shelf itself is being dragged, or the
+  // drag never starts at all.
+  const [upNextDragging, setUpNextDragging] = useState(false);
   const anthropicApiKey = useSettingsStore(s => s.anthropicApiKey);
   const recipeSort = useSettingsStore(s => s.recipeSortOption);
   const setRecipeSort = useSettingsStore(s => s.setRecipeSortOption);
@@ -553,6 +569,28 @@ export function RecipesScreen() {
     </TouchableOpacity>
   );
 
+  // Icon-only, same treatment as planButton beside it — a button rather than
+  // a long-press for the same reason: the row's long-press is already the
+  // drag-to-reorder handle, and it's off the swipe panel because that's
+  // select-only (#1378). Always shown, not just on shelf rows, since this is
+  // the one control that puts a recipe on the shelf in the first place.
+  const upNextButton = (recipe: Recipe) => (
+    <TouchableOpacity
+      style={styles.planButton}
+      onPress={() => { haptics.tap(); setUpNext(recipe.id, !recipe.upNext); }}
+      activeOpacity={interaction.activeOpacity}
+      hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
+      accessibilityRole="button"
+      accessibilityLabel={recipe.upNext ? `Remove ${recipe.name} from Up Next` : `Add ${recipe.name} to Up Next`}
+    >
+      <Ionicons
+        name={recipe.upNext ? 'bookmark' : 'bookmark-outline'}
+        size={iconSize.md}
+        color={recipe.upNext ? colors.accent : colors.textTertiary}
+      />
+    </TouchableOpacity>
+  );
+
   const renderRecipe = ({ item: recipe, drag, isActive }: { item: Recipe; drag?: () => void; isActive?: boolean }) => {
     const selected = selectedIds.has(recipe.id);
     const rowBody = (
@@ -592,6 +630,7 @@ export function RecipesScreen() {
         {recipe.vote === 'loved' && (
           <Ionicons name="thumbs-up" size={iconSize.sm} color={colors.orange} />
         )}
+        {!selectionMode && upNextButton(recipe)}
         {!selectionMode && planButton(recipe)}
         {!selectionMode && (
           <Ionicons name="chevron-forward" size={16} color={colors.textTertiary} />
@@ -618,6 +657,34 @@ export function RecipesScreen() {
       </View>
     );
   };
+
+  /**
+   * A small, hand-ordered queue of recipes you want to try but haven't put
+   * on a day yet — the bullpen `upNextButton` above adds to and `reorderUpNextRecipes`
+   * reorders. Rendered as the main list's own `ListHeaderComponent` rather than
+   * a section of the data it drags (same call the Pinned Tasks block on Today
+   * makes, and the same reason: it's its own number space, `upNextOrder`, so
+   * dragging a shelf row must never touch the recipe's ordinary place in the
+   * box below it). Hidden during search and selection — a search is already a
+   * specific question, and reordering isn't a thing you're doing mid-bulk-edit.
+   */
+  const upNextBlock = (selectionMode || query.trim() || upNextRecipes.length === 0) ? null : (
+    <View style={styles.upNextBlock}>
+      <View style={styles.upNextHeader}>
+        <Ionicons name="bookmark" size={13} color={colors.accent} />
+        <Text style={styles.upNextTitle}>Up Next</Text>
+        <Text style={styles.upNextCount}>{upNextRecipes.length}</Text>
+      </View>
+      <SortableList<Recipe>
+        data={upNextRecipes}
+        onReorder={next => reorderUpNextRecipes(next.map(r => r.id))}
+        onDragStateChange={setUpNextDragging}
+        placeholderStyle={styles.dropSlot}
+        renderItem={(recipe, _displayIndex, drag, isActive) =>
+          renderRecipe({ item: recipe, drag, isActive })}
+      />
+    </View>
+  );
 
   return (
     <View style={[styles.container, { paddingTop: insets.top }]}>
@@ -811,9 +878,12 @@ export function RecipesScreen() {
                 keyExtractor={recipeListItemKey}
                 // The user can't scroll during an add-button drag (the
                 // button's responder has the touch); the drag scrolls it
-                // instead, through scrollControl above.
-                scrollEnabled={!fabDragging}
+                // instead, through scrollControl above. Same reasoning for a
+                // shelf drag — see onDragStateChange on the SortableList in
+                // upNextBlock.
+                scrollEnabled={!fabDragging && !upNextDragging}
                 scrollControlRef={scrollControl}
+                ListHeaderComponent={upNextBlock}
                 renderItem={({ item, drag, isActive }) => {
                   // Every row doubles as a target for the add button being
                   // dragged in — see dropTargetsByKey above.
@@ -873,6 +943,8 @@ export function RecipesScreen() {
               keyExtractor={r => r.id}
               renderItem={renderRecipe}
               keyboardShouldPersistTaps="handled"
+              scrollEnabled={!upNextDragging}
+              ListHeaderComponent={upNextBlock}
               contentContainerStyle={styles.list}
               ListFooterComponent={
                 <View style={{ height: selectionMode ? selectionListPadding : tabBarHeight + FAB_SIZE + spacing.xl }} />
@@ -1100,6 +1172,31 @@ const makeStyles = (colors: Colors) => StyleSheet.create({
   },
   list: {
     paddingTop: spacing.sm,
+  },
+  // The Up Next shelf, sitting above the box as the list's own
+  // ListHeaderComponent — see the doc comment on upNextBlock.
+  upNextBlock: {
+    paddingBottom: spacing.sm,
+  },
+  upNextHeader: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: spacing.xsm,
+    paddingHorizontal: spacing.md,
+    paddingTop: spacing.sm,
+    paddingBottom: spacing.xs,
+  },
+  upNextTitle: {
+    color: colors.textSecondary,
+    fontSize: font.xs,
+    fontWeight: fontWeight.semibold,
+    textTransform: 'uppercase',
+    letterSpacing: 0.8,
+  },
+  upNextCount: {
+    color: colors.textTertiary,
+    fontSize: font.xs,
+    fontWeight: fontWeight.semibold,
   },
   // A bare glyph, not a tinted tile. The row already opens with an
   // accentSubtle tile carrying the recipe's own icon, and a second one at the
