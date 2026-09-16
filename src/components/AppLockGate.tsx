@@ -23,8 +23,23 @@ let warnedUnavailable = false;
  * is covering the app-switcher snapshot, and by then the user may well have
  * left with the task editor open — an absolutely-positioned sibling of the
  * navigator sits *under* a native modal, so a task's title and notes would have
- * stayed on screen behind the lock. A modal presented later stacks above one
- * already up.
+ * stayed on screen behind the lock.
+ *
+ * **A modal presented later does not stack above one already up, though, which
+ * is what this used to say.** Every screen-level sheet here presents from the
+ * root view controller (`enableScreens(false)` means no screen is one), and a
+ * view controller presents one thing at a time — so leaving the app with any
+ * sheet open meant this was refused outright: no shield over the snapshot, and
+ * a resume past the grace period that did not lock the app at all. Only a
+ * modal presented *by* the open one stacks, and this cannot be that: it has to
+ * cover whatever happens to be up, which is not something it can be a child of.
+ *
+ * So it `preempts` instead: the sheet that is up stands down, and this presents
+ * into the space (see `claimPresentation`). What that cannot buy back is the
+ * timing — standing down costs a commit or two, where the snapshot wants the
+ * same one — and the fix for that half is a window-level native overlay, which
+ * sits above every presented view controller and asks nobody. This is the half
+ * that is possible from JS, and it is the difference between late and never.
  *
  * Two states share it:
  * - **locked** — the app is sealed until the prompt is passed. Cold start
@@ -115,6 +130,10 @@ export function AppLockGate() {
   return (
     <SheetModal
       visible={locked || shielded}
+      name="App lock"
+      // Nothing else in the app claims this, and the doc above says why this
+      // has to.
+      preempts
       animationType="fade"
       statusBarTranslucent
       supportedOrientations={['portrait']}

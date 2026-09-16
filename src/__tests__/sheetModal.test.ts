@@ -1,10 +1,13 @@
 import {
   canHideSheet,
   canShowSheet,
+  claimPresentation,
   createPresentationLevel,
+  mustYieldSheet,
   nextSheetVisibility,
   registerPresentation,
   releasePresentation,
+  releasePresentationClaim,
   subscribePresentation,
 } from '../utils/sheetModal';
 
@@ -183,6 +186,91 @@ describe('canShowSheet', () => {
     expect(canShowSheet(level)).toBe(canHideSheet(level));
     registerPresentation(level, 'a', 'One');
     expect(canShowSheet(level)).toBe(canHideSheet(level));
+  });
+});
+
+describe('claiming a level', () => {
+  it('leaves an unclaimed level alone', () => {
+    const level = createPresentationLevel();
+    expect(mustYieldSheet(level, 'editor')).toBe(false);
+  });
+
+  it('turns every other sheet there out', () => {
+    // The app lock arriving over an open task editor. Without this the lock is
+    // simply refused by iOS: no shield over the app-switcher snapshot, and a
+    // resume past the grace period that doesn't lock the app at all.
+    const level = createPresentationLevel();
+    claimPresentation(level, 'lock');
+    expect(mustYieldSheet(level, 'editor')).toBe(true);
+  });
+
+  it('never turns out the sheet that claimed it', () => {
+    const level = createPresentationLevel();
+    claimPresentation(level, 'lock');
+    expect(mustYieldSheet(level, 'lock')).toBe(false);
+  });
+
+  it('stops anything else opening there while it holds', () => {
+    // An empty level is otherwise open season — the claim is the only thing
+    // saying "not this one" when nothing is presented yet.
+    const level = createPresentationLevel();
+    claimPresentation(level, 'lock');
+    expect(canShowSheet(level, 'editor')).toBe(false);
+    expect(canShowSheet(level, 'lock')).toBe(true);
+  });
+
+  it('still makes the claimant wait for the sheet standing down', () => {
+    // Yielding is not instant: the sheet that is up has to be told, and go.
+    // Presenting into a place still occupied is the refusal all over again.
+    const level = createPresentationLevel();
+    registerPresentation(level, 'editor', 'Task editor');
+    claimPresentation(level, 'lock');
+    expect(canShowSheet(level, 'lock')).toBe(false);
+    releasePresentation(level, 'editor');
+    expect(canShowSheet(level, 'lock')).toBe(true);
+  });
+
+  it('lets everything back in once the claim goes', () => {
+    const level = createPresentationLevel();
+    claimPresentation(level, 'lock');
+    releasePresentationClaim(level, 'lock');
+    expect(mustYieldSheet(level, 'editor')).toBe(false);
+    expect(canShowSheet(level, 'editor')).toBe(true);
+  });
+
+  it('wakes the sheets that have to yield, and again when they may return', () => {
+    // Both edges matter: the first is what tells a sheet to go, the second is
+    // what puts it back. A claim that only notified once would leave the app
+    // locked-looking with nothing on screen after the lock let go.
+    const level = createPresentationLevel();
+    const seen: boolean[] = [];
+    subscribePresentation(level, () => seen.push(mustYieldSheet(level, 'editor')));
+    claimPresentation(level, 'lock');
+    releasePresentationClaim(level, 'lock');
+    expect(seen).toEqual([true, false]);
+  });
+
+  it('stays quiet on a repeated claim or a release of one never made', () => {
+    const level = createPresentationLevel();
+    claimPresentation(level, 'lock');
+    let calls = 0;
+    subscribePresentation(level, () => { calls += 1; });
+    claimPresentation(level, 'lock');
+    releasePresentationClaim(level, 'nobody');
+    expect(calls).toBe(0);
+  });
+
+  it('is scoped to its own level, which is what carries it down a nest', () => {
+    // A sheet told to stand down claims its *own* level as it goes, so the
+    // sheets it is presenting leave first — dismissing a presenter takes the
+    // presented one down behind RN's back, which is the orphaned view
+    // controller nothing can dismiss.
+    const root = createPresentationLevel();
+    const inner = createPresentationLevel();
+    claimPresentation(root, 'lock');
+    expect(mustYieldSheet(inner, 'picker')).toBe(false);
+    claimPresentation(inner, 'editor');
+    expect(mustYieldSheet(inner, 'picker')).toBe(true);
   });
 });
 
