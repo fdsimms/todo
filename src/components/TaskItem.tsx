@@ -2728,6 +2728,7 @@ export const TaskItem = React.memo(function TaskItem({
         <TouchableOpacity
           onPress={() => {
             haptics.tap();
+            animateLayout();
             togglePin(task.id);
           }}
           hitSlop={8}
