@@ -71,6 +71,7 @@ import { RecipeSourceSheet } from '../components/RecipeSourceSheet';
 import { RecipeToListSheet } from '../components/RecipeToListSheet';
 import { useSettingsStore } from '../store/useSettingsStore';
 import { useAiRoute } from '../hooks/useOnDeviceAi';
+import { useSheetSubject } from '../hooks/useSheetSubject';
 import { OTHER_AISLE } from '../utils/groceryAisles';
 import { describeListEstimate, estimateListTotal, lastPriceFor, pricedSince, priceToInput } from '../utils/groceryPrice';
 import { buildGroceryListShareText, buildGroceryListText } from '../utils/shareText';
@@ -260,6 +261,28 @@ export function GroceryScreen() {
   const [finishOpen, setFinishOpen] = useState(false);
   const [listSheetOpen, setListSheetOpen] = useState(false);
   const [receiptOpen, setReceiptOpen] = useState(false);
+  /**
+   * Which of the two ways in raised the receipt sheet, and so where it has to
+   * render.
+   *
+   * Opened from the finish sheet it sits *over* one that stays visible, and a
+   * Modal beside another presented from the same view controller is refused by
+   * iOS with nothing shown — so that one has to be a child of the finish
+   * sheet's own Modal (its `overlays`). Opened from the list there is no
+   * finish sheet up to be a child of, and a hidden Modal's children are
+   * unmounted, so that one has to render at screen level.
+   *
+   * Held past the close (`useSheetSubject`) rather than cleared with
+   * `receiptOpen`: moving the sheet between the two slots is an unmount, and
+   * unmounting one while it is still on screen is the other half of this same
+   * bug. It stays where it was opened until the next opening moves it.
+   */
+  const [receiptHost, setReceiptHost] = useState<'list' | 'finish' | null>(null);
+  const shownReceiptHost = useSheetSubject(receiptHost);
+  const openReceipt = (host: 'list' | 'finish') => {
+    setReceiptHost(host);
+    setReceiptOpen(true);
+  };
   const [scanOpen, setScanOpen] = useState(false);
   // The scan sheet's per-row freezer toggle, held here rather than written
   // immediately: a scan only checks an item onto the list, and the item isn't
@@ -1326,6 +1349,17 @@ export function GroceryScreen() {
       />
     );
 
+  // One element, rendered in whichever slot `shownReceiptHost` names — never
+  // both, so there is only ever one of it in the tree.
+  const receiptSheet = (
+    <ReceiptImportSheet
+      visible={receiptOpen}
+      context="shopping"
+      onClose={() => setReceiptOpen(false)}
+      onApply={handleReceiptApply}
+    />
+  );
+
   // ==== render. Everything below is JSX ====
   return (
     <View style={[styles.container, { paddingTop: insets.top }]}>
@@ -1468,7 +1502,7 @@ export function GroceryScreen() {
                 <InlineAction
                   label="Scan a receipt"
                   icon="receipt-outline"
-                  onPress={() => setReceiptOpen(true)}
+                  onPress={() => openReceipt('list')}
                 />
               </View>
             )}
@@ -1570,13 +1604,14 @@ export function GroceryScreen() {
         // nor an on-device read, the action opens a sheet that can only
         // apologise.
         onScanReceipt={receiptRoute !== 'unavailable' && !featureHidden('receiptImport', simpleMode)
-          ? () => setReceiptOpen(true)
+          ? () => openReceipt('finish')
           : undefined}
         onClose={() => {
           setFinishOpen(false);
           setReceiptSeed(null);
         }}
         onFinished={handleFinished}
+        overlays={shownReceiptHost === 'finish' ? receiptSheet : null}
       />
       <BarcodeScanSheet
         visible={scanOpen}
@@ -1585,15 +1620,9 @@ export function GroceryScreen() {
         onApply={handleScanApply}
       />
 
-      {/* Rendered over the finish sheet rather than instead of it when that's
-          where it was opened from — the two are siblings, and the finish
-          sheet's own `visible` is left alone. */}
-      <ReceiptImportSheet
-        visible={receiptOpen}
-        context="shopping"
-        onClose={() => setReceiptOpen(false)}
-        onApply={handleReceiptApply}
-      />
+      {/* Only when it was opened from the list. Raised from the finish sheet
+          it renders inside that sheet instead — see `receiptHost`. */}
+      {shownReceiptHost === 'list' && receiptSheet}
       <ShoppingTripSheet
         visible={tripOpen}
         onClose={() => setTripOpen(false)}
