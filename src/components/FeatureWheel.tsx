@@ -37,32 +37,30 @@ import {
 /** Enough finger movement to mean a drag rather than the start of a tap. */
 const DRAG_SLOP = 6;
 /**
- * The bar's own height, which is what the zone covers — deliberately not a
- * point more. The add button sits at `insets.bottom + 64` on Today, so a zone
- * any taller starts eating taps meant for it.
+ * The bar's own height, used only to plant the handle just above it. The add
+ * button sits at `insets.bottom + 64` on Today, so anything taller here would
+ * start reaching for the same space.
  */
 const TAB_BAR_HEIGHT = 49;
+/** The handle's touch target — wider than the pill drawn inside it. */
+const HANDLE_WIDTH = 64;
+const HANDLE_HEIGHT = 28;
+/** The visible grabber: same shape language as a sheet's own drag handle. */
+const HANDLE_PILL_WIDTH = 36;
+const HANDLE_PILL_HEIGHT = 5;
 const CHIP_SIZE = 46;
 const CHIP_SIZE_ACTIVE = 58;
 const LABEL_WIDTH = 96;
 
 interface Props {
-  /** The bottom tabs, in bar order. The zone covers them and re-issues their taps. */
-  tabRoutes: string[];
   /** Same callback the drawer gets: switch to this tab. */
   onNavigate: (route: string) => void;
-  /**
-   * What a plain tap on More does. This owns the bar's touches outright (see
-   * the class doc), so opening the menu is this component's job to re-issue
-   * rather than the tab button's to handle.
-   */
-  onOpenMenu: () => void;
 }
 
 interface Anchor {
   x: number;
   y: number;
-  /** Which way the fan sweeps, decided by which half of the screen was pressed. */
+  /** Which way the fan sweeps, decided by which way the drag first moves. */
   openLeft: boolean;
 }
 
@@ -74,8 +72,9 @@ interface Level {
 }
 
 /**
- * The feature wheel: press the tab bar and drag, and a fan of the screens you
- * live in blooms out under your thumb. Flick towards one and let go.
+ * The feature wheel: press the small handle above the tab bar and drag, and a
+ * fan of the screens you live in blooms out under your thumb. Flick towards
+ * one and let go.
  *
  * The geometry, the hit-testing and the reasoning behind the shape are all in
  * `src/utils/featureWheel.ts`; this file is the drawing and the gesture. What
@@ -83,34 +82,40 @@ interface Level {
  * `wheelSlots` so simplified mode and `kitchenEnabled` take a slot away here
  * exactly as they take a row out of the menu.
  *
+ * **It used to live on the tab bar itself** — press any tab and drag, with a
+ * hold-before-drag delay added later so a fast tap that drifted a few pixels
+ * (the ordinary jitter of switching tabs quickly) didn't bloom the fan
+ * unasked. That hold was a patch over the real problem: a gesture control and
+ * a row of tap targets sharing one piece of touchable surface will always
+ * have to arbitrate between them somehow, and every arbitration rule is
+ * something to get wrong or feel arbitrary. Moving the gesture to its own
+ * small handle removes the conflict at the root rather than mediating it —
+ * nothing else lives here, so there's nothing to protect a tap on and nothing
+ * to hold-delay a drag against.
+ *
  * Four decisions worth not re-deriving:
  *
- * - **A tap on a tab still does what it always did, and that is the
- *   accessibility story.** A flick-and-release in a direction is not something
- *   VoiceOver or Switch Control can drive, and it asks for fine motor control
- *   a list of rows does not, so the wheel may never be the only way to
- *   anything. It isn't: a press that doesn't travel switches tab, or opens
- *   `SideMenuDrawer` with every destination in it, exactly as before.
+ * - **A plain tap on the handle does nothing, and that is deliberate — not an
+ *   oversight.** A flick-and-release in a direction is not something VoiceOver
+ *   or Switch Control can drive, and it asks for fine motor control a list of
+ *   rows does not, so the wheel may never be the only way to anything. It
+ *   isn't: every tab still switches on a tap exactly as it always did (the
+ *   handle no longer sits on top of them, so their own touch handling is
+ *   untouched by this component), and `SideMenuDrawer` still holds every
+ *   destination behind a plain tap on More. The handle is hidden from the
+ *   accessibility tree for the same reason: nothing under a screen reader's
+ *   double-tap would do anything useful with it.
  *
- *   The zone re-issues those taps itself rather than letting them through,
- *   because letting one through isn't a thing an overlay can do: the responder
- *   negotiation runs over the touch *path* — the hit view and its ancestors —
- *   and the tab buttons are siblings in another subtree, not ancestors of
- *   this. Declining `onStartShouldSetPanResponder` would therefore not hand
- *   the press down to a button, it would drop it, and the tab bar would stop
- *   working. So this claims the touch, and `onPanResponderRelease` re-issues
- *   the press for whichever tab the finger landed on when it never travelled
- *   far enough to bloom the fan. None of that reaches VoiceOver, which
- *   activates a button by its accessibility element rather than by a touch, so
- *   every tab's real label, tint, badge and cook-timer dot still work and are
- *   still what a screen reader drives.
- *
- * - **It blooms from whichever tab was pressed**, rather than only from More.
- *   The fan hugs the corner it starts in, and a right thumb reaches the right
- *   of the bar while a left thumb reaches the left, so binding it to one tab
- *   would make it a right-handed feature. `openLeft` is decided by which half
- *   of the screen the touch landed in, and `wheelGeometry` is handed the room
- *   that leaves, since a middle tab has only half a screen to sweep into.
+ * - **It blooms from a fixed, centered handle, and `openLeft` is decided by
+ *   which way the drag first moves** rather than by where the touch landed.
+ *   A tab-bar anchor could read handedness off which side of the bar was
+ *   pressed; a handle narrow enough to be one small target can't — every
+ *   touch on it lands in roughly the same place. Reading the first move's
+ *   direction instead is a more direct signal anyway: a thumb pulling left
+ *   gets the left-leaning fan, one pulling right gets the right-leaning one,
+ *   whichever hand is holding the phone. `wheelGeometry` still gets handed
+ *   half the screen as the room it has either way, the same accommodation a
+ *   middle tab needed before.
  *
  * - **A hub slot opens on a dwell, and releasing on it goes to its first
  *   screen.** Holding still on one for `interaction.delayLongPress` swaps the
@@ -132,7 +137,7 @@ interface Level {
  * `screenShown`, so a responder rebuilt on each render would be rebuilt
  * whenever any of them moves, including *during* a drag, which drops it.
  */
-export function FeatureWheel({ tabRoutes, onNavigate, onOpenMenu }: Props) {
+export function FeatureWheel({ onNavigate }: Props) {
   const colors = useColors();
   const insets = useSafeAreaInsets();
   const { shadows } = useTheme();
@@ -170,7 +175,7 @@ export function FeatureWheel({ tabRoutes, onNavigate, onOpenMenu }: Props) {
   // Everything the responder reads, so it can be built once and still see the
   // current values. See the class doc.
   const live = useRef({
-    rootSlots, width, reduceMotion, onNavigate, onOpenMenu, tabRoutes,
+    rootSlots, width, reduceMotion, onNavigate,
     openLeft: true,
     origin: { x: 0, y: 0 },
     offset: { dx: 0, dy: 0 },
@@ -186,8 +191,6 @@ export function FeatureWheel({ tabRoutes, onNavigate, onOpenMenu }: Props) {
   live.current.width = width;
   live.current.reduceMotion = reduceMotion;
   live.current.onNavigate = onNavigate;
-  live.current.onOpenMenu = onOpenMenu;
-  live.current.tabRoutes = tabRoutes;
 
   // A dwell timer outliving its gesture would drill into a fan nobody is
   // holding any more.
@@ -240,9 +243,8 @@ export function FeatureWheel({ tabRoutes, onNavigate, onOpenMenu }: Props) {
 
   const responder = useRef(
     PanResponder.create({
-      // Claimed on touch-down, which is what makes each tab's tap this
-      // component's to re-issue rather than the button's to receive. See the
-      // class doc.
+      // Claimed on touch-down. Nothing else lives on the handle, so there's
+      // no button underneath to protect the way there was on the tab bar.
       onStartShouldSetPanResponder: () => true,
 
       onPanResponderGrant: (e) => {
@@ -265,7 +267,10 @@ export function FeatureWheel({ tabRoutes, onNavigate, onOpenMenu }: Props) {
           if (Math.hypot(gs.dx, gs.dy) <= DRAG_SLOP) return;
           if (live.current.rootSlots.length === 0) return;
           const { x, y } = live.current.origin;
-          const openLeft = x > live.current.width / 2;
+          // Every touch lands in roughly the same place on a handle this
+          // small, so the side the finger's on can't say which way to open —
+          // the direction it first moves can. See the class doc.
+          const openLeft = gs.dx < 0;
           live.current.open = true;
           live.current.openLeft = openLeft;
           setAnchor({ x, y, openLeft });
@@ -320,21 +325,11 @@ export function FeatureWheel({ tabRoutes, onNavigate, onOpenMenu }: Props) {
         const wasOpen = live.current.open;
         const index = live.current.active;
         const slot = index === null ? undefined : live.current.slots[index];
-        const { x } = live.current.origin;
-        const tabs = live.current.tabRoutes;
         close();
 
-        if (!wasOpen) {
-          // Never travelled, so this was a tap on the tab underneath, and a tap
-          // on a tab does what it has always done. Same haptic the bar's own
-          // `tabPress` listener fires.
-          const tab = tabs[Math.min(tabs.length - 1, Math.max(0, Math.floor(x / (live.current.width / tabs.length))))];
-          if (!tab) return;
-          haptics.tap();
-          if (tab === 'More') live.current.onOpenMenu();
-          else live.current.onNavigate(tab);
-          return;
-        }
+        // Never travelled, so this was a plain tap on the handle — which does
+        // nothing. See the class doc.
+        if (!wasOpen) return;
 
         if (!slot) return;
         haptics.success();
@@ -349,9 +344,21 @@ export function FeatureWheel({ tabRoutes, onNavigate, onOpenMenu }: Props) {
   return (
     <>
       <View
-        style={[styles.zone, { height: TAB_BAR_HEIGHT + insets.bottom }]}
+        style={[styles.handle, { bottom: TAB_BAR_HEIGHT + insets.bottom }]}
+        // Hidden from accessibility — see the class doc's first bullet. The
+        // pill fades out while the fan is bloomed so it doesn't sit under the
+        // overlay looking like a second, static control.
+        accessibilityElementsHidden
+        importantForAccessibility="no-hide-descendants"
         {...responder.panHandlers}
-      />
+      >
+        <Animated.View
+          style={[
+            styles.handlePill,
+            { backgroundColor: colors.separator, opacity: bloom.interpolate({ inputRange: [0, 1], outputRange: [1, 0] }) },
+          ]}
+        />
+      </View>
       {anchor && level && (
         <WheelOverlay
           anchor={anchor}
@@ -533,7 +540,14 @@ function WheelOverlay({
   );
 }
 
-/** The highlight wedge for one slot: its own half-step either side, out past its chip. */
+/**
+ * The outer corner radius on the wedge's fillet — see `wheelWedgePath`. Big
+ * enough to round off visibly against the chip's own curve, small enough to
+ * stay a corner treatment rather than reshaping the wedge.
+ */
+const WEDGE_CORNER_RADIUS = 10;
+
+/** The highlight wedge for one slot: its own half-step either side, tucked under its chip. */
 function wheelWedge(
   anchor: Anchor,
   geo: ReturnType<typeof wheelGeometry>,
@@ -542,16 +556,27 @@ function wheelWedge(
 ): string {
   // A lone slot has no step to halve, so give it the sweep it actually owns.
   const half = (step === 0 ? 40 : Math.abs(step)) / 2;
-  return wheelWedgePath(anchor.x, anchor.y, geo.dead, geo.outer, angle - half, angle + half);
+  return wheelWedgePath(
+    anchor.x, anchor.y, geo.dead, geo.outer, angle - half, angle + half, WEDGE_CORNER_RADIUS,
+  );
 }
 
 function makeStyles(colors: Colors) {
   return StyleSheet.create({
-    zone: {
+    handle: {
       position: 'absolute',
-      left: 0,
-      right: 0,
-      bottom: 0,
+      left: '50%',
+      width: HANDLE_WIDTH,
+      height: HANDLE_HEIGHT,
+      marginLeft: -HANDLE_WIDTH / 2,
+      alignItems: 'center',
+      justifyContent: 'flex-end',
+      paddingBottom: spacing.xs,
+    },
+    handlePill: {
+      width: HANDLE_PILL_WIDTH,
+      height: HANDLE_PILL_HEIGHT,
+      borderRadius: radius.full,
     },
     chip: {
       position: 'absolute',

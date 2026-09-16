@@ -118,11 +118,16 @@ export function wheelGeometry(
   const byScreen = Math.round(screenWidth * 0.64);
   const byRoom = Math.round((availableWidth - CHIP_CLEARANCE) / Math.sin((SWEEP_FAR * Math.PI) / 180));
   const chip = Math.min(260, Math.max(190, Math.min(byScreen, byRoom)));
-  // The wedge overhangs its chip rather than stopping at it, since the sector
-  // stays live further out — but only just. At `chip + 38` a drilled level
-  // holding three slots draws a wedge wide and long enough to become the
-  // loudest thing on screen, competing with the chips it is pointing at.
-  return { dead: WHEEL_DEAD_ZONE, chip, label: chip + 56, outer: chip + 16 };
+  // The wedge used to overhang its chip (`chip + 16`) to say the sector stays
+  // live further out — but a sector's outer arc is wider than its chord, so
+  // at any radius past the chip the wedge's straight sides are already wider
+  // than the round chip sitting on top of them, and the overhang pushed that
+  // mismatch out where it couldn't hide: two sharp corners poking past the
+  // chip's circle like a blade's tip. Tucking the wedge a little short of the
+  // chip instead — paired with the corner fillet in `wheelWedgePath` — lets
+  // the chip's own circle cover the corners completely, so the wedge reads as
+  // a shape framing the chip rather than a blade behind it.
+  return { dead: WHEEL_DEAD_ZONE, chip, label: chip + 56, outer: chip - 10 };
 }
 
 /** Degrees between adjacent slots. Zero for a fan holding one slot or none. */
@@ -192,6 +197,14 @@ export function wheelSlotAt(
  * the honest picture of the hit area — the whole sector is live at any
  * distance past the dead zone, and a ring drawn only around the icon would say
  * the opposite.
+ *
+ * `cornerRadius` rounds the two *outer* corners only — the ones sitting just
+ * short of the chip (see `wheelGeometry`'s `outer`) — by pulling each back
+ * along its straight edge and forward along the arc's own tangent, then
+ * joining the gap with a quadratic curve through the original corner. The
+ * inner corners, down in the dead zone, are left sharp: they're small and far
+ * from anything round enough to clash with. Left at its default of `0`, this
+ * is the plain sharp-cornered sector the tests pin down.
  */
 export function wheelWedgePath(
   originX: number,
@@ -200,6 +213,7 @@ export function wheelWedgePath(
   outerRadius: number,
   angleFrom: number,
   angleTo: number,
+  cornerRadius: number = 0,
 ): string {
   const p = (r: number, a: number) => wheelPoint(originX, originY, r, a);
   const a = p(innerRadius, angleFrom);
@@ -208,10 +222,44 @@ export function wheelWedgePath(
   const d = p(innerRadius, angleTo);
   const large = Math.abs(angleTo - angleFrom) > 180 ? 1 : 0;
   const sweep = angleTo > angleFrom ? 1 : 0;
+
+  if (cornerRadius <= 0) {
+    return [
+      `M${a.x} ${a.y}`,
+      `L${b.x} ${b.y}`,
+      `A${outerRadius} ${outerRadius} 0 ${large} ${sweep} ${c.x} ${c.y}`,
+      `L${d.x} ${d.y}`,
+      `A${innerRadius} ${innerRadius} 0 ${large} ${sweep === 1 ? 0 : 1} ${a.x} ${a.y}`,
+      'Z',
+    ].join(' ');
+  }
+
+  const unit = (from: { x: number; y: number }, to: { x: number; y: number }) => {
+    const dx = to.x - from.x;
+    const dy = to.y - from.y;
+    const len = Math.hypot(dx, dy) || 1;
+    return { x: dx / len, y: dy / len };
+  };
+  // A point one degree along the arc from each outer corner, towards the
+  // other one — the arc's own tangent direction there, for a small angle.
+  const sign = angleTo > angleFrom ? 1 : -1;
+  const bTangent = p(outerRadius, angleFrom + sign);
+  const cTangent = p(outerRadius, angleTo - sign);
+  const dirAB = unit(a, b);
+  const dirBArc = unit(b, bTangent);
+  const dirCArc = unit(cTangent, c);
+  const dirCD = unit(c, d);
+  const b1 = { x: b.x - cornerRadius * dirAB.x, y: b.y - cornerRadius * dirAB.y };
+  const b2 = { x: b.x + cornerRadius * dirBArc.x, y: b.y + cornerRadius * dirBArc.y };
+  const c1 = { x: c.x - cornerRadius * dirCArc.x, y: c.y - cornerRadius * dirCArc.y };
+  const c2 = { x: c.x + cornerRadius * dirCD.x, y: c.y + cornerRadius * dirCD.y };
+
   return [
     `M${a.x} ${a.y}`,
-    `L${b.x} ${b.y}`,
-    `A${outerRadius} ${outerRadius} 0 ${large} ${sweep} ${c.x} ${c.y}`,
+    `L${b1.x} ${b1.y}`,
+    `Q${b.x} ${b.y} ${b2.x} ${b2.y}`,
+    `A${outerRadius} ${outerRadius} 0 ${large} ${sweep} ${c1.x} ${c1.y}`,
+    `Q${c.x} ${c.y} ${c2.x} ${c2.y}`,
     `L${d.x} ${d.y}`,
     `A${innerRadius} ${innerRadius} 0 ${large} ${sweep === 1 ? 0 : 1} ${a.x} ${a.y}`,
     'Z',
