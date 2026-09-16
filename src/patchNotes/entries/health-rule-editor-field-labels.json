@@ -1,4 +1,4 @@
 {
-  "message": "Reorganized the Health rule editor with a header over each field (Reading, Direction, Threshold, Checked from) and a line explaining what the checked-from hour does.",
+  "message": "Gave each field in the Health rule editor its own header, and added a line explaining what the checked-from hour is for.",
   "date": "2026-09-16"
 }

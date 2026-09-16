@@ -195,8 +195,8 @@ export function HealthRulesSheet({ visible, onClose }: Props) {
                 describeValue={n => formatCheckpointHour(n ?? HEALTH_METRIC_EARLIEST_HOUR[rule.metric])}
               />
               <Text style={styles.hint}>
-                The rule isn't judged before this hour each day, since a nutrient target is often
-                checked more than once, such as a lunchtime floor and a separate, later one.
+                This rule won't add its task before this hour, since a nutrient goal is often
+                checked more than once a day.
               </Text>
             </>
           )}
