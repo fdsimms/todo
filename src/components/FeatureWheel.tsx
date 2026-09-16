@@ -37,6 +37,17 @@ import {
 /** Enough finger movement to mean a drag rather than the start of a tap. */
 const DRAG_SLOP = 6;
 /**
+ * How long the tab bar has to be held before a drag is allowed to bloom the
+ * fan at all. Without this, a fast tap that drifted a few pixels — the
+ * ordinary jitter of switching tabs quickly, or a thumb crossing from one tab
+ * towards the next — read as the start of a drag and opened the wheel
+ * unasked. Requiring a hold first makes opening it a deliberate two-part
+ * gesture (hold, then drag) rather than something a quick tap can trigger by
+ * accident; same delay the hub dwell below already uses, so the two
+ * hold-based moments in this file feel the same.
+ */
+const ARM_DELAY = interaction.delayLongPress;
+/**
  * The bar's own height, which is what the zone covers — deliberately not a
  * point more. The add button sits at `insets.bottom + 64` on Today, so a zone
  * any taller starts eating taps meant for it.
@@ -180,6 +191,9 @@ export function FeatureWheel({ tabRoutes, onNavigate, onOpenMenu }: Props) {
     active: null as number | null,
     /** Whether the fan has bloomed yet. Until it has, the touch is still a tap. */
     open: false,
+    /** Whether the hold has lasted long enough for a drag to be allowed to open the fan. */
+    armed: false,
+    arm: null as ReturnType<typeof setTimeout> | null,
     dwell: null as ReturnType<typeof setTimeout> | null,
   });
   live.current.rootSlots = rootSlots;
@@ -191,12 +205,18 @@ export function FeatureWheel({ tabRoutes, onNavigate, onOpenMenu }: Props) {
 
   // A dwell timer outliving its gesture would drill into a fan nobody is
   // holding any more.
-  useEffect(() => () => clearDwell(), []);
+  useEffect(() => () => { clearDwell(); clearArm(); }, []);
 
   function clearDwell() {
     if (live.current.dwell === null) return;
     clearTimeout(live.current.dwell);
     live.current.dwell = null;
+  }
+
+  function clearArm() {
+    if (live.current.arm === null) return;
+    clearTimeout(live.current.arm);
+    live.current.arm = null;
   }
 
   function runBloom() {
@@ -228,7 +248,9 @@ export function FeatureWheel({ tabRoutes, onNavigate, onOpenMenu }: Props) {
 
   function close() {
     clearDwell();
+    clearArm();
     live.current.open = false;
+    live.current.armed = false;
     live.current.drilled = false;
     live.current.active = null;
     live.current.slots = live.current.rootSlots;
@@ -247,7 +269,9 @@ export function FeatureWheel({ tabRoutes, onNavigate, onOpenMenu }: Props) {
 
       onPanResponderGrant: (e) => {
         clearDwell();
+        clearArm();
         live.current.open = false;
+        live.current.armed = false;
         live.current.drilled = false;
         live.current.active = null;
         live.current.slots = live.current.rootSlots;
@@ -255,13 +279,22 @@ export function FeatureWheel({ tabRoutes, onNavigate, onOpenMenu }: Props) {
         // Where the finger landed. Every later offset is `dx`/`dy`, which
         // accumulate from this same moment, so the two always agree.
         live.current.origin = { x: e.nativeEvent.pageX, y: e.nativeEvent.pageY };
+        // A drag can't bloom the fan until the hold has lasted this long — see
+        // `ARM_DELAY`. A fast drag that never lingers here still ends as a
+        // plain tap on release, same as before.
+        live.current.arm = setTimeout(() => {
+          live.current.arm = null;
+          live.current.armed = true;
+        }, ARM_DELAY);
       },
 
       onPanResponderMove: (_e, gs) => {
         live.current.offset = { dx: gs.dx, dy: gs.dy };
 
         if (!live.current.open) {
-          // Still inside tap distance, and the fan would have nothing in it.
+          // Not held long enough yet for a drag to count, or still inside
+          // tap distance, or the fan would have nothing in it.
+          if (!live.current.armed) return;
           if (Math.hypot(gs.dx, gs.dy) <= DRAG_SLOP) return;
           if (live.current.rootSlots.length === 0) return;
           const { x, y } = live.current.origin;
