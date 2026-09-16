@@ -1,5 +1,5 @@
 import React, { useMemo, useState } from 'react';
-import { View, Text, TextInput, TouchableOpacity, StyleSheet } from 'react-native';
+import { ActivityIndicator, View, Text, TextInput, TouchableOpacity, StyleSheet } from 'react-native';
 import Ionicons from '@expo/vector-icons/Ionicons';
 import { useNavigation } from '@react-navigation/native';
 import { NUTRIENT_KEYS, type FoodNutrition, type NutrientKey } from '../types';
@@ -17,6 +17,10 @@ import {
   type NutritionLine,
   type RecipeNutritionReading,
 } from '../utils/recipeNutrition';
+import {
+  describeRecipeNutritionEstimate, type RecipeNutritionEstimate,
+} from '../utils/recipeNutritionEstimate';
+import { estimateRecipeNutrition, recipeNutritionEstimateAvailable } from '../services/aiSuggestions';
 import { EditorSheet } from './EditorSheet';
 import { GroceryItemSheet } from './GroceryItemSheet';
 import { InlineAction } from './InlineAction';
@@ -108,6 +112,10 @@ interface Props {
    * catalog write because the screen's memo watches the same store.
    */
   reading: RecipeNutritionReading;
+  /** For the AI estimate's prompt only — see `runEstimate` below. */
+  recipeName: string;
+  /** Scaled to whatever the page's scale chips currently say. */
+  servings: number | null;
   onClose: () => void;
 }
 
@@ -117,7 +125,7 @@ function formatAmount(key: NutrientKey, amount: number): string {
   return String(Math.round(amount * 10) / 10);
 }
 
-export function RecipeNutritionSheet({ visible, reading, onClose }: Props) {
+export function RecipeNutritionSheet({ visible, reading, recipeName, servings, onClose }: Props) {
   const colors = useColors();
   const styles = useMemo(() => makeStyles(colors), [colors]);
   const navigation = useNavigation();
@@ -154,7 +162,33 @@ export function RecipeNutritionSheet({ visible, reading, onClose }: Props) {
   // until the person fills something in.
   const [newItemId, setNewItemId] = useState<string | null>(null);
 
+  // The AI fallback's own state — never written to the recipe or the catalog,
+  // so it lives only here (see `recipeNutritionEstimate.ts`). Reset whenever
+  // the reading gains a real total, which is the one thing that should always
+  // outrank a guess.
+  const [estimate, setEstimate] = useState<RecipeNutritionEstimate | null>(null);
+  const [estimating, setEstimating] = useState(false);
+  const [estimateError, setEstimateError] = useState<string | null>(null);
+
   const { nutrition, gaps, excluded } = reading;
+
+  const runEstimate = async () => {
+    haptics.tap();
+    setEstimating(true);
+    setEstimateError(null);
+    try {
+      const lines = reading.lines.map(line =>
+        line.prep ? `${line.quantity} ${line.name}, ${line.prep}` : `${line.quantity} ${line.name}`);
+      const next = await estimateRecipeNutrition(recipeName, servings, lines);
+      setEstimate(next);
+      haptics.success();
+    } catch {
+      setEstimateError("Couldn't estimate this recipe. Try again in a moment.");
+      haptics.error();
+    } finally {
+      setEstimating(false);
+    }
+  };
 
   // Per serving where the recipe said how many it makes, and the whole dish
   // where it didn't — the same choice `describeNutrition` makes, so the sheet
@@ -346,6 +380,43 @@ export function RecipeNutritionSheet({ visible, reading, onClose }: Props) {
             Too few of these ingredients have figures to total the dish yet. Fill some in
             below and the panel appears here.
           </Text>
+          {recipeNutritionEstimateAvailable() && (
+            <View style={styles.estimateBlock}>
+              {estimate ? (
+                <>
+                  {NUTRIENT_KEYS.filter(key => estimate.amounts[key] !== undefined).map(key => (
+                    <View key={key} style={styles.nutrientRow}>
+                      <Text style={styles.nutrientLabel}>{NUTRIENT_LABEL[key].label}</Text>
+                      <Text style={styles.nutrientAmount}>
+                        {formatAmount(key, estimate.amounts[key] as number)} {NUTRIENT_LABEL[key].unit}
+                      </Text>
+                    </View>
+                  ))}
+                  <Text style={styles.hint}>{describeRecipeNutritionEstimate(estimate)}</Text>
+                  <View style={styles.gapActions}>
+                    <InlineAction
+                      label="Estimate again"
+                      variant="neutral"
+                      onPress={runEstimate}
+                      disabled={estimating}
+                    />
+                  </View>
+                </>
+              ) : (
+                <View style={styles.gapActions}>
+                  <InlineAction
+                    label="Estimate with AI"
+                    icon="sparkles"
+                    onPress={runEstimate}
+                    disabled={estimating}
+                    accessibilityLabel="Estimate this recipe's nutrition with AI"
+                  />
+                  {estimating && <ActivityIndicator color={colors.textSecondary} />}
+                </View>
+              )}
+              {!!estimateError && <Text style={styles.gapReason}>{estimateError}</Text>}
+            </View>
+          )}
         </View>
       )}
 
@@ -623,6 +694,7 @@ function makeStyles(colors: Colors) {
     nutrientLabel: { flex: 1, fontSize: font.md, color: colors.text },
     nutrientAmount: { fontSize: font.md, fontWeight: fontWeight.medium, color: colors.text },
     emptyTotal: { fontSize: font.sm, color: colors.textSecondary, lineHeight: 18 },
+    estimateBlock: { marginTop: spacing.md },
     countedRow: { paddingVertical: spacing.xs },
     countedHeader: {
       flexDirection: 'row',
