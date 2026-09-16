@@ -10,10 +10,11 @@ import {
   TouchableOpacity,
   View,
 } from 'react-native';
+import { subDays } from 'date-fns/subDays';
 import { SheetModal } from './SheetModal';
 import { useColors } from '../theme/ThemeContext';
 import { font, fontWeight, interaction, radius, spacing, type Colors } from '../theme';
-import { MEAL_SLOTS, MEAL_SLOT_LABELS, NUTRIENT_KEYS, type MealSlot } from '../types';
+import { MEAL_SLOTS, MEAL_SLOT_LABELS, NUTRIENT_KEYS, type FoodLogEntry, type MealSlot } from '../types';
 import { useFoodLogStore } from '../store/useFoodLogStore';
 import { useRecipeStore } from '../store/useRecipeStore';
 import { describeAIError, estimateMealNutrition } from '../services/aiSuggestions';
@@ -24,7 +25,15 @@ import {
   refineDescription,
   type NutritionEstimate,
 } from '../utils/nutritionEstimate';
+import {
+  RECALL_MIN_QUERY,
+  describeRecall,
+  recallFoods,
+  recallWeight,
+  type RecalledFood,
+} from '../utils/foodRecall';
 import { NUTRIENT_LABEL } from '../utils/foodNutrition';
+import { dayKeyOf, getCurrentDayStart } from '../utils/dateUtils';
 import { groceryNameKey } from '../utils/groceryParse';
 import { haptics } from '../utils/haptics';
 import { useKeyboardInsetScroll } from '../hooks/useKeyboardInsetScroll';
@@ -50,10 +59,18 @@ import { SheetHeader } from './SheetHeader';
  * `describeEstimate`, which is a pure function so the rule that it never
  * advises is checkable rather than merely intended.
  *
- * **It offers a recipe before it estimates one.** If the description matches
- * something in the recipe box, that is real data the user already owns and it
- * beats a guess. The offer is a row, not a substitution: they may have eaten
- * out and named the dish the same thing.
+ * **It offers what has already been eaten before it estimates anything.** If
+ * the description names something in the food log or the recipe box, that is
+ * real data the user already owns and it beats a guess. The offer is a row,
+ * not a substitution: they may have eaten out and named the dish the same
+ * thing.
+ *
+ * The food log half of that is the one with teeth, and `foodRecall.ts` sets out
+ * why: a panel logged from a barcode or a database carries a source, and
+ * describing the same food to the model records it again as an estimate, which
+ * is permanent and which `sourceMix` then counts as a guess for ever. Handing
+ * the stored panel straight back is the only path here that does not weaken
+ * what is already known.
  *
  * **Questions are asked, then skippable.** One or two, only where the answer
  * moves the figures a lot, and skipping simply leaves them out of the re-ask.
@@ -113,6 +130,7 @@ export function EstimateMealSheet({ visible, slot, at, mealPlanEntryId, initialD
   const keyboardScroll = useKeyboardInsetScroll<ScrollView>();
 
   const addEntry = useFoodLogStore(s => s.addEntry);
+  const recentEntries = useFoodLogStore(s => s.recentEntries);
   const recipes = useRecipeStore(s => s.recipes);
   const addRecipe = useRecipeStore(s => s.addRecipe);
   const addIngredientsFromText = useRecipeStore(s => s.addIngredientsFromText);
@@ -128,6 +146,16 @@ export function EstimateMealSheet({ visible, slot, at, mealPlanEntryId, initialD
   // whenever the estimate itself changes, since a re-estimate or a fresh
   // description is a different candidate recipe.
   const [savedRecipeId, setSavedRecipeId] = useState<string | null>(null);
+  /**
+   * What has been eaten lately, taken once when the sheet opens.
+   *
+   * A snapshot rather than a subscription, the call `FoodLogEntrySheet` makes
+   * for its own ranking: nothing happening underneath should reorder the offers
+   * under the finger picking one, and the only thing that could is a write that
+   * closes this sheet anyway. Ninety days for the reason given there, that a
+   * fortnight answers "what do you eat" badly for anything weekly.
+   */
+  const [history, setHistory] = useState<FoodLogEntry[]>([]);
 
   // `initialDescription` is deliberately not a dependency: it is read on the
   // opening edge only, so a caller whose value changes underneath (the food
@@ -143,15 +171,35 @@ export function EstimateMealSheet({ visible, slot, at, mealPlanEntryId, initialD
     setError(null);
     setChosenSlot(slot);
     setSavedRecipeId(null);
+    const today = getCurrentDayStart();
+    setHistory(recentEntries(dayKeyOf(subDays(today, 90)), dayKeyOf(today)));
   }, [visible, slot]);
 
-  // Real data the user already owns beats a guess, so a matching recipe is
-  // offered before the request is made rather than after it comes back.
+  // Real data the user already owns beats a guess, so both offers are made
+  // before the request rather than after it comes back.
+  const recalled = useMemo(() => recallFoods(history, description), [history, description]);
+
+  /**
+   * Recipes the description names, minus any already offered as something
+   * eaten.
+   *
+   * A recipe logged last week appears on both lists otherwise, saying the same
+   * name twice for two different actions. The recall wins that: it knows the
+   * helping actually eaten, where the recipe row still has to go and ask for
+   * one.
+   */
   const matches = useMemo(() => {
     const key = groceryNameKey(description);
-    if (key.length < 3) return [];
-    return recipes.filter(r => groceryNameKey(r.name).includes(key)).slice(0, 3);
-  }, [description, recipes]);
+    if (key.length < RECALL_MIN_QUERY) return [];
+    const offered = new Set(recalled.map(food => food.recipeId).filter(Boolean));
+    return recipes
+      .filter(r => !offered.has(r.id))
+      .map(recipe => ({ recipe, weight: recallWeight(groceryNameKey(recipe.name), key) }))
+      .filter(scored => scored.weight > 0)
+      .sort((a, b) => b.weight - a.weight || a.recipe.name.localeCompare(b.recipe.name))
+      .slice(0, 3)
+      .map(scored => scored.recipe);
+  }, [description, recipes, recalled]);
 
   const run = async (text: string) => {
     setLoading(true);
@@ -199,6 +247,41 @@ export function EstimateMealSheet({ visible, slot, at, mealPlanEntryId, initialD
       slot: chosenSlot,
       at,
       mealPlanEntryId: mealPlanEntryId ?? null,
+    });
+    if (!written) { haptics.error(); return; }
+    haptics.success();
+    Keyboard.dismiss();
+    onLogged?.();
+    onClose();
+  };
+
+  /**
+   * Logs a food already eaten, as it was eaten.
+   *
+   * The stored panel goes back verbatim, which is the whole point: its
+   * `source` is the claim it was recorded under and re-describing the same
+   * food to the model would replace that with `estimated`, permanently. Same
+   * reuse `duplicateEntry` performs, and `mealPlanEntryId` is dropped for the
+   * same reason it drops it — this is a fresh eating, not the planned meal
+   * again, unless the caller named one.
+   *
+   * The section this was opened from decides the meal; with no section, the
+   * meal it was last eaten in stands, rather than the food landing under no
+   * meal at all.
+   */
+  const handleRecall = (food: RecalledFood) => {
+    haptics.tap();
+    const written = addEntry({
+      label: food.label,
+      quantity: food.quantity,
+      grams: food.grams,
+      nutrition: food.nutrition,
+      slot: chosenSlot ?? food.slot,
+      recipeId: food.recipeId,
+      itemId: food.itemId,
+      productId: food.productId,
+      mealPlanEntryId: mealPlanEntryId ?? null,
+      at,
     });
     if (!written) { haptics.error(); return; }
     haptics.success();
@@ -279,6 +362,29 @@ export function EstimateMealSheet({ visible, slot, at, mealPlanEntryId, initialD
             Name the dish and the place if you know it. The figures come back as an
             estimate for you to check, and stay marked as one.
           </Text>
+
+          {recalled.length > 0 && !estimate && (
+            <View style={styles.card}>
+              <Text style={styles.cardTitle}>You've logged this before</Text>
+              <Text style={styles.hint}>
+                Logging it again keeps the figures it was recorded with, rather than
+                estimating it a second time.
+              </Text>
+              {recalled.map(food => (
+                <TouchableOpacity
+                  key={food.key}
+                  style={styles.recallRow}
+                  activeOpacity={interaction.activeOpacity}
+                  onPress={() => handleRecall(food)}
+                  accessibilityRole="button"
+                  accessibilityLabel={`Log ${food.label} again. ${describeRecall(food)}`}
+                >
+                  <Text style={styles.recallName}>{food.label}</Text>
+                  <Text style={styles.recallMeta}>{describeRecall(food)}</Text>
+                </TouchableOpacity>
+              ))}
+            </View>
+          )}
 
           {matches.length > 0 && !estimate && (
             <View style={styles.card}>
@@ -509,6 +615,17 @@ function makeStyles(colors: Colors) {
       paddingVertical: spacing.sm,
     },
     recipeName: { color: colors.accent, fontSize: font.sm },
+    // A shape rather than bare accent text: tapping one of these logs it
+    // outright, and accent text in this app is a link or a current value.
+    recallRow: {
+      backgroundColor: colors.bgTertiary,
+      borderRadius: radius.md,
+      paddingHorizontal: spacing.md,
+      paddingVertical: spacing.sm,
+      gap: spacing.xxs,
+    },
+    recallName: { color: colors.text, fontSize: font.sm, fontWeight: fontWeight.medium },
+    recallMeta: { color: colors.textSecondary, fontSize: font.xs },
     error: { color: colors.red, fontSize: font.sm, lineHeight: 18 },
   });
 }
