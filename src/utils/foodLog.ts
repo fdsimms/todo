@@ -179,9 +179,13 @@ export function amountHint(panel: FoodNutrition): string {
   if (panel.basis === 'perServing' && panel.servingGrams === null) {
     return 'A number of servings, like 1 serving. This food states no weight per serving to measure anything else against.';
   }
+  const servings = panel.basis !== 'perServing' && panel.servingGrams !== null;
   const examples = portionExamples(panel);
-  return examples.length > 0
-    ? `A weight (like 100g), or one of this food's stated portions: ${examples.join(', ')}.`
+  if (examples.length > 0) {
+    return `A weight (like 100g), or one of this food's stated portions: ${examples.join(', ')}${servings ? ', or a number of servings' : ''}.`;
+  }
+  return servings
+    ? 'A weight, like 100g, or a number of servings.'
     : 'A weight, like 100g. This food has no stated portions.';
 }
 

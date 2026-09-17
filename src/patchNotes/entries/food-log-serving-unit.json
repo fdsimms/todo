@@ -1,0 +1,4 @@
+{
+  "message": "Logging a food now offers \"serving\" as an amount whenever the product states a serving weight, even for foods whose nutrition panel is written per 100g rather than per serving",
+  "date": "2026-09-17"
+}

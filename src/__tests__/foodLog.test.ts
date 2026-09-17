@@ -670,6 +670,15 @@ describe('amountHint / amountExample', () => {
     expect(amountHint(panel({ basis: 'perServing', servingGrams: 30, portions: [] })))
       .toBe('A weight, like 100g. This food has no stated portions.');
   });
+
+  it('mentions servings too, once a per-100g panel states a serving weight', () => {
+    expect(amountHint(panel({ servingGrams: 25 }))).toBe(
+      'A weight (like 100g), or one of this food\'s stated portions: 1 cup, or a number of servings.',
+    );
+    expect(amountHint(panel({ servingGrams: 25, portions: [] }))).toBe(
+      'A weight, like 100g, or a number of servings.',
+    );
+  });
 });
 
 const _keyCheck: NutrientKey = 'calorieKcal';
