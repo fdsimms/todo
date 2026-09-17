@@ -383,6 +383,7 @@ name cannot say is where a component appears, and that is `docs/screen-map.md`.
 - `src/hooks/useFocusSession.ts` — useFocusSession
 - `src/hooks/useKeyboardInsetScroll.ts` — ScrollHandle, useKeyboardInsetScroll
 - `src/hooks/useMealPlanNudgeProgress.ts` — useMealPlanNudgeProgress
+- `src/hooks/useMeasuredTextWidth.ts` — useMeasuredTextWidth
 - `src/hooks/useNowTick.ts` — useNowTick
 - `src/hooks/useOnDeviceAi.ts` — useOnDeviceAvailability, useAiRoute
 - `src/hooks/usePendingEdits.ts` — PendingEdits, usePendingEdits, useRegisterPendingEdit

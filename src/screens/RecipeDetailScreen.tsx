@@ -25,6 +25,7 @@ import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { useNavigation, useRoute, type RouteProp } from '@react-navigation/native';
 import { useKeyboardInsetScroll } from '../hooks/useKeyboardInsetScroll';
 import { useCopyToClipboard } from '../hooks/useCopyToClipboard';
+import { useMeasuredTextWidth } from '../hooks/useMeasuredTextWidth';
 import Ionicons from '@expo/vector-icons/Ionicons';
 import { useShallow } from 'zustand/react/shallow';
 import type { RecipeIngredient, RecipePrepTask, RecipeStep } from '../types';
@@ -359,6 +360,7 @@ export function RecipeDetailScreen() {
   // (recipe.cookedWeightG), never the scaled weightLine text below.
   const [cookedWeightOpen, setCookedWeightOpen] = useState(false);
   const [cookedWeightDraft, setCookedWeightDraft] = useState('');
+  const cookedWeightWidth = useMeasuredTextWidth();
   // The banner a multi-line paste leaves behind, or null once dismissed or
   // acted on. Session-only and deliberately not persisted: it reports on one
   // paste that just happened, and a banner still sitting there tomorrow would
@@ -1698,8 +1700,17 @@ export function RecipeDetailScreen() {
         )}
         {cookedWeightOpen && (
           <View style={styles.weightEditRow}>
+            {/* Invisible twin of the input below, measured so the input can be
+                sized to hug what's typed rather than stretching the row and
+                stranding the unit label far past a short number. */}
+            <Text
+              style={[styles.weightEditInput, styles.weightEditMirror]}
+              onLayout={cookedWeightWidth.onLayout}
+            >
+              {cookedWeightDraft || 'e.g. 1450'}
+            </Text>
             <TextInput
-              style={styles.weightEditInput}
+              style={[styles.weightEditInput, { width: cookedWeightWidth.width || undefined }]}
               value={cookedWeightDraft}
               onChangeText={setCookedWeightDraft}
               onBlur={commitCookedWeight}
@@ -2718,10 +2729,16 @@ const makeStyles = (colors: Colors) => StyleSheet.create({
     paddingVertical: spacing.xs,
   },
   weightEditInput: {
-    flex: 1,
     color: colors.text,
     fontSize: font.md,
     paddingVertical: spacing.xs,
+  },
+  // Off-screen and unbounded, so it always reports the full rendered width of
+  // whatever it's holding rather than wrapping like the visible input would.
+  weightEditMirror: {
+    position: 'absolute',
+    opacity: 0,
+    paddingHorizontal: 0,
   },
   weightEditUnit: {
     color: colors.textSecondary,

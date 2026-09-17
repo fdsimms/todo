@@ -32,6 +32,7 @@ import { InlineAction } from './InlineAction';
 import { ScrollEdgeFade } from './ScrollEdgeFade';
 import { SheetScrim } from './SheetScrim';
 import { haptics } from '../utils/haptics';
+import { useMeasuredTextWidth } from '../hooks/useMeasuredTextWidth';
 
 const CHECKBOX_SIZE = 22;
 
@@ -209,6 +210,7 @@ export function CookRecapSheet({
 
   const [ticked, setTicked] = useState<Set<string>>(new Set());
   const [weightText, setWeightText] = useState('');
+  const weightTextWidth = useMeasuredTextWidth();
   // Which restock rows are queued to add — unlike `ticked` above, this starts
   // *full*, not empty (see the class doc's note on that).
   const [restockTicked, setRestockTicked] = useState<Set<string>>(new Set());
@@ -400,8 +402,18 @@ export function CookRecapSheet({
                 <View style={styles.card}>
                   <View style={styles.weightRow}>
                     <Ionicons name="scale-outline" size={18} color={colors.textSecondary} />
+                    {/* Invisible twin of the input below, measured so the input
+                        can be sized to hug what's typed rather than stretching
+                        the row and stranding the unit label far past a short
+                        number. */}
+                    <Text
+                      style={[styles.weightInput, styles.weightMirror]}
+                      onLayout={weightTextWidth.onLayout}
+                    >
+                      {weightText || 'e.g. 1450'}
+                    </Text>
                     <TextInput
-                      style={styles.weightInput}
+                      style={[styles.weightInput, { width: weightTextWidth.width || undefined }]}
                       value={weightText}
                       onChangeText={setWeightText}
                       onBlur={commitWeight}
@@ -664,7 +676,10 @@ const makeStyles = (colors: Colors, sheetMaxHeight: number) => StyleSheet.create
     paddingHorizontal: spacing.md,
     paddingVertical: spacing.xs,
   },
-  weightInput: { flex: 1, color: colors.text, fontSize: font.md, paddingVertical: spacing.sm },
+  weightInput: { color: colors.text, fontSize: font.md, paddingVertical: spacing.sm },
+  // Off-screen and unbounded, so it always reports the full rendered width of
+  // whatever it's holding rather than wrapping like the visible input would.
+  weightMirror: { position: 'absolute', opacity: 0, paddingHorizontal: 0 },
   weightUnit: { color: colors.textSecondary, fontSize: font.sm },
   choiceButtons: { flexDirection: 'row', alignItems: 'center', gap: spacing.sm },
   // Both margins, not just the one above: nothing below this has a top margin
