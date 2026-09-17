@@ -297,6 +297,19 @@ export interface WeatherRule {
    * straight back on the next foreground sweep the same day.
    */
   lastFiredDayKey: string | null;
+  /**
+   * The day key of the *weather* this rule last produced a day-ahead task for
+   * — tomorrow's, written the evening before (see `checkWeatherTasks`).
+   *
+   * A second mark rather than a second meaning for the one above, because the
+   * two are live at the same time and mean different things: on the evening of
+   * the 17th a rule has answered "what is today doing" for the 17th and "what
+   * is tomorrow doing" for the 18th, and one scalar holding whichever was
+   * written last would let the other question be asked again. That would
+   * recreate a task the user had already swiped away, which is the single
+   * thing both marks exist to prevent.
+   */
+  lastAheadDayKey: string | null;
 }
 
 /**

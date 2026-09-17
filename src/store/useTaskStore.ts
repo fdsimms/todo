@@ -132,7 +132,7 @@ import { useMedicationStore } from './useMedicationStore';
 import { medicationFor } from '../utils/medicationLog';
 import { eventsIn } from '../utils/calendarBusy';
 import { isDemoModeActive } from '../utils/demoState';
-import type { MealSlot, Project, TaskGroup } from '../types';
+import type { MealSlot, Project, TaskGroup, WeatherCondition, WeatherRule } from '../types';
 import { awayPauseDriver, isProjectAwayNow } from '../utils/awayDates';
 import { generateId } from '../utils/id';
 import {
@@ -270,7 +270,15 @@ import { timeBlockFieldsFor, timeBlockUpdateFor } from '../utils/timeBlock';
 import { useCalendarStore } from './useCalendarStore';
 import { useWeatherStore } from './useWeatherStore';
 import { classifyWeather } from '../utils/weatherCondition';
-import { weatherSourceId, parseWeatherSourceId, ruleMatchesToday } from '../utils/weatherTasks';
+import {
+  weatherSourceId,
+  parseWeatherSourceId,
+  ruleMatchesToday,
+  weatherWindowFor,
+  describeWeatherWindow,
+  weatherTaskTitle,
+  WEATHER_AHEAD_FROM_HOUR,
+} from '../utils/weatherTasks';
 import {
   eventTaskRuleIdOf,
   matchedEventTasks,
@@ -5416,15 +5424,22 @@ export const useTaskStore = create<TaskStore>((set, get) => ({
     // current; this only ever reads whatever it already fetched.
     if (!weather.snapshot || weather.snapshotDayKey !== todayKey) return;
 
+    const tomorrowKey = dayKeyOf(addDays(getCurrentDayStart(), 1));
+
     const tasks = get().tasks;
     const activeRuleIds = new Set(settings.weatherRules.map(r => r.id));
     // Clear a task whose rule has since been deleted, or whose day has
     // rolled over, before deciding today's — same ordering
-    // checkCalendarReviewTasks and checkProjectReviewTasks use.
+    // checkCalendarReviewTasks and checkProjectReviewTasks use. Tomorrow's are
+    // spared alongside today's, since the day-ahead pass below writes a row
+    // keyed to the day its *weather* falls on, which is the day after the one
+    // it was written on.
     liveGeneratedTasksOfKind(tasks, 'weather')
       .filter(task => {
         const parsed = parseWeatherSourceId(task.generatedSourceId);
-        return !parsed || parsed.dayKey !== todayKey || !activeRuleIds.has(parsed.ruleId);
+        if (!parsed) return true;
+        if (!activeRuleIds.has(parsed.ruleId)) return true;
+        return parsed.dayKey !== todayKey && parsed.dayKey !== tomorrowKey;
       })
       .forEach(task => deleteGeneratedTaskQuietly(task.id));
 
@@ -5447,27 +5462,127 @@ export const useTaskStore = create<TaskStore>((set, get) => ({
     // Each rule carries its own idempotency mark rather than one shared day
     // key, since — unlike calendarReview, which asks exactly one question a
     // day — several rules can each be considered and answered independently.
+    // The real clock, not the logical day — this decides which stretch of
+    // weather is still ahead of you, which is a wall-clock question the way
+    // `isTaskExpired`'s is. `getCurrentDayStart()` above is what answers the
+    // scheduling half, and does.
+    const nowHour = new Date().getHours();
+    // Captured rather than reached through `weather.snapshot` below, which the
+    // guard above narrows but the closure doesn't keep narrowed.
+    const { todayHours, tomorrowHours } = weather.snapshot;
+
+    // Tomorrow's conditions come off its hours alone, where today's union the
+    // day-level code above. Not an inconsistency: the day-ahead pass refuses
+    // to write anything it can't put an hour to (see below), so a condition
+    // only the daily summary knows about could never produce a row here
+    // anyway, and reading the hours is what lets "cold" answer to the small
+    // hours rather than to a single temperature standing for the whole day.
+    const tomorrowConditions = Array.from(new Set(
+      (tomorrowHours ?? []).flatMap(h => classifyWeather(h.weatherCode, h.tempF)),
+    ));
+    const aheadOpen = nowHour >= WEATHER_AHEAD_FROM_HOUR && !!tomorrowHours;
+
+    /**
+     * Write, or bring into line, the task for one rule on one day.
+     *
+     * `considered` is that day's mark already spent. A rule considered may
+     * still have a task whose window wants correcting, but must never get a
+     * *new* one — the mark is the whole of what stands between a task swiped
+     * away and a task straight back, so creation is gated on it where drift
+     * deliberately isn't.
+     */
+    const applyRule = (opts: {
+      rule: WeatherRule;
+      dayKey: string;
+      hours: typeof todayHours;
+      dayConditions: readonly WeatherCondition[];
+      /** Where in the day to start looking for a run, 0 for a day not yet begun. */
+      fromHour: number;
+      tomorrow: boolean;
+      considered: boolean;
+      due: Date;
+    }) => {
+      const { rule, dayKey, hours, dayConditions, fromHour, tomorrow, considered, due } = opts;
+      const sourceId = weatherSourceId(dayKey, rule.id);
+      const existing = liveGeneratedTask(tasks, 'weather', sourceId);
+      if (considered && !existing) return;
+      if (!ruleMatchesToday(rule, dayConditions)) return;
+
+      // What the day-level code already established, placed in the day: the
+      // rule fired because it is rainy *today*, and this is the hour that
+      // happens at. A day whose hourly block didn't parse, or whose match came
+      // from the current reading alone with no hour agreeing, says nothing
+      // rather than guessing (see `weatherTaskTitle`) — except a day ahead,
+      // where a window is the entire reason to speak up early and there is
+      // nothing worth writing without one.
+      const window = weatherWindowFor(hours, rule.condition, fromHour);
+      if (tomorrow && !window) return;
+      const title = weatherTaskTitle(rule.title, window ? describeWeatherWindow(rule.condition, window, tomorrow) : null);
+
+      reconcileGeneratedTask({
+        kind: 'weather',
+        sourceId,
+        wanted: true,
+        // The forecast is re-read through the day now (see SNAPSHOT_STALE_MS),
+        // so a window that moves corrects the row rather than leaving it
+        // asserting an hour that has changed. It is also what takes the word
+        // "tomorrow" back out of a day-ahead title once that day is the one
+        // you are on: the same source id is reached by today's pass then, and
+        // finds the row already there.
+        drift: existing => (existing.title === title ? null : { title }),
+        draft: () => ({
+          title,
+          dueDate: due.toISOString(),
+          category: settings.weatherTaskCategory,
+          ...generatedBy('weather', sourceId),
+        }),
+      });
+    };
+
     let rulesChanged = false;
     const nextRules = settings.weatherRules.map(rule => {
-      if (rule.lastFiredDayKey === todayKey) return rule;
-      rulesChanged = true;
-      if (ruleMatchesToday(rule, conditions)) {
-        const sourceId = weatherSourceId(todayKey, rule.id);
-        reconcileGeneratedTask({
-          kind: 'weather',
-          sourceId,
-          wanted: true,
-          // The title is the rule's own and never varies mid-day.
-          drift: () => null,
-          draft: () => ({
-            title: rule.title,
-            dueDate: dueDate.toISOString(),
-            category: settings.weatherTaskCategory,
-            ...generatedBy('weather', sourceId),
-          }),
-        });
+      let next = rule;
+
+      const consideredToday = rule.lastFiredDayKey === todayKey;
+      applyRule({
+        rule,
+        dayKey: todayKey,
+        hours: todayHours,
+        dayConditions: conditions,
+        fromHour: nowHour,
+        tomorrow: false,
+        considered: consideredToday,
+        due: dueDate,
+      });
+      if (!consideredToday) {
+        next = { ...next, lastFiredDayKey: todayKey };
+        rulesChanged = true;
       }
-      return { ...rule, lastFiredDayKey: todayKey };
+
+      // Tomorrow, from the evening on. Its own mark, because this rule has by
+      // now answered two different questions and one scalar can only hold the
+      // answer to whichever was asked last — see WeatherRule.lastAheadDayKey.
+      if (aheadOpen) {
+        const consideredAhead = rule.lastAheadDayKey === tomorrowKey;
+        applyRule({
+          rule,
+          dayKey: tomorrowKey,
+          hours: tomorrowHours,
+          dayConditions: tomorrowConditions,
+          // The whole of tomorrow is ahead of you, so its first matching run
+          // is the one to name rather than the one after the current hour.
+          fromHour: 0,
+          tomorrow: true,
+          considered: consideredAhead,
+          due: getLogicalTomorrow(settings.dayResetTime),
+        });
+        if (!consideredAhead) {
+          next = { ...next, lastAheadDayKey: tomorrowKey };
+          rulesChanged = true;
+        }
+      }
+
+      return next;
     });
     if (rulesChanged) settings.setWeatherRules(nextRules);
   },

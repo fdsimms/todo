@@ -71,6 +71,26 @@ export function weatherConditionAdjective(weatherCode: number): string {
   return 'cloudy';
 }
 
+/**
+ * "rain", "snow", "sun", "cold", "heat" — what a rule's own condition is
+ * called mid-sentence, for the window a weather task names ("rain from 2pm").
+ *
+ * Distinct from `weatherConditionNoun` below, which answers the same question
+ * about a raw `weatherCode`. A rule already knows which condition it matched
+ * on, and that is the one worth naming: a cold rainy hour qualifies as both,
+ * and a "Wear a coat" rule saying "rain from 2pm" would be naming somebody
+ * else's reason.
+ */
+export function conditionNoun(condition: WeatherCondition): string {
+  switch (condition) {
+    case 'sunny': return 'sun';
+    case 'rainy': return 'rain';
+    case 'snowy': return 'snow';
+    case 'cold': return 'cold';
+    case 'hot': return 'heat';
+  }
+}
+
 /** "Snow", "Rain", "Sun", or "Clouds" — the noun form, for a future day's row title. */
 export function weatherConditionNoun(weatherCode: number): string {
   if (SNOWY_CODES.has(weatherCode)) return 'Snow';

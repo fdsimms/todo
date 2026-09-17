@@ -5032,9 +5032,19 @@ describe('checkWeatherTasks', () => {
     useWeatherStore: { getState: jest.Mock };
   };
 
-  const TODAY_KEY = dayKeyOf(getCurrentDayStart());
+  // Pinned to a morning, so `nowHour` is deterministic: it decides which run
+  // of hours is still ahead of you, and it holds the day-ahead pass shut
+  // (that one has its own describe below, pinned to an evening).
+  const NOW = new Date(2026, 7, 25, 9, 0, 0);
+  const TODAY_KEY = '2026-08-25';
 
-  const rainyRule = { id: 'rule-rain', condition: 'rainy' as const, title: 'Bring an umbrella', enabled: true, lastFiredDayKey: null as string | null };
+  beforeAll(() => {
+    jest.useFakeTimers();
+    jest.setSystemTime(NOW);
+  });
+  afterAll(() => jest.useRealTimers());
+
+  const rainyRule = { id: 'rule-rain', condition: 'rainy' as const, title: 'Bring an umbrella', enabled: true, lastFiredDayKey: null as string | null, lastAheadDayKey: null as string | null };
 
   const settings = (overrides: Record<string, unknown> = {}) => ({
     dayResetTime: '00:00',
@@ -5055,6 +5065,7 @@ describe('checkWeatherTasks', () => {
     todayHighF: 65,
     todayLowF: 50,
     todayWeatherCode: null,
+    todayHours: null,
     tomorrow: null,
     ...overrides,
   });
@@ -5097,6 +5108,37 @@ describe('checkWeatherTasks', () => {
     expect(weatherTasks()).toHaveLength(1);
   });
 
+  // The complaint this answers: a rain task showing on a sunny morning, with
+  // nothing on it saying the rain is this afternoon. The window deliberately
+  // runs to midnight so the assertion holds whatever hour the suite runs at —
+  // which hour of a run is picked is `weatherWindowFor`'s own tested job.
+  it('names when the weather happens in the task title', () => {
+    const hours = Array.from({ length: 24 }, (_, hour) =>
+      hour >= 14 ? { hour, weatherCode: 61, tempF: 66 } : { hour, weatherCode: 0, tempF: 70 });
+    useWeatherStore.getState.mockReturnValue({
+      snapshot: snapshot({ weatherCode: 0, todayWeatherCode: 61, todayHours: hours }),
+      snapshotDayKey: TODAY_KEY,
+    });
+
+    useTaskStore.getState().checkWeatherTasks();
+
+    const [task] = weatherTasks();
+    expect(task.title).toBe('Bring an umbrella (rain from 2pm)');
+  });
+
+  // The hourly block is a bonus on top of the reading that fires the rule, so
+  // losing it costs the window and nothing else.
+  it('falls back to the rule\'s plain title when there is no hourly forecast', () => {
+    useWeatherStore.getState.mockReturnValue({
+      snapshot: snapshot({ weatherCode: 61, todayHours: null }),
+      snapshotDayKey: TODAY_KEY,
+    });
+
+    useTaskStore.getState().checkWeatherTasks();
+
+    expect(weatherTasks()[0].title).toBe('Bring an umbrella');
+  });
+
   it('writes nothing when neither the instant nor the day forecast matches', () => {
     useWeatherStore.getState.mockReturnValue({
       snapshot: snapshot({ weatherCode: 0, todayWeatherCode: 0 }),
@@ -5132,6 +5174,216 @@ describe('checkWeatherTasks', () => {
     useTaskStore.getState().checkWeatherTasks();
 
     expect(weatherTasks()).toHaveLength(1);
+  });
+
+  // The forecast is re-read through the day now, so a window that moves has to
+  // correct the row rather than leaving it asserting the hour it first read.
+  it('corrects the window on a later sweep when the forecast moves', () => {
+    const hoursFrom = (start: number) =>
+      Array.from({ length: 24 }, (_, hour) =>
+        hour >= start ? { hour, weatherCode: 61, tempF: 66 } : { hour, weatherCode: 0, tempF: 70 });
+
+    useWeatherStore.getState.mockReturnValue({
+      snapshot: snapshot({ weatherCode: 0, todayWeatherCode: 61, todayHours: hoursFrom(14) }),
+      snapshotDayKey: TODAY_KEY,
+    });
+    useTaskStore.getState().checkWeatherTasks();
+    expect(weatherTasks()[0].title).toBe('Bring an umbrella (rain from 2pm)');
+
+    // The rule's mark is spent by now, so this is the drift path, not a second
+    // creation — the count is the half of this worth asserting.
+    useSettingsStore.getState.mockReturnValue(
+      settings({ weatherRules: [{ ...rainyRule, lastFiredDayKey: TODAY_KEY }] }),
+    );
+    useWeatherStore.getState.mockReturnValue({
+      snapshot: snapshot({ weatherCode: 0, todayWeatherCode: 61, todayHours: hoursFrom(16) }),
+      snapshotDayKey: TODAY_KEY,
+    });
+
+    useTaskStore.getState().checkWeatherTasks();
+
+    expect(weatherTasks()).toHaveLength(1);
+    expect(weatherTasks()[0].title).toBe('Bring an umbrella (rain from 4pm)');
+  });
+
+  // Drift must not become a way back in for a task the user swiped away: the
+  // mark is the whole of what stands between a swipe and a recreate.
+  it('does not recreate a task that was deleted after the mark was spent', () => {
+    useSettingsStore.getState.mockReturnValue(
+      settings({ weatherRules: [{ ...rainyRule, lastFiredDayKey: TODAY_KEY }] }),
+    );
+    useWeatherStore.getState.mockReturnValue({ snapshot: snapshot({ weatherCode: 61 }), snapshotDayKey: TODAY_KEY });
+
+    useTaskStore.getState().checkWeatherTasks();
+
+    expect(weatherTasks()).toHaveLength(0);
+  });
+});
+
+// ─── checkWeatherTasks, the day-ahead pass ──────────────────────────────────
+
+describe('checkWeatherTasks (day ahead)', () => {
+  const { useSettingsStore } = jest.requireMock('../store/useSettingsStore') as {
+    useSettingsStore: { getState: jest.Mock };
+  };
+  const { useWeatherStore } = jest.requireMock('../store/useWeatherStore') as {
+    useWeatherStore: { getState: jest.Mock };
+  };
+
+  // 7pm, past WEATHER_AHEAD_FROM_HOUR, so tomorrow is in scope.
+  const EVENING = new Date(2026, 7, 25, 19, 0, 0);
+  const TODAY_KEY = '2026-08-25';
+  const TOMORROW_KEY = '2026-08-26';
+
+  const snowyRule = {
+    id: 'rule-snow',
+    condition: 'snowy' as const,
+    title: 'Clear the drive',
+    enabled: true,
+    lastFiredDayKey: null as string | null,
+    lastAheadDayKey: null as string | null,
+  };
+
+  const setRules = jest.fn();
+
+  const settings = (overrides: Record<string, unknown> = {}) => ({
+    dayResetTime: '00:00',
+    weatherTasks: true,
+    weatherTaskCategory: 'Weather',
+    weatherRules: [snowyRule],
+    setWeatherRules: setRules,
+    newTaskDefaults: { category: null, priority: null, effort: null, timeSegment: null, destination: 'today', openEditorAfterQuickAdd: false },
+    titleRules: [],
+    collapsedCategories: [],
+    ...overrides,
+  });
+
+  /** Snow from 7am to 10:59am tomorrow, clear the rest of it. */
+  const snowyMorning = () =>
+    Array.from({ length: 24 }, (_, hour) =>
+      hour >= 7 && hour <= 10 ? { hour, weatherCode: 71, tempF: 30 } : { hour, weatherCode: 0, tempF: 50 });
+
+  const snapshot = (overrides: Record<string, unknown> = {}) => ({
+    weatherCode: 0,
+    tempF: 60,
+    fetchedAt: new Date().toISOString(),
+    todayHighF: 65,
+    todayLowF: 50,
+    todayWeatherCode: 0,
+    todayHours: null,
+    tomorrow: null,
+    tomorrowHours: snowyMorning(),
+    ...overrides,
+  });
+
+  const weatherTasks = () =>
+    useTaskStore.getState().tasks.filter(t => t.generatedKind === 'weather' && !t.completed && !t.archived);
+
+  beforeAll(() => {
+    jest.useFakeTimers();
+    jest.setSystemTime(EVENING);
+  });
+  afterAll(() => jest.useRealTimers());
+
+  beforeEach(() => {
+    setRules.mockClear();
+    useSettingsStore.getState.mockReturnValue(settings());
+    useWeatherStore.getState.mockReturnValue({ snapshot: snapshot(), snapshotDayKey: TODAY_KEY });
+    useTaskStore.setState({ tasks: [] });
+  });
+
+  afterEach(() => {
+    useWeatherStore.getState.mockReturnValue({ snapshot: null, snapshotDayKey: null });
+  });
+
+  it('writes tomorrow\'s task in the evening, dated tomorrow and saying so', () => {
+    useTaskStore.getState().checkWeatherTasks();
+
+    const [task] = weatherTasks();
+    expect(task.title).toBe('Clear the drive (snow 7am to 11am tomorrow)');
+    expect(task.generatedSourceId).toBe(`${TOMORROW_KEY}#${snowyRule.id}`);
+    expect(dayKeyOf(new Date(task.dueDate!))).toBe(TOMORROW_KEY);
+  });
+
+  it('marks the rule against tomorrow, not today', () => {
+    useTaskStore.getState().checkWeatherTasks();
+
+    const [written] = setRules.mock.calls[setRules.mock.calls.length - 1];
+    expect(written[0].lastAheadDayKey).toBe(TOMORROW_KEY);
+    expect(written[0].lastFiredDayKey).toBe(TODAY_KEY);
+  });
+
+  it('does not pile up a second one on the next sweep', () => {
+    useTaskStore.getState().checkWeatherTasks();
+    useSettingsStore.getState.mockReturnValue(
+      settings({ weatherRules: [{ ...snowyRule, lastFiredDayKey: TODAY_KEY, lastAheadDayKey: TOMORROW_KEY }] }),
+    );
+
+    useTaskStore.getState().checkWeatherTasks();
+
+    expect(weatherTasks()).toHaveLength(1);
+  });
+
+  // A day-ahead row exists to say when, so there is nothing worth writing
+  // without an hour to point at — unlike the same-day pass, which still has a
+  // task to offer when the hourly block is missing.
+  it('writes nothing when tomorrow has no hourly forecast', () => {
+    useWeatherStore.getState.mockReturnValue({
+      snapshot: snapshot({ tomorrowHours: null }),
+      snapshotDayKey: TODAY_KEY,
+    });
+
+    useTaskStore.getState().checkWeatherTasks();
+
+    expect(weatherTasks()).toHaveLength(0);
+  });
+
+  it('leaves tomorrow alone earlier in the day', () => {
+    jest.setSystemTime(new Date(2026, 7, 25, 9, 0, 0));
+
+    useTaskStore.getState().checkWeatherTasks();
+
+    expect(weatherTasks()).toHaveLength(0);
+    jest.setSystemTime(EVENING);
+  });
+
+  // The clear pass runs before anything is decided, and tomorrow's row has to
+  // survive it — it is keyed to the day its weather falls on, not the day it
+  // was written on.
+  it('does not sweep away the row it wrote last night', () => {
+    useTaskStore.getState().checkWeatherTasks();
+    expect(weatherTasks()).toHaveLength(1);
+
+    useSettingsStore.getState.mockReturnValue(
+      settings({ weatherRules: [{ ...snowyRule, lastFiredDayKey: TODAY_KEY, lastAheadDayKey: TOMORROW_KEY }] }),
+    );
+    useTaskStore.getState().checkWeatherTasks();
+
+    expect(weatherTasks()).toHaveLength(1);
+  });
+
+  // The word "tomorrow" is the one part of the phrase that goes stale, and the
+  // drift pass is what answers for it: the same source id is what today's pass
+  // reaches for once that day arrives.
+  it('takes "tomorrow" back out of the title once that day arrives', () => {
+    useTaskStore.getState().checkWeatherTasks();
+    expect(weatherTasks()[0].title).toBe('Clear the drive (snow 7am to 11am tomorrow)');
+
+    // Now it is the 26th, early, and the snow is today's.
+    jest.setSystemTime(new Date(2026, 7, 26, 6, 0, 0));
+    useSettingsStore.getState.mockReturnValue(
+      settings({ weatherRules: [{ ...snowyRule, lastFiredDayKey: TODAY_KEY, lastAheadDayKey: TOMORROW_KEY }] }),
+    );
+    useWeatherStore.getState.mockReturnValue({
+      snapshot: snapshot({ todayWeatherCode: 71, todayHours: snowyMorning(), tomorrowHours: null }),
+      snapshotDayKey: TOMORROW_KEY,
+    });
+
+    useTaskStore.getState().checkWeatherTasks();
+
+    expect(weatherTasks()).toHaveLength(1);
+    expect(weatherTasks()[0].title).toBe('Clear the drive (snow 7am to 11am)');
+    jest.setSystemTime(EVENING);
   });
 });
 
