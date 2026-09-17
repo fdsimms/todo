@@ -1036,7 +1036,11 @@ export function ProjectDetailScreen() {
                           <InlineAction
                             label="Add task"
                             icon="add"
-                            onPress={() => handleGroupPressEdit(group.id)}
+                            onPress={() => {
+                              setQuickAddSeed({ groupId: group.id });
+                              setQuickAddSeedLabel(group.title.trim() || 'Stack');
+                              setQuickAddVisible(true);
+                            }}
                             accessibilityLabel={`Add a task to the ${group.title} stack`}
                           />
                         </View>
