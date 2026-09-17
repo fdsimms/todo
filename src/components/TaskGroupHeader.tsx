@@ -37,6 +37,17 @@ interface Props {
   // screen. Rather than pick a set to lie about, the badge and summary just
   // don't render while a filter is narrowing the list underneath them.
   filtered?: boolean;
+  /**
+   * What is actually drawn under this header, when a caller can't take that
+   * from `group.collapsed` alone. A project screen force-opens an empty stack
+   * whatever the stored flag says (collapse hides rows and an empty one has
+   * none, so collapsed it would be a bare title with no way to reach the
+   * button that fills it in) — and the chevron read the flag raw, so that
+   * stack sat open under a collapsed chevron and a tap moved only the
+   * chevron. Defaults to the stored flag, which is what every other caller
+   * wants.
+   */
+  expanded?: boolean;
   onToggleCollapse: () => void;
   // These three (plus onPressEdit below) take the group's own id back rather
   // than closing over it — the same reason TaskItem's row handlers take
@@ -68,6 +79,7 @@ export function TaskGroupHeader({
   allChildren,
   dueTodayOverride,
   filtered,
+  expanded,
   onToggleCollapse,
   onComplete,
   onDefer,
@@ -80,6 +92,7 @@ export function TaskGroupHeader({
 }: Props) {
   const colors = useColors();
   const styles = useMemo(() => makeStyles(colors), [colors]);
+  const isExpanded = expanded ?? !group.collapsed;
   const [showDefer, setShowDefer] = useState(false);
   // Mounted on first open and kept, so it closes through `visible` rather
   // than by leaving the tree. See useSheetMount.
@@ -151,6 +164,7 @@ export function TaskGroupHeader({
                 onPress={onToggleCollapse}
                 onLongPress={completeAll}
                 delayLongPress={interaction.delayLongPress}
+                activeOpacity={interaction.activeOpacity}
                 hitSlop={10}
                 style={styles.glyphWrapper}
                 // This glyph does nothing the row itself doesn't (tap collapses
@@ -174,7 +188,7 @@ export function TaskGroupHeader({
                 delayLongPress={interaction.delayLongPress}
                 activeOpacity={interaction.activeOpacity}
                 accessibilityRole="button"
-                accessibilityState={{ expanded: !group.collapsed }}
+                accessibilityState={{ expanded: isExpanded }}
                 // Spells the tally out rather than leaving it to the glyph:
                 // a label set here overrides the row's children, so the
                 // "3/8" is invisible to a screen reader on its own.
@@ -185,8 +199,8 @@ export function TaskGroupHeader({
                 }
                 accessibilityHint={
                   onDrag
-                    ? `${group.collapsed ? 'Double tap to expand.' : 'Double tap to collapse.'} Long press to reorder.`
-                    : group.collapsed ? 'Double tap to expand' : 'Double tap to collapse'
+                    ? `${isExpanded ? 'Double tap to collapse.' : 'Double tap to expand.'} Long press to reorder.`
+                    : isExpanded ? 'Double tap to collapse' : 'Double tap to expand'
                 }
                 // Complete-all is a long-press on the glyph, which VoiceOver
                 // has no gesture for — it's offered here as a rotor action so
@@ -203,7 +217,7 @@ export function TaskGroupHeader({
                   {showTally && (
                     <Text style={styles.progressText}>{doneToday}/{totalToday}</Text>
                   )}
-                  <Ionicons name={group.collapsed ? 'chevron-forward' : 'chevron-down'} size={13} color={colors.textTertiary} />
+                  <Ionicons name={isExpanded ? 'chevron-down' : 'chevron-forward'} size={13} color={colors.textTertiary} />
                 </View>
                 {/* Folded away rather than unmounted, on the same clock and
                     easing TaskGroupBody's own collapse runs (AnimatedCollapsible
@@ -217,7 +231,7 @@ export function TaskGroupHeader({
                     the momentary content shrink also tripped ReorderableList's
                     bottom clamp. Collapsing was the same thing mirrored. */}
                 {summary !== null && (
-                  <AnimatedCollapsible expanded={group.collapsed}>
+                  <AnimatedCollapsible expanded={!isExpanded}>
                     <Text style={styles.summary} numberOfLines={1}>{summary}</Text>
                   </AnimatedCollapsible>
                 )}
