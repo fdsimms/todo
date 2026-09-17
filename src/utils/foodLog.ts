@@ -1,7 +1,9 @@
 import type { FoodLogEntry, FoodNutrition, MealPlanEntry, MealSlot, NutrientKey, SavedMealItem } from '../types';
 import { MEAL_SLOTS, NUTRIENT_KEYS } from '../types';
+import { aisleForName } from './groceryAisles';
 import { gramsForLine, panelMultiplier } from './ingredientGrams';
 import { parseQuantity, rationalToNumber } from './quantity';
+import { measureParsedQuantity } from './unitConvert';
 
 /**
  * The food log's rules: what a helping of something works out to, and what a
@@ -68,6 +70,29 @@ function round(amount: number): number {
 }
 
 /**
+ * Whether `name` reads as a beverage or other drinkable liquid.
+ *
+ * The one thing `scalePanelToAmount`'s beverage fallback is allowed to ask
+ * about a food before approximating its density — reuses the grocery aisle
+ * lexicon rather than a second list of drink words, since "is this a
+ * beverage" is exactly the question `aisleForName` already answers for every
+ * catalog row.
+ */
+export function isBeverageName(name: string): boolean {
+  return aisleForName(name) === 'Beverages';
+}
+
+/** A volume line's millilitres, or null when it isn't a volume at all. */
+function volumeMillilitres(quantity: string): number | null {
+  const parsed = parseQuantity(quantity);
+  if (parsed.amount === null) return null;
+  const single = parsed.rangeMax ? { ...parsed, rangeMax: null } : parsed;
+  const measured = measureParsedQuantity(single);
+  if (!measured || measured.dimension !== 'volume') return null;
+  return measured.base;
+}
+
+/**
  * What one helping of a food works out to, and what it weighs.
  *
  * **Refuses rather than approximates**, which is the posture the whole nutrition
@@ -75,6 +100,19 @@ function round(amount: number): number {
  * from and, eventually, what goes into a health record. An amount that cannot
  * be measured against this food's own panel gets no entry rather than a guessed
  * one. `panelMultiplier` states the three ways that happens.
+ *
+ * **One deliberate exception: a beverage with no density of its own.** A label
+ * that states its figures per 100g or per serving, with no stated pack volume
+ * and no portion naming a volume, refuses every ml/fl oz amount outright —
+ * which blocks logging a drink whose own panel just happens to be weight-basis
+ * rather than `per100ml` (a barcode source's choice, not a fact about the
+ * drink). Water's own density, 1 ml ≈ 1 g, is close enough for most drinks and
+ * is the one density this app is willing to assume without being told — but
+ * only once `panelMultiplier` has already asked the food's own data and been
+ * refused, and only for a food `isBeverageName` calls a beverage, never a solid
+ * food. It is genuinely wrong for anything syrupy or creamy, which is why
+ * `approximate` comes back true: callers show a disclaimer next to the amount
+ * rather than presenting it as a measured figure.
  *
  * The result's `basis` is `perServing` and its figures are the amounts actually
  * eaten. An entry records one helping rather than a food, so the scaling has
@@ -88,8 +126,26 @@ export function scalePanelToAmount(
   quantity: string,
   prep: string | null,
   now: Date = new Date(),
-): { nutrition: FoodNutrition; grams: number | null } | null {
-  const factor = panelMultiplier(quantity, prep, panel);
+  foodName: string | null = null,
+): { nutrition: FoodNutrition; grams: number | null; approximate: boolean } | null {
+  let factor = panelMultiplier(quantity, prep, panel);
+  let approximate = false;
+  let fallbackGrams: number | null = null;
+
+  if (factor === null && panel.basis !== 'per100ml' && foodName !== null && isBeverageName(foodName)) {
+    const millilitres = volumeMillilitres(quantity);
+    if (millilitres !== null && millilitres > 0) {
+      const scaled = panel.basis === 'per100g'
+        ? millilitres / 100
+        : (panel.servingGrams !== null && panel.servingGrams > 0 ? millilitres / panel.servingGrams : null);
+      if (scaled !== null) {
+        factor = scaled;
+        approximate = true;
+        fallbackGrams = millilitres;
+      }
+    }
+  }
+
   if (factor === null || !(factor > 0)) return null;
 
   const amounts: Partial<Record<NutrientKey, number>> = {};
@@ -114,13 +170,16 @@ export function scalePanelToAmount(
   // can't answer this at all, since it only reads the portion table, and a
   // packaged product's table never names a "serving" (see `FoodPortion`).
   const parsedQuantity = parseQuantity(quantity);
-  const rawGrams = parsedQuantity.unit === 'serving' && parsedQuantity.amount !== null
-    ? (panel.servingGrams !== null ? rationalToNumber(parsedQuantity.amount) * panel.servingGrams : null)
-    : gramsForLine(parsedQuantity, prep, panel.portions);
+  const rawGrams = fallbackGrams !== null
+    ? fallbackGrams
+    : parsedQuantity.unit === 'serving' && parsedQuantity.amount !== null
+      ? (panel.servingGrams !== null ? rationalToNumber(parsedQuantity.amount) * panel.servingGrams : null)
+      : gramsForLine(parsedQuantity, prep, panel.portions);
   const grams = rawGrams === null ? null : round(rawGrams);
 
   return {
     grams,
+    approximate,
     nutrition: {
       basis: 'perServing',
       servingGrams: grams,
