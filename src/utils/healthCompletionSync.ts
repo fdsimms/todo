@@ -19,13 +19,17 @@ import { waterEntryOf, waterHelping } from './waterLog';
  * type for, so this reuses that same table on the native side
  * (`writeNutrientSample`) rather than adding a second one.
  *
- * Same one-shot reasoning as the completion-calendar write's: a logged
- * amount is a historical record of something that already happened, not a
- * mirror of a task's current state to keep in sync, so there is no update or
- * delete counterpart. **The caller must only invoke this once, at the moment
- * a task is actually marked completed** — it does not check for an existing
- * sample, so calling it from anywhere else (a save, an edit) would log an
- * amount nobody actually recorded.
+ * Same one-shot-per-call reasoning as the completion-calendar write's: a
+ * logged amount is a historical record of something that already happened,
+ * not a mirror of a task's current state to keep in sync, so there is no
+ * update or delete counterpart. **The caller must only invoke this once per
+ * real event** — at the moment a plain task is actually marked completed, or
+ * at the moment a quota task logs one unit toward its target (`logQuotaUnit`
+ * in `useTaskStore.ts`, which calls this on every unit rather than only the
+ * one that reaches the target, so a water quota's food log total moves with
+ * each glass instead of jumping once at the end) — it does not check for an
+ * existing sample, so calling it from anywhere else (a save, an edit) would
+ * log an amount nobody actually recorded.
  *
  * Unlike the calendar write, there is no id to remember afterward: a food
  * sample has no per-task identity worth keeping — Health itself is the
