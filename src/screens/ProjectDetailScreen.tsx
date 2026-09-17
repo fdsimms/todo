@@ -999,6 +999,11 @@ export function ProjectDetailScreen() {
                 // buildProjectListItems) — the membership walk can't produce a
                 // group row without the task that led it there.
                 const empty = children.length === 0;
+                // Collapse hides rows, and an empty stack has none to hide —
+                // collapsed it would be a bare title with no way to reach the
+                // button that fills it in. The header takes the same value so
+                // its chevron describes what is actually under it.
+                const stackExpanded = empty || !group.collapsed;
                 return (
                   <FabDropZone zone={zone}>
                   <GroupDropTarget active={joinGroupIntentId === group.id}>
@@ -1008,6 +1013,10 @@ export function ProjectDetailScreen() {
                       allChildren={allChildren}
                       pinned={groupPinInfo.get(group.id)?.pinned ?? false}
                       pinDisabled={!(groupPinInfo.get(group.id)?.pinnable ?? false)}
+                      // Not ANDed with the drag fold below: that one is a
+                      // transient the floating card owns, and a chevron
+                      // flipping under the finger mid-drag is noise.
+                      expanded={stackExpanded}
                       onToggleCollapse={() => {
                         if (expandedTaskId !== null) { setExpandedTaskId(null); return; }
                         haptics.tap();
@@ -1022,12 +1031,9 @@ export function ProjectDetailScreen() {
                       onDrag={!selectionMode && drag ? () => startGroupDrag(group.id, drag) : undefined}
                     />
                     <TaskGroupBody
-                      // Collapse hides rows, and an empty stack has none to
-                      // hide — collapsed it would be a bare title with no way
-                      // to reach the button that fills it in. A drag still
-                      // folds it, so its floating card is the header alone
-                      // like every other stack's.
-                      expanded={(empty || !group.collapsed) && draggingGroupId !== group.id}
+                      // A drag still folds it, so its floating card is the
+                      // header alone like every other stack's.
+                      expanded={stackExpanded && draggingGroupId !== group.id}
                       hasChildren
                     >
                       {empty ? (

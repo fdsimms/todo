@@ -4,6 +4,7 @@ import Reanimated, {
   useSharedValue,
   useAnimatedStyle,
   withTiming,
+  runOnJS,
   interpolate,
   Easing,
   Extrapolation,
@@ -62,16 +63,35 @@ const UNMEASURED_MAX = 100000;
  * The last value Reanimated committed then sticks: after the first collapse
  * the section stayed pinned at zero and expanding it never brought the rows
  * back.
+ *
+ * The `restingOpen`/`restingClosed` swap below is not that rule being broken:
+ * the animated style stays attached on every render, and what alternates is a
+ * plain style sitting after it. See that pair's own note for what it is for.
  */
 export function AnimatedCollapsible({ expanded, clip = true, children }: Props) {
   const [contentHeight, setContentHeight] = useState<number | null>(null);
   const progress = useSharedValue(expanded ? 1 : 0);
+  // Which resting state React itself should commit — see `resting` below. Open
+  // only once the animation has actually landed there, so a transition commits
+  // the state it is coming *from*.
+  const [settledOpen, setSettledOpen] = useState(expanded);
 
   useEffect(() => {
-    progress.value = withTiming(expanded ? 1 : 0, {
-      duration: animation.duration.normal,
-      easing: Easing.inOut(Easing.cubic),
-    });
+    // Closing leaves the open resting state at once; opening claims it only
+    // when the animation finishes, in the callback below.
+    if (!expanded) setSettledOpen(false);
+    progress.value = withTiming(
+      expanded ? 1 : 0,
+      {
+        duration: animation.duration.normal,
+        easing: Easing.inOut(Easing.cubic),
+      },
+      // `finished` is false when a re-tap interrupts this, in which case the
+      // next run of this effect is what settles the state instead.
+      finished => {
+        if (finished) runOnJS(setSettledOpen)(expanded);
+      },
+    );
   }, [expanded]);
 
   // A zero measurement is treated as no measurement: an empty section has
@@ -106,7 +126,11 @@ export function AnimatedCollapsible({ expanded, clip = true, children }: Props) 
   };
 
   return (
-    <Reanimated.View style={[style, clip && styles.clip]}>
+    // `resting` goes AFTER the animated style deliberately: it is the value
+    // React commits, and the later entry is the one that wins the flatten.
+    // Reanimated writes its own props straight to the view rather than through
+    // this array, so the animation still overrides it frame by frame.
+    <Reanimated.View style={[style, settledOpen ? styles.restingOpen : styles.restingClosed, clip && styles.clip]}>
       {/* In normal flow, so the wrapper falls back to exactly the open height
           whenever maxHeight isn't clamping it. The children keep their natural
           height regardless of the clamp above them (a View doesn't shrink
@@ -119,7 +143,41 @@ export function AnimatedCollapsible({ expanded, clip = true, children }: Props) 
   );
 }
 
+/**
+ * What React commits, as opposed to what Reanimated animates.
+ *
+ * An animated style contributes its *initial* value to the committed props,
+ * and that value is captured once, on the component's very first render.
+ * React re-commits it on every later render, and Reanimated re-applies the
+ * real animated value afterwards — so a section whose clamp has since moved
+ * away from where it started paints one frame back at its first-render value
+ * on any re-render at all.
+ *
+ * That is most of a frame of the *whole open height* for a section that first
+ * rendered open, because settled open releases the clamp to the sentinel. A
+ * stack expanded, collapsed, and expanded again is exactly that: the tap that
+ * re-opens it is a re-render, so the tray painted at full height for a frame
+ * before the animation's own near-zero clamp landed, and everything below it
+ * stepped down to the open position and straight back up. Reported as the
+ * list flickering, and the jump is the giveaway that it is a committed value
+ * rather than the animation.
+ *
+ * These two are the fix: they say the same thing the animated style says at
+ * rest (0 closed, the released clamp open), so a re-render of a section that
+ * isn't moving can't paint anything. Mid-transition they hold the state the
+ * section is coming *from*, which is where the one re-render that reliably
+ * lands — the tap's own — already is, so that frame is indistinguishable from
+ * the correct one.
+ */
 const styles = StyleSheet.create({
+  restingClosed: {
+    maxHeight: 0,
+    opacity: 0,
+  },
+  restingOpen: {
+    maxHeight: UNMEASURED_MAX,
+    opacity: 1,
+  },
   clip: {
     overflow: 'hidden',
   },

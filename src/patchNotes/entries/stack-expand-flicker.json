@@ -1,0 +1,4 @@
+{
+  "message": "Opening a stack no longer flashes its tasks open at full height for a frame, so the rows below it stop jumping down and back.",
+  "date": "2026-09-17"
+}
