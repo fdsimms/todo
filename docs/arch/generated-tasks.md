@@ -458,6 +458,27 @@ one. Those three rules and the reasoning behind them are in
     `todayWeatherCode` (Open-Meteo's own summary for the whole day, `daily.weather_code[0]`), so
     "rain due this afternoon" already matches on a dry morning's first read. It stays a look-ahead
     rather than a second live poll: nothing here fetches again later in the day.
+  - **The task's title says *when*, because firing in advance is useless if the row won't admit
+    it.** The look-ahead above is what put "Wear rain-appropriate gear" on a screen reading 70°
+    and sunny, with nothing on the row connecting the two — the feature working exactly as designed
+    and reading as a bug. So the same request also asks for `hourly`, and `weatherWindowFor`
+    (`src/utils/weatherTasks.ts`) picks the run of hours the rule's own condition holds for —
+    the one under way now or the next one after it — which `describeWeatherWindow` turns into
+    "rain from 2pm", "rain until 10am", "rain 2pm to 6pm" or "rain all day", appended in brackets
+    after the user's own words.
+    - **The day code decides *whether*; the hours only decide *where to point*.** A rule still
+      fires off the union above and nothing about matching changed, so an hourly block that
+      fails to parse (`todayHours` degrades to null on its own, like `todayHighF` does) costs the
+      window and never the task.
+    - **It names the rule's condition, not the sky.** A cold rainy hour qualifies as both, and a
+      "Wear a coat" rule reporting "rain from 2pm" would be quoting somebody else's reason —
+      which is why `conditionNoun` takes a `WeatherCondition` where `weatherConditionNoun` beside
+      it takes a raw code.
+    - **The phrase is in clock times, never "later" or "in two hours".** `lastFiredDayKey` is
+      spent on the day's first consideration, so the title is composed once and never revisited;
+      anything relative to the moment of writing would be quietly wrong by the afternoon, where
+      "rain from 2pm" stays true whenever it is read. That is also why `drift` stays `() => null`
+      here rather than joining the title-drifting generators.
   - **No key, and that's a deliberate choice of provider, not an oversight.** Open-Meteo's forecast
     API needs none, which is the same "no key, no traffic" shape Open Food Facts plays as the
     keyless member of the barcode chain in `productLookup.ts` — made here the *only* source rather

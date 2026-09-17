@@ -270,7 +270,14 @@ import { timeBlockFieldsFor, timeBlockUpdateFor } from '../utils/timeBlock';
 import { useCalendarStore } from './useCalendarStore';
 import { useWeatherStore } from './useWeatherStore';
 import { classifyWeather } from '../utils/weatherCondition';
-import { weatherSourceId, parseWeatherSourceId, ruleMatchesToday } from '../utils/weatherTasks';
+import {
+  weatherSourceId,
+  parseWeatherSourceId,
+  ruleMatchesToday,
+  weatherWindowFor,
+  describeWeatherWindow,
+  weatherTaskTitle,
+} from '../utils/weatherTasks';
 import {
   eventTaskRuleIdOf,
   matchedEventTasks,
@@ -5447,20 +5454,39 @@ export const useTaskStore = create<TaskStore>((set, get) => ({
     // Each rule carries its own idempotency mark rather than one shared day
     // key, since — unlike calendarReview, which asks exactly one question a
     // day — several rules can each be considered and answered independently.
+    // The real clock, not the logical day — this decides which stretch of
+    // weather is still ahead of you, which is a wall-clock question the way
+    // `isTaskExpired`'s is. `getCurrentDayStart()` above is what answers the
+    // scheduling half, and does.
+    const nowHour = new Date().getHours();
+    // Captured rather than reached through `weather.snapshot` below, which the
+    // guard above narrows but the closure doesn't keep narrowed.
+    const { todayHours } = weather.snapshot;
+
     let rulesChanged = false;
     const nextRules = settings.weatherRules.map(rule => {
       if (rule.lastFiredDayKey === todayKey) return rule;
       rulesChanged = true;
       if (ruleMatchesToday(rule, conditions)) {
         const sourceId = weatherSourceId(todayKey, rule.id);
+        // What the day-level code already established, placed in the day: the
+        // rule fired because it is rainy *today*, and this is the hour that
+        // happens at. A day whose hourly block didn't parse, or whose match
+        // came from the current reading alone with no hour agreeing, says
+        // nothing rather than guessing (see `weatherTaskTitle`).
+        const window = weatherWindowFor(todayHours, rule.condition, nowHour);
+        const title = weatherTaskTitle(rule.title, window ? describeWeatherWindow(rule.condition, window) : null);
         reconcileGeneratedTask({
           kind: 'weather',
           sourceId,
           wanted: true,
-          // The title is the rule's own and never varies mid-day.
+          // Composed once, on the day's first consideration, and deliberately
+          // not revisited: the mark above short-circuits every later sweep, and
+          // the phrase is written in clock times precisely so it stays true
+          // when it is read hours afterwards.
           drift: () => null,
           draft: () => ({
-            title: rule.title,
+            title,
             dueDate: dueDate.toISOString(),
             category: settings.weatherTaskCategory,
             ...generatedBy('weather', sourceId),

@@ -5055,6 +5055,7 @@ describe('checkWeatherTasks', () => {
     todayHighF: 65,
     todayLowF: 50,
     todayWeatherCode: null,
+    todayHours: null,
     tomorrow: null,
     ...overrides,
   });
@@ -5095,6 +5096,37 @@ describe('checkWeatherTasks', () => {
     useTaskStore.getState().checkWeatherTasks();
 
     expect(weatherTasks()).toHaveLength(1);
+  });
+
+  // The complaint this answers: a rain task showing on a sunny morning, with
+  // nothing on it saying the rain is this afternoon. The window deliberately
+  // runs to midnight so the assertion holds whatever hour the suite runs at —
+  // which hour of a run is picked is `weatherWindowFor`'s own tested job.
+  it('names when the weather happens in the task title', () => {
+    const hours = Array.from({ length: 24 }, (_, hour) =>
+      hour >= 14 ? { hour, weatherCode: 61, tempF: 66 } : { hour, weatherCode: 0, tempF: 70 });
+    useWeatherStore.getState.mockReturnValue({
+      snapshot: snapshot({ weatherCode: 0, todayWeatherCode: 61, todayHours: hours }),
+      snapshotDayKey: TODAY_KEY,
+    });
+
+    useTaskStore.getState().checkWeatherTasks();
+
+    const [task] = weatherTasks();
+    expect(task.title).toBe('Bring an umbrella (rain from 2pm)');
+  });
+
+  // The hourly block is a bonus on top of the reading that fires the rule, so
+  // losing it costs the window and nothing else.
+  it('falls back to the rule\'s plain title when there is no hourly forecast', () => {
+    useWeatherStore.getState.mockReturnValue({
+      snapshot: snapshot({ weatherCode: 61, todayHours: null }),
+      snapshotDayKey: TODAY_KEY,
+    });
+
+    useTaskStore.getState().checkWeatherTasks();
+
+    expect(weatherTasks()[0].title).toBe('Bring an umbrella');
   });
 
   it('writes nothing when neither the instant nor the day forecast matches', () => {

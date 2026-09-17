@@ -62,7 +62,7 @@ import {
   weekendNudgeLinkUrl,
   weekendNudgeNotes,
 } from './weekendTasks';
-import { weatherSourceId, defaultWeatherRules } from './weatherTasks';
+import { weatherSourceId, defaultWeatherRules, describeWeatherWindow, weatherTaskTitle } from './weatherTasks';
 import { screenTimeSourceId, defaultScreenTimeRules } from './screenTimeRules';
 import { defaultEventRules, eventOccurrenceKey, eventTaskSourceId } from './eventTasks';
 import { healthSourceId, defaultHealthRules } from './healthRules';
@@ -1161,7 +1161,14 @@ export function seedDemoData(): void {
     ...otherWeatherRules,
   ]);
   addTask({
-    title: sunscreenRule.title,
+    // Composed through the same helpers the generator uses, rather than
+    // spelled out: the window is the whole reason the row reads as more than
+    // a bare instruction, and a hand-written copy of the format would be free
+    // to drift from it.
+    title: weatherTaskTitle(
+      sunscreenRule.title,
+      describeWeatherWindow(sunscreenRule.condition, { startHour: 11, endHour: 17 }),
+    ),
     dueDate: today.toISOString(),
     category: 'Weather',
     ...generatedBy('weather', weatherSourceId(dayKeyOf(today), sunscreenRule.id)),

@@ -8,7 +8,7 @@ CI fails if it is out of date. Run it after adding or growing a file.
 **Read narrowly.** 62 files are over 1,000 lines, 43 of
 them source rather than tests. The ten biggest source files:
 
-`store/useTaskStore.ts` (8.2k), `types/index.ts` (6.3k), `db/database.ts` (6.3k),
+`store/useTaskStore.ts` (8.3k), `types/index.ts` (6.3k), `db/database.ts` (6.3k),
 `components/TaskEditor.tsx` (6.1k), `store/useGroceryStore.ts` (5.2k),
 `screens/TodayScreen.tsx` (4.6k), `components/TaskItem.tsx` (4.5k),
 `store/useSettingsStore.ts` (4.3k), `utils/demoSeed.ts` (4.3k),

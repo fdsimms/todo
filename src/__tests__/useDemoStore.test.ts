@@ -3585,7 +3585,10 @@ describe('demo seed — groceries, recipes, meals and the fridge', () => {
 
     const weatherTask = tasks.find(t => t.generatedKind === 'weather');
     expect(weatherTask).toBeDefined();
-    expect(weatherTask!.title).toBe(sunscreenRule!.title);
+    // The rule's own words lead, and the window the app worked out follows —
+    // a seed showing the bare instruction would read as a feature that can't
+    // say when the weather is.
+    expect(weatherTask!.title).toBe(`${sunscreenRule!.title} (sun 11am to 5pm)`);
     expect(weatherTask!.category).toBe('Weather');
     expect(settings.weatherTaskCategory).toBe('Weather');
     expect(weatherTask!.generatedSourceId).toBe(`${dayKeyOf(getCurrentDayStart())}#${sunscreenRule!.id}`);

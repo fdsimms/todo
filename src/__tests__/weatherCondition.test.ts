@@ -3,6 +3,7 @@ import {
   weatherIconFor,
   weatherConditionAdjective,
   weatherConditionNoun,
+  conditionNoun,
 } from '../utils/weatherCondition';
 
 describe('classifyWeather', () => {
@@ -71,5 +72,17 @@ describe('weatherConditionAdjective / weatherConditionNoun', () => {
     expect(weatherConditionNoun(61)).toBe('Rain');
     expect(weatherConditionNoun(71)).toBe('Snow');
     expect(weatherConditionNoun(3)).toBe('Clouds');
+  });
+});
+
+describe('conditionNoun', () => {
+  // Every condition a rule can be written against has a word, including the
+  // two temperature ones weatherConditionNoun above has no answer for.
+  it('names all five conditions for use mid-sentence', () => {
+    expect(conditionNoun('sunny')).toBe('sun');
+    expect(conditionNoun('rainy')).toBe('rain');
+    expect(conditionNoun('snowy')).toBe('snow');
+    expect(conditionNoun('cold')).toBe('cold');
+    expect(conditionNoun('hot')).toBe('heat');
   });
 });
