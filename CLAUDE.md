@@ -591,12 +591,16 @@ only compiles for one specific combination.
 **Stay in scope.** Fix what was asked, in the pattern the surrounding file already uses.
 Adjacent code that looks improvable isn't the task; mention it instead of rewriting it.
 
-**This file and `docs/arch/` are the answer.** The conventions here are settled decisions with
-the reasoning attached — the "don't do X" notes exist because X was tried. Don't re-derive them
-from the code, and don't re-open them without a reason the note doesn't already cover. That
-applies word for word to the `docs/arch/` files: they were part of this file until they made it
-too expensive to load, and being in another file makes them optional to *load*, never optional
-to *follow*. If the routing table sends you to one, read it first.
+**This file and `docs/arch/` are strong defaults, not settled decisions.** Most carry the
+reasoning that led to them — read it before deviating, since a "don't do X" note usually means X
+was tried and failed for a stated reason, and silently redoing X wastes a round trip. But these
+get overridden often in practice, so don't treat the presence of a rule as the end of the
+conversation: if a case doesn't seem to fit the stated reasoning, or there's a genuinely better
+approach, say so and ask rather than either blindly complying or silently ignoring it. The bar is
+explaining why the reasoning doesn't apply here, not just disliking the rule. That applies to the
+`docs/arch/` files too: they were part of this file until they made it too expensive to load,
+being in another file doesn't make them any less worth reading, and the routing table says which
+one to read first for a given change.
 
 ## Architecture
 
