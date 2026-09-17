@@ -33,7 +33,19 @@ import { useRecipeStore } from '../store/useRecipeStore';
 import { useFoodLogStore, type FoodLogDraft } from '../store/useFoodLogStore';
 import { subDays } from 'date-fns/subDays';
 import { addCustomPortion, catalogPanelWrite, nutritionFor } from '../utils/foodNutrition';
-import { amountExample, amountHint, combineFoodNutrition, foodLogEntryEdit, helpingNutrition, matchMealPlanEntry, recipeHelpingNutrition, scalePanelToAmount } from '../utils/foodLog';
+import {
+  amountExample,
+  amountHint,
+  combineFoodNutrition,
+  composeFoodAmount,
+  foodLogEntryEdit,
+  foodUnitOptionsFor,
+  helpingNutrition,
+  matchMealPlanEntry,
+  parseFoodAmount,
+  recipeHelpingNutrition,
+  scalePanelToAmount,
+} from '../utils/foodLog';
 import { cookedDishGrams, mealHelping, servingGrams, weighedHelping } from '../utils/mealLog';
 import { perServing, recipeNutrition, recipeNutritionLines, type NutritionLine } from '../utils/recipeNutrition';
 import { describeProduct } from '../utils/groceryProduct';
@@ -254,75 +266,6 @@ const DISH_MEASURE_OPTIONS: SegmentOption<DishMeasure>[] = [
   { value: 'weight', label: 'By weight' },
   { value: 'servings', label: 'By servings' },
 ];
-
-/**
- * One unit a food's amount can be entered in, offered as a pill beside the
- * amount field. `suffix` is what turns a typed number into the amount text
- * `scalePanelToAmount` actually reads — a space before a word unit, none
- * before "g", matching how those already read as amounts ("0.5 tsp", "100g").
- */
-interface FoodUnitOption {
-  key: string;
-  label: string;
-  suffix: string;
-}
-
-/**
- * Every unit this food's own panel can measure — its stated portions, plus
- * grams and/or servings wherever `panelMultiplier` would actually resolve
- * them (see `foodLog.ts#amountHint`, which this mirrors). Grams are left off
- * a `per100ml` panel and a `perServing` one with no stated serving weight,
- * because typing them would only ever be refused; a `serving` pill is offered
- * for a `perServing` panel (whose own figures already are one serving) and
- * for any other basis that states a `servingGrams` weight to scale by.
- */
-function foodUnitOptionsFor(panel: FoodNutrition): FoodUnitOption[] {
-  const out: FoodUnitOption[] = [];
-  const seen = new Set<string>();
-  for (const p of panel.portions) {
-    const key = p.label.toLowerCase();
-    if (seen.has(key)) continue;
-    seen.add(key);
-    out.push({ key, label: p.label, suffix: ` ${p.label}` });
-  }
-  const gramsResolve = panel.basis === 'per100g' || (panel.basis === 'perServing' && panel.servingGrams !== null);
-  if (gramsResolve) out.push({ key: 'g', label: 'g', suffix: 'g' });
-  if (panel.basis === 'perServing' || panel.servingGrams !== null) {
-    out.push({ key: 'serving', label: 'serving', suffix: ' serving' });
-  }
-  return out;
-}
-
-/** A typed number for a pill, turned into the amount text the rest of the sheet reads. */
-function composeFoodAmount(numberText: string, unit: FoodUnitOption | undefined): string {
-  const n = numberText.trim();
-  if (!n || !unit) return '';
-  return `${n}${unit.suffix}`;
-}
-
-/**
- * The reverse of `composeFoodAmount`, for reopening a correction: what number
- * and which of `options` a previously saved amount text was. Only recognises
- * the exact shapes this sheet itself writes, so an amount saved before this
- * split existed (a fraction, "1 lemon", a per100ml volume) simply doesn't
- * match — the saved text is left as-is and still saves correctly untouched,
- * it just can't be shown pre-filled in the split fields.
- */
-function parseFoodAmount(raw: string, options: FoodUnitOption[]): { number: string; unitKey: string } | null {
-  const match = /^(\d+(?:\.\d+)?)\s*(.*)$/.exec(raw.trim());
-  if (!match) return null;
-  const [, numberText, unitText] = match;
-  const word = unitText.trim().toLowerCase();
-  if (!word) return null;
-  for (const option of options) {
-    if (option.key === 'g' ? (word === 'g' || word === 'gram' || word === 'grams') :
-      option.key === 'serving' ? word.startsWith('serving') :
-        word === option.label.toLowerCase()) {
-      return { number: numberText, unitKey: option.key };
-    }
-  }
-  return null;
-}
 
 /** What Save is about to write, once the typed amount resolves to something. */
 interface Built {

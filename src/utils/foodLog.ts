@@ -204,6 +204,102 @@ export function amountExample(panel: FoodNutrition): string {
 }
 
 /**
+ * One unit an amount can be entered in, offered as a pill beside an amount
+ * field — `FoodLogEntrySheet` and `ScanPortionSheet` both build this list
+ * from `foodUnitOptionsFor` rather than keeping their own copies. `suffix` is
+ * what turns a typed number into the amount text `scalePanelToAmount` (via
+ * `panelMultiplier`) actually reads — a space before a word unit, none before
+ * "g", matching how those already read as amounts ("0.5 tsp", "100g").
+ */
+export interface FoodUnitOption {
+  key: string;
+  label: string;
+  suffix: string;
+}
+
+/**
+ * A `per100ml` panel needs no portion row to measure a volume —
+ * `unitConvert.ts` carries fixed conversions for all of these (see
+ * `panelMultiplier`'s `per100ml` branch), so they resolve for every drink
+ * regardless of what its own source data stated. Cup first, matching what
+ * people reach for most.
+ */
+export const VOLUME_UNIT_OPTIONS: FoodUnitOption[] = [
+  { key: 'cup', label: 'cup', suffix: ' cup' },
+  { key: 'tbsp', label: 'tbsp', suffix: ' tbsp' },
+  { key: 'tsp', label: 'tsp', suffix: ' tsp' },
+  { key: 'fl oz', label: 'fl oz', suffix: ' fl oz' },
+  { key: 'ml', label: 'ml', suffix: ' ml' },
+];
+
+/**
+ * Every unit this food's own panel can measure — its stated portions, plus
+ * grams and/or servings wherever `panelMultiplier` would actually resolve
+ * them (mirrors `amountHint` above). Grams are left off a `per100ml` panel
+ * and a `perServing` one with no stated serving weight, because typing them
+ * would only ever be refused; a `serving` pill is offered for a `perServing`
+ * panel (whose own figures already are one serving) and for any other basis
+ * that states a `servingGrams` weight to scale by. A `per100ml` panel gets
+ * `VOLUME_UNIT_OPTIONS` instead — the fixed table above, rather than
+ * anything drawn from the panel, since a per100ml basis resolves any of them
+ * without needing the food's own data.
+ */
+export function foodUnitOptionsFor(panel: FoodNutrition): FoodUnitOption[] {
+  const out: FoodUnitOption[] = [];
+  const seen = new Set<string>();
+  for (const p of panel.portions) {
+    const key = p.label.toLowerCase();
+    if (seen.has(key)) continue;
+    seen.add(key);
+    out.push({ key, label: p.label, suffix: ` ${p.label}` });
+  }
+  const gramsResolve = panel.basis === 'per100g' || (panel.basis === 'perServing' && panel.servingGrams !== null);
+  if (gramsResolve) out.push({ key: 'g', label: 'g', suffix: 'g' });
+  if (panel.basis === 'perServing' || panel.servingGrams !== null) {
+    out.push({ key: 'serving', label: 'serving', suffix: ' serving' });
+  }
+  if (panel.basis === 'per100ml') {
+    for (const unit of VOLUME_UNIT_OPTIONS) {
+      if (seen.has(unit.key)) continue;
+      seen.add(unit.key);
+      out.push(unit);
+    }
+  }
+  return out;
+}
+
+/** A typed number for a pill, turned into the amount text the rest of the sheet reads. */
+export function composeFoodAmount(numberText: string, unit: FoodUnitOption | undefined): string {
+  const n = numberText.trim();
+  if (!n || !unit) return '';
+  return `${n}${unit.suffix}`;
+}
+
+/**
+ * The reverse of `composeFoodAmount`, for reopening a correction: what number
+ * and which of `options` a previously saved amount text was. Only recognises
+ * the exact shapes these sheets themselves write, so an amount saved before
+ * this split existed (a fraction, "1 lemon", a per100ml volume typed free)
+ * simply doesn't match — the saved text is left as-is and still saves
+ * correctly untouched, it just can't be shown pre-filled in the split fields.
+ */
+export function parseFoodAmount(raw: string, options: FoodUnitOption[]): { number: string; unitKey: string } | null {
+  const match = /^(\d+(?:\.\d+)?)\s*(.*)$/.exec(raw.trim());
+  if (!match) return null;
+  const [, numberText, unitText] = match;
+  const word = unitText.trim().toLowerCase();
+  if (!word) return null;
+  for (const option of options) {
+    if (option.key === 'g' ? (word === 'g' || word === 'gram' || word === 'grams') :
+      option.key === 'serving' ? word.startsWith('serving') :
+        word === option.label.toLowerCase()) {
+      return { number: numberText, unitKey: option.key };
+    }
+  }
+  return null;
+}
+
+/**
  * What some number of helpings of a cooked dish works out to.
  *
  * **Takes the dish's per-serving figures, not the dish**, so this module needs
