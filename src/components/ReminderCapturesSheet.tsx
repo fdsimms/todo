@@ -318,6 +318,11 @@ export function ReminderCapturesSheet({ visible, onClose, reminderLists, reserve
 
             {capture.filing.kind === 'meal' && (
               <View style={styles.block}>
+                <Text style={styles.hint}>
+                  Checking off a task from this list opens the food log's entry sheet instead of
+                  just completing it, prefilled with what you dictated. Project, Category, and Tag
+                  don't do that; they only file the task.
+                </Text>
                 <View style={styles.toggleRowTop}>
                   <View style={styles.toggleText}>
                     <Text style={styles.toggleLabel}>Always the same meal</Text>
