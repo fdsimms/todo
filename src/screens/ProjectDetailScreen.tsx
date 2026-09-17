@@ -44,7 +44,16 @@ import { EmptyState } from '../components/EmptyState';
 import { InlineAction } from '../components/InlineAction';
 import { ProjectDecisions } from '../components/ProjectDecisions';
 import { DeliverablePromptSheet } from '../components/DeliverablePromptSheet';
-import { FabMenu, FAB_SIZE, type FabMenuItem } from '../components/Fab';
+import { FabMenu, FAB_SIZE, type FabDragHandlers, type FabMenuItem } from '../components/Fab';
+import {
+  FabDropZone,
+  FabDropZoneProvider,
+  useFabIntentChannel,
+  useFabIntentSelector,
+  type FabDropZonesHandle,
+  type FabIntentChannel,
+} from '../components/FabDropZones';
+import type { DragScroller, DropZone, FabDropIntent } from '../utils/fabDrop';
 import { useSettingsStore } from '../store/useSettingsStore';
 import { addDays } from 'date-fns/addDays';
 import { dayKeyOf } from '../utils/dateUtils';
@@ -79,6 +88,13 @@ type RootStackParamList = {
 const NO_SUBTASKS: Task[] = [];
 const NO_GROUP_CHILDREN: Task[] = [];
 
+// Matches the list's own keyExtractor — shared so the add button's drop
+// zones and the placement pass that follows a drop agree on what a row is
+// called.
+function projectListItemKey(item: ProjectListItem): string {
+  return item.type === 'group' ? `g-${item.group.id}` : item.task.id;
+}
+
 // A project's incomplete tasks, with any stacked among them collapsed into a
 // single 'group' entry each — mirrors Today's own CategoryListItem, minus the
 // category header this screen doesn't have.
@@ -98,6 +114,25 @@ const LIST_ADD_MENU_ITEMS: FabMenuItem[] = [
   { key: 'existing', label: 'Add existing task', icon: 'albums-outline' },
   { key: 'stack', label: 'Section', icon: 'layers' },
 ];
+
+// The add button, naming what a release right now would do — same wrapper
+// shape as Today's and Projects' own add buttons.
+function AddProjectTaskFabWithDropLabel({
+  channel,
+  ...props
+}: {
+  channel: FabIntentChannel;
+} & Omit<React.ComponentProps<typeof FabMenu>, 'dragLabel'>) {
+  const label = useFabIntentSelector(channel, intent => {
+    switch (intent?.kind) {
+      case 'cancel': return 'Cancel';
+      case 'joinGroup': return `Add to ${intent.groupTitle.trim() || 'stack'}`;
+      case 'insert': return 'New task here';
+      default: return null;
+    }
+  });
+  return <FabMenu {...props} dragLabel={label} />;
+}
 
 export function ProjectDetailScreen() {
   const insets = useSafeAreaInsets();
@@ -402,6 +437,51 @@ export function ProjectDetailScreen() {
     [incompleteProjectTasks, taskGroups, projectId],
   );
 
+  // ——— Dragging the add button into the list ———————————————————————————
+  //
+  // Same gesture as Today's and Projects' own add buttons, over the shape
+  // this list actually has: no category headers, so every loose task is a
+  // plain insert point and a stack row means "join it" — the same rule the
+  // row-drag's own dropIntoIndex/dropDisabled above already applies for a
+  // dragged task.
+  const dropZonesRef = useRef<FabDropZonesHandle>(null);
+  const [fabDragging, setFabDragging] = useState(false);
+  const scrollControl = useRef<DragScroller | null>(null);
+  const fabIntentChannel = useFabIntentChannel();
+  const [quickAddSeed, setQuickAddSeed] = useState<{ groupId?: string } | undefined>(undefined);
+  const [quickAddSeedLabel, setQuickAddSeedLabel] = useState<string | null>(null);
+  // The drop that opened the sheet, read once when the task comes back.
+  const pendingDropRef = useRef<FabDropIntent | null>(null);
+
+  const zoneByKey = useMemo(() => {
+    const map = new Map<string, DropZone>();
+    projectListItems.forEach(item => {
+      const key = projectListItemKey(item);
+      map.set(
+        key,
+        item.type === 'group'
+          ? { kind: 'group', key, groupId: item.group.id, groupTitle: item.group.title, category: null }
+          : { kind: 'task', key, category: null },
+      );
+    });
+    return map;
+  }, [projectListItems]);
+
+  /**
+   * Give the freshly created task the position it was dropped at — the same
+   * splice-then-reorder pass a finished row drag runs (see the list's own
+   * onReorder above), just seeded from the drop point instead of a settled
+   * drag.
+   */
+  const placeCreatedTask = (task: Task, intent: Extract<FabDropIntent, { kind: 'insert' }>) => {
+    const base = projectListItems.filter(item => !(item.type === 'task' && item.task.id === task.id));
+    const anchor = base.findIndex(item => projectListItemKey(item) === intent.anchorKey);
+    if (anchor < 0) return;
+    const spliced: ProjectListItem[] = [...base];
+    spliced.splice(intent.before ? anchor : anchor + 1, 0, { type: 'task', task });
+    reorderProjectItems(projectId, spliced.map(item => (item.type === 'group' ? item.group.id : item.task.id)));
+  };
+
   // The row handlers take the row's own id rather than closing over it, so one
   // callback serves every row — TaskItem is memoized and a fresh arrow per row
   // per render defeats its shallow compare silently, putting every mounted row
@@ -524,8 +604,74 @@ export function ProjectDetailScreen() {
     if (flashTimeoutRef.current) clearTimeout(flashTimeoutRef.current);
   }, []);
 
-  const handleQuickAddOpenFull = (draft: TaskDraft) => {
+  /**
+   * Close the quick-add sheet and forget the placement it was opened with.
+   * Every path out of the sheet goes through here — cancel, create, and "More
+   * details" — or the next plain tap on the button would inherit a drop from
+   * a drag two minutes ago.
+   */
+  const closeQuickAdd = () => {
     setQuickAddVisible(false);
+    setQuickAddSeed(undefined);
+    setQuickAddSeedLabel(null);
+    pendingDropRef.current = null;
+  };
+
+  // A drag of the add button chose where this task goes; a plain tap didn't,
+  // and shaking the seed chip off in the sheet takes the choice back. Joining
+  // a stack is seeded straight onto the create call (`quickAddSeed.groupId`),
+  // so only a plain insert point needs placing after the fact.
+  const handleTaskCreated = (task: Task, placed: boolean) => {
+    const dropped = pendingDropRef.current;
+    pendingDropRef.current = null;
+    attachToProject(task);
+    if (placed && dropped?.kind === 'insert') placeCreatedTask(task, dropped);
+  };
+
+  const openQuickAddForDrop = (intent: FabDropIntent) => {
+    // Dropped back on the button: the drag is the whole of what happened, so
+    // no sheet, and nothing left armed for the next tap.
+    if (intent.kind === 'cancel') {
+      pendingDropRef.current = null;
+      haptics.tap();
+      return;
+    }
+    pendingDropRef.current = intent;
+    if (intent.kind === 'joinGroup') {
+      setQuickAddSeed({ groupId: intent.groupId });
+      setQuickAddSeedLabel(intent.groupTitle.trim() || 'Stack');
+    } else {
+      setQuickAddSeed(undefined);
+      setQuickAddSeedLabel(null);
+    }
+    setQuickAddVisible(true);
+  };
+
+  // Rebuilt each render so it closes over fresh state; the button reads it
+  // through a ref, and its responder is built once regardless.
+  const fabDrag: FabDragHandlers = {
+    onStart: () => {
+      setExpandedTaskId(null);
+      setFabDragging(true);
+      dropZonesRef.current?.begin();
+    },
+    onMove: (pageY, home) => dropZonesRef.current?.moveTo(pageY, home),
+    onEnd: (pageY, home) => {
+      setFabDragging(false);
+      // end()/cancel() publish a null intent themselves, which is what clears
+      // the label and any lit stack.
+      openQuickAddForDrop(dropZonesRef.current?.end(pageY, home) ?? { kind: 'plain' });
+    },
+    onCancel: () => {
+      setFabDragging(false);
+      dropZonesRef.current?.cancel();
+    },
+  };
+
+  const handleQuickAddOpenFull = (draft: TaskDraft) => {
+    // The draft carries the seeded stack, if any; only the placement is let
+    // go of, and the editor has no notion of one anyway.
+    closeQuickAdd();
     setEditingTask(null);
     setEditorInitialDraft({ ...draft, projectId: project?.id ?? null });
     setEditorVisible(true);
@@ -702,10 +848,19 @@ export function ProjectDetailScreen() {
           onTouchEnd={expandedTaskId !== null ? handleListTouchEnd : undefined}
         >
         <PaintSelectionProvider {...paintProps}>
+        <FabDropZoneProvider
+          ref={dropZonesRef}
+          onIntentChange={fabIntentChannel.publish}
+          scroller={scrollControl}
+        >
           <ReorderableList
-            scrollEnabled={!painting && !draggingSubtask}
+            // The user can't scroll during an add-button drag (the button's
+            // responder has the touch); the drag scrolls it instead, through
+            // scrollControl below.
+            scrollEnabled={!painting && !draggingSubtask && !fabDragging}
+            scrollControlRef={scrollControl}
             data={projectListItems}
-            keyExtractor={item => item.type === 'group' ? `g-${item.group.id}` : item.task.id}
+            keyExtractor={projectListItemKey}
             // Two rows need lifting over their neighbours: an expanded row,
             // whose card shadow falls across the row below it, and a task
             // group's tray, for the same reason — see ReorderableList's own
@@ -829,7 +984,14 @@ export function ProjectDetailScreen() {
                 />
               </>
             }
+            // Every row doubles as a target for the add button being dragged
+            // in. The wrapper only measures — it adds no styling and claims
+            // no touches — so a row behaves exactly as it did without one,
+            // and the dragged row's floating copy registers nothing (a null
+            // zone) rather than claiming the real row's slot under the same
+            // key.
             renderItem={({ item, drag, isActive }) => {
+              const zone = isActive ? null : zoneByKey.get(projectListItemKey(item)) ?? null;
               if (item.type === 'group') {
                 const { group, children } = item;
                 const allChildren = childrenByGroupId.get(group.id) ?? NO_GROUP_CHILDREN;
@@ -838,6 +1000,7 @@ export function ProjectDetailScreen() {
                 // group row without the task that led it there.
                 const empty = children.length === 0;
                 return (
+                  <FabDropZone zone={zone}>
                   <GroupDropTarget active={joinGroupIntentId === group.id}>
                   <TaskGroupTray>
                     <TaskGroupHeader
@@ -885,9 +1048,14 @@ export function ProjectDetailScreen() {
                     </TaskGroupBody>
                   </TaskGroupTray>
                   </GroupDropTarget>
+                  </FabDropZone>
                 );
               }
-              return renderProjectTaskItem(item.task, { drag, isActive });
+              return (
+                <FabDropZone zone={zone}>
+                  {renderProjectTaskItem(item.task, { drag, isActive })}
+                </FabDropZone>
+              );
             }}
             ListEmptyComponent={
               completedProjectTasks.length === 0 ? (
@@ -951,6 +1119,7 @@ export function ProjectDetailScreen() {
               )
             }
           />
+        </FabDropZoneProvider>
         </PaintSelectionProvider>
         </View>
 
@@ -1063,11 +1232,14 @@ export function ProjectDetailScreen() {
         </SheetModal>
 
         {!selectionMode && (
-          <FabMenu
+          <AddProjectTaskFabWithDropLabel
+            channel={fabIntentChannel}
             items={addMenuItems}
             onSelect={handleAddMenuSelect}
             bottom={insets.bottom + spacing.xl}
             accessibilityLabel="Add task to project"
+            drag={fabDrag}
+            dragHint="Drag onto the list to add a task there, or into a stack to join it, or back to the button to cancel"
           />
         )}
 
@@ -1090,13 +1262,15 @@ export function ProjectDetailScreen() {
 
         <QuickAddModal
           visible={quickAddVisible}
-          onClose={() => setQuickAddVisible(false)}
+          onClose={closeQuickAdd}
           onOpenFull={handleQuickAddOpenFull}
           // Project tasks are picked off over time rather than scheduled for
           // today, so the quick add opens with no due date.
           context="unscheduled"
-          onCreated={attachToProject}
+          onCreated={handleTaskCreated}
           onResumed={attachToProject}
+          seed={quickAddSeed}
+          seedLabel={quickAddSeedLabel}
         />
 
         {/* Add from a template: pick one here, then the apply sheet below —
