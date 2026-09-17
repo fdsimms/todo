@@ -273,7 +273,8 @@ interface FoodUnitOption {
  * them (see `foodLog.ts#amountHint`, which this mirrors). Grams are left off
  * a `per100ml` panel and a `perServing` one with no stated serving weight,
  * because typing them would only ever be refused; a `serving` pill is offered
- * only for a `perServing` panel, whose own figures already are one serving.
+ * for a `perServing` panel (whose own figures already are one serving) and
+ * for any other basis that states a `servingGrams` weight to scale by.
  */
 function foodUnitOptionsFor(panel: FoodNutrition): FoodUnitOption[] {
   const out: FoodUnitOption[] = [];
@@ -286,7 +287,9 @@ function foodUnitOptionsFor(panel: FoodNutrition): FoodUnitOption[] {
   }
   const gramsResolve = panel.basis === 'per100g' || (panel.basis === 'perServing' && panel.servingGrams !== null);
   if (gramsResolve) out.push({ key: 'g', label: 'g', suffix: 'g' });
-  if (panel.basis === 'perServing') out.push({ key: 'serving', label: 'serving', suffix: ' serving' });
+  if (panel.basis === 'perServing' || panel.servingGrams !== null) {
+    out.push({ key: 'serving', label: 'serving', suffix: ' serving' });
+  }
   return out;
 }
 
