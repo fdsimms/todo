@@ -381,4 +381,14 @@ describe('offersMealLogOnCompletion', () => {
   it('is false for an ordinary task', () => {
     expect(offersMealLogOnCompletion(baseTask as Task, true)).toBe(false);
   });
+
+  it('is true for a task with logMealSlot set, even with the setting off', () => {
+    const captureTask = { ...baseTask, logMealSlot: 'breakfast' } as Task;
+    expect(offersMealLogOnCompletion(captureTask, false)).toBe(true);
+  });
+
+  it('is false for a completed task with logMealSlot set', () => {
+    const captureTask = { ...baseTask, logMealSlot: 'breakfast', completed: true } as Task;
+    expect(offersMealLogOnCompletion(captureTask, true)).toBe(false);
+  });
 });
