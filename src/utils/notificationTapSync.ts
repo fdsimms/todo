@@ -34,7 +34,7 @@ export function useNotificationTapSync(): void {
     const handle = (response: Notifications.NotificationResponse | null) => {
       if (!response) return;
       const data = response.notification.request.content.data as {
-        taskId?: string; dailyAgenda?: boolean; agendaSpoken?: string | null;
+        taskId?: string; dailyAgenda?: boolean; agendaSpoken?: string | null; completionTimer?: boolean;
       } | undefined;
 
       // The agenda notification carries no taskId, so this has to come before
@@ -54,6 +54,17 @@ export function useNotificationTapSync(): void {
 
       const taskId = data?.taskId;
       if (!taskId) return;
+
+      // The completion timer's own Live Activity has a Done button for this
+      // (see the completionTimer: deep link in deepLinks.ts), but most people
+      // find the notification first — and tapping it was landing on Today
+      // with the Live Activity's countdown left sitting at 0:00 forever,
+      // because nothing here read this payload. Same dismissal either way.
+      if (data?.completionTimer) {
+        useTaskStore.getState().dismissCompletionTimer(taskId);
+        resetToToday();
+        return;
+      }
 
       if (response.actionIdentifier === COMPLETE_ACTION_IDENTIFIER) {
         useWidgetCompletionStore.getState().enqueue([taskId]);
