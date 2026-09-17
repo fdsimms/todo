@@ -1,0 +1,4 @@
+{
+  "message": "Logging a scanned drink by volume (like 355 ml) now works even when its label states figures by weight with no serving size, using water's density as an approximation and noting so on screen",
+  "date": "2026-09-17"
+}

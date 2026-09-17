@@ -9,6 +9,7 @@ import {
   foodLogSections,
   foodLogTotals,
   foodUnitOptionsFor,
+  isBeverageName,
   matchMealPlanEntry,
   nutrientContributions,
   helpingNutrition,
@@ -161,6 +162,68 @@ describe('scalePanelToAmount', () => {
   it('refuses a typed serving count against a panel with no serving to scale by', () => {
     expect(scalePanelToAmount(panel({ basis: 'per100g', servingGrams: null }), '2 servings', null, NOW))
       .toBeNull();
+  });
+
+  describe('the beverage density fallback', () => {
+    // A weight-basis panel with no stated portions and no serving weight has
+    // nothing to measure a volume against — the bug this fallback exists to
+    // fix (a scanned drink whose label happens to be per-100g rather than
+    // per-100ml).
+    const beveragePanel = () => panel({
+      basis: 'per100g',
+      servingGrams: null,
+      portions: [],
+      amounts: { calorieKcal: 20, sugarG: 5 },
+    });
+
+    it('still refuses a solid food with no name to say it is a beverage', () => {
+      expect(scalePanelToAmount(beveragePanel(), '355 ml', null, NOW)).toBeNull();
+    });
+
+    it('still refuses a non-beverage food, even by name', () => {
+      expect(scalePanelToAmount(beveragePanel(), '355 ml', null, NOW, 'Chicken Breast')).toBeNull();
+    });
+
+    it('approximates 1 ml as 1 g for a beverage with no density of its own', () => {
+      const built = scalePanelToAmount(beveragePanel(), '355 ml', null, NOW, 'Calamansi Sparkling Water, Sanzo');
+      expect(built?.approximate).toBe(true);
+      expect(built?.grams).toBe(355);
+      // 355 g at 20 kcal/100g.
+      expect(built?.nutrition.amounts.calorieKcal).toBeCloseTo(71, 0);
+    });
+
+    it('never overrides a real answer from the food\'s own data', () => {
+      // A stated cup portion measures this exactly, so the fallback must not
+      // even be consulted, let alone override it.
+      const built = scalePanelToAmount(
+        panel({ basis: 'per100g', portions: [{ amount: 1, label: 'cup', grams: 244 }] }),
+        '1 cup',
+        null,
+        NOW,
+        'Whole Milk',
+      );
+      expect(built?.approximate).toBe(false);
+      expect(built?.grams).toBe(244);
+    });
+
+    it('does not apply to a per-100ml panel, which already measures volume directly', () => {
+      const built = scalePanelToAmount(
+        panel({ basis: 'per100ml', portions: [], amounts: { calorieKcal: 42 } }),
+        '250 ml',
+        null,
+        NOW,
+        'Cola',
+      );
+      expect(built?.approximate).toBe(false);
+    });
+  });
+});
+
+describe('isBeverageName', () => {
+  it('reads a name off the grocery aisle lexicon', () => {
+    expect(isBeverageName('Calamansi Sparkling Water, Sanzo')).toBe(true);
+    expect(isBeverageName('Orange Juice')).toBe(true);
+    expect(isBeverageName('Chicken Breast')).toBe(false);
   });
 });
 

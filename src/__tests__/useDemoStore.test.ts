@@ -1894,6 +1894,26 @@ describe('demo seed — people', () => {
     expect(entries.every(e => e.dayKey === yesterdayKey)).toBe(true);
   });
 
+  it('seeds a beverage logged by volume against a panel with no density of its own', () => {
+    // Sparkling water's panel states its figures per 100g with no portions and
+    // no serving weight — an ordinary barcode label for a drink — and is
+    // logged as "355 ml", which only resolves through
+    // `scalePanelToAmount`'s beverage density fallback. Without a row here,
+    // that fallback is a rule nobody using the demo would ever see fire.
+    const item = useGroceryStore.getState().items.find(i => i.name === 'Sparkling water');
+    expect(item).toBeDefined();
+    expect(item?.nutrition?.basis).toBe('per100g');
+    expect(item?.nutrition?.servingGrams).toBeNull();
+    expect(item?.nutrition?.portions).toEqual([]);
+
+    const window = cookingWindow(getLogicalToday(), 30);
+    useFoodLogStore.getState().loadWindow(window.startKey, window.endKey);
+    const logged = useFoodLogStore.getState().windowEntries.find(e => e.itemId === item?.id);
+    expect(logged).toBeDefined();
+    expect(logged?.quantity).toBe('355 ml');
+    expect(logged?.grams).toBe(355);
+  });
+
   it('seeds a saved meal, so "log it again" reads as a feature the app has', () => {
     const meals = useSavedMealsStore.getState().meals;
     expect(meals.length).toBeGreaterThan(0);
@@ -2093,7 +2113,7 @@ describe('demo seed — people', () => {
       // portion table. Two paths, both arithmetic rather than typing.
       const rebuilt = e.productId
         ? packageHelping(panel!, 1, e.quantity)
-        : scalePanelToAmount(panel!, e.quantity, null)?.nutrition;
+        : scalePanelToAmount(panel!, e.quantity, null, undefined, item?.name ?? null)?.nutrition;
       expect(rebuilt?.amounts).toEqual(e.nutrition.amounts);
       checked += 1;
     }

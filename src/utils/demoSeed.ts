@@ -1655,6 +1655,13 @@ function seedFoodLog(today: Date): void {
   for (const daysAgo of [2, 4, 6]) {
     meals.push({ name: 'Greek yogurt', quantity: '1 cup', slot: 'breakfast', hour: 9, daysAgo });
   }
+  // Logged by volume against a panel that states its figures per 100g with no
+  // portions and no serving weight — a beverage's own density is the one
+  // approximation `scalePanelToAmount` is willing to make (see its doc
+  // comment), and this is the seed's example of it actually firing. Without a
+  // row here, the fallback reads as a rule in a comment rather than a feature
+  // anyone using the demo would ever see resolve.
+  meals.push({ name: 'Sparkling water', quantity: '355 ml', slot: 'lunch', hour: 12, daysAgo: 3 });
 
   /**
    * One helping of something cooked, so the log isn't all catalog foods.
@@ -1812,7 +1819,7 @@ function seedFoodLog(today: Date): void {
   for (const meal of meals) {
     const item = items.find(i => i.name === meal.name);
     if (!item?.nutrition) continue;
-    const built = scalePanelToAmount(item.nutrition, meal.quantity, null);
+    const built = scalePanelToAmount(item.nutrition, meal.quantity, null, undefined, item.name);
     if (!built) continue;
     const at = subDays(today, meal.daysAgo);
     at.setHours(meal.hour, 0, 0, 0);
@@ -3956,6 +3963,25 @@ function seedGroceries(recipes: DemoRecipes, today: Date): void {
   // checked row already carried a price would hide the affordance behind the
   // one state nobody needs it for.
   setItemPrice(itemNamed('Milk').id, 349, traderJoes.id);
+
+  // Stated per 100g with no portions and no serving weight — a real barcode
+  // source's ordinary way of labelling a drink, and exactly the panel that
+  // used to refuse every volume amount outright. `isBeverageName` reads
+  // "Sparkling water" off the aisle lexicon as a beverage, so logging it by
+  // the millilitre (see `seedFoodLog`'s `meals`) is answered by
+  // `scalePanelToAmount`'s density fallback rather than refused. Set last,
+  // after clearList dropped and re-typed this row above — a panel set any
+  // earlier would have been thrown away with it.
+  setItemNutrition(itemNamed('Sparkling water').id, {
+    basis: 'per100g',
+    servingGrams: null,
+    servingText: null,
+    amounts: { calorieKcal: 0, sodiumMg: 7 },
+    portions: [],
+    source: 'openFoodFacts',
+    sourceId: null,
+    recordedAt: subDays(today, 10).toISOString(),
+  });
 }
 
 // ---------------------------------------------------------------------------

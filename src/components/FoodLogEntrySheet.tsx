@@ -273,6 +273,8 @@ interface Built {
   grams: number | null;
   /** How the amount is written down, when the helping named itself. Foods use what was typed. */
   quantity?: string;
+  /** True when the figures came from `scalePanelToAmount`'s beverage density fallback. */
+  approximate?: boolean;
 }
 
 /** One thing that can be logged: a catalog food, a box of one, or a cooked dish. */
@@ -646,7 +648,9 @@ export function FoodLogEntrySheet({
   const varyingResolved = useMemo(
     () => varyingLines.map(line => {
       const typed = varyingAmounts[line.id]?.trim() ?? '';
-      const resolved = typed && line.nutrition ? scalePanelToAmount(line.nutrition, typed, line.prep) : null;
+      const resolved = typed && line.nutrition
+        ? scalePanelToAmount(line.nutrition, typed, line.prep, undefined, line.item?.name ?? null)
+        : null;
       return { line, typed, resolved };
     }),
     [varyingLines, varyingAmounts],
@@ -692,7 +696,7 @@ export function FoodLogEntrySheet({
       };
     }
     if (!picked.panel) return null;
-    return scalePanelToAmount(picked.panel, amount, null);
+    return scalePanelToAmount(picked.panel, amount, null, undefined, picked.label);
   }, [picked, amount, dishMeasure, recipes, items, itemProducts, varyingResolved]);
 
   // What's actually offered to weigh, which `weighableLine` decides rather
@@ -1200,6 +1204,13 @@ export function FoodLogEntrySheet({
                   : 'No calories stated'}
                 {built.grams !== null ? `, ${built.grams} g` : ''}
               </Text>
+            )}
+            {/* This label states no density of its own, so the weight behind
+                a volume amount is approximated from water's — right for most
+                drinks, off for anything syrupy or creamy. See
+                `scalePanelToAmount`'s beverage fallback. */}
+            {!!built?.approximate && (
+              <Text style={styles.hint}>Approximate — no manufacturer serving data.</Text>
             )}
 
             {unfiled && (

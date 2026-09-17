@@ -136,7 +136,10 @@ export function ScanPortionSheet({ visible, foods, slot, at, mealPlanEntryId, on
    * rather than failing at Log — the person is looking at the field they typed.
    */
   const resolved = useMemo(() => {
-    const out = new Map<string, { nutrition: FoodNutrition; grams: number | null; quantity: string } | null>();
+    const out = new Map<
+      string,
+      { nutrition: FoodNutrition; grams: number | null; quantity: string; approximate: boolean } | null
+    >();
     for (const food of foods) {
       const answer = answers[food.key];
       if (!answer) continue;
@@ -147,9 +150,11 @@ export function ScanPortionSheet({ visible, foods, slot, at, mealPlanEntryId, on
       if (answer.kind === 'typed' && !answer.text.trim()) continue;
       if (answer.kind === 'choice') {
         const nutrition = packageHelping(food.panel, answer.servings, answer.label, at);
-        out.set(food.key, nutrition ? { nutrition, grams: nutrition.servingGrams, quantity: answer.label } : null);
+        out.set(food.key, nutrition
+          ? { nutrition, grams: nutrition.servingGrams, quantity: answer.label, approximate: false }
+          : null);
       } else {
-        const scaled = scalePanelToAmount(food.panel, answer.text, null, at);
+        const scaled = scalePanelToAmount(food.panel, answer.text, null, at, food.label);
         out.set(food.key, scaled ? { ...scaled, quantity: answer.text.trim() } : null);
       }
     }
@@ -391,6 +396,15 @@ export function ScanPortionSheet({ visible, foods, slot, at, mealPlanEntryId, on
                       : 'That amount can’t be measured against this label. See the note above.'}
                   </Text>
                 )}
+                {/* This label states no density of its own, so the weight
+                    behind a volume amount is approximated from water's —
+                    right for most drinks, off for anything syrupy or
+                    creamy. See `scalePanelToAmount`'s beverage fallback. */}
+                {!!outcome?.approximate && (
+                  <Text style={styles.approximateNote}>
+                    Approximate — no manufacturer serving data.
+                  </Text>
+                )}
               </View>
             );
           })}
@@ -440,6 +454,7 @@ function makeStyles(colors: Colors) {
     hint: { color: colors.textTertiary, fontSize: font.sm },
     outcome: { color: colors.textSecondary, fontSize: font.sm },
     outcomeRefused: { color: colors.textTertiary },
+    approximateNote: { color: colors.textTertiary, fontSize: font.xs },
     groupLabel: {
       color: colors.textSecondary,
       fontSize: font.xs,
