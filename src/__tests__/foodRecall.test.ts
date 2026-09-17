@@ -3,6 +3,7 @@ import {
   catalogRecallFoods,
   describeCatalogRecall,
   describeRecall,
+  describedGrams,
   rankRecallCandidates,
   recallFoods,
   recallWeight,
@@ -324,5 +325,27 @@ describe('describeRecall', () => {
     // The panel is on the row beside this. Repeating a number here would read
     // as the sentence making its own claim, the rule describeEstimate keeps.
     expect(describeRecall(recalled({ count: 2 }))).not.toContain('149');
+  });
+});
+
+describe('describedGrams', () => {
+  it('reads a weight leading the description', () => {
+    expect(describedGrams('205g cooked beans')).toBe('205g');
+  });
+
+  it('reads a weight anywhere in the description', () => {
+    expect(describedGrams('cooked beans, 205g')).toBe('205g');
+  });
+
+  it('accepts a decimal and the word "grams"', () => {
+    expect(describedGrams('12.5 grams of butter')).toBe('12.5g');
+  });
+
+  it('returns null with no weight named', () => {
+    expect(describedGrams('cooked beans')).toBeNull();
+  });
+
+  it('does not mistake a serving count for a weight', () => {
+    expect(describedGrams('2 servings of beans')).toBeNull();
   });
 });
