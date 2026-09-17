@@ -67,8 +67,9 @@ export function WeatherRulesSheet({ visible, onClose }: Props) {
       onClose={onClose}
       title="Weather rules"
       caption={
-        "A rule adds its task on any day the weather matches, checked once a day using your "
-        + "location. It never applies to a day that's already passed."
+        "A rule adds its task on any day the weather matches, using your location, and the task "
+        + "says when that weather happens. From 6pm it adds tomorrow's too. It never applies to a "
+        + "day that's already passed."
       }
       rules={rules}
       onChange={setRules}
@@ -78,6 +79,7 @@ export function WeatherRulesSheet({ visible, onClose }: Props) {
         title: '',
         enabled: true,
         lastFiredDayKey: null,
+        lastAheadDayKey: null,
       })}
       describeRule={rule => weatherConditionLabel(rule.condition)}
       editorLabel="On a day that's"

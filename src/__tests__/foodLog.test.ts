@@ -673,6 +673,15 @@ describe('amountHint / amountExample', () => {
     expect(amountHint(panel({ basis: 'perServing', servingGrams: 30, portions: [] })))
       .toBe('A weight, like 100g. This food has no stated portions.');
   });
+
+  it('mentions servings too, once a per-100g panel states a serving weight', () => {
+    expect(amountHint(panel({ servingGrams: 25 }))).toBe(
+      'A weight (like 100g), or one of this food\'s stated portions: 1 cup, or a number of servings.',
+    );
+    expect(amountHint(panel({ servingGrams: 25, portions: [] }))).toBe(
+      'A weight, like 100g, or a number of servings.',
+    );
+  });
 });
 
 describe('foodUnitOptionsFor', () => {
@@ -692,6 +701,14 @@ describe('foodUnitOptionsFor', () => {
 
   it('offers only a serving pill for a perServing panel with no stated weight', () => {
     expect(foodUnitOptionsFor(panel({ basis: 'perServing', servingGrams: null, portions: [] }))).toEqual([
+      { key: 'serving', label: 'serving', suffix: ' serving' },
+    ]);
+  });
+
+  it('offers a serving pill for a per-100g panel that also states a serving weight', () => {
+    expect(foodUnitOptionsFor(panel({ servingGrams: 25 }))).toEqual([
+      { key: 'cup', label: 'cup', suffix: ' cup' },
+      { key: 'g', label: 'g', suffix: 'g' },
       { key: 'serving', label: 'serving', suffix: ' serving' },
     ]);
   });

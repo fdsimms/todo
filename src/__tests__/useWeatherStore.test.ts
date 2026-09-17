@@ -33,6 +33,9 @@ const SNAPSHOT = {
   lowC: 11,
   precipitationChance: 0,
   readAt: '2026-01-01T09:00:00.000Z',
+  // Just read, so the staleness rule below leaves it alone. Stamped at load
+  // rather than written out, since what matters is that it is recent.
+  fetchedAt: new Date().toISOString(),
 } as never;
 
 const reset = () =>
@@ -67,10 +70,35 @@ describe('refresh', () => {
     expect(useWeatherStore.getState().snapshot).toBeNull();
   });
 
-  it('does not read twice for one day', async () => {
+  it('does not read again while the snapshot it holds is fresh', async () => {
     await useWeatherStore.getState().refresh();
     await useWeatherStore.getState().refresh();
     expect(fetchWeatherSnapshot).toHaveBeenCalledTimes(1);
+  });
+
+  // A weather task names an hour now, so a forecast that moves has to be able
+  // to correct one — see SNAPSHOT_STALE_MS. Still not a poll: this only
+  // decides what a trigger that was happening anyway does.
+  it('reads again on the next trigger once the snapshot has gone stale', async () => {
+    await useWeatherStore.getState().refresh();
+    useWeatherStore.setState({
+      snapshot: { ...(SNAPSHOT as object), fetchedAt: new Date(Date.now() - 3 * 60 * 60 * 1000).toISOString() } as never,
+    });
+
+    await useWeatherStore.getState().refresh();
+
+    expect(fetchWeatherSnapshot).toHaveBeenCalledTimes(2);
+  });
+
+  // Date.parse of something that isn't a date is NaN, which must read as "get
+  // a fresh one" rather than stranding the day on an unreplaceable reading.
+  it('treats a snapshot with an unreadable timestamp as stale', async () => {
+    await useWeatherStore.getState().refresh();
+    useWeatherStore.setState({ snapshot: { ...(SNAPSHOT as object), fetchedAt: 'not a date' } as never });
+
+    await useWeatherStore.getState().refresh();
+
+    expect(fetchWeatherSnapshot).toHaveBeenCalledTimes(2);
   });
 });
 

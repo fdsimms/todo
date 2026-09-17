@@ -1,4 +1,6 @@
 import type { Task, WeatherCondition, WeatherRule } from '../types';
+import type { WeatherHour } from '../services/weatherLookup';
+import { classifyWeather, conditionNoun } from './weatherCondition';
 import { generatedSourceOf } from './generatedTasks';
 import { generateId } from './id';
 
@@ -18,6 +20,18 @@ import { generateId } from './id';
 export const WEATHER_RULE_TITLE_MAX_LENGTH = 80;
 
 export const WEATHER_CONDITIONS: readonly WeatherCondition[] = ['sunny', 'rainy', 'snowy', 'cold', 'hot'];
+
+/**
+ * The hour from which a rule is also asked about tomorrow.
+ *
+ * Evening rather than any time of day, because a day-ahead task is only worth
+ * having if there's still an evening left to act on it: told at 9am that
+ * tomorrow is snowy, you'd have the row sitting in Later for fourteen hours
+ * before it meant anything, on top of today's own. 6pm is a round number and
+ * not a measured one, the same admission `weatherCondition.ts` makes about its
+ * temperature bands.
+ */
+export const WEATHER_AHEAD_FROM_HOUR = 18;
 
 export function weatherConditionLabel(condition: WeatherCondition): string {
   switch (condition) {
@@ -39,9 +53,9 @@ export function weatherConditionLabel(condition: WeatherCondition): string {
  */
 export function defaultWeatherRules(): WeatherRule[] {
   return [
-    { id: generateId(), condition: 'sunny', title: 'Put on sunscreen', enabled: true, lastFiredDayKey: null },
-    { id: generateId(), condition: 'rainy', title: 'Bring an umbrella', enabled: true, lastFiredDayKey: null },
-    { id: generateId(), condition: 'cold', title: 'Wear a coat', enabled: true, lastFiredDayKey: null },
+    { id: generateId(), condition: 'sunny', title: 'Put on sunscreen', enabled: true, lastFiredDayKey: null, lastAheadDayKey: null },
+    { id: generateId(), condition: 'rainy', title: 'Bring an umbrella', enabled: true, lastFiredDayKey: null, lastAheadDayKey: null },
+    { id: generateId(), condition: 'cold', title: 'Wear a coat', enabled: true, lastFiredDayKey: null, lastAheadDayKey: null },
   ];
 }
 
@@ -68,6 +82,9 @@ export function parseWeatherRules(raw: string | null | undefined): WeatherRule[]
       title,
       enabled: r.enabled !== false,
       lastFiredDayKey: typeof r.lastFiredDayKey === 'string' ? r.lastFiredDayKey : null,
+      // Absent in every rule stored before the day-ahead pass existed, which
+      // reads as "never fired ahead" and costs that rule one evening.
+      lastAheadDayKey: typeof r.lastAheadDayKey === 'string' ? r.lastAheadDayKey : null,
     });
   }
   return out;
@@ -103,4 +120,100 @@ export function weatherRuleIdOf(task: Pick<Task, 'generatedKind' | 'generatedSou
  */
 export function ruleMatchesToday(rule: WeatherRule, conditions: readonly WeatherCondition[]): boolean {
   return rule.enabled && conditions.includes(rule.condition);
+}
+
+/**
+ * The stretch of today a condition occupies. `startHour` is the first hour it
+ * holds for and `endHour` the first hour it no longer does, so rain through
+ * 5:59pm ends at 18 and a condition running to midnight ends at 24.
+ */
+export interface WeatherWindow {
+  startHour: number;
+  endHour: number;
+}
+
+/**
+ * When today `condition` actually happens — the run of hours it holds for that
+ * is either under way at `fromHour` or the next one after it, or null if the
+ * hourly forecast doesn't have it (or doesn't exist).
+ *
+ * **Why a run rather than the whole day's matching hours.** A rule fires off
+ * the day-level code (see `checkWeatherTasks`), which is a single summary for
+ * all of today, so "rainy" is already established by the time this is asked;
+ * what's left is where in the day to point. Showers at 4am and again at 3pm
+ * are two answers, and the useful one is the one still ahead of you — which is
+ * also why `fromHour` is a parameter rather than read from the clock in here:
+ * the caller knows what "now" means under the day reset, and a pure function
+ * that reads the clock can't be tested against one.
+ */
+export function weatherWindowFor(
+  hours: readonly WeatherHour[] | null | undefined,
+  condition: WeatherCondition,
+  fromHour: number,
+): WeatherWindow | null {
+  if (!hours || hours.length === 0) return null;
+  const matching = hours
+    .filter(h => classifyWeather(h.weatherCode, h.tempF).includes(condition))
+    .map(h => h.hour)
+    .sort((a, b) => a - b);
+  if (matching.length === 0) return null;
+
+  // A gap ends a run — the hours in between are hours this condition doesn't
+  // hold for, since Open-Meteo reports every hour of the day.
+  const runs: WeatherWindow[] = [];
+  for (const hour of matching) {
+    const open = runs[runs.length - 1];
+    if (open && hour === open.endHour) open.endHour = hour + 1;
+    else runs.push({ startHour: hour, endHour: hour + 1 });
+  }
+  return runs.find(run => run.endHour > fromHour) ?? null;
+}
+
+/** "2pm", "12am", "9am" — an hour of the day, as a title would say it. */
+function hourLabel(hour: number): string {
+  const suffix = hour < 12 ? 'am' : 'pm';
+  const clockHour = hour % 12 === 0 ? 12 : hour % 12;
+  return `${clockHour}${suffix}`;
+}
+
+/**
+ * The window in words: "rain from 2pm", "rain until 10am", "rain 2pm to 6pm",
+ * "rain all day", each with "tomorrow" on the end when `tomorrow` is set.
+ *
+ * **It never says "now", "later" or "in two hours".** A clock time stays true
+ * whenever it is read, where anything measured from the moment of writing is
+ * wrong by the afternoon.
+ *
+ * **"tomorrow" is the one word here that does go stale, and the drift pass is
+ * what answers for it** — a task written the evening before says "tomorrow",
+ * and `checkWeatherTasks` rewrites the title without it once that day is the
+ * one you are on. See the day-ahead pass there.
+ */
+export function describeWeatherWindow(
+  condition: WeatherCondition,
+  window: WeatherWindow,
+  tomorrow = false,
+): string {
+  const noun = conditionNoun(condition);
+  const openEnded = window.endHour >= 24;
+  const fromMidnight = window.startHour <= 0;
+  const suffix = tomorrow ? ' tomorrow' : '';
+  if (openEnded && fromMidnight) return `${noun} all day${suffix}`;
+  if (openEnded) return `${noun} from ${hourLabel(window.startHour)}${suffix}`;
+  if (fromMidnight) return `${noun} until ${hourLabel(window.endHour)}${suffix}`;
+  return `${noun} ${hourLabel(window.startHour)} to ${hourLabel(window.endHour)}${suffix}`;
+}
+
+/**
+ * A weather task's title: the rule's own words, plus when the weather it's
+ * about actually happens.
+ *
+ * The rule's title leads and is never rewritten — it's what the user typed,
+ * and the window is the app's footnote to it. `phrase` is null whenever the
+ * hourly forecast couldn't say (it didn't parse, or the condition is a
+ * day-level summary no hour matched), and the title is then exactly what it
+ * has always been rather than carrying an empty pair of brackets.
+ */
+export function weatherTaskTitle(ruleTitle: string, phrase: string | null): string {
+  return phrase ? `${ruleTitle} (${phrase})` : ruleTitle;
 }

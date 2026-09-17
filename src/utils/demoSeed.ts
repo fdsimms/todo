@@ -62,7 +62,7 @@ import {
   weekendNudgeLinkUrl,
   weekendNudgeNotes,
 } from './weekendTasks';
-import { weatherSourceId, defaultWeatherRules } from './weatherTasks';
+import { weatherSourceId, defaultWeatherRules, describeWeatherWindow, weatherTaskTitle } from './weatherTasks';
 import { screenTimeSourceId, defaultScreenTimeRules } from './screenTimeRules';
 import { defaultEventRules, eventOccurrenceKey, eventTaskSourceId } from './eventTasks';
 import { healthSourceId, defaultHealthRules } from './healthRules';
@@ -1155,16 +1155,37 @@ export function seedDemoData(): void {
   addCategory('Weather');
   setCategoryEmoji('Weather', '☀️');
   useSettingsStore.getState().setWeatherTaskCategory('Weather');
-  const [sunscreenRule, ...otherWeatherRules] = defaultWeatherRules();
+  const [sunscreenRule, rainRule, ...otherWeatherRules] = defaultWeatherRules();
+  const tomorrowKey = dayKeyOf(addDays(today, 1));
   useSettingsStore.getState().setWeatherRules([
     { ...sunscreenRule, lastFiredDayKey: dayKeyOf(today) },
+    { ...rainRule, lastAheadDayKey: tomorrowKey },
     ...otherWeatherRules,
   ]);
   addTask({
-    title: sunscreenRule.title,
+    // Composed through the same helpers the generator uses, rather than
+    // spelled out: the window is the whole reason the row reads as more than
+    // a bare instruction, and a hand-written copy of the format would be free
+    // to drift from it.
+    title: weatherTaskTitle(
+      sunscreenRule.title,
+      describeWeatherWindow(sunscreenRule.condition, { startHour: 11, endHour: 17 }),
+    ),
     dueDate: today.toISOString(),
     category: 'Weather',
     ...generatedBy('weather', weatherSourceId(dayKeyOf(today), sunscreenRule.id)),
+  });
+  // And the day-ahead half of the same feature, which is invisible until
+  // something uses it: a rule that matched *tomorrow*, written this evening
+  // and dated tomorrow, so the row says "tomorrow" and sits in Later.
+  addTask({
+    title: weatherTaskTitle(
+      rainRule.title,
+      describeWeatherWindow(rainRule.condition, { startHour: 8, endHour: 12 }, true),
+    ),
+    dueDate: addDays(today, 1).toISOString(),
+    category: 'Weather',
+    ...generatedBy('weather', weatherSourceId(tomorrowKey, rainRule.id)),
   });
 
   // A screen-time task, seeded directly for the reason the weather one above

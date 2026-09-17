@@ -458,6 +458,58 @@ one. Those three rules and the reasoning behind them are in
     `todayWeatherCode` (Open-Meteo's own summary for the whole day, `daily.weather_code[0]`), so
     "rain due this afternoon" already matches on a dry morning's first read. It stays a look-ahead
     rather than a second live poll: nothing here fetches again later in the day.
+  - **The task's title says *when*, because firing in advance is useless if the row won't admit
+    it.** The look-ahead above is what put "Wear rain-appropriate gear" on a screen reading 70°
+    and sunny, with nothing on the row connecting the two — the feature working exactly as designed
+    and reading as a bug. So the same request also asks for `hourly`, and `weatherWindowFor`
+    (`src/utils/weatherTasks.ts`) picks the run of hours the rule's own condition holds for —
+    the one under way now or the next one after it — which `describeWeatherWindow` turns into
+    "rain from 2pm", "rain until 10am", "rain 2pm to 6pm" or "rain all day", appended in brackets
+    after the user's own words.
+    - **The day code decides *whether*; the hours only decide *where to point*.** A rule still
+      fires off the union above and nothing about matching changed, so an hourly block that
+      fails to parse (`todayHours` degrades to null on its own, like `todayHighF` does) costs the
+      window and never the task.
+    - **It names the rule's condition, not the sky.** A cold rainy hour qualifies as both, and a
+      "Wear a coat" rule reporting "rain from 2pm" would be quoting somebody else's reason —
+      which is why `conditionNoun` takes a `WeatherCondition` where `weatherConditionNoun` beside
+      it takes a raw code.
+    - **The phrase is in clock times, never "later" or "in two hours".** Anything relative to the
+      moment of writing would be quietly wrong by the afternoon, where "rain from 2pm" stays true
+      whenever it is read.
+  - **A named hour has to be correctable, which is what finally made the snapshot refresh more
+    than once a day.** `SNAPSHOT_STALE_MS` (an hour) in `useWeatherStore`: a morning reading
+    settles "is it rainy today", which is all the snapshot used to have to answer, but a forecast
+    that moves the rain from 2pm to 4pm leaves a row asserting 2pm for the rest of the day, and a
+    wrong specific time is worse than the vague one it replaced. It is **still not a poll** — the
+    three triggers are unchanged, so this only decides whether a trigger that was happening anyway
+    does anything, and an app opened once a day still fetches once a day.
+    - **So `drift` is a real title drift here now**, joining the generators that track their
+      source's wording. Creation stays gated on the mark and drift deliberately isn't: a rule
+      already considered may still have a row whose window wants correcting, but must never get a
+      *new* one. `applyRule` checks `liveGeneratedTask` before it does anything, so a task the
+      user swiped away is left deleted rather than being handed back by the correction pass.
+  - **From 6pm a rule is asked about tomorrow as well, and that is a second question with a second
+    mark.** `WEATHER_AHEAD_FROM_HOUR`, and `WeatherRule.lastAheadDayKey` beside `lastFiredDayKey`.
+    Evening rather than any hour because a day-ahead row is only worth having while there is still
+    an evening to act on it.
+    - **Two marks, because on the evening of the 17th both questions have been answered and they
+      have different answers** — "what is today doing" for the 17th, "what is tomorrow doing" for
+      the 18th. One scalar would hold whichever was written last, and the other question would be
+      asked again on the next foreground sweep, recreating a row already swiped away. That is the
+      single thing both marks exist to prevent.
+    - **The row is keyed and dated to the day its weather falls on**, not the day it was written
+      on, which is what makes the transition free: when the 18th arrives, today's pass reaches for
+      `2026-08-18#rule` and finds the row already there, so it drifts rather than creating a
+      second one. The clear pass spares tomorrow's key alongside today's for the same reason.
+    - **It refuses to write anything it can't put an hour to.** The same-day pass falls back to the
+      rule's plain title when the hourly block is missing, because there is still a task worth
+      having; a day-ahead row exists precisely to say *when*, so without a window there is nothing
+      to say. This is also why tomorrow's conditions come off its hours alone rather than unioning
+      a day-level code the way today's does.
+    - **"tomorrow" is the one word in the phrase that goes stale, and drift is what answers for
+      it.** The title written the evening before reads "snow 7am to 11am tomorrow", and the
+      correction pass rewrites it to "snow 7am to 11am" once that day is the one you are on.
   - **No key, and that's a deliberate choice of provider, not an oversight.** Open-Meteo's forecast
     API needs none, which is the same "no key, no traffic" shape Open Food Facts plays as the
     keyless member of the barcode chain in `productLookup.ts` — made here the *only* source rather

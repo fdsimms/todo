@@ -179,9 +179,13 @@ export function amountHint(panel: FoodNutrition): string {
   if (panel.basis === 'perServing' && panel.servingGrams === null) {
     return 'A number of servings, like 1 serving. This food states no weight per serving to measure anything else against.';
   }
+  const servings = panel.basis !== 'perServing' && panel.servingGrams !== null;
   const examples = portionExamples(panel);
-  return examples.length > 0
-    ? `A weight (like 100g), or one of this food's stated portions: ${examples.join(', ')}.`
+  if (examples.length > 0) {
+    return `A weight (like 100g), or one of this food's stated portions: ${examples.join(', ')}${servings ? ', or a number of servings' : ''}.`;
+  }
+  return servings
+    ? 'A weight, like 100g, or a number of servings.'
     : 'A weight, like 100g. This food has no stated portions.';
 }
 
@@ -233,11 +237,12 @@ export const VOLUME_UNIT_OPTIONS: FoodUnitOption[] = [
  * grams and/or servings wherever `panelMultiplier` would actually resolve
  * them (mirrors `amountHint` above). Grams are left off a `per100ml` panel
  * and a `perServing` one with no stated serving weight, because typing them
- * would only ever be refused; a `serving` pill is offered only for a
- * `perServing` panel, whose own figures already are one serving. A
- * `per100ml` panel gets `VOLUME_UNIT_OPTIONS` instead — the fixed table
- * above, rather than anything drawn from the panel, since a per100ml basis
- * resolves any of them without needing the food's own data.
+ * would only ever be refused; a `serving` pill is offered for a `perServing`
+ * panel (whose own figures already are one serving) and for any other basis
+ * that states a `servingGrams` weight to scale by. A `per100ml` panel gets
+ * `VOLUME_UNIT_OPTIONS` instead — the fixed table above, rather than
+ * anything drawn from the panel, since a per100ml basis resolves any of them
+ * without needing the food's own data.
  */
 export function foodUnitOptionsFor(panel: FoodNutrition): FoodUnitOption[] {
   const out: FoodUnitOption[] = [];
@@ -250,7 +255,9 @@ export function foodUnitOptionsFor(panel: FoodNutrition): FoodUnitOption[] {
   }
   const gramsResolve = panel.basis === 'per100g' || (panel.basis === 'perServing' && panel.servingGrams !== null);
   if (gramsResolve) out.push({ key: 'g', label: 'g', suffix: 'g' });
-  if (panel.basis === 'perServing') out.push({ key: 'serving', label: 'serving', suffix: ' serving' });
+  if (panel.basis === 'perServing' || panel.servingGrams !== null) {
+    out.push({ key: 'serving', label: 'serving', suffix: ' serving' });
+  }
   if (panel.basis === 'per100ml') {
     for (const unit of VOLUME_UNIT_OPTIONS) {
       if (seen.has(unit.key)) continue;
