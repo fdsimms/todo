@@ -681,17 +681,6 @@ export const SETTINGS_ENTRIES: SettingsEntry[] = [
       'focus', 'pomodoro', 'stacks', 'templates', 'stats', 'drift', 'backfill', 'waiting',
       'deadline', 'blocked', 'barcode', 'receipt', 'pantry', 'substitutes', 'cook mode',
       'recipe steps'] },
-  // The radial shortcut on the More tab. Keyworded hard for shape words —
-  // "radial", "pie", "ring", "fan" — because it has no name anybody has met
-  // before, so what somebody searches for is what it looks like.
-  { id: 'featureWheelEnabled', groupId: 'featureAreas', label: 'Feature wheel', section: 'Feature wheel',
-    keywords: ['radial', 'pie', 'ring', 'fan', 'arc', 'shortcut', 'gesture', 'drag', 'swipe',
-      'more tab', 'tab bar', 'quick switch', 'navigation', 'jump', 'left handed'] },
-  // Nested under the switch above, so it drops out of search with it — see
-  // `requires` and SettingsScreen's activeEntryIds.
-  { id: 'featureWheelRoutes', requires: 'featureWheelEnabled', groupId: 'featureAreas', label: "What's on it", section: 'Feature wheel',
-    keywords: ['wheel', 'slots', 'screens', 'order', 'reorder', 'rearrange', 'choose', 'pick',
-      'shortcut', 'radial'] },
   // ── Automatic tasks ───────────────────────────────────────────────────────
   // Derived from GENERATED_KIND_LIST — see GENERATED_ENTRIES above for why, and
   // for why these rows' `section` names the generator rather than the header.
