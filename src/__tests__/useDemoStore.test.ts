@@ -3583,7 +3583,7 @@ describe('demo seed — groceries, recipes, meals and the fridge', () => {
     const sunscreenRule = rules.find(r => r.condition === 'sunny');
     expect(sunscreenRule).toBeDefined();
 
-    const weatherTask = tasks.find(t => t.generatedKind === 'weather');
+    const weatherTask = tasks.find(t => t.generatedSourceId?.startsWith(dayKeyOf(getCurrentDayStart())) && t.generatedKind === 'weather');
     expect(weatherTask).toBeDefined();
     // The rule's own words lead, and the window the app worked out follows —
     // a seed showing the bare instruction would read as a feature that can't
@@ -3598,6 +3598,23 @@ describe('demo seed — groceries, recipes, meals and the fridge', () => {
     rules.filter(r => r.id !== sunscreenRule!.id).forEach(r => {
       expect(r.lastFiredDayKey).toBeNull();
     });
+  });
+
+  // The day-ahead half is invisible until something uses it, so the seed shows
+  // one: a row for tomorrow's weather, saying so, dated tomorrow.
+  it('seeds tomorrow\'s weather task too', () => {
+    const { tasks } = useTaskStore.getState();
+    const rules = useSettingsStore.getState().weatherRules;
+    const tomorrowKey = dayKeyOf(addDays(getCurrentDayStart(), 1));
+
+    const rainRule = rules.find(r => r.condition === 'rainy');
+    expect(rainRule).toBeDefined();
+    expect(rainRule!.lastAheadDayKey).toBe(tomorrowKey);
+
+    const ahead = tasks.find(t => t.generatedKind === 'weather' && t.generatedSourceId === `${tomorrowKey}#${rainRule!.id}`);
+    expect(ahead).toBeDefined();
+    expect(ahead!.title).toBe(`${rainRule!.title} (rain 8am to 12pm tomorrow)`);
+    expect(dayKeyOf(new Date(ahead!.dueDate!))).toBe(tomorrowKey);
   });
 
   it('seeds a screen time task and the rules alongside it', () => {

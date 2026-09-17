@@ -474,11 +474,42 @@ one. Those three rules and the reasoning behind them are in
       "Wear a coat" rule reporting "rain from 2pm" would be quoting somebody else's reason —
       which is why `conditionNoun` takes a `WeatherCondition` where `weatherConditionNoun` beside
       it takes a raw code.
-    - **The phrase is in clock times, never "later" or "in two hours".** `lastFiredDayKey` is
-      spent on the day's first consideration, so the title is composed once and never revisited;
-      anything relative to the moment of writing would be quietly wrong by the afternoon, where
-      "rain from 2pm" stays true whenever it is read. That is also why `drift` stays `() => null`
-      here rather than joining the title-drifting generators.
+    - **The phrase is in clock times, never "later" or "in two hours".** Anything relative to the
+      moment of writing would be quietly wrong by the afternoon, where "rain from 2pm" stays true
+      whenever it is read.
+  - **A named hour has to be correctable, which is what finally made the snapshot refresh more
+    than once a day.** `SNAPSHOT_STALE_MS` (an hour) in `useWeatherStore`: a morning reading
+    settles "is it rainy today", which is all the snapshot used to have to answer, but a forecast
+    that moves the rain from 2pm to 4pm leaves a row asserting 2pm for the rest of the day, and a
+    wrong specific time is worse than the vague one it replaced. It is **still not a poll** — the
+    three triggers are unchanged, so this only decides whether a trigger that was happening anyway
+    does anything, and an app opened once a day still fetches once a day.
+    - **So `drift` is a real title drift here now**, joining the generators that track their
+      source's wording. Creation stays gated on the mark and drift deliberately isn't: a rule
+      already considered may still have a row whose window wants correcting, but must never get a
+      *new* one. `applyRule` checks `liveGeneratedTask` before it does anything, so a task the
+      user swiped away is left deleted rather than being handed back by the correction pass.
+  - **From 6pm a rule is asked about tomorrow as well, and that is a second question with a second
+    mark.** `WEATHER_AHEAD_FROM_HOUR`, and `WeatherRule.lastAheadDayKey` beside `lastFiredDayKey`.
+    Evening rather than any hour because a day-ahead row is only worth having while there is still
+    an evening to act on it.
+    - **Two marks, because on the evening of the 17th both questions have been answered and they
+      have different answers** — "what is today doing" for the 17th, "what is tomorrow doing" for
+      the 18th. One scalar would hold whichever was written last, and the other question would be
+      asked again on the next foreground sweep, recreating a row already swiped away. That is the
+      single thing both marks exist to prevent.
+    - **The row is keyed and dated to the day its weather falls on**, not the day it was written
+      on, which is what makes the transition free: when the 18th arrives, today's pass reaches for
+      `2026-08-18#rule` and finds the row already there, so it drifts rather than creating a
+      second one. The clear pass spares tomorrow's key alongside today's for the same reason.
+    - **It refuses to write anything it can't put an hour to.** The same-day pass falls back to the
+      rule's plain title when the hourly block is missing, because there is still a task worth
+      having; a day-ahead row exists precisely to say *when*, so without a window there is nothing
+      to say. This is also why tomorrow's conditions come off its hours alone rather than unioning
+      a day-level code the way today's does.
+    - **"tomorrow" is the one word in the phrase that goes stale, and drift is what answers for
+      it.** The title written the evening before reads "snow 7am to 11am tomorrow", and the
+      correction pass rewrites it to "snow 7am to 11am" once that day is the one you are on.
   - **No key, and that's a deliberate choice of provider, not an oversight.** Open-Meteo's forecast
     API needs none, which is the same "no key, no traffic" shape Open Food Facts plays as the
     keyless member of the barcode chain in `productLookup.ts` — made here the *only* source rather

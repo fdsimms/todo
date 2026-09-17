@@ -21,6 +21,18 @@ export const WEATHER_RULE_TITLE_MAX_LENGTH = 80;
 
 export const WEATHER_CONDITIONS: readonly WeatherCondition[] = ['sunny', 'rainy', 'snowy', 'cold', 'hot'];
 
+/**
+ * The hour from which a rule is also asked about tomorrow.
+ *
+ * Evening rather than any time of day, because a day-ahead task is only worth
+ * having if there's still an evening left to act on it: told at 9am that
+ * tomorrow is snowy, you'd have the row sitting in Later for fourteen hours
+ * before it meant anything, on top of today's own. 6pm is a round number and
+ * not a measured one, the same admission `weatherCondition.ts` makes about its
+ * temperature bands.
+ */
+export const WEATHER_AHEAD_FROM_HOUR = 18;
+
 export function weatherConditionLabel(condition: WeatherCondition): string {
   switch (condition) {
     case 'sunny': return 'Sunny';
@@ -41,9 +53,9 @@ export function weatherConditionLabel(condition: WeatherCondition): string {
  */
 export function defaultWeatherRules(): WeatherRule[] {
   return [
-    { id: generateId(), condition: 'sunny', title: 'Put on sunscreen', enabled: true, lastFiredDayKey: null },
-    { id: generateId(), condition: 'rainy', title: 'Bring an umbrella', enabled: true, lastFiredDayKey: null },
-    { id: generateId(), condition: 'cold', title: 'Wear a coat', enabled: true, lastFiredDayKey: null },
+    { id: generateId(), condition: 'sunny', title: 'Put on sunscreen', enabled: true, lastFiredDayKey: null, lastAheadDayKey: null },
+    { id: generateId(), condition: 'rainy', title: 'Bring an umbrella', enabled: true, lastFiredDayKey: null, lastAheadDayKey: null },
+    { id: generateId(), condition: 'cold', title: 'Wear a coat', enabled: true, lastFiredDayKey: null, lastAheadDayKey: null },
   ];
 }
 
@@ -70,6 +82,9 @@ export function parseWeatherRules(raw: string | null | undefined): WeatherRule[]
       title,
       enabled: r.enabled !== false,
       lastFiredDayKey: typeof r.lastFiredDayKey === 'string' ? r.lastFiredDayKey : null,
+      // Absent in every rule stored before the day-ahead pass existed, which
+      // reads as "never fired ahead" and costs that rule one evening.
+      lastAheadDayKey: typeof r.lastAheadDayKey === 'string' ? r.lastAheadDayKey : null,
     });
   }
   return out;
@@ -163,22 +178,30 @@ function hourLabel(hour: number): string {
 
 /**
  * The window in words: "rain from 2pm", "rain until 10am", "rain 2pm to 6pm",
- * "rain all day".
+ * "rain all day", each with "tomorrow" on the end when `tomorrow` is set.
  *
- * **It never says "now", "later" or "in two hours", and that is the point.**
- * The phrase is written into the task's title once (the rule's idempotency
- * mark means the generator won't revisit it that day, see `checkWeatherTasks`),
- * so anything relative to the moment of writing would be quietly wrong by the
- * afternoon. A clock time stays true all day whenever it's read.
+ * **It never says "now", "later" or "in two hours".** A clock time stays true
+ * whenever it is read, where anything measured from the moment of writing is
+ * wrong by the afternoon.
+ *
+ * **"tomorrow" is the one word here that does go stale, and the drift pass is
+ * what answers for it** — a task written the evening before says "tomorrow",
+ * and `checkWeatherTasks` rewrites the title without it once that day is the
+ * one you are on. See the day-ahead pass there.
  */
-export function describeWeatherWindow(condition: WeatherCondition, window: WeatherWindow): string {
+export function describeWeatherWindow(
+  condition: WeatherCondition,
+  window: WeatherWindow,
+  tomorrow = false,
+): string {
   const noun = conditionNoun(condition);
   const openEnded = window.endHour >= 24;
   const fromMidnight = window.startHour <= 0;
-  if (openEnded && fromMidnight) return `${noun} all day`;
-  if (openEnded) return `${noun} from ${hourLabel(window.startHour)}`;
-  if (fromMidnight) return `${noun} until ${hourLabel(window.endHour)}`;
-  return `${noun} ${hourLabel(window.startHour)} to ${hourLabel(window.endHour)}`;
+  const suffix = tomorrow ? ' tomorrow' : '';
+  if (openEnded && fromMidnight) return `${noun} all day${suffix}`;
+  if (openEnded) return `${noun} from ${hourLabel(window.startHour)}${suffix}`;
+  if (fromMidnight) return `${noun} until ${hourLabel(window.endHour)}${suffix}`;
+  return `${noun} ${hourLabel(window.startHour)} to ${hourLabel(window.endHour)}${suffix}`;
 }
 
 /**

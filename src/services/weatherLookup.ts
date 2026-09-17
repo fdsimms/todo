@@ -78,24 +78,34 @@ export interface WeatherSnapshot {
    */
   todayHours: WeatherHour[] | null;
   tomorrow: { weatherCode: number; highF: number; lowF: number } | null;
+  /**
+   * Tomorrow's forecast hour by hour, on the same terms as `todayHours`.
+   *
+   * What the day-ahead pass points at: a rule considered the evening before
+   * needs tomorrow's hours to say "snow from 7am tomorrow" rather than only
+   * that tomorrow is snowy. The request already asks for two days, so this
+   * costs nothing beyond keeping the second day's hours instead of dropping
+   * them.
+   */
+  tomorrowHours: WeatherHour[] | null;
 }
 
 /**
- * Open-Meteo's `hourly` block reduced to today's hours, or null if it can't be.
+ * Open-Meteo's `hourly` block reduced to one day's hours, or null if it can't be.
  *
- * `todayDate` is the day to keep, as Open-Meteo's own `YYYY-MM-DD` — the
- * request asks for two days of hours, and only today's are wanted. It comes
- * from `daily.time[0]` rather than from the app's clock on purpose: the
- * response is in the location's timezone (`timezone=auto`), which is not
- * necessarily the device's, and the whole block is already read on the
- * assumption that day 0 is today.
+ * `date` is the day to keep, as Open-Meteo's own `YYYY-MM-DD` — the request
+ * asks for two days of hours and each caller wants one of them. It comes from
+ * `daily.time[]` rather than from the app's clock on purpose: the response is
+ * in the location's timezone (`timezone=auto`), which is not necessarily the
+ * device's, and the whole block is already read on the assumption that day 0
+ * is today and day 1 tomorrow.
  *
  * An hour missing either reading is dropped rather than guessed at, the same
  * refusal the daily block makes, and an empty result reads as null so callers
  * have one "no hourly forecast" answer rather than two.
  */
-function parseTodayHours(hourly: unknown, todayDate: string | null): WeatherHour[] | null {
-  if (!todayDate) return null;
+function parseHoursOn(hourly: unknown, date: string | null): WeatherHour[] | null {
+  if (!date) return null;
   const block = hourly as { time?: unknown[]; weather_code?: unknown[]; temperature_2m?: unknown[] } | null | undefined;
   const times = block?.time;
   if (!Array.isArray(times)) return null;
@@ -104,7 +114,7 @@ function parseTodayHours(hourly: unknown, todayDate: string | null): WeatherHour
   const out: WeatherHour[] = [];
   for (let i = 0; i < times.length; i++) {
     const time = times[i];
-    if (typeof time !== 'string' || !time.startsWith(`${todayDate}T`)) continue;
+    if (typeof time !== 'string' || !time.startsWith(`${date}T`)) continue;
     const weatherCode = codes?.[i];
     const tempF = temps?.[i];
     if (typeof weatherCode !== 'number' || typeof tempF !== 'number') continue;
@@ -154,6 +164,7 @@ export async function fetchWeatherSnapshot(location: DeviceLocation): Promise<We
     const hasDailyDay = (i: number) =>
       typeof dailyCodes?.[i] === 'number' && typeof dailyHighs?.[i] === 'number' && typeof dailyLows?.[i] === 'number';
 
+    const dayDate = (i: number) => (typeof daily?.time?.[i] === 'string' ? daily.time[i] : null);
     const todayHighF = hasDailyDay(0) ? dailyHighs[0] : null;
     const todayLowF = hasDailyDay(0) ? dailyLows[0] : null;
     const todayWeatherCode = hasDailyDay(0) ? dailyCodes[0] : null;
@@ -168,8 +179,9 @@ export async function fetchWeatherSnapshot(location: DeviceLocation): Promise<We
       todayHighF,
       todayLowF,
       todayWeatherCode,
-      todayHours: parseTodayHours(body?.hourly, typeof daily?.time?.[0] === 'string' ? daily.time[0] : null),
+      todayHours: parseHoursOn(body?.hourly, dayDate(0)),
       tomorrow,
+      tomorrowHours: parseHoursOn(body?.hourly, dayDate(1)),
     };
   } catch {
     return null;

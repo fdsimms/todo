@@ -34,6 +34,7 @@ function makeRule(overrides: Partial<WeatherRule> = {}): WeatherRule {
     title: 'Put on sunscreen',
     enabled: true,
     lastFiredDayKey: null,
+    lastAheadDayKey: null,
     ...overrides,
   };
 }
@@ -44,6 +45,10 @@ describe('defaultWeatherRules', () => {
     expect(rules.map(r => r.condition).sort()).toEqual(['cold', 'rainy', 'sunny']);
     expect(rules.every(r => r.enabled)).toBe(true);
     expect(rules.every(r => r.lastFiredDayKey === null)).toBe(true);
+  });
+
+  it('ships both idempotency marks unspent', () => {
+    expect(defaultWeatherRules().every(r => r.lastAheadDayKey === null)).toBe(true);
   });
 
   it('gives each rule its own id', () => {
@@ -71,6 +76,16 @@ describe('parseWeatherRules', () => {
     const parsed = parseWeatherRules(JSON.stringify(rules));
     expect(parsed.length).toBe(1);
     expect(parsed[0].id).toBe('rule-1');
+  });
+
+  // Every rule stored before the day-ahead pass existed is missing this, and
+  // reads as "never fired ahead" rather than dropping the rule.
+  it('reads a rule with no day-ahead mark as never having fired one', () => {
+    const raw = JSON.stringify([{ id: 'rule-1', title: 'Bring an umbrella', condition: 'rainy', lastFiredDayKey: '2026-08-25' }]);
+    const parsed = parseWeatherRules(raw);
+    expect(parsed.length).toBe(1);
+    expect(parsed[0].lastAheadDayKey).toBeNull();
+    expect(parsed[0].lastFiredDayKey).toBe('2026-08-25');
   });
 
   it('falls back to a valid condition and fills a missing id', () => {
@@ -188,6 +203,15 @@ describe('describeWeatherWindow', () => {
 
   it('names the rule\'s own condition, not the sky', () => {
     expect(describeWeatherWindow('cold', { startHour: 0, endHour: 9 })).toBe('cold until 9am');
+  });
+
+  // What the day-ahead pass writes the evening before. It is the one part of
+  // the phrase that goes stale, and drift is what takes it back out.
+  it('says tomorrow when asked to, in every shape', () => {
+    expect(describeWeatherWindow('snowy', { startHour: 7, endHour: 11 }, true)).toBe('snow 7am to 11am tomorrow');
+    expect(describeWeatherWindow('rainy', { startHour: 14, endHour: 24 }, true)).toBe('rain from 2pm tomorrow');
+    expect(describeWeatherWindow('cold', { startHour: 0, endHour: 9 }, true)).toBe('cold until 9am tomorrow');
+    expect(describeWeatherWindow('hot', { startHour: 0, endHour: 24 }, true)).toBe('heat all day tomorrow');
   });
 
   it('reads noon and midnight as 12, not 0', () => {

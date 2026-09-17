@@ -1155,9 +1155,11 @@ export function seedDemoData(): void {
   addCategory('Weather');
   setCategoryEmoji('Weather', '☀️');
   useSettingsStore.getState().setWeatherTaskCategory('Weather');
-  const [sunscreenRule, ...otherWeatherRules] = defaultWeatherRules();
+  const [sunscreenRule, rainRule, ...otherWeatherRules] = defaultWeatherRules();
+  const tomorrowKey = dayKeyOf(addDays(today, 1));
   useSettingsStore.getState().setWeatherRules([
     { ...sunscreenRule, lastFiredDayKey: dayKeyOf(today) },
+    { ...rainRule, lastAheadDayKey: tomorrowKey },
     ...otherWeatherRules,
   ]);
   addTask({
@@ -1172,6 +1174,18 @@ export function seedDemoData(): void {
     dueDate: today.toISOString(),
     category: 'Weather',
     ...generatedBy('weather', weatherSourceId(dayKeyOf(today), sunscreenRule.id)),
+  });
+  // And the day-ahead half of the same feature, which is invisible until
+  // something uses it: a rule that matched *tomorrow*, written this evening
+  // and dated tomorrow, so the row says "tomorrow" and sits in Later.
+  addTask({
+    title: weatherTaskTitle(
+      rainRule.title,
+      describeWeatherWindow(rainRule.condition, { startHour: 8, endHour: 12 }, true),
+    ),
+    dueDate: addDays(today, 1).toISOString(),
+    category: 'Weather',
+    ...generatedBy('weather', weatherSourceId(tomorrowKey, rainRule.id)),
   });
 
   // A screen-time task, seeded directly for the reason the weather one above
