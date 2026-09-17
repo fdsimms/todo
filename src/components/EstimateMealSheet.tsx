@@ -14,7 +14,7 @@ import { subDays } from 'date-fns/subDays';
 import { SheetModal } from './SheetModal';
 import { useColors } from '../theme/ThemeContext';
 import { font, fontWeight, interaction, radius, spacing, type Colors } from '../theme';
-import { MEAL_SLOTS, MEAL_SLOT_LABELS, NUTRIENT_KEYS, type FoodLogEntry, type MealSlot } from '../types';
+import { MEAL_SLOTS, MEAL_SLOT_LABELS, NUTRIENT_KEYS, type FoodLogEntry, type FoodNutrition, type MealSlot } from '../types';
 import { useFoodLogStore } from '../store/useFoodLogStore';
 import { useRecipeStore } from '../store/useRecipeStore';
 import { describeAIError, estimateMealNutrition } from '../services/aiSuggestions';
@@ -32,6 +32,7 @@ import {
   catalogRecallFoods,
   describeCatalogRecall,
   describeRecall,
+  describedGrams,
   rankRecallCandidates,
   recallFoods,
   recallWeight,
@@ -39,6 +40,7 @@ import {
   type RecalledFood,
 } from '../utils/foodRecall';
 import { creditedKeys, foodLogRecency, rankByRecency } from '../utils/foodLogRecents';
+import { scalePanelToAmount } from '../utils/foodLog';
 import { perServing, recipeNutrition } from '../utils/recipeNutrition';
 import { packageHelping } from '../utils/scanPortion';
 import { useGroceryStore } from '../store/useGroceryStore';
@@ -340,14 +342,30 @@ export function EstimateMealSheet({ visible, slot, at, mealPlanEntryId, initialD
   };
 
   /**
-   * Logs a food already eaten, as it was eaten.
+   * `food`'s own panel scaled to the weight the typed description names,
+   * when it names one — "205g" against a food last logged at 127g scales
+   * every stated key by 205/127, the same arithmetic a portion sheet already
+   * trusts. Null for the ordinary case (no weight named, or one this food's
+   * panel can't answer — a serving count with no `servingGrams`, say), which
+   * is what lets every caller fall back to the recorded amount unchanged.
+   */
+  const scaledWeight = (nutrition: FoodNutrition) => {
+    const grams = describedGrams(description);
+    return grams ? scalePanelToAmount(nutrition, grams, null, at) : null;
+  };
+
+  /**
+   * Logs a food already eaten, as it was eaten — or at the weight just typed,
+   * when the description names one this food's own panel can answer.
    *
-   * The stored panel goes back verbatim, which is the whole point: its
-   * `source` is the claim it was recorded under and re-describing the same
-   * food to the model would replace that with `estimated`, permanently. Same
-   * reuse `duplicateEntry` performs, and `mealPlanEntryId` is dropped for the
-   * same reason it drops it — this is a fresh eating, not the planned meal
-   * again, unless the caller named one.
+   * The stored panel goes back verbatim otherwise, which is the point absent
+   * a named weight: its `source` is the claim it was recorded under and
+   * re-describing the same food to the model would replace that with
+   * `estimated`, permanently. A scale keeps that same source (see
+   * `scalePanelToAmount`), so naming a different weight doesn't cost the
+   * claim either. Same reuse `duplicateEntry` performs, and `mealPlanEntryId`
+   * is dropped for the same reason it drops it — this is a fresh eating, not
+   * the planned meal again, unless the caller named one.
    *
    * The section this was opened from decides the meal; with no section, the
    * meal it was last eaten in stands, rather than the food landing under no
@@ -355,11 +373,12 @@ export function EstimateMealSheet({ visible, slot, at, mealPlanEntryId, initialD
    */
   const handleRecall = (food: RecalledFood) => {
     haptics.tap();
+    const scaled = scaledWeight(food.nutrition);
     const written = addEntry({
       label: food.label,
-      quantity: food.quantity,
-      grams: food.grams,
-      nutrition: food.nutrition,
+      quantity: scaled?.grams != null ? `${scaled.grams}g` : food.quantity,
+      grams: scaled ? scaled.grams : food.grams,
+      nutrition: scaled?.nutrition ?? food.nutrition,
       slot: chosenSlot ?? food.slot,
       recipeId: food.recipeId,
       itemId: food.itemId,
@@ -375,7 +394,8 @@ export function EstimateMealSheet({ visible, slot, at, mealPlanEntryId, initialD
   };
 
   /**
-   * Logs one serving of a catalog row, from the figures already filed on it.
+   * Logs a catalog row — one serving from the figures already filed on it,
+   * or the weight just typed when the description names one.
    *
    * The item and the packet both ride along, so the entry credits the row it
    * came from and `foodLogRecency` can float it next time — the thing
@@ -383,11 +403,12 @@ export function EstimateMealSheet({ visible, slot, at, mealPlanEntryId, initialD
    */
   const handleCatalog = (food: RecalledCatalogFood) => {
     haptics.tap();
-    const nutrition = helpingOf(food);
+    const scaled = scaledWeight(food.nutrition);
+    const nutrition = scaled?.nutrition ?? helpingOf(food);
     if (!nutrition) { haptics.error(); return; }
     const written = addEntry({
       label: food.label,
-      quantity: food.choice.label,
+      quantity: scaled?.grams != null ? `${scaled.grams}g` : food.choice.label,
       grams: nutrition.servingGrams,
       nutrition,
       slot: chosenSlot,
@@ -481,34 +502,47 @@ export function EstimateMealSheet({ visible, slot, at, mealPlanEntryId, initialD
               <Text style={styles.cardTitle}>You already have figures for this</Text>
               <Text style={styles.hint}>
                 Logging one of these keeps the figures it was recorded with, rather
-                than estimating the same food again.
+                than estimating the same food again. Name a weight ("205g") to scale
+                them to it instead of repeating the amount below.
               </Text>
-              {recalled.map(food => (
-                <TouchableOpacity
-                  key={food.key}
-                  style={styles.recallRow}
-                  activeOpacity={interaction.activeOpacity}
-                  onPress={() => handleRecall(food)}
-                  accessibilityRole="button"
-                  accessibilityLabel={`Log ${food.label} again. ${describeRecall(food)}`}
-                >
-                  <Text style={styles.recallName}>{food.label}</Text>
-                  <Text style={styles.recallMeta}>{describeRecall(food)}</Text>
-                </TouchableOpacity>
-              ))}
-              {catalogMatches.map(food => (
-                <TouchableOpacity
-                  key={food.key}
-                  style={styles.recallRow}
-                  activeOpacity={interaction.activeOpacity}
-                  onPress={() => handleCatalog(food)}
-                  accessibilityRole="button"
-                  accessibilityLabel={`Log ${food.label}. ${describeCatalogRecall(food)}`}
-                >
-                  <Text style={styles.recallName}>{food.label}</Text>
-                  <Text style={styles.recallMeta}>{describeCatalogRecall(food)}</Text>
-                </TouchableOpacity>
-              ))}
+              {recalled.map(food => {
+                const scaled = scaledWeight(food.nutrition);
+                const meta = scaled?.grams != null
+                  ? `${describeRecall(food)}. Logging as ${scaled.grams}g.`
+                  : describeRecall(food);
+                return (
+                  <TouchableOpacity
+                    key={food.key}
+                    style={styles.recallRow}
+                    activeOpacity={interaction.activeOpacity}
+                    onPress={() => handleRecall(food)}
+                    accessibilityRole="button"
+                    accessibilityLabel={`Log ${food.label}. ${meta}`}
+                  >
+                    <Text style={styles.recallName}>{food.label}</Text>
+                    <Text style={styles.recallMeta}>{meta}</Text>
+                  </TouchableOpacity>
+                );
+              })}
+              {catalogMatches.map(food => {
+                const scaled = scaledWeight(food.nutrition);
+                const meta = scaled?.grams != null
+                  ? `${describeCatalogRecall(food)}. Logging as ${scaled.grams}g.`
+                  : describeCatalogRecall(food);
+                return (
+                  <TouchableOpacity
+                    key={food.key}
+                    style={styles.recallRow}
+                    activeOpacity={interaction.activeOpacity}
+                    onPress={() => handleCatalog(food)}
+                    accessibilityRole="button"
+                    accessibilityLabel={`Log ${food.label}. ${meta}`}
+                  >
+                    <Text style={styles.recallName}>{food.label}</Text>
+                    <Text style={styles.recallMeta}>{meta}</Text>
+                  </TouchableOpacity>
+                );
+              })}
             </View>
           )}
 

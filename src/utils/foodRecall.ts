@@ -103,6 +103,29 @@ export interface RecalledFood {
 }
 
 /**
+ * A gram weight named in a typed description ("205g cooked beans"), as a
+ * clean quantity string a recalled food's own panel can be scaled to.
+ *
+ * **A recalled food is grams-denominated and nothing else here is**, so this
+ * looks for grams specifically rather than reusing `parseQuantity` over the
+ * whole description: that reads units this food's panel cannot answer (no
+ * portion table survives onto a logged entry, see `scalePanelToAmount`) and
+ * would refuse harmlessly, but it would also happily parse "2 servings" as an
+ * amount that means something quite different from a weight.
+ *
+ * **Returns the matched digits plus "g", never the sentence around them.**
+ * The result becomes `scalePanelToAmount`'s `quantity` argument, which is
+ * stored verbatim as the scaled panel's `servingText` — the field an entry
+ * reopens its amount field from (`foodLogEntryEdit`). Handing back "205g
+ * cooked beans" would work once and then show that whole sentence as the
+ * amount the next time the entry is edited.
+ */
+export function describedGrams(description: string): string | null {
+  const match = /(\d+(?:\.\d+)?)\s*(?:g|grams?)\b/i.exec(description);
+  return match ? `${match[1]}g` : null;
+}
+
+/**
  * How well a stored label answers a typed description, in `matchWeight`'s own
  * 3/2/1 ladder.
  *
