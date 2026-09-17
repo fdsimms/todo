@@ -1,5 +1,6 @@
 import { isStreakAtRecord } from '../utils/streakRecord';
 import { dayKeyOf, getCurrentDayStart } from '../utils/dateUtils';
+import { logTaskHealthValue } from '../utils/healthCompletionSync';
 import { useTaskStore } from '../store/useTaskStore';
 import { useMedicationStore } from '../store/useMedicationStore';
 import { useSettingsStore } from '../store/useSettingsStore';
@@ -287,6 +288,10 @@ jest.mock('../utils/deadlineCalendarSync', () => ({
 
 jest.mock('../utils/completionCalendarSync', () => ({
   logTaskCompletionToCalendar: jest.fn().mockResolvedValue(null),
+}));
+
+jest.mock('../utils/healthCompletionSync', () => ({
+  logTaskHealthValue: jest.fn().mockResolvedValue(false),
 }));
 
 jest.mock('../utils/calendarSync', () => ({
@@ -11101,6 +11106,31 @@ describe('quota tasks', () => {
 
       useTaskStore.getState().lastAction!.undo();
       expect(useTaskStore.getState().tasks[0].progressCount).toBe(3);
+    });
+
+    it('logs to Health on every unit, not just the one that completes the task', () => {
+      useTaskStore.setState({
+        tasks: [quota({ progressCount: 6, logHealthMetric: 'waterMl', logHealthAmount: 250 })],
+      });
+      const store = useTaskStore.getState();
+
+      store.logQuotaUnit('water'); // 6 -> 7, a plain unit
+      expect(logTaskHealthValue).toHaveBeenCalledTimes(1);
+      expect(logTaskHealthValue).toHaveBeenLastCalledWith(
+        expect.objectContaining({ id: 'water', progressCount: 7, completed: false }),
+      );
+
+      store.logQuotaUnit('water'); // 7 -> 8, reaches the target and completes
+      expect(logTaskHealthValue).toHaveBeenCalledTimes(2);
+      expect(logTaskHealthValue).toHaveBeenLastCalledWith(
+        expect.objectContaining({ id: 'water', progressCount: 8, completed: true }),
+      );
+    });
+
+    it('does not log to Health for a unit when the task has no Log to Health value set', () => {
+      useTaskStore.setState({ tasks: [quota({ progressCount: 3 })] });
+      useTaskStore.getState().logQuotaUnit('water');
+      expect(logTaskHealthValue).not.toHaveBeenCalled();
     });
   });
 

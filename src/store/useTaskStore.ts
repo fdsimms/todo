@@ -3691,11 +3691,13 @@ export const useTaskStore = create<TaskStore>((set, get) => ({
     const updated = { ...task, progressCount: task.progressCount + 1 };
     dbUpdateTask(updated);
     set(s => ({ tasks: s.tasks.map(t => (t.id === id ? updated : t)) }));
-    // A daily target is how "three doses a day" is already said here, so each
-    // unit is a dose — not just the one that finishes the day. Only this
-    // branch records: the unit that reaches the target hands off to
-    // completeTask above, which logs it there, and logging here too would
-    // count the last dose of every day twice.
+    // Same reasoning as the dose below: a daily target is several units, not
+    // one completion, so a task logging to Health logs once per unit here —
+    // otherwise a 13-cup water quota would sit at zero in the food log until
+    // the 13th glass. Only this branch records: the unit that reaches the
+    // target hands off to completeTask above, which logs it there, and
+    // logging here too would count the last unit of every day twice.
+    if (task.logHealthMetric) void logTaskHealthValue(updated);
     const unitDose = medicationFor(task);
     if (unitDose) {
       useMedicationStore.getState().addLog({ ...unitDose, taskId: id });
