@@ -29,6 +29,14 @@ jest.mock('../store/useCategoryStore', () => ({
   },
 }));
 
+jest.mock('../store/useProjectStore', () => ({
+  useProjectStore: {
+    getState: jest.fn(() => ({
+      getProjectById: jest.fn().mockReturnValue(null),
+    })),
+  },
+}));
+
 const makeTask = (overrides: Partial<Task> = {}): Task => ({
   id: 't1', title: 'Task', notes: '', completed: false, completedAt: null, missedAt: null,
   autoScheduledAt: null,

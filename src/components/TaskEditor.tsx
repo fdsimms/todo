@@ -2312,11 +2312,17 @@ export function TaskEditor({ visible, task, initialDraft, onClose }: Props) {
               } else {
                 setDueDate(null);
               }
+              // A stale deferUntil from an earlier push-out reschedule would
+              // otherwise survive this edit and keep hiding the task past the
+              // date just picked here — this row is a plain reschedule, which
+              // always takes effect immediately.
+              setDeferUntil(null);
               setTimeSegments(segs);
               setShowWhenPicker(false);
             }}
             onClear={() => {
               setDueDate(null);
+              setDeferUntil(null);
               setTimeSegments([]);
               setShowWhenPicker(false);
             }}
@@ -2337,6 +2343,10 @@ export function TaskEditor({ visible, task, initialDraft, onClose }: Props) {
               const noons = dates.map(d => { const n = new Date(d); n.setHours(12, 0, 0, 0); return n; });
               setDueDate(noons[0] ?? null);
               setExtraDates(noons.slice(1));
+              // Same reasoning as the Date row's own onConfirm: a stale
+              // deferUntil from an earlier push-out reschedule must not
+              // outlive a set of dates just picked here.
+              setDeferUntil(null);
               if (noons.length < 2) setSeriesRepeats(false);
               setShowDatesPicker(false);
             }}

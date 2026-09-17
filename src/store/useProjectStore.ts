@@ -173,7 +173,7 @@ interface ProjectStore {
   initialized: boolean;
   initialize: () => void;
   createProject: (title: string, options?: CreateProjectOptions) => Project;
-  updateProject: (id: string, patch: Partial<Pick<Project, 'title' | 'notes' | 'deadline' | 'category' | 'nudgeCadenceDays' | 'autoSchedule' | 'nudgeOptIn' | 'weekendSource' | 'reviewDeclinedAt' | 'reviewedAt' | 'backfillDismissedFields' | 'kind' | 'ongoing' | 'awayStart' | 'awayEnd' | 'awayPauses' | 'awayPauseDeclinedFor' | 'destination' | 'awayListId' | 'awayListDeclinedFor'>>) => void;
+  updateProject: (id: string, patch: Partial<Pick<Project, 'title' | 'notes' | 'deadline' | 'category' | 'defaultTaskCategory' | 'nudgeCadenceDays' | 'autoSchedule' | 'nudgeOptIn' | 'weekendSource' | 'reviewDeclinedAt' | 'reviewedAt' | 'backfillDismissedFields' | 'kind' | 'ongoing' | 'awayStart' | 'awayEnd' | 'awayPauses' | 'awayPauseDeclinedFor' | 'destination' | 'awayListId' | 'awayListDeclinedFor'>>) => void;
   /** Filing several projects at once from the Projects screen's bulk bar. */
   bulkSetProjectCategory: (ids: string[], category: string | null) => void;
   getProjectById: (id: string) => Project | null;
@@ -259,6 +259,9 @@ export const useProjectStore = create<ProjectStore>((set, get) => ({
       notes: '',
       deadline: options.deadline ?? null,
       category: options.category ?? null,
+      // No default until somebody nominates one in the editor. See
+      // Project.defaultTaskCategory.
+      defaultTaskCategory: null,
       sortOrder: maxOrder + 1,
       archived: false,
       archivedAt: null,

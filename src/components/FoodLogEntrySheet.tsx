@@ -1100,49 +1100,6 @@ export function FoodLogEntrySheet({
                 />
               </View>
             )}
-            {picked.kind === 'food' && foodUnitOptions.length > 0 && (
-              <View style={styles.portionChips}>
-                {foodUnitOptions.map(option => {
-                  const on = amountUnit === option.key;
-                  return (
-                    <TouchableOpacity
-                      key={option.key}
-                      style={[styles.portionChip, on && styles.portionChipOn]}
-                      activeOpacity={interaction.activeOpacity}
-                      onPress={() => {
-                        haptics.tap();
-                        setAmountUnit(option.key);
-                        setAmount(composeFoodAmount(amountNumber, option));
-                      }}
-                      accessibilityRole="button"
-                      accessibilityState={{ selected: on }}
-                      accessibilityLabel={option.label}
-                    >
-                      <Text style={[styles.portionChipText, on && styles.portionChipTextOn]}>{option.label}</Text>
-                    </TouchableOpacity>
-                  );
-                })}
-                {/* The escape hatch for a unit this food's own panel doesn't
-                    state: swaps the number-only field below back to free
-                    text, so a novel amount can still be typed and, if it
-                    names a unit the panel can't resolve, weighed in via
-                    `weighable` — the same offer this sheet already makes for
-                    any refused amount. */}
-                <TouchableOpacity
-                  key="other"
-                  style={[styles.portionChip, amountUnit === 'other' && styles.portionChipOn]}
-                  activeOpacity={interaction.activeOpacity}
-                  onPress={() => { haptics.tap(); setAmountUnit('other'); setAmount(''); }}
-                  accessibilityRole="button"
-                  accessibilityState={{ selected: amountUnit === 'other' }}
-                  accessibilityLabel="Something else"
-                >
-                  <Text style={[styles.portionChipText, amountUnit === 'other' && styles.portionChipTextOn]}>
-                    Something else
-                  </Text>
-                </TouchableOpacity>
-              </View>
-            )}
             <TextInput
               style={styles.input}
               value={picked.kind === 'food' && foodUnitOptions.length > 0 && amountUnit !== 'other' ? amountNumber : amount}
@@ -1181,11 +1138,54 @@ export function FoodLogEntrySheet({
                   : 'How much you ate'
               }
             />
+            {picked.kind === 'food' && foodUnitOptions.length > 0 && (
+              <View style={styles.portionChips}>
+                {foodUnitOptions.map(option => {
+                  const on = amountUnit === option.key;
+                  return (
+                    <TouchableOpacity
+                      key={option.key}
+                      style={[styles.portionChip, on && styles.portionChipOn]}
+                      activeOpacity={interaction.activeOpacity}
+                      onPress={() => {
+                        haptics.tap();
+                        setAmountUnit(option.key);
+                        setAmount(composeFoodAmount(amountNumber, option));
+                      }}
+                      accessibilityRole="button"
+                      accessibilityState={{ selected: on }}
+                      accessibilityLabel={option.label}
+                    >
+                      <Text style={[styles.portionChipText, on && styles.portionChipTextOn]}>{option.label}</Text>
+                    </TouchableOpacity>
+                  );
+                })}
+                {/* The escape hatch for a unit this food's own panel doesn't
+                    state: swaps the number-only field above back to free
+                    text, so a novel amount can still be typed and, if it
+                    names a unit the panel can't resolve, weighed in via
+                    `weighable` — the same offer this sheet already makes for
+                    any refused amount. */}
+                <TouchableOpacity
+                  key="other"
+                  style={[styles.portionChip, amountUnit === 'other' && styles.portionChipOn]}
+                  activeOpacity={interaction.activeOpacity}
+                  onPress={() => { haptics.tap(); setAmountUnit('other'); setAmount(''); }}
+                  accessibilityRole="button"
+                  accessibilityState={{ selected: amountUnit === 'other' }}
+                  accessibilityLabel="Something else"
+                >
+                  <Text style={[styles.portionChipText, amountUnit === 'other' && styles.portionChipTextOn]}>
+                    Something else
+                  </Text>
+                </TouchableOpacity>
+              </View>
+            )}
             <Text style={styles.hint}>
               {picked.kind === 'dish'
                 ? dishWeightHint
                 : foodUnitOptions.length > 0 && amountUnit !== 'other'
-                  ? 'Choose a unit above and type the amount. Anything else is refused rather than guessed at.'
+                  ? 'Choose a unit below and type the amount. Anything else is refused rather than guessed at.'
                   : picked.panel
                     ? `${amountHint(picked.panel)}${
                       picked.panel.basis === 'per100ml'

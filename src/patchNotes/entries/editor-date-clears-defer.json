@@ -1,0 +1,4 @@
+{
+  "message": "Fixed: changing a task's date in the editor didn't clear an earlier snooze, so a task moved back to today could still stay hidden until the old, later date.",
+  "date": "2026-09-17"
+}
