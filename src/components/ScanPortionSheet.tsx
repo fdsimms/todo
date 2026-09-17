@@ -16,9 +16,10 @@ import { MEAL_SLOTS, MEAL_SLOT_LABELS, type FoodNutrition, type MealSlot } from 
 import { useFoodLogStore } from '../store/useFoodLogStore';
 import { useKeyboardInsetScroll } from '../hooks/useKeyboardInsetScroll';
 import { packageChoices, packageHelping } from '../utils/scanPortion';
-import { amountExample, amountHint, scalePanelToAmount } from '../utils/foodLog';
+import { amountExample, amountHint, composeFoodAmount, foodUnitOptionsFor, scalePanelToAmount } from '../utils/foodLog';
 import { haptics } from '../utils/haptics';
 import { CountStepper } from './CountStepper';
+import { NumberPadAccessory, NUMBER_PAD_ACCESSORY_ID } from './NumberPadAccessory';
 import { SegmentedControl } from './SegmentedControl';
 import { SheetHeader } from './SheetHeader';
 import { SheetHeaderButton } from './SheetHeaderButton';
@@ -114,10 +115,18 @@ export function ScanPortionSheet({ visible, foods, slot, at, mealPlanEntryId, on
 
   const [answers, setAnswers] = useState<Record<string, Answer>>({});
   const [chosenSlot, setChosenSlot] = useState<MealSlot | null>(slot);
+  // Which unit's pill is selected per card, and the bare number typed against
+  // it — split the same way `FoodLogEntrySheet`'s amount field is, and reset
+  // together with the answers below. 'other' means the free-text field, same
+  // meaning as there.
+  const [amountUnits, setAmountUnits] = useState<Record<string, string>>({});
+  const [amountNumbers, setAmountNumbers] = useState<Record<string, string>>({});
 
   useEffect(() => {
     if (!visible) return;
     setAnswers({});
+    setAmountUnits({});
+    setAmountNumbers({});
     setChosenSlot(slot);
   }, [visible, slot]);
 
@@ -229,6 +238,10 @@ export function ScanPortionSheet({ visible, foods, slot, at, mealPlanEntryId, on
             const choices = packageChoices(food.panel, food.packSize);
             const outcome = resolved.get(food.key);
             const typed = answer?.kind === 'typed' ? answer.text : '';
+            const unitOptions = foodUnitOptionsFor(food.panel);
+            const selectedUnitKey = amountUnits[food.key] ?? (unitOptions.length > 0 ? unitOptions[0].key : null);
+            const usingPills = unitOptions.length > 0 && selectedUnitKey !== 'other';
+            const selectedUnit = unitOptions.find(o => o.key === selectedUnitKey);
             return (
               <View key={food.key} style={styles.card}>
                 <Text style={styles.cardTitle}>{food.label}</Text>
@@ -295,15 +308,77 @@ export function ScanPortionSheet({ visible, foods, slot, at, mealPlanEntryId, on
                 )}
                 <TextInput
                   style={styles.input}
-                  value={typed}
-                  onChangeText={text => setAnswers(a => ({ ...a, [food.key]: { kind: 'typed', text } }))}
-                  placeholder={`e.g. ${amountExample(food.panel)}`}
+                  value={usingPills ? (amountNumbers[food.key] ?? '') : typed}
+                  onChangeText={text => {
+                    if (usingPills) {
+                      setAmountNumbers(n => ({ ...n, [food.key]: text }));
+                      setAnswers(a => ({ ...a, [food.key]: { kind: 'typed', text: composeFoodAmount(text, selectedUnit) } }));
+                    } else {
+                      setAnswers(a => ({ ...a, [food.key]: { kind: 'typed', text } }));
+                    }
+                  }}
+                  placeholder={usingPills ? 'Amount' : `e.g. ${amountExample(food.panel)}`}
                   placeholderTextColor={colors.textTertiary}
+                  keyboardType={usingPills ? 'decimal-pad' : 'default'}
+                  // The number pad has no return key, so without this there is
+                  // no way off it — same accessory `FoodLogEntrySheet` wires up.
+                  inputAccessoryViewID={usingPills ? NUMBER_PAD_ACCESSORY_ID : undefined}
                   accessibilityLabel={`Amount of ${food.label}`}
                 />
+                {unitOptions.length > 0 && (
+                  <View style={styles.choices}>
+                    {unitOptions.map(option => {
+                      const on = selectedUnitKey === option.key;
+                      return (
+                        <TouchableOpacity
+                          key={option.key}
+                          style={[styles.choice, on && styles.choiceOn]}
+                          activeOpacity={interaction.activeOpacity}
+                          onPress={() => {
+                            haptics.tap();
+                            setAmountUnits(u => ({ ...u, [food.key]: option.key }));
+                            setAnswers(a => ({
+                              ...a,
+                              [food.key]: { kind: 'typed', text: composeFoodAmount(amountNumbers[food.key] ?? '', option) },
+                            }));
+                          }}
+                          accessibilityRole="button"
+                          accessibilityState={{ selected: on }}
+                          accessibilityLabel={option.label}
+                        >
+                          <Text style={[styles.choiceText, on && styles.choiceTextOn]}>{option.label}</Text>
+                        </TouchableOpacity>
+                      );
+                    })}
+                    {/* The escape hatch for a unit this food's own panel/table
+                        doesn't cover — swaps the number-only field back to
+                        free text, the same offer `FoodLogEntrySheet` makes. */}
+                    <TouchableOpacity
+                      key="other"
+                      style={[styles.choice, selectedUnitKey === 'other' && styles.choiceOn]}
+                      activeOpacity={interaction.activeOpacity}
+                      onPress={() => {
+                        haptics.tap();
+                        setAmountUnits(u => ({ ...u, [food.key]: 'other' }));
+                        setAnswers(a => ({ ...a, [food.key]: { kind: 'typed', text: '' } }));
+                      }}
+                      accessibilityRole="button"
+                      accessibilityState={{ selected: selectedUnitKey === 'other' }}
+                      accessibilityLabel="Something else"
+                    >
+                      <Text style={[styles.choiceText, selectedUnitKey === 'other' && styles.choiceTextOn]}>
+                        Something else
+                      </Text>
+                    </TouchableOpacity>
+                  </View>
+                )}
                 {/* What will actually resolve, said before it's typed rather
                     than only after a refusal. */}
-                <Text style={styles.hint}>{amountHint(food.panel)}</Text>
+                <Text style={styles.hint}>
+                  {usingPills
+                    ? 'Choose a unit below and type the amount. Anything else is refused rather than guessed at.'
+                    : amountHint(food.panel)}
+                </Text>
                 {/* What the answer works out to, or why it doesn't. An amount
                     the food's own portion table can't measure is refused here
                     rather than at Log, since the field is what needs changing. */}
@@ -325,6 +400,7 @@ export function ScanPortionSheet({ visible, foods, slot, at, mealPlanEntryId, on
           </Text>
         </ScrollView>
       </View>
+      <NumberPadAccessory />
     </SheetModal>
   );
 }

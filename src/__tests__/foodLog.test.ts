@@ -2,14 +2,17 @@ import {
   amountExample,
   amountHint,
   combineFoodNutrition,
+  composeFoodAmount,
   describeFoodLogEntry,
   describeFoodLogTotals,
   foodLogEntryEdit,
   foodLogSections,
   foodLogTotals,
+  foodUnitOptionsFor,
   matchMealPlanEntry,
   nutrientContributions,
   helpingNutrition,
+  parseFoodAmount,
   portionExamples,
   recipeHelpingNutrition,
   resolveFoodLogDrop,
@@ -669,6 +672,63 @@ describe('amountHint / amountExample', () => {
   it('falls back to a weight for a perServing panel that does state its serving weight', () => {
     expect(amountHint(panel({ basis: 'perServing', servingGrams: 30, portions: [] })))
       .toBe('A weight, like 100g. This food has no stated portions.');
+  });
+});
+
+describe('foodUnitOptionsFor', () => {
+  it('offers the food\'s own portions, plus grams, for a per-100g panel', () => {
+    expect(foodUnitOptionsFor(panel())).toEqual([
+      { key: 'cup', label: 'cup', suffix: ' cup' },
+      { key: 'g', label: 'g', suffix: 'g' },
+    ]);
+  });
+
+  it('offers grams and a serving pill for a perServing panel with a known weight', () => {
+    expect(foodUnitOptionsFor(panel({ basis: 'perServing', servingGrams: 30, portions: [] }))).toEqual([
+      { key: 'g', label: 'g', suffix: 'g' },
+      { key: 'serving', label: 'serving', suffix: ' serving' },
+    ]);
+  });
+
+  it('offers only a serving pill for a perServing panel with no stated weight', () => {
+    expect(foodUnitOptionsFor(panel({ basis: 'perServing', servingGrams: null, portions: [] }))).toEqual([
+      { key: 'serving', label: 'serving', suffix: ' serving' },
+    ]);
+  });
+
+  it('offers the fixed volume units for a per-100ml panel, since unitConvert resolves any of them', () => {
+    expect(foodUnitOptionsFor(panel({ basis: 'per100ml', portions: [] }))).toEqual([
+      { key: 'cup', label: 'cup', suffix: ' cup' },
+      { key: 'tbsp', label: 'tbsp', suffix: ' tbsp' },
+      { key: 'tsp', label: 'tsp', suffix: ' tsp' },
+      { key: 'fl oz', label: 'fl oz', suffix: ' fl oz' },
+      { key: 'ml', label: 'ml', suffix: ' ml' },
+    ]);
+  });
+
+  it('does not duplicate a volume unit the panel already states as a portion', () => {
+    const options = foodUnitOptionsFor(panel({ basis: 'per100ml', portions: [{ amount: 1, label: 'cup', grams: 240 }] }));
+    expect(options.filter(o => o.key === 'cup')).toHaveLength(1);
+  });
+});
+
+describe('composeFoodAmount / parseFoodAmount', () => {
+  const options = foodUnitOptionsFor(panel({ basis: 'per100ml', portions: [] }));
+
+  it('composes a typed number and a unit into the amount text the panel reads', () => {
+    expect(composeFoodAmount('1.5', options.find(o => o.key === 'cup'))).toBe('1.5 cup');
+    expect(composeFoodAmount('', options.find(o => o.key === 'cup'))).toBe('');
+    expect(composeFoodAmount('1.5', undefined)).toBe('');
+  });
+
+  it('parses a composed amount back into its number and unit key', () => {
+    expect(parseFoodAmount('1.5 cup', options)).toEqual({ number: '1.5', unitKey: 'cup' });
+    expect(parseFoodAmount('250 ml', options)).toEqual({ number: '250', unitKey: 'ml' });
+  });
+
+  it('refuses an amount shaped nothing like what these sheets write', () => {
+    expect(parseFoodAmount('a splash', options)).toBeNull();
+    expect(parseFoodAmount('1 lemon', options)).toBeNull();
   });
 });
 
