@@ -1,0 +1,4 @@
+{
+  "message": "Tapping a completion timer notification now dismisses its lingering status bar countdown instead of leaving it stuck at 0:00",
+  "date": "2026-09-17"
+}
