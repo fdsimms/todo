@@ -90,8 +90,16 @@ export function completionTapFor(task: Task): CompletionTap {
  * row can't repeat on every render. So a meal already told not to ask can
  * still show this, on the rare meal declined individually rather than through
  * the settings switch.
+ *
+ * `task.logMealSlot` (a reminder capture filed as a meal — see
+ * `docs/arch/reminders-import.md`) is checked ahead of the setting rather than
+ * folded into it: `completeTask` raises the same manual-entry sheet for it
+ * unconditionally, with no `mealLogPrompt` gate, so gating the icon on that
+ * setting would show a plain checkbox for a task that pops the sheet anyway.
  */
 export function offersMealLogOnCompletion(task: Task, mealLogPromptEnabled: boolean): boolean {
-  if (!mealLogPromptEnabled || task.completed) return false;
+  if (task.completed) return false;
+  if (task.logMealSlot) return true;
+  if (!mealLogPromptEnabled) return false;
   return (mealSlotOf(task) !== null && completesMealSlot(task)) || mealLogNudgeEntryId(task) !== null;
 }
