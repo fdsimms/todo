@@ -139,6 +139,16 @@ export function GroceryAddSheet({ visible, onClose, seedAisle, onAdded }: Props)
             <SheetHeaderButton label="Done" onPress={confirm} />
           </View>
 
+          {/* Paste-to-bulk-add (GroceryAddField.handleChange) has no control of
+              its own to announce it — the split from typing a single item
+              happens on the newline in whatever you paste in, which nothing on
+              screen hints at otherwise. Said once, not per line: it drops once
+              the burst is under way, the same as the title above it swapping to
+              a count, since by then it's been seen. */}
+          {addedCount === 0 && (
+            <Text style={styles.hint}>Paste a list to add several items at once.</Text>
+          )}
+
           <GroceryAddField
             ref={fieldRef}
             onAdded={items => {
@@ -181,5 +191,9 @@ const makeStyles = (colors: Colors) => StyleSheet.create({
     fontSize: font.sm,
     fontWeight: fontWeight.semibold,
     color: colors.textSecondary,
+  },
+  hint: {
+    fontSize: font.xs,
+    color: colors.textTertiary,
   },
 });
