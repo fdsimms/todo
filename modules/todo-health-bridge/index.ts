@@ -172,6 +172,19 @@ export interface HealthDayReading {
   waterMl: number | null;
   /** Kilocalories of dietary energy logged for the day, or null. Same source as `sodiumMg`. */
   calorieKcal: number | null;
+  /**
+   * Kilocalories of active energy burned over the day, or null.
+   *
+   * What a body spent *moving*, over and above what it spends existing — the
+   * Move ring's own number. Basal energy is deliberately not read beside it:
+   * a figure that is roughly the same every day is not a reading about a day.
+   *
+   * Null on the same terms as every other metric here, and the ambiguity is
+   * `exerciseMinutes`' rather than `steps`': a phone alone records some of
+   * this, but a person with no device recording it at all reads identically to
+   * one who did not move, so nothing may treat the absence as a zero.
+   */
+  activeEnergyKcal: number | null;
 }
 
 interface TodoHealthNativeModule {
@@ -422,6 +435,7 @@ export async function readDailyHealth(
       if (typeof entry !== 'object' || entry === null) continue;
       const {
         start, steps, sleepMinutes, exerciseMinutes, sodiumMg, proteinG, satFatG, fiberG, sugarG, caffeineMg, waterMl, calorieKcal,
+        activeEnergyKcal,
       } = entry as Record<string, unknown>;
       // A row with no instant cannot be filed under a day, so it is dropped
       // rather than guessed at — the same refusal the native side makes when
@@ -440,6 +454,7 @@ export async function readDailyHealth(
         caffeineMg: countOrNull(caffeineMg),
         waterMl: countOrNull(waterMl),
         calorieKcal: countOrNull(calorieKcal),
+        activeEnergyKcal: countOrNull(activeEnergyKcal),
       });
     }
     return out;

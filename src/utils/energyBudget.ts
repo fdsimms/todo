@@ -156,6 +156,47 @@ export function maintenanceKcal(
 }
 
 /**
+ * The same figure with Apple Health's own measurement in place of the
+ * multiplier: resting energy plus the active energy a typical recent day of
+ * this person's actually recorded.
+ *
+ * **Which of the two is better is not a question this module answers**, and the
+ * sheet offers both rather than picking. The multiplier is a population
+ * average applied to a self-description, so it is wrong in whatever way the
+ * description was; this is a measurement of one person, so it is wrong in
+ * whatever way their devices are. Somebody who wears a watch all day has a
+ * real number here and a guess there. Somebody who leaves their phone on a
+ * desk has the reverse, and a figure that looks measured is worse than one
+ * that looks estimated, because nothing about it says how little it saw.
+ *
+ * **It reads slightly low against the multipliers and the reason is stated
+ * rather than corrected.** The Harris-Benedict factors fold in the energy
+ * spent digesting food (about a tenth of intake) along with movement, and
+ * HealthKit's active energy is movement only: it is defined as energy above
+ * resting, which is exactly what makes it addable to a resting figure in the
+ * first place. Multiplying it up to cover the difference would be inventing a
+ * second population constant to bolt onto a measurement, which is the thing
+ * this path exists to avoid. The sheet says the estimate is an estimate, the
+ * same way it does for the other one.
+ *
+ * Null on the same terms as `maintenanceKcal` — an incomplete profile — and
+ * additionally when there is no activity figure to use.
+ */
+export function measuredMaintenanceKcal(
+  profile: BodyProfile,
+  weightKg: number,
+  today: Date,
+  activeEnergyKcal: number | null,
+): number | null {
+  const resting = restingEnergyKcal(profile, weightKg, today);
+  if (resting === null) return null;
+  if (activeEnergyKcal === null || !Number.isFinite(activeEnergyKcal) || activeEnergyKcal < 0) {
+    return null;
+  }
+  return resting + activeEnergyKcal;
+}
+
+/**
  * Calories in a pound of body mass, by the conventional figure.
  *
  * 3,500 is a rule of thumb rather than a measurement, and it is the one every
@@ -232,11 +273,28 @@ export function calorieBudget(
   rateKgPerWeek: number,
   today: Date,
 ): CalorieBudget | null {
-  const maintenance = maintenanceKcal(profile, weightKg, today);
+  return budgetFromMaintenance(maintenanceKcal(profile, weightKg, today), profile.sex, rateKgPerWeek);
+}
+
+/**
+ * The same calculation over a maintenance figure worked out some other way —
+ * `measuredMaintenanceKcal`, today.
+ *
+ * Extracted rather than copied so the two bases cannot drift on the parts that
+ * are not about activity at all: the rate arithmetic, the rounding-once rule,
+ * and `MIN_PROPOSED_KCAL`. A floor that applied to the estimate somebody
+ * arrived at by one route and not the other would be the clearest possible way
+ * to have it not mean anything.
+ */
+export function budgetFromMaintenance(
+  maintenance: number | null,
+  sex: BodySex | null,
+  rateKgPerWeek: number,
+): CalorieBudget | null {
   if (maintenance === null) return null;
   const adjustment = dailyAdjustmentKcal(rateKgPerWeek);
   const arithmetic = Math.round(maintenance + adjustment);
-  const floor = proposalFloorKcal(profile.sex);
+  const floor = proposalFloorKcal(sex);
   return {
     maintenanceKcal: Math.round(maintenance),
     adjustmentKcal: Math.round(adjustment),

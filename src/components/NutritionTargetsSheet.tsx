@@ -1,4 +1,4 @@
-import React, { useMemo } from 'react';
+import React, { useEffect, useMemo, useState } from 'react';
 import { ScrollView, StyleSheet, Text, TouchableOpacity, View } from 'react-native';
 import { SheetModal } from './SheetModal';
 import Ionicons from '@expo/vector-icons/Ionicons';
@@ -16,9 +16,18 @@ import {
   WATER_EXERCISE_BOOST_MINUTES_RANGE,
   type WaterExerciseBoost,
 } from '../utils/waterExerciseBoost';
+import {
+  ACTIVE_ENERGY_BASELINE_RANGE,
+  snapToBaselineStep,
+  typicalActiveEnergyKcal,
+  TYPICAL_ACTIVE_ENERGY_WINDOW_DAYS,
+} from '../utils/activeEnergyBoost';
+import { useHealthStore } from '../store/useHealthStore';
+import { openHealthApp } from '../utils/healthBridge';
 import { haptics } from '../utils/haptics';
 import { navigateToSettingsEntry } from '../utils/settingsIndex';
 import { CountStepper } from './CountStepper';
+import { InlineAction } from './InlineAction';
 import { SheetHeaderButton } from './SheetHeaderButton';
 
 /** Every nutrient the Food log's own card can show — water has its own card. */
@@ -80,6 +89,62 @@ export function NutritionTargetsSheet({ visible, onClose }: Props) {
     if (!waterExerciseBoost) return;
     setWaterExerciseBoost({ ...waterExerciseBoost, [field]: value });
   };
+
+  const activeEnergyBoost = useSettingsStore(useShallow(s => s.activeEnergyBoost));
+  const setActiveEnergyBoost = useSettingsStore(s => s.setActiveEnergyBoost);
+
+  const toggleActiveEnergyBoost = () => {
+    haptics.tap();
+    setActiveEnergyBoost(
+      activeEnergyBoost ? null : { baselineKcal: ACTIVE_ENERGY_BASELINE_RANGE.default },
+    );
+  };
+
+  /**
+   * This person's own recent typical day, for the button that offers it —
+   * `undefined` while nothing has been looked up, `null` once the window came
+   * back without enough days to answer from.
+   *
+   * Read here rather than from the health store's state because nothing else
+   * wants it: it is a fortnight of one metric, fetched when somebody opens the
+   * control that needs it and kept nowhere afterwards, the same arrangement
+   * `readRecentWeights` has with the generator that asks for it.
+   */
+  const [typicalKcal, setTypicalKcal] = useState<number | null | undefined>(undefined);
+  const boostOn = activeEnergyBoost !== null;
+
+  /**
+   * Whether today has an active-energy figure at all.
+   *
+   * **This is why the notice below can only be phrased as a question.** Adding
+   * active energy extended the read-type list, and HealthKit shows its
+   * permission sheet once for whatever was asked for at the time: an install
+   * that allowed the earlier types is never re-asked on its own, so this one
+   * arrives unauthorized and answers null. A refused read, a day nothing has
+   * been recorded on yet and a device that records none of this are one
+   * answer here by Apple's design (see `docs/arch/health-data.md`), so the row
+   * may not say access was denied. What it can honestly do is say the figure
+   * is not arriving and offer the one place it could be fixed, which is
+   * exactly what stops the toggle above sitting on doing nothing with no
+   * explanation.
+   */
+  const activeEnergyToday = useHealthStore(s => s.today?.activeEnergyKcal ?? null);
+  const noActiveEnergy = boostOn && healthReadEnabled && activeEnergyToday === null;
+  useEffect(() => {
+    if (!visible || !healthReadEnabled || !boostOn) return;
+    let live = true;
+    void useHealthStore
+      .getState()
+      .readRecentActiveEnergy(TYPICAL_ACTIVE_ENERGY_WINDOW_DAYS)
+      .then(days => {
+        // A null window is "there was no way to ask" and must not read as "not
+        // enough days": the first would have the button's absence blamed on
+        // Health having nothing, when the truth is nobody asked it. Both end
+        // up offering no suggestion, but only the second says so on screen.
+        if (live) setTypicalKcal(days === null ? undefined : typicalActiveEnergyKcal(days));
+      });
+    return () => { live = false; };
+  }, [visible, healthReadEnabled, boostOn]);
 
   const set = (key: NutrientKey, value: number | null) => setNutritionTarget(key, value);
 
@@ -241,6 +306,127 @@ export function NutritionTargetsSheet({ visible, onClose }: Props) {
               )}
             </View>
           )}
+
+          {/* The sibling of the water section above, and deliberately built to
+              the same shape rather than as a second design: same card, same
+              notice when the Health read is off, same commit-as-you-go fields.
+              Shown only once a calorie target exists, because there is nothing
+              to raise until then and offering to raise nothing is a control
+              that cannot do anything when tapped. */}
+          {targets.calorieKcal !== undefined && (
+            <View>
+              <Text style={styles.sectionLabel}>Calories on active days</Text>
+              {!healthReadEnabled ? (
+                <TouchableOpacity
+                  style={styles.boostNotice}
+                  activeOpacity={interaction.activeOpacity}
+                  onPress={() => {
+                    haptics.tap();
+                    onClose();
+                    navigateToSettingsEntry(navigation, 'healthRead');
+                  }}
+                  accessibilityRole="button"
+                  accessibilityLabel="Turn on Apple Health reading in Settings"
+                  accessibilityHint="Opens the Read Apple Health setting"
+                >
+                  <Ionicons name="heart-outline" size={iconSize.sm} color={colors.textSecondary} />
+                  <Text style={styles.boostNoticeText}>
+                    Turn on Apple Health reading in Settings to raise today's calorie target on a
+                    day with more activity than usual.
+                  </Text>
+                  <Ionicons name="chevron-forward" size={iconSize.sm} color={colors.textTertiary} />
+                </TouchableOpacity>
+              ) : (
+                <View style={styles.boostCard}>
+                  <TouchableOpacity
+                    style={styles.boostToggleRow}
+                    activeOpacity={interaction.activeOpacity}
+                    onPress={toggleActiveEnergyBoost}
+                    accessibilityRole="checkbox"
+                    accessibilityState={{ checked: activeEnergyBoost !== null }}
+                    accessibilityLabel="Add active calories to the calorie target"
+                  >
+                    <Ionicons
+                      name={activeEnergyBoost ? 'checkmark-circle' : 'ellipse-outline'}
+                      size={iconSize.md}
+                      color={activeEnergyBoost ? colors.accent : colors.textTertiary}
+                    />
+                    <Text style={styles.boostToggleLabel}>Add active calories</Text>
+                  </TouchableOpacity>
+                  {activeEnergyBoost && (
+                    <View style={styles.boostFields}>
+                      <Text style={styles.boostHint}>
+                        Today's calorie target goes up by whatever active calories Apple Health
+                        records past this figure. A day that stays under it is left alone, and the
+                        target you set is never changed.
+                      </Text>
+                      <View style={styles.boostFieldRow}>
+                        <Text style={styles.boostFieldLabel}>Active calories in a typical day</Text>
+                        <CountStepper
+                          value={activeEnergyBoost.baselineKcal}
+                          onChange={n =>
+                            setActiveEnergyBoost({
+                              baselineKcal: n ?? ACTIVE_ENERGY_BASELINE_RANGE.default,
+                            })
+                          }
+                          min={ACTIVE_ENERGY_BASELINE_RANGE.min}
+                          max={ACTIVE_ENERGY_BASELINE_RANGE.max}
+                          step={ACTIVE_ENERGY_BASELINE_RANGE.step}
+                          format={n => `${n.toLocaleString()} cal`}
+                          label="Typical day's active calories"
+                          describeValue={n =>
+                            `${(n ?? ACTIVE_ENERGY_BASELINE_RANGE.default).toLocaleString()} calories`
+                          }
+                        />
+                      </View>
+                      {/* Offered, never applied on its own — the arrangement
+                          `WeightGoalSheet` uses for a far bigger number, and
+                          the reason a figure worked out from somebody's own
+                          data is allowed to be shown here at all. Withheld
+                          when it would set what is already set. */}
+                      {typicalKcal !== null && typicalKcal !== undefined
+                        && snapToBaselineStep(typicalKcal) !== activeEnergyBoost.baselineKcal && (
+                        <InlineAction
+                          label={`Use your recent average (${typicalKcal.toLocaleString()} cal)`}
+                          variant="neutral"
+                          onPress={() => {
+                            haptics.tap();
+                            setActiveEnergyBoost({ baselineKcal: snapToBaselineStep(typicalKcal) });
+                          }}
+                        />
+                      )}
+                      {typicalKcal === null && !noActiveEnergy && (
+                        <Text style={styles.boostHint}>
+                          Apple Health hasn't recorded enough days yet to work out your average.
+                        </Text>
+                      )}
+                      {/* The whole row opens the Health app, the same shape the
+                          "turn the read on" card above uses. Suppresses the
+                          "not enough days" line, since one actionable sentence
+                          beats two overlapping ones. */}
+                      {noActiveEnergy && (
+                        <TouchableOpacity
+                          style={[styles.boostNotice, styles.boostNoticeNested]}
+                          activeOpacity={interaction.activeOpacity}
+                          onPress={() => { haptics.tap(); void openHealthApp(); }}
+                          accessibilityRole="button"
+                          accessibilityLabel="Open the Health app to allow active energy"
+                          accessibilityHint="Opens Apple Health, where you can allow this app to read Active Energy"
+                        >
+                          <Ionicons name="flame-outline" size={iconSize.sm} color={colors.textSecondary} />
+                          <Text style={styles.boostNoticeText}>
+                            No active calories recorded yet today. If they never appear, open the
+                            Health app and allow this app to read Active Energy.
+                          </Text>
+                          <Ionicons name="chevron-forward" size={iconSize.sm} color={colors.textTertiary} />
+                        </TouchableOpacity>
+                      )}
+                    </View>
+                  )}
+                </View>
+              )}
+            </View>
+          )}
         </ScrollView>
       </View>
     </SheetModal>
@@ -303,6 +489,11 @@ function makeStyles(colors: Colors) {
       padding: spacing.md,
     },
     boostNoticeText: { flex: 1, color: colors.textSecondary, fontSize: font.sm, lineHeight: 18 },
+    // The same row one level in, where the card around it is already
+    // `bgSecondary`: at that colour it would read as part of the card rather
+    // than as its own block, so it steps up a surface the way a nested
+    // control does.
+    boostNoticeNested: { backgroundColor: colors.bgTertiary },
     boostCard: {
       backgroundColor: colors.bgSecondary,
       borderRadius: radius.md,
@@ -322,5 +513,6 @@ function makeStyles(colors: Colors) {
     },
     boostFieldRow: { gap: spacing.sm },
     boostFieldLabel: { color: colors.text, fontSize: font.sm, fontWeight: fontWeight.medium },
+    boostHint: { color: colors.textSecondary, fontSize: font.sm, lineHeight: 18 },
   });
 }

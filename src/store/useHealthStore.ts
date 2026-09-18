@@ -87,6 +87,24 @@ export interface HealthDay {
   /** Kilocalories logged for today so far, or null. Same rules as `sodiumMg`. */
   calorieKcal: number | null;
   /**
+   * Kilocalories of active energy burned so far today, or null — what a body
+   * spent moving, over and above what it spends existing.
+   *
+   * **A running total, and the one on this record that is read as a number to
+   * act on rather than only to report.** `activeEnergyBoost.ts` raises today's
+   * calorie target by whatever of this clears a baseline the person set, so
+   * the null rule bites harder here than anywhere else in this file: read an
+   * absent figure as a zero and the target never moves for somebody whose
+   * devices do record this, which is a feature silently doing nothing.
+   * Reading it as a refusal costs the same nothing and claims less, so that is
+   * what every reader does.
+   *
+   * It only ever grows through the day, which is what makes it safe to add to
+   * a target: a partial day understates the boost rather than overstating it,
+   * so the number on screen is never one somebody has to take back.
+   */
+  activeEnergyKcal: number | null;
+  /**
    * Minutes of Apple Exercise Time so far today, or null. Same rules as
    * `steps`, and the metric where that null does the most damage.
    */
@@ -198,6 +216,12 @@ interface HealthState {
    * no way to ask at all.
    */
   readRecentWeights: (days: number) => Promise<WeightPoint[] | null>;
+  /**
+   * A short window of daily active-energy figures, answered without storing
+   * one. Null when there was no way to ask; a day with no figure is null
+   * within the array rather than being dropped.
+   */
+  readRecentActiveEnergy: (days: number) => Promise<(number | null)[] | null>;
   clear: () => void;
 }
 
@@ -284,6 +308,7 @@ export const useHealthStore = create<HealthState>((set, get) => ({
           caffeineMg: reading?.caffeineMg ?? null,
           waterMl: reading?.waterMl ?? null,
           calorieKcal: reading?.calorieKcal ?? null,
+          activeEnergyKcal: reading?.activeEnergyKcal ?? null,
           exerciseMinutes: reading?.exerciseMinutes ?? null,
           exerciseMinutesSeenRecently,
           readAt: now.toISOString(),
@@ -422,6 +447,37 @@ export const useHealthStore = create<HealthState>((set, get) => ({
       points.push({ dayKey: getLogicalDayKey(at), kilograms: reading.kilograms });
     }
     return points;
+  },
+
+  /**
+   * A short window of active-energy figures, for the one caller that needs to
+   * say what a typical day of somebody's looks like — the baseline stepper in
+   * `NutritionTargetsSheet`, which is unanswerable without it for anybody who
+   * has never looked the number up.
+   *
+   * **Nothing is stored and nothing is decided here.** It hands back the days
+   * and `typicalActiveEnergyKcal` reduces them to one figure, which the sheet
+   * *offers* behind a button — the `WeightGoalSheet` shape, where the app may
+   * do the arithmetic as long as a person is the one who accepts it.
+   *
+   * Same null-versus-empty rule `readRecentWeights` states at length: null is
+   * "there was no way to ask", an array of nulls is "asked, and this person's
+   * devices record none of this". Only the second is worth telling somebody
+   * about, and the sheet says so rather than showing a zero.
+   */
+  async readRecentActiveEnergy(days) {
+    const bridge = healthBridge();
+    if (!bridge) return null;
+    const window = Math.max(1, Math.round(days));
+    // Runs back from *yesterday*, not today: today is a day in progress, and
+    // averaging a part-day in would drag the "typical day" figure below every
+    // full day it is built from — worst in the morning, which is exactly when
+    // somebody opening this sheet would be told their usual day is 80 calories.
+    const anchor = addDays(getCurrentDayStart(), -window);
+    const readings = await bridge.readDailyHealth(anchor.toISOString(), window);
+    // `?? null` for the same reason `refresh` above uses it: a day is only
+    // ever a number or an absence here, never a missing property.
+    return readings.map(r => r.activeEnergyKcal ?? null);
   },
 
   clear() {

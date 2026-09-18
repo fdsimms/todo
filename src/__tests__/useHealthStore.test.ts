@@ -7,6 +7,7 @@
  * `docs/arch/health-data.md`.
  */
 import { useHealthStore, EXERCISE_LIVE_WINDOW_DAYS } from '../store/useHealthStore';
+import { addDays } from 'date-fns/addDays';
 import { useSettingsStore } from '../store/useSettingsStore';
 import { getCurrentDayStart } from '../utils/dateUtils';
 import { healthBridge } from '../utils/healthBridge';
@@ -75,6 +76,48 @@ describe('refresh', () => {
     await useHealthStore.getState().refresh();
     expect(bridge.readDailyHealth).not.toHaveBeenCalled();
     expect(useHealthStore.getState().today).toBeNull();
+  });
+
+  // The figure `activeEnergyBoost.ts` raises a calorie target by, so an absence
+  // read as a zero would be a feature that silently never fires.
+  it("carries today's active energy through, and an absent one as null", async () => {
+    bridge.readDailyHealth.mockResolvedValue([reading({ activeEnergyKcal: 620 })]);
+    await useHealthStore.getState().refresh();
+    expect(useHealthStore.getState().today?.activeEnergyKcal).toBe(620);
+
+    bridge.readDailyHealth.mockResolvedValue([reading()]);
+    await useHealthStore.getState().refresh();
+    expect(useHealthStore.getState().today?.activeEnergyKcal).toBeNull();
+  });
+});
+
+describe('readRecentActiveEnergy', () => {
+  it('answers null without the bridge, which is not the same as no days', async () => {
+    (healthBridge as jest.Mock).mockReturnValue(null);
+    await expect(useHealthStore.getState().readRecentActiveEnergy(14)).resolves.toBeNull();
+  });
+
+  // A day in progress would drag a "typical day" figure below every full day it
+  // is built from, worst in the morning — so the window ends yesterday.
+  it('reads the days before today, never today itself', async () => {
+    await useHealthStore.getState().readRecentActiveEnergy(14);
+    expect(bridge.readDailyHealth).toHaveBeenCalledWith(
+      addDays(getCurrentDayStart(), -14).toISOString(),
+      14,
+    );
+  });
+
+  it('hands back one entry per day read, keeping an absent figure as null', async () => {
+    bridge.readDailyHealth.mockResolvedValue([
+      reading({ activeEnergyKcal: 400 }),
+      reading(),
+      reading({ activeEnergyKcal: 900 }),
+    ]);
+    await expect(useHealthStore.getState().readRecentActiveEnergy(3)).resolves.toEqual([
+      400,
+      null,
+      900,
+    ]);
   });
 });
 
