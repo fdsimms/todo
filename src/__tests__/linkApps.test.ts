@@ -1,4 +1,4 @@
-import { KNOWN_LINK_APPS, linkAppsFor } from '../constants/linkApps';
+import { KNOWN_LINK_APPS, linkAppsFor, linkFor } from '../constants/linkApps';
 
 describe('linkAppsFor', () => {
   it('offers the Groceries chip while the area is on', () => {
@@ -24,5 +24,31 @@ describe('linkAppsFor', () => {
     // still name it rather than falling back to a raw URL.
     const app = KNOWN_LINK_APPS.find(a => a.scheme === 'dundundun://groceries');
     expect(app?.name).toBe('Groceries');
+  });
+});
+
+describe('linkFor', () => {
+  const items = [
+    { id: 'a', title: 'Check email', estimatedMinutes: null, linkUrl: 'googlegmail://' },
+    { id: 'b', title: 'Check calendar', estimatedMinutes: null, linkUrl: null },
+  ];
+
+  it('falls back to the task\'s own link when not chained', () => {
+    expect(linkFor({ linkUrl: 'spotify://' })).toBe('spotify://');
+    expect(linkFor({ linkUrl: null })).toBeNull();
+  });
+
+  it("prefers the active step's own link", () => {
+    expect(linkFor({ chainEnabled: true, chainIndex: 0, chainItems: items, linkUrl: 'spotify://' }))
+      .toBe('googlegmail://');
+  });
+
+  it("falls back to the task's link when the active step carries none", () => {
+    expect(linkFor({ chainEnabled: true, chainIndex: 1, chainItems: items, linkUrl: 'spotify://' }))
+      .toBe('spotify://');
+  });
+
+  it('is null when neither the step nor the task carries a link', () => {
+    expect(linkFor({ chainEnabled: true, chainIndex: 1, chainItems: items, linkUrl: null })).toBeNull();
   });
 });

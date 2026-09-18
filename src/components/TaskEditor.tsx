@@ -36,6 +36,8 @@ import { StepQuestion } from './StepQuestion';
 import { ChainStepQuestionSheet } from './ChainStepQuestionSheet';
 import { ChainStepMedicationSheet } from './ChainStepMedicationSheet';
 import { StepMedication } from './StepMedication';
+import { StepLink } from './StepLink';
+import { ChainStepLinkSheet } from './ChainStepLinkSheet';
 import { format } from 'date-fns/format';
 import { addMonths } from 'date-fns/addMonths';
 import { addDays } from 'date-fns/addDays';
@@ -604,6 +606,7 @@ export function TaskEditor({ visible, task, initialDraft, onClose }: Props) {
   // the list under it can be reordered or shortened while the sheet is up.
   const [questionStepId, setQuestionStepId] = useState<string | null>(null);
   const [medicationStepId, setMedicationStepId] = useState<string | null>(null);
+  const [linkStepId, setLinkStepId] = useState<string | null>(null);
   // Which of the two "write this to a calendar" rows is asking for one.
   const [calendarPickerFor, setCalendarPickerFor] = useState<'completion' | 'deadline' | null>(null);
   const [chainIndex, setChainIndex] = useState(0);
@@ -2419,6 +2422,16 @@ export function TaskEditor({ visible, task, initialDraft, onClose }: Props) {
             ))}
             onClose={() => setMedicationStepId(null)}
           />
+          <ChainStepLinkSheet
+            visible={linkStepId !== null}
+            step={chainItems.find(c => c.id === linkStepId) ?? null}
+            taskLinkUrl={linkUrl}
+            kitchenEnabled={kitchenEnabled}
+            onSave={patch => setChainItems(prev => prev.map(
+              c => (c.id === linkStepId ? { ...c, ...patch } : c),
+            ))}
+            onClose={() => setLinkStepId(null)}
+          />
           <FollowUpTaskSheet
             visible={showFollowUpTaskSheet}
             taskTitle={followUpTaskTitle}
@@ -3136,6 +3149,11 @@ export function TaskEditor({ visible, task, initialDraft, onClose }: Props) {
                               step={item}
                               taskMedicationName={medicationName}
                               onPress={() => setMedicationStepId(item.id)}
+                            />
+                            <StepLink
+                              step={item}
+                              taskLinkUrl={linkUrl}
+                              onPress={() => setLinkStepId(item.id)}
                             />
                             <TouchableOpacity
                               onPress={() => {

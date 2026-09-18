@@ -1,3 +1,6 @@
+import type { Task } from '../types';
+import { activeChainStep, type ChainCarrier } from '../utils/chain';
+
 export interface LinkApp {
   name: string;
   scheme: string; // stored in Task.linkUrl verbatim when selected
@@ -41,4 +44,26 @@ export function linkAppsFor(kitchenEnabled: boolean): LinkApp[] {
 /** Known app name for a link scheme, else the raw URL — what a settings row or a caption names it. */
 export function linkAppLabel(url: string): string {
   return KNOWN_LINK_APPS.find(app => app.scheme === url)?.name ?? url;
+}
+
+/** What the link reads need: the task's own link, plus its chain position. */
+export type LinkSource = ChainCarrier & Pick<Task, 'linkUrl'>;
+
+/**
+ * What the link button opens, or null when there's nothing to open — the
+ * single read for a task's link, the way `estimatedMinutesFor` is the single
+ * read for a duration and `deliverableKindFor` for the completion question.
+ *
+ * Mid-chain it's the active step's own link when that step has one. The
+ * task-level link rides `...effective` onto every successor, so with only
+ * that to read, a chain whose steps point at different places ("Check
+ * email" / "Check calendar") opened the first step's link at every step.
+ *
+ * Falls back to the task's link exactly as `estimatedMinutesFor` falls back
+ * to the task's estimate — a chain that predates per-step links behaves
+ * precisely as it did.
+ */
+export function linkFor(task: LinkSource): string | null {
+  const step = activeChainStep(task);
+  return step?.linkUrl ?? task.linkUrl ?? null;
 }

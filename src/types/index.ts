@@ -142,6 +142,13 @@ export interface ChainItem {
   medicationName?: string | null;
   medicationAmount?: number | null;
   medicationUnit?: string | null;
+  // What the link button opens for *this step*, or null/absent to fall back
+  // to the task's own `linkUrl`. Same reason as the fields above: `linkUrl`
+  // rides `...effective` onto every successor, so a chain whose steps point
+  // at different places ("Check email" / "Check calendar") opened the first
+  // step's link at every step. Resolved by `linkFor`, which prefers the
+  // active step and falls back to the task.
+  linkUrl?: string | null;
 }
 
 // Everything the "Follow-up task" rule says about the task it adds, beyond its
