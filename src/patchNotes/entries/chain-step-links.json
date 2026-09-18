@@ -1,0 +1,4 @@
+{
+  "message": "Each step in a chain task can now have its own link, so a routine like \"Check email\" then \"Check calendar\" opens the right app at each step instead of the same one every time",
+  "date": "2026-09-18"
+}

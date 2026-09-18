@@ -62,6 +62,7 @@ import { clampSupplyReorderAt, describeSupply } from '../utils/supply';
 import { followUpTaskRule, completionsUntilFollowUpTask } from '../utils/followUpTask';
 import { haptics } from '../utils/haptics';
 import { openInAppUrl, linkIconFor, isDeloadUrl } from '../utils/deepLinks';
+import { linkFor } from '../constants/linkApps';
 import { parseHealthSourceId } from '../utils/healthRules';
 import { pantryCheckItemId, pantryCheckLapse } from '../utils/pantryCheckTasks';
 import { pantryReviewDayKey } from '../utils/pantryReviewTasks';
@@ -347,19 +348,20 @@ export const TaskItem = React.memo(function TaskItem({
   } = useTaskStore.getState();
   // ==== the row's outward actions: link, call, text, contact, email ====
   const handleOpenLink = async () => {
-    if (!task.linkUrl) return;
+    const url = linkFor(task);
+    if (!url) return;
     haptics.tap();
     // A link this app owns (dundundun://groceries) navigates in place. Going
     // out through Linking would come back to us anyway, but as an app-switch
     // round trip that flashes.
-    if (openInAppUrl(task.linkUrl)) return;
+    if (openInAppUrl(url)) return;
     try {
       // Skip Linking.canOpenURL: on iOS it only returns true for schemes
       // pre-declared in LSApplicationQueriesSchemes, which would break both
       // the preset chips and arbitrary user-entered custom schemes. openURL
       // itself isn't restricted — it just fails harmlessly if nothing
       // handles the scheme.
-      await Linking.openURL(task.linkUrl);
+      await Linking.openURL(url);
     } catch {
       // silently ignore — no toast infra for this row-level action
     }
@@ -2681,7 +2683,7 @@ export const TaskItem = React.memo(function TaskItem({
         </TouchableOpacity>
       )}
 
-      {!selectionMode && showActions && task.linkUrl && (
+      {!selectionMode && showActions && linkFor(task) && (
         <TouchableOpacity
           onPress={handleOpenLink}
           hitSlop={8}
@@ -2689,7 +2691,7 @@ export const TaskItem = React.memo(function TaskItem({
           accessibilityRole="button"
           accessibilityLabel={`Open link for ${task.title}`}
         >
-          <Ionicons name={linkIconFor(task.linkUrl) as never} size={iconSize.sm} color={colors.accent} />
+          <Ionicons name={linkIconFor(linkFor(task)!) as never} size={iconSize.sm} color={colors.accent} />
         </TouchableOpacity>
       )}
 

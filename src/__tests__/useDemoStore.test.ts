@@ -88,6 +88,7 @@ import { useMoodStore } from '../store/useMoodStore';
 import { useMilestoneStore } from '../store/useMilestoneStore';
 import { useMedicationStore } from '../store/useMedicationStore';
 import { frequencyTrend, medicationFor } from '../utils/medicationLog';
+import { linkFor } from '../constants/linkApps';
 import { buildMoodDays, contextTagMoodContrasts, describeNutrientInsight, foodMoodContrasts, foodPairedDays, symptomFoodContrasts, milestoneMoodContrast, moodCompletionInsight, nutrientInsight, symptomMoodContrasts, taskContrastTitles, taskMoodContrasts, MIN_PAIRED_DAYS } from '../utils/moodInsights';
 import { contextTagVocabulary, symptomVocabulary } from '../utils/moodLog';
 import { isStaleNote } from '../utils/personNotes';
@@ -1824,6 +1825,20 @@ describe('demo seed — people', () => {
     expect(new Set(names).size).toBe(2);
     // And medicationFor resolves the live step rather than the task.
     expect(medicationFor(chained!)).toMatchObject({ name: 'Levothyroxine', unit: 'mcg' });
+  });
+
+  it('seeds a chain step carrying its own link', () => {
+    // Task.linkUrl rides onto every successor, so without a per-step value
+    // this step's link button would open whatever the task-level Link field
+    // carried at every other step too.
+    const chained = useTaskStore.getState().tasks.find(t => t.title === 'Morning routine');
+    expect(chained).toBeDefined();
+    const stretchStep = chained!.chainItems[1];
+    expect(stretchStep.title).toBe('Stretch for five minutes');
+    expect(stretchStep.linkUrl).toBe('youtube://');
+    // And linkFor resolves the live step's link only while it's the active one.
+    expect(linkFor({ ...chained!, chainIndex: 1 })).toBe('youtube://');
+    expect(linkFor({ ...chained!, chainIndex: 0 })).not.toBe('youtube://');
   });
 
   it('seeds a plain task that logs to the food log on completion', () => {

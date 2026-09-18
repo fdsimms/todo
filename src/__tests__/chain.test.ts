@@ -158,6 +158,7 @@ describe('parseChainItems', () => {
         id: 'c1', title: 'Stretch', estimatedMinutes: null, deliverableKind: null,
         deliverableDatesNextStep: false,
         medicationName: null, medicationAmount: null, medicationUnit: null,
+        linkUrl: null,
       },
     ]);
   });
@@ -168,6 +169,7 @@ describe('parseChainItems', () => {
         id: 'c1', title: 'Stretch', estimatedMinutes: 5, deliverableKind: null,
         deliverableDatesNextStep: false,
         medicationName: null, medicationAmount: null, medicationUnit: null,
+        linkUrl: null,
       },
     ]);
   });
@@ -180,8 +182,20 @@ describe('parseChainItems', () => {
         id: 'c1', title: 'Book haircut', estimatedMinutes: null,
         deliverableKind: 'date', deliverableDatesNextStep: true,
         medicationName: null, medicationAmount: null, medicationUnit: null,
+        linkUrl: null,
       },
     ]);
+  });
+
+  it('keeps a stored link', () => {
+    const [item] = parseChainItems([
+      { id: 'c1', title: 'Check email', linkUrl: 'googlegmail://' },
+    ]);
+    expect(item.linkUrl).toBe('googlegmail://');
+  });
+
+  it('drops a non-string link rather than passing it through', () => {
+    expect(parseChainItems([{ id: 'c1', title: 'x', linkUrl: 42 }])[0].linkUrl).toBeNull();
   });
 
   it('keeps a stored medication and its dose', () => {

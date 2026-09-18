@@ -403,7 +403,12 @@ export function seedDemoData(): void {
     chainIndex: 0,
     chainItems: [
       { id: generateId(), title: 'Make the bed', estimatedMinutes: null },
-      { id: generateId(), title: 'Stretch for five minutes', estimatedMinutes: null },
+      // A step's own link (ChainItem.linkUrl) — per-step for the same reason
+      // estimatedMinutes/deliverableKind/medicationName are: Task.linkUrl
+      // rides onto every successor, so without a per-step value this step's
+      // link button would open whatever the task-level Link field carried at
+      // every other step too.
+      { id: generateId(), title: 'Stretch for five minutes', estimatedMinutes: null, linkUrl: 'youtube://' },
       { id: generateId(), title: 'Glass of water', estimatedMinutes: null },
     ],
   });

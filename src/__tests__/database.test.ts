@@ -747,6 +747,7 @@ describe('dbInsertTask + rowToTask round-trip', () => {
         id: 'ci', title: 'Item A', estimatedMinutes: null, deliverableKind: null,
         deliverableDatesNextStep: false,
         medicationName: null, medicationAmount: null, medicationUnit: null,
+        linkUrl: null,
       },
     ];
     dbInsertTask(makeTask({ id: 'json', tags, recurrenceDays, chainItems }));
@@ -765,11 +766,13 @@ describe('dbInsertTask + rowToTask round-trip', () => {
         id: 'book', title: 'Book haircut', estimatedMinutes: null,
         deliverableKind: 'date' as const, deliverableDatesNextStep: true,
         medicationName: null, medicationAmount: null, medicationUnit: null,
+        linkUrl: null,
       },
       {
         id: 'get', title: 'Get haircut', estimatedMinutes: null,
         deliverableKind: null, deliverableDatesNextStep: false,
         medicationName: null, medicationAmount: null, medicationUnit: null,
+        linkUrl: null,
       },
     ];
     dbInsertTask(makeTask({ id: 'chain-q', chainEnabled: true, chainItems }));
@@ -785,14 +788,38 @@ describe('dbInsertTask + rowToTask round-trip', () => {
         id: 'am', title: 'Morning pills', estimatedMinutes: null,
         deliverableKind: null, deliverableDatesNextStep: false,
         medicationName: 'Levothyroxine', medicationAmount: 75, medicationUnit: 'mcg',
+        linkUrl: null,
       },
       {
         id: 'pm', title: 'Evening pills', estimatedMinutes: null,
         deliverableKind: null, deliverableDatesNextStep: false,
         medicationName: 'Magnesium', medicationAmount: 1, medicationUnit: 'tablet',
+        linkUrl: null,
       },
     ];
     dbInsertTask(makeTask({ id: 'chain-med', chainEnabled: true, chainItems }));
+
+    expect(dbGetAllTasks()[0].chainItems).toEqual(chainItems);
+  });
+
+  it("round-trips a chain step's own link", () => {
+    // Rides inside the cycle_items JSON like the fields above, so the round
+    // trip is what proves parseChainItems and the serializer agree about it.
+    const chainItems = [
+      {
+        id: 'email', title: 'Check email', estimatedMinutes: null,
+        deliverableKind: null, deliverableDatesNextStep: false,
+        medicationName: null, medicationAmount: null, medicationUnit: null,
+        linkUrl: 'googlegmail://',
+      },
+      {
+        id: 'cal', title: 'Check calendar', estimatedMinutes: null,
+        deliverableKind: null, deliverableDatesNextStep: false,
+        medicationName: null, medicationAmount: null, medicationUnit: null,
+        linkUrl: null,
+      },
+    ];
+    dbInsertTask(makeTask({ id: 'chain-link', chainEnabled: true, chainItems }));
 
     expect(dbGetAllTasks()[0].chainItems).toEqual(chainItems);
   });

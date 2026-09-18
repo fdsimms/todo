@@ -51,9 +51,12 @@ import { DeliverableKindPicker } from './DeliverableKindPicker';
 import { StepMinutes } from './StepMinutes';
 import { StepQuestion } from './StepQuestion';
 import { StepMedication } from './StepMedication';
+import { StepLink } from './StepLink';
 import { nextChainStepTitle } from '../utils/chain';
 import { ChainStepQuestionSheet } from './ChainStepQuestionSheet';
 import { ChainStepMedicationSheet } from './ChainStepMedicationSheet';
+import { ChainStepLinkSheet } from './ChainStepLinkSheet';
+import { useSettingsStore } from '../store/useSettingsStore';
 import { RecurrencePicker } from './RecurrencePicker';
 import { SegmentedControl } from './SegmentedControl';
 import { PRIORITY_SEGMENTS } from '../utils/prioritySegments';
@@ -174,6 +177,8 @@ export function TemplateItemEditor({ visible, templateId, templateName, item, in
   // By id rather than index — see the same state in TaskEditor.
   const [questionStepId, setQuestionStepId] = useState<string | null>(null);
   const [medicationStepId, setMedicationStepId] = useState<string | null>(null);
+  const [linkStepId, setLinkStepId] = useState<string | null>(null);
+  const kitchenEnabled = useSettingsStore(s => s.kitchenEnabled);
   const [chainIndex, setChainIndex] = useState(0);
   const [addingChainItem, setAddingChainItem] = useState(false);
   const [newChainItemTitle, setNewChainItemTitle] = useState('');
@@ -514,6 +519,16 @@ export function TemplateItemEditor({ visible, templateId, templateName, item, in
               c => (c.id === medicationStepId ? { ...c, ...patch } : c),
             ))}
             onClose={() => setMedicationStepId(null)}
+          />
+          <ChainStepLinkSheet
+            visible={linkStepId !== null}
+            step={chainItems.find(c => c.id === linkStepId) ?? null}
+            taskLinkUrl={null}
+            kitchenEnabled={kitchenEnabled}
+            onSave={patch => setChainItems(prev => prev.map(
+              c => (c.id === linkStepId ? { ...c, ...patch } : c),
+            ))}
+            onClose={() => setLinkStepId(null)}
           />
           <NumberPadAccessory />
         </>
@@ -1273,6 +1288,11 @@ export function TemplateItemEditor({ visible, templateId, templateName, item, in
                         step={chainItem}
                         taskMedicationName={medicationName}
                         onPress={() => setMedicationStepId(chainItem.id)}
+                      />
+                      <StepLink
+                        step={chainItem}
+                        taskLinkUrl={null}
+                        onPress={() => setLinkStepId(chainItem.id)}
                       />
                       <TouchableOpacity
                         onPress={() => {
