@@ -1,13 +1,18 @@
-import React, { useMemo, useState } from 'react';
-import { View, Text, StyleSheet, type LayoutChangeEvent } from 'react-native';
+import React, { useMemo, useRef, useState } from 'react';
+import { View, Text, StyleSheet, PanResponder, type GestureResponderEvent, type LayoutChangeEvent } from 'react-native';
 import Svg, { Circle, Line, Polyline } from 'react-native-svg';
+import { format } from 'date-fns/format';
 import { useColors } from '../theme/ThemeContext';
-import { spacing, font, fontWeight, type Colors } from '../theme';
+import { spacing, font, fontWeight, radius, type Colors } from '../theme';
+import { haptics } from '../utils/haptics';
+import { dayKeyToDate } from '../utils/dateUtils';
 import {
   formatWeight,
   weightDomain,
   weightFraction,
+  weightPlotPoints,
   weightSegments,
+  weightTrendPoints,
   weightTrendSegments,
   type WeightPoint,
   type WeightUnit,
@@ -58,6 +63,19 @@ import type { PacePlotPoint } from '../utils/weightGoal';
  * The summary names the count and the range, which is what the drawing says,
  * and says nothing about the trend line — it is a smoothing of the same
  * numbers the summary already covers, not a second reading.
+ *
+ * **Touch-and-drag scrubs the line.** A finger anywhere over the plot snaps to
+ * the nearest actual reading and shows its date, its weight, and (when there
+ * are enough readings nearby to have one) its 7-day average — the same three
+ * numbers already drawn, read out for one point instead of inferred from the
+ * shape. It never states more than that: no distance from the target, no
+ * verdict on the trend, same "nothing here interprets a body" line the rest of
+ * the file holds. The scrub is a `PanResponder` (the pattern `ReorderableList`
+ * already uses in this app) rather than `react-native-gesture-handler`, since
+ * a single free-floating touch region needs none of the simultaneous-gesture
+ * arbitration that library is for. It changes nothing about the single
+ * accessibility element above: the touch layer has no accessible children of
+ * its own, so a screen-reader user still gets just the spoken summary.
  */
 
 const CHART_HEIGHT = 160;
@@ -81,6 +99,9 @@ const TREND_LINE_OPACITY = 0.35;
  * things on the chart rather than as the plan against the readings.
  */
 const PLAN_DASH = '4 4';
+
+/** Fixed rather than measured — a tooltip that reflows as it appears reads as a glitch. */
+const TOOLTIP_WIDTH = 148;
 
 interface Props {
   /** One entry per day in the window, oldest first, null where nothing was logged. */
@@ -113,6 +134,11 @@ export function WeightChart({ points, unit, targetKg, pacePoints }: Props) {
   const domain = useMemo(() => weightDomain(points, targetKg), [points, targetKg]);
   const segments = useMemo(() => weightSegments(points), [points]);
   const trendSegments = useMemo(() => weightTrendSegments(points), [points]);
+  // One entry per actual reading, in step with each other (both built from the
+  // same reading list) — so `trendPoints[i]` is the trailing average as of
+  // `plotPoints[i]`, which is what makes the scrub below a plain index lookup.
+  const plotPoints = useMemo(() => weightPlotPoints(points), [points]);
+  const trendPoints = useMemo(() => weightTrendPoints(points), [points]);
 
   const summary = useMemo(() => {
     const all = segments.flat();
@@ -137,20 +163,74 @@ export function WeightChart({ points, unit, targetKg, pacePoints }: Props) {
 
   const onLayout = (event: LayoutChangeEvent) => setWidth(event.nativeEvent.layout.width);
 
-  // The caller draws an empty state instead; a chart of nothing is a box.
-  if (!domain) return null;
-
-  const plotHeight = CHART_HEIGHT - VERTICAL_INSET * 2;
   // A single-day window has no span to divide by, so its one reading is drawn
   // in the middle rather than at x=0 with a NaN beside it.
   const lastIndex = Math.max(1, points.length - 1);
   const xFor = (index: number) => (index / lastIndex) * width;
+
+  // The scrubbed reading, by its position in `plotPoints`/`trendPoints` — not a
+  // dayKey, so a touch between two readings resolves to whichever is nearer in
+  // one comparison rather than a lookup.
+  const [scrubIndex, setScrubIndex] = useState<number | null>(null);
+  const scrubIndexRef = useRef<number | null>(null);
+
+  const scrubTo = (event: GestureResponderEvent) => {
+    if (plotPoints.length === 0 || width === 0) return;
+    const x = event.nativeEvent.locationX;
+    let nearest = 0;
+    let nearestDistance = Infinity;
+    for (let i = 0; i < plotPoints.length; i++) {
+      const distance = Math.abs(xFor(plotPoints[i].index) - x);
+      if (distance < nearestDistance) {
+        nearestDistance = distance;
+        nearest = i;
+      }
+    }
+    if (nearest !== scrubIndexRef.current) haptics.dragTick();
+    scrubIndexRef.current = nearest;
+    setScrubIndex(nearest);
+  };
+
+  const endScrub = () => {
+    scrubIndexRef.current = null;
+    setScrubIndex(null);
+  };
+
+  const panResponder = useMemo(() => PanResponder.create({
+    // Claimed on touch-down rather than after some horizontal movement, so a
+    // plain tap (no drag at all) still shows the tooltip for that point. The
+    // cost — the same trade `PaintSelection` documents for its own gutter — is
+    // that a scroll gesture starting with a finger already on the plot begins
+    // a scrub instead: the screen still scrolls from anywhere else on it.
+    onStartShouldSetPanResponder: () => true,
+    onMoveShouldSetPanResponder: () => true,
+    onPanResponderGrant: scrubTo,
+    onPanResponderMove: scrubTo,
+    onPanResponderRelease: endScrub,
+    onPanResponderTerminate: endScrub,
+    onPanResponderTerminationRequest: () => false,
+  }), [plotPoints, width]);
+
+  // The caller draws an empty state instead; a chart of nothing is a box.
+  if (!domain) return null;
+
+  const plotHeight = CHART_HEIGHT - VERTICAL_INSET * 2;
   const yFor = (kilograms: number) =>
     VERTICAL_INSET + (1 - weightFraction(kilograms, domain)) * plotHeight;
 
+  const scrubbed = scrubIndex !== null ? plotPoints[scrubIndex] : null;
+  const scrubbedTrend = scrubIndex !== null ? trendPoints[scrubIndex] : null;
+  const tooltipLeft = scrubbed
+    ? Math.min(Math.max(xFor(scrubbed.index) - TOOLTIP_WIDTH / 2, 0), Math.max(width - TOOLTIP_WIDTH, 0))
+    : 0;
+  const tooltipHeight = scrubbedTrend ? 44 : 24;
+  const tooltipTop = scrubbed
+    ? Math.max(0, Math.min(yFor(scrubbed.kilograms) - tooltipHeight - 10, CHART_HEIGHT - tooltipHeight))
+    : 0;
+
   return (
     <View accessible accessibilityLabel={summary}>
-      <View style={styles.plot} onLayout={onLayout}>
+      <View style={styles.plot} onLayout={onLayout} {...panResponder.panHandlers}>
         {width > 0 && (
           <Svg width={width} height={CHART_HEIGHT}>
             {/* Drawn first so the readings sit on top of the plan, never under it. */}
@@ -211,10 +291,43 @@ export function WeightChart({ points, unit, targetKg, pacePoints }: Props) {
                 ))}
               </React.Fragment>
             ))}
+            {scrubbed && (
+              <>
+                <Line
+                  x1={xFor(scrubbed.index)}
+                  y1={0}
+                  x2={xFor(scrubbed.index)}
+                  y2={CHART_HEIGHT}
+                  stroke={colors.textTertiary}
+                  strokeWidth={1}
+                />
+                <Circle
+                  cx={xFor(scrubbed.index)}
+                  cy={yFor(scrubbed.kilograms)}
+                  r={DOT_RADIUS + 3}
+                  fill="none"
+                  stroke={colors.accent}
+                  strokeWidth={2}
+                />
+              </>
+            )}
           </Svg>
         )}
         <Text style={[styles.axis, styles.axisTop]}>{formatWeight(domain.max, unit)}</Text>
         <Text style={[styles.axis, styles.axisBottom]}>{formatWeight(domain.min, unit)}</Text>
+        {scrubbed && (
+          <View
+            style={[styles.tooltip, { left: tooltipLeft, top: tooltipTop, height: tooltipHeight }]}
+            pointerEvents="none"
+          >
+            <Text style={styles.tooltipText}>
+              {format(dayKeyToDate(scrubbed.dayKey), 'MMM d')} · {formatWeight(scrubbed.kilograms, unit)}
+            </Text>
+            {scrubbedTrend && (
+              <Text style={styles.tooltipSubtext}>7-day avg {formatWeight(scrubbedTrend.kilograms, unit)}</Text>
+            )}
+          </View>
+        )}
       </View>
     </View>
   );
@@ -233,4 +346,25 @@ const makeStyles = (colors: Colors) => StyleSheet.create({
   },
   axisTop: { top: 0 },
   axisBottom: { bottom: 0 },
+  tooltip: {
+    position: 'absolute',
+    width: TOOLTIP_WIDTH,
+    backgroundColor: colors.bgTertiary,
+    borderRadius: radius.sm,
+    paddingVertical: spacing.xxs,
+    paddingHorizontal: spacing.xs,
+    justifyContent: 'center',
+  },
+  tooltipText: {
+    fontSize: font.xs,
+    fontWeight: fontWeight.semibold,
+    color: colors.text,
+    textAlign: 'center',
+  },
+  tooltipSubtext: {
+    fontSize: font.xxs,
+    color: colors.textTertiary,
+    textAlign: 'center',
+    marginTop: 1,
+  },
 });
