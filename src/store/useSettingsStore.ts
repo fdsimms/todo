@@ -14,6 +14,11 @@ import {
   type WaterExerciseBoost,
 } from '../utils/waterExerciseBoost';
 import {
+  parseActiveEnergyBoost,
+  serializeActiveEnergyBoost,
+  type ActiveEnergyBoost,
+} from '../utils/activeEnergyBoost';
+import {
   EMPTY_BODY_PROFILE,
   parseBodyProfile,
   serializeBodyProfile,
@@ -1010,6 +1015,23 @@ interface SettingsStore {
   waterExerciseBoost: WaterExerciseBoost | null;
 
   /**
+   * A baseline of active calories an ordinary day already involves: on a day
+   * today's `activeEnergyKcal` reading runs past it, the Food log's calorie
+   * total reads against `nutritionTargets.calorieKcal` plus the excess instead
+   * of the stored target itself — see `src/utils/activeEnergyBoost.ts`. Null
+   * until somebody sets one, which is the shipping state.
+   *
+   * The sibling of `waterExerciseBoost` above in every respect that matters:
+   * the number is typed in, the app proposes it only behind a button somebody
+   * presses, and nothing here ever writes into `nutritionTargets.calorieKcal`
+   * itself.
+   *
+   * Kept out of DEFAULT_SETTINGS/resetToDefaults for the mechanical reason
+   * weightGoal is: it's an object, and String(value) doesn't round-trip one.
+   */
+  activeEnergyBoost: ActiveEnergyBoost | null;
+
+  /**
    * Height, year of birth, sex and activity level — the inputs the calorie
    * estimate needs, and nothing else in the app reads them. See
    * src/utils/energyBudget.ts.
@@ -1616,6 +1638,7 @@ interface SettingsStore {
   setWeightGoal: (goal: WeightGoal | null) => void;
   /** Sets the water exercise boost, or clears it with null. */
   setWaterExerciseBoost: (boost: WaterExerciseBoost | null) => void;
+  setActiveEnergyBoost: (boost: ActiveEnergyBoost | null) => void;
   /** Replaces the body profile whole — the sheet stages it and saves once. */
   setBodyProfile: (profile: BodyProfile) => void;
   setHealthCategory: (category: string | null) => void;
@@ -2220,6 +2243,7 @@ export const useSettingsStore = create<SettingsStore>((set, get) => ({
   waterUnit: 'ml',
   weightGoal: null,
   waterExerciseBoost: null,
+  activeEnergyBoost: null,
   bodyProfile: { ...EMPTY_BODY_PROFILE },
   healthCategory: null,
   healthTasks: false,
@@ -2541,6 +2565,7 @@ export const useSettingsStore = create<SettingsStore>((set, get) => ({
     // a future build can never stop the settings loading.
     const weightGoal = parseWeightGoal(dbGetSetting('weightGoal'));
     const waterExerciseBoost = parseWaterExerciseBoost(dbGetSetting('waterExerciseBoost'));
+    const activeEnergyBoost = parseActiveEnergyBoost(dbGetSetting('activeEnergyBoost'));
     const bodyProfile = parseBodyProfile(dbGetSetting('bodyProfile'));
     // '' persists as "not chosen", matching calendarEventCategory. Nothing
     // creates the category from here — see ensureHealthCategory, which runs
@@ -2790,6 +2815,7 @@ export const useSettingsStore = create<SettingsStore>((set, get) => ({
     // field read from the database and left out of this list compiles clean
     // and simply never loads.
     set({
+      activeEnergyBoost,
       activeHoursEnd,
       activeHoursStart,
       activeListDrivenBy,
@@ -4071,6 +4097,11 @@ export const useSettingsStore = create<SettingsStore>((set, get) => ({
   setWaterExerciseBoost(boost: WaterExerciseBoost | null) {
     dbSetSetting('waterExerciseBoost', boost === null ? '' : serializeWaterExerciseBoost(boost));
     set({ waterExerciseBoost: boost });
+  },
+
+  setActiveEnergyBoost(boost: ActiveEnergyBoost | null) {
+    dbSetSetting('activeEnergyBoost', boost === null ? '' : serializeActiveEnergyBoost(boost));
+    set({ activeEnergyBoost: boost });
   },
 
   // Replaced whole rather than a field at a time, unlike setNutritionTarget:

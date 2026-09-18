@@ -16,7 +16,9 @@ import {
   feetInchesToCm,
   formatHeight,
   isProfileComplete,
+  budgetFromMaintenance,
   maintenanceKcal,
+  measuredMaintenanceKcal,
   parseBodyProfile,
   parseHeightInput,
   proposalFloorKcal,
@@ -77,6 +79,64 @@ describe('maintenanceKcal', () => {
   it('defaults an untouched profile to the bottom of the ladder', () => {
     expect(EMPTY_BODY_PROFILE.activity).toBe('sedentary');
     expect(ACTIVITY_FACTOR.sedentary).toBe(Math.min(...ACTIVITY_LEVELS.map(l => ACTIVITY_FACTOR[l])));
+  });
+});
+
+describe('measuredMaintenanceKcal', () => {
+  it('adds the measured activity to resting energy rather than multiplying it', () => {
+    // 1750 resting for this profile at 80kg; the activity level is ignored
+    // entirely, which is the point of the alternative basis.
+    expect(measuredMaintenanceKcal(profile({ activity: 'veryActive' }), 80, TODAY, 600))
+      .toBeCloseTo(1750 + 600);
+  });
+
+  it('has no answer without an activity figure, rather than falling back to the multiplier', () => {
+    expect(measuredMaintenanceKcal(profile(), 80, TODAY, null)).toBeNull();
+  });
+
+  it('has no answer on an incomplete profile, same as the multiplier path', () => {
+    expect(measuredMaintenanceKcal(profile({ sex: null }), 80, TODAY, 600)).toBeNull();
+    expect(measuredMaintenanceKcal(profile({ heightCm: null }), 80, TODAY, 600)).toBeNull();
+  });
+
+  it('refuses a figure that is not a usable number', () => {
+    expect(measuredMaintenanceKcal(profile(), 80, TODAY, Number.NaN)).toBeNull();
+    expect(measuredMaintenanceKcal(profile(), 80, TODAY, -100)).toBeNull();
+  });
+
+  it('counts a genuine zero-activity day as zero rather than as no answer', () => {
+    expect(measuredMaintenanceKcal(profile(), 80, TODAY, 0)).toBeCloseTo(1750);
+  });
+
+  it('reads below the multiplier for the same person on a sedentary day', () => {
+    // Not a rule the module enforces, just the arithmetic both are doing: the
+    // sedentary factor credits 20% of resting (350 here) where a quiet
+    // measured day credits what was actually recorded.
+    const multiplier = maintenanceKcal(profile({ activity: 'sedentary' }), 80, TODAY);
+    const measured = measuredMaintenanceKcal(profile(), 80, TODAY, 200);
+    expect(measured).toBeLessThan(multiplier as number);
+  });
+});
+
+describe('budgetFromMaintenance', () => {
+  it('is what calorieBudget is built from, so the two cannot drift', () => {
+    const viaBudget = calorieBudget(profile({ activity: 'moderate' }), 80, -unitToKg(1, 'lb'), TODAY);
+    const viaMaintenance = budgetFromMaintenance(
+      maintenanceKcal(profile({ activity: 'moderate' }), 80, TODAY),
+      'male',
+      -unitToKg(1, 'lb'),
+    );
+    expect(viaMaintenance).toEqual(viaBudget);
+  });
+
+  it('applies the same floor whichever basis the maintenance figure came from', () => {
+    const budget = budgetFromMaintenance(1400, 'female', -unitToKg(2, 'lb'));
+    expect(budget?.raisedToFloor).toBe(true);
+    expect(budget?.proposedKcal).toBe(MIN_PROPOSED_KCAL.female);
+  });
+
+  it('has no answer without a maintenance figure', () => {
+    expect(budgetFromMaintenance(null, 'male', 0)).toBeNull();
   });
 });
 

@@ -27,15 +27,22 @@ import {
   MAX_HEIGHT_CM,
   MIN_BIRTH_YEAR,
   MIN_HEIGHT_CM,
+  budgetFromMaintenance,
   calorieBudget,
   cmToFeetInches,
   feetInchesToCm,
   isProfileComplete,
   macroGrams,
+  measuredMaintenanceKcal,
   type ActivityLevel,
   type BodyProfile,
   type BodySex,
 } from '../utils/energyBudget';
+import {
+  typicalActiveEnergyKcal,
+  TYPICAL_ACTIVE_ENERGY_WINDOW_DAYS,
+} from '../utils/activeEnergyBoost';
+import { useHealthStore } from '../store/useHealthStore';
 import { EditorSheet } from './EditorSheet';
 import { SegmentedControl } from './SegmentedControl';
 import { SheetHeader } from './SheetHeader';
@@ -124,10 +131,49 @@ export function WeightGoalSheet({ visible, onClose, currentKg, onLogWeight }: Pr
   const [birthYear, setBirthYear] = useState<number | null>(null);
   const [sex, setSex] = useState<BodySex | null>(null);
   const [activity, setActivity] = useState<ActivityLevel>('sedentary');
+  /**
+   * Which way the maintenance figure is worked out: the multiplier over the
+   * activity level above, or Apple Health's own measurement of a recent
+   * typical day.
+   *
+   * **Defaults to the multiplier even when a measurement exists**, and stays
+   * unpersisted, for the same reason `macroPresetId` preselects nothing: the
+   * app is offering two ways to arrive at a number rather than ranking them,
+   * and `measuredMaintenanceKcal` says at length why neither is the one that
+   * is simply right. Opening on the measured figure would be the app deciding
+   * that somebody's watch knows them better than they do.
+   */
+  const [measuredBasis, setMeasuredBasis] = useState(false);
+  /**
+   * A typical recent day's active energy, or null once looked up and not
+   * answerable. Read while the sheet is open and kept nowhere, exactly as
+   * `NutritionTargetsSheet` reads the same figure for the same reason.
+   */
+  const [typicalActiveKcal, setTypicalActiveKcal] = useState<number | null>(null);
+  const healthReadEnabled = useSettingsStore(s => s.healthReadEnabled);
   // Nothing preselected, and not persisted: a split is a one-off choice made
   // when applying targets, not a setting. See MACRO_PRESETS on why the app has
   // no opinion about which one.
   const [macroPresetId, setMacroPresetId] = useState<string | null>(null);
+
+  // What a recent typical day of this person's actually recorded, fetched while
+  // the sheet is open and stored nowhere. Cleared rather than kept when the
+  // read cannot be made, so a revoked Health permission takes the measured
+  // option away with it instead of leaving the last figure on screen.
+  useEffect(() => {
+    if (!visible || !healthReadEnabled) {
+      setTypicalActiveKcal(null);
+      return;
+    }
+    let live = true;
+    void useHealthStore
+      .getState()
+      .readRecentActiveEnergy(TYPICAL_ACTIVE_ENERGY_WINDOW_DAYS)
+      .then(days => {
+        if (live) setTypicalActiveKcal(days === null ? null : typicalActiveEnergyKcal(days));
+      });
+    return () => { live = false; };
+  }, [visible, healthReadEnabled]);
 
   // Seeded on each open rather than on mount: the sheet stays mounted across
   // visibility toggles, and a form still holding last time's numbers would
@@ -150,6 +196,10 @@ export function WeightGoalSheet({ visible, onClose, currentKg, onLogWeight }: Pr
     setSex(profile.sex);
     setActivity(profile.activity);
     setMacroPresetId(null);
+    // Reset with the rest of the form: the basis is a choice about this
+    // sitting, not a setting, so a sheet reopened later opens on the
+    // multiplier again rather than on whatever was picked last time.
+    setMeasuredBasis(false);
 
     if (storedGoal) {
       setDirection(goalDirection(storedGoal));
@@ -212,10 +262,23 @@ export function WeightGoalSheet({ visible, onClose, currentKg, onLogWeight }: Pr
   const budgetWeightKg = currentKg ?? startKg;
   const signedRateKg =
     maintaining || rateKg === null ? 0 : direction === 'lose' ? -rateKg : rateKg;
-  const budget =
+  const multiplierBudget =
     budgetWeightKg === null
       ? null
       : calorieBudget(profile, budgetWeightKg, signedRateKg, getLogicalToday());
+  const measuredBudget =
+    budgetWeightKg === null
+      ? null
+      : budgetFromMaintenance(
+        measuredMaintenanceKcal(profile, budgetWeightKg, getLogicalToday(), typicalActiveKcal),
+        sex,
+        signedRateKg,
+      );
+  // Offered only when there is a real measurement behind it. A control with one
+  // working option is a control that lies about having a choice, so the picker
+  // below renders only while this holds.
+  const canUseMeasured = measuredBudget !== null;
+  const budget = measuredBasis && measuredBudget !== null ? measuredBudget : multiplierBudget;
 
   const save = () => {
     if (!canSave || startKg === null || targetKg === null) return;
@@ -491,6 +554,29 @@ export function WeightGoalSheet({ visible, onClose, currentKg, onLogWeight }: Pr
                 <Text style={styles.budgetValue}>
                   {budget.proposedKcal.toLocaleString()} cal a day
                 </Text>
+                {/* Only once there is a real measurement to offer. The two
+                    are presented as two ways of arriving at the same figure,
+                    in the order that puts the one somebody typed first, and
+                    `measuredMaintenanceKcal` explains why neither is ranked
+                    above the other. */}
+                {canUseMeasured && (
+                  <View style={styles.field}>
+                    <SegmentedControl
+                      options={[
+                        { value: false, label: 'Activity level' },
+                        { value: true, label: 'Apple Health' },
+                      ]}
+                      value={measuredBasis}
+                      onChange={next => { haptics.tap(); setMeasuredBasis(next); }}
+                      label="How activity is counted"
+                    />
+                    <Text style={styles.help}>
+                      {measuredBasis
+                        ? `Your resting rate plus ${(typicalActiveKcal ?? 0).toLocaleString()} cal, the active calories in a typical recent day of yours. Movement only, so it reads a little low: it does not count the energy spent digesting food, which the activity levels do.`
+                        : `The activity level you picked above, as a multiplier on your resting rate.`}
+                    </Text>
+                  </View>
+                )}
                 <View style={styles.workingRow}>
                   <Text style={styles.workingLabel}>To hold your weight</Text>
                   <Text style={styles.workingValue}>
@@ -517,9 +603,9 @@ export function WeightGoalSheet({ visible, onClose, currentKg, onLogWeight }: Pr
                 )}
 
                 <Text style={styles.help}>
-                  An estimate from a population formula (Mifflin-St Jeor), not a
-                  measurement of you. Treat it as a starting point and adjust it
-                  against what the scale actually does.
+                  {measuredBasis
+                    ? 'Still an estimate: the resting half comes from a population formula (Mifflin-St Jeor) and only the activity half is measured. Treat it as a starting point and adjust it against what the scale actually does.'
+                    : 'An estimate from a population formula (Mifflin-St Jeor), not a measurement of you. Treat it as a starting point and adjust it against what the scale actually does.'}
                 </Text>
 
                 {alreadyApplied ? (

@@ -16,6 +16,7 @@ name cannot say is where a component appears, and that is `docs/screen-map.md`.
 ## `src/utils`
 
 - `src/utils/accessoryStack.ts` — registerAccessory, unregisterAccessory, topAccessory, isTopAccessory, subscribeAccessories, resetAccessoryStacks
+- `src/utils/activeEnergyBoost.ts` — ActiveEnergyBoost, ACTIVE_ENERGY_BASELINE_RANGE, parseActiveEnergyBoost, serializeActiveEnergyBoost, activeEnergyBoostKcal, effectiveCalorieTargetKcal, TYPICAL_ACTIVE_ENERGY_WINDOW_DAYS, MIN_TYPICAL_ACTIVE_ENERGY_DAYS, typicalActiveEnergyKcal, snapToBaselineStep
 - `src/utils/activeTrip.ts` — TRIP_MAX_MS, isTripLive, TRIP_STALE_MS, isTripStale, describeTripElapsed, resolveActiveTrip, TripMarkerKind, TripMarker, tripMarkerFor, describeTripMarker, +1 more
 - `src/utils/agendaSpeech.ts` — AGENDA_SPEECH_RATE, speakAgenda, stopSpeakingAgenda
 - `src/utils/aiFeatures.ts` — AiFeatureId, AI_FEATURE_IDS, AiModelId, DEFAULT_AI_MODEL, AI_MODEL_OPTIONS, isAiModelId, AiFeatureMeta, AI_FEATURES, aiFeaturesFor, AiFeatureConfig, +2 more
@@ -83,7 +84,7 @@ name cannot say is where a component appears, and that is `docs/screen-map.md`.
 - `src/utils/email.ts` — mailtoUrl, isEmailable
 - `src/utils/emojiCatalog.ts` — EmojiEntry, EmojiGroup, EMOJI_GROUPS, ALL_EMOJI, searchEmoji
 - `src/utils/emojiInput.ts` — firstEmoji, isSingleEmoji
-- `src/utils/energyBudget.ts` — BodySex, ActivityLevel, ACTIVITY_FACTOR, ACTIVITY_LABEL, ACTIVITY_LEVELS, BodyProfile, EMPTY_BODY_PROFILE, MIN_HEIGHT_CM, MAX_HEIGHT_CM, MIN_BIRTH_YEAR, +22 more
+- `src/utils/energyBudget.ts` — BodySex, ActivityLevel, ACTIVITY_FACTOR, ACTIVITY_LABEL, ACTIVITY_LEVELS, BodyProfile, EMPTY_BODY_PROFILE, MIN_HEIGHT_CM, MAX_HEIGHT_CM, MIN_BIRTH_YEAR, +24 more
 - `src/utils/estimateCalibration.ts` — MIN_CALIBRATION_SAMPLES, MIN_SANE_RATIO, MAX_SANE_RATIO, EstimateCalibration, calibrationPairs, calibrationFrom, calibratedAssumedMinutes, describeCalibration
 - `src/utils/eventReminders.ts` — EventReminder, EVENT_REMINDER_OFFSETS, eventReminderKey, reminderFromEvent, reminderTriggerDate, isReminderStale, pruneStaleReminders, describeEventReminderOffset
 - `src/utils/eventTasks.ts` — EVENT_RULE_TITLE_MAX_LENGTH, EVENT_MATCH_MAX_LENGTH, EVENT_MATCH_MIN_LENGTH, EVENT_RULE_MAX_MATCHES, EVENT_LEAD_DAYS_MAX, defaultEventRules, parseEventRules, ruleMatchesTitle, describeEventRule, eventIsRuleEligible, +14 more

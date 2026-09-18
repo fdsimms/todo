@@ -36,6 +36,7 @@ import { NUTRIENT_LABEL } from '../utils/foodNutrition';
 import { AnimatedCollapsible } from '../components/AnimatedCollapsible';
 import { describeAgainstTarget, targetProgress, targetStatus, type TargetStatus } from '../utils/nutritionTargets';
 import { effectiveWaterTargetMl, waterExerciseBoostApplies } from '../utils/waterExerciseBoost';
+import { activeEnergyBoostKcal } from '../utils/activeEnergyBoost';
 import { useSettingsStore } from '../store/useSettingsStore';
 import { useHealthStore } from '../store/useHealthStore';
 import { NUTRIENT_KEYS, type NutrientKey } from '../types';
@@ -163,6 +164,8 @@ export function FoodLogScreen() {
   const setWaterUnit = useSettingsStore(s => s.setWaterUnit);
   const waterExerciseBoost = useSettingsStore(useShallow(s => s.waterExerciseBoost));
   const exerciseMinutesToday = useHealthStore(s => s.today?.exerciseMinutes ?? null);
+  const activeEnergyBoost = useSettingsStore(useShallow(s => s.activeEnergyBoost));
+  const activeEnergyToday = useHealthStore(s => s.today?.activeEnergyKcal ?? null);
   // Only for the catalog picker below; the scan flow keeps its own reads.
   const items = useGroceryStore(useShallow(s => s.items));
   const itemProducts = useGroceryStore(useShallow(s => s.itemProducts));
@@ -591,6 +594,27 @@ export function FoodLogScreen() {
     : nutritionTargets.waterMl;
   const waterBoostApplied = isToday && waterExerciseBoostApplies(exerciseMinutesToday, waterExerciseBoost);
   const appliedWaterBoostMl = waterBoostApplied ? waterExerciseBoost?.boostMl ?? null : null;
+
+  // Today only, for the same two reasons the water boost is: the reading is
+  // about today specifically, and nothing here carries a past day's active
+  // energy to judge that day's target against. Zero on every other day, and on
+  // a day nothing was recorded, so the target below reads exactly as it did
+  // before this feature existed — see activeEnergyBoost.ts.
+  const appliedActiveEnergyKcal = isToday
+    ? activeEnergyBoostKcal(activeEnergyToday, activeEnergyBoost)
+    : 0;
+  // The whole map, not just calories, because the totals card reads its target
+  // for each nutrient out of one object. Identity is preserved when there is no
+  // boost, so nothing downstream re-renders on a day this does not apply to.
+  const effectiveTargets = useMemo(
+    () => (appliedActiveEnergyKcal === 0 || nutritionTargets.calorieKcal === undefined
+      ? nutritionTargets
+      : {
+        ...nutritionTargets,
+        calorieKcal: nutritionTargets.calorieKcal + appliedActiveEnergyKcal,
+      }),
+    [nutritionTargets, appliedActiveEnergyKcal],
+  );
   const waterTargets = useMemo(
     () => (effectiveWaterTarget === nutritionTargets.waterMl
       ? nutritionTargets
@@ -756,7 +780,7 @@ export function FoodLogScreen() {
                           a heavy day read "1840 of 2,000 cal" — two number
                           formats on one line. */}
                       <Text style={styles.totalValue}>
-                        {describeAgainstTarget(key, totals.total[key], nutritionTargets)
+                        {describeAgainstTarget(key, totals.total[key], effectiveTargets)
                           ?? `${Math.round(totals.total[key] as number).toLocaleString()}${NUTRIENT_LABEL[key].unit === 'cal' ? '' : NUTRIENT_LABEL[key].unit}`}
                       </Text>
                     </View>
@@ -768,21 +792,35 @@ export function FoodLogScreen() {
                       `over` get different but equally neutral colors and only
                       `met` — landing on the number chosen — gets green. See
                       `targetStatus`. */}
-                  {nutritionTargets[key] !== undefined && (
+                  {effectiveTargets[key] !== undefined && (
                     <View style={styles.targetTrack}>
                       <View
                         style={[
                           styles.targetFill,
                           {
-                            width: `${targetProgress(key, totals.total[key], nutritionTargets) * 100}%`,
+                            width: `${targetProgress(key, totals.total[key], effectiveTargets) * 100}%`,
                             backgroundColor: targetStatusColor(
-                              targetStatus(key, totals.total[key], nutritionTargets),
+                              targetStatus(key, totals.total[key], effectiveTargets),
                               colors,
                             ),
                           },
                         ]}
                       />
                     </View>
+                  )}
+                  {/* Said out loud rather than folded silently into the figure
+                      above: a target that moved is one the person should be
+                      able to account for, which is the same reason
+                      `WeightGoalSheet` prints its arithmetic beside its answer.
+                      The reading is quoted too, so a figure that looks wrong
+                      can be traced to the number it came from rather than to
+                      this app. */}
+                  {key === 'calorieKcal' && appliedActiveEnergyKcal > 0 && (
+                    <Text style={styles.boostNote}>
+                      +{appliedActiveEnergyKcal.toLocaleString()} cal from{' '}
+                      {Math.round(activeEnergyToday as number).toLocaleString()} active calories in
+                      Apple Health
+                    </Text>
                   )}
                   </View>
                 ))}
@@ -1176,6 +1214,7 @@ function makeStyles(colors: Colors) {
     waterUnitText: { color: colors.text, fontSize: font.xs, fontWeight: fontWeight.medium },
     waterUnitTextOn: { fontWeight: fontWeight.semibold },
     waterTarget: { color: colors.textSecondary, fontSize: font.xs },
+    boostNote: { color: colors.textSecondary, fontSize: font.xs },
     totalBlock: { gap: spacing.xs },
     totalRow: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between' },
     targetTrack: { height: 4, borderRadius: 2, backgroundColor: colors.separator, overflow: 'hidden' },

@@ -1031,13 +1031,25 @@ greater/less toggle available everywhere.
 
 ## What is deliberately not built yet
 
-Steps, sleep, eight nutrients (sodium, protein, saturated fat, fiber, sugar,
-caffeine, water, calories) and body mass — nothing past those eleven. The
+Steps, sleep, exercise minutes, active energy, eight nutrients (sodium,
+protein, saturated fat, fiber, sugar, caffeine, water, calories) and body mass
+— nothing past those thirteen. The
 read-type list is one place (`readTypes`) and the note beside it says what
 adding to it costs; every metric this file still rules out — resting heart
 rate, HRV, glucose, cycle tracking — stays ruled out for the reason given
 there, which is that a generator firing on one of them can be wrong about a
-body rather than about a day. The set of read types is one list in the Swift
+body rather than about a day.
+
+**Active energy is the most recent addition and `basalEnergyBurned` beside it
+is not.** The two arrive together in HealthKit and it would have cost one more
+line to read both, which is exactly why the refusal is worth writing down: a
+resting rate is a figure about a body that is very nearly the same every day,
+so nothing that reads it is reading *a day*. Active energy is the opposite —
+it is what somebody did between this morning and now, it is zero-ish before
+they do anything, and every claim made from it is about the walk rather than
+about them. That line is the same one the weight section above draws, and it
+is what lets the calorie boost below exist without reopening the question the
+rest of this section closes. The set of read types is one list in the Swift
 module (`readTypes`) because the permission sheet is shown once for whatever
 is asked for, and a type added there is a type the sheet will list — so
 nothing goes in until something reads it.
@@ -1097,11 +1109,25 @@ still Health's, and nothing about this stores one.
 
 **The calorie estimate (`energyBudget.ts`) is the one thing here that takes a
 figure about a body and hands back a number to act on**, so it is fenced twice
-over. Every input is typed in by the person — height, year of birth, sex,
-activity level, rate — and none is read from Health, which keeps `readTypes`
-where it was and raises no new permission sheet. Nothing fills a field in:
-a profile missing any part of itself produces null rather than a guess, which
-is that module's whole discipline about defaults. And it **proposes rather than
+over. Height, year of birth, sex and rate are typed in by the person, and
+nothing fills a field in: a profile missing any part of itself produces null
+rather than a guess, which is that module's whole discipline about defaults.
+
+**How the activity half is arrived at is now a choice, and that is the one
+place a reading reaches this.** `maintenanceKcal` multiplies the resting rate
+by the activity level somebody picked; `measuredMaintenanceKcal` instead adds
+the active energy a typical recent day of theirs recorded. `WeightGoalSheet`
+offers both and **opens on the multiplier**, which is the whole of the fence
+around it: the measured option appears only once there is a real figure behind
+it, picking it is an act, and nothing about it is stored. Neither is ranked as
+the better one, and that module argues why at length (the multiplier is a
+population average over a self-description; the measurement is exact about
+whatever the person's devices actually saw, which for a phone on a desk is not
+much). The measured figure also reads a few per cent low against the
+multipliers, because HealthKit's active energy is movement only where the
+Harris-Benedict factors also fold in digestion, and the sheet says so rather
+than scaling it up: a second population constant bolted onto a measurement
+would undo the only thing the measured path had going for it. And it **proposes rather than
 writes**: `WeightGoalSheet` prints the arithmetic with its own working shown
 beside it, and the figure only reaches `nutritionTargets.calorieKcal` when
 somebody presses the button under it. Nothing re-applies it as a weight
@@ -1122,6 +1148,55 @@ calorie figure it was split out of is three numbers with nothing holding them
 together. The split itself is not stored: it is a one-off choice made when
 applying targets, not a setting, and what persists is the four ordinary
 `nutritionTargets` entries anybody can then edit or clear.
+
+**A calorie target may be raised by a day's own movement, and the baseline is
+the whole of why that is allowed.** `activeEnergyBoost.ts` adds to today's
+calorie target whatever active energy Apple Health has recorded past a figure
+the person typed in for an ordinary day of theirs. It is the fourth thing in
+this file to take a reading and hand back a number to act on, and it stays
+inside the fence for the same three reasons the estimate above does: the one
+input that is not a reading is typed in, the target it raises is one somebody
+already chose, and **nothing is written** — the boost is applied where the
+Food log draws the day and `nutritionTargets.calorieKcal` is never touched, so
+what a person set stays what they set.
+
+Four decisions in it are not obvious and are all load-bearing:
+
+- **The baseline is what stops it double-counting, and it is the feature.**
+  Adding a day's active energy to a target outright is what every tracker that
+  does this is asked for, and it pays for the same walk twice: a target built
+  through `energyBudget.ts` has already been through an activity multiplier,
+  and one arrived at any other way was still chosen by somebody who knew how
+  much they move. Only the *excess* is added, so an ordinary day changes
+  nothing at all. Somebody whose target really did come from a resting rate
+  sets the baseline to zero and gets the naive behaviour deliberately.
+- **It raises and never lowers.** Active energy accrues through the day, so a
+  signed adjustment would open every morning several hundred calories below
+  the target and climb back to it. That is a wrong number for half the day,
+  and it reads as a scold besides, which is the same thing
+  `describeAgainstTarget` refuses when it withholds "0 of 2,000" from a day
+  nobody has eaten in yet. Flooring at zero makes a part-day understate the
+  boost rather than overstate it, so the figure on screen is never one the
+  evening takes back.
+- **The app may work out a typical day, and may not set one.**
+  `typicalActiveEnergyKcal` takes the median of a fortnight of the person's
+  own days and the sheet offers it behind a button. That is the
+  `WeightGoalSheet` arrangement exactly — the app is allowed the arithmetic as
+  long as a person performs the acceptance — and it is there because a single
+  knob nobody can answer is a knob nobody uses. The median rather than the
+  mean, because one marathon or one day the watch spent on a charger should
+  not move a baseline for a fortnight; and it withholds below seven known days
+  rather than answering from two.
+- **Calories only, never the macros.** How a day is split is something the
+  person picked from a list that preselects nothing (see `MACRO_PRESETS`
+  above), so re-dividing a day they did not ask to have re-divided would be
+  this feature acquiring the opinion the rest of this section spends its length
+  refusing.
+
+It is off until somebody turns it on, it appears only once a calorie target
+exists, and the Food log says what it added and which reading it came from
+rather than folding the change silently into the figure. `waterExerciseBoost.ts`
+is its older sibling in every respect and was the shape this was built to.
 
 **The chart draws the goal, and the colour is the rule.** `WeightChart` takes
 an optional target and pace line. Everything in the accent colour on that chart

@@ -101,6 +101,14 @@ public class TodoHealthBridgeModule: Module {
     if let exercise = HKQuantityType.quantityType(forIdentifier: .appleExerciseTime) {
       types.insert(exercise)
     }
+    // Active energy: the calories a body spent *moving*, over and above what it
+    // spends existing (that is `basalEnergyBurned`, which this deliberately
+    // does not read — a target raised by a resting rate would rise by the same
+    // amount every day, which is not a boost, it is a different target). Also
+    // a cumulative quantity, so it rides the same summed collection query.
+    if let activeEnergy = HKQuantityType.quantityType(forIdentifier: .activeEnergyBurned) {
+      types.insert(activeEnergy)
+    }
     if let sodium = HKQuantityType.quantityType(forIdentifier: .dietarySodium) {
       types.insert(sodium)
     }
@@ -856,20 +864,21 @@ public class TodoHealthBridgeModule: Module {
       var caffeineMg = [Double?](repeating: nil, count: days)
       var waterMl = [Double?](repeating: nil, count: days)
       var calorieKcal = [Double?](repeating: nil, count: days)
-      // Ten queries, one promise. `resolve` is called by whichever finishes
+      var activeEnergyKcal = [Double?](repeating: nil, count: days)
+      // Eleven queries, one promise. `resolve` is called by whichever finishes
       // last, and `pending` is only ever touched on the health store's own
       // serial callback queue, so the count needs no lock.
-      // The ten queries report back on arbitrary background queues, so the
+      // The eleven queries report back on arbitrary background queues, so the
       // countdown runs on a serial queue of its own rather than on whichever
       // thread finished. It does two jobs and both are needed: the decrements
       // cannot interleave (a lost one leaves the promise unresolved for ever,
       // which reads as Health simply never answering, and a doubled one
       // resolves it twice), and every per-day array written before a query's
       // own `finish` is enqueued is therefore visible to the final block that
-      // reads all ten. Each array has exactly one writer, so this is the whole
+      // reads all eleven. Each array has exactly one writer, so this is the whole
       // of the sharing.
       let tally = DispatchQueue(label: "TodoHealthBridge.readDailyHealth")
-      var pending = 11
+      var pending = 12
       let finish = {
         tally.async {
           pending -= 1
@@ -882,7 +891,8 @@ public class TodoHealthBridgeModule: Module {
               + "\"sodiumMg\":\(part(sodiumMg[i])),"
               + "\"proteinG\":\(part(proteinG[i])),\"satFatG\":\(part(satFatG[i])),\"fiberG\":\(part(fiberG[i])),"
               + "\"sugarG\":\(part(sugarG[i])),\"caffeineMg\":\(part(caffeineMg[i])),\"waterMl\":\(part(waterMl[i])),"
-              + "\"calorieKcal\":\(part(calorieKcal[i]))}"
+              + "\"calorieKcal\":\(part(calorieKcal[i])),"
+              + "\"activeEnergyKcal\":\(part(activeEnergyKcal[i]))}"
           }
           promise.resolve("[" + entries.joined(separator: ",") + "]")
         }
@@ -890,13 +900,13 @@ public class TodoHealthBridgeModule: Module {
 
       var started = false
       TodoHealthExceptionCatcher.runCatchingExceptions {
-        // ─── Steps and nine nutrients: one collection query each, over the
-        // whole span ─────────────────────────────────────────────────────────
+        // ─── Steps, two things a body did, and eight nutrients: one
+        // collection query each, over the whole span ─────────────────────────
         //
         // A collection query rather than one statistics query per day, which
         // is what an anchor-plus-interval window is for: 90 round trips to the
         // health daemon to draw one insight is the version of this that gets
-        // noticed. All ten are cumulative and per-source for the same reason:
+        // noticed. All eleven are cumulative and per-source for the same reason:
         // a phone and a watch both counting steps for one walk, or two
         // food-logging apps both writing the same meal's sodium, would
         // otherwise be double-counted — see `bestSum`. This app never writes
@@ -912,6 +922,14 @@ public class TodoHealthBridgeModule: Module {
         self.runDietQuery(
           identifier: .appleExerciseTime, unit: .minute(), anchor: anchor, end: end, starts: starts,
           write: { i, value in exerciseMinutes[i] = value }, finish: finish
+        )
+        // Beside exercise time for the same reason, and `bestSum`'s
+        // largest-single-source rule matters more here than for any nutrient:
+        // a phone and a watch worn on the same walk each estimate what it cost,
+        // and adding the two would raise a calorie target by a walk taken once.
+        self.runDietQuery(
+          identifier: .activeEnergyBurned, unit: .kilocalorie(), anchor: anchor, end: end, starts: starts,
+          write: { i, value in activeEnergyKcal[i] = value }, finish: finish
         )
         self.runDietQuery(
           identifier: .dietarySodium, unit: HKUnit.gramUnit(with: .milli), anchor: anchor, end: end, starts: starts,
