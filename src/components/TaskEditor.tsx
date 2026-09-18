@@ -1830,6 +1830,7 @@ export function TaskEditor({ visible, task, initialDraft, onClose }: Props) {
       logCompletionToCalendar,
       timeSegments,
       windowStart, windowEnd,
+      penaltyMinutes, gatesApps, penaltyCutoffTime,
       targetCount,
       targetUnit: targetCount !== null ? normalizeTargetUnit(targetUnit) : null,
       allowOvershoot: targetCount !== null ? allowOvershoot : false,
