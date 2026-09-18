@@ -443,6 +443,7 @@ export function WeightScreen() {
                 Each dot is a day you weighed in. The line breaks where more than
                 two weeks passed without one. The fainter line is a 7-day average.
                 {goal !== null && ' The dashed lines are your target and the pace you set.'}
+                {' '}Touch and drag along the line to see a day's exact reading.
               </Text>
             </>
           )}
