@@ -20,6 +20,7 @@ import {
   latestWeight,
   weightChange,
   weightReadings,
+  weightTrendPoints,
   type WeightUnit,
 } from '../utils/weightLog';
 import {
@@ -151,6 +152,12 @@ export function WeightScreen() {
   // whatever span happens to be selected".
   const readings = useMemo(() => weightReadings(points), [points]);
   const latest = useMemo(() => latestWeight(points), [points]);
+  // Same reasoning as `latest`: the trailing average as of the most recent
+  // reading, not re-centred on whatever range the chart happens to be zoomed to.
+  const trend = useMemo(() => {
+    const trendPoints = weightTrendPoints(points);
+    return trendPoints.length > 0 ? trendPoints[trendPoints.length - 1] : null;
+  }, [points]);
 
   // The selected range is purely a slice of what's already in memory — no
   // second Health query. `slice`'s negative-safe `Math.max` handles a range
@@ -308,6 +315,14 @@ export function WeightScreen() {
             accessibilityLabel={latest
               ? `Latest weight, ${formatWeight(latest.kilograms, unit)}`
               : 'Latest weight, nothing recorded'}
+          />
+          <Stat
+            styles={styles}
+            value={trend ? kgToUnit(trend.kilograms, unit).toFixed(1) : '—'}
+            label={`7-day avg (${unit})`}
+            accessibilityLabel={trend
+              ? `7-day trailing average, ${formatWeight(trend.kilograms, unit)}`
+              : '7-day trailing average, nothing recorded'}
           />
           <Stat
             styles={styles}
