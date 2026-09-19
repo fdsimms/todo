@@ -676,14 +676,18 @@ export function FoodLogScreen() {
           // sparkles means "calls api.anthropic.com, needs a key" app-wide —
           // see the note in GroceryCatalogSheet on why a local heuristic uses
           // color-wand instead.
+          // Both of these render inside FoodLogEntrySheet's own Modal (see the
+          // note on `overlays` at its call site below), so they need that
+          // sheet's Modal presented too, or they have no view controller to
+          // present from and silently do nothing.
           ...(estimateRoute !== 'unavailable' ? [{
             icon: 'sparkles-outline',
-            onPress: () => { haptics.tap(); setAddingSlot(null); setEstimateSeed(''); setEstimateOpen(true); },
+            onPress: () => { haptics.tap(); setAddingSlot(null); setEstimateSeed(''); setAddOpen(true); setEstimateOpen(true); },
             accessibilityLabel: 'Estimate a meal from a description',
           } satisfies ScreenHeaderAction] : []),
           {
             icon: 'barcode-outline',
-            onPress: () => { haptics.tap(); setAddingSlot(null); setScanOpen(true); },
+            onPress: () => { haptics.tap(); setAddingSlot(null); setAddOpen(true); setScanOpen(true); },
             accessibilityLabel: 'Scan a barcode to log',
           },
           {
