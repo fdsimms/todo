@@ -2,6 +2,7 @@ import type { KitchenEntry } from './kitchenInventory';
 import type { GroceryItem, Recipe } from '../types';
 import { freshnessRank } from './freshness';
 import { resolvePluralKey } from './groceryPlural';
+import { flattenRecipeIngredients, recipeMap } from './recipeComponents';
 
 /**
  * "You could make X with what's about to go off."
@@ -27,6 +28,13 @@ import { resolvePluralKey } from './groceryPlural';
  * the white onion that's about to turn. Still exact keys on both hops, still
  * one hop, and still specific-satisfies-generic only — dying generic "onion"
  * never claims a line that asked for red onion in particular.
+ *
+ * **A recipe's lines are read through `flattenRecipeIngredients`**, so a dish
+ * that only calls for the dying thing by way of a component — the mash inside
+ * "steak with mash" — still counts. Every other shopping read in the app
+ * already resolves the component tree, and `recipesUsingIngredient` names
+ * reading raw `ingredients` as the one place that would quietly disagree; this
+ * was that place.
  *
  * **Groceries only.** A `KitchenEntry` can be a container of leftover chilli,
  * and a leftover's `matchKey` comes from its own free-typed title rather than
@@ -116,13 +124,16 @@ export function useUpRecipes(
     if (!dying.has(key)) dying.set(key, entry);
   }
 
+  const byId = recipeMap(recipes);
   const out: UseUpRecipe[] = [];
   for (const recipe of recipes) {
     // A Map keyed by the entry id rather than a filter over `dying`, because a
     // recipe can name one item on two lines ("2 tomatoes" for the sauce, "1
-    // tomato" to garnish) and that is one tomato being used up, not two.
+    // tomato" to garnish) and that is one tomato being used up, not two. A
+    // component naming it as well collapses the same way, which is also what
+    // keeps a recipe used twice in one tree from counting twice.
     const uses = new Map<string, KitchenEntry>();
-    for (const ingredient of recipe.ingredients) {
+    for (const { ingredient } of flattenRecipeIngredients(recipe, byId)) {
       if (!ingredient.nameKey) continue;
       // Its own plural counts, the same way it does everywhere the catalog
       // resolves a name (`groceryPlural.ts`) — a line reading "serrano pepper"

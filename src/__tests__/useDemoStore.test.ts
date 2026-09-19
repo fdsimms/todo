@@ -117,6 +117,9 @@ import {
 } from '../utils/cookingStats';
 import { buildKitchenSections, describeKitchen, FREEZER_SECTION, kitchenInventory, useUpEntries } from '../utils/kitchenInventory';
 import { useUpRecipes } from '../utils/useUpRecipes';
+import { recipeIndex } from '../utils/mealPlan';
+import { collectPlannedIngredients } from '../utils/mealPlanGroceries';
+import { overlapSeedFromPlanned, rankOverlapRecipes } from '../utils/recipeOverlap';
 import { probablyHaveReason } from '../utils/grocerySuggest';
 import { describeDisposalHistory, wantsShelfLifePrompt } from '../utils/itemDisposal';
 import { projectQuietDays, wantedProjectReviews } from '../utils/projectReviewTasks';
@@ -4122,6 +4125,41 @@ describe('demo seed — groceries, recipes, meals and the fridge', () => {
     const suggestions = useUpRecipes(dying, recipes);
     expect(suggestions.length).toBeGreaterThan(0);
     expect(suggestions[0].uses.length).toBeGreaterThan(0);
+  });
+
+  it('seeds a week whose meals have unplanned recipes worth cooking alongside them', () => {
+    const { items } = useGroceryStore.getState();
+    const { recipes } = useRecipeStore.getState();
+    const { entries } = useMealPlanStore.getState();
+    const byId = recipeIndex(recipes);
+
+    // The whole seeded span, so the read doesn't depend on which week the
+    // demo happens to boot on.
+    const keys = entries.map(e => e.date).sort();
+    const range = { startKey: keys[0], endKey: keys[keys.length - 1] };
+    const planned = collectPlannedIngredients(entries, byId, range);
+    expect(planned.length).toBeGreaterThan(0);
+
+    const matches = rankOverlapRecipes(
+      overlapSeedFromPlanned(planned, items), recipes, byId, items
+    );
+    // Without this "Cook together" opens on an empty sheet in demo mode, and
+    // a feature with no row in the seed reads as one the app hasn't got.
+    expect(matches.length).toBeGreaterThan(0);
+    expect(matches[0].shared.length).toBeGreaterThan(0);
+
+    // Garlic fried rice is seeded unplanned specifically to be the strong
+    // match — rice, garlic and soy sauce, all of which the planned stir-fry
+    // already buys.
+    const friedRice = matches[0];
+    expect(friedRice.recipe.name).toBe('Garlic fried rice');
+    expect(friedRice.shared.map(s => s.name).sort())
+      .toEqual(['Eggs', 'Garlic', 'Rice', 'Soy sauce']);
+
+    // And the salt it also shares is shown without being counted — the demo
+    // of the rule that stops "shares 5" mostly meaning salt.
+    expect(friedRice.sharedStaples.map(s => s.name)).toEqual(['Salt']);
+    expect(friedRice.score).toBe(4);
   });
 
   it('seeds a freezer with both halves of the kitchen in it', () => {
