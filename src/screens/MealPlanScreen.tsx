@@ -34,6 +34,7 @@ import { AddMealsToListSheet } from '../components/AddMealsToListSheet';
 import { RecipeToListSheet } from '../components/RecipeToListSheet';
 import { PrepTasksReviewSheet } from '../components/PrepTasksReviewSheet';
 import { SuggestMealsSheet } from '../components/SuggestMealsSheet';
+import { OverlapPickerSheet } from '../components/OverlapPickerSheet';
 import { WhenPicker } from '../components/WhenPicker';
 import { MealReplaceItemSheet, type MealReplacement } from '../components/MealReplaceItemSheet';
 import { ListBulkBar } from '../components/ListBulkBar';
@@ -112,8 +113,14 @@ import { liveGeneratedTask } from '../utils/generatedTasks';
 import { buildWeekPlanShareText } from '../utils/shareText';
 import { useCopyToClipboard } from '../hooks/useCopyToClipboard';
 import {
+  collectPlannedIngredients,
   hasShoppableMeals,
 } from '../utils/mealPlanGroceries';
+import {
+  overlapSeedFromPlanned,
+  rankOverlapRecipes,
+  type OverlapMatch,
+} from '../utils/recipeOverlap';
 import { decidableNights, weekNights } from '../utils/weekPlan';
 import { standingSwapMap } from '../utils/standingSwaps';
 import { onHandNameKeys } from '../utils/grocerySuggest';
@@ -473,6 +480,17 @@ export function MealPlanScreen() {
       cookAgainRecipes: Recipe[];
       leftovers: Leftover[];
       days: Date[];
+    } | null>(null);
+  // "Cook these together" — recipes sharing ingredients with what's already on
+  // the week. A snapshot for the same reason `suggesting` is one: planning a
+  // pick changes the week the ranking was computed from, and a list that
+  // recomputed would resort under the finger that just tapped it.
+  const [overlap, setOverlap] =
+    useState<{
+      matches: OverlapMatch[];
+      seedLabel: string;
+      days: Date[];
+      initialSelected: string[];
     } | null>(null);
   // Per-day collapse, local-only — folding one away is just less to scroll
   // past, not a decision worth persisting. Days before today are already
@@ -1424,6 +1442,54 @@ export function MealPlanScreen() {
   // shelf offering to *plan* one is just wrong about which way time runs.
   const openDinnerDays = useMemo(() => decidableNights(nights), [nights]);
 
+  /**
+   * Open "Cook these together" against the visible week.
+   *
+   * The seed comes from `collectPlannedIngredients`, the same enumeration
+   * "Add week to list" shops from, so the two can never disagree about what
+   * the week calls for. `alsoInclude` is the handoff from the Recipes side —
+   * recipes the user already picked, kept in the list even where they share
+   * nothing with this particular week, because a choice already made isn't
+   * this screen's to quietly drop.
+   */
+  const openOverlap = useCallback((alsoInclude: readonly string[] = []) => {
+    if (!range) return;
+    const planned = collectPlannedIngredients(entries, recipesById, range, standingSwaps, onHand);
+    const seed = overlapSeedFromPlanned(planned, groceryItems);
+    const keep = new Set(alsoInclude);
+    const matches = rankOverlapRecipes(
+      seed, recipes, recipesById, groceryItems, standingSwaps, keep
+    );
+    setOverlap({
+      matches,
+      seedLabel: "this week's meals",
+      days: openDinnerDays,
+      initialSelected: matches.filter(m => keep.has(m.recipe.id)).map(m => m.recipe.id),
+    });
+  }, [range, entries, recipesById, standingSwaps, onHand, groceryItems, recipes, openDinnerDays]);
+
+  /**
+   * The handoff from the Recipes side, which has recipes to plan but no week
+   * to plan them on: it navigates here with the ids and this opens the sheet
+   * against the week this screen is actually showing.
+   *
+   * Stamped rather than watched, the same idiom `focusStamp` above uses, so
+   * carrying the same pair over twice still opens it. Declared after
+   * `openOverlap` because the dependency array is evaluated during render.
+   */
+  const overlapRecipeIds: string[] | undefined = route.params?.overlapRecipeIds;
+  const overlapStamp: number | undefined = route.params?.overlapStamp;
+  const [handledOverlap, setHandledOverlap] = useState<number | null>(null);
+  useEffect(() => {
+    if (overlapStamp === undefined || overlapStamp === handledOverlap) return;
+    // Not marked handled until there is a week to rank against: `openOverlap`
+    // refuses without a range, and marking first would spend the stamp on a
+    // render that opened nothing.
+    if (!range) return;
+    setHandledOverlap(overlapStamp);
+    openOverlap(overlapRecipeIds ?? []);
+  }, [overlapStamp, handledOverlap, overlapRecipeIds, openOverlap, range]);
+
   // Offline "what can I make from what I've got", ranked over the recipe box
   // and the grocery catalog.
   //
@@ -1808,6 +1874,19 @@ export function MealPlanScreen() {
                         accessibilityLabel="Suggest meals from your recipe box and grocery catalog"
                       />
                     )}
+                    {hasPlannableEntries && openDinnerDays.length > 0 && (
+                      <InlineAction
+                        label="Cook together"
+                        icon="git-merge-outline"
+                        variant="neutral"
+                        surface="page"
+                        onPress={() => {
+                          haptics.tap();
+                          openOverlap();
+                        }}
+                        accessibilityLabel="Find recipes that share ingredients with this week's meals"
+                      />
+                    )}
                   </View>
                 )}
               </>
@@ -2081,6 +2160,22 @@ export function MealPlanScreen() {
         onPlan={planSuggestion}
         onPlanLeftover={planLeftoverSuggestion}
         onClose={() => setSuggesting(null)}
+      />
+
+      {/*
+        Never open at the same time as SuggestMealsSheet above: two sibling
+        Modals visible at once present from the same view controller and the
+        second one silently fails (see SheetModal). Nothing sets both — each
+        InlineAction clears its own state only — but that's the rule to keep.
+      */}
+      <OverlapPickerSheet
+        visible={overlap !== null}
+        matches={overlap?.matches ?? []}
+        seedLabel={overlap?.seedLabel ?? "this week's meals"}
+        openDays={overlap?.days ?? []}
+        initialSelected={overlap?.initialSelected}
+        onPlan={planSuggestion}
+        onClose={() => setOverlap(null)}
       />
 
       {/*

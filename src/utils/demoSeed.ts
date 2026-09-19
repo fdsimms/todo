@@ -2852,6 +2852,9 @@ function seedRecipes(): DemoRecipes {
       '4 cups vegetable stock',
       '1 can diced tomatoes',
       '1 tsp dried thyme',
+      // Shares with the stir-fry and the salmon, so "Cook together" has a
+      // third dish to offer rather than a pair.
+      '2 cloves garlic, minced',
     ].join('\n')
   );
   setMealType(soup.id, 'dinner');
@@ -2871,6 +2874,29 @@ function seedRecipes(): DemoRecipes {
   // a real question at log time instead of a line demo mode can never answer.
   const crustyBread = addIngredient(soup.id, 'Bread');
   if (crustyBread) updateIngredient(soup.id, crustyBread.id, { purpose: 'serving', optional: true });
+
+  // Deliberately left unplanned, and deliberately built out of what the
+  // planned stir-fry already buys: rice, garlic and soy sauce. It's what
+  // "Cook together" exists to surface — a dish worth cooking this week
+  // precisely because the shopping is already half done. Without a candidate
+  // that overlaps three ways, the feature demos as a list of near-misses.
+  const friedRice = newRecipe('Garlic fried rice');
+  addIngredientsFromText(
+    friedRice.id,
+    [
+      '2 cups rice',
+      '3 cloves garlic, minced',
+      '2 tbsp soy sauce',
+      '2 eggs',
+      '3 scallions, sliced',
+      '1 tsp salt',
+    ].join('\n')
+  );
+  setMealType(friedRice.id, 'dinner');
+  setTags(friedRice.id, ['weeknight', 'quick']);
+  setServings(friedRice.id, 2);
+  setEstimatedMinutes(friedRice.id, 15);
+  setSourceType(friedRice.id, 'homeRecipe');
 
   const steak = newRecipe('Seared steak with potatoes');
   addIngredientsFromText(

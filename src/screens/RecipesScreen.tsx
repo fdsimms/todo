@@ -32,6 +32,8 @@ import { InventRecipeSheet } from '../components/InventRecipeSheet';
 import { CookbookChecklistSheet } from '../components/CookbookChecklistSheet';
 import type { RecipeInputMode } from '../components/RecipeSourcePicker';
 import { RecipeTagFilterSheet } from '../components/RecipeTagFilterSheet';
+import { OverlapPickerSheet } from '../components/OverlapPickerSheet';
+import { useOverlapPicker } from '../hooks/useOverlapPicker';
 import { RecipeSortFilterSheet } from '../components/RecipeSortFilterSheet';
 import { FabMenu, FAB_SIZE, type FabDragHandlers, type FabMenuItem } from '../components/Fab';
 import {
@@ -532,6 +534,8 @@ export function RecipesScreen() {
     navigation.navigate('RecipeDetail', { recipeId: recipe.id });
   };
 
+  const { overlap, openOverlap, closeOverlap, handOffOverlap } = useOverlapPicker();
+
   const createRecipe = (name: string) => {
     setAddVisible(false);
     const mealType = pendingMealTypeRef.current;
@@ -591,6 +595,24 @@ export function RecipesScreen() {
     </TouchableOpacity>
   );
 
+  // The third of the row's icon buttons, and the quietest of them — tertiary
+  // until tapped, where Plan is accent. A button rather than a swipe because
+  // both of SwipeableRow's slots are spoken for and "cook alongside" is not
+  // the time-shaped action `whenAction` is reserved for; and not a long-press,
+  // which is the drag handle, for the same reason upNextButton isn't.
+  const cookTogetherButton = (recipe: Recipe) => (
+    <TouchableOpacity
+      style={styles.planButton}
+      onPress={() => openOverlap(recipe)}
+      activeOpacity={interaction.activeOpacity}
+      hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
+      accessibilityRole="button"
+      accessibilityLabel={`Find recipes that share ingredients with ${recipe.name}`}
+    >
+      <Ionicons name="git-merge-outline" size={iconSize.md} color={colors.textTertiary} />
+    </TouchableOpacity>
+  );
+
   const renderRecipe = ({ item: recipe, drag, isActive }: { item: Recipe; drag?: () => void; isActive?: boolean }) => {
     const selected = selectedIds.has(recipe.id);
     const rowBody = (
@@ -630,6 +652,7 @@ export function RecipesScreen() {
         {recipe.vote === 'loved' && (
           <Ionicons name="thumbs-up" size={iconSize.sm} color={colors.orange} />
         )}
+        {!selectionMode && cookTogetherButton(recipe)}
         {!selectionMode && upNextButton(recipe)}
         {!selectionMode && planButton(recipe)}
         {!selectionMode && (
@@ -1029,6 +1052,20 @@ export function RecipesScreen() {
         counts={tagCounts}
         selected={activeTags}
         onChange={next => { animateLayout(); setSelectedTags(next); }}
+      />
+
+      {/* Discovery only — this screen has no week to land picks on, so they
+          go to the meal plan. See useOverlapPicker. */}
+      <OverlapPickerSheet
+        visible={overlap !== null}
+        matches={overlap?.matches ?? []}
+        seedLabel={overlap?.seedLabel ?? ''}
+        onHandOff={handOffOverlap}
+        onOpenRecipe={other => {
+          closeOverlap();
+          openRecipe(other);
+        }}
+        onClose={closeOverlap}
       />
 
       <RecipeSortFilterSheet
