@@ -3,7 +3,7 @@ import { Alert, StyleSheet, Text, TouchableOpacity, View } from 'react-native';
 import Ionicons from '@expo/vector-icons/Ionicons';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { useBottomTabBarHeight } from '@react-navigation/bottom-tabs';
-import { useRoute } from '@react-navigation/native';
+import { useFocusEffect, useRoute } from '@react-navigation/native';
 import { useShallow } from 'zustand/react/shallow';
 import { addDays } from 'date-fns/addDays';
 import { format } from 'date-fns/format';
@@ -275,6 +275,20 @@ export function FoodLogScreen() {
     const found = recentEntries(openEntry.dayKey, openEntry.dayKey).find(e => e.id === openEntry.entryId);
     if (found) setEditingEntry(found);
   }, [route.params?.openEntry, handledOpenEntry, recentEntries]);
+
+  // The screen is a hidden tab and stays mounted for the life of the session,
+  // so stepping to another day and then leaving without stepping back would
+  // otherwise leave it stranded there on the next visit. Every arrival lands
+  // on today, except the one caller that names a specific day to open
+  // (`openEntry`, e.g. Meal plan's "View in food log") — that request is still
+  // pending its own effect above the first time focus fires for it.
+  useFocusEffect(
+    useCallback(() => {
+      const pendingEntry = route.params?.openEntry;
+      if (pendingEntry && pendingEntry.nonce !== handledOpenEntry) return;
+      setDayKey(dayKeyOf(getCurrentDayStart()));
+    }, [route.params?.openEntry, handledOpenEntry]),
+  );
 
   const dayEntries = useMemo(() => entries.filter(e => e.dayKey === dayKey), [entries, dayKey]);
   const sections = useMemo(() => foodLogSections(dayEntries), [dayEntries]);
