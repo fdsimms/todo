@@ -289,9 +289,16 @@ describe('buildCompletion', () => {
       expect(advancesBySchedule).toBe(true);
     });
 
-    // A miss ends the whole attempt rather than reading as having done step 2.
-    it('ends the attempt on a mid-chain miss', () => {
-      expect(build(chained(), { missed: true }).nextTask).toBeNull();
+    // A mid-chain miss still walks forward into the next step, the same as
+    // completing it does — only a miss on the real last step ends the run.
+    it('advances to the next step on a mid-chain miss', () => {
+      const { nextTask, advancesBySchedule } = build(chained(), { missed: true });
+      expect(nextTask!.chainIndex).toBe(1);
+      expect(advancesBySchedule).toBe(false);
+    });
+
+    it('ends the attempt on a miss at the real last step', () => {
+      expect(build(chained({ chainIndex: 2 }), { missed: true }).nextTask).toBeNull();
     });
 
     // "repeat 10 times" means ten times through the chain, not ten steps.

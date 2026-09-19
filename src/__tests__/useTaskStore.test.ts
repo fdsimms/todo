@@ -7175,7 +7175,7 @@ describe('markMissed', () => {
     expect(next.recurrenceCount).toBe(2);
   });
 
-  it('ends the chain attempt on the spot instead of advancing to the next step, and burns a cycle', () => {
+  it('advances to the next step on a mid-chain miss, same as completing it, and does not burn a cycle', () => {
     useTaskStore.setState({ tasks: [recurring({
       recurrenceCount: 5,
       chainEnabled: true,
@@ -7187,9 +7187,25 @@ describe('markMissed', () => {
     })] });
     useTaskStore.getState().markMissed('t1');
     const next = useTaskStore.getState().tasks.find(t => t.id !== 't1')!;
-    // A missed step is not a completed one — the successor starts the whole
-    // chain over, not partway through it, and the missed cycle counts against
-    // a bounded recurrence the same as a missed non-chain occurrence does.
+    // A missed step still walks forward into the next one — only a miss on
+    // the real last step ends the run, and mid-chain never consults the
+    // recurrence's own bookkeeping (recurrenceCount) either way.
+    expect(next.chainIndex).toBe(1);
+    expect(next.recurrenceCount).toBe(5);
+  });
+
+  it('ends the chain attempt and burns a cycle on a miss at the real last step', () => {
+    useTaskStore.setState({ tasks: [recurring({
+      recurrenceCount: 5,
+      chainEnabled: true,
+      chainItems: [
+        { id: 'a', title: 'Step A', estimatedMinutes: null },
+        { id: 'b', title: 'Step B', estimatedMinutes: null },
+      ],
+      chainIndex: 1,
+    })] });
+    useTaskStore.getState().markMissed('t1');
+    const next = useTaskStore.getState().tasks.find(t => t.id !== 't1')!;
     expect(next.chainIndex).toBe(0);
     expect(next.recurrenceCount).toBe(4);
   });
