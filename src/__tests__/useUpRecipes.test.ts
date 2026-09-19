@@ -56,12 +56,20 @@ function ingredient(nameKey: string): RecipeIngredient {
   } as RecipeIngredient;
 }
 
-function recipe(name: string, keys: string[]): Recipe {
+function recipe(name: string, keys: string[], componentIds: string[] = []): Recipe {
   seq += 1;
   return {
     id: `r-${seq}`,
     name,
     ingredients: keys.map(ingredient),
+    // The walk resolves components on every recipe it visits, so even a recipe
+    // that composes nothing has to say so rather than leaving it undefined.
+    components: componentIds.map((recipeId, i) => ({
+      id: `rc-${seq}-${i}`,
+      recipeId,
+      name: recipeId,
+      choiceGroup: null,
+    })),
   } as Recipe;
 }
 
@@ -159,6 +167,42 @@ describe('useUpRecipes', () => {
     const blank = entry('???', 'due', { matchKey: '' });
 
     expect(useUpRecipes([blank], [recipe('Mystery', [''])])).toEqual([]);
+  });
+
+  // The component tree, which every other shopping read already walks.
+  describe('components', () => {
+    it('counts an ingredient a recipe only calls for through a component', () => {
+      const potatoes = entry('Potatoes', 'due');
+      const mash = recipe('Mash', ['potatoes']);
+      const steak = recipe('Steak with mash', ['steak'], [mash.id]);
+
+      const out = useUpRecipes([potatoes], [steak, mash]);
+
+      expect(out.map(r => r.recipe.name).sort()).toEqual(['Mash', 'Steak with mash']);
+    });
+
+    it('counts a component used twice in one tree once', () => {
+      const potatoes = entry('Potatoes', 'due');
+      const mash = recipe('Mash', ['potatoes']);
+      const side = recipe('Side plate', [], [mash.id]);
+      const dinner = recipe('Dinner', ['steak'], [mash.id, side.id]);
+
+      // The whole library, since the component tree resolves against exactly
+      // the recipes handed in — same resolve-or-shrug every cross-row pointer
+      // in the app has.
+      const out = useUpRecipes([potatoes], [dinner, side, mash]);
+
+      expect(out.map(r => r.recipe.name)).toContain('Dinner');
+      expect(out.find(r => r.recipe.name === 'Dinner')!.uses).toHaveLength(1);
+    });
+
+    it('leaves out a recipe whose component tree names nothing dying', () => {
+      const spinach = entry('Spinach', 'due');
+      const rice = recipe('Rice', ['rice']);
+      const bowl = recipe('Rice bowl', ['egg'], [rice.id]);
+
+      expect(useUpRecipes([spinach], [bowl, rice])).toEqual([]);
+    });
   });
 
   // Varieties (GroceryItem.varietyOfKey) — a dying variety answers for its
