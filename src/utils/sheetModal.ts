@@ -19,6 +19,8 @@
  * two already agree and nothing happens, which is every render but the two
  * that matter.
  */
+import { createContext } from 'react';
+
 export interface SheetVisibilityStep {
   /** What to hand the real `Modal` next. */
   shown: boolean;
@@ -69,6 +71,18 @@ export interface PresentationLevel {
 export function createPresentationLevel(): PresentationLevel {
   return { presented: new Map(), claims: new Set(), listeners: new Set() };
 }
+
+/**
+ * One presenting view controller's worth of sheets. The default stands for the
+ * root view controller, which is what a Modal rendered in the ordinary screen
+ * tree presents from; each `SheetModal` supplies a fresh one to its own
+ * children, since a Modal nested inside it presents from *its* controller.
+ *
+ * Defined here rather than in `SheetModal.tsx` so `useKeyboardInsetScroll` can
+ * read the same level a screen's sheets register against, without importing a
+ * component module.
+ */
+export const PresentationLevelContext = createContext<PresentationLevel>(createPresentationLevel());
 
 /**
  * Watches a level, so the sheet that owns it can tell when the sheet presented

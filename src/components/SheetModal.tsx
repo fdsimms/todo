@@ -7,6 +7,7 @@ import {
   createPresentationLevel,
   mustYieldSheet,
   nextSheetVisibility,
+  PresentationLevelContext,
   registerPresentation,
   releasePresentation,
   releasePresentationClaim,
@@ -33,14 +34,6 @@ type Props = React.ComponentProps<typeof Modal> & {
    */
   preempts?: boolean;
 };
-
-/**
- * One presenting view controller's worth of sheets. The default stands for the
- * root view controller, which is what a Modal rendered in the ordinary screen
- * tree presents from; each `SheetModal` supplies a fresh one to its own
- * children, since a Modal nested inside it presents from *its* controller.
- */
-const PresentationLevelContext = React.createContext<PresentationLevel>(createPresentationLevel());
 
 /**
  * `Modal`, with the keyboard guaranteed to be gone before it closes.

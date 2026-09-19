@@ -1,7 +1,8 @@
-import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import { useCallback, useContext, useEffect, useMemo, useRef, useState } from 'react';
 import { Keyboard, type NativeScrollEvent, type NativeSyntheticEvent } from 'react-native';
 import { useIsFocused } from '@react-navigation/native';
 import { NO_INSET, pulseNoInset, strandedScrollOffset } from '../utils/scrollClamp';
+import { PresentationLevelContext, subscribePresentation } from '../utils/sheetModal';
 
 /**
  * Makes `automaticallyAdjustKeyboardInsets` safe on a list that lives on a tab
@@ -23,6 +24,14 @@ import { NO_INSET, pulseNoInset, strandedScrollOffset } from '../utils/scrollCla
  *    so it never clears. Switch to that tab and there are thirty thousand
  *    points of empty scroll range under the content. Passing the screen's own
  *    focus state means a backgrounded list simply doesn't listen.
+ *
+ *    Route focus alone misses one case: a sibling `SheetModal` (quick add, a
+ *    raised sheet) presented *over* this screen doesn't blur its route, so a
+ *    still-"focused" list kept listening to the covering sheet's own keyboard
+ *    events and visibly scrolled itself while the user typed in the sheet
+ *    above it. `PresentationLevelContext` already tracks this — a sheet
+ *    registers with the level it presents from while it's up — so `focused`
+ *    below folds that in too.
  *
  * 2. **Shrinking an inset never re-clamps `contentOffset`.** RN calls
  *    `scrollToOffset:` after adjusting the insets, but only with an offset it
@@ -75,7 +84,11 @@ export interface ScrollHandle {
 }
 
 export function useKeyboardInsetScroll<T extends ScrollHandle>() {
-  const focused = useIsFocused();
+  const routeFocused = useIsFocused();
+  const level = useContext(PresentationLevelContext);
+  const [, forceRecheck] = useState(0);
+  useEffect(() => subscribePresentation(level, () => forceRecheck(n => n + 1)), [level]);
+  const focused = routeFocused && level.presented.size === 0;
   const ref = useRef<T | null>(null);
   // Everything the clamp needs, read off the last settled scroll event rather
   // than from onLayout/onContentSizeChange: a scroll event carries the
