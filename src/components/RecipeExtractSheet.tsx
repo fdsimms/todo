@@ -149,6 +149,10 @@ export function RecipeExtractSheet({ visible, recipe, onClose }: Props) {
   const [siteName, setSiteName] = useState('');
   const [sourceAuthor, setSourceAuthor] = useState('');
   const [sourcePageText, setSourcePageText] = useState('');
+  // Only ever read when there's no fetched page — a link's URL is
+  // authoritative (see the comment by sourceMeta below). A photo or paste
+  // re-extraction has nothing to prefill this with; it's blank until typed.
+  const [sourceUrlText, setSourceUrlText] = useState('');
   // What the source *is* — inferred, not picked. A link is a website by
   // construction; a photo is whatever the page looked like to the model.
   const [importedSourceType, setImportedSourceType] = useState<RecipeSourceType | null>(null);
@@ -205,6 +209,7 @@ export function RecipeExtractSheet({ visible, recipe, onClose }: Props) {
     setSiteName('');
     setSourceAuthor('');
     setSourcePageText('');
+    setSourceUrlText('');
     setImportedSourceType(null);
     resetInput();
     resetComponents();
@@ -409,7 +414,8 @@ export function RecipeExtractSheet({ visible, recipe, onClose }: Props) {
     // photographed page, or were typed in by hand over a paste's blank fields.
     const page = input.page;
     if (applySource) {
-      const plan = sourcePlanFor(page?.url ?? null, {
+      const typedUrl = pendingText('source:url', sourceUrlText).trim();
+      const plan = sourcePlanFor(page?.url ?? (typedUrl || null), {
         source: pendingText('source:site', siteName),
         author: pendingText('source:author', sourceAuthor),
         page: pendingText('source:page', sourcePageText),
@@ -506,14 +512,16 @@ export function RecipeExtractSheet({ visible, recipe, onClose }: Props) {
   // The URL is what identifies the page, so it stays on the row even though
   // the two editable fields sit above it.
   //
-  // Only a link import ever writes a new URL (see the `if (applySource)`
-  // block below) — a paste or photo has none to offer, so ticking the box
-  // for one of those leaves whatever link the recipe already had untouched
-  // even as it overwrites the source and author. "Replaces what's there" is
-  // only true without qualification when this import came from a link.
-  const keepsExistingLink = !input.page && !!recipe?.sourceUrl;
+  // A link import always writes a new URL (see the `if (applySource)` block
+  // below); a paste or photo only does when something's been typed into the
+  // Link row, so ticking the box for one of those with that row left blank
+  // leaves whatever link the recipe already had untouched even as it
+  // overwrites the source and author. "Replaces what's there" is only true
+  // without qualification when this import came from a link or a typed URL.
+  const typedUrl = sourceUrlText.trim();
+  const keepsExistingLink = !input.page && !typedUrl && !!recipe?.sourceUrl;
   const sourceMeta = [
-    input.page?.url,
+    input.page?.url ?? (typedUrl || null),
     recipeHasAttribution(recipe)
       ? (keepsExistingLink ? 'replaces the source and author, not the link' : 'replaces what’s there')
       : null,
@@ -802,6 +810,28 @@ export function RecipeExtractSheet({ visible, recipe, onClose }: Props) {
               </>
             )}
           </View>
+          {/* A link import's URL comes from the page it fetched and isn't
+              editable — this is only for the two imports that never had a
+              page to read one off. Left blank, the recipe's existing link
+              (if any) stays untouched; see the comment by sourceMeta above. */}
+          {!input.page && (
+            <View style={styles.detailFields}>
+              <Text style={styles.detailSep}>Link</Text>
+              <InlineEditableText
+                edits={edits}
+                editKey="source:url"
+                value={sourceUrlText}
+                onCommit={setSourceUrlText}
+                allowEmpty
+                textStyle={styles.detailValue}
+                placeholder="e.g. example.com/chili-recipe"
+                accessibilityLabel="source URL"
+                numberOfLines={1}
+                autoCapitalize="none"
+                keyboardType="url"
+              />
+            </View>
+          )}
         </ImportApplyRow>
 
         {renderReferences()}

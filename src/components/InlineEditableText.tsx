@@ -1,7 +1,7 @@
 import React, { useMemo, useState } from 'react';
 import {
   View, Text, TextInput, TouchableOpacity, StyleSheet,
-  type StyleProp, type TextStyle,
+  type StyleProp, type TextStyle, type TextInputProps,
 } from 'react-native';
 import { useColors } from '../theme/ThemeContext';
 import { radius, border, interaction, type Colors } from '../theme';
@@ -34,6 +34,9 @@ interface Props {
   /** A step is a paragraph; a name is a line. Only affects the input. */
   multiline?: boolean;
   numberOfLines?: number;
+  /** Left at the RN default (sentences) unless a field's content wants otherwise — a URL doesn't. */
+  autoCapitalize?: TextInputProps['autoCapitalize'];
+  keyboardType?: TextInputProps['keyboardType'];
 }
 
 /**
@@ -63,6 +66,7 @@ interface Props {
 export function InlineEditableText({
   edits, editKey, value, onCommit, allowEmpty = false, textStyle,
   placeholder, accessibilityLabel, maxLength, multiline = false, numberOfLines,
+  autoCapitalize, keyboardType,
 }: Props) {
   const colors = useColors();
   const styles = useMemo(() => makeStyles(colors), [colors]);
@@ -113,6 +117,8 @@ export function InlineEditableText({
         // sits under the keyboard.
         blurOnSubmit={!multiline}
         returnKeyType={multiline ? undefined : 'done'}
+        autoCapitalize={autoCapitalize}
+        keyboardType={keyboardType}
         accessibilityLabel={accessibilityLabel}
       />
     );
