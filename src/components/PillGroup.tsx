@@ -6,6 +6,7 @@ import { spacing, radius, font, fontWeight, iconSize, interaction, type Colors }
 import { InlineAction } from './InlineAction';
 import { haptics } from '../utils/haptics';
 import { animateLayout } from '../utils/layoutAnimation';
+import { useScrollFieldIntoView } from '../hooks/useKeyboardInsetScroll';
 import {
   resolvePillOverflow,
   resolvePillSubmit,
@@ -99,6 +100,11 @@ export function PillGroup({
 }: Props) {
   const colors = useColors();
   const styles = useMemo(() => makeStyles(colors, surface), [colors, surface]);
+  // The "+ New {noun}" field opens (and the filter field can gain focus)
+  // while a keyboard is already up from another field on the sheet — see the
+  // hook's doc comment for why `automaticallyAdjustKeyboardInsets` alone
+  // misses exactly that case.
+  const scrollIntoView = useScrollFieldIntoView();
 
   const [query, setQuery] = useState('');
   const [showAll, setShowAll] = useState(false);
@@ -168,6 +174,7 @@ export function PillGroup({
       placeholderTextColor={colors.textTertiary}
       returnKeyType="done"
       onSubmitEditing={handleSubmit}
+      onFocus={scrollIntoView}
       onBlur={onBlur}
       autoFocus={autoFocus}
       autoCorrect={false}
