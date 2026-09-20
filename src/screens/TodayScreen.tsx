@@ -125,7 +125,6 @@ import { useSavedViewStore } from '../store/useSavedViewStore';
 import { TodayOptionsMenu } from '../components/TodayOptionsMenu';
 import { CategoryOrderSheet } from '../components/CategoryOrderSheet';
 import { DeloadSheet } from '../components/DeloadSheet';
-import { WeeklyReviewSheet } from '../components/WeeklyReviewSheet';
 import { useMoodStore } from '../store/useMoodStore';
 import { buildMoodDays, lowMoodRun } from '../utils/moodInsights';
 import { lowMoodDeloadNote } from '../utils/moodTasks';
@@ -851,17 +850,6 @@ export function TodayScreen() {
     setHandledOpenDeload(route.params.openDeload);
     setDeloadVisible(true);
   }, [route.params?.openDeload, handledOpenDeload]);
-
-  // And again for the weekly review task's own link (dundundun://review — see
-  // utils/weeklyReview.ts). WeeklyReviewSheet reads every pile it walks live
-  // off the stores, so there is nothing to pass along beyond opening it.
-  const [weeklyReviewVisible, setWeeklyReviewVisible] = useState(false);
-  const [handledOpenReview, setHandledOpenReview] = useState<number | undefined>(undefined);
-  useEffect(() => {
-    if (route.params?.openWeeklyReview === undefined || route.params.openWeeklyReview === handledOpenReview) return;
-    setHandledOpenReview(route.params.openWeeklyReview);
-    setWeeklyReviewVisible(true);
-  }, [route.params?.openWeeklyReview, handledOpenReview]);
 
   // Claims completions queued by the Today widget's checkbox and by Live
   // Activity's Done button (see useWidgetCompletionStore / widgetSync.ts).
@@ -4384,11 +4372,6 @@ export function TodayScreen() {
         <LookAheadSheet
           visible={lookAheadVisible}
           onClose={() => setLookAheadVisible(false)}
-        />
-
-        <WeeklyReviewSheet
-          visible={weeklyReviewVisible}
-          onClose={() => setWeeklyReviewVisible(false)}
         />
 
         <MorningCheckInSheet

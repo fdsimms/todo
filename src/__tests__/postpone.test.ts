@@ -1,6 +1,6 @@
 import {
   postponeOutcome, nextPostponeCount, shouldNudgePostpone, parsePostponeThreshold,
-  nextDriftingSince, driftingTasks, driftingTaskList,
+  nextDriftingSince, driftingTasks, driftingTaskList, isDriftingTask,
 } from '../utils/postpone';
 import type { Task } from '../types';
 
@@ -277,6 +277,29 @@ describe('driftingTasks', () => {
       make({ id: 'dated', postponeCount: 4, driftingSince: '2026-08-01T00:00:00.000Z' }),
     ], 3);
     expect(result.map(e => e.task.id)).toEqual(['dated', 'undated']);
+  });
+});
+
+describe('isDriftingTask', () => {
+  const make = (o: Partial<Task>): Task => ({
+    id: 'a', title: 'A', postponeCount: 0, postponeMuted: false, driftingSince: null,
+    completed: false, archived: false, parentId: null,
+    ...o,
+  } as Task);
+
+  it('agrees with driftingTaskList\'s own filter, one task at a time', () => {
+    // The whole reason this exists: a row (TaskItem) asking about the single
+    // task it renders shouldn't have to restate the list's filter by hand.
+    const tasks = [
+      make({ id: 'low', postponeCount: 2 }),
+      make({ id: 'at', postponeCount: 3 }),
+      make({ id: 'muted', postponeCount: 9, postponeMuted: true }),
+      make({ id: 'done', postponeCount: 9, completed: true }),
+    ];
+    const listed = new Set(driftingTaskList(tasks, 3).map(t => t.id));
+    for (const t of tasks) {
+      expect(isDriftingTask(t, 3)).toBe(listed.has(t.id));
+    }
   });
 });
 
