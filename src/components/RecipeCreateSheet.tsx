@@ -218,6 +218,11 @@ export function RecipeCreateSheet({
   const [siteName, setSiteName] = useState('');
   const [sourceAuthor, setSourceAuthor] = useState('');
   const [sourcePageText, setSourcePageText] = useState('');
+  // Only ever read when there's no fetched page — a link's URL comes from
+  // the page and stays authoritative (see the comment by sourcePlanFor
+  // below). A photo or paste import has nothing to prefill this with; it's
+  // blank until the user types one in.
+  const [sourceUrlText, setSourceUrlText] = useState('');
   // What the source *is* — inferred, not picked. A link is a website by
   // construction; a photo is whatever the page looked like to the model.
   const [importedSourceType, setImportedSourceType] = useState<RecipeSourceType | null>(null);
@@ -287,6 +292,7 @@ export function RecipeCreateSheet({
     setLeftoverKeepDaysText('');
     setSiteName('');
     setSourceAuthor('');
+    setSourceUrlText('');
     resetInput();
     resetComponents();
   }, [resetInput, resetComponents]);
@@ -526,9 +532,13 @@ export function RecipeCreateSheet({
     // A link's URL comes from the page and isn't editable; the rest are,
     // whether they arrived pre-filled from structured markup, were read off a
     // photographed page, or were typed in by hand over a paste's blank fields.
+    // A photo or paste import has no page to read one off, so its URL is
+    // whatever was typed into the Link row (blank, same as before, if nothing
+    // was).
     const { page } = input;
     if (applySource) {
-      const plan = sourcePlanFor(page?.url ?? null, {
+      const typedUrl = pendingText('source:url', sourceUrlText).trim();
+      const plan = sourcePlanFor(page?.url ?? (typedUrl || null), {
         source: pendingText('source:site', siteName),
         author: pendingText('source:author', sourceAuthor),
         page: pendingText('source:page', sourcePageText),
@@ -625,8 +635,10 @@ export function RecipeCreateSheet({
   const prepTasksMeta = prepTasksRowMeta(acceptedPrepTasks.size, prepTasks.length, false);
 
   // The URL is what identifies the page, so it stays on the row even though
-  // the two editable fields sit above it.
-  const sourceMeta = input.page?.url ?? '';
+  // the two editable fields sit above it. A fetched page's URL wins; a photo
+  // or paste import has none to show until the user types one into the row
+  // below, which is where this falls back to.
+  const sourceMeta = input.page?.url ?? sourceUrlText;
 
 
   // A deterministic failure — a mistyped address, a site that refuses us, a page
@@ -967,6 +979,27 @@ export function RecipeCreateSheet({
               </>
             )}
           </View>
+          {/* A link import's URL comes from the page it fetched and isn't
+              editable (see the comment by sourcePlanFor below) — this is
+              only for the two imports that never had a page to read one off. */}
+          {!input.page && (
+            <View style={styles.detailFields}>
+              <Text style={styles.detailSep}>Link</Text>
+              <InlineEditableText
+                edits={edits}
+                editKey="source:url"
+                value={sourceUrlText}
+                onCommit={setSourceUrlText}
+                allowEmpty
+                textStyle={styles.detailValue}
+                placeholder="e.g. example.com/chili-recipe"
+                accessibilityLabel="source URL"
+                numberOfLines={1}
+                autoCapitalize="none"
+                keyboardType="url"
+              />
+            </View>
+          )}
         </ImportApplyRow>
 
         <ImportApplyRow
