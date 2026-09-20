@@ -19,6 +19,11 @@ export const KNOWN_LINK_APPS: LinkApp[] = [
   // it opens the list, which is how groceries reach Today without a grocery
   // item ever having to pretend to be a task.
   { name: 'Groceries', scheme: 'dundundun://groceries', icon: 'cart-outline', sfSymbol: 'cart.fill', kitchen: true },
+  // weather:// is undocumented by Apple and takes no location or query
+  // parameters — it opens the Weather app to whatever it was last showing,
+  // not necessarily the place a weather task's own reading came from. Still
+  // one tap closer to the full forecast than the rule's own one-line title.
+  { name: 'Weather', scheme: 'weather://', icon: 'partly-sunny-outline', sfSymbol: 'cloud.sun.fill' },
   { name: 'Duolingo', scheme: 'duolingo://', icon: 'school-outline', sfSymbol: 'graduationcap.fill' },
   { name: 'Spotify', scheme: 'spotify://', icon: 'musical-notes-outline', sfSymbol: 'music.note' },
   { name: 'YouTube', scheme: 'youtube://', icon: 'logo-youtube', sfSymbol: 'play.rectangle.fill' },

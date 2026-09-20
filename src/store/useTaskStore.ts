@@ -277,6 +277,7 @@ import {
   describeWeatherWindow,
   weatherTaskTitle,
   WEATHER_AHEAD_FROM_HOUR,
+  WEATHER_LINK_URL,
 } from '../utils/weatherTasks';
 import {
   eventTaskRuleIdOf,
@@ -5530,6 +5531,7 @@ export const useTaskStore = create<TaskStore>((set, get) => ({
           title,
           dueDate: due.toISOString(),
           category: settings.weatherTaskCategory,
+          linkUrl: WEATHER_LINK_URL,
           ...generatedBy('weather', sourceId),
         }),
       });
