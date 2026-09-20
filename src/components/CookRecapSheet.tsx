@@ -175,32 +175,41 @@ export function CookRecapSheet({
   const sheetOpacity = useRef(new Animated.Value(0)).current;
   const backdropOpacity = useRef(new Animated.Value(0)).current;
 
-  // Springs in once, on mount. Unlike QuickAddModal there's no persistent
-  // instance toggling `visible` on and off — CookRecap mounts this sheet
-  // fresh (keyed to the cooking) whenever there's something to ask, so mount
-  // is the only "opening" there is.
+  // Springs in and out with `visible`, not just on mount. `visible` isn't
+  // only driven by this sheet's own Skip/backdrop/Done — `CookRecap` also
+  // drops it to false out from under an open sheet when the leftover-finish
+  // Alert takes over the same tap (`waiting`) or when the cooking that raised
+  // it gets un-ticked (`useMealPlanStore.setCooked` clearing `cookRecap`
+  // directly). Animating only from this component's own handlers left those
+  // paths with no way to bring the opacity/scale values back down: the sheet
+  // was told to close by its `visible` prop while its own Animated values
+  // stayed wherever they were, so it froze mid-fade instead of finishing the
+  // close — a translucent card stuck over whatever was behind it. Reacting to
+  // `visible` itself covers every path that can flip it, not just this
+  // component's own.
   useEffect(() => {
-    Animated.parallel([
-      Animated.spring(scaleAnim, { toValue: 1, ...animation.spring.smooth, useNativeDriver: true }),
-      Animated.spring(translateYAnim, { toValue: 0, ...animation.spring.smooth, useNativeDriver: true }),
-      Animated.timing(sheetOpacity, { toValue: 1, duration: animation.duration.normal, useNativeDriver: true }),
-      Animated.timing(backdropOpacity, { toValue: 1, duration: animation.duration.normal, useNativeDriver: true }),
-    ]).start();
+    if (visible) {
+      Animated.parallel([
+        Animated.spring(scaleAnim, { toValue: 1, ...animation.spring.smooth, useNativeDriver: true }),
+        Animated.spring(translateYAnim, { toValue: 0, ...animation.spring.smooth, useNativeDriver: true }),
+        Animated.timing(sheetOpacity, { toValue: 1, duration: animation.duration.normal, useNativeDriver: true }),
+        Animated.timing(backdropOpacity, { toValue: 1, duration: animation.duration.normal, useNativeDriver: true }),
+      ]).start();
+    } else {
+      Keyboard.dismiss();
+      Animated.parallel([
+        Animated.timing(scaleAnim, { toValue: 0.95, duration: animation.duration.dismiss, useNativeDriver: true }),
+        Animated.timing(sheetOpacity, { toValue: 0, duration: animation.duration.dismiss, useNativeDriver: true }),
+        Animated.timing(backdropOpacity, { toValue: 0, duration: animation.duration.fast, useNativeDriver: true }),
+      ]).start();
+    }
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, []);
+  }, [visible]);
 
-  // Fades/scales out, then hands off to the caller — which is what actually
-  // unmounts this component (`CookRecap` clears its recap on `onClose`). Runs
-  // for Skip, the backdrop tap, and the hardware back button alike; `handleDone`
-  // is the one path that commits ticks first.
-  const dismiss = () => {
-    Keyboard.dismiss();
-    Animated.parallel([
-      Animated.timing(scaleAnim, { toValue: 0.95, duration: animation.duration.dismiss, useNativeDriver: true }),
-      Animated.timing(sheetOpacity, { toValue: 0, duration: animation.duration.dismiss, useNativeDriver: true }),
-      Animated.timing(backdropOpacity, { toValue: 0, duration: animation.duration.fast, useNativeDriver: true }),
-    ]).start(() => onClose());
-  };
+  // Skip, the backdrop tap, and the hardware back button all just say the ask
+  // is over — the fade/scale-out itself now runs off `visible` above, the
+  // same as it does for a close this component didn't ask for.
+  const dismiss = () => onClose();
 
   const items = useGroceryStore(useShallow(s => s.items));
   const markOutOfMany = useGroceryStore(s => s.markOutOfMany);

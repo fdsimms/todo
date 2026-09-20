@@ -215,12 +215,6 @@ export function catchUpPasses(): MaintenanceStep[] {
     // reason that one sits after rolloverQuotas — a run can create tasks a
     // project counts, so the cheaper pass goes first and sees a settled list.
     ['check scheduled templates', () => useTemplateStore.getState().checkScheduledTemplates()],
-    // Genuinely last of the passes that write tasks, which is what makes its
-    // reading honest: it counts the inbox, what is stuck and what slipped, and
-    // every pass above it can add to those piles. Offered from a mid-list
-    // position it would be deciding against a list the rest of this sequence
-    // was still changing.
-    ['check weekly review tasks', () => tasks().checkWeeklyReviewTasks()],
     // Charge the apps-blocked penalty on anything that went past its cutoff
     // undone. Last in the list on purpose: every pass above can change whether
     // a task is still outstanding — a template can create one, a rollover can

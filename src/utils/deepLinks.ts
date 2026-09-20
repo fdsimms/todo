@@ -21,7 +21,6 @@ import {
   resetToProjectPull,
   resetToFocusSession,
   resetToDeload,
-  resetToWeeklyReview,
   openQuickAddFromShortcut,
 } from '../navigation/navigationRef';
 import { MEAL_SLOTS, type MealSlot } from '../types';
@@ -367,16 +366,6 @@ export function isDeloadUrl(url: string): boolean {
   return typeof url === 'string' && DELOAD_RE.test(url.trim());
 }
 
-// `dundundun://review` — the weekly review task's own link, so the row that
-// offers to walk the week opens the thing that walks it. Same shape as
-// `deload` above and for the same reason: a generated task whose title names
-// an action wants a next step, not a tick.
-const WEEKLY_REVIEW_RE = new RegExp(`^${SCHEME}:\\/\\/\\/?review\\/?$`, 'i');
-
-export function isWeeklyReviewUrl(url: string): boolean {
-  return typeof url === 'string' && WEEKLY_REVIEW_RE.test(url.trim());
-}
-
 // `dundundun://completeTask?id=…` — the Done button on a task's timer Live
 // Activity (see the Lock Screen/Dynamic Island button in
 // targets/todo-widget/TimerLiveActivity.swift). A Live Activity button's
@@ -580,10 +569,6 @@ export function openInAppUrl(url: string | null | undefined): boolean {
   }
   if (isDeloadUrl(url)) {
     resetToDeload();
-    return true;
-  }
-  if (isWeeklyReviewUrl(url)) {
-    resetToWeeklyReview();
     return true;
   }
   if (isCompleteTaskUrl(url)) {

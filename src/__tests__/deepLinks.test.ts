@@ -46,13 +46,6 @@ jest.mock('../store/useMealPlanStore', () => ({
 jest.mock('../store/useStepTimerStore', () => ({
   useStepTimerStore: { getState: () => ({ remove: mockRemoveStepTimer }) },
 }));
-// weeklyReview.ts is imported below only for WEEKLY_REVIEW_URL, and it reaches
-// dateUtils, which reads dayResetTime off the settings store. Mocked the same
-// way every other pure-module test mocks it.
-jest.mock('../store/useSettingsStore', () => ({
-  useSettingsStore: { getState: jest.fn(() => ({ dayResetTime: '00:00' })) },
-}));
-
 jest.mock('../store/useFocusStore', () => ({
   useFocusStore: {
     getState: () => ({ advance: mockFocusAdvance, pause: mockFocusPause, resume: mockFocusResume }),
@@ -107,7 +100,6 @@ import {
   isStopTimerUrl,
   stopTimerUrlKey,
   linkIconFor,
-  isWeeklyReviewUrl,
 } from '../utils/deepLinks';
 
 describe('parseAddTaskUrl', () => {
@@ -817,26 +809,5 @@ describe('openInAppUrl', () => {
   it('does not create a task', () => {
     openInAppUrl('dundundun://groceries');
     expect(mockAddTask).not.toHaveBeenCalled();
-  });
-});
-
-import { WEEKLY_REVIEW_URL } from '../utils/weeklyReview';
-
-describe('isWeeklyReviewUrl', () => {
-  // Imported from the module that *writes* the link rather than restated here:
-  // the constant lives in weeklyReview.ts (see its note) and this is what holds
-  // the matcher and the writer together.
-  it('matches the weekly review task’s own link', () => {
-    expect(isWeeklyReviewUrl(WEEKLY_REVIEW_URL)).toBe(true);
-    expect(isWeeklyReviewUrl('dundundun://review')).toBe(true);
-    expect(isWeeklyReviewUrl('dundundun:///review/')).toBe(true);
-    expect(isWeeklyReviewUrl('DUNDUNDUN://REVIEW')).toBe(true);
-  });
-
-  it('does not match anything else', () => {
-    expect(isWeeklyReviewUrl('dundundun://deload')).toBe(false);
-    expect(isWeeklyReviewUrl('dundundun://reviews')).toBe(false);
-    expect(isWeeklyReviewUrl('https://example.com/review')).toBe(false);
-    expect(isWeeklyReviewUrl('')).toBe(false);
   });
 });

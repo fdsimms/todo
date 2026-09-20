@@ -246,7 +246,6 @@ export function GeneratedTasksSection() {
       case 'moodLog': s.setMoodLogTasks(next); break;
       case 'moodNudge': s.setMoodNudgeTasks(next); break;
       case 'weekendNudge': s.setWeekendNudgeTasks(next); break;
-      case 'weeklyReview': s.setWeeklyReviewTasks(next); break;
       case 'weighIn': s.setWeighInTasks(next); break;
     }
     // Switching one on gives it somewhere to file, so the "File them under"
@@ -282,7 +281,6 @@ export function GeneratedTasksSection() {
       case 'moodLog': return s.moodLogTaskCategory;
       case 'moodNudge': return s.moodNudgeTaskCategory;
       case 'weekendNudge': return s.weekendNudgeTaskCategory;
-      case 'weeklyReview': return s.weeklyReviewTaskCategory;
       case 'weighIn': return s.weighInTaskCategory;
     }
   };
@@ -313,7 +311,6 @@ export function GeneratedTasksSection() {
       case 'moodLog': s.setMoodLogTaskCategory(category); break;
       case 'moodNudge': s.setMoodNudgeTaskCategory(category); break;
       case 'weekendNudge': s.setWeekendNudgeTaskCategory(category); break;
-      case 'weeklyReview': s.setWeeklyReviewTaskCategory(category); break;
       case 'weighIn': s.setWeighInTaskCategory(category); break;
       case 'supplyReorder': s.setSupplyReorderTaskCategory(category); break;
       // Exhaustive, unlike the switches above it, which are only exhaustive

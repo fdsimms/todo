@@ -74,7 +74,7 @@ name cannot say is where a component appears, and that is `docs/screen-map.md`.
 - `src/utils/daySegments.ts` — DAY_SEGMENT_KEYS, DaySegmentKey, DaySegmentTimes, applyDaySegmentTime, daySegmentsInOrder
 - `src/utils/dayTimeline.ts` — MINUTES_IN_DAY, DEFAULT_FIRST_HOUR, DEFAULT_LAST_HOUR, TimelineEntry, DayTimeline, DayTimelineInput, clockToDayMinutes, instantToDayMinutes, buildDayTimeline
 - `src/utils/deadlineCalendarSync.ts` — syncDeadlineEvent
-- `src/utils/deepLinks.ts` — AddTaskLink, parseAddTaskUrl, handleIncomingUrl, isQuickAddUrl, isOpenAppUrl, isGroceriesUrl, groceriesUrlFinish, isRecipesUrl, isRecipeUrl, recipeUrlId, +28 more
+- `src/utils/deepLinks.ts` — AddTaskLink, parseAddTaskUrl, handleIncomingUrl, isQuickAddUrl, isOpenAppUrl, isGroceriesUrl, groceriesUrlFinish, isRecipesUrl, isRecipeUrl, recipeUrlId, +27 more
 - `src/utils/deliverables.ts` — DELIVERABLE_TEXT_MAX_LENGTH, DELIVERABLE_META, deliverableMeta, DeliverableSource, deliverableKindFor, asksOnCompletion, chainStepDatedByAnswer, deliverableDate, normalizeDeliverableValue, formatDeliverableValue, +1 more
 - `src/utils/deloadPlan.ts` — DeloadDestination, DeloadProposal, DeloadPlan, buildDeloadPlan
 - `src/utils/demoSeed.ts` — seedDemoData
@@ -200,7 +200,7 @@ name cannot say is where a component appears, and that is `docs/screen-map.md`.
 - `src/utils/pillOverflow.ts` — OverflowPill, PillOverflowResult, PillOverflowOptions, DEFAULT_PILL_LIMIT, resolvePillOverflow, PillSubmit, resolvePillSubmit
 - `src/utils/pinSuggest.ts` — MAX_SUGGESTED_PINS, PinContext, buildCoOccurrenceIndex, currentTimeSegment, buildPinContext, overdueDays, scoreTask, nextPinSuggestion, suggestPins, pinReason, +1 more
 - `src/utils/plu.ts` — normalizePlu, splitOrganicPlu, pluNameFor
-- `src/utils/postpone.ts` — PostponeOutcome, DEFAULT_POSTPONE_THRESHOLD, MIN_POSTPONE_THRESHOLD, MAX_POSTPONE_THRESHOLD, parsePostponeThreshold, postponeOutcome, nextPostponeCount, nextDriftingSince, DriftEntry, driftingTaskList, +2 more
+- `src/utils/postpone.ts` — PostponeOutcome, DEFAULT_POSTPONE_THRESHOLD, MIN_POSTPONE_THRESHOLD, MAX_POSTPONE_THRESHOLD, parsePostponeThreshold, postponeOutcome, nextPostponeCount, nextDriftingSince, DriftEntry, isDriftingTask, +3 more
 - `src/utils/priceHistory.ts` — PRICE_HISTORY_LIMIT, parsePriceHistory, appendPriceObservation, PRODUCT_RUN_MIN, priceRunForProduct, priceBaseline, PriceStanding, priceStanding, mergePriceHistories
 - `src/utils/prioritySegments.ts` — PRIORITY_SEGMENTS
 - `src/utils/productCategory.ts` — CATEGORY_AISLES, aisleForProductCategory
@@ -323,10 +323,9 @@ name cannot say is where a component appears, and that is `docs/screen-map.md`.
 - `src/utils/waterLog.ts` — WaterUnit, WATER_STEP_ML, WATER_MIN_ML, WATER_MAX_ML, WATER_STEP_FL_OZ, WATER_MIN_FL_OZ, WATER_MAX_FL_OZ, isWaterEntry, waterEntryOf, waterTotalMl, +8 more
 - `src/utils/weatherCondition.ts` — classifyWeather, weatherIconFor, weatherConditionAdjective, conditionNoun, weatherConditionNoun
 - `src/utils/weatherLocation.ts` — LocationPermission, getLocationPermission, requestLocationPermission, DeviceLocation, getCurrentLocation
-- `src/utils/weatherTasks.ts` — WEATHER_RULE_TITLE_MAX_LENGTH, WEATHER_CONDITIONS, WEATHER_AHEAD_FROM_HOUR, weatherConditionLabel, defaultWeatherRules, parseWeatherRules, weatherSourceId, parseWeatherSourceId, weatherRuleIdOf, ruleMatchesToday, +4 more
+- `src/utils/weatherTasks.ts` — WEATHER_LINK_URL, WEATHER_RULE_TITLE_MAX_LENGTH, WEATHER_CONDITIONS, WEATHER_AHEAD_FROM_HOUR, weatherConditionLabel, defaultWeatherRules, parseWeatherRules, weatherSourceId, parseWeatherSourceId, weatherRuleIdOf, +5 more
 - `src/utils/weekPlan.ts` — WeekNight, weekNights, decidableNights
 - `src/utils/weekendTasks.ts` — WEEKEND_NUDGE_TITLE, WEEKEND_EVENING_SEGMENTS, WeekendWindow, upcomingWeekend, isWeekendNudgeLeadDay, clampWeekendNudgeLeadDays, describeWeekendNudgeLead, weekendNudgeWeekendKey, isWeekendEvening, weekendPlanCount, +7 more
-- `src/utils/weeklyReview.ts` — WEEKLY_REVIEW_URL, WeeklyReviewStageId, WeeklyReviewStageKind, WeeklyReviewStage, WeeklyReviewInput, weeklyReviewStages, stuckPile, StuckKind, stuckKindOf, describeStuckRow, +8 more
 - `src/utils/weightGoal.ts` — WeightGoalDirection, WeightGoal, RATE_RANGE, MAX_RATE_KG_PER_WEEK, goalDirection, signedRateKgPerWeek, WeightGoalProgress, goalProgress, MAINTAIN_BAND_KG, paceWeightAfterDays, +8 more
 - `src/utils/weightLog.ts` — WeightUnit, MAX_WEIGHT_KG, WeightPoint, WeightReading, kgToUnit, unitToKg, formatWeight, parseWeightInput, weightReadings, latestWeight, +13 more
 - `src/utils/weightTasks.ts` — WEIGH_IN_TITLE, DEFAULT_WEIGH_IN_EVERY_DAYS, WEIGH_IN_EVERY_DAYS_MIN, WEIGH_IN_EVERY_DAYS_MAX, clampWeighInEveryDays, WEIGH_IN_LINK_URL, weighInDayKey, wantsWeighIn, weighInNotes

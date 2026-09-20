@@ -62,7 +62,7 @@ import {
   weekendNudgeLinkUrl,
   weekendNudgeNotes,
 } from './weekendTasks';
-import { weatherSourceId, defaultWeatherRules, describeWeatherWindow, weatherTaskTitle } from './weatherTasks';
+import { weatherSourceId, defaultWeatherRules, describeWeatherWindow, weatherTaskTitle, WEATHER_LINK_URL } from './weatherTasks';
 import { screenTimeSourceId, defaultScreenTimeRules } from './screenTimeRules';
 import { defaultEventRules, eventOccurrenceKey, eventTaskSourceId } from './eventTasks';
 import { healthSourceId, defaultHealthRules } from './healthRules';
@@ -1178,6 +1178,7 @@ export function seedDemoData(): void {
     ),
     dueDate: today.toISOString(),
     category: 'Weather',
+    linkUrl: WEATHER_LINK_URL,
     ...generatedBy('weather', weatherSourceId(dayKeyOf(today), sunscreenRule.id)),
   });
   // And the day-ahead half of the same feature, which is invisible until
@@ -1190,6 +1191,7 @@ export function seedDemoData(): void {
     ),
     dueDate: addDays(today, 1).toISOString(),
     category: 'Weather',
+    linkUrl: WEATHER_LINK_URL,
     ...generatedBy('weather', weatherSourceId(tomorrowKey, rainRule.id)),
   });
 
@@ -2053,22 +2055,6 @@ function seedPeople(today: Date): void {
   // exactly one person opted in, so demo mode opens with one catch-up row
   // rather than a screen of them.
   useTaskStore.getState().checkReachOutTasks();
-
-  // The weekly review, from the same pass the app runs at launch rather than a
-  // row written by hand, for the reason the birthday task above uses it: a
-  // seeded row that skipped the generator could drift from what the generator
-  // actually produces — and here that includes the link, which is the whole
-  // point of the row.
-  //
-  // It runs last in the seed for the reason it runs last in the maintenance
-  // sequence: it counts the inbox, what is stuck and what slipped, and
-  // everything seeded above it adds to those piles. Called from here rather
-  // than left to the launch pass because the pass spends the week key on the
-  // first launch that qualifies, and a demo entered later the same week would
-  // then show no review at all.
-  useSettingsStore.getState().setWeeklyReviewTasks(true);
-  useSettingsStore.getState().setWeeklyReviewTaskCategory('Personal');
-  useTaskStore.getState().checkWeeklyReviewTasks();
 }
 
 // ---------------------------------------------------------------------------
