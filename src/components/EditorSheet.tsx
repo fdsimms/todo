@@ -7,7 +7,7 @@ import {
 } from 'react-native';
 import { SheetModal } from './SheetModal';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
-import { useKeyboardInsetScroll } from '../hooks/useKeyboardInsetScroll';
+import { KeyboardScrollIntoViewContext, useKeyboardInsetScroll } from '../hooks/useKeyboardInsetScroll';
 
 interface Props {
   visible: boolean;
@@ -127,7 +127,9 @@ export function EditorSheet({
           contentContainerStyle={scrollContentStyle}
           {...keyboardScroll.props}
         >
-          {children}
+          <KeyboardScrollIntoViewContext.Provider value={keyboardScroll.focusInput}>
+            {children}
+          </KeyboardScrollIntoViewContext.Provider>
         </ScrollView>
 
         {footer}
