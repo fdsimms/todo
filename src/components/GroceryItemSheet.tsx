@@ -1043,7 +1043,7 @@ export function GroceryItemSheet({
             {!!preferred && (
               <>
                 <View style={styles.brandStrictRow}>
-                  <PillGroup options={productStrictOptions} noun="option" surface="page" />
+                  <PillGroup options={productStrictOptions} noun="option" />
                 </View>
                 <Text style={styles.hint}>
                   {item.productStrict
