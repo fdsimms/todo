@@ -2633,6 +2633,13 @@ export function TodayScreen() {
   // flight, and without it the stack would stay bodiless no matter how many
   // times it's collapsed and expanded. A no-op on the surfaces that can't
   // drag a header.
+  //
+  // Dismissing the spotlight first is why the tap can't fall through to the
+  // collapse: a stack header is a big target sitting right beside a
+  // spotlighted row, and tapping the dimmed-out page around that row means
+  // "put it back", not "and also fold this stack away". Later Today's own
+  // copy of this handler was the one that missed the guard, so a stack down
+  // there collapsed under a tap the other four read as a dismissal.
   const handleGroupToggleCollapse = useCallback((groupId: string) => {
     if (expandedTaskId !== null) { setExpandedTaskId(null); return; }
     haptics.tap();
@@ -2916,13 +2923,7 @@ export function TodayScreen() {
           dueTodayOverride={children}
           pinned={groupPinInfo.get(group.id)?.pinned ?? false}
           pinDisabled={!(groupPinInfo.get(group.id)?.pinnable ?? false)}
-          onToggleCollapse={() => {
-            haptics.tap();
-            // See the main list's group onToggleCollapse: no animateLayout()
-            // here either, for the same reason — AnimatedCollapsible drives
-            // this row's own transition already.
-            setGroupCollapsed(group.id, !group.collapsed);
-          }}
+          onToggleCollapse={handleGroupToggleCollapse}
           {...groupHeaderProps}
         />
         <TaskGroupBody expanded={!group.collapsed} hasChildren={children.length > 0}>
