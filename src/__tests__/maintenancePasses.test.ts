@@ -55,7 +55,6 @@ describe('the three maintenance groups', () => {
       'check waiting follow-up tasks',
       'reconcile leftover use-up tasks',
       'check scheduled templates',
-      'check weekly review tasks',
       'sweep task penalties',
     ]);
   });

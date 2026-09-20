@@ -88,7 +88,6 @@ export type SimpleFeatureId =
   | 'unscheduledLens'
   | 'paintSelect'
   | 'savedViews'
-  | 'weeklyReview'
   // The kitchen's deep end. The list, the catalog, aisles, recipes and the
   // meal plan all stay — this is the machinery underneath them.
   | 'barcodeScanning'
@@ -200,7 +199,6 @@ export const SIMPLE_FEATURES: readonly SimpleFeature[] = [
   // that one to match. `featureShown`'s `set` arm carries the usual rule:
   // somebody who already kept a view keeps the way back to it.
   { id: 'savedViews', label: 'Saved views', area: 'today' },
-  { id: 'weeklyReview', label: 'The weekly review', area: 'today' },
 
   { id: 'barcodeScanning', label: 'Barcode scanning', area: 'kitchen' },
   { id: 'receiptImport', label: 'Receipt scanning', area: 'kitchen' },

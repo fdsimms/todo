@@ -99,6 +99,7 @@ import {
   projectReviewProjectId,
 } from '../utils/projectReviewTasks';
 import { resolveBlocker, waitingCountFor } from '../utils/blockerRegistry';
+import { isDriftingTask } from '../utils/postpone';
 import { resolvePerson, peopleOn, groupMentionTokens } from '../utils/peopleRegistry';
 import { displayNameOf, usePersonStore } from '../store/usePersonStore';
 import { matchPersonMentions } from '../utils/parseTaskInput';
@@ -1334,6 +1335,14 @@ export const TaskItem = React.memo(function TaskItem({
     return person && !person.archived ? displayNameOf(person) : undefined;
   });
 
+  // A task that has been put off enough times to count as drifting — the
+  // same rule StuckScreen's own Drift section is built on. Shown here too, on
+  // the row itself: a task pushed six times reads as an ordinary row on Today
+  // with nothing marking that history, and StuckScreen is a place you have to
+  // go looking for it.
+  const postponeCheckThreshold = useSettingsStore(s => s.postponeCheckThreshold);
+  const isDrifting = isDriftingTask(task, postponeCheckThreshold);
+
   const activeChainItem =
     !task.completed && !isNegative && task.chainEnabled && task.chainItems.length > 0
       ? task.chainItems[task.chainIndex % task.chainItems.length]
@@ -2301,6 +2310,19 @@ export const TaskItem = React.memo(function TaskItem({
                     ends would be undiscoverable. */}
                 <Ionicons name="close" size={iconSize.xs} color={colors.textSecondary} />
               </TouchableOpacity>
+            )}
+            {/* Same wording StuckScreen's own drift row uses ("Moved N times"),
+                so a task doesn't get a second way of saying the same thing. */}
+            {isDrifting && (
+              <View
+                style={styles.metaChip}
+                accessibilityLabel={`Moved ${task.postponeCount} times`}
+              >
+                <Ionicons name="repeat-outline" size={iconSize.xs} color={colors.textSecondary} />
+                <Text style={styles.blockingLabel} numberOfLines={1}>
+                  Moved {task.postponeCount}×
+                </Text>
+              </View>
             )}
             {showStreakChip && (
               <View

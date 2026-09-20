@@ -1402,18 +1402,6 @@ interface SettingsStore {
   // one. See src/utils/weekendTasks.ts.
   weekendNudgeTasks: boolean;
   weekendNudgeTaskCategory: string | null;
-  // The weekly review offer. Off by default like every generator that adds a
-  // surface rather than replacing one already on screen.
-  weeklyReviewTasks: boolean;
-  weeklyReviewTaskCategory: string | null;
-  /**
-   * The Monday day key of the last week this offered a review.
-   *
-   * A high-water mark spent before the qualifying check, the same shape
-   * `weekendNudgeLastWeekendKey` has and for its reason: a review swiped away
-   * on Sunday must not be dealt straight back on Monday morning.
-   */
-  weeklyReviewLastWeekKey: string | null;
   // How many days before the Saturday the offer may first be raised. Its own
   // setting rather than a constant for the reason moodNudgeAfterDays is one:
   // how much warning you want about a bare weekend is a thing only the person
@@ -1712,9 +1700,6 @@ interface SettingsStore {
   setMoodNudgeLastDayKey: (dayKey: string | null) => void;
   setWeekendNudgeTasks: (on: boolean) => void;
   setWeekendNudgeTaskCategory: (category: string | null) => void;
-  setWeeklyReviewTasks: (on: boolean) => void;
-  setWeeklyReviewTaskCategory: (category: string | null) => void;
-  setWeeklyReviewLastWeekKey: (weekKey: string | null) => void;
   setWeekendNudgeLeadDays: (days: number) => void;
   setWeekendNudgeLastWeekendKey: (weekendKey: string | null) => void;
   setWeighInTasks: (on: boolean) => void;
@@ -2294,9 +2279,6 @@ export const useSettingsStore = create<SettingsStore>((set, get) => ({
   moodNudgeLastDayKey: null,
   weekendNudgeTasks: false,
   weekendNudgeTaskCategory: null,
-  weeklyReviewTasks: false,
-  weeklyReviewTaskCategory: null,
-  weeklyReviewLastWeekKey: null,
   weekendNudgeLeadDays: WEEKEND_NUDGE_LEAD_DAYS_DEFAULT,
   weekendNudgeLastWeekendKey: null,
   weighInTasks: false,
@@ -2692,9 +2674,6 @@ export const useSettingsStore = create<SettingsStore>((set, get) => ({
     // on-by-default form and why this generator is not one.
     const weekendNudgeTasks = dbGetSetting('weekendNudgeTasks') === 'true';
     const weekendNudgeTaskCategory = dbGetSetting('weekendNudgeTaskCategory') || null;
-    const weeklyReviewTasks = dbGetSetting('weeklyReviewTasks') === 'true';
-    const weeklyReviewTaskCategory = dbGetSetting('weeklyReviewTaskCategory') || null;
-    const weeklyReviewLastWeekKey = dbGetSetting('weeklyReviewLastWeekKey') || null;
     // Clamped on read as well as on write: a value can arrive from a peer on a
     // different build, and a 0-day window is a generator that can never fire.
     const storedWeekendLead = parseInt(dbGetSetting('weekendNudgeLeadDays') ?? '', 10);
@@ -3005,9 +2984,6 @@ export const useSettingsStore = create<SettingsStore>((set, get) => ({
       weekendNudgeLeadDays,
       weekendNudgeTaskCategory,
       weekendNudgeTasks,
-      weeklyReviewLastWeekKey,
-      weeklyReviewTaskCategory,
-      weeklyReviewTasks,
       weekStartsOn,
       weighInEveryDays,
       weighInLastDayKey,
@@ -3597,21 +3573,6 @@ export const useSettingsStore = create<SettingsStore>((set, get) => ({
   setWeekendNudgeLastWeekendKey(weekendKey: string | null) {
     dbSetSetting('weekendNudgeLastWeekendKey', weekendKey ?? '');
     set({ weekendNudgeLastWeekendKey: weekendKey });
-  },
-
-  setWeeklyReviewTasks(on: boolean) {
-    dbSetSetting('weeklyReviewTasks', String(on));
-    set({ weeklyReviewTasks: on });
-  },
-
-  setWeeklyReviewTaskCategory(category: string | null) {
-    dbSetSetting('weeklyReviewTaskCategory', category ?? '');
-    set({ weeklyReviewTaskCategory: category });
-  },
-
-  setWeeklyReviewLastWeekKey(weekKey: string | null) {
-    dbSetSetting('weeklyReviewLastWeekKey', weekKey ?? '');
-    set({ weeklyReviewLastWeekKey: weekKey });
   },
 
   setWeighInTasks(on: boolean) {
