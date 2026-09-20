@@ -61,8 +61,10 @@ interface Props {
  * about what's on the list two screens away.
  *
  * So the sheet answers it. Stores are ranked by how much of the list they're
- * known to carry, and the best one is picked for you on opening. **The gap is
- * the other half** — one store rarely has everything, and a plan of "Trader
+ * known to carry, but nothing is picked for you — the sheet opens on "No
+ * store" and the ranking is there to choose from, not a guess to notice and
+ * undo. **The gap is the other half** — one store rarely has everything, and
+ * a plan of "Trader
  * Joe's, then the pharmacy for shampoo" is the thing worth surfacing, so the
  * card names the second stop and what it adds. Naming the missing items rather
  * than counting them is deliberate: "3 items aren't there" can't be acted on,
@@ -106,7 +108,6 @@ export function ShoppingTripSheet({ visible, onClose, onCreate, onStart, intent 
   const activeListId = useGroceryStore(s => s.activeListId);
   const itemShops = useGroceryStore(useShallow(s => s.itemShops));
   const shops = useGroceryStore(useShallow(s => s.shops));
-  const lastShopId = useGroceryStore(s => s.lastShopId);
 
   // The trolley being shopped, not every trolley you have going: a plan built
   // over both lists would send you to a store for things on a list you aren't
@@ -129,30 +130,18 @@ export function ShoppingTripSheet({ visible, onClose, onCreate, onStart, intent 
   const [correcting, setCorrecting] = useState<string | null>(null);
   const [ticked, setTicked] = useState<string[]>([]);
 
-  // Read through refs so the reset fires on opening only. The list can't
-  // change while the sheet is up, but re-deriving the default from a store
-  // update would silently undo a choice the user had already made.
-  const planRef = useRef(plan);
-  planRef.current = plan;
-  const lastShopRef = useRef(lastShopId);
-  lastShopRef.current = lastShopId;
   // What `selected` got seeded to on open, so handleCancel can tell a real
   // pick apart from the default the sheet arrived with.
   const selectedBaselineRef = useRef<string[]>([]);
 
   useEffect(() => {
     if (!visible) return;
-    const current = planRef.current;
-    // The best store, or — with nothing on the list to rank by — wherever the
-    // last trip was finished, which is FinishShoppingSheet's default and right
-    // more often than it's wrong.
-    const best = summarizeTrip([], current).suggestion[0]?.shop.id ?? null;
-    const last = lastShopRef.current;
-    const fallback = last && current.coverage.some(c => c.shop.id === last) ? last : null;
-    const initial = best ?? fallback;
-    const seeded = initial ? [initial] : [];
-    setSelected(seeded);
-    selectedBaselineRef.current = seeded;
+    // No store picked by default — the ranking below is a suggestion to pick
+    // from, not a pre-made choice. "No store" is a real answer (see the
+    // header comment), so the sheet opens on it rather than pre-selecting a
+    // guess the user then has to notice and undo.
+    setSelected([]);
+    selectedBaselineRef.current = [];
     setCorrecting(null);
   }, [visible]);
 
