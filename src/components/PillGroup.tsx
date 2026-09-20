@@ -7,6 +7,7 @@ import { InlineAction } from './InlineAction';
 import { haptics } from '../utils/haptics';
 import { animateLayout } from '../utils/layoutAnimation';
 import { useScrollFieldIntoView } from '../hooks/useKeyboardInsetScroll';
+import { useFilterField } from '../hooks/useFilterField';
 import {
   resolvePillOverflow,
   resolvePillSubmit,
@@ -106,10 +107,12 @@ export function PillGroup({
   // misses exactly that case.
   const scrollIntoView = useScrollFieldIntoView();
 
-  const [query, setQuery] = useState('');
+  const filterField = useFilterField();
+  const query = filterField.query;
   const [showAll, setShowAll] = useState(false);
   const [adding, setAdding] = useState(false);
-  const [draft, setDraft] = useState('');
+  const draftField = useFilterField();
+  const draft = draftField.query;
   const [error, setError] = useState<string | null>(null);
 
   const overflow = useMemo(
@@ -130,10 +133,15 @@ export function PillGroup({
   // A filterable grid types into the filter; a small one types into the inline
   // input the "+ New" button opens. One draft either way, so the submit and
   // error paths below don't have to care which mode they're in.
+  // Two uncontrolled fields rather than one, because the two roles are two
+  // mutually exclusive TextInputs and an uncontrolled field is only ever the
+  // one that is mounted. `active` is whichever that is; the rest of the file
+  // goes on seeing a single `text`/`setText` pair as before.
+  const active = filterable ? filterField : draftField;
   const text = filterable ? query : draft;
   const setText = (t: string) => {
     if (error) setError(null);
-    (filterable ? setQuery : setDraft)(t);
+    active.setQuery(t);
   };
 
   const trimmed = text.trim();
@@ -148,8 +156,8 @@ export function PillGroup({
       return;
     }
     animateLayout();
-    setQuery('');
-    setDraft('');
+    filterField.clear();
+    draftField.clear();
     setAdding(false);
   };
 
@@ -167,8 +175,10 @@ export function PillGroup({
 
   const field = (placeholder: string, extra: object, autoFocus = false, onBlur?: () => void) => (
     <TextInput
+      {...active.props}
       style={[styles.field, extra, !!error && styles.fieldError]}
-      value={text}
+      // After the spread: this field clears its error banner before it mirrors
+      // anything, so the wrapper owns the change event rather than the hook.
       onChangeText={setText}
       placeholder={placeholder}
       placeholderTextColor={colors.textTertiary}
