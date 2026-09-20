@@ -1,0 +1,4 @@
+{
+  "message": "Fixed the \"Meal eaten\" sheet sometimes freezing mid-fade and staying stuck over the screen behind it, instead of closing.",
+  "date": "2026-09-20"
+}
