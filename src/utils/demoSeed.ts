@@ -62,7 +62,7 @@ import {
   weekendNudgeLinkUrl,
   weekendNudgeNotes,
 } from './weekendTasks';
-import { weatherSourceId, defaultWeatherRules, describeWeatherWindow, weatherTaskTitle } from './weatherTasks';
+import { weatherSourceId, defaultWeatherRules, describeWeatherWindow, weatherTaskTitle, WEATHER_LINK_URL } from './weatherTasks';
 import { screenTimeSourceId, defaultScreenTimeRules } from './screenTimeRules';
 import { defaultEventRules, eventOccurrenceKey, eventTaskSourceId } from './eventTasks';
 import { healthSourceId, defaultHealthRules } from './healthRules';
@@ -1178,6 +1178,7 @@ export function seedDemoData(): void {
     ),
     dueDate: today.toISOString(),
     category: 'Weather',
+    linkUrl: WEATHER_LINK_URL,
     ...generatedBy('weather', weatherSourceId(dayKeyOf(today), sunscreenRule.id)),
   });
   // And the day-ahead half of the same feature, which is invisible until
@@ -1190,6 +1191,7 @@ export function seedDemoData(): void {
     ),
     dueDate: addDays(today, 1).toISOString(),
     category: 'Weather',
+    linkUrl: WEATHER_LINK_URL,
     ...generatedBy('weather', weatherSourceId(tomorrowKey, rainRule.id)),
   });
 

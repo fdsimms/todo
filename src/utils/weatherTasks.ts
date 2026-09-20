@@ -3,6 +3,13 @@ import type { WeatherHour } from '../services/weatherLookup';
 import { classifyWeather, conditionNoun } from './weatherCondition';
 import { generatedSourceOf } from './generatedTasks';
 import { generateId } from './id';
+import { KNOWN_LINK_APPS } from '../constants/linkApps';
+
+/**
+ * The Apple Weather app's own scheme, opened by every weather task's link
+ * button — see the note on the `KNOWN_LINK_APPS` entry it's read from.
+ */
+export const WEATHER_LINK_URL = KNOWN_LINK_APPS.find(app => app.name === 'Weather')!.scheme;
 
 /**
  * Weather rules — "on a sunny day, add a task to put on sunscreen".
