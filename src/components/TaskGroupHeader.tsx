@@ -1,4 +1,4 @@
-import React, { useMemo, useState } from 'react';
+import React, { useCallback, useMemo, useState } from 'react';
 import { View, Text, TouchableOpacity, StyleSheet } from 'react-native';
 import Ionicons from '@expo/vector-icons/Ionicons';
 import type { Task, TaskGroup } from '../types';
@@ -48,7 +48,12 @@ interface Props {
    * wants.
    */
   expanded?: boolean;
-  onToggleCollapse: () => void;
+  // Takes the group's own id back for the reason the four below it do, and
+  // needs it more than they do: this header is memoized, and its collapse is
+  // the one transition a stray re-commit is visible in (see
+  // AnimatedCollapsible), so a fresh closure per group per render would both
+  // defeat the memo and land inside the 250ms it matters.
+  onToggleCollapse: (groupId: string) => void;
   // These three (plus onPressEdit below) take the group's own id back rather
   // than closing over it — the same reason TaskItem's row handlers take
   // `task.id` — so TodayScreen can hand every header one stable `useCallback`
@@ -74,7 +79,20 @@ interface Props {
   onPressPin?: (groupId: string) => void;
 }
 
-export function TaskGroupHeader({
+/**
+ * Memoized, and that is load-bearing rather than an optimisation.
+ *
+ * This header folds its summary line away on the same clock the tray below it
+ * runs (see the AnimatedCollapsible further down), and a React commit landing
+ * inside those 250ms repaints that section at a clamp the animation has
+ * already moved off — AnimatedCollapsible's own header is the long version of
+ * why. Today re-renders for reasons that have nothing to do with this stack (a
+ * minute tick, any store write), and its list doesn't virtualize, so without
+ * this every stack on screen took that commit. Every prop it is handed is kept
+ * referentially stable at the call sites for the same reason; see the note on
+ * `onToggleCollapse`.
+ */
+export const TaskGroupHeader = React.memo(function TaskGroupHeader({
   group,
   allChildren,
   dueTodayOverride,
@@ -93,6 +111,7 @@ export function TaskGroupHeader({
   const colors = useColors();
   const styles = useMemo(() => makeStyles(colors), [colors]);
   const isExpanded = expanded ?? !group.collapsed;
+  const toggleCollapse = useCallback(() => onToggleCollapse(group.id), [onToggleCollapse, group.id]);
   const [showDefer, setShowDefer] = useState(false);
   // Mounted on first open and kept, so it closes through `visible` rather
   // than by leaving the tree. See useSheetMount.
@@ -161,7 +180,7 @@ export function TaskGroupHeader({
                 // an N-task completion (with its recurrence spawns, chain
                 // advances and streak writes) one stray tap away from the child
                 // checkboxes directly below it.
-                onPress={onToggleCollapse}
+                onPress={toggleCollapse}
                 onLongPress={completeAll}
                 delayLongPress={interaction.delayLongPress}
                 activeOpacity={interaction.activeOpacity}
@@ -183,7 +202,7 @@ export function TaskGroupHeader({
 
               <TouchableOpacity
                 style={styles.content}
-                onPress={onToggleCollapse}
+                onPress={toggleCollapse}
                 onLongPress={onDrag}
                 delayLongPress={interaction.delayLongPress}
                 activeOpacity={interaction.activeOpacity}
@@ -292,7 +311,7 @@ export function TaskGroupHeader({
       )}
     </>
   );
-}
+});
 
 // The stack's leading tile, and the gap between it and the title.
 const GLYPH_SIZE = 30;
