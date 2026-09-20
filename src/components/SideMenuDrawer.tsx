@@ -36,6 +36,7 @@ import {
   type NavMenuRow, type NavSearchResult,
 } from '../utils/navHubs';
 import { tipsFor } from '../utils/tips';
+import { useFilterField } from '../hooks/useFilterField';
 
 // 85% rather than the 72% this used to be. The drawer is the only thing on
 // screen while it's open — everything behind it is blurred and dimmed and
@@ -100,7 +101,8 @@ export function SideMenuDrawer({ visible, onClose, onNavigate, onOpenSettings, a
   // The whole history, not today's rows — see useFoodLogStore.totalCount.
   const foodLogCount = useFoodLogStore(s => s.totalCount);
 
-  const [query, setQuery] = useState('');
+  const searchFilter = useFilterField();
+  const query = searchFilter.query;
   const menuOptions = useMemo(() => ({
     kitchenEnabled,
     simpleMode,
@@ -159,7 +161,7 @@ export function SideMenuDrawer({ visible, onClose, onNavigate, onOpenSettings, a
       setIsRendered(true);
       // A query handed back on the next open is a filtered menu with no visible
       // reason why — the same rule the task editor's field search follows.
-      setQuery('');
+      searchFilter.clear();
       // After the slide-in, not during it: the indicator is drawn against the
       // drawer's own right edge, which is still crossing the screen.
       const flash = setTimeout(() => listRef.current?.flashScrollIndicators(), 260);
@@ -289,8 +291,7 @@ export function SideMenuDrawer({ visible, onClose, onNavigate, onOpenSettings, a
           <View style={[styles.header, { borderBottomColor: colors.separator }]}>
             <Text style={[styles.headerTitle, { color: colors.text }]}>Menu</Text>
             <SearchField
-              value={query}
-              onChangeText={setQuery}
+              field={searchFilter}
               placeholder="Find a screen"
               style={styles.search}
               accessibilityLabel="Find a screen"

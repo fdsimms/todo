@@ -8,6 +8,7 @@ import { spacing, font, fontWeight, radius, border, type Colors } from '../theme
 import { haptics } from '../utils/haptics';
 import { useBulkBarEntrance } from '../hooks/useBulkBarEntrance';
 import { useScrollEdgeFade } from '../hooks/useScrollEdgeFade';
+import { useFilterField } from '../hooks/useFilterField';
 
 export interface ListBulkAction {
   key: string;
@@ -81,20 +82,20 @@ export function ListBulkBar({
   const fade = useScrollEdgeFade();
   const entranceStyle = useBulkBarEntrance();
   const [panel, setPanel] = useState<'actions' | 'category'>('actions');
-  const [categoryText, setCategoryText] = useState('');
+  const { query: categoryText, clear: clearCategoryText, props: filterField } = useFilterField();
 
   const allSelected = selectedCount === totalCount;
   const none = selectedCount === 0;
 
   const goBack = () => {
     setPanel('actions');
-    setCategoryText('');
+    clearCategoryText();
   };
 
   const handleSetCategory = (name: string | null) => {
     haptics.tap();
     category?.onSet(name);
-    setCategoryText('');
+    clearCategoryText();
     setPanel('actions');
   };
 
@@ -198,8 +199,7 @@ export function ListBulkBar({
             style={styles.categoryInput}
             placeholder="Find or add a category…"
             placeholderTextColor={colors.textTertiary}
-            value={categoryText}
-            onChangeText={setCategoryText}
+            {...filterField}
             returnKeyType="done"
             onSubmitEditing={handleSubmit}
             autoCapitalize="words"

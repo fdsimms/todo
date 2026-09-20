@@ -24,6 +24,7 @@ import { useRecipeStore } from '../store/useRecipeStore';
 import { rankRecipes, describeRecipe, cleanRecipeName, sortRecipesForDisplay } from '../utils/recipeUtils';
 import { RECIPE_NAME_MAX_LENGTH } from '../types';
 import { useSheetHiddenOffset } from '../hooks/useSheetHiddenOffset';
+import { useFilterField } from '../hooks/useFilterField';
 
 export interface MealReplacement {
   recipeId: string | null;
@@ -61,7 +62,7 @@ export function MealReplaceItemSheet({ visible, count, onReplace, onClose }: Pro
   const styles = useMemo(() => makeStyles(colors), [colors]);
 
   const recipes = useRecipeStore(useShallow(s => s.recipes));
-  const [query, setQuery] = useState('');
+  const { query, clear: clearQuery, props: filterField } = useFilterField();
   const typed = cleanRecipeName(query);
 
   const matches = useMemo(() => {
@@ -104,7 +105,7 @@ export function MealReplaceItemSheet({ visible, count, onReplace, onClose }: Pro
 
   useEffect(() => {
     if (!visible) return;
-    setQuery('');
+    clearQuery();
     translateY.setValue(hiddenY);
     backdropOpacity.setValue(0);
     keyboardOffset.setValue(0);
@@ -170,8 +171,7 @@ export function MealReplaceItemSheet({ visible, count, onReplace, onClose }: Pro
             <Ionicons name="search" size={15} color={colors.textTertiary} />
             <TextInput
               style={styles.searchInput}
-              value={query}
-              onChangeText={setQuery}
+              {...filterField}
               placeholder="Search recipes, or type a name"
               placeholderTextColor={colors.textTertiary}
               autoCorrect={false}

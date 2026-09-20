@@ -75,6 +75,7 @@ import { asksOnCompletion, deliverableKindFor, formatTaskDeliverable } from '../
 import { DeliverablePromptSheet } from '../components/DeliverablePromptSheet';
 import { sectionListCellLayout } from '../utils/sectionListLayout';
 import type { Task } from '../types';
+import { useFilterField } from '../hooks/useFilterField';
 
 interface LogbookSection {
   title: string;
@@ -263,7 +264,8 @@ export function LogbookScreen() {
   // Held so the sheet can close through `visible` rather than by leaving
   // the tree while still on screen. See useSheetSubject.
   const shownAnswerTask = useSheetSubject(answerTask);
-  const [query, setQuery] = useState('');
+  const searchFilter = useFilterField();
+  const query = searchFilter.query;
   const [selectedCategory, setSelectedCategory] = useState<string | null>(null);
   const [selectedTag, setSelectedTag] = useState<string | null>(null);
   const [selectedPerson, setSelectedPerson] = useState<string | null>(null);
@@ -490,8 +492,7 @@ export function LogbookScreen() {
         <SearchField
           style={styles.searchBar}
           placeholder="Search cooking"
-          value={query}
-          onChangeText={setQuery}
+          field={searchFilter}
         />
       )}
 
@@ -500,8 +501,7 @@ export function LogbookScreen() {
           <SearchField
             style={styles.searchBar}
             placeholder="Search the Logbook"
-            value={query}
-            onChangeText={setQuery}
+            field={searchFilter}
           />
           {(categoryChipItems.length > 0 || tagChipItems.length > 0) && (
             <ScrollView

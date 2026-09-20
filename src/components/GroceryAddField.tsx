@@ -1,4 +1,4 @@
-import React, { useMemo, useRef, useState, useCallback, forwardRef, useImperativeHandle } from 'react';
+import React, { useMemo, useState, useCallback, forwardRef, useImperativeHandle } from 'react';
 import {
   View,
   Text,
@@ -34,6 +34,7 @@ import {
 } from '../types';
 import { describePreferredProduct } from '../utils/groceryProduct';
 import { generateId } from '../utils/id';
+import { useFilterField } from '../hooks/useFilterField';
 
 interface Props {
   /**
@@ -95,7 +96,6 @@ export const GroceryAddField = forwardRef<GroceryAddFieldHandle, Props>(function
 ) {
   const colors = useColors();
   const styles = useMemo(() => makeStyles(colors), [colors]);
-  const inputRef = useRef<TextInput>(null);
 
   const items = useGroceryStore(s => s.items);
   const listEntries = useGroceryStore(s => s.listEntries);
@@ -112,7 +112,8 @@ export const GroceryAddField = forwardRef<GroceryAddFieldHandle, Props>(function
   const setOnHandUntil = useGroceryStore(s => s.setOnHandUntil);
   const setRunningLow = useGroceryStore(s => s.setRunningLow);
 
-  const [text, setText] = useState('');
+  const addFilter = useFilterField();
+  const text = addFilter.query;
   const [focused, setFocused] = useState(false);
   const [status, setStatus] = useState<string | null>(null);
   /**
@@ -213,7 +214,7 @@ export const GroceryAddField = forwardRef<GroceryAddFieldHandle, Props>(function
       )
     );
     haptics.success();
-    setText('');
+    addFilter.clear();
     setStatus(null);
     // Two rows, so there's no single item the offer could be about — same call
     // the paste path makes, and for the same reason.
@@ -260,7 +261,7 @@ export const GroceryAddField = forwardRef<GroceryAddFieldHandle, Props>(function
       animateLayout();
       const item = addByName(trimmed, override);
       haptics.tap();
-      setText('');
+      addFilter.clear();
       setStatus(null);
       setRejectedQuantity(null);
       setRejectedPrep(null);
@@ -332,7 +333,7 @@ export const GroceryAddField = forwardRef<GroceryAddFieldHandle, Props>(function
   const submit = useCallback(() => submitWith(true), [submitWith]);
 
   const discardPending = useCallback(() => {
-    setText('');
+    addFilter.clear();
     setStatus(null);
     setPantryOffer(null);
     setRejectedQuantity(null);
@@ -341,7 +342,7 @@ export const GroceryAddField = forwardRef<GroceryAddFieldHandle, Props>(function
   }, []);
 
   useImperativeHandle(ref, () => ({
-    focus: () => inputRef.current?.focus(),
+    focus: () => addFilter.inputRef.current?.focus(),
     // Without the offer — see `commit`'s own note on why the closing sheet
     // isn't somewhere to put a question.
     commitPending: () => submitWith(false),
@@ -359,7 +360,7 @@ export const GroceryAddField = forwardRef<GroceryAddFieldHandle, Props>(function
   const handleChange = useCallback(
     (next: string) => {
       if (!next.includes('\n')) {
-        setText(next);
+        addFilter.setQuery(next);
         if (status) setStatus(null);
         // Unconditional: React bails out when it's already null, so this needs
         // no dependency of its own the way `status` above does.
@@ -380,12 +381,12 @@ export const GroceryAddField = forwardRef<GroceryAddFieldHandle, Props>(function
       const { added, alreadyOnList } = addManyFromText(next);
       const total = added.length + alreadyOnList.length;
       if (total === 0) {
-        setText('');
+        addFilter.clear();
         return;
       }
 
       haptics.success();
-      setText('');
+      addFilter.clear();
       // Only the part the caller can't already see. The sheet header counts
       // what was added; what it can't say is that some of the paste was
       // already on the list, which is why those lines didn't become rows.
@@ -418,9 +419,10 @@ export const GroceryAddField = forwardRef<GroceryAddFieldHandle, Props>(function
       <View style={[styles.field, focused && styles.fieldFocused]}>
         <Ionicons name="add" size={iconSize.md} color={colors.textTertiary} />
         <TextInput
-          ref={inputRef}
+          {...addFilter.props}
           style={styles.input}
-          value={text}
+          // After the spread on purpose: this field parses a paste before it
+          // mirrors anything, so it owns the change event rather than the hook.
           onChangeText={handleChange}
           onFocus={() => setFocused(true)}
           onBlur={() => setFocused(false)}
@@ -443,7 +445,7 @@ export const GroceryAddField = forwardRef<GroceryAddFieldHandle, Props>(function
         {!!text && (
           <TouchableOpacity
             onPress={() => {
-              setText('');
+              addFilter.clear();
               setRejectedQuantity(null);
               setRejectedPrep(null);
               setRejectedPurpose(null);

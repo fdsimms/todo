@@ -38,6 +38,7 @@ import { SheetScrim } from './SheetScrim';
 import { haptics } from '../utils/haptics';
 import { useDebouncedValue } from '../hooks/useDebouncedValue';
 import type { Task } from '../types';
+import { useFilterField } from '../hooks/useFilterField';
 
 // Keeps the field's own value/onChangeText bound to the raw, fast-updating
 // `query` state below — only the quickSearch recompute waits on this delay.
@@ -212,7 +213,6 @@ export function QuickSearchModal({ visible, onClose, onSelectTask, onOpenFullSea
   const colors = useColors();
   const { isDark, shadows } = useTheme();
   const styles = useMemo(() => makeStyles(colors), [colors]);
-  const inputRef = useRef<TextInput>(null);
 
   const tasks = useTaskStore(s => s.tasks);
   const projects = useProjectStore(s => s.projects);
@@ -220,7 +220,8 @@ export function QuickSearchModal({ visible, onClose, onSelectTask, onOpenFullSea
   const pushRecentSearch = useSettingsStore(s => s.pushRecentSearch);
   const clearRecentSearches = useSettingsStore(s => s.clearRecentSearches);
 
-  const [query, setQuery] = useState('');
+  const searchFilter = useFilterField();
+  const query = searchFilter.query;
 
   const scaleAnim = useRef(new Animated.Value(0.94)).current;
   // Enters from *above* its resting place, unlike QuickAddModal — the card is
@@ -254,7 +255,7 @@ export function QuickSearchModal({ visible, onClose, onSelectTask, onOpenFullSea
 
   useEffect(() => {
     if (!visible) return;
-    setQuery('');
+    searchFilter.clear();
     scaleAnim.setValue(0.94);
     translateYAnim.setValue(-20);
     cardOpacity.setValue(0);
@@ -268,7 +269,7 @@ export function QuickSearchModal({ visible, onClose, onSelectTask, onOpenFullSea
     // Focus (and the keyboard's own slide-up) starts alongside the card
     // animation rather than after it, so the keyboard is up sooner —
     // same fix as QuickAddModal's (#1210).
-    inputRef.current?.focus();
+    searchFilter.inputRef.current?.focus();
   }, [visible]);
 
   const dismiss = (then?: () => void) => {
@@ -318,11 +319,9 @@ export function QuickSearchModal({ visible, onClose, onSelectTask, onOpenFullSea
           ]}
         >
           <SearchField
-            ref={inputRef}
             surface="sunken"
             placeholder="Search tasks"
-            value={query}
-            onChangeText={setQuery}
+            field={searchFilter}
             onSubmitEditing={handleOpenFull}
           />
 
@@ -347,7 +346,7 @@ export function QuickSearchModal({ visible, onClose, onSelectTask, onOpenFullSea
                 <TouchableOpacity
                   key={q}
                   style={styles.resultRow}
-                  onPress={() => setQuery(q)}
+                  onPress={() => searchFilter.seed(q)}
                   activeOpacity={interaction.activeOpacity}
                   accessibilityRole="button"
                   accessibilityLabel={`Search again for ${q}`}
