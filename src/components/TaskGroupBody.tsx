@@ -27,6 +27,24 @@ interface Props {
  * rows and their header are inside one region with a visible edge, so a line
  * pointing at the relationship is redundant, and it was drawn against the side
  * of a card the header no longer has.
+ *
+ * **Deliberately not memoized, unlike TaskGroupHeader beside it** — not an
+ * oversight, and a `React.memo` here would be worse than nothing because it
+ * can never hit. Every caller builds this component's `children` inline (the
+ * stack's own `SortableList` on Today, a `children.map` everywhere else), and
+ * on Today those rows come out of `renderTaskRow`, a closure over most of the
+ * screen's state that is rebuilt on every render. So `children` is a fresh
+ * element on every pass and the shallow compare fails every time, leaving a
+ * memo that costs a comparison and pays nothing. The header could be memoized
+ * precisely because it takes values rather than a subtree.
+ *
+ * That matters because a React commit landing inside the 250ms collapse
+ * repaints the section at a clamp the animation has moved off (see
+ * AnimatedCollapsible). Making this one immune would mean lifting the whole
+ * stack row — `renderTaskRow` included — out of the screen body, which is a
+ * real refactor rather than a `memo()` call. Until then the protection is
+ * AnimatedCollapsible committing the state the section is coming *from*, so
+ * that a stray commit at the start of a transition paints the right thing.
  */
 export function TaskGroupBody({ expanded, hasChildren, dragging = false, children }: Props) {
   return (

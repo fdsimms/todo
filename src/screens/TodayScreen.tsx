@@ -2519,10 +2519,26 @@ export function TodayScreen() {
   // still false), so collapsing and expanding again appears to lose the
   // tasks.
   const pendingGroupDragRef = useRef<string | null>(null);
-  const startGroupDrag = (groupId: string, drag: () => void) => {
+  const startGroupDrag = useCallback((groupId: string, drag: () => void) => {
     pendingGroupDragRef.current = groupId;
     drag();
     pendingGroupDragRef.current = null;
+  }, []);
+
+  // The wrapper above, cached per stack — the same thing ReorderableList's own
+  // `dragHandlerFor` does for its rows, and for the same reason one level up:
+  // TaskGroupHeader is memoized, and building this inline in the render map
+  // handed every header a fresh function identity on every render of the list,
+  // which is enough on its own to defeat the memo. The row's `drag` is already
+  // stable per key, so the cache only has to notice the rare case where it
+  // isn't (a stack that changed slot) and rebuild that one entry.
+  const groupDragWrappersRef = useRef(new Map<string, { drag: () => void; wrapped: () => void }>());
+  const groupDragHandlerFor = (groupId: string, drag: () => void) => {
+    const cached = groupDragWrappersRef.current.get(groupId);
+    if (cached && cached.drag === drag) return cached.wrapped;
+    const wrapped = () => startGroupDrag(groupId, drag);
+    groupDragWrappersRef.current.set(groupId, { drag, wrapped });
+    return wrapped;
   };
 
   // Tracks a "drag onto a group to join it" gesture while a plain loose task
@@ -2598,6 +2614,33 @@ export function TodayScreen() {
     });
   }, [completeGroup, requestComplete]);
   const handleGroupDefer = useCallback((groupId: string, date: Date) => deferGroup(groupId, date), [deferGroup]);
+  // Id-bound like the rest, and here it earns it twice over: TaskGroupHeader
+  // is memoized, so a fresh arrow per group per render would defeat that
+  // outright — and the one thing a stack header must not do is re-commit
+  // while its own collapse is animating (see AnimatedCollapsible).
+  //
+  // No animateLayout(): AnimatedCollapsible already owns a smooth
+  // Reanimated-driven height transition for this row, and stacking a
+  // LayoutAnimation on the same commit fights it — LayoutAnimation grabs the
+  // view's current committed frame to animate from, which can race the
+  // in-progress Reanimated value and leave the row frozen at zero height
+  // until something else (a remount) forces a fresh layout. Inbox's copy of
+  // this handler called it for a while, which is most of why an Inbox stack
+  // read worse than a Today one.
+  //
+  // Clearing draggingGroupId doubles as the recovery path if a header drag
+  // ever ends without onDragEnd: a tap landing here means no drag is in
+  // flight, and without it the stack would stay bodiless no matter how many
+  // times it's collapsed and expanded. A no-op on the surfaces that can't
+  // drag a header.
+  const handleGroupToggleCollapse = useCallback((groupId: string) => {
+    if (expandedTaskId !== null) { setExpandedTaskId(null); return; }
+    haptics.tap();
+    setDraggingGroupId(null);
+    const group = useTaskGroupStore.getState().getGroupById(groupId);
+    if (!group) return;
+    setGroupCollapsed(groupId, !group.collapsed);
+  }, [expandedTaskId, setGroupCollapsed]);
   const handleGroupPin = useCallback((groupId: string) => { animateLayout(); pinGroup(groupId); }, [pinGroup]);
   const handleGroupPressEdit = useCallback((groupId: string) => {
     const group = useTaskGroupStore.getState().getGroupById(groupId);
@@ -2750,26 +2793,9 @@ export function TodayScreen() {
               filtered={groupTallyFiltered}
               pinned={groupPinInfo.get(item.group.id)?.pinned ?? false}
               pinDisabled={!(groupPinInfo.get(item.group.id)?.pinnable ?? false)}
-              onToggleCollapse={() => {
-                if (expandedTaskId !== null) { setExpandedTaskId(null); return; }
-                haptics.tap();
-                // No animateLayout() here: AnimatedCollapsible already owns a
-                // smooth Reanimated-driven height transition for this row, and
-                // stacking a LayoutAnimation on the same commit fights it —
-                // LayoutAnimation grabs the view's current committed frame to
-                // animate from, which can race the in-progress Reanimated
-                // value and leave the row frozen at zero height until
-                // something else (a remount) forces a fresh layout.
-                //
-                // A tap landing here means no drag is in flight, so this
-                // doubles as the recovery path if one ever ends without
-                // onDragEnd — otherwise the stack would stay bodiless no
-                // matter how many times it's collapsed and expanded.
-                setDraggingGroupId(null);
-                setGroupCollapsed(item.group.id, !item.group.collapsed);
-              }}
+              onToggleCollapse={handleGroupToggleCollapse}
               {...groupHeaderProps}
-              onDrag={!selectionMode && drag ? () => startGroupDrag(item.group.id, drag) : undefined}
+              onDrag={!selectionMode && drag ? groupDragHandlerFor(item.group.id, drag) : undefined}
             />
             <TaskGroupBody
               expanded={!item.group.collapsed && draggingGroupId !== item.group.id}
@@ -2957,12 +2983,7 @@ export function TodayScreen() {
           filtered={filterHasReminder}
           pinned={groupPinInfo.get(group.id)?.pinned ?? false}
           pinDisabled={!(groupPinInfo.get(group.id)?.pinnable ?? false)}
-          onToggleCollapse={() => {
-            if (expandedTaskId !== null) { setExpandedTaskId(null); return; }
-            haptics.tap();
-            animateLayout();
-            setGroupCollapsed(group.id, !group.collapsed);
-          }}
+          onToggleCollapse={handleGroupToggleCollapse}
           {...groupHeaderProps}
         />
         <TaskGroupBody expanded={!group.collapsed} hasChildren={children.length > 0}>
@@ -3039,11 +3060,7 @@ export function TodayScreen() {
         filtered
         pinned={groupPinInfo.get(group.id)?.pinned ?? false}
         pinDisabled={!(groupPinInfo.get(group.id)?.pinnable ?? false)}
-        onToggleCollapse={() => {
-          if (expandedTaskId !== null) { setExpandedTaskId(null); return; }
-          haptics.tap();
-          setGroupCollapsed(group.id, !group.collapsed);
-        }}
+        onToggleCollapse={handleGroupToggleCollapse}
         {...groupHeaderProps}
       />
       <TaskGroupBody expanded={!group.collapsed} hasChildren={children.length > 0}>

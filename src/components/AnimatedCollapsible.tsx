@@ -71,15 +71,27 @@ const UNMEASURED_MAX = 100000;
 export function AnimatedCollapsible({ expanded, clip = true, children }: Props) {
   const [contentHeight, setContentHeight] = useState<number | null>(null);
   const progress = useSharedValue(expanded ? 1 : 0);
-  // Which resting state React itself should commit — see `resting` below. Open
-  // only once the animation has actually landed there, so a transition commits
-  // the state it is coming *from*.
+  // Which resting state React itself should commit — see `resting` below. It
+  // moves only when an animation *lands*, in either direction, so a transition
+  // commits the state the section is coming *from*.
   const [settledOpen, setSettledOpen] = useState(expanded);
 
   useEffect(() => {
-    // Closing leaves the open resting state at once; opening claims it only
-    // when the animation finishes, in the callback below.
-    if (!expanded) setSettledOpen(false);
+    // **Both directions settle in the callback below, and nowhere else.**
+    // Writing the closed state eagerly here on the closing edge reads as the
+    // tidier thing to do — the section is closing, so say so — and it is the
+    // one way this component can jitter entirely on its own. That write
+    // schedules a second render of its own, which lands a frame after the
+    // tap's while `progress` is still at 1, so React commits maxHeight 0 and
+    // opacity 0 over an animation that has barely started: the section snaps
+    // shut for a frame, Reanimated puts it back, and only then does it ease
+    // closed. Everything below it jumps by the section's whole height and
+    // back. On a list scrolled near its end it is worse than a flicker —
+    // ReorderableList tracks a shrinking content height frame by frame
+    // (onContentSizeChange), so it reads that one frame as a real shrink and
+    // issues a scroll the next frame doesn't undo. A stack jittered on expand
+    // as well as collapse, because its header folds its summary line away on
+    // the same clock running the other way (TaskGroupHeader).
     progress.value = withTiming(
       expanded ? 1 : 0,
       {
@@ -168,6 +180,10 @@ export function AnimatedCollapsible({ expanded, clip = true, children }: Props) 
  * section is coming *from*, which is where the one re-render that reliably
  * lands — the tap's own — already is, so that frame is indistinguishable from
  * the correct one.
+ *
+ * That last part is only true because `settledOpen` moves at the *end* of an
+ * animation in both directions and never at its start — see the effect above,
+ * which is where this went wrong once already.
  */
 const styles = StyleSheet.create({
   restingClosed: {
