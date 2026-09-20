@@ -78,6 +78,7 @@ import { SearchField } from '../components/SearchField';
 import { DetailHeader } from '../components/DetailHeader';
 import { useCopyToClipboard } from '../hooks/useCopyToClipboard';
 import { useSheetSubject } from '../hooks/useSheetSubject';
+import { useFilterField } from '../hooks/useFilterField';
 
 type RootStackParamList = {
   ProjectDetail: { projectId: string };
@@ -215,7 +216,8 @@ export function ProjectDetailScreen() {
   const [templateAppliedCount, setTemplateAppliedCount] = useState<number | null>(null);
   const [editorInitialDraft, setEditorInitialDraft] = useState<Partial<TaskDraft> | null>(null);
   const [showExistingPicker, setShowExistingPicker] = useState(false);
-  const [existingSearch, setExistingSearch] = useState('');
+  const searchFilter = useFilterField();
+  const existingSearch = searchFilter.query;
   const [showCompleted, setShowCompleted] = useState(false);
   const [notesExpanded, setNotesExpanded] = useState(false);
   // Not-now only, like every OfferBanner — reopening the project re-offers it,
@@ -584,7 +586,7 @@ export function ProjectDetailScreen() {
       setGroupEditorVisible(true);
       return;
     }
-    setExistingSearch('');
+    searchFilter.clear();
     setShowExistingPicker(true);
   };
 
@@ -1212,8 +1214,7 @@ export function ProjectDetailScreen() {
             <SearchField
               autoFocus
               style={styles.searchBar}
-              value={existingSearch}
-              onChangeText={setExistingSearch}
+              field={searchFilter}
               placeholder="Search tasks"
               accessibilityLabel="Search tasks to add"
             />

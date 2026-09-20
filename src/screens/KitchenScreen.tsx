@@ -70,6 +70,7 @@ import { haptics } from '../utils/haptics';
 import { animateLayout } from '../utils/layoutAnimation';
 import { resolveActiveTrip } from '../utils/activeTrip';
 import { resetToGroceries } from '../navigation/navigationRef';
+import { useFilterField } from '../hooks/useFilterField';
 
 /**
  * Everything the app currently thinks is in your kitchen, in one place — the
@@ -188,7 +189,7 @@ export function KitchenScreen() {
   const reopenLeftover = useLeftoverStore(s => s.reopenLeftover);
   const deleteLeftover = useLeftoverStore(s => s.deleteLeftover);
 
-  const [query, setQuery] = useState('');
+  const { query, clear: clearQuery, props: filterField } = useFilterField();
   const [openItemId, setOpenItemId] = useState<string | null>(null);
   // Which field the sheet opens on. Pantry for every row tap (see the sheet
   // below); the repeat-waste offer is the one thing that asks for another.
@@ -388,7 +389,7 @@ export function KitchenScreen() {
     haptics.success();
     // Cleared like every other add field in the app, so the next name can be
     // typed straight in; the row it just made is in the list behind it.
-    setQuery('');
+    clearQuery();
   };
 
   const handleMarkOut = (entry: KitchenEntry) => {
@@ -768,8 +769,7 @@ export function KitchenScreen() {
         <Ionicons name="search" size={iconSize.sm} color={colors.textTertiary} />
         <TextInput
           style={styles.search}
-          value={query}
-          onChangeText={setQuery}
+          {...filterField}
           placeholder="Find or add an item…"
           placeholderTextColor={colors.textTertiary}
           autoCorrect={false}

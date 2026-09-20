@@ -43,6 +43,7 @@ import { navigateToFoodSearchSettings } from './NutritionSearchSheet';
 import { haptics } from '../utils/haptics';
 import { confirmDelete } from '../utils/confirmDelete';
 import type { GroceryItem } from '../types';
+import { useFilterField } from '../hooks/useFilterField';
 
 const CHECKBOX_SIZE = 22;
 
@@ -86,7 +87,7 @@ export function GroceryCatalogSheet({ visible, onClose }: Props) {
   const currencySymbol = useSettingsStore(s => s.currencySymbol);
 
   const [selected, setSelected] = useState<Set<string>>(new Set());
-  const [query, setQuery] = useState('');
+  const { query, clear: clearQuery, props: filterField } = useFilterField();
   const [shopFilter, setShopFilter] = useState<string | null>(null);
   // Nested rather than a sibling — a Modal presents from its React parent's
   // view controller, so a sibling would ask this sheet's own presenter for a
@@ -98,7 +99,7 @@ export function GroceryCatalogSheet({ visible, onClose }: Props) {
   useEffect(() => {
     if (visible) {
       setSelected(new Set());
-      setQuery('');
+      clearQuery();
       setShopFilter(null);
       setEditingId(null);
     }
@@ -333,8 +334,7 @@ export function GroceryCatalogSheet({ visible, onClose }: Props) {
           <Ionicons name="search" size={iconSize.sm} color={colors.textTertiary} />
           <TextInput
             style={styles.search}
-            value={query}
-            onChangeText={setQuery}
+            {...filterField}
             placeholder="Search your grocery catalog"
             placeholderTextColor={colors.textTertiary}
             autoCorrect={false}

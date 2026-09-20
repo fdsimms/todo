@@ -39,6 +39,7 @@ import {
   type CategoryOption,
 } from '../utils/categoryPicker';
 import { useSheetHiddenOffset } from '../hooks/useSheetHiddenOffset';
+import { useFilterField } from '../hooks/useFilterField';
 
 interface ListProps {
   /**
@@ -101,7 +102,7 @@ export function CategoryPickerList({
   const categories = useCategoryStore(useShallow(s => s.categories));
   const addCategory = useTaskStore(s => s.addCategory);
 
-  const [query, setQuery] = useState('');
+  const { query, clear: clearQuery, props: filterField } = useFilterField();
 
   const options: CategoryOption[] = useMemo(
     () => names.map(name => ({ name, emoji: categories.find(c => c.name === name)?.emoji ?? null })),
@@ -205,8 +206,7 @@ export function CategoryPickerList({
         <Ionicons name="search" size={iconSize.sm} color={colors.textTertiary} />
         <TextInput
           style={styles.searchInput}
-          value={query}
-          onChangeText={setQuery}
+          {...filterField}
           placeholder={searchPlaceholder ?? (allowCreate ? 'Find or add a category…' : 'Find a category…')}
           placeholderTextColor={colors.textTertiary}
           returnKeyType="done"
@@ -217,7 +217,7 @@ export function CategoryPickerList({
         />
         {!!trimmed && (
           <TouchableOpacity
-            onPress={() => setQuery('')}
+            onPress={() => clearQuery()}
             hitSlop={8}
             accessibilityRole="button"
             accessibilityLabel="Clear the search"

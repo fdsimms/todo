@@ -6,6 +6,7 @@ import { spacing, radius, font, fontWeight, iconSize, interaction, type Colors }
 import type { GroceryItem } from '../types';
 import { rankGrocerySuggestions } from '../utils/grocerySuggest';
 import { haptics } from '../utils/haptics';
+import { useFilterField } from '../hooks/useFilterField';
 
 interface Props {
   items: readonly GroceryItem[];
@@ -36,7 +37,7 @@ interface Props {
 export function CatalogLinkPicker({ items, initialQuery, excludeItemId, onPick }: Props) {
   const colors = useColors();
   const styles = useMemo(() => makeStyles(colors), [colors]);
-  const [query, setQuery] = useState(initialQuery);
+  const { query, props: filterField } = useFilterField(initialQuery);
 
   const results = useMemo(
     () => rankGrocerySuggestions(query, items, new Date(), 6)
@@ -51,8 +52,7 @@ export function CatalogLinkPicker({ items, initialQuery, excludeItemId, onPick }
         <Ionicons name="search" size={iconSize.sm} color={colors.textTertiary} />
         <TextInput
           style={styles.search}
-          value={query}
-          onChangeText={setQuery}
+          {...filterField}
           placeholder="Find an item in your grocery catalog…"
           placeholderTextColor={colors.textTertiary}
           autoCorrect={false}

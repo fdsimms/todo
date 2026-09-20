@@ -79,6 +79,7 @@ import { resolveRecipeImagePath } from '../utils/recipePhoto';
 import { allRecipeTags, filterRecipesByTags, formatTagList, recipeTagCounts } from '../utils/recipeTags';
 import { tagColor } from '../utils/tagColor';
 import { groceryNameKey } from '../utils/groceryParse';
+import { useFilterField } from '../hooks/useFilterField';
 
 /**
  * The recipe box.
@@ -228,7 +229,7 @@ export function RecipesScreen() {
   const { planRecipe, offerPrepTasks, earliestUnplannedSlotToday } = usePlanMeal();
   // The recipe whose day is being picked; null closes the sheet.
   const [planningRecipe, setPlanningRecipe] = useState<Recipe | null>(null);
-  const [query, setQuery] = useState('');
+  const { query, props: filterField } = useFilterField();
   const [selectedTags, setSelectedTags] = useState<string[]>([]);
   const [tagFilterVisible, setTagFilterVisible] = useState(false);
   const [sortFilterVisible, setSortFilterVisible] = useState(false);
@@ -807,8 +808,7 @@ export function RecipesScreen() {
             <Ionicons name="search" size={iconSize.sm} color={colors.textTertiary} />
             <TextInput
               style={styles.searchInput}
-              value={query}
-              onChangeText={setQuery}
+              {...filterField}
               placeholder="Search recipes and ingredients"
               placeholderTextColor={colors.textTertiary}
               autoCapitalize="none"

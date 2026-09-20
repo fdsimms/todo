@@ -21,6 +21,7 @@ import { haptics } from '../utils/haptics';
 import { EMOJI_GROUPS, searchEmoji } from '../utils/emojiCatalog';
 import { firstEmoji } from '../utils/emojiInput';
 import { useSheetHiddenOffset } from '../hooks/useSheetHiddenOffset';
+import { useFilterField } from '../hooks/useFilterField';
 
 interface Props {
   visible: boolean;
@@ -53,7 +54,7 @@ export function EmojiPickerSheet({ visible, value, title = 'Choose an emoji', hi
   const { isDark } = useTheme();
   const styles = useMemo(() => makeStyles(colors), [colors]);
 
-  const [query, setQuery] = useState('');
+  const { query, clear: clearQuery, props: filterField } = useFilterField();
   const [groupIndex, setGroupIndex] = useState(0);
   const keyboardInputRef = useRef<TextInput>(null);
 
@@ -86,7 +87,7 @@ export function EmojiPickerSheet({ visible, value, title = 'Choose an emoji', hi
 
   useEffect(() => {
     if (!visible) return;
-    setQuery('');
+    clearQuery();
     setGroupIndex(0);
     translateY.setValue(hiddenY);
     backdropOpacity.setValue(0);
@@ -174,8 +175,7 @@ export function EmojiPickerSheet({ visible, value, title = 'Choose an emoji', hi
             <Ionicons name="search" size={15} color={colors.textTertiary} />
             <TextInput
               style={styles.searchInput}
-              value={query}
-              onChangeText={setQuery}
+              {...filterField}
               placeholder="Search emoji"
               placeholderTextColor={colors.textTertiary}
               autoCorrect={false}
@@ -186,7 +186,7 @@ export function EmojiPickerSheet({ visible, value, title = 'Choose an emoji', hi
             />
             {!!query && (
               <TouchableOpacity
-                onPress={() => setQuery('')}
+                onPress={() => clearQuery()}
                 hitSlop={8}
                 accessibilityRole="button"
                 accessibilityLabel="Clear search"

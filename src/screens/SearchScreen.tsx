@@ -1,4 +1,4 @@
-import React, { useState, useMemo, useRef, useEffect, useCallback } from 'react';
+import React, { useState, useMemo, useEffect, useCallback } from 'react';
 import {
   View,
   Text,
@@ -44,6 +44,7 @@ import { EmptyState } from '../components/EmptyState';
 import { HighlightedText } from '../components/HighlightedText';
 import { useDebouncedValue } from '../hooks/useDebouncedValue';
 import { format } from 'date-fns/format';
+import { useFilterField } from '../hooks/useFilterField';
 
 // How long the field waits for typing to pause before the expensive
 // fuzzySearch recompute runs. The TextInput's own value/onChangeText stay
@@ -339,14 +340,14 @@ export function SearchScreen() {
   const colors = useColors();
   const styles = useMemo(() => makeStyles(colors), [colors]);
 
-  const [query, setQuery] = useState('');
+  const searchFilter = useFilterField();
+  const query = searchFilter.query;
   const [editingTask, setEditingTask] = useState<Task | null>(null);
   const [editorVisible, setEditorVisible] = useState(false);
   const [editorInitialDraft, setEditorInitialDraft] = useState<Partial<TaskDraft> | null>(null);
   const [quickAddVisible, setQuickAddVisible] = useState(false);
   const [editingGroup, setEditingGroup] = useState<TaskGroup | null>(null);
   const [groupEditorVisible, setGroupEditorVisible] = useState(false);
-  const inputRef = useRef<TextInput>(null);
 
   // Handed a query by quick search (see QuickSearchModal's footer row).
   // `at` is stamped fresh on every handoff, so searching the same term twice
@@ -359,14 +360,14 @@ export function SearchScreen() {
   const [handledQueryAt, setHandledQueryAt] = useState<number | undefined>(undefined);
   if (route.params?.at !== undefined && route.params.at !== handledQueryAt) {
     setHandledQueryAt(route.params.at);
-    setQuery(route.params.query ?? '');
+    searchFilter.seed(route.params.query ?? '');
   }
 
   // Retyping a query you just typed would make the handoff a net loss, so the
   // field arrives focused and ready to be refined.
   useEffect(() => {
     if (handledQueryAt === undefined) return;
-    const timer = setTimeout(() => inputRef.current?.focus(), 0);
+    const timer = setTimeout(() => searchFilter.inputRef.current?.focus(), 0);
     return () => clearTimeout(timer);
   }, [handledQueryAt]);
 
@@ -375,7 +376,7 @@ export function SearchScreen() {
   // opens — same "reset on the way out" CalendarScreen uses for its expanded
   // row. Cleared on blur rather than on focus so a handoff from quick search
   // (the `at` effect above) never races this and gets its own query wiped.
-  useFocusEffect(useCallback(() => () => setQuery(''), []));
+  useFocusEffect(useCallback(() => () => searchFilter.clear(), []));
 
   // KeyboardAvoidingView only checks the keyboard's real state once, in its
   // own componentDidMount — after that it trusts keyboardWillShow/
@@ -589,11 +590,9 @@ export function SearchScreen() {
       <ScreenHeader title="Search" />
 
       <SearchField
-        ref={inputRef}
         style={styles.searchBar}
         placeholder="Search tasks"
-        value={query}
-        onChangeText={setQuery}
+        field={searchFilter}
         onSubmitEditing={rememberQuery}
       />
 
@@ -637,7 +636,7 @@ export function SearchScreen() {
                 <TouchableOpacity
                   key={q}
                   style={styles.recentRow}
-                  onPress={() => setQuery(q)}
+                  onPress={() => searchFilter.seed(q)}
                   activeOpacity={interaction.activeOpacity}
                   accessibilityRole="button"
                   accessibilityLabel={`Search again for ${q}`}

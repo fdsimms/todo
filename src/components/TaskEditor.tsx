@@ -129,6 +129,7 @@ import { PRIORITY_SEGMENTS } from '../utils/prioritySegments';
 import { describeRecurrence } from '../utils/recurrenceLabels';
 import { KNOWN_LINK_APPS, linkAppsFor } from '../constants/linkApps';
 import { capitalize } from '../utils/capitalize';
+import { useFilterField } from '../hooks/useFilterField';
 
 /** The kind picker's segments. The hint under the track says what the pick does. */
 const TASK_KIND_SEGMENTS = TASK_KIND_META.map(meta => ({
@@ -353,7 +354,8 @@ export function TaskEditor({ visible, task, initialDraft, onClose }: Props) {
   // did: the sheet is dense enough that a permanent bar would cost every task
   // edit to serve the ones that need it.
   const [searchOpen, setSearchOpen] = useState(false);
-  const [searchQuery, setSearchQuery] = useState('');
+  const searchFilter = useFilterField();
+  const searchQuery = searchFilter.query;
   const searchTerms = useMemo(
     () => (searchOpen ? editorSearchTerms(searchQuery) : []),
     [searchOpen, searchQuery]
@@ -397,7 +399,7 @@ export function TaskEditor({ visible, task, initialDraft, onClose }: Props) {
     haptics.tap();
     animateLayout();
     setSearchOpen(open => !open);
-    setSearchQuery('');
+    searchFilter.clear();
   }, []);
 
   const [title, setTitle] = useState('');
@@ -699,7 +701,7 @@ export function TaskEditor({ visible, task, initialDraft, onClose }: Props) {
     // A search belongs to the trip you made to find one field, not to the
     // sheet — reopening the editor on a filtered form would look broken.
     setSearchOpen(false);
-    setSearchQuery('');
+    searchFilter.clear();
     // Belongs to the task being edited, not to the sheet.
     kindMemory.current = {
       timedMinutes: null, targetCount: null, targetUnit: '', chainItems: [],
@@ -2471,8 +2473,7 @@ export function TaskEditor({ visible, task, initialDraft, onClose }: Props) {
         <SearchField
           style={styles.fieldSearch}
           placeholder="Find a field"
-          value={searchQuery}
-          onChangeText={setSearchQuery}
+          field={searchFilter}
           autoFocus
           accessibilityLabel="Find a field"
         />

@@ -17,6 +17,7 @@ import { spacing, font, fontWeight, radius, interaction, type Colors } from '../
 import { haptics } from '../utils/haptics';
 import { totalMinutes } from '../utils/recipeUtils';
 import type { Recipe } from '../types';
+import { useFilterField } from '../hooks/useFilterField';
 
 type RootStackParamList = {
   CookbookDetail: { cookbookId: string };
@@ -40,7 +41,8 @@ export function CookbookDetailScreen() {
   );
 
   const [linkPickerVisible, setLinkPickerVisible] = useState(false);
-  const [linkSearch, setLinkSearch] = useState('');
+  const searchFilter = useFilterField();
+  const linkSearch = searchFilter.query;
   // Recipes not already claimed by this book — one already filed under it
   // would just link to itself again, and the search is over what's left.
   const linkable = useMemo(() => {
@@ -54,7 +56,7 @@ export function CookbookDetailScreen() {
   const closeLinkPicker = () => {
     Keyboard.dismiss();
     setLinkPickerVisible(false);
-    setLinkSearch('');
+    searchFilter.clear();
   };
 
   const renderItem = ({ item }: { item: Recipe }) => {
@@ -158,8 +160,7 @@ export function CookbookDetailScreen() {
           <SearchField
             autoFocus
             style={styles.searchBar}
-            value={linkSearch}
-            onChangeText={setLinkSearch}
+            field={searchFilter}
             placeholder="Search recipes"
             accessibilityLabel="Search recipes to link"
           />

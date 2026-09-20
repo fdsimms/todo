@@ -32,6 +32,7 @@ import { EmptyState } from './EmptyState';
 import { InlineAction } from './InlineAction';
 import { SheetHeader } from './SheetHeader';
 import { SheetHeaderButton } from './SheetHeaderButton';
+import { useFilterField } from '../hooks/useFilterField';
 
 interface Props {
   visible: boolean;
@@ -115,7 +116,7 @@ export function SubstituteSheet({ visible, itemId, editingSubItemId = null, onSw
   const activeSubId = reviewingId ?? editingSubItemId;
   const editing = activeSubId !== null;
 
-  const [query, setQuery] = useState('');
+  const { query, clear: clearQuery, props: filterField } = useFilterField();
   const [pickedId, setPickedId] = useState<string | null>(null);
   const [note, setNote] = useState('');
   const [bothWays, setBothWays] = useState(false);
@@ -152,7 +153,7 @@ export function SubstituteSheet({ visible, itemId, editingSubItemId = null, onSw
 
   useEffect(() => {
     if (!visible) return;
-    setQuery('');
+    clearQuery();
     setPickedId(activeSubId);
     // Seeded from the link being reviewed, so the fields say what's recorded
     // rather than presenting a blank form over an answer that already exists.
@@ -252,7 +253,7 @@ export function SubstituteSheet({ visible, itemId, editingSubItemId = null, onSw
     }
     haptics.success();
     setPickedId(created.id);
-    setQuery('');
+    clearQuery();
   };
 
   // Picking a suggestion mints or finds its catalog row exactly like typing
@@ -719,8 +720,7 @@ export function SubstituteSheet({ visible, itemId, editingSubItemId = null, onSw
               <Ionicons name="search" size={iconSize.sm} color={colors.textTertiary} />
               <TextInput
                 style={styles.search}
-                value={query}
-                onChangeText={setQuery}
+                {...filterField}
                 placeholder="Find or add an item…"
                 placeholderTextColor={colors.textTertiary}
                 autoCorrect={false}

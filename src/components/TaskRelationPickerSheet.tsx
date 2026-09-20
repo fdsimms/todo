@@ -31,6 +31,7 @@ import { displayTitleFor } from '../utils/visibilityUtils';
 import { categoryLabel } from '../utils/categoryLabel';
 import type { Task } from '../types';
 import { useSheetHiddenOffset } from '../hooks/useSheetHiddenOffset';
+import { useFilterField } from '../hooks/useFilterField';
 
 /**
  * Which end of the relationship is being filled in: the task being edited is
@@ -120,7 +121,7 @@ export function TaskRelationPickerSheet({ visible, onClose, relation, taskId, co
   const groups = useTaskGroupStore(useShallow(s => s.groups));
   const projects = useProjectStore(useShallow(s => s.projects));
   const categories = useCategoryStore(useShallow(s => s.categories));
-  const [query, setQuery] = useState('');
+  const { query, clear: clearQuery, props: filterField } = useFilterField();
 
   const ctx: BlockerContext = context ?? {};
   const copy = COPY[relation];
@@ -202,7 +203,7 @@ export function TaskRelationPickerSheet({ visible, onClose, relation, taskId, co
 
   useEffect(() => {
     if (visible) {
-      setQuery('');
+      clearQuery();
       translateY.setValue(hiddenY);
       backdropOpacity.setValue(0);
       keyboardOffset.setValue(0);
@@ -298,8 +299,7 @@ export function TaskRelationPickerSheet({ visible, onClose, relation, taskId, co
             <Ionicons name="search" size={15} color={colors.textTertiary} />
             <TextInput
               style={styles.searchInput}
-              value={query}
-              onChangeText={setQuery}
+              {...filterField}
               placeholder="Search tasks"
               placeholderTextColor={colors.textTertiary}
               autoCorrect={false}

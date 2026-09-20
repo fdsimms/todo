@@ -12,6 +12,7 @@ import { useColors } from '../theme/ThemeContext';
 import { font, fontWeight, spacing, type Colors } from '../theme';
 import { haptics } from '../utils/haptics';
 import { TIPS, TIP_AREAS, filterTips, tipsFor, type Tip } from '../utils/tips';
+import { useFilterField } from '../hooks/useFilterField';
 
 /**
  * Everything the app can do, in one list.
@@ -44,7 +45,8 @@ export function TipsScreen() {
   const simpleMode = useSettingsStore(s => s.simpleMode);
   const resetTips = useSettingsStore(s => s.resetTips);
 
-  const [query, setQuery] = useState('');
+  const searchFilter = useFilterField();
+  const query = searchFilter.query;
 
   const seenSet = useMemo(() => new Set(seenTips), [seenTips]);
   // Every count on this page is over the same set the list draws, so "12 of 40
@@ -143,8 +145,7 @@ export function TipsScreen() {
       />
 
       <SearchField
-        value={query}
-        onChangeText={setQuery}
+        field={searchFilter}
         placeholder="Search tips"
         style={styles.search}
         accessibilityLabel="Search tips"
