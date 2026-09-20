@@ -18,7 +18,6 @@ import { useGroceryStore } from '../store/useGroceryStore';
 import { useSettingsStore } from '../store/useSettingsStore';
 import { GROCERY_NAME_MAX_LENGTH, type GroceryItem, type ItemProduct } from '../types';
 import { SwipeableRow } from './SwipeableRow';
-import { InlineAction } from './InlineAction';
 import { NumberPadAccessory, NUMBER_PAD_ACCESSORY_ID } from './NumberPadAccessory';
 import { convertQuantity } from '../utils/unitConvert';
 import { describeProduct, RATING_LABELS } from '../utils/groceryProduct';
@@ -120,8 +119,7 @@ interface Props {
    * `storeMarker`, and for the same reason: this row is memoised, and reading
    * itemShops here would re-render every row on any store write. Present
    * (possibly `null`, meaning no price known yet) only while a trip is
-   * running and this row is checked; absent otherwise, which is what hides
-   * the chip below entirely.
+   * running; absent otherwise, which is what hides the chip below entirely.
    */
   tripPriceMinor?: number | null;
   /**
@@ -495,13 +493,20 @@ export const GroceryRow = React.memo(function GroceryRow({
           </View>
         )}
 
-        {/* Present only while a trip is running and this row is checked — see
-            onSetTripPrice's doc comment. Hidden while selecting, same as the
-            trailing icons below: a tap here has to select the row, not open
-            an edit. Three states, same shape as the inline rename above:
-            nothing recorded yet (an InlineAction, "add a thing" to this row),
-            recorded (a plain pill, tap to correct it), and mid-edit (a
-            TextInput swapped in for either). */}
+        {/* Present whenever a trip is running — see onSetTripPrice's doc
+            comment. Hidden while selecting, same as the trailing icons below:
+            a tap here has to select the row, not open an edit. Three states,
+            same shape as the inline rename above: nothing recorded yet (a
+            bare icon button, so it costs nothing to leave alone on the rows
+            you're not about to pick up), recorded (a plain pill, tap to
+            correct it), and mid-edit (a TextInput swapped in for either).
+            The bare-icon idle state is deliberately not an InlineAction —
+            this now sits on every unchecked row while a trip is live, not
+            just the ones already in the cart, so a labeled pill next to
+            every item would be the row-level noise this was built to avoid.
+            It stays a plain icon button through to the recorded pill, which
+            is the one state actually worth a word: it's the only thing on
+            the row a trip asked the user to do. */}
         {!!onSetTripPrice && !selectionMode && (
           pricingActive ? (
             <View style={styles.priceField}>
@@ -548,13 +553,15 @@ export const GroceryRow = React.memo(function GroceryRow({
               </View>
             </TouchableOpacity>
           ) : (
-            <InlineAction
-              icon="pricetag-outline"
-              label="Price"
-              variant="neutral"
+            <TouchableOpacity
+              style={styles.priceIconButton}
               onPress={startPricing}
+              hitSlop={{ top: 6, bottom: 6, left: 6, right: 6 }}
+              accessibilityRole="button"
               accessibilityLabel={`Add a price for ${item.name}`}
-            />
+            >
+              <Ionicons name="pricetag-outline" size={iconSize.md} color={colors.textTertiary} />
+            </TouchableOpacity>
           )
         )}
       </TouchableOpacity>
@@ -903,6 +910,16 @@ function makeStyles(colors: Colors) {
       padding: 0,
       height: font.sm + 6,
       minWidth: 44,
+    },
+    // The idle state, before anything is typed — bare, no fill and no label,
+    // since this now sits on every unchecked row for the duration of a trip
+    // rather than only the ones already checked off. A pill here would be
+    // exactly the per-row noise a trip-wide affordance has to avoid.
+    priceIconButton: {
+      width: 32,
+      height: 32,
+      alignItems: 'center',
+      justifyContent: 'center',
     },
   });
 }

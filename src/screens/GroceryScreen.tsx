@@ -476,13 +476,13 @@ export function GroceryScreen() {
   // What each checked row costs at the trip's own store, and whether that
   // number was actually typed during *this* trip — see GroceryRow's
   // tripPriceMinor/tripPriceRecorded doc comments for why the row needs both
-  // rather than just the price. Scoped to checked rows only: an unchecked one
-  // gets no chip, so it costs nothing to compute for it.
+  // rather than just the price. Runs over every row while a trip is live —
+  // not just checked ones — so the price CTA is reachable before an item
+  // disappears into the collapsed "in cart" section, not just after.
   const tripPriceById = useMemo(() => {
     const out = new Map<string, { minor: number | null; recorded: boolean }>();
     if (!activeTripShop || !tripStartedAt) return out;
     for (const item of listRows) {
-      if (!item.checked) continue;
       out.set(item.id, {
         minor: lastPriceFor(item, activeTripShop.id, itemShops),
         recorded: pricedSince(item, activeTripShop.id, itemShops, tripStartedAt),
