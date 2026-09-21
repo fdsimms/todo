@@ -1,0 +1,4 @@
+{
+  "message": "Scanning or logging a food whose label states only a volume (like ml) now offers to weigh it, so the amount gets a real weight instead of staying unknown",
+  "date": "2026-09-21"
+}

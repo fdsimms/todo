@@ -711,8 +711,14 @@ export function FoodLogEntrySheet({
   // makes worse. `scalePanelToAmount` refuses on `panelMultiplier`, and that
   // helper re-runs the same refusal against the row it would write, so an
   // offer is one that actually settles the amount.
+  //
+  // `built` alone can't gate this any more: a per-100ml panel answers a
+  // volume amount's calories from its own volume math with no weight
+  // involved, so `built` comes back non-null while `built.grams` is still
+  // null. That's still a gap `weighableLine` will offer to close.
   const weighable = useMemo(() => {
-    if (!picked || picked.kind !== 'food' || !picked.panel || built || !amount.trim()) return null;
+    if (!picked || picked.kind !== 'food' || !picked.panel || !amount.trim()) return null;
+    if (built && built.grams !== null) return null;
     return weighableLine(amount, null, picked.panel, picked.label);
   }, [picked, built, amount]);
 
@@ -1140,7 +1146,7 @@ export function FoodLogEntrySheet({
                   : picked.panel
                     ? `${amountHint(picked.panel)}${
                       picked.panel.basis === 'per100ml'
-                        ? ''
+                        ? ' Type an amount by volume and you can weigh it once to add its weight.'
                         : ' Type an amount by volume or count and you can weigh it once to add it.'
                     }`
                     : 'A weight, like 100g.'}
