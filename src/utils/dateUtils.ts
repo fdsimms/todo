@@ -325,8 +325,14 @@ const MAX_CATCH_UP_STEPS = 500;
  * is the opposite and is checked on the caught-up answer: a series whose end
  * has passed while the app was shut is over, not owed a final occurrence.
  */
+export type RecurrenceScheduleInput = Pick<Task,
+  | 'recurrenceType' | 'recurrenceInterval' | 'recurrenceDays' | 'recurrenceMonthDay'
+  | 'recurrenceWeekOrdinal' | 'recurrenceAnchorDay' | 'recurrenceAnchorDate'
+  | 'recurrenceFromCompletion' | 'recurrenceEndDate' | 'recurrenceCount' | 'dueDate'
+>;
+
 export function getNextDueDate(
-  task: Task,
+  task: RecurrenceScheduleInput,
   dayResetTime?: string,
   options?: { catchUp?: boolean },
 ): Date | null {

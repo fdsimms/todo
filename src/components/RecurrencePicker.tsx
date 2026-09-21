@@ -86,6 +86,14 @@ interface Props {
   onSelectEndCount: () => void;
   /** "On date" end option — omit to fall back to the plain Never/After-N toggle (TemplateItemEditor). */
   endDate?: EndDateProps;
+
+  /**
+   * What `getNextDueDate()` returns for the rule as currently configured —
+   * TaskEditor only, since TemplateItemEditor has no due date to anchor a
+   * schedule to. Rendered under the On schedule / After completion pills so
+   * the choice reads as an actual date rather than an abstract mechanism.
+   */
+  previewNextDate?: Date | null;
 }
 
 /** The monthly day-anchor modes, as one closed set the picker can switch on. */
@@ -144,6 +152,7 @@ export function RecurrencePicker({
   afterCountLabel = 'After',
   onSelectEndNever, onSelectEndCount,
   endDate,
+  previewNextDate,
 }: Props) {
   const colors = useColors();
   const styles = useMemo(() => makeStyles(colors), [colors]);
@@ -275,6 +284,13 @@ export function RecurrencePicker({
             { value: true, label: 'After completion' },
           ]}
         />
+        {!!previewNextDate && (
+          <Text style={styles.previewText}>
+            {recurrenceFromCompletion
+              ? `If checked off today, falls on ${format(previewNextDate, 'EEEE, MMMM d, yyyy')}.`
+              : `Falls on ${format(previewNextDate, 'EEEE, MMMM d, yyyy')}.`}
+          </Text>
+        )}
       </Group>
 
       <Group label="Ends" styles={styles}>
@@ -342,6 +358,9 @@ const makeStyles = (colors: Colors) => StyleSheet.create({
   },
   groupHint: {
     color: colors.textTertiary, fontSize: font.xs, lineHeight: 16, marginTop: spacing.sm,
+  },
+  previewText: {
+    color: colors.textSecondary, fontSize: font.sm, marginTop: spacing.sm,
   },
   controlSpaced: { marginTop: spacing.sm + 2 },
   stepperRow: {

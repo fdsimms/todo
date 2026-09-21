@@ -82,7 +82,7 @@ import { useTaskGroupStore } from '../store/useTaskGroupStore';
 import { categoryLabel } from '../utils/categoryLabel';
 import { useShallow } from 'zustand/react/shallow';
 import { isStreakAtRecord, nextStreakRecord, streakHint } from '../utils/streakRecord';
-import { formatDeadlineDate, formatScheduledDate, formatHHMM, formatTimeOfDay, hhmmToDate, dateToHHMM, getDeadlineFromOffset, getDeadlineFromMonthDay, describeDeadlineOffset, describeReminderOffset, getTaskDayStart, getCurrentDayStart, getLogicalNow, getLogicalToday, seriesMonthDaysFrom } from '../utils/dateUtils';
+import { formatDeadlineDate, formatScheduledDate, formatHHMM, formatTimeOfDay, hhmmToDate, dateToHHMM, getDeadlineFromOffset, getDeadlineFromMonthDay, describeDeadlineOffset, describeReminderOffset, getTaskDayStart, getCurrentDayStart, getLogicalNow, getLogicalToday, seriesMonthDaysFrom, getNextDueDate } from '../utils/dateUtils';
 import { generateId } from '../utils/id';
 import { findArchivedMatch } from '../utils/archiveMatch';
 import { parseTaskInput, describeSchedule, detectContactIntent, matchPersonMentions, getEditorMentionSuggestions, withTrailingSpace, type MentionSuggestionCandidate } from '../utils/parseTaskInput';
@@ -1546,6 +1546,33 @@ export function TaskEditor({ visible, task, initialDraft, onClose }: Props) {
     task, supplyCount, supplyLeadDays, dueDate, recurrenceType, recurrenceInterval,
     recurrenceDays, recurrenceMonthDay, recurrenceWeekOrdinal, recurrenceEndDate,
     recurrenceCount, recurrenceFromCompletion,
+  ]);
+
+  // What the Repeat picker's On schedule / After completion choice actually
+  // resolves to, so it reads as a date rather than only a mechanism — see the
+  // doc comment on RecurrencePicker's previewNextDate prop. recurrenceAnchorDate/
+  // recurrenceAnchorDay carry over from the saved task (they're engine-managed,
+  // not editable here); a brand-new task has neither, so the schedule anchors
+  // to dueDate itself, same as getNextDueDate does for any task that predates them.
+  const recurrenceNextDatePreview = useMemo(() => {
+    if (recurrenceType === 'none' || !dueDate) return null;
+    return getNextDueDate({
+      recurrenceType,
+      recurrenceInterval,
+      recurrenceDays,
+      recurrenceMonthDay,
+      recurrenceWeekOrdinal,
+      recurrenceAnchorDay: task?.recurrenceAnchorDay ?? null,
+      recurrenceAnchorDate: task?.recurrenceAnchorDate ?? null,
+      recurrenceFromCompletion,
+      recurrenceEndDate: recurrenceEndDate?.toISOString() ?? null,
+      recurrenceCount,
+      dueDate: dueDate.toISOString(),
+    }, dayResetTime);
+  }, [
+    task, dueDate, recurrenceType, recurrenceInterval, recurrenceDays, recurrenceMonthDay,
+    recurrenceWeekOrdinal, recurrenceFromCompletion, recurrenceEndDate, recurrenceCount,
+    dayResetTime,
   ]);
 
   /**
@@ -4434,6 +4461,7 @@ export function TaskEditor({ visible, task, initialDraft, onClose }: Props) {
                   onSelect: setRecurrenceEndOnDate,
                   onOpenPicker: () => setShowEndDatePicker(true),
                 }}
+                previewNextDate={recurrenceNextDatePreview}
               />
             )}
               </>
