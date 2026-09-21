@@ -1504,7 +1504,18 @@ export function TodayScreen() {
     setPullingToSearch(true);
     haptics.impactLight();
     setQuickSearchVisible(true);
-    setPullingToSearch(false);
+    // Not synchronous with the setPullingToSearch(true) above: both land in
+    // the same state (false), which starting state already was, so React
+    // bails out of re-rendering and the `refreshing` prop never actually
+    // makes a true round trip to the native RefreshControl. The pull gesture
+    // that triggered this has already put iOS's UIRefreshControl into its own
+    // refreshing state, waiting on a real false to end it and release the
+    // space it reserved for the spinner — without that, the scroll view can
+    // get stuck resting below its true top, with the list's content (the
+    // Pinned Tasks header included) unreachable by scrolling until the screen
+    // remounts. Queuing the reset for the next tick lets the true state
+    // commit first, so the false that follows is a genuine transition.
+    setTimeout(() => setPullingToSearch(false), 0);
   }, []);
 
   // Anything the card's five slots couldn't answer goes to the real Search
