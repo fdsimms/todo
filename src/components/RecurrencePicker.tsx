@@ -121,10 +121,16 @@ function Group({
 /**
  * The recurrence rule picker shared by TaskEditor and TemplateItemEditor:
  * daily/weekly/monthly/yearly type pills, the "Every N <unit>" interval
- * stepper, the weekly weekday selector, the monthly sub-picker (same day as
- * due date / on a day / last day / on a weekday), the day-of-month stepper,
- * the on-schedule/after-completion pills, and the ends never/date/count
- * pills with the occurrence-count stepper.
+ * stepper, the weekly weekday selector, the monthly/yearly "on which day"
+ * sub-picker (same day as due date / on a day / last day / on a weekday),
+ * the day-of-month stepper, the on-schedule/after-completion pills, and the
+ * ends never/date/count pills with the occurrence-count stepper.
+ *
+ * Yearly shares the monthly sub-picker's day options rather than getting its
+ * own, minus "on a weekday" — the engine (`getNextYearDayOccurrence`) only
+ * ever varies the day within whatever month the due date falls in, it has no
+ * notion of a week-ordinal anchor, so there's nothing for that option to
+ * mean here.
  *
  * Those are six independent settings, so the controls are cut into labelled
  * groups separated by hairlines rather than run together as one column of
@@ -162,8 +168,14 @@ export function RecurrencePicker({
 
   const monthDaySelected = recurrenceMonthDay !== null && recurrenceMonthDay > 0;
 
+  // Week-ordinal anchoring ("2nd Tuesday") only exists in the recurrence
+  // engine for monthly (getNextYearDayOccurrence has no notion of it), so a
+  // yearly rule never offers or reads that option even if a prior monthly
+  // choice left weekOrdinal.value set behind the scenes.
+  const showWeekdayOption = recurrenceType === 'monthly' && !!weekOrdinal;
+
   const monthAnchor: MonthAnchor =
-    weekOrdinal?.value != null ? 'weekday'
+    showWeekdayOption && weekOrdinal?.value != null ? 'weekday'
       : recurrenceMonthDay === -1 ? 'lastDay'
         : monthDaySelected ? 'monthDay'
           : 'dueDate';
@@ -183,6 +195,7 @@ export function RecurrencePicker({
         onChangeMonthDay(-1);
         break;
       case 'weekday':
+        if (!showWeekdayOption) break;
         onChangeMonthDay(null);
         weekOrdinal?.onChange(weekOrdinal.value ?? 1);
         if (recurrenceDays.length === 0 && weekOrdinal) onChangeDays([weekOrdinal.seedWeekday()]);
@@ -219,8 +232,14 @@ export function RecurrencePicker({
         </Group>
       )}
 
-      {recurrenceType === 'monthly' && (
-        <Group label="On which day" styles={styles}>
+      {(recurrenceType === 'monthly' || recurrenceType === 'yearly') && (
+        <Group
+          label="On which day"
+          hint={recurrenceType === 'yearly'
+            ? 'The month stays whatever month the due date falls in; this only sets the day within it.'
+            : undefined}
+          styles={styles}
+        >
           <SegmentedControl
             label="On which day"
             value={monthAnchor}
@@ -232,7 +251,7 @@ export function RecurrencePicker({
               { value: 'dueDate' as MonthAnchor, label: 'Same day as due date' },
               { value: 'monthDay' as MonthAnchor, label: 'On a day' },
               { value: 'lastDay' as MonthAnchor, label: 'Last day' },
-              ...(weekOrdinal ? [{ value: 'weekday' as MonthAnchor, label: 'On a weekday' }] : []),
+              ...(showWeekdayOption ? [{ value: 'weekday' as MonthAnchor, label: 'On a weekday' }] : []),
             ]}
           />
           {monthDaySelected && (
@@ -248,7 +267,7 @@ export function RecurrencePicker({
               />
             </View>
           )}
-          {weekOrdinal && weekOrdinal.value !== null && (
+          {showWeekdayOption && weekOrdinal && weekOrdinal.value !== null && (
             <>
               <View style={styles.controlSpaced}>
                 <SegmentedControl
