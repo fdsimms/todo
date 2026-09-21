@@ -418,6 +418,11 @@ export function QuickAddModal({
   };
   const tooltipAnim = useRef(new Animated.Value(0)).current;
   const hadParse = useRef(false);
+  // Which detected phrase the person said "no, leave it as text" to — keyed
+  // by position + text so it resets the moment the title changes enough that
+  // it isn't the same phrase anymore. Same mechanism as TaskEditor's own
+  // schedule banner.
+  const [dismissedMatchSignature, setDismissedMatchSignature] = useState<string | null>(null);
   const [whenPickerVisible, setWhenPickerVisible] = useState(false);
   const [categoryPickerVisible, setCategoryPickerVisible] = useState(false);
   // Whether the drop's placement still applies — the chip can shake it off.
@@ -491,6 +496,7 @@ export function QuickAddModal({
     setMatchW(null);
     tooltipAnim.setValue(0);
     hadParse.current = false;
+    setDismissedMatchSignature(null);
     setWhenPickerVisible(false);
     setCategoryPickerVisible(false);
     setPostCreateTask(null);
@@ -745,7 +751,7 @@ export function QuickAddModal({
       ? parseSupplyInput(title) : null),
     [title, parsed, categoryTagsParsed, ambiguousMention, mentionSuggestion, priorityParsed, linkParsed, phoneParsed, emailParsed, durationParsed, recurrenceType]
   );
-  const activeMatch = parsed
+  const rawMatch = parsed
     ? { matchStart: parsed.matchStart, matchedText: parsed.matchedText }
     : categoryTagsParsed
       ? {
@@ -784,6 +790,13 @@ export function QuickAddModal({
                     matchedText: title.slice(supplyParsed.matchStart, supplyParsed.matchEnd),
                   }
                 : null;
+  // The tooltip's own ✕ answers "not that" for this one phrase — comparing
+  // by position+text (rather than a bare boolean) means editing the title so
+  // a *different* phrase parses brings the tooltip straight back, with no
+  // separate reset needed.
+  const rawMatchSignature = rawMatch ? `${rawMatch.matchStart}|${rawMatch.matchedText}` : null;
+  const matchDismissed = rawMatchSignature !== null && rawMatchSignature === dismissedMatchSignature;
+  const activeMatch = matchDismissed ? null : rawMatch;
   const matchEnd = activeMatch ? activeMatch.matchStart + activeMatch.matchedText.length : 0;
 
   // "beach with @dustin @ansley sat" — every "@name" token that resolves to
@@ -1068,6 +1081,15 @@ export function QuickAddModal({
     else if (supplyParsed) applySupply();
   };
   const confirmVisible = activeMatch !== null && !ambiguousMention && !mentionSuggestion;
+
+  // "No, that's just part of the title" — leaves the title and every other
+  // field untouched, just drops the tooltip for this phrase.
+  const dismissActiveParse = () => {
+    if (!activeMatch) return;
+    haptics.tap();
+    animateLayout();
+    setDismissedMatchSignature(`${activeMatch.matchStart}|${activeMatch.matchedText}`);
+  };
 
   const addStep = (stepTitle: string) => {
     const t = stepTitle.trim();
@@ -1757,54 +1779,66 @@ export function QuickAddModal({
                     ))}
                   </View>
                 ) : (
-                  <PressableScale
-                    style={[styles.tooltipBubble, tooltipRowW > 0 && { maxWidth: tooltipRowW }]}
-                    onPress={applyActiveParse}
+                  <View
+                    style={[styles.tooltipPillRow, tooltipRowW > 0 && { maxWidth: tooltipRowW }]}
                     onLayout={e => setBubbleW(e.nativeEvent.layout.width)}
                   >
-                    <Ionicons
-                      name={
-                        parsed
-                          ? (parsed.schedule.recurrenceType !== 'none'
-                              ? 'repeat'
-                              : parsed.schedule.deadline ? 'flag-outline' : 'calendar-outline')
+                    <PressableScale
+                      style={[styles.tooltipBubble, styles.tooltipBubbleJoined]}
+                      onPress={applyActiveParse}
+                    >
+                      <Ionicons
+                        name={
+                          parsed
+                            ? (parsed.schedule.recurrenceType !== 'none'
+                                ? 'repeat'
+                                : parsed.schedule.deadline ? 'flag-outline' : 'calendar-outline')
+                            : categoryTagsParsed
+                              ? (categoryTagsParsed.category ? 'pricetag-outline' : 'pricetags-outline')
+                              : priorityParsed
+                                ? 'alert-circle-outline'
+                                : linkParsed
+                                  ? 'link-outline'
+                                  : phoneParsed
+                                    ? 'call-outline'
+                                    : emailParsed
+                                      ? 'mail-outline'
+                                      : durationParsed
+                                        ? 'timer-outline'
+                                        : 'cube-outline'
+                        }
+                        size={14}
+                        color={colors.onAccent}
+                      />
+                      <Text style={styles.tooltipText} numberOfLines={1} ellipsizeMode="tail">
+                        {parsed
+                          ? describeSchedule(parsed.schedule, getLogicalNow(dayResetTime))
                           : categoryTagsParsed
-                            ? (categoryTagsParsed.category ? 'pricetag-outline' : 'pricetags-outline')
+                            ? categoryTagsLabel(categoryTagsParsed, categories)
                             : priorityParsed
-                              ? 'alert-circle-outline'
+                              ? `Priority · ${PRIORITY_LABELS_SHORT[priorityParsed.priority]}`
                               : linkParsed
-                                ? 'link-outline'
+                                ? linkLabel(linkParsed.url)
                                 : phoneParsed
-                                  ? 'call-outline'
+                                  ? `Call ${phoneParsed.number}`
                                   : emailParsed
-                                    ? 'mail-outline'
+                                    ? `Email ${emailParsed.address}`
                                     : durationParsed
-                                      ? 'timer-outline'
-                                      : 'cube-outline'
-                      }
-                      size={14}
-                      color={colors.onAccent}
-                    />
-                    <Text style={styles.tooltipText} numberOfLines={1} ellipsizeMode="tail">
-                      {parsed
-                        ? describeSchedule(parsed.schedule, getLogicalNow(dayResetTime))
-                        : categoryTagsParsed
-                          ? categoryTagsLabel(categoryTagsParsed, categories)
-                          : priorityParsed
-                            ? `Priority · ${PRIORITY_LABELS_SHORT[priorityParsed.priority]}`
-                            : linkParsed
-                              ? linkLabel(linkParsed.url)
-                              : phoneParsed
-                                ? `Call ${phoneParsed.number}`
-                                : emailParsed
-                                  ? `Email ${emailParsed.address}`
-                                  : durationParsed
-                                    ? `Timer · ${formatDuration(durationParsed.minutes)}`
-                                    : `Supply · ${formatSupplyLeft(supplyParsed!.count, supplyParsed!.unit)}`}
-                    </Text>
-                    <View style={styles.tooltipDot} />
-                    <Text style={styles.tooltipHint}>Tap to set</Text>
-                  </PressableScale>
+                                      ? `Timer · ${formatDuration(durationParsed.minutes)}`
+                                      : `Supply · ${formatSupplyLeft(supplyParsed!.count, supplyParsed!.unit)}`}
+                      </Text>
+                      <View style={styles.tooltipDot} />
+                      <Text style={styles.tooltipHint}>Tap to set</Text>
+                    </PressableScale>
+                    <View style={styles.tooltipDivider} />
+                    <PressableScale
+                      style={styles.tooltipDismiss}
+                      onPress={dismissActiveParse}
+                      accessibilityLabel="Not that"
+                    >
+                      <Ionicons name="close" size={14} color={colors.onAccent} />
+                    </PressableScale>
+                  </View>
                 )}
               </View>
             </Animated.View>
@@ -2964,6 +2998,36 @@ const makeStyles = (colors: Colors, sheetMaxHeight: number) => StyleSheet.create
     paddingVertical: 7,
     borderRadius: radius.md,
     backgroundColor: colors.accentFill,
+  },
+  tooltipPillRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    alignSelf: 'flex-start',
+  },
+  // Overrides for the tooltip's own apply button, joined to the ✕ on its
+  // right: square that side off and let the text give way to it instead of
+  // pushing it past the row's edge.
+  tooltipBubbleJoined: {
+    flexShrink: 1,
+    borderTopRightRadius: 0,
+    borderBottomRightRadius: 0,
+  },
+  tooltipDismiss: {
+    flexShrink: 0,
+    alignSelf: 'stretch',
+    justifyContent: 'center',
+    paddingVertical: 7,
+    paddingHorizontal: spacing.xsm,
+    borderTopRightRadius: radius.md,
+    borderBottomRightRadius: radius.md,
+    backgroundColor: colors.accentFill,
+  },
+  tooltipDivider: {
+    width: 1,
+    alignSelf: 'stretch',
+    marginVertical: 7,
+    backgroundColor: colors.onAccent,
+    opacity: 0.25,
   },
   tooltipCandidateRow: {
     flexDirection: 'row',

@@ -671,6 +671,10 @@ export function TaskEditor({ visible, task, initialDraft, onClose }: Props) {
 
   const scheduleTooltipAnim = useRef(new Animated.Value(0)).current;
   const hadScheduleParse = useRef(false);
+  // Which detected phrase the person said "no, leave it as text" to — keyed
+  // by position + text so it resets the moment the title changes enough that
+  // it isn't the same phrase anymore, rather than staying dismissed forever.
+  const [dismissedScheduleSignature, setDismissedScheduleSignature] = useState<string | null>(null);
   const mentionSuggestionAnim = useRef(new Animated.Value(0)).current;
   const hadMentionSuggestion = useRef(false);
 
@@ -712,6 +716,9 @@ export function TaskEditor({ visible, task, initialDraft, onClose }: Props) {
     // sheet — reopening the editor on a filtered form would look broken.
     setSearchOpen(false);
     searchFilter.clear();
+    // Same for a dismissed schedule phrase — belongs to this trip through
+    // the title, not to the sheet.
+    setDismissedScheduleSignature(null);
     // Belongs to the task being edited, not to the sheet.
     kindMemory.current = {
       timedMinutes: null, targetCount: null, targetUnit: '', chainItems: [], rotationItems: [],
@@ -993,7 +1000,16 @@ export function TaskEditor({ visible, task, initialDraft, onClose }: Props) {
     () => (title.trim() ? parseTaskInput(title, getLogicalNow(dayResetTime)) : null),
     [title, dayResetTime]
   );
-  const scheduleMatchEnd = parsedSchedule ? parsedSchedule.matchStart + parsedSchedule.matchedText.length : 0;
+  // The banner's own ✕ answers "not a date" for this one phrase — comparing
+  // by position+text (rather than a bare boolean) means editing the title so
+  // a *different* phrase parses brings the banner straight back, with no
+  // separate reset needed.
+  const scheduleDismissed = parsedSchedule != null
+    && dismissedScheduleSignature === `${parsedSchedule.matchStart}|${parsedSchedule.matchedText}`;
+  const activeParsedSchedule = scheduleDismissed ? null : parsedSchedule;
+  const scheduleMatchEnd = activeParsedSchedule
+    ? activeParsedSchedule.matchStart + activeParsedSchedule.matchedText.length
+    : 0;
 
   // Purely visual: an "@name" mention in the title stays tinted while editing
   // too, but unlike quick add this field never parses one out of typed text —
@@ -1011,10 +1027,10 @@ export function TaskEditor({ visible, task, initialDraft, onClose }: Props) {
   );
   const titleHighlightRanges = useMemo(() => {
     const ranges = [...titleMentionRanges];
-    if (parsedSchedule) ranges.push([parsedSchedule.matchStart, scheduleMatchEnd]);
+    if (activeParsedSchedule) ranges.push([activeParsedSchedule.matchStart, scheduleMatchEnd]);
     return mergeRanges(ranges);
-  }, [titleMentionRanges, parsedSchedule, scheduleMatchEnd]);
-  const hasTitleOverlay = parsedSchedule != null || titleMentionRanges.length > 0;
+  }, [titleMentionRanges, activeParsedSchedule, scheduleMatchEnd]);
+  const hasTitleOverlay = activeParsedSchedule != null || titleMentionRanges.length > 0;
 
   // Unlike quick add, nothing here ever resolves a fresh "@name" on its own —
   // so a token that would be a unique, fully-typed match anywhere else still
@@ -1022,10 +1038,10 @@ export function TaskEditor({ visible, task, initialDraft, onClose }: Props) {
   // schedule banner isn't already claiming the one tooltip slot below the
   // title. See getEditorMentionSuggestions' doc comment.
   const titleMentionSuggestion = useMemo(
-    () => (!parsedSchedule && title.trim()
+    () => (!activeParsedSchedule && title.trim()
       ? getEditorMentionSuggestions(title, people, personIds, groupMentionTokens())
       : null),
-    [title, parsedSchedule, people, personIds]
+    [title, activeParsedSchedule, people, personIds]
   );
 
   // "Call Kristen", "Text the plumber", "Email the landlord" — a title that
@@ -1039,12 +1055,12 @@ export function TaskEditor({ visible, task, initialDraft, onClose }: Props) {
   // Pop the banner in when a phrase is first detected (not on every keystroke
   // that merely extends it).
   useEffect(() => {
-    if (parsedSchedule && !hadScheduleParse.current) {
+    if (activeParsedSchedule && !hadScheduleParse.current) {
       scheduleTooltipAnim.setValue(0);
       Animated.spring(scheduleTooltipAnim, { toValue: 1, ...animation.spring.bouncy, useNativeDriver: true }).start();
     }
-    hadScheduleParse.current = parsedSchedule != null;
-  }, [parsedSchedule]);
+    hadScheduleParse.current = activeParsedSchedule != null;
+  }, [activeParsedSchedule]);
 
   useEffect(() => {
     if (titleMentionSuggestion && !hadMentionSuggestion.current) {
@@ -1100,6 +1116,15 @@ export function TaskEditor({ visible, task, initialDraft, onClose }: Props) {
     setRecurrenceEndDate(parsedSchedule.schedule.recurrenceEndDate ? new Date(parsedSchedule.schedule.recurrenceEndDate) : null);
     setRecurrenceCount(parsedSchedule.schedule.recurrenceCount ?? null);
     setRecurrenceFromCompletion(parsedSchedule.schedule.recurrenceFromCompletion ?? false);
+  };
+
+  // "No, that's just part of the title" — leaves the title and every other
+  // field untouched, just drops the highlight and banner for this phrase.
+  const dismissParsedSchedule = () => {
+    if (!parsedSchedule) return;
+    haptics.tap();
+    animateLayout();
+    setDismissedScheduleSignature(`${parsedSchedule.matchStart}|${parsedSchedule.matchedText}`);
   };
 
   // A step or subtask typed into its "add new" field but never submitted
@@ -2564,8 +2589,9 @@ export function TaskEditor({ visible, task, initialDraft, onClose }: Props) {
       </View>
       )}
 
-      {/* Schedule banner — detected date/recurrence phrase; tap to apply */}
-      {titleVisible && parsedSchedule && (
+      {/* Schedule banner — detected date/recurrence phrase; tap to apply,
+          or ✕ to say the phrase is just part of the title. */}
+      {titleVisible && activeParsedSchedule && (
         <Animated.View
           style={[styles.scheduleBanner, {
             opacity: scheduleTooltipAnim,
@@ -2575,22 +2601,35 @@ export function TaskEditor({ visible, task, initialDraft, onClose }: Props) {
             ],
           }]}
         >
-          <PressableScale style={styles.scheduleBannerBtn} onPress={applyParsedSchedule}>
-            <Ionicons
-              name={
-                parsedSchedule.schedule.recurrenceType !== 'none'
-                  ? 'repeat'
-                  : parsedSchedule.schedule.deadline ? 'flag-outline' : 'calendar-outline'
-              }
-              size={14}
-              color={colors.onAccent}
-            />
-            <Text style={styles.scheduleBannerText} numberOfLines={1}>
-              {describeSchedule(parsedSchedule.schedule, getLogicalNow(dayResetTime))}
-            </Text>
-            <View style={styles.scheduleBannerDot} />
-            <Text style={styles.scheduleBannerHint}>Tap to set</Text>
-          </PressableScale>
+          <View style={styles.scheduleBannerPill}>
+            <PressableScale
+              style={[styles.scheduleBannerBtn, styles.scheduleBannerBtnJoined]}
+              onPress={applyParsedSchedule}
+            >
+              <Ionicons
+                name={
+                  activeParsedSchedule.schedule.recurrenceType !== 'none'
+                    ? 'repeat'
+                    : activeParsedSchedule.schedule.deadline ? 'flag-outline' : 'calendar-outline'
+                }
+                size={14}
+                color={colors.onAccent}
+              />
+              <Text style={styles.scheduleBannerText} numberOfLines={1}>
+                {describeSchedule(activeParsedSchedule.schedule, getLogicalNow(dayResetTime))}
+              </Text>
+              <View style={styles.scheduleBannerDot} />
+              <Text style={styles.scheduleBannerHint}>Tap to set</Text>
+            </PressableScale>
+            <View style={styles.scheduleBannerDivider} />
+            <PressableScale
+              style={styles.scheduleBannerDismiss}
+              onPress={dismissParsedSchedule}
+              accessibilityLabel="Not a date"
+            >
+              <Ionicons name="close" size={14} color={colors.onAccent} />
+            </PressableScale>
+          </View>
         </Animated.View>
       )}
 
@@ -5814,6 +5853,11 @@ const makeStyles = (colors: Colors) => StyleSheet.create({
     marginBottom: spacing.sm,
     alignItems: 'flex-start',
   },
+  scheduleBannerPill: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    maxWidth: '100%',
+  },
   mentionSuggestionRow: {
     flexDirection: 'row',
     flexWrap: 'wrap',
@@ -5831,6 +5875,29 @@ const makeStyles = (colors: Colors) => StyleSheet.create({
     paddingVertical: 7,
     borderRadius: radius.md,
     backgroundColor: colors.accentFill,
+  },
+  // Overrides for the schedule pill's own button, joined to the ✕ on its
+  // right: square that side off and let the text give way to it instead of
+  // pushing it past the row's edge.
+  scheduleBannerBtnJoined: {
+    flexShrink: 1,
+    borderTopRightRadius: 0,
+    borderBottomRightRadius: 0,
+  },
+  scheduleBannerDismiss: {
+    flexShrink: 0,
+    paddingVertical: 7,
+    paddingHorizontal: spacing.xsm,
+    borderTopRightRadius: radius.md,
+    borderBottomRightRadius: radius.md,
+    backgroundColor: colors.accentFill,
+  },
+  scheduleBannerDivider: {
+    width: 1,
+    alignSelf: 'stretch',
+    marginVertical: 7,
+    backgroundColor: colors.onAccent,
+    opacity: 0.25,
   },
   scheduleBannerText: {
     color: colors.onAccent,
