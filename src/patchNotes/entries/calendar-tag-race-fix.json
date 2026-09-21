@@ -1,0 +1,4 @@
+{
+  "message": "Fixed a bug where a calendar event's account label could disappear until the app was restarted.",
+  "date": "2026-09-21"
+}
