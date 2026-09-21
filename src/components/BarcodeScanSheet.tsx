@@ -302,6 +302,19 @@ interface Props {
     products: ScanProductDraft[],
     gtinLinks: ScannedGtinLink[]
   ) => void;
+  /**
+   * A row's name, handed up when the person asks to photograph its label
+   * instead of picking a catalog match. `'log'` context only (see the
+   * button's own render condition) — `FoodLogScreen`'s barcode-not-found row
+   * is where a person is holding the packet with nothing else to do with it.
+   *
+   * This sheet stays open behind whatever the caller does with it: the row
+   * itself is untouched, so a name typed here is still there, and still
+   * included, if the person cancels the photo and scans on. `ScanToLogFlow`
+   * mints the catalog row only once the label photo is actually saved — see
+   * its own `panelFor`.
+   */
+  onPhotographLabel?: (name: string) => void;
 }
 
 /**
@@ -339,7 +352,7 @@ interface Props {
  * rule `acceptedByDefault` applies to a weak receipt match, for the same
  * reason: an unchecked row is a question and a checked one is an assertion.
  */
-export function BarcodeScanSheet({ visible, onClose, onApply, context }: Props) {
+export function BarcodeScanSheet({ visible, onClose, onApply, context, onPhotographLabel }: Props) {
   const colors = useColors();
   /**
    * The one-pass scanner, or null where it isn't supported (anything but an
@@ -1026,6 +1039,24 @@ export function BarcodeScanSheet({ visible, onClose, onApply, context }: Props) 
                               variant="neutral"
                               onPress={() => { setPicking(null); patchRow(row.key, { pickedItemId: null, pickedProductId: null }); }}
                               accessibilityLabel={`Stop filing ${row.name.trim() || row.label || 'this scan'} by hand`}
+                              style={styles.confirmPill}
+                            />
+                          )}
+                          {/* The way out of a code nothing has heard of: the
+                              packet is in hand and its figures are printed on
+                              it, so offer to read them off the label rather
+                              than only "pick an item". Log-only — the other
+                              two contexts never ask about nutrition — and only
+                              once there's a name to attach the figures to and
+                              nothing in the catalog has already answered for
+                              this row. */}
+                          {context === 'log' && !!onPhotographLabel && !pendingId && !row.pickedItemId && !!row.name.trim() && (
+                            <InlineAction
+                              label="Photograph the label"
+                              icon="camera-outline"
+                              variant="neutral"
+                              onPress={() => onPhotographLabel(row.name.trim())}
+                              accessibilityLabel={`Photograph the nutrition label for ${row.name.trim()}`}
                               style={styles.confirmPill}
                             />
                           )}

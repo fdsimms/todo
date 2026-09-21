@@ -84,8 +84,16 @@ export function ScanToLogFlow({ visible, slot, at, mealPlanEntryId, onClose, onL
    * the person hit the wall: a barcode that carried no figures is discovered
    * while logging, and sending them off to find the catalog row is how a
    * two-tap fix becomes an errand.
+   *
+   * `itemId` is null for a row `BarcodeScanSheet`'s own "Photograph the label"
+   * action opened this for — a name typed against a barcode nothing matched,
+   * with no catalog row minted yet. The alternative was minting one the
+   * moment the camera button is tapped, which leaves an empty, nutrition-less
+   * item behind every time someone backs out of the photo instead of taking
+   * it. Waiting until `onSave` actually fires means a cancelled photo costs
+   * nothing.
    */
-  const [panelFor, setPanelFor] = useState<{ itemId: string; productId: string | null; name: string } | null>(null);
+  const [panelFor, setPanelFor] = useState<{ itemId: string | null; productId: string | null; name: string } | null>(null);
 
   /**
    * A scan session, confirmed. Resolved to catalog rows, then handed on.
@@ -225,6 +233,7 @@ export function ScanToLogFlow({ visible, slot, at, mealPlanEntryId, onClose, onL
         context="log"
         onClose={onClose}
         onApply={handleScanApply}
+        onPhotographLabel={name => setPanelFor({ itemId: null, productId: null, name })}
       />
       <ScanPortionSheet
         visible={session !== null}
@@ -242,6 +251,15 @@ export function ScanToLogFlow({ visible, slot, at, mealPlanEntryId, onClose, onL
         onClose={() => setPanelFor(null)}
         onSave={panel => {
           if (!panelFor) return;
+          // No item yet means the photo came straight off the not-found row:
+          // mint the catalog row now, the same name-keyed lookup every other
+          // typed-name path in this app uses, so a name that already exists
+          // resolves to it rather than duplicating it.
+          if (!panelFor.itemId) {
+            const item = ensureCatalogItem(panelFor.name);
+            if (item) setItemNutrition(item.id, panel);
+            return;
+          }
           // Onto the box when the scan named one, onto the catalog row when it
           // didn't — the same precedence `nutritionFor` reads them back in, so
           // a specific packet's figures never become every future helping of
