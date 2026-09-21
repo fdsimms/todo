@@ -1465,7 +1465,7 @@ export function GroceryScreen() {
         // your list" as permanent screen furniture on every visit, most of
         // which are checking off items or browsing recipes, not deciding
         // where to shop. The same coverage reasoning still exists — it's
-        // what ShoppingTripSheet pre-selects and captions with once you've
+        // what ShoppingTripSheet ranks and captions with once you've
         // actually said you're about to shop, via `summarizeTrip` and
         // `describeShopCoverage` (shoppingTrip.ts) — it's just not announced
         // unprompted at the top of the list any more.
