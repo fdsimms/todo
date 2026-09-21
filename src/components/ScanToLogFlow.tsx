@@ -255,17 +255,36 @@ export function ScanToLogFlow({ visible, slot, at, mealPlanEntryId, onClose, onL
           // mint the catalog row now, the same name-keyed lookup every other
           // typed-name path in this app uses, so a name that already exists
           // resolves to it rather than duplicating it.
-          if (!panelFor.itemId) {
+          let itemId = panelFor.itemId;
+          const productId = panelFor.productId;
+          if (!itemId) {
             const item = ensureCatalogItem(panelFor.name);
-            if (item) setItemNutrition(item.id, panel);
-            return;
+            if (!item) return;
+            itemId = item.id;
+            setItemNutrition(itemId, panel);
+          } else if (productId) {
+            // Onto the box when the scan named one, onto the catalog row when
+            // it didn't — the same precedence `nutritionFor` reads them back
+            // in, so a specific packet's figures never become every future
+            // helping of the generic food's.
+            setProductNutrition(productId, panel);
+          } else {
+            setItemNutrition(itemId, panel);
           }
-          // Onto the box when the scan named one, onto the catalog row when it
-          // didn't — the same precedence `nutritionFor` reads them back in, so
-          // a specific packet's figures never become every future helping of
-          // the generic food's.
-          if (panelFor.productId) setProductNutrition(panelFor.productId, panel);
-          else setItemNutrition(panelFor.itemId, panel);
+          // A blank panel has nothing to log — same refusal `handleScanApply`
+          // above already makes for a barcode that resolved to no figures.
+          if (!panel) return;
+          // Otherwise the panel just typed in is exactly what a resolved
+          // barcode would have handed `ScanPortionSheet` — so it goes there
+          // too, rather than leaving `BarcodeScanSheet` to reopen with
+          // nothing logged and the figures just typed sitting unused on the
+          // catalog row.
+          setSession({
+            foods: [{ key: productId ?? itemId, label: panelFor.name, panel, packSize: null, itemId, productId }],
+            slot,
+            at,
+            mealPlanEntryId: mealPlanEntryId ?? null,
+          });
         }}
       />
     </>
