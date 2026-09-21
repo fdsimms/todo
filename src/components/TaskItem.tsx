@@ -93,6 +93,9 @@ import { standingSwapMap } from '../utils/standingSwaps';
 import { mealShortfallEntryId, mealShortfallRows } from '../utils/mealShortfallTasks';
 import { usePlanMeal } from '../hooks/usePlanMeal';
 import { useSheetMount } from '../hooks/useSheetMount';
+import { RotationPickSheet } from './RotationPickSheet';
+import { RotationChecklist } from './RotationChecklist';
+import { isRotationTask, rotationMembers, rotationOverCommitted, rotationSummary } from '../utils/rotation';
 import {
   describeProjectQuiet,
   projectQuietDays,
@@ -324,6 +327,8 @@ export const TaskItem = React.memo(function TaskItem({
     cancelCompletionAnimation,
     logQuotaUnit,
     unlogQuotaUnit,
+    recordRotationPick,
+    unlogRotationUnit,
     logSlip,
     undoSlip,
     startQuotaRun,
@@ -952,6 +957,13 @@ export const TaskItem = React.memo(function TaskItem({
   const mountDeliverablePrompt = useSheetMount(showDeliverablePrompt);
   const mealPickerOpen = showMealPicker && mealSlotChooseSource !== null;
   const mountMealPicker = useSheetMount(mealPickerOpen);
+  const [showRotationPick, setShowRotationPick] = useState(false);
+  const mountRotationPick = useSheetMount(showRotationPick);
+  const weekStartsOn = useSettingsStore(s => s.weekStartsOn);
+  // One reading per render rather than one per helper, so the chip, the
+  // over-commitment test and the sheet can't land on different sides of a
+  // dayResetTime boundary within the same frame.
+  const rotationDayStart = getCurrentDayStart();
 
   // A quiet project's review task: how long the project has actually been
   // silent, which is what the banner this replaced showed beside each name.
@@ -1218,6 +1230,15 @@ export const TaskItem = React.memo(function TaskItem({
   // it twice would move the start a second time and drop the count again.
   const canStartQuotaRun =
     isQuota && task.quotaIntervalMinutes !== null && task.quotaStartedAt === null && !task.archived;
+  // A rotation is a quota whose units have names (see utils/rotation.ts), so
+  // it keeps the whole meter — fill, pace mark, count chip — and differs only
+  // in that a tap has to ask which member. `isQuota` already excludes a
+  // completed or negative row, so this inherits both guards.
+  const isRotation = isQuota && isRotationTask(task);
+  const rotationLine = isRotation
+    ? rotationSummary(task, rotationDayStart, weekStartsOn)
+    : null;
+  const rotationTight = isRotation && rotationOverCommitted(task, rotationDayStart, weekStartsOn);
   // A daily target closed out short of its count (rollover, or an explicit
   // miss) is still `completed`, but a plain checkmark would read as the same
   // full finish an on-target row gets — same distinction Logbook's row draws
@@ -1674,6 +1695,56 @@ export const TaskItem = React.memo(function TaskItem({
     logQuotaUnit(task.id);
   };
 
+  // A rotation's tap opens the picker instead of logging. Everything the quota
+  // tap does — the pop, the hold, the send-off — happens on the way back, once
+  // a member has been named; see handleRotationPick.
+  const handleRotationTap = async () => {
+    if (completingRef.current || pacingOutRef.current) return;
+    if (completionLocked) {
+      await haptics.error();
+      return;
+    }
+    if (isNew) markTaskSeen(task.id);
+    await haptics.tap();
+    setShowRotationPick(true);
+  };
+
+  const handleRotationPick = async (itemId: string) => {
+    setShowRotationPick(false);
+    if (completingRef.current || pacingOutRef.current) return;
+    // Recorded before anything animates, so the pick is in the ledger whichever
+    // branch runs — and so the closing one closes over a complete week rather
+    // than over four fifths of it.
+    const covered = recordRotationPick(task.id, itemId);
+    if (covered) {
+      // The set is covered, so this is a completion: hand off to the same path
+      // the last unit of a quota takes, meter topping out and all. The store's
+      // own logRotationUnit would complete too, which is why the row calls the
+      // recorder rather than it.
+      handleComplete();
+      return;
+    }
+    await haptics.impactLight();
+    circleScale.setValue(1);
+    Animated.sequence([
+      Animated.spring(circleScale, { toValue: 1.25, ...animation.spring.snappy, useNativeDriver: true }),
+      Animated.spring(circleScale, { toValue: 1, ...animation.spring.snappy, useNativeDriver: true }),
+    ]).start();
+    // The same linger a quota unit gets, and the reason the user asked for it:
+    // a pick that puts the row back on pace would otherwise take it off Today
+    // before a second podcast could be logged. Holding it means the second tap
+    // is right there, and the send-off waits for the tapping to stop.
+    if (hidesWhenOnPace && (quotaHeldRef.current || quotaLeavesTodayAfterLog(task))) {
+      if (!quotaHeldRef.current) {
+        quotaHeldRef.current = true;
+        setQuotaSettled(true);
+        holdQuotaOnToday(task.id);
+      }
+      scheduleQuotaSendOff();
+    }
+    setLastAction({ label: 'Logged', undo: () => unlogRotationUnit(task.id) });
+  };
+
   // Pushed out by every tap; when it finally lapses the row plays the beats a
   // completion gets — hold, fade, collapse — minus the green, because nothing
   // was finished.
@@ -1766,7 +1837,12 @@ export const TaskItem = React.memo(function TaskItem({
   const handleQuotaUndo = async () => {
     if (task.progressCount === 0) return;
     await haptics.tap();
-    unlogQuotaUnit(task.id);
+    // A rotation's count and its ledger have to move together — decrementing
+    // through the quota path would leave the ledger holding a pick the count
+    // no longer knows about, and "the count is how many distinct members the
+    // ledger holds" is the invariant everything downstream reads.
+    if (isRotation) unlogRotationUnit(task.id);
+    else unlogQuotaUnit(task.id);
   };
 
   // Widget checkbox taps queue a completion and open the app (see
@@ -1888,6 +1964,10 @@ export const TaskItem = React.memo(function TaskItem({
           selectionMode ? () => onSelect?.(task.id)
           : isNegative ? handleSlip
           : completing ? (completingRef.current ? handleUndoComplete : handleUncompletePersisted)
+          // Ahead of the meter for the reason completionTapFor puts 'pick'
+          // ahead of 'log-unit': a rotation is a quota, so the meter branch
+          // would log an anonymous unit against a set whose point is names.
+          : (isRotation && !completing) ? handleRotationTap
           : showQuotaMeter ? handleQuotaTap
           : handleComplete
         }
@@ -2377,6 +2457,21 @@ export const TaskItem = React.memo(function TaskItem({
                 </Text>
               </View>
             )}
+            {rotationLine !== null && (
+              // Deliberately not the pace ramp said twice: the gap between the
+              // meter's fill and its pace mark already draws "behind". This is
+              // the discrete claim the ramp cannot make — what is left no
+              // longer fits in the days left — and it only takes the warning
+              // colour at that point.
+              <View style={styles.metaChip}>
+                <Text
+                  style={[styles.quotaLabel, rotationTight && styles.rotationTight]}
+                  numberOfLines={1}
+                >
+                  {rotationLine}
+                </Text>
+              </View>
+            )}
             {supplyLabel !== null && (
               <View
                 style={styles.metaChip}
@@ -2848,6 +2943,18 @@ export const TaskItem = React.memo(function TaskItem({
 
             {task.notes.length > 0 && (
               <Text style={styles.expandNotes}>{task.notes}</Text>
+            )}
+
+            {/* Read-only on purpose: these are options, not subtasks, and
+                ticking one here would be the bypass the whole feature exists
+                to close. Shared with the Logbook's week sheet. */}
+            {isRotation && (
+              <View style={[
+                styles.expandSection,
+                (task.notes.length > 0 || !!task.followUpTaskSourceTitle || followUpRule !== null) && styles.sectionDivider,
+              ]}>
+                <RotationChecklist task={task} />
+              </View>
             )}
 
             {/* Unconditional except on a notice — the always-visible "Add
@@ -3791,6 +3898,14 @@ export const TaskItem = React.memo(function TaskItem({
           onClose={() => setShowMealPicker(false)}
         />
       )}
+      {mountRotationPick && (
+        <RotationPickSheet
+          visible={showRotationPick}
+          task={task}
+          onPick={handleRotationPick}
+          onCancel={() => setShowRotationPick(false)}
+        />
+      )}
     </>
   );
 });
@@ -4104,6 +4219,9 @@ const makeStyles = (colors: Colors) => StyleSheet.create({
     fontSize: font.xs,
     fontWeight: fontWeight.medium,
   },
+  // Only worn once what's outstanding no longer fits in the days left — see
+  // rotationOverCommitted, which is deliberately a harder test than "behind".
+  rotationTight: { color: colors.orange },
   // Deliberately textSecondary rather than red: the shield beside it is already
   // carrying the alarm, and a second red thing on the same row would make one
   // slip look like two separate problems.

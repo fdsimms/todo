@@ -44,7 +44,7 @@ import { addDays } from 'date-fns/addDays';
 import { subDays } from 'date-fns/subDays';
 import { subMinutes } from 'date-fns/subMinutes';
 import { differenceInCalendarDays } from 'date-fns/differenceInCalendarDays';
-import type { Task, Priority, Effort, FollowUpTaskDraft, RecurrenceType, ChainItem, DeliverableKind, TimeOfDay, ReminderKind, Polarity, QuotaPeriod, NutrientKey, MealSlot } from '../types';
+import type { Task, Priority, Effort, FollowUpTaskDraft, RecurrenceType, ChainItem, RotationItem, DeliverableKind, TimeOfDay, ReminderKind, Polarity, QuotaPeriod, NutrientKey, MealSlot } from '../types';
 import { PRIORITY_LABELS, EFFORT_LABELS, TITLE_MAX_LENGTH, NUTRIENT_KEYS, MEAL_SLOTS, MEAL_SLOT_LABELS } from '../types';
 import { NUTRIENT_LABEL, mlToFlOz, flOzToMl } from '../utils/foodNutrition';
 import { useColors, useTheme } from '../theme/ThemeContext';
@@ -195,6 +195,9 @@ export interface TaskDraft {
   chainEnabled?: boolean;
   /** Steps already built in quick add, so "More details" doesn't drop them. */
   chainItems?: ChainItem[];
+  /** A rotation's named set, carried over when a draft already holds one. */
+  rotationEnabled?: boolean;
+  rotationItems?: RotationItem[];
   /** Drops a brand-new task straight into a project — set when the editor is opened from one. */
   projectId?: string | null;
   /** Same, for a stack. The task adopts the stack's category on the way in, as it would through addExistingToGroup. */
@@ -241,7 +244,7 @@ type DraftSubtask = { id: string; title: string; completed: boolean; timedMinute
 /** A medication name is a label on a row, not a prescription line. */
 const MEDICATION_NAME_MAX_LENGTH = 60;
 
-type FieldKey = 'stack' | 'category' | 'project' | 'tags' | 'people' | 'waitingOnPerson' | 'priority' | 'effort' | 'duration' | 'subtasks' | 'chainSteps' | 'deliverable' | 'completionTimer' | 'logHealthValue' | 'medication' | 'logMealSlot';
+type FieldKey = 'stack' | 'category' | 'project' | 'tags' | 'people' | 'waitingOnPerson' | 'priority' | 'effort' | 'duration' | 'subtasks' | 'chainSteps' | 'rotationSet' | 'deliverable' | 'completionTimer' | 'logHealthValue' | 'medication' | 'logMealSlot';
 
 // Presets for the Duration field, in minutes — the common "do this for a bit"
 // spans, including the 25-minute pomodoro.
@@ -604,17 +607,22 @@ export function TaskEditor({ visible, task, initialDraft, onClose }: Props) {
 
   const [chainEnabled, setChainEnabled] = useState(false);
   const [chainItems, setChainItems] = useState<ChainItem[]>([]);
+  const [rotationEnabled, setRotationEnabled] = useState(false);
+  const [rotationItems, setRotationItems] = useState<RotationItem[]>([]);
   // Which step's "ask on completion" sheet is open, by id rather than index —
   // the list under it can be reordered or shortened while the sheet is up.
   const [questionStepId, setQuestionStepId] = useState<string | null>(null);
   const [medicationStepId, setMedicationStepId] = useState<string | null>(null);
   const [linkStepId, setLinkStepId] = useState<string | null>(null);
+  const [linkMemberId, setLinkMemberId] = useState<string | null>(null);
   // Which of the two "write this to a calendar" rows is asking for one.
   const [calendarPickerFor, setCalendarPickerFor] = useState<'completion' | 'deadline' | null>(null);
   const [chainIndex, setChainIndex] = useState(0);
   const [chainStepOnSchedule, setChainStepOnSchedule] = useState(false);
   const [newChainItemTitle, setNewChainItemTitle] = useState('');
   const [addingChainItem, setAddingChainItem] = useState(false);
+  const [newRotationItemTitle, setNewRotationItemTitle] = useState('');
+  const [addingRotationItem, setAddingRotationItem] = useState(false);
   const [editingChainItemId, setEditingChainItemId] = useState<string | null>(null);
   const [chainItemTitleEdit, setChainItemTitleEdit] = useState('');
 
@@ -669,6 +677,8 @@ export function TaskEditor({ visible, task, initialDraft, onClose }: Props) {
   const titleRef = useRef<TextInput>(null);
   const chainInputRef = useRef<TextInput>(null);
   const chainItemSavedRef = useRef(false);
+  const rotationInputRef = useRef<TextInput>(null);
+  const rotationItemSavedRef = useRef(false);
   const chainItemTitleEditRef = useRef<TextInput>(null);
   const subtaskTitleEditRef = useRef<TextInput>(null);
   const newSubtaskInputRef = useRef<TextInput>(null);
@@ -688,10 +698,10 @@ export function TaskEditor({ visible, task, initialDraft, onClose }: Props) {
    */
   const kindMemory = useRef<{
     timedMinutes: number | null; targetCount: number | null;
-    targetUnit: string; chainItems: ChainItem[];
+    targetUnit: string; chainItems: ChainItem[]; rotationItems: RotationItem[];
     healthMetric: HealthMetric | null; healthTarget: number | null;
   }>({
-    timedMinutes: null, targetCount: null, targetUnit: '', chainItems: [],
+    timedMinutes: null, targetCount: null, targetUnit: '', chainItems: [], rotationItems: [],
     healthMetric: null, healthTarget: null,
   });
 
@@ -704,7 +714,7 @@ export function TaskEditor({ visible, task, initialDraft, onClose }: Props) {
     searchFilter.clear();
     // Belongs to the task being edited, not to the sheet.
     kindMemory.current = {
-      timedMinutes: null, targetCount: null, targetUnit: '', chainItems: [],
+      timedMinutes: null, targetCount: null, targetUnit: '', chainItems: [], rotationItems: [],
       healthMetric: null, healthTarget: null,
     };
     if (task) {
@@ -765,6 +775,7 @@ export function TaskEditor({ visible, task, initialDraft, onClose }: Props) {
       setHealthMetric(task.healthMetric ?? null);
       setHealthTarget(task.healthTarget ?? null);
       setChainEnabled(task.chainEnabled); setChainItems(task.chainItems);
+      setRotationEnabled(task.rotationEnabled); setRotationItems(task.rotationItems);
       setChainIndex(task.chainIndex);
       setChainStepOnSchedule(task.chainStepOnSchedule ?? false);
       setVacationPause(task.vacationPause ?? false);
@@ -811,6 +822,7 @@ export function TaskEditor({ visible, task, initialDraft, onClose }: Props) {
       setHealthMetric(null);
       setHealthTarget(null);
       setChainEnabled(initialDraft?.chainEnabled ?? false); setChainItems(initialDraft?.chainItems ?? []); setChainIndex(0);
+      setRotationEnabled(initialDraft?.rotationEnabled ?? false); setRotationItems(initialDraft?.rotationItems ?? []);
       setVacationPause(false);
       setExcludeFromSuggestions(false);
       setShowStreak(false);
@@ -927,6 +939,7 @@ export function TaskEditor({ visible, task, initialDraft, onClose }: Props) {
       pinned: task?.pinned ?? false,
       chainEnabled: task ? task.chainEnabled : (initialDraft?.chainEnabled ?? false),
       chainItems: task ? task.chainItems : (initialDraft?.chainItems ?? []),
+      rotationItems: task ? task.rotationItems : (initialDraft?.rotationItems ?? []),
       chainIndex: task?.chainIndex ?? 0,
       chainStepOnSchedule: task?.chainStepOnSchedule ?? false,
       vacationPause: task?.vacationPause ?? false,
@@ -1261,11 +1274,19 @@ export function TaskEditor({ visible, task, initialDraft, onClose }: Props) {
       // state yet if save() ran before its input blurred.
       chainEnabled: chainEnabled && effectiveChainItems.length >= 2,
       chainItems: effectiveChainItems,
+      // A set of one is not a rotation (MIN_ROTATION_ITEMS), the same floor
+      // chainEnabled applies just above and for the same reason: there would
+      // be nothing for the picker to ask. Enforced here at save rather than in
+      // taskKindOf, so the kind holds while the set is being typed.
+      rotationEnabled: rotationEnabled && rotationItems.length >= 2,
+      rotationItems: rotationItems.length >= 2 ? rotationItems : [],
       chainIndex,
       // Cleared whenever the control isn't on screen to set, same reasoning as
       // showStreak below: the mode only renders for a chain that has a repeat,
       // so a stale `true` left on a task whose chain or repeat was turned off
-      // would quietly turn it into a rotation if either came back.
+      // would quietly change how it steps if either came back. (This predates
+      // the Rotation kind and has nothing to do with it — it is about a chain
+      // advancing on its schedule rather than on completion.)
       chainStepOnSchedule:
         chainEnabled && effectiveChainItems.length >= 2 && recurrenceType !== 'none' && chainStepOnSchedule,
       vacationPause,
@@ -1491,7 +1512,7 @@ export function TaskEditor({ visible, task, initialDraft, onClose }: Props) {
    * arrived from a template, an import or an older build reads as whatever it
    * already is, and there's nothing to migrate or keep in step.
    */
-  const kind = taskKindOf({ chainEnabled, targetCount, timedMinutes, healthMetric, healthTarget });
+  const kind = taskKindOf({ chainEnabled, targetCount, timedMinutes, healthMetric, healthTarget, rotationEnabled });
 
   // What the supply card reads back: the day the last unit gets spent, and the
   // day an order has to go in to beat it.
@@ -1543,6 +1564,7 @@ export function TaskEditor({ visible, task, initialDraft, onClose }: Props) {
       kindMemory.current.targetUnit = targetUnit;
     }
     if (chainItems.length > 0) kindMemory.current.chainItems = chainItems;
+    if (rotationItems.length > 0) kindMemory.current.rotationItems = rotationItems;
     if (healthMetric !== null) {
       kindMemory.current.healthMetric = healthMetric;
       kindMemory.current.healthTarget = healthTarget;
@@ -1553,6 +1575,8 @@ export function TaskEditor({ visible, task, initialDraft, onClose }: Props) {
       targetCount: kindMemory.current.targetCount ?? DEFAULT_TARGET_COUNT,
       targetUnit: kindMemory.current.targetUnit,
       chainItems: kindMemory.current.chainItems,
+      rotationEnabled: kind === 'rotation',
+      rotationItems: kindMemory.current.rotationItems,
       // Defaulted the way the other kinds are, so picking Health lands on a
       // goal rather than on an empty row: steps, because it is the reading
       // every iPhone has without a Watch.
@@ -1575,6 +1599,8 @@ export function TaskEditor({ visible, task, initialDraft, onClose }: Props) {
     setTargetUnit(baked.targetUnit ?? '');
     setChainEnabled(baked.chainEnabled);
     setChainItems(baked.chainItems);
+    setRotationEnabled(baked.rotationEnabled);
+    setRotationItems(baked.rotationItems);
     setChainIndex(baked.chainIndex);
     setRecurrenceType(baked.recurrenceType);
     setEffort(baked.effort);
@@ -2434,6 +2460,22 @@ export function TaskEditor({ visible, task, initialDraft, onClose }: Props) {
             ))}
             onClose={() => setLinkStepId(null)}
           />
+          {/* Its own instance rather than sharing linkStepId with the chain's:
+              the two lists have separate id spaces, and one piece of state
+              would let a member id resolve against chainItems. */}
+          <ChainStepLinkSheet
+            visible={linkMemberId !== null}
+            step={rotationItems.find(r => r.id === linkMemberId) ?? null}
+            // Null on purpose: a rotation's members are siblings pointing at
+            // different places, so one without a link of its own has none,
+            // where a chain step sensibly inherits the task's.
+            taskLinkUrl={null}
+            kitchenEnabled={kitchenEnabled}
+            onSave={patch => setRotationItems(prev => prev.map(
+              r => (r.id === linkMemberId ? { ...r, ...patch } : r),
+            ))}
+            onClose={() => setLinkMemberId(null)}
+          />
           <FollowUpTaskSheet
             visible={showFollowUpTaskSheet}
             taskTitle={followUpTaskTitle}
@@ -3049,6 +3091,125 @@ export function TaskEditor({ visible, task, initialDraft, onClose }: Props) {
                   />
                 </View>
               )}
+            </>),
+          }] : []),
+          ...(kind === 'rotation' ? [{
+            key: 'rotation', label: 'Rotation', set: true,
+            keywords: ['set', 'languages', 'week', 'weekly', 'any order', 'each', 'cover', 'cycle'],
+            node: (<>
+                <CollapsibleField
+                  label="Rotation"
+                  summary={
+                    rotationItems.length > 1
+                      ? `${rotationItems.length} things, one each a week`
+                      : rotationItems.length === 1
+                        ? '1 thing, add one more'
+                        : 'Nothing in the set yet'
+                  }
+                  hint={
+                    'A set of things to get through once each per week, in any order. '
+                    + 'Checking the task off asks which one you did, and it only shows up on Today when you fall behind.'
+                  }
+                  expanded={fieldOpen('rotationSet', true)}
+                  onToggle={() => toggleField('rotationSet', true)}
+                >
+                  <View>
+                    {/* Draggable because this order is the order the picker
+                        lists them in, and nothing ever re-ranks it — so the
+                        only way to express a preference is to set it here. */}
+                    <SortableList
+                      onDragStateChange={setDraggingRow}
+                      data={rotationItems}
+                      onReorder={setRotationItems}
+                      renderItem={(item, _displayIndex, drag) => (
+                      <View style={styles.rotationItemRow}>
+                        <TouchableOpacity
+                          onLongPress={drag}
+                          delayLongPress={interaction.delayLongPress}
+                          hitSlop={6}
+                          accessibilityRole="button"
+                          accessibilityLabel={`Reorder ${item.title}`}
+                        >
+                          <Ionicons name="reorder-two-outline" size={iconSize.sm} color={colors.textTertiary} />
+                        </TouchableOpacity>
+                        <TextInput
+                          style={styles.rotationItemTitle}
+                          value={item.title}
+                          onChangeText={text => setRotationItems(prev => prev.map(
+                            r => (r.id === item.id ? { ...r, title: text } : r)))}
+                          placeholder="Name"
+                          placeholderTextColor={colors.textTertiary}
+                          maxLength={TITLE_MAX_LENGTH}
+                        />
+                        <StepLink
+                          step={item}
+                          taskLinkUrl={null}
+                          onPress={() => setLinkMemberId(item.id)}
+                        />
+                        <TouchableOpacity
+                          onPress={() => setRotationItems(prev => prev.filter(r => r.id !== item.id))}
+                          hitSlop={8}
+                          style={styles.chainItemDelete}
+                          accessibilityRole="button"
+                          accessibilityLabel={`Remove ${item.title} from the rotation`}
+                        >
+                          <Ionicons name="close" size={14} color={colors.textSecondary} />
+                        </TouchableOpacity>
+                      </View>
+                      )}
+                    />
+                    {addingRotationItem ? (
+                      <View style={styles.rotationItemRow}>
+                        <Ionicons name="reorder-two-outline" size={iconSize.sm} color={colors.bgQuaternary} />
+                        <TextInput
+                          ref={rotationInputRef}
+                          autoFocus
+                          style={styles.rotationItemTitle}
+                          value={newRotationItemTitle}
+                          onChangeText={setNewRotationItemTitle}
+                          placeholder="e.g. Spanish"
+                          placeholderTextColor={colors.textTertiary}
+                          maxLength={TITLE_MAX_LENGTH}
+                          returnKeyType="done"
+                          onSubmitEditing={() => {
+                            rotationItemSavedRef.current = true;
+                            const t = newRotationItemTitle.trim();
+                            if (t) setRotationItems(prev => [...prev, { id: generateId(), title: t, linkUrl: null }]);
+                            setNewRotationItemTitle('');
+                            setTimeout(() => {
+                              rotationItemSavedRef.current = false;
+                              rotationInputRef.current?.focus();
+                            }, 50);
+                          }}
+                          onBlur={() => {
+                            if (rotationItemSavedRef.current) return;
+                            const t = newRotationItemTitle.trim();
+                            if (t) setRotationItems(prev => [...prev, { id: generateId(), title: t, linkUrl: null }]);
+                            setNewRotationItemTitle('');
+                            setAddingRotationItem(false);
+                          }}
+                        />
+                      </View>
+                    ) : (
+                      <InlineAction
+                        icon="add"
+                        label="Add to the set"
+                        onPress={() => setAddingRotationItem(true)}
+                        style={styles.addBtnSpacing}
+                      />
+                    )}
+                    {rotationItems.length === 1 && (
+                      <Text style={styles.chainCurrentHint}>
+                        Add a second one: a rotation needs at least 2 things to save.
+                      </Text>
+                    )}
+                    {rotationItems.length > 1 && (
+                      <Text style={styles.chainCurrentHint}>
+                        Drag to reorder. This is the order the picker lists them in, and nothing ever re-ranks it.
+                      </Text>
+                    )}
+                  </View>
+                </CollapsibleField>
             </>),
           }] : []),
           ...(kind === 'chain' ? [{
@@ -6085,6 +6246,20 @@ const makeStyles = (colors: Colors) => StyleSheet.create({
     marginTop: spacing.xs,
   },
   chainModeBlock: { marginTop: spacing.md },
+  rotationItemRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: spacing.sm,
+    paddingVertical: spacing.xsm,
+  },
+  // No lineHeight on a TextInput — RN maps it onto the iOS paragraph style with
+  // no baseline compensation and the glyphs sit low in the box. See CLAUDE.md.
+  rotationItemTitle: {
+    flex: 1,
+    color: colors.text,
+    fontSize: font.md,
+    paddingVertical: spacing.xs,
+  },
   chainModeLabel: {
     color: colors.textSecondary, fontSize: font.xs, fontWeight: '700',
     textTransform: 'uppercase', letterSpacing: 0.8, marginBottom: spacing.xs,

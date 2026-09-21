@@ -167,6 +167,7 @@ import { entriesForSlot, shiftDayKey } from '../utils/mealPlan';
 import { MEAL_SLOT_TASK_DAYS, completesMealSlot, mealSlotSourceId, mealSlotStepTimeSegments, mealSlotTaskDraft, parseMealSlotSource } from '../utils/mealSlotTasks';
 import { wantsMealLogPrompt } from '../utils/mealLog';
 import { quotaRunSpan, quotaTargetForInterval, quotaDueTimesAfter, isQuotaRunOver, quotaWeekStart } from '../utils/quotaSchedule';
+import { isRotationTask, rotationCoversNew, rotationPick, rotationUnpick } from '../utils/rotation';
 import { MIN_TARGET_COUNT, MAX_TARGET_COUNT, taskKindOf } from '../utils/taskKinds';
 import { nextStreakRecord } from '../utils/streakRecord';
 import { isNegativeTask, slipPatch, undoSlipPatch, cleanDayPatch } from '../utils/negativeHabits';
@@ -886,6 +887,11 @@ const SCHEDULE_FIELDS = [
 // minute of every day.
 const QUOTA_SPAN_FIELDS = ['windowStart', 'windowEnd', 'quotaIntervalMinutes', 'quotaStartedAt'] as const;
 
+// Editing the set is editing the target, the same way editing the span is —
+// so it joins QUOTA_SPAN_FIELDS in triggering a re-derive rather than needing
+// its own handling in updateTask.
+const ROTATION_TARGET_FIELDS = ['rotationItems'] as const;
+
 /**
  * `targetCount` for a task whose cadence is stored as an interval, or the
  * count it already had when it isn't.
@@ -897,7 +903,12 @@ const QUOTA_SPAN_FIELDS = ['windowStart', 'windowEnd', 'quotaIntervalMinutes', '
  */
 export function derivedTargetCount(task: Pick<Task,
   'windowStart' | 'windowEnd' | 'quotaStartedAt' | 'quotaIntervalMinutes' | 'targetCount'
->): number | null {
+> & Partial<Pick<Task, 'rotationItems'>>): number | null {
+  // A rotation's target is how many named things are in it, full stop — there
+  // is nothing to type and nothing that could disagree with the set. It is
+  // checked ahead of the interval because the two are not a combination the
+  // editor offers and the set is the more specific claim.
+  if (isRotationTask(task)) return task.rotationItems!.length;
   if (task.quotaIntervalMinutes == null) return task.targetCount;
   const { activeHoursStart, activeHoursEnd } = useSettingsStore.getState();
   const span = quotaRunSpan({
@@ -1429,6 +1440,19 @@ interface TaskStore extends UndoHistoryActions {
   rolloverNegativeStreaks: () => void;
   logQuotaUnit: (id: string) => void;
   unlogQuotaUnit: (id: string) => void;
+  /**
+   * Write one pick into a rotation's ledger without completing anything, and
+   * report whether the set is now covered.
+   *
+   * Separate from `logRotationUnit` so the row can record the pick *first* and
+   * then drive its own completion animation — the same divert `handleQuotaTap`
+   * makes at target, except that a rotation's closing pick has to land in the
+   * ledger before the week closes over it.
+   */
+  recordRotationPick: (id: string, itemId: string) => boolean;
+  /** Log one pick against a rotation, completing the task if it covers the set. */
+  logRotationUnit: (id: string, itemId: string) => void;
+  unlogRotationUnit: (id: string) => void;
   /** Keeps a back-on-pace daily target on Today until releaseQuotaHold. */
   holdQuotaOnToday: (id: string) => void;
   releaseQuotaHold: (id: string) => void;
@@ -2671,7 +2695,8 @@ export const useTaskStore = create<TaskStore>((set, get) => ({
         // naming targetCount itself wins outright, so a whole-snapshot undo
         // restores the count it recorded rather than recomputing a new one
         // against a span that has since moved.
-        ...(!('targetCount' in updates) && QUOTA_SPAN_FIELDS.some(f => f in updates)
+        ...(!('targetCount' in updates)
+          && (QUOTA_SPAN_FIELDS.some(f => f in updates) || ROTATION_TARGET_FIELDS.some(f => f in updates))
           ? { targetCount: derivedTargetCount({ ...t, ...updates }) }
           : {}),
         // Changing polarity restarts the run, because the two polarities count
@@ -2759,6 +2784,7 @@ export const useTaskStore = create<TaskStore>((set, get) => ({
       // stored instant, a run is a whole schedule.
       if (
         QUOTA_SPAN_FIELDS.some(f => f in updates) ||
+        ROTATION_TARGET_FIELDS.some(f => f in updates) ||
         'quotaReminders' in updates ||
         'targetCount' in updates ||
         'vacationPause' in updates ||
@@ -3707,6 +3733,94 @@ export const useTaskStore = create<TaskStore>((set, get) => ({
     if (updated.pinned && isQuotaOnPace(updated)) {
       schedulePaceUnpin(id);
     }
+  },
+
+  /**
+   * The rotation counterpart of `logQuotaUnit`: same counting, but the caller
+   * says *which* member, and the ledger records it.
+   *
+   * Two things differ from the quota path and both are the feature rather than
+   * an inconsistency. It writes the ledger and *then* hands off to
+   * `completeTask`, where the quota path completes instead of bumping — a
+   * rotation's last pick has to land in the ledger before the week closes, or
+   * the closed row's record is missing the pick that closed it. And a repeat
+   * (a member already down this period) logs without moving `progressCount`,
+   * because the week is about coverage; listening to Spanish twice is a real
+   * thing to do and refusing to record it would be the app arguing with you,
+   * but it is not one of the five.
+   */
+  recordRotationPick(id, itemId) {
+    const task = get().tasks.find(t => t.id === id);
+    if (!task || task.completed || !isRotationTask(task) || !isQuotaTask(task)) return false;
+    const { weekStartsOn } = useSettingsStore.getState();
+    const dayStart = getCurrentDayStart();
+    const covers = rotationCoversNew(task, itemId, dayStart, weekStartsOn);
+    const patch = rotationPick(task, itemId, new Date(), dayStart, weekStartsOn);
+    if (!patch) return false;
+    // A repeat logs without moving the count: the week is about coverage, and
+    // a second Spanish is a real listen but not a sixth language.
+    const progressCount = covers ? task.progressCount + 1 : task.progressCount;
+    const updated = { ...task, ...patch, progressCount };
+    dbUpdateTask(updated);
+    set(s => ({ tasks: s.tasks.map(t => (t.id === id ? updated : t)) }));
+    return covers && progressCount >= task.targetCount!;
+  },
+
+  logRotationUnit(id, itemId) {
+    const task = get().tasks.find(t => t.id === id);
+    if (!task || task.completed || !isRotationTask(task) || !isQuotaTask(task)) return;
+    const covered = get().recordRotationPick(id, itemId);
+    const updated = get().tasks.find(t => t.id === id);
+    if (!updated) return;
+    if (covered) {
+      // The set is covered, so the period is done and the recurrence spawns
+      // next week's. completeTask reads the row back out of the store, which
+      // recordRotationPick has already updated, so it closes over the full
+      // ledger rather than over one pick short of it.
+      get().completeTask(id);
+      return;
+    }
+    // Only on the branch that doesn't complete, for the reason logQuotaUnit
+    // gives: completeTask logs these itself, and doing both counts one pick
+    // twice.
+    if (task.logHealthMetric) void logTaskHealthValue(updated);
+    const unitDose = medicationFor(task);
+    if (unitDose) {
+      useMedicationStore.getState().addLog({ ...unitDose, taskId: id });
+    }
+    get().setLastAction({
+      label: 'Logged',
+      undo: () => get().unlogRotationUnit(id),
+    });
+    if (updated.pinned && isQuotaOnPace(updated)) {
+      schedulePaceUnpin(id);
+    }
+  },
+
+  /**
+   * Takes the most recent pick back — what a long-press on the meter does.
+   *
+   * `progressCount` only falls when the pick being removed was the one
+   * covering that member, which is the mirror of the repeat rule above: undoing
+   * a second Spanish leaves Spanish covered, because the first one still
+   * counts.
+   */
+  unlogRotationUnit(id) {
+    const task = get().tasks.find(t => t.id === id);
+    if (!task || !isRotationTask(task)) return;
+    const { weekStartsOn } = useSettingsStore.getState();
+    const dayStart = getCurrentDayStart();
+    const patch = rotationUnpick(task, dayStart, weekStartsOn);
+    if (!patch) return;
+    const dropped = (task.rotationLog ?? [])[task.rotationLog.length - 1];
+    const stillCovered = patch.rotationLog.some(e => e.itemId === dropped.itemId);
+    const updated = {
+      ...task,
+      ...patch,
+      progressCount: stillCovered ? task.progressCount : Math.max(0, task.progressCount - 1),
+    };
+    dbUpdateTask(updated);
+    set(s => ({ tasks: s.tasks.map(t => (t.id === id ? updated : t)) }));
   },
 
   unlogQuotaUnit(id) {
@@ -6686,6 +6800,11 @@ export const useTaskStore = create<TaskStore>((set, get) => ({
       quotaStartedAt: null,
       quotaAlwaysVisible: false,
       quotaPeriod: 'day',
+      rotationEnabled: false,
+      rotationItems: [],
+      rotationLog: [],
+      rotationPeriodStart: null,
+      rotationLastDone: {},
       reminderTime: null,
       reminderKind: 'notification',
       reminderOffsetDays: null,
@@ -6895,6 +7014,11 @@ export const useTaskStore = create<TaskStore>((set, get) => ({
       quotaStartedAt: null,
       quotaAlwaysVisible: false,
       quotaPeriod: 'day',
+      rotationEnabled: false,
+      rotationItems: [],
+      rotationLog: [],
+      rotationPeriodStart: null,
+      rotationLastDone: {},
       reminderTime: null,
       reminderKind: 'notification',
       reminderOffsetDays: null,

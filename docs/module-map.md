@@ -249,6 +249,7 @@ name cannot say is where a component appears, and that is `docs/screen-map.md`.
 - `src/utils/retention.ts` — RetentionDays, RETENTION_OPTIONS, retentionLabel, parseRetentionDays, retentionCutoff, selectPurgeableTaskIds, selectPurgeableFocusSessionIds, LEDGER_MAX_DAYS, ledgerCutoff, selectPurgeableUnattendedIds, +1 more
 - `src/utils/rhythms.ts` — SegmentBoundaries, DEFAULT_BOUNDARIES, RhythmOptions, MIN_SAMPLES, segmentOf, HourRange, RhythmProfile, buildRhythmProfile, formatHour, formatHourRange, +3 more
 - `src/utils/rhythmsSettings.ts` — rhythmOptionsFromSettings
+- `src/utils/rotation.ts` — RotationMember, RotationCarrier, MIN_ROTATION_ITEMS, isRotationTask, parseRotationItems, parseRotationLog, parseRotationLastDone, rotationPeriodStart, activeRotationLog, rotationMembers, +9 more
 - `src/utils/savedViews.ts` — SAVED_VIEW_CLAUSE_KINDS, savedViewClauseLabel, SAVED_VIEW_ICONS, DEFAULT_SAVED_VIEW_ICON, SavedViewContext, matchesClause, matchesSavedView, isSavedViewCandidate, filterTasksForView, SavedViewLabels, +11 more
 - `src/utils/scanPortion.ts` — PackageChoice, servingsPerPackage, packageChoices, packageHelping
 - `src/utils/scanResolve.ts` — ScannedItem, ScannedGtinLink, shopperNameFor, shorterNameSuggestions, nameFromScanFor, sourceLabelFor, variantFor, scannedItemFor, pluScannedItem, unknownScannedItem, +6 more

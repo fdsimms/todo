@@ -13,11 +13,15 @@ import {
   type TypeValues,
 } from '../utils/taskKinds';
 import { resolvePillOverflow } from '../utils/pillOverflow';
-import type { ChainItem } from '../types';
+import type { ChainItem, RotationItem } from '../types';
+
+const member = (title: string): RotationItem => ({ id: title, title, linkUrl: null });
 
 const step = (title: string): ChainItem => ({ id: title, title, estimatedMinutes: null });
 
 const values = (over: Partial<TypeValues> = {}): TypeValues => ({
+  rotationEnabled: false,
+  rotationItems: [],
   timedMinutes: null,
   targetCount: null,
   targetUnit: null,
@@ -275,6 +279,7 @@ describe('taskKindOf', () => {
     TASK_KIND_META.forEach(({ key }) => {
       const baked = bakedFields(key, values({
         timedMinutes: 15, targetCount: 3, chainItems: [step('a'), step('b')],
+        rotationItems: [member('Spanish'), member('French')],
         healthMetric: 'steps', healthTarget: 8000,
       }));
       expect(taskKindOf(baked)).toBe(key);
@@ -282,7 +287,7 @@ describe('taskKindOf', () => {
   });
 
   it('names every kind', () => {
-    expect(TASK_KIND_META.map(m => m.key)).toEqual(['task', 'timed', 'target', 'health', 'chain']);
+    expect(TASK_KIND_META.map(m => m.key)).toEqual(['task', 'timed', 'target', 'health', 'rotation', 'chain']);
     TASK_KIND_META.forEach(m => {
       expect(m.label).toBeTruthy();
       expect(m.hint).toBeTruthy();

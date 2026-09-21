@@ -1,14 +1,14 @@
 import React from 'react';
 import { StyleSheet, TouchableOpacity } from 'react-native';
 import Ionicons from '@expo/vector-icons/Ionicons';
-import type { ChainItem } from '../types';
+import type { LinkableItem } from './ChainStepLinkSheet';
 import { useColors } from '../theme/ThemeContext';
 import { radius, interaction, iconSize, type Colors } from '../theme';
 import { haptics } from '../utils/haptics';
 
 interface Props {
-  /** The step this button belongs to. */
-  step: ChainItem;
+  /** The step or rotation member this button belongs to. */
+  step: LinkableItem;
   /**
    * What the task itself opens, for the accessibility label only. A step
    * with none of its own falls back to this (see `linkFor`), so "opens

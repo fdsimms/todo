@@ -99,6 +99,7 @@ export function seedDemoData(): void {
     updateTask,
     completeTask,
     setMeasuredTime,
+    logRotationUnit,
     addNewGroupedTask,
     addExistingToProject,
     addTag,
@@ -631,6 +632,37 @@ export function seedDemoData(): void {
     quotaAlwaysVisible: true,
   });
   updateTask(runs.id, { progressCount: 1 });
+
+  // A rotation: the same weekly counting, but the units have names (see
+  // utils/rotation.ts). This is the one shape a plain weekly target cannot
+  // express — "three times a week" cannot tell you *which* three are left —
+  // and the whole feature is invisible until something has been logged
+  // against it, so the seed logs two of the five and leaves three standing.
+  const languages = [
+    { id: generateId(), title: 'Spanish', linkUrl: null },
+    { id: generateId(), title: 'French', linkUrl: null },
+    { id: generateId(), title: 'German', linkUrl: null },
+    { id: generateId(), title: 'Japanese', linkUrl: null },
+    { id: generateId(), title: 'Portuguese', linkUrl: null },
+  ];
+  const podcasts = addTask({
+    title: 'Language podcast',
+    notes: 'One podcast a day, a different language each time. Checking it off asks which one you listened to.',
+    category: 'Personal',
+    dueDate: today.toISOString(),
+    rotationEnabled: true,
+    rotationItems: languages,
+    targetCount: languages.length,
+    quotaPeriod: 'week',
+    recurrenceType: 'weekly',
+    recurrenceInterval: 1,
+    quotaAlwaysVisible: true,
+  });
+  // Through the store action rather than a hand-written ledger, so the seed
+  // cannot drift from what a real pick writes — the rule the whole seed is
+  // built on. Two picks, which leaves the row reading "3 left".
+  logRotationUnit(podcasts.id, languages[0].id);
+  logRotationUnit(podcasts.id, languages[3].id);
 
   // A follow-up task rule. Invisible until it fires, so the seed carries a tally
   // partway through the cycle: the editor's caption then reads as a rule in

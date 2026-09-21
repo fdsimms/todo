@@ -3,6 +3,7 @@ import { isQuotaTask, isRecurrenceNotYetDue } from './visibilityUtils';
 import { asksOnCompletion } from './deliverables';
 import { activeMealSlotStepId, completesMealSlot, mealSlotOf } from './mealSlotTasks';
 import { mealLogNudgeEntryId } from './mealLogNudgeTasks';
+import { isRotationTask } from './rotation';
 import { isNegativeTask } from './negativeHabits';
 import { projectReviewProjectId } from './projectReviewTasks';
 
@@ -27,6 +28,8 @@ export type CompletionTap =
   | 'pick-meal'
   /** A quiet project's review task — open the pull sheet, not the checkmark. */
   | 'review-project'
+  /** A rotation (see utils/rotation.ts) — ask which member was done, then log that. */
+  | 'pick'
   /** A daily target below its count: this tap logs one unit, not the lot. */
   | 'log-unit'
   /** Already done: put it back on the list. */
@@ -62,6 +65,13 @@ export function completionTapFor(task: Task): CompletionTap {
   if (task.completed) return 'uncomplete';
   if (isNegativeTask(task)) return 'slip';
   if (isRecurrenceNotYetDue(task)) return 'locked';
+  // Ahead of the quota branch because it is the more specific claim about the
+  // same tap: a rotation *is* a quota, so that branch would answer 'log-unit'
+  // and log an anonymous unit against a set whose whole point is that the
+  // units have names. Unlike the quota's own split, this applies at every
+  // count including the last — the pick that closes the week still has to say
+  // which member closed it.
+  if (isRotationTask(task) && isQuotaTask(task)) return 'pick';
   if (isQuotaTask(task)) {
     const reachesTarget = !task.allowOvershoot && task.progressCount + 1 >= task.targetCount!;
     if (!reachesTarget) return 'log-unit';

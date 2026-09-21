@@ -230,6 +230,11 @@ export function newTaskFromDraft(
     quotaReminders: draft.quotaReminders ?? false,
     quotaAlwaysVisible: draft.quotaAlwaysVisible ?? false,
     quotaPeriod: draft.quotaPeriod ?? 'day',
+    rotationEnabled: draft.rotationEnabled ?? false,
+    rotationItems: draft.rotationItems ?? [],
+    rotationLog: [],
+    rotationPeriodStart: null,
+    rotationLastDone: {},
     // Never seeded from a draft: a run is started by tapping "start now" on a
     // task that exists, so a row arriving already mid-run would be claiming a
     // morning nobody had yet.

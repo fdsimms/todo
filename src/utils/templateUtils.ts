@@ -17,6 +17,7 @@ import type {
   TemplateQuestionSource,
 } from '../types';
 import { generateId } from './id';
+import { parseRotationItems } from './rotation';
 import { parseChainItems } from './chain';
 
 /** The two anchor dates a template can be applied with. */
@@ -75,6 +76,8 @@ export function normalizeTemplateItem(raw: Partial<TemplateItem>): TemplateItem 
     deliverableKind: raw.deliverableKind ?? null,
     chainEnabled: raw.chainEnabled ?? false,
     chainItems: parseChainItems(raw.chainItems),
+    rotationEnabled: raw.rotationEnabled ?? false,
+    rotationItems: parseRotationItems(raw.rotationItems),
     chainIndex: raw.chainIndex ?? 0,
     subtasks: raw.subtasks ?? [],
     groupId: raw.groupId ?? null,
@@ -215,6 +218,8 @@ export function buildDraftsFromTemplate(
       chainIndex: item.chainItems.length > 0
         ? Math.min(item.chainIndex, item.chainItems.length - 1)
         : 0,
+      rotationEnabled: item.rotationEnabled,
+      rotationItems: item.rotationItems.map(r => ({ ...r })),
     };
   });
 }
@@ -802,6 +807,10 @@ export function substituteDraftPlaceholders(
     chainItems: draft.chainItems?.map(c => ({
       ...c,
       title: substitutePlaceholders(c.title, values),
+    })),
+    rotationItems: draft.rotationItems?.map(r => ({
+      ...r,
+      title: substitutePlaceholders(r.title, values),
     })),
   };
 }

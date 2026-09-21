@@ -22,15 +22,31 @@ import { SheetHeaderButton } from './SheetHeaderButton';
 import { SheetScrim } from './SheetScrim';
 import { useSheetHiddenOffset } from '../hooks/useSheetHiddenOffset';
 
+/**
+ * The minimum a list item has to carry to have a link button, satisfied by
+ * `ChainItem` and `RotationItem` alike.
+ *
+ * Widened from `ChainItem` when rotations arrived, rather than copying this
+ * sheet: it only ever reads an id, a title and a link, and a second near
+ * identical sheet is precisely the drift `SheetHeaderButton` and
+ * `InlineAction` exist to undo.
+ */
+export type LinkableItem = Pick<ChainItem, 'id' | 'title' | 'linkUrl'>;
+
 interface Props {
   visible: boolean;
-  /** The step being edited; its title is the sheet's subject. */
-  step: ChainItem | null;
-  /** What the task itself opens, named in the hint so the empty state can say what leaving it empty actually does. */
+  /** The step or member being edited; its title is the sheet's subject. */
+  step: LinkableItem | null;
+  /**
+   * What the task itself opens, named in the hint so the empty state can say
+   * what leaving it empty actually does. Null for a rotation member, which
+   * inherits nothing: its siblings each point somewhere different, so "no link
+   * of its own" means no link rather than the task's.
+   */
   taskLinkUrl: string | null;
   kitchenEnabled: boolean;
   /** Applies the step's new link. `onClose` follows it — the host hides the sheet. */
-  onSave: (patch: Pick<ChainItem, 'linkUrl'>) => void;
+  onSave: (patch: Pick<LinkableItem, 'linkUrl'>) => void;
   onClose: () => void;
 }
 
