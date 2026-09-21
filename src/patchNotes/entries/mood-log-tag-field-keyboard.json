@@ -1,0 +1,4 @@
+{
+  "message": "Fixed a bug where adding a tag or symptom in the mood log (and anywhere else with a \"+ New\" field) could open the field behind the keyboard instead of scrolling it into view",
+  "date": "2026-09-20"
+}

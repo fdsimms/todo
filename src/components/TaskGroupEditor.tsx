@@ -30,6 +30,7 @@ import { PinIcon } from './PinIcon';
 import { SheetHeaderButton } from './SheetHeaderButton';
 import { SheetHeader } from './SheetHeader';
 import { TaskEditor } from './TaskEditor';
+import { useFilterField } from '../hooks/useFilterField';
 
 /** Editor sections that collapse to a one-line summary of their current value. */
 type FieldKey = 'category' | 'tags' | 'project';
@@ -114,7 +115,7 @@ export function TaskGroupEditor({ visible, group, isNew, onClose, projectId }: P
   const [addingChild, setAddingChild] = useState(false);
   const [newChildTitle, setNewChildTitle] = useState('');
   const [showExistingPicker, setShowExistingPicker] = useState(false);
-  const [existingSearch, setExistingSearch] = useState('');
+  const { query: existingSearch, clear: clearExistingSearch, props: filterField } = useFilterField();
   // Pickers collapse to their current value, matching the task editor.
   const [openFields, setOpenFields] = useState<Partial<Record<FieldKey, boolean>>>({});
   // A member row opens the task's own editor on top of this one, same as
@@ -129,7 +130,7 @@ export function TaskGroupEditor({ visible, group, isNew, onClose, projectId }: P
     setCategory(group.category);
     setHomeProjectId(group.projectId);
     setShowExistingPicker(false);
-    setExistingSearch('');
+    clearExistingSearch();
     setOpenFields({});
   }, [group]);
 
@@ -536,8 +537,7 @@ export function TaskGroupEditor({ visible, group, isNew, onClose, projectId }: P
             <View style={styles.existingPicker}>
               <TextInput
                 style={styles.existingSearch}
-                value={existingSearch}
-                onChangeText={setExistingSearch}
+                {...filterField}
                 placeholder="Search tasks"
                 placeholderTextColor={colors.textTertiary}
               />

@@ -65,6 +65,7 @@ import { NutritionSearchSheet, navigateToFoodSearchSettings } from './NutritionS
 import { NumberPadAccessory, NUMBER_PAD_ACCESSORY_ID } from './NumberPadAccessory';
 import { SegmentedControl, type SegmentOption } from './SegmentedControl';
 import { SheetHeaderButton } from './SheetHeaderButton';
+import { useFilterField } from '../hooks/useFilterField';
 
 /**
  * Writing down something eaten.
@@ -333,7 +334,6 @@ export function FoodLogEntrySheet({
   // plain ScrollView — same mechanism as every other keyboard-heavy sheet.
   const keyboardScroll = useKeyboardInsetScroll<ScrollView>();
   // The search field, refocused after a burst save — see handleSave.
-  const queryInputRef = useRef<TextInput>(null);
   // Set by handleSave's burst branch, consumed by the effect below once the
   // search field it wants to focus has actually mounted.
   const pendingBurstFocus = useRef(false);
@@ -358,7 +358,8 @@ export function FoodLogEntrySheet({
   const burstMode = !!allowBurst && !editing && keepOpenAfterFoodLog;
 
   // ==== local state (what is picked, how much, and which extra form is open) ====
-  const [query, setQuery] = useState('');
+  const searchFilter = useFilterField();
+  const query = searchFilter.query;
   const [picked, setPicked] = useState<Candidate | null>(null);
   const [amount, setAmount] = useState('');
   // The split view of `amount` a food with a matched unit renders as: a unit
@@ -386,7 +387,7 @@ export function FoodLogEntrySheet({
 
   useEffect(() => {
     if (!visible) return;
-    setQuery(initialQuery ?? '');
+    searchFilter.seed(initialQuery ?? '');
     setPicked(null);
     setAmount('');
     setAmountUnit(null);
@@ -403,7 +404,7 @@ export function FoodLogEntrySheet({
   useEffect(() => {
     if (!pendingBurstFocus.current) return;
     pendingBurstFocus.current = false;
-    queryInputRef.current?.focus();
+    searchFilter.inputRef.current?.focus();
   }, [picked]);
 
   // Closes the "weigh it" form whenever the picked food or its panel changes
@@ -600,7 +601,7 @@ export function FoodLogEntrySheet({
       // The catalog row or the recipe is gone, so there is nothing to reopen
       // on. Opening the search on the entry's own name is all this can offer,
       // and is still the delete and the retype it replaces, minus the delete.
-      setQuery(editing.label);
+      searchFilter.seed(editing.label);
       return;
     }
     setPicked(candidate);
@@ -710,8 +711,14 @@ export function FoodLogEntrySheet({
   // makes worse. `scalePanelToAmount` refuses on `panelMultiplier`, and that
   // helper re-runs the same refusal against the row it would write, so an
   // offer is one that actually settles the amount.
+  //
+  // `built` alone can't gate this any more: a per-100ml panel answers a
+  // volume amount's calories from its own volume math with no weight
+  // involved, so `built` comes back non-null while `built.grams` is still
+  // null. That's still a gap `weighableLine` will offer to close.
   const weighable = useMemo(() => {
-    if (!picked || picked.kind !== 'food' || !picked.panel || built || !amount.trim()) return null;
+    if (!picked || picked.kind !== 'food' || !picked.panel || !amount.trim()) return null;
+    if (built && built.grams !== null) return null;
     return weighableLine(amount, null, picked.panel, picked.label);
   }, [picked, built, amount]);
 
@@ -907,12 +914,12 @@ export function FoodLogEntrySheet({
     //
     // The search field doesn't exist yet to focus: this runs while `picked`
     // is still truthy, so the JSX is still on the amount-entry branch and
-    // `queryInputRef` points at nothing. `pendingBurstFocus` hands the actual
+    // `searchFilter.inputRef` points at nothing. `pendingBurstFocus` hands the actual
     // `.focus()` to the effect below, which fires once the reset below has
     // committed and the search field has mounted in its place.
     if (burstMode) {
       setBurstAdded(prev => [...prev, picked.label]);
-      setQuery(initialQuery ?? '');
+      searchFilter.seed(initialQuery ?? '');
       setPicked(null);
       setAmount('');
       setAmountUnit(null);
@@ -1139,7 +1146,7 @@ export function FoodLogEntrySheet({
                   : picked.panel
                     ? `${amountHint(picked.panel)}${
                       picked.panel.basis === 'per100ml'
-                        ? ''
+                        ? ' Type an amount by volume and you can weigh it once to add its weight.'
                         : ' Type an amount by volume or count and you can weigh it once to add it.'
                     }`
                     : 'A weight, like 100g.'}
@@ -1294,10 +1301,9 @@ export function FoodLogEntrySheet({
             <View style={styles.searchRow}>
               <Ionicons name="search" size={iconSize.sm} color={colors.textTertiary} />
               <TextInput
-                ref={queryInputRef}
+                key={searchFilter.fieldKey}
+                {...searchFilter.props}
                 style={styles.searchInput}
-                value={query}
-                onChangeText={setQuery}
                 placeholder="Search foods and recipes"
                 placeholderTextColor={colors.textTertiary}
                 autoCorrect={false}

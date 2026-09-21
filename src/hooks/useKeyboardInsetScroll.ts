@@ -1,5 +1,10 @@
-import { useCallback, useContext, useEffect, useMemo, useRef, useState } from 'react';
-import { Keyboard, type NativeScrollEvent, type NativeSyntheticEvent } from 'react-native';
+import { createContext, useCallback, useContext, useEffect, useMemo, useRef, useState } from 'react';
+import {
+  Keyboard,
+  type FocusEvent,
+  type NativeScrollEvent,
+  type NativeSyntheticEvent,
+} from 'react-native';
 import { useIsFocused } from '@react-navigation/native';
 import { NO_INSET, pulseNoInset, strandedScrollOffset } from '../utils/scrollClamp';
 import { PresentationLevelContext, subscribePresentation } from '../utils/sheetModal';
@@ -81,6 +86,46 @@ import { PresentationLevelContext, subscribePresentation } from '../utils/sheetM
 export interface ScrollHandle {
   scrollTo?(opts: { x?: number; y?: number; animated?: boolean }): void;
   scrollToOffset?(opts: { offset: number; animated?: boolean }): void;
+  // ScrollView only — see `focusInput` below for why a field needs to call it directly.
+  scrollResponderScrollNativeHandleToKeyboard?(
+    nodeHandle: number,
+    additionalOffset?: number,
+    preventNegativeScrollOffset?: boolean,
+  ): void;
+}
+
+/**
+ * Lets a field reach the `ScrollView` it lives in and ask to be scrolled clear
+ * of the keyboard on demand, bypassing `automaticallyAdjustKeyboardInsets`
+ * entirely. `null` outside one (a field rendered somewhere with no keyboard
+ * scroll handling at all), so a consumer's `onFocus` wiring is always safe to
+ * call unconditionally.
+ */
+export const KeyboardScrollIntoViewContext = createContext<((nodeHandle: number) => void) | null>(null);
+
+/**
+ * An `onFocus` handler for a `TextInput` living inside a `useKeyboardInsetScroll`
+ * `ScrollView`, for the one case `automaticallyAdjustKeyboardInsets` cannot
+ * cover: refocusing from one field straight onto another while the keyboard
+ * never closes. iOS only recomputes the scroll-into-view offset in response to
+ * `UIKeyboardWillChangeFrameNotification`, which fires on a keyboard *height*
+ * change — not on a same-height refocus — so a field that opens (or is newly
+ * mounted and `autoFocus`ed) while the keyboard is already up from a sibling
+ * field is left exactly where it was, which can be entirely behind the
+ * keyboard. `scrollResponderScrollNativeHandleToKeyboard` is RN's own answer to
+ * this (its doc comment: "should be used as the callback to onFocus in a
+ * TextInput's parent view") — it reads the keyboard's last-known metrics
+ * rather than waiting on a new notification, so it works whether or not the
+ * keyboard is already showing.
+ */
+export function useScrollFieldIntoView() {
+  const focusInput = useContext(KeyboardScrollIntoViewContext);
+  return useCallback(
+    (e: FocusEvent) => {
+      if (typeof e.nativeEvent.target === 'number') focusInput?.(e.nativeEvent.target);
+    },
+    [focusInput],
+  );
 }
 
 export function useKeyboardInsetScroll<T extends ScrollHandle>() {
@@ -180,9 +225,22 @@ export function useKeyboardInsetScroll<T extends ScrollHandle>() {
     [noInset],
   );
 
+  // See `useScrollFieldIntoView`'s doc comment — this is what it calls through
+  // `KeyboardScrollIntoViewContext`. `additionalOffset` is the inset the list
+  // is already carrying so this doesn't under-scroll a field that's near the
+  // bottom of the content.
+  const focusInput = useCallback((nodeHandle: number) => {
+    ref.current?.scrollResponderScrollNativeHandleToKeyboard?.(
+      nodeHandle,
+      lastScroll.current.insetBottom,
+      true,
+    );
+  }, []);
+
   return {
     ref,
     clearStaleInset,
+    focusInput,
     props: {
       automaticallyAdjustKeyboardInsets: focused,
       contentInset: insetProp,

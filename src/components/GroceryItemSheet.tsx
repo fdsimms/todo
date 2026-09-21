@@ -94,6 +94,7 @@ import { wantsUseUpTask } from '../utils/groceryExpiry';
 import { dayKeyToDate } from '../utils/dateUtils';
 import { useSettingsStore } from '../store/useSettingsStore';
 import { CountStepper } from './CountStepper';
+import { useFilterField } from '../hooks/useFilterField';
 import {
   GROCERY_EXPIRY_DAYS_MAX,
   GROCERY_BRAND_MAX_LENGTH,
@@ -256,7 +257,8 @@ export function GroceryItemSheet({
   // and behind the header icon, so an item nobody is searching looks exactly
   // as it did.
   const [searchOpen, setSearchOpen] = useState(false);
-  const [searchQuery, setSearchQuery] = useState('');
+  const searchFilter = useFilterField();
+  const searchQuery = searchFilter.query;
   const searchTerms = useMemo(
     () => (searchOpen ? editorSearchTerms(searchQuery) : []),
     [searchOpen, searchQuery]
@@ -266,7 +268,7 @@ export function GroceryItemSheet({
     haptics.tap();
     animateLayout();
     setSearchOpen(open => !open);
-    setSearchQuery('');
+    searchFilter.clear();
   };
   // Where `initialField`'s section actually lands once it's laid out — the
   // card and the field within it each report their own y through onLayout,
@@ -1043,7 +1045,7 @@ export function GroceryItemSheet({
             {!!preferred && (
               <>
                 <View style={styles.brandStrictRow}>
-                  <PillGroup options={productStrictOptions} noun="option" surface="page" />
+                  <PillGroup options={productStrictOptions} noun="option" />
                 </View>
                 <Text style={styles.hint}>
                   {item.productStrict
@@ -1531,8 +1533,7 @@ export function GroceryItemSheet({
             <SearchField
               style={styles.fieldSearch}
               placeholder="Find a field"
-              value={searchQuery}
-              onChangeText={setSearchQuery}
+              field={searchFilter}
               autoFocus
               accessibilityLabel="Find a field"
             />

@@ -271,6 +271,33 @@ describe('weighableLine', () => {
     expect(weighableLine('1.5 servings', null, panel({ basis: 'perServing' }), 'Bar')).toBeNull();
     expect(weighableLine('1.5 servings', null, panel(), 'Bar')).toBeNull();
   });
+
+  describe('a per-100ml panel and a volume amount', () => {
+    // A per-100ml panel answers a volume line's nutrients straight from its
+    // own volume math, with no portion table involved — so the line already
+    // resolves and still has no weight. That's the one exception to "a
+    // resolved line has nothing to weigh."
+    it('offers to weigh it, even though the line already resolves for nutrients', () => {
+      expect(weighableLine('500 ml', null, panel({ basis: 'per100ml' }), 'Juice'))
+        .toEqual({ label: 'ml', amount: 500, text: '500 ml' });
+    });
+
+    it('does not offer once the food already states a weight for that volume', () => {
+      const withWeight = panel({
+        basis: 'per100ml',
+        portions: [{ amount: 500, label: 'ml', grams: 515 }],
+      });
+      expect(weighableLine('500 ml', null, withWeight, 'Juice')).toBeNull();
+      // A different volume the density still answers is just as settled.
+      expect(weighableLine('1 l', null, withWeight, 'Juice')).toBeNull();
+    });
+
+    it('still refuses a weight-dimension amount, which no volume math can answer', () => {
+      // Unchanged from before: relating a weight to a volume needs a density
+      // this app never assumes, weighed or not.
+      expect(weighableLine('200 g', null, panel({ basis: 'per100ml' }), 'Milk')).toBeNull();
+    });
+  });
 });
 
 describe('unfixableQuantityReason', () => {

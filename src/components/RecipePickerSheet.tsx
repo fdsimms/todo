@@ -33,6 +33,7 @@ import { freshnessColor } from './LeftoversCard';
 import { SheetScrim } from './SheetScrim';
 import { MEAL_SLOTS, RECIPE_NAME_MAX_LENGTH, type Leftover, type MealPlanEntry, type MealSlot } from '../types';
 import { useSheetHiddenOffset } from '../hooks/useSheetHiddenOffset';
+import { useFilterField } from '../hooks/useFilterField';
 
 export interface MealPick {
   /**
@@ -151,7 +152,7 @@ export function RecipePickerSheet({ visible, dayKey, dayLabel, defaultSlot, forc
 
   const recipes = useRecipeStore(useShallow(s => s.recipes));
   const leftovers = useLeftoverStore(useShallow(s => s.leftovers));
-  const [query, setQuery] = useState('');
+  const { query, clear: clearQuery, props: filterField } = useFilterField();
   const [slot, setSlot] = useState<MealSlot>(defaultSlot);
   /** Every entry picked so far this session, in the order they landed. */
   const [planned, setPlanned] = useState<MealPlanEntry[]>([]);
@@ -234,7 +235,7 @@ export function RecipePickerSheet({ visible, dayKey, dayLabel, defaultSlot, forc
 
   useEffect(() => {
     if (!visible) return;
-    setQuery('');
+    clearQuery();
     setSlot(forceSlot ?? lastPickedSlot ?? defaultSlotRef.current);
     setPlanned([]);
     translateY.setValue(hiddenY);
@@ -294,7 +295,7 @@ export function RecipePickerSheet({ visible, dayKey, dayLabel, defaultSlot, forc
     const entry = onPlan({ date: dayKey, slot, recipeId, leftoverId: null, title });
     if (!entry) return;
     setPlanned(prev => [...prev, entry]);
-    setQuery('');
+    clearQuery();
   };
 
   /**
@@ -341,7 +342,7 @@ export function RecipePickerSheet({ visible, dayKey, dayLabel, defaultSlot, forc
     });
     if (!entry) return;
     setPlanned(prev => [...prev, entry]);
-    setQuery('');
+    clearQuery();
   };
 
   return (
@@ -391,8 +392,7 @@ export function RecipePickerSheet({ visible, dayKey, dayLabel, defaultSlot, forc
             <Ionicons name="search" size={15} color={colors.textTertiary} />
             <TextInput
               style={styles.searchInput}
-              value={query}
-              onChangeText={setQuery}
+              {...filterField}
               placeholder="Search recipes, or type a meal"
               placeholderTextColor={colors.textTertiary}
               autoCorrect={false}

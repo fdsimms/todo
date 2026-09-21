@@ -21,6 +21,7 @@ import { recipeMap, wouldCreateRecipeCycle } from '../utils/recipeComponents';
 import { EmptyState } from './EmptyState';
 import { SheetHeader } from './SheetHeader';
 import { SheetHeaderButton } from './SheetHeaderButton';
+import { useFilterField } from '../hooks/useFilterField';
 
 interface Props {
   visible: boolean;
@@ -51,8 +52,8 @@ export function RecipeComponentPicker({ visible, recipe, onClose, onSelect }: Pr
   const styles = useMemo(() => makeStyles(colors), [colors]);
   const recipes = useRecipeStore(useShallow(s => s.recipes));
 
-  const [query, setQuery] = useState('');
-  useEffect(() => { if (visible) setQuery(''); }, [visible]);
+  const { query, clear: clearQuery, props: filterField } = useFilterField();
+  useEffect(() => { if (visible) clearQuery(); }, [visible]);
 
   const alreadyUsed = useMemo(
     () => new Set(recipe ? recipe.components.map(c => c.recipeId) : []),
@@ -110,8 +111,7 @@ export function RecipeComponentPicker({ visible, recipe, onClose, onSelect }: Pr
               <Ionicons name="search" size={iconSize.sm} color={colors.textTertiary} />
               <TextInput
                 style={styles.searchInput}
-                value={query}
-                onChangeText={setQuery}
+                {...filterField}
                 placeholder="Search recipes"
                 placeholderTextColor={colors.textTertiary}
                 autoCapitalize="none"

@@ -31,6 +31,7 @@ import {
 } from '../utils/contactsAccess';
 import { usePersonStore } from '../store/usePersonStore';
 import { useShallow } from 'zustand/react/shallow';
+import { useFilterField } from '../hooks/useFilterField';
 
 /** How long the field sits still before a search runs. */
 const SEARCH_DEBOUNCE_MS = 250;
@@ -72,7 +73,6 @@ interface Props {
 export function ContactPickerSheet({ visible, onPick, onClose }: Props) {
   const colors = useColors();
   const styles = useMemo(() => makeStyles(colors), [colors]);
-  const inputRef = useRef<TextInput>(null);
 
   // Everybody, archived included: a contact already on file as an archived
   // person is still already on file, and offering them again would mint the
@@ -81,7 +81,7 @@ export function ContactPickerSheet({ visible, onPick, onClose }: Props) {
 
   const [permission, setPermission] = useState<ContactsPermission | null>(null);
   const [scope, setScope] = useState<ContactsAccessScope | null>(null);
-  const [query, setQuery] = useState('');
+  const { query, clear: clearQuery, inputRef, props: filterField } = useFilterField();
   const [results, setResults] = useState<ContactCandidate[]>([]);
   const [searching, setSearching] = useState(false);
   const [limited, setLimited] = useState<ContactCandidate[]>([]);
@@ -90,7 +90,7 @@ export function ContactPickerSheet({ visible, onPick, onClose }: Props) {
 
   useEffect(() => {
     if (!visible) return;
-    setQuery('');
+    clearQuery();
     setResults([]);
     setAdded([]);
     setScope(null);
@@ -190,10 +190,8 @@ export function ContactPickerSheet({ visible, onPick, onClose }: Props) {
           <View style={styles.searchWrap}>
             <Ionicons name="search" size={iconSize.sm} color={colors.textTertiary} style={styles.searchIcon} />
             <TextInput
-              ref={inputRef}
+              {...filterField}
               style={styles.field}
-              value={query}
-              onChangeText={setQuery}
               placeholder={scope === 'limited' ? 'Search shared contacts' : 'Search your contacts'}
               placeholderTextColor={colors.textTertiary}
               autoCapitalize="words"

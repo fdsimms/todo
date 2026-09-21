@@ -12,6 +12,7 @@ import { SheetHeaderButton } from './SheetHeaderButton';
 import { EmptyState } from './EmptyState';
 import { haptics } from '../utils/haptics';
 import type { Recipe } from '../types';
+import { useFilterField } from '../hooks/useFilterField';
 
 interface Props {
   visible: boolean;
@@ -44,7 +45,7 @@ export function RecipeSourceSheet({ visible, allowAIImport, onPickSaved, onImpor
   const styles = useMemo(() => makeStyles(colors), [colors]);
 
   const recipes = useRecipeStore(useShallow(s => s.recipes));
-  const [query, setQuery] = useState('');
+  const { query, clear: clearQuery, props: filterField } = useFilterField();
 
   const matches = useMemo(() => {
     const ranked = query.trim()
@@ -53,7 +54,7 @@ export function RecipeSourceSheet({ visible, allowAIImport, onPickSaved, onImpor
     return ranked.slice(0, MAX_ROWS);
   }, [query, recipes]);
 
-  const reset = () => setQuery('');
+  const reset = () => clearQuery();
 
   const handleClose = () => {
     Keyboard.dismiss();
@@ -89,8 +90,7 @@ export function RecipeSourceSheet({ visible, allowAIImport, onPickSaved, onImpor
             <Ionicons name="search" size={15} color={colors.textTertiary} />
             <TextInput
               style={styles.searchInput}
-              value={query}
-              onChangeText={setQuery}
+              {...filterField}
               placeholder="Search your recipes"
               placeholderTextColor={colors.textTertiary}
               autoCorrect={false}

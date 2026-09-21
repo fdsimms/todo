@@ -392,6 +392,13 @@ const PROBE_GRAMS = [10, 1000];
  * `gramsForLine`'s last rule looks for. A food already carrying one whole-item
  * row is refused by the probe rather than by a rule here, since a second one
  * is what makes that rule ambiguous.
+ *
+ * **One line resolves without ever answering a weight, and that's the one
+ * exception to "a resolved line has nothing to weigh."** A per-100ml panel's
+ * own volume math answers a volume line's nutrients directly — no portion
+ * table involved — so `panelMultiplier` can already say yes while `grams`
+ * for that same line is still null. That's still a gap worth a scale: it's
+ * the only way such a food's weight is ever going to get onto the row.
  */
 export function weighableLine(
   quantity: string,
@@ -399,13 +406,28 @@ export function weighableLine(
   nutrition: FoodNutrition,
   foodName: string,
 ): LineWeighing | null {
-  // A line that already resolves has no gap to close, so there is nothing to
-  // weigh — asked here rather than left to the caller, so the answer is about
-  // the line and the panel rather than about who happened to ask.
-  if (panelMultiplier(quantity, prep, nutrition) !== null) return null;
-
   const parsed = parseQuantity(quantity);
   if (parsed.amount === null) return null;
+
+  // A line that already resolves has no gap to close in the ordinary case —
+  // asked here rather than left to the caller, so the answer is about the
+  // line and the panel rather than about who happened to ask. The per-100ml
+  // volume case handled just below is the one time a resolved line still has
+  // a gap: its weight, not its nutrients.
+  if (panelMultiplier(quantity, prep, nutrition) !== null) {
+    if (nutrition.basis !== 'per100ml') return null;
+    if (gramsForLine(parsed, prep, nutrition.portions) !== null) return null;
+    const single = parsed.rangeMax ? { ...parsed, rangeMax: null } : parsed;
+    const measured = measureParsedQuantity(single);
+    if (!measured || measured.dimension !== 'volume') return null;
+    const amount = rationalToNumber(parsed.amount);
+    if (amount <= 0) return null;
+    const label = (parsed.unit ?? foodName).trim();
+    if (!label) return null;
+    const written = formatRational(parsed.amount, parsed.decimal);
+    return { label, amount, text: `${written} ${inflectUnit(label, amount)}` };
+  }
+
   const amount = rationalToNumber(parsed.amount);
   if (amount <= 0) return null;
   // A counted container names how many tins, not how much is in one — the same
