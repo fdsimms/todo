@@ -14,11 +14,15 @@ import { useColors } from '../theme/ThemeContext';
 import { font, fontWeight, interaction, radius, spacing, type Colors } from '../theme';
 import { MEAL_SLOTS, MEAL_SLOT_LABELS, type FoodNutrition, type MealSlot } from '../types';
 import { useFoodLogStore } from '../store/useFoodLogStore';
+import { useGroceryStore } from '../store/useGroceryStore';
 import { useKeyboardInsetScroll } from '../hooks/useKeyboardInsetScroll';
 import { packageChoices, packageHelping } from '../utils/scanPortion';
 import { amountExample, amountHint, composeFoodAmount, foodUnitOptionsFor, scalePanelToAmount } from '../utils/foodLog';
+import { addCustomPortion } from '../utils/foodNutrition';
+import { weighableLine, type LineWeighing } from '../utils/ingredientGrams';
 import { haptics } from '../utils/haptics';
 import { CountStepper } from './CountStepper';
+import { InlineAction } from './InlineAction';
 import { NumberPadAccessory, NUMBER_PAD_ACCESSORY_ID } from './NumberPadAccessory';
 import { SegmentedControl } from './SegmentedControl';
 import { SheetHeader } from './SheetHeader';
@@ -107,6 +111,8 @@ export function ScanPortionSheet({ visible, foods, slot, at, mealPlanEntryId, on
   const colors = useColors();
   const styles = useMemo(() => makeStyles(colors), [colors]);
   const addEntry = useFoodLogStore(s => s.addEntry);
+  const setItemNutrition = useGroceryStore(s => s.setItemNutrition);
+  const setProductNutrition = useGroceryStore(s => s.setProductNutrition);
   // Lifts the focused amount field clear of the keyboard instead of leaving
   // it to a plain ScrollView, which only scrolls when the person does it
   // manually — same mechanism as every other keyboard-heavy sheet (see the
@@ -121,14 +127,25 @@ export function ScanPortionSheet({ visible, foods, slot, at, mealPlanEntryId, on
   // meaning as there.
   const [amountUnits, setAmountUnits] = useState<Record<string, string>>({});
   const [amountNumbers, setAmountNumbers] = useState<Record<string, string>>({});
+  // A card's panel once a "weigh it" answer has been saved against it — see
+  // `panelFor` below. Starts empty; `food.panel` is what's shown until then.
+  const [weighedPanels, setWeighedPanels] = useState<Record<string, FoodNutrition>>({});
+  const [weighingKeys, setWeighingKeys] = useState<Record<string, boolean>>({});
+  const [weighGrams, setWeighGrams] = useState<Record<string, string>>({});
 
   useEffect(() => {
     if (!visible) return;
     setAnswers({});
     setAmountUnits({});
     setAmountNumbers({});
+    setWeighedPanels({});
+    setWeighingKeys({});
+    setWeighGrams({});
     setChosenSlot(slot);
   }, [visible, slot]);
+
+  /** The panel a card actually reads from — its own weighing, if it's saved one. */
+  const panelFor = (food: ScannedFood): FoodNutrition => weighedPanels[food.key] ?? food.panel;
 
   /**
    * What each answered card actually works out to. A typed amount that doesn't
@@ -148,20 +165,42 @@ export function ScanPortionSheet({ visible, foods, slot, at, mealPlanEntryId, on
       // this label." under an empty box, which reads as the label being at
       // fault rather than the field being blank.
       if (answer.kind === 'typed' && !answer.text.trim()) continue;
+      const panel = panelFor(food);
       if (answer.kind === 'choice') {
-        const nutrition = packageHelping(food.panel, answer.servings, answer.label, at);
+        const nutrition = packageHelping(panel, answer.servings, answer.label, at);
         out.set(food.key, nutrition
           ? { nutrition, grams: nutrition.servingGrams, quantity: answer.label, approximate: false }
           : null);
       } else {
-        const scaled = scalePanelToAmount(food.panel, answer.text, null, at, food.label);
+        const scaled = scalePanelToAmount(panel, answer.text, null, at, food.label);
         out.set(food.key, scaled ? { ...scaled, quantity: answer.text.trim() } : null);
       }
     }
     return out;
-  }, [foods, answers, at]);
+  }, [foods, answers, at, weighedPanels]);
 
   const loggable = foods.filter(f => resolved.get(f.key));
+
+  /**
+   * Records a self-weighed portion for one card, the same move
+   * `FoodLogEntrySheet`'s own weigh-it offer makes — see `weighableLine` for
+   * when this is even offered. Written against the box's own product if this
+   * scan resolved one, otherwise the catalog item, so it's there the next
+   * time this food is scanned or logged.
+   */
+  const handleSaveWeighedPortion = (food: ScannedFood, weighing: LineWeighing) => {
+    const grams = Number((weighGrams[food.key] ?? '').trim().replace(',', '.'));
+    if (!Number.isFinite(grams) || grams <= 0) { haptics.error(); return; }
+    const updated = addCustomPortion(panelFor(food), weighing.label, weighing.amount, grams);
+    if (!updated) { haptics.error(); return; }
+    if (food.productId) setProductNutrition(food.productId, updated);
+    else if (food.itemId) setItemNutrition(food.itemId, updated);
+    else { haptics.error(); return; }
+    setWeighedPanels(p => ({ ...p, [food.key]: updated }));
+    setWeighingKeys(w => ({ ...w, [food.key]: false }));
+    setWeighGrams(g => ({ ...g, [food.key]: '' }));
+    haptics.success();
+  };
 
   const handleCancel = () => {
     // Measured against what actually resolved, so a field typed into and then
@@ -239,14 +278,22 @@ export function ScanPortionSheet({ visible, foods, slot, at, mealPlanEntryId, on
           />
 
           {foods.map(food => {
+            const panel = panelFor(food);
             const answer = answers[food.key];
-            const choices = packageChoices(food.panel, food.packSize);
+            const choices = packageChoices(panel, food.packSize);
             const outcome = resolved.get(food.key);
             const typed = answer?.kind === 'typed' ? answer.text : '';
-            const unitOptions = foodUnitOptionsFor(food.panel);
+            const unitOptions = foodUnitOptionsFor(panel);
             const selectedUnitKey = amountUnits[food.key] ?? (unitOptions.length > 0 ? unitOptions[0].key : null);
             const usingPills = unitOptions.length > 0 && selectedUnitKey !== 'other';
             const selectedUnit = unitOptions.find(o => o.key === selectedUnitKey);
+            // Offered once a typed amount resolves for nutrients but still has
+            // no weight — a per-100ml panel's own volume math can do the
+            // first without ever answering the second (see `weighableLine`).
+            const weighable = answer?.kind === 'typed' && answer.text.trim() && (!outcome || outcome.grams === null)
+              ? weighableLine(answer.text, null, panel, food.label)
+              : null;
+            const weighing = !!weighingKeys[food.key];
             return (
               <View key={food.key} style={styles.card}>
                 <Text style={styles.cardTitle}>{food.label}</Text>
@@ -322,7 +369,7 @@ export function ScanPortionSheet({ visible, foods, slot, at, mealPlanEntryId, on
                       setAnswers(a => ({ ...a, [food.key]: { kind: 'typed', text } }));
                     }
                   }}
-                  placeholder={usingPills ? 'Amount' : `e.g. ${amountExample(food.panel)}`}
+                  placeholder={usingPills ? 'Amount' : `e.g. ${amountExample(panel)}`}
                   placeholderTextColor={colors.textTertiary}
                   keyboardType={usingPills ? 'decimal-pad' : 'default'}
                   // The number pad has no return key, so without this there is
@@ -382,7 +429,7 @@ export function ScanPortionSheet({ visible, foods, slot, at, mealPlanEntryId, on
                 <Text style={styles.hint}>
                   {usingPills
                     ? 'Choose a unit below and type the amount. Anything else is refused rather than guessed at.'
-                    : amountHint(food.panel)}
+                    : amountHint(panel)}
                 </Text>
                 {/* What the answer works out to, or why it doesn't. An amount
                     the food's own portion table can't measure is refused here
@@ -404,6 +451,47 @@ export function ScanPortionSheet({ visible, foods, slot, at, mealPlanEntryId, on
                   <Text style={styles.approximateNote}>
                     Approximate — no manufacturer serving data.
                   </Text>
+                )}
+                {/* A label stating only per-100ml figures answers calories
+                    for a volume amount without ever naming a weight — this
+                    is the one way such a box's weight gets recorded. */}
+                {!!weighable && !weighing && (
+                  <InlineAction
+                    label={`Weigh ${typed.trim()} and save for next time`}
+                    icon="scale-outline"
+                    variant="neutral"
+                    onPress={() => { haptics.tap(); setWeighingKeys(w => ({ ...w, [food.key]: true })); }}
+                    style={styles.weighAction}
+                  />
+                )}
+                {!!weighable && weighing && (
+                  <View style={styles.weighForm}>
+                    <Text style={styles.weighLabel}>
+                      {`How many grams did ${typed.trim()} of this actually weigh?`}
+                    </Text>
+                    <View style={styles.weighRow}>
+                      <TextInput
+                        style={styles.weighInput}
+                        value={weighGrams[food.key] ?? ''}
+                        onChangeText={text => setWeighGrams(g => ({ ...g, [food.key]: text }))}
+                        placeholder="e.g. 240"
+                        placeholderTextColor={colors.textTertiary}
+                        keyboardType="decimal-pad"
+                        inputAccessoryViewID={NUMBER_PAD_ACCESSORY_ID}
+                        accessibilityLabel="Weight in grams"
+                      />
+                      <Text style={styles.weighUnit}>g</Text>
+                      <InlineAction
+                        label="Save"
+                        onPress={() => handleSaveWeighedPortion(food, weighable)}
+                        disabled={!(weighGrams[food.key] ?? '').trim()}
+                        haptic
+                      />
+                    </View>
+                    <Text style={styles.weighHint}>
+                      Remembered against this food, so the next time you scan or log it, {typed.trim()} resolves a weight on its own.
+                    </Text>
+                  </View>
                 )}
               </View>
             );
@@ -455,6 +543,26 @@ function makeStyles(colors: Colors) {
     outcome: { color: colors.textSecondary, fontSize: font.sm },
     outcomeRefused: { color: colors.textTertiary },
     approximateNote: { color: colors.textTertiary, fontSize: font.xs },
+    weighAction: { alignSelf: 'flex-start' },
+    weighForm: {
+      padding: spacing.sm,
+      backgroundColor: colors.bgTertiary,
+      borderRadius: radius.md,
+      gap: spacing.xs,
+    },
+    weighLabel: { color: colors.text, fontSize: font.sm, lineHeight: 18 },
+    weighRow: { flexDirection: 'row', alignItems: 'center', gap: spacing.sm },
+    weighInput: {
+      flex: 1,
+      color: colors.text,
+      fontSize: font.md,
+      backgroundColor: colors.bgSecondary,
+      borderRadius: radius.sm,
+      paddingHorizontal: spacing.sm,
+      paddingVertical: spacing.xs,
+    },
+    weighUnit: { color: colors.textSecondary, fontSize: font.sm },
+    weighHint: { color: colors.textTertiary, fontSize: font.xs, lineHeight: 14 },
     groupLabel: {
       color: colors.textSecondary,
       fontSize: font.xs,
