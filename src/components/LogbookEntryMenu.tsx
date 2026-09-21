@@ -29,6 +29,12 @@ interface Props {
   onEditAnswer?: () => void;
   /** Whether this entry was completed *with* an answer — the row's wording. */
   hasAnswer?: boolean;
+  /**
+   * Opens the week a rotation entry covered (see RotationWeekSheet). Omitted
+   * for every other entry — a rotation is one Logbook row per week rather than
+   * per pick, so this is the only route to what that week actually held.
+   */
+  onShowWeek?: () => void;
   /** Deletes the entry outright. The caller confirms — see LogbookScreen. */
   onDelete: () => void;
   onClose: () => void;
@@ -43,7 +49,7 @@ interface Props {
  * away from "Mark Incomplete".
  */
 export function LogbookEntryMenu({
-  visible, value, onMarkIncomplete, onChangeDate, onEditAnswer, hasAnswer = false, onDelete, onClose,
+  visible, value, onMarkIncomplete, onChangeDate, onEditAnswer, hasAnswer = false, onShowWeek, onDelete, onClose,
 }: Props) {
   const colors = useColors();
   const styles = useMemo(() => makeStyles(colors), [colors]);
@@ -133,6 +139,20 @@ export function LogbookEntryMenu({
               >
                 <Ionicons name="help" size={18} color={colors.accent} />
                 <Text style={styles.optionLabel}>{hasAnswer ? 'Edit Answer' : 'Add Answer'}</Text>
+              </TouchableOpacity>
+            </>
+          )}
+          {onShowWeek && (
+            <>
+              <View style={styles.inlineSep} />
+              <TouchableOpacity
+                style={styles.optionRow}
+                onPress={() => { haptics.tap(); closeThen(onShowWeek); }}
+                activeOpacity={interaction.activeOpacity}
+                accessibilityRole="button"
+              >
+                <Ionicons name="repeat-outline" size={18} color={colors.accent} />
+                <Text style={styles.optionLabel}>Show the Week</Text>
               </TouchableOpacity>
             </>
           )}

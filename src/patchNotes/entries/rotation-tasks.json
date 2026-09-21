@@ -1,4 +1,4 @@
 {
-  "message": "New task kind: Rotation. Give a task a set of things to get through once each per week, in any order. Checking it off asks which one you did, and the row says what's left and how many days are left to do it in.",
+  "message": "New task kind: Rotation. Give a task a set of things to get through once each per week, in any order. Checking it off asks which one you did, and the row says what's left and how many days are left to do it in. Each thing in the set can carry its own link, and the Logbook entry for a finished week shows what it held.",
   "date": "2026-09-21"
 }

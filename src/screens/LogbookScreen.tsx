@@ -39,6 +39,7 @@ import { SearchField } from '../components/SearchField';
 import { SegmentedControl, type SegmentOption } from '../components/SegmentedControl';
 import { EmptyState } from '../components/EmptyState';
 import { LogbookEntryMenu } from '../components/LogbookEntryMenu';
+import { RotationWeekSheet } from '../components/RotationWeekSheet';
 import { SimpleBulkBar } from '../components/SimpleBulkBar';
 import { SwipeableRow } from '../components/SwipeableRow';
 import { PaintSelectionProvider, usePaintSelectionRow } from '../components/PaintSelection';
@@ -72,6 +73,7 @@ import { matchPersonMentions } from '../utils/parseTaskInput';
 import { HighlightedText } from '../components/HighlightedText';
 import { formatQuotaProgress } from '../utils/quotaUnit';
 import { asksOnCompletion, deliverableKindFor, formatTaskDeliverable } from '../utils/deliverables';
+import { isRotationTask } from '../utils/rotation';
 import { DeliverablePromptSheet } from '../components/DeliverablePromptSheet';
 import { sectionListCellLayout } from '../utils/sectionListLayout';
 import type { Task } from '../types';
@@ -263,6 +265,11 @@ export function LogbookScreen() {
   // Held so the sheet can close through `visible` rather than by leaving
   // the tree while still on screen. See useSheetSubject.
   const shownAnswerTask = useSheetSubject(answerTask);
+  const [weekTaskId, setWeekTaskId] = useState<string | null>(null);
+  const weekTask = weekTaskId !== null
+    ? completedTasks.find(t => t.id === weekTaskId) ?? null
+    : null;
+  const shownWeekTask = useSheetSubject(weekTask);
   const [query, setQuery] = useState('');
   const [selectedCategory, setSelectedCategory] = useState<string | null>(null);
   const [selectedTag, setSelectedTag] = useState<string | null>(null);
@@ -730,6 +737,14 @@ export function LogbookScreen() {
           setTimeout(() => setAnswerTaskId(id), animation.duration.slow);
         } : undefined}
         hasAnswer={menuTask?.deliverableValue != null}
+        onShowWeek={menuTask && isRotationTask(menuTask) ? () => {
+          const id = menuTask.id;
+          setMenuTask(null);
+          // Staggered like the answer prompt above, and for the same reason:
+          // closing one native Modal and presenting another in the same tick
+          // can deadlock the iOS modal transition.
+          setTimeout(() => setWeekTaskId(id), animation.duration.slow);
+        } : undefined}
         onDelete={() => {
           const task = menuTask;
           setMenuTask(null);
@@ -748,6 +763,14 @@ export function LogbookScreen() {
             setAnswerTaskId(null);
           }}
           onCancel={() => setAnswerTaskId(null)}
+        />
+      )}
+
+      {shownWeekTask && (
+        <RotationWeekSheet
+          visible={weekTask !== null}
+          task={shownWeekTask}
+          onClose={() => setWeekTaskId(null)}
         />
       )}
 
@@ -808,6 +831,11 @@ const LogbookRow = React.memo(function LogbookRow({
   const paintRef = usePaintSelectionRow(task.id);
   const partial = isQuotaPartial(task);
   const answer = formatTaskDeliverable(task);
+  // Distinct members covered, not ledger entries: a member logged twice is one
+  // language, which is the same rule the count on the live row follows.
+  const rotationResult = isRotationTask(task)
+    ? `${new Set(task.rotationLog.map(e => e.itemId)).size} of ${task.rotationItems.length}`
+    : null;
   // A miss outranks a partial in the glyph: a quota task marked missed is both,
   // and "you didn't do this" is the more important of the two things to say.
   const missed = isMissed(task);
@@ -969,6 +997,17 @@ const LogbookRow = React.memo(function LogbookRow({
                 reason. Deliberately *not* in the pill: a tinted pill is the
                 app saying "here's what you decided", and an empty one would
                 make a claim the row can't back. */}
+            {/* A rotation has no answer to show but does have a result, and
+                the slot is free — `asksOnCompletion` is false for one unless
+                it *also* carries a question. Says the count rather than
+                listing the members: five names do not fit on a line, and this
+                is the row hinting that there is a week to look at (⋯ → Show
+                the Week) rather than trying to be that week. */}
+            {rotationResult !== null && (
+              <View style={styles.answerPill}>
+                <Text style={styles.answer} numberOfLines={1}>{rotationResult}</Text>
+              </View>
+            )}
             {asksOnCompletion(task) && (
               answer !== null ? (
                 <View style={styles.answerPill}>

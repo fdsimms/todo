@@ -32,7 +32,7 @@ components below.
 - `src/screens/FoodLogScreen.tsx` — AnimatedCollapsible, CatalogLinkSheet, CountStepper, EmptyState, EstimateMealSheet, Fab, FoodLogEntrySheet, HubPills, InlineAction, ListBulkBar, NutrientContributorsSheet, NutritionTargetsSheet, +8 more
 - `src/screens/GroceryScreen.tsx` — ActiveTripBanner, BarcodeScanSheet, EmptyState, Fab, FabDropZones, FinishShoppingSheet, GroceryAISheet, GroceryAddSheet, GroceryAislesSheet, GroceryCatalogSheet, GroceryItemSheet, GroceryListSheet, +13 more
 - `src/screens/KitchenScreen.tsx` — ActiveTripBanner, BarcodeScanSheet, EmptyState, GroceryItemSheet, HubPills, InlineAction, ItemDisposalOffer, LeftoverSheet, PantryReviewSheet, PressableScale, ReceiptImportSheet, ReorderableList, +2 more
-- `src/screens/LogbookScreen.tsx` — DeliverablePromptSheet, EmptyState, HighlightedText, HubPills, LogbookEntryMenu, LogbookFilterSheet, PaintSelection, ScreenHeader, SearchField, SegmentedControl, SelectionDot, SimpleBulkBar, +1 more
+- `src/screens/LogbookScreen.tsx` — DeliverablePromptSheet, EmptyState, HighlightedText, HubPills, LogbookEntryMenu, LogbookFilterSheet, PaintSelection, RotationWeekSheet, ScreenHeader, SearchField, SegmentedControl, SelectionDot, +2 more
 - `src/screens/MealPlanScreen.tsx` — ActiveTripBanner, AddMealsToListSheet, FabDropZones, FridgeHistorySheet, HubPills, InlineAction, LeftoverSheet, LeftoversCard, ListBulkBar, MealEntrySheet, MealReplaceItemSheet, MealSlotRow, +10 more
 - `src/screens/MedicationScreen.tsx` — EmptyState, HubPills, MedicationLogSheet, ScreenHeader
 - `src/screens/MoodHistoryScreen.tsx` — ChipFilterSheet, DetailHeader, EmptyState, MoodEntryRow, MoodLogSheet
@@ -225,7 +225,9 @@ Where each component can appear.
 - `src/components/RemindMePicker.tsx` — on ArchivedScreen, BackfillScreen, CalendarScreen, CategoryDetailScreen, ProjectDetailScreen, RemindersScreen, SavedViewDetailScreen, SearchScreen, StacksScreen, StuckScreen, TagsScreen, TodayScreen
 - `src/components/ReminderCapturesSheet.tsx` — on SettingsGroupScreen
 - `src/components/ReorderableList.tsx` — on CategoriesScreen, FoodLogScreen, GroceryScreen, KitchenScreen, PeopleScreen, ProjectDetailScreen, ProjectsScreen, RecipesScreen, SavedViewsScreen, TemplateDetailScreen, TemplatesScreen, TodayScreen
+- `src/components/RotationChecklist.tsx` — on CalendarScreen, CategoryDetailScreen, LogbookScreen, ProjectDetailScreen, SavedViewDetailScreen, TagsScreen, TodayScreen
 - `src/components/RotationPickSheet.tsx` — on CalendarScreen, CategoryDetailScreen, ProjectDetailScreen, SavedViewDetailScreen, TagsScreen, TodayScreen
+- `src/components/RotationWeekSheet.tsx` — on LogbookScreen
 - `src/components/RuleListSheet.tsx` — on SettingsGroupScreen
 - `src/components/SafeBlurView.tsx` — on ArchivedScreen, BackfillScreen, CalendarScreen, CategoriesScreen, CategoryDetailScreen, CookbooksScreen, GroceryScreen, KitchenScreen, LogbookScreen, MealPlanScreen, PeopleScreen, ProjectDetailScreen, +14 more
 - `src/components/SavedMealsSheet.tsx` — on FoodLogScreen

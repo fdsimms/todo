@@ -94,6 +94,7 @@ import { mealShortfallEntryId, mealShortfallRows } from '../utils/mealShortfallT
 import { usePlanMeal } from '../hooks/usePlanMeal';
 import { useSheetMount } from '../hooks/useSheetMount';
 import { RotationPickSheet } from './RotationPickSheet';
+import { RotationChecklist } from './RotationChecklist';
 import { isRotationTask, rotationMembers, rotationOverCommitted, rotationSummary } from '../utils/rotation';
 import {
   describeProjectQuiet,
@@ -2944,38 +2945,15 @@ export const TaskItem = React.memo(function TaskItem({
               <Text style={styles.expandNotes}>{task.notes}</Text>
             )}
 
-            {/* The week so far, read-only on purpose. These are *options*, not
-                subtasks: ticking one here would be the bypass the whole
-                feature exists to close, since the parent asking which is what
-                keeps one row on Today instead of five. It answers "what's
-                left" without costing the picker a tap. */}
+            {/* Read-only on purpose: these are options, not subtasks, and
+                ticking one here would be the bypass the whole feature exists
+                to close. Shared with the Logbook's week sheet. */}
             {isRotation && (
               <View style={[
                 styles.expandSection,
-                styles.rotationTray,
                 (task.notes.length > 0 || !!task.followUpTaskSourceTitle || followUpRule !== null) && styles.sectionDivider,
               ]}>
-                <Text style={styles.rotationTrayLabel}>This week</Text>
-                {rotationMembers(task, rotationDayStart, weekStartsOn).map(member => (
-                  <View key={member.item.id} style={styles.rotationRow}>
-                    <View style={[styles.rotationBox, member.doneAt !== null && styles.rotationBoxDone]}>
-                      {member.doneAt !== null && (
-                        <Ionicons name="checkmark" size={10} color={colors.onAccent} />
-                      )}
-                    </View>
-                    <Text
-                      style={[styles.rotationName, member.doneAt !== null && styles.rotationNameDone]}
-                      numberOfLines={1}
-                    >
-                      {member.item.title}
-                    </Text>
-                    {member.doneAt !== null && (
-                      <Text style={styles.rotationWhen}>
-                        {format(new Date(member.doneAt), 'EEE')}
-                      </Text>
-                    )}
-                  </View>
-                ))}
+                <RotationChecklist task={task} />
               </View>
             )}
 
@@ -4244,37 +4222,6 @@ const makeStyles = (colors: Colors) => StyleSheet.create({
   // Only worn once what's outstanding no longer fits in the days left — see
   // rotationOverCommitted, which is deliberately a harder test than "behind".
   rotationTight: { color: colors.orange },
-  // A sunken region rather than a card, the same move TaskGroupTray makes: the
-  // checklist belongs *to* the row above it, and a card inside a card reads as
-  // a second row rather than as this one's contents.
-  rotationTray: {
-    backgroundColor: colors.bgSunken,
-    borderRadius: radius.sm,
-    paddingHorizontal: spacing.smd,
-    paddingVertical: spacing.sm,
-  },
-  rotationTrayLabel: {
-    color: colors.textSecondary,
-    fontSize: font.xxs,
-    fontWeight: fontWeight.semibold,
-    letterSpacing: 0.8,
-    textTransform: 'uppercase',
-    marginBottom: spacing.xsm,
-  },
-  rotationRow: { flexDirection: 'row', alignItems: 'center', gap: spacing.sm, paddingVertical: 3 },
-  rotationBox: {
-    width: 14,
-    height: 14,
-    borderRadius: checkboxRadius(14),
-    borderWidth: border.md,
-    borderColor: colors.bgQuaternary,
-    alignItems: 'center',
-    justifyContent: 'center',
-  },
-  rotationBoxDone: { backgroundColor: colors.green, borderColor: colors.green },
-  rotationName: { flex: 1, color: colors.text, fontSize: font.sm },
-  rotationNameDone: { color: colors.textTertiary },
-  rotationWhen: { color: colors.textTertiary, fontSize: font.xxs },
   // Deliberately textSecondary rather than red: the shield beside it is already
   // carrying the alarm, and a second red thing on the same row would make one
   // slip look like two separate problems.

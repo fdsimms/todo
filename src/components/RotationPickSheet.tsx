@@ -1,5 +1,5 @@
 import React, { useEffect, useMemo, useRef } from 'react';
-import { Animated, ScrollView, StyleSheet, Text, TouchableOpacity, View } from 'react-native';
+import { Animated, Linking, ScrollView, StyleSheet, Text, TouchableOpacity, View } from 'react-native';
 import Ionicons from '@expo/vector-icons/Ionicons';
 import { SheetModal } from './SheetModal';
 import { SafeBlurView } from './SafeBlurView';
@@ -11,6 +11,7 @@ import { useSettingsStore } from '../store/useSettingsStore';
 import { getCurrentDayStart } from '../utils/dateUtils';
 import { displayTitleFor } from '../utils/visibilityUtils';
 import { haptics } from '../utils/haptics';
+import { openInAppUrl } from '../utils/deepLinks';
 import { rotationLastDoneLabel, rotationMembers } from '../utils/rotation';
 import { spacing, radius, font, fontWeight, iconSize, animation, interaction, type Colors } from '../theme';
 import type { Task } from '../types';
@@ -94,11 +95,32 @@ export function RotationPickSheet({ visible, task, onPick, onCancel }: Props) {
     dismiss(() => onPick(itemId));
   };
 
+  /**
+   * Opens a member's own link without logging it — "take me to the French
+   * feed" is a different intent from "I did French", and a row that did both
+   * would make the picker unusable for the first.
+   *
+   * Same two-branch open `TaskItem` uses: an in-app URL navigates in place
+   * rather than making an app-switch round trip that flashes, and
+   * `canOpenURL` is skipped because on iOS it only answers for schemes
+   * declared up front.
+   */
+  const openLink = async (url: string) => {
+    haptics.tap();
+    if (openInAppUrl(url)) { dismiss(onCancel); return; }
+    try {
+      await Linking.openURL(url);
+    } catch {
+      // silently ignore — no toast infra for a row-level action
+    }
+  };
+
   const renderRow = (
     member: (typeof members)[number],
     isDone: boolean,
   ) => {
     const ago = rotationLastDoneLabel(isDone ? member.doneAt : member.lastDoneAt, dayStart);
+    const link = member.item.linkUrl?.trim() || null;
     return (
       <TouchableOpacity
         key={member.item.id}
@@ -123,6 +145,17 @@ export function RotationPickSheet({ visible, task, onPick, onCancel }: Props) {
           </Text>
           {ago !== null && <Text style={styles.ago}>{ago}</Text>}
         </View>
+        {link !== null && (
+          <TouchableOpacity
+            onPress={() => openLink(link)}
+            hitSlop={8}
+            style={styles.linkButton}
+            accessibilityRole="button"
+            accessibilityLabel={`Open the link for ${member.item.title}`}
+          >
+            <Ionicons name="open-outline" size={iconSize.sm} color={colors.accentText} />
+          </TouchableOpacity>
+        )}
         {isDone && <Ionicons name="checkmark" size={iconSize.md} color={colors.green} />}
       </TouchableOpacity>
     );
@@ -246,5 +279,13 @@ const makeStyles = (colors: Colors) => StyleSheet.create({
   rowBody: { flex: 1, minWidth: 0 },
   name: { color: colors.text, fontSize: font.md },
   nameDone: { color: colors.textTertiary },
+  linkButton: {
+    width: 32,
+    height: 28,
+    alignItems: 'center',
+    justifyContent: 'center',
+    borderRadius: radius.sm,
+    backgroundColor: colors.bgQuaternary,
+  },
   ago: { color: colors.textTertiary, fontSize: font.xxs, marginTop: spacing.xxs },
 });

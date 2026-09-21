@@ -186,6 +186,7 @@ export function TemplateItemEditor({ visible, templateId, templateName, item, in
   const [rotationItems, setRotationItems] = useState<RotationItem[]>([]);
   const [addingRotationItem, setAddingRotationItem] = useState(false);
   const [newRotationItemTitle, setNewRotationItemTitle] = useState('');
+  const [linkMemberId, setLinkMemberId] = useState<string | null>(null);
   const chainInputRef = useRef<TextInput>(null);
   const chainItemSavedRef = useRef(false);
   const [subtasks, setSubtasks] = useState<{ id: string; title: string }[]>([]);
@@ -539,6 +540,18 @@ export function TemplateItemEditor({ visible, templateId, templateName, item, in
               c => (c.id === linkStepId ? { ...c, ...patch } : c),
             ))}
             onClose={() => setLinkStepId(null)}
+          />
+          {/* Its own instance rather than sharing linkStepId: the two lists
+              have separate id spaces. */}
+          <ChainStepLinkSheet
+            visible={linkMemberId !== null}
+            step={rotationItems.find(r => r.id === linkMemberId) ?? null}
+            taskLinkUrl={null}
+            kitchenEnabled={kitchenEnabled}
+            onSave={patch => setRotationItems(prev => prev.map(
+              r => (r.id === linkMemberId ? { ...r, ...patch } : r),
+            ))}
+            onClose={() => setLinkMemberId(null)}
           />
           <NumberPadAccessory />
         </>
@@ -1424,9 +1437,21 @@ export function TemplateItemEditor({ visible, templateId, templateName, item, in
         >
         {rotationEnabled && (
           <>
-            {rotationItems.map(rotationItem => (
-              <View key={rotationItem.id} style={styles.chainItemRow}>
-                <Ionicons name="ellipse-outline" size={14} color={colors.textSecondary} />
+            <SortableList
+              onDragStateChange={setDraggingRow}
+              data={rotationItems}
+              onReorder={setRotationItems}
+              renderItem={(rotationItem, _displayIndex, drag) => (
+              <View style={styles.chainItemRow}>
+                <TouchableOpacity
+                  onLongPress={drag}
+                  delayLongPress={interaction.delayLongPress}
+                  hitSlop={6}
+                  accessibilityRole="button"
+                  accessibilityLabel={`Reorder ${rotationItem.title}`}
+                >
+                  <Ionicons name="reorder-two-outline" size={16} color={colors.textTertiary} />
+                </TouchableOpacity>
                 <TextInput
                   style={styles.chainInput}
                   value={rotationItem.title}
@@ -1435,6 +1460,11 @@ export function TemplateItemEditor({ visible, templateId, templateName, item, in
                   placeholder="Name"
                   placeholderTextColor={colors.textTertiary}
                   maxLength={TITLE_MAX_LENGTH}
+                />
+                <StepLink
+                  step={rotationItem}
+                  taskLinkUrl={null}
+                  onPress={() => setLinkMemberId(rotationItem.id)}
                 />
                 <TouchableOpacity
                   onPress={() => setRotationItems(prev => prev.filter(r => r.id !== rotationItem.id))}
@@ -1445,10 +1475,11 @@ export function TemplateItemEditor({ visible, templateId, templateName, item, in
                   <Ionicons name="close" size={14} color={colors.textSecondary} />
                 </TouchableOpacity>
               </View>
-            ))}
+              )}
+            />
             {addingRotationItem ? (
               <View style={styles.chainItemRow}>
-                <Ionicons name="ellipse-outline" size={14} color={colors.textSecondary} />
+                <Ionicons name="reorder-two-outline" size={16} color={colors.bgQuaternary} />
                 <TextInput
                   autoFocus
                   style={styles.chainInput}

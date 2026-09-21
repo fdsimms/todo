@@ -612,6 +612,7 @@ export function TaskEditor({ visible, task, initialDraft, onClose }: Props) {
   const [questionStepId, setQuestionStepId] = useState<string | null>(null);
   const [medicationStepId, setMedicationStepId] = useState<string | null>(null);
   const [linkStepId, setLinkStepId] = useState<string | null>(null);
+  const [linkMemberId, setLinkMemberId] = useState<string | null>(null);
   // Which of the two "write this to a calendar" rows is asking for one.
   const [calendarPickerFor, setCalendarPickerFor] = useState<'completion' | 'deadline' | null>(null);
   const [chainIndex, setChainIndex] = useState(0);
@@ -2457,6 +2458,22 @@ export function TaskEditor({ visible, task, initialDraft, onClose }: Props) {
             ))}
             onClose={() => setLinkStepId(null)}
           />
+          {/* Its own instance rather than sharing linkStepId with the chain's:
+              the two lists have separate id spaces, and one piece of state
+              would let a member id resolve against chainItems. */}
+          <ChainStepLinkSheet
+            visible={linkMemberId !== null}
+            step={rotationItems.find(r => r.id === linkMemberId) ?? null}
+            // Null on purpose: a rotation's members are siblings pointing at
+            // different places, so one without a link of its own has none,
+            // where a chain step sensibly inherits the task's.
+            taskLinkUrl={null}
+            kitchenEnabled={kitchenEnabled}
+            onSave={patch => setRotationItems(prev => prev.map(
+              r => (r.id === linkMemberId ? { ...r, ...patch } : r),
+            ))}
+            onClose={() => setLinkMemberId(null)}
+          />
           <FollowUpTaskSheet
             visible={showFollowUpTaskSheet}
             taskTitle={followUpTaskTitle}
@@ -3096,9 +3113,24 @@ export function TaskEditor({ visible, task, initialDraft, onClose }: Props) {
                   onToggle={() => toggleField('rotationSet', true)}
                 >
                   <View>
-                    {rotationItems.map(item => (
-                      <View key={item.id} style={styles.rotationItemRow}>
-                        <Ionicons name="ellipse-outline" size={14} color={colors.textSecondary} />
+                    {/* Draggable because this order is the order the picker
+                        lists them in, and nothing ever re-ranks it — so the
+                        only way to express a preference is to set it here. */}
+                    <SortableList
+                      onDragStateChange={setDraggingRow}
+                      data={rotationItems}
+                      onReorder={setRotationItems}
+                      renderItem={(item, _displayIndex, drag) => (
+                      <View style={styles.rotationItemRow}>
+                        <TouchableOpacity
+                          onLongPress={drag}
+                          delayLongPress={interaction.delayLongPress}
+                          hitSlop={6}
+                          accessibilityRole="button"
+                          accessibilityLabel={`Reorder ${item.title}`}
+                        >
+                          <Ionicons name="reorder-two-outline" size={iconSize.sm} color={colors.textTertiary} />
+                        </TouchableOpacity>
                         <TextInput
                           style={styles.rotationItemTitle}
                           value={item.title}
@@ -3107,6 +3139,11 @@ export function TaskEditor({ visible, task, initialDraft, onClose }: Props) {
                           placeholder="Name"
                           placeholderTextColor={colors.textTertiary}
                           maxLength={TITLE_MAX_LENGTH}
+                        />
+                        <StepLink
+                          step={item}
+                          taskLinkUrl={null}
+                          onPress={() => setLinkMemberId(item.id)}
                         />
                         <TouchableOpacity
                           onPress={() => setRotationItems(prev => prev.filter(r => r.id !== item.id))}
@@ -3118,10 +3155,11 @@ export function TaskEditor({ visible, task, initialDraft, onClose }: Props) {
                           <Ionicons name="close" size={14} color={colors.textSecondary} />
                         </TouchableOpacity>
                       </View>
-                    ))}
+                      )}
+                    />
                     {addingRotationItem ? (
                       <View style={styles.rotationItemRow}>
-                        <Ionicons name="ellipse-outline" size={14} color={colors.textSecondary} />
+                        <Ionicons name="reorder-two-outline" size={iconSize.sm} color={colors.bgQuaternary} />
                         <TextInput
                           ref={rotationInputRef}
                           autoFocus
@@ -3166,7 +3204,7 @@ export function TaskEditor({ visible, task, initialDraft, onClose }: Props) {
                     )}
                     {rotationItems.length > 1 && (
                       <Text style={styles.chainCurrentHint}>
-                        The order here is the order the picker lists them in. Nothing reorders itself.
+                        Drag to reorder. This is the order the picker lists them in, and nothing ever re-ranks it.
                       </Text>
                     )}
                   </View>
