@@ -151,6 +151,46 @@ export interface ChainItem {
   linkUrl?: string | null;
 }
 
+/**
+ * One named unit of a rotation — a language to listen to, a bathroom to clean,
+ * an instrument to practise. The rotation itself lives on the task that holds
+ * the set (see `Task.rotationItems`).
+ *
+ * Deliberately a plain record rather than a `Task`. A member is an *option*,
+ * not a thing with a schedule: it has no due date, no completion state of its
+ * own and never appears on Today, because the entire point of the feature is
+ * that one parent row stands in for the whole set and asks which one you did.
+ * Subtask rows would put all five on the day and let you tick one directly,
+ * which is the shape this exists to avoid.
+ *
+ * One JSON column rather than a table, for the reason `chainItems` is one:
+ * these are only ever read and written together, with the task that owns them.
+ */
+export interface RotationItem {
+  id: string;
+  title: string;
+  // What the link button opens for this member — the podcast feed, the lesson
+  // page. Optional, and falls back to nothing rather than to the task's own
+  // `linkUrl`: a rotation's members are siblings, so a member with no link of
+  // its own has no link, where a chain *step* sensibly inherits the task's.
+  linkUrl?: string | null;
+}
+
+/**
+ * One logged pick — which member, and when. The period's ledger is an array of
+ * these (`Task.rotationLog`), in the order they were logged.
+ *
+ * It carries a timestamp because the ledger *is* the record for the period:
+ * the closed occurrence keeps it the same way a partial quota keeps its
+ * `progressCount` (see `rolloverQuotas`), so "which did I listen to on
+ * Tuesday" is answerable from the week's own row rather than from five
+ * tombstones that retention is entitled to delete.
+ */
+export interface RotationLogEntry {
+  itemId: string;
+  at: string;
+}
+
 // Everything the "Follow-up task" rule says about the task it adds, beyond its
 // title — see the field notes on Task.followUpTaskEveryN, and followUpTask.ts for
 // the rule itself.
@@ -2068,6 +2108,96 @@ export interface Task {
    */
   quotaPeriod: QuotaPeriod;
 
+  /**
+   * Rotation — the set of named things a quota is counting, when the units are
+   * distinguishable from each other. Five languages to listen to once each per
+   * week; four bathrooms; three instruments. Empty (the default) = an ordinary
+   * quota, counting anonymously exactly as it always has.
+   *
+   * **A rotation is a quota whose units have names**, and that framing is the
+   * whole implementation. Everything about when the row appears is the weekly
+   * quota's, unchanged: the pace ramp surfaces it when you fall behind and
+   * hides it while you are keeping up, so a five-member rotation over a week
+   * shows up on about five of the seven days, one at a time, and leaves the
+   * moment you log. What is new is only that logging asks *which*, and that
+   * the row can say which are left.
+   *
+   * So `targetCount` is **derived** from `rotationItems.length` (see
+   * `derivedTargetCount` in useTaskStore, alongside the interval's own
+   * derivation) rather than typed. Every existing reader — the meter, the pace
+   * mark, the progress chip, `isQuotaPartial`, `rolloverQuotas` — keeps reading
+   * `targetCount` and needs to know nothing about this column, which is the
+   * same call `recurrenceAnchorDate` makes about staying inside the recurrence
+   * engine, and the reason the feature is affordable at all.
+   *
+   * Order is the user's own and is never re-ranked: it is the order the picker
+   * lists the remaining members in, and a set someone arranged by how much they
+   * like each option should stay arranged that way.
+   */
+  /**
+   * Whether this task is a rotation at all, held separately from the set.
+   *
+   * Exactly `chainEnabled`'s job and there for exactly its reason: the editor
+   * derives the task's kind from its fields (`taskKindOf`), and a set is
+   * empty for as long as it takes to type the first two names into it. Without
+   * a flag to hold the kind, picking Rotation would compute a `targetCount` of
+   * zero, read back as an ordinary task, and throw you out of the mode before
+   * you could add anything to it.
+   *
+   * So the "a rotation needs two members" rule lives at *save* (and in
+   * `isRotationTask`, for everything downstream), never in the kind — the same
+   * split `chainEnabled` documents.
+   */
+  rotationEnabled: boolean;
+  rotationItems: RotationItem[];
+  /**
+   * What has been logged in the *current* period, oldest first. Paired with
+   * `rotationPeriodStart`, which says which period that is.
+   *
+   * `progressCount` stays the count and this stays the ledger. The invariant
+   * held at the two write sites (`recordRotationPick` / `unlogRotationUnit`)
+   * is that `progressCount` equals the number of *distinct* members in here,
+   * not the number of entries: a member may be logged twice in a period and
+   * the second one is a real listen but not a sixth language, so the ledger
+   * can be longer than the count. See `rotationDoneCount`.
+   *
+   * The redundancy is deliberate and is what buys the paragraph above: every
+   * reader that only needs "how many" keeps working untouched, and only the
+   * handful that need "which" reach for this.
+   */
+  rotationLog: RotationLogEntry[];
+  /**
+   * The opening instant of the period `rotationLog` belongs to, or null when
+   * nothing has been logged yet.
+   *
+   * A ledger from a period that has since closed is **ignored rather than
+   * swept** — `activeRotationLog` compares this against the current period and
+   * returns nothing when they differ. That is the same shape as
+   * `quotaStartedAt` being "only honoured on its own logical day", and it is
+   * what keeps this feature free of a maintenance pass: an app left closed for
+   * a fortnight comes back to a clean week without anything having had to run
+   * while it was shut.
+   */
+  rotationPeriodStart: string | null;
+  /**
+   * When each member was last logged, by member id, across every period this
+   * task has ever had. Never reset.
+   *
+   * It exists because the ledger above resets weekly and so cannot answer "when
+   * did I last do Portuguese", and because summing that back out of completed
+   * occurrences would be wrong rather than merely slow: `completedRetentionDays`
+   * is entitled to delete those rows, so a history derived from them quietly
+   * loses weeks. Same reasoning that keeps `streakCount` on the live row rather
+   * than counting the chain.
+   *
+   * **It says when, and nothing else.** The picker shows "Last done 3 weeks
+   * ago" beside a member and stops there. Naming the pattern — calling someone
+   * avoidant, ranking their languages by neglect — is the line `people.md` and
+   * `mood-log.md` both hold, and a feature that watches which of five things
+   * you keep skipping is close enough to it to say so here.
+   */
+  rotationLastDone: Record<string, string>;
+
   // Supply — how many units of a consumable are left, for a recurring task
   // that spends one every time it's done. Replacing a CPAP filter monthly out
   // of a box of six is the shape: the schedule says when, and this says how
@@ -2985,6 +3115,12 @@ export type TaskDraft = Omit<
   | 'completionCalendarEventId'
   | 'timeBlockEventId'
   | 'backfillDismissedFields'
+  // The set is configuration and a draft may carry it; the ledger, the period
+  // stamp and the last-done memory are what a running rotation has recorded,
+  // which is the same line the streak fields above are cut on.
+  | 'rotationLog'
+  | 'rotationPeriodStart'
+  | 'rotationLastDone'
 >;
 
 // Which of the template's two anchor dates an item's offsets are relative
@@ -3163,6 +3299,13 @@ export interface TemplateItem {
 
   chainEnabled: boolean;
   chainItems: ChainItem[];
+  // The named set a task created from this item counts over — seeds
+  // Task.rotationItems. Configuration, so it carries exactly as chainItems
+  // does; the ledger, the period stamp and the last-done memory are the run's
+  // own record and have no template-side counterpart, the same split the
+  // medication triple and deliverableKind already make.
+  rotationEnabled: boolean;
+  rotationItems: RotationItem[];
   // Which step a task created from this template starts on. 0 by default —
   // TaskEditor lets a real task's current step move freely (tap a dot), and
   // this is the template-side parity for that: a chain that's meant to be

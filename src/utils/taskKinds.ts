@@ -1,4 +1,5 @@
-import type { ChainItem, Effort, RecurrenceType } from '../types';
+import type { ChainItem, Effort, RecurrenceType, RotationItem } from '../types';
+import { MIN_ROTATION_ITEMS } from './rotation';
 import type { HealthMetric } from './moodInsights';
 import { formatDuration, minutesToEffort } from './effort';
 import { formatQuotaTarget, normalizeTargetUnit } from './quotaUnit';
@@ -24,7 +25,7 @@ import { formatQuotaTarget, normalizeTargetUnit } from './quotaUnit';
  * where you go when a task needs to be more than a line of text, so that's
  * where the choice lives.
  */
-export type TaskKind = 'task' | 'timed' | 'target' | 'health' | 'chain';
+export type TaskKind = 'task' | 'timed' | 'target' | 'health' | 'rotation' | 'chain';
 
 /** Label, glyph and one-line explanation for each kind, in picker order. */
 export const TASK_KIND_META: {
@@ -41,6 +42,10 @@ export const TASK_KIND_META: {
   // where the difference lives: one you log, the other is read for you. Neither
   // ever ticks itself — see healthTarget.ts.
   { key: 'health', label: 'Health target', icon: 'footsteps-outline', hint: 'Ready to check off once Apple Health reaches a number.' },
+  // Beside Chain because the pair is the real distinction — both hold a list,
+  // and the hints are where the difference lives: one fixes the order, the
+  // other leaves it to you and only cares that the week covers the set.
+  { key: 'rotation', label: 'Rotation', icon: 'repeat-outline', hint: 'A set of things, each done once a week, in any order.' },
   { key: 'chain', label: 'Chain', icon: 'git-commit-outline', hint: 'Steps through a list one at a time.' },
 ];
 
@@ -65,6 +70,7 @@ export function taskKindOf(v: {
   timedMinutes: number | null;
   healthMetric: HealthMetric | null;
   healthTarget: number | null;
+  rotationEnabled?: boolean;
 }): TaskKind {
   // `chainEnabled` alone, deliberately, even though a one-item chain doesn't
   // *function* as one anywhere else in the app. That rule belongs at save,
@@ -88,6 +94,16 @@ export function taskKindOf(v: {
   // step. The three below have no such mid-edit state — applyKind bakes a real
   // default for each, and their steppers have floors — so a sub-threshold
   // value is only ever a row from somewhere else.
+  // Reads the flag alone, exactly as the chain arm above does and for the
+  // same reason its note gives: the two-member floor belongs at save, and
+  // applying it here would throw you out of the kind while you typed the set.
+  //
+  // Ahead of 'target' because a rotation *is* a target — its `targetCount` is
+  // derived from the set — so the plain arm would answer first and the editor
+  // would offer a count stepper over a set whose size is not the user's to
+  // type. The threshold is the runtime reader's own (`isRotationTask`), same
+  // discipline as the three below.
+  if (v.rotationEnabled) return 'rotation';
   if (v.targetCount !== null && v.targetCount >= MIN_TARGET_COUNT) return 'target';
   if (v.timedMinutes !== null && v.timedMinutes > 0) return 'timed';
   // Last, because it is the thinnest of the lot: it changes neither what
@@ -144,7 +160,7 @@ export const QUICK_ADD_CHIP_LABELS: Record<QuickAddChip, string> = {
  */
 export const QUICK_ADD_CHIP_LIMIT = 8;
 
-export const TASK_KINDS: readonly TaskKind[] = ['task', 'timed', 'target', 'health', 'chain'];
+export const TASK_KINDS: readonly TaskKind[] = ['task', 'timed', 'target', 'health', 'rotation', 'chain'];
 
 /** Duration a Timed task starts at, so the mode is never sitting there empty. */
 export const DEFAULT_TIMED_MINUTES = 15;
@@ -193,6 +209,9 @@ const HIDDEN_CHIPS: Record<TaskKind, readonly QuickAddChip[]> = {
   // A quota resets by spawning its next occurrence, so it is always on a
   // repeat; the editor sets one behind your back for the same reason.
   target: ['repeat'],
+  // Same as a quota, and more so: a rotation's period *is* the repeat, and
+  // the week it covers is the one the recurrence spawns the next occupant of.
+  rotation: ['repeat'],
   // Nothing. A health target still wants a date, a category, a repeat and an
   // effort: the reading says when the task is *ready*, and answers none of the
   // questions the chips ask. Hiding one it merely doesn't need isn't
@@ -210,6 +229,8 @@ export function isChipVisible(type: TaskKind, chip: QuickAddChip): boolean {
 
 /** The current values of every type-defining field, as quick add holds them. */
 export interface TypeValues {
+  rotationEnabled: boolean;
+  rotationItems: RotationItem[];
   timedMinutes: number | null;
   targetCount: number | null;
   targetUnit: string | null;
@@ -245,6 +266,13 @@ export function typeSummary(type: TaskKind, v: TypeValues): string | null {
       return v.healthMetric != null && v.healthTarget != null
         ? `Ready to check off once Apple Health reaches ${describeHealthGoal(v.healthMetric, v.healthTarget)} today. You still check it off yourself.`
         : 'Ready to check off once Apple Health reaches a number today. You still check it off yourself.';
+    case 'rotation':
+      // Says "in any order" outright, because that is the one thing separating
+      // this from the Chain sitting under it in the picker, and the summary
+      // line is the only place the app explains either.
+      return v.rotationItems.length > 0
+        ? `${v.rotationItems.length} thing${v.rotationItems.length === 1 ? '' : 's'}, each done once a week, in any order. Only shows up when you fall behind.`
+        : 'A set of things, each done once a week, in any order. Only shows up when you fall behind.';
     case 'chain':
       return v.chainItems.length > 0
         ? `${v.chainItems.length} step${v.chainItems.length === 1 ? '' : 's'}, one per completion. Finishing one reveals the next.`
@@ -269,6 +297,8 @@ export function blockedReason(type: TaskKind, v: TypeValues): string | null {
 
 /** The fields the type itself sets, laid over whatever the sheet collected. */
 export interface BakedFields {
+  rotationEnabled: boolean;
+  rotationItems: RotationItem[];
   timedMinutes: number | null;
   targetCount: number | null;
   targetUnit: string | null;
@@ -307,6 +337,11 @@ export function bakedFields(type: TaskKind, v: TypeValues): BakedFields {
     chainEnabled: false,
     chainItems: [],
     chainIndex: 0,
+    // Cleared by every other kind for the reason the rest are: a set authored
+    // in Rotation mode and then abandoned by switching kind would otherwise
+    // ride along invisibly and keep deriving a targetCount.
+    rotationEnabled: false,
+    rotationItems: [],
     recurrenceType: v.recurrenceType,
     effort: v.effort,
     estimatedMinutes: v.estimatedMinutes,
@@ -336,6 +371,21 @@ export function bakedFields(type: TaskKind, v: TypeValues): BakedFields {
       };
     case 'health':
       return { ...base, healthMetric: v.healthMetric, healthTarget: v.healthTarget };
+    case 'rotation':
+      return {
+        ...base,
+        rotationEnabled: true,
+        rotationItems: v.rotationItems,
+        // The count is the set's size, never typed — see derivedTargetCount.
+        // Written here as well as derived there so a row is never briefly a
+        // rotation with no target for isQuotaTask to see.
+        targetCount: v.rotationItems.length,
+        // Weekly rather than daily: the period a rotation covers is a week, and
+        // the recurrence is what spawns the next week's occupant. Same "a
+        // repeat the user set deliberately is theirs to keep" rule the quota
+        // arm applies, one step up the scale.
+        recurrenceType: v.recurrenceType === 'none' ? 'weekly' : v.recurrenceType,
+      };
     case 'chain':
       return { ...base, chainEnabled: true, chainItems: v.chainItems, chainIndex: 0 };
   }

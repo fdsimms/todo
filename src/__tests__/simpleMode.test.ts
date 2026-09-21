@@ -217,7 +217,7 @@ describe('screenShown', () => {
 
 describe('taskKindsForMode', () => {
   it('offers every kind while the mode is off', () => {
-    expect(taskKindsForMode(false, 'task')).toEqual(['task', 'timed', 'target', 'health', 'chain']);
+    expect(taskKindsForMode(false, 'task')).toEqual(['task', 'timed', 'target', 'health', 'rotation', 'chain']);
   });
 
   // The row itself is gone for a Standard task, so this only ever runs for one

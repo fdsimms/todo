@@ -82,6 +82,8 @@ const makeItem = (overrides: Partial<TemplateItem> = {}): TemplateItem => ({
   deliverableKind: null,
   chainEnabled: false,
   chainItems: [],
+  rotationEnabled: false,
+  rotationItems: [],
   chainIndex: 0,
   subtasks: [],
   groupId: null,

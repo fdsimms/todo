@@ -18,7 +18,7 @@ import {
 } from 'react-native';
 import Ionicons from '@expo/vector-icons/Ionicons';
 import DateTimePicker from '@react-native-community/datetimepicker';
-import type { Priority, Effort, TimeOfDay, TemplateAnchor, TemplateItem, TemplateItemCondition, RecurrenceType, ChainItem, DeliverableKind, Polarity, MealSlot } from '../types';
+import type { Priority, Effort, TimeOfDay, TemplateAnchor, TemplateItem, TemplateItemCondition, RecurrenceType, ChainItem, RotationItem, DeliverableKind, Polarity, MealSlot } from '../types';
 import { PRIORITY_LABELS, EFFORT_LABELS, EFFORT_HINTS, TITLE_MAX_LENGTH, MEAL_SLOTS, MEAL_SLOT_LABELS } from '../types';
 import { useColors, useTheme } from '../theme/ThemeContext';
 import { spacing, radius, font, interaction, type Colors } from '../theme';
@@ -90,7 +90,7 @@ const MEDICATION_NAME_MAX_LENGTH = 60;
 /** Matches TaskEditor's own cap on the completion timer's note. */
 const COMPLETION_TIMER_NOTE_MAX_LENGTH = 120;
 
-type FieldKey = 'blanks' | 'conditions' | 'category' | 'tags' | 'priority' | 'effort' | 'subtasks' | 'chainSteps' | 'deliverable' | 'completionTimer' | 'penalty' | 'medication' | 'logMealSlot';
+type FieldKey = 'blanks' | 'conditions' | 'category' | 'tags' | 'priority' | 'effort' | 'subtasks' | 'chainSteps' | 'rotationSet' | 'deliverable' | 'completionTimer' | 'penalty' | 'medication' | 'logMealSlot';
 
 interface Props {
   visible: boolean;
@@ -182,6 +182,10 @@ export function TemplateItemEditor({ visible, templateId, templateName, item, in
   const [chainIndex, setChainIndex] = useState(0);
   const [addingChainItem, setAddingChainItem] = useState(false);
   const [newChainItemTitle, setNewChainItemTitle] = useState('');
+  const [rotationEnabled, setRotationEnabled] = useState(false);
+  const [rotationItems, setRotationItems] = useState<RotationItem[]>([]);
+  const [addingRotationItem, setAddingRotationItem] = useState(false);
+  const [newRotationItemTitle, setNewRotationItemTitle] = useState('');
   const chainInputRef = useRef<TextInput>(null);
   const chainItemSavedRef = useRef(false);
   const [subtasks, setSubtasks] = useState<{ id: string; title: string }[]>([]);
@@ -244,6 +248,8 @@ export function TemplateItemEditor({ visible, templateId, templateName, item, in
     setDeliverableKind(item?.deliverableKind ?? draft?.deliverableKind ?? null);
     setChainEnabled(item?.chainEnabled ?? draft?.chainEnabled ?? false);
     setChainItems(item?.chainItems ?? draft?.chainItems ?? []);
+    setRotationEnabled(item?.rotationEnabled ?? false);
+    setRotationItems(item?.rotationItems ?? []);
     setQuestionStepId(null);
     setChainIndex(item?.chainIndex ?? draft?.chainIndex ?? 0);
     setSubtasks(item?.subtasks ?? draft?.subtasks ?? []);
@@ -406,6 +412,10 @@ export function TemplateItemEditor({ visible, templateId, templateName, item, in
       // own save gate.
       chainEnabled: chainEnabled && effectiveChainItems.length >= 2,
       chainItems: effectiveChainItems,
+      // Same two-member floor the task editor applies at save, for the same
+      // reason: a set of one gives the picker nothing to ask.
+      rotationEnabled: rotationEnabled && rotationItems.length >= 2,
+      rotationItems: rotationItems.length >= 2 ? rotationItems : [],
       chainIndex: effectiveChainItems.length > 0 ? Math.min(chainIndex, effectiveChainItems.length - 1) : 0,
       subtasks: effectiveSubtasks,
     };
@@ -1378,6 +1388,105 @@ export function TemplateItemEditor({ visible, templateId, templateName, item, in
             </>
           )}
           </CollapsibleField>
+      </View>
+
+      {/* Rotation. Its own card beside Chain because the two are the pair
+          people confuse: both hold a list, and the difference is whether the
+          order is fixed. See utils/rotation.ts. */}
+      <View style={styles.sectionCard}>
+        <CollapsibleField
+          label="Rotation"
+          summary={
+            rotationEnabled
+              ? (rotationItems.length > 1
+                  ? `${rotationItems.length} things, one each a week`
+                  : rotationItems.length === 1
+                    ? '1 thing, add one more'
+                    : 'Nothing in the set yet')
+              : undefined
+          }
+          emptySummary="Off"
+          hint="A set of things to get through once each per week, in any order. Checking the task off asks which one you did."
+          expanded={fieldOpen('rotationSet', rotationEnabled)}
+          onToggle={() => toggleField('rotationSet', rotationEnabled)}
+          right={
+            <TouchableOpacity
+              onPress={() => { haptics.tap(); setRotationEnabled(v => !v); }}
+              activeOpacity={interaction.activeOpacity}
+              style={[styles.toggle, rotationEnabled && styles.toggleOn]}
+              accessibilityRole="switch"
+              accessibilityLabel="Rotation"
+              accessibilityState={{ checked: rotationEnabled }}
+            >
+              <View style={[styles.toggleKnob, rotationEnabled && styles.toggleKnobOn]} />
+            </TouchableOpacity>
+          }
+        >
+        {rotationEnabled && (
+          <>
+            {rotationItems.map(rotationItem => (
+              <View key={rotationItem.id} style={styles.chainItemRow}>
+                <Ionicons name="ellipse-outline" size={14} color={colors.textSecondary} />
+                <TextInput
+                  style={styles.chainInput}
+                  value={rotationItem.title}
+                  onChangeText={text => setRotationItems(prev => prev.map(
+                    r => (r.id === rotationItem.id ? { ...r, title: text } : r)))}
+                  placeholder="Name"
+                  placeholderTextColor={colors.textTertiary}
+                  maxLength={TITLE_MAX_LENGTH}
+                />
+                <TouchableOpacity
+                  onPress={() => setRotationItems(prev => prev.filter(r => r.id !== rotationItem.id))}
+                  hitSlop={8}
+                  accessibilityRole="button"
+                  accessibilityLabel={`Remove ${rotationItem.title} from the rotation`}
+                >
+                  <Ionicons name="close" size={14} color={colors.textSecondary} />
+                </TouchableOpacity>
+              </View>
+            ))}
+            {addingRotationItem ? (
+              <View style={styles.chainItemRow}>
+                <Ionicons name="ellipse-outline" size={14} color={colors.textSecondary} />
+                <TextInput
+                  autoFocus
+                  style={styles.chainInput}
+                  value={newRotationItemTitle}
+                  onChangeText={setNewRotationItemTitle}
+                  placeholder="e.g. Spanish"
+                  placeholderTextColor={colors.textTertiary}
+                  maxLength={TITLE_MAX_LENGTH}
+                  returnKeyType="done"
+                  onSubmitEditing={() => {
+                    const t = newRotationItemTitle.trim();
+                    if (t) setRotationItems(prev => [...prev, { id: generateId(), title: t, linkUrl: null }]);
+                    setNewRotationItemTitle('');
+                  }}
+                  onBlur={() => {
+                    const t = newRotationItemTitle.trim();
+                    if (t) setRotationItems(prev => [...prev, { id: generateId(), title: t, linkUrl: null }]);
+                    setNewRotationItemTitle('');
+                    setAddingRotationItem(false);
+                  }}
+                />
+              </View>
+            ) : (
+              <InlineAction
+                icon="add"
+                label="Add to the set"
+                onPress={() => setAddingRotationItem(true)}
+                style={styles.addBtnSpacing}
+              />
+            )}
+            {rotationItems.length === 1 && (
+              <Text style={styles.optionHint}>
+                Add a second one: a rotation needs at least 2 things to save.
+              </Text>
+            )}
+          </>
+        )}
+        </CollapsibleField>
       </View>
 
       {/* Ask on completion. Its own card below Chain, the way TaskEditor puts

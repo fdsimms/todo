@@ -14,6 +14,7 @@ import { subDays } from 'date-fns/subDays';
 import { useDemoStore } from '../store/useDemoStore';
 import { bestStreakOf, isStreakAtRecord } from '../utils/streakRecord';
 import { isCleanToday } from '../utils/negativeHabits';
+import { MIN_ROTATION_ITEMS } from '../utils/rotation';
 import { useTaskStore } from '../store/useTaskStore';
 import { useCategoryStore } from '../store/useCategoryStore';
 import { usePersonStore } from '../store/usePersonStore';
@@ -1001,7 +1002,7 @@ describe('demo mode', () => {
     useDemoStore.getState().enterDemoMode();
     const { tasks } = useTaskStore.getState();
 
-    const weekly = tasks.find(t => t.quotaPeriod === 'week');
+    const weekly = tasks.find(t => t.quotaPeriod === 'week' && !t.rotationEnabled);
     expect(weekly).toBeDefined();
     expect(weekly!.targetCount).toBe(3);
     expect(weekly!.progressCount).toBeGreaterThan(0);
@@ -1011,6 +1012,36 @@ describe('demo mode', () => {
     expect(weekly!.recurrenceType).toBe('weekly');
     // Whichever day the demo is entered on, the row is actually on screen.
     expect(isTaskVisible(weekly!)).toBe(true);
+  });
+
+  // A rotation is the one shape a plain weekly target can't express: it knows
+  // *which* of the set are still outstanding. Like the weekly target above it
+  // is invisible until something has been logged against it, so the seed has
+  // to leave a week in progress rather than an untouched set.
+  it('seeds a rotation partway through its week', () => {
+    useDemoStore.getState().enterDemoMode();
+    const { tasks } = useTaskStore.getState();
+
+    const rotation = tasks.find(t => t.rotationEnabled)!;
+    expect(rotation).toBeDefined();
+    expect(rotation.rotationItems.length).toBeGreaterThanOrEqual(MIN_ROTATION_ITEMS);
+    // The count is the set's size, never typed.
+    expect(rotation.targetCount).toBe(rotation.rotationItems.length);
+    expect(rotation.quotaPeriod).toBe('week');
+    expect(rotation.recurrenceType).toBe('weekly');
+    // Some of the set covered, some still standing — the state the feature is
+    // only legible in.
+    expect(rotation.progressCount).toBeGreaterThan(0);
+    expect(rotation.progressCount).toBeLessThan(rotation.targetCount!);
+    expect(rotation.rotationLog).toHaveLength(rotation.progressCount);
+    // The ledger is stamped, so it reads as this week's rather than a stale one.
+    expect(rotation.rotationPeriodStart).toBeTruthy();
+    // Every logged member names a member the set actually holds.
+    const ids = new Set(rotation.rotationItems.map(r => r.id));
+    rotation.rotationLog.forEach(entry => expect(ids.has(entry.itemId)).toBe(true));
+    // And the memory that outlives the period was written too.
+    expect(Object.keys(rotation.rotationLastDone)).toHaveLength(rotation.progressCount);
+    expect(isTaskVisible(rotation)).toBe(true);
   });
 
   // A timed task can hand its countdown out to its subtasks, and one that

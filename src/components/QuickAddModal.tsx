@@ -1096,6 +1096,10 @@ export function QuickAddModal({
   );
 
   const typeValues: TypeValues = {
+    // Always empty here, for the same reason healthMetric is null: quick add
+    // has no Rotation kind to pick, and a set is authored in the editor.
+    rotationEnabled: false,
+    rotationItems: [],
     timedMinutes,
     targetCount,
     targetUnit,

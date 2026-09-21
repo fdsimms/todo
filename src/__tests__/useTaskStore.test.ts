@@ -364,6 +364,11 @@ const makeTask = (overrides: Partial<Task> = {}): Task => ({
   quotaIntervalMinutes: null,
   quotaReminders: false,
   quotaStartedAt: null, quotaAlwaysVisible: false, quotaPeriod: 'day',
+  rotationEnabled: false,
+  rotationItems: [],
+  rotationLog: [],
+  rotationPeriodStart: null,
+  rotationLastDone: {},
   tags: [],
   category: null,
   sortOrder: 1,
@@ -11060,6 +11065,150 @@ describe('quota tasks', () => {
 
   afterEach(() => {
     jest.useRealTimers();
+  });
+
+  // ---- rotations: a quota whose units have names (see utils/rotation.ts) ----
+
+  const LANGS = [
+    { id: 'es', title: 'Spanish', linkUrl: null },
+    { id: 'fr', title: 'French', linkUrl: null },
+    { id: 'de', title: 'German', linkUrl: null },
+  ];
+
+  const rotation = (overrides: Partial<Task> = {}) =>
+    makeTask({
+      id: 'pods',
+      title: 'Language podcast',
+      rotationEnabled: true,
+      rotationItems: LANGS,
+      // Derived from the set's size in the editor; stated here because the
+      // fixture bypasses it.
+      targetCount: LANGS.length,
+      progressCount: 0,
+      quotaPeriod: 'week',
+      recurrenceType: 'weekly',
+      dueDate: new Date(2025, 5, 10, 12, 0, 0).toISOString(),
+      ...overrides,
+    });
+
+  const pods = () => useTaskStore.getState().tasks.find(t => t.id === 'pods')!;
+
+  describe('logRotationUnit', () => {
+    it('records which member was done, not just that something was', () => {
+      useTaskStore.setState({ tasks: [rotation()] });
+      useTaskStore.getState().logRotationUnit('pods', 'fr');
+
+      expect(pods().progressCount).toBe(1);
+      expect(pods().rotationLog.map(e => e.itemId)).toEqual(['fr']);
+      expect(pods().rotationLastDone.fr).toBeTruthy();
+      expect(pods().completed).toBe(false);
+    });
+
+    it('stamps the period so the ledger can be told apart from a closed one', () => {
+      useTaskStore.setState({ tasks: [rotation()] });
+      useTaskStore.getState().logRotationUnit('pods', 'fr');
+      expect(pods().rotationPeriodStart).toBeTruthy();
+    });
+
+    it('logs a repeat without counting it toward the week', () => {
+      useTaskStore.setState({ tasks: [rotation()] });
+      const store = useTaskStore.getState();
+      store.logRotationUnit('pods', 'es');
+      store.logRotationUnit('pods', 'es');
+
+      // Two real listens, one language covered — the week is about coverage.
+      expect(pods().rotationLog).toHaveLength(2);
+      expect(pods().progressCount).toBe(1);
+      expect(pods().completed).toBe(false);
+    });
+
+    it('completes only once every member has been covered', () => {
+      useTaskStore.setState({ tasks: [rotation()] });
+      const store = useTaskStore.getState();
+      store.logRotationUnit('pods', 'es');
+      store.logRotationUnit('pods', 'fr');
+      expect(pods().completed).toBe(false);
+
+      store.logRotationUnit('pods', 'de');
+      expect(pods().completed).toBe(true);
+    });
+
+    it('closes the period over the whole ledger, including the pick that closed it', () => {
+      useTaskStore.setState({ tasks: [rotation()] });
+      const store = useTaskStore.getState();
+      store.logRotationUnit('pods', 'es');
+      store.logRotationUnit('pods', 'fr');
+      store.logRotationUnit('pods', 'de');
+
+      // The record would be one short if the completion ran before the write.
+      expect(pods().rotationLog.map(e => e.itemId)).toEqual(['es', 'fr', 'de']);
+      expect(pods().progressCount).toBe(LANGS.length);
+    });
+
+    it('spawns next week\'s occurrence with a clean ledger but the memory intact', () => {
+      useTaskStore.setState({ tasks: [rotation()] });
+      const store = useTaskStore.getState();
+      LANGS.forEach(l => store.logRotationUnit('pods', l.id));
+
+      const next = useTaskStore.getState().tasks.find(t => t.id !== 'pods')!;
+      expect(next.rotationLog).toEqual([]);
+      expect(next.rotationPeriodStart).toBeNull();
+      expect(next.progressCount).toBe(0);
+      // Configuration and history both carry.
+      expect(next.rotationItems.map(r => r.id)).toEqual(['es', 'fr', 'de']);
+      expect(Object.keys(next.rotationLastDone).sort()).toEqual(['de', 'es', 'fr']);
+    });
+
+    it('refuses a member the set does not hold', () => {
+      useTaskStore.setState({ tasks: [rotation()] });
+      useTaskStore.getState().logRotationUnit('pods', 'nope');
+      expect(pods().rotationLog).toEqual([]);
+      expect(pods().progressCount).toBe(0);
+    });
+
+    it('ignores a task that is not a rotation', () => {
+      useTaskStore.setState({ tasks: [makeTask({ id: 'plain' })] });
+      useTaskStore.getState().logRotationUnit('plain', 'es');
+      expect(useTaskStore.getState().tasks[0].progressCount).toBe(0);
+    });
+
+    it('is undoable one pick at a time', () => {
+      useTaskStore.setState({ tasks: [rotation()] });
+      const store = useTaskStore.getState();
+      store.logRotationUnit('pods', 'es');
+      store.logRotationUnit('pods', 'fr');
+
+      useTaskStore.getState().lastAction!.undo();
+      expect(pods().rotationLog.map(e => e.itemId)).toEqual(['es']);
+      expect(pods().progressCount).toBe(1);
+    });
+
+    it('undoing a repeat leaves the member covered', () => {
+      useTaskStore.setState({ tasks: [rotation()] });
+      const store = useTaskStore.getState();
+      store.logRotationUnit('pods', 'es');
+      store.logRotationUnit('pods', 'es');
+      expect(pods().progressCount).toBe(1);
+
+      useTaskStore.getState().unlogRotationUnit('pods');
+      // The first Spanish still counts, so the count must not fall.
+      expect(pods().rotationLog.map(e => e.itemId)).toEqual(['es']);
+      expect(pods().progressCount).toBe(1);
+    });
+  });
+
+  describe('recordRotationPick', () => {
+    it('writes the pick without completing, and says whether that covered the set', () => {
+      useTaskStore.setState({ tasks: [rotation()] });
+      const store = useTaskStore.getState();
+      expect(store.recordRotationPick('pods', 'es')).toBe(false);
+      expect(store.recordRotationPick('pods', 'fr')).toBe(false);
+      // The closing pick is recorded and reported, but nothing is completed —
+      // that is the row's job, so it can run the meter's own animation.
+      expect(store.recordRotationPick('pods', 'de')).toBe(true);
+      expect(pods().completed).toBe(false);
+      expect(pods().progressCount).toBe(LANGS.length);
+    });
   });
 
   describe('logQuotaUnit', () => {

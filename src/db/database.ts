@@ -62,6 +62,7 @@ import { appendPriceObservation, parsePriceHistory } from '../utils/priceHistory
 import { parseFoodNutrition, serializeFoodNutrition } from '../utils/foodNutrition';
 import { parseUnavailableProductIds, productKeyFor } from '../utils/groceryProduct';
 import { parseChainItems } from '../utils/chain';
+import { parseRotationItems, parseRotationLastDone, parseRotationLog } from '../utils/rotation';
 import { parseSavedViewClauses, serializeSavedViewClauses } from '../utils/savedViews';
 import { parseFollowUpTaskDraft } from '../utils/followUpTask';
 import { cookbookKey, parseRecipeIngredients, parsePrepTasks, parseSteps } from '../utils/recipeUtils';
@@ -1477,6 +1478,11 @@ export function initDatabase(): void {
     // counted across. The column only ever adds the weekly kind (see
     // Task.quotaPeriod), so an install upgrading into it reads exactly as it did.
     "ALTER TABLE tasks ADD COLUMN quota_period TEXT NOT NULL DEFAULT 'day'",
+    "ALTER TABLE tasks ADD COLUMN rotation_enabled INTEGER NOT NULL DEFAULT 0",
+    "ALTER TABLE tasks ADD COLUMN rotation_items TEXT NOT NULL DEFAULT '[]'",
+    "ALTER TABLE tasks ADD COLUMN rotation_log TEXT NOT NULL DEFAULT '[]'",
+    "ALTER TABLE tasks ADD COLUMN rotation_period_start TEXT",
+    "ALTER TABLE tasks ADD COLUMN rotation_last_done TEXT NOT NULL DEFAULT '{}'",
     // 'positive' on every existing row, which is what every task in the app has
     // always been: something to do. The column only ever adds the opposite kind
     // (see Task.polarity), so an install upgrading into it reads exactly as it
@@ -2571,6 +2577,11 @@ function rowToTask(row: Record<string, unknown>): Task {
     // daily is merely owed its whole count today, where a daily one misread as
     // weekly would quietly stop asking for six days.
     quotaPeriod: row.quota_period === 'week' ? 'week' : 'day',
+    rotationEnabled: Boolean(row.rotation_enabled),
+    rotationItems: parseRotationItems(JSON.parse((row.rotation_items as string) ?? '[]')),
+    rotationLog: parseRotationLog(JSON.parse((row.rotation_log as string) ?? '[]')),
+    rotationPeriodStart: (row.rotation_period_start as string | null) ?? null,
+    rotationLastDone: parseRotationLastDone(JSON.parse((row.rotation_last_done as string) ?? '{}')),
     supplyCount: (row.supply_count as number | null) ?? null,
     supplyUnit: (row.supply_unit as string | null) ?? null,
     supplyRefillCount: (row.supply_refill_count as number | null) ?? null,
@@ -2730,13 +2741,14 @@ export function dbInsertTask(task: Task): void {
       supply_count, supply_unit, supply_refill_count, supply_reorder_at,
       supply_lead_days, supply_declined_at_count, supply_grocery_item_id,
       person_ids, waiting_on_person_id, reminder_offset_days, exclude_from_suggestions,
-      quota_interval_minutes, quota_reminders, quota_started_at, quota_always_visible, quota_period, location,
+      quota_interval_minutes, quota_reminders, quota_started_at, quota_always_visible, quota_period,
+      rotation_enabled, rotation_items, rotation_log, rotation_period_start, rotation_last_done, location,
       prior_best_streak, reminder_time_anchor, reminder_utc_offset_minutes, polarity, slip_count, slip_date,
       health_metric, health_target, completion_timer_minutes, completion_timer_note, completion_timer_started_at, log_health_metric, log_health_amount,
       penalty_minutes, penalty_cutoff_time, penalty_fired_at, penalty_credited_at, gates_apps,
       medication_name, medication_amount, medication_unit, log_meal_slot,
       estimate_before_timing, waiting_on_person_since, waiting_follow_up_declined_at
-    ) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)`,
+    ) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)`,
     [
       task.id, task.title, task.notes, task.completed ? 1 : 0,
       task.completedAt, task.createdAt, task.seenAt, task.dueDate, task.deadline, task.deadlineOffsetDays ?? null, task.deadlineMonthDay ?? null, task.deferUntil,
@@ -2807,6 +2819,11 @@ export function dbInsertTask(task: Task): void {
       task.quotaStartedAt ?? null,
       task.quotaAlwaysVisible ? 1 : 0,
       task.quotaPeriod,
+      task.rotationEnabled ? 1 : 0,
+      JSON.stringify(task.rotationItems),
+      JSON.stringify(task.rotationLog),
+      task.rotationPeriodStart ?? null,
+      JSON.stringify(task.rotationLastDone),
       task.location ?? null,
       task.priorBestStreak,
       task.reminderTimeAnchor,
@@ -2859,7 +2876,8 @@ export function dbUpdateTask(task: Task): void {
       supply_count=?, supply_unit=?, supply_refill_count=?, supply_reorder_at=?,
       supply_lead_days=?, supply_declined_at_count=?, supply_grocery_item_id=?,
       person_ids=?, waiting_on_person_id=?, reminder_offset_days=?, exclude_from_suggestions=?,
-      quota_interval_minutes=?, quota_reminders=?, quota_started_at=?, quota_always_visible=?, quota_period=?, location=?,
+      quota_interval_minutes=?, quota_reminders=?, quota_started_at=?, quota_always_visible=?, quota_period=?,
+      rotation_enabled=?, rotation_items=?, rotation_log=?, rotation_period_start=?, rotation_last_done=?, location=?,
       prior_best_streak=?, reminder_time_anchor=?, reminder_utc_offset_minutes=?, polarity=?, slip_count=?, slip_date=?,
       health_metric=?, health_target=?, completion_timer_minutes=?, completion_timer_note=?, completion_timer_started_at=?, log_health_metric=?, log_health_amount=?,
       penalty_minutes=?, penalty_cutoff_time=?, penalty_fired_at=?, penalty_credited_at=?, gates_apps=?,
@@ -2936,6 +2954,11 @@ export function dbUpdateTask(task: Task): void {
       task.quotaStartedAt ?? null,
       task.quotaAlwaysVisible ? 1 : 0,
       task.quotaPeriod,
+      task.rotationEnabled ? 1 : 0,
+      JSON.stringify(task.rotationItems),
+      JSON.stringify(task.rotationLog),
+      task.rotationPeriodStart ?? null,
+      JSON.stringify(task.rotationLastDone),
       task.location ?? null,
       task.priorBestStreak,
       task.reminderTimeAnchor,

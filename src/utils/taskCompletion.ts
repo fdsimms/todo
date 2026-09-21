@@ -490,6 +490,15 @@ export function buildCompletion(
         timeSegments: nextTimeSegments,
         pinned: chainStepStaysPinned, // stays pinned through an immediate chain step; resets otherwise
         progressCount: 0, // a quota starts the new day empty
+        // The ledger is per-period, so it does not ride `...effective` onto the
+        // next one. `activeRotationLog` would ignore a stale stamp anyway
+        // (that is what makes a missed week self-clean), but leaving one on a
+        // fresh row means a direct reader of `rotationLog` sees last week's
+        // picks, and the rule here is that per-occurrence state resets
+        // explicitly. `rotationItems` is configuration and `rotationLastDone`
+        // is history across every period, so both carry.
+        rotationLog: [],
+        rotationPeriodStart: null,
         // ...and starts it from the window again. A run begun by hand at
         // 10:30 is a statement about this morning, not about the schedule
         // (see Task.quotaStartedAt), so it rides no successor.
