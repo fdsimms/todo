@@ -1,6 +1,6 @@
 import { create } from 'zustand';
 import { addDays } from 'date-fns/addDays';
-import type { Task, TaskDraft, Priority, TimeOfDay, TitleRule, Person, QuotaPeriod, Polarity, MealPlanEntry } from '../types';
+import type { Task, TaskDraft, Priority, TimeOfDay, TitleRule, Person, QuotaPeriod, Polarity, MealPlanEntry, FoodLogEntry } from '../types';
 import {
   initDatabase,
   dbGetAllTasks,
@@ -78,11 +78,14 @@ import {
 } from '../utils/mealShortfallTasks';
 import {
   MEAL_LOG_NUDGE_LOOKBACK_DAYS,
+  isMealLogged,
   mealLogNudgeEntryId,
   mealLogNudgeLinkUrl,
   staleMealLogNudgeTasks,
   wantedMealLogNudges,
+  type MealLogRecord,
 } from '../utils/mealLogNudgeTasks';
+import { loggedMealSlotKeys } from '../utils/mealLogCoverage';
 import { standingSwapMap } from '../utils/standingSwaps';
 import {
   dueMealPlanNudge,
@@ -724,28 +727,27 @@ function writeGeneratedOptOut(task: Task, value: false | null): void {
  */
 function offerMealLog(loggable: MealPlanEntry): void {
   if (!wantsMealLogPrompt(loggable, useSettingsStore.getState().mealLogPrompt)) return;
-  if (loggable.recipeId) {
-    useFoodLogStore.getState().setPendingMealLog({
-      label: loggable.title,
-      slot: loggable.slot,
-      dayKey: loggable.date,
-      recipeId: loggable.recipeId,
-      mealPlanEntryId: loggable.id,
-      scale: loggable.recipeScale,
-      choices: loggable.recipeChoices,
-      // A meal cooked tonight has nothing weighed yet — the prompt asks.
-      // Only a container that was weighed on the way into the fridge arrives
-      // with a figure (see finishLeftover).
-      grams: null,
-    });
-  } else {
-    useFoodLogStore.getState().setPendingManualMealLog({
-      label: loggable.title,
-      slot: loggable.slot,
-      dayKey: loggable.date,
-      mealPlanEntryId: loggable.id,
-    });
-  }
+  // Already logged, so there is nothing to offer. The meal's own square is not
+  // the only way food gets into that slot (`mealLogCoverage.ts` says why the
+  // join is the slot rather than `mealPlanEntryId`), and offering to log a
+  // lunch somebody typed in an hour ago is the same wrong question the nudge
+  // task used to ask the next morning — just sooner.
+  const logged = dbGetFoodLogEntries(loggable.date, loggable.date);
+  if (isMealLogged(loggable, mealLogRecord(logged))) return;
+  useFoodLogStore.getState().offerMealLog(loggable);
+}
+
+/**
+ * The two readings of "logged" a window of food log entries supports, for the
+ * generator and the completion offer alike — see `MealLogRecord`.
+ */
+function mealLogRecord(entries: readonly FoodLogEntry[]): MealLogRecord {
+  return {
+    entryIds: new Set(
+      entries.map(e => e.mealPlanEntryId).filter((id): id is string => id !== null)
+    ),
+    slotKeys: loggedMealSlotKeys(entries),
+  };
 }
 
 /**
@@ -5289,20 +5291,16 @@ export const useTaskStore = create<TaskStore>((set, get) => ({
     // this set.
     const windowStart = shiftDayKey(todayKey, -MEAL_LOG_NUDGE_LOOKBACK_DAYS - 1);
     const entries = dbGetMealPlanEntries(windowStart, todayKey);
-    const loggedEntryIds = new Set(
-      dbGetFoodLogEntries(windowStart, todayKey)
-        .map(e => e.mealPlanEntryId)
-        .filter((id): id is string => id !== null)
-    );
+    const logged = mealLogRecord(dbGetFoodLogEntries(windowStart, todayKey));
 
     // Clear first, create second, the same ordering every generator here
     // runs on: the stale set includes the row for a meal just logged from
     // this very task, and a create pass running first would be deciding
     // against a list that still held it.
-    const stale = staleMealLogNudgeTasks(tasks, entries, loggedEntryIds, todayKey);
+    const stale = staleMealLogNudgeTasks(tasks, entries, logged, todayKey);
     stale.forEach(task => dropGeneratedTask('mealLogNudge', mealLogNudgeEntryId(task)));
 
-    const wanted = wantedMealLogNudges(entries, loggedEntryIds, todayKey);
+    const wanted = wantedMealLogNudges(entries, logged, todayKey);
     if (wanted.length === 0) return;
 
     ensureGeneratedTaskCategory('mealLogNudge');

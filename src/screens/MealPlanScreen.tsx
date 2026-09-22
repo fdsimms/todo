@@ -27,6 +27,7 @@ import { ActiveTripBanner } from '../components/ActiveTripBanner';
 import { InlineAction } from '../components/InlineAction';
 import { PeriodNav } from '../components/PeriodNav';
 import { MealDragCard, MealSlotRow } from '../components/MealSlotRow';
+import { describeSlotLog, mealDayCoverage, type SlotCoverage } from '../utils/mealLogCoverage';
 import { MealEntrySheet } from '../components/MealEntrySheet';
 import { RecipePickerSheet, type MealPick } from '../components/RecipePickerSheet';
 import { mealSlotSourceId } from '../utils/mealSlotTasks';
@@ -442,6 +443,36 @@ export function MealPlanScreen() {
     () => (selected ? recentFoodLogEntries(selected.date, selected.date).find(e => e.mealPlanEntryId === selected.id) ?? null : null),
     [selected, recentFoodLogEntries]
   );
+  /**
+   * What the food log has in the week on screen, and the per-day coverage
+   * derived from it — what puts "Logged 640 cal" on a planned meal's row.
+   *
+   * Read straight from SQLite for `loggedEntry`'s own reason (the store's
+   * loaded window follows the Food Log screen, not this one), and re-read on
+   * two signals rather than by subscribing to that window: `totalCount`, which
+   * moves on every add and delete anywhere in the app, and a focus nonce, which
+   * catches the rest — a row re-filed into another meal from the day view
+   * changes which slots are covered without changing how many rows exist.
+   * Subscribing to `entries` instead would re-render this whole screen every
+   * time the food log's own day view changed, which it does not need to.
+   */
+  const foodLogCount = useFoodLogStore(s => s.totalCount);
+  const offerMealLog = useFoodLogStore(s => s.offerMealLog);
+  const [foodLogNonce, setFoodLogNonce] = useState(0);
+  useFocusEffect(useCallback(() => { setFoodLogNonce(n => n + 1); }, []));
+  const weekFoodLog = useMemo(
+    () => (range ? recentFoodLogEntries(range.startKey, range.endKey) : []),
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+    [range?.startKey, range?.endKey, recentFoodLogEntries, foodLogCount, foodLogNonce]
+  );
+  const coverageByDay = useMemo(() => {
+    const byDay = new Map<string, Map<MealSlot, SlotCoverage>>();
+    for (const day of days) {
+      const key = dayKeyOf(day);
+      byDay.set(key, mealDayCoverage(entries, weekFoodLog, key));
+    }
+    return byDay;
+  }, [days, entries, weekFoodLog]);
   /**
    * What an "add these to the list" tap asked for — the whole week, or one
    * day. Three scopes exist (a meal, a day, a week) and the other two share
@@ -1160,6 +1191,12 @@ export function MealPlanScreen() {
     // Whether this day has anything a shop could find — the same gate the
     // week's own pill is behind, read over one day instead of seven.
     const shoppable = hasShoppableMeals(dayEntries, recipesById, { startKey: key, endKey: key });
+    // What the food log has to say about this day, one lookup per row below.
+    // Deliberately no day-level "2 of 3 logged" line here: every row already
+    // says whether its own meal was logged, so a tally under them would only
+    // restate what the reader can see. That line earns its place on the food
+    // log's day view instead, where the plan isn't on screen at all.
+    const dayCoverage = coverageByDay.get(key);
     // Folded into the "Previous days" header rendered by the first previous
     // day below — every other previous day renders nothing of its own while
     // that section is collapsed.
@@ -1351,6 +1388,7 @@ export function MealPlanScreen() {
                               title={titleForEntry(entry, recipesById)}
                               hasRecipe={!!entry.recipeId && recipesById.has(entry.recipeId)}
                               choices={describeEntryChoices(entry)}
+                              loggedText={describeSlotLog(dayCoverage?.get(entry.slot))}
                               onPress={() => {
                                 if (selectionMode) toggleSelection(entry.id);
                                 else { haptics.tap(); setSelectedId(entry.id); }
@@ -2088,6 +2126,14 @@ export function MealPlanScreen() {
             ? () => navigation.navigate('FoodLog', {
                 openEntry: { dayKey: loggedEntry.dayKey, entryId: loggedEntry.id, nonce: Date.now() },
               })
+            : undefined
+        }
+        onLogMeal={
+          // Offered only while this meal's slot has nothing in it — the same
+          // reading the completion prompt and the nudge task now use, so the
+          // sheet can't invite a second log of a dinner already recorded.
+          selected && (coverageByDay.get(selected.date)?.get(selected.slot)?.logged.length ?? 0) === 0
+            ? () => offerMealLog(selected)
             : undefined
         }
         onOpenRecipe={

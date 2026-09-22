@@ -21,6 +21,17 @@ interface Props {
    * many meals that pose no either/or.
    */
   choices?: string;
+  /**
+   * "Logged 640 cal" when the food log has something in this meal's slot
+   * — `describeSlotLog`'s answer, which is null for the ordinary unlogged
+   * meal and so leaves the caption reading exactly as it did before.
+   *
+   * A caption about the **slot** rather than about this dish, for the reason
+   * `mealLogCoverage.ts` gives at length: two dishes on one dinner share a
+   * square the log cannot choose between, so both rows say the dinner was
+   * logged and neither claims the calories were its own.
+   */
+  loggedText?: string | null;
   onPress: () => void;
   /**
    * Ticks the entry off, or back on — the same shortcut a task row's checkbox
@@ -106,7 +117,7 @@ interface Props {
  * absence a reader is expected to infer.
  */
 export function MealSlotRow({
-  entry, title, hasRecipe, choices, onPress, onToggleCooked, selectionMode, selected, onSwipeSelect,
+  entry, title, hasRecipe, choices, loggedText, onPress, onToggleCooked, selectionMode, selected, onSwipeSelect,
   onDragStart, dragging, surface,
 }: Props) {
   const colors = useColors();
@@ -159,7 +170,7 @@ export function MealSlotRow({
       accessibilityRole={selectionMode ? 'checkbox' : 'button'}
       accessibilityState={selectionMode ? { checked: !!selected } : undefined}
       accessibilityLabel={
-        [slotLabel(entry.slot), title, scaleLabel, choices, cooked ? 'cooked' : null]
+        [slotLabel(entry.slot), title, scaleLabel, choices, loggedText, cooked ? 'cooked' : null]
           .filter(Boolean).join(', ')
       }
       accessibilityHint={
@@ -202,6 +213,7 @@ export function MealSlotRow({
         <Text style={styles.slot} numberOfLines={2}>
           {[slotLabel(entry.slot), scaleLabel].filter(Boolean).join(' · ')}
           {!!choices && <Text style={styles.choices}> · {choices}</Text>}
+          {!!loggedText && <Text style={styles.logged}> · {loggedText}</Text>}
         </Text>
       </View>
       {/*
@@ -392,6 +404,16 @@ const makeStyles = (colors: Colors) => StyleSheet.create({
   choices: {
     color: colors.textTertiary,
     fontWeight: fontWeight.regular,
+    letterSpacing: 0,
+    textTransform: 'none',
+  },
+  // Same nesting as `choices`, in the green the cooked tick already uses, so
+  // the two facts the row reports about a meal having happened read as the
+  // same kind of fact. Semibold rather than regular because unlike a choice
+  // this is a state and not a qualifier.
+  logged: {
+    color: colors.green,
+    fontWeight: fontWeight.semibold,
     letterSpacing: 0,
     textTransform: 'none',
   },

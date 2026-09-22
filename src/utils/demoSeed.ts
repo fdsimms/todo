@@ -1663,6 +1663,13 @@ function seedFoodLog(today: Date): void {
     meals.push({ name: 'Milk', quantity: '1 cup', slot: 'breakfast', hour: 8, daysAgo });
     // The two thin days: somebody logged breakfast and got on with their life.
     if (daysAgo === 5 || daysAgo === 6) continue;
+    // And yesterday's dinner, which is a third thin day with a reason: the
+    // `mealLogNudge` task seeded further down asks about yesterday's planned
+    // stir-fry, and a meal counts as logged the moment anything is in its slot
+    // (see `mealLogCoverage.ts`). Potatoes and butter filed under yesterday's
+    // dinner would answer the very question the seeded task is there to show
+    // being asked, and the first foreground sweep would clear the row.
+    if (daysAgo === 1) continue;
     // The low patch in `seedMoodLog` runs 8 to 11 days back. Plainer, smaller
     // dinners through it.
     const lean = daysAgo >= 8 && daysAgo <= 11;

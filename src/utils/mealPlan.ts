@@ -31,6 +31,22 @@ export function slotRank(slot: MealSlot): number {
 export function slotLabel(slot: MealSlot): string {
   return MEAL_SLOT_LABELS[slot] ?? 'Meal';
 }
+
+/**
+ * `2026-08-22#lunch` — one meal of one day, as a string a Set or a Map can key on.
+ *
+ * The app now asks "which meal is this" of two different tables: a meal-slot
+ * task's `generatedSourceId` (`mealSlotSourceId`) and the food log's coverage
+ * of the plan (`loggedMealSlotKeys`). One format for the pair rather than two
+ * that happen to match, so a lookup across them can't quietly miss.
+ *
+ * `#` rather than `:` because a day key already contains `-` and a slot
+ * contains neither, so the pair splits back apart unambiguously — see
+ * `parseMealSlotSource`, which is the half that does the splitting.
+ */
+export function mealSlotKey(dayKey: string, slot: MealSlot): string {
+  return `${dayKey}#${slot}`;
+}
 /**
  * Reading order for a set of entries: by day, then down the day, then by the
  * order within one meal.
