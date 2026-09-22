@@ -49,6 +49,7 @@ function nthWeekdayOfMonth(monthDate: Date, weekday: number, ordinal: number): D
  *   "water plants every 3 days"   → "water plants", daily ×3
  *   "gym every mon and wed"       → "gym", weekly on Mon & Wed
  *   "journal every night at 10pm" → "journal", daily, evening segment
+ *   "take zaltrex every 8 hours"  → "take zaltrex", hourly ×8, from completion
  *
  * The phrase must extend to the end of the input (suffix-anchored), which is
  * what keeps mid-title words like "email tuesday the dog" from matching.
@@ -240,7 +241,19 @@ function unitToType(unit: string): RecurrenceType | null {
   if (/^week/.test(unit)) return 'weekly';
   if (/^month/.test(unit)) return 'monthly';
   if (/^year/.test(unit)) return 'yearly';
+  if (/^hour/.test(unit)) return 'hours';
   return null;
+}
+
+/**
+ * Sub-day recurrence has no calendar grid to anchor to — it's always
+ * measured from the moment you check the task off (see RecurrenceType's own
+ * doc comment on 'hours') — so a parsed 'hours' schedule forces
+ * recurrenceFromCompletion, the same thing RecurrencePicker.tsx forces when
+ * a person picks this type by hand.
+ */
+function forceFromCompletionIfHours(type: RecurrenceType, schedule: ParsedSchedule): ParsedSchedule {
+  return type === 'hours' ? { ...schedule, recurrenceFromCompletion: true } : schedule;
 }
 
 /** Anchored recurrence grammar; `segments` carries a previously peeled time-of-day. */
@@ -251,24 +264,25 @@ function matchRecurrenceCore(text: string, now: Date, segments: TimeOfDay[]): Pa
   if (/^(?:weekly|every week)$/.test(text)) return recurrence('weekly', 1, [], segments, now);
   if (/^(?:monthly|every month)$/.test(text)) return recurrence('monthly', 1, [], segments, now);
   if (/^(?:yearly|annually|every year)$/.test(text)) return recurrence('yearly', 1, [], segments, now);
+  if (/^every hour$/.test(text)) return forceFromCompletionIfHours('hours', recurrence('hours', 1, [], segments, now));
 
   // "every morning" — the day part IS the unit, and supplies the segment.
   if ((m = text.match(/^every (morning|afternoon|evening|night)$/))) {
     return recurrence('daily', 1, [], [DAY_PART_SEGMENT[m[1]]], now);
   }
 
-  // "every 3 days", "every 2 weeks"
-  if ((m = text.match(/^every (\d+) (days?|weeks?|months?|years?)$/))) {
+  // "every 3 days", "every 2 weeks", "every 8 hours"
+  if ((m = text.match(/^every (\d+) (days?|weeks?|months?|years?|hours?)$/))) {
     const type = unitToType(m[2])!;
     const n = parseInt(m[1], 10);
     if (n < 1) return null;
-    return recurrence(type, n, [], segments, now);
+    return forceFromCompletionIfHours(type, recurrence(type, n, [], segments, now));
   }
 
-  // "every other week", "every other tuesday"
+  // "every other week", "every other tuesday", "every other hour"
   if ((m = text.match(/^every other (.+)$/))) {
     const type = unitToType(m[1]);
-    if (type) return recurrence(type, 2, [], segments, now);
+    if (type) return forceFromCompletionIfHours(type, recurrence(type, 2, [], segments, now));
     const days = parseWeekdayList(m[1], false);
     if (days) return recurrence('weekly', 2, days, segments, now);
     return null;
@@ -1584,6 +1598,9 @@ export function describeSchedule(s: ParsedSchedule, now: Date = new Date()): str
       break;
     case 'yearly':
       label = n === 1 ? `Every ${format(s.dueDate, 'MMM d')}` : `Every ${n} years`;
+      break;
+    case 'hours':
+      label = n === 1 ? 'Every hour' : n === 2 ? 'Every other hour' : `Every ${n} hours`;
       break;
     default: {
       const d = s.dueDate;
