@@ -1843,6 +1843,24 @@ describe('demo seed — people', () => {
     expect(logs.some(l => l.taskId !== null && l.amount !== null)).toBe(true);
   });
 
+  it('seeds an hours-recurrence task, hidden behind its own deferUntil', () => {
+    // "Take naproxen" was completed a few hours before seeding — the
+    // interesting state is the successor still sitting hidden, not the
+    // completed row, which is why the assertion is on the spawned task
+    // rather than the one that was ticked off.
+    const completed = useTaskStore.getState().tasks.find(t => t.title === 'Take naproxen' && t.completed);
+    expect(completed).toBeDefined();
+    const next = useTaskStore.getState().tasks
+      .find(t => t.previousOccurrenceId === completed!.id && !t.completed);
+    expect(next).toBeDefined();
+    expect(next!.recurrenceType).toBe('hours');
+    expect(next!.recurrenceInterval).toBe(8);
+    expect(next!.dueDate).toBeNull();
+    expect(next!.deferUntil).not.toBeNull();
+    expect(new Date(next!.deferUntil!).getTime()).toBeGreaterThan(Date.now());
+    expect(isTaskVisible(next!)).toBe(false);
+  });
+
   it('seeds a chain whose steps record different doses', () => {
     // Without per-step values one chain logs the morning dose again at night,
     // so a demo with only a single-dose task shows none of what this is for.

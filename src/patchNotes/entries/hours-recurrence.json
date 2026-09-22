@@ -1,0 +1,4 @@
+{
+  "message": "Added an \"Hours\" repeat option for tasks like medication that can only be done again a set number of hours after the last time, rather than on a fixed calendar day",
+  "date": "2026-09-22"
+}
