@@ -245,7 +245,7 @@ const makeTask = (overrides: Partial<Task> = {}): Task => ({
   projectId: null,
   reminderTime: null,
   reminderKind: 'notification',
-  reminderOffsetDays: null, reminderTimeAnchor: 'wallClock', reminderUtcOffsetMinutes: null,
+  reminderOffsetDays: null, reminderTracksVisibility: false, reminderTimeAnchor: 'wallClock', reminderUtcOffsetMinutes: null,
   chainEnabled: false,
   chainIndex: 0,
   chainItems: [],
@@ -632,6 +632,21 @@ describe('dbInsertTask + rowToTask round-trip', () => {
     dbInsertTask(makeTask({ id: 'no-rem-offset' }));
     const [t] = dbGetAllTasks();
     expect(t.reminderOffsetDays).toBeNull();
+  });
+
+  it('round-trips reminderTracksVisibility through both insert and update', () => {
+    const task = makeTask({ id: 'rem-visibility', reminderTracksVisibility: true });
+    dbInsertTask(task);
+    expect(dbGetAllTasks()[0].reminderTracksVisibility).toBe(true);
+
+    dbUpdateTask({ ...task, reminderTracksVisibility: false });
+    expect(dbGetAllTasks()[0].reminderTracksVisibility).toBe(false);
+  });
+
+  it('defaults reminderTracksVisibility to false when unset', () => {
+    dbInsertTask(makeTask({ id: 'no-rem-visibility' }));
+    const [t] = dbGetAllTasks();
+    expect(t.reminderTracksVisibility).toBe(false);
   });
 
   it('round-trips a daily target and its unit', () => {

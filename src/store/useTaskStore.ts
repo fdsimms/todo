@@ -207,6 +207,8 @@ import {
   currentTimeSegment,
   timeSegmentThreshold,
   displayTitleFor,
+  getVisibleAt,
+  beginVisibleAtPass,
 } from '../utils/visibilityUtils';
 import { retentionCutoff, selectPurgeableTaskIds } from '../utils/retention';
 import { categoryLabel } from '../utils/categoryLabel';
@@ -319,7 +321,7 @@ import {
 // isLiveRecurring / CLAUDE.md recurrence docs for why).
 export const CONTENT_FIELDS: (keyof Task)[] = [
   'title', 'notes', 'tags', 'category', 'priority', 'effort',
-  'estimatedMinutes', 'timedMinutes', 'healthMetric', 'healthTarget', 'windowStart', 'windowEnd', 'timeSegments', 'reminderTime', 'reminderKind', 'reminderOffsetDays', 'linkUrl', 'phoneNumber', 'emailAddress', 'location', 'completionTimerMinutes', 'completionTimerNote',
+  'estimatedMinutes', 'timedMinutes', 'healthMetric', 'healthTarget', 'windowStart', 'windowEnd', 'timeSegments', 'reminderTime', 'reminderKind', 'reminderOffsetDays', 'reminderTracksVisibility', 'linkUrl', 'phoneNumber', 'emailAddress', 'location', 'completionTimerMinutes', 'completionTimerNote',
   // The question, not the answer — `deliverableValue` is per-occurrence data
   // like progressCount and is deliberately absent, or a scope:'occurrence'
   // edit would capture one date's answer as the default for every date after.
@@ -2770,6 +2772,7 @@ export const useTaskStore = create<TaskStore>((set, get) => ({
         'reminderTime' in updates ||
         'reminderKind' in updates ||
         'reminderOffsetDays' in updates ||
+        'reminderTracksVisibility' in updates ||
         'completed' in updates ||
         'archived' in updates ||
         'title' in updates ||
@@ -2859,7 +2862,10 @@ export const useTaskStore = create<TaskStore>((set, get) => ({
               ? reanchorReminder(
                   fanOut.reminderTime ?? null,
                   new Date(t.dueDate!),
-                  'reminderOffsetDays' in fanOut ? fanOut.reminderOffsetDays ?? null : t.reminderOffsetDays
+                  'reminderOffsetDays' in fanOut ? fanOut.reminderOffsetDays ?? null : t.reminderOffsetDays,
+                  ('reminderTracksVisibility' in fanOut ? fanOut.reminderTracksVisibility ?? false : t.reminderTracksVisibility)
+                    ? { ...t, ...fanOut }
+                    : null
                 )
               : {}),
             // A set shares one blocker, but no row can wait on itself. Picking
@@ -4003,18 +4009,39 @@ export const useTaskStore = create<TaskStore>((set, get) => ({
     }));
   },
 
+  // Folded into one loop rather than split into a sibling function: both
+  // halves are "does this live task's reminderTime need correcting", they
+  // share the same completed/archived guard and the same batching/reschedule
+  // tail, and a task could in principle need both checks run (though
+  // reminderTracksVisibility wins when both apply — see below).
   reanchorWallClockReminders() {
     const updated: Task[] = [];
+    const pass = beginVisibleAtPass();
     for (const task of get().tasks) {
-      if (
-        task.reminderTimeAnchor !== 'wallClock' ||
-        task.reminderTime === null ||
-        task.reminderUtcOffsetMinutes === null ||
-        task.completed ||
-        task.archived
-      ) {
+      if (task.reminderTime === null || task.completed || task.archived) continue;
+
+      // A visibility-tracking reminder's whole point is that getVisibleAt's
+      // own answer moves on its own as time passes — a deferUntil date
+      // arrives, a time-of-day segment threshold passes — unlike an offset
+      // reminder, which only changes when dueDate itself moves (handled at
+      // the write sites: completeTask, skipNextRecurrence, updateTask's
+      // series fan-out). So this is the one periodic recompute it needs, and
+      // it takes priority over the wall-clock check below: there's no
+      // reading of "stay at this wall-clock time" for a reminder that isn't
+      // fixed to a clock time to begin with.
+      if (task.reminderTracksVisibility) {
+        const next = getVisibleAt(task, pass);
+        const nextIso = next.toISOString();
+        if (nextIso === task.reminderTime) continue;
+        updated.push({
+          ...task,
+          reminderTime: nextIso,
+          reminderUtcOffsetMinutes: next.getTimezoneOffset(),
+        });
         continue;
       }
+
+      if (task.reminderTimeAnchor !== 'wallClock' || task.reminderUtcOffsetMinutes === null) continue;
       const reanchored = reanchorReminderToWallClock(task.reminderTime, task.reminderUtcOffsetMinutes);
       // The device hasn't actually moved zones since this was last captured —
       // nothing to write.
@@ -6405,7 +6432,14 @@ export const useTaskStore = create<TaskStore>((set, get) => ({
       }
       let stepReminderTime: string | null = effective.reminderTime;
       let stepReminderUtcOffsetMinutes: number | null = effective.reminderUtcOffsetMinutes;
-      if (effective.reminderTime) {
+      if (effective.reminderTime && effective.reminderTracksVisibility) {
+        // Resolved through getVisibleAt against the step's own resulting
+        // placement, never a hand-rolled date calc — same shape as
+        // completeTask's successor and the plain-recurrence branch below.
+        const next = getVisibleAt({ ...effective, ...contentReset, dueDate: stepDue.toISOString(), deferUntil: null });
+        stepReminderTime = next.toISOString();
+        stepReminderUtcOffsetMinutes = next.getTimezoneOffset();
+      } else if (effective.reminderTime) {
         const original = new Date(effective.reminderTime);
         const next = new Date(
           effective.reminderOffsetDays !== null ? getReminderOffsetDate(stepDue, effective.reminderOffsetDays) : stepDue
@@ -6439,7 +6473,11 @@ export const useTaskStore = create<TaskStore>((set, get) => ({
     if (!nextDue) return;
     let nextReminderTime: string | null = effective.reminderTime;
     let nextReminderUtcOffsetMinutes: number | null = effective.reminderUtcOffsetMinutes;
-    if (effective.reminderTime) {
+    if (effective.reminderTime && effective.reminderTracksVisibility) {
+      const next = getVisibleAt({ ...effective, ...contentReset, dueDate: nextDue.toISOString(), deferUntil: null });
+      nextReminderTime = next.toISOString();
+      nextReminderUtcOffsetMinutes = next.getTimezoneOffset();
+    } else if (effective.reminderTime) {
       const original = new Date(effective.reminderTime);
       const next = new Date(
         effective.reminderOffsetDays !== null ? getReminderOffsetDate(nextDue, effective.reminderOffsetDays) : nextDue
@@ -6806,6 +6844,7 @@ export const useTaskStore = create<TaskStore>((set, get) => ({
       reminderTime: null,
       reminderKind: 'notification',
       reminderOffsetDays: null,
+      reminderTracksVisibility: false,
       reminderTimeAnchor: 'wallClock',
       reminderUtcOffsetMinutes: null,
       chainEnabled: false,
@@ -7020,6 +7059,7 @@ export const useTaskStore = create<TaskStore>((set, get) => ({
       reminderTime: null,
       reminderKind: 'notification',
       reminderOffsetDays: null,
+      reminderTracksVisibility: false,
       reminderTimeAnchor: 'wallClock',
       reminderUtcOffsetMinutes: null,
       chainEnabled: false,

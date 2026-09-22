@@ -614,6 +614,17 @@ export function describeReminderOffset(offsetDays: number): string {
 }
 
 /**
+ * The user-facing wording for a visibility-tracking reminder (see
+ * Task.reminderTracksVisibility) — owned here for the same reason
+ * describeReminderOffset is, so the editor's row summary and the picker's
+ * info card can't drift apart. Doesn't need the task itself: unlike an
+ * offset there's no number to report, just what the reminder does.
+ */
+export function describeReminderTracksVisibility(): string {
+  return 'When it becomes visible';
+}
+
+/**
  * The UTC offset (minutes, `Date.getTimezoneOffset()`) in effect at
  * `reminderTime`'s own moment, for a 'wallClock' reminder to compare itself
  * against later (see reanchorReminderToWallClock and

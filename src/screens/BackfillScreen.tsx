@@ -6,6 +6,8 @@ import { useNavigation } from '@react-navigation/native';
 import Ionicons from '@expo/vector-icons/Ionicons';
 import { useShallow } from 'zustand/react/shallow';
 import { format } from 'date-fns/format';
+import { describeReminderTracksVisibility } from '../utils/dateUtils';
+import { getVisibleAt } from '../utils/visibilityUtils';
 import { useTaskStore } from '../store/useTaskStore';
 import { useSettingsStore } from '../store/useSettingsStore';
 import { useCategoryStore } from '../store/useCategoryStore';
@@ -1562,16 +1564,17 @@ export function BackfillScreen() {
     apply({ effort: minutesToEffort(minutes), estimatedMinutes: minutes }, formatDuration(minutes));
   };
 
-  const applyReminder = (date: Date, kind: ReminderKind, offsetDays: number | null, anchor: 'wallClock' | 'fixed') => {
+  const applyReminder = (date: Date, kind: ReminderKind, offsetDays: number | null, anchor: 'wallClock' | 'fixed', tracksVisibility: boolean) => {
     apply(
       {
         reminderTime: date.toISOString(),
         reminderKind: kind,
         reminderOffsetDays: offsetDays,
+        reminderTracksVisibility: tracksVisibility,
         reminderTimeAnchor: anchor,
         reminderUtcOffsetMinutes: date.getTimezoneOffset(),
       },
-      format(date, 'MMM d, h:mm a')
+      tracksVisibility ? describeReminderTracksVisibility() : format(date, 'MMM d, h:mm a')
     );
     setReminderPickerOpen(false);
   };
@@ -1965,6 +1968,8 @@ export function BackfillScreen() {
           kind="notification"
           dueDate={currentTask?.dueDate ? new Date(currentTask.dueDate) : null}
           offsetDays={null}
+          canTrackVisibility={!!currentTask && (!!currentTask.deferUntil || currentTask.timeSegments.length > 0)}
+          visiblePreview={currentTask && (currentTask.deferUntil || currentTask.timeSegments.length > 0) ? getVisibleAt(currentTask) : null}
           onConfirm={applyReminder}
           onCancel={() => setReminderPickerOpen(false)}
         />

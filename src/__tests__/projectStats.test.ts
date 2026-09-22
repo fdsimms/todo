@@ -72,7 +72,7 @@ const makeTask = (overrides: Partial<Task> = {}): Task => ({
   penaltyCreditedAt: null,
   gatesApps: false,
   groupId: null, projectId: null, reminderTime: null, reminderKind: 'notification',
-  reminderOffsetDays: null, reminderTimeAnchor: 'wallClock', reminderUtcOffsetMinutes: null, chainEnabled: false, chainIndex: 0, chainItems: [],
+  reminderOffsetDays: null, reminderTracksVisibility: false, reminderTimeAnchor: 'wallClock', reminderUtcOffsetMinutes: null, chainEnabled: false, chainIndex: 0, chainItems: [],
   chainStepOnSchedule: false, followUpTaskEveryN: null, followUpTaskTitle: null, followUpTaskDraft: null,
   followUpTaskOneAtATime: false, followUpTaskTally: 0, previousFollowUpTaskTally: 0,
   followUpTaskSourceTitle: null, vacationPause: false,

@@ -30,7 +30,7 @@ function task(over: Partial<Task> = {}): Task {
     supplyCount: null, supplyUnit: null, supplyRefillCount: null, supplyReorderAt: 1,
     supplyLeadDays: null, supplyDeclinedAtCount: null, supplyGroceryItemId: null,
     tags: [], category: null, sortOrder: 0, pinned: false, pinnedOrder: 0, priority: 0, effort: 0,
-    estimatedMinutes: null, reminderTime: null, reminderKind: 'notification', reminderOffsetDays: null, reminderTimeAnchor: 'wallClock', reminderUtcOffsetMinutes: null, linkUrl: null,
+    estimatedMinutes: null, reminderTime: null, reminderKind: 'notification', reminderOffsetDays: null, reminderTracksVisibility: false, reminderTimeAnchor: 'wallClock', reminderUtcOffsetMinutes: null, linkUrl: null,
     phoneNumber: null, emailAddress: null, location: null, blockedById: null, waitingOnPersonId: null, waitingOnPersonSince: null, waitingFollowUpDeclinedAt: null,
     deliverableKind: null, deliverableValue: null, generatedKind: null, generatedSourceId: null,
     deadlineOnCalendar: false, calendarEventId: null,

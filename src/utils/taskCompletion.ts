@@ -46,7 +46,7 @@ import {
   getDeadlineFromMonthDay,
   getReminderOffsetDate,
 } from './dateUtils';
-import { isRecurrenceNotYetDue, isQuotaTask, quotaRidesOutTheDay, isCompletionOnTime, hasNoDateSignal } from './visibilityUtils';
+import { isRecurrenceNotYetDue, isQuotaTask, quotaRidesOutTheDay, isCompletionOnTime, hasNoDateSignal, getVisibleAt } from './visibilityUtils';
 import { isNegativeTask } from './negativeHabits';
 import { nextStreakRecord } from './streakRecord';
 import {
@@ -429,27 +429,6 @@ export function buildCompletion(
       const nextDeferUntil = isHoursRecurrence && !effectiveDue && nextDue !== null
         ? new Date(now.getTime() + task.recurrenceInterval * 60 * 60 * 1000).toISOString()
         : null;
-      let nextReminderTime: string | null = effective.reminderTime;
-      let nextReminderUtcOffsetMinutes: number | null = effective.reminderUtcOffsetMinutes;
-      if (effectiveDue && effective.reminderTime) {
-        const original = new Date(effective.reminderTime);
-        const next = new Date(
-          effective.reminderOffsetDays !== null
-            ? getReminderOffsetDate(effectiveDue, effective.reminderOffsetDays)
-            : effectiveDue
-        );
-        next.setHours(original.getHours(), original.getMinutes(), 0, 0);
-        nextReminderTime = next.toISOString();
-        nextReminderUtcOffsetMinutes = next.getTimezoneOffset();
-      } else if (nextDeferUntil && effective.reminderTime) {
-        // A reminder on an 'hours' task is a request to be told when the next
-        // dose unlocks, not a fixed clock time — so it rides the deferral
-        // forward instead of staying put the way a plain reminderOffsetDays
-        // reminder would (there is no day to offset from here).
-        const next = new Date(nextDeferUntil);
-        nextReminderTime = next.toISOString();
-        nextReminderUtcOffsetMinutes = next.getTimezoneOffset();
-      }
       const nextChainIndex = chainAdvances
         ? (atChainEnd ? 0 : task.chainIndex + 1)
         : task.chainIndex;
@@ -470,6 +449,47 @@ export function buildCompletion(
       const nextTimeSegments = mealSlotSource
         ? mealSlotStepTimeSegments(mealSlotSource.slot, nextChainIndex, task.chainItems.length)
         : effective.timeSegments;
+      // Computed above the reminder block (moved ahead of it, along with
+      // nextChainIndex/mealSlotSource) because a visibility-tracking
+      // reminder needs the successor's own resulting timeSegments to resolve
+      // through getVisibleAt, and nextTimeSegments didn't exist yet at this
+      // point before that mode existed.
+      let nextReminderTime: string | null = effective.reminderTime;
+      let nextReminderUtcOffsetMinutes: number | null = effective.reminderUtcOffsetMinutes;
+      if (effective.reminderTime && effective.reminderTracksVisibility) {
+        // Resolved through getVisibleAt against the successor's own resulting
+        // placement — never a hand-rolled date calc, per the dayResetTime
+        // grace-window rule (CLAUDE.md). Same shape as the two branches
+        // below, just reading the answer off the function that already
+        // orders the Later screen instead of an offset/deferral formula.
+        const visibleAtTask: Task = {
+          ...effective,
+          dueDate: effectiveDue ? effectiveDue.toISOString() : null,
+          deferUntil: nextDeferUntil,
+          timeSegments: nextTimeSegments,
+        };
+        const next = getVisibleAt(visibleAtTask);
+        nextReminderTime = next.toISOString();
+        nextReminderUtcOffsetMinutes = next.getTimezoneOffset();
+      } else if (effectiveDue && effective.reminderTime) {
+        const original = new Date(effective.reminderTime);
+        const next = new Date(
+          effective.reminderOffsetDays !== null
+            ? getReminderOffsetDate(effectiveDue, effective.reminderOffsetDays)
+            : effectiveDue
+        );
+        next.setHours(original.getHours(), original.getMinutes(), 0, 0);
+        nextReminderTime = next.toISOString();
+        nextReminderUtcOffsetMinutes = next.getTimezoneOffset();
+      } else if (nextDeferUntil && effective.reminderTime) {
+        // A reminder on an 'hours' task is a request to be told when the next
+        // dose unlocks, not a fixed clock time — so it rides the deferral
+        // forward instead of staying put the way a plain reminderOffsetDays
+        // reminder would (there is no day to offset from here).
+        const next = new Date(nextDeferUntil);
+        nextReminderTime = next.toISOString();
+        nextReminderUtcOffsetMinutes = next.getTimezoneOffset();
+      }
       // A fixed deadline is a one-off target date and doesn't carry to the next
       // occurrence. A relative deadline (deadlineOffsetDays or deadlineMonthDay
       // set — mutually exclusive) recomputes against the new dueDate instead,

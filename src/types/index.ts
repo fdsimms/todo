@@ -2333,6 +2333,23 @@ export interface Task {
   // today's behaviour: a reminder that just tracks the due date's own day.
   reminderOffsetDays: number | null;
 
+  // The other alternative to a fixed reminderTime, mutually exclusive with
+  // reminderOffsetDays: when true, reminderTime is recomputed as the exact
+  // moment getVisibleAt() (src/utils/visibilityUtils.ts) says this task next
+  // surfaces — the same function that orders the Later screen — rather than
+  // as an offset from dueDate. "Remind me the moment this comes off snooze"
+  // or "remind me right when the evening segment opens". Only meaningful
+  // (and only editable) when the task has something to become visible
+  // *from*: deferUntil is set or timeSegments is non-empty, mirroring how
+  // reminderOffsetDays is gated on dueDate. Recomputed at completion,
+  // skip-recurrence and series-reanchor time exactly where reminderOffsetDays
+  // is, plus periodically by reanchorWallClockReminders (useTaskStore.ts)
+  // since — unlike an offset, which only changes when dueDate moves —
+  // getVisibleAt's own answer can change on its own as a defer date arrives
+  // or a time-of-day threshold passes. No numeric parameter, since there's
+  // nothing to count: false keeps today's behaviour.
+  reminderTracksVisibility: boolean;
+
   // Whether reminderTime means "this wall-clock reading, wherever the device
   // currently is" ('wallClock', the default) or "this exact fixed instant,
   // never touched" ('fixed'). A task/habit app's "9am" overwhelmingly means

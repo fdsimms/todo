@@ -27,7 +27,7 @@ import { spacing, radius, font, fontWeight, interaction, type Colors } from '../
 import { useSettingsStore } from '../store/useSettingsStore';
 import { buildCalendarGrid, weekdayHeaders } from '../utils/calendarGrid';
 import { parseNaturalDate } from '../utils/parseNaturalDate';
-import { getLogicalNow, getReminderOffsetDate, describeReminderOffset } from '../utils/dateUtils';
+import { getLogicalNow, getReminderOffsetDate, describeReminderOffset, describeReminderTracksVisibility } from '../utils/dateUtils';
 import { isAlarmKitAvailable } from 'todo-alarmkit-bridge';
 import { SegmentedControl } from './SegmentedControl';
 import { CountStepper } from './CountStepper';
@@ -35,7 +35,7 @@ import { ScrollEdgeFade } from './ScrollEdgeFade';
 import { SheetScrim } from './SheetScrim';
 import type { ReminderKind } from '../types';
 
-type Mode = 'date' | 'before';
+type Mode = 'date' | 'before' | 'visible';
 
 interface Props {
   visible: boolean;
@@ -47,11 +47,24 @@ interface Props {
   // from without one.
   dueDate?: Date | null;
   offsetDays?: number | null;
+  // Whether "When it becomes visible" is even offered — see
+  // Task.reminderTracksVisibility. Gated the same way offsetDays/dueDate is:
+  // there's nothing to become visible from without a deferUntil or a
+  // timeSegments entry, so the caller passes this rather than this component
+  // reaching for the task itself.
+  canTrackVisibility?: boolean;
+  tracksVisibility?: boolean;
+  // The exact moment getVisibleAt() currently resolves to for this task, for
+  // the "Fires …" preview in the visible-mode card — precomputed by the
+  // caller (TaskEditor), which holds the live deferUntil/timeSegments/dueDate
+  // this component only sees pieces of. Null while there's nothing to preview
+  // (canTrackVisibility is false, or the caller hasn't computed one yet).
+  visiblePreview?: Date | null;
   // Whether this reminder tracks the device's current timezone or stays fixed
   // to the instant it was set for — see Task.reminderTimeAnchor. Defaults to
   // 'wallClock', same as a new task with no reminder yet.
   anchor?: 'wallClock' | 'fixed';
-  onConfirm: (date: Date, kind: ReminderKind, offsetDays: number | null, anchor: 'wallClock' | 'fixed') => void;
+  onConfirm: (date: Date, kind: ReminderKind, offsetDays: number | null, anchor: 'wallClock' | 'fixed', tracksVisibility: boolean) => void;
   onClear?: () => void;
   onCancel: () => void;
 }
@@ -66,7 +79,7 @@ const alarmKitAvailable = isAlarmKitAvailable();
 const BEFORE_DAYS_MIN = 0;
 const BEFORE_DAYS_MAX = 60;
 
-export function RemindMePicker({ visible, value, kind, dueDate = null, offsetDays = null, anchor = 'wallClock', onConfirm, onClear, onCancel }: Props) {
+export function RemindMePicker({ visible, value, kind, dueDate = null, offsetDays = null, canTrackVisibility = false, tracksVisibility = false, visiblePreview = null, anchor = 'wallClock', onConfirm, onClear, onCancel }: Props) {
   const colors = useColors();
   const { isDark, shadows } = useTheme();
   // Reactive, unlike the width above: read once at module load, a stale
@@ -87,10 +100,13 @@ export function RemindMePicker({ visible, value, kind, dueDate = null, offsetDay
   const [pickerReady, setPickerReady] = useState(false);
   const [selectedKind, setSelectedKind] = useState<ReminderKind>(kind);
   const [selectedAnchor, setSelectedAnchor] = useState<'wallClock' | 'fixed'>(anchor);
-  // 'before' is only ever the opening mode when there's an offset already set
-  // on the task and a due date to count it from — otherwise there's nothing
-  // to switch to it from, so it isn't even offered (see the toggle below).
-  const [mode, setMode] = useState<Mode>(offsetDays !== null && dueDate ? 'before' : 'date');
+  // 'before'/'visible' are only ever the opening mode when the task is
+  // already set that way and still has something to gate on — otherwise
+  // there's nothing to switch to it from, so it isn't even offered (see the
+  // toggle below).
+  const [mode, setMode] = useState<Mode>(
+    tracksVisibility && canTrackVisibility ? 'visible' : offsetDays !== null && dueDate ? 'before' : 'date'
+  );
   const [beforeDays, setBeforeDays] = useState(offsetDays ?? 1);
 
   useEffect(() => {
@@ -107,7 +123,7 @@ export function RemindMePicker({ visible, value, kind, dueDate = null, offsetDay
     setNlText('');
     setSelectedKind(kind);
     setSelectedAnchor(anchor);
-    setMode(offsetDays !== null && dueDate ? 'before' : 'date');
+    setMode(tracksVisibility && canTrackVisibility ? 'visible' : offsetDays !== null && dueDate ? 'before' : 'date');
     setBeforeDays(offsetDays ?? 1);
   }, [visible]);
 
@@ -143,17 +159,29 @@ export function RemindMePicker({ visible, value, kind, dueDate = null, offsetDay
 
   const confirm = () => {
     Keyboard.dismiss();
+    if (mode === 'visible') {
+      // Always confirmable once offered (canTrackVisibility already means
+      // there's a deferUntil or timeSegments to resolve against, so
+      // getVisibleAt always has something to answer with) — visiblePreview
+      // is a live hint from the caller and can lag a moment behind an
+      // unsaved edit, so it falls back to "now" here rather than blocking
+      // confirmation on it. The next reanchorWallClockReminders pass
+      // corrects the stored reminderTime for real, the same way it already
+      // does for any wall-clock drift.
+      onConfirm(visiblePreview ?? new Date(), selectedKind, null, selectedAnchor, true);
+      return;
+    }
     if (mode === 'before') {
       if (!dueDate) return;
       const result = getReminderOffsetDate(dueDate, beforeDays);
       result.setHours(timeDate.getHours(), timeDate.getMinutes(), 0, 0);
-      onConfirm(result, selectedKind, beforeDays, selectedAnchor);
+      onConfirm(result, selectedKind, beforeDays, selectedAnchor, false);
       return;
     }
     if (!selectedDate) return;
     const result = new Date(selectedDate);
     result.setHours(timeDate.getHours(), timeDate.getMinutes(), 0, 0);
-    onConfirm(result, selectedKind, null, selectedAnchor);
+    onConfirm(result, selectedKind, null, selectedAnchor, false);
   };
 
   // Closing while the natural-language field still holds focus is the same
@@ -164,7 +192,7 @@ export function RemindMePicker({ visible, value, kind, dueDate = null, offsetDay
     onCancel();
   };
 
-  const canConfirm = mode === 'before' ? !!dueDate : !!selectedDate;
+  const canConfirm = mode === 'visible' ? true : mode === 'before' ? !!dueDate : !!selectedDate;
 
   return (
     <SheetModal
@@ -198,9 +226,10 @@ export function RemindMePicker({ visible, value, kind, dueDate = null, offsetDay
             keyboardShouldPersistTaps="handled"
             {...fade.scrollProps}
           >
-            {/* On a date vs before the task's own due date — only offered
-                when there's a due date to count back from. */}
-            {!!dueDate && (
+            {/* On a date vs before the task's own due date vs when it becomes
+                visible — the last two only offered when there's something to
+                count back from or to become visible from. */}
+            {(!!dueDate || canTrackVisibility) && (
               <>
                 <View style={styles.modeSection}>
                   <SegmentedControl<Mode>
@@ -209,7 +238,8 @@ export function RemindMePicker({ visible, value, kind, dueDate = null, offsetDay
                     onChange={setMode}
                     options={[
                       { value: 'date', label: 'On a date' },
-                      { value: 'before', label: 'Before due date' },
+                      ...(dueDate ? [{ value: 'before' as const, label: 'Before due date' }] : []),
+                      ...(canTrackVisibility ? [{ value: 'visible' as const, label: 'When it becomes visible' }] : []),
                     ]}
                   />
                 </View>
@@ -335,8 +365,28 @@ export function RemindMePicker({ visible, value, kind, dueDate = null, offsetDay
               </>
             )}
 
-            {/* Time section */}
-            {pickerReady && (
+            {mode === 'visible' && canTrackVisibility && (
+              <>
+                <View style={styles.beforeSection}>
+                  <Text style={styles.sectionLabel}>When it becomes visible</Text>
+                  <Text style={styles.beforeLabel}>
+                    {describeReminderTracksVisibility()}
+                  </Text>
+                  <Text style={styles.beforeHint}>
+                    {visiblePreview
+                      ? `Fires ${format(visiblePreview, 'MMM d')} at ${format(visiblePreview, 'h:mm a')}, the exact moment this task next becomes visible. There's no time to set below — it recomputes on its own if that moment changes.`
+                      : 'Fires the moment this task next becomes visible. There\'s no time to set below — it recomputes on its own if that moment changes.'}
+                  </Text>
+                </View>
+                <View style={styles.sectionGap} />
+              </>
+            )}
+
+            {/* Time section — skipped for "When it becomes visible": that
+                mode has no time of day of its own to set, the moment is
+                fully derived by getVisibleAt from whatever's hiding the
+                task. */}
+            {pickerReady && mode !== 'visible' && (
               <View style={styles.timeSection}>
                 <Text style={styles.sectionLabel}>Time</Text>
                 {/* The spinner's native rendered height doesn't reliably

@@ -82,7 +82,7 @@ import { useTaskGroupStore } from '../store/useTaskGroupStore';
 import { categoryLabel } from '../utils/categoryLabel';
 import { useShallow } from 'zustand/react/shallow';
 import { isStreakAtRecord, nextStreakRecord, streakHint } from '../utils/streakRecord';
-import { formatDeadlineDate, formatScheduledDate, formatHHMM, formatTimeOfDay, hhmmToDate, dateToHHMM, getDeadlineFromOffset, getDeadlineFromMonthDay, describeDeadlineOffset, describeReminderOffset, getTaskDayStart, getCurrentDayStart, getLogicalNow, getLogicalToday, seriesMonthDaysFrom, getNextDueDate } from '../utils/dateUtils';
+import { formatDeadlineDate, formatScheduledDate, formatHHMM, formatTimeOfDay, hhmmToDate, dateToHHMM, getDeadlineFromOffset, getDeadlineFromMonthDay, describeDeadlineOffset, describeReminderOffset, describeReminderTracksVisibility, getTaskDayStart, getCurrentDayStart, getLogicalNow, getLogicalToday, seriesMonthDaysFrom, getNextDueDate } from '../utils/dateUtils';
 import { generateId } from '../utils/id';
 import { findArchivedMatch } from '../utils/archiveMatch';
 import { parseTaskInput, describeSchedule, detectContactIntent, matchPersonMentions, getEditorMentionSuggestions, withTrailingSpace, type MentionSuggestionCandidate } from '../utils/parseTaskInput';
@@ -120,7 +120,7 @@ import { FollowUpTaskSheet } from './FollowUpTaskSheet';
 import { CalendarChoiceSheet } from './CalendarChoiceSheet';
 import { TaskRelationPickerSheet } from './TaskRelationPickerSheet';
 import { describeBlocks } from '../utils/blocking';
-import { displayTitleFor, isMissableMealPlanTask } from '../utils/visibilityUtils';
+import { displayTitleFor, isMissableMealPlanTask, getVisibleAt } from '../utils/visibilityUtils';
 import { nextChainStepTitle } from '../utils/chain';
 import { RecurrencePicker } from './RecurrencePicker';
 import { SegmentedControl } from './SegmentedControl';
@@ -473,6 +473,7 @@ export function TaskEditor({ visible, task, initialDraft, onClose }: Props) {
   const [reminderTime, setReminderTime] = useState<Date | null>(null);
   const [reminderKind, setReminderKind] = useState<ReminderKind>('notification');
   const [reminderOffsetDays, setReminderOffsetDays] = useState<number | null>(null);
+  const [reminderTracksVisibility, setReminderTracksVisibility] = useState(false);
   const [reminderTimeAnchor, setReminderTimeAnchor] = useState<'wallClock' | 'fixed'>('wallClock');
   // Whether the user has explicitly set or cleared the reminder this session —
   // gates applyDefaultReminderLead below so a pre-filled default never stomps
@@ -767,6 +768,7 @@ export function TaskEditor({ visible, task, initialDraft, onClose }: Props) {
       setReminderTime(task.reminderTime ? new Date(task.reminderTime) : null);
       setReminderKind(task.reminderKind ?? 'notification');
       setReminderOffsetDays(task.reminderOffsetDays ?? null);
+      setReminderTracksVisibility(task.reminderTracksVisibility ?? false);
       setReminderTimeAnchor(task.reminderTimeAnchor ?? 'wallClock');
       setReminderTouched(false);
       setRecurrenceType(task.recurrenceType); setRecurrenceInterval(task.recurrenceInterval);
@@ -916,6 +918,7 @@ export function TaskEditor({ visible, task, initialDraft, onClose }: Props) {
       reminderTime: task ? (task.reminderTime ?? null) : (initialDraft?.reminderTime?.toISOString() ?? null),
       reminderKind: task?.reminderKind ?? 'notification',
       reminderOffsetDays: task?.reminderOffsetDays ?? null,
+      reminderTracksVisibility: task?.reminderTracksVisibility ?? false,
       reminderTimeAnchor: task?.reminderTimeAnchor ?? 'wallClock',
       // Recomputed from the same instant reminderTime state is seeded with
       // (getTimezoneOffset of that Date), rather than read off
@@ -1278,6 +1281,7 @@ export function TaskEditor({ visible, task, initialDraft, onClose }: Props) {
       reminderTime: reminderTime?.toISOString() ?? null,
       reminderKind,
       reminderOffsetDays,
+      reminderTracksVisibility,
       reminderTimeAnchor,
       reminderUtcOffsetMinutes: reminderTime ? reminderTime.getTimezoneOffset() : null,
       recurrenceType, recurrenceInterval,
@@ -1707,11 +1711,12 @@ export function TaskEditor({ visible, task, initialDraft, onClose }: Props) {
     setPickerMode(mode);
   };
 
-  const confirmPicker = (confirmed: Date, kind?: ReminderKind, offsetDays?: number | null, anchor?: 'wallClock' | 'fixed') => {
+  const confirmPicker = (confirmed: Date, kind?: ReminderKind, offsetDays?: number | null, anchor?: 'wallClock' | 'fixed', tracksVisibility?: boolean) => {
     if (pickerMode === 'reminder') {
       setReminderTime(confirmed);
       if (kind) setReminderKind(kind);
       setReminderOffsetDays(offsetDays ?? null);
+      setReminderTracksVisibility(tracksVisibility ?? false);
       if (anchor) setReminderTimeAnchor(anchor);
       setReminderTouched(true);
     }
@@ -1929,6 +1934,7 @@ export function TaskEditor({ visible, task, initialDraft, onClose }: Props) {
       reminderTime: reminderTime?.toISOString() ?? null,
       reminderKind,
       reminderOffsetDays,
+      reminderTracksVisibility,
       reminderTimeAnchor,
       reminderUtcOffsetMinutes: reminderTime ? reminderTime.getTimezoneOffset() : null,
       recurrenceType, recurrenceInterval, recurrenceDays, recurrenceMonthDay, recurrenceWeekOrdinal, recurrenceFromCompletion,
@@ -2147,6 +2153,33 @@ export function TaskEditor({ visible, task, initialDraft, onClose }: Props) {
   const timeOfDaySummary = timeSegments.length > 0
     ? timeSegments.map(capitalize).join(', ')
     : undefined;
+
+  // Whether "When it becomes visible" is even offered to the Remind me
+  // picker — mirrors how "Before due date" is gated on dueDate: there has to
+  // be something to become visible *from*.
+  const canTrackVisibility = !!deferUntil || timeSegments.length > 0;
+  // A live preview of what getVisibleAt currently resolves to, for the
+  // picker's "Fires …" hint — built against this session's own live
+  // deferUntil/timeSegments/dueDate rather than the saved task's, so editing
+  // one of those fields updates the preview before Save is even tapped.
+  // Only computed against an existing task: a brand-new one has no saved
+  // row to spread the rest of getVisibleAt's fields from (quota pace,
+  // category window, …), so the picker falls back to "now" for it and the
+  // next reanchorWallClockReminders pass corrects the real stored
+  // reminderTime once the task exists — the same eventual-consistency that
+  // pass already provides for wall-clock drift.
+  const visiblePreview = useMemo(() => {
+    if (!task || !canTrackVisibility) return null;
+    const previewTask: Task = {
+      ...task,
+      deferUntil: deferUntil?.toISOString() ?? null,
+      timeSegments,
+      dueDate: dueDate?.toISOString() ?? null,
+      windowStart,
+      category,
+    };
+    return getVisibleAt(previewTask);
+  }, [task, canTrackVisibility, deferUntil, timeSegments, dueDate, windowStart, category]);
   const timeWindowSummary = (windowStart || windowEnd)
     ? `${windowStart ? formatHHMM(windowStart) : 'Any'} – ${windowEnd ? formatHHMM(windowEnd) : 'Any'}`
     : undefined;
@@ -2367,9 +2400,12 @@ export function TaskEditor({ visible, task, initialDraft, onClose }: Props) {
             kind={reminderKind}
             dueDate={dueDate}
             offsetDays={reminderOffsetDays}
+            canTrackVisibility={canTrackVisibility}
+            tracksVisibility={reminderTracksVisibility}
+            visiblePreview={visiblePreview}
             anchor={reminderTimeAnchor}
             onConfirm={confirmPicker}
-            onClear={reminderTime ? () => { setReminderTime(null); setReminderKind('notification'); setReminderOffsetDays(null); setReminderTimeAnchor('wallClock'); setReminderTouched(true); setPickerMode('none'); } : undefined}
+            onClear={reminderTime ? () => { setReminderTime(null); setReminderKind('notification'); setReminderOffsetDays(null); setReminderTracksVisibility(false); setReminderTimeAnchor('wallClock'); setReminderTouched(true); setPickerMode('none'); } : undefined}
             onCancel={() => setPickerMode('none')}
           />
           <WhenPicker
@@ -4357,16 +4393,18 @@ export function TaskEditor({ visible, task, initialDraft, onClose }: Props) {
               }
               value={
                 reminderTime
-                  ? reminderOffsetDays !== null
-                    ? `${describeReminderOffset(reminderOffsetDays)}, ${formatTimeOfDay(reminderTime)}`
-                    : `${format(reminderTime, 'MMM d')} at ${formatTimeOfDay(reminderTime)}`
+                  ? reminderTracksVisibility
+                    ? describeReminderTracksVisibility()
+                    : reminderOffsetDays !== null
+                      ? `${describeReminderOffset(reminderOffsetDays)}, ${formatTimeOfDay(reminderTime)}`
+                      : `${format(reminderTime, 'MMM d')} at ${formatTimeOfDay(reminderTime)}`
                   : undefined
               }
               caption={reminderNudge
                 ? `Actually sends at ${formatTimeOfDay(reminderNudge.time, use24HourTime)}, moved past ${reminderNudge.meetingTitle ? `"${reminderNudge.meetingTitle}"` : 'a calendar event'}`
                 : undefined}
               onPress={() => openPicker('reminder')}
-              onClear={reminderTime ? () => { setReminderTime(null); setReminderKind('notification'); setReminderOffsetDays(null); setReminderTimeAnchor('wallClock'); setReminderTouched(true); } : undefined}
+              onClear={reminderTime ? () => { setReminderTime(null); setReminderKind('notification'); setReminderOffsetDays(null); setReminderTracksVisibility(false); setReminderTimeAnchor('wallClock'); setReminderTouched(true); } : undefined}
             />
               </>
             ),
