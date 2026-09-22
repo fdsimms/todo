@@ -290,6 +290,28 @@ describe('parseTaskInput — recurrence', () => {
     expectDay(r.schedule.dueDate, 2025, 5, 10); // anchors today
   });
 
+  it('parses "every N hours" as sub-day recurrence, measured from completion', () => {
+    const r = parseTaskInput('take zaltrex every 8 hours', NOW)!;
+    expect(r.cleanTitle).toBe('take zaltrex');
+    expect(r.schedule.recurrenceType).toBe('hours');
+    expect(r.schedule.recurrenceInterval).toBe(8);
+    expect(r.schedule.recurrenceFromCompletion).toBe(true);
+  });
+
+  it('parses "every hour"', () => {
+    const r = parseTaskInput('check the kiln every hour', NOW)!;
+    expect(r.schedule.recurrenceType).toBe('hours');
+    expect(r.schedule.recurrenceInterval).toBe(1);
+    expect(r.schedule.recurrenceFromCompletion).toBe(true);
+  });
+
+  it('parses "every other hour"', () => {
+    const r = parseTaskInput('water the seedlings every other hour', NOW)!;
+    expect(r.schedule.recurrenceType).toBe('hours');
+    expect(r.schedule.recurrenceInterval).toBe(2);
+    expect(r.schedule.recurrenceFromCompletion).toBe(true);
+  });
+
   it('parses a weekday list with "every"', () => {
     const r = parseTaskInput('gym every mon and wed', NOW)!;
     expect(r.schedule.recurrenceType).toBe('weekly');
@@ -582,6 +604,9 @@ describe('describeSchedule', () => {
     expect(describeSchedule({ ...base, recurrenceType: 'monthly', recurrenceWeekOrdinal: -1, recurrenceDays: [5] }, NOW)).toBe('Every last Friday');
     expect(describeSchedule({ ...base, recurrenceType: 'yearly', dueDate: new Date(2025, 8, 15) }, NOW)).toBe('Every Sep 15');
     expect(describeSchedule({ ...base, recurrenceType: 'yearly', recurrenceInterval: 2 }, NOW)).toBe('Every 2 years');
+    expect(describeSchedule({ ...base, recurrenceType: 'hours', recurrenceInterval: 1 }, NOW)).toBe('Every hour');
+    expect(describeSchedule({ ...base, recurrenceType: 'hours', recurrenceInterval: 2 }, NOW)).toBe('Every other hour');
+    expect(describeSchedule({ ...base, recurrenceType: 'hours', recurrenceInterval: 8 }, NOW)).toBe('Every 8 hours');
   });
 
   it('appends the time segment', () => {
