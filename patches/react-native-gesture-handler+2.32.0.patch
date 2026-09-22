@@ -1,0 +1,42 @@
+diff --git a/node_modules/react-native-gesture-handler/lib/commonjs/components/Swipeable.js b/node_modules/react-native-gesture-handler/lib/commonjs/components/Swipeable.js
+index e7e2354..6d4ad0f 100644
+--- a/node_modules/react-native-gesture-handler/lib/commonjs/components/Swipeable.js
++++ b/node_modules/react-native-gesture-handler/lib/commonjs/components/Swipeable.js
+@@ -226,6 +226,8 @@ class Swipeable extends _react.Component {
+   onRowLayout = ({
+     nativeEvent
+   }) => {
++    // Patched (see patches/ in the app): bail when the width is unchanged.
++    if (this.state.rowWidth === nativeEvent.layout.width) return;
+     this.setState({
+       rowWidth: nativeEvent.layout.width
+     });
+diff --git a/node_modules/react-native-gesture-handler/lib/module/components/Swipeable.js b/node_modules/react-native-gesture-handler/lib/module/components/Swipeable.js
+index b3bbc4a..a991fc4 100644
+--- a/node_modules/react-native-gesture-handler/lib/module/components/Swipeable.js
++++ b/node_modules/react-native-gesture-handler/lib/module/components/Swipeable.js
+@@ -221,6 +221,8 @@ export default class Swipeable extends Component {
+   onRowLayout = ({
+     nativeEvent
+   }) => {
++    // Patched (see patches/ in the app): bail when the width is unchanged.
++    if (this.state.rowWidth === nativeEvent.layout.width) return;
+     this.setState({
+       rowWidth: nativeEvent.layout.width
+     });
+diff --git a/node_modules/react-native-gesture-handler/src/components/Swipeable.tsx b/node_modules/react-native-gesture-handler/src/components/Swipeable.tsx
+index 5ea40b0..334eaad 100644
+--- a/node_modules/react-native-gesture-handler/src/components/Swipeable.tsx
++++ b/node_modules/react-native-gesture-handler/src/components/Swipeable.tsx
+@@ -463,6 +463,11 @@ export default class Swipeable extends Component<
+   };
+ 
+   private onRowLayout = ({ nativeEvent }: LayoutChangeEvent) => {
++    // Patched (see patches/ in the app): bail when the width is unchanged.
++    // This fires on any layout change of the row, its height included, and
++    // setState here re-renders the whole swipeable (shouldComponentUpdate
++    // returns true), so a row whose height animates re-rendered every frame.
++    if (this.state.rowWidth === nativeEvent.layout.width) return;
+     this.setState({ rowWidth: nativeEvent.layout.width });
+   };
+ 
