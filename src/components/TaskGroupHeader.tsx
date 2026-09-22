@@ -3,7 +3,7 @@ import { View, Text, TouchableOpacity, StyleSheet } from 'react-native';
 import Ionicons from '@expo/vector-icons/Ionicons';
 import type { Task, TaskGroup } from '../types';
 import { useColors } from '../theme/ThemeContext';
-import { spacing, radius, font, fontWeight, border, iconSize, interaction, type Colors } from '../theme';
+import { spacing, radius, font, fontWeight, lineHeight, border, iconSize, interaction, type Colors } from '../theme';
 import { groupRoster, isRelevantToGroupToday } from '../utils/visibilityUtils';
 import { tagColor } from '../utils/tagColor';
 import { haptics } from '../utils/haptics';
@@ -316,6 +316,11 @@ export const TaskGroupHeader = React.memo(function TaskGroupHeader({
 // The stack's leading tile, and the gap between it and the title.
 const GLYPH_SIZE = 30;
 const GLYPH_GAP = 10;
+// The header's height with nothing under the title, and what the tile, the
+// title and the buttons are each centred on by arithmetic — see `row` for why
+// `alignItems: 'center'` no longer does that job.
+const BAND_MIN_HEIGHT = 48;
+const ICON_BTN_SIZE = iconSize.sm + spacing.sm * 2;
 
 const makeStyles = (colors: Colors) => StyleSheet.create({
   /**
@@ -359,14 +364,28 @@ const makeStyles = (colors: Colors) => StyleSheet.create({
   },
   row: {
     flexDirection: 'row',
-    alignItems: 'center',
-    minHeight: 48,
+    // Top-aligned, with the tile, the title and the buttons each pinned at
+    // the offset that centres it on BAND_MIN_HEIGHT — deliberately not
+    // `alignItems: 'center'`, which is what this was. Centring measured the
+    // whole content column, and that column changes height on every frame of
+    // the summary line folding in or out (it runs alongside TaskGroupBody's
+    // own collapse): the 10pt of minHeight slack was handed back and forth,
+    // so the title crept up ~5pt through the first half of a toggle and the
+    // tile and buttons sank ~5pt through the second, in the one row the eye
+    // is on when it taps. Nothing here moves now; the summary grows under a
+    // title that stays put. The price is a collapsed header up to ~8pt
+    // taller than before (63 against 55 in a CSS mock with the real tokens),
+    // with the extra above the title, since the title no longer slides up to
+    // make room for the line under it; an expanded header is the same 48.
+    alignItems: 'flex-start',
+    minHeight: BAND_MIN_HEIGHT,
     backgroundColor: colors.bgSunken,
   },
   glyphWrapper: {
     // No padding: the tile's leading edge lines up with the left edge of the
     // cards below it, hitSlop does the finger-target work.
     marginRight: GLYPH_GAP,
+    marginTop: (BAND_MIN_HEIGHT - GLYPH_SIZE) / 2,
   },
   glyph: {
     width: GLYPH_SIZE,
@@ -385,7 +404,11 @@ const makeStyles = (colors: Colors) => StyleSheet.create({
   },
   content: {
     flex: 1,
-    paddingVertical: spacing.sm,
+    // Asymmetric on purpose: the top inset centres the title's line box on
+    // BAND_MIN_HEIGHT (see `row`), the bottom is the gap under whatever the
+    // last line is — the title, the summary, or a row of tags.
+    paddingTop: (BAND_MIN_HEIGHT - lineHeight.lg) / 2,
+    paddingBottom: spacing.sm,
   },
   titleRow: {
     flexDirection: 'row',
@@ -400,6 +423,9 @@ const makeStyles = (colors: Colors) => StyleSheet.create({
     flexShrink: 1,
     color: colors.text,
     fontSize: font.lg,
+    // Explicit so `content`'s top inset can centre it by arithmetic rather
+    // than by measurement.
+    lineHeight: lineHeight.lg,
     fontWeight: fontWeight.regular,
     letterSpacing: -0.2,
   },
@@ -414,6 +440,7 @@ const makeStyles = (colors: Colors) => StyleSheet.create({
   summary: {
     color: colors.textTertiary,
     fontSize: font.xs,
+    lineHeight: lineHeight.xs,
     marginTop: 3,
   },
   tagsRow: {
@@ -434,5 +461,6 @@ const makeStyles = (colors: Colors) => StyleSheet.create({
   },
   iconBtn: {
     padding: spacing.sm,
+    marginTop: (BAND_MIN_HEIGHT - ICON_BTN_SIZE) / 2,
   },
 });
