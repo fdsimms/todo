@@ -125,6 +125,14 @@ describe('completionRefusal', () => {
     expect(completionRefusal(task)).toMatch(/not due yet/);
   });
 
+  it('gives an hours-specific reason for a dose that is not ready yet', () => {
+    const future = new Date(Date.now() + 3600_000).toISOString();
+    const task = makeTask({
+      recurrenceType: 'hours', recurrenceInterval: 8, recurrenceFromCompletion: true, deferUntil: future,
+    });
+    expect(completionRefusal(task)).toMatch(/unlocks 8 hours/);
+  });
+
   // The store returns early on all three; buildCompletion has to agree, or a
   // caller that skipped the check could complete something the app refuses.
   it('is the same answer buildCompletion gives', () => {
@@ -237,6 +245,40 @@ describe('buildCompletion', () => {
       expect(nextSubtasks[0].completed).toBe(false);
       expect(nextSubtasks[0].parentId).toBe(nextTask!.id);
       expect(nextSubtasks[0].id).not.toBe('sub');
+    });
+  });
+
+  describe("the 'hours' recurrence", () => {
+    const doseTask = (over: Partial<Task> = {}) => makeTask({
+      recurrenceType: 'hours', recurrenceInterval: 8, recurrenceFromCompletion: true,
+      ...over,
+    });
+
+    it('sets a precise deferUntil rather than a dueDate', () => {
+      const { nextTask } = build(doseTask());
+      expect(nextTask!.dueDate).toBeNull();
+      // context().now is 2026-03-10T09:00:00.000Z; 8 hours on from there.
+      expect(nextTask!.deferUntil).toBe('2026-03-10T17:00:00.000Z');
+    });
+
+    it('measures from the real completion moment, not a backdated completedAt', () => {
+      const { nextTask } = build(doseTask(), { completedAt: '2026-03-09T22:00:00.000Z' });
+      expect(nextTask!.deferUntil).toBe('2026-03-10T17:00:00.000Z');
+    });
+
+    it('always measures from completion, ignoring the on-schedule/after-completion flag', () => {
+      const { nextTask } = build(doseTask({ recurrenceFromCompletion: false, dueDate: '2026-03-10T12:00:00.000Z' }));
+      expect(nextTask!.dueDate).toBeNull();
+      expect(nextTask!.deferUntil).toBe('2026-03-10T17:00:00.000Z');
+    });
+
+    it('ends the series when recurrenceCount runs out, same as any other type', () => {
+      expect(build(doseTask({ recurrenceCount: 1 })).nextTask).toBeNull();
+    });
+
+    it('re-anchors an existing reminder onto the new deferUntil', () => {
+      const { nextTask } = build(doseTask({ reminderTime: '2026-03-10T09:00:00.000Z' }));
+      expect(nextTask!.reminderTime).toBe(nextTask!.deferUntil);
     });
   });
 

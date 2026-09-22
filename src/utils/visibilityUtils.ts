@@ -277,6 +277,29 @@ function getWindowThreshold(hhmm: string, pass?: VisibleAtPass): Date {
   return t;
 }
 
+// Whether `deferUntil` still holds a task back right now. Every other
+// recurrence steps in whole days, so the four call sites below all
+// day-truncate deferUntil before comparing it — "6pm today" and "11pm today"
+// read the same, both visible from the moment today's logical day starts. An
+// 'hours' recurrence (medication due again N hours after the last dose) needs
+// the exact instant deferUntil names instead: day-truncating "6pm today"
+// collapses it to "today", which is already visible, defeating the entire
+// point of a same-day gap.
+function deferBlocksNow(task: Task, now: Date, dayResetTime: string): boolean {
+  if (!task.deferUntil) return false;
+  if (task.recurrenceType === 'hours') return new Date(task.deferUntil) > now;
+  return getTaskDayStart(new Date(task.deferUntil), dayResetTime) > getCurrentDayStart();
+}
+
+// The moment deferUntil actually resolves at: the exact timestamp for an
+// 'hours' recurrence, the day-start every other type already used. Only
+// getVisibleAt and getBecameVisibleAt need the moment itself rather than a
+// yes/no answer.
+function deferMoment(task: Task, dayResetTime: string): Date {
+  const raw = new Date(task.deferUntil!);
+  return task.recurrenceType === 'hours' ? raw : getTaskDayStart(raw, dayResetTime);
+}
+
 // True once the task's own day (deferUntil / dueDate) has arrived — i.e. it's
 // not sitting hidden behind a future date. Used to distinguish a genuinely
 // expired time window from a window on a task that hasn't come up yet, and to
@@ -284,10 +307,7 @@ function getWindowThreshold(hhmm: string, pass?: VisibleAtPass): Date {
 export function hasDayArrived(task: Task): boolean {
   const { dayResetTime } = useSettingsStore.getState();
   const todayStart = getCurrentDayStart();
-  if (task.deferUntil) {
-    const deferDayStart = getTaskDayStart(new Date(task.deferUntil), dayResetTime);
-    if (deferDayStart > todayStart) return false;
-  }
+  if (deferBlocksNow(task, new Date(), dayResetTime)) return false;
   if (task.dueDate) {
     const taskDayStart = getTaskDayStart(new Date(task.dueDate), dayResetTime);
     if (taskDayStart > todayStart) return false;
@@ -685,11 +705,7 @@ export function isVisibleApartFromVacation(task: Task): boolean {
   const now = new Date();
   const { dayResetTime } = useSettingsStore.getState();
 
-  if (task.deferUntil) {
-    const deferDayStart = getTaskDayStart(new Date(task.deferUntil), dayResetTime);
-    const todayStart = getCurrentDayStart();
-    if (deferDayStart > todayStart) return false;
-  }
+  if (deferBlocksNow(task, now, dayResetTime)) return false;
 
   if (task.timeSegments.length > 0) {
     const threshold = earliestSegmentThreshold(task.timeSegments)!;
@@ -927,9 +943,14 @@ export function getVisibleAt(task: Task, pass: VisibleAtPass = beginVisibleAtPas
   };
 
   if (task.deferUntil) {
-    const deferDayStart = getTaskDayStart(new Date(task.deferUntil), dayResetTime);
-    if (deferDayStart > todayStart) {
-      candidates.push(applyTimeThreshold(deferDayStart));
+    const moment = deferMoment(task, dayResetTime);
+    // An 'hours' deferral is already the exact moment — no day-vs-time-of-day
+    // refinement to apply, and the compare base is "now" rather than the
+    // start of today, for the same reason deferBlocksNow uses "now".
+    if (task.recurrenceType === 'hours') {
+      if (moment > now) candidates.push(moment);
+    } else if (moment > todayStart) {
+      candidates.push(applyTimeThreshold(moment));
     }
   }
 
@@ -1029,8 +1050,9 @@ function getBecameVisibleAt(task: Task): Date | null {
   const candidates: Date[] = [];
 
   if (task.deferUntil) {
-    const deferDayStart = getTaskDayStart(new Date(task.deferUntil), dayResetTime);
-    if (deferDayStart <= todayStart) candidates.push(deferDayStart);
+    const moment = deferMoment(task, dayResetTime);
+    const compareBase = task.recurrenceType === 'hours' ? now : todayStart;
+    if (moment <= compareBase) candidates.push(moment);
   }
 
   if (task.dueDate) {

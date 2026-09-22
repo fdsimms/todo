@@ -1,4 +1,7 @@
-export type RecurrenceType = 'none' | 'daily' | 'weekly' | 'monthly' | 'yearly';
+// 'hours' is the one type with no calendar grid of its own — see
+// getNextDueDate and the "hours" note on Task.recurrenceInterval. It always
+// behaves as recurrenceFromCompletion regardless of that flag's stored value.
+export type RecurrenceType = 'none' | 'daily' | 'weekly' | 'monthly' | 'yearly' | 'hours';
 export type Priority = 0 | 1 | 2 | 3 | 4;
 export type Effort = 0 | 1 | 2 | 3 | 4 | 5 | 6;
 export type SortOption = 'default' | 'priority' | 'effort-asc' | 'effort-desc' | 'due-date' | 'streak';
@@ -1946,6 +1949,10 @@ export interface Task {
   windowEnd: string | null;   // "HH:MM" — task expires (moves to Expired) after this time on its day
 
   recurrenceType: RecurrenceType;
+  // The count of days/weeks/months/years for every type but 'hours', which
+  // reuses this same field to mean hours instead — "take medication every 8
+  // hours after the last dose" is 8 here, not a separate column, since the
+  // two meanings never coexist on one row (the type says which one applies).
   recurrenceInterval: number;
   recurrenceDays: number[];
   recurrenceMonthDay: number | null; // day of month (1-31) for monthly recurrence on a fixed schedule, -1 = last day of the month; null = same day as dueDate

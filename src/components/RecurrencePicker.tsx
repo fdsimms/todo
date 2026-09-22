@@ -14,6 +14,7 @@ import { ordinal } from '../utils/ordinal';
 
 export const RECURRENCE_LABELS: Record<RecurrenceType, string> = {
   none: 'Never',
+  hours: 'Hours',
   daily: 'Daily',
   weekly: 'Weekly',
   monthly: 'Monthly',
@@ -174,6 +175,16 @@ export function RecurrencePicker({
   // choice left weekOrdinal.value set behind the scenes.
   const showWeekdayOption = recurrenceType === 'monthly' && !!weekOrdinal;
 
+  // Sub-day recurrence only means anything measured from the moment you
+  // check the task off — there's no calendar grid for "every 8 hours" to
+  // sit on, so switching to it forces the On schedule/After completion
+  // choice below rather than leaving a toggle that would otherwise do
+  // nothing (see RecurrenceType's own doc comment on 'hours').
+  const handleTypeChange = (type: RecurrenceType) => {
+    if (type === 'hours' && !recurrenceFromCompletion) onChangeFromCompletion(true);
+    onChangeType(type);
+  };
+
   const monthAnchor: MonthAnchor =
     showWeekdayOption && weekOrdinal?.value != null ? 'weekday'
       : recurrenceMonthDay === -1 ? 'lastDay'
@@ -209,8 +220,8 @@ export function RecurrencePicker({
         <SegmentedControl
           label="Repeats"
           value={recurrenceType}
-          onChange={onChangeType}
-          options={(['daily', 'weekly', 'monthly', 'yearly'] as RecurrenceType[])
+          onChange={handleTypeChange}
+          options={(['hours', 'daily', 'weekly', 'monthly', 'yearly'] as RecurrenceType[])
             .map(type => ({ value: type, label: RECURRENCE_LABELS[type] }))}
         />
         <View style={styles.stepperRow}>
@@ -224,6 +235,11 @@ export function RecurrencePicker({
           />
           <Text style={styles.stepperLabel}>{recurrenceUnitLabel(recurrenceType, recurrenceInterval)}</Text>
         </View>
+        {recurrenceType === 'hours' && (
+          <Text style={styles.groupHint}>
+            Hidden until this many hours after you check it off, not on a fixed calendar day.
+          </Text>
+        )}
       </Group>
 
       {recurrenceType === 'weekly' && (
@@ -289,28 +305,30 @@ export function RecurrencePicker({
         </Group>
       )}
 
-      <Group
-        label="Next due date"
-        hint="After completion counts from the day you check it off, so a late task moves the whole schedule."
-        styles={styles}
-      >
-        <SegmentedControl
+      {recurrenceType !== 'hours' && (
+        <Group
           label="Next due date"
-          value={recurrenceFromCompletion}
-          onChange={onChangeFromCompletion}
-          options={[
-            { value: false, label: 'On schedule' },
-            { value: true, label: 'After completion' },
-          ]}
-        />
-        {!!previewNextDate && (
-          <Text style={styles.previewText}>
-            {recurrenceFromCompletion
-              ? `If checked off today, falls on ${format(previewNextDate, 'EEEE, MMMM d, yyyy')}.`
-              : `Falls on ${format(previewNextDate, 'EEEE, MMMM d, yyyy')}.`}
-          </Text>
-        )}
-      </Group>
+          hint="After completion counts from the day you check it off, so a late task moves the whole schedule."
+          styles={styles}
+        >
+          <SegmentedControl
+            label="Next due date"
+            value={recurrenceFromCompletion}
+            onChange={onChangeFromCompletion}
+            options={[
+              { value: false, label: 'On schedule' },
+              { value: true, label: 'After completion' },
+            ]}
+          />
+          {!!previewNextDate && (
+            <Text style={styles.previewText}>
+              {recurrenceFromCompletion
+                ? `If checked off today, falls on ${format(previewNextDate, 'EEEE, MMMM d, yyyy')}.`
+                : `Falls on ${format(previewNextDate, 'EEEE, MMMM d, yyyy')}.`}
+            </Text>
+          )}
+        </Group>
+      )}
 
       <Group label="Ends" styles={styles}>
         <SegmentedControl

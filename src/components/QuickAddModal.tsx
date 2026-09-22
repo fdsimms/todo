@@ -196,6 +196,9 @@ const RECURRENCE_UNITS: Record<Exclude<RecurrenceType, 'none'>, [string, string]
   weekly: ['week', 'weeks'],
   monthly: ['month', 'months'],
   yearly: ['year', 'years'],
+  // Quick add's own picker never offers 'hours' (see RecurrencePicker.tsx) —
+  // present only so this map stays exhaustive over the type.
+  hours: ['hour', 'hours'],
 };
 
 export function QuickAddModal({

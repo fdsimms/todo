@@ -6,6 +6,7 @@ const RECURRENCE_UNIT_SINGULAR: Record<Exclude<RecurrenceType, 'none'>, string> 
   weekly: 'week',
   monthly: 'month',
   yearly: 'year',
+  hours: 'hour',
 };
 
 /** "day"/"days", "week"/"weeks", … — pluralized for the given interval. */
@@ -92,13 +93,17 @@ export function describeTaskRecurrence(
     } else {
       text = base;
     }
+  } else if (type === 'hours') {
+    text = interval === 1 ? 'Hourly' : `Every ${interval} hours`;
   } else {
     text = interval === 1 ? 'Yearly' : `Every ${interval} years`;
   }
 
   // Named here and nowhere else: on a row there is nothing else on screen
-  // saying which end of the cycle the next date is measured from.
-  return task.recurrenceFromCompletion ? `${text} · from completion` : text;
+  // saying which end of the cycle the next date is measured from. 'hours'
+  // is always measured from completion (there's no "on schedule" mode for
+  // it — see RecurrencePicker), so saying so on every row would be noise.
+  return type !== 'hours' && task.recurrenceFromCompletion ? `${text} · from completion` : text;
 }
 
 /**

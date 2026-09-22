@@ -346,6 +346,29 @@ export function seedDemoData(): void {
     excludeFromSuggestions: true,
   });
 
+  // The 'hours' recurrence — a dose that can only be taken again N hours
+  // after the last one, not on a fixed clock time (see RecurrenceType's own
+  // doc comment). Naproxen rather than the ibuprofen already seeded by
+  // `seedAsNeededDoses`: that one is deliberately task-less (see its own doc
+  // comment — "nobody schedules a painkiller"), and this feature is the
+  // exception to that reasoning, not a second way of seeding the same drug.
+  // Completed a few hours ago so the successor it spawned is still sitting
+  // hidden, which is the whole point of the feature: a plain completed row
+  // demonstrates nothing, since the interesting state is the one you can't
+  // see without knowing to look for it.
+  const naproxen = addTask({
+    title: 'Take naproxen',
+    notes: 'For the back. Not sooner than every 8 hours.',
+    category: 'Health',
+    recurrenceType: 'hours',
+    recurrenceInterval: 8,
+    recurrenceFromCompletion: true,
+    medicationName: 'Naproxen',
+    medicationAmount: 250,
+    medicationUnit: 'mg',
+  });
+  completeTask(naproxen.id, { completedAt: subHours(today, 3).toISOString() });
+
   // The postpone check has nothing to show until a task has actually been
   // ducked a few times, and a fresh demo database has no history — so the count
   // is stamped on directly. Opening this one's date picker is the whole feature:
