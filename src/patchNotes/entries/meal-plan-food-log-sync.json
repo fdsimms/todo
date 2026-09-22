@@ -1,0 +1,4 @@
+{
+  "message": "The meal plan and the food log now know about each other. A planned meal shows \"Logged\" with its calories once anything is in that meal's slot, however it got logged, and the app stops asking you to log a meal you already logged by hand. The food log's day view lists the meals you planned and haven't logged yet, and a meal's own sheet has a \"Log this meal\" action. Tapping either one logs it.",
+  "date": "2026-09-22"
+}

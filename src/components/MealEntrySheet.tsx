@@ -81,12 +81,25 @@ interface Props {
   /**
    * Jumps to the food log entry this meal was already logged as — present
    * only once one exists (see `MealPlanScreen`'s `loggedEntry`, matched by
-   * `FoodLogEntry.mealPlanEntryId`). A meal that hasn't been logged yet, or
-   * whose log was typed by hand and never matched back, shows nothing here
-   * rather than an offer to log it — that's `onSetCooked`'s job at the
-   * moment cooking finishes, not a standing action on every meal.
+   * `FoodLogEntry.mealPlanEntryId`).
    */
   onViewFoodLogEntry?: () => void;
+  /**
+   * Raises the meal's own offer to log it — the same one ticking its "Eat"
+   * step raises (`offerMealLog` in the food log store).
+   *
+   * Present only while the meal's slot has nothing logged in it, which is what
+   * keeps it from being a standing invitation to log a dinner twice. This used
+   * to be deliberately absent, on the reasoning that logging is
+   * `onSetCooked`'s job at the moment cooking finishes rather than an action on
+   * every meal — and that held exactly while the completion prompt was the only
+   * way in. It no longer fires for a meal whose slot already has food in it
+   * (see `mealLogCoverage.ts`), so the one case that gate can get wrong — food
+   * filed under the wrong meal, which is a tap to fix and then leaves the real
+   * meal with no prompt coming — needs a way back that isn't waiting for a
+   * nudge task the next morning.
+   */
+  onLogMeal?: () => void;
   /** Present only while the entry's recipe still resolves. */
   onOpenRecipe?: () => void;
   /**
@@ -150,7 +163,7 @@ const TOP_INSET = 72;
 
 export function MealEntrySheet({
   visible, entry, title, weekDays, onMove, onMoveFurther, onRemove, onRename, choiceGroups = [], onChoose,
-  onScale, baseServings, baseServingsMax, onSetCooked, onViewFoodLogEntry, onOpenRecipe, onAddToList, onAddPrepTasks,
+  onScale, baseServings, baseServingsMax, onSetCooked, onViewFoodLogEntry, onLogMeal, onOpenRecipe, onAddToList, onAddPrepTasks,
   onLogLeftovers,
   onFinishLeftover, onSetCookTask, hasCookTask = false, onClose,
 }: Props) {
@@ -408,6 +421,19 @@ export function MealEntrySheet({
                 label="View in Food Log"
                 onPress={() => { haptics.tap(); dismiss(onViewFoodLogEntry); }}
                 accessibilityLabel="View this meal's food log entry"
+              />
+            </>
+          )}
+
+          {!!onLogMeal && (
+            <>
+              <View style={styles.sep} />
+              <SheetActionRow
+                icon="journal-outline"
+                color={colors.accent}
+                label="Log this meal"
+                onPress={() => { haptics.tap(); dismiss(onLogMeal); }}
+                accessibilityLabel="Log this meal in the food log"
               />
             </>
           )}

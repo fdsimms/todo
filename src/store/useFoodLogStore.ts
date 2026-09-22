@@ -1,5 +1,5 @@
 import { create } from 'zustand';
-import type { FoodLogEntry, FoodNutrition, MealSlot } from '../types';
+import type { FoodLogEntry, FoodNutrition, MealPlanEntry, MealSlot } from '../types';
 import { NUTRIENT_KEYS } from '../types';
 import {
   dbBulkDeleteFoodLogEntries,
@@ -340,6 +340,25 @@ interface FoodLogStore {
   setPendingManualMealLog: (pending: PendingManualMealLog | null) => void;
 
   /**
+   * Raise the offer to log a planned meal — the auto-computed prompt for a
+   * recipe-backed one, the search sheet for anything else.
+   *
+   * Lives here rather than beside its first caller because it is now raised
+   * from two very different places, and both want the identical offer: a meal
+   * slot chain's "Eat" step being ticked (`useTaskStore`, which is where this
+   * used to be a module-local function), and a tap on a planned meal that the
+   * food log can see hasn't been logged yet (`FoodLogScreen`). It only ever
+   * writes the two pending fields above, which is exactly what this store owns.
+   *
+   * **It does not check `mealLogPrompt` and must not.** That setting is the
+   * ceiling on the app *volunteering* an offer, which is the unattended
+   * caller's question to ask (`wantsMealLogPrompt`, `mealLog.ts`) — a person
+   * tapping a planned meal has asked for it outright, and a switch meaning
+   * "stop interrupting me" was never meant to answer that.
+   */
+  offerMealLog: (entry: MealPlanEntry) => void;
+
+  /**
    * True when Health has just refused a meal and the person has not been told.
    *
    * Watched by `HealthWriteRefusedNotice` (mounted in AppNavigator beside
@@ -631,6 +650,41 @@ export const useFoodLogStore = create<FoodLogStore>((set, get) => ({
 
   setPendingManualMealLog(pending) {
     set({ pendingManualMealLog: pending });
+  },
+
+  offerMealLog(entry) {
+    if (entry.recipeId) {
+      set({
+        pendingManualMealLog: null,
+        pendingMealLog: {
+          label: entry.title,
+          slot: entry.slot,
+          dayKey: entry.date,
+          recipeId: entry.recipeId,
+          mealPlanEntryId: entry.id,
+          scale: entry.recipeScale,
+          choices: entry.recipeChoices,
+          // A meal cooked tonight has nothing weighed yet — the prompt asks.
+          // Only a container that was weighed on the way into the fridge
+          // arrives with a figure (see finishLeftover).
+          grams: null,
+        },
+      });
+      return;
+    }
+    // Cleared in the same commit rather than left standing: the two prompts
+    // are separate global mounts and only one of them may be showing at a
+    // time (see `PendingManualMealLog`), which is a rule a second offer
+    // raised over the first would otherwise break.
+    set({
+      pendingMealLog: null,
+      pendingManualMealLog: {
+        label: entry.title,
+        slot: entry.slot,
+        dayKey: entry.date,
+        mealPlanEntryId: entry.id,
+      },
+    });
   },
 
   setPendingHealthWriteRefusal(pending) {

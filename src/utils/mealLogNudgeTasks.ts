@@ -3,7 +3,7 @@ import type { MealPlanEntry, MealSlot, Task } from '../types';
 import { dayKeyToDate } from './dateUtils';
 import { generatedSourceOf, liveGeneratedTasksOfKind } from './generatedTasks';
 import { mealPlanNudgeLinkUrl } from './mealPlanNudge';
-import { shiftDayKey, slotLabel, slotRank } from './mealPlan';
+import { mealSlotKey, shiftDayKey, slotLabel, slotRank } from './mealPlan';
 
 /**
  * "Log breakfast? (Mon 9/8)" — the half of `mealLog.ts`'s offer that a
@@ -38,6 +38,15 @@ import { shiftDayKey, slotLabel, slotRank } from './mealPlan';
  * its own. Declining either one means the same thing about the same meal —
  * stop asking about logging it — so answering "no" once, from whichever
  * moment it was asked, has to hold for the other.
+ *
+ * **A meal counts as logged when its *slot* has food in it**, not only when a
+ * food log row names the entry outright. That was the whole of this
+ * generator's idea of "logged" to begin with, and `FoodLogEntry.mealPlanEntryId`
+ * is stamped on one route into the log out of several — so a person who typed
+ * a whole lunch in by hand was asked the next morning to log the lunch they had
+ * just logged. `mealLogCoverage.ts` is where that join now lives and why it is
+ * the slot; both readings are kept here, because the id still catches the one
+ * case the slot can't (a planned lunch eaten late and logged as a snack).
  *
  * **Modelled on `mealShortfallTasks.ts`.** Same shape: a want/stale pair run
  * off the creation predicate re-run rather than a mutation intercepted, a row
@@ -109,6 +118,34 @@ export function isWithinLogNudgeWindow(
   return dayKey >= shiftDayKey(todayKey, -Math.max(0, lookbackDays));
 }
 
+/**
+ * What the food log has on file for the window the nudge is judging.
+ *
+ * Two readings of "this meal has been logged", deliberately both kept:
+ *
+ * - `slotKeys` is every (day, slot) with food in it (`loggedMealSlotKeys`), and
+ *   is the one that answers the question a person would ask. A lunch logged is
+ *   a lunch logged however it got there.
+ * - `entryIds` is every `FoodLogEntry.mealPlanEntryId` on file, and catches the
+ *   case the slot cannot: a meal planned for lunch, eaten at four and filed
+ *   under snack, still names its plan entry.
+ *
+ * One object rather than two positional sets, because they are both
+ * `ReadonlySet<string>` and swapping them at a call site would typecheck.
+ */
+export interface MealLogRecord {
+  entryIds: ReadonlySet<string>;
+  slotKeys: ReadonlySet<string>;
+}
+
+/** Whether the food log has this planned meal covered, by either reading. */
+export function isMealLogged(
+  entry: Pick<MealPlanEntry, 'id' | 'date' | 'slot'>,
+  logged: MealLogRecord
+): boolean {
+  return logged.entryIds.has(entry.id) || logged.slotKeys.has(mealSlotKey(entry.date, entry.slot));
+}
+
 /** One meal that should have a log-nudge task sitting on today's list. */
 export interface MealLogNudgeWant {
   entryId: string;
@@ -121,18 +158,13 @@ export interface MealLogNudgeWant {
  * meal furthest from falling out of the window is the one that most needs
  * asking about before it does.
  *
- * `loggedEntryIds` is every `FoodLogEntry.mealPlanEntryId` already on file for
- * the window, read by the caller rather than here — same split
- * `wantedMealShortfalls` draws from the grocery catalog, keeping this module
- * free of a database read. An entry logged by hand with no `mealPlanEntryId`
- * attached (typed in from the plain food log rather than through the offer
- * this pairs with) is not caught by this — a known, accepted gap, the same
- * shape `FoodLogEntry.mealPlanEntryId`'s own doc comment already calls
- * "resolve-or-shrug".
+ * `logged` is what the food log has to say about the window, read by the caller
+ * rather than here — same split `wantedMealShortfalls` draws from the grocery
+ * catalog, keeping this module free of a database read.
  */
 export function wantedMealLogNudges(
   entries: readonly MealPlanEntry[],
-  loggedEntryIds: ReadonlySet<string>,
+  logged: MealLogRecord,
   todayKey: string,
   lookbackDays: number = MEAL_LOG_NUDGE_LOOKBACK_DAYS
 ): MealLogNudgeWant[] {
@@ -140,7 +172,7 @@ export function wantedMealLogNudges(
   for (const entry of entries) {
     if (declinedLog(entry)) continue;
     if (!isWithinLogNudgeWindow(entry.date, todayKey, lookbackDays)) continue;
-    if (loggedEntryIds.has(entry.id)) continue;
+    if (isMealLogged(entry, logged)) continue;
     wants.push({ entry, title: mealLogNudgeTitle(entry.date, entry.slot, entry.title) });
   }
   return wants
@@ -169,7 +201,7 @@ export function staleMealLogNudgeTasks<
 >(
   tasks: readonly T[],
   entries: readonly MealPlanEntry[],
-  loggedEntryIds: ReadonlySet<string>,
+  logged: MealLogRecord,
   todayKey: string,
   lookbackDays: number = MEAL_LOG_NUDGE_LOOKBACK_DAYS
 ): T[] {
@@ -180,6 +212,6 @@ export function staleMealLogNudgeTasks<
     if (!entry) return true;
     if (declinedLog(entry)) return true;
     if (!isWithinLogNudgeWindow(entry.date, todayKey, lookbackDays)) return true;
-    return loggedEntryIds.has(entry.id);
+    return isMealLogged(entry, logged);
   });
 }

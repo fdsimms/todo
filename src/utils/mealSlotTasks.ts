@@ -4,6 +4,7 @@ import { dayKeyToDate } from './dateUtils';
 import { generatedBy, generatedSourceOf } from './generatedTasks';
 import { isChainFinish } from './chain';
 import { mealPlanNudgeLinkUrl } from './mealPlanNudge';
+import { mealSlotKey } from './mealPlan';
 import { resolveOffsetDate } from './templateUtils';
 import type { ChainItem } from '../types';
 
@@ -142,7 +143,10 @@ export const MEAL_SLOT_TASK_DAYS = 7;
 export const DEFAULT_MEAL_SLOTS_ENABLED: readonly MealSlot[] = ['breakfast', 'lunch', 'dinner'];
 
 export function mealSlotSourceId(dayKey: string, slot: MealSlot): string {
-  return `${dayKey}${SOURCE_SEP}${slot}`;
+  // `mealSlotKey` rather than the separator inline: the food log answers "which
+  // meal is this" about the same pair (`loggedMealSlotKeys`), and two identical
+  // formats written out twice is how a lookup across them comes to miss.
+  return mealSlotKey(dayKey, slot);
 }
 
 /** The (day, slot) back out of a source id, or null if it isn't one. */

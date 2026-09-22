@@ -11,6 +11,13 @@ import { useColors } from '../theme/ThemeContext';
 import { flattenOverlay, font, fontWeight, iconSize, interaction, radius, spacing, type Colors } from '../theme';
 import { MEAL_SLOTS, MEAL_SLOT_ICONS, MEAL_SLOT_LABELS, type FoodLogEntry, type MealSlot } from '../types';
 import { useFoodLogStore } from '../store/useFoodLogStore';
+import { useMealPlanStore } from '../store/useMealPlanStore';
+import {
+  describeDayCoverage,
+  describePlannedSlot,
+  unloggedPlannedSlots,
+  type SlotCoverage,
+} from '../utils/mealLogCoverage';
 import { useSavedMealsStore } from '../store/useSavedMealsStore';
 import { dayKeyOf, dayKeyToDate, getCurrentDayStart } from '../utils/dateUtils';
 import { slotForHour } from '../utils/mealLog';
@@ -173,6 +180,11 @@ export function FoodLogScreen() {
   // rule `aiRouting.ts` states. This feature has no on-device engine, so the
   // route is 'claude' or 'unavailable' and nothing renders for the second.
   const estimateRoute = useAiRoute('nutritionEstimate');
+  const entriesForDayLive = useMealPlanStore(s => s.entriesForDayLive);
+  const offerMealLog = useFoodLogStore(s => s.offerMealLog);
+  // A count rather than the array, so planning a meal re-reads the day without
+  // this screen re-rendering every time the Meal Plan screen pages a week.
+  const mealPlanCount = useMealPlanStore(s => s.entries.length);
 
   const [dayKey, setDayKey] = useState(() => dayKeyOf(getCurrentDayStart()));
   const [addingSlot, setAddingSlot] = useState<MealSlot | null>(null);
@@ -290,7 +302,43 @@ export function FoodLogScreen() {
     }, [route.params?.openEntry, handledOpenEntry]),
   );
 
+  // The other half of the day-plan read below: `mealPlanCount` misses a meal
+  // planned into a week the meal plan store wasn't holding, and coming back to
+  // this screen is exactly when that would show.
+  const [planNonce, setPlanNonce] = useState(0);
+  useFocusEffect(useCallback(() => { setPlanNonce(n => n + 1); }, []));
+
   const dayEntries = useMemo(() => entries.filter(e => e.dayKey === dayKey), [entries, dayKey]);
+  /**
+   * What the meal plan says this day was meant to be, and which of those meals
+   * the log has nothing for.
+   *
+   * The other half of the join `mealLogCoverage.ts` describes: the meal plan
+   * now shows which of its meals were logged, and this shows which of the
+   * day's planned meals still aren't. Read live rather than out of the meal
+   * plan store's loaded window, which follows whichever week the Meal Plan
+   * screen last had open and is routinely not this day — `entriesForDayLive`
+   * exists to make exactly that call.
+   *
+   * `mealPlanCount` is in the deps as the same kind of cheap change signal the
+   * Meal Plan screen reads the food log through: planning a meal elsewhere
+   * moves it, and a day key alone would leave this stale until the day
+   * changed. `planNonce` covers what it can't — see just above.
+   */
+  const dayPlan = useMemo(
+    () => entriesForDayLive(dayKey),
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+    [dayKey, entriesForDayLive, mealPlanCount, planNonce],
+  );
+  const plannedOpen = useMemo(
+    () => unloggedPlannedSlots(dayPlan, dayEntries, dayKey),
+    [dayPlan, dayEntries, dayKey],
+  );
+  const plannedSummary = useMemo(
+    () => describeDayCoverage(dayPlan, dayEntries, dayKey),
+    [dayPlan, dayEntries, dayKey],
+  );
+
   const sections = useMemo(() => foodLogSections(dayEntries), [dayEntries]);
   // Keyed once rather than searched per header row: `renderItem` ran a `find`
   // over the sections for every header it drew.
@@ -659,6 +707,75 @@ export function FoodLogScreen() {
     ? statedKeys
     : statedKeys.filter(k => foodLogPinnedNutrients.includes(k));
 
+  /**
+   * The day's planned meals with nothing logged against them, and a tap that
+   * raises the meal's own offer to log it.
+   *
+   * **The same offer ticking the meal's "Eat" step raises** — `offerMealLog`
+   * in the food log store, which is where it moved to when this became its
+   * second caller. So a planned recipe gets the prompt that can measure it and
+   * anything else gets the search sheet prefilled with the meal's name, and
+   * either way the entry it writes carries `mealPlanEntryId` for free. Writing
+   * a second, plainer path in from here would have been a third way to log a
+   * planned meal that recorded less than the two that already existed.
+   *
+   * **Unlike the unattended offer, this ignores `mealLogPrompt`** — see the
+   * store action's own note. That switch stops the app interrupting; it was
+   * never meant to answer somebody tapping the thing.
+   *
+   * The whole row is the button, with a chevron as its only trailing element,
+   * rather than a name beside a "Log" pill: the name is data-derived and would
+   * lose the row to a fixed-width sibling (CLAUDE.md's rule about exactly
+   * that), and a row that opens something is the shape the rest of the app
+   * already uses for it.
+   */
+  const handleLogPlanned = useCallback(
+    (coverage: SlotCoverage) => {
+      const planned = coverage.planned[0];
+      if (!planned) return;
+      haptics.tap();
+      offerMealLog(planned);
+    },
+    [offerMealLog],
+  );
+
+  /**
+   * "Planned for today" — the meals the plan has an answer for and the log
+   * doesn't, plus how much of the day's plan is dealt with.
+   *
+   * Rendered in both branches below (inside the list's header on a day with
+   * entries, above the empty state on a day without), because the day with
+   * nothing logged is the one this most exists for and that is exactly the day
+   * the list isn't drawn at all.
+   */
+  const plannedCard = plannedOpen.length === 0 ? null : (
+    <View style={styles.plannedCard}>
+      <View style={styles.plannedHeader}>
+        <Text style={styles.plannedTitle}>{isToday ? 'Planned for today' : 'Planned that day'}</Text>
+        {!!plannedSummary && <Text style={styles.plannedSummary}>{plannedSummary}</Text>}
+      </View>
+      {plannedOpen.map(coverage => (
+        <TouchableOpacity
+          key={coverage.slot}
+          style={styles.plannedRow}
+          activeOpacity={interaction.activeOpacity}
+          onPress={() => handleLogPlanned(coverage)}
+          accessibilityRole="button"
+          accessibilityLabel={`Log ${describePlannedSlot(coverage)}`}
+          accessibilityHint="Double tap to log this planned meal."
+        >
+          <Ionicons
+            name={MEAL_SLOT_ICONS[coverage.slot] as keyof typeof Ionicons.glyphMap}
+            size={iconSize.sm}
+            color={colors.textSecondary}
+          />
+          <Text style={styles.plannedRowText} numberOfLines={1}>{describePlannedSlot(coverage)}</Text>
+          <Ionicons name="chevron-forward" size={14} color={colors.textTertiary} />
+        </TouchableOpacity>
+      ))}
+    </View>
+  );
+
   return (
     <SafeAreaView style={styles.root} edges={['top']}>
       <ScreenHeader
@@ -750,6 +867,8 @@ export function FoodLogScreen() {
       </View>
 
       {dayEntries.length === 0 ? (
+        <>
+        {!!plannedCard && <View style={styles.plannedAlone}>{plannedCard}</View>}
         <EmptyState
           icon="restaurant-outline"
           title={isToday ? 'Nothing logged today' : 'Nothing logged that day'}
@@ -758,6 +877,7 @@ export function FoodLogScreen() {
           onAction={() => { haptics.tap(); setAddingSlot(guessedSlot); setAddOpen(true); }}
           bottomOffset={tabBarHeight}
         />
+        </>
       ) : (
         <PaintSelectionProvider {...paintProps}>
           <ReorderableList
@@ -774,6 +894,7 @@ export function FoodLogScreen() {
             onReorder={handleReorder}
             ListHeaderComponent={
               <>
+              {plannedCard}
               <View style={styles.totalsCard}>
                 {shownKeys.map(key => (
                   <View key={key} style={styles.totalBlock}>
@@ -1199,6 +1320,43 @@ function makeStyles(colors: Colors) {
     dayNavDateText: { color: colors.text, fontSize: font.md, fontWeight: fontWeight.semibold },
     dayNavBackText: { color: colors.accent, fontSize: font.xs, marginTop: spacing.xxs },
     scrollContent: { flexGrow: 1, paddingHorizontal: spacing.md },
+    // Same card shape as the totals and water cards it sits above, since it is
+    // the same kind of thing: a block about the day, ahead of the day's rows.
+    plannedCard: {
+      backgroundColor: colors.bgSecondary,
+      borderRadius: radius.md,
+      padding: spacing.md,
+      gap: spacing.xs,
+      marginBottom: spacing.md,
+    },
+    // The card is the only one on screen when the day is empty, so it needs the
+    // side gutter the list's own contentContainerStyle would otherwise give it.
+    plannedAlone: { paddingHorizontal: spacing.md, paddingTop: spacing.sm },
+    plannedHeader: {
+      flexDirection: 'row',
+      alignItems: 'baseline',
+      justifyContent: 'space-between',
+      gap: spacing.sm,
+      marginBottom: spacing.xxs,
+    },
+    plannedTitle: {
+      color: colors.textSecondary,
+      fontSize: font.xs,
+      fontWeight: fontWeight.semibold,
+      letterSpacing: 0.8,
+      textTransform: 'uppercase',
+    },
+    plannedSummary: { color: colors.textSecondary, fontSize: font.xs },
+    plannedRow: {
+      flexDirection: 'row',
+      alignItems: 'center',
+      gap: spacing.sm,
+      paddingVertical: spacing.xs,
+    },
+    // `flex: 1` with nothing else in the row claiming width ahead of it — the
+    // icon and the chevron are both fixed and short. See CLAUDE.md on why a
+    // button here would eat the meal's name instead.
+    plannedRowText: { flex: 1, color: colors.text, fontSize: font.sm },
     totalsCard: {
       backgroundColor: colors.bgSecondary,
       borderRadius: radius.md,
