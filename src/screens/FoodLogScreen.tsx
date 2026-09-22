@@ -55,6 +55,7 @@ import { ScanToLogFlow } from '../components/ScanToLogFlow';
 import { EstimateMealSheet } from '../components/EstimateMealSheet';
 import { useAiRoute } from '../hooks/useOnDeviceAi';
 import { EmptyState } from '../components/EmptyState';
+import { EmptyNote } from '../components/EmptyNote';
 import { HubPills } from '../components/HubPills';
 import { InlineAction } from '../components/InlineAction';
 import { ScreenHeader, type ScreenHeaderAction } from '../components/ScreenHeader';
@@ -895,6 +896,17 @@ export function FoodLogScreen() {
             ListHeaderComponent={
               <>
               {plannedCard}
+              {shownKeys.length === 0 ? (
+                // shownKeys is empty whenever every one of today's entries
+                // was logged with no nutrition — a card with nothing in it
+                // read as a rendering glitch rather than a state.
+                <View style={styles.totalsEmptyNote}>
+                  <EmptyNote icon="stats-chart-outline">
+                    None of today's entries have nutrition on them yet. Link one to a food with
+                    nutrition to see totals here.
+                  </EmptyNote>
+                </View>
+              ) : (
               <View style={styles.totalsCard}>
                 {shownKeys.map(key => (
                   <View key={key} style={styles.totalBlock}>
@@ -975,6 +987,7 @@ export function FoodLogScreen() {
                   />
                 )}
               </View>
+              )}
 
               {/* Water is its own card because it is the one figure on this
                   screen you add to rather than read. It had a unit, a target
@@ -1366,6 +1379,7 @@ function makeStyles(colors: Colors) {
       // Two cards in one block sit a step closer than a block sits to the list.
       marginBottom: spacing.md,
     },
+    totalsEmptyNote: { marginBottom: spacing.md },
     waterCard: {
       backgroundColor: colors.bgSecondary,
       borderRadius: radius.md,
