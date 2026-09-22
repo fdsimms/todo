@@ -1,0 +1,4 @@
+{
+  "message": "Expanding and collapsing a stack no longer stutters at the start and end of the animation.",
+  "date": "2026-09-22"
+}

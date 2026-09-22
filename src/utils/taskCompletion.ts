@@ -138,7 +138,9 @@ export function completionRefusal(task: Task): string | null {
     return 'That task is a habit you are avoiding rather than one you finish, so it has no completion. Record a slip against it instead.';
   }
   if (isRecurrenceNotYetDue(task)) {
-    return 'That recurring task is not due yet, and completing it early would schedule the next occurrence off today rather than off its own day.';
+    return task.recurrenceType === 'hours'
+      ? `That task isn't ready yet — it unlocks ${task.recurrenceInterval} hour${task.recurrenceInterval === 1 ? '' : 's'} after you last checked it off.`
+      : 'That recurring task is not due yet, and completing it early would schedule the next occurrence off today rather than off its own day.';
   }
   return null;
 }
@@ -169,6 +171,12 @@ export function buildCompletion(
   const completedAt = options?.completedAt ? new Date(options.completedAt) : now;
 
   const recurs = task.recurrenceType !== 'none';
+  // 'hours' has no calendar grid: it never gets a dueDate, and its "next
+  // occurrence" is a precise deferUntil measured from this completion's own
+  // instant (`now`, not `completedAt` — see the comment above) rather than
+  // from getNextDueDate's day-truncated approximation. See the effectiveDue
+  // and nextDeferUntil computations below.
+  const isHoursRecurrence = task.recurrenceType === 'hours';
   const chainAdvances = task.chainEnabled && task.chainItems.length > 0;
   // A mid-chain miss records that step as missed and walks forward into the
   // next one anyway, the same as completing it does — a chain is a routine
@@ -407,7 +415,20 @@ export function buildCompletion(
       const answeredDue = !atChainEnd && chainStepDatedByAnswer(task)
         ? deliverableDate(options?.deliverableValue)
         : null;
-      const effectiveDue = answeredDue ?? nextDue ?? midChainDue;
+      // nextDue's *nullity* still answers "has the series ended"
+      // (recurrenceEndDate/recurrenceCount, checked inside getNextDueDate) —
+      // that part is exact regardless of type. Its *value* is only an
+      // approximation for 'hours' (see getNextDueDate's own comment on that
+      // branch), so it's excluded here and the real placement comes from
+      // nextDeferUntil below instead.
+      const effectiveDue = answeredDue ?? (isHoursRecurrence ? null : nextDue) ?? midChainDue;
+      // The exact instant the next occurrence unlocks, measured from this
+      // completion's own moment rather than getNextDueDate's day-truncated
+      // approximation — null when there's no next occurrence to unlock
+      // (series ended) or a chain step answered/mid-chain-dated it instead.
+      const nextDeferUntil = isHoursRecurrence && !effectiveDue && nextDue !== null
+        ? new Date(now.getTime() + task.recurrenceInterval * 60 * 60 * 1000).toISOString()
+        : null;
       let nextReminderTime: string | null = effective.reminderTime;
       let nextReminderUtcOffsetMinutes: number | null = effective.reminderUtcOffsetMinutes;
       if (effectiveDue && effective.reminderTime) {
@@ -418,6 +439,14 @@ export function buildCompletion(
             : effectiveDue
         );
         next.setHours(original.getHours(), original.getMinutes(), 0, 0);
+        nextReminderTime = next.toISOString();
+        nextReminderUtcOffsetMinutes = next.getTimezoneOffset();
+      } else if (nextDeferUntil && effective.reminderTime) {
+        // A reminder on an 'hours' task is a request to be told when the next
+        // dose unlocks, not a fixed clock time — so it rides the deferral
+        // forward instead of staying put the way a plain reminderOffsetDays
+        // reminder would (there is no day to offset from here).
+        const next = new Date(nextDeferUntil);
         nextReminderTime = next.toISOString();
         nextReminderUtcOffsetMinutes = next.getTimezoneOffset();
       }
@@ -479,7 +508,12 @@ export function buildCompletion(
         seenAt: now.toISOString(),
         dueDate: effectiveDue ? effectiveDue.toISOString() : null,
         deadline: nextDeadline,
-        deferUntil: null,
+        // null for every type but 'hours': a normal successor's deferUntil
+        // said where *the occurrence just completed* sat (see the
+        // recurrenceAnchorDate comment just below) and isn't a fact about the
+        // new row. An 'hours' successor has no dueDate to carry that role
+        // instead, so its deferUntil (nextDeferUntil) *is* its placement.
+        deferUntil: nextDeferUntil,
         // Dropped alongside the defer, and for the same reason: both say
         // where *the occurrence just completed* actually sat, and neither is
         // a fact about the one taking its place. The successor's own dueDate

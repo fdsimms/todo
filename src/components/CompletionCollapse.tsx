@@ -98,7 +98,14 @@ export function CompletionCollapse({
     return {
       height: interpolate(progress.value, [0, 1], [0, height], Extrapolation.CLAMP),
       opacity,
-      overflow: 'hidden' as const,
+      // `scroll`, not `hidden`, for the reason AnimatedCollapsible's `clip`
+      // style gives at length: both clip identically, but a hidden container
+      // hands its animated height down to its children as a fit-content
+      // constraint that misses every Yoga and text-measure cache on every
+      // frame, where a scroll container measures them unconstrained. What
+      // folds away here is one header row, so the saving is small; the
+      // pattern is the same one and worth not having two versions of.
+      overflow: 'scroll' as const,
     };
   });
 

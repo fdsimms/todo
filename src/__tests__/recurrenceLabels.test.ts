@@ -185,4 +185,20 @@ describe('describeTaskRecurrence', () => {
       .toBe('Daily · from completion');
     expect(describeRecurrence({ type: 'daily', interval: 1 })).toBe('Every day');
   });
+
+  it('reads the hours recurrence', () => {
+    expect(describeTaskRecurrence(rule({ recurrenceType: 'hours', recurrenceInterval: 1 })))
+      .toBe('Hourly');
+    expect(describeTaskRecurrence(rule({ recurrenceType: 'hours', recurrenceInterval: 8 })))
+      .toBe('Every 8 hours');
+    expect(describeRecurrence({ type: 'hours', interval: 8 })).toBe('Every 8 hours');
+  });
+
+  // Always measured from completion, so saying so on every row would be
+  // noise — unlike every other type, there's no "on schedule" mode to
+  // distinguish it from.
+  it('never appends the after-completion suffix to hours, even though it is always set', () => {
+    expect(describeTaskRecurrence(rule({ recurrenceType: 'hours', recurrenceInterval: 8, recurrenceFromCompletion: true })))
+      .toBe('Every 8 hours');
+  });
 });

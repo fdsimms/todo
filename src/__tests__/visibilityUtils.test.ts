@@ -260,6 +260,20 @@ describe('isTaskVisible', () => {
     expect(isTaskVisible({ ...baseTask, deferUntil })).toBe(true);
   });
 
+  // Unlike every other type, an 'hours' recurrence's deferUntil is an exact
+  // instant, not a day — "noon today" at 10 AM has to stay hidden, or a
+  // same-day gap (medication due again in a few hours) would be visible the
+  // moment the calendar day ticked over instead of when it actually resolves.
+  it('keeps an hours-recurrence task hidden until its precise deferUntil, even later today', () => {
+    const deferUntil = new Date(2025, 5, 10, 12, 0, 0).toISOString();
+    expect(isTaskVisible({ ...baseTask, recurrenceType: 'hours', deferUntil })).toBe(false);
+  });
+
+  it('shows an hours-recurrence task once its precise deferUntil has passed', () => {
+    const deferUntil = new Date(2025, 5, 10, 9, 0, 0).toISOString();
+    expect(isTaskVisible({ ...baseTask, recurrenceType: 'hours', deferUntil })).toBe(true);
+  });
+
   it('hides tasks with afternoon segment before noon', () => {
     // NOW is 10:00 AM, afternoon starts at 12:00
     expect(isTaskVisible({ ...baseTask, timeSegments: ['afternoon'] })).toBe(false);
@@ -782,6 +796,16 @@ describe('isRecurrenceNotYetDue', () => {
     const dueDate = new Date(2025, 5, 15, 0, 0, 0).toISOString();
     expect(isRecurrenceNotYetDue({ ...baseTask, recurrenceType: 'daily', dueDate, completed: true })).toBe(false);
   });
+
+  it('returns true for an hours-recurrence task still short of its precise deferUntil, even later today', () => {
+    const deferUntil = new Date(2025, 5, 10, 12, 0, 0).toISOString();
+    expect(isRecurrenceNotYetDue({ ...baseTask, recurrenceType: 'hours', deferUntil })).toBe(true);
+  });
+
+  it('returns false for an hours-recurrence task once its precise deferUntil has passed', () => {
+    const deferUntil = new Date(2025, 5, 10, 9, 0, 0).toISOString();
+    expect(isRecurrenceNotYetDue({ ...baseTask, recurrenceType: 'hours', deferUntil })).toBe(false);
+  });
 });
 
 // ─── isLiveRecurring ──────────────────────────────────────────────────────────
@@ -875,6 +899,15 @@ describe('getVisibleAt', () => {
     const task: Task = { ...baseTask, deferUntil: deferUntil.toISOString() };
     const result = getVisibleAt(task);
     expect(result.getDate()).toBe(11);
+  });
+
+  // An 'hours' recurrence's deferUntil is the exact moment, not a day start —
+  // "noon today" at 10 AM has to surface at noon, not at today's midnight.
+  it('returns the precise instant for an hours-recurrence deferUntil, not its day start', () => {
+    const deferUntil = new Date(2025, 5, 10, 12, 0, 0);
+    const task: Task = { ...baseTask, recurrenceType: 'hours', deferUntil: deferUntil.toISOString() };
+    const result = getVisibleAt(task);
+    expect(result.getTime()).toBe(deferUntil.getTime());
   });
 
   it('returns earliest segment threshold when no segment has started today', () => {

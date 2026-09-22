@@ -125,6 +125,13 @@ import { MIN_PANTRY_REVIEW_CARDS, stalePantryReviewTasks } from '../utils/pantry
 import { mealShortfallRows, staleMealShortfallTasks } from '../utils/mealShortfallTasks';
 import { staleMealLogNudgeTasks } from '../utils/mealLogNudgeTasks';
 import {
+  describePlannedSlot,
+  describeSlotLog,
+  loggedMealSlotKeys,
+  mealDayCoverage,
+  unloggedPlannedSlots,
+} from '../utils/mealLogCoverage';
+import {
   canHoldSupply,
   describeSupply,
   describeSupplyStock,
@@ -1843,6 +1850,24 @@ describe('demo seed — people', () => {
     expect(logs.some(l => l.taskId !== null && l.amount !== null)).toBe(true);
   });
 
+  it('seeds an hours-recurrence task, hidden behind its own deferUntil', () => {
+    // "Take naproxen" was completed a few hours before seeding — the
+    // interesting state is the successor still sitting hidden, not the
+    // completed row, which is why the assertion is on the spawned task
+    // rather than the one that was ticked off.
+    const completed = useTaskStore.getState().tasks.find(t => t.title === 'Take naproxen' && t.completed);
+    expect(completed).toBeDefined();
+    const next = useTaskStore.getState().tasks
+      .find(t => t.previousOccurrenceId === completed!.id && !t.completed);
+    expect(next).toBeDefined();
+    expect(next!.recurrenceType).toBe('hours');
+    expect(next!.recurrenceInterval).toBe(8);
+    expect(next!.dueDate).toBeNull();
+    expect(next!.deferUntil).not.toBeNull();
+    expect(new Date(next!.deferUntil!).getTime()).toBeGreaterThan(Date.now());
+    expect(isTaskVisible(next!)).toBe(false);
+  });
+
   it('seeds a chain whose steps record different doses', () => {
     // Without per-step values one chain logs the morning dose again at night,
     // so a demo with only a single-dose task shows none of what this is for.
@@ -3536,10 +3561,44 @@ describe('demo seed — groceries, recipes, meals and the fridge', () => {
 
     // And the real rule agrees, so the first foreground sweep doesn't clear
     // the seeded row — the same standard the shortfall task above is held to.
-    const loggedEntryIds = new Set(
-      useFoodLogStore.getState().entries.map(e => e.mealPlanEntryId).filter((id): id is string => id !== null)
-    );
-    expect(staleMealLogNudgeTasks(tasks, entries, loggedEntryIds, todayKey)).toEqual([]);
+    const dayEntries = useFoodLogStore.getState().entries;
+    const logged = {
+      entryIds: new Set(
+        dayEntries.map(e => e.mealPlanEntryId).filter((id): id is string => id !== null)
+      ),
+      // The slot reading too, which is the one that decides this now — the
+      // seeded night has to be a meal with *nothing* in its slot, not merely
+      // one no food log row happens to name (see `mealLogCoverage.ts`).
+      slotKeys: loggedMealSlotKeys(dayEntries),
+    };
+    expect(staleMealLogNudgeTasks(tasks, entries, logged, todayKey)).toEqual([]);
+  });
+
+  it('seeds a planned meal the food log can see was logged, and a day it can offer to log', () => {
+    const entries = useMealPlanStore.getState().entries;
+    const todayKey = dayKeyOf(getCurrentDayStart());
+
+    // The meal plan's half of the join: a planned night whose slot has food in
+    // it, so its row carries "Logged · N cal" rather than looking untouched.
+    // The link is the slot, not `mealPlanEntryId` — nothing in the seed logs
+    // through a meal's own offer, which is exactly the gap this closes.
+    const tacoNight = entries.find(e => e.title === 'Chicken tacos');
+    expect(tacoNight).toBeDefined();
+    useFoodLogStore.getState().loadRange(tacoNight!.date, tacoNight!.date);
+    const tacoDay = useFoodLogStore.getState().entries;
+    expect(tacoDay.some(e => e.mealPlanEntryId === tacoNight!.id)).toBe(false);
+    const coverage = mealDayCoverage(entries, tacoDay, tacoNight!.date);
+    expect(describeSlotLog(coverage.get(tacoNight!.slot))).toMatch(/^Logged/);
+
+    // And the food log's half: today is planned and unlogged, so the day view
+    // has meals to offer. Water is in the day and carries no slot, which is
+    // the one row that must not count as a meal.
+    useFoodLogStore.getState().loadRange(todayKey, todayKey);
+    const today = useFoodLogStore.getState().entries;
+    expect(today.some(e => e.slot === null)).toBe(true);
+    const open = unloggedPlannedSlots(entries, today, todayKey);
+    expect(open.length).toBeGreaterThan(0);
+    expect(describePlannedSlot(open[0])).toContain('·');
   });
 
   it('seeds the daily task to review tomorrow\'s calendar', () => {

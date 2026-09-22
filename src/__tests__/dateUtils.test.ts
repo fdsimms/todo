@@ -596,6 +596,27 @@ describe('getNextDueDate', () => {
     expect(result.getDate()).toBe(13);
   });
 
+  // Approximate only — see the doc comment on the 'hours' branch. The real
+  // successor's precise deferUntil is computed in taskCompletion.ts; this
+  // function is only asked whether a next occurrence exists at all.
+  it('hours steps from today\'s logical start, regardless of recurrenceFromCompletion', () => {
+    const task: Task = {
+      ...baseTask, recurrenceType: 'hours', recurrenceInterval: 8, recurrenceFromCompletion: false,
+    };
+    const result = getNextDueDate(task, '00:00')!;
+    expect(result.getFullYear()).toBe(2025);
+    expect(result.getMonth()).toBe(5);
+    expect(result.getDate()).toBe(10);
+    expect(result.getHours()).toBe(8);
+  });
+
+  it('hours respects recurrenceCount running out, same as any other type', () => {
+    const task: Task = {
+      ...baseTask, recurrenceType: 'hours', recurrenceInterval: 8, recurrenceCount: 1,
+    };
+    expect(getNextDueDate(task, '00:00')).toBeNull();
+  });
+
   it('weekly without specific days adds N weeks', () => {
     const task: Task = { ...baseTask, recurrenceType: 'weekly', recurrenceInterval: 2 };
     const result = getNextDueDate(task, '00:00')!;

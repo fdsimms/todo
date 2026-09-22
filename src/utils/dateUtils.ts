@@ -1,4 +1,5 @@
 import { addDays } from 'date-fns/addDays';
+import { addHours } from 'date-fns/addHours';
 import { addWeeks } from 'date-fns/addWeeks';
 import { addMonths } from 'date-fns/addMonths';
 import { addYears } from 'date-fns/addYears';
@@ -347,13 +348,28 @@ export function getNextDueDate(
   // under `recurrenceFromCompletion`, which measures from the day you finished
   // and has no grid to be knocked off.
   const anchorIso = task.recurrenceAnchorDate ?? task.dueDate;
+  // 'hours' has no calendar grid to anchor to, so it always measures from
+  // today regardless of the stored recurrenceFromCompletion — the editor
+  // forces that flag true for this type, and this is the defensive mirror of
+  // it for any row that predates or bypasses that.
   const base =
-    !task.recurrenceFromCompletion && anchorIso
+    !task.recurrenceFromCompletion && task.recurrenceType !== 'hours' && anchorIso
       ? getTaskDayStart(new Date(anchorIso), dayResetTime)
       : getDayStart(new Date(), dayResetTime);
 
   const step = (from: Date): Date => {
     switch (task.recurrenceType) {
+      case 'hours':
+        // Approximate only: `from` is a day-start (see `base` above and the
+        // catch-up loop below, both of which normalize through
+        // getTaskDayStart), so this is "midnight plus N hours", not "N hours
+        // from the actual completion instant". Every caller of this branch
+        // only asks whether a next occurrence exists at all (isLiveRecurring,
+        // the snooze horizon, the recurrenceEndDate/recurrenceCount check
+        // below) — the real successor's precise deferUntil is computed
+        // separately in taskCompletion.ts, which is what makes an
+        // approximation here safe rather than a second, competing answer.
+        return addHours(from, task.recurrenceInterval);
       case 'daily':
         return addDays(from, task.recurrenceInterval);
       case 'weekly':

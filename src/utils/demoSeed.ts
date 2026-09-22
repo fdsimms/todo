@@ -346,6 +346,29 @@ export function seedDemoData(): void {
     excludeFromSuggestions: true,
   });
 
+  // The 'hours' recurrence — a dose that can only be taken again N hours
+  // after the last one, not on a fixed clock time (see RecurrenceType's own
+  // doc comment). Naproxen rather than the ibuprofen already seeded by
+  // `seedAsNeededDoses`: that one is deliberately task-less (see its own doc
+  // comment — "nobody schedules a painkiller"), and this feature is the
+  // exception to that reasoning, not a second way of seeding the same drug.
+  // Completed a few hours ago so the successor it spawned is still sitting
+  // hidden, which is the whole point of the feature: a plain completed row
+  // demonstrates nothing, since the interesting state is the one you can't
+  // see without knowing to look for it.
+  const naproxen = addTask({
+    title: 'Take naproxen',
+    notes: 'For the back. Not sooner than every 8 hours.',
+    category: 'Health',
+    recurrenceType: 'hours',
+    recurrenceInterval: 8,
+    recurrenceFromCompletion: true,
+    medicationName: 'Naproxen',
+    medicationAmount: 250,
+    medicationUnit: 'mg',
+  });
+  completeTask(naproxen.id, { completedAt: subHours(today, 3).toISOString() });
+
   // The postpone check has nothing to show until a task has actually been
   // ducked a few times, and a fresh demo database has no history — so the count
   // is stamped on directly. Opening this one's date picker is the whole feature:
@@ -1663,6 +1686,13 @@ function seedFoodLog(today: Date): void {
     meals.push({ name: 'Milk', quantity: '1 cup', slot: 'breakfast', hour: 8, daysAgo });
     // The two thin days: somebody logged breakfast and got on with their life.
     if (daysAgo === 5 || daysAgo === 6) continue;
+    // And yesterday's dinner, which is a third thin day with a reason: the
+    // `mealLogNudge` task seeded further down asks about yesterday's planned
+    // stir-fry, and a meal counts as logged the moment anything is in its slot
+    // (see `mealLogCoverage.ts`). Potatoes and butter filed under yesterday's
+    // dinner would answer the very question the seeded task is there to show
+    // being asked, and the first foreground sweep would clear the row.
+    if (daysAgo === 1) continue;
     // The low patch in `seedMoodLog` runs 8 to 11 days back. Plainer, smaller
     // dinners through it.
     const lean = daysAgo >= 8 && daysAgo <= 11;
