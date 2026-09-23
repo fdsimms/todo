@@ -1122,6 +1122,41 @@ describe('getNextDueDate', () => {
     expect(caught.toDateString()).toBe(plain.toDateString());
     expect(caught.toDateString()).toBe('Fri Jun 13 2025');
   });
+
+  // ─── completedAt ──────────────────────────────────────────────────────────
+
+  const afterCompletion = (overrides: Partial<Task> = {}): Task => ({
+    ...baseTask,
+    recurrenceType: 'daily',
+    recurrenceInterval: 1,
+    recurrenceFromCompletion: true,
+    dueDate: new Date(2025, 5, 9, 12, 0, 0).toISOString(),
+    ...overrides,
+  });
+
+  it('measures a from-completion rule from a completion recorded after the fact', () => {
+    // Done Monday night, recorded Tuesday morning: next is Tuesday, not Wednesday.
+    const completedAt = new Date(2025, 5, 9, 22, 0, 0);
+    expect(getNextDueDate(afterCompletion(), '00:00', { completedAt })!.toDateString()).toBe('Tue Jun 10 2025');
+    expect(getNextDueDate(afterCompletion(), '00:00')!.toDateString()).toBe('Wed Jun 11 2025');
+  });
+
+  it('reads the completion moment through dayResetTime', () => {
+    // 01:30 Tuesday with a 02:00 reset is still Monday's logical day.
+    const completedAt = new Date(2025, 5, 10, 1, 30, 0);
+    expect(getNextDueDate(afterCompletion(), '02:00', { completedAt })!.toDateString()).toBe('Tue Jun 10 2025');
+  });
+
+  it('still catches a long-ago completion up to today', () => {
+    const completedAt = new Date(2025, 5, 5, 22, 0, 0);
+    expect(getNextDueDate(afterCompletion(), '00:00', { completedAt, catchUp: true })!.toDateString()).toBe('Tue Jun 10 2025');
+  });
+
+  it('leaves a fixed schedule on its own grid', () => {
+    const completedAt = new Date(2025, 5, 7, 22, 0, 0);
+    const task = afterCompletion({ recurrenceFromCompletion: false });
+    expect(getNextDueDate(task, '00:00', { completedAt })!.toDateString()).toBe('Tue Jun 10 2025');
+  });
 });
 
 // ─── recurrenceAnchorDayFor ─────────────────────────────────────────────────

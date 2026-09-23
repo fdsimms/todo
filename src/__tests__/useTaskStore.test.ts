@@ -2,6 +2,7 @@ import { isStreakAtRecord } from '../utils/streakRecord';
 import { dayKeyOf, getCurrentDayStart } from '../utils/dateUtils';
 import { logTaskHealthValue } from '../utils/healthCompletionSync';
 import { useTaskStore } from '../store/useTaskStore';
+import { useWidgetCompletionStore } from '../store/useWidgetCompletionStore';
 import { useMedicationStore } from '../store/useMedicationStore';
 import { useSettingsStore } from '../store/useSettingsStore';
 import { useMoodStore } from '../store/useMoodStore';
@@ -631,6 +632,56 @@ describe('completeTask: catching an overdue recurrence up', () => {
     useTaskStore.getState().completeTask('bins');
     const next = useTaskStore.getState().tasks.find(t => !t.completed)!;
     expect(new Date(next.dueDate!).toDateString()).toBe('Wed Jun 11 2025');
+  });
+});
+
+describe('completeTask: a queued widget tap', () => {
+  beforeEach(() => {
+    jest.useFakeTimers();
+    jest.setSystemTime(new Date(2025, 5, 10, 8, 0, 0)); // Tue June 10 2025
+    useWidgetCompletionStore.setState({ pendingIds: [], tappedAt: {} });
+  });
+
+  afterEach(() => {
+    jest.useRealTimers();
+  });
+
+  const walk = () => makeTask({
+    id: 'walk',
+    recurrenceType: 'daily',
+    recurrenceInterval: 1,
+    recurrenceFromCompletion: true,
+    dueDate: new Date(2025, 5, 9, 12, 0, 0).toISOString(), // Mon
+  });
+
+  it('completes as of the tap, so the next one is not a day late', () => {
+    // Tapped Monday night, drained Tuesday morning.
+    useTaskStore.setState({ tasks: [walk()] });
+    const tapped = new Date(2025, 5, 9, 22, 0, 0).toISOString();
+    useWidgetCompletionStore.getState().enqueue(['walk'], { walk: tapped });
+    useWidgetCompletionStore.getState().dequeue('walk');
+    useTaskStore.getState().completeTask('walk');
+
+    const done = useTaskStore.getState().tasks.find(t => t.id === 'walk')!;
+    const next = useTaskStore.getState().tasks.find(t => !t.completed)!;
+    expect(done.completedAt).toBe(tapped);
+    expect(new Date(next.dueDate!).toDateString()).toBe('Tue Jun 10 2025');
+    expect(useWidgetCompletionStore.getState().tappedAt).toEqual({});
+  });
+
+  it('lets an explicit completedAt win over a queued tap', () => {
+    useTaskStore.setState({ tasks: [walk()] });
+    useWidgetCompletionStore.getState().enqueue(['walk'], { walk: new Date(2025, 5, 9, 22, 0, 0).toISOString() });
+    const given = new Date(2025, 5, 9, 20, 0, 0).toISOString();
+    useTaskStore.getState().completeTask('walk', { completedAt: given });
+    expect(useTaskStore.getState().tasks.find(t => t.id === 'walk')!.completedAt).toBe(given);
+  });
+
+  it('does not stamp a miss with the tap time', () => {
+    useTaskStore.setState({ tasks: [walk()] });
+    useWidgetCompletionStore.getState().enqueue(['walk'], { walk: new Date(2025, 5, 9, 22, 0, 0).toISOString() });
+    useTaskStore.getState().completeTask('walk', { missed: true });
+    expect(useTaskStore.getState().tasks.find(t => t.id === 'walk')!.completedAt).toBe(new Date(2025, 5, 10, 8, 0, 0).toISOString());
   });
 });
 
