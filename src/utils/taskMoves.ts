@@ -1,5 +1,5 @@
 import type { GeneratedKind, Task } from '../types';
-import { getTaskDayStart } from './dateUtils';
+import { getNextDueDate, getTaskDayStart, recurrenceAnchorDayFor } from './dateUtils';
 import { isNoticeTask } from './generatedTasks';
 
 /**
@@ -202,6 +202,7 @@ export function scheduleMoveUpdates(
   task: Pick<Task, 'dueDate' | 'recurrenceType' | 'recurrenceAnchorDate' | 'seriesId'>,
   date: Date | null,
   dayResetTime?: string,
+  options?: { restartSchedule?: boolean },
 ): Partial<Task> {
   if (!date) return { dueDate: null, deferUntil: null };
   const anchored = isDateAnchored(task as Task) && task.dueDate != null;
@@ -211,6 +212,12 @@ export function scheduleMoveUpdates(
   const stored = getTaskDayStart(new Date(task.dueDate!), dayResetTime);
   if (picked > stored) return { deferUntil: date.toISOString() };
   if (picked < stored) {
+    // The person was asked (pullForwardChoice) and chose to have the schedule
+    // count from the new day: a plain reschedule, which updateTask reads as
+    // "this is the schedule now" and clears any earlier anchor for.
+    if (options?.restartSchedule && task.recurrenceType !== 'none') {
+      return { dueDate: date.toISOString(), deferUntil: null };
+    }
     return {
       dueDate: date.toISOString(),
       recurrenceAnchorDate: task.recurrenceAnchorDate ?? task.dueDate,
@@ -222,4 +229,49 @@ export function scheduleMoveUpdates(
   // deferUntil, and writing only dueDate would leave it behind a date the
   // caller has just replaced.
   return { dueDate: date.toISOString(), deferUntil: null };
+}
+
+/** The next occurrence each way a pulled-forward occurrence can leave its schedule. */
+export interface PullForwardChoice {
+  /** Where the next one lands if the schedule stays put (the default pull). */
+  keepNext: Date;
+  /** Where it lands if the schedule counts from the new date instead. */
+  restartNext: Date;
+}
+
+/**
+ * Whether moving this task to `date` is a pull forward that the person should
+ * be asked about, and the two answers to put in front of them.
+ *
+ * A pull keeps the grid's own anchor (#1953), which is right for "just this
+ * once" and surprising for "I'm doing it today now": a daily task pulled from
+ * tomorrow onto today comes back the day after tomorrow. Neither reading is
+ * wrong, so it's asked rather than decided.
+ *
+ * Null when there is nothing to ask: not a pull, no rule to keep (a series
+ * member, a one-off), a rule that already measures from completion or has no
+ * grid ('hours'), or a move where both answers land on the same day. That last
+ * one only happens to a row sitting off its own grid (a Friday rule on a
+ * Wednesday), and asking there would be a question with one answer.
+ */
+export function pullForwardChoice(
+  task: Task,
+  date: Date | null,
+  dayResetTime?: string,
+): PullForwardChoice | null {
+  if (!date || !task.dueDate) return null;
+  if (task.recurrenceType === 'none' || task.recurrenceType === 'hours') return null;
+  if (task.recurrenceFromCompletion) return null;
+  const keep = scheduleMoveUpdates(task, date, dayResetTime);
+  if (!('recurrenceAnchorDate' in keep)) return null;
+  const kept: Task = { ...task, ...keep };
+  const restarted: Task = { ...task, dueDate: date.toISOString(), recurrenceAnchorDate: null };
+  restarted.recurrenceAnchorDay = recurrenceAnchorDayFor(restarted);
+  const keepNext = getNextDueDate(kept, dayResetTime);
+  const restartNext = getNextDueDate(restarted, dayResetTime);
+  if (!keepNext || !restartNext) return null;
+  if (getTaskDayStart(keepNext, dayResetTime).getTime() === getTaskDayStart(restartNext, dayResetTime).getTime()) {
+    return null;
+  }
+  return { keepNext, restartNext };
 }
