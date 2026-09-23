@@ -27,6 +27,7 @@ import {
 const person = (overrides: Partial<Person> = {}): Person => ({
   id: 'p1',
   name: 'Ansley',
+  kind: 'individual',
   nickname: '',
   notes: '',
   sortOrder: 1,

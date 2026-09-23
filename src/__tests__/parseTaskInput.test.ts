@@ -1156,6 +1156,20 @@ describe('matchPersonMentions', () => {
     expect(matchPersonMentions('coffee @ansley', PEOPLE).map(m => m.personId)).toEqual(['p2']);
   });
 
+  // A business's name isn't "first name, last name" — matching its first word
+  // would read "Eye Q" as though "Eye" were somebody's given name. See
+  // docs/arch/people.md, "Businesses don't get check-ins".
+  it('does not match the first word of a business name', () => {
+    const withBusiness = [...PEOPLE, { id: 'p4', name: 'Eye Q', nickname: '', kind: 'business' as const }];
+    expect(matchPersonMentions('call @eye about the appointment', withBusiness)).toEqual([]);
+    expect(matchPersonMentions('call @Eye Q about the appointment', withBusiness)).toEqual([]);
+  });
+
+  it('still matches a business by its full name or nickname', () => {
+    const withBusiness = [...PEOPLE, { id: 'p4', name: 'EyeQ', nickname: 'the optometrist', kind: 'business' as const }];
+    expect(matchPersonMentions('call @eyeq about the appointment', withBusiness).map(m => m.personId)).toEqual(['p4']);
+  });
+
   it('is case insensitive', () => {
     expect(matchPersonMentions('call @Mom', PEOPLE).map(m => m.personId)).toEqual(['p3']);
   });

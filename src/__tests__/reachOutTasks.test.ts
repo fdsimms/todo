@@ -21,7 +21,7 @@ const TODAY = new Date(2026, 2, 20, 12);
 const daysAgo = (n: number) => new Date(TODAY.getTime() - n * 86_400_000);
 
 const person = (o: Partial<Person> = {}): Person => ({
-  id: 'p1', name: 'Sarah', nickname: '', notes: '', sortOrder: 1,
+  id: 'p1', name: 'Sarah', kind: 'individual', nickname: '', notes: '', sortOrder: 1,
   archived: false, archivedAt: null, createdAt: '2026-01-01T00:00:00.000Z',
   birthdayMonth: null, birthdayDay: null, birthYear: null, birthdayTaskOptOut: false, birthdayGiftTaskOptOut: false,
   phoneNumber: null, email: null, linkUrl: null,
@@ -141,6 +141,14 @@ describe('who wants a nudge', () => {
 
   it('skips somebody filed away', () => {
     expect(wantedReachOuts([due({ archived: true })], TODAY)).toEqual([]);
+  });
+
+  // See docs/arch/people.md, "Businesses don't get check-ins": the editor
+  // already forces nudgeOptIn/cadenceDays off for one, but this is the gate
+  // that decides who gets nudged, so it has to hold even for a business row
+  // that somehow still carries a cadence.
+  it('never speaks about a business, even one carrying a cadence', () => {
+    expect(wantedReachOuts([due({ kind: 'business' })], TODAY)).toEqual([]);
   });
 
   it('honours a recent swipe-away', () => {

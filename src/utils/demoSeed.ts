@@ -2013,6 +2013,25 @@ function seedPeople(today: Date): void {
     location: 'Denver, CO',
   });
 
+  // A business, not a person — Person.kind exists so a company name like
+  // "Eye Q" doesn't get read as though its first word were a first name (no
+  // "@eye" mention, no calendar-title guess landing on "Eye"), and so it never
+  // gets a reach-out nudge: see docs/arch/people.md, "Businesses don't get
+  // check-ins". The editor hides the cadence field for one entirely, and this
+  // row is seeded with no cadence set, same as the default for any new person.
+  const optometrist = createPerson('Eye Q');
+  updatePerson(optometrist.id, {
+    kind: 'business',
+    phoneNumber: '555 0199',
+    notes: 'Optometrist.',
+  });
+  const eyeExam = addTask({
+    title: 'Eye exam',
+    dueDate: addDays(today, 12).toISOString(),
+    phoneNumber: '555 0199',
+  });
+  updateTask(eyeExam.id, { personIds: [optometrist.id] });
+
   // Tasks that name people, which is what a shared history is made of (#2045).
   // One planned and one already done, so the link reads both ways rather than
   // only as something upcoming.

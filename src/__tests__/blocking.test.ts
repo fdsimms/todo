@@ -457,6 +457,7 @@ describe('sortByBlockerAffinity', () => {
 // ─── waiting on a person (#2087) ─────────────────────────────────────────────
 
 const makePerson = (over: Partial<Person> & Pick<Person, 'id' | 'name'>): Person => ({
+  kind: 'individual',
   nickname: '', notes: '', sortOrder: 1, archived: false, archivedAt: null,
   createdAt: '2026-01-01T00:00:00.000Z',
   birthdayMonth: null, birthdayDay: null, birthYear: null, birthdayTaskOptOut: false, birthdayGiftTaskOptOut: false,

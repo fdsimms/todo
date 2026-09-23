@@ -1432,7 +1432,7 @@ describe('isTaskNew when a hold comes off', () => {
 
   it('is true once the person a task was waiting on is archived', () => {
     const dustin = {
-      id: 'p1', name: 'Dustin', nickname: '', notes: '', sortOrder: 1,
+      id: 'p1', name: 'Dustin', kind: 'individual' as const, nickname: '', notes: '', sortOrder: 1,
       archived: true, archivedAt: releasedAt, createdAt: NOW.toISOString(),
       birthdayMonth: null, birthdayDay: null, birthYear: null, birthdayTaskOptOut: false, birthdayGiftTaskOptOut: false,
       phoneNumber: null, email: null, linkUrl: null,
@@ -2057,7 +2057,7 @@ describe('blocking', () => {
   // #2087: the same hiding, with a person on the other end.
   it('hides a task waiting on somebody, and frees it when they go', () => {
     const dustin = {
-      id: 'p1', name: 'Dustin', nickname: '', notes: '', sortOrder: 1,
+      id: 'p1', name: 'Dustin', kind: 'individual' as const, nickname: '', notes: '', sortOrder: 1,
       archived: false, archivedAt: null, createdAt: NOW.toISOString(),
       birthdayMonth: null, birthdayDay: null, birthYear: null, birthdayTaskOptOut: false, birthdayGiftTaskOptOut: false,
       phoneNumber: null, email: null, linkUrl: null,

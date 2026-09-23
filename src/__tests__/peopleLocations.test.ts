@@ -5,6 +5,7 @@ function person(overrides: Partial<Person> = {}): Person {
   return {
     id: overrides.id ?? 'p1',
     name: 'Someone',
+    kind: 'individual',
     nickname: '',
     notes: '',
     sortOrder: 0,

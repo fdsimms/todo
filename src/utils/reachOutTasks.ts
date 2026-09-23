@@ -178,6 +178,13 @@ export function wantedReachOuts(
 ): ReachOutWant[] {
   return candidates
     .filter(({ person, lastTogether }) => {
+      // A business gets no check-ins at all — see docs/arch/people.md,
+      // "Businesses don't get check-ins". `PersonEditor` already forces
+      // `nudgeOptIn`/`cadenceDays` off when saving one, but this is the gate
+      // that actually decides who gets nudged, so it holds even if a business
+      // somehow carries a cadence (a stale row from before this existed, a
+      // hand-edited import).
+      if (person.kind === 'business') return false;
       // The real gate, and it is off on every new person: nothing about
       // somebody may appear in a nudge surface until this is explicitly true.
       if (!person.nudgeOptIn || person.cadenceDays <= 0) return false;

@@ -4653,7 +4653,7 @@ describe('checkReachOutTasks', () => {
   // Opted in, cadence lapsed 15 days ago against cadenceSetAt (nobody has any
   // history with them yet), same shape as reachOutTasks.test.ts's own factory.
   const duePerson = (overrides: Partial<Person> = {}): Person => ({
-    id: 'p1', name: 'Sarah', nickname: '', notes: '', sortOrder: 1,
+    id: 'p1', name: 'Sarah', kind: 'individual', nickname: '', notes: '', sortOrder: 1,
     archived: false, archivedAt: null, createdAt: daysAgo(60),
     birthdayMonth: null, birthdayDay: null, birthYear: null,
     birthdayTaskOptOut: false, birthdayGiftTaskOptOut: false,
@@ -4760,7 +4760,7 @@ describe('checkWaitingFollowUpTasks', () => {
   const daysAgo = (n: number) => new Date(Date.now() - n * 86_400_000).toISOString();
 
   const person = (overrides: Partial<Person> = {}): Person => ({
-    id: 'p1', name: 'Dustin', nickname: '', notes: '', sortOrder: 1,
+    id: 'p1', name: 'Dustin', kind: 'individual', nickname: '', notes: '', sortOrder: 1,
     archived: false, archivedAt: null, createdAt: daysAgo(60),
     birthdayMonth: null, birthdayDay: null, birthYear: null,
     birthdayTaskOptOut: false, birthdayGiftTaskOptOut: false,
@@ -9696,7 +9696,7 @@ describe('pinnedTasks', () => {
     const people = usePersonStore.getState().people;
     usePersonStore.setState({
       people: [{
-        id: 'p-1', name: 'Dustin', nickname: '', notes: '', sortOrder: 1,
+        id: 'p-1', name: 'Dustin', kind: 'individual', nickname: '', notes: '', sortOrder: 1,
         archived: false, archivedAt: null, createdAt: new Date().toISOString(),
         birthdayMonth: null, birthdayDay: null, birthYear: null,
         birthdayTaskOptOut: false, birthdayGiftTaskOptOut: false,

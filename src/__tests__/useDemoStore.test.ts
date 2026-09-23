@@ -1576,6 +1576,18 @@ describe('demo seed — people', () => {
     expect(usePersonStore.getState().people.some(p => p.location !== null)).toBe(true);
   });
 
+  // A business with no seeded row reads as a feature the app doesn't have —
+  // see docs/arch/people.md, "Businesses don't get check-ins".
+  it('seeds a business, with no cadence and a two-word name a first-word mention should not answer to', () => {
+    const business = usePersonStore.getState().people.find(p => p.kind === 'business');
+    expect(business).toBeDefined();
+    expect(business!.name.trim().split(/\s+/).length).toBeGreaterThan(1);
+    expect(business!.nudgeOptIn).toBe(false);
+    expect(business!.cadenceDays).toBe(0);
+    const linked = useTaskStore.getState().tasks.some(t => t.personIds.includes(business!.id));
+    expect(linked).toBe(true);
+  });
+
   // Off is the default the whole feature rests on, so the seed has to show it
   // as the default rather than as a thing nobody uses: most people carry no
   // cadence at all, and exactly one is opted in so the generator is visible.

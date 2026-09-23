@@ -1036,6 +1036,50 @@ it lives and what it asks.
   `'people'` question follows, for the same reason: an empty people surface is
   a prompt to start filing your friends.
 
+## Businesses don't get check-ins
+
+`Person.kind`, `'individual'` unless set otherwise. An optometrist, a vet, a
+dry cleaner — a `Person` row for the same reason a friend is one (you want
+their number and a place to leave notes), but not a friend, and two of this
+doc's own mechanisms assumed one without saying so.
+
+- **A company name isn't "first name, last name".** The "@" mention index
+  (`buildPersonNameIndex` in `parseTaskInput.ts`) and the calendar-title guess
+  (`nameTokensOf` in `calendarHistory.ts`) both answer to a name's first word
+  on the assumption that it *is* a first name — "Dustin Reyes" answering to
+  "@dustin" is the whole point of that fallback. Read a business's name the
+  same way and "Eye Q" answers to "@eye" and to any event mentioning "eye
+  exam", as though "Eye" were somebody's given name. Both skip the fallback
+  for a business. The mention index goes one step further for a multi-word
+  business name: it doesn't even index the full name for the *prefix* scan
+  `matchPersonMentions` runs before falling back to literal text, since a "@"
+  token can never contain a space and so could never validly resolve to a
+  multi-word name at all — indexing it would only ever be a backdoor to the
+  first-word guess this exists to avoid. A single-word business name (or
+  nickname) is unaffected and resolves exactly as a person's name would.
+- **The reach-out nudge is off, structurally, not just by default.** Rule 4
+  already starts every person with no cadence and no nudges, but a business
+  has no cadence to eventually turn on: there's no "getting back in touch"
+  with a dry cleaner, and the whole apparatus above this section —
+  `cadenceDays`, `nudgeOptIn`, the observed-cadence offer, `askAbout` — is
+  about a friendship, not a vendor. `PersonEditor` hides the whole "Keeping in
+  touch" card for one, and forces `nudgeOptIn`/`cadenceDays`/`askAbout` to
+  their off state on save regardless of what the hidden fields hold — the
+  same belt the "Keeping in touch" section list above says an already-running
+  cadence must not survive a switch away from it. `wantedReachOuts`
+  (`reachOutTasks.ts`) carries its own `person.kind === 'business'` gate on
+  top of that: it's the function that actually decides who gets nudged, so it
+  has to hold even for a row that somehow still carries a cadence — a stale
+  one synced from before this field existed, or a hand-edited import. The
+  Backfill screen's `cadence` and `askAbout` fields (`peopleBackfill.ts`) read
+  as never-missing for a business for the same reason: there's nothing to
+  backfill toward.
+- **Everything else about a `Person` is unaffected.** Birthdays (an
+  anniversary, an owner's own birthday on file), notes, location, groups,
+  waiting-on and the call/text/email buttons all work identically — the
+  distinction this field draws is narrow and specific to the two mechanisms
+  above, not a second, stripped-down kind of row.
+
 ## Groups: a couple counted once
 
 `PersonGroup`, `Person.groupId`, `usePersonGroupStore`. The feature request

@@ -105,10 +105,15 @@ export function isPersonFieldMissing(person: Person, fieldId: PersonBackfillFiel
     // cadence *is* the opt-in), but a row restored from a backup written by an
     // older version, or synced from another device, can carry a number with the
     // gate still off, and that person has still never been opted in.
+    // A business never gets a reach-out nudge (see docs/arch/people.md,
+    // "Businesses don't get check-ins"), so neither field that only feeds
+    // that nudge is ever "missing" for one — there's nothing to backfill
+    // toward. `askAbout` only colors the reach-out task's title, and a
+    // business can't have one.
     case 'cadence':
-      return !person.nudgeOptIn;
+      return person.kind !== 'business' && !person.nudgeOptIn;
     case 'askAbout':
-      return person.askAbout.trim() === '';
+      return person.kind !== 'business' && person.askAbout.trim() === '';
     case 'location':
       return !person.location || person.location.trim() === '';
   }

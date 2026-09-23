@@ -1276,6 +1276,17 @@ export const DEFAULT_NUDGE_CADENCE_DAYS = 0;
 export interface Person {
   id: string;
   name: string;
+  // 'individual' unless set otherwise. 'business' marks an entry that isn't a
+  // person — an optometrist, a vet, a dry cleaner — so the app stops reading
+  // its name the way it reads a person's: the "@" mention index and the
+  // calendar-title guess in calendarHistory.ts both answer to a name's first
+  // word on the assumption that it's a first name ("@dustin" for "Dustin
+  // Reyes"), which turns a company name like "Eye Q" into "Eye" as though it
+  // were somebody's given name. Business entries skip that fallback. It also
+  // turns the reach-out nudge off outright — see docs/arch/people.md,
+  // "Businesses don't get check-ins" — because a business has no cadence to
+  // keep up with; the editor hides the cadence field for one accordingly.
+  kind: 'individual' | 'business';
   // What you'd actually call them, when that isn't their name. Display falls
   // back to `name`, so leaving it empty is the normal case rather than a gap.
   nickname: string;
