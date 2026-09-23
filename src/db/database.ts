@@ -71,9 +71,10 @@ import { parseRecipeChoices, parseRecipeComponents } from '../utils/recipeCompon
 import { parseEmptySections } from '../utils/recipeSections';
 import { normalizeScale } from '../utils/recipeScale';
 import { normalizeTemplateItem, normalizeTemplateQuestion } from '../utils/templateUtils';
-import { projectRow, REDACTED_SETTING_KEYS, type BackupRow } from '../utils/backup';
+import { isDeviceLocalSetting, projectRow, type BackupRow } from '../utils/backup';
 import {
   SYNC_DELETIONS_TABLE,
+  SYNC_RECEIVED_TABLE,
   SYNC_TRACKED_TABLES,
   TOMBSTONE_RETENTION_DAYS,
   KEY_SEPARATOR,
@@ -2131,6 +2132,10 @@ export const BACKUP_EXCLUDED_TABLES = [
   // triggers; carrying the old ones forward would restore stale deletion
   // history rather than the task list the user actually asked for back.
   'sync_deletions',
+  // Which peer rows arrived when, over which transport (see
+  // SYNC_RECEIVED_TABLE). Relay bookkeeping for this device's sync, about rows
+  // the restore is about to replace; the same reasoning as the tombstones.
+  'sync_received',
   // The barcode cache. Every row is reconstructible from the barcode alone,
   // and reconstructing one costs a single free request the next time that item
   // is scanned — so putting it in a backup would inflate the file with data
@@ -2178,10 +2183,9 @@ export function dbReplaceAllData(tables: Record<string, BackupRow[]>): void {
   // them either. Without this the API key is wiped by restoring, and because
   // it was redacted on the way out there is nothing in the file to put back:
   // the user silently loses a credential they never exported.
-  const preserved = db.getAllSync<BackupRow>(
-    `SELECT * FROM settings WHERE key IN (${REDACTED_SETTING_KEYS.map(() => '?').join(', ')})`,
-    [...REDACTED_SETTING_KEYS]
-  );
+  const preserved = db
+    .getAllSync<BackupRow>('SELECT * FROM settings')
+    .filter(row => isDeviceLocalSetting(row.key));
 
   db.withTransactionSync(() => {
     // Cleared in reverse, children first, for the same reason rows go back in
@@ -2209,6 +2213,10 @@ export function dbReplaceAllData(tables: Record<string, BackupRow[]>): void {
       const allowed = dbTableColumns(table).filter(c => c !== 'updated_at');
 
       for (const raw of rows) {
+        // Skipped rather than only overwritten below: a device that has never
+        // synced has no id of its own to put back, and would otherwise adopt
+        // the backed-up device's.
+        if (table === 'settings' && isDeviceLocalSetting(raw.key)) continue;
         const row = projectRow(raw, allowed);
         const columns = Object.keys(row);
         if (columns.length === 0) continue;
@@ -2268,7 +2276,7 @@ export function isSyncableDatabase(): boolean {
  * backup.ts does — see the note in its header. A column added to the schema
  * and not yet threaded into rowToTask still syncs.
  */
-export function dbSyncChangesSince(since: string | null): SyncChangeSet {
+export function dbSyncChangesSince(since: string | null, transport?: string): SyncChangeSet {
   let result: SyncChangeSet | null = null;
 
   db.withTransactionSync(() => {
@@ -2287,6 +2295,7 @@ export function dbSyncChangesSince(since: string | null): SyncChangeSet {
             `SELECT * FROM "${name}" WHERE updated_at >= ? AND updated_at <= ?`,
             [since, until]
           );
+      if (since !== null) relayReceivedRows(name, since, until, transport, rows);
       // Only some settings rows travel; every other table sends all of them.
       // Filtered here rather than in the trigger so the policy lives in one
       // readable list — see SYNCED_SETTING_KEYS.
@@ -2301,10 +2310,14 @@ export function dbSyncChangesSince(since: string | null): SyncChangeSet {
     const deletionRows = since === null
       ? []
       : db.getAllSync<{ table_name: string; row_key: string; deleted_at: string }>(
+          // A deletion made here goes out by its own time; one applied from a
+          // peer keeps the peer's time, so it is relayed by its arrival
+          // instead, to every transport but the one it came in on.
           `SELECT table_name, row_key, deleted_at FROM ${SYNC_DELETIONS_TABLE}
-            WHERE deleted_at >= ? AND deleted_at <= ?
+            WHERE (received_at IS NULL AND deleted_at >= ? AND deleted_at <= ?)
+               OR (received_at >= ? AND received_at <= ? AND source IS NOT ?)
             ORDER BY deleted_at ASC`,
-          [since, until]
+          [since, until, since, until, transport ?? null]
         );
 
     result = {
@@ -2325,17 +2338,46 @@ export function dbSyncChangesSince(since: string | null): SyncChangeSet {
   return result as unknown as SyncChangeSet;
 }
 
+/**
+ * Adds to `rows` the peer rows that arrived in the window over a transport
+ * other than `transport`, and whose own stamp put them outside it. See
+ * SYNC_RECEIVED_TABLE for why the stamp alone can't find them.
+ */
+function relayReceivedRows(
+  name: string,
+  since: string,
+  until: string,
+  transport: string | undefined,
+  rows: BackupRow[]
+): void {
+  const table = trackedTable(name);
+  if (!table) return;
+  const received = db.getAllSync<{ row_key: string }>(
+    `SELECT row_key FROM ${SYNC_RECEIVED_TABLE}
+      WHERE table_name = ? AND received_at >= ? AND received_at <= ? AND source IS NOT ?`,
+    [name, since, until, transport ?? null]
+  );
+  if (received.length === 0) return;
+  const have = new Set(rows.map(r => rowKeyOf(table, r)));
+  for (const { row_key } of received) {
+    if (have.has(row_key)) continue;
+    const where = keyClause(table, row_key);
+    // Gone since it arrived: its tombstone is what goes out instead.
+    const row = db.getFirstSync<BackupRow>(`SELECT * FROM "${name}" WHERE ${where.sql}`, where.values);
+    if (row) rows.push(row);
+  }
+}
+
 const DEVICE_ID_KEY = 'syncDeviceId';
 const CURSOR_KEY_PREFIX = 'syncCursor:';
 
 /**
  * This device's stable id, minted on first use.
  *
- * Lives in `settings`, which is the one table sync deliberately doesn't carry
- * (see SYNC_TRACKED_TABLES) — so it cannot travel to the other device and make
- * two devices claim the same identity. That the storage happens to guarantee
- * this is luck worth naming: if settings ever start syncing by allowlist, this
- * key and the cursors below must stay off it.
+ * Lives in `settings`, which syncs by allowlist (SYNCED_SETTING_KEYS), and
+ * this key and the cursors below are deliberately off it: two devices sharing
+ * an id would each skip the other's payloads as their own. A backup leaves
+ * them out for the same reason (isDeviceLocalSetting in utils/backup.ts).
  */
 export function dbGetDeviceId(): string {
   const existing = dbGetSetting(DEVICE_ID_KEY);
@@ -2409,7 +2451,7 @@ function rowKeyOf(table: SyncTable, row: BackupRow): string | null {
  * does. A peer on a newer build sending a column this one has never heard of
  * must not fail the whole sync.
  */
-export function dbApplySyncChanges(payload: SyncPayload): ApplyReport {
+export function dbApplySyncChanges(payload: SyncPayload, transport?: string): ApplyReport {
   const report = emptyApplyReport();
 
   db.withTransactionSync(() => {
@@ -2445,20 +2487,56 @@ export function dbApplySyncChanges(payload: SyncPayload): ApplyReport {
           continue;
         }
 
+        // No local row may mean this device deleted it. A peer's copy older
+        // than that deletion is exactly what remoteDeletionWins would have
+        // refused to keep, so it must not come back just because the delete
+        // landed first; inserting it would also fire the undelete trigger and
+        // erase the tombstone, leaving nothing to re-send. A later edit still
+        // brings the row back, as designed.
+        if (!local) {
+          const tombstone = db.getFirstSync<{ deleted_at: string }>(
+            `SELECT deleted_at FROM ${SYNC_DELETIONS_TABLE} WHERE table_name = ? AND row_key = ?`,
+            [name, rowKey]
+          );
+          if (tombstone && remoteDeletionWins(remoteStamp, tombstone.deleted_at)) {
+            report.skipped++;
+            continue;
+          }
+        }
+
         const row = projectRow(raw, allowed);
         const columns = Object.keys(row);
         if (columns.length === 0) {
           report.skipped++;
           continue;
         }
-        const quoted = columns.map(c => `"${c}"`).join(', ');
-        const placeholders = columns.map(() => '?').join(', ');
+        if (local) {
+          // An existing row is updated column by column rather than replaced,
+          // so a column the peer's build doesn't have keeps its local value.
+          // A whole-row REPLACE reset it to the default, which a peer one
+          // version behind did to every newer column on every edit. OR REPLACE
+          // keeps the insert path's behaviour on a clash with another UNIQUE
+          // column, rather than throwing and wedging the whole apply.
+          const assignments = columns.map(c => `"${c}" = ?`).join(', ');
+          db.runSync(
+            `UPDATE OR REPLACE "${name}" SET ${assignments} WHERE ${where.sql}`,
+            [...columns.map(c => row[c]), ...where.values]
+          );
+          report.updated++;
+        } else {
+          const quoted = columns.map(c => `"${c}"`).join(', ');
+          const placeholders = columns.map(() => '?').join(', ');
+          db.runSync(
+            `INSERT OR REPLACE INTO "${name}" (${quoted}) VALUES (${placeholders})`,
+            columns.map(c => row[c])
+          );
+          report.inserted++;
+        }
         db.runSync(
-          `INSERT OR REPLACE INTO "${name}" (${quoted}) VALUES (${placeholders})`,
-          columns.map(c => row[c])
+          `INSERT OR REPLACE INTO ${SYNC_RECEIVED_TABLE} (table_name, row_key, source, received_at)
+           VALUES (?, ?, ?, ${NOW_EXPR})`,
+          [name, rowKey, transport ?? null]
         );
-        if (local) report.updated++;
-        else report.inserted++;
       }
     }
 
@@ -2480,6 +2558,16 @@ export function dbApplySyncChanges(payload: SyncPayload): ApplyReport {
       }
 
       db.runSync(`DELETE FROM "${deletion.table}" WHERE ${where.sql}`, where.values);
+      // The tombstone trigger just stamped this deletion with local now. Put
+      // the peer's time back, or a third device hearing it relayed would take
+      // it as newer than it is and delete an edit made after the real one; the
+      // arrival goes in received_at, which is what relays it.
+      db.runSync(
+        `UPDATE ${SYNC_DELETIONS_TABLE}
+            SET deleted_at = ?, received_at = ${NOW_EXPR}, source = ?
+          WHERE table_name = ? AND row_key = ?`,
+        [deletion.deletedAt, transport ?? null, deletion.table, deletion.rowKey]
+      );
       report.deleted++;
     }
   });
@@ -2496,6 +2584,13 @@ export function dbApplySyncChanges(payload: SyncPayload): ApplyReport {
  * tombstone dropped before every device has seen it resurrects the row.
  */
 export function dbPruneSyncDeletions(olderThanDays = TOMBSTONE_RETENTION_DAYS): number {
+  // Arrival records only matter until every transport has pushed past them,
+  // so the tombstones' window is more than enough for them too.
+  db.runSync(
+    `DELETE FROM ${SYNC_RECEIVED_TABLE}
+      WHERE received_at < strftime('%Y-%m-%dT%H:%M:%fZ', 'now', ?)`,
+    [`-${olderThanDays} days`]
+  );
   const res = db.runSync(
     `DELETE FROM ${SYNC_DELETIONS_TABLE}
       WHERE deleted_at < strftime('%Y-%m-%dT%H:%M:%fZ', 'now', ?)`,
@@ -3331,6 +3426,10 @@ export function dbRenameCategory(id: string, oldName: string, newName: string): 
     db.runSync('UPDATE categories SET name = ? WHERE id = ?', [newName, id]);
     db.runSync('UPDATE tasks SET category = ? WHERE category = ?', [newName, oldName]);
     db.runSync('UPDATE task_groups SET category = ? WHERE category = ?', [newName, oldName]);
+    db.runSync(
+      'UPDATE projects SET default_task_category = ? WHERE default_task_category = ?',
+      [newName, oldName]
+    );
   });
 }
 

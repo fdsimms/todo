@@ -49,6 +49,38 @@ export const BACKUP_FORMAT = 1;
  */
 export const REDACTED_SETTING_KEYS = ['anthropicApiKey'];
 
+/**
+ * Settings naming a calendar, an event or a Reminders list by its EventKit id.
+ * Those ids exist on one device only, so restored onto a new phone they point
+ * at nothing; the same keys syncTracking.ts keeps off the wire for the same
+ * reason. Every reader is inert without its id (the imports also require the
+ * list to have been confirmed), so leaving them out just means picking the
+ * calendar or list again after moving phones.
+ */
+const DEVICE_ID_SETTING_KEYS = [
+  'calendarIds', 'deadlineCalendarId', 'completionCalendarId', 'mealCalendarId', 'calendarHistoryHandled',
+];
+const DEVICE_ID_SETTING_PREFIXES = ['remindersImport', 'groceryImport'];
+
+/**
+ * Settings that belong to this device rather than to the data, so a backup
+ * neither carries them out nor overwrites them on the way back in.
+ *
+ * Beyond the redacted keys and the EventKit ids above, that's the sync
+ * machinery's own identity and cursors. A restore that brought another
+ * device's `syncDeviceId` along made this one skip every payload that device
+ * pushed as its own echo, while the pull cursor advanced past them: a sync
+ * reporting "ok" and dropping all of the other device's changes, for good.
+ */
+export function isDeviceLocalSetting(key: unknown): boolean {
+  const k = String(key);
+  return REDACTED_SETTING_KEYS.includes(k)
+    || k === 'syncDeviceId'
+    || k.startsWith('syncCursor:')
+    || DEVICE_ID_SETTING_KEYS.includes(k)
+    || DEVICE_ID_SETTING_PREFIXES.some(p => k.startsWith(p));
+}
+
 /** A raw SQLite row: column name to primitive. */
 export type BackupRow = Record<string, string | number | null>;
 
@@ -82,7 +114,7 @@ function isCellValue(v: unknown): v is string | number | null {
 
 /** Drops the settings rows that must never leave the device. */
 export function redactSettings(rows: BackupRow[]): BackupRow[] {
-  return rows.filter(row => !REDACTED_SETTING_KEYS.includes(String(row.key)));
+  return rows.filter(row => !isDeviceLocalSetting(row.key));
 }
 
 export function buildBackup(

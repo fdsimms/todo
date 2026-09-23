@@ -30,7 +30,8 @@ import {
   dbGetFoodLogEntries,
 } from '../db/database';
 import { useSettingsStore } from './useSettingsStore';
-import { useCategoryStore, ensureCalendarEventCategory, ensureHealthCategory, ensureGeneratedTaskCategories, ensureGeneratedTaskCategory } from './useCategoryStore';
+import { useCategoryStore, ensureCalendarEventCategory, ensureHealthCategory, ensureGeneratedTaskCategories, ensureGeneratedTaskCategory, renameGeneratedCategorySettings } from './useCategoryStore';
+import { renameInFollowUpDraft, renameInReminderCaptures, renameInSeriesDefaults, renameInTitleRules, renameInViewClauses } from '../utils/categoryRename';
 import { useTemplateStore } from './useTemplateStore';
 import { useTaskGroupStore } from './useTaskGroupStore';
 import { useSavedViewStore } from './useSavedViewStore';
@@ -8426,9 +8427,33 @@ export const useTaskStore = create<TaskStore>((set, get) => ({
     const renamed = useCategoryStore.getState().renameCategory(name, newName);
     if (!renamed) return false;
     const trimmed = newName.trim();
+    // category itself was renamed in SQL by the category store. The two JSON
+    // columns that can also carry a name (a series' shared defaults, a
+    // follow-up's draft) are rewritten here and written back row by row.
+    const jsonRenamed: Task[] = [];
     set(s => ({
-      tasks: s.tasks.map(t => t.category === name ? { ...t, category: trimmed } : t),
+      tasks: s.tasks.map(t => {
+        const seriesDefaults = renameInSeriesDefaults(t.seriesDefaults, name, trimmed);
+        const followUpTaskDraft = renameInFollowUpDraft(t.followUpTaskDraft, name, trimmed);
+        const category = t.category === name ? trimmed : t.category;
+        if (category === t.category && seriesDefaults === t.seriesDefaults && followUpTaskDraft === t.followUpTaskDraft) {
+          return t;
+        }
+        const next = { ...t, category, seriesDefaults, followUpTaskDraft };
+        if (seriesDefaults !== t.seriesDefaults || followUpTaskDraft !== t.followUpTaskDraft) jsonRenamed.push(next);
+        return next;
+      }),
     }));
+    for (const t of jsonRenamed) dbUpdateTask(t);
+    useProjectStore.setState(s => ({
+      projects: s.projects.map(p =>
+        p.defaultTaskCategory === name ? { ...p, defaultTaskCategory: trimmed } : p),
+    }));
+    const views = useSavedViewStore.getState();
+    for (const v of views.views) {
+      const clauses = renameInViewClauses(v.clauses, name, trimmed);
+      if (clauses !== v.clauses) views.updateView(v.id, { clauses });
+    }
     useTaskGroupStore.setState(s => ({
       groups: s.groups.map(g => g.category === name ? { ...g, category: trimmed } : g),
     }));
@@ -8444,11 +8469,15 @@ export const useTaskStore = create<TaskStore>((set, get) => ({
     // The next generated task then landed in a category that no longer
     // existed — which allCategories() promptly resurrects as a phantom
     // section, so the rename appeared to half-undo itself.
+    renameGeneratedCategorySettings(name, trimmed);
     const settings = useSettingsStore.getState();
-    if (settings.mealCookTaskCategory === name) settings.setMealCookTaskCategory(trimmed);
-    if (settings.groceryUseUpTaskCategory === name) settings.setGroceryUseUpTaskCategory(trimmed);
-    if (settings.leftoverUseUpTaskCategory === name) settings.setLeftoverUseUpTaskCategory(trimmed);
     if (settings.calendarEventCategory === name) settings.setCalendarEventCategory(trimmed);
+    if (settings.healthCategory === name) settings.setHealthCategory(trimmed);
+    if (settings.newTaskDefaults.category === name) settings.setNewTaskDefaults({ category: trimmed });
+    const titleRules = renameInTitleRules(settings.titleRules, name, trimmed);
+    if (titleRules !== settings.titleRules) settings.setTitleRules(titleRules);
+    const captures = renameInReminderCaptures(settings.reminderCaptures, name, trimmed);
+    if (captures !== settings.reminderCaptures) settings.setReminderCaptures(captures);
     if (settings.collapsedCategories.includes(name)) {
       settings.setCollapsedCategories(
         settings.collapsedCategories.map(c => (c === name ? trimmed : c)),

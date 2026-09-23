@@ -144,6 +144,25 @@ describe('syncNow', () => {
     expect(runSyncAll).not.toHaveBeenCalled();
   });
 
+  it('runs once when a second call lands while the transports are still being read', async () => {
+    // The foreground hook syncs on mount and again on 'active'; both used to
+    // pass the phase check during the keychain read and run the loop twice.
+    (runSyncAll as jest.Mock).mockResolvedValue(runs(okResult()));
+    withServer();
+
+    const [first, second] = await Promise.all([
+      useSyncStore.getState().syncNow(),
+      useSyncStore.getState().syncNow(),
+    ]);
+
+    expect(runSyncAll).toHaveBeenCalledTimes(1);
+    expect([first, second].filter(r => r === null)).toHaveLength(1);
+
+    // And the claim is released, so the next sync runs.
+    await useSyncStore.getState().syncNow();
+    expect(runSyncAll).toHaveBeenCalledTimes(2);
+  });
+
   it('records the summary and clears any problem on a clean result', async () => {
     (runSyncAll as jest.Mock).mockResolvedValue(runs(okResult({ inserted: 3, updated: 1 })));
     useSyncStore.setState({ enabled: true, problem: 'Sync failed.' });

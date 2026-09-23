@@ -15,6 +15,7 @@ import { useRecipeStore } from '../store/useRecipeStore';
 import { useCategoryStore } from '../store/useCategoryStore';
 import { useTaskGroupStore } from '../store/useTaskGroupStore';
 import { useProjectStore } from '../store/useProjectStore';
+import { useSavedViewStore } from '../store/useSavedViewStore';
 import { useProjectCategoryStore } from '../store/useProjectCategoryStore';
 import { MAX_PROJECT_REVIEW_TASKS } from '../utils/projectReviewTasks';
 import { MAX_PANTRY_CHECK_TASKS } from '../utils/pantryCheckTasks';
@@ -221,6 +222,7 @@ jest.mock('../store/useCategoryStore', () => ({
   // generator ships on, so nobody flips the switch that would otherwise create
   // its category.
   ensureGeneratedTaskCategory: jest.fn(),
+  renameGeneratedCategorySettings: jest.fn(),
   useCategoryStore: {
     getState: jest.fn(() => ({
       categories: [],
@@ -246,7 +248,7 @@ jest.mock('../store/useSettingsStore', () => ({
       // The settings that name a category — renaming or deleting one has to
       // carry them with it (see renameCategory/deleteCategory).
       mealCookTaskCategory: null, groceryUseUpTaskCategory: null, leftoverUseUpTaskCategory: null,
-      calendarEventCategory: null, collapsedCategories: [], titleRules: [],
+      calendarEventCategory: null, healthCategory: null, collapsedCategories: [], titleRules: [], reminderCaptures: [],
       penaltyShieldEnabled: false, penaltyShieldUntil: null, setPenaltyShieldUntil: jest.fn(),
       // Read by offerMealLog, whose whole point is the meal-slot/log-nudge
       // completion tests further down this file — defaulting it off here
@@ -7912,6 +7914,23 @@ function makeTemplateWithItemCategories(id: string, categories: (string | null)[
 }
 
 describe('renameCategory', () => {
+  const getSettingsMock = () =>
+    (jest.requireMock('../store/useSettingsStore') as { useSettingsStore: { getState: jest.Mock } }).useSettingsStore;
+
+  // Every setting a rename can rewrite, since tests earlier in the file leave
+  // narrower settings mocks behind.
+  const settings = () => ({
+    dayResetTime: '00:00',
+    newTaskDefaults: { category: null as string | null },
+    calendarEventCategory: null as string | null, healthCategory: null as string | null,
+    collapsedCategories: [] as string[], titleRules: [], reminderCaptures: [],
+    setCalendarEventCategory: jest.fn(), setHealthCategory: jest.fn(), setNewTaskDefaults: jest.fn(),
+    setTitleRules: jest.fn(), setReminderCaptures: jest.fn(), setCollapsedCategories: jest.fn(),
+  });
+  beforeEach(() => {
+    getSettingsMock().getState.mockReturnValue(settings());
+  });
+
   it('updates the category on every task that had the old name', () => {
     useTaskStore.setState({
       tasks: [
@@ -7969,6 +7988,54 @@ describe('renameCategory', () => {
     });
     useTaskStore.getState().renameCategory('Work', 'Job');
     expect(useTemplateStore.getState().templates[0].items[0].category).toBe('Work');
+  });
+
+  // Each of these kept the old name after a rename and so quietly stopped
+  // filing into anything real.
+  it('carries the rename into series defaults and follow-up drafts, and saves them', () => {
+    const { dbUpdateTask } = jest.requireMock('../db/database') as { dbUpdateTask: jest.Mock };
+    dbUpdateTask.mockClear();
+    useTaskStore.setState({
+      tasks: [
+        makeTask({ id: 't1', category: 'Home', seriesDefaults: { category: 'Work' } }),
+        makeTask({ id: 't2', category: 'Home', followUpTaskDraft: { category: 'Work' } as never }),
+        makeTask({ id: 't3', category: 'Work' }),
+      ],
+    });
+    useTaskStore.getState().renameCategory('Work', 'Job');
+    const byId = new Map(useTaskStore.getState().tasks.map(t => [t.id, t]));
+    expect(byId.get('t1')?.seriesDefaults?.category).toBe('Job');
+    expect(byId.get('t2')?.followUpTaskDraft?.category).toBe('Job');
+    // t3's own column was renamed in SQL by the category store already.
+    expect(dbUpdateTask.mock.calls.map(c => c[0].id).sort()).toEqual(['t1', 't2']);
+  });
+
+  it('carries the rename into project defaults, saved views and the settings that name it', () => {
+    useProjectStore.setState({ projects: [{ id: 'p1', defaultTaskCategory: 'Work' } as never] });
+    const updateView = jest.fn();
+    useSavedViewStore.setState({
+      views: [{ id: 'v1', clauses: [{ kind: 'category', values: ['Work'] }] } as never],
+      updateView,
+    });
+    const s = {
+      ...settings(),
+      healthCategory: 'Work',
+      newTaskDefaults: { category: 'Work' },
+      titleRules: [{ id: 'r', category: 'Work' }],
+      reminderCaptures: [{ id: 'c', filing: { kind: 'category', category: 'Work' } }],
+    };
+    getSettingsMock().getState.mockReturnValue(s);
+
+    useTaskStore.getState().renameCategory('Work', 'Job');
+
+    expect(useProjectStore.getState().projects[0].defaultTaskCategory).toBe('Job');
+    expect(updateView).toHaveBeenCalledWith('v1', { clauses: [{ kind: 'category', values: ['Job'] }] });
+    expect(s.setHealthCategory).toHaveBeenCalledWith('Job');
+    expect(s.setNewTaskDefaults).toHaveBeenCalledWith({ category: 'Job' });
+    expect(s.setTitleRules).toHaveBeenCalledWith([{ id: 'r', category: 'Job' }]);
+    expect(s.setReminderCaptures).toHaveBeenCalledWith([{ id: 'c', filing: { kind: 'category', category: 'Job' } }]);
+    const { renameGeneratedCategorySettings } = jest.requireMock('../store/useCategoryStore') as { renameGeneratedCategorySettings: jest.Mock };
+    expect(renameGeneratedCategorySettings).toHaveBeenCalledWith('Work', 'Job');
   });
 });
 
