@@ -53,8 +53,13 @@ export interface SyncLocal {
   deviceId(): string;
   /** False for the demo database, whose contents are seeded fiction. */
   isSyncable(): boolean;
-  changesSince(cursor: string | null): SyncChangeSet;
-  apply(payload: SyncPayload): ApplyReport;
+  /**
+   * `transport` names who the changes are for, so rows and deletions that
+   * arrived *from* that transport aren't relayed straight back to it.
+   */
+  changesSince(cursor: string | null, transport?: string): SyncChangeSet;
+  /** `transport` is recorded as where the applied rows came from. */
+  apply(payload: SyncPayload, transport?: string): ApplyReport;
   getCursor(key: string): string | null;
   setCursor(key: string, value: string): void;
 }
@@ -119,7 +124,7 @@ export async function runSync(
   let unreadable = 0;
 
   try {
-    const changes = local.changesSince(local.getCursor(pushKey));
+    const changes = local.changesSince(local.getCursor(pushKey), transport.name);
     if (hasChanges(changes)) {
       await transport.push(serializePayload(buildPayload(changes, local.deviceId())));
       pushed = true;
@@ -153,7 +158,7 @@ export async function runSync(
       // would make the sync log report work that never happened.
       if (parsed.payload.deviceId === mine) continue;
 
-      addReport(applied, local.apply(parsed.payload));
+      addReport(applied, local.apply(parsed.payload, transport.name));
     }
 
     // Only after every payload in the batch applied. A throw above leaves the

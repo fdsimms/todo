@@ -97,6 +97,17 @@ describe('redactSettings', () => {
     expect(redactSettings(rows)).toEqual([{ key: 'themeMode', value: 'dark' }]);
   });
 
+  it('drops settings naming a calendar or Reminders list on this device', () => {
+    const rows: BackupRow[] = [
+      { key: 'deadlineCalendarId', value: 'cal-1' },
+      { key: 'remindersImportListId', value: 'list-1' },
+      { key: 'groceryImportEnabled', value: 'true' },
+      { key: 'calendarHistoryHandled', value: '[]' },
+      { key: 'themeMode', value: 'dark' },
+    ];
+    expect(redactSettings(rows)).toEqual([{ key: 'themeMode', value: 'dark' }]);
+  });
+
   it('is a no-op on rows with no key column', () => {
     const rows: BackupRow[] = [{ id: '1' }];
     expect(redactSettings(rows)).toEqual(rows);

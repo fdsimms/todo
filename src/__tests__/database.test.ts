@@ -3806,6 +3806,7 @@ describe('sync change tracking', () => {
 describe('dbApplySyncChanges', () => {
   beforeEach(() => {
     mockRawDb.exec('DELETE FROM sync_deletions');
+    mockRawDb.exec('DELETE FROM sync_received');
   });
 
   const payload = (over: Partial<SyncPayload> = {}): SyncPayload => ({
@@ -3959,6 +3960,45 @@ describe('dbApplySyncChanges', () => {
     expect(report.updated).toBe(1);
     const row = mockRawDb.prepare('SELECT title, notes, priority FROM tasks WHERE id = ?').get('p1');
     expect(row).toEqual({ title: 'Peer title', notes: 'keep me', priority: 3 });
+  });
+
+  // A phone on iCloud and a payload store pulls an iPad's older edit from
+  // iCloud after its last push to the store. The row keeps the iPad's stamp,
+  // which predates the store's cursor, so only the arrival record finds it.
+  it('relays a received row to the other transports but not back to its own', () => {
+    const cursor = dbSyncChangesSince(null).until;
+    dbApplySyncChanges(
+      payload({ tables: { tasks: [peerTaskRow('p1', 'From the iPad', '2020-01-01T00:00:00.000Z')] } }),
+      'cloudkit'
+    );
+
+    const toServer = dbSyncChangesSince(cursor, 'server').tables.tasks.map(r => r.id);
+    const toCloud = dbSyncChangesSince(cursor, 'cloudkit').tables.tasks.map(r => r.id);
+    expect(toServer).toContain('p1');
+    expect(toCloud).not.toContain('p1');
+  });
+
+  it('keeps a relayed deletion at the time it was made, and relays it by arrival', () => {
+    dbInsertTask(makeTask({ id: 'p1' }));
+    stampLocal('p1', '2020-01-01T00:00:00.000Z');
+    const cursor = dbSyncChangesSince(null).until;
+
+    dbApplySyncChanges(payload({
+      deletions: [{ table: 'tasks', rowKey: 'p1', deletedAt: '2020-02-01T00:00:00.000Z' }],
+    }), 'cloudkit');
+
+    const toServer = dbSyncChangesSince(cursor, 'server').deletions;
+    expect(toServer).toEqual([{ table: 'tasks', rowKey: 'p1', deletedAt: '2020-02-01T00:00:00.000Z' }]);
+    expect(dbSyncChangesSince(cursor, 'cloudkit').deletions).toEqual([]);
+  });
+
+  it('still sends a deletion made on this device to every transport', () => {
+    dbInsertTask(makeTask({ id: 'p1' }));
+    const cursor = dbSyncChangesSince(null).until;
+    mockRawDb.prepare('DELETE FROM tasks WHERE id = ?').run('p1');
+
+    expect(dbSyncChangesSince(cursor, 'cloudkit').deletions.map(d => d.rowKey)).toEqual(['p1']);
+    expect(dbSyncChangesSince(cursor, 'server').deletions.map(d => d.rowKey)).toEqual(['p1']);
   });
 
   it('passes an applied deletion on as its own tombstone', () => {

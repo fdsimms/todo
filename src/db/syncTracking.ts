@@ -158,6 +158,10 @@ export const SYNC_EXCLUDED_TABLES = [
   // peer that needs to know a tombstone row was written, only that the row it
   // describes was deleted, and the tombstone already says that.
   'sync_deletions',
+  // When, and over which transport, each applied peer row arrived (see
+  // SYNC_RECEIVED_TABLE). Bookkeeping about this device's own relaying, for
+  // the same reason as the tombstones above: nothing a peer needs to hear.
+  'sync_received',
   // The barcode cache. It holds no user data — only what a GTIN denotes, which
   // is the same answer on every device and for everyone — so there is nothing
   // for two devices to disagree about and nothing a merge would resolve. A
@@ -360,6 +364,19 @@ export const NOW_EXPR = `strftime('%Y-%m-%dT%H:%M:%fZ', 'now')`;
  */
 export const TOMBSTONE_RETENTION_DAYS = 90;
 
+/**
+ * Rows this device received from a peer: when, and over which transport.
+ *
+ * A row applied from a peer keeps the peer's `updated_at`, which is what
+ * last-writer-wins needs, but it also means the row is invisible to every
+ * other transport's push window if that stamp predates the window. A phone on
+ * both iCloud and a payload store that pulled an iPad's older edit from iCloud
+ * never passed it on to the store. This records the arrival separately, so
+ * the push can relay it to the transports it didn't come from without touching
+ * the stamp the merge is decided by.
+ */
+export const SYNC_RECEIVED_TABLE = 'sync_received';
+
 /** `NEW.id`, or `NEW.item_id || '|' || NEW.shop_id` for a composite key. */
 export function rowKeyExpr(table: SyncTable, alias: 'NEW' | 'OLD'): string {
   return table.key
@@ -383,6 +400,24 @@ export function deletionsTableStatements(): string[] {
     )`,
     `CREATE INDEX IF NOT EXISTS idx_${SYNC_DELETIONS_TABLE}_deleted_at
        ON ${SYNC_DELETIONS_TABLE} (deleted_at)`,
+    // A tombstone applied from a peer keeps the peer's deleted_at (what the
+    // merge compares) and records its arrival here, the same split
+    // SYNC_RECEIVED_TABLE makes for rows. NULL on a local deletion. Added by
+    // ALTER for installs whose table predates them; the error on an install
+    // that already has them is swallowed by the caller, like every ALTER here.
+    `ALTER TABLE ${SYNC_DELETIONS_TABLE} ADD COLUMN received_at TEXT`,
+    `ALTER TABLE ${SYNC_DELETIONS_TABLE} ADD COLUMN source TEXT`,
+    `CREATE INDEX IF NOT EXISTS idx_${SYNC_DELETIONS_TABLE}_received_at
+       ON ${SYNC_DELETIONS_TABLE} (received_at)`,
+    `CREATE TABLE IF NOT EXISTS ${SYNC_RECEIVED_TABLE} (
+      table_name TEXT NOT NULL,
+      row_key TEXT NOT NULL,
+      source TEXT,
+      received_at TEXT NOT NULL,
+      PRIMARY KEY (table_name, row_key)
+    )`,
+    `CREATE INDEX IF NOT EXISTS idx_${SYNC_RECEIVED_TABLE}_received_at
+       ON ${SYNC_RECEIVED_TABLE} (received_at)`,
   ];
 }
 

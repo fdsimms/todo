@@ -194,6 +194,15 @@ SQLite either side of an `await`, so running them at once lets B's `apply` land 
 between A's push and A's cursor advance, and A pushes straight back what it was just handed. The
 separate cursors do nothing about that.
 
+**What one transport receives, the other is sent, by arrival rather than by stamp.** An applied
+row keeps the peer's `updated_at`, because that is what last-writer-wins compares, so a stamp older
+than the other transport's push cursor used to hide it from that push for good: a phone that pulled
+an iPad's offline edit from iCloud never passed it to the store. `sync_received` records when and
+over which transport each applied row arrived, and a push also sends what arrived since its cursor
+over any *other* transport. Tombstones make the same split (`received_at`/`source` beside a
+`deleted_at` that keeps the peer's time), which also stopped a relayed deletion being stamped as
+newer than it was and deleting an edit made after it.
+
 **The store is deliberately dumb.** Append an opaque string, read back the ones after a cursor. It
 never parses a payload, so the merge rules stay on the devices where `syncMerge.ts` tests them
 without a network, a schema change is not a deployment, and the machine holding the data cannot
