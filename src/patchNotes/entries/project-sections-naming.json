@@ -1,0 +1,4 @@
+{
+  "message": "A stack created inside a project now consistently reads as a \"section\" throughout that project's screen, instead of switching between \"Stack\" and \"Section\" depending on the project type",
+  "date": "2026-09-23"
+}
