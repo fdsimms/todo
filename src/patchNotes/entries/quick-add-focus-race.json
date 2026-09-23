@@ -1,0 +1,4 @@
+{
+  "message": "Fixed quick add sometimes opening with the keyboard down and the title field unfocused, most often when opened from the \"+\" menu",
+  "date": "2026-09-23"
+}
