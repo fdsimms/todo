@@ -71,7 +71,7 @@ import { parseRecipeChoices, parseRecipeComponents } from '../utils/recipeCompon
 import { parseEmptySections } from '../utils/recipeSections';
 import { normalizeScale } from '../utils/recipeScale';
 import { normalizeTemplateItem, normalizeTemplateQuestion } from '../utils/templateUtils';
-import { projectRow, REDACTED_SETTING_KEYS, type BackupRow } from '../utils/backup';
+import { isDeviceLocalSetting, projectRow, type BackupRow } from '../utils/backup';
 import {
   SYNC_DELETIONS_TABLE,
   SYNC_TRACKED_TABLES,
@@ -2178,10 +2178,9 @@ export function dbReplaceAllData(tables: Record<string, BackupRow[]>): void {
   // them either. Without this the API key is wiped by restoring, and because
   // it was redacted on the way out there is nothing in the file to put back:
   // the user silently loses a credential they never exported.
-  const preserved = db.getAllSync<BackupRow>(
-    `SELECT * FROM settings WHERE key IN (${REDACTED_SETTING_KEYS.map(() => '?').join(', ')})`,
-    [...REDACTED_SETTING_KEYS]
-  );
+  const preserved = db
+    .getAllSync<BackupRow>('SELECT * FROM settings')
+    .filter(row => isDeviceLocalSetting(row.key));
 
   db.withTransactionSync(() => {
     // Cleared in reverse, children first, for the same reason rows go back in
@@ -2209,6 +2208,10 @@ export function dbReplaceAllData(tables: Record<string, BackupRow[]>): void {
       const allowed = dbTableColumns(table).filter(c => c !== 'updated_at');
 
       for (const raw of rows) {
+        // Skipped rather than only overwritten below: a device that has never
+        // synced has no id of its own to put back, and would otherwise adopt
+        // the backed-up device's.
+        if (table === 'settings' && isDeviceLocalSetting(raw.key)) continue;
         const row = projectRow(raw, allowed);
         const columns = Object.keys(row);
         if (columns.length === 0) continue;
@@ -2445,20 +2448,51 @@ export function dbApplySyncChanges(payload: SyncPayload): ApplyReport {
           continue;
         }
 
+        // No local row may mean this device deleted it. A peer's copy older
+        // than that deletion is exactly what remoteDeletionWins would have
+        // refused to keep, so it must not come back just because the delete
+        // landed first; inserting it would also fire the undelete trigger and
+        // erase the tombstone, leaving nothing to re-send. A later edit still
+        // brings the row back, as designed.
+        if (!local) {
+          const tombstone = db.getFirstSync<{ deleted_at: string }>(
+            `SELECT deleted_at FROM ${SYNC_DELETIONS_TABLE} WHERE table_name = ? AND row_key = ?`,
+            [name, rowKey]
+          );
+          if (tombstone && remoteDeletionWins(remoteStamp, tombstone.deleted_at)) {
+            report.skipped++;
+            continue;
+          }
+        }
+
         const row = projectRow(raw, allowed);
         const columns = Object.keys(row);
         if (columns.length === 0) {
           report.skipped++;
           continue;
         }
-        const quoted = columns.map(c => `"${c}"`).join(', ');
-        const placeholders = columns.map(() => '?').join(', ');
-        db.runSync(
-          `INSERT OR REPLACE INTO "${name}" (${quoted}) VALUES (${placeholders})`,
-          columns.map(c => row[c])
-        );
-        if (local) report.updated++;
-        else report.inserted++;
+        if (local) {
+          // An existing row is updated column by column rather than replaced,
+          // so a column the peer's build doesn't have keeps its local value.
+          // A whole-row REPLACE reset it to the default, which a peer one
+          // version behind did to every newer column on every edit. OR REPLACE
+          // keeps the insert path's behaviour on a clash with another UNIQUE
+          // column, rather than throwing and wedging the whole apply.
+          const assignments = columns.map(c => `"${c}" = ?`).join(', ');
+          db.runSync(
+            `UPDATE OR REPLACE "${name}" SET ${assignments} WHERE ${where.sql}`,
+            [...columns.map(c => row[c]), ...where.values]
+          );
+          report.updated++;
+        } else {
+          const quoted = columns.map(c => `"${c}"`).join(', ');
+          const placeholders = columns.map(() => '?').join(', ');
+          db.runSync(
+            `INSERT OR REPLACE INTO "${name}" (${quoted}) VALUES (${placeholders})`,
+            columns.map(c => row[c])
+          );
+          report.inserted++;
+        }
       }
     }
 

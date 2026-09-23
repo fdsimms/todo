@@ -75,6 +75,9 @@ async function configuredTransports(state: { enabled: boolean; serverUrl: string
   return transports;
 }
 
+// See syncNow: claimed synchronously, so two calls can't both reach runSyncAll.
+let syncInFlight = false;
+
 export const useSyncStore = create<SyncState>((set, get) => ({
   initialized: false,
   enabled: false,
@@ -144,45 +147,60 @@ export const useSyncStore = create<SyncState>((set, get) => ({
 
   syncNow: async () => {
     const { enabled, phase, serverUrl } = get();
-    if (phase === 'syncing') return null;
-
-    // No longer gated on `enabled` alone: that flag is iCloud's, and a device
-    // with only a payload store configured still has somewhere to sync to.
-    // `configuredTransports` is what decides, and an empty list is a no-op
-    // rather than a failure.
-    const transports = await configuredTransports({ enabled, serverUrl });
-    if (transports.length === 0) return null;
-
-    set({ phase: 'syncing' });
+    if (phase === 'syncing' || syncInFlight) return null;
+    // Claimed before the first await rather than by `phase`, which is only set
+    // once the transports are known: the keychain read in between left a window
+    // where a foreground return and the mount-time sync both got past the check
+    // and ran runSyncAll twice, interleaved, which is what running the
+    // transports sequentially exists to prevent.
+    syncInFlight = true;
     try {
-      const summary = summarizeRuns(await runSyncAll(transports, databaseSyncLocal()));
-
-      if (summary.ok) {
-        const now = new Date().toISOString();
-        dbSetSetting(LAST_SYNCED_KEY, now);
-        set({
-          lastSyncedAt: now,
-          // A failure on one transport still shows, even though another
-          // succeeded: half a sync is exactly the state worth telling somebody
-          // about, because the device it did not reach is the one they will
-          // wonder about later.
-          problem: summary.problem
-            ?? (summary.unreadable > 0 ? 'Some changes need a newer version of the app.' : null),
-          lastSummary: describeApply(summary.applied),
-        });
-      } else if (summary.problem !== null) {
-        set({ problem: summary.problem });
-      }
-      // Neither ok nor failed means every transport skipped, which is demo
-      // mode. Not a problem and not worth reporting — the user swapped their
-      // data out themselves.
-
-      return summary;
+      return await syncOnce(enabled, serverUrl);
     } finally {
-      set({ phase: 'idle' });
+      syncInFlight = false;
     }
   },
 }));
+
+async function syncOnce(enabled: boolean, serverUrl: string): Promise<SyncSummary | null> {
+  const set = useSyncStore.setState;
+
+  // No longer gated on `enabled` alone: that flag is iCloud's, and a device
+  // with only a payload store configured still has somewhere to sync to.
+  // `configuredTransports` is what decides, and an empty list is a no-op
+  // rather than a failure.
+  const transports = await configuredTransports({ enabled, serverUrl });
+  if (transports.length === 0) return null;
+
+  set({ phase: 'syncing' });
+  try {
+    const summary = summarizeRuns(await runSyncAll(transports, databaseSyncLocal()));
+
+    if (summary.ok) {
+      const now = new Date().toISOString();
+      dbSetSetting(LAST_SYNCED_KEY, now);
+      set({
+        lastSyncedAt: now,
+        // A failure on one transport still shows, even though another
+        // succeeded: half a sync is exactly the state worth telling somebody
+        // about, because the device it did not reach is the one they will
+        // wonder about later.
+        problem: summary.problem
+          ?? (summary.unreadable > 0 ? 'Some changes need a newer version of the app.' : null),
+        lastSummary: describeApply(summary.applied),
+      });
+    } else if (summary.problem !== null) {
+      set({ problem: summary.problem });
+    }
+    // Neither ok nor failed means every transport skipped, which is demo
+    // mode. Not a problem and not worth reporting — the user swapped their
+    // data out themselves.
+
+    return summary;
+  } finally {
+    set({ phase: 'idle' });
+  }
+}
 
 /**
  * Whether the sync feature should appear at all.

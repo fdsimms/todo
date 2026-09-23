@@ -33,7 +33,7 @@ name cannot say is where a component appears, and that is `docs/screen-map.md`.
 - `src/utils/awayShift.ts` — AwayShiftProposal, AwayShiftPlan, buildAwayShiftPlan, awayShiftUpdates, describeAwayShift, hasAnchoredMember
 - `src/utils/backfillSuggest.ts` — SuggestibleBackfillFieldId, SUGGESTIBLE_BACKFILL_FIELDS, isSuggestibleBackfillField, MAX_SUGGESTION_TASKS, MAX_SUGGESTION_EXAMPLES, SUGGESTION_NOTES_MAX_CHARS, SuggestionTask, SuggestionExample, BackfillSuggestion, TitleOf, +4 more
 - `src/utils/backgroundRefresh.ts` — BACKGROUND_REFRESH_TASK, BACKGROUND_REFRESH_INTERVAL_MINUTES, BackgroundRefreshOutcome, runBackgroundRefresh, runBackgroundSync, useBackgroundRefresh
-- `src/utils/backup.ts` — BACKUP_FORMAT, REDACTED_SETTING_KEYS, BackupRow, Backup, ParseResult, redactSettings, buildBackup, serializeBackup, parseBackup, projectRow, +3 more
+- `src/utils/backup.ts` — BACKUP_FORMAT, REDACTED_SETTING_KEYS, isDeviceLocalSetting, BackupRow, Backup, ParseResult, redactSettings, buildBackup, serializeBackup, parseBackup, +4 more
 - `src/utils/backupFile.ts` — writeExportFile, canShare, shareExportFile, shareBackupFile, shareCsvFile, discardBackupFile, pickBackupFile
 - `src/utils/birthdayTasks.ts` — DEFAULT_BIRTHDAY_LEAD_DAYS, DEFAULT_BIRTHDAY_GIFT_LEAD_DAYS, MAX_BIRTHDAY_LEAD_DAYS, clampBirthdayLeadDays, clampBirthdayGiftLeadDays, parseBirthdayLeadDays, parseBirthdayGiftLeadDays, birthdaySourceId, parseBirthdaySource, parseBirthdayGiftSource, +15 more
 - `src/utils/blockerRegistry.ts` — registerTaskSource, resolveBlocker, waitingCountFor

@@ -2201,6 +2201,39 @@ describe('backup and restore', () => {
     dbReplaceAllData({ settings: [{ key: 'themeMode', value: 'dark' }] });
     expect(dbGetSetting('anthropicApiKey')).toBeNull();
   });
+
+  // A restore from another device used to bring that device's sync id along,
+  // after which each skipped the other's payloads as its own echoes while the
+  // pull cursor moved past them: every change from the other device dropped.
+  it('keeps this device\'s sync identity and cursors across a restore', () => {
+    dbSetSetting('syncDeviceId', 'device-A');
+    dbSetSetting('syncCursor:cloudkit:pull', 'a-cursor');
+    dbSetSetting('themeMode', 'dark');
+    const backup = buildBackup(dbExportTables(), { appVersion: '1.0.0', exportedAt: new Date() });
+    const keys = backup.tables.settings.map(r => r.key);
+    expect(keys).not.toContain('syncDeviceId');
+    expect(keys).not.toContain('syncCursor:cloudkit:pull');
+
+    dbSetSetting('syncDeviceId', 'device-B');
+    dbSetSetting('syncCursor:cloudkit:pull', 'b-cursor');
+    dbReplaceAllData({
+      settings: [
+        ...backup.tables.settings,
+        // A file from a build that exported them anyway.
+        { key: 'syncDeviceId', value: 'device-A' },
+        { key: 'syncCursor:cloudkit:pull', value: 'a-cursor' },
+      ],
+    });
+
+    expect(dbGetSetting('syncDeviceId')).toBe('device-B');
+    expect(dbGetSetting('syncCursor:cloudkit:pull')).toBe('b-cursor');
+    expect(dbGetSetting('themeMode')).toBe('dark');
+  });
+
+  it('does not adopt a backed-up sync id on a device that has none', () => {
+    dbReplaceAllData({ settings: [{ key: 'syncDeviceId', value: 'device-A' }] });
+    expect(dbGetSetting('syncDeviceId')).toBeNull();
+  });
 });
 
 // ---------------------------------------------------------------------------
@@ -3883,6 +3916,49 @@ describe('dbApplySyncChanges', () => {
 
     expect(report.deletionsRefused).toBe(1);
     expect(rowOf('p1')?.title).toBe('Still wanted');
+  });
+
+  it('does not resurrect a row this device deleted after the peer last edited it', () => {
+    // B edits offline at t2, A deletes at t3 > t2, A pulls B's edit: the
+    // deletion is newer, so the row stays gone and the tombstone survives to
+    // be re-sent.
+    const remote = peerTaskRow('p1', 'Edited on B', '2026-02-01T00:00:00.000Z');
+    mockRawDb.prepare('INSERT INTO sync_deletions (table_name, row_key, deleted_at) VALUES (?, ?, ?)')
+      .run('tasks', 'p1', '2026-03-01T00:00:00.000Z');
+
+    const report = dbApplySyncChanges(payload({ tables: { tasks: [remote] } }));
+
+    expect(report).toMatchObject({ inserted: 0, skipped: 1 });
+    expect(rowOf('p1')).toBeUndefined();
+    const tomb = mockRawDb.prepare('SELECT deleted_at FROM sync_deletions WHERE row_key = ?').get('p1');
+    expect(tomb).toEqual({ deleted_at: '2026-03-01T00:00:00.000Z' });
+  });
+
+  it('still brings a deleted row back for an edit made after the deletion', () => {
+    const remote = peerTaskRow('p1', 'Edited later', '2026-04-01T00:00:00.000Z');
+    mockRawDb.prepare('INSERT INTO sync_deletions (table_name, row_key, deleted_at) VALUES (?, ?, ?)')
+      .run('tasks', 'p1', '2026-03-01T00:00:00.000Z');
+
+    const report = dbApplySyncChanges(payload({ tables: { tasks: [remote] } }));
+
+    expect(report.inserted).toBe(1);
+    expect(rowOf('p1')?.title).toBe('Edited later');
+  });
+
+  it('keeps local columns a peer on an older build did not send', () => {
+    // A peer one version behind has no idea the newer columns exist, so its
+    // payload simply lacks them. They must keep their local values, not reset.
+    const olderPeer = peerTaskRow('p1', 'Peer title', '2026-06-01T00:00:00.000Z') as Record<string, unknown>;
+    delete olderPeer.notes;
+    delete olderPeer.priority;
+    dbInsertTask(makeTask({ id: 'p1', title: 'Local', notes: 'keep me', priority: 3 }));
+    stampLocal('p1', '2026-01-01T00:00:00.000Z');
+
+    const report = dbApplySyncChanges(payload({ tables: { tasks: [olderPeer as ReturnType<typeof peerTaskRow>] } }));
+
+    expect(report.updated).toBe(1);
+    const row = mockRawDb.prepare('SELECT title, notes, priority FROM tasks WHERE id = ?').get('p1');
+    expect(row).toEqual({ title: 'Peer title', notes: 'keep me', priority: 3 });
   });
 
   it('passes an applied deletion on as its own tombstone', () => {

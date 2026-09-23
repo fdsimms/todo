@@ -39,7 +39,8 @@ import { makeSettingsStyles } from './settingsStyles';
  * failed to read at export time), so a dangling path doesn't linger as a
  * permanently blank image.
  */
-function restoreRecipeImages(backup: Backup): void {
+function restoreRecipeImages(backup: Backup): number {
+  let failed = 0;
   for (const row of backup.tables.recipes ?? []) {
     const id = row.id;
     const path = row.image_path;
@@ -48,11 +49,19 @@ function restoreRecipeImages(backup: Backup): void {
     const basename = recipeImageBasename(path);
     const base64 = basename ? backup.images[basename] : undefined;
     if (basename && base64) {
-      dbSetRecipeImagePath(id, writeRecipeImageFile(basename, base64));
+      // One photo failing to write (a full disk, an odd file name) costs that
+      // photo, not the rest of them, and not the store refresh after this loop.
+      try {
+        dbSetRecipeImagePath(id, writeRecipeImageFile(basename, base64));
+      } catch {
+        dbSetRecipeImagePath(id, null);
+        failed++;
+      }
     } else {
       dbSetRecipeImagePath(id, null);
     }
   }
+  return failed;
 }
 
 /**
@@ -61,11 +70,18 @@ function restoreRecipeImages(backup: Backup): void {
  * rules read, so a task list rebuilt against the *old* day reset would be
  * wrong for a frame.
  */
-function applyBackup(backup: Backup): void {
+function applyBackup(backup: Backup): number {
+  // Only this line can fail with nothing changed: it is one transaction. Past
+  // it the data is already replaced, so the stores are re-read whatever the
+  // photos do. Left holding the old data, their next writes would put
+  // pre-restore rows back over the restored ones.
   dbReplaceAllData(backup.tables);
-  restoreRecipeImages(backup);
-  useTaskStore.getState().initialize();
-  useSettingsStore.getState().initialize();
+  try {
+    return restoreRecipeImages(backup);
+  } finally {
+    useTaskStore.getState().initialize();
+    useSettingsStore.getState().initialize();
+  }
 }
 
 const RETENTION_SEGMENTS: SegmentOption<RetentionDays>[] =
@@ -155,8 +171,11 @@ export function DataResetSettings() {
             style: 'destructive',
             onPress: () => {
               try {
-                applyBackup(backup);
-                Alert.alert('Restored', `Your data now matches the backup: ${summarizeBackup(backup)}.`);
+                const photosLost = applyBackup(backup);
+                const photoNote = photosLost === 0
+                  ? ''
+                  : ` ${photosLost} recipe ${photosLost === 1 ? 'photo' : 'photos'} couldn't be saved and ${photosLost === 1 ? 'was' : 'were'} left off.`;
+                Alert.alert('Restored', `Your data now matches the backup: ${summarizeBackup(backup)}.${photoNote}`);
               } catch (e) {
                 Alert.alert(
                   'Restore failed',
