@@ -10,6 +10,7 @@
 import type { Task } from '../types';
 import {
   creditShieldUntil,
+  uncreditShieldUntil,
   extendShieldUntil,
   penaltyChargeFor,
   penaltyCreditFor,
@@ -306,5 +307,31 @@ describe('creditShieldUntil', () => {
     const after = creditShieldUntil(until, 30, now);
     expect(after).toBe('2026-08-22T19:30:00.000Z');
     expect(new Date(after!) > now).toBe(true);
+  });
+});
+
+// Unticking a credited task gives the minutes back, so tick-then-untick can't
+// shorten a block with the task still undone.
+describe('uncreditShieldUntil', () => {
+  const now = new Date(2026, 0, 10, 9, 0);
+  const creditedAt = new Date(2026, 0, 10, 8, 30).toISOString();
+
+  it('puts the minutes back on a block still running', () => {
+    const until = new Date(2026, 0, 10, 10, 0).toISOString();
+    expect(uncreditShieldUntil(until, 30, creditedAt, now)).toBe(new Date(2026, 0, 10, 10, 30).toISOString());
+  });
+
+  it('restores a block the credit ended, to the latest it could have run to', () => {
+    expect(uncreditShieldUntil(null, 60, creditedAt, now)).toBe(new Date(2026, 0, 10, 9, 30).toISOString());
+  });
+
+  it('leaves it ended when even that has passed', () => {
+    expect(uncreditShieldUntil(null, 20, creditedAt, now)).toBeNull();
+  });
+
+  it('is the inverse of creditShieldUntil on a running block', () => {
+    const until = new Date(2026, 0, 10, 11, 0).toISOString();
+    const credited = creditShieldUntil(until, 45, now)!;
+    expect(uncreditShieldUntil(credited, 45, now.toISOString(), now)).toBe(until);
   });
 });

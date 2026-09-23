@@ -62,6 +62,8 @@ import {
   dbGetAllRecipes,
   dbInsertGroceryItem,
   dbUpdateGroceryItem,
+  dbRepointItemReferences,
+  dbRestoreRepoint,
   dbDeleteGroceryItem,
   dbRepointStoreAliases,
   dbSetStoreAlias,
@@ -2624,6 +2626,16 @@ describe('grocery items', () => {
 
   // Both directions of the cascade: the item that preferred it, and the store
   // links that named it. See dbDeleteItemProduct.
+  it('writes a store link\'s price history, so an undone trip leaves none behind', () => {
+    insertListedGroceryItem(makeGroceryItem({ id: 'g1', name: 'Milk' }));
+    dbInsertGroceryShop(makeShop({ id: 's1', name: 'Safeway' }));
+    const history: ItemShopLink['priceHistory'] = [{ at: '2026-03-01T00:00:00.000Z', minor: 399, quantity: null, productId: null }];
+    dbSetItemShopLink(makeShopLink({ itemId: 'g1', shopId: 's1', priceHistory: history }));
+    expect(dbGetAllItemShopLinks()[0].priceHistory).toEqual(history);
+    dbSetItemShopLink(makeShopLink({ itemId: 'g1', shopId: 's1', priceHistory: [] }));
+    expect(dbGetAllItemShopLinks()[0].priceHistory).toEqual([]);
+  });
+
   it('takes every pointer at a product with it when the product goes', () => {
     insertListedGroceryItem(makeGroceryItem({ id: 'g1', name: 'Bread', preferredProductId: 'p1' }));
     dbInsertGroceryShop(makeShop({ id: 's1', name: 'Safeway' }));
@@ -2769,6 +2781,33 @@ describe('grocery items', () => {
     expect(after.aisle).toBe('Dairy & Eggs');
     expect(after.quantity).toBe('1 gal');
     expect(after.checked).toBe(true);
+  });
+
+  // Only the finish-trip write used to set price_history, so writing back a
+  // "before" row (an undone trip, a merge) left the undone price in it.
+  it('writes the price history with the rest of the row', () => {
+    const item = makeGroceryItem({ id: 'g1', name: 'Milk' });
+    insertListedGroceryItem(item);
+    const history: GroceryItem['priceHistory'] = [{ at: '2026-03-01T00:00:00.000Z', minor: 399, quantity: null, productId: null }];
+    dbUpdateGroceryItem({ ...item, priceHistory: history });
+    expect(dbGetAllGroceryItems()[0].priceHistory).toEqual(history);
+    dbUpdateGroceryItem({ ...item, priceHistory: [] });
+    expect(dbGetAllGroceryItems()[0].priceHistory).toEqual([]);
+  });
+
+  // A manual merge's other half: rows in other stores that named the loser.
+  it('repoints food log entries to a merged item, and puts back only those on undo', () => {
+    mockRawDb.exec('DELETE FROM food_logs');
+    const ins = mockRawDb.prepare(
+      "INSERT INTO food_logs (id, day_key, at_iso, label, item_id, nutrition, created_at) VALUES (?, '2026-03-01', '2026-03-01T12:00:00.000Z', 'x', ?, '{}', '2026-03-01')"
+    );
+    ins.run('f1', 'loser');
+    ins.run('f2', 'winner');
+    const snap = dbRepointItemReferences('loser', 'winner');
+    const items = () => mockRawDb.prepare('SELECT id, item_id FROM food_logs ORDER BY id').all();
+    expect(items()).toEqual([{ id: 'f1', item_id: 'winner' }, { id: 'f2', item_id: 'winner' }]);
+    dbRestoreRepoint(snap);
+    expect(items()).toEqual([{ id: 'f1', item_id: 'loser' }, { id: 'f2', item_id: 'winner' }]);
   });
 
   it('deletes', () => {

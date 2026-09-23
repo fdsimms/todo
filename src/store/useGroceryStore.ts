@@ -6,6 +6,8 @@ import {
   dbUpdateGroceryItem,
   dbDeleteGroceryItem,
   dbRepointStoreAliases,
+  dbRepointItemReferences,
+  dbRestoreRepoint,
   dbFinishGroceryShopping,
   dbClearGroceryList,
   dbGetAllGroceryLists,
@@ -2094,9 +2096,14 @@ export const useGroceryStore = create<GroceryStore>((set, get) => ({
         // reading "serrano pepper" must skip the Serrano peppers already in
         // the trolley rather than adding them again under a second name.
         const existing = catalogItemForKey(key, get().items) ?? undefined;
+        // Asked of the list the recipe is going onto, not of the item's own
+        // columns: `checked` mirrors the home list and `onList` means "on any
+        // list", so with the Airbnb list open an onion ticked at home was
+        // skipped as already in the cart and never reached the Airbnb list.
+        const entry = existing ? entryFor(get().listEntries, existing.id, get().activeListId) : undefined;
 
-        if (existing?.checked) { skippedInCart.push(existing); continue; }
-        if (existing?.onList) {
+        if (existing && entry?.checked) { skippedInCart.push(existing); continue; }
+        if (existing && entry) {
           const merged = mergeOnListRecipeNeed(existing, row);
           if (merged) {
             dbUpdateGroceryItem(merged);
@@ -2327,6 +2334,14 @@ export const useGroceryStore = create<GroceryStore>((set, get) => ({
     const beforeSubs = itemSubs.filter(l => l.itemId === fromId || l.subItemId === fromId);
     const beforeStoreAliases = storeAliases.filter(a => a.itemId === fromId);
     const wasFromIdCartHeld = cartHoldIds.includes(fromId);
+    // Both rows' trolley entries, and the supply tasks that restock the loser.
+    // The cascade below deleted the loser's entries and nothing moved them, so
+    // merging took the item off whichever lists the loser was on; and a supply
+    // task left naming the loser stopped being restocked by buying the item.
+    const beforeListEntries = get().listEntries.filter(e => e.itemId === fromId || e.itemId === intoId);
+    const supplyTaskIds = useTaskStore.getState().tasks
+      .filter(t => t.supplyGroceryItemId === fromId)
+      .map(t => t.id);
     // Same filter `remapIngredientKeyIn` runs internally — capturing it here,
     // before that call, is what lets undo restore these rows exactly rather
     // than remapping `intoItem.nameKey` back to `fromItem.nameKey`, which
@@ -2616,6 +2631,51 @@ export const useGroceryStore = create<GroceryStore>((set, get) => ({
       cartHoldIds: s.cartHoldIds.filter(x => x !== fromId),
       aisleOverrides: remembered ?? s.aisleOverrides,
     }));
+    // The loser's entries move onto the survivor, one per list. Where the
+    // survivor is already on that list the two are one entry: it keeps its own
+    // place and is in the cart if either was.
+    //
+    // A choice group the merge left with one member (see choiceGroup above)
+    // ends on the entries too, which is where a list reads it from.
+    const collapsedGroup =
+      fromItem.choiceGroup && fromItem.choiceGroup === intoItem.choiceGroup && choiceGroup === null
+        ? fromItem.choiceGroup
+        : null;
+    const ungroup = (e: GroceryListEntry): GroceryListEntry =>
+      collapsedGroup !== null && e.choiceGroup === collapsedGroup ? { ...e, choiceGroup: null } : e;
+    const mergedInto = new Set<string | null>();
+    const movedEntries: GroceryListEntry[] = beforeListEntries
+      .filter(e => e.itemId === fromId)
+      .map(e => {
+        const own = beforeListEntries.find(o => o.itemId === intoId && o.listId === e.listId);
+        if (own) mergedInto.add(e.listId);
+        return ungroup(own ? { ...own, checked: own.checked || e.checked } : { ...e, itemId: intoId });
+      });
+    for (const own of beforeListEntries) {
+      if (own.itemId !== intoId || mergedInto.has(own.listId)) continue;
+      const next = ungroup(own);
+      if (next !== own) movedEntries.push(next);
+    }
+    writeMembership({
+      upsert: movedEntries,
+      remove: beforeListEntries.filter(e => e.itemId === fromId).map(e => ({ itemId: e.itemId, listId: e.listId })),
+    });
+    for (const taskId of supplyTaskIds) {
+      useTaskStore.getState().updateTask(taskId, { supplyGroceryItemId: intoId }, { skipPostponeCount: true });
+    }
+    // The rest of what named the loser lives in other stores' tables.
+    const repointed = dbRepointItemReferences(fromId, intoId);
+    // Required lazily: the food log store reaches the Health bridge at import,
+    // and this only runs when one of its rows actually changed.
+    const reloadOtherStores = () => {
+      const { useFoodLogStore } = require('./useFoodLogStore') as typeof import('./useFoodLogStore');
+      const { useSavedMealsStore } = require('./useSavedMealsStore') as typeof import('./useSavedMealsStore');
+      const log = useFoodLogStore.getState();
+      if (log.rangeStart && log.rangeEnd) log.loadRange(log.rangeStart, log.rangeEnd);
+      useSavedMealsStore.getState().initialize();
+    };
+    if (repointed.rows.length > 0) reloadOtherStores();
+
     // After the row is gone, not before — same ordering deleteItems uses.
     // fromId's own "Use up X" task would otherwise keep pointing at a
     // catalog row that no longer exists.
@@ -2689,6 +2749,20 @@ export const useGroceryStore = create<GroceryStore>((set, get) => ({
         // stores rather than the set() above.
         useRecipeStore.getState().restoreRecipes(beforeRecipesTouched);
         reconcileUseUpTask(fromItem);
+
+        // Each row's trolley entries exactly as they stood, the merged ones
+        // taken back off the survivor.
+        writeMembership({
+          remove: movedEntries
+            .filter(m => !beforeListEntries.some(b => b.itemId === m.itemId && b.listId === m.listId))
+            .map(m => ({ itemId: m.itemId, listId: m.listId })),
+          upsert: beforeListEntries,
+        });
+        for (const taskId of supplyTaskIds) {
+          useTaskStore.getState().updateTask(taskId, { supplyGroceryItemId: fromId }, { skipPostponeCount: true });
+        }
+        dbRestoreRepoint(repointed);
+        if (repointed.rows.length > 0) reloadOtherStores();
       },
     });
 
@@ -3132,11 +3206,11 @@ export const useGroceryStore = create<GroceryStore>((set, get) => ({
         undo: () => {
           for (const b of revertRows) dbUpdateGroceryItem(b);
           const revertById = new Map(revertRows.map(b => [b.id, b]));
-          set(s => ({
-            items: s.items
-              .filter(i => !addedIds.includes(i.id))
-              .map(i => revertById.get(i.id) ?? i),
-          }));
+          set(s => ({ items: s.items.map(i => revertById.get(i.id) ?? i) }));
+          // Through deleteItems rather than a bare filter, which took the new
+          // rows out of memory only: they came back on the next launch, with
+          // the products and barcode links the batch attached.
+          if (addedIds.length > 0) get().deleteItems(addedIds);
         },
       });
     }
@@ -4123,6 +4197,22 @@ export const useGroceryStore = create<GroceryStore>((set, get) => ({
     // from the one place that owns them.
     if (deletedIds.size > 0) get().deleteItems([...deletedIds]);
     const parked = before.filter(i => cleared.has(i.id) && !deletedIds.has(i.id));
+    // A kept row's recipe quantity and credit end with the shop they were for,
+    // as they do in removeFromList: left behind, the next plain re-add came
+    // back as "3/4 cup", still credited to a cake from a trip that never
+    // happened. Not for a row still in another trolley, whose recipe need is
+    // still live there.
+    const uncredited = parked
+      .filter(i => !stillListed.has(i.id) && (i.quantityFromRecipe || i.sourceRecipeId !== null || i.sourceRecipeTitle !== null))
+      .map(i => ({
+        ...i,
+        quantity: i.quantityFromRecipe ? null : i.quantity,
+        quantityFromRecipe: false,
+        sourceRecipeId: null,
+        sourceRecipeTitle: null,
+      }));
+    for (const u of uncredited) dbUpdateGroceryItem(u);
+    const uncreditedById = new Map(uncredited.map(u => [u.id, u]));
     // The entries are already gone in SQLite; this mirrors that and recomputes
     // the four columns on each row from what's left, so a row still in another
     // trolley goes on saying so.
@@ -4130,7 +4220,7 @@ export const useGroceryStore = create<GroceryStore>((set, get) => ({
       const listEntries = s.listEntries.filter(e => e.listId !== listId);
       return {
         listEntries,
-        items: withHomeMembership(s.items, listEntries, cleared),
+        items: withHomeMembership(s.items.map(i => uncreditedById.get(i.id) ?? i), listEntries, cleared),
         cartHoldIds: [],
       };
     });

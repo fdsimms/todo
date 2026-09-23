@@ -224,6 +224,30 @@ export function penaltyCreditFor(
  * against a penalty has no business clearing a block somebody's own gate is
  * holding. Shortening this one value is what keeps that true by construction.
  */
+/**
+ * The block an unticked task's credit is taken back from: the inverse of
+ * creditShieldUntil, so ticking a charged task and unticking it can't shorten
+ * a block without the task being done.
+ *
+ * A live block gets the minutes back on its end. One the credit ended outright
+ * (creditShieldUntil returned null) had at most `minutes` left when it was
+ * credited, so it's restored to `creditedAt + minutes`, the latest it could
+ * have run to — unless that has already passed too, in which case there's
+ * nothing left to serve.
+ */
+export function uncreditShieldUntil(
+  until: string | null,
+  minutes: number,
+  creditedAt: string,
+  now: Date,
+): string | null {
+  if (until !== null && new Date(until) > now) {
+    return new Date(new Date(until).getTime() + minutes * 60_000).toISOString();
+  }
+  const latest = new Date(new Date(creditedAt).getTime() + minutes * 60_000);
+  return latest > now ? latest.toISOString() : until;
+}
+
 export function creditShieldUntil(
   until: string | null,
   minutes: number,

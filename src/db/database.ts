@@ -2487,6 +2487,57 @@ function rowKeyOf(table: SyncTable, row: BackupRow): string | null {
  * does. A peer on a newer build sending a column this one has never heard of
  * must not fail the whole sync.
  */
+/** What dbRepointItemReferences changed, for its undo to put back exactly. */
+export interface RepointSnapshot {
+  rows: Array<{ table: string; id: string; column: string; before: BackupRow[string] }>;
+  settings: Array<{ key: string; before: string }>;
+}
+
+/**
+ * Points the references a manual item merge doesn't otherwise reach at the
+ * survivor: food log entries, saved meals and the Reminders grocery links.
+ * mergeItems moves the grocery tables itself; these belong to other stores and
+ * were left naming a deleted row. Reuses the fold's own reference map, so the
+ * two merges can't disagree about what points at an item.
+ */
+export function dbRepointItemReferences(fromId: string, intoId: string): RepointSnapshot {
+  const snapshot: RepointSnapshot = { rows: [], settings: [] };
+  const tables = new Set(['food_logs', 'saved_meals']);
+  db.withTransactionSync(() => {
+    for (const ref of REFERENCES) {
+      if (ref.target !== 'grocery_items' || !tables.has(ref.table)) continue;
+      const rows = ref.match === 'equals'
+        ? db.getAllSync<BackupRow>(`SELECT * FROM "${ref.table}" WHERE "${ref.column}" = ?`, [fromId])
+        : db.getAllSync<BackupRow>(`SELECT * FROM "${ref.table}" WHERE instr("${ref.column}", ?) > 0`, [fromId]);
+      for (const row of rows) {
+        const next = ref.rewrite(row, fromId, intoId);
+        if (!next) continue;
+        snapshot.rows.push({ table: ref.table, id: String(row.id), column: ref.column, before: row[ref.column] });
+        db.runSync(`UPDATE "${ref.table}" SET "${ref.column}" = ? WHERE id = ?`, [next[ref.column], row.id]);
+      }
+    }
+    for (const setting of SETTING_REFERENCES) {
+      if (setting.target !== 'grocery_items') continue;
+      const value = dbGetSetting(setting.key);
+      if (value === null) continue;
+      const next = setting.rewrite(value, fromId, intoId);
+      if (next === null) continue;
+      snapshot.settings.push({ key: setting.key, before: value });
+      dbSetSetting(setting.key, next);
+    }
+  });
+  return snapshot;
+}
+
+export function dbRestoreRepoint(snapshot: RepointSnapshot): void {
+  db.withTransactionSync(() => {
+    for (const r of snapshot.rows) {
+      db.runSync(`UPDATE "${r.table}" SET "${r.column}" = ? WHERE id = ?`, [r.before, r.id]);
+    }
+    for (const s of snapshot.settings) dbSetSetting(s.key, s.before);
+  });
+}
+
 // ─── Natural-key folds ──────────────────────────────────────────────────────
 //
 // Two rows naming the same thing (two "Milk"s added on two devices) are folded
@@ -4153,7 +4204,7 @@ export function dbUpdateGroceryItem(item: GroceryItem): void {
        pantry_check_declined_at=?, pantry_reviewed_at=?, used_up_count=?, spoiled_count=?, last_spoiled_at=?,
        last_price_minor=?, last_priced_at=?, last_price_quantity=?,
        preferred_product_id=?, brand_strict=?, variety_of_key=?, backfill_dismissed_fields=?, nutrition=?,
-       name_from_scan=?
+       name_from_scan=?, price_history=?
      WHERE id=?`,
     [
       item.name, item.nameKey, item.aisle, item.quantity ?? null, item.quantityFromRecipe ? 1 : 0, item.note,
@@ -4172,6 +4223,10 @@ export function dbUpdateGroceryItem(item: GroceryItem): void {
       JSON.stringify(item.backfillDismissedFields),
       serializeFoodNutrition(item.nutrition),
       item.nameFromScan ? 1 : 0,
+      // Written here too, not only by dbFinishGroceryShopping: an undo that
+      // puts back a "before" row could otherwise restore every column except
+      // the history, leaving the undone price in it for good.
+      JSON.stringify(item.priceHistory ?? []),
       item.id,
     ]
   );
@@ -4903,8 +4958,9 @@ export function dbSetItemShopLink(link: ItemShopLink): void {
   db.runSync(
     `INSERT INTO grocery_item_shops
        (item_id, shop_id, purchase_count, last_purchased_at, unavailable_at,
-        last_price_minor, last_priced_at, last_price_quantity, product_id, unavailable_product_ids)
-     VALUES (?,?,?,?,?,?,?,?,?,?)
+        last_price_minor, last_priced_at, last_price_quantity, product_id, unavailable_product_ids,
+        price_history)
+     VALUES (?,?,?,?,?,?,?,?,?,?,?)
      ON CONFLICT(item_id, shop_id)
      DO UPDATE SET purchase_count = excluded.purchase_count,
                    last_purchased_at = excluded.last_purchased_at,
@@ -4913,7 +4969,8 @@ export function dbSetItemShopLink(link: ItemShopLink): void {
                    last_priced_at = excluded.last_priced_at,
                    last_price_quantity = excluded.last_price_quantity,
                    product_id = excluded.product_id,
-                   unavailable_product_ids = excluded.unavailable_product_ids`,
+                   unavailable_product_ids = excluded.unavailable_product_ids,
+                   price_history = excluded.price_history`,
     [
       link.itemId,
       link.shopId,
@@ -4925,6 +4982,7 @@ export function dbSetItemShopLink(link: ItemShopLink): void {
       link.lastPriceQuantity ?? null,
       link.productId ?? null,
       JSON.stringify(link.unavailableProductIds ?? {}),
+      JSON.stringify(link.priceHistory ?? []),
     ]
   );
 }

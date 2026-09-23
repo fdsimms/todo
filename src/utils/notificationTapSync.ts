@@ -6,6 +6,7 @@ import { resetToToday } from '../navigation/navigationRef';
 import { COMPLETE_ACTION_IDENTIFIER, SNOOZE_ACTION_IDENTIFIER, SNOOZE_MINUTES } from './notifications';
 import { useSettingsStore } from '../store/useSettingsStore';
 import { speakAgenda } from './agendaSpeech';
+import { runOrHoldForDemo } from './demoHold';
 
 // Tapping a reminder (or a fired AlarmKit alarm, which launches the app the
 // same way a notification tap does) used to do nothing app-specific — the
@@ -31,8 +32,7 @@ import { speakAgenda } from './agendaSpeech';
 // picked time.
 export function useNotificationTapSync(): void {
   useEffect(() => {
-    const handle = (response: Notifications.NotificationResponse | null) => {
-      if (!response) return;
+    const act = (response: Notifications.NotificationResponse) => {
       const data = response.notification.request.content.data as {
         taskId?: string; dailyAgenda?: boolean; agendaSpoken?: string | null; completionTimer?: boolean;
       } | undefined;
@@ -75,6 +75,12 @@ export function useNotificationTapSync(): void {
         });
       }
       resetToToday();
+    };
+
+    // Held during a demo: a Complete or Snooze names a real task, which the
+    // demo's stores can't find. See demoHold.ts.
+    const handle = (response: Notifications.NotificationResponse | null) => {
+      if (response) runOrHoldForDemo(() => act(response));
     };
 
     Notifications.getLastNotificationResponseAsync().then(handle).catch(() => {});

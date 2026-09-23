@@ -76,6 +76,8 @@ jest.mock('../db/database', () => ({
   dbInsertGroceryItem: jest.fn(),
   dbUpdateGroceryItem: jest.fn(),
   dbDeleteGroceryItem: jest.fn(),
+  dbRepointItemReferences: jest.fn().mockReturnValue({ rows: [], settings: [] }),
+  dbRestoreRepoint: jest.fn(),
   dbFinishGroceryShopping: jest.fn().mockReturnValue([]),
   dbClearGroceryList: jest.fn().mockReturnValue([]),
   dbGetAllGroceryShops: jest.fn().mockReturnValue([]),
@@ -7447,5 +7449,116 @@ describe('a store\'s aisle range', () => {
 
     expect(useGroceryStore.getState().shops[0].aisles).toBeNull();
     expect(dbSetShopAisles).toHaveBeenLastCalledWith(cvs.id, null);
+  });
+});
+
+// ─── Fixes from the grocery store audit ──────────────────────────────────────
+
+describe('grocery store fixes', () => {
+  const AWAY: GroceryList = { id: 'away', name: 'Airbnb', sortOrder: 1, createdAt: '2026-01-01T00:00:00.000Z' };
+  const entryOf = (itemId: string, listId: string | null) =>
+    useGroceryStore.getState().listEntries.find(e => e.itemId === itemId && e.listId === listId) ?? null;
+
+  it('adds a recipe\'s ingredients to the list being shown, whatever the home list says', () => {
+    // Onion ticked at home and garlic on the home list: neither is on the
+    // Airbnb list, so both belong on it.
+    const onion = makeItem({ name: 'Onion', onList: true, checked: true });
+    const garlic = makeItem({ name: 'Garlic', onList: true });
+    seed([onion, garlic], { lists: [AWAY], activeListId: AWAY.id });
+
+    const result = useGroceryStore.getState().addFromPlan([
+      { name: 'onion', quantity: null, aisle: null },
+      { name: 'garlic', quantity: null, aisle: null },
+    ]);
+
+    expect(result.skippedInCart).toHaveLength(0);
+    expect(entryOf(onion.id, AWAY.id)).not.toBeNull();
+    expect(entryOf(garlic.id, AWAY.id)).not.toBeNull();
+  });
+
+  it('undoing a pantry scan batch deletes the rows it created from the database too', () => {
+    seed([]);
+    useGroceryStore.getState().addManyToPantry(['Flour', 'Sugar']);
+    const ids = useGroceryStore.getState().items.map(i => i.id);
+    (dbDeleteGroceryItem as jest.Mock).mockClear();
+
+    useGroceryStore.getState().undoLastAction();
+
+    expect(useGroceryStore.getState().items).toHaveLength(0);
+    for (const id of ids) expect(dbDeleteGroceryItem).toHaveBeenCalledWith(id);
+  });
+
+  it('clearing the list ends a kept row\'s recipe quantity and credit', () => {
+    const butter = makeItem({
+      name: 'Butter', onList: true, purchaseCount: 2,
+      quantity: '3/4 cup', quantityFromRecipe: true, sourceRecipeId: 'cake', sourceRecipeTitle: 'Cake',
+    });
+    seed([butter]);
+    (dbClearGroceryList as jest.Mock).mockReturnValue([butter.id]);
+
+    useGroceryStore.getState().clearList();
+
+    expect(useGroceryStore.getState().items[0]).toMatchObject({
+      quantity: null, quantityFromRecipe: false, sourceRecipeId: null, sourceRecipeTitle: null,
+    });
+  });
+});
+
+describe('mergeItems: what it moves onto the survivor', () => {
+  const AWAY: GroceryList = { id: 'away', name: 'Airbnb', sortOrder: 1, createdAt: '2026-01-01T00:00:00.000Z' };
+  const entryOf = (itemId: string, listId: string | null) =>
+    useGroceryStore.getState().listEntries.find(e => e.itemId === itemId && e.listId === listId) ?? null;
+  const entry = (itemId: string, listId: string | null, checked = false): GroceryListEntry => ({
+    itemId, listId, checked, sortOrder: 1, choiceGroup: null, addedAt: '2026-01-01T00:00:00.000Z',
+  });
+
+  beforeEach(() => {
+    mockTaskState.tasks = [];
+    (mockTaskState.updateTask as jest.Mock).mockClear();
+  });
+
+  it('keeps the merged item on every list the loser was on', () => {
+    const cilantro = makeItem({ name: 'Cilantro' });
+    const coriander = makeItem({ name: 'Coriander' });
+    seed([cilantro, coriander], { lists: [AWAY], listEntries: [entry(cilantro.id, AWAY.id), entry(cilantro.id, null)] });
+
+    useGroceryStore.getState().mergeItems(cilantro.id, coriander.id);
+
+    expect(entryOf(coriander.id, AWAY.id)).not.toBeNull();
+    expect(entryOf(coriander.id, null)).not.toBeNull();
+    expect(useGroceryStore.getState().itemById(coriander.id)!.onList).toBe(true);
+  });
+
+  it('keeps it in the cart when either copy was checked', () => {
+    const cilantro = makeItem({ name: 'Cilantro' });
+    const coriander = makeItem({ name: 'Coriander' });
+    seed([cilantro, coriander], { listEntries: [entry(cilantro.id, null, true), entry(coriander.id, null, false)] });
+
+    useGroceryStore.getState().mergeItems(cilantro.id, coriander.id);
+
+    expect(entryOf(coriander.id, null)?.checked).toBe(true);
+  });
+
+  it('points a supply task at the survivor, so buying it still restocks', () => {
+    const soap = makeItem({ name: 'Dish soap' });
+    const liquid = makeItem({ name: 'Dishwashing liquid' });
+    mockTaskState.tasks = [{ id: 'supply', supplyGroceryItemId: soap.id } as Task];
+    seed([soap, liquid]);
+
+    useGroceryStore.getState().mergeItems(soap.id, liquid.id);
+
+    expect(mockTaskState.updateTask).toHaveBeenCalledWith('supply', { supplyGroceryItemId: liquid.id }, expect.anything());
+  });
+
+  it('puts the list entries back on undo', () => {
+    const cilantro = makeItem({ name: 'Cilantro' });
+    const coriander = makeItem({ name: 'Coriander' });
+    seed([cilantro, coriander], { lists: [AWAY], listEntries: [entry(cilantro.id, AWAY.id)] });
+
+    useGroceryStore.getState().mergeItems(cilantro.id, coriander.id);
+    useGroceryStore.getState().undoLastAction();
+
+    expect(entryOf(cilantro.id, AWAY.id)).not.toBeNull();
+    expect(entryOf(coriander.id, AWAY.id)).toBeNull();
   });
 });

@@ -409,6 +409,20 @@ describe('suggestProjectTasks', () => {
 // ============================================================================
 
 describe('shared Anthropic request handling', () => {
+  // Demo mode keeps the owner's real key in memory, so the request itself is
+  // where it has to stop.
+  it('sends nothing in demo mode', async () => {
+    const { setDemoModeActive } = jest.requireActual('../utils/demoState') as typeof import('../utils/demoState');
+    const fetchSpy = jest.spyOn(global, 'fetch');
+    setDemoModeActive(true);
+    try {
+      await expect(suggestTemplateItems('Weekly reset', [])).rejects.toThrow('demo mode');
+      expect(fetchSpy).not.toHaveBeenCalled();
+    } finally {
+      setDemoModeActive(false);
+    }
+  });
+
   it('sends the feature\'s configured model and no temperature override', async () => {
     // No `temperature` — Opus 5 / Sonnet 5 reject a non-default value, and the
     // tool-forced extraction below doesn't need one for determinism.
