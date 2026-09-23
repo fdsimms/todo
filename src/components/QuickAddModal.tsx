@@ -532,9 +532,11 @@ export function QuickAddModal({
         Animated.timing(sheetOpacity, { toValue: 1, duration: animation.duration.normal, useNativeDriver: true }),
         Animated.timing(backdropOpacity, { toValue: 1, duration: animation.duration.normal, useNativeDriver: true }),
       ]).start();
-      // Focus (and the keyboard's own slide-up) starts alongside the sheet
-      // animation rather than after it, so the keyboard is up sooner.
-      inputRef.current?.focus();
+      // Focus is requested from the SheetModal's `onShow` instead of here —
+      // this effect fires the moment the `visible` prop flips, which can be a
+      // commit or more before the native Modal has actually presented (see
+      // the sibling-Modal sequencing note on SheetModal.tsx), and a `.focus()`
+      // call before then is a silent no-op with nothing left to retry it.
     }
   }, [visible, effectiveContext, initialType, initialTitle]);
 
@@ -1573,6 +1575,14 @@ export function QuickAddModal({
       animationType="none"
       transparent
       onRequestClose={() => dismiss()}
+      // Opening this sheet can be held back a commit or more by SheetModal's
+      // own sibling-Modal sequencing (e.g. right after FabMenu's popup closes)
+      // — see SheetModal.tsx. Focusing off the `visible` prop races that: the
+      // effect below fires the moment `visible` flips, which can be before the
+      // native Modal has actually presented, so the focus call is a silent
+      // no-op with nothing to retry it. `onShow` only fires once iOS confirms
+      // the modal is up, which is the one signal that can't be early.
+      onShow={() => inputRef.current?.focus()}
     >
       <Animated.View style={[StyleSheet.absoluteFill, { opacity: backdropOpacity }]} pointerEvents="none">
         <SafeBlurView
