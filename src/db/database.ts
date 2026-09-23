@@ -3426,6 +3426,10 @@ export function dbRenameCategory(id: string, oldName: string, newName: string): 
     db.runSync('UPDATE categories SET name = ? WHERE id = ?', [newName, id]);
     db.runSync('UPDATE tasks SET category = ? WHERE category = ?', [newName, oldName]);
     db.runSync('UPDATE task_groups SET category = ? WHERE category = ?', [newName, oldName]);
+    db.runSync(
+      'UPDATE projects SET default_task_category = ? WHERE default_task_category = ?',
+      [newName, oldName]
+    );
   });
 }
 

@@ -52,6 +52,7 @@ name cannot say is where a component appears, and that is `docs/screen-map.md`.
 - `src/utils/categoryLabel.ts` — categoryLabel
 - `src/utils/categoryOrder.ts` — moveCategory, alphabeticalCategories, sortCategoriesByTaskCount
 - `src/utils/categoryPicker.ts` — CategoryOption, CategoryFilterResult, optionLabel, filterCategories, CategorySubmit, resolveCategorySubmit
+- `src/utils/categoryRename.ts` — renameInSeriesDefaults, renameInFollowUpDraft, renameInViewClauses, renameInTitleRules, renameInReminderCaptures
 - `src/utils/categorySchedule.ts` — DAY_LABELS, FULL_DAY_NAMES, formatScheduleTime, formatScheduleDays, formatCategorySchedule
 - `src/utils/chain.ts` — ChainCarrier, ChainCompletionCarrier, activeChainStep, nextChainStep, nextChainStepTitle, parseChainItems, ChainPreview, chainPreview, isChainFinish
 - `src/utils/clockTime.ts` — hhmmToDate, logicalDayStart, taskDayStart, overdueDayCount, hhmmMinutes, effectiveWindowEndTime, formatHHMM, clockTimeToken, dateToHHMM
@@ -340,7 +341,7 @@ name cannot say is where a component appears, and that is `docs/screen-map.md`.
 - `src/store/generatedTaskSync.ts` — deleteGeneratedTaskQuietly, ReconcileGeneratedOptions, reconcileGeneratedTask, dropGeneratedTask
 - `src/store/useAppLockStore.ts` — useAppLockStore, isAppLocked
 - `src/store/useCalendarStore.ts` — CALENDAR_WINDOW_DAYS, useCalendarStore, useCalendarSync
-- `src/store/useCategoryStore.ts` — useCategoryStore, CALENDAR_EVENTS_CATEGORY, HEALTH_CATEGORY, ensureCalendarEventCategory, ensureHealthCategory, ensureGeneratedTaskCategory, ensureGeneratedTaskCategories
+- `src/store/useCategoryStore.ts` — useCategoryStore, CALENDAR_EVENTS_CATEGORY, HEALTH_CATEGORY, ensureCalendarEventCategory, ensureHealthCategory, renameGeneratedCategorySettings, ensureGeneratedTaskCategory, ensureGeneratedTaskCategories
 - `src/store/useDemoStore.ts` — useDemoStore
 - `src/store/useEventReminderStore.ts` — useEventReminderStore
 - `src/store/useFocusStore.ts` — useFocusStore
