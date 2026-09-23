@@ -1,5 +1,6 @@
 import { differenceInCalendarDays } from 'date-fns/differenceInCalendarDays';
 import type { Person, Task } from '../types';
+import { getDayStart } from './dateUtils';
 import { generatedSourceOf, liveGeneratedTasksOfKind } from './generatedTasks';
 import type { HistoryEntry } from './personHistory';
 
@@ -51,7 +52,7 @@ export function declinedRecently(
   today: Date
 ): boolean {
   if (!person.reachOutDeclinedAt) return false;
-  const since = differenceInCalendarDays(today, new Date(person.reachOutDeclinedAt));
+  const since = differenceInCalendarDays(today, getDayStart(new Date(person.reachOutDeclinedAt)));
   return since < declineHoldDays(person.cadenceDays);
 }
 
@@ -66,7 +67,7 @@ export function offerDeclinedRecently(
   today: Date
 ): boolean {
   if (!person.reachOutOfferDeclinedAt) return false;
-  const since = differenceInCalendarDays(today, new Date(person.reachOutOfferDeclinedAt));
+  const since = differenceInCalendarDays(today, getDayStart(new Date(person.reachOutOfferDeclinedAt)));
   return since < declineHoldDays(person.cadenceDays);
 }
 
@@ -127,7 +128,7 @@ export function reachOutsHandledRecently(
     if (!personId) continue;
     const stamp = (task.completed && task.completedAt) || (task.archived && task.archivedAt) || null;
     if (!stamp) continue;
-    if (differenceInCalendarDays(today, new Date(stamp)) < holdDays) done.add(personId);
+    if (differenceInCalendarDays(today, getDayStart(new Date(stamp))) < holdDays) done.add(personId);
   }
   return done;
 }
@@ -186,7 +187,10 @@ export function wantedReachOuts(
       if (declinedRecently(person, today)) return false;
       const anchor = lastTogether ?? (person.cadenceSetAt ? new Date(person.cadenceSetAt) : null);
       if (!anchor) return true;
-      return differenceInCalendarDays(today, anchor) >= person.cadenceDays;
+      // The anchor is a raw timestamp and `today` a logical day, so the anchor
+      // is moved onto its logical day too, or a catch-up ticked off before the
+      // reset hour counts from the calendar day after and nudges a day late.
+      return differenceInCalendarDays(today, getDayStart(anchor)) >= person.cadenceDays;
     })
     .sort((a, b) => a.person.sortOrder - b.person.sortOrder)
     .slice(0, Math.max(0, cap))

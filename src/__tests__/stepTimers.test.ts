@@ -154,6 +154,8 @@ describe('formatStepDuration', () => {
     [30, '30s'],
     [60, '1m'],
     [7 * 60, '7m'],
+    [90, '1m 30s'],
+    [3599, '59m 59s'],
     [3600, '1h'],
     [80 * 60, '1h 20m'],
   ])('formats %i seconds as %s', (input, expected) => {

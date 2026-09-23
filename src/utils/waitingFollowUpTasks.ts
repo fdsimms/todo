@@ -1,5 +1,6 @@
 import { differenceInCalendarDays } from 'date-fns/differenceInCalendarDays';
 import type { Person, Task } from '../types';
+import { getDayStart } from './dateUtils';
 import { canWaitOn } from './blocking';
 import { generatedSourceOf, liveGeneratedTasksOfKind } from './generatedTasks';
 import { displayTitleFor } from './visibilityUtils';
@@ -52,7 +53,7 @@ export function waitingFollowUpTitle(
 /** Whether this wait's nudge was swiped away recently enough to still hold. */
 function declinedRecently(task: Pick<Task, 'waitingFollowUpDeclinedAt'>, today: Date): boolean {
   if (!task.waitingFollowUpDeclinedAt) return false;
-  const since = differenceInCalendarDays(today, new Date(task.waitingFollowUpDeclinedAt));
+  const since = differenceInCalendarDays(today, getDayStart(new Date(task.waitingFollowUpDeclinedAt)));
   return since < WAITING_FOLLOW_UP_DECLINE_DAYS;
 }
 
@@ -78,7 +79,7 @@ export function waitingFollowUpsHandledRecently(
     if (!waitingTaskId) continue;
     const stamp = (task.completed && task.completedAt) || (task.archived && task.archivedAt) || null;
     if (!stamp) continue;
-    if (differenceInCalendarDays(today, new Date(stamp)) < holdDays) done.add(waitingTaskId);
+    if (differenceInCalendarDays(today, getDayStart(new Date(stamp))) < holdDays) done.add(waitingTaskId);
   }
   return done;
 }
@@ -123,7 +124,7 @@ export function wantedWaitingFollowUps(
     // the same refusal `hasNoDateSignal`'s callers make about a field that
     // predates the read asking about it.
     if (!task.waitingOnPersonSince) continue;
-    const waitingDays = differenceInCalendarDays(today, new Date(task.waitingOnPersonSince));
+    const waitingDays = differenceInCalendarDays(today, getDayStart(new Date(task.waitingOnPersonSince)));
     if (waitingDays < WAITING_FOLLOW_UP_THRESHOLD_DAYS) continue;
     wants.push({
       taskId: task.id,

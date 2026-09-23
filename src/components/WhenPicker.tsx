@@ -486,7 +486,7 @@ export function WhenPicker({
   // Whether the reach-out-specific offer is the one to show right now, rather
   // than the generic mute — false during the hold window after it was last
   // declined by deferring past it (see offerDeclinedRecently).
-  const reachOutOfferActive = !!reachOutPerson && !offerDeclinedRecently(reachOutPerson, new Date());
+  const reachOutOfferActive = !!reachOutPerson && !offerDeclinedRecently(reachOutPerson, getLogicalToday());
   const showPostponeCheck =
     !!postponeTask &&
     !checkDismissed &&

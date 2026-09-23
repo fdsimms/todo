@@ -3042,12 +3042,25 @@ describe('checkVacationExpiry', () => {
 
   it('does nothing when the end date has not passed yet', () => {
     const setVacationMode = jest.fn();
-    const future = new Date(Date.now() + 60_000).toISOString();
+    // A day, not an instant: every writer stores the return day (the settings
+    // picker at its reset time, a trip's awayEnd at noon).
+    const future = new Date(Date.now() + 86_400_000).toISOString();
     getSettingsMock().getState.mockReturnValue({
       dayResetTime: '00:00', vacationMode: true, vacationEnd: future, setVacationMode,
     });
     useTaskStore.getState().checkVacationExpiry();
     expect(setVacationMode).not.toHaveBeenCalled();
+  });
+
+  it('turns vacation off from the start of the return day, not at its clock time', () => {
+    const setVacationMode = jest.fn();
+    const laterToday = new Date();
+    laterToday.setHours(23, 59, 0, 0);
+    getSettingsMock().getState.mockReturnValue({
+      dayResetTime: '00:00', vacationMode: true, vacationEnd: laterToday.toISOString(), setVacationMode,
+    });
+    useTaskStore.getState().checkVacationExpiry();
+    expect(setVacationMode).toHaveBeenCalledWith(false);
   });
 
   it('turns vacation mode off and forgives streaks once the end date has passed', () => {

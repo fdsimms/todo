@@ -1,5 +1,5 @@
 import { GROCERY_NAME_MAX_LENGTH, GROCERY_QUANTITY_MAX_LENGTH, PREP_MAX_LENGTH } from '../types';
-import { isSizedContainer } from './quantity';
+import { isSizedContainer, UNICODE_FRACTION_CHARS } from './quantity';
 
 /**
  * Everything between raw keystrokes and a catalog row. Pure and store-free so
@@ -83,12 +83,16 @@ const UNIT_ABBREVIATIONS: Record<string, string> = {
   teaspoons: 'tsp',
 };
 
-// "2 lb", "1.5kg", "1/4 cup", "1 1/2 tbsp", "3 x" — a number (whole, decimal,
-// a bare fraction, or a mixed number) optionally glued to a unit. The mixed
-// and bare-fraction alternatives are tried before the plain-decimal one so
-// "1 1/2 cups" isn't cut short at "1" with "1/2 cups" left dangling in front
-// of the unit match.
-const LEADING_QTY = /^(\d+\s+\d+\/\d+|\d+\/\d+|\d+(?:\.\d+)?)\s*([a-z]+)?\.?\s+(.*)$/i;
+// "2 lb", "1.5kg", "1/4 cup", "1 1/2 tbsp", "1½ cups", "3 x" — a number (whole,
+// decimal, a bare fraction, a mixed number, or one written with a Unicode
+// fraction glyph) optionally glued to a unit. The glyph, mixed and
+// bare-fraction alternatives are tried before the plain-decimal one so
+// "1 1/2 cups" or "1 ½ cups" isn't cut short at "1" with the fraction left
+// dangling in front of the unit match.
+const LEADING_QTY = new RegExp(
+  `^(\\d*\\s*[${UNICODE_FRACTION_CHARS}]|\\d+\\s+\\d+\\/\\d+|\\d+\\/\\d+|\\d+(?:\\.\\d+)?)\\s*([a-z]+)?\\.?\\s+(.*)$`,
+  'i',
+);
 
 // "2 14 oz cans black beans", "2 (14.5 oz) jars salsa", "14-ounce can broth"
 // — a container line names both how many containers there are and how big

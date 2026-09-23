@@ -3,8 +3,9 @@ import type { Person, Task } from '../types';
 // waitingFollowUpTitle reaches displayTitleFor in visibilityUtils.ts, which
 // reaches dateUtils.ts's settings-store read — same stub fuzzySearch.test.ts
 // uses to keep expo-sqlite out of this file entirely.
+const settingsState = { dayResetTime: '00:00', vacationMode: false };
 jest.mock('../store/useSettingsStore', () => ({
-  useSettingsStore: { getState: () => ({ dayResetTime: '00:00', vacationMode: false }) },
+  useSettingsStore: { getState: () => settingsState },
 }));
 jest.mock('../store/useCategoryStore', () => ({
   useCategoryStore: { getState: () => ({ categories: [], getCategoryByName: () => null }) },
@@ -137,6 +138,20 @@ describe('wantedWaitingFollowUps', () => {
   it('frees the wait once the person is archived or deleted, same as canWaitOn', () => {
     expect(wantedWaitingFollowUps([waitingTask()], [person({ archived: true })], TODAY)).toEqual([]);
     expect(wantedWaitingFollowUps([waitingTask()], [], TODAY)).toEqual([]);
+  });
+
+  it('counts the wait from the logical day it started, not the calendar day of its stamp', () => {
+    // Marked waiting at 01:30 on Mar 11 with a 02:00 reset: that is still
+    // logical Mar 10, so the threshold is reached N logical days after Mar 10.
+    settingsState.dayResetTime = '02:00';
+    try {
+      const since = new Date(2026, 2, 11, 1, 30);
+      const today = new Date(2026, 2, 10 + WAITING_FOLLOW_UP_THRESHOLD_DAYS, 2, 0);
+      const task = waitingTask({ waitingOnPersonSince: since.toISOString() });
+      expect(wantedWaitingFollowUps([task], [person()], today)).toHaveLength(1);
+    } finally {
+      settingsState.dayResetTime = '00:00';
+    }
   });
 
   it('holds off while the nudge was swiped away recently', () => {

@@ -7722,7 +7722,9 @@ export const useTaskStore = create<TaskStore>((set, get) => ({
   checkVacationExpiry() {
     const { vacationMode, vacationEnd, setVacationMode } = useSettingsStore.getState();
     if (!vacationMode || !vacationEnd) return;
-    if (new Date() < new Date(vacationEnd)) return;
+    // Compared as logical days, not instants: a trip's awayEnd is stored at noon
+    // of the return day, and the return day isn't away from its own reset on.
+    if (getCurrentDayStart() < getTaskDayStart(new Date(vacationEnd))) return;
     get().forgivVacationStreaks();
     setVacationMode(false);
   },

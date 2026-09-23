@@ -13,6 +13,15 @@ import {
 const text = (quantity: string, factor: number) => scaleQuantity(quantity, factor).text;
 
 describe('scaleQuantity', () => {
+  it('scales a whole number spaced apart from a Unicode fraction', () => {
+    expect(scaleQuantity('1 ½ cups', 2).text).toBe('3 cups');
+  });
+
+  it('keeps the space before a parenthesised container size', () => {
+    expect(scaleQuantity('2 (14 oz) cans', 2).text).toBe('4 (14 oz) cans');
+    expect(scaleQuantity('1, medium', 2).text).toBe('2, medium');
+  });
+
   it('scales a bare count', () => {
     expect(text('3', 2)).toBe('6');
     expect(text('12', 0.5)).toBe('6');

@@ -269,6 +269,18 @@ describe('parseNaturalDate', () => {
       expect(d.getDay()).toBe(6);
       expect(d.getDate()).toBe(14);
     });
+
+    it('reads "this weekend" said on a Saturday or Sunday as the one under way', () => {
+      const sat = parseNaturalDate('this weekend', new Date(2026, 1, 28, 10))!;
+      expect([sat.getMonth(), sat.getDate()]).toEqual([1, 28]);
+      const sun = parseNaturalDate('weekend', new Date(2026, 2, 1, 10))!;
+      expect([sun.getMonth(), sun.getDate()]).toEqual([2, 1]);
+    });
+
+    it('still reads "next weekend" said on a Saturday as the following one', () => {
+      const d = parseNaturalDate('next weekend', new Date(2026, 1, 28, 10))!;
+      expect([d.getMonth(), d.getDate()]).toEqual([2, 7]);
+    });
   });
 
   describe('explicit dates', () => {
