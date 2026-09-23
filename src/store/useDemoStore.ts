@@ -1,4 +1,5 @@
 import { create } from 'zustand';
+import { replayHeldForDemo } from '../utils/demoHold';
 import { switchToDemoDatabase, switchToRealDatabase } from '../db/database';
 import { seedDemoData } from '../utils/demoSeed';
 import { setDemoModeActive } from '../utils/demoState';
@@ -100,5 +101,8 @@ export const useDemoStore = create<DemoStore>((set, get) => ({
     // staying armed to write invented rows into the user's real one.
     clearUndoHistories();
     set({ active: false });
+    // Last, against the real stores: the links and notification actions that
+    // arrived during the demo (see demoHold.ts).
+    replayHeldForDemo();
   },
 }));

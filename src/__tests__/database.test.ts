@@ -62,6 +62,8 @@ import {
   dbGetAllRecipes,
   dbInsertGroceryItem,
   dbUpdateGroceryItem,
+  dbRepointItemReferences,
+  dbRestoreRepoint,
   dbDeleteGroceryItem,
   dbRepointStoreAliases,
   dbSetStoreAlias,
@@ -2624,6 +2626,16 @@ describe('grocery items', () => {
 
   // Both directions of the cascade: the item that preferred it, and the store
   // links that named it. See dbDeleteItemProduct.
+  it('writes a store link\'s price history, so an undone trip leaves none behind', () => {
+    insertListedGroceryItem(makeGroceryItem({ id: 'g1', name: 'Milk' }));
+    dbInsertGroceryShop(makeShop({ id: 's1', name: 'Safeway' }));
+    const history: ItemShopLink['priceHistory'] = [{ at: '2026-03-01T00:00:00.000Z', minor: 399, quantity: null, productId: null }];
+    dbSetItemShopLink(makeShopLink({ itemId: 'g1', shopId: 's1', priceHistory: history }));
+    expect(dbGetAllItemShopLinks()[0].priceHistory).toEqual(history);
+    dbSetItemShopLink(makeShopLink({ itemId: 'g1', shopId: 's1', priceHistory: [] }));
+    expect(dbGetAllItemShopLinks()[0].priceHistory).toEqual([]);
+  });
+
   it('takes every pointer at a product with it when the product goes', () => {
     insertListedGroceryItem(makeGroceryItem({ id: 'g1', name: 'Bread', preferredProductId: 'p1' }));
     dbInsertGroceryShop(makeShop({ id: 's1', name: 'Safeway' }));
@@ -2769,6 +2781,33 @@ describe('grocery items', () => {
     expect(after.aisle).toBe('Dairy & Eggs');
     expect(after.quantity).toBe('1 gal');
     expect(after.checked).toBe(true);
+  });
+
+  // Only the finish-trip write used to set price_history, so writing back a
+  // "before" row (an undone trip, a merge) left the undone price in it.
+  it('writes the price history with the rest of the row', () => {
+    const item = makeGroceryItem({ id: 'g1', name: 'Milk' });
+    insertListedGroceryItem(item);
+    const history: GroceryItem['priceHistory'] = [{ at: '2026-03-01T00:00:00.000Z', minor: 399, quantity: null, productId: null }];
+    dbUpdateGroceryItem({ ...item, priceHistory: history });
+    expect(dbGetAllGroceryItems()[0].priceHistory).toEqual(history);
+    dbUpdateGroceryItem({ ...item, priceHistory: [] });
+    expect(dbGetAllGroceryItems()[0].priceHistory).toEqual([]);
+  });
+
+  // A manual merge's other half: rows in other stores that named the loser.
+  it('repoints food log entries to a merged item, and puts back only those on undo', () => {
+    mockRawDb.exec('DELETE FROM food_logs');
+    const ins = mockRawDb.prepare(
+      "INSERT INTO food_logs (id, day_key, at_iso, label, item_id, nutrition, created_at) VALUES (?, '2026-03-01', '2026-03-01T12:00:00.000Z', 'x', ?, '{}', '2026-03-01')"
+    );
+    ins.run('f1', 'loser');
+    ins.run('f2', 'winner');
+    const snap = dbRepointItemReferences('loser', 'winner');
+    const items = () => mockRawDb.prepare('SELECT id, item_id FROM food_logs ORDER BY id').all();
+    expect(items()).toEqual([{ id: 'f1', item_id: 'winner' }, { id: 'f2', item_id: 'winner' }]);
+    dbRestoreRepoint(snap);
+    expect(items()).toEqual([{ id: 'f1', item_id: 'loser' }, { id: 'f2', item_id: 'winner' }]);
   });
 
   it('deletes', () => {
@@ -3999,6 +4038,127 @@ describe('dbApplySyncChanges', () => {
 
     expect(dbSyncChangesSince(cursor, 'cloudkit').deletions.map(d => d.rowKey)).toEqual(['p1']);
     expect(dbSyncChangesSince(cursor, 'server').deletions.map(d => d.rowKey)).toEqual(['p1']);
+  });
+
+  // ─── Two rows naming the same thing ──────────────────────────────────────
+
+  describe('a natural-key clash', () => {
+    beforeEach(() => {
+      for (const t of ['grocery_items', 'grocery_list_items', 'grocery_item_shops',
+        'food_logs', 'categories', 'meal_plan_entries', 'recipes', 'sync_aliases']) {
+        mockRawDb.exec(`DELETE FROM ${t}`);
+      }
+      mockRawDb.exec('DELETE FROM sync_deletions');
+    });
+
+    const insertLocal = (table: string, values: Record<string, unknown>) => {
+      const cols = Object.keys(values);
+      mockRawDb.prepare(`INSERT INTO ${table} (${cols.join(', ')}) VALUES (${cols.map(() => '?').join(', ')})`)
+        .run(...cols.map(c => values[c]));
+    };
+    /**
+     * A full row as a peer would send it: inserted, read back and removed —
+     * so build it before inserting the local row it's meant to clash with.
+     */
+    const peerRow = (table: string, values: Record<string, unknown>, updatedAt: string) => {
+      insertLocal(table, values);
+      const cols = Object.keys(values);
+      const key = 'id' in values ? 'id' : cols[0];
+      const row = mockRawDb.prepare(`SELECT * FROM ${table} WHERE ${key} = ?`).get(values[key]) as Record<string, unknown>;
+      mockRawDb.prepare(`DELETE FROM ${table} WHERE ${key} = ?`).run(values[key]);
+      mockRawDb.exec('DELETE FROM sync_deletions');
+      return { ...row, updated_at: updatedAt } as ReturnType<typeof peerTaskRow>;
+    };
+    const item = (id: string, over: Record<string, unknown> = {}) => ({
+      id, name: 'Milk', name_key: 'milk', created_at: '2026-01-01T00:00:00.000Z', ...over,
+    });
+    const items = () => mockRawDb.prepare('SELECT id, purchase_count, on_list FROM grocery_items ORDER BY id').all();
+    const T1 = '2026-02-01T00:00:00.000Z';
+
+    it('folds the local copy into an incoming one with the smaller id, moving what pointed at it', () => {
+      const incoming = peerRow('grocery_items', item('a-peer', { purchase_count: 2 }), T1);
+      insertLocal('grocery_items', item('b-local', { purchase_count: 7 }));
+      insertLocal('grocery_list_items', { item_id: 'b-local', list_id: '' });
+      insertLocal('grocery_item_shops', { item_id: 'b-local', shop_id: 's1', purchase_count: 4 });
+      insertLocal('food_logs', { id: 'f1', day_key: '2026-03-01', at_iso: '2026-03-01T12:00:00.000Z', label: 'milk', item_id: 'b-local', nutrition: '{}', created_at: '2026-03-01' });
+
+      dbApplySyncChanges(payload({ tables: { grocery_items: [incoming] } }));
+
+      expect(items()).toEqual([{ id: 'a-peer', purchase_count: 7, on_list: 1 }]);
+      expect(mockRawDb.prepare('SELECT item_id FROM grocery_list_items').all()).toEqual([{ item_id: 'a-peer' }]);
+      expect(mockRawDb.prepare('SELECT item_id, purchase_count FROM grocery_item_shops').all())
+        .toEqual([{ item_id: 'a-peer', purchase_count: 4 }]);
+      expect(mockRawDb.prepare('SELECT item_id FROM food_logs').all()).toEqual([{ item_id: 'a-peer' }]);
+      // The loser's deletion is what tells every other device.
+      expect(mockRawDb.prepare("SELECT row_key FROM sync_deletions WHERE table_name = 'grocery_items'").all())
+        .toEqual([{ row_key: 'b-local' }]);
+    });
+
+    it('folds an incoming copy with the larger id into the local one, and redirects what arrives for it later', () => {
+      const incoming = peerRow('grocery_items', item('b-peer', { purchase_count: 9 }), T1);
+      const lateEntry = peerRow('grocery_list_items', { item_id: 'b-peer', list_id: '' }, '2026-02-02T00:00:00.000Z');
+      insertLocal('grocery_items', item('a-local', { purchase_count: 2 }));
+
+      dbApplySyncChanges(payload({ tables: { grocery_items: [incoming] } }));
+      expect(items()).toEqual([{ id: 'a-local', purchase_count: 9, on_list: 0 }]);
+
+      // A list entry the peer wrote for its own copy before it heard of the fold.
+      dbApplySyncChanges(payload({ tables: { grocery_list_items: [lateEntry] } }));
+      expect(mockRawDb.prepare('SELECT item_id FROM grocery_list_items').all()).toEqual([{ item_id: 'a-local' }]);
+    });
+
+    it('gives the same result when the same payload arrives twice', () => {
+      const p = payload({ tables: { grocery_items: [peerRow('grocery_items', item('a-peer', { purchase_count: 2 }), T1)] } });
+      insertLocal('grocery_items', item('b-local', { purchase_count: 7 }));
+      dbApplySyncChanges(p);
+      const first = items();
+      dbApplySyncChanges(p);
+      expect(items()).toEqual(first);
+    });
+
+    it('folds an edit a peer made to the copy this device already folded away', () => {
+      const first = peerRow('grocery_items', item('b-peer', { purchase_count: 3 }), T1);
+      const edited = peerRow('grocery_items', item('b-peer', { purchase_count: 11 }), '2026-03-01T00:00:00.000Z');
+      insertLocal('grocery_items', item('a-local', { purchase_count: 2 }));
+      dbApplySyncChanges(payload({ tables: { grocery_items: [first] } }));
+      dbApplySyncChanges(payload({ tables: { grocery_items: [edited] } }));
+      expect(items()).toEqual([{ id: 'a-local', purchase_count: 11, on_list: 0 }]);
+    });
+
+    it('folds two categories with one name, which nothing refers to by id', () => {
+      const incoming = peerRow('categories', { id: 'b-peer', name: 'Work', sort_order: 4 }, T1);
+      insertLocal('categories', { id: 'c-local', name: 'Work', sort_order: 1 });
+      dbApplySyncChanges(payload({ tables: { categories: [incoming] } }));
+      expect(mockRawDb.prepare('SELECT id FROM categories').all()).toEqual([{ id: 'b-peer' }]);
+    });
+
+    // The home list is list_id '', and a key part that was empty used to read
+    // as no key at all, so every home-list entry a peer sent was skipped.
+    it('applies a home-list entry from a peer', () => {
+      const entry = peerRow('grocery_list_items', { item_id: 'a1', list_id: '' }, T1);
+      const report = dbApplySyncChanges(payload({ tables: { grocery_list_items: [entry] } }));
+      expect(report.inserted).toBe(1);
+      expect(mockRawDb.prepare('SELECT item_id, list_id FROM grocery_list_items').all()).toEqual([{ item_id: 'a1', list_id: '' }]);
+    });
+
+    // A backup taken on an install that somehow held two rows with one name.
+    it('folds duplicates inside a restored backup, and what pointed at the loser follows', () => {
+      dbReplaceAllData({
+        recipes: [
+          { id: 'r1', name: 'Chili', name_key: 'chili', created_at: '2026-01-01', cook_count: 1 },
+          { id: 'r2', name: 'chili', name_key: 'chili', created_at: '2026-01-02', cook_count: 4 },
+        ],
+        meal_plan_entries: [{ id: 'm1', date: '2026-03-01', slot: 'dinner', recipe_id: 'r2', title: 'Chili', created_at: '2026-01-02' }],
+        grocery_items: [item('a1'), item('b2')],
+        grocery_list_items: [
+          { item_id: 'a1', list_id: '', checked: 0 },
+          { item_id: 'b2', list_id: '', checked: 1 },
+        ],
+      });
+      expect(mockRawDb.prepare('SELECT id, cook_count FROM recipes').all()).toEqual([{ id: 'r1', cook_count: 4 }]);
+      expect(mockRawDb.prepare('SELECT recipe_id FROM meal_plan_entries').all()).toEqual([{ recipe_id: 'r1' }]);
+      expect(mockRawDb.prepare('SELECT item_id, checked FROM grocery_list_items').all()).toEqual([{ item_id: 'a1', checked: 0 }]);
+    });
   });
 
   it('passes an applied deletion on as its own tombstone', () => {

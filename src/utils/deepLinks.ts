@@ -1,5 +1,6 @@
 import { useEffect } from 'react';
 import { Linking } from 'react-native';
+import { runOrHoldForDemo } from './demoHold';
 import { useTaskStore } from '../store/useTaskStore';
 import { useRecipeStore } from '../store/useRecipeStore';
 import { useMealPlanStore } from '../store/useMealPlanStore';
@@ -654,10 +655,11 @@ export function openInAppUrl(url: string | null | undefined): boolean {
 // initialize() has run so the SQLite DB exists.
 export function useTaskDeepLinks(): void {
   useEffect(() => {
-    const handle = (url: string | null) => {
+    // Held during a demo: see demoHold.ts.
+    const handle = (url: string | null) => runOrHoldForDemo(() => {
       handleIncomingUrl(url);
       if (url) openInAppUrl(url);
-    };
+    });
     Linking.getInitialURL().then(handle).catch(() => {});
     const sub = Linking.addEventListener('url', ({ url }) => handle(url));
     return () => sub.remove();

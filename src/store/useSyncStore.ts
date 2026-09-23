@@ -78,6 +78,22 @@ async function configuredTransports(state: { enabled: boolean; serverUrl: string
 // See syncNow: claimed synchronously, so two calls can't both reach runSyncAll.
 let syncInFlight = false;
 
+/**
+ * Re-reads every data store from the database after a sync wrote to it.
+ *
+ * A sync writes straight to SQLite, and before this nothing re-read it: the
+ * other device's changes stayed off screen until the next launch, and worse,
+ * the stores save a row by writing their whole in-memory copy back, so the next
+ * local edit of a synced row wrote the stale copy over it with a fresh stamp,
+ * which then won on every device. Injected rather than imported because the
+ * task store fans out to every other store and this one has to stay importable
+ * without them (see App.tsx and backgroundRefresh.ts for the registration).
+ */
+let reloadAfterSync: () => void = () => {};
+export function registerSyncReload(reload: () => void): void {
+  reloadAfterSync = reload;
+}
+
 export const useSyncStore = create<SyncState>((set, get) => ({
   initialized: false,
   enabled: false,
@@ -175,6 +191,12 @@ async function syncOnce(enabled: boolean, serverUrl: string): Promise<SyncSummar
   set({ phase: 'syncing' });
   try {
     const summary = summarizeRuns(await runSyncAll(transports, databaseSyncLocal()));
+
+    // Before the summary is recorded, and whenever anything landed, including
+    // on a run where the other transport then failed: the rows are in the
+    // database either way. Skipped when nothing came in, which is most runs.
+    const a = summary.applied;
+    if (a.inserted + a.updated + a.deleted > 0) reloadAfterSync();
 
     if (summary.ok) {
       const now = new Date().toISOString();

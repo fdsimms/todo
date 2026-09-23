@@ -82,7 +82,7 @@ import * as BackgroundTask from 'expo-background-task';
 import * as TaskManager from 'expo-task-manager';
 import { useTaskStore } from '../store/useTaskStore';
 import { useSettingsStore } from '../store/useSettingsStore';
-import { useSyncStore } from '../store/useSyncStore';
+import { registerSyncReload, useSyncStore } from '../store/useSyncStore';
 import type { SyncSummary } from './syncEngine';
 import { isDemoModeActive } from './demoState';
 import { runStartupSequence, runStartupStep } from './startup';
@@ -200,6 +200,16 @@ export async function runBackgroundSync(): Promise<SyncSummary | null> {
 // no await inside it for iOS to interrupt: that half either completes or never
 // starts. The sync afterwards is the one exception, and it is safe to be cut
 // short for a different reason — see the header's note on cursor advancement.
+// Registered here because this module is where the two ways a sync starts
+// meet: App.tsx imports it at startup for the foreground, and a cold
+// background launch enters through the task below. Same order as AppGate and
+// exitDemoMode: tasks (which fans out to every data store), then settings,
+// since some settings sync too.
+registerSyncReload(() => {
+  useTaskStore.getState().initialize();
+  useSettingsStore.getState().initialize();
+});
+
 TaskManager.defineTask(BACKGROUND_REFRESH_TASK, async () => {
   try {
     const outcome = runBackgroundRefresh();

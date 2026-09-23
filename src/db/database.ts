@@ -72,8 +72,10 @@ import { parseEmptySections } from '../utils/recipeSections';
 import { normalizeScale } from '../utils/recipeScale';
 import { normalizeTemplateItem, normalizeTemplateQuestion } from '../utils/templateUtils';
 import { isDeviceLocalSetting, projectRow, type BackupRow } from '../utils/backup';
+import { foldRows, foldWinner, NATURAL_KEYS, REFERENCES, SETTING_REFERENCES } from '../utils/naturalKeyFold';
 import {
   SYNC_DELETIONS_TABLE,
+  SYNC_ALIASES_TABLE,
   SYNC_RECEIVED_TABLE,
   SYNC_TRACKED_TABLES,
   TOMBSTONE_RETENTION_DAYS,
@@ -2136,6 +2138,9 @@ export const BACKUP_EXCLUDED_TABLES = [
   // SYNC_RECEIVED_TABLE). Relay bookkeeping for this device's sync, about rows
   // the restore is about to replace; the same reasoning as the tombstones.
   'sync_received',
+  // Which id a folded row now lives under (see SYNC_ALIASES_TABLE). About ids
+  // the restore is about to replace; the same reasoning again.
+  'sync_aliases',
   // The barcode cache. Every row is reconstructible from the barcode alone,
   // and reconstructing one costs a single free request the next time that item
   // is scanned — so putting it in a backup would inflate the file with data
@@ -2193,6 +2198,9 @@ export function dbReplaceAllData(tables: Record<string, BackupRow[]>): void {
     for (const table of [...BACKUP_TABLES].reverse()) {
       db.runSync(`DELETE FROM "${table}"`);
     }
+    // The aliases describe ids the restore just replaced wholesale.
+    db.runSync(`DELETE FROM ${SYNC_ALIASES_TABLE}`);
+    const ctx = loadFoldContext();
 
     for (const table of BACKUP_TABLES) {
       const rows = tables[table];
@@ -2217,7 +2225,24 @@ export function dbReplaceAllData(tables: Record<string, BackupRow[]>): void {
         // synced has no id of its own to put back, and would otherwise adopt
         // the backed-up device's.
         if (table === 'settings' && isDeviceLocalSetting(raw.key)) continue;
-        const row = projectRow(raw, allowed);
+        // Two rows in the file naming the same thing (a backup taken on an
+        // install that had one) fold into one, the way sync folds them, rather
+        // than the unique index silently deleting the first along with what
+        // pointed at it. Later tables' references follow through the aliases.
+        const projected = remapReferences(ctx, table, projectRow(raw, allowed));
+        if (absorbAliasedRow(ctx, table, projected)) continue;
+        const placed = foldClashes(ctx, table, projected);
+        if (!placed) continue;
+        let row = placed.row;
+        // A row moved onto a survivor's key by the aliases (the folded copy's
+        // list entry, landing on the survivor's own) folds into what's there.
+        const tracked = trackedTable(table);
+        const key = tracked ? rowKeyOf(tracked, row) : null;
+        if (tracked && key !== null) {
+          const where = keyClause(tracked, key);
+          const existing = db.getFirstSync<BackupRow>(`SELECT * FROM "${table}" WHERE ${where.sql}`, where.values);
+          if (existing) row = foldRows(table, existing, row);
+        }
         const columns = Object.keys(row);
         if (columns.length === 0) continue;
         const quoted = columns.map(c => `"${c}"`).join(', ');
@@ -2227,6 +2252,12 @@ export function dbReplaceAllData(tables: Record<string, BackupRow[]>): void {
           columns.map(c => row[c])
         );
       }
+    }
+
+    // A folded item's list entries were restored after it, so its on-list
+    // columns are worked out again now they're all in.
+    for (const winner of new Set(ctx.aliases.get('grocery_items')?.values() ?? [])) {
+      dbSyncGroceryHomeColumns(winner);
     }
 
     // Put the device-local settings back. After the inserts, so a backup that
@@ -2421,9 +2452,14 @@ function rowKeyOf(table: SyncTable, row: BackupRow): string | null {
   const parts: string[] = [];
   for (const col of table.key) {
     const v = row[col];
-    if (typeof v !== 'string' || v === '') return null;
+    if (typeof v !== 'string') return null;
     parts.push(v);
   }
+  // An empty part is a real value inside a composite key: the home list is
+  // list_id '' (see GroceryList), so refusing it skipped every home-list entry
+  // a peer sent and the shared list never synced. Only a key that is empty as
+  // a whole is no key at all.
+  if (parts.every(p => p === '')) return null;
   return parts.join(KEY_SEPARATOR);
 }
 
@@ -2451,16 +2487,282 @@ function rowKeyOf(table: SyncTable, row: BackupRow): string | null {
  * does. A peer on a newer build sending a column this one has never heard of
  * must not fail the whole sync.
  */
+/** What dbRepointItemReferences changed, for its undo to put back exactly. */
+export interface RepointSnapshot {
+  rows: Array<{ table: string; id: string; column: string; before: BackupRow[string] }>;
+  settings: Array<{ key: string; before: string }>;
+}
+
+/**
+ * Points the references a manual item merge doesn't otherwise reach at the
+ * survivor: food log entries, saved meals and the Reminders grocery links.
+ * mergeItems moves the grocery tables itself; these belong to other stores and
+ * were left naming a deleted row. Reuses the fold's own reference map, so the
+ * two merges can't disagree about what points at an item.
+ */
+export function dbRepointItemReferences(fromId: string, intoId: string): RepointSnapshot {
+  const snapshot: RepointSnapshot = { rows: [], settings: [] };
+  const tables = new Set(['food_logs', 'saved_meals']);
+  db.withTransactionSync(() => {
+    for (const ref of REFERENCES) {
+      if (ref.target !== 'grocery_items' || !tables.has(ref.table)) continue;
+      const rows = ref.match === 'equals'
+        ? db.getAllSync<BackupRow>(`SELECT * FROM "${ref.table}" WHERE "${ref.column}" = ?`, [fromId])
+        : db.getAllSync<BackupRow>(`SELECT * FROM "${ref.table}" WHERE instr("${ref.column}", ?) > 0`, [fromId]);
+      for (const row of rows) {
+        const next = ref.rewrite(row, fromId, intoId);
+        if (!next) continue;
+        snapshot.rows.push({ table: ref.table, id: String(row.id), column: ref.column, before: row[ref.column] });
+        db.runSync(`UPDATE "${ref.table}" SET "${ref.column}" = ? WHERE id = ?`, [next[ref.column], row.id]);
+      }
+    }
+    for (const setting of SETTING_REFERENCES) {
+      if (setting.target !== 'grocery_items') continue;
+      const value = dbGetSetting(setting.key);
+      if (value === null) continue;
+      const next = setting.rewrite(value, fromId, intoId);
+      if (next === null) continue;
+      snapshot.settings.push({ key: setting.key, before: value });
+      dbSetSetting(setting.key, next);
+    }
+  });
+  return snapshot;
+}
+
+export function dbRestoreRepoint(snapshot: RepointSnapshot): void {
+  db.withTransactionSync(() => {
+    for (const r of snapshot.rows) {
+      db.runSync(`UPDATE "${r.table}" SET "${r.column}" = ? WHERE id = ?`, [r.before, r.id]);
+    }
+    for (const s of snapshot.settings) dbSetSetting(s.key, s.before);
+  });
+}
+
+// ─── Natural-key folds ──────────────────────────────────────────────────────
+//
+// Two rows naming the same thing (two "Milk"s added on two devices) are folded
+// into one rather than one silently replacing the other. The rules — which id
+// survives, how two rows combine, what points at a row — live in
+// utils/naturalKeyFold.ts; this is the SQL that carries them out. Every write
+// here leaves updated_at to the triggers, so a fold travels as a change made
+// on this device.
+
+/** The aliases in force during one apply or restore, loaded once. */
+interface FoldContext {
+  aliases: Map<string, Map<string, string>>;
+}
+
+function loadFoldContext(): FoldContext {
+  const aliases = new Map<string, Map<string, string>>();
+  for (const r of db.getAllSync<{ table_name: string; loser_id: string; winner_id: string }>(
+    `SELECT table_name, loser_id, winner_id FROM ${SYNC_ALIASES_TABLE}`
+  )) {
+    if (!aliases.has(r.table_name)) aliases.set(r.table_name, new Map());
+    aliases.get(r.table_name)!.set(r.loser_id, r.winner_id);
+  }
+  return { aliases };
+}
+
+/** Where `id` lives now, following folds of folds. */
+function resolveAlias(ctx: FoldContext, table: string, id: string): string {
+  const map = ctx.aliases.get(table);
+  let cur = id;
+  for (let i = 0; map && i < 16 && map.has(cur); i++) cur = map.get(cur)!;
+  return cur;
+}
+
+function addAlias(ctx: FoldContext, table: string, loser: string, winner: string): void {
+  if (!ctx.aliases.has(table)) ctx.aliases.set(table, new Map());
+  const map = ctx.aliases.get(table)!;
+  map.set(loser, winner);
+  db.runSync(
+    `INSERT OR REPLACE INTO ${SYNC_ALIASES_TABLE} (table_name, loser_id, winner_id, created_at)
+     VALUES (?, ?, ?, ${NOW_EXPR})`,
+    [table, loser, winner]
+  );
+}
+
+/** `row` with every reference to a folded-away row pointed at its survivor. */
+function remapReferences(ctx: FoldContext, table: string, row: BackupRow): BackupRow {
+  let out = row;
+  for (const ref of REFERENCES) {
+    if (ref.table !== table) continue;
+    const map = ctx.aliases.get(ref.target);
+    if (!map) continue;
+    for (const loser of map.keys()) {
+      const next = ref.rewrite(out, loser, resolveAlias(ctx, ref.target, loser));
+      if (next) out = next;
+    }
+  }
+  return out;
+}
+
+/** Local rows other than `row` itself that share one of its natural keys. */
+function naturalKeyClashes(name: string, row: BackupRow): BackupRow[] {
+  const keys = NATURAL_KEYS[name];
+  if (!keys || typeof row.id !== 'string') return [];
+  const found = new Map<string, BackupRow>();
+  for (const key of keys) {
+    const values = key.columns.map(c => row[c]);
+    if (values.some(v => v === undefined)) continue;
+    if (key.ignoreNull && values.some(v => v === null)) continue;
+    const where = key.columns.map(c => `"${c}" IS ?`).join(' AND ');
+    for (const hit of db.getAllSync<BackupRow>(
+      `SELECT * FROM "${name}" WHERE ${where} AND id <> ?`,
+      [...values, row.id]
+    )) {
+      found.set(String(hit.id), hit);
+    }
+  }
+  return [...found.values()];
+}
+
+/** Writes `row`'s columns (never updated_at) over the row at `where`. */
+function updateRowStampNow(name: string, where: { sql: string; values: string[] }, row: BackupRow): void {
+  const columns = Object.keys(row).filter(c => c !== 'updated_at');
+  if (columns.length === 0) return;
+  db.runSync(
+    `UPDATE OR REPLACE "${name}" SET ${columns.map(c => `"${c}" = ?`).join(', ')} WHERE ${where.sql}`,
+    [...columns.map(c => row[c]), ...where.values]
+  );
+}
+
+function insertRowStampNow(name: string, row: BackupRow): void {
+  const columns = Object.keys(row).filter(c => c !== 'updated_at');
+  db.runSync(
+    `INSERT OR REPLACE INTO "${name}" (${columns.map(c => `"${c}"`).join(', ')})
+     VALUES (${columns.map(() => '?').join(', ')})`,
+    columns.map(c => row[c])
+  );
+}
+
+/** Bookkeeping a table keeps derived from others, redone for a row a fold touched. */
+function afterFold(name: string, id: string): void {
+  // The item's on-list columns mirror its home-list entry, which the fold may
+  // just have merged or moved onto it.
+  if (name === 'grocery_items') dbSyncGroceryHomeColumns(id);
+}
+
+/**
+ * Retires `loser` in favour of `winner`: deletes it (the tombstone tells every
+ * peer), remembers where it went, and points everything local at the winner.
+ * The caller has already folded the loser's values into the winner.
+ */
+function foldAway(ctx: FoldContext, name: string, loser: string, winner: string): void {
+  addAlias(ctx, name, loser, winner);
+  db.runSync(`DELETE FROM "${name}" WHERE id = ?`, [loser]);
+  for (const ref of REFERENCES) {
+    if (ref.target !== name) continue;
+    const rows = ref.match === 'equals'
+      ? db.getAllSync<BackupRow>(`SELECT * FROM "${ref.table}" WHERE "${ref.column}" = ?`, [loser])
+      : db.getAllSync<BackupRow>(
+          `SELECT * FROM "${ref.table}" WHERE instr("${ref.column}", ?) > 0`,
+          [loser]
+        );
+    for (const row of rows) {
+      const next = ref.rewrite(row, loser, winner);
+      if (next) repointLocalRow(ctx, ref.table, row, next);
+    }
+  }
+  for (const setting of SETTING_REFERENCES) {
+    if (setting.target !== name) continue;
+    const value = dbGetSetting(setting.key);
+    if (value === null) continue;
+    const next = setting.rewrite(value, loser, winner);
+    if (next !== null) dbSetSetting(setting.key, next);
+  }
+  afterFold(name, winner);
+}
+
+/**
+ * Rewrites one local row after a reference in it moved. A reference that is
+ * part of the row's own key (a list entry is keyed by item and list) moves the
+ * row, and it may land on a row already there — the same entry reached from
+ * both copies — which is folded rather than replaced. A reference that is part
+ * of a natural key (a product is unique per item) may clash the same way.
+ */
+function repointLocalRow(ctx: FoldContext, name: string, before: BackupRow, after: BackupRow): void {
+  const table = trackedTable(name);
+  if (!table) return;
+  const oldKey = rowKeyOf(table, before);
+  const newKey = rowKeyOf(table, after);
+  if (oldKey === null || newKey === null) return;
+
+  if (oldKey !== newKey) {
+    const oldWhere = keyClause(table, oldKey);
+    db.runSync(`DELETE FROM "${name}" WHERE ${oldWhere.sql}`, oldWhere.values);
+    // A substitute pointing at itself is no substitute.
+    if (name === 'grocery_item_subs' && after.item_id === after.sub_item_id) return;
+    const newWhere = keyClause(table, newKey);
+    const existing = db.getFirstSync<BackupRow>(`SELECT * FROM "${name}" WHERE ${newWhere.sql}`, newWhere.values);
+    if (existing) updateRowStampNow(name, newWhere, foldRows(name, existing, after));
+    else insertRowStampNow(name, after);
+    return;
+  }
+
+  const placed = foldClashes(ctx, name, after);
+  if (!placed) return;
+  updateRowStampNow(name, keyClause(table, newKey), placed.row);
+}
+
+/**
+ * Folds `row` against any local row naming the same thing. Returns the row to
+ * write — which may have absorbed others, in which case `folded` says it is a
+ * local change to stamp now — or null when `row` lost and was folded into an
+ * existing row instead, which has already been written.
+ */
+function foldClashes(ctx: FoldContext, name: string, row: BackupRow): { row: BackupRow; folded: boolean } | null {
+  let current = row;
+  let folded = false;
+  for (const other of naturalKeyClashes(name, current)) {
+    const mine = String(current.id);
+    const theirs = String(other.id);
+    if (foldWinner(mine, theirs) === mine) {
+      current = { ...foldRows(name, current, other), id: mine };
+      foldAway(ctx, name, theirs, mine);
+      folded = true;
+    } else {
+      const merged = { ...foldRows(name, other, current), id: theirs };
+      updateRowStampNow(name, { sql: 'id = ?', values: [theirs] }, merged);
+      foldAway(ctx, name, mine, theirs);
+      return null;
+    }
+  }
+  return { row: current, folded };
+}
+
+/**
+ * An incoming row for an id this device already folded away: a peer that
+ * edited the loser before it heard of the fold. Its values fold into the
+ * survivor rather than bringing the loser back. Returns false when `row` isn't
+ * one of those.
+ */
+function absorbAliasedRow(ctx: FoldContext, name: string, row: BackupRow): boolean {
+  if (typeof row.id !== 'string') return false;
+  const winner = resolveAlias(ctx, name, row.id);
+  if (winner === row.id) return false;
+  const local = db.getFirstSync<BackupRow>(`SELECT * FROM "${name}" WHERE id = ?`, [winner]);
+  if (local) {
+    updateRowStampNow(name, { sql: 'id = ?', values: [winner] }, { ...foldRows(name, local, row), id: winner });
+    afterFold(name, winner);
+  }
+  return true;
+}
+
 export function dbApplySyncChanges(payload: SyncPayload, transport?: string): ApplyReport {
   const report = emptyApplyReport();
 
   db.withTransactionSync(() => {
+    const ctx = loadFoldContext();
     for (const [name, rows] of Object.entries(payload.tables)) {
       const table = trackedTable(name);
       if (!table) continue;
       const allowed = dbTableColumns(name);
 
-      for (const raw of rows) {
+      for (const received of rows) {
+        // Pointed at the survivors of any fold first, since that can move the
+        // row's own key (a list entry is keyed by the item it lists).
+        const raw = remapReferences(ctx, name, received);
         const rowKey = rowKeyOf(table, raw);
         const remoteStamp = raw.updated_at;
         if (rowKey === null || typeof remoteStamp !== 'string') {
@@ -2473,6 +2775,10 @@ export function dbApplySyncChanges(payload: SyncPayload, transport?: string): Ap
         // so this side refuses rather than trusting the sender's policy.
         if (name === 'settings' && !isSyncedSettingKey(rowKey)) {
           report.skipped++;
+          continue;
+        }
+        if (absorbAliasedRow(ctx, name, projectRow(raw, allowed))) {
+          report.updated++;
           continue;
         }
 
@@ -2504,12 +2810,28 @@ export function dbApplySyncChanges(payload: SyncPayload, transport?: string): Ap
           }
         }
 
-        const row = projectRow(raw, allowed);
-        const columns = Object.keys(row);
-        if (columns.length === 0) {
+        const projected = projectRow(raw, allowed);
+        if (Object.keys(projected).length === 0) {
           report.skipped++;
           continue;
         }
+        // Another local row naming the same thing: fold rather than let the
+        // unique index delete one of them.
+        const placed = foldClashes(ctx, name, projected);
+        if (!placed) {
+          report.updated++;
+          continue;
+        }
+        if (placed.folded) {
+          if (local) updateRowStampNow(name, where, placed.row);
+          else insertRowStampNow(name, placed.row);
+          afterFold(name, String(placed.row.id));
+          if (local) report.updated++;
+          else report.inserted++;
+          continue;
+        }
+        const row = placed.row;
+        const columns = Object.keys(row);
         if (local) {
           // An existing row is updated column by column rather than replaced,
           // so a column the peer's build doesn't have keeps its local value.
@@ -2585,7 +2907,13 @@ export function dbApplySyncChanges(payload: SyncPayload, transport?: string): Ap
  */
 export function dbPruneSyncDeletions(olderThanDays = TOMBSTONE_RETENTION_DAYS): number {
   // Arrival records only matter until every transport has pushed past them,
-  // so the tombstones' window is more than enough for them too.
+  // and an alias only until every peer has stopped sending rows written before
+  // the fold, so the tombstones' window is more than enough for both.
+  db.runSync(
+    `DELETE FROM ${SYNC_ALIASES_TABLE}
+      WHERE created_at < strftime('%Y-%m-%dT%H:%M:%fZ', 'now', ?)`,
+    [`-${olderThanDays} days`]
+  );
   db.runSync(
     `DELETE FROM ${SYNC_RECEIVED_TABLE}
       WHERE received_at < strftime('%Y-%m-%dT%H:%M:%fZ', 'now', ?)`,
@@ -3876,7 +4204,7 @@ export function dbUpdateGroceryItem(item: GroceryItem): void {
        pantry_check_declined_at=?, pantry_reviewed_at=?, used_up_count=?, spoiled_count=?, last_spoiled_at=?,
        last_price_minor=?, last_priced_at=?, last_price_quantity=?,
        preferred_product_id=?, brand_strict=?, variety_of_key=?, backfill_dismissed_fields=?, nutrition=?,
-       name_from_scan=?
+       name_from_scan=?, price_history=?
      WHERE id=?`,
     [
       item.name, item.nameKey, item.aisle, item.quantity ?? null, item.quantityFromRecipe ? 1 : 0, item.note,
@@ -3895,6 +4223,10 @@ export function dbUpdateGroceryItem(item: GroceryItem): void {
       JSON.stringify(item.backfillDismissedFields),
       serializeFoodNutrition(item.nutrition),
       item.nameFromScan ? 1 : 0,
+      // Written here too, not only by dbFinishGroceryShopping: an undo that
+      // puts back a "before" row could otherwise restore every column except
+      // the history, leaving the undone price in it for good.
+      JSON.stringify(item.priceHistory ?? []),
       item.id,
     ]
   );
@@ -4626,8 +4958,9 @@ export function dbSetItemShopLink(link: ItemShopLink): void {
   db.runSync(
     `INSERT INTO grocery_item_shops
        (item_id, shop_id, purchase_count, last_purchased_at, unavailable_at,
-        last_price_minor, last_priced_at, last_price_quantity, product_id, unavailable_product_ids)
-     VALUES (?,?,?,?,?,?,?,?,?,?)
+        last_price_minor, last_priced_at, last_price_quantity, product_id, unavailable_product_ids,
+        price_history)
+     VALUES (?,?,?,?,?,?,?,?,?,?,?)
      ON CONFLICT(item_id, shop_id)
      DO UPDATE SET purchase_count = excluded.purchase_count,
                    last_purchased_at = excluded.last_purchased_at,
@@ -4636,7 +4969,8 @@ export function dbSetItemShopLink(link: ItemShopLink): void {
                    last_priced_at = excluded.last_priced_at,
                    last_price_quantity = excluded.last_price_quantity,
                    product_id = excluded.product_id,
-                   unavailable_product_ids = excluded.unavailable_product_ids`,
+                   unavailable_product_ids = excluded.unavailable_product_ids,
+                   price_history = excluded.price_history`,
     [
       link.itemId,
       link.shopId,
@@ -4648,6 +4982,7 @@ export function dbSetItemShopLink(link: ItemShopLink): void {
       link.lastPriceQuantity ?? null,
       link.productId ?? null,
       JSON.stringify(link.unavailableProductIds ?? {}),
+      JSON.stringify(link.priceHistory ?? []),
     ]
   );
 }

@@ -15783,6 +15783,18 @@ describe('sweepTaskPenalties', () => {
     expect(setShieldUntil).toHaveBeenCalledTimes(firstCallCount);
   });
 
+  it('gives the credit back to the block when the completion is unticked', () => {
+    useTaskStore.setState({ tasks: [walk()] });
+    useTaskStore.getState().sweepTaskPenalties();
+    expect(new Date(shieldUntil!)).toEqual(new Date(2026, 0, 10, 11, 0, 0));
+    useTaskStore.getState().completeTask('walk');
+    const credited = shieldUntil;
+    useTaskStore.getState().uncompleteTask('walk');
+    expect(shieldUntil).not.toEqual(credited);
+    expect(new Date(shieldUntil!)).toEqual(new Date(2026, 0, 10, 11, 0, 0));
+    expect(get().penaltyCreditedAt).toBeNull();
+  });
+
   it('charges nothing for a task that was done in time', () => {
     useTaskStore.setState({ tasks: [walk({ completed: true })] });
     useTaskStore.getState().sweepTaskPenalties();
@@ -16082,5 +16094,148 @@ describe('addCompletedTask', () => {
     const stored = useTaskStore.getState().tasks.find(t => t.id === task.id)!;
     expect(stored.parentId).toBeNull();
     expect(stored.recurrenceType).toBe('none');
+  });
+});
+
+// ─── Fixes from the completion-path audit ────────────────────────────────────
+
+describe('completion-path fixes', () => {
+  const notifications = jest.requireMock('../utils/notifications') as {
+    cancelQuotaNudges: jest.Mock; scheduleQuotaNudges: jest.Mock;
+  };
+  const get = (id: string) => useTaskStore.getState().tasks.find(t => t.id === id)!;
+
+  beforeEach(() => {
+    jest.useFakeTimers();
+    jest.setSystemTime(new Date(2025, 5, 10, 10, 0, 0));
+    notifications.cancelQuotaNudges.mockClear();
+    (deleteCalendarEvent as jest.Mock).mockClear();
+    useMedicationStore.setState({ logs: [], initialized: false });
+  });
+  afterEach(() => jest.useRealTimers());
+
+  it('unticking a daily-target dose removes only the dose that completion logged', () => {
+    const dose = { name: 'Ibuprofen', amount: 200, unit: 'mg', taskId: 'm1' };
+    useMedicationStore.getState().addLog({ ...dose, at: new Date(2025, 5, 10, 8) });
+    useMedicationStore.getState().addLog({ ...dose, at: new Date(2025, 5, 10, 9) });
+    useTaskStore.setState({
+      tasks: [makeTask({
+        id: 'm1', targetCount: 3, progressCount: 2, recurrenceType: 'daily',
+        dueDate: new Date(2025, 5, 10, 12).toISOString(),
+        medicationName: 'Ibuprofen', medicationAmount: 200, medicationUnit: 'mg',
+      })],
+    });
+    useTaskStore.getState().completeTask('m1');
+    expect(useMedicationStore.getState().logs).toHaveLength(3);
+    useTaskStore.getState().uncompleteTask('m1');
+    expect(useMedicationStore.getState().logs).toHaveLength(2);
+  });
+
+  it('skipping a month-end task through February comes back to the 31st', () => {
+    jest.setSystemTime(new Date(2025, 0, 20, 10));
+    useTaskStore.setState({
+      tasks: [makeTask({
+        id: 'rent', recurrenceType: 'monthly', recurrenceAnchorDay: 31,
+        dueDate: new Date(2025, 0, 31, 12).toISOString(),
+      })],
+    });
+    useTaskStore.getState().skipNextRecurrence('rent');
+    expect(new Date(get('rent').dueDate!).getDate()).toBe(28);
+    useTaskStore.getState().skipNextRecurrence('rent');
+    expect(new Date(get('rent').dueDate!).getDate()).toBe(31);
+  });
+
+  it('skipping moves a relative deadline with the date', () => {
+    useTaskStore.setState({
+      tasks: [makeTask({
+        id: 'w', recurrenceType: 'weekly', recurrenceDays: [2],
+        dueDate: new Date(2025, 5, 10, 12).toISOString(),
+        deadline: new Date(2025, 5, 8, 12).toISOString(), deadlineOffsetDays: 2,
+      })],
+    });
+    const gapOf = (t: Task) => Math.round((+new Date(t.deadline!) - +new Date(t.dueDate!)) / 86_400_000);
+    const before = gapOf(get('w'));
+    useTaskStore.getState().skipNextRecurrence('w');
+    expect(new Date(get('w').dueDate!).getDate()).toBe(17);
+    expect(gapOf(get('w'))).toBe(before);
+  });
+
+  it('a daily target that fell short keeps its reminder firing and runs its repeat count down', () => {
+    useTaskStore.setState({
+      tasks: [makeTask({
+        id: 'q', targetCount: 8, progressCount: 3, recurrenceType: 'daily', recurrenceCount: 5,
+        dueDate: new Date(2025, 5, 9, 12).toISOString(),
+        reminderTime: new Date(2025, 5, 9, 9, 0).toISOString(),
+      })],
+    });
+    useTaskStore.getState().rolloverQuotas();
+    const next = useTaskStore.getState().tasks.find(t => t.id !== 'q')!;
+    expect(new Date(next.reminderTime!)).toEqual(new Date(2025, 5, 10, 9, 0));
+    expect(next.recurrenceCount).toBe(4);
+  });
+
+  it('completing or deleting a daily target cancels its nudges', () => {
+    useTaskStore.setState({
+      tasks: [
+        makeTask({ id: 'a', targetCount: 2, progressCount: 1, quotaReminders: true }),
+        makeTask({ id: 'b', targetCount: 2, quotaReminders: true }),
+      ],
+    });
+    useTaskStore.getState().completeTask('a');
+    useTaskStore.getState().deleteTask('b');
+    expect(notifications.cancelQuotaNudges).toHaveBeenCalledWith('a');
+    expect(notifications.cancelQuotaNudges).toHaveBeenCalledWith('b');
+  });
+
+  it('deleting several tasks removes their deadline events from the calendar, as deleting one does', () => {
+    useTaskStore.setState({
+      tasks: [makeTask({ id: 'a', calendarEventId: 'evt-a' }), makeTask({ id: 'b' })],
+    });
+    useTaskStore.getState().bulkDeleteTasks(['a', 'b']);
+    expect(deleteCalendarEvent).toHaveBeenCalledWith('evt-a');
+  });
+
+  it('editing a series date away keeps the sibling already on the new date', () => {
+    useTaskStore.setState({
+      tasks: [
+        makeTask({ id: 'A', seriesId: 's1', dueDate: new Date(2025, 5, 12, 12).toISOString() }),
+        makeTask({ id: 'B', seriesId: 's1', notes: 'bring the key', dueDate: new Date(2025, 5, 15, 12).toISOString() }),
+      ],
+    });
+    useTaskStore.getState().applyTaskDates('A', [new Date(2025, 5, 15, 12), new Date(2025, 5, 20, 12)]);
+    const b = useTaskStore.getState().tasks.find(t => t.id === 'B');
+    expect(b?.notes).toBe('bring the key');
+    const days = useTaskStore.getState().tasks
+      .filter(t => t.seriesId === 's1' && !t.completed)
+      .map(t => new Date(t.dueDate!).getDate())
+      .sort((x, y) => x - y);
+    expect(days).toEqual([15, 20]);
+  });
+
+  it('completing a stack files one undo entry, not one per task plus the batch', () => {
+    useTaskGroupStore.setState({ groups: [makeGroup({ id: 'g1' })] });
+    useTaskStore.setState({
+      tasks: [makeTask({ id: 'a', groupId: 'g1' }), makeTask({ id: 'b', groupId: 'g1' })],
+      undoStack: [], redoStack: [], lastAction: null,
+    });
+    useTaskStore.getState().completeGroup('g1');
+    expect(useTaskStore.getState().undoStack).toHaveLength(1);
+    useTaskStore.getState().undoLastAction();
+    expect(get('a').completed).toBe(false);
+    expect(get('b').completed).toBe(false);
+  });
+
+  it('undoing an order-more completion takes the restock back off the supply', () => {
+    useTaskStore.setState({
+      tasks: [
+        makeTask({ id: 'pills', supplyCount: 1 }),
+        makeTask({ id: 'order', generatedKind: 'supplyReorder', generatedSourceId: 'pills', deliverableKind: 'number' }),
+      ],
+      undoStack: [], redoStack: [], lastAction: null,
+    });
+    useTaskStore.getState().completeTask('order', { deliverableValue: '10' });
+    expect(get('pills').supplyCount).toBe(11);
+    useTaskStore.getState().undoLastAction();
+    expect(get('pills').supplyCount).toBe(1);
   });
 });

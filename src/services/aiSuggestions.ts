@@ -42,6 +42,7 @@ import { amountFromPrintedText, type LabelColumn, type LabelReading } from '../u
 import { NUTRIENT_LABEL } from '../utils/foodNutrition';
 import { clampKeepDays } from '../utils/leftovers';
 import { useSettingsStore } from '../store/useSettingsStore';
+import { isDemoModeActive } from '../utils/demoState';
 import { getLogicalToday, dayKeyOf } from '../utils/dateUtils';
 import type { AiFeatureId, AiModelId } from '../utils/aiFeatures';
 import { routeForFeature, type AiRoute } from '../utils/aiRouting';
@@ -98,6 +99,12 @@ async function callAnthropic(
   model: AiModelId,
   timeoutMs: number = REQUEST_TIMEOUT_MS,
 ): Promise<AnthropicResponse> {
+  // The one request every AI feature makes, so the one place demo mode is
+  // refused. Entering a demo doesn't reload settings, so the owner's real key
+  // is still in memory: the seed's own groceries used to send an aisle
+  // request billed to it, and so did anything the person holding the phone
+  // tried. Throwing here is the same failure every caller already handles.
+  if (isDemoModeActive()) throw new Error('AI features are off in demo mode.');
   const controller = new AbortController();
   const timeout = setTimeout(() => controller.abort(), timeoutMs);
   let response: Response;
