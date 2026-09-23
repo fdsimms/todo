@@ -10244,6 +10244,43 @@ describe('timers', () => {
     expect(task.completionTimerStartedAt).toBeNull();
   });
 
+  it('sweepExpiredCompletionTimers dismisses a countdown whose target has passed', () => {
+    const startedAt = new Date(Date.now() - 130 * 60000).toISOString(); // 130 minutes ago
+    useTaskStore.setState({
+      tasks: [makeTask({ id: 'a', completionTimerMinutes: 120, completionTimerStartedAt: startedAt })],
+    });
+    useTaskStore.getState().sweepExpiredCompletionTimers();
+    const task = useTaskStore.getState().tasks.find(t => t.id === 'a')!;
+    expect(task.completionTimerStartedAt).toBeNull();
+  });
+
+  it('sweepExpiredCompletionTimers leaves a countdown that has not reached its target yet', () => {
+    const startedAt = new Date(Date.now() - 10 * 60000).toISOString(); // 10 minutes ago
+    useTaskStore.setState({
+      tasks: [makeTask({ id: 'a', completionTimerMinutes: 120, completionTimerStartedAt: startedAt })],
+    });
+    useTaskStore.getState().sweepExpiredCompletionTimers();
+    const task = useTaskStore.getState().tasks.find(t => t.id === 'a')!;
+    expect(task.completionTimerStartedAt).toBe(startedAt);
+  });
+
+  it('sweepExpiredCompletionTimers leaves an archived task alone', () => {
+    const startedAt = new Date(Date.now() - 130 * 60000).toISOString();
+    useTaskStore.setState({
+      tasks: [makeTask({
+        id: 'a', completionTimerMinutes: 120, completionTimerStartedAt: startedAt, archived: true,
+      })],
+    });
+    useTaskStore.getState().sweepExpiredCompletionTimers();
+    const task = useTaskStore.getState().tasks.find(t => t.id === 'a')!;
+    expect(task.completionTimerStartedAt).toBe(startedAt);
+  });
+
+  it('sweepExpiredCompletionTimers is a no-op when nothing is running', () => {
+    useTaskStore.setState({ tasks: [makeTask({ id: 'a' })] });
+    expect(() => useTaskStore.getState().sweepExpiredCompletionTimers()).not.toThrow();
+  });
+
   // Timing a task exists to correct its estimate, so a measurement replaces
   // one rather than deferring to it — a task estimated once used to keep that
   // guess however many times it was subsequently timed.

@@ -57,6 +57,7 @@ const mockTaskState = {
   checkBirthdayGiftTasks: mockRecord('checkBirthdayGiftTasks'),
   checkReachOutTasks: mockRecord('checkReachOutTasks'),
   checkWaitingFollowUpTasks: mockRecord('checkWaitingFollowUpTasks'),
+  sweepExpiredCompletionTimers: mockRecord('sweepExpiredCompletionTimers'),
   sweepTaskPenalties: mockRecord('sweepTaskPenalties'),
   purgeOldCompletedTasks: mockRecord('purgeOldCompletedTasks'),
   tasks: [] as unknown[],
@@ -164,6 +165,7 @@ describe('runBackgroundRefresh', () => {
       'checkBirthdayTasks', 'checkBirthdayGiftTasks', 'checkReachOutTasks',
       'checkWaitingFollowUpTasks',
       'reconcileAllLeftoverTasks', 'checkScheduledTemplates',
+      'sweepExpiredCompletionTimers',
       'sweepTaskPenalties',
     ];
     expect(expected).toHaveLength(passNames.length);
