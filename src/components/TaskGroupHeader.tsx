@@ -213,8 +213,8 @@ export const TaskGroupHeader = React.memo(function TaskGroupHeader({
                 // "3/8" is invisible to a screen reader on its own.
                 accessibilityLabel={
                   showTally
-                    ? `${group.title} stack, ${doneToday} of ${totalToday} done today`
-                    : `${group.title} stack`
+                    ? `${group.title} ${group.projectId ? 'section' : 'stack'}, ${doneToday} of ${totalToday} done today`
+                    : `${group.title} ${group.projectId ? 'section' : 'stack'}`
                 }
                 accessibilityHint={
                   onDrag
@@ -287,7 +287,7 @@ export const TaskGroupHeader = React.memo(function TaskGroupHeader({
                 hitSlop={8}
                 style={styles.iconBtn}
                 accessibilityRole="button"
-                accessibilityLabel={`Edit ${group.title} stack`}
+                accessibilityLabel={`Edit ${group.title} ${group.projectId ? 'section' : 'stack'}`}
               >
                 <Ionicons name="ellipsis-horizontal" size={iconSize.sm} color={colors.textTertiary} />
               </TouchableOpacity>

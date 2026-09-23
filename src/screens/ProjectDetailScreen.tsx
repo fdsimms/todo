@@ -102,7 +102,7 @@ function projectListItemKey(item: ProjectListItem): string {
 // Bottom-up: "New task" ends up closest to the button.
 const ADD_MENU_ITEMS: FabMenuItem[] = [
   { key: 'existing', label: 'Add existing task', icon: 'albums-outline' },
-  { key: 'stack', label: 'Stack', icon: 'layers' },
+  { key: 'stack', label: 'Section', icon: 'layers' },
   { key: 'template', label: 'Template', icon: 'copy' },
   { key: 'new', label: 'New task', icon: 'checkbox' },
 ];
@@ -111,6 +111,9 @@ const ADD_MENU_ITEMS: FabMenuItem[] = [
 // a line-per-item list the way it does a scheduled project — so the FAB here
 // only offers the two things the field can't: pulling in a task that already
 // exists elsewhere, and starting a section (a Stack homed on this project).
+// Same "Section" label as the full menu above — it's the same TaskGroup
+// mechanism either way, and having it read as two different features
+// depending on Project.kind is exactly the confusion this label avoids.
 const LIST_ADD_MENU_ITEMS: FabMenuItem[] = [
   { key: 'existing', label: 'Add existing task', icon: 'albums-outline' },
   { key: 'stack', label: 'Section', icon: 'layers' },
@@ -127,7 +130,7 @@ function AddProjectTaskFabWithDropLabel({
   const label = useFabIntentSelector(channel, intent => {
     switch (intent?.kind) {
       case 'cancel': return 'Cancel';
-      case 'joinGroup': return `Add to ${intent.groupTitle.trim() || 'stack'}`;
+      case 'joinGroup': return `Add to ${intent.groupTitle.trim() || 'section'}`;
       case 'insert': return 'New task here';
       default: return null;
     }
@@ -641,7 +644,7 @@ export function ProjectDetailScreen() {
     pendingDropRef.current = intent;
     if (intent.kind === 'joinGroup') {
       setQuickAddSeed({ groupId: intent.groupId });
-      setQuickAddSeedLabel(intent.groupTitle.trim() || 'Stack');
+      setQuickAddSeedLabel(intent.groupTitle.trim() || 'Section');
     } else {
       setQuickAddSeed(undefined);
       setQuickAddSeedLabel(null);
@@ -1040,16 +1043,16 @@ export function ProjectDetailScreen() {
                     >
                       {empty ? (
                         <View style={styles.emptyStackRow}>
-                          <Text style={styles.emptyStackText}>No tasks in this stack yet</Text>
+                          <Text style={styles.emptyStackText}>No tasks in this section yet</Text>
                           <InlineAction
                             label="Add task"
                             icon="add"
                             onPress={() => {
                               setQuickAddSeed({ groupId: group.id });
-                              setQuickAddSeedLabel(group.title.trim() || 'Stack');
+                              setQuickAddSeedLabel(group.title.trim() || 'Section');
                               setQuickAddVisible(true);
                             }}
-                            accessibilityLabel={`Add a task to the ${group.title} stack`}
+                            accessibilityLabel={`Add a task to the ${group.title} section`}
                           />
                         </View>
                       ) : children.map(child => (
@@ -1250,7 +1253,7 @@ export function ProjectDetailScreen() {
             bottom={insets.bottom + spacing.xl}
             accessibilityLabel="Add task to project"
             drag={fabDrag}
-            dragHint="Drag onto the list to add a task there, or into a stack to join it, or back to the button to cancel"
+            dragHint="Drag onto the list to add a task there, or into a section to join it, or back to the button to cancel"
           />
         )}
 

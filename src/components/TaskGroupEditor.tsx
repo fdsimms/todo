@@ -170,6 +170,15 @@ export function TaskGroupEditor({ visible, group, isNew, onClose, projectId }: P
   // not being in that project.
   const filingProjectId = projectId ?? homeProjectId;
 
+  // Same TaskGroup, two names: homed on a project it reads as "section" (the
+  // vocabulary the project screen's own FAB and empty-state copy already use),
+  // unhomed it's a "stack" (Today, Search, the standalone Stacks screen). Tied
+  // to filingProjectId rather than the group's stored projectId alone, so the
+  // wording updates live if the Project field below is changed while this
+  // sheet is still open.
+  const sectionWord = filingProjectId ? 'section' : 'stack';
+  const sectionWordCap = filingProjectId ? 'Section' : 'Stack';
+
   // New members always land at the end of the roster — drag the row afterward
   // to move it, same as TaskEditor's own subtask/chain-step lists.
   const commitChild = (title: string) => {
@@ -282,7 +291,7 @@ export function TaskGroupEditor({ visible, group, isNew, onClose, projectId }: P
       `Delete "${group.title}"?`,
       members.length === 0
         ? undefined
-        : 'Its tasks can stay in your list unstacked, or be deleted with it.',
+        : `Its tasks can stay in your list un${sectionWord}ed, or be deleted with it.`,
       members.length === 0
         ? [
             { text: 'Cancel', style: 'cancel' },
@@ -290,9 +299,9 @@ export function TaskGroupEditor({ visible, group, isNew, onClose, projectId }: P
           ]
         : [
             { text: 'Cancel', style: 'cancel' },
-            { text: 'Delete stack only', onPress: deleteThenClose(false) },
+            { text: `Delete ${sectionWord} only`, onPress: deleteThenClose(false) },
             {
-              text: 'Delete stack and tasks',
+              text: `Delete ${sectionWord} and tasks`,
               style: 'destructive',
               onPress: deleteThenClose(true),
             },
@@ -328,7 +337,7 @@ export function TaskGroupEditor({ visible, group, isNew, onClose, projectId }: P
       header={
         <SheetHeader
           bare
-          title={isNew ? 'New stack' : 'Edit stack'}
+          title={isNew ? `New ${sectionWord}` : `Edit ${sectionWord}`}
           left={<SheetHeaderButton label="Done" onPress={saveAndClose} />}
           right={
             <View style={styles.headerRight}>
@@ -346,7 +355,7 @@ export function TaskGroupEditor({ visible, group, isNew, onClose, projectId }: P
                   color={pinEligible.length === 0 ? colors.textTertiary : (allPinned ? colors.orange : colors.textSecondary)}
                 />
               </TouchableOpacity>
-              <TouchableOpacity onPress={handleDelete} hitSlop={8} accessibilityRole="button" accessibilityLabel="Delete stack">
+              <TouchableOpacity onPress={handleDelete} hitSlop={8} accessibilityRole="button" accessibilityLabel={`Delete ${sectionWord}`}>
                 <Ionicons name="trash-outline" size={20} color={colors.red} />
               </TouchableOpacity>
             </View>
@@ -358,7 +367,7 @@ export function TaskGroupEditor({ visible, group, isNew, onClose, projectId }: P
         style={styles.titleInput}
         value={title}
         onChangeText={setTitle}
-        placeholder="Stack title"
+        placeholder={`${sectionWordCap} title`}
         placeholderTextColor={colors.textTertiary}
         maxLength={TITLE_MAX_LENGTH}
         multiline
@@ -376,7 +385,7 @@ export function TaskGroupEditor({ visible, group, isNew, onClose, projectId }: P
         <CollapsibleField
           label="Category"
           summary={category ? categoryLabel(category, categories) : undefined}
-          hint="Every task in this stack takes this category. Changing it moves them all."
+          hint={`Every task in this ${sectionWord} takes this category. Changing it moves them all.`}
           expanded={fieldOpen('category')}
           onToggle={() => toggleField('category')}
         >
@@ -465,7 +474,7 @@ export function TaskGroupEditor({ visible, group, isNew, onClose, projectId }: P
       <View style={styles.sectionCard}>
         <View style={styles.cardSection}>
           <View style={styles.subtaskHeader}>
-            <Text style={styles.sectionLabel}>Tasks in this stack</Text>
+            <Text style={styles.sectionLabel}>Tasks in this {sectionWord}</Text>
             <Text style={styles.subtaskProgress}>
               {members.length}
               {dueToday.length > 0 ? ` · ${doneToday}/${dueToday.length} today` : ''}
@@ -501,7 +510,7 @@ export function TaskGroupEditor({ visible, group, isNew, onClose, projectId }: P
                     hitSlop={8}
                     style={styles.childRemove}
                     accessibilityRole="button"
-                    accessibilityLabel={`Remove ${child.title} from stack`}
+                    accessibilityLabel={`Remove ${child.title} from ${sectionWord}`}
                   >
                     <Ionicons name="close" size={14} color={colors.textTertiary} />
                   </TouchableOpacity>
@@ -553,7 +562,7 @@ export function TaskGroupEditor({ visible, group, isNew, onClose, projectId }: P
               ))}
               {eligibleForAdd.length === 0 && (
                 <Text style={styles.existingEmpty}>
-                  {filingProjectId ? 'No matching tasks with no stack or project yet' : 'No matching unstacked tasks'}
+                  {filingProjectId ? 'No matching tasks with no section or project yet' : 'No matching unstacked tasks'}
                 </Text>
             )}
               {eligibleMatches.length > EXISTING_TASK_PICKER_LIMIT && (
