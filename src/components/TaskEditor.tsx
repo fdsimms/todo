@@ -85,7 +85,7 @@ import { isStreakAtRecord, nextStreakRecord, streakHint } from '../utils/streakR
 import { formatDeadlineDate, formatScheduledDate, formatHHMM, formatTimeOfDay, hhmmToDate, dateToHHMM, getDeadlineFromOffset, getDeadlineFromMonthDay, describeDeadlineOffset, describeReminderOffset, describeReminderTracksVisibility, getTaskDayStart, getCurrentDayStart, getLogicalNow, getLogicalToday, seriesMonthDaysFrom, getNextDueDate } from '../utils/dateUtils';
 import { generateId } from '../utils/id';
 import { findArchivedMatch } from '../utils/archiveMatch';
-import { parseTaskInput, describeSchedule, detectContactIntent, matchPersonMentions, getEditorMentionSuggestions, withTrailingSpace, type MentionSuggestionCandidate } from '../utils/parseTaskInput';
+import { parseTaskInput, describeSchedule, detectContactIntent, matchPersonMentions, getEditorMentionSuggestions, withTrailingSpace, parseCategoryAndTagsInput, type MentionSuggestionCandidate, type ParsedCategoryAndTags } from '../utils/parseTaskInput';
 import { groupMentionTokens } from '../utils/peopleRegistry';
 import { mergeRanges } from '../utils/ranges';
 import { HighlightedText } from './HighlightedText';
@@ -301,6 +301,16 @@ const LOG_HEALTH_VALUE_STEPS: Record<NutrientKey, { step: number; max: number }>
 // moves by clean amounts rather than by 1.7-oz increments; the max is rounded
 // up from waterMl's 1000ml so the two units cover the same real range.
 const LOG_HEALTH_WATER_FL_OZ_STEPS = { step: 1, max: 34 };
+
+/** Banner label for a "#word" match — category, tag count/name, or both joined, same as quick add's. */
+function categoryTagsLabel(parsed: ParsedCategoryAndTags, categories: Parameters<typeof categoryLabel>[1]): string {
+  const parts: string[] = [];
+  if (parsed.category) parts.push(categoryLabel(parsed.category, categories));
+  if (parsed.tags.length > 0) {
+    parts.push(parsed.tags.length > 1 ? `${parsed.tags.length} tags` : `#${parsed.tags[0]}`);
+  }
+  return parts.join(' + ');
+}
 
 
 export function TaskEditor({ visible, task, initialDraft, onClose }: Props) {
@@ -679,6 +689,14 @@ export function TaskEditor({ visible, task, initialDraft, onClose }: Props) {
   const mentionSuggestionAnim = useRef(new Animated.Value(0)).current;
   const hadMentionSuggestion = useRef(false);
 
+  const categoryTagsTooltipAnim = useRef(new Animated.Value(0)).current;
+  const hadCategoryTagsParse = useRef(false);
+  // Same signature-keyed dismiss as the schedule phrase — see
+  // dismissedScheduleSignature. Only hides the banner: a "#word" naming a
+  // real category/tag still applies at save (see applyCategoryTagsBanner's
+  // auto-accept effect below), same as quick add.
+  const [dismissedCategoryTagsSignature, setDismissedCategoryTagsSignature] = useState<string | null>(null);
+
   const titleRef = useRef<TextInput>(null);
   const chainInputRef = useRef<TextInput>(null);
   const chainItemSavedRef = useRef(false);
@@ -720,6 +738,7 @@ export function TaskEditor({ visible, task, initialDraft, onClose }: Props) {
     // Same for a dismissed schedule phrase — belongs to this trip through
     // the title, not to the sheet.
     setDismissedScheduleSignature(null);
+    setDismissedCategoryTagsSignature(null);
     // Belongs to the task being edited, not to the sheet.
     kindMemory.current = {
       timedMinutes: null, targetCount: null, targetUnit: '', chainItems: [], rotationItems: [],
@@ -1014,6 +1033,19 @@ export function TaskEditor({ visible, task, initialDraft, onClose }: Props) {
     ? activeParsedSchedule.matchStart + activeParsedSchedule.matchedText.length
     : 0;
 
+  // "#work", "#errand" — a category/tag token, same grammar and same single
+  // tooltip slot quick add uses (parseCategoryAndTagsInput), checked right
+  // after the schedule phrase so the two never compete for the banner.
+  const categoryTagsParsed = useMemo(
+    () => (!activeParsedSchedule && title.trim()
+      ? parseCategoryAndTagsInput(title, categories.map(c => c.name), allTags)
+      : null),
+    [title, activeParsedSchedule, categories, allTags]
+  );
+  const categoryTagsDismissed = categoryTagsParsed != null
+    && dismissedCategoryTagsSignature === `${categoryTagsParsed.matchStart}|${categoryTagsParsed.matchEnd}`;
+  const activeCategoryTags = categoryTagsDismissed ? null : categoryTagsParsed;
+
   // Purely visual: an "@name" mention in the title stays tinted while editing
   // too, but unlike quick add this field never parses one out of typed text —
   // People is its own picker below (rule 3, docs/arch/people.md), so matching
@@ -1031,20 +1063,21 @@ export function TaskEditor({ visible, task, initialDraft, onClose }: Props) {
   const titleHighlightRanges = useMemo(() => {
     const ranges = [...titleMentionRanges];
     if (activeParsedSchedule) ranges.push([activeParsedSchedule.matchStart, scheduleMatchEnd]);
+    if (activeCategoryTags) ranges.push([activeCategoryTags.matchStart, activeCategoryTags.matchEnd]);
     return mergeRanges(ranges);
-  }, [titleMentionRanges, activeParsedSchedule, scheduleMatchEnd]);
-  const hasTitleOverlay = activeParsedSchedule != null || titleMentionRanges.length > 0;
+  }, [titleMentionRanges, activeParsedSchedule, scheduleMatchEnd, activeCategoryTags]);
+  const hasTitleOverlay = activeParsedSchedule != null || activeCategoryTags != null || titleMentionRanges.length > 0;
 
   // Unlike quick add, nothing here ever resolves a fresh "@name" on its own —
   // so a token that would be a unique, fully-typed match anywhere else still
   // gets a "tap to add" suggestion, not silence. Only offered when the
-  // schedule banner isn't already claiming the one tooltip slot below the
-  // title. See getEditorMentionSuggestions' doc comment.
+  // schedule banner or the category/tag banner isn't already claiming the one
+  // tooltip slot below the title. See getEditorMentionSuggestions' doc comment.
   const titleMentionSuggestion = useMemo(
-    () => (!activeParsedSchedule && title.trim()
+    () => (!activeParsedSchedule && !activeCategoryTags && title.trim()
       ? getEditorMentionSuggestions(title, people, personIds, groupMentionTokens())
       : null),
-    [title, activeParsedSchedule, people, personIds]
+    [title, activeParsedSchedule, activeCategoryTags, people, personIds]
   );
 
   // "Call Kristen", "Text the plumber", "Email the landlord" — a title that
@@ -1072,6 +1105,30 @@ export function TaskEditor({ visible, task, initialDraft, onClose }: Props) {
     }
     hadMentionSuggestion.current = titleMentionSuggestion != null;
   }, [titleMentionSuggestion]);
+
+  useEffect(() => {
+    if (activeCategoryTags && !hadCategoryTagsParse.current) {
+      categoryTagsTooltipAnim.setValue(0);
+      Animated.spring(categoryTagsTooltipAnim, { toValue: 1, ...animation.spring.bouncy, useNativeDriver: true }).start();
+    }
+    hadCategoryTagsParse.current = activeCategoryTags != null;
+  }, [activeCategoryTags]);
+
+  // Auto-accept a "#word" token the moment it names a real category or tag,
+  // rather than waiting on the banner tap — matches how an "@name" mention
+  // resolves live above, and mirrors quick add's own auto-accept
+  // (applyCategoryTags in QuickAddModal). Only fires once there's text past
+  // the matched token — another word, a space, a second tag — which is the
+  // signal the token itself is done growing rather than a still-being-typed
+  // prefix a further keystroke would have changed the meaning of. A token
+  // sitting at the very end of the title is still covered — proceedWithSave
+  // applies it as a fallback right before saving.
+  useEffect(() => {
+    if (categoryTagsParsed && categoryTagsParsed.matchEnd < title.length) {
+      applyCategoryTagsBanner();
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [categoryTagsParsed]);
 
   // Splices a token in at the current cursor position, same as a normal
   // keypress would, rather than always appending to the end.
@@ -1130,6 +1187,32 @@ export function TaskEditor({ visible, task, initialDraft, onClose }: Props) {
     setDismissedScheduleSignature(`${parsedSchedule.matchStart}|${parsedSchedule.matchedText}`);
   };
 
+  // Apply the detected "#category"/"#tag" tokens and strip them from the
+  // title — same as quick add's applyCategoryTags.
+  const applyCategoryTagsBanner = () => {
+    if (!categoryTagsParsed) return;
+    haptics.success();
+    animateLayout();
+    const nextTitle = withTrailingSpace(categoryTagsParsed.cleanTitle);
+    setTitle(nextTitle);
+    titleCaret.moveCaret(nextTitle);
+    if (categoryTagsParsed.category) setCategory(categoryTagsParsed.category);
+    if (categoryTagsParsed.tags.length > 0) {
+      setTags(prev => [...new Set([...prev, ...categoryTagsParsed.tags])]);
+    }
+  };
+
+  // The banner's own ✕ — same as dismissParsedSchedule, just hides the
+  // banner. Unlike the schedule phrase, a "#word" naming a real category/tag
+  // has no ambiguity to reject, so it still applies at save (see the
+  // auto-accept effect above and the fallback in proceedWithSave).
+  const dismissCategoryTagsBanner = () => {
+    if (!categoryTagsParsed) return;
+    haptics.tap();
+    animateLayout();
+    setDismissedCategoryTagsSignature(`${categoryTagsParsed.matchStart}|${categoryTagsParsed.matchEnd}`);
+  };
+
   // A step or subtask typed into its "add new" field but never submitted
   // (no return, no blur — e.g. tapping the editor's Save button while the
   // field still has focus) would otherwise be silently dropped: save() reads
@@ -1186,13 +1269,18 @@ export function TaskEditor({ visible, task, initialDraft, onClose }: Props) {
 
   // ==== save ====
   const save = () => {
-    if (!title.trim()) return;
+    // A "#word" token still sitting at the very end of the title is applied
+    // here too, same as proceedWithSave — see applyCategoryTagsBanner's doc
+    // comment. Checked ahead of proceedWithSave so an archived-task match is
+    // looked up against the title the task will actually save with.
+    const resolvedTitleForSave = (categoryTagsParsed?.cleanTitle ?? title).trim();
+    if (!resolvedTitleForSave) return;
 
     const effectiveChainItems = commitPendingChainItemRename(commitPendingChainItem());
     const effectiveDraftSubtasks = commitPendingSubtaskRename(commitPendingSubtask());
 
     if (!task) {
-      const archivedMatch = findArchivedMatch(useTaskStore.getState().archivedTasks(), title.trim());
+      const archivedMatch = findArchivedMatch(useTaskStore.getState().archivedTasks(), resolvedTitleForSave);
       if (archivedMatch) {
         Alert.alert(
           'Resume archived task?',
@@ -1226,8 +1314,17 @@ export function TaskEditor({ visible, task, initialDraft, onClose }: Props) {
     // it or with the repeat.
     const followUpTaskLive =
       recurrenceType !== 'none' && followUpTaskEveryN !== null && !!resolvedFollowUpTaskTitle;
+    // A "#word" token still sitting at the very end of the title (so the
+    // auto-accept effect above never got text past it to fire on) is applied
+    // here as a fallback, same as quick add's handleAdd — see
+    // applyCategoryTagsBanner's doc comment.
+    const resolvedTitle = (categoryTagsParsed?.cleanTitle ?? title).trim();
+    const resolvedCategory = categoryTagsParsed?.category ?? category;
+    const resolvedTags = categoryTagsParsed && categoryTagsParsed.tags.length > 0
+      ? [...new Set([...tags, ...categoryTagsParsed.tags])]
+      : tags;
     const data = {
-      title: title.trim(), notes, category, projectId: project, tags, personIds,
+      title: resolvedTitle, notes, category: resolvedCategory, projectId: project, tags: resolvedTags, personIds,
       dueDate: dueDate?.toISOString() ?? null,
       deadline: deadline?.toISOString() ?? null,
       deadlineOffsetDays,
@@ -2689,6 +2786,47 @@ export function TaskEditor({ visible, task, initialDraft, onClose }: Props) {
               style={styles.scheduleBannerDismiss}
               onPress={dismissParsedSchedule}
               accessibilityLabel="Not a date"
+            >
+              <Ionicons name="close" size={14} color={colors.onAccent} />
+            </PressableScale>
+          </View>
+        </Animated.View>
+      )}
+
+      {/* Category/tag banner — detected "#word" token(s); tap to apply,
+          or ✕ to hide the banner (the token still applies at save if it
+          names a real category/tag — see applyCategoryTagsBanner). */}
+      {titleVisible && activeCategoryTags && (
+        <Animated.View
+          style={[styles.scheduleBanner, {
+            opacity: categoryTagsTooltipAnim,
+            transform: [
+              { translateY: categoryTagsTooltipAnim.interpolate({ inputRange: [0, 1], outputRange: [-6, 0] }) },
+              { scale: categoryTagsTooltipAnim.interpolate({ inputRange: [0, 1], outputRange: [0.95, 1] }) },
+            ],
+          }]}
+        >
+          <View style={styles.scheduleBannerPill}>
+            <PressableScale
+              style={[styles.scheduleBannerBtn, styles.scheduleBannerBtnJoined]}
+              onPress={applyCategoryTagsBanner}
+            >
+              <Ionicons
+                name={activeCategoryTags.category ? 'pricetag-outline' : 'pricetags-outline'}
+                size={14}
+                color={colors.onAccent}
+              />
+              <Text style={styles.scheduleBannerText} numberOfLines={1}>
+                {categoryTagsLabel(activeCategoryTags, categories)}
+              </Text>
+              <View style={styles.scheduleBannerDot} />
+              <Text style={styles.scheduleBannerHint}>Tap to set</Text>
+            </PressableScale>
+            <View style={styles.scheduleBannerDivider} />
+            <PressableScale
+              style={styles.scheduleBannerDismiss}
+              onPress={dismissCategoryTagsBanner}
+              accessibilityLabel="Hide suggestion"
             >
               <Ionicons name="close" size={14} color={colors.onAccent} />
             </PressableScale>
