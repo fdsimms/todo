@@ -162,6 +162,10 @@ export const SYNC_EXCLUDED_TABLES = [
   // SYNC_RECEIVED_TABLE). Bookkeeping about this device's own relaying, for
   // the same reason as the tombstones above: nothing a peer needs to hear.
   'sync_received',
+  // Which id a folded-away row was folded into (see SYNC_ALIASES_TABLE). Every
+  // device folds for itself when it meets the clash, so there is nothing to
+  // tell a peer; the table only redirects rows this device receives later.
+  'sync_aliases',
   // The barcode cache. It holds no user data — only what a GTIN denotes, which
   // is the same answer on every device and for everyone — so there is nothing
   // for two devices to disagree about and nothing a merge would resolve. A
@@ -377,6 +381,17 @@ export const TOMBSTONE_RETENTION_DAYS = 90;
  */
 export const SYNC_RECEIVED_TABLE = 'sync_received';
 
+/**
+ * Rows folded into another because they named the same thing (see
+ * utils/naturalKeyFold.ts): the loser's id, and the id it now lives under.
+ *
+ * A fold repoints every local reference to the loser, but a peer can still
+ * send rows written before it heard of the fold — a list entry for the loser,
+ * or the loser itself, edited offline. This is what points those at the
+ * survivor on arrival instead of back at a row that no longer exists.
+ */
+export const SYNC_ALIASES_TABLE = 'sync_aliases';
+
 /** `NEW.id`, or `NEW.item_id || '|' || NEW.shop_id` for a composite key. */
 export function rowKeyExpr(table: SyncTable, alias: 'NEW' | 'OLD'): string {
   return table.key
@@ -418,6 +433,13 @@ export function deletionsTableStatements(): string[] {
     )`,
     `CREATE INDEX IF NOT EXISTS idx_${SYNC_RECEIVED_TABLE}_received_at
        ON ${SYNC_RECEIVED_TABLE} (received_at)`,
+    `CREATE TABLE IF NOT EXISTS ${SYNC_ALIASES_TABLE} (
+      table_name TEXT NOT NULL,
+      loser_id TEXT NOT NULL,
+      winner_id TEXT NOT NULL,
+      created_at TEXT NOT NULL,
+      PRIMARY KEY (table_name, loser_id)
+    )`,
   ];
 }
 

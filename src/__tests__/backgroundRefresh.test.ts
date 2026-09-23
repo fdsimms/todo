@@ -109,6 +109,7 @@ jest.mock('../store/useUnattendedStore', () => ({
 }));
 jest.mock('../store/useSyncStore', () => ({
   useSyncStore: { getState: () => mockSyncState },
+  registerSyncReload: () => {},
 }));
 jest.mock('../utils/notifications', () => ({
   rescheduleAllReminders: () => { mockCalls.push('rescheduleAllReminders'); },

@@ -1,4 +1,4 @@
-import { useSyncStore, isSyncSupported } from '../store/useSyncStore';
+import { registerSyncReload, useSyncStore, isSyncSupported } from '../store/useSyncStore';
 import { dbGetSetting, dbSetSetting } from '../db/database';
 import { cloudKitTransport, cloudKitUnavailableReason, isCloudKitSyncAvailable } from '../utils/cloudKitTransport';
 import { databaseSyncLocal } from '../utils/syncLocal';
@@ -161,6 +161,20 @@ describe('syncNow', () => {
     // And the claim is released, so the next sync runs.
     await useSyncStore.getState().syncNow();
     expect(runSyncAll).toHaveBeenCalledTimes(2);
+  });
+
+  it('re-reads the stores after a sync that wrote something, and only then', async () => {
+    const reload = jest.fn();
+    registerSyncReload(reload);
+    useSyncStore.setState({ enabled: true });
+
+    (runSyncAll as jest.Mock).mockResolvedValue(runs(okResult()));
+    await useSyncStore.getState().syncNow();
+    expect(reload).not.toHaveBeenCalled();
+
+    (runSyncAll as jest.Mock).mockResolvedValue(runs(okResult({ updated: 1 })));
+    await useSyncStore.getState().syncNow();
+    expect(reload).toHaveBeenCalledTimes(1);
   });
 
   it('records the summary and clears any problem on a clean result', async () => {
