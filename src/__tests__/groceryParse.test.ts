@@ -45,6 +45,12 @@ describe('groceryNameKey', () => {
 // ─── parseGroceryInput ───────────────────────────────────────────────────────
 
 describe('parseGroceryInput', () => {
+  it('reads a quantity written with a Unicode fraction, glued or spaced', () => {
+    expect(parseGroceryInput('1 ½ cups flour').name).toBe('flour');
+    expect(parseGroceryInput('1½ cups flour').name).toBe('flour');
+    expect(parseGroceryInput('½ lb butter').name).toBe('butter');
+  });
+
   it('peels a leading number + unit', () => {
     expect(parseGroceryInput('2 lb chicken thighs')).toEqual({
       name: 'chicken thighs',

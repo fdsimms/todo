@@ -425,6 +425,22 @@ describe('computeSnoozeSuggestion', () => {
       expect(result.date.getMonth()).toBe(5);
       expect(result.dayLabel).toBe('Tomorrow');
     });
+
+    it('counts a task stored at midnight on the day it names, not the day before', () => {
+      // Quick add's "Tomorrow" stores local midnight. With a 02:00 reset,
+      // getDayStart would roll that back onto today and leave tomorrow looking
+      // empty, so the suggestion landed on the day that was actually full.
+      settingsState.dayResetTime = '02:00';
+      jest.useFakeTimers();
+      jest.setSystemTime(new Date(2025, 5, 11, 10, 0, 0));
+
+      const task = makeTask({ id: 'snooze-me' });
+      const tomorrowMidnight = new Date(2025, 5, 12, 0, 0, 0).toISOString();
+      const load = Array.from({ length: 5 }, (_, i) => makeTask({ id: `load-${i}`, dueDate: tomorrowMidnight }));
+      const result = computeSnoozeSuggestion(task, [task, ...load]);
+
+      expect(result.date.getDate()).not.toBe(12);
+    });
   });
 });
 

@@ -242,6 +242,11 @@ export function parseDatePart(input: string, now: Date): DatePart | null {
 
   // Weekend
   if ((m = text.match(/^(?:this\s+|next\s+|the\s+)?weekend$/))) {
+    // Said on the weekend itself, "this weekend" is the one already under way —
+    // nextDay() is always 1..7 days out, so on a Saturday it answered with the
+    // Saturday after, the same date "next weekend" gives.
+    const onWeekend = now.getDay() === 6 || now.getDay() === 0;
+    if (onWeekend && !/^next/.test(text)) return { date: startOfDay(now), explicitTime: false };
     let date = nextDay(now, 6 as Day); // upcoming Saturday
     if (/^next/.test(text) && isSameWeek(date, now)) date = addWeeks(date, 1);
     return { date: startOfDay(date), explicitTime: false };

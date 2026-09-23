@@ -64,6 +64,8 @@ interface Props {
   // see the roster note in TodayScreen. Omitted on a list with no bulk bar,
   // which hides the panel rather than revealing a no-op.
   onSwipeSelect?: (groupId: string) => void;
+  /** Bulk selection is on: swiping stands down, same as every task row's. */
+  selectionMode?: boolean;
   onPressEdit: (groupId: string) => void;
   /** Long-pressing the title starts dragging the whole group (see TodayScreen). */
   onDrag?: () => void;
@@ -102,6 +104,7 @@ export const TaskGroupHeader = React.memo(function TaskGroupHeader({
   onComplete,
   onDefer,
   onSwipeSelect,
+  selectionMode = false,
   onPressEdit,
   onDrag,
   pinned = false,
@@ -154,6 +157,7 @@ export const TaskGroupHeader = React.memo(function TaskGroupHeader({
               destructive action one flick away and meant the gesture said
               "delete" on stacks and "select" on every task under them. */}
           <SwipeableRow
+            enabled={!selectionMode}
             selectAction={onSwipeSelect ? {
               onSelect: () => onSwipeSelect(group.id),
               accessibilityLabel: `Select all of ${group.title}`,

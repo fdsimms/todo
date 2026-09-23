@@ -1014,6 +1014,7 @@ export function ProjectDetailScreen() {
                   <GroupDropTarget active={joinGroupIntentId === group.id}>
                   <TaskGroupTray>
                     <TaskGroupHeader
+                      selectionMode={selectionMode}
                       group={group}
                       allChildren={allChildren}
                       pinned={groupPinInfo.get(group.id)?.pinned ?? false}

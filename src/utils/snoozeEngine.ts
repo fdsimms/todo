@@ -4,7 +4,7 @@ import { isSameDay } from 'date-fns/isSameDay';
 import { isThisWeek } from 'date-fns/isThisWeek';
 import { format } from 'date-fns/format';
 import type { Task } from '../types';
-import { dayKeyOf, getDayStart, getNextDueDate, getWeekStart } from './dateUtils';
+import { dayKeyOf, getDayStart, getNextDueDate, getTaskDayStart, getWeekStart } from './dateUtils';
 import { projectOccurrences } from './calendarMonth';
 import { estimatedMinutesFor } from './effort';
 import { type BusyEvent, busyMinutesIn } from './calendarBusy';
@@ -18,9 +18,13 @@ function effortUnits(t: Task): number {
   return (estimatedMinutesFor(t) ?? 30) / 30;
 }
 
-// True when two dates fall on the same *logical* day under dayResetTime.
+// True when a stored dueDate/deferUntil falls on the candidate day. Both go
+// through getTaskDayStart, not getDayStart: a stored date is the calendar day it
+// names, and getDayStart's grace-window rollback would file one stored at
+// midnight (quick add's Today/Tomorrow) under the day before whenever the reset
+// isn't 00:00, shifting every day's load one day early.
 function sameLogicalDay(a: Date, b: Date, dayResetTime: string): boolean {
-  return isSameDay(getDayStart(a, dayResetTime), getDayStart(b, dayResetTime));
+  return isSameDay(getTaskDayStart(a, dayResetTime), getTaskDayStart(b, dayResetTime));
 }
 
 export interface SnoozeSuggestion {
@@ -160,7 +164,7 @@ export function computeSnoozeSuggestion(
       ? completed.filter(t => t.tags.some(tag => task.tags.includes(tag)))
       : [];
     const tagOnDow = matchingTagCompleted.filter(
-      t => new Date(t.completedAt!).getDay() === dow
+      t => getDayStart(new Date(t.completedAt!), dayResetTime).getDay() === dow
     ).length;
     const tagRate = matchingTagCompleted.length > 0
       ? tagOnDow / matchingTagCompleted.length
@@ -169,7 +173,7 @@ export function computeSnoozeSuggestion(
 
     // Signal 3: global DOW completion rate
     const globalDowCompleted = completed.filter(
-      t => new Date(t.completedAt!).getDay() === dow
+      t => getDayStart(new Date(t.completedAt!), dayResetTime).getDay() === dow
     ).length;
     const dowRate = completed.length > 0
       ? globalDowCompleted / completed.length

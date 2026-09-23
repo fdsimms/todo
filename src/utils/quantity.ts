@@ -351,15 +351,16 @@ const UNICODE_FRACTIONS: Record<string, Rational> = {
   '¼': rational(1, 4), '¾': rational(3, 4),
   '⅛': rational(1, 8), '⅜': rational(3, 8), '⅝': rational(5, 8), '⅞': rational(7, 8),
 };
-const UNICODE_FRACTION_CHARS = Object.keys(UNICODE_FRACTIONS).join('');
-// A whole number, glued straight to one of those glyphs with no space ("1½"),
+export const UNICODE_FRACTION_CHARS = Object.keys(UNICODE_FRACTIONS).join('');
+// A whole number followed by one of those glyphs, glued ("1½") or spaced
+// ("1 ½", which is what a decoded `1 &frac12;` off a recipe page reads as),
 // or the glyph alone ("½"). Tried before the other three for the same reason a
 // mixed number is tried before a bare decimal: without it, "1½ cups" reads as
 // amount 1 with "½ cups" left as unrecognized rest, since none of the other
 // notations expect a fraction with no digits and no "/" — losing the fraction
 // *and* the unit that followed it, since a leading unit word is read off
 // `rest`, not off the original text.
-const UNICODE_FRACTION = new RegExp(`^(\\d*)([${UNICODE_FRACTION_CHARS}])`);
+const UNICODE_FRACTION = new RegExp(`^(?:(\\d+)\\s*)?([${UNICODE_FRACTION_CHARS}])`);
 
 // The four notations, in this order and for this reason: a mixed number has
 // to be tried before a bare decimal, or "1 1/2 cups" is read as "1" with

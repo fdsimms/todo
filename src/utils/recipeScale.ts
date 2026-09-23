@@ -106,6 +106,14 @@ function stripSourceCountAside(trailing: string): string {
   return trailing.replace(/\s*\([^()]*\)\s*$/, '');
 }
 
+// With no unit, `trailing` is the trimmed rest, so it needs its space back
+// before a word or a parenthesised size ("2 (14 oz) cans") — but not before
+// the punctuation of a size clause ("1, medium").
+function joinTrailing(amount: string, trailing: string): string {
+  if (!trailing || /^[\s,;.:)]/.test(trailing)) return `${amount}${trailing}`;
+  return `${amount} ${trailing}`;
+}
+
 export function scaleQuantity(quantity: string, factor: number): ScaledQuantity {
   const q = parseQuantity(quantity);
   const unchanged: ScaledQuantity = { text: q.raw, scaled: false };
@@ -147,7 +155,7 @@ export function scaleQuantity(quantity: string, factor: number): ScaledQuantity 
     const joined =
       q.rangeSeparator === '-' ? `${renderedMin}-${renderedMax}` : `${renderedMin} to ${renderedMax}`;
     const trailing = stripSourceCountAside(q.trailing);
-    if (!q.unitWritten) return { text: `${joined}${trailing}`, scaled: true };
+    if (!q.unitWritten) return { text: joinTrailing(joined, trailing), scaled: true };
     const inflected = inflectUnit(q.unitWritten, rationalToNumber(scaledMax));
     return { text: `${joined} ${inflected}${trailing}`, scaled: true };
   }
@@ -159,7 +167,7 @@ export function scaleQuantity(quantity: string, factor: number): ScaledQuantity 
   const trailing = stripSourceCountAside(q.trailing);
   // A size clause rather than a unit — parseGroceryInput emits "1, medium",
   // and splitting that on spaces would produce "2 , medium".
-  if (!q.unitWritten) return { text: `${rendered}${trailing}`, scaled: true };
+  if (!q.unitWritten) return { text: joinTrailing(rendered, trailing), scaled: true };
 
   const inflected = inflectUnit(q.unitWritten, rationalToNumber(scaled));
   return { text: `${rendered} ${inflected}${trailing}`, scaled: true };

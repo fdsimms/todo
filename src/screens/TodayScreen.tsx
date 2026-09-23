@@ -2803,6 +2803,7 @@ export function TodayScreen() {
         >
           <TaskGroupTray>
             <TaskGroupHeader
+              selectionMode={selectionMode}
               group={item.group}
               allChildren={allChildren}
               filtered={groupTallyFiltered}
@@ -2926,6 +2927,7 @@ export function TodayScreen() {
     return (
       <TaskGroupTray>
         <TaskGroupHeader
+          selectionMode={selectionMode}
           group={group}
           allChildren={allChildren}
           dueTodayOverride={children}
@@ -2987,6 +2989,7 @@ export function TodayScreen() {
     return (
       <TaskGroupTray>
         <TaskGroupHeader
+          selectionMode={selectionMode}
           group={group}
           allChildren={allChildren}
           filtered={filterHasReminder}
@@ -3064,6 +3067,7 @@ export function TodayScreen() {
   const renderPinnedGroup = (group: TaskGroup, children: Task[]) => (
     <TaskGroupTray>
       <TaskGroupHeader
+        selectionMode={selectionMode}
         group={group}
         allChildren={children}
         filtered

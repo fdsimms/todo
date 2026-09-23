@@ -212,7 +212,7 @@ name cannot say is where a component appears, and that is `docs/screen-map.md`.
 - `src/utils/projectReviewTasks.ts` — MAX_PROJECT_REVIEW_TASKS, PROJECT_REVIEW_LINK_URL, projectReviewLinkUrl, projectReviewProjectId, projectReviewTitle, projectQuietDays, describeProjectQuiet, declinedToday, projectsReviewedToday, ProjectReviewWant, +2 more
 - `src/utils/projectStacks.ts` — ProjectListItem, buildProjectListItems
 - `src/utils/projectStats.ts` — RECENT_FINISHED_LIMIT, FinishedProject, ProjectStatsSummary, projectStats
-- `src/utils/quantity.ts` — Rational, rational, multiplyRational, rationalToNumber, rationalFromNumber, formatRational, formatQuantityAmount, unitKey, inflectUnit, SIZE_UNITS, +6 more
+- `src/utils/quantity.ts` — Rational, rational, multiplyRational, rationalToNumber, rationalFromNumber, formatRational, formatQuantityAmount, unitKey, inflectUnit, SIZE_UNITS, +7 more
 - `src/utils/quickActions.ts` — quickActionsFor, handleQuickActionId, useHomeScreenQuickActions
 - `src/utils/quickSearch.ts` — QUICK_SEARCH_LIMIT, QuickSearchOutcome, quickSearch
 - `src/utils/quotaSchedule.ts` — QuotaSpan, QuotaSpanInput, quotaRunSpan, quotaWeekStart, quotaWeekSpan, quotaTargetForInterval, quotaDueTimes, quotaDueTimesAfter, isQuotaRunOver

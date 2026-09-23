@@ -49,6 +49,13 @@ describe('parseQuantity — the amount', () => {
 });
 
 describe('parseQuantity — Unicode vulgar fractions', () => {
+  it('reads a whole number spaced apart from its glyph, as a decoded "1 &frac12;" arrives', () => {
+    const q = parseQuantity('1 ½ cups');
+    expect(amount('1 ½ cups')).toBe(1.5);
+    expect(q.unit).toBe('cup');
+    expect(q.trailing).toBe('');
+  });
+
   it('reads a whole number glued straight to the glyph, the shape decodeEntities writes', () => {
     expect(amount('1½ cups')).toBe(1.5);
     expect(amount('1¼ cups')).toBe(1.25);

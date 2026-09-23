@@ -5,6 +5,7 @@ import Ionicons from '@expo/vector-icons/Ionicons';
 import { useNavigation } from '@react-navigation/native';
 import { useShallow } from 'zustand/react/shallow';
 import { useColors } from '../theme/ThemeContext';
+import { useKeyboardInsetScroll } from '../hooks/useKeyboardInsetScroll';
 import { border, font, fontWeight, iconSize, interaction, radius, spacing, type Colors } from '../theme';
 import { NUTRIENT_KEYS, type NutrientKey } from '../types';
 import { useSettingsStore } from '../store/useSettingsStore';
@@ -64,6 +65,7 @@ interface Props {
 
 export function NutritionTargetsSheet({ visible, onClose }: Props) {
   const colors = useColors();
+  const keyboardScroll = useKeyboardInsetScroll<ScrollView>();
   const styles = useMemo(() => makeStyles(colors), [colors]);
   const navigation = useNavigation();
 
@@ -165,7 +167,13 @@ export function NutritionTargetsSheet({ visible, onClose }: Props) {
           <SheetHeaderButton label="Done" onPress={onClose} minWidth={64} />
         </View>
 
-        <ScrollView style={styles.body} contentContainerStyle={styles.bodyContent}>
+        <ScrollView
+          ref={keyboardScroll.ref}
+          style={styles.body}
+          contentContainerStyle={styles.bodyContent}
+          keyboardShouldPersistTaps="handled"
+          {...keyboardScroll.props}
+        >
           <View>
             <Text style={styles.sectionLabel}>Shown on Food log</Text>
             <Text style={styles.intro}>

@@ -1,4 +1,9 @@
 import type { Person, Task } from '../types';
+
+const settingsState = { dayResetTime: '00:00', vacationMode: false };
+jest.mock('../store/useSettingsStore', () => ({
+  useSettingsStore: { getState: () => settingsState },
+}));
 import type { HistoryEntry } from '../utils/personHistory';
 import {
   declineHoldDays,
@@ -355,5 +360,34 @@ describe('folding a couple\'s wants into one', () => {
     const collapsed = collapseGroupedReachOuts([sam, mom, jamie], groupIdOf, () => 'the Ortegas');
 
     expect(collapsed.map(w => w.sourceId)).toEqual(['g1', 'mom']);
+  });
+});
+
+describe('the day-reset grace window', () => {
+  afterEach(() => { settingsState.dayResetTime = '00:00'; });
+
+  // A catch-up at 01:30 on Mar 13 with a 02:00 reset belongs to logical Mar 12,
+  // so a weekly cadence comes round again on logical Mar 19, not Mar 20.
+  it('measures the cadence from the logical day of the last catch-up', () => {
+    settingsState.dayResetTime = '02:00';
+    const lastTogether = new Date(2026, 2, 13, 1, 30);
+    const today = new Date(2026, 2, 19, 2, 0);
+    const wants = wantedReachOuts([{ person: person({ cadenceDays: 7 }), lastTogether }], today);
+    expect(wants.map(w => w.personId)).toEqual(['p1']);
+  });
+
+  it('ends a decline hold on the logical day it was due to', () => {
+    settingsState.dayResetTime = '02:00';
+    const declinedAt = new Date(2026, 2, 13, 1, 30).toISOString();
+    const p = person({ cadenceDays: 7, reachOutDeclinedAt: declinedAt, reachOutOfferDeclinedAt: declinedAt });
+    const today = new Date(2026, 2, 19, 2, 0);
+    expect(declinedRecently(p, today)).toBe(false);
+    expect(offerDeclinedRecently(p, today)).toBe(false);
+  });
+
+  it('ends a completion hold on the logical day it was due to', () => {
+    settingsState.dayResetTime = '02:00';
+    const task = genTask({ completed: true, completedAt: new Date(2026, 2, 13, 1, 30).toISOString() });
+    expect(reachOutsHandledRecently([task], new Date(2026, 2, 19, 2, 0), 7).size).toBe(0);
   });
 });

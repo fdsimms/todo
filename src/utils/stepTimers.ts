@@ -274,8 +274,14 @@ export function parseStepDurations(text: string): StepDuration[] {
 export function formatStepDuration(seconds: number): string {
   const total = Math.max(0, Math.round(seconds));
   if (total < 60) return `${total}s`;
-  const minutes = Math.round(total / 60);
-  if (minutes < 60) return `${minutes}m`;
+  // Under an hour the seconds are kept rather than rounded away: a step that
+  // says "90 seconds" runs for 90, and a chip reading "2m" misstates it.
+  if (total < 3600) {
+    const secs = total % 60;
+    const mins = Math.floor(total / 60);
+    return secs === 0 ? `${mins}m` : `${mins}m ${secs}s`;
+  }
+  const minutes = Math.floor(total / 60);
   const hours = Math.floor(minutes / 60);
   const rest = minutes % 60;
   return rest === 0 ? `${hours}h` : `${hours}h ${rest}m`;
