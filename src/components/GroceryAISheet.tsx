@@ -40,6 +40,7 @@ import { EmptyState } from './EmptyState';
 import { RecipeSourcePicker } from './RecipeSourcePicker';
 import { describeImportError, isRetryableImportError } from '../services/recipePage';
 import { useRecipeImportSource } from '../hooks/useRecipeImportSource';
+import { useKeyboardInsetScroll } from '../hooks/useKeyboardInsetScroll';
 import { MAX_RECIPE_PHOTOS } from '../utils/recipePhoto';
 import { haptics } from '../utils/haptics';
 import { GROCERY_NAME_MAX_LENGTH } from '../types';
@@ -99,6 +100,7 @@ export function GroceryAISheet({ visible, mode, onClose }: Props) {
   const [recipeRows, setRecipeRows] = useState<RecipeGroceryItem[]>([]);
   const [accepted, setAccepted] = useState<Set<number>>(new Set());
   const recipeInput = useRecipeImportSource('paste', undefined, MAX_RECIPE_PHOTOS);
+  const keyboardScroll = useKeyboardInsetScroll<ScrollView>();
   const { resolveSource: resolveRecipeSource, reset: resetRecipeInput } = recipeInput;
 
   // Anything currently sitting in the catch-all and on the list — the exact
@@ -293,7 +295,12 @@ export function GroceryAISheet({ visible, mode, onClose }: Props) {
 
     if (mode === 'recipe' && recipeRows.length === 0) {
       return (
-        <ScrollView contentContainerStyle={styles.pasteWrap} keyboardShouldPersistTaps="handled">
+        <ScrollView
+          ref={keyboardScroll.ref}
+          contentContainerStyle={styles.pasteWrap}
+          keyboardShouldPersistTaps="handled"
+          {...keyboardScroll.props}
+        >
           <RecipeSourcePicker
             intro="Open a recipe link, paste a recipe, or photograph the page. You’ll get back what to buy, named the way a store labels it rather than the way the recipe chops it."
             mode={recipeInput.mode}

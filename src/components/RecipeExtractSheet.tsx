@@ -647,7 +647,12 @@ export function RecipeExtractSheet({ visible, recipe, onClose }: Props) {
     }
 
     return (
-      <ScrollView contentContainerStyle={styles.list} keyboardShouldPersistTaps="handled">
+      <ScrollView
+        ref={keyboardScroll.ref}
+        contentContainerStyle={styles.list}
+        keyboardShouldPersistTaps="handled"
+        {...keyboardScroll.props}
+      >
         <Text style={styles.intro}>
           Uncheck anything you don't want added. Tap any line to change it before it's added.
         </Text>

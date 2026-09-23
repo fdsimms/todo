@@ -2,6 +2,7 @@ import React, { useEffect, useMemo, useState } from 'react';
 import { ScrollView, StyleSheet, Text, View } from 'react-native';
 import { SheetModal } from './SheetModal';
 import { useColors } from '../theme/ThemeContext';
+import { useKeyboardInsetScroll } from '../hooks/useKeyboardInsetScroll';
 import { border, font, fontWeight, spacing, type Colors } from '../theme';
 import type { GroceryItem, ItemProduct } from '../types';
 import { productsForItem } from '../utils/groceryProduct';
@@ -52,6 +53,7 @@ export function CatalogLinkSheet({
   currentItemId, currentProductId, onPick, onClose,
 }: Props) {
   const colors = useColors();
+  const keyboardScroll = useKeyboardInsetScroll<ScrollView>();
   const styles = useMemo(() => makeStyles(colors), [colors]);
   /** The item chosen, while its boxes are being offered. Null on step one. */
   const [chosen, setChosen] = useState<GroceryItem | null>(null);
@@ -87,9 +89,11 @@ export function CatalogLinkSheet({
           <View style={styles.spacer} />
         </View>
         <ScrollView
+          ref={keyboardScroll.ref}
           style={styles.bodyScroll}
           contentContainerStyle={styles.body}
           keyboardShouldPersistTaps="handled"
+          {...keyboardScroll.props}
         >
           <Text style={styles.subject} numberOfLines={2}>{subject}</Text>
           {chosen ? (
