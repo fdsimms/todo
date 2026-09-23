@@ -326,6 +326,24 @@ export interface ConvertedQuantity {
 }
 
 /** One quantity, with no `≈` of its own — see convertQuantity for the marker. */
+/**
+ * A second amount straight after the first one's unit, in the same dimension
+ * and system: the " 8 oz" of "1 lb 8 oz", the " 2 tbsp" of "1 cup 2 tbsp".
+ * Both halves are one measurement, so the second is added to the first rather
+ * than left as trailing prose, which measured "1 lb 8 oz" as one pound and
+ * converted it to "≈450 g 8 oz". Null when the trailing text is anything else.
+ */
+function compoundTail(first: KnownUnit, trailing: string): { base: number; trailing: string } | null {
+  if (!/^\s+\S/.test(trailing)) return null;
+  const q = parseQuantity(trailing.trim());
+  if (q.amount === null || q.container || q.rangeMax || !q.unit) return null;
+  const known = KNOWN_UNITS[q.unit];
+  if (!known || known.dimension !== first.dimension || known.system !== first.system) return null;
+  const value = rationalToNumber(q.amount);
+  if (value <= 0) return null;
+  return { base: value * known.base, trailing: q.trailing };
+}
+
 function convertOne(part: string, target: 'metric' | 'us'): ConvertedQuantity {
   const q = parseQuantity(part);
   const unchanged: ConvertedQuantity = { text: q.raw, converted: false };
@@ -346,21 +364,25 @@ function convertOne(part: string, target: 'metric' | 'us'): ConvertedQuantity {
   const known = KNOWN_UNITS[q.unit];
   if (!known) return unchanged;
 
+  const tail = compoundTail(known, q.trailing);
+
   if (known.system === target) {
+    if (tail) return unchanged;
     if (target !== 'us' || known.dimension !== 'volume') return unchanged;
     const stepped = stepDownUsVolume(q.amount, q.unit);
     if (!stepped) return unchanged;
     return { text: `${stepped.text} ${stepped.unit}${q.trailing}`, converted: true };
   }
 
+  const base = value * known.base + (tail?.base ?? 0);
   const rendered = target === 'metric'
-    ? renderMetric(value * known.base, known.dimension)
-    : renderUs(value * known.base, known.dimension);
+    ? renderMetric(base, known.dimension)
+    : renderUs(base, known.dimension);
   if (!rendered) return unchanged;
 
   // Whatever followed the unit is prose — a size clause ("1 cup, packed"), a
   // prep note — and carries through untouched, exactly as scaling carries it.
-  return { text: `${rendered}${q.trailing}`, converted: true };
+  return { text: `${rendered}${tail ? tail.trailing : q.trailing}`, converted: true };
 }
 
 export interface MeasuredQuantity {
@@ -422,7 +444,8 @@ export function measureParsedQuantity(q: Quantity): MeasuredQuantity | null {
   if (!q.unit) return null;
   const known = KNOWN_UNITS[q.unit];
   if (!known) return null;
-  return { base: value * known.base, dimension: known.dimension, system: known.system };
+  const tail = compoundTail(known, q.trailing);
+  return { base: value * known.base + (tail?.base ?? 0), dimension: known.dimension, system: known.system };
 }
 
 /**

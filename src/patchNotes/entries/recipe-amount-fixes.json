@@ -1,4 +1,4 @@
 {
-  "message": "Recipe amounts like \"1 ½ cups\" now scale and convert correctly, \"2 (14 oz) cans\" keeps its space when doubled, and a step timer for 90 seconds now says \"1m 30s\" instead of \"2m\"",
+  "message": "Amounts like \"1 ½ cups\" and \"1 lb 8 oz\" now scale, convert and count toward unit prices correctly, \"2 (14 oz) cans\" keeps its space when doubled, and a step timer for 90 seconds now says \"1m 30s\" instead of \"2m\"",
   "date": "2026-09-23"
 }

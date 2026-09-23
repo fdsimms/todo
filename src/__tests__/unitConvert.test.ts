@@ -1,4 +1,4 @@
-import { convertQuantity, describeUnitFamily, unitFactor } from '../utils/unitConvert';
+import { convertQuantity, describeUnitFamily, measureQuantity, unitFactor } from '../utils/unitConvert';
 
 const metric = (q: string) => convertQuantity(q, 'metric').text;
 const us = (q: string) => convertQuantity(q, 'us').text;
@@ -248,5 +248,31 @@ describe('describeUnitFamily', () => {
     expect(describeUnitFamily('clove')).toBeNull();
     expect(describeUnitFamily('bunch')).toBeNull();
     expect(describeUnitFamily('')).toBeNull();
+  });
+});
+
+describe('a compound amount ("1 lb 8 oz")', () => {
+  it('measures both halves as one weight', () => {
+    expect(measureQuantity('1 lb 8 oz')!.base).toBeCloseTo(680.4, 1);
+    expect(measureQuantity('1 cup 2 tbsp')!.base).toBeCloseTo(236.6 + 29.6, 0);
+  });
+
+  it('converts both halves together rather than leaving the second behind', () => {
+    const out = convertQuantity('1 lb 8 oz', 'metric');
+    expect(out.converted).toBe(true);
+    expect(out.text).not.toMatch(/oz/);
+  });
+
+  it('carries prose after the second half through', () => {
+    expect(convertQuantity('1 lb 8 oz, trimmed', 'metric').text).toMatch(/, trimmed$/);
+  });
+
+  it('leaves a second amount in another dimension or system as prose', () => {
+    expect(measureQuantity('1 lb 250 g')!.base).toBeCloseTo(453.6, 1);
+    expect(measureQuantity('1 lb 2 cups')!.base).toBeCloseTo(453.6, 1);
+  });
+
+  it('does not rewrite a compound already in the target system', () => {
+    expect(convertQuantity('1 cup 2 tbsp', 'us')).toEqual({ text: '1 cup 2 tbsp', converted: false });
   });
 });
