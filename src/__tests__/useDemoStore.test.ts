@@ -1267,6 +1267,16 @@ describe('demo mode', () => {
     expect(relative.every(t => t.dueDate !== null && t.reminderTime !== null)).toBe(true);
   });
 
+  it('seeds a reminder that tracks when the task becomes visible, rather than a fixed instant or an offset', () => {
+    useDemoStore.getState().enterDemoMode();
+    const tracking = useTaskStore.getState().tasks.filter(t => t.reminderTracksVisibility);
+
+    expect(tracking.length).toBeGreaterThan(0);
+    // Only meaningful with something to become visible from, and a reminder
+    // time to have been resolved against it.
+    expect(tracking.every(t => (t.deferUntil !== null || t.timeSegments.length > 0) && t.reminderTime !== null)).toBe(true);
+  });
+
   // A title rule is invisible until something has actually been filed by one,
   // so proving the rule exists isn't enough — what this pins is that the
   // seeded task got its category, tag and effort from the rule and not from

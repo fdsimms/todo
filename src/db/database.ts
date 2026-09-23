@@ -1682,6 +1682,11 @@ export function initDatabase(): void {
     // Null on every existing row: a project has no default task category
     // until somebody nominates one. See Project.defaultTaskCategory.
     'ALTER TABLE projects ADD COLUMN default_task_category TEXT',
+    // The other alternative to a fixed reminder_time, mutually exclusive with
+    // reminder_offset_days — see Task.reminderTracksVisibility. 0 on every
+    // existing row, which reads as exactly the behaviour they already had: a
+    // reminder that doesn't track visibility at all.
+    'ALTER TABLE tasks ADD COLUMN reminder_tracks_visibility INTEGER NOT NULL DEFAULT 0',
   ];
   // Asking SQLite for a table's columns once is cheaper than handing it every
   // ALTER for that table and catching the duplicate-column error, and by the
@@ -2610,6 +2615,7 @@ function rowToTask(row: Record<string, unknown>): Task {
     reminderTime: (row.reminder_time as string) ?? null,
     reminderKind: ((row.reminder_kind as Task['reminderKind']) ?? 'notification'),
     reminderOffsetDays: (row.reminder_offset_days as number | null) ?? null,
+    reminderTracksVisibility: Boolean(row.reminder_tracks_visibility),
     reminderTimeAnchor: (row.reminder_time_anchor as 'wallClock' | 'fixed' | null) ?? 'wallClock',
     reminderUtcOffsetMinutes: (row.reminder_utc_offset_minutes as number | null) ?? null,
     // Column names stay cycle_* — this is the pre-rename "Cycle" feature
@@ -2747,8 +2753,9 @@ export function dbInsertTask(task: Task): void {
       health_metric, health_target, completion_timer_minutes, completion_timer_note, completion_timer_started_at, log_health_metric, log_health_amount,
       penalty_minutes, penalty_cutoff_time, penalty_fired_at, penalty_credited_at, gates_apps,
       medication_name, medication_amount, medication_unit, log_meal_slot,
-      estimate_before_timing, waiting_on_person_since, waiting_follow_up_declined_at
-    ) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)`,
+      estimate_before_timing, waiting_on_person_since, waiting_follow_up_declined_at,
+      reminder_tracks_visibility
+    ) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)`,
     [
       task.id, task.title, task.notes, task.completed ? 1 : 0,
       task.completedAt, task.createdAt, task.seenAt, task.dueDate, task.deadline, task.deadlineOffsetDays ?? null, task.deadlineMonthDay ?? null, task.deferUntil,
@@ -2850,6 +2857,7 @@ export function dbInsertTask(task: Task): void {
       task.estimateBeforeTiming ?? null,
       task.waitingOnPersonSince ?? null,
       task.waitingFollowUpDeclinedAt ?? null,
+      task.reminderTracksVisibility ? 1 : 0,
     ]
   );
 }
@@ -2882,7 +2890,8 @@ export function dbUpdateTask(task: Task): void {
       health_metric=?, health_target=?, completion_timer_minutes=?, completion_timer_note=?, completion_timer_started_at=?, log_health_metric=?, log_health_amount=?,
       penalty_minutes=?, penalty_cutoff_time=?, penalty_fired_at=?, penalty_credited_at=?, gates_apps=?,
       medication_name=?, medication_amount=?, medication_unit=?, log_meal_slot=?,
-      estimate_before_timing=?, waiting_on_person_since=?, waiting_follow_up_declined_at=?
+      estimate_before_timing=?, waiting_on_person_since=?, waiting_follow_up_declined_at=?,
+      reminder_tracks_visibility=?
     WHERE id=?`,
     [
       task.title, task.notes, task.completed ? 1 : 0, task.completedAt, task.seenAt,
@@ -2985,6 +2994,7 @@ export function dbUpdateTask(task: Task): void {
       task.estimateBeforeTiming ?? null,
       task.waitingOnPersonSince ?? null,
       task.waitingFollowUpDeclinedAt ?? null,
+      task.reminderTracksVisibility ? 1 : 0,
       task.id,
     ]
   );

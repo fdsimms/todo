@@ -11,6 +11,7 @@ import {
   describeDeadlineOffset,
   getReminderOffsetDate,
   describeReminderOffset,
+  describeReminderTracksVisibility,
   captureReminderOffset,
   reanchorReminderToWallClock,
   getLogicalToday,
@@ -113,7 +114,7 @@ const baseTask: Task = {
   progressCount: 0,
   reminderTime: null,
   reminderKind: 'notification',
-  reminderOffsetDays: null, reminderTimeAnchor: 'wallClock', reminderUtcOffsetMinutes: null,
+  reminderOffsetDays: null, reminderTracksVisibility: false, reminderTimeAnchor: 'wallClock', reminderUtcOffsetMinutes: null,
   parentId: null,
   groupId: null,
   projectId: null,
@@ -1366,6 +1367,12 @@ describe('describeReminderOffset', () => {
 
   it('describes a zero offset as the due date itself', () => {
     expect(describeReminderOffset(0)).toBe('On due date');
+  });
+});
+
+describe('describeReminderTracksVisibility', () => {
+  it('describes the mode in plain terms, with no numeric parameter', () => {
+    expect(describeReminderTracksVisibility()).toBe('When it becomes visible');
   });
 });
 

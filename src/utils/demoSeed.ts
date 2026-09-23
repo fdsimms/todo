@@ -848,6 +848,15 @@ export function seedDemoData(): void {
     deferUntil: addDays(today, 3).toISOString(),
     effort: 4,
     priority: 2,
+    // Tracks the exact moment this comes off its defer (Task.
+    // reminderTracksVisibility) rather than a fixed instant or an offset
+    // from a due date it doesn't have — the reminder mode with nothing to
+    // count from but the defer/time-segment gate itself. reminderTime is
+    // seeded to match today; reanchorWallClockReminders corrects it for
+    // real on the next launch/foreground, same as it does for wall-clock
+    // drift.
+    reminderTime: addDays(today, 3).toISOString(),
+    reminderTracksVisibility: true,
   });
 
   addTask({

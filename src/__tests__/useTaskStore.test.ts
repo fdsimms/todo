@@ -400,7 +400,7 @@ const makeTask = (overrides: Partial<Task> = {}): Task => ({
   projectId: null,
   reminderTime: null,
   reminderKind: 'notification',
-  reminderOffsetDays: null, reminderTimeAnchor: 'wallClock', reminderUtcOffsetMinutes: null,
+  reminderOffsetDays: null, reminderTracksVisibility: false, reminderTimeAnchor: 'wallClock', reminderUtcOffsetMinutes: null,
   chainEnabled: false,
   chainIndex: 0,
   chainItems: [],
@@ -1904,7 +1904,7 @@ describe('completeTask', () => {
       recurrenceInterval: 1,
       dueDate: new Date(2025, 5, 10, 0, 0, 0).toISOString(),
       reminderTime: new Date(2025, 5, 10, 9, 30, 0).toISOString(),
-      reminderOffsetDays: null, reminderTimeAnchor: 'wallClock', reminderUtcOffsetMinutes: null,
+      reminderOffsetDays: null, reminderTracksVisibility: false, reminderTimeAnchor: 'wallClock', reminderUtcOffsetMinutes: null,
     });
     useTaskStore.setState({ tasks: [task] });
     useTaskStore.getState().completeTask('recurring');
@@ -1914,6 +1914,30 @@ describe('completeTask', () => {
     expect(reminder.toDateString()).toBe(new Date(next!.dueDate!).toDateString());
     expect(reminder.getHours()).toBe(9);
     expect(reminder.getMinutes()).toBe(30);
+  });
+
+  it('recomputes a visibility-tracking reminder against the successor\'s own resulting placement, via getVisibleAt', () => {
+    const task = makeTask({
+      id: 'recurring',
+      recurrenceType: 'daily',
+      recurrenceInterval: 1,
+      dueDate: new Date(2025, 5, 10, 0, 0, 0).toISOString(),
+      reminderTime: new Date(2025, 5, 10, 18, 0, 0).toISOString(),
+      reminderOffsetDays: null,
+      reminderTracksVisibility: true,
+    });
+    useTaskStore.setState({ tasks: [task] });
+    useTaskStore.getState().completeTask('recurring');
+
+    const next = useTaskStore.getState().tasks.find(t => t.id !== 'recurring');
+    expect(next?.reminderTracksVisibility).toBe(true);
+    expect(new Date(next!.dueDate!).toDateString()).toBe('Wed Jun 11 2025');
+    const reminder = new Date(next!.reminderTime!);
+    // Resolved through getVisibleAt against the successor's own dueDate
+    // (with no timeSegments/windowStart to refine it further, that's the
+    // day-start) rather than kept at the completed row's 6pm.
+    expect(reminder.toDateString()).toBe('Wed Jun 11 2025');
+    expect(reminder.getHours()).toBe(0);
   });
 
   it('stamps the next occurrence with previousOccurrenceId pointing back at the completed task', () => {
@@ -6913,6 +6937,28 @@ describe('skipNextRecurrence', () => {
     expect(new Date(updated.reminderTime!).toISOString()).toBe(new Date(2025, 5, 18, 20, 0, 0).toISOString());
   });
 
+  it('recomputes a visibility-tracking reminder against the skipped-to occurrence, via getVisibleAt', () => {
+    const task = makeTask({
+      id: 't1',
+      recurrenceType: 'daily',
+      recurrenceInterval: 1,
+      dueDate: new Date(2025, 5, 10, 0, 0, 0).toISOString(),
+      reminderTime: new Date(2025, 5, 10, 18, 0, 0).toISOString(),
+      reminderTracksVisibility: true,
+    });
+    useTaskStore.setState({ tasks: [task] });
+    useTaskStore.getState().skipNextRecurrence('t1');
+    const updated = useTaskStore.getState().tasks[0];
+    expect(updated.reminderTracksVisibility).toBe(true);
+    expect(new Date(updated.dueDate!).toDateString()).toBe('Wed Jun 11 2025');
+    const reminder = new Date(updated.reminderTime!);
+    // The skipped-to occurrence's own day is what getVisibleAt resolves
+    // against — not an N-day offset kept from the row it was skipped from,
+    // which is what would have fired here before.
+    expect(reminder.toDateString()).toBe('Wed Jun 11 2025');
+    expect(reminder.getHours()).toBe(0);
+  });
+
   it('advances only the chain position on a mid-chain step, leaving the schedule untouched', () => {
     const task = makeTask({
       id: 't1',
@@ -6963,6 +7009,33 @@ describe('skipNextRecurrence', () => {
     expect(new Date(updated.dueDate!).toDateString()).toBe('Wed Jun 11 2025');
     // Still not a skipped *cycle*, same split as completeTask.
     expect(updated.recurrenceCount).toBe(5);
+  });
+
+  it('recomputes a visibility-tracking reminder against a mid-chain step\'s own resulting date', () => {
+    const task = makeTask({
+      id: 't1',
+      recurrenceType: 'daily',
+      recurrenceInterval: 1,
+      dueDate: new Date(2025, 5, 10, 0, 0, 0).toISOString(),
+      recurrenceCount: 5,
+      chainEnabled: true,
+      chainStepOnSchedule: true,
+      chainItems: [
+        { id: 'a', title: 'Step A', estimatedMinutes: null },
+        { id: 'b', title: 'Step B', estimatedMinutes: null },
+        { id: 'c', title: 'Step C', estimatedMinutes: null },
+      ],
+      chainIndex: 0, // not the last step
+      reminderTime: new Date(2025, 5, 10, 18, 0, 0).toISOString(),
+      reminderTracksVisibility: true,
+    });
+    useTaskStore.setState({ tasks: [task] });
+    useTaskStore.getState().skipNextRecurrence('t1');
+    const updated = useTaskStore.getState().tasks[0];
+    expect(new Date(updated.dueDate!).toDateString()).toBe('Wed Jun 11 2025');
+    const reminder = new Date(updated.reminderTime!);
+    expect(reminder.toDateString()).toBe('Wed Jun 11 2025');
+    expect(reminder.getHours()).toBe(0);
   });
 
   it('advances the schedule and wraps the chain back to 0 when skipping the last step', () => {
@@ -12007,6 +12080,52 @@ describe('quota tasks', () => {
       expect(afterSecond.reminderTime).toBe(afterFirst.reminderTime);
       expect(afterSecond.reminderUtcOffsetMinutes).toBe(afterFirst.reminderUtcOffsetMinutes);
     });
+
+    it('recomputes a visibility-tracking reminder whenever getVisibleAt\'s own answer has moved on, unlike a wall-clock reminder which only reacts to a timezone change', () => {
+      jest.useFakeTimers();
+      jest.setSystemTime(new Date(2026, 0, 10, 9, 0, 0)); // Jan 10, 9am
+      useTaskStore.setState({
+        tasks: [makeTask({
+          id: 'reminder-visibility',
+          deferUntil: new Date(2026, 0, 12, 15, 0, 0).toISOString(), // Jan 12, 3pm
+          reminderTracksVisibility: true,
+          // Stale — left over from whatever getVisibleAt answered with before
+          // the defer date above was set.
+          reminderTime: new Date(2026, 0, 11, 0, 0, 0).toISOString(),
+        })],
+      });
+
+      useTaskStore.getState().reanchorWallClockReminders();
+
+      const updated = useTaskStore.getState().tasks.find(t => t.id === 'reminder-visibility')!;
+      // A plain (non-'hours') deferUntil resolves to its own day-start —
+      // getVisibleAt truncates the time-of-day away and only a timeSegments/
+      // windowStart entry would refine it further, same as isTaskVisible's
+      // own deferral gate.
+      expect(new Date(updated.reminderTime!).toISOString()).toBe(new Date(2026, 0, 12, 0, 0, 0).toISOString());
+      jest.useRealTimers();
+    });
+
+    it('leaves a completed task\'s visibility-tracking reminder untouched', () => {
+      jest.useFakeTimers();
+      jest.setSystemTime(new Date(2026, 0, 10, 9, 0, 0));
+      const staleReminder = new Date(2026, 0, 11, 0, 0, 0).toISOString();
+      useTaskStore.setState({
+        tasks: [makeTask({
+          id: 'reminder-visibility-done',
+          completed: true,
+          deferUntil: new Date(2026, 0, 12, 15, 0, 0).toISOString(),
+          reminderTracksVisibility: true,
+          reminderTime: staleReminder,
+        })],
+      });
+
+      useTaskStore.getState().reanchorWallClockReminders();
+
+      const unchanged = useTaskStore.getState().tasks.find(t => t.id === 'reminder-visibility-done')!;
+      expect(unchanged.reminderTime).toBe(staleReminder);
+      jest.useRealTimers();
+    });
   });
 
   describe('sweepOvershootQuotas', () => {
@@ -12754,6 +12873,29 @@ describe('updateTask series fan-out', () => {
     expect(later.getDate()).toBe(14); // day before the 15th
     expect(later.getHours()).toBe(7);
     expect(later.getMinutes()).toBe(15);
+  });
+
+  it("re-anchors a fanned-out visibility-tracking reminder through getVisibleAt against each date's own placement", () => {
+    jest.useFakeTimers();
+    jest.setSystemTime(new Date(2025, 8, 1, 9, 0, 0)); // before either date in the set
+    const rows = useTaskStore.getState().addTaskSeries(
+      { title: 'Dog' },
+      [new Date(2025, 8, 10, 12, 0, 0), new Date(2025, 8, 15, 12, 0, 0)],
+    );
+    useTaskStore.getState().updateTask(rows[0].id, {
+      reminderTime: new Date(2025, 8, 10, 18, 0, 0).toISOString(),
+      reminderTracksVisibility: true,
+    });
+
+    const later = useTaskStore.getState().tasks.find(t => t.id === rows[1].id)!;
+    expect(later.reminderTracksVisibility).toBe(true);
+    const reminder = new Date(later.reminderTime!);
+    // Resolved against the 15th's own dueDate (with no timeSegments/
+    // windowStart to refine it, that's its day-start), not an offset from
+    // the row that was actually edited.
+    expect(reminder.getDate()).toBe(15);
+    expect(reminder.getHours()).toBe(0);
+    jest.useRealTimers();
   });
 
   it('fans a blocker out to the whole set', () => {

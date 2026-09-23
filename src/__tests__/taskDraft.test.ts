@@ -141,4 +141,20 @@ describe('buildSeriesRow', () => {
     const row = buildSeriesRow({ title: 'X', reminderTime: '2026-03-01T09:30:00.000Z' }, date, 's1');
     expect(new Date(row.reminderTime!).getDate()).toBe(15);
   });
+
+  it('resolves a visibility-tracking reminder through getVisibleAt against the row\'s own placement rather than re-anchoring the offset', () => {
+    jest.useFakeTimers();
+    jest.setSystemTime(new Date('2026-03-01T09:00:00.000Z')); // before the row's own date
+    const row = buildSeriesRow(
+      { title: 'X', reminderTime: '2026-02-01T07:00:00.000Z', reminderTracksVisibility: true },
+      date, // 2026-03-15
+      's1',
+    );
+    expect(row.reminderTracksVisibility).toBe(true);
+    // The source's own day (the 1st) plays no part — getVisibleAt resolves
+    // against the built row's dueDate (the 15th) instead, with deferUntil
+    // cleared same as every series row.
+    expect(new Date(row.reminderTime!).getDate()).toBe(15);
+    jest.useRealTimers();
+  });
 });
