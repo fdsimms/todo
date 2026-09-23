@@ -151,9 +151,8 @@ export function PantryReviewSheet({ visible, onClose }: Props) {
       answerPantryReview(card.item.id, answer);
       setHistory(h => [...h, { kind: 'answered', item: live ?? card.item, entry, answer }]);
       setIndex(i => i + 1);
-      pan.setValue({ x: 0, y: 0 });
     },
-    [answerPantryReview, pan]
+    [answerPantryReview]
   );
 
   /**
@@ -198,7 +197,16 @@ export function PantryReviewSheet({ visible, onClose }: Props) {
         duration: animation.duration.fast,
         useNativeDriver: true,
       }).start(({ finished }) => {
-        if (finished) commit(answer);
+        if (!finished) return;
+        commit(answer);
+        // `pan` is one shared node bound to whichever card sits at offset 0,
+        // so resetting it here — before this commit's `setIndex` has actually
+        // been rendered — snaps the card that just flew out back into view
+        // for a frame, since it's still the mounted, pan-bound view until
+        // React promotes the next one. Deferring a frame lets that render
+        // land first, the same fix `TaskItem`'s `finishPacingOut` uses for
+        // the same reason (see its comment).
+        requestAnimationFrame(() => pan.setValue({ x: 0, y: 0 }));
       });
     },
     [commit, pan]
