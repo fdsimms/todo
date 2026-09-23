@@ -1422,6 +1422,19 @@ export const TaskItem = React.memo(function TaskItem({
   const scheduledIso = showDate ? getEffectiveTaskDate(task) : null;
   const scheduledHidden = scheduledIso !== null && scheduledIso === task.deferUntil && scheduledIso !== task.dueDate;
 
+  // An "every N hours" task has no calendar grid — the row's own recurrence
+  // caption just says the interval ("Every 8 hours"), never the clock time it
+  // actually lands on, which is exactly the affordance requested (#comment on
+  // the Sep 22 screenshot). taskCompletion.ts's own comment on nextDeferUntil
+  // spells out why `deferUntil` is the answer here: for this recurrence type
+  // it *is* the precise instant the next occurrence unlocks, not just a floor
+  // hiding an already-dated row. Once that instant passes the task is due (and
+  // showing up wherever due tasks show up), so there's nothing left to name.
+  const hoursUnlockTime =
+    task.recurrenceType === 'hours' && task.deferUntil && new Date(task.deferUntil) > new Date()
+      ? formatTimeOfDay(new Date(task.deferUntil))
+      : null;
+
   // Self-gating: only an Apple Reminders import ever sets pendingImport, and it
   // clears the moment the suggestion is taken or dropped — so nothing else has
   // to decide whether this row is the kind that shows one.
@@ -3108,6 +3121,12 @@ export const TaskItem = React.memo(function TaskItem({
               ]}>
                 <Ionicons name="repeat" size={12} color={colors.textSecondary} />
                 <Text style={styles.expandMeta}>{describeTaskRecurrence(task)}</Text>
+                {hoursUnlockTime && (
+                  <>
+                    <Text style={styles.expandMeta}> · </Text>
+                    <Text style={styles.expandMeta}>Unlocks {hoursUnlockTime}</Text>
+                  </>
+                )}
                 {task.streakCount > 0 && (
                   <>
                     <Text style={styles.expandMeta}> · </Text>
