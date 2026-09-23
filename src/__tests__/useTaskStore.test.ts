@@ -12321,6 +12321,26 @@ describe('quota tasks', () => {
       expect(done.streakCount).toBe(4);
     });
 
+    it('closes the day as of its own end, so a repeat-after-completion target is not a day late', () => {
+      useTaskStore.setState({
+        tasks: [quota({
+          allowOvershoot: true,
+          quotaIntervalMinutes: null,
+          quotaReminders: false,
+          quotaStartedAt: null, quotaAlwaysVisible: false,
+          progressCount: 5,
+          recurrenceFromCompletion: true,
+          dueDate: new Date(2025, 5, 9, 12, 0, 0).toISOString(),
+        })],
+      });
+      useTaskStore.getState().sweepOvershootQuotas();
+
+      const done = useTaskStore.getState().tasks.find(t => t.id === 'water')!;
+      const next = useTaskStore.getState().tasks.find(t => !t.completed)!;
+      expect(done.completedAt).toBe(new Date(2025, 5, 9, 23, 59, 59, 999).toISOString());
+      expect(new Date(next.dueDate!).toDateString()).toBe('Tue Jun 10 2025');
+    });
+
     it('completes an overshot day with the high count', () => {
       useTaskStore.setState({
         tasks: [quota({

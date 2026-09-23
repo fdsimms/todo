@@ -4248,9 +4248,17 @@ export const useTaskStore = create<TaskStore>((set, get) => ({
     );
     // neutral on a day the task's own category schedule didn't cover — see
     // #2201, isCategoryScheduledDay, and rolloverQuotas' own note above.
-    stale.forEach(t => get().completeTask(t.id, {
-      neutral: !isCategoryScheduledDay(t.category, getTaskDayStart(new Date(t.dueDate!), dayResetTime)),
-    }));
+    //
+    // Stamped at the end of its own day, as rolloverQuotas stamps a partial:
+    // the tally is a record of that day, and a repeat-after-completion
+    // successor measured from the sweep's own moment skipped a day.
+    stale.forEach(t => {
+      const ownDayStart = getTaskDayStart(new Date(t.dueDate!), dayResetTime);
+      get().completeTask(t.id, {
+        neutral: !isCategoryScheduledDay(t.category, ownDayStart),
+        completedAt: new Date(+addDays(ownDayStart, 1) - 1).toISOString(),
+      });
+    });
   },
 
   startQuotaRun(id) {
