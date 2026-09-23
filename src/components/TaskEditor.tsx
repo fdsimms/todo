@@ -2037,7 +2037,7 @@ export function TaskEditor({ visible, task, initialDraft, onClose }: Props) {
       recurrenceType, recurrenceInterval, recurrenceDays, recurrenceMonthDay, recurrenceWeekOrdinal, recurrenceFromCompletion,
       recurrenceEndDate: recurrenceEndDate?.toISOString() ?? null,
       recurrenceCount,
-      priority, effort, estimatedMinutes, actualMinutes, timedMinutes, healthMetric, healthTarget, pinned, chainEnabled, chainItems, chainIndex, chainStepOnSchedule, vacationPause,
+      priority, effort, estimatedMinutes, actualMinutes, timedMinutes, healthMetric, healthTarget, pinned, chainEnabled, chainItems, rotationItems, chainIndex, chainStepOnSchedule, vacationPause,
       excludeFromSuggestions,
       polarity,
       showStreak,
