@@ -102,6 +102,9 @@ export interface PersonName {
   id: string;
   name: string;
   nickname: string;
+  /** See `parseTaskInput.ts`'s `PersonToken.kind` — a business skips the
+   * first-word guess below, the same reason it skips it there. */
+  kind?: 'individual' | 'business';
 }
 
 /** One past event that named somebody, offered rather than asserted. */
@@ -164,7 +167,9 @@ function escapeRegExp(value: string): string {
  * The same three `matchPersonMentions` builds — full name, nickname, and the first
  * word of the name so "Dustin Reyes" answers to "Dustin". Full names are how
  * people arrive from a contact card, and nobody writes a surname into their own
- * calendar.
+ * calendar. The first-word guess is skipped for a business, the same reason
+ * `matchPersonMentions` skips it: a company name's first word isn't a first
+ * name, and "Eye Q" would otherwise answer to "eye" in any event mentioning it.
  */
 function nameTokensOf(person: PersonName): string[] {
   const tokens: string[] = [];
@@ -175,8 +180,10 @@ function nameTokensOf(person: PersonName): string[] {
   };
   add(person.name);
   add(person.nickname);
-  const first = person.name.trim().split(/\s+/)[0];
-  if (first) add(first);
+  if (person.kind !== 'business') {
+    const first = person.name.trim().split(/\s+/)[0];
+    if (first) add(first);
+  }
   return tokens;
 }
 

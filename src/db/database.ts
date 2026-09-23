@@ -1687,6 +1687,9 @@ export function initDatabase(): void {
     // existing row, which reads as exactly the behaviour they already had: a
     // reminder that doesn't track visibility at all.
     'ALTER TABLE tasks ADD COLUMN reminder_tracks_visibility INTEGER NOT NULL DEFAULT 0',
+    // 'individual' on every existing row: a business marker is new, and every
+    // person entered before it existed was a person. See Person.kind.
+    "ALTER TABLE people ADD COLUMN kind TEXT NOT NULL DEFAULT 'individual'",
   ];
   // Asking SQLite for a table's columns once is cheaper than handing it every
   // ALTER for that table and catching the duplicate-column error, and by the
@@ -6025,6 +6028,7 @@ function rowToPerson(row: Record<string, unknown>): Person {
   return {
     id: row.id as string,
     name: row.name as string,
+    kind: (row.kind as 'individual' | 'business') || 'individual',
     nickname: (row.nickname as string) ?? '',
     notes: (row.notes as string) ?? '',
     sortOrder: row.sort_order as number,
@@ -6059,14 +6063,14 @@ export function dbGetAllPeople(): Person[] {
 export function dbInsertPerson(person: Person): void {
   db.runSync(
     `INSERT INTO people (
-      id, name, nickname, notes, sort_order, archived, archived_at, created_at,
+      id, name, kind, nickname, notes, sort_order, archived, archived_at, created_at,
       birthday_month, birthday_day, birth_year, birthday_task_opt_out, birthday_gift_task_opt_out,
       phone_number, email, link_url, cadence_days, nudge_opt_in, cadence_set_at, reach_out_declined_at,
       reach_out_offer_declined_at, ask_about,
       backfill_dismissed_fields, group_id, location
-    ) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)`,
+    ) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)`,
     [
-      person.id, person.name, person.nickname, person.notes, person.sortOrder,
+      person.id, person.name, person.kind, person.nickname, person.notes, person.sortOrder,
       person.archived ? 1 : 0, person.archivedAt, person.createdAt,
       person.birthdayMonth, person.birthdayDay, person.birthYear,
       person.birthdayTaskOptOut ? 1 : 0,
@@ -6084,14 +6088,14 @@ export function dbInsertPerson(person: Person): void {
 export function dbUpdatePerson(person: Person): void {
   db.runSync(
     `UPDATE people SET
-      name=?, nickname=?, notes=?, sort_order=?, archived=?, archived_at=?,
+      name=?, kind=?, nickname=?, notes=?, sort_order=?, archived=?, archived_at=?,
       birthday_month=?, birthday_day=?, birth_year=?, birthday_task_opt_out=?, birthday_gift_task_opt_out=?,
       phone_number=?, email=?, link_url=?, cadence_days=?, nudge_opt_in=?, cadence_set_at=?, reach_out_declined_at=?,
       reach_out_offer_declined_at=?, ask_about=?,
       backfill_dismissed_fields=?, group_id=?, location=?
     WHERE id=?`,
     [
-      person.name, person.nickname, person.notes, person.sortOrder,
+      person.name, person.kind, person.nickname, person.notes, person.sortOrder,
       person.archived ? 1 : 0, person.archivedAt,
       person.birthdayMonth, person.birthdayDay, person.birthYear,
       person.birthdayTaskOptOut ? 1 : 0,

@@ -104,6 +104,15 @@ describe('peopleNamedInTitle', () => {
     expect(peopleNamedInTitle('Dinner w/ Priya', [dustin, ansley])).toEqual([]);
   });
 
+  // A business's name isn't "first name, last name" — matching its first word
+  // would read "Eye Q" as though "Eye" were somebody's given name in any event
+  // mentioning it. See docs/arch/people.md, "Businesses don't get check-ins".
+  it('does not match the first word of a business name', () => {
+    const eyeQ: PersonName = { id: 'p9', name: 'Eye Q', nickname: '', kind: 'business' };
+    expect(peopleNamedInTitle('Eye appointment', [eyeQ])).toEqual([]);
+    expect(peopleNamedInTitle('Eye Q appointment', [eyeQ])).toEqual(['p9']);
+  });
+
   it('handles an empty title and an empty list', () => {
     expect(peopleNamedInTitle('', [dustin])).toEqual([]);
     expect(peopleNamedInTitle('Dinner w/ Dustin', [])).toEqual([]);

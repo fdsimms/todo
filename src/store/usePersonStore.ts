@@ -44,6 +44,7 @@ export function blankPerson(name: string, sortOrder: number): Person {
   return {
     id: generateId(),
     name: name.trim(),
+    kind: 'individual',
     nickname: '',
     notes: '',
     sortOrder,
@@ -80,7 +81,7 @@ export function displayNameOf(person: Pick<Person, 'name' | 'nickname'>): string
 
 /** The fields the editor may write. Deliberately every field except identity and order. */
 export type PersonPatch = Partial<Pick<Person,
-  | 'name' | 'nickname' | 'notes'
+  | 'name' | 'kind' | 'nickname' | 'notes'
   | 'birthdayMonth' | 'birthdayDay' | 'birthYear' | 'birthdayTaskOptOut' | 'birthdayGiftTaskOptOut'
   | 'phoneNumber' | 'email' | 'linkUrl'
   | 'cadenceDays' | 'nudgeOptIn' | 'cadenceSetAt' | 'reachOutDeclinedAt' | 'reachOutOfferDeclinedAt' | 'askAbout'

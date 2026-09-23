@@ -25,7 +25,7 @@ const TODAY = new Date(2026, 2, 20, 12);
 const daysAgo = (n: number) => new Date(TODAY.getTime() - n * 86_400_000);
 
 const person = (o: Partial<Person> = {}): Person => ({
-  id: 'p1', name: 'Dustin', nickname: '', notes: '', sortOrder: 1,
+  id: 'p1', name: 'Dustin', kind: 'individual', nickname: '', notes: '', sortOrder: 1,
   archived: false, archivedAt: null, createdAt: '2026-01-01T00:00:00.000Z',
   birthdayMonth: null, birthdayDay: null, birthYear: null, birthdayTaskOptOut: false, birthdayGiftTaskOptOut: false,
   phoneNumber: null, email: null, linkUrl: null,

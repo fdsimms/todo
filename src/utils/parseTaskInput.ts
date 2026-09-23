@@ -1079,6 +1079,13 @@ export interface PersonToken {
   id: string;
   name: string;
   nickname: string;
+  /**
+   * Optional so every existing caller (and test fixture) that only ever named
+   * people keeps compiling. `'business'` skips the first-word fallback below
+   * — a company name's first word isn't a first name, and "Eye Q" answering to
+   * "@eye" is exactly the bug a business marker exists to avoid.
+   */
+  kind?: 'individual' | 'business';
 }
 
 /**
@@ -1129,6 +1136,19 @@ const MIN_PREFIX_LENGTH = 3;
  * turns a set of ids back into `PersonToken`s in the person's own list order,
  * the order a pick-one list is offered in.
  */
+/**
+ * What typing a suggestion rewrites the token to: the nickname if there is
+ * one, else the first word of the name — except for a business, which has no
+ * "first name" to fall back to, so the rewrite uses the whole name instead.
+ * Shared by `getMentionSuggestions` and `getEditorMentionSuggestions`.
+ */
+function mentionResolveKey(person: PersonToken): string {
+  const nickname = person.nickname.trim();
+  if (nickname) return nickname;
+  const name = person.name.trim();
+  return person.kind === 'business' ? name : name.split(/\s+/)[0];
+}
+
 function buildPersonNameIndex(people: PersonToken[]) {
   // Built once per call rather than per token: a name can be reached three ways
   // and the last writer would otherwise depend on iteration order.
@@ -1141,12 +1161,23 @@ function buildPersonNameIndex(people: PersonToken[]) {
     else byName.set(k, [id]);
   };
   for (const person of people) {
-    add(person.name, person.id);
+    const name = person.name.trim();
+    // A "@" token can never contain a space (PERSON_TOKEN_PATTERN stops at the
+    // first non-word character), so a multi-word name can never be typed as an
+    // exact match anyway — indexing it as a key only feeds the *prefix* scan
+    // below, which would otherwise let "@eye" match "Eye Q" by treating its
+    // first word as though it were a first name. So a business's multi-word
+    // name is skipped outright rather than only its explicit first-word entry;
+    // a single-word business name (or nickname) still indexes normally.
+    if (person.kind !== 'business' || !/\s/.test(name)) add(name, person.id);
     add(person.nickname, person.id);
     // First word only, so "Dustin Reyes" answers to "@dustin". Skipped when the
-    // name is one word already, which the map above has covered.
-    const first = person.name.trim().split(/\s+/)[0];
-    if (first && first.toLowerCase() !== person.name.trim().toLowerCase()) add(first, person.id);
+    // name is one word already, which the map above has covered, and skipped
+    // outright for a business — its name's first word isn't a first name, and
+    // matching it would read "Eye Q" as though "Eye" were somebody given name.
+    if (person.kind === 'business') continue;
+    const first = name.split(/\s+/)[0];
+    if (first && first.toLowerCase() !== name.toLowerCase()) add(first, person.id);
   }
   const toCandidates = (ids: Iterable<string>): PersonToken[] => {
     const set = new Set(ids);
@@ -1417,7 +1448,7 @@ export function getMentionSuggestions(
       candidates: toCandidates(prefixIds).slice(0, 5).map(p => ({
         id: p.id,
         name: p.name,
-        resolveKey: p.nickname.trim() || p.name.trim().split(/\s+/)[0],
+        resolveKey: mentionResolveKey(p),
       })),
     };
   }
@@ -1486,7 +1517,7 @@ export function getEditorMentionSuggestions(
       candidates: toCandidates(prefixIds).slice(0, 5).map(p => ({
         id: p.id,
         name: p.name,
-        resolveKey: p.nickname.trim() || p.name.trim().split(/\s+/)[0],
+        resolveKey: mentionResolveKey(p),
       })),
     };
   }
