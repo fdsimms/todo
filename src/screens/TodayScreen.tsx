@@ -1214,6 +1214,15 @@ export function TodayScreen() {
           // reason the other checks above run here rather than waiting for
           // the next cold start.
           useLeftoverStore.getState().reconcileAllLeftoverTasks();
+          // A completion timer's countdown ends purely by time passing too,
+          // and this is the case that matters most for it: the whole point of
+          // one is a short reminder a few minutes to a few hours after
+          // finishing a task, so most of them run their course while the
+          // phone is sitting closed for a normal length of time rather than
+          // across a cold launch. Without this the Live Activity it started
+          // sat on the Lock Screen at 0:00 until the next background refresh
+          // or force-quit got around to it.
+          useTaskStore.getState().sweepExpiredCompletionTimers();
           forceRefresh(n => n + 1);
           // The rows are memoized, so re-rendering this screen no longer
           // re-renders them. Their clock-derived text (deadline countdowns,

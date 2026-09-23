@@ -1663,6 +1663,8 @@ interface TaskStore extends UndoHistoryActions {
   startCompletionTimer: (id: string) => void;
   /** Ends a completion timer's Live Activity early without touching its still-pending notification. */
   dismissCompletionTimer: (id: string) => void;
+  /** Dismisses any completion timer whose countdown has already reached zero — see maintenancePasses.ts. */
+  sweepExpiredCompletionTimers: () => void;
   // Timed tasks only: pause banks the running segment without logging it, so
   // the countdown can be resumed later; reset throws the banked time away.
   pauseTimer: (id: string) => void;
@@ -6670,6 +6672,28 @@ export const useTaskStore = create<TaskStore>((set, get) => ({
     const task = get().tasks.find(t => t.id === id);
     if (!task || task.completionTimerStartedAt === null) return;
     get().updateTask(id, { completionTimerStartedAt: null });
+  },
+
+  // The Done button and the notification tap (notificationTapSync.ts) both
+  // dismiss the Live Activity, but either needs the user to actually see and
+  // act on one of them — swipe the notification away unread, or never tap
+  // the Lock Screen button, and completionTimerStartedAt is never cleared.
+  // liveActivity.ts renders the countdown by comparing "now" to a fixed
+  // target every time it runs, so a run left undismissed doesn't grow
+  // incorrect, it just sits at 0:00 forever with nothing left to trigger a
+  // resync — buildTimerRuns only runs off a task/recipe/settings write, not a
+  // clock. This is that clock: same shape as sweepExpiredTasks, run at launch
+  // and in the background (see catchUpPasses in maintenancePasses.ts) so a
+  // countdown nobody acknowledged still clears on its own.
+  sweepExpiredCompletionTimers() {
+    const now = Date.now();
+    const expired = get().tasks.filter(t => {
+      if (t.completionTimerStartedAt === null || t.archived) return false;
+      const targetEndMs =
+        new Date(t.completionTimerStartedAt).getTime() + (t.completionTimerMinutes ?? 0) * 60000;
+      return now >= targetEndMs;
+    });
+    expired.forEach(t => get().dismissCompletionTimer(t.id));
   },
 
   pauseTimer(id) {

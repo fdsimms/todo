@@ -215,6 +215,13 @@ export function catchUpPasses(): MaintenanceStep[] {
     // reason that one sits after rolloverQuotas — a run can create tasks a
     // project counts, so the cheaper pass goes first and sees a settled list.
     ['check scheduled templates', () => useTemplateStore.getState().checkScheduledTemplates()],
+    // Clear a completion-timer Live Activity whose countdown reached zero
+    // with nobody around to tap the Done button or the notification —
+    // otherwise it sits at 0:00 on the Lock Screen forever, since nothing
+    // else ever revisits it. Same trigger as the rest of this list (time
+    // passing), grouped near the end because it reads completionTimerStartedAt
+    // rather than writing anything the passes above depend on.
+    ['dismiss expired completion timers', () => tasks().sweepExpiredCompletionTimers()],
     // Charge the apps-blocked penalty on anything that went past its cutoff
     // undone. Last in the list on purpose: every pass above can change whether
     // a task is still outstanding — a template can create one, a rollover can
