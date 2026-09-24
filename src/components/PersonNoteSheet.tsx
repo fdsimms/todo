@@ -1,4 +1,4 @@
-import React, { useEffect, useMemo, useState } from 'react';
+import React, { useEffect, useMemo, useRef, useState } from 'react';
 import { View, Text, TextInput, TouchableOpacity, StyleSheet, Alert } from 'react-native';
 import Ionicons from '@expo/vector-icons/Ionicons';
 import type { PersonNote, PersonNoteKind } from '../types';
@@ -61,6 +61,7 @@ export function PersonNoteSheet({ visible, personId, personName, note, initialKi
   const [kind, setKind] = useState<PersonNoteKind>(initialKind);
   const [relevantOn, setRelevantOn] = useState<string | null>(null);
   const [showDatePicker, setShowDatePicker] = useState(false);
+  const textInputRef = useRef<TextInput>(null);
 
   useEffect(() => {
     if (!visible) return;
@@ -97,6 +98,10 @@ export function PersonNoteSheet({ visible, personId, personName, note, initialKi
     <EditorSheet
       visible={visible}
       onRequestClose={saveAndClose}
+      // Only for a new note — editing an existing one opens onto text it's
+      // fine to leave alone. The sheet stays mounted across opens, so a bare
+      // `autoFocus` on the field would only ever fire once.
+      onShow={() => { if (!note) textInputRef.current?.focus(); }}
       rootStyle={styles.root}
       headerStyle={styles.header}
       scrollStyle={styles.scroll}
@@ -132,6 +137,7 @@ export function PersonNoteSheet({ visible, personId, personName, note, initialKi
       }
     >
       <TextInput
+        ref={textInputRef}
         style={styles.textInput}
         value={text}
         onChangeText={setText}

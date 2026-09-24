@@ -221,6 +221,13 @@ export function ProjectDetailScreen() {
   const [showExistingPicker, setShowExistingPicker] = useState(false);
   const searchFilter = useFilterField();
   const existingSearch = searchFilter.query;
+  // The picker's Modal stays mounted across opens, and SearchField's own
+  // `autoFocus` only remounts the field on a `seed()` call — so it would
+  // otherwise only focus the very first time this picker is ever opened.
+  useEffect(() => {
+    if (showExistingPicker) searchFilter.inputRef.current?.focus();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [showExistingPicker]);
   const [showCompleted, setShowCompleted] = useState(false);
   const [notesExpanded, setNotesExpanded] = useState(false);
   // Not-now only, like every OfferBanner — reopening the project re-offers it,
@@ -1216,7 +1223,6 @@ export function ProjectDetailScreen() {
               right={<View style={styles.headerSpacer} />}
             />
             <SearchField
-              autoFocus
               style={styles.searchBar}
               field={searchFilter}
               placeholder="Search tasks"

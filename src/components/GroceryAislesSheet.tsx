@@ -1,4 +1,4 @@
-import React, { useMemo, useState, useEffect } from 'react';
+import React, { useMemo, useState, useEffect, useRef } from 'react';
 import {
   Keyboard,
   View,
@@ -134,6 +134,9 @@ export function GroceryAislesSheet({ visible, onClose }: Props) {
   const [rangeShopId, setRangeShopId] = useState<string | null>(null);
   const [scopedDrafts, setScopedDrafts] = useState<ReadonlySet<string>>(() => new Set());
 
+  const newAisleInputRef = useRef<TextInput>(null);
+  const newShopInputRef = useRef<TextInput>(null);
+
   useEffect(() => {
     if (visible) {
       setTab('aisles');
@@ -149,6 +152,17 @@ export function GroceryAislesSheet({ visible, onClose }: Props) {
       setScopedDrafts(new Set());
     }
   }, [visible]);
+
+  // Fires on open (tab is forced to 'aisles' above) and on every manual tab
+  // switch — the add field is each tab's own primary action, and unlike the
+  // rename fields above (which remount fresh because they're conditional on
+  // `editing`), this sheet stays mounted across opens so a bare `autoFocus`
+  // on the add fields would only ever fire once.
+  useEffect(() => {
+    if (!visible) return;
+    if (tab === 'aisles') newAisleInputRef.current?.focus();
+    else if (tab === 'stores') newShopInputRef.current?.focus();
+  }, [visible, tab]);
 
   const shopCounts = useMemo(() => itemCountsByShop(items, itemShops), [items, itemShops]);
 
@@ -281,6 +295,7 @@ export function GroceryAislesSheet({ visible, onClose }: Props) {
             shopCounts={shopCounts}
             newShop={newShop}
             setNewShop={setNewShop}
+            newShopInputRef={newShopInputRef}
             onAdd={handleAddShop}
             editingShopId={editingShopId}
             editingName={editingName}
@@ -443,6 +458,7 @@ export function GroceryAislesSheet({ visible, onClose }: Props) {
 
               <View style={styles.addWrap}>
                 <TextInput
+                  ref={newAisleInputRef}
                   style={styles.addInput}
                   value={newAisle}
                   onChangeText={setNewAisle}
@@ -482,6 +498,7 @@ interface StoresTabProps {
   shopCounts: Map<string, number>;
   newShop: string;
   setNewShop: (s: string) => void;
+  newShopInputRef: React.RefObject<TextInput | null>;
   onAdd: () => void;
   editingShopId: string | null;
   editingName: string;
@@ -522,6 +539,7 @@ function StoresTab({
   shopCounts,
   newShop,
   setNewShop,
+  newShopInputRef,
   onAdd,
   editingShopId,
   editingName,
@@ -716,6 +734,7 @@ function StoresTab({
         ListFooterComponent={
           <View style={styles.addWrap}>
             <TextInput
+              ref={newShopInputRef}
               style={styles.addInput}
               value={newShop}
               onChangeText={setNewShop}

@@ -66,6 +66,7 @@ export function GroceryListSheet({ visible, onClose }: Props) {
   const [newName, setNewName] = useState('');
   const [editingId, setEditingId] = useState<string | null>(null);
   const [editingName, setEditingName] = useState('');
+  const newNameInputRef = useRef<TextInput>(null);
 
   const hiddenY = useSheetHiddenOffset();
   const translateY = useRef(new Animated.Value(hiddenY)).current;
@@ -96,6 +97,9 @@ export function GroceryListSheet({ visible, onClose }: Props) {
     if (!visible) return;
     setNewName('');
     setEditingId(null);
+    // The field stays mounted across opens, so a bare `autoFocus` would only
+    // ever fire once — same fix as GroceryAddSheet's own field.
+    newNameInputRef.current?.focus();
     translateY.setValue(hiddenY);
     backdropOpacity.setValue(0);
     const height = Keyboard.metrics()?.height ?? 0;
@@ -277,6 +281,7 @@ export function GroceryListSheet({ visible, onClose }: Props) {
 
           <View style={styles.addWrap}>
             <TextInput
+              ref={newNameInputRef}
               style={styles.addInput}
               value={newName}
               onChangeText={setNewName}
