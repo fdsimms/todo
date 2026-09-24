@@ -34,7 +34,7 @@ import Reanimated, {
 import Ionicons from '@expo/vector-icons/Ionicons';
 import { format } from 'date-fns/format';
 import { PinIcon } from './PinIcon';
-import type { Task, GroceryItem, ItemSubLink, ItemProduct, Recipe } from '../types';
+import type { Task, GroceryItem, ItemSubLink, ItemProduct, Recipe, ChainItem } from '../types';
 import { MEAL_SLOT_ICONS, MEAL_SLOT_LABELS, PRIORITY_COLORS, TITLE_MAX_LENGTH } from '../types';
 import { useColors } from '../theme/ThemeContext';
 import { useTheme } from '../theme/ThemeContext';
@@ -57,7 +57,7 @@ import { isTaskWindowActive, isTaskExpired, effectiveWindowEnd, isRecurrenceNotY
 import { asksOnCompletion } from '../utils/deliverables';
 import { offersMealLogOnCompletion } from '../utils/completionTap';
 import { describeTaskRecurrence } from '../utils/recurrenceLabels';
-import { chainPreview, isChainFinish } from '../utils/chain';
+import { chainPreview, isChainFinish, chainStepAdvancesInPlace, nextChainStep } from '../utils/chain';
 import { formatQuotaProgress } from '../utils/quotaUnit';
 import { clampSupplyReorderAt, describeSupply } from '../utils/supply';
 import { followUpTaskRule, completionsUntilFollowUpTask } from '../utils/followUpTask';
@@ -551,6 +551,24 @@ export const TaskItem = React.memo(function TaskItem({
   // resolve well after handleComplete returns) still carries the override
   // through to completeTask. Cleared as soon as that completion runs.
   const logEarlyRef = useRef(false);
+  // What the row previews itself as, mid-chain-completion — see
+  // chainStepAdvancesInPlace and runCompletion. Null the rest of the time,
+  // when chainStep/chainStepIndex/displayTitle read straight off `task`.
+  const [inPlaceNextStep, setInPlaceNextStep] = useState<{ item: ChainItem; index: number } | null>(null);
+  // Drives the title/badge crossfade for that same transition: 1 is at rest
+  // (identical to no transform at all), and the sequence in runCompletion
+  // takes it to 0 (fading the current step out) and back to 1 with a spring
+  // that overshoots past it — the "gets slightly bigger" settle the new step
+  // arrives with. Used directly as a transform scale rather than through an
+  // interpolation, the same way circleScale below drives its own pop: the
+  // overshoot only reads as a bounce if the raw spring value reaches the
+  // transform.
+  const chainStepAnim = useRef(new Animated.Value(1)).current;
+  const chainStepOpacity = chainStepAnim.interpolate({
+    inputRange: [0, 0.3, 1],
+    outputRange: [0, 1, 1],
+    extrapolate: 'clamp',
+  });
   const circleScale = useRef(new Animated.Value(1)).current;
   // A row can mount already completed — Calendar keeps completed rows in its
   // day list, where every other screen filters them out before TaskItem ever
@@ -1391,13 +1409,24 @@ export const TaskItem = React.memo(function TaskItem({
   // finished), so without the gate a completed chain step kept showing its
   // old "N/M" position for as long as the row was on screen — most visibly
   // during the completion hold, right when the row is meant to read as done.
-  const chainStep = activeChainItem && task.chainItems.length > 1 ? activeChainItem : null;
-  const chainStepIndex = task.chainItems.length > 0 ? task.chainIndex % task.chainItems.length : 0;
+  //
+  // `inPlaceNextStep` overrides all of this while a chain-step completion is
+  // animating itself onto the successor's look (see runCompletion) — the real
+  // `task` is still the step that was just ticked (completeTask hasn't run
+  // yet), but the row is already previewing what it's about to become.
+  const chainStep = inPlaceNextStep
+    ? inPlaceNextStep.item
+    : (activeChainItem && task.chainItems.length > 1 ? activeChainItem : null);
+  const chainStepIndex = inPlaceNextStep
+    ? inPlaceNextStep.index
+    : (task.chainItems.length > 0 ? task.chainIndex % task.chainItems.length : 0);
   const chainPosition = chainStep ? `${chainStepIndex + 1}/${task.chainItems.length}` : '';
   // Its own title on a negative task rather than the step's: a chain step can
   // never be advanced past, so displayTitleFor would otherwise replace the row's
   // title with step one for ever.
-  const displayTitle = (isNegative ? null : activeChainStepTitle(task)) ?? task.title;
+  const displayTitle = inPlaceNextStep
+    ? inPlaceNextStep.item.title
+    : (isNegative ? null : activeChainStepTitle(task)) ?? task.title;
   // Computed once and reused by the expandable step list (#1237) and the row's
   // step-forward/back controls (#786) — same reasoning as chainStepIndex above.
   const chainStepPreview = chainStep ? chainPreview(task) : null;
@@ -1494,6 +1523,12 @@ export const TaskItem = React.memo(function TaskItem({
     // does; see the delayed checkScale spring below. Any completion of a row
     // that's currently showing a meter takes this path, the widget's included.
     const viaMeter = isQuota;
+    // Set when this completion will spawn its successor immediately and the
+    // row can preview it in place, rather than collapsing and waiting for a
+    // separate row to slide in below — see chainStepAdvancesInPlace. Mutually
+    // exclusive with viaMeter in practice (a chain step isn't a daily target),
+    // but guarded anyway rather than assumed.
+    const chainNextItem = !viaMeter && chainStepAdvancesInPlace(task) ? nextChainStep(task) : null;
     // The unit that meets the target can land inside a linger window (log the
     // seventh, then the eighth). The completion owns the row from here, so the
     // send-off queued behind that seventh unit must not fire over it — the hold
@@ -1557,6 +1592,15 @@ export const TaskItem = React.memo(function TaskItem({
     sequence.start(({ finished }) => {
       completeAnimRef.current = null;
       if (!finished) return;
+      if (chainNextItem) {
+        // The row previews its own successor instead of collapsing — see
+        // chainStepAdvancesInPlace's doc comment and runChainStepTransition
+        // below. completingRef stays true for the whole preview (guards
+        // against a re-tap the same way the ordinary hold does) and only
+        // clears once that function actually calls completeTask.
+        void runChainStepTransition(chainNextItem, deliverableValue, logEarly);
+        return;
+      }
       completingRef.current = false;
       pendingDeliverableRef.current = undefined;
       // Leaves the row checked and fully visible, holding its slot: the send-off
@@ -1578,6 +1622,62 @@ export const TaskItem = React.memo(function TaskItem({
       // no row left to spotlight (same fix as markMissed/skipNextRecurrence).
       if (expanded) onPress(rowId);
     });
+  };
+
+  /**
+   * The in-place half of a chain step's completion — everything runCompletion
+   * hands off to once it knows chainNextItem is real. Runs entirely off local
+   * animated state, ahead of the store: the row fades its current step out,
+   * swaps to the next one with the same bounce a fresh completion pops in
+   * with, and resets its checkbox to unstarted — all before completeTask ever
+   * runs. By the time it does, this row already looks exactly like the
+   * successor it's about to become, so the real swap (this task marked
+   * completed and filtered out, the new one taking its place) lands with
+   * nothing left to animate.
+   *
+   * completingRef stays true for the whole thing, same as the ordinary path
+   * keeps it true through its hold — a re-tap mid-preview is a no-op via
+   * handleComplete's own guard, and the unmount cleanup effect still finishes
+   * the completion (without this treatment) if the row goes away early.
+   */
+  const runChainStepTransition = async (
+    nextItem: ChainItem,
+    deliverableValue: string | null | undefined,
+    logEarly: boolean,
+  ) => {
+    // Same brief hold on the finished step's checkmark the ordinary path
+    // gives it before the row starts moving on.
+    await new Promise(resolve => setTimeout(resolve, 180));
+    await new Promise<void>(resolve => {
+      Animated.timing(chainStepAnim, { toValue: 0, duration: 140, useNativeDriver: true }).start(() => resolve());
+    });
+    // The swap: title and badge start reading as the next step, and the
+    // checkbox goes back to unstarted. `task` itself hasn't changed — this is
+    // local state standing in for it until completeTask below catches up.
+    setInPlaceNextStep({ item: nextItem, index: chainStepIndex + 1 });
+    setCompleting(false);
+    setQuotaCompleting(false);
+    checkScale.setValue(0);
+    // A small ring pulse on the checkbox marks the reset the same way an
+    // uncomplete does elsewhere in this file, rather than just vanishing.
+    Animated.sequence([
+      Animated.spring(circleScale, { toValue: 1.15, ...animation.spring.snappy, useNativeDriver: true }),
+      Animated.spring(circleScale, { toValue: 1, ...animation.spring.snappy, useNativeDriver: true }),
+    ]).start();
+    await new Promise<void>(resolve => {
+      // The spring itself overshoots past 1 — that overshoot, applied directly
+      // as the title/badge's own scale, is the "gets slightly bigger" settle.
+      Animated.spring(chainStepAnim, { toValue: 1, ...animation.spring.bouncy, useNativeDriver: true }).start(() => resolve());
+    });
+    completingRef.current = false;
+    pendingDeliverableRef.current = undefined;
+    completeTask(task.id, {
+      ...(deliverableValue !== undefined ? { deliverableValue } : {}),
+      ...(logEarly ? { logEarly: true } : {}),
+      chainStepInPlace: true,
+    });
+    endQuotaHold();
+    if (expanded) onPress(rowId);
   };
 
   // ==== completing, quota taps, and their undos ====
@@ -2313,23 +2413,30 @@ export const TaskItem = React.memo(function TaskItem({
               // (handleTitleTap/saveTitle), even though the displayed text here
               // is the step's while one is active — matching the collapsed row.
               <TouchableOpacity style={styles.titleFlex} onPress={handleTitleTap} activeOpacity={interaction.activeOpacity} hitSlop={8}>
+                {/* Same crossfade wrapper as the collapsed row below — see
+                    chainStepOpacity/chainStepAnim's own comment. A no-op the
+                    rest of the time: chainStepAnim rests at 1. */}
+                <Animated.View style={{ opacity: chainStepOpacity, transform: [{ scale: chainStepAnim }] }}>
+                  <HighlightedText
+                    text={displayTitle}
+                    ranges={titleMentionRanges}
+                    style={styles.title}
+                    highlightStyle={styles.titleMention}
+                    numberOfLines={2}
+                  />
+                </Animated.View>
+              </TouchableOpacity>
+            ) : (
+              <Animated.View style={[styles.titleFlex, { opacity: chainStepOpacity, transform: [{ scale: chainStepAnim }] }]}>
                 <HighlightedText
                   text={displayTitle}
                   ranges={titleMentionRanges}
                   style={styles.title}
                   highlightStyle={styles.titleMention}
                   numberOfLines={2}
+                  ellipsizeMode="tail"
                 />
-              </TouchableOpacity>
-            ) : (
-              <HighlightedText
-                text={displayTitle}
-                ranges={titleMentionRanges}
-                style={[styles.title, styles.titleFlex]}
-                highlightStyle={styles.titleMention}
-                numberOfLines={2}
-                ellipsizeMode="tail"
-              />
+              </Animated.View>
             )}
             {deadlineDays !== null && (
               <View
@@ -2828,7 +2935,9 @@ export const TaskItem = React.memo(function TaskItem({
           accessibilityLabel={chainName ? `Step ${chainPosition} of "${chainName}"` : `Chain step ${chainPosition}`}
         >
           <Ionicons name="git-commit" size={9} color={colors.accent} />
-          <Text style={styles.chainBadgeText}>{chainPosition}</Text>
+          <Animated.Text style={[styles.chainBadgeText, { opacity: chainStepOpacity, transform: [{ scale: chainStepAnim }] }]}>
+            {chainPosition}
+          </Animated.Text>
         </View>
       )}
 

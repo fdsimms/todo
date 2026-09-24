@@ -1,0 +1,4 @@
+{
+  "message": "Completing a step in a chain now updates the row in place — the title and step count crossfade to the next step instead of the row collapsing and a new one sliding in below it",
+  "date": "2026-09-24"
+}

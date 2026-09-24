@@ -152,6 +152,30 @@ export function chainPreview(task: ChainCarrier): ChainPreview | null {
 }
 
 /**
+ * True when completing this task right now spawns the next chain step
+ * immediately, in the same commit — no recurrence to wait out and no
+ * per-step schedule holding it back. Mirrors completeTask's own
+ * `chainAdvances && !atChainEnd && !stepsBySchedule` (useTaskStore.ts /
+ * taskCompletion.ts): the case where the successor is real and visible
+ * before the tap has even finished its own animation.
+ *
+ * This is what lets the row animate the transition itself — see
+ * `runCompletion` in TaskItem.tsx — rather than collapsing and waiting for a
+ * separate row to slide in below it. A step gated behind its own schedule
+ * (chainStepOnSchedule, only meaningful on a recurring chain) doesn't spawn
+ * anything today, so there's nothing for the row to preview.
+ */
+export function chainStepAdvancesInPlace(task: ChainCompletionCarrier & { chainStepOnSchedule?: boolean }): boolean {
+  const items = task.chainItems;
+  if (!task.chainEnabled || !items || items.length === 0) return false;
+  const idx = task.chainIndex ?? 0;
+  if (idx >= items.length - 1) return false; // atChainEnd — ends or waits for the recurrence, never immediate
+  const recurs = (task.recurrenceType ?? 'none') !== 'none';
+  const stepsBySchedule = recurs && task.chainStepOnSchedule === true;
+  return !stepsBySchedule;
+}
+
+/**
  * True when completing this task right now would finish a chain for good —
  * the last step, with no Repeat to loop it back to the first. Mirrors
  * completeTask's `atChainEnd && !recurs` (useTaskStore.ts): the one case
