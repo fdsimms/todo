@@ -1427,7 +1427,25 @@ interface TaskStore extends UndoHistoryActions {
    * exclusive with `missed` in practice (nothing passes both); `missed`
    * still wins if it somehow were, since a miss is the more specific claim.
    */
-  completeTask: (id: string, options?: { missed?: boolean; deliverableValue?: string | null; neutral?: boolean; completedAt?: string; logEarly?: boolean }) => void;
+  completeTask: (id: string, options?: {
+    missed?: boolean;
+    deliverableValue?: string | null;
+    neutral?: boolean;
+    completedAt?: string;
+    logEarly?: boolean;
+    /**
+     * The row animated its own transition to the successor's look before
+     * calling this (see TaskItem's runCompletion and chainStepAdvancesInPlace)
+     * — so the usual completion hold, which keeps a just-ticked row's slot
+     * open for a batched collapse, would only fight that: it'd mask this row
+     * back to its real (pre-transition) content for the rest of the hold
+     * window, undoing the crossfade the moment it lands. Skipping the hold
+     * lets the old id disappear and the new one take its place in the same
+     * commit, which is invisible precisely because the row already looks
+     * like the successor by the time this fires.
+     */
+    chainStepInPlace?: boolean;
+  }) => void;
   uncompleteTask: (id: string) => void;
   /**
    * Writes (or clears) the answer on an already-completed task — the Logbook's
@@ -3236,7 +3254,11 @@ export const useTaskStore = create<TaskStore>((set, get) => ({
         ...(followUpTask ? [followUpTask] : []),
         ...followUpSubtasks,
       ],
-      completionHoldIds: [...s.completionHoldIds, id],
+      // See the option's own doc comment: a row that already animated its own
+      // transition to the successor's look has nothing left for the hold to
+      // protect, and masking it back to its pre-transition content for the
+      // rest of the window would undo that crossfade the moment it lands.
+      completionHoldIds: options?.chainStepInPlace ? s.completionHoldIds : [...s.completionHoldIds, id],
       // A daily target that completes mid-hold hands over to the completion
       // hold, which masks it as incomplete for its own window. Leaving it in
       // both would keep the finished row on Today past that.
