@@ -260,17 +260,27 @@ export function dueMealPlanNudge(
 
 /**
  * True when the week the nudge is about to ask for already has at least one
- * meal planned — planned directly on the Meal Plan screen, with the nudge
- * never touched. Any entry counts, the same binary "has a date signal at
- * all" the project drip uses (`hasNoDateSignal`) rather than judging how
- * *much* of the week is filled in: this is a reminder to start, not a
- * completeness check.
+ * meal planned on one of its *later* days — planned directly on the Meal
+ * Plan screen, with the nudge never touched. Any entry counts, the same
+ * binary "has a date signal at all" the project drip uses
+ * (`hasNoDateSignal`) rather than judging how *much* of the week is filled
+ * in: this is a reminder to start, not a completeness check.
+ *
+ * **The first day of the week doesn't count.** The nudge fires on that same
+ * day by default (#1730), so a standing/recurring entry already sitting on
+ * it — a Monday breakfast that's the same every week, say — would otherwise
+ * read as "this week is already planned" every single week and the nudge
+ * would never fire at all. An entry on day 1 says that one day has
+ * something; it says nothing about the other six, which is what this is
+ * actually asking about.
  */
 export function mealPlanNudgeSuppressed(
   due: Pick<MealPlanNudgeDue, 'targetWeekStartKey' | 'targetWeekEndKey'>,
   entriesInTargetWeek: readonly Pick<MealPlanEntry, 'date'>[]
 ): boolean {
-  return entriesInTargetWeek.some(e => isKeyInRange(e.date, due.targetWeekStartKey, due.targetWeekEndKey));
+  return entriesInTargetWeek.some(
+    e => e.date !== due.targetWeekStartKey && isKeyInRange(e.date, due.targetWeekStartKey, due.targetWeekEndKey)
+  );
 }
 
 /**
