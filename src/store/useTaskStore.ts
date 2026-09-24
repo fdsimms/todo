@@ -4025,7 +4025,17 @@ export const useTaskStore = create<TaskStore>((set, get) => ({
       // has six days left to run on the morning after it was spawned, and the
       // day test would close it out short every single night. See
       // Task.quotaPeriod, and periodStartOf just below for the two readings.
-      periodStartOf(new Date(t.dueDate), t.quotaPeriod) < periodStartOf(todayStart, t.quotaPeriod)
+      //
+      // getEffectiveTaskDate rather than the raw dueDate: a quota task pushed
+      // out with deferUntil is hidden until that later day (isTaskVisible),
+      // so its stored dueDate reads as overdue every launch in between even
+      // though the user moved it forward on purpose. Without this, the row
+      // got closed as a shortfall (breaking its streak) and a fresh successor
+      // spawned for today — reappearing on Today despite having just been
+      // rescheduled later, and duplicating it once the deferred date itself
+      // arrived and rolled over a second time.
+      periodStartOf(new Date(getEffectiveTaskDate(t, dayResetTime)!), t.quotaPeriod) <
+        periodStartOf(todayStart, t.quotaPeriod)
     );
     if (stale.length === 0) return;
 
