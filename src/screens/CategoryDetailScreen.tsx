@@ -31,6 +31,7 @@ import { QuickAddModal } from '../components/QuickAddModal';
 import { useColors } from '../theme/ThemeContext';
 import { spacing, interaction, type Colors } from '../theme';
 import { haptics } from '../utils/haptics';
+import { confirmBulkSetWhen } from '../utils/scheduleMovePrompt';
 import { animateLayout } from '../utils/layoutAnimation';
 import type { Task } from '../types';
 
@@ -54,7 +55,6 @@ export function CategoryDetailScreen() {
   const bulkCompleteTasks = useTaskStore(s => s.bulkCompleteTasks);
   const bulkMarkMissed = useTaskStore(s => s.bulkMarkMissed);
   const bulkSetPriority = useTaskStore(s => s.bulkSetPriority);
-  const bulkSetWhen = useTaskStore(s => s.bulkSetWhen);
   const bulkSetCategory = useTaskStore(s => s.bulkSetCategory);
   const bulkAddTags = useTaskStore(s => s.bulkAddTags);
   const categories = useCategoryStore(useShallow(s => s.categories));
@@ -316,7 +316,7 @@ export function CategoryDetailScreen() {
             onComplete={handleBulkComplete}
             completableCount={completableCount}
             onDelete={handleBulkDelete}
-            onSetWhen={(date, segs) => { bulkSetWhen(Array.from(selectedIds), date, segs); exitSelection(); }}
+            onSetWhen={(date, segs) => confirmBulkSetWhen(Array.from(selectedIds), date, segs, exitSelection)}
             onSetCategory={cat => { bulkSetCategory(Array.from(selectedIds), cat); exitSelection(); }}
             onAddTags={tags => { bulkAddTags(Array.from(selectedIds), tags); exitSelection(); }}
             onSetPriority={p => { bulkSetPriority(Array.from(selectedIds), p); exitSelection(); }}

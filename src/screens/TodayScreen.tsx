@@ -33,6 +33,7 @@ import { PinIcon } from '../components/PinIcon';
 import { format } from 'date-fns/format';
 import type { ContextRow, SavedViewClause, Task, TaskGroup, TaskTemplate, Category, TimeOfDay } from '../types';
 import { isTaskNew, isTaskVisible, isUnscheduledTask, isInboxTask, isDismissedToday, isRelevantToGroupToday, groupRoster } from '../utils/visibilityUtils';
+import { confirmBulkSetWhen } from '../utils/scheduleMovePrompt';
 import { type CreatedTaskDestination } from '../utils/createdTaskPlacement';
 import { completedOnDay, describeAllClear } from '../utils/allClear';
 import {
@@ -559,7 +560,6 @@ export function TodayScreen() {
   const bulkMarkMissed = useTaskStore(s => s.bulkMarkMissed);
   const bulkSetPriority = useTaskStore(s => s.bulkSetPriority);
   const bulkTogglePin = useTaskStore(s => s.bulkTogglePin);
-  const bulkSetWhen = useTaskStore(s => s.bulkSetWhen);
   const bulkSetCategory = useTaskStore(s => s.bulkSetCategory);
   const bulkAddTags = useTaskStore(s => s.bulkAddTags);
   const markTasksSeen = useTaskStore(s => s.markTasksSeen);
@@ -4466,7 +4466,7 @@ export function TodayScreen() {
             onComplete={handleBulkComplete}
             completableCount={completableCount}
             onDelete={handleBulkDelete}
-            onSetWhen={(date, segs) => { bulkSetWhen(Array.from(selectedIds), date, segs); exitSelection(); }}
+            onSetWhen={(date, segs) => confirmBulkSetWhen(Array.from(selectedIds), date, segs, exitSelection)}
             onSetCategory={category => { bulkSetCategory(Array.from(selectedIds), category); exitSelection(); }}
             onAddTags={tags => { bulkAddTags(Array.from(selectedIds), tags); exitSelection(); }}
             onSetPriority={p => { bulkSetPriority(Array.from(selectedIds), p); exitSelection(); }}

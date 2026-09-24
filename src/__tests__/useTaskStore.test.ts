@@ -9616,6 +9616,21 @@ describe('bulkSetWhen', () => {
     expect(useTaskStore.getState().tasks[0].pinned).toBe(true);
   });
 
+  it('keeps the grid anchor on a pull by default, and drops it when told to restart', () => {
+    const due = new Date(2025, 5, 10, 12).toISOString();
+    const daily = () => makeTask({ id: 'a', recurrenceType: 'daily', recurrenceInterval: 1, dueDate: due });
+
+    useTaskStore.setState({ tasks: [daily()] });
+    useTaskStore.getState().bulkSetWhen(['a'], new Date(2025, 5, 9, 12), []);
+    expect(useTaskStore.getState().tasks[0].recurrenceAnchorDate).toBe(due);
+
+    useTaskStore.setState({ tasks: [daily()] });
+    useTaskStore.getState().bulkSetWhen(['a'], new Date(2025, 5, 9, 12), [], { restartSchedules: true });
+    const restarted = useTaskStore.getState().tasks[0];
+    expect(restarted.recurrenceAnchorDate).toBeNull();
+    expect(new Date(restarted.dueDate!).toDateString()).toBe('Mon Jun 09 2025');
+  });
+
   it('leaves an unpinned task alone', () => {
     useTaskStore.setState({ tasks: [makeTask({ id: 'a', pinned: false })] });
     useTaskStore.getState().bulkSetWhen(['a'], new Date(2025, 5, 20), []);

@@ -1833,7 +1833,7 @@ interface TaskStore extends UndoHistoryActions {
   bulkSetPriority: (ids: string[], priority: Priority) => void;
   bulkTogglePin: (ids: string[]) => void;
   bulkDefer: (ids: string[], until: Date) => void;
-  bulkSetWhen: (ids: string[], date: Date | null, timeSegments: TimeOfDay[]) => void;
+  bulkSetWhen: (ids: string[], date: Date | null, timeSegments: TimeOfDay[], options?: { restartSchedules?: boolean }) => void;
   bulkSetCategory: (ids: string[], category: string | null) => void;
   bulkAddTags: (ids: string[], tags: string[]) => void;
   addTag: (tag: string) => void;
@@ -8229,8 +8229,12 @@ export const useTaskStore = create<TaskStore>((set, get) => ({
    *
    * Wrapped in one transaction, the shape `applyGroupCategory` already uses for
    * a per-row cascade. The selection is whatever a person tapped, so N is small.
+   *
+   * `restartSchedules` is the answer to confirmScheduleMove: a repeating row
+   * pulled forward then counts its schedule from the new date rather than
+   * keeping its grid (see pullForwardChoice).
    */
-  bulkSetWhen(ids, date, timeSegments) {
+  bulkSetWhen(ids, date, timeSegments, options) {
     if (ids.length === 0) return;
     const dayResetTime = useSettingsStore.getState().dayResetTime;
     const snapshots = ids
@@ -8250,7 +8254,7 @@ export const useTaskStore = create<TaskStore>((set, get) => ({
         get().updateTask(
           snapshot.id,
           {
-            ...scheduleMoveUpdates(snapshot, date, dayResetTime),
+            ...scheduleMoveUpdates(snapshot, date, dayResetTime, { restartSchedule: options?.restartSchedules }),
             timeSegments,
             ...(moved ? { pinned: false } : {}),
           },
@@ -8266,7 +8270,7 @@ export const useTaskStore = create<TaskStore>((set, get) => ({
     if (snapshots.length > 0) {
       get().setLastAction({
         label: snapshots.length === 1 ? 'Task rescheduled' : `${snapshots.length} tasks rescheduled`,
-        redo: () => get().bulkSetWhen(ids, date, timeSegments),
+        redo: () => get().bulkSetWhen(ids, date, timeSegments, options),
         undo: () => snapshots.forEach(snapshot => get().updateTask(snapshot.id, snapshot)),
       });
     }

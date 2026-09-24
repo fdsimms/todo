@@ -42,6 +42,7 @@ import { spacing, radius, font, fontWeight, lineHeight, border, iconSize, animat
 import { formatDeadlineDate, formatScheduledDate, formatTaskDate, formatHHMM, dateToHHMM, formatWindowRemaining, getDeadlineCountdown, getEffectiveTaskDate, getTaskDayStart, getCurrentDayStart, getLogicalDayKey, dayKeyToDate, formatTimeOfDay } from '../utils/dateUtils';
 import { isNegativeTask, isCleanToday, slipsToday } from '../utils/negativeHabits';
 import { scheduleMoveUpdates } from '../utils/taskMoves';
+import { confirmScheduleMove } from '../utils/scheduleMovePrompt';
 import { formatDuration, formatStopwatch } from '../utils/effort';
 import { confirmSlip } from '../utils/slipConfirm';
 import { scheduleCompletionTimer } from '../utils/notifications';
@@ -3817,7 +3818,7 @@ export const TaskItem = React.memo(function TaskItem({
           taskNotes={task.notes}
           taskEffort={task.effort}
           taskEstimatedMinutes={task.estimatedMinutes}
-          onConfirm={(date, segs) => {
+          onConfirm={(date, segs) => confirmScheduleMove([task], date, restartSchedule => {
             const snapshot = { ...task };
             // A recurring task's dueDate is the anchor its whole future grid is
             // measured from, and a series member's was hand-picked out of a set
@@ -3839,7 +3840,9 @@ export const TaskItem = React.memo(function TaskItem({
             // that exists so it cannot drift from `isDateAnchored` beside it.
             // It was inline here until the away-date shift became its third
             // caller; the comments explaining the three arms moved with it.
-            const baseUpdates = { ...scheduleMoveUpdates(task, date), timeSegments: segs };
+            // A pull forward on a repeating task asks first whether the rest of
+            // the schedule stays put or counts from here (confirmScheduleMove).
+            const baseUpdates = { ...scheduleMoveUpdates(task, date, undefined, { restartSchedule }), timeSegments: segs };
             const picked = date ? getTaskDayStart(date) : null;
             // Pinning is for today's block specifically — moving the task off
             // the day it was sitting on means it no longer belongs there, so a
@@ -3864,7 +3867,7 @@ export const TaskItem = React.memo(function TaskItem({
               undo: () => updateTask(snapshot.id, snapshot),
             });
             setShowWhenPicker(false);
-          }}
+          })}
           onClear={() => {
             const snapshot = { ...task };
             updateTask(task.id, {
