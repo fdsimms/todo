@@ -9,6 +9,7 @@ import {
   TouchableOpacity,
   View,
 } from 'react-native';
+import Ionicons from '@expo/vector-icons/Ionicons';
 import { SheetModal } from './SheetModal';
 import { useColors } from '../theme/ThemeContext';
 import { font, fontWeight, interaction, radius, spacing, type Colors } from '../theme';
@@ -130,7 +131,6 @@ export function ScanPortionSheet({ visible, foods, slot, at, mealPlanEntryId, on
   // A card's panel once a "weigh it" answer has been saved against it — see
   // `panelFor` below. Starts empty; `food.panel` is what's shown until then.
   const [weighedPanels, setWeighedPanels] = useState<Record<string, FoodNutrition>>({});
-  const [weighingKeys, setWeighingKeys] = useState<Record<string, boolean>>({});
   const [weighGrams, setWeighGrams] = useState<Record<string, string>>({});
 
   useEffect(() => {
@@ -139,7 +139,6 @@ export function ScanPortionSheet({ visible, foods, slot, at, mealPlanEntryId, on
     setAmountUnits({});
     setAmountNumbers({});
     setWeighedPanels({});
-    setWeighingKeys({});
     setWeighGrams({});
     setChosenSlot(slot);
   }, [visible, slot]);
@@ -197,7 +196,6 @@ export function ScanPortionSheet({ visible, foods, slot, at, mealPlanEntryId, on
     else if (food.itemId) setItemNutrition(food.itemId, updated);
     else { haptics.error(); return; }
     setWeighedPanels(p => ({ ...p, [food.key]: updated }));
-    setWeighingKeys(w => ({ ...w, [food.key]: false }));
     setWeighGrams(g => ({ ...g, [food.key]: '' }));
     haptics.success();
   };
@@ -293,7 +291,12 @@ export function ScanPortionSheet({ visible, foods, slot, at, mealPlanEntryId, on
             const weighable = answer?.kind === 'typed' && answer.text.trim() && (!outcome || outcome.grams === null)
               ? weighableLine(answer.text, null, panel, food.label)
               : null;
-            const weighing = !!weighingKeys[food.key];
+            // The field itself is shown as soon as the unit is known — before
+            // an amount is even typed — so the option is never hidden behind
+            // typing something first. Only `weighable` (which needs a typed,
+            // unresolved amount) decides whether Save can actually be pressed.
+            const weighUnitLabel = usingPills && panel.basis === 'per100ml' ? selectedUnit?.label ?? null : null;
+            const showWeighField = !!weighUnitLabel && (!outcome || outcome.grams === null);
             return (
               <View key={food.key} style={styles.card}>
                 <Text style={styles.cardTitle}>{food.label}</Text>
@@ -428,9 +431,7 @@ export function ScanPortionSheet({ visible, foods, slot, at, mealPlanEntryId, on
                     than only after a refusal. */}
                 <Text style={styles.hint}>
                   {usingPills
-                    ? `Choose a unit below and type the amount. Anything else is refused rather than guessed at.${
-                      panel.basis === 'per100ml' ? ' You can weigh it once to add its weight.' : ''
-                    }`
+                    ? 'Choose a unit below and type the amount. Anything else is refused rather than guessed at.'
                     : amountHint(panel)}
                 </Text>
                 {/* What the answer works out to, or why it doesn't. An amount
@@ -456,21 +457,15 @@ export function ScanPortionSheet({ visible, foods, slot, at, mealPlanEntryId, on
                 )}
                 {/* A label stating only per-100ml figures answers calories
                     for a volume amount without ever naming a weight — this
-                    is the one way such a box's weight gets recorded. */}
-                {!!weighable && !weighing && (
-                  <InlineAction
-                    label={`Weigh ${typed.trim()} and save for next time`}
-                    icon="scale-outline"
-                    variant="neutral"
-                    onPress={() => { haptics.tap(); setWeighingKeys(w => ({ ...w, [food.key]: true })); }}
-                    style={styles.weighAction}
-                  />
-                )}
-                {!!weighable && weighing && (
+                    is the one way such a box's weight gets recorded. Shown
+                    as soon as the unit is known, not gated behind typing an
+                    amount first, so the option is never hidden. */}
+                {showWeighField && (
                   <View style={styles.weighForm}>
-                    <Text style={styles.weighLabel}>
-                      {`How many grams did ${typed.trim()} of this actually weigh?`}
-                    </Text>
+                    <View style={styles.weighHeader}>
+                      <Ionicons name="scale-outline" size={14} color={colors.textSecondary} />
+                      <Text style={styles.weighHeaderLabel}>{`Weight (${weighUnitLabel})`}</Text>
+                    </View>
                     <View style={styles.weighRow}>
                       <TextInput
                         style={styles.weighInput}
@@ -480,29 +475,29 @@ export function ScanPortionSheet({ visible, foods, slot, at, mealPlanEntryId, on
                         placeholderTextColor={colors.textTertiary}
                         keyboardType="decimal-pad"
                         inputAccessoryViewID={NUMBER_PAD_ACCESSORY_ID}
-                        // This field mounts on tapping "Weigh…" while the
-                        // amount field's keyboard is often already up, which
-                        // is the one case `automaticallyAdjustKeyboardInsets`
-                        // can't cover — see `useScrollFieldIntoView`'s doc
-                        // comment. Without this the row can render entirely
-                        // behind the keyboard with no way to reach it.
+                        // This field can be focused while the amount field's
+                        // keyboard is already up, which is the one case
+                        // `automaticallyAdjustKeyboardInsets` can't cover —
+                        // see `useScrollFieldIntoView`'s doc comment. Without
+                        // this the row can render entirely behind the
+                        // keyboard with no way to reach it.
                         onFocus={e => {
                           if (typeof e.nativeEvent.target === 'number') {
                             keyboardScroll.focusInput(e.nativeEvent.target);
                           }
                         }}
-                        accessibilityLabel="Weight in grams"
+                        accessibilityLabel={`Weight in grams, ${weighUnitLabel}`}
                       />
                       <Text style={styles.weighUnit}>g</Text>
                       <InlineAction
                         label="Save"
-                        onPress={() => handleSaveWeighedPortion(food, weighable)}
-                        disabled={!(weighGrams[food.key] ?? '').trim()}
+                        onPress={() => weighable && handleSaveWeighedPortion(food, weighable)}
+                        disabled={!weighable || !(weighGrams[food.key] ?? '').trim()}
                         haptic
                       />
                     </View>
                     <Text style={styles.weighHint}>
-                      Remembered against this food, so the next time you scan or log it, {typed.trim()} resolves a weight on its own.
+                      Weigh it and enter the total weight — remembered so this amount resolves on its own next time.
                     </Text>
                   </View>
                 )}
@@ -556,14 +551,14 @@ function makeStyles(colors: Colors) {
     outcome: { color: colors.textSecondary, fontSize: font.sm },
     outcomeRefused: { color: colors.textTertiary },
     approximateNote: { color: colors.textTertiary, fontSize: font.xs },
-    weighAction: { alignSelf: 'flex-start' },
     weighForm: {
       padding: spacing.sm,
       backgroundColor: colors.bgTertiary,
       borderRadius: radius.md,
       gap: spacing.xs,
     },
-    weighLabel: { color: colors.text, fontSize: font.sm, lineHeight: 18 },
+    weighHeader: { flexDirection: 'row', alignItems: 'center', gap: spacing.xs },
+    weighHeaderLabel: { color: colors.text, fontSize: font.sm, fontWeight: fontWeight.medium },
     weighRow: { flexDirection: 'row', alignItems: 'center', gap: spacing.sm },
     weighInput: {
       flex: 1,
