@@ -1,0 +1,4 @@
+{
+  "message": "Fixed the bulk-delete confirmation naming meal plan tasks or repeating tasks in its warning even when the selection had none of that kind",
+  "date": "2026-09-24"
+}
