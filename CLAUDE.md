@@ -501,12 +501,12 @@ no React renderer installed, so there are no component or screen tests. Don't ad
 cover a UI change — verify those by reasoning about the code (and by mocking it, see **Mock a
 visual change** below), and say so plainly rather than implying you ran them.
 
-The 1:1 rule holds for every file in `src/utils`, `src/db`, and the task/grocery stores. Two
-stores are the deliberate exception and carry no test file: `useTemplateCategoryStore` and
-`useWidgetCompletionStore` are thin wrappers over a db read/write or a queue with no branching
-logic of their own to pin down — same reasoning as skipping a component test, just for a store
-instead of a screen. Don't read their absence as a gap to fill; add one only if the store grows
-real logic beyond passing values through.
+The 1:1 rule holds for every file in `src/utils`, `src/db`, and the task/grocery stores. One
+store is the deliberate exception and carries no test file: `useTemplateCategoryStore` is a thin
+wrapper over a db read/write with no branching logic of its own to pin down — same reasoning as
+skipping a component test, just for a store instead of a screen. Don't read its absence as a gap
+to fill; add one only if the store grows real logic beyond passing values through, which is what
+happened to `useWidgetCompletionStore` once it started carrying each queued tap's time.
 
 ## Working style
 

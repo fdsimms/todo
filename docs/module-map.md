@@ -375,7 +375,7 @@ name cannot say is where a component appears, and that is `docs/screen-map.md`.
 - `src/store/useTemplateStore.ts` — ApplyTemplateOptions, useTemplateStore
 - `src/store/useUnattendedStore.ts` — UnattendedRecord, useUnattendedStore
 - `src/store/useWeatherStore.ts` — useWeatherStore, useWeatherSync
-- `src/store/useWidgetCompletionStore.ts` — useWidgetCompletionStore
+- `src/store/useWidgetCompletionStore.ts` — TAP_CLAIM_WINDOW_MS, useWidgetCompletionStore
 
 ## `src/hooks`
 

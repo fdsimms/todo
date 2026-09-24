@@ -162,12 +162,13 @@ export function buildCompletion(
   const missed = options?.missed ?? false;
   const neutral = options?.neutral ?? false;
   const id = task.id;
-  // The morning check-in is the one caller that completes a task after the
-  // fact — "yes, I did this last night" — and wants the record to say so
-  // rather than reading as done at whatever moment the user got around to
-  // answering. Everything else here (the successor's createdAt/seenAt, the
+  // Two callers complete a task after the fact and want the record to say
+  // so: the morning check-in ("yes, I did this last night") and a queued
+  // widget/notification/Live Activity tap, which lands whenever the app next
+  // gets to it (see useWidgetCompletionStore). Everything else here (the successor's createdAt/seenAt, the
   // streak's getCurrentDayStart() calls) stays keyed to the real moment; only
-  // the completed row's own timestamps move.
+  // the completed row's own timestamps move, plus the date a
+  // repeat-after-completion successor is measured from (see getNextDueDate).
   const completedAt = options?.completedAt ? new Date(options.completedAt) : now;
 
   const recurs = task.recurrenceType !== 'none';
@@ -357,7 +358,7 @@ export function buildCompletion(
     // catchUp: this is placing a real row, and a successor dated before
     // today is one the user has to complete again to get rid of. See
     // getNextDueDate.
-    const nextDue = recurs && datesBySchedule ? getNextDueDate(task, dayResetTime, { catchUp: true }) : null;
+    const nextDue = recurs && datesBySchedule ? getNextDueDate(task, dayResetTime, { catchUp: true, completedAt }) : null;
     // Skip the spawn only when we actually consulted the schedule and it
     // says the series has ended — a mid-chain step never consults it, so
     // it always spawns regardless of recurrenceEndDate/recurrenceCount.

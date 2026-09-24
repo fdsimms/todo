@@ -7,6 +7,8 @@ private let snapshotFileName = "widget_data.json"
 // Must match the same literal in TodoWidgetData.swift — a separate Xcode
 // target/compilation unit, so the string can't be shared directly.
 private let pendingCompletionsFileName = "widget_pending_completions.json"
+// Must match CompleteTaskIntent.swift's PendingCompletionQueue.timesFileName.
+private let pendingCompletionTimesFileName = "widget_pending_completion_times.json"
 // Must match the same literal in AddTaskIntent.swift — same target, but
 // Swift top-level `private` is file-scoped, so the two files each keep
 // their own copy.
@@ -173,6 +175,33 @@ public class TodoWidgetBridgeModule: Module {
         try? FileManager.default.removeItem(at: fileURL)
       }
       return ids
+    }
+
+    // Reads and clears when each queued completion was tapped (id -> ISO 8601),
+    // written by CompleteTaskIntent beside the id queue above. Drained before
+    // that queue by widgetSync.ts, so every id it hands over has its time
+    // already. An empty map is the answer for a queue written by a build that
+    // predates this file.
+    AsyncFunction("drainPendingCompletionTimes") { () -> [String: String] in
+      var times: [String: String] = [:]
+      TodoWidgetExceptionCatcher.runCatchingExceptions {
+        guard let containerURL = FileManager.default.containerURL(
+          forSecurityApplicationGroupIdentifier: appGroupID
+        ) else {
+          return
+        }
+
+        let fileURL = containerURL
+          .appendingPathComponent("Library/Application Support", isDirectory: true)
+          .appendingPathComponent(pendingCompletionTimesFileName)
+
+        guard let data = try? Data(contentsOf: fileURL) else { return }
+        if let decoded = try? JSONDecoder().decode([String: String].self, from: data) {
+          times = decoded
+        }
+        try? FileManager.default.removeItem(at: fileURL)
+      }
+      return times
     }
 
     // Reads and clears the queue of task titles AddTaskIntent (this target,

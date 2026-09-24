@@ -35,6 +35,7 @@ export interface WidgetBridge {
   writeWidgetSnapshot: (jsonString: string) => Promise<boolean>;
   writePantryIndex: (jsonString: string) => Promise<boolean>;
   drainPendingWidgetCompletions: () => Promise<string[]>;
+  drainPendingWidgetCompletionTimes: () => Promise<Record<string, string>>;
   drainPendingAddTasks: () => Promise<string[]>;
   /**
    * A JSON string rather than an array, unlike its neighbours: each queued

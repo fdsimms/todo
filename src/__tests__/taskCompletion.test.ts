@@ -164,6 +164,23 @@ describe('buildCompletion', () => {
     expect(nextTask!.createdAt).toBe('2026-03-10T09:00:00.000Z');
   });
 
+  // Measured from the moment the answer was given, "done Monday" answered on
+  // Tuesday put the next one on Wednesday.
+  it('measures a repeat-after-completion successor from the backdated completion', () => {
+    jest.useFakeTimers().setSystemTime(new Date(2026, 2, 10, 8, 0, 0));
+    try {
+      const task = makeTask({
+        recurrenceType: 'daily',
+        recurrenceFromCompletion: true,
+        dueDate: new Date(2026, 2, 9, 12, 0, 0).toISOString(),
+      });
+      const { nextTask } = build(task, { completedAt: new Date(2026, 2, 9, 22, 0, 0).toISOString() }, { now: new Date() });
+      expect(new Date(nextTask!.dueDate!).toDateString()).toBe('Tue Mar 10 2026');
+    } finally {
+      jest.useRealTimers();
+    }
+  });
+
   it('records a miss as a completion that is also a miss', () => {
     const { completed } = build(makeTask(), { missed: true });
     expect(completed.completed).toBe(true);

@@ -335,7 +335,7 @@ export type RecurrenceScheduleInput = Pick<Task,
 export function getNextDueDate(
   task: RecurrenceScheduleInput,
   dayResetTime?: string,
-  options?: { catchUp?: boolean },
+  options?: { catchUp?: boolean; completedAt?: Date },
 ): Date | null {
   // Fixed schedule: anchor to the previous due date so the recurrence grid doesn't drift.
   // After completion: anchor to today (the completion day) so it's always relative to when you finished.
@@ -352,10 +352,19 @@ export function getNextDueDate(
   // today regardless of the stored recurrenceFromCompletion — the editor
   // forces that flag true for this type, and this is the defensive mirror of
   // it for any row that predates or bypasses that.
+  //
+  // `completedAt` is the moment the work was done when that isn't now: the
+  // morning check-in recording last night, or a widget tap drained after the
+  // day turned over. Measured from now instead, "done Monday" answered on
+  // Tuesday put the next one on Wednesday. 'hours' keeps now on purpose: its
+  // real placement is taskCompletion's nextDeferUntil, measured from now.
+  const completionMoment = task.recurrenceType !== 'hours' && options?.completedAt
+    ? options.completedAt
+    : new Date();
   const base =
     !task.recurrenceFromCompletion && task.recurrenceType !== 'hours' && anchorIso
       ? getTaskDayStart(new Date(anchorIso), dayResetTime)
-      : getDayStart(new Date(), dayResetTime);
+      : getDayStart(completionMoment, dayResetTime);
 
   const step = (from: Date): Date => {
     switch (task.recurrenceType) {

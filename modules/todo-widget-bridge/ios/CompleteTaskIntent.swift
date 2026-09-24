@@ -37,8 +37,14 @@ private enum PendingCompletionQueue {
     // keeps its own copy — the convention the rest of this module follows.
     static let appGroupID = "group.com.fdsimms.dundundun"
     static let fileName = "widget_pending_completions.json"
+    // When each queued id was tapped, as id -> ISO 8601. A sidecar rather than
+    // a change to the file above, which TodoWidgetData.swift also reads as a
+    // plain [String] for the optimistic checked state. The app completes the
+    // task whenever it next gets to the queue, and a repeat-after-completion
+    // task measures its next date from this rather than from that moment.
+    static let timesFileName = "widget_pending_completion_times.json"
 
-    static func fileURL() -> URL? {
+    static func fileURL(_ name: String = PendingCompletionQueue.fileName) -> URL? {
         guard let containerURL = FileManager.default.containerURL(
             forSecurityApplicationGroupIdentifier: appGroupID
         ) else {
@@ -46,7 +52,22 @@ private enum PendingCompletionQueue {
         }
         return containerURL
             .appendingPathComponent("Library/Application Support", isDirectory: true)
-            .appendingPathComponent(fileName)
+            .appendingPathComponent(name)
+    }
+
+    static func recordTapTime(taskId: String) {
+        guard let timesURL = fileURL(timesFileName) else { return }
+        var times: [String: String] = [:]
+        if let data = try? Data(contentsOf: timesURL),
+           let decoded = try? JSONDecoder().decode([String: String].self, from: data) {
+            times = decoded
+        }
+        // First tap wins: a second tap on an already-queued id is the same
+        // completion, and the first is when the work was reported done.
+        if times[taskId] != nil { return }
+        times[taskId] = ISO8601DateFormatter().string(from: Date())
+        guard let data = try? JSONEncoder().encode(times) else { return }
+        try? data.write(to: timesURL, options: .atomic)
     }
 
     static func add(taskId: String) {
@@ -63,6 +84,7 @@ private enum PendingCompletionQueue {
             withIntermediateDirectories: true
         )
         try? data.write(to: fileURL, options: .atomic)
+        recordTapTime(taskId: taskId)
     }
 }
 

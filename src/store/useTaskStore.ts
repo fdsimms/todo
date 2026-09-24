@@ -30,6 +30,7 @@ import {
   dbGetFoodLogEntries,
 } from '../db/database';
 import { useSettingsStore } from './useSettingsStore';
+import { useWidgetCompletionStore } from './useWidgetCompletionStore';
 import { useCategoryStore, ensureCalendarEventCategory, ensureHealthCategory, ensureGeneratedTaskCategories, ensureGeneratedTaskCategory, renameGeneratedCategorySettings } from './useCategoryStore';
 import { renameInFollowUpDraft, renameInReminderCaptures, renameInSeriesDefaults, renameInTitleRules, renameInViewClauses } from '../utils/categoryRename';
 import { useTemplateStore } from './useTemplateStore';
@@ -3121,12 +3122,21 @@ export const useTaskStore = create<TaskStore>((set, get) => ({
     }
 
     const now = new Date();
-    // The morning check-in is the one caller that completes a task after the
-    // fact — "yes, I did this last night" — and wants the record to say so
-    // rather than reading as done at whatever moment the user got around to
-    // answering. Everything else this function writes (the successor's
-    // createdAt/seenAt, the streak's getCurrentDayStart() calls) stays keyed
-    // to the real moment; only the completed row's own timestamps move.
+    // A widget, notification or Live Activity tap reaches this some time after
+    // it happened, and its own moment is the completion's. Claimed here rather
+    // than passed down because four paths finish one of those (the row's
+    // animation, the question sheet, the direct call for a row not on Today,
+    // and the answer-first queue), and this is the one they all pour into.
+    if (options?.completedAt === undefined && !missed) {
+      const tappedAt = useWidgetCompletionStore.getState().claimTappedAt(id);
+      if (tappedAt) options = { ...options, completedAt: tappedAt };
+    }
+    // The morning check-in and a queued tap complete a task after the fact
+    // and want the record to say so. Everything else this function writes
+    // (the successor's createdAt/seenAt, the streak's getCurrentDayStart()
+    // calls) stays keyed to the real moment; only the completed row's own
+    // timestamps move, and the date a repeat-after-completion successor is
+    // measured from (see buildCompletion).
     const completedAt = options?.completedAt ? new Date(options.completedAt) : now;
     const { dayResetTime } = useSettingsStore.getState();
 
@@ -4238,9 +4248,17 @@ export const useTaskStore = create<TaskStore>((set, get) => ({
     );
     // neutral on a day the task's own category schedule didn't cover — see
     // #2201, isCategoryScheduledDay, and rolloverQuotas' own note above.
-    stale.forEach(t => get().completeTask(t.id, {
-      neutral: !isCategoryScheduledDay(t.category, getTaskDayStart(new Date(t.dueDate!), dayResetTime)),
-    }));
+    //
+    // Stamped at the end of its own day, as rolloverQuotas stamps a partial:
+    // the tally is a record of that day, and a repeat-after-completion
+    // successor measured from the sweep's own moment skipped a day.
+    stale.forEach(t => {
+      const ownDayStart = getTaskDayStart(new Date(t.dueDate!), dayResetTime);
+      get().completeTask(t.id, {
+        neutral: !isCategoryScheduledDay(t.category, ownDayStart),
+        completedAt: new Date(+addDays(ownDayStart, 1) - 1).toISOString(),
+      });
+    });
   },
 
   startQuotaRun(id) {

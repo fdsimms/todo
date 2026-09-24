@@ -4,6 +4,8 @@ interface TodoWidgetBridgeNativeModule {
   // Returns Bool rather than Void deliberately — see TodoWidgetBridgeModule.swift.
   writeSnapshot(jsonString: string): Promise<boolean>;
   drainPendingCompletions(): Promise<string[]>;
+  // When each queued completion was tapped, id -> ISO 8601. Read-and-clear.
+  drainPendingCompletionTimes(): Promise<Record<string, string>>;
   // Titles queued by AddTaskIntent (the Action Button, Siri, Shortcuts and
   // Spotlight) — see modules/todo-widget-bridge/ios/AddTaskIntent.swift.
   // Read-and-clear, same as drainPendingCompletions.
@@ -40,6 +42,10 @@ export function writeWidgetSnapshot(jsonString: string): Promise<boolean> {
 
 export function drainPendingWidgetCompletions(): Promise<string[]> {
   return TodoWidgetBridge.drainPendingCompletions();
+}
+
+export function drainPendingWidgetCompletionTimes(): Promise<Record<string, string>> {
+  return TodoWidgetBridge.drainPendingCompletionTimes();
 }
 
 export function drainPendingAddTasks(): Promise<string[]> {
