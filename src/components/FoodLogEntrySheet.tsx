@@ -1144,7 +1144,9 @@ export function FoodLogEntrySheet({
               {picked.kind === 'dish'
                 ? dishWeightHint
                 : foodUnitOptions.length > 0 && amountUnit !== 'other'
-                  ? 'Choose a unit below and type the amount. Anything else is refused rather than guessed at.'
+                  ? `Choose a unit below and type the amount. Anything else is refused rather than guessed at.${
+                    picked.panel?.basis === 'per100ml' ? ' You can weigh it once to add its weight.' : ''
+                  }`
                   : picked.panel
                     ? `${amountHint(picked.panel)}${
                       picked.panel.basis === 'per100ml'

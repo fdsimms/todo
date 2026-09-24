@@ -428,7 +428,9 @@ export function ScanPortionSheet({ visible, foods, slot, at, mealPlanEntryId, on
                     than only after a refusal. */}
                 <Text style={styles.hint}>
                   {usingPills
-                    ? 'Choose a unit below and type the amount. Anything else is refused rather than guessed at.'
+                    ? `Choose a unit below and type the amount. Anything else is refused rather than guessed at.${
+                      panel.basis === 'per100ml' ? ' You can weigh it once to add its weight.' : ''
+                    }`
                     : amountHint(panel)}
                 </Text>
                 {/* What the answer works out to, or why it doesn't. An amount
