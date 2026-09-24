@@ -372,7 +372,6 @@ export function FoodLogEntrySheet({
   // dish rather than remembered across picks — see `pickDish`.
   const [dishMeasure, setDishMeasure] = useState<DishMeasure>('servings');
   const [chosenSlot, setChosenSlot] = useState<MealSlot | null>(slot);
-  const [weighing, setWeighing] = useState(false);
   const [weighGrams, setWeighGrams] = useState('');
   const [dbSearchOpen, setDbSearchOpen] = useState(false);
   /** Whether the "which item is this" picker is open under a database food. */
@@ -407,11 +406,10 @@ export function FoodLogEntrySheet({
     searchFilter.inputRef.current?.focus();
   }, [picked]);
 
-  // Closes the "weigh it" form whenever the picked food or its panel changes
-  // out from under it — including right after a weighed portion is saved,
-  // which is also when it should close.
+  // Clears whatever was typed into the weight field whenever the picked food
+  // or its panel changes out from under it — including right after a
+  // weighed portion is saved, which is also when it should clear.
   useEffect(() => {
-    setWeighing(false);
     setWeighGrams('');
     setCatalogPickOpen(false);
   }, [picked]);
@@ -758,6 +756,19 @@ export function FoodLogEntrySheet({
     return foodUnitOptionsFor(picked.panel);
   }, [picked]);
 
+  // The weight field itself is shown as soon as a per-100ml food's unit pill
+  // is picked — before an amount is even typed — so the option to save a
+  // weight is never hidden behind typing something first. Only `weighable`
+  // (which needs a typed, unresolved amount) decides whether Save can
+  // actually be pressed. Scoped to the pill flow, same as `weighable`'s own
+  // per-100ml volume case: a free-typed amount names no unit until it's
+  // parsed, so there's nothing to head the field with in advance.
+  const weighUnitLabel = picked?.kind === 'food' && picked.panel?.basis === 'per100ml'
+    && foodUnitOptions.length > 0 && amountUnit !== 'other'
+    ? foodUnitOptions.find(o => o.key === amountUnit)?.label ?? null
+    : null;
+  const showWeighField = !!weighUnitLabel && (!built || built.grams === null);
+
   const handleSaveWeighedPortion = () => {
     if (!picked || !picked.panel || !weighable) return;
     const grams = Number(weighGrams.trim().replace(',', '.'));
@@ -772,7 +783,6 @@ export function FoodLogEntrySheet({
     else if (picked.panelItemId) setItemNutrition(picked.panelItemId, updated);
     else { haptics.error(); return; }
     setPicked({ ...picked, panel: updated });
-    setWeighing(false);
     setWeighGrams('');
     haptics.success();
   };
@@ -1166,21 +1176,12 @@ export function FoodLogEntrySheet({
               </Text>
             )}
 
-            {!!weighable && !weighing && (
-              <InlineAction
-                label={`Weigh ${amount.trim()} and save for next time`}
-                icon="scale-outline"
-                variant="neutral"
-                onPress={() => { haptics.tap(); setWeighing(true); }}
-                style={styles.weighAction}
-              />
-            )}
-
-            {!!weighable && weighing && (
+            {showWeighField && (
               <View style={styles.weighForm}>
-                <Text style={styles.weighLabel}>
-                  {`How many grams did ${amount.trim()} of this actually weigh?`}
-                </Text>
+                <View style={styles.weighHeader}>
+                  <Ionicons name="scale-outline" size={14} color={colors.textSecondary} />
+                  <Text style={styles.weighHeaderLabel}>{`Weight (${weighUnitLabel})`}</Text>
+                </View>
                 <View style={styles.weighRow}>
                   <TextInput
                     style={styles.weighInput}
@@ -1190,29 +1191,29 @@ export function FoodLogEntrySheet({
                     placeholderTextColor={colors.textTertiary}
                     keyboardType="decimal-pad"
                     inputAccessoryViewID={NUMBER_PAD_ACCESSORY_ID}
-                    // This field mounts on tapping "Weigh…" while the amount
-                    // field's keyboard is often already up, which is the one
-                    // case `automaticallyAdjustKeyboardInsets` can't cover —
-                    // see `useScrollFieldIntoView`'s doc comment. Without
-                    // this the row can render entirely behind the keyboard
-                    // with no way to reach it.
+                    // This field can be focused while the amount field's
+                    // keyboard is already up, which is the one case
+                    // `automaticallyAdjustKeyboardInsets` can't cover — see
+                    // `useScrollFieldIntoView`'s doc comment. Without this
+                    // the row can render entirely behind the keyboard with
+                    // no way to reach it.
                     onFocus={e => {
                       if (typeof e.nativeEvent.target === 'number') {
                         keyboardScroll.focusInput(e.nativeEvent.target);
                       }
                     }}
-                    accessibilityLabel="Weight in grams"
+                    accessibilityLabel={`Weight in grams, ${weighUnitLabel}`}
                   />
                   <Text style={styles.weighUnit}>g</Text>
                   <InlineAction
                     label="Save"
                     onPress={handleSaveWeighedPortion}
-                    disabled={!weighGrams.trim()}
+                    disabled={!weighable || !weighGrams.trim()}
                     haptic
                   />
                 </View>
                 <Text style={styles.weighHint}>
-                  Remembered against this food, so the next time you log it, {amount.trim()} resolves on its own.
+                  Weigh it and enter the total weight — remembered so this amount resolves on its own next time.
                 </Text>
               </View>
             )}
@@ -1495,7 +1496,6 @@ function makeStyles(colors: Colors) {
     // which can be a database description several words long.
     fileRow: { flexDirection: 'row', flexWrap: 'wrap', gap: spacing.sm, marginTop: spacing.sm },
     filedNote: { color: colors.textSecondary, fontSize: font.sm, marginTop: spacing.md },
-    weighAction: { alignSelf: 'flex-start', marginTop: spacing.sm },
     weighForm: {
       marginTop: spacing.sm,
       padding: spacing.sm,
@@ -1503,7 +1503,8 @@ function makeStyles(colors: Colors) {
       borderRadius: radius.md,
       gap: spacing.xs,
     },
-    weighLabel: { color: colors.text, fontSize: font.sm, lineHeight: 18 },
+    weighHeader: { flexDirection: 'row', alignItems: 'center', gap: spacing.xs },
+    weighHeaderLabel: { color: colors.text, fontSize: font.sm, fontWeight: fontWeight.medium },
     weighRow: { flexDirection: 'row', alignItems: 'center', gap: spacing.sm },
     weighInput: {
       flex: 1,
