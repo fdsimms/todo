@@ -937,6 +937,25 @@ check for it whenever a new `pageSheet` sheet, or a new field in an existing one
 why the two fight each other; `LogMealPrompt`'s `KeyboardAvoidingView` is the one deliberate
 exception, because its Modal is a small centered card rather than a full scrollable sheet.
 
+**A `TextInput` that mounts or appears after the sheet's first render — not the field that's
+there from the start or carries its own `autoFocus` at open — needs its own `onFocus` wired to
+`keyboardScroll.focusInput`, even inside a `useKeyboardInsetScroll` container.** Wiring the
+`ScrollView` (above) fixes the case where the keyboard opens or closes; it does nothing for a
+field that shows up *while* the keyboard is already open at the same height — tapping "Add a
+recipe"/"Add tag"/"Weigh…" to reveal a new row while an existing field is still focused. iOS only
+recomputes scroll-into-view on `UIKeyboardWillChangeFrameNotification`, which fires on a height
+*change*, not a same-height refocus, so the new field can render entirely behind the keyboard with
+no way to reach it — and `autoFocus` on the new field doesn't save it, since focusing it doesn't
+change the keyboard's height either. This shipped as the identical bug in four places
+(`ScanPortionSheet`'s and `FoodLogEntrySheet`'s "How many grams did this weigh?" field,
+`CookbookChecklistSheet`'s appended title row, `RecipeCreateSheet`'s new-tag input) before being
+fixed the same way in all four: an `onFocus` handler reading `e.nativeEvent.target` and passing it
+to `keyboardScroll.focusInput`, which is `useKeyboardInsetScroll`'s answer to exactly this case
+(see `useScrollFieldIntoView`'s doc comment) — it reads the keyboard's last-known metrics rather
+than waiting on a notification that will never fire. Check for this whenever a button, a
+selection, or any interaction other than the sheet's own opening reveals a new field inside one of
+these scroll views.
+
 **Never put `lineHeight` on a `TextInput` style.** RN maps it straight onto the iOS paragraph style's `minimumLineHeight`/`maximumLineHeight` with no compensating baseline offset (`RCTTextAttributes.mm`), so the glyphs are drawn a full line height below the top of the line box instead of one ascent below it — the text sits low in the field while the caret stays centered, and the placeholder inherits the same attributes so it looks wrong even when empty. `lineHeight` is fine (and wanted) on `Text`. When an input needs a specific box height to keep a row from resizing between display and edit mode, set `height`/`minHeight` instead.
 
 **Shared primitives** (use these instead of hand-rolling):
