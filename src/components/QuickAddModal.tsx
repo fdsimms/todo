@@ -1522,7 +1522,15 @@ export function QuickAddModal({
     {
       key: 'category', icon: 'folder-outline',
       value: category !== null ? categoryLabel(category, categories) : null,
-      onPress: () => { haptics.tap(); setCategoryPickerVisible(true); },
+      // CategoryPickerSheet deliberately doesn't autofocus its own search
+      // field (see its own doc comment), so without this the title field's
+      // keyboard — and the InputAccessoryView attached to it — stays up in
+      // this now-backgrounded Modal while the picker's Modal becomes the
+      // topmost window. iOS then has nowhere reliable to draw that accessory
+      // bar, which is what left it stuck behind the keyboard once the picker
+      // closed and focus returned to the title field. Dismissing first means
+      // there's nothing left attached to lose track of.
+      onPress: () => { haptics.tap(); Keyboard.dismiss(); setCategoryPickerVisible(true); },
     },
     {
       key: 'effort', icon: 'barbell', panel: 'effort',
