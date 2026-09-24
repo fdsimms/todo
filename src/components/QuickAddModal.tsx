@@ -609,21 +609,42 @@ export function QuickAddModal({
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [ruleFill, visible]);
 
-  /** "“expense” → Work · #receipts" — the word that fired, and what it filled in. */
+  /**
+   * "“expense” → Work · #receipts" — the word that fired, and what it filled
+   * in. Only names a field the rule *still* holds: the reconcile effect above
+   * leaves a field alone the moment the user overrides it by hand (picking a
+   * different category from the chip, say), so a rule's own guess can go
+   * stale without ever being taken back out of state. Re-deriving "did this
+   * field stay what the rule set" from current state — rather than trusting
+   * ruleFill outright — is what makes an overridden field drop out of the
+   * caption instead of continuing to name a category that's no longer
+   * selected. When every field the rule set has been overridden, there's
+   * nothing left for the caption to say, so it disappears rather than
+   * showing a bare, now-meaningless keyword.
+   */
   const ruleCaption = useMemo(() => {
     if (!ruleFill) return null;
+    const stillSet = {
+      category: ruleFill.category !== null && category === ruleFill.category ? ruleFill.category : null,
+      projectId: ruleFill.projectId !== null && projectId === ruleFill.projectId ? ruleFill.projectId : null,
+      priority: ruleFill.priority !== 0 && priority === ruleFill.priority ? ruleFill.priority : (0 as Priority),
+      effort: ruleFill.effort !== 0 && effort === ruleFill.effort ? ruleFill.effort : (0 as Effort),
+      linkUrl: ruleFill.linkUrl !== null && linkUrl === ruleFill.linkUrl ? ruleFill.linkUrl : null,
+      tags: ruleFill.tags.filter(t => tags.includes(t)),
+    };
     const targets = describeTitleRuleTargets(
-      ruleFill,
-      ruleFill.category ? categoryLabel(ruleFill.category, categories) : null,
-      projects.find(p => p.id === ruleFill.projectId)?.title ?? null,
-      ruleFill.linkUrl ? linkLabel(ruleFill.linkUrl) : null,
+      stillSet,
+      stillSet.category ? categoryLabel(stillSet.category, categories) : null,
+      projects.find(p => p.id === stillSet.projectId)?.title ?? null,
+      stillSet.linkUrl ? linkLabel(stillSet.linkUrl) : null,
     );
+    if (!targets) return null;
     const word = ruleFill.matched[0].match.keyword;
     // An arrow rather than the "·" describeTitleRuleTargets uses between its
     // own parts: those are a flat list (category · project · tag), but the
     // word causes the targets, and a dot doesn't say that.
-    return targets ? `“${word}” → ${targets}` : `“${word}”`;
-  }, [ruleFill, categories, projects]);
+    return `“${word}” → ${targets}`;
+  }, [ruleFill, categories, projects, category, projectId, priority, effort, linkUrl, tags]);
 
   // Natural-language scheduling: detect a trailing date/recurrence phrase in
   // the title ("go for a run on tuesday", "water plants every 3 days"). The
