@@ -1310,11 +1310,17 @@ export const TaskItem = React.memo(function TaskItem({
   // says what it always said, and the selection lives on its own control at the
   // trailing edge (see SelectionDot).
   const showQuotaMeter = isQuota && (!completing || quotaCompleting);
+  // The meter itself (the fill, its pace mark, the accent ring) is withheld
+  // while the task isn't due yet — that's the same "not due" lock a plain
+  // recurring task gets, and a grey pace mark plus an accent ring drawn right
+  // behind the lock's own repeat glyph read as visual noise rather than as a
+  // meter, since there's nothing to log yet anyway (see completionLocked).
+  const quotaMeterVisible = showQuotaMeter && !recurrenceNotYetDue;
   // The pace mark: a line on the gauge at "expected by now," so the gap above
   // the fill is legible as "how far behind" without reading a number. Hidden
   // once the last unit is tapped (quotaCompleting) — that read is already
   // stale, and the fill is about to rise past it anyway.
-  const showPaceMark = showQuotaMeter && !quotaCompleting && quotaUnitsToPace(task) > 0;
+  const showPaceMark = quotaMeterVisible && !quotaCompleting && quotaUnitsToPace(task) > 0;
   const quotaPaceLevel = showPaceMark ? quotaPaceFraction(task) : 0;
   // Shown but no longer a meter to tap: once the run-up starts, the control
   // does what a completing row's checkbox does — undo. Nor while selecting,
@@ -2113,7 +2119,7 @@ export const TaskItem = React.memo(function TaskItem({
               deloadReady ||
               mealShortfallReady) &&
             styles.circleReady,
-          (showQuotaMeter || quotaPartial) && styles.circleQuota,
+          (quotaMeterVisible || quotaPartial) && styles.circleQuota,
           // Last of the state styles, so a broken day wins the box outright:
           // it's the one thing on this row that has just gone wrong.
           slipped && styles.circleSlipped,
@@ -2123,7 +2129,7 @@ export const TaskItem = React.memo(function TaskItem({
           quotaToppedOut && styles.circleQuotaDone,
           { transform: [{ scale: circleScale }] },
         ]}>
-          {showQuotaMeter && (
+          {quotaMeterVisible && (
             <Animated.View
               style={[
                 styles.quotaFill,
@@ -2153,7 +2159,7 @@ export const TaskItem = React.memo(function TaskItem({
               the bottom — rather than extending quotaFill's own bottom, which
               would reopen the top hairline the sibling comment already
               explains. */}
-          {showQuotaMeter && (
+          {quotaMeterVisible && (
             <Animated.View
               style={[
                 styles.quotaFillCap,
