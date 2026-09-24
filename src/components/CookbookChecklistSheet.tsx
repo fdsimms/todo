@@ -263,6 +263,17 @@ export function CookbookChecklistSheet({ visible, onClose, onCreated }: Props) {
                         onChangeText={value => setTitleAt(index, value)}
                         placeholder="Recipe title"
                         placeholderTextColor={colors.textTertiary}
+                        // "Add a recipe" appends this row while an existing
+                        // title's keyboard is often already up — the one
+                        // case automaticallyAdjustKeyboardInsets can't cover
+                        // (see useScrollFieldIntoView's doc comment), so
+                        // without this the new row can land behind the
+                        // keyboard with no way to reach it.
+                        onFocus={e => {
+                          if (typeof e.nativeEvent.target === 'number') {
+                            keyboardScroll.focusInput(e.nativeEvent.target);
+                          }
+                        }}
                         accessibilityLabel={`Recipe title ${index + 1}`}
                       />
                       <TouchableOpacity

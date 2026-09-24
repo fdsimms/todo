@@ -1,0 +1,4 @@
+{
+  "message": "Fixed two more spots (adding a recipe title in the cookbook import, adding a tag when creating a recipe) where a newly added field could open hidden behind the keyboard",
+  "date": "2026-09-24"
+}
