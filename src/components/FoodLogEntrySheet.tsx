@@ -1190,6 +1190,17 @@ export function FoodLogEntrySheet({
                     placeholderTextColor={colors.textTertiary}
                     keyboardType="decimal-pad"
                     inputAccessoryViewID={NUMBER_PAD_ACCESSORY_ID}
+                    // This field mounts on tapping "Weigh…" while the amount
+                    // field's keyboard is often already up, which is the one
+                    // case `automaticallyAdjustKeyboardInsets` can't cover —
+                    // see `useScrollFieldIntoView`'s doc comment. Without
+                    // this the row can render entirely behind the keyboard
+                    // with no way to reach it.
+                    onFocus={e => {
+                      if (typeof e.nativeEvent.target === 'number') {
+                        keyboardScroll.focusInput(e.nativeEvent.target);
+                      }
+                    }}
                     accessibilityLabel="Weight in grams"
                   />
                   <Text style={styles.weighUnit}>g</Text>
