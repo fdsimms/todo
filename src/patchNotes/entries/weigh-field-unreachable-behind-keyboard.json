@@ -1,0 +1,4 @@
+{
+  "message": "Fixed a bug where the \"How many grams did this actually weigh?\" field could open hidden behind the keyboard with no way to reach it",
+  "date": "2026-09-24"
+}
