@@ -11988,6 +11988,27 @@ describe('quota tasks', () => {
       expect(useTaskStore.getState().tasks[0].completed).toBe(false);
     });
 
+    // The bug this guards: pushing a quota task out with deferUntil left its
+    // stored dueDate in the past, so the next rollover read it as an overdue
+    // shortfall — breaking the streak and spawning a duplicate for today even
+    // though the user had just moved this occurrence later.
+    it('leaves a quota task alone once it has been deferred to a future day', () => {
+      useTaskStore.setState({
+        tasks: [quota({
+          progressCount: 2,
+          streakCount: 12,
+          dueDate: new Date(2025, 5, 9, 12, 0, 0).toISOString(),
+          deferUntil: new Date(2025, 5, 12, 0, 0, 0).toISOString(),
+        })],
+      });
+      useTaskStore.getState().rolloverQuotas();
+
+      expect(useTaskStore.getState().tasks).toHaveLength(1);
+      const task = useTaskStore.getState().tasks[0];
+      expect(task.completed).toBe(false);
+      expect(task.streakCount).toBe(12);
+    });
+
     it('leaves a one-off quota with no repeat overdue instead of re-spawning it', () => {
       useTaskStore.setState({
         tasks: [quota({

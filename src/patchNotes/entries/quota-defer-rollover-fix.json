@@ -1,0 +1,4 @@
+{
+  "message": "Fixed a daily/weekly target task losing its streak and spawning a duplicate for today after you rescheduled it to a later day",
+  "date": "2026-09-24"
+}
