@@ -146,9 +146,18 @@ describe('mealPlanNudgeSuppressed', () => {
     expect(mealPlanNudgeSuppressed(due, [{ date: '2025-08-12' }])).toBe(true);
   });
 
-  it('treats both ends of the range as inclusive', () => {
-    expect(mealPlanNudgeSuppressed(due, [{ date: '2025-08-10' }])).toBe(true);
+  it('treats the end of the range as inclusive', () => {
     expect(mealPlanNudgeSuppressed(due, [{ date: '2025-08-16' }])).toBe(true);
+  });
+
+  it('does not count an entry on the first day of the week', () => {
+    // The nudge fires on this same day by default, so a standing entry
+    // there would otherwise suppress the nudge every week (#1730).
+    expect(mealPlanNudgeSuppressed(due, [{ date: '2025-08-10' }])).toBe(false);
+  });
+
+  it('still counts an entry on the first day alongside one on a later day', () => {
+    expect(mealPlanNudgeSuppressed(due, [{ date: '2025-08-10' }, { date: '2025-08-12' }])).toBe(true);
   });
 });
 

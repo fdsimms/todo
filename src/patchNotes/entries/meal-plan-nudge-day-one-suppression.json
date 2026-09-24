@@ -1,0 +1,4 @@
+{
+  "message": "Fixed the weekly \"Plan this week's meals\" nudge never firing when a meal was already planned for the first day of the week (like a recurring breakfast) — that no longer counts as the week being planned.",
+  "date": "2026-09-24"
+}
