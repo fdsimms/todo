@@ -1063,6 +1063,17 @@ export function RecipeCreateSheet({
                 maxLength={RECIPE_TAG_MAX_LENGTH}
                 returnKeyType="done"
                 autoCapitalize="none"
+                // autoFocus alone doesn't reposition the scroll view here —
+                // no keyboard height change fires while the Name field (or
+                // another row) already had focus, the one case
+                // automaticallyAdjustKeyboardInsets can't cover (see
+                // useScrollFieldIntoView's doc comment) — so without this
+                // the field can mount behind the keyboard.
+                onFocus={e => {
+                  if (typeof e.nativeEvent.target === 'number') {
+                    keyboardScroll.focusInput(e.nativeEvent.target);
+                  }
+                }}
                 accessibilityLabel="New tag name"
               />
             ) : (
