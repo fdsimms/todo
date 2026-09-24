@@ -1427,7 +1427,7 @@ interface TaskStore extends UndoHistoryActions {
    * exclusive with `missed` in practice (nothing passes both); `missed`
    * still wins if it somehow were, since a miss is the more specific claim.
    */
-  completeTask: (id: string, options?: { missed?: boolean; deliverableValue?: string | null; neutral?: boolean; completedAt?: string }) => void;
+  completeTask: (id: string, options?: { missed?: boolean; deliverableValue?: string | null; neutral?: boolean; completedAt?: string; logEarly?: boolean }) => void;
   uncompleteTask: (id: string) => void;
   /**
    * Writes (or clears) the answer on an already-completed task — the Logbook's
@@ -3112,7 +3112,11 @@ export const useTaskStore = create<TaskStore>((set, get) => ({
     // day) can't be completed ahead of schedule — doing so would generate the
     // next occurrence off today instead of the task's real day. Non-recurring
     // tasks have no such next-occurrence math, so early completion is fine.
-    if (isRecurrenceNotYetDue(task)) return;
+    // An 'hours' recurrence is the one exception: it has no calendar grid to
+    // knock off schedule (its next occurrence is always measured from the
+    // moment it's actually logged — see taskCompletion.ts's nextDeferUntil),
+    // so a caller can confirm past its lock with logEarly.
+    if (isRecurrenceNotYetDue(task) && !(task.recurrenceType === 'hours' && options?.logEarly)) return;
 
     // If a timer is still running — or a countdown was paused with time banked
     // on it — stop it first so the session's time is saved.

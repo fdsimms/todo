@@ -545,6 +545,12 @@ export const TaskItem = React.memo(function TaskItem({
   // commit below has to pass the same value on — a completion salvaged without
   // its answer would tick the task off and drop what the user typed.
   const pendingDeliverableRef = useRef<string | null | undefined>(undefined);
+  // Set for the span of one completion that was confirmed through the
+  // "log early" prompt below, so whichever runCompletion call eventually
+  // fires it (the deliverable prompt and the completion-timer alert both
+  // resolve well after handleComplete returns) still carries the override
+  // through to completeTask. Cleared as soon as that completion runs.
+  const logEarlyRef = useRef(false);
   const circleScale = useRef(new Animated.Value(1)).current;
   // A row can mount already completed — Calendar keeps completed rows in its
   // day list, where every other screen filters them out before TaskItem ever
@@ -1469,6 +1475,12 @@ export const TaskItem = React.memo(function TaskItem({
    */
   const runCompletion = async (deliverableValue?: string | null) => {
     if (completingRef.current || pacingOutRef.current) return;
+    // Read and cleared here rather than taken as an argument: the deliverable
+    // prompt and the completion-timer alert both call this well after
+    // handleComplete set it, with no way to hand it back down through their
+    // own callbacks.
+    const logEarly = logEarlyRef.current;
+    logEarlyRef.current = false;
     if (isNew) markTaskSeen(task.id);
     // A quota row completes through its meter — the last unit tops the fill
     // out to the brim first, since that's what the row has been doing all
@@ -1549,7 +1561,10 @@ export const TaskItem = React.memo(function TaskItem({
       // since the store masks a held completion as incomplete (see
       // withHeldCompletions) and the row would render as ordinary work again.
       setAwaitingCollapse(true);
-      completeTask(task.id, deliverableValue !== undefined ? { deliverableValue } : undefined);
+      completeTask(task.id, {
+        ...(deliverableValue !== undefined ? { deliverableValue } : {}),
+        ...(logEarly ? { logEarly: true } : {}),
+      });
       endQuotaHold();
       // The row leaves the list via the batched collapse above rather than an
       // onPress, so the parent's expanded-row state is never told to clear —
@@ -1580,8 +1595,34 @@ export const TaskItem = React.memo(function TaskItem({
   const handleComplete = async () => {
     if (completingRef.current || pacingOutRef.current) return;
     if (completionLocked) {
-      await haptics.error();
-      return;
+      // An "every N hours" task (medication, most often) has no calendar grid
+      // to knock off schedule — the next dose is always measured from the
+      // moment it's actually logged (see taskCompletion.ts's nextDeferUntil),
+      // so logging one early costs nothing a fixed-day recurrence would lose.
+      // Every other recurring type keeps the plain refusal: completing those
+      // early really would generate the next occurrence off today instead of
+      // the task's own day.
+      if (task.recurrenceType !== 'hours') {
+        await haptics.error();
+        return;
+      }
+      await haptics.tap();
+      const minutesEarly = task.deferUntil
+        ? Math.max(1, Math.round((new Date(task.deferUntil).getTime() - Date.now()) / 60000))
+        : task.recurrenceInterval * 60;
+      const confirmed = await new Promise<boolean>(resolve => {
+        Alert.alert(
+          'Log early?',
+          `"${displayTitleFor(task)}" isn't due for another ${formatDuration(minutesEarly)}. Log it now anyway?`,
+          [
+            { text: 'Cancel', style: 'cancel', onPress: () => resolve(false) },
+            { text: 'Log now', onPress: () => resolve(true) },
+          ],
+          { cancelable: true, onDismiss: () => resolve(false) },
+        );
+      });
+      if (!confirmed) return;
+      logEarlyRef.current = true;
     }
     // "Choose lunch" isn't answered by ticking it — it's answered by putting
     // something in the slot. Picking a meal here rewrites this same row into

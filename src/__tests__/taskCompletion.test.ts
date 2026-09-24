@@ -133,6 +133,25 @@ describe('completionRefusal', () => {
     expect(completionRefusal(task)).toMatch(/unlocks 8 hours/);
   });
 
+  it('lets a caller confirm past an hours dose\'s own lock with logEarly', () => {
+    const future = new Date(Date.now() + 3600_000).toISOString();
+    const task = makeTask({
+      recurrenceType: 'hours', recurrenceInterval: 8, recurrenceFromCompletion: true, deferUntil: future,
+    });
+    expect(completionRefusal(task, { logEarly: true })).toBeNull();
+  });
+
+  // logEarly is an escape hatch for the one type with no calendar grid to
+  // knock off schedule (see CompletionOptions.logEarly) — it must not also
+  // open the door for a fixed-day recurrence, whose next occurrence really
+  // would land off today instead of its own day.
+  it('refuses a calendar-grid recurrence early even with logEarly set', () => {
+    const later = new Date();
+    later.setDate(later.getDate() + 5);
+    const task = makeTask({ recurrenceType: 'weekly', dueDate: later.toISOString() });
+    expect(completionRefusal(task, { logEarly: true })).toMatch(/not due yet/);
+  });
+
   // The store returns early on all three; buildCompletion has to agree, or a
   // caller that skipped the check could complete something the app refuses.
   it('is the same answer buildCompletion gives', () => {
@@ -296,6 +315,16 @@ describe('buildCompletion', () => {
     it('re-anchors an existing reminder onto the new deferUntil', () => {
       const { nextTask } = build(doseTask({ reminderTime: '2026-03-10T09:00:00.000Z' }));
       expect(nextTask!.reminderTime).toBe(nextTask!.deferUntil);
+    });
+
+    it('refuses a dose that is not ready yet, and logEarly lets it through', () => {
+      const future = new Date(Date.now() + 3600_000).toISOString();
+      const task = doseTask({ deferUntil: future });
+      expect(buildCompletion(task, {}, context({ allTasks: [task] }))).toBeNull();
+      const { nextTask } = build(task, { logEarly: true });
+      // Placed the same way an on-time completion would be: measured from this
+      // completion's own moment, not from the deferUntil it jumped ahead of.
+      expect(nextTask!.deferUntil).toBe('2026-03-10T17:00:00.000Z');
     });
   });
 
