@@ -772,6 +772,8 @@ export function FoodLogEntrySheet({
     else if (picked.panelItemId) setItemNutrition(picked.panelItemId, updated);
     else { haptics.error(); return; }
     setPicked({ ...picked, panel: updated });
+    setWeighing(false);
+    setWeighGrams('');
     haptics.success();
   };
 
