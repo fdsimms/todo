@@ -61,12 +61,23 @@ import { parseMealSlotSource, mealSlotStepTimeSegments } from './mealSlotTasks';
 import { derivedId, spawnSeed } from './syncIds';
 import { newTaskFromDraft, buildSeriesRow } from './taskDraft';
 
-/** The four things a caller can say about a completion. Identical to `completeTask`'s. */
+/** The five things a caller can say about a completion. Identical to `completeTask`'s. */
 export interface CompletionOptions {
   missed?: boolean;
   deliverableValue?: string | null;
   neutral?: boolean;
   completedAt?: string;
+  /**
+   * Confirmed override for an `'hours'` recurrence's own not-yet-due lock
+   * (see `completionRefusal`). Ignored for every other recurrence type: a
+   * calendar-grid recurrence (daily/weekly/monthly/yearly) completed early
+   * would generate its next occurrence off today instead of its own day, and
+   * that isn't something a caller should be able to opt back into. `'hours'`
+   * has no such grid — its next occurrence is always measured from the
+   * moment it's actually logged (see nextDeferUntil below) — so an early log
+   * costs nothing the lock is there to protect.
+   */
+  logEarly?: boolean;
 }
 
 /**
@@ -130,14 +141,17 @@ export interface CompletionRows {
  * - A **recurring task shown early** in Later cannot be completed ahead of
  *   schedule: doing so would generate the next occurrence off today instead of
  *   the task's real day. Non-recurring tasks have no such math, so early
- *   completion is fine for them.
+ *   completion is fine for them. The one exception is `'hours'`, whose own
+ *   lock a caller can confirm past with `options.logEarly` — see
+ *   `CompletionOptions.logEarly`.
  */
-export function completionRefusal(task: Task): string | null {
+export function completionRefusal(task: Task, options?: CompletionOptions): string | null {
   if (task.completed) return 'That task is already completed.';
   if (isNegativeTask(task)) {
     return 'That task is a habit you are avoiding rather than one you finish, so it has no completion. Record a slip against it instead.';
   }
   if (isRecurrenceNotYetDue(task)) {
+    if (task.recurrenceType === 'hours' && options?.logEarly) return null;
     return task.recurrenceType === 'hours'
       ? `That task isn't ready yet — it unlocks ${task.recurrenceInterval} hour${task.recurrenceInterval === 1 ? '' : 's'} after you last checked it off.`
       : 'That recurring task is not due yet, and completing it early would schedule the next occurrence off today rather than off its own day.';
@@ -156,7 +170,7 @@ export function buildCompletion(
   options: CompletionOptions | undefined,
   context: CompletionContext,
 ): CompletionRows | null {
-  if (completionRefusal(task) !== null) return null;
+  if (completionRefusal(task, options) !== null) return null;
 
   const { dayResetTime, vacationMode, now, allTasks, subtasks } = context;
   const missed = options?.missed ?? false;
