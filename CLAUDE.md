@@ -101,6 +101,25 @@ This is "Bugs found in passing" above, generalized past bugs specifically: the t
 happen is a decision (fix it / file it / leave it) made unilaterally, or left sitting only in prose
 that nobody is going to reread.
 
+## Documenting a fix
+
+This file is full of rules that exist because a bug shipped more than once — "shipped as a bug N
+times" is its own recurring phrase. Every one of those started the same way: someone fixed the bug
+without writing down why, and the next person to touch that code had no way to know the mistake was
+already made. Don't let a fix you land be the next one of those.
+
+When a fix you just made would have been faster, or wouldn't have shipped at all, if a rule like the
+ones in this file had already existed — because the root cause isn't obvious from reading the
+surrounding code, because it's the kind of thing a sibling component is equally likely to get wrong,
+or because you noticed while fixing it that the same shape already recurs elsewhere in the codebase —
+stop and ask before calling the task done, the same "stop and ask, don't just mention" duty as "Bugs
+found in passing" and "Follow-up and out-of-scope work" above. Offer to add a rule to this file (or
+the relevant `docs/arch/` file), say in one line what it would say, and let the user decide yes/no/
+edit it themselves — don't silently add it and don't silently skip mentioning it. A fix that's purely
+local (a typo, a one-off logic error with no generalizable cause) needs no offer; the bar is the same
+one this file's own rules clear — would a future agent, reading only the surrounding code and not
+this session's history, plausibly make the same mistake blind.
+
 ## User-facing copy
 
 Say what a setting does in plain, literal terms — the way the rest of the app already talks
