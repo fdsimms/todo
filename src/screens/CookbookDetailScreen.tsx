@@ -1,4 +1,4 @@
-import React, { useMemo, useState } from 'react';
+import React, { useEffect, useMemo, useState } from 'react';
 import { View, Text, FlatList, TouchableOpacity, StyleSheet, Keyboard } from 'react-native';
 import { useNavigation, useRoute, type RouteProp } from '@react-navigation/native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
@@ -43,6 +43,13 @@ export function CookbookDetailScreen() {
   const [linkPickerVisible, setLinkPickerVisible] = useState(false);
   const searchFilter = useFilterField();
   const linkSearch = searchFilter.query;
+  // The picker's Modal stays mounted across opens, and SearchField's own
+  // `autoFocus` only remounts the field on a `seed()` call — so it would
+  // otherwise only focus the very first time this picker is ever opened.
+  useEffect(() => {
+    if (linkPickerVisible) searchFilter.inputRef.current?.focus();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [linkPickerVisible]);
   // Recipes not already claimed by this book — one already filed under it
   // would just link to itself again, and the search is over what's left.
   const linkable = useMemo(() => {
@@ -158,7 +165,6 @@ export function CookbookDetailScreen() {
             right={<View style={styles.headerSpacer} />}
           />
           <SearchField
-            autoFocus
             style={styles.searchBar}
             field={searchFilter}
             placeholder="Search recipes"

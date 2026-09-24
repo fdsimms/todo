@@ -121,6 +121,16 @@ export function ContactPickerSheet({ visible, onPick, onClose }: Props) {
   // later one: the field is typed into fast and the native read is async, so
   // without it "dus" can overwrite the results for "dustin". Full access
   // only — a limited grant filters the set it already fetched, locally.
+  // Covers every case that lands on the search field: a fresh grant this
+  // session (askPermission's own focus call below still fires first for
+  // that one, harmlessly refocusing the same field) and — the one the bare
+  // `autoFocus` prop used to miss — reopening after permission was already
+  // granted in an earlier session, where this branch renders with no state
+  // transition of its own to hang a remount off.
+  useEffect(() => {
+    if (visible && permission === 'granted' && scope !== null) inputRef.current?.focus();
+  }, [visible, permission, scope, inputRef]);
+
   const searchToken = useRef(0);
   useEffect(() => {
     if (!visible || permission !== 'granted' || scope !== 'all') return;
@@ -197,7 +207,6 @@ export function ContactPickerSheet({ visible, onPick, onClose }: Props) {
               autoCapitalize="words"
               autoCorrect={false}
               spellCheck={false}
-              autoFocus
               returnKeyType="search"
               accessibilityLabel={scope === 'limited' ? 'Search or browse the contacts you shared' : 'Search your contacts'}
             />

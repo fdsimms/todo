@@ -1,4 +1,4 @@
-import React, { useMemo, useState } from 'react';
+import React, { useMemo, useRef, useState } from 'react';
 import { View, Text, TextInput, StyleSheet, Alert } from 'react-native';
 import { useNavigation } from '@react-navigation/native';
 import { format } from 'date-fns/format';
@@ -55,6 +55,7 @@ export function LogWeightSheet({ visible, onClose }: Props) {
   const [day, setDay] = useState<Date>(() => getLogicalToday());
   const [pickerOpen, setPickerOpen] = useState(false);
   const [saving, setSaving] = useState(false);
+  const weightInputRef = useRef<TextInput>(null);
 
   const kilograms = parseWeightInput(text, unit);
   const canSave = kilograms !== null && !saving;
@@ -134,6 +135,9 @@ export function LogWeightSheet({ visible, onClose }: Props) {
     <EditorSheet
       visible={visible}
       onRequestClose={close}
+      // The sheet stays mounted across opens, so a bare `autoFocus` on the
+      // field would only ever fire once.
+      onShow={() => weightInputRef.current?.focus()}
       rootStyle={styles.root}
       headerStyle={styles.header}
       scrollStyle={styles.scroll}
@@ -164,13 +168,13 @@ export function LogWeightSheet({ visible, onClose }: Props) {
           <Text style={styles.fieldLabel}>Weight</Text>
           <View style={styles.inputRow}>
             <TextInput
+              ref={weightInputRef}
               style={styles.input}
               value={text}
               onChangeText={setText}
               keyboardType="decimal-pad"
               placeholder="e.g. 72.4"
               placeholderTextColor={colors.textTertiary}
-              autoFocus
               accessibilityLabel={`Weight in ${unit === 'kg' ? 'kilograms' : 'pounds'}`}
             />
             <Text style={styles.unit}>{unit}</Text>

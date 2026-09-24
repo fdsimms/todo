@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useMemo } from 'react';
+import React, { useState, useEffect, useMemo, useRef } from 'react';
 import {
   View,
   Text,
@@ -121,6 +121,7 @@ export function TaskGroupEditor({ visible, group, isNew, onClose, projectId }: P
   // A member row opens the task's own editor on top of this one, same as
   // tapping a task row anywhere else in the app.
   const [editingTask, setEditingTask] = useState<Task | null>(null);
+  const titleInputRef = useRef<TextInput>(null);
 
   useEffect(() => {
     if (!group) return;
@@ -315,6 +316,10 @@ export function TaskGroupEditor({ visible, group, isNew, onClose, projectId }: P
     <EditorSheet
       visible={visible}
       onRequestClose={saveAndClose}
+      // Only for a brand-new stack — editing an existing one opens onto a
+      // title it's fine to leave alone. The sheet stays mounted across opens,
+      // so a bare `autoFocus` on the field would only ever fire once.
+      onShow={() => { if (isNew) titleInputRef.current?.focus(); }}
       rootStyle={styles.root}
       headerStyle={styles.header}
       scrollStyle={styles.scroll}
@@ -364,6 +369,7 @@ export function TaskGroupEditor({ visible, group, isNew, onClose, projectId }: P
       }
     >
       <TextInput
+        ref={titleInputRef}
         style={styles.titleInput}
         value={title}
         onChangeText={setTitle}

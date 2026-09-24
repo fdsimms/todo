@@ -89,6 +89,7 @@ export function FollowUpTaskSheet({ visible, taskTitle, draft, onSave, onClose }
   const [addingSubtask, setAddingSubtask] = useState(false);
   const [newSubtaskTitle, setNewSubtaskTitle] = useState('');
   const subtaskInputRef = useRef<TextInput>(null);
+  const notesInputRef = useRef<TextInput>(null);
   const subtaskSavedRef = useRef(false);
   // True while a subtask row is mid-drag. The sheet's ScrollView has to stand
   // down for the drag to survive the first finger move — a JS responder
@@ -173,6 +174,9 @@ export function FollowUpTaskSheet({ visible, taskTitle, draft, onSave, onClose }
     <EditorSheet
       visible={visible}
       onRequestClose={saveAndClose}
+      // The sheet stays mounted across opens, so a bare `autoFocus` on the
+      // notes field would only ever fire once.
+      onShow={() => notesInputRef.current?.focus()}
       scrollEnabled={!draggingRow}
       rootStyle={styles.root}
       headerStyle={styles.header}
@@ -193,6 +197,7 @@ export function FollowUpTaskSheet({ visible, taskTitle, draft, onSave, onClose }
     >
       <View style={styles.sectionCard}>
         <TextInput
+          ref={notesInputRef}
           style={styles.notesInput}
           value={notes}
           onChangeText={setNotes}

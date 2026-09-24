@@ -1,4 +1,4 @@
-import React, { useEffect, useMemo, useState } from 'react';
+import React, { useEffect, useMemo, useRef, useState } from 'react';
 import { View, Text, TextInput, TouchableOpacity, StyleSheet, Alert } from 'react-native';
 import Ionicons from '@expo/vector-icons/Ionicons';
 import { format } from 'date-fns/format';
@@ -57,6 +57,7 @@ export function MilestoneSheet({ visible, milestone, onClose }: Props) {
   const [label, setLabel] = useState('');
   const [date, setDate] = useState<Date>(() => noonOfToday());
   const [showDatePicker, setShowDatePicker] = useState(false);
+  const labelInputRef = useRef<TextInput>(null);
 
   useEffect(() => {
     if (!visible) return;
@@ -91,6 +92,10 @@ export function MilestoneSheet({ visible, milestone, onClose }: Props) {
     <EditorSheet
       visible={visible}
       onRequestClose={saveAndClose}
+      // Only for a new milestone — editing an existing one opens onto a label
+      // it's fine to leave alone. The sheet stays mounted across opens, so a
+      // bare `autoFocus` on the field would only ever fire once.
+      onShow={() => { if (!milestone) labelInputRef.current?.focus(); }}
       rootStyle={styles.root}
       headerStyle={styles.header}
       scrollStyle={styles.scroll}

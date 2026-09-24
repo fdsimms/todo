@@ -152,7 +152,7 @@ export function RecipePickerSheet({ visible, dayKey, dayLabel, defaultSlot, forc
 
   const recipes = useRecipeStore(useShallow(s => s.recipes));
   const leftovers = useLeftoverStore(useShallow(s => s.leftovers));
-  const { query, clear: clearQuery, props: filterField } = useFilterField();
+  const { query, clear: clearQuery, props: filterField, inputRef: searchInputRef } = useFilterField();
   const [slot, setSlot] = useState<MealSlot>(defaultSlot);
   /** Every entry picked so far this session, in the order they landed. */
   const [planned, setPlanned] = useState<MealPlanEntry[]>([]);
@@ -246,6 +246,9 @@ export function RecipePickerSheet({ visible, dayKey, dayLabel, defaultSlot, forc
       Animated.spring(translateY, { toValue: 0, ...animation.spring.smooth, useNativeDriver: true }),
       Animated.timing(backdropOpacity, { toValue: 1, duration: animation.duration.normal, useNativeDriver: true }),
     ]).start();
+    // Same fix as QuickSearchModal's own field: the sheet stays mounted
+    // across opens, so nothing else focuses this one.
+    searchInputRef.current?.focus();
   }, [visible, forceSlot]);
 
   const dismiss = () => {

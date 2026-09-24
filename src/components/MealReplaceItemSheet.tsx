@@ -62,7 +62,7 @@ export function MealReplaceItemSheet({ visible, count, onReplace, onClose }: Pro
   const styles = useMemo(() => makeStyles(colors), [colors]);
 
   const recipes = useRecipeStore(useShallow(s => s.recipes));
-  const { query, clear: clearQuery, props: filterField } = useFilterField();
+  const { query, clear: clearQuery, props: filterField, inputRef: searchInputRef } = useFilterField();
   const typed = cleanRecipeName(query);
 
   const matches = useMemo(() => {
@@ -113,6 +113,9 @@ export function MealReplaceItemSheet({ visible, count, onReplace, onClose }: Pro
       Animated.spring(translateY, { toValue: 0, ...animation.spring.smooth, useNativeDriver: true }),
       Animated.timing(backdropOpacity, { toValue: 1, duration: animation.duration.normal, useNativeDriver: true }),
     ]).start();
+    // Same fix as QuickSearchModal's own field: the sheet stays mounted
+    // across opens, so nothing else focuses this one.
+    searchInputRef.current?.focus();
   }, [visible]);
 
   const dismiss = (after?: () => void) => {

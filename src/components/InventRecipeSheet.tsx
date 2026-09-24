@@ -1,4 +1,4 @@
-import React, { useCallback, useEffect, useMemo, useState } from 'react';
+import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import {
   Alert,
   Keyboard,
@@ -75,6 +75,7 @@ export function InventRecipeSheet({ visible, onClose, onCreated }: Props) {
   /** Which idea is being drafted right now, for its row's spinner. */
   const [creatingKey, setCreatingKey] = useState<string | null>(null);
   const [createErrors, setCreateErrors] = useState<Map<string, string>>(new Map());
+  const hintsInputRef = useRef<TextInput>(null);
 
   useEffect(() => {
     if (visible) return;
@@ -84,6 +85,12 @@ export function InventRecipeSheet({ visible, onClose, onCreated }: Props) {
     setGenerateError(null);
     setCreatingKey(null);
     setCreateErrors(new Map());
+  }, [visible]);
+
+  // The sheet stays mounted across opens, so a bare `autoFocus` on the hints
+  // field would only ever fire once.
+  useEffect(() => {
+    if (visible) hintsInputRef.current?.focus();
   }, [visible]);
 
   const generate = useCallback(async () => {
@@ -261,6 +268,7 @@ export function InventRecipeSheet({ visible, onClose, onCreated }: Props) {
 
           {!generating && (
             <TextInput
+              ref={hintsInputRef}
               style={styles.hintInput}
               value={hints}
               onChangeText={setHints}
