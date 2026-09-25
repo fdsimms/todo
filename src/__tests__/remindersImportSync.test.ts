@@ -1230,6 +1230,28 @@ describe('importReminders — demo mode', () => {
     expect(mockCalendar.createReminderAsync).not.toHaveBeenCalled();
     expect(mockCalendar.deleteReminderAsync).not.toHaveBeenCalled();
   });
+
+  // Turning two-way off clears the links, which is right outside demo and
+  // wrong inside it: the clear landed in the demo database and, worse, in the
+  // module's in-memory index, which outlives the swap. On leaving demo the real
+  // mirror ran against no links, so removed rows came back from their reminders.
+  it('leaves the real links alone when two-way is switched off during demo', async () => {
+    mockDemoMode = true;
+    const real = JSON.stringify({
+      [LIST.id]: [{ reminderId: 'r1', itemId: 'i1', name: 'milk', checked: false, seen: true }],
+    });
+    mockSettingsRows.groceryImportLinks = real;
+    mockSettings.remindersImportEnabled = false;
+    mockSettings.groceryImportEnabled = true;
+    mockSettings.groceryImportListId = LIST.id;
+    mockSettings.groceryImportConfirmedListId = LIST.id;
+    mockSettings.groceryImportTwoWay = false;
+
+    await freshSync().importReminders();
+
+    expect(mockSettingsRows.groceryImportLinks).toBe(real);
+    expect(mockDb.dbSetSetting).not.toHaveBeenCalledWith('groceryImportLinks', expect.anything());
+  });
 });
 
 /**

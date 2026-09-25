@@ -512,16 +512,19 @@ interface MirrorOutcome {
  */
 async function mirrorOnce(): Promise<MirrorOutcome | null> {
   if (Platform.OS !== 'ios') return null;
+  // The guard notifications.ts and the two calendar mirrors already keep. Demo
+  // mode swaps the whole database for a throwaway one, and a mirror is a
+  // two-way write: without this it would push a seeded demo list into the
+  // user's real Reminders list and delete whatever was already there. It sits
+  // above the clear below too: `linkIndex` is module state that outlives the
+  // swap, so clearing it in demo left the real mirror running against no links
+  // once demo ended, and rows the user had removed came back from their reminders.
+  if (isDemoModeActive()) return null;
   const listId = mirrorTarget();
   if (!listId) {
     writeLinks({});
     return null;
   }
-  // The guard notifications.ts and the two calendar mirrors already keep. Demo
-  // mode swaps the whole database for a throwaway one, and a mirror is a
-  // two-way write: without this it would push a seeded demo list into the
-  // user's real Reminders list and delete whatever was already there.
-  if (isDemoModeActive()) return null;
   if ((await getRemindersPermission()) !== 'granted') {
     return { imported: 0, mirrored: 0, deleteFailed: 0, reason: 'no-permission' };
   }
