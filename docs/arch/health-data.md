@@ -1123,11 +1123,15 @@ it, picking it is an act, and nothing about it is stored. Neither is ranked as
 the better one, and that module argues why at length (the multiplier is a
 population average over a self-description; the measurement is exact about
 whatever the person's devices actually saw, which for a phone on a desk is not
-much). The measured figure also reads a few per cent low against the
-multipliers, because HealthKit's active energy is movement only where the
-Harris-Benedict factors also fold in digestion, and the sheet says so rather
-than scaling it up: a second population constant bolted onto a measurement
-would undo the only thing the measured path had going for it. And it **proposes rather than
+much). The measured figure adds digestion as a tenth of the total
+(`DIGESTION_SHARE`), because HealthKit's active energy is movement only where the
+Harris-Benedict factors also fold digestion in. It used to leave it out and
+say so, on the grounds that a second population constant would spoil a
+measurement. That didn't hold: the resting half is Mifflin-St Jeor, so the
+figure was never a pure measurement, and leaving digestion out only made the
+two options answer different questions a couple of hundred calories apart.
+The sheet prints the digestion figure in its working rather than folding it in
+unannounced. And it **proposes rather than
 writes**: `WeightGoalSheet` prints the arithmetic with its own working shown
 beside it, and the figure only reaches `nutritionTargets.calorieKcal` when
 somebody presses the button under it. Nothing re-applies it as a weight

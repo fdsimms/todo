@@ -156,6 +156,12 @@ export function maintenanceKcal(
 }
 
 /**
+ * The share of a day's energy spent digesting food (the thermic effect of
+ * food), by the conventional figure of about a tenth of intake.
+ */
+export const DIGESTION_SHARE = 0.1;
+
+/**
  * The same figure with Apple Health's own measurement in place of the
  * multiplier: resting energy plus the active energy a typical recent day of
  * this person's actually recorded.
@@ -169,15 +175,19 @@ export function maintenanceKcal(
  * desk has the reverse, and a figure that looks measured is worse than one
  * that looks estimated, because nothing about it says how little it saw.
  *
- * **It reads slightly low against the multipliers and the reason is stated
- * rather than corrected.** The Harris-Benedict factors fold in the energy
- * spent digesting food (about a tenth of intake) along with movement, and
- * HealthKit's active energy is movement only: it is defined as energy above
- * resting, which is exactly what makes it addable to a resting figure in the
- * first place. Multiplying it up to cover the difference would be inventing a
- * second population constant to bolt onto a measurement, which is the thing
- * this path exists to avoid. The sheet says the estimate is an estimate, the
- * same way it does for the other one.
+ * **It counts digestion as a tenth of the total, the same as the multipliers
+ * do.** HealthKit's active energy is movement only (energy above resting,
+ * which is what makes it addable to a resting figure at all), where the
+ * Harris-Benedict factors also fold in the energy spent digesting food. Left
+ * out, this path read a couple of hundred calories low against the other one
+ * for no reason a person could see, so the two answered different questions.
+ * This used to be refused on the grounds that a second population constant
+ * would spoil a measurement, and that argument doesn't survive the resting
+ * half: it is Mifflin-St Jeor, already a population formula, so the figure was
+ * never a pure measurement to spoil. Digestion is conventionally about a
+ * tenth of what somebody eats, and holding a weight means eating what you
+ * burn, so it is a tenth of maintenance: `(resting + active) / (1 - share)`.
+ * The sheet prints that part as its own figure rather than folding it in.
  *
  * Null on the same terms as `maintenanceKcal` — an incomplete profile — and
  * additionally when there is no activity figure to use.
@@ -193,7 +203,7 @@ export function measuredMaintenanceKcal(
   if (activeEnergyKcal === null || !Number.isFinite(activeEnergyKcal) || activeEnergyKcal < 0) {
     return null;
   }
-  return resting + activeEnergyKcal;
+  return (resting + activeEnergyKcal) / (1 - DIGESTION_SHARE);
 }
 
 /**
