@@ -641,7 +641,10 @@ export function EstimateMealSheet({ visible, slot, at, mealPlanEntryId, initialD
           {matches.length > 0 && !estimate && (
             <View style={styles.card}>
               <Text style={styles.cardTitle}>You have a recipe for this</Text>
-              <Text style={styles.hint}>Its figures come from the ingredients rather than a guess.</Text>
+              <Text style={styles.hint}>
+                Its figures come from the ingredients rather than a guess. Tapping one logs
+                just the recipe, in servings — anything else typed above is left out.
+              </Text>
               {matches.map(recipe => (
                 <TouchableOpacity
                   key={recipe.id}
@@ -649,7 +652,7 @@ export function EstimateMealSheet({ visible, slot, at, mealPlanEntryId, initialD
                   activeOpacity={interaction.activeOpacity}
                   onPress={() => { haptics.tap(); Keyboard.dismiss(); onPickRecipe(recipe.id); }}
                   accessibilityRole="button"
-                  accessibilityLabel={`Log ${recipe.name} instead`}
+                  accessibilityLabel={`Log just ${recipe.name}, in servings. Anything else typed above is left out.`}
                 >
                   <Text style={styles.recipeName}>{recipe.name}</Text>
                 </TouchableOpacity>
