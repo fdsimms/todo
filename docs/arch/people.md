@@ -584,6 +584,17 @@ events sheet, or by starting the event from a person's page ("Plan something").
   phone. The event itself still syncs through its calendar.
 - **Creating is off in demo mode**: the event would reach the real calendar.
 
+### Typing an event
+
+`src/utils/quickEvent.ts` + `QuickEventSheet`, behind the Today add button's
+"Event". One line ("lunch w/ @dustin sat 12pm") read by quick add's own two
+parsers (`parseTaskInput` for the day and time, `matchPersonMentions` for
+"@name"), so it reads exactly as a task line does, refusals included. It fills
+the system sheet and links the people once the event is saved. A repeat phrase
+gives only its first day; repeating is set in the system sheet. It is its own
+sheet rather than a mode of `QuickAddModal`, since almost nothing that sheet
+sets means anything for an event.
+
 ### Tasks planned around an event
 
 `src/utils/eventTaskLinks.ts` + `useEventTaskLinkStore`, the sibling record.

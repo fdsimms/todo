@@ -138,9 +138,8 @@ import { mealSlotSourceId } from '../utils/mealSlotTasks';
 import { useMealPlanStore } from '../store/useMealPlanStore';
 import { useRecipeStore } from '../store/useRecipeStore';
 import { selectTodayMealEntries, recipeIndex } from '../utils/mealPlan';
-import { getCurrentDayStart, getDayStart, getLogicalDayKey } from '../utils/dateUtils';
-import { defaultNewEventSpan } from '../utils/eventPeople';
-import { useEventPeopleStore } from '../store/useEventPeopleStore';
+import { getDayStart, getLogicalDayKey } from '../utils/dateUtils';
+import { QuickEventSheet } from '../components/QuickEventSheet';
 import { morningCheckInTasks } from '../utils/morningCheckIn';
 import { addDays } from 'date-fns/addDays';
 import { useCalendarStore } from '../store/useCalendarStore';
@@ -1637,14 +1636,12 @@ export function TodayScreen() {
       case 'import':
         setEventImportVisible(true);
         break;
-      // No task: Apple's new-event sheet, today at the next whole hour. The
-      // calendar (Google or otherwise) is picked there.
-      case 'event': {
-        const today = getCurrentDayStart();
-        const { start, end } = defaultNewEventSpan(today, today, new Date());
-        void useEventPeopleStore.getState().createEvent({ title: '', start, end });
+      // No task: a one-line event ("lunch w/ @dustin sat 12pm") that fills
+      // Apple's new-event sheet, where the calendar (Google or otherwise) is
+      // picked. See QuickEventSheet.
+      case 'event':
+        setQuickEventVisible(true);
         break;
-      }
     }
   };
 
@@ -1993,6 +1990,7 @@ export function TodayScreen() {
   const calendarIds = useSettingsStore(s => s.calendarIds);
   const eventCalendarTags = calendarIds.length > 1 ? calendarsById : undefined;
   const [eventsSheetVisible, setEventsSheetVisible] = useState(false);
+  const [quickEventVisible, setQuickEventVisible] = useState(false);
   const todayCalendarDayEnd = useMemo(() => addDays(getDayStart(new Date()), 1), [todayKey]);
   const todayCalendarEvents = useMemo(
     () => (calendarReadEnabled && calendarLoaded && !demoActive
@@ -4422,6 +4420,11 @@ export function TodayScreen() {
         <CategoryOrderSheet
           visible={categoryOrderVisible}
           onClose={() => setCategoryOrderVisible(false)}
+        />
+
+        <QuickEventSheet
+          visible={quickEventVisible}
+          onClose={() => setQuickEventVisible(false)}
         />
 
         <TodayEventsSheet
