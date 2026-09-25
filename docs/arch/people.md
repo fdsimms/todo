@@ -584,6 +584,26 @@ events sheet, or by starting the event from a person's page ("Plan something").
   phone. The event itself still syncs through its calendar.
 - **Creating is off in demo mode**: the event would reach the real calendar.
 
+### Tasks planned around an event
+
+`src/utils/eventTaskLinks.ts` + `useEventTaskLinkStore`, the sibling record.
+The events sheet's "+" and its "Plan from a template" (a template run whose
+two anchors are the event's first and last day, named after it and carrying
+its linked people) both record the tasks they create against the occurrence.
+
+- **A record, not a `Task` field.** Per-task provenance is refused in
+  `docs/arch/away-dates.md` (a column plus the four-site `TemplateItem`
+  parity); the event already has a record here, so the ids hang off that.
+- **It exists to notice a move, and it only offers.** `movedLinkedEvents`
+  calls an event moved only when its old occurrence is gone, the old start was
+  inside the window (so absence means something), and exactly one occurrence
+  of the id is in the window (a series is refused rather than guessed). The
+  row then offers `AwayShiftSheet`, the trip move's own "these move with it?",
+  or "Keep their dates". Either answer rekeys the record so it is not asked
+  twice.
+- **Device-local and pruned a week after the event**, like the people link
+  (`calendarEventTasks`).
+
 ## Tapping Call or Text, and the question that follows
 
 `reachOutIntent.ts` (the rules), `usePersonStore`'s three `*PendingReachOut`

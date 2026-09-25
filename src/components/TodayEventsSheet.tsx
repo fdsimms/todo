@@ -31,12 +31,26 @@ import { peopleForEvent, suggestedEventPeople, defaultNewEventSpan } from '../ut
 import { getCurrentDayStart } from '../utils/dateUtils';
 import { isDemoModeActive } from '../utils/demoState';
 import { InlineAction } from './InlineAction';
+import { TemplatePickerSheet } from './TemplatePickerSheet';
+import { ApplyTemplateSheet } from './ApplyTemplateSheet';
+import { AwayShiftSheet } from './AwayShiftSheet';
+import { useTemplateStore } from '../store/useTemplateStore';
+import { useEventTaskLinkStore } from '../store/useEventTaskLinkStore';
+import { useCalendarStore } from '../store/useCalendarStore';
+import {
+  anchorsForEvent,
+  eventTaskKey,
+  movedLinkedEvents,
+  tasksForEvent,
+  type MovedEvent,
+} from '../utils/eventTaskLinks';
+import type { TaskTemplate } from '../types';
 
 /** `null` is the "no reminder" segment — distinct from 0, which is a real offset (at start time). */
 type OffsetChoice = number | null;
 
 /** Which of a row's two fold-out panels is open. One at a time across the sheet. */
-type OpenPanel = { key: string; panel: 'reminder' | 'people' };
+type OpenPanel = { key: string; panel: 'reminder' | 'details' };
 
 interface Props {
   visible: boolean;
@@ -88,6 +102,17 @@ interface Props {
  * already names are listed first as a suggestion, and are still a tap each:
  * a title match is a guess, and only the user says who a plan is with. A task
  * added from a linked row carries the same people.
+ *
+ * **Tasks can be planned around an event** (`src/utils/eventTaskLinks.ts`):
+ * the "+" adds one, and "Plan from a template" in the row's details runs a
+ * template anchored to the event's first and last day, named after it and
+ * carrying its people. Either records the tasks against the event, and if the
+ * event later moves, its row says so and offers to move them with it (the
+ * trip move's `AwayShiftSheet`). The offer is all it does: nothing moves
+ * until the user says which tasks were tied to the date.
+ *
+ * The template sheets and the move sheet render **inside** this sheet's Modal,
+ * not beside it, for the sibling-Modal rule in CLAUDE.md.
  */
 export function TodayEventsSheet({ visible, onClose, events, calendarsById, title, day }: Props) {
   const colors = useColors();
@@ -104,12 +129,36 @@ export function TodayEventsSheet({ visible, onClose, events, calendarsById, titl
   const createEvent = useEventPeopleStore(s => s.createEvent);
   const allPeople = usePersonStore(useShallow(s => s.people));
   const people = useMemo(() => allPeople.filter(p => !p.archived), [allPeople]);
+  const hasTemplates = useTemplateStore(s => s.templates.length > 0);
+  const taskLinks = useEventTaskLinkStore(s => s.links);
+  const addEventTasks = useEventTaskLinkStore(s => s.addTasks);
+  const rekeyEventTasks = useEventTaskLinkStore(s => s.rekey);
+  const allTasks = useTaskStore(useShallow(s => s.tasks));
+  const liveTaskIds = useMemo(() => new Set(allTasks.map(t => t.id)), [allTasks]);
+  // Moves are read against the whole window rather than this sheet's day,
+  // since an event that moved to another day has left it.
+  const windowEvents = useCalendarStore(useShallow(s => s.events));
+  const windowStart = useCalendarStore(s => s.windowStart);
+  const windowEnd = useCalendarStore(s => s.windowEnd);
+  const movedByKey = useMemo(() => {
+    const out: Record<string, MovedEvent> = {};
+    if (!windowStart || !windowEnd) return out;
+    for (const moved of movedLinkedEvents(taskLinks, windowEvents, new Date(windowStart), new Date(windowEnd))) {
+      out[eventTaskKey(moved.event)] = moved;
+    }
+    return out;
+  }, [taskLinks, windowEvents, windowStart, windowEnd]);
+  // The event a template is being planned around, from picking one through
+  // applying it; and the one whose tasks the move sheet is open for.
+  const [planningFor, setPlanningFor] = useState<BusyEvent | null>(null);
+  const [pickerOpen, setPickerOpen] = useState(false);
+  const [applyTemplate, setApplyTemplate] = useState<TaskTemplate | null>(null);
+  const [shifting, setShifting] = useState<MovedEvent | null>(null);
   // Which rows have had a task added *from this sheet, since it opened*, and
   // deliberately nothing more. It is feedback for a tap, not a claim that the
-  // task still exists: nothing links a task to the event it was copied from
-  // (that would be a `Task` column and a reconcile, which is the event-rule
-  // generator's job, not this button's), so the honest scope of the record is
-  // the one interaction it is confirming. Tapping twice adds two tasks, the
+  // task still exists (that is `eventTaskLinks`' record, which the details
+  // panel counts against the live task list), so the honest scope of the mark
+  // is the one interaction it is confirming. Tapping twice adds two tasks, the
   // same as tapping "+" twice anywhere else does.
   const [addedKeys, setAddedKeys] = useState<readonly string[]>([]);
 
@@ -133,6 +182,20 @@ export function TodayEventsSheet({ visible, onClose, events, calendarsById, titl
       event,
       linked.includes(personId) ? linked.filter(id => id !== personId) : [...linked, personId]
     );
+  };
+
+  const planFromTemplate = (event: BusyEvent) => {
+    haptics.tap();
+    setPlanningFor(event);
+    setPickerOpen(true);
+  };
+
+  // Answering the move offer either way moves the record onto where the event
+  // is now, so the same move is not offered twice.
+  const keepDates = (moved: MovedEvent) => {
+    haptics.tap();
+    animateLayout();
+    rekeyEventTasks(moved.link.key, moved.event);
   };
 
   // Today, at the next whole hour; the system sheet is where the user changes
@@ -159,11 +222,12 @@ export function TodayEventsSheet({ visible, onClose, events, calendarsById, titl
   const addTaskForEvent = (event: BusyEvent, key: string) => {
     haptics.success();
     const category = useSettingsStore.getState().calendarEventCategory;
-    useTaskStore.getState().addTask({
+    const task = useTaskStore.getState().addTask({
       ...taskFieldsFromEvent(event),
       category: category ?? undefined,
       personIds: peopleForEvent(eventPeople, event),
     });
+    addEventTasks(event, [task.id]);
     animateLayout();
     setAddedKeys(keys => (keys.includes(key) ? keys : [...keys, key]));
   };
@@ -194,7 +258,10 @@ export function TodayEventsSheet({ visible, onClose, events, calendarsById, titl
             const key = eventReminderKey(event);
             const reminder = remindersByKey[key];
             const reminderOpen = openPanel?.key === key && openPanel.panel === 'reminder';
-            const peopleOpen = openPanel?.key === key && openPanel.panel === 'people';
+            const detailsOpen = openPanel?.key === key && openPanel.panel === 'details';
+            const plannedCount = tasksForEvent(taskLinks, event).filter(id => liveTaskIds.has(id)).length;
+            const moved = movedByKey[eventTaskKey(event)];
+            const movedTasks = moved ? moved.link.taskIds.filter(id => liveTaskIds.has(id)).length : 0;
             const hidden = hiddenEventKey(event) in hiddenByKey;
             const linkedIds = peopleForEvent(eventPeople, event);
             const linkedNames = people.filter(p => linkedIds.includes(p.id)).map(displayNameOf);
@@ -204,7 +271,14 @@ export function TodayEventsSheet({ visible, onClose, events, calendarsById, titl
                   <View style={styles.rowIcon}>
                     <Ionicons name="calendar-outline" size={iconSize.sm} color={colors.accent} />
                   </View>
-                  <View style={styles.rowInfo}>
+                  <TouchableOpacity
+                    style={styles.rowInfo}
+                    onPress={() => togglePanel(key, 'details')}
+                    activeOpacity={interaction.activeOpacity}
+                    disabled={people.length === 0 && !hasTemplates && plannedCount === 0}
+                    accessibilityRole="button"
+                    accessibilityLabel={`${event.title || 'Event'}. Show who it's with and tasks planned around it.`}
+                  >
                     <Text style={styles.rowTitle} numberOfLines={2}>{event.title || 'Event'}</Text>
                     <View style={styles.rowMetaRow}>
                       <Text style={styles.rowTime}>
@@ -235,7 +309,7 @@ export function TodayEventsSheet({ visible, onClose, events, calendarsById, titl
                         </PressableScale>
                       </View>
                     )}
-                  </View>
+                  </TouchableOpacity>
                   <View style={styles.rowActions}>
                     <PressableScale hitSlop={8}
                       style={styles.actionButton}
@@ -251,7 +325,7 @@ export function TodayEventsSheet({ visible, onClose, events, calendarsById, titl
                     {people.length > 0 && (
                       <PressableScale hitSlop={8}
                         style={styles.actionButton}
-                        onPress={() => togglePanel(key, 'people')}
+                        onPress={() => togglePanel(key, 'details')}
                         haptic
                         accessibilityLabel={
                           linkedNames.length > 0
@@ -303,8 +377,35 @@ export function TodayEventsSheet({ visible, onClose, events, calendarsById, titl
                   </View>
                 </View>
 
-                {peopleOpen && (
+                {/* Said on the row where the event now sits, since that is
+                    where somebody looking at the day will find it. */}
+                {moved && movedTasks > 0 && (
                   <View style={styles.reminderPanel}>
+                    <Text style={styles.panelHint}>
+                      This event moved from {formatMovedFrom(moved.link.eventStart)}.{' '}
+                      {movedTasks === 1 ? '1 task was' : `${movedTasks} tasks were`} planned around it.
+                    </Text>
+                    <View style={styles.pillRow}>
+                      <InlineAction icon="arrow-forward" label="Move tasks" onPress={() => { haptics.tap(); setShifting(moved); }} />
+                      <InlineAction icon="checkmark" label="Keep their dates" variant="neutral" onPress={() => keepDates(moved)} />
+                    </View>
+                  </View>
+                )}
+
+                {detailsOpen && (
+                  <View style={styles.reminderPanel}>
+                    {plannedCount > 0 && (
+                      <Text style={styles.panelHint}>
+                        {plannedCount === 1 ? '1 task' : `${plannedCount} tasks`} planned around this event.
+                      </Text>
+                    )}
+                    {hasTemplates && (
+                      <View style={[styles.pillRow, people.length > 0 && styles.panelSection]}>
+                        <InlineAction icon="copy-outline" label="Plan from a template" onPress={() => planFromTemplate(event)} />
+                      </View>
+                    )}
+                    {people.length > 0 && (
+                    <>
                     <Text style={styles.panelHint}>
                       Who this is with. Only this app sees it; nobody is invited.
                     </Text>
@@ -325,6 +426,8 @@ export function TodayEventsSheet({ visible, onClose, events, calendarsById, titl
                         );
                       })}
                     </View>
+                    </>
+                    )}
                   </View>
                 )}
 
@@ -358,9 +461,43 @@ export function TodayEventsSheet({ visible, onClose, events, calendarsById, titl
             </View>
           )}
         </ScrollView>
+
+        {/* Nested inside this sheet's Modal, never beside it: see the
+            sibling-Modal rule in CLAUDE.md. */}
+        <TemplatePickerSheet
+          visible={pickerOpen}
+          onClose={() => setPickerOpen(false)}
+          onSelect={template => { setPickerOpen(false); setApplyTemplate(template); }}
+        />
+        <ApplyTemplateSheet
+          visible={applyTemplate !== null}
+          template={applyTemplate}
+          initialAnchors={planningFor ? anchorsForEvent(planningFor) : undefined}
+          initialRunName={planningFor?.title || undefined}
+          extraPersonIds={planningFor ? peopleForEvent(eventPeople, planningFor) : undefined}
+          onClose={() => setApplyTemplate(null)}
+          onApplied={tasks => {
+            if (planningFor && tasks.length > 0) addEventTasks(planningFor, tasks.map(t => t.id));
+            setPlanningFor(null);
+          }}
+        />
+        <AwayShiftSheet
+          visible={shifting !== null}
+          tasks={shifting ? allTasks.filter(t => shifting.link.taskIds.includes(t.id)) : []}
+          from={shifting ? new Date(shifting.link.eventStart) : null}
+          to={shifting ? new Date(shifting.event.start) : null}
+          projectTitle={shifting?.event.title || 'Event'}
+          onApplied={() => { if (shifting) rekeyEventTasks(shifting.link.key, shifting.event); }}
+          onClose={() => setShifting(null)}
+        />
       </View>
     </SheetModal>
   );
+}
+
+/** "Fri, Sep 26": the day a moved event used to be on. */
+function formatMovedFrom(iso: string): string {
+  return new Date(iso).toLocaleDateString(undefined, { weekday: 'short', month: 'short', day: 'numeric' });
 }
 
 /**
@@ -414,6 +551,7 @@ const makeStyles = (colors: Colors) => StyleSheet.create({
   rowPeople: { color: colors.textSecondary, fontSize: font.xs },
   panelHint: { color: colors.textSecondary, fontSize: font.xs, marginBottom: spacing.sm },
   pillRow: { flexDirection: 'row', flexWrap: 'wrap', gap: spacing.xs },
+  panelSection: { marginBottom: spacing.md },
   pill: {
     paddingHorizontal: spacing.smd,
     paddingVertical: spacing.xsm,

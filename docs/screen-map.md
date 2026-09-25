@@ -70,8 +70,8 @@ Where each component can appear.
 - `src/components/AddTaskFab.tsx` — on TodayScreen
 - `src/components/AnimatedCollapsible.tsx` — on FoodLogScreen, ProjectDetailScreen, RecipeDetailScreen, RecipesScreen, TodayScreen
 - `src/components/AppLockGate.tsx` — on app shell
-- `src/components/ApplyTemplateSheet.tsx` — on ProjectDetailScreen, TemplateDetailScreen, TemplatesScreen, TodayScreen
-- `src/components/AwayShiftSheet.tsx` — on ProjectDetailScreen, ProjectsScreen
+- `src/components/ApplyTemplateSheet.tsx` — on CalendarScreen, ProjectDetailScreen, TemplateDetailScreen, TemplatesScreen, TodayScreen
+- `src/components/AwayShiftSheet.tsx` — on CalendarScreen, ProjectDetailScreen, ProjectsScreen, TodayScreen
 - `src/components/BarcodeScanSheet.tsx` — on FoodLogScreen, GroceryScreen, KitchenScreen, app shell
 - `src/components/BirthdayPicker.tsx` — on BackfillScreen, PeopleScreen, PersonDetailScreen
 - `src/components/BulkActionBar.tsx` — on CategoryDetailScreen, ProjectDetailScreen, SavedViewDetailScreen, TagsScreen, TodayScreen
@@ -279,7 +279,7 @@ Where each component can appear.
 - `src/components/TemplateItemBulkBar.tsx` — on TemplateDetailScreen
 - `src/components/TemplateItemEditor.tsx` — on TemplateDetailScreen
 - `src/components/TemplateItemQuickAdd.tsx` — on TemplateDetailScreen
-- `src/components/TemplatePickerSheet.tsx` — on ProjectDetailScreen, TodayScreen
+- `src/components/TemplatePickerSheet.tsx` — on CalendarScreen, ProjectDetailScreen, TodayScreen
 - `src/components/TemplateQuestionItemsSheet.tsx` — on TemplateDetailScreen, TemplatesScreen
 - `src/components/TemplateQuestionSheet.tsx` — on TemplateDetailScreen, TemplatesScreen
 - `src/components/TemplateSuggestionsSheet.tsx` — on TemplateDetailScreen

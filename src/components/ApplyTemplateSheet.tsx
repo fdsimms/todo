@@ -66,6 +66,18 @@ interface Props {
   projectId?: string;
   /** Fires once the sheet has finished dismissing, with every task the apply created (empty if the run had nothing selected). Lets a caller jump straight to the first one rather than leaving it to be found. */
   onApplied?: (tasks: Task[]) => void;
+  /**
+   * Anchor dates to open with, ahead of a target project's away span. A
+   * calendar event's first and last day, when a template is planned around one.
+   */
+  initialAnchors?: TemplateAnchors;
+  /** What to name the run to begin with (the event's title). */
+  initialRunName?: string;
+  /**
+   * People every created task is with, on top of any a 'people' question
+   * names: whoever the event is linked to.
+   */
+  extraPersonIds?: readonly string[];
 }
 
 /** Sub-label for a checklist row: live dates when its anchor is set, offset labels otherwise. */
@@ -112,7 +124,7 @@ function runNameHint(container: TemplateContainer, upgraded: boolean, hasPlaceho
  * unchecked, including whole nested-template blocks; a conditioned one starts
  * on what the answers say), then create them all as real tasks.
  */
-export function ApplyTemplateSheet({ visible, template, onClose, projectId, onApplied }: Props) {
+export function ApplyTemplateSheet({ visible, template, onClose, projectId, onApplied, initialAnchors, initialRunName, extraPersonIds }: Props) {
   const colors = useColors();
   const { isDark } = useTheme();
   const styles = useMemo(() => makeStyles(colors), [colors]);
@@ -186,10 +198,10 @@ export function ApplyTemplateSheet({ visible, template, onClose, projectId, onAp
       // being typed twice. This direction needs no nomination on the template —
       // the project declared itself by having a span.
       const span = targetProject ? awaySpanOf(targetProject) : null;
-      setStartAnchor(span?.start ?? null);
-      setEndAnchor(span?.end ?? null);
+      setStartAnchor(initialAnchors?.start ?? span?.start ?? null);
+      setEndAnchor(initialAnchors?.end ?? span?.end ?? null);
       setCalendarTarget(null);
-      setRunName('');
+      setRunName(initialRunName ?? '');
       setPlaceholderValues({});
       setTypedAnswers({});
       translateY.setValue(hiddenY);
@@ -351,7 +363,7 @@ export function ApplyTemplateSheet({ visible, template, onClose, projectId, onAp
       runName,
       placeholders: { ...placeholderValues, ...answerValues },
       targetProjectId: projectId,
-      personIds: personIdsForAnswers(questions, answers),
+      personIds: [...new Set([...(extraPersonIds ?? []), ...personIdsForAnswers(questions, answers)])],
     });
     // Waits for the sheet to be fully gone — a caller opening the task editor
     // straight off this callback would stack two Modals mid-animation, the

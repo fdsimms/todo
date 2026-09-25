@@ -56,9 +56,11 @@ interface Props {
   to: Date | null;
   projectTitle: string;
   onClose: () => void;
+  /** Fires when the user applies the move (not on cancel), before the sheet dismisses. */
+  onApplied?: () => void;
 }
 
-export function AwayShiftSheet({ visible, tasks, from, to, projectTitle, onClose }: Props) {
+export function AwayShiftSheet({ visible, tasks, from, to, projectTitle, onClose, onApplied }: Props) {
   const colors = useColors();
   const { isDark } = useTheme();
   const styles = useMemo(() => makeStyles(colors), [colors]);
@@ -133,6 +135,7 @@ export function AwayShiftSheet({ visible, tasks, from, to, projectTitle, onClose
       haptics.success();
       shiftAwayTasks(moves);
     }
+    onApplied?.();
     dismiss();
   };
 
