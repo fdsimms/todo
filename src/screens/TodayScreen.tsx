@@ -1090,6 +1090,20 @@ export function TodayScreen() {
         // routine that just finished. Idempotent and self-clearing: the
         // completion it writes is what stops it matching again.
         useTaskStore.getState().sweepFinishedQuotaRuns();
+        // Same reasoning as the quota sweep above, for a health rule's own
+        // checkpoint hour: "under 2,006mg sodium, from 12 PM" can go from
+        // not-yet-judgeable to judgeable by noon simply arriving while the
+        // app sits open and nobody touches it — logging a meal or the app
+        // backgrounding/foregrounding are the only other triggers, and
+        // neither has to happen that afternoon. Gated on the read switch
+        // rather than left to checkHealthTasks' own gate, so a person who
+        // never turned health reading on isn't paying for a HealthKit query
+        // every 30 seconds for a feature they don't use.
+        if (useSettingsStore.getState().healthReadEnabled) {
+          void useHealthStore.getState().refresh().then(() => {
+            useTaskStore.getState().checkHealthTasks();
+          });
+        }
         forceRefresh(n => n + 1);
       }, 30000);
       // Also refresh the instant the app comes back to the foreground
