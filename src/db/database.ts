@@ -9,6 +9,7 @@ import type {
   LoggedSymptom,
   MedicationLog,
   Milestone,
+  EventPeopleLink,
   MoodLevel,
   MoodLog,
   NutrientKey,
@@ -396,6 +397,22 @@ export function initDatabase(): void {
       date TEXT NOT NULL,
       created_at TEXT NOT NULL
     );
+
+    -- Who a calendar event occurrence is with — see EventPeopleLink in
+    -- types/index.ts and docs/arch/people.md. event_key is deliberately not
+    -- UNIQUE: two phones can link the same occurrence before they sync, and
+    -- the reader collapses those (eventPeople.ts) rather than a constraint
+    -- failing the sync apply.
+    CREATE TABLE IF NOT EXISTS event_people_links (
+      id TEXT PRIMARY KEY NOT NULL,
+      event_key TEXT NOT NULL,
+      event_start TEXT NOT NULL,
+      event_end TEXT NOT NULL,
+      title TEXT NOT NULL DEFAULT '',
+      person_ids TEXT NOT NULL DEFAULT '[]',
+      created_at TEXT NOT NULL
+    );
+    CREATE INDEX IF NOT EXISTS idx_event_people_links_event_key ON event_people_links(event_key);
 
     -- One dose taken, at one moment — see MedicationLog in types/index.ts and
     -- src/utils/medicationLog.ts. Same shape call mood_logs makes and for the
@@ -2080,6 +2097,8 @@ export const BACKUP_TABLES = [
   'mood_logs',
   // Also points at nothing, for the same reason and beside the same neighbor.
   'milestones',
+  // After people: a link names people by id, so they are restored first.
+  'event_people_links',
   // The medication log, beside the two above it. Its one pointer (task_id) is
   // provenance rather than a reference — a dose whose task is gone is still a
   // dose — so it has no ordering requirement against `tasks`.
@@ -5814,6 +5833,49 @@ export function dbUpdateMilestone(milestone: Milestone): void {
 
 export function dbDeleteMilestone(id: string): void {
   db.runSync('DELETE FROM milestones WHERE id = ?', [id]);
+}
+
+function rowToEventPeopleLink(row: Record<string, unknown>): EventPeopleLink {
+  let personIds: string[] = [];
+  try {
+    const parsed = JSON.parse((row.person_ids as string) ?? '[]');
+    if (Array.isArray(parsed)) personIds = parsed.filter((id): id is string => typeof id === 'string');
+  } catch {
+    // A list we can't read is an empty one; the row is pruned or rewritten on its next edit.
+  }
+  return {
+    id: row.id as string,
+    eventKey: row.event_key as string,
+    eventStart: row.event_start as string,
+    eventEnd: row.event_end as string,
+    title: (row.title as string) ?? '',
+    personIds,
+    createdAt: row.created_at as string,
+  };
+}
+
+export function dbGetAllEventPeopleLinks(): EventPeopleLink[] {
+  return db
+    .getAllSync<Record<string, unknown>>('SELECT * FROM event_people_links ORDER BY created_at ASC')
+    .map(rowToEventPeopleLink);
+}
+
+/** Insert or rewrite one link by id. An UPDATE first, so an existing row keeps its created_at. */
+export function dbUpsertEventPeopleLink(link: EventPeopleLink): void {
+  const result = db.runSync(
+    `UPDATE event_people_links SET event_key=?, event_start=?, event_end=?, title=?, person_ids=? WHERE id=?`,
+    [link.eventKey, link.eventStart, link.eventEnd, link.title, JSON.stringify(link.personIds), link.id]
+  );
+  if (result.changes > 0) return;
+  db.runSync(
+    `INSERT INTO event_people_links (id, event_key, event_start, event_end, title, person_ids, created_at)
+     VALUES (?, ?, ?, ?, ?, ?, ?)`,
+    [link.id, link.eventKey, link.eventStart, link.eventEnd, link.title, JSON.stringify(link.personIds), link.createdAt]
+  );
+}
+
+export function dbDeleteEventPeopleLinks(ids: readonly string[]): void {
+  for (const id of ids) db.runSync('DELETE FROM event_people_links WHERE id = ?', [id]);
 }
 
 /**

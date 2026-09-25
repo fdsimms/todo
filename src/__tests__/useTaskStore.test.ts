@@ -107,6 +107,12 @@ jest.mock('../db/database', () => ({
   dbInsertMilestone: jest.fn(),
   dbUpdateMilestone: jest.fn(),
   dbDeleteMilestone: jest.fn(),
+  // Event people links ride the same fan-out (useEventPeopleStore).
+  dbGetAllEventPeopleLinks: jest.fn().mockReturnValue([]),
+  dbUpsertEventPeopleLink: jest.fn(),
+  dbDeleteEventPeopleLinks: jest.fn(),
+  // ...and its one-time migration off the old setting deletes that setting.
+  dbDeleteSetting: jest.fn(),
   // The medication log rides the same fan-out, and completing a task carrying
   // a medication writes through it.
   dbGetAllMedicationLogs: jest.fn().mockReturnValue([]),
@@ -310,7 +316,8 @@ jest.mock('../utils/calendarSync', () => ({
   updateTimeBlockEvent: jest.fn().mockResolvedValue(true),
 }));
 jest.mock('../store/useCalendarStore', () => ({
-  useCalendarStore: { getState: jest.fn(() => ({ events: [], loaded: false })) },
+  // subscribe: useEventPeopleStore follows the calendar to read server ids.
+  useCalendarStore: { getState: jest.fn(() => ({ events: [], pastEvents: [], loaded: false })), subscribe: jest.fn() },
 }));
 jest.mock('../store/useWeatherStore', () => ({
   useWeatherStore: { getState: jest.fn(() => ({ snapshot: null, snapshotDayKey: null })) },

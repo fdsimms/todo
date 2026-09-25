@@ -10,7 +10,7 @@ import {
 import { dbGetSetting, dbSetSetting } from '../db/database';
 
 /**
- * Device-local for `calendarEventPeople`'s reason: it names EventKit ids. Out
+ * Device-local for `calendarHistoryHandled`'s reason: it names EventKit ids. Out
  * of sync (absent from the allowlist in `syncTracking.ts`) and out of backups
  * (`DEVICE_ID_SETTING_KEYS`).
  */
