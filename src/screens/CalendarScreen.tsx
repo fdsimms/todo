@@ -23,7 +23,9 @@ import { useColors } from '../theme/ThemeContext';
 import { spacing, font, fontWeight, radius, interaction, type Colors } from '../theme';
 import { haptics } from '../utils/haptics';
 import { buildCalendarGrid, weekdayHeaders } from '../utils/calendarGrid';
-import { dayKeyOf, dayKeyToDate, getDayStart, getLogicalToday } from '../utils/dateUtils';
+import { dayKeyOf, dayKeyToDate, getCurrentDayStart, getDayStart, getLogicalToday } from '../utils/dateUtils';
+import { defaultNewEventSpan } from '../utils/eventPeople';
+import { useEventPeopleStore } from '../store/useEventPeopleStore';
 import {
   buildDayBuckets,
   dayDetail,
@@ -404,6 +406,18 @@ export function CalendarScreen() {
             onPress: goToToday,
             accessibilityLabel: 'Go to today',
           },
+          // Opens Apple's new-event sheet on the selected day; the calendar
+          // it's saved to (Google included) is picked there. Absent in a demo,
+          // where it would write to the real calendar.
+          ...(isDemoModeActive() ? [] : [{
+            icon: 'add' as const,
+            onPress: () => {
+              haptics.tap();
+              const { start, end } = defaultNewEventSpan(dayKeyToDate(selectedKey), getCurrentDayStart(), new Date());
+              void useEventPeopleStore.getState().createEvent({ title: '', start, end });
+            },
+            accessibilityLabel: `New event on ${format(dayKeyToDate(selectedKey), 'MMMM d')}`,
+          }]),
         ]}
       />
 

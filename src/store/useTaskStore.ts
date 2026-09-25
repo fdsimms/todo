@@ -45,6 +45,7 @@ import { listedAnywhere } from '../utils/groceryLists';
 import { useGroceryStore } from './useGroceryStore';
 import { useEventReminderStore } from './useEventReminderStore';
 import { useHiddenEventsStore } from './useHiddenEventsStore';
+import { useEventPeopleStore } from './useEventPeopleStore';
 import { useRecipeStore } from './useRecipeStore';
 import { useMealPlanStore } from './useMealPlanStore';
 import { useLeftoverStore } from './useLeftoverStore';
@@ -2026,6 +2027,8 @@ export const useTaskStore = create<TaskStore>((set, get) => ({
     // in one database (real or demo) is meaningless once the file underneath
     // has changed.
     useHiddenEventsStore.getState().initialize();
+    // Same again: who an event is with names demo people in a demo database.
+    useEventPeopleStore.getState().initialize();
     const tasks = dbGetAllTasks();
     backfillRecurrenceAnchors(tasks);
     const tagRegistry = dbGetTagRegistry();

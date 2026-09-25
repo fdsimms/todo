@@ -555,6 +555,35 @@ assertion.
   it also avoids: the answer would be written into the scratch settings table,
   so a dismissal made in a demo is lost and the real install is asked again.
 
+## Who a calendar event is with
+
+`src/utils/eventPeople.ts` + `useEventPeopleStore`. The user says which people
+from the list an event is with, from the person button on a row in Today's
+events sheet, or by starting the event from a person's page ("Plan something").
+
+- **The event lives in the calendar; the link lives in the app.** New events
+  go through Apple's own sheet (`presentEventCreate`), so they land in
+  whichever calendar the user picks there, Google included, and sync wherever
+  that calendar does. The link is metadata only this app reads. Owning events
+  in an app table was the alternative, and would have been a second calendar
+  that Google and iCloud never see.
+- **A link is never an attendee.** Inviting sends mail and publishes an
+  address, and reading attendees back is on the Never list. Nothing about the
+  link is written to the event.
+- **A title match is offered, not applied.** The picker lists people the title
+  names first, and each is still a tap. Same bar as the history offer.
+- **After the event, a link makes an offer, not a record.** Linked people are
+  offered the event under "From your calendar" even when the title never names
+  them (`suggestedHistoryEvents`' `linkedPeople`). A link says who a plan was
+  with; only the user knows it happened, so the existing four refusals and the
+  answered record apply unchanged.
+- **It is kept through the history window, then pruned**, on the start,
+  matching the offer's own floor. Past that it has no reader.
+- **It stays on the device** (`calendarEventPeople` is off the sync allowlist
+  and in `DEVICE_ID_SETTING_KEYS`), since an EventKit id names a record on one
+  phone. The event itself still syncs through its calendar.
+- **Creating is off in demo mode**: the event would reach the real calendar.
+
 ## Tapping Call or Text, and the question that follows
 
 `reachOutIntent.ts` (the rules), `usePersonStore`'s three `*PendingReachOut`

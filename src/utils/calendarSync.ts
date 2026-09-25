@@ -439,6 +439,43 @@ export async function presentTimeBlockCreate(fields: {
 }
 
 /**
+ * Presents the system "new event" sheet for a plain event rather than a task's
+ * block: the calendar-first half of the app, where the event is the thing
+ * being made and nothing on the task list points at it.
+ *
+ * Same sheet and the same reasoning as `presentTimeBlockCreate`: the user
+ * picks the calendar there (a Google account shows up in it like any other),
+ * so the event syncs wherever that calendar does, and nothing is written that
+ * they didn't watch being written. Anything the app wants to remember about
+ * the event (who it's with) is kept on its own side, see `eventPeople.ts`.
+ */
+export async function presentEventCreate(fields: {
+  title: string;
+  start: Date;
+  end: Date;
+  location?: string;
+  notes?: string;
+}): Promise<TimeBlockSheetResult> {
+  if (Platform.OS !== 'ios') return NO_RESULT;
+  try {
+    const result = await calendar().createEventInCalendarAsync({
+      title: fields.title,
+      startDate: fields.start,
+      endDate: fields.end,
+      ...(fields.location ? { location: fields.location } : {}),
+      ...(fields.notes ? { notes: fields.notes } : {}),
+    });
+    return {
+      saved: result.action === 'saved',
+      deleted: result.action === 'deleted',
+      eventId: result.id ?? null,
+    };
+  } catch {
+    return NO_RESULT;
+  }
+}
+
+/**
  * Presents the system sheet for an event that already exists, so the user can
  * move, resize or delete it.
  *
