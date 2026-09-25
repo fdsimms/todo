@@ -35,6 +35,18 @@ import { waterEntryOf, waterHelping } from './waterLog';
  * sample has no per-task identity worth keeping — Health itself is the
  * record — the same reasoning the old water write had, for every nutrient
  * except water itself (see `logTaskWaterToFoodLog` below).
+ *
+ * **The water connection runs the other way too.** `logTaskWaterToFoodLog`
+ * and `unlogTaskWaterFromFoodLog` are the task-to-log half; `useTaskStore`'s
+ * `syncWaterQuotaTasks` is the log-to-task half, called from
+ * `useFoodLogStore`'s own `addEntry`/`reviseEntry`/`removeEntry` whenever
+ * today's water changes for any reason — the day view's stepper, a bottled
+ * water logged as food, an edit or delete in the Logbook. It reconciles a
+ * daily water-quota task's `progressCount` to whatever the food log's actual
+ * total now says, and completes the task outright once that total reaches
+ * the target, exactly as if the last tap had been on the task itself. See
+ * that function's own comment for why the two directions can't both write —
+ * only one of them may touch the food log at a time, or they'd fight.
  */
 export async function logTaskHealthValue(task: Task): Promise<boolean> {
   // Same guard every device write in this app makes — demo-seeded fiction
@@ -111,4 +123,35 @@ function logTaskWaterToFoodLog(amountMl: number, at: Date): boolean {
     });
   }
   return true;
+}
+
+/**
+ * Takes one logged unit's worth of water back off today's food log entry —
+ * the mirror of `logTaskWaterToFoodLog`, called from `unlogQuotaUnit` when a
+ * water-quota task's tap is undone.
+ *
+ * Water is the one metric a task's logging can be undone at all (see
+ * `Task.medicationName`'s own undo for the only other one), because it's the
+ * one metric that already has a food-log row to correct rather than a
+ * one-shot Health sample with nothing to retract. Left unfixed, an undone tap
+ * would decrement the task's `progressCount` while the food log kept the
+ * amount it had already logged — and `syncWaterQuotaTasks` would read that
+ * unchanged total back and immediately bump `progressCount` up again, undoing
+ * the undo.
+ *
+ * Deletes the row outright once the total would fall to zero or below,
+ * matching `waterHelping`'s own "delete rather than store a zero" contract.
+ */
+export function unlogTaskWaterFromFoodLog(amountMl: number, at: Date): void {
+  const dayKey = getLogicalDayKey(at);
+  const existing = waterEntryOf(dbGetFoodLogEntries(dayKey, dayKey));
+  if (!existing) return;
+  const totalMl = (existing.nutrition.amounts.waterMl ?? 0) - amountMl;
+  const built = waterHelping(totalMl, at);
+  const { reviseEntry, removeEntry } = useFoodLogStore.getState();
+  if (!built) {
+    removeEntry(existing.id);
+    return;
+  }
+  reviseEntry(existing.id, built);
 }

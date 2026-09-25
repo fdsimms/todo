@@ -68,8 +68,14 @@ jest.mock('../store/useSettingsStore', () => ({
 // jest.fn()s rather than one built fresh per getState() call, since the
 // "wrote today" tests below assert on them directly.
 const mockCheckHealthTasks = jest.fn();
+const mockSyncWaterQuotaTasks = jest.fn();
 jest.mock('../store/useTaskStore', () => ({
-  useTaskStore: { getState: () => ({ checkHealthTasks: mockCheckHealthTasks }) },
+  useTaskStore: {
+    getState: () => ({
+      checkHealthTasks: mockCheckHealthTasks,
+      syncWaterQuotaTasks: mockSyncWaterQuotaTasks,
+    }),
+  },
 }));
 
 const mockHealthRefresh = jest.fn(() => Promise.resolve());
@@ -259,6 +265,87 @@ describe('addEntry, when the write lands', () => {
     resolveRefresh();
     await flush();
     expect(mockCheckHealthTasks).toHaveBeenCalled();
+  });
+});
+
+/**
+ * The log-to-task half of `logHealthMetric: 'waterMl'` — see
+ * `syncWaterQuotaTasks`'s own doc comment in `useTaskStore.ts`. Fires
+ * synchronously, unlike the Health re-check above, since it never waits on a
+ * native round trip: the food log's own total is already known the moment
+ * the write lands.
+ */
+describe('syncing water-quota tasks after a food-log write', () => {
+  it('runs after a same-day addEntry', () => {
+    state().loadRange('2026-04-02', '2026-04-02');
+    state().addEntry(draft({ at: new Date(2026, 3, 2, 9, 0) }));
+    expect(mockSyncWaterQuotaTasks).toHaveBeenCalled();
+  });
+
+  it('does not run for a backdated addEntry', () => {
+    state().loadRange('2026-04-01', '2026-04-01');
+    state().addEntry(draft({ at: new Date(2026, 3, 1, 9, 0) }));
+    expect(mockSyncWaterQuotaTasks).not.toHaveBeenCalled();
+  });
+
+  it('runs after a same-day reviseEntry that actually changed a figure', () => {
+    const entry: FoodLogEntry = {
+      id: 'w1', dayKey: '2026-04-02', atISO: '2026-04-02T09:00:00.000Z', slot: null,
+      label: 'Water', recipeId: null, itemId: null, productId: null, mealPlanEntryId: null,
+      quantity: '500 ml', grams: null, nutrition: panel({ amounts: { waterMl: 500 } }),
+      healthSampleIds: [], sortOrder: 0, createdAt: '2026-04-02T09:00:00.000Z',
+    };
+    (dbGetFoodLogEntry as jest.Mock).mockReturnValue(entry);
+    useFoodLogStore.setState({ entries: [entry], rangeStart: '2026-04-02', rangeEnd: '2026-04-02' });
+
+    state().reviseEntry('w1', { nutrition: panel({ amounts: { waterMl: 750 } }) });
+    expect(mockSyncWaterQuotaTasks).toHaveBeenCalled();
+  });
+
+  it('does not run for a reviseEntry that changed nothing Health-relevant', () => {
+    const entry: FoodLogEntry = {
+      id: 'w1', dayKey: '2026-04-02', atISO: '2026-04-02T09:00:00.000Z', slot: 'breakfast',
+      label: 'Water', recipeId: null, itemId: null, productId: null, mealPlanEntryId: null,
+      quantity: '500 ml', grams: null, nutrition: panel({ amounts: { waterMl: 500 } }),
+      healthSampleIds: [], sortOrder: 0, createdAt: '2026-04-02T09:00:00.000Z',
+    };
+    (dbGetFoodLogEntry as jest.Mock).mockReturnValue(entry);
+    useFoodLogStore.setState({ entries: [entry], rangeStart: '2026-04-02', rangeEnd: '2026-04-02' });
+
+    state().reviseEntry('w1', { slot: 'lunch' });
+    expect(mockSyncWaterQuotaTasks).not.toHaveBeenCalled();
+  });
+
+  it('runs after a same-day removeEntry', () => {
+    (dbGetFoodLogEntry as jest.Mock).mockReturnValue({
+      id: 'w1', dayKey: '2026-04-02', healthSampleIds: [],
+    });
+    state().removeEntry('w1');
+    expect(mockSyncWaterQuotaTasks).toHaveBeenCalled();
+  });
+
+  it('does not run for a backdated removeEntry', () => {
+    (dbGetFoodLogEntry as jest.Mock).mockReturnValue({
+      id: 'w1', dayKey: '2026-04-01', healthSampleIds: [],
+    });
+    state().removeEntry('w1');
+    expect(mockSyncWaterQuotaTasks).not.toHaveBeenCalled();
+  });
+
+  it('runs after removeEntries when any removed row was today\'s', () => {
+    (dbGetFoodLogEntry as jest.Mock).mockImplementation((id: string) => ({
+      id, dayKey: id === 'a' ? '2026-04-01' : '2026-04-02', healthSampleIds: [],
+    }));
+    state().removeEntries(['a', 'b']);
+    expect(mockSyncWaterQuotaTasks).toHaveBeenCalled();
+  });
+
+  it('does not run for removeEntries when every removed row was backdated', () => {
+    (dbGetFoodLogEntry as jest.Mock).mockReturnValue({
+      id: 'a', dayKey: '2026-04-01', healthSampleIds: [],
+    });
+    state().removeEntries(['a']);
+    expect(mockSyncWaterQuotaTasks).not.toHaveBeenCalled();
   });
 });
 
