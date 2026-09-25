@@ -11,7 +11,7 @@ import { NUTRIENT_KEYS, type NutrientKey } from '../types';
 import { useSettingsStore } from '../store/useSettingsStore';
 import { NUTRITION_TARGET_RANGES } from '../utils/nutritionTargets';
 import { NUTRIENT_LABEL } from '../utils/foodNutrition';
-import { describeWater } from '../utils/waterLog';
+import { describeWater, waterInUnit, waterRange, waterToMl } from '../utils/waterLog';
 import {
   WATER_EXERCISE_BOOST_ML_RANGE,
   WATER_EXERCISE_BOOST_MINUTES_RANGE,
@@ -211,22 +211,38 @@ export function NutritionTargetsSheet({ visible, onClose }: Props) {
           </Text>
 
           {NUTRIENT_KEYS.map(key => {
-            const range = NUTRITION_TARGET_RANGES[key];
+            // Water's target is stored in ml regardless (like every other
+            // water figure — see waterLogUnit's note in TaskEditor), but the
+            // stepper shows and steps in whichever unit the person picked for
+            // water elsewhere in the app (`waterUnit`).
+            const isWater = key === 'waterMl';
+            const range = isWater ? waterRange(waterUnit) : NUTRITION_TARGET_RANGES[key];
             const unit = NUTRIENT_LABEL[key].unit;
+            const value = isWater ? waterInUnit(targets.waterMl ?? null, waterUnit) : (targets[key] ?? null);
             return (
               <View key={key} style={styles.row}>
                 <Text style={styles.rowLabel}>{NUTRIENT_LABEL[key].label}</Text>
                 <CountStepper
-                  value={targets[key] ?? null}
-                  onChange={next => set(key, next)}
+                  value={value}
+                  onChange={next =>
+                    set(key, isWater ? (next === null ? null : waterToMl(next, waterUnit)) : next)
+                  }
                   min={range.min}
                   max={range.max}
                   step={range.step}
                   allowNull
                   emptyLabel="None"
-                  format={n => `${n.toLocaleString()}${unit === 'cal' ? '' : unit}`}
+                  format={n =>
+                    isWater
+                      ? (waterUnit === 'flOz' ? `${n.toLocaleString()} fl oz` : `${n.toLocaleString()}ml`)
+                      : `${n.toLocaleString()}${unit === 'cal' ? '' : unit}`
+                  }
                   label={`${NUTRIENT_LABEL[key].label} target`}
-                  describeValue={n => `${n} ${unit === 'cal' ? 'calories' : unit}`}
+                  describeValue={n =>
+                    isWater
+                      ? `${n} ${waterUnit === 'flOz' ? 'fluid ounces' : 'ml'}`
+                      : `${n} ${unit === 'cal' ? 'calories' : unit}`
+                  }
                 />
               </View>
             );
