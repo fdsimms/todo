@@ -106,6 +106,11 @@ import { SheetHeader } from './SheetHeader';
  * down is guarded.
  */
 
+/** A recall row staged for confirmation, before its amount is settled. */
+type PendingRecallLog =
+  | { kind: 'recall'; food: RecalledFood }
+  | { kind: 'catalog'; food: RecalledCatalogFood };
+
 interface Props {
   visible: boolean;
   /** Which meal it lands in, chosen by the section the estimate was started from. */
@@ -172,6 +177,22 @@ export function EstimateMealSheet({ visible, slot, at, mealPlanEntryId, initialD
   // description is a different candidate recipe.
   const [savedRecipeId, setSavedRecipeId] = useState<string | null>(null);
   /**
+   * The "you already have figures for this" row a person tapped, staged for
+   * confirmation rather than logged on the tap itself — see the note above
+   * `openRecall`/`openCatalog` for why a tap used to log outright and no
+   * longer does.
+   */
+  const [pendingLog, setPendingLog] = useState<PendingRecallLog | null>(null);
+  /** The weight field for the staged row, editable before it's logged. */
+  const [pendingWeight, setPendingWeight] = useState('');
+  /**
+   * The recorded weight the staged row opened with, so `confirmPending` can
+   * tell an untouched field from an edited one and only rescale on the
+   * latter — reusing the stored panel verbatim otherwise, for the reason
+   * `confirmPending`'s own doc comment (below) gives.
+   */
+  const [pendingDefaultGrams, setPendingDefaultGrams] = useState<number | null>(null);
+  /**
    * What has been eaten lately, taken once when the sheet opens.
    *
    * A snapshot rather than a subscription, the call `FoodLogEntrySheet` makes
@@ -196,6 +217,9 @@ export function EstimateMealSheet({ visible, slot, at, mealPlanEntryId, initialD
     setError(null);
     setChosenSlot(slot);
     setSavedRecipeId(null);
+    setPendingLog(null);
+    setPendingWeight('');
+    setPendingDefaultGrams(null);
     const today = getCurrentDayStart();
     setHistory(recentEntries(dayKeyOf(subDays(today, 90)), dayKeyOf(today)));
   }, [visible, slot]);
@@ -354,72 +378,115 @@ export function EstimateMealSheet({ visible, slot, at, mealPlanEntryId, initialD
     return grams ? scalePanelToAmount(nutrition, grams, null, at) : null;
   };
 
-  /**
-   * Logs a food already eaten, as it was eaten — or at the weight just typed,
-   * when the description names one this food's own panel can answer.
-   *
-   * The stored panel goes back verbatim otherwise, which is the point absent
-   * a named weight: its `source` is the claim it was recorded under and
-   * re-describing the same food to the model would replace that with
-   * `estimated`, permanently. A scale keeps that same source (see
-   * `scalePanelToAmount`), so naming a different weight doesn't cost the
-   * claim either. Same reuse `duplicateEntry` performs, and `mealPlanEntryId`
-   * is dropped for the same reason it drops it — this is a fresh eating, not
-   * the planned meal again, unless the caller named one.
-   *
-   * The section this was opened from decides the meal; with no section, the
-   * meal it was last eaten in stands, rather than the food landing under no
-   * meal at all.
-   */
-  const handleRecall = (food: RecalledFood) => {
-    haptics.tap();
-    const scaled = scaledWeight(food.nutrition);
-    const written = addEntry({
-      label: food.label,
-      quantity: scaled?.grams != null ? `${scaled.grams}g` : food.quantity,
-      grams: scaled ? scaled.grams : food.grams,
-      nutrition: scaled?.nutrition ?? food.nutrition,
-      slot: chosenSlot ?? food.slot,
-      recipeId: food.recipeId,
-      itemId: food.itemId,
-      productId: food.productId,
-      mealPlanEntryId: mealPlanEntryId ?? null,
-      at,
-    });
-    if (!written) { haptics.error(); return; }
-    haptics.success();
-    Keyboard.dismiss();
-    onLogged?.();
-    onClose();
+  /** The confirm step's weight field, read as a positive number of grams. */
+  const parseWeightGrams = (text: string): number | null => {
+    const n = Number(text.trim());
+    return Number.isFinite(n) && n > 0 ? n : null;
   };
 
   /**
-   * Logs a catalog row — one serving from the figures already filed on it,
-   * or the weight just typed when the description names one.
-   *
-   * The item and the packet both ride along, so the entry credits the row it
-   * came from and `foodLogRecency` can float it next time — the thing
-   * `foodLogRecents.ts` says filing a food is *for*.
+   * Stages a "you already have figures for this" row rather than logging it
+   * on the tap. It used to log outright, at whatever weight the row happened
+   * to carry — which meant tapping the row *was* logging it, with nothing on
+   * screen saying so and no way to log it at a different amount instead. This
+   * opens the row into an editable confirm step (`confirmPending`) instead,
+   * pre-filled with the weight a "205g" already typed into the description
+   * implies, or the recorded weight otherwise, so the common case ("log it as
+   * it was last eaten") is still a glance and a tap.
    */
-  const handleCatalog = (food: RecalledCatalogFood) => {
+  const openRecall = (food: RecalledFood) => {
     haptics.tap();
     const scaled = scaledWeight(food.nutrition);
-    const nutrition = scaled?.nutrition ?? helpingOf(food);
-    if (!nutrition) { haptics.error(); return; }
-    const written = addEntry({
-      label: food.label,
-      quantity: scaled?.grams != null ? `${scaled.grams}g` : food.choice.label,
-      grams: nutrition.servingGrams,
-      nutrition,
-      slot: chosenSlot,
-      itemId: food.itemId,
-      productId: food.productId,
-      mealPlanEntryId: mealPlanEntryId ?? null,
-      at,
-    });
-    if (!written) { haptics.error(); return; }
+    setPendingLog({ kind: 'recall', food });
+    setPendingWeight(scaled?.grams != null ? String(scaled.grams) : (food.grams != null ? String(food.grams) : ''));
+    setPendingDefaultGrams(food.grams);
+  };
+
+  /** Same staging as `openRecall`, for a catalog row's own serving weight. */
+  const openCatalog = (food: RecalledCatalogFood) => {
+    haptics.tap();
+    const scaled = scaledWeight(food.nutrition);
+    const baseline = helpingOf(food)?.servingGrams ?? null;
+    setPendingLog({ kind: 'catalog', food });
+    setPendingWeight(scaled?.grams != null ? String(scaled.grams) : (baseline != null ? String(baseline) : ''));
+    setPendingDefaultGrams(baseline);
+  };
+
+  const cancelPending = () => {
+    haptics.tap();
+    Keyboard.dismiss();
+    setPendingLog(null);
+    setPendingWeight('');
+    setPendingDefaultGrams(null);
+  };
+
+  /**
+   * Logs the staged row — as it was eaten, or at the weight the confirm
+   * step's field now names, when that differs from the weight it opened
+   * with.
+   *
+   * The stored panel goes back verbatim when the field wasn't touched, which
+   * is the point: its `source` is the claim it was recorded under, and
+   * re-describing the same food to the model would replace that with
+   * `estimated`, permanently. A scale keeps that same source (see
+   * `scalePanelToAmount`), so naming a different weight doesn't cost the
+   * claim either — comparing against `pendingDefaultGrams` rather than
+   * scaling unconditionally is what keeps an untouched field byte-identical
+   * to the old one-tap log rather than a weight run back through the scaling
+   * arithmetic for no reason. Same reuse `duplicateEntry` performs, and
+   * `mealPlanEntryId` is dropped for the same reason it drops it — this is a
+   * fresh eating, not the planned meal again, unless the caller named one.
+   *
+   * The section this was opened from decides the meal; with no section, a
+   * recalled food's own last-eaten meal stands, rather than it landing under
+   * no meal at all.
+   */
+  const confirmPending = () => {
+    if (!pendingLog) return;
+    const grams = parseWeightGrams(pendingWeight);
+    const changed = grams != null && grams !== pendingDefaultGrams;
+    const scale = (nutrition: FoodNutrition) => (changed ? scalePanelToAmount(nutrition, `${grams}g`, null, at) : null);
+
+    if (pendingLog.kind === 'recall') {
+      const food = pendingLog.food;
+      const scaled = scale(food.nutrition);
+      const written = addEntry({
+        label: food.label,
+        quantity: scaled?.grams != null ? `${scaled.grams}g` : food.quantity,
+        grams: scaled ? scaled.grams : food.grams,
+        nutrition: scaled?.nutrition ?? food.nutrition,
+        slot: chosenSlot ?? food.slot,
+        recipeId: food.recipeId,
+        itemId: food.itemId,
+        productId: food.productId,
+        mealPlanEntryId: mealPlanEntryId ?? null,
+        at,
+      });
+      if (!written) { haptics.error(); return; }
+    } else {
+      const food = pendingLog.food;
+      const scaled = scale(food.nutrition);
+      const nutrition = scaled?.nutrition ?? helpingOf(food);
+      if (!nutrition) { haptics.error(); return; }
+      const written = addEntry({
+        label: food.label,
+        quantity: scaled?.grams != null ? `${scaled.grams}g` : food.choice.label,
+        grams: nutrition.servingGrams,
+        nutrition,
+        slot: chosenSlot,
+        itemId: food.itemId,
+        productId: food.productId,
+        mealPlanEntryId: mealPlanEntryId ?? null,
+        at,
+      });
+      if (!written) { haptics.error(); return; }
+    }
+
     haptics.success();
     Keyboard.dismiss();
+    setPendingLog(null);
+    setPendingWeight('');
+    setPendingDefaultGrams(null);
     onLogged?.();
     onClose();
   };
@@ -501,23 +568,35 @@ export function EstimateMealSheet({ visible, slot, at, mealPlanEntryId, initialD
             <View style={styles.card}>
               <Text style={styles.cardTitle}>You already have figures for this</Text>
               <Text style={styles.hint}>
-                Logging one of these keeps the figures it was recorded with, rather
-                than estimating the same food again. Name a weight ("205g") to scale
-                them to it instead of repeating the amount below.
+                Tap one to review it before logging. You can change the amount, or
+                keep the one it was recorded with.
               </Text>
               {recalled.map(food => {
-                const scaled = scaledWeight(food.nutrition);
-                const meta = scaled?.grams != null
-                  ? `${describeRecall(food)}. Logging as ${scaled.grams}g.`
-                  : describeRecall(food);
+                const isPending = pendingLog?.kind === 'recall' && pendingLog.food.key === food.key;
+                const meta = describeRecall(food);
+                if (isPending) {
+                  return (
+                    <PendingRecallCard
+                      key={food.key}
+                      styles={styles}
+                      colors={colors}
+                      label={food.label}
+                      meta={meta}
+                      weight={pendingWeight}
+                      onChangeWeight={setPendingWeight}
+                      onCancel={cancelPending}
+                      onConfirm={confirmPending}
+                    />
+                  );
+                }
                 return (
                   <TouchableOpacity
                     key={food.key}
                     style={styles.recallRow}
                     activeOpacity={interaction.activeOpacity}
-                    onPress={() => handleRecall(food)}
+                    onPress={() => openRecall(food)}
                     accessibilityRole="button"
-                    accessibilityLabel={`Log ${food.label}. ${meta}`}
+                    accessibilityLabel={`Review and log ${food.label}. ${meta}`}
                   >
                     <Text style={styles.recallName}>{food.label}</Text>
                     <Text style={styles.recallMeta}>{meta}</Text>
@@ -525,18 +604,31 @@ export function EstimateMealSheet({ visible, slot, at, mealPlanEntryId, initialD
                 );
               })}
               {catalogMatches.map(food => {
-                const scaled = scaledWeight(food.nutrition);
-                const meta = scaled?.grams != null
-                  ? `${describeCatalogRecall(food)}. Logging as ${scaled.grams}g.`
-                  : describeCatalogRecall(food);
+                const isPending = pendingLog?.kind === 'catalog' && pendingLog.food.key === food.key;
+                const meta = describeCatalogRecall(food);
+                if (isPending) {
+                  return (
+                    <PendingRecallCard
+                      key={food.key}
+                      styles={styles}
+                      colors={colors}
+                      label={food.label}
+                      meta={meta}
+                      weight={pendingWeight}
+                      onChangeWeight={setPendingWeight}
+                      onCancel={cancelPending}
+                      onConfirm={confirmPending}
+                    />
+                  );
+                }
                 return (
                   <TouchableOpacity
                     key={food.key}
                     style={styles.recallRow}
                     activeOpacity={interaction.activeOpacity}
-                    onPress={() => handleCatalog(food)}
+                    onPress={() => openCatalog(food)}
                     accessibilityRole="button"
-                    accessibilityLabel={`Log ${food.label}. ${meta}`}
+                    accessibilityLabel={`Review and log ${food.label}. ${meta}`}
                   >
                     <Text style={styles.recallName}>{food.label}</Text>
                     <Text style={styles.recallMeta}>{meta}</Text>
@@ -708,6 +800,49 @@ export function EstimateMealSheet({ visible, slot, at, mealPlanEntryId, initialD
   );
 }
 
+interface PendingRecallCardProps {
+  styles: ReturnType<typeof makeStyles>;
+  colors: Colors;
+  label: string;
+  meta: string;
+  weight: string;
+  onChangeWeight: (text: string) => void;
+  onCancel: () => void;
+  onConfirm: () => void;
+}
+
+/**
+ * The "you already have figures for this" row, expanded into a confirm step
+ * once tapped — see `openRecall`/`confirmPending`'s doc comments for why a
+ * tap no longer logs outright. Shared between the recalled-entry and
+ * catalog-row lists, which differ only in what `meta` and `label` say.
+ */
+function PendingRecallCard({ styles, colors, label, meta, weight, onChangeWeight, onCancel, onConfirm }: PendingRecallCardProps) {
+  return (
+    <View style={styles.confirmCard}>
+      <Text style={styles.recallName}>{label}</Text>
+      <Text style={styles.recallMeta}>{meta}</Text>
+      <View style={styles.confirmWeightRow}>
+        <Text style={styles.confirmWeightLabel}>Amount to log</Text>
+        <TextInput
+          style={styles.confirmWeightInput}
+          value={weight}
+          onChangeText={onChangeWeight}
+          keyboardType="numeric"
+          placeholder="grams"
+          placeholderTextColor={colors.textTertiary}
+          accessibilityLabel={`Amount to log for ${label}, in grams`}
+        />
+        <Text style={styles.confirmWeightUnit}>g</Text>
+      </View>
+      <View style={styles.confirmActions}>
+        <InlineAction label="Cancel" onPress={onCancel} variant="neutral" accessibilityLabel={`Cancel logging ${label}`} />
+        <InlineAction label="Log" onPress={onConfirm} variant="accent" accessibilityLabel={`Log ${label}`} />
+      </View>
+    </View>
+  );
+}
+
 function makeStyles(colors: Colors) {
   return StyleSheet.create({
     root: { flex: 1, backgroundColor: colors.bg },
@@ -775,8 +910,9 @@ function makeStyles(colors: Colors) {
       paddingVertical: spacing.sm,
     },
     recipeName: { color: colors.accent, fontSize: font.sm },
-    // A shape rather than bare accent text: tapping one of these logs it
-    // outright, and accent text in this app is a link or a current value.
+    // A shape rather than bare accent text: tapping one of these opens it
+    // into a confirm step, and accent text in this app is a link or a
+    // current value.
     recallRow: {
       backgroundColor: colors.bgTertiary,
       borderRadius: radius.md,
@@ -786,6 +922,29 @@ function makeStyles(colors: Colors) {
     },
     recallName: { color: colors.text, fontSize: font.sm, fontWeight: fontWeight.medium },
     recallMeta: { color: colors.textSecondary, fontSize: font.xs },
+    // The recall row's confirm step, in place of the plain row while it's
+    // staged — same tint as the row it replaces, with room for the weight
+    // field and the Cancel/Log pair.
+    confirmCard: {
+      backgroundColor: colors.bgTertiary,
+      borderRadius: radius.md,
+      padding: spacing.md,
+      gap: spacing.sm,
+    },
+    confirmWeightRow: { flexDirection: 'row', alignItems: 'center', gap: spacing.sm },
+    confirmWeightLabel: { color: colors.text, fontSize: font.sm, flex: 1 },
+    confirmWeightInput: {
+      backgroundColor: colors.bgSecondary,
+      borderRadius: radius.sm,
+      paddingHorizontal: spacing.sm,
+      paddingVertical: spacing.xs,
+      color: colors.text,
+      fontSize: font.sm,
+      minWidth: 64,
+      textAlign: 'right',
+    },
+    confirmWeightUnit: { color: colors.textSecondary, fontSize: font.sm },
+    confirmActions: { flexDirection: 'row', justifyContent: 'flex-end', gap: spacing.sm },
     error: { color: colors.red, fontSize: font.sm, lineHeight: 18 },
   });
 }
