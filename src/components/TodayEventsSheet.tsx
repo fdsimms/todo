@@ -50,6 +50,13 @@ interface Props {
    * `eventContextRows` uses for the Today list.
    */
   calendarsById?: Readonly<Record<string, { title: string; color: string }>>;
+  /** Header title. Defaults to today's; the Calendar screen names its day. */
+  title?: string;
+  /**
+   * The day these events are on, which is where "New event" starts. Defaults
+   * to the current logical day.
+   */
+  day?: Date;
 }
 
 /**
@@ -82,7 +89,7 @@ interface Props {
  * a title match is a guess, and only the user says who a plan is with. A task
  * added from a linked row carries the same people.
  */
-export function TodayEventsSheet({ visible, onClose, events, calendarsById }: Props) {
+export function TodayEventsSheet({ visible, onClose, events, calendarsById, title, day }: Props) {
   const colors = useColors();
   const styles = useMemo(() => makeStyles(colors), [colors]);
   const remindersByKey = useEventReminderStore(s => s.remindersByKey);
@@ -132,7 +139,8 @@ export function TodayEventsSheet({ visible, onClose, events, calendarsById }: Pr
   // any of it, including which calendar (Google or otherwise) it goes in.
   const newEvent = async () => {
     haptics.tap();
-    const { start, end } = defaultNewEventSpan(getCurrentDayStart(), getCurrentDayStart(), new Date());
+    const today = getCurrentDayStart();
+    const { start, end } = defaultNewEventSpan(day ?? today, today, new Date());
     await createEvent({ title: '', start, end });
   };
 
@@ -175,7 +183,7 @@ export function TodayEventsSheet({ visible, onClose, events, calendarsById }: Pr
     <SheetModal visible={visible} animationType="slide" presentationStyle="pageSheet" onRequestClose={onClose}>
       <View style={styles.root}>
         <SheetHeader
-          title="Today’s events"
+          title={title ?? 'Today’s events'}
           left={<View style={styles.headerSpacer} />}
           right={<SheetHeaderButton label="Done" onPress={onClose} minWidth={64} />}
         />

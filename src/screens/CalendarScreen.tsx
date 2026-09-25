@@ -19,6 +19,7 @@ import { TaskEditor, type TaskDraft } from '../components/TaskEditor';
 import { PeriodNav } from '../components/PeriodNav';
 import { Fab } from '../components/Fab';
 import { QuickAddModal } from '../components/QuickAddModal';
+import { TodayEventsSheet } from '../components/TodayEventsSheet';
 import { useColors } from '../theme/ThemeContext';
 import { spacing, font, fontWeight, radius, interaction, type Colors } from '../theme';
 import { haptics } from '../utils/haptics';
@@ -106,6 +107,14 @@ export function CalendarScreen() {
   const weekStartsOn = useSettingsStore(s => s.weekStartsOn);
   const dayResetTime = useSettingsStore(s => s.dayResetTime);
   const calendarReadEnabled = useSettingsStore(s => s.calendarReadEnabled);
+  // Same rule as Today's: which calendar an event came from is only worth a
+  // tag once more than one is being read.
+  const calendarIds = useSettingsStore(s => s.calendarIds);
+  const calendarsById = useCalendarStore(s => s.calendarsById);
+  const eventCalendarTags = calendarIds.length > 1 ? calendarsById : undefined;
+  // Tapping an event on the day view opens the same sheet Today's event row
+  // does, for this day: who it's with, a reminder, a task from it, hiding it.
+  const [eventsSheetVisible, setEventsSheetVisible] = useState(false);
   const calendarEvents = useCalendarStore(s => s.events);
   const calendarLoaded = useCalendarStore(s => s.loaded);
   const calendarWindowStart = useCalendarStore(s => s.windowStart);
@@ -541,6 +550,7 @@ export function CalendarScreen() {
                   use24Hour={use24Hour}
                   nowMinutes={nowMinutes}
                   onPressTask={handleRowPress}
+                  onPressEvent={() => { haptics.tap(); setEventsSheetVisible(true); }}
                 />
                 {/* Everything the axis refused to place, as real rows. */}
                 {renderRows('No time set', dayTimeline.unplaced)}
@@ -595,6 +605,15 @@ export function CalendarScreen() {
         onOpenFull={handleQuickAddOpenFull}
         seed={{ dueDate: selectedDate.toISOString() }}
         seedLabel={format(selectedDate, 'MMM d')}
+      />
+
+      <TodayEventsSheet
+        visible={eventsSheetVisible}
+        onClose={() => setEventsSheetVisible(false)}
+        events={dayEvents}
+        calendarsById={eventCalendarTags}
+        title={format(dayKeyToDate(selectedKey), 'EEEE, MMM d')}
+        day={dayKeyToDate(selectedKey)}
       />
     </View>
   );
