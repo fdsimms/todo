@@ -31,7 +31,7 @@ import { displayTitleFor } from '../utils/visibilityUtils';
 import { peopleOn, groupMentionTokens } from '../utils/peopleRegistry';
 import { matchPersonMentions } from '../utils/parseTaskInput';
 import { mergeRanges } from '../utils/ranges';
-import { formatTaskDate } from '../utils/dateUtils';
+import { formatTaskDate, hoursUnlockLabel } from '../utils/dateUtils';
 import { format } from 'date-fns/format';
 import { TaskCheckbox } from './TaskCheckbox';
 import { SheetScrim } from './SheetScrim';
@@ -106,6 +106,10 @@ function QuickSearchRow({ result, onSelect, onTicked, styles, colors }: {
   const dateLabel = task.completed
     ? task.completedAt ? `Done ${format(new Date(task.completedAt), 'MMM d')}` : 'Done'
     : formatTaskDate(task);
+  // An "every N hours" task's dateLabel above is just "Today" — the date it's
+  // on, not the clock time it actually comes back at, which is the fact this
+  // row exists to answer (see hoursUnlockLabel's own comment).
+  const hoursUnlock = task.completed ? null : hoursUnlockLabel(task);
   const countLabel = formatOccurrenceCount(occurrenceCount);
 
   // Built as a list so the dots between the parts can be interleaved rather
@@ -138,6 +142,7 @@ function QuickSearchRow({ result, onSelect, onTicked, styles, colors }: {
     meta.push(<Text style={styles.categoryText} numberOfLines={1}>{category}</Text>);
   }
   if (dateLabel) meta.push(<Text style={styles.dateText}>{dateLabel}</Text>);
+  if (hoursUnlock) meta.push(<Text style={styles.dateText}>Unlocks {hoursUnlock}</Text>);
 
   return (
     // A plain View holding two touchables, not one touchable wrapping the
@@ -162,6 +167,7 @@ function QuickSearchRow({ result, onSelect, onTicked, styles, colors }: {
           task.archived ? 'archived' : null,
           task.completed ? 'completed' : null,
           dateLabel,
+          hoursUnlock ? `unlocks ${hoursUnlock}` : null,
           countLabel ? `and ${countLabel}` : null,
         ].filter(Boolean).join(', ')}
         accessibilityHint="Double tap to open task"

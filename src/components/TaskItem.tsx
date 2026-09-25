@@ -39,7 +39,7 @@ import { MEAL_SLOT_ICONS, MEAL_SLOT_LABELS, PRIORITY_COLORS, TITLE_MAX_LENGTH } 
 import { useColors } from '../theme/ThemeContext';
 import { useTheme } from '../theme/ThemeContext';
 import { spacing, radius, font, fontWeight, lineHeight, border, iconSize, animation, interaction, checkboxRadius, type Colors } from '../theme';
-import { formatDeadlineDate, formatScheduledDate, formatTaskDate, formatHHMM, dateToHHMM, formatWindowRemaining, getDeadlineCountdown, getEffectiveTaskDate, getTaskDayStart, getCurrentDayStart, getLogicalDayKey, dayKeyToDate, formatTimeOfDay } from '../utils/dateUtils';
+import { formatDeadlineDate, formatScheduledDate, formatTaskDate, formatHHMM, dateToHHMM, formatWindowRemaining, getDeadlineCountdown, getEffectiveTaskDate, getTaskDayStart, getCurrentDayStart, getLogicalDayKey, dayKeyToDate, formatTimeOfDay, hoursUnlockLabel } from '../utils/dateUtils';
 import { isNegativeTask, isCleanToday, slipsToday } from '../utils/negativeHabits';
 import { scheduleMoveUpdates } from '../utils/taskMoves';
 import { confirmScheduleMove } from '../utils/scheduleMovePrompt';
@@ -1216,7 +1216,17 @@ export const TaskItem = React.memo(function TaskItem({
   const recurrenceNotYetDue = isRecurrenceNotYetDue(task);
   // Why this row's checkbox refuses a tap — an error haptic and nothing
   // happening — so everything that just needs "can this be ticked" asks this.
+  // No longer true for 'hours': see hoursLoggable below, which is the one
+  // exception that still lets the tap through.
   const completionLocked = recurrenceNotYetDue;
+  // An "every N hours" task's own tap still works while completionLocked —
+  // it asks to confirm logging early instead of refusing (see handleComplete)
+  // — so the checkbox needs to look tappable rather than blank. Without this
+  // the circle below fell to circleLocked (no border at all, see its own
+  // comment), which for every other locked recurrence correctly draws
+  // nothing there to tap; for this one type it was hiding the only
+  // affordance the early-log feature has.
+  const hoursLoggable = completionLocked && task.recurrenceType === 'hours';
 
   // A decision task asks for a value on the way out (see Task.deliverableKind),
   // so its box carries a "?" instead of sitting empty — the tap is about to
@@ -1467,15 +1477,10 @@ export const TaskItem = React.memo(function TaskItem({
   // An "every N hours" task has no calendar grid — the row's own recurrence
   // caption just says the interval ("Every 8 hours"), never the clock time it
   // actually lands on, which is exactly the affordance requested (#comment on
-  // the Sep 22 screenshot). taskCompletion.ts's own comment on nextDeferUntil
-  // spells out why `deferUntil` is the answer here: for this recurrence type
-  // it *is* the precise instant the next occurrence unlocks, not just a floor
-  // hiding an already-dated row. Once that instant passes the task is due (and
-  // showing up wherever due tasks show up), so there's nothing left to name.
-  const hoursUnlockTime =
-    task.recurrenceType === 'hours' && task.deferUntil && new Date(task.deferUntil) > new Date()
-      ? formatTimeOfDay(new Date(task.deferUntil))
-      : null;
+  // the Sep 22 screenshot). Shown both in the expanded recurrence caption
+  // below and, so it doesn't take a tap to see, in the collapsed row's own
+  // meta chip alongside the other "when" facts.
+  const hoursUnlockTime = hoursUnlockLabel(task);
 
   // Self-gating: only an Apple Reminders import ever sets pendingImport, and it
   // clears the moment the suggestion is taken or dropped — so nothing else has
@@ -2153,10 +2158,10 @@ export const TaskItem = React.memo(function TaskItem({
         accessibilityRole={meterInteractive || (isNegative && !selectionMode) ? 'button' : 'checkbox'}
         accessibilityState={
           meterInteractive || (isNegative && !selectionMode)
-            ? { disabled: completionLocked }
+            ? { disabled: completionLocked && !hoursLoggable }
             : {
                 checked: selectionMode ? selected : completing,
-                disabled: !selectionMode && completionLocked,
+                disabled: !selectionMode && completionLocked && !hoursLoggable,
               }
         }
         accessibilityLabel={
@@ -2167,7 +2172,9 @@ export const TaskItem = React.memo(function TaskItem({
                 ? `${task.title}, broken today, log another`
                 : `${task.title}, clean today, log a slip`
             : recurrenceNotYetDue
-              ? `${task.title}, not due yet`
+              ? hoursLoggable
+                ? `${task.title}, not due yet, double tap to log early`
+                : `${task.title}, not due yet`
               : completing
                 ? `Undo complete ${task.title}`
                 : meterInteractive
@@ -2203,12 +2210,14 @@ export const TaskItem = React.memo(function TaskItem({
         <Animated.View style={[
           styles.circle,
           completing && !quotaCompleting && !quotaPartial && styles.circleCompleting,
-          completionLocked && styles.circleLocked,
+          completionLocked && !hoursLoggable && styles.circleLocked,
           // Ready is a nudge, not a lock — the checkbox stays tappable either way.
           // The meal-plan nudge's full day borrows the same treatment on purpose:
           // green already means done-or-ready on this row, and a second colour
           // for a second kind of "you can tick this now" would be teaching the
-          // reader two vocabularies for one idea.
+          // reader two vocabularies for one idea. hoursLoggable earns the same
+          // treatment for the same reason — its tap is a request too, just one
+          // that confirms first.
           !completing &&
             !completionLocked &&
             (timerReady ||
@@ -2219,6 +2228,7 @@ export const TaskItem = React.memo(function TaskItem({
               deloadReady ||
               mealShortfallReady) &&
             styles.circleReady,
+          !completing && hoursLoggable && styles.circleReady,
           (quotaMeterVisible || quotaPartial) && styles.circleQuota,
           // Last of the state styles, so a broken day wins the box outright:
           // it's the one thing on this row that has just gone wrong.
@@ -2455,7 +2465,7 @@ export const TaskItem = React.memo(function TaskItem({
             )}
           </View>
         )}
-        {(isQuota || supplyLabel !== null || timed || healthLabel !== null || mealSlot !== null || plannedMeals !== undefined || quietDays !== null || missingCount !== null || windowActive || windowExpired || showStreakChip || waitingCount > 0 || !!blockerTitle || !!waitingPersonName || autoScheduled || scheduledIso !== null || reminderTimeLabel !== null || !!task.followUpTaskSourceTitle || (showGroup && groupTitle) || (showProject && projectTitle) || (showCategory && task.category) || subtaskCount > 0 || task.notes.length > 0) && (
+        {(isQuota || supplyLabel !== null || timed || healthLabel !== null || mealSlot !== null || plannedMeals !== undefined || quietDays !== null || missingCount !== null || windowActive || windowExpired || showStreakChip || waitingCount > 0 || !!blockerTitle || !!waitingPersonName || autoScheduled || scheduledIso !== null || reminderTimeLabel !== null || hoursUnlockTime !== null || !!task.followUpTaskSourceTitle || (showGroup && groupTitle) || (showProject && projectTitle) || (showCategory && task.category) || subtaskCount > 0 || task.notes.length > 0) && (
           <View style={styles.metaRow}>
             {/* Leads the meta line: on the screens that ask for it, "when" is
                 what the row is being read for, and every other chip here
@@ -2476,6 +2486,21 @@ export const TaskItem = React.memo(function TaskItem({
                 />
                 <Text style={styles.scheduledLabel} numberOfLines={1}>
                   {formatScheduledDate(scheduledIso)}
+                </Text>
+              </View>
+            )}
+            {/* An "every N hours" task's own placement — see hoursUnlockTime's
+                comment above. Shown regardless of showDate, the same as the
+                reminder chip below: that flag is about a calendar date, and
+                this task has none to gate on. */}
+            {hoursUnlockTime !== null && (
+              <View
+                style={styles.metaChip}
+                accessibilityLabel={`Comes up again at ${hoursUnlockTime}`}
+              >
+                <Ionicons name="time-outline" size={iconSize.xs} color={colors.textSecondary} />
+                <Text style={styles.scheduledLabel} numberOfLines={1}>
+                  {hoursUnlockTime}
                 </Text>
               </View>
             )}

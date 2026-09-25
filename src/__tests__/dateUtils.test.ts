@@ -23,6 +23,7 @@ import {
   isBeforeDayReset,
   getEffectiveTaskDate,
   formatTaskDate,
+  hoursUnlockLabel,
   seriesMonthDaysFrom,
   getNextSeriesDates,
   recurrenceAnchorDayFor,
@@ -372,6 +373,45 @@ describe('formatTaskDate', () => {
 
   it('returns null when the task has no date at all', () => {
     expect(formatTaskDate({ dueDate: null, deferUntil: null })).toBeNull();
+  });
+});
+
+describe('hoursUnlockLabel', () => {
+  beforeEach(() => {
+    jest.useFakeTimers();
+    jest.setSystemTime(NOW);
+  });
+
+  afterEach(() => {
+    jest.useRealTimers();
+  });
+
+  it('reads the clock time an hourly task next unlocks at', () => {
+    const task = {
+      recurrenceType: 'hours' as const,
+      deferUntil: new Date(2025, 5, 10, 15, 0, 0).toISOString(),
+    };
+    expect(hoursUnlockLabel(task, true)).toBe('15:00');
+  });
+
+  it('returns null once the unlock instant has passed', () => {
+    const task = {
+      recurrenceType: 'hours' as const,
+      deferUntil: new Date(2025, 5, 10, 9, 0, 0).toISOString(),
+    };
+    expect(hoursUnlockLabel(task, true)).toBeNull();
+  });
+
+  it('returns null for a task with no deferUntil', () => {
+    expect(hoursUnlockLabel({ recurrenceType: 'hours', deferUntil: null }, true)).toBeNull();
+  });
+
+  it('returns null for any other recurrence type', () => {
+    const task = {
+      recurrenceType: 'daily' as const,
+      deferUntil: new Date(2025, 5, 10, 15, 0, 0).toISOString(),
+    };
+    expect(hoursUnlockLabel(task, true)).toBeNull();
   });
 });
 
