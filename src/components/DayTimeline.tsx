@@ -29,6 +29,11 @@ interface Props {
   /** Minutes from `dayStart` to draw the now line at, or null when not today. */
   nowMinutes: number | null;
   onPressTask: (taskId: string) => void;
+  /**
+   * Tapping a calendar event's block. Omit to leave events inert, the way they
+   * were before an event had anything to open.
+   */
+  onPressEvent?: (eventId: string) => void;
 }
 
 /**
@@ -41,7 +46,7 @@ interface Props {
  * distinction the whole feature rests on.
  */
 export function DayTimeline({
-  dayStart, timeline, meals, busyKnown, use24Hour, nowMinutes, onPressTask,
+  dayStart, timeline, meals, busyKnown, use24Hour, nowMinutes, onPressTask, onPressEvent,
 }: Props) {
   const colors = useColors();
   const styles = useMemo(() => makeStyles(colors), [colors]);
@@ -98,6 +103,11 @@ export function DayTimeline({
           const top = offsetFor(entry.startMinutes);
           const rawHeight = ((entry.endMinutes - entry.startMinutes) / 60) * HOUR_HEIGHT;
           const isTask = entry.kind === 'task';
+          const pressable = isTask || (!!onPressEvent && !!entry.eventId);
+          const press = () => {
+            if (isTask) { if (entry.taskId) onPressTask(entry.taskId); }
+            else if (entry.eventId) onPressEvent?.(entry.eventId);
+          };
           const startClock = new Date(dayStart.getTime() + entry.startMinutes * 60000);
           const timeLabel = formatTimeOfDay(startClock, use24Hour);
           const laneWidth = 100 / entry.laneCount;
@@ -115,9 +125,9 @@ export function DayTimeline({
                 key={entry.key}
                 style={[styles.entry, styles.instant, position]}
                 activeOpacity={interaction.activeOpacity}
-                disabled={!isTask}
-                onPress={() => entry.taskId && onPressTask(entry.taskId)}
-                accessibilityRole={isTask ? 'button' : undefined}
+                disabled={!pressable}
+                onPress={press}
+                accessibilityRole={pressable ? 'button' : undefined}
                 accessibilityLabel={`${entry.title} at ${timeLabel}, no time estimate`}
               >
                 <View style={styles.instantDot} />
@@ -138,9 +148,9 @@ export function DayTimeline({
                 { ...position, height: Math.max(MIN_BLOCK_HEIGHT, rawHeight) },
               ]}
               activeOpacity={interaction.activeOpacity}
-              disabled={!isTask}
-              onPress={() => entry.taskId && onPressTask(entry.taskId)}
-              accessibilityRole={isTask ? 'button' : undefined}
+              disabled={!pressable}
+              onPress={press}
+              accessibilityRole={pressable ? 'button' : undefined}
               accessibilityLabel={`${entry.title}, ${timeLabel}`}
             >
               <Text

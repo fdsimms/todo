@@ -6487,6 +6487,13 @@ export interface ContextRow {
    * second source makes "which one" a real question.
    */
   calendarTag: { name: string; color: string } | null;
+  /**
+   * An event that moved with tasks planned around it ("Moved, 3 tasks"), set
+   * by `eventContextRows`' `movedNote`. The offer to move them is in the events
+   * sheet this row opens; this only makes sure somebody looking at Today sees
+   * there is one. Absent on every other row.
+   */
+  movedNote?: string | null;
 }
 
 export const PRIORITY_LABELS = ['None', 'Low', 'Medium', 'High', 'Urgent'] as const;

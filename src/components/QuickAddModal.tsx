@@ -73,16 +73,19 @@ import { suggestTitles } from '../utils/titleSuggestions';
 import { findArchivedMatch } from '../utils/archiveMatch';
 import { parseTaskInput, describeSchedule, parseLinkInput, parsePhoneInput, parseEmailInput, parseDurationInput, parseSupplyInput, parseCategoryAndTagsInput, parsePriorityInput, parseChainInput, matchPersonMentions, findAmbiguousMention, getMentionSuggestions, applyMentionOverrides, withTrailingSpace, type ParsedCategoryAndTags, type MentionSuggestionCandidate } from '../utils/parseTaskInput';
 import { mergeRanges } from '../utils/ranges';
-import { usePersonStore } from '../store/usePersonStore';
+import { usePersonStore, displayNameOf } from '../store/usePersonStore';
 import { usePersonGroupStore } from '../store/usePersonGroupStore';
 import { groupMentionTokens } from '../utils/peopleRegistry';
+import { eventMarkerText, parseQuickEvent } from '../utils/quickEvent';
+import { useEventPeopleStore } from '../store/useEventPeopleStore';
+import { isDemoModeActive } from '../utils/demoState';
 import { clampSupplyCount, formatSupplyLeft, MAX_SUPPLY_COUNT } from '../utils/supply';
 import { describeTitleRuleTargets, resolveTitleRules } from '../utils/titleRules';
 import { KNOWN_LINK_APPS, linkAppsFor } from '../constants/linkApps';
 import { tagColor } from '../utils/tagColor';
 import { formatPhoneInput } from '../utils/phone';
 import { format } from 'date-fns/format';
-import { getLogicalToday, getLogicalTomorrow, getLogicalNow, formatTimeOfDay } from '../utils/dateUtils';
+import { getLogicalToday, getLogicalTomorrow, getLogicalNow, getCurrentDayStart, formatTimeOfDay } from '../utils/dateUtils';
 import { EFFORT_MINUTES, effortToMinutes, minutesToEffort, formatDuration } from '../utils/effort';
 import { TaskEditor, type TaskDraft } from './TaskEditor';
 import { RECURRENCE_LABELS, onlyNewestWeekday } from './RecurrencePicker';
@@ -1343,7 +1346,32 @@ export function QuickAddModal({
   };
 
   // ==== the exits: add, or hand the draft to the full editor ====
+  // A line starting "event:" is a calendar event, not a task: the rest goes
+  // through QuickEventSheet's reader and fills Apple's new-event sheet, which
+  // presents on top of this one; this closes only once the event is saved, so
+  // a cancel there comes back to the line. Off in a demo, where the event
+  // would reach the real calendar, so there the line is an ordinary task.
+  const eventText = isDemoModeActive() ? null : eventMarkerText(title);
+  const addAsEvent = async (text: string) => {
+    haptics.tap();
+    const byId = new Map(people.map(p => [p.id, p]));
+    const draft = parseQuickEvent(text, {
+      people,
+      groups: groupTokens,
+      nameOf: id => { const p = byId.get(id); return p ? displayNameOf(p) : null; },
+      now: getLogicalNow(dayResetTime),
+      today: getCurrentDayStart(),
+      wallClock: new Date(),
+    });
+    const saved = await useEventPeopleStore.getState().createEvent(
+      { title: draft.title, start: draft.start, end: draft.end },
+      draft.personIds
+    );
+    if (saved) dismiss();
+  };
+
   const handleAdd = () => {
+    if (eventText !== null) { void addAsEvent(eventText); return; }
     // A rule that strips takes its word out here rather than as you type —
     // rewriting the field under the cursor is the one way this feature would
     // be unusable. Nothing strips unless a rule asked to, and a strip that
@@ -1778,7 +1806,7 @@ export function QuickAddModal({
                 onPress={handleAdd}
                 disabled={!title.trim() || blocked !== null}
                 accessibilityRole="button"
-                accessibilityLabel="Add task"
+                accessibilityLabel={eventText !== null ? 'Add event' : 'Add task'}
               >
                 <Ionicons name="arrow-up" size={18} color={colors.onAccent} />
               </TouchableOpacity>
@@ -2701,13 +2729,13 @@ export function QuickAddModal({
                 disabled={!title.trim() || blocked !== null}
                 activeOpacity={interaction.activeOpacity}
                 accessibilityRole="button"
-                accessibilityLabel="Add task"
+                accessibilityLabel={eventText !== null ? 'Add event' : 'Add task'}
               >
                 <Text style={[
                   styles.footerAddText,
                   (!title.trim() || blocked !== null) && styles.footerAddTextDisabled,
                 ]}>
-                  Add task
+                  {eventText !== null ? 'Add event' : 'Add task'}
                 </Text>
               </TouchableOpacity>
             </View>

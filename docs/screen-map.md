@@ -24,7 +24,7 @@ components below.
 
 - `src/screens/ArchivedScreen.tsx` — EmptyState, HubPills, PaintSelection, ScreenHeader, SearchField, SelectionDot, SimpleBulkBar, TaskEditor
 - `src/screens/BackfillScreen.tsx` — BirthdayPicker, CategoryPicker, CountStepper, DetailHeader, EmptyState, InlineAction, NumberPadAccessory, NutritionPanelSheet, NutritionSearchSheet, PillGroup, PressableScale, RemindMePicker, +3 more
-- `src/screens/CalendarScreen.tsx` — DayTimeline, EmptyState, Fab, PeriodNav, QuickAddModal, ScreenHeader, TaskEditor, TaskItem
+- `src/screens/CalendarScreen.tsx` — DayTimeline, EmptyState, Fab, PeriodNav, QuickAddModal, ScreenHeader, TaskEditor, TaskItem, TodayEventsSheet
 - `src/screens/CategoriesScreen.tsx` — CategoryEditor, EmptyState, Fab, HubPills, QuickAddNameSheet, ReorderableList, ScreenHeader
 - `src/screens/CategoryDetailScreen.tsx` — BulkActionBar, DeliverablePromptQueue, DetailHeader, EmptyState, Fab, PaintSelection, PinIcon, QuickAddModal, SpotlightOverlay, TaskEditor, TaskItem
 - `src/screens/CookbookDetailScreen.tsx` — DetailHeader, EmptyState, InlineAction, SearchField, SheetHeader, SheetHeaderButton, SheetModal
@@ -57,7 +57,7 @@ components below.
 - `src/screens/TemplateDetailScreen.tsx` — ApplyTemplateSheet, DetailHeader, EmptyState, Fab, NestedTemplatePicker, ReorderableList, SwipeableRow, TemplateAppliedToast, TemplateEditor, TemplateItemBulkBar, TemplateItemEditor, TemplateItemQuickAdd, +1 more
 - `src/screens/TemplatesScreen.tsx` — ApplyTemplateSheet, EmptyState, Fab, FabDropZones, HubPills, ListBulkBar, QuickAddNameSheet, ReorderableList, ScreenHeader, SwipeableRow, TemplateAppliedToast, TemplateEditor
 - `src/screens/TipsScreen.tsx` — EmptyState, ScreenHeader, SearchField, TipHost
-- `src/screens/TodayScreen.tsx` — AddTaskFab, ApplyTemplateSheet, BulkActionBar, CategoryOrderSheet, CompletionCollapse, CreatedTaskToast, DayContextRow, DeliverablePromptQueue, DeloadSheet, EmptyState, EventImportSheet, FabDropZones, +30 more
+- `src/screens/TodayScreen.tsx` — AddTaskFab, ApplyTemplateSheet, BulkActionBar, CategoryOrderSheet, CompletionCollapse, CreatedTaskToast, DayContextRow, DeliverablePromptQueue, DeloadSheet, EmptyState, EventImportSheet, FabDropZones, +31 more
 - `src/screens/UnattendedLogScreen.tsx` — EmptyState, HubPills, PillGroup, ScreenHeader
 - `src/screens/WeightScreen.tsx` — EmptyState, HubPills, LogWeightSheet, ScreenHeader, SegmentedControl, WeightChart, WeightGoalSheet
 
@@ -70,8 +70,8 @@ Where each component can appear.
 - `src/components/AddTaskFab.tsx` — on TodayScreen
 - `src/components/AnimatedCollapsible.tsx` — on FoodLogScreen, ProjectDetailScreen, RecipeDetailScreen, RecipesScreen, TodayScreen
 - `src/components/AppLockGate.tsx` — on app shell
-- `src/components/ApplyTemplateSheet.tsx` — on ProjectDetailScreen, TemplateDetailScreen, TemplatesScreen, TodayScreen
-- `src/components/AwayShiftSheet.tsx` — on ProjectDetailScreen, ProjectsScreen
+- `src/components/ApplyTemplateSheet.tsx` — on CalendarScreen, ProjectDetailScreen, TemplateDetailScreen, TemplatesScreen, TodayScreen
+- `src/components/AwayShiftSheet.tsx` — on CalendarScreen, ProjectDetailScreen, ProjectsScreen, TodayScreen
 - `src/components/BarcodeScanSheet.tsx` — on FoodLogScreen, GroceryScreen, KitchenScreen, app shell
 - `src/components/BirthdayPicker.tsx` — on BackfillScreen, PeopleScreen, PersonDetailScreen
 - `src/components/BulkActionBar.tsx` — on CategoryDetailScreen, ProjectDetailScreen, SavedViewDetailScreen, TagsScreen, TodayScreen
@@ -204,6 +204,7 @@ Where each component can appear.
 - `src/components/QuickAddModal.tsx` — on CalendarScreen, CategoryDetailScreen, ProjectDetailScreen, SearchScreen, TodayScreen
 - `src/components/QuickAddNameSheet.tsx` — on CategoriesScreen, PeopleScreen, RecipesScreen, TagsScreen, TemplatesScreen
 - `src/components/QuickAddProjectModal.tsx` — on ProjectsScreen
+- `src/components/QuickEventSheet.tsx` — on TodayScreen
 - `src/components/QuickSearchModal.tsx` — on TodayScreen
 - `src/components/ReceiptImportSheet.tsx` — on GroceryScreen, KitchenScreen
 - `src/components/RecipeChoiceChips.tsx` — on GroceryScreen, MealPlanScreen, RecipeDetailScreen
@@ -279,7 +280,7 @@ Where each component can appear.
 - `src/components/TemplateItemBulkBar.tsx` — on TemplateDetailScreen
 - `src/components/TemplateItemEditor.tsx` — on TemplateDetailScreen
 - `src/components/TemplateItemQuickAdd.tsx` — on TemplateDetailScreen
-- `src/components/TemplatePickerSheet.tsx` — on ProjectDetailScreen, TodayScreen
+- `src/components/TemplatePickerSheet.tsx` — on CalendarScreen, ProjectDetailScreen, TodayScreen
 - `src/components/TemplateQuestionItemsSheet.tsx` — on TemplateDetailScreen, TemplatesScreen
 - `src/components/TemplateQuestionSheet.tsx` — on TemplateDetailScreen, TemplatesScreen
 - `src/components/TemplateSuggestionsSheet.tsx` — on TemplateDetailScreen
@@ -287,7 +288,7 @@ Where each component can appear.
 - `src/components/TitleRuleSheet.tsx` — on SettingsGroupScreen
 - `src/components/TitleRulesSheet.tsx` — on SettingsGroupScreen
 - `src/components/TitleTokenAccessory.tsx` — on ArchivedScreen, CalendarScreen, CategoryDetailScreen, ProjectDetailScreen, RemindersScreen, SavedViewDetailScreen, SearchScreen, StacksScreen, StuckScreen, TagsScreen, TodayScreen
-- `src/components/TodayEventsSheet.tsx` — on TodayScreen
+- `src/components/TodayEventsSheet.tsx` — on CalendarScreen, TodayScreen
 - `src/components/TodayOptionsMenu.tsx` — on TodayScreen
 - `src/components/TripBudgetPrompt.tsx` — on GroceryScreen, KitchenScreen, MealPlanScreen, RecipesScreen
 - `src/components/TripPlannerSheet.tsx` — on PeopleScreen

@@ -138,9 +138,10 @@ import { mealSlotSourceId } from '../utils/mealSlotTasks';
 import { useMealPlanStore } from '../store/useMealPlanStore';
 import { useRecipeStore } from '../store/useRecipeStore';
 import { selectTodayMealEntries, recipeIndex } from '../utils/mealPlan';
-import { getCurrentDayStart, getDayStart, getLogicalDayKey } from '../utils/dateUtils';
-import { defaultNewEventSpan } from '../utils/eventPeople';
-import { useEventPeopleStore } from '../store/useEventPeopleStore';
+import { getDayStart, getLogicalDayKey } from '../utils/dateUtils';
+import { QuickEventSheet } from '../components/QuickEventSheet';
+import { useEventTaskLinkStore } from '../store/useEventTaskLinkStore';
+import { eventTaskKey, movedEventContextRows, movedEventNote, movedLinkedEvents } from '../utils/eventTaskLinks';
 import { morningCheckInTasks } from '../utils/morningCheckIn';
 import { addDays } from 'date-fns/addDays';
 import { useCalendarStore } from '../store/useCalendarStore';
@@ -1637,14 +1638,12 @@ export function TodayScreen() {
       case 'import':
         setEventImportVisible(true);
         break;
-      // No task: Apple's new-event sheet, today at the next whole hour. The
-      // calendar (Google or otherwise) is picked there.
-      case 'event': {
-        const today = getCurrentDayStart();
-        const { start, end } = defaultNewEventSpan(today, today, new Date());
-        void useEventPeopleStore.getState().createEvent({ title: '', start, end });
+      // No task: a one-line event ("lunch w/ @dustin sat 12pm") that fills
+      // Apple's new-event sheet, where the calendar (Google or otherwise) is
+      // picked. See QuickEventSheet.
+      case 'event':
+        setQuickEventVisible(true);
         break;
-      }
     }
   };
 
@@ -1993,6 +1992,7 @@ export function TodayScreen() {
   const calendarIds = useSettingsStore(s => s.calendarIds);
   const eventCalendarTags = calendarIds.length > 1 ? calendarsById : undefined;
   const [eventsSheetVisible, setEventsSheetVisible] = useState(false);
+  const [quickEventVisible, setQuickEventVisible] = useState(false);
   const todayCalendarDayEnd = useMemo(() => addDays(getDayStart(new Date()), 1), [todayKey]);
   const todayCalendarEvents = useMemo(
     () => (calendarReadEnabled && calendarLoaded && !demoActive
@@ -2020,6 +2020,31 @@ export function TodayScreen() {
     (event: Pick<BusyEvent, 'id' | 'start'>) => hiddenEventKey(event) in hiddenEventsByKey,
     [hiddenEventsByKey]
   );
+
+  // Events that moved with tasks planned around them (eventTaskLinks.ts). The
+  // row only says so; the offer to move the tasks is in the events sheet the
+  // row opens.
+  const eventTaskLinks = useEventTaskLinkStore(s => s.links);
+  const calendarWindowStart = useCalendarStore(s => s.windowStart);
+  const calendarWindowEnd = useCalendarStore(s => s.windowEnd);
+  const liveTaskIds = useMemo(() => new Set(allTasks.map(t => t.id)), [allTasks]);
+  const movedEvents = useMemo(
+    () => (calendarWindowStart && calendarWindowEnd
+      ? movedLinkedEvents(eventTaskLinks, calendarEvents, new Date(calendarWindowStart), new Date(calendarWindowEnd))
+      : []),
+    [eventTaskLinks, calendarEvents, calendarWindowStart, calendarWindowEnd]
+  );
+  const movedEventNotes = useMemo(() => {
+    const notes = new Map<string, string>();
+    for (const moved of movedEvents) {
+      const note = movedEventNote(moved, liveTaskIds);
+      if (note) notes.set(eventTaskKey(moved.event), note);
+    }
+    return notes;
+  }, [movedEvents, liveTaskIds]);
+  // A moved-off-today event's row opens the events sheet on that one event,
+  // where the move offer is; null is the ordinary "today's events" sheet.
+  const [eventsSheetFor, setEventsSheetFor] = useState<BusyEvent | null>(null);
 
   const contextRows = useMemo(() => {
     const rows: ContextRow[] = [];
@@ -2054,6 +2079,15 @@ export function TodayScreen() {
         use24Hour: use24HourTime,
         calendarsById: eventCalendarTags,
         isHidden: isEventHidden,
+        movedNote: event => movedEventNotes.get(eventTaskKey(event)) ?? null,
+      }));
+      // Events that moved off today, which today's own rows can't show.
+      const todayKeys = new Set(todayCalendarEvents.map(eventTaskKey));
+      rows.push(...movedEventContextRows(movedEvents, {
+        liveTaskIds,
+        category: calendarEventCategory,
+        use24Hour: use24HourTime,
+        isOnToday: event => todayKeys.has(eventTaskKey(event)),
       }));
     }
     if (mealsOnToday === 'inline' && todayMealEntries) {
@@ -2072,7 +2106,7 @@ export function TodayScreen() {
     return rows;
   }, [
     todayCalendarEvents, calendarEventCategory, use24HourTime, eventCalendarTags,
-    isEventHidden,
+    isEventHidden, movedEventNotes, movedEvents, liveTaskIds,
     mealsOnToday, todayMealEntries, recipesById, mealCookTaskCategory, allTasks,
     healthToday, healthCategory, dayResetTime,
     minuteTick,
@@ -2898,7 +2932,13 @@ export function TodayScreen() {
         <DayContextRow
           row={item.row}
           onPress={
-            item.row.kind === 'event' ? () => setEventsSheetVisible(true)
+            item.row.kind === 'event' ? () => {
+              const moved = item.row.id.startsWith('moved-')
+                ? movedEvents.find(m => `moved-${eventTaskKey(m.event)}` === item.row.id)
+                : undefined;
+              setEventsSheetFor(moved?.event ?? null);
+              setEventsSheetVisible(true);
+            }
             // A health row has nowhere to go, which the prop supports and which
             // is the honest answer here: the number came from another app, this
             // one holds no detail behind it, and opening Health would be a task
@@ -4414,6 +4454,7 @@ export function TodayScreen() {
           categoryCount={allCategories.length}
           onManageEvents={calendarReadEnabled && calendarLoaded && !demoActive ? () => {
             setOptionsMenuVisible(false);
+            setEventsSheetFor(null);
             setEventsSheetVisible(true);
           } : undefined}
           eventCount={todayCalendarEvents.length}
@@ -4424,11 +4465,20 @@ export function TodayScreen() {
           onClose={() => setCategoryOrderVisible(false)}
         />
 
+        <QuickEventSheet
+          visible={quickEventVisible}
+          onClose={() => setQuickEventVisible(false)}
+        />
+
         <TodayEventsSheet
           visible={eventsSheetVisible}
           onClose={() => setEventsSheetVisible(false)}
-          events={todayCalendarEvents}
+          events={eventsSheetFor ? [eventsSheetFor] : todayCalendarEvents}
           calendarsById={eventCalendarTags}
+          title={eventsSheetFor
+            ? new Date(eventsSheetFor.start).toLocaleDateString(undefined, { weekday: 'long', month: 'short', day: 'numeric' })
+            : undefined}
+          day={eventsSheetFor ? new Date(eventsSheetFor.start) : undefined}
         />
 
         <DeloadSheet

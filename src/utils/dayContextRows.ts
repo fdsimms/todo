@@ -88,9 +88,15 @@ export function eventContextRows(
     calendarsById?: Readonly<Record<string, { title: string; color: string }>>;
     /** True for an occurrence the user hid — see `useHiddenEventsStore`. */
     isHidden?: (event: Pick<BusyEvent, 'id' | 'start'>) => boolean;
+    /**
+     * A note for an event that moved with tasks planned around it (see
+     * `eventTaskLinks.ts`'s `movedLinkedEvents`), or null. Kept a callback so
+     * this module still reads no store.
+     */
+    movedNote?: (event: BusyEvent) => string | null;
   },
 ): ContextRow[] {
-  const { now, category, use24Hour, calendarsById, isHidden } = opts;
+  const { now, category, use24Hour, calendarsById, isHidden, movedNote } = opts;
   const at = now.getTime();
 
   const rows: Array<{ row: ContextRow; allDay: boolean; start: number }> = [];
@@ -116,6 +122,7 @@ export function eventContextRows(
         category,
         now: running,
         calendarTag: calendar ? { name: calendar.title, color: calendar.color } : null,
+        movedNote: movedNote?.(event) ?? null,
       },
       allDay: event.allDay,
       start,

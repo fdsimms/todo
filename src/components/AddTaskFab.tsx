@@ -12,8 +12,8 @@ export type AddTaskType = 'chain' | 'stack' | 'template' | 'import' | 'event' | 
 // task with one picker pre-opened, which the Repeat row in quick add already
 // does in the same number of taps.
 //
-// "Event" is the one entry that adds no task: it opens Apple's new-event sheet
-// for today (see `presentEventCreate`). It sits beside Task because a plan for
+// "Event" is the one entry that adds no task: a one-line event
+// (`QuickEventSheet`) that fills Apple's new-event sheet. It sits beside Task because a plan for
 // today is a Today thing whichever list it ends up in.
 const ITEMS: FabMenuItem[] = [
   { key: 'chain', label: 'Chain', icon: 'git-commit' },

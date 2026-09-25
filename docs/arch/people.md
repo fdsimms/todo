@@ -584,6 +584,46 @@ events sheet, or by starting the event from a person's page ("Plan something").
   phone. The event itself still syncs through its calendar.
 - **Creating is off in demo mode**: the event would reach the real calendar.
 
+### Typing an event
+
+`src/utils/quickEvent.ts` + `QuickEventSheet`, behind the Today add button's
+"Event". One line ("lunch w/ @dustin sat 12pm") read by quick add's own two
+parsers (`parseTaskInput` for the day and time, `matchPersonMentions` for
+"@name"), so it reads exactly as a task line does, refusals included. It fills
+the system sheet and links the people once the event is saved. A repeat phrase
+gives only its first day; repeating is set in the system sheet. It is its own
+sheet rather than a mode of `QuickAddModal`, since almost nothing that sheet
+sets means anything for an event. Regular quick add reaches the same path
+with a leading `event:` (`eventMarkerText`): the rest of the line is read the
+same way and the Add button says "Add event". A leading word plus a colon, so
+it cannot fire mid-title, and it is off in demo mode, where the line stays a
+task.
+
+### Tasks planned around an event
+
+`src/utils/eventTaskLinks.ts` + `useEventTaskLinkStore`, the sibling record.
+The events sheet's "+" and its "Plan from a template" (a template run whose
+two anchors are the event's first and last day, named after it and carrying
+its linked people) both record the tasks they create against the occurrence.
+
+- **A record, not a `Task` field.** Per-task provenance is refused in
+  `docs/arch/away-dates.md` (a column plus the four-site `TemplateItem`
+  parity); the event already has a record here, so the ids hang off that.
+- **It exists to notice a move, and it only offers.** `movedLinkedEvents`
+  calls an event moved only when its old occurrence is gone, the old start was
+  inside the window (so absence means something), and exactly one occurrence
+  of the id is in the window (a series is refused rather than guessed). The
+  row then offers `AwayShiftSheet`, the trip move's own "these move with it?",
+  or "Keep their dates". Either answer rekeys the record so it is not asked
+  twice. Today's own row for the event carries a "Moved, 3 tasks" chip
+  (`movedEventNote`, via `eventContextRows`' `movedNote`) so the offer is seen
+  without opening the sheet. An event that moved *off* today, which today's
+  rows can never show, gets a row of its own on Today (`movedEventContextRows`)
+  that opens the sheet on just that event, and goes away once the move is
+  answered.
+- **Device-local and pruned a week after the event**, like the people link
+  (`calendarEventTasks`).
+
 ## Tapping Call or Text, and the question that follows
 
 `reachOutIntent.ts` (the rules), `usePersonStore`'s three `*PendingReachOut`

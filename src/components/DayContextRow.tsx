@@ -147,6 +147,16 @@ export function DayContextRow({ row, onPress, onMarkCooked }: Props) {
             </Text>
           </View>
         )}
+        {/* An event that moved with tasks planned around it. Tapping the row
+            opens the events sheet, where the offer to move them is. */}
+        {row.movedNote && (
+          <View style={styles.metaChip}>
+            <Ionicons name="swap-horizontal-outline" size={iconSize.xs} color={colors.accent} />
+            <Text style={[styles.caption, styles.captionNow]} numberOfLines={1}>
+              {row.movedNote}
+            </Text>
+          </View>
+        )}
       </View>
     </>
   );
@@ -167,7 +177,7 @@ export function DayContextRow({ row, onPress, onMarkCooked }: Props) {
               // reason — that gap is the glyph's.
               hitSlop={{ top: 14, bottom: 14, left: 0, right: 10 }}
               accessibilityRole="button"
-              accessibilityLabel={`${row.title}, ${row.caption}`}
+              accessibilityLabel={`${row.title}, ${row.caption}${row.movedNote ? `, ${row.movedNote}` : ''}`}
               accessibilityHint={
                 row.kind === 'event' ? "Opens the day's events" : 'Opens Meal plan'
               }
@@ -175,7 +185,7 @@ export function DayContextRow({ row, onPress, onMarkCooked }: Props) {
               {body}
             </TouchableOpacity>
           ) : (
-            <View style={styles.content} accessible accessibilityLabel={`${row.title}, ${row.caption}`}>
+            <View style={styles.content} accessible accessibilityLabel={`${row.title}, ${row.caption}${row.movedNote ? `, ${row.movedNote}` : ''}`}>
               {body}
             </View>
           )}
