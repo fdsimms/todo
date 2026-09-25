@@ -106,11 +106,11 @@ export function HealthRulesSheet({ visible, onClose }: Props) {
       caption={
         'A rule adds its task on a day the reading crosses its number. Steps are only judged '
         + 'from 6 PM, since a step count earlier in the day has not had its chance yet. A '
-        + 'nutrient rule is judged from whatever hour you set it to, and needs another app '
-        + 'logging food to Health, since this app never writes one of those samples itself. A '
-        + 'nutrient rule can also be set as a ceiling instead of a floor, so it adds its task when '
-        + 'the day goes over its number rather than under it. Each rule adds its task at most once '
-        + 'a day.'
+        + 'nutrient rule is judged from whatever hour you set it to, and needs a nutrient logged '
+        + 'to Health, either by another food-logging app or by this one (turn on Health writing '
+        + 'in Settings and log a meal). A nutrient rule can also be set as a ceiling instead of a '
+        + 'floor, so it adds its task when the day goes over its number rather than under it. '
+        + 'Each rule adds its task at most once a day.'
       }
       rules={rules}
       onChange={setRules}

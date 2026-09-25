@@ -1,0 +1,4 @@
+{
+  "message": "Fixed health rules (sodium, protein, and the rest) not noticing a meal you'd just logged until the app was backgrounded and reopened — logging a meal now updates the reading right away.",
+  "date": "2026-09-25"
+}
