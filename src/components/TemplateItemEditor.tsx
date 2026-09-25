@@ -179,6 +179,7 @@ export function TemplateItemEditor({ visible, templateId, templateName, item, in
   const [recurrenceInterval, setRecurrenceInterval] = useState(1);
   const [recurrenceDays, setRecurrenceDays] = useState<number[]>([]);
   const [recurrenceMonthDay, setRecurrenceMonthDay] = useState<number | null>(null);
+  const [recurrenceMonth, setRecurrenceMonth] = useState<number | null>(null);
   const [recurrenceFromCompletion, setRecurrenceFromCompletion] = useState(false);
   const [recurrenceCount, setRecurrenceCount] = useState<number | null>(null);
   const [deliverableKind, setDeliverableKind] = useState<DeliverableKind | null>(null);
@@ -254,6 +255,7 @@ export function TemplateItemEditor({ visible, templateId, templateName, item, in
     setRecurrenceInterval(item?.recurrenceInterval ?? draft?.recurrenceInterval ?? 1);
     setRecurrenceDays(item?.recurrenceDays ?? draft?.recurrenceDays ?? []);
     setRecurrenceMonthDay(item?.recurrenceMonthDay ?? draft?.recurrenceMonthDay ?? null);
+    setRecurrenceMonth(item?.recurrenceMonth ?? draft?.recurrenceMonth ?? null);
     setRecurrenceFromCompletion(item?.recurrenceFromCompletion ?? draft?.recurrenceFromCompletion ?? false);
     setRecurrenceCount(item?.recurrenceCount ?? draft?.recurrenceCount ?? null);
     setDeliverableKind(item?.deliverableKind ?? draft?.deliverableKind ?? null);
@@ -411,7 +413,8 @@ export function TemplateItemEditor({ visible, templateId, templateName, item, in
       recurrenceType,
       recurrenceInterval,
       recurrenceDays: recurrenceType === 'weekly' ? recurrenceDays : [],
-      recurrenceMonthDay: recurrenceType === 'monthly' ? recurrenceMonthDay : null,
+      recurrenceMonthDay: recurrenceType === 'monthly' || recurrenceType === 'yearly' ? recurrenceMonthDay : null,
+      recurrenceMonth: recurrenceType === 'yearly' ? recurrenceMonth : null,
       recurrenceFromCompletion,
       recurrenceCount: recurrenceType !== 'none' ? recurrenceCount : null,
       deliverableKind,
@@ -909,6 +912,9 @@ export function TemplateItemEditor({ visible, templateId, templateName, item, in
             recurrenceMonthDay={recurrenceMonthDay}
             onChangeMonthDay={setRecurrenceMonthDay}
             seedMonthDay={() => 1}
+            recurrenceMonth={recurrenceMonth}
+            onChangeMonth={setRecurrenceMonth}
+            seedMonth={() => 1}
             recurrenceFromCompletion={recurrenceFromCompletion}
             onChangeFromCompletion={setRecurrenceFromCompletion}
             recurrenceCount={recurrenceCount}

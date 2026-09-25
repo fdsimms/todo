@@ -13,6 +13,7 @@ import { differenceInCalendarDays } from 'date-fns/differenceInCalendarDays';
 import { differenceInCalendarMonths } from 'date-fns/differenceInCalendarMonths';
 import { differenceInCalendarYears } from 'date-fns/differenceInCalendarYears';
 import { setDate } from 'date-fns/setDate';
+import { setMonth } from 'date-fns/setMonth';
 import { lastDayOfMonth } from 'date-fns/lastDayOfMonth';
 import type { Task } from '../types';
 import { hhmmToDate, formatHHMM as formatClockTime, clockTimeToken, logicalDayStart, taskDayStart } from './clockTime';
@@ -346,7 +347,7 @@ const MAX_CATCH_UP_STEPS = 500;
  * has passed while the app was shut is over, not owed a final occurrence.
  */
 export type RecurrenceScheduleInput = Pick<Task,
-  | 'recurrenceType' | 'recurrenceInterval' | 'recurrenceDays' | 'recurrenceMonthDay'
+  | 'recurrenceType' | 'recurrenceInterval' | 'recurrenceDays' | 'recurrenceMonthDay' | 'recurrenceMonth'
   | 'recurrenceWeekOrdinal' | 'recurrenceAnchorDay' | 'recurrenceAnchorDate'
   | 'recurrenceFromCompletion' | 'recurrenceEndDate' | 'recurrenceCount' | 'dueDate'
 >;
@@ -420,6 +421,7 @@ export function getNextDueDate(
       case 'yearly':
         return getNextYearDayOccurrence(
           task.recurrenceMonthDay ?? task.recurrenceAnchorDay,
+          task.recurrenceMonth,
           from,
           task.recurrenceInterval,
         );
@@ -509,17 +511,29 @@ function getNextMonthDayOccurrence(day: number, from: Date, interval: number): D
 
 /**
  * Next occurrence of a yearly rule, restoring the day-of-month the grid is
- * anchored to. The month never drifts (addYears keeps it), so only the day
- * needs putting back: "every year on Feb 29" would otherwise clamp to the 28th
- * in the first non-leap year and stay there through every leap year after,
- * which is the same one-way clamp getNextMonthDayOccurrence exists to avoid a
- * month at a time. `null` means no anchor was ever captured (a row older than
- * the column), which is exactly the old behaviour.
+ * anchored to and, if the rule pins one, the month. The month never drifts on
+ * its own (addYears keeps it), so with no explicit `month` only the day needs
+ * putting back: "every year on Feb 29" would otherwise clamp to the 28th in
+ * the first non-leap year and stay there through every leap year after, which
+ * is the same one-way clamp getNextMonthDayOccurrence exists to avoid a month
+ * at a time. `day === null` means no anchor was ever captured (a row older
+ * than the column), which is exactly the old behaviour; `month === null`
+ * means "whatever month the due date falls in" (the picker's "same month as
+ * due date"), also the old behaviour.
+ *
+ * With an explicit month, the day still has to come from somewhere: an
+ * unset day anchor falls back to `from`'s own day-of-month rather than being
+ * left alone, since repositioning into a different month means there's no
+ * longer an "as addYears left it" day to keep.
  */
-function getNextYearDayOccurrence(day: number | null, from: Date, interval: number): Date {
+function getNextYearDayOccurrence(day: number | null, month: number | null, from: Date, interval: number): Date {
   const next = addYears(from, interval);
-  if (day === null) return next;
-  return day === -1 ? lastDayOfMonth(next) : setDate(next, Math.min(day, lastDayOfMonth(next).getDate()));
+  if (month === null && day === null) return next;
+  const base = month === null ? next : setMonth(setDate(next, 1), month - 1);
+  const targetDay = day ?? from.getDate();
+  return targetDay === -1
+    ? lastDayOfMonth(base)
+    : setDate(base, Math.min(targetDay, lastDayOfMonth(base).getDate()));
 }
 
 /**

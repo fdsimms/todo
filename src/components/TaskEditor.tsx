@@ -181,6 +181,7 @@ export interface TaskDraft {
   recurrenceInterval: number;
   recurrenceDays: number[];
   recurrenceMonthDay: number | null;
+  recurrenceMonth: number | null;
   recurrenceWeekOrdinal: number | null;
   recurrenceFromCompletion: boolean;
   recurrenceEndDate: Date | null;
@@ -502,6 +503,7 @@ export function TaskEditor({ visible, task, initialDraft, onClose }: Props) {
   const [recurrenceInterval, setRecurrenceInterval] = useState(1);
   const [recurrenceDays, setRecurrenceDays] = useState<number[]>([]);
   const [recurrenceMonthDay, setRecurrenceMonthDay] = useState<number | null>(null);
+  const [recurrenceMonth, setRecurrenceMonth] = useState<number | null>(null);
   const [recurrenceWeekOrdinal, setRecurrenceWeekOrdinal] = useState<number | null>(null);
   const [recurrenceFromCompletion, setRecurrenceFromCompletion] = useState(false);
   const [recurrenceEndDate, setRecurrenceEndDate] = useState<Date | null>(null);
@@ -802,6 +804,7 @@ export function TaskEditor({ visible, task, initialDraft, onClose }: Props) {
       setRecurrenceType(task.recurrenceType); setRecurrenceInterval(task.recurrenceInterval);
       setRecurrenceDays(task.recurrenceDays ?? []);
       setRecurrenceMonthDay(task.recurrenceMonthDay ?? null);
+      setRecurrenceMonth(task.recurrenceMonth ?? null);
       setRecurrenceWeekOrdinal(task.recurrenceWeekOrdinal ?? null);
       setRecurrenceFromCompletion(task.recurrenceFromCompletion);
       setRecurrenceEndDate(task.recurrenceEndDate ? new Date(task.recurrenceEndDate) : null);
@@ -848,6 +851,7 @@ export function TaskEditor({ visible, task, initialDraft, onClose }: Props) {
       setRecurrenceType(initialDraft?.recurrenceType ?? 'none'); setRecurrenceInterval(initialDraft?.recurrenceInterval ?? 1);
       setRecurrenceDays(initialDraft?.recurrenceDays ?? []);
       setRecurrenceMonthDay(initialDraft?.recurrenceMonthDay ?? null);
+      setRecurrenceMonth(initialDraft?.recurrenceMonth ?? null);
       setRecurrenceWeekOrdinal(initialDraft?.recurrenceWeekOrdinal ?? null);
       setRecurrenceFromCompletion(initialDraft?.recurrenceFromCompletion ?? false);
       setRecurrenceEndDate(initialDraft?.recurrenceEndDate ?? null);
@@ -963,6 +967,7 @@ export function TaskEditor({ visible, task, initialDraft, onClose }: Props) {
       recurrenceInterval: task ? task.recurrenceInterval : (initialDraft?.recurrenceInterval ?? 1),
       recurrenceDays: task ? (task.recurrenceDays ?? []) : (initialDraft?.recurrenceDays ?? []),
       recurrenceMonthDay: task ? (task.recurrenceMonthDay ?? null) : (initialDraft?.recurrenceMonthDay ?? null),
+      recurrenceMonth: task ? (task.recurrenceMonth ?? null) : (initialDraft?.recurrenceMonth ?? null),
       recurrenceWeekOrdinal: task ? (task.recurrenceWeekOrdinal ?? null) : (initialDraft?.recurrenceWeekOrdinal ?? null),
       recurrenceFromCompletion: task ? task.recurrenceFromCompletion : (initialDraft?.recurrenceFromCompletion ?? false),
       recurrenceEndDate: task ? (task.recurrenceEndDate ?? null) : (initialDraft?.recurrenceEndDate?.toISOString() ?? null),
@@ -1392,7 +1397,11 @@ export function TaskEditor({ visible, task, initialDraft, onClose }: Props) {
       reminderUtcOffsetMinutes: reminderTime ? reminderTime.getTimezoneOffset() : null,
       recurrenceType, recurrenceInterval,
       recurrenceDays: recurrenceType === 'weekly' ? recurrenceDays : recurrenceType === 'monthly' && recurrenceWeekOrdinal !== null ? recurrenceDays : [],
-      recurrenceMonthDay: recurrenceType === 'monthly' && recurrenceWeekOrdinal === null ? recurrenceMonthDay : null,
+      // Yearly shares this anchor with monthly (see RecurrencePicker) — a
+      // yearly rule never sets recurrenceWeekOrdinal, so the guard is a no-op
+      // for it rather than a second condition.
+      recurrenceMonthDay: (recurrenceType === 'monthly' || recurrenceType === 'yearly') && recurrenceWeekOrdinal === null ? recurrenceMonthDay : null,
+      recurrenceMonth: recurrenceType === 'yearly' ? recurrenceMonth : null,
       recurrenceWeekOrdinal: recurrenceType === 'monthly' ? recurrenceWeekOrdinal : null,
       recurrenceEndDate: recurrenceType !== 'none' ? (recurrenceEndDate?.toISOString() ?? null) : null,
       recurrenceCount: recurrenceType !== 'none' ? recurrenceCount : null,
@@ -1669,6 +1678,7 @@ export function TaskEditor({ visible, task, initialDraft, onClose }: Props) {
       recurrenceInterval,
       recurrenceDays,
       recurrenceMonthDay,
+      recurrenceMonth,
       recurrenceWeekOrdinal,
       recurrenceEndDate: recurrenceEndDate?.toISOString() ?? null,
       recurrenceCount,
@@ -1679,7 +1689,7 @@ export function TaskEditor({ visible, task, initialDraft, onClose }: Props) {
     return { runOut: supplyRunOutDate(projected), orderBy: supplyOrderByDate(projected) };
   }, [
     task, supplyCount, supplyLeadDays, dueDate, recurrenceType, recurrenceInterval,
-    recurrenceDays, recurrenceMonthDay, recurrenceWeekOrdinal, recurrenceEndDate,
+    recurrenceDays, recurrenceMonthDay, recurrenceMonth, recurrenceWeekOrdinal, recurrenceEndDate,
     recurrenceCount, recurrenceFromCompletion,
   ]);
 
@@ -1696,6 +1706,7 @@ export function TaskEditor({ visible, task, initialDraft, onClose }: Props) {
       recurrenceInterval,
       recurrenceDays,
       recurrenceMonthDay,
+      recurrenceMonth,
       recurrenceWeekOrdinal,
       recurrenceAnchorDay: task?.recurrenceAnchorDay ?? null,
       recurrenceAnchorDate: task?.recurrenceAnchorDate ?? null,
@@ -1705,7 +1716,7 @@ export function TaskEditor({ visible, task, initialDraft, onClose }: Props) {
       dueDate: dueDate.toISOString(),
     }, dayResetTime);
   }, [
-    task, dueDate, recurrenceType, recurrenceInterval, recurrenceDays, recurrenceMonthDay,
+    task, dueDate, recurrenceType, recurrenceInterval, recurrenceDays, recurrenceMonthDay, recurrenceMonth,
     recurrenceWeekOrdinal, recurrenceFromCompletion, recurrenceEndDate, recurrenceCount,
     dayResetTime,
   ]);
@@ -2043,7 +2054,7 @@ export function TaskEditor({ visible, task, initialDraft, onClose }: Props) {
       reminderTracksVisibility,
       reminderTimeAnchor,
       reminderUtcOffsetMinutes: reminderTime ? reminderTime.getTimezoneOffset() : null,
-      recurrenceType, recurrenceInterval, recurrenceDays, recurrenceMonthDay, recurrenceWeekOrdinal, recurrenceFromCompletion,
+      recurrenceType, recurrenceInterval, recurrenceDays, recurrenceMonthDay, recurrenceMonth, recurrenceWeekOrdinal, recurrenceFromCompletion,
       recurrenceEndDate: recurrenceEndDate?.toISOString() ?? null,
       recurrenceCount,
       priority, effort, estimatedMinutes, actualMinutes, timedMinutes, healthMetric, healthTarget, pinned, chainEnabled, chainItems, rotationItems, chainIndex, chainStepOnSchedule, vacationPause,
@@ -4671,6 +4682,7 @@ export function TaskEditor({ visible, task, initialDraft, onClose }: Props) {
                 days: recurrenceDays,
                 monthDay: recurrenceMonthDay,
                 weekOrdinal: recurrenceWeekOrdinal,
+                month: recurrenceMonth,
               }) : undefined}
               onPress={enableRecurrence}
               onClear={recurrenceType !== 'none' ? () => setRecurrenceType('none') : undefined}
@@ -4686,6 +4698,9 @@ export function TaskEditor({ visible, task, initialDraft, onClose }: Props) {
                 recurrenceMonthDay={recurrenceMonthDay}
                 onChangeMonthDay={setRecurrenceMonthDay}
                 seedMonthDay={() => (dueDate ?? getLogicalToday()).getDate()}
+                recurrenceMonth={recurrenceMonth}
+                onChangeMonth={setRecurrenceMonth}
+                seedMonth={() => (dueDate ?? getLogicalToday()).getMonth() + 1}
                 recurrenceFromCompletion={recurrenceFromCompletion}
                 onChangeFromCompletion={setRecurrenceFromCompletion}
                 recurrenceCount={recurrenceCount}

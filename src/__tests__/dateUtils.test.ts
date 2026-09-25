@@ -62,6 +62,7 @@ const baseTask: Task = {
   recurrenceInterval: 1,
   recurrenceDays: [],
   recurrenceMonthDay: null,
+  recurrenceMonth: null,
   recurrenceWeekOrdinal: null,
   recurrenceAnchorDay: null,
   recurrenceAnchorDate: null,
@@ -799,6 +800,58 @@ describe('getNextDueDate', () => {
     const result = getNextDueDate(task, '00:00')!;
     expect(result.getFullYear()).toBe(2026);
     expect(result.getMonth()).toBe(5);
+    expect(result.getDate()).toBe(10);
+  });
+
+  it('yearly with recurrenceMonth repositions into the pinned month, keeping the due date\'s day', () => {
+    // NOW/dueDate is June 10. Pinned to December: the grid still steps a full
+    // year (addYears), then the month is put back to the one the rule pins,
+    // same as recurrenceMonthDay repositions the day.
+    const task: Task = { ...baseTask, recurrenceType: 'yearly', recurrenceInterval: 1, recurrenceMonth: 12 };
+    const result = getNextDueDate(task, '00:00')!;
+    expect(result.getFullYear()).toBe(2026);
+    expect(result.getMonth()).toBe(11); // December
+    expect(result.getDate()).toBe(10);
+  });
+
+  it('yearly combines a pinned month with an explicit day', () => {
+    const task: Task = {
+      ...baseTask, recurrenceType: 'yearly', recurrenceInterval: 1, recurrenceMonth: 12, recurrenceMonthDay: 25,
+    };
+    const result = getNextDueDate(task, '00:00')!;
+    expect(result.getFullYear()).toBe(2026);
+    expect(result.getMonth()).toBe(11); // December
+    expect(result.getDate()).toBe(25);
+  });
+
+  it('yearly combines a pinned month with the last-day sentinel', () => {
+    const task: Task = {
+      ...baseTask, recurrenceType: 'yearly', recurrenceInterval: 1, recurrenceMonth: 2, recurrenceMonthDay: -1,
+    };
+    const result = getNextDueDate(task, '00:00')!;
+    expect(result.getFullYear()).toBe(2026);
+    expect(result.getMonth()).toBe(1); // February
+    expect(result.getDate()).toBe(28); // 2026 is not a leap year
+  });
+
+  it('yearly clamps the due date\'s own day to a shorter pinned month', () => {
+    // dueDate's day (31) doesn't exist in February — same clamp
+    // getNextMonthDayOccurrence already applies for monthly.
+    const task: Task = {
+      ...baseTask, recurrenceType: 'yearly', recurrenceInterval: 1, recurrenceMonth: 2,
+      dueDate: new Date(2025, 0, 31, 0, 0, 0).toISOString(), // Jan 31
+    };
+    const result = getNextDueDate(task, '00:00')!;
+    expect(result.getFullYear()).toBe(2026);
+    expect(result.getMonth()).toBe(1); // February
+    expect(result.getDate()).toBe(28);
+  });
+
+  it('yearly with recurrenceMonth null keeps riding whatever month the due date falls in', () => {
+    const task: Task = { ...baseTask, recurrenceType: 'yearly', recurrenceInterval: 1, recurrenceMonth: null };
+    const result = getNextDueDate(task, '00:00')!;
+    expect(result.getFullYear()).toBe(2026);
+    expect(result.getMonth()).toBe(5); // June, same as the due date
     expect(result.getDate()).toBe(10);
   });
 

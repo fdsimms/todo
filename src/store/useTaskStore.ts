@@ -930,6 +930,7 @@ const SCHEDULE_FIELDS = [
   'dueDate',
   'recurrenceType',
   'recurrenceMonthDay',
+  'recurrenceMonth',
   'recurrenceWeekOrdinal',
   'recurrenceFromCompletion',
 ] as const;
@@ -7048,6 +7049,7 @@ export const useTaskStore = create<TaskStore>((set, get) => ({
       recurrenceInterval: 1,
       recurrenceDays: [],
       recurrenceMonthDay: null,
+      recurrenceMonth: null,
       recurrenceWeekOrdinal: null,
       recurrenceAnchorDay: null,
     recurrenceAnchorDate: null,
@@ -7263,6 +7265,7 @@ export const useTaskStore = create<TaskStore>((set, get) => ({
       recurrenceInterval: 1,
       recurrenceDays: [],
       recurrenceMonthDay: null,
+      recurrenceMonth: null,
       recurrenceWeekOrdinal: null,
       recurrenceAnchorDay: null,
     recurrenceAnchorDate: null,

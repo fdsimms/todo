@@ -46,7 +46,7 @@ const makeTask = (overrides: Partial<Task> = {}): Task => ({
   autoScheduledAt: null, createdAt: '2026-01-01T00:00:00.000Z', seenAt: null, dueDate: null,
   deadline: null, deadlineOffsetDays: null, deadlineMonthDay: null, deferUntil: null,
   timeSegments: [], windowStart: null, windowEnd: null, recurrenceType: 'none',
-  recurrenceInterval: 1, recurrenceDays: [], recurrenceMonthDay: null, recurrenceWeekOrdinal: null,
+  recurrenceInterval: 1, recurrenceDays: [], recurrenceMonthDay: null, recurrenceMonth: null, recurrenceWeekOrdinal: null,
   recurrenceAnchorDay: null, recurrenceAnchorDate: null, recurrenceEndDate: null,
   recurrenceCount: null, recurrenceFromCompletion: false, supplyCount: null, supplyUnit: null,
   supplyRefillCount: null, supplyReorderAt: 1, supplyLeadDays: null, supplyDeclinedAtCount: null,

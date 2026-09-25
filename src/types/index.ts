@@ -1967,6 +1967,13 @@ export interface Task {
   recurrenceInterval: number;
   recurrenceDays: number[];
   recurrenceMonthDay: number | null; // day of month (1-31) for monthly recurrence on a fixed schedule, -1 = last day of the month; null = same day as dueDate
+  // Month (1-12) a yearly rule falls in, on a fixed schedule; null = whatever
+  // month dueDate currently falls in (the picker's "same month as due date").
+  // Monthly/weekly/daily/hours ignore this — there's no month for it to mean
+  // anything against. Unlike recurrenceMonthDay it needs no anchor-day-style
+  // clamp/restore pair: a month never gets clamped short the way Feb clamps a
+  // day, so the stored value is read as-is by getNextYearDayOccurrence.
+  recurrenceMonth: number | null;
   // Nth weekday-of-month for monthly recurrence, e.g. "every 2nd Tuesday" (recurrenceWeekOrdinal=2,
   // recurrenceDays=[2]); 1-4 = 1st..4th occurrence, -1 = last occurrence in the month. Mutually
   // exclusive with recurrenceMonthDay; null = not using this mode. Only the first entry of
@@ -3277,6 +3284,7 @@ export interface TemplateItem {
   recurrenceInterval: number;
   recurrenceDays: number[];
   recurrenceMonthDay: number | null;
+  recurrenceMonth: number | null;
   recurrenceFromCompletion: boolean;
   recurrenceCount: number | null;
 

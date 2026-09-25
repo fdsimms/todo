@@ -1533,6 +1533,18 @@ describe('demo mode', () => {
 
     useDemoStore.getState().exitDemoMode();
   });
+
+  it('seeds a yearly task pinned to a month of its own', () => {
+    // recurrenceMonth is otherwise invisible until a task actually uses it.
+    useDemoStore.getState().enterDemoMode();
+
+    const passport = useTaskStore.getState().tasks.find(t => t.title === 'Renew passport');
+    expect(passport).toBeDefined();
+    expect(passport?.recurrenceType).toBe('yearly');
+    expect(passport?.recurrenceMonth).toBe(4);
+
+    useDemoStore.getState().exitDemoMode();
+  });
 });
 
 /**

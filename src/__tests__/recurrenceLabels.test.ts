@@ -99,7 +99,28 @@ describe('describeRecurrence', () => {
 
   it('ignores weekdays on a type that has no use for them', () => {
     expect(describeRecurrence({ type: 'daily', interval: 1, days: [1, 3] })).toBe('Every day');
-    expect(describeRecurrence({ type: 'yearly', interval: 1, monthDay: 4 })).toBe('Every year');
+  });
+
+  describe('yearly anchors', () => {
+    it('says the day of the month, same as monthly', () => {
+      expect(describeRecurrence({ type: 'yearly', interval: 1, monthDay: 4 })).toBe('Every year on the 4th');
+      expect(describeRecurrence({ type: 'yearly', interval: 1, monthDay: -1 })).toBe('Every year on the last day');
+    });
+
+    it('says the month, when the rule pins one', () => {
+      expect(describeRecurrence({ type: 'yearly', interval: 1, month: 6 })).toBe('Every year in June');
+    });
+
+    it('says both together', () => {
+      expect(describeRecurrence({ type: 'yearly', interval: 1, monthDay: 4, month: 6 }))
+        .toBe('Every year on the 4th of June');
+      expect(describeRecurrence({ type: 'yearly', interval: 2, monthDay: -1, month: 12 }))
+        .toBe('Every 2 years on the last day of December');
+    });
+
+    it('leaves both anchors out when neither is set', () => {
+      expect(describeRecurrence({ type: 'yearly', interval: 1 })).toBe('Every year');
+    });
   });
 });
 
@@ -111,6 +132,7 @@ describe('describeTaskRecurrence', () => {
     recurrenceInterval: 1,
     recurrenceDays: [] as number[],
     recurrenceMonthDay: null,
+    recurrenceMonth: null,
     recurrenceWeekOrdinal: null,
     recurrenceFromCompletion: false,
     ...over,
@@ -147,6 +169,17 @@ describe('describeTaskRecurrence', () => {
     expect(describeTaskRecurrence(rule({ recurrenceType: 'yearly' }))).toBe('Yearly');
     expect(describeTaskRecurrence(rule({ recurrenceType: 'yearly', recurrenceInterval: 2 })))
       .toBe('Every 2 years');
+  });
+
+  it('reads a yearly anchor', () => {
+    expect(describeTaskRecurrence(rule({ recurrenceType: 'yearly', recurrenceMonthDay: 4 })))
+      .toBe('Yearly on the 4th');
+    expect(describeTaskRecurrence(rule({ recurrenceType: 'yearly', recurrenceMonth: 6 })))
+      .toBe('Yearly in June');
+    expect(describeTaskRecurrence(rule({ recurrenceType: 'yearly', recurrenceMonthDay: -1, recurrenceMonth: 12 })))
+      .toBe('Yearly on the last day of December');
+    expect(describeTaskRecurrence(rule({ recurrenceType: 'yearly', recurrenceInterval: 2, recurrenceMonth: 6 })))
+      .toBe('Every 2 years in June');
   });
 
   it('reads a monthly anchor', () => {

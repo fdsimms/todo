@@ -217,6 +217,7 @@ export function newTaskFromDraft(
     recurrenceInterval: draft.recurrenceInterval ?? 1,
     recurrenceDays: draft.recurrenceDays ?? [],
     recurrenceMonthDay: draft.recurrenceMonthDay ?? null,
+    recurrenceMonth: draft.recurrenceMonth ?? null,
     recurrenceWeekOrdinal: draft.recurrenceWeekOrdinal ?? null,
     recurrenceAnchorDay: null,
     recurrenceAnchorDate: null,
@@ -459,7 +460,7 @@ export function reanchorReminder(
 
 type RecurrenceFields = Pick<
   Task,
-  | 'recurrenceType' | 'recurrenceInterval' | 'recurrenceDays' | 'recurrenceMonthDay'
+  | 'recurrenceType' | 'recurrenceInterval' | 'recurrenceDays' | 'recurrenceMonthDay' | 'recurrenceMonth'
   | 'recurrenceWeekOrdinal' | 'recurrenceAnchorDay' | 'recurrenceAnchorDate'
   | 'recurrenceEndDate' | 'recurrenceCount'
   | 'recurrenceFromCompletion' | 'showStreak' | 'streakRequiresWindow'
@@ -484,6 +485,7 @@ export const NO_RECURRENCE: RecurrenceFields = {
   recurrenceInterval: 1,
   recurrenceDays: [],
   recurrenceMonthDay: null,
+  recurrenceMonth: null,
   recurrenceWeekOrdinal: null,
   recurrenceAnchorDay: null,
   recurrenceAnchorDate: null,

@@ -1693,6 +1693,10 @@ export function initDatabase(): void {
     // 'individual' on every existing row: a business marker is new, and every
     // person entered before it existed was a person. See Person.kind.
     "ALTER TABLE people ADD COLUMN kind TEXT NOT NULL DEFAULT 'individual'",
+    // Null on every existing row: a yearly rule's month, previously never
+    // stored, always fell out of whatever month dueDate happened to be in.
+    // See Task.recurrenceMonth.
+    'ALTER TABLE tasks ADD COLUMN recurrence_month INTEGER',
   ];
   // Asking SQLite for a table's columns once is cheaper than handing it every
   // ALTER for that table and catching the duplicate-column error, and by the
@@ -2986,6 +2990,7 @@ function rowToTask(row: Record<string, unknown>): Task {
     recurrenceInterval: (row.recurrence_interval as number) ?? 1,
     recurrenceDays: JSON.parse((row.recurrence_days as string) ?? '[]') as number[],
     recurrenceMonthDay: (row.recurrence_month_day as number | null) ?? null,
+    recurrenceMonth: (row.recurrence_month as number | null) ?? null,
     recurrenceWeekOrdinal: (row.recurrence_week_ordinal as number | null) ?? null,
     recurrenceAnchorDay: (row.recurrence_anchor_day as number | null) ?? null,
     recurrenceAnchorDate: (row.recurrence_anchor_date as string | null) ?? null,
@@ -3180,8 +3185,8 @@ export function dbInsertTask(task: Task): void {
       penalty_minutes, penalty_cutoff_time, penalty_fired_at, penalty_credited_at, gates_apps,
       medication_name, medication_amount, medication_unit, log_meal_slot,
       estimate_before_timing, waiting_on_person_since, waiting_follow_up_declined_at,
-      reminder_tracks_visibility
-    ) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)`,
+      reminder_tracks_visibility, recurrence_month
+    ) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)`,
     [
       task.id, task.title, task.notes, task.completed ? 1 : 0,
       task.completedAt, task.createdAt, task.seenAt, task.dueDate, task.deadline, task.deadlineOffsetDays ?? null, task.deadlineMonthDay ?? null, task.deferUntil,
@@ -3284,6 +3289,7 @@ export function dbInsertTask(task: Task): void {
       task.waitingOnPersonSince ?? null,
       task.waitingFollowUpDeclinedAt ?? null,
       task.reminderTracksVisibility ? 1 : 0,
+      task.recurrenceMonth ?? null,
     ]
   );
 }
@@ -3317,7 +3323,7 @@ export function dbUpdateTask(task: Task): void {
       penalty_minutes=?, penalty_cutoff_time=?, penalty_fired_at=?, penalty_credited_at=?, gates_apps=?,
       medication_name=?, medication_amount=?, medication_unit=?, log_meal_slot=?,
       estimate_before_timing=?, waiting_on_person_since=?, waiting_follow_up_declined_at=?,
-      reminder_tracks_visibility=?
+      reminder_tracks_visibility=?, recurrence_month=?
     WHERE id=?`,
     [
       task.title, task.notes, task.completed ? 1 : 0, task.completedAt, task.seenAt,
@@ -3421,6 +3427,7 @@ export function dbUpdateTask(task: Task): void {
       task.waitingOnPersonSince ?? null,
       task.waitingFollowUpDeclinedAt ?? null,
       task.reminderTracksVisibility ? 1 : 0,
+      task.recurrenceMonth ?? null,
       task.id,
     ]
   );

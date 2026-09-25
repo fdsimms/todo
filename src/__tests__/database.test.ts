@@ -191,6 +191,7 @@ const makeTask = (overrides: Partial<Task> = {}): Task => ({
   recurrenceInterval: 1,
   recurrenceDays: [],
   recurrenceMonthDay: null,
+  recurrenceMonth: null,
   recurrenceWeekOrdinal: null,
   recurrenceAnchorDay: null,
   recurrenceAnchorDate: null,
@@ -1188,6 +1189,7 @@ describe('dbInsertTask + rowToTask round-trip', () => {
       completedAt: '2025-06-10T10:00:00.000Z',
       recurrenceEndDate: '2025-12-31T00:00:00.000Z',
       recurrenceCount: 5,
+      recurrenceMonth: 12,
       streakDate: '2025-06-09T00:00:00.000Z',
       parentId: 'parent-id',
       reminderTime: '2025-06-10T08:00:00.000Z',
@@ -1202,6 +1204,7 @@ describe('dbInsertTask + rowToTask round-trip', () => {
     expect(t.category).toBe(task.category);
     expect(t.recurrenceEndDate).toBe(task.recurrenceEndDate);
     expect(t.recurrenceCount).toBe(task.recurrenceCount);
+    expect(t.recurrenceMonth).toBe(task.recurrenceMonth);
   });
 });
 
@@ -1615,6 +1618,7 @@ describe('Templates', () => {
     recurrenceInterval: 1,
     recurrenceDays: [],
     recurrenceMonthDay: null,
+    recurrenceMonth: null,
     recurrenceFromCompletion: false,
     recurrenceCount: null,
     vacationPause: false, excludeFromSuggestions: false,

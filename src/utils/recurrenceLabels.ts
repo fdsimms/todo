@@ -33,6 +33,17 @@ export const ORDINAL_OPTIONS: { value: number; label: string }[] = [
 
 const DAY_NAMES = ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'];
 
+/** 1-12 -> full month name, for the yearly picker's month grid and the read-backs below. */
+export const MONTH_NAMES = [
+  'January', 'February', 'March', 'April', 'May', 'June',
+  'July', 'August', 'September', 'October', 'November', 'December',
+];
+
+/** 1-12 -> three-letter abbreviation, for the picker's grid cells. */
+export const MONTH_ABBREVIATIONS = [
+  'Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec',
+];
+
 export interface RecurrenceRule {
   type: RecurrenceType;
   interval: number;
@@ -42,6 +53,8 @@ export interface RecurrenceRule {
   monthDay?: number | null;
   /** Nth-weekday-of-month ("2nd Tuesday"); -1 = last. Null = not in that mode. */
   weekOrdinal?: number | null;
+  /** Month (1-12) a yearly rule falls in. Null = whatever month the due date falls in. Only meaningful for 'yearly'. */
+  month?: number | null;
 }
 
 /**
@@ -67,7 +80,7 @@ export interface RecurrenceRule {
  * ("Tue, Jun 17"), off a `ParsedSchedule` rather than a stored row.
  */
 export function describeTaskRecurrence(
-  task: Pick<Task, 'recurrenceType' | 'recurrenceInterval' | 'recurrenceDays' | 'recurrenceMonthDay' | 'recurrenceWeekOrdinal' | 'recurrenceFromCompletion'>,
+  task: Pick<Task, 'recurrenceType' | 'recurrenceInterval' | 'recurrenceDays' | 'recurrenceMonthDay' | 'recurrenceMonth' | 'recurrenceWeekOrdinal' | 'recurrenceFromCompletion'>,
 ): string {
   const { recurrenceType: type, recurrenceInterval: interval, recurrenceDays: days } = task;
   if (type === 'none') return '';
@@ -96,7 +109,14 @@ export function describeTaskRecurrence(
   } else if (type === 'hours') {
     text = interval === 1 ? 'Hourly' : `Every ${interval} hours`;
   } else {
-    text = interval === 1 ? 'Yearly' : `Every ${interval} years`;
+    const base = interval === 1 ? 'Yearly' : `Every ${interval} years`;
+    const dayPart = task.recurrenceMonthDay === -1 ? 'the last day'
+      : task.recurrenceMonthDay ? `the ${ordinal(task.recurrenceMonthDay)}` : null;
+    const monthPart = task.recurrenceMonth != null ? MONTH_NAMES[task.recurrenceMonth - 1] : null;
+    text = dayPart && monthPart ? `${base} on ${dayPart} of ${monthPart}`
+      : dayPart ? `${base} on ${dayPart}`
+      : monthPart ? `${base} in ${monthPart}`
+      : base;
   }
 
   // Named here and nowhere else: on a row there is nothing else on screen
@@ -114,7 +134,7 @@ export function describeTaskRecurrence(
  * no `Task` there to hand it.
  */
 export function recurrenceRuleOf(
-  task: Pick<Task, 'recurrenceType' | 'recurrenceInterval' | 'recurrenceDays' | 'recurrenceMonthDay' | 'recurrenceWeekOrdinal'>,
+  task: Pick<Task, 'recurrenceType' | 'recurrenceInterval' | 'recurrenceDays' | 'recurrenceMonthDay' | 'recurrenceMonth' | 'recurrenceWeekOrdinal'>,
 ): RecurrenceRule {
   return {
     type: task.recurrenceType,
@@ -122,6 +142,7 @@ export function recurrenceRuleOf(
     days: task.recurrenceDays,
     monthDay: task.recurrenceMonthDay,
     weekOrdinal: task.recurrenceWeekOrdinal,
+    month: task.recurrenceMonth,
   };
 }
 
@@ -149,7 +170,7 @@ function describeDays(days: number[]): string {
  * an `EditorRow` value can show without truncating.
  */
 export function describeRecurrence(rule: RecurrenceRule): string {
-  const { type, interval, days = [], monthDay = null, weekOrdinal = null } = rule;
+  const { type, interval, days = [], monthDay = null, weekOrdinal = null, month = null } = rule;
   if (type === 'none') return '';
 
   const unit = recurrenceUnitLabel(type, interval);
@@ -165,6 +186,14 @@ export function describeRecurrence(rule: RecurrenceRule): string {
     }
     if (monthDay === -1) return `${base} on the last day`;
     if (monthDay !== null && monthDay > 0) return `${base} on the ${ordinal(monthDay)}`;
+  }
+
+  if (type === 'yearly') {
+    const dayPart = monthDay === -1 ? 'the last day' : monthDay !== null && monthDay > 0 ? `the ${ordinal(monthDay)}` : null;
+    const monthPart = month !== null ? MONTH_NAMES[month - 1] : null;
+    if (dayPart && monthPart) return `${base} on ${dayPart} of ${monthPart}`;
+    if (dayPart) return `${base} on ${dayPart}`;
+    if (monthPart) return `${base} in ${monthPart}`;
   }
 
   return base;
