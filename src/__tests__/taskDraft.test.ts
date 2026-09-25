@@ -6,6 +6,9 @@
  */
 import { buildSeriesRow, reanchorReminder, NO_RECURRENCE } from '../utils/taskDraft';
 
+/** A local wall-clock time as the ISO instant the app stores, so the suite reads the same in any zone. */
+const localIso = (local: string) => new Date(local).toISOString();
+
 jest.mock('../store/useSettingsStore', () => ({
   useSettingsStore: {
     getState: () => ({
@@ -35,9 +38,9 @@ jest.mock('../store/useProjectStore', () => ({
 
 describe('reanchorReminder', () => {
   it('keeps the time of day while moving the day', () => {
-    const moved = reanchorReminder('2026-03-01T09:30:00.000Z', new Date('2026-03-08T00:00:00.000Z'));
+    const moved = reanchorReminder(localIso('2026-03-01T09:30'), new Date(localIso('2026-03-08T00:00')));
     const at = new Date(moved.reminderTime!);
-    const original = new Date('2026-03-01T09:30:00.000Z');
+    const original = new Date(localIso('2026-03-01T09:30'));
     expect(at.getHours()).toBe(original.getHours());
     expect(at.getMinutes()).toBe(original.getMinutes());
     expect(at.getDate()).toBe(8);
@@ -53,12 +56,12 @@ describe('reanchorReminder', () => {
   // A set of dates shares an hour, not a moment. Recaptured because a reminder
   // moved onto another day may cross a DST boundary (#1205).
   it('recaptures the UTC offset for the instant it landed on', () => {
-    const moved = reanchorReminder('2026-03-01T09:30:00.000Z', new Date('2026-08-08T00:00:00.000Z'));
+    const moved = reanchorReminder(localIso('2026-03-01T09:30'), new Date(localIso('2026-08-08T00:00')));
     expect(moved.reminderUtcOffsetMinutes).toBe(new Date(moved.reminderTime!).getTimezoneOffset());
   });
 
   it('anchors a relative reminder to its offset from the date', () => {
-    const moved = reanchorReminder('2026-03-01T09:30:00.000Z', new Date('2026-03-10T00:00:00.000Z'), 2);
+    const moved = reanchorReminder(localIso('2026-03-01T09:30'), new Date(localIso('2026-03-10T00:00')), 2);
     // Two days before the date it was given.
     expect(new Date(moved.reminderTime!).getDate()).toBe(8);
   });
@@ -82,7 +85,7 @@ describe('NO_RECURRENCE', () => {
 });
 
 describe('buildSeriesRow', () => {
-  const date = new Date('2026-03-15T12:00:00.000Z');
+  const date = new Date(localIso('2026-03-15T12:00'));
 
   it('dates the row and files it under the series', () => {
     const row = buildSeriesRow({ title: 'Walk the dog' }, date, 's1');
@@ -105,7 +108,7 @@ describe('buildSeriesRow', () => {
   // Each date stands on its own; a defer on the source would otherwise hide
   // every date in the set behind that one day.
   it('drops a defer and a pin from the source', () => {
-    const row = buildSeriesRow({ title: 'Walk the dog', deferUntil: '2026-04-01T00:00:00.000Z', pinned: true }, date, 's1');
+    const row = buildSeriesRow({ title: 'Walk the dog', deferUntil: localIso('2026-04-01T00:00'), pinned: true }, date, 's1');
     expect(row.deferUntil).toBeNull();
     expect(row.pinned).toBe(false);
   });
@@ -133,20 +136,20 @@ describe('buildSeriesRow', () => {
   });
 
   it('leaves a fixed deadline alone, since it is one absolute target', () => {
-    const row = buildSeriesRow({ title: 'X', deadline: '2026-05-01T00:00:00.000Z' }, date, 's1');
-    expect(row.deadline).toBe('2026-05-01T00:00:00.000Z');
+    const row = buildSeriesRow({ title: 'X', deadline: localIso('2026-05-01T00:00') }, date, 's1');
+    expect(row.deadline).toBe(localIso('2026-05-01T00:00'));
   });
 
   it('re-anchors the reminder onto this row\'s day', () => {
-    const row = buildSeriesRow({ title: 'X', reminderTime: '2026-03-01T09:30:00.000Z' }, date, 's1');
+    const row = buildSeriesRow({ title: 'X', reminderTime: localIso('2026-03-01T09:30') }, date, 's1');
     expect(new Date(row.reminderTime!).getDate()).toBe(15);
   });
 
   it('resolves a visibility-tracking reminder through getVisibleAt against the row\'s own placement rather than re-anchoring the offset', () => {
     jest.useFakeTimers();
-    jest.setSystemTime(new Date('2026-03-01T09:00:00.000Z')); // before the row's own date
+    jest.setSystemTime(new Date(localIso('2026-03-01T09:00'))); // before the row's own date
     const row = buildSeriesRow(
-      { title: 'X', reminderTime: '2026-02-01T07:00:00.000Z', reminderTracksVisibility: true },
+      { title: 'X', reminderTime: localIso('2026-02-01T07:00'), reminderTracksVisibility: true },
       date, // 2026-03-15
       's1',
     );

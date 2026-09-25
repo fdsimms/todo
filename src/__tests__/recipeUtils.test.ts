@@ -49,6 +49,9 @@ import {
 import type { GroceryItem, ItemSubLink, Recipe, RecipeComponent, RecipeIngredient, RecipePrepTask } from '../types';
 import { RECIPE_STEP_NOTE_MAX_LENGTH } from '../types';
 
+/** A local wall-clock time as the ISO instant the app stores, so the suite reads the same in any zone. */
+const localIso = (local: string) => new Date(local).toISOString();
+
 // recipeUtils now reaches mealPlanGroceries.ts (for countLikelyInPantry) and,
 // through it, mealPlan.ts → dateUtils.ts → the settings store — which
 // nothing here needs. Same mock as mealPlanGroceries.test.ts.
@@ -101,7 +104,7 @@ function recipe(name: string, overrides: Partial<Recipe> = {}): Recipe {
     prepTasks: [],
     steps: [],
     sortOrder: seq,
-    createdAt: '2026-01-01T00:00:00.000Z',
+    createdAt: localIso('2026-01-01T00:00'),
     cookCount: 0,
     lastCookedAt: null,
     vote: null,
@@ -931,16 +934,16 @@ describe('sortRecipesBy', () => {
   });
 
   it('sorts by most recently cooked, with never-cooked trailing', () => {
-    const recent = recipe('Recent', { lastCookedAt: '2026-08-01T00:00:00.000Z' });
-    const older = recipe('Older', { lastCookedAt: '2026-07-01T00:00:00.000Z' });
+    const recent = recipe('Recent', { lastCookedAt: localIso('2026-08-01T00:00') });
+    const older = recipe('Older', { lastCookedAt: localIso('2026-07-01T00:00') });
     const never = recipe('Never', { lastCookedAt: null });
     expect(sortRecipesBy([never, older, recent], 'cooked-recent').map(r => r.name))
       .toEqual(['Recent', 'Older', 'Never']);
   });
 
   it('sorts by oldest cooked, with never-cooked still trailing', () => {
-    const recent = recipe('Recent', { lastCookedAt: '2026-08-01T00:00:00.000Z' });
-    const older = recipe('Older', { lastCookedAt: '2026-07-01T00:00:00.000Z' });
+    const recent = recipe('Recent', { lastCookedAt: localIso('2026-08-01T00:00') });
+    const older = recipe('Older', { lastCookedAt: localIso('2026-07-01T00:00') });
     const never = recipe('Never', { lastCookedAt: null });
     expect(sortRecipesBy([never, recent, older], 'cooked-oldest').map(r => r.name))
       .toEqual(['Older', 'Recent', 'Never']);
@@ -1228,12 +1231,12 @@ describe('describeCookHistory', () => {
   });
 
   it('says "once" for a single cooking', () => {
-    const r = recipe('Ragù', { cookCount: 1, lastCookedAt: '2026-07-12T00:00:00.000Z' });
+    const r = recipe('Ragù', { cookCount: 1, lastCookedAt: localIso('2026-07-12T00:00') });
     expect(describeCookHistory(r)).toBe('Cooked once · last on Jul 12');
   });
 
   it('counts multiple cookings with a ×', () => {
-    const r = recipe('Ragù', { cookCount: 4, lastCookedAt: '2026-07-12T00:00:00.000Z' });
+    const r = recipe('Ragù', { cookCount: 4, lastCookedAt: localIso('2026-07-12T00:00') });
     expect(describeCookHistory(r)).toBe('Cooked 4× · last on Jul 12');
   });
 
@@ -1481,7 +1484,7 @@ function item(name: string, overrides: Partial<GroceryItem> & { nameKey?: string
     purchaseCount: 0,
     lastAddedAt: null,
     lastPurchasedAt: null,
-    createdAt: '2026-01-01T00:00:00.000Z',
+    createdAt: localIso('2026-01-01T00:00'),
     onHandUntil: null,
     sourceRecipeId: null,
     sourceRecipeTitle: null,
@@ -1492,7 +1495,7 @@ function item(name: string, overrides: Partial<GroceryItem> & { nameKey?: string
 
 // #1568 — a substitute link, for the "counts as covered" tests below.
 function sub(itemId: string, subItemId: string): ItemSubLink {
-  return { itemId, subItemId, note: null, createdAt: '2026-01-01T00:00:00.000Z', ratioFrom: null, ratioTo: null, standing: false };
+  return { itemId, subItemId, note: null, createdAt: localIso('2026-01-01T00:00'), ratioFrom: null, ratioTo: null, standing: false };
 }
 
 describe('scoreRecipeAgainstCatalog', () => {
@@ -1701,7 +1704,7 @@ describe('scoreRecipeAgainstCatalog', () => {
 });
 
 describe('countLikelyInPantry', () => {
-  const now = new Date('2026-08-11T12:00:00.000Z');
+  const now = new Date(localIso('2026-08-11T12:00'));
   function daysAgo(n: number): string {
     return new Date(now.getTime() - n * 86_400_000).toISOString();
   }
@@ -1817,7 +1820,7 @@ describe('countLikelyInPantry', () => {
 // #1103 — the percentage form of countLikelyInPantry, plus enough of its
 // denominator to tell "checked, and it's low" apart from "nothing to check".
 describe('pantryCoverageForRecipe', () => {
-  const now = new Date('2026-08-11T12:00:00.000Z');
+  const now = new Date(localIso('2026-08-11T12:00'));
   function daysAgo(n: number): string {
     return new Date(now.getTime() - n * 86_400_000).toISOString();
   }

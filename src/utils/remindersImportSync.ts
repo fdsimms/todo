@@ -512,16 +512,19 @@ interface MirrorOutcome {
  */
 async function mirrorOnce(): Promise<MirrorOutcome | null> {
   if (Platform.OS !== 'ios') return null;
+  // The guard notifications.ts and the two calendar mirrors already keep. Demo
+  // mode swaps the whole database for a throwaway one, and a mirror is a
+  // two-way write: without this it would push a seeded demo list into the
+  // user's real Reminders list and delete whatever was already there. It sits
+  // above the clear below too: `linkIndex` is module state that outlives the
+  // swap, so clearing it in demo left the real mirror running against no links
+  // once demo ended, and rows the user had removed came back from their reminders.
+  if (isDemoModeActive()) return null;
   const listId = mirrorTarget();
   if (!listId) {
     writeLinks({});
     return null;
   }
-  // The guard notifications.ts and the two calendar mirrors already keep. Demo
-  // mode swaps the whole database for a throwaway one, and a mirror is a
-  // two-way write: without this it would push a seeded demo list into the
-  // user's real Reminders list and delete whatever was already there.
-  if (isDemoModeActive()) return null;
   if ((await getRemindersPermission()) !== 'granted') {
     return { imported: 0, mirrored: 0, deleteFailed: 0, reason: 'no-permission' };
   }
@@ -554,6 +557,10 @@ async function mirrorOnce(): Promise<MirrorOutcome | null> {
       });
     }
 
+    // Again, now the reads are done: demo can start during the awaits above,
+    // and a plan built from here reads the demo list and writes the user's
+    // real Reminders list. Nothing past this point awaits before it writes.
+    if (isDemoModeActive()) return null;
     const store = useGroceryStore.getState();
     const plan = planGroceryReminderSync(mirrorItems(), reminders, linksIndex()[listId] ?? []);
     const nextLinks: GroceryReminderLink[] = [...plan.links];
@@ -744,7 +751,9 @@ async function drainOnce(): Promise<ImportOutcome> {
     // drain. The record is keyed by list only so an un-drained list's ids
     // aren't pruned by a fetch that never covered them — the read side of it
     // flattens back to one set.
+    let demoStarted = false;
     for (const target of targets) {
+      if (demoStarted) break;
       const list = findReminderList(lists, target.listId);
       if (!list) continue;
       sawList = true;
@@ -768,6 +777,14 @@ async function drainOnce(): Promise<ImportOutcome> {
         // dictated in, and one commit at a time bounds the damage if something goes
         // wrong at item 40 of 200.
         for (const reminder of reminders) {
+          // Checked again per reminder, since the list read and each delete
+          // await: demo can start during either, and a row written after that
+          // lands in the throwaway database while its reminder is deleted for
+          // real. Everything from here to the delete is synchronous.
+          if (isDemoModeActive()) {
+            demoStarted = true;
+            break;
+          }
           const draft = draftFromReminder(reminder);
           if (!draft) continue;
 
@@ -870,6 +887,7 @@ async function drainOnce(): Promise<ImportOutcome> {
       }
     }
 
+    if (demoStarted) return NOTHING('off');
     if (imported === 0) {
       if (!sawList) return NOTHING('list-missing');
       if (!sawWritableList) return NOTHING('list-readonly');

@@ -374,8 +374,8 @@ export function RemindMePicker({ visible, value, kind, dueDate = null, offsetDay
                   </Text>
                   <Text style={styles.beforeHint}>
                     {visiblePreview
-                      ? `Fires ${format(visiblePreview, 'MMM d')} at ${format(visiblePreview, 'h:mm a')}, the exact moment this task next becomes visible. There's no time to set below — it recomputes on its own if that moment changes.`
-                      : 'Fires the moment this task next becomes visible. There\'s no time to set below — it recomputes on its own if that moment changes.'}
+                      ? `Fires ${format(visiblePreview, 'MMM d')} at ${format(visiblePreview, 'h:mm a')}, the exact moment this task next becomes visible. There's no time to set below, because it recomputes on its own if that moment changes.`
+                      : 'Fires the moment this task next becomes visible. There\'s no time to set below, because it recomputes on its own if that moment changes.'}
                   </Text>
                 </View>
                 <View style={styles.sectionGap} />

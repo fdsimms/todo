@@ -81,7 +81,7 @@ import { animateLayout } from '../utils/layoutAnimation';
 import { resolveActiveTrip } from '../utils/activeTrip';
 import { resetToGroceries } from '../navigation/navigationRef';
 import { buildWeekDays } from '../utils/calendarGrid';
-import { dayKeyOf, dayKeyToDate } from '../utils/dateUtils';
+import { dayKeyOf, dayKeyToDate, getLogicalToday } from '../utils/dateUtils';
 import {
   resolvePrepTaskDraft,
   suggestRecipesForEmptyNight,
@@ -332,18 +332,20 @@ export function MealPlanScreen() {
   const mealSlotsEnabled = useSettingsStore(useShallow(s => s.mealSlotsEnabled));
   // ==== local state (the week anchor, sheets, bulk selection, the fridge) ====
   // Any date inside the week on screen. Paging moves the anchor, never the days.
-  const [anchor, setAnchor] = useState(() => new Date());
+  const [anchor, setAnchor] = useState(() => getLogicalToday());
 
   const days = useMemo(() => buildWeekDays(anchor, weekStartsOn), [anchor, weekStartsOn]);
   const range = useMemo(() => dayKeyRange(days), [days]);
 
   const entries = useMealPlanStore(useShallow(s => s.entries));
-  // Real "today," independent of which week is on screen — decides which of
-  // this week's days fold into the "Previous days" section below
+  // The *logical* today, independent of which week is on screen, so this
+  // screen agrees with Today and the meal tasks during the grace window before
+  // dayResetTime (at 1:30 AM, last night's dinner is still tonight's). Decides
+  // which of this week's days fold into the "Previous days" section below
   // (previousDaysInfo). Not gated on `days` finding a match the way the old
   // hero card's `todayDay` was: a past week is entirely previous days, a
   // future week has none, and both fall out of the same key compare.
-  const todayKey = dayKeyOf(new Date());
+  const todayKey = dayKeyOf(getLogicalToday());
   const loadRange = useMealPlanStore(s => s.loadRange);
   const planMeal = useMealPlanStore(s => s.planMeal);
   const moveEntry = useMealPlanStore(s => s.moveEntry);
@@ -846,7 +848,7 @@ export function MealPlanScreen() {
       next.delete(focusDay);
       return next;
     });
-    if (focusDay < dayKeyOf(new Date())) setPreviousDaysExpanded(true);
+    if (focusDay < dayKeyOf(getLogicalToday())) setPreviousDaysExpanded(true);
     pendingFocusRef.current = focusDay;
     // The other half of an unanswered meal task's link: land on the day, then
     // open the picker on the slot it named. Set here rather than in its own
@@ -887,7 +889,7 @@ export function MealPlanScreen() {
     flatListRef.current?.scrollToIndex({ index, viewPosition: 0, animated: true });
   }, [days]);
 
-  const onThisWeek = isSameWeek(anchor, new Date(), { weekStartsOn });
+  const onThisWeek = isSameWeek(anchor, getLogicalToday(), { weekStartsOn });
 
   // `days` at the moment the screen was last focused (or paged), read by the
   // focus effect below without making it re-fire on every page(). Kept as a
@@ -918,9 +920,9 @@ export function MealPlanScreen() {
   // through `daysRef` keeps the check honest without retriggering it.
   useFocusEffect(
     useCallback(() => {
-      const thisWeekStart = buildWeekDays(new Date(), weekStartsOn)[0];
+      const thisWeekStart = buildWeekDays(getLogicalToday(), weekStartsOn)[0];
       if (isBefore(daysRef.current[0], thisWeekStart)) {
-        setAnchor(new Date());
+        setAnchor(getLogicalToday());
         setCollapsedDays(new Set());
         setPreviousDaysExpanded(false);
       }
@@ -1163,7 +1165,7 @@ export function MealPlanScreen() {
    * plenty of meals get eaten without the badge ever being tapped.
    */
   const couldHaveLeftovers = (entry: MealPlanEntry) =>
-    !!entry.cookedAt || entry.date <= dayKeyOf(new Date());
+    !!entry.cookedAt || entry.date <= dayKeyOf(getLogicalToday());
 
   /**
    * What a row says about the either/or this meal answers. Empty for the many
@@ -1464,7 +1466,7 @@ export function MealPlanScreen() {
   // The week as the deciding lens reads it: what's on each day, which nights
   // have no dinner, and which of those have already gone past.
   const nights = useMemo(
-    () => weekNights(entries, days, dayKeyOf(new Date())),
+    () => weekNights(entries, days, dayKeyOf(getLogicalToday())),
     [entries, days]
   );
 
@@ -1688,7 +1690,7 @@ export function MealPlanScreen() {
           haptics.tap();
           if (selectionMode) exitSelection();
           animateLayout();
-          setAnchor(new Date());
+          setAnchor(getLogicalToday());
           setCollapsedDays(new Set());
           setPreviousDaysExpanded(false);
         },

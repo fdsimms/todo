@@ -15,6 +15,10 @@ import {
   mealSlotTaskTitle,
   parseMealSlotSource,
 } from '../utils/mealSlotTasks';
+import { dayKeyOf } from '../utils/dateUtils';
+
+/** A local wall-clock time as the ISO instant the app stores, so the suite reads the same in any zone. */
+const localIso = (local: string) => new Date(local).toISOString();
 
 // mealSlotTasks reaches dateUtils for dayKeyToDate, which reaches the settings
 // store for dayResetTime — nothing here needs it, since every date this module
@@ -34,7 +38,7 @@ function entry(overrides: Partial<MealPlanEntry> = {}): MealPlanEntry {
     recipeId: null,
     title: `Meal ${seq}`,
     sortOrder: 1,
-    createdAt: '2026-01-01T00:00:00.000Z',
+    createdAt: localIso('2026-01-01T00:00'),
     cookedAt: null,
     leftoverId: null,
     recipeChoices: [],
@@ -241,7 +245,7 @@ describe('the fields a slot owns', () => {
   });
 
   it('lands on the slot\'s own day, noon-normalized', () => {
-    expect(mealSlotTaskFields('2026-08-22', 'lunch', null).dueDate.startsWith('2026-08-22')).toBe(true);
+    expect(dayKeyOf(new Date(mealSlotTaskFields('2026-08-22', 'lunch', null).dueDate))).toBe('2026-08-22');
   });
 
   it('offers the picker only while the slot is unanswered', () => {
@@ -356,7 +360,7 @@ describe('drift', () => {
     // Set once at creation from the day in the source id, which never changes —
     // so the only thing that can move it is the user, and chasing it would
     // rewrite a row they deferred to tomorrow straight back onto today.
-    const deferred = taskFor('2026-08-22', 'dinner', null, { dueDate: '2026-08-25T12:00:00.000Z' });
+    const deferred = taskFor('2026-08-22', 'dinner', null, { dueDate: localIso('2026-08-25T12:00') });
     const updates = mealSlotDrift(deferred, '2026-08-22', 'dinner', null);
     expect(updates).toBeNull();
   });

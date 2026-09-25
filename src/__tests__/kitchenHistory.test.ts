@@ -5,6 +5,9 @@ import {
 } from '../utils/kitchenHistory';
 import type { Leftover, MealPlanEntry, Recipe } from '../types';
 
+/** A local wall-clock time as the ISO instant the app stores, so the suite reads the same in any zone. */
+const localIso = (local: string) => new Date(local).toISOString();
+
 // kitchenHistory reaches dateUtils for getLogicalDayKey, which falls back to the
 // settings store for dayResetTime — which nothing here needs, since the one case
 // that cares passes the reset time explicitly. Same stub cookingStats.test.ts /
@@ -19,7 +22,7 @@ function entry(overrides: Partial<MealPlanEntry> & { id: string; date: string })
     recipeId: null,
     title: 'Something',
     sortOrder: 0,
-    createdAt: '2026-08-01T12:00:00.000Z',
+    createdAt: localIso('2026-08-01T12:00'),
     cookedAt: null,
     leftoverId: null,
     recipeChoices: [],
@@ -37,13 +40,13 @@ function leftover(overrides: Partial<Leftover> & { id: string }): Leftover {
     title: 'Something',
     recipeId: null,
     sourceEntryId: null,
-    storedAt: '2026-08-01T12:00:00.000Z',
+    storedAt: localIso('2026-08-01T12:00'),
     keepUntil: '2026-08-04',
     finishedAt: null,
     outcome: null,
     frozenAt: null,
     weightG: null,
-    createdAt: '2026-08-01T12:00:00.000Z',
+    createdAt: localIso('2026-08-01T12:00'),
     useUpTask: null,
     ...overrides,
   };
@@ -77,7 +80,7 @@ function recipe(id: string, name: string): Recipe {
     prepTasks: [],
     steps: [],
     sortOrder: 0,
-    createdAt: '2026-08-01T12:00:00.000Z',
+    createdAt: localIso('2026-08-01T12:00'),
     cookCount: 0,
     lastCookedAt: null,
     vote: null,
@@ -122,7 +125,7 @@ describe('kitchenEvents', () => {
           id: 'a',
           date: '2026-08-10',
           title: 'Seared steak',
-          cookedAt: '2026-08-14T19:00:00.000Z',
+          cookedAt: localIso('2026-08-14T19:00'),
         }),
       ],
       [],
@@ -140,7 +143,7 @@ describe('kitchenEvents', () => {
           date: '2026-08-10',
           title: 'Salmon',
           recipeId: 'r1',
-          cookedAt: '2026-08-10T19:00:00.000Z',
+          cookedAt: localIso('2026-08-10T19:00'),
         }),
       ],
       [],
@@ -158,7 +161,7 @@ describe('kitchenEvents', () => {
           date: '2026-08-10',
           title: 'Salmon',
           recipeId: 'deleted',
-          cookedAt: '2026-08-10T19:00:00.000Z',
+          cookedAt: localIso('2026-08-10T19:00'),
         }),
       ],
       [],
@@ -169,10 +172,10 @@ describe('kitchenEvents', () => {
 
   it('names the slot on a cooked meal and the outcome on a leftover', () => {
     const events = kitchenEvents(
-      [entry({ id: 'a', date: '2026-08-10', slot: 'lunch', cookedAt: '2026-08-10T13:00:00.000Z' })],
+      [entry({ id: 'a', date: '2026-08-10', slot: 'lunch', cookedAt: localIso('2026-08-10T13:00') })],
       [
-        leftover({ id: 'l1', finishedAt: '2026-08-10T20:00:00.000Z', outcome: 'eaten' }),
-        leftover({ id: 'l2', finishedAt: '2026-08-10T20:00:00.000Z', outcome: 'tossed' }),
+        leftover({ id: 'l1', finishedAt: localIso('2026-08-10T20:00'), outcome: 'eaten' }),
+        leftover({ id: 'l2', finishedAt: localIso('2026-08-10T20:00'), outcome: 'tossed' }),
       ],
       []
     );
@@ -184,7 +187,7 @@ describe('kitchenEvents', () => {
   it('reads a finished leftover with no outcome as eaten, like the row mapper does', () => {
     const events = kitchenEvents(
       [],
-      [leftover({ id: 'l1', finishedAt: '2026-08-10T20:00:00.000Z', outcome: null })],
+      [leftover({ id: 'l1', finishedAt: localIso('2026-08-10T20:00'), outcome: null })],
       []
     );
     expect(events[0].outcome).toBe('eaten');
@@ -193,8 +196,8 @@ describe('kitchenEvents', () => {
 
   it('keys rows by kind, so a meal and a leftover sharing an id can co-exist', () => {
     const events = kitchenEvents(
-      [entry({ id: 'x', date: '2026-08-10', cookedAt: '2026-08-10T19:00:00.000Z' })],
-      [leftover({ id: 'x', finishedAt: '2026-08-10T20:00:00.000Z', outcome: 'eaten' })],
+      [entry({ id: 'x', date: '2026-08-10', cookedAt: localIso('2026-08-10T19:00') })],
+      [leftover({ id: 'x', finishedAt: localIso('2026-08-10T20:00'), outcome: 'eaten' })],
       []
     );
     expect(new Set(events.map(e => e.key)).size).toBe(2);
@@ -203,11 +206,11 @@ describe('kitchenEvents', () => {
   it('sorts newest day first, then through the day by slot, leftovers last', () => {
     const events = kitchenEvents(
       [
-        entry({ id: 'd', date: '2026-08-10', slot: 'dinner', title: 'Steak', cookedAt: '2026-08-10T19:00:00.000Z' }),
-        entry({ id: 'b', date: '2026-08-10', slot: 'breakfast', title: 'Porridge', cookedAt: '2026-08-10T08:00:00.000Z' }),
-        entry({ id: 'old', date: '2026-08-09', slot: 'dinner', title: 'Curry', cookedAt: '2026-08-09T19:00:00.000Z' }),
+        entry({ id: 'd', date: '2026-08-10', slot: 'dinner', title: 'Steak', cookedAt: localIso('2026-08-10T19:00') }),
+        entry({ id: 'b', date: '2026-08-10', slot: 'breakfast', title: 'Porridge', cookedAt: localIso('2026-08-10T08:00') }),
+        entry({ id: 'old', date: '2026-08-09', slot: 'dinner', title: 'Curry', cookedAt: localIso('2026-08-09T19:00') }),
       ],
-      [leftover({ id: 'l1', title: 'Chilli', finishedAt: '2026-08-10T12:00:00.000Z', outcome: 'eaten' })],
+      [leftover({ id: 'l1', title: 'Chilli', finishedAt: localIso('2026-08-10T12:00'), outcome: 'eaten' })],
       []
     );
     expect(events.map(e => e.title)).toEqual(['Porridge', 'Steak', 'Chilli', 'Curry']);
@@ -216,16 +219,16 @@ describe('kitchenEvents', () => {
   it('breaks a tie on title, so two dinners on one night hold a stable order', () => {
     const forward = kitchenEvents(
       [
-        entry({ id: 'a', date: '2026-08-10', title: 'Zucchini', cookedAt: '2026-08-10T19:00:00.000Z' }),
-        entry({ id: 'b', date: '2026-08-10', title: 'Aubergine', cookedAt: '2026-08-10T19:00:00.000Z' }),
+        entry({ id: 'a', date: '2026-08-10', title: 'Zucchini', cookedAt: localIso('2026-08-10T19:00') }),
+        entry({ id: 'b', date: '2026-08-10', title: 'Aubergine', cookedAt: localIso('2026-08-10T19:00') }),
       ],
       [],
       []
     );
     const reversed = kitchenEvents(
       [
-        entry({ id: 'b', date: '2026-08-10', title: 'Aubergine', cookedAt: '2026-08-10T19:00:00.000Z' }),
-        entry({ id: 'a', date: '2026-08-10', title: 'Zucchini', cookedAt: '2026-08-10T19:00:00.000Z' }),
+        entry({ id: 'b', date: '2026-08-10', title: 'Aubergine', cookedAt: localIso('2026-08-10T19:00') }),
+        entry({ id: 'a', date: '2026-08-10', title: 'Zucchini', cookedAt: localIso('2026-08-10T19:00') }),
       ],
       [],
       []
@@ -238,7 +241,7 @@ describe('kitchenEvents', () => {
     // 00:30 local on the 11th, under a 02:00 reset, is still the 10th.
     const finishedAt = new Date(2026, 7, 11, 0, 30).toISOString();
     const events = kitchenEvents(
-      [entry({ id: 'a', date: '2026-08-11', cookedAt: '2026-08-11T19:00:00.000Z' })],
+      [entry({ id: 'a', date: '2026-08-11', cookedAt: localIso('2026-08-11T19:00') })],
       [leftover({ id: 'l1', finishedAt, outcome: 'eaten' })],
       [],
       '02:00'
@@ -254,9 +257,9 @@ describe('kitchenHistoryDays', () => {
   it('groups into days, newest first, keeping each day’s order', () => {
     const events = kitchenEvents(
       [
-        entry({ id: 'a', date: '2026-08-10', slot: 'breakfast', title: 'Porridge', cookedAt: '2026-08-10T08:00:00.000Z' }),
-        entry({ id: 'b', date: '2026-08-10', slot: 'dinner', title: 'Steak', cookedAt: '2026-08-10T19:00:00.000Z' }),
-        entry({ id: 'c', date: '2026-08-08', slot: 'dinner', title: 'Curry', cookedAt: '2026-08-08T19:00:00.000Z' }),
+        entry({ id: 'a', date: '2026-08-10', slot: 'breakfast', title: 'Porridge', cookedAt: localIso('2026-08-10T08:00') }),
+        entry({ id: 'b', date: '2026-08-10', slot: 'dinner', title: 'Steak', cookedAt: localIso('2026-08-10T19:00') }),
+        entry({ id: 'c', date: '2026-08-08', slot: 'dinner', title: 'Curry', cookedAt: localIso('2026-08-08T19:00') }),
       ],
       [],
       []
@@ -275,10 +278,10 @@ describe('kitchenHistoryDays', () => {
 describe('filterKitchenEvents', () => {
   const events = kitchenEvents(
     [
-      entry({ id: 'a', date: '2026-08-10', title: 'Lemon garlic salmon', cookedAt: '2026-08-10T19:00:00.000Z' }),
-      entry({ id: 'b', date: '2026-08-09', title: 'Takeout curry', cookedAt: '2026-08-09T19:00:00.000Z' }),
+      entry({ id: 'a', date: '2026-08-10', title: 'Lemon garlic salmon', cookedAt: localIso('2026-08-10T19:00') }),
+      entry({ id: 'b', date: '2026-08-09', title: 'Takeout curry', cookedAt: localIso('2026-08-09T19:00') }),
     ],
-    [leftover({ id: 'l1', title: 'Chicken stir-fry', finishedAt: '2026-08-08T19:00:00.000Z', outcome: 'tossed' })],
+    [leftover({ id: 'l1', title: 'Chicken stir-fry', finishedAt: localIso('2026-08-08T19:00'), outcome: 'tossed' })],
     []
   );
 

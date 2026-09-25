@@ -36,6 +36,9 @@ import { recipeMap } from '../utils/recipeComponents';
 import type { Leftover, Recipe, RecipeComponent } from '../types';
 import { LEFTOVER_KEEP_DAYS_DEFAULT, LEFTOVER_KEEP_DAYS_MAX } from '../types';
 
+/** A local wall-clock time as the ISO instant the app stores, so the suite reads the same in any zone. */
+const localIso = (local: string) => new Date(local).toISOString();
+
 // leftovers reaches dateUtils for dayKeyOf, which reaches the settings store for
 // dayResetTime — which nothing here needs, since a day key is a calendar day and
 // carries no time at all. Same stub mealPlan.test.ts uses.
@@ -93,7 +96,7 @@ function makeRecipe(id: string, name: string, overrides: Partial<Recipe> = {}): 
     prepTasks: [],
     steps: [],
     sortOrder: 1,
-    createdAt: '2026-01-01T00:00:00.000Z',
+    createdAt: localIso('2026-01-01T00:00'),
     imagePath: null,
     estimatedMinutes: null,
     timerStartedAt: null,
@@ -300,7 +303,7 @@ describe('needsAttention', () => {
 describe('isLiveLeftover / liveLeftovers / finishedLeftovers', () => {
   it('splits on the finished stamp', () => {
     const live = aged(1, 4);
-    const done = aged(5, 3, { finishedAt: '2026-08-12T18:00:00.000Z', outcome: 'eaten' });
+    const done = aged(5, 3, { finishedAt: localIso('2026-08-12T18:00'), outcome: 'eaten' });
     expect(isLiveLeftover(live)).toBe(true);
     expect(isLiveLeftover(done)).toBe(false);
     expect(liveLeftovers([done, live])).toEqual([live]);
@@ -308,8 +311,8 @@ describe('isLiveLeftover / liveLeftovers / finishedLeftovers', () => {
   });
 
   it('puts the most recently closed first in the history', () => {
-    const older = aged(9, 2, { finishedAt: '2026-08-09T18:00:00.000Z', outcome: 'eaten' });
-    const newer = aged(4, 2, { finishedAt: '2026-08-12T18:00:00.000Z', outcome: 'tossed' });
+    const older = aged(9, 2, { finishedAt: localIso('2026-08-09T18:00'), outcome: 'eaten' });
+    const newer = aged(4, 2, { finishedAt: localIso('2026-08-12T18:00'), outcome: 'tossed' });
     expect(finishedLeftovers([older, newer]).map(l => l.id)).toEqual([newer.id, older.id]);
   });
 });
@@ -670,7 +673,7 @@ describe('leftoverContainersFor', () => {
 // ─── the freezer ────────────────────────────────────────────────────────────
 
 describe('a frozen container', () => {
-  const FROZEN_ON = '2026-07-12T09:00:00.000Z';
+  const FROZEN_ON = localIso('2026-07-12T09:00');
   // Two days past its keep-until as of NOW, so every read below is one that
   // would be shouting if the freezer weren't suspending it.
   const frozen = makeLeftover({ keepUntil: '2026-08-11', frozenAt: FROZEN_ON });

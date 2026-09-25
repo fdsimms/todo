@@ -15,6 +15,9 @@ import { groceryNameKey } from '../utils/groceryParse';
 import { mealSlotSourceId, mealSlotTaskDraft } from '../utils/mealSlotTasks';
 import { dayKeyOf } from '../utils/dateUtils';
 
+/** A local wall-clock time as the ISO instant the app stores, so the suite reads the same in any zone. */
+const localIso = (local: string) => new Date(local).toISOString();
+
 jest.mock('../db/database', () => ({
   dbGetMealPlanEntries: jest.fn().mockReturnValue([]),
   dbGetMealPlanEntry: jest.fn().mockReturnValue(null),
@@ -144,7 +147,7 @@ function entry(
     recipeId: null,
     title: `Meal ${seq}`,
     sortOrder: 1,
-    createdAt: '2026-01-01T00:00:00.000Z',
+    createdAt: localIso('2026-01-01T00:00'),
     cookedAt: null,
     leftoverId: null,
     recipeChoices: [],
@@ -536,9 +539,9 @@ describe('initialize', () => {
   });
 
   it('loads addedToListAt from the database, same as any other database swap', () => {
-    (dbGetMealPlanAddedToList as jest.Mock).mockReturnValue({ '2026-08-09': '2026-08-09T00:00:00.000Z' });
+    (dbGetMealPlanAddedToList as jest.Mock).mockReturnValue({ '2026-08-09': localIso('2026-08-09T00:00') });
     useMealPlanStore.getState().initialize();
-    expect(useMealPlanStore.getState().addedToListAt).toEqual({ '2026-08-09': '2026-08-09T00:00:00.000Z' });
+    expect(useMealPlanStore.getState().addedToListAt).toEqual({ '2026-08-09': localIso('2026-08-09T00:00') });
   });
 });
 
@@ -873,7 +876,7 @@ describe('setRecipeScale', () => {
   });
 
   it('is allowed on an already-cooked entry, same as a pick', () => {
-    const dinner = entry('2026-08-05', 'dinner', { cookedAt: '2026-08-05T18:00:00.000Z' });
+    const dinner = entry('2026-08-05', 'dinner', { cookedAt: localIso('2026-08-05T18:00') });
     loadWeek([dinner]);
 
     useMealPlanStore.getState().setRecipeScale(dinner.id, 2);
@@ -906,7 +909,7 @@ describe('setCooked', () => {
   // The half that used not to exist: a row could be ticked and never un-ticked
   // except through the bulk bar (#1361).
   it('clears cookedAt again', () => {
-    const dinner = entry('2026-08-05', 'dinner', { cookedAt: '2026-08-05T18:00:00.000Z' });
+    const dinner = entry('2026-08-05', 'dinner', { cookedAt: localIso('2026-08-05T18:00') });
     loadWeek([dinner]);
 
     useMealPlanStore.getState().setCooked(dinner.id, false);
@@ -917,7 +920,7 @@ describe('setCooked', () => {
 
   // Idempotence is what holds the recipe's cookCount to one bump per cooking.
   it('is a no-op on an entry already in the target state', () => {
-    const dinner = entry('2026-08-05', 'dinner', { cookedAt: '2026-08-05T18:00:00.000Z' });
+    const dinner = entry('2026-08-05', 'dinner', { cookedAt: localIso('2026-08-05T18:00') });
     loadWeek([dinner]);
 
     useMealPlanStore.getState().setCooked(dinner.id, true);
@@ -1091,20 +1094,20 @@ describe('purgeOldEntries', () => {
   it('trims addedToListAt stamps past the same horizon', () => {
     jest.useFakeTimers().setSystemTime(new Date(2026, 7, 8));
     useMealPlanStore.setState({
-      addedToListAt: { '2026-02-08': '2026-02-08T00:00:00.000Z', '2026-08-03': '2026-08-03T00:00:00.000Z' },
+      addedToListAt: { '2026-02-08': localIso('2026-02-08T00:00'), '2026-08-03': localIso('2026-08-03T00:00') },
     });
 
     useMealPlanStore.getState().purgeOldEntries();
 
     expect(useMealPlanStore.getState().addedToListAt).toEqual({
-      '2026-08-03': '2026-08-03T00:00:00.000Z',
+      '2026-08-03': localIso('2026-08-03T00:00'),
     });
-    expect(dbSetMealPlanAddedToList).toHaveBeenCalledWith({ '2026-08-03': '2026-08-03T00:00:00.000Z' });
+    expect(dbSetMealPlanAddedToList).toHaveBeenCalledWith({ '2026-08-03': localIso('2026-08-03T00:00') });
     jest.useRealTimers();
   });
 
   it('does not touch storage when no stamp was old enough to trim', () => {
-    useMealPlanStore.setState({ addedToListAt: { '2026-08-03': '2026-08-03T00:00:00.000Z' } });
+    useMealPlanStore.setState({ addedToListAt: { '2026-08-03': localIso('2026-08-03T00:00') } });
     useMealPlanStore.getState().purgeOldEntries();
     expect(dbSetMealPlanAddedToList).not.toHaveBeenCalled();
   });
@@ -1139,7 +1142,7 @@ describe('stampAddedToList', () => {
   });
 
   it('keeps stamps for other weeks rather than replacing the whole map', () => {
-    useMealPlanStore.setState({ addedToListAt: { '2026-08-02': '2026-08-02T00:00:00.000Z' } });
+    useMealPlanStore.setState({ addedToListAt: { '2026-08-02': localIso('2026-08-02T00:00') } });
     useMealPlanStore.getState().stampAddedToList('2026-08-09');
 
     const stamps = useMealPlanStore.getState().addedToListAt;
@@ -1332,12 +1335,12 @@ describe('bulkReplaceItem', () => {
   });
 
   it('leaves cookedAt untouched — relabelling a past night does not un-cook it', () => {
-    const a = entry('2026-08-05', 'dinner', { cookedAt: '2026-08-05T18:00:00.000Z' });
+    const a = entry('2026-08-05', 'dinner', { cookedAt: localIso('2026-08-05T18:00') });
     loadWeek([a]);
 
     useMealPlanStore.getState().bulkReplaceItem([a.id], { recipeId: null, title: 'New name' });
 
-    expect(getEntries().find(e => e.id === a.id)!.cookedAt).toBe('2026-08-05T18:00:00.000Z');
+    expect(getEntries().find(e => e.id === a.id)!.cookedAt).toBe(localIso('2026-08-05T18:00'));
   });
 
   it('refuses a blank title', () => {
@@ -1558,7 +1561,7 @@ describe('a cooking marks what it used as opened', () => {
   it('leaves a staple and a row it does not claim you have alone', () => {
     cookOn('2026-08-05', recipeWith('Chili', ['salt', 'cumin']), [
       { ...onHand('salt'), isStaple: true },
-      { ...onHand('cumin'), onHandUntil: '2026-01-01T00:00:00.000Z' },
+      { ...onHand('cumin'), onHandUntil: localIso('2026-01-01T00:00') },
     ]);
 
     expect(openedOf('salt')).toBeNull();
@@ -1632,7 +1635,7 @@ describe('bulkSetCooked', () => {
   });
 
   it('clears cookedAt on every named entry that has one', () => {
-    const a = entry('2026-08-05', 'dinner', { cookedAt: '2026-08-05T18:00:00.000Z' });
+    const a = entry('2026-08-05', 'dinner', { cookedAt: localIso('2026-08-05T18:00') });
     loadWeek([a]);
 
     useMealPlanStore.getState().bulkSetCooked([a.id], false);
@@ -1641,7 +1644,7 @@ describe('bulkSetCooked', () => {
   });
 
   it('is idempotent — an entry already at the target state is not rewritten', () => {
-    const alreadyCooked = entry('2026-08-05', 'dinner', { cookedAt: '2026-08-05T18:00:00.000Z' });
+    const alreadyCooked = entry('2026-08-05', 'dinner', { cookedAt: localIso('2026-08-05T18:00') });
     const alreadyRaw = entry('2026-08-06', 'lunch');
     loadWeek([alreadyCooked, alreadyRaw]);
 
@@ -1659,7 +1662,7 @@ describe('bulkSetCooked', () => {
   });
 
   it('registers an undo that restores each entry to its own original cookedAt', () => {
-    const a = entry('2026-08-05', 'dinner', { cookedAt: '2026-08-05T18:00:00.000Z' });
+    const a = entry('2026-08-05', 'dinner', { cookedAt: localIso('2026-08-05T18:00') });
     const b = entry('2026-08-06', 'lunch', { cookedAt: null });
     loadWeek([a, b]);
 
@@ -1667,7 +1670,7 @@ describe('bulkSetCooked', () => {
     useMealPlanStore.getState().undoLastAction();
 
     const byId = new Map(getEntries().map(e => [e.id, e]));
-    expect(byId.get(a.id)!.cookedAt).toBe('2026-08-05T18:00:00.000Z');
+    expect(byId.get(a.id)!.cookedAt).toBe(localIso('2026-08-05T18:00'));
     expect(byId.get(b.id)!.cookedAt).toBeNull();
   });
 });
@@ -1785,7 +1788,7 @@ describe('meal tasks', () => {
     // Where it landed…
     const landed = slotTaskFor('2026-08-07', 'breakfast')!;
     expect(landed.title).toBe('Ragu');
-    expect(landed.dueDate!.startsWith('2026-08-07')).toBe(true);
+    expect(dayKeyOf(new Date(landed.dueDate!))).toBe('2026-08-07');
     // …and the slot it left, which is the half a one-sided reconcile misses.
     expect(slotTaskFor('2026-08-05', 'dinner')!.title).toBe('Dinner');
 
@@ -1827,7 +1830,7 @@ describe('meal tasks', () => {
 
   it('leaves a cooked meal alone rather than re-titling its row', () => {
     loadWeek([entry('2026-08-05', 'dinner', {
-      recipeId: 'r1', title: 'Ragu', cookedAt: '2026-08-05T18:00:00.000Z',
+      recipeId: 'r1', title: 'Ragu', cookedAt: localIso('2026-08-05T18:00'),
     })]);
     plantSlotTask('2026-08-05', 'dinner');
     const cooked = getEntries()[0];
@@ -1922,7 +1925,7 @@ describe('meal tasks', () => {
   });
 
   it('setCookedPaired returns null when there is nothing to do', () => {
-    loadWeek([entry('2026-08-05', 'dinner', { cookedAt: '2026-08-05T18:00:00.000Z' })]);
+    loadWeek([entry('2026-08-05', 'dinner', { cookedAt: localIso('2026-08-05T18:00') })]);
     const cooked = getEntries()[0];
     expect(useMealPlanStore.getState().setCookedPaired(cooked.id, true)).toBeNull();
     expect(useMealPlanStore.getState().setCookedPaired('nope', true)).toBeNull();
@@ -2127,7 +2130,7 @@ describe('calendar events (#1494)', () => {
 // door onto: the caller knows which dish came off the heat and nothing else.
 describe('finishCookForRecipe', () => {
   const today = dayKeyOf(new Date());
-  const stats = { cookCount: 3, lastCookedAt: '2026-01-01T00:00:00.000Z' };
+  const stats = { cookCount: 3, lastCookedAt: localIso('2026-01-01T00:00') };
 
   /**
    * Today's plan as SQLite would answer it. Both reads are stubbed because
@@ -2250,7 +2253,7 @@ describe('finishCookForRecipe', () => {
   // A dish cooked twice in a day ticks the row that hasn't happened yet.
   it('skips a row already ticked off and takes the next one', () => {
     const lunch = entry(today, 'lunch', {
-      recipeId: 'r1', title: 'Ragu', cookedAt: '2026-01-01T12:00:00.000Z',
+      recipeId: 'r1', title: 'Ragu', cookedAt: localIso('2026-01-01T12:00'),
     });
     const dinner = entry(today, 'dinner', { recipeId: 'r1', title: 'Ragu' });
     planToday([lunch, dinner]);

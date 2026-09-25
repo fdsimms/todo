@@ -21,6 +21,9 @@ jest.mock('../store/useCategoryStore', () => ({
 import { isMorningCheckInCandidate, morningCheckInTasks } from '../utils/morningCheckIn';
 import type { Task } from '../types';
 
+/** A local wall-clock time as the ISO instant the app stores, so the suite reads the same in any zone. */
+const localIso = (local: string) => new Date(local).toISOString();
+
 const makeTask = (overrides: Partial<Task> = {}): Task => ({
   id: '1',
   title: 'Take out trash',
@@ -29,7 +32,7 @@ const makeTask = (overrides: Partial<Task> = {}): Task => ({
   missedAt: null,
   autoScheduledAt: null,
   completedAt: null,
-  createdAt: '2025-01-01T00:00:00.000Z',
+  createdAt: localIso('2025-01-01T00:00'),
   seenAt: null,
   dueDate: null,
   deadline: null,
@@ -152,38 +155,38 @@ const DAY_RESET = '00:00';
 // Fixed "now" for every test: 2025-06-10 is today, so a dueDate on 2025-06-09
 // or earlier is yesterday-or-older, and 2025-06-10 itself is today.
 beforeEach(() => {
-  jest.useFakeTimers().setSystemTime(new Date('2025-06-10T09:00:00.000Z'));
+  jest.useFakeTimers().setSystemTime(new Date(localIso('2025-06-10T09:00')));
 });
 afterEach(() => {
   jest.useRealTimers();
 });
 
 describe('isMorningCheckInCandidate', () => {
-  const DEADLINE = '2025-06-09T00:00:00.000Z';
+  const DEADLINE = localIso('2025-06-09T00:00');
 
   it('is true for an uncompleted recurring task due on a past day, with a deadline set', () => {
-    const task = makeTask({ dueDate: '2025-06-09T00:00:00.000Z', deadline: DEADLINE });
+    const task = makeTask({ dueDate: localIso('2025-06-09T00:00'), deadline: DEADLINE });
     expect(isMorningCheckInCandidate(task, DAY_RESET)).toBe(true);
   });
 
   it('is false for a task with no deadline set, even if overdue', () => {
-    const task = makeTask({ dueDate: '2025-06-09T00:00:00.000Z', deadline: null });
+    const task = makeTask({ dueDate: localIso('2025-06-09T00:00'), deadline: null });
     expect(isMorningCheckInCandidate(task, DAY_RESET)).toBe(false);
   });
 
   it('is false for a task due today', () => {
-    const task = makeTask({ dueDate: '2025-06-10T00:00:00.000Z', deadline: DEADLINE });
+    const task = makeTask({ dueDate: localIso('2025-06-10T00:00'), deadline: DEADLINE });
     expect(isMorningCheckInCandidate(task, DAY_RESET)).toBe(false);
   });
 
   it('is false once the task is completed or archived', () => {
-    const dueDate = '2025-06-09T00:00:00.000Z';
+    const dueDate = localIso('2025-06-09T00:00');
     expect(isMorningCheckInCandidate(makeTask({ dueDate, deadline: DEADLINE, completed: true }), DAY_RESET)).toBe(false);
     expect(isMorningCheckInCandidate(makeTask({ dueDate, deadline: DEADLINE, archived: true }), DAY_RESET)).toBe(false);
   });
 
   it('is false for a one-off (non-recurring) task', () => {
-    const task = makeTask({ dueDate: '2025-06-09T00:00:00.000Z', deadline: DEADLINE, recurrenceType: 'none' });
+    const task = makeTask({ dueDate: localIso('2025-06-09T00:00'), deadline: DEADLINE, recurrenceType: 'none' });
     expect(isMorningCheckInCandidate(task, DAY_RESET)).toBe(false);
   });
 
@@ -192,17 +195,17 @@ describe('isMorningCheckInCandidate', () => {
   });
 
   it('is false for a paused vacation task', () => {
-    const task = makeTask({ dueDate: '2025-06-09T00:00:00.000Z', deadline: DEADLINE, vacationPause: true });
+    const task = makeTask({ dueDate: localIso('2025-06-09T00:00'), deadline: DEADLINE, vacationPause: true });
     expect(isMorningCheckInCandidate(task, DAY_RESET)).toBe(false);
   });
 
   it('is false for a negative habit', () => {
-    const task = makeTask({ dueDate: '2025-06-09T00:00:00.000Z', deadline: DEADLINE, polarity: 'negative' });
+    const task = makeTask({ dueDate: localIso('2025-06-09T00:00'), deadline: DEADLINE, polarity: 'negative' });
     expect(isMorningCheckInCandidate(task, DAY_RESET)).toBe(false);
   });
 
   it('is false for a subtask', () => {
-    const task = makeTask({ dueDate: '2025-06-09T00:00:00.000Z', deadline: DEADLINE, parentId: 'parent-1' });
+    const task = makeTask({ dueDate: localIso('2025-06-09T00:00'), deadline: DEADLINE, parentId: 'parent-1' });
     expect(isMorningCheckInCandidate(task, DAY_RESET)).toBe(false);
   });
 
@@ -210,24 +213,24 @@ describe('isMorningCheckInCandidate', () => {
     // 1:30am with a 2am reset is still logically June 9 — a bare calendar-date
     // comparison would see dueDate's June 9 vs. now's June 10 and wrongly flag
     // this as missed a day early (the grace-window bug CLAUDE.md calls out).
-    jest.setSystemTime(new Date('2025-06-10T01:30:00.000Z'));
-    const task = makeTask({ dueDate: '2025-06-09T00:00:00.000Z', deadline: DEADLINE });
+    jest.setSystemTime(new Date(localIso('2025-06-10T01:30')));
+    const task = makeTask({ dueDate: localIso('2025-06-09T00:00'), deadline: DEADLINE });
     expect(isMorningCheckInCandidate(task, '02:00')).toBe(false);
   });
 
   it('a task from the day before that still counts as missed under the same reset', () => {
-    jest.setSystemTime(new Date('2025-06-10T01:30:00.000Z'));
-    const task = makeTask({ dueDate: '2025-06-08T00:00:00.000Z', deadline: DEADLINE });
+    jest.setSystemTime(new Date(localIso('2025-06-10T01:30')));
+    const task = makeTask({ dueDate: localIso('2025-06-08T00:00'), deadline: DEADLINE });
     expect(isMorningCheckInCandidate(task, '02:00')).toBe(true);
   });
 });
 
 describe('morningCheckInTasks', () => {
   it('filters a mixed list down to only the eligible ones', () => {
-    const missedYesterday = makeTask({ id: 'a', dueDate: '2025-06-09T00:00:00.000Z', deadline: '2025-06-09T00:00:00.000Z' });
-    const doneYesterday = makeTask({ id: 'b', dueDate: '2025-06-09T00:00:00.000Z', deadline: '2025-06-09T00:00:00.000Z', completed: true });
-    const dueToday = makeTask({ id: 'c', dueDate: '2025-06-10T00:00:00.000Z', deadline: '2025-06-10T00:00:00.000Z' });
-    const noDeadline = makeTask({ id: 'd', dueDate: '2025-06-09T00:00:00.000Z', deadline: null });
+    const missedYesterday = makeTask({ id: 'a', dueDate: localIso('2025-06-09T00:00'), deadline: localIso('2025-06-09T00:00') });
+    const doneYesterday = makeTask({ id: 'b', dueDate: localIso('2025-06-09T00:00'), deadline: localIso('2025-06-09T00:00'), completed: true });
+    const dueToday = makeTask({ id: 'c', dueDate: localIso('2025-06-10T00:00'), deadline: localIso('2025-06-10T00:00') });
+    const noDeadline = makeTask({ id: 'd', dueDate: localIso('2025-06-09T00:00'), deadline: null });
     expect(morningCheckInTasks([missedYesterday, doneYesterday, dueToday, noDeadline], DAY_RESET)).toEqual([missedYesterday]);
   });
 

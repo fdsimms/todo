@@ -7,6 +7,9 @@ import {
 } from '../utils/leftoverTasks';
 import type { Leftover } from '../types';
 
+/** A local wall-clock time as the ISO instant the app stores, so the suite reads the same in any zone. */
+const localIso = (local: string) => new Date(local).toISOString();
+
 // utils/leftovers → dateUtils → the settings store → database.ts → expo-sqlite,
 // none of which this suite needs; same stub groceryExpiry.test.ts takes.
 const settingsState = { dayResetTime: '00:00' };
@@ -21,19 +24,19 @@ function leftover(overrides: Partial<Leftover> = {}): Leftover {
     title: 'Chicken stir-fry',
     recipeId: null,
     sourceEntryId: null,
-    storedAt: '2026-08-10T18:00:00.000Z',
+    storedAt: localIso('2026-08-10T18:00'),
     keepUntil: '2026-08-14',
     finishedAt: null,
     outcome: null,
     frozenAt: null,
     weightG: null,
-    createdAt: '2026-08-10T18:00:00.000Z',
+    createdAt: localIso('2026-08-10T18:00'),
     useUpTask: null,
     ...overrides,
   };
 }
 
-const now = new Date('2026-08-13T09:00:00.000Z');
+const now = new Date(localIso('2026-08-13T09:00'));
 
 // Every other function here takes `now` as an argument, but wantsUseUpTask asks
 // freshness.ts, which reads the clock itself — so without pinning it the
@@ -83,7 +86,7 @@ describe('wantsUseUpTask', () => {
 
   it('ignores a closed-out leftover, however close its keep-until day is', () => {
     expect(
-      wantsUseUpTask(leftover({ keepUntil: '2026-08-14', finishedAt: '2026-08-12T00:00:00.000Z', outcome: 'eaten' }), true)
+      wantsUseUpTask(leftover({ keepUntil: '2026-08-14', finishedAt: localIso('2026-08-12T00:00'), outcome: 'eaten' }), true)
     ).toBe(false);
   });
 
@@ -95,7 +98,7 @@ describe('wantsUseUpTask', () => {
     // fires the task during the grace window, before its own day arrives.
     settingsState.dayResetTime = '02:00';
     try {
-      jest.setSystemTime(new Date('2026-08-14T00:30:00.000Z'));
+      jest.setSystemTime(new Date(localIso('2026-08-14T00:30')));
       expect(wantsUseUpTask(leftover({ keepUntil: '2026-08-15' }), true)).toBe(false);
     } finally {
       settingsState.dayResetTime = '00:00';

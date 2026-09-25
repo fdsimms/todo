@@ -148,11 +148,22 @@ export function describeWater(ml: number, unit: WaterUnit): string {
   return `${Math.round(mlToFlOz(ml))} fl oz`;
 }
 
-/** What a stepper in `unit` steps by and between. */
-export function waterRange(unit: WaterUnit): { min: number; max: number; step: number } {
+/**
+ * What a stepper in `unit` steps by and between, and where it starts from
+ * empty. The ounce default is the millilitre one snapped onto the ounce grid
+ * (2,000 ml is 67.6 fl oz, so 64), since a start off the grid would step off
+ * it on the first press.
+ */
+export function waterRange(unit: WaterUnit): { min: number; max: number; step: number; default: number } {
+  const defaultMl = NUTRITION_TARGET_RANGES.waterMl.default;
   return unit === 'flOz'
-    ? { min: WATER_MIN_FL_OZ, max: WATER_MAX_FL_OZ, step: WATER_STEP_FL_OZ }
-    : { min: WATER_MIN_ML, max: WATER_MAX_ML, step: WATER_STEP_ML };
+    ? {
+      min: WATER_MIN_FL_OZ,
+      max: WATER_MAX_FL_OZ,
+      step: WATER_STEP_FL_OZ,
+      default: Math.round(mlToFlOz(defaultMl) / WATER_STEP_FL_OZ) * WATER_STEP_FL_OZ,
+    }
+    : { min: WATER_MIN_ML, max: WATER_MAX_ML, step: WATER_STEP_ML, default: defaultMl };
 }
 
 /**

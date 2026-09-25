@@ -153,7 +153,7 @@ export function completionRefusal(task: Task, options?: CompletionOptions): stri
   if (isRecurrenceNotYetDue(task)) {
     if (task.recurrenceType === 'hours' && options?.logEarly) return null;
     return task.recurrenceType === 'hours'
-      ? `That task isn't ready yet — it unlocks ${task.recurrenceInterval} hour${task.recurrenceInterval === 1 ? '' : 's'} after you last checked it off.`
+      ? `That task isn't ready yet. It unlocks ${task.recurrenceInterval} hour${task.recurrenceInterval === 1 ? '' : 's'} after you last checked it off.`
       : 'That recurring task is not due yet, and completing it early would schedule the next occurrence off today rather than off its own day.';
   }
   return null;

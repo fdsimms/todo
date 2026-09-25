@@ -1231,7 +1231,7 @@ export function FoodLogEntrySheet({
                 drinks, off for anything syrupy or creamy. See
                 `scalePanelToAmount`'s beverage fallback. */}
             {!!built?.approximate && (
-              <Text style={styles.hint}>Approximate — no manufacturer serving data.</Text>
+              <Text style={styles.hint}>Approximate: no manufacturer serving data.</Text>
             )}
 
             {unfiled && (

@@ -9,6 +9,9 @@ import {
   type CostEstimate,
 } from '../utils/recipeCost';
 
+/** A local wall-clock time as the ISO instant the app stores, so the suite reads the same in any zone. */
+const localIso = (local: string) => new Date(local).toISOString();
+
 // recipeCost reaches mealPlanGroceries for estimateWeekCost, which reaches
 // mealPlan.ts for isKeyInRange, which reaches dateUtils for dayKeyOf, which
 // reaches the settings store for dayResetTime — unneeded here, since a day
@@ -59,7 +62,7 @@ function recipe(name: string, ingredients: RecipeIngredient[], overrides: Partia
     prepTasks: [],
     steps: [],
     sortOrder: seq,
-    createdAt: '2026-01-01T00:00:00.000Z',
+    createdAt: localIso('2026-01-01T00:00'),
     cookCount: 0,
     lastCookedAt: null,
     vote: null,
@@ -92,7 +95,7 @@ function entry(date: string, recipeId: string | null, overrides: Partial<MealPla
     recipeId,
     title: overrides.title ?? 'Leftovers',
     sortOrder: 1,
-    createdAt: '2026-01-01T00:00:00.000Z',
+    createdAt: localIso('2026-01-01T00:00'),
     cookedAt: null,
     leftoverId: null,
     recipeChoices: [],
@@ -121,7 +124,7 @@ function item(overrides: Partial<GroceryItem> & { name: string }): GroceryItem {
     purchaseCount: 0,
     lastAddedAt: null,
     lastPurchasedAt: null,
-    createdAt: '2026-01-01T00:00:00.000Z',
+    createdAt: localIso('2026-01-01T00:00'),
     onHandUntil: null,
     sourceRecipeId: null,
     sourceRecipeTitle: null,
@@ -139,7 +142,7 @@ function item(overrides: Partial<GroceryItem> & { name: string }): GroceryItem {
 
 beforeEach(() => { seq = 0; });
 
-const NOW = new Date('2026-08-18T00:00:00.000Z');
+const NOW = new Date(localIso('2026-08-18T00:00'));
 
 describe('estimateRecipeCost', () => {
   it('is null for a recipe with no ingredients', () => {
@@ -273,15 +276,15 @@ describe('estimateRecipeCost', () => {
     const catalog = [
       item({
         name: 'Flour', lastPriceMinor: 200, lastPriceQuantity: '2 lb', priceHistory: [],
-        lastPricedAt: '2026-08-01T00:00:00.000Z',
+        lastPricedAt: localIso('2026-08-01T00:00'),
       }),
       item({
         name: 'Sugar', lastPriceMinor: 300, lastPriceQuantity: '2 lb', priceHistory: [],
-        lastPricedAt: '2026-03-01T00:00:00.000Z',
+        lastPricedAt: localIso('2026-03-01T00:00'),
       }),
     ];
     const estimate = estimateRecipeCost(dish, catalog);
-    expect(estimate!.oldestPricedAt).toBe('2026-03-01T00:00:00.000Z');
+    expect(estimate!.oldestPricedAt).toBe(localIso('2026-03-01T00:00'));
   });
 
   it('includes a component\'s ingredients, priced through the same catalog', () => {
@@ -308,7 +311,7 @@ describe('estimateRecipeCost', () => {
     const swap: StandingSwap = {
       link: {
         itemId: milk.id, subItemId: oatMilk.id, standing: true, note: null,
-        ratioFrom: null, ratioTo: null, createdAt: '2026-01-01T00:00:00.000Z',
+        ratioFrom: null, ratioTo: null, createdAt: localIso('2026-01-01T00:00'),
       },
       from: milk,
       to: oatMilk,
@@ -358,7 +361,7 @@ describe('estimateWeekCost', () => {
   it('excludes a cooked entry, same as collectPlannedIngredients', () => {
     const soup = recipe('Soup', [ing('Stock', { quantity: '1 lb' })]);
     const recipesById = new Map([[soup.id, soup]]);
-    const entries = [entry('2026-08-10', soup.id, { cookedAt: '2026-08-10T00:00:00.000Z' })];
+    const entries = [entry('2026-08-10', soup.id, { cookedAt: localIso('2026-08-10T00:00') })];
     const catalog = [item({ name: 'Stock', lastPriceMinor: 400, lastPriceQuantity: '2 lb' })];
     expect(estimateWeekCost(entries, recipesById, catalog, RANGE)).toBeNull();
   });
@@ -399,7 +402,7 @@ describe('describeRecipeCost / describeWeekCost', () => {
 
   it('appends the oldest price\'s age', () => {
     const estimate: CostEstimate = {
-      totalMinor: 1400, priced: 3, total: 3, oldestPricedAt: '2026-03-01T00:00:00.000Z',
+      totalMinor: 1400, priced: 3, total: 3, oldestPricedAt: localIso('2026-03-01T00:00'),
     };
     expect(describeRecipeCost(estimate, '$', NOW)).toBe('≈ $14.00 · prices as of Mar');
   });

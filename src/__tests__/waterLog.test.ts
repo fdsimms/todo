@@ -144,8 +144,9 @@ describe('the two units', () => {
   it('steps in whole fluid ounces rather than the millilitre step converted', () => {
     // 250ml is 8.45 fl oz, which would put a decimal on every figure. 8 is the
     // glass the unit is actually counted in.
-    expect(waterRange('ml')).toEqual({ min: 250, max: 6000, step: 250 });
-    expect(waterRange('flOz')).toEqual({ min: 8, max: 200, step: 8 });
+    expect(waterRange('ml')).toEqual({ min: 250, max: 6000, step: 250, default: 2000 });
+    // 2,000 ml is 67.6 fl oz, snapped onto the 8 oz grid.
+    expect(waterRange('flOz')).toEqual({ min: 8, max: 200, step: 8, default: 64 });
   });
 
   it('reads a stored volume as whole units of the picked one', () => {

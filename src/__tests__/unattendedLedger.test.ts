@@ -12,6 +12,9 @@ import {
 import { GENERATED_KIND_SPECS } from '../utils/generatedTasks';
 import type { UnattendedEntry } from '../types';
 
+/** A local wall-clock time as the ISO instant the app stores, so the suite reads the same in any zone. */
+const localIso = (local: string) => new Date(local).toISOString();
+
 // dateUtils reads dayResetTime off the settings store, which reaches
 // expo-sqlite. Mocked the same way retention.test.ts does, and for the same
 // reason: these rules are pure and there is no database to stand up for them.
@@ -22,7 +25,7 @@ jest.mock('../store/useSettingsStore', () => ({
 function entry(overrides: Partial<UnattendedEntry> = {}): UnattendedEntry {
   return {
     id: 'e1',
-    at: '2026-09-15T06:12:00.000Z',
+    at: localIso('2026-09-15T06:12'),
     action: 'created',
     kind: 'birthday',
     title: 'Get a card for Ada',
@@ -91,9 +94,9 @@ describe('describeUnattendedEntry', () => {
 describe('unattendedDays', () => {
   it('groups by day, newest day first and newest entry first within it', () => {
     const days = unattendedDays([
-      entry({ id: 'a', at: '2026-09-14T08:00:00.000Z' }),
-      entry({ id: 'b', at: '2026-09-15T06:00:00.000Z' }),
-      entry({ id: 'c', at: '2026-09-15T09:00:00.000Z' }),
+      entry({ id: 'a', at: localIso('2026-09-14T08:00') }),
+      entry({ id: 'b', at: localIso('2026-09-15T06:00') }),
+      entry({ id: 'c', at: localIso('2026-09-15T09:00') }),
     ]);
     expect(days.map(d => d.dayKey)).toEqual(['2026-09-15', '2026-09-14']);
     expect(days[0].entries.map(e => e.id)).toEqual(['c', 'b']);

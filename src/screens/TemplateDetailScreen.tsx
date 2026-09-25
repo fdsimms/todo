@@ -29,7 +29,7 @@ import { useCategoryStore } from '../store/useCategoryStore';
 import { useTaskStore } from '../store/useTaskStore';
 import { useShallow } from 'zustand/react/shallow';
 import { useColors } from '../theme/ThemeContext';
-import { spacing, font, radius, iconSize, interaction, type Colors } from '../theme';
+import { spacing, font, radius, iconSize, interaction, flattenOverlay, type Colors } from '../theme';
 import { haptics } from '../utils/haptics';
 import { confirmDelete } from '../utils/confirmDelete';
 import { animateLayout } from '../utils/layoutAnimation';
@@ -769,8 +769,12 @@ const makeStyles = (colors: Colors) => StyleSheet.create({
   itemRowActive: {
     opacity: 0.85,
   },
+  // Opaque, not the translucent warningBg itself: the row sits in a
+  // SwipeableRow with a select action and in a drag list, and a translucent
+  // fill lets the swipe panel or the rows under a drag show through. See the
+  // `flattenOverlay` note in CLAUDE.md.
   itemRowBroken: {
-    backgroundColor: colors.warningBg,
+    backgroundColor: flattenOverlay(colors.warningBg, colors.bgSecondary),
   },
   itemInfo: {
     flex: 1,

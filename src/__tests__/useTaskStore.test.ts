@@ -5525,7 +5525,8 @@ describe('checkMoodTasks', () => {
 
   const entry = (dayKey: string, mood: number | null) => ({
     id: `m-${dayKey}`,
-    loggedAt: `${dayKey}T09:00:00.000Z`,
+    // Local 09:00, like the clock these tests set, so the suite reads the same in any zone.
+    loggedAt: new Date(`${dayKey}T09:00`).toISOString(),
     dayKey,
     mood,
     symptoms: [],
@@ -5709,7 +5710,7 @@ describe('checkMoodTasks', () => {
 
     it('writes nothing for a segment already answered since it began', () => {
       // Logged at 19:30, after the 18:00 evening threshold.
-      setLogs([{ ...entry(TODAY, 3), loggedAt: '2026-08-25T19:30:00.000Z' }]);
+      setLogs([{ ...entry(TODAY, 3), loggedAt: new Date(2026, 7, 25, 19, 30).toISOString() }]);
       useSettingsStore.getState.mockReturnValue(morningAndEvening());
       jest.setSystemTime(new Date(2026, 7, 25, 20, 0, 0));
 
@@ -6349,7 +6350,7 @@ describe('checkMealSlotTasks', () => {
     expect(today.timeSegments).toEqual([]);
     expect(today.category).toBe('Meal Plan');
     // Each row lands on its own day, so the week reads as a week.
-    expect(slotRows()[3].dueDate!.startsWith('2026-08-25')).toBe(true);
+    expect(dayKeyOf(new Date(slotRows()[3].dueDate!))).toBe('2026-08-25');
     expect(setWrittenThrough).toHaveBeenCalledWith('2026-08-28');
   });
 
@@ -12262,80 +12263,75 @@ describe('quota tasks', () => {
   });
 
   describe('reanchorWallClockReminders', () => {
-    // A Date constructed with local params picks up process.env.TZ changed
-    // just before construction (verified in dateUtils.test.ts) — so a
-    // "device moved timezones" scenario is: capture a reminder's offset
-    // under one TZ, then switch TZ before calling the action, standing in
-    // for the device's clock having actually moved. Saved/restored per test
-    // so it can't leak into other test files sharing this worker.
-    let originalTz: string | undefined;
-
-    beforeEach(() => {
-      originalTz = process.env.TZ;
-    });
-
-    afterEach(() => {
-      if (originalTz === undefined) delete process.env.TZ;
-      else process.env.TZ = originalTz;
+    // A reminder set in another zone is just data: the instant it names plus
+    // the offset in force there, which is all the action reads. So the move is
+    // built as that pair rather than by switching process.env.TZ mid-test, which
+    // Jest ignores (it left every test here passing without anything moving).
+    // `elsewhere` is Tokyo, or New York if the suite itself runs in Tokyo, so
+    // the stored offset never matches the zone the suite runs in.
+    const localNine = new Date(2026, 0, 15, 9, 0, 0);
+    const elsewhere = localNine.getTimezoneOffset() === -540 ? 300 : -540;
+    /** 09:00 on Jan 15 as set on a device whose offset was `offset`. */
+    const nineAmSetAt = (offset: number) => ({
+      reminderTime: new Date(Date.UTC(2026, 0, 15, 9, 0, 0) + offset * 60_000).toISOString(),
+      reminderUtcOffsetMinutes: offset,
     });
 
     it('moves a wallClock reminder to the new zone\'s equivalent local time when the stored offset no longer matches', () => {
-      process.env.TZ = 'America/New_York';
-      const nineAm = new Date(2026, 0, 15, 9, 0, 0);
-      const capturedOffset = nineAm.getTimezoneOffset();
-
-      process.env.TZ = 'Asia/Tokyo';
+      const captured = nineAmSetAt(elsewhere);
       useTaskStore.setState({
-        tasks: [makeTask({
-          id: 'reminder-wallclock',
-          reminderTimeAnchor: 'wallClock',
-          reminderTime: nineAm.toISOString(),
-          reminderUtcOffsetMinutes: capturedOffset,
-        })],
+        tasks: [makeTask({ id: 'reminder-wallclock', reminderTimeAnchor: 'wallClock', ...captured })],
       });
 
       useTaskStore.getState().reanchorWallClockReminders();
 
       const updated = useTaskStore.getState().tasks.find(t => t.id === 'reminder-wallclock')!;
       const reminder = new Date(updated.reminderTime!);
+      expect(updated.reminderTime).not.toBe(captured.reminderTime);
+      expect(reminder.getDate()).toBe(15);
       expect(reminder.getHours()).toBe(9);
       expect(reminder.getMinutes()).toBe(0);
-      expect(updated.reminderUtcOffsetMinutes).toBe(new Date().getTimezoneOffset());
+      expect(updated.reminderUtcOffsetMinutes).toBe(reminder.getTimezoneOffset());
+    });
+
+    it('settles after one move, even when the reminder sits across a DST change from today', () => {
+      // Only discriminating in a zone with DST whose reminder date and today
+      // fall on opposite sides of it (npm run test:tz covers one): the pass
+      // used to stamp today's offset, which the next pass read as another zone
+      // move, shifting the reminder an hour on every launch.
+      useTaskStore.setState({
+        tasks: [makeTask({ id: 'reminder-dst', reminderTimeAnchor: 'wallClock', ...nineAmSetAt(elsewhere) })],
+      });
+
+      useTaskStore.getState().reanchorWallClockReminders();
+      const moved = useTaskStore.getState().tasks.find(t => t.id === 'reminder-dst')!;
+      expect(moved.reminderUtcOffsetMinutes).toBe(new Date(moved.reminderTime!).getTimezoneOffset());
+
+      useTaskStore.getState().reanchorWallClockReminders();
+      const again = useTaskStore.getState().tasks.find(t => t.id === 'reminder-dst')!;
+      expect(again.reminderTime).toBe(moved.reminderTime);
     });
 
     it('leaves a fixed-anchor reminder untouched even with an offset mismatch', () => {
-      process.env.TZ = 'America/New_York';
-      const nineAm = new Date(2026, 0, 15, 9, 0, 0);
-      const capturedOffset = nineAm.getTimezoneOffset();
-      const originalReminderTime = nineAm.toISOString();
-
-      process.env.TZ = 'Asia/Tokyo';
+      const captured = nineAmSetAt(elsewhere);
       useTaskStore.setState({
-        tasks: [makeTask({
-          id: 'reminder-fixed',
-          reminderTimeAnchor: 'fixed',
-          reminderTime: originalReminderTime,
-          reminderUtcOffsetMinutes: capturedOffset,
-        })],
+        tasks: [makeTask({ id: 'reminder-fixed', reminderTimeAnchor: 'fixed', ...captured })],
       });
 
       useTaskStore.getState().reanchorWallClockReminders();
 
       const unchanged = useTaskStore.getState().tasks.find(t => t.id === 'reminder-fixed')!;
-      expect(unchanged.reminderTime).toBe(originalReminderTime);
-      expect(unchanged.reminderUtcOffsetMinutes).toBe(capturedOffset);
+      expect(unchanged.reminderTime).toBe(captured.reminderTime);
+      expect(unchanged.reminderUtcOffsetMinutes).toBe(elsewhere);
     });
 
     it('leaves a task with no captured offset (a pre-migration row) untouched, without crashing', () => {
-      process.env.TZ = 'America/New_York';
-      const originalReminderTime = new Date(2026, 0, 15, 9, 0, 0).toISOString();
-
-      process.env.TZ = 'Asia/Tokyo';
+      const { reminderTime } = nineAmSetAt(elsewhere);
       useTaskStore.setState({
         tasks: [makeTask({
           id: 'reminder-legacy',
           reminderTimeAnchor: 'wallClock',
-          reminderTime: originalReminderTime,
+          reminderTime,
           reminderUtcOffsetMinutes: null,
         })],
       });
@@ -12343,60 +12339,35 @@ describe('quota tasks', () => {
       expect(() => useTaskStore.getState().reanchorWallClockReminders()).not.toThrow();
 
       const unchanged = useTaskStore.getState().tasks.find(t => t.id === 'reminder-legacy')!;
-      expect(unchanged.reminderTime).toBe(originalReminderTime);
+      expect(unchanged.reminderTime).toBe(reminderTime);
       expect(unchanged.reminderUtcOffsetMinutes).toBeNull();
     });
 
     it('leaves a completed task\'s and an archived task\'s reminders untouched', () => {
-      process.env.TZ = 'America/New_York';
-      const nineAm = new Date(2026, 0, 15, 9, 0, 0);
-      const capturedOffset = nineAm.getTimezoneOffset();
-      const originalReminderTime = nineAm.toISOString();
-
-      process.env.TZ = 'Asia/Tokyo';
+      const captured = nineAmSetAt(elsewhere);
       useTaskStore.setState({
         tasks: [
-          makeTask({
-            id: 'reminder-completed',
-            completed: true,
-            reminderTimeAnchor: 'wallClock',
-            reminderTime: originalReminderTime,
-            reminderUtcOffsetMinutes: capturedOffset,
-          }),
-          makeTask({
-            id: 'reminder-archived',
-            archived: true,
-            reminderTimeAnchor: 'wallClock',
-            reminderTime: originalReminderTime,
-            reminderUtcOffsetMinutes: capturedOffset,
-          }),
+          makeTask({ id: 'reminder-completed', completed: true, reminderTimeAnchor: 'wallClock', ...captured }),
+          makeTask({ id: 'reminder-archived', archived: true, reminderTimeAnchor: 'wallClock', ...captured }),
         ],
       });
 
       useTaskStore.getState().reanchorWallClockReminders();
 
       const tasks = useTaskStore.getState().tasks;
-      expect(tasks.find(t => t.id === 'reminder-completed')!.reminderTime).toBe(originalReminderTime);
-      expect(tasks.find(t => t.id === 'reminder-archived')!.reminderTime).toBe(originalReminderTime);
+      expect(tasks.find(t => t.id === 'reminder-completed')!.reminderTime).toBe(captured.reminderTime);
+      expect(tasks.find(t => t.id === 'reminder-archived')!.reminderTime).toBe(captured.reminderTime);
     });
 
     it('is idempotent: calling it twice with no timezone change in between makes no further change', () => {
-      process.env.TZ = 'America/New_York';
-      const nineAm = new Date(2026, 0, 15, 9, 0, 0);
-      const capturedOffset = nineAm.getTimezoneOffset();
-
-      process.env.TZ = 'Asia/Tokyo';
+      const captured = nineAmSetAt(elsewhere);
       useTaskStore.setState({
-        tasks: [makeTask({
-          id: 'reminder-idempotent',
-          reminderTimeAnchor: 'wallClock',
-          reminderTime: nineAm.toISOString(),
-          reminderUtcOffsetMinutes: capturedOffset,
-        })],
+        tasks: [makeTask({ id: 'reminder-idempotent', reminderTimeAnchor: 'wallClock', ...captured })],
       });
 
       useTaskStore.getState().reanchorWallClockReminders();
       const afterFirst = useTaskStore.getState().tasks.find(t => t.id === 'reminder-idempotent')!;
+      expect(afterFirst.reminderTime).not.toBe(captured.reminderTime);
 
       useTaskStore.getState().reanchorWallClockReminders();
       const afterSecond = useTaskStore.getState().tasks.find(t => t.id === 'reminder-idempotent')!;

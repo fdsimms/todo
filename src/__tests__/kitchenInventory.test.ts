@@ -14,6 +14,9 @@ import { groceryNameKey } from '../utils/groceryParse';
 import { OUT_OF_IT_UNTIL } from '../utils/grocerySuggest';
 import type { GroceryItem, ItemProduct, Leftover } from '../types';
 
+/** A local wall-clock time as the ISO instant the app stores, so the suite reads the same in any zone. */
+const localIso = (local: string) => new Date(local).toISOString();
+
 let productSeq = 0;
 
 // The chain here reaches dateUtils (day keys) which reaches the settings store
@@ -410,7 +413,7 @@ describe('kitchenLinkUrl', () => {
 // ─── the freezer ────────────────────────────────────────────────────────────
 
 describe('the freezer', () => {
-  const FROZEN_ON = '2026-07-12T09:00:00.000Z';
+  const FROZEN_ON = localIso('2026-07-12T09:00');
 
   it('files a frozen catalog row under the freezer rather than its aisle', () => {
     const peas = makeItem({ name: 'Peas', aisle: 'Frozen', frozenAt: FROZEN_ON });
@@ -512,7 +515,7 @@ describe('the two other pantry states', () => {
     const salsa = makeItem({
       name: 'Salsa',
       expiresAt: '2026-08-14',
-      openedAt: '2026-08-12T09:00:00.000Z',
+      openedAt: localIso('2026-08-12T09:00'),
     });
     const [entry] = kitchenInventory([salsa], [], NOW);
 
@@ -527,8 +530,8 @@ describe('the two other pantry states', () => {
   it('drops the opening clause on a frozen row', () => {
     const salsa = makeItem({
       name: 'Salsa',
-      openedAt: '2026-08-12T09:00:00.000Z',
-      frozenAt: '2026-08-12T09:00:00.000Z',
+      openedAt: localIso('2026-08-12T09:00'),
+      frozenAt: localIso('2026-08-12T09:00'),
     });
     const [entry] = kitchenInventory([salsa], [], NOW);
 
@@ -541,7 +544,7 @@ describe('the two other pantry states', () => {
     const flour = makeItem({
       name: 'Flour',
       onHandUntil: null,
-      runningLowAt: '2026-08-12T09:00:00.000Z',
+      runningLowAt: localIso('2026-08-12T09:00'),
     });
     const [entry] = kitchenInventory([flour], [], NOW);
 
@@ -551,7 +554,7 @@ describe('the two other pantry states', () => {
   it('still lets "Out of it" outrank running low', () => {
     const flour = makeItem({
       name: 'Flour',
-      runningLowAt: '2026-08-12T09:00:00.000Z',
+      runningLowAt: localIso('2026-08-12T09:00'),
       onHandUntil: OUT_OF_IT_UNTIL,
     });
     expect(kitchenInventory([flour], [], NOW)).toHaveLength(0);
