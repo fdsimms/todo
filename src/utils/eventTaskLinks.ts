@@ -1,7 +1,6 @@
 import { addDays } from 'date-fns/addDays';
 import type { BusyEvent } from './calendarBusy';
 import { isLiveEvent } from './calendarBusy';
-import { eventPeopleKey } from './eventPeople';
 import type { TemplateAnchors } from './templateUtils';
 import type { ContextRow } from '../types';
 import { formatTimeOfDay } from './dateUtils';
@@ -36,8 +35,16 @@ export interface EventTaskLink {
 
 export type EventTaskLinks = Record<string, EventTaskLink>;
 
-/** Same occurrence key as the people link, so the two records agree. */
-export const eventTaskKey = eventPeopleKey;
+/**
+ * The occurrence key: EventKit id and normalised start. Device-local on
+ * purpose, unlike the synced people link (`eventPeople.ts`): this record stays
+ * on the device.
+ */
+export function eventTaskKey(event: Pick<BusyEvent, 'id' | 'start'>): string {
+  const ms = Date.parse(event.start);
+  const start = Number.isFinite(ms) ? new Date(ms).toISOString() : event.start;
+  return `${event.id}|${start}`;
+}
 
 export function tasksForEvent(
   links: Readonly<EventTaskLinks>,

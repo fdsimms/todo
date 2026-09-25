@@ -6390,6 +6390,31 @@ export const LEFTOVER_RETENTION_DAYS = 60;
 export const MEAL_PLAN_RETENTION_DAYS = 180;
 
 /**
+ * Who one calendar event occurrence is with — the app's own note about an
+ * event it does not own (see `src/utils/eventPeople.ts` and
+ * `docs/arch/people.md`). One synced row per occurrence.
+ *
+ * `eventKey` is `<event ref>#<start ISO>`, where the ref is the calendar
+ * server's id for the event (`calendarItemExternalIdentifier`) when this device
+ * could read it, which is what lets the same event be found on another phone,
+ * and the device-local EventKit id otherwise. The row's own id is a plain
+ * generated id rather than the event key, since sync splits row keys on `|`
+ * and a server id may contain anything.
+ */
+export interface EventPeopleLink {
+  id: string;
+  eventKey: string;
+  /** ISO, the occurrence's own start. */
+  eventStart: string;
+  /** ISO. */
+  eventEnd: string;
+  /** Title at the time of linking, so a later reader has something to show. */
+  title: string;
+  personIds: string[];
+  createdAt: string;
+}
+
+/**
  * A row on the Today list that isn't a task and never becomes one (#1571).
  *
  * A calendar event, a planned meal, what's about to go off in the kitchen and

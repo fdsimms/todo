@@ -75,6 +75,13 @@ export const SYNC_TRACKED_TABLES: readonly SyncTable[] = [
   // differently on each phone, and a milestone is written once and rarely
   // edited, so last-writer-wins is a no-op on almost every row.
   { name: 'milestones', key: ['id'] },
+  // Who a calendar event is with (eventPeople.ts). The event itself syncs
+  // through its own calendar; this is the app's note about it, and it syncs
+  // because it names the event by the calendar server's id wherever the
+  // device could read one. A row keyed by a device-local id travels too and
+  // simply matches nothing on the other phone. Duplicates from two phones
+  // linking the same occurrence offline are collapsed by the reader.
+  { name: 'event_people_links', key: ['id'] },
   // The medication log. Same health-record argument as mood_logs, with one
   // extra edge: a phone that only has half the doses answers "how often did I
   // reach for it" with a number that is simply too low, and nothing about that
@@ -315,11 +322,12 @@ export const SYNCED_SETTING_KEYS: readonly string[] = [
  *   about on a person's screen, keyed by EventKit event id. Same objection as
  *   `groceryImportLinks`: an event id names a record on one device, so the
  *   other phone would read it as answers about events it has never seen.
- * - `calendarEventPeople` — who each calendar event is with, keyed by EventKit
- *   event id, so wrong on another device for the same reason. The event itself
- *   syncs through its own calendar (Google, iCloud); only this link stays put.
- * - `calendarEventTasks` — which tasks were planned around each event, for
- *   the same reason.
+ * - `calendarEventPeople` — where who-an-event-is-with lived before it moved
+ *   to the synced `event_people_links` table (keyed by the calendar server's
+ *   id instead). Read once by the migration and deleted; never synced.
+ * - `calendarEventTasks` — which tasks were planned around each event, keyed
+ *   by the EventKit id, so wrong on another device for `calendarHistoryHandled`'s
+ *   reason.
  * - `aiFeatureConfig` — the API key it depends on is device-local by design,
  *   so syncing the config turns features on for a device that cannot run them.
  * - `activeListDrivenBy` — a pointer into `grocery_active_list`, so it is per

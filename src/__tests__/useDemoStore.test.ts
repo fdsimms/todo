@@ -289,7 +289,8 @@ jest.mock('../utils/deadlineCalendarSync', () => ({
 // calendar store for a window of events to fit a block into — that one imports
 // AppState directly.
 jest.mock('../store/useCalendarStore', () => ({
-  useCalendarStore: { getState: () => ({ events: [], loaded: false }) },
+  // subscribe: useEventPeopleStore follows the calendar to read server ids.
+  useCalendarStore: { getState: () => ({ events: [], pastEvents: [], loaded: false }), subscribe: jest.fn() },
 }));
 // And the same again for the weather store, which also imports AppState
 // directly — checkWeatherTasks reads its snapshot but demo mode seeds its

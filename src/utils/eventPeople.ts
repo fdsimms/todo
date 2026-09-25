@@ -3,6 +3,9 @@ import { startOfHour } from 'date-fns/startOfHour';
 import type { BusyEvent } from './calendarBusy';
 import { isLiveEvent } from './calendarBusy';
 import { pastWindowStart, peopleNamedInTitle, type PersonName } from './calendarHistory';
+import type { EventPeopleLink } from '../types';
+
+export type { EventPeopleLink };
 
 /**
  * Who a calendar event is with, as far as this app is concerned — metadata the
@@ -19,72 +22,118 @@ import { pastWindowStart, peopleNamedInTitle, type PersonName } from './calendar
  * `docs/arch/people.md`'s Never list. This link is private to the app: the
  * event on Google Calendar carries nothing about it.
  *
- * **Keyed by occurrence** (`id` + start), the fourth record keyed this way
- * after `EventReminder`, `HiddenEvent` and `eventTaskHandled`: EventKit shares
- * one id across every instance of a recurring series, so "Lunch w/ Mom" every
- * Sunday is one id and many lunches. The start is normalised through
- * `toISOString` so a key built from a `Date` read back after the system sheet
- * saves matches the one built from the string `fetchEvents` hands out.
+ * **Keyed by occurrence** (event + start): EventKit shares one id across every
+ * instance of a recurring series, so "Lunch w/ Mom" every Sunday is one id and
+ * many lunches. The start is normalised through `toISOString` so a key built
+ * from a `Date` read back after the system sheet saves matches the one built
+ * from the string `fetchEvents` hands out.
  *
- * **It stays on this device**, for `calendarHistoryHandled`'s reason: an
- * EventKit id names a record on one device only. It is kept out of settings
- * sync (see the prose list in `syncTracking.ts`) and out of backups
- * (`DEVICE_ID_SETTING_KEYS`).
+ * **It syncs, which is why the event is named by the calendar server's id.**
+ * EventKit's own id names a record on one device and, Apple documents, can be
+ * lost on a full resync. `calendarItemExternalIdentifier` is the server's id,
+ * the same on every device reading that calendar, so a link written against it
+ * on one phone matches the same event on the other. The native module
+ * (`todo-eventkit-bridge`) reads it; where it can't (an older build, a calendar
+ * with no server), the key falls back to the local id and the link simply
+ * matches nothing on another device. Readers look up both, preferred first,
+ * which is also what keeps a link written before this existed working.
+ *
+ * **Two phones can link one occurrence before they sync**, and the table does
+ * not refuse that (a UNIQUE key would fail the sync apply instead). The reader
+ * unions duplicates, and the next edit folds them back into one row.
  */
-export interface EventPeopleLink {
-  key: string;
-  eventId: string;
-  /** ISO, the occurrence's own start. */
-  eventStart: string;
-  /** ISO. */
-  eventEnd: string;
-  /** Title at the time of linking, so a later reader has something to show. */
-  title: string;
-  personIds: string[];
+
+/** Rows grouped by event key, plus what this device knows of server ids. */
+export interface EventPeopleIndex {
+  byKey: Readonly<Record<string, readonly EventPeopleLink[]>>;
+  /** Local EventKit id -> the calendar server's id, where it could be read. */
+  externalIds: Readonly<Record<string, string>>;
 }
 
-export type EventPeopleLinks = Record<string, EventPeopleLink>;
+export const EMPTY_EVENT_PEOPLE: EventPeopleIndex = { byKey: {}, externalIds: {} };
 
-export function eventPeopleKey(event: Pick<BusyEvent, 'id' | 'start'>): string {
-  const ms = Date.parse(event.start);
-  const start = Number.isFinite(ms) ? new Date(ms).toISOString() : event.start;
-  return `${event.id}|${start}`;
-}
-
-/** Who a given occurrence is linked with, or nobody. */
-export function peopleForEvent(
-  links: Readonly<EventPeopleLinks>,
-  event: Pick<BusyEvent, 'id' | 'start'>
-): string[] {
-  return links[eventPeopleKey(event)]?.personIds ?? [];
+function normalizedStart(start: string): string {
+  const ms = Date.parse(start);
+  return Number.isFinite(ms) ? new Date(ms).toISOString() : start;
 }
 
 /**
- * The links after setting one occurrence's people. An empty set removes the
- * entry rather than keeping an empty one, so "linked to nobody" and "never
- * linked" are one state.
+ * The keys an occurrence may be stored under, preferred first: the server id
+ * when this device has read it, then the local id.
  */
-export function withEventPeople(
-  links: Readonly<EventPeopleLinks>,
-  event: Pick<BusyEvent, 'id' | 'start' | 'end' | 'title'>,
-  personIds: readonly string[]
-): EventPeopleLinks {
-  const key = eventPeopleKey(event);
-  const next = { ...links };
-  const unique = [...new Set(personIds)];
-  if (unique.length === 0) {
-    delete next[key];
-    return next;
+export function eventPeopleKeys(
+  event: Pick<BusyEvent, 'id' | 'start'>,
+  externalIds: Readonly<Record<string, string>>
+): string[] {
+  const start = normalizedStart(event.start);
+  const local = `${event.id}#${start}`;
+  const external = externalIds[event.id];
+  return external && external !== event.id ? [`${external}#${start}`, local] : [local];
+}
+
+export function indexEventPeople(
+  rows: readonly EventPeopleLink[],
+  externalIds: Readonly<Record<string, string>>
+): EventPeopleIndex {
+  const byKey: Record<string, EventPeopleLink[]> = {};
+  for (const row of rows) (byKey[row.eventKey] ??= []).push(row);
+  return { byKey, externalIds };
+}
+
+function rowsForEvent(index: EventPeopleIndex, event: Pick<BusyEvent, 'id' | 'start'>): EventPeopleLink[] {
+  return eventPeopleKeys(event, index.externalIds).flatMap(key => [...(index.byKey[key] ?? [])]);
+}
+
+/** Who a given occurrence is linked with, or nobody. Duplicate rows are unioned. */
+export function peopleForEvent(
+  index: EventPeopleIndex,
+  event: Pick<BusyEvent, 'id' | 'start'>
+): string[] {
+  const out: string[] = [];
+  for (const row of rowsForEvent(index, event)) {
+    for (const id of row.personIds) if (!out.includes(id)) out.push(id);
   }
-  next[key] = {
-    key,
-    eventId: event.id,
-    eventStart: event.start,
-    eventEnd: event.end,
-    title: event.title,
-    personIds: unique,
+  return out;
+}
+
+/** The writes that set one occurrence's people. */
+export interface EventPeopleWrite {
+  upsert: EventPeopleLink | null;
+  deleteIds: string[];
+}
+
+/**
+ * Setting an occurrence's people is one row under the preferred key, and no
+ * others: an existing row under that key is kept (so its id and created_at
+ * survive and sync sees an edit rather than a delete and an insert), and
+ * every other row for the occurrence (a duplicate from another phone, a link
+ * written under the local id before the server id was known) is deleted.
+ * An empty set deletes them all, so "linked to nobody" and "never linked" are
+ * one state.
+ */
+export function planEventPeopleWrite(
+  index: EventPeopleIndex,
+  event: Pick<BusyEvent, 'id' | 'start' | 'end' | 'title'>,
+  personIds: readonly string[],
+  fresh: { id: string; now: string }
+): EventPeopleWrite {
+  const existing = rowsForEvent(index, event);
+  const unique = [...new Set(personIds)];
+  if (unique.length === 0) return { upsert: null, deleteIds: existing.map(r => r.id) };
+  const [preferredKey] = eventPeopleKeys(event, index.externalIds);
+  const keep = existing.find(r => r.eventKey === preferredKey) ?? null;
+  return {
+    upsert: {
+      id: keep?.id ?? fresh.id,
+      eventKey: preferredKey,
+      eventStart: event.start,
+      eventEnd: event.end,
+      title: event.title,
+      personIds: unique,
+      createdAt: keep?.createdAt ?? fresh.now,
+    },
+    deleteIds: existing.filter(r => r !== keep).map(r => r.id),
   };
-  return next;
 }
 
 /**
@@ -93,37 +142,38 @@ export function withEventPeople(
  * person's screen offer it as history (`suggestedHistoryEvents`), and that
  * offer is bounded by the same floor, so past it the link has no reader left.
  * Pruning on the start mirrors the offer's own refusal of an event that
- * started before the floor.
+ * started before the floor. Every device prunes by the same rule, so the
+ * deletions it syncs agree.
  */
-export function isEventPeopleLinkStale(link: EventPeopleLink, now: Date): boolean {
+export function isEventPeopleLinkStale(link: Pick<EventPeopleLink, 'eventStart'>, now: Date): boolean {
   const start = Date.parse(link.eventStart);
   if (!Number.isFinite(start)) return true;
   return start < pastWindowStart(now).getTime();
 }
 
-export function pruneStaleEventPeople(
-  links: Readonly<EventPeopleLinks>,
-  now: Date
-): EventPeopleLinks {
-  const kept: EventPeopleLinks = {};
-  for (const [key, link] of Object.entries(links)) {
-    if (!isEventPeopleLinkStale(link, now)) kept[key] = link;
-  }
-  return kept;
+export function staleEventPeopleIds(rows: readonly EventPeopleLink[], now: Date): string[] {
+  return rows.filter(r => isEventPeopleLinkStale(r, now)).map(r => r.id);
 }
 
 /**
- * Reads a stored record, tolerating anything malformed. A record we can't read
- * is one we don't have, the same call `parseHandledHistoryEvents` makes.
+ * The links an install kept in the `calendarEventPeople` setting before they
+ * had a table, as rows. Keyed by the local id they were written under, which
+ * `eventPeopleKeys` still looks up. Anything malformed is skipped: a record we
+ * can't read is one we don't have, the same call `parseHandledHistoryEvents`
+ * makes.
  */
-export function parseEventPeople(raw: string | null | undefined): EventPeopleLinks {
-  if (!raw) return {};
+export function legacyEventPeopleRows(
+  raw: string | null | undefined,
+  newId: () => string,
+  now: string
+): EventPeopleLink[] {
+  if (!raw) return [];
   try {
     const parsed = JSON.parse(raw);
-    if (!parsed || typeof parsed !== 'object' || Array.isArray(parsed)) return {};
-    const out: EventPeopleLinks = {};
-    for (const [key, value] of Object.entries(parsed as Record<string, unknown>)) {
-      const link = value as Partial<EventPeopleLink> | null;
+    if (!parsed || typeof parsed !== 'object' || Array.isArray(parsed)) return [];
+    const out: EventPeopleLink[] = [];
+    for (const value of Object.values(parsed as Record<string, unknown>)) {
+      const link = value as Record<string, unknown> | null;
       if (
         !link
         || typeof link.eventId !== 'string'
@@ -131,20 +181,21 @@ export function parseEventPeople(raw: string | null | undefined): EventPeopleLin
         || typeof link.eventEnd !== 'string'
         || !Array.isArray(link.personIds)
       ) continue;
-      const personIds = link.personIds.filter((id): id is string => typeof id === 'string');
+      const personIds = (link.personIds as unknown[]).filter((id): id is string => typeof id === 'string');
       if (personIds.length === 0) continue;
-      out[key] = {
-        key,
-        eventId: link.eventId,
+      out.push({
+        id: newId(),
+        eventKey: `${link.eventId}#${normalizedStart(link.eventStart)}`,
         eventStart: link.eventStart,
         eventEnd: link.eventEnd,
         title: typeof link.title === 'string' ? link.title : '',
         personIds,
-      };
+        createdAt: now,
+      });
     }
     return out;
   } catch {
-    return {};
+    return [];
   }
 }
 
@@ -168,7 +219,7 @@ export function suggestedEventPeople(
  */
 export function upcomingEventsWith(
   events: readonly BusyEvent[],
-  links: Readonly<EventPeopleLinks>,
+  links: EventPeopleIndex,
   personId: string,
   now: Date
 ): BusyEvent[] {

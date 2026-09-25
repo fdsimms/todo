@@ -579,9 +579,26 @@ events sheet, or by starting the event from a person's page ("Plan something").
   answered record apply unchanged.
 - **It is kept through the history window, then pruned**, on the start,
   matching the offer's own floor. Past that it has no reader.
-- **It stays on the device** (`calendarEventPeople` is off the sync allowlist
-  and in `DEVICE_ID_SETTING_KEYS`), since an EventKit id names a record on one
-  phone. The event itself still syncs through its calendar.
+- **It syncs, keyed by the calendar server's id.** One row per occurrence in
+  `event_people_links`. EventKit's own id names a record on one phone (and,
+  Apple documents, can be lost on a full resync), so the row names the event
+  by `calendarItemExternalIdentifier`, the server's id, read by the
+  `todo-eventkit-bridge` native module; a Google event has the same one on
+  every device. Where it can't be read (an older build, a calendar with no
+  server), the local id is used and the row matches nothing elsewhere, which
+  is harmless. Readers look under both keys, preferred first.
+- **Duplicates are the reader's to fold, not a constraint's to refuse.** Two
+  phones can link one occurrence before they sync. `event_key` is not UNIQUE,
+  since a violation would fail the whole sync apply; `peopleForEvent` unions
+  the rows, and the next edit (`planEventPeopleWrite`) keeps one and deletes
+  the rest. Per-person removal on one phone racing an add on the other is
+  last-writer-wins, the table's merge rule.
+- **The old device-local setting is migrated once** (`legacyEventPeopleRows`,
+  behind `event_people_links_migration_done`) and deleted. Its rows keep the
+  local id they were written under until their next edit moves them onto the
+  server id.
+- **The tasks-planned record below stays on the device**, since tasks are
+  named by EventKit id there and the move offer is a per-phone prompt.
 - **Creating is off in demo mode**: the event would reach the real calendar.
 
 ### Typing an event

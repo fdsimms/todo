@@ -96,6 +96,7 @@
     "todo-alarmkit-bridge": "file:./modules/todo-alarmkit-bridge",
     "todo-cloudkit-bridge": "file:./modules/todo-cloudkit-bridge",
     "todo-datascanner-bridge": "file:./modules/todo-datascanner-bridge",
+    "todo-eventkit-bridge": "file:./modules/todo-eventkit-bridge",
     "todo-foundation-models": "file:./modules/todo-foundation-models",
     "todo-health-bridge": "file:./modules/todo-health-bridge",
     "todo-privacy-shield": "file:./modules/todo-privacy-shield",
