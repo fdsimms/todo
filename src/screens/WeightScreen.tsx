@@ -327,16 +327,16 @@ export function WeightScreen() {
           <Stat
             styles={styles}
             value={changeValue}
-            label={`Change (${unit})`}
+            label={`Change (${unit}, ${activeRange.label})`}
             accessibilityLabel={change === null
-              ? 'Change, not enough readings in this range'
-              : `Change, ${kgToUnit(change.deltaKg, unit).toFixed(1)} ${unit} across ${change.readings} readings`}
+              ? `Change, not enough readings in the last ${activeRange.label}`
+              : `Change over the last ${activeRange.label}, ${kgToUnit(change.deltaKg, unit).toFixed(1)} ${unit} across ${change.readings} readings`}
           />
           <Stat
             styles={styles}
             value={String(visibleReadings.length)}
-            label="Weigh-ins"
-            accessibilityLabel={`${visibleReadings.length} weigh-ins in this range`}
+            label={`Weigh-ins (${activeRange.label})`}
+            accessibilityLabel={`${visibleReadings.length} weigh-ins in the last ${activeRange.label}`}
           />
         </View>
 
