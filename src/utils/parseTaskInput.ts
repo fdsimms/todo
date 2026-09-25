@@ -790,6 +790,73 @@ export function parseDurationInput(input: string): ParsedDuration | null {
   return { minutes, cleanTitle, matchStart, matchEnd };
 }
 
+/** One "->"-separated segment of a typed chain, already stripped of its own duration/link phrase. */
+export interface ParsedChainStep {
+  title: string;
+  estimatedMinutes: number | null;
+  linkUrl: string | null;
+}
+
+export interface ParsedChainInput {
+  /** First entry becomes the task's own title, the rest become `chainItems`. Always 2+. */
+  steps: ParsedChainStep[];
+  /** The whole trimmed input — a chain replaces the title outright rather than trimming a phrase off it. */
+  matchedText: string;
+  matchStart: number;
+}
+
+/**
+ * Splits a quick-add title on "->" into an ad hoc chain: "pick up dry
+ * cleaning -> drop off library books -> walk the dog" becomes a 3-step
+ * chain, one row per arrow-delimited segment. Unlike every other parser in
+ * this file, this doesn't strip a phrase out of the title — a detected chain
+ * replaces the title wholesale, since the whole line is the thing being
+ * restructured, not one token within it.
+ *
+ * Each step is independently run through `parseDurationInput` and
+ * `parseLinkInput` against its own segment text alone — "call the vet for 10
+ * min -> drop off the package https://usps.com/track" gives the first step a
+ * 10-minute estimate and the second its own link, rather than either phrase
+ * applying to the chain as a whole. This is deliberate: `ChainItem` has no
+ * category/tag/priority/date fields of its own (those ride on the `Task` row
+ * once, for the whole chain — see the "Chains" note in CLAUDE.md), so a
+ * sigil token or schedule phrase anywhere in the line is left for the
+ * existing whole-title parsers to resolve task-wide, same as it already does
+ * without any "->" present. Only duration and link have a natural per-step
+ * home, which is why they're the two pulled out here.
+ *
+ * A step that trims to nothing (a doubled arrow, a trailing "->", or a step
+ * that was *only* a duration/link phrase with no name of its own) refuses
+ * the whole match rather than silently dropping a step — same reasoning
+ * `parseSupplyInput` gives for refusing outright instead of guessing.
+ */
+export function parseChainInput(input: string): ParsedChainInput | null {
+  if (!input.includes('->')) return null;
+  const rawParts = input.split(/\s*->\s*/);
+  const steps: ParsedChainStep[] = [];
+  for (const raw of rawParts) {
+    const trimmed = raw.trim();
+    if (!trimmed) return null;
+    let stepTitle = trimmed;
+    let estimatedMinutes: number | null = null;
+    let linkUrl: string | null = null;
+    const duration = parseDurationInput(stepTitle);
+    if (duration) {
+      estimatedMinutes = duration.minutes;
+      stepTitle = duration.cleanTitle;
+    }
+    const link = parseLinkInput(stepTitle);
+    if (link) {
+      linkUrl = link.url;
+      stepTitle = link.cleanTitle;
+    }
+    if (!stepTitle) return null;
+    steps.push({ title: stepTitle, estimatedMinutes, linkUrl });
+  }
+  if (steps.length < 2) return null;
+  return { steps, matchedText: input.trim(), matchStart: 0 };
+}
+
 export interface ParsedSupply {
   /** How many units are on hand right now. */
   count: number;
