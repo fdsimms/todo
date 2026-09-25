@@ -31,7 +31,7 @@ beforeEach(() => {
     get: (key: string) => (dbGetSetting as jest.Mock)(key) ?? undefined,
   }));
   (loadAnthropicApiKey as jest.Mock).mockResolvedValue('');
-  useSettingsStore.setState({ dayResetTime: '00:00', themeMode: 'dark', anthropicApiKey: '', appLockEnabled: false, appLockGraceSeconds: 60, patchNotesQaStatus: {}, mealSlotStepEstimates: {}, initialized: false });
+  useSettingsStore.setState({ dayResetTime: '00:00', themeMode: 'dark', anthropicApiKey: '', appLockEnabled: false, appLockGraceSeconds: 60, patchNotesQaStatus: {}, mealSlotStepEstimates: {}, nutritionTargets: {}, initialized: false });
 });
 
 // ─── initial state ────────────────────────────────────────────────────────────
@@ -325,6 +325,34 @@ describe('setMealSlotStepEstimate', () => {
     );
     useSettingsStore.getState().initialize();
     expect(useSettingsStore.getState().mealSlotStepEstimates).toEqual({ 'breakfast-choose': 2 });
+  });
+});
+
+describe('setNutritionTargets', () => {
+  it('has an empty default', () => {
+    expect(useSettingsStore.getState().nutritionTargets).toEqual({});
+  });
+
+  it('fills in several nutrients in one write', () => {
+    useSettingsStore.getState().setNutritionTargets({ calciumMg: 1300, ironMg: 18, potassiumMg: 4700 });
+    expect(useSettingsStore.getState().nutritionTargets).toEqual({
+      calciumMg: 1300, ironMg: 18, potassiumMg: 4700,
+    });
+  });
+
+  it('merges onto targets already set rather than replacing them', () => {
+    useSettingsStore.getState().setNutritionTarget('proteinG', 90);
+    useSettingsStore.getState().setNutritionTargets({ calciumMg: 1300 });
+    expect(useSettingsStore.getState().nutritionTargets).toEqual({ proteinG: 90, calciumMg: 1300 });
+  });
+
+  it('persists the merged map in a single database write', () => {
+    useSettingsStore.getState().setNutritionTargets({ calciumMg: 1300, ironMg: 18 });
+    expect(dbSetSetting).toHaveBeenCalledTimes(1);
+    expect(dbSetSetting).toHaveBeenCalledWith(
+      'nutritionTargets',
+      JSON.stringify({ calciumMg: 1300, ironMg: 18 }),
+    );
   });
 });
 
