@@ -45,17 +45,18 @@ import { SegmentedControl } from '../components/SegmentedControl';
  * `WEIGHT_HISTORY_DAYS` (`useHealthStore.ts`) is the fetch ceiling — one
  * Health query, taken once — and this is purely a display zoom over the
  * points already in memory, so switching ranges costs nothing. A closed set of
- * four is `SegmentedControl`'s job per CLAUDE.md's picker table, not a
- * `PillGroup`: there is no open-ended vocabulary here, just one of four fixed
+ * five is `SegmentedControl`'s job per CLAUDE.md's picker table, not a
+ * `PillGroup`: there is no open-ended vocabulary here, just one of five fixed
  * spans.
  */
-type WeightChartRangeDays = 30 | 90 | 180 | 365;
+type WeightChartRangeDays = 7 | 30 | 90 | 180 | 365;
 
 const WEIGHT_CHART_RANGES: readonly {
   days: WeightChartRangeDays;
   label: string;
   sectionTitle: string;
 }[] = [
+  { days: 7, label: '1W', sectionTitle: 'THE LAST WEEK' },
   { days: 30, label: '1M', sectionTitle: 'THE LAST MONTH' },
   { days: 90, label: '3M', sectionTitle: 'THE LAST 3 MONTHS' },
   { days: 180, label: '6M', sectionTitle: 'THE LAST 6 MONTHS' },
@@ -106,7 +107,7 @@ export function WeightScreen() {
   const [logOpen, setLogOpen] = useState(false);
   const [goalOpen, setGoalOpen] = useState(false);
   const [rangeDays, setRangeDays] = useState<WeightChartRangeDays>(DEFAULT_RANGE_DAYS);
-  const activeRange = WEIGHT_CHART_RANGES.find(r => r.days === rangeDays) ?? WEIGHT_CHART_RANGES[2];
+  const activeRange = WEIGHT_CHART_RANGES.find(r => r.days === rangeDays) ?? WEIGHT_CHART_RANGES[3];
   // "6M" reads as ambiguous shorthand in a stat label with no other context
   // around it; the section title above the chart already spells the same
   // range out ("THE LAST 6 MONTHS"), so reuse that instead of inventing a
@@ -345,6 +346,30 @@ export function WeightScreen() {
           />
         </View>
 
+        {/* Right under the stats it changes, rather than below the goal card
+            and the chart — those four numbers above are the only thing on
+            this screen a range switch visibly changes before you scroll
+            further, so the control has to sit next to them or the two read
+            as unrelated. */}
+        <View style={styles.rangeRow}>
+          <SegmentedControl
+            options={WEIGHT_CHART_RANGES.map(r => ({
+              value: r.days,
+              label: r.label,
+              // SegmentedControl reads a spoken label straight off the option
+              // (unlike SettingsSegments, which derives it) — computed here
+              // rather than left to the bare "1M"/"3M" a screen reader would
+              // otherwise read as literal letters.
+              accessibilityLabel: `Show the last ${
+                r.days === 7 ? 'week' : r.days === 30 ? 'month' : r.days === 365 ? 'year' : `${r.days / 30} months`
+              }`,
+            }))}
+            value={rangeDays}
+            onChange={next => { haptics.tap(); setRangeDays(next); }}
+            label="Chart range"
+          />
+        </View>
+
         {goal !== null && (
           <>
             <Text style={styles.sectionTitle}>YOUR GOAL</Text>
@@ -427,25 +452,6 @@ export function WeightScreen() {
             </View>
           </>
         )}
-
-        <View style={styles.rangeRow}>
-          <SegmentedControl
-            options={WEIGHT_CHART_RANGES.map(r => ({
-              value: r.days,
-              label: r.label,
-              // SegmentedControl reads a spoken label straight off the option
-              // (unlike SettingsSegments, which derives it) — computed here
-              // rather than left to the bare "1M"/"3M" a screen reader would
-              // otherwise read as literal letters.
-              accessibilityLabel: `Show the last ${
-                r.days === 30 ? 'month' : r.days === 365 ? 'year' : `${r.days / 30} months`
-              }`,
-            }))}
-            value={rangeDays}
-            onChange={next => { haptics.tap(); setRangeDays(next); }}
-            label="Chart range"
-          />
-        </View>
 
         <Text style={styles.sectionTitle}>{activeRange.sectionTitle}</Text>
         <View style={styles.card}>
