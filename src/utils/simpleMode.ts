@@ -393,6 +393,9 @@ export const SIMPLE_ADD_MENU_FEATURES: Readonly<Record<string, SimpleFeatureId>>
   stack: 'stacks',
   template: 'templates',
   import: 'calendarImport',
+  // With the Calendar screen, so simplified mode keeps the button a plain
+  // "open quick add" rather than growing a two-item menu around it.
+  event: 'calendarScreen',
 };
 
 /** Does an add-button menu item render? */

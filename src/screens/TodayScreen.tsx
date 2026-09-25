@@ -138,7 +138,9 @@ import { mealSlotSourceId } from '../utils/mealSlotTasks';
 import { useMealPlanStore } from '../store/useMealPlanStore';
 import { useRecipeStore } from '../store/useRecipeStore';
 import { selectTodayMealEntries, recipeIndex } from '../utils/mealPlan';
-import { getDayStart, getLogicalDayKey } from '../utils/dateUtils';
+import { getCurrentDayStart, getDayStart, getLogicalDayKey } from '../utils/dateUtils';
+import { defaultNewEventSpan } from '../utils/eventPeople';
+import { useEventPeopleStore } from '../store/useEventPeopleStore';
 import { morningCheckInTasks } from '../utils/morningCheckIn';
 import { addDays } from 'date-fns/addDays';
 import { useCalendarStore } from '../store/useCalendarStore';
@@ -1635,6 +1637,14 @@ export function TodayScreen() {
       case 'import':
         setEventImportVisible(true);
         break;
+      // No task: Apple's new-event sheet, today at the next whole hour. The
+      // calendar (Google or otherwise) is picked there.
+      case 'event': {
+        const today = getCurrentDayStart();
+        const { start, end } = defaultNewEventSpan(today, today, new Date());
+        void useEventPeopleStore.getState().createEvent({ title: '', start, end });
+        break;
+      }
     }
   };
 
