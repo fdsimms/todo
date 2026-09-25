@@ -1,6 +1,6 @@
 import { isStreakAtRecord } from '../utils/streakRecord';
 import { dayKeyOf, getCurrentDayStart } from '../utils/dateUtils';
-import { logTaskHealthValue } from '../utils/healthCompletionSync';
+import { logTaskHealthValue, unlogTaskWaterFromFoodLog } from '../utils/healthCompletionSync';
 import { useTaskStore } from '../store/useTaskStore';
 import { useWidgetCompletionStore } from '../store/useWidgetCompletionStore';
 import { useMedicationStore } from '../store/useMedicationStore';
@@ -52,6 +52,7 @@ import {
   dbTransaction,
   dbGetMealPlanEntries,
   dbGetMealPlanEntry,
+  dbGetFoodLogEntries,
 } from '../db/database';
 import {
   scheduleTaskReminder,
@@ -63,7 +64,7 @@ import { syncDeadlineEvent } from '../utils/deadlineCalendarSync';
 import { logTaskCompletionToCalendar } from '../utils/completionCalendarSync';
 import { deleteCalendarEvent } from '../utils/calendarSync';
 import { setDemoModeActive } from '../utils/demoState';
-import type { GroceryItem, Person, Project, Task, TaskGroup, TitleRule } from '../types';
+import type { FoodLogEntry, FoodNutrition, GroceryItem, Person, Project, Task, TaskGroup, TitleRule } from '../types';
 
 jest.mock('../db/database', () => ({
   initDatabase: jest.fn(),
@@ -295,6 +296,7 @@ jest.mock('../utils/completionCalendarSync', () => ({
 
 jest.mock('../utils/healthCompletionSync', () => ({
   logTaskHealthValue: jest.fn().mockResolvedValue(false),
+  unlogTaskWaterFromFoodLog: jest.fn(),
 }));
 
 jest.mock('../utils/calendarSync', () => ({
@@ -11591,6 +11593,124 @@ describe('quota tasks', () => {
 
       store.unlogQuotaUnit('water');
       expect(useTaskStore.getState().tasks[0].progressCount).toBe(0);
+    });
+
+    it('takes the unit back off the food log too, for a water task', () => {
+      useTaskStore.setState({
+        tasks: [quota({ progressCount: 4, logHealthMetric: 'waterMl', logHealthAmount: 250 })],
+      });
+      useTaskStore.getState().unlogQuotaUnit('water');
+      expect(unlogTaskWaterFromFoodLog).toHaveBeenCalledWith(250, expect.any(Date));
+    });
+
+    it('does not touch the food log for a plain quota task', () => {
+      useTaskStore.setState({ tasks: [quota({ progressCount: 4 })] });
+      useTaskStore.getState().unlogQuotaUnit('water');
+      expect(unlogTaskWaterFromFoodLog).not.toHaveBeenCalled();
+    });
+  });
+
+  describe('syncWaterQuotaTasks', () => {
+    // A day-scoped water quota, matching the shape `quota()` builds — no
+    // allowOvershoot, no quotaIntervalMinutes, quotaPeriod defaulting to 'day'.
+    const waterQuota = (overrides: Partial<Task> = {}) =>
+      quota({ logHealthMetric: 'waterMl', logHealthAmount: 250, ...overrides });
+
+    const panel = (waterMl: number): FoodNutrition => ({
+      basis: 'perServing',
+      servingGrams: null,
+      servingText: null,
+      amounts: { waterMl },
+      source: 'manual',
+      sourceId: null,
+      portions: [],
+      recordedAt: new Date().toISOString(),
+    });
+
+    const waterEntry = (totalMl: number): FoodLogEntry => ({
+      id: 'w1',
+      dayKey: dayKeyOf(getCurrentDayStart()),
+      atISO: new Date().toISOString(),
+      slot: null,
+      label: 'Water',
+      recipeId: null,
+      itemId: null,
+      productId: null,
+      mealPlanEntryId: null,
+      quantity: `${totalMl} ml`,
+      grams: null,
+      nutrition: panel(totalMl),
+      healthSampleIds: [],
+      sortOrder: 0,
+      createdAt: new Date().toISOString(),
+    });
+
+    afterEach(() => {
+      (dbGetFoodLogEntries as jest.Mock).mockReturnValue([]);
+    });
+
+    it('catches progressCount up to what the food log actually says', () => {
+      useTaskStore.setState({ tasks: [waterQuota({ progressCount: 1 })] });
+      (dbGetFoodLogEntries as jest.Mock).mockReturnValue([waterEntry(1000)]); // 4 glasses
+      useTaskStore.getState().syncWaterQuotaTasks();
+      expect(useTaskStore.getState().tasks[0].progressCount).toBe(4);
+      expect(useTaskStore.getState().tasks[0].completed).toBe(false);
+    });
+
+    it('completes the task once the log alone reaches the target, without a tap', () => {
+      useTaskStore.setState({ tasks: [waterQuota({ progressCount: 6 })] });
+      (dbGetFoodLogEntries as jest.Mock).mockReturnValue([waterEntry(2000)]); // 8 glasses, the target
+      useTaskStore.getState().syncWaterQuotaTasks();
+      const task = useTaskStore.getState().tasks.find(t => t.id === 'water')!;
+      expect(task.completed).toBe(true);
+      expect(task.progressCount).toBe(8);
+    });
+
+    it('does not double-write the food log when the log itself completed the task', () => {
+      useTaskStore.setState({ tasks: [waterQuota({ progressCount: 6 })] });
+      (dbGetFoodLogEntries as jest.Mock).mockReturnValue([waterEntry(2000)]);
+      useTaskStore.getState().syncWaterQuotaTasks();
+      expect(logTaskHealthValue).not.toHaveBeenCalled();
+    });
+
+    it('is a no-op when the log already matches progressCount', () => {
+      useTaskStore.setState({ tasks: [waterQuota({ progressCount: 4 })] });
+      (dbGetFoodLogEntries as jest.Mock).mockReturnValue([waterEntry(1000)]);
+      useTaskStore.getState().syncWaterQuotaTasks();
+      expect(dbUpdateTask).not.toHaveBeenCalled();
+    });
+
+    it('leaves an allowOvershoot water task to log purely from taps', () => {
+      useTaskStore.setState({ tasks: [waterQuota({ progressCount: 1, allowOvershoot: true })] });
+      (dbGetFoodLogEntries as jest.Mock).mockReturnValue([waterEntry(3000)]); // 12 glasses, past the target
+      useTaskStore.getState().syncWaterQuotaTasks();
+      const task = useTaskStore.getState().tasks.find(t => t.id === 'water')!;
+      expect(task.progressCount).toBe(1);
+      expect(task.completed).toBe(false);
+    });
+
+    it('leaves a weekly water target alone — its span is not "today\'s food log"', () => {
+      useTaskStore.setState({ tasks: [waterQuota({ progressCount: 1, quotaPeriod: 'week' })] });
+      (dbGetFoodLogEntries as jest.Mock).mockReturnValue([waterEntry(2000)]);
+      useTaskStore.getState().syncWaterQuotaTasks();
+      expect(useTaskStore.getState().tasks[0].progressCount).toBe(1);
+    });
+
+    it('leaves a task deferred to a later day alone', () => {
+      const tomorrow = new Date(2025, 5, 11, 12, 0, 0).toISOString();
+      useTaskStore.setState({
+        tasks: [waterQuota({ progressCount: 1, dueDate: tomorrow, deferUntil: tomorrow })],
+      });
+      (dbGetFoodLogEntries as jest.Mock).mockReturnValue([waterEntry(2000)]);
+      useTaskStore.getState().syncWaterQuotaTasks();
+      expect(useTaskStore.getState().tasks[0].progressCount).toBe(1);
+    });
+
+    it('ignores a plain quota task with no logHealthMetric', () => {
+      useTaskStore.setState({ tasks: [quota({ progressCount: 1 })] });
+      (dbGetFoodLogEntries as jest.Mock).mockReturnValue([waterEntry(2000)]);
+      useTaskStore.getState().syncWaterQuotaTasks();
+      expect(useTaskStore.getState().tasks[0].progressCount).toBe(1);
     });
   });
 

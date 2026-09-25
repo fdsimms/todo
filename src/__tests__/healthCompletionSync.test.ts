@@ -26,11 +26,14 @@ jest.mock('../db/database', () => ({
 
 const mockAddEntry = jest.fn();
 const mockReviseEntry = jest.fn();
+const mockRemoveEntry = jest.fn();
 jest.mock('../store/useFoodLogStore', () => ({
-  useFoodLogStore: { getState: () => ({ addEntry: mockAddEntry, reviseEntry: mockReviseEntry }) },
+  useFoodLogStore: {
+    getState: () => ({ addEntry: mockAddEntry, reviseEntry: mockReviseEntry, removeEntry: mockRemoveEntry }),
+  },
 }));
 
-import { logTaskHealthValue } from '../utils/healthCompletionSync';
+import { logTaskHealthValue, unlogTaskWaterFromFoodLog } from '../utils/healthCompletionSync';
 
 function waterEntry(waterMl: number, overrides: Partial<FoodLogEntry> = {}): FoodLogEntry {
   return {
@@ -306,5 +309,38 @@ describe('logTaskHealthValue — water rides the food log instead of a second He
     // rather than folding the task's amount into a logged food.
     expect(mockAddEntry).toHaveBeenCalledTimes(1);
     expect(mockAddEntry.mock.calls[0][0].nutrition.amounts.waterMl).toBe(250);
+  });
+});
+
+describe('unlogTaskWaterFromFoodLog — the mirror, for unlogQuotaUnit\'s undo', () => {
+  it('does nothing when today has no water entry to correct', () => {
+    mockDayEntries = [];
+    unlogTaskWaterFromFoodLog(250, new Date());
+    expect(mockReviseEntry).not.toHaveBeenCalled();
+    expect(mockRemoveEntry).not.toHaveBeenCalled();
+  });
+
+  it('subtracts one unit off today’s existing total', () => {
+    mockDayEntries = [waterEntry(750)];
+    unlogTaskWaterFromFoodLog(250, new Date());
+    expect(mockRemoveEntry).not.toHaveBeenCalled();
+    expect(mockReviseEntry).toHaveBeenCalledTimes(1);
+    const [id, patch] = mockReviseEntry.mock.calls[0];
+    expect(id).toBe('water-entry-1');
+    expect(patch.nutrition.amounts.waterMl).toBe(500);
+  });
+
+  it('deletes the row rather than storing a zero once the total falls to nothing', () => {
+    mockDayEntries = [waterEntry(250)];
+    unlogTaskWaterFromFoodLog(250, new Date());
+    expect(mockReviseEntry).not.toHaveBeenCalled();
+    expect(mockRemoveEntry).toHaveBeenCalledWith('water-entry-1');
+  });
+
+  it('deletes the row rather than going negative when the amount overshoots what is logged', () => {
+    mockDayEntries = [waterEntry(150)];
+    unlogTaskWaterFromFoodLog(250, new Date());
+    expect(mockReviseEntry).not.toHaveBeenCalled();
+    expect(mockRemoveEntry).toHaveBeenCalledWith('water-entry-1');
   });
 });

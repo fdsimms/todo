@@ -383,6 +383,20 @@ type FoodLogSet = (
 ) => void;
 
 /**
+ * Reconciles the water-quota tasks against today's food log total, once a
+ * write has actually landed — the log-to-task half of the connection
+ * `logHealthMetric: 'waterMl'` makes. See `syncWaterQuotaTasks`'s own doc
+ * comment in `useTaskStore.ts` for what it does; this is only the choke
+ * point that calls it. Skipped for anything backdated, which cannot change
+ * what today's own total is, the same gate the Health re-read above it uses
+ * and for the same reason.
+ */
+function syncWaterQuotaTasksIfToday(dayKey: string): void {
+  if (dayKey !== dayKeyOf(getCurrentDayStart())) return;
+  useTaskStore.getState().syncWaterQuotaTasks();
+}
+
+/**
  * Files what Health said about one entry: its sample ids, or the one refusal
  * worth saying out loud.
  *
@@ -588,6 +602,7 @@ export const useFoodLogStore = create<FoodLogStore>((set, get) => ({
     // nothing, so there is nothing to retract" means. It does need *saying*,
     // for the one outcome a person can act on — see `recordHealthWrite`.
     void logFoodEntryToHealth(entry).then(result => recordHealthWrite(entry, result, set));
+    syncWaterQuotaTasksIfToday(entry.dayKey);
 
     return entry;
   },
@@ -647,6 +662,8 @@ export const useFoodLogStore = create<FoodLogStore>((set, get) => ({
     // Health is holding, and rewriting anyway would churn somebody's medical
     // record for a field it never saw.
     if (!rewrites) return;
+
+    syncWaterQuotaTasksIfToday(updated.dayKey);
 
     const stale = current.healthSampleIds;
     void (async () => {
@@ -708,17 +725,19 @@ export const useFoodLogStore = create<FoodLogStore>((set, get) => ({
   },
 
   removeEntry(id) {
-    // Read before the delete, since the ids are on the row that is about to go.
-    // A meal removed from the log has to be removed from Health too: an entry
-    // logged against the wrong picker and left in a medical record is the
-    // permanent-false-fact case this whole feature is arranged around. Nothing
-    // is awaited and nothing is undone on failure — the row is gone either way,
-    // and Health's own record is something the person can delete there.
+    // Read before the delete, since the ids (and the day) are on the row
+    // that is about to go. A meal removed from the log has to be removed
+    // from Health too: an entry logged against the wrong picker and left in
+    // a medical record is the permanent-false-fact case this whole feature
+    // is arranged around. Nothing is awaited and nothing is undone on
+    // failure — the row is gone either way, and Health's own record is
+    // something the person can delete there.
     // Read from the database rather than from the loaded arrays, for the same
     // reason the write above does not go through `updateEntry`: a backdated
     // entry outside the window on screen is an ordinary row, and finding it
     // only when it happens to be loaded would strand its samples.
-    const written = dbGetFoodLogEntry(id)?.healthSampleIds ?? [];
+    const removed = dbGetFoodLogEntry(id);
+    const written = removed?.healthSampleIds ?? [];
     if (written.length > 0) void retractFoodEntryFromHealth(written);
 
     dbDeleteFoodLogEntry(id);
@@ -730,6 +749,7 @@ export const useFoodLogStore = create<FoodLogStore>((set, get) => ({
       // count negative and make the screen vanish while it still holds entries.
       totalCount: Math.max(0, s.totalCount - 1),
     }));
+    if (removed) syncWaterQuotaTasksIfToday(removed.dayKey);
   },
 
   removeEntries(ids) {
@@ -739,8 +759,8 @@ export const useFoodLogStore = create<FoodLogStore>((set, get) => ({
     // from the log has to be removed from Health too, and read from the
     // database rather than the loaded arrays so a backdated entry outside
     // the window on screen doesn't strand its samples.
-    const written = ids
-      .flatMap(id => dbGetFoodLogEntry(id)?.healthSampleIds ?? []);
+    const removed = ids.map(id => dbGetFoodLogEntry(id)).filter((e): e is FoodLogEntry => e !== null);
+    const written = removed.flatMap(e => e.healthSampleIds);
     if (written.length > 0) void retractFoodEntryFromHealth(written);
 
     dbBulkDeleteFoodLogEntries(ids);
@@ -750,6 +770,8 @@ export const useFoodLogStore = create<FoodLogStore>((set, get) => ({
       insightEntries: s.insightEntries.filter(e => !idSet.has(e.id)),
       totalCount: Math.max(0, s.totalCount - idSet.size),
     }));
+    const todayKey = dayKeyOf(getCurrentDayStart());
+    if (removed.some(e => e.dayKey === todayKey)) useTaskStore.getState().syncWaterQuotaTasks();
   },
 
   moveEntries(ids, slot) {
