@@ -3,6 +3,8 @@ import type { BusyEvent } from './calendarBusy';
 import { isLiveEvent } from './calendarBusy';
 import { eventPeopleKey } from './eventPeople';
 import type { TemplateAnchors } from './templateUtils';
+import type { ContextRow } from '../types';
+import { formatTimeOfDay } from './dateUtils';
 
 /**
  * Which tasks were planned around a calendar event: the ones added from its
@@ -206,4 +208,43 @@ export function movedEventNote(moved: MovedEvent, liveTaskIds: ReadonlySet<strin
   const count = moved.link.taskIds.filter(id => liveTaskIds.has(id)).length;
   if (count === 0) return null;
   return count === 1 ? 'Moved, 1 task' : `Moved, ${count} tasks`;
+}
+
+/**
+ * Rows for Today for moved events that moved *off* today, which Today's own
+ * event rows (today's events only) can never show: "Dinner", "Tue, Sep 29,
+ * 7:00 PM", "Moved, 3 tasks". They stay until the move is answered, since the
+ * answer rekeys the record and takes the event out of `movedLinkedEvents`. An
+ * event that moved *onto* today is left to its ordinary row and its chip.
+ */
+export function movedEventContextRows(
+  moved: readonly MovedEvent[],
+  opts: {
+    liveTaskIds: ReadonlySet<string>;
+    category: string | null;
+    use24Hour: boolean;
+    /** True for an event Today already has a row for. */
+    isOnToday: (event: BusyEvent) => boolean;
+  }
+): ContextRow[] {
+  const rows: ContextRow[] = [];
+  for (const m of moved) {
+    if (opts.isOnToday(m.event)) continue;
+    const note = movedEventNote(m, opts.liveTaskIds);
+    if (!note) continue;
+    const start = new Date(m.event.start);
+    const day = start.toLocaleDateString(undefined, { weekday: 'short', month: 'short', day: 'numeric' });
+    rows.push({
+      id: `moved-${eventTaskKey(m.event)}`,
+      sourceId: m.event.id,
+      kind: 'event',
+      title: m.event.title || 'Event',
+      caption: m.event.allDay ? day : `${day}, ${formatTimeOfDay(start, opts.use24Hour)}`,
+      category: opts.category,
+      now: false,
+      calendarTag: null,
+      movedNote: note,
+    });
+  }
+  return rows;
 }

@@ -617,7 +617,10 @@ its linked people) both record the tasks they create against the occurrence.
   or "Keep their dates". Either answer rekeys the record so it is not asked
   twice. Today's own row for the event carries a "Moved, 3 tasks" chip
   (`movedEventNote`, via `eventContextRows`' `movedNote`) so the offer is seen
-  without opening the sheet.
+  without opening the sheet. An event that moved *off* today, which today's
+  rows can never show, gets a row of its own on Today (`movedEventContextRows`)
+  that opens the sheet on just that event, and goes away once the move is
+  answered.
 - **Device-local and pruned a week after the event**, like the people link
   (`calendarEventTasks`).
 

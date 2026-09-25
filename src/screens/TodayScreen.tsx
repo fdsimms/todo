@@ -141,7 +141,7 @@ import { selectTodayMealEntries, recipeIndex } from '../utils/mealPlan';
 import { getDayStart, getLogicalDayKey } from '../utils/dateUtils';
 import { QuickEventSheet } from '../components/QuickEventSheet';
 import { useEventTaskLinkStore } from '../store/useEventTaskLinkStore';
-import { eventTaskKey, movedEventNote, movedLinkedEvents } from '../utils/eventTaskLinks';
+import { eventTaskKey, movedEventContextRows, movedEventNote, movedLinkedEvents } from '../utils/eventTaskLinks';
 import { morningCheckInTasks } from '../utils/morningCheckIn';
 import { addDays } from 'date-fns/addDays';
 import { useCalendarStore } from '../store/useCalendarStore';
@@ -2027,16 +2027,24 @@ export function TodayScreen() {
   const eventTaskLinks = useEventTaskLinkStore(s => s.links);
   const calendarWindowStart = useCalendarStore(s => s.windowStart);
   const calendarWindowEnd = useCalendarStore(s => s.windowEnd);
+  const liveTaskIds = useMemo(() => new Set(allTasks.map(t => t.id)), [allTasks]);
+  const movedEvents = useMemo(
+    () => (calendarWindowStart && calendarWindowEnd
+      ? movedLinkedEvents(eventTaskLinks, calendarEvents, new Date(calendarWindowStart), new Date(calendarWindowEnd))
+      : []),
+    [eventTaskLinks, calendarEvents, calendarWindowStart, calendarWindowEnd]
+  );
   const movedEventNotes = useMemo(() => {
     const notes = new Map<string, string>();
-    if (!calendarWindowStart || !calendarWindowEnd) return notes;
-    const liveIds = new Set(allTasks.map(t => t.id));
-    for (const moved of movedLinkedEvents(eventTaskLinks, calendarEvents, new Date(calendarWindowStart), new Date(calendarWindowEnd))) {
-      const note = movedEventNote(moved, liveIds);
+    for (const moved of movedEvents) {
+      const note = movedEventNote(moved, liveTaskIds);
       if (note) notes.set(eventTaskKey(moved.event), note);
     }
     return notes;
-  }, [eventTaskLinks, calendarEvents, calendarWindowStart, calendarWindowEnd, allTasks]);
+  }, [movedEvents, liveTaskIds]);
+  // A moved-off-today event's row opens the events sheet on that one event,
+  // where the move offer is; null is the ordinary "today's events" sheet.
+  const [eventsSheetFor, setEventsSheetFor] = useState<BusyEvent | null>(null);
 
   const contextRows = useMemo(() => {
     const rows: ContextRow[] = [];
@@ -2073,6 +2081,14 @@ export function TodayScreen() {
         isHidden: isEventHidden,
         movedNote: event => movedEventNotes.get(eventTaskKey(event)) ?? null,
       }));
+      // Events that moved off today, which today's own rows can't show.
+      const todayKeys = new Set(todayCalendarEvents.map(eventTaskKey));
+      rows.push(...movedEventContextRows(movedEvents, {
+        liveTaskIds,
+        category: calendarEventCategory,
+        use24Hour: use24HourTime,
+        isOnToday: event => todayKeys.has(eventTaskKey(event)),
+      }));
     }
     if (mealsOnToday === 'inline' && todayMealEntries) {
       rows.push(...mealContextRows(todayMealEntries, recipesById, {
@@ -2090,7 +2106,7 @@ export function TodayScreen() {
     return rows;
   }, [
     todayCalendarEvents, calendarEventCategory, use24HourTime, eventCalendarTags,
-    isEventHidden, movedEventNotes,
+    isEventHidden, movedEventNotes, movedEvents, liveTaskIds,
     mealsOnToday, todayMealEntries, recipesById, mealCookTaskCategory, allTasks,
     healthToday, healthCategory, dayResetTime,
     minuteTick,
@@ -2916,7 +2932,13 @@ export function TodayScreen() {
         <DayContextRow
           row={item.row}
           onPress={
-            item.row.kind === 'event' ? () => setEventsSheetVisible(true)
+            item.row.kind === 'event' ? () => {
+              const moved = item.row.id.startsWith('moved-')
+                ? movedEvents.find(m => `moved-${eventTaskKey(m.event)}` === item.row.id)
+                : undefined;
+              setEventsSheetFor(moved?.event ?? null);
+              setEventsSheetVisible(true);
+            }
             // A health row has nowhere to go, which the prop supports and which
             // is the honest answer here: the number came from another app, this
             // one holds no detail behind it, and opening Health would be a task
@@ -4432,6 +4454,7 @@ export function TodayScreen() {
           categoryCount={allCategories.length}
           onManageEvents={calendarReadEnabled && calendarLoaded && !demoActive ? () => {
             setOptionsMenuVisible(false);
+            setEventsSheetFor(null);
             setEventsSheetVisible(true);
           } : undefined}
           eventCount={todayCalendarEvents.length}
@@ -4450,8 +4473,12 @@ export function TodayScreen() {
         <TodayEventsSheet
           visible={eventsSheetVisible}
           onClose={() => setEventsSheetVisible(false)}
-          events={todayCalendarEvents}
+          events={eventsSheetFor ? [eventsSheetFor] : todayCalendarEvents}
           calendarsById={eventCalendarTags}
+          title={eventsSheetFor
+            ? new Date(eventsSheetFor.start).toLocaleDateString(undefined, { weekday: 'long', month: 'short', day: 'numeric' })
+            : undefined}
+          day={eventsSheetFor ? new Date(eventsSheetFor.start) : undefined}
         />
 
         <DeloadSheet

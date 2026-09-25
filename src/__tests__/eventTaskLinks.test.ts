@@ -4,6 +4,7 @@ import {
   eventTaskKey,
   movedLinkedEvents,
   movedEventNote,
+  movedEventContextRows,
   parseEventTaskLinks,
   pruneStaleEventTaskLinks,
   rekeyEventTasks,
@@ -152,5 +153,28 @@ describe('movedEventNote', () => {
 
   it('says nothing once none are left', () => {
     expect(movedEventNote(moved, new Set())).toBeNull();
+  });
+});
+
+describe('movedEventContextRows', () => {
+  const links = withEventTasks({}, event(), ['t1']);
+  const moved = movedLinkedEvents(links, [event({ start: at(28, 18), end: at(28, 20) })], windowStart, windowEnd);
+  const base = { liveTaskIds: new Set(['t1']), category: 'Calendar', use24Hour: true };
+
+  it('gives a moved-off-today event a row of its own, carrying the note', () => {
+    const rows = movedEventContextRows(moved, { ...base, isOnToday: () => false });
+    expect(rows).toHaveLength(1);
+    expect(rows[0].title).toBe('Dinner');
+    expect(rows[0].movedNote).toBe('Moved, 1 task');
+    expect(rows[0].caption).toContain('18:00');
+    expect(rows[0].category).toBe('Calendar');
+  });
+
+  it("leaves an event that moved onto today to its own row", () => {
+    expect(movedEventContextRows(moved, { ...base, isOnToday: () => true })).toEqual([]);
+  });
+
+  it('draws nothing once none of its tasks are left', () => {
+    expect(movedEventContextRows(moved, { ...base, liveTaskIds: new Set(), isOnToday: () => false })).toEqual([]);
   });
 });
