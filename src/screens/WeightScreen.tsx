@@ -107,6 +107,11 @@ export function WeightScreen() {
   const [goalOpen, setGoalOpen] = useState(false);
   const [rangeDays, setRangeDays] = useState<WeightChartRangeDays>(DEFAULT_RANGE_DAYS);
   const activeRange = WEIGHT_CHART_RANGES.find(r => r.days === rangeDays) ?? WEIGHT_CHART_RANGES[2];
+  // "6M" reads as ambiguous shorthand in a stat label with no other context
+  // around it; the section title above the chart already spells the same
+  // range out ("THE LAST 6 MONTHS"), so reuse that instead of inventing a
+  // second, abbreviated phrasing for the same thing.
+  const activeRangePhrase = activeRange.sectionTitle.replace(/^THE /, '').toLowerCase();
 
   // `dundundun://weight?log=1` — the weigh-in request's link button. Stamped
   // with the arrival time rather than a boolean, and tracked against what has
@@ -327,16 +332,16 @@ export function WeightScreen() {
           <Stat
             styles={styles}
             value={changeValue}
-            label={`Change (${unit}, ${activeRange.label})`}
+            label={`Change (${unit}), ${activeRangePhrase}`}
             accessibilityLabel={change === null
-              ? `Change, not enough readings in the last ${activeRange.label}`
-              : `Change over the last ${activeRange.label}, ${kgToUnit(change.deltaKg, unit).toFixed(1)} ${unit} across ${change.readings} readings`}
+              ? `Change, not enough readings in the ${activeRangePhrase}`
+              : `Change over the ${activeRangePhrase}, ${kgToUnit(change.deltaKg, unit).toFixed(1)} ${unit} across ${change.readings} readings`}
           />
           <Stat
             styles={styles}
             value={String(visibleReadings.length)}
-            label={`Weigh-ins (${activeRange.label})`}
-            accessibilityLabel={`${visibleReadings.length} weigh-ins in the last ${activeRange.label}`}
+            label={`Weigh-ins, ${activeRangePhrase}`}
+            accessibilityLabel={`${visibleReadings.length} weigh-ins in the ${activeRangePhrase}`}
           />
         </View>
 
