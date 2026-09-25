@@ -14,8 +14,11 @@ import type { ChainItem } from '../types';
 import { useColors, useTheme } from '../theme/ThemeContext';
 import { spacing, radius, font, fontWeight, animation, type Colors } from '../theme';
 import { haptics } from '../utils/haptics';
-import { DOSE_UNITS } from '../utils/medicationLog';
+import { DOSE_UNITS, medicationVocabulary, medicationKey } from '../utils/medicationLog';
+import { useMedicationStore } from '../store/useMedicationStore';
+import { useShallow } from 'zustand/react/shallow';
 import { SafeBlurView } from './SafeBlurView';
+import { PillGroup } from './PillGroup';
 import { SegmentedControl } from './SegmentedControl';
 import { SheetHeaderButton } from './SheetHeaderButton';
 import { SheetScrim } from './SheetScrim';
@@ -68,6 +71,14 @@ export function ChainStepMedicationSheet({
   const [name, setName] = useState('');
   const [amount, setAmount] = useState('');
   const [unit, setUnit] = useState<string | null>(null);
+
+  // Every medication ever logged, for the name field's own suggestions below
+  // — see medicationVocabulary for why this is derived rather than a registry.
+  const medicationLogs = useMedicationStore(useShallow(s => s.logs));
+  const medicationSuggestions = useMemo(
+    () => medicationVocabulary(medicationLogs),
+    [medicationLogs]
+  );
 
   useEffect(() => {
     if (!visible) return;
@@ -148,6 +159,24 @@ export function ChainStepMedicationSheet({
                   ? `Leave it empty and this step records the task's ${taskMedicationName}.`
                   : 'Leave it empty and this step records nothing.'}
               </Text>
+
+              {/* Picking one of these is what makes it the *same* medication
+                  as an earlier dose — medicationKey does no fuzzy matching
+                  (see docs/arch/mood-log.md), so retyping "Sertraline" as
+                  "sertraline" would otherwise split one medicine's history
+                  into two untallied entries. */}
+              {medicationSuggestions.length > 0 && (
+                <PillGroup
+                  noun="medication"
+                  surface="card"
+                  options={medicationSuggestions.map(n => ({
+                    key: medicationKey(n),
+                    label: n,
+                    selected: !!name.trim() && medicationKey(n) === medicationKey(name),
+                    onPress: () => { haptics.tap(); setName(n); },
+                  }))}
+                />
+              )}
 
               {name.trim().length > 0 && (
                 <>

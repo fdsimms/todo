@@ -239,6 +239,12 @@ export function NutritionTargetsSheet({ visible, onClose }: Props) {
             // water elsewhere in the app (`waterUnit`).
             const isWater = key === 'waterMl';
             const range = isWater ? waterRange(waterUnit) : NUTRITION_TARGET_RANGES[key];
+            const defaultValue = isWater
+              // Always a positive number, so waterInUnit's null path (for an
+              // absent stored value) never fires here — the fallback is just
+              // to satisfy its signature.
+              ? waterInUnit(NUTRITION_TARGET_RANGES.waterMl.default, waterUnit) ?? NUTRITION_TARGET_RANGES.waterMl.default
+              : NUTRITION_TARGET_RANGES[key].default;
             const unit = NUTRIENT_LABEL[key].unit;
             const value = isWater ? waterInUnit(targets.waterMl ?? null, waterUnit) : (targets[key] ?? null);
             return (
@@ -252,7 +258,7 @@ export function NutritionTargetsSheet({ visible, onClose }: Props) {
                   min={range.min}
                   max={range.max}
                   step={range.step}
-                  start={range.default}
+                  start={defaultValue}
                   allowNull
                   emptyLabel="None"
                   format={n =>
