@@ -147,7 +147,7 @@ export function computeSnoozeSuggestion(
   const scored: Scored[] = candidates.map(d => {
     const dow = d.getDay();
     const dOut = differenceInCalendarDays(d, today);
-    const dayKey = d.toISOString().slice(0, 10);
+    const dayKey = dayKeyOf(d);
 
     // Signal 1: load — tasks with an explicit dueDate/deferUntil on this day,
     // plus projected occurrences of recurring tasks that will land here.
