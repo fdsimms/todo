@@ -1470,28 +1470,22 @@ describe('reanchorReminderToWallClock', () => {
   });
 
   it('re-expresses the same wall-clock reading under a new timezone', () => {
-    // This repo's Jest config carries no explicit TZ (Intl resolves to
-    // 'UTC'), but a Date constructed with local params still picks up
-    // process.env.TZ changed just before construction — verified above and
-    // in reanchorReminderToWallClock's own doc comment.
-    const originalTz = process.env.TZ;
-    try {
-      process.env.TZ = 'America/New_York';
-      const nineAm = new Date(2026, 0, 15, 9, 0, 0);
-      const offset = captureReminderOffset(nineAm.toISOString())!;
+    // 09:00 on Jan 15 as set on a device in Tokyo (or New York, if the suite
+    // itself runs in Tokyo): the instant plus the offset in force there, which
+    // is all the function reads. Built as data rather than by switching
+    // process.env.TZ mid-test, which Jest ignores, so the move is exercised in
+    // whatever zone the suite runs in.
+    const elsewhere = new Date(2026, 0, 15, 9).getTimezoneOffset() === -540 ? 300 : -540;
+    const iso = new Date(Date.UTC(2026, 0, 15, 9, 0, 0) + elsewhere * 60_000).toISOString();
 
-      process.env.TZ = 'Asia/Tokyo';
-      const reanchored = new Date(reanchorReminderToWallClock(nineAm.toISOString(), offset));
+    const reanchored = new Date(reanchorReminderToWallClock(iso, elsewhere));
 
-      expect(reanchored.getFullYear()).toBe(2026);
-      expect(reanchored.getMonth()).toBe(0);
-      expect(reanchored.getDate()).toBe(15);
-      expect(reanchored.getHours()).toBe(9);
-      expect(reanchored.getMinutes()).toBe(0);
-    } finally {
-      if (originalTz === undefined) delete process.env.TZ;
-      else process.env.TZ = originalTz;
-    }
+    expect(reanchored.toISOString()).not.toBe(iso);
+    expect(reanchored.getFullYear()).toBe(2026);
+    expect(reanchored.getMonth()).toBe(0);
+    expect(reanchored.getDate()).toBe(15);
+    expect(reanchored.getHours()).toBe(9);
+    expect(reanchored.getMinutes()).toBe(0);
   });
 });
 
