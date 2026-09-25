@@ -1,4 +1,4 @@
 {
-  "message": "Fixed turning off two-way grocery sync during demo mode making the real Reminders sync forget which reminders match which grocery items, which could bring back items you had removed",
+  "message": "Fixed two ways demo mode could reach your real Reminders: turning off two-way grocery sync during demo made the real sync forget which reminders match which grocery items, and starting demo while a Reminders sync was running could import real reminders into the demo and delete them from Reminders",
   "date": "2026-09-25"
 }

@@ -1231,6 +1231,39 @@ describe('importReminders — demo mode', () => {
     expect(mockCalendar.deleteReminderAsync).not.toHaveBeenCalled();
   });
 
+  // The gate at the top is checked before the awaits, and demo can start during
+  // them: a pass kicked off by a foreground still reading EventKit when the
+  // user taps Start demo. Each writes only after checking again.
+  it('stops a drain when demo starts while it is reading the list', async () => {
+    mockCalendar.getRemindersAsync.mockImplementation(async () => {
+      mockDemoMode = true;
+      return [reminder('a')];
+    });
+
+    await freshSync().importReminders();
+
+    expect(mockAddTask).not.toHaveBeenCalled();
+    expect(mockCalendar.deleteReminderAsync).not.toHaveBeenCalled();
+  });
+
+  it('stops a mirror when demo starts while it is reading the list', async () => {
+    mockSettings.remindersImportEnabled = false;
+    mockSettings.groceryImportEnabled = true;
+    mockSettings.groceryImportListId = LIST.id;
+    mockSettings.groceryImportConfirmedListId = LIST.id;
+    mockSettings.groceryImportTwoWay = true;
+    mockGroceryItems = [{ id: 'i1', name: 'milk', nameKey: 'milk', onList: true, checked: false }];
+    mockCalendar.getRemindersAsync.mockImplementation(async () => {
+      mockDemoMode = true;
+      return [];
+    });
+
+    await freshSync().importReminders();
+
+    expect(mockCalendar.createReminderAsync).not.toHaveBeenCalled();
+    expect(mockCalendar.deleteReminderAsync).not.toHaveBeenCalled();
+  });
+
   // Turning two-way off clears the links, which is right outside demo and
   // wrong inside it: the clear landed in the demo database and, worse, in the
   // module's in-memory index, which outlives the swap. On leaving demo the real
