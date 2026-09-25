@@ -9,7 +9,7 @@ import { useKeyboardInsetScroll } from '../hooks/useKeyboardInsetScroll';
 import { border, font, fontWeight, iconSize, interaction, radius, spacing, type Colors } from '../theme';
 import { NUTRIENT_KEYS, type NutrientKey } from '../types';
 import { useSettingsStore } from '../store/useSettingsStore';
-import { NUTRITION_TARGET_RANGES } from '../utils/nutritionTargets';
+import { NUTRITION_TARGET_RANGES, type NutritionTargets } from '../utils/nutritionTargets';
 import { NUTRIENT_LABEL } from '../utils/foodNutrition';
 import { describeWater, waterInUnit, waterRange, waterToMl } from '../utils/waterLog';
 import {
@@ -37,12 +37,16 @@ const PINNABLE_NUTRIENTS = NUTRIENT_KEYS.filter(k => k !== 'waterMl');
 /**
  * A daily figure to aim at, per nutrient.
  *
- * **Nothing is suggested and nothing is on by default.** Every stepper opens
- * empty, and the number it shows when you first press + is where that
- * nutrient's range starts from rather than a recommendation. The app has no
- * business having an opinion on what somebody should eat, so it does not
- * express one here, and `docs/arch/health-data.md` makes the same argument at
- * length about a related case.
+ * **Nothing is on by default, and nothing here is the app's opinion.** Every
+ * stepper opens empty, and the number it lands on at the first press of + —
+ * same figure the "Set to U.S. Daily Value" action above the list fills in
+ * for every nutrient still unset — is `NUTRITION_TARGET_RANGES[key].default`,
+ * the reference figure US nutrition-label law already prints on the packet.
+ * The app is repeating that figure, not assessing the person holding it, the
+ * same distinction `NUTRITION_TARGET_RANGES`'s own comment draws and
+ * `docs/arch/health-data.md` makes at length about a related case. A target
+ * still exists only once somebody presses + or taps that action; the map
+ * itself ships and stays empty until then.
  *
  * **Clearing a target is one press at the floor**, which is what `allowNull`
  * is for. "I no longer want a protein target" is a real thing to say, and
@@ -71,6 +75,7 @@ export function NutritionTargetsSheet({ visible, onClose }: Props) {
 
   const targets = useSettingsStore(useShallow(s => s.nutritionTargets));
   const setNutritionTarget = useSettingsStore(s => s.setNutritionTarget);
+  const setNutritionTargets = useSettingsStore(s => s.setNutritionTargets);
   const pinnedNutrients = useSettingsStore(useShallow(s => s.foodLogPinnedNutrients));
   const setFoodLogPinnedNutrients = useSettingsStore(s => s.setFoodLogPinnedNutrients);
   const waterUnit = useSettingsStore(s => s.waterUnit);
@@ -150,6 +155,14 @@ export function NutritionTargetsSheet({ visible, onClose }: Props) {
 
   const set = (key: NutrientKey, value: number | null) => setNutritionTarget(key, value);
 
+  const unsetKeys = NUTRIENT_KEYS.filter(key => targets[key] === undefined);
+  const applyDailyValues = () => {
+    haptics.tap();
+    const values: NutritionTargets = {};
+    for (const key of unsetKeys) values[key] = NUTRITION_TARGET_RANGES[key].default;
+    setNutritionTargets(values);
+  };
+
   const togglePinned = (key: NutrientKey) => {
     haptics.tap();
     const next = pinnedNutrients.includes(key)
@@ -207,8 +220,17 @@ export function NutritionTargetsSheet({ visible, onClose }: Props) {
           <Text style={styles.sectionLabel}>Daily targets</Text>
           <Text style={styles.intro}>
             A figure to read the day's total against. Nothing is set to begin with, and
-            nothing is suggested: these are yours to choose or to leave alone.
+            nothing is suggested: these are yours to choose, to leave alone, or to start
+            from the U.S. Daily Value, the reference figure nutrition labels print.
           </Text>
+          {unsetKeys.length > 0 && (
+            <InlineAction
+              label="Set to U.S. Daily Value"
+              variant="neutral"
+              onPress={applyDailyValues}
+              style={styles.dailyValueAction}
+            />
+          )}
 
           {NUTRIENT_KEYS.map(key => {
             // Water's target is stored in ml regardless (like every other
@@ -230,6 +252,7 @@ export function NutritionTargetsSheet({ visible, onClose }: Props) {
                   min={range.min}
                   max={range.max}
                   step={range.step}
+                  start={range.default}
                   allowNull
                   emptyLabel="None"
                   format={n =>
@@ -497,6 +520,7 @@ function makeStyles(colors: Colors) {
     },
     pinnedRowLast: { borderBottomWidth: 0 },
     pinnedRowLabel: { color: colors.text, fontSize: font.sm },
+    dailyValueAction: { alignSelf: 'flex-start' },
     row: {
       backgroundColor: colors.bgSecondary,
       borderRadius: radius.md,
