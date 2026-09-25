@@ -71,7 +71,7 @@ import { cookSteps } from '../utils/cookMode';
 import { MAX_STEP_TIMER_SECONDS, formatStepDuration, parseStepDurations, stepDurationOffers } from '../utils/stepTimers';
 import { featureHidden, featureShown } from '../utils/simpleMode';
 import { useColors } from '../theme/ThemeContext';
-import { spacing, font, fontWeight, lineHeight, radius, iconSize, interaction, type Colors } from '../theme';
+import { spacing, font, fontWeight, lineHeight, radius, iconSize, interaction, flattenOverlay, type Colors } from '../theme';
 import { haptics } from '../utils/haptics';
 import { animateLayout } from '../utils/layoutAnimation';
 import { pickRecipeImage, resolveRecipeImagePath, type RecipePhotoSource } from '../utils/recipePhoto';
@@ -1350,10 +1350,17 @@ export function RecipeDetailScreen() {
     return offer ? formatStepDuration(offer.seconds) : null;
   };
 
-  const renderStep = (step: RecipeStep, displayIndex: number, drag: () => void) => (
+  // `isActive` is SortableList's floating drag copy, which paints no background
+  // of its own: without the opaque fill the lifted step was see-through, same
+  // as the ingredient rows' `isDragging` above.
+  const renderStep = (step: RecipeStep, displayIndex: number, drag: () => void, isActive?: boolean) => (
     <View
       key={step.id}
-      style={[styles.ingredient, editingStepId === step.id && styles.stepEditing]}
+      style={[
+        styles.ingredient,
+        editingStepId === step.id && styles.stepEditing,
+        isActive && styles.ingredientDragging,
+      ]}
     >
       <Text style={styles.stepNumber}>{displayIndex + 1}</Text>
       <TouchableOpacity
@@ -2550,7 +2557,8 @@ const makeStyles = (colors: Colors) => StyleSheet.create({
   // `ingredientSelected` uses, so "this is the one you're changing" reads the
   // same way selection already does on this screen.
   stepEditing: {
-    backgroundColor: colors.accent + '1A',
+    // Flattened so it stays opaque when the step is dragged mid-edit.
+    backgroundColor: flattenOverlay(colors.accent + '1A', colors.bgSecondary),
   },
   // Fixed width so a run of 1–20 doesn't shift the text beside it as the
   // digit count grows; right-aligned so the numbers themselves stay flush
