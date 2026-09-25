@@ -5,7 +5,7 @@ import { format } from 'date-fns/format';
 import type { RecurrenceType } from '../types';
 import { useColors } from '../theme/ThemeContext';
 import { border, font, fontWeight, iconSize, interaction, radius, spacing, type Colors } from '../theme';
-import { ORDINAL_OPTIONS, recurrenceUnitLabel } from '../utils/recurrenceLabels';
+import { ORDINAL_OPTIONS, MONTH_ABBREVIATIONS, recurrenceUnitLabel } from '../utils/recurrenceLabels';
 import { WeekdaySelector } from './WeekdaySelector';
 import { CountStepper } from './CountStepper';
 import { SegmentedControl } from './SegmentedControl';
@@ -67,6 +67,11 @@ interface Props {
   onChangeMonthDay: (day: number | null) => void;
   /** Value to seed `recurrenceMonthDay` with the first time "On a day" is picked (TaskEditor seeds from the due date; TemplateItemEditor has none, so uses 1). */
   seedMonthDay: () => number;
+  /** Month (1-12) a yearly rule is pinned to. Null = whatever month the due date falls in. Ignored for every other `recurrenceType`. */
+  recurrenceMonth: number | null;
+  onChangeMonth: (month: number | null) => void;
+  /** Value to seed `recurrenceMonth` with the first time "On a month" is picked (TaskEditor seeds from the due date; TemplateItemEditor has none, so uses January). */
+  seedMonth: () => number;
   recurrenceFromCompletion: boolean;
   onChangeFromCompletion: (fromCompletion: boolean) => void;
   recurrenceCount: number | null;
@@ -100,6 +105,9 @@ interface Props {
 /** The monthly day-anchor modes, as one closed set the picker can switch on. */
 type MonthAnchor = 'dueDate' | 'monthDay' | 'lastDay' | 'weekday';
 
+/** The yearly month-anchor modes: pinned to a fixed month, or riding the due date's. */
+type YearMonthAnchor = 'dueDate' | 'month';
+
 /**
  * One labelled block of the rule. Every block but the first states its own
  * name, because unlabelled pill rows stacked four deep read as one field of
@@ -128,10 +136,11 @@ function Group({
  * ends never/date/count pills with the occurrence-count stepper.
  *
  * Yearly shares the monthly sub-picker's day options rather than getting its
- * own, minus "on a weekday" — the engine (`getNextYearDayOccurrence`) only
- * ever varies the day within whatever month the due date falls in, it has no
+ * own, minus "on a weekday" — the engine (`getNextYearDayOccurrence`) has no
  * notion of a week-ordinal anchor, so there's nothing for that option to
- * mean here.
+ * mean here. It also gets an "In which month" group above the day picker,
+ * which monthly has no equivalent of: only a yearly rule has a month of its
+ * own to pin independently of the due date's.
  *
  * Those are six independent settings, so the controls are cut into labelled
  * groups separated by hairlines rather than run together as one column of
@@ -151,6 +160,7 @@ export function RecurrencePicker({
   recurrenceInterval, onChangeInterval,
   recurrenceDays, onChangeDays,
   recurrenceMonthDay, onChangeMonthDay, seedMonthDay,
+  recurrenceMonth, onChangeMonth, seedMonth,
   recurrenceFromCompletion, onChangeFromCompletion,
   recurrenceCount, onChangeCount,
   countUnitLabel = (count) => (count === 1 ? 'time' : 'times'),
@@ -214,6 +224,12 @@ export function RecurrencePicker({
     }
   };
 
+  const yearMonthAnchor: YearMonthAnchor = recurrenceMonth !== null ? 'month' : 'dueDate';
+
+  const selectYearMonthAnchor = (anchor: YearMonthAnchor) => {
+    onChangeMonth(anchor === 'month' ? (recurrenceMonth ?? seedMonth()) : null);
+  };
+
   return (
     <>
       <Group first styles={styles}>
@@ -248,10 +264,38 @@ export function RecurrencePicker({
         </Group>
       )}
 
+      {recurrenceType === 'yearly' && (
+        <Group label="In which month" styles={styles}>
+          <SegmentedControl
+            label="In which month"
+            value={yearMonthAnchor}
+            onChange={selectYearMonthAnchor}
+            // Two columns: "Same month as due date" has no one-row spelling that
+            // isn't confusable with "On a month".
+            columns={2}
+            options={[
+              { value: 'dueDate' as YearMonthAnchor, label: 'Same month as due date' },
+              { value: 'month' as YearMonthAnchor, label: 'On a month' },
+            ]}
+          />
+          {recurrenceMonth !== null && (
+            <View style={styles.controlSpaced}>
+              <SegmentedControl
+                label="Month"
+                value={recurrenceMonth}
+                onChange={onChangeMonth}
+                columns={4}
+                options={MONTH_ABBREVIATIONS.map((label, i) => ({ value: i + 1, label }))}
+              />
+            </View>
+          )}
+        </Group>
+      )}
+
       {(recurrenceType === 'monthly' || recurrenceType === 'yearly') && (
         <Group
           label="On which day"
-          hint={recurrenceType === 'yearly'
+          hint={recurrenceType === 'yearly' && recurrenceMonth === null
             ? 'The month stays whatever month the due date falls in; this only sets the day within it.'
             : undefined}
           styles={styles}

@@ -243,7 +243,7 @@ name cannot say is where a component appears, and that is `docs/screen-map.md`.
 - `src/utils/recipeTimer.ts` — CookTimerState, PrepTimerState, hasCookTimer, isCookTimerRunning, cookTimerElapsed, cookTimerRemaining, cookTimerProgress, isCookTimerReady, hasPrepTimer, isPrepTimerRunning, +5 more
 - `src/utils/recipeUrl.ts` — normalizeRecipeUrl, decodeEntities, htmlToText, metaContent, PageRecipe, parseIsoDuration, parseRecipeJsonLd, focusRecipeText, recipeToPlainText, ParsedRecipePage, +1 more
 - `src/utils/recipeUtils.ts` — parseRecipeIngredients, normalizeIngredient, makeIngredient, ingredientsFromText, mergeIngredients, remapIngredientKeyIn, parsePrepTasks, normalizePrepTask, parseSteps, normalizeStep, +46 more
-- `src/utils/recurrenceLabels.ts` — recurrenceUnitLabel, ORDINAL_OPTIONS, RecurrenceRule, describeTaskRecurrence, recurrenceRuleOf, describeRecurrence
+- `src/utils/recurrenceLabels.ts` — recurrenceUnitLabel, ORDINAL_OPTIONS, MONTH_NAMES, MONTH_ABBREVIATIONS, RecurrenceRule, describeTaskRecurrence, recurrenceRuleOf, describeRecurrence
 - `src/utils/refreshGuard.ts` — RefreshGuard, createRefreshGuard
 - `src/utils/reminderCaptures.ts` — CAPTURE_TITLE_MAX_LENGTH, MAX_REMINDER_CAPTURES, makeReminderCapture, parseReminderCaptures, serializeReminderCaptures, activeReminderCaptures, drainableReminderCaptures, captureListIds, captureDraftFields, describeReminderCaptureFiling
 - `src/utils/reminderNudge.ts` — ReminderNudge, nudgeReminderPastMeeting

@@ -1352,6 +1352,11 @@ export function QuickAddModal({
       recurrenceInterval,
       recurrenceDays,
       recurrenceMonthDay,
+      // Quick add has no month-of-year control for yearly rules (RecurrencePicker's
+      // "In which month" group is TaskEditor/TemplateItemEditor-only, same scoping
+      // as the day-of-month stepper below, which quick add also doesn't expose for
+      // yearly) — always "same month as the due date" until edited in the full editor.
+      recurrenceMonth: null,
       recurrenceWeekOrdinal,
       recurrenceFromCompletion,
       recurrenceEndDate: recurrenceEndDate ? new Date(recurrenceEndDate) : null,

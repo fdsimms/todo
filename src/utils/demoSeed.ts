@@ -409,6 +409,22 @@ export function seedDemoData(): void {
     driftingSince: subDays(today, 11).toISOString(),
   });
 
+  // A yearly rule pinned to a month of its own — recurrenceMonth, otherwise
+  // invisible until something uses it. April, regardless of what month the
+  // due date otherwise falls in.
+  addTask({
+    title: 'Renew passport',
+    notes: 'Expires in June — starting the paperwork in April keeps it well ahead of any trip.',
+    category: 'Errands',
+    dueDate: new Date(today.getFullYear(), 3, 15).toISOString(),
+    recurrenceType: 'yearly',
+    recurrenceInterval: 1,
+    recurrenceMonth: 4,
+    priority: 1,
+    effort: 1,
+    tags: ['admin'],
+  });
+
   addTask({
     title: 'Swing by the farmers market',
     notes: 'Only worth doing between 8 and 1, after that the good stalls are gone.',
