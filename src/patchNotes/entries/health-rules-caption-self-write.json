@@ -1,0 +1,4 @@
+{
+  "message": "Fixed the Health rules screen saying a nutrient rule needs another app logging food to Health — this app's own food log can write those samples too, once Health writing is turned on in Settings.",
+  "date": "2026-09-25"
+}
