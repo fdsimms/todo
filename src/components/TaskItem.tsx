@@ -1216,7 +1216,17 @@ export const TaskItem = React.memo(function TaskItem({
   const recurrenceNotYetDue = isRecurrenceNotYetDue(task);
   // Why this row's checkbox refuses a tap — an error haptic and nothing
   // happening — so everything that just needs "can this be ticked" asks this.
+  // No longer true for 'hours': see hoursLoggable below, which is the one
+  // exception that still lets the tap through.
   const completionLocked = recurrenceNotYetDue;
+  // An "every N hours" task's own tap still works while completionLocked —
+  // it asks to confirm logging early instead of refusing (see handleComplete)
+  // — so the checkbox needs to look tappable rather than blank. Without this
+  // the circle below fell to circleLocked (no border at all, see its own
+  // comment), which for every other locked recurrence correctly draws
+  // nothing there to tap; for this one type it was hiding the only
+  // affordance the early-log feature has.
+  const hoursLoggable = completionLocked && task.recurrenceType === 'hours';
 
   // A decision task asks for a value on the way out (see Task.deliverableKind),
   // so its box carries a "?" instead of sitting empty — the tap is about to
@@ -2148,10 +2158,10 @@ export const TaskItem = React.memo(function TaskItem({
         accessibilityRole={meterInteractive || (isNegative && !selectionMode) ? 'button' : 'checkbox'}
         accessibilityState={
           meterInteractive || (isNegative && !selectionMode)
-            ? { disabled: completionLocked }
+            ? { disabled: completionLocked && !hoursLoggable }
             : {
                 checked: selectionMode ? selected : completing,
-                disabled: !selectionMode && completionLocked,
+                disabled: !selectionMode && completionLocked && !hoursLoggable,
               }
         }
         accessibilityLabel={
@@ -2162,7 +2172,9 @@ export const TaskItem = React.memo(function TaskItem({
                 ? `${task.title}, broken today, log another`
                 : `${task.title}, clean today, log a slip`
             : recurrenceNotYetDue
-              ? `${task.title}, not due yet`
+              ? hoursLoggable
+                ? `${task.title}, not due yet, double tap to log early`
+                : `${task.title}, not due yet`
               : completing
                 ? `Undo complete ${task.title}`
                 : meterInteractive
@@ -2198,12 +2210,14 @@ export const TaskItem = React.memo(function TaskItem({
         <Animated.View style={[
           styles.circle,
           completing && !quotaCompleting && !quotaPartial && styles.circleCompleting,
-          completionLocked && styles.circleLocked,
+          completionLocked && !hoursLoggable && styles.circleLocked,
           // Ready is a nudge, not a lock — the checkbox stays tappable either way.
           // The meal-plan nudge's full day borrows the same treatment on purpose:
           // green already means done-or-ready on this row, and a second colour
           // for a second kind of "you can tick this now" would be teaching the
-          // reader two vocabularies for one idea.
+          // reader two vocabularies for one idea. hoursLoggable earns the same
+          // treatment for the same reason — its tap is a request too, just one
+          // that confirms first.
           !completing &&
             !completionLocked &&
             (timerReady ||
@@ -2214,6 +2228,7 @@ export const TaskItem = React.memo(function TaskItem({
               deloadReady ||
               mealShortfallReady) &&
             styles.circleReady,
+          !completing && hoursLoggable && styles.circleReady,
           (quotaMeterVisible || quotaPartial) && styles.circleQuota,
           // Last of the state styles, so a broken day wins the box outright:
           // it's the one thing on this row that has just gone wrong.
