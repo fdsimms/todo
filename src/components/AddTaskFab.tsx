@@ -3,18 +3,24 @@ import { Animated } from 'react-native';
 import { FabMenu, type FabDragHandlers, type FabMenuItem } from './Fab';
 import { addMenuItemShown } from '../utils/simpleMode';
 import { useSettingsStore } from '../store/useSettingsStore';
+import { isDemoModeActive } from '../utils/demoState';
 
-export type AddTaskType = 'chain' | 'stack' | 'template' | 'import' | 'task';
+export type AddTaskType = 'chain' | 'stack' | 'template' | 'import' | 'event' | 'task';
 
 // Bottom-up, so plain "Task" — far and away the most common — lands closest
 // to the button. There's deliberately no "Recurring" entry: it created a plain
 // task with one picker pre-opened, which the Repeat row in quick add already
 // does in the same number of taps.
+//
+// "Event" is the one entry that adds no task: it opens Apple's new-event sheet
+// for today (see `presentEventCreate`). It sits beside Task because a plan for
+// today is a Today thing whichever list it ends up in.
 const ITEMS: FabMenuItem[] = [
   { key: 'chain', label: 'Chain', icon: 'git-commit' },
   { key: 'stack', label: 'Stack', icon: 'layers' },
   { key: 'template', label: 'Template', icon: 'copy' },
   { key: 'import', label: 'Import event', icon: 'scan-outline' },
+  { key: 'event', label: 'Event', icon: 'calendar-outline' },
   { key: 'task', label: 'Task', icon: 'checkbox' },
 ];
 
@@ -43,7 +49,10 @@ interface Props {
 export function AddTaskFab({ bottom, onSelect, disabled, opacity, drag, dragLabel }: Props) {
   const simpleMode = useSettingsStore(s => s.simpleMode);
   const items = useMemo(
-    () => ITEMS.filter(item => addMenuItemShown(item.key, simpleMode)),
+    // Event is also dropped in a demo, where it would write to the real calendar.
+    () => ITEMS.filter(item =>
+      addMenuItemShown(item.key, simpleMode)
+      && !(item.key === 'event' && isDemoModeActive())),
     [simpleMode],
   );
 

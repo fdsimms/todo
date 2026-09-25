@@ -169,6 +169,34 @@ describe('suggestedHistoryEvents', () => {
     expect(suggestedHistoryEvents([event({ title: 'Dentist' })], people, {}, now)).toEqual([]);
   });
 
+  describe('linked people', () => {
+    it('offers a linked event to its people even when the title names nobody', () => {
+      const out = suggestedHistoryEvents([event({ title: 'Dinner' })], people, {}, now, () => ['p2']);
+      expect(out).toHaveLength(1);
+      expect(out[0].personIds).toEqual(['p2']);
+    });
+
+    it('adds linked people to the ones the title named, without repeating anybody', () => {
+      const out = suggestedHistoryEvents([event()], people, {}, now, () => ['p1', 'p2']);
+      expect(out[0].personIds).toEqual(['p1', 'p2']);
+    });
+
+    it('still refuses a linked event that has not finished', () => {
+      const later = event({ title: 'Dinner', start: '2026-08-25T11:00:00.000Z', end: '2026-08-25T13:00:00.000Z' });
+      expect(suggestedHistoryEvents([later], people, {}, now, () => ['p2'])).toEqual([]);
+    });
+
+    it('still refuses a linked all-day event', () => {
+      expect(suggestedHistoryEvents([event({ title: 'Trip', allDay: true })], people, {}, now, () => ['p2'])).toEqual([]);
+    });
+
+    it('still honours an answered event', () => {
+      const e = event({ title: 'Dinner' });
+      const handled = { [historyEventKey(e)]: '2026-08-20' };
+      expect(suggestedHistoryEvents([e], people, handled, now, () => ['p2'])).toEqual([]);
+    });
+  });
+
   it('skips an event that has not finished', () => {
     const later = event({
       start: '2026-08-25T11:00:00.000Z',

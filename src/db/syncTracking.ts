@@ -315,6 +315,9 @@ export const SYNCED_SETTING_KEYS: readonly string[] = [
  *   about on a person's screen, keyed by EventKit event id. Same objection as
  *   `groceryImportLinks`: an event id names a record on one device, so the
  *   other phone would read it as answers about events it has never seen.
+ * - `calendarEventPeople` — who each calendar event is with, keyed by EventKit
+ *   event id, so wrong on another device for the same reason. The event itself
+ *   syncs through its own calendar (Google, iCloud); only this link stays put.
  * - `aiFeatureConfig` — the API key it depends on is device-local by design,
  *   so syncing the config turns features on for a device that cannot run them.
  * - `activeListDrivenBy` — a pointer into `grocery_active_list`, so it is per

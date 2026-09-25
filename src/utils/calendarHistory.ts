@@ -256,12 +256,19 @@ export function peopleNamedInTitle(title: string, people: readonly PersonName[])
  * `handled` covers both answers at once, and that is deliberate: accepted and
  * dismissed both mean "don't ask about this again", so there is one record and
  * nothing to keep in step.
+ *
+ * `linkedPeople` is who the user said an event was with (`eventPeople.ts`).
+ * Those people are offered the event even when its title never names them,
+ * which is the point of linking. **It is still an offer, not a record**: a
+ * link says who a plan was with, and only the user knows whether it happened.
+ * The four refusals above apply to a linked event exactly as to a named one.
  */
 export function suggestedHistoryEvents(
   events: readonly BusyEvent[],
   people: readonly PersonName[],
   handled: Readonly<HandledHistoryEvents>,
-  now: Date
+  now: Date,
+  linkedPeople?: (event: BusyEvent) => readonly string[]
 ): HistorySuggestion[] {
   const at = now.getTime();
   const floor = pastWindowStart(now).getTime();
@@ -280,6 +287,9 @@ export function suggestedHistoryEvents(
     if (key in handled) continue;
 
     const personIds = peopleNamedInTitle(title, people);
+    for (const id of linkedPeople?.(event) ?? []) {
+      if (!personIds.includes(id)) personIds.push(id);
+    }
     if (personIds.length === 0) continue;
 
     out.push({ key, eventId: event.id, title, at: event.start, personIds });

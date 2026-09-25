@@ -158,6 +158,11 @@ describe('addMenuItemShown', () => {
     expect(addMenuItemShown('template', true)).toBe(false);
   });
 
+  it('drops the new-event entry along with the Calendar screen', () => {
+    expect(addMenuItemShown('event', false)).toBe(true);
+    expect(addMenuItemShown('event', true)).toBe(featureShown('calendarScreen', true));
+  });
+
   // Only *starting* a new one goes: an install with stacks keeps the screen
   // that edits them, and still loses the button that makes another.
   it('drops the button that makes another even where the screen survives', () => {
