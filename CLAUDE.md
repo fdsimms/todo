@@ -735,6 +735,8 @@ deloadProposal.tomorrow = { date: tomorrowDate, dayLabel: 'Tomorrow', reason: nu
 
 Search the codebase with `grep -n "new Date()" src/utils/` and check whether the result is a scheduling decision or something else (timestamps, display formatting, or expiry checks all have different rules). Don't assume a file is right because the pattern appears elsewhere in it — `src/utils/dateUtils.ts` itself has many correct uses alongside the one-line-per-function rule (e.g., `isTaskExpired()` deliberately uses bare `Date.now()` to capture the *real* current time, since expiry is about wall-clock seconds, not logical days).
 
+**Never cut a day key out of `toISOString()`.** It is UTC, and every day key in the app (`dayKeyOf`, `getLogicalDayKey`, the `YYYY-MM-DD` columns) is local. The two agree only while the instant being keyed stays on the same calendar date in both, so the mismatch is invisible in CI (which runs in UTC) and across most of the Americas and Europe, and appears only far from Greenwich. `snoozeEngine` keyed its candidate days this way and, in UTC+13/+14, read each day's projected recurring load off the day before it (#2848). A behavioural test can't catch it, because Jest ignores a `process.env.TZ` written at runtime, so `noUtcDayKey.test.ts` bans the pattern in `src/` instead. Use `dayKeyOf` for a calendar date and `getLogicalDayKey` when `dayResetTime` matters. To see a date bug a UTC run hides, run the suite under `TZ=Pacific/Kiritimati`.
+
 ### Pinning — a pinned task has two rows, and that's the feature
 
 Pinning adds a **copy** of a task to a "Pinned Tasks" block at the top of Today. The original row
