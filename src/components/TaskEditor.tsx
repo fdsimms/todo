@@ -50,7 +50,7 @@ import { NUTRIENT_LABEL, mlToFlOz, flOzToMl } from '../utils/foodNutrition';
 import { useColors, useTheme } from '../theme/ThemeContext';
 import { spacing, radius, font, border, interaction, animation, checkboxRadius, iconSize, type Colors } from '../theme';
 import { haptics } from '../utils/haptics';
-import { DOSE_UNITS } from '../utils/medicationLog';
+import { DOSE_UNITS, medicationVocabulary, medicationKey } from '../utils/medicationLog';
 import { useTitleSelection } from '../hooks/useTitleSelection';
 import { confirmDelete } from '../utils/confirmDelete';
 import { animateLayout } from '../utils/layoutAnimation';
@@ -79,6 +79,7 @@ import { useCategoryStore } from '../store/useCategoryStore';
 import { useProjectStore } from '../store/useProjectStore';
 import { usePersonStore, displayNameOf } from '../store/usePersonStore';
 import { useTaskGroupStore } from '../store/useTaskGroupStore';
+import { useMedicationStore } from '../store/useMedicationStore';
 import { categoryLabel } from '../utils/categoryLabel';
 import { useShallow } from 'zustand/react/shallow';
 import { isStreakAtRecord, nextStreakRecord, streakHint } from '../utils/streakRecord';
@@ -347,6 +348,14 @@ export function TaskEditor({ visible, task, initialDraft, onClose }: Props) {
   // wanted on this week's list — going low is what puts it on the list.
   const groceryItems = useGroceryStore(useShallow(s => s.items));
   const addGroceryItem = useGroceryStore(s => s.addToPantry);
+  // Every medication ever logged, for the "Log a dose" name field's own
+  // suggestions below — see medicationVocabulary for why this is derived
+  // rather than a registry.
+  const medicationLogs = useMedicationStore(useShallow(s => s.logs));
+  const medicationSuggestions = useMemo(
+    () => medicationVocabulary(medicationLogs),
+    [medicationLogs]
+  );
   // Archived people are out of the picker but never stripped off a task that
   // already names them: filing somebody away is about the list, not about
   // rewriting what you did together.
@@ -3926,6 +3935,23 @@ export function TaskEditor({ visible, task, initialDraft, onClose }: Props) {
                   returnKeyType="done"
                   accessibilityLabel="What this task records a dose of"
                 />
+                {/* Picking one of these is what makes it the *same* medication
+                    as an earlier dose — medicationKey does no fuzzy matching
+                    (see docs/arch/mood-log.md), so retyping "Sertraline" as
+                    "sertraline" would otherwise split one medicine's history
+                    into two untallied entries. */}
+                {medicationSuggestions.length > 0 && (
+                  <PillGroup
+                    noun="medication"
+                    surface="card"
+                    options={medicationSuggestions.map(name => ({
+                      key: medicationKey(name),
+                      label: name,
+                      selected: !!medicationName && medicationKey(name) === medicationKey(medicationName),
+                      onPress: () => { haptics.tap(); setMedicationName(name); },
+                    }))}
+                  />
+                )}
                 {/* Hidden until there's something to be the amount *of*, the
                     same rule the daily target's unit field follows: on its own
                     it labels nothing. */}

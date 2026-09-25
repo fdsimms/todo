@@ -23,12 +23,13 @@ import { PRIORITY_LABELS, EFFORT_LABELS, EFFORT_HINTS, TITLE_MAX_LENGTH, MEAL_SL
 import { useColors, useTheme } from '../theme/ThemeContext';
 import { spacing, radius, font, interaction, type Colors } from '../theme';
 import { haptics } from '../utils/haptics';
-import { DOSE_UNITS } from '../utils/medicationLog';
+import { DOSE_UNITS, medicationVocabulary, medicationKey } from '../utils/medicationLog';
 import { formatDuration } from '../utils/effort';
 import { animateLayout } from '../utils/layoutAnimation';
 import { tagColor } from '../utils/tagColor';
 import { useTaskStore } from '../store/useTaskStore';
 import { useTemplateStore } from '../store/useTemplateStore';
+import { useMedicationStore } from '../store/useMedicationStore';
 import { describeConditions, questionLabel, toggleItemCondition } from '../utils/templateQuestions';
 import { useCategoryStore } from '../store/useCategoryStore';
 import { useShallow } from 'zustand/react/shallow';
@@ -62,6 +63,7 @@ import { SegmentedControl } from './SegmentedControl';
 import { PRIORITY_SEGMENTS } from '../utils/prioritySegments';
 import { CollapsibleField } from './CollapsibleField';
 import { InlineAction } from './InlineAction';
+import { PillGroup } from './PillGroup';
 import { SheetHeaderButton } from './SheetHeaderButton';
 import { EditorRow } from './EditorRow';
 import { EditorSheet } from './EditorSheet';
@@ -122,6 +124,14 @@ export function TemplateItemEditor({ visible, templateId, templateName, item, in
   // fixed set to pick from, so there's nothing an author could tick.
   const choiceQuestions = useTemplateStore(
     useShallow(s => (s.templates.find(t => t.id === templateId)?.questions ?? []).filter(q => q.kind === 'choice'))
+  );
+  // Every medication ever logged, for the "Log a dose" name field's own
+  // suggestions below — see medicationVocabulary for why this is derived
+  // rather than a registry.
+  const medicationLogs = useMedicationStore(useShallow(s => s.logs));
+  const medicationSuggestions = useMemo(
+    () => medicationVocabulary(medicationLogs),
+    [medicationLogs]
   );
 
   // ==== local state: the draft, one piece of state per field ====
@@ -1030,6 +1040,23 @@ export function TemplateItemEditor({ visible, templateId, templateName, item, in
             returnKeyType="done"
             accessibilityLabel="What tasks from this item record a dose of"
           />
+          {/* Picking one of these is what makes it the *same* medication as an
+              earlier dose — medicationKey does no fuzzy matching (see
+              docs/arch/mood-log.md), so retyping "Sertraline" as "sertraline"
+              would otherwise split one medicine's history into two untallied
+              entries. */}
+          {medicationSuggestions.length > 0 && (
+            <PillGroup
+              noun="medication"
+              surface="card"
+              options={medicationSuggestions.map(name => ({
+                key: medicationKey(name),
+                label: name,
+                selected: !!medicationName && medicationKey(name) === medicationKey(medicationName),
+                onPress: () => { haptics.tap(); setMedicationName(name); },
+              }))}
+            />
+          )}
           {medicationName !== null && (
             <>
               <TextInput
