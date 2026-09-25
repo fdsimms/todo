@@ -116,6 +116,25 @@ export function formatTimeOfDay(date: Date, use24Hour?: boolean): string {
 }
 
 /**
+ * The clock time an `'hours'`-recurring task's next occurrence unlocks at.
+ * That recurrence type never gets a `dueDate` (see taskCompletion.ts's
+ * `nextDeferUntil`) — `deferUntil` *is* the precise instant the next
+ * occurrence lands, not just a floor hiding an already-dated row — so
+ * whichever row wants to say "when does this come back" has nothing else to
+ * read. Null once that instant has passed (the task is just due, same as
+ * everything else) or for any other recurrence type, so every caller can use
+ * it as a plain presence check.
+ */
+export function hoursUnlockLabel(
+  task: Pick<Task, 'recurrenceType' | 'deferUntil'>,
+  use24Hour?: boolean,
+): string | null {
+  if (task.recurrenceType !== 'hours' || !task.deferUntil) return null;
+  const at = new Date(task.deferUntil);
+  return at > new Date() ? formatTimeOfDay(at, use24Hour) : null;
+}
+
+/**
  * The configured first day of the week, for date-fns' `weekStartsOn`.
  *
  * Everything that slices a week has to agree on this or the same completion

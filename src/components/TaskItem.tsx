@@ -39,7 +39,7 @@ import { MEAL_SLOT_ICONS, MEAL_SLOT_LABELS, PRIORITY_COLORS, TITLE_MAX_LENGTH } 
 import { useColors } from '../theme/ThemeContext';
 import { useTheme } from '../theme/ThemeContext';
 import { spacing, radius, font, fontWeight, lineHeight, border, iconSize, animation, interaction, checkboxRadius, type Colors } from '../theme';
-import { formatDeadlineDate, formatScheduledDate, formatTaskDate, formatHHMM, dateToHHMM, formatWindowRemaining, getDeadlineCountdown, getEffectiveTaskDate, getTaskDayStart, getCurrentDayStart, getLogicalDayKey, dayKeyToDate, formatTimeOfDay } from '../utils/dateUtils';
+import { formatDeadlineDate, formatScheduledDate, formatTaskDate, formatHHMM, dateToHHMM, formatWindowRemaining, getDeadlineCountdown, getEffectiveTaskDate, getTaskDayStart, getCurrentDayStart, getLogicalDayKey, dayKeyToDate, formatTimeOfDay, hoursUnlockLabel } from '../utils/dateUtils';
 import { isNegativeTask, isCleanToday, slipsToday } from '../utils/negativeHabits';
 import { scheduleMoveUpdates } from '../utils/taskMoves';
 import { confirmScheduleMove } from '../utils/scheduleMovePrompt';
@@ -1467,15 +1467,10 @@ export const TaskItem = React.memo(function TaskItem({
   // An "every N hours" task has no calendar grid — the row's own recurrence
   // caption just says the interval ("Every 8 hours"), never the clock time it
   // actually lands on, which is exactly the affordance requested (#comment on
-  // the Sep 22 screenshot). taskCompletion.ts's own comment on nextDeferUntil
-  // spells out why `deferUntil` is the answer here: for this recurrence type
-  // it *is* the precise instant the next occurrence unlocks, not just a floor
-  // hiding an already-dated row. Once that instant passes the task is due (and
-  // showing up wherever due tasks show up), so there's nothing left to name.
-  const hoursUnlockTime =
-    task.recurrenceType === 'hours' && task.deferUntil && new Date(task.deferUntil) > new Date()
-      ? formatTimeOfDay(new Date(task.deferUntil))
-      : null;
+  // the Sep 22 screenshot). Shown both in the expanded recurrence caption
+  // below and, so it doesn't take a tap to see, in the collapsed row's own
+  // meta chip alongside the other "when" facts.
+  const hoursUnlockTime = hoursUnlockLabel(task);
 
   // Self-gating: only an Apple Reminders import ever sets pendingImport, and it
   // clears the moment the suggestion is taken or dropped — so nothing else has
@@ -2455,7 +2450,7 @@ export const TaskItem = React.memo(function TaskItem({
             )}
           </View>
         )}
-        {(isQuota || supplyLabel !== null || timed || healthLabel !== null || mealSlot !== null || plannedMeals !== undefined || quietDays !== null || missingCount !== null || windowActive || windowExpired || showStreakChip || waitingCount > 0 || !!blockerTitle || !!waitingPersonName || autoScheduled || scheduledIso !== null || reminderTimeLabel !== null || !!task.followUpTaskSourceTitle || (showGroup && groupTitle) || (showProject && projectTitle) || (showCategory && task.category) || subtaskCount > 0 || task.notes.length > 0) && (
+        {(isQuota || supplyLabel !== null || timed || healthLabel !== null || mealSlot !== null || plannedMeals !== undefined || quietDays !== null || missingCount !== null || windowActive || windowExpired || showStreakChip || waitingCount > 0 || !!blockerTitle || !!waitingPersonName || autoScheduled || scheduledIso !== null || reminderTimeLabel !== null || hoursUnlockTime !== null || !!task.followUpTaskSourceTitle || (showGroup && groupTitle) || (showProject && projectTitle) || (showCategory && task.category) || subtaskCount > 0 || task.notes.length > 0) && (
           <View style={styles.metaRow}>
             {/* Leads the meta line: on the screens that ask for it, "when" is
                 what the row is being read for, and every other chip here
@@ -2476,6 +2471,21 @@ export const TaskItem = React.memo(function TaskItem({
                 />
                 <Text style={styles.scheduledLabel} numberOfLines={1}>
                   {formatScheduledDate(scheduledIso)}
+                </Text>
+              </View>
+            )}
+            {/* An "every N hours" task's own placement — see hoursUnlockTime's
+                comment above. Shown regardless of showDate, the same as the
+                reminder chip below: that flag is about a calendar date, and
+                this task has none to gate on. */}
+            {hoursUnlockTime !== null && (
+              <View
+                style={styles.metaChip}
+                accessibilityLabel={`Comes up again at ${hoursUnlockTime}`}
+              >
+                <Ionicons name="time-outline" size={iconSize.xs} color={colors.textSecondary} />
+                <Text style={styles.scheduledLabel} numberOfLines={1}>
+                  {hoursUnlockTime}
                 </Text>
               </View>
             )}
