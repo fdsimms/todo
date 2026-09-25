@@ -1,4 +1,4 @@
-import { parseTaskInput, describeSchedule, parseLinkInput, parsePhoneInput, parseEmailInput, detectContactIntent, parseDurationInput, parseSupplyInput, parseCategoryAndTagsInput, parsePriorityInput, matchPersonMentions, findAmbiguousMention, getMentionSuggestions, getEditorMentionSuggestions, applyMentionOverrides, parseFromCompletionSuffix, type ParsedSchedule } from '../utils/parseTaskInput';
+import { parseTaskInput, describeSchedule, parseLinkInput, parsePhoneInput, parseEmailInput, detectContactIntent, parseDurationInput, parseSupplyInput, parseCategoryAndTagsInput, parsePriorityInput, parseChainInput, matchPersonMentions, findAmbiguousMention, getMentionSuggestions, getEditorMentionSuggestions, applyMentionOverrides, parseFromCompletionSuffix, type ParsedSchedule } from '../utils/parseTaskInput';
 
 // Tuesday, June 10 2025, 10:00 AM — same anchor as parseNaturalDate.test.ts
 const NOW = new Date(2025, 5, 10, 10, 0, 0);
@@ -839,6 +839,45 @@ describe('parseDurationInput', () => {
 
   it('is case insensitive', () => {
     expect(parseDurationInput('Meditate For 20 Minutes')?.minutes).toBe(20);
+  });
+});
+
+describe('parseChainInput', () => {
+  it('splits on "->" into one step per segment', () => {
+    const result = parseChainInput('call mom -> buy milk -> walk the dog')!;
+    expect(result.steps.map(s => s.title)).toEqual(['call mom', 'buy milk', 'walk the dog']);
+  });
+
+  it('tolerates missing spaces around the arrow', () => {
+    const result = parseChainInput('call mom->buy milk')!;
+    expect(result.steps.map(s => s.title)).toEqual(['call mom', 'buy milk']);
+  });
+
+  it('pulls a duration phrase into the step it appears in, not the others', () => {
+    const result = parseChainInput('call the vet for 10 min -> drop off the package')!;
+    expect(result.steps[0]).toMatchObject({ title: 'call the vet', estimatedMinutes: 10, linkUrl: null });
+    expect(result.steps[1]).toMatchObject({ title: 'drop off the package', estimatedMinutes: null, linkUrl: null });
+  });
+
+  it('pulls a link into the step it appears in', () => {
+    const result = parseChainInput('read the doc https://example.com/spec -> review it')!;
+    expect(result.steps[0]).toMatchObject({ title: 'read the doc', linkUrl: 'https://example.com/spec' });
+    expect(result.steps[1]).toMatchObject({ title: 'review it', linkUrl: null });
+  });
+
+  it('returns null with no arrow, or only one segment', () => {
+    expect(parseChainInput('buy milk')).toBeNull();
+    expect(parseChainInput('')).toBeNull();
+  });
+
+  it('refuses a doubled or trailing arrow rather than dropping a step', () => {
+    expect(parseChainInput('call mom -> -> walk the dog')).toBeNull();
+    expect(parseChainInput('call mom -> buy milk ->')).toBeNull();
+  });
+
+  it('refuses a step that is only a duration or link phrase with no title of its own', () => {
+    expect(parseChainInput('call mom -> for 10 min')).toBeNull();
+    expect(parseChainInput('call mom -> https://example.com')).toBeNull();
   });
 });
 

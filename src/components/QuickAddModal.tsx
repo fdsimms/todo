@@ -71,7 +71,7 @@ import { TitleTokenAccessory } from './TitleTokenAccessory';
 import { HighlightedText } from './HighlightedText';
 import { suggestTitles } from '../utils/titleSuggestions';
 import { findArchivedMatch } from '../utils/archiveMatch';
-import { parseTaskInput, describeSchedule, parseLinkInput, parsePhoneInput, parseEmailInput, parseDurationInput, parseSupplyInput, parseCategoryAndTagsInput, parsePriorityInput, matchPersonMentions, findAmbiguousMention, getMentionSuggestions, applyMentionOverrides, withTrailingSpace, type ParsedCategoryAndTags, type MentionSuggestionCandidate } from '../utils/parseTaskInput';
+import { parseTaskInput, describeSchedule, parseLinkInput, parsePhoneInput, parseEmailInput, parseDurationInput, parseSupplyInput, parseCategoryAndTagsInput, parsePriorityInput, parseChainInput, matchPersonMentions, findAmbiguousMention, getMentionSuggestions, applyMentionOverrides, withTrailingSpace, type ParsedCategoryAndTags, type MentionSuggestionCandidate } from '../utils/parseTaskInput';
 import { mergeRanges } from '../utils/ranges';
 import { usePersonStore } from '../store/usePersonStore';
 import { usePersonGroupStore } from '../store/usePersonGroupStore';
@@ -719,13 +719,30 @@ export function QuickAddModal({
     () => (!parsed && !categoryTagsParsed && !ambiguousMention && !mentionSuggestion && title.trim() ? parsePriorityInput(title) : null),
     [title, parsed, categoryTagsParsed, ambiguousMention, mentionSuggestion]
   );
+  // "call mom -> buy milk -> walk the dog" — the "->" token for an ad hoc
+  // chain, each segment becoming its own step (see parseChainInput's own doc
+  // comment for why a step's duration/link phrase binds to that step while
+  // everything else — schedule, category/tag, priority, mention — stays
+  // task-wide). Checked after every task-wide token so those still resolve
+  // wherever they're typed, including inside a later step, before the split
+  // is offered, and before link/phone/email/duration below, which must not
+  // claim a step's own phrase for the whole task once a chain is what's
+  // being typed. Same type gate as durationParsed and for the same reason:
+  // accepting it commits the sheet to Chain, so it's only offered from the
+  // plain type.
+  const chainParsed = useMemo(
+    () => (!parsed && !categoryTagsParsed && !ambiguousMention && !mentionSuggestion && !priorityParsed
+      && type === 'task' && title.trim()
+      ? parseChainInput(title) : null),
+    [title, parsed, categoryTagsParsed, ambiguousMention, mentionSuggestion, priorityParsed, type]
+  );
   // Pasted URL/app-link detection — same tooltip mechanism as the schedule
   // parse above, just not suffix-anchored. Only checked when no schedule
-  // phrase, category/tag token, ambiguous mention, or priority token
+  // phrase, category/tag token, ambiguous mention, priority token, or chain
   // matched, so the tooltips never compete for the same slot.
   const linkParsed = useMemo(
-    () => (!parsed && !categoryTagsParsed && !ambiguousMention && !mentionSuggestion && !priorityParsed && title.trim() ? parseLinkInput(title) : null),
-    [title, parsed, categoryTagsParsed, ambiguousMention, mentionSuggestion, priorityParsed]
+    () => (!parsed && !categoryTagsParsed && !ambiguousMention && !mentionSuggestion && !priorityParsed && !chainParsed && title.trim() ? parseLinkInput(title) : null),
+    [title, parsed, categoryTagsParsed, ambiguousMention, mentionSuggestion, priorityParsed, chainParsed]
   );
   // "call the doctor 555-123-4567" — the same mechanism again, for the number
   // rather than the URL. Checked after the link so a tel: URL someone pasted
@@ -733,8 +750,8 @@ export function QuickAddModal({
   // looksLikePhoneNumber): this one is reading prose full of digits, so a
   // year or a price must not light it up.
   const phoneParsed = useMemo(
-    () => (!parsed && !categoryTagsParsed && !ambiguousMention && !mentionSuggestion && !priorityParsed && !linkParsed && title.trim() ? parsePhoneInput(title) : null),
-    [title, parsed, categoryTagsParsed, ambiguousMention, mentionSuggestion, priorityParsed, linkParsed]
+    () => (!parsed && !categoryTagsParsed && !ambiguousMention && !mentionSuggestion && !priorityParsed && !chainParsed && !linkParsed && title.trim() ? parsePhoneInput(title) : null),
+    [title, parsed, categoryTagsParsed, ambiguousMention, mentionSuggestion, priorityParsed, chainParsed, linkParsed]
   );
   // "email jane@example.com about the invoice" — the same mechanism again,
   // for an address rather than a number. Checked after phone so a title that
@@ -742,8 +759,8 @@ export function QuickAddModal({
   // priority chain, and email addresses don't collide with the phone pattern
   // since "@" and letters aren't dial digits.
   const emailParsed = useMemo(
-    () => (!parsed && !categoryTagsParsed && !ambiguousMention && !mentionSuggestion && !priorityParsed && !linkParsed && !phoneParsed && title.trim() ? parseEmailInput(title) : null),
-    [title, parsed, categoryTagsParsed, ambiguousMention, mentionSuggestion, priorityParsed, linkParsed, phoneParsed]
+    () => (!parsed && !categoryTagsParsed && !ambiguousMention && !mentionSuggestion && !priorityParsed && !chainParsed && !linkParsed && !phoneParsed && title.trim() ? parseEmailInput(title) : null),
+    [title, parsed, categoryTagsParsed, ambiguousMention, mentionSuggestion, priorityParsed, chainParsed, linkParsed, phoneParsed]
   );
   // "play violin for 15 minutes" — a duration, not a schedule. Same single
   // tooltip slot, checked last, so a schedule, category/tag token, link or
@@ -754,8 +771,8 @@ export function QuickAddModal({
   // is one. Someone already part-way through a Chain or a Target has said what
   // they're making, and a tooltip shouldn't overrule it.
   const durationParsed = useMemo(
-    () => (!parsed && !categoryTagsParsed && !ambiguousMention && !mentionSuggestion && !priorityParsed && !linkParsed && !phoneParsed && !emailParsed && type === 'task' && title.trim() ? parseDurationInput(title) : null),
-    [title, parsed, categoryTagsParsed, ambiguousMention, mentionSuggestion, priorityParsed, linkParsed, phoneParsed, emailParsed, type]
+    () => (!parsed && !categoryTagsParsed && !ambiguousMention && !mentionSuggestion && !priorityParsed && !chainParsed && !linkParsed && !phoneParsed && !emailParsed && type === 'task' && title.trim() ? parseDurationInput(title) : null),
+    [title, parsed, categoryTagsParsed, ambiguousMention, mentionSuggestion, priorityParsed, chainParsed, linkParsed, phoneParsed, emailParsed, type]
   );
   // "replace cpap filter 6 filters left" — a stock this task spends, not a
   // schedule. Last in the chain, so everything above still wins the one slot.
@@ -772,10 +789,10 @@ export function QuickAddModal({
   // and the schedule tooltip comes first (it needs the trailing text); tapping
   // it shortens the title, sets the repeat, and this fires on the remainder.
   const supplyParsed = useMemo(
-    () => (!parsed && !categoryTagsParsed && !ambiguousMention && !mentionSuggestion && !priorityParsed && !linkParsed && !phoneParsed && !emailParsed
+    () => (!parsed && !categoryTagsParsed && !ambiguousMention && !mentionSuggestion && !priorityParsed && !chainParsed && !linkParsed && !phoneParsed && !emailParsed
       && !durationParsed && recurrenceType !== 'none' && title.trim()
       ? parseSupplyInput(title) : null),
-    [title, parsed, categoryTagsParsed, ambiguousMention, mentionSuggestion, priorityParsed, linkParsed, phoneParsed, emailParsed, durationParsed, recurrenceType]
+    [title, parsed, categoryTagsParsed, ambiguousMention, mentionSuggestion, priorityParsed, chainParsed, linkParsed, phoneParsed, emailParsed, durationParsed, recurrenceType]
   );
   const rawMatch = parsed
     ? { matchStart: parsed.matchStart, matchedText: parsed.matchedText }
@@ -799,6 +816,8 @@ export function QuickAddModal({
             matchStart: priorityParsed.matchStart,
             matchedText: title.slice(priorityParsed.matchStart, priorityParsed.matchEnd),
           }
+      : chainParsed
+        ? { matchStart: chainParsed.matchStart, matchedText: chainParsed.matchedText }
       : linkParsed
         ? { matchStart: linkParsed.matchStart, matchedText: linkParsed.url }
         : phoneParsed
@@ -1032,6 +1051,28 @@ export function QuickAddModal({
     setPriority(priorityParsed.priority);
   };
 
+  // Apply the detected "->" chain: the first step becomes the task's own
+  // title, the rest become chainItems. Typing "->" is someone describing a
+  // chain in their own words, so accepting it switches the sheet into that
+  // mode the same way applyDuration switches into Timed.
+  const applyChain = () => {
+    if (!chainParsed) return;
+    haptics.success();
+    animateLayout();
+    const [first, ...rest] = chainParsed.steps;
+    setTitle(first.title);
+    titleCaret.moveCaret(first.title);
+    setType('chain');
+    if (first.estimatedMinutes !== null) setEstimatedMinutes(first.estimatedMinutes);
+    if (first.linkUrl !== null) setLinkUrl(first.linkUrl);
+    setChainItems(rest.map(step => ({
+      id: generateId(),
+      title: step.title,
+      estimatedMinutes: step.estimatedMinutes,
+      linkUrl: step.linkUrl,
+    })));
+  };
+
   const applyLink = () => {
     if (!linkParsed) return;
     haptics.success();
@@ -1100,6 +1141,7 @@ export function QuickAddModal({
     if (parsed) applyParse();
     else if (categoryTagsParsed) applyCategoryTags();
     else if (priorityParsed) applyPriority();
+    else if (chainParsed) applyChain();
     else if (linkParsed) applyLink();
     else if (phoneParsed) applyPhone();
     else if (emailParsed) applyEmail();
@@ -1844,15 +1886,17 @@ export function QuickAddModal({
                               ? (categoryTagsParsed.category ? 'pricetag-outline' : 'pricetags-outline')
                               : priorityParsed
                                 ? 'alert-circle-outline'
-                                : linkParsed
-                                  ? 'link-outline'
-                                  : phoneParsed
-                                    ? 'call-outline'
-                                    : emailParsed
-                                      ? 'mail-outline'
-                                      : durationParsed
-                                        ? 'timer-outline'
-                                        : 'cube-outline'
+                                : chainParsed
+                                  ? 'git-commit-outline'
+                                  : linkParsed
+                                    ? 'link-outline'
+                                    : phoneParsed
+                                      ? 'call-outline'
+                                      : emailParsed
+                                        ? 'mail-outline'
+                                        : durationParsed
+                                          ? 'timer-outline'
+                                          : 'cube-outline'
                         }
                         size={14}
                         color={colors.onAccent}
@@ -1864,15 +1908,17 @@ export function QuickAddModal({
                             ? categoryTagsLabel(categoryTagsParsed, categories)
                             : priorityParsed
                               ? `Priority · ${PRIORITY_LABELS_SHORT[priorityParsed.priority]}`
-                              : linkParsed
-                                ? linkLabel(linkParsed.url)
-                                : phoneParsed
-                                  ? `Call ${phoneParsed.number}`
-                                  : emailParsed
-                                    ? `Email ${emailParsed.address}`
-                                    : durationParsed
-                                      ? `Timer · ${formatDuration(durationParsed.minutes)}`
-                                      : `Supply · ${formatSupplyLeft(supplyParsed!.count, supplyParsed!.unit)}`}
+                              : chainParsed
+                                ? `Chain · ${chainParsed.steps.length} steps`
+                                : linkParsed
+                                  ? linkLabel(linkParsed.url)
+                                  : phoneParsed
+                                    ? `Call ${phoneParsed.number}`
+                                    : emailParsed
+                                      ? `Email ${emailParsed.address}`
+                                      : durationParsed
+                                        ? `Timer · ${formatDuration(durationParsed.minutes)}`
+                                        : `Supply · ${formatSupplyLeft(supplyParsed!.count, supplyParsed!.unit)}`}
                       </Text>
                       <View style={styles.tooltipDot} />
                       <Text style={styles.tooltipHint}>Tap to set</Text>

@@ -191,7 +191,7 @@ name cannot say is where a component appears, and that is `docs/screen-map.md`.
 - `src/utils/pantryReview.ts` — PantryReviewAnswer, MAX_PANTRY_REVIEW_CARDS, PANTRY_REVIEW_QUIET_DAYS, PantryDoubt, PantryReviewCard, PantryReviewDeck, buildPantryReviewDeck, describeLastPurchase, describePantryDoubt, describePantryReviewDone
 - `src/utils/pantryReviewTasks.ts` — PANTRY_REVIEW_TITLE, PANTRY_REVIEW_LINK_URL, MIN_PANTRY_REVIEW_CARDS, PANTRY_REVIEW_CADENCE_DAYS, pantryReviewDayKey, pantryReviewCadenceElapsed, wantsPantryReview, stalePantryReviewTasks
 - `src/utils/parseNaturalDate.ts` — WEEKDAYS, MONTHS, ClockTime, strip, extractTime, extractDayPart, DatePart, NUMBER_WORDS, NUMBER_WORD_ALT, parseCount, +3 more
-- `src/utils/parseTaskInput.ts` — withTrailingSpace, ParsedSchedule, ParsedTaskInput, segmentForHour, dueAt, parseFromCompletionSuffix, parseTaskInput, ParsedLink, parseLinkInput, ParsedPhone, +25 more
+- `src/utils/parseTaskInput.ts` — withTrailingSpace, ParsedSchedule, ParsedTaskInput, segmentForHour, dueAt, parseFromCompletionSuffix, parseTaskInput, ParsedLink, parseLinkInput, ParsedPhone, +28 more
 - `src/utils/patchNotes.ts` — PatchNote
 - `src/utils/penaltyShield.ts` — penaltyCutoffAt, PenaltyCharge, penaltyChargeFor, slipPenaltyUntil, extendShieldUntil, penaltyCreditFor, uncreditShieldUntil, creditShieldUntil, penaltyShieldWanted
 - `src/utils/peopleBackfill.ts` — PersonBackfillFieldId, PersonBackfillFieldDef, PERSON_BACKFILL_FIELDS, isPersonFieldMissing, isPersonBackfillDismissed, personBackfillCandidates, personBackfillFieldCounts, dismissPersonBackfillField, personCadencePatch, groupmatesOf, +1 more
