@@ -1,4 +1,5 @@
-import { useCallback, useMemo, useState } from 'react';
+import { useCallback, useEffect, useMemo, useState } from 'react';
+import { AppState } from 'react-native';
 import { useFocusEffect } from '@react-navigation/native';
 import { haptics } from '../utils/haptics';
 import { animateLayout } from '../utils/layoutAnimation';
@@ -91,6 +92,20 @@ export function useRowSelection() {
       };
     }, [])
   );
+
+  // A touch can't survive the app backgrounding, so a paint gesture that was
+  // mid-flight when that happened has definitely ended — but PaintSelection's
+  // own onPanResponderTerminate isn't guaranteed to fire for every way a touch
+  // gets cancelled by the OS taking focus away. Left stuck true, painting
+  // disables the list's scrolling for the rest of the session (screens gate
+  // scrollEnabled on it) with no way back short of leaving and re-entering
+  // selection mode. This is a backstop, not the primary reset.
+  useEffect(() => {
+    const subscription = AppState.addEventListener('change', state => {
+      if (state === 'active') setPainting(false);
+    });
+    return () => subscription.remove();
+  }, []);
 
   const selectAll = (ids: string[]) => setSelectedIds(new Set(ids));
   const deselectAll = () => setSelectedIds(new Set());

@@ -1,5 +1,9 @@
 import { buildCompletion, completionRefusal, type CompletionContext } from '../utils/taskCompletion';
 import type { Task } from '../types';
+import { dayKeyOf } from '../utils/dateUtils';
+
+/** A local wall-clock time as the ISO instant the app stores, so the suite reads the same in any zone. */
+const localIso = (local: string) => new Date(local).toISOString();
 
 // Same stubs bulkCompletion.test.ts uses: the completion core reaches
 // visibilityUtils, which reaches the settings and category stores and, through
@@ -91,7 +95,7 @@ const makeTask = (overrides: Partial<Task> = {}): Task => ({
 const context = (over: Partial<CompletionContext> = {}): CompletionContext => ({
   dayResetTime: '00:00',
   vacationMode: false,
-  now: new Date('2026-03-10T09:00:00.000Z'),
+  now: new Date(localIso('2026-03-10T09:00')),
   allTasks: [],
   subtasks: [],
   ...over,
@@ -169,18 +173,18 @@ describe('buildCompletion', () => {
   it('marks the row completed and stamps the time', () => {
     const { completed } = build(makeTask());
     expect(completed.completed).toBe(true);
-    expect(completed.completedAt).toBe('2026-03-10T09:00:00.000Z');
+    expect(completed.completedAt).toBe(localIso('2026-03-10T09:00'));
     expect(completed.missedAt).toBeNull();
   });
 
   // The morning check-in's case: "yes, I did this last night".
   it('backdates only the completed row, never the successor', () => {
-    const task = makeTask({ recurrenceType: 'daily', dueDate: '2026-03-10T12:00:00.000Z' });
-    const { completed, nextTask } = build(task, { completedAt: '2026-03-09T22:00:00.000Z' });
+    const task = makeTask({ recurrenceType: 'daily', dueDate: localIso('2026-03-10T12:00') });
+    const { completed, nextTask } = build(task, { completedAt: localIso('2026-03-09T22:00') });
 
-    expect(completed.completedAt).toBe('2026-03-09T22:00:00.000Z');
+    expect(completed.completedAt).toBe(localIso('2026-03-09T22:00'));
     // createdAt stays keyed to the real moment the work was recorded.
-    expect(nextTask!.createdAt).toBe('2026-03-10T09:00:00.000Z');
+    expect(nextTask!.createdAt).toBe(localIso('2026-03-10T09:00'));
   });
 
   // Measured from the moment the answer was given, "done Monday" answered on
@@ -203,20 +207,20 @@ describe('buildCompletion', () => {
   it('records a miss as a completion that is also a miss', () => {
     const { completed } = build(makeTask(), { missed: true });
     expect(completed.completed).toBe(true);
-    expect(completed.missedAt).toBe('2026-03-10T09:00:00.000Z');
+    expect(completed.missedAt).toBe(localIso('2026-03-10T09:00'));
   });
 
   it('writes nothing, so a caller decides whether the rows land', () => {
     // The whole contract: it returns rows. A test that had to stand a database
     // up to check a completion would be testing the store instead.
-    const { completed, nextTask } = build(makeTask({ recurrenceType: 'daily', dueDate: '2026-03-10T12:00:00.000Z' }));
+    const { completed, nextTask } = build(makeTask({ recurrenceType: 'daily', dueDate: localIso('2026-03-10T12:00') }));
     expect(completed).not.toBe(nextTask);
     expect(typeof completed.id).toBe('string');
   });
 
   describe('the successor', () => {
     it('is spawned for a recurring task, with a fresh id and the next date', () => {
-      const task = makeTask({ recurrenceType: 'daily', dueDate: '2026-03-10T12:00:00.000Z' });
+      const task = makeTask({ recurrenceType: 'daily', dueDate: localIso('2026-03-10T12:00') });
       const { nextTask } = build(task);
 
       expect(nextTask).not.toBeNull();
@@ -234,9 +238,9 @@ describe('buildCompletion', () => {
     it('drops the defer and the grid anchor the completed occurrence carried', () => {
       const task = makeTask({
         recurrenceType: 'daily',
-        dueDate: '2026-03-10T12:00:00.000Z',
-        deferUntil: '2026-03-11T12:00:00.000Z',
-        recurrenceAnchorDate: '2026-03-01T12:00:00.000Z',
+        dueDate: localIso('2026-03-10T12:00'),
+        deferUntil: localIso('2026-03-11T12:00'),
+        recurrenceAnchorDate: localIso('2026-03-01T12:00'),
       });
       const { nextTask } = build(task);
       expect(nextTask!.deferUntil).toBeNull();
@@ -249,9 +253,9 @@ describe('buildCompletion', () => {
     it('does not inherit a completion timer running on the completed occurrence', () => {
       const task = makeTask({
         recurrenceType: 'daily',
-        dueDate: '2026-03-10T12:00:00.000Z',
+        dueDate: localIso('2026-03-10T12:00'),
         completionTimerMinutes: 120,
-        completionTimerStartedAt: '2026-03-10T12:00:00.000Z',
+        completionTimerStartedAt: localIso('2026-03-10T12:00'),
       });
       const { nextTask } = build(task);
       expect(nextTask!.completionTimerStartedAt).toBeNull();
@@ -261,7 +265,7 @@ describe('buildCompletion', () => {
     it('starts a fresh occurrence with no answer to the question it still asks', () => {
       const task = makeTask({
         recurrenceType: 'daily',
-        dueDate: '2026-03-10T12:00:00.000Z',
+        dueDate: localIso('2026-03-10T12:00'),
         deliverableKind: 'text',
       });
       const { completed, nextTask } = build(task, { deliverableValue: 'Blue' });
@@ -273,7 +277,7 @@ describe('buildCompletion', () => {
     });
 
     it('carries subtasks over unchecked', () => {
-      const task = makeTask({ id: 'parent', recurrenceType: 'daily', dueDate: '2026-03-10T12:00:00.000Z' });
+      const task = makeTask({ id: 'parent', recurrenceType: 'daily', dueDate: localIso('2026-03-10T12:00') });
       const sub = makeTask({ id: 'sub', parentId: 'parent', completed: true });
       const { nextTask, nextSubtasks } = build(task, {}, { subtasks: [sub] });
 
@@ -294,18 +298,18 @@ describe('buildCompletion', () => {
       const { nextTask } = build(doseTask());
       expect(nextTask!.dueDate).toBeNull();
       // context().now is 2026-03-10T09:00:00.000Z; 8 hours on from there.
-      expect(nextTask!.deferUntil).toBe('2026-03-10T17:00:00.000Z');
+      expect(nextTask!.deferUntil).toBe(localIso('2026-03-10T17:00'));
     });
 
     it('measures from the real completion moment, not a backdated completedAt', () => {
-      const { nextTask } = build(doseTask(), { completedAt: '2026-03-09T22:00:00.000Z' });
-      expect(nextTask!.deferUntil).toBe('2026-03-10T17:00:00.000Z');
+      const { nextTask } = build(doseTask(), { completedAt: localIso('2026-03-09T22:00') });
+      expect(nextTask!.deferUntil).toBe(localIso('2026-03-10T17:00'));
     });
 
     it('always measures from completion, ignoring the on-schedule/after-completion flag', () => {
-      const { nextTask } = build(doseTask({ recurrenceFromCompletion: false, dueDate: '2026-03-10T12:00:00.000Z' }));
+      const { nextTask } = build(doseTask({ recurrenceFromCompletion: false, dueDate: localIso('2026-03-10T12:00') }));
       expect(nextTask!.dueDate).toBeNull();
-      expect(nextTask!.deferUntil).toBe('2026-03-10T17:00:00.000Z');
+      expect(nextTask!.deferUntil).toBe(localIso('2026-03-10T17:00'));
     });
 
     it('ends the series when recurrenceCount runs out, same as any other type', () => {
@@ -313,7 +317,7 @@ describe('buildCompletion', () => {
     });
 
     it('re-anchors an existing reminder onto the new deferUntil', () => {
-      const { nextTask } = build(doseTask({ reminderTime: '2026-03-10T09:00:00.000Z' }));
+      const { nextTask } = build(doseTask({ reminderTime: localIso('2026-03-10T09:00') }));
       expect(nextTask!.reminderTime).toBe(nextTask!.deferUntil);
     });
 
@@ -324,14 +328,14 @@ describe('buildCompletion', () => {
       const { nextTask } = build(task, { logEarly: true });
       // Placed the same way an on-time completion would be: measured from this
       // completion's own moment, not from the deferUntil it jumped ahead of.
-      expect(nextTask!.deferUntil).toBe('2026-03-10T17:00:00.000Z');
+      expect(nextTask!.deferUntil).toBe(localIso('2026-03-10T17:00'));
     });
   });
 
   describe('the supply', () => {
     const supplyTask = (over: Partial<Task> = {}) => makeTask({
       recurrenceType: 'monthly',
-      dueDate: '2026-03-10T12:00:00.000Z',
+      dueDate: localIso('2026-03-10T12:00'),
       supplyCount: 3,
       ...over,
     });
@@ -376,7 +380,7 @@ describe('buildCompletion', () => {
     });
 
     it('wraps to the first step when the chain repeats', () => {
-      const task = chained({ chainIndex: 2, recurrenceType: 'weekly', dueDate: '2026-03-10T12:00:00.000Z' });
+      const task = chained({ chainIndex: 2, recurrenceType: 'weekly', dueDate: localIso('2026-03-10T12:00') });
       const { nextTask, advancesBySchedule } = build(task);
       expect(nextTask!.chainIndex).toBe(0);
       expect(advancesBySchedule).toBe(true);
@@ -396,10 +400,10 @@ describe('buildCompletion', () => {
 
     // "repeat 10 times" means ten times through the chain, not ten steps.
     it('burns a cycle of the repeat count only at the wrap', () => {
-      const mid = build(chained({ recurrenceType: 'weekly', dueDate: '2026-03-10T12:00:00.000Z', recurrenceCount: 4 }));
+      const mid = build(chained({ recurrenceType: 'weekly', dueDate: localIso('2026-03-10T12:00'), recurrenceCount: 4 }));
       expect(mid.nextTask!.recurrenceCount).toBe(4);
 
-      const wrap = build(chained({ chainIndex: 2, recurrenceType: 'weekly', dueDate: '2026-03-10T12:00:00.000Z', recurrenceCount: 4 }));
+      const wrap = build(chained({ chainIndex: 2, recurrenceType: 'weekly', dueDate: localIso('2026-03-10T12:00'), recurrenceCount: 4 }));
       expect(wrap.nextTask!.recurrenceCount).toBe(3);
     });
 
@@ -418,8 +422,8 @@ describe('buildCompletion', () => {
           { id: 'c2', title: 'Get haircut', estimatedMinutes: null },
         ],
       });
-      const { nextTask } = build(task, { deliverableValue: '2026-04-02T12:00:00.000Z' });
-      expect(nextTask!.dueDate?.slice(0, 10)).toBe('2026-04-02');
+      const { nextTask } = build(task, { deliverableValue: localIso('2026-04-02T12:00') });
+      expect(dayKeyOf(new Date(nextTask!.dueDate!))).toBe('2026-04-02');
     });
   });
 
@@ -532,14 +536,14 @@ describe('buildCompletion', () => {
     it('waits for every date in the set before laying out the next one', () => {
       const first = makeTask({
         id: 'a', seriesId: 's1', seriesMonthDays: [10, 15], seriesRepeatMonths: 1,
-        dueDate: '2026-03-10T12:00:00.000Z',
+        dueDate: localIso('2026-03-10T12:00'),
       });
       // Every row of a set carries the repeat, because buildSeriesRow puts it
       // on each one — whichever date is finished last is what triggers the
       // rollover, so any of them has to be able to.
       const second = makeTask({
         id: 'b', seriesId: 's1', seriesMonthDays: [10, 15], seriesRepeatMonths: 1,
-        dueDate: '2026-03-15T12:00:00.000Z',
+        dueDate: localIso('2026-03-15T12:00'),
       });
 
       // The 15th is still outstanding, so finishing the 10th conjures nothing.
@@ -555,7 +559,7 @@ describe('buildCompletion', () => {
     it('rebuilds from the stored day numbers rather than shifting the dates', () => {
       const only = makeTask({
         id: 'a', seriesId: 's1', seriesMonthDays: [31], seriesRepeatMonths: 1,
-        dueDate: '2026-01-31T12:00:00.000Z',
+        dueDate: localIso('2026-01-31T12:00'),
       });
       const { rolledOver } = build(only, {}, { allTasks: [only] });
       expect(rolledOver).toHaveLength(1);

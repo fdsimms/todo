@@ -265,7 +265,8 @@ import {
 import { scheduleTaskReminder, cancelTaskReminder, rescheduleAllReminders, scheduleTimerAlarm, cancelTimerAlarm, scheduleQuotaNudges, cancelQuotaNudges, cancelCompletionTimer } from '../utils/notifications';
 import { syncDeadlineEvent } from '../utils/deadlineCalendarSync';
 import { logTaskCompletionToCalendar } from '../utils/completionCalendarSync';
-import { logTaskHealthValue } from '../utils/healthCompletionSync';
+import { logTaskHealthValue, unlogTaskWaterFromFoodLog } from '../utils/healthCompletionSync';
+import { waterTotalMl } from '../utils/waterLog';
 import {
   deleteCalendarEvent,
   presentTimeBlockCreate,
@@ -1445,6 +1446,14 @@ interface TaskStore extends UndoHistoryActions {
      * like the successor by the time this fires.
      */
     chainStepInPlace?: boolean;
+    /**
+     * Internal — set by syncWaterQuotaTasks when a water-quota task is
+     * completed because the food log's own total reached its target, rather
+     * than by a tap on the task. The amount is already sitting in the food
+     * log (that's what triggered this), so the usual logHealthMetric write
+     * this call would otherwise make is skipped rather than double-added.
+     */
+    skipHealthLog?: boolean;
   }) => void;
   uncompleteTask: (id: string) => void;
   /**
@@ -1513,6 +1522,26 @@ interface TaskStore extends UndoHistoryActions {
   rolloverNegativeStreaks: () => void;
   logQuotaUnit: (id: string) => void;
   unlogQuotaUnit: (id: string) => void;
+  /**
+   * Reconciles every daily water-quota task's `progressCount` to what the
+   * food log's own water total for today actually says, completing a task
+   * outright once that total reaches its target.
+   *
+   * The log-to-task half of the connection `logHealthMetric: 'waterMl'`
+   * makes — see the note on `logTaskHealthValue` in `healthCompletionSync.ts`
+   * for the whole picture and why the two directions can't both write to the
+   * food log in the same pass. Called by `useFoodLogStore` after any add,
+   * revision or delete that touches today's water, so a glass logged through
+   * the day view's stepper (or a bottled water logged as food) catches the
+   * task up exactly as tapping it would have — including finishing it, with
+   * no further tap needed, once the log alone carries it past the target.
+   *
+   * Scoped to `quotaPeriod === 'day'` tasks that don't ride out the day
+   * (`quotaRidesOutTheDay`): a weekly target's relevant total isn't "today's
+   * food log", and an overshoot or interval quota's target isn't a finish
+   * line to begin with, so both are left to log purely from taps, as before.
+   */
+  syncWaterQuotaTasks: () => void;
   /**
    * Write one pick into a rotation's ledger without completing anything, and
    * report whether the set is now covered.
@@ -3197,10 +3226,6 @@ export const useTaskStore = create<TaskStore>((set, get) => ({
     // Opt-in and one-shot, unlike the reconcile above — only fired when the
     // task actually asked for it.
     if (task.logCompletionToCalendar) logCompletionEvent(completed, completedAt);
-    // Same shape as the calendar log one line up: opt-in, one-shot, fire and
-    // forget. See logTaskHealthValue's own comment for why there is no
-    // write-back id to store and no undo on uncomplete.
-    if (task.logHealthMetric) void logTaskHealthValue(completed);
     // Opt-in like the two above, but deliberately *not* one-shot: this writes
     // into the app's own record rather than somebody else's database, and
     // uncompleteTask takes it back (see Task.medicationName). Nothing is asked
@@ -3264,6 +3289,19 @@ export const useTaskStore = create<TaskStore>((set, get) => ({
       // both would keep the finished row on Today past that.
       quotaHoldIds: s.quotaHoldIds.filter(x => x !== id),
     }));
+
+    // Same shape as the calendar log above: opt-in, one-shot, fire and
+    // forget. See logTaskHealthValue's own comment for why there is no
+    // write-back id to store and no undo on uncomplete. Placed after the
+    // set() above (moved there deliberately) rather than beside the calendar
+    // log it mirrors: a water write reads back through
+    // syncWaterQuotaTasks (useFoodLogStore's addEntry/reviseEntry calls it
+    // synchronously), and that reads get().tasks — which has to already show
+    // this task as completed, or the sync would find the pre-completion row
+    // still incomplete and try to complete it a second time. skipHealthLog is
+    // for that same sync: a completion it already drove from the food log's
+    // own total needs no second write of the amount that got it there.
+    if (task.logHealthMetric && !options?.skipHealthLog) void logTaskHealthValue(completed);
 
     // Opt-in convenience only (autoCompleteProjectsOnDone, default off) —
     // finishing a project never happens automatically otherwise; the user
@@ -3976,6 +4014,61 @@ export const useTaskStore = create<TaskStore>((set, get) => ({
     // The unit being taken back is the dose that unit recorded, and only that
     // one — the day's earlier doses were still taken.
     if (medicationFor(task)) useMedicationStore.getState().removeLatestLogForTask(id);
+    // Same reasoning, for water: the tap this undoes had logged one unit into
+    // the food log (logQuotaUnit's own logTaskHealthValue call), and leaving
+    // that in place would have syncWaterQuotaTasks read the unchanged total
+    // back and immediately bump progressCount up again on the next food-log
+    // write — undoing this undo. Set after progressCount above, so that sync
+    // (triggered synchronously from within this call) reads the count this
+    // line just wrote rather than the one from before the tap was undone.
+    if (task.logHealthMetric === 'waterMl' && task.logHealthAmount) {
+      unlogTaskWaterFromFoodLog(task.logHealthAmount, new Date());
+    }
+  },
+
+  syncWaterQuotaTasks() {
+    const dayResetTime = useSettingsStore.getState().dayResetTime;
+    const todayStart = getCurrentDayStart();
+    const todayKey = dayKeyOf(todayStart);
+    const totalMl = waterTotalMl(dbGetFoodLogEntries(todayKey, todayKey));
+
+    for (const task of get().tasks) {
+      if (
+        !isQuotaTask(task) ||
+        task.completed ||
+        task.archived ||
+        task.logHealthMetric !== 'waterMl' ||
+        !task.logHealthAmount ||
+        task.logHealthAmount <= 0 ||
+        task.quotaPeriod !== 'day' ||
+        quotaRidesOutTheDay(task)
+      ) {
+        continue;
+      }
+      // Only the occurrence actually on today's board — a task deferred to a
+      // later day still holds whatever progressCount its last real day left
+      // it with, and today's water total has nothing to say about that.
+      const effectiveDate = getEffectiveTaskDate(task, dayResetTime);
+      if (!effectiveDate || +getTaskDayStart(new Date(effectiveDate), dayResetTime) !== +todayStart) {
+        continue;
+      }
+
+      const units = Math.min(task.targetCount!, Math.floor(totalMl / task.logHealthAmount));
+      if (units === task.progressCount) continue;
+
+      if (units >= task.targetCount!) {
+        // buildCompletion stamps progressCount to targetCount on its own —
+        // see taskCompletion.ts — so there's nothing to write here first.
+        // skipHealthLog: the amount that got the log to this total is
+        // already there; completeTask's own logHealthMetric write would add
+        // it a second time.
+        get().completeTask(task.id, { skipHealthLog: true });
+      } else {
+        const updated = { ...task, progressCount: units };
+        dbUpdateTask(updated);
+        set(s => ({ tasks: s.tasks.map(t => (t.id === task.id ? updated : t)) }));
+      }
+    }
   },
 
   holdQuotaOnToday(id) {
@@ -4213,9 +4306,12 @@ export const useTaskStore = create<TaskStore>((set, get) => ({
       updated.push({
         ...task,
         reminderTime: reanchored,
-        // The offset now in effect here, correct going forward until the
-        // device moves again.
-        reminderUtcOffsetMinutes: new Date().getTimezoneOffset(),
+        // The offset in effect here *at the reminder*, not now — every other
+        // write captures it that way, and it's what the next pass subtracts.
+        // Stamping today's offset on a reminder across a DST change from today
+        // made the next pass read it as another zone move and shift it an
+        // hour, again on every launch.
+        reminderUtcOffsetMinutes: new Date(reanchored).getTimezoneOffset(),
       });
     }
     if (updated.length === 0) return;

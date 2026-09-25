@@ -149,7 +149,7 @@ function makeTask(overrides: Partial<Task>): Task {
 }
 
 function isoDate(d: Date): string {
-  return d.toISOString().slice(0, 10);
+  return format(d, 'yyyy-MM-dd');
 }
 
 let busySeq = 0;
@@ -440,6 +440,35 @@ describe('computeSnoozeSuggestion', () => {
       const result = computeSnoozeSuggestion(task, [task, ...load]);
 
       expect(result.date.getDate()).not.toBe(12);
+    });
+  });
+
+  describe('time zone', () => {
+    afterEach(() => {
+      jest.useRealTimers();
+    });
+
+    it('lands projected recurring load on its local day', () => {
+      // Candidates sit at local noon, which in UTC+14 is 22:00 the previous
+      // UTC day. Keyed by toISOString, each day read the load projected for the
+      // day before it, so tomorrow's recurrence looked like an empty day.
+      // Only discriminating when the suite runs far east of UTC
+      // (`TZ=Pacific/Kiritimati npx jest snoozeEngine`); Jest's sandbox ignores
+      // a runtime `process.env.TZ`, which is why noUtcDayKey.test.ts exists.
+      jest.useFakeTimers();
+      jest.setSystemTime(new Date(2025, 5, 11, 10, 0, 0));
+
+      // Every two days from yesterday: projections land on D+1, D+3, D+5, D+7.
+      const everyOther = makeTask({
+        id: 'every-other',
+        recurrenceType: 'daily',
+        recurrenceInterval: 2,
+        dueDate: new Date(2025, 5, 10, 0, 0, 0).toISOString(),
+      });
+      const task = makeTask({ id: 'snooze-me' });
+      const result = computeSnoozeSuggestion(task, [task, everyOther]);
+
+      expect(result.date.getDate()).toBe(13);
     });
   });
 });

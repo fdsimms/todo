@@ -99,7 +99,7 @@ describe('the replica', () => {
 
   it('sorts tasks into the app\'s four lenses, which a date comparison could not', () => {
     insert({ id: 'today', title: 'Due now', dueDate: new Date().toISOString() });
-    insert({ id: 'later', title: 'Deferred', deferUntil: '2099-01-01T00:00:00.000Z' });
+    insert({ id: 'later', title: 'Deferred', deferUntil: '2099-06-01T12:00:00.000Z' });
     insert({ id: 'unscheduled', title: 'Someday', category: 'Home' });
     // Bare: no date, no category, no tags, no priority. That is what makes it
     // an inbox task rather than an unscheduled one.

@@ -24,7 +24,7 @@ jest.mock('../store/useCategoryStore', () => ({
   },
 }));
 
-const NOW = new Date('2026-08-13T14:00:00Z');
+const NOW = new Date(2026, 7, 13, 14, 0);
 
 let seq = 0;
 function ev(start: string, end: string, overrides: Partial<BusyEvent> = {}): BusyEvent {
@@ -43,10 +43,10 @@ function ev(start: string, end: string, overrides: Partial<BusyEvent> = {}): Bus
   };
 }
 
-/** An ISO instant at the given UTC hour on the test day. */
+/** An ISO instant at the given local hour on the test day. */
 function at(hours: number, minutes = 0): string {
-  const d = new Date('2026-08-13T00:00:00Z');
-  d.setUTCHours(hours, minutes, 0, 0);
+  const d = new Date(2026, 7, 13);
+  d.setHours(hours, minutes, 0, 0);
   return d.toISOString();
 }
 

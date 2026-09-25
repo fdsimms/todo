@@ -10,8 +10,12 @@ import {
   type BusyEvent,
 } from '../utils/calendarBusy';
 
-const DAY_START = new Date('2026-08-12T00:00:00Z');
-const DAY_END = new Date('2026-08-13T00:00:00Z');
+// Local midnights, as the app's own day windows are, so the suite reads the
+// same in any zone. All-day events stay at UTC midnight (ALL_DAY), which is
+// how the system calendar stores them.
+const DAY_START = new Date(2026, 7, 12);
+const DAY_END = new Date(2026, 7, 13);
+const ALL_DAY: [string, string] = ['2026-08-12T00:00:00.000Z', '2026-08-13T00:00:00.000Z'];
 
 let seq = 0;
 function ev(start: string, end: string, overrides: Partial<BusyEvent> = {}): BusyEvent {
@@ -30,10 +34,10 @@ function ev(start: string, end: string, overrides: Partial<BusyEvent> = {}): Bus
   };
 }
 
-/** Minutes past midnight UTC on the test day. */
+/** A local time on the test day. */
 function at(hours: number, minutes = 0): string {
   const d = new Date(DAY_START);
-  d.setUTCHours(hours, minutes, 0, 0);
+  d.setHours(hours, minutes, 0, 0);
   return d.toISOString();
 }
 
@@ -53,7 +57,7 @@ describe('isLiveEvent / occupiesTime', () => {
   });
 
   it('does not count an all-day event as time', () => {
-    const birthday = ev(at(0), at(24), { allDay: true });
+    const birthday = ev(...ALL_DAY, { allDay: true });
     expect(isLiveEvent(birthday)).toBe(true);
     expect(occupiesTime(birthday)).toBe(false);
   });
@@ -88,7 +92,7 @@ describe('busyIntervalsIn', () => {
   });
 
   it('clips an event that runs past midnight to the day it is asked about', () => {
-    const overnight = [ev(at(22), '2026-08-13T01:00:00Z')];
+    const overnight = [ev(at(22), at(25))];
     expect(busyMinutesIn(overnight, DAY_START, DAY_END)).toBe(120);
   });
 
@@ -153,7 +157,7 @@ describe('freeGapsIn / freeMinutesIn', () => {
 
 describe('eventsIn', () => {
   it('includes all-day events, which busy time excludes', () => {
-    const events = [ev(at(0), at(24), { allDay: true }), ev(at(9), at(10))];
+    const events = [ev(...ALL_DAY, { allDay: true }), ev(at(9), at(10))];
     expect(eventsIn(events, DAY_START, DAY_END)).toHaveLength(2);
     expect(busyMinutesIn(events, DAY_START, DAY_END)).toBe(60);
   });
@@ -255,7 +259,7 @@ describe('nextEventAfter', () => {
   });
 
   it('skips all-day events, which cannot be next', () => {
-    const allDay = ev(at(0), at(24), { allDay: true });
+    const allDay = ev(...ALL_DAY, { allDay: true });
     expect(nextEventAfter([allDay], new Date(at(10)), DAY_END)).toBeNull();
   });
 

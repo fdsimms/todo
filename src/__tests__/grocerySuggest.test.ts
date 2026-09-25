@@ -17,7 +17,10 @@ import {
 import { groceryNameKey } from '../utils/groceryParse';
 import { FROZEN_REASON, RUNNING_LOW_REASON, type GroceryItem, type ItemProduct } from '../types';
 
-const NOW = new Date('2026-08-07T12:00:00.000Z');
+/** A local wall-clock time as the ISO instant the app stores, so the suite reads the same in any zone. */
+const localIso = (local: string) => new Date(local).toISOString();
+
+const NOW = new Date(localIso('2026-08-07T12:00'));
 /** No item carries a product, sub, shop link or alias — see linkCounts. */
 const NO_LINKS: ReadonlyMap<string, number> = new Map<string, number>();
 

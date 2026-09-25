@@ -239,14 +239,17 @@ export function NutritionTargetsSheet({ visible, onClose }: Props) {
             // water elsewhere in the app (`waterUnit`).
             const isWater = key === 'waterMl';
             const range = isWater ? waterRange(waterUnit) : NUTRITION_TARGET_RANGES[key];
-            const defaultValue = isWater
-              // Always a positive number, so waterInUnit's null path (for an
-              // absent stored value) never fires here — the fallback is just
-              // to satisfy its signature.
-              ? waterInUnit(NUTRITION_TARGET_RANGES.waterMl.default, waterUnit) ?? NUTRITION_TARGET_RANGES.waterMl.default
-              : NUTRITION_TARGET_RANGES[key].default;
             const unit = NUTRIENT_LABEL[key].unit;
             const value = isWater ? waterInUnit(targets.waterMl ?? null, waterUnit) : (targets[key] ?? null);
+            // waterRange's own range has no default of its own to open on —
+            // the reference figure is the ml one below, shown in whichever
+            // unit the stepper is in, the same conversion `value`/`onChange`
+            // already do. The `??` never actually fires (2000ml is always
+            // positive), it just keeps waterInUnit's `number | null` result
+            // assignable to `start`, which only takes a plain number.
+            const start = isWater
+              ? waterInUnit(NUTRITION_TARGET_RANGES.waterMl.default, waterUnit) ?? NUTRITION_TARGET_RANGES.waterMl.default
+              : NUTRITION_TARGET_RANGES[key].default;
             return (
               <View key={key} style={styles.row}>
                 <Text style={styles.rowLabel}>{NUTRIENT_LABEL[key].label}</Text>
@@ -258,7 +261,7 @@ export function NutritionTargetsSheet({ visible, onClose }: Props) {
                   min={range.min}
                   max={range.max}
                   step={range.step}
-                  start={defaultValue}
+                  start={start}
                   allowNull
                   emptyLabel="None"
                   format={n =>

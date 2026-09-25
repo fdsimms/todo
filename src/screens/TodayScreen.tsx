@@ -2528,6 +2528,27 @@ export function TodayScreen() {
   // Same deal one level down: a drag of the inline subtask list inside an
   // expanded row (see TaskItem.onSubtaskDragStateChange).
   const [draggingSubtask, setDraggingSubtask] = useState(false);
+
+  // Each of the three above already resets on its own gesture's release *and*
+  // termination (SortableList, PaintSelection's own AppState backstop is the
+  // model this follows) — but a touch cannot survive the app backgrounding,
+  // so any drag still marked live when the app returns to the foreground is
+  // stale by definition, whether or not the responder that owned it heard
+  // about the cancellation in time. Left stuck true, any of these disables
+  // the Today list's scrolling for the rest of the session (see its
+  // `scrollEnabled`), with reopening the app the only way out — the same
+  // shape as #2811. This is a backstop, not the primary reset.
+  useEffect(() => {
+    const subscription = AppState.addEventListener('change', state => {
+      if (state === 'active') {
+        setFabDragging(false);
+        setDraggingStackChildGroupId(null);
+        setDraggingPin(false);
+        setDraggingSubtask(false);
+      }
+    });
+    return () => subscription.remove();
+  }, []);
   // The group whose long-press is currently calling drag(), handed to
   // onDragBegin so the state above is only ever set once the list has
   // actually taken the drag.

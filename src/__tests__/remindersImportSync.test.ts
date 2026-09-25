@@ -1,5 +1,8 @@
 import type { Reminder } from 'expo-calendar/legacy';
 
+/** A local wall-clock time as the ISO instant the app stores, so the suite reads the same in any zone. */
+const localIso = (local: string) => new Date(local).toISOString();
+
 /**
  * This feature deletes reminders out of another app, so the ordering and
  * isolation rules in the drain are the part worth testing hardest — a mistake
@@ -78,7 +81,7 @@ const mockListEntries = () =>
       checked: i.checked ?? false,
       sortOrder: 1,
       choiceGroup: null,
-      addedAt: '2026-01-01T00:00:00.000Z',
+      addedAt: localIso('2026-01-01T00:00'),
     }));
 jest.mock('../store/useGroceryStore', () => ({
   useGroceryStore: {
@@ -302,8 +305,8 @@ describe('importReminders — the create/delete contract', () => {
 
   it('imports in the order things were said', async () => {
     mockCalendar.getRemindersAsync.mockResolvedValue([
-      reminder('later', { title: 'Second', creationDate: '2026-08-06T12:00:00.000Z' }),
-      reminder('earlier', { title: 'First', creationDate: '2026-08-06T09:00:00.000Z' }),
+      reminder('later', { title: 'Second', creationDate: localIso('2026-08-06T12:00') }),
+      reminder('earlier', { title: 'First', creationDate: localIso('2026-08-06T09:00') }),
     ]);
     await freshSync().importReminders();
     expect(mockAddTask.mock.calls.map(c => c[0].title)).toEqual(['First', 'Second']);
@@ -757,8 +760,8 @@ describe('importReminders — with the reminders left in place', () => {
 
   it('keeps the index current, so one batch cannot land the same name twice', async () => {
     mockCalendar.getRemindersAsync.mockResolvedValue([
-      reminder('a', { title: 'call mum', creationDate: '2026-08-06T09:00:00.000Z' }),
-      reminder('b', { title: 'Call Mum', creationDate: '2026-08-06T10:00:00.000Z' }),
+      reminder('a', { title: 'call mum', creationDate: localIso('2026-08-06T09:00') }),
+      reminder('b', { title: 'Call Mum', creationDate: localIso('2026-08-06T10:00') }),
     ]);
 
     const outcome = await freshSync().importReminders();
@@ -1227,6 +1230,61 @@ describe('importReminders — demo mode', () => {
     expect(mockCalendar.createReminderAsync).not.toHaveBeenCalled();
     expect(mockCalendar.deleteReminderAsync).not.toHaveBeenCalled();
   });
+
+  // The gate at the top is checked before the awaits, and demo can start during
+  // them: a pass kicked off by a foreground still reading EventKit when the
+  // user taps Start demo. Each writes only after checking again.
+  it('stops a drain when demo starts while it is reading the list', async () => {
+    mockCalendar.getRemindersAsync.mockImplementation(async () => {
+      mockDemoMode = true;
+      return [reminder('a')];
+    });
+
+    await freshSync().importReminders();
+
+    expect(mockAddTask).not.toHaveBeenCalled();
+    expect(mockCalendar.deleteReminderAsync).not.toHaveBeenCalled();
+  });
+
+  it('stops a mirror when demo starts while it is reading the list', async () => {
+    mockSettings.remindersImportEnabled = false;
+    mockSettings.groceryImportEnabled = true;
+    mockSettings.groceryImportListId = LIST.id;
+    mockSettings.groceryImportConfirmedListId = LIST.id;
+    mockSettings.groceryImportTwoWay = true;
+    mockGroceryItems = [{ id: 'i1', name: 'milk', nameKey: 'milk', onList: true, checked: false }];
+    mockCalendar.getRemindersAsync.mockImplementation(async () => {
+      mockDemoMode = true;
+      return [];
+    });
+
+    await freshSync().importReminders();
+
+    expect(mockCalendar.createReminderAsync).not.toHaveBeenCalled();
+    expect(mockCalendar.deleteReminderAsync).not.toHaveBeenCalled();
+  });
+
+  // Turning two-way off clears the links, which is right outside demo and
+  // wrong inside it: the clear landed in the demo database and, worse, in the
+  // module's in-memory index, which outlives the swap. On leaving demo the real
+  // mirror ran against no links, so removed rows came back from their reminders.
+  it('leaves the real links alone when two-way is switched off during demo', async () => {
+    mockDemoMode = true;
+    const real = JSON.stringify({
+      [LIST.id]: [{ reminderId: 'r1', itemId: 'i1', name: 'milk', checked: false, seen: true }],
+    });
+    mockSettingsRows.groceryImportLinks = real;
+    mockSettings.remindersImportEnabled = false;
+    mockSettings.groceryImportEnabled = true;
+    mockSettings.groceryImportListId = LIST.id;
+    mockSettings.groceryImportConfirmedListId = LIST.id;
+    mockSettings.groceryImportTwoWay = false;
+
+    await freshSync().importReminders();
+
+    expect(mockSettingsRows.groceryImportLinks).toBe(real);
+    expect(mockDb.dbSetSetting).not.toHaveBeenCalledWith('groceryImportLinks', expect.anything());
+  });
 });
 
 /**
@@ -1259,7 +1317,7 @@ describe('importReminders — capture lists', () => {
     mockSettings.reminderCaptures = [foodCapture()];
     mockCalendar.getRemindersAsync.mockResolvedValue([
       // 19:40, so the slot comes out as dinner.
-      reminder('a', { title: 'Grilled cheese with mozzarella', creationDate: '2026-09-15T19:40:00.000+00:00' }),
+      reminder('a', { title: 'Grilled cheese with mozzarella', creationDate: localIso('2026-09-15T19:40') }),
     ]);
 
     const outcome = await freshSync().importReminders();
@@ -1282,7 +1340,7 @@ describe('importReminders — capture lists', () => {
     mockSettings.remindersImportEnabled = false;
     mockSettings.reminderCaptures = [foodCapture()];
     mockCalendar.getRemindersAsync.mockResolvedValue([
-      reminder('a', { title: 'Porridge', creationDate: '2026-09-15T08:05:00.000+00:00' }),
+      reminder('a', { title: 'Porridge', creationDate: localIso('2026-09-15T08:05') }),
     ]);
 
     await freshSync().importReminders();
@@ -1294,7 +1352,7 @@ describe('importReminders — capture lists', () => {
     mockSettings.remindersImportEnabled = false;
     mockSettings.reminderCaptures = [foodCapture({ filing: { kind: 'meal', slot: 'lunch' } })];
     mockCalendar.getRemindersAsync.mockResolvedValue([
-      reminder('a', { title: 'Soup', creationDate: '2026-09-15T20:00:00.000+00:00' }),
+      reminder('a', { title: 'Soup', creationDate: localIso('2026-09-15T20:00') }),
     ]);
 
     await freshSync().importReminders();
@@ -1343,7 +1401,7 @@ describe('importReminders — capture lists', () => {
       filing: { kind: 'category', category: 'Home' },
     })];
     mockCalendar.getRemindersAsync.mockResolvedValue([
-      reminder('a', { title: 'Change the filter', dueDate: '2026-09-20T12:00:00.000+00:00' }),
+      reminder('a', { title: 'Change the filter', dueDate: localIso('2026-09-20T12:00') }),
     ]);
 
     await freshSync().importReminders();
@@ -1446,7 +1504,7 @@ describe('importReminders — capture lists', () => {
     mockSettings.reminderCaptures = [foodCapture()];
     mockCalendar.getRemindersAsync.mockImplementation(async (ids: string[]) =>
       ids[0] === FOOD_LIST.id
-        ? [reminder('f', { title: 'Grilled cheese', creationDate: '2026-09-15T12:30:00.000+00:00' })]
+        ? [reminder('f', { title: 'Grilled cheese', creationDate: localIso('2026-09-15T12:30') })]
         : [reminder('t', { title: 'Call the dentist' })]
     );
 
