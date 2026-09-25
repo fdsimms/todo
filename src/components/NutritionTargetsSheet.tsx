@@ -390,18 +390,25 @@ export function NutritionTargetsSheet({ visible, onClose }: Props) {
                       {/* Offered, never applied on its own — the arrangement
                           `WeightGoalSheet` uses for a far bigger number, and
                           the reason a figure worked out from somebody's own
-                          data is allowed to be shown here at all. Withheld
-                          when it would set what is already set. */}
-                      {typicalKcal !== null && typicalKcal !== undefined
-                        && snapToBaselineStep(typicalKcal) !== activeEnergyBoost.baselineKcal && (
-                        <InlineAction
-                          label={`Use your recent average (${typicalKcal.toLocaleString()} cal)`}
-                          variant="neutral"
-                          onPress={() => {
-                            haptics.tap();
-                            setActiveEnergyBoost({ baselineKcal: snapToBaselineStep(typicalKcal) });
-                          }}
-                        />
+                          data is allowed to be shown here at all. Said even
+                          when it matches what's already set, so a resolved
+                          figure is never indistinguishable from one still
+                          loading or one Health had nothing to answer. */}
+                      {typicalKcal !== null && typicalKcal !== undefined && (
+                        snapToBaselineStep(typicalKcal) !== activeEnergyBoost.baselineKcal ? (
+                          <InlineAction
+                            label={`Use your recent average (${typicalKcal.toLocaleString()} cal)`}
+                            variant="neutral"
+                            onPress={() => {
+                              haptics.tap();
+                              setActiveEnergyBoost({ baselineKcal: snapToBaselineStep(typicalKcal) });
+                            }}
+                          />
+                        ) : (
+                          <Text style={styles.boostHint}>
+                            Matches your recent average ({typicalKcal.toLocaleString()} cal).
+                          </Text>
+                        )
                       )}
                       {typicalKcal === null && !noActiveEnergy && (
                         <Text style={styles.boostHint}>

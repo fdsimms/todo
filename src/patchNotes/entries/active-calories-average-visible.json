@@ -1,0 +1,4 @@
+{
+  "message": "Fix: the calories-on-active-days setting now says when your recent average already matches the figure you've set, instead of showing nothing",
+  "date": "2026-09-25"
+}
