@@ -33,6 +33,7 @@ import {
   feetInchesToCm,
   isProfileComplete,
   macroGrams,
+  DIGESTION_SHARE,
   measuredMaintenanceKcal,
   type ActivityLevel,
   type BodyProfile,
@@ -572,7 +573,7 @@ export function WeightGoalSheet({ visible, onClose, currentKg, onLogWeight }: Pr
                     />
                     <Text style={styles.help}>
                       {measuredBasis
-                        ? `Your resting rate plus ${(typicalActiveKcal ?? 0).toLocaleString()} cal, the active calories in a typical recent day of yours. Movement only, so it reads a little low: it does not count the energy spent digesting food, which the activity levels do.`
+                        ? `Your resting rate plus ${(typicalActiveKcal ?? 0).toLocaleString()} cal, the active calories in a typical recent day of yours, plus about ${Math.round(budget.maintenanceKcal * DIGESTION_SHARE).toLocaleString()} cal for digesting food (about a tenth of what you eat). To also add a day when you move more than usual, turn on Add active calories under Daily targets.`
                         : `The activity level you picked above, as a multiplier on your resting rate.`}
                     </Text>
                   </View>
@@ -604,7 +605,7 @@ export function WeightGoalSheet({ visible, onClose, currentKg, onLogWeight }: Pr
 
                 <Text style={styles.help}>
                   {measuredBasis
-                    ? 'Still an estimate: the resting half comes from a population formula (Mifflin-St Jeor) and only the activity half is measured. Treat it as a starting point and adjust it against what the scale actually does.'
+                    ? 'Still an estimate: the resting rate comes from a population formula (Mifflin-St Jeor), digestion is a rule of thumb, and only the activity is measured. Treat it as a starting point and adjust it against what the scale actually does.'
                     : 'An estimate from a population formula (Mifflin-St Jeor), not a measurement of you. Treat it as a starting point and adjust it against what the scale actually does.'}
                 </Text>
 

@@ -1667,6 +1667,8 @@ interface SettingsStore {
   setMealLogPrompt: (on: boolean) => void;
   /** Sets one nutrient's target, or clears it with null. */
   setNutritionTarget: (key: NutrientKey, value: number | null) => void;
+  /** Merges several nutrient targets at once, in a single write — the U.S. Daily Value action. */
+  setNutritionTargets: (values: NutritionTargets) => void;
   /** Replaces the whole set of nutrients shown above the fold on the Food log. */
   setFoodLogPinnedNutrients: (keys: NutrientKey[]) => void;
   setMealShortfallLeadDays: (days: number) => void;
@@ -3358,6 +3360,18 @@ export const useSettingsStore = create<SettingsStore>((set, get) => ({
       const next = { ...state.nutritionTargets };
       if (value === null || !(value > 0)) delete next[key];
       else next[key] = value;
+      dbSetSetting('nutritionTargets', serializeNutritionTargets(next));
+      return { nutritionTargets: next };
+    });
+  },
+
+  // One write for several keys at once, the shape setBodyProfile uses — the
+  // U.S. Daily Value action fills every unset target in one tap, and thirteen
+  // separate setNutritionTarget calls would mean thirteen separate db writes
+  // for what is, to the person tapping it, a single choice.
+  setNutritionTargets(values: NutritionTargets) {
+    set(state => {
+      const next = { ...state.nutritionTargets, ...values };
       dbSetSetting('nutritionTargets', serializeNutritionTargets(next));
       return { nutritionTargets: next };
     });
