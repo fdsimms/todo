@@ -23,12 +23,15 @@ import { join } from 'path';
 import type { BusyEvent } from '../utils/calendarBusy';
 import type { EventTaskRule } from '../types';
 
+/** A local wall-clock time as the ISO instant the app stores, so the suite reads the same in any zone. */
+const localIso = (local: string) => new Date(local).toISOString();
+
 function event(over: Partial<BusyEvent> = {}): BusyEvent {
   return {
     id: 'evt1',
     title: 'Flight to SFO',
-    start: '2026-09-20T14:00:00.000Z',
-    end: '2026-09-20T18:00:00.000Z',
+    start: localIso('2026-09-20T14:00'),
+    end: localIso('2026-09-20T18:00'),
     allDay: false,
     calendarId: 'cal1',
     location: null,
@@ -109,7 +112,7 @@ describe('ruleMatchesTitle', () => {
 });
 
 describe('eventIsRuleEligible', () => {
-  const now = new Date('2026-09-18T09:00:00.000Z');
+  const now = new Date(localIso('2026-09-18T09:00'));
 
   it('keeps a future event', () => {
     expect(eventIsRuleEligible(event(), now)).toBe(true);
@@ -119,7 +122,7 @@ describe('eventIsRuleEligible', () => {
   // preparation left to ask for. This is what stops a rule switched on this
   // afternoon writing tasks for this morning.
   it('refuses an event that has already started', () => {
-    expect(eventIsRuleEligible(event({ start: '2026-09-18T08:00:00.000Z' }), now)).toBe(false);
+    expect(eventIsRuleEligible(event({ start: localIso('2026-09-18T08:00') }), now)).toBe(false);
   });
 
   it('refuses a cancelled event', () => {
@@ -142,36 +145,36 @@ describe('leadTimeReached', () => {
   // Compared on whole local days, so the hour the sweep happens to run at
   // never decides which day a task lands on.
   it('is true on the day the lead reaches back to, whatever the hour', () => {
-    const e = event({ start: '2026-09-20T23:00:00.000Z' });
+    const e = event({ start: localIso('2026-09-20T23:00') });
     const r = rule({ leadDays: 2 });
-    expect(leadTimeReached(e, r, new Date('2026-09-18T00:30:00.000Z'))).toBe(true);
-    expect(leadTimeReached(e, r, new Date('2026-09-18T23:30:00.000Z'))).toBe(true);
+    expect(leadTimeReached(e, r, new Date(localIso('2026-09-18T00:30')))).toBe(true);
+    expect(leadTimeReached(e, r, new Date(localIso('2026-09-18T23:30')))).toBe(true);
   });
 
   it('is false before the lead reaches back', () => {
-    expect(leadTimeReached(event(), rule({ leadDays: 2 }), new Date('2026-09-17T12:00:00.000Z')))
+    expect(leadTimeReached(event(), rule({ leadDays: 2 }), new Date(localIso('2026-09-17T12:00'))))
       .toBe(false);
   });
 
   it('with no lead, waits for the event’s own day', () => {
-    expect(leadTimeReached(event(), rule({ leadDays: 0 }), new Date('2026-09-19T12:00:00.000Z')))
+    expect(leadTimeReached(event(), rule({ leadDays: 0 }), new Date(localIso('2026-09-19T12:00'))))
       .toBe(false);
-    expect(leadTimeReached(event(), rule({ leadDays: 0 }), new Date('2026-09-20T01:00:00.000Z')))
+    expect(leadTimeReached(event(), rule({ leadDays: 0 }), new Date(localIso('2026-09-20T01:00'))))
       .toBe(true);
   });
 });
 
 describe('matchedEventTasks', () => {
-  const now = new Date('2026-09-20T09:00:00.000Z');
+  const now = new Date(localIso('2026-09-20T09:00'));
 
   it('pairs a matching rule with the event that matched it', () => {
     const matches = matchedEventTasks([rule()], [event()], now, {});
     expect(matches).toHaveLength(1);
     expect(matches[0].rule.id).toBe('r1');
     expect(matches[0].event.id).toBe('evt1');
-    expect(matches[0].sourceId).toBe('evt1|2026-09-20T14:00:00.000Z#r1');
+    expect(matches[0].sourceId).toBe(`evt1|${localIso('2026-09-20T14:00')}#r1`);
     // The handled entry expires on the occurrence's own end.
-    expect(matches[0].endsAt).toBe('2026-09-20T18:00:00.000Z');
+    expect(matches[0].endsAt).toBe(localIso('2026-09-20T18:00'));
   });
 
   it('skips a disabled rule', () => {
@@ -179,7 +182,7 @@ describe('matchedEventTasks', () => {
   });
 
   it('skips a pair already handled', () => {
-    const handled = { 'evt1|2026-09-20T14:00:00.000Z#r1': '2026-09-20T18:00:00.000Z' };
+    const handled = { [`evt1|${localIso('2026-09-20T14:00')}#r1`]: localIso('2026-09-20T18:00') };
     expect(matchedEventTasks([rule()], [event()], now, handled)).toEqual([]);
   });
 
@@ -187,18 +190,18 @@ describe('matchedEventTasks', () => {
   // instance of a recurring series under one id, so handling Monday's standup
   // must not silently handle Tuesday's.
   it('treats two occurrences of one recurring event separately', () => {
-    const monday = event({ start: '2026-09-20T14:00:00.000Z', end: '2026-09-20T15:00:00.000Z' });
-    const tuesday = event({ start: '2026-09-21T14:00:00.000Z', end: '2026-09-21T15:00:00.000Z' });
+    const monday = event({ start: localIso('2026-09-20T14:00'), end: localIso('2026-09-20T15:00') });
+    const tuesday = event({ start: localIso('2026-09-21T14:00'), end: localIso('2026-09-21T15:00') });
     const handled = { [eventTaskSourceId(eventOccurrenceKey(monday), 'r1')]: monday.end };
     const matches = matchedEventTasks([rule({ leadDays: 1 })], [monday, tuesday], now, handled);
     expect(matches).toHaveLength(1);
-    expect(matches[0].event.start).toBe('2026-09-21T14:00:00.000Z');
+    expect(matches[0].event.start).toBe(localIso('2026-09-21T14:00'));
   });
 
   it('holds a match back until its lead day arrives', () => {
-    const far = event({ start: '2026-09-28T14:00:00.000Z', end: '2026-09-28T18:00:00.000Z' });
+    const far = event({ start: localIso('2026-09-28T14:00'), end: localIso('2026-09-28T18:00') });
     expect(matchedEventTasks([rule({ leadDays: 2 })], [far], now, {})).toEqual([]);
-    const near = new Date('2026-09-26T09:00:00.000Z');
+    const near = new Date(localIso('2026-09-26T09:00'));
     expect(matchedEventTasks([rule({ leadDays: 2 })], [far], near, {})).toHaveLength(1);
   });
 
@@ -209,9 +212,9 @@ describe('matchedEventTasks', () => {
 
   // Deterministic ordering, so two devices sweeping the same window agree.
   it('orders by event start', () => {
-    const late = event({ id: 'b', start: '2026-09-20T18:00:00.000Z', end: '2026-09-20T19:00:00.000Z' });
-    const early = event({ id: 'a', start: '2026-09-20T10:30:00.000Z', end: '2026-09-20T11:00:00.000Z' });
-    const matches = matchedEventTasks([rule()], [late, early], new Date('2026-09-20T09:00:00.000Z'), {});
+    const late = event({ id: 'b', start: localIso('2026-09-20T18:00'), end: localIso('2026-09-20T19:00') });
+    const early = event({ id: 'a', start: localIso('2026-09-20T10:30'), end: localIso('2026-09-20T11:00') });
+    const matches = matchedEventTasks([rule()], [late, early], new Date(localIso('2026-09-20T09:00')), {});
     expect(matches.map(m => m.event.id)).toEqual(['a', 'b']);
   });
 });
@@ -219,11 +222,11 @@ describe('matchedEventTasks', () => {
 describe('the handled record', () => {
   it('drops entries whose occurrence has finished', () => {
     const handled = {
-      over: '2026-09-19T18:00:00.000Z',
-      live: '2026-09-21T18:00:00.000Z',
+      over: localIso('2026-09-19T18:00'),
+      live: localIso('2026-09-21T18:00'),
     };
-    expect(pruneHandledEventTasks(handled, new Date('2026-09-20T09:00:00.000Z')))
-      .toEqual({ live: '2026-09-21T18:00:00.000Z' });
+    expect(pruneHandledEventTasks(handled, new Date(localIso('2026-09-20T09:00'))))
+      .toEqual({ live: localIso('2026-09-21T18:00') });
   });
 
   // An entry with no readable expiry would otherwise be immortal, which is the
@@ -233,8 +236,8 @@ describe('the handled record', () => {
   });
 
   it('reads a stored record back, dropping anything malformed', () => {
-    expect(parseHandledEventTasks('{"a":"2026-09-21T18:00:00.000Z","b":7,"c":"nope"}'))
-      .toEqual({ a: '2026-09-21T18:00:00.000Z' });
+    expect(parseHandledEventTasks(`{"a":"${localIso('2026-09-21T18:00')}","b":7,"c":"nope"}`))
+      .toEqual({ a: localIso('2026-09-21T18:00') });
     expect(parseHandledEventTasks('not json')).toEqual({});
     expect(parseHandledEventTasks('[]')).toEqual({});
     expect(parseHandledEventTasks(null)).toEqual({});
@@ -243,17 +246,17 @@ describe('the handled record', () => {
 
 describe('source ids', () => {
   it('round-trips', () => {
-    const sourceId = eventTaskSourceId('evt1|2026-09-20T14:00:00.000Z', 'r1');
+    const sourceId = eventTaskSourceId(`evt1|${localIso('2026-09-20T14:00')}`, 'r1');
     expect(parseEventTaskSourceId(sourceId))
-      .toEqual({ occurrenceKey: 'evt1|2026-09-20T14:00:00.000Z', ruleId: 'r1' });
+      .toEqual({ occurrenceKey: `evt1|${localIso('2026-09-20T14:00')}`, ruleId: 'r1' });
   });
 
   // Split on the last '#', because an EventKit identifier is not this app's to
   // choose the shape of and a rule id always is.
   it('survives a "#" inside the event identifier', () => {
-    const sourceId = eventTaskSourceId('ev#7|2026-09-20T14:00:00.000Z', 'r1');
+    const sourceId = eventTaskSourceId(`ev#7|${localIso('2026-09-20T14:00')}`, 'r1');
     expect(parseEventTaskSourceId(sourceId))
-      .toEqual({ occurrenceKey: 'ev#7|2026-09-20T14:00:00.000Z', ruleId: 'r1' });
+      .toEqual({ occurrenceKey: `ev#7|${localIso('2026-09-20T14:00')}`, ruleId: 'r1' });
   });
 
   it('refuses anything that isn’t one', () => {
@@ -264,7 +267,7 @@ describe('source ids', () => {
   });
 
   it('reads a rule id off a task of this kind only', () => {
-    const sourceId = eventTaskSourceId('evt1|2026-09-20T14:00:00.000Z', 'r1');
+    const sourceId = eventTaskSourceId(`evt1|${localIso('2026-09-20T14:00')}`, 'r1');
     expect(eventTaskRuleIdOf({ generatedKind: 'eventTask', generatedSourceId: sourceId })).toBe('r1');
     // One column across many kinds, so the kind check is what stops another
     // generator's source id being read as this one's.
@@ -423,12 +426,12 @@ describe('ruleMatchesTitle and plurals', () => {
 // ─── summarizeRuleAgainstEvents ──────────────────────────────────────────────
 
 describe('summarizeRuleAgainstEvents', () => {
-  const now = new Date('2026-09-18T09:00:00.000Z');
+  const now = new Date(localIso('2026-09-18T09:00'));
 
   it('counts every eligible event a cue matches, earliest first', () => {
     const events = [
-      event({ id: 'b', title: 'Flight home', start: '2026-09-25T10:00:00.000Z' }),
-      event({ id: 'a', title: 'Flight to SFO', start: '2026-09-20T14:00:00.000Z' }),
+      event({ id: 'b', title: 'Flight home', start: localIso('2026-09-25T10:00') }),
+      event({ id: 'a', title: 'Flight to SFO', start: localIso('2026-09-20T14:00') }),
     ];
     const summary = summarizeRuleAgainstEvents(rule({ matches: ['flight'] }), events, now);
     expect(summary.matched.map(e => e.id)).toEqual(['a', 'b']);
@@ -439,7 +442,7 @@ describe('summarizeRuleAgainstEvents', () => {
   // the events the rule could ever fire on.
   it('ignores events the rule could never fire on', () => {
     const events = [
-      event({ title: 'Flight home', start: '2026-09-18T08:00:00.000Z' }), // already started
+      event({ title: 'Flight home', start: localIso('2026-09-18T08:00') }), // already started
       event({ title: 'Flight to SFO', status: 'canceled' }),
     ];
     expect(summarizeRuleAgainstEvents(rule({ matches: ['flight'] }), events, now).matched).toEqual([]);
@@ -506,7 +509,7 @@ describe('summarizeRuleAgainstEvents', () => {
 });
 
 describe('describeRuleMatches', () => {
-  const now = new Date('2026-09-18T09:00:00.000Z');
+  const now = new Date(localIso('2026-09-18T09:00'));
   const summarize = (match: string, titles: string[]) => summarizeRuleAgainstEvents(
     rule({ matches: [match] }),
     titles.map((title, i) => event({ id: `e${i}`, title })),
@@ -534,7 +537,7 @@ describe('describeRuleMatches', () => {
 // Plural tolerance is per keyword, so it composes with the OR rather than
 // interacting with it. Worth pinning: the two features landed independently.
 describe('plurals and multiple keywords together', () => {
-  const now = new Date('2026-09-18T09:00:00.000Z');
+  const now = new Date(localIso('2026-09-18T09:00'));
 
   it('pluralizes each keyword independently', () => {
     const r = rule({ matches: ['flight', 'dentist'] });

@@ -11,6 +11,9 @@ import type { Leftover, Task } from '../types';
 import { daysInFridge, isLiveLeftover, keepDaysBetween, needsAttention } from '../utils/leftovers';
 import { dayKeyOf, getLogicalToday } from '../utils/dateUtils';
 
+/** A local wall-clock time as the ISO instant the app stores, so the suite reads the same in any zone. */
+const localIso = (local: string) => new Date(local).toISOString();
+
 jest.mock('react-native', () => ({ Platform: { OS: 'ios' } }));
 
 jest.mock('../db/database', () => ({
@@ -91,13 +94,13 @@ function makeLeftover(overrides: Partial<Leftover> = {}): Leftover {
     title: 'Chilli',
     recipeId: null,
     sourceEntryId: null,
-    storedAt: '2026-08-10T09:00:00.000Z',
+    storedAt: localIso('2026-08-10T09:00'),
     keepUntil: '2026-08-13',
     finishedAt: null,
     outcome: null,
     frozenAt: null,
     weightG: null,
-    createdAt: '2026-08-10T09:00:00.000Z',
+    createdAt: localIso('2026-08-10T09:00'),
     useUpTask: null,
     ...overrides,
   };
@@ -428,7 +431,7 @@ describe('splitLeftover', () => {
       title: 'Chilli',
       recipeId: 'r1',
       sourceEntryId: 'e1',
-      storedAt: '2026-08-10T09:00:00.000Z',
+      storedAt: localIso('2026-08-10T09:00'),
       keepUntil: '2026-08-13',
     });
     seed([original]);
@@ -448,12 +451,12 @@ describe('splitLeftover', () => {
   // The whole point: a pot logged whole on Sunday and split on Tuesday keeps
   // the two fridge days it already spent, rather than restarting from now.
   it('stamps the copy from the original\'s own storedAt, not now', () => {
-    seed([makeLeftover({ id: 'lo-a', storedAt: '2026-08-10T09:00:00.000Z', keepUntil: '2026-08-13' })]);
+    seed([makeLeftover({ id: 'lo-a', storedAt: localIso('2026-08-10T09:00'), keepUntil: '2026-08-13' })]);
 
     const copy = useLeftoverStore.getState().splitLeftover('lo-a')!;
 
-    expect(copy.storedAt).toBe('2026-08-10T09:00:00.000Z');
-    expect(copy.frozenAt).toBe('2026-08-10T09:00:00.000Z');
+    expect(copy.storedAt).toBe(localIso('2026-08-10T09:00'));
+    expect(copy.frozenAt).toBe(localIso('2026-08-10T09:00'));
     // The same window the original was given, not the days remaining.
     expect(keepDaysBetween(copy.storedAt, copy.keepUntil)).toBe(3);
   });
@@ -463,13 +466,13 @@ describe('splitLeftover', () => {
     const frozenCopy = useLeftoverStore.getState().splitLeftover('lo-fridge')!;
     expect(frozenCopy.frozenAt).not.toBeNull();
 
-    seed([makeLeftover({ id: 'lo-freezer', frozenAt: '2026-08-11T09:00:00.000Z' })]);
+    seed([makeLeftover({ id: 'lo-freezer', frozenAt: localIso('2026-08-11T09:00') })]);
     const fridgeCopy = useLeftoverStore.getState().splitLeftover('lo-freezer')!;
     expect(fridgeCopy.frozenAt).toBeNull();
   });
 
   it('refuses a closed-out container', () => {
-    seed([makeLeftover({ id: 'lo-a', finishedAt: '2026-08-12T09:00:00.000Z', outcome: 'eaten' })]);
+    seed([makeLeftover({ id: 'lo-a', finishedAt: localIso('2026-08-12T09:00'), outcome: 'eaten' })]);
 
     const result = useLeftoverStore.getState().splitLeftover('lo-a');
 
@@ -505,11 +508,11 @@ describe('finishLeftover', () => {
   });
 
   it('is idempotent — a second call does not restamp', () => {
-    seed([makeLeftover({ id: 'lo-a', finishedAt: '2026-08-11T18:00:00.000Z', outcome: 'eaten' })]);
+    seed([makeLeftover({ id: 'lo-a', finishedAt: localIso('2026-08-11T18:00'), outcome: 'eaten' })]);
 
     useLeftoverStore.getState().finishLeftover('lo-a', 'tossed');
 
-    expect(useLeftoverStore.getState().leftovers[0].finishedAt).toBe('2026-08-11T18:00:00.000Z');
+    expect(useLeftoverStore.getState().leftovers[0].finishedAt).toBe(localIso('2026-08-11T18:00'));
     expect(useLeftoverStore.getState().leftovers[0].outcome).toBe('eaten');
     expect(dbUpdateLeftover).not.toHaveBeenCalled();
   });
@@ -626,7 +629,7 @@ describe('the meal-log offer a finished container raises', () => {
 
 describe('reopenLeftover', () => {
   it('puts a mis-tapped close-out back in the fridge, clearing both columns', () => {
-    seed([makeLeftover({ id: 'lo-a', finishedAt: '2026-08-11T18:00:00.000Z', outcome: 'eaten' })]);
+    seed([makeLeftover({ id: 'lo-a', finishedAt: localIso('2026-08-11T18:00'), outcome: 'eaten' })]);
 
     useLeftoverStore.getState().reopenLeftover('lo-a');
 
@@ -682,10 +685,10 @@ describe('purgeOldLeftovers', () => {
 
   it('drops the closed-out rows the db took, and keeps every live one however old', () => {
     (dbPurgeOldLeftovers as jest.Mock).mockReturnValue(1);
-    const ancientButLive = makeLeftover({ id: 'live', storedAt: '2020-01-01T00:00:00.000Z' });
+    const ancientButLive = makeLeftover({ id: 'live', storedAt: localIso('2020-01-01T00:00') });
     const longFinished = makeLeftover({
       id: 'gone',
-      finishedAt: '2020-01-02T00:00:00.000Z',
+      finishedAt: localIso('2020-01-02T00:00'),
       outcome: 'eaten',
     });
     const justFinished = makeLeftover({
@@ -787,7 +790,7 @@ describe('use-up tasks', () => {
     seed([
       makeLeftover({ id: 'urgent', keepUntil: '2026-08-10' }),
       makeLeftover({ id: 'fresh', keepUntil: '2099-01-01' }),
-      makeLeftover({ id: 'closed', keepUntil: '2026-08-10', finishedAt: '2026-08-09T00:00:00.000Z', outcome: 'eaten' }),
+      makeLeftover({ id: 'closed', keepUntil: '2026-08-10', finishedAt: localIso('2026-08-09T00:00'), outcome: 'eaten' }),
     ]);
 
     useLeftoverStore.getState().reconcileAllLeftoverTasks();
@@ -807,7 +810,7 @@ describe('use-up tasks', () => {
     useLeftoverStore.getState().reconcileAllLeftoverTasks();
 
     const task = mockTaskState.tasks.find(t => t.generatedSourceId === 'chilli')!;
-    const tomorrow = '2099-06-01T12:00:00.000Z';
+    const tomorrow = localIso('2099-06-01T12:00');
     mockTaskState.updateTask(task.id, { dueDate: tomorrow });
 
     useLeftoverStore.getState().reconcileAllLeftoverTasks();
@@ -825,7 +828,7 @@ describe('use-up tasks', () => {
     useLeftoverStore.getState().reconcileAllLeftoverTasks();
 
     const task = mockTaskState.tasks.find(t => t.generatedSourceId === 'chilli')!;
-    const deferred = '2099-06-01T12:00:00.000Z';
+    const deferred = localIso('2099-06-01T12:00');
     mockTaskState.updateTask(task.id, { dueDate: deferred });
 
     useLeftoverStore.getState().setKeepDays('chilli', 6);

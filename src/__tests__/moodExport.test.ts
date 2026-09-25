@@ -7,12 +7,15 @@ import {
 } from '../utils/moodExport';
 import type { MoodLog } from '../types';
 
+/** A local wall-clock time as the ISO instant the app stores, so the suite reads the same in any zone. */
+const localIso = (local: string) => new Date(local).toISOString();
+
 let n = 0;
 function log(over: Partial<MoodLog> = {}): MoodLog {
   n++;
   return {
     id: over.id ?? `l${n}`,
-    loggedAt: over.loggedAt ?? '2026-08-17T09:00:00.000Z',
+    loggedAt: over.loggedAt ?? localIso('2026-08-17T09:00'),
     dayKey: over.dayKey ?? '2026-08-17',
     mood: over.mood === undefined ? 3 : over.mood,
     symptoms: over.symptoms ?? [],
@@ -52,16 +55,16 @@ describe('the file', () => {
 
   it('is oldest first — a record is read forwards', () => {
     const csv = moodExportCsv([
-      log({ loggedAt: '2026-08-18T09:00:00.000Z', dayKey: '2026-08-18' }),
-      log({ loggedAt: '2026-08-17T09:00:00.000Z', dayKey: '2026-08-17' }),
+      log({ loggedAt: localIso('2026-08-18T09:00'), dayKey: '2026-08-18' }),
+      log({ loggedAt: localIso('2026-08-17T09:00'), dayKey: '2026-08-17' }),
     ]);
     expect(rows(csv)[1].startsWith('2026-08-17')).toBe(true);
   });
 
   it('writes one row per entry and never collapses a day', () => {
     const csv = moodExportCsv([
-      log({ loggedAt: '2026-08-17T08:00:00.000Z', mood: 5 }),
-      log({ loggedAt: '2026-08-17T20:00:00.000Z', mood: 1 }),
+      log({ loggedAt: localIso('2026-08-17T08:00'), mood: 5 }),
+      log({ loggedAt: localIso('2026-08-17T20:00'), mood: 1 }),
     ]);
     // Two rows, and neither of them is the 3 an average would have invented.
     expect(rows(csv)).toHaveLength(3);
@@ -87,8 +90,8 @@ describe('the file', () => {
 
   it('carries both the logical day and the instant, which can differ', () => {
     // A 1am entry under an 02:00 reset belongs to the previous logical day.
-    const csv = moodExportCsv([log({ dayKey: '2026-08-16', loggedAt: '2026-08-17T01:00:00.000Z' })]);
-    expect(rows(csv)[1].startsWith('2026-08-16,2026-08-17T01:00:00.000Z')).toBe(true);
+    const csv = moodExportCsv([log({ dayKey: '2026-08-16', loggedAt: localIso('2026-08-17T01:00') })]);
+    expect(rows(csv)[1].startsWith(`2026-08-16,${localIso('2026-08-17T01:00')}`)).toBe(true);
   });
 
   it('quotes a note holding a comma rather than splitting it across columns', () => {
@@ -99,7 +102,7 @@ describe('the file', () => {
 
 describe('the file name', () => {
   it('is dated', () => {
-    expect(moodExportFileName(new Date('2026-09-09T12:00:00.000Z'))).toBe('mood-log-2026-09-09.csv');
+    expect(moodExportFileName(new Date(localIso('2026-09-09T12:00')))).toBe('mood-log-2026-09-09.csv');
   });
 });
 

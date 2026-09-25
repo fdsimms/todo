@@ -4213,9 +4213,12 @@ export const useTaskStore = create<TaskStore>((set, get) => ({
       updated.push({
         ...task,
         reminderTime: reanchored,
-        // The offset now in effect here, correct going forward until the
-        // device moves again.
-        reminderUtcOffsetMinutes: new Date().getTimezoneOffset(),
+        // The offset in effect here *at the reminder*, not now — every other
+        // write captures it that way, and it's what the next pass subtracts.
+        // Stamping today's offset on a reminder across a DST change from today
+        // made the next pass read it as another zone move and shift it an
+        // hour, again on every launch.
+        reminderUtcOffsetMinutes: new Date(reanchored).getTimezoneOffset(),
       });
     }
     if (updated.length === 0) return;

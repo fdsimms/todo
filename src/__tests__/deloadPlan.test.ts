@@ -1,4 +1,5 @@
 import { addDays } from 'date-fns/addDays';
+import { format } from 'date-fns/format';
 import { buildDeloadPlan, deloadUpdates } from '../utils/deloadPlan';
 import type { Task } from '../types';
 import type { BusyEvent } from '../utils/calendarBusy';
@@ -146,7 +147,7 @@ function makeTask(overrides: Partial<Task>): Task {
 }
 
 function isoDate(d: Date): string {
-  return d.toISOString().slice(0, 10);
+  return format(d, 'yyyy-MM-dd');
 }
 
 let busySeq = 0;

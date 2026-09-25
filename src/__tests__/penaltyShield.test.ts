@@ -19,6 +19,9 @@ import {
   slipPenaltyUntil,
 } from '../utils/penaltyShield';
 
+/** A local wall-clock time as the ISO instant the app stores, so the suite reads the same in any zone. */
+const localIso = (local: string) => new Date(local).toISOString();
+
 /**
  * Cast through a partial rather than spelling out all ~120 fields of a Task:
  * this module reads seven of them, and a full literal here would hide which
@@ -119,7 +122,7 @@ describe('penaltyChargeFor', () => {
     const stamped = task({
       dueDate: '2026-08-22T12:00:00',
       penaltyCutoffTime: '08:00',
-      penaltyFiredAt: '2026-08-22T08:00:00.000Z',
+      penaltyFiredAt: localIso('2026-08-22T08:00'),
       penaltyCreditedAt: null,
     });
     expect(penaltyChargeFor(stamped, new Date(2026, 7, 22, 9, 0), '00:00', NOT_EXCUSED)).toBeNull();
@@ -175,8 +178,8 @@ describe('slipPenaltyUntil', () => {
 });
 
 describe('extendShieldUntil', () => {
-  const a = new Date('2026-08-22T10:00:00.000Z');
-  const b = new Date('2026-08-22T11:00:00.000Z');
+  const a = new Date(localIso('2026-08-22T10:00'));
+  const b = new Date(localIso('2026-08-22T11:00'));
 
   it('starts a block when none is being served', () => {
     expect(extendShieldUntil(null, a)).toBe(a.toISOString());
@@ -192,18 +195,18 @@ describe('extendShieldUntil', () => {
 });
 
 describe('penaltyShieldWanted', () => {
-  const now = new Date('2026-08-22T09:00:00.000Z');
+  const now = new Date(localIso('2026-08-22T09:00'));
 
   it('is true while the block has time left on it', () => {
-    expect(penaltyShieldWanted('2026-08-22T10:00:00.000Z', true, now)).toBe(true);
+    expect(penaltyShieldWanted(localIso('2026-08-22T10:00'), true, now)).toBe(true);
   });
 
   it('is false once it has run out', () => {
-    expect(penaltyShieldWanted('2026-08-22T08:00:00.000Z', true, now)).toBe(false);
+    expect(penaltyShieldWanted(localIso('2026-08-22T08:00'), true, now)).toBe(false);
   });
 
   it('is false with the feature off, however much time is left', () => {
-    expect(penaltyShieldWanted('2026-08-22T10:00:00.000Z', false, now)).toBe(false);
+    expect(penaltyShieldWanted(localIso('2026-08-22T10:00'), false, now)).toBe(false);
   });
 
   it('is false with nothing being served', () => {
@@ -214,8 +217,8 @@ describe('penaltyShieldWanted', () => {
 describe('penaltyCreditFor', () => {
   // Doing the thing after it cost you gives that cost back. Every refusal here
   // is one of penaltyChargeFor's read backwards.
-  const CHARGED = '2026-08-22T18:00:00.000Z';
-  const now = new Date('2026-08-22T19:00:00.000Z');
+  const CHARGED = localIso('2026-08-22T18:00');
+  const now = new Date(localIso('2026-08-22T19:00'));
 
   it('gives back exactly what this task charged', () => {
     // Not a number of its own: the inverse of the penalty is the penalty coming
@@ -233,13 +236,13 @@ describe('penaltyCreditFor', () => {
     // The mirror of penaltyChargeFor's own staleness rule: a cutoff outside
     // today's logical day bought no block, and refunding a block that was never
     // imposed is inventing credit.
-    const stale = task({ penaltyFiredAt: '2026-08-19T18:00:00.000Z' });
+    const stale = task({ penaltyFiredAt: localIso('2026-08-19T18:00') });
     expect(penaltyCreditFor(stale, now, '00:00')).toBeNull();
   });
 
   it('gives back nothing twice', () => {
     // Without the stamp the feature is a button that prints minutes.
-    const t = task({ penaltyFiredAt: CHARGED, penaltyCreditedAt: '2026-08-22T18:30:00.000Z' });
+    const t = task({ penaltyFiredAt: CHARGED, penaltyCreditedAt: localIso('2026-08-22T18:30') });
     expect(penaltyCreditFor(t, now, '00:00')).toBeNull();
   });
 
@@ -261,35 +264,35 @@ describe('penaltyCreditFor', () => {
     // 01:00 with a 02:00 reset is still the 22nd, so a charge stamped at 18:00
     // on the 22nd is still in today's logical day and still creditable.
     const t = task({ penaltyMinutes: 30, penaltyFiredAt: CHARGED });
-    expect(penaltyCreditFor(t, new Date('2026-08-23T01:00:00.000Z'), '02:00')).toBe(30);
+    expect(penaltyCreditFor(t, new Date(localIso('2026-08-23T01:00')), '02:00')).toBe(30);
     // Past the reset it is yesterday's charge, and gone.
-    expect(penaltyCreditFor(t, new Date('2026-08-23T03:00:00.000Z'), '02:00')).toBeNull();
+    expect(penaltyCreditFor(t, new Date(localIso('2026-08-23T03:00')), '02:00')).toBeNull();
   });
 });
 
 describe('creditShieldUntil', () => {
-  const now = new Date('2026-08-22T19:00:00.000Z');
+  const now = new Date(localIso('2026-08-22T19:00'));
 
   it('takes the minutes off a standing block', () => {
-    const until = '2026-08-22T20:00:00.000Z';
-    expect(creditShieldUntil(until, 30, now)).toBe('2026-08-22T19:30:00.000Z');
+    const until = localIso('2026-08-22T20:00');
+    expect(creditShieldUntil(until, 30, now)).toBe(localIso('2026-08-22T19:30'));
   });
 
   it('ends the block when the credit covers what is left', () => {
     // Null is the same value penaltyShieldUntil holds when nothing is served,
     // so this ends the block rather than leaving a stale instant behind.
-    expect(creditShieldUntil('2026-08-22T19:20:00.000Z', 30, now)).toBeNull();
+    expect(creditShieldUntil(localIso('2026-08-22T19:20'), 30, now)).toBeNull();
   });
 
   it('never pushes the end before now, so nothing can be banked', () => {
     // The mirror of extendShieldUntil keeping the later end: that one stops a
     // second failure shortening the first's block, this one stops a credit
     // buying time against a charge that has not happened yet.
-    expect(creditShieldUntil('2026-08-22T19:10:00.000Z', 600, now)).toBeNull();
+    expect(creditShieldUntil(localIso('2026-08-22T19:10'), 600, now)).toBeNull();
   });
 
   it('leaves a block that has already run out exactly as it found it', () => {
-    const spent = '2026-08-22T18:00:00.000Z';
+    const spent = localIso('2026-08-22T18:00');
     expect(creditShieldUntil(spent, 30, now)).toBe(spent);
   });
 
@@ -303,9 +306,9 @@ describe('creditShieldUntil', () => {
     // Two charges of 30 each; finishing one gives back 30 and the other's block
     // keeps running. Composition through appShield's OR falls out of only ever
     // touching this one value.
-    const until = '2026-08-22T20:00:00.000Z';
+    const until = localIso('2026-08-22T20:00');
     const after = creditShieldUntil(until, 30, now);
-    expect(after).toBe('2026-08-22T19:30:00.000Z');
+    expect(after).toBe(localIso('2026-08-22T19:30'));
     expect(new Date(after!) > now).toBe(true);
   });
 });

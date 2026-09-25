@@ -5523,7 +5523,8 @@ describe('checkMoodTasks', () => {
 
   const entry = (dayKey: string, mood: number | null) => ({
     id: `m-${dayKey}`,
-    loggedAt: `${dayKey}T09:00:00.000Z`,
+    // Local 09:00, like the clock these tests set, so the suite reads the same in any zone.
+    loggedAt: new Date(`${dayKey}T09:00`).toISOString(),
     dayKey,
     mood,
     symptoms: [],
@@ -5707,7 +5708,7 @@ describe('checkMoodTasks', () => {
 
     it('writes nothing for a segment already answered since it began', () => {
       // Logged at 19:30, after the 18:00 evening threshold.
-      setLogs([{ ...entry(TODAY, 3), loggedAt: '2026-08-25T19:30:00.000Z' }]);
+      setLogs([{ ...entry(TODAY, 3), loggedAt: new Date(2026, 7, 25, 19, 30).toISOString() }]);
       useSettingsStore.getState.mockReturnValue(morningAndEvening());
       jest.setSystemTime(new Date(2026, 7, 25, 20, 0, 0));
 
@@ -6347,7 +6348,7 @@ describe('checkMealSlotTasks', () => {
     expect(today.timeSegments).toEqual([]);
     expect(today.category).toBe('Meal Plan');
     // Each row lands on its own day, so the week reads as a week.
-    expect(slotRows()[3].dueDate!.startsWith('2026-08-25')).toBe(true);
+    expect(dayKeyOf(new Date(slotRows()[3].dueDate!))).toBe('2026-08-25');
     expect(setWrittenThrough).toHaveBeenCalledWith('2026-08-28');
   });
 
@@ -12180,7 +12181,32 @@ describe('quota tasks', () => {
       const reminder = new Date(updated.reminderTime!);
       expect(reminder.getHours()).toBe(9);
       expect(reminder.getMinutes()).toBe(0);
-      expect(updated.reminderUtcOffsetMinutes).toBe(new Date().getTimezoneOffset());
+      expect(updated.reminderUtcOffsetMinutes).toBe(reminder.getTimezoneOffset());
+    });
+
+    it('settles after one move, even when the reminder sits across a DST change from today', () => {
+      // Only discriminating in a zone with DST whose reminder date and today
+      // fall on opposite sides of it (npm run test:tz covers one): the pass
+      // used to stamp today's offset, which the next pass read as another zone
+      // move, shifting the reminder an hour on every launch.
+      const nineAm = new Date(2026, 0, 15, 9, 0, 0);
+      useTaskStore.setState({
+        tasks: [makeTask({
+          id: 'reminder-dst',
+          reminderTimeAnchor: 'wallClock',
+          reminderTime: nineAm.toISOString(),
+          // Captured an hour's offset away, as if set in a neighbouring zone.
+          reminderUtcOffsetMinutes: nineAm.getTimezoneOffset() + 60,
+        })],
+      });
+
+      useTaskStore.getState().reanchorWallClockReminders();
+      const moved = useTaskStore.getState().tasks.find(t => t.id === 'reminder-dst')!;
+      expect(moved.reminderUtcOffsetMinutes).toBe(new Date(moved.reminderTime!).getTimezoneOffset());
+
+      useTaskStore.getState().reanchorWallClockReminders();
+      const again = useTaskStore.getState().tasks.find(t => t.id === 'reminder-dst')!;
+      expect(again.reminderTime).toBe(moved.reminderTime);
     });
 
     it('leaves a fixed-anchor reminder untouched even with an offset mismatch', () => {
