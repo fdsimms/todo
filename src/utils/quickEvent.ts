@@ -107,3 +107,14 @@ export function parseQuickEvent(
 
   return { title, start, end: addHours(start, 1), personIds, scheduled: !!schedule };
 }
+
+/**
+ * The marker that turns a regular quick add line into an event: a leading
+ * "event:" ("event: lunch w/ @dustin sat 12pm"). Returns the rest of the line
+ * when it is there, or null. A leading word and a colon, so it can't be hit by
+ * accident mid-title, and "event" alone without the colon stays a task title.
+ */
+export function eventMarkerText(input: string): string | null {
+  const match = /^\s*event:\s*/i.exec(input);
+  return match ? input.slice(match[0].length) : null;
+}

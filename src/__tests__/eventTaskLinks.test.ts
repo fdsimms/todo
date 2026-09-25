@@ -3,6 +3,7 @@ import {
   anchorsForEvent,
   eventTaskKey,
   movedLinkedEvents,
+  movedEventNote,
   parseEventTaskLinks,
   pruneStaleEventTaskLinks,
   rekeyEventTasks,
@@ -137,5 +138,19 @@ describe('anchorsForEvent', () => {
     const { start, end } = anchorsForEvent(allDay);
     expect(start!.getDate()).toBe(26);
     expect(end!.getDate()).toBe(27);
+  });
+});
+
+describe('movedEventNote', () => {
+  const links = withEventTasks({}, event(), ['t1', 't2']);
+  const [moved] = movedLinkedEvents(links, [event({ start: at(28, 18), end: at(28, 20) })], windowStart, windowEnd);
+
+  it('counts the planned tasks that still exist', () => {
+    expect(movedEventNote(moved, new Set(['t1', 't2']))).toBe('Moved, 2 tasks');
+    expect(movedEventNote(moved, new Set(['t1']))).toBe('Moved, 1 task');
+  });
+
+  it('says nothing once none are left', () => {
+    expect(movedEventNote(moved, new Set())).toBeNull();
   });
 });

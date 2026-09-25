@@ -1,4 +1,4 @@
-import { parseQuickEvent } from '../utils/quickEvent';
+import { eventMarkerText, parseQuickEvent } from '../utils/quickEvent';
 
 jest.mock('../store/useSettingsStore', () => ({
   useSettingsStore: {
@@ -54,5 +54,17 @@ describe('parseQuickEvent', () => {
     const draft = parseQuickEvent('call @zed', opts);
     expect(draft.title).toBe('call @zed');
     expect(draft.personIds).toEqual([]);
+  });
+});
+
+describe('eventMarkerText', () => {
+  it('returns the rest of a line that starts with "event:"', () => {
+    expect(eventMarkerText('event: lunch w/ @dustin sat 12pm')).toBe('lunch w/ @dustin sat 12pm');
+    expect(eventMarkerText('  Event:dinner')).toBe('dinner');
+  });
+
+  it('leaves ordinary titles alone', () => {
+    expect(eventMarkerText('event planning')).toBeNull();
+    expect(eventMarkerText('book the event: venue')).toBeNull();
   });
 });

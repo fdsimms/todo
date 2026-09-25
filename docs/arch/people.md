@@ -593,7 +593,11 @@ parsers (`parseTaskInput` for the day and time, `matchPersonMentions` for
 the system sheet and links the people once the event is saved. A repeat phrase
 gives only its first day; repeating is set in the system sheet. It is its own
 sheet rather than a mode of `QuickAddModal`, since almost nothing that sheet
-sets means anything for an event.
+sets means anything for an event. Regular quick add reaches the same path
+with a leading `event:` (`eventMarkerText`): the rest of the line is read the
+same way and the Add button says "Add event". A leading word plus a colon, so
+it cannot fire mid-title, and it is off in demo mode, where the line stays a
+task.
 
 ### Tasks planned around an event
 
@@ -611,7 +615,9 @@ its linked people) both record the tasks they create against the occurrence.
   of the id is in the window (a series is refused rather than guessed). The
   row then offers `AwayShiftSheet`, the trip move's own "these move with it?",
   or "Keep their dates". Either answer rekeys the record so it is not asked
-  twice.
+  twice. Today's own row for the event carries a "Moved, 3 tasks" chip
+  (`movedEventNote`, via `eventContextRows`' `movedNote`) so the offer is seen
+  without opening the sheet.
 - **Device-local and pruned a week after the event**, like the people link
   (`calendarEventTasks`).
 

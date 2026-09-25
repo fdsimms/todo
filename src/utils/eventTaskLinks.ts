@@ -196,3 +196,14 @@ export function anchorsForEvent(event: Pick<BusyEvent, 'start' | 'end'>): Templa
   const last = Number.isFinite(endMs) ? new Date(Math.max(endMs - 1, start.getTime())) : start;
   return { start, end: last };
 }
+
+/**
+ * The note Today's event row carries for a moved event: "Moved, 3 tasks". The
+ * count is of tasks still in the list, so one deleted since isn't counted; no
+ * note at all once none are left, since there is then nothing to offer.
+ */
+export function movedEventNote(moved: MovedEvent, liveTaskIds: ReadonlySet<string>): string | null {
+  const count = moved.link.taskIds.filter(id => liveTaskIds.has(id)).length;
+  if (count === 0) return null;
+  return count === 1 ? 'Moved, 1 task' : `Moved, ${count} tasks`;
+}

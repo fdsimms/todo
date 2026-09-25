@@ -81,6 +81,14 @@ const task = (id: string, category: string | null = null): TodayListItem =>
   ({ type: 'task', task: { id, category } as never });
 
 describe('eventContextRows', () => {
+  it('carries the moved note for the events it names, and nothing for the rest', () => {
+    const rows = eventContextRows(
+      [ev(at(16), at(17), { title: 'Dinner' }), ev(at(18), at(19), { title: 'Gym', id: 'other' })],
+      { ...eventOpts, movedNote: e => (e.title === 'Dinner' ? 'Moved, 2 tasks' : null) },
+    );
+    expect(rows.map(r => [r.title, r.movedNote])).toEqual([['Dinner', 'Moved, 2 tasks'], ['Gym', null]]);
+  });
+
   it('drops an event that has already ended', () => {
     const rows = eventContextRows([ev(at(9), at(10)), ev(at(16), at(17))], eventOpts);
     expect(rows.map(r => r.caption)).toEqual(['16:00']);

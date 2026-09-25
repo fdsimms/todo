@@ -140,6 +140,8 @@ import { useRecipeStore } from '../store/useRecipeStore';
 import { selectTodayMealEntries, recipeIndex } from '../utils/mealPlan';
 import { getDayStart, getLogicalDayKey } from '../utils/dateUtils';
 import { QuickEventSheet } from '../components/QuickEventSheet';
+import { useEventTaskLinkStore } from '../store/useEventTaskLinkStore';
+import { eventTaskKey, movedEventNote, movedLinkedEvents } from '../utils/eventTaskLinks';
 import { morningCheckInTasks } from '../utils/morningCheckIn';
 import { addDays } from 'date-fns/addDays';
 import { useCalendarStore } from '../store/useCalendarStore';
@@ -2019,6 +2021,23 @@ export function TodayScreen() {
     [hiddenEventsByKey]
   );
 
+  // Events that moved with tasks planned around them (eventTaskLinks.ts). The
+  // row only says so; the offer to move the tasks is in the events sheet the
+  // row opens.
+  const eventTaskLinks = useEventTaskLinkStore(s => s.links);
+  const calendarWindowStart = useCalendarStore(s => s.windowStart);
+  const calendarWindowEnd = useCalendarStore(s => s.windowEnd);
+  const movedEventNotes = useMemo(() => {
+    const notes = new Map<string, string>();
+    if (!calendarWindowStart || !calendarWindowEnd) return notes;
+    const liveIds = new Set(allTasks.map(t => t.id));
+    for (const moved of movedLinkedEvents(eventTaskLinks, calendarEvents, new Date(calendarWindowStart), new Date(calendarWindowEnd))) {
+      const note = movedEventNote(moved, liveIds);
+      if (note) notes.set(eventTaskKey(moved.event), note);
+    }
+    return notes;
+  }, [eventTaskLinks, calendarEvents, calendarWindowStart, calendarWindowEnd, allTasks]);
+
   const contextRows = useMemo(() => {
     const rows: ContextRow[] = [];
     // Leads, above the calendar and the food. It is the only one of the four
@@ -2052,6 +2071,7 @@ export function TodayScreen() {
         use24Hour: use24HourTime,
         calendarsById: eventCalendarTags,
         isHidden: isEventHidden,
+        movedNote: event => movedEventNotes.get(eventTaskKey(event)) ?? null,
       }));
     }
     if (mealsOnToday === 'inline' && todayMealEntries) {
@@ -2070,7 +2090,7 @@ export function TodayScreen() {
     return rows;
   }, [
     todayCalendarEvents, calendarEventCategory, use24HourTime, eventCalendarTags,
-    isEventHidden,
+    isEventHidden, movedEventNotes,
     mealsOnToday, todayMealEntries, recipesById, mealCookTaskCategory, allTasks,
     healthToday, healthCategory, dayResetTime,
     minuteTick,
