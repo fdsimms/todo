@@ -16,6 +16,8 @@ import { generateId } from '../utils/id';
 import { dayKeyOf, getCurrentDayStart, getLogicalDayKey } from '../utils/dateUtils';
 import { logFoodEntryToHealth, retractFoodEntryFromHealth, type FoodWriteResult } from '../utils/healthFoodSync';
 import { useSettingsStore } from './useSettingsStore';
+import { useHealthStore } from './useHealthStore';
+import { useTaskStore } from './useTaskStore';
 
 /**
  * The food log — what was eaten, and when.
@@ -422,6 +424,20 @@ function recordHealthWrite(entry: FoodLogEntry, result: FoodWriteResult, set: Fo
     windowEntries: s.windowEntries.map(stamp),
     insightEntries: s.insightEntries.map(stamp),
   }));
+
+  // A nutrient sample landing in Health just now is the one thing that can
+  // make a health rule newly true, and nothing else prompts a re-read:
+  // `useHealthSync` only refreshes the in-memory reading `checkHealthTasks`
+  // judges against on mount, a settings change, or the app coming back to
+  // the foreground — so a session spent entirely inside this app's own food
+  // log (open it, log breakfast, lunch and dinner, never background it)
+  // never sees today's total move and the rule is never re-judged. Skipped
+  // for a backdated entry, which cannot change what today's own reading is.
+  if (entry.dayKey === dayKeyOf(getCurrentDayStart())) {
+    void useHealthStore.getState().refresh().then(() => {
+      useTaskStore.getState().checkHealthTasks();
+    });
+  }
 }
 
 /**

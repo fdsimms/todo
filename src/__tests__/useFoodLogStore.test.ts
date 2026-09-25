@@ -63,6 +63,20 @@ jest.mock('../store/useSettingsStore', () => ({
   useSettingsStore: { getState: () => mockSettingsState },
 }));
 
+// Mocked purely to keep the real useTaskStore's expo-notifications import out
+// of this node environment (the useGroceryStore.test.ts pattern). Stable
+// jest.fn()s rather than one built fresh per getState() call, since the
+// "wrote today" tests below assert on them directly.
+const mockCheckHealthTasks = jest.fn();
+jest.mock('../store/useTaskStore', () => ({
+  useTaskStore: { getState: () => ({ checkHealthTasks: mockCheckHealthTasks }) },
+}));
+
+const mockHealthRefresh = jest.fn(() => Promise.resolve());
+jest.mock('../store/useHealthStore', () => ({
+  useHealthStore: { getState: () => ({ refresh: mockHealthRefresh }) },
+}));
+
 jest.mock('../utils/dateUtils', () => ({
   dayKeyOf: jest.fn((d: Date) => {
     const p = (n: number) => String(n).padStart(2, '0');
@@ -199,6 +213,52 @@ describe('addEntry, when Health refuses the write', () => {
     expect(state().addEntry(draft())).not.toBeNull();
     await flush();
     expect(dbInsertFoodLogEntry).toHaveBeenCalled();
+  });
+});
+
+/**
+ * A written nutrient sample is the one thing that can newly satisfy a health
+ * rule, and `useHealthSync` only re-reads Health on mount, a settings change,
+ * or the app returning to the foreground — none of which a session spent
+ * entirely inside this app's own food log ever sees. Without this, logging a
+ * meal that pushes today's sodium (say) under a rule's floor left the rule
+ * reading a stale snapshot until the app happened to background and
+ * foreground again.
+ */
+describe('addEntry, when the write lands', () => {
+  const flush = () => new Promise(resolve => setTimeout(resolve, 0));
+
+  beforeEach(() => {
+    (logFoodEntryToHealth as jest.Mock).mockResolvedValue({ outcome: 'written', sampleIds: ['s1'] });
+  });
+
+  it('refreshes the Health reading and re-checks health rules for a same-day entry', async () => {
+    state().addEntry(draft({ at: new Date(2026, 3, 2, 9, 0) }));
+    await flush();
+
+    expect(mockHealthRefresh).toHaveBeenCalled();
+    expect(mockCheckHealthTasks).toHaveBeenCalled();
+  });
+
+  it('does nothing for a backdated entry, which cannot change today\'s reading', async () => {
+    state().addEntry(draft({ at: new Date(2026, 3, 1, 9, 0) }));
+    await flush();
+
+    expect(mockHealthRefresh).not.toHaveBeenCalled();
+    expect(mockCheckHealthTasks).not.toHaveBeenCalled();
+  });
+
+  it('re-checks only after the refresh resolves, so the rule reads the fresh snapshot', async () => {
+    let resolveRefresh: () => void = () => {};
+    mockHealthRefresh.mockReturnValueOnce(new Promise(resolve => { resolveRefresh = () => resolve(undefined); }));
+
+    state().addEntry(draft({ at: new Date(2026, 3, 2, 9, 0) }));
+    await flush();
+    expect(mockCheckHealthTasks).not.toHaveBeenCalled();
+
+    resolveRefresh();
+    await flush();
+    expect(mockCheckHealthTasks).toHaveBeenCalled();
   });
 });
 

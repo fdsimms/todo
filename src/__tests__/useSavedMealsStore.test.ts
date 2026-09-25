@@ -42,6 +42,18 @@ jest.mock('../store/useSettingsStore', () => ({
   useSettingsStore: { getState: () => mockSettingsState },
 }));
 
+// Kept out of the real store, the same reason useFoodLogStore.test.ts mocks
+// both: the real useTaskStore drags expo-notifications into this node
+// environment, and nothing here exercises the written-to-Health path that
+// would reach either.
+jest.mock('../store/useTaskStore', () => ({
+  useTaskStore: { getState: () => ({ checkHealthTasks: jest.fn() }) },
+}));
+
+jest.mock('../store/useHealthStore', () => ({
+  useHealthStore: { getState: () => ({ refresh: jest.fn(() => Promise.resolve()) }) },
+}));
+
 jest.mock('../utils/dateUtils', () => ({
   dayKeyOf: jest.fn((d: Date) => {
     const p = (n: number) => String(n).padStart(2, '0');
