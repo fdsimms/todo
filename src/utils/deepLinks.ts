@@ -1,6 +1,7 @@
 import { useEffect } from 'react';
 import { Linking } from 'react-native';
 import { runOrHoldForDemo } from './demoHold';
+import { isDemoModeActive } from './demoState';
 import { useTaskStore } from '../store/useTaskStore';
 import { useRecipeStore } from '../store/useRecipeStore';
 import { useMealPlanStore } from '../store/useMealPlanStore';
@@ -23,6 +24,7 @@ import {
   resetToFocusSession,
   resetToDeload,
   openQuickAddFromShortcut,
+  openQuickAddEventFromShortcut,
 } from '../navigation/navigationRef';
 import { MEAL_SLOTS, type MealSlot } from '../types';
 import { KNOWN_LINK_APPS } from '../constants/linkApps';
@@ -106,6 +108,18 @@ const ADD_PATH_RE = new RegExp(`^${SCHEME}:\\/\\/\\/?add\\/?(?:\\?(.*))?$`, 'i')
 export function isQuickAddUrl(url: string): boolean {
   if (typeof url !== 'string') return false;
   return ADD_PATH_RE.test(url.trim()) && parseAddTaskUrl(url) === null;
+}
+
+// `dundundun://addevent` — the Today widget's event shortcut (see
+// targets/todo-widget/WidgetShared.swift's addEventURL), the event
+// counterpart of quickAddURL: opens QuickEventSheet directly rather than
+// quick add, the same one-line event capture the FAB's "Event" row offers
+// (see AddTaskFab.tsx / quickEvent.ts) with the blank sheet the user then
+// types into.
+const ADD_EVENT_RE = new RegExp(`^${SCHEME}:\\/\\/\\/?addevent\\/?$`, 'i');
+
+export function isAddEventUrl(url: string): boolean {
+  return typeof url === 'string' && ADD_EVENT_RE.test(url.trim());
 }
 
 // Matches the bare scheme with no path — what the Today widget's
@@ -524,6 +538,14 @@ export function openInAppUrl(url: string | null | undefined): boolean {
   if (!url) return false;
   if (isQuickAddUrl(url)) {
     openQuickAddFromShortcut();
+    return true;
+  }
+  if (isAddEventUrl(url)) {
+    // Event creation is off in demo mode, same as the FAB's own "Event" row
+    // (AddTaskFab.tsx) — it would write to the real calendar — so the widget
+    // tap lands on Today without a sheet that couldn't do anything anyway.
+    if (isDemoModeActive()) resetToToday();
+    else openQuickAddEventFromShortcut();
     return true;
   }
   if (isGroceriesUrl(url)) {
