@@ -3,6 +3,7 @@ import {
   TITLE_MAX_LENGTH,
   GROCERY_NAME_MAX_LENGTH,
   GROCERY_QUANTITY_MAX_LENGTH,
+  RECIPE_INGREDIENT_QUANTITY_MAX_LENGTH,
   RECIPE_NAME_MAX_LENGTH,
   RECIPE_PAGE_MAX_LENGTH,
   RECIPE_SECTION_MAX_LENGTH,
@@ -804,7 +805,16 @@ export interface RecipeGroceryItem {
   excludeFromShoppingList?: boolean;
 }
 
-/** Same validation `suggestRecipeGroceries` always applied, now shared with extractRecipe. */
+/**
+ * Same validation `suggestRecipeGroceries` always applied, now shared with
+ * extractRecipe and draftMealRecipe. Every caller's `quantity` lands on
+ * `RecipeIngredient.quantity`, never on `GroceryItem.quantity` directly — so
+ * this clamps to `RECIPE_INGREDIENT_QUANTITY_MAX_LENGTH`, not
+ * `GROCERY_QUANTITY_MAX_LENGTH`, which is too tight for the parenthetical
+ * source count the schema's own prompt asks the model to append (see
+ * `groceryItemsSchema`'s "quantity" description) and used to cut one off
+ * mid-unit ("1 packet (1/4 ounce, 7 g)" truncated to "1 packet (1/4 ounce, 7 g").
+ */
 function parseExtractedItems(
   raw: unknown,
   availableAisles: string[],
@@ -831,7 +841,7 @@ function parseExtractedItems(
     result.push({
       name,
       quantity: typeof item.quantity === 'string'
-        ? item.quantity.trim().slice(0, GROCERY_QUANTITY_MAX_LENGTH)
+        ? item.quantity.trim().slice(0, RECIPE_INGREDIENT_QUANTITY_MAX_LENGTH)
         : '',
       aisle: canonicalAisle(item.aisle, availableAisles) ?? OTHER_AISLE,
       // The model's field is named "component" (see sharedRecipeInstructions)
@@ -928,7 +938,7 @@ function groceryItemsSchema(availableAisles: string[], description: string) {
         },
         quantity: {
           type: 'string',
-          description: 'The recipe\'s own amount, as written, with any prep instruction moved to the "prep" field instead — "4 cloves", "2 cups", "1 tbsp", "2 tsp" — not a converted purchasable size ("1 bulb" for "4 cloves" is wrong). Abbreviate tablespoon/teaspoon as "tbsp"/"tsp". If the recipe gives a parenthetical source count for the amount — "(from about 2 limes)", "(1 medium onion)" — append it after the amount, e.g. "3 oz (from about 2 limes)". Empty string if the recipe does not say.',
+          description: `The recipe's own amount, as written, with any prep instruction moved to the "prep" field instead — "4 cloves", "2 cups", "1 tbsp", "2 tsp" — not a converted purchasable size ("1 bulb" for "4 cloves" is wrong). Abbreviate tablespoon/teaspoon as "tbsp"/"tsp". If the recipe gives a parenthetical source count for the amount — "(from about 2 limes)", "(1 medium onion)" — append it after the amount, e.g. "3 oz (from about 2 limes)". Under ${RECIPE_INGREDIENT_QUANTITY_MAX_LENGTH} characters. Empty string if the recipe does not say.`,
         },
         aisle: {
           type: 'string',

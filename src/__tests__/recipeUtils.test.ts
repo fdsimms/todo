@@ -47,7 +47,7 @@ import {
   recipeHasAttribution,
 } from '../utils/recipeUtils';
 import type { GroceryItem, ItemSubLink, Recipe, RecipeComponent, RecipeIngredient, RecipePrepTask } from '../types';
-import { RECIPE_STEP_NOTE_MAX_LENGTH } from '../types';
+import { RECIPE_INGREDIENT_QUANTITY_MAX_LENGTH, RECIPE_STEP_NOTE_MAX_LENGTH } from '../types';
 
 /** A local wall-clock time as the ISO instant the app stores, so the suite reads the same in any zone. */
 const localIso = (local: string) => new Date(local).toISOString();
@@ -304,6 +304,21 @@ describe('normalizeIngredient', () => {
   it('trims a section label to RECIPE_SECTION_MAX_LENGTH', () => {
     const long = 'x'.repeat(100);
     expect(normalizeIngredient({ name: 'Flour', section: long })!.section).toHaveLength(40);
+  });
+
+  it('keeps a quantity carrying a parenthetical source count on every read, not just the one an import stored it with', () => {
+    // Every stored ingredient is re-run through normalizeIngredient
+    // (parseRecipeIngredients), so a quantity clamped to the tighter grocery
+    // cap here would re-truncate an already-saved recipe on every load, not
+    // just at import time (#recipe-import-units-cutoff).
+    const quantity = '1 packet (1/4 ounce, 7 g)';
+    expect(normalizeIngredient({ name: 'Active dry yeast', quantity })!.quantity).toBe(quantity);
+  });
+
+  it('still clamps a quantity to RECIPE_INGREDIENT_QUANTITY_MAX_LENGTH', () => {
+    const long = 'x'.repeat(RECIPE_INGREDIENT_QUANTITY_MAX_LENGTH + 20);
+    expect(normalizeIngredient({ name: 'Flour', quantity: long })!.quantity)
+      .toHaveLength(RECIPE_INGREDIENT_QUANTITY_MAX_LENGTH);
   });
 
   it('splits a "such as" clause out of a raw name — an AI extraction or a scraped page never split it itself', () => {

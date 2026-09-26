@@ -22,7 +22,7 @@ import {
   recipeNutritionEstimateAvailable,
 } from '../services/aiSuggestions';
 import { MAX_MEAL_IDEAS } from '../utils/mealIdeas';
-import { LEFTOVER_KEEP_DAYS_MAX, type Task } from '../types';
+import { LEFTOVER_KEEP_DAYS_MAX, RECIPE_INGREDIENT_QUANTITY_MAX_LENGTH, type Task } from '../types';
 
 // ---------------------------------------------------------------------------
 // Mocks
@@ -1016,6 +1016,38 @@ describe('extractRecipe', () => {
       { name: 'tempeh', quantity: '1 block', aisle: 'Pantry', section: null, prep: 'pressed and cubed' },
       { name: 'garlic', quantity: '2 cloves', aisle: 'Produce', section: null, prep: null },
     ]);
+  });
+
+  it('keeps a quantity carrying a parenthetical source count, past the grocery quantity cap', async () => {
+    // "1 packet (1/4 ounce, 7 g)" is 25 characters — one past
+    // GROCERY_QUANTITY_MAX_LENGTH (24), which used to cut it to "1 packet (1/4
+    // ounce, 7 g" with the closing paren dropped (#recipe-import-units-cutoff).
+    mockFetchOnce(
+      toolUseResponse('extract_recipe', {
+        name: 'Dinner Rolls',
+        items: [
+          { name: 'active dry yeast', quantity: '1 packet (1/4 ounce, 7 g)', aisle: 'Pantry' },
+          { name: 'unsalted butter', quantity: '1 stick (4 ounces or 115 g)', aisle: 'Dairy & Eggs' },
+        ],
+      })
+    );
+    const result = await extractRecipe('some recipe', AISLES);
+    expect(result.ingredients).toEqual([
+      { name: 'active dry yeast', quantity: '1 packet (1/4 ounce, 7 g)', aisle: 'Pantry', section: null, prep: null },
+      { name: 'unsalted butter', quantity: '1 stick (4 ounces or 115 g)', aisle: 'Dairy & Eggs', section: null, prep: null },
+    ]);
+  });
+
+  it('still clamps an extracted quantity to RECIPE_INGREDIENT_QUANTITY_MAX_LENGTH', async () => {
+    const long = 'a'.repeat(RECIPE_INGREDIENT_QUANTITY_MAX_LENGTH + 20);
+    mockFetchOnce(
+      toolUseResponse('extract_recipe', {
+        name: 'Something',
+        items: [{ name: 'thing', quantity: long, aisle: 'Pantry' }],
+      })
+    );
+    const result = await extractRecipe('some recipe', AISLES);
+    expect(result.ingredients[0].quantity).toHaveLength(RECIPE_INGREDIENT_QUANTITY_MAX_LENGTH);
   });
 
   it('reads the model\'s optional flag, and only carries it when true', async () => {

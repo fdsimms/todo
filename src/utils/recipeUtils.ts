@@ -10,7 +10,7 @@ import {
   RECIPE_STEP_NOTE_MAX_LENGTH,
   PREP_MAX_LENGTH,
   GROCERY_NAME_MAX_LENGTH,
-  GROCERY_QUANTITY_MAX_LENGTH,
+  RECIPE_INGREDIENT_QUANTITY_MAX_LENGTH,
   TITLE_MAX_LENGTH,
 } from '../types';
 import { format } from 'date-fns/format';
@@ -107,7 +107,7 @@ export function normalizeIngredient(raw: unknown): RecipeIngredient | null {
     name,
     nameKey: groceryNameKey(name),
     quantity: typeof r.quantity === 'string'
-      ? r.quantity.trim().slice(0, GROCERY_QUANTITY_MAX_LENGTH)
+      ? r.quantity.trim().slice(0, RECIPE_INGREDIENT_QUANTITY_MAX_LENGTH)
       : '',
     aisle: typeof r.aisle === 'string' && r.aisle ? r.aisle : null,
     prep,

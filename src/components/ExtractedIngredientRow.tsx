@@ -6,7 +6,7 @@ import {
   spacing, radius, font, fontWeight, border, iconSize, interaction, checkboxRadius,
   type Colors,
 } from '../theme';
-import { GROCERY_NAME_MAX_LENGTH, GROCERY_QUANTITY_MAX_LENGTH, RECIPE_SECTION_MAX_LENGTH } from '../types';
+import { GROCERY_NAME_MAX_LENGTH, RECIPE_INGREDIENT_QUANTITY_MAX_LENGTH, RECIPE_SECTION_MAX_LENGTH } from '../types';
 import type { GroceryItem } from '../types';
 import type { RecipeGroceryItem } from '../services/aiSuggestions';
 import { InlineEditableText } from './InlineEditableText';
@@ -152,7 +152,7 @@ export function ExtractedIngredientRow({
               allowEmpty
               textStyle={styles.qtyText}
               accessibilityLabel={`quantity, ${row.quantity}`}
-              maxLength={GROCERY_QUANTITY_MAX_LENGTH}
+              maxLength={RECIPE_INGREDIENT_QUANTITY_MAX_LENGTH}
               numberOfLines={1}
             />
           </View>
