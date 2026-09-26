@@ -15,6 +15,7 @@ const mockResetToFoodLog = jest.fn();
 const mockResetToProjectPull = jest.fn();
 const mockResetToDeload = jest.fn();
 const mockOpenQuickAdd = jest.fn();
+const mockOpenQuickAddEvent = jest.fn();
 const mockEnqueueWidgetCompletion = jest.fn();
 const mockStopCookTimer = jest.fn();
 const mockRemoveStepTimer = jest.fn();
@@ -69,6 +70,12 @@ jest.mock('../navigation/navigationRef', () => ({
   resetToFocusSession: (...args: unknown[]) => mockResetToFocusSession(...args),
   resetToDeload: (...args: unknown[]) => mockResetToDeload(...args),
   openQuickAddFromShortcut: (...args: unknown[]) => mockOpenQuickAdd(...args),
+  openQuickAddEventFromShortcut: (...args: unknown[]) => mockOpenQuickAddEvent(...args),
+}));
+
+let mockDemoActive = false;
+jest.mock('../utils/demoState', () => ({
+  isDemoModeActive: () => mockDemoActive,
 }));
 
 import {
@@ -90,6 +97,7 @@ import {
   projectsUrlPullId,
   isDeloadUrl,
   isQuickAddUrl,
+  isAddEventUrl,
   isFocusUrl,
   focusUrlAction,
   openInAppUrl,
@@ -445,6 +453,24 @@ describe('isQuickAddUrl', () => {
   });
 });
 
+describe('isAddEventUrl', () => {
+  it('accepts the bare event-shortcut link', () => {
+    expect(isAddEventUrl('dundundun://addevent')).toBe(true);
+    expect(isAddEventUrl('dundundun:///addevent')).toBe(true);
+    expect(isAddEventUrl('dundundun://addevent/')).toBe(true);
+    expect(isAddEventUrl('DUNDUNDUN://ADDEVENT')).toBe(true);
+    expect(isAddEventUrl('  dundundun://addevent  ')).toBe(true);
+  });
+
+  it('rejects anything else, including its neighbours', () => {
+    expect(isAddEventUrl('dundundun://add')).toBe(false);
+    expect(isAddEventUrl('dundundun://')).toBe(false);
+    expect(isAddEventUrl('dundundun://addevent?title=Party')).toBe(false);
+    expect(isAddEventUrl('https://addevent')).toBe(false);
+    expect(isAddEventUrl('')).toBe(false);
+  });
+});
+
 describe('isFocusUrl', () => {
   it('accepts every spelling of the focus link', () => {
     expect(isFocusUrl('dundundun://focus')).toBe(true);
@@ -515,7 +541,9 @@ describe('openInAppUrl', () => {
     mockResetToProjectPull.mockClear();
     mockResetToDeload.mockClear();
     mockOpenQuickAdd.mockClear();
+    mockOpenQuickAddEvent.mockClear();
     mockAddTask.mockClear();
+    mockDemoActive = false;
     mockEnqueueWidgetCompletion.mockClear();
     mockStopCookTimer.mockClear();
     mockStopPrepTimer.mockClear();
@@ -525,6 +553,24 @@ describe('openInAppUrl', () => {
     mockFocusAdvance.mockClear();
     mockFocusPause.mockClear();
     mockFocusResume.mockClear();
+  });
+
+  // The Today widget's "Add event" shortcut — see WidgetShared.swift's
+  // addEventURL.
+  it('opens QuickEventSheet for the event-shortcut link', () => {
+    expect(openInAppUrl('dundundun://addevent')).toBe(true);
+    expect(mockOpenQuickAddEvent).toHaveBeenCalledTimes(1);
+    expect(mockResetToToday).not.toHaveBeenCalled();
+  });
+
+  // Event creation writes to the real calendar, so it's off in demo mode the
+  // same way AddTaskFab's own "Event" row is — the tap lands on Today instead
+  // of a sheet that couldn't do anything.
+  it('lands on Today instead of QuickEventSheet in demo mode', () => {
+    mockDemoActive = true;
+    expect(openInAppUrl('dundundun://addevent')).toBe(true);
+    expect(mockOpenQuickAddEvent).not.toHaveBeenCalled();
+    expect(mockResetToToday).toHaveBeenCalledTimes(1);
   });
 
   it('opens the grocery list for the bare link, without asking for the sheet', () => {

@@ -141,6 +141,18 @@ export function openQuickAddFromShortcut(): void {
   });
 }
 
+// `dundundun://addevent` — the Today widget's event shortcut. The event
+// counterpart of openQuickAddFromShortcut above: lands on Today and pops
+// QuickEventSheet instead of quick add, the same sheet the FAB's "Event" row
+// opens (see TodayScreen's handleAddMenuSelect).
+export function openQuickAddEventFromShortcut(): void {
+  if (!navigationRef.isReady()) return;
+  navigationRef.navigate({
+    name: 'Today',
+    params: { resetToToday: Date.now(), openQuickAddEvent: Date.now() },
+  });
+}
+
 // Where `dundundun://kitchen[?item=…]` lands — the grocery and leftover
 // "Use up X" tasks' own link (see kitchenInventory.kitchenLinkUrl). Lands on
 // the Kitchen screen, the peer of resetToGroceries/resetToRecipes/

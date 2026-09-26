@@ -2004,6 +2004,20 @@ export function TodayScreen() {
   const eventCalendarTags = calendarIds.length > 1 ? calendarsById : undefined;
   const [eventsSheetVisible, setEventsSheetVisible] = useState(false);
   const [quickEventVisible, setQuickEventVisible] = useState(false);
+
+  // The Today widget's "Add event" shortcut (openQuickAddEventFromShortcut()
+  // in navigationRef.ts, deep link dundundun://addevent) — the event
+  // counterpart of the openQuickAdd handoff above, popping QuickEventSheet
+  // instead. deepLinks.ts already keeps this from firing in demo mode.
+  const [handledOpenQuickAddEvent, setHandledOpenQuickAddEvent] = useState<number | undefined>(undefined);
+  useEffect(() => {
+    if (
+      route.params?.openQuickAddEvent === undefined
+      || route.params.openQuickAddEvent === handledOpenQuickAddEvent
+    ) return;
+    setHandledOpenQuickAddEvent(route.params.openQuickAddEvent);
+    setQuickEventVisible(true);
+  }, [route.params?.openQuickAddEvent, handledOpenQuickAddEvent]);
   const todayCalendarDayEnd = useMemo(() => addDays(getDayStart(new Date()), 1), [todayKey]);
   const todayCalendarEvents = useMemo(
     () => (calendarReadEnabled && calendarLoaded && !demoActive

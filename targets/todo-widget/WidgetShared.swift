@@ -337,6 +337,9 @@ struct AccessoryRing: View {
 /// Opens the app straight into quick add — `dundundun://add` with no title,
 /// handled by isQuickAddUrl in src/utils/deepLinks.ts.
 let quickAddURL = URL(string: "dundundun://add")!
+// The event counterpart of quickAddURL — opens QuickEventSheet directly
+// rather than quick add. Handled by isAddEventUrl in src/utils/deepLinks.ts.
+let addEventURL = URL(string: "dundundun://addevent")!
 let openAppURL = URL(string: "dundundun://")!
 let groceriesURL = URL(string: "dundundun://groceries")!
 let mealPlanURL = URL(string: "dundundun://mealplan")!
