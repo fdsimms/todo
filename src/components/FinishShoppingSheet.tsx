@@ -228,7 +228,7 @@ export function FinishShoppingSheet({
 }: Props) {
   const colors = useColors();
   const styles = useMemo(() => makeStyles(colors), [colors]);
-  const keyboardScroll = useKeyboardInsetScroll<ScrollView>();
+  const keyboardScroll = useKeyboardInsetScroll<ScrollView>({ ownsSheet: true });
 
   const shops = useGroceryStore(useShallow(s => s.shops));
   const lastShopId = useGroceryStore(s => s.lastShopId);

@@ -278,7 +278,7 @@ export function SheetModal({ visible = true, children, name, preempts = false, .
   // mistake, and which fix applies differs per call site.
   useEffect(() => {
     if (!shown) return;
-    const clash = registerPresentation(parentLevel, id, name ?? rest.testID ?? 'an unnamed sheet');
+    const clash = registerPresentation(parentLevel, id, name ?? rest.testID ?? 'an unnamed sheet', ownLevel);
     if (clash) {
       // The gate above reads the level during render and registration happens
       // here, after the commit — so two sheets opened in the *same* commit
@@ -292,7 +292,7 @@ export function SheetModal({ visible = true, children, name, preempts = false, .
       return;
     }
     return () => releasePresentation(parentLevel, id);
-  }, [shown, parentLevel, id, name, rest.testID]);
+  }, [shown, parentLevel, ownLevel, id, name, rest.testID]);
 
   return (
     <Modal visible={shown} {...rest}>

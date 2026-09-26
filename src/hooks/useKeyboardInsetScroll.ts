@@ -7,7 +7,7 @@ import {
 } from 'react-native';
 import { useIsFocused } from '@react-navigation/native';
 import { NO_INSET, pulseNoInset, strandedScrollOffset } from '../utils/scrollClamp';
-import { PresentationLevelContext, subscribePresentation } from '../utils/sheetModal';
+import { PresentationLevelContext, sheetCovered, subscribeSheetCover } from '../utils/sheetModal';
 
 /**
  * Makes `automaticallyAdjustKeyboardInsets` safe on a list that lives on a tab
@@ -37,6 +37,19 @@ import { PresentationLevelContext, subscribePresentation } from '../utils/sheetM
  *    above it. `PresentationLevelContext` already tracks this — a sheet
  *    registers with the level it presents from while it's up — so `focused`
  *    below folds that in too.
+ *
+ *    **A sheet's own list passes `{ ownsSheet: true }`.** The component that
+ *    renders a `SheetModal` calls this hook from *outside* that sheet, so the
+ *    level it reads is the one its own sheet registers with, and "anything
+ *    presented here?" is true for exactly as long as the list is on screen.
+ *    Without the flag every sheet switched its own keyboard handling off the
+ *    moment it opened, and the field being typed in sat behind the keyboard
+ *    (shipped for a week across every sheet using this, the task editor
+ *    included). With it, the question becomes whether something is presented
+ *    *from* that sheet (`sheetCovered`), which is the same "covered by a sheet
+ *    above" rule one level down. A hook called from a component rendered
+ *    *inside* the sheet's children already reads the sheet's own level and
+ *    must not pass it.
  *
  * 2. **Shrinking an inset never re-clamps `contentOffset`.** RN calls
  *    `scrollToOffset:` after adjusting the insets, but only with an offset it
@@ -128,12 +141,15 @@ export function useScrollFieldIntoView() {
   );
 }
 
-export function useKeyboardInsetScroll<T extends ScrollHandle>() {
+export function useKeyboardInsetScroll<T extends ScrollHandle>(
+  { ownsSheet = false }: { ownsSheet?: boolean } = {},
+) {
   const routeFocused = useIsFocused();
   const level = useContext(PresentationLevelContext);
   const [, forceRecheck] = useState(0);
-  useEffect(() => subscribePresentation(level, () => forceRecheck(n => n + 1)), [level]);
-  const focused = routeFocused && level.presented.size === 0;
+  useEffect(() => subscribeSheetCover(level, () => forceRecheck(n => n + 1)), [level]);
+  const covered = ownsSheet ? sheetCovered(level) : level.presented.size > 0;
+  const focused = routeFocused && !covered;
   const ref = useRef<T | null>(null);
   // Everything the clamp needs, read off the last settled scroll event rather
   // than from onLayout/onContentSizeChange: a scroll event carries the

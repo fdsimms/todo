@@ -53,7 +53,7 @@ export function CatalogLinkSheet({
   currentItemId, currentProductId, onPick, onClose,
 }: Props) {
   const colors = useColors();
-  const keyboardScroll = useKeyboardInsetScroll<ScrollView>();
+  const keyboardScroll = useKeyboardInsetScroll<ScrollView>({ ownsSheet: true });
   const styles = useMemo(() => makeStyles(colors), [colors]);
   /** The item chosen, while its boxes are being offered. Null on step one. */
   const [chosen, setChosen] = useState<GroceryItem | null>(null);

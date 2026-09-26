@@ -78,7 +78,7 @@ interface Props {
 export function SavedViewEditorSheet({ visible, view, onClose, onCreated, onDeleted, initialClauses }: Props) {
   const colors = useColors();
   const styles = useMemo(() => makeStyles(colors), [colors]);
-  const keyboardScroll = useKeyboardInsetScroll<ScrollView>();
+  const keyboardScroll = useKeyboardInsetScroll<ScrollView>({ ownsSheet: true });
 
   const categories = useCategoryStore(useShallow(s => s.categories));
   const projects = useProjectStore(useShallow(s => s.projects));

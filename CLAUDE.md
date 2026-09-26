@@ -955,8 +955,14 @@ bottom (the next item in a batch, a Log/Save button, a hint under the field) ren
 it. This shipped as the same bug in five sheets at once (`ScanPortionSheet`, `FoodLogEntrySheet`,
 `EstimateMealSheet`, `ProductSheet`, `RuleListSheet`) before being fixed in all of them together —
 check for it whenever a new `pageSheet` sheet, or a new field in an existing one, puts a
-`TextInput` inside a `ScrollView`. Wire it the same way `EditorSheet` does: spread
-`keyboardScroll.props` onto the `ScrollView` and pass `ref={keyboardScroll.ref}`. Don't reach for
+`TextInput` inside a `ScrollView`. Wire it the same way `EditorSheet` does: call
+`useKeyboardInsetScroll<ScrollView>({ ownsSheet: true })`, spread `keyboardScroll.props` onto the
+`ScrollView` and pass `ref={keyboardScroll.ref}`. **`ownsSheet` is not optional in a component that
+renders its own `SheetModal`.** Such a component calls the hook from *outside* that sheet, so
+without the flag the hook's "is a sheet covering this list?" check sees the sheet itself and
+switches keyboard handling off for exactly as long as the sheet is open. That shipped across all
+23 sheets using the hook (the task editor included) for a week after #2794. Leave it off only
+where the hook is called from a screen, or from a component rendered inside a sheet's children. Don't reach for
 `KeyboardAvoidingView` instead — see the hook's own doc comment and the note on `EditorSheet` for
 why the two fight each other; `LogMealPrompt`'s `KeyboardAvoidingView` is the one deliberate
 exception, because its Modal is a small centered card rather than a full scrollable sheet.

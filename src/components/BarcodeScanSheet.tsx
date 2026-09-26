@@ -372,7 +372,7 @@ export function BarcodeScanSheet({ visible, onClose, onApply, context, onPhotogr
   const aliasItemFor = useGroceryStore(s => s.aliasItemFor);
   const gtinItemFor = useGroceryStore(s => s.gtinItemFor);
   const gtinProductFor = useGroceryStore(s => s.gtinProductFor);
-  const keyboardScroll = useKeyboardInsetScroll<ScrollView>();
+  const keyboardScroll = useKeyboardInsetScroll<ScrollView>({ ownsSheet: true });
 
   const [permission, requestPermission] = useCameraPermissions();
   const [rows, setRows] = useState<ScanRow[]>([]);

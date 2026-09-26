@@ -144,7 +144,7 @@ export function CookModeSheet({
   // The step view holds the question field, so it has to lift clear of the
   // keyboard — and `automaticallyAdjustKeyboardInsets` is never passed bare
   // here, for the 30,000pt reason the hook's own doc comment gives.
-  const keyboardScroll = useKeyboardInsetScroll<ScrollView>();
+  const keyboardScroll = useKeyboardInsetScroll<ScrollView>({ ownsSheet: true });
   const unitSystem = useSettingsStore(s => s.unitSystem);
   const groceryItems = useGroceryStore(useShallow(s => s.items));
   const itemSubs = useGroceryStore(useShallow(s => s.itemSubs));

@@ -155,7 +155,7 @@ interface Props {
 export function EstimateMealSheet({ visible, slot, at, mealPlanEntryId, initialDescription, onClose, onPickRecipe, onLogged }: Props) {
   const colors = useColors();
   const styles = useMemo(() => makeStyles(colors), [colors]);
-  const keyboardScroll = useKeyboardInsetScroll<ScrollView>();
+  const keyboardScroll = useKeyboardInsetScroll<ScrollView>({ ownsSheet: true });
 
   const addEntry = useFoodLogStore(s => s.addEntry);
   const recentEntries = useFoodLogStore(s => s.recentEntries);

@@ -176,7 +176,7 @@ const COLUMN_ORDINAL = ['First column', 'Second column', 'Third column'];
 export function NutritionPanelSheet({ visible, foodName, nutrition, onClose, onSave }: Props) {
   const colors = useColors();
   const styles = useMemo(() => makeStyles(colors), [colors]);
-  const keyboardScroll = useKeyboardInsetScroll<ScrollView>();
+  const keyboardScroll = useKeyboardInsetScroll<ScrollView>({ ownsSheet: true });
 
   const [form, setForm] = useState<PanelForm>(() => panelFormFrom(nutrition));
   // What the sheet opened saying, so the discard guard compares against the

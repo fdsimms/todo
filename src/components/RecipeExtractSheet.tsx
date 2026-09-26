@@ -157,7 +157,7 @@ export function RecipeExtractSheet({ visible, recipe, onClose }: Props) {
   // construction; a photo is whatever the page looked like to the model.
   const [importedSourceType, setImportedSourceType] = useState<RecipeSourceType | null>(null);
   const edits = usePendingEdits();
-  const keyboardScroll = useKeyboardInsetScroll<ScrollView>();
+  const keyboardScroll = useKeyboardInsetScroll<ScrollView>({ ownsSheet: true });
   const input = useRecipeImportSource('paste', 'read a recipe off a page', MAX_RECIPE_PHOTOS);
   const { resolveSource, reset: resetInput } = input;
 

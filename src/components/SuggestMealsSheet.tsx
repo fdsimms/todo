@@ -201,7 +201,7 @@ export function SuggestMealsSheet({
 }: Props) {
   const colors = useColors();
   const styles = useMemo(() => makeStyles(colors), [colors]);
-  const keyboardScroll = useKeyboardInsetScroll<ScrollView>();
+  const keyboardScroll = useKeyboardInsetScroll<ScrollView>({ ownsSheet: true });
   const navigation = useNavigation<any>();
 
   const aisleOrder = useGroceryStore(useShallow(s => s.aisleOrder));

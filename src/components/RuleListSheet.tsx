@@ -128,7 +128,7 @@ export function RuleListSheet<T extends EditableRule>({
   const colors = useColors();
   const styles = useMemo(() => makeStyles(colors), [colors]);
   const hideHelpText = useSettingsStore(s => s.hideHelpText);
-  const keyboardScroll = useKeyboardInsetScroll<ScrollView>();
+  const keyboardScroll = useKeyboardInsetScroll<ScrollView>({ ownsSheet: true });
 
   const [expandedId, setExpandedId] = useState<string | null>(null);
 
