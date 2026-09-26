@@ -2050,11 +2050,10 @@ export function TodayScreen() {
     const rows: ContextRow[] = [];
     // Leads, above the calendar and the food. It is the only one of the four
     // that is about the day as a whole rather than about a thing in it, and it
-    // is at most one line per metric — `healthContextRows` draws nothing for a
-    // null or a zero reading, which is most mornings, for either of the two it
-    // now covers (steps, active calories). Its own category by default, so in
-    // practice it leads a section of its own and this ordering only shows once
-    // somebody files it with something else.
+    // is one line at most — `healthContextRows` draws nothing for a null or a
+    // zero, which is most mornings. Its own category by default, so in practice
+    // it leads a section of its own and this ordering only shows once somebody
+    // files it with something else.
     //
     // Gated on the category for the reason the events below are: a row with
     // none goes to the very top of the list, above every section, which is the

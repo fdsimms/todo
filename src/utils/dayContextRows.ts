@@ -180,82 +180,61 @@ export function mealContextRows(
 }
 
 /**
- * Today's health readings as rows (see `docs/arch/health-data.md`) — steps,
- * then active calories, each its own row rather than one combined line, so
- * either can appear (or not) independently of the other.
+ * Today's health reading as a row (see `docs/arch/health-data.md`).
  *
- * **Silence unless there is something to say** is the shape that works here,
- * and it applies to each metric on its own terms. Three of the four inputs
- * produce no row at all for a given metric, and the reasons differ:
+ * **Silence unless there is something to say** is the shape that works here.
+ * Three of the four inputs produce no row at all, and the reasons differ:
  *
  * - **No reading, or one from another day.** The store holds one day-keyed
  *   snapshot and a day that has turned over is not an answer about this one —
  *   the check every reader of a day-keyed snapshot makes.
- * - **A null figure.** Null covers a refused read, a day with nothing recorded
- *   and a phone that has never recorded the metric, and HealthKit does not
+ * - **A null count.** Null covers a refused read, a day with nothing recorded
+ *   and a phone that has never recorded a step, and HealthKit does not
  *   distinguish them: a refusal is deliberately served as an empty store. There
  *   is no honest row to draw for "we don't know", and "No steps" would be shown
  *   to exactly the people who declined.
- * - **A figure of zero.** This is the one rule that is a *choice* rather than a
+ * - **A count of zero.** This is the one rule that is a *choice* rather than a
  *   consequence, so it is worth stating: the bridge keeps a real 0 truthfully,
  *   because a bridge that rounded would be lying, and this declines to make a
- *   row out of it, because zero of either is not context about a day. Every
- *   logical day starts at 0 and stays there until the first samples land, so a
- *   row would otherwise read "0 steps" or "0 active cal" every morning — which
- *   reads as a scold to somebody who hasn't moved yet and as a bug to everybody
- *   else, and is in practice indistinguishable from the not-synced-yet state
- *   anyway.
+ *   row out of it, because zero steps is not context about a day. Every logical
+ *   day starts at 0 and stays there until the first samples land, so the row
+ *   would otherwise be a "0 steps" line every morning — which reads as a scold
+ *   to somebody who cannot walk and as a bug to everybody else, and is in
+ *   practice indistinguishable from the not-synced-yet state anyway.
  *
- * `now` stays false on both: it means "this event is running" and drives the
- * treatment's one emphasis, which neither reading has any claim on.
+ * `now` stays false: it means "this event is running" and drives the
+ * treatment's one emphasis, which a step count has no claim on.
  *
- * The reading is taken as its own fields rather than as `HealthDay` so this
+ * The reading is taken as its two fields rather than as `HealthDay` so this
  * module keeps importing nothing from a store — the same line `eventContextRows`
  * draws by taking `BusyEvent` from `calendarBusy` rather than from
  * `useCalendarStore`.
  */
 export function healthContextRows(
-  reading: { dayKey: string; steps: number | null; activeEnergyKcal: number | null } | null,
+  reading: { dayKey: string; steps: number | null } | null,
   opts: { todayKey: string; category: string | null },
 ): ContextRow[] {
   if (!reading) return [];
   if (reading.dayKey !== opts.todayKey) return [];
-  const { steps, activeEnergyKcal } = reading;
-  const rows: ContextRow[] = [];
+  const { steps } = reading;
+  if (steps === null || steps <= 0) return [];
 
-  if (steps !== null && steps > 0) {
-    rows.push({
-      // One row, one day, so a fixed key. No source id: the reading is about a
-      // day rather than a row, and there is no record in this app to point at.
-      id: 'health-steps',
-      sourceId: '',
-      kind: 'health',
-      title: steps === 1 ? '1 step' : `${steps.toLocaleString()} steps`,
-      // "So far today" rather than a time: every other caption here says
-      // *when*, and what a running total says is that it is still running. A
-      // clock time would be the freshness of the read, which is not a thing
-      // anybody wants to read off a task list.
-      caption: 'So far today',
-      category: opts.category,
-      now: false,
-      calendarTag: null,
-    });
-  }
-
-  if (activeEnergyKcal !== null && activeEnergyKcal > 0) {
-    rows.push({
-      id: 'health-activeEnergy',
-      sourceId: '',
-      kind: 'health',
-      title: `${Math.round(activeEnergyKcal).toLocaleString()} active cal`,
-      caption: 'So far today',
-      category: opts.category,
-      now: false,
-      calendarTag: null,
-    });
-  }
-
-  return rows;
+  return [{
+    // One row, one day, so a fixed key. No source id: the reading is about a
+    // day rather than a row, and there is no record in this app to point at.
+    id: 'health-steps',
+    sourceId: '',
+    kind: 'health',
+    title: steps === 1 ? '1 step' : `${steps.toLocaleString()} steps`,
+    // "So far today" rather than a time: every other caption here says *when*,
+    // and what a running total says is that it is still running. A clock time
+    // would be the freshness of the read, which is not a thing anybody wants
+    // to read off a task list.
+    caption: 'So far today',
+    category: opts.category,
+    now: false,
+    calendarTag: null,
+  }];
 }
 
 /**
