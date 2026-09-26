@@ -686,6 +686,18 @@ ingredient panel's fold die with the modal.
   and logging one. It takes an undefined recipe so a screen can call it above its own "the row is
   gone" guard — and `CookModeSheet` passes `visible ? recipe : undefined`, since a modal mounted
   invisible must not hold a once-a-second interval open.
+- **The either/or picks are made here, not before.** Cook mode used to resolve every group to its
+  default and ignore the recipe screen's chips, so the only way to cook the jalapeño version was to
+  remember to pick it before pressing Cook, and forgetting meant backing out and starting over.
+  `CookModeSheet` now takes the screen's `choices` and hands every pick back (`onChoicesChange`),
+  one state rather than a copy, so what's picked at the stove is still the pick for the cost,
+  nutrition and food-log reads afterwards. Mise en place shows every group above the list it
+  changes; the mid-step ingredient panel shows only the ingredient groups, because swapping a
+  *component* rewrites the method under the step being read, and that belongs one Back away on the
+  mise en place screen. `cookSteps` gets the same resolution, so a component pick changes the steps
+  too. Opening a recipe from a planned meal seeds the screen from `MealPlanEntry.recipeChoices`
+  (the `choices` route param); nothing picked on the recipe screen or in cook mode is written back
+  to the entry.
 - **Quantities are the panel's, never the step's.** The ingredient panel runs the same
   scale-then-convert pipeline the recipe row does (exact multiplication first, rounding conversion
   second), so a halved recipe reads correctly mid-step. Nothing parses an amount back *out* of a

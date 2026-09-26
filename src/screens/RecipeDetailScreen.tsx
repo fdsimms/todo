@@ -110,7 +110,13 @@ import { splitAlternativeNames, splitGroceryLines } from '../utils/groceryParse'
 import { dayKeyOf, getCurrentDayStart } from '../utils/dateUtils';
 
 type RootStackParamList = {
-  RecipeDetail: { recipeId: string };
+  /**
+   * `choices` seeds the either/or picks when the screen is opened from a
+   * planned meal (MealPlanEntry.recipeChoices), so cooking the Tuesday mash
+   * reads as the mash rather than the recipe's default. Seed only: nothing
+   * picked here is written back to the entry.
+   */
+  RecipeDetail: { recipeId: string; choices?: string[] };
 };
 
 /** One row of the merged list the ingredients SortableList drags over — see mergedIngredientRows. */
@@ -213,7 +219,19 @@ export function RecipeDetailScreen() {
   // edit to the recipe, and the lasting form of a real pick lives on
   // MealPlanEntry.recipeChoices. Starts empty, which is every group on its
   // default — same contract RecipeToListSheet's own `choices` keeps.
-  const [choices, setChoices] = useState<string[]>([]);
+  //
+  // Seeded from the route when a planned meal opened this (see the param's
+  // doc comment), and reseeded whenever the params change — a same-route
+  // navigate to another recipe swaps them in place, and one recipe's picks
+  // are meaningless ids on the next. Shared with cook mode rather than copied
+  // into it, so a pick made at the stove is the one the cost, nutrition and
+  // "Log to food log" read afterwards.
+  const [choices, setChoices] = useState<string[]>(() => route.params.choices ?? []);
+  const [choicesSeed, setChoicesSeed] = useState(route.params);
+  if (choicesSeed !== route.params) {
+    setChoicesSeed(route.params);
+    setChoices(route.params.choices ?? []);
+  }
   // Live, not persisted — see recipeComponents.ts's ChoiceResolution.onHand.
   const choiceResolution = useMemo(
     () => ({ chosen: choices, onHand: onHandNameKeys(groceryItems, new Date(), itemProducts) }),
@@ -2320,13 +2338,17 @@ export function RecipeDetailScreen() {
       />
 
       {/* The scale travels in, the way it does into the add-to-list sheet — a
-          halved recipe has to read halved mid-step too. Nothing travels back:
-          cook mode writes nothing but the timer the recipe already owns. */}
+          halved recipe has to read halved mid-step too. The either/or picks
+          are shared both ways: cook mode is where most of them actually get
+          made, and a pick made there has to still be the pick back here.
+          Neither is written to the recipe. */}
       <CookModeSheet
         visible={cookModeVisible}
         recipe={recipe}
         recipesById={recipesById}
         scale={scale}
+        choices={choices}
+        onChoicesChange={setChoices}
         onClose={() => setCookModeVisible(false)}
       />
 

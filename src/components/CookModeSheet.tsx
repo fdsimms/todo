@@ -45,13 +45,16 @@ import { NumberPadAccessory } from './NumberPadAccessory';
 import { StepTimerRow } from './StepTimerRow';
 import { StepText } from './StepText';
 import { InlineAction } from './InlineAction';
+import { RecipeChoiceChips } from './RecipeChoiceChips';
 import { useColors } from '../theme/ThemeContext';
 import { spacing, font, fontWeight, lineHeight, radius, iconSize, interaction, type Colors } from '../theme';
 import { haptics } from '../utils/haptics';
 import { animateLayout } from '../utils/layoutAnimation';
 import { clampStepIndex, cookSteps, describeStepPosition } from '../utils/cookMode';
 import { formatStepDuration, stepDurationOffers } from '../utils/stepTimers';
-import { flattenRecipeIngredients } from '../utils/recipeComponents';
+import {
+  applyChoice, choiceGroupKey, flattenRecipeIngredients, recipeChoiceGroups, type ChoiceGroup,
+} from '../utils/recipeComponents';
 import { ingredientHeadings } from '../utils/recipeSections';
 import { annotateSteps, stepIngredientLines } from '../utils/stepIngredients';
 import { describeStandingSwap, standingSwapMap } from '../utils/standingSwaps';
@@ -70,6 +73,16 @@ interface Props {
    * an edit to the recipe (see MealPlanEntry.recipeScale for where it does last).
    */
   scale: number;
+  /**
+   * The either/or picks this cooking is for — MealPlanEntry.recipeChoices'
+   * shape, owned by the screen that opened this. Shared rather than copied in:
+   * the moment "serrano or jalapeño" actually gets answered is usually this
+   * one, standing at the counter, and the answer has to still be there on the
+   * recipe screen afterwards (its cost, nutrition and food-log reads). Like
+   * `scale`, never written onto the recipe.
+   */
+  choices: readonly string[];
+  onChoicesChange: (choices: string[]) => void;
   onClose: () => void;
 }
 
@@ -121,7 +134,9 @@ interface Props {
  * ingredient lines, and a step whose wording the matcher can't place silently
  * keeps its own words.
  */
-export function CookModeSheet({ visible, recipe, recipesById, scale, onClose }: Props) {
+export function CookModeSheet({
+  visible, recipe, recipesById, scale, choices, onChoicesChange, onClose,
+}: Props) {
   // ==== store bindings and derived data: the method, the ingredients ====
   const colors = useColors();
   const styles = useMemo(() => makeStyles(colors), [colors]);
@@ -151,15 +166,40 @@ export function CookModeSheet({ visible, recipe, recipesById, scale, onClose }: 
   );
   // Live, not persisted — see recipeComponents.ts's ChoiceResolution.onHand.
   const onHand = useMemo(() => onHandNameKeys(groceryItems, new Date()), [groceryItems]);
+  const resolution = useMemo(() => ({ chosen: choices, onHand }), [choices, onHand]);
 
+  // The method follows the picks too: "mash or roast" is a choice between two
+  // components, and each brings its own steps. `clampStepIndex` below is what
+  // keeps a position valid if a pick shortens the method under the cook.
   const steps = useMemo(
-    () => cookSteps(recipe, recipesById),
-    [recipe, recipesById]
+    () => cookSteps(recipe, recipesById, resolution),
+    [recipe, recipesById, resolution]
   );
   const ingredients = useMemo(
-    () => flattenRecipeIngredients(recipe, recipesById, { onHand }, standingSwaps),
-    [recipe, recipesById, standingSwaps, onHand]
+    () => flattenRecipeIngredients(recipe, recipesById, resolution, standingSwaps),
+    [recipe, recipesById, standingSwaps, resolution]
   );
+  // Every either/or this cooking poses, answered here rather than beforehand:
+  // the old shape made you pick on the recipe screen *before* opening cook
+  // mode, and a cook who forgot had to back out, pick, and start again.
+  // Mise en place shows them all, since that's where the gathering happens.
+  const choiceGroups = useMemo(
+    () => recipeChoiceGroups(recipe, recipesById, resolution),
+    [recipe, recipesById, resolution]
+  );
+  // Mid-step, only the ingredient ones. Swapping the pepper halfway through
+  // changes one line; swapping the mash for the roast potatoes swaps out a
+  // whole dish's method under the step being read, which is a decision for the
+  // mise en place screen (one Back from step 1) rather than for a fold in the
+  // footer.
+  const ingredientChoiceGroups = useMemo(
+    () => choiceGroups.filter(group => group.kind === 'ingredient'),
+    [choiceGroups]
+  );
+  const pick = (group: ChoiceGroup, optionId: string) => {
+    animateLayout();
+    onChoicesChange(applyChoice(choices, group, optionId));
+  };
   // Which headings each line opens: the component's name where one starts, and
   // the recipe's own section label where one does. Both are inferred from the
   // flat list rather than stored on it — see ingredientHeadings.
@@ -353,6 +393,20 @@ export function CookModeSheet({ visible, recipe, recipesById, scale, onClose }: 
             <Text style={styles.miseSubtitle}>
               Everything this recipe needs, before you start cooking.
             </Text>
+            {/* Where the recipe offers a choice, it's made here, as the
+                ingredients are gathered — the list below follows the pick. */}
+            {choiceGroups.length > 0 && (
+              <View style={styles.choices}>
+                {choiceGroups.map(group => (
+                  <RecipeChoiceChips
+                    key={choiceGroupKey(group.recipe.id, group.label)}
+                    group={group}
+                    activeOptionId={group.active.id}
+                    onPick={optionId => pick(group, optionId)}
+                  />
+                ))}
+              </View>
+            )}
             <View style={styles.miseCard}>
               {ingredients.map((flat, position) => {
                 // Same scale-then-convert pipeline the panel below runs, and
@@ -583,6 +637,19 @@ export function CookModeSheet({ visible, recipe, recipesById, scale, onClose }: 
               </TouchableOpacity>
               {ingredientsOpen && (
                 <ScrollView style={styles.panelList} nestedScrollEnabled>
+                  {ingredientChoiceGroups.length > 0 && (
+                    <View style={[styles.choices, styles.panelChoices]}>
+                      {ingredientChoiceGroups.map(group => (
+                        <RecipeChoiceChips
+                          key={choiceGroupKey(group.recipe.id, group.label)}
+                          group={group}
+                          activeOptionId={group.active.id}
+                          onPick={optionId => pick(group, optionId)}
+                          surface="card"
+                        />
+                      ))}
+                    </View>
+                  )}
                   {ingredients.map((flat, position) => {
                     // Scaled first, then converted: the multiplication is exact
                     // and the conversion rounds, so rounding last is the only
@@ -984,6 +1051,16 @@ const makeStyles = (colors: Colors) => StyleSheet.create({
     lineHeight: lineHeight.md,
     marginTop: spacing.xs,
     marginBottom: spacing.lg,
+  },
+  // One block per either/or, above the list it changes. The mise en place
+  // subtitle already leaves `spacing.lg` above; this leaves the same below.
+  choices: {
+    gap: spacing.md,
+    marginBottom: spacing.lg,
+  },
+  // Inside the ingredient panel the list follows directly, so a smaller gap.
+  panelChoices: {
+    marginBottom: spacing.sm,
   },
   miseCard: {
     backgroundColor: colors.bgSecondary,
