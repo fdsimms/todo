@@ -45,6 +45,7 @@ import {
   LATER_TODAY_LABEL,
   laterVisibleOrder,
   laterDaySections,
+  limitTodayItems,
   laterDropZones,
   laterTodaySections as computeLaterTodaySections,
   applyCategoryCollapse as applyCategoryCollapseTo,
@@ -214,6 +215,10 @@ const VIEW_BADGE_LABELS: Partial<Record<ViewMode, string>> = {
 const LATER_INITIAL_TASK_LIMIT = 15;
 const LATER_SETTLED_TASK_LIMIT = 60;
 const LATER_TASK_PAGE_SIZE = 60;
+// The same first-paint budget for the Today list, which is remounted from
+// scratch on every switch back to it (see the todayTaskLimit block below).
+// There is no settled size: once the switch has painted, the whole day mounts.
+const TODAY_INITIAL_TASK_LIMIT = 15;
 
 // How long the created-task toast stays up before it dismisses itself —
 // same span UndoBar uses, long enough to read and act on, short enough not
@@ -2269,11 +2274,40 @@ export function TodayScreen() {
   // useEffect, so a `data` change — including the very first store load —
   // reaches the list in the same render as everything else on screen, instead
   // of landing a frame late and popping in after the rest of the UI.
-  const [draggableData, setDraggableData] = useState<ListItem[]>(data);
-  const syncedDataRef = useRef(data);
-  if (syncedDataRef.current !== data) {
-    syncedDataRef.current = data;
-    setDraggableData(data);
+  //
+  // Fed the budgeted list below rather than `data` itself: the Today list is
+  // unmounted while another sub-view is showing, so switching back to it
+  // mounts every row of the day in the same blocking commit as the tap — the
+  // same stall the Later list's own budget (laterTaskLimit) exists to avoid,
+  // and a day with stacks and a pinned block is easily sixty TaskItems. So the
+  // switch mounts one screenful first (`data` is untouched; only what the
+  // list is handed is cut short) and the effect below hands it the rest once
+  // that commit is done, by which time nothing past the first screen has had
+  // a chance to be scrolled to. Everything that reasons about the day's rows
+  // rather than rendering them — sectionTaskIds, the header pin toggles, the
+  // jump target — keeps reading `data`/`listItems`, so the budget can't hide
+  // a row from a decision, only briefly from the screen.
+  //
+  // Leaving Today drops the budget back, and both directions wait for the
+  // switch to settle for the reasons Later's block gives: the reset isn't
+  // needed a frame early (the list it prunes is already gone), and deferring
+  // it means switching out and straight back keeps the full list rather than
+  // paying to re-mount it in two steps, because the pending reset is cancelled
+  // by this effect's own cleanup.
+  const [todayTaskLimit, setTodayTaskLimit] = useState<number | undefined>(TODAY_INITIAL_TASK_LIMIT);
+  useEffect(() => {
+    const handle = InteractionManager.runAfterInteractions(() => {
+      setTodayTaskLimit(viewMode === 'today' ? undefined : TODAY_INITIAL_TASK_LIMIT);
+    });
+    return () => handle.cancel();
+  }, [viewMode]);
+  const mountedData = useMemo(() => limitTodayItems(data, todayTaskLimit), [data, todayTaskLimit]);
+
+  const [draggableData, setDraggableData] = useState<ListItem[]>(mountedData);
+  const syncedDataRef = useRef(mountedData);
+  if (syncedDataRef.current !== mountedData) {
+    syncedDataRef.current = mountedData;
+    setDraggableData(mountedData);
   }
 
   // The settled layout a drop hands back, with the day's context rows put back
@@ -3467,6 +3501,11 @@ export function TodayScreen() {
       });
     }
     if (unhide) setOthersHidden(false);
+    // The row being jumped to has to be in the data the list is about to
+    // scroll, and a jump can arrive in the same batch as the switch to Today
+    // (handleTaskCreated) — so lift the first-paint budget outright, the way
+    // goToCreatedTask does for Later, rather than waiting for the top-up.
+    setTodayTaskLimit(undefined);
     // The scroll lands on the stack's header, which doesn't move when the
     // stack opens — but the row the user asked for is inside it, so open it.
     // (No animateLayout here, for the reason TaskGroupHeader's own toggle
