@@ -1438,6 +1438,10 @@ export function QuickAddModal({
       // on its own save.
       supplyCount,
       supplyUnit: supplyUnit.trim() || null,
+      // Same seed createTask applies (see its own groupId line) — dropped
+      // here before, so opening "More details" off a stack-seeded quick add
+      // silently lost the stack.
+      ...(seedActive && seed?.groupId ? { groupId: seed.groupId } : {}),
     });
   };
 
