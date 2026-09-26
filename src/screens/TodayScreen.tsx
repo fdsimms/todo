@@ -1633,12 +1633,6 @@ export function TodayScreen() {
       case 'template':
         setTemplatePickerVisible(true);
         break;
-      // Quick add builds a chain end to end now, so this no longer has to
-      // open the full editor just to reach a step list.
-      case 'chain':
-        setQuickAddType('chain');
-        setQuickAddVisible(true);
-        break;
       case 'stack': {
         const group = createTaskGroup('', null);
         newStackIdRef.current = group.id;

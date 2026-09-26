@@ -108,16 +108,19 @@ const ADD_MENU_ITEMS: FabMenuItem[] = [
   { key: 'new', label: 'New task', icon: 'checkbox' },
 ];
 
-// A list's own add field already covers "New task", and Template doesn't fit
-// a line-per-item list the way it does a scheduled project — so the FAB here
-// only offers the two things the field can't: pulling in a task that already
-// exists elsewhere, and starting a section (a Stack homed on this project).
-// Same "Section" label as the full menu above — it's the same TaskGroup
-// mechanism either way, and having it read as two different features
-// depending on Project.kind is exactly the confusion this label avoids.
+// The list's own add field at the top covers "New task" too, but scrolling
+// there from the bottom of a long list is real friction — so the FAB still
+// offers it, alongside the two things the field can't: pulling in a task
+// that already exists elsewhere, and starting a section (a Stack homed on
+// this project). Template doesn't fit a line-per-item list the way it does
+// a scheduled project, so it's left out. Same "Section" label as the full
+// menu above — it's the same TaskGroup mechanism either way, and having it
+// read as two different features depending on Project.kind is exactly the
+// confusion this label avoids.
 const LIST_ADD_MENU_ITEMS: FabMenuItem[] = [
   { key: 'existing', label: 'Add existing task', icon: 'albums-outline' },
   { key: 'stack', label: 'Section', icon: 'layers' },
+  { key: 'new', label: 'New task', icon: 'checkbox' },
 ];
 
 // The add button, naming what a release right now would do — same wrapper

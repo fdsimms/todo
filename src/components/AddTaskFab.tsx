@@ -5,18 +5,18 @@ import { addMenuItemShown } from '../utils/simpleMode';
 import { useSettingsStore } from '../store/useSettingsStore';
 import { isDemoModeActive } from '../utils/demoState';
 
-export type AddTaskType = 'chain' | 'stack' | 'template' | 'import' | 'event' | 'task';
+export type AddTaskType = 'stack' | 'template' | 'import' | 'event' | 'task';
 
 // Bottom-up, so plain "Task" — far and away the most common — lands closest
 // to the button. There's deliberately no "Recurring" entry: it created a plain
 // task with one picker pre-opened, which the Repeat row in quick add already
-// does in the same number of taps.
+// does in the same number of taps. A chain is reachable from the full editor's
+// own kind picker instead of a FAB entry of its own.
 //
 // "Event" is the one entry that adds no task: a one-line event
 // (`QuickEventSheet`) that fills Apple's new-event sheet. It sits beside Task because a plan for
 // today is a Today thing whichever list it ends up in.
 const ITEMS: FabMenuItem[] = [
-  { key: 'chain', label: 'Chain', icon: 'git-commit' },
   { key: 'stack', label: 'Stack', icon: 'layers' },
   { key: 'template', label: 'Template', icon: 'copy' },
   { key: 'import', label: 'Import event', icon: 'scan-outline' },
