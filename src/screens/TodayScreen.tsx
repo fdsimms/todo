@@ -1535,19 +1535,25 @@ export function TodayScreen() {
     setPullingToSearch(true);
     haptics.impactLight();
     setQuickSearchVisible(true);
-    // Not synchronous with the setPullingToSearch(true) above: both land in
-    // the same state (false), which starting state already was, so React
-    // bails out of re-rendering and the `refreshing` prop never actually
-    // makes a true round trip to the native RefreshControl. The pull gesture
-    // that triggered this has already put iOS's UIRefreshControl into its own
-    // refreshing state, waiting on a real false to end it and release the
-    // space it reserved for the spinner — without that, the scroll view can
-    // get stuck resting below its true top, with the list's content (the
-    // Pinned Tasks header included) unreachable by scrolling until the screen
-    // remounts. Queuing the reset for the next tick lets the true state
-    // commit first, so the false that follows is a genuine transition.
-    setTimeout(() => setPullingToSearch(false), 0);
+    // The reset back to false waits for the sheet to be on screen
+    // (`endPullToSearch`, from its onShow), and that wait is the fix.
+    //
+    // The pull has already put iOS's UIRefreshControl into its own refreshing
+    // state, and it stays there — reserving the spinner's space and firing no
+    // further onRefresh, so pulling again does nothing — until the `refreshing`
+    // prop makes a real true→false transition. The Fabric component only acts
+    // on a prop *diff* against what the UI thread last mounted, and the UI
+    // thread mounts the newest commit, not each one: a true and a false
+    // committed close together (same batch, or a `setTimeout(…, 0)` apart,
+    // which is what this used to do) can reach it as one "no change", and the
+    // control is stuck refreshing for the rest of the session. onShow fires
+    // on the UI thread after the commit carrying the true (and the sheet) has
+    // been mounted, so the false after it is always its own transition. It
+    // also lands after the sheet has taken the touch, so the control isn't
+    // ended mid-drag either.
   }, []);
+
+  const endPullToSearch = useCallback(() => setPullingToSearch(false), []);
 
   // Anything the card's five slots couldn't answer goes to the real Search
   // screen, carrying the query so it isn't typed twice.
@@ -4389,7 +4395,8 @@ export function TodayScreen() {
             Unscheduled and Inbox all wire the same refreshControl to it. */}
         <QuickSearchModal
           visible={quickSearchVisible}
-          onClose={() => setQuickSearchVisible(false)}
+          onClose={() => { setQuickSearchVisible(false); endPullToSearch(); }}
+          onShown={endPullToSearch}
           onSelectTask={openEditor}
           onOpenFullSearch={handleOpenFullSearch}
         />
