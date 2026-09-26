@@ -25,6 +25,18 @@ interface TitleTokenAccessoryProps {
   /** Whether there's a tooltip up for `onConfirm` to apply right now. */
   confirmVisible?: boolean;
   /**
+   * Files the task, the same action the sheet's own Add button performs.
+   * Omit for a title field with no such action (the task editor's, which
+   * saves rather than adds) — the button then never renders. Present in
+   * quick add so filing a task never needs a thumb to leave the keyboard,
+   * which otherwise means reaching down past it — the on-screen Add arrow
+   * sits beside the title field and "Show fewer fields" moves it into the
+   * footer below that.
+   */
+  onAdd?: () => void;
+  /** Whether tapping `onAdd` would currently do anything — disables the button rather than hiding it, same as the on-screen Add button. Only read when `onAdd` is passed. */
+  addDisabled?: boolean;
+  /**
    * `InputAccessoryView` doesn't support a multiline `TextInput` — a
    * documented iOS/RN limitation: the view is simply never attached, with no
    * warning to say why. The task editor's title needs `multiline` (a long
@@ -67,7 +79,7 @@ interface TitleTokenAccessoryProps {
  * See the `floating` prop's own doc comment for the one field this can't
  * attach to as a real `InputAccessoryView` at all.
  */
-export function TitleTokenAccessory({ nativeID, onInsert, onConfirm, confirmVisible, floating, focused }: TitleTokenAccessoryProps) {
+export function TitleTokenAccessory({ nativeID, onInsert, onConfirm, confirmVisible, onAdd, addDisabled, floating, focused }: TitleTokenAccessoryProps) {
   const colors = useColors();
   // Starts true so the button isn't disabled for a frame before the first
   // check resolves; a listener keeps it current while the bar stays mounted
@@ -168,15 +180,31 @@ export function TitleTokenAccessory({ nativeID, onInsert, onConfirm, confirmVisi
           />
         </PressableScale>
       </View>
-      {onConfirm && confirmVisible && (
-        <PressableScale
-          style={styles.confirmBtn}
-          haptic
-          onPress={onConfirm}
-          accessibilityLabel="Confirm suggestion"
-        >
-          <Ionicons name="checkmark" size={20} color={colors.onAccent} />
-        </PressableScale>
+      {(onConfirm || onAdd) && (
+        <View style={styles.rightGroup}>
+          {onConfirm && confirmVisible && (
+            <PressableScale
+              style={styles.confirmBtn}
+              haptic
+              onPress={onConfirm}
+              accessibilityLabel="Confirm suggestion"
+            >
+              <Ionicons name="checkmark" size={20} color={colors.onAccent} />
+            </PressableScale>
+          )}
+          {onAdd && (
+            <PressableScale
+              style={[styles.confirmBtn, addDisabled && styles.tokenBtnDisabled]}
+              haptic
+              disabled={addDisabled}
+              onPress={onAdd}
+              accessibilityLabel="Add task"
+              accessibilityState={{ disabled: addDisabled }}
+            >
+              <Ionicons name="arrow-forward" size={20} color={colors.onAccent} />
+            </PressableScale>
+          )}
+        </View>
       )}
     </View>
   );
@@ -235,6 +263,10 @@ const makeStyles = (colors: Colors) => StyleSheet.create({
   },
   tokenBtnDisabled: {
     opacity: 0.4,
+  },
+  rightGroup: {
+    flexDirection: 'row',
+    gap: spacing.sm,
   },
   tokenText: {
     fontSize: font.lg,
