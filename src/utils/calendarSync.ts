@@ -1,6 +1,6 @@
 import { Platform } from 'react-native';
 import { addDays } from 'date-fns/addDays';
-import type { Calendar as DeviceCalendar, Event } from 'expo-calendar/legacy';
+import type { Alarm, Calendar as DeviceCalendar, Event } from 'expo-calendar/legacy';
 import type { BusyEvent } from './calendarBusy';
 
 /**
@@ -448,13 +448,21 @@ export async function presentTimeBlockCreate(fields: {
  * so the event syncs wherever that calendar does, and nothing is written that
  * they didn't watch being written. Anything the app wants to remember about
  * the event (who it's with) is kept on its own side, see `eventPeople.ts`.
+ *
+ * `allDay` and `alarms` are optional because the sheet's other caller
+ * (`quickEvent.ts`) never needs either — a hand-typed line always resolves to
+ * a timed span with no default alert. `calendarEventImport.ts`'s
+ * `eventImportCreateFields` is what supplies both, for an event read off a
+ * confirmation.
  */
 export async function presentEventCreate(fields: {
   title: string;
   start: Date;
   end: Date;
+  allDay?: boolean;
   location?: string;
   notes?: string;
+  alarms?: Alarm[];
 }): Promise<TimeBlockSheetResult> {
   if (Platform.OS !== 'ios') return NO_RESULT;
   try {
@@ -462,8 +470,10 @@ export async function presentEventCreate(fields: {
       title: fields.title,
       startDate: fields.start,
       endDate: fields.end,
+      ...(fields.allDay ? { allDay: true } : {}),
       ...(fields.location ? { location: fields.location } : {}),
       ...(fields.notes ? { notes: fields.notes } : {}),
+      ...(fields.alarms ? { alarms: fields.alarms } : {}),
     });
     return {
       saved: result.action === 'saved',
