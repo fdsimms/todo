@@ -113,10 +113,11 @@ type RootStackParamList = {
   /**
    * `choices` seeds the either/or picks when the screen is opened from a
    * planned meal (MealPlanEntry.recipeChoices), so cooking the Tuesday mash
-   * reads as the mash rather than the recipe's default. Seed only: nothing
-   * picked here is written back to the entry.
+   * reads as the mash rather than the recipe's default. `scale` does the
+   * same for MealPlanEntry.recipeScale. Seed only: nothing picked here is
+   * written back to the entry.
    */
-  RecipeDetail: { recipeId: string; choices?: string[] };
+  RecipeDetail: { recipeId: string; choices?: string[]; scale?: number };
 };
 
 /** One row of the merged list the ingredients SortableList drags over — see mergedIngredientRows. */
@@ -208,7 +209,9 @@ export function RecipeDetailScreen() {
   // the recipe, and the lasting form of the same fact lives on the meal that
   // was planned (MealPlanEntry.recipeScale). It does travel into the add-to-list
   // sheet, which is the one place the number turns into something bought.
-  const [scale, setScale] = useState(1);
+  // Seeded from a planned meal's own scale when one opened this, and reset
+  // with the picks below when the route params change.
+  const [scale, setScale] = useState(() => route.params.scale ?? 1);
 
   // Which alternative the cost and nutrition estimates below are for, when the
   // recipe poses an either/or — "sourdough" and "baguette" don't share a
@@ -231,6 +234,7 @@ export function RecipeDetailScreen() {
   if (choicesSeed !== route.params) {
     setChoicesSeed(route.params);
     setChoices(route.params.choices ?? []);
+    setScale(route.params.scale ?? 1);
   }
   // Live, not persisted — see recipeComponents.ts's ChoiceResolution.onHand.
   const choiceResolution = useMemo(

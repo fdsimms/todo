@@ -2140,12 +2140,13 @@ export function MealPlanScreen() {
         }
         onOpenRecipe={
           selected?.recipeId && recipesById.has(selected.recipeId)
-            // The meal's own picks travel with it, so cooking from here
-            // opens on the side this night is having (see RecipeDetail's
-            // `choices` param).
+            // The meal's own picks and scale travel with it, so cooking from
+            // here opens on the side and amount this night is having (see
+            // RecipeDetail's `choices` and `scale` params).
             ? () => navigation.navigate('RecipeDetail', {
                 recipeId: selected.recipeId,
                 choices: selected.recipeChoices,
+                scale: selected.recipeScale,
               })
             : undefined
         }

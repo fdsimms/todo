@@ -696,7 +696,7 @@ ingredient panel's fold die with the modal.
   *component* rewrites the method under the step being read, and that belongs one Back away on the
   mise en place screen. `cookSteps` gets the same resolution, so a component pick changes the steps
   too. Opening a recipe from a planned meal seeds the screen from `MealPlanEntry.recipeChoices`
-  (the `choices` route param); nothing picked on the recipe screen or in cook mode is written back
+  (the `choices` route param), and its scale from `recipeScale` (`scale`); nothing picked on the recipe screen or in cook mode is written back
   to the entry.
 - **Quantities are the panel's, never the step's.** The ingredient panel runs the same
   scale-then-convert pipeline the recipe row does (exact multiplication first, rounding conversion
