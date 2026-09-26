@@ -344,7 +344,7 @@ export function RecipeDetailScreen() {
   // Cleared on every close, confirmed or cancelled, so a later plain "Plan"
   // never inherits a scale left over from an earlier scaled shop.
   const [pendingPlanScale, setPendingPlanScale] = useState<number | null>(null);
-  const { planRecipe, offerPrepTasks, earliestUnplannedSlotToday } = usePlanMeal();
+  const { planRecipe, offerPrepTasks, earliestUnplannedSlotToday, cookRecipeNow } = usePlanMeal();
   const { overlap, openOverlap, closeOverlap, handOffOverlap } = useOverlapPicker();
   const [extractVisible, setExtractVisible] = useState(false);
   const [cookModeVisible, setCookModeVisible] = useState(false);
@@ -1459,6 +1459,21 @@ export function RecipeDetailScreen() {
                   size={iconSize.md}
                   color={recipe.vote === 'loved' ? colors.orange : colors.textSecondary}
                 />
+              </TouchableOpacity>
+            )}
+            {/* The cooking half of "log this recipe" — rating, leftovers,
+                pantry ticks and restock, the same post-cook sheet a planned
+                meal's "Mark cooked" raises (CookRecap, mounted globally).
+                Always shown: unlike the food-log icon below it needs no
+                nutrition figures, only a recipe to have cooked. */}
+            {!selectionMode && (
+              <TouchableOpacity
+                onPress={() => { haptics.tap(); cookRecipeNow(recipe); }}
+                hitSlop={8}
+                accessibilityRole="button"
+                accessibilityLabel={`Log ${recipe.name} as cooked`}
+              >
+                <Ionicons name="flame-outline" size={iconSize.md} color={colors.textSecondary} />
               </TouchableOpacity>
             )}
             {/* Gated on nutrition actually being computable (same read

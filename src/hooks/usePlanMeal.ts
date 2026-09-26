@@ -7,7 +7,7 @@ import { useRecipeStore } from '../store/useRecipeStore';
 import { useGroceryStore } from '../store/useGroceryStore';
 import { useSettingsStore } from '../store/useSettingsStore';
 import { useTaskStore } from '../store/useTaskStore';
-import { earliestUnplannedSlot, recipeIndex } from '../utils/mealPlan';
+import { cookEntryForRecipe, earliestUnplannedSlot, recipeIndex } from '../utils/mealPlan';
 import { dayKeyOf, dayKeyToDate, getLogicalToday } from '../utils/dateUtils';
 import { prepTaskDraftsForMeal } from '../utils/recipeUtils';
 import { onHandNameKeys } from '../utils/grocerySuggest';
@@ -31,6 +31,7 @@ export function usePlanMeal() {
   const planMeal = useMealPlanStore(s => s.planMeal);
   const setRecipeScale = useMealPlanStore(s => s.setRecipeScale);
   const entriesForDayLive = useMealPlanStore(s => s.entriesForDayLive);
+  const finishCookForRecipe = useMealPlanStore(s => s.finishCookForRecipe);
   const mealSlotsEnabled = useSettingsStore(useShallow(s => s.mealSlotsEnabled));
   const recipes = useRecipeStore(useShallow(s => s.recipes));
   const groceryItems = useGroceryStore(useShallow(s => s.items));
@@ -149,5 +150,35 @@ export function usePlanMeal() {
     [planMeal, setRecipeScale]
   );
 
-  return { planRecipe, offerPrepTasks, offerPrepTasksForEach, earliestUnplannedSlotToday };
+  /**
+   * Logs a recipe as cooked from a screen with no meal-plan entry to hang the
+   * question off — the recipe library, not the plan. `finishCookForRecipe`
+   * already raises the rating/leftovers/pantry/restock questions (`CookRecap`)
+   * when there's a same-day entry to pair, and only bumps the recipe's cook
+   * counters when there isn't (see that action's own doc comment) — which
+   * meant the recipe page, cooking something with no plan entry behind it,
+   * could bump the counter but never offer to log leftovers. Planning it onto
+   * today first, into the earliest unplanned slot, gives it that row before
+   * handing off, so the recipe page gets the full post-cook sheet for free.
+   *
+   * A no-op planning call when today already has an unlogged entry for this
+   * recipe (`cookEntryForRecipe`) — that row is the one `finishCookForRecipe`
+   * would find and pair on its own, and planning a second one would just be
+   * an extra dinner nobody asked for.
+   */
+  const cookRecipeNow = useCallback((recipe: Recipe) => {
+    const dayKey = dayKeyOf(getLogicalToday());
+    const todayEntries = entriesForDayLive(dayKey);
+    if (!cookEntryForRecipe(todayEntries, recipe.id, dayKey)) {
+      planMeal({
+        date: dayKey,
+        slot: earliestUnplannedSlot(todayEntries, dayKey, mealSlotsEnabled),
+        recipeId: recipe.id,
+        title: recipe.name,
+      });
+    }
+    finishCookForRecipe(recipe.id);
+  }, [entriesForDayLive, planMeal, mealSlotsEnabled, finishCookForRecipe]);
+
+  return { planRecipe, offerPrepTasks, offerPrepTasksForEach, earliestUnplannedSlotToday, cookRecipeNow };
 }
