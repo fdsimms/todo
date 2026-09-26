@@ -72,6 +72,16 @@ export function InlineEditableText({
   const styles = useMemo(() => makeStyles(colors), [colors]);
   const [editing, setEditing] = useState(false);
   const [draft, setDraft] = useState('');
+  // Captured from the read chip's own layout, so the field opens at the
+  // width its committed value already reads at instead of an unconstrained
+  // native measure. Without this, a chip inside a flex-wrap row (the recipe
+  // source fields) resizes on every keystroke as the input's intrinsic
+  // content width changes, which reflows every sibling in the row along with
+  // it — the field being typed into, and the ones next to it, visibly shift
+  // with each character. Freezing the width at the value the box already had
+  // stops that; overflow while typing scrolls inside the box instead, same
+  // as any ordinary text field.
+  const [chipWidth, setChipWidth] = useState<number | undefined>(undefined);
 
   // Mirrors commit()'s validation exactly, so what the registry reports
   // pending is precisely what a commit would have written.
@@ -103,7 +113,7 @@ export function InlineEditableText({
   if (editing) {
     return (
       <TextInput
-        style={[styles.input, inputStyle]}
+        style={[styles.input, inputStyle, chipWidth ? { width: Math.max(chipWidth, 56) } : null]}
         value={draft}
         onChangeText={setDraft}
         onBlur={commit}
@@ -131,7 +141,7 @@ export function InlineEditableText({
       accessibilityRole="button"
       accessibilityLabel={`Edit ${accessibilityLabel}`}
     >
-      <View style={styles.readWrap}>
+      <View style={styles.readWrap} onLayout={e => setChipWidth(e.nativeEvent.layout.width)}>
         <Text style={[textStyle, !value && styles.placeholder]} numberOfLines={numberOfLines}>
           {value || placeholder || ''}
         </Text>
