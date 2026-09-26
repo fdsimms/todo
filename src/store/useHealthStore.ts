@@ -4,7 +4,7 @@ import { create } from 'zustand';
 import { addDays } from 'date-fns/addDays';
 import { dayKeyOf, getCurrentDayStart, getLogicalDayKey } from '../utils/dateUtils';
 import type { HealthDayInput } from '../utils/moodInsights';
-import type { WeightPoint } from '../utils/weightLog';
+import { latestWeight, type WeightPoint } from '../utils/weightLog';
 import { healthBridge } from '../utils/healthBridge';
 import { useSettingsStore } from './useSettingsStore';
 import { createRefreshGuard } from '../utils/refreshGuard';
@@ -412,6 +412,10 @@ export const useHealthStore = create<HealthState>((set, get) => ({
       // last good series would keep drawing a chart of somebody's weight after
       // they revoked access to it, which is the one thing this must not do.
       set({ weightSeries });
+      // A fresh weigh-in can move the weight goal's own calorie figure (it's
+      // worked out against the current weight), so keep the food log target
+      // in step here too, not just when the goal or profile sheet is saved.
+      useSettingsStore.getState().syncWeightGoalCalorieTarget(latestWeight(weightSeries)?.kilograms ?? null);
     } finally {
       set({ loadingWeight: false });
     }

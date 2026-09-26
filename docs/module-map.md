@@ -335,7 +335,7 @@ name cannot say is where a component appears, and that is `docs/screen-map.md`.
 - `src/utils/weatherTasks.ts` — WEATHER_LINK_URL, WEATHER_RULE_TITLE_MAX_LENGTH, WEATHER_CONDITIONS, WEATHER_AHEAD_FROM_HOUR, weatherConditionLabel, defaultWeatherRules, parseWeatherRules, weatherSourceId, parseWeatherSourceId, weatherRuleIdOf, +5 more
 - `src/utils/weekPlan.ts` — WeekNight, weekNights, decidableNights
 - `src/utils/weekendTasks.ts` — WEEKEND_NUDGE_TITLE, WEEKEND_EVENING_SEGMENTS, WeekendWindow, upcomingWeekend, isWeekendNudgeLeadDay, clampWeekendNudgeLeadDays, describeWeekendNudgeLead, weekendNudgeWeekendKey, isWeekendEvening, weekendPlanCount, +7 more
-- `src/utils/weightGoal.ts` — WeightGoalDirection, WeightGoal, RATE_RANGE, MAX_RATE_KG_PER_WEEK, goalDirection, signedRateKgPerWeek, WeightGoalProgress, goalProgress, MAINTAIN_BAND_KG, paceWeightAfterDays, +8 more
+- `src/utils/weightGoal.ts` — WeightGoalDirection, WeightGoal, RATE_RANGE, MAX_RATE_KG_PER_WEEK, goalDirection, signedRateKgPerWeek, autoCalorieTargetKcal, WeightGoalProgress, goalProgress, MAINTAIN_BAND_KG, +9 more
 - `src/utils/weightLog.ts` — WeightUnit, MAX_WEIGHT_KG, WeightPoint, WeightReading, kgToUnit, unitToKg, formatWeight, parseWeightInput, weightReadings, latestWeight, +13 more
 - `src/utils/weightTasks.ts` — WEIGH_IN_TITLE, DEFAULT_WEIGH_IN_EVERY_DAYS, WEIGH_IN_EVERY_DAYS_MIN, WEIGH_IN_EVERY_DAYS_MAX, clampWeighInEveryDays, WEIGH_IN_LINK_URL, weighInDayKey, wantsWeighIn, weighInNotes
 - `src/utils/widgetBridge.ts` — WidgetBridge, widgetBridge

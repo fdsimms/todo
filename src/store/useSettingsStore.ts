@@ -3,7 +3,9 @@ import { dbGetAllSettings, dbGetSetting, dbSetSetting } from '../db/database';
 import type { ThemeMode } from '../theme';
 import type { WeightUnit } from '../utils/weightLog';
 import type { WaterUnit } from '../utils/waterLog';
+import { getLogicalToday } from '../utils/dateUtils';
 import {
+  autoCalorieTargetKcal,
   parseWeightGoal,
   serializeWeightGoal,
   type WeightGoal,
@@ -1629,6 +1631,15 @@ interface SettingsStore {
   setActiveEnergyBoost: (boost: ActiveEnergyBoost | null) => void;
   /** Replaces the body profile whole — the sheet stages it and saves once. */
   setBodyProfile: (profile: BodyProfile) => void;
+  /**
+   * Recomputes the food log's calorie target from the weight goal and body
+   * profile, and writes it if it changed. `currentKg` is the caller's own
+   * best-known weight (a fresh weigh-in, or `null` to fall back to the
+   * goal's start) — this action holds no weight of its own to read.
+   * No-ops when there's no goal or the profile can't support an estimate,
+   * leaving whatever calorie target is already stored untouched.
+   */
+  syncWeightGoalCalorieTarget: (currentKg: number | null) => void;
   setHealthCategory: (category: string | null) => void;
   setHealthTasks: (on: boolean) => void;
   setHealthTaskCategory: (category: string | null) => void;
@@ -4085,6 +4096,16 @@ export const useSettingsStore = create<SettingsStore>((set, get) => ({
   setBodyProfile(profile: BodyProfile) {
     dbSetSetting('bodyProfile', serializeBodyProfile(profile));
     set({ bodyProfile: profile });
+  },
+
+  // Called after the goal or profile changes (WeightGoalSheet's Save) and
+  // after a fresh weigh-in (useHealthStore's refreshWeight) — see
+  // autoCalorieTargetKcal's own doc comment for why this exists at all.
+  syncWeightGoalCalorieTarget(currentKg: number | null) {
+    const { weightGoal, bodyProfile } = get();
+    const proposed = autoCalorieTargetKcal(weightGoal, bodyProfile, currentKg, getLogicalToday());
+    if (proposed === null) return;
+    get().setNutritionTarget('calorieKcal', proposed);
   },
 
   setHealthCategory(category: string | null) {

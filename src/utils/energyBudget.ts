@@ -11,14 +11,20 @@
  * here fills a field in, nothing is stored until it is accepted, and a profile
  * missing any part of itself produces null rather than a guess.
  *
- * **It proposes; it never writes.** `WeightGoalSheet` shows the figure with its
- * own arithmetic printed beside it and a button that copies it into the
- * `calorieKcal` entry of `nutritionTargets`. Nothing calls `setNutritionTarget`
- * on this module's behalf, nothing re-applies it when a weight changes, and the
- * copied number is thereafter an ordinary target the person can edit or clear
- * in `NutritionTargetsSheet` like any other. The alternative — a target that
- * silently tracks a formula — is a figure nobody chose driving the food log,
- * which is the exact thing `nutritionTargets`' own note rules out.
+ * **This module itself still only proposes; it never writes.** `calorieBudget`
+ * and `budgetFromMaintenance` are pure arithmetic — nothing here calls
+ * `setNutritionTarget`, and a copied number is thereafter an ordinary target
+ * the person can edit or clear in `NutritionTargetsSheet` like any other.
+ *
+ * **The plain calorie figure this produces is, by request, kept in step with
+ * the goal automatically** — `WeightGoalSheet`'s Save writes it, and
+ * `useSettingsStore.syncWeightGoalCalorieTarget` (via `autoCalorieTargetKcal`
+ * in `weightGoal.ts`) re-applies it on a body-profile edit or a fresh
+ * weigh-in, so it doesn't go stale the moment the sheet isn't open. That is a
+ * deliberate, narrow exception to "a figure nobody chose driving the food
+ * log": it is scoped to the one number the person already asked to have
+ * tracked (they set the goal), it never touches macros, and it never invents
+ * a target where there wasn't a goal to derive one from.
  *
  * **The estimate is an estimate and the copy has to say so.** Mifflin-St Jeor
  * is a population regression: it is the standard predictive equation and it is
