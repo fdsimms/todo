@@ -29,8 +29,10 @@ import { InlineAction } from './InlineAction';
 import { PinIcon } from './PinIcon';
 import { SheetHeaderButton } from './SheetHeaderButton';
 import { SheetHeader } from './SheetHeader';
-import { TaskEditor } from './TaskEditor';
+import { TaskEditor, type TaskDraft } from './TaskEditor';
+import { QuickAddModal } from './QuickAddModal';
 import { useFilterField } from '../hooks/useFilterField';
+import { useScrollFieldIntoView } from '../hooks/useKeyboardInsetScroll';
 
 /** Editor sections that collapse to a one-line summary of their current value. */
 type FieldKey = 'category' | 'tags' | 'project';
@@ -85,7 +87,6 @@ export function TaskGroupEditor({ visible, group, isNew, onClose, projectId }: P
   const projects = useProjectStore(useShallow(s => s.projects));
   const allTasks = useTaskStore(s => s.tasks);
   const groupRosterOf = useTaskStore(s => s.groupRosterOf);
-  const addNewGroupedTask = useTaskStore(s => s.addNewGroupedTask);
   const addExistingToGroup = useTaskStore(s => s.addExistingToGroup);
   const addExistingToProject = useTaskStore(s => s.addExistingToProject);
   const removeFromGroup = useTaskStore(s => s.removeFromGroup);
@@ -112,15 +113,26 @@ export function TaskGroupEditor({ visible, group, isNew, onClose, projectId }: P
   // onDragStateChange) — without it the scroll eats the gesture and the row
   // never moves.
   const [draggingChild, setDraggingChild] = useState(false);
-  const [addingChild, setAddingChild] = useState(false);
-  const [newChildTitle, setNewChildTitle] = useState('');
+  // The "New task" InlineAction raises QuickAddModal (nested in this sheet's
+  // own Modal, seeded with this stack) rather than an inline field — a bare
+  // TextInput at the bottom of a long roster sits right where the keyboard
+  // covers it, and the full sheet gives a date/category/tags picker for free.
+  const [quickAddVisible, setQuickAddVisible] = useState(false);
   const [showExistingPicker, setShowExistingPicker] = useState(false);
   const { query: existingSearch, clear: clearExistingSearch, props: filterField } = useFilterField();
+  // The tag field and existing-task search both open (and autofocus) while a
+  // keyboard may already be up from another field on this sheet — see
+  // useKeyboardInsetScroll's doc comment for why
+  // automaticallyAdjustKeyboardInsets alone misses exactly that case.
+  const scrollIntoView = useScrollFieldIntoView();
   // Pickers collapse to their current value, matching the task editor.
   const [openFields, setOpenFields] = useState<Partial<Record<FieldKey, boolean>>>({});
   // A member row opens the task's own editor on top of this one, same as
-  // tapping a task row anywhere else in the app.
+  // tapping a task row anywhere else in the app. A task created through the
+  // nested QuickAddModal's "..." handoff opens the same editor via a draft
+  // instead of an existing row — see handleQuickAddOpenFull.
   const [editingTask, setEditingTask] = useState<Task | null>(null);
+  const [editingDraft, setEditingDraft] = useState<Partial<TaskDraft> | null>(null);
   const titleInputRef = useRef<TextInput>(null);
 
   useEffect(() => {
@@ -180,17 +192,6 @@ export function TaskGroupEditor({ visible, group, isNew, onClose, projectId }: P
   const sectionWord = filingProjectId ? 'section' : 'stack';
   const sectionWordCap = filingProjectId ? 'Section' : 'Stack';
 
-  // New members always land at the end of the roster — drag the row afterward
-  // to move it, same as TaskEditor's own subtask/chain-step lists.
-  const commitChild = (title: string) => {
-    const trimmed = title.trim();
-    if (!group || !trimmed) return;
-    const task = addNewGroupedTask(group.id, trimmed);
-    if (filingProjectId) addExistingToProject(task.id, filingProjectId);
-    // The field closes on submit here (returnKeyType="done", no
-    // blurOnSubmit={false}), so there's no burst to keep together.
-  };
-
   const commitExisting = (taskId: string) => {
     if (!group) return;
     addExistingToGroup(taskId, group.id);
@@ -219,21 +220,15 @@ export function TaskGroupEditor({ visible, group, isNew, onClose, projectId }: P
     [eligibleMatches],
   );
 
-  // Tapping Done can beat the new-tag/new-task fields' own blur or Enter —
-  // same race TaskEditor's resolveX functions guard against.
+  // Tapping Done can beat the new-tag field's own blur or Enter — same race
+  // TaskEditor's resolveX functions guard against.
   const resolvePendingTags = () => {
     const t = newTag.trim().toLowerCase();
     return t && !tags.includes(t) ? [...tags, t] : tags;
   };
-  const commitPendingChild = () => {
-    if (!addingChild) return;
-    commitChild(newChildTitle);
-    setNewChildTitle('');
-  };
 
   const saveAndClose = () => {
     if (!group) { onClose(); return; }
-    commitPendingChild();
     const resolvedTags = resolvePendingTags();
     // A blank title only skips the *title* write — an untitled brand-new
     // stack is garbage-collected by the caller anyway (see TodayScreen), and
@@ -333,11 +328,35 @@ export function TaskGroupEditor({ visible, group, isNew, onClose, projectId }: P
         tapping a task in the list did nothing at all.
       */
       footer={
-        <TaskEditor
-          visible={!!editingTask}
-          task={editingTask}
-          onClose={() => setEditingTask(null)}
-        />
+        <>
+          <TaskEditor
+            visible={!!editingTask || !!editingDraft}
+            task={editingTask}
+            initialDraft={editingDraft}
+            onClose={() => { setEditingTask(null); setEditingDraft(null); }}
+          />
+          {/*
+            Also inside this sheet's own Modal, for the same reason as
+            TaskEditor above — raised by the "New task" InlineAction rather
+            than a bare inline field, so a long roster's add field doesn't
+            sit right where the keyboard covers it.
+          */}
+          <QuickAddModal
+            visible={quickAddVisible}
+            onClose={() => setQuickAddVisible(false)}
+            context="unscheduled"
+            seed={{ groupId: group.id, category }}
+            seedLabel={title.trim() || sectionWordCap}
+            onCreated={task => {
+              if (filingProjectId) addExistingToProject(task.id, filingProjectId);
+            }}
+            onOpenFull={draft => {
+              setQuickAddVisible(false);
+              setEditingTask(null);
+              setEditingDraft(draft);
+            }}
+          />
+        </>
       }
       header={
         <SheetHeader
@@ -463,6 +482,7 @@ export function TaskGroupEditor({ visible, group, isNew, onClose, projectId }: P
                 style={styles.tagInput}
                 value={newTag}
                 onChangeText={setNewTag}
+                onFocus={scrollIntoView}
                 onSubmitEditing={addTagFromInput}
                 onBlur={addTagFromInput}
                 placeholder="Tag name"
@@ -524,35 +544,12 @@ export function TaskGroupEditor({ visible, group, isNew, onClose, projectId }: P
               );
             }}
           />
-          {addingChild && (
-            <View style={styles.subtaskInputRow}>
-              <TextInput
-                autoFocus
-                style={styles.subtaskInput}
-                value={newChildTitle}
-                onChangeText={setNewChildTitle}
-                placeholder="New task title"
-                placeholderTextColor={colors.textTertiary}
-                maxLength={TITLE_MAX_LENGTH}
-                returnKeyType="done"
-                onSubmitEditing={() => {
-                  commitChild(newChildTitle);
-                  setNewChildTitle('');
-                  haptics.tap();
-                }}
-                onBlur={() => {
-                  commitChild(newChildTitle);
-                  setNewChildTitle('');
-                  setAddingChild(false);
-                }}
-              />
-            </View>
-          )}
           {showExistingPicker && (
             <View style={styles.existingPicker}>
               <TextInput
                 style={styles.existingSearch}
                 {...filterField}
+                onFocus={scrollIntoView}
                 placeholder="Search tasks"
                 placeholderTextColor={colors.textTertiary}
               />
@@ -579,9 +576,7 @@ export function TaskGroupEditor({ visible, group, isNew, onClose, projectId }: P
             </View>
           )}
           <View style={styles.addRow}>
-            {!addingChild && (
-              <InlineAction icon="add" label="New task" onPress={() => setAddingChild(true)} />
-            )}
+            <InlineAction icon="add" label="New task" onPress={() => setQuickAddVisible(true)} />
             {!showExistingPicker && (
               <InlineAction
                 icon="albums-outline"
@@ -659,12 +654,6 @@ const makeStyles = (colors: Colors) => StyleSheet.create({
   childTitleDone: { color: colors.textTertiary, textDecorationLine: 'line-through' },
   childRemove: { padding: 4 },
   addRow: { flexDirection: 'row', gap: spacing.sm, marginTop: spacing.sm },
-  subtaskInputRow: { paddingVertical: spacing.xs },
-  subtaskInput: {
-    color: colors.text, fontSize: font.md,
-    backgroundColor: colors.bgTertiary, borderRadius: radius.md,
-    paddingHorizontal: spacing.sm, paddingVertical: 8,
-  },
   existingPicker: {
     marginTop: spacing.sm, backgroundColor: colors.bgTertiary, borderRadius: radius.md,
     padding: spacing.sm,
