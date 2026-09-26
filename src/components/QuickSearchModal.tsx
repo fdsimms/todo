@@ -53,6 +53,8 @@ interface Props {
   onSelectTask: (task: Task) => void;
   /** The footer row — hands the query over to the Search tab rather than growing this card. */
   onOpenFullSearch: (query: string) => void;
+  /** The sheet is on screen (the native modal's `onShow`). */
+  onShown?: () => void;
 }
 
 /**
@@ -214,7 +216,7 @@ function QuickSearchRow({ result, onSelect, onTicked, styles, colors }: {
  * to the footer row, which is why there's no scrolling here — a card you have
  * to scroll isn't quick.
  */
-export function QuickSearchModal({ visible, onClose, onSelectTask, onOpenFullSearch }: Props) {
+export function QuickSearchModal({ visible, onClose, onSelectTask, onOpenFullSearch, onShown }: Props) {
   const insets = useSafeAreaInsets();
   const colors = useColors();
   const { isDark, shadows } = useTheme();
@@ -309,7 +311,7 @@ export function QuickSearchModal({ visible, onClose, onSelectTask, onOpenFullSea
   const showNoMatches = trimmed.length > 0 && results.length === 0;
 
   return (
-    <SheetModal visible={visible} animationType="none" transparent onRequestClose={() => dismiss()}>
+    <SheetModal visible={visible} animationType="none" transparent onShow={onShown} onRequestClose={() => dismiss()}>
       <Animated.View style={[StyleSheet.absoluteFill, { opacity: backdropOpacity }]} pointerEvents="none">
         <SafeBlurView intensity={isDark ? 20 : 15} tint="dark" style={StyleSheet.absoluteFill} />
         <View style={[StyleSheet.absoluteFill, styles.backdropDim]} />
