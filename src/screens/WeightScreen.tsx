@@ -1,5 +1,6 @@
 import React, { useEffect, useMemo, useState } from 'react';
-import { View, Text, ScrollView, StyleSheet } from 'react-native';
+import { View, Text, ScrollView, StyleSheet, TouchableOpacity } from 'react-native';
+import Ionicons from '@expo/vector-icons/Ionicons';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { useBottomTabBarHeight } from '@react-navigation/bottom-tabs';
 import { useRoute } from '@react-navigation/native';
@@ -10,10 +11,11 @@ import { useShallow } from 'zustand/react/shallow';
 import { useSettingsStore } from '../store/useSettingsStore';
 import { useHealthStore, WEIGHT_HISTORY_DAYS } from '../store/useHealthStore';
 import { useColors } from '../theme/ThemeContext';
-import { spacing, radius, font, fontWeight, type Colors } from '../theme';
+import { spacing, radius, font, fontWeight, iconSize, interaction, type Colors } from '../theme';
 import { haptics } from '../utils/haptics';
 import { dayKeyToDate, getLogicalToday } from '../utils/dateUtils';
 import { navigateToSettingsEntry } from '../utils/settingsIndex';
+import { openHealthApp } from '../utils/healthBridge';
 import {
   formatWeight,
   kgToUnit,
@@ -494,6 +496,24 @@ export function WeightScreen() {
             </View>
           </>
         )}
+
+        {/* This screen keeps no copy of a weigh-in, so there is nothing here
+            to edit or delete (see docs/arch/health-data.md). Correcting or
+            removing one happens in the Health app itself, alongside whatever
+            else recorded it (a smart scale, another tracker) — this just
+            opens the door to it, same as the Health-permission rows do. */}
+        <TouchableOpacity
+          style={styles.healthLinkRow}
+          activeOpacity={interaction.activeOpacity}
+          onPress={() => { haptics.tap(); void openHealthApp(); }}
+          accessibilityRole="button"
+          accessibilityLabel="Open the Health app"
+          accessibilityHint="View or correct a past weigh-in in Apple Health, where your weight history is kept"
+        >
+          <Ionicons name="heart-outline" size={iconSize.sm} color={colors.textSecondary} />
+          <Text style={styles.healthLinkText}>View or edit past weigh-ins in Health</Text>
+          <Ionicons name="chevron-forward" size={iconSize.sm} color={colors.textTertiary} />
+        </TouchableOpacity>
       </ScrollView>
       <LogWeightSheet visible={logOpen} onClose={closeLog} />
       <WeightGoalSheet
@@ -618,4 +638,14 @@ const makeStyles = (colors: Colors) => StyleSheet.create({
   },
   goalStatValue: { fontSize: font.lg, fontWeight: fontWeight.bold, color: colors.text, textAlign: 'center' },
   finding: { fontSize: font.md, color: colors.text, lineHeight: 22 },
+  healthLinkRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: spacing.sm,
+    backgroundColor: colors.bgSecondary,
+    borderRadius: radius.md,
+    padding: spacing.md,
+    marginBottom: spacing.lg,
+  },
+  healthLinkText: { flex: 1, fontSize: font.sm, color: colors.textSecondary },
 });
