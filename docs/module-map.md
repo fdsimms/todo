@@ -395,6 +395,7 @@ name cannot say is where a component appears, and that is `docs/screen-map.md`.
 - `src/hooks/useFilterField.ts` — FilterField, useFilterField
 - `src/hooks/useFocusSession.ts` — useFocusSession
 - `src/hooks/useKeyboardInsetScroll.ts` — ScrollHandle, KeyboardScrollIntoViewContext, useScrollFieldIntoView, useKeyboardInsetScroll
+- `src/hooks/useKeyboardLift.ts` — useKeyboardLift
 - `src/hooks/useMealPlanNudgeProgress.ts` — useMealPlanNudgeProgress
 - `src/hooks/useMeasuredTextWidth.ts` — useMeasuredTextWidth
 - `src/hooks/useNowTick.ts` — useNowTick
