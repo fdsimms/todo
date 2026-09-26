@@ -445,7 +445,7 @@ export function NutritionTargetsSheet({ visible, onClose }: Props) {
                       {typicalKcal !== null && typicalKcal !== undefined && (
                         snapToBaselineStep(typicalKcal) !== activeEnergyBoost.baselineKcal ? (
                           <InlineAction
-                            label={`Use your recent average (${typicalKcal.toLocaleString()} cal)`}
+                            label={`Use your recent average (${snapToBaselineStep(typicalKcal).toLocaleString()} cal)`}
                             variant="neutral"
                             onPress={() => {
                               haptics.tap();
