@@ -75,7 +75,7 @@ interface Props {
 export function EventImportSheet({ visible, onClose, onImported }: Props) {
   const colors = useColors();
   const styles = useMemo(() => makeStyles(colors), [colors]);
-  const keyboardScroll = useKeyboardInsetScroll<ScrollView>();
+  const keyboardScroll = useKeyboardInsetScroll<ScrollView>({ ownsSheet: true });
   const anthropicApiKey = useSettingsStore(s => s.anthropicApiKey);
   const calendarImportEnabled = useSettingsStore(s => s.aiFeatureConfig.calendarImport.enabled);
   const dayResetTime = useSettingsStore(s => s.dayResetTime);

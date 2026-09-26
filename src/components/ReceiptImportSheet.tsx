@@ -232,7 +232,7 @@ export function ReceiptImportSheet({ visible, onClose, onApply, context }: Props
    * here are gated on, so the sheet cannot be open for a route that can't run.
    */
   const receiptRoute = useAiRoute('receiptImport');
-  const keyboardScroll = useKeyboardInsetScroll<ScrollView>();
+  const keyboardScroll = useKeyboardInsetScroll<ScrollView>({ ownsSheet: true });
 
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);

@@ -276,7 +276,7 @@ name cannot say is where a component appears, and that is `docs/screen-map.md`.
 - `src/utils/shakeDetect.ts` — ShakeSample, SHAKE_UPDATE_INTERVAL_MS, SHAKE_THRESHOLD_G, SHAKE_JOLTS_REQUIRED, SHAKE_WINDOW_MS, SHAKE_COOLDOWN_MS, SHAKE_ARM_DELAY_MS, ShakeState, createShakeState, armShakeState, +3 more
 - `src/utils/shareText.ts` — buildRecipeShareText, buildIngredientsText, buildGroceryListShareText, buildGroceryListText, buildWeekPlanShareText
 - `src/utils/sharedRecipeLinks.ts` — SHARED_LINK_QUEUE_CAP, mergeSharedLinks, parseSharedLinkQueue, serializeSharedLinkQueue, sharedLinkLabel
-- `src/utils/sheetModal.ts` — SheetVisibilityStep, nextSheetVisibility, PresentationLevel, createPresentationLevel, PresentationLevelContext, subscribePresentation, canHideSheet, canShowSheet, claimPresentation, releasePresentationClaim, +3 more
+- `src/utils/sheetModal.ts` — SheetVisibilityStep, nextSheetVisibility, PresentationLevel, createPresentationLevel, PresentationLevelContext, subscribePresentation, canHideSheet, canShowSheet, claimPresentation, releasePresentationClaim, +5 more
 - `src/utils/shelfLabel.ts` — ScanBox, ScanText, printedPricesIn, priceNearBarcode
 - `src/utils/shoppingTrip.ts` — MAX_TRIP_STOPS, ShopCoverage, TripPlan, TripSummary, planTrip, summarizeTrip, describeShopCoverage, joinNames
 - `src/utils/simpleMode.ts` — SimpleArea, SimpleFeatureId, SimpleFeature, SIMPLE_AREA_LABELS, SIMPLE_AREAS, SIMPLE_FEATURES, simpleFeaturesIn, featureHidden, featureShown, SIMPLE_HIDDEN_SCREENS, +10 more
@@ -395,6 +395,7 @@ name cannot say is where a component appears, and that is `docs/screen-map.md`.
 - `src/hooks/useFilterField.ts` — FilterField, useFilterField
 - `src/hooks/useFocusSession.ts` — useFocusSession
 - `src/hooks/useKeyboardInsetScroll.ts` — ScrollHandle, KeyboardScrollIntoViewContext, useScrollFieldIntoView, useKeyboardInsetScroll
+- `src/hooks/useKeyboardLift.ts` — useKeyboardLift
 - `src/hooks/useMealPlanNudgeProgress.ts` — useMealPlanNudgeProgress
 - `src/hooks/useMeasuredTextWidth.ts` — useMeasuredTextWidth
 - `src/hooks/useNowTick.ts` — useNowTick

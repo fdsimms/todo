@@ -118,7 +118,7 @@ export function ScanPortionSheet({ visible, foods, slot, at, mealPlanEntryId, on
   // it to a plain ScrollView, which only scrolls when the person does it
   // manually — same mechanism as every other keyboard-heavy sheet (see the
   // hook's own doc comment for why this beats a KeyboardAvoidingView here).
-  const keyboardScroll = useKeyboardInsetScroll<ScrollView>();
+  const keyboardScroll = useKeyboardInsetScroll<ScrollView>({ ownsSheet: true });
 
   const [answers, setAnswers] = useState<Record<string, Answer>>({});
   const [chosenSlot, setChosenSlot] = useState<MealSlot | null>(slot);

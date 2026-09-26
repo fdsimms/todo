@@ -8,7 +8,9 @@ import {
   registerPresentation,
   releasePresentation,
   releasePresentationClaim,
+  sheetCovered,
   subscribePresentation,
+  subscribeSheetCover,
 } from '../utils/sheetModal';
 
 describe('nextSheetVisibility', () => {
@@ -315,5 +317,71 @@ describe('subscribePresentation', () => {
     subscribePresentation(level, () => { calls += 1; });
     expect(() => registerPresentation(level, 'a', 'Scan')).not.toThrow();
     expect(calls).toBe(2);
+  });
+});
+
+describe('sheetCovered', () => {
+  // What a list inside a sheet asks before lifting itself clear of the
+  // keyboard. The component rendering the sheet reads the level its own sheet
+  // registers with, so "is anything presented here" is the wrong question: it
+  // is true for exactly as long as the list is on screen, which switched every
+  // sheet's keyboard handling off while it was open.
+  it('is false for a sheet that is simply open', () => {
+    const root = createPresentationLevel();
+    registerPresentation(root, 'estimate', 'Estimate a meal', createPresentationLevel());
+    expect(root.presented.size).toBe(1);
+    expect(sheetCovered(root)).toBe(false);
+  });
+
+  it('is true once something is presented from that sheet', () => {
+    const root = createPresentationLevel();
+    const own = createPresentationLevel();
+    registerPresentation(root, 'log', 'What did you eat?', own);
+    registerPresentation(own, 'search', 'Search a food database');
+    expect(sheetCovered(root)).toBe(true);
+    releasePresentation(own, 'search');
+    expect(sheetCovered(root)).toBe(false);
+  });
+
+  it('forgets a sheet once it is released', () => {
+    const root = createPresentationLevel();
+    const own = createPresentationLevel();
+    registerPresentation(root, 'log', 'What did you eat?', own);
+    registerPresentation(own, 'search', 'Search a food database');
+    releasePresentation(root, 'log');
+    expect(sheetCovered(root)).toBe(false);
+  });
+});
+
+describe('subscribeSheetCover', () => {
+  it('hears a sheet opening on top of one presented here', () => {
+    const root = createPresentationLevel();
+    const own = createPresentationLevel();
+    let calls = 0;
+    const off = subscribeSheetCover(root, () => { calls += 1; });
+    registerPresentation(root, 'log', 'What did you eat?', own);
+    expect(calls).toBe(1);
+    // Subscribed to the sheet's own level after it registered, not only to
+    // the level that existed when the subscription was made.
+    registerPresentation(own, 'search', 'Search a food database');
+    expect(calls).toBe(2);
+    releasePresentation(own, 'search');
+    expect(calls).toBe(3);
+    off();
+    registerPresentation(own, 'search', 'Search a food database');
+    expect(calls).toBe(3);
+    expect(own.listeners.size).toBe(0);
+    expect(root.listeners.size).toBe(0);
+  });
+
+  it('stops listening to a sheet that has gone', () => {
+    const root = createPresentationLevel();
+    const own = createPresentationLevel();
+    const off = subscribeSheetCover(root, () => {});
+    registerPresentation(root, 'log', 'What did you eat?', own);
+    expect(own.listeners.size).toBe(1);
+    releasePresentation(root, 'log');
+    expect(own.listeners.size).toBe(0);
+    off();
   });
 });

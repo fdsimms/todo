@@ -1,10 +1,11 @@
 import React, { useEffect, useMemo, useRef, useState } from 'react';
-import { Keyboard, View, Text, TextInput, TouchableOpacity, ScrollView, Animated, StyleSheet, useWindowDimensions } from 'react-native';
+import { Keyboard, View, Text, TextInput, TouchableOpacity, ScrollView, Animated, StyleSheet, useWindowDimensions, type NativeScrollEvent, type NativeSyntheticEvent } from 'react-native';
 import { SheetModal } from './SheetModal';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import Ionicons from '@expo/vector-icons/Ionicons';
 import { useShallow } from 'zustand/react/shallow';
 import { useScrollEdgeFade } from '../hooks/useScrollEdgeFade';
+import { useKeyboardLift } from '../hooks/useKeyboardLift';
 import { useColors, useTheme } from '../theme/ThemeContext';
 import {
   spacing,
@@ -169,6 +170,47 @@ export function CookRecapSheet({
   const sheetMaxHeight = windowHeight - insets.top - insets.bottom - spacing.xl * 2;
   const styles = useMemo(() => makeStyles(colors, sheetMaxHeight), [colors, sheetMaxHeight]);
   const fade = useScrollEdgeFade();
+
+  // The dish-weight field sits partway down a centered dialog, and a centered
+  // dialog's lower half is exactly where the keyboard lands. So the dialog
+  // re-centers in the room left above the keyboard and caps itself to it,
+  // and once the keyboard is up the focused field is scrolled into that room.
+  // This sheet is mounted outside NavigationContainer (see AppNavigator), so
+  // `useKeyboardInsetScroll`, which reads screen focus, isn't available here.
+  const keyboard = useKeyboardLift(visible);
+  const liftedMaxHeight = keyboard.height > 0
+    ? windowHeight - insets.top - keyboard.height - spacing.xl * 2
+    : null;
+  const scrollRef = useRef<ScrollView>(null);
+  const scrollY = useRef(0);
+  const onScroll = fade.scrollProps.onScroll;
+  const scrollProps = useMemo(() => ({
+    ...fade.scrollProps,
+    onScroll: (e: NativeSyntheticEvent<NativeScrollEvent>) => {
+      scrollY.current = e.nativeEvent.contentOffset.y;
+      onScroll(e);
+    },
+  }), [fade.scrollProps, onScroll]);
+  useEffect(() => {
+    if (!visible) return;
+    // `keyboardDidShow`, not the will-show `useKeyboardLift` hears: by now the
+    // dialog has laid out in its lifted size, so the two measurements agree.
+    const sub = Keyboard.addListener('keyboardDidShow', () => {
+      const input = TextInput.State.currentlyFocusedInput();
+      const scroll = scrollRef.current;
+      const scrollHost = scroll?.getNativeScrollRef();
+      if (!input || !scroll || !scrollHost) return;
+      scrollHost.measureInWindow((_sx, scrollTop, _sw, scrollHeight) => {
+        input.measureInWindow((_ix, inputTop, _iw, inputHeight) => {
+          const below = inputTop + inputHeight + spacing.md - (scrollTop + scrollHeight);
+          const above = scrollTop - inputTop;
+          if (below > 0) scroll.scrollTo({ y: scrollY.current + below, animated: true });
+          else if (above > 0) scroll.scrollTo({ y: Math.max(0, scrollY.current - above - spacing.md), animated: true });
+        });
+      });
+    });
+    return () => sub.remove();
+  }, [visible]);
 
   const scaleAnim = useRef(new Animated.Value(0.95)).current;
   const translateYAnim = useRef(new Animated.Value(16)).current;
@@ -342,10 +384,11 @@ export function CookRecapSheet({
       </Animated.View>
       <SheetScrim onPress={dismiss} />
 
-      <View style={styles.centeredContainer} pointerEvents="box-none">
+      <View style={[styles.centeredContainer, { paddingBottom: spacing.xl + keyboard.height }]} pointerEvents="box-none">
         <Animated.View
           style={[
             styles.dialogCard,
+            liftedMaxHeight != null && { maxHeight: liftedMaxHeight },
             shadows.sheet,
             { opacity: sheetOpacity, transform: [{ scale: scaleAnim }, { translateY: translateYAnim }] },
           ]}
@@ -363,10 +406,11 @@ export function CookRecapSheet({
           />
 
           <ScrollView
+            ref={scrollRef}
             style={styles.scrollBody}
             contentContainerStyle={styles.body}
             showsVerticalScrollIndicator={false}
-            {...fade.scrollProps}
+            {...scrollProps}
           >
             <Text style={styles.subject} numberOfLines={2}>{title}</Text>
 

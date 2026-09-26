@@ -332,7 +332,7 @@ export function FoodLogEntrySheet({
   // Lifts the amount field (which autofocuses, so the keyboard is already up
   // when this half renders) clear of the keyboard instead of leaving it to a
   // plain ScrollView — same mechanism as every other keyboard-heavy sheet.
-  const keyboardScroll = useKeyboardInsetScroll<ScrollView>();
+  const keyboardScroll = useKeyboardInsetScroll<ScrollView>({ ownsSheet: true });
   // The search field, refocused after a burst save — see handleSave.
   // Set by handleSave's burst branch, consumed by the effect below once the
   // search field it wants to focus has actually mounted.

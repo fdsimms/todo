@@ -100,7 +100,7 @@ export function GroceryAISheet({ visible, mode, onClose }: Props) {
   const [recipeRows, setRecipeRows] = useState<RecipeGroceryItem[]>([]);
   const [accepted, setAccepted] = useState<Set<number>>(new Set());
   const recipeInput = useRecipeImportSource('paste', undefined, MAX_RECIPE_PHOTOS);
-  const keyboardScroll = useKeyboardInsetScroll<ScrollView>();
+  const keyboardScroll = useKeyboardInsetScroll<ScrollView>({ ownsSheet: true });
   const { resolveSource: resolveRecipeSource, reset: resetRecipeInput } = recipeInput;
 
   // Anything currently sitting in the catch-all and on the list — the exact

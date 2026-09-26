@@ -22,6 +22,7 @@ import { isSameDay } from 'date-fns/isSameDay';
 import { isToday } from 'date-fns/isToday';
 import { format } from 'date-fns/format';
 import { useScrollEdgeFade } from '../hooks/useScrollEdgeFade';
+import { useKeyboardInsetScroll } from '../hooks/useKeyboardInsetScroll';
 import { useColors, useTheme } from '../theme/ThemeContext';
 import { spacing, radius, font, fontWeight, interaction, type Colors } from '../theme';
 import { useSettingsStore } from '../store/useSettingsStore';
@@ -88,6 +89,7 @@ export function RemindMePicker({ visible, value, kind, dueDate = null, offsetDay
   const { height: windowHeight } = useWindowDimensions();
   const styles = useMemo(() => makeStyles(colors, windowHeight), [colors, windowHeight]);
   const fade = useScrollEdgeFade();
+  const keyboardScroll = useKeyboardInsetScroll<ScrollView>({ ownsSheet: true });
 
   const [displayMonth, setDisplayMonth] = useState(() => value ?? new Date());
   const [selectedDate, setSelectedDate] = useState<Date | null>(value);
@@ -221,6 +223,8 @@ export function RemindMePicker({ visible, value, kind, dueDate = null, offsetDay
           <View style={styles.scrollWrap}>
           <ScrollView
             style={styles.scroll}
+            ref={keyboardScroll.ref}
+            {...keyboardScroll.props}
             showsVerticalScrollIndicator={false}
             bounces={false}
             keyboardShouldPersistTaps="handled"

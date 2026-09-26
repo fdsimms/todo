@@ -63,7 +63,7 @@ interface Props {
 export function CookbookChecklistSheet({ visible, onClose, onCreated }: Props) {
   const colors = useColors();
   const styles = useMemo(() => makeStyles(colors), [colors]);
-  const keyboardScroll = useKeyboardInsetScroll<ScrollView>();
+  const keyboardScroll = useKeyboardInsetScroll<ScrollView>({ ownsSheet: true });
 
   const anthropicApiKey = useSettingsStore(s => s.anthropicApiKey);
   const cookbookFeature = useSettingsStore(s => s.aiFeatureConfig.cookbookChecklist);

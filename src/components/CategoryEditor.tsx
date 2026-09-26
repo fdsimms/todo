@@ -63,7 +63,7 @@ export function CategoryEditor({ visible, category, onClose }: Props) {
   const colors = useColors();
   const { isDark } = useTheme();
   const styles = useMemo(() => makeStyles(colors), [colors]);
-  const keyboardScroll = useKeyboardInsetScroll<ScrollView>();
+  const keyboardScroll = useKeyboardInsetScroll<ScrollView>({ ownsSheet: true });
 
   const cat = useCategoryStore(s => (category ? s.getCategoryByName(category) : null));
   const setCategorySchedule = useCategoryStore(s => s.setCategorySchedule);

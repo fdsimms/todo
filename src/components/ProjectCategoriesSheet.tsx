@@ -13,6 +13,7 @@ import { SheetModal } from './SheetModal';
 import Ionicons from '@expo/vector-icons/Ionicons';
 import { useShallow } from 'zustand/react/shallow';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
+import { useKeyboardInsetScroll } from '../hooks/useKeyboardInsetScroll';
 import { useColors } from '../theme/ThemeContext';
 import { spacing, radius, font, fontWeight, border, interaction, type Colors } from '../theme';
 import { useTaskStore } from '../store/useTaskStore';
@@ -66,6 +67,7 @@ interface Row {
 export function ProjectCategoriesSheet({ visible, onClose }: Props) {
   const colors = useColors();
   const insets = useSafeAreaInsets();
+  const keyboardScroll = useKeyboardInsetScroll<ScrollView>({ ownsSheet: true });
   const styles = useMemo(() => makeStyles(colors), [colors]);
 
   const categories = useProjectCategoryStore(useShallow(s => s.categories));
@@ -189,6 +191,8 @@ export function ProjectCategoriesSheet({ visible, onClose }: Props) {
         </View>
 
         <ScrollView
+          ref={keyboardScroll.ref}
+          {...keyboardScroll.props}
           contentContainerStyle={order.length === 0 ? styles.listEmpty : styles.list}
           scrollEnabled={!dragging}
           keyboardShouldPersistTaps="handled"

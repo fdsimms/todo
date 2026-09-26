@@ -157,7 +157,7 @@ export function GroceryItemSheet({
   // ==== store bindings ====
   const colors = useColors();
   const styles = useMemo(() => makeStyles(colors), [colors]);
-  const keyboardScroll = useKeyboardInsetScroll<ScrollView>();
+  const keyboardScroll = useKeyboardInsetScroll<ScrollView>({ ownsSheet: true });
 
   const item = useGroceryStore(s => (itemId ? s.items.find(i => i.id === itemId) ?? null : null));
   const clearChoice = useGroceryStore(s => s.clearChoice);

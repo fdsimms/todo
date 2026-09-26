@@ -69,7 +69,7 @@ interface Props {
 
 export function NutritionTargetsSheet({ visible, onClose }: Props) {
   const colors = useColors();
-  const keyboardScroll = useKeyboardInsetScroll<ScrollView>();
+  const keyboardScroll = useKeyboardInsetScroll<ScrollView>({ ownsSheet: true });
   const styles = useMemo(() => makeStyles(colors), [colors]);
   const navigation = useNavigation();
 

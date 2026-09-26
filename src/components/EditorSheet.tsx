@@ -97,7 +97,7 @@ export function EditorSheet({
   // combination could over-scroll the sheet — a small field near the top
   // scrolling far past where it needed to, occasionally all the way to the
   // bottom of the content. One mechanism owning the adjustment fixes that.
-  const keyboardScroll = useKeyboardInsetScroll<ScrollView>();
+  const keyboardScroll = useKeyboardInsetScroll<ScrollView>({ ownsSheet: true });
 
   return (
     <SheetModal

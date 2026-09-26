@@ -7,6 +7,7 @@ import {
   TouchableOpacity,
   ScrollView,
   Animated,
+  useWindowDimensions,
   PanResponder,
   StyleSheet,
 } from 'react-native';
@@ -57,6 +58,7 @@ import { SheetScrim } from './SheetScrim';
 import { usePersonStore, displayNameOf } from '../store/usePersonStore';
 import type { Task, TaskTemplate, TemplateContainer, TemplateItem, TemplateQuestion, Person } from '../types';
 import { useSheetHiddenOffset } from '../hooks/useSheetHiddenOffset';
+import { useKeyboardLift } from '../hooks/useKeyboardLift';
 
 interface Props {
   visible: boolean;
@@ -179,6 +181,12 @@ export function ApplyTemplateSheet({ visible, template, onClose, projectId, onAp
 
   const translateY = useRef(new Animated.Value(hiddenY)).current;
   const backdropOpacity = useRef(new Animated.Value(0)).current;
+  // The run name, the questions and the blanks all sit above the item list,
+  // in a card anchored to the bottom of the screen, so the keyboard covered
+  // the very field it opened for. The card rides up with it instead, and the
+  // item list gives up height (`flexShrink` below) to keep it on screen.
+  const keyboard = useKeyboardLift(visible);
+  const { height: windowHeight } = useWindowDimensions();
 
   useEffect(() => {
     if (visible && template) {
@@ -489,7 +497,13 @@ export function ApplyTemplateSheet({ visible, template, onClose, projectId, onAp
       </Animated.View>
       <SheetScrim onPress={() => dismiss()} />
 
-      <Animated.View style={[styles.sheetOuter, { transform: [{ translateY }] }]}>
+      <Animated.View
+        style={[
+          styles.sheetOuter,
+          keyboard.height > 0 && { maxHeight: windowHeight - keyboard.height - KEYBOARD_TOP_INSET },
+          { transform: [{ translateY: Animated.add(translateY, keyboard.offset) }] },
+        ]}
+      >
         <View style={styles.handleArea} {...panResponder.panHandlers}>
           <View style={styles.handle} />
         </View>
@@ -757,6 +771,9 @@ function AnchorRow({
   );
 }
 
+/** Room kept above the card while the keyboard has lifted it, same as `RecipePickerSheet`'s. */
+const KEYBOARD_TOP_INSET = 72;
+
 const makeStyles = (colors: Colors) => StyleSheet.create({
   backdropDim: {
     backgroundColor: colors.backdrop,
@@ -785,6 +802,7 @@ const makeStyles = (colors: Colors) => StyleSheet.create({
     borderRadius: radius.lg,
     overflow: 'hidden',
     marginBottom: spacing.sm,
+    flexShrink: 1,
   },
   sheetTitle: {
     color: colors.text,
@@ -874,6 +892,7 @@ const makeStyles = (colors: Colors) => StyleSheet.create({
   },
   itemList: {
     maxHeight: 320,
+    flexShrink: 1,
   },
   itemRow: {
     flexDirection: 'row',
