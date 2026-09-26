@@ -29,3 +29,26 @@ export function describeCreatedTaskPlacement(
       return `Created "${task.title}" in Inbox`;
   }
 }
+
+/**
+ * Same toast, for a task that was already in the Inbox and left it by taking
+ * an in-row suggestion (see TaskItem's importSuggestion chip) rather than
+ * being created. `destination` is never 'inbox' here in practice — a task
+ * already in the Inbox that took a suggestion and stayed there has nowhere
+ * to go, so nothing calls this for it — but the case is handled rather than
+ * assumed away.
+ */
+export function describeMovedTaskPlacement(
+  task: Pick<Task, 'title' | 'dueDate' | 'deferUntil'>,
+  destination: CreatedTaskDestination,
+  dayResetTime?: string,
+): string {
+  switch (destination) {
+    case 'later':
+      return `Moved "${task.title}" to ${formatTaskDate(task, dayResetTime) ?? 'Later'}`;
+    case 'unscheduled':
+      return `Moved "${task.title}" to Unscheduled`;
+    case 'inbox':
+      return `Moved "${task.title}" to Inbox`;
+  }
+}
