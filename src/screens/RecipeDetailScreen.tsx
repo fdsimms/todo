@@ -43,6 +43,7 @@ import { StepText } from '../components/StepText';
 import { CountStepper } from '../components/CountStepper';
 import { PressableScale } from '../components/PressableScale';
 import { SortableList, type SortableRenderItem } from '../components/SortableList';
+import { SwipeableRow } from '../components/SwipeableRow';
 import { IngredientCatalogMatchSheet } from '../components/IngredientCatalogMatchSheet';
 import { RecipeNutritionSheet } from '../components/RecipeNutritionSheet';
 import {
@@ -377,9 +378,10 @@ export function RecipeDetailScreen() {
 
   // Bulk-selecting ingredients — same plain useRowSelection every non-task list
   // in the app reuses (Templates, Grocery), plus the ingredient-specific "Move
-  // to Aisle" / delete actions below. Entered from a header button rather than
-  // a swipe or long press: both of a row's own gestures are already spoken for
-  // (tap opens the edit sheet, long press starts a reorder drag).
+  // to Aisle" / delete actions below. Entered by swiping a row, same entry
+  // point Grocery and the task lists use (#1378) — the row's own long press is
+  // still free for reorder, since SortableList's responder stays inert until
+  // `drag()` is actually called and doesn't compete with the swipe gesture.
   const {
     selectionMode,
     selectedIds,
@@ -993,6 +995,20 @@ export function RecipeDetailScreen() {
             </Text>
           </View>
         )}
+        {/* Same entry point Grocery and the task lists use: swipe left to enter
+            bulk selection with this ingredient pre-selected. Stays mounted
+            through the selectionMode toggle (enabled turns the gesture off
+            without unmounting it — see SwipeableRow's own doc comment on why
+            that matters) and coexists with the row's long-press-to-reorder
+            drag, since SortableList's own responder stays inert until drag()
+            is actually called. */}
+        <SwipeableRow
+          enabled={!selectionMode && !isDragging}
+          selectAction={{
+            onSelect: () => enterSelectionMode(ingredient.id),
+            accessibilityLabel: `Select ${ingredient.name}`,
+          }}
+        >
         <TouchableOpacity
           style={[
             styles.ingredient,
@@ -1141,6 +1157,7 @@ export function RecipeDetailScreen() {
             </TouchableOpacity>
           )}
         </TouchableOpacity>
+        </SwipeableRow>
         {/* A component sharing this ingredient's choice group folds in right
             here, after the group's last ingredient option — not in its own
             block at the bottom of the card (see trailingComponents below).
@@ -1420,20 +1437,6 @@ export function RecipeDetailScreen() {
         onBack={() => navigation.goBack()}
         actions={
           <View style={styles.headerActions}>
-            {recipe.ingredients.length > 0 && (
-              <TouchableOpacity
-                onPress={() => { haptics.tap(); selectionMode ? exitSelection() : enterSelectionMode(); }}
-                hitSlop={8}
-                accessibilityRole="button"
-                accessibilityLabel={selectionMode ? 'Done selecting' : 'Select ingredients'}
-              >
-                <Ionicons
-                  name={selectionMode ? 'checkmark-circle' : 'checkmark-circle-outline'}
-                  size={iconSize.md}
-                  color={selectionMode ? colors.accent : colors.textSecondary}
-                />
-              </TouchableOpacity>
-            )}
             {!selectionMode && !!anthropicApiKey && (
               <TouchableOpacity
                 onPress={() => { haptics.tap(); setExtractVisible(true); }}
@@ -2551,7 +2554,11 @@ const makeStyles = (colors: Colors) => StyleSheet.create({
     backgroundColor: colors.bgTertiary,
   },
   ingredientSelected: {
-    backgroundColor: colors.accent + '1A',
+    // Flattened rather than a plain translucent tint: the row now sits inside
+    // a SwipeableRow, whose still-closing panel would otherwise bleed through
+    // for the width of the close animation — see the design-system note on
+    // opaque selected-row backgrounds.
+    backgroundColor: flattenOverlay(colors.accent + '1A', colors.bgSecondary),
   },
   // The row currently loaded into the add/edit field below — same tint
   // `ingredientSelected` uses, so "this is the one you're changing" reads the
