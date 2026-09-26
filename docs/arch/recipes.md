@@ -142,6 +142,13 @@ already allows two things on one dinner, so ad-hoc pairing needs nothing.
   picks one option per group, `walk` descends only into that one, and every flatten takes an
   optional `ComponentResolution`. **Passing none resolves to the defaults**, so an unresolved read
   is a complete dish and every caller predating this kept working unchanged.
+- **A surface that reads one cooking of a recipe must take that cooking's picks.** Every flatten
+  and walk here (`flattenRecipeIngredients`, `cookSteps`, `recipeChoiceGroups`, cost, nutrition)
+  accepts a resolution, and leaving it off still type-checks and still renders a complete dish: the
+  default one. That is how cook mode shipped cooking the first option no matter what the recipe
+  screen had picked. So a new surface that shows a specific cooking (a sheet opened from a recipe
+  screen or a planned meal) takes `choices` from whoever opened it and passes them through. Only a
+  read about the recipe in general (search, the pantry scorer) may use the defaults.
 - **The default is the group's first component in list order**, not a `defaultComponentId`: an id
   is a second thing to keep in step with the list and to repair when that component is removed.
   `makeComponentDefault` moves the link to the front of its group — the promotion *is* a reorder.
