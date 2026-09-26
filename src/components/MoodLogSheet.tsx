@@ -143,10 +143,13 @@ export function MoodLogSheet({ visible, editing = null, onClose }: Props) {
   const pillNames = useMemo(() => {
     const seen = new Set<string>();
     const names: string[] = [];
-    // Picked first, then what you have logged before, then what you have just
-    // typed. Anything already selected is in the list whatever its history, so
-    // a one-off symptom can still be un-picked.
-    for (const source of [symptoms.map(s => s.name), vocabulary, drafted]) {
+    // What you have logged before, then what you have just typed, then
+    // anything picked that is in neither (so a one-off can still be
+    // un-picked). Picking must not reorder the grid: this used to put the
+    // picked names first, so every tap moved the pill out from under the
+    // finger and shuffled the rest. Nothing here changes while the sheet is
+    // open except by adding to the end.
+    for (const source of [vocabulary, drafted, symptoms.map(s => s.name)]) {
       for (const name of source) {
         const key = symptomKey(name);
         if (!key || seen.has(key)) continue;
@@ -164,7 +167,9 @@ export function MoodLogSheet({ visible, editing = null, onClose }: Props) {
     // Same order as pillNames above, with the starter suggestions slotted in
     // ahead of what you type this session and behind everything real: what
     // you have actually used before should always outrank a generic prompt.
-    for (const source of [contextTags, contextVocabulary, DEFAULT_CONTEXT_TAGS, draftedContext]) {
+    // Picked tags come last and only matter when they are in none of these,
+    // for the same no-reorder reason.
+    for (const source of [contextVocabulary, DEFAULT_CONTEXT_TAGS, draftedContext, contextTags]) {
       for (const name of source) {
         const key = contextTagKey(name);
         if (!key || seen.has(key)) continue;

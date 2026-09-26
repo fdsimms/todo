@@ -227,16 +227,32 @@ export function PillGroup({
             accessibilityState={{ selected: !!option.selected && !option.negative }}
             accessibilityLabel={option.accessibilityLabel ?? option.label}
           >
-            <Text
-              style={[
-                styles.pillText,
-                option.selected && !option.negative && styles.pillTextActive,
-                option.negative && styles.pillTextNegative,
-              ]}
-            >
-              {option.label}
-              {option.suffix}
-            </Text>
+            {/* The pill is sized by an invisible copy of its label at the
+                selected weight, with the real label laid over it. Selecting
+                a pill bolds its text, and without the reserved width that made
+                it grow a few points, which was enough to reflow the wrap and
+                shuffle every pill after it on each tap. */}
+            <View>
+              <Text
+                style={[styles.pillText, styles.pillTextSizer]}
+                accessibilityElementsHidden
+                importantForAccessibility="no-hide-descendants"
+              >
+                {option.label}
+                {option.suffix}
+              </Text>
+              <Text
+                style={[
+                  styles.pillText,
+                  styles.pillTextOverlay,
+                  option.selected && !option.negative && styles.pillTextActive,
+                  option.negative && styles.pillTextNegative,
+                ]}
+              >
+                {option.label}
+                {option.suffix}
+              </Text>
+            </View>
           </TouchableOpacity>
         ))}
 
@@ -356,6 +372,8 @@ const makeStyles = (colors: Colors, surface: Surface) => {
     pillNegative: { backgroundColor: colors.red + '1A' },
     pillText: { fontSize: font.sm, color: colors.text },
     pillTextActive: { color: colors.onAccent, fontWeight: fontWeight.semibold },
+    pillTextSizer: { fontWeight: fontWeight.semibold, opacity: 0 },
+    pillTextOverlay: { position: 'absolute', top: 0, right: 0, bottom: 0, left: 0, textAlign: 'center' },
     pillTextNegative: { color: colors.red, textDecorationLine: 'line-through' },
     morePill: { flexDirection: 'row', alignItems: 'center', gap: spacing.xs },
     // Weighted, so the disclosure doesn't read as one more option in the grid
