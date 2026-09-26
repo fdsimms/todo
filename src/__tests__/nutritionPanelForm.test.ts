@@ -2,13 +2,17 @@ import {
   applyFoodNutrition,
   applyLabelReading,
   buildPanelNutrition,
+  convertPanelBasis,
+  divideAmountsByServings,
   emptyPanelForm,
   foodNutritionFieldCount,
+  gramsToServingWeight,
   labelColumnFieldCount,
   invalidPanelFields,
   panelFormDirty,
   panelFormFrom,
   readPanelNumber,
+  servingWeightToGrams,
   type PanelForm,
 } from '../utils/nutritionPanelForm';
 import type { FoodNutrition } from '../types';
@@ -328,5 +332,102 @@ describe('foodNutritionFieldCount', () => {
 
   it('counts a stated zero, which is a figure', () => {
     expect(foodNutritionFieldCount(panel({ amounts: { fatG: 0 } }))).toBe(1);
+  });
+});
+
+describe('servingWeightToGrams / gramsToServingWeight', () => {
+  it('passes grams through untouched', () => {
+    expect(servingWeightToGrams('30', 'g')).toBe('30');
+    expect(gramsToServingWeight('30', 'g')).toBe('30');
+  });
+
+  it('converts an ounce figure to grams', () => {
+    expect(servingWeightToGrams('1', 'oz')).toBe('28.35');
+  });
+
+  it('converts grams back to ounces', () => {
+    expect(gramsToServingWeight('28.35', 'oz')).toBe('1');
+  });
+
+  it('leaves blank and unreadable text alone in either direction', () => {
+    expect(servingWeightToGrams('', 'oz')).toBe('');
+    expect(servingWeightToGrams('abt 1', 'oz')).toBe('abt 1');
+    expect(gramsToServingWeight('', 'oz')).toBe('');
+    expect(gramsToServingWeight('abt 30', 'oz')).toBe('abt 30');
+  });
+});
+
+describe('convertPanelBasis', () => {
+  it('turns per-serving figures into per-100g using the serving weight', () => {
+    const f = form({ basis: 'perServing', servingGrams: '30', amounts: { calorieKcal: '120', fatG: '6' } });
+    const converted = convertPanelBasis(f, 'per100g');
+    expect(converted?.basis).toBe('per100g');
+    expect(converted?.amounts.calorieKcal).toBe('400');
+    expect(converted?.amounts.fatG).toBe('20');
+  });
+
+  it('turns per-100g figures into per-serving using the serving weight', () => {
+    const f = form({ basis: 'per100g', servingGrams: '30', amounts: { calorieKcal: '400' } });
+    const converted = convertPanelBasis(f, 'perServing');
+    expect(converted?.basis).toBe('perServing');
+    expect(converted?.amounts.calorieKcal).toBe('120');
+  });
+
+  it('leaves a figure that was not typed blank rather than inventing one', () => {
+    const f = form({ basis: 'perServing', servingGrams: '30', amounts: { calorieKcal: '120' } });
+    expect(convertPanelBasis(f, 'per100g')?.amounts.fatG).toBe('');
+  });
+
+  it('refuses without a positive serving weight', () => {
+    const noWeight = form({ basis: 'perServing', amounts: { calorieKcal: '120' } });
+    expect(convertPanelBasis(noWeight, 'per100g')).toBeNull();
+    const zeroWeight = form({ basis: 'perServing', servingGrams: '0', amounts: { calorieKcal: '120' } });
+    expect(convertPanelBasis(zeroWeight, 'per100g')).toBeNull();
+  });
+
+  it('refuses a per100ml panel, which has no serving weight to convert against', () => {
+    const f = form({ basis: 'per100ml', servingGrams: '30', amounts: { calorieKcal: '120' } });
+    expect(convertPanelBasis(f, 'per100g')).toBeNull();
+  });
+
+  it('refuses when nothing is typed to convert', () => {
+    const f = form({ basis: 'perServing', servingGrams: '30' });
+    expect(convertPanelBasis(f, 'per100g')).toBeNull();
+  });
+
+  it('refuses converting to the basis it is already in', () => {
+    const f = form({ basis: 'per100g', servingGrams: '30', amounts: { calorieKcal: '400' } });
+    expect(convertPanelBasis(f, 'per100g')).toBeNull();
+  });
+});
+
+describe('divideAmountsByServings', () => {
+  it('divides whole-package totals down to one serving', () => {
+    const f = form({ basis: 'per100g', amounts: { calorieKcal: '320', fatG: '16' } });
+    const divided = divideAmountsByServings(f, 8);
+    expect(divided?.basis).toBe('perServing');
+    expect(divided?.amounts.calorieKcal).toBe('40');
+    expect(divided?.amounts.fatG).toBe('2');
+  });
+
+  it('leaves a figure that was not typed blank rather than inventing one', () => {
+    const f = form({ amounts: { calorieKcal: '320' } });
+    expect(divideAmountsByServings(f, 8)?.amounts.fatG).toBe('');
+  });
+
+  it('leaves the serving weight alone, which already means one serving', () => {
+    const f = form({ servingGrams: '30', amounts: { calorieKcal: '320' } });
+    expect(divideAmountsByServings(f, 8)?.servingGrams).toBe('30');
+  });
+
+  it('refuses a servings count that is not a real positive number', () => {
+    const f = form({ amounts: { calorieKcal: '320' } });
+    expect(divideAmountsByServings(f, 0)).toBeNull();
+    expect(divideAmountsByServings(f, -2)).toBeNull();
+    expect(divideAmountsByServings(f, NaN)).toBeNull();
+  });
+
+  it('refuses when nothing is typed to divide', () => {
+    expect(divideAmountsByServings(emptyPanelForm(), 8)).toBeNull();
   });
 });
