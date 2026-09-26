@@ -12,9 +12,9 @@ import { useShallow } from 'zustand/react/shallow';
 import type { RecipeIngredient } from '../types';
 import {
   GROCERY_NAME_MAX_LENGTH,
-  GROCERY_QUANTITY_MAX_LENGTH,
   PREP_MAX_LENGTH,
   RECIPE_CHOICE_GROUP_MAX_LENGTH,
+  RECIPE_INGREDIENT_QUANTITY_MAX_LENGTH,
   RECIPE_SECTION_MAX_LENGTH,
 } from '../types';
 import { useRecipeStore } from '../store/useRecipeStore';
@@ -576,7 +576,7 @@ export function RecipeIngredientSheet({ visible, recipeId, ingredient, onClose }
           onChangeText={setQuantity}
           placeholder="e.g. 2 lb"
           placeholderTextColor={colors.textTertiary}
-          maxLength={GROCERY_QUANTITY_MAX_LENGTH}
+          maxLength={RECIPE_INGREDIENT_QUANTITY_MAX_LENGTH}
           accessibilityLabel="Quantity"
         />
         <Text style={styles.hint}>

@@ -4664,6 +4664,12 @@ export const RUNNING_LOW_REASON = 'running low';
 // title, and a long one wrecks the row layout at the bigger grocery font size.
 export const GROCERY_NAME_MAX_LENGTH = 80;
 export const GROCERY_QUANTITY_MAX_LENGTH = 24;
+// Roomier than GROCERY_QUANTITY_MAX_LENGTH: a recipe's own amount is allowed to
+// carry a parenthetical source count ("1 packet (1/4 ounce, 7 g)", "3 oz (from
+// about 2 limes)") per extractRecipe's own prompt, which a grocery list's plain
+// "2 lb" never needs room for. Used for RecipeGroceryItem.quantity on the way
+// to RecipeIngredient.quantity — never for GroceryItem's own quantity field.
+export const RECIPE_INGREDIENT_QUANTITY_MAX_LENGTH = 60;
 // Shorter than a name on purpose: this is a brand, not a second name for the
 // thing. Matches SHOP_NAME_MAX_LENGTH, which is the same kind of proper noun.
 export const GROCERY_BRAND_MAX_LENGTH = 40;
