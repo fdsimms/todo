@@ -69,14 +69,21 @@ const HEIGHT_START_FEET = cmToFeetInches(HEIGHT_START_CM).feet;
 /**
  * Setting a weight goal, and the calorie figure it implies.
  *
- * **The app proposes and the person decides, in both halves.** The goal itself
- * is entirely typed in — no suggested target, no recommended rate, nothing
- * filled in from a body. The calorie figure is arithmetic over the fields
- * above it, printed with its own working shown, and it stays a suggestion
- * until the button under it is pressed. `energyBudget.ts` gives the long
- * version of why that line matters; the short version is that a number nobody
- * chose must not end up driving the food log.
+ * **The goal itself is entirely typed in** — no suggested target, no
+ * recommended rate, nothing filled in from a body. The calorie figure is
+ * arithmetic over the fields above it, printed with its own working shown.
+ * `energyBudget.ts` gives the long version of why that matters.
  *
+ * **The plain calorie figure is the one asked-for exception to "stays a
+ * suggestion until applied."** Saving this sheet writes it straight to
+ * `nutritionTargets.calorieKcal`, and `useSettingsStore.syncWeightGoalCalorieTarget`
+ * keeps it in step afterward too, on a body-profile edit or a fresh weigh-in,
+ * so the food log target doesn't quietly go stale the moment the goal isn't
+ * being looked at. See `autoCalorieTargetKcal` in `weightGoal.ts` for the
+ * reasoning and the scope of the exception — it stops at the plain figure:
+ * macros stay opt-in via the button below, same as before.
+ *
+
  * **An `EditorSheet` (full screen) rather than a page sheet**, so the staged
  * form has no swipe-down to lose it — the same answer `LogWeightSheet` takes,
  * and the reason there is no `handleCancel` confirm here.
@@ -296,6 +303,12 @@ export function WeightGoalSheet({ visible, onClose, currentKg, onLogWeight }: Pr
       targetKg,
       rateKgPerWeek: maintaining ? 0 : (rateKg ?? 0),
     });
+    // Keeps the food log's calorie target in step with the goal automatically
+    // — see autoCalorieTargetKcal's doc comment. Whichever basis (multiplier
+    // or measured) is on screen right now is the one that gets written; a
+    // later weigh-in or profile edit re-syncs on the multiplier basis, via
+    // useSettingsStore.syncWeightGoalCalorieTarget.
+    if (budget !== null) setNutritionTarget('calorieKcal', budget.proposedKcal);
     onClose();
   };
 

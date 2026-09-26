@@ -356,6 +356,44 @@ describe('setNutritionTargets', () => {
   });
 });
 
+describe('syncWeightGoalCalorieTarget', () => {
+  const goal = { startKg: 80, startDayKey: '2026-09-01', targetKg: 75, rateKgPerWeek: 0.5 };
+  const profile = { heightCm: 170, birthYear: 1990, sex: 'female' as const, activity: 'sedentary' as const };
+
+  it('does nothing without a weight goal', () => {
+    useSettingsStore.setState({ weightGoal: null });
+    useSettingsStore.getState().syncWeightGoalCalorieTarget(78);
+    expect(useSettingsStore.getState().nutritionTargets.calorieKcal).toBeUndefined();
+  });
+
+  it('writes a calorie target once a goal and a complete profile exist', () => {
+    useSettingsStore.getState().setWeightGoal(goal);
+    useSettingsStore.getState().setBodyProfile(profile);
+    useSettingsStore.getState().syncWeightGoalCalorieTarget(80);
+    expect(useSettingsStore.getState().nutritionTargets.calorieKcal).toEqual(expect.any(Number));
+  });
+
+  it('re-syncs to a new figure when the weight moves', () => {
+    useSettingsStore.getState().setWeightGoal(goal);
+    useSettingsStore.getState().setBodyProfile(profile);
+    useSettingsStore.getState().syncWeightGoalCalorieTarget(80);
+    const first = useSettingsStore.getState().nutritionTargets.calorieKcal;
+    useSettingsStore.getState().syncWeightGoalCalorieTarget(70);
+    expect(useSettingsStore.getState().nutritionTargets.calorieKcal).not.toBe(first);
+  });
+
+  it('leaves an existing target alone when the profile cannot support an estimate', () => {
+    useSettingsStore.getState().setWeightGoal(goal);
+    // Explicit rather than relying on the shared beforeEach: bodyProfile
+    // isn't one of the fields it resets, so a prior test's complete profile
+    // would otherwise leak in here and produce a real estimate.
+    useSettingsStore.getState().setBodyProfile({ heightCm: null, birthYear: null, sex: null, activity: 'sedentary' });
+    useSettingsStore.getState().setNutritionTarget('calorieKcal', 1800);
+    useSettingsStore.getState().syncWeightGoalCalorieTarget(80);
+    expect(useSettingsStore.getState().nutritionTargets.calorieKcal).toBe(1800);
+  });
+});
+
 // ─── setVacationMode / setVacationEnd ───────────────────────────────────────
 
 describe('setVacationMode', () => {

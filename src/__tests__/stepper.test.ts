@@ -13,6 +13,12 @@ describe('clampCount', () => {
   it('rounds', () => {
     expect(clampCount(7.4, range)).toBe(7);
   });
+
+  it('rounds to the range\'s own step precision instead of always to a whole number', () => {
+    const rate = { min: 0.25, max: 2, step: 0.25 };
+    expect(clampCount(0.756, rate)).toBe(0.76);
+    expect(clampCount(3, rate)).toBe(2);
+  });
 });
 
 describe('stepCount', () => {
@@ -48,6 +54,26 @@ describe('stepCount', () => {
   it('walks an out-of-range value back in by one press', () => {
     expect(stepCount(500, -1, range)).toBe(99);
     expect(stepCount(1, 1, range)).toBe(2);
+  });
+
+  it('steps a fractional value by its own granularity instead of getting stuck', () => {
+    // The weight goal's rate stepper: min 0.25, step 0.25. Rounding the
+    // starting value to a whole number before subtracting (the old bug)
+    // turned 0.75 into 1 first, so 1 - 0.25 landed back on 0.75 forever.
+    const rate = { min: 0.25, max: 2, step: 0.25 };
+    expect(stepCount(1, -0.25, rate)).toBe(0.75);
+    expect(stepCount(0.75, -0.25, rate)).toBe(0.5);
+    expect(stepCount(0.5, -0.25, rate)).toBe(0.25);
+    expect(stepCount(0.25, -0.25, rate)).toBe(0.25);
+    expect(stepCount(0.25, 0.25, rate)).toBe(0.5);
+  });
+
+  it('keeps an off-grid value at its own offset rather than snapping to the grid', () => {
+    // Sodium: min 200, step 100. A stored 2,006 should carry the 6 forever,
+    // per the doc comment, not settle onto a multiple of 100.
+    const sodium = { min: 200, max: 6000, step: 100 };
+    expect(stepCount(2006, 100, sodium)).toBe(2106);
+    expect(stepCount(2106, 100, sodium)).toBe(2206);
   });
 });
 

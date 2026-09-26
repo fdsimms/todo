@@ -2,6 +2,7 @@ import {
   MAINTAIN_BAND_KG,
   MAX_RATE_KG_PER_WEEK,
   RATE_RANGE,
+  autoCalorieTargetKcal,
   daysToTarget,
   goalDirection,
   goalPace,
@@ -14,7 +15,15 @@ import {
   weightSinceGoalStart,
   type WeightGoal,
 } from '@/utils/weightGoal';
+import type { BodyProfile } from '@/utils/energyBudget';
 import type { WeightPoint } from '@/utils/weightLog';
+
+const completeProfile: BodyProfile = {
+  heightCm: 170,
+  birthYear: 1990,
+  sex: 'female',
+  activity: 'sedentary',
+};
 
 // `weightGoal` reaches `dayKeyToDate`, and `dateUtils` pulls the settings store
 // in at module load for `dayResetTime`. Nothing under test reads it — a day key
@@ -55,6 +64,37 @@ describe('signedRateKgPerWeek', () => {
   it('never trusts a negative magnitude to mean the direction', () => {
     expect(signedRateKgPerWeek(losingGoal({ rateKgPerWeek: -0.5 }))).toBe(-0.5);
     expect(signedRateKgPerWeek(losingGoal({ targetKg: 85, rateKgPerWeek: -0.5 }))).toBe(0.5);
+  });
+});
+
+describe('autoCalorieTargetKcal', () => {
+  const today = new Date(2026, 8, 15, 12);
+
+  it('is null with no goal', () => {
+    expect(autoCalorieTargetKcal(null, completeProfile, 78, today)).toBeNull();
+  });
+
+  it('is null when the profile cannot support an estimate', () => {
+    const bareProfile: BodyProfile = { heightCm: null, birthYear: null, sex: null, activity: 'sedentary' };
+    expect(autoCalorieTargetKcal(losingGoal(), bareProfile, 78, today)).toBeNull();
+  });
+
+  it('falls back to the goal\'s own start weight when no current weight is known', () => {
+    const withCurrent = autoCalorieTargetKcal(losingGoal(), completeProfile, 80, today);
+    const withoutCurrent = autoCalorieTargetKcal(losingGoal(), completeProfile, null, today);
+    expect(withoutCurrent).toBe(withCurrent);
+  });
+
+  it('moves with the current weight rather than staying pinned to the start', () => {
+    const at80 = autoCalorieTargetKcal(losingGoal(), completeProfile, 80, today);
+    const at70 = autoCalorieTargetKcal(losingGoal(), completeProfile, 70, today);
+    expect(at80).not.toBe(at70);
+  });
+
+  it('reads a signed rate off the goal, not the stored magnitude alone', () => {
+    const losing = autoCalorieTargetKcal(losingGoal(), completeProfile, 80, today);
+    const gaining = autoCalorieTargetKcal(losingGoal({ targetKg: 85 }), completeProfile, 80, today);
+    expect(losing).not.toBe(gaining);
   });
 });
 

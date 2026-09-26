@@ -35,10 +35,24 @@
  * because it is not a measurement — HealthKit has nowhere to put it and nothing
  * else should read it back as one. The *weights* it is read against are still
  * Health's, and this module never stores one.
+ *
+ * **`autoCalorieTargetKcal` is a deliberate, asked-for exception to "stays a
+ * suggestion until the button is pressed."** The food log's calorie target
+ * used to go stale the moment the weight goal, the body profile, or the
+ * weight itself moved on: `WeightGoalSheet`'s own figure would recompute, but
+ * nothing carried the new number to `nutritionTargets.calorieKcal` short of
+ * opening the sheet and tapping "Use as my calorie target" again. This
+ * function is what `useSettingsStore.syncWeightGoalCalorieTarget` and
+ * `WeightGoalSheet`'s Save both call to keep the two in step automatically.
+ * It is scoped to the plain calorie figure alone — macros stay manual, same
+ * as before — and it always uses the multiplier basis (never the measured
+ * Apple Health one), since the measured figure needs a live read with nobody
+ * necessarily there to ask for it.
  */
 
 import { differenceInCalendarDays } from 'date-fns/differenceInCalendarDays';
 import { dayKeyToDate } from './dateUtils';
+import { calorieBudget, type BodyProfile } from './energyBudget';
 import { MAX_WEIGHT_KG, unitToKg, type WeightPoint, type WeightUnit } from './weightLog';
 
 /**
@@ -114,6 +128,29 @@ export function signedRateKgPerWeek(goal: WeightGoal): number {
   if (direction === 'maintain') return 0;
   const magnitude = Math.abs(goal.rateKgPerWeek);
   return direction === 'lose' ? -magnitude : magnitude;
+}
+
+/**
+ * What the food log's calorie target should read, kept in step with the
+ * weight goal. Null when there is no goal, or the profile can't support an
+ * estimate — the caller leaves whatever is already stored alone in that case,
+ * rather than clearing a target the person may have set some other way.
+ *
+ * `currentKg` should be the latest weigh-in when one is known, falling back
+ * to the goal's own `startKg` — the same fallback `WeightGoalSheet` uses for
+ * its own "Daily calories" card, so a person with no weight logged since
+ * setting the goal still gets the figure the sheet itself would be showing.
+ */
+export function autoCalorieTargetKcal(
+  goal: WeightGoal | null,
+  profile: BodyProfile,
+  currentKg: number | null,
+  today: Date,
+): number | null {
+  if (goal === null) return null;
+  const weightKg = currentKg ?? goal.startKg;
+  const budget = calorieBudget(profile, weightKg, signedRateKgPerWeek(goal), today);
+  return budget?.proposedKcal ?? null;
 }
 
 /** How far along a goal is, in the plainest terms the numbers allow. */
