@@ -17,13 +17,19 @@ import {
   applyFoodNutrition,
   applyLabelReading,
   buildPanelNutrition,
+  convertPanelBasis,
+  divideAmountsByServings,
   foodNutritionFieldCount,
+  gramsToServingWeight,
   invalidPanelFields,
   labelColumnFieldCount,
   panelFormDirty,
   panelFormFrom,
+  readPanelNumber,
+  servingWeightToGrams,
   type PanelFieldKey,
   type PanelForm,
+  type ServingWeightUnit,
 } from '../utils/nutritionPanelForm';
 import { canReadTextOnDevice } from '../utils/receiptOcr';
 import { readLabelPhoto, type LabelReading } from '../utils/labelOcr';
@@ -106,6 +112,17 @@ import { useKeyboardInsetScroll } from '../hooks/useKeyboardInsetScroll';
  * fields via `applyFoodNutrition` — the camera-scanned sibling of
  * `applyLabelReading`. Same review, same Save; only the source of the numbers
  * differs.
+ *
+ * **Three pieces of arithmetic a person would otherwise do against the packet
+ * are done here instead**, all in `nutritionPanelForm.ts` and all display-only
+ * until Save, same as everything above: a g/oz toggle on Serving weight (a
+ * label with no metric figure needs no mental multiplication), a "Convert
+ * typed figures to …" action that re-expresses what's typed between per 100g
+ * and per serving using `servingGrams` as the ratio (a US label states one and
+ * this app usually wants the other), and a "Divide into one serving" action
+ * for a label that only states whole-package totals against a servings count.
+ * Each is offered only when the numbers on screen make it answerable, and each
+ * only rewrites the same typed fields — nothing here is a second record.
  */
 
 interface Props {
@@ -123,6 +140,11 @@ const BASIS_OPTIONS = (['per100g', 'per100ml', 'perServing'] as const).map(value
   value,
   label: NUTRITION_BASIS_LABEL[value],
 }));
+
+const WEIGHT_UNIT_OPTIONS: { value: ServingWeightUnit; label: string }[] = [
+  { value: 'g', label: 'g' },
+  { value: 'oz', label: 'oz' },
+];
 
 /**
  * A plausible figure for each nutrient, so the example reads as an example.
@@ -182,6 +204,21 @@ export function NutritionPanelSheet({ visible, foodName, nutrition, onClose, onS
   // ever on screen.
   const [scanning, setScanning] = useState(false);
   const [scanNote, setScanNote] = useState<string | null>(null);
+  // What unit Serving weight is being typed in, and the raw text in that unit
+  // — kept apart from `form.servingGrams` (always grams) so typing "1" in oz
+  // shows "1", not a round-tripped "1.00002". See `servingWeightToGrams`.
+  const [weightUnit, setWeightUnit] = useState<ServingWeightUnit>('g');
+  const [weightText, setWeightText] = useState(form.servingGrams);
+  // A transient calculator input, never saved: how many servings a package's
+  // whole-total figures should be divided by. Cleared once used or on reopen,
+  // the same as a photo's `label` — a count from an earlier food is worse than
+  // none. See `divideAmountsByServings`.
+  const [servingsText, setServingsText] = useState('');
+  // Kept in step so a handler triggered from outside a keystroke (a photo
+  // read, a barcode fetch, a column switch) can read the form as it stands
+  // right now without being recreated on every render to stay fresh.
+  const formRef = useRef(form);
+  useEffect(() => { formRef.current = form; }, [form]);
 
   useEffect(() => {
     if (!visible) return;
@@ -195,6 +232,9 @@ export function NutritionPanelSheet({ visible, foodName, nutrition, onClose, onS
     setReading(false);
     setScanning(false);
     setScanNote(null);
+    setWeightUnit('g');
+    setWeightText(opened.servingGrams);
+    setServingsText('');
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [visible]);
 
@@ -245,7 +285,12 @@ export function NutritionPanelSheet({ visible, foodName, nutrition, onClose, onS
       haptics.success();
       setLabel(read);
       setColumn(0);
-      setForm(f => applyLabelReading(f, read, 0));
+      const next = applyLabelReading(formRef.current, read, 0);
+      setForm(next);
+      // A fresh read is grams, same as every source here — see the field's own
+      // reset in the `visible` effect for why this always lands back on 'g'.
+      setWeightUnit('g');
+      setWeightText(next.servingGrams);
       // Filling a field can only fix one that wouldn't read, never break one,
       // so anything flagged from an earlier save attempt is re-judged on the
       // next rather than left marked red under a figure that is now fine.
@@ -270,7 +315,10 @@ export function NutritionPanelSheet({ visible, foodName, nutrition, onClose, onS
     if (!label) return;
     haptics.tap();
     setColumn(index);
-    setForm(f => applyLabelReading(f, label, index));
+    const next = applyLabelReading(formRef.current, label, index);
+    setForm(next);
+    setWeightUnit('g');
+    setWeightText(next.servingGrams);
     setBad([]);
   }, [label]);
 
@@ -296,7 +344,10 @@ export function NutritionPanelSheet({ visible, foodName, nutrition, onClose, onS
    */
   const handleBarcodeFound = useCallback((found: FoodNutrition, sourceName: string) => {
     haptics.success();
-    setForm(f => applyFoodNutrition(f, found));
+    const next = applyFoodNutrition(formRef.current, found);
+    setForm(next);
+    setWeightUnit('g');
+    setWeightText(next.servingGrams);
     setBad([]);
     // The barcode's figures are on screen now; a photo column picker or note
     // from earlier in this session would otherwise sit stale beside them.
@@ -312,6 +363,53 @@ export function NutritionPanelSheet({ visible, foodName, nutrition, onClose, onS
   const setAmount = (key: NutrientKey, text: string) => {
     setForm(f => ({ ...f, amounts: { ...f.amounts, [key]: text } }));
     setBad(b => (b.includes(key) ? b.filter(k => k !== key) : b));
+  };
+
+  const setWeightAmount = (text: string) => {
+    setWeightText(text);
+    setForm(f => ({ ...f, servingGrams: servingWeightToGrams(text, weightUnit) }));
+    setBad(b => b.filter(k => k !== 'servingGrams'));
+  };
+
+  const changeWeightUnit = (unit: ServingWeightUnit) => {
+    if (unit === weightUnit) return;
+    haptics.tap();
+    // Both directions go through grams, so this needs no separate table: it's
+    // the same read `setWeightAmount` already does for whatever's on screen,
+    // shown back in the other unit.
+    const grams = servingWeightToGrams(weightText, weightUnit);
+    setWeightUnit(unit);
+    setWeightText(gramsToServingWeight(grams, unit));
+  };
+
+  /** Whether "Convert to X" against the other of per-100g/per-serving has anything to do. */
+  const basisConvertTarget: 'per100g' | 'perServing' | null =
+    form.basis === 'perServing' ? 'per100g' : form.basis === 'per100g' ? 'perServing' : null;
+  const canConvertBasis = basisConvertTarget !== null && convertPanelBasis(form, basisConvertTarget) !== null;
+
+  const handleConvertBasis = () => {
+    if (!basisConvertTarget) return;
+    const next = convertPanelBasis(form, basisConvertTarget);
+    if (!next) return;
+    haptics.success();
+    setForm(next);
+    setBad([]);
+  };
+
+  const servingsCount = (() => {
+    const n = readPanelNumber(servingsText);
+    return typeof n === 'number' && n > 0 ? n : null;
+  })();
+  const canDivideServings = servingsCount !== null && divideAmountsByServings(form, servingsCount) !== null;
+
+  const handleDivideServings = () => {
+    if (servingsCount === null) return;
+    const next = divideAmountsByServings(form, servingsCount);
+    if (!next) return;
+    haptics.success();
+    setForm(next);
+    setBad([]);
+    setServingsText('');
   };
 
   const handleSave = () => {
@@ -446,22 +544,27 @@ export function NutritionPanelSheet({ visible, foodName, nutrition, onClose, onS
                 <View style={styles.numberRow}>
                   <TextInput
                     style={[styles.numberInput, bad.includes('servingGrams') && styles.inputBad]}
-                    value={form.servingGrams}
-                    onChangeText={t => {
-                      setForm(f => ({ ...f, servingGrams: t }));
-                      setBad(b => b.filter(k => k !== 'servingGrams'));
-                    }}
-                    placeholder="e.g. 30"
+                    value={weightText}
+                    onChangeText={setWeightAmount}
+                    placeholder={weightUnit === 'g' ? 'e.g. 30' : 'e.g. 1'}
                     placeholderTextColor={colors.textTertiary}
                     keyboardType="decimal-pad"
                     inputAccessoryViewID={NUMBER_PAD_ACCESSORY_ID}
-                    accessibilityLabel="Serving weight in grams"
+                    accessibilityLabel={`Serving weight in ${weightUnit === 'g' ? 'grams' : 'ounces'}`}
                   />
-                  <Text style={styles.unit}>g</Text>
+                  <View style={styles.weightUnitToggle}>
+                    <SegmentedControl
+                      label="Serving weight unit"
+                      options={WEIGHT_UNIT_OPTIONS}
+                      value={weightUnit}
+                      onChange={changeWeightUnit}
+                      surface="card"
+                    />
+                  </View>
                 </View>
                 <Text style={styles.hint}>
                   The number to compute with. A product sold by volume has none, and that
-                  is fine.
+                  is fine. A label printed in ounces converts to grams on its own.
                 </Text>
               </View>
 
@@ -476,9 +579,42 @@ export function NutritionPanelSheet({ visible, foodName, nutrition, onClose, onS
                 Most labels outside the US print per 100g. Pick "per serving" only if the
                 panel's own column says so.
               </Text>
+              {!!basisConvertTarget && (
+                <InlineAction
+                  label={`Convert typed figures to ${NUTRITION_BASIS_LABEL[basisConvertTarget]}`}
+                  icon="swap-horizontal-outline"
+                  variant="neutral"
+                  disabled={!canConvertBasis}
+                  onPress={handleConvertBasis}
+                  style={styles.convertAction}
+                />
+              )}
             </View>
 
             <Text style={styles.groupLabel}>NUTRIENTS</Text>
+            <View style={styles.divideRow}>
+              <TextInput
+                style={styles.divideInput}
+                value={servingsText}
+                onChangeText={setServingsText}
+                placeholder="Servings per container"
+                placeholderTextColor={colors.textTertiary}
+                keyboardType="decimal-pad"
+                inputAccessoryViewID={NUMBER_PAD_ACCESSORY_ID}
+                accessibilityLabel="Servings per container, for dividing whole-package totals into one serving"
+              />
+              <InlineAction
+                label="Divide into one serving"
+                icon="calculator-outline"
+                variant="neutral"
+                disabled={!canDivideServings}
+                onPress={handleDivideServings}
+              />
+            </View>
+            <Text style={styles.hint}>
+              If the label only gives whole-package totals, type the totals into the figures
+              below, enter how many servings the package has, then divide.
+            </Text>
             <View style={styles.card}>
               {NUTRIENT_KEYS.map(key => (
                 <View key={key} style={styles.field}>
@@ -579,7 +715,29 @@ function makeStyles(colors: Colors) {
     },
     inputBad: { borderColor: colors.red },
     unit: { color: colors.textSecondary, fontSize: font.sm, minWidth: 26 },
+    // Fixed rather than flexible: two two-letter segments never need more than
+    // this, and letting the track stretch would pull it away from the field
+    // it belongs to.
+    weightUnitToggle: { width: 104 },
+    // A card's cross axis stretches by default, which would turn a solo pill
+    // into a full-width button — same fix `SubstituteSheet`'s own solo
+    // `InlineAction` needs (see its `suggestAsk` style).
+    convertAction: { alignSelf: 'flex-start' },
     hint: { color: colors.textSecondary, fontSize: font.xs, lineHeight: 16 },
     error: { color: colors.red, fontSize: font.sm, lineHeight: 18, marginTop: spacing.md },
+    // Margin on both sides, same rule as photoRow above: the hint right below
+    // it has no top margin of its own.
+    divideRow: { flexDirection: 'row', alignItems: 'center', gap: spacing.sm, marginBottom: spacing.xs },
+    divideInput: {
+      flex: 1,
+      color: colors.text,
+      fontSize: font.md,
+      backgroundColor: colors.bgSecondary,
+      borderRadius: radius.md,
+      paddingHorizontal: spacing.sm,
+      paddingVertical: spacing.sm,
+      borderWidth: border.thin,
+      borderColor: colors.separator,
+    },
   });
 }
