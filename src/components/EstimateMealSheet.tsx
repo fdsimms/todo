@@ -13,8 +13,8 @@ import {
 import { subDays } from 'date-fns/subDays';
 import { SheetModal } from './SheetModal';
 import { useColors } from '../theme/ThemeContext';
-import { font, fontWeight, interaction, radius, spacing, type Colors } from '../theme';
-import { MEAL_SLOTS, MEAL_SLOT_LABELS, NUTRIENT_KEYS, type FoodLogEntry, type FoodNutrition, type MealSlot } from '../types';
+import { font, fontWeight, iconSize, interaction, radius, spacing, type Colors } from '../theme';
+import { MEAL_SLOTS, MEAL_SLOT_LABELS, NUTRIENT_KEYS, type FoodLogEntry, type FoodNutrition, type MealSlot, type NutrientKey } from '../types';
 import { useFoodLogStore } from '../store/useFoodLogStore';
 import { useRecipeStore } from '../store/useRecipeStore';
 import { describeAIError, estimateMealNutrition } from '../services/aiSuggestions';
@@ -49,7 +49,9 @@ import { dayKeyOf, getCurrentDayStart } from '../utils/dateUtils';
 import { groceryNameKey } from '../utils/groceryParse';
 import { haptics } from '../utils/haptics';
 import { useKeyboardInsetScroll } from '../hooks/useKeyboardInsetScroll';
+import Ionicons from '@expo/vector-icons/Ionicons';
 import { InlineAction } from './InlineAction';
+import { PressableScale } from './PressableScale';
 import { SegmentedControl } from './SegmentedControl';
 import { SheetHeaderButton } from './SheetHeaderButton';
 import { SheetHeader } from './SheetHeader';
@@ -105,6 +107,16 @@ import { SheetHeader } from './SheetHeader';
  * The description typed here is staged before an explicit Log, so the swipe
  * down is guarded.
  */
+
+// Map of this file (one component holding most of it; `grep -n '// ===='` is
+// the table of contents):
+//   state          the description, the estimate on screen, the staged row
+//   offers         past entries, catalog rows and recipes the text names
+//   estimate       asking the model, refining with answers, the Log button
+//   staged rows    a past entry's amount step, and its one-tap +
+//   save/cancel    filing the estimate as a recipe, the discard guard
+//   render         the offer list, the estimate row, the result card
+// Below the component: PendingRecallCard, KcalFigure, NutrientLine, styles.
 
 /** A recall row staged for confirmation, before its amount is settled. */
 type PendingRecallLog =
@@ -165,6 +177,7 @@ export function EstimateMealSheet({ visible, slot, at, mealPlanEntryId, initialD
   const addRecipe = useRecipeStore(s => s.addRecipe);
   const addIngredientsFromText = useRecipeStore(s => s.addIngredientsFromText);
 
+  // ==== state ====
   const [description, setDescription] = useState('');
   const [estimate, setEstimate] = useState<NutritionEstimate | null>(null);
   const [answers, setAnswers] = useState<Record<string, string>>({});
@@ -193,6 +206,23 @@ export function EstimateMealSheet({ visible, slot, at, mealPlanEntryId, initialD
    */
   const [pendingDefaultGrams, setPendingDefaultGrams] = useState<number | null>(null);
   /**
+   * The description the current estimate was asked about, before any answers
+   * were folded into it. A refinement re-asks from this rather than from the
+   * field, so an answer tapped after the field was edited still refines the
+   * meal on screen; and the field differing from it is what brings the
+   * estimate row back, to ask about the new text.
+   */
+  const [estimatedFor, setEstimatedFor] = useState<string | null>(null);
+  /**
+   * The questions the first estimate asked, held apart from the estimate
+   * itself. A re-ask with an answer folded in may come back asking fewer (or
+   * none), and the other questions leaving the screen the moment one is
+   * answered would strand them unanswerable.
+   */
+  const [questions, setQuestions] = useState<NutritionEstimate['questions']>([]);
+  /** Whether the full nutrient list and the per-ingredient split are open. */
+  const [detailsOpen, setDetailsOpen] = useState(false);
+  /**
    * What has been eaten lately, taken once when the sheet opens.
    *
    * A snapshot rather than a subscription, the call `FoodLogEntrySheet` makes
@@ -220,10 +250,14 @@ export function EstimateMealSheet({ visible, slot, at, mealPlanEntryId, initialD
     setPendingLog(null);
     setPendingWeight('');
     setPendingDefaultGrams(null);
+    setEstimatedFor(null);
+    setQuestions([]);
+    setDetailsOpen(false);
     const today = getCurrentDayStart();
     setHistory(recentEntries(dayKeyOf(subDays(today, 90)), dayKeyOf(today)));
   }, [visible, slot]);
 
+  // ==== offers: what has been eaten or filed before ====
   // Real data the user already owns beats a guess, so every offer is made
   // before the request rather than after it comes back.
   const recalled = useMemo(() => recallFoods(history, description), [history, description]);
@@ -311,12 +345,15 @@ export function EstimateMealSheet({ visible, slot, at, mealPlanEntryId, initialD
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [recalled, catalogMatches, matches, items, itemProducts, at]);
 
-  const run = async (text: string) => {
+  // ==== estimate: asking, refining, logging ====
+  const run = async (text: string, fresh: boolean) => {
     setLoading(true);
     setError(null);
     setSavedRecipeId(null);
     try {
-      setEstimate(await estimateMealNutrition(text, context));
+      const result = await estimateMealNutrition(text, context);
+      setEstimate(result);
+      if (fresh) setQuestions(result.questions);
     } catch (e) {
       setEstimate(null);
       setError(describeAIError(e));
@@ -326,21 +363,36 @@ export function EstimateMealSheet({ visible, slot, at, mealPlanEntryId, initialD
   };
 
   const handleEstimate = () => {
+    if (!description.trim() || loading) return;
     haptics.tap();
+    Keyboard.dismiss();
     setAnswers({});
-    run(description);
+    setQuestions([]);
+    setDetailsOpen(false);
+    setEstimatedFor(description);
+    run(description, true);
   };
 
   // Re-asked rather than adjusted here: the model knows what a large changes
   // about a portion and this sheet does not, and scaling a published figure by
   // a guessed multiplier would turn a real number into an invented one.
-  const handleAnswered = () => {
-    if (!estimate) return;
+  //
+  // Asked on the tap itself rather than behind a second "estimate again"
+  // button, so an answer reads as changing the figures, which is what it does.
+  // Clearing the last answer re-asks the plain description, not the stale
+  // refinement.
+  const handleAnswer = (prompt: string, option: string) => {
+    if (estimatedFor == null || loading) return;
     haptics.tap();
-    run(refineDescription(
-      description,
-      estimate.questions.map(q => ({ prompt: q.prompt, answer: answers[q.prompt] ?? '' })),
-    ));
+    const next = { ...answers, [prompt]: answers[prompt] === option ? '' : option };
+    setAnswers(next);
+    const anyAnswered = questions.some(q => next[q.prompt]);
+    run(
+      anyAnswered
+        ? refineDescription(estimatedFor, questions.map(q => ({ prompt: q.prompt, answer: next[q.prompt] ?? '' })))
+        : estimatedFor,
+      false,
+    );
   };
 
   const handleLog = () => {
@@ -365,6 +417,7 @@ export function EstimateMealSheet({ visible, slot, at, mealPlanEntryId, initialD
     onClose();
   };
 
+  // ==== staged rows: the amount step and the one-tap + ====
   /**
    * `food`'s own panel scaled to the weight the typed description names,
    * when it names one — "205g" against a food last logged at 127g scales
@@ -385,30 +438,43 @@ export function EstimateMealSheet({ visible, slot, at, mealPlanEntryId, initialD
   };
 
   /**
-   * Stages a "you already have figures for this" row rather than logging it
-   * on the tap. It used to log outright, at whatever weight the row happened
-   * to carry — which meant tapping the row *was* logging it, with nothing on
-   * screen saying so and no way to log it at a different amount instead. This
-   * opens the row into an editable confirm step (`confirmPending`) instead,
-   * pre-filled with the weight a "205g" already typed into the description
-   * implies, or the recorded weight otherwise, so the common case ("log it as
-   * it was last eaten") is still a glance and a tap.
+   * The amount a staged row opens with: the weight a "205g" already typed into
+   * the description implies, or the recorded one otherwise. `baseline` is the
+   * recorded weight, kept so `logStaged` can tell an untouched amount from an
+   * edited one.
    */
-  const openRecall = (food: RecalledFood) => {
-    haptics.tap();
-    const scaled = scaledWeight(food.nutrition);
-    setPendingLog({ kind: 'recall', food });
-    setPendingWeight(scaled?.grams != null ? String(scaled.grams) : (food.grams != null ? String(food.grams) : ''));
-    setPendingDefaultGrams(food.grams);
+  const stagedDefaults = (staged: PendingRecallLog) => {
+    const scaled = scaledWeight(staged.food.nutrition);
+    const baseline = staged.kind === 'recall'
+      ? staged.food.grams
+      : helpingOf(staged.food)?.servingGrams ?? null;
+    const weight = scaled?.grams != null ? String(scaled.grams) : (baseline != null ? String(baseline) : '');
+    return { weight, baseline };
   };
 
-  /** Same staging as `openRecall`, for a catalog row's own serving weight. */
-  const openCatalog = (food: RecalledCatalogFood) => {
+  /**
+   * The calories the row's + would log, for the row to show beside it. The
+   * same panel `logStaged` writes at the default amount, so the number on the
+   * row is the number that lands in the day.
+   */
+  const stagedKcal = (staged: PendingRecallLog): number | undefined => {
+    const scaled = scaledWeight(staged.food.nutrition);
+    const panel = scaled?.nutrition
+      ?? (staged.kind === 'recall' ? staged.food.nutrition : helpingOf(staged.food));
+    return panel?.amounts.calorieKcal;
+  };
+
+  /**
+   * Opens a "you've had this before" row into its amount step. Tapping the row
+   * used to log it outright, at whatever weight it carried, with nothing on
+   * screen saying so. The row's own + button is the one-tap log now, and says
+   * so by being a button; the row body is for changing the amount first.
+   */
+  const openPending = (staged: PendingRecallLog) => {
     haptics.tap();
-    const scaled = scaledWeight(food.nutrition);
-    const baseline = helpingOf(food)?.servingGrams ?? null;
-    setPendingLog({ kind: 'catalog', food });
-    setPendingWeight(scaled?.grams != null ? String(scaled.grams) : (baseline != null ? String(baseline) : ''));
+    const { weight, baseline } = stagedDefaults(staged);
+    setPendingLog(staged);
+    setPendingWeight(weight);
     setPendingDefaultGrams(baseline);
   };
 
@@ -421,34 +487,32 @@ export function EstimateMealSheet({ visible, slot, at, mealPlanEntryId, initialD
   };
 
   /**
-   * Logs the staged row — as it was eaten, or at the weight the confirm
-   * step's field now names, when that differs from the weight it opened
-   * with.
+   * Logs a staged row as it was eaten, or at the weight `weightText` names
+   * when that differs from `baseline`.
    *
-   * The stored panel goes back verbatim when the field wasn't touched, which
+   * The stored panel goes back verbatim when the amount wasn't changed, which
    * is the point: its `source` is the claim it was recorded under, and
    * re-describing the same food to the model would replace that with
    * `estimated`, permanently. A scale keeps that same source (see
    * `scalePanelToAmount`), so naming a different weight doesn't cost the
-   * claim either — comparing against `pendingDefaultGrams` rather than
-   * scaling unconditionally is what keeps an untouched field byte-identical
-   * to the old one-tap log rather than a weight run back through the scaling
-   * arithmetic for no reason. Same reuse `duplicateEntry` performs, and
-   * `mealPlanEntryId` is dropped for the same reason it drops it — this is a
-   * fresh eating, not the planned meal again, unless the caller named one.
+   * claim either. Comparing against the baseline rather than scaling
+   * unconditionally keeps an untouched amount byte-identical to the entry it
+   * came from rather than run back through the scaling arithmetic for no
+   * reason. Same reuse `duplicateEntry` performs, and `mealPlanEntryId` is
+   * dropped for the same reason it drops it (this is a fresh eating, not the
+   * planned meal again) unless the caller named one.
    *
    * The section this was opened from decides the meal; with no section, a
    * recalled food's own last-eaten meal stands, rather than it landing under
    * no meal at all.
    */
-  const confirmPending = () => {
-    if (!pendingLog) return;
-    const grams = parseWeightGrams(pendingWeight);
-    const changed = grams != null && grams !== pendingDefaultGrams;
+  const logStaged = (staged: PendingRecallLog, weightText: string, baseline: number | null) => {
+    const grams = parseWeightGrams(weightText);
+    const changed = grams != null && grams !== baseline;
     const scale = (nutrition: FoodNutrition) => (changed ? scalePanelToAmount(nutrition, `${grams}g`, null, at) : null);
 
-    if (pendingLog.kind === 'recall') {
-      const food = pendingLog.food;
+    if (staged.kind === 'recall') {
+      const food = staged.food;
       const scaled = scale(food.nutrition);
       const written = addEntry({
         label: food.label,
@@ -464,7 +528,7 @@ export function EstimateMealSheet({ visible, slot, at, mealPlanEntryId, initialD
       });
       if (!written) { haptics.error(); return; }
     } else {
-      const food = pendingLog.food;
+      const food = staged.food;
       const scaled = scale(food.nutrition);
       const nutrition = scaled?.nutrition ?? helpingOf(food);
       if (!nutrition) { haptics.error(); return; }
@@ -491,6 +555,18 @@ export function EstimateMealSheet({ visible, slot, at, mealPlanEntryId, initialD
     onClose();
   };
 
+  const confirmPending = () => {
+    if (!pendingLog) return;
+    logStaged(pendingLog, pendingWeight, pendingDefaultGrams);
+  };
+
+  /** The row's + button: logs it at the amount the amount step would open with. */
+  const quickLog = (staged: PendingRecallLog) => {
+    const { weight, baseline } = stagedDefaults(staged);
+    logStaged(staged, weight, baseline);
+  };
+
+  // ==== save as recipe, cancel ====
   // Files the description as a recipe made of the lines it names, so it can be
   // logged again later without re-describing it. Deliberately not the
   // estimate's own total figures: those are a claim about *this* telling
@@ -529,16 +605,75 @@ export function EstimateMealSheet({ visible, slot, at, mealPlanEntryId, initialD
     );
   };
 
-  const answered = estimate?.questions.some(q => answers[q.prompt]) ?? false;
+  // ==== render ====
   const shown = estimate ? NUTRIENT_KEYS.filter(k => estimate.amounts[k] !== undefined) : [];
+  const kcal = estimate?.amounts.calorieKcal;
+  const macros = estimate ? MACRO_KEYS.filter(k => estimate.amounts[k] !== undefined) : [];
+  // Everything stated beyond the headline number and the tiles, for the one
+  // line that says the rest exists (and that the unstated rest is unknown).
+  const otherStated = shown.filter(k => k !== 'calorieKcal' && !MACRO_KEYS.includes(k)).length;
+
+  const staged: PendingRecallLog[] = [
+    ...recalled.map(food => ({ kind: 'recall' as const, food })),
+    ...catalogMatches.map(food => ({ kind: 'catalog' as const, food })),
+  ];
+  const hasOffers = staged.length > 0 || matches.length > 0;
+  const trimmed = description.trim();
+  // The estimate row stays while there is nothing estimated yet, and comes back
+  // once the field says something other than what the estimate on screen was
+  // asked about.
+  const showEstimateRow = !!trimmed && (!estimate || trimmed !== estimatedFor?.trim());
+
+  const renderStagedRow = (row: PendingRecallLog, index: number) => {
+    const { food } = row;
+    const meta = row.kind === 'recall' ? describeRecall(row.food) : describeCatalogRecall(row.food);
+    if (pendingLog?.kind === row.kind && pendingLog.food.key === food.key) {
+      return (
+        <PendingRecallCard
+          key={`${row.kind}-${food.key}`}
+          styles={styles}
+          colors={colors}
+          label={food.label}
+          meta={meta}
+          weight={pendingWeight}
+          onChangeWeight={setPendingWeight}
+          onCancel={cancelPending}
+          onConfirm={confirmPending}
+        />
+      );
+    }
+    const rowKcal = stagedKcal(row);
+    return (
+      <View key={`${row.kind}-${food.key}`} style={[styles.offerRow, index > 0 && styles.offerDivider]}>
+        <TouchableOpacity
+          style={styles.offerMain}
+          activeOpacity={interaction.activeOpacity}
+          onPress={() => openPending(row)}
+          accessibilityRole="button"
+          accessibilityLabel={`Change the amount of ${food.label} before logging. ${meta}`}
+        >
+          <Text style={styles.offerName}>{food.label}</Text>
+          <Text style={styles.offerMeta}>{meta}</Text>
+        </TouchableOpacity>
+        {rowKcal !== undefined && <KcalFigure styles={styles} kcal={rowKcal} />}
+        <PressableScale
+          style={styles.offerAdd}
+          onPress={() => quickLog(row)}
+          accessibilityLabel={`Log ${food.label}, same amount as before`}
+        >
+          <Ionicons name="add" size={iconSize.md} color={colors.accent} />
+        </PressableScale>
+      </View>
+    );
+  };
 
   return (
-    <SheetModal name="Estimate a meal" visible={visible} animationType="slide" presentationStyle="pageSheet" onRequestClose={handleCancel}>
+    <SheetModal name="Describe a meal" visible={visible} animationType="slide" presentationStyle="pageSheet" onRequestClose={handleCancel}>
       <View style={styles.root}>
         <SheetHeader
-          title="Estimate a meal"
+          title="Describe a meal"
           left={<SheetHeaderButton label="Cancel" role="cancel" onPress={handleCancel} minWidth={64} />}
-          right={<SheetHeaderButton label="Log" onPress={handleLog} disabled={!estimate} minWidth={64} />}
+          right={<View style={styles.headerSpacer} />}
         />
 
         <ScrollView
@@ -548,7 +683,6 @@ export function EstimateMealSheet({ visible, slot, at, mealPlanEntryId, initialD
           keyboardShouldPersistTaps="handled"
           {...keyboardScroll.props}
         >
-          <Text style={styles.label}>WHAT DID YOU EAT?</Text>
           <TextInput
             style={styles.input}
             value={description}
@@ -557,147 +691,152 @@ export function EstimateMealSheet({ visible, slot, at, mealPlanEntryId, initialD
             placeholderTextColor={colors.textTertiary}
             maxLength={ESTIMATE_DESCRIPTION_MAX_LENGTH}
             multiline
+            blurOnSubmit
+            returnKeyType="done"
+            onSubmitEditing={() => { if (!hasOffers) handleEstimate(); }}
             accessibilityLabel="What you ate"
           />
-          <Text style={styles.hint}>
-            Name the dish and the place if you know it. The figures come back as an
-            estimate for you to check, and stay marked as one.
-          </Text>
 
-          {(recalled.length > 0 || catalogMatches.length > 0) && !estimate && (
-            <View style={styles.card}>
-              <Text style={styles.cardTitle}>You already have figures for this</Text>
-              <Text style={styles.hint}>
-                Tap one to review it before logging. You can change the amount, or
-                keep the one it was recorded with.
+          {hasOffers && !estimate && (
+            <>
+              <Text style={styles.label}>YOU'VE HAD THIS BEFORE</Text>
+              <View style={styles.offerList}>
+                {staged.map(renderStagedRow)}
+                {/* A recipe is logged in servings, a question this sheet
+                    doesn't ask, so its row opens the picker rather than
+                    logging, and a chevron says so where the others have +. */}
+                {matches.map((recipe, index) => {
+                  const serving = perServing(recipeNutrition(recipe, items, itemProducts));
+                  return (
+                    <TouchableOpacity
+                      key={recipe.id}
+                      style={[styles.offerRow, (staged.length > 0 || index > 0) && styles.offerDivider]}
+                      activeOpacity={interaction.activeOpacity}
+                      onPress={() => { haptics.tap(); Keyboard.dismiss(); onPickRecipe(recipe.id); }}
+                      accessibilityRole="button"
+                      accessibilityLabel={`Log ${recipe.name}, a recipe, in servings. Anything else typed above is left out.`}
+                    >
+                      <View style={styles.offerMain}>
+                        <Text style={styles.offerName}>{recipe.name}</Text>
+                        <Text style={styles.offerMeta}>Recipe, per serving</Text>
+                      </View>
+                      {serving?.calorieKcal !== undefined && <KcalFigure styles={styles} kcal={serving.calorieKcal} />}
+                      <View style={styles.offerAdd}>
+                        <Ionicons name="chevron-forward" size={iconSize.sm} color={colors.accent} />
+                      </View>
+                    </TouchableOpacity>
+                  );
+                })}
+              </View>
+              <Text style={styles.listHint}>
+                Tap + to log the same amount again, or tap a name to change the amount first.
               </Text>
-              {recalled.map(food => {
-                const isPending = pendingLog?.kind === 'recall' && pendingLog.food.key === food.key;
-                const meta = describeRecall(food);
-                if (isPending) {
-                  return (
-                    <PendingRecallCard
-                      key={food.key}
-                      styles={styles}
-                      colors={colors}
-                      label={food.label}
-                      meta={meta}
-                      weight={pendingWeight}
-                      onChangeWeight={setPendingWeight}
-                      onCancel={cancelPending}
-                      onConfirm={confirmPending}
-                    />
-                  );
-                }
-                return (
-                  <TouchableOpacity
-                    key={food.key}
-                    style={styles.recallRow}
-                    activeOpacity={interaction.activeOpacity}
-                    onPress={() => openRecall(food)}
-                    accessibilityRole="button"
-                    accessibilityLabel={`Review and log ${food.label}. ${meta}`}
-                  >
-                    <Text style={styles.recallName}>{food.label}</Text>
-                    <Text style={styles.recallMeta}>{meta}</Text>
-                  </TouchableOpacity>
-                );
-              })}
-              {catalogMatches.map(food => {
-                const isPending = pendingLog?.kind === 'catalog' && pendingLog.food.key === food.key;
-                const meta = describeCatalogRecall(food);
-                if (isPending) {
-                  return (
-                    <PendingRecallCard
-                      key={food.key}
-                      styles={styles}
-                      colors={colors}
-                      label={food.label}
-                      meta={meta}
-                      weight={pendingWeight}
-                      onChangeWeight={setPendingWeight}
-                      onCancel={cancelPending}
-                      onConfirm={confirmPending}
-                    />
-                  );
-                }
-                return (
-                  <TouchableOpacity
-                    key={food.key}
-                    style={styles.recallRow}
-                    activeOpacity={interaction.activeOpacity}
-                    onPress={() => openCatalog(food)}
-                    accessibilityRole="button"
-                    accessibilityLabel={`Review and log ${food.label}. ${meta}`}
-                  >
-                    <Text style={styles.recallName}>{food.label}</Text>
-                    <Text style={styles.recallMeta}>{meta}</Text>
-                  </TouchableOpacity>
-                );
-              })}
-            </View>
+            </>
           )}
 
-          {matches.length > 0 && !estimate && (
-            <View style={styles.card}>
-              <Text style={styles.cardTitle}>You have a recipe for this</Text>
-              <Text style={styles.hint}>
-                Its figures come from the ingredients rather than a guess. Tapping one logs
-                just the recipe, in servings — anything else typed above is left out.
-              </Text>
-              {matches.map(recipe => (
-                <TouchableOpacity
-                  key={recipe.id}
-                  style={styles.recipeRow}
-                  activeOpacity={interaction.activeOpacity}
-                  onPress={() => { haptics.tap(); Keyboard.dismiss(); onPickRecipe(recipe.id); }}
-                  accessibilityRole="button"
-                  accessibilityLabel={`Log just ${recipe.name}, in servings. Anything else typed above is left out.`}
-                >
-                  <Text style={styles.recipeName}>{recipe.name}</Text>
-                </TouchableOpacity>
-              ))}
-            </View>
+          {showEstimateRow && (
+            <TouchableOpacity
+              style={[styles.estimateRow, loading && styles.actionOff]}
+              activeOpacity={interaction.activeOpacity}
+              disabled={loading}
+              onPress={handleEstimate}
+              accessibilityRole="button"
+              accessibilityLabel={`Estimate the nutrition of ${trimmed}`}
+            >
+              <View style={styles.estimateIcon}>
+                {loading
+                  ? <ActivityIndicator size="small" color={colors.accent} />
+                  : <Ionicons name="sparkles" size={iconSize.sm} color={colors.accent} />}
+              </View>
+              <View style={styles.offerMain}>
+                <Text style={styles.estimateTitle} numberOfLines={1}>
+                  {`Estimate \u201C${trimmed}\u201D${hasOffers && !estimate ? ' instead' : ''}`}
+                </Text>
+                <Text style={styles.offerMeta}>
+                  {hasOffers && !estimate
+                    ? 'For something new. Name the place too for a closer estimate.'
+                    : 'Name the place too for a closer estimate.'}
+                </Text>
+              </View>
+              <Ionicons name="chevron-forward" size={iconSize.sm} color={colors.textTertiary} />
+            </TouchableOpacity>
           )}
 
-          <TouchableOpacity
-            style={[styles.action, (!description.trim() || loading) && styles.actionOff]}
-            activeOpacity={interaction.activeOpacity}
-            disabled={!description.trim() || loading}
-            onPress={handleEstimate}
-            accessibilityRole="button"
-            accessibilityLabel="Estimate this meal"
-          >
-            {loading
-              ? <ActivityIndicator color={colors.onAccent} />
-              : <Text style={styles.actionText}>{estimate ? 'Estimate again' : 'Estimate'}</Text>}
-          </TouchableOpacity>
+          {!trimmed && !estimate && (
+            <Text style={styles.listHint}>
+              Type what you ate. Anything you've logged before shows up here, and anything new
+              can be estimated.
+            </Text>
+          )}
 
           {!!error && <Text style={styles.error}>{error}</Text>}
 
           {estimate && (
-            <View style={styles.card}>
-              <Text style={styles.cardTitle}>{estimate.label}</Text>
+            <View style={[styles.card, loading && styles.cardBusy]}>
+              <View style={styles.resultHead}>
+                <Text style={styles.cardTitle}>{estimate.label}</Text>
+                <Text style={styles.estimateTag}>Estimate</Text>
+              </View>
               <Text style={styles.quantity}>{estimate.quantity}</Text>
+              {kcal !== undefined && (
+                <Text style={styles.bigKcal}>
+                  {Math.round(kcal).toLocaleString()}
+                  <Text style={styles.bigKcalUnit}> cal</Text>
+                </Text>
+              )}
+              {macros.length > 0 && (
+                <View style={styles.macros}>
+                  {macros.map(key => (
+                    <View key={key} style={styles.macro}>
+                      <Text style={styles.macroValue}>{Math.round(estimate.amounts[key] as number)}g</Text>
+                      <Text style={styles.macroLabel}>{MACRO_LABEL[key]}</Text>
+                    </View>
+                  ))}
+                </View>
+              )}
               {/* What the figures claim, stated rather than implied. */}
               <Text style={styles.claim}>{describeEstimate(estimate)}</Text>
 
-              {shown.map(key => (
-                <View key={key} style={styles.figure}>
-                  <Text style={styles.figureLabel}>{NUTRIENT_LABEL[key].label}</Text>
-                  <Text style={styles.figureValue}>
-                    {Math.round(estimate.amounts[key] as number).toLocaleString()}
-                    {NUTRIENT_LABEL[key].unit === 'cal' ? ' cal' : NUTRIENT_LABEL[key].unit}
+              <TouchableOpacity
+                style={styles.disclosure}
+                activeOpacity={interaction.activeOpacity}
+                onPress={() => { haptics.tap(); setDetailsOpen(o => !o); }}
+                accessibilityRole="button"
+                accessibilityState={{ expanded: detailsOpen }}
+                accessibilityLabel="All nutrients and ingredients"
+              >
+                <Text style={styles.disclosureText}>
+                  {otherStated > 0 ? `All nutrients (${otherStated} more)` : 'All nutrients'}
+                  {estimate.breakdown.length > 0 ? ' and ingredients' : ''}
+                </Text>
+                <Ionicons name={detailsOpen ? 'chevron-up' : 'chevron-down'} size={iconSize.sm} color={colors.textSecondary} />
+              </TouchableOpacity>
+
+              {detailsOpen && (
+                <View style={styles.details}>
+                  {shown.map(key => (
+                    <NutrientLine key={key} styles={styles} nutrient={key} amount={estimate.amounts[key] as number} />
+                  ))}
+                  {/* Absent stays absent: a nutrient the model said nothing about
+                      simply has no row, rather than a row reading zero. */}
+                  <Text style={styles.hint}>
+                    {shown.length === NUTRIENT_KEYS.length
+                      ? 'Every nutrient stated.'
+                      : `${shown.length} of ${NUTRIENT_KEYS.length} nutrients stated. The rest are unknown rather than zero.`}
                   </Text>
+                  {/* The same total, split into pieces small enough to check
+                      against what you'd guess yourself rather than taken whole. */}
+                  {estimate.breakdown.map((item, index) => (
+                    <View key={`${item.label}-${index}`} style={styles.ingredient}>
+                      <Text style={styles.ingredientLabel}>{item.label}</Text>
+                      {NUTRIENT_KEYS.filter(k => item.amounts[k] !== undefined).map(key => (
+                        <NutrientLine key={key} styles={styles} nutrient={key} amount={item.amounts[key] as number} />
+                      ))}
+                    </View>
+                  ))}
                 </View>
-              ))}
-              {/* Absent stays absent: a nutrient the model said nothing about
-                  simply has no row, rather than a row reading zero. */}
-              <Text style={styles.hint}>
-                {shown.length === NUTRIENT_KEYS.length
-                  ? 'Every nutrient stated.'
-                  : `${shown.length} of ${NUTRIENT_KEYS.length} nutrients stated. The rest are unknown rather than zero.`}
-              </Text>
+              )}
+
               {savedRecipeId ? (
                 <Text style={styles.hint}>Saved to your recipe box, so you can log this again later.</Text>
               ) : (
@@ -711,36 +850,9 @@ export function EstimateMealSheet({ visible, slot, at, mealPlanEntryId, initialD
             </View>
           )}
 
-          {/* The same total, split into pieces small enough to check against
-              what you'd guess yourself rather than taken whole. */}
-          {estimate && estimate.breakdown.length > 0 && (
+          {estimate && questions.length > 0 && (
             <View style={styles.card}>
-              <Text style={styles.cardTitle}>By ingredient</Text>
-              {estimate.breakdown.map((item, index) => {
-                const stated = NUTRIENT_KEYS.filter(k => item.amounts[k] !== undefined);
-                return (
-                  <View key={`${item.label}-${index}`} style={styles.ingredient}>
-                    <Text style={styles.ingredientLabel}>{item.label}</Text>
-                    {stated.map(key => (
-                      <View key={key} style={styles.figure}>
-                        <Text style={styles.figureLabel}>{NUTRIENT_LABEL[key].label}</Text>
-                        <Text style={styles.figureValue}>
-                          {Math.round(item.amounts[key] as number).toLocaleString()}
-                          {NUTRIENT_LABEL[key].unit === 'cal' ? ' cal' : NUTRIENT_LABEL[key].unit}
-                        </Text>
-                      </View>
-                    ))}
-                  </View>
-                );
-              })}
-            </View>
-          )}
-
-          {estimate && estimate.questions.length > 0 && (
-            <View style={styles.card}>
-              <Text style={styles.cardTitle}>These would change the figures</Text>
-              <Text style={styles.hint}>Answer what you know. Skipping any of them is fine.</Text>
-              {estimate.questions.map(q => (
+              {questions.map(q => (
                 <View key={q.prompt} style={styles.question}>
                   <Text style={styles.questionPrompt}>{q.prompt}</Text>
                   <View style={styles.options}>
@@ -749,16 +861,14 @@ export function EstimateMealSheet({ visible, slot, at, mealPlanEntryId, initialD
                       return (
                         <TouchableOpacity
                           key={option}
-                          style={[styles.option, on && styles.optionOn]}
+                          style={[styles.option, on && styles.optionOn, loading && styles.actionOff]}
                           activeOpacity={interaction.activeOpacity}
-                          onPress={() => {
-                            haptics.tap();
-                            // Tapping the chosen one again clears it, so an
-                            // answer given by accident is one tap to take back.
-                            setAnswers(a => ({ ...a, [q.prompt]: on ? '' : option }));
-                          }}
+                          disabled={loading}
+                          // Tapping the chosen one again clears it, so an
+                          // answer given by accident is one tap to take back.
+                          onPress={() => handleAnswer(q.prompt, option)}
                           accessibilityRole="button"
-                          accessibilityState={{ selected: on }}
+                          accessibilityState={{ selected: on, disabled: loading }}
                           accessibilityLabel={`${q.prompt} ${option}`}
                         >
                           <Text style={[styles.optionText, on && styles.optionTextOn]}>{option}</Text>
@@ -768,16 +878,9 @@ export function EstimateMealSheet({ visible, slot, at, mealPlanEntryId, initialD
                   </View>
                 </View>
               ))}
-              <TouchableOpacity
-                style={[styles.action, (!answered || loading) && styles.actionOff]}
-                activeOpacity={interaction.activeOpacity}
-                disabled={!answered || loading}
-                onPress={handleAnswered}
-                accessibilityRole="button"
-                accessibilityLabel="Estimate again with these answers"
-              >
-                <Text style={styles.actionText}>Estimate again with these</Text>
-              </TouchableOpacity>
+              <Text style={styles.hint}>
+                {loading ? 'Updating the estimate…' : 'Answering updates the figures. Skipping is fine.'}
+              </Text>
             </View>
           )}
 
@@ -798,8 +901,51 @@ export function EstimateMealSheet({ visible, slot, at, mealPlanEntryId, initialD
             </>
           )}
         </ScrollView>
+
+        {estimate && (
+          <View style={styles.footer}>
+            <TouchableOpacity
+              style={[styles.action, loading && styles.actionOff]}
+              activeOpacity={interaction.activeOpacity}
+              disabled={loading}
+              onPress={handleLog}
+              accessibilityRole="button"
+              accessibilityLabel={kcal !== undefined ? `Log ${Math.round(kcal)} calories` : 'Log this meal'}
+            >
+              <Text style={styles.actionText}>
+                {kcal !== undefined ? `Log ${Math.round(kcal).toLocaleString()} cal` : 'Log'}
+              </Text>
+            </TouchableOpacity>
+          </View>
+        )}
       </View>
     </SheetModal>
+  );
+}
+
+/** The three tiles under the headline calories, in label order. */
+const MACRO_KEYS: readonly NutrientKey[] = ['proteinG', 'carbsG', 'fatG'];
+const MACRO_LABEL: Partial<Record<NutrientKey, string>> = { proteinG: 'Protein', carbsG: 'Carbs', fatG: 'Fat' };
+
+function KcalFigure({ styles, kcal }: { styles: ReturnType<typeof makeStyles>; kcal: number }) {
+  return (
+    <View style={styles.kcal}>
+      <Text style={styles.kcalValue}>{Math.round(kcal).toLocaleString()}</Text>
+      <Text style={styles.kcalUnit}>cal</Text>
+    </View>
+  );
+}
+
+function NutrientLine({ styles, nutrient, amount }: { styles: ReturnType<typeof makeStyles>; nutrient: NutrientKey; amount: number }) {
+  const { label, unit } = NUTRIENT_LABEL[nutrient];
+  return (
+    <View style={styles.figure}>
+      <Text style={styles.figureLabel}>{label}</Text>
+      <Text style={styles.figureValue}>
+        {Math.round(amount).toLocaleString()}
+        {unit === 'cal' ? ' cal' : unit}
+      </Text>
+    </View>
   );
 }
 
@@ -823,8 +969,8 @@ interface PendingRecallCardProps {
 function PendingRecallCard({ styles, colors, label, meta, weight, onChangeWeight, onCancel, onConfirm }: PendingRecallCardProps) {
   return (
     <View style={styles.confirmCard}>
-      <Text style={styles.recallName}>{label}</Text>
-      <Text style={styles.recallMeta}>{meta}</Text>
+      <Text style={styles.offerName}>{label}</Text>
+      <Text style={styles.offerMeta}>{meta}</Text>
       <View style={styles.confirmWeightRow}>
         <Text style={styles.confirmWeightLabel}>Amount to log</Text>
         <TextInput
@@ -865,7 +1011,7 @@ function makeStyles(colors: Colors) {
       paddingVertical: spacing.md,
       color: colors.text,
       fontSize: font.md,
-      minHeight: 76,
+      minHeight: 52,
       textAlignVertical: 'top',
     },
     hint: { color: colors.textSecondary, fontSize: font.sm, lineHeight: 18 },
@@ -909,27 +1055,90 @@ function makeStyles(colors: Colors) {
     },
     actionOff: { opacity: interaction.activeOpacity * 0.6 },
     actionText: { color: colors.onAccent, fontSize: font.md, fontWeight: fontWeight.semibold },
-    recipeRow: {
-      paddingVertical: spacing.sm,
+    // Rows of one inset-grouped card, the way every list in the app reads.
+    offerList: { backgroundColor: colors.bgSecondary, borderRadius: radius.lg, overflow: 'hidden' },
+    offerRow: {
+      flexDirection: 'row',
+      alignItems: 'center',
+      gap: spacing.smd,
+      paddingLeft: spacing.md,
+      paddingRight: spacing.smd,
+      paddingVertical: spacing.smd,
     },
-    recipeName: { color: colors.accent, fontSize: font.sm },
-    // A shape rather than bare accent text: tapping one of these opens it
-    // into a confirm step, and accent text in this app is a link or a
-    // current value.
-    recallRow: {
+    // Between rows only, so the card's last row doesn't draw a line along
+    // its rounded bottom edge.
+    offerDivider: { borderTopWidth: StyleSheet.hairlineWidth, borderTopColor: colors.separator },
+    offerMain: { flex: 1, minWidth: 0, gap: spacing.xxs },
+    offerName: { color: colors.text, fontSize: font.md, fontWeight: fontWeight.medium },
+    offerMeta: { color: colors.textSecondary, fontSize: font.xs },
+    offerAdd: {
+      width: 32,
+      height: 32,
+      borderRadius: 16,
+      backgroundColor: colors.accentSubtle,
+      alignItems: 'center',
+      justifyContent: 'center',
+    },
+    kcal: { alignItems: 'flex-end' },
+    kcalValue: { color: colors.text, fontSize: font.md, fontWeight: fontWeight.semibold },
+    kcalUnit: { color: colors.textSecondary, fontSize: font.xxs },
+    listHint: { color: colors.textSecondary, fontSize: font.sm, lineHeight: 18, paddingHorizontal: spacing.xs },
+    estimateRow: {
+      flexDirection: 'row',
+      alignItems: 'center',
+      gap: spacing.smd,
+      backgroundColor: colors.bgSecondary,
+      borderRadius: radius.lg,
+      paddingHorizontal: spacing.md,
+      paddingVertical: spacing.smd,
+    },
+    estimateIcon: {
+      width: 32,
+      height: 32,
+      borderRadius: 16,
+      backgroundColor: colors.accentSubtle,
+      alignItems: 'center',
+      justifyContent: 'center',
+    },
+    estimateTitle: { color: colors.accent, fontSize: font.md, fontWeight: fontWeight.medium },
+    headerSpacer: { minWidth: 64 },
+    cardBusy: { opacity: 0.5 },
+    resultHead: { flexDirection: 'row', alignItems: 'baseline', gap: spacing.sm },
+    estimateTag: { color: colors.textSecondary, fontSize: font.xs },
+    bigKcal: { color: colors.text, fontSize: 34, fontWeight: fontWeight.bold },
+    bigKcalUnit: { color: colors.textSecondary, fontSize: font.md, fontWeight: fontWeight.medium },
+    macros: { flexDirection: 'row', gap: spacing.sm },
+    macro: {
+      flex: 1,
       backgroundColor: colors.bgTertiary,
       borderRadius: radius.md,
-      paddingHorizontal: spacing.md,
+      paddingHorizontal: spacing.smd,
       paddingVertical: spacing.sm,
-      gap: spacing.xxs,
     },
-    recallName: { color: colors.text, fontSize: font.sm, fontWeight: fontWeight.medium },
-    recallMeta: { color: colors.textSecondary, fontSize: font.xs },
+    macroValue: { color: colors.text, fontSize: font.md, fontWeight: fontWeight.semibold },
+    macroLabel: { color: colors.textSecondary, fontSize: font.xxs },
+    disclosure: {
+      flexDirection: 'row',
+      alignItems: 'center',
+      justifyContent: 'space-between',
+      paddingVertical: spacing.xs,
+    },
+    disclosureText: { color: colors.textSecondary, fontSize: font.sm },
+    details: { gap: spacing.xs },
+    footer: {
+      paddingHorizontal: spacing.md,
+      paddingTop: spacing.smd,
+      paddingBottom: spacing.xl,
+      borderTopWidth: StyleSheet.hairlineWidth,
+      borderTopColor: colors.separator,
+      backgroundColor: colors.bg,
+    },
     // The recall row's confirm step, in place of the plain row while it's
     // staged — same tint as the row it replaces, with room for the weight
     // field and the Cancel/Log pair.
     confirmCard: {
       backgroundColor: colors.bgTertiary,
+      margin: spacing.sm,
       borderRadius: radius.md,
       padding: spacing.md,
       gap: spacing.sm,
