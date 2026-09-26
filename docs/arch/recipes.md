@@ -142,6 +142,13 @@ already allows two things on one dinner, so ad-hoc pairing needs nothing.
   picks one option per group, `walk` descends only into that one, and every flatten takes an
   optional `ComponentResolution`. **Passing none resolves to the defaults**, so an unresolved read
   is a complete dish and every caller predating this kept working unchanged.
+- **A surface that reads one cooking of a recipe must take that cooking's picks.** Every flatten
+  and walk here (`flattenRecipeIngredients`, `cookSteps`, `recipeChoiceGroups`, cost, nutrition)
+  accepts a resolution, and leaving it off still type-checks and still renders a complete dish: the
+  default one. That is how cook mode shipped cooking the first option no matter what the recipe
+  screen had picked. So a new surface that shows a specific cooking (a sheet opened from a recipe
+  screen or a planned meal) takes `choices` from whoever opened it and passes them through. Only a
+  read about the recipe in general (search, the pantry scorer) may use the defaults.
 - **The default is the group's first component in list order**, not a `defaultComponentId`: an id
   is a second thing to keep in step with the list and to repair when that component is removed.
   `makeComponentDefault` moves the link to the front of its group — the promotion *is* a reorder.
@@ -686,6 +693,18 @@ ingredient panel's fold die with the modal.
   and logging one. It takes an undefined recipe so a screen can call it above its own "the row is
   gone" guard — and `CookModeSheet` passes `visible ? recipe : undefined`, since a modal mounted
   invisible must not hold a once-a-second interval open.
+- **The either/or picks are made here, not before.** Cook mode used to resolve every group to its
+  default and ignore the recipe screen's chips, so the only way to cook the jalapeño version was to
+  remember to pick it before pressing Cook, and forgetting meant backing out and starting over.
+  `CookModeSheet` now takes the screen's `choices` and hands every pick back (`onChoicesChange`),
+  one state rather than a copy, so what's picked at the stove is still the pick for the cost,
+  nutrition and food-log reads afterwards. Mise en place shows every group above the list it
+  changes; the mid-step ingredient panel shows only the ingredient groups, because swapping a
+  *component* rewrites the method under the step being read, and that belongs one Back away on the
+  mise en place screen. `cookSteps` gets the same resolution, so a component pick changes the steps
+  too. Opening a recipe from a planned meal seeds the screen from `MealPlanEntry.recipeChoices`
+  (the `choices` route param), and its scale from `recipeScale` (`scale`); nothing picked on the recipe screen or in cook mode is written back
+  to the entry.
 - **Quantities are the panel's, never the step's.** The ingredient panel runs the same
   scale-then-convert pipeline the recipe row does (exact multiplication first, rounding conversion
   second), so a halved recipe reads correctly mid-step. Nothing parses an amount back *out* of a
