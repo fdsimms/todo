@@ -270,11 +270,13 @@ export function currentTimeSegment(segments: readonly TimeOfDay[], pass?: Visibl
 // against *today's* clock instant instead of the logical day (still
 // "yesterday") that's actually in progress — hiding an already-active
 // windowed task the instant the calendar flips, well before dayResetTime.
+//
+// Placed with onLogicalDay, so a time earlier than dayResetTime lands in the
+// small hours at the end of the logical day. Set on the day start's own date,
+// "before 1am" under a 4 AM reset closed at 01:00 *before* the day began, so
+// the task read as expired (and sweepable) from the moment its day started.
 function getWindowThreshold(hhmm: string, pass?: VisibleAtPass): Date {
-  const [h, m] = hhmm.split(':').map(Number);
-  const t = pass ? new Date(pass.todayStart) : getCurrentDayStart();
-  t.setHours(h, m, 0, 0);
-  return t;
+  return onLogicalDay(pass ? pass.todayStart : getCurrentDayStart(), hhmm);
 }
 
 // Whether `deferUntil` still holds a task back right now. Every other
@@ -458,7 +460,8 @@ function windowClosedAt(task: Task, end: string): Date {
   const anchor = task.dueDate ?? task.deferUntil;
   if (!anchor) return getWindowThreshold(end);
   const { dayResetTime } = useSettingsStore.getState();
-  return hhmmToDate(end, getTaskDayStart(new Date(anchor), dayResetTime));
+  // onLogicalDay rather than hhmmToDate, for getWindowThreshold's reason.
+  return onLogicalDay(getTaskDayStart(new Date(anchor), dayResetTime), end);
 }
 
 // True once an expired task is old enough for sweepExpiredTasks to actually

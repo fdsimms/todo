@@ -3,6 +3,7 @@ import { differenceInCalendarDays } from 'date-fns/differenceInCalendarDays';
 import { dayKeyOf, dayKeyToDate } from './dateUtils';
 import { describeUseBy, liveUseBy } from './freshness';
 import { groceryNameKey } from './groceryParse';
+import { pluralKeyVariants } from './groceryPlural';
 import { GROCERY_EXPIRY_DAYS_MAX } from '../types';
 import type { GroceryItem } from '../types';
 
@@ -104,9 +105,28 @@ export const OPEN_SHELF_LIFE_LEXICON: Record<string, number> = {
  * `shelfLifeDaysFor` uses and for the same reason.
  */
 export function openShelfLifeDaysFor(name: string): number | null {
+  return lexiconDays(OPEN_SHELF_LIFE_LEXICON, name);
+}
+
+/**
+ * A name's entry in one of the two tables, trying the other plural of its last
+ * word when the name itself misses: singular and plural are one shelf item
+ * (docs/arch/groceries.md), and the tables list both forms for some foods and
+ * only one for others, so "Cucumbers" and "Strawberry" got no use-by day at
+ * all. Two variants the table disagrees on refuse rather than pick, the same
+ * call `resolvePluralKey` makes.
+ */
+function lexiconDays(table: Record<string, number>, name: string): number | null {
   const key = groceryNameKey(name);
   if (!key) return null;
-  return OPEN_SHELF_LIFE_LEXICON[key] ?? null;
+  const exact = table[key];
+  if (exact !== undefined) return exact;
+  const found = new Set<number>();
+  for (const variant of pluralKeyVariants(key)) {
+    const days = table[variant];
+    if (days !== undefined) found.add(days);
+  }
+  return found.size === 1 ? [...found][0] : null;
 }
 
 /**
@@ -120,9 +140,7 @@ export function openShelfLifeDaysFor(name: string): number | null {
  * that's fine, which is the failure mode that gets a feature turned off.
  */
 export function shelfLifeDaysFor(name: string): number | null {
-  const key = groceryNameKey(name);
-  if (!key) return null;
-  return SHELF_LIFE_LEXICON[key] ?? null;
+  return lexiconDays(SHELF_LIFE_LEXICON, name);
 }
 
 /** A use-by count forced into the sayable range, mirroring clampKeepDays. */

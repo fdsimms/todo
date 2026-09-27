@@ -491,6 +491,26 @@ describe('isTaskExpired', () => {
     expect(isTaskWindowActive(nightly)).toBe(true);
   });
 
+  // "Before 1am tonight" under a 4 AM reset: 01:00 is earlier than the day's
+  // start, so it belongs to the small hours at the day's end. It used to be
+  // placed on the day start's own date, closing three hours before the day
+  // began, so the task was expired (and swept under Immediately) all day.
+  it('closes a window ending before dayResetTime at the end of the logical day', () => {
+    mockSettingsState.dayResetTime = '04:00';
+    try {
+      const dueDate = new Date(2025, 5, 10, 12, 0, 0).toISOString();
+      const task = { ...baseTask, dueDate, windowEnd: '01:00' };
+      expect(isTaskExpired(task)).toBe(false);
+      expect(isTaskSweepable(task, 0)).toBe(false);
+      jest.setSystemTime(new Date(2025, 5, 11, 0, 30, 0)); // still logical June 10
+      expect(isTaskExpired(task)).toBe(false);
+      jest.setSystemTime(new Date(2025, 5, 11, 1, 30, 0));
+      expect(isTaskExpired(task)).toBe(true);
+    } finally {
+      mockSettingsState.dayResetTime = '00:00';
+    }
+  });
+
   it('is false for a window with identical start and end', () => {
     expect(isTaskExpired({ ...baseTask, windowStart: '09:00', windowEnd: '09:00' })).toBe(false);
   });

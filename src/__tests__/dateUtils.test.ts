@@ -1365,6 +1365,17 @@ describe('getStreakOutcome', () => {
     expect(getStreakOutcome(task)).toBe('continued');
   });
 
+  it('gives a month-end habit the same day of slack as a weekly one', () => {
+    // On the 31st, done one day late (Mar 1 for the Feb 28 occurrence), is two
+    // calendar months after Jan 31. A habit on the 1st could already be 27 days
+    // late and still read as one month.
+    const task: Task = { ...baseTask, recurrenceType: 'monthly', recurrenceInterval: 1, recurrenceAnchorDay: 31, streakDate: new Date(2026, 0, 31).toISOString() };
+    jest.setSystemTime(new Date(2026, 2, 1, 10, 0, 0));
+    expect(getStreakOutcome(task)).toBe('continued');
+    jest.setSystemTime(new Date(2026, 2, 2, 10, 0, 0));
+    expect(getStreakOutcome(task)).toBe('reset');
+  });
+
   it('resets a monthly streak after skipping a month', () => {
     const task: Task = { ...baseTask, recurrenceType: 'monthly', recurrenceInterval: 1, streakDate: new Date(2025, 3, 10).toISOString() };
     expect(getStreakOutcome(task)).toBe('reset');

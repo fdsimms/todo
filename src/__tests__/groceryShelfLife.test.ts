@@ -103,6 +103,14 @@ describe('shelfLifeDaysFor', () => {
     expect(shelfLifeDaysFor('baby spinach')).toBeNull();
   });
 
+  it('reads either plural of a food the table lists in one form', () => {
+    // The table has "cucumber" and "strawberries"; the other form is the same
+    // shelf item and used to get no use-by day at all.
+    expect(shelfLifeDaysFor('Cucumbers')).toBe(shelfLifeDaysFor('cucumber'));
+    expect(shelfLifeDaysFor('Strawberry')).toBe(shelfLifeDaysFor('strawberries'));
+    expect(shelfLifeDaysFor('Cucumbers')).not.toBeNull();
+  });
+
   it('has nothing to say about an empty name', () => {
     expect(shelfLifeDaysFor('   ')).toBeNull();
   });
