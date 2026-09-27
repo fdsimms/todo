@@ -2,6 +2,7 @@ import {
   cookingWindow,
   hasCookingData,
   leftoverHistoryIn,
+  leftoversFinishedIn,
   mealCookCounts,
   mostCookedRecipes,
   type CookingWindow,
@@ -252,6 +253,13 @@ describe('leftoverHistoryIn', () => {
       WINDOW
     );
     expect(history).toEqual({ eaten: 0, tossed: 0 });
+  });
+
+  it('keys a container finished before dayResetTime to the day it belongs to', () => {
+    // 00:30 on Aug 14 under a 4 AM reset is still the window's last day, Aug 13.
+    const late = leftover({ finishedAt: new Date(2026, 7, 14, 0, 30).toISOString(), outcome: 'eaten' });
+    expect(leftoversFinishedIn([late], WINDOW, '04:00')).toHaveLength(1);
+    expect(leftoversFinishedIn([late], WINDOW, '00:00')).toHaveLength(0);
   });
 
   it('counts an outcome-less closed row as eaten, matching outcomeCounts', () => {

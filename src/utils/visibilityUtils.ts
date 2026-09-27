@@ -90,9 +90,20 @@ function segmentStartHHMM(timeOfDay: TimeOfDay, pass?: VisibleAtPass): string {
 
 // The pass's todayStart is copied rather than used: setHours below mutates it,
 // and it is shared with every other task in the pass.
+//
+// Every segment but morning is placed with onLogicalDay, so an evening or
+// night start earlier than dayResetTime ("night from 01:00" under a 4 AM
+// reset) lands in the small hours at the day's end rather than before the day
+// began, which surfaced those tasks at the start of the day. Morning is the
+// exception because it is the first segment: a morning start before the
+// day's start means the morning has already begun, and rolling it would hide
+// morning tasks until the day's last hours.
 function getTimeOfDayThreshold(timeOfDay: TimeOfDay, pass?: VisibleAtPass): Date {
-  const t = pass ? new Date(pass.todayStart) : getCurrentDayStart();
-  const [h, m] = segmentStartHHMM(timeOfDay, pass).split(':').map(Number);
+  const dayStart = pass ? pass.todayStart : getCurrentDayStart();
+  const hhmm = segmentStartHHMM(timeOfDay, pass);
+  if (timeOfDay !== 'morning') return onLogicalDay(dayStart, hhmm);
+  const t = new Date(dayStart);
+  const [h, m] = hhmm.split(':').map(Number);
   t.setHours(h, m, 0, 0);
   return t;
 }
@@ -369,11 +380,13 @@ function streakWindowAnchor(task: Task): Date {
 function streakWindowEnd(task: Task): Date | null {
   const dayStart = streakWindowAnchor(task);
   const explicitEnd = effectiveWindowEnd(task);
-  if (explicitEnd) return hhmmToDate(explicitEnd, dayStart);
+  // onLogicalDay for getWindowThreshold's reason; the next segment is never
+  // morning, so it rolls the same way getTimeOfDayThreshold's do.
+  if (explicitEnd) return onLogicalDay(dayStart, explicitEnd);
   if (task.timeSegments.length === 0) return null;
   const lastIndex = Math.max(...task.timeSegments.map(s => TIME_SEGMENT_ORDER.indexOf(s)));
   const nextSegment = TIME_SEGMENT_ORDER[lastIndex + 1];
-  if (nextSegment) return hhmmToDate(segmentStartHHMM(nextSegment), dayStart);
+  if (nextSegment) return onLogicalDay(dayStart, segmentStartHHMM(nextSegment));
   return hhmmToDate(segmentStartHHMM('morning'), addDays(dayStart, 1));
 }
 

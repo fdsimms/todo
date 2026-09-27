@@ -703,6 +703,8 @@ All time comparisons use the configurable `dayResetTime` (default `"00:00"`) to 
 
 **Expiry needs a window that closes and a day to close it on.** `isTaskExpired()` is the one gate with no way back — `sweepExpiredTasks` deletes what it flags — so it checks both. `effectiveWindowEnd()` ignores a `windowEnd` that isn't after its `windowStart`, because both gates anchor to a single logical day and "22:00–02:00" otherwise compares as past from 02:00 onward: expired before it ever opened. And `windowEnd` is deliberately not a date signal (see `hasNoDateSignal`), so a task carrying only one has no day to be late for — `hasDayArrived()` can't catch that, since with no `dueDate` it's vacuously true. Expiry now demands the same placement `isTaskVisible` does.
 
+**Any `HH:MM` placed on a logical day goes through `onLogicalDay` (`visibilityUtils.ts`), never a bare `setHours` on the day start.** A clock time earlier than `dayResetTime` belongs to the small hours at the *end* of that day, so it has to roll onto the next calendar date. Set on the day start's own date instead, "before 1am" under a 4 AM reset closed three hours before its day began: expired, hidden and swept all day. The category schedule found this first, and the per-task window gates repeated it.
+
 ### Scheduling decisions and dayResetTime — the grace window bug
 
 **Any computation that decides where to schedule a task — when it should land, which date to suggest, whether to defer it — must use `dayResetTime`-aware helpers.** Using bare `new Date()` ignores the user's configured day boundary and off-by-ones tasks by one day during the "early-morning grace window" before `dayResetTime`.

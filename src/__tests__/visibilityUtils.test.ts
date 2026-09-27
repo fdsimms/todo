@@ -412,6 +412,26 @@ describe('isUpcomingToday', () => {
     expect(isUpcomingToday(task)).toBe(false);
     expect(isTaskVisible(task)).toBe(true);
   });
+
+  it('places a segment starting before dayResetTime at the end of the day, except morning', () => {
+    // A night that starts at 01:00 under a 4 AM reset is the day's last hours.
+    // Placed before the day began, night tasks showed from the day's start.
+    mockSettingsState.dayResetTime = '04:00';
+    mockSettingsState.morningStart = '03:00';
+    mockSettingsState.nightStart = '01:00';
+    try {
+      jest.setSystemTime(new Date(2025, 5, 10, 10, 0, 0));
+      expect(isTaskVisible({ ...baseTask, timeSegments: ['night'] })).toBe(false);
+      // Morning first thing is the one segment that must not roll: it has begun.
+      expect(isTaskVisible({ ...baseTask, timeSegments: ['morning'] })).toBe(true);
+      jest.setSystemTime(new Date(2025, 5, 11, 1, 30, 0)); // still logical June 10
+      expect(isTaskVisible({ ...baseTask, timeSegments: ['night'] })).toBe(true);
+    } finally {
+      mockSettingsState.dayResetTime = '00:00';
+      mockSettingsState.morningStart = '06:00';
+      mockSettingsState.nightStart = '21:00';
+    }
+  });
 });
 
 // ─── isTaskWindowActive ────────────────────────────────────────────────────────
