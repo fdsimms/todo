@@ -127,6 +127,7 @@ import { standingSwapMap } from '../utils/standingSwaps';
 import { onHandNameKeys } from '../utils/grocerySuggest';
 import { describeWeekCost, estimateWeekCost } from '../utils/recipeCost';
 import { describeWeekNutrition, weekNutrition } from '../utils/recipeNutrition';
+import { targetedNutrients } from '../utils/nutritionTargets';
 
 /**
  * Tints a day section while a drag is aimed at it — the same "arm on the way
@@ -330,6 +331,10 @@ export function MealPlanScreen() {
   const anthropicApiKey = useSettingsStore(s => s.anthropicApiKey);
   const currencySymbol = useSettingsStore(s => s.currencySymbol);
   const mealSlotsEnabled = useSettingsStore(useShallow(s => s.mealSlotsEnabled));
+  // Whether somebody has set a daily nutrition target: one of the two signs
+  // (with a food log entry) that they track food at all. See the week
+  // nutrition line below.
+  const hasNutritionTargets = useSettingsStore(s => targetedNutrients(s.nutritionTargets).length > 0);
   // ==== local state (the week anchor, sheets, bulk selection, the fridge) ====
   // Any date inside the week on screen. Paging moves the anchor, never the days.
   const [anchor, setAnchor] = useState(() => getLogicalToday());
@@ -1753,9 +1758,17 @@ export function MealPlanScreen() {
   // per-nutrient coverage floor in recipeNutrition.ts — the common case for a
   // library whose ingredients mostly have no nutrition on them yet, exactly as
   // the cost line above answers nothing for a lightly priced one.
+  //
+  // Shown only to somebody who tracks food: a nutrition target set, or
+  // anything in the food log. A scanned barcode fills figures in whether or
+  // not anyone wants them, and someone who plans dinners without counting
+  // them should not have calories read out on the plan.
+  const showsWeekNutrition = hasNutritionTargets || foodLogCount > 0;
   const weekNutritionEstimate = useMemo(
-    () => (range ? weekNutrition(entries, recipesById, groceryItems, range, itemProducts, standingSwaps) : null),
-    [entries, recipesById, groceryItems, range, itemProducts, standingSwaps]
+    () => (range && showsWeekNutrition
+      ? weekNutrition(entries, recipesById, groceryItems, range, itemProducts, standingSwaps)
+      : null),
+    [entries, recipesById, groceryItems, range, itemProducts, standingSwaps, showsWeekNutrition]
   );
   const subtitle = [
     describeWeekPlan(entries),

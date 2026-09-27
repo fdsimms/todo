@@ -42,6 +42,7 @@ import {
 import { creditedKeys, foodLogRecency, rankByRecency } from '../utils/foodLogRecents';
 import { scalePanelToAmount } from '../utils/foodLog';
 import { perServing, recipeNutrition } from '../utils/recipeNutrition';
+import { standingSwapMap } from '../utils/standingSwaps';
 import { packageHelping } from '../utils/scanPortion';
 import { useGroceryStore } from '../store/useGroceryStore';
 import { NUTRIENT_LABEL } from '../utils/foodNutrition';
@@ -177,6 +178,10 @@ export function EstimateMealSheet({ visible, slot, at, mealPlanEntryId, initialD
   const recipesById = useMemo(() => new Map(recipes.map(r => [r.id, r])), [recipes]);
   const items = useGroceryStore(s => s.items);
   const itemProducts = useGroceryStore(s => s.itemProducts);
+  // Standing swaps ("always use oat milk for milk"), so a recipe's figures here
+  // are the ones its page shows and the ones it logs with. See standingSwaps.ts.
+  const itemSubs = useGroceryStore(s => s.itemSubs);
+  const swaps = useMemo(() => standingSwapMap(itemSubs, items), [itemSubs, items]);
   const addRecipe = useRecipeStore(s => s.addRecipe);
   const addIngredientsFromText = useRecipeStore(s => s.addIngredientsFromText);
 
@@ -341,12 +346,12 @@ export function EstimateMealSheet({ visible, slot, at, mealPlanEntryId, initialD
       if (helping) out.push({ label: food.label, quantity: food.choice.label, amounts: helping.amounts });
     }
     for (const recipe of matches) {
-      const serving = perServing(recipeNutrition(recipe, items, itemProducts, recipesById));
+      const serving = perServing(recipeNutrition(recipe, items, itemProducts, recipesById, undefined, 1, swaps));
       if (serving) out.push({ label: recipe.name, quantity: '1 serving', amounts: serving });
     }
     return out.slice(0, MAX_CONTEXT_FOODS);
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [recalled, catalogMatches, matches, items, itemProducts, at]);
+  }, [recalled, catalogMatches, matches, items, itemProducts, at, swaps]);
 
   // ==== estimate: asking, refining, logging ====
   /** Resolves to whether the request came back with an estimate. */
@@ -725,7 +730,7 @@ export function EstimateMealSheet({ visible, slot, at, mealPlanEntryId, initialD
                     doesn't ask, so its row opens the picker rather than
                     logging, and a chevron says so where the others have +. */}
                 {matches.map((recipe, index) => {
-                  const serving = perServing(recipeNutrition(recipe, items, itemProducts, recipesById));
+                  const serving = perServing(recipeNutrition(recipe, items, itemProducts, recipesById, undefined, 1, swaps));
                   return (
                     <TouchableOpacity
                       key={recipe.id}

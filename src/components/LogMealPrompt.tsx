@@ -9,7 +9,9 @@ import { useGroceryStore } from '../store/useGroceryStore';
 import { useLeftoverStore } from '../store/useLeftoverStore';
 import { useMealPlanStore } from '../store/useMealPlanStore';
 import { useRecipeStore } from '../store/useRecipeStore';
+import { useSettingsStore } from '../store/useSettingsStore';
 import { perServing, recipeNutrition } from '../utils/recipeNutrition';
+import { standingSwapMap } from '../utils/standingSwaps';
 import {
   cookedDishGrams,
   defaultHelpings,
@@ -60,6 +62,14 @@ const MEASURE_OPTIONS: SegmentOption<Measure>[] = [
  *
  * **Declining costs one tap and is never punished.** No badge, no "you didn't
  * log", no streak, and the offer does not come back for that meal.
+ *
+ * **Somebody who doesn't track food can say so here, once.** "Stop asking
+ * after meals" writes the same `mealLogPrompt` switch Settings holds, from the
+ * moment the question is asked, rather than leaving the per-meal "no" as the
+ * only decline on offer (it is written on one plan entry, so next week's
+ * copied dinner asked again). Offered only when the app raised the prompt on
+ * its own: a person who tapped to log a meal asked for this sheet, and that
+ * switch doesn't govern it.
  */
 
 export function LogMealPrompt() {
@@ -70,10 +80,12 @@ export function LogMealPrompt() {
   const setPending = useFoodLogStore(s => s.setPendingMealLog);
   const addEntry = useFoodLogStore(s => s.addEntry);
   const setLogMeal = useMealPlanStore(s => s.setLogMeal);
+  const setMealLogPrompt = useSettingsStore(s => s.setMealLogPrompt);
   const pendingFinishLeftoverId = useLeftoverStore(s => s.pendingFinishLeftoverId);
   const recipes = useRecipeStore(useShallow(s => s.recipes));
   const items = useGroceryStore(useShallow(s => s.items));
   const itemProducts = useGroceryStore(useShallow(s => s.itemProducts));
+  const itemSubs = useGroceryStore(useShallow(s => s.itemSubs));
 
   const [helpings, setHelpings] = useState<number | null>(defaultHelpings());
   const [platedText, setPlatedText] = useState('');
@@ -93,6 +105,10 @@ export function LogMealPrompt() {
   // the pending flag: the store that sets it must not reach the recipe store,
   // and the figures are the same either way.
   const recipesById = useMemo(() => new Map(recipes.map(r => [r.id, r])), [recipes]);
+  // "Always use oat milk for milk", applied as the recipe page's nutrition row
+  // and the meal plan's week line apply it, so the dish logged is the dish
+  // those showed rather than the recipe as written. See standingSwaps.ts.
+  const swaps = useMemo(() => standingSwapMap(itemSubs, items), [itemSubs, items]);
 
   const figures = useMemo(() => {
     if (!pending?.recipeId) return null;
@@ -112,6 +128,7 @@ export function LogMealPrompt() {
       // collectPlannedIngredients makes off the same field.
       { chosen: pending.choices },
       pending.scale,
+      swaps,
     );
     if (!dish) return null;
     return {
@@ -122,7 +139,7 @@ export function LogMealPrompt() {
       // already are: a doubled batch weighs twice what the recipe says.
       cookedGrams: cookedDishGrams(recipe.cookedWeightG, pending.scale),
     };
-  }, [pending, recipes, recipesById, items, itemProducts]);
+  }, [pending, recipes, recipesById, items, itemProducts, swaps]);
 
   // Nothing measurable came back, so there is no question worth asking. The
   // flag is cleared rather than left pending, or the next thing that sets one
@@ -216,6 +233,14 @@ export function LogMealPrompt() {
     // Declining once is not declining for ever, which is why "Not this time"
     // above writes nothing at all.
     if (pending?.mealPlanEntryId) setLogMeal(pending.mealPlanEntryId, false);
+    haptics.tap();
+    close();
+  };
+
+  const handleStopAsking = () => {
+    // The whole offer, not this meal: the Settings switch, written from here so
+    // it can be said at the moment it is asked. Settings can turn it back on.
+    setMealLogPrompt(false);
     haptics.tap();
     close();
   };
@@ -316,6 +341,23 @@ export function LogMealPrompt() {
               >
                 <Text style={styles.secondaryText}>Don't ask for this meal</Text>
               </TouchableOpacity>
+            )}
+            {!shown.asked && (
+              <>
+                <TouchableOpacity
+                  style={styles.secondary}
+                  activeOpacity={interaction.activeOpacity}
+                  onPress={handleStopAsking}
+                  accessibilityRole="button"
+                  accessibilityLabel="Stop asking after meals"
+                  accessibilityHint="You can turn Ask what you ate back on in Settings, under Groceries and meals."
+                >
+                  <Text style={styles.secondaryText}>Stop asking after meals</Text>
+                </TouchableOpacity>
+                <Text style={styles.hint}>
+                  {'You can turn "Ask what you ate" back on in Settings, under Groceries & meals.'}
+                </Text>
+              </>
             )}
           </View>
         </View>

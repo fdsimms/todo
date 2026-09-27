@@ -15,6 +15,7 @@ import {
   nutrientContributions,
   helpingNutrition,
   parseFoodAmount,
+  plannedEntryForRecipe,
   portionExamples,
   recipeHelpingNutrition,
   resolveFoodLogDrop,
@@ -549,6 +550,15 @@ describe('describeFoodLogEntry', () => {
     expect(described('manual')).toContain('typed in');
     expect(described('estimated')).toContain('estimated');
   });
+
+  it('takes the words a row would rather show in place of the stored ones', () => {
+    const water = entry({
+      quantity: '1.89 L',
+      nutrition: panel({ source: 'manual', amounts: { waterMl: 1893 } }),
+    });
+    expect(describeFoodLogEntry(water, '64 fl oz')).toBe('64 fl oz · typed in');
+    expect(describeFoodLogEntry(water)).toBe('1.89 L · typed in');
+  });
 });
 
 describe('nutrientContributions', () => {
@@ -617,6 +627,40 @@ describe('matchMealPlanEntry', () => {
 
   it('returns null against an empty plan', () => {
     expect(matchMealPlanEntry([], new Set(), { slot: 'dinner', recipeId: 'r1' })).toBeNull();
+  });
+});
+
+describe('plannedEntryForRecipe', () => {
+  // The recipe page's log button: tonight's chili, logged from the page, has
+  // to cover tonight's planned chili or the Eat step asks again.
+  it('links the one planned entry for the recipe, whatever slot it is in', () => {
+    const lunch = planEntry({ slot: 'lunch', recipeId: 'r-salad' });
+    const dinner = planEntry({ slot: 'dinner', recipeId: 'r-chili' });
+    expect(plannedEntryForRecipe([lunch, dinner], [], 'r-chili')).toBe(dinner);
+  });
+
+  it('skips an entry a food log row already claims', () => {
+    const dinner = planEntry({ slot: 'dinner', recipeId: 'r-chili' });
+    const logged = entry({ slot: 'dinner', recipeId: 'r-chili', mealPlanEntryId: dinner.id });
+    expect(plannedEntryForRecipe([dinner], [logged], 'r-chili')).toBeNull();
+  });
+
+  it('refuses a recipe planned twice that day rather than guessing', () => {
+    const lunch = planEntry({ slot: 'lunch', recipeId: 'r-chili' });
+    const dinner = planEntry({ slot: 'dinner', recipeId: 'r-chili' });
+    expect(plannedEntryForRecipe([lunch, dinner], [], 'r-chili')).toBeNull();
+  });
+
+  it('takes the other one when the first of two is already logged', () => {
+    const lunch = planEntry({ slot: 'lunch', recipeId: 'r-chili' });
+    const dinner = planEntry({ slot: 'dinner', recipeId: 'r-chili' });
+    const logged = entry({ slot: 'lunch', recipeId: 'r-chili', mealPlanEntryId: lunch.id });
+    expect(plannedEntryForRecipe([lunch, dinner], [logged], 'r-chili')).toBe(dinner);
+  });
+
+  it('never falls back to a slot, since the page names no meal', () => {
+    const dinner = planEntry({ slot: 'dinner', recipeId: 'r-other' });
+    expect(plannedEntryForRecipe([dinner], [], 'r-chili')).toBeNull();
   });
 });
 
