@@ -82,6 +82,7 @@ import { allSectionsOf, sectionsFromMergedOrder, type SectionListEntry } from '.
 import { PillGroup } from '../components/PillGroup';
 import { describeUnscaled, formatScale, normalizeScale, scaleQuantity } from '../utils/recipeScale';
 import { convertQuantity } from '../utils/unitConvert';
+import { lineWeightText, panelForLine } from '../utils/lineWeight';
 import { RecipeScaleChips } from '../components/RecipeScaleChips';
 import { RecipeChoiceChips } from '../components/RecipeChoiceChips';
 import { tagColor } from '../utils/tagColor';
@@ -609,6 +610,16 @@ export function RecipeDetailScreen() {
     [catalogMatches],
   );
 
+  // The two lookups each row's weight caption reads (lineWeight.ts), built once
+  // per catalog change rather than once per row.
+  const weightLookups = useMemo(
+    () => ({
+      byKey: new Map(groceryItems.map(i => [i.nameKey, i])),
+      productsById: new Map(itemProducts.map(p => [p.id, p])),
+    }),
+    [groceryItems, itemProducts],
+  );
+
 
   // The row can be gone while the screen is still mounted (deleted from the
   // editor), so this renders rather than crashing on the next read.
@@ -974,6 +985,16 @@ export function RecipeDetailScreen() {
     const scaledResult = scaleQuantity(line.quantity, scale);
     const convertedResult = convertQuantity(scaledResult.text, unitSystem);
     const scaledQuantity = convertedResult.text;
+    // What the line weighs, when its food's own portion table can say — for
+    // cooking by the scale. Read off the scaled line before conversion, since
+    // a converted amount is already rounded, and off the swapped line's name,
+    // since that's the food actually going in.
+    const weightText = lineWeightText(
+      scaledResult.text,
+      line.prep,
+      panelForLine(line.nameKey, weightLookups.byKey, weightLookups.productsById),
+      unitSystem,
+    );
     const scaledHere = scaledResult.scaled
       || convertedResult.converted
       // A ratio'd swap is the app's number too — the same tint, for the same
@@ -1061,7 +1082,8 @@ export function RecipeDetailScreen() {
           accessibilityRole={selectionMode ? 'checkbox' : 'button'}
           accessibilityState={selectionMode ? { checked: selected } : undefined}
           accessibilityLabel={
-            [ingredient.section, line.name, swapNote, scaledQuantity, ingredient.prep,
+            [ingredient.section, line.name, swapNote, scaledQuantity,
+             weightText && `about ${weightText.slice(1)}`, ingredient.prep,
              ingredient.purpose && `for ${ingredient.purpose}`,
              ingredient.optional && 'optional',
              ingredient.excludeFromShoppingList && 'not on your shopping list',
@@ -1168,13 +1190,22 @@ export function RecipeDetailScreen() {
             )}
           </View>
           {!!scaledQuantity && (
-            <View style={[styles.qtyPill, scaledHere && styles.qtyPillScaled]}>
-              <Text
-                style={[styles.qtyText, scaledHere && styles.qtyTextScaled]}
-                numberOfLines={1}
-              >
-                {scaledQuantity}
-              </Text>
+            <View style={styles.qtyColumn}>
+              <View style={[styles.qtyPill, scaledHere && styles.qtyPillScaled]}>
+                <Text
+                  style={[styles.qtyText, scaledHere && styles.qtyTextScaled]}
+                  numberOfLines={1}
+                >
+                  {scaledQuantity}
+                </Text>
+              </View>
+              {/* Under the pill rather than inside it: the pill is the
+                  recipe's amount (or the app's conversion of it), and this is
+                  a second measurement of the same thing. Only present when
+                  the food's own portion table can say it. */}
+              {!!weightText && (
+                <Text style={styles.qtyWeight} numberOfLines={1}>{weightText}</Text>
+              )}
             </View>
           )}
           {!selectionMode && (
@@ -2899,6 +2930,13 @@ const makeStyles = (colors: Colors) => StyleSheet.create({
     fontSize: font.xs,
   },
   qtyTextScaled: { color: colors.accent, fontWeight: fontWeight.medium },
+  qtyColumn: { alignItems: 'flex-end' },
+  qtyWeight: {
+    color: colors.textSecondary,
+    fontSize: font.xxs,
+    marginTop: spacing.xxs,
+    paddingHorizontal: spacing.sm,
+  },
   scaleRow: { marginTop: spacing.xs, marginBottom: spacing.sm },
   choiceRow: { gap: spacing.sm, marginBottom: spacing.sm },
   scaleNote: {

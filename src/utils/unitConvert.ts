@@ -538,6 +538,33 @@ const UNIT_FAMILIES: Record<string, string> = {
   'mass:metric': 'weight, like g or kg',
 };
 
+/**
+ * A weight in grams, written in `system` for someone reading a kitchen scale
+ * and marked `≈` — "≈125 g", "≈4 1/2 oz".
+ *
+ * For a figure the app worked out rather than one a recipe wrote (a line's
+ * weight read off its food's portion table, `lineWeight.ts`), so there is no
+ * "as written" to preserve: `asWritten` answers in grams, which is what a
+ * scale reads by default.
+ *
+ * **Whole grams, not `roundMetric`'s steps.** Those steps are for restating a
+ * recipe's own measure the way a chart prints it; this is a number somebody
+ * pours to on a scale that reads in grams, and a cup they weighed at 125 g
+ * coming back as "≈130 g" would be the app misquoting their own measurement.
+ * The US side keeps `renderUs`, which already snaps to what a scale in ounces
+ * shows. Null when it rounds to nothing.
+ */
+export function formatScaleWeight(grams: number, system: UnitSystem): string | null {
+  if (!(grams > 0)) return null;
+  if (system === 'us') {
+    const rendered = renderUs(grams, 'mass');
+    return rendered ? `≈${rendered}` : null;
+  }
+  const rounded = grams < 1000 ? Math.round(grams) : Math.round(grams / 10) * 10;
+  if (rounded <= 0) return null;
+  return rounded >= 1000 ? `≈${trimNumber(rounded / 1000)} kg` : `≈${rounded} g`;
+}
+
 export function describeUnitFamily(unit: string): string | null {
   const known = KNOWN_UNITS[unitKey(unit)];
   if (!known) return null;
