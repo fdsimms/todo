@@ -80,10 +80,6 @@ export function GroceryAddSheet({ visible, onClose, seedAisle, onAdded }: Props)
       Animated.timing(sheetOpacity, { toValue: 1, duration: animation.duration.normal, useNativeDriver: true }),
       Animated.timing(backdropOpacity, { toValue: 1, duration: animation.duration.normal, useNativeDriver: true }),
     ]).start();
-    // Focus (and the keyboard's own slide-up) starts alongside the card
-    // animation rather than after it, so the keyboard is up sooner — same
-    // fix as QuickAddModal's (#1210).
-    fieldRef.current?.focus();
   }, [visible]);
 
   const dismiss = () => {
@@ -110,7 +106,19 @@ export function GroceryAddSheet({ visible, onClose, seedAisle, onAdded }: Props)
   };
 
   return (
-    <SheetModal visible={visible} animationType="none" transparent onRequestClose={dismiss}>
+    <SheetModal
+      visible={visible}
+      animationType="none"
+      transparent
+      onRequestClose={dismiss}
+      // Focusing off the `visible` prop races SheetModal's own sibling-Modal
+      // sequencing (see SheetModal.tsx): the effect above fires the moment
+      // `visible` flips, which can be a commit or more before the native
+      // Modal has actually presented, and a `.focus()` call before then is a
+      // silent no-op with nothing left to retry it. `onShow` only fires once
+      // iOS confirms the modal is up — same fix as QuickAddModal's (#1210).
+      onShow={() => fieldRef.current?.focus()}
+    >
       <Animated.View style={[StyleSheet.absoluteFill, { opacity: backdropOpacity }]} pointerEvents="none">
         <SafeBlurView intensity={isDark ? 20 : 15} tint="dark" style={StyleSheet.absoluteFill} />
         <View style={[StyleSheet.absoluteFill, styles.backdropDim]} />
