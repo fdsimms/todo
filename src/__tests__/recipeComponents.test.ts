@@ -61,6 +61,7 @@ function recipe(id: string, name: string, overrides: Partial<Recipe> = {}): Reci
     tags: [],
     ingredients: [],
     emptySections: [],
+    emptyStepSections: [],
     components: [],
     prepTasks: [],
     steps: [],

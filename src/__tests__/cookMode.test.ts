@@ -29,6 +29,7 @@ function recipe(id: string, name: string, overrides: Partial<Recipe> = {}): Reci
     tags: [],
     ingredients: [],
     emptySections: [],
+    emptyStepSections: [],
     components: [],
     prepTasks: [],
     steps: [],
@@ -198,6 +199,36 @@ describe('cookSteps', () => {
     expect(cookSteps(steak, byId).map(s => s.text)).toEqual(['Sear the steak', 'Boil the potatoes']);
     const chosen = { chosen: [steak.components[1].id] };
     expect(cookSteps(steak, byId, chosen).map(s => s.text)).toEqual(['Sear the steak', 'Heat the oil']);
+  });
+
+  it('opens a heading where a step’s section first differs from the one before it', () => {
+    const r = recipe('r1', 'Stir fry', {
+      steps: [
+        { ...step('Press the tofu'), section: 'For the tofu' },
+        { ...step('Fry the tofu'), section: 'For the tofu' },
+        { ...step('Make the sauce'), section: 'For the sauce' },
+        step('Plate it up'),
+      ],
+    });
+    const out = cookSteps(r, recipeMap([r]));
+    expect(out.map(s => s.section)).toEqual(['For the tofu', null, 'For the sauce', null]);
+  });
+
+  it('is null for a step read out of notes, which has no section to read', () => {
+    const r = recipe('r1', 'Steak', { notes: 'Get the pan hot.\nSear it.' });
+    expect(cookSteps(r, recipeMap([r])).every(s => s.section === null)).toBe(true);
+  });
+
+  it('reopens a heading at a dish boundary even when the label collides with the one before it', () => {
+    const mash = recipe('r2', 'Mashed potatoes', { steps: [{ ...step('Boil the potatoes'), section: 'Sauce' }] });
+    const steak = recipe('r1', 'Steak', {
+      steps: [{ ...step('Reduce the pan sauce'), section: 'Sauce' }],
+      components: [link(mash.id, 'Mashed potatoes')],
+    });
+    const out = cookSteps(steak, recipeMap([steak, mash]));
+    // Both open "Sauce" — the root's own line and the component's first —
+    // because they're separate recipes' vocabularies, not a continuation.
+    expect(out.map(s => s.section)).toEqual(['Sauce', 'Sauce']);
   });
 
   it('is empty for a recipe with neither steps nor notes', () => {

@@ -81,6 +81,7 @@ function recipe(id: string, name: string): Recipe {
     tags: [],
     ingredients: [],
     emptySections: [],
+    emptyStepSections: [],
     components: [],
     prepTasks: [],
     steps: [],

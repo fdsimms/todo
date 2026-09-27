@@ -26,6 +26,7 @@ function recipe(id: string, name: string, overrides: Partial<Recipe> = {}): Reci
     tags: [],
     ingredients: [],
     emptySections: [],
+    emptyStepSections: [],
     components: [],
     prepTasks: [],
     steps: [],
@@ -70,6 +71,7 @@ function cookStep(text: string, overrides: Partial<CookStep> = {}): CookStep {
     recipe: meal,
     whole: true,
     fromNotes: false,
+    section: null,
     note: null,
     ...overrides,
   };

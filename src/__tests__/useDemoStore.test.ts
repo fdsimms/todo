@@ -3247,6 +3247,15 @@ describe('demo seed — groceries, recipes, meals and the fridge', () => {
     const method = cookSteps(fromNotes!, byId);
     expect(method.some(s => s.fromNotes && s.whole)).toBe(true);
     expect(method.some(s => !s.fromNotes && !s.whole)).toBe(true);
+
+    // A method grouped into "For the sauce"/"For the tofu"-style headings
+    // (RecipeStep.section) — the carrot cake carries this on the same two
+    // headings its ingredient list already uses, so cook mode opens each
+    // heading where the matching steps start.
+    const sectioned = recipes.find(r => r.steps.some(s => s.section));
+    expect(sectioned).toBeDefined();
+    const sectionedMethod = cookSteps(sectioned!, byId);
+    expect(sectionedMethod.filter(s => s.section).length).toBeGreaterThan(1);
   });
 
   it('seeds a method whose steps carry their own amounts and a swap', () => {

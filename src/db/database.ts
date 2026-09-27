@@ -1738,6 +1738,9 @@ export function initDatabase(): void {
     'ALTER TABLE projects ADD COLUMN show_checked INTEGER NOT NULL DEFAULT 0',
     // Off on every existing section. See TaskGroup.checklist.
     'ALTER TABLE task_groups ADD COLUMN checklist INTEGER NOT NULL DEFAULT 0',
+    // Empty on every existing recipe: a method heading declared ahead of any
+    // step is new. See Recipe.emptyStepSections.
+    "ALTER TABLE recipes ADD COLUMN empty_step_sections TEXT NOT NULL DEFAULT '[]'",
   ];
   // Asking SQLite for a table's columns once is cheaper than handing it every
   // ALTER for that table and catching the duplicate-column error, and by the
@@ -5515,6 +5518,7 @@ function rowToRecipe(row: Record<string, unknown>): Recipe {
     components: parseRecipeComponents(row.components),
     prepTasks: parsePrepTasks(row.prep_tasks),
     steps: parseSteps(row.steps),
+    emptyStepSections: parseEmptySections(row.empty_step_sections),
     sortOrder: (row.sort_order as number) ?? 0,
     createdAt: row.created_at as string,
     cookCount: (row.cook_count as number) ?? 0,
@@ -5548,11 +5552,11 @@ export function dbGetAllRecipes(): Recipe[] {
 export function dbInsertRecipe(recipe: Recipe): void {
   db.runSync(
     `INSERT INTO recipes
-      (id, name, name_key, notes, source_url, source_name, author, source, source_type, source_page, cookbook_id, servings, servings_max, recipe_yield, cooked_weight_g, leftover_keep_days, image_path, meal_type, tags, ingredients, empty_sections, components, prep_tasks, steps, sort_order, created_at, cook_count, last_cooked_at, vote, up_next, up_next_order,
+      (id, name, name_key, notes, source_url, source_name, author, source, source_type, source_page, cookbook_id, servings, servings_max, recipe_yield, cooked_weight_g, leftover_keep_days, image_path, meal_type, tags, ingredients, empty_sections, components, prep_tasks, steps, empty_step_sections, sort_order, created_at, cook_count, last_cooked_at, vote, up_next, up_next_order,
        estimated_minutes, timer_started_at, timer_elapsed_seconds, last_cook_minutes, cook_time_count, total_cook_minutes,
        prep_minutes, prep_timer_started_at, prep_timer_elapsed_seconds, last_prep_minutes, prep_time_count, total_prep_minutes,
        backfill_dismissed_fields)
-     VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)`,
+     VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)`,
     [
       recipe.id, recipe.name, recipe.nameKey, recipe.notes, recipe.sourceUrl ?? null,
       recipe.sourceName ?? null, recipe.author ?? null, recipe.source ?? null,
@@ -5564,6 +5568,7 @@ export function dbInsertRecipe(recipe: Recipe): void {
       JSON.stringify(recipe.ingredients),
       JSON.stringify(recipe.emptySections),
       JSON.stringify(recipe.components), JSON.stringify(recipe.prepTasks), JSON.stringify(recipe.steps),
+      JSON.stringify(recipe.emptyStepSections),
       recipe.sortOrder, recipe.createdAt,
       recipe.cookCount, recipe.lastCookedAt ?? null, recipe.vote ?? null,
       recipe.upNext ? 1 : 0, recipe.upNextOrder,
@@ -5579,7 +5584,7 @@ export function dbInsertRecipe(recipe: Recipe): void {
 export function dbUpdateRecipe(recipe: Recipe): void {
   db.runSync(
     `UPDATE recipes SET
-       name=?, name_key=?, notes=?, source_url=?, source_name=?, author=?, source=?, source_type=?, source_page=?, cookbook_id=?, servings=?, servings_max=?, recipe_yield=?, cooked_weight_g=?, leftover_keep_days=?, image_path=?, meal_type=?, tags=?, ingredients=?, empty_sections=?, components=?, prep_tasks=?, steps=?,
+       name=?, name_key=?, notes=?, source_url=?, source_name=?, author=?, source=?, source_type=?, source_page=?, cookbook_id=?, servings=?, servings_max=?, recipe_yield=?, cooked_weight_g=?, leftover_keep_days=?, image_path=?, meal_type=?, tags=?, ingredients=?, empty_sections=?, components=?, prep_tasks=?, steps=?, empty_step_sections=?,
        sort_order=?, cook_count=?, last_cooked_at=?, vote=?, up_next=?, up_next_order=?,
        estimated_minutes=?, timer_started_at=?, timer_elapsed_seconds=?, last_cook_minutes=?, cook_time_count=?, total_cook_minutes=?,
        prep_minutes=?, prep_timer_started_at=?, prep_timer_elapsed_seconds=?, last_prep_minutes=?, prep_time_count=?, total_prep_minutes=?,
@@ -5596,6 +5601,7 @@ export function dbUpdateRecipe(recipe: Recipe): void {
       JSON.stringify(recipe.ingredients),
       JSON.stringify(recipe.emptySections),
       JSON.stringify(recipe.components), JSON.stringify(recipe.prepTasks), JSON.stringify(recipe.steps),
+      JSON.stringify(recipe.emptyStepSections),
       recipe.sortOrder,
       recipe.cookCount, recipe.lastCookedAt ?? null, recipe.vote ?? null,
       recipe.upNext ? 1 : 0, recipe.upNextOrder,

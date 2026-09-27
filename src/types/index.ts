@@ -5885,6 +5885,13 @@ export interface Recipe {
   // second list to keep in step with this one, worth adding only once
   // something actually reads them (#1695).
   steps: RecipeStep[];
+  // Method headings declared with nothing filed under them yet — the same
+  // gap `emptySections` covers for ingredients, for `RecipeStep.section`
+  // instead. Pruned the moment a step actually carries the same label, so
+  // it never duplicates what `sectionsOf(steps)` already reports. Empty for
+  // every recipe that's never had a method heading declared ahead of its
+  // steps, which is most of them.
+  emptyStepSections: string[];
   sortOrder: number;
   createdAt: string;
   /**
@@ -6028,6 +6035,17 @@ export interface RecipeStep {
    * changes gets a new reading rather than an old answer.
    */
   timerSeconds?: number | null;
+  /**
+   * Which part of the method this step belongs to — "For the sauce", "For the
+   * tofu". Absent (not null — see the round-trip note on `note` below) means
+   * the recipe wasn't authored with sections, the common case. Same model as
+   * `RecipeIngredient.section`: a label on a flat list, not a nested groups
+   * type, inferred wherever a step's section differs from the step before it
+   * (`RecipeDetailScreen`), with `Recipe.emptyStepSections` covering a heading
+   * declared ahead of any step. `recipeSections.ts`'s helpers are generic over
+   * `{ id, section }` and are reused here verbatim rather than duplicated.
+   */
+  section?: string;
   /**
    * A note kept alongside the step, shown under it in cook mode and on the
    * recipe screen; absent on a step nobody has written one for.
