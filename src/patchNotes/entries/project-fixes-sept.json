@@ -1,0 +1,4 @@
+{
+  "message": "Fixes: a paused project's tasks no longer charge blocked-app penalties, send reminders, or show on the widget. Select all in a searched list only picks the lines showing. Templates saved from a project keep checklist sections and time windows. A new project named like a finished one offers to reopen it.",
+  "date": "2026-09-27"
+}

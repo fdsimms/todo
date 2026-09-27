@@ -1161,9 +1161,12 @@ export function seedDemoData(): void {
     blockedByIds: [guestList.id],
   }, undefined, { skipTitleRules: true });
   const guests = createGroup('Guests', null, party.id);
-  useTaskGroupStore.getState().updateGroup(guests.id, { sortOrder: 1000 });
+  // A checklist, as the page's own Add guests makes one: a guest is ticked
+  // off with a reply, never dated. Lee said Maybe, which is recorded and
+  // leaves the row open to be asked again.
+  useTaskGroupStore.getState().updateGroup(guests.id, { sortOrder: 1000, checklist: true });
   [
-    ['Priya', 'Yes'], ['Sam', 'Yes'], ['Jordan', 'No'], ['Lee', null], ['Alex', null],
+    ['Priya', 'Yes'], ['Sam', 'Yes'], ['Jordan', 'No'], ['Lee', 'Maybe'], ['Alex', null],
   ].forEach(([name, answer]) => {
     const guest = addTask({
       title: name!,
@@ -2170,14 +2173,14 @@ function seedPeople(today: Date): void {
   const partyProject = useProjectStore.getState().projects.find(p => p.title === "Maya's birthday party");
   if (partyProject) useProjectStore.getState().updateProject(partyProject.id, { personIds: [ansley.id] });
 
-  // A wait with a date on it: the follow-up task arrives that day rather than
-  // after a week (see followUpDue).
+  // A wait with its own follow-up day (Task.followUpOn): the follow-up task
+  // arrives that day rather than after a week, whatever the setting says
+  // (see followUpDue).
   const cake = addTask({
     title: 'Hear back about the cake order',
-    dueDate: addDays(today, 3).toISOString(),
     ...(partyProject ? { projectId: partyProject.id } : {}),
   }, undefined, { skipTitleRules: true });
-  updateTask(cake.id, { waitingOnPersonId: ansley.id });
+  updateTask(cake.id, { waitingOnPersonId: ansley.id, followUpOn: dayKeyOf(addDays(today, 3)) });
 
   const photos = addTask({ title: 'Photos from the trip' });
   updateTask(photos.id, { waitingOnPersonId: dustin.id });

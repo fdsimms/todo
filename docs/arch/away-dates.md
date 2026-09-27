@@ -515,6 +515,19 @@ writes the answer through `departureFromAnswer`, which only fills an *empty*
 nothing else: no tasks move and the trip-moving proposal is not raised, since a trip
 with no Leaving date had nothing anchored to it to move.
 
+**Two questions follow from an answer, and both are asked rather than done**
+(`tripDatePrompt` in `useTaskStore`, asked by `TripDatePrompt` at the navigator root):
+
+- **Coming back, once Leaving has just been filled.** "Pick dates" is both ends of the
+  trip, and a span with one end is half an answer; a picker for the return day opens
+  while the dates are in mind. Cancel leaves the trip open-ended, as before, and a day
+  before leaving is refused rather than written.
+- **Move Leaving, when a trip already has one and an answer names another day**
+  (`departureMoveFromAnswer`), whether from a second completion or from editing the
+  answer later (`setDeliverableValue`). `departureFromAnswer` still never moves a set
+  date on its own; this is the offer that stands in for that, because the date there
+  is one somebody chose. The same refusal of a day after Coming back applies.
+
 Both directions above assume you know the dates when you apply the template. Often
 you do not — the trip is real, the prep is real, and the dates are the *first*
 thing on the list to find out. The Trip prep template already opens with exactly
