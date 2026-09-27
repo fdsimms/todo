@@ -7,10 +7,13 @@ interface Props {
   value: DeliverableKind | null;
   /** Called with the picked kind, or null for "Nothing". */
   onChange: (kind: DeliverableKind | null) => void;
+  /** Kinds not offered here: a chain step has no options list, so no Pick one. */
+  exclude?: DeliverableKind[];
 }
 
 /**
- * The "Ask on completion" picker — Nothing / Text / Date / Number.
+ * The "Ask on completion" picker: Nothing / Text / Date / Number / Yes/No /
+ * Pick one.
  *
  * Shared because a template item declares the same question a task does
  * (#1471): both editors show one control over one `DELIVERABLE_META`, so
@@ -22,12 +25,12 @@ interface Props {
  * set is closed and exactly one is chosen, which is the rule that component's
  * doc comment gives for the track over free-width pills.
  */
-export function DeliverableKindPicker({ value, onChange }: Props) {
+export function DeliverableKindPicker({ value, onChange, exclude = [] }: Props) {
   return (
     <SegmentedControl<DeliverableKind | null>
       options={[
         { value: null, label: 'Nothing' },
-        ...DELIVERABLE_META.map(meta => ({
+        ...DELIVERABLE_META.filter(meta => !exclude.includes(meta.key)).map(meta => ({
           value: meta.key,
           label: meta.label,
           icon: meta.icon,
@@ -36,6 +39,8 @@ export function DeliverableKindPicker({ value, onChange }: Props) {
       ]}
       value={value}
       onChange={onChange}
+      // Six don't fit a line at 390pt, so two rows of three.
+      columns={3}
     />
   );
 }

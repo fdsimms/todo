@@ -1,14 +1,18 @@
 import { addDays } from 'date-fns/addDays';
 import { subDays } from 'date-fns/subDays';
 import {
+  describeProjectActivity,
   describeProjectDeadline,
+  projectActivity,
   projectCardCaption,
   projectMatchesQuery,
   projectNextStepTitle,
   projectProgressNote,
+  projectListPreview,
   sortProjects,
 } from '../utils/projectList';
 import type { Project, Task } from '../types';
+import { registerTaskSource } from '../utils/blockerRegistry';
 
 jest.mock('../store/useSettingsStore', () => ({
   useSettingsStore: { getState: () => ({ dayResetTime: '00:00', weekStartsOn: 0 }) },
@@ -47,6 +51,11 @@ const makeProject = (overrides: Partial<Project> = {}): Project => ({
   destination: null,
   awayListId: null,
   awayListDeclinedFor: null,
+  pausedUntil: null,
+  personIds: [],
+  links: [],
+  inOrder: false,
+  showChecked: false,
   ...overrides,
 });
 
@@ -136,6 +145,25 @@ describe('projectNextStepTitle', () => {
     expect(projectNextStepTitle('p1', tasks)).toBe('Order tiles');
   });
 
+  // A section's tasks are numbered within the section, so a flat sort put
+  // them ahead of loose tasks above the section.
+  it('follows the page order through sections, and skips a task that is waiting', () => {
+    const group = { id: 'g1', title: 'Plumbing', notes: '', tags: [], category: null, sortOrder: 10,
+      collapsed: false, onToday: false, projectId: 'p1' };
+    const tasks = [
+      makeTask({ id: 'loose', title: 'Measure the wall', sortOrder: 5 }),
+      makeTask({ id: 's1', title: 'Rough-in', sortOrder: 1, groupId: 'g1' }),
+    ];
+    expect(projectNextStepTitle('p1', tasks, [group])).toBe('Measure the wall');
+    const waiting = [
+      makeTask({ id: 'w', title: 'Install cabinets', sortOrder: 1, blockedById: 'b' } as Partial<Task>),
+      makeTask({ id: 'n', title: 'Order tiles', sortOrder: 2 }),
+      makeTask({ id: 'b', title: 'Plumbing rough-in', sortOrder: 3, projectId: 'p2' }),
+    ];
+    registerTaskSource(() => waiting);
+    expect(projectNextStepTitle('p1', waiting)).toBe('Order tiles');
+  });
+
   it('is null for a project with nothing open', () => {
     expect(projectNextStepTitle('p1', [])).toBeNull();
   });
@@ -162,6 +190,11 @@ describe('sortProjects', () => {
     expect(ids(sortProjects([a, b, c, d], 'deadline', progress))).toEqual(['c', 'b', 'a', 'd']);
   });
 
+  it("dates a trip with no deadline by its departure", () => {
+    const trip = makeProject({ id: 't', sortOrder: 9, awayStart: '2030-04-01T12:00:00.000Z' });
+    expect(ids(sortProjects([a, b, c, trip], 'deadline', progress))).toEqual(['c', 't', 'b', 'a']);
+  });
+
   it('puts the most-done first and an empty project last', () => {
     expect(ids(sortProjects([a, b, c, d], 'progress', progress))).toEqual(['c', 'd', 'a', 'b']);
   });
@@ -186,5 +219,45 @@ describe('projectMatchesQuery', () => {
 
   it('matches everything on an empty query', () => {
     expect(projectMatchesQuery(project, [], '   ')).toBe(true);
+  });
+});
+
+describe('projectActivity', () => {
+  it('reports the last day something was done and a 30-day count, leaving out misses', () => {
+    const tasks = [
+      makeTask({ id: 'a', completed: true, completedAt: subDays(new Date(), 3).toISOString() }),
+      makeTask({ id: 'b', completed: true, completedAt: subDays(new Date(), 40).toISOString() }),
+      makeTask({ id: 'm', completed: true, completedAt: subDays(new Date(), 1).toISOString(), missedAt: subDays(new Date(), 1).toISOString() } as Partial<Task>),
+      makeTask({ id: 'open' }),
+    ];
+    const activity = projectActivity('p1', tasks);
+    expect(activity).toEqual({ lastDoneDays: 3, doneLast30: 1 });
+    expect(describeProjectActivity(activity)).toBe('Last done 3 days ago · 1 in the last 30 days');
+  });
+
+  it('says nothing for a project nothing has been done in', () => {
+    expect(describeProjectActivity(projectActivity('p1', []))).toBeNull();
+  });
+});
+
+describe('projectListPreview', () => {
+  it("names a list's first open lines in page order", () => {
+    const tasks = [
+      makeTask({ id: 'a', title: 'Piranesi', sortOrder: 2 }),
+      makeTask({ id: 'b', title: 'Dune', sortOrder: 1 }),
+      makeTask({ id: 'c', title: 'Read already', sortOrder: 0, completed: true }),
+      makeTask({ id: 'd', title: 'Third', sortOrder: 3 }),
+    ];
+    expect(projectListPreview('p1', tasks)).toEqual(['Dune', 'Piranesi']);
+  });
+
+  it('is empty for a list with nothing open', () => {
+    expect(projectListPreview('p1', [])).toEqual([]);
+  });
+});
+
+describe('projectProgressNote on a list', () => {
+  it('says lines rather than tasks', () => {
+    expect(projectProgressNote(makeProject({ kind: 'list' }), { done: 0, total: 0 })).toBe('No lines yet');
   });
 });

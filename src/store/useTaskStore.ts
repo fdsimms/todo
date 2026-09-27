@@ -40,6 +40,7 @@ import { useFocusStore } from './useFocusStore';
 import { useUnattendedStore } from './useUnattendedStore';
 import { useProjectStore, projectProgress } from './useProjectStore';
 import { useProjectCategoryStore } from './useProjectCategoryStore';
+import { projectBlueprint } from '../utils/projectTemplate';
 import { useTemplateCategoryStore } from './useTemplateCategoryStore';
 import { listedAnywhere } from '../utils/groceryLists';
 import { useGroceryStore } from './useGroceryStore';
@@ -51,7 +52,7 @@ import { useRecipeStore } from './useRecipeStore';
 import { useMealPlanStore } from './useMealPlanStore';
 import { useLeftoverStore } from './useLeftoverStore';
 import { isLiveLeftover } from '../utils/leftovers';
-import { dripCandidate, findProjectStalls, projectPullUpdates } from '../utils/projectPull';
+import { dripCandidate, findProjectStalls, nextPullCandidate, projectPullUpdates } from '../utils/projectPull';
 import {
   projectReviewLinkUrl,
   projectReviewProjectId,
@@ -139,7 +140,7 @@ import { medicationFor } from '../utils/medicationLog';
 import { eventsIn } from '../utils/calendarBusy';
 import { isDemoModeActive } from '../utils/demoState';
 import type { MealSlot, Project, TaskGroup, WeatherCondition, WeatherRule } from '../types';
-import { awayPauseDriver, isProjectAwayNow } from '../utils/awayDates';
+import { awayPauseDriver, departureFromAnswer, isProjectAwayNow } from '../utils/awayDates';
 import { generateId } from '../utils/id';
 import {
   applyTitleRulesToDraft,
@@ -228,7 +229,7 @@ import { followUpTaskRule, advanceFollowUpTaskTally, followUpTaskSuppressedBy, c
 import type { FollowUpTaskSuppression } from '../utils/followUpTask';
 import { normalizeTitle } from '../utils/taskInstances';
 import { resolveTitleRules, titleRuleBacklog } from '../utils/titleRules';
-import { registerTaskSource } from '../utils/blockerRegistry';
+import { registerTaskSource, resolveBlocker } from '../utils/blockerRegistry';
 import { registerPersonTaskSource } from '../utils/peopleRegistry';
 import {
   birthdayDrift,
@@ -257,7 +258,7 @@ import { usePersonStore } from './usePersonStore';
 import { usePersonGroupStore } from './usePersonGroupStore';
 import { usePersonNoteStore } from './usePersonNoteStore';
 import { giftIdeasText } from '../utils/personNotes';
-import { resolveBlocksEdit, waitingOn, canWaitOn } from '../utils/blocking';
+import { resolveBlocksEdit, waitingOn, canWaitOn, blockerFields, blockerIdsOf, blockerOf } from '../utils/blocking';
 import {
   waitingFollowUpTaskId,
   wantedWaitingFollowUps,
@@ -336,6 +337,8 @@ export const CONTENT_FIELDS: (keyof Task)[] = [
   // a normal thing to want, and without this a scope:'occurrence' edit would
   // quietly become the template for every occurrence after it.
   'blockedById',
+  // The rest of the set, for the same reason: see Task.blockedByIds.
+  'blockedByIds',
   // Deliberately NOT here: postponeCount / postponeMuted. A scope:'occurrence'
   // edit captures every content field into seriesDefaults, which is applied on
   // top of the row that spawns the next occurrence — so listing them would hand
@@ -1859,6 +1862,13 @@ interface TaskStore extends UndoHistoryActions {
   // this, the same way it asks before a cascading delete.
   completeProject: (projectId: string, opts: { archiveRemaining: boolean }) => void;
   uncompleteProject: (projectId: string) => void;
+  /**
+   * A new project with this one's tasks and sections, every task open again
+   * and every date cleared, for doing the same thing another time (next
+   * year's party, the next trip). The original is left as it was. Returns the
+   * new project, or null when the id names nothing.
+   */
+  startFreshFromProject: (projectId: string) => Project | null;
   // Bulk selection on the Projects screen. One undo entry covers the whole
   // batch — see the note on bulkDeleteProjects.
   bulkDeleteProjects: (projectIds: string[], opts: { cascade: boolean }) => void;
@@ -2149,7 +2159,8 @@ export const useTaskStore = create<TaskStore>((set, get) => ({
     // about tasks and is what the caller reports.
     useFocusStore.getState().purgeHistoryBefore(cutoff);
 
-    const ids = selectPurgeableTaskIds(get().tasks, cutoff);
+    const listIds = new Set(useProjectStore.getState().projects.filter(p => p.kind === 'list').map(p => p.id));
+    const ids = selectPurgeableTaskIds(get().tasks, cutoff, listIds);
     if (ids.length === 0) return 0;
     const idSet = new Set(ids);
 
@@ -2233,15 +2244,25 @@ export const useTaskStore = create<TaskStore>((set, get) => ({
     // content field, so a waiter that belongs to a dated series has to fan out
     // to that set's later dates exactly as it does when set from its own
     // editor.
+    // Each write adds or removes this one blocker and keeps whatever else the
+    // row waits on: a task can wait on several now (Task.blockedByIds).
+    const without = (id: string) => {
+      const row = get().tasks.find(t => t.id === id);
+      return row ? blockerFields(blockerIdsOf(row).filter(b => b !== blockerId)) : blockerFields([]);
+    };
+    const withIt = (id: string) => {
+      const row = get().tasks.find(t => t.id === id);
+      return blockerFields([...(row ? blockerIdsOf(row) : []), blockerId]);
+    };
     const { unlink } = resolveBlocksEdit(blockerId, taskIds, get().tasks);
-    unlink.forEach(id => get().updateTask(id, { blockedById: null }));
+    unlink.forEach(id => get().updateTask(id, without(id)));
     // Recomputed against what the releases left behind rather than decided up
     // front, and that's the whole reason for the second call: releasing one
     // date of a dated set fans the release out to the set's later dates, which
     // may be rows this edit is keeping. Deciding both passes from the state
     // before either ran would drop those on the floor.
     const { link } = resolveBlocksEdit(blockerId, taskIds, get().tasks);
-    link.forEach(id => get().updateTask(id, { blockedById: blockerId }));
+    link.forEach(id => get().updateTask(id, withIt(id)));
   },
 
   applyTaskDates(taskId, dates, repeat) {
@@ -2999,8 +3020,14 @@ export const useTaskStore = create<TaskStore>((set, get) => ({
             // anything the user does to another task. wouldCycle() guards the
             // picker against exactly this; the fan-out doesn't go through it,
             // so it re-checks here and leaves that one row's blocker alone.
-            ...('blockedById' in fanOut && fanOut.blockedById === t.id
-              ? { blockedById: t.blockedById }
+            ...(('blockedById' in fanOut || 'blockedByIds' in fanOut) && blockerIdsOf({
+              blockedById: 'blockedById' in fanOut ? fanOut.blockedById ?? null : t.blockedById,
+              blockedByIds: 'blockedByIds' in fanOut ? fanOut.blockedByIds : t.blockedByIds,
+            }).includes(t.id)
+              ? blockerFields(blockerIdsOf({
+                  blockedById: 'blockedById' in fanOut ? fanOut.blockedById ?? null : t.blockedById,
+                  blockedByIds: 'blockedByIds' in fanOut ? fanOut.blockedByIds : t.blockedByIds,
+                }).filter(id => id !== t.id))
               : {}),
           }));
           patched.forEach(t => {
@@ -3333,7 +3360,9 @@ export const useTaskStore = create<TaskStore>((set, get) => ({
     if (!missed && task.projectId && useSettingsStore.getState().autoCompleteProjectsOnDone) {
       const progress = projectProgress(task.projectId, get().tasks);
       const project = useProjectStore.getState().getProjectById(task.projectId);
-      if (progress.total > 0 && progress.done === progress.total && project && !project.completed && !project.archived) {
+      // Never an ongoing one (Project.ongoing): a running list has no finish
+      // line, and every other "you're done" path already refuses it.
+      if (progress.total > 0 && progress.done === progress.total && project && !project.completed && !project.archived && !project.ongoing) {
         useProjectStore.getState().applyProjectCompleted(task.projectId, true);
         autoCompletedProjectId = task.projectId;
       }
@@ -3507,6 +3536,14 @@ export const useTaskStore = create<TaskStore>((set, get) => ({
           );
         }
       }
+    }
+
+    // A date answer that opted into being the trip's departure fills the
+    // project's empty Leaving date. See departureFromAnswer.
+    if (!missed && task.deliverableSetsAway && task.projectId && deliverableKindFor(task) === 'date') {
+      const project = useProjectStore.getState().projects.find(p => p.id === task.projectId);
+      const awayStart = project ? departureFromAnswer(project, deliverableDate(completed.deliverableValue)) : null;
+      if (project && awayStart) useProjectStore.getState().updateProject(project.id, { awayStart });
     }
 
     // Spending the second-to-last filter is the moment the offer to order more
@@ -6528,7 +6565,10 @@ export const useTaskStore = create<TaskStore>((set, get) => ({
       ? {
           projectId: nominated.id,
           projectTitle: nominated.title,
-          candidateTitle: dripCandidate(nominated, tasks)?.title ?? null,
+          candidateTitle: (() => {
+            const next = nextPullCandidate(nominated, tasks);
+            return next ? displayTitleFor(next) : null;
+          })(),
         }
       : null;
 
@@ -6548,7 +6588,7 @@ export const useTaskStore = create<TaskStore>((set, get) => ({
         notes: weekendNudgeNotes(suggestion),
         dueDate: dueDate.toISOString(),
         category: settings.weekendNudgeTaskCategory,
-        linkUrl: weekendNudgeLinkUrl(suggestion?.projectId ?? null),
+        linkUrl: weekendNudgeLinkUrl(suggestion?.projectId ?? null, window.saturdayKey),
         ...generatedBy('weekendNudge', window.saturdayKey),
       }),
     });
@@ -7856,6 +7896,90 @@ export const useTaskStore = create<TaskStore>((set, get) => ({
     }, { replacing: historyBefore });
   },
 
+  startFreshFromProject(projectId) {
+    const source = useProjectStore.getState().getProjectById(projectId);
+    if (!source) return null;
+    const historyBefore = get().undoStack;
+    const blueprint = projectBlueprint(projectId, get().tasks, useTaskGroupStore.getState().groups);
+    const projectStore = useProjectStore.getState();
+    const created = projectStore.createProject(source.title, { category: source.category, kind: source.kind });
+    // The settings the person chose carry over; its dates and its done-ness
+    // don't, since those were about the last time.
+    projectStore.updateProject(created.id, {
+      notes: source.notes,
+      defaultTaskCategory: source.defaultTaskCategory,
+      ongoing: source.ongoing,
+      nudgeOptIn: source.nudgeOptIn,
+      nudgeCadenceDays: source.nudgeCadenceDays,
+      autoSchedule: source.autoSchedule,
+      weekendSource: source.weekendSource,
+      destination: source.destination,
+      personIds: source.personIds,
+      links: source.links,
+      inOrder: source.inOrder,
+      showChecked: source.showChecked,
+    });
+
+    const sectionFor = new Map<string, string>();
+    const checklistSections = new Set(
+      useTaskGroupStore.getState().groups.filter(g => g.checklist).map(g => g.id),
+    );
+    dbTransaction(() => {
+      for (const section of blueprint.sections) {
+        const copy = useTaskGroupStore.getState().createGroup(section.title, null, created.id);
+        if (checklistSections.has(section.id)) useTaskGroupStore.getState().updateGroup(copy.id, { checklist: true });
+        sectionFor.set(section.id, copy.id);
+      }
+      const order: string[] = [];
+      const childrenOf = new Map<string, string[]>();
+      for (const { task, sectionId, subtasks } of blueprint.entries) {
+        const groupId = sectionId ? sectionFor.get(sectionId) ?? null : null;
+        const copy = get().addTask({
+          title: task.title,
+          notes: task.notes,
+          tags: task.tags,
+          category: task.category,
+          priority: task.priority,
+          effort: task.effort,
+          estimatedMinutes: task.estimatedMinutes,
+          timeSegments: task.timeSegments,
+          recurrenceType: task.recurrenceType,
+          recurrenceInterval: task.recurrenceInterval,
+          recurrenceDays: task.recurrenceDays,
+          recurrenceMonthDay: task.recurrenceMonthDay,
+          recurrenceMonth: task.recurrenceMonth,
+          recurrenceFromCompletion: task.recurrenceFromCompletion,
+          chainEnabled: task.chainEnabled,
+          chainItems: task.chainItems,
+          deliverableKind: task.deliverableKind,
+          vacationPause: task.vacationPause,
+          excludeFromSuggestions: task.excludeFromSuggestions,
+          projectId: created.id,
+          groupId,
+          // Undated on purpose: last time's dates belong to last time.
+          dueDate: null,
+        }, undefined, { skipTitleRules: true, skipCategoryDefault: true });
+        subtasks.forEach(title => get().addSubtask(copy.id, title));
+        if (groupId) {
+          if (!childrenOf.has(groupId)) { childrenOf.set(groupId, []); order.push(groupId); }
+          childrenOf.get(groupId)!.push(copy.id);
+        } else {
+          order.push(copy.id);
+        }
+      }
+      // Sections with nothing in them keep their place at the end.
+      for (const id of sectionFor.values()) if (!childrenOf.has(id)) order.push(id);
+      get().reorderProjectItems(created.id, order);
+      for (const [groupId, ids] of childrenOf) get().reorderGroupChildren(groupId, ids);
+    });
+
+    get().setLastAction({
+      label: 'Project copied',
+      undo: () => get().deleteProject(created.id, { cascade: true }),
+    }, { replacing: historyBefore });
+    return useProjectStore.getState().getProjectById(created.id) ?? created;
+  },
+
   uncompleteProject(projectId) {
     const project = useProjectStore.getState().getProjectById(projectId);
     if (!project || !project.completed) return;
@@ -8209,6 +8333,10 @@ export const useTaskStore = create<TaskStore>((set, get) => ({
     if (undos.length === 0) return;
     get().setLastAction({
       label: `${undos.length} task${undos.length === 1 ? '' : 's'} uncompleted`,
+      // Several at once is a list's "Uncheck all", and checking thirty lines
+      // back off by hand is what a stray tap there would cost, so the Undo bar
+      // offers it. One line is a tap to put back.
+      destructive: undos.length > 1,
       redo: () => get().bulkUncompleteTasks(ids),
       undo: () => undos.forEach(u => u()),
     }, { replacing: historyBefore });
@@ -8494,7 +8622,8 @@ export const useTaskStore = create<TaskStore>((set, get) => ({
     // Keyed on whichever wait holds the task, so equal keys arrive adjacent and
     // the screen only has to break the runs apart. The blocker task wins when
     // both are set, matching how the screen files it.
-    const waitKey = (t: Task) => t.blockedById ?? t.waitingOnPersonId ?? '';
+    // With several blockers, the first one still open is the one it's filed under.
+    const waitKey = (t: Task) => blockerOf(t, resolveBlocker)?.id ?? t.blockedById ?? t.waitingOnPersonId ?? '';
     return get().tasks
       .filter(isWaitingTask)
       .sort((a, b) => waitKey(a).localeCompare(waitKey(b)) || a.sortOrder - b.sortOrder);

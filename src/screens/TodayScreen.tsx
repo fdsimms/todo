@@ -667,6 +667,9 @@ export function TodayScreen() {
   // undefined = unscoped (opened from the "…" menu's "Pull from projects");
   // set = opened from the quiet-project nudge, restricted to those projects.
   const [pullScopeProjectIds, setPullScopeProjectIds] = useState<string[] | undefined>(undefined);
+  // The day a link asked pulls to land on (the weekend nudge's Saturday), or
+  // null for the sheet's own choice. See projectReviewLinkUrl.
+  const [pullOnDay, setPullOnDay] = useState<string | null>(null);
   const [showUpcoming, setShowUpcoming] = useState(false);
   const [expandedTaskId, setExpandedTaskId] = useState<string | null>(null);
   const {
@@ -841,6 +844,7 @@ export function TodayScreen() {
     // drops a review task whose project has stopped being quiet, and a project
     // that no longer exists has certainly stopped.
     setPullScopeProjectIds(projectId ? [projectId] : undefined);
+    setPullOnDay((route.params.pullOnDay as string | undefined) ?? null);
     setPullVisible(true);
   }, [route.params?.openProjectPull, route.params?.pullProjectId, handledOpenPull]);
 
@@ -4671,10 +4675,12 @@ export function TodayScreen() {
           visible={pullVisible}
           todaysTasks={visibleTasks}
           scopeProjectIds={pullScopeProjectIds}
+          landOnDayKey={pullOnDay}
           onOpenProject={projectId => navigation.navigate({ name: 'ProjectDetail', params: { projectId } } as never)}
           onClose={() => {
             setPullVisible(false);
             setPullScopeProjectIds(undefined);
+            setPullOnDay(null);
           }}
         />
 

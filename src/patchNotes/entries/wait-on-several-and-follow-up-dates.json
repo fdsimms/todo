@@ -1,0 +1,4 @@
+{
+  "message": "A task can wait on more than one other task, and stays hidden until all of them are done. A task you're waiting on someone for can have a date, and a follow-up task shows up that day.",
+  "date": "2026-09-27"
+}

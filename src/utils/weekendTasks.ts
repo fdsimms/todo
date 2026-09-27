@@ -317,7 +317,10 @@ export function weekendSourceProjects(
   projects: readonly Project[],
 ): Project[] {
   return projects
-    .filter(project => project.weekendSource && !project.archived)
+    // Completed ones too, for the same reason: a finished project has
+    // nothing left to suggest, and one still nominated from when it was open
+    // was being quoted anyway.
+    .filter(project => project.weekendSource && !project.archived && !project.completed)
     // The hand drag on the Projects screen, for the reason `reachOut` breaks its
     // tie on the People screen's: it is the only ranking of these the user made
     // on purpose, and inventing a second one here would be this feature deciding
@@ -334,8 +337,10 @@ export function weekendSourceProjects(
  * same URL: it is one sheet, and two copies of its address is exactly the drift
  * `SheetHeaderButton` and `InlineAction` exist to undo, one layer down.
  */
-export function weekendNudgeLinkUrl(projectId: string | null): string | null {
-  return projectId ? projectReviewLinkUrl(projectId) : null;
+export function weekendNudgeLinkUrl(projectId: string | null, saturdayKey?: string | null): string | null {
+  // With the Saturday, so what the sheet pulls lands on the weekend this row
+  // is about rather than on today.
+  return projectId ? projectReviewLinkUrl(projectId, saturdayKey) : null;
 }
 
 /**

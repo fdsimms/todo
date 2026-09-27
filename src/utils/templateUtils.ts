@@ -75,6 +75,8 @@ export function normalizeTemplateItem(raw: Partial<TemplateItem>): TemplateItem 
     completionTimerMinutes: raw.completionTimerMinutes ?? null,
     completionTimerNote: raw.completionTimerNote ?? null,
     deliverableKind: raw.deliverableKind ?? null,
+    deliverableOptions: Array.isArray(raw.deliverableOptions) ? raw.deliverableOptions : [],
+    deliverableSetsAway: raw.deliverableSetsAway ?? false,
     chainEnabled: raw.chainEnabled ?? false,
     chainItems: parseChainItems(raw.chainItems),
     rotationEnabled: raw.rotationEnabled ?? false,
@@ -212,6 +214,8 @@ export function buildDraftsFromTemplate(
       // The question only — createTask never reads a draft's deliverableValue,
       // so an applied item always starts with the decision still to make.
       deliverableKind: item.deliverableKind,
+      deliverableOptions: item.deliverableOptions ?? [],
+      deliverableSetsAway: item.deliverableSetsAway ?? false,
       chainEnabled: item.chainEnabled,
       chainItems: item.chainItems.map(c => ({ ...c })),
       // Clamped rather than trusted verbatim: chainItems can have shrunk (a
@@ -235,8 +239,15 @@ export function formatOffsetLabel(offsetDays: number | null): string {
   return offsetDays < 0 ? `${n} ${unit} before` : `${n} ${unit} after`;
 }
 
-/** Human label for which anchor an item's offsets are relative to. */
-export function anchorLabel(anchor: TemplateAnchor): string {
+/**
+ * Human label for which anchor an item's offsets are relative to. `away` is a
+ * trip template's (TaskTemplate.anchorsAreAway), whose anchors are the days
+ * you leave and get back, and which the apply sheet already asks for as
+ * "Leaving" and "Coming back". Saying "start date" on those rows named a
+ * field the person would never see.
+ */
+export function anchorLabel(anchor: TemplateAnchor, away = false): string {
+  if (away) return anchor === 'end' ? 'Coming back' : 'Leaving';
   return anchor === 'end' ? 'End date' : 'Start date';
 }
 
@@ -245,9 +256,12 @@ export function anchorLabel(anchor: TemplateAnchor): string {
  * date" rather than formatOffsetLabel's bare "3 days before". Used wherever
  * the offset is shown without the anchor picker sitting right next to it.
  */
-export function formatOffsetWithAnchor(offsetDays: number | null, anchor: TemplateAnchor): string {
+export function formatOffsetWithAnchor(offsetDays: number | null, anchor: TemplateAnchor, away = false): string {
   if (offsetDays === null) return 'No date';
-  const name = anchor === 'end' ? 'end date' : 'start date';
+  if (away && offsetDays === 0) return anchor === 'end' ? "The day you're back" : 'The day you leave';
+  const name = away
+    ? (anchor === 'end' ? "you're back" : 'leaving')
+    : (anchor === 'end' ? 'end date' : 'start date');
   if (offsetDays === 0) return `On ${name}`;
   const n = Math.abs(offsetDays);
   const unit = n === 1 ? 'day' : 'days';

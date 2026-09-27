@@ -124,6 +124,24 @@ describe('wantedWaitingFollowUps', () => {
     }]);
   });
 
+  it('wants one on the waiting task\'s own date, however young the wait', () => {
+    const task = waitingTask({
+      waitingOnPersonSince: daysAgo(1).toISOString(),
+      dueDate: daysAgo(0).toISOString(),
+    });
+    expect(wantedWaitingFollowUps([task], [person()], TODAY)).toHaveLength(1);
+  });
+
+  it('waits for a date that has not come yet, even past the threshold', () => {
+    const task = waitingTask({ dueDate: daysAgo(-2).toISOString() });
+    expect(wantedWaitingFollowUps([task], [person()], TODAY)).toEqual([]);
+  });
+
+  it('still asks after a date that has passed', () => {
+    const task = waitingTask({ waitingOnPersonSince: null, dueDate: daysAgo(3).toISOString() });
+    expect(wantedWaitingFollowUps([task], [person()], TODAY)).toHaveLength(1);
+  });
+
   it('is not fooled by a task with no stamp at all — a legacy wait rather than a fresh one', () => {
     const task = waitingTask({ waitingOnPersonSince: null });
     expect(wantedWaitingFollowUps([task], [person()], TODAY)).toEqual([]);

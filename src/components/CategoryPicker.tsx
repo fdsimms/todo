@@ -270,6 +270,35 @@ interface SheetProps extends Omit<ListProps, 'maxHeight'> {
  * would cover half the list to serve the typists who can already tap the field.
  */
 export function CategoryPickerSheet({ visible, onClose, title = 'Category', onSelect, ...listProps }: SheetProps) {
+  return (
+    <PickerSheet visible={visible} onClose={onClose} title={title}>
+      {choose => (
+        <CategoryPickerList
+          {...listProps}
+          maxHeight={SHEET_LIST_MAX_HEIGHT}
+          onSelect={name => choose(() => onSelect(name))}
+        />
+      )}
+    </PickerSheet>
+  );
+}
+
+/** Most a picker sheet's own list grows before it scrolls. */
+export const PICKER_SHEET_LIST_MAX_HEIGHT = SHEET_LIST_MAX_HEIGHT;
+
+/**
+ * The bottom-sheet shell `CategoryPickerSheet` is built on, for any other
+ * pick-one-thing list that needs the same arrival, swipe-away, keyboard lift
+ * and Cancel (quick add's project picker is the second). `children` gets
+ * `choose`, which animates the sheet away and then runs what was picked, so a
+ * choice never lands under a sheet that's still on screen.
+ */
+export function PickerSheet({ visible, onClose, title, children }: {
+  visible: boolean;
+  onClose: () => void;
+  title: string;
+  children: (choose: (after: () => void) => void) => React.ReactNode;
+}) {
   const colors = useColors();
   const { isDark } = useTheme();
   const styles = useMemo(() => makeStyles(colors), [colors]);
@@ -380,11 +409,7 @@ export function CategoryPickerSheet({ visible, onClose, title = 'Category', onSe
         <View style={styles.card}>
           <Text style={styles.sheetTitle}>{title}</Text>
           <View style={styles.sheetBody}>
-            <CategoryPickerList
-              {...listProps}
-              maxHeight={SHEET_LIST_MAX_HEIGHT}
-              onSelect={name => dismiss(() => onSelect(name))}
-            />
+            {children(after => dismiss(after))}
           </View>
         </View>
 

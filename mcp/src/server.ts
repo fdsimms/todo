@@ -275,8 +275,10 @@ function registerWriteTools(
       // Without this no task created here could ever ask a question, which
       // makes complete_task's whole answer path unreachable for anything but a
       // task the user made in the app.
-      deliverableKind: z.enum(['text', 'date', 'number']).nullable().optional()
+      deliverableKind: z.enum(['text', 'date', 'number', 'yesno', 'choice']).nullable().optional()
         .describe('Makes completing this task ask for an answer of that kind, recorded on the row.'),
+      deliverableOptions: z.array(z.string()).optional()
+        .describe("The options a 'choice' question offers, e.g. ['Yes', 'No', 'Maybe']. Ignored for other kinds."),
     },
     async input => {
       try {

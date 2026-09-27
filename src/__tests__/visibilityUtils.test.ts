@@ -37,6 +37,7 @@ import {
 } from '../utils/visibilityUtils';
 import { registerTaskSource } from '../utils/blockerRegistry';
 import { registerAwayProjectSource } from '../utils/awayDates';
+import { registerPausedProjectSource } from '../utils/projectPause';
 import { registerPersonSource } from '../utils/peopleRegistry';
 import { useCategoryStore } from '../store/useCategoryStore';
 import type { Task, Category } from '../types';
@@ -233,6 +234,21 @@ describe('isTaskVisible', () => {
 
   it('hides completed tasks', () => {
     expect(isTaskVisible({ ...baseTask, completed: true })).toBe(false);
+  });
+
+  // Paused with its project (Project.pausedUntil), and back on the day the
+  // pause ends.
+  it('hides a task in a paused project until the pause ends', () => {
+    const due = { ...baseTask, projectId: 'garden', dueDate: NOW.toISOString() };
+    const pausedUntil = (days: number) => {
+      const d = new Date(NOW); d.setDate(d.getDate() + days);
+      return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
+    };
+    registerPausedProjectSource(() => [{ id: 'garden', pausedUntil: pausedUntil(1), archived: false, completed: false }]);
+    expect(isTaskVisible(due)).toBe(false);
+    registerPausedProjectSource(() => [{ id: 'garden', pausedUntil: pausedUntil(0), archived: false, completed: false }]);
+    expect(isTaskVisible(due)).toBe(true);
+    registerPausedProjectSource(null);
   });
 
   it('hides an uncompleted task with no date signal (it belongs in Inbox/Unscheduled, not Today)', () => {

@@ -298,12 +298,12 @@ export function resetToDeload(): void {
   navigationRef.navigate({ name: 'Today', params: { openDeload: Date.now() } });
 }
 
-export function resetToProjectPull(projectId?: string | null): void {
+export function resetToProjectPull(projectId?: string | null, onDayKey?: string | null): void {
   if (!navigationRef.isReady()) return;
   navigationRef.navigate({
     name: 'Today',
     params: projectId
-      ? { openProjectPull: Date.now(), pullProjectId: projectId }
+      ? { openProjectPull: Date.now(), pullProjectId: projectId, pullOnDay: onDayKey ?? undefined }
       : { openProjectPull: Date.now() },
   });
 }

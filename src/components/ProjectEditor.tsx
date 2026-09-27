@@ -8,10 +8,17 @@ import {
   Alert,
 } from 'react-native';
 import Ionicons from '@expo/vector-icons/Ionicons';
-import type { Project } from '../types';
+import type { Project, ProjectLink } from '../types';
+import { usePersonStore, displayNameOf } from '../store/usePersonStore';
+import { parseLabelledLink, linkHost } from '../utils/textLinks';
+import { generateId } from '../utils/id';
 import { TITLE_MAX_LENGTH } from '../types';
 import { useProjectStore } from '../store/useProjectStore';
 import { useTaskStore } from '../store/useTaskStore';
+import { useTemplateStore } from '../store/useTemplateStore';
+import { useTaskGroupStore } from '../store/useTaskGroupStore';
+import { templateFromProject } from '../utils/projectTemplate';
+import { useNavigation } from '@react-navigation/native';
 import { useProjectCategoryStore } from '../store/useProjectCategoryStore';
 import { useShallow } from 'zustand/react/shallow';
 import { WhenPicker } from './WhenPicker';
@@ -33,7 +40,10 @@ import { CountStepper } from './CountStepper';
 import { SegmentedControl, type SegmentOption } from './SegmentedControl';
 import { useColors } from '../theme/ThemeContext';
 import { spacing, radius, font, fontWeight, interaction, type Colors } from '../theme';
-import { formatDeadlineDate } from '../utils/dateUtils';
+import { dayKeyOf, dayKeyToDate, formatDeadlineDate } from '../utils/dateUtils';
+import { addDays } from 'date-fns/addDays';
+import { differenceInCalendarDays } from 'date-fns/differenceInCalendarDays';
+import { buildAwayShiftPlan } from '../utils/awayShift';
 import { haptics } from '../utils/haptics';
 import { animateLayout } from '../utils/layoutAnimation';
 import {
@@ -67,7 +77,7 @@ const NUDGE_MODE_OPTIONS: SegmentOption<NudgeMode>[] = NUDGE_MODES.map(mode => (
 const NUDGE_MODE_HINT: Record<NudgeMode, string> = {
   never: 'Stays out of "Pull from projects" and never writes a review task. For a list you keep rather than work through, like gift ideas.',
   'on-ask': 'Shows up in "Pull from projects" when you open it, and never brings itself up.',
-  scheduled: 'Adds a review task once it has gone this long with nothing scheduled.',
+  scheduled: "Adds a review task once nothing in it is scheduled and nothing's been finished in it for this long.",
 };
 
 interface Props {
@@ -75,7 +85,12 @@ interface Props {
   project: Project | null;
   /** Titles the sheet "New project" — set when arriving from quick add's "More details". */
   isNew?: boolean;
-  onClose: () => void;
+  /**
+   * `discarded` is passed when the person backed out of a project created for
+   * this sheet (isNew). The row already exists, so the host deletes it; a
+   * plain close keeps whatever was saved.
+   */
+  onClose: (outcome?: 'discarded') => void;
 }
 
 export function ProjectEditor({ visible, project, isNew, onClose }: Props) {
@@ -88,6 +103,9 @@ export function ProjectEditor({ visible, project, isNew, onClose }: Props) {
   const completeProject = useTaskStore(s => s.completeProject);
   const uncompleteProject = useTaskStore(s => s.uncompleteProject);
   const deleteProject = useTaskStore(s => s.deleteProject);
+  const startFreshFromProject = useTaskStore(s => s.startFreshFromProject);
+  const addTemplateFromProject = useTemplateStore(s => s.addTemplateFromProject);
+  const navigation = useNavigation();
   // `project` is a snapshot handed down when the sheet was opened, so it never
   // sees its own archived flag flip back — read that one field live instead,
   // or unarchiving here leaves the toggle showing "archived" until the sheet
@@ -124,9 +142,21 @@ export function ProjectEditor({ visible, project, isNew, onClose }: Props) {
   const addGroceryList = useGroceryStore(s => s.addList);
   const kitchenEnabled = useSettingsStore(s => s.kitchenEnabled);
   const simpleMode = useSettingsStore(s => s.simpleMode);
+  const weekendNudgeOn = useSettingsStore(s => s.weekendNudgeTasks && !!s.weekendNudgeTaskCategory);
+  const forecastOn = useSettingsStore(s => s.destinationForecastEnabled);
+  const setForecastOn = useSettingsStore(s => s.setDestinationForecastEnabled);
+  // What "Pause tasks while away" would actually hide: only what's already
+  // marked to pause on vacation. Counted so the hint can say when that's
+  // nothing, which turned vacation mode on to hide nothing at all.
+  const pausedTaskCount = useTaskStore(s => s.tasks.filter(t => t.vacationPause && !t.completed && !t.archived && t.parentId === null).length);
+  const pausedCategoryCount = useCategoryStore(s => s.categories.filter(c => c.hideOnVacation).length);
   // Rule 2 of simplified mode: a project that already has a trip keeps its
   // rows, whatever the switch says.
-  const awayFieldShown = featureShown('awayDates', simpleMode, awayStart !== null);
+  // A list is lines to tick off, so the fields about dates and being chased
+  // step aside for it. Only while unused: a list that was given a deadline or
+  // a nudge before it became one keeps the row that can take it off again.
+  const isList = project?.kind === 'list';
+  const awayFieldShown = featureShown('awayDates', simpleMode, awayStart !== null) && (!isList || awayStart !== null);
   // Collapsed to the chosen category until tapped, like every other editor.
   const [categoryOpen, setCategoryOpen] = useState(false);
   // The merged nudge control: one chosen answer, plus the cadence the third of
@@ -138,6 +168,28 @@ export function ProjectEditor({ visible, project, isNew, onClose }: Props) {
   const [autoSchedule, setAutoSchedule] = useState(false);
   const [ongoing, setOngoing] = useState(false);
   const [weekendSource, setWeekendSource] = useState(false);
+  // Project.pausedUntil, held as the day it comes back.
+  const [pausedUntil, setPausedUntil] = useState<Date | null>(null);
+  const [pickingPause, setPickingPause] = useState(false);
+  const [personIds, setPersonIds] = useState<string[]>([]);
+  const [peopleOpen, setPeopleOpen] = useState(false);
+  const [links, setLinks] = useState<ProjectLink[]>([]);
+  const [linkDraft, setLinkDraft] = useState('');
+  const [linkError, setLinkError] = useState<string | null>(null);
+  const [inOrder, setInOrder] = useState(false);
+  const [showChecked, setShowChecked] = useState(false);
+  const people = usePersonStore(useShallow(s => s.people.filter(p => !p.archived)));
+
+  // Returns the typed link to the list, or says why it can't.
+  const addLinkDraft = () => {
+    if (!linkDraft.trim()) return;
+    const parsed = parseLabelledLink(linkDraft);
+    if (!parsed) { setLinkError("That doesn't look like a link. Paste one that starts with https://."); return; }
+    haptics.tap();
+    setLinks(ls => [...ls, { id: generateId(), ...parsed }]);
+    setLinkDraft('');
+    setLinkError(null);
+  };
   const [cadenceOpen, setCadenceOpen] = useState(false);
 
   const awayListName = awayListId
@@ -189,6 +241,15 @@ export function ProjectEditor({ visible, project, isNew, onClose }: Props) {
     setAutoSchedule(project.autoSchedule);
     setOngoing(project.ongoing);
     setWeekendSource(project.weekendSource);
+    setPausedUntil(project.pausedUntil ? dayKeyToDate(project.pausedUntil) : null);
+    setPickingPause(false);
+    setPersonIds(project.personIds ?? []);
+    setPeopleOpen(false);
+    setLinks(project.links ?? []);
+    setLinkDraft('');
+    setLinkError(null);
+    setInOrder(project.inOrder ?? false);
+    setShowChecked(project.showChecked ?? false);
     setCategoryOpen(false);
     setCadenceOpen(false);
   }, [project]);
@@ -281,17 +342,53 @@ export function ProjectEditor({ visible, project, isNew, onClose }: Props) {
       autoSchedule: nudgeMode === 'scheduled' && autoSchedule,
       ongoing,
       weekendSource,
+      pausedUntil: pausedUntil ? dayKeyOf(pausedUntil) : null,
+      // A person archived since keeps their place: the page reads through
+      // the people store and simply doesn't draw them.
+      personIds,
+      // A link still sitting in the field counts too, the way a typed line
+      // does on Done anywhere else.
+      links: (() => {
+        const pending = linkDraft.trim() ? parseLabelledLink(linkDraft) : null;
+        return pending ? [...links, { id: generateId(), ...pending }] : links;
+      })(),
+      inOrder,
+      showChecked,
     });
-    return departureMoved && priorStart && nextStart ? { from: priorStart, to: nextStart } : null;
+    if (departureMoved && priorStart && nextStart) return { from: priorStart, to: nextStart };
+    // The same offer when the deadline moves: a party pushed back a week takes
+    // its "a week before" tasks with it. The departure wins when both moved,
+    // since a trip's prep is counted from the day you leave.
+    const priorDeadline = project.deadline ? new Date(project.deadline) : null;
+    if (priorDeadline && deadline && dayKeyOf(priorDeadline) !== dayKeyOf(deadline)) {
+      return { from: priorDeadline, to: deadline };
+    }
+    return null;
   };
 
   const saveAndClose = () => {
+    // A new project can't be saved without a name. It used to close anyway,
+    // and the host then deleted the unnamed row along with the deadline,
+    // notes and settings entered for it, without a word.
+    if (isNew && !title.trim()) {
+      Alert.alert(
+        'Name this project',
+        'A new project needs a name before it can be saved.',
+        [
+          { text: 'Keep editing', style: 'cancel' },
+          { text: 'Discard project', style: 'destructive', onPress: () => onClose('discarded') },
+        ],
+      );
+      return;
+    }
     const moved = commitEdits();
     // The trip moved, so offer to bring its prepared work with it (see
     // utils/awayShift). Deliberately an offer rather than a shift: "Renew
     // passport" is anchored to the trip and "Buy a suitcase" is not, and only
     // the person who typed them knows which. The sheet closes this one.
-    if (moved) {
+    // Only when something would move: with no dated task the sheet opened
+    // anyway, over "0 tasks" and a disabled button.
+    if (moved && buildAwayShiftPlan(projectTasks, moved.from, moved.to, useSettingsStore.getState().dayResetTime).proposals.length > 0) {
       setShiftFrom(moved.from);
       setShiftTo(moved.to);
       return;
@@ -328,19 +425,28 @@ export function ProjectEditor({ visible, project, isNew, onClose }: Props) {
       nudge.nudgeCadenceDays !== project.nudgeCadenceDays ||
       (nudgeMode === 'scheduled' && autoSchedule) !== project.autoSchedule ||
       ongoing !== project.ongoing ||
-      weekendSource !== project.weekendSource
+      weekendSource !== project.weekendSource ||
+      (pausedUntil ? dayKeyOf(pausedUntil) : null) !== project.pausedUntil
     );
   };
 
   // Same confirm, in the same words, as TaskEditor's own Cancel.
+  //
+  // On a project created for this sheet, Cancel means "don't create it": the
+  // row already exists (quick add's "More details" makes it up front), so the
+  // host is told to delete it. Only asked about when something was entered
+  // beyond the name quick add passed in.
   const handleCancel = () => {
-    if (!isDirty()) { onClose(); return; }
+    const leave = () => onClose(isNew ? 'discarded' : undefined);
+    if (!isDirty()) { leave(); return; }
     Alert.alert(
-      'Discard changes?',
-      'You have unsaved changes. Are you sure you want to discard them?',
+      isNew ? 'Discard this project?' : 'Discard changes?',
+      isNew
+        ? "It hasn't been saved yet. Are you sure you want to discard it?"
+        : 'You have unsaved changes. Are you sure you want to discard them?',
       [
         { text: 'Keep editing', style: 'cancel' },
-        { text: 'Discard', style: 'destructive', onPress: onClose },
+        { text: 'Discard', style: 'destructive', onPress: leave },
       ],
     );
   };
@@ -425,6 +531,51 @@ export function ProjectEditor({ visible, project, isNew, onClose }: Props) {
     uncompleteProject(project.id);
   };
 
+  // Reusing a project, for the next party or the next trip: as a template to
+  // apply whenever, or as a fresh copy straight away. Both save the sheet
+  // first, so what's reused is what's on screen.
+  const handleSaveAsTemplate = () => {
+    if (!project) return;
+    commitEdits();
+    const saved = useProjectStore.getState().getProjectById(project.id) ?? project;
+    const draft = templateFromProject(
+      saved,
+      useTaskStore.getState().tasks,
+      useTaskGroupStore.getState().groups,
+      useSettingsStore.getState().dayResetTime,
+    );
+    addTemplateFromProject(draft);
+    haptics.success();
+    Alert.alert(
+      'Saved as a template',
+      `"${draft.name}" is in Templates with its ${draft.items.length} ${draft.items.length === 1 ? 'task' : 'tasks'}${
+        saved.awayStart ? ', dated from the day you leave' : saved.deadline ? ', dated from the deadline' : ''
+      }. Apply it from any project's add button, or from Templates.`,
+    );
+  };
+
+  const handleStartFresh = () => {
+    if (!project) return;
+    Alert.alert(
+      'Start a fresh copy?',
+      'Makes a new project with the same tasks and sections, all open again and with no dates. This one stays as it is.',
+      [
+        { text: 'Cancel', style: 'cancel' },
+        {
+          text: 'Start fresh',
+          onPress: () => {
+            commitEdits();
+            const copy = startFreshFromProject(project.id);
+            if (!copy) return;
+            haptics.success();
+            onClose();
+            (navigation as any).navigate('ProjectDetail', { projectId: copy.id });
+          },
+        },
+      ],
+    );
+  };
+
   const handleUnarchive = () => {
     if (!project) return;
     haptics.tap();
@@ -480,12 +631,23 @@ export function ProjectEditor({ visible, project, isNew, onClose }: Props) {
                 // entered on purpose. Backdating is still allowed for both:
                 // recording a trip that has already happened is a real thing
                 // to do, which is why allowPast is left at its default.
-                setAwayEnd(date && awayStart && date > awayStart ? date : null);
+                if (date && awayStart && date <= awayStart) {
+                  // Said rather than silently dropped, which is what this did:
+                  // the picker closed and the row stayed empty with no reason.
+                  Alert.alert('Coming back is before leaving', 'Pick a day after you leave.');
+                  return;
+                }
+                setAwayEnd(date);
               } else {
+                // Moving the departure moves the return with it, keeping the
+                // trip the same length: a flight moved three days later is the
+                // same ten-day trip. Leaving the return where it was quietly
+                // shortened the trip, or cleared the return when the new
+                // departure passed it.
+                if (date && awayStart && awayEnd) {
+                  setAwayEnd(addDays(awayEnd, differenceInCalendarDays(date, awayStart)));
+                }
                 setAwayStart(date);
-                // A return before the new departure stops meaning anything, so
-                // it goes rather than being left to be silently ignored.
-                if (date && awayEnd && awayEnd <= date) setAwayEnd(null);
               }
               setPickingAway(null);
             }}
@@ -498,6 +660,18 @@ export function ProjectEditor({ visible, project, isNew, onClose }: Props) {
               setPickingAway(null);
             }}
             onCancel={() => setPickingAway(null)}
+          />
+          <WhenPicker
+            visible={pickingPause}
+            value={pausedUntil}
+            title="Pause until"
+            showTimeOfDay={false}
+            showSuggest={false}
+            // The day it comes back, so it has to be one still ahead.
+            allowPast={false}
+            onConfirm={(date) => { setPausedUntil(date); setPickingPause(false); }}
+            onClear={() => { setPausedUntil(null); setPickingPause(false); }}
+            onCancel={() => setPickingPause(false)}
           />
           <AwayShiftSheet
             visible={shiftFrom !== null && shiftTo !== null}
@@ -536,6 +710,8 @@ export function ProjectEditor({ visible, project, isNew, onClose }: Props) {
           sheet was a column of unlabelled cards in the order each field was
           added, with the nudge's own switch floating free of the field it
           belongs to. */}
+      {(!isList || deadline !== null) && (
+      <>
       <Text style={styles.groupLabel}>Schedule</Text>
       <View style={styles.card}>
         <EditorRow
@@ -553,6 +729,8 @@ export function ProjectEditor({ visible, project, isNew, onClose }: Props) {
       <Text style={styles.sectionFooter}>
         Shown on the project's card and flagged once it passes. It doesn't schedule anything.
       </Text>
+      </>
+      )}
 
       {/* The away span. Two rows rather than one range control because the end
           is genuinely optional: a trip you have booked a flight out for and
@@ -599,6 +777,31 @@ export function ProjectEditor({ visible, project, isNew, onClose }: Props) {
             />
           </View>
         )}
+        {/* The forecast is an app-wide switch, off by default, and was only
+            mentioned in the footer. Offered right where a place is typed. */}
+        {awayStart && destination.trim().length > 0 && (
+          <TouchableOpacity
+            style={styles.optionRow}
+            onPress={() => { haptics.tap(); setForecastOn(!forecastOn); }}
+            activeOpacity={interaction.activeOpacity}
+            accessibilityRole="switch"
+            accessibilityLabel="Show the forecast for where you're going"
+            accessibilityState={{ checked: forecastOn }}
+          >
+            <Ionicons name="partly-sunny-outline" size={18} color={forecastOn ? colors.accent : colors.textSecondary} />
+            <View style={styles.optionContent}>
+              <Text style={styles.optionLabel}>Show the forecast there</Text>
+              <Text style={styles.optionHint}>
+                {forecastOn
+                  ? "Looks up the place's weather for your trip dates and shows it on the project. Applies to every trip."
+                  : 'Off. Turning it on looks up the place by name, for every trip.'}
+              </Text>
+            </View>
+            <View style={[styles.toggle, forecastOn && styles.toggleOn]}>
+              <View style={[styles.toggleKnob, forecastOn && styles.toggleKnobOn]} />
+            </View>
+          </TouchableOpacity>
+        )}
         {awayStart && (
           <TouchableOpacity
             style={styles.optionRow}
@@ -613,7 +816,12 @@ export function ProjectEditor({ visible, project, isNew, onClose }: Props) {
               <Text style={styles.optionLabel}>Pause tasks while away</Text>
               <Text style={styles.optionHint}>
                 {awayPauses
-                  ? "Vacation mode turns on the day you leave and off when you're back. It hides only the tasks and categories you've already set to pause on vacation."
+                  ? pausedTaskCount + pausedCategoryCount === 0
+                    ? "Vacation mode turns on the day you leave and off when you're back. Nothing is set to pause on vacation yet, so it won't hide anything until you set that on a task or category."
+                    : `Vacation mode turns on the day you leave and off when you're back, hiding ${[
+                        pausedTaskCount > 0 ? `${pausedTaskCount} ${pausedTaskCount === 1 ? 'task' : 'tasks'}` : null,
+                        pausedCategoryCount > 0 ? `${pausedCategoryCount} ${pausedCategoryCount === 1 ? 'category' : 'categories'}` : null,
+                      ].filter(Boolean).join(' and ')} set to pause on vacation.`
                   : 'Vacation mode stays however you set it.'}
               </Text>
             </View>
@@ -645,7 +853,7 @@ export function ProjectEditor({ visible, project, isNew, onClose }: Props) {
         )}
       </View>
       <Text style={styles.sectionFooter}>
-        The days you're away from home. Look ahead shows what's due while you're gone, and the card counts down to the day you leave. The day you come back doesn't count as a day away. Leave these blank if this project isn't a trip. Where you're going is only looked up if the destination forecast is on in Settings.
+        The days you're away from home, for a trip. Leave these blank otherwise. The day you come back doesn't count as a day away.
       </Text>
       </>
       )}
@@ -676,7 +884,81 @@ export function ProjectEditor({ visible, project, isNew, onClose }: Props) {
             onSelect={cat => { setDefaultTaskCategory(cat); setDefaultTaskCategoryOpen(false); }}
           />
         </CollapsibleField>
+        <View style={styles.sep} />
+        <CollapsibleField
+          label="People"
+          summary={personIds.length > 0
+            ? people.filter(p => personIds.includes(p.id)).map(displayNameOf).join(', ') || undefined
+            : undefined}
+          hint="Who this project is with or for. They're shown on the project page. New tasks don't pick them up."
+          expanded={peopleOpen}
+          onToggle={() => setPeopleOpen(v => !v)}
+        >
+          <PillGroup
+            noun="person"
+            pluralNoun="people"
+            options={people.map(p => {
+              const on = personIds.includes(p.id);
+              return {
+                key: p.id,
+                label: displayNameOf(p),
+                selected: on,
+                onPress: () => {
+                  haptics.tap();
+                  setPersonIds(ids => (on ? ids.filter(id => id !== p.id) : [...ids, p.id]));
+                },
+              };
+            })}
+            onCreate={name => {
+              const person = usePersonStore.getState().createPerson(name);
+              setPersonIds(ids => [...ids, person.id]);
+            }}
+          />
+        </CollapsibleField>
       </View>
+
+      {/* Links kept with the project: the booking, the shared doc, the
+          listing. A line each, tapped open from the project page. */}
+      <Text style={styles.groupLabel}>Links</Text>
+      <View style={styles.card}>
+        {links.map((link, i) => (
+          <React.Fragment key={link.id}>
+            {i > 0 && <View style={styles.sep} />}
+            <View style={styles.linkRow}>
+              <Ionicons name="link-outline" size={18} color={colors.textSecondary} />
+              <View style={styles.optionContent}>
+                <Text style={styles.optionLabel} numberOfLines={1}>{link.label || linkHost(link.url)}</Text>
+                <Text style={styles.optionHint} numberOfLines={1}>{link.url}</Text>
+              </View>
+              <TouchableOpacity
+                onPress={() => { haptics.tap(); setLinks(ls => ls.filter(l => l.id !== link.id)); }}
+                hitSlop={8}
+                accessibilityRole="button"
+                accessibilityLabel={`Remove ${link.label || linkHost(link.url)}`}
+              >
+                <Ionicons name="close-circle" size={18} color={colors.textTertiary} />
+              </TouchableOpacity>
+            </View>
+          </React.Fragment>
+        ))}
+        {links.length > 0 && <View style={styles.sep} />}
+        <View style={styles.linkRow}>
+          <Ionicons name="add" size={18} color={colors.textTertiary} />
+          <TextInput
+            style={styles.linkInput}
+            value={linkDraft}
+            onChangeText={setLinkDraft}
+            onSubmitEditing={addLinkDraft}
+            placeholder="Paste a link, with a name before it if you like"
+            placeholderTextColor={colors.textTertiary}
+            autoCapitalize="none"
+            autoCorrect={false}
+            returnKeyType="done"
+            accessibilityLabel="Add a link"
+          />
+        </View>
+      </View>
+      {linkError && <Text style={styles.sectionFooter}>{linkError}</Text>}
 
       {/* One question, three answers. "Include in nudges" and "Review cadence"
           used to be a switch and a stepper nested inside it, which took two
@@ -684,6 +966,8 @@ export function ProjectEditor({ visible, project, isNew, onClose }: Props) {
           nobody chose — see NudgeMode in utils/nudgeCadence. Automatic
           scheduling only exists under "Every…", so it lives inside the same
           field rather than as a card of its own that came and went beside it. */}
+      {(!isList || nudgeMode !== 'never') && (
+      <>
       <Text style={styles.groupLabel}>Nudges</Text>
       <View style={styles.card}>
         <CollapsibleField
@@ -767,6 +1051,8 @@ export function ProjectEditor({ visible, project, isNew, onClose }: Props) {
           )}
         </CollapsibleField>
       </View>
+      </>
+      )}
 
       {/*
         Whether this project is a list lives on its own screen now — the
@@ -776,6 +1062,65 @@ export function ProjectEditor({ visible, project, isNew, onClose }: Props) {
 
       <Text style={styles.groupLabel}>More</Text>
       <View style={styles.card}>
+        {/* Parking a project for a season. Archive files the project but
+            leaves its tasks (a weekly watering stays on Today all winter);
+            this holds every one of them back until the day, then brings the
+            lot back on its own. */}
+        <EditorRow
+          icon="pause-outline"
+          label="Pause until"
+          hint="Hides all of its tasks, repeating ones too, and stops any nudges until this day."
+          value={pausedUntil ? formatDeadlineDate(pausedUntil.toISOString()) : undefined}
+          onPress={() => setPickingPause(true)}
+          onClear={pausedUntil ? () => setPausedUntil(null) : undefined}
+        />
+        <View style={styles.sepIcon} />
+        {isList ? (
+          <TouchableOpacity
+            style={styles.optionRow}
+            onPress={() => { haptics.tap(); setShowChecked(v => !v); }}
+            activeOpacity={interaction.activeOpacity}
+            accessibilityRole="switch"
+            accessibilityLabel="Keep checked lines in view"
+            accessibilityState={{ checked: showChecked }}
+          >
+            <Ionicons name="checkmark-done-outline" size={18} color={showChecked ? colors.accent : colors.textSecondary} />
+            <View style={styles.optionContent}>
+              <Text style={styles.optionLabel}>Keep checked lines in view</Text>
+              <Text style={styles.optionHint}>
+                {showChecked
+                  ? 'Checked lines stay at the bottom, crossed out, in list order'
+                  : 'Checked lines fold away under "Show completed"'}
+              </Text>
+            </View>
+            <View style={[styles.toggle, showChecked && styles.toggleOn]}>
+              <View style={[styles.toggleKnob, showChecked && styles.toggleKnobOn]} />
+            </View>
+          </TouchableOpacity>
+        ) : (
+          <TouchableOpacity
+            style={styles.optionRow}
+            onPress={() => { haptics.tap(); setInOrder(v => !v); }}
+            activeOpacity={interaction.activeOpacity}
+            accessibilityRole="switch"
+            accessibilityLabel="Work in order"
+            accessibilityState={{ checked: inOrder }}
+          >
+            <Ionicons name="list-outline" size={18} color={inOrder ? colors.accent : colors.textSecondary} />
+            <View style={styles.optionContent}>
+              <Text style={styles.optionLabel}>Work in order</Text>
+              <Text style={styles.optionHint}>
+                {inOrder
+                  ? 'Pull and automatic scheduling only offer the first open task on the page'
+                  : 'Pull and automatic scheduling offer whichever task fits best'}
+              </Text>
+            </View>
+            <View style={[styles.toggle, inOrder && styles.toggleOn]}>
+              <View style={[styles.toggleKnob, inOrder && styles.toggleKnobOn]} />
+            </View>
+          </TouchableOpacity>
+        )}
+        <View style={styles.sepIcon} />
         <TouchableOpacity
           style={styles.optionRow}
           onPress={() => { haptics.tap(); setOngoing(v => !v); }}
@@ -789,8 +1134,8 @@ export function ProjectEditor({ visible, project, isNew, onClose }: Props) {
             <Text style={styles.optionLabel}>Ongoing</Text>
             <Text style={styles.optionHint}>
               {ongoing
-                ? "Never offered as complete, however many tasks are done"
-                : "Offers to mark complete once every task is done"}
+                ? 'Never offered as complete. Its card counts open tasks instead of a progress bar'
+                : 'Offers to mark complete once every task is done'}
             </Text>
           </View>
           <View style={[styles.toggle, ongoing && styles.toggleOn]}>
@@ -810,9 +1155,11 @@ export function ProjectEditor({ visible, project, isNew, onClose }: Props) {
           <View style={styles.optionContent}>
             <Text style={styles.optionLabel}>Suggest for a free weekend</Text>
             <Text style={styles.optionHint}>
-              {weekendSource
-                ? 'The weekend task names this project when a weekend has nothing on it'
-                : 'The weekend task does not name this project'}
+              {!weekendNudgeOn
+                ? 'Takes effect once "Nudge for an empty weekend" is on in Settings, under Automatic tasks'
+                : weekendSource
+                  ? 'The weekend task names this project when a weekend has nothing on it'
+                  : 'The weekend task does not name this project'}
             </Text>
           </View>
           <View style={[styles.toggle, weekendSource && styles.toggleOn]}>
@@ -861,6 +1208,38 @@ export function ProjectEditor({ visible, project, isNew, onClose }: Props) {
               <Text style={styles.optionHint}>
                 {archived ? 'Moves it back out of the Archived list' : 'Moves it to the Archived list. Its tasks stay where they are'}
               </Text>
+            </View>
+          </TouchableOpacity>
+        </View>
+      )}
+
+      {!isNew && (
+        <View style={[styles.card, styles.stackedCard]}>
+          <TouchableOpacity
+            style={styles.optionRow}
+            onPress={handleSaveAsTemplate}
+            activeOpacity={interaction.activeOpacity}
+            accessibilityRole="button"
+            accessibilityLabel="Save as a template"
+          >
+            <Ionicons name="copy-outline" size={18} color={colors.textSecondary} />
+            <View style={styles.optionContent}>
+              <Text style={styles.optionLabel}>Save as template</Text>
+              <Text style={styles.optionHint}>Keeps its tasks and sections to apply again, with dates counted from its deadline or trip</Text>
+            </View>
+          </TouchableOpacity>
+          <View style={styles.sepIcon} />
+          <TouchableOpacity
+            style={styles.optionRow}
+            onPress={handleStartFresh}
+            activeOpacity={interaction.activeOpacity}
+            accessibilityRole="button"
+            accessibilityLabel="Start a fresh copy"
+          >
+            <Ionicons name="duplicate-outline" size={18} color={colors.textSecondary} />
+            <View style={styles.optionContent}>
+              <Text style={styles.optionLabel}>Start a fresh copy</Text>
+              <Text style={styles.optionHint}>A new project with the same tasks, all open and undated</Text>
             </View>
           </TouchableOpacity>
         </View>
@@ -968,6 +1347,15 @@ const makeStyles = (colors: Colors) => StyleSheet.create({
     paddingHorizontal: spacing.md, paddingVertical: 14,
   },
   destinationInput: { flex: 1, color: colors.text, fontSize: font.md, padding: 0 },
+  linkRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: spacing.smd,
+    paddingHorizontal: spacing.md,
+    minHeight: 52,
+  },
+  // Height rather than lineHeight, per the TextInput note in CLAUDE.md.
+  linkInput: { flex: 1, color: colors.text, fontSize: font.md, height: 44 },
   optionRow: {
     flexDirection: 'row', alignItems: 'center', gap: spacing.md,
     paddingHorizontal: spacing.md, paddingVertical: 14,

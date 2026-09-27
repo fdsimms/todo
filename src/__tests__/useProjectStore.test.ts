@@ -4,6 +4,8 @@ import {
   projectDecisions,
   projectCompletedRows,
   isProjectPastWindow,
+  projectAnswerTallies,
+  describeAnswerTally,
 } from '../store/useProjectStore';
 import { DEFAULT_NUDGE_CADENCE_DAYS } from '../types';
 import { formatDeadlineDate } from '../utils/dateUtils';
@@ -188,6 +190,11 @@ const makeProject = (overrides: Partial<Project> = {}): Project => ({
   destination: null,
   awayListId: null,
   awayListDeclinedFor: null,
+  pausedUntil: null,
+  personIds: [],
+  links: [],
+  inOrder: false,
+  showChecked: false,
   ...overrides,
 });
 
@@ -334,16 +341,24 @@ describe('projectProgress', () => {
 describe('projectCompletedRows', () => {
   // A daily member leaves a completed row per day; the section lists the member
   // once, at its latest completion, matching what progress counts.
-  it('lists a repeating member once, at its most recent completion, newest first', () => {
+  it('lists a finished repeating member once, at its most recent completion, newest first', () => {
     const tasks = [
       makeTask({ id: 'r1', projectId: 'p1', completed: true, completedAt: '2025-01-01T09:00:00.000Z' }),
       makeTask({ id: 'r2', projectId: 'p1', completed: true, completedAt: '2025-01-02T09:00:00.000Z', previousOccurrenceId: 'r1' }),
-      makeTask({ id: 'r3', projectId: 'p1', completed: false, previousOccurrenceId: 'r2' }),
       makeTask({ id: 'once', projectId: 'p1', completed: true, completedAt: '2025-01-03T09:00:00.000Z' }),
       makeTask({ id: 'filed', projectId: 'p1', completed: true, completedAt: '2025-01-04T09:00:00.000Z', archived: true }),
       makeTask({ id: 'other', projectId: 'p2', completed: true, completedAt: '2025-01-05T09:00:00.000Z' }),
     ];
     expect(projectCompletedRows('p1', tasks).map(t => t.id)).toEqual(['once', 'r2']);
+  });
+
+  // Still repeating: it's among the open tasks, so it isn't listed as done.
+  it('leaves out a member that still has an open row', () => {
+    const tasks = [
+      makeTask({ id: 'r1', projectId: 'p1', completed: true, completedAt: '2025-01-01T09:00:00.000Z' }),
+      makeTask({ id: 'r2', projectId: 'p1', completed: false, previousOccurrenceId: 'r1' }),
+    ];
+    expect(projectCompletedRows('p1', tasks)).toEqual([]);
   });
 });
 
@@ -860,5 +875,56 @@ describe('kind', () => {
       expect.objectContaining({ done: 1, total: 2 })
     );
     expect(list.kind).toBe('list');
+  });
+});
+
+describe('projectAnswerTallies', () => {
+  const guest = (id: string, overrides: Partial<Task> = {}): Task => makeTask({
+    id,
+    title: id,
+    projectId: 'p1',
+    deliverableKind: 'choice',
+    deliverableOptions: ['Yes', 'No', 'Maybe'],
+    ...overrides,
+  });
+
+  it('counts each answer, and the guests still to reply', () => {
+    const tasks = [
+      guest('a', { completed: true, completedAt: '2025-01-01T09:00:00.000Z', deliverableValue: 'Yes' }),
+      guest('b', { completed: true, completedAt: '2025-01-01T09:00:00.000Z', deliverableValue: 'yes' }),
+      guest('c', { completed: true, completedAt: '2025-01-01T09:00:00.000Z', deliverableValue: 'No' }),
+      guest('d'),
+      guest('e'),
+    ];
+    const [tally] = projectAnswerTallies('p1', tasks);
+    expect(tally).toEqual({ options: ['Yes', 'No', 'Maybe'], counts: [2, 1, 0], waiting: 2, unanswered: 0 });
+    expect(describeAnswerTally(tally)).toBe('2 Yes, 1 No, 2 waiting');
+  });
+
+  it('counts a completion without an answer apart from the ones still waiting', () => {
+    const tasks = [guest('a', { completed: true }), guest('b')];
+    expect(describeAnswerTally(projectAnswerTallies('p1', tasks)[0])).toBe('1 waiting, 1 no answer');
+  });
+
+  it('keeps different questions apart, and a Yes/No counts with its own two options', () => {
+    const tasks = [
+      guest('a'), guest('b'),
+      makeTask({ id: 'q1', projectId: 'p1', deliverableKind: 'yesno', completed: true, deliverableValue: 'No' }),
+      makeTask({ id: 'q2', projectId: 'p1', deliverableKind: 'yesno' }),
+    ];
+    const tallies = projectAnswerTallies('p1', tasks);
+    expect(tallies.map(t => t.options)).toEqual([['Yes', 'No', 'Maybe'], ['Yes', 'No']]);
+  });
+
+  it('is not a tally for a single question, another project, or an archived row', () => {
+    expect(projectAnswerTallies('p1', [guest('a')])).toEqual([]);
+    expect(projectAnswerTallies('p1', [guest('a', { projectId: 'p2' }), guest('b', { projectId: 'p2' })])).toEqual([]);
+    expect(projectAnswerTallies('p1', [guest('a'), guest('b', { archived: true })])).toEqual([]);
+  });
+
+  it('ignores a pick-one with fewer than two options, which asks as text', () => {
+    expect(projectAnswerTallies('p1', [
+      guest('a', { deliverableOptions: ['Yes'] }), guest('b', { deliverableOptions: ['Yes'] }),
+    ])).toEqual([]);
   });
 });

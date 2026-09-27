@@ -46,7 +46,7 @@ import {
 import { categoryLabel } from '../utils/categoryLabel';
 import { formatHHMM, hhmmToDate, dateToHHMM } from '../utils/dateUtils';
 import { generateId } from '../utils/id';
-import { deliverableMeta } from '../utils/deliverables';
+import { deliverableMeta, parseDeliverableOptions } from '../utils/deliverables';
 import { SortableList } from './SortableList';
 import { DeliverableKindPicker } from './DeliverableKindPicker';
 import { StepMinutes } from './StepMinutes';
@@ -120,6 +120,7 @@ export function TemplateItemEditor({ visible, templateId, templateName, item, in
   const categories = useCategoryStore(useShallow(s => s.categories));
   const addItem = useTemplateStore(s => s.addItem);
   const updateItem = useTemplateStore(s => s.updateItem);
+  const tripTemplate = useTemplateStore(s => s.templates.find(t => t.id === templateId)?.anchorsAreAway ?? false);
   // Only a choice can gate an item: a number or a free-text answer has no
   // fixed set to pick from, so there's nothing an author could tick.
   const choiceQuestions = useTemplateStore(
@@ -183,6 +184,8 @@ export function TemplateItemEditor({ visible, templateId, templateName, item, in
   const [recurrenceFromCompletion, setRecurrenceFromCompletion] = useState(false);
   const [recurrenceCount, setRecurrenceCount] = useState<number | null>(null);
   const [deliverableKind, setDeliverableKind] = useState<DeliverableKind | null>(null);
+  const [deliverableOptionsText, setDeliverableOptionsText] = useState('');
+  const [deliverableSetsAway, setDeliverableSetsAway] = useState(false);
   const [chainEnabled, setChainEnabled] = useState(false);
   const [chainItems, setChainItems] = useState<ChainItem[]>([]);
   // By id rather than index — see the same state in TaskEditor.
@@ -259,6 +262,8 @@ export function TemplateItemEditor({ visible, templateId, templateName, item, in
     setRecurrenceFromCompletion(item?.recurrenceFromCompletion ?? draft?.recurrenceFromCompletion ?? false);
     setRecurrenceCount(item?.recurrenceCount ?? draft?.recurrenceCount ?? null);
     setDeliverableKind(item?.deliverableKind ?? draft?.deliverableKind ?? null);
+    setDeliverableOptionsText((item?.deliverableOptions ?? draft?.deliverableOptions ?? []).join(', '));
+    setDeliverableSetsAway(item?.deliverableSetsAway ?? draft?.deliverableSetsAway ?? false);
     setChainEnabled(item?.chainEnabled ?? draft?.chainEnabled ?? false);
     setChainItems(item?.chainItems ?? draft?.chainItems ?? []);
     setRotationEnabled(item?.rotationEnabled ?? false);
@@ -418,6 +423,8 @@ export function TemplateItemEditor({ visible, templateId, templateName, item, in
       recurrenceFromCompletion,
       recurrenceCount: recurrenceType !== 'none' ? recurrenceCount : null,
       deliverableKind,
+      deliverableOptions: deliverableKind === 'choice' ? parseDeliverableOptions(deliverableOptionsText) : [],
+      deliverableSetsAway: deliverableKind === 'date' && tripTemplate && deliverableSetsAway,
       // A chain needs at least 2 steps — activeChainStep() (src/utils/chain.ts)
       // already treats a single-item chain as equivalent to a plain task, so
       // saving with fewer than 2 items quietly turns Chain back off rather
@@ -692,7 +699,7 @@ export function TemplateItemEditor({ visible, templateId, templateName, item, in
             label="Count days from"
             value={anchor}
             onChange={setAnchor}
-            options={(['start', 'end'] as TemplateAnchor[]).map(a => ({ value: a, label: anchorLabel(a) }))}
+            options={(['start', 'end'] as TemplateAnchor[]).map(a => ({ value: a, label: anchorLabel(a, tripTemplate) }))}
           />
         </View>
         <View style={styles.sep} />
@@ -702,6 +709,7 @@ export function TemplateItemEditor({ visible, templateId, templateName, item, in
           hint="When the task is due."
           offset={dueOffsetDays}
           anchor={anchor}
+          away={tripTemplate}
           onChange={setDueOffsetDays}
           colors={colors}
           styles={styles}
@@ -713,6 +721,7 @@ export function TemplateItemEditor({ visible, templateId, templateName, item, in
           hint="Keeps the task off Today until this day."
           offset={deferOffsetDays}
           anchor={anchor}
+          away={tripTemplate}
           onChange={setDeferOffsetDays}
           colors={colors}
           styles={styles}
@@ -724,6 +733,7 @@ export function TemplateItemEditor({ visible, templateId, templateName, item, in
           hint="A hard cut-off, shown separately from the due date."
           offset={deadlineOffsetDays}
           anchor={anchor}
+          away={tripTemplate}
           onChange={setDeadlineOffsetDays}
           colors={colors}
           styles={styles}
@@ -1575,6 +1585,39 @@ export function TemplateItemEditor({ visible, templateId, templateName, item, in
             onChange={kind => { setDeliverableKind(kind); closeField('deliverable'); }}
           />
         </CollapsibleField>
+        {deliverableKind === 'choice' && (
+          <TextInput
+            style={[styles.fieldBox, styles.deliverableOptionsInput]}
+            value={deliverableOptionsText}
+            onChangeText={setDeliverableOptionsText}
+            placeholder="e.g. Yes, No, Maybe"
+            placeholderTextColor={colors.textTertiary}
+            returnKeyType="done"
+            accessibilityLabel="Options to pick from, separated by commas"
+          />
+        )}
+        {/* Only on a trip template: "Pick dates" answered with the 14th is
+            the trip leaving on the 14th, so the project it lands in can
+            learn its Leaving date from the answer. */}
+        {deliverableKind === 'date' && tripTemplate && (
+          <TouchableOpacity
+            style={styles.optionRow}
+            onPress={() => { haptics.tap(); setDeliverableSetsAway(!deliverableSetsAway); }}
+            activeOpacity={interaction.activeOpacity}
+            accessibilityRole="switch"
+            accessibilityLabel="Use the answer as the trip's leaving date"
+            accessibilityState={{ checked: deliverableSetsAway }}
+          >
+            <Ionicons name="airplane-outline" size={18} color={deliverableSetsAway ? colors.accent : colors.textSecondary} />
+            <View style={styles.optionContent}>
+              <Text style={styles.optionLabel}>Sets the leaving date</Text>
+              <Text style={styles.optionHint}>The date you answer becomes the trip's Leaving date, if it doesn't have one yet</Text>
+            </View>
+            <View style={[styles.toggle, deliverableSetsAway && styles.toggleOn]}>
+              <View style={[styles.toggleKnob, deliverableSetsAway && styles.toggleKnobOn]} />
+            </View>
+          </TouchableOpacity>
+        )}
       </View>
 
       {/* Subtasks */}
@@ -1825,13 +1868,15 @@ export function TemplateItemEditor({ visible, templateId, templateName, item, in
  * human offset label ("3 days before", "On anchor day") with a clear button.
  */
 function OffsetRow({
-  icon, label, hint, offset, anchor, onChange, colors, styles,
+  icon, label, hint, offset, anchor, away, onChange, colors, styles,
 }: {
   icon: React.ComponentProps<typeof Ionicons>['name'];
   label: string;
   hint: string;
   offset: number | null;
   anchor: TemplateAnchor;
+  /** A trip template's: its anchors read as leaving and coming back. */
+  away: boolean;
   onChange: (offset: number | null) => void;
   colors: Colors;
   styles: ReturnType<typeof makeStyles>;
@@ -1843,7 +1888,7 @@ function OffsetRow({
         <View style={styles.optionContent}>
           <Text style={styles.optionLabel}>{label}</Text>
           <Text style={styles.optionHint}>
-            {offset !== null ? formatOffsetWithAnchor(offset, anchor) : hint}
+            {offset !== null ? formatOffsetWithAnchor(offset, anchor, away) : hint}
           </Text>
         </View>
         {offset !== null ? (
@@ -1872,17 +1917,24 @@ function OffsetRow({
           <TouchableOpacity hitSlop={8}
             style={styles.intervalBtn}
             onPress={() => onChange(offset - 1)}
+            // A week at a time on a hold: "6 weeks before" was 42 taps.
+            onLongPress={() => { haptics.tap(); onChange(offset - 7); }}
+            delayLongPress={interaction.delayLongPress}
             accessibilityRole="button"
             accessibilityLabel="One day earlier"
+            accessibilityHint="Hold to move a week earlier"
           >
             <Ionicons name="remove" size={16} color={colors.text} />
           </TouchableOpacity>
-          <Text style={styles.intervalValue}>{formatOffsetWithAnchor(offset, anchor)}</Text>
+          <Text style={styles.intervalValue}>{formatOffsetWithAnchor(offset, anchor, away)}</Text>
           <TouchableOpacity hitSlop={8}
             style={styles.intervalBtn}
             onPress={() => onChange(offset + 1)}
+            onLongPress={() => { haptics.tap(); onChange(offset + 7); }}
+            delayLongPress={interaction.delayLongPress}
             accessibilityRole="button"
             accessibilityLabel="One day later"
+            accessibilityHint="Hold to move a week later"
           >
             <Ionicons name="add" size={16} color={colors.text} />
           </TouchableOpacity>
@@ -2071,4 +2123,5 @@ const makeStyles = (colors: Colors) => StyleSheet.create({
   },
   /** Sits between the medication's name and its unit row. */
   medicationAmountInput: { marginTop: spacing.sm, marginBottom: spacing.sm },
+  deliverableOptionsInput: { marginHorizontal: spacing.md, marginVertical: spacing.sm, height: 40 },
 });

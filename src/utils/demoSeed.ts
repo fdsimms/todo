@@ -1051,6 +1051,18 @@ export function seedDemoData(): void {
     addExistingToProject(t.id, giftIdeas.id);
   });
 
+  // A project parked for a season (Project.pausedUntil): a weekly routine and a
+  // one-off, both held off Today until the pause lifts in three weeks. Without
+  // it, pausing is a feature the demo says the app doesn't have.
+  const garden = createProject('Garden', { category: 'Around the house' });
+  const gardenBack = addDays(new Date(), 21);
+  updateProject(garden.id, {
+    ongoing: true,
+    pausedUntil: `${gardenBack.getFullYear()}-${String(gardenBack.getMonth() + 1).padStart(2, '0')}-${String(gardenBack.getDate()).padStart(2, '0')}`,
+  });
+  addTask({ title: 'Water the beds', projectId: garden.id, recurrenceType: 'weekly', dueDate: new Date().toISOString() });
+  addTask({ title: 'Build a raised bed', projectId: garden.id });
+
   // The list the feature was built for, and the one that shows an answer being
   // recorded. Exactly one item carries a deliverable: a list where every line
   // demanded an answer on completion would be a form, so the kind is opt-in
@@ -1113,6 +1125,54 @@ export function seedDemoData(): void {
     'Get the referral letter for physical therapy'].forEach(title => {
     const t = addTask({ title });
     addExistingToProject(t.id, doctor.id);
+  });
+
+  // Lisbon's packing as a checklist section (TaskGroup.checklist): lines that
+  // are checked off rather than dated, inside a project whose other tasks are
+  // dated. Without it the switch reads as a feature the app doesn't have.
+  const packing = createGroup('Packing', null, lisbon.id);
+  useTaskGroupStore.getState().updateGroup(packing.id, { checklist: true, sortOrder: 1000 });
+  ['Adapter plugs', 'Sunscreen', 'Walking shoes'].forEach(title => {
+    addTask({ title, projectId: lisbon.id, groupId: packing.id }, undefined, { skipTitleRules: true });
+  });
+  // Where the trip's booking lives, kept on the project page (Project.links).
+  updateProject(lisbon.id, {
+    links: [{ id: 'demo-lisbon-flat', label: 'The flat in Alfama', url: 'https://example.com/lisbon-flat' }],
+  });
+
+  // Six Seasons keeps its cooked recipes in view, crossed out in book order
+  // (Project.showChecked): a book is read with what's done still on the page.
+  updateProject(cookbook.id, { showChecked: true });
+
+  // A party: RSVPs as one Pick-one task per guest, counted on the project page
+  // ("2 Yes, 1 No, 2 waiting"), and invitations that wait on two things at
+  // once (Task.blockedByIds). Seeded through the same store calls the
+  // "Track replies" sheet and the editor make.
+  const party = createProject("Maya's birthday party", {
+    category: 'Ideas',
+    deadline: addDays(today, 38).toISOString(),
+  });
+  const venue = addTask({ title: 'Book the venue', projectId: party.id }, undefined, { skipTitleRules: true });
+  const guestList = addTask({ title: 'Settle the guest list', projectId: party.id }, undefined, { skipTitleRules: true });
+  addTask({
+    title: 'Send the invitations',
+    projectId: party.id,
+    blockedById: venue.id,
+    blockedByIds: [guestList.id],
+  }, undefined, { skipTitleRules: true });
+  const guests = createGroup('Guests', null, party.id);
+  useTaskGroupStore.getState().updateGroup(guests.id, { sortOrder: 1000 });
+  [
+    ['Priya', 'Yes'], ['Sam', 'Yes'], ['Jordan', 'No'], ['Lee', null], ['Alex', null],
+  ].forEach(([name, answer]) => {
+    const guest = addTask({
+      title: name!,
+      projectId: party.id,
+      groupId: guests.id,
+      deliverableKind: 'choice',
+      deliverableOptions: ['Yes', 'No', 'Maybe'],
+    }, undefined, { skipTitleRules: true });
+    if (answer) completeTask(guest.id, { deliverableValue: answer });
   });
 
   // A project that has gone quiet, and the task the app writes about it.
@@ -1211,8 +1271,11 @@ export function seedDemoData(): void {
   // until something reads it — here, the next task added straight to the
   // project below.
   const kitchenRemodel = createProject('Kitchen remodel');
-  updateProject(kitchenRemodel.id, { defaultTaskCategory: 'Home' });
+  // Worked in order (Project.inOrder): Pull only ever offers the first open
+  // task, so the cabinets can't come up before the quotes.
+  updateProject(kitchenRemodel.id, { defaultTaskCategory: 'Home', inOrder: true });
   addTask({ title: 'Get quotes from contractors', projectId: kitchenRemodel.id });
+  addTask({ title: 'Pick the cabinets', projectId: kitchenRemodel.id });
   ['Drive out to the coast', 'Walk the ridge trail', 'That bakery two towns over'].forEach(title => {
     const t = addTask({ title });
     addExistingToProject(t.id, dayTrips.id);
@@ -2102,6 +2165,20 @@ function seedPeople(today: Date): void {
   // way a task blocked on another task does, so without a seeded one the
   // Waiting screen's person sections read as a feature the app doesn't have —
   // and unlike a task blocker, nothing ends this on its own.
+  // Who a project is with (Project.personIds): the party is being planned
+  // with Ansley, shown on its page and opening her page from there.
+  const partyProject = useProjectStore.getState().projects.find(p => p.title === "Maya's birthday party");
+  if (partyProject) useProjectStore.getState().updateProject(partyProject.id, { personIds: [ansley.id] });
+
+  // A wait with a date on it: the follow-up task arrives that day rather than
+  // after a week (see followUpDue).
+  const cake = addTask({
+    title: 'Hear back about the cake order',
+    dueDate: addDays(today, 3).toISOString(),
+    ...(partyProject ? { projectId: partyProject.id } : {}),
+  }, undefined, { skipTitleRules: true });
+  updateTask(cake.id, { waitingOnPersonId: ansley.id });
+
   const photos = addTask({ title: 'Photos from the trip' });
   updateTask(photos.id, { waitingOnPersonId: dustin.id });
   // Backdated past WAITING_FOLLOW_UP_THRESHOLD_DAYS, so the follow-up task
@@ -2406,7 +2483,7 @@ function seedTemplates(): void {
     // The decision item: applying the template produces a task that asks for
     // the dates when it's ticked, rather than one someone has to convert to a
     // decision by hand every trip.
-    { title: 'Pick dates for {destination}', dueOffsetDays: -28, deliverableKind: 'date' },
+    { title: 'Pick dates for {destination}', dueOffsetDays: -28, deliverableKind: 'date', deliverableSetsAway: true },
     { title: 'Put in for PTO for {run}', category: 'Work', dueOffsetDays: -21, priority: 3 },
     { title: 'Book flights to {destination}', dueOffsetDays: -14, priority: 4, effort: 2 },
     { title: 'Somewhere to stay in {destination}', dueOffsetDays: -14, effort: 2 },

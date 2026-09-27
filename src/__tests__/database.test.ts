@@ -1632,6 +1632,8 @@ describe('Templates', () => {
     medicationUnit: null,
     logMealSlot: null,
     deliverableKind: null,
+    deliverableOptions: [],
+    deliverableSetsAway: false,
     chainEnabled: false,
     chainItems: [],
     rotationEnabled: false,
@@ -1815,6 +1817,11 @@ describe('Projects', () => {
     destination: null,
     awayListId: null,
     awayListDeclinedFor: null,
+    pausedUntil: null,
+    personIds: [],
+    links: [],
+    inOrder: false,
+    showChecked: false,
     ...overrides,
   });
 
@@ -2070,6 +2077,11 @@ describe('backup and restore', () => {
       destination: null,
       awayListId: null,
       awayListDeclinedFor: null,
+      pausedUntil: null,
+      personIds: [],
+      links: [],
+      inOrder: false,
+      showChecked: false,
     });
     dbInsertCategory('Home');
     dbSetSetting('themeMode', 'light');

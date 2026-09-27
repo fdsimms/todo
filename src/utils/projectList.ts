@@ -1,10 +1,12 @@
 import { format } from 'date-fns/format';
 import { differenceInCalendarDays } from 'date-fns/differenceInCalendarDays';
-import type { Project, ProjectSortOption, Task } from '../types';
-import { formatDeadlineDate, getCurrentDayStart } from './dateUtils';
+import type { Project, ProjectSortOption, Task, TaskGroup } from '../types';
+import { dayKeyToDate, formatDeadlineDate, getCurrentDayStart, getDayStart as getLogicalDayStart, getLogicalDayKey } from './dateUtils';
+import { isPausedOn } from './projectPause';
 import { describeAwaySpan } from './awayDates';
 import { liveProjectSteps } from './projectOrder';
-import { displayTitleFor } from './visibilityUtils';
+import { buildProjectListItems } from './projectStacks';
+import { displayTitleFor, isHeldBack } from './visibilityUtils';
 
 /**
  * What the Projects screen says about each project, and the order and filter
@@ -93,6 +95,10 @@ export function projectCardCaption(
   if (filter === 'completed' && project.completedAt) {
     return { text: `Completed ${shortDate(new Date(project.completedAt), today)}`, overdue: false };
   }
+  // A pause outranks the dates: nothing about the project moves until then.
+  if (project.pausedUntil && isPausedOn(project, getLogicalDayKey(new Date(), dayResetTime))) {
+    return { text: `Paused until ${shortDate(dayKeyToDate(project.pausedUntil), today)}`, overdue: false };
+  }
   const away = describeAwaySpan(project, new Date(), dayResetTime);
   if (away) return { text: away, overdue: false };
   return describeProjectDeadline(project, pastWindow, dayResetTime);
@@ -107,23 +113,66 @@ export function projectCardCaption(
  * open.
  */
 export function projectProgressNote(
-  project: Pick<Project, 'ongoing'>,
+  project: Pick<Project, 'ongoing'> & Partial<Pick<Project, 'kind'>>,
   progress: ProjectProgress,
 ): string | null {
-  if (progress.total === 0) return 'No tasks yet';
+  if (progress.total === 0) return project.kind === 'list' ? 'No lines yet' : 'No tasks yet';
   if (!project.ongoing) return null;
   const open = progress.total - progress.done;
   return open === 0 ? 'Nothing open' : `${open} open`;
 }
 
 /**
- * The task the card names as next: the top of the project's own order, as the
- * project screen lists it. The title is the displayed one, so a chain names
+ * The task the card names as next: the first one the project page lists that
+ * can actually be done now. The title is the displayed one, so a chain names
  * the step it's on rather than the chain.
+ *
+ * Walked in the page's own order (buildProjectListItems), not by sortOrder
+ * alone. A section's tasks carry their place *within* the section (1, 2, 3…),
+ * so sorting every task on one number put a section's first task ahead of the
+ * loose tasks above it, and tied the first tasks of every section. A task
+ * waiting on another task or on a person is skipped: "Next" is what you could
+ * pick up, and the page already says what it waits on.
  */
-export function projectNextStepTitle(projectId: string, tasks: readonly Task[]): string | null {
-  const next = liveProjectSteps(projectId, tasks)[0];
-  return next ? displayTitleFor(next) : null;
+export function projectNextStepTitle(
+  projectId: string,
+  tasks: readonly Task[],
+  groups: readonly TaskGroup[] = [],
+): string | null {
+  const live = liveProjectSteps(projectId, tasks);
+  for (const item of buildProjectListItems(live, [...groups], projectId)) {
+    const rows = item.type === 'task'
+      ? [item.task]
+      : [...item.children].sort((a, b) => a.sortOrder - b.sortOrder);
+    const next = rows.find(t => !isHeldBack(t));
+    if (next) return displayTitleFor(next);
+  }
+  return null;
+}
+
+/**
+ * A list's first few open lines, in page order, for its card: a list of
+ * books reads better as "Dune, Piranesi" than as "12 open". Waiting lines
+ * are included, since a list isn't worked in order.
+ */
+export function projectListPreview(
+  projectId: string,
+  tasks: readonly Task[],
+  groups: readonly TaskGroup[] = [],
+  count = 2,
+): string[] {
+  const live = liveProjectSteps(projectId, tasks);
+  const titles: string[] = [];
+  for (const item of buildProjectListItems(live, [...groups], projectId)) {
+    const rows = item.type === 'task'
+      ? [item.task]
+      : [...item.children].sort((a, b) => a.sortOrder - b.sortOrder);
+    for (const row of rows) {
+      titles.push(displayTitleFor(row));
+      if (titles.length >= count) return titles;
+    }
+  }
+  return titles;
 }
 
 /** The sort choices, in the order the menu offers them. */
@@ -153,13 +202,19 @@ export function sortProjects(
   const byHand = (a: Project, b: Project) => a.sortOrder - b.sortOrder;
   const sorted = [...projects];
   switch (sort) {
-    case 'deadline':
+    case 'deadline': {
+      // A trip's date is its departure: trips made from a template carry no
+      // deadline (the span is their date), and sank to the bottom without it.
+      const due = (p: Project) => p.deadline ?? p.awayStart;
       return sorted.sort((a, b) => {
-        if (a.deadline && b.deadline) return a.deadline.localeCompare(b.deadline) || byHand(a, b);
-        if (a.deadline) return -1;
-        if (b.deadline) return 1;
+        const da = due(a);
+        const db = due(b);
+        if (da && db) return da.localeCompare(db) || byHand(a, b);
+        if (da) return -1;
+        if (db) return 1;
         return byHand(a, b);
       });
+    }
     case 'progress': {
       const fraction = (p: Project) => {
         const progress = progressById.get(p.id);
@@ -196,4 +251,44 @@ export function projectMatchesQuery(
     ...openTaskTitles,
   ].join('\n').toLocaleLowerCase();
   return words.every(word => haystack.includes(word));
+}
+
+export interface ProjectActivity {
+  /** Logical days since something in the project was last done, or null for never. */
+  lastDoneDays: number | null;
+  /** Tasks done in the last 30 days, today included. */
+  doneLast30: number;
+}
+
+/**
+ * How recently a project has moved: what its page says under the progress
+ * line, so a long-running project (learning a language, writing a book) shows
+ * momentum without a trip to the Logbook. A miss is recorded as a completed
+ * row (Task.missedAt) and isn't counted as done.
+ */
+export function projectActivity(projectId: string, tasks: readonly Task[], dayResetTime?: string): ProjectActivity {
+  const today = getCurrentDayStart();
+  let latest: string | null = null;
+  let doneLast30 = 0;
+  for (const t of tasks) {
+    if (t.projectId !== projectId || t.parentId !== null || !t.completed || !t.completedAt || t.missedAt) continue;
+    if (!latest || t.completedAt > latest) latest = t.completedAt;
+    const days = differenceInCalendarDays(today, getLogicalDayStart(new Date(t.completedAt), dayResetTime));
+    if (days < 30) doneLast30 += 1;
+  }
+  const lastDoneDays = latest === null
+    ? null
+    : Math.max(0, differenceInCalendarDays(today, getLogicalDayStart(new Date(latest), dayResetTime)));
+  return { lastDoneDays, doneLast30 };
+}
+
+/** "Last done today · 5 in the last 30 days", or null for a project nothing's been done in. */
+export function describeProjectActivity(activity: ProjectActivity): string | null {
+  if (activity.lastDoneDays === null) return null;
+  const last = activity.lastDoneDays === 0
+    ? 'Last done today'
+    : activity.lastDoneDays === 1
+      ? 'Last done yesterday'
+      : `Last done ${activity.lastDoneDays} days ago`;
+  return activity.doneLast30 > 0 ? `${last} · ${activity.doneLast30} in the last 30 days` : last;
 }

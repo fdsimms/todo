@@ -322,7 +322,7 @@ export function BulkActionBar({
                     accessibilityLabel={`Move to ${p.title}`}
                   >
                     <Ionicons
-                      name={p.isList ? 'checkbox-outline' : 'briefcase-outline'}
+                      name={p.isList ? 'list-outline' : 'briefcase-outline'}
                       size={18}
                       color={colors.textSecondary}
                     />

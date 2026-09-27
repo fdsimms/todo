@@ -7,6 +7,7 @@ import {
   dbDeleteTaskGroup,
 } from '../db/database';
 import { generateId } from '../utils/id';
+import { registerSectionSource } from '../utils/sectionRegistry';
 
 interface TaskGroupStore {
   groups: TaskGroup[];
@@ -17,7 +18,7 @@ interface TaskGroupStore {
   // own page, which is the only place a memberless stack has to be able to
   // sit; the stack editor can change it afterward through updateGroup.
   createGroup: (title: string, category: string | null, projectId?: string | null) => TaskGroup;
-  updateGroup: (id: string, patch: Partial<Pick<TaskGroup, 'title' | 'notes' | 'tags' | 'category' | 'sortOrder' | 'projectId'>>) => void;
+  updateGroup: (id: string, patch: Partial<Pick<TaskGroup, 'title' | 'notes' | 'tags' | 'category' | 'sortOrder' | 'projectId' | 'checklist'>>) => void;
   setGroupCollapsed: (id: string, collapsed: boolean) => void;
   // Called by the Today screen with the ids of every stack currently on it,
   // visible rows and Later Today alike. A stack that wasn't on Today and now
@@ -107,3 +108,6 @@ export const useTaskGroupStore = create<TaskGroupStore>((set, get) => ({
     set(s => ({ groups: [...s.groups, group] }));
   },
 }));
+
+// See sectionRegistry: the pull logic's way to read sections without this store.
+registerSectionSource(() => useTaskGroupStore.getState().groups);

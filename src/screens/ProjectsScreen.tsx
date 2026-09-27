@@ -14,9 +14,10 @@ import { useShallow } from 'zustand/react/shallow';
 import { useTaskStore } from '../store/useTaskStore';
 import { useProjectStore, projectProgress, isProjectPastWindow } from '../store/useProjectStore';
 import { useProjectCategoryStore } from '../store/useProjectCategoryStore';
+import { useTaskGroupStore } from '../store/useTaskGroupStore';
 import { groupProjectsByCategory, resolveProjectDrop, type ProjectListItem } from '../utils/projectGrouping';
 import { ProjectEditor } from '../components/ProjectEditor';
-import { QuickAddProjectModal, type ProjectDraft } from '../components/QuickAddProjectModal';
+import { QuickAddProjectModal, LIST_PROJECT_FIELDS, type ProjectDraft } from '../components/QuickAddProjectModal';
 import { ScreenHeader } from '../components/ScreenHeader';
 import { TipHost } from '../components/TipHost';
 import { EmptyState } from '../components/EmptyState';
@@ -54,6 +55,7 @@ import {
   projectCardCaption,
   projectMatchesQuery,
   projectNextStepTitle,
+  projectListPreview,
   projectProgressNote,
   sortProjects,
 } from '../utils/projectList';
@@ -103,6 +105,7 @@ export function ProjectsScreen() {
   const uncompleteProject = useTaskStore(s => s.uncompleteProject);
   const completeProject = useTaskStore(s => s.completeProject);
   const allTasks = useTaskStore(s => s.tasks);
+  const taskGroups = useTaskGroupStore(useShallow(s => s.groups));
   const projectCategories = useProjectCategoryStore(useShallow(s => s.categories));
   const addProjectCategory = useProjectCategoryStore(s => s.addCategory);
   const projectSort = useSettingsStore(s => s.projectSortOption);
@@ -161,13 +164,19 @@ export function ProjectsScreen() {
   // on every render of the list, not just when the tasks actually moved. The
   // next step's title rides the same pass.
   const cardFactsByProject = useMemo(() => {
-    const map = new Map<string, { progress: { done: number; total: number }; next: string | null }>();
+    const map = new Map<string, { progress: { done: number; total: number }; next: string | null; preview: string | null }>();
     listProjects.forEach(p => map.set(p.id, {
       progress: projectProgress(p.id, allTasks),
-      next: projectFilter === 'active' ? projectNextStepTitle(p.id, allTasks) : null,
+      // Not for a list: "Next" reads as an order to work in, and a list of
+      // books or gift ideas has none.
+      next: projectFilter === 'active' && p.kind !== 'list' ? projectNextStepTitle(p.id, allTasks, taskGroups) : null,
+      // A list shows its first lines instead, which is what it's for.
+      preview: projectFilter === 'active' && p.kind === 'list'
+        ? projectListPreview(p.id, allTasks, taskGroups).join(', ') || null
+        : null,
     }));
     return map;
-  }, [listProjects, allTasks, projectFilter]);
+  }, [listProjects, allTasks, projectFilter, taskGroups]);
   const progressByProject = useMemo(
     () => new Map(Array.from(cardFactsByProject, ([id, facts]) => [id, facts.progress])),
     [cardFactsByProject]
@@ -407,25 +416,33 @@ export function ProjectsScreen() {
     // The draft carries the seeded category; only the placement is let go of.
     closeQuickAdd();
     animateLayout();
-    const project = createProject(draft.title, {
+    const created = createProject(draft.title, {
       deadline: draft.deadline,
       category: draft.category,
+      awayStart: draft.awayStart ?? null,
     });
+    if (draft.asList) useProjectStore.getState().updateProject(created.id, LIST_PROJECT_FIELDS);
+    const project = useProjectStore.getState().getProjectById(created.id) ?? created;
     newProjectIdRef.current = project.id;
     setEditingProject(project);
   };
 
-  const handleEditorClose = () => {
+  // A project made for "More details" is kept only if it was saved with a
+  // name. When it was, the project opens, the same place the quick add's own
+  // Add button takes you; Done used to leave you on the list instead.
+  const handleEditorClose = (outcome?: 'discarded') => {
     const id = newProjectIdRef.current;
     newProjectIdRef.current = null;
-    if (id) {
-      const current = useProjectStore.getState().getProjectById(id);
-      if (current && current.title.trim() === '') {
-        animateLayout();
-        removeProjectRow(id);
-      }
-    }
     setEditingProject(null);
+    if (!id) return;
+    const current = useProjectStore.getState().getProjectById(id);
+    if (!current) return;
+    if (outcome === 'discarded' || current.title.trim() === '') {
+      animateLayout();
+      removeProjectRow(id);
+      return;
+    }
+    (navigation as any).navigate('ProjectDetail', { projectId: id });
   };
 
   // The row handlers are memoized and take the project they act on, rather
@@ -455,6 +472,12 @@ export function ProjectsScreen() {
     if (selectionMode) { toggleSelection(project.id); return; }
     (navigation as any).navigate('ProjectDetail', { projectId: project.id });
   }, [selectionMode, toggleSelection, navigation]);
+
+  // Stable, like the other row callbacks, so ProjectRow's memo holds.
+  const handleAddLine = useCallback((project: Project) => {
+    haptics.tap();
+    (navigation as any).navigate('ProjectDetail', { projectId: project.id, addLine: Date.now() });
+  }, [navigation]);
 
   const handleEditProject = useCallback((project: Project) => setEditingProject(project), []);
 
@@ -492,6 +515,7 @@ export function ProjectsScreen() {
         captionSoon={caption?.soon ?? false}
         progressNote={projectProgressNote(project, progress)}
         nextStep={facts?.next ?? null}
+        preview={facts?.preview ?? null}
         projectFilter={projectFilter}
         allDone={allDone}
         selectionMode={selectionMode}
@@ -507,6 +531,7 @@ export function ProjectsScreen() {
         onQuickUncomplete={handleQuickUncomplete}
         onQuickComplete={handleQuickComplete}
         onEdit={handleEditProject}
+        onAddLine={handleAddLine}
       />
     );
   };
@@ -728,9 +753,9 @@ export function ProjectsScreen() {
  * follows on Today.
  */
 const ProjectRow = React.memo(function ProjectRow({
-  project, progress, pastWindow, captionText, captionOverdue, captionSoon, progressNote, nextStep, projectFilter, allDone,
+  project, progress, pastWindow, captionText, captionOverdue, captionSoon, progressNote, nextStep, preview, projectFilter, allDone,
   selectionMode, selected, isActive, drag, colors, styles,
-  onPress, onToggleSelect, onSwipeSelect, onQuickUnarchive, onQuickUncomplete, onQuickComplete, onEdit,
+  onPress, onToggleSelect, onSwipeSelect, onQuickUnarchive, onQuickUncomplete, onQuickComplete, onEdit, onAddLine,
 }: {
   project: Project;
   progress: { done: number; total: number };
@@ -744,6 +769,8 @@ const ProjectRow = React.memo(function ProjectRow({
   progressNote: string | null;
   /** The top of the project's own order, named so the card says what's up. */
   nextStep: string | null;
+  /** A list's first open lines, joined, in place of a "Next". */
+  preview: string | null;
   projectFilter: ProjectFilter;
   allDone: boolean;
   selectionMode: boolean;
@@ -759,6 +786,7 @@ const ProjectRow = React.memo(function ProjectRow({
   onQuickUncomplete: (project: Project) => void;
   onQuickComplete: (project: Project) => void;
   onEdit: (project: Project) => void;
+  onAddLine: (project: Project) => void;
 }) {
   // Excluded for the floating drag overlay's copy — it shares the dragged
   // row's id, and registering both would leave the real row's slot evicted
@@ -798,6 +826,7 @@ const ProjectRow = React.memo(function ProjectRow({
               project.title + (project.kind === 'list' ? ', list' : ''),
               progressNote ?? `${progress.done} of ${progress.total} done`,
               nextStep ? `next: ${nextStep}` : null,
+              preview,
               captionText,
             ].filter(Boolean).join(', ')
           }
@@ -805,8 +834,8 @@ const ProjectRow = React.memo(function ProjectRow({
             selectionMode
               ? 'Double tap to select project'
               : drag
-                ? 'Double tap to view tasks in this project. Long press to reorder.'
-                : 'Double tap to view tasks in this project.'
+                ? `Double tap to view ${project.kind === 'list' ? 'this list' : 'tasks in this project'}. Long press to reorder.`
+                : `Double tap to view ${project.kind === 'list' ? 'this list' : 'tasks in this project'}.`
           }
         >
           <View style={styles.projectInfo}>
@@ -816,7 +845,7 @@ const ProjectRow = React.memo(function ProjectRow({
                   them would make that order answer to something they didn't
                   choose. See Project.kind. */}
               {project.kind === 'list' && (
-                <Ionicons name="checkbox-outline" size={14} color={colors.textTertiary} />
+                <Ionicons name="list-outline" size={14} color={colors.textTertiary} />
               )}
               <Text style={styles.projectName} numberOfLines={1}>{project.title}</Text>
               {/* Nothing a row can do to itself while a selection is being
@@ -857,6 +886,18 @@ const ProjectRow = React.memo(function ProjectRow({
                     <Ionicons name="checkmark-circle" size={16} color={colors.green} />
                   </TouchableOpacity>
                 )}
+                {/* Add to a list without hunting for its field: opens the
+                    list with the add field focused. */}
+                {project.kind === 'list' && projectFilter === 'active' && (
+                  <TouchableOpacity
+                    onPress={() => onAddLine(project)}
+                    hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
+                    accessibilityRole="button"
+                    accessibilityLabel={`Add a line to ${project.title}`}
+                  >
+                    <Ionicons name="add-circle-outline" size={16} color={colors.textTertiary} />
+                  </TouchableOpacity>
+                )}
                 <TouchableOpacity
                   onPress={() => onEdit(project)}
                   hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
@@ -879,6 +920,9 @@ const ProjectRow = React.memo(function ProjectRow({
                 </View>
                 <Text style={styles.progressText}>{progress.done}/{progress.total}</Text>
               </View>
+            )}
+            {preview && (
+              <Text style={styles.nextText} numberOfLines={1}>{preview}</Text>
             )}
             {nextStep && (
               <Text style={styles.nextText} numberOfLines={1}>

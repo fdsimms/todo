@@ -95,6 +95,7 @@ import {
   isFoodLogUrl,
   isProjectsUrl,
   projectsUrlPullId,
+  projectsUrlPullDay,
   isDeloadUrl,
   isQuickAddUrl,
   isAddEventUrl,
@@ -350,6 +351,17 @@ describe('isProjectsUrl', () => {
     // A project is a query parameter, not a path segment.
     expect(isProjectsUrl('dundundun://projects/kitchen-reno')).toBe(false);
     expect(isProjectsUrl('')).toBe(false);
+  });
+});
+
+describe('projectsUrlPullDay', () => {
+  it('reads the landing day off a link that carries one', () => {
+    expect(projectsUrlPullDay('dundundun://projects?pull=p1&on=2026-10-03')).toBe('2026-10-03');
+  });
+
+  it('is null without one, or for a malformed one, since it becomes a due date', () => {
+    expect(projectsUrlPullDay('dundundun://projects?pull=p1')).toBeNull();
+    expect(projectsUrlPullDay('dundundun://projects?pull=p1&on=soon')).toBeNull();
   });
 });
 
@@ -718,13 +730,13 @@ describe('openInAppUrl', () => {
 
   it('opens the pull sheet on one project — a review task\'s own link', () => {
     expect(openInAppUrl('dundundun://projects?pull=proj-1')).toBe(true);
-    expect(mockResetToProjectPull).toHaveBeenCalledWith('proj-1');
+    expect(mockResetToProjectPull).toHaveBeenCalledWith('proj-1', null);
     expect(mockResetToToday).not.toHaveBeenCalled();
   });
 
   it('opens the pull sheet unscoped for the bare projects link', () => {
     expect(openInAppUrl('dundundun://projects')).toBe(true);
-    expect(mockResetToProjectPull).toHaveBeenCalledWith(null);
+    expect(mockResetToProjectPull).toHaveBeenCalledWith(null, null);
   });
 
   it('navigates to the kitchen and claims the URL — the use-up tasks\' own link', () => {

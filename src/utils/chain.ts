@@ -71,7 +71,9 @@ export function nextChainStepTitle(items: readonly ChainItem[], stepId: string |
 }
 
 /** The kinds a stored step's question may be, for validating JSON off disk. */
-const DELIVERABLE_KINDS: readonly string[] = ['text', 'date', 'number'];
+// A step may ask a Yes/No, but not a pick-one: a step has no options list of
+// its own, and borrowing the task's would ask one step's options at another.
+const DELIVERABLE_KINDS: readonly string[] = ['text', 'date', 'number', 'yesno'];
 
 /**
  * Normalize chainItems read back out of stored JSON (the `cycle_items` column,

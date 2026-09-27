@@ -506,6 +506,15 @@ Existing trip: the project teaches the run its anchors.
 
 ### The trip you have not booked yet
 
+**Built, and opt-in per task.** A task's `deliverableSetsAway` (the editor's "Sets
+the leaving date", offered on a `'date'` question in a project, and on a trip
+template's item) is how a task is marked as the one whose answer may do it, so "Pick
+an install date" on a kitchen project never turns vacation mode on. `completeTask`
+writes the answer through `departureFromAnswer`, which only fills an *empty*
+`awayStart` and refuses a day after an existing `awayEnd`. It writes the field and
+nothing else: no tasks move and the trip-moving proposal is not raised, since a trip
+with no Leaving date had nothing anchored to it to move.
+
 Both directions above assume you know the dates when you apply the template. Often
 you do not — the trip is real, the prep is real, and the dates are the *first*
 thing on the list to find out. The Trip prep template already opens with exactly

@@ -21,6 +21,8 @@ import { spacing, radius, font, fontWeight, animation, interaction, type Colors 
 import { haptics } from '../utils/haptics';
 import { animateLayout } from '../utils/layoutAnimation';
 import { useProjectStore } from '../store/useProjectStore';
+import { nudgeFieldsFor } from '../utils/nudgeCadence';
+import { awayNoonIso } from '../utils/awayDates';
 import { useTaskStore } from '../store/useTaskStore';
 import { useProjectCategoryStore } from '../store/useProjectCategoryStore';
 import { useShallow } from 'zustand/react/shallow';
@@ -33,7 +35,23 @@ export interface ProjectDraft {
   title: string;
   category: string | null;
   deadline: string | null;
+  /** The "List" chip was on: a running list rather than work with an end. */
+  asList?: boolean;
+  /** The "Trip" chip's departure, stored the way the editor stores it. */
+  awayStart?: string | null;
 }
+
+/**
+ * What a project made as a list starts with, beyond its kind: no finish line
+ * (Project.ongoing) and left out of Pull from projects, since a list of books
+ * or gift ideas has no next task to pull and never gets "done". Both can be
+ * changed in the editor afterwards.
+ */
+export const LIST_PROJECT_FIELDS = {
+  kind: 'list' as const,
+  ongoing: true,
+  ...nudgeFieldsFor('never', 0),
+};
 
 interface Props {
   visible: boolean;
@@ -73,6 +91,7 @@ export function QuickAddProjectModal({
   const createProject = useProjectStore(s => s.createProject);
   const unarchiveProject = useTaskStore(s => s.unarchiveProject);
   const uncompleteProject = useTaskStore(s => s.uncompleteProject);
+  const startFreshFromProject = useTaskStore(s => s.startFreshFromProject);
   const categories = useProjectCategoryStore(useShallow(s => s.categories));
   const addCategory = useProjectCategoryStore(s => s.addCategory);
 
@@ -88,8 +107,15 @@ export function QuickAddProjectModal({
   const [title, setTitle] = useState('');
   const [category, setCategory] = useState<string | null>(null);
   const [deadline, setDeadline] = useState<Date | null>(null);
+  const [asList, setAsList] = useState(false);
   const [activePanel, setActivePanel] = useState<ActivePanel>(null);
   const [deadlinePickerVisible, setDeadlinePickerVisible] = useState(false);
+  // A trip's departure. Offered here because the only date this sheet had was
+  // Deadline, and a flight date typed there reaches none of the trip features
+  // (vacation mode, Look ahead, moving the trip's tasks), which all read
+  // the departure. The return and the rest are in the editor.
+  const [leaving, setLeaving] = useState<Date | null>(null);
+  const [leavingPickerVisible, setLeavingPickerVisible] = useState(false);
   const [seedActive, setSeedActive] = useState(false);
   // Read only when the sheet opens: a seed that changes identity mid-edit must
   // not reset the fields under the person typing.
@@ -131,6 +157,9 @@ export function QuickAddProjectModal({
     setCategory(seedRef.current?.category ?? null);
     setSeedActive(!!seedRef.current);
     setDeadline(null);
+    setLeaving(null);
+    setLeavingPickerVisible(false);
+    setAsList(false);
     setActivePanel(null);
     setDeadlinePickerVisible(false);
     scaleAnim.setValue(0.95);
@@ -171,10 +200,13 @@ export function QuickAddProjectModal({
     haptics.success();
     animateLayout();
     const resolvedCategory = resolveCategory();
-    const project = createProject(finalTitle, {
+    const created = createProject(finalTitle, {
       deadline: deadline ? deadline.toISOString() : null,
       category: resolvedCategory,
+      awayStart: leaving ? awayNoonIso(leaving) : null,
     });
+    if (asList) useProjectStore.getState().updateProject(created.id, LIST_PROJECT_FIELDS);
+    const project = useProjectStore.getState().getProjectById(created.id) ?? created;
     onCreated?.(project, seedActive);
     dismiss();
   };
@@ -187,12 +219,26 @@ export function QuickAddProjectModal({
     if (archivedMatch) {
       Alert.alert(
         'Restore archived project?',
-        `You archived "${archivedMatch.title}" a while ago. Restore it instead of starting a new one? Its tasks and progress come back with it.`,
+        `You archived "${archivedMatch.title}" a while ago. Restore it as it was, or start a fresh copy with the same tasks, all open and undated?`,
         [
           // The match is fuzzy, so a wrong guess has to be escapable without
           // either answer: Cancel leaves the typed name in the field.
           { text: 'Cancel', style: 'cancel' },
           { text: 'Create new', onPress: () => create(finalTitle) },
+          // Last year's party again: restoring brought back last year's
+          // ticks and dates, which is the one thing not wanted.
+          {
+            text: 'Start fresh from it',
+            onPress: () => {
+              if (submittedRef.current) return;
+              submittedRef.current = true;
+              haptics.success();
+              animateLayout();
+              const copy = startFreshFromProject(archivedMatch.id);
+              if (copy) onCreated?.(copy, false);
+              dismiss();
+            },
+          },
           {
             text: 'Restore',
             style: 'default',
@@ -222,6 +268,8 @@ export function QuickAddProjectModal({
       title: title.trim(),
       category: resolveCategory(),
       deadline: deadline ? deadline.toISOString() : null,
+      asList,
+      awayStart: leaving ? awayNoonIso(leaving) : null,
     });
   };
 
@@ -331,7 +379,9 @@ export function QuickAddProjectModal({
               Whether the new project is a list isn't asked here any more —
               that's a toggle on the project's own screen now (Project.kind),
               set after creation rather than as a question every new project
-              answers up front. */}
+              answers up front. The List chip below is the opt-in exception:
+              a chip nobody has to touch, for the person who already knows,
+              who otherwise had to find an unlabeled icon on the next screen. */}
           <View style={styles.toolbar}>
             <TouchableOpacity
               style={[styles.toolChip, activePanel === 'category' && styles.toolChipActive, category !== null && styles.toolChipSet]}
@@ -357,6 +407,31 @@ export function QuickAddProjectModal({
               <Text style={[styles.toolChipText, deadline != null && styles.toolChipTextSet]} numberOfLines={1}>
                 {deadline != null ? formatDeadlineDate(deadline.toISOString()) : 'Deadline'}
               </Text>
+            </TouchableOpacity>
+
+            <TouchableOpacity
+              style={[styles.toolChip, leaving != null && styles.toolChipSet]}
+              onPress={() => setLeavingPickerVisible(true)}
+              activeOpacity={interaction.activeOpacity}
+              accessibilityRole="button"
+              accessibilityLabel={leaving ? `Trip, leaving ${formatDeadlineDate(leaving.toISOString())}` : 'Set trip dates'}
+            >
+              <Ionicons name="airplane-outline" size={13} color={leaving ? colors.accent : colors.textTertiary} />
+              <Text style={[styles.toolChipText, leaving != null && styles.toolChipTextSet]} numberOfLines={1}>
+                {leaving != null ? `Leaves ${formatDeadlineDate(leaving.toISOString())}` : 'Trip'}
+              </Text>
+            </TouchableOpacity>
+
+            <TouchableOpacity
+              style={[styles.toolChip, asList && styles.toolChipSet]}
+              onPress={() => { haptics.tap(); setAsList(v => !v); }}
+              activeOpacity={interaction.activeOpacity}
+              accessibilityRole="switch"
+              accessibilityState={{ checked: asList }}
+              accessibilityLabel="List, with no dates or finish line"
+            >
+              <Ionicons name="list-outline" size={13} color={asList ? colors.accent : colors.textTertiary} />
+              <Text style={[styles.toolChipText, asList && styles.toolChipTextSet]} numberOfLines={1}>List</Text>
             </TouchableOpacity>
           </View>
 
@@ -396,6 +471,16 @@ export function QuickAddProjectModal({
         onConfirm={date => { setDeadline(date); setDeadlinePickerVisible(false); }}
         onClear={() => { setDeadline(null); setDeadlinePickerVisible(false); }}
         onCancel={() => setDeadlinePickerVisible(false)}
+      />
+      <WhenPicker
+        visible={leavingPickerVisible}
+        value={leaving}
+        title="Leaving"
+        showTimeOfDay={false}
+        showSuggest={false}
+        onConfirm={date => { setLeaving(date); setLeavingPickerVisible(false); }}
+        onClear={() => { setLeaving(null); setLeavingPickerVisible(false); }}
+        onCancel={() => setLeavingPickerVisible(false)}
       />
     </SheetModal>
   );

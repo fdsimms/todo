@@ -38,6 +38,13 @@ interface Props {
   // don't render while a filter is narrowing the list underneath them.
   filtered?: boolean;
   /**
+   * Whether the tally counts today's work (the default, for Today) or the
+   * whole roster passed in `dueTodayOverride`. A project's page passes
+   * 'all': its sections are mostly undated work that is never "due today",
+   * so the Today tally read as nothing done out of nothing.
+   */
+  tallyScope?: 'today' | 'all';
+  /**
    * What is actually drawn under this header, when a caller can't take that
    * from `group.collapsed` alone. A project screen force-opens an empty stack
    * whatever the stored flag says (collapse hides rows and an empty one has
@@ -99,6 +106,7 @@ export const TaskGroupHeader = React.memo(function TaskGroupHeader({
   allChildren,
   dueTodayOverride,
   filtered,
+  tallyScope = 'today',
   expanded,
   onToggleCollapse,
   onComplete,
@@ -139,7 +147,7 @@ export const TaskGroupHeader = React.memo(function TaskGroupHeader({
   // numbers, and a bare "3/8" pill doesn't say which one it means.
   const nextUp = dueToday.find(c => !c.completed);
   const summary = totalToday === 0 || filtered ? null
-    : `${doneToday} of ${totalToday} done today${nextUp ? ` · Next: ${nextUp.title}` : ''}`;
+    : `${doneToday} of ${totalToday} done${tallyScope === 'today' ? ' today' : ''}${nextUp ? ` · Next: ${nextUp.title}` : ''}`;
   const showTally = totalToday > 0 && !filtered;
 
   const completeAll = () => {
@@ -217,7 +225,7 @@ export const TaskGroupHeader = React.memo(function TaskGroupHeader({
                 // "3/8" is invisible to a screen reader on its own.
                 accessibilityLabel={
                   showTally
-                    ? `${group.title} ${group.projectId ? 'section' : 'stack'}, ${doneToday} of ${totalToday} done today`
+                    ? `${group.title} ${group.projectId ? 'section' : 'stack'}, ${doneToday} of ${totalToday} done${tallyScope === 'today' ? ' today' : ''}`
                     : `${group.title} ${group.projectId ? 'section' : 'stack'}`
                 }
                 accessibilityHint={

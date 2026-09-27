@@ -15,7 +15,7 @@ import { activeChainStep, nextChainStep, type ChainCarrier } from './chain';
  * and the editor all read the same formatter, so none of them can invent a
  * second spelling of the same answer.
  *
- * **Two places the value goes, both in `completeTask`, and neither is a general
+ * **Three places the value goes, all in `completeTask`, and none is a general
  * write-anywhere mechanism.**
  *
  * 1. A date step inside a chain can send its answer to the next step's due date
@@ -25,8 +25,12 @@ import { activeChainStep, nextChainStep, type ChainCarrier } from './chain';
  * 2. A generated `'supplyReorder'` task's number answer tops the supply on the
  *    task it was written for back up ("How many did you get?" → six filters).
  *    See `src/utils/supply.ts`.
+ * 3. A date answer on a task that opted in (`Task.deliverableSetsAway`) fills
+ *    its project's empty Leaving date: "Pick dates for Lisbon" answered with
+ *    the 14th. It never moves a Leaving date already set. See
+ *    `departureFromAnswer` in `src/utils/awayDates.ts`.
  *
- * The second was added on the terms the first set, and they're worth stating
+ * The second and third were added on the terms the first set, and they're worth stating
  * because they're what stops this becoming a scripting field: one kind, one
  * destination field, written in this same function, reusing an answer the task
  * was recording anyway. The reorder task is *generated*, so the kind that makes
@@ -52,7 +56,48 @@ export const DELIVERABLE_META: {
   { key: 'text', label: 'Text', icon: 'text-outline', hint: 'Asks you to type an answer when you complete it.' },
   { key: 'date', label: 'Date', icon: 'calendar-outline', hint: 'Asks you to pick a date when you complete it.' },
   { key: 'number', label: 'Number', icon: 'calculator-outline', hint: 'Asks you for a number when you complete it.' },
+  { key: 'yesno', label: 'Yes/No', icon: 'checkmark-done-outline', hint: 'Asks Yes or No when you complete it.' },
+  { key: 'choice', label: 'Pick one', icon: 'list-circle-outline', hint: 'Asks you to pick one of the options you list.' },
 ];
+
+/** The two answers a 'yesno' question offers, in the order they're shown. */
+export const YES_NO_OPTIONS = ['Yes', 'No'] as const;
+
+/** Most options a 'choice' question keeps. Past this it wants to be a text answer. */
+export const DELIVERABLE_OPTIONS_MAX = 8;
+
+/** The options RSVP tracking asks each guest. */
+export const RSVP_OPTIONS = ['Yes', 'No', 'Maybe'];
+
+/**
+ * A typed options list ("Yes, No, Maybe") as the stored list: split on commas
+ * or new lines, trimmed, blanks and repeats (ignoring case) dropped, capped.
+ */
+export function parseDeliverableOptions(raw: string): string[] {
+  const seen = new Set<string>();
+  const out: string[] = [];
+  for (const part of raw.split(/[,\n]/)) {
+    const option = part.trim().slice(0, DELIVERABLE_TEXT_MAX_LENGTH);
+    if (!option || seen.has(option.toLowerCase())) continue;
+    seen.add(option.toLowerCase());
+    out.push(option);
+    if (out.length >= DELIVERABLE_OPTIONS_MAX) break;
+  }
+  return out;
+}
+
+/**
+ * The options a task's question offers right now, or an empty list when it
+ * isn't a pick-from-a-set question. A 'choice' with fewer than two options
+ * has nothing to choose between, and the prompt falls back to a text field.
+ */
+export function deliverableOptionsFor(task: DeliverableSource & Pick<Task, 'deliverableOptions'>): string[] {
+  const kind = deliverableKindFor(task);
+  if (kind === 'yesno') return [...YES_NO_OPTIONS];
+  if (kind !== 'choice') return [];
+  const options = parseDeliverableOptions((task.deliverableOptions ?? []).join('\n'));
+  return options.length >= 2 ? options : [];
+}
 
 export function deliverableMeta(kind: DeliverableKind) {
   return DELIVERABLE_META.find(m => m.key === kind)!;
@@ -148,6 +193,11 @@ export function normalizeDeliverableValue(kind: DeliverableKind, raw: string | n
       const d = new Date(trimmed);
       return Number.isNaN(d.getTime()) ? null : d.toISOString();
     }
+    // The option's own text, so a count can group on it. Which options exist
+    // is the prompt's business; the store is reachable without it.
+    case 'yesno':
+    case 'choice':
+      return trimmed.slice(0, DELIVERABLE_TEXT_MAX_LENGTH);
   }
 }
 
@@ -162,6 +212,8 @@ export function formatDeliverableValue(kind: DeliverableKind, value: string | nu
   if (value === null) return null;
   switch (kind) {
     case 'text':
+    case 'yesno':
+    case 'choice':
       return value;
     case 'number':
       return groupDigits(value);

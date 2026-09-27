@@ -1,4 +1,4 @@
-import { canBlock, blockerOf, isBlocked, wouldCycle, waitingOn, resolverFor, blockerAffinity, sortByBlockerAffinity, canBeBlockerOf, canBeBlockedBy, resolveBlocksEdit, describeBlocks, canWaitOn, personBlockerOf, isWaitingOnPerson } from '../utils/blocking';
+import { canBlock, blockerOf, isBlocked, wouldCycle, waitingOn, resolverFor, blockerAffinity, sortByBlockerAffinity, canBeBlockerOf, canBeBlockedBy, resolveBlocksEdit, describeBlocks, canWaitOn, personBlockerOf, isWaitingOnPerson, blockerIdsOf, blockerFields, liveBlockersOf } from '../utils/blocking';
 import { registerTaskSource, resolveBlocker, waitingCountFor } from '../utils/blockerRegistry';
 import type { Person, Task } from '../types';
 
@@ -287,9 +287,10 @@ describe('canBeBlockedBy', () => {
 
   // blockedById is one pointer, so taking a task already waiting on something
   // else would silently drop that relationship.
-  it('refuses a task already waiting on a different task', () => {
+  // It gains this one as well and waits for both (Task.blockedByIds).
+  it('offers a task already waiting on a different task', () => {
     const resolve = resolverFor([makeTask({ id: 'a' }), makeTask({ id: 'b', blockedById: 'c' }), makeTask({ id: 'c' })]);
-    expect(canBeBlockedBy(makeTask({ id: 'b', blockedById: 'c' }), 'a', resolve)).toBe(false);
+    expect(canBeBlockedBy(makeTask({ id: 'b', blockedById: 'c' }), 'a', resolve)).toBe(true);
   });
 
   it('still offers a task already waiting on this one', () => {
@@ -344,10 +345,19 @@ describe('resolveBlocksEdit', () => {
   it('drops an id that is gone, or that the rules refuse', () => {
     const tasks = [
       makeTask({ id: 'a' }),
+      makeTask({ id: 'done', completed: true }),
+    ];
+    expect(resolveBlocksEdit('a', ['deleted', 'done'], tasks)).toEqual({ link: [], unlink: [] });
+  });
+
+  it('links a task already waiting on something else, and leaves one already waiting on this alone', () => {
+    const tasks = [
+      makeTask({ id: 'a' }),
       makeTask({ id: 'taken', blockedById: 'other' }),
       makeTask({ id: 'other' }),
+      makeTask({ id: 'already', blockedById: 'other', blockedByIds: ['a'] }),
     ];
-    expect(resolveBlocksEdit('a', ['deleted', 'taken'], tasks)).toEqual({ link: [], unlink: [] });
+    expect(resolveBlocksEdit('a', ['taken', 'already'], tasks)).toEqual({ link: ['taken'], unlink: [] });
   });
 
   it('refuses a link that would close a loop', () => {
@@ -517,5 +527,46 @@ describe('personBlockerOf / isWaitingOnPerson', () => {
   // with Dustin, and it must never land in his history.
   it('is unrelated to personIds', () => {
     expect(isWaitingOnPerson(makeTask({ personIds: ['p1'] }), resolve)).toBe(false);
+  });
+});
+
+describe('several blockers', () => {
+  it('reads the set in order, repeats dropped', () => {
+    expect(blockerIdsOf({ blockedById: 'a', blockedByIds: ['b', 'a', 'c'] })).toEqual(['a', 'b', 'c']);
+    expect(blockerIdsOf({ blockedById: null })).toEqual([]);
+  });
+
+  it('stores the first in blockedById and the rest in blockedByIds', () => {
+    expect(blockerFields(['a', 'b', 'a', 'c'])).toEqual({ blockedById: 'a', blockedByIds: ['b', 'c'] });
+    expect(blockerFields([])).toEqual({ blockedById: null, blockedByIds: [] });
+  });
+
+  it('waits for all of them: blocked while any is open, free once every one is done', () => {
+    const waiter = makeTask({ id: 'w', blockedById: 'a', blockedByIds: ['b'] });
+    const both = resolverFor([makeTask({ id: 'a' }), makeTask({ id: 'b' })]);
+    const oneDone = resolverFor([makeTask({ id: 'a', completed: true }), makeTask({ id: 'b' })]);
+    const allDone = resolverFor([makeTask({ id: 'a', completed: true }), makeTask({ id: 'b', archived: true })]);
+    expect(isBlocked(waiter, both)).toBe(true);
+    expect(isBlocked(waiter, oneDone)).toBe(true);
+    expect(blockerOf(waiter, oneDone)?.id).toBe('b');
+    expect(liveBlockersOf(waiter, both).map(t => t.id)).toEqual(['a', 'b']);
+    expect(isBlocked(waiter, allDone)).toBe(false);
+  });
+
+  it('counts a waiter against every task it waits on', () => {
+    const tasks = [makeTask({ id: 'w', blockedById: 'a', blockedByIds: ['b'] }), makeTask({ id: 'a' }), makeTask({ id: 'b' })];
+    expect(waitingOn('a', tasks).map(t => t.id)).toEqual(['w']);
+    expect(waitingOn('b', tasks).map(t => t.id)).toEqual(['w']);
+  });
+
+  it('finds a loop through any of the blockers, not just the first', () => {
+    // b waits on c and on a; pointing a at b would close a -> b -> a.
+    const resolve = resolverFor([
+      makeTask({ id: 'a' }),
+      makeTask({ id: 'b', blockedById: 'c', blockedByIds: ['a'] }),
+      makeTask({ id: 'c' }),
+    ]);
+    expect(wouldCycle('a', 'b', resolve)).toBe(true);
+    expect(wouldCycle('c', 'a', resolve)).toBe(false);
   });
 });

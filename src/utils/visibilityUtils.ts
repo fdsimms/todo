@@ -1,17 +1,18 @@
 import { addDays } from 'date-fns/addDays';
 import type { Task, TimeOfDay, Category } from '../types';
-import { getCurrentDayStart, getTaskDayStart, getDayStart, hhmmToDate, getNextDueDate } from './dateUtils';
+import { getCurrentDayStart, getTaskDayStart, getDayStart, hhmmToDate, getNextDueDate, getLogicalDayKey } from './dateUtils';
 import { effectiveWindowEndTime } from './clockTime';
 import type { ExpiredTaskGraceDays } from './expiredTaskGrace';
 import { useSettingsStore } from '../store/useSettingsStore';
 import { useCategoryStore } from '../store/useCategoryStore';
 import { isAwayPauseInForce } from './awayDates';
 import { activeChainStep } from './chain';
-import { isBlocked, isWaitingOnPerson } from './blocking';
+import { blockerIdsOf, isBlocked, isWaitingOnPerson } from './blocking';
 import { resolveBlocker } from './blockerRegistry';
 import { resolvePerson } from './peopleRegistry';
 import { quotaRunSpan, quotaWeekSpan } from './quotaSchedule';
 import { isNegativeTask } from './negativeHabits';
+import { isProjectPaused } from './projectPause';
 
 /**
  * True while this task is waiting on another task that isn't done yet — the
@@ -24,6 +25,16 @@ import { isNegativeTask } from './negativeHabits';
 export function isTaskBlocked(task: Task): boolean {
   if (task.completed || task.archived) return false;
   return isBlocked(task, resolveBlocker) || isWaitingOnPerson(task, resolvePerson);
+}
+
+/**
+ * Whether the task's project is paused today (Project.pausedUntil). Its tasks
+ * are held off Today and Later until the pause's day arrives, repeating ones
+ * included, which is the whole point of pausing rather than archiving.
+ */
+export function isInPausedProject(task: Pick<Task, 'projectId'>): boolean {
+  if (!task.projectId) return false;
+  return isProjectPaused(task.projectId, getLogicalDayKey(new Date()));
 }
 
 /** Whether a task isn't actionable yet — what the daily lists gate on. */
@@ -717,6 +728,7 @@ export function isVisibleApartFromVacation(task: Task): boolean {
   // Ahead of the time gates deliberately: being blocked isn't a "not yet" that
   // a clock resolves, so it shouldn't rank below one.
   if (isHeldBack(task)) return false;
+  if (isInPausedProject(task)) return false;
 
   const now = new Date();
   const { dayResetTime } = useSettingsStore.getState();
@@ -812,6 +824,9 @@ export function isTaskDeferred(task: Task): boolean {
   // itself to the top of the list under a meaningless header. A step waiting on
   // the one above it has no moment either.
   if (isHeldBack(task)) return false;
+  // Paused with its project, like vacation above: off Later as well as Today,
+  // and back on the day the pause ends.
+  if (isInPausedProject(task)) return false;
   // Undated project tasks aren't visible, but they don't belong in Later
   // either — they have no date to be deferred to, so they just live in their
   // project until one is assigned.
@@ -1033,8 +1048,10 @@ export function getVisibleAt(task: Task, pass: VisibleAtPass = beginVisibleAtPas
 function getReleasedFromHoldAt(task: Task): Date | null {
   const candidates: Date[] = [];
 
-  if (task.blockedById) {
-    const blocker = resolveBlocker(task.blockedById);
+  // Every blocker it waited on: waiting for all of them, it was let go by
+  // whichever finished last, which the latest-stamp reduce below picks out.
+  for (const blockerId of blockerIdsOf(task)) {
+    const blocker = resolveBlocker(blockerId);
     const stamp = blocker?.completed
       ? blocker.completedAt
       : blocker?.archived

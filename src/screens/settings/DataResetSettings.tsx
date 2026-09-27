@@ -3,6 +3,7 @@ import { View, Alert } from 'react-native';
 import Constants from 'expo-constants';
 import { useShallow } from 'zustand/react/shallow';
 import { useSettingsStore } from '../../store/useSettingsStore';
+import { useProjectStore } from '../../store/useProjectStore';
 import { useTaskStore } from '../../store/useTaskStore';
 import { useDemoStore } from '../../store/useDemoStore';
 import { dbExportTables, dbReplaceAllData, dbSetRecipeImagePath } from '../../db/database';
@@ -206,7 +207,10 @@ export function DataResetSettings() {
   const onPickRetention = (days: RetentionDays) => {
     if (days === completedRetentionDays) return;
     const cutoff = retentionCutoff(days, new Date(), dayResetTime);
-    const doomed = cutoff ? selectPurgeableTaskIds(allTasks, cutoff) : [];
+    // The same exemption the purge applies, or the count here would name
+    // lines on a list that the purge then keeps.
+    const listIds = new Set(useProjectStore.getState().projects.filter(p => p.kind === 'list').map(p => p.id));
+    const doomed = cutoff ? selectPurgeableTaskIds(allTasks, cutoff, listIds) : [];
     // Finished focus sessions ride the same window, so they have to be in the
     // count too. The dialog is this feature's whole safety mechanism, and one
     // that named only the tasks would understate what the tap deletes.

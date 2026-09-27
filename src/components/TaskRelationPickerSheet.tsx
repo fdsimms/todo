@@ -80,7 +80,7 @@ const COPY: Record<TaskRelation, {
 }> = {
   waitingOn: {
     title: 'Waiting on',
-    hint: 'This task stays out of your lists until the one you pick is done.',
+    hint: 'This task stays out of your lists until the tasks you pick are done.',
     emptyTitle: 'Nothing to wait on',
     emptySub: 'Tasks that would end up waiting on each other are left out.',
     action: title => `Wait on ${title}`,
@@ -92,7 +92,7 @@ const COPY: Record<TaskRelation, {
     // Says why the list is short rather than leaving it a mystery: a task
     // waits on one thing at a time, so anything already waiting on another
     // task is set from that task's own editor instead.
-    emptySub: 'A task can wait on only one thing, so tasks already waiting on something else are left out.',
+    emptySub: 'Tasks that would end up waiting on each other are left out.',
     action: title => `Block ${title}`,
   },
 };

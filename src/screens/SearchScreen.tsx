@@ -61,9 +61,11 @@ const SEARCH_DEBOUNCE_MS = 180;
  * their identity, so `onPress` takes what it opens rather than the screen
  * closing over it per row.
  */
-const SearchResultItem = React.memo(function SearchResultItem({ result, onPress, onTicked, categories, styles, colors }: {
+const SearchResultItem = React.memo(function SearchResultItem({ result, onPress, onOpenProject, onTicked, categories, styles, colors }: {
   result: CollapsedOccurrence<SearchResult>;
   onPress: (task: Task) => void;
+  /** Opens the project a result is filed under, from its chip. */
+  onOpenProject: (projectId: string) => void;
   onTicked: (taskId: string) => void;
   categories: Category[];
   styles: ReturnType<typeof makeStyles>;
@@ -79,6 +81,11 @@ const SearchResultItem = React.memo(function SearchResultItem({ result, onPress,
   const completedDate = task.completedAt
     ? format(new Date(task.completedAt), 'MMM d')
     : null;
+
+  // A primitive, so an unrelated project change doesn't re-render the row.
+  const projectIsList = useProjectStore(
+    st => (task.projectId ? st.projects.find(p => p.id === task.projectId)?.kind === 'list' : false),
+  );
 
   const displayTitle = displayTitleFor(task);
   // An "@name" mention stays literal in the title (see matchPersonMentions'
@@ -155,9 +162,22 @@ const SearchResultItem = React.memo(function SearchResultItem({ result, onPress,
           {/* Ahead of the tags and dates, and highlighted like the title: a
               result can match on its project's name alone (fuzzySearch scores
               it), and until now that row gave no hint why it was in the list. */}
-          {projectName && (
-            <View style={styles.projectChip}>
-              <Ionicons name="briefcase-outline" size={iconSize.xs} color={colors.textSecondary} />
+          {/* Tappable: a result found on a list or project opened only the
+              task, with no way from here to the list it lives on. */}
+          {projectName && task.projectId && (
+            <TouchableOpacity
+              style={styles.projectChip}
+              onPress={() => onOpenProject(task.projectId!)}
+              hitSlop={6}
+              activeOpacity={interaction.activeOpacity}
+              accessibilityRole="button"
+              accessibilityLabel={`Open ${projectName}`}
+            >
+              <Ionicons
+                name={projectIsList ? 'list-outline' : 'briefcase-outline'}
+                size={iconSize.xs}
+                color={colors.textSecondary}
+              />
               <HighlightedText
                 text={projectName}
                 ranges={projectMatches}
@@ -165,7 +185,7 @@ const SearchResultItem = React.memo(function SearchResultItem({ result, onPress,
                 highlightStyle={styles.highlight}
                 numberOfLines={1}
               />
-            </View>
+            </TouchableOpacity>
           )}
           {/* Plain text with its emoji rather than a chip of its own: the
               project-chip-then-category pairing NewTasksBanner already uses.
@@ -583,6 +603,7 @@ export function SearchScreen() {
       <SearchResultItem
         result={item.result}
         onPress={openTask}
+        onOpenProject={openProject}
         onTicked={hold}
         categories={categories}
         styles={styles}

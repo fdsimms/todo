@@ -103,6 +103,7 @@ import {
   projectReviewProjectId,
 } from '../utils/projectReviewTasks';
 import { resolveBlocker, waitingCountFor } from '../utils/blockerRegistry';
+import { liveBlockersOf } from '../utils/blocking';
 import { isDriftingTask } from '../utils/postpone';
 import { resolvePerson, peopleOn, groupMentionTokens } from '../utils/peopleRegistry';
 import { displayNameOf, usePersonStore } from '../store/usePersonStore';
@@ -230,6 +231,19 @@ interface Props {
   indented?: boolean;
   /** Briefly tints the row to draw the eye to it — a task that was just created, or one jumped to from the new-todos banner. */
   highlighted?: boolean;
+  /**
+   * A line on a list project: checked off rather than scheduled. A tap opens
+   * the line with its text ready to edit, the whole text shows while open,
+   * and the panel trades the timer, the date and the subtask field for a
+   * Delete. No reschedule swipe, since a list line has no date to move.
+   */
+  listRow?: boolean;
+  /**
+   * A list line's Return: the edit is saved and the host opens a new line
+   * right under this one, the way Notes and Reminders do. Keep it stable (a
+   * useCallback), or the memo on this row stops holding.
+   */
+  onSubmitLine?: (taskId: string) => void;
   /** Plays the same checkbox-tap complete animation as a real tap, then completes the task — used for a completion that happened in the Today widget so the user can watch it happen here too. */
   autoComplete?: boolean;
   /**
@@ -290,6 +304,8 @@ export const TaskItem = React.memo(function TaskItem({
   duplicateRow = false,
   indented = false,
   highlighted = false,
+  listRow = false,
+  onSubmitLine,
   autoComplete = false,
   hidesWhenOnPace = false,
   onApplyImport,
@@ -352,6 +368,7 @@ export const TaskItem = React.memo(function TaskItem({
     reorderSubtasks,
     addSubtask,
     duplicateTask,
+    deleteTask,
   } = useTaskStore.getState();
   // ==== the row's outward actions: link, call, text, contact, email ====
   const handleOpenLink = async () => {
@@ -1036,7 +1053,9 @@ export const TaskItem = React.memo(function TaskItem({
   // A notice offers no subtasks, but one that somehow has them still lists
   // them — only the "Add subtask" field goes. Hiding a row somebody put there
   // would be losing it, not simplifying it.
-  const showSubtaskSection = !notice || subtasks.length > 0;
+  // A list line keeps the section only for subtasks it already has: an empty
+  // "Add subtask" field under every line of a checklist is noise.
+  const showSubtaskSection = (!notice && !listRow) || subtasks.length > 0;
   // Sections in the expanded panel each draw a border above themselves, which
   // has been unconditional since the subtask section started always rendering.
   // A notice drops that section, so the first thing below it must not draw a
@@ -1210,6 +1229,13 @@ export const TaskItem = React.memo(function TaskItem({
     // `expandable`. Marking it seen above still counts: it was read.
     if (!expandable) return;
     onPress(rowId);
+    // A list line opens with its text ready to edit: fixing a typo in a line
+    // is the common want, and it used to take a second tap on a title nothing
+    // said was tappable. Opening a line that's already open closes it instead.
+    if (listRow && !expanded && !notice) {
+      setTitleEdit(task.title);
+      setIsEditingTitle(true);
+    }
   };
   // A recurring task showing early in Later (its day hasn't arrived yet)
   // can't be completed ahead of schedule — see isRecurrenceNotYetDue.
@@ -1381,11 +1407,16 @@ export const TaskItem = React.memo(function TaskItem({
   const waitingCount = useTaskStore(() => waitingCountFor(task.id));
   const blockerTitle = useTaskStore(() => {
     if (!task.blockedById) return undefined;
-    const blocker = resolveBlocker(task.blockedById);
+    // Only blockers still open: one that's done or filed away no longer holds
+    // this task, so naming it would dim a row that's free. With several, the
+    // first still open is named and the rest are counted.
+    const live = liveBlockersOf(task, resolveBlocker);
+    if (live.length === 0) return undefined;
     // displayTitleFor, not .title — a chained blocker is named by its active
     // step everywhere else, and this chip shouldn't be the one surface that
     // disagrees.
-    return blocker ? displayTitleFor(blocker) : undefined;
+    const first = displayTitleFor(live[0]);
+    return live.length > 1 ? `${first} +${live.length - 1}` : first;
   });
 
   // Resolved through the registry rather than the store's array, the same way
@@ -1396,6 +1427,12 @@ export const TaskItem = React.memo(function TaskItem({
     const person = resolvePerson(task.waitingOnPersonId);
     return person && !person.archived ? displayNameOf(person) : undefined;
   });
+
+  // Waiting on another task or on a person: the title drops to the secondary
+  // grey, so a list holding a few of these (a project's page, the Stuck
+  // screen) reads which rows can be picked up now without scanning each row's
+  // chips. The chip still says what it waits on.
+  const heldBackDim = !task.completed && (!!blockerTitle || !!waitingPersonName);
 
   // A task that has been put off enough times to count as drifting — the
   // same rule StuckScreen's own Drift section is built on. Shown here too, on
@@ -2406,11 +2443,17 @@ export const TaskItem = React.memo(function TaskItem({
             value={titleEdit}
             onChangeText={setTitleEdit}
             onBlur={saveTitle}
-            onSubmitEditing={saveTitle}
-            returnKeyType="done"
+            onSubmitEditing={() => {
+              saveTitle();
+              if (listRow) onSubmitLine?.(task.id);
+            }}
+            returnKeyType={listRow && onSubmitLine ? 'next' : 'done'}
             maxLength={TITLE_MAX_LENGTH}
             blurOnSubmit
             autoFocus
+            // A list line can be a long question for the doctor, and a
+            // one-line field scrolls it out of sight while it's edited.
+            multiline={listRow}
           />
         ) : (
           <View style={styles.titleRow}>
@@ -2430,9 +2473,11 @@ export const TaskItem = React.memo(function TaskItem({
                   <HighlightedText
                     text={displayTitle}
                     ranges={titleMentionRanges}
-                    style={styles.title}
+                    style={[styles.title, heldBackDim && styles.titleHeldBack]}
                     highlightStyle={styles.titleMention}
-                    numberOfLines={2}
+                    // Open, a list line shows all of itself: the editor was
+                    // otherwise the only place a long question could be read.
+                    numberOfLines={listRow ? undefined : 2}
                   />
                 </Animated.View>
               </TouchableOpacity>
@@ -2441,7 +2486,7 @@ export const TaskItem = React.memo(function TaskItem({
                 <HighlightedText
                   text={displayTitle}
                   ranges={titleMentionRanges}
-                  style={styles.title}
+                  style={[styles.title, heldBackDim && styles.titleHeldBack]}
                   highlightStyle={styles.titleMention}
                   numberOfLines={2}
                   ellipsizeMode="tail"
@@ -3647,7 +3692,7 @@ export const TaskItem = React.memo(function TaskItem({
                       )}
                     </View>
                   )}
-                  {showActions && !timed && (
+                  {showActions && !timed && !listRow && (
                     timerRunning ? (
                     <View style={styles.timerRunningGroup}>
                       <TouchableOpacity
@@ -3801,6 +3846,23 @@ export const TaskItem = React.memo(function TaskItem({
                   )}
                 </View>
                 <View style={styles.editSectionRight}>
+                  {listRow ? (
+                    // Delete in place of Set date on a list line: a line has
+                    // no date to set, and deleting one otherwise took the bulk
+                    // bar or the editor. Not on a swipe (see SwipeableRow),
+                    // and deleteTask raises the Undo bar.
+                    <PressableScale
+                      style={styles.iconActionBtn}
+                      onPress={async () => {
+                        await haptics.tap();
+                        deleteTask(task.id);
+                      }}
+                      hitSlop={8}
+                      accessibilityLabel={`Delete ${task.title}`}
+                    >
+                      <Ionicons name="trash-outline" size={iconSize.sm} color={colors.red} />
+                    </PressableScale>
+                  ) : (
                   <TouchableOpacity
                     style={[styles.editBtn, !task.dueDate && styles.editBtnIconOnly]}
                     onPress={() => setShowWhenPicker(true)}
@@ -3816,6 +3878,7 @@ export const TaskItem = React.memo(function TaskItem({
                       <Text style={styles.editBtnText}>{formatTaskDate(task)}</Text>
                     )}
                   </TouchableOpacity>
+                  )}
                   <PressableScale
                     style={styles.iconActionBtn}
                     onPress={async () => {
@@ -3932,7 +3995,7 @@ export const TaskItem = React.memo(function TaskItem({
             // No reschedule panel on a notice: there's nothing a later date
             // would mean for it, and the button that opens the same picker
             // is gone from its panel for that reason (see `notice`).
-            whenAction={notice ? undefined : {
+            whenAction={notice || listRow ? undefined : {
               onAction: () => setShowWhenPicker(true),
               accessibilityLabel: `Reschedule ${task.title}`,
             }}
@@ -4297,6 +4360,7 @@ const makeStyles = (colors: Colors) => StyleSheet.create({
     lineHeight: lineHeight.md,
     fontWeight: fontWeight.regular,
   },
+  titleHeldBack: { color: colors.textSecondary },
   // The tint an "@name" mention keeps once it's part of a saved title — same
   // language quick add uses for a token still being composed.
   titleMention: {

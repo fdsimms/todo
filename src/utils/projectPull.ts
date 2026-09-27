@@ -1,7 +1,11 @@
 import { differenceInCalendarDays } from 'date-fns/differenceInCalendarDays';
 import type { Project, Task } from '../types';
 import { DEFAULT_NUDGE_CADENCE_DAYS } from '../types';
-import { getCurrentDayStart, getDayStart } from './dateUtils';
+import { dayKeyOf, dayKeyToDate, getCurrentDayStart, getDayStart } from './dateUtils';
+import { isPausedOn } from './projectPause';
+import { isChecklistRow, sectionsNow } from './sectionRegistry';
+import { projectPageOrder } from './projectStacks';
+import { format } from 'date-fns/format';
 import { hasNoDateSignal, isHeldBack } from './visibilityUtils';
 import { scoreTask, type PinContext } from './pinSuggest';
 import { computeSnoozeSuggestion } from './snoozeEngine';
@@ -135,6 +139,8 @@ export type PullEmptyReason =
   | 'no-projects'
   /** Set to Never: the project is excluded from every nudge surface. */
   | 'nudge-excluded'
+  /** Paused until a day (Project.pausedUntil): left alone until then. */
+  | 'paused'
   /** Set to “When I ask”: it belongs in this sheet, but never volunteers. */
   | 'cadence-off'
   /** Stalled, but on auto-schedule, so the drip handles it instead. */
@@ -223,9 +229,27 @@ export function lastTouchedAt(project: Project, allMembers: readonly Task[]): st
   let latest = project.createdAt;
   if (project.reviewedAt && project.reviewedAt > latest) latest = project.reviewedAt;
   for (const t of allMembers) {
+    // A repeating task's completions don't count: ticking off this week's
+    // watering is the routine running, not the project moving, and counted,
+    // it kept a garden project from ever going quiet on the raised bed
+    // nobody had started. See isRoutine.
+    if (isRoutine(t)) continue;
     if (t.completedAt && t.completedAt > latest) latest = t.completedAt;
   }
   return latest;
+}
+
+/**
+ * A repeating member: the routine a project carries alongside its one-off
+ * work (water weekly, oil change every six months). Left out of every "has
+ * this project gone quiet" question, because a routine is always scheduled
+ * and always being ticked off. Counted, one weekly task kept its project out
+ * of Pull from projects and review tasks for good, even when the person
+ * opened Pull themselves, and the undated one-offs beside it never came up
+ * anywhere.
+ */
+export function isRoutine(task: Partial<Pick<Task, 'recurrenceType'>>): boolean {
+  return (task.recurrenceType ?? 'none') !== 'none';
 }
 
 /** Top-level rows per project, in one pass. */
@@ -261,6 +285,8 @@ function classifyProject(
   // reference list ("Gift ideas") is never a candidate to pull into today,
   // whether the app suggests it or the user goes looking.
   if (!project.nudgeOptIn) return { reason: 'nudge-excluded' };
+  // A pause is the person saying "not until then", in both modes, like Never.
+  if (isPausedOn(project, dayKeyOf(todayStart))) return { reason: 'paused' };
 
   // 0 means "don't bring this up unasked", for a project deliberately parked —
   // not a degenerate cadence. It silences the volunteered surfaces only; see
@@ -280,13 +306,36 @@ function classifyProject(
   // silences the nudge until its blocker is done.
   const actionable = members.filter(t => !isHeldBack(t));
   if (actionable.length === 0) return { reason: 'all-waiting' };
+  // The one-off work: what can go quiet and what can be pulled. A project that
+  // is nothing but routines is scheduled by construction.
+  const oneOffs = actionable.filter(t => !isRoutine(t));
+  if (oneOffs.length === 0) return { reason: 'has-schedule' };
 
   // One scheduled member and the project is not quiet. hasNoDateSignal is the
   // same predicate the visibility gates use, so "stalled" means precisely
   // "nothing in here can appear anywhere".
-  if (!actionable.every(hasNoDateSignal)) return { reason: 'has-schedule' };
+  //
+  // For a project member it is the due date alone, though, not every field
+  // hasNoDateSignal reads: isTaskVisible keeps a project task off every list
+  // until it has a dueDate, so one carrying only a time of day or a defer is
+  // placed nowhere. Counted as scheduled, it hid itself and silenced the whole
+  // project at once.
+  if (oneOffs.some(t => t.dueDate != null)) return { reason: 'has-schedule' };
 
-  const pullable = actionable.filter(isPullable);
+  // A checklist section's lines are ticked off, not scheduled, so they're
+  // never the task pulled in (see TaskGroup.checklist).
+  let pullable = oneOffs.filter(t => isPullable(t) && !isChecklistRow(t));
+  // Worked in order: only the first open task on the page may be offered, and
+  // if that one can't be (it's waiting on something), nothing after it jumps
+  // the queue. Routines and checklist lines aren't steps, so they're skipped.
+  if (project.inOrder) {
+    const first = projectPageOrder(
+      members.filter(t => !isRoutine(t) && !isChecklistRow(t)),
+      sectionsNow(),
+      project.id,
+    )[0];
+    pullable = first && pullable.includes(first) ? [first] : [];
+  }
   if (pullable.length === 0) return { reason: 'no-pullable' };
 
   // Nudge-mode only, for the same reason the cadence is: this answers "should I
@@ -434,7 +483,18 @@ export function suggestPullDate(
   allTasks: readonly Task[],
   todaysTasks: readonly Task[],
   quietDays: number,
+  /**
+   * A day (`YYYY-MM-DD`) the caller has already chosen, which wins outright:
+   * the weekend nudge's link, whose pulls belong on that Saturday. Today's
+   * budget has nothing to say about a different day.
+   */
+  landOnDayKey?: string | null,
 ): PullDate {
+  if (landOnDayKey) {
+    const date = dayKeyToDate(landOnDayKey);
+    date.setHours(12, 0, 0, 0);
+    return { date, dayLabel: format(date, 'EEEE'), reason: '' };
+  }
   if (sumEstimatedMinutes(todaysTasks) >= PULL_TODAY_BUDGET_MINUTES) {
     const suggestion = computeSnoozeSuggestion(task, allTasks as Task[]);
     return { date: suggestion.date, dayLabel: suggestion.dayLabel, reason: suggestion.reason };
@@ -463,6 +523,7 @@ export function describeQuietReason(quietDays: number): string {
  */
 const REASON_PRIORITY: readonly PullEmptyReason[] = [
   'nudge-excluded',
+  'paused',
   'cadence-off',
   'too-soon',
   'declined-today',
@@ -553,6 +614,10 @@ export function describePullEmpty(state: PullEmptyState): string {
       return count === total
         ? 'Every project has “Bring this up” set to Never. Open one and set it to “When I ask” to have it show up here.'
         : `${projects(count)} of ${total} have “Bring this up” set to Never. Set “Bring this up” to “When I ask” on one to have it show up here.${rest}`;
+    case 'paused':
+      return count === total
+        ? 'Every project is paused. Each comes back on its own on the day its pause ends.'
+        : `${projects(count)} of ${total} are paused until a later day.${rest}`;
     // Only reachable from a 'nudge'-mode diagnosis: “When I ask” is exactly a
     // project that belongs in this sheet and nowhere else, so the sheet the
     // user opened themselves never refuses one for this reason.
@@ -582,8 +647,8 @@ export function describePullEmpty(state: PullEmptyState): string {
         : `${projects(count)} of ${total} have only tasks that are waiting on another task.${rest}`;
     case 'no-pullable':
       return count === total
-        ? 'Only mid-chain steps are left, and those get their turn by being completed, not by being dated.'
-        : `${projects(count)} of ${total} have only mid-chain steps left, which can't be dated.${rest}`;
+        ? "What's left can't be pulled. Mid-chain steps and checklist lines are checked off rather than dated, and a project worked in order waits for its first open task."
+        : `${projects(count)} of ${total} have nothing that can be pulled: mid-chain steps, checklist lines, or a first task in order that's waiting.${rest}`;
     case 'no-live-tasks':
       return count === total
         ? 'Nothing left to do in any project.'
@@ -610,11 +675,23 @@ export function buildProjectPullPlan(
    * project (or handful of them), not the whole board.
    */
   scopeProjectIds?: readonly string[],
+  /** Lands every proposal on this day; see suggestPullDate. */
+  landOnDayKey?: string | null,
+  /**
+   * How many projects to propose. MAX_PULLED_PROJECTS keeps the sheet calm by
+   * default; "+N more waiting" raises it, when the person asks to see them.
+   */
+  limit: number = MAX_PULLED_PROJECTS,
 ): ProjectPullPlan {
-  let stalls = findProjectStalls(projects, allTasks, 'ask').filter(s => !s.project.autoSchedule);
+  let stalls = findProjectStalls(projects, allTasks, 'ask');
   if (scopeProjectIds && scopeProjectIds.length > 0) {
+    // Asked about by name, an auto-scheduling project is shown like any other:
+    // the weekend nudge links here for its nominated project, and the sheet
+    // it opened used to be empty whenever that project dated its own tasks.
     const scope = new Set(scopeProjectIds);
     stalls = stalls.filter(s => scope.has(s.project.id));
+  } else {
+    stalls = stalls.filter(s => !s.project.autoSchedule);
   }
   const ctx = pullContext();
 
@@ -628,9 +705,9 @@ export function buildProjectPullPlan(
   // stacked them all on it. So each pull is written into `working` where
   // projectPullUpdates would put it, the way deloadPlan keeps its own.
   let working: Task[] = [...allTasks];
-  const proposals = stalls.slice(0, MAX_PULLED_PROJECTS).map(stall => {
+  const proposals = stalls.slice(0, limit).map(stall => {
     const candidates = rankPullCandidates(stall.pullable, ctx);
-    const suggestion = suggestPullDate(candidates[0], working, landingToday, stall.quietDays);
+    const suggestion = suggestPullDate(candidates[0], working, landingToday, stall.quietDays, landOnDayKey);
     if (suggestion.dayLabel === 'Today') landingToday.push(candidates[0]);
     else {
       const pulled = { ...candidates[0], ...projectPullUpdates(suggestion.date) };
@@ -682,6 +759,21 @@ export function projectPullUpdates(date: Date): Partial<Task> {
  * store autoSchedule without one, so the gate is never load-bearing here — but
  * it's the gate that makes that invariant safe to rely on rather than assume.)
  */
+/**
+ * The task a sheet the user opens for this project would offer first, or null
+ * when it has nothing to offer. What the weekend nudge quotes in its notes, so
+ * the task it names is the one the sheet it links to puts at the top.
+ *
+ * Asked in 'ask' mode, the mode that sheet uses. dripCandidate (below) was
+ * used here, and it answers only for a project that schedules itself, so the
+ * weekend notes named no task for almost every project.
+ */
+export function nextPullCandidate(project: Project, allTasks: readonly Task[]): Task | null {
+  const stall = findProjectStalls([project], allTasks, 'ask')[0];
+  if (!stall) return null;
+  return rankPullCandidates(stall.pullable)[0] ?? null;
+}
+
 export function dripCandidate(project: Project, allTasks: readonly Task[]): Task | null {
   if (!project.autoSchedule) return null;
   const stall = findProjectStalls([project], allTasks, 'nudge')[0];

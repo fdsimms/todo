@@ -42,13 +42,13 @@ type RootStackParamList = {
 };
 
 /** "Due same day · shows 1 day before · from start date · morning" hint under an item row. The anchor is named once at the end rather than repeated per offset. */
-function itemHint(item: TemplateItem): string | null {
+function itemHint(item: TemplateItem, away = false): string | null {
   const lower = (s: string) => s.toLowerCase();
   const parts: string[] = [];
   if (item.dueOffsetDays !== null) parts.push(`Due ${lower(formatOffsetLabel(item.dueOffsetDays))}`);
   if (item.deferOffsetDays !== null) parts.push(`shows ${lower(formatOffsetLabel(item.deferOffsetDays))}`);
   if (item.deadlineOffsetDays !== null) parts.push(`deadline ${lower(formatOffsetLabel(item.deadlineOffsetDays))}`);
-  if (parts.length > 0) parts.push(`from ${anchorLabel(item.anchor).toLowerCase()}`);
+  if (parts.length > 0) parts.push(`from ${anchorLabel(item.anchor, away).toLowerCase()}`);
   if (item.timeSegments.length > 0) parts.push(item.timeSegments.join(', '));
   return parts.length > 0 ? parts.join(' · ') : null;
 }
@@ -335,7 +335,7 @@ export function TemplateDetailScreen() {
               ]
         }
         renderItem={({ item, drag, isActive }) => {
-          const hint = itemHint(item);
+          const hint = itemHint(item, template?.anchorsAreAway ?? false);
           const group = item.groupId ? template?.itemGroups.find(g => g.id === item.groupId) : null;
           const showHeader = group && firstOfGroup.has(item.id);
           const hidden = hiddenByCollapse.has(item.id);

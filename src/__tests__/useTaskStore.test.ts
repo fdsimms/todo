@@ -503,6 +503,11 @@ const makeProject = (overrides: Partial<import('../types').Project> = {}): impor
   destination: null,
   awayListId: null,
   awayListDeclinedFor: null,
+  pausedUntil: null,
+  personIds: [],
+  links: [],
+  inOrder: false,
+  showChecked: false,
   ...overrides,
 });
 
@@ -11160,6 +11165,37 @@ describe('unarchiveProject', () => {
 
 // ─── completeProject / uncompleteProject ────────────────────────────────────
 
+describe('startFreshFromProject', () => {
+  it('copies the tasks and sections into a new project, open and undated, leaving the original alone', () => {
+    useProjectStore.setState({ projects: [makeProject({ id: 'p1', title: 'Birthday party', deadline: '2026-06-15T12:00:00.000Z' })] });
+    useTaskGroupStore.setState({
+      groups: [{ id: 'food', title: 'Food', notes: '', tags: [], category: null, sortOrder: 5, collapsed: false, onToday: false, projectId: 'p1' }],
+      initialized: true,
+    });
+    useTaskStore.setState({
+      tasks: [
+        makeTask({ id: 'a', title: 'Book the venue', projectId: 'p1', completed: true, completedAt: '2026-06-01T09:00:00.000Z', dueDate: '2026-06-01T12:00:00.000Z', sortOrder: 1 }),
+        makeTask({ id: 'b', title: 'Order cake', projectId: 'p1', groupId: 'food', sortOrder: 1 }),
+      ],
+      lastAction: null,
+    });
+
+    const copy = useTaskStore.getState().startFreshFromProject('p1')!;
+
+    expect(copy.id).not.toBe('p1');
+    expect(copy.title).toBe('Birthday party');
+    expect(copy.deadline).toBeNull();
+    const copied = useTaskStore.getState().tasks.filter(t => t.projectId === copy.id);
+    expect(copied.map(t => t.title).sort()).toEqual(['Book the venue', 'Order cake']);
+    expect(copied.every(t => !t.completed && t.dueDate === null)).toBe(true);
+    const section = useTaskGroupStore.getState().groups.find(g => g.projectId === copy.id);
+    expect(section?.title).toBe('Food');
+    expect(copied.find(t => t.title === 'Order cake')?.groupId).toBe(section?.id);
+    // The original is untouched.
+    expect(useTaskStore.getState().tasks.find(t => t.id === 'a')?.completed).toBe(true);
+  });
+});
+
 describe('completeProject', () => {
   it('completes the project and is undoable', () => {
     useProjectStore.setState({ projects: [makeProject({ id: 'p1' })] });
@@ -11253,6 +11289,16 @@ describe('completeTask auto-completing a finished project', () => {
     expect(project?.completed).toBe(true);
     expect(project?.completedAt).not.toBeNull();
     expect(project?.archived).toBe(false);
+  });
+
+  // An ongoing project has no finish line; checking off the last line of a
+  // running list must not file it under Completed.
+  it('never completes an ongoing project', () => {
+    useSettingsStore.getState.mockReturnValue({ dayResetTime: '00:00', autoCompleteProjectsOnDone: true });
+    useProjectStore.setState({ projects: [makeProject({ id: 'p1', ongoing: true })] });
+    useTaskStore.setState({ tasks: [makeTask({ id: 'a', projectId: 'p1' })] });
+    useTaskStore.getState().completeTask('a');
+    expect(useProjectStore.getState().projects.find(p => p.id === 'p1')?.completed).toBe(false);
   });
 
   it('does not complete the project while other tasks in it are still incomplete', () => {
@@ -13451,6 +13497,31 @@ describe('blocking', () => {
     const byId = (id: string) => useTaskStore.getState().tasks.find(t => t.id === id)!;
     expect(byId(rows[0].id).blockedById).toBeNull();
     expect(byId(rows[1].id).blockedById).toBe(blocker.id);
+  });
+
+  // A task can wait on several (Task.blockedByIds): adding or dropping one
+  // blocker keeps whatever else the waiter waits on.
+  it('adds itself beside a waiter\'s other blockers, and drops only itself', () => {
+    useTaskStore.setState({
+      tasks: [
+        makeTask({ id: 'venue', dueDate: TODAY }),
+        makeTask({ id: 'guests', dueDate: TODAY }),
+        makeTask({ id: 'invites', dueDate: TODAY, blockedById: 'venue' }),
+      ],
+    });
+    const byId = (id: string) => useTaskStore.getState().tasks.find(t => t.id === id)!;
+
+    useTaskStore.getState().setBlockedTasks('guests', ['invites']);
+    expect(byId('invites').blockedById).toBe('venue');
+    expect(byId('invites').blockedByIds).toEqual(['guests']);
+
+    // Waits for all: finishing the venue alone doesn't free it.
+    useTaskStore.getState().completeTask('venue');
+    expect(useTaskStore.getState().visibleTasks().map(t => t.id)).not.toContain('invites');
+
+    useTaskStore.getState().setBlockedTasks('guests', []);
+    expect(byId('invites').blockedById).toBe('venue');
+    expect(byId('invites').blockedByIds).toEqual([]);
   });
 
   // The picker can't offer one, but the editor holds its set while the store

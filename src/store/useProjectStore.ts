@@ -13,8 +13,9 @@ import {
   dbBatchUpdateProjectSortOrders,
 } from '../db/database';
 import { generateId } from '../utils/id';
+import { registerPausedProjectSource } from '../utils/projectPause';
 import { registerAwayProjectSource } from '../utils/awayDates';
-import { deliverableKindFor } from '../utils/deliverables';
+import { deliverableKindFor, deliverableOptionsFor } from '../utils/deliverables';
 
 /**
  * What one member of a project is, as far as counting goes: a task, not a row.
@@ -137,6 +138,77 @@ export function projectDecisions(projectId: string, tasks: Task[]): Task[] {
   return Array.from(latest.values()).sort((a, b) => answeredAt(b).localeCompare(answeredAt(a)));
 }
 
+/** One set of pick-from-a-list questions on a project, counted. */
+export interface AnswerTally {
+  /** The options, in the order the question offers them. */
+  options: string[];
+  /** How many members answered each option, index for index. */
+  counts: number[];
+  /** Members still open with no answer yet. */
+  waiting: number;
+  /** Members completed without an answer, or with one that isn't an option. */
+  unanswered: number;
+}
+
+/**
+ * "12 Yes, 3 No, 5 waiting": the members of a project that ask the same
+ * pick-one question, counted by answer. RSVPs are the case this is for (one
+ * task per guest, each asking Yes/No/Maybe), and a survey of what everyone
+ * wants for dinner is the same read.
+ *
+ * Members are grouped by their options, so a project holding both RSVPs and
+ * a Yes/No question gets two tallies rather than one muddled one. A set of
+ * one isn't a tally (its answer is already in the Answers block), so only
+ * sets of two or more come back. Identity is `projectProgress`'s, and each
+ * member counts its current answer: the latest answered row, else whether it
+ * is still open.
+ */
+export function projectAnswerTallies(projectId: string, tasks: Task[]): AnswerTally[] {
+  const members = tasks.filter(t => t.projectId === projectId && t.parentId === null && !t.archived);
+  const byId = new Map(members.map(t => [t.id, t]));
+  // Per member identity: its options, its latest answer, and whether it's open.
+  const identities = new Map<string, { options: string[]; answer: Task | null; open: boolean }>();
+  for (const member of members) {
+    const options = deliverableOptionsFor(member);
+    if (options.length === 0) continue;
+    const key = memberKey(member, byId);
+    const held = identities.get(key) ?? { options, answer: null, open: false };
+    if (!member.completed) held.open = true;
+    if (member.deliverableValue !== null && (!held.answer || answeredAt(member) > answeredAt(held.answer))) {
+      held.answer = member;
+      held.options = options;
+    }
+    identities.set(key, held);
+  }
+
+  const sets = new Map<string, { tally: AnswerTally; members: number }>();
+  for (const { options, answer, open } of identities.values()) {
+    const setKey = options.join('\u0000');
+    const entry = sets.get(setKey) ?? {
+      tally: { options, counts: options.map(() => 0), waiting: 0, unanswered: 0 },
+      members: 0,
+    };
+    entry.members += 1;
+    const value = answer?.deliverableValue?.trim().toLowerCase() ?? null;
+    const index = value === null ? -1 : options.findIndex(o => o.toLowerCase() === value);
+    if (index >= 0) entry.tally.counts[index] += 1;
+    else if (open && value === null) entry.tally.waiting += 1;
+    else entry.tally.unanswered += 1;
+    sets.set(setKey, entry);
+  }
+  return [...sets.values()].filter(s => s.members >= 2).map(s => s.tally);
+}
+
+/** A tally as one line: "12 Yes, 3 No, 5 waiting". Options nobody picked are left out. */
+export function describeAnswerTally(tally: AnswerTally): string {
+  const parts = tally.options
+    .map((option, i) => (tally.counts[i] > 0 ? `${tally.counts[i]} ${option}` : null))
+    .filter((p): p is string => p !== null);
+  if (tally.waiting > 0) parts.push(`${tally.waiting} waiting`);
+  if (tally.unanswered > 0) parts.push(`${tally.unanswered} no answer`);
+  return parts.join(', ');
+}
+
 /**
  * The project page's Completed section: finished members, newest first, one
  * row per member.
@@ -152,12 +224,17 @@ export function projectCompletedRows(projectId: string, tasks: Task[]): Task[] {
   const members = tasks.filter(t => t.projectId === projectId && t.parentId === null && !t.archived);
   const byId = new Map(members.map(t => [t.id, t]));
   const latest = new Map<string, Task>();
+  // A member with a row still open isn't finished: a repeating task's past
+  // occurrences are done, but the task is still up above among the open ones,
+  // and listing it here too made the section disagree with "X of Y done".
+  const open = new Set<string>();
   for (const member of members) {
-    if (!member.completed) continue;
     const key = memberKey(member, byId);
+    if (!member.completed) { open.add(key); continue; }
     const held = latest.get(key);
     if (!held || (member.completedAt ?? '') > (held.completedAt ?? '')) latest.set(key, member);
   }
+  for (const key of open) latest.delete(key);
   return Array.from(latest.values())
     .sort((a, b) => (b.completedAt ?? '').localeCompare(a.completedAt ?? ''));
 }
@@ -198,7 +275,7 @@ interface ProjectStore {
   initialized: boolean;
   initialize: () => void;
   createProject: (title: string, options?: CreateProjectOptions) => Project;
-  updateProject: (id: string, patch: Partial<Pick<Project, 'title' | 'notes' | 'deadline' | 'category' | 'defaultTaskCategory' | 'nudgeCadenceDays' | 'autoSchedule' | 'nudgeOptIn' | 'weekendSource' | 'reviewDeclinedAt' | 'reviewedAt' | 'backfillDismissedFields' | 'kind' | 'ongoing' | 'awayStart' | 'awayEnd' | 'awayPauses' | 'awayPauseDeclinedFor' | 'destination' | 'awayListId' | 'awayListDeclinedFor'>>) => void;
+  updateProject: (id: string, patch: Partial<Pick<Project, 'title' | 'notes' | 'deadline' | 'category' | 'defaultTaskCategory' | 'nudgeCadenceDays' | 'autoSchedule' | 'nudgeOptIn' | 'weekendSource' | 'reviewDeclinedAt' | 'reviewedAt' | 'backfillDismissedFields' | 'kind' | 'ongoing' | 'awayStart' | 'awayEnd' | 'awayPauses' | 'awayPauseDeclinedFor' | 'destination' | 'awayListId' | 'awayListDeclinedFor' | 'pausedUntil' | 'personIds' | 'links' | 'inOrder' | 'showChecked'>>) => void;
   /** Filing several projects at once from the Projects screen's bulk bar. */
   bulkSetProjectCategory: (ids: string[], category: string | null) => void;
   getProjectById: (id: string) => Project | null;
@@ -327,6 +404,11 @@ export const useProjectStore = create<ProjectStore>((set, get) => ({
       // Project.awayListId.
       awayListId: null,
       awayListDeclinedFor: null,
+      pausedUntil: null,
+      personIds: [],
+      links: [],
+      inOrder: false,
+      showChecked: false,
     };
     dbInsertProject(project);
     set(s => ({ projects: [...s.projects, project] }));
@@ -443,3 +525,6 @@ export const useProjectStore = create<ProjectStore>((set, get) => ({
 // this store — and so expo-sqlite — being reachable from `visibilityUtils`.
 // See the registry note in `src/utils/awayDates.ts`.
 registerAwayProjectSource(() => useProjectStore.getState().projects);
+// So the visibility gates can hold a paused project's tasks back. See
+// src/utils/projectPause.ts.
+registerPausedProjectSource(() => useProjectStore.getState().projects);

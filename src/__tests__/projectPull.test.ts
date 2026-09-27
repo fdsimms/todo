@@ -4,6 +4,7 @@ import {
   describePullEmpty,
   diagnosePullEmpty,
   dripCandidate,
+  nextPullCandidate,
   findProjectStalls,
   type PullEmptyReason,
   lastTouchedAt,
@@ -15,7 +16,8 @@ import {
   suggestPullDate,
 } from '../utils/projectPull';
 import { registerTaskSource } from '../utils/blockerRegistry';
-import type { Project, Task } from '../types';
+import { registerSectionSource } from '../utils/sectionRegistry';
+import type { Project, Task, TaskGroup } from '../types';
 
 const settingsState = { dayResetTime: '00:00', vacationMode: false, morningStart: '06:00', afternoonStart: '12:00', eveningStart: '18:00', nightStart: '21:00' };
 
@@ -191,6 +193,11 @@ const PROJECT_BASE: Project = {
   destination: null,
   awayListId: null,
   awayListDeclinedFor: null,
+  pausedUntil: null,
+  personIds: [],
+  links: [],
+  inOrder: false,
+  showChecked: false,
 };
 
 const makeProject = (overrides: Partial<Project> = {}): Project => ({ ...PROJECT_BASE, ...overrides });
@@ -213,17 +220,26 @@ describe('findProjectStalls', () => {
     expect(stalls[0].overdueBy).toBe(46);
   });
 
-  // One scheduled member means the project can appear somewhere, so it isn't
-  // silent — one case per field hasNoDateSignal looks at.
+  // One dated member means the project can appear somewhere, so it isn't
+  // silent.
+  it('is not stalled when a member has a due date', () => {
+    const tasks = [makeTask({ id: 'a' }), makeTask({ id: 'b', dueDate: new Date().toISOString() })];
+
+    expect(findProjectStalls([makeProject()], tasks)).toHaveLength(0);
+  });
+
+  // The other placement fields don't put a *project* task anywhere:
+  // isTaskVisible keeps one off every list until it has a due date. These
+  // used to count as a schedule, so the member hid itself and silenced the
+  // project with it.
   it.each([
-    ['dueDate', { dueDate: new Date().toISOString() }],
     ['deferUntil', { deferUntil: new Date().toISOString() }],
     ['timeSegments', { timeSegments: ['morning' as const] }],
     ['windowStart', { windowStart: '09:00' }],
-  ])('is not stalled when a member has %s', (_label, scheduled) => {
-    const tasks = [makeTask({ id: 'a' }), makeTask({ id: 'b', ...scheduled })];
+  ])('is still stalled when a member has only %s', (_label, placement) => {
+    const tasks = [makeTask({ id: 'a' }), makeTask({ id: 'b', ...placement })];
 
-    expect(findProjectStalls([makeProject()], tasks)).toHaveLength(0);
+    expect(findProjectStalls([makeProject()], tasks)).toHaveLength(1);
   });
 
   it('is not stalled with no members at all', () => {
@@ -900,6 +916,67 @@ describe('projectPullUpdates', () => {
   });
 });
 
+// A routine (water weekly) is always dated and always being ticked off, so
+// counting it kept a project from ever going quiet about its one-offs.
+describe('repeating members', () => {
+  it("don't keep a project from going quiet, and are never pulled", () => {
+    const tasks = [
+      makeTask({ id: 'water', recurrenceType: 'weekly', dueDate: new Date().toISOString() }),
+      makeTask({ id: 'bed', title: 'Build raised bed' }),
+    ];
+    const stalls = findProjectStalls([makeProject()], tasks, 'ask');
+    expect(stalls).toHaveLength(1);
+    expect(stalls[0].pullable.map(t => t.id)).toEqual(['bed']);
+  });
+
+  it("don't restart the quiet clock when they're ticked off", () => {
+    const project = makeProject({ createdAt: subDays(new Date(), 60).toISOString() });
+    const tasks = [
+      makeTask({ id: 'w1', recurrenceType: 'weekly', completed: true, completedAt: subDays(new Date(), 1).toISOString() }),
+      makeTask({ id: 'bed' }),
+    ];
+    expect(findProjectStalls([project], tasks, 'ask')[0].quietDays).toBe(60);
+  });
+
+  it('leave a project of nothing but routines out, as scheduled', () => {
+    const tasks = [makeTask({ id: 'water', recurrenceType: 'weekly', dueDate: new Date().toISOString() })];
+    expect(findProjectStalls([makeProject()], tasks, 'ask')).toHaveLength(0);
+  });
+});
+
+describe('a paused project', () => {
+  it('is left out of Pull, even when asked, until its day', () => {
+    const tomorrow = new Date(); tomorrow.setDate(tomorrow.getDate() + 1);
+    const key = `${tomorrow.getFullYear()}-${String(tomorrow.getMonth() + 1).padStart(2, '0')}-${String(tomorrow.getDate()).padStart(2, '0')}`;
+    const plan = buildProjectPullPlan([makeProject({ pausedUntil: key })], [makeTask({ id: 'a' })], []);
+    expect(plan.proposals).toEqual([]);
+    expect(plan.empty?.reason).toBe('paused');
+  });
+});
+
+describe('nextPullCandidate', () => {
+  // What the weekend nudge quotes. dripCandidate answered only for projects
+  // that schedule themselves, so the notes named no task for any other.
+  it('names the top task for a project that does not schedule itself', () => {
+    const tasks = [makeTask({ id: 'a', sortOrder: 0 }), makeTask({ id: 'b', sortOrder: 1 })];
+    expect(nextPullCandidate(makeProject(), tasks)?.id).toBe('a');
+  });
+
+  it('is null for a project left out of every nudge', () => {
+    expect(nextPullCandidate(makeProject({ nudgeOptIn: false }), [makeTask({ id: 'a' })])).toBeNull();
+  });
+});
+
+describe('buildProjectPullPlan with a landing day', () => {
+  it('puts every proposal on that day, and shows a named auto-scheduling project', () => {
+    const project = makeProject({ id: 'p1', autoSchedule: true });
+    const plan = buildProjectPullPlan([project], [makeTask({ id: 'a', projectId: 'p1' })], [], ['p1'], '2030-10-05');
+    expect(plan.proposals).toHaveLength(1);
+    expect(plan.proposals[0].suggestion.date.getDate()).toBe(5);
+    expect(plan.proposals[0].suggestion.dayLabel).toBe('Saturday');
+  });
+});
+
 describe('dripCandidate', () => {
   it('picks the top-ranked task for an opted-in quiet project', () => {
     const project = makeProject({ autoSchedule: true });
@@ -1030,5 +1107,56 @@ describe('a declined project and the sheet', () => {
     const empty = diagnosePullEmpty([project], tasks, 'nudge');
     expect(empty?.reason).toBe('declined-today');
     expect(describePullEmpty(empty!)).toContain('until tomorrow');
+  });
+});
+
+describe('working a project in order', () => {
+  const section = (o: Partial<TaskGroup>): TaskGroup => ({
+    id: 's1', title: 'Walls', notes: '', tags: [], category: null, sortOrder: 5,
+    collapsed: false, onToday: false, projectId: 'p1', checklist: false, ...o,
+  });
+  afterEach(() => registerSectionSource(null));
+
+  it('offers only the first open task on the page', () => {
+    const tasks = [makeTask({ id: 'patch', sortOrder: 1 }), makeTask({ id: 'paint', sortOrder: 2, priority: 4 })];
+    expect(nextPullCandidate(makeProject({ inOrder: true }), tasks)?.id).toBe('patch');
+    const plan = buildProjectPullPlan([makeProject({ inOrder: true })], tasks, [], ['p1']);
+    expect(plan.proposals[0].candidates.map(t => t.id)).toEqual(['patch']);
+  });
+
+  it('reads the order off the page, so a section above a loose task comes first', () => {
+    registerSectionSource(() => [section({ sortOrder: 1 })]);
+    const tasks = [
+      makeTask({ id: 'loose', sortOrder: 3 }),
+      makeTask({ id: 'inSection', sortOrder: 1, groupId: 's1' }),
+    ];
+    expect(nextPullCandidate(makeProject({ inOrder: true }), tasks)?.id).toBe('inSection');
+  });
+
+  it('offers nothing while the first task is waiting, rather than letting a later one jump ahead', () => {
+    const blocker = makeTask({ id: 'elsewhere', projectId: null });
+    const tasks = [makeTask({ id: 'first', sortOrder: 1, blockedById: 'elsewhere' }), makeTask({ id: 'second', sortOrder: 2 })];
+    registerTaskSource(() => [...tasks, blocker]);
+    try {
+      expect(nextPullCandidate(makeProject({ inOrder: true }), tasks)).toBeNull();
+      expect(nextPullCandidate(makeProject(), tasks)?.id).toBe('second');
+    } finally {
+      registerTaskSource(null);
+    }
+  });
+});
+
+describe('checklist sections', () => {
+  afterEach(() => registerSectionSource(null));
+
+  it('never offers a checklist line', () => {
+    registerSectionSource(() => [{
+      id: 'pack', title: 'Packing', notes: '', tags: [], category: null, sortOrder: 0,
+      collapsed: false, onToday: false, projectId: 'p1', checklist: true,
+    }]);
+    const tasks = [makeTask({ id: 'socks', groupId: 'pack', sortOrder: 0 }), makeTask({ id: 'book', sortOrder: 5 })];
+    expect(nextPullCandidate(makeProject(), tasks)?.id).toBe('book');
+    expect(nextPullCandidate(makeProject(), [tasks[0]])).toBeNull();
+    expect(diagnosePullEmpty([makeProject()], [tasks[0]])?.reason).toBe('no-pullable');
   });
 });
