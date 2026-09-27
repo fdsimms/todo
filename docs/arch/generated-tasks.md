@@ -745,6 +745,17 @@ carried unchanged into "Eat X" (`mealSlotDrift` writes `linkUrl` unconditionally
 destinations for one row. The picker link for an unanswered slot, and the meal-plan link for a
 leftover/takeout/typed answer, are unchanged.
 
+**A recipe that has since been deleted is not a recipe to cook.** `MealPlanEntry.recipeId` outlives
+the recipe on purpose, so every path that builds a slot task from an entry (the daily pass, the
+reconcile, `setCookTask`'s create) goes through `slotEntryForTask` first, which hands the projection
+a copy with the dead pointer cleared. The slot then reads "Eat X" and links to its day, like a typed
+meal, rather than "Make X" linking to "This recipe is gone". Deleting a recipe reconciles the slots
+planned from it (`reconcileRecipeSlots`), since nothing about the plan itself changed to trigger one.
+It trusts the pointer until the recipe store has loaded (`recipeIsGone`), so a list that failed to
+load can't turn every meal on Today into a typed one. Renaming a recipe is the other direction:
+`retitleRecipeEntries` rewrites the entries' captured titles, which is what "Make X" and the
+calendar event read.
+
 ## `screenTime` — the fifteenth, and the second rule the user wrote
 
 "After 30 minutes on the apps I picked, add a task to take a walk." Structurally it is `weather`

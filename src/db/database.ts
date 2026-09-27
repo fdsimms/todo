@@ -6241,6 +6241,24 @@ export function dbGetMealPlanEntries(startKey: string, endKey: string): MealPlan
   return rows.map(rowToMealPlanEntry);
 }
 
+/**
+ * Every entry planned from one recipe, whatever its date.
+ *
+ * Not range-scoped, unlike `dbGetMealPlanEntries`, because what reads it is a
+ * change to the recipe itself (a rename retitles these entries, a delete
+ * reconciles their tasks), and the entries that change has to reach are
+ * exactly the ones outside the week on screen. The purge horizon bounds it
+ * anyway.
+ */
+export function dbGetMealPlanEntriesForRecipe(recipeId: string): MealPlanEntry[] {
+  const rows = db.getAllSync<Record<string, unknown>>(
+    `SELECT * FROM meal_plan_entries WHERE recipe_id = ?
+     ORDER BY date ASC, sort_order ASC, created_at ASC`,
+    [recipeId]
+  );
+  return rows.map(rowToMealPlanEntry);
+}
+
 export function dbInsertMealPlanEntry(entry: MealPlanEntry): void {
   db.runSync(
     `INSERT INTO meal_plan_entries (id, date, slot, recipe_id, title, sort_order, created_at, cooked_at, leftover_id, recipe_choices, recipe_scale, cook_task, shop_task, log_meal, calendar_event_id)

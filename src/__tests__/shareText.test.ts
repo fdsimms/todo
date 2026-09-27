@@ -307,12 +307,49 @@ describe('buildGroceryListShareText', () => {
     expect(buildGroceryListShareText([item('Milk', { checked: true })])).toBe('');
     expect(buildGroceryListShareText([])).toBe('');
   });
+
+  it('sends the amount in the units the screen was showing', () => {
+    // A recipe-added "500 g" reads as about a pound on a US-units screen, and
+    // the person shopping from the text should see what was on it.
+    const items = [item('ground beef', { quantity: '500 g' }), item('Eggs', { quantity: 'x12' })];
+    expect(buildGroceryListShareText(items, { unitSystem: 'us' }))
+      .toBe('Grocery list\n- ≈1.1 lbs ground beef\n- x12 Eggs');
+  });
+
+  it('carries the preferred product and the note the row shows', () => {
+    // The two captions that decide which box leaves the shelf.
+    const cheddar = item('cheddar');
+    const milk = item('milk', { quantity: '1 gal', note: '  the green top one ' });
+    const productCaptions = new Map([[cheddar.id, 'Tillamook sharp']]);
+    expect(buildGroceryListShareText([cheddar, milk], { productCaptions }))
+      .toBe('Grocery list\n- cheddar: Tillamook sharp\n- 1 gal milk (the green top one)');
+  });
+
+  it('puts each option of an either/or in its own words', () => {
+    const apples = item('apples', { quantity: '4', choiceGroup: 'g1', note: 'Honeycrisp' });
+    const pears = item('pears', { quantity: '4', choiceGroup: 'g1' });
+    expect(buildGroceryListShareText([apples, pears]))
+      .toBe('Grocery list\n- 4 apples (Honeycrisp) or 4 pears');
+  });
+
+  it('titles a list away from home with its own name', () => {
+    expect(buildGroceryListShareText([item('Milk')], { listName: 'Cabin week' }))
+      .toBe('Cabin week\n- Milk');
+    // The home list keeps the plain title.
+    expect(buildGroceryListShareText([item('Milk')], { listName: null }))
+      .toBe('Grocery list\n- Milk');
+  });
 });
 
 describe('buildGroceryListText', () => {
   it('is the items alone — no title line, no bullets', () => {
     const items = [item('Milk', { quantity: '2 L' }), item('Bread')];
     expect(buildGroceryListText(items)).toBe('2 L Milk\nBread');
+  });
+
+  it('leaves out the note, which would become part of the item on the other side', () => {
+    expect(buildGroceryListText([item('milk', { quantity: '1 gal', note: 'the green top one' })]))
+      .toBe('1 gal milk');
   });
 
   it('leaves out a checked row and an off-list row, same as the share', () => {
@@ -364,5 +401,18 @@ describe('buildWeekPlanShareText', () => {
   it('is empty for a week with nothing planned', () => {
     const days = [new Date(2026, 7, 10), new Date(2026, 7, 11)];
     expect(buildWeekPlanShareText(days, [], new Map())).toBe('');
+  });
+
+  it('says "this week" only for this week, and names any other week by its dates', () => {
+    // The plan pages forward and back, and "This week's meals" over next
+    // week's dinners sends the reader to the wrong week.
+    const days = [new Date(2026, 9, 5), new Date(2026, 9, 11)];
+    const entries = [entry('2026-10-05', 'dinner', { title: 'Steak' })];
+    const heading = (thisWeek?: boolean) =>
+      buildWeekPlanShareText(days, entries, new Map(), { thisWeek }).split('\n')[0];
+    expect(heading(true)).toBe("This week's meals (Oct 5 – 11)");
+    expect(heading(false)).toBe('Meals for Oct 5 – 11');
+    // Unsaid, it's the dates, which are never wrong.
+    expect(heading(undefined)).toBe('Meals for Oct 5 – 11');
   });
 });

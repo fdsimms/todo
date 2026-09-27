@@ -48,8 +48,9 @@ interface Props {
   onMoveFurther?: () => void;
   onRemove: () => void;
   /**
-   * Present only for a free-text entry (no recipeId) — a recipe-backed
-   * title comes from the recipe and isn't independently editable here.
+   * Present only for a free-text entry (no recipeId, or one whose recipe has
+   * since been deleted) — a recipe-backed title comes from the recipe and
+   * isn't independently editable here.
    */
   onRename?: (title: string) => void;
   /**

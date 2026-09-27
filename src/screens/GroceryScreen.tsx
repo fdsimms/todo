@@ -90,7 +90,7 @@ import { confirmDelete } from '../utils/confirmDelete';
 import { animateLayout } from '../utils/layoutAnimation';
 import { KNOWN_LINK_APPS } from '../constants/linkApps';
 import type { GroceryItem, ItemProduct, Recipe, Shop } from '../types';
-import { preferredProductOf } from '../utils/groceryProduct';
+import { describeProduct, preferredProductOf } from '../utils/groceryProduct';
 import { entryFor, itemsOnList, listNameFor, isAwayList, HOME_LIST_NAME } from '../utils/groceryLists';
 
 // The same scheme a recurring "Grocery run" task already carries in its
@@ -384,6 +384,7 @@ export function GroceryScreen() {
   const receiptRoute = useAiRoute('receiptImport');
   const simpleMode = useSettingsStore(s => s.simpleMode);
   const currencySymbol = useSettingsStore(s => s.currencySymbol);
+  const unitSystem = useSettingsStore(s => s.unitSystem);
 
   // ==== the list: items grouped into aisle sections ====
   const grouped = useMemo(() => {
@@ -528,8 +529,21 @@ export function GroceryScreen() {
     if (checkedCount > 0) setFinishOpen(true);
   }, [openFinishStamp, handledFinishStamp, checkedCount]);
   // Empty for nothing left to buy, which is what the header action's disabled
-  // state gates on — see buildGroceryListShareText.
-  const shareText = useMemo(() => buildGroceryListShareText(listRows), [listRows]);
+  // state gates on — see buildGroceryListShareText. Sent the way the rows read:
+  // the amount in this screen's units, the preferred product's caption and the
+  // note, under the list's own name when it isn't the home one.
+  const shareText = useMemo(() => {
+    const productCaptions = new Map<string, string>();
+    for (const [id, product] of preferredProductById) {
+      const caption = describeProduct(product);
+      if (caption) productCaptions.set(id, caption);
+    }
+    return buildGroceryListShareText(listRows, {
+      unitSystem,
+      productCaptions,
+      listName: away ? activeListName : null,
+    });
+  }, [listRows, unitSystem, preferredProductById, away, activeListName]);
   // The same rows without the title line or the bullets, for pasting into
   // another shopping app rather than sending to a person — see shareText.ts.
   const copyText = useMemo(() => buildGroceryListText(listRows), [listRows]);

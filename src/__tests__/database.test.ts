@@ -95,6 +95,7 @@ import {
   dbGetGroceryGroupBy,
   dbSetGroceryGroupBy,
   dbGetMealPlanEntries,
+  dbGetMealPlanEntriesForRecipe,
   dbInsertMealPlanEntry,
   dbUpdateMealPlanEntry,
   dbDeleteMealPlanEntry,
@@ -3504,6 +3505,18 @@ describe('meal plan entries', () => {
 
     expect(dbGetMealPlanEntries('2026-08-03', '2026-08-09').map(e => e.date))
       .toEqual(['2026-08-03', '2026-08-09']);
+  });
+
+  it('reads every entry planned from one recipe, whatever its date', () => {
+    // What a change to the recipe itself has to reach: a rename retitles
+    // these, a delete reconciles their tasks, and most sit outside any week.
+    dbInsertMealPlanEntry(makeEntry('2026-09-20', 'dinner', { recipeId: 'r1' }));
+    dbInsertMealPlanEntry(makeEntry('2026-06-01', 'lunch', { recipeId: 'r1' }));
+    dbInsertMealPlanEntry(makeEntry('2026-08-05', 'dinner', { recipeId: 'r2' }));
+    dbInsertMealPlanEntry(makeEntry('2026-08-05', 'dinner', { recipeId: null }));
+
+    expect(dbGetMealPlanEntriesForRecipe('r1').map(e => e.date)).toEqual(['2026-06-01', '2026-09-20']);
+    expect(dbGetMealPlanEntriesForRecipe('nothing')).toEqual([]);
   });
 
   it('orders by day then by sort order', () => {

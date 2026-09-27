@@ -4,7 +4,7 @@ import { dayKeyToDate } from './dateUtils';
 import { generatedBy, generatedSourceOf } from './generatedTasks';
 import { isChainFinish } from './chain';
 import { mealPlanNudgeLinkUrl } from './mealPlanNudge';
-import { mealSlotKey } from './mealPlan';
+import { mealSlotKey, recipeIsGone } from './mealPlan';
 import { resolveOffsetDate } from './templateUtils';
 import type { ChainItem } from '../types';
 
@@ -221,6 +221,30 @@ export function mealSlotLinkUrl(dayKey: string, slot: MealSlot, entry: MealPlanE
   if (entry?.recipeId && !entry.leftoverId) return recipeLinkUrl(entry.recipeId);
   const base = mealPlanNudgeLinkUrl(dayKey);
   return entry ? base : `${base}&pick=${slot}`;
+}
+
+/**
+ * The entry as its slot's task should read it: one whose recipe has been
+ * deleted reads as the typed meal its captured `title` already is.
+ *
+ * `MealPlanEntry.recipeId` deliberately outlives the recipe (deleting Chili
+ * must not blank last Tuesday), and every reader of it is meant to be
+ * resolve-or-shrug. This projection was the one that didn't shrug: the pointer
+ * alone decided there was a "Make Chili" step and a link to the recipe, which
+ * then opened on "This recipe is gone". Cleared on the copy handed to the
+ * projection, never on the row, so the task says "Eat Chili" and links to its
+ * day on the plan, exactly what a typed meal gets. Every caller that builds a
+ * slot task from an entry (the daily pass, the reconcile, `setCookTask`'s
+ * create) goes through this.
+ *
+ * `library` is the recipe store's state, and an unloaded one leaves the entry
+ * alone (see `recipeIsGone`).
+ */
+export function slotEntryForTask(
+  entry: MealPlanEntry | null,
+  library: Parameters<typeof recipeIsGone>[1]
+): MealPlanEntry | null {
+  return entry && recipeIsGone(entry, library) ? { ...entry, recipeId: null } : entry;
 }
 
 /** Whether this entry counts as an answer to its slot. */

@@ -7,6 +7,7 @@ import {
   mealSlotChain,
   mealSlotDrift,
   mealSlotLinkUrl,
+  slotEntryForTask,
   mealSlotOf,
   mealSlotSourceId,
   mealSlotStepTimeSegments,
@@ -272,6 +273,33 @@ describe('the fields a slot owns', () => {
     expect(draft.generatedKind).toBe('mealSlot');
     expect(draft.generatedSourceId).toBe('2026-08-22#lunch');
     expect(draft.chainIndex).toBe(0);
+  });
+});
+
+describe('slotEntryForTask', () => {
+  const library = { initialized: true, recipes: [{ id: 'r-1' }] };
+
+  it('reads a meal whose recipe was deleted as the typed meal its title is', () => {
+    // The pointer alone used to decide there was a "Make X" step and a link to
+    // the recipe, which then opened on "This recipe is gone".
+    const planned = slotEntryForTask(entry({ recipeId: 'r-gone', title: 'Chili' }), library)!;
+    expect(planned.recipeId).toBeNull();
+    expect(planned.title).toBe('Chili');
+    expect(mealSlotChain('dinner', planned).map(c => c.title)).toEqual(['Eat Chili']);
+    expect(mealSlotLinkUrl('2026-08-22', 'dinner', planned)).toBe('dundundun://mealplan?date=2026-08-22');
+  });
+
+  it('hands back the entry itself when there is nothing to resolve', () => {
+    const live = entry({ recipeId: 'r-1' });
+    const typed = entry({ recipeId: null });
+    expect(slotEntryForTask(live, library)).toBe(live);
+    expect(slotEntryForTask(typed, library)).toBe(typed);
+    expect(slotEntryForTask(null, library)).toBeNull();
+  });
+
+  it('trusts the pointer until the recipe list has loaded', () => {
+    const planned = entry({ recipeId: 'r-1' });
+    expect(slotEntryForTask(planned, { initialized: false, recipes: [] })).toBe(planned);
   });
 });
 

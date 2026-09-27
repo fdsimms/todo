@@ -523,7 +523,10 @@ The four rules that make it safe, all enforced in `scaleQuantity`:
   it as a component); the recipe screen and the add-to-list sheets hold it in view/sheet state and
   write nothing. **Never store it on `Recipe`.** `bulkReplaceItem` deliberately keeps the scale while
   resetting `recipeChoices` — a choice group belongs to the recipe that defined it, but "feeding
-  eight on Sunday" survives a swap of what's being cooked.
+  eight on Sunday" survives a swap of what's being cooked. What it keeps is the **servings**, not
+  the multiplier (`rescaleForRecipe`): 2× a pasta that serves 2 is four servings, which is 1× of a
+  soup that serves 4, and carrying the 2× over unchanged made it eight. Where either recipe states no
+  servings, or the meal was never scaled (as-written names no head count), the factor is kept.
 - **Factor chips are the floor, a servings stepper is layered on where it can be.** `Recipe.servings`
   is nullable and plenty of recipes never had one, so the chips (`½× 1× 1½× 2× 3×`) are what's always
   available. When a recipe does know its own count, `RecipeScaleChips` also renders a `CountStepper`
