@@ -1229,6 +1229,9 @@ export function FoodLogEntrySheet({
                 {built.nutrition.amounts.calorieKcal !== undefined
                   ? `${Math.round(built.nutrition.amounts.calorieKcal)} cal`
                   : 'No calories stated'}
+                {built.nutrition.amounts.proteinG !== undefined
+                  ? `, ${Math.round(built.nutrition.amounts.proteinG)} g protein`
+                  : ''}
                 {built.grams !== null ? `, ${built.grams} g` : ''}
               </Text>
             )}
