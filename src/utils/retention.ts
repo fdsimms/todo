@@ -103,11 +103,22 @@ export function retentionCutoff(
  * already dangle this way after a manual Logbook delete, so a purge leaves them
  * as-is rather than rewriting rows it isn't deleting.
  */
-export function selectPurgeableTaskIds(tasks: Task[], cutoff: Date): string[] {
+export function selectPurgeableTaskIds(
+  tasks: Task[],
+  cutoff: Date,
+  /**
+   * Projects whose finished members are kept whatever their age: the list
+   * kind (Project.kind). A checked-off line on "Books to read" is the record
+   * of having read it, not a tombstone, and a retention window set for
+   * everyday tasks was deleting it.
+   */
+  keepProjectIds: ReadonlySet<string> = new Set(),
+): string[] {
   return tasks
     .filter(
       t =>
         !t.parentId &&
+        !(t.projectId !== null && keepProjectIds.has(t.projectId)) &&
         t.completed &&
         !t.archived &&
         !(deliverableKindFor(t) !== null && t.deliverableValue !== null) &&

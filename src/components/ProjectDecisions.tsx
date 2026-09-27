@@ -12,6 +12,11 @@ interface Props {
   decisions: Task[];
   /** Opens the answer for correction. Omitted while the screen is selecting rows. */
   onPress?: (task: Task) => void;
+  /**
+   * The block's heading. "Decisions" on a project; a list passes "Answers",
+   * since a question for the doctor that got answered isn't a decision.
+   */
+  label?: string;
 }
 
 /**
@@ -36,7 +41,7 @@ interface Props {
  */
 export const DECISIONS_SHOWN = 3;
 
-export function ProjectDecisions({ decisions, onPress }: Props) {
+export function ProjectDecisions({ decisions, onPress, label = 'Decisions' }: Props) {
   const colors = useColors();
   const styles = useMemo(() => makeStyles(colors), [colors]);
   const [showAll, setShowAll] = useState(false);
@@ -48,7 +53,7 @@ export function ProjectDecisions({ decisions, onPress }: Props) {
 
   return (
     <View style={styles.block}>
-      <Text style={styles.label}>Decisions</Text>
+      <Text style={styles.label}>{label}</Text>
       {shown.map(task => {
         const answer = formatTaskDeliverable(task);
         const title = displayTitleFor(task);

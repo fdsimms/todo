@@ -1,0 +1,4 @@
+{
+  "message": "Trip templates now say \"6 weeks before leaving\" instead of \"start date\", and holding the date buttons on a template item moves a week at a time. The Stuck screen shows each waiting task's project and how long it has waited, and you can add someone new right from a task's Waiting on someone field.",
+  "date": "2026-09-27"
+}

@@ -83,7 +83,7 @@ interface Props {
 }
 
 /** Sub-label for a checklist row: live dates when its anchor is set, offset labels otherwise. */
-function itemSublabel(item: TemplateItem, anchors: TemplateAnchors): string | null {
+function itemSublabel(item: TemplateItem, anchors: TemplateAnchors, away = false): string | null {
   const parts: string[] = [];
   const anchor = item.anchor === 'end' ? anchors.end : anchors.start;
   const due = resolveOffsetDate(anchor, item.dueOffsetDays);
@@ -102,7 +102,7 @@ function itemSublabel(item: TemplateItem, anchors: TemplateAnchors): string | nu
     parts.push(item.timeSegments.join(', '));
   }
   if ((item.dueOffsetDays !== null || item.deferOffsetDays !== null) && !anchor) {
-    parts.push(`from ${anchorLabel(item.anchor).toLowerCase()}`);
+    parts.push(`from ${anchorLabel(item.anchor, away).toLowerCase()}`);
   }
   return parts.length > 0 ? parts.join(' · ') : null;
 }
@@ -459,7 +459,7 @@ export function ApplyTemplateSheet({ visible, template, onClose, projectId, onAp
     }
 
     const checked = selectedIds.has(node.item.id);
-    const sublabel = itemSublabel(node.item, anchors);
+    const sublabel = itemSublabel(node.item, anchors, template?.anchorsAreAway ?? false);
     // Shown substituted so the checklist is a live preview of the titles that
     // will actually be created, blanks and all.
     const title = substitutePlaceholders(node.item.title, values);

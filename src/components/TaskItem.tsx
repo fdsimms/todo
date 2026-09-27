@@ -1397,6 +1397,12 @@ export const TaskItem = React.memo(function TaskItem({
     return person && !person.archived ? displayNameOf(person) : undefined;
   });
 
+  // Waiting on another task or on a person: the title drops to the secondary
+  // grey, so a list holding a few of these (a project's page, the Stuck
+  // screen) reads which rows can be picked up now without scanning each row's
+  // chips. The chip still says what it waits on.
+  const heldBackDim = !task.completed && (!!blockerTitle || !!waitingPersonName);
+
   // A task that has been put off enough times to count as drifting — the
   // same rule StuckScreen's own Drift section is built on. Shown here too, on
   // the row itself: a task pushed six times reads as an ordinary row on Today
@@ -2430,7 +2436,7 @@ export const TaskItem = React.memo(function TaskItem({
                   <HighlightedText
                     text={displayTitle}
                     ranges={titleMentionRanges}
-                    style={styles.title}
+                    style={[styles.title, heldBackDim && styles.titleHeldBack]}
                     highlightStyle={styles.titleMention}
                     numberOfLines={2}
                   />
@@ -2441,7 +2447,7 @@ export const TaskItem = React.memo(function TaskItem({
                 <HighlightedText
                   text={displayTitle}
                   ranges={titleMentionRanges}
-                  style={styles.title}
+                  style={[styles.title, heldBackDim && styles.titleHeldBack]}
                   highlightStyle={styles.titleMention}
                   numberOfLines={2}
                   ellipsizeMode="tail"
@@ -4297,6 +4303,7 @@ const makeStyles = (colors: Colors) => StyleSheet.create({
     lineHeight: lineHeight.md,
     fontWeight: fontWeight.regular,
   },
+  titleHeldBack: { color: colors.textSecondary },
   // The tint an "@name" mention keeps once it's part of a saved title — same
   // language quick add uses for a token still being composed.
   titleMention: {

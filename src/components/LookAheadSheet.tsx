@@ -64,6 +64,12 @@ import { useSheetHiddenOffset } from '../hooks/useSheetHiddenOffset';
 interface Props {
   visible: boolean;
   onClose: () => void;
+  /**
+   * The trip to read, when opened from one. Without it the sheet reads the
+   * next trip on the board, which from a trip's own page could be a different
+   * one leaving sooner.
+   */
+  tripProjectId?: string | null;
 }
 
 /**
@@ -92,7 +98,7 @@ type Mode = 'read' | 'move';
 /** How many rows a bucket shows before it collapses behind a count. */
 const BUCKET_LIMIT = 4;
 
-export function LookAheadSheet({ visible, onClose }: Props) {
+export function LookAheadSheet({ visible, onClose, tripProjectId = null }: Props) {
   const colors = useColors();
   const { isDark } = useTheme();
   const insets = useSafeAreaInsets();
@@ -148,7 +154,11 @@ export function LookAheadSheet({ visible, onClose }: Props) {
     // you leave is not a day you have") and its return is exactly `backOn`.
     // This is the note on `backOn` above being cashed in — the sheet had to ask
     // because nothing in the app held the dates, and now something can.
-    const trip = nextAwayProject(projects, today, dayResetTime);
+    const trip = nextAwayProject(
+      tripProjectId ? projects.filter(p => p.id === tripProjectId) : projects,
+      today,
+      dayResetTime,
+    ) ?? (tripProjectId ? nextAwayProject(projects, today, dayResetTime) : null);
     // A fortnight: the span this was built for, and long enough to hold a
     // recurrence or two where "next Monday" would open on a window too short
     // to say anything.

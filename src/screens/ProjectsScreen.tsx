@@ -17,7 +17,7 @@ import { useProjectCategoryStore } from '../store/useProjectCategoryStore';
 import { useTaskGroupStore } from '../store/useTaskGroupStore';
 import { groupProjectsByCategory, resolveProjectDrop, type ProjectListItem } from '../utils/projectGrouping';
 import { ProjectEditor } from '../components/ProjectEditor';
-import { QuickAddProjectModal, type ProjectDraft } from '../components/QuickAddProjectModal';
+import { QuickAddProjectModal, LIST_PROJECT_FIELDS, type ProjectDraft } from '../components/QuickAddProjectModal';
 import { ScreenHeader } from '../components/ScreenHeader';
 import { TipHost } from '../components/TipHost';
 import { EmptyState } from '../components/EmptyState';
@@ -166,7 +166,9 @@ export function ProjectsScreen() {
     const map = new Map<string, { progress: { done: number; total: number }; next: string | null }>();
     listProjects.forEach(p => map.set(p.id, {
       progress: projectProgress(p.id, allTasks),
-      next: projectFilter === 'active' ? projectNextStepTitle(p.id, allTasks, taskGroups) : null,
+      // Not for a list: "Next" reads as an order to work in, and a list of
+      // books or gift ideas has none.
+      next: projectFilter === 'active' && p.kind !== 'list' ? projectNextStepTitle(p.id, allTasks, taskGroups) : null,
     }));
     return map;
   }, [listProjects, allTasks, projectFilter, taskGroups]);
@@ -409,10 +411,13 @@ export function ProjectsScreen() {
     // The draft carries the seeded category; only the placement is let go of.
     closeQuickAdd();
     animateLayout();
-    const project = createProject(draft.title, {
+    const created = createProject(draft.title, {
       deadline: draft.deadline,
       category: draft.category,
+      awayStart: draft.awayStart ?? null,
     });
+    if (draft.asList) useProjectStore.getState().updateProject(created.id, LIST_PROJECT_FIELDS);
+    const project = useProjectStore.getState().getProjectById(created.id) ?? created;
     newProjectIdRef.current = project.id;
     setEditingProject(project);
   };
@@ -823,7 +828,7 @@ const ProjectRow = React.memo(function ProjectRow({
                   them would make that order answer to something they didn't
                   choose. See Project.kind. */}
               {project.kind === 'list' && (
-                <Ionicons name="checkbox-outline" size={14} color={colors.textTertiary} />
+                <Ionicons name="list-outline" size={14} color={colors.textTertiary} />
               )}
               <Text style={styles.projectName} numberOfLines={1}>{project.title}</Text>
               {/* Nothing a row can do to itself while a selection is being

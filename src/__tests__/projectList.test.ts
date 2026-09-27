@@ -182,6 +182,11 @@ describe('sortProjects', () => {
     expect(ids(sortProjects([a, b, c, d], 'deadline', progress))).toEqual(['c', 'b', 'a', 'd']);
   });
 
+  it("dates a trip with no deadline by its departure", () => {
+    const trip = makeProject({ id: 't', sortOrder: 9, awayStart: '2030-04-01T12:00:00.000Z' });
+    expect(ids(sortProjects([a, b, c, trip], 'deadline', progress))).toEqual(['c', 't', 'b', 'a']);
+  });
+
   it('puts the most-done first and an empty project last', () => {
     expect(ids(sortProjects([a, b, c, d], 'progress', progress))).toEqual(['c', 'd', 'a', 'b']);
   });

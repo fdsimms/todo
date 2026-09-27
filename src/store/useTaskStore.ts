@@ -2149,7 +2149,8 @@ export const useTaskStore = create<TaskStore>((set, get) => ({
     // about tasks and is what the caller reports.
     useFocusStore.getState().purgeHistoryBefore(cutoff);
 
-    const ids = selectPurgeableTaskIds(get().tasks, cutoff);
+    const listIds = new Set(useProjectStore.getState().projects.filter(p => p.kind === 'list').map(p => p.id));
+    const ids = selectPurgeableTaskIds(get().tasks, cutoff, listIds);
     if (ids.length === 0) return 0;
     const idSet = new Set(ids);
 

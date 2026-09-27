@@ -4962,30 +4962,33 @@ export function TaskEditor({ visible, task, initialDraft, onClose }: Props) {
                 expanded={fieldOpen('waitingOnPerson')}
                 onToggle={() => toggleField('waitingOnPerson')}
               >
-                <View style={styles.pillRow}>
-                  {people.map(p => {
+                {/* A PillGroup, so the tenth recruiter can be added right here
+                    rather than on the People screen first, and a long list
+                    folds behind "N more" with a find field. Single-choice: a
+                    tap picks and closes, and tapping the chosen one clears it,
+                    the only way out of a wait nothing else ends. */}
+                <PillGroup
+                  noun="person"
+                  pluralNoun="people"
+                  options={people.map(p => {
                     const on = waitingOnPersonId === p.id;
-                    return (
-                      <TouchableOpacity
-                        key={p.id}
-                        style={[styles.pill, on && styles.pillActiveNeutral]}
-                        // Single-choice, so the field closes on a tap the way
-                        // the other one-answer pickers do — and tapping the
-                        // chosen one again clears it, which is the only way
-                        // out of a wait nothing else ends.
-                        onPress={() => {
-                          haptics.tap();
-                          setWaitingOnPersonId(on ? null : p.id);
-                          closeField('waitingOnPerson');
-                        }}
-                        accessibilityRole="radio"
-                        accessibilityState={{ selected: on }}
-                      >
-                        <Text style={[styles.pillText, on && styles.pillTextActive]}>{displayNameOf(p)}</Text>
-                      </TouchableOpacity>
-                    );
+                    return {
+                      key: p.id,
+                      label: displayNameOf(p),
+                      selected: on,
+                      onPress: () => {
+                        haptics.tap();
+                        setWaitingOnPersonId(on ? null : p.id);
+                        closeField('waitingOnPerson');
+                      },
+                    };
                   })}
-                </View>
+                  onCreate={name => {
+                    const person = usePersonStore.getState().createPerson(name);
+                    setWaitingOnPersonId(person.id);
+                    closeField('waitingOnPerson');
+                  }}
+                />
               </CollapsibleField>
               </>
             ),

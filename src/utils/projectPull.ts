@@ -630,6 +630,11 @@ export function buildProjectPullPlan(
   scopeProjectIds?: readonly string[],
   /** Lands every proposal on this day; see suggestPullDate. */
   landOnDayKey?: string | null,
+  /**
+   * How many projects to propose. MAX_PULLED_PROJECTS keeps the sheet calm by
+   * default; "+N more waiting" raises it, when the person asks to see them.
+   */
+  limit: number = MAX_PULLED_PROJECTS,
 ): ProjectPullPlan {
   let stalls = findProjectStalls(projects, allTasks, 'ask');
   if (scopeProjectIds && scopeProjectIds.length > 0) {
@@ -653,7 +658,7 @@ export function buildProjectPullPlan(
   // stacked them all on it. So each pull is written into `working` where
   // projectPullUpdates would put it, the way deloadPlan keeps its own.
   let working: Task[] = [...allTasks];
-  const proposals = stalls.slice(0, MAX_PULLED_PROJECTS).map(stall => {
+  const proposals = stalls.slice(0, limit).map(stall => {
     const candidates = rankPullCandidates(stall.pullable, ctx);
     const suggestion = suggestPullDate(candidates[0], working, landingToday, stall.quietDays, landOnDayKey);
     if (suggestion.dayLabel === 'Today') landingToday.push(candidates[0]);

@@ -70,7 +70,7 @@ const NUDGE_MODE_OPTIONS: SegmentOption<NudgeMode>[] = NUDGE_MODES.map(mode => (
 const NUDGE_MODE_HINT: Record<NudgeMode, string> = {
   never: 'Stays out of "Pull from projects" and never writes a review task. For a list you keep rather than work through, like gift ideas.',
   'on-ask': 'Shows up in "Pull from projects" when you open it, and never brings itself up.',
-  scheduled: 'Adds a review task once it has gone this long with nothing scheduled.',
+  scheduled: "Adds a review task once nothing in it is scheduled and nothing's been finished in it for this long.",
 };
 
 interface Props {
@@ -132,6 +132,14 @@ export function ProjectEditor({ visible, project, isNew, onClose }: Props) {
   const addGroceryList = useGroceryStore(s => s.addList);
   const kitchenEnabled = useSettingsStore(s => s.kitchenEnabled);
   const simpleMode = useSettingsStore(s => s.simpleMode);
+  const weekendNudgeOn = useSettingsStore(s => s.weekendNudgeTasks && !!s.weekendNudgeTaskCategory);
+  const forecastOn = useSettingsStore(s => s.destinationForecastEnabled);
+  const setForecastOn = useSettingsStore(s => s.setDestinationForecastEnabled);
+  // What "Pause tasks while away" would actually hide: only what's already
+  // marked to pause on vacation. Counted so the hint can say when that's
+  // nothing, which turned vacation mode on to hide nothing at all.
+  const pausedTaskCount = useTaskStore(s => s.tasks.filter(t => t.vacationPause && !t.completed && !t.archived && t.parentId === null).length);
+  const pausedCategoryCount = useCategoryStore(s => s.categories.filter(c => c.hideOnVacation).length);
   // Rule 2 of simplified mode: a project that already has a trip keeps its
   // rows, whatever the switch says.
   const awayFieldShown = featureShown('awayDates', simpleMode, awayStart !== null);
@@ -642,6 +650,31 @@ export function ProjectEditor({ visible, project, isNew, onClose }: Props) {
             />
           </View>
         )}
+        {/* The forecast is an app-wide switch, off by default, and was only
+            mentioned in the footer. Offered right where a place is typed. */}
+        {awayStart && destination.trim().length > 0 && (
+          <TouchableOpacity
+            style={styles.optionRow}
+            onPress={() => { haptics.tap(); setForecastOn(!forecastOn); }}
+            activeOpacity={interaction.activeOpacity}
+            accessibilityRole="switch"
+            accessibilityLabel="Show the forecast for where you're going"
+            accessibilityState={{ checked: forecastOn }}
+          >
+            <Ionicons name="partly-sunny-outline" size={18} color={forecastOn ? colors.accent : colors.textSecondary} />
+            <View style={styles.optionContent}>
+              <Text style={styles.optionLabel}>Show the forecast there</Text>
+              <Text style={styles.optionHint}>
+                {forecastOn
+                  ? "Looks up the place's weather for your trip dates and shows it on the project. Applies to every trip."
+                  : 'Off. Turning it on looks up the place by name, for every trip.'}
+              </Text>
+            </View>
+            <View style={[styles.toggle, forecastOn && styles.toggleOn]}>
+              <View style={[styles.toggleKnob, forecastOn && styles.toggleKnobOn]} />
+            </View>
+          </TouchableOpacity>
+        )}
         {awayStart && (
           <TouchableOpacity
             style={styles.optionRow}
@@ -656,7 +689,12 @@ export function ProjectEditor({ visible, project, isNew, onClose }: Props) {
               <Text style={styles.optionLabel}>Pause tasks while away</Text>
               <Text style={styles.optionHint}>
                 {awayPauses
-                  ? "Vacation mode turns on the day you leave and off when you're back. It hides only the tasks and categories you've already set to pause on vacation."
+                  ? pausedTaskCount + pausedCategoryCount === 0
+                    ? "Vacation mode turns on the day you leave and off when you're back. Nothing is set to pause on vacation yet, so it won't hide anything until you set that on a task or category."
+                    : `Vacation mode turns on the day you leave and off when you're back, hiding ${[
+                        pausedTaskCount > 0 ? `${pausedTaskCount} ${pausedTaskCount === 1 ? 'task' : 'tasks'}` : null,
+                        pausedCategoryCount > 0 ? `${pausedCategoryCount} ${pausedCategoryCount === 1 ? 'category' : 'categories'}` : null,
+                      ].filter(Boolean).join(' and ')} set to pause on vacation.`
                   : 'Vacation mode stays however you set it.'}
               </Text>
             </View>
@@ -688,7 +726,7 @@ export function ProjectEditor({ visible, project, isNew, onClose }: Props) {
         )}
       </View>
       <Text style={styles.sectionFooter}>
-        The days you're away from home. Look ahead shows what's due while you're gone, and the card counts down to the day you leave. The day you come back doesn't count as a day away. Leave these blank if this project isn't a trip. Where you're going is only looked up if the destination forecast is on in Settings.
+        The days you're away from home, for a trip. Leave these blank otherwise. The day you come back doesn't count as a day away.
       </Text>
       </>
       )}
@@ -832,8 +870,8 @@ export function ProjectEditor({ visible, project, isNew, onClose }: Props) {
             <Text style={styles.optionLabel}>Ongoing</Text>
             <Text style={styles.optionHint}>
               {ongoing
-                ? "Never offered as complete, however many tasks are done"
-                : "Offers to mark complete once every task is done"}
+                ? 'Never offered as complete. Its card counts open tasks instead of a progress bar'
+                : 'Offers to mark complete once every task is done'}
             </Text>
           </View>
           <View style={[styles.toggle, ongoing && styles.toggleOn]}>
@@ -853,9 +891,11 @@ export function ProjectEditor({ visible, project, isNew, onClose }: Props) {
           <View style={styles.optionContent}>
             <Text style={styles.optionLabel}>Suggest for a free weekend</Text>
             <Text style={styles.optionHint}>
-              {weekendSource
-                ? 'The weekend task names this project when a weekend has nothing on it'
-                : 'The weekend task does not name this project'}
+              {!weekendNudgeOn
+                ? 'Takes effect once "Nudge for an empty weekend" is on in Settings, under Automatic tasks'
+                : weekendSource
+                  ? 'The weekend task names this project when a weekend has nothing on it'
+                  : 'The weekend task does not name this project'}
             </Text>
           </View>
           <View style={[styles.toggle, weekendSource && styles.toggleOn]}>

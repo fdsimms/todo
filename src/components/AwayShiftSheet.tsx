@@ -18,7 +18,7 @@ import { useTaskStore } from '../store/useTaskStore';
 import { useSettingsStore } from '../store/useSettingsStore';
 import { SheetScrim } from './SheetScrim';
 import { useSheetHiddenOffset } from '../hooks/useSheetHiddenOffset';
-import { formatDeadlineDate } from '../utils/dateUtils';
+import { formatDeadlineDate, getEffectiveTaskDate } from '../utils/dateUtils';
 import {
   awayShiftUpdates,
   buildAwayShiftPlan,
@@ -71,6 +71,12 @@ export function AwayShiftSheet({ visible, tasks, from, to, projectTitle, onClose
   // Computed once per opening, not derived live: it is a snapshot the reader
   // is deciding on, the same rule ProjectPullSheet's plan follows.
   const [plan, setPlan] = useState<AwayShiftPlan | null>(null);
+  // Open top-level tasks with no date on them: the plan skips these, and the
+  // hint says so.
+  const undatedCount = useMemo(
+    () => tasks.filter(t => !t.completed && !t.archived && t.parentId === null && !getEffectiveTaskDate(t)).length,
+    [tasks],
+  );
   const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set());
 
   const hiddenY = useSheetHiddenOffset();
@@ -168,6 +174,13 @@ export function AwayShiftSheet({ visible, tasks, from, to, projectTitle, onClose
           {hasAnchoredMember(plan) && (
             <Text style={styles.hint}>
               A repeating task moves this one time. Its schedule stays where it is.
+            </Text>
+          )}
+          {/* The undated ones aren't in the list at all, which read as them
+              being forgotten rather than having no date to move. */}
+          {undatedCount > 0 && (
+            <Text style={styles.hint}>
+              {undatedCount === 1 ? '1 task has' : `${undatedCount} tasks have`} no date, so {undatedCount === 1 ? "it isn't" : "they aren't"} listed and won't move.
             </Text>
           )}
 

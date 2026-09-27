@@ -396,6 +396,13 @@ describe('anchorLabel', () => {
 });
 
 describe('formatOffsetWithAnchor', () => {
+  // A trip template's anchors are the days you leave and get back.
+  it('names a trip template\'s anchors as leaving and coming back', () => {
+    expect(formatOffsetWithAnchor(-42, 'start', true)).toBe('42 days before leaving');
+    expect(formatOffsetWithAnchor(1, 'end', true)).toBe("1 day after you're back");
+    expect(formatOffsetWithAnchor(0, 'start', true)).toBe('The day you leave');
+  });
+
   it.each([
     [null, 'start', 'No date'],
     [0, 'start', 'On start date'],

@@ -19,6 +19,7 @@ import {
   buildProjectPullPlan,
   describePullEmpty,
   describeQuietReason,
+  MAX_PULLED_PROJECTS,
   projectPullUpdates,
   suggestPullDate,
   type ProjectPullProposal,
@@ -31,6 +32,8 @@ import { WhenPicker } from './WhenPicker';
 import { SheetScrim } from './SheetScrim';
 import type { Task } from '../types';
 import { useSheetHiddenOffset } from '../hooks/useSheetHiddenOffset';
+import { displayTitleFor } from '../utils/visibilityUtils';
+import { describeCadence } from '../utils/nudgeCadence';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
 interface Props {
@@ -151,9 +154,21 @@ export function ProjectPullSheet({ visible, todaysTasks, scopeProjectIds, landOn
   const translateY = useRef(new Animated.Value(hiddenY)).current;
   const backdropOpacity = useRef(new Animated.Value(0)).current;
 
+  // Raised by tapping "+N more waiting"; back to the calm default on each open.
+  const [limit, setLimit] = useState(MAX_PULLED_PROJECTS);
+  const showAllProjects = () => {
+    haptics.tap();
+    animateLayout();
+    const next = buildProjectPullPlan(projects, allTasks, todaysTasks, scopeProjectIds, landOnDayKey, Number.MAX_SAFE_INTEGER);
+    setLimit(Number.MAX_SAFE_INTEGER);
+    setPlan(next);
+    setSelectedIds(initialSelectedIds(next));
+  };
+
   useEffect(() => {
     if (!visible) return;
-    const next = buildProjectPullPlan(projects, allTasks, todaysTasks, scopeProjectIds, landOnDayKey);
+    setLimit(MAX_PULLED_PROJECTS);
+    const next = buildProjectPullPlan(projects, allTasks, todaysTasks, scopeProjectIds, landOnDayKey, limit);
     setPlan(next);
     setSelectedIds(initialSelectedIds(next));
     setCandidateIndex({});
@@ -325,7 +340,7 @@ export function ProjectPullSheet({ visible, todaysTasks, scopeProjectIds, landOn
     haptics.tap();
     forgivVacationStreaks();
     setVacationMode(false);
-    const next = buildProjectPullPlan(projects, allTasks, todaysTasks, scopeProjectIds, landOnDayKey);
+    const next = buildProjectPullPlan(projects, allTasks, todaysTasks, scopeProjectIds, landOnDayKey, limit);
     setPlan(next);
     setSelectedIds(initialSelectedIds(next));
   };
@@ -349,7 +364,7 @@ export function ProjectPullSheet({ visible, todaysTasks, scopeProjectIds, landOn
         activeOpacity={interaction.activeOpacity}
         accessibilityRole="checkbox"
         accessibilityState={{ checked }}
-        accessibilityLabel={`${task.title}, from ${p.project.title}${p.quietDays > 0 ? `, ${describeQuietReason(p.quietDays)}` : ''}, schedule for ${dayLabel}`}
+        accessibilityLabel={`${displayTitleFor(task)}, from ${p.project.title}${p.quietDays > 0 ? `, ${describeQuietReason(p.quietDays)}` : ''}, schedule for ${dayLabel}`}
         accessibilityHint="Long press to pick a different day"
       >
         <Ionicons
@@ -362,7 +377,7 @@ export function ProjectPullSheet({ visible, todaysTasks, scopeProjectIds, landOn
             {p.project.title.toUpperCase()}
           </Text>
           <Text style={[styles.rowTitle, !checked && styles.rowTitleUnchecked]} numberOfLines={1}>
-            {task.title}
+            {displayTitleFor(task)}
           </Text>
           <Text style={styles.rowSub} numberOfLines={1}>
             <Text style={styles.rowDest}>{dayLabel}</Text>
@@ -410,7 +425,7 @@ export function ProjectPullSheet({ visible, todaysTasks, scopeProjectIds, landOn
         activeOpacity={interaction.activeOpacity}
         accessibilityRole="checkbox"
         accessibilityState={{ checked }}
-        accessibilityLabel={`${task.title}, from ${p.project.title}, schedule for ${dayLabel}`}
+        accessibilityLabel={`${displayTitleFor(task)}, from ${p.project.title}, schedule for ${dayLabel}`}
         accessibilityHint="Long press to pick a different day"
       >
         <Ionicons
@@ -420,7 +435,7 @@ export function ProjectPullSheet({ visible, todaysTasks, scopeProjectIds, landOn
         />
         <View style={styles.rowContent}>
           <Text style={[styles.rowTitle, !checked && styles.rowTitleUnchecked]} numberOfLines={1}>
-            {task.title}
+            {displayTitleFor(task)}
           </Text>
           <Text style={styles.rowSub} numberOfLines={1}>
             <Text style={styles.rowDest}>{dayLabel}</Text>
@@ -450,7 +465,15 @@ export function ProjectPullSheet({ visible, todaysTasks, scopeProjectIds, landOn
           <View style={styles.header}>
             <Text style={styles.sheetTitle}>Pull from projects</Text>
             {plan.overflowCount > 0 && (
-              <Text style={styles.overflow}>+{plan.overflowCount} more waiting</Text>
+              <TouchableOpacity
+                onPress={showAllProjects}
+                hitSlop={8}
+                activeOpacity={interaction.activeOpacity}
+                accessibilityRole="button"
+                accessibilityLabel={`Show ${plan.overflowCount} more waiting projects`}
+              >
+                <Text style={styles.overflow}>+{plan.overflowCount} more waiting</Text>
+              </TouchableOpacity>
             )}
           </View>
 
@@ -539,7 +562,13 @@ export function ProjectPullSheet({ visible, todaysTasks, scopeProjectIds, landOn
               accessibilityRole="button"
               accessibilityLabel="Nothing to pull, mark this project reviewed"
             >
-              <Text style={styles.skipBtnText}>Nothing to pull, mark reviewed</Text>
+              <Text style={styles.skipBtnText}>
+                {/* Says what marking reviewed does: the quiet clock restarts,
+                    so the next review task is a full cadence away. */}
+                {scopedProject && scopedProject.nudgeCadenceDays > 0
+                  ? `Nothing to pull, ask again in ${describeCadence(scopedProject.nudgeCadenceDays)}`
+                  : 'Nothing to pull, mark reviewed'}
+              </Text>
             </TouchableOpacity>
           )}
         </View>
@@ -555,7 +584,7 @@ export function ProjectPullSheet({ visible, todaysTasks, scopeProjectIds, landOn
         title="Schedule for"
         showTimeOfDay={false}
         taskId={pickerTarget?.task.id}
-        taskTitle={pickerTarget?.task.title}
+        taskTitle={pickerTarget ? displayTitleFor(pickerTarget.task) : undefined}
         taskNotes={pickerTarget?.task.notes}
         taskTags={pickerTarget?.task.tags}
         taskCategory={pickerTarget?.task.category}

@@ -138,6 +138,13 @@ const makeTask = (overrides: Partial<Task> = {}): Task => ({
 });
 
 describe('fuzzySearch', () => {
+  // The answer a question recorded is searchable, so "matte" finds the task
+  // that asked which tile.
+  it('finds a task by its recorded answer', () => {
+    const task = makeTask({ id: 'q', title: 'Pick countertop material', deliverableKind: 'text', deliverableValue: 'Matte quartz' });
+    expect(fuzzySearch([task], 'quartz').map(r => r.task.id)).toEqual(['q']);
+  });
+
   describe('empty / trivial inputs', () => {
     it('returns [] for empty query', () => {
       expect(fuzzySearch([makeTask()], '')).toEqual([]);

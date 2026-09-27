@@ -399,6 +399,8 @@ export function TaskGroupEditor({ visible, group, isNew, onClose, projectId }: P
         placeholderTextColor={colors.textTertiary}
         maxLength={TITLE_MAX_LENGTH}
         multiline
+        // A new one's name is what the sheet was opened to type.
+        autoFocus={!!isNew}
       />
       <TextInput
         style={styles.notesInput}
@@ -409,6 +411,12 @@ export function TaskGroupEditor({ visible, group, isNew, onClose, projectId }: P
         multiline
       />
 
+      {/* A new section made on a project's page is a heading and nothing more
+          yet: a name, like "Plumbing". Category, project and tags are stack
+          settings it can pick up later, from the same sheet, once it exists.
+          The project field is left off a section opened from its own project
+          page outright, since that answer is the page it was opened on. */}
+      {!(isNew && projectId) && (
       <View style={styles.sectionCard}>
         <CollapsibleField
           label="Category"
@@ -435,7 +443,7 @@ export function TaskGroupEditor({ visible, group, isNew, onClose, projectId }: P
             ))}
           </View>
         </CollapsibleField>
-        {projects.length > 0 && (
+        {projects.length > 0 && !projectId && (
           <>
             <View style={styles.cardSep} />
             <CollapsibleField
@@ -499,6 +507,7 @@ export function TaskGroupEditor({ visible, group, isNew, onClose, projectId }: P
           </View>
         </CollapsibleField>
       </View>
+      )}
 
       <View style={styles.sectionCard}>
         <View style={styles.cardSection}>

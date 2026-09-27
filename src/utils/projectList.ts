@@ -172,13 +172,19 @@ export function sortProjects(
   const byHand = (a: Project, b: Project) => a.sortOrder - b.sortOrder;
   const sorted = [...projects];
   switch (sort) {
-    case 'deadline':
+    case 'deadline': {
+      // A trip's date is its departure: trips made from a template carry no
+      // deadline (the span is their date), and sank to the bottom without it.
+      const due = (p: Project) => p.deadline ?? p.awayStart;
       return sorted.sort((a, b) => {
-        if (a.deadline && b.deadline) return a.deadline.localeCompare(b.deadline) || byHand(a, b);
-        if (a.deadline) return -1;
-        if (b.deadline) return 1;
+        const da = due(a);
+        const db = due(b);
+        if (da && db) return da.localeCompare(db) || byHand(a, b);
+        if (da) return -1;
+        if (db) return 1;
         return byHand(a, b);
       });
+    }
     case 'progress': {
       const fraction = (p: Project) => {
         const progress = progressById.get(p.id);

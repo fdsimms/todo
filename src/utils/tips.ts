@@ -332,6 +332,17 @@ export const TIPS: Tip[] = [
     keywords: ['project', 'progress', 'milestone', 'goal'],
   },
   {
+    // The other shape a project takes, which the tip above argued against:
+    // a running list has no end, and that's fine.
+    id: 'projectLists',
+    area: 'organize',
+    screen: 'projects',
+    icon: 'list-outline',
+    title: 'A project can be a running list',
+    body: 'Turn on List when you create a project, for things like questions for the doctor or books to read. A list has no dates or finish line, and you can type or paste lines straight into it.',
+    keywords: ['list', 'checklist', 'reading list', 'wish list', 'questions'],
+  },
+  {
     id: 'templates',
     feature: 'templates',
     area: 'organize',

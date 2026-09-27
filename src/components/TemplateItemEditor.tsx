@@ -120,6 +120,7 @@ export function TemplateItemEditor({ visible, templateId, templateName, item, in
   const categories = useCategoryStore(useShallow(s => s.categories));
   const addItem = useTemplateStore(s => s.addItem);
   const updateItem = useTemplateStore(s => s.updateItem);
+  const tripTemplate = useTemplateStore(s => s.templates.find(t => t.id === templateId)?.anchorsAreAway ?? false);
   // Only a choice can gate an item: a number or a free-text answer has no
   // fixed set to pick from, so there's nothing an author could tick.
   const choiceQuestions = useTemplateStore(
@@ -692,7 +693,7 @@ export function TemplateItemEditor({ visible, templateId, templateName, item, in
             label="Count days from"
             value={anchor}
             onChange={setAnchor}
-            options={(['start', 'end'] as TemplateAnchor[]).map(a => ({ value: a, label: anchorLabel(a) }))}
+            options={(['start', 'end'] as TemplateAnchor[]).map(a => ({ value: a, label: anchorLabel(a, tripTemplate) }))}
           />
         </View>
         <View style={styles.sep} />
@@ -702,6 +703,7 @@ export function TemplateItemEditor({ visible, templateId, templateName, item, in
           hint="When the task is due."
           offset={dueOffsetDays}
           anchor={anchor}
+          away={tripTemplate}
           onChange={setDueOffsetDays}
           colors={colors}
           styles={styles}
@@ -713,6 +715,7 @@ export function TemplateItemEditor({ visible, templateId, templateName, item, in
           hint="Keeps the task off Today until this day."
           offset={deferOffsetDays}
           anchor={anchor}
+          away={tripTemplate}
           onChange={setDeferOffsetDays}
           colors={colors}
           styles={styles}
@@ -724,6 +727,7 @@ export function TemplateItemEditor({ visible, templateId, templateName, item, in
           hint="A hard cut-off, shown separately from the due date."
           offset={deadlineOffsetDays}
           anchor={anchor}
+          away={tripTemplate}
           onChange={setDeadlineOffsetDays}
           colors={colors}
           styles={styles}
@@ -1825,13 +1829,15 @@ export function TemplateItemEditor({ visible, templateId, templateName, item, in
  * human offset label ("3 days before", "On anchor day") with a clear button.
  */
 function OffsetRow({
-  icon, label, hint, offset, anchor, onChange, colors, styles,
+  icon, label, hint, offset, anchor, away, onChange, colors, styles,
 }: {
   icon: React.ComponentProps<typeof Ionicons>['name'];
   label: string;
   hint: string;
   offset: number | null;
   anchor: TemplateAnchor;
+  /** A trip template's: its anchors read as leaving and coming back. */
+  away: boolean;
   onChange: (offset: number | null) => void;
   colors: Colors;
   styles: ReturnType<typeof makeStyles>;
@@ -1843,7 +1849,7 @@ function OffsetRow({
         <View style={styles.optionContent}>
           <Text style={styles.optionLabel}>{label}</Text>
           <Text style={styles.optionHint}>
-            {offset !== null ? formatOffsetWithAnchor(offset, anchor) : hint}
+            {offset !== null ? formatOffsetWithAnchor(offset, anchor, away) : hint}
           </Text>
         </View>
         {offset !== null ? (
@@ -1872,17 +1878,24 @@ function OffsetRow({
           <TouchableOpacity hitSlop={8}
             style={styles.intervalBtn}
             onPress={() => onChange(offset - 1)}
+            // A week at a time on a hold: "6 weeks before" was 42 taps.
+            onLongPress={() => { haptics.tap(); onChange(offset - 7); }}
+            delayLongPress={interaction.delayLongPress}
             accessibilityRole="button"
             accessibilityLabel="One day earlier"
+            accessibilityHint="Hold to move a week earlier"
           >
             <Ionicons name="remove" size={16} color={colors.text} />
           </TouchableOpacity>
-          <Text style={styles.intervalValue}>{formatOffsetWithAnchor(offset, anchor)}</Text>
+          <Text style={styles.intervalValue}>{formatOffsetWithAnchor(offset, anchor, away)}</Text>
           <TouchableOpacity hitSlop={8}
             style={styles.intervalBtn}
             onPress={() => onChange(offset + 1)}
+            onLongPress={() => { haptics.tap(); onChange(offset + 7); }}
+            delayLongPress={interaction.delayLongPress}
             accessibilityRole="button"
             accessibilityLabel="One day later"
+            accessibilityHint="Hold to move a week later"
           >
             <Ionicons name="add" size={16} color={colors.text} />
           </TouchableOpacity>

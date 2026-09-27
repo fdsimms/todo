@@ -27,7 +27,8 @@ import { animateLayout } from '../utils/layoutAnimation';
 import { displayTitleFor, isTaskBlocked } from '../utils/visibilityUtils';
 import { describeBlockerWait } from '../utils/blockerStatus';
 import { asksOnCompletion } from '../utils/deliverables';
-import { formatTaskDate, getCurrentDayStart } from '../utils/dateUtils';
+import { formatTaskDate, getCurrentDayStart, getDayStart } from '../utils/dateUtils';
+import { differenceInCalendarDays } from 'date-fns/differenceInCalendarDays';
 import type { DriftEntry } from '../utils/postpone';
 import type { Person, Task } from '../types';
 
@@ -357,6 +358,8 @@ export function StuckScreen() {
                 task={task}
                 categoryLabel={labelForCategory(task.category, getCategoryByName)}
                 dateLabel={formatTaskDate(task, dayResetTime)}
+                projectTitle={task.projectId ? projectTitlesById.get(task.projectId) ?? null : null}
+                waitingLabel={waitingSinceLabel(task)}
                 onPress={openEditor}
                 onRelease={release}
                 styles={styles}
@@ -422,6 +425,8 @@ export function StuckScreen() {
               task={task}
               categoryLabel={labelForCategory(task.category, getCategoryByName)}
               dateLabel={formatTaskDate(task, dayResetTime)}
+              projectTitle={task.projectId ? projectTitlesById.get(task.projectId) ?? null : null}
+              waitingLabel={waitingSinceLabel(task)}
               onPress={openEditor}
               onRelease={release}
               styles={styles}
@@ -541,6 +546,14 @@ interface WaiterRowProps {
   task: Task;
   categoryLabel: string | null;
   dateLabel: string | null;
+  /** The project it's filed under, which Drift rows already showed. */
+  projectTitle: string | null;
+  /**
+   * How long this task has been waiting on its person ("Waiting 10 days").
+   * On the task, not on the person's heading: that would be a tally about
+   * somebody (see docs/arch/people.md); this is a fact about your own task.
+   */
+  waitingLabel: string | null;
   // Each takes the task it acts on rather than the screen closing over it once
   // per row, so one stable function serves every row and the memo holds.
   onPress: (task: Task) => void;
@@ -550,7 +563,14 @@ interface WaiterRowProps {
   cardShadow: object;
 }
 
-const WaiterRow = React.memo(function WaiterRow({ task, categoryLabel, dateLabel, onPress, onRelease, styles, colors, cardShadow }: WaiterRowProps) {
+function waitingSinceLabel(task: Task): string | null {
+  if (!task.waitingOnPersonId || !task.waitingOnPersonSince) return null;
+  const days = differenceInCalendarDays(getCurrentDayStart(), getDayStart(new Date(task.waitingOnPersonSince)));
+  if (days <= 0) return 'Waiting since today';
+  return `Waiting ${days} ${days === 1 ? 'day' : 'days'}`;
+}
+
+const WaiterRow = React.memo(function WaiterRow({ task, categoryLabel, dateLabel, projectTitle, waitingLabel, onPress, onRelease, styles, colors, cardShadow }: WaiterRowProps) {
   const title = displayTitleFor(task);
   return (
     <View style={[styles.card, cardShadow]}>
@@ -560,12 +580,24 @@ const WaiterRow = React.memo(function WaiterRow({ task, categoryLabel, dateLabel
         activeOpacity={interaction.activeOpacity}
         accessible
         accessibilityRole="button"
-        accessibilityLabel={[title, categoryLabel, dateLabel].filter(Boolean).join(', ')}
+        accessibilityLabel={[title, projectTitle, categoryLabel, dateLabel, waitingLabel].filter(Boolean).join(', ')}
         accessibilityHint="Double tap to open task"
       >
         <Text style={styles.taskTitle} numberOfLines={2}>{title}</Text>
-        {(categoryLabel || dateLabel) && (
+        {(categoryLabel || dateLabel || projectTitle || waitingLabel) && (
           <View style={styles.metaRow}>
+            {waitingLabel && (
+              <View style={styles.metaChip}>
+                <Ionicons name="hourglass-outline" size={iconSize.xs} color={colors.textSecondary} />
+                <Text style={styles.metaText} numberOfLines={1}>{waitingLabel}</Text>
+              </View>
+            )}
+            {projectTitle && (
+              <View style={styles.metaChip}>
+                <Ionicons name="briefcase-outline" size={iconSize.xs} color={colors.textSecondary} />
+                <Text style={styles.metaText} numberOfLines={1}>{projectTitle}</Text>
+              </View>
+            )}
             {categoryLabel && (
               <View style={styles.metaChip}>
                 <Ionicons name="folder-outline" size={iconSize.xs} color={colors.textSecondary} />

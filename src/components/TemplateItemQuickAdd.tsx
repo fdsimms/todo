@@ -68,6 +68,7 @@ interface Props {
  *   after this sheet has gone, exactly as QuickAddNameSheet does.
  */
 export function TemplateItemQuickAdd({ visible, templateId, templateName, onClose, onOpenFull, onAddNested, onCreated }: Props) {
+  const tripTemplate = useTemplateStore(st => st.templates.find(t => t.id === templateId)?.anchorsAreAway ?? false);
   const colors = useColors();
   const { isDark, shadows } = useTheme();
   const styles = useMemo(() => makeStyles(colors), [colors]);
@@ -259,7 +260,7 @@ export function TemplateItemQuickAdd({ visible, templateId, templateName, onClos
               accessibilityRole="button"
               accessibilityLabel={
                 dueOffsetDays !== null
-                  ? `Due: ${formatOffsetWithAnchor(dueOffsetDays, anchor)}`
+                  ? `Due: ${formatOffsetWithAnchor(dueOffsetDays, anchor, tripTemplate)}`
                   : 'Set when this item is due'
               }
             >
@@ -270,7 +271,7 @@ export function TemplateItemQuickAdd({ visible, templateId, templateName, onClos
               />
               {dueOffsetDays !== null && (
                 <Text style={[styles.toolChipText, styles.toolChipTextSet, styles.toolChipTextTruncate]} numberOfLines={1}>
-                  {formatOffsetWithAnchor(dueOffsetDays, anchor)}
+                  {formatOffsetWithAnchor(dueOffsetDays, anchor, tripTemplate)}
                 </Text>
               )}
             </TouchableOpacity>
@@ -365,7 +366,7 @@ export function TemplateItemQuickAdd({ visible, templateId, templateName, onClos
                   >
                     <Ionicons name="remove" size={16} color={colors.text} />
                   </TouchableOpacity>
-                  <Text style={styles.offsetValue}>{formatOffsetWithAnchor(dueOffsetDays, anchor)}</Text>
+                  <Text style={styles.offsetValue}>{formatOffsetWithAnchor(dueOffsetDays, anchor, tripTemplate)}</Text>
                   <TouchableOpacity hitSlop={8}
                     style={styles.intervalBtn}
                     onPress={() => { haptics.tap(); setDueOffsetDays(d => (d ?? 0) + 1); }}
