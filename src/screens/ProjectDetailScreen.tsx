@@ -20,7 +20,7 @@ import { useShallow } from 'zustand/react/shallow';
 import { useAnswerFirstCompletion } from '../hooks/useAnswerFirstCompletion';
 import { DeliverablePromptQueue } from '../components/DeliverablePromptQueue';
 import { useTaskStore } from '../store/useTaskStore';
-import { useProjectStore, projectDecisions, projectProgress, projectCompletedRows, isProjectPastWindow, projectAnswerTallies, describeAnswerTally } from '../store/useProjectStore';
+import { useProjectStore, projectDecisions, projectProgress, projectCompletedRows, isProjectPastWindow, projectAnswerTallies, answerTallyParts } from '../store/useProjectStore';
 import { AddGuestsSheet } from '../components/AddGuestsSheet';
 import { describeProjectActivity, projectActivity, projectCardCaption, projectProgressNote } from '../utils/projectList';
 import { nextPullCandidate } from '../utils/projectPull';
@@ -1214,7 +1214,7 @@ export function ProjectDetailScreen() {
   const paused = !!project?.pausedUntil && isPausedOn(project, getLogicalDayKey(new Date(), dayResetTime));
   // "12 Yes, 3 No, 5 waiting", one line per set of questions. See projectAnswerTallies.
   const answerTallies = useMemo(
-    () => projectAnswerTallies(projectId, allTasks).map(describeAnswerTally).filter(Boolean),
+    () => projectAnswerTallies(projectId, allTasks).map(answerTallyParts).filter(parts => parts.length > 0),
     [projectId, allTasks],
   );
   const showSummary = !!project && (summaryProgress !== null || summaryCaption !== null || tripLine !== null || !!pullable || paused || activityLine !== null || answerTallies.length > 0);
@@ -1224,6 +1224,10 @@ export function ProjectDetailScreen() {
    * "Guests" section: an existing one on this page if there is one, else a
    * new one at the bottom. A section keeps a guest list from mixing into the
    * party's own tasks, and a second batch lands with the first.
+   *
+   * A new section is a checklist: a guest is ticked off with a reply, never
+   * dated or pulled onto a day. And a name already on the list is left alone,
+   * so pasting the whole list again to add two latecomers adds two rows.
    */
   const addGuests = (names: string[], options: string[]) => {
     if (!project) return;
@@ -1234,14 +1238,27 @@ export function ProjectDetailScreen() {
         (m, item) => Math.max(m, item.type === 'group' ? item.group.sortOrder : item.task.sortOrder),
         0,
       );
-      updateTaskGroup(section.id, { sortOrder: lastSlot + 1 });
+      updateTaskGroup(section.id, { sortOrder: lastSlot + 1, checklist: true });
     }
+    const sectionId = section.id;
+    const onList = new Set(
+      allTasks
+        .filter(t => t.groupId === sectionId && t.projectId === projectId && !t.archived && !t.parentId)
+        .map(t => t.title.trim().toLowerCase()),
+    );
+    const fresh = names.filter(name => {
+      const key = name.trim().toLowerCase();
+      if (!key || onList.has(key)) return false;
+      onList.add(key);
+      return true;
+    });
+    if (fresh.length === 0) return;
     animateLayout();
-    for (const name of names) {
+    for (const name of fresh) {
       addTask(
-        { title: name, projectId, groupId: section.id, deliverableKind: 'choice', deliverableOptions: options },
+        { title: name.trim(), projectId, groupId: sectionId, deliverableKind: 'choice', deliverableOptions: options },
         undefined,
-        { skipTitleRules: true },
+        { skipTitleRules: true, skipCategoryDefault: true },
       );
     }
   };
@@ -1531,8 +1548,25 @@ export function ProjectDetailScreen() {
                       <ProgressBar progress={progress.done / progress.total} />
                     )}
                     {tripLine && <Text style={styles.summaryText}>{tripLine}</Text>}
-                    {answerTallies.map(line => (
-                      <Text key={line} style={styles.summaryText}>{line}</Text>
+                    {/* Each count is a button naming who it counts: "3 Maybe"
+                        is a question about which three. Keyed by place, since
+                        two sets can read the same ("1 Yes"). */}
+                    {answerTallies.map((parts, row) => (
+                      <Text key={`tally-${row}`} style={styles.summaryText}>
+                        {parts.map((part, i) => (
+                          <React.Fragment key={part.label}>
+                            {i > 0 && ', '}
+                            <Text
+                              style={styles.tallyCount}
+                              onPress={() => { haptics.tap(); Alert.alert(part.label, part.names.join('\n')); }}
+                              accessibilityRole="button"
+                              accessibilityHint="Lists who this counts"
+                            >
+                              {part.label}
+                            </Text>
+                          </React.Fragment>
+                        ))}
+                      </Text>
                     ))}
                     {activityLine && (
                       <TouchableOpacity
@@ -2237,6 +2271,9 @@ const makeStyles = (colors: Colors) => StyleSheet.create({
     gap: spacing.sm,
   },
   summaryText: { color: colors.textSecondary, fontSize: font.sm },
+  // A count that opens who it counts. Underlined rather than accent-tinted:
+  // it's a word in a sentence, and accent text there reads as a link out.
+  tallyCount: { textDecorationLine: 'underline', textDecorationColor: colors.textTertiary },
   // Sits where the next line will, so it reads as that line being typed.
   lineFilter: { marginHorizontal: spacing.md, marginBottom: spacing.sm },
   noLinesMatch: {

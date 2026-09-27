@@ -66,6 +66,16 @@ export const YES_NO_OPTIONS = ['Yes', 'No'] as const;
 /** Most options a 'choice' question keeps. Past this it wants to be a text answer. */
 export const DELIVERABLE_OPTIONS_MAX = 8;
 
+/**
+ * Whether a pick-one answer is a "not yet" rather than an answer: Maybe, Not
+ * sure. Recorded on the task without completing it (completeTask), so a guest
+ * who said Maybe stays on the list to be asked again and counts as Maybe in
+ * the tally meanwhile. By the words, since an option is only ever text.
+ */
+export function isTentativeAnswer(value: string | null | undefined): boolean {
+  return !!value && /^(maybe|not sure|unsure|undecided|tentative|perhaps|tbd)$/i.test(value.trim());
+}
+
 /** The options RSVP tracking asks each guest. */
 export const RSVP_OPTIONS = ['Yes', 'No', 'Maybe'];
 

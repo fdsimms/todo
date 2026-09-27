@@ -54,7 +54,7 @@ import { useHealthStore } from '../store/useHealthStore';
 import { activeSegment, segmentPhase, segmentRemaining, timerSegments } from '../utils/timerSegments';
 import { isStreakAtRecord } from '../utils/streakRecord';
 import { isTaskWindowActive, isTaskExpired, effectiveWindowEnd, isRecurrenceNotYetDue, isMissableMealPlanTask, isTaskNew, isTaskVisible, isQuotaTask, isQuotaPartial, quotaRidesOutTheDay, isOnPaceQuota, quotaLeavesTodayAfterLog, quotaNextDueAt, quotaFraction, quotaPaceFraction, quotaUnitsToPace, activeChainStepTitle, displayTitleFor } from '../utils/visibilityUtils';
-import { asksOnCompletion } from '../utils/deliverables';
+import { asksOnCompletion, deliverableKindFor, isTentativeAnswer } from '../utils/deliverables';
 import { offersMealLogOnCompletion } from '../utils/completionTap';
 import { describeTaskRecurrence } from '../utils/recurrenceLabels';
 import { chainPreview, isChainFinish, chainStepAdvancesInPlace, nextChainStep } from '../utils/chain';
@@ -1551,6 +1551,13 @@ export const TaskItem = React.memo(function TaskItem({
    */
   const runCompletion = async (deliverableValue?: string | null) => {
     if (completingRef.current || pacingOutRef.current) return;
+    // A "Maybe" leaves the task open (see completeTask), so it skips the
+    // send-off: the row fading out would say it had gone when it hasn't.
+    if (deliverableKindFor(task) === 'choice' && isTentativeAnswer(deliverableValue)) {
+      haptics.tap();
+      completeTask(task.id, { deliverableValue });
+      return;
+    }
     // Read and cleared here rather than taken as an argument: the deliverable
     // prompt and the completion-timer alert both call this well after
     // handleComplete set it, with no way to hand it back down through their

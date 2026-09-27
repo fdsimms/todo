@@ -1752,6 +1752,19 @@ describe('completeTask', () => {
     expect(task?.completedAt).toBeTruthy();
   });
 
+  it('records a Maybe to a pick-one question without completing the task, and undoes it', () => {
+    useTaskStore.setState({ tasks: [makeTask({ id: 't1', deliverableKind: 'choice', deliverableOptions: ['Yes', 'No', 'Maybe'] } as Partial<Task>)] });
+    useTaskStore.getState().completeTask('t1', { deliverableValue: 'Maybe' });
+    let task = useTaskStore.getState().tasks.find(t => t.id === 't1');
+    expect(task?.completed).toBe(false);
+    expect(task?.deliverableValue).toBe('Maybe');
+    useTaskStore.getState().lastAction?.undo();
+    task = useTaskStore.getState().tasks.find(t => t.id === 't1');
+    expect(task?.deliverableValue ?? null).toBeNull();
+    useTaskStore.getState().completeTask('t1', { deliverableValue: 'Yes' });
+    expect(useTaskStore.getState().tasks.find(t => t.id === 't1')?.completed).toBe(true);
+  });
+
   it('reconciles the deadline calendar event for the completed row', () => {
     useTaskStore.setState({ tasks: [makeTask({ id: 't1', deadline: new Date(2025, 5, 20).toISOString() })] });
     useTaskStore.getState().completeTask('t1');

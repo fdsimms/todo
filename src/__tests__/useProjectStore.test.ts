@@ -6,6 +6,7 @@ import {
   isProjectPastWindow,
   projectAnswerTallies,
   describeAnswerTally,
+  answerTallyParts,
 } from '../store/useProjectStore';
 import { DEFAULT_NUDGE_CADENCE_DAYS } from '../types';
 import { formatDeadlineDate } from '../utils/dateUtils';
@@ -897,8 +898,28 @@ describe('projectAnswerTallies', () => {
       guest('e'),
     ];
     const [tally] = projectAnswerTallies('p1', tasks);
-    expect(tally).toEqual({ options: ['Yes', 'No', 'Maybe'], counts: [2, 1, 0], waiting: 2, unanswered: 0 });
+    expect(tally).toEqual(expect.objectContaining({ options: ['Yes', 'No', 'Maybe'], counts: [2, 1, 0], waiting: 2, unanswered: 0 }));
     expect(describeAnswerTally(tally)).toBe('2 Yes, 1 No, 2 waiting');
+  });
+
+  it('says who is behind each count, for tapping one', () => {
+    const tasks = [
+      guest('a', { title: 'Sam', completed: true, completedAt: '2025-01-01T09:00:00.000Z', deliverableValue: 'Yes' }),
+      guest('b', { title: 'Alex' }),
+    ];
+    expect(answerTallyParts(projectAnswerTallies('p1', tasks)[0])).toEqual([
+      { label: '1 Yes', names: ['Sam'] },
+      { label: '1 waiting', names: ['Alex'] },
+    ]);
+  });
+
+  it('keeps guests out of the project\'s progress, the tally counts them', () => {
+    const tasks = [
+      guest('a', { completed: true, completedAt: '2025-01-01T09:00:00.000Z', deliverableValue: 'Yes' }),
+      guest('b'),
+      makeTask({ id: 'cake', projectId: 'p1' } as Partial<Task>),
+    ];
+    expect(projectProgress('p1', tasks)).toEqual({ done: 0, total: 1 });
   });
 
   it('counts a completion without an answer apart from the ones still waiting', () => {

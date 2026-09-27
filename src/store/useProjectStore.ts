@@ -83,6 +83,10 @@ export function projectProgress(projectId: string, tasks: Task[]): { done: numbe
     if (bucket) bucket.push(member);
     else groups.set(key, [member]);
   }
+  // A guest waiting to reply isn't work left on the party: the tally counts
+  // those members ("12 Yes, 5 waiting"), and counting them here too held the
+  // project short of done until every last RSVP came in.
+  for (const key of talliedMemberKeys(groups)) groups.delete(key);
 
   let done = 0;
   for (const rows of groups.values()) {
@@ -146,8 +150,35 @@ export interface AnswerTally {
   counts: number[];
   /** Members still open with no answer yet. */
   waiting: number;
+  /**
+   * Who is behind each count, by title ("Sam", "The Parks"): `names[i]` for
+   * `options[i]`, then the waiting and the unanswered. The counts are the
+   * lengths; kept both ways so a caller that only wants the line needn't
+   * count, and tapping "3 Maybe" can say which three.
+   */
+  names: string[][];
+  waitingNames: string[];
+  unansweredNames: string[];
   /** Members completed without an answer, or with one that isn't an option. */
   unanswered: number;
+}
+
+/**
+ * The member identities `projectAnswerTallies` counts: every member asking a
+ * pick-one question that at least one other member asks with the same
+ * options. What keeps an RSVP list out of `projectProgress`.
+ */
+function talliedMemberKeys(groups: Map<string, Task[]>): string[] {
+  const bySet = new Map<string, string[]>();
+  for (const [key, rows] of groups) {
+    const withOptions = rows.find(r => deliverableOptionsFor(r).length > 0);
+    if (!withOptions) continue;
+    const setKey = deliverableOptionsFor(withOptions).join('\u0000');
+    const keys = bySet.get(setKey);
+    if (keys) keys.push(key);
+    else bySet.set(setKey, [key]);
+  }
+  return [...bySet.values()].filter(keys => keys.length >= 2).flat();
 }
 
 /**
@@ -167,13 +198,13 @@ export function projectAnswerTallies(projectId: string, tasks: Task[]): AnswerTa
   const members = tasks.filter(t => t.projectId === projectId && t.parentId === null && !t.archived);
   const byId = new Map(members.map(t => [t.id, t]));
   // Per member identity: its options, its latest answer, and whether it's open.
-  const identities = new Map<string, { options: string[]; answer: Task | null; open: boolean }>();
+  const identities = new Map<string, { options: string[]; answer: Task | null; open: boolean; name: string }>();
   for (const member of members) {
     const options = deliverableOptionsFor(member);
     if (options.length === 0) continue;
     const key = memberKey(member, byId);
-    const held = identities.get(key) ?? { options, answer: null, open: false };
-    if (!member.completed) held.open = true;
+    const held = identities.get(key) ?? { options, answer: null, open: false, name: member.title.trim() };
+    if (!member.completed) { held.open = true; held.name = member.title.trim(); }
     if (member.deliverableValue !== null && (!held.answer || answeredAt(member) > answeredAt(held.answer))) {
       held.answer = member;
       held.options = options;
@@ -182,21 +213,37 @@ export function projectAnswerTallies(projectId: string, tasks: Task[]): AnswerTa
   }
 
   const sets = new Map<string, { tally: AnswerTally; members: number }>();
-  for (const { options, answer, open } of identities.values()) {
+  for (const { options, answer, open, name } of identities.values()) {
     const setKey = options.join('\u0000');
     const entry = sets.get(setKey) ?? {
-      tally: { options, counts: options.map(() => 0), waiting: 0, unanswered: 0 },
+      tally: {
+        options, counts: options.map(() => 0), waiting: 0, unanswered: 0,
+        names: options.map(() => [] as string[]), waitingNames: [], unansweredNames: [],
+      },
       members: 0,
     };
     entry.members += 1;
     const value = answer?.deliverableValue?.trim().toLowerCase() ?? null;
     const index = value === null ? -1 : options.findIndex(o => o.toLowerCase() === value);
-    if (index >= 0) entry.tally.counts[index] += 1;
-    else if (open && value === null) entry.tally.waiting += 1;
-    else entry.tally.unanswered += 1;
+    if (index >= 0) { entry.tally.counts[index] += 1; entry.tally.names[index].push(name); }
+    else if (open && value === null) { entry.tally.waiting += 1; entry.tally.waitingNames.push(name); }
+    else { entry.tally.unanswered += 1; entry.tally.unansweredNames.push(name); }
     sets.set(setKey, entry);
   }
   return [...sets.values()].filter(s => s.members >= 2).map(s => s.tally);
+}
+
+/**
+ * A tally's parts, each a count and who it counts: "12 Yes", "5 waiting".
+ * Options nobody picked are left out. The line is these joined with commas.
+ */
+export function answerTallyParts(tally: AnswerTally): Array<{ label: string; names: string[] }> {
+  const parts = tally.options
+    .map((option, i) => (tally.counts[i] > 0 ? { label: `${tally.counts[i]} ${option}`, names: tally.names[i] } : null))
+    .filter((p): p is { label: string; names: string[] } => p !== null);
+  if (tally.waiting > 0) parts.push({ label: `${tally.waiting} waiting`, names: tally.waitingNames });
+  if (tally.unanswered > 0) parts.push({ label: `${tally.unanswered} no answer`, names: tally.unansweredNames });
+  return parts;
 }
 
 /** A tally as one line: "12 Yes, 3 No, 5 waiting". Options nobody picked are left out. */

@@ -154,7 +154,7 @@ import { derivedId, spawnSeed } from '../utils/syncIds';
 import { reorderSubset } from '../utils/reorder';
 import { liveProjectSteps, slotUpdates } from '../utils/projectOrder';
 import { applyMeasuredTime } from '../utils/effort';
-import { chainStepDatedByAnswer, deliverableDate, deliverableKindFor } from '../utils/deliverables';
+import { chainStepDatedByAnswer, deliverableDate, deliverableKindFor, isTentativeAnswer } from '../utils/deliverables';
 import { totalMinutes } from '../utils/recipeUtils';
 import { normalizeTargetUnit } from '../utils/quotaUnit';
 import {
@@ -3212,6 +3212,16 @@ export const useTaskStore = create<TaskStore>((set, get) => ({
     // moment it's actually logged — see taskCompletion.ts's nextDeferUntil),
     // so a caller can confirm past its lock with logEarly.
     if (isRecurrenceNotYetDue(task) && !(task.recurrenceType === 'hours' && options?.logEarly)) return;
+    // "Maybe" to a pick-one question is recorded but doesn't finish the task:
+    // the guest hasn't decided, so the row stays to be answered again, and the
+    // tally counts it as Maybe meanwhile. Here rather than in the prompt so
+    // every path that answers (the bulk queue, the focus session) agrees.
+    if (!missed && deliverableKindFor(task) === 'choice' && isTentativeAnswer(options?.deliverableValue)) {
+      const snapshot = { ...task };
+      get().updateTask(id, { deliverableValue: options!.deliverableValue!.trim() }, { skipPostponeCount: true });
+      get().setLastAction({ label: `Answered ${options!.deliverableValue!.trim()}`, undo: () => get().updateTask(snapshot.id, snapshot) });
+      return;
+    }
 
     // If a timer is still running — or a countdown was paused with time banked
     // on it — stop it first so the session's time is saved.
