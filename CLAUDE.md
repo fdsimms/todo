@@ -490,10 +490,11 @@ are over 1,000 lines, and the ten biggest source files by name. It is generated 
 and checked in CI, so it is the one place those numbers are worth reading. They used to sit in
 this file as a marked block; see the note on `.gitattributes` above for why they moved.
 
-**The fifteen single-component files carry their own map.** `TaskEditor.tsx`, `TodayScreen.tsx`,
+**The sixteen single-component files carry their own map.** `TaskEditor.tsx`, `TodayScreen.tsx`,
 `TaskItem.tsx`, `QuickAddModal.tsx`, `MealPlanScreen.tsx`, `RecipeDetailScreen.tsx`,
 `RecipeCreateSheet.tsx`, `GroceryItemSheet.tsx`, `TemplateItemEditor.tsx`, `LogbookScreen.tsx`,
-`GroceryScreen.tsx`, `SuggestMealsSheet.tsx`, `FoodLogEntrySheet.tsx`, `CookModeSheet.tsx` and `EstimateMealSheet.tsx` are
+`GroceryScreen.tsx`, `SuggestMealsSheet.tsx`, `FoodLogEntrySheet.tsx`, `CookModeSheet.tsx`, `EstimateMealSheet.tsx` and
+`ReceiptImportSheet.tsx` are
 each one component holding most of the file, so there are almost no top-level symbols to grep
 for — `TaskEditor.tsx` has six in 4,200 lines and `RecipeDetailScreen.tsx` has two in 1,900.
 Each opens with a short header comment saying what's where, and its logic half is divided by

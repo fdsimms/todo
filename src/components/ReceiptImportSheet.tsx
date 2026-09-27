@@ -155,6 +155,15 @@ interface Props {
   ) => void;
 }
 
+// Map of this file (one component holding most of it; `grep -n '// ===='` is
+// the table of contents):
+//   state          the stores read, the reading, the review's picks, the date
+//   reading        reset on open, running the photo or text through a reader
+//   review         ticking rows, adding left-alone lines, the store, Apply, Cancel
+//   render         cautions, a matched row, the store and date pickers, the body
+// Above: the draft and prop types. Below the component: styles. The matching
+// rules themselves live in receiptMatch.ts.
+
 /**
  * Reading a store receipt into the shopping list: what to check off, what it
  * cost, and where you were.
@@ -219,6 +228,7 @@ export function ReceiptImportSheet({ visible, onClose, onApply, context }: Props
   const colors = useColors();
   const styles = useMemo(() => makeStyles(colors), [colors]);
 
+  // ==== state ====
   const items = useGroceryStore(useShallow(s => s.items));
   const shops = useGroceryStore(useShallow(s => s.shops));
   const itemShops = useGroceryStore(useShallow(s => s.itemShops));
@@ -260,6 +270,7 @@ export function ReceiptImportSheet({ visible, onClose, onApply, context }: Props
   const { photos, reset: resetInput } = input;
   const photo = photos[0] ?? null;
 
+  // ==== reading ====
   const reset = useCallback(() => {
     setLoading(false);
     setError(null);
@@ -360,6 +371,7 @@ export function ReceiptImportSheet({ visible, onClose, onApply, context }: Props
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [matches, shopId]);
 
+  // ==== review ====
   const toggle = (itemId: string) => {
     haptics.tap();
     setAccepted(prev => {
@@ -479,6 +491,7 @@ export function ReceiptImportSheet({ visible, onClose, onApply, context }: Props
     );
   };
 
+  // ==== render ====
   /**
    * Why a row is worth a second look, in the app's own words.
    *

@@ -3268,9 +3268,9 @@ export const useGroceryStore = create<GroceryStore>((set, get) => ({
             writeMembership({ remove: [{ itemId: item.id, listId: null }] });
           }
         }
-        // Dropped rather than reconciled when there's no live day left: a
-        // reconcile that finds nothing wanted writes the item's permanent
-        // "never", and this reason reverses on the next trip by itself.
+        // Dropped when there's no live day left, since there is nothing to
+        // reconcile against; neither path writes the item's "never" (see
+        // reconcileGeneratedTask).
         if (liveExpiresAt(fresh) === null) dropUseUpTask(fresh.id);
         else reconcileUseUpTask(fresh);
         refreshedIds.add(fresh.id);
