@@ -620,8 +620,16 @@ export function TodayScreen() {
   // A newly-created task that landed off Today shows a toast naming where it
   // went instead of switching the screen there outright (see
   // handleTaskCreated) — this is that toast's state, cleared either by its
-  // own timeout or by the two actions it offers.
-  const [createdToast, setCreatedToast] = useState<{ task: Task; destination: CreatedTaskDestination } | null>(null);
+  // own timeout or by the two actions it offers. The same toast covers an
+  // existing Inbox task that picked up a schedule from an in-row suggestion
+  // (the Reminders-import chip) and left the Inbox as a result — see
+  // presentMovedFromInbox — with `previous` carrying what Undo restores
+  // instead of deleting the row outright.
+  const [createdToast, setCreatedToast] = useState<
+    | { source: 'created'; task: Task; destination: CreatedTaskDestination }
+    | { source: 'moved'; task: Task; destination: CreatedTaskDestination; previous: Task }
+    | null
+  >(null);
   const createdToastTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const [autoCompletingIds, setAutoCompletingIds] = useState<Set<string>>(new Set());
   const [editorVisible, setEditorVisible] = useState(false);
@@ -973,7 +981,18 @@ export function TodayScreen() {
   // comment on CreatedTaskToast for why.
   const showCreatedTaskToast = (task: Task, destination: CreatedTaskDestination) => {
     if (createdToastTimeoutRef.current) clearTimeout(createdToastTimeoutRef.current);
-    setCreatedToast({ task, destination });
+    setCreatedToast({ source: 'created', task, destination });
+    createdToastTimeoutRef.current = setTimeout(dismissCreatedToast, CREATED_TOAST_VISIBLE_MS);
+  };
+
+  // Same toast, for a task that was already in the Inbox and left it by
+  // taking a suggestion rather than being created — see presentMovedFromInbox.
+  // `previous` is the whole row from before the suggestion was applied, so
+  // Undo can restore it exactly rather than deleting a task the user didn't
+  // just create.
+  const showMovedTaskToast = (task: Task, destination: CreatedTaskDestination, previous: Task) => {
+    if (createdToastTimeoutRef.current) clearTimeout(createdToastTimeoutRef.current);
+    setCreatedToast({ source: 'moved', task, destination, previous });
     createdToastTimeoutRef.current = setTimeout(dismissCreatedToast, CREATED_TOAST_VISIBLE_MS);
   };
 
@@ -986,11 +1005,56 @@ export function TodayScreen() {
 
   const handleCreatedToastUndo = () => {
     if (!createdToast) return;
-    const { task } = createdToast;
+    const toast = createdToast;
     dismissCreatedToast();
     haptics.success();
-    useTaskStore.getState().deleteTask(task.id);
+    if (toast.source === 'moved') {
+      // Whole-snapshot revert, same as deferTask's own undo — the row goes
+      // back to exactly what it was before the suggestion was applied,
+      // pendingImport included.
+      useTaskStore.getState().updateTask(toast.task.id, toast.previous);
+    } else {
+      useTaskStore.getState().deleteTask(toast.task.id);
+    }
   };
+
+  // Mirrors handleTaskCreated's placement logic below, for a task that was
+  // already sitting in the Inbox and picked up a schedule from an in-row
+  // suggestion (the Reminders-import chip's "here's what I think you meant"
+  // chip, see TaskItem's importSuggestion) instead of being created just now.
+  // 'today' switches the screen there outright, same as a fresh task landing
+  // there does; anywhere else gets the same go-to/undo toast a creation does,
+  // unless the row never actually left the view already being looked at.
+  const presentMovedFromInbox = (previous: Task, updated: Task) => {
+    const destination: ViewMode = isInboxTask(updated)
+      ? 'inbox'
+      : isTaskVisible(updated) ? 'today'
+      : isUnscheduledTask(updated) ? 'unscheduled'
+      : 'later';
+    if (destination === 'inbox') return;
+    if (destination === 'today') {
+      if (destination !== viewMode) {
+        setViewMode(destination);
+        setExpandedTaskId(null);
+      }
+      revealTaskInToday(updated);
+      flashTask(updated.id);
+      return;
+    }
+    if (destination === viewMode) {
+      goToCreatedTask(updated, destination);
+      return;
+    }
+    showMovedTaskToast(updated, destination, previous);
+  };
+  // handleApplyImport (below) is cached with an empty dependency array, the
+  // same discipline the drag callbacks in this file follow and for the same
+  // reason — so TaskItem's memo holds across every unrelated re-render. This
+  // ref is how it reaches a version of presentMovedFromInbox that still sees
+  // the render it was actually called in, rather than the one it was first
+  // cached from.
+  const presentMovedFromInboxRef = useRef(presentMovedFromInbox);
+  presentMovedFromInboxRef.current = presentMovedFromInbox;
 
   // A quick-add with no organizing metadata at all is an Inbox task, whichever
   // view it was added from. Landing on Today reveals the row in place, same as
@@ -1604,7 +1668,11 @@ export function TodayScreen() {
   // stable and TaskItem's memo keeps holding — the same reason every other row
   // handler here takes an id instead of being made per row.
   const handleApplyImport = useCallback((id: string) => {
+    const before = useTaskStore.getState().tasks.find(t => t.id === id);
+    if (!before) return;
     useTaskStore.getState().applyPendingImport(id);
+    const after = useTaskStore.getState().tasks.find(t => t.id === id);
+    if (after) presentMovedFromInboxRef.current(before, after);
   }, []);
 
   const handleDismissImport = useCallback((id: string) => {
@@ -4398,6 +4466,7 @@ export function TodayScreen() {
           <CreatedTaskToast
             task={createdToast.task}
             destination={createdToast.destination}
+            mode={createdToast.source}
             dayResetTime={dayResetTime}
             bottom={insets.bottom + 64 + FAB_SIZE + spacing.md}
             onGoToTask={handleCreatedToastGoTo}
