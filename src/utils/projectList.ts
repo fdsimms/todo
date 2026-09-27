@@ -1,7 +1,7 @@
 import { format } from 'date-fns/format';
 import { differenceInCalendarDays } from 'date-fns/differenceInCalendarDays';
 import type { Project, ProjectSortOption, Task, TaskGroup } from '../types';
-import { dayKeyToDate, formatDeadlineDate, getCurrentDayStart, getDayStart as getLogicalDayStart, getLogicalDayKey } from './dateUtils';
+import { dayKeyToDate, formatDeadlineDate, getCurrentDayStart, getDayStart as getLogicalDayStart, getLogicalDayKey, getTaskDayStart } from './dateUtils';
 import { isPausedOn } from './projectPause';
 import { describeAwaySpan } from './awayDates';
 import { liveProjectSteps } from './projectOrder';
@@ -156,6 +156,25 @@ export function projectNextStepTitle(
     if (next) return displayTitleFor(next);
   }
   return null;
+}
+
+/**
+ * A project's repeating tasks sitting on a day already gone: after a pause,
+ * the ones that came due while it held them back. Offered a move to their
+ * next day from today (redateRoutines) rather than moved on their own, since
+ * a routine left overdue on purpose is a choice too.
+ */
+export function overdueRoutines(
+  projectId: string,
+  tasks: readonly Task[],
+  todayStart: Date,
+  dayResetTime?: string,
+): Task[] {
+  return tasks.filter(t =>
+    t.projectId === projectId && t.parentId === null && !t.completed && !t.archived &&
+    (t.recurrenceType ?? 'none') !== 'none' && t.dueDate != null &&
+    getTaskDayStart(new Date(t.dueDate), dayResetTime).getTime() < todayStart.getTime()
+  );
 }
 
 /**

@@ -56,6 +56,8 @@ export const PULL_TODAY_BUDGET_MINUTES = 180;
  * tasks while an urgent one buried deep still comes out ahead.
  */
 const QUEUE_LEAD = 18;
+/** How far ahead a dated task still counts as the project having a plan. */
+export const NEAR_SCHEDULE_DAYS = 7;
 const QUEUE_DEPTH = 6;
 
 /**
@@ -320,11 +322,20 @@ function classifyProject(
   // until it has a dueDate, so one carrying only a time of day or a defer is
   // placed nowhere. Counted as scheduled, it hid itself and silenced the whole
   // project at once.
-  if (oneOffs.some(t => t.dueDate != null)) return { reason: 'has-schedule' };
+  //
+  // And only a date coming up soon (NEAR_SCHEDULE_DAYS, overdue included):
+  // one task booked for March said nothing about the rest of the kitchen
+  // sitting untouched all winter, and it silenced the project until then.
+  const dated = oneOffs.filter(t => t.dueDate != null);
+  if (dated.some(t => differenceInCalendarDays(getDayStart(new Date(t.dueDate!)), todayStart) <= NEAR_SCHEDULE_DAYS)) {
+    return { reason: 'has-schedule' };
+  }
 
   // A checklist section's lines are ticked off, not scheduled, so they're
   // never the task pulled in (see TaskGroup.checklist).
-  let pullable = oneOffs.filter(t => isPullable(t) && !isChecklistRow(t));
+  // A task already dated (further out than the check above) has its day, and
+  // pulling it would move a date somebody chose rather than give one.
+  let pullable = oneOffs.filter(t => t.dueDate == null && isPullable(t) && !isChecklistRow(t));
   // Worked in order: only the first open task on the page may be offered, and
   // if that one can't be (it's waiting on something), nothing after it jumps
   // the queue. Routines and checklist lines aren't steps, so they're skipped.
@@ -336,7 +347,9 @@ function classifyProject(
     )[0];
     pullable = first && pullable.includes(first) ? [first] : [];
   }
-  if (pullable.length === 0) return { reason: 'no-pullable' };
+  // Nothing undated to offer, but something dated further out: that's still a
+  // project with a plan, not one whose tasks can't be pulled.
+  if (pullable.length === 0) return { reason: dated.length > 0 ? 'has-schedule' : 'no-pullable' };
 
   // Nudge-mode only, for the same reason the cadence is: this answers "should I
   // speak up unasked today", and a sheet the user opened themselves has already

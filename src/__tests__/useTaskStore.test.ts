@@ -1752,6 +1752,52 @@ describe('completeTask', () => {
     expect(task?.completedAt).toBeTruthy();
   });
 
+  it('asks for Coming back once a Pick dates answer fills Leaving, and offers a move on a second answer', () => {
+    useProjectStore.setState({ projects: [makeProject({ id: 'trip', awayStart: null, awayEnd: null })] });
+    useTaskStore.setState({
+      tripDatePrompt: null,
+      tasks: [makeTask({ id: 'pick', projectId: 'trip', deliverableKind: 'date', deliverableSetsAway: true } as Partial<Task>)],
+    });
+    try {
+      useTaskStore.getState().completeTask('pick', { deliverableValue: '2025-06-20' });
+      expect(useTaskStore.getState().tripDatePrompt).toEqual(expect.objectContaining({ kind: 'return', projectId: 'trip' }));
+      useTaskStore.getState().clearTripDatePrompt();
+      useTaskStore.getState().setDeliverableValue('pick', '2025-06-22');
+      expect(useTaskStore.getState().tripDatePrompt).toEqual(expect.objectContaining({ kind: 'moveLeaving', projectId: 'trip' }));
+    } finally {
+      useProjectStore.setState({ projects: [] });
+    }
+  });
+
+  it('moves an overdue routine to its next day on its grid, and undoes it', () => {
+    // Weekly from Tuesday June 3; today is Tuesday June 10.
+    const due = new Date(2025, 4, 20, 12).toISOString();
+    useTaskStore.setState({ tasks: [makeTask({ id: 'water', recurrenceType: 'weekly', recurrenceInterval: 1, dueDate: due } as Partial<Task>)] });
+    useTaskStore.getState().redateRoutines(['water']);
+    expect(dayKeyOf(new Date(useTaskStore.getState().tasks[0].dueDate!))).toBe('2025-06-10');
+    useTaskStore.getState().lastAction?.undo();
+    expect(useTaskStore.getState().tasks[0].dueDate).toBe(due);
+  });
+
+  it('offers a day to an undated task once its last blocker is done, and dates it on the answer', () => {
+    useTaskStore.setState({
+      readyOffer: null,
+      tasks: [
+        makeTask({ id: 'b1' }),
+        makeTask({ id: 'b2' }),
+        makeTask({ id: 'w', blockedById: 'b1', blockedByIds: ['b2'] } as Partial<Task>),
+        makeTask({ id: 'dated', blockedById: 'b2', dueDate: new Date(2025, 5, 20, 12).toISOString() } as Partial<Task>),
+      ],
+    });
+    useTaskStore.getState().completeTask('b1');
+    expect(useTaskStore.getState().readyOffer).toBeNull();
+    useTaskStore.getState().completeTask('b2');
+    expect(useTaskStore.getState().readyOffer?.taskIds).toEqual(['w']);
+    useTaskStore.getState().placeReadyTasks(new Date(2025, 5, 10, 9));
+    expect(useTaskStore.getState().readyOffer).toBeNull();
+    expect(dayKeyOf(new Date(useTaskStore.getState().tasks.find(t => t.id === 'w')!.dueDate!))).toBe('2025-06-10');
+  });
+
   it('records a Maybe to a pick-one question without completing the task, and undoes it', () => {
     useTaskStore.setState({ tasks: [makeTask({ id: 't1', deliverableKind: 'choice', deliverableOptions: ['Yes', 'No', 'Maybe'] } as Partial<Task>)] });
     useTaskStore.getState().completeTask('t1', { deliverableValue: 'Maybe' });

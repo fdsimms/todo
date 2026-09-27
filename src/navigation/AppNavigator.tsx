@@ -48,6 +48,8 @@ import { SettingsScreen } from '../screens/SettingsScreen';
 import { SettingsGroupScreen } from '../screens/SettingsGroupScreen';
 import { DemoBanner } from '../components/DemoBanner';
 import { UndoBar } from '../components/UndoBar';
+import { ReadyOfferBar } from '../components/ReadyOfferBar';
+import { TripDatePrompt } from '../components/TripDatePrompt';
 import { UseUpResolveSheet } from '../components/UseUpResolveSheet';
 import { FinishLeftoverPrompt } from '../components/FinishLeftoverPrompt';
 import { LogMealPrompt } from '../components/LogMealPrompt';
@@ -490,6 +492,12 @@ export default function AppNavigator() {
           the app is in for a few seconds, not a screen — see UndoBar's own
           doc comment for why it belongs beside DemoBanner. */}
       <UndoBar />
+      {/* Beside it, for the same reason: "X is ready" is a moment after a
+          tap, not a screen. See ReadyOfferBar. */}
+      <ReadyOfferBar />
+      {/* "Pick dates" asking for Coming back, or offering to move Leaving:
+          raised by an answer given anywhere. See TripDatePrompt. */}
+      <TripDatePrompt />
       {/* Same placement again, and for the same "not tied to a screen" reason:
           each renders nothing (FinishLeftoverPrompt) or a plain Modal
           (UseUpResolveSheet's LeftoverSheet, CookRecap's sheet), touching no

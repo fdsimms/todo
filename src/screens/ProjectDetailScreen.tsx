@@ -22,7 +22,7 @@ import { DeliverablePromptQueue } from '../components/DeliverablePromptQueue';
 import { useTaskStore } from '../store/useTaskStore';
 import { useProjectStore, projectDecisions, projectProgress, projectCompletedRows, isProjectPastWindow, projectAnswerTallies, answerTallyParts } from '../store/useProjectStore';
 import { AddGuestsSheet } from '../components/AddGuestsSheet';
-import { describeProjectActivity, projectActivity, projectCardCaption, projectProgressNote } from '../utils/projectList';
+import { describeProjectActivity, overdueRoutines, projectActivity, projectCardCaption, projectProgressNote } from '../utils/projectList';
 import { nextPullCandidate } from '../utils/projectPull';
 import { isPausedOn } from '../utils/projectPause';
 import { ProjectPullSheet } from '../components/ProjectPullSheet';
@@ -71,7 +71,7 @@ import {
 import type { DragScroller, DropZone, FabDropIntent } from '../utils/fabDrop';
 import { useSettingsStore } from '../store/useSettingsStore';
 import { addDays } from 'date-fns/addDays';
-import { dayKeyOf, formatScheduledDate, getLogicalDayKey } from '../utils/dateUtils';
+import { dayKeyOf, formatScheduledDate, getCurrentDayStart, getLogicalDayKey } from '../utils/dateUtils';
 import { categoryLabel } from '../utils/categoryLabel';
 import { useCategoryStore } from '../store/useCategoryStore';
 import { awayNights, awaySpanOf } from '../utils/awayDates';
@@ -337,6 +337,10 @@ export function ProjectDetailScreen() {
   // The line a blank "New line" field is open under, after Return in a list
   // line's text. See NewLineField.
   const [insertAfterId, setInsertAfterId] = useState<string | null>(null);
+  // A section whose own "New line" field is open at its foot, on a list or in
+  // a checklist section: the same field Return opens under a line. `n` moves
+  // on with each line added, so the field remounts empty and focused.
+  const [sectionLine, setSectionLine] = useState<{ groupId: string; n: number } | null>(null);
   const handleSubmitLine = useCallback((taskId: string) => {
     setExpandedTaskId(null);
     setInsertAfterId(taskId);
@@ -625,7 +629,13 @@ export function ProjectDetailScreen() {
   // typed. Drag is off while it's narrowed, since a drop among the lines
   // left showing can't say where it lands among the hidden ones.
   const lineFilter = useFilterField();
-  const lineFilterShown = isList && lineCount >= LIST_FILTER_MIN_LINES;
+  // On a project, its checklist sections are where a long run of lines builds
+  // up (a packing list), so enough of those brings the field too, narrowing
+  // the whole page the same way.
+  const checklistLineCount = projectListItems.reduce(
+    (n, item) => n + (item.type === 'group' && item.group.checklist ? item.children.length : 0), 0,
+  );
+  const lineFilterShown = isList ? lineCount >= LIST_FILTER_MIN_LINES : checklistLineCount >= LIST_FILTER_MIN_LINES;
   const filteringLines = lineFilterShown && lineFilter.query.trim().length > 0;
   const shownListItems = useMemo(
     () => (filteringLines ? filterProjectListItems(projectListItems, lineFilter.query) : projectListItems),
@@ -762,6 +772,15 @@ export function ProjectDetailScreen() {
   }, [completeGroup, requestComplete, projectId]);
 
   const openAddToSection = (group: TaskGroup) => {
+    // A line is typed where it goes, not in a sheet: the field opens at the
+    // section's foot, as it does under a line on Return.
+    if (isList || group.checklist) {
+      setExpandedTaskId(null);
+      setInsertAfterId(null);
+      if (group.collapsed) setGroupCollapsed(group.id, false);
+      setSectionLine({ groupId: group.id, n: 0 });
+      return;
+    }
     setQuickAddSeed({ groupId: group.id });
     setQuickAddSeedLabel(group.title.trim() || 'Section');
     setQuickAddVisible(true);
@@ -916,6 +935,51 @@ export function ProjectDetailScreen() {
     if (placed && dropped?.kind === 'insert') placeCreatedTask(task, dropped);
   };
 
+  /** Where a drop on a list opens its line field, or null for the top field. */
+  const listLineFieldFor = (intent: FabDropIntent): { kind: 'section'; groupId: string } | { kind: 'after'; taskId: string } | null => {
+    if (intent.kind === 'joinGroup') return { kind: 'section', groupId: intent.groupId };
+    if (intent.kind !== 'insert') return null;
+    const index = projectListItems.findIndex(item => projectListItemKey(item) === intent.anchorKey);
+    const at = intent.before ? projectListItems[index - 1] : projectListItems[index];
+    return at && at.type === 'task' ? { kind: 'after', taskId: at.task.id } : null;
+  };
+
+  /**
+   * A checklist section, A to Z: the list's own sort, one section at a time,
+   * for the packing list inside a trip. One undo step puts it back.
+   */
+  const sortSectionAToZ = (group: TaskGroup, children: readonly Task[]) => {
+    const before = [...children].sort((a, b) => a.sortOrder - b.sortOrder).map(t => t.id);
+    const after = [...children]
+      .sort((a, b) => a.title.localeCompare(b.title, undefined, { sensitivity: 'base', numeric: true }))
+      .map(t => t.id);
+    animateLayout();
+    haptics.tap();
+    reorderGroupChildren(group.id, after);
+    useTaskStore.getState().setLastAction({
+      label: 'Sorted A to Z',
+      destructive: true,
+      undo: () => reorderGroupChildren(group.id, before),
+    });
+  };
+
+  /** A line at the foot of a section, from its own field. */
+  const addLineToSection = (group: TaskGroup, text: string) => {
+    const link = parseLabelledLink(text);
+    const title = link ? (link.label || linkHost(link.url)) : text;
+    const task = addTask(
+      { title: title.slice(0, TITLE_MAX_LENGTH), projectId, groupId: group.id, ...(link ? { linkUrl: link.url } : {}) },
+      undefined,
+      { skipTitleRules: true, skipCategoryDefault: true },
+    );
+    const siblings = useTaskStore.getState().tasks
+      .filter(t => t.groupId === group.id && t.projectId === projectId && !t.parentId && !t.completed && !t.archived && t.id !== task.id)
+      .sort((a, b) => a.sortOrder - b.sortOrder);
+    reorderGroupChildren(group.id, [...siblings.map(t => t.id), task.id]);
+    haptics.tap();
+    lineFilter.clear();
+  };
+
   const openQuickAddForDrop = (intent: FabDropIntent) => {
     // Dropped back on the button: the drag is the whole of what happened, so
     // no sheet, and nothing left armed for the next tap.
@@ -923,6 +987,29 @@ export function ProjectDetailScreen() {
       pendingDropRef.current = null;
       haptics.tap();
       return;
+    }
+    // On a list, a drop opens the line field where it landed rather than the
+    // sheet: into a section at its foot, or under the line it was let go on.
+    // Anywhere the field can't go (above a section, the very top) falls back
+    // to the field at the top of the list, where a new line goes anyway.
+    if (isList) {
+      const target = listLineFieldFor(intent);
+      if (target) {
+        haptics.tap();
+        setExpandedTaskId(null);
+        if (target.kind === 'section') {
+          setInsertAfterId(null);
+          if (useTaskGroupStore.getState().getGroupById(target.groupId)?.collapsed) setGroupCollapsed(target.groupId, false);
+          setSectionLine({ groupId: target.groupId, n: 0 });
+        }
+        else { setSectionLine(null); setInsertAfterId(target.taskId); }
+        return;
+      }
+      if (intent.kind === 'plain' || intent.kind === 'insert') {
+        listScroller.current?.scrollToTop();
+        listInputRef.current?.focus();
+        return;
+      }
     }
     pendingDropRef.current = intent;
     if (intent.kind === 'joinGroup') {
@@ -1212,12 +1299,40 @@ export function ProjectDetailScreen() {
     [project, allTasks, dayResetTime],
   );
   const paused = !!project?.pausedUntil && isPausedOn(project, getLogicalDayKey(new Date(), dayResetTime));
+  // A pause that has run out on its own: its day has passed but the field is
+  // still set, which is what lets the page offer its routines a new day once.
+  const pauseEnded = !!project?.pausedUntil && !paused;
+  const routinesToCatchUp = useMemo(
+    () => (pauseEnded ? overdueRoutines(projectId, allTasks, getCurrentDayStart(), dayResetTime) : []),
+    [pauseEnded, projectId, allTasks, dayResetTime],
+  );
+  const redateRoutines = useTaskStore(s => s.redateRoutines);
+  /**
+   * Ending a pause, from "Resume now" or the offer after one ran out: the
+   * routines that came due while it held them back are overdue, and a weekly
+   * watering three weeks late isn't three weeks of work. Asked, since a
+   * routine left overdue can be on purpose.
+   */
+  const endPause = () => {
+    if (!project) return;
+    const overdue = overdueRoutines(project.id, allTasks, getCurrentDayStart(), dayResetTime);
+    updateProject(project.id, { pausedUntil: null });
+    if (overdue.length === 0) return;
+    Alert.alert(
+      overdue.length === 1 ? 'Move the routine that came due?' : `Move ${overdue.length} routines that came due?`,
+      'They came due while the project was paused. Move each to its next day from today, or leave them overdue.',
+      [
+        { text: 'Leave them', style: 'cancel' },
+        { text: 'Move them', onPress: () => { animateLayout(); redateRoutines(overdue.map(t => t.id)); } },
+      ],
+    );
+  };
   // "12 Yes, 3 No, 5 waiting", one line per set of questions. See projectAnswerTallies.
   const answerTallies = useMemo(
     () => projectAnswerTallies(projectId, allTasks).map(answerTallyParts).filter(parts => parts.length > 0),
     [projectId, allTasks],
   );
-  const showSummary = !!project && (summaryProgress !== null || summaryCaption !== null || tripLine !== null || !!pullable || paused || activityLine !== null || answerTallies.length > 0);
+  const showSummary = !!project && (routinesToCatchUp.length > 0 || summaryProgress !== null || summaryCaption !== null || tripLine !== null || !!pullable || paused || activityLine !== null || answerTallies.length > 0);
 
   /**
    * One task per guest, each asking the given options on completion, under a
@@ -1588,6 +1703,21 @@ export function ProjectDetailScreen() {
                         </Text>
                       </TouchableOpacity>
                     )}
+                    {!selectionMode && routinesToCatchUp.length > 0 && (
+                      <TouchableOpacity
+                        onPress={() => { haptics.tap(); endPause(); }}
+                        activeOpacity={interaction.activeOpacity}
+                        accessibilityRole="button"
+                        accessibilityLabel={`${routinesToCatchUp.length} repeating ${routinesToCatchUp.length === 1 ? 'task' : 'tasks'} came due while paused. Choose whether to move them`}
+                      >
+                        <Text style={styles.summaryText}>
+                          {routinesToCatchUp.length === 1
+                            ? '1 repeating task came due while paused.'
+                            : `${routinesToCatchUp.length} repeating tasks came due while paused.`}
+                          <Text style={styles.summaryLink}>  Move ›</Text>
+                        </Text>
+                      </TouchableOpacity>
+                    )}
                     {!selectionMode && (!!pullable || tripAhead || paused) && (
                       <View style={styles.summaryActions}>
                         {paused && (
@@ -1595,7 +1725,7 @@ export function ProjectDetailScreen() {
                             icon="play-outline"
                             label="Resume now"
                             variant="neutral"
-                            onPress={() => { haptics.tap(); updateProject(project!.id, { pausedUntil: null }); }}
+                            onPress={() => { haptics.tap(); endPause(); }}
                             accessibilityLabel="Resume this project now"
                           />
                         )}
@@ -1713,8 +1843,8 @@ export function ProjectDetailScreen() {
                   <SearchField
                     style={styles.lineFilter}
                     field={lineFilter}
-                    placeholder="Find a line"
-                    accessibilityLabel="Find a line in this list"
+                    placeholder={isList ? 'Find a line' : 'Find a task or line'}
+                    accessibilityLabel={isList ? 'Find a line in this list' : 'Find a task or line in this project'}
                   />
                 )}
                 <ProjectDecisions
@@ -1781,11 +1911,23 @@ export function ProjectDetailScreen() {
                       // tray's edge instead of being clipped at it.
                       dragging={draggingSectionId === group.id}
                     >
-                      {empty ? (
+                      {sectionLine?.groupId === group.id && empty ? (
+                        <NewLineField
+                          key={`section-${group.id}-${sectionLine.n}`}
+                          onAdd={text => { addLineToSection(group, text); setSectionLine(v => (v ? { ...v, n: v.n + 1 } : v)); }}
+                          onAddMany={lines => {
+                            for (const line of cleanPastedLines(lines)) addLineToSection(group, line);
+                            setSectionLine(v => (v ? { ...v, n: v.n + 1 } : v));
+                          }}
+                          onDone={() => setSectionLine(null)}
+                          styles={styles}
+                          placeholderColor={colors.textTertiary}
+                        />
+                      ) : empty ? (
                         <View style={styles.emptyStackRow}>
-                          <Text style={styles.emptyStackText}>{isList ? 'No lines in this section yet' : 'No tasks in this section yet'}</Text>
+                          <Text style={styles.emptyStackText}>{isList || group.checklist ? 'No lines in this section yet' : 'No tasks in this section yet'}</Text>
                           <InlineAction
-                            label={isList ? 'Add a line' : 'Add task'}
+                            label={isList || group.checklist ? 'Add a line' : 'Add task'}
                             icon="add"
                             onPress={() => openAddToSection(group)}
                             accessibilityLabel={group.title.trim() ? `Add a ${isList ? 'line' : 'task'} to the ${group.title.trim()} section` : `Add a ${isList ? 'line' : 'task'} to this section`}
@@ -1819,15 +1961,40 @@ export function ProjectDetailScreen() {
                             here, not only an empty one. The quick add it
                             opens can stay open ("Add another"), and each
                             task joins this section. */}
-                        {!selectionMode && (
+                        {!selectionMode && sectionLine?.groupId === group.id && (
+                          <NewLineField
+                            key={`section-${group.id}-${sectionLine.n}`}
+                            onAdd={text => { addLineToSection(group, text); setSectionLine(v => (v ? { ...v, n: v.n + 1 } : v)); }}
+                            onAddMany={lines => {
+                              for (const line of cleanPastedLines(lines)) addLineToSection(group, line);
+                              setSectionLine(v => (v ? { ...v, n: v.n + 1 } : v));
+                            }}
+                            onDone={() => setSectionLine(null)}
+                            styles={styles}
+                            placeholderColor={colors.textTertiary}
+                          />
+                        )}
+                        {!selectionMode && sectionLine?.groupId !== group.id && (
                           <View style={styles.sectionAddRow}>
                             <InlineAction
-                              label={isList ? 'Add a line' : 'Add task'}
+                              label={isList || group.checklist ? 'Add a line' : 'Add task'}
                               icon="add"
                               variant="neutral"
                               onPress={() => openAddToSection(group)}
                               accessibilityLabel={group.title.trim() ? `Add a ${isList ? 'line' : 'task'} to the ${group.title.trim()} section` : `Add a ${isList ? 'line' : 'task'} to this section`}
                             />
+                            {/* A list sorts from its own footer; a checklist
+                                section on a project sorts here. Hidden while
+                                narrowed, since only some lines are showing. */}
+                            {!isList && group.checklist && children.length >= 3 && !filteringLines && (
+                              <InlineAction
+                                label="Sort A to Z"
+                                icon="swap-vertical-outline"
+                                variant="neutral"
+                                onPress={() => sortSectionAToZ(group, children)}
+                                accessibilityLabel={`Sort ${group.title.trim() || 'this section'} A to Z`}
+                              />
+                            )}
                           </View>
                         )}
                         </>
@@ -2330,6 +2497,8 @@ const makeStyles = (colors: Colors) => StyleSheet.create({
   },
   sectionAddRow: {
     flexDirection: 'row',
+    flexWrap: 'wrap',
+    gap: spacing.sm,
     paddingTop: spacing.xs,
     paddingBottom: spacing.xxs,
   },

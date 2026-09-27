@@ -140,7 +140,7 @@ import { medicationFor } from '../utils/medicationLog';
 import { eventsIn } from '../utils/calendarBusy';
 import { isDemoModeActive } from '../utils/demoState';
 import type { MealSlot, Project, TaskGroup, WeatherCondition, WeatherRule } from '../types';
-import { awayPauseDriver, departureFromAnswer, isProjectAwayNow } from '../utils/awayDates';
+import { awayPauseDriver, departureFromAnswer, departureMoveFromAnswer, isProjectAwayNow } from '../utils/awayDates';
 import { generateId } from '../utils/id';
 import {
   applyTitleRulesToDraft,
@@ -1288,6 +1288,34 @@ interface TaskStore extends UndoHistoryActions {
   lastAction: UndoableAction | null;
   undoStack: UndoableAction[];
   redoStack: UndoableAction[];
+  /**
+   * Tasks a completion just freed that have no day to go to: the last thing
+   * each waited on is done, but an undated task goes nowhere on its own, so
+   * "ready" would otherwise be invisible. ReadyOfferBar reads this and offers
+   * a day; `at` tells a fresh offer from the one already shown. Session-only.
+   */
+  readyOffer: { taskIds: string[]; at: number } | null;
+  /**
+   * A question about a trip's dates that a date answer raised (see
+   * `deliverableSetsAway`): ask for Coming back once Leaving has just been
+   * filled, or offer to move a Leaving date a new answer disagrees with.
+   * TripDatePrompt asks it; `at` tells a fresh one from the one shown.
+   */
+  tripDatePrompt:
+    | { kind: 'return'; projectId: string; at: number }
+    | { kind: 'moveLeaving'; projectId: string; awayStart: string; at: number }
+    | null;
+  clearTripDatePrompt: () => void;
+  clearReadyOffer: () => void;
+  /** Dates every task in the offer on `date`, undoably, and clears it. */
+  placeReadyTasks: (date: Date) => void;
+  /**
+   * Moves each repeating task to its next day on or after today, keeping its
+   * grid (`getNextDueDate`'s catch-up), or to today for one counted from
+   * completion. What a project coming off a pause offers its overdue
+   * routines (overdueRoutines). One undo step.
+   */
+  redateRoutines: (taskIds: string[]) => void;
   // Ids of tasks completed within the last COMPLETION_HOLD_MS — see
   // withHeldCompletions above.
   completionHoldIds: string[];
@@ -1939,6 +1967,45 @@ export const useTaskStore = create<TaskStore>((set, get) => ({
   lastAction: null,
   undoStack: [],
   redoStack: [],
+  readyOffer: null,
+  tripDatePrompt: null,
+  clearTripDatePrompt() {
+    set({ tripDatePrompt: null });
+  },
+  clearReadyOffer() {
+    set({ readyOffer: null });
+  },
+  redateRoutines(taskIds) {
+    const resetTime = useSettingsStore.getState().dayResetTime;
+    const today = getLogicalToday(resetTime);
+    const snapshots = get().tasks.filter(t => taskIds.includes(t.id) && !t.completed).map(t => ({ ...t }));
+    if (snapshots.length === 0) return;
+    for (const task of snapshots) {
+      const next = task.recurrenceFromCompletion ? today : getNextDueDate(task, resetTime, { catchUp: true });
+      if (!next) continue;
+      get().updateTask(task.id, { dueDate: next.toISOString(), deferUntil: null }, { skipPostponeCount: true });
+    }
+    get().setLastAction({
+      label: snapshots.length === 1 ? 'Routine moved' : `${snapshots.length} routines moved`,
+      undo: () => snapshots.forEach(snapshot => get().updateTask(snapshot.id, snapshot)),
+    });
+  },
+  placeReadyTasks(date) {
+    const offer = get().readyOffer;
+    set({ readyOffer: null });
+    if (!offer) return;
+    const snapshots = get().tasks.filter(t => offer.taskIds.includes(t.id) && !t.completed).map(t => ({ ...t }));
+    if (snapshots.length === 0) return;
+    const day = new Date(date);
+    day.setHours(12, 0, 0, 0);
+    for (const task of snapshots) {
+      get().updateTask(task.id, { dueDate: day.toISOString() }, { markSeenOnBecomeVisible: true });
+    }
+    get().setLastAction({
+      label: snapshots.length === 1 ? 'Task scheduled' : `${snapshots.length} tasks scheduled`,
+      undo: () => snapshots.forEach(snapshot => get().updateTask(snapshot.id, snapshot)),
+    });
+  },
   ...undoHistoryActions(set, get),
   completionHoldIds: [],
   completionCollapseIds: [],
@@ -3571,7 +3638,29 @@ export const useTaskStore = create<TaskStore>((set, get) => ({
       if (project && awayStart) {
         useProjectStore.getState().updateProject(project.id, { awayStart });
         departureSet = { projectId: project.id, awayStart };
+        // "Pick dates" is both ends: with the leaving day in, ask for the
+        // coming-back day while the dates are in mind (TripDatePrompt).
+        if (!project.awayEnd) set({ tripDatePrompt: { kind: 'return', projectId: project.id, at: Date.now() } });
+      } else if (project) {
+        // A trip that already has a Leaving date isn't moved by an answer on
+        // its own; a different day is offered instead.
+        const moveTo = departureMoveFromAnswer(project, deliverableDate(completed.deliverableValue));
+        if (moveTo) set({ tripDatePrompt: { kind: 'moveLeaving', projectId: project.id, awayStart: moveTo, at: Date.now() } });
       }
+    }
+
+    // The tasks this was the last thing holding back, if they have no day of
+    // their own: ready now, but an undated task goes nowhere by itself, so
+    // nothing on screen would say so. ReadyOfferBar offers them a day. Not for
+    // a miss or an unattended completion, which nobody is watching.
+    if (!missed && !neutral) {
+      const freed = get().tasks.filter(t =>
+        !t.completed && !t.archived && !t.parentId &&
+        blockerIdsOf(t).includes(id) &&
+        !isHeldBack(t) && !isInPausedProject(t) &&
+        t.dueDate == null && t.deferUntil == null
+      );
+      if (freed.length > 0) set({ readyOffer: { taskIds: freed.map(t => t.id), at: Date.now() } });
     }
 
     // Spending the second-to-last filter is the moment the offer to order more
@@ -3864,6 +3953,13 @@ export const useTaskStore = create<TaskStore>((set, get) => ({
       label: value === null ? 'Answer cleared' : 'Answer saved',
       undo: () => get().setDeliverableValue(id, previous),
     });
+    // An answered "Pick dates" edited later still speaks for the trip, the
+    // same way completing it did: offered as a move, never written unasked.
+    if (task.completed && task.deliverableSetsAway && task.projectId && deliverableKindFor(task) === 'date') {
+      const project = useProjectStore.getState().projects.find(p => p.id === task.projectId);
+      const moveTo = project ? departureMoveFromAnswer(project, deliverableDate(value)) : null;
+      if (project && moveTo) set({ tripDatePrompt: { kind: 'moveLeaving', projectId: project.id, awayStart: moveTo, at: Date.now() } });
+    }
   },
 
   logSlip(id) {

@@ -7,6 +7,7 @@ import {
   projectCardCaption,
   projectMatchesQuery,
   projectNextStepTitle,
+  overdueRoutines,
   projectProgressNote,
   projectListPreview,
   sortProjects,
@@ -129,6 +130,19 @@ describe('projectProgressNote', () => {
   it('counts what is open on an ongoing project, which has no finish line to fill toward', () => {
     expect(projectProgressNote(makeProject({ ongoing: true }), { done: 2, total: 5 })).toBe('3 open');
     expect(projectProgressNote(makeProject({ ongoing: true }), { done: 5, total: 5 })).toBe('Nothing open');
+  });
+});
+
+describe('overdueRoutines', () => {
+  it("lists a project's repeating tasks dated before today, and nothing else", () => {
+    const today = new Date(2026, 5, 10);
+    const tasks = [
+      makeTask({ id: 'late', recurrenceType: 'weekly', dueDate: new Date(2026, 4, 20, 12).toISOString() } as Partial<Task>),
+      makeTask({ id: 'today', recurrenceType: 'weekly', dueDate: new Date(2026, 5, 10, 12).toISOString() } as Partial<Task>),
+      makeTask({ id: 'oneOff', dueDate: new Date(2026, 4, 20, 12).toISOString() }),
+      makeTask({ id: 'elsewhere', projectId: 'p2', recurrenceType: 'daily', dueDate: new Date(2026, 4, 20, 12).toISOString() } as Partial<Task>),
+    ];
+    expect(overdueRoutines('p1', tasks, today).map(t => t.id)).toEqual(['late']);
   });
 });
 

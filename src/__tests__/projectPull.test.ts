@@ -1110,6 +1110,17 @@ describe('a declined project and the sheet', () => {
   });
 });
 
+describe('a date further out', () => {
+  const inDays = (n: number) => { const d = new Date(); d.setDate(d.getDate() + n); d.setHours(12, 0, 0, 0); return d.toISOString(); };
+
+  it("doesn't keep a project from being pulled from, where a date this week does", () => {
+    const far = [makeTask({ id: 'booked', dueDate: inDays(30) }), makeTask({ id: 'loose', sortOrder: 2 })];
+    expect(nextPullCandidate(makeProject(), far)?.id).toBe('loose');
+    const near = [makeTask({ id: 'booked', dueDate: inDays(3) }), makeTask({ id: 'loose', sortOrder: 2 })];
+    expect(nextPullCandidate(makeProject(), near)).toBeNull();
+  });
+});
+
 describe('working a project in order', () => {
   const section = (o: Partial<TaskGroup>): TaskGroup => ({
     id: 's1', title: 'Walls', notes: '', tags: [], category: null, sortOrder: 5,
