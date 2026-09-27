@@ -344,6 +344,13 @@ export function CookModeSheet({
 
   const startCooking = () => {
     haptics.tap();
+    // Starting the cook timer here (rather than leaving it to a second tap on
+    // RecipeTimerRow) is the indicator that a cook is actually underway: the
+    // elapsed stopwatch and progress bar start moving the moment mise en
+    // place is left behind. Only when nothing's running or paused yet — a
+    // cook who already started or logged the timer isn't reset by leaving
+    // mise en place a second time (Back then Start Cooking again).
+    if (!cookTimer.inProgress) cookTimer.onToggle();
     setRawIndex(0);
   };
 
