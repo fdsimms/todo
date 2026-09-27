@@ -3214,6 +3214,8 @@ function seedGroceries(recipes: DemoRecipes, today: Date): void {
     linkItemSub,
     setShopExcludedFromSuggestions,
     setShopAisles,
+    setShopReceiptStyle,
+    rememberAliases,
     startTrip,
     setItemPrice,
     addList,
@@ -3612,6 +3614,17 @@ function seedGroceries(recipes: DemoRecipes, today: Date): void {
   // its own demonstration), and paper goods at a pharmacy is the shape of it.
   const pharmacy = newShop('Corner Pharmacy');
   setShopAisles(pharmacy.id, ['Household']);
+  // A store's receipt shorthand, remembered the way applying a receipt review
+  // remembers it, so the next Trader Joe's receipt reads these two lines
+  // without asking. With none, the matcher's "remembered" tier (and the link
+  // the catalog counts for it) reads as something the app doesn't do.
+  rememberAliases([
+    { shopId: traderJoes.id, rawText: 'ORG BABY SPINACH', itemId: itemNamed('Spinach').id },
+    { shopId: traderJoes.id, rawText: 'CHKN BRST BNLS', itemId: itemNamed('Chicken breast').id },
+  ]);
+  // And a store whose receipt isn't worth photographing: an online order hands
+  // you no paper, so the receipt sheet says so instead of reading nothing.
+  setShopReceiptStyle(amazon.id, 'none');
 
   // Three finished trips, so the catalog and the autocomplete ranking have a
   // real spread of purchase counts to sort by rather than a flat list of ones.

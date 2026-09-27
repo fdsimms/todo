@@ -136,6 +136,9 @@ export function AddMealsToListSheet({
     [listEntries, activeListId]
   );
   const itemSubs = useGroceryStore(useShallow(s => s.itemSubs));
+  // The boxes, so a packet frozen or marked "Got it" counts as having it here
+  // the way it does in the Pantry (see classifyPlanned's `products`).
+  const itemProducts = useGroceryStore(useShallow(s => s.itemProducts));
   const addFromPlan = useGroceryStore(s => s.addFromPlan);
   const addToPantry = useGroceryStore(s => s.addToPantry);
   const stampAddedToList = useMealPlanStore(s => s.stampAddedToList);
@@ -147,12 +150,12 @@ export function AddMealsToListSheet({
   const classified = useMemo(() => {
     // Live, not persisted — see recipeComponents.ts's ChoiceResolution.onHand.
     const planned = collectPlannedIngredients(
-      entries, recipesById, range, swaps, onHandNameKeys(items, new Date())
+      entries, recipesById, range, swaps, onHandNameKeys(items, new Date(), itemProducts)
     );
     // Against the list being added to — see classifyPlanned's own note on why
     // an unscoped read silently drops shopping.
-    return classifyPlanned(planned, items, new Date(), itemSubs, inTrolley);
-  }, [entries, recipesById, range, items, itemSubs, swaps, inTrolley]);
+    return classifyPlanned(planned, items, new Date(), itemSubs, inTrolley, itemProducts);
+  }, [entries, recipesById, range, items, itemSubs, swaps, inTrolley, itemProducts]);
 
   const byCategory = useMemo(() => {
     const out: Record<PlanCategory, ClassifiedIngredient[]> = {

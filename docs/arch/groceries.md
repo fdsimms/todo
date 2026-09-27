@@ -242,6 +242,14 @@ times over, and the restraint that keeps it from becoming one is a single rule:
 - **A purchase clears the bought box's claims**, alongside the item's and for the same reason: the
   packet you froze is not the packet you carried home. Preferred-only, exactly like the counter —
   a trip that bought an item with no preference says nothing about which box it was.
+- **Every "do I have this" read on the plan side takes the boxes too.** `probablyHaveReason`'s
+  `products` is opt-in per caller, and the Pantry and `onHandNameKeys` adopted it first while
+  `classifyPlanned` and the meal shortfall readers didn't, so a packet frozen on its own was "in
+  the freezer" on the Pantry, pre-ticked under Need to buy in the add sheet, and the subject of a
+  "Shop for Tacos" task, all at once. `classifyPlanned`, `coveringVariety`, `mealShortfallRows`
+  and both sweep passes take `products` now, and the two add-to-list sheets, the shortfall chip on
+  a task row and `checkMealShortfallTasks` pass them. A new reader of "do I have it" passes them
+  too, or it disagrees with the screen that lists the pantry.
 - **`KitchenKind` grew a third value rather than a flag on `grocery`**, because everything
   downstream switches on it: the ✕ writes a different column, a drop resolves to a different
   action, and the row opens the item sheet on its Products field rather than its Pantry one.
@@ -724,6 +732,11 @@ gesture onto it — that's the inventory again.
   opens `LeftoverSheet`, which asks properly.
 - **`LeftoversCard` still renders the fridge alone.** Its rows drag onto a night of the week, and
   a bag of spinach is not a dinner. What it shares with the kitchen is the ladder, not the list.
+- **The Pantry opens `FridgeHistorySheet` too**, from a header action shown on the card's own
+  condition (something has been closed out). The Pantry lists the same live containers, so a
+  person looking at them had no way to the ones already eaten or thrown out short of switching to
+  the meal plan. It is the same sheet and the same row-opens-`LeftoverSheet` hand-off, not a
+  second history.
 
 - **The one write is `addToPantry`**, off the field at the top, and it writes the same assertion
   the item sheet's "Got it" pill writes (`defaultOnHandUntil`) on the same catalog row. It exists
@@ -878,10 +891,13 @@ sealed thing the purchase is simply the wrong anchor: a jar of salsa bought five
 opened on Tuesday keeps a week from Tuesday.
 
 - **It needed a second lexicon, not a second column.** `OPEN_SHELF_LIFE_LEXICON` is a much shorter
-  table than `SHELF_LIFE_LEXICON` and holds only jars, tubs, cartons and vacuum packs, because
-  opening a bag of spinach restarts nothing — it was already exposed to the same air the fridge is
-  full of. Produce, meat and bakery are absent on purpose, and `setOpened` leaves their day alone.
-  Same whitelist restraint the first table runs on.
+  table than `SHELF_LIFE_LEXICON` and holds only jars, tubs, cartons, opened cans and vacuum packs,
+  because opening a bag of spinach restarts nothing — it was already exposed to the same air the
+  fridge is full of. Produce, meat and bakery are absent on purpose, and `setOpened` leaves their
+  day alone. Same whitelist restraint the first table runs on. The fridge-door sauces (pesto, pasta
+  sauce, marinara, tomato paste, coconut milk) joined later: each is a jar or can that keeps days
+  once opened and months before, so "opened" with no countdown was the waste the table exists to
+  catch. Jam and mayonnaise stay out, since opened they keep for weeks to months.
 - **It takes the earlier of the two days — unless the old one has already passed, in which case it
   replaces it.** "Only ever bring a deadline forward" is the safer-sounding rule, and it's *nearly*
   right: milk with one day left on its sealed clock doesn't earn a fresh week just because it got
@@ -938,6 +954,22 @@ on that scale is in the middle, and it's the one the app had no way to hear abou
 
 All three are cleared by a purchase, alongside the `onHandUntil` that already was: the bag you
 froze, the jar you opened and the tub you were nearly out of are all the old one.
+
+**A receipt or a barcode read into the Pantry clears them too** (`addManyToPantry`'s `acquired`,
+passed by `KitchenScreen`'s two scan paths and nothing else). It isn't a trip, so it still writes
+no purchase count and no use-by day of its own, but it is a new packet, and before this it carried
+the old one's "in the freezer", "opened" and "running low" straight onto it. Three details:
+
+- **A running-low row comes off the home list.** That is the one list `setRunningLow` reaches into,
+  and the thing it was on there to buy has just been bought. The one-direction rule above is about
+  un-marking, which says nothing about a purchase.
+- **A frozen or opened row's `expiresAt` goes with the state.** A frozen day was suspended and an
+  opened jar's was set by the opening, so clearing the state and keeping the day would wake a stale
+  date on the new packet (a month-old chicken day, overdue on arrival). A plain row keeps its day.
+- **The use-up task is dropped, not reconciled, when no live day is left.** The reason reverses on
+  the next trip by itself, and a reconcile's delete would write the item's permanent "never".
+  The scan sheet's own freezer toggle is applied after the clear, so it lands on the new packet.
+  A plain "Got it" (the typed field, the item sheet's pill) is not a new packet and clears nothing.
 
 ### Nothing leaves the pantry, so the one exit worth noticing is offered as a task
 

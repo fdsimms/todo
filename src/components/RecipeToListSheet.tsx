@@ -229,9 +229,12 @@ export function RecipeToListSheet({
       new Date(),
       itemSubs,
       // Against the list being added to, not "any list" — see classifyPlanned.
-      inTrolley
+      inTrolley,
+      // The same boxes `onHand` above reads, so the either/or default and the
+      // row under it can't disagree about a frozen or "Got it" packet.
+      itemProducts
     );
-  }, [recipe, recipesById, items, itemSubs, swaps, choiceKey, scale, inTrolley, onHand]);
+  }, [recipe, recipesById, items, itemSubs, swaps, choiceKey, scale, inTrolley, onHand, itemProducts]);
 
   // "or jalapeño" on each option of a group left open, so a row in Need to buy
   // reads as one of a pair rather than as a second thing to buy. Keyed on

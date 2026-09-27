@@ -94,6 +94,9 @@ export const OPEN_SHELF_LIFE_LEXICON: Record<string, number> = {
   'sour cream': 14, 'creme fraiche': 10, yogurt: 7, yoghurt: 7,
   'greek yogurt': 7, ricotta: 5, buttermilk: 10, cream: 5, 'heavy cream': 7,
   'half and half': 7, milk: 7, 'oat milk': 7, 'almond milk': 7, 'soy milk': 7,
+  // Sauces and cans that go into the fridge once opened, where a jar of pesto
+  // or half a can of coconut milk is exactly the thing forgotten at the back.
+  pesto: 5, 'pasta sauce': 5, marinara: 5, 'tomato paste': 7, 'coconut milk': 4,
 
   // ─── Vacuum packs and deli ───
   bacon: 7, 'cold cuts': 4, ham: 4, 'sliced turkey': 4, tofu: 4,

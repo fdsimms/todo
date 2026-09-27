@@ -76,6 +76,7 @@ import {
   wantsPantryReview,
 } from '../utils/pantryReviewTasks';
 import {
+  MAX_MEAL_SHORTFALL_TASKS,
   mealShortfallEntryId,
   mealShortfallLinkUrl,
   staleMealShortfallTasks,
@@ -5706,7 +5707,9 @@ export const useTaskStore = create<TaskStore>((set, get) => ({
     );
     const recipes = useRecipeStore.getState().recipes;
     const recipesById = new Map(recipes.map(r => [r.id, r]));
-    const { items, itemSubs } = useGroceryStore.getState();
+    // The boxes too, so a packet frozen or marked "Got it" counts as having it
+    // here the way it does in the Pantry (see classifyPlanned's `products`).
+    const { items, itemSubs, itemProducts } = useGroceryStore.getState();
     const swaps = standingSwapMap(itemSubs, items);
 
     // Clear first, create second, and never the reverse — the ordering
@@ -5720,12 +5723,13 @@ export const useTaskStore = create<TaskStore>((set, get) => ({
     // stamp shopTask: false on a meal the user never turned down, and so
     // suppress the offer for ever on the strength of the app's own tidying up.
     const stale = staleMealShortfallTasks(
-      tasks, entries, recipesById, items, itemSubs, swaps, todayKey, now, leadDays
+      tasks, entries, recipesById, items, itemSubs, swaps, todayKey, now, leadDays, itemProducts
     );
     stale.forEach(task => dropGeneratedTask('mealShortfall', mealShortfallEntryId(task)));
 
     const wanted = wantedMealShortfalls(
-      entries, recipesById, items, itemSubs, swaps, todayKey, now, leadDays
+      entries, recipesById, items, itemSubs, swaps, todayKey, now, leadDays,
+      MAX_MEAL_SHORTFALL_TASKS, itemProducts
     );
     if (wanted.length === 0) return;
 

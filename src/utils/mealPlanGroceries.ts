@@ -1,5 +1,5 @@
 import { format } from 'date-fns/format';
-import type { GroceryItem, ItemSubLink, MealPlanEntry, Recipe } from '../types';
+import type { GroceryItem, ItemProduct, ItemSubLink, MealPlanEntry, Recipe } from '../types';
 import { isKeyInRange } from './mealPlan';
 import { dayKeyToDate } from './dateUtils';
 import { probablyHaveReason } from './grocerySuggest';
@@ -522,7 +522,17 @@ export function classifyPlanned(
    * separate lists, and what the readers that aren't adding to a list (a cook's
    * recap, a pantry-readiness percentage) still mean.
    */
-  inTrolley: ReadonlyMap<string, boolean> | null = null
+  inTrolley: ReadonlyMap<string, boolean> | null = null,
+  /**
+   * The items' boxes, so a packet frozen or marked "Got it" on its own counts as
+   * having it here exactly as it does in the Pantry and in `onHandNameKeys`
+   * (a box only ever adds an answer; see `probablyHaveReason`). Without them a
+   * row whose one claim is a box fell back to the item's lapsed purchase window
+   * and read as needToBuy, so the sheet ticked it and a shortfall task asked for
+   * it while the Pantry listed it in the freezer. Empty by default: the
+   * item-only read every caller had before boxes carried pantry state.
+   */
+  products: readonly ItemProduct[] = []
 ): ClassifiedIngredient[] {
   const byKey = new Map<string, GroceryItem>();
   for (const item of items) byKey.set(item.nameKey, item);
@@ -581,8 +591,8 @@ export function classifyPlanned(
     for (const [key, group] of [...groups]) {
       const match = byKey.get(key);
       const matchListed = match ? (inTrolley ? inTrolley.has(match.id) : match.onList) : false;
-      if (match && (matchListed || match.isStaple || probablyHaveReason(match, now) !== null)) continue;
-      const covering = coveringVariety(varieties.get(key), now, inTrolley);
+      if (match && (matchListed || match.isStaple || probablyHaveReason(match, now, products) !== null)) continue;
+      const covering = coveringVariety(varieties.get(key), now, inTrolley, products);
       if (!covering) continue;
       groups.delete(key);
       const refiled = group.map(g => ({ ...g, swappedFrom: g.swappedFrom ?? g.name }));
@@ -613,7 +623,7 @@ export function classifyPlanned(
       category = (inTrolley ? inTrolley.get(match.id) : match.checked) ? 'inCart' : 'alreadyOnList';
     } else if (match?.isStaple) {
       category = 'staple';
-    } else if (match && (reason = probablyHaveReason(match, now))) {
+    } else if (match && (reason = probablyHaveReason(match, now, products))) {
       category = 'probablyHave';
     } else {
       category = 'needToBuy';
