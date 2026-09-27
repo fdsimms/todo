@@ -8,7 +8,7 @@ import {
 } from '../db/database';
 import { generateId } from '../utils/id';
 import { dayKeyOf, getCurrentDayStart, getDayStart } from '../utils/dateUtils';
-import { contextTagKey, symptomKey } from '../utils/moodLog';
+import { contextTagKey, renamedContextTags, symptomKey } from '../utils/moodLog';
 
 /**
  * The mood/symptom log — see `src/utils/moodLog.ts` for every rule and
@@ -61,6 +61,13 @@ interface MoodStore {
   ) => MoodLog | null;
   updateLog: (id: string, patch: MoodLogPatch) => void;
   removeLog: (id: string) => void;
+  /**
+   * Correct a context tag's text everywhere it was logged, not just on one
+   * entry — the vocabulary is derived from the logs (see `moodLog.ts`), so a
+   * typo typed once otherwise sits in the suggestion pills forever with no
+   * way back. A no-op if `newName` is blank or unchanged.
+   */
+  renameContextTag: (oldName: string, newName: string) => void;
 }
 
 export const useMoodStore = create<MoodStore>((set, get) => ({
@@ -120,6 +127,20 @@ export const useMoodStore = create<MoodStore>((set, get) => ({
   removeLog(id) {
     dbDeleteMoodLog(id);
     set({ logs: get().logs.filter(l => l.id !== id) });
+  },
+
+  renameContextTag(oldName, newName) {
+    const trimmed = newName.trim();
+    if (!trimmed) return;
+    const oldKey = contextTagKey(oldName);
+    if (contextTagKey(trimmed) === oldKey && trimmed === oldName) return;
+    const next = get().logs.map(log => {
+      if (!log.contextTags.some(t => contextTagKey(t) === oldKey)) return log;
+      const updated: MoodLog = { ...log, contextTags: renamedContextTags(log.contextTags, oldName, trimmed) };
+      dbUpdateMoodLog(updated);
+      return updated;
+    });
+    set({ logs: next });
   },
 }));
 

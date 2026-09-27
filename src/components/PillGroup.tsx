@@ -32,6 +32,9 @@ export interface PillGroupOption extends OverflowPill {
    */
   negative?: boolean;
   accessibilityLabel?: string;
+  accessibilityHint?: string;
+  /** Opt in per option; a grid with none of its options carrying this has no long-press at all. */
+  onLongPress?: () => void;
   onPress: () => void;
 }
 
@@ -223,9 +226,12 @@ export function PillGroup({
             ]}
             activeOpacity={interaction.activeOpacity}
             onPress={option.onPress}
+            onLongPress={option.onLongPress}
+            delayLongPress={option.onLongPress ? interaction.delayLongPress : undefined}
             accessibilityRole="button"
             accessibilityState={{ selected: !!option.selected && !option.negative }}
             accessibilityLabel={option.accessibilityLabel ?? option.label}
+            accessibilityHint={option.accessibilityHint}
           >
             {/* The pill is sized by an invisible copy of its label at the
                 selected weight, with the real label laid over it. Selecting

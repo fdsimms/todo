@@ -110,6 +110,29 @@ row itself only shows for a new entry), and a backdated entry records how a
 past day went — the app's *current* vacation state says nothing about
 whether last Tuesday was one.
 
+## Correcting a tag's text is a rename across the whole log, not an edit of one entry
+
+A derived vocabulary (above) has no row to fix a typo on — "Trvael" typed once
+sits in the pill grid forever, indistinguishable from a real tag, unless
+something rewrites every entry that carries it. `useMoodStore.renameContextTag`
+does that: long-press a context tag pill in `MoodLogSheet` (`Alert.prompt`,
+the same pattern `FoodLogScreen.handleRename` uses), and it walks every
+`MoodLog` sharing the tag's key and rewrites it via `renamedContextTags`
+(`moodLog.ts`), same `contextTagKey` case-insensitive match as everything
+else here.
+
+**It's a global rename, not scoped to the entry the pill was tapped in.**
+The alternative — fixing only the entry open in the sheet — leaves every
+other entry still carrying the typo, so the corrected and misspelled forms
+would keep showing as two separate pills. The vocabulary has no per-entry
+identity worth preserving here the way a symptom's severity does.
+
+**Renaming onto a tag the entry already has merges rather than duplicates**,
+the same rule `withContextTag` applies to an ordinary add — `renamedContextTags`
+is built on it. Symptoms have no equivalent yet; nothing asked for it, and the
+severity a merge would have to pick between is a question this feature
+doesn't have.
+
 ## Several entries a day is the normal case
 
 Mood moves through a day. An app allowing one entry per day would be asking you

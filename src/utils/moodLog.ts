@@ -139,6 +139,25 @@ export function withoutContextTag(tags: readonly string[], name: string): string
 }
 
 /**
+ * Replace one context tag's text with another, within a single entry's set.
+ *
+ * Renaming onto a name the entry already carries under a different spelling
+ * merges the two rather than leaving a duplicate — the same rule
+ * `withContextTag` already applies to an ordinary add. Leaves the set alone
+ * if it doesn't carry `oldName` at all, so a caller can run this over every
+ * entry without checking first.
+ */
+export function renamedContextTags(
+  tags: readonly string[],
+  oldName: string,
+  newName: string,
+): string[] {
+  const oldKey = contextTagKey(oldName);
+  if (!tags.some(t => contextTagKey(t) === oldKey)) return [...tags];
+  return withContextTag(tags.filter(t => contextTagKey(t) !== oldKey), newName);
+}
+
+/**
  * Every symptom name you have ever logged, most-used first, then alphabetical.
  *
  * **Derived on read rather than stored**, which is the one place this feature
