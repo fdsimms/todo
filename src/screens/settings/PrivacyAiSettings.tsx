@@ -329,12 +329,20 @@ export function PrivacyAiSettings({ scrollRef }: Props) {
       {/* Its own section rather than a row among the AI features, because it is
           not one: no Anthropic key, no model to pick, and a different service
           on the other end. Gated on the groceries area for the same reason the
-          kitchen AI features are — it is only reachable from the scanner, and
-          on simplified mode for the same reason again (the scanner is gone). */}
-      {kitchenEnabled && !simpleMode && (
+          kitchen AI features are.
+
+          Simplified mode keeps the switch and the FoodData Central key and
+          drops the rest. The scanner is gone there, but searching a food by
+          name (a grocery item's Nutrition, the food log) is not, and it needs
+          both: a failed search's "Open Settings" lands on the key row, which
+          must be on screen to land on. The Go-UPC key and the saved barcodes
+          only ever serve the scanner, so they go with it. */}
+      {kitchenEnabled && (
         <SettingsSection
           label="Barcode lookups"
-          footer="Open Food Facts is a free product database run by volunteers, and needs no key. Scanning sends one barcode at a time and nothing else, with no account and no identifier attached. Answers are saved on this device, so a barcode is only looked up once. Turning this off still uses the barcodes already saved here. The two keys below are optional and add more places to look."
+          footer={simpleMode
+            ? 'Searching for a food by name sends the name you type to FoodData Central, the USDA\'s food database. It needs a free key.'
+            : 'Open Food Facts is a free product database run by volunteers, and needs no key. Scanning sends one barcode at a time and nothing else, with no account and no identifier attached. Answers are saved on this device, so a barcode is only looked up once. Turning this off still uses the barcodes already saved here. The two keys below add more places to look, and searching for a food by name needs the FoodData Central one.'}
         >
           <SettingsRow
             entryId="productLookupEnabled"
@@ -356,7 +364,7 @@ export function PrivacyAiSettings({ scrollRef }: Props) {
                 icon="key-outline"
                 iconColor={fdcApiKey ? colors.accent : undefined}
                 label="FoodData Central key"
-                hint="Optional, and free from api.data.gov. The USDA's own food database. Asked first for a barcode, and it is the only source for searching a food by name."
+                hint="Needed to search for a food by name. Get a free key by signing up at api.data.gov. This is the USDA's own food database, and it is also asked first for a scanned barcode."
               >
                 <TextInput
                   style={[styles.apiKeyInput, { color: colors.text, borderBottomColor: colors.separator }]}
@@ -372,6 +380,8 @@ export function PrivacyAiSettings({ scrollRef }: Props) {
                   accessibilityLabel="FoodData Central API key"
                 />
               </SettingsRow>
+              {!simpleMode && (
+              <>
               <View style={styles.sep} />
               <SettingsRow
                 entryId="goUpcApiKey"
@@ -394,12 +404,14 @@ export function PrivacyAiSettings({ scrollRef }: Props) {
                   accessibilityLabel="Go-UPC API key"
                 />
               </SettingsRow>
+              </>
+              )}
             </>
           )}
           {/* Shown whether or not lookups are on, because the reason to reach
               for it is that something already saved is wrong, and switching
               lookups off doesn't stop those answers being used. */}
-          {cachedBarcodes > 0 && (
+          {cachedBarcodes > 0 && !simpleMode && (
             <>
               <View style={styles.sep} />
               <SettingsRow

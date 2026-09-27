@@ -668,6 +668,59 @@ describe('the meal-log offer a finished container raises', () => {
 
     expect(useFoodLogStore.getState().pendingManualMealLog).toBeNull();
   });
+
+  // Ticking a leftover-backed dinner's Eat step raises the plan's offer and
+  // then "was that the last of it?". Finishing it used to raise a second offer
+  // beside the plan's, or replace the plan's with a slotless one.
+  describe('when the meal it was eaten at has already offered', () => {
+    const planOffer = {
+      label: 'Chili', slot: 'dinner' as const, dayKey: '2026-04-02', mealPlanEntryId: 'e-plan',
+    };
+
+    it('leaves the plan\'s search-sheet offer alone for a container with no recipe', () => {
+      useFoodLogStore.setState({ pendingManualMealLog: planOffer });
+      seed([makeLeftover({ id: 'lo-a', title: 'Chili', recipeId: null })]);
+
+      useLeftoverStore.getState().finishLeftover('lo-a', 'eaten');
+
+      expect(useFoodLogStore.getState().pendingManualMealLog).toEqual(planOffer);
+      expect(useFoodLogStore.getState().pendingMealLog).toBeNull();
+    });
+
+    it('raises no second prompt beside the plan\'s for a container with a recipe', () => {
+      useFoodLogStore.setState({ pendingManualMealLog: planOffer });
+      seed([makeLeftover({ id: 'lo-a', title: 'Chili', recipeId: 'r-1', weightG: 300 })]);
+
+      useLeftoverStore.getState().finishLeftover('lo-a', 'eaten');
+
+      expect(useFoodLogStore.getState().pendingMealLog).toBeNull();
+      expect(useFoodLogStore.getState().pendingManualMealLog).toEqual(planOffer);
+    });
+
+    it('leaves a waiting recipe prompt alone too', () => {
+      const prompt = {
+        ...planOffer, recipeId: 'r-plan', scale: 1, choices: [], grams: null,
+      };
+      useFoodLogStore.setState({ pendingMealLog: prompt });
+      seed([makeLeftover({ id: 'lo-a', title: 'Chili', recipeId: 'r-1', weightG: 300 })]);
+
+      useLeftoverStore.getState().finishLeftover('lo-a', 'eaten');
+
+      expect(useFoodLogStore.getState().pendingMealLog).toEqual(prompt);
+      expect(useFoodLogStore.getState().pendingManualMealLog).toBeNull();
+    });
+
+    it('still finishes the container', () => {
+      useFoodLogStore.setState({ pendingManualMealLog: planOffer });
+      seed([makeLeftover({ id: 'lo-a', recipeId: null })]);
+
+      useLeftoverStore.getState().finishLeftover('lo-a', 'eaten');
+
+      const finished = useLeftoverStore.getState().leftovers.find(l => l.id === 'lo-a');
+      expect(finished?.finishedAt).not.toBeNull();
+      expect(finished?.outcome).toBe('eaten');
+    });
+  });
 });
 
 describe('reopenLeftover', () => {

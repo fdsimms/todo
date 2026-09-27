@@ -103,6 +103,11 @@ new one goes. Same call `AppNavigator` already makes about the recipe-timer dot 
   ordinary form, and an app without them isn't a simpler todo app, it's a worse one.
 - **The grocery list, catalog, aisles, recipes and the meal plan.** Simplified mode takes the
   machinery underneath the kitchen, not the kitchen.
+- **Searching a food by name, and the two settings it needs.** Barcode scanning goes, but the
+  food database search (a grocery item's Nutrition, the food log) stays, so the "Look up food
+  databases" switch and the FoodData Central key stay in Settings too. A failed search's "Open
+  Settings" lands on the key row, and a row simplified mode had hidden left it landing on nothing.
+  The Go-UPC key and "Forget saved barcodes" only serve the scanner, so they are still `simple`.
 - **`aiFeatureConfig`, and every setting for a hidden feature.** Hidden, never rewritten, so the
   whole thing comes back as it was.
 

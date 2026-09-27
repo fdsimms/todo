@@ -648,11 +648,15 @@ export function nutrientContributions(
  * may be taken for: a label a manufacturer declared, a database's analysis, a
  * person's own transcription and a dish estimated from its ingredients are four
  * different claims, and the row is the only place a person can tell them apart.
+ *
+ * `quantity` stands in for the stored words when the row has a better way to
+ * say them: the day's water entry is written in millilitres and shown in the
+ * unit the person picked (`waterEntryQuantity`).
  */
-export function describeFoodLogEntry(entry: FoodLogEntry): string {
+export function describeFoodLogEntry(entry: FoodLogEntry, quantity: string = entry.quantity): string {
   const calories = entry.nutrition.amounts.calorieKcal;
   const parts: string[] = [];
-  if (entry.quantity.trim()) parts.push(entry.quantity.trim());
+  if (quantity.trim()) parts.push(quantity.trim());
   if (calories !== undefined) parts.push(`${Math.round(calories)} cal`);
   parts.push(SOURCE_WORDS[entry.nutrition.source]);
   return parts.join(' · ');
@@ -787,6 +791,29 @@ export function matchMealPlanEntry(
   if (!logged.slot) return null;
   const bySlot = unclaimed.filter(entry => entry.slot === logged.slot);
   return bySlot.length === 1 ? bySlot[0] : null;
+}
+
+/**
+ * The planned meal a recipe logged from its own page belongs to, or null.
+ *
+ * The recipe page's log button raises the after-meal prompt with no meal of
+ * the day and no plan entry, so tonight's dinner logged from the page filed
+ * under no meal, left the plan reading unlogged (`mealLogCoverage.ts` joins on
+ * the slot), and the Eat step offered to log it again. This is
+ * `matchMealPlanEntry` asked with the recipe alone: one unclaimed entry for it
+ * on the day's plan links, and anything else (none, or the dish planned twice)
+ * is no answer rather than a guess. `dayLog` is the day's food log, whose
+ * links say which plan entries are already claimed.
+ */
+export function plannedEntryForRecipe(
+  dayPlan: MealPlanEntry[],
+  dayLog: readonly FoodLogEntry[],
+  recipeId: string,
+): MealPlanEntry | null {
+  const alreadyLinked = new Set(
+    dayLog.map(e => e.mealPlanEntryId).filter((id): id is string => id != null),
+  );
+  return matchMealPlanEntry(dayPlan, alreadyLinked, { slot: null, recipeId });
 }
 
 /**

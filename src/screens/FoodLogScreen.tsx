@@ -35,11 +35,13 @@ import {
   describeWaterDay,
   isWaterEntry,
   waterEntryOf,
+  waterEntryQuantity,
   waterHelping,
   waterInUnit,
   waterRange,
   waterToMl,
   waterTotalMl,
+  type WaterUnit,
 } from '../utils/waterLog';
 import { NUTRIENT_LABEL } from '../utils/foodNutrition';
 import { AnimatedCollapsible } from '../components/AnimatedCollapsible';
@@ -494,12 +496,12 @@ export function FoodLogScreen() {
         ]),
       },
       {
-        text: entry.itemId ? 'File as a different item' : 'File as an item',
+        text: entry.itemId ? 'Link to a different grocery item' : 'Link to a grocery item',
         onPress: () => setLinkingEntry(entry),
       },
       ...(entry.itemId
         ? [{
-          text: 'Stop filing it as an item',
+          text: 'Remove the grocery item link',
           onPress: () => {
             // The box goes with the row: a product is one of an item's boxes,
             // so an entry pointing at a box and not at the item is a pointer
@@ -969,7 +971,7 @@ export function FoodLogScreen() {
         <EmptyState
           icon="restaurant-outline"
           title={isToday ? 'Nothing logged today' : 'Nothing logged that day'}
-          subtitle="A food can be logged once it has nutrition on it, so its figures are the food's own rather than a guess."
+          subtitle="Foods and meals you log show up here, with the day's totals."
           actionLabel="Log something"
           onAction={() => { haptics.tap(); setAddingSlot(guessedSlot); setAddOpen(true); }}
           bottomOffset={tabBarHeight}
@@ -1130,6 +1132,7 @@ export function FoodLogScreen() {
                   drag={selectionMode ? undefined : drag}
                   styles={styles}
                   colors={colors}
+                  waterUnit={waterUnit}
                   onToggleSelect={toggleSelection}
                   onSwipeSelect={enterSelectionMode}
                   onOpenMenu={handleOpenMenu}
@@ -1516,7 +1519,7 @@ function makeStyles(colors: Colors) {
  * way, so expanding never fights it.
  */
 const FoodLogRow = React.memo(function FoodLogRow({
-  entry, isActive, selectionMode, selected, drag, styles, colors, onToggleSelect, onSwipeSelect, onOpenMenu,
+  entry, isActive, selectionMode, selected, drag, styles, colors, waterUnit, onToggleSelect, onSwipeSelect, onOpenMenu,
 }: {
   entry: FoodLogEntry;
   isActive: boolean;
@@ -1525,6 +1528,9 @@ const FoodLogRow = React.memo(function FoodLogRow({
   drag?: () => void;
   styles: ReturnType<typeof makeStyles>;
   colors: Colors;
+  // A string from settings, so it keeps the memo stable: the day's water entry
+  // reads in the unit its card above is stepped in (`waterEntryQuantity`).
+  waterUnit: WaterUnit;
   // Each takes what it acts on rather than being closed over it, so the screen
   // can hand every row the same stable function and the memo above holds. An
   // inline arrow per row is a fresh identity per render and defeats it, which
@@ -1539,6 +1545,7 @@ const FoodLogRow = React.memo(function FoodLogRow({
   const toggleSelect = () => onToggleSelect(entry.id);
   const toggleExpand = () => { haptics.tap(); setExpanded(e => !e); };
   const statedKeys = NUTRIENT_KEYS.filter(key => entry.nutrition.amounts[key] !== undefined);
+  const meta = describeFoodLogEntry(entry, waterEntryQuantity(entry, waterUnit));
   const rowBody = (
     <View
       ref={paintRef}
@@ -1557,12 +1564,12 @@ const FoodLogRow = React.memo(function FoodLogRow({
           delayLongPress={interaction.delayLongPress}
           accessibilityRole={selectionMode ? 'checkbox' : undefined}
           accessibilityState={selectionMode ? { checked: selected } : { expanded }}
-          accessibilityLabel={`${entry.label}. ${describeFoodLogEntry(entry)}`}
+          accessibilityLabel={`${entry.label}. ${meta}`}
           accessibilityHint={selectionMode ? undefined : (expanded ? 'Hides nutrients' : 'Shows nutrients')}
         >
           <View style={styles.entryText}>
             <Text style={styles.entryTitle}>{entry.label}</Text>
-            <Text style={styles.entryMeta}>{describeFoodLogEntry(entry)}</Text>
+            <Text style={styles.entryMeta}>{meta}</Text>
           </View>
         </TouchableOpacity>
         {selectionMode ? (
