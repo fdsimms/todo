@@ -117,7 +117,20 @@ export function ProjectCategoriesSheet({ visible, onClose }: Props) {
     setOrder(prev => (prev.length === storeOrder.length && prev.every((n, i) => n === storeOrder[i]) ? prev : storeOrder));
   }, [storeOrder, visible, dragging]);
 
+  // Every project filed under it, which is what deleting it unfiles.
   const countFor = (name: string) => projects.filter(p => p.category === name).length;
+  // What the row says: the active ones first, since those are what the
+  // Projects page shows under this heading. A bare total read "5 projects"
+  // beside a heading holding 2, with the other 3 finished or filed away.
+  const describeCount = (name: string) => {
+    const filed = projects.filter(p => p.category === name);
+    const active = filed.filter(p => !p.archived && !p.completed).length;
+    const rest = filed.length - active;
+    const activeText = `${active} ${active === 1 ? 'project' : 'projects'}`;
+    if (rest === 0) return activeText;
+    const restText = `${rest} completed or archived`;
+    return active === 0 ? restText : `${activeText}, plus ${restText}`;
+  };
 
   const handleReorder = (next: Row[]) => {
     const names = next.map(r => r.id);
@@ -135,15 +148,24 @@ export function ProjectCategoriesSheet({ visible, onClose }: Props) {
     if (committedRef.current) return;
     committedRef.current = true;
     const trimmed = draft.trim();
-    setEditingName(null);
-    setDraft('');
     // Unchanged or emptied: the field closes and nothing is written. Blanking
     // a name is not a way to delete a category — the trash button is.
-    if (!trimmed || trimmed === name) return;
+    if (!trimmed || trimmed === name) {
+      setEditingName(null);
+      setDraft('');
+      return;
+    }
     if (!renameCategory(name, trimmed)) {
+      // The field stays open holding what was typed, as the store's contract
+      // asks. It used to close before the refusal was known, so the alert
+      // arrived after the text it was about had already been thrown away.
+      committedRef.current = false;
+      setDraft(trimmed);
       Alert.alert('That name is taken', `A project category named "${trimmed}" already exists.`);
       return;
     }
+    setEditingName(null);
+    setDraft('');
     haptics.tap();
   };
 
@@ -164,6 +186,13 @@ export function ProjectCategoriesSheet({ visible, onClose }: Props) {
     setNewName('');
     setAddingNew(false);
     if (!trimmed) return;
+    // addCategory answers a taken name with the existing row, which from here
+    // looked like the tap doing nothing at all.
+    const taken = categories.find(c => c.name.toLocaleLowerCase() === trimmed.toLocaleLowerCase());
+    if (taken) {
+      Alert.alert('That name is taken', `A project category named "${taken.name}" already exists.`);
+      return;
+    }
     animateLayout();
     addCategory(trimmed);
     haptics.tap();
@@ -216,7 +245,6 @@ export function ProjectCategoriesSheet({ visible, onClose }: Props) {
                 onDragStateChange={setDragging}
                 renderItem={(row, _index, drag) => {
                   const name = row.id;
-                  const count = countFor(name);
                   const editing = editingName === name;
                   return (
                     <View style={styles.row}>
@@ -248,9 +276,7 @@ export function ProjectCategoriesSheet({ visible, onClose }: Props) {
                             <Text style={styles.rowLabel} numberOfLines={1}>{name}</Text>
                           </TouchableOpacity>
                         )}
-                        <Text style={styles.rowCount}>
-                          {count} {count === 1 ? 'project' : 'projects'}
-                        </Text>
+                        <Text style={styles.rowCount}>{describeCount(name)}</Text>
                       </View>
                       <TouchableOpacity
                         onPress={() => handleDelete(name)}

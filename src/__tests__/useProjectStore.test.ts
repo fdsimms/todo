@@ -2,6 +2,7 @@ import {
   useProjectStore,
   projectProgress,
   projectDecisions,
+  projectCompletedRows,
   isProjectPastWindow,
 } from '../store/useProjectStore';
 import { DEFAULT_NUDGE_CADENCE_DAYS } from '../types';
@@ -330,6 +331,22 @@ describe('projectProgress', () => {
 
 // ─── projectDecisions ───────────────────────────────────────────────────────
 
+describe('projectCompletedRows', () => {
+  // A daily member leaves a completed row per day; the section lists the member
+  // once, at its latest completion, matching what progress counts.
+  it('lists a repeating member once, at its most recent completion, newest first', () => {
+    const tasks = [
+      makeTask({ id: 'r1', projectId: 'p1', completed: true, completedAt: '2025-01-01T09:00:00.000Z' }),
+      makeTask({ id: 'r2', projectId: 'p1', completed: true, completedAt: '2025-01-02T09:00:00.000Z', previousOccurrenceId: 'r1' }),
+      makeTask({ id: 'r3', projectId: 'p1', completed: false, previousOccurrenceId: 'r2' }),
+      makeTask({ id: 'once', projectId: 'p1', completed: true, completedAt: '2025-01-03T09:00:00.000Z' }),
+      makeTask({ id: 'filed', projectId: 'p1', completed: true, completedAt: '2025-01-04T09:00:00.000Z', archived: true }),
+      makeTask({ id: 'other', projectId: 'p2', completed: true, completedAt: '2025-01-05T09:00:00.000Z' }),
+    ];
+    expect(projectCompletedRows('p1', tasks).map(t => t.id)).toEqual(['once', 'r2']);
+  });
+});
+
 describe('projectDecisions', () => {
   const decision = (overrides: Partial<Task> = {}): Task => makeTask({
     projectId: 'p1',
@@ -565,7 +582,8 @@ describe('createProject / updateProject / getProjectById', () => {
     const project = useProjectStore.getState().createProject('Kitchen remodel');
     expect(project.nudgeCadenceDays).toBe(DEFAULT_NUDGE_CADENCE_DAYS);
     expect(project.autoSchedule).toBe(false);
-    expect(project.nudgeOptIn).toBe(false);
+    // "When I ask": in the Pull sheet when it's opened, never brought up unasked.
+    expect(nudgeModeOf(project)).toBe('on-ask');
   });
 
   // The Settings default used to seed the cadence beside a hardcoded
@@ -585,11 +603,14 @@ describe('createProject / updateProject / getProjectById', () => {
       expect(nudgeModeOf(project)).toBe('scheduled');
     });
 
-    it('leaves a new project out of nudges entirely when the default is Never', () => {
+    // Never also kept a new project out of the Pull sheet the person opens
+    // themselves, so a fresh install's sheet excluded every project.
+    it('makes a new project answer the Pull sheet, and nothing more, when no cadence is set', () => {
       useSettingsStore.setState({ defaultProjectNudgeCadenceDays: 0 });
       const project = useProjectStore.getState().createProject('Gift ideas');
-      expect(project.nudgeOptIn).toBe(false);
-      expect(nudgeModeOf(project)).toBe('never');
+      expect(project.nudgeOptIn).toBe(true);
+      expect(project.nudgeCadenceDays).toBe(0);
+      expect(nudgeModeOf(project)).toBe('on-ask');
     });
   });
 
@@ -738,6 +759,24 @@ describe('reorderProjects', () => {
     expect(ids).toEqual(['b', 'a']);
     expect(dbBatchUpdateProjectSortOrders).toHaveBeenCalled();
   });
+
+  // The screen passes only the list on show. Numbering that subset 0..n-1 left
+  // it colliding with the projects filtered out of view.
+  it('lays a filtered subset into the slots it already held, leaving the rest in place', () => {
+    useProjectStore.setState({
+      projects: [
+        makeProject({ id: 'a', sortOrder: 0 }),
+        makeProject({ id: 'x', sortOrder: 1, archived: true }),
+        makeProject({ id: 'b', sortOrder: 2 }),
+        makeProject({ id: 'y', sortOrder: 3, archived: true }),
+        makeProject({ id: 'c', sortOrder: 4 }),
+      ],
+    });
+    useProjectStore.getState().reorderProjects(['c', 'a', 'b']);
+    const projects = useProjectStore.getState().projects;
+    expect(projects.map(p => p.id)).toEqual(['c', 'x', 'a', 'y', 'b']);
+    expect(new Set(projects.map(p => p.sortOrder)).size).toBe(5);
+  });
 });
 
 describe('reorderProjectsWithCategoryUpdates', () => {
@@ -773,6 +812,14 @@ describe('removeProjectRow / restoreProject', () => {
     useProjectStore.getState().restoreProject(project);
     expect(dbInsertProject).toHaveBeenCalledWith(project);
     expect(useProjectStore.getState().projects).toContainEqual(project);
+  });
+
+  it('puts a restored project back in its place rather than at the end', () => {
+    useProjectStore.setState({
+      projects: [makeProject({ id: 'a', sortOrder: 0 }), makeProject({ id: 'c', sortOrder: 2 })],
+    });
+    useProjectStore.getState().restoreProject(makeProject({ id: 'b', sortOrder: 1 }));
+    expect(useProjectStore.getState().projects.map(p => p.id)).toEqual(['a', 'b', 'c']);
   });
 });
 

@@ -72,6 +72,7 @@ export function QuickAddProjectModal({
   const projects = useProjectStore(useShallow(s => s.projects));
   const createProject = useProjectStore(s => s.createProject);
   const unarchiveProject = useTaskStore(s => s.unarchiveProject);
+  const uncompleteProject = useTaskStore(s => s.uncompleteProject);
   const categories = useProjectCategoryStore(useShallow(s => s.categories));
   const addCategory = useProjectCategoryStore(s => s.addCategory);
 
@@ -96,6 +97,10 @@ export function QuickAddProjectModal({
   // not reset the fields under the person typing.
   const seedRef = useRef(seed);
   seedRef.current = seed;
+  // Set once the sheet has created or restored something. The add button and
+  // the title's return key both stay live through the dismiss animation, so a
+  // second tap inside it created a second project with the same name.
+  const submittedRef = useRef(false);
 
   useEffect(() => {
     const showEvent = Platform.OS === 'ios' ? 'keyboardWillShow' : 'keyboardDidShow';
@@ -123,6 +128,7 @@ export function QuickAddProjectModal({
 
   useEffect(() => {
     if (!visible) return;
+    submittedRef.current = false;
     setTitle('');
     setCategory(seedRef.current?.category ?? null);
     setSeedActive(!!seedRef.current);
@@ -164,14 +170,14 @@ export function QuickAddProjectModal({
   // Read the live text box instead of trusting stale `category` state.
   const resolveCategory = () => {
     const c = newCategory.trim();
-    if (addingCategory && c) {
-      addCategory(c);
-      return c;
-    }
+    // The stored row's name, which can differ in case from what was typed.
+    if (addingCategory && c) return addCategory(c).name;
     return category;
   };
 
   const create = (finalTitle: string) => {
+    if (submittedRef.current) return;
+    submittedRef.current = true;
     haptics.success();
     animateLayout();
     const resolvedCategory = resolveCategory();
@@ -185,7 +191,7 @@ export function QuickAddProjectModal({
 
   const handleAdd = () => {
     const finalTitle = title.trim();
-    if (!finalTitle) return;
+    if (!finalTitle || submittedRef.current) return;
 
     const archivedMatch = findArchivedMatch(archivedProjects, finalTitle);
     if (archivedMatch) {
@@ -193,14 +199,23 @@ export function QuickAddProjectModal({
         'Restore archived project?',
         `You archived "${archivedMatch.title}" a while ago. Restore it instead of starting a new one? Its tasks and progress come back with it.`,
         [
+          // The match is fuzzy, so a wrong guess has to be escapable without
+          // either answer: Cancel leaves the typed name in the field.
+          { text: 'Cancel', style: 'cancel' },
           { text: 'Create new', onPress: () => create(finalTitle) },
           {
             text: 'Restore',
             style: 'default',
             onPress: () => {
+              if (submittedRef.current) return;
+              submittedRef.current = true;
               haptics.success();
               animateLayout();
               unarchiveProject(archivedMatch.id);
+              // Unarchiving alone sent a project that was also completed to
+              // the Completed list, so Restore appeared to do nothing on the
+              // Active list the person was looking at.
+              if (archivedMatch.completed) uncompleteProject(archivedMatch.id);
               dismiss();
             },
           },
@@ -238,8 +253,7 @@ export function QuickAddProjectModal({
     setNewCategory('');
     setAddingCategory(false);
     if (!c) return;
-    addCategory(c);
-    pickCategory(c);
+    pickCategory(addCategory(c).name);
   };
 
   return (

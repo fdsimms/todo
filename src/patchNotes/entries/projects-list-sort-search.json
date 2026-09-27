@@ -1,0 +1,4 @@
+{
+  "message": "Project cards now show the next task up, say \"No tasks yet\" on an empty project, and show when a project was completed or archived. The Projects list can be sorted by deadline, progress or name from its menu, and gets a search bar once you have eight or more projects.",
+  "date": "2026-09-27"
+}

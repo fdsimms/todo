@@ -5,6 +5,12 @@ export type RecurrenceType = 'none' | 'daily' | 'weekly' | 'monthly' | 'yearly' 
 export type Priority = 0 | 1 | 2 | 3 | 4;
 export type Effort = 0 | 1 | 2 | 3 | 4 | 5 | 6;
 export type SortOption = 'default' | 'priority' | 'effort-asc' | 'effort-desc' | 'due-date' | 'streak';
+/**
+ * The Projects screen's order. 'manual' is the hand-dragged order and the only
+ * one a drag can change; the others sort within each category section. See
+ * sortProjects in utils/projectList.
+ */
+export type ProjectSortOption = 'manual' | 'deadline' | 'progress' | 'name';
 export type RecipeSortOption = 'default' | 'name' | 'cooked-recent' | 'cooked-oldest' | 'ingredients-asc' | 'ingredients-desc';
 export type TimeOfDay = 'morning' | 'afternoon' | 'evening' | 'night';
 // 'persistent' is 'alarm' that re-rings on an interval until the task is
@@ -1013,11 +1019,12 @@ export interface Project {
   // than global — silently rescheduling is a bigger promise than suggesting,
   // and it's the right call for a chore list and the wrong one for a wishlist.
   autoSchedule: boolean;
-  // Off by default: a project has to be explicitly opted in before it can
-  // appear in ANY nudge surface — the gone-quiet banner, the auto-schedule
-  // drip, and even the manually-opened "Pull from projects" sheet (see
-  // classifyProject in utils/projectPull.ts, which gates on this ahead of
-  // every other rule, in both modes). A reference list like "Gift ideas" is
+  // False keeps a project out of ANY nudge surface — the gone-quiet banner,
+  // the auto-schedule drip, and even the manually-opened "Pull from projects"
+  // sheet (see classifyProject in utils/projectPull.ts, which gates on this
+  // ahead of every other rule, in both modes). A new project starts opted in
+  // with no cadence ("When I ask", see createProject), so it answers the sheet
+  // but never volunteers itself. A reference list like "Gift ideas" is
   // never going to want a due date; without this, the only way to keep it
   // quiet was nudgeCadenceDays === 0, which only silenced the unprompted
   // surfaces and still showed up the moment someone opened the Pull sheet.

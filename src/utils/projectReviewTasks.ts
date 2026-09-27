@@ -115,11 +115,15 @@ export function projectReviewTitle(project: Pick<Project, 'title'>): string {
  * was written). This is the one line of it that renders.
  */
 export function projectQuietDays(
-  project: Pick<Project, 'createdAt'> | null | undefined,
+  project: Pick<Project, 'createdAt' | 'reviewedAt'> | null | undefined,
   members: readonly Pick<Task, 'completedAt'>[]
 ): number | null {
   if (!project) return null;
   let latest = project.createdAt;
+  // A review counts, as it does in lastTouchedAt: that is what decided this
+  // project was quiet, and without it the chip on a project marked reviewed
+  // two weeks ago went on counting from its creation.
+  if (project.reviewedAt && project.reviewedAt > latest) latest = project.reviewedAt;
   for (const t of members) {
     if (t.completedAt && t.completedAt > latest) latest = t.completedAt;
   }

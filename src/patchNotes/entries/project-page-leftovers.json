@@ -1,0 +1,4 @@
+{
+  "message": "On a project's page, \"Copy task names\" now keeps section headings and subtasks, the Completed section lists a repeating task once instead of once per time it was done, and a long list of decisions folds after three. Pull from projects no longer sends several tasks to an already-full today, and project categories now count their active projects separately from completed or archived ones.",
+  "date": "2026-09-27"
+}

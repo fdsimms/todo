@@ -13,8 +13,11 @@ import { spacing, radius, font, fontWeight, border, animation, interaction, type
 import { haptics } from '../utils/haptics';
 import { useSheetHiddenOffset } from '../hooks/useSheetHiddenOffset';
 import { SheetScrim } from './SheetScrim';
+import { useSafeAreaInsets } from 'react-native-safe-area-context';
+import type { ProjectSortOption } from '../types';
+import { PROJECT_SORT_LABEL, PROJECT_SORT_OPTIONS, type ProjectListFilter } from '../utils/projectList';
 
-export type ProjectFilter = 'active' | 'completed' | 'archived';
+export type ProjectFilter = ProjectListFilter;
 
 interface Props {
   visible: boolean;
@@ -26,6 +29,8 @@ interface Props {
   /** Opens the sheet that renames, deletes and reorders project categories. */
   onManageCategories: () => void;
   categoryCount: number;
+  sort: ProjectSortOption;
+  onSortChange: (sort: ProjectSortOption) => void;
   /** Opens `CookbookChecklistSheet` — a photo of a table of contents in, a list-kind project out. */
   onScanCookbook: () => void;
 }
@@ -43,10 +48,11 @@ interface Props {
  */
 export function ProjectsOptionsMenu({
   visible, onClose, filter, onFilterChange, completedCount, archivedCount,
-  onManageCategories, categoryCount, onScanCookbook,
+  onManageCategories, categoryCount, onScanCookbook, sort, onSortChange,
 }: Props) {
   const colors = useColors();
   const styles = useMemo(() => makeStyles(colors), [colors]);
+  const insets = useSafeAreaInsets();
 
   const hiddenY = useSheetHiddenOffset();
 
@@ -64,19 +70,31 @@ export function ProjectsOptionsMenu({
     }
   }, [visible]);
 
-  const dismiss = () => {
+  // Closes, then runs `then` once the sheet is off screen. A row that opens
+  // another sheet goes through here so the two modals don't overlap — a sheet
+  // presented from under one that is still animating out inherits the
+  // dismissal (see the nested-modal note in ProjectDetail).
+  const dismissThen = (then?: () => void) => {
     Animated.parallel([
       Animated.spring(translateY, { toValue: hiddenY, ...animation.spring.bouncy, useNativeDriver: true }),
       Animated.timing(backdropOpacity, { toValue: 0, duration: animation.duration.fast, useNativeDriver: true }),
     ]).start(() => {
       // No re-arming setValue here — see useSheetHiddenOffset.
       onClose();
+      then?.();
     });
   };
+  const dismiss = () => dismissThen();
 
   const choose = (v: ProjectFilter) => {
     haptics.tap();
     onFilterChange(v);
+    dismiss();
+  };
+
+  const chooseSort = (v: ProjectSortOption) => {
+    haptics.tap();
+    onSortChange(v);
     dismiss();
   };
 
@@ -85,7 +103,12 @@ export function ProjectsOptionsMenu({
       <Animated.View style={[StyleSheet.absoluteFill, styles.backdropDim, { opacity: backdropOpacity }]} pointerEvents="none" />
       <SheetScrim onPress={dismiss} />
 
-      <Animated.View style={[styles.sheetOuter, { transform: [{ translateY }] }]}>
+      <Animated.View
+        style={[
+          styles.sheetOuter,
+          { paddingBottom: insets.bottom + spacing.sm, transform: [{ translateY }] },
+        ]}
+      >
         <View style={styles.optionsCard}>
           <TouchableOpacity
             style={styles.optionRow}
@@ -93,6 +116,7 @@ export function ProjectsOptionsMenu({
             activeOpacity={interaction.activeOpacity}
             accessibilityRole="button"
             accessibilityLabel="Active projects"
+            accessibilityState={{ selected: filter === 'active' }}
           >
             <Ionicons name="briefcase-outline" size={18} color={filter === 'active' ? colors.accent : colors.textSecondary} />
             <View style={styles.optionContent}>
@@ -107,6 +131,7 @@ export function ProjectsOptionsMenu({
             activeOpacity={interaction.activeOpacity}
             accessibilityRole="button"
             accessibilityLabel="Completed projects"
+            accessibilityState={{ selected: filter === 'completed' }}
           >
             <Ionicons name="checkmark-circle-outline" size={18} color={filter === 'completed' ? colors.accent : colors.textSecondary} />
             <View style={styles.optionContent}>
@@ -124,6 +149,7 @@ export function ProjectsOptionsMenu({
             activeOpacity={interaction.activeOpacity}
             accessibilityRole="button"
             accessibilityLabel="Archived projects"
+            accessibilityState={{ selected: filter === 'archived' }}
           >
             <Ionicons name="archive-outline" size={18} color={filter === 'archived' ? colors.accent : colors.textSecondary} />
             <View style={styles.optionContent}>
@@ -136,21 +162,43 @@ export function ProjectsOptionsMenu({
           </TouchableOpacity>
         </View>
 
+        {/* Its own card for the same reason the categories row below is: this
+            is a second question (in what order), with its own tick. The order
+            is applied inside each category section, and only "Your order" can
+            be changed by dragging, so the others say that a drag is off. */}
+        <Text style={styles.cardLabel}>Sort by</Text>
+        <View style={styles.optionsCard}>
+          {PROJECT_SORT_OPTIONS.map((option, i) => (
+            <React.Fragment key={option}>
+              {i > 0 && <View style={styles.optionSep} />}
+              <TouchableOpacity
+                style={[styles.optionRow, styles.optionRowCompact]}
+                onPress={() => chooseSort(option)}
+                activeOpacity={interaction.activeOpacity}
+                accessibilityRole="button"
+                accessibilityLabel={`Sort by ${PROJECT_SORT_LABEL[option]}`}
+                accessibilityState={{ selected: sort === option }}
+              >
+                <View style={styles.optionContent}>
+                  <Text style={[styles.optionLabel, sort === option && styles.optionLabelActive]}>
+                    {PROJECT_SORT_LABEL[option]}
+                  </Text>
+                  {option === 'manual' && (
+                    <Text style={styles.optionHint}>Long press a project to move it</Text>
+                  )}
+                </View>
+                {sort === option && <Ionicons name="checkmark" size={18} color={colors.accent} />}
+              </TouchableOpacity>
+            </React.Fragment>
+          ))}
+        </View>
+
         <View style={[styles.optionsCard, styles.secondCard]}>
           <TouchableOpacity
             style={styles.optionRow}
             onPress={() => {
               haptics.tap();
-              // Dismissed first, so the two modals don't overlap — a sheet
-              // presented from under one that is still animating out inherits
-              // the dismissal (see the nested-modal note in ProjectDetail).
-              Animated.parallel([
-                Animated.spring(translateY, { toValue: hiddenY, ...animation.spring.bouncy, useNativeDriver: true }),
-                Animated.timing(backdropOpacity, { toValue: 0, duration: animation.duration.fast, useNativeDriver: true }),
-              ]).start(() => {
-                onClose();
-                onManageCategories();
-              });
+              dismissThen(onManageCategories);
             }}
             activeOpacity={interaction.activeOpacity}
             accessibilityRole="button"
@@ -172,13 +220,7 @@ export function ProjectsOptionsMenu({
             style={styles.optionRow}
             onPress={() => {
               haptics.tap();
-              Animated.parallel([
-                Animated.spring(translateY, { toValue: hiddenY, ...animation.spring.bouncy, useNativeDriver: true }),
-                Animated.timing(backdropOpacity, { toValue: 0, duration: animation.duration.fast, useNativeDriver: true }),
-              ]).start(() => {
-                onClose();
-                onScanCookbook();
-              });
+              dismissThen(onScanCookbook);
             }}
             activeOpacity={interaction.activeOpacity}
             accessibilityRole="button"
@@ -211,7 +253,6 @@ const makeStyles = (colors: Colors) => StyleSheet.create({
     right: 0,
     bottom: 0,
     paddingHorizontal: spacing.md,
-    paddingBottom: 34,
   },
   optionsCard: {
     backgroundColor: colors.bgSecondary,
@@ -230,6 +271,15 @@ const makeStyles = (colors: Colors) => StyleSheet.create({
     paddingVertical: 14,
     paddingHorizontal: spacing.md,
     minHeight: 56,
+  },
+  // The sort rows carry no icon and at most one hint line, so they sit tighter
+  // than the list rows above; four of them at full height pushed the sheet
+  // most of the way up a small phone.
+  optionRowCompact: { paddingVertical: spacing.smd, minHeight: 48 },
+  cardLabel: {
+    color: colors.textSecondary, fontSize: font.xs, fontWeight: fontWeight.semibold,
+    textTransform: 'uppercase', letterSpacing: 0.8,
+    marginHorizontal: spacing.md, marginTop: spacing.xs, marginBottom: spacing.xs,
   },
   optionSep: {
     height: border.hairline,

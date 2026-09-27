@@ -442,7 +442,17 @@ export function suggestPullDate(
 
   const today = getCurrentDayStart();
   today.setHours(12, 0, 0, 0);
-  return { date: today, dayLabel: 'Today', reason: `quiet ${quietDays} days` };
+  return { date: today, dayLabel: 'Today', reason: describeQuietReason(quietDays) };
+}
+
+/**
+ * The reason text beside a pull landing on today. Empty at zero: the sheet the
+ * user opens themselves lists projects touched today too, and "quiet 0 days"
+ * was a reason that gave none. The sheet renders an empty reason as nothing.
+ */
+export function describeQuietReason(quietDays: number): string {
+  if (quietDays <= 0) return '';
+  return `quiet ${quietDays} ${quietDays === 1 ? 'day' : 'days'}`;
 }
 
 /**
@@ -541,8 +551,8 @@ export function describePullEmpty(state: PullEmptyState): string {
     // because nothing else in the sheet points at the switch that is off.
     case 'nudge-excluded':
       return count === total
-        ? 'Every project is set to never be chased. Open one and set “Bring this up” to “When I ask” to have it show up here.'
-        : `${projects(count)} of ${total} are set to never be chased. Set “Bring this up” to “When I ask” on one to have it show up here.${rest}`;
+        ? 'Every project has “Bring this up” set to Never. Open one and set it to “When I ask” to have it show up here.'
+        : `${projects(count)} of ${total} have “Bring this up” set to Never. Set “Bring this up” to “When I ask” on one to have it show up here.${rest}`;
     // Only reachable from a 'nudge'-mode diagnosis: “When I ask” is exactly a
     // project that belongs in this sheet and nowhere else, so the sheet the
     // user opened themselves never refuses one for this reason.
@@ -608,13 +618,19 @@ export function buildProjectPullPlan(
   }
   const ctx = pullContext();
 
+  // Every proposal starts selected, so each one that lands on today counts
+  // against today's budget for the next. Checked one row at a time, five
+  // pulls could all land on a today that the first two had already filled.
+  const landingToday: Task[] = [...todaysTasks];
   const proposals = stalls.slice(0, MAX_PULLED_PROJECTS).map(stall => {
     const candidates = rankPullCandidates(stall.pullable, ctx);
+    const suggestion = suggestPullDate(candidates[0], allTasks, landingToday, stall.quietDays);
+    if (suggestion.dayLabel === 'Today') landingToday.push(candidates[0]);
     return {
       project: stall.project,
       candidates,
       quietDays: stall.quietDays,
-      suggestion: suggestPullDate(candidates[0], allTasks, todaysTasks, stall.quietDays),
+      suggestion,
       selected: true,
     };
   });
@@ -622,7 +638,17 @@ export function buildProjectPullPlan(
   return {
     proposals,
     overflowCount: Math.max(0, stalls.length - proposals.length),
-    empty: proposals.length === 0 ? diagnosePullEmpty(projects, allTasks) : null,
+    // Diagnosed over the same scope the proposals were: a sheet opened for one
+    // project that has stopped being quiet otherwise explained itself with
+    // counts from every other project on the board.
+    empty: proposals.length === 0
+      ? diagnosePullEmpty(
+          scopeProjectIds && scopeProjectIds.length > 0
+            ? projects.filter(p => scopeProjectIds.includes(p.id))
+            : projects,
+          allTasks,
+        )
+      : null,
   };
 }
 

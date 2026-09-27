@@ -559,6 +559,11 @@ describe('suggestPullDate', () => {
     expect(result.date.toDateString()).toBe(new Date().toDateString());
   });
 
+  it('gets the singular right, and gives no reason at all for a project touched today', () => {
+    expect(suggestPullDate(makeTask(), [], [], 1).reason).toBe('quiet 1 day');
+    expect(suggestPullDate(makeTask(), [], [], 0).reason).toBe('');
+  });
+
   it('falls back to a future day when today is already loaded', () => {
     const task = makeTask({ id: 'pull' });
     // Enough estimated minutes on today to blow the budget.
@@ -631,6 +636,37 @@ describe('buildProjectPullPlan', () => {
     const tasks = [makeTask({ id: 'a', dueDate: new Date().toISOString() })];
 
     expect(buildProjectPullPlan([makeProject()], tasks, tasks).proposals).toEqual([]);
+  });
+
+  // Every proposal starts selected, so each one sent to today counts against
+  // the budget the next is checked with.
+  it('stops sending proposals to today once the ones before them fill it', () => {
+    const projects = [0, 1, 2].map(i =>
+      makeProject({ id: `p${i}`, sortOrder: i, createdAt: subDays(new Date(), 60 - i).toISOString() })
+    );
+    const half = Math.ceil(PULL_TODAY_BUDGET_MINUTES / 2);
+    const tasks = projects.map(p => makeTask({ id: `t-${p.id}`, projectId: p.id, estimatedMinutes: half }));
+
+    const labels = buildProjectPullPlan(projects, tasks, []).proposals.map(p => p.suggestion.dayLabel);
+
+    expect(labels.slice(0, 2)).toEqual(['Today', 'Today']);
+    expect(labels[2]).not.toBe('Today');
+  });
+
+  // Opened for one project, the sheet's empty message has to be about that
+  // project, not counts drawn from the rest of the board.
+  it('diagnoses a scoped empty plan over the scoped projects alone', () => {
+    const projects = [makeProject({ id: 'p1' }), makeProject({ id: 'p2' }), makeProject({ id: 'p3' })];
+    const tasks = [
+      makeTask({ id: 'a', projectId: 'p1', dueDate: new Date().toISOString() }),
+      makeTask({ id: 'b', projectId: 'p2', dueDate: new Date().toISOString() }),
+      makeTask({ id: 'c', projectId: 'p3', dueDate: new Date().toISOString() }),
+    ];
+    expect(buildProjectPullPlan(projects, tasks, [], ['p1']).empty).toEqual({
+      reason: 'has-schedule',
+      count: 1,
+      total: 1,
+    });
   });
 
   it('diagnoses an empty plan and leaves the diagnosis off a full one', () => {

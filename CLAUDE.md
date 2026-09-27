@@ -881,6 +881,10 @@ stack looks absent, and recording that would re-collapse the lot on every cold l
 
 Cascades (`completeGroup`, `deferGroup`, `pinGroup`, `deleteGroup`) are roster-scoped so they can't mutate completed history. `deleteGroup({cascade:true})` deletes the live members and merely unfiles the past occurrences — deleting a stack must not erase its Logbook and Stats history.
 
+### Projects
+
+**Anything that lists or counts a project's tasks leaves archived rows out.** Archiving means "out of every list", and `projectProgress`, `projectDecisions`, `projectCompletedRows` and `liveProjectSteps` all filter `!t.archived`. The project page's own list didn't, so archived tasks sat there as open rows, "Complete project, archive the rest" left every one of them on screen, and a drag of one snapped back because `reorderProjectItems` (which reads `liveProjectSteps`) never knew it was there. A new reader of a project's members filters it too, and a section's roster needs the same care in the other direction: it can hold tasks filed under other projects, so anything acting on it from a project's page scopes it to `t.projectId === projectId` first.
+
 ### Navigation
 
 `src/navigation/AppNavigator.tsx` uses a bottom tab bar with 4 visible tabs (Today, Groceries, Projects, More). Every other screen is registered as a hidden tab and reached via `SideMenuDrawer`, which overlays the full screen and is opened by tapping "More" or by edge-swipe from the left. The Groceries tab drops out (falling back to `tabBarButton: () => null`, same as any drawer-only tab) while `kitchenEnabled` is off in Settings, mirroring the drawer's own "Groceries & Meals" row.
@@ -1265,6 +1269,8 @@ place of the page sheet's own (`EditorSheet`, `CategoryOrderSheet`, `GroceryAisl
 other ~20 page sheets hold no drag and are left alone.
 
 Both lists fire the drag-lift haptic themselves (`startDrag`), so callers must not add their own.
+
+**A reorder handed only the rows on screen lays them into the slots those rows already hold, and never renumbers them 0..n.** Almost every list here is a filtered view of a larger ordered set: the Projects screen shows Active, Completed or Archived; Today shows a stack's members due today; a project's page is a slice of the one global `Task.sortOrder` space. Numbering the visible subset from zero collides with everything filtered out of it, so the hidden rows come back in whatever order the ties happen to break. `reorderProjects` shipped exactly that and reshuffled the Active list whenever the Archived one was dragged. The three helpers that do it right are `slotUpdates` (`src/utils/projectOrder.ts`), `reorderSubset` (behind `reorderGroupChildren`), and the splice-into-the-full-order pass in `reorderProjects`; reach for one of them rather than a fresh `map((id, i) => ...)`.
 
 **Today's category headers are not draggable, and that isn't an oversight.** Reordering the
 sections used to be a long-press on a header inside the task list, and the floating card never

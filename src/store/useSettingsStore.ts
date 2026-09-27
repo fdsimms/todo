@@ -28,7 +28,7 @@ import {
 } from '../utils/energyBudget';
 import { DEFAULT_WEIGH_IN_EVERY_DAYS, clampWeighInEveryDays } from '../utils/weightTasks';
 import { DEFAULT_APP_FONT, isAppFont, pickRandomAppFont, type AppFont } from '../theme/fonts';
-import type { SortOption, RecipeSortOption, Priority, Effort, MealSlot, TimeOfDay, TitleRule, WeatherRule, EventTaskRule, ScreenTimeRule, HealthRule, NutrientKey, ReminderCapture } from '../types';
+import type { SortOption, RecipeSortOption, ProjectSortOption, Priority, Effort, MealSlot, TimeOfDay, TitleRule, WeatherRule, EventTaskRule, ScreenTimeRule, HealthRule, NutrientKey, ReminderCapture } from '../types';
 import {
   parseNutritionTargets,
   serializeNutritionTargets,
@@ -277,6 +277,9 @@ interface SettingsStore {
   // every recipe visible, so an install that predates this reads unchanged.
   recipeSortOption: RecipeSortOption;
   recipeLovedOnly: boolean;
+  // The Projects screen's order ('manual' by default, the hand-dragged one),
+  // chosen in its "..." menu. Kept across launches like the recipe box's.
+  projectSortOption: ProjectSortOption;
   // One summary notification each morning. Off by default — an app that
   // starts notifying you daily because you installed it is the reason people
   // turn notifications off wholesale.
@@ -1554,6 +1557,7 @@ interface SettingsStore {
   setFilterEfforts: (efforts: Effort[]) => void;
   setFilterHasReminder: (on: boolean) => void;
   setRecipeSortOption: (sort: RecipeSortOption) => void;
+  setProjectSortOption: (sort: ProjectSortOption) => void;
   setRecipeLovedOnly: (lovedOnly: boolean) => void;
   setAnthropicApiKey: (key: string) => void;
   setFdcApiKey: (key: string) => void;
@@ -1881,6 +1885,7 @@ const DEFAULT_SETTINGS = {
 //   Immediately or back.
 
 const SORT_OPTIONS: SortOption[] = ['default', 'priority', 'effort-asc', 'effort-desc', 'due-date', 'streak'];
+const PROJECT_SORT_VALUES: ProjectSortOption[] = ['manual', 'deadline', 'progress', 'name'];
 const RECIPE_SORT_OPTIONS: RecipeSortOption[] =
   ['default', 'name', 'cooked-recent', 'cooked-oldest', 'ingredients-asc', 'ingredients-desc'];
 
@@ -2135,6 +2140,7 @@ export const useSettingsStore = create<SettingsStore>((set, get) => ({
   filterHasReminder: false,
   recipeSortOption: 'default',
   recipeLovedOnly: false,
+  projectSortOption: 'manual',
   titleRules: [],
   dailyAgendaEnabled: false,
   dailyAgendaTime: '08:00',
@@ -2364,6 +2370,9 @@ export const useSettingsStore = create<SettingsStore>((set, get) => ({
     const filterPriorities = parseFilterArray<Priority>(dbGetSetting('filterPriorities'), 4);
     const filterEfforts = parseFilterArray<Effort>(dbGetSetting('filterEfforts'), 6);
     const filterHasReminder = dbGetSetting('filterHasReminder') === 'true';
+    const storedProjectSort = dbGetSetting('projectSortOption') as ProjectSortOption | null;
+    const projectSortOption: ProjectSortOption =
+      storedProjectSort && PROJECT_SORT_VALUES.includes(storedProjectSort) ? storedProjectSort : 'manual';
     const storedRecipeSort = dbGetSetting('recipeSortOption') as RecipeSortOption | null;
     const recipeSortOption: RecipeSortOption =
       storedRecipeSort && RECIPE_SORT_OPTIONS.includes(storedRecipeSort) ? storedRecipeSort : 'default';
@@ -2947,6 +2956,7 @@ export const useSettingsStore = create<SettingsStore>((set, get) => ({
       productLookupEnabled,
       projectReviewTaskCategory,
       projectReviewTasks,
+      projectSortOption,
       quietHoursEnd,
       quietHoursStart,
       reachOutTaskCategory,
@@ -3164,6 +3174,11 @@ export const useSettingsStore = create<SettingsStore>((set, get) => ({
   setFilterHasReminder(on: boolean) {
     dbSetSetting('filterHasReminder', on ? 'true' : 'false');
     set({ filterHasReminder: on });
+  },
+
+  setProjectSortOption(sort: ProjectSortOption) {
+    dbSetSetting('projectSortOption', sort);
+    set({ projectSortOption: sort });
   },
 
   setRecipeSortOption(sort: RecipeSortOption) {

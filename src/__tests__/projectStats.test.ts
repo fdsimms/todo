@@ -97,6 +97,7 @@ describe('projectStats', () => {
       finishedThisYear: 0,
       activeDone: 0,
       activeTotal: 0,
+      activeTracked: 0,
       typicalDays: null,
       recentlyFinished: [],
     });
@@ -145,6 +146,22 @@ describe('projectStats', () => {
     const stats = projectStats(projects, tasks, NOW);
     expect(stats.activeDone).toBe(2);
     expect(stats.activeTotal).toBe(3);
+  });
+
+  // An ongoing project never finishes, so counting its members only ever
+  // dragged "tasks done across active projects" down.
+  it('leaves ongoing projects out of the aggregate, while still counting them as active', () => {
+    const projects = [makeProject({ id: 'a' }), makeProject({ id: 'b', ongoing: true })];
+    const tasks = [
+      makeTask({ id: '1', projectId: 'a', completed: true }),
+      makeTask({ id: '2', projectId: 'b' }),
+      makeTask({ id: '3', projectId: 'b' }),
+    ];
+    const stats = projectStats(projects, tasks, NOW);
+    expect(stats.active).toBe(2);
+    expect(stats.activeTracked).toBe(1);
+    expect(stats.activeDone).toBe(1);
+    expect(stats.activeTotal).toBe(1);
   });
 
   it('counts this year separately from ever', () => {

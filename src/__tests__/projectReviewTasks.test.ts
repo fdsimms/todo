@@ -265,6 +265,16 @@ describe('projectQuietDays', () => {
     expect(projectQuietDays(project, [])).toBe(12);
   });
 
+  // Marking a project reviewed restarts the clock the stall check reads, so the
+  // chip on the review task that stall writes has to read it too.
+  it('counts from a review later than every completion', () => {
+    const project = makeProject({
+      createdAt: subDays(new Date(), 60).toISOString(),
+      reviewedAt: subDays(new Date(), 14).toISOString(),
+    });
+    expect(projectQuietDays(project, [{ completedAt: subDays(new Date(), 30).toISOString() }])).toBe(14);
+  });
+
   it('renders no chip at all for a project that is gone', () => {
     // A row can outlive its project by up to one sweep. "Quiet 0 days" there
     // would be the app stating something false about it.

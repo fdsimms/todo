@@ -45,6 +45,18 @@ describe('groupProjectsByCategory', () => {
       'b', 'h:Work', 'c', 'h:Home', 'a',
     ]);
   });
+
+  it('sorts unregistered categories by locale and groups a blank one as none', () => {
+    const projects = [
+      makeProject({ id: 'z', category: 'Zoo' }),
+      makeProject({ id: 'a', category: 'apple' }),
+      makeProject({ id: 'b', category: '' }),
+    ];
+    const items = groupProjectsByCategory(projects);
+    expect(items.map(i => (i.type === 'header' ? `h:${i.label}` : i.project.id))).toEqual([
+      'b', 'h:apple', 'a', 'h:Zoo', 'z',
+    ]);
+  });
 });
 
 describe('resolveProjectDrop', () => {

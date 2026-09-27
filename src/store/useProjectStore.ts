@@ -137,6 +137,31 @@ export function projectDecisions(projectId: string, tasks: Task[]): Task[] {
   return Array.from(latest.values()).sort((a, b) => answeredAt(b).localeCompare(answeredAt(a)));
 }
 
+/**
+ * The project page's Completed section: finished members, newest first, one
+ * row per member.
+ *
+ * Grouped by the same identity `projectProgress` counts, for the reason
+ * `projectDecisions` gives: a repeating member leaves a completed row per
+ * occurrence, so a daily task in a project grew the section by one a day and
+ * "Show 47 completed" sat beside a progress line counting 8 members. Each
+ * member shows its most recent completion; the rest of its history is in the
+ * Logbook, where history lives.
+ */
+export function projectCompletedRows(projectId: string, tasks: Task[]): Task[] {
+  const members = tasks.filter(t => t.projectId === projectId && t.parentId === null && !t.archived);
+  const byId = new Map(members.map(t => [t.id, t]));
+  const latest = new Map<string, Task>();
+  for (const member of members) {
+    if (!member.completed) continue;
+    const key = memberKey(member, byId);
+    const held = latest.get(key);
+    if (!held || (member.completedAt ?? '') > (held.completedAt ?? '')) latest.set(key, member);
+  }
+  return Array.from(latest.values())
+    .sort((a, b) => (b.completedAt ?? '').localeCompare(a.completedAt ?? ''));
+}
+
 // When a decision was made, as far as ordering goes. A live row that was
 // un-completed has no stamp and sorts last, which is the honest place for it:
 // the answer is still on the row, but the moment it was reached is gone.
@@ -249,9 +274,12 @@ export const useProjectStore = create<ProjectStore>((set, get) => ({
     // every new project was still silent. The two are one control now (see
     // nudgeFieldsFor), and the default answers it whole.
     //
-    // A default of Never is still the default, and still means what it did:
-    // being asked about a project you never decided you wanted chasing is the
-    // annoying half of this feature.
+    // With no cadence set, a new project is "When I ask": it shows up in the
+    // Pull sheet the person opens themselves and never brings itself up. It
+    // used to be Never, which also kept it out of that sheet, so on a fresh
+    // install the button everyone can see answered "every project is set to
+    // never be chased" about projects nobody had set to anything. Being asked
+    // unprompted is still opt-in, which is the half that can be annoying.
     const defaultCadenceDays = useSettingsStore.getState().defaultProjectNudgeCadenceDays;
     const project: Project = {
       id: generateId(),
@@ -271,7 +299,7 @@ export const useProjectStore = create<ProjectStore>((set, get) => ({
       createdAt: new Date().toISOString(),
       // Seeded from the global default at creation time only — changing the
       // default in Settings later never touches a project already created.
-      ...nudgeFieldsFor(defaultCadenceDays > 0 ? 'scheduled' : 'never', defaultCadenceDays),
+      ...nudgeFieldsFor(defaultCadenceDays > 0 ? 'scheduled' : 'on-ask', defaultCadenceDays),
       autoSchedule: false,
       // Off, like every other opt-in here: the weekend nudge may quote a project
       // only once somebody has said it is one to quote. See
@@ -334,7 +362,17 @@ export const useProjectStore = create<ProjectStore>((set, get) => ({
   },
 
   reorderProjects(orderedIds) {
-    const updates = orderedIds.map((id, index) => ({ id, sortOrder: index }));
+    // The ids passed are only the list on screen (Active, Completed or
+    // Archived), so they're laid into the slots those projects already hold in
+    // the full order, and the whole list renumbered. Numbering just the subset
+    // 0..n-1 collided with the projects off screen: an unarchived project came
+    // back wherever the tie happened to break, and reordering the Archived
+    // list reshuffled the Active one.
+    const full = [...get().projects].sort((a, b) => a.sortOrder - b.sortOrder);
+    const moving = new Set(orderedIds);
+    const queue = orderedIds.filter(id => full.some(p => p.id === id));
+    const merged = full.map(p => (moving.has(p.id) ? queue.shift()! : p.id));
+    const updates = merged.map((id, index) => ({ id, sortOrder: index }));
     dbBatchUpdateProjectSortOrders(updates);
     set(s => ({
       projects: s.projects
@@ -348,7 +386,19 @@ export const useProjectStore = create<ProjectStore>((set, get) => ({
 
   reorderProjectsWithCategoryUpdates(orderedIds, categoryUpdates) {
     get().reorderProjects(orderedIds);
-    categoryUpdates.forEach(u => get().updateProject(u.id, { category: u.category }));
+    if (categoryUpdates.length === 0) return;
+    // One state write for the lot rather than one per project.
+    const byId = new Map(categoryUpdates.map(u => [u.id, u.category]));
+    const touched: Project[] = [];
+    const next = get().projects.map(p => {
+      if (!byId.has(p.id) || p.category === byId.get(p.id)) return p;
+      const updated = { ...p, category: byId.get(p.id)! };
+      touched.push(updated);
+      return updated;
+    });
+    if (touched.length === 0) return;
+    touched.forEach(p => dbUpdateProject(p));
+    set(() => ({ projects: next }));
   },
 
   applyProjectArchived(id, archived, archivedAt) {
@@ -382,7 +432,10 @@ export const useProjectStore = create<ProjectStore>((set, get) => ({
 
   restoreProject(project) {
     dbInsertProject(project);
-    set(s => ({ projects: [...s.projects, project] }));
+    // Sorted back into place, the way restoreCategory does: every reader
+    // groups the list in store order, so an appended row sat at the bottom of
+    // its section after an undo until the next launch.
+    set(s => ({ projects: [...s.projects, project].sort((a, b) => a.sortOrder - b.sortOrder) }));
   },
 }));
 
