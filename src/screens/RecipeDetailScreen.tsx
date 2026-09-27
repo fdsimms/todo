@@ -1064,7 +1064,6 @@ export function RecipeDetailScreen() {
             [ingredient.section, line.name, swapNote, scaledQuantity, ingredient.prep,
              ingredient.purpose && `for ${ingredient.purpose}`,
              ingredient.optional && 'optional',
-             ingredient.excludeFromShoppingList && 'not on your shopping list',
              choiceGroup && (isChoiceDefault ? `usual choice for ${choiceGroup}` : `alternative for ${choiceGroup}`)]
               .filter(Boolean).join(', ')
           }
@@ -1088,11 +1087,9 @@ export function RecipeDetailScreen() {
             {!!swapNote && (
               <Text style={styles.swapNote} numberOfLines={1}>{swapNote}</Text>
             )}
-            {(!!ingredient.prep || !!ingredient.purpose || !!ingredient.optional
-              || !!ingredient.excludeFromShoppingList) && (
+            {(!!ingredient.prep || !!ingredient.purpose || !!ingredient.optional) && (
               <Text style={styles.ingredientPrep}>
-                {[ingredient.prep, ingredient.purpose && `for ${ingredient.purpose}`, ingredient.optional && 'optional',
-                  ingredient.excludeFromShoppingList && 'not on your list']
+                {[ingredient.prep, ingredient.purpose && `for ${ingredient.purpose}`, ingredient.optional && 'optional']
                   .filter(Boolean).join(' · ')}
               </Text>
             )}
