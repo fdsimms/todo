@@ -254,8 +254,13 @@ export function QuickAddModal({
   // The date a fresh sheet opens with, absent a drop seed — factored out so
   // shaking off the seed chip can revert to exactly this rather than to a
   // second, drifting copy of the same rule.
-  const defaultDueDate = () =>
-    effectiveContext === 'later' ? getLogicalTomorrow(dayResetTime)
+  // A list's lines are undated, and a line with a category would sit under a
+  // header on Today, so a sheet filing into a list opens with neither.
+  const isListProject = (id: string | null) =>
+    id !== null && projects.find(p => p.id === id)?.kind === 'list';
+  const defaultDueDate = (listTarget = isListProject(intoProjectId)) =>
+    listTarget ? null
+    : effectiveContext === 'later' ? getLogicalTomorrow(dayResetTime)
     : effectiveContext === 'inbox' || effectiveContext === 'unscheduled' ? null
     : getLogicalToday(dayResetTime);
   // Holds the task created by this sheet while its editor is open — only used
@@ -386,6 +391,20 @@ export function QuickAddModal({
   // rule effect only moves it while it still holds what the rule last wrote,
   // so a project picked by hand isn't taken back by the next keystroke.
   const [projectId, setProjectId] = useState<string | null>(null);
+  // The project the picker last set, as opposed to one a title rule filled.
+  const pickedProjectRef = useRef<string | null>(null);
+  const pickProject = (id: string | null) => {
+    pickedProjectRef.current = id;
+    setProjectId(id);
+    // Picking a list takes off the date and category the sheet opened with,
+    // and only those: one the person set themselves is theirs to keep.
+    if (isListProject(id)) {
+      const openedWith = defaultDueDate(false);
+      setDueDate(cur => (cur && openedWith && cur.getTime() === openedWith.getTime() ? null : cur));
+      const baseCategory = hostDefaultCategory() ?? newTaskDefaults.category;
+      setCategory(cur => (cur === baseCategory ? null : cur));
+    }
+  };
   // "Not on this task" for whatever a rule filled in. Sheet-lifetime, like
   // showAllChips: the next task starts from the rules again rather than
   // inheriting a decision made once about a different title.
@@ -467,20 +486,26 @@ export function QuickAddModal({
    * re-ran when those changed would wipe a half-typed task out from under the
    * user. The effect's deps stay exactly what they were.
    */
-  const resetDraft = (nextTitle: string) => {
+  const resetDraft = (nextTitle: string, opts?: { keepProject?: boolean }) => {
+    // "Add another" keeps a project picked by hand: filling a project is the
+    // case for adding several in a row. One a title rule chose isn't kept,
+    // since the next title answers for itself.
+    const keptProjectId = opts?.keepProject ? pickedProjectRef.current : null;
+    if (!opts?.keepProject) pickedProjectRef.current = null;
+    const listTarget = isListProject(intoProjectId ?? keptProjectId);
     setTitle(nextTitle);
     titleCaret.resetCaret(nextTitle);
     setPriority(newTaskDefaults.priority ?? 0);
     setEffort(newTaskDefaults.effort ?? 0);
     setEstimatedMinutes(null);
     setCustomEffortText('');
-    setDueDate(defaultDueDate());
+    setDueDate(defaultDueDate(listTarget));
     setTimeSegments(newTaskDefaults.timeSegment ? [newTaskDefaults.timeSegment] : []);
     setWindowStart(null);
     setWindowEnd(null);
     setTags([]);
     setPersonOverrides({});
-    setCategory(hostDefaultCategory() ?? newTaskDefaults.category);
+    setCategory(hostDefaultCategory() ?? (listTarget ? null : newTaskDefaults.category));
     setSeedActive(false);
     setLinkUrl(null);
     setPhoneNumber(null);
@@ -512,7 +537,7 @@ export function QuickAddModal({
     setRecurrenceFromCompletion(false);
     setSupplyCount(null);
     setSupplyUnit('');
-    setProjectId(null);
+    setProjectId(keptProjectId);
     setRulesOptedOut(false);
     appliedRuleRef.current = null;
     setPrefixW(null);
@@ -599,7 +624,8 @@ export function QuickAddModal({
     // than those, so it wins them, and losing the match hands the field back.
     // linkUrl has no such baseline (the sheet always opens with none), so its
     // base is simply null, same as projectId.
-    const baseCategory = seedRef.current?.category ?? hostDefaultCategory() ?? newTaskDefaults.category;
+    const baseCategory = seedRef.current?.category ?? hostDefaultCategory()
+      ?? (isListProject(intoProjectId) ? null : newTaskDefaults.category);
     const basePriority: Priority = newTaskDefaults.priority ?? 0;
     const baseEffort: Effort = newTaskDefaults.effort ?? 0;
     const prev = appliedRuleRef.current
@@ -1362,7 +1388,7 @@ export function QuickAddModal({
     if (keepOpen) {
       const keepSeed = seedActive && sectionOnlySeed;
       setBurstAdded(prev => [...prev, finalTitle]);
-      resetDraft('');
+      resetDraft('', { keepProject: true });
       if (keepSeed) setSeedActive(true);
       inputRef.current?.focus();
       return;
@@ -1776,7 +1802,7 @@ export function QuickAddModal({
                     haptics.tap();
                     if (seed?.category && category === seed.category) setCategory(null);
                     if (seed?.dueDate !== undefined && (dueDate?.toISOString() ?? null) === (seed.dueDate ?? null)) {
-                      setDueDate(defaultDueDate());
+                      setDueDate(defaultDueDate(isListProject(intoProjectId ?? projectId)));
                     }
                     if (seed?.timeSegments && timeSegments === seed.timeSegments) setTimeSegments([]);
                     setSeedActive(false);
@@ -2836,7 +2862,7 @@ export function QuickAddModal({
       <ProjectPickerSheet
         visible={projectPickerVisible}
         value={projectId}
-        onSelect={setProjectId}
+        onSelect={pickProject}
         onClose={() => setProjectPickerVisible(false)}
       />
       <NumberPadAccessory />

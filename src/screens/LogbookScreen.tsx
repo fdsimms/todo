@@ -293,6 +293,14 @@ export function LogbookScreen() {
     if (stamp === undefined || stamp === handledProjectParam) return;
     setHandledProjectParam(stamp);
     setSelectedProject((route.params?.projectId as string | undefined) ?? null);
+    // "See history" means that project's history, all of it: a category, tag
+    // or person left set from an earlier visit narrowed it to part of one, or
+    // to nothing, with no sign why. The cooking lens holds no tasks at all.
+    setSelectedCategory(null);
+    setSelectedTag(null);
+    setSelectedPerson(null);
+    searchFilter.clear();
+    setLens('tasks');
   }, [route.params?.openProjectHistory, route.params?.projectId, handledProjectParam]);
   const people = usePersonStore(useShallow(s => s.people));
   const [filterVisible, setFilterVisible] = useState(false);

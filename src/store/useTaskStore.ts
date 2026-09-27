@@ -3123,7 +3123,10 @@ export const useTaskStore = create<TaskStore>((set, get) => ({
     if (!opts.skipGeneratedOptOut) writeGeneratedOptOut(task, false);
 
     get().setLastAction({
-      label: 'Task deleted',
+      // A list's rows are lines, and the page they were deleted from says so.
+      label: task.projectId && useProjectStore.getState().projects.some(p => p.id === task.projectId && p.kind === 'list')
+        ? 'Line deleted'
+        : 'Task deleted',
       destructive: true,
       redo: () => get().deleteTask(id, opts),
       undo: () => {

@@ -175,6 +175,11 @@ function AddProjectTaskFabWithDropLabel({
   return <FabMenu {...props} dragLabel={label} />;
 }
 
+/** A pasted list's lines, without the bullets it often carries. */
+function cleanPastedLines(raw: string[]): string[] {
+  return raw.map(l => l.replace(/^\s*(?:[-*•◦▪]|\d+[.)]|\[[ xX]?\])\s+/, '').trim()).filter(Boolean);
+}
+
 /**
  * The blank line Return opens under a list line (see TaskItem's
  * onSubmitLine). Return adds what's typed and moves the field under the new
@@ -183,22 +188,43 @@ function AddProjectTaskFabWithDropLabel({
  */
 function NewLineField({
   onAdd,
+  onAddMany,
   onDone,
   styles,
   placeholderColor,
 }: {
   onAdd: (text: string) => void;
+  onAddMany: (lines: string[]) => void;
   onDone: () => void;
   styles: { newLineRow: object; newLineInput: object };
   placeholderColor: string;
 }) {
   const [text, setText] = useState('');
+  // What's typed, read by onBlur. A ref rather than the state, and emptied on
+  // every add, so the blur a re-keyed field may send on its way out can't add
+  // the same line twice.
+  const textRef = useRef('');
+  // Set once this field has handed off to the one under the new line, so a
+  // blur on its way out neither adds nor closes that next field.
+  const handedOffRef = useRef(false);
+  const change = (next: string) => {
+    // A pasted list becomes a line each, same as the field at the top.
+    if (/[\r\n]/.test(next)) {
+      textRef.current = '';
+      handedOffRef.current = true;
+      setText('');
+      onAddMany(next.split(/\r?\n/));
+      return;
+    }
+    textRef.current = next;
+    setText(next);
+  };
   return (
     <View style={styles.newLineRow}>
       <TextInput
         style={styles.newLineInput}
         value={text}
-        onChangeText={setText}
+        onChangeText={change}
         autoFocus
         placeholder="New line"
         placeholderTextColor={placeholderColor}
@@ -206,10 +232,20 @@ function NewLineField({
         returnKeyType="next"
         blurOnSubmit={false}
         onSubmitEditing={() => {
-          if (text.trim()) onAdd(text.trim());
+          const typed = textRef.current.trim();
+          textRef.current = '';
+          if (typed) { handedOffRef.current = true; onAdd(typed); }
           else onDone();
         }}
-        onBlur={() => { if (!text.trim()) onDone(); }}
+        // Tapping away keeps what was typed: a line written and then left is
+        // one the person meant to add.
+        onBlur={() => {
+          if (handedOffRef.current) return;
+          const typed = textRef.current.trim();
+          textRef.current = '';
+          if (typed) onAdd(typed);
+          onDone();
+        }}
         accessibilityLabel="New line"
       />
     </View>
@@ -293,6 +329,11 @@ export function ProjectDetailScreen() {
   // tell which row is in flight.
   const activeDragIndexRef = React.useRef<number | null>(null);
   const [expandedTaskId, setExpandedTaskId] = useState<string | null>(null);
+  // A row deleted from its own expanded panel takes the expansion with it, so
+  // an Undo brings the line back closed rather than open under a keyboard.
+  useEffect(() => {
+    if (expandedTaskId && !allTasks.some(t => t.id === expandedTaskId)) setExpandedTaskId(null);
+  }, [allTasks, expandedTaskId]);
   // The line a blank "New line" field is open under, after Return in a list
   // line's text. See NewLineField.
   const [insertAfterId, setInsertAfterId] = useState<string | null>(null);
@@ -603,12 +644,14 @@ export function ProjectDetailScreen() {
 
   const selectableTasks = useMemo(() => {
     const onScreen: Task[] = [];
-    for (const item of projectListItems) {
+    // What's shown, so Select all while a list is narrowed to "Find a line"
+    // takes the lines left showing, not the ones hidden with them.
+    for (const item of shownListItems) {
       if (item.type === 'task') onScreen.push(item.task);
       else if (!item.group.collapsed) onScreen.push(...item.children);
     }
     return completedShown ? [...onScreen, ...completedProjectTasks] : onScreen;
-  }, [projectListItems, completedShown, completedProjectTasks]);
+  }, [shownListItems, completedShown, completedProjectTasks]);
   const copyText = useMemo(
     () => projectCopyText(projectListItems, id => subtasksByParent.get(id) ?? NO_SUBTASKS, projectId),
     [projectListItems, subtasksByParent, projectId],
@@ -953,7 +996,7 @@ export function ProjectDetailScreen() {
 
   const addListLines = (raw: string[]) => {
     // A pasted list often carries its own bullets; those aren't part of the line.
-    const lines = raw.map(l => l.replace(/^\s*(?:[-*•◦▪]|\d+[.)]|\[[ xX]?\])\s+/, '').trim()).filter(Boolean);
+    const lines = cleanPastedLines(raw);
     if (lines.length === 0 || !project) { setListDraft(''); return; }
     animateLayout();
     // New lines go at the top, right under the field they were typed in, in
@@ -973,7 +1016,9 @@ export function ProjectDetailScreen() {
           ...(link ? { linkUrl: link.url } : {}),
         },
         undefined,
-        { skipTitleRules: true },
+        // No default category either: a line in a list is exactly what was
+        // typed, and a category would put it under a header on Today.
+        { skipTitleRules: true, skipCategoryDefault: true },
       );
       created.push(task.id);
     });
@@ -987,6 +1032,9 @@ export function ProjectDetailScreen() {
     }
     haptics.tap();
     setListDraft('');
+    // A new line needn't match what's being searched for, and a line added
+    // straight into hiding reads as one that wasn't added.
+    lineFilter.clear();
     listInputRef.current?.focus();
     if (flashTimeoutRef.current) clearTimeout(flashTimeoutRef.current);
     setFlashTaskId(created[0]);
@@ -1043,6 +1091,7 @@ export function ProjectDetailScreen() {
         <NewLineField
           key={task.id}
           onAdd={text => setInsertAfterId(addLineAfter(task, text))}
+          onAddMany={lines => setInsertAfterId(addLinesAfter(task, lines) ?? task.id)}
           onDone={() => setInsertAfterId(null)}
           styles={styles}
           placeholderColor={colors.textTertiary}
@@ -1068,13 +1117,25 @@ export function ProjectDetailScreen() {
         ...(link ? { linkUrl: link.url } : {}),
       },
       undefined,
-      { skipTitleRules: true },
+      { skipTitleRules: true, skipCategoryDefault: true },
     );
     const order = orderWithInserted(projectListItems, after.id, task.id);
     if (order?.groupId) reorderGroupChildren(order.groupId, order.ids);
     else if (order) reorderProjectItems(projectId, order.ids);
     haptics.tap();
+    lineFilter.clear();
     return task.id;
+  };
+
+  /** Several lines at once after `after` (a paste), each under the one before. */
+  const addLinesAfter = (after: Task, lines: string[]): string | null => {
+    let anchor = after;
+    let lastId: string | null = null;
+    for (const line of cleanPastedLines(lines)) {
+      lastId = addLineAfter(anchor, line);
+      anchor = useTaskStore.getState().tasks.find(t => t.id === lastId) ?? anchor;
+    }
+    return lastId;
   };
 
   const eligibleForAdd = useMemo(() => {
@@ -1612,7 +1673,9 @@ export function ProjectDetailScreen() {
                     />
                   </View>
                 )}
-                {lineFilterShown && !selectionMode && (
+                {/* Stays while selecting: the selection is taken from what it
+                    leaves showing, so it has to be visible that it's on. */}
+                {lineFilterShown && (
                   <SearchField
                     style={styles.lineFilter}
                     field={lineFilter}

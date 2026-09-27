@@ -188,7 +188,9 @@ export function QuickAddProjectModal({
     ]).start(() => { scaleAnim.setValue(0.95); sheetOpacity.setValue(0); onClose(); });
   };
 
-  const archivedProjects = useMemo(() => projects.filter(p => p.archived), [projects]);
+  // Archived and finished projects both: last year's party is usually just
+  // marked complete, and a second copy of its name beside it was the result.
+  const pastProjects = useMemo(() => projects.filter(p => p.archived || p.completed), [projects]);
 
   // A new category is created and picked the moment it's submitted in the
   // pill grid below, so there's no half-typed name left to resolve here.
@@ -215,11 +217,14 @@ export function QuickAddProjectModal({
     const finalTitle = title.trim();
     if (!finalTitle || submittedRef.current) return;
 
-    const archivedMatch = findArchivedMatch(archivedProjects, finalTitle);
+    const archivedMatch = findArchivedMatch(pastProjects, finalTitle);
     if (archivedMatch) {
+      const wasArchived = archivedMatch.archived;
       Alert.alert(
-        'Restore archived project?',
-        `You archived "${archivedMatch.title}" a while ago. Restore it as it was, or start a fresh copy with the same tasks, all open and undated?`,
+        wasArchived ? 'Restore archived project?' : 'Reopen finished project?',
+        wasArchived
+          ? `You archived "${archivedMatch.title}" a while ago. Restore it as it was, or start a fresh copy with the same tasks, all open and undated?`
+          : `You finished "${archivedMatch.title}" already. Reopen it as it was, or start a fresh copy with the same tasks, all open and undated?`,
         [
           // The match is fuzzy, so a wrong guess has to be escapable without
           // either answer: Cancel leaves the typed name in the field.
@@ -240,14 +245,14 @@ export function QuickAddProjectModal({
             },
           },
           {
-            text: 'Restore',
+            text: wasArchived ? 'Restore' : 'Reopen',
             style: 'default',
             onPress: () => {
               if (submittedRef.current) return;
               submittedRef.current = true;
               haptics.success();
               animateLayout();
-              unarchiveProject(archivedMatch.id);
+              if (wasArchived) unarchiveProject(archivedMatch.id);
               // Unarchiving alone sent a project that was also completed to
               // the Completed list, so Restore appeared to do nothing on the
               // Active list the person was looking at.

@@ -5395,23 +5395,33 @@ export function TaskEditor({ visible, task, initialDraft, onClose }: Props) {
                 expanded={fieldOpen('project')}
                 onToggle={() => toggleField('project')}
               >
-                <View style={styles.pillRow}>
-                  <TouchableOpacity
-                    style={[styles.pill, !project && styles.pillActiveNeutral]}
-                    onPress={() => { haptics.tap(); setProject(null); closeField('project'); }}
-                  >
-                    <Text style={[styles.pillText, !project && styles.pillTextActive]}>None</Text>
-                  </TouchableOpacity>
-                  {projects.map(p => (
-                    <TouchableOpacity
-                      key={p.id}
-                      style={[styles.pill, project === p.id && styles.pillActiveNeutral]}
-                      onPress={() => { haptics.tap(); setProject(p.id); closeField('project'); }}
-                    >
-                      <Text style={[styles.pillText, project === p.id && styles.pillTextActive]}>{p.title}</Text>
-                    </TouchableOpacity>
-                  ))}
-                </View>
+                {/* The user's own project order, finished projects left out
+                    (bar the one this task is already in), and capped with a
+                    find field once there are many: a flat row of every
+                    project ever made pushed the rest of the card away. */}
+                <PillGroup
+                  noun="project"
+                  surface="card"
+                  filterPlaceholder="Find a project"
+                  options={[
+                    {
+                      key: '',
+                      label: 'None',
+                      selected: !project,
+                      pinned: true,
+                      onPress: () => { haptics.tap(); setProject(null); closeField('project'); },
+                    },
+                    ...projects
+                      .filter(p => !p.completed || p.id === project)
+                      .sort((a, b) => a.sortOrder - b.sortOrder)
+                      .map(p => ({
+                        key: p.id,
+                        label: p.title,
+                        selected: project === p.id,
+                        onPress: () => { haptics.tap(); setProject(p.id); closeField('project'); },
+                      })),
+                  ]}
+                />
               </CollapsibleField>
               </>
             ),

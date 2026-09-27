@@ -164,6 +164,15 @@ describe('projectNextStepTitle', () => {
     expect(projectNextStepTitle('p1', waiting)).toBe('Order tiles');
   });
 
+  it('names the first step even while it waits when the project is worked in order, as Pull does', () => {
+    const tasks = [
+      makeTask({ id: 'w', title: 'Install cabinets', sortOrder: 1, blockedById: 'b' } as Partial<Task>),
+      makeTask({ id: 'n', title: 'Order tiles', sortOrder: 2 }),
+      makeTask({ id: 'r', title: 'Water plants', sortOrder: 0, recurrenceType: 'weekly' } as Partial<Task>),
+    ];
+    expect(projectNextStepTitle('p1', tasks, [], true)).toBe('Install cabinets');
+  });
+
   it('is null for a project with nothing open', () => {
     expect(projectNextStepTitle('p1', [])).toBeNull();
   });

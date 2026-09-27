@@ -169,7 +169,7 @@ export function ProjectsScreen() {
       progress: projectProgress(p.id, allTasks),
       // Not for a list: "Next" reads as an order to work in, and a list of
       // books or gift ideas has none.
-      next: projectFilter === 'active' && p.kind !== 'list' ? projectNextStepTitle(p.id, allTasks, taskGroups) : null,
+      next: projectFilter === 'active' && p.kind !== 'list' ? projectNextStepTitle(p.id, allTasks, taskGroups, p.inOrder) : null,
       // A list shows its first lines instead, which is what it's for.
       preview: projectFilter === 'active' && p.kind === 'list'
         ? projectListPreview(p.id, allTasks, taskGroups).join(', ') || null
@@ -881,7 +881,7 @@ const ProjectRow = React.memo(function ProjectRow({
                     onPress={() => onQuickComplete(project)}
                     hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
                     accessibilityRole="button"
-                    accessibilityLabel={`Mark ${project.title} complete: every task is done`}
+                    accessibilityLabel={`Mark ${project.title} complete: ${project.kind === 'list' ? 'every line is checked' : 'every task is done'}`}
                   >
                     <Ionicons name="checkmark-circle" size={16} color={colors.green} />
                   </TouchableOpacity>

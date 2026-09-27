@@ -449,9 +449,18 @@ export function rankPullCandidates(
   pullable: readonly Task[],
   ctx: PinContext = pullContext(),
 ): Task[] {
-  const inOrder = [...pullable].sort(
+  // The queue is the order the page draws, sections included: sortOrder alone
+  // ranks a section's tasks by their private within-section numbers against
+  // loose tasks' page-wide ones, which is two number spaces compared as one.
+  const bySortOrder = [...pullable].sort(
     (a, b) => a.sortOrder - b.sortOrder || a.id.localeCompare(b.id)
   );
+  const projectId = pullable[0]?.projectId;
+  const paged = projectId ? projectPageOrder(bySortOrder, sectionsNow(), projectId) : bySortOrder;
+  // Anything the page walk didn't place keeps its sortOrder place at the end,
+  // so a ranking never loses a candidate.
+  const placed = new Set(paged.map(t => t.id));
+  const inOrder = [...paged, ...bySortOrder.filter(t => !placed.has(t.id))];
 
   const scored = inOrder.map((task, index) => ({
     task,

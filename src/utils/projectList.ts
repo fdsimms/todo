@@ -138,13 +138,21 @@ export function projectNextStepTitle(
   projectId: string,
   tasks: readonly Task[],
   groups: readonly TaskGroup[] = [],
+  inOrder = false,
 ): string | null {
   const live = liveProjectSteps(projectId, tasks);
+  const checklistIds = new Set(groups.filter(g => g.checklist).map(g => g.id));
   for (const item of buildProjectListItems(live, [...groups], projectId)) {
     const rows = item.type === 'task'
       ? [item.task]
       : [...item.children].sort((a, b) => a.sortOrder - b.sortOrder);
-    const next = rows.find(t => !isHeldBack(t));
+    // Worked in order, the first step is next even while it waits: nothing
+    // after it may be picked up first, so naming a later one would say the
+    // opposite of what Pull does (projectPull's inOrder). Routines and
+    // checklist lines aren't steps, the same exclusion Pull makes.
+    const next = inOrder
+      ? rows.find(t => (t.recurrenceType ?? 'none') === 'none' && !checklistIds.has(t.groupId ?? ''))
+      : rows.find(t => !isHeldBack(t));
     if (next) return displayTitleFor(next);
   }
   return null;

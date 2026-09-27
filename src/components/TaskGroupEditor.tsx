@@ -440,7 +440,7 @@ export function TaskGroupEditor({ visible, group, isNew, onClose, projectId }: P
               <Text style={styles.optionLabel}>Checklist</Text>
               <Text style={styles.optionHint}>
                 {checklist
-                  ? "Its tasks are checked off, not scheduled. They show no dates and Pull doesn't offer them"
+                  ? "Its tasks are checked off, not scheduled. Rows hide their dates and Pull doesn't offer them. A task that already has a date still shows on Today that day"
                   : 'Its tasks are scheduled like the rest of the project'}
               </Text>
             </View>

@@ -1133,6 +1133,17 @@ describe('working a project in order', () => {
     expect(nextPullCandidate(makeProject({ inOrder: true }), tasks)?.id).toBe('inSection');
   });
 
+  it('ranks in page order when not worked in order too, reading a section by its place on the page', () => {
+    // Each section numbers its own tasks, so the lower sortOrder is in the
+    // section further down the page.
+    registerSectionSource(() => [section({ id: 's1', sortOrder: 1 }), section({ id: 's2', sortOrder: 2 })]);
+    const tasks = [
+      makeTask({ id: 'upper', sortOrder: 5, groupId: 's1' }),
+      makeTask({ id: 'lower', sortOrder: 1, groupId: 's2' }),
+    ];
+    expect(rankPullCandidates(tasks).map(t => t.id)).toEqual(['upper', 'lower']);
+  });
+
   it('offers nothing while the first task is waiting, rather than letting a later one jump ahead', () => {
     const blocker = makeTask({ id: 'elsewhere', projectId: null });
     const tasks = [makeTask({ id: 'first', sortOrder: 1, blockedById: 'elsewhere' }), makeTask({ id: 'second', sortOrder: 2 })];

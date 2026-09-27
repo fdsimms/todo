@@ -1087,7 +1087,9 @@ export function ProjectEditor({ visible, project, isNew, onClose }: Props) {
         <EditorRow
           icon="pause-outline"
           label="Pause until"
-          hint="Hides all of its tasks, repeating ones too, and stops any nudges until this day."
+          hint={isList
+            ? 'Hides all of its lines and stops any nudges until this day.'
+            : 'Hides all of its tasks, repeating ones too, and stops any nudges until this day.'}
           value={pausedUntil ? formatDeadlineDate(pausedUntil.toISOString()) : undefined}
           onPress={() => setPickingPause(true)}
           onClear={pausedUntil ? () => setPausedUntil(null) : undefined}
@@ -1108,7 +1110,7 @@ export function ProjectEditor({ visible, project, isNew, onClose }: Props) {
               <Text style={styles.optionHint}>
                 {showChecked
                   ? 'Checked lines stay at the bottom, crossed out, in list order'
-                  : 'Checked lines fold away under "Show completed"'}
+                  : 'Checked lines fold away under a "Show checked" button at the bottom'}
               </Text>
             </View>
             <View style={[styles.toggle, showChecked && styles.toggleOn]}>
@@ -1152,8 +1154,8 @@ export function ProjectEditor({ visible, project, isNew, onClose }: Props) {
             <Text style={styles.optionLabel}>Ongoing</Text>
             <Text style={styles.optionHint}>
               {ongoing
-                ? 'Never offered as complete. Its card counts open tasks instead of a progress bar'
-                : 'Offers to mark complete once every task is done'}
+                ? `Never offered as complete. Its card counts open ${isList ? 'lines' : 'tasks'} instead of a progress bar`
+                : isList ? 'Offers to mark complete once every line is checked' : 'Offers to mark complete once every task is done'}
             </Text>
           </View>
           <View style={[styles.toggle, ongoing && styles.toggleOn]}>
