@@ -210,6 +210,7 @@ function recipeWith(name: string, ingredientNames: string[]): Recipe {
       quantity: '', aisle: null, prep: null, purpose: null, section: null, choiceGroup: null,
     })),
     emptySections: [],
+    emptyStepSections: [],
     components: [],
   } as unknown as Recipe;
 }

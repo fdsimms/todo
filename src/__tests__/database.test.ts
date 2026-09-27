@@ -4465,6 +4465,7 @@ describe('recipe rows', () => {
     tags: [],
     ingredients: [],
     emptySections: [],
+    emptyStepSections: [],
     components: [],
     prepTasks: [],
     steps: [],

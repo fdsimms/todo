@@ -33,6 +33,7 @@ function recipe(name: string, tags: string[] = []): Recipe {
     tags,
     ingredients: [],
     emptySections: [],
+    emptyStepSections: [],
     components: [],
     prepTasks: [],
     steps: [],

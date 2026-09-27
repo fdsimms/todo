@@ -32,6 +32,15 @@ export interface CookStep {
    */
   fromNotes: boolean;
   /**
+   * The method heading opening on this step — "For the sauce" — null where it
+   * carries on from the step above or has none. Same one-pass inference
+   * `ingredientHeadings` runs for a flattened ingredient list, and the same
+   * rule: a dish boundary resets the walk, since two recipes' headings are
+   * separate vocabularies that happen to collide. Always null for a step
+   * derived from `notes` — that blob has no `section` to read.
+   */
+  section: string | null;
+  /**
    * The note kept on this step, or null when it has none.
    *
    * Always null for a step derived from `notes`: that step has no row to hold
@@ -123,18 +132,28 @@ export function cookSteps(
   resolution?: ChoiceResolution,
 ): CookStep[] {
   const out: CookStep[] = [];
+  // Reset at every dish boundary, same rule ingredientHeadings follows — a
+  // component opening with the same heading its predecessor closed on is a
+  // new heading, not a continuation of somebody else's.
+  let prevRecipeId: string | null = null;
+  let prevSection: string | null = null;
   for (const dish of cookedDishes(recipe, recipesById, resolution)) {
+    if (dish.recipe.id !== prevRecipeId) prevSection = null;
     if (dish.recipe.steps.length > 0) {
       for (const step of dish.recipe.steps) {
+        const label = step.section ?? null;
         out.push({
           id: step.id,
           text: step.text,
           recipe: dish.recipe,
           whole: dish.whole,
           fromNotes: false,
+          section: label && label !== prevSection ? label : null,
           note: step.note ?? null,
         });
+        prevSection = label;
       }
+      prevRecipeId = dish.recipe.id;
       continue;
     }
     stepsFromNotes(dish.recipe.notes).forEach((text, index) => {
@@ -144,9 +163,11 @@ export function cookSteps(
         recipe: dish.recipe,
         whole: dish.whole,
         fromNotes: true,
+        section: null,
         note: null,
       });
     });
+    prevRecipeId = dish.recipe.id;
   }
   return out;
 }

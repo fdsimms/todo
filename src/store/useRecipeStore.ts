@@ -422,8 +422,13 @@ interface RecipeStore {
   updatePrepTask: (recipeId: string, prepTaskId: string, patch: Partial<RecipePrepTask>) => void;
   removePrepTask: (recipeId: string, prepTaskId: string) => void;
 
-  /** Null when the text is empty. */
-  addStep: (recipeId: string, text: string) => RecipeStep | null;
+  /**
+   * Null when the text is empty. `section` is optional and follows
+   * `addIngredient`'s convention: omitted or null files the step under no
+   * heading, an unresolved name goes nowhere special either — see
+   * RecipeStep.section.
+   */
+  addStep: (recipeId: string, text: string, section?: string | null) => RecipeStep | null;
   /** Editing a step down to nothing removes it — same as leaving an add field blank never creates one. */
   updateStep: (recipeId: string, stepId: string, text: string) => void;
   /**
@@ -445,8 +450,23 @@ interface RecipeStore {
    * The new order. An id missing from `ids` keeps its place at the end rather
    * than being dropped — same "stale caller can't delete data" rule
    * reorderIngredients follows.
+   *
+   * `sectionById` is the same resolved-by-the-caller map `reorderIngredients`
+   * takes, from `RecipeDetailScreen`'s merged step+heading list — omitted
+   * (rather than required) so every existing caller that only reorders,
+   * without touching sections, keeps compiling. A missing entry, or a missing
+   * map, keeps that step's current section.
    */
-  reorderSteps: (recipeId: string, ids: string[]) => void;
+  reorderSteps: (recipeId: string, ids: string[], sectionById?: ReadonlyMap<string, string | null>) => void;
+
+  /**
+   * Declares a method heading with nothing filed under it yet — the same
+   * shape as addEmptySection, for RecipeStep.section instead of
+   * RecipeIngredient.section. See Recipe.emptyStepSections.
+   */
+  addEmptyStepSection: (recipeId: string, name: string) => boolean;
+  /** Un-declares a method heading that never got anything under it. */
+  removeEmptyStepSection: (recipeId: string, name: string) => void;
 
   /**
    * Follows a grocery item's rename across every recipe that referenced its old
@@ -511,6 +531,7 @@ export const useRecipeStore = create<RecipeStore>((set, get) => ({
       components: [],
       prepTasks: [],
       steps: [],
+      emptyStepSections: [],
       sortOrder: maxOrder + 1,
       createdAt: new Date().toISOString(),
       cookCount: 0,
@@ -1224,12 +1245,17 @@ export const useRecipeStore = create<RecipeStore>((set, get) => ({
     save(set, { ...recipe, prepTasks });
   },
 
-  addStep(recipeId, text) {
+  addStep(recipeId, text, section = null) {
     const recipe = get().recipes.find(r => r.id === recipeId);
     if (!recipe) return null;
     const clean = text.trim();
     if (!clean) return null;
-    const step: RecipeStep = { id: generateId(), text: clean };
+    const cleanSection = section?.trim().slice(0, RECIPE_SECTION_MAX_LENGTH) || null;
+    const step: RecipeStep = {
+      id: generateId(),
+      text: clean,
+      ...(cleanSection ? { section: cleanSection } : {}),
+    };
     save(set, { ...recipe, steps: [...recipe.steps, step] });
     return step;
   },
@@ -1300,14 +1326,41 @@ export const useRecipeStore = create<RecipeStore>((set, get) => ({
     save(set, { ...recipe, steps });
   },
 
-  reorderSteps(recipeId, ids) {
+  reorderSteps(recipeId, ids, sectionById) {
     const recipe = get().recipes.find(r => r.id === recipeId);
     if (!recipe) return;
     const byId = new Map(recipe.steps.map(s => [s.id, s]));
     const ordered = ids.map(id => byId.get(id)).filter((s): s is RecipeStep => !!s);
     const named = new Set(ordered.map(s => s.id));
     const rest = recipe.steps.filter(s => !named.has(s.id));
-    save(set, { ...recipe, steps: [...ordered, ...rest] });
+    const next = [...ordered, ...rest];
+
+    // Same one-write rule reorderIngredients follows: a caller with a
+    // resolved section for a step applies it in the same write as the new
+    // order. No map, or no entry for a step, keeps that step's section.
+    const steps = sectionById === undefined ? next : next.map(s => {
+      const section = sectionById.get(s.id);
+      return section === undefined ? s : withStepSection(s, section);
+    });
+
+    save(set, { ...recipe, steps });
+  },
+
+  addEmptyStepSection(recipeId, name) {
+    const recipe = get().recipes.find(r => r.id === recipeId);
+    if (!recipe) return false;
+    const cleaned = name.trim().slice(0, RECIPE_SECTION_MAX_LENGTH).trim();
+    if (!cleaned) return false;
+    if (sectionsOf(stepRows(recipe.steps)).includes(cleaned)) return false;
+    if (recipe.emptyStepSections.includes(cleaned)) return false;
+    save(set, { ...recipe, emptyStepSections: [...recipe.emptyStepSections, cleaned] });
+    return true;
+  },
+
+  removeEmptyStepSection(recipeId, name) {
+    const recipe = get().recipes.find(r => r.id === recipeId);
+    if (!recipe || !recipe.emptyStepSections.includes(name)) return;
+    save(set, { ...recipe, emptyStepSections: recipe.emptyStepSections.filter(s => s !== name) });
   },
 
   remapIngredientKey(fromKey, toKey) {
@@ -1385,14 +1438,40 @@ function unlinkIfChanged(recipe: Recipe, changed: boolean): { cookbookId?: strin
  * sections at all.
  */
 function save(set: SetRecipes, recipe: Recipe): void {
-  const next = recipe.emptySections.length === 0 ? recipe : {
+  const withoutStale = recipe.emptySections.length === 0 ? recipe : {
     ...recipe,
     emptySections: recipe.emptySections.filter(
       name => !recipe.ingredients.some(i => i.section === name)
     ),
   };
+  // Same reconciliation, one field over — see Recipe.emptyStepSections.
+  const next = withoutStale.emptyStepSections.length === 0 ? withoutStale : {
+    ...withoutStale,
+    emptyStepSections: withoutStale.emptyStepSections.filter(
+      name => !withoutStale.steps.some(s => s.section === name)
+    ),
+  };
   dbUpdateRecipe(next);
   set(s => ({ recipes: s.recipes.map(r => (r.id === next.id ? next : r)) }));
+}
+
+/** `RecipeStep.section` read as `sectionsOf`'s generic `string | null` shape. */
+function stepRows(steps: readonly RecipeStep[]): { id: string; section: string | null }[] {
+  return steps.map(s => ({ id: s.id, section: s.section ?? null }));
+}
+
+/**
+ * Sets or clears a step's section, absent (not null) when cleared — same
+ * round-trip rule `timerSeconds`/`note` follow, so a step with no section
+ * serializes exactly as it did before the field existed.
+ */
+function withStepSection(step: RecipeStep, section: string | null): RecipeStep {
+  if (section === (step.section ?? null)) return step;
+  if (section === null) {
+    const { section: _dropped, ...rest } = step;
+    return rest;
+  }
+  return { ...step, section };
 }
 
 // Same shape as useTaskStore's nextPinnedOrder: one past the shelf's current

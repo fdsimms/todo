@@ -51,6 +51,7 @@ function makeRecipe(name: string, overrides: Partial<Recipe> = {}): Recipe {
     tags: [],
     ingredients: [],
     emptySections: [],
+    emptyStepSections: [],
     components: [],
     prepTasks: [],
     steps: [],
@@ -807,6 +808,124 @@ describe('steps', () => {
     useRecipeStore.getState().updateStep(r.id, 'gone', 'Preheat the oven');
     useRecipeStore.getState().removeStep(r.id, 'gone');
     expect(useRecipeStore.getState().recipeById(r.id)!.steps).toEqual([]);
+  });
+
+  it('files a new step under a section, trimmed and capped, and leaves it absent with none given', () => {
+    const r = makeRecipe('Ragu');
+    seed([r]);
+
+    const withSection = useRecipeStore.getState().addStep(r.id, 'Simmer the sauce', '  For the sauce  ')!;
+    expect(withSection.section).toBe('For the sauce');
+
+    const withoutSection = useRecipeStore.getState().addStep(r.id, 'Plate it up')!;
+    expect(withoutSection.section).toBeUndefined();
+  });
+});
+
+describe('addEmptyStepSection / removeEmptyStepSection', () => {
+  it('declares a heading with nothing under it yet', () => {
+    const r = makeRecipe('Ragu');
+    seed([r]);
+
+    expect(useRecipeStore.getState().addEmptyStepSection(r.id, ' For the tofu ')).toBe(true);
+    expect(useRecipeStore.getState().recipeById(r.id)!.emptyStepSections).toEqual(['For the tofu']);
+  });
+
+  it('refuses a blank name', () => {
+    const r = makeRecipe('Ragu');
+    seed([r]);
+
+    expect(useRecipeStore.getState().addEmptyStepSection(r.id, '   ')).toBe(false);
+  });
+
+  it('refuses a heading a step already uses', () => {
+    const r = makeRecipe('Ragu');
+    seed([r]);
+    useRecipeStore.getState().addStep(r.id, 'Simmer the sauce', 'For the sauce');
+
+    expect(useRecipeStore.getState().addEmptyStepSection(r.id, 'For the sauce')).toBe(false);
+  });
+
+  it('refuses a heading already declared', () => {
+    const r = makeRecipe('Ragu');
+    seed([r]);
+    useRecipeStore.getState().addEmptyStepSection(r.id, 'For the sauce');
+
+    expect(useRecipeStore.getState().addEmptyStepSection(r.id, 'For the sauce')).toBe(false);
+  });
+
+  it('un-declares a heading', () => {
+    const r = makeRecipe('Ragu');
+    seed([r]);
+    useRecipeStore.getState().addEmptyStepSection(r.id, 'For the sauce');
+
+    useRecipeStore.getState().removeEmptyStepSection(r.id, 'For the sauce');
+
+    expect(useRecipeStore.getState().recipeById(r.id)!.emptyStepSections).toEqual([]);
+  });
+
+  it('is a no-op for a heading that was never declared', () => {
+    const r = makeRecipe('Ragu');
+    seed([r]);
+    jest.clearAllMocks();
+
+    useRecipeStore.getState().removeEmptyStepSection(r.id, 'Never declared');
+
+    expect(dbUpdateRecipe).not.toHaveBeenCalled();
+  });
+
+  it('prunes a declared heading the moment a step adopts the same label', () => {
+    const r = makeRecipe('Ragu');
+    seed([r]);
+    useRecipeStore.getState().addEmptyStepSection(r.id, 'For the sauce');
+
+    useRecipeStore.getState().addStep(r.id, 'Simmer the sauce', 'For the sauce');
+
+    const recipe = useRecipeStore.getState().recipeById(r.id)!;
+    expect(recipe.emptyStepSections).toEqual([]);
+    expect(recipe.steps[0].section).toBe('For the sauce');
+  });
+});
+
+describe('reorderSteps with sections', () => {
+  it('applies the resolved section for each step in the same write as the order', () => {
+    const r = makeRecipe('Ragu');
+    seed([r]);
+    const a = useRecipeStore.getState().addStep(r.id, 'Simmer the sauce')!;
+    const b = useRecipeStore.getState().addStep(r.id, 'Press the tofu')!;
+
+    useRecipeStore.getState().reorderSteps(r.id, [b.id, a.id], new Map([
+      [b.id, 'For the tofu'],
+      [a.id, 'For the sauce'],
+    ]));
+
+    const steps = useRecipeStore.getState().recipeById(r.id)!.steps;
+    expect(steps.map(s => s.id)).toEqual([b.id, a.id]);
+    expect(steps[0].section).toBe('For the tofu');
+    expect(steps[1].section).toBe('For the sauce');
+  });
+
+  it('clears a section when the map resolves it to null', () => {
+    const r = makeRecipe('Ragu');
+    seed([r]);
+    const a = useRecipeStore.getState().addStep(r.id, 'Simmer the sauce', 'For the sauce')!;
+
+    useRecipeStore.getState().reorderSteps(r.id, [a.id], new Map([[a.id, null]]));
+
+    expect(useRecipeStore.getState().recipeById(r.id)!.steps[0].section).toBeUndefined();
+  });
+
+  it('keeps a step\'s current section when no map is given, same as a plain reorder', () => {
+    const r = makeRecipe('Ragu');
+    seed([r]);
+    const a = useRecipeStore.getState().addStep(r.id, 'Simmer the sauce', 'For the sauce')!;
+    const b = useRecipeStore.getState().addStep(r.id, 'Press the tofu')!;
+
+    useRecipeStore.getState().reorderSteps(r.id, [b.id, a.id]);
+
+    const steps = useRecipeStore.getState().recipeById(r.id)!.steps;
+    expect(steps.map(s => s.id)).toEqual([b.id, a.id]);
+    expect(steps.find(s => s.id === a.id)!.section).toBe('For the sauce');
   });
 });
 

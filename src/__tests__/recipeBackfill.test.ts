@@ -28,6 +28,7 @@ function makeRecipe(name: string, overrides: Partial<Recipe> = {}): Recipe {
     tags: [],
     ingredients: [],
     emptySections: [],
+    emptyStepSections: [],
     components: [],
     prepTasks: [],
     steps: [],
