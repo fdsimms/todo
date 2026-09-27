@@ -375,9 +375,9 @@ export const useLeftoverStore = create<LeftoverStore>((set, get) => ({
     save(set, updated);
     // Freezing drops a use-up task that needsAttention no longer wants;
     // thawing spawns one if the restarted window lands inside the threshold.
-    // Dropped rather than reconciled on the way in, for the reason the grocery
-    // store's own setFrozen gives: a reconcile's delete writes the leftover's
-    // "never", so a container frozen with a live task never got one again.
+    // Dropped on the way in, which writes no "never", for the reason the
+    // grocery store's own setFrozen gives: a container frozen with a live task
+    // used to lose use-up tasks for good. See reconcileGeneratedTask.
     if (frozen) dropLeftoverTask(id);
     else reconcileLeftoverTask(updated);
   },

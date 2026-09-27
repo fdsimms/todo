@@ -3360,11 +3360,11 @@ export const useGroceryStore = create<GroceryStore>((set, get) => ({
     set(s => ({ items: s.items.map(i => (i.id === id ? updated : i)) }));
     // Opposite things in the two directions: freezing drops a use-up task
     // that's now about food under ice, thawing spawns the one the fresh date
-    // earns. Freezing *drops* rather than reconciles, though. A reconcile that
-    // finds its source no longer wanted deletes through `deleteTask`, which
-    // stamps the item's own "never" (`useUpTask: false`) as if the person had
-    // swiped the task away, so an item frozen once with a live task never got
-    // one again after it thawed.
+    // earns. Neither direction may write the item's own "never"
+    // (`useUpTask: false`): an item frozen once with a live task used to lose
+    // use-up tasks for good, because the delete stamped the opt-out as if the
+    // person had swiped it away. Both paths now skip it (see
+    // reconcileGeneratedTask); dropping on the way in just says so outright.
     if (frozen) dropUseUpTask(id);
     else reconcileUseUpTask(updated);
   },
