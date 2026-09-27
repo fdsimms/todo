@@ -268,7 +268,11 @@ export interface GroceryAddPlan {
   entry: GroceryListEntry | null;
   /** A product minted by the Brand/Variant chips, needing its own write. */
   product: ItemProduct | null;
-  /** Whether the row was already in some trolley before this add. */
+  /**
+   * Whether the row was already in the trolley this add joins. Not "in some
+   * trolley": milk on the home list is not already on the Airbnb list, so a
+   * paste there has added it, and its undo has to take it back off.
+   */
   wasOnList: boolean;
 }
 
@@ -307,7 +311,10 @@ export function planGroceryAdd(
   // its purchase count and its aisle in two. See groceryPlural.ts; nothing
   // about the stored key changes, this is only how a name finds it.
   const existing = catalogItemForKey(key, items) ?? undefined;
-  const wasOnList = existing?.onList === true;
+  const wasOnList = !!existing && entryFor(listEntries, existing.id, listId) !== null;
+  // The broad "in any trolley" question, which is what the recipe credit below
+  // is about: a row still standing on some list is one the user owns.
+  const onAnyList = existing?.onList === true;
 
   // The entry to upsert, or null for "leave the membership alone".
   //
@@ -379,8 +386,8 @@ export function planGroceryAdd(
       // A row that had fallen off every list is functionally a fresh add: the
       // recipe that put it back is the reason it is there, and crediting a
       // stale recipe (possibly cooked and forgotten) is actively misleading.
-      sourceRecipeId: !wasOnList && source ? source.recipeId : existing.sourceRecipeId,
-      sourceRecipeTitle: !wasOnList && source ? source.recipeTitle : existing.sourceRecipeTitle,
+      sourceRecipeId: !onAnyList && source ? source.recipeId : existing.sourceRecipeId,
+      sourceRecipeTitle: !onAnyList && source ? source.recipeTitle : existing.sourceRecipeTitle,
       ...(ensured ? { preferredProductId: ensured.product.id } : {}),
     };
     return {

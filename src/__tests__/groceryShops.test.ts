@@ -426,6 +426,15 @@ describe('itemCountsByShop', () => {
     const links = [link(items[0].id, costco.id, 1), notAt(items[1].id, costco.id)];
     expect(itemCountsByShop(items, links).get(costco.id)).toBe(1);
   });
+
+  it('leaves out rows the view hides, so the chip agrees with the rows it filters to', () => {
+    const items = [makeItem('Milk'), makeItem('Eggs')];
+    const links = [link(items[0].id, costco.id, 1), link(items[1].id, costco.id, 1)];
+    // The catalog sheet hides what is already in the active trolley.
+    const inTrolley = new Map([[items[0].id, false]]);
+    expect(itemCountsByShop(items, links, inTrolley).get(costco.id)).toBe(1);
+    expect(itemCountsByShop(items, links).get(costco.id)).toBe(2);
+  });
 });
 
 describe('describeShops', () => {
