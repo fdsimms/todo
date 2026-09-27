@@ -699,6 +699,8 @@ The core differentiator: tasks have multiple reasons to be hidden, checked in `s
 
 `isTaskVisible()` drives the Today screen. `isTaskDeferred()` is just `!isTaskVisible()`. `getVisibleAt()` returns the earliest moment a deferred task surfaces (used to sort the Later screen).
 
+**A pass that acts on tasks because a day went by checks `isWithheld`, not `isHiddenForVacation`.** Penalties, negative-habit streaks, quota rollover, expiry, reminders, the widget, pins and the morning check-in all run unattended against the day, and a paused project (`Project.pausedUntil`) holds its tasks back exactly as vacation does. Every one of those passes used to check vacation alone, so a paused project's tasks kept charging penalties, firing reminders and sitting on the widget while hidden everywhere else. `isWithheld` (`visibilityUtils.ts`) covers both, and `getVisibleAt` returns the day a pause ends.
+
 All time comparisons use the configurable `dayResetTime` (default `"00:00"`) to define when the logical day starts — e.g. a 2 AM reset means tasks on a "day" don't surface until 2 AM.
 
 **Expiry needs a window that closes and a day to close it on.** `isTaskExpired()` is the one gate with no way back — `sweepExpiredTasks` deletes what it flags — so it checks both. `effectiveWindowEnd()` ignores a `windowEnd` that isn't after its `windowStart`, because both gates anchor to a single logical day and "22:00–02:00" otherwise compares as past from 02:00 onward: expired before it ever opened. And `windowEnd` is deliberately not a date signal (see `hasNoDateSignal`), so a task carrying only one has no day to be late for — `hasDayArrived()` can't catch that, since with no `dueDate` it's vacuously true. Expiry now demands the same placement `isTaskVisible` does.

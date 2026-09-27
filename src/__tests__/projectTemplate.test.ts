@@ -66,10 +66,10 @@ describe('templateFromProject', () => {
     expect(draft.items[0].dueOffsetDays).toBeNull();
   });
 
-  it('keeps a checklist section a checklist, and a task its time window', () => {
-    const tasks = [task({ id: 's', title: 'Socks', groupId: 'pack', windowStart: '08:00', windowEnd: '10:00' } as Partial<Task>)];
+  it('keeps a checklist section a checklist, and a task its time window and link', () => {
+    const tasks = [task({ id: 's', title: 'Socks', groupId: 'pack', windowStart: '08:00', windowEnd: '10:00', linkUrl: 'https://example.com/socks' } as Partial<Task>)];
     const draft = templateFromProject(project({}), tasks, [{ ...group('pack', 'Packing', 1), checklist: true } as TaskGroup]);
     expect(draft.itemGroups[0].checklist).toBe(true);
-    expect(draft.items[0]).toEqual(expect.objectContaining({ windowStart: '08:00', windowEnd: '10:00' }));
+    expect(draft.items[0]).toEqual(expect.objectContaining({ windowStart: '08:00', windowEnd: '10:00', linkUrl: 'https://example.com/socks' }));
   });
 });

@@ -245,6 +245,13 @@ describe('buildDraftsFromTemplate', () => {
   const end = new Date('2026-06-27T09:00:00');
   const noAnchors = { start: null, end: null };
 
+  it('carries a link onto the draft, and an older item without one reads as none', () => {
+    const [draft] = buildDraftsFromTemplate([makeItem({ linkUrl: 'https://example.com/book' })], noAnchors);
+    expect(draft.linkUrl).toBe('https://example.com/book');
+    const [plain] = buildDraftsFromTemplate([makeItem()], noAnchors);
+    expect(plain.linkUrl).toBeNull();
+  });
+
   it('carries a gate onto the draft', () => {
     // A morning-routine template whose point is that nothing else happens
     // before the walk would otherwise hand out tasks that gate nothing.

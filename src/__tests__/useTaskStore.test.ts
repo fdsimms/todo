@@ -1769,6 +1769,19 @@ describe('completeTask', () => {
     }
   });
 
+  it("keeps a repeating task's wait on its successor but drops the follow-up day", () => {
+    useTaskStore.setState({
+      tasks: [makeTask({
+        id: 'r', recurrenceType: 'weekly', recurrenceInterval: 1, dueDate: new Date(2025, 5, 10, 12).toISOString(),
+        waitingOnPersonId: 'p1', followUpOn: '2025-06-08',
+      } as Partial<Task>)],
+    });
+    useTaskStore.getState().completeTask('r');
+    const next = useTaskStore.getState().tasks.find(t => t.id !== 'r')!;
+    expect(next.waitingOnPersonId).toBe('p1');
+    expect(next.followUpOn ?? null).toBeNull();
+  });
+
   it('moves an overdue routine to its next day on its grid, and undoes it', () => {
     // Weekly from Tuesday June 3; today is Tuesday June 10.
     const due = new Date(2025, 4, 20, 12).toISOString();

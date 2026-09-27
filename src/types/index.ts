@@ -3363,6 +3363,9 @@ export interface TemplateItem {
   deadlineOffsetDays: number | null;
   windowStart: string | null; // "HH:MM" — carried through unchanged, no date component
   windowEnd: string | null;   // "HH:MM"
+  // Task.linkUrl, seeded onto the task: a booking page, the form to fill in.
+  // Optional so a template stored before it reads as having none.
+  linkUrl?: string | null;
   // Minutes before the item's *resolved* due date. Only meaningful (and only
   // editable) when dueOffsetDays is set — there's no date to count back from
   // otherwise.

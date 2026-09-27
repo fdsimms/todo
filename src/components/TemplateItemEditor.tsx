@@ -66,6 +66,7 @@ import { InlineAction } from './InlineAction';
 import { PillGroup } from './PillGroup';
 import { SheetHeaderButton } from './SheetHeaderButton';
 import { EditorRow } from './EditorRow';
+import { linkHost, parseLabelledLink } from '../utils/textLinks';
 import { EditorSheet } from './EditorSheet';
 import { NumberPadAccessory } from './NumberPadAccessory';
 import { CountStepper } from './CountStepper';
@@ -92,7 +93,7 @@ const MEDICATION_NAME_MAX_LENGTH = 60;
 /** Matches TaskEditor's own cap on the completion timer's note. */
 const COMPLETION_TIMER_NOTE_MAX_LENGTH = 120;
 
-type FieldKey = 'blanks' | 'conditions' | 'category' | 'tags' | 'priority' | 'effort' | 'subtasks' | 'chainSteps' | 'rotationSet' | 'deliverable' | 'completionTimer' | 'penalty' | 'medication' | 'logMealSlot';
+type FieldKey = 'blanks' | 'conditions' | 'category' | 'tags' | 'priority' | 'effort' | 'subtasks' | 'chainSteps' | 'rotationSet' | 'deliverable' | 'completionTimer' | 'penalty' | 'medication' | 'logMealSlot' | 'link';
 
 interface Props {
   visible: boolean;
@@ -150,6 +151,9 @@ export function TemplateItemEditor({ visible, templateId, templateName, item, in
   const [deferOffsetDays, setDeferOffsetDays] = useState<number | null>(null);
   const [deadlineOffsetDays, setDeadlineOffsetDays] = useState<number | null>(null);
   const [windowStart, setWindowStart] = useState<string | null>(null);
+  // Task.linkUrl as typed: read the way a list line is ("Booking https://…"
+  // keeps the url), and a bare domain gets its https://.
+  const [linkText, setLinkText] = useState('');
   const [windowEnd, setWindowEnd] = useState<string | null>(null);
   const [windowPickerMode, setWindowPickerMode] = useState<'none' | 'start' | 'end'>('none');
   const [windowPickerDate, setWindowPickerDate] = useState(new Date());
@@ -231,6 +235,7 @@ export function TemplateItemEditor({ visible, templateId, templateName, item, in
     setDeferOffsetDays(item?.deferOffsetDays ?? draft?.deferOffsetDays ?? null);
     setDeadlineOffsetDays(item?.deadlineOffsetDays ?? draft?.deadlineOffsetDays ?? null);
     setWindowStart(item?.windowStart ?? draft?.windowStart ?? null);
+    setLinkText(item?.linkUrl ?? draft?.linkUrl ?? '');
     setWindowEnd(item?.windowEnd ?? draft?.windowEnd ?? null);
     setReminderOffsetMinutes(item?.reminderOffsetMinutes ?? draft?.reminderOffsetMinutes ?? null);
     setTimeSegments(item?.timeSegments ?? draft?.timeSegments ?? []);
@@ -387,6 +392,7 @@ export function TemplateItemEditor({ visible, templateId, templateName, item, in
       deadlineOffsetDays,
       windowStart,
       windowEnd,
+      linkUrl: parseLabelledLink(linkText)?.url ?? null,
       reminderOffsetMinutes: dueOffsetDays !== null ? reminderOffsetMinutes : null,
       timeSegments,
       tags: resolvePendingTags(),
@@ -1785,6 +1791,33 @@ export function TemplateItemEditor({ visible, templateId, templateName, item, in
                 </TouchableOpacity>
               ))}
             </View>
+          )}
+        </CollapsibleField>
+
+        <View style={styles.cardSep} />
+
+        <CollapsibleField
+          label="Link"
+          summary={parseLabelledLink(linkText) ? linkHost(parseLabelledLink(linkText)!.url) : undefined}
+          hint="A page each task made from this item opens from its row, like a booking page or a form."
+          expanded={fieldOpen('link')}
+          onToggle={() => toggleField('link')}
+        >
+          <TextInput
+            style={[styles.fieldBox, styles.deliverableOptionsInput]}
+            value={linkText}
+            onChangeText={setLinkText}
+            placeholder="e.g. https://example.com/booking"
+            placeholderTextColor={colors.textTertiary}
+            autoCapitalize="none"
+            autoCorrect={false}
+            keyboardType="url"
+            returnKeyType="done"
+            accessibilityLabel="Link"
+          />
+          {/* Said here rather than dropped on save without a word. */}
+          {linkText.trim() !== '' && !parseLabelledLink(linkText) && (
+            <Text style={styles.choiceOptionsHint}>That isn't a link yet, so it won't be saved.</Text>
           )}
         </CollapsibleField>
       </View>
