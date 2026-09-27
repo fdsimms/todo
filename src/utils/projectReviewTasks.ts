@@ -2,7 +2,7 @@ import { differenceInCalendarDays } from 'date-fns/differenceInCalendarDays';
 import type { Project, Task } from '../types';
 import { getCurrentDayStart, getDayStart } from './dateUtils';
 import { generatedSourceOf, liveGeneratedTasksOfKind } from './generatedTasks';
-import { MAX_PULLED_PROJECTS, type ProjectStall } from './projectPull';
+import { MAX_PULLED_PROJECTS, isRoutine, type ProjectStall } from './projectPull';
 import { isDismissedToday } from './visibilityUtils';
 
 /**
@@ -119,7 +119,7 @@ export function projectReviewTitle(project: Pick<Project, 'title'>): string {
  */
 export function projectQuietDays(
   project: Pick<Project, 'createdAt' | 'reviewedAt'> | null | undefined,
-  members: readonly Pick<Task, 'completedAt'>[]
+  members: readonly (Pick<Task, 'completedAt'> & Partial<Pick<Task, 'recurrenceType'>>)[]
 ): number | null {
   if (!project) return null;
   let latest = project.createdAt;
@@ -128,6 +128,9 @@ export function projectQuietDays(
   // two weeks ago went on counting from its creation.
   if (project.reviewedAt && project.reviewedAt > latest) latest = project.reviewedAt;
   for (const t of members) {
+    // Routines don't count, as in lastTouchedAt: the chip has to say what the
+    // stall that wrote this task saw.
+    if (isRoutine(t)) continue;
     if (t.completedAt && t.completedAt > latest) latest = t.completedAt;
   }
   // Calendar days across the logical day boundary, never a millisecond

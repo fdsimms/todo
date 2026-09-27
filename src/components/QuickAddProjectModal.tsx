@@ -91,6 +91,7 @@ export function QuickAddProjectModal({
   const createProject = useProjectStore(s => s.createProject);
   const unarchiveProject = useTaskStore(s => s.unarchiveProject);
   const uncompleteProject = useTaskStore(s => s.uncompleteProject);
+  const startFreshFromProject = useTaskStore(s => s.startFreshFromProject);
   const categories = useProjectCategoryStore(useShallow(s => s.categories));
   const addCategory = useProjectCategoryStore(s => s.addCategory);
 
@@ -218,12 +219,26 @@ export function QuickAddProjectModal({
     if (archivedMatch) {
       Alert.alert(
         'Restore archived project?',
-        `You archived "${archivedMatch.title}" a while ago. Restore it instead of starting a new one? Its tasks and progress come back with it.`,
+        `You archived "${archivedMatch.title}" a while ago. Restore it as it was, or start a fresh copy with the same tasks, all open and undated?`,
         [
           // The match is fuzzy, so a wrong guess has to be escapable without
           // either answer: Cancel leaves the typed name in the field.
           { text: 'Cancel', style: 'cancel' },
           { text: 'Create new', onPress: () => create(finalTitle) },
+          // Last year's party again: restoring brought back last year's
+          // ticks and dates, which is the one thing not wanted.
+          {
+            text: 'Start fresh from it',
+            onPress: () => {
+              if (submittedRef.current) return;
+              submittedRef.current = true;
+              haptics.success();
+              animateLayout();
+              const copy = startFreshFromProject(archivedMatch.id);
+              if (copy) onCreated?.(copy, false);
+              dismiss();
+            },
+          },
           {
             text: 'Restore',
             style: 'default',

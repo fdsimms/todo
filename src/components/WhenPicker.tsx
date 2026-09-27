@@ -27,6 +27,7 @@ import {
   canPageToNextMonth, clampMonthToLatest, isDayAfter,
 } from '../utils/calendarGrid';
 import { dayKeyOf, getLogicalNow, getLogicalToday, getLogicalTomorrow } from '../utils/dateUtils';
+import { projectDateShortcuts, type ProjectDateAnchor } from '../utils/projectDateShortcuts';
 import { parseNaturalDate } from '../utils/parseNaturalDate';
 import { generateId } from '../utils/id';
 import type { TimeOfDay, Effort, Priority, Task } from '../types';
@@ -172,6 +173,12 @@ interface Props {
    * on, which is the case this earns its keep.
    */
   nlEnabled?: boolean;
+  /**
+   * A project date to count back from (see projectDateAnchor): the deadline,
+   * or the day a trip leaves. Adds a row of "1 week", "2 weeks" before it,
+   * for a task in that project. Omitted for anything else.
+   */
+  projectAnchor?: ProjectDateAnchor | null;
 }
 
 const { width: SCREEN_WIDTH } = Dimensions.get('window');
@@ -202,6 +209,7 @@ export function WhenPicker({
   onConfirm, onClear, onCancel,
   title = 'When?', showTimeOfDay = true, showSuggest = true, allowPast = true, allowFuture = true,
   postponeTaskId, onBreakUp, nlEnabled,
+  projectAnchor = null,
 }: Props) {
   const colors = useColors();
   const { shadows } = useTheme();
@@ -403,6 +411,12 @@ export function WhenPicker({
   // Offering a quick button for a day the grid refuses would be the one
   // control in the picker that disagrees with the rest of it.
   const showTomorrow = latestDay === null;
+  // Counted back from the project's date; only the ones still ahead, and none
+  // when the grid itself has a latest day (a picker that caps the future).
+  const projectShortcuts = useMemo(
+    () => (projectAnchor && latestDay === null ? projectDateShortcuts(projectAnchor, today) : []),
+    [projectAnchor, latestDay, today],
+  );
 
   // As-you-type: just page the grid to what's been typed so far, the same
   // preview CalendarPicker's own nlText gives. Nothing commits until Enter —
@@ -699,6 +713,38 @@ export function WhenPicker({
                 </TouchableOpacity>
               )}
             </View>
+
+            {projectShortcuts.length > 0 && projectAnchor && (
+              <View style={styles.projectShortcutBlock}>
+                <Text style={styles.projectShortcutLabel}>
+                  {projectAnchor.label}, {format(projectAnchor.date, 'EEE, MMM d')}
+                </Text>
+                <View style={styles.projectShortcutRow}>
+                  {projectShortcuts.map(shortcut => {
+                    const key = `project-${dayKeyOf(shortcut.date)}`;
+                    return (
+                      <TouchableOpacity
+                        key={key}
+                        style={styles.projectShortcut}
+                        onPress={() => { declineReachOutOfferIfShown(); confirmWithFeedback(noonOf(shortcut.date), key); }}
+                        activeOpacity={interaction.activeOpacity}
+                        accessibilityRole="button"
+                        accessibilityLabel={`${shortcut.label}${shortcut.label === 'On the day' ? '' : ' before'}, ${format(shortcut.date, 'EEEE, MMMM d')}`}
+                      >
+                        <Animated.Text
+                          style={[
+                            styles.projectShortcutText,
+                            pendingKey === key && { transform: [{ scale: popAnim }] },
+                          ]}
+                        >
+                          {shortcut.label}
+                        </Animated.Text>
+                      </TouchableOpacity>
+                    );
+                  })}
+                </View>
+              </View>
+            )}
 
             {afterVacationDay && (
               <TouchableOpacity
@@ -1023,6 +1069,16 @@ const makeStyles = (colors: Colors) => StyleSheet.create({
     paddingTop: spacing.sm,
     paddingBottom: spacing.sm,
   },
+  projectShortcutBlock: { marginTop: spacing.sm, gap: spacing.xs },
+  projectShortcutLabel: { color: colors.textSecondary, fontSize: font.xs, fontWeight: fontWeight.medium },
+  projectShortcutRow: { flexDirection: 'row', flexWrap: 'wrap', gap: spacing.xs },
+  projectShortcut: {
+    paddingHorizontal: spacing.smd,
+    paddingVertical: spacing.xsm,
+    borderRadius: radius.full,
+    backgroundColor: colors.bgQuaternary,
+  },
+  projectShortcutText: { color: colors.text, fontSize: font.sm, fontWeight: fontWeight.medium },
   quickRow: {
     flexDirection: 'row',
     alignItems: 'center',

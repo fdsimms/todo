@@ -1234,6 +1234,16 @@ export interface Project {
    */
   awayListDeclinedFor: string | null;
   /**
+   * Paused until this day (a `YYYY-MM-DD` logical day key), or null. While
+   * set and not yet reached, the project's tasks are held off Today and Later
+   * and it's left out of every nudge, then it comes back on its own that day.
+   * For "park the garden for winter": archiving leaves the repeating tasks on
+   * Today (an archive files the project, not its tasks), and vacation mode is
+   * app-wide. Its own field rather than a reading of `archived`, since a
+   * paused project is still one you mean to come back to.
+   */
+  pausedUntil: string | null;
+  /**
    * Where the trip goes, as free text.
    *
    * `Task.location` carries a note saying nothing in the app plots it and that

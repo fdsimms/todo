@@ -7,7 +7,7 @@
 //
 // Filtering by tag or category is a bottom sheet, not a scrolling chip row; see
 // the note on LogbookFilterSheet in CLAUDE.md before changing the filter control.
-import React, { useCallback, useMemo, useState } from 'react';
+import React, { useCallback, useEffect, useMemo, useState } from 'react';
 import {
   View,
   Text,
@@ -20,7 +20,7 @@ import {
 } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { useBottomTabBarHeight } from '@react-navigation/bottom-tabs';
-import { useFocusEffect, useNavigation } from '@react-navigation/native';
+import { useFocusEffect, useNavigation, useRoute } from '@react-navigation/native';
 import Ionicons from '@expo/vector-icons/Ionicons';
 import { format } from 'date-fns/format';
 import { isSameDay } from 'date-fns/isSameDay';
@@ -208,6 +208,10 @@ export function LogbookScreen() {
   const clearLogbook = useTaskStore(s => s.clearLogbook);
   const getCategoryByName = useCategoryStore(s => s.getCategoryByName);
   const projects = useProjectStore(s => s.projects);
+  const openProject = useCallback(
+    (projectId: string) => navigation.navigate('ProjectDetail', { projectId }),
+    [navigation],
+  );
   const dayResetTime = useSettingsStore(s => s.dayResetTime);
   const colors = useColors();
   const styles = useMemo(() => makeStyles(colors), [colors]);
@@ -278,6 +282,18 @@ export function LogbookScreen() {
   const [selectedCategory, setSelectedCategory] = useState<string | null>(null);
   const [selectedTag, setSelectedTag] = useState<string | null>(null);
   const [selectedPerson, setSelectedPerson] = useState<string | null>(null);
+  const [selectedProject, setSelectedProject] = useState<string | null>(null);
+  // A project's page opens this filtered to it ("See history"), stamped like
+  // the other one-shot params so a second visit with the same project still
+  // applies.
+  const route = useRoute<any>();
+  const [handledProjectParam, setHandledProjectParam] = useState<number | undefined>(undefined);
+  useEffect(() => {
+    const stamp = route.params?.openProjectHistory as number | undefined;
+    if (stamp === undefined || stamp === handledProjectParam) return;
+    setHandledProjectParam(stamp);
+    setSelectedProject((route.params?.projectId as string | undefined) ?? null);
+  }, [route.params?.openProjectHistory, route.params?.projectId, handledProjectParam]);
   const people = usePersonStore(useShallow(s => s.people));
   const [filterVisible, setFilterVisible] = useState(false);
   const [bulkBarHeight, setBulkBarHeight] = useState(0);
@@ -323,6 +339,16 @@ export function LogbookScreen() {
 
   // Archived people stay filterable: a row that names somebody is history, and
   // filing them away is about the list rather than about what you did together.
+  // Only projects something in the logbook is filed under, like the category
+  // and tag options above.
+  const projectChipItems = useMemo(() => {
+    const used = new Set(completedTasks.map(t => t.projectId).filter((id): id is string => !!id));
+    return projects
+      .filter(p => used.has(p.id))
+      .sort((a, b) => a.title.localeCompare(b.title))
+      .map(p => ({ key: p.id, label: p.title }));
+  }, [completedTasks, projects]);
+
   const peopleChipItems = useMemo(
     () => people.map(p => ({ key: p.id, label: displayNameOf(p) })),
     [people]
@@ -336,9 +362,10 @@ export function LogbookScreen() {
     if (selectedCategory) tasks = tasks.filter(t => t.category === selectedCategory);
     if (selectedTag) tasks = tasks.filter(t => t.tags.includes(selectedTag));
     if (selectedPerson) tasks = tasks.filter(t => t.personIds.includes(selectedPerson));
+    if (selectedProject) tasks = tasks.filter(t => t.projectId === selectedProject);
     if (debouncedQuery.trim()) tasks = fuzzySearch(tasks, debouncedQuery).map(r => r.task);
     return tasks;
-  }, [completedTasks, selectedCategory, selectedTag, selectedPerson, debouncedQuery]);
+  }, [completedTasks, selectedCategory, selectedTag, selectedPerson, selectedProject, debouncedQuery]);
 
   // The category and tag filters are task vocabulary and don't reach this lens
   // (see LogbookLens), so the query is all that narrows it.
@@ -350,7 +377,7 @@ export function LogbookScreen() {
   const isFiltered =
     activeLens === 'cooking'
       ? query.trim().length > 0
-      : query.trim().length > 0 || selectedCategory !== null || selectedTag !== null || selectedPerson !== null;
+      : query.trim().length > 0 || selectedCategory !== null || selectedTag !== null || selectedPerson !== null || selectedProject !== null;
 
   // The floating tab bar (see AppNavigator's absolutely-positioned
   // tabBarStyle) covers whatever's behind it rather than pushing content up,
@@ -559,6 +586,31 @@ export function LogbookScreen() {
                   styles={styles}
                 />
               )}
+              {/* The person filter had no pill of its own, so a person picked
+                  in the sheet narrowed the list with nothing on screen saying
+                  so. */}
+              {selectedPerson && (
+                <ActiveFilterPill
+                  label={peopleChipItems.find(p => p.key === selectedPerson)?.label ?? 'Person'}
+                  color={colors.accent}
+                  onRemove={() => {
+                    animateLayout();
+                    setSelectedPerson(null);
+                  }}
+                  styles={styles}
+                />
+              )}
+              {selectedProject && (
+                <ActiveFilterPill
+                  label={projectChipItems.find(p => p.key === selectedProject)?.label ?? 'Project'}
+                  color={colors.accent}
+                  onRemove={() => {
+                    animateLayout();
+                    setSelectedProject(null);
+                  }}
+                  styles={styles}
+                />
+              )}
             </ScrollView>
           )}
         </>
@@ -660,6 +712,7 @@ export function LogbookScreen() {
                   : null
               }
               projectTitle={item.projectId ? projectNamesById.get(item.projectId) ?? null : null}
+              onOpenProject={openProject}
               styles={styles}
               colors={colors}
               selectionMode={selectionMode}
@@ -788,6 +841,9 @@ export function LogbookScreen() {
         people={peopleChipItems}
         selectedPerson={selectedPerson}
         onSelectPerson={setSelectedPerson}
+        projects={projectChipItems}
+        selectedProject={selectedProject}
+        onSelectProject={setSelectedProject}
       />
     </View>
   );
@@ -799,6 +855,8 @@ interface RowProps {
   categoryLabel: string | null;
   /** The task's project title, or null when it isn't filed under one. */
   projectTitle: string | null;
+  /** Opens the project from its chip. Stable, so the memo holds. */
+  onOpenProject: (projectId: string) => void;
   styles: ReturnType<typeof makeStyles>;
   colors: Colors;
   selectionMode: boolean;
@@ -821,6 +879,7 @@ const LogbookRow = React.memo(function LogbookRow({
   task,
   categoryLabel,
   projectTitle,
+  onOpenProject,
   styles,
   colors,
   selectionMode,
@@ -968,11 +1027,19 @@ const LogbookRow = React.memo(function LogbookRow({
                 <Text style={styles.categoryChipText} numberOfLines={1}>{categoryLabel}</Text>
               </View>
             )}
-            {projectTitle && (
-              <View style={styles.categoryChip}>
+            {projectTitle && task.projectId && (
+              <TouchableOpacity
+                style={styles.categoryChip}
+                onPress={() => onOpenProject(task.projectId!)}
+                disabled={selectionMode}
+                hitSlop={6}
+                activeOpacity={interaction.activeOpacity}
+                accessibilityRole="button"
+                accessibilityLabel={`Open ${projectTitle}`}
+              >
                 <Ionicons name="briefcase-outline" size={iconSize.xs} color={colors.textTertiary} />
                 <Text style={styles.categoryChipText} numberOfLines={1}>{projectTitle}</Text>
-              </View>
+              </TouchableOpacity>
             )}
             {task.actualMinutes != null && (
               <Text style={styles.taskTime}>· {formatDuration(task.actualMinutes)}</Text>

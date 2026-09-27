@@ -366,6 +366,7 @@ describe('awayListDriver', () => {
     awayEnd: noon(2026, 11, 10),
     awayListId: 'l1',
     awayListDeclinedFor: null,
+    pausedUntil: null,
     archived: false,
     completed: false,
     ...extra,

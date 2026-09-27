@@ -1,7 +1,8 @@
 import { format } from 'date-fns/format';
 import { differenceInCalendarDays } from 'date-fns/differenceInCalendarDays';
 import type { Project, ProjectSortOption, Task, TaskGroup } from '../types';
-import { formatDeadlineDate, getCurrentDayStart } from './dateUtils';
+import { dayKeyToDate, formatDeadlineDate, getCurrentDayStart, getDayStart as getLogicalDayStart, getLogicalDayKey } from './dateUtils';
+import { isPausedOn } from './projectPause';
 import { describeAwaySpan } from './awayDates';
 import { liveProjectSteps } from './projectOrder';
 import { buildProjectListItems } from './projectStacks';
@@ -93,6 +94,10 @@ export function projectCardCaption(
   }
   if (filter === 'completed' && project.completedAt) {
     return { text: `Completed ${shortDate(new Date(project.completedAt), today)}`, overdue: false };
+  }
+  // A pause outranks the dates: nothing about the project moves until then.
+  if (project.pausedUntil && isPausedOn(project, getLogicalDayKey(new Date(), dayResetTime))) {
+    return { text: `Paused until ${shortDate(dayKeyToDate(project.pausedUntil), today)}`, overdue: false };
   }
   const away = describeAwaySpan(project, new Date(), dayResetTime);
   if (away) return { text: away, overdue: false };
@@ -221,4 +226,44 @@ export function projectMatchesQuery(
     ...openTaskTitles,
   ].join('\n').toLocaleLowerCase();
   return words.every(word => haystack.includes(word));
+}
+
+export interface ProjectActivity {
+  /** Logical days since something in the project was last done, or null for never. */
+  lastDoneDays: number | null;
+  /** Tasks done in the last 30 days, today included. */
+  doneLast30: number;
+}
+
+/**
+ * How recently a project has moved: what its page says under the progress
+ * line, so a long-running project (learning a language, writing a book) shows
+ * momentum without a trip to the Logbook. A miss is recorded as a completed
+ * row (Task.missedAt) and isn't counted as done.
+ */
+export function projectActivity(projectId: string, tasks: readonly Task[], dayResetTime?: string): ProjectActivity {
+  const today = getCurrentDayStart();
+  let latest: string | null = null;
+  let doneLast30 = 0;
+  for (const t of tasks) {
+    if (t.projectId !== projectId || t.parentId !== null || !t.completed || !t.completedAt || t.missedAt) continue;
+    if (!latest || t.completedAt > latest) latest = t.completedAt;
+    const days = differenceInCalendarDays(today, getLogicalDayStart(new Date(t.completedAt), dayResetTime));
+    if (days < 30) doneLast30 += 1;
+  }
+  const lastDoneDays = latest === null
+    ? null
+    : Math.max(0, differenceInCalendarDays(today, getLogicalDayStart(new Date(latest), dayResetTime)));
+  return { lastDoneDays, doneLast30 };
+}
+
+/** "Last done today · 5 in the last 30 days", or null for a project nothing's been done in. */
+export function describeProjectActivity(activity: ProjectActivity): string | null {
+  if (activity.lastDoneDays === null) return null;
+  const last = activity.lastDoneDays === 0
+    ? 'Last done today'
+    : activity.lastDoneDays === 1
+      ? 'Last done yesterday'
+      : `Last done ${activity.lastDoneDays} days ago`;
+  return activity.doneLast30 > 0 ? `${last} · ${activity.doneLast30} in the last 30 days` : last;
 }

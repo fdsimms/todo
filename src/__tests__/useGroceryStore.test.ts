@@ -7214,6 +7214,7 @@ describe('checkAwayGroceryList', () => {
     awayEnd: new Date(2026, 8, 19, 12, 0, 0).toISOString(),
     awayListId: LISBON.id,
     awayListDeclinedFor: null,
+    pausedUntil: null,
     archived: false,
     completed: false,
     ...extra,

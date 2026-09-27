@@ -21,8 +21,9 @@ import { useAnswerFirstCompletion } from '../hooks/useAnswerFirstCompletion';
 import { DeliverablePromptQueue } from '../components/DeliverablePromptQueue';
 import { useTaskStore } from '../store/useTaskStore';
 import { useProjectStore, projectDecisions, projectProgress, projectCompletedRows, isProjectPastWindow } from '../store/useProjectStore';
-import { projectCardCaption, projectProgressNote } from '../utils/projectList';
+import { describeProjectActivity, projectActivity, projectCardCaption, projectProgressNote } from '../utils/projectList';
 import { nextPullCandidate } from '../utils/projectPull';
+import { isPausedOn } from '../utils/projectPause';
 import { ProjectPullSheet } from '../components/ProjectPullSheet';
 import { LIST_PROJECT_FIELDS } from '../components/QuickAddProjectModal';
 import { LookAheadSheet } from '../components/LookAheadSheet';
@@ -67,7 +68,7 @@ import {
 import type { DragScroller, DropZone, FabDropIntent } from '../utils/fabDrop';
 import { useSettingsStore } from '../store/useSettingsStore';
 import { addDays } from 'date-fns/addDays';
-import { dayKeyOf, formatScheduledDate } from '../utils/dateUtils';
+import { dayKeyOf, formatScheduledDate, getLogicalDayKey } from '../utils/dateUtils';
 import { categoryLabel } from '../utils/categoryLabel';
 import { useCategoryStore } from '../store/useCategoryStore';
 import { awayNights, awaySpanOf } from '../utils/awayDates';
@@ -975,7 +976,14 @@ export function ProjectDetailScreen() {
   const [lookAheadOpen, setLookAheadOpen] = useState(false);
   const tripAhead = !!awaySpan && !project?.completed && !project?.archived
     && awaySpan.start.getTime() > Date.now();
-  const showSummary = !!project && (summaryProgress !== null || summaryCaption !== null || tripLine !== null || !!pullable);
+  // How recently it moved, and a way to its history. The Completed section
+  // lists each member once, so the Logbook is where the rest of it lives.
+  const activityLine = useMemo(
+    () => (project ? describeProjectActivity(projectActivity(project.id, allTasks, dayResetTime)) : null),
+    [project, allTasks, dayResetTime],
+  );
+  const paused = !!project?.pausedUntil && isPausedOn(project, getLogicalDayKey(new Date(), dayResetTime));
+  const showSummary = !!project && (summaryProgress !== null || summaryCaption !== null || tripLine !== null || !!pullable || paused || activityLine !== null);
   // The trailing "New task" / "Add a line" under the list. Only once there's a
   // list to be under: the empty state already has its own button.
   const showInlineNewTask = !!project && !selectionMode && projectListItems.length > 0;
@@ -1232,8 +1240,37 @@ export function ProjectDetailScreen() {
                       <ProgressBar progress={progress.done / progress.total} />
                     )}
                     {tripLine && <Text style={styles.summaryText}>{tripLine}</Text>}
-                    {!selectionMode && (!!pullable || tripAhead) && (
+                    {activityLine && (
+                      <TouchableOpacity
+                        onPress={() => {
+                          haptics.tap();
+                          (navigation as any).navigate('MainTabs', {
+                            screen: 'Logbook',
+                            params: { projectId, openProjectHistory: Date.now() },
+                          });
+                        }}
+                        disabled={selectionMode}
+                        activeOpacity={interaction.activeOpacity}
+                        accessibilityRole="button"
+                        accessibilityLabel={`${activityLine}. Opens this project's history`}
+                      >
+                        <Text style={styles.summaryText}>
+                          {activityLine}
+                          <Text style={styles.summaryLink}>  History ›</Text>
+                        </Text>
+                      </TouchableOpacity>
+                    )}
+                    {!selectionMode && (!!pullable || tripAhead || paused) && (
                       <View style={styles.summaryActions}>
+                        {paused && (
+                          <InlineAction
+                            icon="play-outline"
+                            label="Resume now"
+                            variant="neutral"
+                            onPress={() => { haptics.tap(); updateProject(project!.id, { pausedUntil: null }); }}
+                            accessibilityLabel="Resume this project now"
+                          />
+                        )}
                         {!!pullable && (
                           <InlineAction
                             icon="arrow-down-circle-outline"
@@ -1838,6 +1875,7 @@ const makeStyles = (colors: Colors) => StyleSheet.create({
   },
   summaryText: { color: colors.textSecondary, fontSize: font.sm },
   summaryOverdue: { color: colors.orange },
+  summaryLink: { color: colors.textTertiary, fontWeight: fontWeight.medium },
   summarySoon: { color: colors.text, fontWeight: fontWeight.medium },
   summaryActions: { flexDirection: 'row', flexWrap: 'wrap', gap: spacing.sm },
   // The same drop slot Today leaves in a stack.

@@ -503,6 +503,7 @@ const makeProject = (overrides: Partial<import('../types').Project> = {}): impor
   destination: null,
   awayListId: null,
   awayListDeclinedFor: null,
+  pausedUntil: null,
   ...overrides,
 });
 
@@ -11159,6 +11160,37 @@ describe('unarchiveProject', () => {
 });
 
 // ─── completeProject / uncompleteProject ────────────────────────────────────
+
+describe('startFreshFromProject', () => {
+  it('copies the tasks and sections into a new project, open and undated, leaving the original alone', () => {
+    useProjectStore.setState({ projects: [makeProject({ id: 'p1', title: 'Birthday party', deadline: '2026-06-15T12:00:00.000Z' })] });
+    useTaskGroupStore.setState({
+      groups: [{ id: 'food', title: 'Food', notes: '', tags: [], category: null, sortOrder: 5, collapsed: false, onToday: false, projectId: 'p1' }],
+      initialized: true,
+    });
+    useTaskStore.setState({
+      tasks: [
+        makeTask({ id: 'a', title: 'Book the venue', projectId: 'p1', completed: true, completedAt: '2026-06-01T09:00:00.000Z', dueDate: '2026-06-01T12:00:00.000Z', sortOrder: 1 }),
+        makeTask({ id: 'b', title: 'Order cake', projectId: 'p1', groupId: 'food', sortOrder: 1 }),
+      ],
+      lastAction: null,
+    });
+
+    const copy = useTaskStore.getState().startFreshFromProject('p1')!;
+
+    expect(copy.id).not.toBe('p1');
+    expect(copy.title).toBe('Birthday party');
+    expect(copy.deadline).toBeNull();
+    const copied = useTaskStore.getState().tasks.filter(t => t.projectId === copy.id);
+    expect(copied.map(t => t.title).sort()).toEqual(['Book the venue', 'Order cake']);
+    expect(copied.every(t => !t.completed && t.dueDate === null)).toBe(true);
+    const section = useTaskGroupStore.getState().groups.find(g => g.projectId === copy.id);
+    expect(section?.title).toBe('Food');
+    expect(copied.find(t => t.title === 'Order cake')?.groupId).toBe(section?.id);
+    // The original is untouched.
+    expect(useTaskStore.getState().tasks.find(t => t.id === 'a')?.completed).toBe(true);
+  });
+});
 
 describe('completeProject', () => {
   it('completes the project and is undoable', () => {

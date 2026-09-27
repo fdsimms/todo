@@ -1560,6 +1560,9 @@ export function initDatabase(): void {
     // belongs to. See Project.awayListId.
     'ALTER TABLE projects ADD COLUMN away_list_id TEXT',
     'ALTER TABLE projects ADD COLUMN away_list_declined_for TEXT',
+    // Null on every existing row: nothing is paused until somebody pauses it.
+    // See Project.pausedUntil.
+    'ALTER TABLE projects ADD COLUMN paused_until TEXT',
     // Null on every existing row. See Person.location.
     'ALTER TABLE people ADD COLUMN location TEXT',
     // Null on every existing row: a completion timer is something a task opts
@@ -6471,6 +6474,7 @@ function rowToProject(row: Record<string, unknown>): Project {
     awayListId: (row.away_list_id as string) ?? null,
     awayListDeclinedFor: (row.away_list_declined_for as string) ?? null,
     destination: (row.destination as string) ?? null,
+    pausedUntil: (row.paused_until as string) ?? null,
   };
 }
 
@@ -6481,7 +6485,7 @@ export function dbGetAllProjects(): Project[] {
 
 export function dbInsertProject(project: Project): void {
   db.runSync(
-    'INSERT INTO projects (id, title, notes, target_end_date, category, default_task_category, sort_order, archived, archived_at, completed, completed_at, ongoing, created_at, nudge_cadence_days, auto_schedule, nudge_opt_in, weekend_source, review_declined_at, reviewed_at, backfill_dismissed_fields, kind, away_start, away_end, away_pauses, away_pause_declined_for, destination, away_list_id, away_list_declined_for) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)',
+    'INSERT INTO projects (id, title, notes, target_end_date, category, default_task_category, sort_order, archived, archived_at, completed, completed_at, ongoing, created_at, nudge_cadence_days, auto_schedule, nudge_opt_in, weekend_source, review_declined_at, reviewed_at, backfill_dismissed_fields, kind, away_start, away_end, away_pauses, away_pause_declined_for, destination, away_list_id, away_list_declined_for, paused_until) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)',
     [
       project.id, project.title, project.notes, project.deadline,
       project.category, project.defaultTaskCategory, project.sortOrder, project.archived ? 1 : 0, project.archivedAt,
@@ -6491,14 +6495,14 @@ export function dbInsertProject(project: Project): void {
       project.reviewDeclinedAt, project.reviewedAt, JSON.stringify(project.backfillDismissedFields), project.kind,
       project.awayStart, project.awayEnd,
       project.awayPauses ? 1 : 0, project.awayPauseDeclinedFor, project.destination,
-      project.awayListId, project.awayListDeclinedFor,
+      project.awayListId, project.awayListDeclinedFor, project.pausedUntil,
     ]
   );
 }
 
 export function dbUpdateProject(project: Project): void {
   db.runSync(
-    'UPDATE projects SET title=?, notes=?, target_end_date=?, category=?, default_task_category=?, sort_order=?, archived=?, archived_at=?, completed=?, completed_at=?, ongoing=?, nudge_cadence_days=?, auto_schedule=?, nudge_opt_in=?, weekend_source=?, review_declined_at=?, reviewed_at=?, backfill_dismissed_fields=?, kind=?, away_start=?, away_end=?, away_pauses=?, away_pause_declined_for=?, destination=?, away_list_id=?, away_list_declined_for=? WHERE id=?',
+    'UPDATE projects SET title=?, notes=?, target_end_date=?, category=?, default_task_category=?, sort_order=?, archived=?, archived_at=?, completed=?, completed_at=?, ongoing=?, nudge_cadence_days=?, auto_schedule=?, nudge_opt_in=?, weekend_source=?, review_declined_at=?, reviewed_at=?, backfill_dismissed_fields=?, kind=?, away_start=?, away_end=?, away_pauses=?, away_pause_declined_for=?, destination=?, away_list_id=?, away_list_declined_for=?, paused_until=? WHERE id=?',
     [
       project.title, project.notes, project.deadline,
       project.category, project.defaultTaskCategory, project.sortOrder, project.archived ? 1 : 0, project.archivedAt,
@@ -6508,7 +6512,7 @@ export function dbUpdateProject(project: Project): void {
       project.reviewDeclinedAt, project.reviewedAt, JSON.stringify(project.backfillDismissedFields), project.kind,
       project.awayStart, project.awayEnd,
       project.awayPauses ? 1 : 0, project.awayPauseDeclinedFor, project.destination,
-      project.awayListId, project.awayListDeclinedFor, project.id,
+      project.awayListId, project.awayListDeclinedFor, project.pausedUntil, project.id,
     ]
   );
 }

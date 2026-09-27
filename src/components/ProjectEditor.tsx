@@ -12,6 +12,10 @@ import type { Project } from '../types';
 import { TITLE_MAX_LENGTH } from '../types';
 import { useProjectStore } from '../store/useProjectStore';
 import { useTaskStore } from '../store/useTaskStore';
+import { useTemplateStore } from '../store/useTemplateStore';
+import { useTaskGroupStore } from '../store/useTaskGroupStore';
+import { templateFromProject } from '../utils/projectTemplate';
+import { useNavigation } from '@react-navigation/native';
 import { useProjectCategoryStore } from '../store/useProjectCategoryStore';
 import { useShallow } from 'zustand/react/shallow';
 import { WhenPicker } from './WhenPicker';
@@ -33,7 +37,7 @@ import { CountStepper } from './CountStepper';
 import { SegmentedControl, type SegmentOption } from './SegmentedControl';
 import { useColors } from '../theme/ThemeContext';
 import { spacing, radius, font, fontWeight, interaction, type Colors } from '../theme';
-import { formatDeadlineDate } from '../utils/dateUtils';
+import { dayKeyOf, dayKeyToDate, formatDeadlineDate } from '../utils/dateUtils';
 import { addDays } from 'date-fns/addDays';
 import { differenceInCalendarDays } from 'date-fns/differenceInCalendarDays';
 import { buildAwayShiftPlan } from '../utils/awayShift';
@@ -96,6 +100,9 @@ export function ProjectEditor({ visible, project, isNew, onClose }: Props) {
   const completeProject = useTaskStore(s => s.completeProject);
   const uncompleteProject = useTaskStore(s => s.uncompleteProject);
   const deleteProject = useTaskStore(s => s.deleteProject);
+  const startFreshFromProject = useTaskStore(s => s.startFreshFromProject);
+  const addTemplateFromProject = useTemplateStore(s => s.addTemplateFromProject);
+  const navigation = useNavigation();
   // `project` is a snapshot handed down when the sheet was opened, so it never
   // sees its own archived flag flip back — read that one field live instead,
   // or unarchiving here leaves the toggle showing "archived" until the sheet
@@ -154,6 +161,9 @@ export function ProjectEditor({ visible, project, isNew, onClose }: Props) {
   const [autoSchedule, setAutoSchedule] = useState(false);
   const [ongoing, setOngoing] = useState(false);
   const [weekendSource, setWeekendSource] = useState(false);
+  // Project.pausedUntil, held as the day it comes back.
+  const [pausedUntil, setPausedUntil] = useState<Date | null>(null);
+  const [pickingPause, setPickingPause] = useState(false);
   const [cadenceOpen, setCadenceOpen] = useState(false);
 
   const awayListName = awayListId
@@ -205,6 +215,8 @@ export function ProjectEditor({ visible, project, isNew, onClose }: Props) {
     setAutoSchedule(project.autoSchedule);
     setOngoing(project.ongoing);
     setWeekendSource(project.weekendSource);
+    setPausedUntil(project.pausedUntil ? dayKeyToDate(project.pausedUntil) : null);
+    setPickingPause(false);
     setCategoryOpen(false);
     setCadenceOpen(false);
   }, [project]);
@@ -297,8 +309,17 @@ export function ProjectEditor({ visible, project, isNew, onClose }: Props) {
       autoSchedule: nudgeMode === 'scheduled' && autoSchedule,
       ongoing,
       weekendSource,
+      pausedUntil: pausedUntil ? dayKeyOf(pausedUntil) : null,
     });
-    return departureMoved && priorStart && nextStart ? { from: priorStart, to: nextStart } : null;
+    if (departureMoved && priorStart && nextStart) return { from: priorStart, to: nextStart };
+    // The same offer when the deadline moves: a party pushed back a week takes
+    // its "a week before" tasks with it. The departure wins when both moved,
+    // since a trip's prep is counted from the day you leave.
+    const priorDeadline = project.deadline ? new Date(project.deadline) : null;
+    if (priorDeadline && deadline && dayKeyOf(priorDeadline) !== dayKeyOf(deadline)) {
+      return { from: priorDeadline, to: deadline };
+    }
+    return null;
   };
 
   const saveAndClose = () => {
@@ -360,7 +381,8 @@ export function ProjectEditor({ visible, project, isNew, onClose }: Props) {
       nudge.nudgeCadenceDays !== project.nudgeCadenceDays ||
       (nudgeMode === 'scheduled' && autoSchedule) !== project.autoSchedule ||
       ongoing !== project.ongoing ||
-      weekendSource !== project.weekendSource
+      weekendSource !== project.weekendSource ||
+      (pausedUntil ? dayKeyOf(pausedUntil) : null) !== project.pausedUntil
     );
   };
 
@@ -465,6 +487,51 @@ export function ProjectEditor({ visible, project, isNew, onClose }: Props) {
     uncompleteProject(project.id);
   };
 
+  // Reusing a project, for the next party or the next trip: as a template to
+  // apply whenever, or as a fresh copy straight away. Both save the sheet
+  // first, so what's reused is what's on screen.
+  const handleSaveAsTemplate = () => {
+    if (!project) return;
+    commitEdits();
+    const saved = useProjectStore.getState().getProjectById(project.id) ?? project;
+    const draft = templateFromProject(
+      saved,
+      useTaskStore.getState().tasks,
+      useTaskGroupStore.getState().groups,
+      useSettingsStore.getState().dayResetTime,
+    );
+    addTemplateFromProject(draft);
+    haptics.success();
+    Alert.alert(
+      'Saved as a template',
+      `"${draft.name}" is in Templates with its ${draft.items.length} ${draft.items.length === 1 ? 'task' : 'tasks'}${
+        saved.awayStart ? ', dated from the day you leave' : saved.deadline ? ', dated from the deadline' : ''
+      }. Apply it from any project's add button, or from Templates.`,
+    );
+  };
+
+  const handleStartFresh = () => {
+    if (!project) return;
+    Alert.alert(
+      'Start a fresh copy?',
+      'Makes a new project with the same tasks and sections, all open again and with no dates. This one stays as it is.',
+      [
+        { text: 'Cancel', style: 'cancel' },
+        {
+          text: 'Start fresh',
+          onPress: () => {
+            commitEdits();
+            const copy = startFreshFromProject(project.id);
+            if (!copy) return;
+            haptics.success();
+            onClose();
+            (navigation as any).navigate('ProjectDetail', { projectId: copy.id });
+          },
+        },
+      ],
+    );
+  };
+
   const handleUnarchive = () => {
     if (!project) return;
     haptics.tap();
@@ -549,6 +616,18 @@ export function ProjectEditor({ visible, project, isNew, onClose }: Props) {
               setPickingAway(null);
             }}
             onCancel={() => setPickingAway(null)}
+          />
+          <WhenPicker
+            visible={pickingPause}
+            value={pausedUntil}
+            title="Pause until"
+            showTimeOfDay={false}
+            showSuggest={false}
+            // The day it comes back, so it has to be one still ahead.
+            allowPast={false}
+            onConfirm={(date) => { setPausedUntil(date); setPickingPause(false); }}
+            onClear={() => { setPausedUntil(null); setPickingPause(false); }}
+            onCancel={() => setPickingPause(false)}
           />
           <AwayShiftSheet
             visible={shiftFrom !== null && shiftTo !== null}
@@ -857,6 +936,19 @@ export function ProjectEditor({ visible, project, isNew, onClose }: Props) {
 
       <Text style={styles.groupLabel}>More</Text>
       <View style={styles.card}>
+        {/* Parking a project for a season. Archive files the project but
+            leaves its tasks (a weekly watering stays on Today all winter);
+            this holds every one of them back until the day, then brings the
+            lot back on its own. */}
+        <EditorRow
+          icon="pause-outline"
+          label="Pause until"
+          hint="Hides all of its tasks, repeating ones too, and stops any nudges until this day."
+          value={pausedUntil ? formatDeadlineDate(pausedUntil.toISOString()) : undefined}
+          onPress={() => setPickingPause(true)}
+          onClear={pausedUntil ? () => setPausedUntil(null) : undefined}
+        />
+        <View style={styles.sepIcon} />
         <TouchableOpacity
           style={styles.optionRow}
           onPress={() => { haptics.tap(); setOngoing(v => !v); }}
@@ -944,6 +1036,38 @@ export function ProjectEditor({ visible, project, isNew, onClose }: Props) {
               <Text style={styles.optionHint}>
                 {archived ? 'Moves it back out of the Archived list' : 'Moves it to the Archived list. Its tasks stay where they are'}
               </Text>
+            </View>
+          </TouchableOpacity>
+        </View>
+      )}
+
+      {!isNew && (
+        <View style={[styles.card, styles.stackedCard]}>
+          <TouchableOpacity
+            style={styles.optionRow}
+            onPress={handleSaveAsTemplate}
+            activeOpacity={interaction.activeOpacity}
+            accessibilityRole="button"
+            accessibilityLabel="Save as a template"
+          >
+            <Ionicons name="copy-outline" size={18} color={colors.textSecondary} />
+            <View style={styles.optionContent}>
+              <Text style={styles.optionLabel}>Save as template</Text>
+              <Text style={styles.optionHint}>Keeps its tasks and sections to apply again, with dates counted from its deadline or trip</Text>
+            </View>
+          </TouchableOpacity>
+          <View style={styles.sepIcon} />
+          <TouchableOpacity
+            style={styles.optionRow}
+            onPress={handleStartFresh}
+            activeOpacity={interaction.activeOpacity}
+            accessibilityRole="button"
+            accessibilityLabel="Start a fresh copy"
+          >
+            <Ionicons name="duplicate-outline" size={18} color={colors.textSecondary} />
+            <View style={styles.optionContent}>
+              <Text style={styles.optionLabel}>Start a fresh copy</Text>
+              <Text style={styles.optionHint}>A new project with the same tasks, all open and undated</Text>
             </View>
           </TouchableOpacity>
         </View>

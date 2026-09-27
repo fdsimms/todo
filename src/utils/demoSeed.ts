@@ -1051,6 +1051,18 @@ export function seedDemoData(): void {
     addExistingToProject(t.id, giftIdeas.id);
   });
 
+  // A project parked for a season (Project.pausedUntil): a weekly routine and a
+  // one-off, both held off Today until the pause lifts in three weeks. Without
+  // it, pausing is a feature the demo says the app doesn't have.
+  const garden = createProject('Garden', { category: 'Around the house' });
+  const gardenBack = addDays(new Date(), 21);
+  updateProject(garden.id, {
+    ongoing: true,
+    pausedUntil: `${gardenBack.getFullYear()}-${String(gardenBack.getMonth() + 1).padStart(2, '0')}-${String(gardenBack.getDate()).padStart(2, '0')}`,
+  });
+  addTask({ title: 'Water the beds', projectId: garden.id, recurrenceType: 'weekly', dueDate: new Date().toISOString() });
+  addTask({ title: 'Build a raised bed', projectId: garden.id });
+
   // The list the feature was built for, and the one that shows an answer being
   // recorded. Exactly one item carries a deliverable: a list where every line
   // demanded an answer on completion would be a form, so the kind is opt-in

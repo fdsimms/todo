@@ -40,6 +40,7 @@ import { useFocusStore } from './useFocusStore';
 import { useUnattendedStore } from './useUnattendedStore';
 import { useProjectStore, projectProgress } from './useProjectStore';
 import { useProjectCategoryStore } from './useProjectCategoryStore';
+import { projectBlueprint } from '../utils/projectTemplate';
 import { useTemplateCategoryStore } from './useTemplateCategoryStore';
 import { listedAnywhere } from '../utils/groceryLists';
 import { useGroceryStore } from './useGroceryStore';
@@ -1859,6 +1860,13 @@ interface TaskStore extends UndoHistoryActions {
   // this, the same way it asks before a cascading delete.
   completeProject: (projectId: string, opts: { archiveRemaining: boolean }) => void;
   uncompleteProject: (projectId: string) => void;
+  /**
+   * A new project with this one's tasks and sections, every task open again
+   * and every date cleared, for doing the same thing another time (next
+   * year's party, the next trip). The original is left as it was. Returns the
+   * new project, or null when the id names nothing.
+   */
+  startFreshFromProject: (projectId: string) => Project | null;
   // Bulk selection on the Projects screen. One undo entry covers the whole
   // batch — see the note on bulkDeleteProjects.
   bulkDeleteProjects: (projectIds: string[], opts: { cascade: boolean }) => void;
@@ -7860,6 +7868,81 @@ export const useTaskStore = create<TaskStore>((set, get) => ({
         undos.forEach(fn => fn());
       },
     }, { replacing: historyBefore });
+  },
+
+  startFreshFromProject(projectId) {
+    const source = useProjectStore.getState().getProjectById(projectId);
+    if (!source) return null;
+    const historyBefore = get().undoStack;
+    const blueprint = projectBlueprint(projectId, get().tasks, useTaskGroupStore.getState().groups);
+    const projectStore = useProjectStore.getState();
+    const created = projectStore.createProject(source.title, { category: source.category, kind: source.kind });
+    // The settings the person chose carry over; its dates and its done-ness
+    // don't, since those were about the last time.
+    projectStore.updateProject(created.id, {
+      notes: source.notes,
+      defaultTaskCategory: source.defaultTaskCategory,
+      ongoing: source.ongoing,
+      nudgeOptIn: source.nudgeOptIn,
+      nudgeCadenceDays: source.nudgeCadenceDays,
+      autoSchedule: source.autoSchedule,
+      weekendSource: source.weekendSource,
+      destination: source.destination,
+    });
+
+    const sectionFor = new Map<string, string>();
+    dbTransaction(() => {
+      for (const section of blueprint.sections) {
+        sectionFor.set(section.id, useTaskGroupStore.getState().createGroup(section.title, null, created.id).id);
+      }
+      const order: string[] = [];
+      const childrenOf = new Map<string, string[]>();
+      for (const { task, sectionId, subtasks } of blueprint.entries) {
+        const groupId = sectionId ? sectionFor.get(sectionId) ?? null : null;
+        const copy = get().addTask({
+          title: task.title,
+          notes: task.notes,
+          tags: task.tags,
+          category: task.category,
+          priority: task.priority,
+          effort: task.effort,
+          estimatedMinutes: task.estimatedMinutes,
+          timeSegments: task.timeSegments,
+          recurrenceType: task.recurrenceType,
+          recurrenceInterval: task.recurrenceInterval,
+          recurrenceDays: task.recurrenceDays,
+          recurrenceMonthDay: task.recurrenceMonthDay,
+          recurrenceMonth: task.recurrenceMonth,
+          recurrenceFromCompletion: task.recurrenceFromCompletion,
+          chainEnabled: task.chainEnabled,
+          chainItems: task.chainItems,
+          deliverableKind: task.deliverableKind,
+          vacationPause: task.vacationPause,
+          excludeFromSuggestions: task.excludeFromSuggestions,
+          projectId: created.id,
+          groupId,
+          // Undated on purpose: last time's dates belong to last time.
+          dueDate: null,
+        }, undefined, { skipTitleRules: true, skipCategoryDefault: true });
+        subtasks.forEach(title => get().addSubtask(copy.id, title));
+        if (groupId) {
+          if (!childrenOf.has(groupId)) { childrenOf.set(groupId, []); order.push(groupId); }
+          childrenOf.get(groupId)!.push(copy.id);
+        } else {
+          order.push(copy.id);
+        }
+      }
+      // Sections with nothing in them keep their place at the end.
+      for (const id of sectionFor.values()) if (!childrenOf.has(id)) order.push(id);
+      get().reorderProjectItems(created.id, order);
+      for (const [groupId, ids] of childrenOf) get().reorderGroupChildren(groupId, ids);
+    });
+
+    get().setLastAction({
+      label: 'Project copied',
+      undo: () => get().deleteProject(created.id, { cascade: true }),
+    }, { replacing: historyBefore });
+    return useProjectStore.getState().getProjectById(created.id) ?? created;
   },
 
   uncompleteProject(projectId) {

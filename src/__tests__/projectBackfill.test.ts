@@ -33,6 +33,7 @@ const baseProject: Project = {
   destination: null,
   awayListId: null,
   awayListDeclinedFor: null,
+  pausedUntil: null,
 };
 
 describe('isProjectFieldMissing', () => {

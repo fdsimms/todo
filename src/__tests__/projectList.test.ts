@@ -1,7 +1,9 @@
 import { addDays } from 'date-fns/addDays';
 import { subDays } from 'date-fns/subDays';
 import {
+  describeProjectActivity,
   describeProjectDeadline,
+  projectActivity,
   projectCardCaption,
   projectMatchesQuery,
   projectNextStepTitle,
@@ -48,6 +50,7 @@ const makeProject = (overrides: Partial<Project> = {}): Project => ({
   destination: null,
   awayListId: null,
   awayListDeclinedFor: null,
+  pausedUntil: null,
   ...overrides,
 });
 
@@ -211,5 +214,23 @@ describe('projectMatchesQuery', () => {
 
   it('matches everything on an empty query', () => {
     expect(projectMatchesQuery(project, [], '   ')).toBe(true);
+  });
+});
+
+describe('projectActivity', () => {
+  it('reports the last day something was done and a 30-day count, leaving out misses', () => {
+    const tasks = [
+      makeTask({ id: 'a', completed: true, completedAt: subDays(new Date(), 3).toISOString() }),
+      makeTask({ id: 'b', completed: true, completedAt: subDays(new Date(), 40).toISOString() }),
+      makeTask({ id: 'm', completed: true, completedAt: subDays(new Date(), 1).toISOString(), missedAt: subDays(new Date(), 1).toISOString() } as Partial<Task>),
+      makeTask({ id: 'open' }),
+    ];
+    const activity = projectActivity('p1', tasks);
+    expect(activity).toEqual({ lastDoneDays: 3, doneLast30: 1 });
+    expect(describeProjectActivity(activity)).toBe('Last done 3 days ago · 1 in the last 30 days');
+  });
+
+  it('says nothing for a project nothing has been done in', () => {
+    expect(describeProjectActivity(projectActivity('p1', []))).toBeNull();
   });
 });

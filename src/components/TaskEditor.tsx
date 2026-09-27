@@ -29,6 +29,7 @@ import Ionicons from '@expo/vector-icons/Ionicons';
 import { PinIcon } from './PinIcon';
 import { RemindMePicker } from './RemindMePicker';
 import { WhenPicker } from './WhenPicker';
+import { projectDateAnchor } from '../utils/projectDateShortcuts';
 import { CalendarPicker } from './CalendarPicker';
 import { PressableScale } from './PressableScale';
 import { StepMinutes } from './StepMinutes';
@@ -2533,6 +2534,9 @@ export function TaskEditor({ visible, task, initialDraft, onClose }: Props) {
             // pickers below mount the same component and have nothing to do
             // with pushing a task out.
             postponeTaskId={task?.id}
+            // "2 weeks before the party": offered for a task in a project
+            // that has a deadline or a trip ahead of it.
+            projectAnchor={projectDateAnchor(projects.find(p => p.id === project), getLogicalToday())}
             taskId={task?.id}
             taskTitle={title}
             taskNotes={notes}

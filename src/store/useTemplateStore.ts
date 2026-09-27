@@ -1,4 +1,5 @@
 import { create } from 'zustand';
+import type { ProjectTemplateDraft } from '../utils/projectTemplate';
 import type { Task, TaskTemplate, TemplateContainer, TemplateItem, TemplateItemGroup, TemplateQuestion, TemplateSchedule } from '../types';
 import {
   dbGetAllTemplates,
@@ -74,6 +75,12 @@ interface TemplateStore {
   initialized: boolean;
   initialize: () => void;
   addTemplate: (name: string) => TaskTemplate;
+  /**
+   * A template holding what a project holds, from "Save as template" on a
+   * project (see templateFromProject). Otherwise a fresh template like
+   * addTemplate's: no schedule, applied only when someone taps Apply.
+   */
+  addTemplateFromProject: (draft: ProjectTemplateDraft) => TaskTemplate;
   renameTemplate: (id: string, name: string) => void;
   setTemplateCategory: (id: string, category: string | null) => void;
   /** Filing several templates at once from the Templates screen's bulk bar. */
@@ -166,6 +173,21 @@ export const useTemplateStore = create<TemplateStore>((set, get) => ({
     };
     dbInsertTemplate(template);
     set(s => ({ templates: [...s.templates, template] }));
+    return template;
+  },
+
+  addTemplateFromProject(draft) {
+    const base = get().addTemplate(draft.name);
+    const template: TaskTemplate = {
+      ...base,
+      items: draft.items,
+      itemGroups: draft.itemGroups,
+      applyContainer: draft.applyContainer,
+      anchorsAreAway: draft.anchorsAreAway,
+      category: draft.category,
+    };
+    dbUpdateTemplate(template);
+    set(s => ({ templates: s.templates.map(t => (t.id === template.id ? template : t)) }));
     return template;
   },
 

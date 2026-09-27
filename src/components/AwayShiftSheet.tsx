@@ -31,7 +31,7 @@ import type { Task } from '../types';
 /**
  * "The trip moved. Do these move with it?"
  *
- * Offered when a project's departure date changes and it has dated members.
+ * Offered when a project's departure date or deadline changes and it has dated members.
  * It proposes and never shifts, for the reason `deloadPlan` and `projectPull`
  * do: only the person who typed them knows that "Renew passport" is anchored
  * to the trip and "Buy a suitcase" is not. So every movable row is untickable.

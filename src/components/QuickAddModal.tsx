@@ -63,6 +63,7 @@ import { featureShown } from '../utils/simpleMode';
 import { resolvePillOverflow } from '../utils/pillOverflow';
 import { MAX_TARGET_UNIT_LENGTH } from '../utils/quotaUnit';
 import { WhenPicker } from './WhenPicker';
+import { projectDateAnchor } from '../utils/projectDateShortcuts';
 import { WeekdaySelector } from './WeekdaySelector';
 import { PressableScale } from './PressableScale';
 import { CountStepper } from './CountStepper';
@@ -2790,6 +2791,7 @@ export function QuickAddModal({
         visible={whenPickerVisible}
         value={dueDate}
         timeSegments={timeSegments}
+        projectAnchor={projectDateAnchor(projects.find(p => p.id === (intoProjectId ?? projectId)), getLogicalToday())}
         taskTitle={title}
         taskTags={tags}
         taskCategory={category}

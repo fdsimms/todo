@@ -1404,6 +1404,15 @@ describe('demo mode', () => {
     expect(useTaskStore.getState().tasks.filter(t => t.groupId === appliances!.id)).toHaveLength(0);
   });
 
+  it('seeds a paused project whose tasks are held off Today', () => {
+    useDemoStore.getState().enterDemoMode();
+    const garden = useProjectStore.getState().projects.find(p => p.title === 'Garden');
+    expect(garden?.pausedUntil).not.toBeNull();
+    const members = useTaskStore.getState().tasks.filter(t => t.projectId === garden?.id);
+    expect(members.length).toBeGreaterThan(0);
+    expect(members.some(t => isTaskVisible(t))).toBe(false);
+  });
+
   it('seeds a reference-list project excluded from every nudge', () => {
     // A checklist project like Gift ideas has nothing but undated tasks —
     // exactly what would otherwise read as "gone quiet" — so the seed only

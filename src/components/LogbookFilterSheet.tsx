@@ -38,6 +38,10 @@ interface Props {
   people: LogbookFilterOption[];
   selectedPerson: string | null;
   onSelectPerson: (key: string | null) => void;
+  /** The projects anything in the logbook is filed under; empty hides the section. */
+  projects: LogbookFilterOption[];
+  selectedProject: string | null;
+  onSelectProject: (key: string | null) => void;
 }
 
 /**
@@ -48,7 +52,7 @@ interface Props {
  */
 export function LogbookFilterSheet({
   visible, onClose, categories, tags, selectedCategory, onSelectCategory, selectedTag, onSelectTag,
-  people, selectedPerson, onSelectPerson,
+  people, selectedPerson, onSelectPerson, projects, selectedProject, onSelectProject,
 }: Props) {
   const colors = useColors();
   const styles = useMemo(() => makeStyles(colors), [colors]);
@@ -97,13 +101,14 @@ export function LogbookFilterSheet({
     })
   ).current;
 
-  const activeCount = (selectedCategory ? 1 : 0) + (selectedTag ? 1 : 0) + (selectedPerson ? 1 : 0);
+  const activeCount = (selectedCategory ? 1 : 0) + (selectedTag ? 1 : 0) + (selectedPerson ? 1 : 0) + (selectedProject ? 1 : 0);
 
   const clearAll = () => {
     haptics.tap();
     onSelectCategory(null);
     onSelectTag(null);
     onSelectPerson(null);
+    onSelectProject(null);
   };
 
   return (
@@ -136,6 +141,18 @@ export function LogbookFilterSheet({
             contentContainerStyle={styles.content}
             {...fade.scrollProps}
           >
+            {/* First: a project's history is the question the project page
+                sends people here with. */}
+            {projects.length > 0 && (
+              <FilterGroup
+                label="Project"
+                options={projects}
+                selected={selectedProject}
+                onSelect={onSelectProject}
+                styles={styles}
+                colors={colors}
+              />
+            )}
             {categories.length > 0 && (
               <FilterGroup
                 label="Category"

@@ -192,6 +192,7 @@ const PROJECT_BASE: Project = {
   destination: null,
   awayListId: null,
   awayListDeclinedFor: null,
+  pausedUntil: null,
 };
 
 const makeProject = (overrides: Partial<Project> = {}): Project => ({ ...PROJECT_BASE, ...overrides });
@@ -907,6 +908,44 @@ describe('projectPullUpdates', () => {
       dueDate: date.toISOString(),
       deferUntil: null,
     });
+  });
+});
+
+// A routine (water weekly) is always dated and always being ticked off, so
+// counting it kept a project from ever going quiet about its one-offs.
+describe('repeating members', () => {
+  it("don't keep a project from going quiet, and are never pulled", () => {
+    const tasks = [
+      makeTask({ id: 'water', recurrenceType: 'weekly', dueDate: new Date().toISOString() }),
+      makeTask({ id: 'bed', title: 'Build raised bed' }),
+    ];
+    const stalls = findProjectStalls([makeProject()], tasks, 'ask');
+    expect(stalls).toHaveLength(1);
+    expect(stalls[0].pullable.map(t => t.id)).toEqual(['bed']);
+  });
+
+  it("don't restart the quiet clock when they're ticked off", () => {
+    const project = makeProject({ createdAt: subDays(new Date(), 60).toISOString() });
+    const tasks = [
+      makeTask({ id: 'w1', recurrenceType: 'weekly', completed: true, completedAt: subDays(new Date(), 1).toISOString() }),
+      makeTask({ id: 'bed' }),
+    ];
+    expect(findProjectStalls([project], tasks, 'ask')[0].quietDays).toBe(60);
+  });
+
+  it('leave a project of nothing but routines out, as scheduled', () => {
+    const tasks = [makeTask({ id: 'water', recurrenceType: 'weekly', dueDate: new Date().toISOString() })];
+    expect(findProjectStalls([makeProject()], tasks, 'ask')).toHaveLength(0);
+  });
+});
+
+describe('a paused project', () => {
+  it('is left out of Pull, even when asked, until its day', () => {
+    const tomorrow = new Date(); tomorrow.setDate(tomorrow.getDate() + 1);
+    const key = `${tomorrow.getFullYear()}-${String(tomorrow.getMonth() + 1).padStart(2, '0')}-${String(tomorrow.getDate()).padStart(2, '0')}`;
+    const plan = buildProjectPullPlan([makeProject({ pausedUntil: key })], [makeTask({ id: 'a' })], []);
+    expect(plan.proposals).toEqual([]);
+    expect(plan.empty?.reason).toBe('paused');
   });
 });
 

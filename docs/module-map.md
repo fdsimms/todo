@@ -211,13 +211,16 @@ name cannot say is where a component appears, and that is `docs/screen-map.md`.
 - `src/utils/prioritySegments.ts` — PRIORITY_SEGMENTS
 - `src/utils/productCategory.ts` — CATEGORY_AISLES, aisleForProductCategory
 - `src/utils/projectBackfill.ts` — ProjectBackfillFieldId, ProjectBackfillFieldDef, PROJECT_BACKFILL_FIELDS, isProjectFieldMissing, isProjectBackfillDismissed, projectBackfillCandidates, projectBackfillFieldCounts, dismissProjectBackfillField
+- `src/utils/projectDateShortcuts.ts` — ProjectDateAnchor, ProjectDateShortcut, projectDateAnchor, projectDateShortcuts
 - `src/utils/projectGrouping.ts` — ProjectListItem, groupProjectsByCategory, ProjectDropResolution, resolveProjectDrop
-- `src/utils/projectList.ts` — ProjectListFilter, ProjectProgress, ProjectCardCaption, DUE_SOON_DAYS, describeProjectDeadline, projectCardCaption, projectProgressNote, projectNextStepTitle, PROJECT_SORT_OPTIONS, PROJECT_SORT_LABEL, +2 more
+- `src/utils/projectList.ts` — ProjectListFilter, ProjectProgress, ProjectCardCaption, DUE_SOON_DAYS, describeProjectDeadline, projectCardCaption, projectProgressNote, projectNextStepTitle, PROJECT_SORT_OPTIONS, PROJECT_SORT_LABEL, +5 more
 - `src/utils/projectOrder.ts` — liveProjectSteps, slotUpdates
-- `src/utils/projectPull.ts` — MAX_PULLED_PROJECTS, MAX_CANDIDATES_PER_PROJECT, PULL_TODAY_BUDGET_MINUTES, StallMode, ProjectStall, PullDate, ProjectPullProposal, PullEmptyReason, PullEmptyState, ProjectPullPlan, +11 more
+- `src/utils/projectPause.ts` — isPausedOn, registerPausedProjectSource, isProjectPaused
+- `src/utils/projectPull.ts` — MAX_PULLED_PROJECTS, MAX_CANDIDATES_PER_PROJECT, PULL_TODAY_BUDGET_MINUTES, StallMode, ProjectStall, PullDate, ProjectPullProposal, PullEmptyReason, PullEmptyState, ProjectPullPlan, +12 more
 - `src/utils/projectReviewTasks.ts` — MAX_PROJECT_REVIEW_TASKS, PROJECT_REVIEW_LINK_URL, projectReviewLinkUrl, projectReviewProjectId, projectReviewTitle, projectQuietDays, describeProjectQuiet, declinedToday, projectsReviewedToday, ProjectReviewWant, +2 more
 - `src/utils/projectStacks.ts` — ProjectListItem, buildProjectListItems, projectCopyText
 - `src/utils/projectStats.ts` — RECENT_FINISHED_LIMIT, FinishedProject, ProjectStatsSummary, projectStats
+- `src/utils/projectTemplate.ts` — BlueprintEntry, ProjectBlueprint, projectBlueprint, ProjectTemplateDraft, templateFromProject
 - `src/utils/quantity.ts` — Rational, rational, multiplyRational, rationalToNumber, rationalFromNumber, formatRational, formatQuantityAmount, unitKey, inflectUnit, SIZE_UNITS, +7 more
 - `src/utils/quickActions.ts` — quickActionsFor, handleQuickActionId, useHomeScreenQuickActions
 - `src/utils/quickEvent.ts` — QuickEventDraft, parseQuickEvent, eventMarkerText
@@ -328,7 +331,7 @@ name cannot say is where a component appears, and that is `docs/screen-map.md`.
 - `src/utils/useShakeToUndo.ts` — useShakeToUndo
 - `src/utils/useSyncOnForeground.ts` — useSyncOnForeground
 - `src/utils/useUpRecipes.ts` — UseUpRecipe, useUpRecipes, describeUseUpRecipe
-- `src/utils/visibilityUtils.ts` — isTaskBlocked, isHeldBack, VisibleAtPass, beginVisibleAtPass, isHiddenForVacation, isCategoryScheduledDay, sameTimeSegments, timeSegmentThreshold, currentTimeSegment, hasDayArrived, +34 more
+- `src/utils/visibilityUtils.ts` — isTaskBlocked, isInPausedProject, isHeldBack, VisibleAtPass, beginVisibleAtPass, isHiddenForVacation, isCategoryScheduledDay, sameTimeSegments, timeSegmentThreshold, currentTimeSegment, +35 more
 - `src/utils/waitingFollowUpTasks.ts` — MAX_WAITING_FOLLOW_UP_TASKS, WAITING_FOLLOW_UP_DECLINE_DAYS, WAITING_FOLLOW_UP_THRESHOLD_DAYS, waitingFollowUpTaskId, waitingFollowUpTitle, waitingFollowUpsHandledRecently, WaitingFollowUpWant, wantedWaitingFollowUps, staleWaitingFollowUpTasks
 - `src/utils/waterExerciseBoost.ts` — WaterExerciseBoost, WATER_EXERCISE_BOOST_MINUTES_RANGE, WATER_EXERCISE_BOOST_ML_RANGE, parseWaterExerciseBoost, serializeWaterExerciseBoost, effectiveWaterTargetMl, waterExerciseBoostApplies
 - `src/utils/waterLog.ts` — WaterUnit, WATER_STEP_ML, WATER_MIN_ML, WATER_MAX_ML, WATER_STEP_FL_OZ, WATER_MIN_FL_OZ, WATER_MAX_FL_OZ, isWaterEntry, waterEntryOf, waterTotalMl, +8 more

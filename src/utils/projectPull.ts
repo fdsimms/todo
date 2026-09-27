@@ -1,7 +1,8 @@
 import { differenceInCalendarDays } from 'date-fns/differenceInCalendarDays';
 import type { Project, Task } from '../types';
 import { DEFAULT_NUDGE_CADENCE_DAYS } from '../types';
-import { dayKeyToDate, getCurrentDayStart, getDayStart } from './dateUtils';
+import { dayKeyOf, dayKeyToDate, getCurrentDayStart, getDayStart } from './dateUtils';
+import { isPausedOn } from './projectPause';
 import { format } from 'date-fns/format';
 import { hasNoDateSignal, isHeldBack } from './visibilityUtils';
 import { scoreTask, type PinContext } from './pinSuggest';
@@ -136,6 +137,8 @@ export type PullEmptyReason =
   | 'no-projects'
   /** Set to Never: the project is excluded from every nudge surface. */
   | 'nudge-excluded'
+  /** Paused until a day (Project.pausedUntil): left alone until then. */
+  | 'paused'
   /** Set to “When I ask”: it belongs in this sheet, but never volunteers. */
   | 'cadence-off'
   /** Stalled, but on auto-schedule, so the drip handles it instead. */
@@ -224,9 +227,27 @@ export function lastTouchedAt(project: Project, allMembers: readonly Task[]): st
   let latest = project.createdAt;
   if (project.reviewedAt && project.reviewedAt > latest) latest = project.reviewedAt;
   for (const t of allMembers) {
+    // A repeating task's completions don't count: ticking off this week's
+    // watering is the routine running, not the project moving, and counted,
+    // it kept a garden project from ever going quiet on the raised bed
+    // nobody had started. See isRoutine.
+    if (isRoutine(t)) continue;
     if (t.completedAt && t.completedAt > latest) latest = t.completedAt;
   }
   return latest;
+}
+
+/**
+ * A repeating member: the routine a project carries alongside its one-off
+ * work (water weekly, oil change every six months). Left out of every "has
+ * this project gone quiet" question, because a routine is always scheduled
+ * and always being ticked off. Counted, one weekly task kept its project out
+ * of Pull from projects and review tasks for good, even when the person
+ * opened Pull themselves, and the undated one-offs beside it never came up
+ * anywhere.
+ */
+export function isRoutine(task: Partial<Pick<Task, 'recurrenceType'>>): boolean {
+  return (task.recurrenceType ?? 'none') !== 'none';
 }
 
 /** Top-level rows per project, in one pass. */
@@ -262,6 +283,8 @@ function classifyProject(
   // reference list ("Gift ideas") is never a candidate to pull into today,
   // whether the app suggests it or the user goes looking.
   if (!project.nudgeOptIn) return { reason: 'nudge-excluded' };
+  // A pause is the person saying "not until then", in both modes, like Never.
+  if (isPausedOn(project, dayKeyOf(todayStart))) return { reason: 'paused' };
 
   // 0 means "don't bring this up unasked", for a project deliberately parked —
   // not a degenerate cadence. It silences the volunteered surfaces only; see
@@ -281,6 +304,10 @@ function classifyProject(
   // silences the nudge until its blocker is done.
   const actionable = members.filter(t => !isHeldBack(t));
   if (actionable.length === 0) return { reason: 'all-waiting' };
+  // The one-off work: what can go quiet and what can be pulled. A project that
+  // is nothing but routines is scheduled by construction.
+  const oneOffs = actionable.filter(t => !isRoutine(t));
+  if (oneOffs.length === 0) return { reason: 'has-schedule' };
 
   // One scheduled member and the project is not quiet. hasNoDateSignal is the
   // same predicate the visibility gates use, so "stalled" means precisely
@@ -291,9 +318,9 @@ function classifyProject(
   // until it has a dueDate, so one carrying only a time of day or a defer is
   // placed nowhere. Counted as scheduled, it hid itself and silenced the whole
   // project at once.
-  if (actionable.some(t => t.dueDate != null)) return { reason: 'has-schedule' };
+  if (oneOffs.some(t => t.dueDate != null)) return { reason: 'has-schedule' };
 
-  const pullable = actionable.filter(isPullable);
+  const pullable = oneOffs.filter(isPullable);
   if (pullable.length === 0) return { reason: 'no-pullable' };
 
   // Nudge-mode only, for the same reason the cadence is: this answers "should I
@@ -481,6 +508,7 @@ export function describeQuietReason(quietDays: number): string {
  */
 const REASON_PRIORITY: readonly PullEmptyReason[] = [
   'nudge-excluded',
+  'paused',
   'cadence-off',
   'too-soon',
   'declined-today',
@@ -571,6 +599,10 @@ export function describePullEmpty(state: PullEmptyState): string {
       return count === total
         ? 'Every project has “Bring this up” set to Never. Open one and set it to “When I ask” to have it show up here.'
         : `${projects(count)} of ${total} have “Bring this up” set to Never. Set “Bring this up” to “When I ask” on one to have it show up here.${rest}`;
+    case 'paused':
+      return count === total
+        ? 'Every project is paused. Each comes back on its own on the day its pause ends.'
+        : `${projects(count)} of ${total} are paused until a later day.${rest}`;
     // Only reachable from a 'nudge'-mode diagnosis: “When I ask” is exactly a
     // project that belongs in this sheet and nowhere else, so the sheet the
     // user opened themselves never refuses one for this reason.

@@ -1815,6 +1815,7 @@ describe('Projects', () => {
     destination: null,
     awayListId: null,
     awayListDeclinedFor: null,
+    pausedUntil: null,
     ...overrides,
   });
 
@@ -2070,6 +2071,7 @@ describe('backup and restore', () => {
       destination: null,
       awayListId: null,
       awayListDeclinedFor: null,
+      pausedUntil: null,
     });
     dbInsertCategory('Home');
     dbSetSetting('themeMode', 'light');

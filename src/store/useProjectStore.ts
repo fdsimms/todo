@@ -13,6 +13,7 @@ import {
   dbBatchUpdateProjectSortOrders,
 } from '../db/database';
 import { generateId } from '../utils/id';
+import { registerPausedProjectSource } from '../utils/projectPause';
 import { registerAwayProjectSource } from '../utils/awayDates';
 import { deliverableKindFor } from '../utils/deliverables';
 
@@ -203,7 +204,7 @@ interface ProjectStore {
   initialized: boolean;
   initialize: () => void;
   createProject: (title: string, options?: CreateProjectOptions) => Project;
-  updateProject: (id: string, patch: Partial<Pick<Project, 'title' | 'notes' | 'deadline' | 'category' | 'defaultTaskCategory' | 'nudgeCadenceDays' | 'autoSchedule' | 'nudgeOptIn' | 'weekendSource' | 'reviewDeclinedAt' | 'reviewedAt' | 'backfillDismissedFields' | 'kind' | 'ongoing' | 'awayStart' | 'awayEnd' | 'awayPauses' | 'awayPauseDeclinedFor' | 'destination' | 'awayListId' | 'awayListDeclinedFor'>>) => void;
+  updateProject: (id: string, patch: Partial<Pick<Project, 'title' | 'notes' | 'deadline' | 'category' | 'defaultTaskCategory' | 'nudgeCadenceDays' | 'autoSchedule' | 'nudgeOptIn' | 'weekendSource' | 'reviewDeclinedAt' | 'reviewedAt' | 'backfillDismissedFields' | 'kind' | 'ongoing' | 'awayStart' | 'awayEnd' | 'awayPauses' | 'awayPauseDeclinedFor' | 'destination' | 'awayListId' | 'awayListDeclinedFor' | 'pausedUntil'>>) => void;
   /** Filing several projects at once from the Projects screen's bulk bar. */
   bulkSetProjectCategory: (ids: string[], category: string | null) => void;
   getProjectById: (id: string) => Project | null;
@@ -332,6 +333,7 @@ export const useProjectStore = create<ProjectStore>((set, get) => ({
       // Project.awayListId.
       awayListId: null,
       awayListDeclinedFor: null,
+      pausedUntil: null,
     };
     dbInsertProject(project);
     set(s => ({ projects: [...s.projects, project] }));
@@ -448,3 +450,6 @@ export const useProjectStore = create<ProjectStore>((set, get) => ({
 // this store — and so expo-sqlite — being reachable from `visibilityUtils`.
 // See the registry note in `src/utils/awayDates.ts`.
 registerAwayProjectSource(() => useProjectStore.getState().projects);
+// So the visibility gates can hold a paused project's tasks back. See
+// src/utils/projectPause.ts.
+registerPausedProjectSource(() => useProjectStore.getState().projects);

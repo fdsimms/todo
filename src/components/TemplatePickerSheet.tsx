@@ -149,7 +149,9 @@ export function TemplatePickerSheet({ visible, onClose, onSelect }: Props) {
                 subtitle="Build a reusable checklist once, then add it all here in one tap"
                 // A way there, rather than directions to it.
                 actionLabel="Make a template"
-                onAction={() => dismiss(() => (navigation as any).navigate('Templates'))}
+                // Through MainTabs, so it resolves from a pushed screen (a
+                // project's page) as well as from a tab.
+                onAction={() => dismiss(() => (navigation as any).navigate('MainTabs', { screen: 'Templates' }))}
               />
             </View>
           ) : (
