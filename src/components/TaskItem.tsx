@@ -3804,6 +3804,32 @@ export const TaskItem = React.memo(function TaskItem({
                       <Ionicons name="close-circle-outline" size={iconSize.sm} color={colors.textSecondary} />
                     </PressableScale>
                   )}
+                  {/* The missed button above always advances a mid-chain miss
+                      into the next step (see the comment on `atChainEnd` in
+                      taskCompletion.ts) — right for a chain of independent
+                      steps, wrong for one whose later steps depend on the
+                      one just missed (meal-slot's Choose → Prepare → Eat:
+                      nothing to prepare with nothing chosen). This is that
+                      other case: it ends the whole chain here instead of
+                      spawning the next step. Only offered while there's a
+                      later step for it to matter against — on the chain's
+                      last step it would be identical to the button above. */}
+                  {chainStep &&
+                    chainStepIndex < task.chainItems.length - 1 &&
+                    (task.recurrenceType !== 'none' || isMissableMealPlanTask(task)) && (
+                    <PressableScale
+                      style={styles.iconActionBtn}
+                      onPress={async () => {
+                        await haptics.impactMedium();
+                        markMissed(task.id, { wholeChain: true });
+                        if (expanded) onPress(rowId);
+                      }}
+                      hitSlop={8}
+                      accessibilityLabel={`Mark ${task.title} missed and end the rest of its chain for today`}
+                    >
+                      <Ionicons name="stop-circle-outline" size={iconSize.sm} color={colors.textSecondary} />
+                    </PressableScale>
+                  )}
                   {/* Distinct from the missed button above: this occurrence
                       wasn't skipped because it got missed, it just didn't need
                       doing this time — so it moves on with no Logbook row, no
