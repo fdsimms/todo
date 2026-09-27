@@ -76,6 +76,12 @@ import { isKeyInRange } from './mealPlan';
  *   they're done with, the counter is where the plan actually is, and letting
  *   either drive the other makes both wrong. Planning two meals and calling the
  *   day finished is a legitimate thing to do.
+ *
+ * **Which meals count is `mealPlanNudgeSlots` (`useSettingsStore`), not a fixed
+ * three.** Someone who only plans dinner sets it to `['dinner']` and every row
+ * reads "0/1" or "1/1 planned" instead of "0/3"/"1/3" — see `MEAL_PLAN_NUDGE_SLOTS`
+ * for the candidate set and default. `mealPlanNudgeSuppressed` is unaffected: it
+ * asks whether *any* entry exists on a later day, not whether the chosen meals do.
  */
 
 /** date-fns `Date.getDay()` convention: 0 = Sunday .. 6 = Saturday. */
@@ -99,17 +105,30 @@ export function mealPlanNudgeLinkUrl(dayKey: string): string {
 }
 
 /**
- * The meals a day is counted out of — breakfast, lunch and dinner.
+ * The candidate meals a day can be counted out of, and the default — every
+ * one of them — for a user who hasn't narrowed it down.
  *
  * Deliberately not `MEAL_SLOTS`, which has a fourth member (`snack`). A snack
  * is something you add to a day, not something a day is incomplete without, so
- * counting it would put 3/4 on a fully planned day and make the full state
- * unreachable for anyone who doesn't plan snacks — which is nearly everyone.
- * Planning one still works exactly as it did; it just isn't scored.
+ * offering it here would put N/4 on a fully planned day for anyone who doesn't
+ * plan snacks — which is nearly everyone. Planning one still works exactly as
+ * it did; it just isn't scored.
+ *
+ * The actual set a given nudge counts against is `mealPlanNudgeSlots`
+ * (`useSettingsStore`) — someone who only plans dinner sets it to `['dinner']`
+ * and every counter and denominator in the feature follows from that, via
+ * `countPlannedSlots`'s `slots` parameter. This constant is what a fresh
+ * install starts at and what the settings picker offers to choose from.
  */
 export const MEAL_PLAN_NUDGE_SLOTS: readonly MealSlot[] = ['breakfast', 'lunch', 'dinner'];
 
-/** How many meals a nudge task's day is counted out of — the "3" in "2/3 planned". */
+/**
+ * How many meals a nudge task's day is counted out of by default — the "3" in
+ * "2/3 planned" for a user who hasn't narrowed the set. A reader with access
+ * to the user's actual `mealPlanNudgeSlots` should use its length instead;
+ * this is the fallback for the few spots (tests, demo data) that reason about
+ * the shipped default rather than a live setting.
+ */
 export const MEAL_PLAN_NUDGE_SLOT_COUNT = MEAL_PLAN_NUDGE_SLOTS.length;
 
 /**
@@ -127,12 +146,13 @@ export const MEAL_PLAN_NUDGE_SLOT_COUNT = MEAL_PLAN_NUDGE_SLOTS.length;
  */
 export function countPlannedSlots(
   entries: readonly Pick<MealPlanEntry, 'date' | 'slot'>[],
-  dayKey: string
+  dayKey: string,
+  slots: readonly MealSlot[] = MEAL_PLAN_NUDGE_SLOTS
 ): number {
   const planned = new Set<MealSlot>();
   for (const entry of entries) {
     if (entry.date !== dayKey) continue;
-    if (MEAL_PLAN_NUDGE_SLOTS.includes(entry.slot)) planned.add(entry.slot);
+    if (slots.includes(entry.slot)) planned.add(entry.slot);
   }
   return planned.size;
 }
@@ -260,11 +280,18 @@ export function dueMealPlanNudge(
 
 /**
  * True when the week the nudge is about to ask for already has at least one
- * meal planned on one of its *later* days — planned directly on the Meal
- * Plan screen, with the nudge never touched. Any entry counts, the same
- * binary "has a date signal at all" the project drip uses
- * (`hasNoDateSignal`) rather than judging how *much* of the week is filled
- * in: this is a reminder to start, not a completeness check.
+ * of the *chosen* meals (`slots`) planned on one of its *later* days —
+ * planned directly on the Meal Plan screen, with the nudge never touched. Any
+ * matching entry counts, the same binary "has a date signal at all" the
+ * project drip uses (`hasNoDateSignal`) rather than judging how *much* of the
+ * week is filled in: this is a reminder to start, not a completeness check.
+ *
+ * **Scoped to `slots`, not to every entry.** Someone who narrowed
+ * `mealPlanNudgeSlots` to `['dinner']` and already has next Tuesday's lunch
+ * planned hasn't started on the thing this nudge is actually about — a lunch
+ * entry saying "already planned" would suppress the one meal they asked to be
+ * reminded of. Defaults to `MEAL_PLAN_NUDGE_SLOTS` for a caller that hasn't
+ * narrowed anything, same default `countPlannedSlots` uses.
  *
  * **The first day of the week doesn't count.** The nudge fires on that same
  * day by default (#1730), so a standing/recurring entry already sitting on
@@ -276,10 +303,14 @@ export function dueMealPlanNudge(
  */
 export function mealPlanNudgeSuppressed(
   due: Pick<MealPlanNudgeDue, 'targetWeekStartKey' | 'targetWeekEndKey'>,
-  entriesInTargetWeek: readonly Pick<MealPlanEntry, 'date'>[]
+  entriesInTargetWeek: readonly Pick<MealPlanEntry, 'date' | 'slot'>[],
+  slots: readonly MealSlot[] = MEAL_PLAN_NUDGE_SLOTS
 ): boolean {
   return entriesInTargetWeek.some(
-    e => e.date !== due.targetWeekStartKey && isKeyInRange(e.date, due.targetWeekStartKey, due.targetWeekEndKey)
+    e =>
+      slots.includes(e.slot) &&
+      e.date !== due.targetWeekStartKey &&
+      isKeyInRange(e.date, due.targetWeekStartKey, due.targetWeekEndKey)
   );
 }
 

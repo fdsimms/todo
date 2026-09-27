@@ -43,6 +43,8 @@ let mockMealCookTasks = true;
 // mirror is off until a calendar is picked, so only the tests that opt in run
 // with it live.
 let mockMealCalendarId: string | null = null;
+// Defaults to all three, matching the real store's shipped default.
+let mockMealPlanNudgeSlots: MealSlot[] = ['breakfast', 'lunch', 'dinner'];
 // Mocked for the same reason the task store below is: this suite is about what
 // the meal plan asks of its collaborators, and the one path here that creates a
 // task (setCookTask(true)) makes sure its category exists first — which is the
@@ -56,6 +58,7 @@ jest.mock('../store/useSettingsStore', () => ({
   useSettingsStore: {
     getState: () => ({
       dayResetTime: '00:00',
+      get mealPlanNudgeSlots() { return mockMealPlanNudgeSlots; },
       get mealCookTasks() { return mockMealCookTasks; },
       get mealCalendarId() { return mockMealCalendarId; },
     }),
@@ -174,6 +177,7 @@ beforeEach(() => {
   seq = 0;
   mockMealCookTasks = true;
   mockMealCalendarId = null;
+  mockMealPlanNudgeSlots = ['breakfast', 'lunch', 'dinner'];
   mockCreateAllDayEvent.mockResolvedValue('evt-new');
   mockUpdateAllDayEvent.mockResolvedValue(true);
   mockTaskState.tasks = [];
@@ -275,6 +279,18 @@ describe('refreshPlannedSlotCounts', () => {
 
     expect(counts()).toEqual({});
     expect(dbGetMealPlanEntries).not.toHaveBeenCalled();
+  });
+
+  it('counts only the meals mealPlanNudgeSlots names', () => {
+    mockMealPlanNudgeSlots = ['dinner'];
+    (dbGetMealPlanEntries as jest.Mock).mockReturnValue([
+      entry('2026-08-11', 'breakfast'),
+      entry('2026-08-11', 'dinner'),
+    ]);
+
+    useMealPlanStore.getState().refreshPlannedSlotCounts(['2026-08-11']);
+
+    expect(counts()).toEqual({ '2026-08-11': 1 });
   });
 
   it('keeps the same object when the counts have not changed', () => {

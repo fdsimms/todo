@@ -4887,7 +4887,7 @@ export const useTaskStore = create<TaskStore>((set, get) => ({
     if (current.length > 0) return;
 
     const plannedEntries = dbGetMealPlanEntries(due.targetWeekStartKey, due.targetWeekEndKey);
-    if (mealPlanNudgeSuppressed(due, plannedEntries)) return;
+    if (mealPlanNudgeSuppressed(due, plannedEntries, settings.mealPlanNudgeSlots)) return;
 
     // Filed like the other three generators' tasks. Without this the one thing
     // the app writes entirely on its own schedule was also the one with no

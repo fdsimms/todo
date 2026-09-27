@@ -74,7 +74,9 @@ import {
   AI_FEATURE_IDS, defaultAiFeatureConfig, isAiModelId,
   type AiFeatureConfig, type AiFeatureConfigMap, type AiFeatureId,
 } from '../utils/aiFeatures';
-import { DEFAULT_MEAL_PLAN_NUDGE_TIME, DEFAULT_MEAL_PLAN_NUDGE_WEEKDAY } from '../utils/mealPlanNudge';
+import {
+  DEFAULT_MEAL_PLAN_NUDGE_TIME, DEFAULT_MEAL_PLAN_NUDGE_WEEKDAY, MEAL_PLAN_NUDGE_SLOTS,
+} from '../utils/mealPlanNudge';
 import { DEFAULT_POSTPONE_THRESHOLD, parsePostponeThreshold } from '../utils/postpone';
 import {
   FOCUS_DEFAULTS,
@@ -1461,6 +1463,25 @@ interface SettingsStore {
   // a generator, true for every user, so a per-user exception belongs beside
   // it rather than inside it.
   mealPlanNudgeIgnoresVacation: boolean;
+  /**
+   * Which meals a day is counted out of by the weekly nudge — someone who
+   * only plans dinner sets this to `['dinner']` and every row reads "0/1" /
+   * "1/1 planned" instead of "0/3"/"1/3", via `countPlannedSlots`'s `slots`
+   * parameter. It also narrows `mealPlanNudgeSuppressed`, so a lunch already
+   * planned elsewhere in the week doesn't read as "already planned" for
+   * someone who never asked to be nudged about lunch.
+   *
+   * Defaults to all three of `MEAL_PLAN_NUDGE_SLOTS` — the shipped behavior —
+   * so an existing install reads exactly as it did. Restricted to that
+   * candidate set rather than the full `MEAL_SLOTS`: snack still isn't
+   * offered here, for the same reason `MEAL_PLAN_NUDGE_SLOTS` itself gives.
+   * A separate setting from `mealSlotsEnabled`: that one decides which daily
+   * "Choose/Make X" tasks exist at all, this one decides what the weekly
+   * planning nudge counts a day complete out of, and they're two different
+   * questions someone could answer differently (plan every meal, but only
+   * want a standing task for dinner).
+   */
+  mealPlanNudgeSlots: MealSlot[];
   // Idempotency state, not a preference — the day-key of the week the nudge
   // last fired in. Read only by dueMealPlanNudge, which compares it against
   // the current week rather than testing it for existence, so it "expires"
@@ -1726,6 +1747,7 @@ interface SettingsStore {
   setDefaultProjectNudgeCadenceDays: (days: number) => void;
   setMealPlanNudgeEnabled: (on: boolean) => void;
   setMealPlanNudgeIgnoresVacation: (on: boolean) => void;
+  setMealPlanNudgeSlots: (slots: MealSlot[]) => void;
   setMealPlanNudgeWeekday: (weekday: number) => void;
   setMealPlanNudgeTime: (time: string) => void;
   setMealPlanNudgeLastFiredWeekKey: (weekKey: string | null) => void;
@@ -1840,6 +1862,7 @@ const DEFAULT_SETTINGS = {
   defaultProjectNudgeCadenceDays: 0,
   mealPlanNudgeEnabled: false,
   mealPlanNudgeIgnoresVacation: false,
+  mealPlanNudgeSlots: [...MEAL_PLAN_NUDGE_SLOTS],
   mealPlanNudgeWeekday: DEFAULT_MEAL_PLAN_NUDGE_WEEKDAY,
   mealPlanNudgeTime: DEFAULT_MEAL_PLAN_NUDGE_TIME,
   mealPlanNudgeTaskCategory: null,
@@ -2044,6 +2067,26 @@ function parseMealSlots(raw: string | null): MealSlot[] {
     return MEAL_SLOTS.filter(slot => parsed.includes(slot));
   } catch {
     return [...DEFAULT_MEAL_SLOTS_ENABLED];
+  }
+}
+
+/**
+ * The stored set of meals the weekly "Plan this week's meals" nudge counts a
+ * day complete out of.
+ *
+ * A missing row falls back to the shipped default (all three) rather than to
+ * none, same as parseMealSlots. Filtered against MEAL_PLAN_NUDGE_SLOTS rather
+ * than the full MEAL_SLOTS, so a hand-edited or synced value can't put snack
+ * in front of the picker — see the note on mealPlanNudgeSlots for why.
+ */
+function parseMealPlanNudgeSlots(raw: string | null): MealSlot[] {
+  if (raw === null || raw === '') return [...MEAL_PLAN_NUDGE_SLOTS];
+  try {
+    const parsed = JSON.parse(raw);
+    if (!Array.isArray(parsed)) return [...MEAL_PLAN_NUDGE_SLOTS];
+    return MEAL_PLAN_NUDGE_SLOTS.filter(slot => parsed.includes(slot));
+  } catch {
+    return [...MEAL_PLAN_NUDGE_SLOTS];
   }
 }
 
@@ -2308,6 +2351,7 @@ export const useSettingsStore = create<SettingsStore>((set, get) => ({
   defaultProjectNudgeCadenceDays: 0,
   mealPlanNudgeEnabled: false,
   mealPlanNudgeIgnoresVacation: false,
+  mealPlanNudgeSlots: [...MEAL_PLAN_NUDGE_SLOTS],
   mealPlanNudgeWeekday: DEFAULT_MEAL_PLAN_NUDGE_WEEKDAY,
   mealPlanNudgeTime: DEFAULT_MEAL_PLAN_NUDGE_TIME,
   mealPlanNudgeTaskCategory: null,
@@ -2727,6 +2771,7 @@ export const useSettingsStore = create<SettingsStore>((set, get) => ({
       Number.isFinite(storedDefaultCadence) && storedDefaultCadence > 0 ? storedDefaultCadence : 0;
     const mealPlanNudgeEnabled = dbGetSetting('mealPlanNudgeEnabled') === 'true';
     const mealPlanNudgeIgnoresVacation = dbGetSetting('mealPlanNudgeIgnoresVacation') === 'true';
+    const mealPlanNudgeSlots = parseMealPlanNudgeSlots(dbGetSetting('mealPlanNudgeSlots'));
     const storedNudgeWeekday = Number(dbGetSetting('mealPlanNudgeWeekday'));
     const mealPlanNudgeWeekday =
       Number.isInteger(storedNudgeWeekday) && storedNudgeWeekday >= 0 && storedNudgeWeekday <= 6
@@ -2918,6 +2963,7 @@ export const useSettingsStore = create<SettingsStore>((set, get) => ({
       mealPlanNudgeGroupId,
       mealPlanNudgeIgnoresVacation,
       mealPlanNudgeLastFiredWeekKey,
+      mealPlanNudgeSlots,
       mealPlanNudgeTaskCategory,
       mealPlanNudgeTime,
       mealPlanNudgeWeekday,
@@ -4259,6 +4305,15 @@ export const useSettingsStore = create<SettingsStore>((set, get) => ({
   setMealPlanNudgeIgnoresVacation(on: boolean) {
     dbSetSetting('mealPlanNudgeIgnoresVacation', on ? 'true' : 'false');
     set({ mealPlanNudgeIgnoresVacation: on });
+  },
+
+  // Kept in MEAL_PLAN_NUDGE_SLOTS order and filtered against it, same
+  // discipline setMealSlotsEnabled applies to MEAL_SLOTS — a hand-edited or
+  // synced value can't sneak snack in behind the picker's back.
+  setMealPlanNudgeSlots(slots: MealSlot[]) {
+    const next = MEAL_PLAN_NUDGE_SLOTS.filter(slot => slots.includes(slot));
+    dbSetSetting('mealPlanNudgeSlots', JSON.stringify(next));
+    set({ mealPlanNudgeSlots: next });
   },
 
   setMealPlanNudgeWeekday(weekday: number) {

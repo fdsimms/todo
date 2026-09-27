@@ -34,6 +34,7 @@ import {
   WEIGH_IN_EVERY_DAYS_MAX,
   WEIGH_IN_EVERY_DAYS_MIN,
 } from '../../utils/weightTasks';
+import { MEAL_PLAN_NUDGE_SLOTS } from '../../utils/mealPlanNudge';
 import { dateToHHMM, hhmmToDate } from '../../utils/clockTime';
 import { formatHHMM } from '../../utils/dateUtils';
 import { useColors } from '../../theme/ThemeContext';
@@ -740,6 +741,39 @@ export function GeneratedTasksSection() {
             toggle={s.mealPlanNudgeIgnoresVacation}
             onPress={() => s.setMealPlanNudgeIgnoresVacation(!s.mealPlanNudgeIgnoresVacation)}
           />
+          <View style={styles.sep} />
+          <SettingsRow
+            entryId="mealPlanNudgeSlots"
+            icon="restaurant-outline"
+            iconColor={s.mealPlanNudgeSlots.length > 0 ? colors.accent : undefined}
+            label="Meals to plan for"
+            hint={
+              s.mealPlanNudgeSlots.length === 0
+                ? 'No meals picked, so a day never reads as fully planned.'
+                : "Each day's task counts down against these. Planning only these meals is enough to mark the day done."
+            }
+            tight
+          />
+          {MEAL_PLAN_NUDGE_SLOTS.map(slot => {
+            const on = s.mealPlanNudgeSlots.includes(slot);
+            return (
+              <SettingsRow
+                key={slot}
+                icon={MEAL_SLOT_ICONS[slot]}
+                iconColor={on ? colors.accent : undefined}
+                label={MEAL_SLOT_LABELS[slot]}
+                toggle={on}
+                onPress={() => {
+                  s.setMealPlanNudgeSlots(
+                    on
+                      ? s.mealPlanNudgeSlots.filter(x => x !== slot)
+                      : [...s.mealPlanNudgeSlots, slot]
+                  );
+                }}
+                accessibilityLabel={`Count ${MEAL_SLOT_LABELS[slot].toLowerCase()} toward a planned day`}
+              />
+            );
+          })}
         </>
       );
     }
