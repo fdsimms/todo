@@ -4215,6 +4215,109 @@ describe('dbApplySyncChanges', () => {
     });
   });
 
+  // ─── The on-list columns a grocery row mirrors ───────────────────────────
+  //
+  // grocery_items' on_list/checked/sort_order/choice_group are derived from
+  // grocery_list_items (dbSyncGroceryHomeColumns). A peer's item row carries
+  // the peer's copy of them and a peer's entry changes what they should be, so
+  // the apply recomputes them rather than trusting either.
+
+  describe('the grocery on-list mirror', () => {
+    beforeEach(() => {
+      for (const t of ['grocery_items', 'grocery_list_items', 'sync_aliases']) {
+        mockRawDb.exec(`DELETE FROM ${t}`);
+      }
+      mockRawDb.exec('DELETE FROM sync_deletions');
+    });
+
+    const PEER = '2030-02-01T00:00:00.000Z';
+    const insertItem = (values: Record<string, unknown>) => {
+      const row = { id: 'milk', name: 'Milk', name_key: 'milk', created_at: '2026-01-01T00:00:00.000Z', ...values };
+      const cols = Object.keys(row);
+      mockRawDb.prepare(`INSERT INTO grocery_items (${cols.join(', ')}) VALUES (${cols.map(() => '?').join(', ')})`)
+        .run(...cols.map(c => (row as Record<string, unknown>)[c]));
+    };
+    const insertEntry = (values: Record<string, unknown>) => {
+      const row = { item_id: 'milk', list_id: '', checked: 0, sort_order: 0, ...values };
+      const cols = Object.keys(row);
+      mockRawDb.prepare(`INSERT INTO grocery_list_items (${cols.join(', ')}) VALUES (${cols.map(() => '?').join(', ')})`)
+        .run(...cols.map(c => (row as Record<string, unknown>)[c]));
+    };
+    /** The item row as a peer would send it, removed again so it reads as unseen. */
+    const peerItem = (values: Record<string, unknown>) => {
+      insertItem(values);
+      const row = mockRawDb.prepare('SELECT * FROM grocery_items WHERE id = ?').get('milk') as Record<string, unknown>;
+      mockRawDb.exec("DELETE FROM grocery_items WHERE id = 'milk'");
+      mockRawDb.exec('DELETE FROM sync_deletions');
+      return { ...row, updated_at: PEER } as ReturnType<typeof peerTaskRow>;
+    };
+    const mirror = () => mockRawDb.prepare(
+      "SELECT on_list, checked, sort_order, choice_group, updated_at FROM grocery_items WHERE id = 'milk'"
+    ).get() as { on_list: number; checked: number; sort_order: number; choice_group: string | null; updated_at: string };
+
+    it('keeps a row on the list when a newer peer copy of it says it is off', () => {
+      // The peer touched the parked row before it heard the item was added here.
+      const incoming = peerItem({ on_list: 0, aisle: 'Dairy' });
+      insertItem({ on_list: 1 });
+      insertEntry({});
+
+      dbApplySyncChanges(payload({ tables: { grocery_items: [incoming] } }));
+
+      expect(mirror()).toMatchObject({ on_list: 1, checked: 0 });
+      expect((mockRawDb.prepare("SELECT aisle FROM grocery_items WHERE id = 'milk'").get() as { aisle: string }).aisle)
+        .toBe('Dairy');
+    });
+
+    it('keeps the home tick when a newer peer copy of the row says it is unticked', () => {
+      const incoming = peerItem({ on_list: 1, checked: 0, quantity: '2' });
+      insertItem({ on_list: 1, checked: 1, sort_order: 3 });
+      insertEntry({ checked: 1, sort_order: 3 });
+
+      dbApplySyncChanges(payload({ tables: { grocery_items: [incoming] } }));
+
+      expect(mirror()).toMatchObject({ on_list: 1, checked: 1, sort_order: 3 });
+    });
+
+    it('takes a row off the list when the peer removed its entry', () => {
+      insertItem({ on_list: 1 });
+      insertEntry({});
+
+      dbApplySyncChanges(payload({
+        deletions: [{ table: 'grocery_list_items', rowKey: 'milk|', deletedAt: PEER }],
+      }));
+
+      expect(mockRawDb.prepare('SELECT * FROM grocery_list_items').all()).toEqual([]);
+      expect(mirror()).toMatchObject({ on_list: 0, checked: 0 });
+    });
+
+    it('puts a row on the list when the peer added an entry for it', () => {
+      insertItem({ on_list: 0 });
+      const entry = { item_id: 'milk', list_id: '', checked: 1, sort_order: 5, choice_group: 'g1', added_at: null, updated_at: PEER };
+
+      dbApplySyncChanges(payload({ tables: { grocery_list_items: [entry] } }));
+
+      expect(mirror()).toMatchObject({ on_list: 1, checked: 1, sort_order: 5, choice_group: 'g1' });
+    });
+
+    it('counts an entry on another list as on the list without taking its tick', () => {
+      insertItem({ on_list: 0 });
+      const entry = { item_id: 'milk', list_id: 'airbnb', checked: 1, sort_order: 2, choice_group: null, added_at: null, updated_at: PEER };
+
+      dbApplySyncChanges(payload({ tables: { grocery_list_items: [entry] } }));
+
+      expect(mirror()).toMatchObject({ on_list: 1, checked: 0 });
+    });
+
+    it('leaves the peer stamp alone when the columns already agree, so the row is not sent back', () => {
+      insertEntry({ checked: 1 });
+      const incoming = peerItem({ on_list: 1, checked: 1, note: 'oat' });
+
+      dbApplySyncChanges(payload({ tables: { grocery_items: [incoming] } }));
+
+      expect(mirror().updated_at).toBe(PEER);
+    });
+  });
+
   it('passes an applied deletion on as its own tombstone', () => {
     // This device now genuinely holds the deletion and must tell a third one.
     dbInsertTask(makeTask({ id: 'p1' }));

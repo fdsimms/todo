@@ -175,7 +175,7 @@ export function DataResetSettings() {
       const backup = result.backup;
       Alert.alert(
         'Replace everything with this backup?',
-        `The backup holds ${summarizeBackup(backup)}. Everything currently in the app (tasks, projects, groceries, recipes, the meal plan, the food and mood logs, people and settings) is deleted and replaced by it. This can't be undone, so export what you have first if you haven't.`,
+        `The backup holds ${summarizeBackup(backup)}. Everything currently in the app (tasks, projects, groceries, recipes, the meal plan, the food and mood logs, people and settings) is deleted and replaced by it. Meals the app already wrote to Apple Health and events it added to your calendar are not removed. This can't be undone, so export what you have first if you haven't.`,
         [
           { text: 'Cancel', style: 'cancel' },
           {

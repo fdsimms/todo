@@ -2801,6 +2801,11 @@ export function dbApplySyncChanges(payload: SyncPayload, transport?: string): Ap
 
   db.withTransactionSync(() => {
     const ctx = loadFoldContext();
+    // Grocery rows whose on-list mirror this apply may have left wrong: an item
+    // row arrives with the peer's copy of it, and an entry arriving or leaving
+    // changes what it should be. Recomputed once at the end, after every table
+    // and deletion, since a payload's tables arrive in no particular order.
+    const groceryItemIds = new Set<string>();
     for (const [name, rows] of Object.entries(payload.tables)) {
       const table = trackedTable(name);
       if (!table) continue;
@@ -2906,6 +2911,8 @@ export function dbApplySyncChanges(payload: SyncPayload, transport?: string): Ap
            VALUES (?, ?, ?, ${NOW_EXPR})`,
           [name, rowKey, transport ?? null]
         );
+        if (name === 'grocery_items' && typeof row.id === 'string') groceryItemIds.add(row.id);
+        if (name === 'grocery_list_items' && typeof row.item_id === 'string') groceryItemIds.add(row.item_id);
       }
     }
 
@@ -2926,6 +2933,13 @@ export function dbApplySyncChanges(payload: SyncPayload, transport?: string): Ap
         continue;
       }
 
+      if (deletion.table === 'grocery_list_items') {
+        const entry = db.getFirstSync<{ item_id: string }>(
+          `SELECT item_id FROM grocery_list_items WHERE ${where.sql}`,
+          where.values
+        );
+        if (entry) groceryItemIds.add(entry.item_id);
+      }
       db.runSync(`DELETE FROM "${deletion.table}" WHERE ${where.sql}`, where.values);
       // The tombstone trigger just stamped this deletion with local now. Put
       // the peer's time back, or a third device hearing it relayed would take
@@ -2939,6 +2953,8 @@ export function dbApplySyncChanges(payload: SyncPayload, transport?: string): Ap
       );
       report.deleted++;
     }
+
+    for (const id of groceryItemIds) resyncGroceryHomeColumns(id);
   });
 
   return report;
@@ -4702,6 +4718,22 @@ export function dbDeleteGroceryListEntriesForItem(itemId: string): void {
  * Airbnb list is not unused.
  */
 export function dbSyncGroceryHomeColumns(itemId: string): void {
+  const cols = homeColumnsFor(itemId);
+  db.runSync(
+    'UPDATE grocery_items SET on_list = ?, checked = ?, sort_order = ?, choice_group = ? WHERE id = ?',
+    [cols.on_list, cols.checked, cols.sort_order, cols.choice_group, itemId]
+  );
+}
+
+interface HomeColumns {
+  on_list: number;
+  checked: number;
+  sort_order: number;
+  choice_group: string | null;
+}
+
+/** What `dbSyncGroceryHomeColumns` writes for `itemId`, read off its entries. */
+function homeColumnsFor(itemId: string): HomeColumns {
   const home = db.getFirstSync<{ checked: number; sort_order: number; choice_group: string | null }>(
     "SELECT checked, sort_order, choice_group FROM grocery_list_items WHERE item_id = ? AND list_id = ''",
     [itemId]
@@ -4710,16 +4742,43 @@ export function dbSyncGroceryHomeColumns(itemId: string): void {
     'SELECT COUNT(*) AS n FROM grocery_list_items WHERE item_id = ?',
     [itemId]
   );
-  db.runSync(
-    'UPDATE grocery_items SET on_list = ?, checked = ?, sort_order = ?, choice_group = ? WHERE id = ?',
-    [
-      (anywhere?.n ?? 0) > 0 ? 1 : 0,
-      home?.checked ? 1 : 0,
-      home?.sort_order ?? 0,
-      home?.choice_group ?? null,
-      itemId,
-    ]
+  return {
+    on_list: (anywhere?.n ?? 0) > 0 ? 1 : 0,
+    checked: home?.checked ? 1 : 0,
+    sort_order: home?.sort_order ?? 0,
+    choice_group: home?.choice_group ?? null,
+  };
+}
+
+/**
+ * `dbSyncGroceryHomeColumns` for the sync apply: writes only when the stored
+ * columns disagree with the entries.
+ *
+ * A peer's item row arrives carrying the peer's copy of the mirror, and a
+ * peer's entry changes what the mirror should be, so neither can be trusted
+ * as it lands. **The write-only-when-wrong half is what stops a bounce.** Any
+ * UPDATE restamps the row (the stamp trigger), so recomputing every applied
+ * row would send each one straight back to the peer as a local change. A row
+ * that does need correcting is restamped and does travel back, which is the
+ * fold's rule too (see `afterFold`): the peer takes the corrected columns,
+ * recomputes them from the same entries, finds them right and writes nothing.
+ */
+function resyncGroceryHomeColumns(itemId: string): void {
+  const stored = db.getFirstSync<{ on_list: number | null; checked: number | null; sort_order: number | null; choice_group: string | null }>(
+    'SELECT on_list, checked, sort_order, choice_group FROM grocery_items WHERE id = ?',
+    [itemId]
   );
+  if (!stored) return;
+  const want = homeColumnsFor(itemId);
+  if (
+    (stored.on_list ? 1 : 0) === want.on_list &&
+    (stored.checked ? 1 : 0) === want.checked &&
+    (stored.sort_order ?? 0) === want.sort_order &&
+    (stored.choice_group ?? null) === want.choice_group
+  ) {
+    return;
+  }
+  dbSyncGroceryHomeColumns(itemId);
 }
 
 // ─── Grocery lists ──────────────────────────────────────────────────────────

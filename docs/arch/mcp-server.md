@@ -372,6 +372,14 @@ Checked lives on the membership row, and `dbSetGroceryListEntry` is also the onl
 mirror columns on the item (`dbSyncGroceryHomeColumns`), so the row and its entry cannot end up
 disagreeing. Removing parks the row and clears a recipe's claim on the quantity, which is two lines.
 
+**Every grocery tool is about the list at home, the read included.** The writes all act on the home
+list's entry (`listId` null), so `list_grocery_items` reports that list and each item's tick on it,
+read off `groceryListEntries()`. It used to filter on `GroceryItem.onList`, which is the broader "in
+any trolley" flag (see `docs/arch/groceries.md`): a trip's list came back merged into the one at
+home with no name on it, and check-off then refused those same items as not on the list. The
+serialized `onList` means the home list everywhere, including a write's result and the catalog
+view, and the remove guard and the add's "already on the list" answer ask the same question.
+
 **Adding could not.** `planGroceryAdd` (`src/utils/groceryAdd.ts`) is `addByName`'s core, lifted out
 with `newItemRow`, `ensureProductFor` and `nextSortOrder`. Two things made a second implementation
 untenable rather than merely inadvisable:
