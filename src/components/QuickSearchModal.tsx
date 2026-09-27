@@ -20,14 +20,15 @@ import { useColors, useTheme } from '../theme/ThemeContext';
 import { spacing, radius, font, fontWeight, border, iconSize, animation, interaction, type Colors } from '../theme';
 import { useShallow } from 'zustand/react/shallow';
 import { useTaskStore } from '../store/useTaskStore';
-import { useProjectStore } from '../store/useProjectStore';
+import { useProjectStore, projectProgress } from '../store/useProjectStore';
+import { useTaskGroupStore } from '../store/useTaskGroupStore';
 import { useCategoryStore } from '../store/useCategoryStore';
 import { useSettingsStore } from '../store/useSettingsStore';
 import { categoryLabel } from '../utils/categoryLabel';
 import { quickSearch, QUICK_SEARCH_LIMIT } from '../utils/quickSearch';
-import type { SearchResult } from '../utils/fuzzySearch';
+import type { SearchResult, GroupSearchResult, ProjectSearchResult } from '../utils/fuzzySearch';
 import { formatOccurrenceCount, type CollapsedOccurrence } from '../utils/searchCollapse';
-import { displayTitleFor } from '../utils/visibilityUtils';
+import { displayTitleFor, groupRoster } from '../utils/visibilityUtils';
 import { peopleOn, groupMentionTokens } from '../utils/peopleRegistry';
 import { matchPersonMentions } from '../utils/parseTaskInput';
 import { mergeRanges } from '../utils/ranges';
@@ -37,7 +38,7 @@ import { TaskCheckbox } from './TaskCheckbox';
 import { SheetScrim } from './SheetScrim';
 import { haptics } from '../utils/haptics';
 import { useDebouncedValue } from '../hooks/useDebouncedValue';
-import type { Task } from '../types';
+import type { Task, TaskGroup } from '../types';
 import { useFilterField } from '../hooks/useFilterField';
 
 // Keeps the field's own value/onChangeText bound to the raw, fast-updating
@@ -51,6 +52,10 @@ interface Props {
   onClose: () => void;
   /** Tapping a result. The caller decides where it opens (Today opens the editor). */
   onSelectTask: (task: Task) => void;
+  /** Tapping a matched stack. */
+  onSelectGroup: (group: TaskGroup) => void;
+  /** Tapping a matched project. */
+  onSelectProject: (projectId: string) => void;
   /** The footer row — hands the query over to the Search tab rather than growing this card. */
   onOpenFullSearch: (query: string) => void;
   /** The sheet is on screen (the native modal's `onShow`). */
@@ -205,6 +210,80 @@ function QuickSearchRow({ result, onSelect, onTicked, styles, colors }: {
 }
 
 /**
+ * A stack or project match, in the card's own one-line shape — same icon and
+ * layout `StackResultItem`/`ProjectResultItem` use on the Search screen, cut
+ * down to the single meta line this card allows (see QuickSearchRow's own
+ * note on why it carries no more than that).
+ */
+function QuickSearchGroupRow({ result, onSelect, styles, colors }: {
+  result: GroupSearchResult;
+  onSelect: (group: TaskGroup) => void;
+  styles: ReturnType<typeof makeStyles>;
+  colors: Colors;
+}) {
+  const { group, titleMatches, memberCount } = result;
+  const memberLabel = memberCount === 0 ? 'No tasks yet' : `${memberCount} ${memberCount === 1 ? 'task' : 'tasks'}`;
+  return (
+    <TouchableOpacity
+      style={styles.resultRow}
+      onPress={() => onSelect(group)}
+      activeOpacity={interaction.activeOpacity}
+      accessibilityRole="button"
+      accessibilityLabel={`${group.title}, stack, ${memberLabel}`}
+      accessibilityHint="Double tap to open stack"
+    >
+      <View style={styles.entityIcon}>
+        <Ionicons name="layers-outline" size={iconSize.sm} color={colors.accent} />
+      </View>
+      <View style={styles.resultTap}>
+        <HighlightedText
+          text={group.title}
+          ranges={titleMatches}
+          style={styles.resultTitle}
+          highlightStyle={styles.highlight}
+          numberOfLines={1}
+        />
+        <Text style={styles.metaText} numberOfLines={1}>{memberLabel}</Text>
+      </View>
+    </TouchableOpacity>
+  );
+}
+
+function QuickSearchProjectRow({ result, onSelect, styles, colors }: {
+  result: ProjectSearchResult;
+  onSelect: (projectId: string) => void;
+  styles: ReturnType<typeof makeStyles>;
+  colors: Colors;
+}) {
+  const { project, titleMatches, progress } = result;
+  const progressLabel = progress.total === 0 ? 'No tasks yet' : `${progress.done}/${progress.total} done`;
+  return (
+    <TouchableOpacity
+      style={styles.resultRow}
+      onPress={() => onSelect(project.id)}
+      activeOpacity={interaction.activeOpacity}
+      accessibilityRole="button"
+      accessibilityLabel={`${project.title}, project, ${progressLabel}`}
+      accessibilityHint="Double tap to open project"
+    >
+      <View style={styles.entityIcon}>
+        <Ionicons name="briefcase-outline" size={iconSize.sm} color={colors.accent} />
+      </View>
+      <View style={styles.resultTap}>
+        <HighlightedText
+          text={project.title}
+          ranges={titleMatches}
+          style={styles.resultTitle}
+          highlightStyle={styles.highlight}
+          numberOfLines={1}
+        />
+        <Text style={styles.metaText} numberOfLines={1}>{progressLabel}</Text>
+      </View>
+    </TouchableOpacity>
+  );
+}
+
+/**
  * The pull-down quick search: a small card over a dimmed screen, holding a
  * field and at most five results.
  *
@@ -215,8 +294,14 @@ function QuickSearchRow({ result, onSelect, onTicked, styles, colors }: {
  * from its own other occurrences (see QuickSearchRow). Anything the cap can't answer goes
  * to the footer row, which is why there's no scrolling here — a card you have
  * to scroll isn't quick.
+ *
+ * Stacks and projects lead the card, same priority the Search screen gives
+ * them and the same reasoning — a title match on either is almost always a
+ * navigational lookup, not a task search — and they spend the same five-row
+ * budget the task rows do (see `quickSearch`), rather than getting a budget
+ * of their own on top.
  */
-export function QuickSearchModal({ visible, onClose, onSelectTask, onOpenFullSearch, onShown }: Props) {
+export function QuickSearchModal({ visible, onClose, onSelectTask, onSelectGroup, onSelectProject, onOpenFullSearch, onShown }: Props) {
   const insets = useSafeAreaInsets();
   const colors = useColors();
   const { isDark, shadows } = useTheme();
@@ -224,6 +309,7 @@ export function QuickSearchModal({ visible, onClose, onSelectTask, onOpenFullSea
 
   const tasks = useTaskStore(s => s.tasks);
   const projects = useProjectStore(s => s.projects);
+  const groups = useTaskGroupStore(s => s.groups);
   const recentSearches = useSettingsStore(useShallow(s => s.recentSearches));
   const pushRecentSearch = useSettingsStore(s => s.pushRecentSearch);
   const clearRecentSearches = useSettingsStore(s => s.clearRecentSearches);
@@ -243,6 +329,34 @@ export function QuickSearchModal({ visible, onClose, onSelectTask, onOpenFullSea
     [projects]
   );
 
+  // Same collapse SearchScreen and StacksScreen use for a stack's own roster
+  // (one entry per series, no completion tombstones) — keyed off the task
+  // list rather than the debounced query, so it doesn't recompute per
+  // keystroke.
+  const rosterByGroupId = useMemo(() => {
+    const children = new Map<string, Task[]>();
+    for (const t of tasks) {
+      if (!t.groupId) continue;
+      const list = children.get(t.groupId);
+      if (list) list.push(t);
+      else children.set(t.groupId, [t]);
+    }
+    const rosters = new Map<string, Task[]>();
+    for (const [groupId, list] of children) {
+      rosters.set(groupId, groupRoster(list));
+    }
+    return rosters;
+  }, [tasks]);
+
+  // Same reasoning, over projects: cheap enough to keep for every project
+  // (unlike the Search screen, which only bothers for the ones a query
+  // actually matched) because this only reruns when the store itself
+  // changes, not on every keystroke.
+  const progressByProject = useMemo(
+    () => new Map(projects.map(p => [p.id, projectProgress(p.id, tasks)])),
+    [projects, tasks]
+  );
+
   const debouncedQuery = useDebouncedValue(query, SEARCH_DEBOUNCE_MS);
 
   // Tasks ticked from this card, held in their slot so the tick is visible
@@ -256,9 +370,12 @@ export function QuickSearchModal({ visible, onClose, onSelectTask, onOpenFullSea
   );
   useEffect(() => setHeldIds(new Set()), [debouncedQuery]);
 
-  const { results, total } = useMemo(
-    () => quickSearch(tasks, debouncedQuery, projectNamesById, QUICK_SEARCH_LIMIT, heldIds),
-    [tasks, debouncedQuery, projectNamesById, heldIds]
+  const { groupResults, projectResults, results, total } = useMemo(
+    () => quickSearch(
+      tasks, debouncedQuery, projectNamesById, QUICK_SEARCH_LIMIT, heldIds,
+      groups, rosterByGroupId, projects, progressByProject
+    ),
+    [tasks, debouncedQuery, projectNamesById, heldIds, groups, rosterByGroupId, projects, progressByProject]
   );
 
   useEffect(() => {
@@ -300,6 +417,18 @@ export function QuickSearchModal({ visible, onClose, onSelectTask, onOpenFullSea
     dismiss(() => onSelectTask(task));
   };
 
+  const handleSelectGroup = (group: TaskGroup) => {
+    haptics.tap();
+    pushRecentSearch(query);
+    dismiss(() => onSelectGroup(group));
+  };
+
+  const handleSelectProject = (projectId: string) => {
+    haptics.tap();
+    pushRecentSearch(query);
+    dismiss(() => onSelectProject(projectId));
+  };
+
   const handleOpenFull = () => {
     haptics.tap();
     pushRecentSearch(query);
@@ -308,7 +437,8 @@ export function QuickSearchModal({ visible, onClose, onSelectTask, onOpenFullSea
   };
 
   const trimmed = query.trim();
-  const showNoMatches = trimmed.length > 0 && results.length === 0;
+  const hasResults = groupResults.length > 0 || projectResults.length > 0 || results.length > 0;
+  const showNoMatches = trimmed.length > 0 && !hasResults;
 
   return (
     <SheetModal visible={visible} animationType="none" transparent onShow={onShown} onRequestClose={() => dismiss()}>
@@ -366,8 +496,28 @@ export function QuickSearchModal({ visible, onClose, onSelectTask, onOpenFullSea
             </View>
           )}
 
-          {results.length > 0 && (
+          {hasResults && (
             <View style={styles.results}>
+              {/* Stacks and projects lead, same order and reasoning as the
+                  Search screen's own sections (see the doc comment above). */}
+              {groupResults.map(result => (
+                <QuickSearchGroupRow
+                  key={result.group.id}
+                  result={result}
+                  onSelect={handleSelectGroup}
+                  styles={styles}
+                  colors={colors}
+                />
+              ))}
+              {projectResults.map(result => (
+                <QuickSearchProjectRow
+                  key={result.project.id}
+                  result={result}
+                  onSelect={handleSelectProject}
+                  styles={styles}
+                  colors={colors}
+                />
+              ))}
               {/* A plain View holding two touchables, not one touchable
                   wrapping the box: a TouchableOpacity is `accessible` by
                   default, so a checkbox nested inside one is folded into the
@@ -386,10 +536,10 @@ export function QuickSearchModal({ visible, onClose, onSelectTask, onOpenFullSea
           )}
 
           {showNoMatches && (
-            <Text style={styles.noMatches}>No todos match “{trimmed}”</Text>
+            <Text style={styles.noMatches}>No matches for “{trimmed}”</Text>
           )}
 
-          {results.length > 0 && (
+          {hasResults && (
             <View style={styles.footer}>
               <InlineAction
                 label={total === 1 ? 'See 1 result' : `See all ${total} results`}
@@ -444,6 +594,12 @@ const makeStyles = (colors: Colors) => StyleSheet.create({
   },
 
   results: { marginTop: spacing.xs },
+  // Same slot TaskCheckbox occupies on a task row, so a stack/project row's
+  // icon lines up with the checkboxes above and below it.
+  entityIcon: {
+    width: 20,
+    alignItems: 'center',
+  },
   resultRow: {
     flexDirection: 'row',
     alignItems: 'center',

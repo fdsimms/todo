@@ -4531,6 +4531,8 @@ export function TodayScreen() {
           onClose={() => { setQuickSearchVisible(false); endPullToSearch(); }}
           onShown={endPullToSearch}
           onSelectTask={openEditor}
+          onSelectGroup={group => handleGroupPressEdit(group.id)}
+          onSelectProject={handleOpenProject}
           onOpenFullSearch={handleOpenFullSearch}
         />
 
