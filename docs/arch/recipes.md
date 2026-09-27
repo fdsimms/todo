@@ -406,6 +406,23 @@ choosable before anything's filed under it.
   vocabularies that happen to collide, so a component opening with "Sauce" under a root whose last
   line was also "Sauce" gets its own heading rather than reading as a continuation.
 
+**`RecipeStep.section`/`Recipe.emptyStepSections` are the same model, one field over — "For the
+sauce", "For the tofu" as headings over the method instead of the ingredient list.** Every helper
+above (`sectionsOf`, `allSectionsOf`, `sectionsFromMergedOrder`, `parseEmptySections`) is generic
+over `{ id, section }` and is reused verbatim rather than duplicated; `RecipeDetailScreen` builds
+its own merged step+heading list (`mergedStepRows`) the same way it does for ingredients, and
+`useRecipeStore`'s `addEmptyStepSection`/`removeEmptyStepSection`/`reorderSteps` mirror
+`addEmptySection`/`removeEmptySection`/`reorderIngredients` exactly, `save()` reconciling
+`emptyStepSections` against `steps` the same way it does `emptySections` against `ingredients`.
+Two differences, both because `RecipeStep` predates this field and already follows the
+absent-not-null convention `timerSeconds`/`note` use: `section` is `string | undefined` rather
+than `RecipeIngredient`'s mandatory `string | null`, so `withStepSection` (`useRecipeStore.ts`)
+drops the key entirely on clear rather than writing `null`; and a step's own numbering
+(`mergedStepRows`' `number`) is stamped during the merge rather than read off `SortableList`'s
+`displayIndex`, since a heading occupies a slot in that list too and "Step 3" has to count steps
+only. `cookSteps` (`cookMode.ts`) carries the same one-pass inference into cook mode, resetting at
+every dish boundary for the same reason `ingredientHeadings` does.
+
 ## Linking an ingredient to an existing item (`CatalogLinkPicker.tsx`)
 
 `RecipeIngredient.nameKey` is always *derived* from `name` (`groceryNameKey`, never written

@@ -6664,7 +6664,7 @@ describe('checkMealSlotTasks', () => {
       id, name: 'Chili', nameKey: 'chili', notes: '', sourceUrl: null, sourceName: null,
       author: null, source: null, servings: null, servingsMax: null, recipeYield: null, cookedWeightG: null,
       leftoverKeepDays: null, imagePath: null, mealType: null, tags: [], ingredients: [],
-      emptySections: [], components: [], prepTasks: [], steps: [], sortOrder: 1,
+      emptySections: [], components: [], prepTasks: [], steps: [], emptyStepSections: [], sortOrder: 1,
       createdAt: '2026-01-01T00:00:00.000Z', cookCount: 0, lastCookedAt: null, vote: null,
       upNext: false, upNextOrder: 0,
       estimatedMinutes: null, timerStartedAt: null, timerElapsedSeconds: 0, lastCookMinutes: null,
@@ -7121,7 +7121,7 @@ describe('checkMealShortfallTasks', () => {
         id: `${id}-i${i}`, name: n, nameKey: n.toLowerCase(), quantity: '', aisle: null,
         prep: null, purpose: null, section: null, choiceGroup: null,
       })),
-      emptySections: [], components: [], prepTasks: [], steps: [], sortOrder: 1,
+      emptySections: [], components: [], prepTasks: [], steps: [], emptyStepSections: [], sortOrder: 1,
       createdAt: '2026-01-01T00:00:00.000Z', cookCount: 0, lastCookedAt: null, vote: null,
       upNext: false, upNextOrder: 0,
       estimatedMinutes: null, timerStartedAt: null, timerElapsedSeconds: 0, lastCookMinutes: null,
@@ -7950,6 +7950,25 @@ describe('markMissed', () => {
     })] });
     useTaskStore.getState().markMissed('t1');
     const next = useTaskStore.getState().tasks.find(t => t.id !== 't1')!;
+    expect(next.chainIndex).toBe(0);
+    expect(next.recurrenceCount).toBe(4);
+  });
+
+  it('ends the whole chain on a mid-chain miss when wholeChain is set, instead of advancing', () => {
+    useTaskStore.setState({ tasks: [recurring({
+      recurrenceCount: 5,
+      chainEnabled: true,
+      chainItems: [
+        { id: 'a', title: 'Step A', estimatedMinutes: null },
+        { id: 'b', title: 'Step B', estimatedMinutes: null },
+      ],
+      chainIndex: 0,
+    })] });
+    useTaskStore.getState().markMissed('t1', { wholeChain: true });
+    const next = useTaskStore.getState().tasks.find(t => t.id !== 't1')!;
+    // Treated as if this were the real last step: the chain wraps back to
+    // its first item and the recurrence's own bookkeeping applies, rather
+    // than spawning Step B with nothing behind it.
     expect(next.chainIndex).toBe(0);
     expect(next.recurrenceCount).toBe(4);
   });

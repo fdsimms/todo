@@ -128,6 +128,11 @@ type MergedIngredientRow =
   | { kind: 'ingredient'; id: string; ingredient: RecipeIngredient }
   | { kind: 'heading'; id: string; name: string; empty: boolean };
 
+/** The same merged shape, one field over — see mergedStepRows. */
+type MergedStepRow =
+  | { kind: 'step'; id: string; step: RecipeStep; number: number }
+  | { kind: 'heading'; id: string; name: string; empty: boolean };
+
 export function RecipeDetailScreen() {
   // ==== store bindings and layout insets ====
   const insets = useSafeAreaInsets();
@@ -156,6 +161,8 @@ export function RecipeDetailScreen() {
   const updateStep = useRecipeStore(s => s.updateStep);
   const removeStep = useRecipeStore(s => s.removeStep);
   const reorderSteps = useRecipeStore(s => s.reorderSteps);
+  const addEmptyStepSection = useRecipeStore(s => s.addEmptyStepSection);
+  const removeEmptyStepSection = useRecipeStore(s => s.removeEmptyStepSection);
   const setStepTimerSeconds = useRecipeStore(s => s.setStepTimerSeconds);
   const setStepNote = useRecipeStore(s => s.setStepNote);
   const setImage = useRecipeStore(s => s.setImage);
@@ -356,6 +363,9 @@ export function RecipeDetailScreen() {
   // outweigh what it's editing. editingStepId null means the field is
   // building a new step; set, it's replacing that step's text on submit.
   const [stepDraft, setStepDraft] = useState('');
+  // Same picker-over-existing-headings convention as sectionDraft above, for
+  // RecipeStep.section instead of RecipeIngredient.section.
+  const [stepSectionDraft, setStepSectionDraft] = useState('');
   const [editingStepId, setEditingStepId] = useState<string | null>(null);
   // The note for the step being edited, held as a draft rather than written on
   // every keystroke: the length stepper beside it writes straight through
@@ -484,6 +494,40 @@ export function RecipeDetailScreen() {
   // already exists.
   const allSections = useMemo(
     () => allSectionsOf(recipe?.ingredients ?? [], recipe?.emptySections ?? []),
+    [recipe]
+  );
+
+  // The method, plus one marker per heading — the same merge ingredients get
+  // above, for RecipeStep.section/Recipe.emptyStepSections instead. `number`
+  // is stamped here rather than read off SortableList's own displayIndex,
+  // because a heading occupies a slot in the merged list too: "Step 3" has to
+  // count steps only, skipping the headings between them.
+  const mergedStepRows = useMemo(() => {
+    const rows: MergedStepRow[] = [];
+    let prevSection: string | null = null;
+    let number = 0;
+    for (const step of recipe?.steps ?? []) {
+      const section = step.section ?? null;
+      if (section && section !== prevSection) {
+        rows.push({ kind: 'heading', id: `heading:${section}`, name: section, empty: false });
+      }
+      number += 1;
+      rows.push({ kind: 'step', id: step.id, step, number });
+      prevSection = section;
+    }
+    for (const name of recipe?.emptyStepSections ?? []) {
+      rows.push({ kind: 'heading', id: `heading:${name}`, name, empty: true });
+    }
+    return rows;
+  }, [recipe]);
+
+  const [hoveredStepRowId, setHoveredStepRowId] = useState<string | null>(null);
+
+  const allStepSections = useMemo(
+    () => allSectionsOf(
+      (recipe?.steps ?? []).map(s => ({ id: s.id, section: s.section ?? null })),
+      recipe?.emptyStepSections ?? []
+    ),
     [recipe]
   );
 
@@ -855,10 +899,11 @@ export function RecipeDetailScreen() {
       // splitter cook mode uses for a recipe's notes, so its two rules (blank
       // lines win, and no line break means one step) hold here too. Editing
       // an existing step never splits: that is a correction to one step.
+      const section = stepSectionDraft.trim() || null;
       const parts = stepsFromNotes(stepDraft);
       const added = parts.length > 1
-        ? parts.filter(part => addStep(recipe.id, part)).length
-        : (addStep(recipe.id, stepDraft) ? 1 : 0);
+        ? parts.filter(part => addStep(recipe.id, part, section)).length
+        : (addStep(recipe.id, stepDraft, section) ? 1 : 0);
       if (added > 0) haptics.tap();
       else haptics.warning();
     }
@@ -943,6 +988,11 @@ export function RecipeDetailScreen() {
   // gets that feedback for free from the rows around it visibly opening a gap.
   const handleIngredientHoverChange = (index: number | null) => {
     setHoveredRowId(index === null ? null : mergedIngredientRows[index]?.id ?? null);
+  };
+
+  // Same hover tracking, for the merged step list's own empty headings.
+  const handleStepHoverChange = (index: number | null) => {
+    setHoveredStepRowId(index === null ? null : mergedStepRows[index]?.id ?? null);
   };
 
   // Persisted on the ingredient itself (dismissedCatalogSuggestion /
@@ -1423,7 +1473,11 @@ export function RecipeDetailScreen() {
   // `isActive` is SortableList's floating drag copy, which paints no background
   // of its own: without the opaque fill the lifted step was see-through, same
   // as the ingredient rows' `isDragging` above.
-  const renderStep = (step: RecipeStep, displayIndex: number, drag: () => void, isActive?: boolean) => (
+  //
+  // `stepNumber` is `mergedStepRows`' own count, not a position within
+  // whatever list is actually being dragged over — a heading between two
+  // steps occupies a slot in that list too, and "Step 3" has to skip it.
+  const renderStep = (step: RecipeStep, stepNumber: number, drag: () => void, isActive?: boolean) => (
     <View
       key={step.id}
       style={[
@@ -1432,7 +1486,7 @@ export function RecipeDetailScreen() {
         isActive && styles.ingredientDragging,
       ]}
     >
-      <Text style={styles.stepNumber}>{displayIndex + 1}</Text>
+      <Text style={styles.stepNumber}>{stepNumber}</Text>
       <TouchableOpacity
         style={styles.ingredientText}
         activeOpacity={interaction.activeOpacity}
@@ -1467,7 +1521,7 @@ export function RecipeDetailScreen() {
         delayLongPress={interaction.delayLongPress}
         hitSlop={10}
         accessibilityRole="button"
-        accessibilityLabel={`Reorder step ${displayIndex + 1}`}
+        accessibilityLabel={`Reorder step ${stepNumber}`}
       >
         <Ionicons name="reorder-three" size={iconSize.sm} color={colors.textTertiary} />
       </TouchableOpacity>
@@ -1475,12 +1529,77 @@ export function RecipeDetailScreen() {
         onPress={() => confirmRemoveStep(step)}
         hitSlop={10}
         accessibilityRole="button"
-        accessibilityLabel={`Remove step ${displayIndex + 1}`}
+        accessibilityLabel={`Remove step ${stepNumber}`}
       >
         <Ionicons name="close" size={iconSize.sm} color={colors.textTertiary} />
       </TouchableOpacity>
     </View>
   );
+
+  // Same heading row as the ingredients grid's renderHeadingRow — a populated
+  // caption or a declared-empty drop target — reused verbatim except for what
+  // an empty one hands the tap: the step draft's section picker rather than
+  // the ingredient one's, and removeEmptyStepSection rather than
+  // removeEmptySection.
+  const renderStepHeadingRow = (row: Extract<MergedStepRow, { kind: 'heading' }>, isFirst: boolean) => {
+    if (!row.empty) {
+      return (
+        <View style={styles.ingredientSectionHeaderWrap}>
+          {!isFirst && <View style={styles.ingredientSectionDivider} />}
+          <Text style={styles.ingredientSectionHeader}>{row.name}</Text>
+        </View>
+      );
+    }
+    const isTarget = hoveredStepRowId === row.id;
+    return (
+      <View style={[styles.emptySectionRow, isTarget && styles.emptySectionRowTarget]}>
+        <TouchableOpacity
+          style={styles.emptySectionBody}
+          activeOpacity={interaction.activeOpacity}
+          onPress={() => {
+            haptics.tap();
+            setStepSectionDraft(row.name);
+            stepInputRef.current?.focus();
+          }}
+          accessibilityRole="button"
+          accessibilityLabel={`${row.name}, no steps yet`}
+          accessibilityHint="Double tap to start adding steps under this heading, or drag a step here"
+        >
+          <Text style={[styles.emptySectionTitle, isTarget && styles.emptySectionTitleTarget]}>
+            {row.name}
+          </Text>
+          <Text style={[styles.emptySectionHint, isTarget && styles.emptySectionHintTarget]}>
+            {isTarget ? 'Drop here' : 'Nothing here yet. Drag a step here'}
+          </Text>
+        </TouchableOpacity>
+        <TouchableOpacity
+          onPress={() => { haptics.tap(); animateLayout(); removeEmptyStepSection(recipe.id, row.name); }}
+          hitSlop={10}
+          accessibilityRole="button"
+          accessibilityLabel={`Remove ${row.name} heading`}
+        >
+          <Ionicons name="close" size={iconSize.sm} color={isTarget ? colors.accent : colors.textTertiary} />
+        </TouchableOpacity>
+      </View>
+    );
+  };
+
+  const renderMergedStepRow: SortableRenderItem<MergedStepRow> = (row, displayIndex, drag, isDragging) =>
+    row.kind === 'heading'
+      ? renderStepHeadingRow(row, displayIndex === 0)
+      : renderStep(row.step, row.number, drag, isDragging);
+
+  // Same one-write reorder as handleMergedReorder, for steps instead of
+  // ingredients.
+  const handleMergedStepReorder = (rows: MergedStepRow[]) => {
+    const entries: SectionListEntry[] = rows.map(row =>
+      row.kind === 'heading' ? { kind: 'heading', name: row.name } : { kind: 'row', id: row.id }
+    );
+    const sectionById = sectionsFromMergedOrder(entries);
+    const ids = rows.filter((r): r is Extract<MergedStepRow, { kind: 'step' }> => r.kind === 'step')
+      .map(r => r.id);
+    reorderSteps(recipe.id, ids, sectionById);
+  };
 
   // ==== render. Everything below is JSX ====
   return (
@@ -2028,7 +2147,7 @@ export function RecipeDetailScreen() {
 
         <Text style={styles.sectionLabel}>Steps</Text>
 
-        {recipe.steps.length === 0 ? (
+        {mergedStepRows.length === 0 ? (
           <Text style={styles.hint}>
             Write the method as steps instead of one block of notes, and it stays legible
             when the recipe's scaled or shown in a different unit. The notes field still works if you'd
@@ -2037,12 +2156,52 @@ export function RecipeDetailScreen() {
         ) : (
           <View style={styles.card}>
             <SortableList
-              data={recipe.steps}
-              onReorder={reordered => reorderSteps(recipe.id, reordered.map(s => s.id))}
+              data={mergedStepRows}
+              onReorder={handleMergedStepReorder}
               onDragStateChange={setDragging}
-              renderItem={renderStep}
+              onHoverChange={handleStepHoverChange}
+              renderItem={renderMergedStepRow}
             />
           </View>
+        )}
+
+        {/* Which heading new steps below file under — same picker-not-free-text
+            convention as the ingredients one above, for RecipeStep.section. */}
+        <View style={styles.sectionPickerWrap}>
+          <Text style={styles.inputHint}>New steps below go under:</Text>
+          <PillGroup
+            noun="section"
+            surface="page"
+            filterPlaceholder="Find or name a section…"
+            createMaxLength={RECIPE_SECTION_MAX_LENGTH}
+            onCreate={name => {
+              const cleaned = name.trim();
+              if (allStepSections.includes(cleaned)) return 'Already a heading on this recipe.';
+              if (!addEmptyStepSection(recipe.id, name)) return 'That isn’t a usable section name.';
+              haptics.success();
+              setStepSectionDraft(cleaned.slice(0, RECIPE_SECTION_MAX_LENGTH));
+            }}
+            options={[
+              {
+                key: '__none__',
+                label: 'No section',
+                pinned: true,
+                selected: !stepSectionDraft,
+                onPress: () => { haptics.tap(); setStepSectionDraft(''); },
+              },
+              ...allStepSections.map(name => ({
+                key: name,
+                label: name,
+                selected: stepSectionDraft === name,
+                onPress: () => { haptics.tap(); setStepSectionDraft(name); },
+              })),
+            ]}
+          />
+        </View>
+        {allStepSections.length > 0 && (
+          <Text style={styles.inputHint}>
+            Drag a step under a heading to move it there.
+          </Text>
         )}
 
         <View style={styles.addRow}>

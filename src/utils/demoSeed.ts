@@ -2825,13 +2825,18 @@ function seedRecipes(): DemoRecipes {
   // rule a single ingredient list can't: it holds "brown sugar" and "sugar" as
   // separate lines, so the frosting step's plain "sugar" has to go to the line
   // actually called that rather than to the alias the other one offers.
-  [
-    'Heat the oven to 180°C and line a 9-inch cake pan.',
-    'Whisk the eggs with the brown sugar, then fold in the flour, cinnamon and grated carrot.',
-    'Bake for 35 minutes, until a skewer comes out clean.',
-    'Beat the cream cheese, butter and sugar together while the cake cools.',
-    'Frost the cake once it is completely cool.',
-  ].forEach(text => addStep(cake.id, text));
+  //
+  // The method is filed under the same two headings the ingredients already
+  // use (RecipeStep.section) — this is the one recipe in the box showing that
+  // a method can be grouped the same way a shopping list is, not a second
+  // feature to demonstrate on its own.
+  ([
+    ['Heat the oven to 180°C and line a 9-inch cake pan.', 'For the cake'],
+    ['Whisk the eggs with the brown sugar, then fold in the flour, cinnamon and grated carrot.', 'For the cake'],
+    ['Bake for 35 minutes, until a skewer comes out clean.', 'For the cake'],
+    ['Beat the cream cheese, butter and sugar together while the cake cools.', 'For the frosting'],
+    ['Frost the cake once it is completely cool.', 'For the frosting'],
+  ] as const).forEach(([text, section]) => addStep(cake.id, text, section));
   setRecipeYield(cake.id, '1 9-inch cake');
   setServings(cake.id, 12);
   setEstimatedMinutes(cake.id, 45);

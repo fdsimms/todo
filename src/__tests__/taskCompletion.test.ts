@@ -398,6 +398,25 @@ describe('buildCompletion', () => {
       expect(build(chained({ chainIndex: 2 }), { missed: true }).nextTask).toBeNull();
     });
 
+    // missChain is the escape hatch from the default above, for a chain
+    // whose later steps can't stand on their own without the one just
+    // missed (meal-slot's Choose → Prepare → Eat).
+    it('ends the whole chain on a mid-chain miss when missChain is set', () => {
+      const { nextTask, advancesBySchedule } = build(chained(), { missed: true, missChain: true });
+      expect(nextTask).toBeNull();
+      expect(advancesBySchedule).toBe(true);
+    });
+
+    it('missChain is inert on a miss at the real last step', () => {
+      expect(build(chained({ chainIndex: 2 }), { missed: true, missChain: true }).nextTask).toBeNull();
+    });
+
+    it('missChain wraps to the first step when the chain repeats', () => {
+      const task = chained({ recurrenceType: 'weekly', dueDate: localIso('2026-03-10T12:00') });
+      const { nextTask } = build(task, { missed: true, missChain: true });
+      expect(nextTask!.chainIndex).toBe(0);
+    });
+
     // "repeat 10 times" means ten times through the chain, not ten steps.
     it('burns a cycle of the repeat count only at the wrap', () => {
       const mid = build(chained({ recurrenceType: 'weekly', dueDate: localIso('2026-03-10T12:00'), recurrenceCount: 4 }));

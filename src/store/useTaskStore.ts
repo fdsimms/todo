@@ -1506,6 +1506,8 @@ interface TaskStore extends UndoHistoryActions {
    */
   completeTask: (id: string, options?: {
     missed?: boolean;
+    /** See CompletionOptions.missChain (taskCompletion.ts) — ends a mid-chain miss here rather than advancing to the next step. */
+    missChain?: boolean;
     deliverableValue?: string | null;
     neutral?: boolean;
     completedAt?: string;
@@ -1551,8 +1553,13 @@ interface TaskStore extends UndoHistoryActions {
    *
    * Recurring only, like the skip it replaces. "I didn't do this" needs a next
    * occurrence to move on to; on a one-off it would just be a delete.
+   *
+   * `wholeChain` forwards to `completeTask`'s `missChain` — for a mid-chain
+   * step whose later steps depend on this one (meal-slot's Choose → Prepare
+   * → Eat), ending the routine here instead of advancing into a step that
+   * now has nothing to act on.
    */
-  markMissed: (id: string) => void;
+  markMissed: (id: string, options?: { wholeChain?: boolean }) => void;
   /**
    * Report a slip against a negative habit — the tap that says "I smoked".
    *
@@ -3256,7 +3263,7 @@ export const useTaskStore = create<TaskStore>((set, get) => ({
     });
   },
 
-  markMissed(id) {
+  markMissed(id, options) {
     const task = get().tasks.find(t => t.id === id);
     if (!task || task.completed) return;
     // A meal-plan task is recurring in every way a user would recognize —
@@ -3278,7 +3285,7 @@ export const useTaskStore = create<TaskStore>((set, get) => ({
       get().skipNextRecurrence(id);
       return;
     }
-    get().completeTask(id, { missed: true });
+    get().completeTask(id, { missed: true, missChain: options?.wholeChain });
   },
 
   completeTask(id, options) {
