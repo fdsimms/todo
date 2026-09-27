@@ -1033,7 +1033,7 @@ export function TaskEditor({ visible, task, initialDraft, onClose }: Props) {
   // same way the quick-add modal does. The phrase is highlighted and
   // described in a banner below the title; nothing is applied until tapped.
   const parsedSchedule = useMemo(
-    () => (title.trim() ? parseTaskInput(title, getLogicalNow(dayResetTime)) : null),
+    () => (title.trim() ? parseTaskInput(title, getLogicalNow(dayResetTime), new Date()) : null),
     [title, dayResetTime]
   );
   // The banner's own ✕ answers "not a date" for this one phrase — comparing

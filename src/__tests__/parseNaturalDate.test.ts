@@ -364,4 +364,28 @@ describe('parseNaturalDate', () => {
       expect(d.getHours()).toBe(15);
     });
   });
+
+  describe('the grace window before dayResetTime', () => {
+    // Sat Aug 16 01:30 on the clock, with a 02:00 reset: the logical day is
+    // still Fri Aug 15, so callers pass getLogicalNow() (a day back) as `now`
+    // and the real instant as `clockNow`.
+    const clock = new Date(2025, 7, 16, 1, 30);
+    const logical = new Date(2025, 7, 15, 1, 30);
+    const grace = (input: string) => parseNaturalDate(input, logical, clock)!;
+
+    it('counts minutes and hours from the real instant', () => {
+      expect(grace('in 30 min')).toEqual(new Date(2025, 7, 16, 2, 0));
+      expect(grace('in 2 hours')).toEqual(new Date(2025, 7, 16, 3, 30));
+    });
+
+    it('reads a bare clock time and "tonight" as the next one on the clock', () => {
+      expect(grace('3pm')).toEqual(new Date(2025, 7, 16, 15, 0));
+      expect(grace('tonight')).toEqual(new Date(2025, 7, 16, 20, 0));
+    });
+
+    it('still reads a day word against the logical day', () => {
+      const d = grace('tomorrow');
+      expect([d.getMonth(), d.getDate()]).toEqual([7, 16]);
+    });
+  });
 });

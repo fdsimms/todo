@@ -226,7 +226,7 @@ export function pendingImportFor(
   // Same clock QuickAddModal and TaskEditor hand this function. It is
   // deliberately not the `now` above, which is a real-time cutoff for dropping
   // alarms that have already gone off and would resurrect a day of them.
-  const parsed = title ? parseTaskInput(title, logicalNow) : null;
+  const parsed = title ? parseTaskInput(title, logicalNow, now) : null;
   if (parsed) {
     const fromText = scheduleToDraft(parsed.schedule);
     // EventKit wins field by field rather than wholesale: a reminder can carry

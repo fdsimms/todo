@@ -60,7 +60,7 @@ export function parseQuickEvent(
     wallClock: Date;
   }
 ): QuickEventDraft {
-  const parsed = parseTaskInput(input, opts.now);
+  const parsed = parseTaskInput(input, opts.now, opts.wallClock);
   const mentions = matchPersonMentions(input, [...opts.people], [...(opts.groups ?? [])]);
   const personIds = [...new Set(mentions.map(m => m.personId))];
 

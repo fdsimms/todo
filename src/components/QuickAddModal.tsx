@@ -655,7 +655,7 @@ export function QuickAddModal({
   // applied until the user taps the tooltip.
   // ==== parsing the typed line: date, category/tags, link, phone, email, duration ====
   const parsed = useMemo(
-    () => (title.trim() ? parseTaskInput(title, getLogicalNow(dayResetTime)) : null),
+    () => (title.trim() ? parseTaskInput(title, getLogicalNow(dayResetTime), new Date()) : null),
     [title, dayResetTime]
   );
   // "pay rent tmrw #home #errand" — one or more "#word" tokens, the first

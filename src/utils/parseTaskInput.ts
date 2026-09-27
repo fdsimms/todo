@@ -523,7 +523,10 @@ function parseRecurrenceSuffix(text: string, now: Date): ParsedSchedule | null {
     } else if (end.count !== undefined) {
       schedule = { ...schedule, recurrenceCount: end.count };
     } else if (end.durationN !== undefined && end.durationUnit) {
-      const endDate = durationAddFn(end.durationUnit)(schedule.dueDate, end.durationN);
+      // The end date is inclusive (getNextDueDate stops only past it), so the
+      // span ends the day before: "daily for 10 days" from the 10th is the
+      // 10th through the 19th, ten doses rather than eleven.
+      const endDate = addDays(durationAddFn(end.durationUnit)(schedule.dueDate, end.durationN), -1);
       schedule = { ...schedule, recurrenceEndDate: endDate.toISOString() };
     }
   }
@@ -531,7 +534,7 @@ function parseRecurrenceSuffix(text: string, now: Date): ParsedSchedule | null {
 }
 
 /** Try to parse an entire suffix as a one-off date/time or recurrence phrase. */
-function parseSuffix(text: string, now: Date, singleWord: boolean): ParsedSchedule | null {
+function parseSuffix(text: string, now: Date, singleWord: boolean, clockNow: Date = now): ParsedSchedule | null {
   // Recurrence first — it owns the "every"/plural/frequency-word triggers.
   const rec = parseRecurrenceSuffix(text, now);
   if (rec) return rec;
@@ -563,7 +566,7 @@ function parseSuffix(text: string, now: Date, singleWord: boolean): ParsedSchedu
   // Same as above — "@" has no meaning in this file and is no longer stripped as noise.
   t = t.replace(/\bat\b/g, ' ').replace(/\bin the\b/g, ' ').replace(/,/g, ' ').replace(/\s+/g, ' ').trim();
 
-  const datePart = t ? parseDatePart(t, now) : null;
+  const datePart = t ? parseDatePart(t, now, clockNow) : null;
   // Leftover words that aren't a date phrase → this suffix isn't a schedule.
   if (t && !datePart) return null;
   if (!datePart && !hasTime) return null;
@@ -590,7 +593,12 @@ function parseSuffix(text: string, now: Date, singleWord: boolean): ParsedSchedu
   };
 }
 
-export function parseTaskInput(input: string, now: Date = new Date()): ParsedTaskInput | null {
+/**
+ * `now` is the logical now (`getLogicalNow`) and `clockNow` the real instant,
+ * which "in 2 hours" and "tonight" count from; see parseDatePart. Omit it
+ * outside a caller that knows both, where they are the same instant.
+ */
+export function parseTaskInput(input: string, now: Date = new Date(), clockNow: Date = now): ParsedTaskInput | null {
   if (!input) return null;
   const tokens = [...input.matchAll(/\S+/g)];
   if (tokens.length < 2) return null;
@@ -599,12 +607,12 @@ export function parseTaskInput(input: string, now: Date = new Date()): ParsedTas
   // An input that is entirely a schedule phrase ("on tuesday", "every monday")
   // stays a literal title — quick add needs a title, and it's almost always
   // mid-typing.
-  if (parseSuffix(lower.trim(), now, false)) return null;
+  if (parseSuffix(lower.trim(), now, false, clockNow)) return null;
 
   for (let i = 1; i < tokens.length; i++) {
     const start = tokens[i].index!;
     const suffix = lower.slice(start).trim();
-    const schedule = parseSuffix(suffix, now, i === tokens.length - 1);
+    const schedule = parseSuffix(suffix, now, i === tokens.length - 1, clockNow);
     if (schedule) {
       const cleanTitle = input.slice(0, start).replace(/[\s,;:\-–—]+$/, '');
       if (!cleanTitle) return null;

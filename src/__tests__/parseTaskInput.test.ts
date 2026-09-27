@@ -540,10 +540,18 @@ describe('parseTaskInput — recurrence', () => {
     expect(r2.schedule.recurrenceCount).toBe(5);
   });
 
-  it('maps a "for N days/weeks/months" duration clause to recurrenceEndDate', () => {
+  it('counts "in 2 hours" from the real instant in the grace window', () => {
+    // 01:30 on Aug 16 under a 02:00 reset: logical now is a day back, and
+    // the reminder lands on the real Aug 16, not 23 hours in the past.
+    const r = parseTaskInput('call the pharmacy in 2 hours', new Date(2025, 7, 15, 1, 30), new Date(2025, 7, 16, 1, 30))!;
+    expectDay(r.schedule.dueDate, 2025, 7, 16);
+  });
+
+    it('maps a "for N days/weeks/months" duration clause to recurrenceEndDate', () => {
     const r = parseTaskInput('take antibiotics daily for 10 days', NOW)!;
     expect(r.schedule.recurrenceType).toBe('daily');
-    expectDay(new Date(r.schedule.recurrenceEndDate!), 2025, 5, 20);
+    // Inclusive end, so the 10th through the 19th: ten doses, not eleven.
+    expectDay(new Date(r.schedule.recurrenceEndDate!), 2025, 5, 19);
   });
 
   it('treats a bare "for N days" with no frequency word as an implied daily repeat', () => {
@@ -552,13 +560,13 @@ describe('parseTaskInput — recurrence', () => {
     expect(r.schedule.recurrenceType).toBe('daily');
     expect(r.schedule.recurrenceInterval).toBe(1);
     expectDay(r.schedule.dueDate, 2025, 5, 10);
-    expectDay(new Date(r.schedule.recurrenceEndDate!), 2025, 5, 13);
+    expectDay(new Date(r.schedule.recurrenceEndDate!), 2025, 5, 12);
   });
 
   it('accepts a digit count for the same bare duration clause', () => {
     const r = parseTaskInput('take vitamin d for 10 days', NOW)!;
     expect(r.schedule.recurrenceType).toBe('daily');
-    expectDay(new Date(r.schedule.recurrenceEndDate!), 2025, 5, 20);
+    expectDay(new Date(r.schedule.recurrenceEndDate!), 2025, 5, 19);
   });
 
   it('does not imply a repeat from a bare "for N times" with no frequency word', () => {
