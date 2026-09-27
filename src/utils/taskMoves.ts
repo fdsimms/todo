@@ -228,7 +228,16 @@ export function scheduleMoveUpdates(
   // takes effect: a task already pushed out is hidden until the old
   // deferUntil, and writing only dueDate would leave it behind a date the
   // caller has just replaced.
-  return { dueDate: date.toISOString(), deferUntil: null };
+  //
+  // The anchor is carried rather than left out: updateTask clears it from any
+  // dueDate written without it, so re-picking the day a pulled-forward task
+  // already sits on (setting a time of day, or bulk When → Today) dropped the
+  // grid and brought back the occurrence the pull had just done early.
+  return {
+    dueDate: date.toISOString(),
+    deferUntil: null,
+    ...(task.recurrenceAnchorDate ? { recurrenceAnchorDate: task.recurrenceAnchorDate } : {}),
+  };
 }
 
 /** The next occurrence each way a pulled-forward occurrence can leave its schedule. */

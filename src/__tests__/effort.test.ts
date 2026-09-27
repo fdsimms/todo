@@ -66,6 +66,9 @@ describe('formatClockDuration', () => {
     expect(formatClockDuration(80)).toBe('1h 20m');
     expect(formatClockDuration(75)).toBe('1h 15m');
     expect(formatDuration(80)).toBe('1.3h');
+    // Not a whole number of hours, but rounds to one: no trailing ".0".
+    expect(formatDuration(119)).toBe('2h');
+    expect(formatDuration(61)).toBe('1h');
   });
 
   it('reads zero and negatives as no time rather than going backwards', () => {

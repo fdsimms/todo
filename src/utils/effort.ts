@@ -221,6 +221,9 @@ export function formatDuration(min: number): string {
   if (min < 60) return `${min}m`;
   const hours = min / 60;
   // Drop a trailing ".0" (2h, not 2.0h); keep one decimal otherwise (1.5h).
-  const label = Number.isInteger(hours) ? String(hours) : hours.toFixed(1);
+  // Tested on the rounded text, not on `hours`: 119 minutes is not a whole
+  // number of hours but still rounds to "2.0".
+  const fixed = hours.toFixed(1);
+  const label = fixed.endsWith('.0') ? fixed.slice(0, -2) : fixed;
   return `${label}h`;
 }

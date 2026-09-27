@@ -449,6 +449,18 @@ describe('wantedSupplyReorders', () => {
     expect(order).toEqual(['soon', 'later', 'unknown']);
   });
 
+  it('puts a supply that has already run out first, so the cap cannot drop it', () => {
+    // An empty supply has no run-out date to sort by, but it is the most
+    // urgent one there is, not the least.
+    const low = [1, 2, 3, 4, 5].map(n => supplyTask({
+      id: `low${n}`, supplyCount: 1, recurrenceType: 'weekly', dueDate: dayFromToday(n),
+    }));
+    const empty = supplyTask({ id: 'empty', supplyCount: 0 });
+    const order = wantedSupplyReorders([...low, empty], undefined, 5).map(w => w.taskId);
+    expect(order[0]).toBe('empty');
+    expect(order).toHaveLength(5);
+  });
+
   it('carries the deadline, the pack size and the buying link onto the want', () => {
     const task = supplyTask({
       supplyCount: 1,

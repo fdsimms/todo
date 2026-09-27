@@ -622,10 +622,20 @@ export function buildProjectPullPlan(
   // against today's budget for the next. Checked one row at a time, five
   // pulls could all land on a today that the first two had already filled.
   const landingToday: Task[] = [...todaysTasks];
+  // The same holds a day later: once today is full, each pull goes to the
+  // snooze engine, which scores days off the task list. Scored against the
+  // unchanged list, every pull picked the same "lightest" day and the sheet
+  // stacked them all on it. So each pull is written into `working` where
+  // projectPullUpdates would put it, the way deloadPlan keeps its own.
+  let working: Task[] = [...allTasks];
   const proposals = stalls.slice(0, MAX_PULLED_PROJECTS).map(stall => {
     const candidates = rankPullCandidates(stall.pullable, ctx);
-    const suggestion = suggestPullDate(candidates[0], allTasks, landingToday, stall.quietDays);
+    const suggestion = suggestPullDate(candidates[0], working, landingToday, stall.quietDays);
     if (suggestion.dayLabel === 'Today') landingToday.push(candidates[0]);
+    else {
+      const pulled = { ...candidates[0], ...projectPullUpdates(suggestion.date) };
+      working = working.map(t => (t.id === pulled.id ? pulled : t));
+    }
     return {
       project: stall.project,
       candidates,

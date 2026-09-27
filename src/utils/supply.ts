@@ -359,8 +359,10 @@ export function wantedSupplyReorders(
       refillCount: clampSupplyRefillCount(task.supplyRefillCount),
       linkUrl: task.linkUrl ?? null,
       // '~' sorts after every digit, so an unprojectable supply lands at the
-      // back of the wanted set without a second comparator.
-      sortKey: runOut ? dayKeyOf(runOut) : '~',
+      // back of the wanted set without a second comparator. An empty supply
+      // also has no run-out date (nothing left to spend), but its urgency is
+      // known rather than unknown, so '' puts it ahead of every date.
+      sortKey: (task.supplyCount ?? 0) <= 0 ? '' : runOut ? dayKeyOf(runOut) : '~',
     });
   }
   wants.sort((a, b) => (a.sortKey < b.sortKey ? -1 : a.sortKey > b.sortKey ? 1 : 0));
