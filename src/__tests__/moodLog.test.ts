@@ -12,6 +12,7 @@ import {
   moodEmoji,
   moodLabel,
   moodLogSummary,
+  renamedContextTags,
   severityLabel,
   symptomKey,
   symptomVocabulary,
@@ -133,6 +134,20 @@ describe('building a context tag set', () => {
   it('removes one, matching case-insensitively', () => {
     const set = withContextTag([], 'Vacation');
     expect(withoutContextTag(set, 'VACATION')).toEqual([]);
+  });
+});
+
+describe('renaming a context tag', () => {
+  it('replaces the matching tag, matching case-insensitively', () => {
+    expect(renamedContextTags(['Trvael', 'Sick'], 'TRVAEL', 'Travel')).toEqual(['Sick', 'Travel']);
+  });
+
+  it('leaves a set alone that never carried the old name', () => {
+    expect(renamedContextTags(['Sick'], 'Vacation', 'Travel')).toEqual(['Sick']);
+  });
+
+  it('merges into an existing tag rather than duplicating it', () => {
+    expect(renamedContextTags(['Trvael', 'Travel'], 'Trvael', 'Travel')).toEqual(['Travel']);
   });
 });
 

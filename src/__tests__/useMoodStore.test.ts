@@ -163,6 +163,38 @@ describe('updateLog', () => {
   });
 });
 
+describe('renameContextTag', () => {
+  it('rewrites the tag on every entry that carries it', () => {
+    const a = state().addLog(3, [], null, undefined, ['Trvael'])!;
+    const b = state().addLog(4, [], null, undefined, ['Trvael', 'Sick'])!;
+    state().renameContextTag('Trvael', 'Travel');
+    expect(state().logs.find(l => l.id === a.id)!.contextTags).toEqual(['Travel']);
+    expect(state().logs.find(l => l.id === b.id)!.contextTags).toEqual(['Sick', 'Travel']);
+    expect(dbUpdateMoodLog).toHaveBeenCalledTimes(2);
+  });
+
+  it('leaves entries alone that never carried the old name', () => {
+    const log = state().addLog(3, [], null, undefined, ['Sick'])!;
+    state().renameContextTag('Vacation', 'Travel');
+    expect(state().logs[0].contextTags).toEqual(['Sick']);
+    expect(dbUpdateMoodLog).not.toHaveBeenCalled();
+  });
+
+  it('merges into a tag the entry already has rather than duplicating it', () => {
+    const log = state().addLog(3, [], null, undefined, ['Trvael', 'Travel'])!;
+    state().renameContextTag('Trvael', 'Travel');
+    expect(state().logs[0].contextTags).toEqual(['Travel']);
+  });
+
+  it('does nothing for a blank or unchanged name', () => {
+    const log = state().addLog(3, [], null, undefined, ['Vacation'])!;
+    state().renameContextTag('Vacation', '   ');
+    state().renameContextTag('Vacation', 'Vacation');
+    expect(state().logs[0].contextTags).toEqual(['Vacation']);
+    expect(dbUpdateMoodLog).not.toHaveBeenCalled();
+  });
+});
+
 describe('removeLog', () => {
   it('deletes the row and drops it', () => {
     const log = state().addLog(3, [])!;

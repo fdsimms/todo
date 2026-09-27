@@ -1,5 +1,5 @@
 import React, { useState, useEffect, useMemo } from 'react';
-import { View, Text, TextInput, StyleSheet } from 'react-native';
+import { View, Text, TextInput, Alert, StyleSheet } from 'react-native';
 import { format } from 'date-fns/format';
 import { isSameDay } from 'date-fns/isSameDay';
 import type { LoggedSymptom, MoodLevel, MoodLog, SymptomSeverity } from '../types';
@@ -15,6 +15,7 @@ import {
   contextTagKey,
   dayContextTags,
   moodLabel,
+  renamedContextTags,
   symptomKey,
   symptomVocabulary,
   withContextTag,
@@ -82,6 +83,7 @@ export function MoodLogSheet({ visible, editing = null, onClose }: Props) {
   const logs = useMoodStore(s => s.logs);
   const addLog = useMoodStore(s => s.addLog);
   const updateLog = useMoodStore(s => s.updateLog);
+  const renameContextTag = useMoodStore(s => s.renameContextTag);
   const completeMoodLogTaskForToday = useTaskStore(s => s.completeMoodLogTaskForToday);
   // The one source this offers a suggestion from — see docs/arch/mood-log.md.
   // Other data the app already has (a missed-heavy day, and so on) can follow
@@ -187,6 +189,36 @@ export function MoodLogSheet({ visible, editing = null, onClose }: Props) {
       current.some(t => contextTagKey(t) === contextTagKey(name))
         ? withoutContextTag(current, name)
         : withContextTag(current, name)
+    );
+  };
+
+  /**
+   * Fix a tag's spelling everywhere it was logged, not just here — the
+   * vocabulary is derived from every entry (see `moodLog.ts`), so a typo
+   * typed once otherwise sits in this grid forever with nothing to correct
+   * it. If this entry (or a draft not yet saved) had the old text selected,
+   * the corrected name stays selected in its place.
+   */
+  const renameTag = (name: string) => {
+    Alert.prompt(
+      'Rename tag',
+      `Changes every entry that has "${name}".`,
+      [
+        { text: 'Cancel', style: 'cancel' },
+        {
+          text: 'Save',
+          onPress: (text?: string) => {
+            const trimmed = (text ?? '').trim();
+            if (!trimmed || trimmed === name) return;
+            haptics.success();
+            renameContextTag(name, trimmed);
+            setDraftedContext(current => current.map(t => (contextTagKey(t) === contextTagKey(name) ? trimmed : t)));
+            setContextTags(current => renamedContextTags(current, name, trimmed));
+          },
+        },
+      ],
+      'plain-text',
+      name,
     );
   };
 
@@ -357,6 +389,8 @@ export function MoodLogSheet({ visible, editing = null, onClose }: Props) {
             label: name,
             selected: contextTags.some(t => contextTagKey(t) === contextTagKey(name)),
             onPress: () => toggleContextTag(name),
+            onLongPress: () => renameTag(name),
+            accessibilityHint: 'Double tap to toggle. Long press to rename.',
           }))}
         />
       </View>
