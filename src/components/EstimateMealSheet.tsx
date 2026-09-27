@@ -1,4 +1,4 @@
-import React, { useEffect, useMemo, useState } from 'react';
+import React, { useEffect, useMemo, useRef, useState } from 'react';
 import {
   ActivityIndicator,
   Alert,
@@ -349,17 +349,34 @@ export function EstimateMealSheet({ visible, slot, at, mealPlanEntryId, initialD
   }, [recalled, catalogMatches, matches, items, itemProducts, at]);
 
   // ==== estimate: asking, refining, logging ====
-  /** Resolves to whether the request came back with an estimate. */
-  const run = async (text: string, fresh: boolean): Promise<boolean> => {
+  /**
+   * Which request is the current one. Bumped on every open and close, and by
+   * each new ask, so an answer is kept only if nothing has happened since it
+   * was sent. A token rather than the `visibleRef` the recipe sheets keep,
+   * because this sheet resets on open rather than on close: a request sent
+   * just before a cancel, answered just after a quick reopen, would otherwise
+   * fill the new session with the old meal's estimate.
+   */
+  const runTokenRef = useRef(0);
+  useEffect(() => { runTokenRef.current += 1; }, [visible]);
+
+  /**
+   * Resolves to whether the request came back with an estimate, or null when
+   * its answer was dropped because the session it belonged to has ended.
+   */
+  const run = async (text: string, fresh: boolean): Promise<boolean | null> => {
+    const token = ++runTokenRef.current;
     setLoading(true);
     setError(null);
     setSavedRecipeId(null);
     try {
       const result = await estimateMealNutrition(text, context);
+      if (token !== runTokenRef.current) return null;
       setEstimate(result);
       if (fresh) setQuestions(result.questions);
       return true;
     } catch (e) {
+      if (token !== runTokenRef.current) return null;
       // A failed first ask has nothing to keep. A failed refinement does: the
       // estimate it was refining is still a real answer, with its Log button
       // and its questions, so it stays and the error is added under it rather
@@ -368,7 +385,7 @@ export function EstimateMealSheet({ visible, slot, at, mealPlanEntryId, initialD
       setError(describeAIError(e));
       return false;
     } finally {
-      setLoading(false);
+      if (token === runTokenRef.current) setLoading(false);
     }
   };
 
@@ -405,8 +422,9 @@ export function EstimateMealSheet({ visible, slot, at, mealPlanEntryId, initialD
       false,
     ).then(ok => {
       // The kept estimate still answers the old choices, so the chips go back
-      // to them rather than showing an answer the figures don't reflect.
-      if (!ok) setAnswers(previous);
+      // to them rather than showing an answer the figures don't reflect. Not
+      // for a dropped answer (null): that session's chips are already gone.
+      if (ok === false) setAnswers(previous);
     });
   };
 

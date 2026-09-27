@@ -33,6 +33,7 @@ import { onHandNameKeys } from '../utils/grocerySuggest';
 import { describeSubstitutes, substitutesFor, type Substitute } from '../utils/itemSubs';
 import { alternativeCaptions, applyChoice, choiceGroupKey, recipeChoiceGroups } from '../utils/recipeComponents';
 import { normalizeScale } from '../utils/recipeScale';
+import { featureShown } from '../utils/simpleMode';
 import { convertQuantity } from '../utils/unitConvert';
 import { RecipeScaleChips } from './RecipeScaleChips';
 import { RecipeChoiceChips } from './RecipeChoiceChips';
@@ -167,6 +168,7 @@ export function RecipeToListSheet({
   const insets = useSafeAreaInsets();
 
   const unitSystem = useSettingsStore(s => s.unitSystem);
+  const simpleMode = useSettingsStore(s => s.simpleMode);
 
   const items = useGroceryStore(useShallow(s => s.items));
   const listEntries = useGroceryStore(useShallow(s => s.listEntries));
@@ -505,7 +507,11 @@ export function RecipeToListSheet({
 
         {/* Above the choice chips: how much you're making applies to the whole
             shop, while a choice applies to one group within it. */}
-        {!nothingToShow && (
+        {/* Simplified mode drops it unless this shop is already scaled (a
+            meal planned for four opens at 2x), the rule RecipeDetail's own
+            chips follow. */}
+        {!nothingToShow
+          && featureShown('recipeScaling', simpleMode, scale !== 1 || normalizeScale(initialScale) !== 1) && (
           <View style={styles.scaleRow}>
             <Text style={styles.sectionLabel}>Batch</Text>
             <RecipeScaleChips
