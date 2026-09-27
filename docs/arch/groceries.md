@@ -323,7 +323,11 @@ lasted one commit. Three fields had to move with it:
   keep meaning what it meant: the home list is the original one and these columns have always held
   it. Two functions write them and they are twins — `dbSyncGroceryHomeColumns` in SQLite and
   `withHomeMembership` in memory — both reached only through the store's single `writeMembership`
-  path, so they cannot drift.
+  path, so they cannot drift. **Sync is the one path around the store**: it writes a peer's item
+  row (carrying the peer's copy of these columns) and a peer's entries straight into the tables, so
+  `dbApplySyncChanges` recomputes the mirror for every item it touched before its transaction ends.
+  It writes only a row that came out wrong, because any write restamps the row and recomputing every
+  applied row would send each one straight back to the peer.
 - **`onList` is the exception: it is the broad "in any trolley" question.** It has to be, because
   `clearList`'s sweep and the catalog prune both read it to decide whether a row is unused, and a
   row on the Airbnb list is not unused. The four readers that want that question and don't have the

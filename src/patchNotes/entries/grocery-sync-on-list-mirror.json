@@ -1,0 +1,4 @@
+{
+  "message": "Fixed a grocery item on the list sometimes losing its \"Remove from list\" option after syncing between devices, or showing as checked off in one place and not another",
+  "date": "2026-09-27"
+}

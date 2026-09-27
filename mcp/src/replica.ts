@@ -35,6 +35,7 @@ import type {
   DeliverableKind,
   FoodLogEntry,
   GroceryItem,
+  GroceryListEntry,
   MedicationLog,
   MoodLog,
   Person,
@@ -87,7 +88,11 @@ export interface GroceryAddOptions {
 export interface GroceryAddOutcome {
   item: GroceryItem;
   isNew: boolean;
-  /** True when the row was already in some trolley, so this changed little. */
+  /**
+   * True when the row was already in the trolley it was added to, so this
+   * changed little. Another list holding it doesn't count: adding it here
+   * still put it somewhere it wasn't.
+   */
   wasOnList: boolean;
 }
 
@@ -138,6 +143,13 @@ export interface Replica {
   projectProgress(projectId: string): { done: number; total: number };
   categories(): Category[];
   groceryItems(): GroceryItem[];
+  /**
+   * Which trolley each row is in (see `GroceryListEntry`). The list tools read
+   * the home list's entries from this rather than `GroceryItem.onList`, which
+   * is the broader "in any trolley" flag and would fold a trip's list into the
+   * one at home.
+   */
+  groceryListEntries(): GroceryListEntry[];
 
   isVisible(task: Task): boolean;
   isUnscheduled(task: Task): boolean;
@@ -295,7 +307,9 @@ export interface Replica {
   addGroceryItem(name: string, opts?: GroceryAddOptions): GroceryAddOutcome;
 
   /**
-   * Tick something off in the trolley, or un-tick it.
+   * Tick something off in the trolley at home, or un-tick it. Every grocery
+   * write here acts on the home list, which is the one `list_grocery_items`
+   * reports.
    *
    * Written straight through `dbSetGroceryListEntry` rather than through a
    * builder, because unlike the add there is nothing to decide: checked lives
@@ -306,7 +320,7 @@ export interface Replica {
   setGroceryChecked(id: string, checked: boolean): GroceryItem;
 
   /**
-   * Take something off the list, which parks it rather than deleting it.
+   * Take something off the home list, which parks it rather than deleting it.
    *
    * The catalog row stays, with everything anyone ever recorded on it. That is
    * the app's own rule and not a shortcut: a row leaves only when asked, and
@@ -440,6 +454,7 @@ export function openReplica(path = process.env.TODO_DB_PATH ?? 'todo.db'): Repli
     taskById: (id: string) => tasks().find(t => t.id === id) ?? null,
     categories: () => db.dbGetAllCategories(),
     groceryItems: () => db.dbGetAllGroceryItems(),
+    groceryListEntries: () => db.dbGetAllGroceryListEntries(),
 
     isVisible: (task: Task) => visibility.isTaskVisible(task),
     isUnscheduled: (task: Task) => visibility.isUnscheduledTask(task),
@@ -695,7 +710,11 @@ export function openReplica(path = process.env.TODO_DB_PATH ?? 'todo.db'): Repli
       if (plan.entry) db.dbSetGroceryListEntry(plan.entry);
 
       refresh();
-      return { item: plan.item, isNew: plan.isNew, wasOnList: plan.wasOnList };
+      // plan.wasOnList is "in any trolley", which reads a row on the Airbnb
+      // list as already added to the list at home.
+      const listId = opts?.listId ?? null;
+      const wasOnList = !plan.isNew && entries.some(e => e.itemId === plan.item.id && e.listId === listId);
+      return { item: plan.item, isNew: plan.isNew, wasOnList };
     },
 
     setGroceryChecked(id: string, checked: boolean): GroceryItem {
@@ -704,7 +723,7 @@ export function openReplica(path = process.env.TODO_DB_PATH ?? 'todo.db'): Repli
 
       // Checked belongs to a trolley, so there has to be one holding this item.
       const entry = db.dbGetAllGroceryListEntries().find(e => e.itemId === id && e.listId === null);
-      if (!entry) throw new Error(`"${item.name}" is not on the list, so there is nothing to check off.`);
+      if (!entry) throw new Error(`"${item.name}" is not on the home list, so there is nothing to check off.`);
 
       db.dbSetGroceryListEntry({ ...entry, checked });
       refresh();
@@ -714,7 +733,11 @@ export function openReplica(path = process.env.TODO_DB_PATH ?? 'todo.db'): Repli
     removeFromGroceryList(id: string): GroceryItem {
       const item = db.dbGetAllGroceryItems().find(i => i.id === id);
       if (!item) throw new Error(`No grocery item with id ${id}.`);
-      if (!item.onList) throw new Error(`"${item.name}" is not on the list.`);
+      // The home entry, not item.onList: that flag is also true for a row
+      // only on a trip's list, which this would park without taking it off
+      // anything.
+      const onHomeList = db.dbGetAllGroceryListEntries().some(e => e.itemId === id && e.listId === null);
+      if (!onHomeList) throw new Error(`"${item.name}" is not on the home list.`);
 
       // A recipe's claim on the quantity ends with the shop, so it does not
       // ride back onto the catalog row, and nor does its credit: the same

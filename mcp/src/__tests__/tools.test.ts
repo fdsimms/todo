@@ -15,15 +15,17 @@ import {
   listMoodLogs,
   listProjects,
   listTasks,
+  removeFromGroceryList,
   resolveRange,
   searchTasks,
+  setGroceryChecked,
   DEFAULT_LIMIT,
   DEFAULT_LOG_DAYS,
   MAX_LIMIT,
   MAX_LOG_DAYS,
 } from '../tools';
 import type { Replica } from '../replica';
-import type { FoodLogEntry, GroceryItem, MedicationLog, MoodLog, Project, Task } from '../../../src/types';
+import type { FoodLogEntry, GroceryItem, GroceryListEntry, MedicationLog, MoodLog, Project, Task } from '../../../src/types';
 
 const task = (over: Partial<Task> & { id: string; title: string }): Task =>
   ({
@@ -62,6 +64,7 @@ function stubReplica(over: Partial<Replica> = {}): Replica {
     projectProgress: () => ({ done: 0, total: 0 }),
     categories: () => [],
     groceryItems: () => [],
+    groceryListEntries: () => [],
     isVisible: (t: Task) => t.id.startsWith('today'),
     isUnscheduled: (t: Task) => t.id.startsWith('unscheduled'),
     isInbox: (t: Task) => t.id.startsWith('inbox'),
@@ -239,17 +242,62 @@ describe('listGroceryItems', () => {
     { id: 'g1', name: 'Milk', quantity: '2L', aisle: 'Dairy', onList: true, checked: false },
     { id: 'g2', name: 'Paprika', quantity: null, aisle: '', onList: false, checked: false },
   ] as GroceryItem[];
+  const entry = (itemId: string, listId: string | null, checked = false): GroceryListEntry =>
+    ({ itemId, listId, checked, sortOrder: 0, choiceGroup: null, addedAt: '' });
+  const entries = [entry('g1', null)];
 
   it('shows the list by default and the catalog on request', () => {
-    const replica = stubReplica({ groceryItems: () => items });
+    const replica = stubReplica({ groceryItems: () => items, groceryListEntries: () => entries });
     expect(listGroceryItems(replica).map(i => i.id)).toEqual(['g1']);
     expect(listGroceryItems(replica, { onListOnly: false }).map(i => i.id)).toEqual(['g1', 'g2']);
   });
 
   it('drops empty strings rather than reporting them', () => {
-    const [, catalog] = listGroceryItems(stubReplica({ groceryItems: () => items }), { onListOnly: false });
+    const [, catalog] = listGroceryItems(
+      stubReplica({ groceryItems: () => items, groceryListEntries: () => entries }),
+      { onListOnly: false }
+    );
     expect(catalog.quantity).toBeUndefined();
     expect(catalog.aisle).toBeUndefined();
+  });
+
+  // check_off and remove act on the home list, so the read has to describe
+  // that list. The item row's onList is "in any trolley", which folded a
+  // trip's list into this one and then had check-off refuse what it listed.
+  it('reports the home list with its ticks, leaving out a row only on another list', () => {
+    const rows = [
+      { id: 'g1', name: 'Milk', onList: true, checked: false },
+      { id: 'g3', name: 'Sunscreen', onList: true, checked: false },
+      { id: 'g4', name: 'Bread', onList: true, checked: false },
+    ] as GroceryItem[];
+    const replica = stubReplica({
+      groceryItems: () => rows,
+      groceryListEntries: () => [entry('g1', null, true), entry('g3', 'airbnb', true), entry('g4', null), entry('g4', 'airbnb', true)],
+    });
+
+    expect(listGroceryItems(replica)).toEqual([
+      { id: 'g1', name: 'Milk', onList: true, checked: true },
+      { id: 'g4', name: 'Bread', onList: true },
+    ]);
+    const catalog = listGroceryItems(replica, { onListOnly: false });
+    expect(catalog.find(i => i.id === 'g3')).toEqual({ id: 'g3', name: 'Sunscreen', onList: false });
+  });
+
+  it('describes a write\'s result by the home list too', () => {
+    const milk = { id: 'g1', name: 'Milk', onList: true, checked: false } as GroceryItem;
+    const replica = stubReplica({
+      groceryListEntries: () => [entry('g1', null, true)],
+      setGroceryChecked: () => milk,
+      removeFromGroceryList: () => milk,
+    });
+    expect(setGroceryChecked(replica, 'g1', true).item).toEqual({ id: 'g1', name: 'Milk', onList: true, checked: true });
+
+    // Still on a trip's list after leaving the one at home.
+    const after = stubReplica({
+      groceryListEntries: () => [entry('g1', 'airbnb')],
+      removeFromGroceryList: () => milk,
+    });
+    expect(removeFromGroceryList(after, 'g1').item.onList).toBe(false);
   });
 });
 
