@@ -722,6 +722,16 @@ export function TodayScreen() {
   // else" arrived collapsed) and that's the half people turned the feature off
   // over.
   const [othersHidden, setOthersHidden] = useState(false);
+  // Whether a pinned stack's *copy* in the Pinned Tasks block is open, per
+  // group, for the session. The copy and the stack's own tray used to share
+  // `group.collapsed`, so tapping either opened both — and with the pinned
+  // copy above the screen, its tray growing pushed every row in view down by
+  // its height, which read as the page scrolling as the stack opened. Same
+  // rule as a pinned task row's expansion (keyed on the row, not the task):
+  // the tray under the finger is the only one that moves. No entry means the
+  // copy still follows the stack's own flag, which is how a freshly pinned
+  // stack shows up; the first toggle of either tray records it here.
+  const [pinnedGroupOpen, setPinnedGroupOpen] = useState<ReadonlyMap<string, boolean>>(() => new Map());
   // The toggle lives on the pinned block's header, and the block itself
   // renders nothing once nothing is pinned — so if the last pin goes away
   // (Clear, or unpinning the last one) while this is still true, there's no
@@ -2871,8 +2881,25 @@ export function TodayScreen() {
     setDraggingGroupId(null);
     const group = useTaskGroupStore.getState().getGroupById(groupId);
     if (!group) return;
+    // A pinned copy still following this flag keeps the state it has now,
+    // rather than opening along with this tray (see pinnedGroupOpen).
+    const hasPinnedCopy = useTaskStore.getState().tasks
+      .some(t => t.pinned && t.groupId === groupId && !t.completed);
+    if (hasPinnedCopy) {
+      setPinnedGroupOpen(prev => (prev.has(groupId) ? prev : new Map(prev).set(groupId, !group.collapsed)));
+    }
     setGroupCollapsed(groupId, !group.collapsed);
   }, [expandedTaskId, setGroupCollapsed]);
+  // The pinned copy's own toggle: session state only, never `group.collapsed`,
+  // so the stack's tray down in its category stays exactly as it was.
+  const handlePinnedGroupToggleCollapse = useCallback((groupId: string) => {
+    if (expandedTaskId !== null) { setExpandedTaskId(null); return; }
+    haptics.tap();
+    setDraggingGroupId(null);
+    const group = useTaskGroupStore.getState().getGroupById(groupId);
+    if (!group) return;
+    setPinnedGroupOpen(prev => new Map(prev).set(groupId, !(prev.get(groupId) ?? !group.collapsed)));
+  }, [expandedTaskId]);
   const handleGroupPin = useCallback((groupId: string) => { animateLayout(); pinGroup(groupId); }, [pinGroup]);
   const handleGroupPressEdit = useCallback((groupId: string) => {
     const group = useTaskGroupStore.getState().getGroupById(groupId);
@@ -3287,7 +3314,9 @@ export function TodayScreen() {
   // filtered is passed unconditionally: the "N/M done today" tally is
   // computed from the full roster, which would overstate what's actually
   // shown under a header rendering only its pinned members.
-  const renderPinnedGroup = (group: TaskGroup, children: Task[]) => (
+  const renderPinnedGroup = (group: TaskGroup, children: Task[]) => {
+    const open = pinnedGroupOpen.get(group.id) ?? !group.collapsed;
+    return (
     <TaskGroupTray>
       <TaskGroupHeader
         selectionMode={selectionMode}
@@ -3296,10 +3325,11 @@ export function TodayScreen() {
         filtered
         pinned={groupPinInfo.get(group.id)?.pinned ?? false}
         pinDisabled={!(groupPinInfo.get(group.id)?.pinnable ?? false)}
-        onToggleCollapse={handleGroupToggleCollapse}
+        expanded={open}
+        onToggleCollapse={handlePinnedGroupToggleCollapse}
         {...groupHeaderProps}
       />
-      <TaskGroupBody expanded={!group.collapsed} hasChildren={children.length > 0}>
+      <TaskGroupBody expanded={open} hasChildren={children.length > 0}>
         {children.map(child => (
           <React.Fragment key={child.id}>
             {renderTaskRow(child, {
@@ -3313,7 +3343,8 @@ export function TodayScreen() {
         ))}
       </TaskGroupBody>
     </TaskGroupTray>
-  );
+    );
+  };
 
   /**
    * The Pinned block — Today's list header, and deliberately NOT part of the

@@ -786,7 +786,10 @@ the block would inherit none.
   by task id, and two rows claiming one id means whichever unmounts first evicts a row still on
   screen. Same opt-out the drag overlay's floating copy already used.
 - **Expansion is keyed on the row, not the task** (`renderTaskRow`'s `rowKey`, `pin-<id>` for the
-  copy), so tapping one row doesn't also expand its twin halfway down the list.
+  copy), so tapping one row doesn't also expand its twin halfway down the list. **A pinned stack's
+  tray follows the same rule** (`pinnedGroupOpen`, session-only): it used to share
+  `group.collapsed` with the stack's own tray, so opening either opened both, and the copy growing
+  above the screen pushed every row in view down, which read as the page scrolling as a stack opened.
 - **`pinnedTasks()` ignores the *clock* gates on purpose** — a pinned task shows in the block whether
   or not it's due today. So the copy passes `hidesWhenOnPace: false`, and a pinned task that isn't
   visible today has only the one row rather than two. It does **not** ignore the hides that aren't a
