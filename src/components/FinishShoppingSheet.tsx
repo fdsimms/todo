@@ -340,7 +340,7 @@ export function FinishShoppingSheet({
     if (!dirty) { Keyboard.dismiss(); onClose(); return; }
     Alert.alert(
       'Discard changes?',
-      'What you entered about this trip will be lost.',
+      'You have unsaved changes. Are you sure you want to discard them?',
       [
         { text: 'Keep editing', style: 'cancel' },
         { text: 'Discard', style: 'destructive', onPress: () => { Keyboard.dismiss(); onClose(); } },
@@ -763,7 +763,11 @@ export function FinishShoppingSheet({
                           // walk down it and covers the Finish button.
                           returnKeyType="done"
                           inputAccessoryViewID={Platform.OS === 'ios' ? NUMBER_PAD_ACCESSORY_ID : undefined}
-                          placeholder={known !== null ? `e.g. ${priceToInput(known)}` : '0.00'}
+                          // "Price" rather than a bare "0.00" when nothing
+                          // is known: a figure in the placeholder's grey
+                          // reads as a price already saved (CLAUDE.md's
+                          // placeholder rule), and $0.00 is a real price.
+                          placeholder={known !== null ? `e.g. ${priceToInput(known)}` : 'Price'}
                           placeholderTextColor={colors.textTertiary}
                           maxLength={PRICE_INPUT_MAX_LENGTH}
                           accessibilityLabel={`Price for ${row.name}`}

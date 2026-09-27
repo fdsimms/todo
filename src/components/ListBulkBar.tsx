@@ -36,6 +36,12 @@ export interface ListBulkCategoryPanel {
   onCreate?: (name: string) => void;
   /** Off for a field that always holds a value — an aisle, say — where "None" isn't a real choice. Defaults to true. */
   allowNone?: boolean;
+  /**
+   * What one option is called, with its article, for the find field: "an
+   * aisle", "a meal type". Defaults to "a category", which is what the field
+   * said on every list, aisles and meals included.
+   */
+  noun?: string;
 }
 
 interface Props {
@@ -197,7 +203,9 @@ export function ListBulkBar({
           </View>
           <TextInput
             style={styles.categoryInput}
-            placeholder="Find or add a category…"
+            // "or add" only where typing a new name can make one: a closed
+            // set (meal types, the meals of the day) has nothing to add.
+            placeholder={`Find ${category.onCreate ? 'or add ' : ''}${category.noun ?? 'a category'}…`}
             placeholderTextColor={colors.textTertiary}
             {...filterField}
             returnKeyType="done"

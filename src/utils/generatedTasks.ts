@@ -626,7 +626,7 @@ export const GENERATED_KIND_SPECS: Record<GeneratedKind, GeneratedKindSpec> = {
     pausedOnVacation: true,
     enabledKey: 'mealLogNudgeTasks',
     label: 'Log reminders for planned meals',
-    onHint: 'A planned meal with nothing logged a few days later adds a task to log it',
+    onHint: 'A planned meal with nothing logged by the next day adds a task to log it',
     offHint: 'A planned meal with nothing logged adds no task',
     icon: 'journal-outline',
     // Its source is a MealPlanEntry, and the opt-out it writes there
@@ -646,7 +646,7 @@ export const GENERATED_KIND_SPECS: Record<GeneratedKind, GeneratedKindSpec> = {
     pausedOnVacation: true,
     enabledKey: 'mealPlanNudgeEnabled',
     label: 'Plan meals for the week',
-    onHint: 'Adds a task once a week to plan that week\'s meals',
+    onHint: 'Adds a stack once a week, with a task for each day of that week to plan its meals',
     offHint: 'No weekly task to plan the week\'s meals',
     icon: 'calendar-outline',
     sourced: false,
@@ -947,7 +947,7 @@ export function generatedTaskCounts(
  */
 export type GeneratedEnabledFlags =
   Record<GeneratedEnabledKey, boolean>
-  & { healthReadEnabled: boolean; calendarReadEnabled: boolean };
+  & { healthReadEnabled: boolean; healthWriteEnabled: boolean; calendarReadEnabled: boolean };
 
 /**
  * Whether this generator is switched on, counting the read it depends on.
@@ -963,6 +963,11 @@ export function generatorSwitchedOn(kind: GeneratedKind, flags: GeneratedEnabled
   if (!flags[GENERATED_KIND_SPECS[kind].enabledKey]) return false;
   if (kind === 'health') return flags.healthReadEnabled;
   if (kind === 'calendarReview') return flags.calendarReadEnabled;
+  // Both Health switches, the same pair `checkWeighInTasks` refuses to run
+  // without: the read to see whether a weight is already in, the write because
+  // the weight is recorded there. With either off the row read "on" and the
+  // task never came.
+  if (kind === 'weighIn') return flags.healthReadEnabled && flags.healthWriteEnabled;
   return true;
 }
 

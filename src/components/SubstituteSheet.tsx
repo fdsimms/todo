@@ -4,6 +4,7 @@ import {
   Alert,
   FlatList,
   Keyboard,
+  ScrollView,
   StyleSheet,
   Text,
   TextInput,
@@ -11,6 +12,8 @@ import {
   View,
 } from 'react-native';
 import { SheetModal } from './SheetModal';
+import { useSheetSubject } from '../hooks/useSheetSubject';
+import { useKeyboardInsetScroll } from '../hooks/useKeyboardInsetScroll';
 import Ionicons from '@expo/vector-icons/Ionicons';
 import { useShallow } from 'zustand/react/shallow';
 import { useGroceryStore } from '../store/useGroceryStore';
@@ -91,7 +94,18 @@ interface Props {
  * targets — the item sheet's field, which can only mean review, keeps its
  * whole-row tap.
  */
-export function SubstituteSheet({ visible, itemId, editingSubItemId = null, onSwap, onClose }: Props) {
+export function SubstituteSheet({ visible, itemId: liveItemId, editingSubItemId = null, onSwap, onClose }: Props) {
+  // Held past the host clearing it, so the `return null` below can't tear the
+  // presented sheet out of the tree while it is still closing: every host
+  // clears the id in the same commit that lowers `visible`. That unmount is
+  // the freeze CLAUDE.md's SheetModal notes describe, and this sheet holds
+  // three text fields.
+  const itemId = useSheetSubject(liveItemId);
+  // The add/review form holds three text fields above a preview and Remove,
+  // and was a plain View: at any real text size the lower half sat under the
+  // keyboard with no way to scroll to it. `ownsSheet` because this component
+  // renders its own SheetModal (see the hook's doc comment).
+  const keyboardScroll = useKeyboardInsetScroll<ScrollView>({ ownsSheet: true });
   const colors = useColors();
   const styles = useMemo(() => makeStyles(colors), [colors]);
 
@@ -209,6 +223,11 @@ export function SubstituteSheet({ visible, itemId, editingSubItemId = null, onSw
   };
 
   const picked = items.find(i => i.id === pickedId) ?? null;
+  // The substitute already set to "always use this instead", when it isn't
+  // the one being written now.
+  const replacingStanding = picked
+    ? existing.find(sub => sub.link.standing && sub.item.id !== picked.id) ?? null
+    : null;
 
   const typed = query.trim();
   const typedKey = groceryNameKey(typed) || typed.toLowerCase();
@@ -342,15 +361,17 @@ export function SubstituteSheet({ visible, itemId, editingSubItemId = null, onSw
   // mid-edit would otherwise drop it with no dialog. Compared against the
   // baseline the seeding effect stamped, so reseeding on open/reviewingId
   // change doesn't itself falsely read as user work about to be lost.
-  const handleCancel = () => {
+  const isDirty = () => {
     const baseline = baselineRef.current;
-    const dirty = pickedId !== baseline.pickedId
+    return pickedId !== baseline.pickedId
       || note !== baseline.note
       || bothWays !== baseline.bothWays
       || standing !== baseline.standing
       || ratioFrom !== baseline.ratioFrom
       || ratioTo !== baseline.ratioTo;
-    if (!dirty) { Keyboard.dismiss(); onClose(); return; }
+  };
+  const handleCancel = () => {
+    if (!isDirty()) { Keyboard.dismiss(); onClose(); return; }
     Alert.alert(
       'Discard changes?',
       'You have unsaved changes. Are you sure you want to discard them?',
@@ -365,10 +386,24 @@ export function SubstituteSheet({ visible, itemId, editingSubItemId = null, onSw
   // the sheet. `pickedId` is cleared alongside because it's what chooses the
   // detail branch over the picker; the seeding effect clears it too, and doing
   // it here as well is what stops a frame of the detail form on the way out.
+  //
+  // It asks first when something was changed, the same question Cancel and a
+  // swipe-down ask: Back used to drop an edited ratio or note without a word.
   const handleBack = () => {
     haptics.tap();
-    setReviewingId(null);
-    setPickedId(null);
+    const back = () => {
+      setReviewingId(null);
+      setPickedId(null);
+    };
+    if (!isDirty()) { back(); return; }
+    Alert.alert(
+      'Discard changes?',
+      'You have unsaved changes. Are you sure you want to discard them?',
+      [
+        { text: 'Keep editing', style: 'cancel' },
+        { text: 'Discard', style: 'destructive', onPress: back },
+      ],
+    );
   };
 
   // "Use instead", on a substitute already recorded: the answer to the
@@ -388,8 +423,9 @@ export function SubstituteSheet({ visible, itemId, editingSubItemId = null, onSw
     onClose();
   };
 
-  // Nothing to be instead *of*. The one caller always passes a live id, so this
-  // is the deleted-out-from-under case rather than a state worth rendering.
+  // Nothing to be instead *of*: before the first open, or the item was
+  // deleted out from under it. Not the closing case any more, which the held
+  // `itemId` above covers.
   if (!item) return null;
 
   const renderRow = ({ item: row }: { item: typeof items[number] }) => (
@@ -432,7 +468,13 @@ export function SubstituteSheet({ visible, itemId, editingSubItemId = null, onSw
         />
 
         {picked ? (
-          <View style={styles.body}>
+          <ScrollView
+            ref={keyboardScroll.ref}
+            {...keyboardScroll.props}
+            style={styles.bodyScroll}
+            contentContainerStyle={styles.body}
+            keyboardShouldPersistTaps="handled"
+          >
             <View style={styles.pickedRow}>
               <View style={styles.pickedBody}>
                 <Text style={styles.pickedName} numberOfLines={1}>{picked.name}</Text>
@@ -448,6 +490,11 @@ export function SubstituteSheet({ visible, itemId, editingSubItemId = null, onSw
                   onPress={() => {
                     haptics.tap();
                     setPickedId(null);
+                    // A suggestion seeds the ratio fields (handlePickSuggested),
+                    // so un-picking it takes that ratio back too. Left in, it
+                    // rode onto whatever was picked next.
+                    setRatioFrom(baselineRef.current.ratioFrom);
+                    setRatioTo(baselineRef.current.ratioTo);
                   }}
                   hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
                   accessibilityRole="button"
@@ -553,6 +600,12 @@ export function SubstituteSheet({ visible, itemId, editingSubItemId = null, onSw
                   Recipes calling for {item.name.toLowerCase()} show and shop for{' '}
                   {picked.name.toLowerCase()}. Swapped lines say what the recipe wrote, and
                   no recipe is changed.
+                  {/* Only one substitute can be the standing one, and ticking
+                      a second quietly switches the first off
+                      (clearOtherStandingLinks). Said here, before Save. */}
+                  {standing && replacingStanding
+                    ? ` This replaces ${replacingStanding.item.name.toLowerCase()} as what you use for ${item.name.toLowerCase()}.`
+                    : ''}
                 </Text>
               </View>
             </TouchableOpacity>
@@ -595,7 +648,7 @@ export function SubstituteSheet({ visible, itemId, editingSubItemId = null, onSw
                 </View>
               </TouchableOpacity>
             )}
-          </View>
+          </ScrollView>
         ) : (
           <>
             {/* The one place the item-level model is explained, said at the
@@ -633,7 +686,11 @@ export function SubstituteSheet({ visible, itemId, editingSubItemId = null, onSw
                         accessibilityHint="Opens this substitute, where you can edit or remove it"
                       >
                         <Text style={styles.rowName} numberOfLines={1}>{sub.item.name}</Text>
-                        {!!meta && <Text style={styles.rowMeta} numberOfLines={1}>{meta}</Text>}
+                        {/* Wraps rather than clipping: the note is where a
+                            caveat like "not for baking" lives, and one line
+                            beside the Use instead pill cut it off at exactly
+                            the moment it mattered. */}
+                        {!!meta && <Text style={styles.rowMeta}>{meta}</Text>}
                       </TouchableOpacity>
                       {/* Only where the item is on a list to be swapped — see
                           the `onSwap` prop. The tap target for reviewing the
@@ -835,6 +892,7 @@ function makeStyles(colors: Colors) {
       paddingHorizontal: spacing.md,
       paddingBottom: spacing.lg,
     },
+    bodyScroll: { flex: 1 },
     body: { padding: spacing.md },
     pickedRow: {
       flexDirection: 'row',

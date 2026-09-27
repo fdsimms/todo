@@ -62,6 +62,11 @@ describe('mealEventTitle', () => {
     expect(mealEventTitle(entry({ title: '   ' }))).toBe('Dinner');
   });
 
+  it('says a leftover night is leftovers, so nobody cooks the dish again', () => {
+    expect(mealEventTitle(entry({ recipeId: null, leftoverId: 'lo-1', title: 'Chicken stir-fry' })))
+      .toBe('Dinner: Chicken stir-fry (leftovers)');
+  });
+
   it('reads the entry title, never a recipe lookup', () => {
     // The entry keeps its own title in step; this stays free of the recipe store.
     expect(mealEventTitle(entry({ recipeId: 'r-other', title: 'Takeaway curry' })))
@@ -123,7 +128,7 @@ describe('syncMealEvent', () => {
   });
 
   it('mirrors a leftover night too', async () => {
-    // "Dinner: Leftover stir-fry" is a complete answer to the question the
+    // "Dinner: Stir-fry (leftovers)" is a complete answer to the question the
     // calendar is being asked; cookTaskFor skips leftovers because there is
     // nothing to cook, which is a different question.
     expect(await syncMealEvent(entry({

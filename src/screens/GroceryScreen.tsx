@@ -658,9 +658,12 @@ export function GroceryScreen() {
     () => rows.filter((r): r is Extract<ListRow, { type: 'item' }> => r.type === 'item').map(r => r.item.id),
     [rows]
   );
+  // Off the list being shown, not the catalog: an item's own `checked` is its
+  // tick on the list at home, so on an away list the bulk bar read the wrong
+  // ticks, offered the wrong verb, and its Check did nothing.
   const selectedItems = useMemo(
-    () => items.filter(i => selectedIds.has(i.id)),
-    [items, selectedIds]
+    () => listRows.filter(i => selectedIds.has(i.id)),
+    [listRows, selectedIds]
   );
   const allSelectedChecked = selectedItems.length > 0 && selectedItems.every(i => i.checked);
 
@@ -1558,6 +1561,7 @@ export function GroceryScreen() {
           totalCount={selectableItemIds.length}
           category={{
             title: 'Move to Aisle',
+            noun: 'an aisle',
             options: aisleOrder,
             onSet: handleBulkSetAisle,
             onCreate: name => addAisle(name),

@@ -88,7 +88,9 @@ export function ItemDisposalOffer({ itemId, onOpenShelfLife }: Props) {
   }
 
   const lead = `${item.name} is out.`;
-  const rest = 'How did it go?';
+  // The question the two buttons answer, rather than "How did it go?", which
+  // could as easily be asking whether it tasted good.
+  const rest = 'Used up, or did it go bad?';
   return (
     <OfferBanner
       lead={lead}

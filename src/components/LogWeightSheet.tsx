@@ -1,4 +1,4 @@
-import React, { useMemo, useRef, useState } from 'react';
+import React, { useEffect, useMemo, useRef, useState } from 'react';
 import { View, Text, TextInput, StyleSheet, Alert } from 'react-native';
 import { useNavigation } from '@react-navigation/native';
 import { format } from 'date-fns/format';
@@ -57,6 +57,15 @@ export function LogWeightSheet({ visible, onClose }: Props) {
   const [saving, setSaving] = useState(false);
   const weightInputRef = useRef<TextInput>(null);
 
+  // The sheet stays mounted across opens (see `onShow` below), so the day it
+  // was seeded with, or reset to on the last close, can be yesterday's by the
+  // time it opens again: tomorrow morning's weigh-in then saved to the day
+  // before, at midnight. A fresh open starts on today. A draft still holding a
+  // typed weight (the "Open Settings" detour below keeps it) keeps its day too.
+  useEffect(() => {
+    if (visible && text === '') setDay(getLogicalToday());
+  }, [visible]);
+
   const kilograms = parseWeightInput(text, unit);
   const canSave = kilograms !== null && !saving;
 
@@ -105,7 +114,10 @@ export function LogWeightSheet({ visible, onClose }: Props) {
           {
             text: 'Open Settings',
             onPress: () => {
-              close();
+              // `onClose` rather than `close`: the weight just typed stays in
+              // the sheet for when they come back from turning the switch on,
+              // instead of having to be typed a second time.
+              onClose();
               navigateToSettingsEntry(navigation, 'healthWrite');
             },
           },

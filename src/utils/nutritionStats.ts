@@ -61,6 +61,13 @@ export interface NutritionCounts {
    * own coverage clause exists to prevent.
    */
   daysComplete: number;
+  /**
+   * The complete days before today: exactly the pool `nutrientAverages` draws
+   * from, which stops at yesterday. A nutrient's own day count is compared
+   * against this, not against `daysComplete`, or once today was logged past
+   * one meal every average read as covering fewer days than it did.
+   */
+  daysAveraged: number;
   /** Entries in the window, across every day. */
   entries: number;
 }
@@ -116,6 +123,7 @@ export const EMPTY_NUTRITION_COUNTS: NutritionCounts = {
   days: 0,
   daysLogged: 0,
   daysComplete: 0,
+  daysAveraged: 0,
   entries: 0,
 };
 
@@ -165,8 +173,11 @@ export function nutritionCounts(
   }
 
   let daysComplete = 0;
-  for (const slots of slotsByDay.values()) {
-    if (slots.size >= COMPLETE_DAY_SLOTS) daysComplete += 1;
+  let daysAveraged = 0;
+  for (const [dayKey, slots] of slotsByDay) {
+    if (slots.size < COMPLETE_DAY_SLOTS) continue;
+    daysComplete += 1;
+    if (dayKey < window.todayKey) daysAveraged += 1;
   }
 
   return {
@@ -176,6 +187,7 @@ export function nutritionCounts(
     ),
     daysLogged: slotsByDay.size,
     daysComplete,
+    daysAveraged,
     entries: count,
   };
 }
@@ -260,14 +272,23 @@ export function mostLoggedFoods(
 ): LoggedFood[] {
   const byLabel = new Map<string, LoggedFood>();
   for (const entry of inWindow(entries, window)) {
+    // The day's water is a running total, not a food, and logged daily it
+    // topped this list for anybody who drank anything.
+    if (isWaterEntry(entry)) continue;
     const label = entry.label.trim();
     if (!label) continue;
-    const row = byLabel.get(label);
+    // Keyed without case, as the mood contrasts already key a food, so
+    // "Coffee" and "coffee" are one food. The row reads as it was last typed.
+    const key = label.toLowerCase();
+    const row = byLabel.get(key);
     if (row) {
       row.count += 1;
-      if (entry.atISO > row.lastAtISO) row.lastAtISO = entry.atISO;
+      if (entry.atISO > row.lastAtISO) {
+        row.lastAtISO = entry.atISO;
+        row.label = label;
+      }
     } else {
-      byLabel.set(label, { label, count: 1, lastAtISO: entry.atISO });
+      byLabel.set(key, { label, count: 1, lastAtISO: entry.atISO });
     }
   }
   return [...byLabel.values()]
@@ -293,6 +314,9 @@ export function sourceMix(
 ): SourceMix {
   const mix = { ...EMPTY_SOURCE_MIX };
   for (const entry of inWindow(entries, window)) {
+    // Water states a volume, not figures anybody sourced, and it read as the
+    // largest "typed" share of every water drinker's record.
+    if (isWaterEntry(entry)) continue;
     mix[SOURCE_FIELD[entry.nutrition.source]] += 1;
     if (entry.recipeId) mix.fromRecipe += 1;
   }
@@ -392,5 +416,7 @@ export function foodDayInputs(entries: readonly FoodLogEntry[]): FoodDayInput[] 
  * call `hasCookingData` makes.
  */
 export function hasNutritionData(counts: NutritionCounts | null): boolean {
-  return counts !== null && counts.entries > 0;
+  // Days with food in them, not entries: a record of only water has nothing
+  // for this section to say, and used to open on "Days you logged 0 of 30".
+  return counts !== null && counts.daysLogged > 0;
 }

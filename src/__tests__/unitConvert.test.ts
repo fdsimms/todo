@@ -141,6 +141,7 @@ describe('convertQuantity — to US', () => {
 describe('convertQuantity — what it refuses', () => {
   it('never converts a container size', () => {
     expect(convertQuantity('14 oz can', 'metric')).toEqual({ text: '14 oz can', converted: false });
+    expect(convertQuantity('400 g tin', 'us')).toEqual({ text: '400 g tin', converted: false });
     expect(convertQuantity('1 L bottle', 'us')).toEqual({ text: '1 L bottle', converted: false });
     expect(convertQuantity('2 14 oz cans', 'metric')).toEqual({ text: '2 14 oz cans', converted: false });
   });

@@ -7,6 +7,7 @@ import {
   dbUpdateLeftover,
   dbDeleteLeftover,
   dbPurgeOldLeftovers,
+  dbGetMealPlanEntry,
 } from '../db/database';
 import { generateId } from '../utils/id';
 import { dayKeyOf, getLogicalToday } from '../utils/dateUtils';
@@ -374,7 +375,11 @@ export const useLeftoverStore = create<LeftoverStore>((set, get) => ({
     save(set, updated);
     // Freezing drops a use-up task that needsAttention no longer wants;
     // thawing spawns one if the restarted window lands inside the threshold.
-    reconcileLeftoverTask(updated);
+    // Dropped rather than reconciled on the way in, for the reason the grocery
+    // store's own setFrozen gives: a reconcile's delete writes the leftover's
+    // "never", so a container frozen with a live task never got one again.
+    if (frozen) dropLeftoverTask(id);
+    else reconcileLeftoverTask(updated);
   },
 
   splitLeftover(id) {
@@ -420,6 +425,7 @@ export const useLeftoverStore = create<LeftoverStore>((set, get) => ({
     // makes in useTaskStore.ts for a meal-slot completion.
     if (outcome === 'eaten' && useSettingsStore.getState().mealLogPrompt) {
       if (leftover.recipeId) {
+        const source = leftover.sourceEntryId ? dbGetMealPlanEntry(leftover.sourceEntryId) : null;
         useFoodLogStore.getState().setPendingMealLog({
           label: leftover.title,
           // A container has no meal of the day: it was eaten whenever it was
@@ -430,11 +436,16 @@ export const useLeftoverStore = create<LeftoverStore>((set, get) => ({
           dayKey: dayKeyOf(getLogicalToday()),
           recipeId: leftover.recipeId,
           mealPlanEntryId: null,
-          // The stored portion is whatever was left over, which the recipe's own
-          // scale says nothing about, so this is one helping of the dish as
-          // written and the person corrects it.
-          scale: 1,
-          choices: [],
+          // The cooking this came from, when its plan entry still resolves: the
+          // scale it was made at and the either/or answers that went in. A
+          // helping counted in servings reads the same either way (a doubled
+          // batch doubles its servings too), but a weighed container is
+          // measured against the whole dish's cooked weight, and at the
+          // as-written scale a normal container from a doubled pot weighed
+          // more than the entire dish and was refused. A leftover with no
+          // surviving plan entry falls back to the dish as written.
+          scale: source?.recipeScale ?? 1,
+          choices: source?.recipeChoices ?? [],
           // What this container weighed, when it was weighed — the container
           // against the dish's own cooked weight is the fraction of the recipe
           // that was in it, and finishing it as eaten means that fraction was

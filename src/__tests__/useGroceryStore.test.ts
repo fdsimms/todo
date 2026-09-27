@@ -4837,6 +4837,21 @@ describe('setFrozen', () => {
     expect(useUpTaskFor(spinach.id)).toBeUndefined();
   });
 
+  it('drops it without writing the item\'s "never", so the thaw can bring one back', () => {
+    // The real deleteTask stamps `useUpTask: false` unless told not to, which
+    // is right for a swipe and wrong here: an item frozen once with a live task
+    // never got a use-up task again.
+    mockUseUpTasks = true;
+    const spinach = makeItem({ name: 'Spinach', expiresAt: null });
+    seed([spinach]);
+    useGroceryStore.getState().setExpiresAt(spinach.id, '2026-08-20');
+    const task = useUpTaskFor(spinach.id)!;
+
+    useGroceryStore.getState().setFrozen(spinach.id, true);
+
+    expect(mockTaskState.deleteTask).toHaveBeenCalledWith(task.id, { skipGeneratedOptOut: true });
+  });
+
   // The whole point of the thaw: chicken that keeps two days keeps two days
   // from coming out, not two days from a purchase three months ago.
   it('restarts the clock from a fresh shelf life on the way out', () => {
@@ -6804,6 +6819,44 @@ describe('separate shopping lists', () => {
   /** This item's membership of this list, from the store as it now stands. */
   const entryOf = (itemId: string, listId: string | null) =>
     useGroceryStore.getState().listEntries.find(e => e.itemId === itemId && e.listId === listId) ?? null;
+
+  describe('ticking and removing on a named list', () => {
+    // The Reminders mirror's case: it only ever reads the list at home, so its
+    // ticks and removals have to land there whatever list is on screen.
+    it('ticks on the list named rather than the one being shown', () => {
+      const milk = makeItem({ name: 'Milk', onList: true });
+      seed([milk], {
+        lists: [AIRBNB],
+        activeListId: AIRBNB.id,
+        listEntries: [
+          { itemId: milk.id, listId: null, checked: false, sortOrder: 0, choiceGroup: null, addedAt: milk.createdAt },
+          { itemId: milk.id, listId: AIRBNB.id, checked: false, sortOrder: 0, choiceGroup: null, addedAt: milk.createdAt },
+        ],
+      });
+
+      useGroceryStore.getState().setCheckedMany([milk.id], true, { listId: null });
+
+      expect(entryOf(milk.id, null)!.checked).toBe(true);
+      expect(entryOf(milk.id, AIRBNB.id)!.checked).toBe(false);
+    });
+
+    it('removes from the list named, leaving the one being shown alone', () => {
+      const milk = makeItem({ name: 'Milk', onList: true });
+      seed([milk], {
+        lists: [AIRBNB],
+        activeListId: AIRBNB.id,
+        listEntries: [
+          { itemId: milk.id, listId: null, checked: false, sortOrder: 0, choiceGroup: null, addedAt: milk.createdAt },
+          { itemId: milk.id, listId: AIRBNB.id, checked: false, sortOrder: 0, choiceGroup: null, addedAt: milk.createdAt },
+        ],
+      });
+
+      useGroceryStore.getState().removeFromListMany([milk.id], { listId: null });
+
+      expect(entryOf(milk.id, null)).toBeNull();
+      expect(entryOf(milk.id, AIRBNB.id)).not.toBeNull();
+    });
+  });
 
   describe('adding', () => {
     it('lands a typed add on the list being shown', () => {

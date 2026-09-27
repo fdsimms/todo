@@ -1397,4 +1397,31 @@ inset is what just went away) — that asymmetry is the whole design, don't coll
   require, and five of them forgot this. Cloud sync gates on the database handle itself
   (`isSyncableDatabase`), which is stronger still. **A new integration needs its own gate and a test
   for it**, in the same PR.
+- **A generated task the app removes on its own goes through `dropGeneratedTask`, never a
+  reconcile.** `reconcileGeneratedTask` deletes through `deleteTask`, which stamps the source's
+  opt-out as though the person had swiped the task away. That is harmless only when `wanted` is
+  false because the source already means "no" (the setting is off, the leftover was eaten). A
+  reason that reverses by itself is not that: freezing an item or a leftover reconciled its
+  use-up task away and wrote a permanent "never", so it never came back after thawing
+  (`setFrozen` in `useGroceryStore` and `useLeftoverStore` now drop on the way in). Only a delete
+  the user performs records a decision.
+- **After an `await`, check the result still belongs where it's about to be written.** A sheet
+  can close, a cook can move to the next step, and a row can be edited or deleted while a model
+  or Health call is in flight, and five fixes in one audit were this one bug: `InventRecipeSheet`
+  appending a draft after close (`visibleRef`), `CookModeSheet` filing an answer under the wrong
+  step (`stepIdRef`), `recordHealthWrite` stamping sample ids over a corrected or deleted food log
+  row (it re-reads the row), and `RecipeNutritionSheet` showing one recipe's estimate on another
+  (`estimateKey`). Capture what the request was about before the `await` and compare after it;
+  `refreshGuard.ts` is the store-level form of the same check.
+- **An "already exists" check calls the same key function as the refusal it predicts.** The AI
+  recipe sheets pre-checked names with a bare `toLowerCase()` while `addRecipe` refuses on
+  `groceryNameKey`, so "Chicken Tacos" and "Chicken taco" were two names to the sheet and one to
+  the store: a paid draft was made for a dish the store then refused. `recipeNameKey`
+  (`recipeUtils.ts`) is that key, exported so a pre-check can't drift from it. Reuse the store's
+  function; don't write a lookalike.
+- **A caller that isn't a person looking at the grocery screen passes `listId` explicitly.**
+  `setCheckedMany`, `removeFromListMany` and the other list actions default to `activeListId`,
+  which is right for a tap and wrong for the Reminders mirror, sync, the MCP replica or any
+  background pass. The mirror read the home list and then ticked and removed items on whichever
+  list happened to be open. Read from a list and write to that same list, by name.
 - **Patch notes**: when a change in this PR is user-facing, add a new fragment file to `src/patchNotes/entries/` before opening the PR — one JSON file per entry, `{ "message": "...", "date": "YYYY-MM-DD" }`, named after the change (e.g. `icon-action-buttons.json`). Keep the message short and written for someone who isn't reading the diff. Don't edit `src/utils/patchNotes.ts` or `src/utils/patchNotesData.ts` directly (generated, gitignored). Skip it for internal-only changes (refactors, tests, CI, tooling).

@@ -687,6 +687,22 @@ export function cleanRecipeName(raw: string): string {
 }
 
 /**
+ * The key a recipe named `raw` is stored under, and so the one `addRecipe`
+ * refuses a second recipe on (`Recipe.nameKey` is unique).
+ *
+ * One function because every "is this already in the box?" check has to
+ * agree with the refusal it is predicting. The AI sheets each kept their own
+ * (a bare lowercase) and it didn't: "Chicken Tacos" and "Chicken taco" are one
+ * key here and two there, so a paid draft was made for a dish the box then
+ * refused, and the fallback lookup that followed couldn't find the recipe the
+ * store had refused it for.
+ */
+export function recipeNameKey(raw: string): string {
+  const clean = cleanRecipeName(raw);
+  return groceryNameKey(clean) || clean.toLowerCase();
+}
+
+/**
  * Trims and caps a source byline ("NYT Cooking"). Empty is a valid answer —
  * no attribution. `maxLength` defaults to a byline's own ceiling; callers
  * with a shorter field (a page number) pass their own.

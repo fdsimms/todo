@@ -1,4 +1,6 @@
 import {
+  ESTIMATE_DESCRIPTION_MAX_LENGTH,
+  ESTIMATE_REQUEST_MAX_LENGTH,
   describeEstimate,
   estimateToPanel,
   readNutritionEstimate,
@@ -282,6 +284,17 @@ describe('estimateToPanel', () => {
 });
 
 describe('refineDescription', () => {
+  it('always fits inside the request cap, answers and all', () => {
+    // The request used to be capped at the description's own length, which
+    // cut the answers off any description near its limit.
+    const longest = refineDescription('x'.repeat(ESTIMATE_DESCRIPTION_MAX_LENGTH), [
+      { prompt: 'p'.repeat(80), answer: 'a'.repeat(80) },
+      { prompt: 'q'.repeat(80), answer: 'b'.repeat(80) },
+    ]);
+    expect(longest.length).toBeLessThanOrEqual(ESTIMATE_REQUEST_MAX_LENGTH);
+    expect(longest.slice(0, ESTIMATE_REQUEST_MAX_LENGTH).endsWith('b'.repeat(80))).toBe(true);
+  });
+
   it('states the answers alongside what was typed', () => {
     expect(refineDescription('Burger and fries', [
       { prompt: 'Which size?', answer: 'Large' },

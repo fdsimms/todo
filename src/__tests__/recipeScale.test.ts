@@ -124,6 +124,30 @@ describe('scaleQuantity', () => {
     expect(text('14 oz can', 3)).toBe('3 14 oz cans');
   });
 
+  it('treats a British tin, packet, carton or tub as the container it is', () => {
+    // A 600 g tin is not something anybody sells.
+    expect(text('400 g tin', 2)).toBe('2 400 g tins');
+    expect(text('2 400 g tins', 1.5)).toBe('3 400 g tins');
+    expect(text('200 g packet', 2)).toBe('2 200 g packets');
+    expect(text('500 ml carton', 2)).toBe('2 500 ml cartons');
+    expect(text('150 g tub', 3)).toBe('3 150 g tubs');
+    expect(scaleQuantity('400 g tin', 1.5)).toEqual({ text: '400 g tin', scaled: false });
+  });
+
+  it('refuses a line carrying a second measure rather than scaling half of it', () => {
+    // Only the leading amount is parsed, so these used to come out with the
+    // first number scaled and the second left as written.
+    for (const compound of ['2 cups plus 2 tbsp', '2 cups, plus 2 tbsp', '2 tbsp + 1 tsp', '1 cup and 2 tbsp', '1 lb 2 oz', '200g/7oz', '200 g / 7 oz']) {
+      expect(scaleQuantity(compound, 2)).toEqual({ text: compound, scaled: false });
+    }
+  });
+
+  it('still scales a line whose trailing number is part of the food, not a measure', () => {
+    expect(text('1 cup 2% milk', 2)).toBe('2 cups 2% milk');
+    expect(text('2 (14 oz) cans', 2)).toBe('4 (14 oz) cans');
+    expect(text('1-inch piece', 2)).toBe('2-inch piece');
+  });
+
   it('refuses to halve an uncounted sized container', () => {
     // Half of "one 14 oz can" has no expression in this notation.
     expect(scaleQuantity('14 oz can', 0.5)).toEqual({ text: '14 oz can', scaled: false });

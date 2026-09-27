@@ -418,7 +418,7 @@ export function MealEntrySheet({
               <SheetActionRow
                 icon="journal-outline"
                 color={colors.accent}
-                label="View in Food Log"
+                label="View in food log"
                 onPress={() => { haptics.tap(); dismiss(onViewFoodLogEntry); }}
                 accessibilityLabel="View this meal's food log entry"
               />

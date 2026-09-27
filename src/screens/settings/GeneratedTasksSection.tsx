@@ -210,6 +210,13 @@ export function GeneratedTasksSection() {
     if (kind === 'calendarReview' && !s.calendarReadEnabled) {
       return { setting: 'Read my calendar', screen: 'Calendar' };
     }
+    // The weigh-in needs both Health switches — see generatorSwitchedOn.
+    if (kind === 'weighIn' && !s.healthReadEnabled) {
+      return { setting: 'Read Apple Health', screen: 'Health' };
+    }
+    if (kind === 'weighIn' && !s.healthWriteEnabled) {
+      return { setting: 'Log to Health', screen: 'Health' };
+    }
     return null;
   };
 
@@ -218,7 +225,7 @@ export function GeneratedTasksSection() {
     if (blocker) {
       Alert.alert(
         `Turn on “${blocker.setting}” first`,
-        `This adds tasks from something the app isn't allowed to read yet. Turn on “${blocker.setting}” under ${blocker.screen} in Settings, then come back.`,
+        `This needs “${blocker.setting}”, which is off. Turn it on under ${blocker.screen} in Settings, then come back.`,
       );
       return;
     }
@@ -345,7 +352,7 @@ export function GeneratedTasksSection() {
     if (blocker) return `Needs “${blocker.setting}”, which is off`;
     if (!enabledOf(spec.kind)) return spec.offHint;
     if (spec.kind === 'mealPlanNudge') {
-      return `A task appears ${WEEKDAY_NAMES[s.mealPlanNudgeWeekday]} at ${formatHHMM(s.mealPlanNudgeTime)} to plan that week`;
+      return `A stack appears ${WEEKDAY_NAMES[s.mealPlanNudgeWeekday]} at ${formatHHMM(s.mealPlanNudgeTime)}, with a task for each day of that week to plan its meals`;
     }
     if (spec.kind === 'calendarReview' && s.calendarReviewTimeSegment) {
       return `Adds a task each day, held back until ${s.calendarReviewTimeSegment}, to review tomorrow's events`;

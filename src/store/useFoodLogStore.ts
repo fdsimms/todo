@@ -132,6 +132,18 @@ export interface PendingMealLog {
    * is the ordinary case.
    */
   grams: number | null;
+  /**
+   * True when a person tapped to log this meal (the food log's "Planned for
+   * today" row, the meal plan's "Log this meal") rather than the app offering
+   * it on a meal's finish.
+   *
+   * It decides what happens when the recipe turns out to have no figures to
+   * measure it by. Unasked, the prompt quietly doesn't come up, which is what
+   * the setting promises. Asked, doing nothing reads as a broken button, so
+   * the prompt hands the meal to the search sheet instead — the same answer
+   * a meal with no recipe gets.
+   */
+  asked?: boolean;
 }
 
 /**
@@ -357,8 +369,10 @@ interface FoodLogStore {
    * caller's question to ask (`wantsMealLogPrompt`, `mealLog.ts`) — a person
    * tapping a planned meal has asked for it outright, and a switch meaning
    * "stop interrupting me" was never meant to answer that.
+   *
+   * `asked` says which of the two it is — see `PendingMealLog.asked`.
    */
-  offerMealLog: (entry: MealPlanEntry) => void;
+  offerMealLog: (entry: MealPlanEntry, opts?: { asked?: boolean }) => void;
 
   /**
    * True when Health has just refused a meal and the person has not been told.
@@ -430,7 +444,20 @@ function recordHealthWrite(entry: FoodLogEntry, result: FoodWriteResult, set: Fo
   if (result.outcome !== 'written') return;
   if (settings.healthFoodWriteRefusalSeen) settings.setHealthFoodWriteRefusalSeen(false);
 
-  dbUpdateFoodLogEntry({ ...entry, healthSampleIds: result.sampleIds });
+  // The row as it stands now, not as it stood when the write set off. The
+  // write is a round trip to HealthKit, and the entry can be deleted, moved
+  // (a re-date is a delete and a fresh row) or corrected before it comes back.
+  // Stamping the snapshot wrote the old figures back over a correction and
+  // left a moved or deleted entry's samples in Health with nothing pointing at
+  // them. So a row that is gone, or whose figures are no longer what was just
+  // written, takes the samples back out instead: whatever changed it has
+  // already sent Health its own write.
+  const fresh = dbGetFoodLogEntry(entry.id);
+  if (!fresh || healthFiguresDiffer(entry, fresh)) {
+    void retractFoodEntryFromHealth(result.sampleIds);
+    return;
+  }
+  dbUpdateFoodLogEntry({ ...fresh, healthSampleIds: result.sampleIds });
   const stamp = (e: FoodLogEntry) =>
     (e.id === entry.id ? { ...e, healthSampleIds: result.sampleIds } : e);
   set(s => ({
@@ -685,7 +712,7 @@ export const useFoodLogStore = create<FoodLogStore>((set, get) => ({
     set({ pendingManualMealLog: pending });
   },
 
-  offerMealLog(entry) {
+  offerMealLog(entry, opts) {
     if (entry.recipeId) {
       set({
         pendingManualMealLog: null,
@@ -701,6 +728,7 @@ export const useFoodLogStore = create<FoodLogStore>((set, get) => ({
           // Only a container that was weighed on the way into the fridge
           // arrives with a figure (see finishLeftover).
           grams: null,
+          asked: opts?.asked === true,
         },
       });
       return;

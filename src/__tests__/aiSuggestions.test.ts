@@ -11,6 +11,7 @@ import {
   suggestGroceryAisles,
   suggestRecipeGroceries,
   extractRecipe,
+  extractCalendarEvents,
   extractReceipt,
   suggestMealIdeas,
   draftMealRecipe,
@@ -36,6 +37,7 @@ const TEST_AI_FEATURE_CONFIG = {
   mealIdeas: { enabled: true, model: 'claude-haiku-4-5-20251001' },
   substitutes: { enabled: true, model: 'claude-haiku-4-5-20251001' },
   receiptImport: { enabled: true, model: 'claude-sonnet-5' },
+  calendarImport: { enabled: true, model: 'claude-sonnet-5' },
   nutritionLabelPhoto: { enabled: true, model: 'claude-sonnet-5' },
   recipeNutritionEstimate: { enabled: true, model: 'claude-sonnet-5' },
 };
@@ -49,6 +51,7 @@ let mockSettings: {
   anthropicApiKey: string;
   aiFeatureConfig: typeof TEST_AI_FEATURE_CONFIG;
   onDeviceAiEnabled: boolean;
+  dayResetTime: string;
 };
 
 const resetMockSettings = () => {
@@ -56,6 +59,8 @@ const resetMockSettings = () => {
     anthropicApiKey: 'test-key-does-not-hit-network',
     aiFeatureConfig: JSON.parse(JSON.stringify(TEST_AI_FEATURE_CONFIG)),
     onDeviceAiEnabled: true,
+    // extractCalendarEvents tells the model today's logical date.
+    dayResetTime: '00:00',
   };
 };
 resetMockSettings();
@@ -500,6 +505,16 @@ describe('describeAIError', () => {
     expect(describeAIError(new Error('Response was truncated'))).toContain('cut off');
   });
 
+  it('says demo mode rather than blaming the connection', () => {
+    expect(describeAIError(new Error('AI features are off in demo mode.'))).toBe('AI features are off in demo mode.');
+  });
+
+  it('says a reply held nothing usable rather than blaming the connection', () => {
+    for (const e of [new Error('No suggestions returned'), new Error('No answer returned'), new SyntaxError('Unexpected token')]) {
+      expect(describeAIError(e)).toBe('Nothing usable came back. Try again.');
+    }
+  });
+
   it('falls back to a network message for an unrecognized error', () => {
     expect(describeAIError(new Error('Network request failed'))).toContain('connection');
   });
@@ -832,6 +847,17 @@ describe('extractRecipe', () => {
       steps: [],
       prepTasks: [],
     });
+  });
+
+  it('reads a list field that came back as something other than a list as empty', async () => {
+    // A string or an object here used to throw a TypeError in the parse loop,
+    // which the sheets reported as "Network request failed".
+    mockFetchOnce(
+      toolUseResponse('extract_recipe', { name: 'Weeknight Chili', items: 'ground beef, beans' })
+    );
+    const result = await extractRecipe('some recipe', AISLES);
+    expect(result.name).toBe('Weeknight Chili');
+    expect(result.ingredients).toEqual([]);
   });
 
   it('reads a non-serving yield alongside servings', async () => {
@@ -2073,6 +2099,15 @@ describe('extractReceipt', () => {
       });
     });
 
+    it('refuses a date that does not exist rather than rolling it over', async () => {
+      // new Date('2026-02-30') is March 2, not an error, so the shape and NaN
+      // checks alone filed the trip two days late.
+      mockFetchOnce(toolUseResponse('extract_receipt', { storeName: '', lines: [], date: '2026-02-30' }));
+      expect((await extractReceipt(OCR_TEXT)).date).toBeNull();
+      mockFetchOnce(toolUseResponse('extract_receipt', { storeName: '', lines: [], date: '2028-02-29' }));
+      expect((await extractReceipt(OCR_TEXT)).date).toBe('2028-02-29');
+    });
+
     it('makes no request at all for an empty reading', async () => {
       const spy = jest.spyOn(global, 'fetch');
       await expect(extractReceipt('   ')).resolves.toEqual({
@@ -2126,6 +2161,21 @@ describe('extractReceipt', () => {
 // ============================================================================
 // readLabelPhotoWithAi / nutritionLabelPhotoAiAvailable
 // ============================================================================
+
+describe('extractCalendarEvents', () => {
+  it('refuses a date that does not exist rather than rolling it over', async () => {
+    // Same check as the receipt's: new Date('2026-02-30') is March 2, so the
+    // event would have been drafted two days late.
+    mockFetchOnce(toolUseResponse('extract_calendar_events', {
+      events: [
+        { title: 'Dentist', date: '2026-02-30', time: '', location: '', notes: '' },
+        { title: 'Flight', date: '2028-02-29', time: '', location: '', notes: '' },
+      ],
+    }));
+    const events = await extractCalendarEvents('Dentist Feb 30. Flight Feb 29 2028.');
+    expect(events.map(e => e.date)).toEqual([null, '2028-02-29']);
+  });
+});
 
 describe('nutritionLabelPhotoAiAvailable', () => {
   it('is true with the feature on and a key configured', () => {

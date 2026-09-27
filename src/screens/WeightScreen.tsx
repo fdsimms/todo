@@ -1,9 +1,9 @@
-import React, { useEffect, useMemo, useState } from 'react';
+import React, { useCallback, useEffect, useMemo, useState } from 'react';
 import { View, Text, ScrollView, StyleSheet, TouchableOpacity } from 'react-native';
 import Ionicons from '@expo/vector-icons/Ionicons';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { useBottomTabBarHeight } from '@react-navigation/bottom-tabs';
-import { useRoute } from '@react-navigation/native';
+import { useFocusEffect, useRoute } from '@react-navigation/native';
 import { navigationRef } from '../navigation/navigationRef';
 import { format } from 'date-fns/format';
 import { addDays } from 'date-fns/addDays';
@@ -148,9 +148,15 @@ export function WeightScreen() {
     setGoalOpen(true);
   }, [route.params?.openGoal, handledOpenGoal]);
 
-  useEffect(() => {
-    if (healthReadEnabled) void refreshWeight();
-  }, [healthReadEnabled, refreshWeight]);
+  // On every visit, not only the first: the screen stays mounted for the
+  // session, so a weigh-in the scale sent to Health, or a day rolling over,
+  // never showed while the app stayed open. refreshWeight guards itself
+  // against overlapping reads.
+  useFocusEffect(
+    useCallback(() => {
+      if (healthReadEnabled) void refreshWeight();
+    }, [healthReadEnabled, refreshWeight]),
+  );
 
   const points = weightSeries ?? [];
   // Whether Health has anything at all, over the full fetch window — this is

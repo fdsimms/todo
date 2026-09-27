@@ -28,7 +28,7 @@ import {
   clampCookAnswer, COOK_QUESTION_MAX_LENGTH, type CookQuestionContext,
 } from '../utils/cookQuestions';
 import {
-  ESTIMATE_DESCRIPTION_MAX_LENGTH, MAX_CONTEXT_FOODS, MAX_ESTIMATE_QUESTIONS, readNutritionEstimate,
+  ESTIMATE_REQUEST_MAX_LENGTH, MAX_CONTEXT_FOODS, MAX_ESTIMATE_QUESTIONS, readNutritionEstimate,
   type EstimateContextFood, type NutritionEstimate, type RawNutritionEstimate,
 } from '../utils/nutritionEstimate';
 import {
@@ -156,6 +156,14 @@ export function describeAIError(error: unknown): string {
   if (message === 'Response was truncated') return 'The response was cut off. Try again.';
   if (message === 'No estimate returned') {
     return 'That description could not be read into figures. Try naming the dish and the place.';
+  }
+  // Neither of these is the network, and the fallthrough below sends
+  // somebody to check a connection that was fine. Demo mode refuses every
+  // request on purpose (see `callAnthropic`); the other two are a reply that
+  // came back with nothing usable in it, or with JSON that didn't parse.
+  if (message === 'AI features are off in demo mode.') return 'AI features are off in demo mode.';
+  if (message === 'No suggestions returned' || message === 'No answer returned' || error instanceof SyntaxError) {
+    return 'Nothing usable came back. Try again.';
   }
   return 'Network request failed. Check your connection.';
 }
@@ -825,7 +833,10 @@ function parseExtractedItems(
       optional?: unknown; excludeFromShoppingList?: unknown;
     }
   > | undefined;
-  if (!items) return [];
+  // Not an array, rather than absent: a reply carrying an object or a string
+  // here otherwise threw a TypeError in the loop below, which surfaced as
+  // "Network request failed".
+  if (!Array.isArray(items)) return [];
 
   const seen = new Set<string>();
   const result: RecipeGroceryItem[] = [];
@@ -988,7 +999,8 @@ function parseExtractedSteps(raw: unknown): string[] {
 
 function parseExtractedPrepTasks(raw: unknown): ExtractedPrepTask[] {
   const items = raw as Array<{ title?: unknown; daysAhead?: unknown }> | undefined;
-  if (!items) return [];
+  // Not an array rather than absent, for the reason parseExtractedItems gives.
+  if (!Array.isArray(items)) return [];
   const result: ExtractedPrepTask[] = [];
   for (const item of items) {
     if (typeof item?.title !== 'string') continue;
@@ -2064,8 +2076,11 @@ export async function extractReceipt(source: string | RecipeImage): Promise<Extr
           ]
         : prompt,
     }],
-    // Only an upload needs the longer window; text is an ordinary request.
-  }, apiKey, model, image ? IMAGE_REQUEST_TIMEOUT_MS : undefined);
+    // The longer window either way. It was image-only, on the reasoning that
+    // only an upload is slow, but what a receipt costs is the reply: every
+    // line it charged for, written back out. Read on the device first and
+    // sent as text, a long receipt's reply outlasted the ordinary window.
+  }, apiKey, model, IMAGE_REQUEST_TIMEOUT_MS);
 
   const toolUse = data.content?.find(c => c.type === 'tool_use');
   const input = toolUse?.input as {
@@ -2091,10 +2106,26 @@ export async function extractReceipt(source: string | RecipeImage): Promise<Extr
  * through a real calendar date before anything downstream trusts it as one.
  */
 function parseReceiptDate(raw: string): string | null {
+  return parseModelDayKey(raw);
+}
+
+/**
+ * A model's `YYYY-MM-DD` if it names a day that exists, else null. Shared by
+ * the receipt's date and a calendar event's, which are the two places a model
+ * hands back a day for the app to file something on.
+ *
+ * A date that doesn't exist ("2026-02-30") is rolled over by Date rather than
+ * refused, so a shape check and a NaN check alone would have filed it on
+ * March 2. It's only a real date if it reads back as the day, month and year
+ * it was written as.
+ */
+function parseModelDayKey(raw: string): string | null {
   const trimmed = raw.trim();
   if (!/^\d{4}-\d{2}-\d{2}$/.test(trimmed)) return null;
   const parsed = new Date(`${trimmed}T00:00:00`);
-  return Number.isNaN(parsed.getTime()) ? null : trimmed;
+  const [y, m, d] = trimmed.split('-').map(Number);
+  if (parsed.getFullYear() !== y || parsed.getMonth() !== m - 1 || parsed.getDate() !== d) return null;
+  return trimmed;
 }
 
 /**
@@ -2374,16 +2405,12 @@ export async function extractCalendarEvents(source: string | RecipeImage): Promi
 }
 
 /**
- * Validates the model's date string into a real `YYYY-MM-DD`, or null — same
- * check parseReceiptDate makes above, and for the same reason: a model can
- * return well-formed-looking nonsense ("2026-13-40").
+ * Validates the model's date string into a real `YYYY-MM-DD`, or null — the
+ * same check parseReceiptDate makes above, and for the same reason: a model
+ * can return well-formed-looking nonsense ("2026-13-40", "2026-02-30").
  */
 function parseExtractedEventDate(raw: unknown): string | null {
-  if (typeof raw !== 'string') return null;
-  const trimmed = raw.trim();
-  if (!/^\d{4}-\d{2}-\d{2}$/.test(trimmed)) return null;
-  const parsed = new Date(`${trimmed}T00:00:00`);
-  return Number.isNaN(parsed.getTime()) ? null : trimmed;
+  return typeof raw === 'string' ? parseModelDayKey(raw) : null;
 }
 
 /** Validates the model's time string into a real 24-hour `HH:MM`, or null. */
@@ -2491,7 +2518,9 @@ export async function estimateMealNutrition(
 ): Promise<NutritionEstimate> {
   const { apiKey, model } = requireFeature('nutritionEstimate');
 
-  const asked = description.trim().slice(0, ESTIMATE_DESCRIPTION_MAX_LENGTH);
+  // Capped at the refined length rather than the description's own: the
+  // answers ride on the end of it (`refineDescription`).
+  const asked = description.trim().slice(0, ESTIMATE_REQUEST_MAX_LENGTH);
   if (!asked) throw new Error('No estimate returned');
 
   // Named foods with their figures, for a description that refers to one of

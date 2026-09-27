@@ -95,6 +95,16 @@ export function listedAnywhere(entries: readonly GroceryListEntry[]): ReadonlySe
  * Sorted by the list's own walk order so the projection is a drop-in for the
  * `items` array it replaces.
  */
+/**
+ * The last projection built for each item on each list, so an unchanged row
+ * comes back as the same object. Rebuilt fresh every time, every row was a new
+ * object on every tick of any one row, which defeated `React.memo` on
+ * `GroceryRow` and re-rendered the whole list per tap. Keyed weakly on the
+ * catalog row, which the store replaces rather than mutates, so a changed item
+ * misses on its own and a deleted one takes its entry with it.
+ */
+const projectionCache = new WeakMap<GroceryItem, Map<string | null, GroceryItem>>();
+
 export function itemsOnList(
   items: readonly GroceryItem[],
   entries: readonly GroceryListEntry[],
@@ -107,13 +117,30 @@ export function itemsOnList(
   for (const item of items) {
     const entry = mine.get(item.id);
     if (!entry) continue;
-    out.push({
+    let byList = projectionCache.get(item);
+    const cached = byList?.get(listId);
+    if (
+      cached
+      && cached.checked === entry.checked
+      && cached.sortOrder === entry.sortOrder
+      && cached.choiceGroup === entry.choiceGroup
+    ) {
+      out.push(cached);
+      continue;
+    }
+    const projected: GroceryItem = {
       ...item,
       onList: true,
       checked: entry.checked,
       sortOrder: entry.sortOrder,
       choiceGroup: entry.choiceGroup,
-    });
+    };
+    if (!byList) {
+      byList = new Map();
+      projectionCache.set(item, byList);
+    }
+    byList.set(listId, projected);
+    out.push(projected);
   }
   out.sort((a, b) => a.sortOrder - b.sortOrder || a.name.localeCompare(b.name));
   return out;

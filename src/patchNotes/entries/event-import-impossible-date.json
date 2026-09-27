@@ -1,0 +1,4 @@
+{
+  "message": "Importing an event from a confirmation leaves the date blank when the one it read doesn't exist (like February 30), instead of moving it into the next month.",
+  "date": "2026-09-27"
+}

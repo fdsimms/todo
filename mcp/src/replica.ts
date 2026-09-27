@@ -717,11 +717,15 @@ export function openReplica(path = process.env.TODO_DB_PATH ?? 'todo.db'): Repli
       if (!item.onList) throw new Error(`"${item.name}" is not on the list.`);
 
       // A recipe's claim on the quantity ends with the shop, so it does not
-      // ride back onto the catalog row.
+      // ride back onto the catalog row, and nor does its credit: the same
+      // parking `useGroceryStore.removeFromList` does. Left on, a hand-typed
+      // re-add weeks later still read 'For "Chili"'.
       const parked: GroceryItem = {
         ...item,
         quantity: item.quantityFromRecipe ? null : item.quantity,
         quantityFromRecipe: false,
+        sourceRecipeId: null,
+        sourceRecipeTitle: null,
       };
       db.dbUpdateGroceryItem(parked);
       db.dbDeleteGroceryListEntry(id, null);

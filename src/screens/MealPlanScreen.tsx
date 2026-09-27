@@ -476,6 +476,18 @@ export function MealPlanScreen() {
     return byDay;
   }, [days, entries, weekFoodLog]);
   /**
+   * The row "View in food log" opens: the entry linked to this meal outright,
+   * or else the first thing logged in its slot that day. The second is the
+   * (day, slot) reading that already puts "Logged" on the meal's row
+   * (`mealLogCoverage.ts`), so a lunch typed straight into the food log read
+   * as logged here with no way through to what was logged.
+   */
+  const viewEntry = useMemo(
+    () => loggedEntry
+      ?? (selected ? coverageByDay.get(selected.date)?.get(selected.slot)?.logged[0] ?? null : null),
+    [loggedEntry, selected, coverageByDay]
+  );
+  /**
    * What an "add these to the list" tap asked for — the whole week, or one
    * day. Three scopes exist (a meal, a day, a week) and the other two share
    * one sheet, so what varies is held as data at the tap: the range the sheet
@@ -2124,9 +2136,9 @@ export function MealPlanScreen() {
         baseServingsMax={selectedRecipe?.servingsMax}
         onSetCooked={selected ? cooked => setCooked(selected, cooked) : undefined}
         onViewFoodLogEntry={
-          loggedEntry
+          viewEntry
             ? () => navigation.navigate('FoodLog', {
-                openEntry: { dayKey: loggedEntry.dayKey, entryId: loggedEntry.id, nonce: Date.now() },
+                openEntry: { dayKey: viewEntry.dayKey, entryId: viewEntry.id, nonce: Date.now() },
               })
             : undefined
         }
@@ -2135,7 +2147,7 @@ export function MealPlanScreen() {
           // reading the completion prompt and the nudge task now use, so the
           // sheet can't invite a second log of a dinner already recorded.
           selected && (coverageByDay.get(selected.date)?.get(selected.slot)?.logged.length ?? 0) === 0
-            ? () => offerMealLog(selected)
+            ? () => offerMealLog(selected, { asked: true })
             : undefined
         }
         onOpenRecipe={

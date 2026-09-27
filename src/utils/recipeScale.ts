@@ -78,6 +78,12 @@ export interface ScaledQuantity {
  *   this way at all and refuses.
  * - **A counted sized container** ("2 14 oz cans") — the count scales, the size
  *   never does.
+ * - **A second measure after the first** ("2 cups plus 2 tbsp", "1 lb 2 oz",
+ *   "200 g/7 oz") — verbatim, flagged, like anything else this can't read.
+ *   Only the leading amount is ever parsed, so scaling one of these doubled
+ *   the cups and left the tablespoons ("4 cups plus 2 tbsp"), or doubled the
+ *   grams and left the ounces beside them disagreeing. Refusing is what the
+ *   rest of this module does with a shape it can't scale whole.
  * - **A range** ("1 to 2 tbsp", "1-2 tbsp") — both ends scale by the same
  *   factor and the unit agrees with the scaled high end, so "1 to 2 tbsp"
  *   halved is "1/2 to 1 tbsp", not the low end alone with the high end
@@ -102,6 +108,13 @@ export interface ScaledQuantity {
  * be lying about how much fruit the doubled recipe actually needs. Dropping
  * it is safer than leaving stale information in a scaled ingredient list.
  */
+/**
+ * A second amount straight after the first measure: joined by "plus", "+",
+ * "and" or a slash, or simply the next number and its unit ("1 lb 2 oz").
+ * A number followed by "%" is a product ("1 cup 2% milk"), not a measure.
+ */
+const SECOND_MEASURE = /^\s*[,;]?\s*(?:(?:plus|and)\s+|\+\s*|\/\s*)?\d+(?:[.,]\d+)?(?:\s*\/\s*\d+)?\s*[a-z]/i;
+
 function stripSourceCountAside(trailing: string): string {
   return trailing.replace(/\s*\([^()]*\)\s*$/, '');
 }
@@ -147,6 +160,8 @@ export function scaleQuantity(quantity: string, factor: number): ScaledQuantity 
       scaled: true,
     };
   }
+
+  if (SECOND_MEASURE.test(q.trailing)) return unchanged;
 
   if (q.rangeMax) {
     const scaledMin = multiplyRational(q.amount, multiplier);

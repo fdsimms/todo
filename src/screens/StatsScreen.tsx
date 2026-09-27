@@ -934,7 +934,13 @@ export function StatsScreen() {
             <View style={styles.section}>
               <Text style={styles.sectionTitle}>EATING (LAST {COOKING_DAYS} DAYS)</Text>
               <View style={styles.card}>
-                <View style={[styles.row, styles.rowBorder]}>
+                <View
+                  style={[
+                    styles.row,
+                    (eating.counts.daysComplete < eating.counts.daysLogged || eating.averages.length > 0)
+                      && styles.rowBorder,
+                  ]}
+                >
                   <Text style={styles.rowText}>Days you logged</Text>
                   <Text style={styles.cookValue}>
                     {eating.counts.daysLogged} of {eating.counts.days}
@@ -943,7 +949,7 @@ export function StatsScreen() {
                 {/* Named rather than quietly filtered out of the averages: this
                     is how the card says what its figures are built on. */}
                 {eating.counts.daysComplete < eating.counts.daysLogged && (
-                  <View style={[styles.row, styles.rowBorder]}>
+                  <View style={[styles.row, eating.averages.length > 0 && styles.rowBorder]}>
                     <Text style={styles.rowText}>Logged past one meal</Text>
                     <Text style={styles.cookValue}>
                       {eating.counts.daysComplete} of {eating.counts.daysLogged}
@@ -957,7 +963,9 @@ export function StatsScreen() {
                   >
                     <View style={styles.instanceMain}>
                       <Text style={styles.rowText}>{NUTRIENT_LABEL[row.key].label} a day</Text>
-                      {row.days < eating.counts.daysComplete && (
+                      {/* Against the days the averages are drawn from,
+                          which stop at yesterday, not every complete day. */}
+                      {row.days < eating.counts.daysAveraged && (
                         <Text style={styles.instanceMeta}>
                           across {row.days} {row.days === 1 ? 'day' : 'days'} that stated it
                         </Text>
@@ -998,16 +1006,21 @@ export function StatsScreen() {
                     </View>
                   </View>
                 ))}
+                {/* The sources under the label rather than beside it: three
+                    or four of them can't share a 390pt row with it, and the
+                    label was being crushed to a sliver. */}
                 <View style={styles.row}>
-                  <Text style={styles.rowText}>Where the figures came from</Text>
-                  <Text style={styles.cookValue}>
-                    {[
-                      eating.mix.label > 0 ? `${eating.mix.label} label` : null,
-                      eating.mix.database > 0 ? `${eating.mix.database} database` : null,
-                      eating.mix.manual > 0 ? `${eating.mix.manual} typed` : null,
-                      eating.mix.estimated > 0 ? `${eating.mix.estimated} estimated` : null,
-                    ].filter(Boolean).join(' · ')}
-                  </Text>
+                  <View style={styles.instanceMain}>
+                    <Text style={styles.rowText}>Where the figures came from</Text>
+                    <Text style={styles.mixLine}>
+                      {[
+                        eating.mix.label > 0 ? `${eating.mix.label} label` : null,
+                        eating.mix.database > 0 ? `${eating.mix.database} database` : null,
+                        eating.mix.manual > 0 ? `${eating.mix.manual} typed` : null,
+                        eating.mix.estimated > 0 ? `${eating.mix.estimated} estimated` : null,
+                      ].filter(Boolean).join(' · ')}
+                    </Text>
+                  </View>
                 </View>
               </View>
             </View>
@@ -1291,6 +1304,13 @@ const makeStyles = (colors: Colors) =>
       color: colors.textTertiary,
       fontSize: font.xs,
       fontWeight: '500',
+    },
+    // The source mix is information rather than a dim aside, so it reads in
+    // textSecondary, the grey the rest of this card uses for its figures.
+    mixLine: {
+      color: colors.textSecondary,
+      fontSize: font.sm,
+      marginTop: 2,
     },
     habitRow: {
       paddingHorizontal: spacing.md,

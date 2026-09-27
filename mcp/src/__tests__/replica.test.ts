@@ -441,6 +441,22 @@ describe('the replica', () => {
       expect(replica.groceryItems().map(i => i.id)).toEqual([milk.id]);
     });
 
+    it('drops the recipe credit along with the recipe\'s quantity', () => {
+      // What the app's own removeFromList does. Kept, a hand-typed re-add
+      // weeks later still read 'For "Chili"'.
+      const beans = replica.addGroceryItem('beans').item;
+      mockRaw.runSync(
+        'UPDATE grocery_items SET source_recipe_id = ?, source_recipe_title = ? WHERE id = ?',
+        ['r-chili', 'Chili', beans.id]
+      );
+      replica.refresh();
+
+      const parked = replica.removeFromGroceryList(beans.id);
+
+      expect(parked.sourceRecipeId).toBeNull();
+      expect(parked.sourceRecipeTitle).toBeNull();
+    });
+
     it('refuses an unknown id rather than doing nothing', () => {
       expect(() => replica.addGroceryItem('   ')).toThrow(/needs a name/);
       expect(() => replica.setGroceryChecked('nope', true)).toThrow(/No grocery item/);

@@ -329,6 +329,23 @@ export function titleForEntry(
   return entry.title;
 }
 
+/**
+ * An entry's title as read somewhere the snowflake on its plan row can't be
+ * seen — the shared calendar event, the week pasted into Messages.
+ *
+ * A leftover is planned under its dish's own name (`mealTitleForLeftover`),
+ * so without this Wednesday's container of Monday's stir-fry reads as
+ * cooking stir-fry again, to exactly the people who'd defrost the chicken for
+ * it. A suffix rather than "Leftover …" in front, because the front would
+ * mean lowercasing a name the user typed ("Grandma's chili"), and a title
+ * that already says so is left alone so the demo seed's hand-written
+ * "Leftover chicken stir-fry" doesn't come out saying it twice.
+ */
+export function mealTitleOffPlan(entry: Pick<MealPlanEntry, 'leftoverId'>, title: string): string {
+  if (!entry.leftoverId || /\bleftovers?\b/i.test(title)) return title;
+  return `${title} (leftovers)`;
+}
+
 /** Index for titleForEntry — built once per render rather than per row. */
 export function recipeIndex(recipes: readonly Recipe[]): Map<string, Recipe> {
   return new Map(recipes.map(r => [r.id, r]));

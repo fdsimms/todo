@@ -12,6 +12,7 @@ import {
   entriesForSlot,
   isKeyInRange,
   mealPlanPurgeCutoffKey,
+  mealTitleOffPlan,
   nextSortOrder,
   recipeIndex,
   resolveBulkMoveTargets,
@@ -526,6 +527,23 @@ describe('titleForEntry', () => {
   it('uses the typed title for a free-text meal', () => {
     const planned = entry('2026-08-05', 'dinner', { recipeId: null, title: 'Leftovers' });
     expect(titleForEntry(planned, index)).toBe('Leftovers');
+  });
+});
+
+describe('mealTitleOffPlan', () => {
+  // A leftover is planned under its dish's own name, and the snowflake that
+  // marks it on the plan row doesn't travel to a calendar or a text.
+  it('says a leftover night is leftovers, keeping the name as typed', () => {
+    expect(mealTitleOffPlan({ leftoverId: 'lo-1' }, "Grandma's chili")).toBe("Grandma's chili (leftovers)");
+  });
+
+  it('leaves a title that already says so alone', () => {
+    expect(mealTitleOffPlan({ leftoverId: 'lo-1' }, 'Leftover chicken stir-fry')).toBe('Leftover chicken stir-fry');
+    expect(mealTitleOffPlan({ leftoverId: 'lo-1' }, 'Soup leftovers')).toBe('Soup leftovers');
+  });
+
+  it('leaves a meal that is not a leftover alone', () => {
+    expect(mealTitleOffPlan({ leftoverId: null }, 'Chicken stir-fry')).toBe('Chicken stir-fry');
   });
 });
 

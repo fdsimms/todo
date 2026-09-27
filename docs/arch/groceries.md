@@ -583,7 +583,7 @@ which rows you don't usually get here.
   rather than inside `finishShopping`, because that early-returns on an empty trolley and finishing
   a shop you bought nothing at still ends the trip. Expiry is handled twice — `initialize` repairs
   at read time (not written back, like the aisle order), and `checkTripExpiry` on screen focus
-  clears the fields so an expiry that happened while the app was open becomes *visible* rather than
+  and on the app returning to the foreground (`useTripLiveActivitySync`) clears the fields so an expiry that happened while the app was open becomes *visible* rather than
   merely true; a memo whose inputs haven't changed won't re-render itself away.
 - **Silence is the default and it's load-bearing** (`tripMarkerFor`). Only three things can be
   said, and each is backed by something the user recorded: `unavailable` ("Not at Safeway", their
@@ -1355,7 +1355,7 @@ Three rules the resolver enforces, all pinned by `standingSwaps.test.ts`:
   actually reaches the line (or the line has already opted out), because a toggle explaining a
   rule you haven't written changes nothing.
 - **The bit lives on the link; Settings reviews the set.** That's both halves of the question,
-  not two homes: `StandingSwapsSheet` (Tasks & projects → Substitutes) is a read over the
+  not two homes: `StandingSwapsSheet` (Kitchen → Substitutes) is a read over the
   links, and its one write turns a rule off *without* forgetting the substitute. A rule that
   rewrites what lands in the trolley has to be answerable somewhere that isn't "open every
   grocery item and check".

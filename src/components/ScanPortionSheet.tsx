@@ -452,7 +452,7 @@ export function ScanPortionSheet({ visible, foods, slot, at, mealPlanEntryId, on
                     creamy. See `scalePanelToAmount`'s beverage fallback. */}
                 {!!outcome?.approximate && (
                   <Text style={styles.approximateNote}>
-                    Approximate — no manufacturer serving data.
+                    Approximate. No manufacturer serving data.
                   </Text>
                 )}
                 {/* A label stating only per-100ml figures answers calories
@@ -497,7 +497,7 @@ export function ScanPortionSheet({ visible, foods, slot, at, mealPlanEntryId, on
                       />
                     </View>
                     <Text style={styles.weighHint}>
-                      Weigh it and enter the total weight — remembered so this amount resolves on its own next time.
+                      Weigh it and enter the total weight. The app remembers it for next time.
                     </Text>
                   </View>
                 )}

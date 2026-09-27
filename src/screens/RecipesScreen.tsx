@@ -74,7 +74,7 @@ import {
   sortRecipesBy,
   type RecipeListItem,
 } from '../utils/recipeUtils';
-import { recipeMap } from '../utils/recipeComponents';
+import { recipeMap, recipesUsing } from '../utils/recipeComponents';
 import { resolveRecipeImagePath } from '../utils/recipePhoto';
 import { allRecipeTags, filterRecipesByTags, formatTagList, recipeTagCounts } from '../utils/recipeTags';
 import { tagColor } from '../utils/tagColor';
@@ -518,10 +518,24 @@ export function RecipesScreen() {
     const ids = Array.from(selectedIds);
     const count = ids.length;
     const plural = count === 1 ? 'recipe' : 'recipes';
+    // The warning a single delete gives (RecipeEditor.handleDelete), for the
+    // recipes outside the selection that use one inside it as a component:
+    // they go on showing it as missing, and the bulk bar used to say nothing.
+    const selected = new Set(ids);
+    const usedBy = [...new Map(
+      ids.flatMap(id => recipesUsing(recipes, id))
+        .filter(r => !selected.has(r.id))
+        .map(r => [r.id, r] as const),
+    ).values()];
+    const componentNote = usedBy.length === 0
+      ? ''
+      : usedBy.length === 1
+        ? ` ${count === 1 ? 'It\'s' : 'Some are'} used as a component of “${usedBy[0].name}”, which will show ${count === 1 ? 'it' : 'them'} as missing until you remove ${count === 1 ? 'it' : 'them'} there.`
+        : ` ${count === 1 ? 'It\'s' : 'Some are'} used as components of ${usedBy.length} other recipes (${usedBy.map(r => r.name).join(', ')}), which will show ${count === 1 ? 'it' : 'them'} as missing until you remove ${count === 1 ? 'it' : 'them'} there.`;
     haptics.warning();
     confirmDelete({
       title: `Delete ${count} ${plural}?`,
-      message: `You're about to delete ${count} ${plural}. Anything already on your grocery list stays there. This can't be undone.`,
+      message: `You're about to delete ${count} ${plural}. Anything already on your grocery list stays there.${componentNote} This can't be undone.`,
       onConfirm: () => {
         animateLayout();
         bulkDeleteRecipes(ids);
@@ -997,6 +1011,7 @@ export function RecipesScreen() {
           totalCount={visible.length}
           category={{
             title: 'Move to Meal Type',
+            noun: 'a meal type',
             options: RECIPE_MEAL_TYPES.map(t => RECIPE_MEAL_TYPE_LABELS[t]),
             onSet: handleBulkSetMealType,
             allowNone: true,

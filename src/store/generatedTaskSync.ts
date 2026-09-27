@@ -123,6 +123,11 @@ export interface ReconcileGeneratedOptions {
  * store's own equality guard drops. The one path that must not write it is a
  * source being deleted outright, which is why `dropGeneratedTask` exists
  * separately and why its callers run it *after* the source row is gone.
+ *
+ * A `wanted: false` that reverses by itself is not the source saying no
+ * either. Freezing an item or a leftover makes it unwanted until it thaws, and
+ * reconciling it here wrote the permanent "never", so `setFrozen` drops on the
+ * way in and only reconciles on the way out.
  */
 export function reconcileGeneratedTask(options: ReconcileGeneratedOptions): void {
   const { kind, sourceId, wanted, drift, draft, blocksOnFinished = false, useUpCap = null } = options;
@@ -179,11 +184,14 @@ export function reconcileGeneratedTask(options: ReconcileGeneratedOptions): void
   // task against a phrase nobody typed — and each generator already has its
   // own "File them under" setting saying where its tasks go.
   const created = addTask(draft(), id, { skipCategoryDefault: true, skipTitleRules: true });
-  // The one place a generator's create is recorded, and deliberately here
-  // rather than in each of the twenty passes: this is the only path any of them
-  // takes to a new row, and the three branches above have already ruled out
-  // every reconcile that changes nothing. A ledger entry means a task genuinely
+  // Where a generator's create is recorded, and deliberately here rather than
+  // in each of the twenty passes: it is the path nearly all of them take to a
+  // new row, and the three branches above have already ruled out every
+  // reconcile that changes nothing. A ledger entry means a task genuinely
   // appeared, which is what makes the table history rather than a trace log.
+  // The two that write through addTask directly (the meal slot pass and the
+  // weekly meal-plan nudge, both in useTaskStore.ts) record their own; this
+  // note used to say there were none, and those two went unrecorded.
   useUnattendedStore.getState().recordGenerated('created', created);
 }
 

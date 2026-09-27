@@ -207,8 +207,8 @@ export function GroceryCatalogSheet({ visible, onClose }: Props) {
   const handleCancel = () => {
     if (selected.size === 0) { Keyboard.dismiss(); onClose(); return; }
     Alert.alert(
-      'Discard selection?',
-      `The ${selected.size} ${selected.size === 1 ? 'item' : 'items'} you picked won’t be added to your list.`,
+      'Discard changes?',
+      'You have unsaved changes. Are you sure you want to discard them?',
       [
         { text: 'Keep editing', style: 'cancel' },
         { text: 'Discard', style: 'destructive', onPress: () => { Keyboard.dismiss(); onClose(); } },
@@ -401,15 +401,27 @@ export function GroceryCatalogSheet({ visible, onClose }: Props) {
             ) : null
           }
           ListEmptyComponent={
+            // Three different empties, told apart by whether there is a
+            // catalog to be empty of. The list hides what's already on it, so
+            // a catalog whose every item is on the list used to say it had
+            // nothing in it yet, beside a list full of those items.
             <EmptyState
               icon="basket-outline"
-              title={query.trim() ? 'Nothing matches' : 'Nothing in your catalog yet'}
+              title={query.trim()
+                ? 'Nothing matches'
+                : scoped.length > 0
+                  ? 'All on the list'
+                  : shopFilter ? 'Nothing from this store yet' : 'Nothing in your catalog yet'}
               subtitle={
-                shopFilter
-                  ? 'Everything you buy at this store is already on the list.'
-                  : query.trim()
-                    ? 'Everything matching is already on the list.'
-                    : 'Finish a shopping trip and the things you bought turn up here, best-first.'
+                query.trim()
+                  ? 'Everything matching is already on the list.'
+                  : scoped.length > 0
+                    ? shopFilter
+                      ? 'Everything you buy at this store is already on the list.'
+                      : 'Everything in your catalog is already on the list.'
+                    : shopFilter
+                      ? 'Finish a trip at this store and the things you bought turn up here.'
+                      : 'Finish a shopping trip and the things you bought turn up here, best-first.'
               }
             />
           }

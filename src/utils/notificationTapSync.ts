@@ -2,7 +2,7 @@ import { useEffect } from 'react';
 import * as Notifications from 'expo-notifications';
 import { useTaskStore } from '../store/useTaskStore';
 import { useWidgetCompletionStore } from '../store/useWidgetCompletionStore';
-import { resetToToday } from '../navigation/navigationRef';
+import { resetToGroceries, resetToToday } from '../navigation/navigationRef';
 import { COMPLETE_ACTION_IDENTIFIER, SNOOZE_ACTION_IDENTIFIER, SNOOZE_MINUTES } from './notifications';
 import { useSettingsStore } from '../store/useSettingsStore';
 import { speakAgenda } from './agendaSpeech';
@@ -35,7 +35,17 @@ export function useNotificationTapSync(): void {
     const act = (response: Notifications.NotificationResponse) => {
       const data = response.notification.request.content.data as {
         taskId?: string; dailyAgenda?: boolean; agendaSpoken?: string | null; completionTimer?: boolean;
+        activeTripReminder?: boolean;
       } | undefined;
+
+      // "Still shopping? Tap to wrap up your trip": the tap lands on the
+      // finish sheet the copy promises. It carries no taskId either, so it
+      // too has to come before the bail below; it used to fall through that
+      // bail and leave the app on whatever screen it was last on.
+      if (data?.activeTripReminder) {
+        resetToGroceries(true);
+        return;
+      }
 
       // The agenda notification carries no taskId, so this has to come before
       // the bail below — which is why the dailyAgenda flag had been declared

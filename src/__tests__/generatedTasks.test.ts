@@ -422,6 +422,7 @@ describe('generatorSwitchedOn', () => {
   const flags = (over: Record<string, boolean> = {}) => ({
     ...Object.fromEntries(GENERATED_KIND_LIST.map(sp => [sp.enabledKey, true])),
     healthReadEnabled: true,
+    healthWriteEnabled: true,
     calendarReadEnabled: true,
     ...over,
   } as Parameters<typeof generatorSwitchedOn>[1]);
@@ -436,8 +437,16 @@ describe('generatorSwitchedOn', () => {
     expect(generatorSwitchedOn('calendarReview', flags({ calendarReadEnabled: false }))).toBe(false);
   });
 
+  it('needs both Health switches for the weigh-in, which reads and writes one', () => {
+    // Its pass refuses to run without either, so a row reading "on" with one
+    // of them off promised a task that never came.
+    expect(generatorSwitchedOn('weighIn', flags({ healthReadEnabled: false }))).toBe(false);
+    expect(generatorSwitchedOn('weighIn', flags({ healthWriteEnabled: false }))).toBe(false);
+    expect(generatorSwitchedOn('weighIn', flags())).toBe(true);
+  });
+
   it('leaves the other generators alone when a read is off', () => {
-    const noReads = flags({ healthReadEnabled: false, calendarReadEnabled: false });
+    const noReads = flags({ healthReadEnabled: false, healthWriteEnabled: false, calendarReadEnabled: false });
     expect(generatorSwitchedOn('birthday', noReads)).toBe(true);
     expect(generatorSwitchedOn('weather', noReads)).toBe(true);
   });

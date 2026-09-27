@@ -159,7 +159,7 @@ export function describeFoodSearchError(error: unknown): string {
   const message = error instanceof Error ? error.message : '';
   if (message === 'Request timed out') return 'The search took too long. Try again in a moment.';
   if (message === 'Lookups are off') return 'Food lookups are off. Turn them on in Settings.';
-  if (message === 'No food database key') return 'Add a FoodData Central key in Settings to search for foods.';
+  if (message === 'No food database key') return 'Searching by name needs a FoodData Central key, free from api.data.gov. Add it in Settings.';
   return 'Couldn\'t reach the food database. Try again in a moment.';
 }
 

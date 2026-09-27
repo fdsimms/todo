@@ -41,6 +41,7 @@ import { GroceryItemSheet } from './GroceryItemSheet';
 import { navigateToFoodSearchSettings } from './NutritionSearchSheet';
 import { CatalogLinkPicker } from './CatalogLinkPicker';
 import { InlineAction } from './InlineAction';
+import { useSheetSubject } from '../hooks/useSheetSubject';
 
 interface Props {
   visible: boolean;
@@ -74,7 +75,13 @@ interface Props {
  * fields that are always worth seeing, then the two labels — section and
  * alternatives — that most lines never carry.
  */
-export function RecipeIngredientSheet({ visible, recipeId, ingredient, onClose }: Props) {
+export function RecipeIngredientSheet({ visible, recipeId, ingredient: liveIngredient, onClose }: Props) {
+  // Held past the host clearing it, so the sheet can draw its subject for the
+  // commit it spends closing. Both hosts clear `ingredient` in the same commit
+  // that lowers `visible`, and without this the `return null` below tore the
+  // presented sheet out of the tree mid-dismiss: the unmount CLAUDE.md's
+  // SheetModal notes say freezes the screen underneath.
+  const ingredient = useSheetSubject(liveIngredient);
   const colors = useColors();
   const styles = useMemo(() => makeStyles(colors), [colors]);
   const navigation = useNavigation<any>();
@@ -152,8 +159,11 @@ export function RecipeIngredientSheet({ visible, recipeId, ingredient, onClose }
   // can be the one you want open.
   const [altLinkOpen, setAltLinkOpen] = useState(false);
 
+  // Keyed on `visible` too: the held subject above means reopening the same
+  // line is the same object, and seeding on `ingredient` alone left the last
+  // visit's abandoned edits in the fields.
   useEffect(() => {
-    if (!ingredient) return;
+    if (!ingredient || !visible) return;
     setName(ingredient.name);
     setQuantity(ingredient.quantity);
     setPrep(ingredient.prep ?? '');
@@ -169,7 +179,7 @@ export function RecipeIngredientSheet({ visible, recipeId, ingredient, onClose }
     setEditingItemId(null);
     setLinkOpen(false);
     setAltLinkOpen(false);
-  }, [ingredient]);
+  }, [ingredient, visible]);
 
   // The catalog row this line resolves to. Above the early return, like every
   // other hook here — an ingredient sheet with nothing to edit still has to run

@@ -356,7 +356,7 @@ export function PrivacyAiSettings({ scrollRef }: Props) {
                 icon="key-outline"
                 iconColor={fdcApiKey ? colors.accent : undefined}
                 label="FoodData Central key"
-                hint="Optional. The USDA's own food database. Asked first for a barcode, and it is the only source for searching a food by name."
+                hint="Optional, and free from api.data.gov. The USDA's own food database. Asked first for a barcode, and it is the only source for searching a food by name."
               >
                 <TextInput
                   style={[styles.apiKeyInput, { color: colors.text, borderBottomColor: colors.separator }]}

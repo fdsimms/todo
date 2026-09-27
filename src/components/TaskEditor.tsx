@@ -2118,7 +2118,7 @@ export function TaskEditor({ visible, task, initialDraft, onClose }: Props) {
     if (current !== initialStateRef.current) {
       Alert.alert(
         'Discard changes?',
-        'Your edits to this task will be lost.',
+        'You have unsaved changes. Are you sure you want to discard them?',
         [
           { text: 'Keep editing', style: 'cancel' },
           { text: 'Discard', style: 'destructive', onPress: onClose },

@@ -10,6 +10,7 @@ import { useTaskStore } from '../store/useTaskStore';
 import { cookEntryForRecipe, earliestUnplannedSlot, recipeIndex } from '../utils/mealPlan';
 import { dayKeyOf, dayKeyToDate, getLogicalToday } from '../utils/dateUtils';
 import { prepTaskDraftsForMeal } from '../utils/recipeUtils';
+import { slotForHour } from '../utils/mealLog';
 import { onHandNameKeys } from '../utils/grocerySuggest';
 import { haptics } from '../utils/haptics';
 
@@ -158,8 +159,15 @@ export function usePlanMeal() {
    * counters when there isn't (see that action's own doc comment) — which
    * meant the recipe page, cooking something with no plan entry behind it,
    * could bump the counter but never offer to log leftovers. Planning it onto
-   * today first, into the earliest unplanned slot, gives it that row before
-   * handing off, so the recipe page gets the full post-cook sheet for free.
+   * today first gives it that row before handing off, so the recipe page gets
+   * the full post-cook sheet for free.
+   *
+   * **Into the meal the clock says it is**, when that meal is one the person
+   * plans (`slotForHour`), and only otherwise into the earliest unplanned slot.
+   * Earliest-unplanned alone filed a dinner cooked at 7 PM as that morning's
+   * breakfast whenever breakfast was empty, which is most days, and the entry
+   * then logged as breakfast too. A second dish in an already planned dinner
+   * is fine: a slot holding several entries is ordinary (`entriesForSlot`).
    *
    * A no-op planning call when today already has an unlogged entry for this
    * recipe (`cookEntryForRecipe`) — that row is the one `finishCookForRecipe`
@@ -170,9 +178,14 @@ export function usePlanMeal() {
     const dayKey = dayKeyOf(getLogicalToday());
     const todayEntries = entriesForDayLive(dayKey);
     if (!cookEntryForRecipe(todayEntries, recipe.id, dayKey)) {
+      // The real clock, not a logical one: this is the time of eating, which
+      // `slotForHour` reads the way a person would.
+      const byClock = slotForHour(new Date().getHours());
       planMeal({
         date: dayKey,
-        slot: earliestUnplannedSlot(todayEntries, dayKey, mealSlotsEnabled),
+        slot: mealSlotsEnabled.includes(byClock)
+          ? byClock
+          : earliestUnplannedSlot(todayEntries, dayKey, mealSlotsEnabled),
         recipeId: recipe.id,
         title: recipe.name,
       });

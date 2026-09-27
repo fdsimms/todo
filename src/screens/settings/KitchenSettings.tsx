@@ -92,7 +92,7 @@ export function KitchenSettings() {
           label="Show the day's meals"
           hint={mealsOnToday === 'inline'
             ? "As rows in the task list, for planned meals without a task from Automatic tasks"
-            : 'Nothing. Meals stay on the Meal plan tab'}
+            : 'Nothing. Meals stay on the Meal plan screen'}
           toggle={mealsOnToday === 'inline'}
           onPress={() => setMealsOnToday(mealsOnToday === 'inline' ? 'off' : 'inline')}
           accessibilityLabel="Show the day's meals"
@@ -118,7 +118,7 @@ export function KitchenSettings() {
           icon="nutrition-outline"
           iconColor={mealLogPrompt ? colors.accent : undefined}
           label="Ask what you ate"
-          hint="When you finish a planned meal or a leftover, offer to add it to the food log. Only for food whose nutrition is known."
+          hint="When you finish a planned meal or a leftover, offer to add it to the food log."
           toggle={mealLogPrompt}
           onPress={() => setMealLogPrompt(!mealLogPrompt)}
           accessibilityLabel="Ask what you ate"
@@ -243,8 +243,13 @@ export function KitchenSettings() {
           lands in the trolley (#1571). The rule itself is written where the
           pair is, on the item's Substitutes field — this is the "what is the
           app currently rewriting for me" read, which is the thing a link-level
-          bit on its own can't answer. */}
-      {!simpleMode && (
+          bit on its own can't answer.
+
+          Shown in simplified mode too while any swap is in force, the same
+          exception the vacation and expired-task rows make: the mode hides the
+          rule's editor, not the rule, so the swaps go on rewriting recipes and
+          the list, and this is the only place to see which ones are. */}
+      {(!simpleMode || standingSwapCount > 0) && (
       <SettingsSection
         label="Substitutes"
         footer="A substitute normally just says what you could use instead. One marked “always use this instead” is applied for you: recipes calling for the original show and shop for the substitute, marked with what the recipe said. Nothing is written to the recipe, and a single line can opt out under “Keep as written”."

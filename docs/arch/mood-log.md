@@ -519,8 +519,11 @@ Unlike the averages on Stats, **today is kept**: that window stops at yesterday
 because a partial day drags a mean down, and this one is paired rather than
 averaged with the two-meal bar already asking that question.
 
-**The vocabulary is four nutrients and that is a cap, not a starting point.**
-`NUTRIENT_INSIGHT_KEYS` is calories, caffeine, sugar and protein. Ten nutrients
+**The vocabulary is two nutrients and that is a cap, not a starting point.**
+`NUTRIENT_INSIGHT_KEYS` is calories and sugar. Caffeine was cut because an absent
+caffeine figure is not a zero and a stated one often isn't either, and protein
+because nobody holds a hypothesis about protein and mood; the constant's own
+comment says why each one should stay out. Ten nutrients
 against two outcomes would be twenty comparisons over the same thirty-odd days,
 and at that width a couple land at something eye-catching by arithmetic alone —
 `MIN_PAIRED_DAYS` guards each comparison from being built on too little, and

@@ -92,8 +92,24 @@ export function ScanToLogFlow({ visible, slot, at, mealPlanEntryId, onClose, onL
    * item behind every time someone backs out of the photo instead of taking
    * it. Waiting until `onSave` actually fires means a cancelled photo costs
    * nothing.
+   *
+   * It carries the slot, day and plan link for the same reason `session`
+   * does: the "Add its label" offer is made after `onClose` has already told
+   * the caller the scan is over, so by the time the panel is saved the props
+   * have dropped the meal it was for. Read from props at save time, a planned
+   * dinner rescued this way was logged with no slot, on the wrong day when
+   * the caller's was another one, and with no link back to the plan.
    */
-  const [panelFor, setPanelFor] = useState<{ itemId: string | null; productId: string | null; name: string } | null>(null);
+  const [panelFor, setPanelFor] = useState<
+    {
+      itemId: string | null;
+      productId: string | null;
+      name: string;
+      slot: MealSlot | null;
+      at: Date;
+      mealPlanEntryId: string | null;
+    } | null
+  >(null);
 
   /**
    * A scan session, confirmed. Resolved to catalog rows, then handed on.
@@ -203,14 +219,19 @@ export function ScanToLogFlow({ visible, slot, at, mealPlanEntryId, onClose, onL
       Alert.alert(
         'No nutrition on it yet',
         `A food can be logged once its figures are the food's own rather than a guess.${
-          first ? ` You can read them off the packet for ${first.name}${
+          first ? ` You can read them off the package for ${first.name}${
             rest > 0 ? `, then the other ${rest === 1 ? 'one' : `${rest}`} the same way` : ''
           }.` : ''
         }`,
         first
           ? [
             { text: 'Not now', style: 'cancel' },
-            { text: 'Add its label', onPress: () => setPanelFor(first) },
+            {
+              text: 'Add its label',
+              // The props as they were when the scan was confirmed — the
+              // closure outlives `onClose` above, the props don't.
+              onPress: () => setPanelFor({ ...first, slot, at, mealPlanEntryId: mealPlanEntryId ?? null }),
+            },
           ]
           : undefined,
       );
@@ -233,7 +254,9 @@ export function ScanToLogFlow({ visible, slot, at, mealPlanEntryId, onClose, onL
         context="log"
         onClose={onClose}
         onApply={handleScanApply}
-        onPhotographLabel={name => setPanelFor({ itemId: null, productId: null, name })}
+        onPhotographLabel={name => setPanelFor({
+          itemId: null, productId: null, name, slot, at, mealPlanEntryId: mealPlanEntryId ?? null,
+        })}
       />
       <ScanPortionSheet
         visible={session !== null}
@@ -281,9 +304,9 @@ export function ScanToLogFlow({ visible, slot, at, mealPlanEntryId, onClose, onL
           // catalog row.
           setSession({
             foods: [{ key: productId ?? itemId, label: panelFor.name, panel, packSize: null, itemId, productId }],
-            slot,
-            at,
-            mealPlanEntryId: mealPlanEntryId ?? null,
+            slot: panelFor.slot,
+            at: panelFor.at,
+            mealPlanEntryId: panelFor.mealPlanEntryId,
           });
         }}
       />

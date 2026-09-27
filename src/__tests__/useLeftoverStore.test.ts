@@ -6,6 +6,7 @@ import {
   dbUpdateLeftover,
   dbDeleteLeftover,
   dbPurgeOldLeftovers,
+  dbGetMealPlanEntry,
 } from '../db/database';
 import type { Leftover, Task } from '../types';
 import { daysInFridge, isLiveLeftover, keepDaysBetween, needsAttention } from '../utils/leftovers';
@@ -22,6 +23,7 @@ jest.mock('../db/database', () => ({
   dbUpdateLeftover: jest.fn(),
   dbDeleteLeftover: jest.fn(),
   dbPurgeOldLeftovers: jest.fn().mockReturnValue(0),
+  dbGetMealPlanEntry: jest.fn().mockReturnValue(null),
   dbGetFoodLogEntries: jest.fn().mockReturnValue([]),
   dbGetFoodLogEntry: jest.fn().mockReturnValue(null),
   dbCountFoodLogEntries: jest.fn().mockReturnValue(0),
@@ -77,9 +79,9 @@ const mockTaskState = {
   updateTask: (id: string, updates: Partial<Task>) => {
     mockTaskState.tasks = mockTaskState.tasks.map(t => (t.id === id ? { ...t, ...updates } : t));
   },
-  deleteTask: (id: string) => {
+  deleteTask: jest.fn((id: string, _options?: { skipGeneratedOptOut?: boolean }) => {
     mockTaskState.tasks = mockTaskState.tasks.filter(t => t.id !== id);
-  },
+  }),
   setLastAction: jest.fn(),
 };
 jest.mock('../store/useTaskStore', () => ({
@@ -381,6 +383,20 @@ describe('setFrozen', () => {
     expect(updated.keepUntil).toBe('2026-08-13');
   });
 
+  it('drops a live use-up task without writing the container\'s "never"', () => {
+    // A reconcile's delete stamps `useUpTask: false` through the real
+    // deleteTask, so a container frozen with a live task never got one again.
+    mockTaskState.tasks = [{
+      id: 't-lo', title: 'Use up Chilli', completed: false, archived: false,
+      generatedKind: 'leftoverUseUp', generatedSourceId: 'lo-a',
+    } as Task];
+    seed([makeLeftover({ id: 'lo-a' })]);
+
+    useLeftoverStore.getState().setFrozen('lo-a', true);
+
+    expect(mockTaskState.deleteTask).toHaveBeenCalledWith('t-lo', { skipGeneratedOptOut: true });
+  });
+
   it('does not close the container out — a frozen portion is still in the kitchen', () => {
     seed([makeLeftover({ id: 'lo-a' })]);
 
@@ -588,6 +604,33 @@ describe('the meal-log offer a finished container raises', () => {
     const pending = useFoodLogStore.getState().pendingMealLog;
     expect(pending?.recipeId).toBe('r-1');
     expect(pending?.grams).toBe(300);
+  });
+
+  it('measures the container against the cooking it came from, at that cooking\'s scale', () => {
+    // A 900 g container from a doubled pot of a 600 g-as-written dish used to be
+    // measured against the dish as written, so the weight was more than the
+    // whole dish and the prompt refused it.
+    (dbGetMealPlanEntry as jest.Mock).mockReturnValueOnce({
+      id: 'e-1', recipeScale: 2, recipeChoices: ['serrano'],
+    });
+    seed([makeLeftover({ id: 'lo-a', title: 'Chili', recipeId: 'r-1', sourceEntryId: 'e-1', weightG: 900 })]);
+
+    useLeftoverStore.getState().finishLeftover('lo-a', 'eaten');
+
+    const pending = useFoodLogStore.getState().pendingMealLog;
+    expect(dbGetMealPlanEntry).toHaveBeenCalledWith('e-1');
+    expect(pending?.scale).toBe(2);
+    expect(pending?.choices).toEqual(['serrano']);
+  });
+
+  it('falls back to the dish as written when the cooking it came from is gone', () => {
+    seed([makeLeftover({ id: 'lo-a', recipeId: 'r-1', sourceEntryId: 'e-gone', weightG: 300 })]);
+
+    useLeftoverStore.getState().finishLeftover('lo-a', 'eaten');
+
+    const pending = useFoodLogStore.getState().pendingMealLog;
+    expect(pending?.scale).toBe(1);
+    expect(pending?.choices).toEqual([]);
   });
 
   it('offers nothing to open on for a container nobody weighed', () => {

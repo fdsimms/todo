@@ -23,18 +23,27 @@ jest.mock('react-native', () => ({ Platform: { OS: 'ios' } }));
  * that every day is empty and pin every entry at 0 — which is the bug these
  * tests are here to hold down. Inserts land here and the range read filters
  * them, which is as much of a database as this file needs.
+ *
+ * The single-row read and the update go through it too, because a Health write
+ * that comes back re-reads the row before stamping its sample ids on it (see
+ * `recordHealthWrite`): a read that ignored what was written would make every
+ * write look like it landed on a deleted row.
  */
-const mockRows: { dayKey: string }[] = [];
+const mockRows: { id: string; dayKey: string }[] = [];
+const mockGetRow = (id: string) => mockRows.find(r => r.id === id) ?? null;
 
 jest.mock('../db/database', () => ({
   dbGetFoodLogEntries: jest.fn((startKey: string, endKey: string) =>
     mockRows.filter(r => r.dayKey >= startKey && r.dayKey <= endKey)),
   // Matches the real dbGetFoodLogEntry's own miss case (a null row reads as
   // null, never undefined) — see database.ts.
-  dbGetFoodLogEntry: jest.fn(() => null),
+  dbGetFoodLogEntry: jest.fn((id: string) => mockGetRow(id)),
   dbCountFoodLogEntries: jest.fn(() => 0),
-  dbInsertFoodLogEntry: jest.fn((entry: { dayKey: string }) => { mockRows.push(entry); }),
-  dbUpdateFoodLogEntry: jest.fn(),
+  dbInsertFoodLogEntry: jest.fn((entry: { id: string; dayKey: string }) => { mockRows.push(entry); }),
+  dbUpdateFoodLogEntry: jest.fn((entry: { id: string; dayKey: string }) => {
+    const i = mockRows.findIndex(r => r.id === entry.id);
+    if (i >= 0) mockRows[i] = entry;
+  }),
   dbDeleteFoodLogEntry: jest.fn(),
   dbBulkDeleteFoodLogEntries: jest.fn(),
   dbBulkSetFoodLogSlot: jest.fn(),
@@ -127,7 +136,7 @@ function draft(overrides: Partial<FoodLogDraft> = {}): FoodLogDraft {
 beforeEach(() => {
   jest.clearAllMocks();
   mockRows.length = 0;
-  (dbGetFoodLogEntry as jest.Mock).mockReturnValue(null);
+  (dbGetFoodLogEntry as jest.Mock).mockImplementation((id: string) => mockGetRow(id));
   useFoodLogStore.setState({
     entries: [], rangeStart: null, rangeEnd: null, totalCount: 0, initialized: false,
   });
@@ -295,7 +304,7 @@ describe('syncing water-quota tasks after a food-log write', () => {
       quantity: '500 ml', grams: null, nutrition: panel({ amounts: { waterMl: 500 } }),
       healthSampleIds: [], sortOrder: 0, createdAt: '2026-04-02T09:00:00.000Z',
     };
-    (dbGetFoodLogEntry as jest.Mock).mockReturnValue(entry);
+    mockRows.push(entry);
     useFoodLogStore.setState({ entries: [entry], rangeStart: '2026-04-02', rangeEnd: '2026-04-02' });
 
     state().reviseEntry('w1', { nutrition: panel({ amounts: { waterMl: 750 } }) });
@@ -309,7 +318,7 @@ describe('syncing water-quota tasks after a food-log write', () => {
       quantity: '500 ml', grams: null, nutrition: panel({ amounts: { waterMl: 500 } }),
       healthSampleIds: [], sortOrder: 0, createdAt: '2026-04-02T09:00:00.000Z',
     };
-    (dbGetFoodLogEntry as jest.Mock).mockReturnValue(entry);
+    mockRows.push(entry);
     useFoodLogStore.setState({ entries: [entry], rangeStart: '2026-04-02', rangeEnd: '2026-04-02' });
 
     state().reviseEntry('w1', { slot: 'lunch' });
@@ -489,7 +498,7 @@ describe('reviseEntry', () => {
       createdAt: '2026-04-02T09:00:00.000Z',
       ...overrides,
     };
-    (dbGetFoodLogEntry as jest.Mock).mockReturnValue(entry);
+    mockRows.push(entry);
     useFoodLogStore.setState({ entries: [entry], rangeStart: '2026-04-02', rangeEnd: '2026-04-02' });
     return entry;
   }
@@ -540,6 +549,48 @@ describe('reviseEntry', () => {
     expect(retractFoodEntryFromHealth).toHaveBeenCalledWith(['sample-a']);
     expect(order).toEqual(['retract', 'write']);
     expect(state().entries[0].healthSampleIds).toEqual(['sample-b']);
+  });
+
+  it('takes a late add write back out when the entry was corrected before it landed', async () => {
+    // The add's own write is still in flight when the correction arrives, so
+    // the row holds no sample ids yet and the revise has nothing to retract.
+    // Stamping the add's snapshot when it lands used to write the old figures
+    // back over the correction and keep the old sample in Health.
+    let landAdd: (r: { outcome: 'written'; sampleIds: string[] }) => void = () => {};
+    (logFoodEntryToHealth as jest.Mock)
+      .mockImplementationOnce(() => new Promise(resolve => { landAdd = resolve; }))
+      .mockResolvedValueOnce({ outcome: 'written', sampleIds: ['sample-b'] });
+    state().loadRange('2026-04-02', '2026-04-02');
+    const added = state().addEntry(draft({ at: new Date(2026, 3, 2, 9, 0) }))!;
+
+    state().reviseEntry(added.id, { nutrition: panel({ amounts: { calorieKcal: 400 } }) });
+    await flush();
+    landAdd({ outcome: 'written', sampleIds: ['sample-a'] });
+    await flush();
+
+    expect(retractFoodEntryFromHealth).toHaveBeenCalledWith(['sample-a']);
+    const row = state().entries.find(e => e.id === added.id)!;
+    expect(row.nutrition.amounts.calorieKcal).toBe(400);
+    expect(row.healthSampleIds).toEqual(['sample-b']);
+  });
+
+  it('takes a late add write back out when the entry was deleted before it landed', async () => {
+    let landAdd: (r: { outcome: 'written'; sampleIds: string[] }) => void = () => {};
+    (logFoodEntryToHealth as jest.Mock)
+      .mockImplementationOnce(() => new Promise(resolve => { landAdd = resolve; }));
+    (dbDeleteFoodLogEntry as jest.Mock).mockImplementation((id: string) => {
+      const i = mockRows.findIndex(r => r.id === id);
+      if (i >= 0) mockRows.splice(i, 1);
+    });
+    state().loadRange('2026-04-02', '2026-04-02');
+    const added = state().addEntry(draft({ at: new Date(2026, 3, 2, 9, 0) }))!;
+
+    state().removeEntry(added.id);
+    landAdd({ outcome: 'written', sampleIds: ['sample-a'] });
+    await flush();
+
+    expect(retractFoodEntryFromHealth).toHaveBeenCalledWith(['sample-a']);
+    expect(dbUpdateFoodLogEntry).not.toHaveBeenCalled();
   });
 
   it('writes the corrected figures even when the retract fails', async () => {

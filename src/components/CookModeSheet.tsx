@@ -9,7 +9,7 @@
 // The design argument is in the doc comment on CookModeSheet itself: nothing
 // here writes to the recipe, and the whole screen is built around hands that
 // are wet and a phone that's asleep.
-import React, { useCallback, useEffect, useMemo, useState } from 'react';
+import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import {
   ActivityIndicator,
   Keyboard,
@@ -250,6 +250,10 @@ export function CookModeSheet({
   // step takes it with it — including a half-typed question, which on the next
   // step would be a question about something else.
   const stepId = step?.id ?? null;
+  // The step on screen right now, for an answer that comes back after the
+  // cook has already moved on — see `ask`.
+  const stepIdRef = useRef(stepId);
+  stepIdRef.current = stepId;
   useEffect(() => {
     setAskOpen(false);
     setQuestion('');
@@ -307,8 +311,16 @@ export function CookModeSheet({
     setAsking(true);
     setAskError(null);
     setAnswer(null);
+    // The step reset above clears the panel when the cook moves on, but a
+    // request already in flight outlived it: its answer landed on the next
+    // step, under that step's own Keep button, and kept as a note there it
+    // was filed against a sentence it wasn't about. A reply for a step that
+    // is no longer on screen is dropped instead.
+    const askedOn = stepId;
+    const stillHere = () => stepIdRef.current === askedOn;
     try {
       const reply = await askCookQuestion(context, asked);
+      if (!stillHere()) return;
       setAnswer(reply);
       haptics.success();
       // An answer arriving under a kept note, under the step, can land below
@@ -317,12 +329,15 @@ export function CookModeSheet({
       // reason: the row has to be laid out before it can be scrolled to.
       setTimeout(() => keyboardScroll.ref.current?.scrollToEnd({ animated: true }), 100);
     } catch (e) {
+      if (!stillHere()) return;
       setAskError(describeAIError(e));
       haptics.error();
     } finally {
-      setAsking(false);
+      // The step reset already cleared `asking` for a step left behind, and
+      // may since have started a request of its own on the new one.
+      if (stillHere()) setAsking(false);
     }
-  }, [asking, recipe.name, steps, index, ingredients, scale, unitSystem, keyboardScroll.ref]);
+  }, [asking, recipe.name, steps, index, ingredients, scale, unitSystem, keyboardScroll.ref, stepId]);
 
   // ==== navigation: mise en place, then step to step ====
   const atLast = index >= 0 && index === steps.length - 1;
@@ -415,13 +430,18 @@ export function CookModeSheet({
                 const scaled = scaleQuantity(flat.ingredient.quantity, scale);
                 const converted = convertQuantity(scaled.text, unitSystem);
                 const marked = scaled.scaled || converted.converted || !!flat.swappedFrom;
-                const previous = ingredients[position - 1];
-                const heading =
-                  flat.depth > 0 && previous?.recipe.id !== flat.recipe.id ? flat.recipe.name : null;
+                // The same headings the mid-step panel draws (`headings`,
+                // from `ingredientHeadings`): a component's name where one
+                // starts and the recipe's own section label where one does.
+                // This screen worked its own out and only ever had the first,
+                // so "For the sauce" vanished from the one list meant for
+                // gathering things by section.
+                const heading = headings[position];
                 const last = position === ingredients.length - 1;
                 return (
                   <View key={`${flat.recipe.id}:${flat.ingredient.id}`}>
-                    {!!heading && <Text style={styles.miseHeading}>{heading}</Text>}
+                    {heading.dish && <Text style={styles.miseHeading}>{flat.recipe.name}</Text>}
+                    {!!heading.section && <Text style={styles.miseHeading}>{heading.section}</Text>}
                     <View style={[styles.miseRow, last && styles.miseRowLast]}>
                       <View style={styles.miseRowText}>
                         <Text style={styles.miseName}>{flat.ingredient.name}</Text>

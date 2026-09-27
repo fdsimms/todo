@@ -439,18 +439,33 @@ export function BarcodeScanSheet({ visible, onClose, onApply, context, onPhotogr
           priceMinor,
         },
       ]);
+      // A code this app has already been told about answers for itself when
+      // the database can't: lookups switched off, no signal in the store, or a
+      // cached miss. The row is named after the catalog row the code was
+      // linked to, and the matcher then captions it "as you scanned it
+      // before". It used to read "Not found. Type what it is." over a barcode
+      // the app knew perfectly well.
+      const remembered = () => {
+        const itemId = gtinItemFor(gtin);
+        return itemId ? useGroceryStore.getState().items.find(i => i.id === itemId) ?? null : null;
+      };
       try {
         const record = await lookupGtin(gtin);
+        const known = record ? null : remembered();
         if (record) {
           patchRow(key, { ...scannedItemFor(record), pending: false, included: true });
+        } else if (known) {
+          patchRow(key, { pending: false, name: known.name, included: true, error: null });
         } else {
           patchRow(key, { pending: false });
         }
       } catch (e) {
-        patchRow(key, { pending: false, error: describeLookupError(e) });
+        const known = remembered();
+        if (known) patchRow(key, { pending: false, name: known.name, included: true, error: null });
+        else patchRow(key, { pending: false, error: describeLookupError(e) });
       }
     },
-    [patchRow]
+    [patchRow, gtinItemFor]
   );
 
   /**
@@ -510,13 +525,21 @@ export function BarcodeScanSheet({ visible, onClose, onApply, context, onPhotogr
       // if it can't — see `pluScannedItem`. A seeded name is a suggestion and
       // deliberately arrives unchecked: the built-in list is tiny and unverified,
       // so a wrong one has to be visible rather than silently accepted.
+      //
+      // A sticker this app has already been told about, though, is known: it
+      // arrives named after the row it was filed under and ticked, the same
+      // as a remembered barcode above.
       const suggested = pluNameFor(plu);
+      const scanned = pluScannedItem(plu, suggested);
+      const knownId = aliasItemFor(null, scanned.label);
+      const known = knownId ? useGroceryStore.getState().items.find(i => i.id === knownId) : undefined;
       setRows(current => [
         ...current,
         {
-          ...pluScannedItem(plu, suggested),
+          ...scanned,
+          ...(known ? { name: known.name } : {}),
           key: generateId(),
-          included: false,
+          included: !!known,
           pending: false,
           error: null,
           frozen: false,
@@ -550,7 +573,7 @@ export function BarcodeScanSheet({ visible, onClose, onApply, context, onPhotogr
     }
     setManual('');
     haptics.tap();
-  }, [manual, addScan]);
+  }, [manual, addScan, aliasItemFor]);
 
   // The barcode first, the source's words second. A code is the one thing on a
   // scan that can't drift: rename the row to "vegan sausage" and the product

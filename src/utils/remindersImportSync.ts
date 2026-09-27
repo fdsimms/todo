@@ -605,15 +605,33 @@ async function mirrorOnce(): Promise<MirrorOutcome | null> {
         // retries the same impossible rename for ever.
         const item = useGroceryStore.getState().items.find(i => i.id === rename.itemId);
         const link = nextLinks.find(l => l.itemId === rename.itemId);
-        if (item && link) link.name = mirrorTitleFor(item);
+        if (item && link) {
+          link.name = mirrorTitleFor(item);
+          // And the reminder is put back to the row's name, which is "the app
+          // wins" carried through: correcting only the shadow left the two apps
+          // showing different names for good, since neither side ever read as
+          // changed again. The update loop below runs later in this same pass.
+          plan.updateReminders.push({
+            reminderId: link.reminderId,
+            itemId: item.id,
+            title: mirrorTitleFor(item),
+            completed: link.checked,
+          });
+        }
       }
 
+      // On the list at home, for addByName's reason above: the mirror only
+      // ever reads home. Left on the list on screen, a tick made in Reminders
+      // during a shop at another store landed on that trolley, the next pass
+      // read home as unticked and unticked the reminder, and a removal took
+      // the row off the away list while it stayed at home, so the deleted
+      // reminder came back.
       const toCheck = plan.setChecked.filter(c => c.checked).map(c => c.itemId);
       const toUncheck = plan.setChecked.filter(c => !c.checked).map(c => c.itemId);
-      if (toCheck.length > 0) store.setCheckedMany(toCheck, true);
-      if (toUncheck.length > 0) store.setCheckedMany(toUncheck, false);
+      if (toCheck.length > 0) store.setCheckedMany(toCheck, true, { listId: null });
+      if (toUncheck.length > 0) store.setCheckedMany(toUncheck, false, { listId: null });
       if (plan.removeItems.length > 0) {
-        store.removeFromListMany(plan.removeItems.map(r => r.itemId));
+        store.removeFromListMany(plan.removeItems.map(r => r.itemId), { listId: null });
       }
 
       for (const create of plan.createReminders) {

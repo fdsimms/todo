@@ -293,7 +293,7 @@ export function AddMealsToListSheet({
     if (!dirty) { onClose(); return; }
     Alert.alert(
       'Discard changes?',
-      'The choices you made about what goes on the list will be lost.',
+      'You have unsaved changes. Are you sure you want to discard them?',
       [
         { text: 'Keep editing', style: 'cancel' },
         { text: 'Discard', style: 'destructive', onPress: onClose },

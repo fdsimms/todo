@@ -93,6 +93,9 @@ describe('hasUserFacts', () => {
     ['a variety declaration', { varietyOfKey: 'onion' }],
     ['a typed note', { note: 'the green one' }],
     ['a hand-set quantity', { quantity: '2 bags', quantityFromRecipe: false }],
+    // A row made only to carry a food log entry's figures is that record, and
+    // the prune sweep used to offer it as a typo.
+    ['a nutrition panel', { nutrition: { source: 'label', amounts: { calorieKcal: 120 }, servingText: '1 bar', servingGrams: 40, portions: [] } as never }],
   ])('is true for %s', (_label, patch) => {
     expect(hasUserFacts(makeItem('Nduja', patch), NO_LINKS)).toBe(true);
   });

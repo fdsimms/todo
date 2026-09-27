@@ -283,12 +283,20 @@ export function RecipeToListSheet({
   // that was already there (keep whatever the user left it at). Null means
   // "sheet just opened" — everything starts ticked.
   const knownRowKeysRef = useRef<Set<string> | null>(null);
+  // What the sheet opened with, for the dirty check below. A meal planned with
+  // a side already picked, or scaled for four, opens with both set, and
+  // comparing against "no choice" and 1× asked to discard changes that were
+  // never made.
+  const openedChoicesRef = useRef('[]');
+  const openedScaleRef = useRef(1);
 
   useEffect(() => {
     if (!visible) return;
     setChoices(initialChoices ? [...initialChoices] : []);
     setUndecided([]);
     setScale(normalizeScale(initialScale));
+    openedChoicesRef.current = JSON.stringify(initialChoices ?? []);
+    openedScaleRef.current = normalizeScale(initialScale);
     knownRowKeysRef.current = null;
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [visible]);
@@ -420,20 +428,21 @@ export function RecipeToListSheet({
   };
 
   // Same shape as GroceryItemSheet/TaskEditor's own dirty check. A scale or a
-  // choice made is dirty on its own — there's nowhere for either to be
-  // written back once this closes, so losing them is losing real decisions —
+  // choice changed from what the sheet opened with is dirty on its own —
+  // there's nowhere for either to be written back once this closes, so losing
+  // them is losing real decisions —
   // and `ticked` is compared against the baseline for the *current* choice
   // state, so a set that only changed because a choice swap just recomputed
   // it doesn't falsely read as user work about to be lost.
   const handleCancel = () => {
-    const dirty = choices.length > 0
+    const dirty = JSON.stringify(choices) !== openedChoicesRef.current
       || undecided.length > 0
-      || scale !== 1
+      || scale !== openedScaleRef.current
       || JSON.stringify([...ticked].sort()) !== tickedBaselineRef.current;
     if (!dirty) { onClose(); return; }
     Alert.alert(
       'Discard changes?',
-      'The choices you made about what goes on the list will be lost.',
+      'You have unsaved changes. Are you sure you want to discard them?',
       [
         { text: 'Keep editing', style: 'cancel' },
         { text: 'Discard', style: 'destructive', onPress: onClose },

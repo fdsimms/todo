@@ -285,12 +285,12 @@ describe('the cap', () => {
 describe('describePantryDoubt', () => {
   it('names the lapse in days', () => {
     const deck = buildPantryReviewDeck([makeItem({ name: 'Flour', lastPurchasedAt: daysAgo(130) })], NOW);
-    expect(describePantryDoubt(deck.cards[0])).toBe('Estimated use-by passed 8 days ago');
+    expect(describePantryDoubt(deck.cards[0])).toBe('Usually gone 8 days ago');
   });
 
   it('has a word for today and yesterday', () => {
-    expect(describePantryDoubt({ doubt: 'lapsed', lapsedDays: 0 } as never)).toBe('Estimated use-by passed today');
-    expect(describePantryDoubt({ doubt: 'lapsed', lapsedDays: 1 } as never)).toBe('Estimated use-by passed yesterday');
+    expect(describePantryDoubt({ doubt: 'lapsed', lapsedDays: 0 } as never)).toBe('Usually gone by now');
+    expect(describePantryDoubt({ doubt: 'lapsed', lapsedDays: 1 } as never)).toBe('Usually gone by yesterday');
   });
 
   it('says nothing on a card whose own reason line already says how sure the app is', () => {

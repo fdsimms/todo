@@ -1103,7 +1103,7 @@ export function GroceryItemSheet({
                 <Text style={styles.nutritionDetail}>
                   Nothing recorded. A recipe using this ingredient counts it as uncovered
                   rather than guessing at it. Search a food database, or copy the figures
-                  off the packet.
+                  off the package.
                 </Text>
               )}
               <View style={styles.nutritionActions}>
@@ -1688,7 +1688,7 @@ export function GroceryItemSheet({
               }
               onBlur={() => commitPrice(priceKey)}
               onSubmitEditing={() => commitPrice(priceKey)}
-              placeholder={priceHint === null ? '0.00' : `e.g. ${priceToInput(priceHint)}`}
+              placeholder={priceHint === null ? 'Price' : `e.g. ${priceToInput(priceHint)}`}
               placeholderTextColor={colors.textTertiary}
               keyboardType="number-pad"
               // The iOS number pad has no return key, so onSubmitEditing above
@@ -1813,9 +1813,16 @@ export function GroceryItemSheet({
               <View style={styles.actionBody}>
                 <Text style={styles.actionLabel}>Use-up task</Text>
                 <Text style={styles.actionHint}>
+                  {/* Two different "no"s, and they need different words: an
+                      item turned off here stays off whatever the setting
+                      says, while an item nobody chose for just follows the
+                      setting, which is off. Told the first when it was the
+                      second, somebody reads it as already opted out. */}
                   {hasUseUpTask
                     ? 'A task to use this up appears before the use-by date.'
-                    : 'No task for this item, whatever the setting says.'}
+                    : item.useUpTask === false
+                      ? 'No task for this item, whatever the setting says.'
+                      : 'Use-up tasks are off in Settings. Tap to get one for this item anyway.'}
                 </Text>
               </View>
             </TouchableOpacity>

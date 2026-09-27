@@ -25,6 +25,7 @@ import {
 } from '../utils/activeEnergyBoost';
 import { useHealthStore } from '../store/useHealthStore';
 import { openHealthApp } from '../utils/healthBridge';
+import { dayKeyOf, getCurrentDayStart } from '../utils/dateUtils';
 import { haptics } from '../utils/haptics';
 import { navigateToSettingsEntry } from '../utils/settingsIndex';
 import { CountStepper } from './CountStepper';
@@ -135,7 +136,10 @@ export function NutritionTargetsSheet({ visible, onClose }: Props) {
    * exactly what stops the toggle above sitting on doing nothing with no
    * explanation.
    */
-  const activeEnergyToday = useHealthStore(s => s.today?.activeEnergyKcal ?? null);
+  // Only today's reading, the same day-key check FoodLogScreen makes: the
+  // snapshot outlives the day reset until the next refresh.
+  const activeEnergyToday = useHealthStore(s =>
+    (s.today?.dayKey === dayKeyOf(getCurrentDayStart()) ? s.today.activeEnergyKcal ?? null : null));
   const noActiveEnergy = boostOn && healthReadEnabled && activeEnergyToday === null;
   useEffect(() => {
     if (!visible || !healthReadEnabled || !boostOn) return;

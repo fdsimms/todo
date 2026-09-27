@@ -183,6 +183,20 @@ describe('planGroceryReminderSync — adoption', () => {
     ]);
   });
 
+  it('matches a reminder that carries the amount in its own title', () => {
+    // The app's own title shape ("2 lb chicken") read as a name nothing in the
+    // catalog had, so the row was imported onto itself and pass 3 then wrote
+    // it a second reminder.
+    const plan = planGroceryReminderSync(
+      [item({ id: 'i1', name: 'chicken', quantity: '2 lb' })],
+      [reminder({ id: 'r1', title: '2 lb chicken' })],
+      []
+    );
+    expect(plan.addItems).toEqual([]);
+    expect(plan.createReminders).toEqual([]);
+    expect(plan.links.map(l => [l.reminderId, l.itemId])).toEqual([['r1', 'i1']]);
+  });
+
   it('re-lists a row that had come off the list', () => {
     const plan = planGroceryReminderSync(
       [item({ id: 'i1', name: 'milk', onList: false })],

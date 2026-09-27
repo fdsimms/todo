@@ -16,7 +16,7 @@ import Ionicons from '@expo/vector-icons/Ionicons';
 import { useColors } from '../theme/ThemeContext';
 import { spacing, radius, font, fontWeight, lineHeight, border, iconSize, interaction, type Colors } from '../theme';
 import {
-  MIN_MEAL_IDEAS, mealTitleKey, mealIdeaRecipeDraft, recentlyCookedTitles, type MealIdea,
+  MIN_MEAL_IDEAS, mealIdeaRecipeDraft, recentlyCookedTitles, type MealIdea,
 } from '../utils/mealIdeas';
 import { suggestMealIdeas, draftMealRecipe, describeAIError } from '../services/aiSuggestions';
 import { useRecipeStore } from '../store/useRecipeStore';
@@ -26,6 +26,7 @@ import { SheetHeaderButton } from './SheetHeaderButton';
 import { InlineAction } from './InlineAction';
 import { useKeyboardInsetScroll } from '../hooks/useKeyboardInsetScroll';
 import { haptics } from '../utils/haptics';
+import { recipeNameKey } from '../utils/recipeUtils';
 
 interface Props {
   visible: boolean;
@@ -76,6 +77,10 @@ export function InventRecipeSheet({ visible, onClose, onCreated }: Props) {
   const [creatingKey, setCreatingKey] = useState<string | null>(null);
   const [createErrors, setCreateErrors] = useState<Map<string, string>>(new Map());
   const hintsInputRef = useRef<TextInput>(null);
+  // Whether the sheet is still open, for a draft that comes back after it
+  // closed — see `createFromIdea`. The same guard RecipeExtractSheet keeps.
+  const visibleRef = useRef(visible);
+  useEffect(() => { visibleRef.current = visible; }, [visible]);
 
   useEffect(() => {
     if (visible) return;
@@ -101,9 +106,11 @@ export function InventRecipeSheet({ visible, onClose, onCreated }: Props) {
       const result = await suggestMealIdeas([], recent, MIN_MEAL_IDEAS, hints, []);
       // suggestMealIdeas only dedupes against the titles it was handed
       // (recently cooked); a dish already in the box under any other name
-      // isn't "new" just because it wasn't cooked lately.
-      const owned = new Set(recipes.map(r => mealTitleKey(r.name)));
-      setIdeas(result.filter(i => !owned.has(mealTitleKey(i.title))));
+      // isn't "new" just because it wasn't cooked lately. Keyed the way the
+      // box itself is (`recipeNameKey`), so "Chicken taco" is held back when
+      // "Chicken Tacos" is saved rather than offered and then refused.
+      const owned = new Set(recipes.map(r => r.nameKey));
+      setIdeas(result.filter(i => !owned.has(recipeNameKey(i.title))));
     } catch (e) {
       setIdeas([]);
       setGenerateError(describeAIError(e));
@@ -140,16 +147,40 @@ export function InventRecipeSheet({ visible, onClose, onCreated }: Props) {
       next.delete(idea.id);
       return next;
     });
+    // Already in the box (saved since the ideas came back, say): open it
+    // rather than paying for a draft the box will refuse.
+    const owned = recipes.find(r => r.nameKey === recipeNameKey(idea.title));
+    if (owned) {
+      haptics.success();
+      setCreatingKey(null);
+      Keyboard.dismiss();
+      onClose();
+      onCreated(owned.id);
+      return;
+    }
     try {
       const drafted = await draftMealRecipe(idea.title, [...aisleOrder], null);
+      // Closed while the draft was being written (Cancel, or a swipe down):
+      // nothing is saved and nothing is opened. Without this the recipe was
+      // created and navigated into anyway, after the person had said no.
+      if (!visibleRef.current) { setCreatingKey(null); return; }
       const draft = mealIdeaRecipeDraft(idea, drafted.ingredients, drafted);
       if (!draft.name) throw new Error('IDEA_NAME_EMPTY');
       // addRecipe refuses a name already in the box (nameKey is UNIQUE); land
-      // on the existing recipe rather than telling the user no.
-      const recipe = addRecipe(draft.name)
-        ?? recipes.find(r => r.name.trim().toLowerCase() === draft.name.trim().toLowerCase())
-        ?? null;
-      if (!recipe) throw new Error('IDEA_SAVE_FAILED');
+      // on the existing recipe rather than telling the user no, and open it
+      // as it is. The draft is for a new recipe: appending its ingredients,
+      // steps and notes onto the one she already has would rewrite it.
+      const recipe = addRecipe(draft.name);
+      if (!recipe) {
+        const existing = recipes.find(r => r.nameKey === recipeNameKey(draft.name));
+        if (!existing) throw new Error('IDEA_SAVE_FAILED');
+        haptics.success();
+        setCreatingKey(null);
+        Keyboard.dismiss();
+        onClose();
+        onCreated(existing.id);
+        return;
+      }
       if (draft.ingredients.length > 0) addStructuredIngredients(recipe.id, draft.ingredients);
       if (draft.notes) setNotes(recipe.id, draft.notes);
       setSource(recipe.id, draft.source);
