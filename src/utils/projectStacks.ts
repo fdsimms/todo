@@ -98,3 +98,43 @@ export function buildProjectListItems(
 
   return items;
 }
+
+/**
+ * The project's open tasks as plain text, the way "Copy task names" puts them
+ * on the clipboard: one line per task, in the order on screen, each section's
+ * title as a heading over its own tasks, and open subtasks indented under the
+ * task they belong to. It used to copy the top-level titles alone, which for a
+ * list of questions for a doctor dropped both the headings and the follow-ups.
+ *
+ * `subtasksOf` returns a task's subtasks in any order; they're sorted here.
+ * Only this project's own members are copied from a section, since a section
+ * can hold tasks filed under other projects.
+ */
+export function projectCopyText(
+  items: readonly ProjectListItem[],
+  subtasksOf: (taskId: string) => readonly Task[],
+  projectId: string,
+): string {
+  const lines: string[] = [];
+  const pushTask = (task: Task, indent: string) => {
+    lines.push(`${indent}${task.title}`);
+    [...subtasksOf(task.id)]
+      .filter(s => !s.completed)
+      .sort((a, b) => a.sortOrder - b.sortOrder)
+      .forEach(s => lines.push(`${indent}  ${s.title}`));
+  };
+  items.forEach(item => {
+    if (item.type === 'task') {
+      pushTask(item.task, '');
+      return;
+    }
+    const members = item.children.filter(t => t.projectId === projectId);
+    if (members.length === 0) return;
+    if (lines.length > 0) lines.push('');
+    lines.push(item.group.title.trim() || 'Untitled section');
+    members.forEach(task => pushTask(task, '  '));
+    lines.push('');
+  });
+  while (lines.length > 0 && lines[lines.length - 1] === '') lines.pop();
+  return lines.join('\n');
+}

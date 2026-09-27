@@ -2,6 +2,7 @@ import {
   useProjectStore,
   projectProgress,
   projectDecisions,
+  projectCompletedRows,
   isProjectPastWindow,
 } from '../store/useProjectStore';
 import { DEFAULT_NUDGE_CADENCE_DAYS } from '../types';
@@ -329,6 +330,22 @@ describe('projectProgress', () => {
 });
 
 // ─── projectDecisions ───────────────────────────────────────────────────────
+
+describe('projectCompletedRows', () => {
+  // A daily member leaves a completed row per day; the section lists the member
+  // once, at its latest completion, matching what progress counts.
+  it('lists a repeating member once, at its most recent completion, newest first', () => {
+    const tasks = [
+      makeTask({ id: 'r1', projectId: 'p1', completed: true, completedAt: '2025-01-01T09:00:00.000Z' }),
+      makeTask({ id: 'r2', projectId: 'p1', completed: true, completedAt: '2025-01-02T09:00:00.000Z', previousOccurrenceId: 'r1' }),
+      makeTask({ id: 'r3', projectId: 'p1', completed: false, previousOccurrenceId: 'r2' }),
+      makeTask({ id: 'once', projectId: 'p1', completed: true, completedAt: '2025-01-03T09:00:00.000Z' }),
+      makeTask({ id: 'filed', projectId: 'p1', completed: true, completedAt: '2025-01-04T09:00:00.000Z', archived: true }),
+      makeTask({ id: 'other', projectId: 'p2', completed: true, completedAt: '2025-01-05T09:00:00.000Z' }),
+    ];
+    expect(projectCompletedRows('p1', tasks).map(t => t.id)).toEqual(['once', 'r2']);
+  });
+});
 
 describe('projectDecisions', () => {
   const decision = (overrides: Partial<Task> = {}): Task => makeTask({

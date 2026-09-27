@@ -1048,7 +1048,7 @@ export function StatsScreen() {
                   <View style={[styles.row, styles.rowBorder]}>
                     <Text style={styles.rowText}>
                       {projectSummary.activeDone}/{projectSummary.activeTotal} tasks done across{' '}
-                      {projectSummary.active} active {projectSummary.active === 1 ? 'project' : 'projects'}
+                      {projectSummary.activeTracked} active {projectSummary.activeTracked === 1 ? 'project' : 'projects'}
                     </Text>
                   </View>
                 )}

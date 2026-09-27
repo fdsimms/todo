@@ -31,6 +31,7 @@ import { WhenPicker } from './WhenPicker';
 import { SheetScrim } from './SheetScrim';
 import type { Task } from '../types';
 import { useSheetHiddenOffset } from '../hooks/useSheetHiddenOffset';
+import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
 interface Props {
   visible: boolean;
@@ -82,6 +83,7 @@ export function ProjectPullSheet({ visible, todaysTasks, scopeProjectIds, onOpen
   const colors = useColors();
   const { isDark } = useTheme();
   const styles = useMemo(() => makeStyles(colors), [colors]);
+  const insets = useSafeAreaInsets();
 
   const allTasks = useTaskStore(s => s.tasks);
   const projects = useProjectStore(s => s.projects);
@@ -431,7 +433,9 @@ export function ProjectPullSheet({ visible, todaysTasks, scopeProjectIds, onOpen
       </Animated.View>
       <SheetScrim onPress={dismiss} />
 
-      <Animated.View style={[styles.sheetOuter, { transform: [{ translateY }] }]}>
+      <Animated.View
+        style={[styles.sheetOuter, { paddingBottom: insets.bottom + spacing.sm, transform: [{ translateY }] }]}
+      >
         <View style={styles.handleArea} {...panResponder.panHandlers}>
           <View style={styles.handle} />
         </View>
@@ -483,6 +487,7 @@ export function ProjectPullSheet({ visible, todaysTasks, scopeProjectIds, onOpen
             </Text>
           )}
 
+          {plan.proposals.length > 0 && (
           <ScrollView style={styles.list} bounces={false}>
             {expand
               ? plan.proposals[0].candidates.map((c, i) => (
@@ -498,7 +503,12 @@ export function ProjectPullSheet({ visible, todaysTasks, scopeProjectIds, onOpen
                   </React.Fragment>
                 ))}
           </ScrollView>
+          )}
 
+          {/* Only when there is something to pull: with no proposals the
+              list is empty and a disabled "Nothing selected" under the
+              explanation was one more thing saying no. */}
+          {plan.proposals.length > 0 && (
           <TouchableOpacity
             style={[styles.applyBtn, selected.length === 0 && styles.applyBtnDisabled]}
             onPress={handleApply}
@@ -513,6 +523,7 @@ export function ProjectPullSheet({ visible, todaysTasks, scopeProjectIds, onOpen
                 : `Pull in ${selected.length} task${selected.length === 1 ? '' : 's'}`}
             </Text>
           </TouchableOpacity>
+          )}
 
           {reviewTaskId && (
             <TouchableOpacity
@@ -570,7 +581,6 @@ const makeStyles = (colors: Colors) => StyleSheet.create({
     right: 0,
     bottom: 0,
     paddingHorizontal: spacing.md,
-    paddingBottom: 34,
   },
   handleArea: { alignItems: 'center', paddingTop: spacing.sm, paddingBottom: spacing.sm },
   handle: { width: 36, height: 4, borderRadius: 2, backgroundColor: colors.bgQuaternary },

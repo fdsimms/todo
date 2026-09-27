@@ -60,6 +60,7 @@ import {
 import { useSettingsStore } from '../store/useSettingsStore';
 import { SearchField } from '../components/SearchField';
 import { useFilterField } from '../hooks/useFilterField';
+import { useLogicalDayKey } from '../hooks/useLogicalDayKey';
 import type { Project } from '../types';
 
 /**
@@ -107,6 +108,9 @@ export function ProjectsScreen() {
   const projectSort = useSettingsStore(s => s.projectSortOption);
   const setProjectSort = useSettingsStore(s => s.setProjectSortOption);
   const dayResetTime = useSettingsStore(s => s.dayResetTime);
+  // Re-renders the list when the day rolls over, so a card's "Due tomorrow"
+  // becomes "Due today" without waiting for some unrelated store write.
+  useLogicalDayKey();
   const search = useFilterField();
   const query = search.query.trim();
 

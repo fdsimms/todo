@@ -618,13 +618,19 @@ export function buildProjectPullPlan(
   }
   const ctx = pullContext();
 
+  // Every proposal starts selected, so each one that lands on today counts
+  // against today's budget for the next. Checked one row at a time, five
+  // pulls could all land on a today that the first two had already filled.
+  const landingToday: Task[] = [...todaysTasks];
   const proposals = stalls.slice(0, MAX_PULLED_PROJECTS).map(stall => {
     const candidates = rankPullCandidates(stall.pullable, ctx);
+    const suggestion = suggestPullDate(candidates[0], allTasks, landingToday, stall.quietDays);
+    if (suggestion.dayLabel === 'Today') landingToday.push(candidates[0]);
     return {
       project: stall.project,
       candidates,
       quietDays: stall.quietDays,
-      suggestion: suggestPullDate(candidates[0], allTasks, todaysTasks, stall.quietDays),
+      suggestion,
       selected: true,
     };
   });

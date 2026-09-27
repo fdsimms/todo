@@ -1,9 +1,10 @@
-import React, { useMemo } from 'react';
+import React, { useMemo, useState } from 'react';
 import { View, Text, TouchableOpacity, StyleSheet } from 'react-native';
 import type { Task } from '../types';
 import { useColors } from '../theme/ThemeContext';
 import { spacing, font, fontWeight, lineHeight, radius, interaction, type Colors } from '../theme';
 import { formatTaskDeliverable } from '../utils/deliverables';
+import { animateLayout } from '../utils/layoutAnimation';
 import { displayTitleFor } from '../utils/visibilityUtils';
 
 interface Props {
@@ -27,16 +28,28 @@ interface Props {
  * these rows are already-answered questions, and a question mark on one reads
  * as the decision still being open.
  */
+/**
+ * How many decisions show before the rest fold behind "Show all". The block
+ * sits above the tasks, and a project that has answered a dozen questions
+ * otherwise pushed every open task below the fold. The newest come first, so
+ * the ones folded away are the oldest.
+ */
+export const DECISIONS_SHOWN = 3;
+
 export function ProjectDecisions({ decisions, onPress }: Props) {
   const colors = useColors();
   const styles = useMemo(() => makeStyles(colors), [colors]);
+  const [showAll, setShowAll] = useState(false);
 
   if (decisions.length === 0) return null;
+
+  const hidden = showAll ? 0 : Math.max(0, decisions.length - DECISIONS_SHOWN);
+  const shown = hidden > 0 ? decisions.slice(0, DECISIONS_SHOWN) : decisions;
 
   return (
     <View style={styles.block}>
       <Text style={styles.label}>Decisions</Text>
-      {decisions.map(task => {
+      {shown.map(task => {
         const answer = formatTaskDeliverable(task);
         const title = displayTitleFor(task);
         return (
@@ -63,6 +76,18 @@ export function ProjectDecisions({ decisions, onPress }: Props) {
           </TouchableOpacity>
         );
       })}
+      {decisions.length > DECISIONS_SHOWN && (
+        <TouchableOpacity
+          style={styles.moreRow}
+          onPress={() => { animateLayout(); setShowAll(v => !v); }}
+          activeOpacity={interaction.activeOpacity}
+          accessibilityRole="button"
+        >
+          <Text style={styles.moreText}>
+            {showAll ? 'Show fewer' : `Show all ${decisions.length}`}
+          </Text>
+        </TouchableOpacity>
+      )}
     </View>
   );
 }
@@ -120,11 +145,23 @@ const makeStyles = (colors: Colors) => StyleSheet.create({
     fontSize: font.sm,
     lineHeight: lineHeight.sm,
   },
+  moreRow: {
+    alignSelf: 'flex-start',
+    marginHorizontal: spacing.md,
+    marginTop: spacing.xs,
+    paddingHorizontal: spacing.md,
+    paddingVertical: spacing.xs,
+  },
+  moreText: {
+    color: colors.textSecondary,
+    fontSize: font.sm,
+    fontWeight: fontWeight.medium,
+  },
   answerPill: {
     flexDirection: 'row',
     alignItems: 'center',
     gap: 3,
-    paddingHorizontal: 8,
+    paddingHorizontal: spacing.sm,
     paddingVertical: 3,
     borderRadius: radius.full,
     backgroundColor: colors.accentSubtle,

@@ -20,7 +20,7 @@ import { useShallow } from 'zustand/react/shallow';
 import { useAnswerFirstCompletion } from '../hooks/useAnswerFirstCompletion';
 import { DeliverablePromptQueue } from '../components/DeliverablePromptQueue';
 import { useTaskStore } from '../store/useTaskStore';
-import { useProjectStore, projectDecisions, projectProgress, isProjectPastWindow } from '../store/useProjectStore';
+import { useProjectStore, projectDecisions, projectProgress, projectCompletedRows, isProjectPastWindow } from '../store/useProjectStore';
 import { projectCardCaption, projectProgressNote } from '../utils/projectList';
 import { OfferBanner } from '../components/OfferBanner';
 import { useTaskSelection } from '../hooks/useTaskSelection';
@@ -34,9 +34,8 @@ import { TaskGroupBody } from '../components/TaskGroupBody';
 import { TaskGroupTray } from '../components/TaskGroupTray';
 import { GroupDropTarget } from '../components/GroupDropTarget';
 import { useTaskGroupStore } from '../store/useTaskGroupStore';
-import { groupRoster, isRelevantToGroupToday } from '../utils/visibilityUtils';
 import { confirmBulkSetWhen } from '../utils/scheduleMovePrompt';
-import { buildProjectListItems, type ProjectListItem } from '../utils/projectStacks';
+import { buildProjectListItems, projectCopyText, type ProjectListItem } from '../utils/projectStacks';
 import { ProjectEditor } from '../components/ProjectEditor';
 import { BulkActionBar } from '../components/BulkActionBar';
 import { QuickAddModal } from '../components/QuickAddModal';
@@ -83,6 +82,7 @@ import { DetailHeader } from '../components/DetailHeader';
 import { useCopyToClipboard } from '../hooks/useCopyToClipboard';
 import { useSheetSubject } from '../hooks/useSheetSubject';
 import { useFilterField } from '../hooks/useFilterField';
+import { useLogicalDayKey } from '../hooks/useLogicalDayKey';
 
 type RootStackParamList = {
   ProjectDetail: { projectId: string };
@@ -173,6 +173,8 @@ export function ProjectDetailScreen() {
   const reorderGroupChildren = useTaskStore(s => s.reorderGroupChildren);
   const removeFromGroup = useTaskStore(s => s.removeFromGroup);
   const dayResetTime = useSettingsStore(s => s.dayResetTime);
+  // The summary's deadline words move with the day; see ProjectsScreen.
+  useLogicalDayKey();
   const reorderProjectItems = useTaskStore(s => s.reorderProjectItems);
   const bulkCompleteTasks = useTaskStore(s => s.bulkCompleteTasks);
   const bulkMarkMissed = useTaskStore(s => s.bulkMarkMissed);
@@ -190,7 +192,6 @@ export function ProjectDetailScreen() {
   const groupRosterOf = useTaskStore(s => s.groupRosterOf);
   const completeGroup = useTaskStore(s => s.completeGroup);
   const deferGroup = useTaskStore(s => s.deferGroup);
-  const pinGroup = useTaskStore(s => s.pinGroup);
   const addExistingToGroup = useTaskStore(s => s.addExistingToGroup);
 
   const [editingProject, setEditingProject] = useState<Project | null>(null);
@@ -324,10 +325,6 @@ export function ProjectDetailScreen() {
     () => projectTasks.filter(t => !t.completed),
     [projectTasks],
   );
-  const copyText = useMemo(
-    () => incompleteProjectTasks.map(t => t.title).join('\n'),
-    [incompleteProjectTasks],
-  );
   const { copied, copy } = useCopyToClipboard();
   // Presentation only — see Project.kind.
   const isList = project?.kind === 'list';
@@ -372,9 +369,11 @@ export function ProjectDetailScreen() {
     })();
     return () => { live = false; };
   }, [destinationForecastEnabled, destination, spanStartKey, spanEndKey, unitSystem]);
-  const completedProjectTasks = projectTasks
-    .filter(t => t.completed)
-    .sort((a, b) => (b.completedAt ?? '').localeCompare(a.completedAt ?? ''));
+  // One row per member, as progress counts them — see projectCompletedRows.
+  const completedProjectTasks = useMemo(
+    () => (project ? projectCompletedRows(project.id, allTasks) : []),
+    [allTasks, project],
+  );
   // Clears the FAB under the last row, the same amount `detailFooter` below
   // reserves — but only when that footer isn't already on screen to provide
   // it. With completed tasks present, ListFooterComponent renders and carries
@@ -472,18 +471,6 @@ export function ProjectDetailScreen() {
     return map;
   }, [allTasks]);
 
-  // Same pin-eligibility computation as TodayScreen's groupPinInfo, so the
-  // pin button on a stack header reads the same whichever screen it's on.
-  const groupPinInfo = useMemo(() => {
-    const map = new Map<string, { pinnable: boolean; pinned: boolean }>();
-    for (const group of taskGroups) {
-      const roster = groupRoster(childrenByGroupId.get(group.id) ?? NO_GROUP_CHILDREN);
-      const eligible = roster.filter(c => !c.completed && isRelevantToGroupToday(c));
-      map.set(group.id, { pinnable: eligible.length > 0, pinned: eligible.length > 0 && eligible.every(c => c.pinned) });
-    }
-    return map;
-  }, [taskGroups, childrenByGroupId]);
-
   // Stacked tasks collapsed into a single 'group' entry, plus any stack built
   // on this project's screen that has no members to be found through — see
   // buildProjectListItems for which of the two puts a given stack here.
@@ -498,9 +485,11 @@ export function ProjectDetailScreen() {
       else if (!item.group.collapsed) onScreen.push(...item.children);
     }
     return showCompleted ? [...onScreen, ...completedProjectTasks] : onScreen;
-    // completedProjectTasks is rebuilt each render; projectTasks is its source.
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [projectListItems, showCompleted, projectTasks]);
+  }, [projectListItems, showCompleted, completedProjectTasks]);
+  const copyText = useMemo(
+    () => projectCopyText(projectListItems, id => subtasksByParent.get(id) ?? NO_SUBTASKS, projectId),
+    [projectListItems, subtasksByParent, projectId],
+  );
 
   // ——— Dragging the add button into the list ———————————————————————————
   //
@@ -638,7 +627,6 @@ export function ProjectDetailScreen() {
     haptics.success();
   };
   const handleGroupDefer = useCallback((groupId: string, date: Date) => deferGroup(groupId, date), [deferGroup]);
-  const handleGroupPin = useCallback((groupId: string) => pinGroup(groupId), [pinGroup]);
   const handleGroupPressEdit = useCallback((groupId: string) => {
     const group = useTaskGroupStore.getState().getGroupById(groupId);
     if (!group) return;
@@ -1201,8 +1189,9 @@ export function ProjectDetailScreen() {
                       selectionMode={selectionMode}
                       group={group}
                       allChildren={allChildren}
-                      pinned={groupPinInfo.get(group.id)?.pinned ?? false}
-                      pinDisabled={!(groupPinInfo.get(group.id)?.pinnable ?? false)}
+                      // No pin, for the reason the task rows here have none
+                      // (showPin={false}): pinning is about Today, and this
+                      // page is not where a day is arranged.
                       // Not ANDed with the drag fold below: that one is a
                       // transient the floating card owns, and a chevron
                       // flipping under the finger mid-drag is noise.
@@ -1212,7 +1201,6 @@ export function ProjectDetailScreen() {
                       onDefer={handleGroupDefer}
                       onSwipeSelect={handleGroupSwipeSelect}
                       onPressEdit={handleGroupPressEdit}
-                      onPressPin={handleGroupPin}
                       onDrag={!selectionMode && drag ? () => startGroupDrag(group.id, drag) : undefined}
                     />
                     <TaskGroupBody

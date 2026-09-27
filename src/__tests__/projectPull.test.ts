@@ -638,6 +638,21 @@ describe('buildProjectPullPlan', () => {
     expect(buildProjectPullPlan([makeProject()], tasks, tasks).proposals).toEqual([]);
   });
 
+  // Every proposal starts selected, so each one sent to today counts against
+  // the budget the next is checked with.
+  it('stops sending proposals to today once the ones before them fill it', () => {
+    const projects = [0, 1, 2].map(i =>
+      makeProject({ id: `p${i}`, sortOrder: i, createdAt: subDays(new Date(), 60 - i).toISOString() })
+    );
+    const half = Math.ceil(PULL_TODAY_BUDGET_MINUTES / 2);
+    const tasks = projects.map(p => makeTask({ id: `t-${p.id}`, projectId: p.id, estimatedMinutes: half }));
+
+    const labels = buildProjectPullPlan(projects, tasks, []).proposals.map(p => p.suggestion.dayLabel);
+
+    expect(labels.slice(0, 2)).toEqual(['Today', 'Today']);
+    expect(labels[2]).not.toBe('Today');
+  });
+
   // Opened for one project, the sheet's empty message has to be about that
   // project, not counts drawn from the rest of the board.
   it('diagnoses a scoped empty plan over the scoped projects alone', () => {

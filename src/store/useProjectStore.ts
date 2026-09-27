@@ -137,6 +137,31 @@ export function projectDecisions(projectId: string, tasks: Task[]): Task[] {
   return Array.from(latest.values()).sort((a, b) => answeredAt(b).localeCompare(answeredAt(a)));
 }
 
+/**
+ * The project page's Completed section: finished members, newest first, one
+ * row per member.
+ *
+ * Grouped by the same identity `projectProgress` counts, for the reason
+ * `projectDecisions` gives: a repeating member leaves a completed row per
+ * occurrence, so a daily task in a project grew the section by one a day and
+ * "Show 47 completed" sat beside a progress line counting 8 members. Each
+ * member shows its most recent completion; the rest of its history is in the
+ * Logbook, where history lives.
+ */
+export function projectCompletedRows(projectId: string, tasks: Task[]): Task[] {
+  const members = tasks.filter(t => t.projectId === projectId && t.parentId === null && !t.archived);
+  const byId = new Map(members.map(t => [t.id, t]));
+  const latest = new Map<string, Task>();
+  for (const member of members) {
+    if (!member.completed) continue;
+    const key = memberKey(member, byId);
+    const held = latest.get(key);
+    if (!held || (member.completedAt ?? '') > (held.completedAt ?? '')) latest.set(key, member);
+  }
+  return Array.from(latest.values())
+    .sort((a, b) => (b.completedAt ?? '').localeCompare(a.completedAt ?? ''));
+}
+
 // When a decision was made, as far as ordering goes. A live row that was
 // un-completed has no stamp and sorts last, which is the honest place for it:
 // the answer is still on the row, but the moment it was reached is gone.
