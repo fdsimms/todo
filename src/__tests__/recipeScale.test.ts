@@ -21,6 +21,10 @@ describe('scaleQuantity', () => {
     expect(text('1\u20132 cups', 2)).toBe('2-4 cups');
   });
 
+  it('keeps a compound\'s hyphen against its number', () => {
+    expect(text('1-inch piece ginger', 2)).toBe('2-inch piece ginger');
+  });
+
   it('counts a hyphenated bare container rather than growing the can', () => {
     expect(text('14-oz can', 2)).toBe(text('14 oz can', 2));
   });

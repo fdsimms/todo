@@ -261,14 +261,11 @@ export function goalPace(goal: WeightGoal, currentKg: number, today: Date): Weig
  * How many days from `currentKg` to the target at the chosen rate, or null when
  * the arithmetic has no answer.
  *
- * Null for a maintain goal (no rate to divide by), for a target already
- * reached (nothing left to project), and — the one worth stating — for a weight
- * that has moved the *wrong* way past its own start: the rate still points at
- * the target from there, so a projection is arithmetically fine, and it is
- * withheld anyway. "You will reach 70kg in 340 days" said to somebody currently
- * heading away from it is the app's first opinion about how it is going, and
- * this module does not have those. The caller shows the pace gap instead, which
- * is a fact rather than a forecast.
+ * Null for a maintain goal (no rate to divide by) and for a target already
+ * reached or passed (nothing left to project). A weight on the wrong side of
+ * the goal's own start still gets a projection: it is further from the target,
+ * not past it, so the forecast is longer rather than withheld. It is the chosen
+ * rate's arithmetic from where they are now, not a judgment of the trend.
  */
 export function daysToTarget(goal: WeightGoal, currentKg: number): number | null {
   const rate = signedRateKgPerWeek(goal);

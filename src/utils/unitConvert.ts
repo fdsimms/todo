@@ -241,9 +241,12 @@ function renderUs(base: number, dimension: Dimension): string | null {
   if (base <= 0) return null;
 
   if (dimension === 'mass') {
-    const useOunces = base < GRAMS_PER_POUND;
+    // Decided on the rounded figure, not the raw one: 450 g is 15.9 oz, which
+    // snaps to 16 and would read "16 oz" rather than "1 lb".
+    const ounces = renderUsAmount(base / GRAMS_PER_OUNCE, 'mass');
+    const useOunces = base < GRAMS_PER_POUND && ounces.value < 16;
     const unit = useOunces ? 'oz' : 'lb';
-    const amount = renderUsAmount(base / (useOunces ? GRAMS_PER_OUNCE : GRAMS_PER_POUND), 'mass');
+    const amount = useOunces ? ounces : renderUsAmount(base / GRAMS_PER_POUND, 'mass');
     if (amount.value <= 0) return null;
     return `${amount.text} ${inflectUnit(unit, amount.value)}`;
   }

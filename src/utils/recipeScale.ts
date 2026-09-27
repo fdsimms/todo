@@ -108,9 +108,10 @@ function stripSourceCountAside(trailing: string): string {
 
 // With no unit, `trailing` is the trimmed rest, so it needs its space back
 // before a word or a parenthesised size ("2 (14 oz) cans") — but not before
-// the punctuation of a size clause ("1, medium").
+// the punctuation of a size clause ("1, medium"), or the hyphen of a compound
+// ("1-inch piece" doubled is "2-inch piece", not "2 -inch piece").
 function joinTrailing(amount: string, trailing: string): string {
-  if (!trailing || /^[\s,;.:)]/.test(trailing)) return `${amount}${trailing}`;
+  if (!trailing || /^[\s,;.:)]|^-(?=\S)/.test(trailing)) return `${amount}${trailing}`;
   return `${amount} ${trailing}`;
 }
 
