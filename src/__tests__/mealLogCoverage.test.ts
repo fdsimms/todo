@@ -145,6 +145,17 @@ describe('mealDayCoverage', () => {
     expect(coverage.get('lunch')!.linked).toBe(false);
   });
 
+  it('does not report linked for a row naming an earlier slot\'s meal', () => {
+    const lunch = planned({ id: 'p-lunch', slot: 'lunch' });
+    const dinner = planned({ id: 'p-dinner', slot: 'dinner' });
+    const coverage = mealDayCoverage(
+      [lunch, dinner],
+      [logged({ slot: 'dinner', mealPlanEntryId: lunch.id })],
+      DAY,
+    );
+    expect(coverage.get('dinner')!.linked).toBe(false);
+  });
+
   it('leaves out a slot nobody planned and nobody logged', () => {
     expect([...mealDayCoverage([planned()], [], DAY).keys()]).toEqual(['lunch']);
   });
