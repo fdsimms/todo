@@ -205,6 +205,17 @@ export function ProjectsScreen() {
     () => groupProjectsByCategory(visibleProjects, projectCategoryOrder),
     [visibleProjects, projectCategoryOrder]
   );
+  // How many projects sit under each heading, as listed right now (the search
+  // and the list filter included), for the count beside it.
+  const sectionCounts = useMemo(() => {
+    const counts = new Map<string, number>();
+    let heading: string | null = null;
+    for (const item of projectListItems) {
+      if (item.type === 'header') { heading = item.label; continue; }
+      if (heading !== null) counts.set(heading, (counts.get(heading) ?? 0) + 1);
+    }
+    return counts;
+  }, [projectListItems]);
   const archivedCount = useMemo(() => projects.filter(p => p.archived).length, [projects]);
   const completedCount = useMemo(() => projects.filter(p => p.completed && !p.archived).length, [projects]);
 
@@ -451,7 +462,10 @@ export function ProjectsScreen() {
     if (item.type === 'header') {
       return (
         <View style={styles.categorySectionHeader}>
-          <Text style={styles.categorySectionHeaderText}>{item.label}</Text>
+          <Text style={styles.categorySectionHeaderText} numberOfLines={1}>
+            {item.label}
+            <Text style={styles.categorySectionCount}> · {sectionCounts.get(item.label) ?? 0}</Text>
+          </Text>
         </View>
       );
     }
@@ -475,6 +489,7 @@ export function ProjectsScreen() {
         pastWindow={pastWindow}
         captionText={caption?.text ?? null}
         captionOverdue={caption?.overdue ?? false}
+        captionSoon={caption?.soon ?? false}
         progressNote={projectProgressNote(project, progress)}
         nextStep={facts?.next ?? null}
         projectFilter={projectFilter}
@@ -713,7 +728,7 @@ export function ProjectsScreen() {
  * follows on Today.
  */
 const ProjectRow = React.memo(function ProjectRow({
-  project, progress, pastWindow, captionText, captionOverdue, progressNote, nextStep, projectFilter, allDone,
+  project, progress, pastWindow, captionText, captionOverdue, captionSoon, progressNote, nextStep, projectFilter, allDone,
   selectionMode, selected, isActive, drag, colors, styles,
   onPress, onToggleSelect, onSwipeSelect, onQuickUnarchive, onQuickUncomplete, onQuickComplete, onEdit,
 }: {
@@ -724,6 +739,7 @@ const ProjectRow = React.memo(function ProjectRow({
   // render of the list and would defeat the memo on its own.
   captionText: string | null;
   captionOverdue: boolean;
+  captionSoon: boolean;
   /** Said in place of the bar: an empty project, or an ongoing one's open count. */
   progressNote: string | null;
   /** The top of the project's own order, named so the card says what's up. */
@@ -847,7 +863,9 @@ const ProjectRow = React.memo(function ProjectRow({
                   accessibilityRole="button"
                   accessibilityLabel={`Edit ${project.title}`}
                 >
-                  <Ionicons name="ellipsis-horizontal" size={16} color={colors.textTertiary} />
+                  {/* A pencil, like the project page's own: this opens the
+                      editor straight away rather than a menu. */}
+                  <Ionicons name="create-outline" size={16} color={colors.textTertiary} />
                 </TouchableOpacity>
                 </>
               )}
@@ -870,7 +888,11 @@ const ProjectRow = React.memo(function ProjectRow({
             )}
             {captionText && (
               <Text
-                style={[styles.rangeText, captionOverdue && pastWindow && { color: colors.orange }]}
+                style={[
+                  styles.rangeText,
+                  captionSoon && styles.rangeTextSoon,
+                  captionOverdue && pastWindow && { color: colors.orange },
+                ]}
                 numberOfLines={1}
               >
                 {captionText}
@@ -903,6 +925,11 @@ const makeStyles = (colors: Colors) => StyleSheet.create({
     fontWeight: fontWeight.semibold,
     textTransform: 'uppercase',
     letterSpacing: 0.8,
+  },
+  // Same grey as the heading, a weight lighter, so it reads as a note on the
+  // heading rather than part of the name.
+  categorySectionCount: {
+    fontWeight: fontWeight.regular,
   },
   // The card's margin and radius live here, on SwipeableRow's own `style`
   // prop, rather than on the row below — see the note on SwipeableRow for why
@@ -969,6 +996,10 @@ const makeStyles = (colors: Colors) => StyleSheet.create({
   rangeText: {
     color: colors.textTertiary,
     fontSize: font.xs,
+  },
+  rangeTextSoon: {
+    color: colors.text,
+    fontWeight: fontWeight.medium,
   },
   nextText: {
     color: colors.textSecondary,

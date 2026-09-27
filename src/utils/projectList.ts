@@ -23,7 +23,17 @@ export interface ProjectCardCaption {
   text: string;
   /** Orange on the card: a deadline passed with work still open. */
   overdue: boolean;
+  /**
+   * A deadline in the next few days (see DUE_SOON_DAYS), which the card sets
+   * in full-strength text rather than the caption grey. Not a color of its
+   * own: orange already means late, and the app's yellow doesn't hold up as
+   * text on a white card.
+   */
+  soon?: boolean;
 }
+
+/** How many days out a deadline still counts as close: today and the next two. */
+export const DUE_SOON_DAYS = 2;
 
 function shortDate(d: Date, today: Date): string {
   return format(d, d.getFullYear() === today.getFullYear() ? 'MMM d' : 'MMM d, yyyy');
@@ -47,7 +57,8 @@ export function describeProjectDeadline(
   if (!project.deadline) return null;
   const date = new Date(project.deadline);
   const today = getCurrentDayStart();
-  if (differenceInCalendarDays(date, today) < 0) {
+  const daysOut = differenceInCalendarDays(date, today);
+  if (daysOut < 0) {
     return pastWindow
       ? { text: formatDeadlineDate(project.deadline, dayResetTime), overdue: true }
       : { text: `Due ${shortDate(date, today)}`, overdue: false };
@@ -56,7 +67,7 @@ export function describeProjectDeadline(
   // "Today" and "Tomorrow" are relative words, so they read lowercase after
   // "Due"; a weekday or a date is a name and keeps its capital.
   const relative = label === 'Today' || label === 'Tomorrow';
-  return { text: `Due ${relative ? label.toLowerCase() : label}`, overdue: false };
+  return { text: `Due ${relative ? label.toLowerCase() : label}`, overdue: false, soon: daysOut <= DUE_SOON_DAYS };
 }
 
 /**

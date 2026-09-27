@@ -20,6 +20,7 @@ import { useTaskStore } from '../store/useTaskStore';
 import { useProjectStore } from '../store/useProjectStore';
 import { useProjectCategoryStore } from '../store/useProjectCategoryStore';
 import { SheetHeaderButton } from './SheetHeaderButton';
+import { SheetHeader } from './SheetHeader';
 import { InlineAction } from './InlineAction';
 import { EmptyState } from './EmptyState';
 import { SortableList } from './SortableList';
@@ -213,11 +214,12 @@ export function ProjectCategoriesSheet({ visible, onClose }: Props) {
   return (
     <SheetModal visible={visible} animationType="slide" presentationStyle="fullScreen" onRequestClose={close}>
       <View style={[styles.root, { paddingTop: insets.top }]}>
-        <View style={styles.header}>
-          <View style={styles.headerSpacer} />
-          <Text style={styles.headerTitle}>Project categories</Text>
-          <SheetHeaderButton label="Done" onPress={close} minWidth={64} />
-        </View>
+        <SheetHeader
+          title="Project categories"
+          size="lg"
+          left={<View style={styles.headerSpacer} />}
+          right={<SheetHeaderButton label="Done" onPress={close} minWidth={64} />}
+        />
 
         <ScrollView
           ref={keyboardScroll.ref}
@@ -336,23 +338,7 @@ export function ProjectCategoriesSheet({ visible, onClose }: Props) {
 
 const makeStyles = (colors: Colors) => StyleSheet.create({
   root: { flex: 1, backgroundColor: colors.bg },
-  header: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'space-between',
-    paddingHorizontal: spacing.md,
-    paddingBottom: spacing.md,
-    borderBottomWidth: border.hairline,
-    borderBottomColor: colors.separator,
-  },
   headerSpacer: { width: 64 },
-  headerTitle: {
-    flex: 1,
-    textAlign: 'center',
-    color: colors.text,
-    fontSize: font.lg,
-    fontWeight: fontWeight.semibold,
-  },
   list: { padding: spacing.md, paddingBottom: spacing.xl },
   // Full-height content container so EmptyState's own `flex: 1` has room to
   // center above the add row, instead of collapsing to its natural height

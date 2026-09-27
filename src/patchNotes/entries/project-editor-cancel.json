@@ -1,0 +1,4 @@
+{
+  "message": "The project editor now has a Cancel button that discards your changes, with Delete moved to the bottom. The edit button on project cards and pages is a pencil. Category pickers for projects fold long lists behind \"more\" with a search field, project category headings show a count, a deadline in the next couple of days stands out on its card, and \"Add existing task\" rows show each task's date and category.",
+  "date": "2026-09-27"
+}

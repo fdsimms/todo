@@ -66,6 +66,12 @@ const makeTask = (overrides: Partial<Task>): Task => ({
 const noon = (d: Date) => { const c = new Date(d); c.setHours(12, 0, 0, 0); return c.toISOString(); };
 
 describe('describeProjectDeadline', () => {
+  it('marks a deadline in the next couple of days as soon, and a later one not', () => {
+    expect(describeProjectDeadline(makeProject({ deadline: noon(new Date()) }), false)?.soon).toBe(true);
+    expect(describeProjectDeadline(makeProject({ deadline: noon(addDays(new Date(), 2)) }), false)?.soon).toBe(true);
+    expect(describeProjectDeadline(makeProject({ deadline: noon(addDays(new Date(), 3)) }), false)?.soon).toBe(false);
+  });
+
   it('says nothing without a deadline', () => {
     expect(describeProjectDeadline(makeProject(), false)).toBeNull();
   });
