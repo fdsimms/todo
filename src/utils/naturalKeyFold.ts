@@ -224,7 +224,15 @@ export function foldRows(table: string, winner: BackupRow, loser: BackupRow): Ba
     const takeLoser = g.pick === 'latest'
       ? !isBlank(lv) && (isBlank(wv) || String(lv) > String(wv))
       : Number(lv ?? 0) > Number(wv ?? 0);
-    if (takeLoser) for (const c of g.columns) if (c in loser) out[c] = loser[c];
+    // The side whose block wins supplies all of it, blanks included. Keeping
+    // the winner's by doing nothing left the default fill above in place, so a
+    // blank inside the winner's block (a price seen with no quantity, a cook
+    // with no timing) was filled from the loser's older event: the newer
+    // price labelled with a quantity it was never seen at. A winner with no
+    // anchor has no block to keep, so that case still takes the fill.
+    const winnerHasBlock = g.pick === 'latest' ? !isBlank(wv) : Number(wv ?? 0) > 0;
+    const src = takeLoser ? loser : winnerHasBlock ? winner : null;
+    if (src) for (const c of g.columns) if (c in src) out[c] = src[c] ?? null;
   }
 
   delete out.updated_at;

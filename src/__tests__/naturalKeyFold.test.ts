@@ -52,6 +52,26 @@ describe('foldRows', () => {
     expect(out).toMatchObject({ cook_time_count: 5, total_cook_minutes: 200, cook_count: 6 });
   });
 
+  it('keeps the newer price\'s own block whole, blank quantity included', () => {
+    // The newer price was seen with no quantity; the older one's "1 pint"
+    // must not be pinned to it.
+    const out = foldRows(
+      'grocery_items',
+      { id: 'a1', last_price_minor: 429, last_priced_at: '2026-05-01', last_price_quantity: null },
+      { id: 'b2', last_price_minor: 129, last_priced_at: '2026-04-01', last_price_quantity: '1 pint' },
+    );
+    expect(out).toMatchObject({ last_price_minor: 429, last_priced_at: '2026-05-01', last_price_quantity: null });
+  });
+
+  it('keeps the latest cook\'s timings with it, even when it has none', () => {
+    const out = foldRows(
+      'recipes',
+      { id: 'a', last_cooked_at: '2026-05-01', last_cook_minutes: null, last_prep_minutes: null },
+      { id: 'b', last_cooked_at: '2026-04-01', last_cook_minutes: 90, last_prep_minutes: 20 },
+    );
+    expect(out).toMatchObject({ last_cooked_at: '2026-05-01', last_cook_minutes: null, last_prep_minutes: null });
+  });
+
   it('keeps a list entry unchecked unless both copies were checked', () => {
     expect(foldRows('grocery_list_items', { checked: 1 }, { checked: 0 }).checked).toBe(0);
     expect(foldRows('grocery_list_items', { checked: 1 }, { checked: 1 }).checked).toBe(1);
