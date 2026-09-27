@@ -61,9 +61,11 @@ interface Props {
  * about what's on the list two screens away.
  *
  * So the sheet answers it. Stores are ranked by how much of the list they're
- * known to carry, but nothing is picked for you — the sheet opens on "No
- * store" and the ranking is there to choose from, not a guess to notice and
- * undo. **The gap is the other half** — one store rarely has everything, and
+ * known to carry. Planning for later picks nothing for you: the sheet opens on
+ * "No store" and the ranking is there to choose from. Starting a trip opens on
+ * one store (the trip's current one, else best coverage, else the last trip's;
+ * see `startPreselect`), because that confirm has to start a trip rather than
+ * quietly make a task. **The gap is the other half** — one store rarely has everything, and
  * a plan of "Trader
  * Joe's, then the pharmacy for shampoo" is the thing worth surfacing, so the
  * card names the second stop and what it adds. Naming the missing items rather
@@ -99,6 +101,23 @@ interface Props {
  * its own rather than a cancel, and it makes exactly the task this button made
  * before any of this existed.
  */
+/**
+ * The store a "start shopping" open arrives on: the live trip's, else the best
+ * coverage, else the last trip's. Empty when none of them names a store that
+ * still exists.
+ */
+function startPreselect(coverage: readonly ShopCoverage[], shops: readonly Shop[]): string[] {
+  const grocery = useGroceryStore.getState();
+  const live = new Set(shops.map(s => s.id));
+  const candidates = [
+    grocery.activeShop()?.id ?? null,
+    coverage.find(c => c.itemIds.length > 0)?.shop.id ?? null,
+    grocery.lastShopId,
+  ];
+  const pick = candidates.find(id => id !== null && live.has(id));
+  return pick ? [pick] : [];
+}
+
 export function ShoppingTripSheet({ visible, onClose, onCreate, onStart, intent }: Props) {
   const colors = useColors();
   const styles = useMemo(() => makeStyles(colors), [colors]);
@@ -136,12 +155,18 @@ export function ShoppingTripSheet({ visible, onClose, onCreate, onStart, intent 
 
   useEffect(() => {
     if (!visible) return;
-    // No store picked by default — the ranking below is a suggestion to pick
-    // from, not a pre-made choice. "No store" is a real answer (see the
-    // header comment), so the sheet opens on it rather than pre-selecting a
-    // guess the user then has to notice and undo.
-    setSelected([]);
-    selectedBaselineRef.current = [];
+    // Planning for later opens on "No store": the ranking below is a
+    // suggestion to pick from, and "No store" is a real answer there (see the
+    // header comment). Starting a trip is different, because the entry points
+    // that open it that way already said "start shopping" and the confirm has
+    // to start one: opened on "No store" it read "Add" and made a task
+    // instead. So a start opens on the store the trip is already at (changing
+    // store), else the best coverage, else wherever the last trip ended, the
+    // one StartTripPrompt and docs/arch/groceries.md promise. Named and
+    // changeable before Start, same as any other pick.
+    const initial = intent === 'start' ? startPreselect(plan.coverage, shops) : [];
+    setSelected(initial);
+    selectedBaselineRef.current = initial;
     setCorrecting(null);
   }, [visible]);
 

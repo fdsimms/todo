@@ -5832,7 +5832,11 @@ export const useTaskStore = create<TaskStore>((set, get) => ({
       // user's next shake would be labelled as something they had just done and
       // point at an item they may never have opened. Same reason the completed
       // task purge doesn't route through bulkDeleteTasks.
-      lowIds.forEach(itemId => grocery.setRunningLow(itemId, true, { registerUndo: false }));
+      // listId: null — the home list, the one the supply is restocked from.
+      // The active list may be an away one (checkAwayGroceryList switches to
+      // it), and a supply flagged low there is never restocked by that trip
+      // and, already flagged, never reaches the home list after it.
+      lowIds.forEach(itemId => grocery.setRunningLow(itemId, true, { registerUndo: false, listId: null }));
     }
 
     if (!settings.supplyReorderTasks) return;
@@ -5848,10 +5852,20 @@ export const useTaskStore = create<TaskStore>((set, get) => ({
     // stamp supplyDeclinedAtCount on a task the user never turned down, and so
     // silence the offer until the *next* restock on the strength of the app's
     // own tidying up.
-    const stale = staleSupplyReorderTasks(tasks, dayResetTime);
+    // The rows a supply's grocery link can act through: every live catalog row
+    // with the kitchen on, none with it off. A link outside that set asks
+    // through a reorder task instead (see supplyLinkActs), or a supply whose
+    // item was deleted would ask nowhere at all. Undefined, meaning "trust
+    // every link", until the grocery store has loaded: an empty catalog
+    // mid-launch is not every item having been deleted.
+    const grocery = useGroceryStore.getState();
+    const actingItemIds = !settings.kitchenEnabled
+      ? new Set<string>()
+      : grocery.initialized ? new Set(grocery.items.map(i => i.id)) : undefined;
+    const stale = staleSupplyReorderTasks(tasks, dayResetTime, actingItemIds);
     stale.forEach(task => dropGeneratedTask('supplyReorder', supplyReorderSourceId(task)));
 
-    const wanted = wantedSupplyReorders(get().tasks, dayResetTime);
+    const wanted = wantedSupplyReorders(get().tasks, dayResetTime, undefined, actingItemIds);
     if (wanted.length === 0) return;
 
     // Noon today, the landing every other unattended writer picks: an offer

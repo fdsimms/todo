@@ -60,6 +60,7 @@ import { animateLayout } from '../utils/layoutAnimation';
 import { editorSearchTerms, matchesEditorQuery, filterEditorRows, type EditorSearchable } from '../utils/editorSearch';
 import { describeShops, shopsForItem, unavailableShopsFor } from '../utils/groceryShops';
 import { describeSubstituteLink, describeSubstitutes, substitutesFor } from '../utils/itemSubs';
+import { describeForgetLoss } from '../utils/groceryFacts';
 import { genericNameSuggestions } from '../utils/itemVarieties';
 import { groceryNameKey } from '../utils/groceryParse';
 import { SubstituteSheet } from './SubstituteSheet';
@@ -673,9 +674,18 @@ export function GroceryItemSheet({
   };
 
   const handleForgetItem = () => {
+    // What else goes with the row, named from the data: a standing swap here
+    // changes how every recipe shops, and a supply stocked from it stops
+    // putting it on the list. See describeForgetLoss.
+    const loss = describeForgetLoss(
+      [item.id],
+      { products: itemProducts, subs: itemSubs, aliases: useGroceryStore.getState().storeAliases },
+      items,
+      stockedFor.map(t => t.title),
+    );
     confirmDelete({
       title: `Forget ${item.name}?`,
-      message: 'This removes it from your catalog along with its history, and can’t be undone. To just take it off this week’s list, use "Remove from list".',
+      message: `This removes it from your catalog along with its history, and can’t be undone.${loss ? `\n\n${loss}` : ''}\n\nTo just take it off this week’s list, use "Remove from list".`,
       confirmLabel: 'Forget',
       onConfirm: () => {
         deleteItem(item.id);

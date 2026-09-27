@@ -1,4 +1,4 @@
-import { useGroceryStore } from '../store/useGroceryStore';
+import { describePlanAdd, useGroceryStore } from '../store/useGroceryStore';
 import {
   dbGetAllGroceryItems,
   dbGetGroceryAisleOrder,
@@ -1810,6 +1810,19 @@ describe('shops', () => {
     expect(useGroceryStore.getState().itemShops[0].shopId).toBe(safeway.id);
   });
 
+  it('deleteShop takes the receipt lines remembered against it', () => {
+    const costco = makeShop('Costco');
+    const safeway = makeShop('Safeway');
+    seed([], { shops: [costco, safeway] });
+    const alias = (id: string, shopId: string) =>
+      ({ id, shopId, rawKey: id, itemId: 'i1', hitCount: 1, createdAt: '', lastUsedAt: '' }) as StoreAlias;
+    useGroceryStore.setState({ storeAliases: [alias('a1', costco.id), alias('a2', safeway.id)] });
+
+    useGroceryStore.getState().deleteShop(costco.id);
+
+    expect(useGroceryStore.getState().storeAliases.map(a => a.id)).toEqual(['a2']);
+  });
+
   it('deleteShop clears the remembered store when it was the one deleted', () => {
     const costco = makeShop('Costco');
     seed([], { shops: [costco] });
@@ -2100,6 +2113,19 @@ describe('prices by hand', () => {
     expect(state.itemShops[0].lastPriceQuantity).toBe('2 L');
   });
 
+  it('setItemPrice pairs no quantity when a recipe wrote the one on the row', () => {
+    const costco = makeShop('Costco');
+    const milk = makeItem({ name: 'Milk', quantity: '3 cups', quantityFromRecipe: true });
+    seed([milk], { shops: [costco], itemShops: [link(milk.id, costco.id)] });
+
+    useGroceryStore.getState().setItemPrice(milk.id, 429, costco.id);
+
+    const state = useGroceryStore.getState();
+    expect(state.items[0].lastPriceMinor).toBe(429);
+    expect(state.items[0].lastPriceQuantity).toBeNull();
+    expect(state.itemShops[0].lastPriceQuantity).toBeNull();
+  });
+
   it('setItemPrice with a store the item has no link to leaves the link alone', () => {
     const costco = makeShop('Costco');
     const milk = makeItem({ name: 'Milk' });
@@ -2294,6 +2320,26 @@ describe('finishShopping with a store', () => {
 
     const link = useGroceryStore.getState().itemShops[0];
     expect(link).toMatchObject({ lastPriceMinor: 429, lastPriceQuantity: '1 gal' });
+  });
+
+  it('files a price paid against a recipe-written quantity against no quantity at all', () => {
+    // "3 cups" is what the week's recipes needed, not the gallon that came
+    // home. recipeCost divides the price by this string, so pairing them would
+    // cost a later 2-cup recipe at two thirds of a gallon.
+    const costco = makeShop('Costco');
+    const milk = makeItem({ name: 'Milk', onList: true, checked: true, quantity: '3 cups', quantityFromRecipe: true });
+    seed([milk], { shops: [costco] });
+    (dbFinishGroceryShopping as jest.Mock).mockReturnValue([milk.id]);
+
+    useGroceryStore.getState().finishShopping(costco.id, { [milk.id]: 429 });
+
+    const after = useGroceryStore.getState().items.find(i => i.id === milk.id)!;
+    expect(after.lastPriceMinor).toBe(429);
+    expect(after.lastPriceQuantity).toBeNull();
+    expect(after.priceHistory[after.priceHistory.length - 1].quantity).toBeNull();
+    const link = useGroceryStore.getState().itemShops[0];
+    expect(link).toMatchObject({ lastPriceMinor: 429, lastPriceQuantity: null });
+    expect(link.priceHistory[link.priceHistory.length - 1].quantity).toBeNull();
   });
 
   it('leaves an unpriced item’s previous price standing', () => {
@@ -2680,6 +2726,37 @@ describe('addFromPlan', () => {
     // The quantity the user set survives — this is the overwrite addByName
     // already refuses to do, held to across the plan path too.
     expect(useGroceryStore.getState().itemById(milk.id)!.quantity).toBe('2 gal');
+  });
+
+  it('reports a recipe-owned row whose amount it merged as topped up', () => {
+    const rice = makeItem({ name: 'Rice', onList: true, quantity: '1 cup', quantityFromRecipe: true });
+    const milk = makeItem({ name: 'Milk', onList: true, quantity: '2 gal' });
+    seed([rice, milk]);
+
+    const result = useGroceryStore.getState().addFromPlan([
+      { name: 'Rice', quantity: '1 cup', aisle: 'Pantry' },
+      { name: 'Milk', quantity: '1 pint', aisle: 'Dairy & Eggs' },
+    ]);
+
+    expect(result.alreadyOnList.map(i => i.id)).toEqual([rice.id, milk.id]);
+    // Milk's hand-set amount outranks the recipe, so only rice moved.
+    expect(result.toppedUp.map(i => i.id)).toEqual([rice.id]);
+    expect(describePlanAdd(result)).toEqual({
+      title: 'On the list',
+      message: 'Updated 1 amount already on your list · 1 already on your list',
+      changed: true,
+    });
+  });
+
+  it('describes a plan add that changed nothing as nothing to add', () => {
+    const eggs = makeItem({ name: 'Eggs', onList: true, checked: true });
+    seed([eggs]);
+    const result = useGroceryStore.getState().addFromPlan([
+      { name: 'Eggs', quantity: '6', aisle: 'Dairy & Eggs' },
+    ]);
+    expect(describePlanAdd(result)).toEqual({
+      title: 'Nothing to add', message: '1 already in your cart', changed: false,
+    });
   });
 
   it('marks a quantity it writes as recipe-owned, and never overwrites a hand-set one', () => {
@@ -5740,6 +5817,23 @@ describe('the active trip', () => {
     expect(useGroceryStore.getState().tripBudgetMinor).toBe(6000);
   });
 
+  it('keeps the budget when the store changes mid-shop', () => {
+    // "Change store" is the same shop moved, not a new one with its ceiling
+    // quietly cleared.
+    const costco = makeShop('Costco');
+    const safeway = makeShop('Safeway');
+    seed([], { shops: [costco, safeway] });
+    useGroceryStore.getState().startTrip(costco.id, 6000);
+
+    useGroceryStore.getState().startTrip(safeway.id);
+    expect(useGroceryStore.getState().tripShopId).toBe(safeway.id);
+    expect(useGroceryStore.getState().tripBudgetMinor).toBe(6000);
+
+    // An explicit null still starts with none.
+    useGroceryStore.getState().startTrip(costco.id, null);
+    expect(useGroceryStore.getState().tripBudgetMinor).toBeNull();
+  });
+
   it('sets and clears a budget mid-shop', () => {
     // A ceiling is decided at the shelf as often as before leaving, so it is
     // not write-once.
@@ -6975,6 +7069,18 @@ describe('separate shopping lists', () => {
 
       expect(entryOf(oil.id, null)).not.toBeNull();
       expect(entryOf(oil.id, AIRBNB.id)).not.toBeNull();
+    });
+
+    it('adds it to the list it is told to, whichever is being shown', () => {
+      // The supply sweep names the home list: a home supply joining the
+      // Airbnb list is never restocked there.
+      const oil = makeItem({ name: 'Olive oil', onList: false });
+      seed([oil], { lists: [AIRBNB], activeListId: AIRBNB.id });
+
+      useGroceryStore.getState().setRunningLow(oil.id, true, { registerUndo: false, listId: null });
+
+      expect(entryOf(oil.id, null)).not.toBeNull();
+      expect(entryOf(oil.id, AIRBNB.id)).toBeNull();
     });
   });
 

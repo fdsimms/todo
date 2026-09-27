@@ -2449,6 +2449,30 @@ describe('grocery items', () => {
     ]);
   });
 
+  // A quantity a recipe wrote is the cooking amount ("3 cups"), not the pack
+  // that came home, so the price pairs with nothing rather than with that.
+  it('records a price against no quantity when a recipe wrote the row’s quantity', () => {
+    const shop = { id: 's1', name: 'Costco', nameKey: 'costco', sortOrder: 1,
+      createdAt: '2026-01-01T00:00:00.000Z', excludeFromSuggestions: false,
+      receiptStyle: 'itemized' as const, aisles: null };
+    dbInsertGroceryShop(shop);
+    const item = makeGroceryItem({
+      id: 'g1', name: 'Milk', onList: true, checked: true, quantity: '3 cups', quantityFromRecipe: true,
+    });
+    insertListedGroceryItem(item);
+
+    dbFinishGroceryShopping('2026-08-01T00:00:00.000Z', shop.id, {}, { g1: 429 });
+
+    const after = dbGetAllGroceryItems()[0];
+    expect(after.lastPriceMinor).toBe(429);
+    expect(after.lastPriceQuantity).toBeNull();
+    expect(after.priceHistory[0].quantity).toBeNull();
+    const link = dbGetAllItemShopLinks()[0];
+    expect(link.lastPriceMinor).toBe(429);
+    expect(link.lastPriceQuantity).toBeNull();
+    expect(link.priceHistory[0].quantity).toBeNull();
+  });
+
   it('appends each trip to the window, newest first', () => {
     const item = makeGroceryItem({ id: 'g1', name: 'Olive oil', onList: true, checked: true });
     insertListedGroceryItem(item);

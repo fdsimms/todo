@@ -4278,6 +4278,81 @@ describe('supplies', () => {
       expect(liveOrders()).toHaveLength(0);
     });
 
+    describe('with a grocery link', () => {
+      const catalogRow = (id: string): GroceryItem => ({
+        nameFromScan: false,
+        id, name: 'CPAP filters', nameKey: 'cpap filters', preferredProductId: null, productStrict: false,
+        aisle: 'Other', quantity: null, quantityFromRecipe: false, note: '',
+        onList: false, checked: false, sortOrder: 1,
+        purchaseCount: 0, lastAddedAt: null, lastPurchasedAt: null, createdAt: noon(-30),
+        onHandUntil: null, sourceRecipeId: null, sourceRecipeTitle: null, choiceGroup: null,
+        isStaple: false, expiresAt: null, frozenAt: null, openedAt: null, runningLowAt: null,
+        shelfLifeDays: null, useUpTask: null, pantryCheckDeclinedAt: null, pantryReviewedAt: null,
+        usedUpCount: 0, spoiledCount: 0, lastSpoiledAt: null, varietyOfKey: null, nutrition: null, backfillDismissedFields: [],
+        lastPriceMinor: null, lastPricedAt: null, lastPriceQuantity: null, priceHistory: [],
+      });
+      const AWAY = { id: 'l-cabin', name: 'Cabin', sortOrder: 1, createdAt: noon(-30) };
+      const seedGrocery = (items: GroceryItem[], initialized = true) => {
+        useGroceryStore.setState({
+          items, aisleOrder: [], hiddenAisles: [], aisleOverrides: {},
+          shops: [], itemShops: [], lastShopId: null, cartHoldIds: [],
+          pendingUseUpItemId: null, initialized,
+          lists: [AWAY], listEntries: [], activeListId: AWAY.id,
+        });
+      };
+
+      it('puts a live linked item on the home list rather than the away one, and writes no order', () => {
+        useSettingsStore.getState.mockReturnValue(settings({ kitchenEnabled: true }));
+        seedGrocery([catalogRow('g-filter')]);
+        // The list write itself is covered in useGroceryStore.test.ts; this
+        // pins which list the sweep names.
+        const realSetRunningLow = useGroceryStore.getState().setRunningLow;
+        const setRunningLow = jest.fn();
+        useGroceryStore.setState({ setRunningLow });
+        try {
+          addSupplyTask({ supplyCount: 1, supplyGroceryItemId: 'g-filter' });
+
+          useTaskStore.getState().checkSupplyReorderTasks();
+
+          expect(setRunningLow).toHaveBeenCalledWith('g-filter', true, { registerUndo: false, listId: null });
+          expect(liveOrders()).toHaveLength(0);
+        } finally {
+          useGroceryStore.setState({ setRunningLow: realSetRunningLow });
+        }
+      });
+
+      it('writes an order when the linked item has been deleted from the catalog', () => {
+        // Otherwise the supply asks nowhere: the list half skips a dead item.
+        useSettingsStore.getState.mockReturnValue(settings({ kitchenEnabled: true }));
+        seedGrocery([]);
+        const task = addSupplyTask({ supplyCount: 1, supplyGroceryItemId: 'g-gone' });
+
+        useTaskStore.getState().checkSupplyReorderTasks();
+
+        expect(liveOrders().map(o => o.generatedSourceId)).toEqual([task.id]);
+      });
+
+      it('writes an order when the kitchen is off', () => {
+        useSettingsStore.getState.mockReturnValue(settings({ kitchenEnabled: false }));
+        seedGrocery([catalogRow('g-filter')]);
+        addSupplyTask({ supplyCount: 1, supplyGroceryItemId: 'g-filter' });
+
+        useTaskStore.getState().checkSupplyReorderTasks();
+
+        expect(liveOrders()).toHaveLength(1);
+      });
+
+      it('trusts the link until the catalog has loaded', () => {
+        useSettingsStore.getState.mockReturnValue(settings({ kitchenEnabled: true }));
+        seedGrocery([], false);
+        addSupplyTask({ supplyCount: 1, supplyGroceryItemId: 'g-filter' });
+
+        useTaskStore.getState().checkSupplyReorderTasks();
+
+        expect(liveOrders()).toHaveLength(0);
+      });
+    });
+
     it('asks as soon as the supply is spent, without waiting for a sweep', () => {
       // Ticking the task off and being told nothing is the whole reason
       // completeTask runs the pass itself.

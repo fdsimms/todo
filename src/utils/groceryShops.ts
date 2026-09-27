@@ -1,4 +1,4 @@
-import type { GroceryItem, ItemProduct, ItemShopLink, Shop } from '../types';
+import type { GroceryItem, ItemProduct, ItemShopLink, Shop, StoreAlias } from '../types';
 import { describePreferredProduct, lacksPreferredProduct } from './groceryProduct';
 import { groceryNameKey } from './groceryParse';
 
@@ -316,6 +316,43 @@ export function itemIdsForShop(
     out.add(link.itemId);
   }
   return out;
+}
+
+/**
+ * The confirm for deleting a store: what goes with it, counted from the data.
+ *
+ * `deleteShop` takes the store's item links (and the prices and price history
+ * riding on them), the receipt lines remembered against its printer, and ends
+ * a shopping trip there along with its budget. The confirm used to name only
+ * the links, and said "Nothing is recorded" for a store that had remembered
+ * receipt lines but no links. Each thing is its own sentence, never summed.
+ */
+export function describeShopDelete(
+  shopId: string,
+  items: readonly GroceryItem[],
+  links: readonly ItemShopLink[],
+  aliases: readonly Pick<StoreAlias, 'shopId'>[],
+  tripShopId: string | null,
+): string {
+  const itemCount = itemIdsForShop(shopId, links, items).size;
+  const live = new Set(items.map(i => i.id));
+  const priced = links.filter(l => l.shopId === shopId && l.lastPriceMinor !== null && live.has(l.itemId)).length;
+  const receiptLines = aliases.filter(a => a.shopId === shopId).length;
+  const endsTrip = tripShopId === shopId;
+
+  const sentences: string[] = [];
+  if (itemCount > 0) {
+    sentences.push(`${itemCount} ${itemCount === 1 ? 'item is' : 'items are'} recorded as coming from here. Deleting the store forgets that. The items themselves stay.`);
+  }
+  if (priced > 0) {
+    sentences.push(`The prices recorded here for ${priced} ${priced === 1 ? 'item go' : 'items go'} too.`);
+  }
+  if (receiptLines > 0) {
+    sentences.push(`${receiptLines} remembered receipt ${receiptLines === 1 ? 'line goes' : 'lines go'} too.`);
+  }
+  if (endsTrip) sentences.push('Your shopping trip here ends.');
+  if (sentences.length === 0) return 'Nothing is recorded against this store yet.';
+  return `${sentences.join(' ')} This can’t be undone.`;
 }
 
 /**

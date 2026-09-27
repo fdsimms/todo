@@ -4954,7 +4954,13 @@ export function TaskEditor({ visible, task, initialDraft, onClose }: Props) {
                           <CollapsibleField
                             label="Stocked from"
                             hint="Put this on the shopping list instead of adding a task to order it."
-                            summary={groceryItems.find(i => i.id === supplyGroceryItemId)?.name}
+                            // A link naming a row since deleted from the
+                            // catalog says so rather than reading as "Not from
+                            // groceries": it asks through a reorder task now
+                            // (see supplyLinkActs), and a pick here relinks it.
+                            summary={supplyGroceryItemId
+                              ? groceryItems.find(i => i.id === supplyGroceryItemId)?.name ?? 'Item was deleted'
+                              : undefined}
                             emptySummary="Not from groceries"
                             expanded={showSupplySource}
                             onToggle={() => { animateLayout(); setShowSupplySource(v => !v); }}

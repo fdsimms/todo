@@ -4374,17 +4374,25 @@ export function dbFinishGroceryShopping(
   const rows = db.getAllSync<{
     id: string;
     quantity: string | null;
+    quantity_from_recipe: number | null;
     preferred_product_id: string | null;
     brand_strict: number | null;
     price_history: string | null;
   }>(
-    `SELECT i.id, i.quantity, i.preferred_product_id, i.brand_strict, i.price_history
+    `SELECT i.id, i.quantity, i.quantity_from_recipe, i.preferred_product_id, i.brand_strict, i.price_history
        FROM grocery_items i
        JOIN grocery_list_items e ON e.item_id = i.id
       WHERE e.list_id = ? AND e.checked = 1`,
     [listKey(listId)]
   );
   if (rows.length === 0) return [];
+  // What a typed price was paid for. A quantity a recipe wrote ("3 cups") is
+  // the cooking amount, not the pack that came home, so a price is recorded
+  // against nothing rather than against that: recipeCost divides by this
+  // string, and a gallon's price over "3 cups" costs every later recipe wrong.
+  // Mirrors pricedQuantityById in useGroceryStore.finishShopping.
+  const pricedQuantity = (row: { quantity: string | null; quantity_from_recipe: number | null }) =>
+    row.quantity_from_recipe ? null : row.quantity ?? null;
   const ids = rows.map(r => r.id);
   const placeholders = ids.map(() => '?').join(',');
   // The trolley empties by the entries going, which is the whole of what an
@@ -4502,7 +4510,7 @@ export function dbFinishGroceryShopping(
         // record of not knowing which one came home — see PriceObservation.
         {
           minor: price,
-          quantity: row.quantity ?? null,
+          quantity: pricedQuantity(row),
           at: purchasedAt,
           productId: row.preferred_product_id ?? null,
         }
@@ -4512,7 +4520,7 @@ export function dbFinishGroceryShopping(
             SET last_price_minor = ?, last_priced_at = ?, last_price_quantity = ?,
                 price_history = ?
           WHERE id = ?`,
-        [price, purchasedAt, row.quantity ?? null, JSON.stringify(history), row.id]
+        [price, purchasedAt, pricedQuantity(row), JSON.stringify(history), row.id]
       );
     }
   }
@@ -4568,7 +4576,7 @@ export function dbFinishGroceryShopping(
           // store's baseline against the item's must be comparing like boxes.
           {
             minor: price,
-            quantity: row.quantity ?? null,
+            quantity: pricedQuantity(row),
             at: purchasedAt,
             productId: row.preferred_product_id ?? null,
           }
@@ -4578,7 +4586,7 @@ export function dbFinishGroceryShopping(
               SET last_price_minor = ?, last_priced_at = ?, last_price_quantity = ?,
                   price_history = ?
             WHERE item_id = ? AND shop_id = ?`,
-          [price, purchasedAt, row.quantity ?? null, JSON.stringify(history), row.id, shopId]
+          [price, purchasedAt, pricedQuantity(row), JSON.stringify(history), row.id, shopId]
         );
       }
     }

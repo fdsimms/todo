@@ -326,13 +326,34 @@ export interface SupplyReorderWant {
 }
 
 /**
+ * Whether a supply's grocery link can do the asking, so it needs no reorder
+ * task. `actingItemIds` is the catalog rows the list half can act on: every
+ * live item while the kitchen is on, none while it's off. A link naming a row
+ * outside it (deleted from the catalog, or a kitchen switched off) reads as no
+ * link at all, the resolve-or-shrug reading every other cross-row pointer gets.
+ * Without that the supply asked nowhere: the list half skips a dead item, and
+ * the reorder half skipped every linked task. Omitted, every link counts as
+ * acting.
+ */
+export function supplyLinkActs(
+  task: Pick<Task, 'supplyGroceryItemId'>,
+  actingItemIds?: ReadonlySet<string>,
+): boolean {
+  const itemId = task.supplyGroceryItemId;
+  if (!itemId) return false;
+  return actingItemIds === undefined || actingItemIds.has(itemId);
+}
+
+/**
  * Which supplies should have a reorder task right now, most urgent first.
  *
  * **Linked supplies are excluded here rather than by the caller**, because
  * their absence is the design rather than an omission: a supply that names a
  * grocery item is answered by putting that item on the shopping list, and a
  * task saying "buy X" beside a list entry saying "buy X" is two nags for one
- * errand. See `suppliesWantingList`.
+ * errand. See `suppliesWantingList`. Only a link that can act is excluded
+ * (`supplyLinkActs`): one naming a deleted item, or with the kitchen off, falls
+ * back to a reorder task.
  *
  * Urgency is the run-out day, soonest first, with the supplies that can't
  * project a day at all sorted last among the wanted — they're wanted on the
@@ -344,10 +365,11 @@ export function wantedSupplyReorders(
   tasks: readonly Task[],
   dayResetTime?: string,
   cap: number = MAX_SUPPLY_REORDER_TASKS,
+  actingItemIds?: ReadonlySet<string>,
 ): SupplyReorderWant[] {
   const wants: (SupplyReorderWant & { sortKey: string })[] = [];
   for (const task of tasks) {
-    if (task.supplyGroceryItemId) continue;
+    if (supplyLinkActs(task, actingItemIds)) continue;
     const reason = supplyReorderReason(task, dayResetTime);
     if (reason === null) continue;
     const runOut = supplyRunOutDate(task, dayResetTime);
@@ -391,10 +413,11 @@ export function wantedSupplyReorders(
 export function staleSupplyReorderTasks<T extends Task>(
   tasks: readonly T[],
   dayResetTime?: string,
+  actingItemIds?: ReadonlySet<string>,
 ): T[] {
   const stillWanting = new Set(
     tasks
-      .filter(t => !t.supplyGroceryItemId && supplyReorderReason(t, dayResetTime) !== null)
+      .filter(t => !supplyLinkActs(t, actingItemIds) && supplyReorderReason(t, dayResetTime) !== null)
       .map(t => t.id)
   );
   return liveGeneratedTasksOfKind(tasks, 'supplyReorder').filter(task => {

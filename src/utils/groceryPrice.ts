@@ -257,6 +257,9 @@ export interface Comparable {
   countUnit: string;
 }
 
+/** Count words meaning twelve. See comparableQuantity. */
+const DOZEN_WORDS = new Set(['dozen', 'dozens', 'doz']);
+
 /**
  * A quantity string as something two prices can be divided by, or null when it
  * isn't one ("a bunch", "some", an empty quantity).
@@ -298,6 +301,13 @@ export function comparableQuantity(quantity: string | null): Comparable | null {
   // '' for a bare number ("12") and for a counted container ("2 14 oz cans",
   // whose leading amount is followed by a second number rather than a word).
   const unit = q.unit ?? '';
+  // A dozen is exactly twelve of a bare count, so it becomes one. This is the
+  // single count word with a fixed size, which is why it's safe where "a bag"
+  // is not: eggs priced per dozen then cost a recipe's "3" eggs, and a store's
+  // "18" compares with another's "1 dozen".
+  if (!q.container && DOZEN_WORDS.has(unitKey(unit))) {
+    return { amount: value * 12, key: 'unit:', measure: null, countUnit: '' };
+  }
   // A counted container is priced per container, so its size belongs in the
   // key: "2 14 oz cans" and "2 28 oz cans" are both 2 "each", and ranking them
   // on that would call the dearer tin cheaper. Same-size tins still compare.

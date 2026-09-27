@@ -1191,7 +1191,7 @@ export function GroceryScreen() {
     // exactly the case it's for. Gone in simplified mode, which takes the
     // scanner with it.
     if (!featureHidden('barcodeScanning', simpleMode)) {
-      list.push({ key: 'scan', label: 'Scan barcodes', icon: 'barcode-outline' });
+      list.push({ key: 'scan', label: 'Scan what you bought', icon: 'barcode-outline' });
     }
     list.push({ key: 'item', label: 'Add an item', icon: 'add-circle-outline' });
     return list;

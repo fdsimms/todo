@@ -1,4 +1,5 @@
-import { hasUserFacts, factSignature, linkCounts, type ItemRelations } from '../utils/groceryFacts';
+import { describeForgetLoss, hasUserFacts, factSignature, linkCounts, type ItemRelations } from '../utils/groceryFacts';
+import { aliasKeyFor, gtinAliasText } from '../utils/storeAliases';
 import { groceryNameKey } from '../utils/groceryParse';
 import { OTHER_AISLE } from '../utils/groceryAisles';
 import type { GroceryItem, ItemProduct, ItemShopLink, ItemSubLink, StoreAlias } from '../types';
@@ -166,5 +167,44 @@ describe('factSignature', () => {
     expect(
       factSignature(makeItem('Nduja', { quantity: '2 lb', quantityFromRecipe: true }), NO_LINKS)
     ).toBe(bare);
+  });
+});
+
+describe('describeForgetLoss', () => {
+  const MILK = makeItem('Milk');
+  const OAT = makeItem('Oat milk');
+  const ITEMS = [MILK, OAT];
+  const none = { products: [], subs: [], aliases: [] };
+
+  it('says nothing when nothing hangs off the row', () => {
+    expect(describeForgetLoss([OAT.id], none, ITEMS, [])).toBe('');
+  });
+
+  it('names a standing swap from either end, since the cascade takes both', () => {
+    const swap = { itemId: MILK.id, subItemId: OAT.id, standing: true } as ItemSubLink;
+    const text = 'It also removes the standing swap that uses Oat milk for Milk.';
+    expect(describeForgetLoss([OAT.id], { ...none, subs: [swap] }, ITEMS, [])).toBe(text);
+    expect(describeForgetLoss([MILK.id], { ...none, subs: [swap] }, ITEMS, [])).toBe(text);
+  });
+
+  it('counts substitutes, brands, barcodes, receipt lines and names the supply', () => {
+    const sub = { itemId: MILK.id, subItemId: OAT.id, standing: false } as ItemSubLink;
+    const products = [
+      { id: 'p1', itemId: OAT.id, gtin: '0123' } as ItemProduct,
+      { id: 'p2', itemId: OAT.id, gtin: null } as ItemProduct,
+    ];
+    const aliases = [
+      // The same barcode remembered as an alias counts once.
+      { id: 'a1', itemId: OAT.id, shopId: '', rawKey: aliasKeyFor(gtinAliasText('0123')) } as StoreAlias,
+      { id: 'a2', itemId: OAT.id, shopId: 's1', rawKey: aliasKeyFor('OATLY BARISTA') } as StoreAlias,
+    ];
+    expect(describeForgetLoss([OAT.id], { products, subs: [sub], aliases }, ITEMS, ['Make coffee'])).toBe(
+      'It also removes a substitute, 2 saved brands, a remembered barcode, a remembered receipt line'
+        + ' and the supply link on “Make coffee”.'
+    );
+  });
+
+  it('counts rather than lists past two supplies', () => {
+    expect(describeForgetLoss([OAT.id], none, ITEMS, ['A', 'B', 'C'])).toBe('It also removes 3 supply links.');
   });
 });

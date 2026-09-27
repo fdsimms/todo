@@ -18,6 +18,7 @@ import {
   staleSupplyReorderTasks,
   suppliesStockedFrom,
   suppliesWantingList,
+  supplyLinkActs,
   supplyOrderByDate,
   supplyReorderReason,
   supplyReorderSourceId,
@@ -439,6 +440,15 @@ describe('wantedSupplyReorders', () => {
     expect(wantedSupplyReorders([linked])).toEqual([]);
   });
 
+  it('asks for a linked supply whose item is not one the list can act on', () => {
+    // Deleted from the catalog, or the kitchen switched off: the list half
+    // says nothing about it, so a reorder task is the only way it asks.
+    const linked = supplyTask({ id: 'linked', supplyCount: 0, supplyGroceryItemId: 'item-1' });
+    expect(wantedSupplyReorders([linked], undefined, undefined, new Set(['item-2'])).map(w => w.taskId))
+      .toEqual(['linked']);
+    expect(wantedSupplyReorders([linked], undefined, undefined, new Set(['item-1']))).toEqual([]);
+  });
+
   it('puts the soonest run-out first and the unknowable ones last', () => {
     const soon = supplyTask({ id: 'soon', supplyCount: 1 });
     const later = supplyTask({
@@ -481,6 +491,18 @@ describe('wantedSupplyReorders', () => {
   });
 });
 
+describe('supplyLinkActs', () => {
+  it('is false with no link, and true for any link when no set is given', () => {
+    expect(supplyLinkActs({ supplyGroceryItemId: null })).toBe(false);
+    expect(supplyLinkActs({ supplyGroceryItemId: 'item-1' })).toBe(true);
+  });
+
+  it('is true only for a link inside the set it is given', () => {
+    expect(supplyLinkActs({ supplyGroceryItemId: 'item-1' }, new Set(['item-1']))).toBe(true);
+    expect(supplyLinkActs({ supplyGroceryItemId: 'item-1' }, new Set())).toBe(false);
+  });
+});
+
 describe('staleSupplyReorderTasks', () => {
   it('keeps a reorder task whose supply is still low', () => {
     const source = supplyTask({ id: 'src', supplyCount: 1 });
@@ -506,6 +528,13 @@ describe('staleSupplyReorderTasks', () => {
     );
     const rows = sources.map(s => reorderTask(s.id));
     expect(staleSupplyReorderTasks([...sources, ...rows])).toEqual([]);
+  });
+
+  it('keeps the order of a supply whose linked item is gone, and clears it once the link can act', () => {
+    const source = supplyTask({ id: 'src', supplyCount: 1, supplyGroceryItemId: 'item-1' });
+    expect(staleSupplyReorderTasks([source, reorderTask('src')], undefined, new Set())).toEqual([]);
+    expect(staleSupplyReorderTasks([source, reorderTask('src')], undefined, new Set(['item-1'])).map(t => t.id))
+      .toEqual(['reorder-src']);
   });
 
   it('leaves a completed reorder task alone', () => {
