@@ -107,7 +107,6 @@ export function mealDayCoverage(
   dayKey: string
 ): Map<MealSlot, SlotCoverage> {
   const coverage = new Map<MealSlot, SlotCoverage>();
-  const plannedIds = new Set<string>();
 
   for (const slot of MEAL_SLOTS) {
     const inSlot = planned.filter(entry => entry.date === dayKey && entry.slot === slot);
@@ -115,7 +114,9 @@ export function mealDayCoverage(
       entry => entry.dayKey === dayKey && entry.slot === slot && countsAsMealLog(entry)
     );
     if (inSlot.length === 0 && loggedInSlot.length === 0) continue;
-    inSlot.forEach(entry => plannedIds.add(entry.id));
+    // This slot's own plan only: a set shared across the loop let a dinner
+    // entry naming lunch's dish read as linked to dinner.
+    const plannedIds = new Set(inSlot.map(entry => entry.id));
     coverage.set(slot, {
       slot,
       planned: inSlot,

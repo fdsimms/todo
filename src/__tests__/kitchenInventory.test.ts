@@ -214,6 +214,13 @@ describe('compareKitchenEntries', () => {
     expect(entries.map(e => e.freshness)).toEqual(['over', 'due', 'soon', 'fresh']);
   });
 
+  it('orders a catalog row and a packet row by name, whichever comes first', () => {
+    const [zucchini] = kitchenInventory([makeItem({ name: 'Zucchini' })], [], NOW);
+    const apples = { ...zucchini, id: 'product:p1', kind: 'product' as const, title: 'Apples' };
+    expect(compareKitchenEntries(zucchini, apples)).toBeGreaterThan(0);
+    expect(compareKitchenEntries(apples, zucchini)).toBeLessThan(0);
+  });
+
   it('breaks a tie toward the container — a cooked portion spoils harder', () => {
     const entries = kitchenInventory(
       [makeItem({ name: 'Spinach', expiresAt: '2026-08-13' })],

@@ -67,6 +67,11 @@ function entry(
   };
 }
 
+/** The day's water, as the stepper files it: unslotted, stating only water. */
+function water(dayKey: string, ml = 1500): FoodLogEntry {
+  return entry(dayKey, { slot: null, label: 'Water', amounts: { waterMl: ml }, hour: 12 });
+}
+
 /** A day logged completely enough to stand for itself: two different meals. */
 function fullDay(dayKey: string, over: Parameters<typeof entry>[1] = {}): FoodLogEntry[] {
   return [
@@ -95,6 +100,12 @@ describe('nutritionCounts', () => {
     );
     expect(counts.daysLogged).toBe(2);
     expect(counts.daysComplete).toBe(1);
+  });
+
+  it('does not count the day\'s water as a second meal', () => {
+    const counts = nutritionCounts([entry('2026-09-09'), water('2026-09-09')], WINDOW);
+    expect(counts.daysComplete).toBe(0);
+    expect(counts.entries).toBe(2);
   });
 
   it('counts two entries in one meal as one meal', () => {
@@ -156,6 +167,18 @@ describe('nutrientAverages', () => {
     );
     expect(rows.find(r => r.key === 'calorieKcal')?.days).toBe(1);
     expect(rows.find(r => r.key === 'calorieKcal')?.average).toBe(600);
+  });
+
+  it('averages water over finished days without letting it finish a day', () => {
+    const rows = nutrientAverages(
+      [
+        ...fullDay('2026-09-08'), water('2026-09-08', 2000),
+        entry('2026-09-09', { amounts: { calorieKcal: 5 } }), water('2026-09-09'),
+      ],
+      WINDOW,
+    );
+    expect(rows.find(r => r.key === 'calorieKcal')).toMatchObject({ days: 1, average: 600 });
+    expect(rows.find(r => r.key === 'waterMl')).toMatchObject({ days: 1, average: 2000 });
   });
 
   it('divides each nutrient by the days that stated it', () => {
@@ -301,6 +324,16 @@ describe('foodDayInputs', () => {
     // that figure manufactures "your mood is lower on the days you eat less"
     // out of the days somebody stopped logging at 11am.
     expect(foodDayInputs([entry('2026-09-08')])).toEqual([]);
+  });
+
+  it('leaves the day\'s water out: not a meal, not a food, and no veto on the rest', () => {
+    // Water states nothing but water, so under the every-entry coverage rule
+    // it used to erase every other nutrient from the day.
+    const [row] = foodDayInputs([...fullDay('2026-09-08'), water('2026-09-08')]);
+    expect(row.nutrients).toEqual({ calorieKcal: 600, proteinG: 20 });
+    expect(row.labels).toEqual(['porridge']);
+    // And breakfast plus a glass of water is still breakfast alone.
+    expect(foodDayInputs([entry('2026-09-08'), water('2026-09-08')])).toEqual([]);
   });
 
   it('pools every unslotted entry into one bucket, so two snacks are not two meals', () => {

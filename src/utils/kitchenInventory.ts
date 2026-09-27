@@ -254,7 +254,10 @@ export function compareKitchenEntries(a: KitchenEntry, b: KitchenEntry): number 
   if (a.useBy !== null && b.useBy !== null && a.useBy !== b.useBy) {
     return a.useBy.localeCompare(b.useBy);
   }
-  if (a.kind !== b.kind) return a.kind === 'leftover' ? -1 : 1;
+  // Leftover against everything else, not kind against kind: with a third
+  // kind ('product') this answered 1 both ways round for a catalog row against
+  // a packet row, so their order depended on the input's.
+  if ((a.kind === 'leftover') !== (b.kind === 'leftover')) return a.kind === 'leftover' ? -1 : 1;
   return a.title.localeCompare(b.title);
 }
 

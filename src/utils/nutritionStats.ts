@@ -4,6 +4,7 @@ import { NUTRIENT_KEYS } from '../types';
 import { dayKeyToDate } from './dateUtils';
 import type { CookingWindow } from './cookingStats';
 import type { FoodDayInput } from './moodInsights';
+import { isWaterEntry } from './waterLog';
 
 /**
  * What the Stats screen can say about eating, derived from food log entries
@@ -152,6 +153,9 @@ export function nutritionCounts(
   let count = 0;
   for (const entry of inWindow(entries, window)) {
     count += 1;
+    // The day's water is not a meal (it is filed unslotted, and would otherwise
+    // be the second "meal" that makes breakfast alone read as a complete day).
+    if (isWaterEntry(entry)) continue;
     // An unslotted entry is its own bucket rather than being pooled: two snacks
     // outside any meal are one moment of logging, not two.
     const slot = entry.slot ?? 'none';
@@ -203,10 +207,14 @@ export function nutrientAverages(
     // The averaging window stops at yesterday: a partial day drags every
     // figure down, and today is partial by definition.
     if (entry.dayKey >= window.todayKey) continue;
-    const slot = entry.slot ?? 'none';
-    const seen = slotsByDay.get(entry.dayKey);
-    if (seen) seen.add(slot);
-    else slotsByDay.set(entry.dayKey, new Set([slot]));
+    // Water still feeds the water average, but it is not a meal, so it never
+    // counts toward a day's completeness (see nutritionCounts).
+    if (!isWaterEntry(entry)) {
+      const slot = entry.slot ?? 'none';
+      const seen = slotsByDay.get(entry.dayKey);
+      if (seen) seen.add(slot);
+      else slotsByDay.set(entry.dayKey, new Set([slot]));
+    }
 
     const day = totals.get(entry.dayKey) ?? {};
     for (const key of NUTRIENT_KEYS) {
@@ -331,6 +339,10 @@ export function sourceMix(
 export function foodDayInputs(entries: readonly FoodLogEntry[]): FoodDayInput[] {
   const byDay = new Map<string, FoodLogEntry[]>();
   for (const entry of entries) {
+    // The day's water is not a food: counted as one it completed a breakfast-
+    // only day, joined the contrasts as a label, and (stating nothing but
+    // water) vetoed every other nutrient under the coverage rule below.
+    if (isWaterEntry(entry)) continue;
     const list = byDay.get(entry.dayKey);
     if (list) list.push(entry);
     else byDay.set(entry.dayKey, [entry]);

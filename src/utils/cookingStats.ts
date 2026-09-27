@@ -1,7 +1,7 @@
 import { differenceInCalendarDays } from 'date-fns/differenceInCalendarDays';
 import { subDays } from 'date-fns/subDays';
 import type { Leftover, MealPlanEntry, Recipe } from '../types';
-import { dayKeyOf, dayKeyToDate } from './dateUtils';
+import { dayKeyOf, dayKeyToDate, getLogicalDayKey } from './dateUtils';
 import { outcomeCounts } from './leftovers';
 import { avgCookMinutes } from './recipeUtils';
 
@@ -150,14 +150,20 @@ export function mealCookCounts(
  * Handed back as rows rather than as a tally so the caller can put them through
  * `describeFridgeHistory` for the wording *and* `outcomeCounts` for the number
  * without either being restated here.
+ *
+ * `finishedAt` is an instant, so it is keyed by the logical day it fell in:
+ * the window's keys are logical days, and a calendar key put a container
+ * finished at 00:30 under a 4 AM reset on a day the window hadn't reached.
+ * `dayResetTime` defaults to the setting.
  */
 export function leftoversFinishedIn(
   leftovers: readonly Leftover[],
-  window: CookingWindow
+  window: CookingWindow,
+  dayResetTime?: string
 ): Leftover[] {
   return leftovers.filter(leftover => {
     if (!leftover.finishedAt) return false;
-    const key = dayKeyOf(new Date(leftover.finishedAt));
+    const key = getLogicalDayKey(new Date(leftover.finishedAt), dayResetTime);
     return key >= window.startKey && key <= window.endKey;
   });
 }
