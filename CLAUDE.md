@@ -717,6 +717,8 @@ All time comparisons use the configurable `dayResetTime` (default `"00:00"`) to 
 - `getLogicalTomorrow()` — equivalent to `addDays(getLogicalToday(), 1)`, returns the next logical day. Use when computing "tomorrow".
 - `getDayStart(date, dayResetTime)` — anchors a date to the boundary of its logical day under the given reset time. Use when you need to normalize a date you already have.
 
+**`getLogicalNow()` is for day words only.** It is the real instant pulled back a whole day in the grace window, which is right for "tomorrow" and wrong for anything measured on the clock: "in 30 min" typed at 1:30 AM against it landed 23.5 hours in the past, and "3pm" and "tonight" on a day already gone. `parseNaturalDate`, `parseDatePart` and `parseTaskInput` take the real instant as a separate `clockNow` for minutes, hours, "tonight" and a bare clock time; a caller passing `getLogicalNow()` also passes `new Date()` there.
+
 **Example of the bug vs the fix:**
 ```ts
 // ❌ WRONG: ignores dayResetTime, off by one during grace window

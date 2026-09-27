@@ -450,6 +450,21 @@ describe('cheapestShopFor', () => {
     expect(cheapestShopFor('i1', counted, SHOPS)).toBeNull();
   });
 
+  it('refuses to rank counts of different-sized containers, but compares same-size ones', () => {
+    const mixed = [
+      link({ itemId: 'i1', shopId: costco.id, lastPriceMinor: 400, lastPriceQuantity: '2 28 oz cans' }),
+      link({ itemId: 'i1', shopId: safeway.id, lastPriceMinor: 300, lastPriceQuantity: '2 14 oz cans' }),
+    ];
+    // Both are "2 each", but the Costco tins hold twice as much.
+    expect(cheapestShopFor('i1', mixed, SHOPS)).toBeNull();
+
+    const same = [
+      link({ itemId: 'i1', shopId: costco.id, lastPriceMinor: 450, lastPriceQuantity: '3 14 oz cans' }),
+      link({ itemId: 'i1', shopId: safeway.id, lastPriceMinor: 400, lastPriceQuantity: '2 14 oz cans' }),
+    ];
+    expect(cheapestShopFor('i1', same, SHOPS)?.shop.name).toBe('Costco');
+  });
+
   it('compares happily when the quantities match', () => {
     const links = [
       link({ itemId: 'i1', shopId: costco.id, lastPriceMinor: 429, lastPriceQuantity: '2 lb' }),

@@ -100,8 +100,12 @@ export const RATE_RANGE: Record<WeightUnit, { min: number; max: number; step: nu
   kg: { min: 0.1, max: 1, step: 0.1, default: 0.5 },
 };
 
-/** The widest rate this app will store, in kg/week — the `lb` ceiling above. */
-export const MAX_RATE_KG_PER_WEEK = unitToKg(RATE_RANGE.lb.max, 'lb');
+/**
+ * The widest rate this app will store, in kg/week: whichever unit's stepper
+ * ceiling is wider. The `lb` one alone (0.907) clamped a 1.0 kg/week goal on
+ * every read back from settings, quietly moving the calorie target with it.
+ */
+export const MAX_RATE_KG_PER_WEEK = Math.max(RATE_RANGE.kg.max, unitToKg(RATE_RANGE.lb.max, 'lb'));
 
 /**
  * Which way the goal points, from the target against the starting weight.
@@ -257,14 +261,11 @@ export function goalPace(goal: WeightGoal, currentKg: number, today: Date): Weig
  * How many days from `currentKg` to the target at the chosen rate, or null when
  * the arithmetic has no answer.
  *
- * Null for a maintain goal (no rate to divide by), for a target already
- * reached (nothing left to project), and — the one worth stating — for a weight
- * that has moved the *wrong* way past its own start: the rate still points at
- * the target from there, so a projection is arithmetically fine, and it is
- * withheld anyway. "You will reach 70kg in 340 days" said to somebody currently
- * heading away from it is the app's first opinion about how it is going, and
- * this module does not have those. The caller shows the pace gap instead, which
- * is a fact rather than a forecast.
+ * Null for a maintain goal (no rate to divide by) and for a target already
+ * reached or passed (nothing left to project). A weight on the wrong side of
+ * the goal's own start still gets a projection: it is further from the target,
+ * not past it, so the forecast is longer rather than withheld. It is the chosen
+ * rate's arithmetic from where they are now, not a judgment of the trend.
  */
 export function daysToTarget(goal: WeightGoal, currentKg: number): number | null {
   const rate = signedRateKgPerWeek(goal);

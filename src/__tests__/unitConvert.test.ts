@@ -184,6 +184,12 @@ describe('convertQuantity — unit agreement', () => {
     expect(us('460 g')).toBe('≈1 lb');
     expect(us('900 g')).toBe('≈2 lbs');
   });
+
+  it('moves up to pounds when the ounces round to a whole pound', () => {
+    // 450 g is 15.9 oz; the cutoff used to be decided before that rounded to 16.
+    expect(us('450 g')).toBe('≈1 lb');
+    expect(us('425 g')).toBe('≈15 oz');
+  });
 });
 
 describe('unitFactor', () => {

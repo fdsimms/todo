@@ -142,7 +142,7 @@ export function RemindMePicker({ visible, value, kind, dueDate = null, offsetDay
     // Resolved against the logical day, not the wall clock: typed at 1am under
     // a 2am dayResetTime, "tomorrow" means tomorrow by the user's own day —
     // the same clock quick add and the task editor parse against.
-    const parsed = parseNaturalDate(text, getLogicalNow(dayResetTime));
+    const parsed = parseNaturalDate(text, getLogicalNow(dayResetTime), new Date());
     if (parsed) {
       setSelectedDate(parsed);
       setDisplayMonth(startOfMonth(parsed));

@@ -390,22 +390,27 @@ const LEADING_WORD = /^[a-z]+/i;
  */
 const FLUID_OUNCE = /^fl\.?\s*oz\.?\b|^fluid\s+ounces?\b/i;
 
-/** A bare sized container's trailing half — "oz can" out of "14 oz can". */
-const BARE_CONTAINER = /^([a-z]+)\.?\s+([a-z]+)$/i;
+/**
+ * A bare sized container's trailing half — "oz can" out of "14 oz can", and
+ * "-oz can" out of "14-oz can", the same optional hyphen COUNTED_CONTAINER
+ * already allows between its size and unit.
+ */
+const BARE_CONTAINER = /^-?\s*([a-z]+)\.?\s+([a-z]+)$/i;
 
 /** A counted sized container's trailing half — "14 oz cans" out of "2 14 oz cans". */
 const COUNTED_CONTAINER = /^(\d+(?:\.\d+)?)\s*-?\s*([a-z]+)\.?\s+([a-z]+)$/i;
 
 /**
  * A range's separator, right after the first amount — "to " ("1 to 2 tbsp")
- * or a bare hyphen ("1-2 tbsp"). The mandatory trailing space on "to" is what
+ * or a bare hyphen ("1-2 tbsp"), en dash ("1–2 cups", what an imported page
+ * usually prints) or em dash. The mandatory trailing space on "to" is what
  * keeps this from firing on "to taste"'s "to" followed by a non-amount, or on
  * any other word that merely starts with "to"; a hyphen not followed by a
  * second amount (a compound like "1-inch piece") is ruled out the same way,
  * by the caller falling back to plain unit parsing when `readLeadingAmount`
  * finds nothing after it.
  */
-const RANGE_SEPARATOR = /^(?:to\s+|-\s*)/i;
+const RANGE_SEPARATOR = /^(?:to\s+|[-\u2013\u2014]\s*)/i;
 
 interface LeadingAmount {
   value: Rational;

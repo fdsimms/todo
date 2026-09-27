@@ -22,6 +22,7 @@ import {
   type FoodLogListItem,
 } from '../utils/foodLog';
 import type { FoodLogEntry, FoodNutrition, MealPlanEntry, NutrientKey, SavedMealItem } from '../types';
+import { packageChoices } from '../utils/scanPortion';
 
 const NOW = new Date('2026-04-02T18:30:00.000Z');
 
@@ -638,6 +639,18 @@ describe('foodLogEntryEdit', () => {
   it('reopens a box on its own row', () => {
     const row = entry({ itemId: 'item-bread', productId: 'prod-sourdough', quantity: '2 slices' });
     expect(foodLogEntryEdit(row)).toEqual({ amount: '2 slices', dishMeasure: null });
+  });
+
+  it('reopens a scanned whole package on its serving count, which re-measures', () => {
+    const label = packageChoices(panel({ basis: 'per100g', servingGrams: 45 }), '450 g')
+      .find(c => c.key === 'package')!.label;
+    const row = entry({
+      productId: 'prod-1',
+      quantity: label,
+      nutrition: panel({ basis: 'per100g', servingGrams: 45, servingText: label }),
+    });
+    expect(foodLogEntryEdit(row)).toEqual({ amount: '10 servings', dishMeasure: null });
+    expect(scalePanelToAmount(panel({ basis: 'per100g', servingGrams: 45 }), '10 servings', null, NOW)).not.toBeNull();
   });
 
   it('refuses an entry with no link, since there is no panel left to measure against', () => {

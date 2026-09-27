@@ -410,7 +410,7 @@ export function WhenPicker({
   // and would otherwise close the picker out from under whoever's still typing.
   const onNlChange = (text: string) => {
     setNlText(text);
-    const parsed = parseNaturalDate(text, getLogicalNow(dayResetTime));
+    const parsed = parseNaturalDate(text, getLogicalNow(dayResetTime), new Date());
     if (parsed) setDisplayMonth(startOfMonth(parsed));
   };
 
@@ -418,7 +418,7 @@ export function WhenPicker({
   // same allowPast floor, same reach-out decline. Unparseable or refused text
   // is left alone rather than cleared, so a typo can be fixed in place.
   const onNlSubmit = () => {
-    const parsed = parseNaturalDate(nlText, getLogicalNow(dayResetTime));
+    const parsed = parseNaturalDate(nlText, getLogicalNow(dayResetTime), new Date());
     if (!parsed) return;
     if (earliestDay && isDayBefore(parsed, earliestDay)) return;
     if (latestDay && isDayAfter(parsed, latestDay)) return;

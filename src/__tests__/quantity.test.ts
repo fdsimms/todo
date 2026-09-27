@@ -239,6 +239,17 @@ describe('parseQuantity — a range', () => {
     expect(q.unit).toBe('tbsp');
   });
 
+  it('reads an en- or em-dash range the same way, spaced or not', () => {
+    // Imported pages print ranges with an en dash (recipeUrl decodes &ndash;),
+    // and a dash left unread carried the high end through unscaled as prose.
+    for (const input of ['1\u20132 cups', '1 \u2013 2 cups', '1\u20142 cups']) {
+      const q = parseQuantity(input);
+      expect(rationalToNumber(q.rangeMax!)).toBe(2);
+      expect(q.rangeSeparator).toBe('-');
+      expect(q.unit).toBe('cup');
+    }
+  });
+
   it('reads fractional and mixed-number ends', () => {
     const q = parseQuantity('1/2 to 3/4 cup');
     expect(rationalToNumber(q.amount!)).toBe(0.5);

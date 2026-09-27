@@ -2,7 +2,7 @@ import { format } from 'date-fns/format';
 import type { GroceryItem, ItemShopLink, PriceObservation, Shop } from '../types';
 import { GROCERY_PRICE_MINOR_MAX } from '../types';
 import { isUnavailable } from './groceryShops';
-import { parseQuantity, rationalToNumber } from './quantity';
+import { parseQuantity, rationalToNumber, unitKey } from './quantity';
 import { measureQuantity, shelfUnit, type Dimension } from './unitConvert';
 import { priceBaseline, priceRunForProduct, priceStanding, type PriceStanding } from './priceHistory';
 
@@ -298,7 +298,13 @@ export function comparableQuantity(quantity: string | null): Comparable | null {
   // '' for a bare number ("12") and for a counted container ("2 14 oz cans",
   // whose leading amount is followed by a second number rather than a word).
   const unit = q.unit ?? '';
-  return { amount: value, key: `unit:${unit}`, measure: null, countUnit: unit };
+  // A counted container is priced per container, so its size belongs in the
+  // key: "2 14 oz cans" and "2 28 oz cans" are both 2 "each", and ranking them
+  // on that would call the dearer tin cheaper. Same-size tins still compare.
+  const key = q.container
+    ? `container:${rationalToNumber(q.container.size)} ${unitKey(q.container.sizeUnit)} ${unitKey(q.container.word)}`
+    : `unit:${unit}`;
+  return { amount: value, key, measure: null, countUnit: unit };
 }
 
 export interface UnitPrice {

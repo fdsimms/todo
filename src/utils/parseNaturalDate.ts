@@ -182,9 +182,11 @@ export function parseCount(token: string): number {
   return NUMBER_WORDS[token] ?? parseInt(token, 10);
 }
 
-function relativeUnit(unit: string, n: number, now: Date): DatePart | null {
-  if (/^min/.test(unit)) return { date: addMinutes(now, n), explicitTime: true };
-  if (/^h/.test(unit)) return { date: addHours(now, n), explicitTime: true };
+// Minutes and hours are measured from `clockNow`, the real instant; days and
+// longer from `now`, the logical day. See parseDatePart.
+function relativeUnit(unit: string, n: number, now: Date, clockNow: Date = now): DatePart | null {
+  if (/^min/.test(unit)) return { date: addMinutes(clockNow, n), explicitTime: true };
+  if (/^h/.test(unit)) return { date: addHours(clockNow, n), explicitTime: true };
   if (/^d/.test(unit)) return { date: startOfDay(addDays(now, n)), explicitTime: false };
   if (/^w/.test(unit)) return { date: startOfDay(addWeeks(now, n)), explicitTime: false };
   if (/^mo/.test(unit)) return { date: startOfDay(addMonths(now, n)), explicitTime: false };
@@ -204,13 +206,22 @@ export function monthDay(month: number, day: number, year: number | null, now: D
   return { date, explicitTime: false };
 }
 
-export function parseDatePart(input: string, now: Date): DatePart | null {
+/**
+ * `now` is the logical now (`getLogicalNow`), which is pulled back a day in
+ * the grace window before dayResetTime so "tomorrow" means the user's own
+ * tomorrow. `clockNow` is the real instant, and is what a phrase measured on
+ * the clock rather than the calendar ("in 30 min", "tonight") counts from:
+ * against the pulled-back one, "in 30 min" typed at 1:30am landed 23.5 hours
+ * in the past. It defaults to `now`, which is the same instant outside that
+ * window.
+ */
+export function parseDatePart(input: string, now: Date, clockNow: Date = now): DatePart | null {
   const text = input.trim();
   if (text === '') return null;
 
   // Fixed keywords
   if (text === 'today' || text === 'tod') return { date: startOfDay(now), explicitTime: false };
-  if (text === 'tonight') return { date: atTime(now, 20, 0), explicitTime: true };
+  if (text === 'tonight') return { date: atTime(clockNow, 20, 0), explicitTime: true };
   if (text === 'tomorrow' || text === 'tmrw' || text === 'tmr' || text === 'tom') {
     return { date: startOfDay(addDays(now, 1)), explicitTime: false };
   }
@@ -224,20 +235,20 @@ export function parseDatePart(input: string, now: Date): DatePart | null {
 
   // "in 2 weeks", "in 30 min", "in 1 hour", "in three months"
   if ((m = text.match(new RegExp(`^in\\s+(\\d+|${NUMBER_WORD_ALT})\\s+(${UNIT_WORD})$`)))) {
-    return relativeUnit(m[2], parseCount(m[1]), now);
+    return relativeUnit(m[2], parseCount(m[1]), now, clockNow);
   }
   // "in a week", "in an hour"
   if ((m = text.match(new RegExp(`^in\\s+an?\\s+(${UNIT_WORD_SINGULAR})$`)))) {
-    return relativeUnit(m[1], 1, now);
+    return relativeUnit(m[1], 1, now, clockNow);
   }
 
   // "45 days from now", "two weeks from now"
   if ((m = text.match(new RegExp(`^(\\d+|${NUMBER_WORD_ALT})\\s+(${UNIT_WORD})\\s+from\\s+now$`)))) {
-    return relativeUnit(m[2], parseCount(m[1]), now);
+    return relativeUnit(m[2], parseCount(m[1]), now, clockNow);
   }
   // "a week from now", "an hour from now"
   if ((m = text.match(new RegExp(`^an?\\s+(${UNIT_WORD_SINGULAR})\\s+from\\s+now$`)))) {
-    return relativeUnit(m[1], 1, now);
+    return relativeUnit(m[1], 1, now, clockNow);
   }
 
   // Weekend
@@ -248,14 +259,18 @@ export function parseDatePart(input: string, now: Date): DatePart | null {
     const onWeekend = now.getDay() === 6 || now.getDay() === 0;
     if (onWeekend && !/^next/.test(text)) return { date: startOfDay(now), explicitTime: false };
     let date = nextDay(now, 6 as Day); // upcoming Saturday
-    if (/^next/.test(text) && isSameWeek(date, now)) date = addWeeks(date, 1);
+    // Skipped on the weekend itself: nextDay() already answered with the
+    // following Saturday, and isSameWeek (Sunday-start) would otherwise count
+    // a Sunday's coming Saturday as this week and push it a further week out.
+    if (/^next/.test(text) && !onWeekend && isSameWeek(date, now)) date = addWeeks(date, 1);
     return { date: startOfDay(date), explicitTime: false };
   }
 
   // "oxt weekend" — the weekend after next
   if (text === 'oxt weekend') {
+    const onWeekend = now.getDay() === 6 || now.getDay() === 0;
     let date = nextDay(now, 6 as Day);
-    if (isSameWeek(date, now)) date = addWeeks(date, 1);
+    if (!onWeekend && isSameWeek(date, now)) date = addWeeks(date, 1);
     date = addWeeks(date, 1);
     return { date: startOfDay(date), explicitTime: false };
   }
@@ -321,7 +336,12 @@ export function parseDatePart(input: string, now: Date): DatePart | null {
   return null;
 }
 
-export function parseNaturalDate(input: string, now: Date = new Date()): Date | null {
+/**
+ * `now` is the logical now and `clockNow` the real instant; see parseDatePart.
+ * A bare clock time ("3pm") is also read against `clockNow`, since it names
+ * the next time the clock says that, not a time on the logical day.
+ */
+export function parseNaturalDate(input: string, now: Date = new Date(), clockNow: Date = now): Date | null {
   if (!input) return null;
   let text = input.trim().toLowerCase().replace(/\s+/g, ' ');
   if (!text) return null;
@@ -343,7 +363,7 @@ export function parseNaturalDate(input: string, now: Date = new Date()): Date | 
   // Drop connector words/punctuation left dangling by the time extraction.
   text = text.replace(/\bat\b/g, ' ').replace(/@/g, ' ').replace(/,/g, ' ').replace(/\s+/g, ' ').trim();
 
-  const datePart = parseDatePart(text, now);
+  const datePart = parseDatePart(text, now, clockNow);
 
   let date: Date;
   let explicitTime = false;
@@ -351,7 +371,7 @@ export function parseNaturalDate(input: string, now: Date = new Date()): Date | 
     date = datePart.date;
     explicitTime = datePart.explicitTime;
   } else if (time) {
-    date = startOfDay(now); // time-only input → today
+    date = startOfDay(clockNow); // time-only input → today
   } else {
     return null;
   }
@@ -359,7 +379,7 @@ export function parseNaturalDate(input: string, now: Date = new Date()): Date | 
   if (time) {
     date = atTime(date, time.h, time.m);
     // Pure time in the past (e.g. "3pm" typed at 5pm) rolls to tomorrow.
-    if (!datePart && date.getTime() <= now.getTime()) {
+    if (!datePart && date.getTime() <= clockNow.getTime()) {
       date = addDays(date, 1);
     }
   } else if (!explicitTime) {

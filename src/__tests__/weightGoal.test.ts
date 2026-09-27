@@ -253,6 +253,13 @@ describe('storage', () => {
     expect(parsed?.rateKgPerWeek).toBeCloseTo(MAX_RATE_KG_PER_WEEK);
   });
 
+  it('keeps the kg stepper\'s own ceiling through a round trip', () => {
+    // 1.0 kg/week is RATE_RANGE.kg.max; clamping it to the 2 lb ceiling
+    // (0.907) moved the calorie target on the next read.
+    const goal = { ...losingGoal(), rateKgPerWeek: 1 };
+    expect(parseWeightGoal(serializeWeightGoal(goal))?.rateKgPerWeek).toBe(1);
+  });
+
   it('refuses a negative rate, which no writer here produces', () => {
     expect(parseWeightGoal(JSON.stringify({ ...losingGoal(), rateKgPerWeek: -1 }))).toBeNull();
   });
