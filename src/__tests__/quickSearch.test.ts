@@ -1,5 +1,5 @@
 import { quickSearch, QUICK_SEARCH_LIMIT } from '../utils/quickSearch';
-import type { Task } from '../types';
+import type { Project, Task, TaskGroup } from '../types';
 
 jest.mock('../store/useSettingsStore', () => ({
   useSettingsStore: { getState: () => ({ dayResetTime: '00:00', vacationMode: false }) },
@@ -141,17 +141,19 @@ const titles = (results: { task: Task }[]) => results.map(r => r.task.title);
 
 describe('quickSearch', () => {
   describe('empty / trivial inputs', () => {
+    const nothing = { groupResults: [], projectResults: [], results: [], total: 0, overflow: 0 };
+
     it('reports nothing for an empty query', () => {
-      expect(quickSearch([makeTask()], '')).toEqual({ results: [], total: 0, overflow: 0 });
+      expect(quickSearch([makeTask()], '')).toEqual(nothing);
     });
 
     it('reports nothing for a whitespace-only query', () => {
-      expect(quickSearch([makeTask()], '   ')).toEqual({ results: [], total: 0, overflow: 0 });
+      expect(quickSearch([makeTask()], '   ')).toEqual(nothing);
     });
 
     it('reports nothing when no task matches', () => {
       const tasks = [makeTask({ id: 'a', title: 'Renew passport' })];
-      expect(quickSearch(tasks, 'zzz')).toEqual({ results: [], total: 0, overflow: 0 });
+      expect(quickSearch(tasks, 'zzz')).toEqual(nothing);
     });
   });
 
@@ -321,6 +323,102 @@ describe('quickSearch', () => {
       const tasks = [makeTask({ id: 'a', title: 'Draft the brief', projectId: 'p1' })];
       const names = new Map([['p1', 'Renovation']]);
       expect(quickSearch(tasks, 'renovation', names).total).toBe(1);
+    });
+  });
+
+  describe('stacks and projects', () => {
+    const makeGroup = (overrides: Partial<TaskGroup> = {}): TaskGroup => ({
+      id: 'g1',
+      title: 'Supplements',
+      notes: '',
+      tags: [],
+      category: null,
+      sortOrder: 1,
+      collapsed: true,
+      onToday: false,
+      projectId: null,
+      ...overrides,
+    });
+
+    const makeProject = (overrides: Partial<Project> = {}): Project => ({
+      id: 'p1',
+      title: 'Renovation',
+      notes: '',
+      deadline: null,
+      category: null,
+      defaultTaskCategory: null,
+      sortOrder: 1,
+      archived: false,
+      archivedAt: null,
+      completed: false,
+      completedAt: null,
+      ongoing: false,
+      createdAt: '2025-01-01T00:00:00.000Z',
+      nudgeCadenceDays: 0,
+      autoSchedule: false,
+      nudgeOptIn: false,
+      weekendSource: false,
+      reviewDeclinedAt: null,
+      reviewedAt: null,
+      backfillDismissedFields: [],
+      kind: 'project' as const,
+      awayStart: null,
+      awayEnd: null,
+      awayPauses: false,
+      awayPauseDeclinedFor: null,
+      destination: null,
+      awayListId: null,
+      awayListDeclinedFor: null,
+      pausedUntil: null,
+      personIds: [],
+      links: [],
+      inOrder: false,
+      showChecked: false,
+      ...overrides,
+    });
+
+    it('finds a stack by name even when no task matches', () => {
+      const groups = [makeGroup({ id: 'g1', title: 'Supplements' })];
+      const tasks = [makeTask({ id: 't1', title: 'Buy milk' })];
+      const { groupResults, results, total } = quickSearch(
+        tasks, 'supplements', new Map(), QUICK_SEARCH_LIMIT, new Set(), groups
+      );
+      expect(groupResults.map(r => r.group.title)).toEqual(['Supplements']);
+      expect(results).toHaveLength(0);
+      expect(total).toBe(1);
+    });
+
+    it('finds a project by name even when no task matches', () => {
+      const projects = [makeProject({ id: 'p1', title: 'Renovation' })];
+      const tasks = [makeTask({ id: 't1', title: 'Buy milk' })];
+      const { projectResults, total } = quickSearch(
+        tasks, 'renovation', new Map(), QUICK_SEARCH_LIMIT, new Set(), [], new Map(), projects
+      );
+      expect(projectResults.map(r => r.project.title)).toEqual(['Renovation']);
+      expect(total).toBe(1);
+    });
+
+    it('leads with stacks, then projects, then tasks, spending the same cap across all three', () => {
+      const groups = [makeGroup({ id: 'g1', title: 'Renew group' })];
+      const projects = [makeProject({ id: 'p1', title: 'Renew project' })];
+      const tasks = Array.from({ length: 4 }, (_, i) =>
+        makeTask({ id: `t${i}`, title: `Renew thing ${i}` })
+      );
+      const { groupResults, projectResults, results, total, overflow } = quickSearch(
+        tasks, 'renew', new Map(), 3, new Set(), groups, new Map(), projects
+      );
+      expect(groupResults).toHaveLength(1);
+      expect(projectResults).toHaveLength(1);
+      expect(results).toHaveLength(1);
+      expect(total).toBe(6);
+      expect(overflow).toBe(3);
+    });
+
+    it('leaves stacks and projects out when none are supplied, exactly as before', () => {
+      const tasks = [makeTask({ id: 'a', title: 'Renew passport' })];
+      const { groupResults, projectResults } = quickSearch(tasks, 'renew');
+      expect(groupResults).toEqual([]);
+      expect(projectResults).toEqual([]);
     });
   });
 });
