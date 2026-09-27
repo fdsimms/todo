@@ -361,25 +361,34 @@ export function ScanPortionSheet({ visible, foods, slot, at, mealPlanEntryId, on
                     />
                   </View>
                 )}
-                <TextInput
-                  style={styles.input}
-                  value={usingPills ? (amountNumbers[food.key] ?? '') : typed}
-                  onChangeText={text => {
-                    if (usingPills) {
-                      setAmountNumbers(n => ({ ...n, [food.key]: text }));
-                      setAnswers(a => ({ ...a, [food.key]: { kind: 'typed', text: composeFoodAmount(text, selectedUnit) } }));
-                    } else {
-                      setAnswers(a => ({ ...a, [food.key]: { kind: 'typed', text } }));
-                    }
-                  }}
-                  placeholder={usingPills ? 'Amount' : `e.g. ${amountExample(panel)}`}
-                  placeholderTextColor={colors.textTertiary}
-                  keyboardType={usingPills ? 'decimal-pad' : 'default'}
-                  // The number pad has no return key, so without this there is
-                  // no way off it — same accessory `FoodLogEntrySheet` wires up.
-                  inputAccessoryViewID={usingPills ? NUMBER_PAD_ACCESSORY_ID : undefined}
-                  accessibilityLabel={`Amount of ${food.label}`}
-                />
+                <View style={usingPills ? styles.inputRow : undefined}>
+                  <TextInput
+                    style={usingPills ? styles.inputWithSuffix : styles.input}
+                    value={usingPills ? (amountNumbers[food.key] ?? '') : typed}
+                    onChangeText={text => {
+                      if (usingPills) {
+                        setAmountNumbers(n => ({ ...n, [food.key]: text }));
+                        setAnswers(a => ({ ...a, [food.key]: { kind: 'typed', text: composeFoodAmount(text, selectedUnit) } }));
+                      } else {
+                        setAnswers(a => ({ ...a, [food.key]: { kind: 'typed', text } }));
+                      }
+                    }}
+                    placeholder={usingPills ? 'Amount' : `e.g. ${amountExample(panel)}`}
+                    placeholderTextColor={colors.textTertiary}
+                    keyboardType={usingPills ? 'decimal-pad' : 'default'}
+                    // The number pad has no return key, so without this there is
+                    // no way off it — same accessory `FoodLogEntrySheet` wires up.
+                    inputAccessoryViewID={usingPills ? NUMBER_PAD_ACCESSORY_ID : undefined}
+                    accessibilityLabel={`Amount of ${food.label}`}
+                  />
+                  {/* The placeholder alone only names the unit before anything
+                      is typed — it's gone the moment a number is, which is
+                      exactly when a "servings" vs. "g" mix-up would matter.
+                      This sits outside the placeholder so it stays visible. */}
+                  {usingPills && selectedUnit && (
+                    <Text style={styles.inputSuffix}>{selectedUnit.label}</Text>
+                  )}
+                </View>
                 {unitOptions.length > 0 && (
                   <View style={styles.choices}>
                     {unitOptions.map(option => {
@@ -546,6 +555,24 @@ function makeStyles(colors: Colors) {
       paddingVertical: spacing.sm,
       color: colors.text,
       fontSize: font.md,
+    },
+    inputRow: {
+      flexDirection: 'row',
+      alignItems: 'center',
+      backgroundColor: colors.bgTertiary,
+      borderRadius: radius.md,
+      paddingHorizontal: spacing.md,
+    },
+    inputWithSuffix: {
+      flex: 1,
+      paddingVertical: spacing.sm,
+      color: colors.text,
+      fontSize: font.md,
+    },
+    inputSuffix: {
+      color: colors.textSecondary,
+      fontSize: font.md,
+      marginLeft: spacing.xs,
     },
     hint: { color: colors.textTertiary, fontSize: font.sm },
     outcome: { color: colors.textSecondary, fontSize: font.sm },

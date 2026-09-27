@@ -1075,44 +1075,59 @@ export function FoodLogEntrySheet({
                 />
               </View>
             )}
-            <TextInput
-              style={styles.input}
-              value={picked.kind === 'food' && foodUnitOptions.length > 0 && amountUnit !== 'other' ? amountNumber : amount}
-              onChangeText={text => {
-                if (picked.kind === 'food' && foodUnitOptions.length > 0 && amountUnit !== 'other') {
-                  setAmountNumber(text);
-                  setAmount(composeFoodAmount(text, foodUnitOptions.find(o => o.key === amountUnit)));
-                } else {
-                  setAmount(text);
-                }
-              }}
-              placeholder={
-                picked.kind === 'dish'
-                  ? (dishMeasure === 'weight' ? 'e.g. 320 (grams)' : 'e.g. 1.5')
-                  : foodUnitOptions.length > 0 && amountUnit !== 'other'
-                    ? 'Amount'
-                    : `e.g. ${picked.panel ? amountExample(picked.panel) : '100g'}`
-              }
-              placeholderTextColor={colors.textTertiary}
-              autoFocus
-              keyboardType={
-                picked.kind === 'dish' || (foodUnitOptions.length > 0 && amountUnit !== 'other')
-                  ? 'decimal-pad' : 'default'
-              }
-              // The number pad has no return key, so without this there is no
-              // way off it — the same accessory the weigh field below already
-              // passes. Omitted for the free-text field, whose amount is
-              // typed words ("1 cup", "250 ml") on the ordinary keyboard.
-              inputAccessoryViewID={
-                picked.kind === 'dish' || (foodUnitOptions.length > 0 && amountUnit !== 'other')
-                  ? NUMBER_PAD_ACCESSORY_ID : undefined
-              }
-              accessibilityLabel={
-                picked.kind === 'dish' && dishMeasure === 'weight'
-                  ? 'Weight on your plate in grams'
-                  : 'How much you ate'
-              }
-            />
+            {(() => {
+              const usingFoodUnitPills = picked.kind === 'food' && foodUnitOptions.length > 0 && amountUnit !== 'other';
+              const selectedFoodUnit = usingFoodUnitPills ? foodUnitOptions.find(o => o.key === amountUnit) : undefined;
+              return (
+                <View style={usingFoodUnitPills ? styles.inputRow : undefined}>
+                  <TextInput
+                    style={usingFoodUnitPills ? styles.inputWithSuffix : styles.input}
+                    value={usingFoodUnitPills ? amountNumber : amount}
+                    onChangeText={text => {
+                      if (usingFoodUnitPills) {
+                        setAmountNumber(text);
+                        setAmount(composeFoodAmount(text, selectedFoodUnit));
+                      } else {
+                        setAmount(text);
+                      }
+                    }}
+                    placeholder={
+                      picked.kind === 'dish'
+                        ? (dishMeasure === 'weight' ? 'e.g. 320 (grams)' : 'e.g. 1.5')
+                        : usingFoodUnitPills
+                          ? 'Amount'
+                          : `e.g. ${picked.panel ? amountExample(picked.panel) : '100g'}`
+                    }
+                    placeholderTextColor={colors.textTertiary}
+                    autoFocus
+                    keyboardType={
+                      picked.kind === 'dish' || usingFoodUnitPills
+                        ? 'decimal-pad' : 'default'
+                    }
+                    // The number pad has no return key, so without this there is no
+                    // way off it — the same accessory the weigh field below already
+                    // passes. Omitted for the free-text field, whose amount is
+                    // typed words ("1 cup", "250 ml") on the ordinary keyboard.
+                    inputAccessoryViewID={
+                      picked.kind === 'dish' || usingFoodUnitPills
+                        ? NUMBER_PAD_ACCESSORY_ID : undefined
+                    }
+                    accessibilityLabel={
+                      picked.kind === 'dish' && dishMeasure === 'weight'
+                        ? 'Weight on your plate in grams'
+                        : 'How much you ate'
+                    }
+                  />
+                  {/* The placeholder alone only names the unit before anything
+                      is typed — it's gone the moment a number is, which is
+                      exactly when a "servings" vs. "g" mix-up would matter.
+                      This sits outside the placeholder so it stays visible. */}
+                  {usingFoodUnitPills && selectedFoodUnit && (
+                    <Text style={styles.inputSuffix}>{selectedFoodUnit.label}</Text>
+                  )}
+                </View>
+              );
+            })()}
             {picked.kind === 'food' && foodUnitOptions.length > 0 && (
               <View style={styles.portionChips}>
                 {foodUnitOptions.map(option => {
@@ -1494,6 +1509,25 @@ function makeStyles(colors: Colors) {
       paddingHorizontal: spacing.md,
       paddingVertical: spacing.sm,
       marginTop: spacing.xs,
+    },
+    inputRow: {
+      flexDirection: 'row',
+      alignItems: 'center',
+      backgroundColor: colors.bgSecondary,
+      borderRadius: radius.md,
+      paddingHorizontal: spacing.md,
+      marginTop: spacing.xs,
+    },
+    inputWithSuffix: {
+      flex: 1,
+      paddingVertical: spacing.sm,
+      color: colors.text,
+      fontSize: font.md,
+    },
+    inputSuffix: {
+      color: colors.textSecondary,
+      fontSize: font.md,
+      marginLeft: spacing.xs,
     },
     hint: { color: colors.textSecondary, fontSize: font.xs, lineHeight: 16, marginTop: spacing.xs },
     error: { color: colors.red, fontSize: font.sm, lineHeight: 18, marginTop: spacing.sm },
