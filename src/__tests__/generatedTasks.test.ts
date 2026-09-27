@@ -200,17 +200,33 @@ describe('generatedSourceOf', () => {
 
 describe('generatedBy', () => {
   it('stamps both fields together', () => {
-    expect(generatedBy('mealCook', 'm-1')).toEqual({
-      generatedKind: 'mealCook',
-      generatedSourceId: 'm-1',
+    expect(generatedBy('birthday', 'p-1#2026')).toEqual({
+      generatedKind: 'birthday',
+      generatedSourceId: 'p-1#2026',
     });
   });
 
   it('defaults the source to null, for a generator projected from no row', () => {
-    expect(generatedBy('mealPlanNudge')).toEqual({
-      generatedKind: 'mealPlanNudge',
+    expect(generatedBy('calendarReview')).toEqual({
+      generatedKind: 'calendarReview',
       generatedSourceId: null,
     });
+  });
+
+  it('pauses the row on vacation for every kind that stands down for it', () => {
+    // The pass gate only stops new rows, and several of these write days
+    // ahead, so a row written before a trip used to sit on Today during it.
+    for (const kind of Object.keys(GENERATED_KIND_SPECS) as GeneratedKind[]) {
+      const draft = generatedBy(kind, 'x');
+      if (GENERATED_KIND_SPECS[kind].pausedOnVacation) {
+        expect(draft.vacationPause).toBe(true);
+      } else {
+        // No key at all rather than `false`, so a draft's own default stands.
+        expect('vacationPause' in draft).toBe(false);
+      }
+    }
+    expect(generatedBy('mealSlot', '2026-08-22#lunch').vacationPause).toBe(true);
+    expect(generatedBy('birthday', 'p-1#2026').vacationPause).toBeUndefined();
   });
 });
 
@@ -332,7 +348,7 @@ describe('the registry', () => {
     // one task written entirely on the app's own schedule landed loose at the
     // top of Today however the other three were filed.
     expect(GENERATED_KIND_LIST.filter(s => s.categorized).map(s => s.kind))
-      .toEqual(['mealSlot', 'groceryUseUp', 'pantryCheck', 'pantryReview', 'leftoverUseUp', 'mealPlanNudge', 'mealShortfall', 'mealLogNudge', 'projectReview', 'supplyReorder', 'calendarReview', 'birthday', 'birthdayGift', 'reachOut', 'waitingFollowUp', 'weather', 'screenTime', 'health', 'eventTask', 'moodLog', 'moodNudge', 'weekendNudge', 'weighIn']);
+      .toEqual(['groceryUseUp', 'pantryCheck', 'pantryReview', 'leftoverUseUp', 'mealSlot', 'mealPlanNudge', 'mealShortfall', 'mealLogNudge', 'projectReview', 'supplyReorder', 'calendarReview', 'birthday', 'birthdayGift', 'reachOut', 'waitingFollowUp', 'weather', 'screenTime', 'health', 'eventTask', 'moodLog', 'moodNudge', 'weekendNudge', 'weighIn']);
   });
 
   it('marks exactly the two day-shaped questions as notices', () => {

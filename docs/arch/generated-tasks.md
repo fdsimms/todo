@@ -611,7 +611,7 @@ or what is on tomorrow is not work and keeps running: `weather`, `screenTime`, `
 were away is the exact failure that feature exists to prevent, and what is on tomorrow matters more
 when you are travelling, not less.
 
-Two things enforce it, and they are not redundant:
+Three things enforce it, and they are not redundant:
 
 - **The clock-driven passes** check `generatorPausedForVacation` at the top, and skip *without
   recording their period key* — the behaviour `checkMealPlanNudge` already had. That is what makes
@@ -622,6 +622,23 @@ Two things enforce it, and they are not redundant:
   so only creation stops: an existing row still follows its source and still goes when the source
   stops wanting it. Gating the whole function would freeze rows their source has finished with, and
   gating `wanted` would delete a row on the way into vacation and write it again on the way out.
+- **The rows themselves carry `vacationPause: true`**, stamped by `generatedBy` for every kind
+  that pauses, so no generator's draft can forget it. The two gates above only stop *new* rows,
+  and several passes write ahead (a week of meal rows), so a row written the day before a trip sat
+  on Today for most of it. Paused, it hides while vacation mode is on and comes back when it ends,
+  exactly as any task set to pause does, and a person can still switch it off on one row. The one
+  override is `mealPlanNudge` with "Also during vacation" on: those rows are written during a trip
+  on purpose, so the pass writes them unpaused.
+
+**A kitchen pass's own switch and the kitchen gate stop creating, not clearing.** `mealSlot`,
+`pantryCheck`, `pantryReview`, `mealShortfall` and `mealLogNudge` check them *below* their stale
+pass, not at the top, and short-circuit only when there is nothing live of their kind to clear.
+Returning above the clear froze every row already written: "Shop for Ragu" stayed on Today, overdue,
+naming a meal dropped from the plan after the switch went off, until somebody deleted it by hand.
+Off means stop asking. It is not a decline of the rows already there, so only those whose reason
+has gone are removed, and each pass's period mark is still spent only on a run that could have
+created. The vacation gate stays at the top, as above: a paused row is hidden rather than on Today,
+and the clear catches up the first time the app is opened after vacation ends.
 
 ## `mealSlot` — the fold that turned cook tasks into meal tasks
 
@@ -646,7 +663,7 @@ things to cook, and offered none of it from the list you were looking at. So the
 | a leftover, takeaway, a typed answer | Eat X (one step, so `chainEnabled: false`) |
 
 "Already chosen" is the same task with its first step gone, not a different task — which is why the
-table is read on every reconcile rather than only at creation. Six consequences worth not
+table is read on every reconcile rather than only at creation. Eight consequences worth not
 re-deriving:
 
 - **`completeTask` no longer clears `generatedKind` on a mid-chain spawn**, and that one-line change
@@ -687,6 +704,14 @@ re-deriving:
 - **It doesn't chase the date.** The day is baked into the source id and never moves, so the only
   thing that can change `dueDate` is the user deferring the row — and rewriting that back onto today
   is the one thing this must not do. `projectReview` draws the same line for the same reason.
+- **A day that has gone by takes its untouched rows with it** (`staleMealSlotTasks`). The pass
+  never writes a past day, since a meal task is no use once its day has gone, but nothing removed a
+  row it *had* written, so a weekend away left six or nine "Choose lunch" rows overdue at the top
+  of the section for good. Each run now drops, with `dropGeneratedTask` and no opt-out, every live
+  row whose day is before the logical today and that nobody touched: still on step 0, and not moved
+  onto today or later by its date or a defer. A started chain is the user's, the same line the
+  drift draws, and a moved row was a decision about when to deal with it. The mark is untouched, so
+  a dropped day is never written again, and the log nudge is what asks about a past meal.
 - **A week at a time** (`MEAL_SLOT_TASK_DAYS`), matching the meal plan's own `upcomingDays` and the
   horizon the weekly nudge asks about. This shipped as today-only, on the grounds that a week of
   rows saying "Choose lunch" would be noise; it isn't, because those meals genuinely are undecided
@@ -1047,7 +1072,7 @@ themselves every morning unprompted never sees this task, and somebody who has
 drifted for a fortnight sees exactly one. `weighInEveryDays` sets the window,
 from a day to a month.
 
-Four things worth not re-deriving:
+Five things worth not re-deriving:
 
 - **It is the only async generator pass**, because it takes a Health read of
   its own rather than judging a snapshot some foreground effect already filled
@@ -1074,6 +1099,16 @@ Four things worth not re-deriving:
   personal record that a week away is the interesting part of. Hunting for
   scales in a hotel is a chore, and standing chores down is what vacation mode
   is for.
+- **Deleting a request holds for the window, not for a day.** The gap trigger
+  answers "how many rows", not "how often": once a window was empty, it stayed
+  empty the next morning, so somebody asked every seven days who deleted the
+  request was asked again every day after. A delete now stamps
+  `weighInDeclinedDayKey` (the `weighIn` arm of `writeGeneratedOptOut`, the
+  settings-level stamp a day key's lack of a source row calls for), and the pass
+  stands down until `weighInEveryDays` have passed from that day
+  (`weighInDeclineHolds`), before it spends a Health read. The pass clearing a
+  request whose day has gone uses `dropGeneratedTask`, so an ignored request is
+  not a decline: it comes back the next day, because it was never answered.
 
 The row carries `dundundun://weight?log=1` so its link button opens the sheet
 that answers it, and `completeWeighInTaskForToday` ticks the request off when a

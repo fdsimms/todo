@@ -1,7 +1,7 @@
 import type { MealPlanEntry, MealSlot, Task, TaskDraft, TimeOfDay } from '../types';
 import { MEAL_SLOT_LABELS } from '../types';
-import { dayKeyToDate } from './dateUtils';
-import { generatedBy, generatedSourceOf } from './generatedTasks';
+import { dayKeyOf, dayKeyToDate } from './dateUtils';
+import { generatedBy, generatedSourceOf, liveGeneratedTasksOfKind } from './generatedTasks';
 import { isChainFinish } from './chain';
 import { mealPlanNudgeLinkUrl } from './mealPlanNudge';
 import { mealSlotKey } from './mealPlan';
@@ -440,6 +440,43 @@ export function mealSlotTaskDraft(
     chainIndex: 0,
     category,
   };
+}
+
+/**
+ * The live rows for a day that has gone by without anyone starting on them,
+ * which the daily pass drops rather than leaving overdue on Today.
+ *
+ * A meal task is no use on a day that has already gone, which is the reason
+ * the pass never writes one; without this half a row it *had* written stayed
+ * behind anyway, so a weekend away left six or nine "Choose lunch" rows at the
+ * top of the Meal Plan section for ever. The log nudge is what asks about a
+ * past meal (`mealLogNudgeTasks.ts`), a day after rather than instead.
+ *
+ * Three rows are kept, each because somebody touched it:
+ *
+ * - **A started chain** (`chainIndex > 0`). A step has been ticked, so the
+ *   rest of the chain is the user's, the same line `mealSlotDrift` draws.
+ * - **A row moved onto today or later**, by its date or a defer. That was a
+ *   decision about when to deal with it, and the day in its source id says
+ *   nothing about that.
+ * - **A finished or archived one**, which is not live and never listed here.
+ *
+ * `todayKey` is the logical today. A stored date is compared by its calendar
+ * day, the way `getTaskDayStart` reads one.
+ */
+export function staleMealSlotTasks<
+  T extends Pick<
+    Task,
+    'generatedKind' | 'generatedSourceId' | 'completed' | 'archived' | 'chainIndex' | 'dueDate' | 'deferUntil'
+  >
+>(tasks: readonly T[], todayKey: string): T[] {
+  const movedToToday = (iso: string | null) => iso !== null && dayKeyOf(new Date(iso)) >= todayKey;
+  return liveGeneratedTasksOfKind(tasks, 'mealSlot').filter(task => {
+    const source = parseMealSlotSource(task.generatedSourceId);
+    if (!source || source.dayKey >= todayKey) return false;
+    if ((task.chainIndex ?? 0) > 0) return false;
+    return !movedToToday(task.dueDate) && !movedToToday(task.deferUntil);
+  });
 }
 
 /**
