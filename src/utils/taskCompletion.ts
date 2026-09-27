@@ -64,6 +64,20 @@ import { newTaskFromDraft, buildSeriesRow } from './taskDraft';
 /** The five things a caller can say about a completion. Identical to `completeTask`'s. */
 export interface CompletionOptions {
   missed?: boolean;
+  /**
+   * Ends a mid-chain miss at the step it's called on, rather than advancing
+   * to the next one — the escape hatch `markMissed`'s ordinary mid-chain
+   * behavior (see the note on `atChainEnd` below) doesn't cover. That
+   * default is right for a chain of independent steps (a morning routine:
+   * missing "Exercise" doesn't strand "Shower"), and wrong for one whose
+   * later steps depend on an earlier one's outcome (meal-slot's Choose →
+   * Prepare → Eat: missing "Choose" leaves nothing to prepare). Rather than
+   * pick one behavior for every chain, this lets the caller say which one a
+   * given miss means. Ignored when `missed` isn't set, and inert on a task
+   * that isn't mid-chain (forcing `atChainEnd` early changes nothing once
+   * the step already was the end).
+   */
+  missChain?: boolean;
   deliverableValue?: string | null;
   neutral?: boolean;
   completedAt?: string;
@@ -198,8 +212,12 @@ export function buildCompletion(
   // whose steps you work through regardless of whether each one landed, and
   // treating a single missed step as ending the whole run would strand every
   // later step for the day just because one of them wasn't done. Only a miss
-  // on the real last step ends the run, same as completing it would.
-  const atChainEnd = chainAdvances && task.chainIndex >= task.chainItems.length - 1;
+  // on the real last step ends the run, same as completing it would — unless
+  // the caller says this particular miss *is* the end (`missChain`, for a
+  // chain whose later steps can't stand on their own without the one that
+  // was just missed).
+  const atChainEnd =
+    chainAdvances && (!!options?.missChain || task.chainIndex >= task.chainItems.length - 1);
   // A chain is a singly linked list of steps: completing one immediately
   // creates the next, with no schedule needed, and it simply ends after
   // the last step. Repeat changes only what happens at that last step —

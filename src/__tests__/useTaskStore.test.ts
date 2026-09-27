@@ -7488,6 +7488,25 @@ describe('markMissed', () => {
     expect(next.recurrenceCount).toBe(4);
   });
 
+  it('ends the whole chain on a mid-chain miss when wholeChain is set, instead of advancing', () => {
+    useTaskStore.setState({ tasks: [recurring({
+      recurrenceCount: 5,
+      chainEnabled: true,
+      chainItems: [
+        { id: 'a', title: 'Step A', estimatedMinutes: null },
+        { id: 'b', title: 'Step B', estimatedMinutes: null },
+      ],
+      chainIndex: 0,
+    })] });
+    useTaskStore.getState().markMissed('t1', { wholeChain: true });
+    const next = useTaskStore.getState().tasks.find(t => t.id !== 't1')!;
+    // Treated as if this were the real last step: the chain wraps back to
+    // its first item and the recurrence's own bookkeeping applies, rather
+    // than spawning Step B with nothing behind it.
+    expect(next.chainIndex).toBe(0);
+    expect(next.recurrenceCount).toBe(4);
+  });
+
   it('does nothing on a non-recurring task — there is no next occurrence to move to', () => {
     useTaskStore.setState({ tasks: [makeTask({ id: 't1', recurrenceType: 'none' })] });
     useTaskStore.getState().markMissed('t1');
