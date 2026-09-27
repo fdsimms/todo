@@ -65,10 +65,20 @@ export function resetToFoodLog(): void {
 // once the slot holds a recipe (mealSlotTasks.recipeLinkUrl). Recipes first,
 // always, so the back chevron on RecipeDetail has somewhere to go — the same
 // shape resetToPeople already uses for PersonDetail.
-export function resetToRecipeDetail(recipeId: string): void {
+//
+// `openCookMode` is the second half, tapped from CookingBar (a running cook
+// timer's own floating return-to-it bar) and the More tab's cook-timer dot:
+// land on the recipe *and* pop CookModeSheet open, the same stamped-param
+// handoff resetToGroceries's openFinish uses, and for the same reason — the
+// sheet compares against the last value it handled, so tapping the bar twice
+// in a row (open cook mode, back out to Today, tap it again) still fires.
+export function resetToRecipeDetail(recipeId: string, openCookMode = false): void {
   if (!navigationRef.isReady()) return;
   navigationRef.navigate('Recipes');
-  navigationRef.navigate({ name: 'RecipeDetail', params: { recipeId } });
+  navigationRef.navigate({
+    name: 'RecipeDetail',
+    params: openCookMode ? { recipeId, openCookMode: Date.now() } : { recipeId },
+  });
 }
 
 // Where `dundundun://mealplan` lands — the third of the kitchen links, so a

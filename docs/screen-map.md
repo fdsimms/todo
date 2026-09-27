@@ -98,6 +98,7 @@ Where each component can appear.
 - `src/components/CookbookChecklistSheet.tsx` — on ProjectsScreen, RecipesScreen
 - `src/components/CookbookEditor.tsx` — on CookbooksScreen
 - `src/components/CookbookMergeSheet.tsx` — on CookbooksScreen
+- `src/components/CookingBar.tsx` — on app shell
 - `src/components/CountStepper.tsx` — on ArchivedScreen, BackfillScreen, CalendarScreen, CategoryDetailScreen, FoodLogScreen, GroceryScreen, KitchenScreen, MealPlanScreen, PeopleScreen, PersonDetailScreen, ProjectDetailScreen, ProjectsScreen, +15 more
 - `src/components/CreatedTaskToast.tsx` — on TodayScreen
 - `src/components/DayContextRow.tsx` — on TodayScreen

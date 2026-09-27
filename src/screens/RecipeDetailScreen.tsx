@@ -117,7 +117,7 @@ type RootStackParamList = {
    * same for MealPlanEntry.recipeScale. Seed only: nothing picked here is
    * written back to the entry.
    */
-  RecipeDetail: { recipeId: string; choices?: string[]; scale?: number };
+  RecipeDetail: { recipeId: string; choices?: string[]; scale?: number; openCookMode?: number };
 };
 
 /** One row of the merged list the ingredients SortableList drags over — see mergedIngredientRows. */
@@ -371,6 +371,22 @@ export function RecipeDetailScreen() {
   const { overlap, openOverlap, closeOverlap, handOffOverlap } = useOverlapPicker();
   const [extractVisible, setExtractVisible] = useState(false);
   const [cookModeVisible, setCookModeVisible] = useState(false);
+  /**
+   * `openCookMode` (route.params) is CookingBar's and the More tab's
+   * cook-timer dot's way back in — resetToRecipeDetail's second param, the
+   * same stamped-and-compare handoff resetToGroceries's openFinish uses. A
+   * request that arrives before `cookableCount`/`simpleMode` are known to
+   * allow the button at all is answered the same way the button itself
+   * would be: nothing opens, and the stamp is still marked handled so it
+   * doesn't fire again on the next render once those are known.
+   */
+  const openCookModeStamp = route.params.openCookMode;
+  const [handledCookModeStamp, setHandledCookModeStamp] = useState<number | undefined>(undefined);
+  useEffect(() => {
+    if (openCookModeStamp === undefined || openCookModeStamp === handledCookModeStamp) return;
+    setHandledCookModeStamp(openCookModeStamp);
+    if (cookableCount > 0 && !featureHidden('cookMode', simpleMode)) setCookModeVisible(true);
+  }, [openCookModeStamp, handledCookModeStamp, cookableCount, simpleMode]);
   const [bulkBarHeight, setBulkBarHeight] = useState(0);
   const [componentPickerVisible, setComponentPickerVisible] = useState(false);
   const [choiceComponent, setChoiceComponent] = useState<ResolvedComponent | null>(null);
