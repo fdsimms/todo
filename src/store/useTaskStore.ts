@@ -264,6 +264,7 @@ import { resolveBlocksEdit, waitingOn, canWaitOn, blockerFields, blockerIdsOf, b
 import {
   waitingFollowUpTaskId,
   wantedWaitingFollowUps,
+  MAX_WAITING_FOLLOW_UP_TASKS,
   waitingFollowUpsHandledRecently,
   staleWaitingFollowUpTasks,
 } from '../utils/waitingFollowUpTasks';
@@ -2712,6 +2713,8 @@ export const useTaskStore = create<TaskStore>((set, get) => ({
               // Sam" nudge on the strength of a swipe made about "waiting on
               // Alex".
               waitingFollowUpDeclinedAt: null,
+              // Same for the day to chase it: it was about the old wait.
+              ...('followUpOn' in updates ? {} : { followUpOn: null }),
             }
           : undefined;
 
@@ -5189,7 +5192,9 @@ export const useTaskStore = create<TaskStore>((set, get) => ({
     // Work the app invents on the strength of a wait dragging on, not
     // sunscreen — see GeneratedKindSpec.pausedOnVacation.
     if (generatorPausedForVacation('waitingFollowUp', settings.vacationMode)) return;
-    if (!settings.waitingFollowUpTasks) return;
+    // The setting gates the app asking unasked. A wait with its own follow-up
+    // day (Task.followUpOn) was asked for, so it runs either way; with the
+    // setting off, those are the only ones wanted.
 
     const tasks = get().tasks;
     const people = usePersonStore.getState().people;
@@ -5198,7 +5203,9 @@ export const useTaskStore = create<TaskStore>((set, get) => ({
     // Anything already ticked off or archived recently is left alone rather
     // than handed straight back — see waitingFollowUpsHandledRecently.
     const handled = waitingFollowUpsHandledRecently(tasks, today);
-    const wanted = wantedWaitingFollowUps(tasks, people, today, handled);
+    const wanted = wantedWaitingFollowUps(
+      tasks, people, today, handled, MAX_WAITING_FOLLOW_UP_TASKS, settings.waitingFollowUpTasks,
+    );
 
     // Clear first, create second, and never the reverse — the same ordering
     // checkProjectReviewTasks and checkReachOutTasks run on: the stale set
@@ -5243,6 +5250,9 @@ export const useTaskStore = create<TaskStore>((set, get) => ({
           // actually doing the thing.
           phoneNumber: want.phoneNumber,
           category,
+          // Filed where the wait is: chasing the contractor is part of the
+          // kitchen, and belongs on its page beside the task it's about.
+          projectId: want.projectId,
           // No personIds, for the reason the birthday and reachOut tasks
           // carry none: a task naming somebody is the record that something
           // happened with them, and ticking this off would otherwise reset a

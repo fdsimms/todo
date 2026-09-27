@@ -1,4 +1,5 @@
 import type { Person, Task } from '../types';
+import { dayKeyOf } from '../utils/dateUtils';
 
 // waitingFollowUpTitle reaches displayTitleFor in visibilityUtils.ts, which
 // reaches dateUtils.ts's settings-store read — same stub fuzzySearch.test.ts
@@ -121,25 +122,52 @@ describe('wantedWaitingFollowUps', () => {
       taskId: 't1', personId: 'p1',
       title: 'Follow up with Dustin about "Get the quote back"',
       phoneNumber: null,
+      projectId: null,
     }]);
   });
 
-  it('wants one on the waiting task\'s own date, however young the wait', () => {
+  it("files the follow-up under the waiting task's project", () => {
+    expect(wantedWaitingFollowUps([waitingTask({ projectId: 'kitchen' })], [person()], TODAY)[0].projectId).toBe('kitchen');
+  });
+
+  it('wants one on the wait\'s own follow-up day, however young the wait', () => {
     const task = waitingTask({
       waitingOnPersonSince: daysAgo(1).toISOString(),
-      dueDate: daysAgo(0).toISOString(),
+      followUpOn: dayKeyOf(daysAgo(0)),
     });
     expect(wantedWaitingFollowUps([task], [person()], TODAY)).toHaveLength(1);
   });
 
-  it('waits for a date that has not come yet, even past the threshold', () => {
-    const task = waitingTask({ dueDate: daysAgo(-2).toISOString() });
+  it('waits for a follow-up day that has not come yet, even past the threshold', () => {
+    const task = waitingTask({ followUpOn: dayKeyOf(daysAgo(-2)) });
     expect(wantedWaitingFollowUps([task], [person()], TODAY)).toEqual([]);
   });
 
-  it('still asks after a date that has passed', () => {
-    const task = waitingTask({ waitingOnPersonSince: null, dueDate: daysAgo(3).toISOString() });
+  it('still asks after a follow-up day that has passed', () => {
+    const task = waitingTask({ waitingOnPersonSince: null, followUpOn: dayKeyOf(daysAgo(3)) });
     expect(wantedWaitingFollowUps([task], [person()], TODAY)).toHaveLength(1);
+  });
+
+  it("ignores the task's own due date: an overdue task that starts waiting doesn't ask at once", () => {
+    const task = waitingTask({ waitingOnPersonSince: TODAY.toISOString(), dueDate: daysAgo(5).toISOString() });
+    expect(wantedWaitingFollowUps([task], [person()], TODAY)).toEqual([]);
+  });
+
+  it('counts a follow-up day from before the wait from the day the wait began', () => {
+    // Waiting since 2 days ago, told to follow up 10 days ago: asks now (the
+    // wait's first day has come), which a date in the future would not.
+    const task = waitingTask({ waitingOnPersonSince: daysAgo(2).toISOString(), followUpOn: dayKeyOf(daysAgo(10)) });
+    expect(wantedWaitingFollowUps([task], [person()], TODAY)).toHaveLength(1);
+    const fresh = waitingTask({ waitingOnPersonSince: daysAgo(-1).toISOString(), followUpOn: dayKeyOf(daysAgo(10)) });
+    expect(wantedWaitingFollowUps([fresh], [person()], TODAY)).toEqual([]);
+  });
+
+  it('asks on a named day with the setting off and past the cap, since it was asked for', () => {
+    const dated = (id: string) => waitingTask({ id, followUpOn: dayKeyOf(TODAY) });
+    const aged = (id: string) => waitingTask({ id });
+    const tasks = [aged('a1'), aged('a2'), aged('a3'), dated('d1'), dated('d2'), dated('d3')];
+    expect(wantedWaitingFollowUps(tasks, [person()], TODAY).map(w => w.taskId)).toEqual(['a1', 'a2', 'd1', 'd2', 'd3']);
+    expect(wantedWaitingFollowUps(tasks, [person()], TODAY, new Set(), 2, false).map(w => w.taskId)).toEqual(['d1', 'd2', 'd3']);
   });
 
   it('is not fooled by a task with no stamp at all — a legacy wait rather than a fresh one', () => {

@@ -84,7 +84,7 @@ import { useMedicationStore } from '../store/useMedicationStore';
 import { categoryLabel } from '../utils/categoryLabel';
 import { useShallow } from 'zustand/react/shallow';
 import { isStreakAtRecord, nextStreakRecord, streakHint } from '../utils/streakRecord';
-import { formatDeadlineDate, formatScheduledDate, formatHHMM, formatTimeOfDay, hhmmToDate, dateToHHMM, getDeadlineFromOffset, getDeadlineFromMonthDay, describeDeadlineOffset, describeReminderOffset, describeReminderTracksVisibility, getTaskDayStart, getCurrentDayStart, getLogicalNow, getLogicalToday, seriesMonthDaysFrom, getNextDueDate } from '../utils/dateUtils';
+import { formatDeadlineDate, formatScheduledDate, formatHHMM, formatTimeOfDay, hhmmToDate, dateToHHMM, getDeadlineFromOffset, getDeadlineFromMonthDay, describeDeadlineOffset, describeReminderOffset, describeReminderTracksVisibility, getTaskDayStart, getCurrentDayStart, getLogicalNow, getLogicalToday, seriesMonthDaysFrom, getNextDueDate, dayKeyOf, dayKeyToDate } from '../utils/dateUtils';
 import { generateId } from '../utils/id';
 import { findArchivedMatch } from '../utils/archiveMatch';
 import { parseTaskInput, describeSchedule, detectContactIntent, matchPersonMentions, getEditorMentionSuggestions, withTrailingSpace, parseCategoryAndTagsInput, type MentionSuggestionCandidate, type ParsedCategoryAndTags } from '../utils/parseTaskInput';
@@ -551,6 +551,9 @@ export function TaskEditor({ visible, task, initialDraft, onClose }: Props) {
   const [blockerIds, setBlockerIds] = useState<string[]>([]);
   const [showBlockers, setShowBlockers] = useState(false);
   const [waitingOnPersonId, setWaitingOnPersonId] = useState<string | null>(null);
+  // Task.followUpOn: the day to chase the wait, held as a date while editing.
+  const [followUpOn, setFollowUpOn] = useState<Date | null>(null);
+  const [showFollowUpPicker, setShowFollowUpPicker] = useState(false);
   const [deliverableKind, setDeliverableKind] = useState<DeliverableKind | null>(null);
   // Pick-one's options as typed ("Yes, No, Maybe"), parsed on save.
   const [deliverableOptionsText, setDeliverableOptionsText] = useState('');
@@ -849,6 +852,7 @@ export function TaskEditor({ visible, task, initialDraft, onClose }: Props) {
       setBlockerIds(blockerIdsOf(task));
       setShowBlockers(false);
       setWaitingOnPersonId(task.waitingOnPersonId ?? null);
+      setFollowUpOn(task.followUpOn ? dayKeyToDate(task.followUpOn) : null);
       setBlocksIds(blockedTasksOf(task.id).map(t => t.id));
       setDeliverableKind(task.deliverableKind ?? null);
       setDeliverableOptionsText((task.deliverableOptions ?? []).join(', '));
@@ -900,6 +904,7 @@ export function TaskEditor({ visible, task, initialDraft, onClose }: Props) {
       setBlockerIds([]);
       setShowBlockers(false);
       setWaitingOnPersonId(null);
+      setFollowUpOn(null);
       setBlocksIds([]);
       setDeliverableKind(null);
       setDeliverableOptionsText('');
@@ -1025,6 +1030,7 @@ export function TaskEditor({ visible, task, initialDraft, onClose }: Props) {
       location: task ? (task.location ?? null) : (initialDraft?.location ?? null),
       blockerIds: task ? blockerIdsOf(task) : [],
       waitingOnPersonId: task?.waitingOnPersonId ?? null,
+      followUpOn: task?.followUpOn ?? null,
       deliverableKind: task?.deliverableKind ?? null,
       deliverableOptionsText: (task?.deliverableOptions ?? []).join(', '),
       deliverableSetsAway: task?.deliverableSetsAway ?? false,
@@ -1483,6 +1489,8 @@ export function TaskEditor({ visible, task, initialDraft, onClose }: Props) {
       location: resolveLocation(),
       ...blockerFields(blockerIds),
       waitingOnPersonId,
+      // Only while waiting: the day is when to chase *this* wait.
+      followUpOn: waitingOnPersonId && followUpOn ? dayKeyOf(followUpOn) : null,
       deliverableKind,
       // Only the kind that reads each: options belong to a Pick-one, and a
       // departure can only come from a date answered inside a project.
@@ -2098,6 +2106,7 @@ export function TaskEditor({ visible, task, initialDraft, onClose }: Props) {
       location,
       blockerIds,
       waitingOnPersonId,
+      followUpOn: waitingOnPersonId && followUpOn ? dayKeyOf(followUpOn) : null,
       deliverableKind,
       deliverableOptionsText,
       deliverableSetsAway,
@@ -2632,6 +2641,18 @@ export function TaskEditor({ visible, task, initialDraft, onClose }: Props) {
             showSuggest={false}
             onConfirm={(date) => { setRecurrenceEndDate(date); setShowEndDatePicker(false); }}
             onCancel={() => setShowEndDatePicker(false)}
+          />
+          <WhenPicker
+            visible={showFollowUpPicker}
+            value={followUpOn}
+            title="Follow up on"
+            showTimeOfDay={false}
+            showSuggest={false}
+            // A day to chase somebody is ahead, never behind.
+            allowPast={false}
+            onConfirm={(date) => { setFollowUpOn(date); setShowFollowUpPicker(false); }}
+            onClear={() => { setFollowUpOn(null); setShowFollowUpPicker(false); }}
+            onCancel={() => setShowFollowUpPicker(false)}
           />
           <WhenPicker
             visible={showDeadlinePicker}
@@ -5061,13 +5082,13 @@ export function TaskEditor({ visible, task, initialDraft, onClose }: Props) {
           // with nothing in it is a prompt to start filing your friends.
           ...(people.length > 0 ? [{
             key: 'waitingOnPerson', label: 'Waiting on someone', set: !!waitingOnPersonId,
-            keywords: ['blocked', 'person', 'friend', 'owes', 'chase', 'reply'],
+            keywords: ['blocked', 'person', 'friend', 'owes', 'chase', 'reply', 'follow up', 'nudge'],
             node: (
               <>
               <CollapsibleField
                 label="Waiting on someone"
                 summary={waitingPerson ? displayNameOf(waitingPerson) : undefined}
-                hint="Stay hidden until they come back to you. Set a date to get a follow-up task that day. Nothing clears this on its own."
+                hint="Stay hidden until they come back to you. Nothing clears this on its own."
                 expanded={fieldOpen('waitingOnPerson')}
                 onToggle={() => toggleField('waitingOnPerson')}
               >
@@ -5099,6 +5120,21 @@ export function TaskEditor({ visible, task, initialDraft, onClose }: Props) {
                   }}
                 />
               </CollapsibleField>
+              {/* Outside the collapsible so it's in view once somebody is
+                  picked, like Pick one's options. Its own day rather than the
+                  task's Date, which says when the task is due. */}
+              {waitingOnPersonId !== null && (
+                <EditorRow
+                  icon="chatbubble-ellipses-outline"
+                  label="Follow up on"
+                  hint={followUpOn
+                    ? undefined
+                    : 'Adds a task to follow up with them on this day. Without one, the follow-up comes after a week if that is on in Settings'}
+                  value={followUpOn ? formatDeadlineDate(followUpOn.toISOString()) : undefined}
+                  onPress={() => setShowFollowUpPicker(true)}
+                  onClear={followUpOn ? () => setFollowUpOn(null) : undefined}
+                />
+              )}
               </>
             ),
           }] : []),

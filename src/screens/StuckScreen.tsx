@@ -139,6 +139,7 @@ export function StuckScreen() {
   const people = usePersonStore(useShallow(s => s.people));
   const tasks = useTaskStore(s => s.tasks);
   const updateTask = useTaskStore(s => s.updateTask);
+  const setLastAction = useTaskStore(s => s.setLastAction);
   const completeTask = useTaskStore(s => s.completeTask);
   const archiveTask = useTaskStore(s => s.archiveTask);
   const dayResetTime = useSettingsStore(s => s.dayResetTime);
@@ -250,8 +251,12 @@ export function StuckScreen() {
     // Both, always: a task held by a person and a task alike leaves this screen
     // by the same button, and clearing only the one the row happened to be
     // filed under would leave it waiting on the other with nothing on screen.
+    const snapshot = { ...task };
     updateTask(task.id, { blockedById: null, blockedByIds: [], waitingOnPersonId: null });
-  }, [updateTask]);
+    // What it was waiting on is gone from the row once released, so the
+    // only way back from a slip is here.
+    setLastAction({ label: 'Released', undo: () => updateTask(snapshot.id, snapshot) });
+  }, [updateTask, setLastAction]);
 
   const finishBlocker = (blocker: Task) => {
     if (asksOnCompletion(blocker)) {

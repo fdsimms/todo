@@ -2611,7 +2611,15 @@ export const TaskItem = React.memo(function TaskItem({
             {!!waitingPersonName && (
               <TouchableOpacity
                 style={styles.metaChip}
-                onPress={() => { haptics.tap(); animateLayout(); updateTask(task.id, { waitingOnPersonId: null }); }}
+                onPress={() => {
+                  haptics.tap();
+                  animateLayout();
+                  // One tap on a small chip is easy to make by accident, and
+                  // it drops the wait's start and follow-up day with it.
+                  const snapshot = { ...task };
+                  updateTask(task.id, { waitingOnPersonId: null });
+                  setLastAction({ label: 'Stopped waiting', undo: () => updateTask(snapshot.id, snapshot) });
+                }}
                 activeOpacity={interaction.activeOpacity}
                 accessibilityRole="button"
                 accessibilityLabel={`Waiting on ${waitingPersonName}. Double tap to stop waiting.`}

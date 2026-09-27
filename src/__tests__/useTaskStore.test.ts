@@ -4902,6 +4902,21 @@ describe('checkWaitingFollowUpTasks', () => {
     expect(followUps()).toHaveLength(0);
   });
 
+  it('still follows up on a day the person named, setting off, filed under the project', () => {
+    useSettingsStore.getState.mockReturnValue(settings({ waitingFollowUpTasks: false }));
+    const key = dayKeyOf(getCurrentDayStart());
+    useTaskStore.setState({ tasks: [waiting({ waitingOnPersonSince: daysAgo(1), followUpOn: key, projectId: 'kitchen' })] });
+    useTaskStore.getState().checkWaitingFollowUpTasks();
+    expect(followUps()).toHaveLength(1);
+    expect(followUps()[0].projectId).toBe('kitchen');
+  });
+
+  it('clears the follow-up day when the wait moves to somebody else or ends', () => {
+    useTaskStore.setState({ tasks: [waiting({ followUpOn: '2026-01-02' })] });
+    useTaskStore.getState().updateTask('w1', { waitingOnPersonId: null });
+    expect(useTaskStore.getState().tasks.find(t => t.id === 'w1')?.followUpOn ?? null).toBeNull();
+  });
+
   it('does nothing while vacation mode is on — a chore, not sunscreen', () => {
     useSettingsStore.getState.mockReturnValue(settings({ vacationMode: true }));
     useTaskStore.getState().checkWaitingFollowUpTasks();

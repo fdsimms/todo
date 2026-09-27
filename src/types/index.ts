@@ -2559,6 +2559,19 @@ export interface Task {
   waitingFollowUpDeclinedAt: string | null;
 
   /**
+   * When to follow up on this wait — a day key ("YYYY-MM-DD"), or null to
+   * leave it to `WAITING_FOLLOW_UP_THRESHOLD_DAYS`. Set beside
+   * `waitingOnPersonId` in the editor ("chase the contractor Friday"), and
+   * deliberately its own field rather than the task's `dueDate`: the task's
+   * date is when the task is due, and reading it as the follow-up day made an
+   * overdue task ask straight away the moment it started waiting. A date set
+   * here always gets its follow-up, whether or not the generator's setting is
+   * on and past its cap of two, because it was asked for. Cleared when the
+   * wait ends or moves to somebody else, like the stamps above.
+   */
+  followUpOn?: string | null;
+
+  /**
    * "Ask on completion" — a task whose completion means recording a decision
    * ("Pick a date for the trip"), not just ticking a box. Null on every
    * ordinary task, which is almost all of them.

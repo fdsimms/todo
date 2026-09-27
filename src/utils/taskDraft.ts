@@ -399,6 +399,7 @@ export function newTaskFromDraft(
     waitingOnPersonId: null,
     waitingOnPersonSince: null,
     waitingFollowUpDeclinedAt: null,
+    followUpOn: null,
     deliverableKind: draft.deliverableKind ?? null,
     deliverableOptions: draft.deliverableOptions ?? [],
     deliverableSetsAway: draft.deliverableSetsAway ?? false,

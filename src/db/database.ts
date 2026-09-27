@@ -1725,6 +1725,9 @@ export function initDatabase(): void {
     // answer set a trip's departure. See Task.deliverableOptions/SetsAway.
     "ALTER TABLE tasks ADD COLUMN deliverable_options TEXT NOT NULL DEFAULT '[]'",
     'ALTER TABLE tasks ADD COLUMN deliverable_sets_away INTEGER NOT NULL DEFAULT 0',
+    // Null on every existing row: no wait has named its own follow-up day
+    // yet. See Task.followUpOn.
+    'ALTER TABLE tasks ADD COLUMN follow_up_on TEXT',
     // A project names nobody, keeps no links and works in any order until
     // somebody says otherwise. See Project.personIds/links/inOrder.
     "ALTER TABLE projects ADD COLUMN person_ids TEXT NOT NULL DEFAULT '[]'",
@@ -3179,6 +3182,7 @@ function rowToTask(row: Record<string, unknown>): Task {
     deliverableValue: (row.deliverable_value as string | null) ?? null,
     deliverableOptions: parseStringList(row.deliverable_options),
     deliverableSetsAway: row.deliverable_sets_away === 1,
+    followUpOn: (row.follow_up_on as string | null) ?? null,
     generatedKind: (row.generated_kind as GeneratedKind | null) ?? null,
     generatedSourceId: (row.generated_source_id as string | null) ?? null,
     pendingImport: parsePendingImport(row.pending_import),
@@ -3229,8 +3233,8 @@ export function dbInsertTask(task: Task): void {
       medication_name, medication_amount, medication_unit, log_meal_slot,
       estimate_before_timing, waiting_on_person_since, waiting_follow_up_declined_at,
       reminder_tracks_visibility, recurrence_month,
-      blocked_by_ids, deliverable_options, deliverable_sets_away
-    ) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)`,
+      blocked_by_ids, deliverable_options, deliverable_sets_away, follow_up_on
+    ) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)`,
     [
       task.id, task.title, task.notes, task.completed ? 1 : 0,
       task.completedAt, task.createdAt, task.seenAt, task.dueDate, task.deadline, task.deadlineOffsetDays ?? null, task.deadlineMonthDay ?? null, task.deferUntil,
@@ -3337,6 +3341,7 @@ export function dbInsertTask(task: Task): void {
       JSON.stringify(task.blockedByIds ?? []),
       JSON.stringify(task.deliverableOptions ?? []),
       task.deliverableSetsAway ? 1 : 0,
+      task.followUpOn ?? null,
     ]
   );
 }
@@ -3371,7 +3376,7 @@ export function dbUpdateTask(task: Task): void {
       medication_name=?, medication_amount=?, medication_unit=?, log_meal_slot=?,
       estimate_before_timing=?, waiting_on_person_since=?, waiting_follow_up_declined_at=?,
       reminder_tracks_visibility=?, recurrence_month=?,
-      blocked_by_ids=?, deliverable_options=?, deliverable_sets_away=?
+      blocked_by_ids=?, deliverable_options=?, deliverable_sets_away=?, follow_up_on=?
     WHERE id=?`,
     [
       task.title, task.notes, task.completed ? 1 : 0, task.completedAt, task.seenAt,
@@ -3479,6 +3484,7 @@ export function dbUpdateTask(task: Task): void {
       JSON.stringify(task.blockedByIds ?? []),
       JSON.stringify(task.deliverableOptions ?? []),
       task.deliverableSetsAway ? 1 : 0,
+      task.followUpOn ?? null,
       task.id,
     ]
   );

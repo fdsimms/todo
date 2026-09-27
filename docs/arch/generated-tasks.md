@@ -324,13 +324,23 @@ one. Those three rules and the reasoning behind them are in
     `pinnedOrder` is against restamping on every unrelated re-save of an already-waiting task. Cleared
     back to null when the wait ends, and the decline stamp is cleared alongside it: a decline about
     the *previous* wait says nothing about a fresh one.
-  - **A date on the waiting task is when to ask** (`followUpDue`). "Waiting on the contractor, chase
-    it Friday" is a due date on the waiting task, and the task itself is still held back on Friday,
-    so the follow-up is the only row that can surface that day. It fires on the date whether or not
-    the threshold has run; with no date the threshold is the only way in, as before.
+  - **A follow-up day on the wait is when to ask** (`Task.followUpOn`, read by `followUpDue`).
+    "Waiting on the contractor, chase it Friday" is set in the editor under "Waiting on someone", and
+    the task itself is still held back on Friday, so the follow-up is the only row that can surface
+    that day. It fires on the day whether or not the threshold has run; with no day the threshold is
+    the only way in. **It is its own field, not the task's `dueDate`**, which is what it read first:
+    the task's date says when the task is due, and an overdue task that started waiting asked for a
+    follow-up the same minute, about a wait seconds old. A follow-up day earlier than the wait
+    counts from the day the wait began, for the same reason. It's cleared with the wait, like the
+    two stamps above.
   - **The cap is two and the order is never re-ranked**, for `reachOut`'s own reason applied to a
     task instead of a person: sorting the due set by longest-waiting would still be the app quietly
     deciding whose wait matters most, just measured on the task rather than the person it's about.
+    **A named day is outside the cap and the setting both**: it was asked for, and the cap and the
+    switch exist to limit the app speaking up unasked. With the setting off, the pass still runs for
+    those alone (and its stale pass with it).
+  - **The follow-up is filed under the waiting task's project**, so chasing the contractor sits on
+    the kitchen's page beside the task it's about, and pauses when the project does.
   - **A completed or archived follow-up holds its source for the decline window**, the same blind
     spot `reachOutsHandledRecently` covers and for the same reason: ticking "Follow up with Dustin"
     off answers *this* nudge, not the wait itself, which is still open until the task it names is
@@ -342,8 +352,9 @@ one. Those three rules and the reasoning behind them are in
     record that something happened with them, and ticking this off would otherwise reset a clock this
     generator has no business touching.
   - **It ships off**, unlike `reachOut` beside it. That one's real gate is a recorded intent (a
-    person explicitly opted in); a wait has no equivalent — every "Waiting on someone" is a candidate
-    the moment it's old enough, so the setting is the only permission this generator has.
+    person explicitly opted in); an undated wait has no equivalent — every "Waiting on someone" is a
+    candidate the moment it's old enough, so the setting is the only permission it has. A named
+    follow-up day is that recorded intent, which is why it doesn't need the setting.
   - **It pauses on vacation**, unlike `reachOut`. A follow-up nudge is a chore about moving a wait
     along, not sunscreen — the test this file sets throughout is whether a generator invents
     something to *do*, and this one does.
