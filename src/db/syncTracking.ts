@@ -272,7 +272,13 @@ export const SYNCED_SETTING_KEYS: readonly string[] = [
   'mealPlanNudgeEnabled',
   'mealPlanNudgeTime',
   'mealPlanNudgeWeekday',
+  'mealPlanNudgeSlots',
   'mealPlanNudgeTaskCategory',
+  // Missing from this allowlist until now — a genuine gap found while adding
+  // mealPlanNudgeSlots beside it: this is exactly the "what the app looks
+  // like and how it behaves" preference case 1 above describes, and a second
+  // device was left to be reconfigured from scratch for it.
+  'mealSlotsEnabled',
   'projectReviewTasks',
   'projectReviewTaskCategory',
   'pantryCheckTasks',

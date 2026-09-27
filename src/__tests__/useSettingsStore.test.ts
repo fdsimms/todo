@@ -1,5 +1,6 @@
 import { useSettingsStore } from '../store/useSettingsStore';
 import { dbGetAllSettings, dbGetSetting, dbSetSetting } from '../db/database';
+import type { MealSlot } from '../types';
 import { loadAnthropicApiKey, saveAnthropicApiKey } from '../utils/secureApiKey';
 
 jest.mock('../db/database', () => ({
@@ -995,6 +996,45 @@ describe('meal plan nudge settings', () => {
     useSettingsStore.getState().resetToDefaults();
     expect(useSettingsStore.getState().mealPlanNudgeEnabled).toBe(false);
     expect(useSettingsStore.getState().mealPlanNudgeLastFiredWeekKey).toBe('2026-08-09');
+  });
+
+  it('defaults mealPlanNudgeSlots to all three meals', () => {
+    expect(useSettingsStore.getState().mealPlanNudgeSlots).toEqual(['breakfast', 'lunch', 'dinner']);
+  });
+
+  it('stores and persists a narrowed mealPlanNudgeSlots', () => {
+    useSettingsStore.getState().setMealPlanNudgeSlots(['dinner']);
+    expect(useSettingsStore.getState().mealPlanNudgeSlots).toEqual(['dinner']);
+    expect(dbSetSetting).toHaveBeenCalledWith('mealPlanNudgeSlots', JSON.stringify(['dinner']));
+  });
+
+  it('reorders a hand-edited mealPlanNudgeSlots into breakfast/lunch/dinner order', () => {
+    useSettingsStore.getState().setMealPlanNudgeSlots(['dinner', 'breakfast']);
+    expect(useSettingsStore.getState().mealPlanNudgeSlots).toEqual(['breakfast', 'dinner']);
+  });
+
+  it('drops snack from a hand-edited or synced mealPlanNudgeSlots', () => {
+    // Not offered by the picker (see MEAL_PLAN_NUDGE_SLOTS), so a value that
+    // somehow carries it — a synced row from a future version, say — is
+    // filtered down rather than trusted.
+    useSettingsStore.getState().setMealPlanNudgeSlots(['dinner', 'snack'] as MealSlot[]);
+    expect(useSettingsStore.getState().mealPlanNudgeSlots).toEqual(['dinner']);
+  });
+
+  it('reads a missing mealPlanNudgeSlots row back as the shipped default', () => {
+    (dbGetSetting as jest.Mock).mockImplementation((key: string) =>
+      key === 'mealPlanNudgeSlots' ? null : null,
+    );
+    useSettingsStore.getState().initialize();
+    expect(useSettingsStore.getState().mealPlanNudgeSlots).toEqual(['breakfast', 'lunch', 'dinner']);
+  });
+
+  it('reads a stored mealPlanNudgeSlots back on initialize', () => {
+    (dbGetSetting as jest.Mock).mockImplementation((key: string) =>
+      key === 'mealPlanNudgeSlots' ? JSON.stringify(['dinner']) : null,
+    );
+    useSettingsStore.getState().initialize();
+    expect(useSettingsStore.getState().mealPlanNudgeSlots).toEqual(['dinner']);
   });
 });
 

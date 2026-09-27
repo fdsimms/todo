@@ -5948,6 +5948,7 @@ describe('checkMealPlanNudge', () => {
     mealPlanNudgeTime: '09:00',
     mealPlanNudgeLastFiredWeekKey: null as string | null,
     setMealPlanNudgeLastFiredWeekKey: jest.fn(),
+    mealPlanNudgeSlots: ['breakfast', 'lunch', 'dinner'] as MealSlot[],
     mealPlanNudgeTaskCategory: null as string | null,
     mealPlanNudgeGroupId: null as string | null,
     setMealPlanNudgeGroupId: jest.fn(),
@@ -6362,6 +6363,22 @@ describe('checkMealPlanNudge', () => {
 
     expect(useTaskStore.getState().tasks).toHaveLength(0);
     expect(s.setMealPlanNudgeLastFiredWeekKey).toHaveBeenCalledWith('2025-08-03');
+  });
+
+  it('is not suppressed by a planned meal outside the chosen slots', () => {
+    // mealPlanNudgeSlots narrowed to dinner alone: a lunch already planned
+    // elsewhere in the week hasn't touched the thing being asked about.
+    jest.setSystemTime(new Date(2025, 7, 3, 9, 0, 0));
+    const s = settings({ mealPlanNudgeSlots: ['dinner'] as MealSlot[] });
+    useSettingsStore.getState.mockReturnValue(s);
+    (dbGetMealPlanEntries as jest.Mock).mockReturnValue([
+      { id: 'm1', date: '2025-08-05', slot: 'lunch', recipeId: null, title: 'Salad', sortOrder: 1, createdAt: '2025-08-01T00:00:00.000Z', cookedAt: null, leftoverId: null, recipeChoices: [] },
+    ]);
+    useTaskStore.setState({ tasks: [] });
+
+    useTaskStore.getState().checkMealPlanNudge();
+
+    expect(useTaskStore.getState().tasks.filter(t => t.generatedKind === 'mealPlanNudge')).toHaveLength(7);
   });
 
   it('leaves the undo slot alone, like the other unattended background writes', () => {

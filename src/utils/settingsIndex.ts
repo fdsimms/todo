@@ -709,6 +709,8 @@ export const SETTINGS_ENTRIES: SettingsEntry[] = [
     keywords: ['meal plan', 'weekday', 'day', 'time', 'when', 'nudge'], kitchen: true },
   { id: 'mealPlanNudgeIgnoresVacation', groupId: 'generated', label: 'Also during vacation', section: 'Plan meals for the week',
     keywords: ['meal plan', 'away', 'trip', 'pause'], kitchen: true },
+  { id: 'mealPlanNudgeSlots', groupId: 'generated', label: 'Meals to plan for', section: 'Plan meals for the week',
+    keywords: ['meal plan', 'breakfast', 'lunch', 'dinner', 'snack', 'which meals', 'only dinner'], kitchen: true },
   { id: 'calendarReviewTimeSegment', groupId: 'generated', label: 'Show the task', section: 'Review tomorrow\'s calendar',
     keywords: ['morning', 'afternoon', 'evening', 'night', 'time of day', 'hold back', 'when'] },
   { id: 'moodLogTimeSegments', groupId: 'generated', label: 'Show the task', section: 'Daily mood check-in',

@@ -81,7 +81,7 @@ import { useTaskStore } from '../store/useTaskStore';
 import { useSettingsStore } from '../store/useSettingsStore';
 import { taskFieldsFromEvent } from '../utils/calendarEventImport';
 import { useMealPlanStore } from '../store/useMealPlanStore';
-import { MEAL_PLAN_NUDGE_SLOT_COUNT, mealPlanNudgeDayKey } from '../utils/mealPlanNudge';
+import { mealPlanNudgeDayKey } from '../utils/mealPlanNudge';
 import { activeMealSlotStepId, mealSlotOf, parseMealSlotSource } from '../utils/mealSlotTasks';
 import { calendarReviewEventsFor } from '../utils/calendarReviewTasks';
 import { isNoticeTask } from '../utils/generatedTasks';
@@ -924,11 +924,16 @@ export const TaskItem = React.memo(function TaskItem({
   const plannedMeals = useMealPlanStore(s =>
     nudgeDayKey ? s.plannedSlotCounts[nudgeDayKey] : undefined
   );
+  // The denominator in "2/3 planned" — user-configurable (mealPlanNudgeSlots),
+  // not the fixed three the feature shipped with. Selecting the length alone
+  // keeps this cheap: it only re-renders a row when the chosen set's *size*
+  // changes, not on every settings write.
+  const mealPlanNudgeSlotCount = useSettingsStore(s => s.mealPlanNudgeSlots.length);
   // Ready is a nudge, not a gate: the day being fully planned is the app's
   // observation, and the tick box stays exactly as tappable at 0/3 as at 3/3
   // (see mealPlanNudge.ts on why nothing here completes a task by itself).
   const mealPlanReady =
-    plannedMeals !== undefined && plannedMeals >= MEAL_PLAN_NUDGE_SLOT_COUNT && !task.completed;
+    plannedMeals !== undefined && plannedMeals >= mealPlanNudgeSlotCount && !task.completed;
 
   // Three more generated-task readinesses, same "nudge, not a lock" treatment
   // as the ones above: the question this row asked has already been answered
@@ -2227,7 +2232,7 @@ export const TaskItem = React.memo(function TaskItem({
                     : healthReady
                       ? `${task.title}, health target reached, complete`
                     : mealPlanReady
-                      ? `${task.title}, all ${MEAL_PLAN_NUDGE_SLOT_COUNT} meals planned, complete`
+                      ? `${task.title}, all ${mealPlanNudgeSlotCount} meals planned, complete`
                     : pantryCheckReady || pantryReviewReady || deloadReady || mealShortfallReady
                       ? `${task.title}, ready, complete`
                     : mealSlotChooseSource
@@ -2825,8 +2830,8 @@ export const TaskItem = React.memo(function TaskItem({
                 style={styles.metaChip}
                 accessibilityLabel={
                   mealPlanReady
-                    ? `All ${MEAL_PLAN_NUDGE_SLOT_COUNT} meals planned, ready to complete`
-                    : `${plannedMeals} of ${MEAL_PLAN_NUDGE_SLOT_COUNT} meals planned`
+                    ? `All ${mealPlanNudgeSlotCount} meals planned, ready to complete`
+                    : `${plannedMeals} of ${mealPlanNudgeSlotCount} meals planned`
                 }
               >
                 <Ionicons
@@ -2838,7 +2843,7 @@ export const TaskItem = React.memo(function TaskItem({
                   style={[styles.plannedMealsLabel, mealPlanReady && styles.plannedMealsLabelReady]}
                   numberOfLines={1}
                 >
-                  {plannedMeals}/{MEAL_PLAN_NUDGE_SLOT_COUNT} planned
+                  {plannedMeals}/{mealPlanNudgeSlotCount} planned
                 </Text>
               </View>
             )}

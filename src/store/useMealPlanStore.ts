@@ -661,8 +661,9 @@ export const useMealPlanStore = create<MealPlanStore>((set, get) => ({
     const sorted = [...dayKeys].sort();
     const rows = dbGetMealPlanEntries(sorted[0], sorted[sorted.length - 1]);
 
+    const slots = useSettingsStore.getState().mealPlanNudgeSlots;
     const next: Record<string, number> = {};
-    for (const dayKey of dayKeys) next[dayKey] = countPlannedSlots(rows, dayKey);
+    for (const dayKey of dayKeys) next[dayKey] = countPlannedSlots(rows, dayKey, slots);
 
     const keys = Object.keys(next);
     const unchanged =
