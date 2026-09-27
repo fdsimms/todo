@@ -15,6 +15,7 @@ import {
   mealSlotTaskFields,
   mealSlotTaskTitle,
   parseMealSlotSource,
+  staleMealSlotTasks,
 } from '../utils/mealSlotTasks';
 import { dayKeyOf } from '../utils/dateUtils';
 
@@ -416,5 +417,58 @@ describe('the default set of meals', () => {
     // Matches MEAL_PLAN_NUDGE_SLOTS: a day isn't incomplete for want of a
     // snack, and a snack has no part of the day to surface in.
     expect([...DEFAULT_MEAL_SLOTS_ENABLED]).toEqual(['breakfast', 'lunch', 'dinner']);
+  });
+});
+
+describe('staleMealSlotTasks', () => {
+  /** A live row as the pass writes it, generated fields and all. */
+  const row = (dayKey: string, slot: MealSlot, over: Partial<Task> = {}): Task => ({
+    ...taskFor(dayKey, slot, null),
+    ...mealSlotTaskDraft(dayKey, slot, null),
+    id: `${dayKey}#${slot}`,
+    completed: false,
+    archived: false,
+    deferUntil: null,
+    ...over,
+  } as Task);
+
+  it('names a past day\'s row that nobody started', () => {
+    const stale = staleMealSlotTasks([row('2026-08-21', 'lunch')], '2026-08-22');
+    expect(stale.map(t => t.id)).toEqual(['2026-08-21#lunch']);
+  });
+
+  it('leaves today and the days ahead alone', () => {
+    const rows = [row('2026-08-22', 'lunch'), row('2026-08-25', 'dinner')];
+    expect(staleMealSlotTasks(rows, '2026-08-22')).toEqual([]);
+  });
+
+  it('keeps a chain a step has been ticked on', () => {
+    // The rest of the chain is the user's once they have started it, the same
+    // line mealSlotDrift draws.
+    expect(staleMealSlotTasks([row('2026-08-21', 'lunch', { chainIndex: 1 })], '2026-08-22')).toEqual([]);
+  });
+
+  it('keeps a row moved onto today or later, by its date or a defer', () => {
+    const moved = row('2026-08-21', 'lunch', { dueDate: localIso('2026-08-22T12:00') });
+    const deferred = row('2026-08-21', 'dinner', { deferUntil: localIso('2026-08-24T00:00') });
+    expect(staleMealSlotTasks([moved, deferred], '2026-08-22')).toEqual([]);
+  });
+
+  it('drops a row moved to a day that has also gone by', () => {
+    const deferred = row('2026-08-20', 'dinner', { deferUntil: localIso('2026-08-21T00:00') });
+    expect(staleMealSlotTasks([deferred], '2026-08-22').map(t => t.id)).toEqual(['2026-08-20#dinner']);
+  });
+
+  it('never names a finished row, an archived one, or another generator\'s', () => {
+    const done = row('2026-08-21', 'lunch', { completed: true });
+    const archived = row('2026-08-21', 'dinner', { archived: true });
+    const legacy = row('2026-08-21', 'breakfast', { generatedKind: 'mealCook', generatedSourceId: 'm-1' });
+    expect(staleMealSlotTasks([done, archived, legacy], '2026-08-22')).toEqual([]);
+  });
+});
+
+describe('mealSlotTaskDraft on vacation', () => {
+  it('pauses the row on vacation, since the pass writes a week ahead of a trip', () => {
+    expect(mealSlotTaskDraft('2026-08-22', 'lunch', null).vacationPause).toBe(true);
   });
 });
