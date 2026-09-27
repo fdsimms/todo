@@ -100,8 +100,12 @@ export const RATE_RANGE: Record<WeightUnit, { min: number; max: number; step: nu
   kg: { min: 0.1, max: 1, step: 0.1, default: 0.5 },
 };
 
-/** The widest rate this app will store, in kg/week — the `lb` ceiling above. */
-export const MAX_RATE_KG_PER_WEEK = unitToKg(RATE_RANGE.lb.max, 'lb');
+/**
+ * The widest rate this app will store, in kg/week: whichever unit's stepper
+ * ceiling is wider. The `lb` one alone (0.907) clamped a 1.0 kg/week goal on
+ * every read back from settings, quietly moving the calorie target with it.
+ */
+export const MAX_RATE_KG_PER_WEEK = Math.max(RATE_RANGE.kg.max, unitToKg(RATE_RANGE.lb.max, 'lb'));
 
 /**
  * Which way the goal points, from the target against the starting weight.

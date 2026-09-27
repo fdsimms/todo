@@ -709,9 +709,17 @@ export function foodLogEntryEdit(entry: FoodLogEntry): FoodLogEntryEdit | null {
     const dish = dishAmountFrom(typed);
     return dish && { amount: dish.amount, dishMeasure: dish.dishMeasure };
   }
-  if (entry.productId || entry.itemId) return { amount: typed, dishMeasure: null };
+  if (entry.productId || entry.itemId) {
+    // A scan logged with "The whole package (10 servings)" stores that button
+    // label as its helping (`packageChoices` in scanPortion.ts), which has no
+    // leading number to re-measure. The count inside it is the amount.
+    const pkg = WHOLE_PACKAGE_LABEL.exec(typed);
+    return { amount: pkg ? `${pkg[1]} servings` : typed, dishMeasure: null };
+  }
   return null;
 }
+
+const WHOLE_PACKAGE_LABEL = /^the whole package \((\d+(?:\.\d+)?) servings\)$/i;
 
 /**
  * The number and the measure behind one of `describeHelping`'s phrasings, or

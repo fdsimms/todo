@@ -17,6 +17,14 @@ describe('scaleQuantity', () => {
     expect(scaleQuantity('1 ½ cups', 2).text).toBe('3 cups');
   });
 
+  it('scales both ends of an en-dash range', () => {
+    expect(text('1\u20132 cups', 2)).toBe('2-4 cups');
+  });
+
+  it('counts a hyphenated bare container rather than growing the can', () => {
+    expect(text('14-oz can', 2)).toBe(text('14 oz can', 2));
+  });
+
   it('keeps the space before a parenthesised container size', () => {
     expect(scaleQuantity('2 (14 oz) cans', 2).text).toBe('4 (14 oz) cans');
     expect(scaleQuantity('1, medium', 2).text).toBe('2, medium');

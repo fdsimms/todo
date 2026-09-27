@@ -248,14 +248,18 @@ export function parseDatePart(input: string, now: Date): DatePart | null {
     const onWeekend = now.getDay() === 6 || now.getDay() === 0;
     if (onWeekend && !/^next/.test(text)) return { date: startOfDay(now), explicitTime: false };
     let date = nextDay(now, 6 as Day); // upcoming Saturday
-    if (/^next/.test(text) && isSameWeek(date, now)) date = addWeeks(date, 1);
+    // Skipped on the weekend itself: nextDay() already answered with the
+    // following Saturday, and isSameWeek (Sunday-start) would otherwise count
+    // a Sunday's coming Saturday as this week and push it a further week out.
+    if (/^next/.test(text) && !onWeekend && isSameWeek(date, now)) date = addWeeks(date, 1);
     return { date: startOfDay(date), explicitTime: false };
   }
 
   // "oxt weekend" — the weekend after next
   if (text === 'oxt weekend') {
+    const onWeekend = now.getDay() === 6 || now.getDay() === 0;
     let date = nextDay(now, 6 as Day);
-    if (isSameWeek(date, now)) date = addWeeks(date, 1);
+    if (!onWeekend && isSameWeek(date, now)) date = addWeeks(date, 1);
     date = addWeeks(date, 1);
     return { date: startOfDay(date), explicitTime: false };
   }

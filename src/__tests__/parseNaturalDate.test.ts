@@ -281,6 +281,20 @@ describe('parseNaturalDate', () => {
       const d = parseNaturalDate('next weekend', new Date(2026, 1, 28, 10))!;
       expect([d.getMonth(), d.getDate()]).toEqual([2, 7]);
     });
+
+    it('reads "next weekend" said on a Sunday as the coming one, not a week past it', () => {
+      // Sun Mar 1: "this weekend" is today, so the Mar 7 weekend is the only
+      // one "next weekend" can mean. It used to skip to Mar 14.
+      const d = parseNaturalDate('next weekend', new Date(2026, 2, 1, 10))!;
+      expect([d.getMonth(), d.getDate()]).toEqual([2, 7]);
+    });
+
+    it('reads "oxt weekend" the same from either day of a weekend', () => {
+      const sat = parseNaturalDate('oxt weekend', new Date(2026, 1, 28, 10))!;
+      const sun = parseNaturalDate('oxt weekend', new Date(2026, 2, 1, 10))!;
+      expect([sat.getMonth(), sat.getDate()]).toEqual([2, 14]);
+      expect([sun.getMonth(), sun.getDate()]).toEqual([2, 14]);
+    });
   });
 
   describe('explicit dates', () => {
