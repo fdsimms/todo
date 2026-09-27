@@ -1,4 +1,5 @@
 import {
+  departureFromAnswer,
   awayNights,
   awayListDriver,
   awayPauseDriver,
@@ -367,6 +368,10 @@ describe('awayListDriver', () => {
     awayListId: 'l1',
     awayListDeclinedFor: null,
     pausedUntil: null,
+    personIds: [],
+    links: [],
+    inOrder: false,
+    showChecked: false,
     archived: false,
     completed: false,
     ...extra,
@@ -393,5 +398,28 @@ describe('awayListDriver', () => {
 
   it('ignores a span that is over', () => {
     expect(awayListDriver([trip()], new Date(2026, 10, 20))).toBeNull();
+  });
+});
+
+describe('departureFromAnswer', () => {
+  const answer = new Date(2026, 5, 14, 12);
+
+  it('gives an empty Leaving date the answered day, at noon', () => {
+    const iso = departureFromAnswer({ awayStart: null, awayEnd: null }, answer);
+    expect(new Date(iso!).getDate()).toBe(14);
+    expect(new Date(iso!).getHours()).toBe(12);
+  });
+
+  it('never moves a Leaving date somebody set', () => {
+    expect(departureFromAnswer({ awayStart: new Date(2026, 5, 1, 12).toISOString(), awayEnd: null }, answer)).toBeNull();
+  });
+
+  it('refuses a day after the Coming back date', () => {
+    expect(departureFromAnswer({ awayStart: null, awayEnd: new Date(2026, 5, 10, 12).toISOString() }, answer)).toBeNull();
+    expect(departureFromAnswer({ awayStart: null, awayEnd: new Date(2026, 5, 20, 12).toISOString() }, answer)).not.toBeNull();
+  });
+
+  it('does nothing without an answer', () => {
+    expect(departureFromAnswer({ awayStart: null, awayEnd: null }, null)).toBeNull();
   });
 });

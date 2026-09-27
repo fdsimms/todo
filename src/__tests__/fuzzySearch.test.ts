@@ -536,6 +536,10 @@ const makeProject = (overrides: Partial<Project> = {}): Project => ({
   awayListId: null,
   awayListDeclinedFor: null,
   pausedUntil: null,
+  personIds: [],
+  links: [],
+  inOrder: false,
+  showChecked: false,
   ...overrides,
 });
 

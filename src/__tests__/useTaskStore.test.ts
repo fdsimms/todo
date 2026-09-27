@@ -504,6 +504,10 @@ const makeProject = (overrides: Partial<import('../types').Project> = {}): impor
   awayListId: null,
   awayListDeclinedFor: null,
   pausedUntil: null,
+  personIds: [],
+  links: [],
+  inOrder: false,
+  showChecked: false,
   ...overrides,
 });
 
@@ -13493,6 +13497,31 @@ describe('blocking', () => {
     const byId = (id: string) => useTaskStore.getState().tasks.find(t => t.id === id)!;
     expect(byId(rows[0].id).blockedById).toBeNull();
     expect(byId(rows[1].id).blockedById).toBe(blocker.id);
+  });
+
+  // A task can wait on several (Task.blockedByIds): adding or dropping one
+  // blocker keeps whatever else the waiter waits on.
+  it('adds itself beside a waiter\'s other blockers, and drops only itself', () => {
+    useTaskStore.setState({
+      tasks: [
+        makeTask({ id: 'venue', dueDate: TODAY }),
+        makeTask({ id: 'guests', dueDate: TODAY }),
+        makeTask({ id: 'invites', dueDate: TODAY, blockedById: 'venue' }),
+      ],
+    });
+    const byId = (id: string) => useTaskStore.getState().tasks.find(t => t.id === id)!;
+
+    useTaskStore.getState().setBlockedTasks('guests', ['invites']);
+    expect(byId('invites').blockedById).toBe('venue');
+    expect(byId('invites').blockedByIds).toEqual(['guests']);
+
+    // Waits for all: finishing the venue alone doesn't free it.
+    useTaskStore.getState().completeTask('venue');
+    expect(useTaskStore.getState().visibleTasks().map(t => t.id)).not.toContain('invites');
+
+    useTaskStore.getState().setBlockedTasks('guests', []);
+    expect(byId('invites').blockedById).toBe('venue');
+    expect(byId('invites').blockedByIds).toEqual([]);
   });
 
   // The picker can't offer one, but the editor holds its set while the store

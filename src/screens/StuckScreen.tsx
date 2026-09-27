@@ -25,6 +25,7 @@ import { spacing, font, lineHeight, fontWeight, iconSize, radius, border, checkb
 import { haptics } from '../utils/haptics';
 import { animateLayout } from '../utils/layoutAnimation';
 import { displayTitleFor, isTaskBlocked } from '../utils/visibilityUtils';
+import { blockerOf } from '../utils/blocking';
 import { describeBlockerWait } from '../utils/blockerStatus';
 import { asksOnCompletion } from '../utils/deliverables';
 import { formatTaskDate, getCurrentDayStart, getDayStart } from '../utils/dateUtils';
@@ -186,10 +187,11 @@ export function StuckScreen() {
       // because that is the wait that ends on its own — listing it under the
       // person too would show one row twice and offer to release it from a
       // wait that isn't the one actually holding it.
-      if (task.blockedById) {
-        const blocker = byId.get(task.blockedById);
-        if (!blocker) continue;
-        const key = task.blockedById;
+      // Filed under the first blocker still open: with several, that's the
+      // one it's waiting on right now. None open, and it's here for a person.
+      const blocker = task.blockedById ? blockerOf(task, id => byId.get(id)) : undefined;
+      if (blocker) {
+        const key = blocker.id;
         if (!byTask.has(key)) byTask.set(key, { kind: 'task', key, blocker, data: [] });
         byTask.get(key)!.data.push(task);
         continue;
@@ -247,7 +249,7 @@ export function StuckScreen() {
     // Both, always: a task held by a person and a task alike leaves this screen
     // by the same button, and clearing only the one the row happened to be
     // filed under would leave it waiting on the other with nothing on screen.
-    updateTask(task.id, { blockedById: null, waitingOnPersonId: null });
+    updateTask(task.id, { blockedById: null, blockedByIds: [], waitingOnPersonId: null });
   }, [updateTask]);
 
   const finishBlocker = (blocker: Task) => {

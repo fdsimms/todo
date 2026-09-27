@@ -75,6 +75,8 @@ export function normalizeTemplateItem(raw: Partial<TemplateItem>): TemplateItem 
     completionTimerMinutes: raw.completionTimerMinutes ?? null,
     completionTimerNote: raw.completionTimerNote ?? null,
     deliverableKind: raw.deliverableKind ?? null,
+    deliverableOptions: Array.isArray(raw.deliverableOptions) ? raw.deliverableOptions : [],
+    deliverableSetsAway: raw.deliverableSetsAway ?? false,
     chainEnabled: raw.chainEnabled ?? false,
     chainItems: parseChainItems(raw.chainItems),
     rotationEnabled: raw.rotationEnabled ?? false,
@@ -212,6 +214,8 @@ export function buildDraftsFromTemplate(
       // The question only — createTask never reads a draft's deliverableValue,
       // so an applied item always starts with the decision still to make.
       deliverableKind: item.deliverableKind,
+      deliverableOptions: item.deliverableOptions ?? [],
+      deliverableSetsAway: item.deliverableSetsAway ?? false,
       chainEnabled: item.chainEnabled,
       chainItems: item.chainItems.map(c => ({ ...c })),
       // Clamped rather than trusted verbatim: chainItems can have shrunk (a

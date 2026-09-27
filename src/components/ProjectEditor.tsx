@@ -8,7 +8,10 @@ import {
   Alert,
 } from 'react-native';
 import Ionicons from '@expo/vector-icons/Ionicons';
-import type { Project } from '../types';
+import type { Project, ProjectLink } from '../types';
+import { usePersonStore, displayNameOf } from '../store/usePersonStore';
+import { parseLabelledLink, linkHost } from '../utils/textLinks';
+import { generateId } from '../utils/id';
 import { TITLE_MAX_LENGTH } from '../types';
 import { useProjectStore } from '../store/useProjectStore';
 import { useTaskStore } from '../store/useTaskStore';
@@ -149,7 +152,11 @@ export function ProjectEditor({ visible, project, isNew, onClose }: Props) {
   const pausedCategoryCount = useCategoryStore(s => s.categories.filter(c => c.hideOnVacation).length);
   // Rule 2 of simplified mode: a project that already has a trip keeps its
   // rows, whatever the switch says.
-  const awayFieldShown = featureShown('awayDates', simpleMode, awayStart !== null);
+  // A list is lines to tick off, so the fields about dates and being chased
+  // step aside for it. Only while unused: a list that was given a deadline or
+  // a nudge before it became one keeps the row that can take it off again.
+  const isList = project?.kind === 'list';
+  const awayFieldShown = featureShown('awayDates', simpleMode, awayStart !== null) && (!isList || awayStart !== null);
   // Collapsed to the chosen category until tapped, like every other editor.
   const [categoryOpen, setCategoryOpen] = useState(false);
   // The merged nudge control: one chosen answer, plus the cadence the third of
@@ -164,6 +171,25 @@ export function ProjectEditor({ visible, project, isNew, onClose }: Props) {
   // Project.pausedUntil, held as the day it comes back.
   const [pausedUntil, setPausedUntil] = useState<Date | null>(null);
   const [pickingPause, setPickingPause] = useState(false);
+  const [personIds, setPersonIds] = useState<string[]>([]);
+  const [peopleOpen, setPeopleOpen] = useState(false);
+  const [links, setLinks] = useState<ProjectLink[]>([]);
+  const [linkDraft, setLinkDraft] = useState('');
+  const [linkError, setLinkError] = useState<string | null>(null);
+  const [inOrder, setInOrder] = useState(false);
+  const [showChecked, setShowChecked] = useState(false);
+  const people = usePersonStore(useShallow(s => s.people.filter(p => !p.archived)));
+
+  // Returns the typed link to the list, or says why it can't.
+  const addLinkDraft = () => {
+    if (!linkDraft.trim()) return;
+    const parsed = parseLabelledLink(linkDraft);
+    if (!parsed) { setLinkError("That doesn't look like a link. Paste one that starts with https://."); return; }
+    haptics.tap();
+    setLinks(ls => [...ls, { id: generateId(), ...parsed }]);
+    setLinkDraft('');
+    setLinkError(null);
+  };
   const [cadenceOpen, setCadenceOpen] = useState(false);
 
   const awayListName = awayListId
@@ -217,6 +243,13 @@ export function ProjectEditor({ visible, project, isNew, onClose }: Props) {
     setWeekendSource(project.weekendSource);
     setPausedUntil(project.pausedUntil ? dayKeyToDate(project.pausedUntil) : null);
     setPickingPause(false);
+    setPersonIds(project.personIds ?? []);
+    setPeopleOpen(false);
+    setLinks(project.links ?? []);
+    setLinkDraft('');
+    setLinkError(null);
+    setInOrder(project.inOrder ?? false);
+    setShowChecked(project.showChecked ?? false);
     setCategoryOpen(false);
     setCadenceOpen(false);
   }, [project]);
@@ -310,6 +343,17 @@ export function ProjectEditor({ visible, project, isNew, onClose }: Props) {
       ongoing,
       weekendSource,
       pausedUntil: pausedUntil ? dayKeyOf(pausedUntil) : null,
+      // A person archived since keeps their place: the page reads through
+      // the people store and simply doesn't draw them.
+      personIds,
+      // A link still sitting in the field counts too, the way a typed line
+      // does on Done anywhere else.
+      links: (() => {
+        const pending = linkDraft.trim() ? parseLabelledLink(linkDraft) : null;
+        return pending ? [...links, { id: generateId(), ...pending }] : links;
+      })(),
+      inOrder,
+      showChecked,
     });
     if (departureMoved && priorStart && nextStart) return { from: priorStart, to: nextStart };
     // The same offer when the deadline moves: a party pushed back a week takes
@@ -666,6 +710,8 @@ export function ProjectEditor({ visible, project, isNew, onClose }: Props) {
           sheet was a column of unlabelled cards in the order each field was
           added, with the nudge's own switch floating free of the field it
           belongs to. */}
+      {(!isList || deadline !== null) && (
+      <>
       <Text style={styles.groupLabel}>Schedule</Text>
       <View style={styles.card}>
         <EditorRow
@@ -683,6 +729,8 @@ export function ProjectEditor({ visible, project, isNew, onClose }: Props) {
       <Text style={styles.sectionFooter}>
         Shown on the project's card and flagged once it passes. It doesn't schedule anything.
       </Text>
+      </>
+      )}
 
       {/* The away span. Two rows rather than one range control because the end
           is genuinely optional: a trip you have booked a flight out for and
@@ -836,7 +884,81 @@ export function ProjectEditor({ visible, project, isNew, onClose }: Props) {
             onSelect={cat => { setDefaultTaskCategory(cat); setDefaultTaskCategoryOpen(false); }}
           />
         </CollapsibleField>
+        <View style={styles.sep} />
+        <CollapsibleField
+          label="People"
+          summary={personIds.length > 0
+            ? people.filter(p => personIds.includes(p.id)).map(displayNameOf).join(', ') || undefined
+            : undefined}
+          hint="Who this project is with or for. They're shown on the project page. New tasks don't pick them up."
+          expanded={peopleOpen}
+          onToggle={() => setPeopleOpen(v => !v)}
+        >
+          <PillGroup
+            noun="person"
+            pluralNoun="people"
+            options={people.map(p => {
+              const on = personIds.includes(p.id);
+              return {
+                key: p.id,
+                label: displayNameOf(p),
+                selected: on,
+                onPress: () => {
+                  haptics.tap();
+                  setPersonIds(ids => (on ? ids.filter(id => id !== p.id) : [...ids, p.id]));
+                },
+              };
+            })}
+            onCreate={name => {
+              const person = usePersonStore.getState().createPerson(name);
+              setPersonIds(ids => [...ids, person.id]);
+            }}
+          />
+        </CollapsibleField>
       </View>
+
+      {/* Links kept with the project: the booking, the shared doc, the
+          listing. A line each, tapped open from the project page. */}
+      <Text style={styles.groupLabel}>Links</Text>
+      <View style={styles.card}>
+        {links.map((link, i) => (
+          <React.Fragment key={link.id}>
+            {i > 0 && <View style={styles.sep} />}
+            <View style={styles.linkRow}>
+              <Ionicons name="link-outline" size={18} color={colors.textSecondary} />
+              <View style={styles.optionContent}>
+                <Text style={styles.optionLabel} numberOfLines={1}>{link.label || linkHost(link.url)}</Text>
+                <Text style={styles.optionHint} numberOfLines={1}>{link.url}</Text>
+              </View>
+              <TouchableOpacity
+                onPress={() => { haptics.tap(); setLinks(ls => ls.filter(l => l.id !== link.id)); }}
+                hitSlop={8}
+                accessibilityRole="button"
+                accessibilityLabel={`Remove ${link.label || linkHost(link.url)}`}
+              >
+                <Ionicons name="close-circle" size={18} color={colors.textTertiary} />
+              </TouchableOpacity>
+            </View>
+          </React.Fragment>
+        ))}
+        {links.length > 0 && <View style={styles.sep} />}
+        <View style={styles.linkRow}>
+          <Ionicons name="add" size={18} color={colors.textTertiary} />
+          <TextInput
+            style={styles.linkInput}
+            value={linkDraft}
+            onChangeText={setLinkDraft}
+            onSubmitEditing={addLinkDraft}
+            placeholder="Paste a link, with a name before it if you like"
+            placeholderTextColor={colors.textTertiary}
+            autoCapitalize="none"
+            autoCorrect={false}
+            returnKeyType="done"
+            accessibilityLabel="Add a link"
+          />
+        </View>
+      </View>
+      {linkError && <Text style={styles.sectionFooter}>{linkError}</Text>}
 
       {/* One question, three answers. "Include in nudges" and "Review cadence"
           used to be a switch and a stepper nested inside it, which took two
@@ -844,6 +966,8 @@ export function ProjectEditor({ visible, project, isNew, onClose }: Props) {
           nobody chose — see NudgeMode in utils/nudgeCadence. Automatic
           scheduling only exists under "Every…", so it lives inside the same
           field rather than as a card of its own that came and went beside it. */}
+      {(!isList || nudgeMode !== 'never') && (
+      <>
       <Text style={styles.groupLabel}>Nudges</Text>
       <View style={styles.card}>
         <CollapsibleField
@@ -927,6 +1051,8 @@ export function ProjectEditor({ visible, project, isNew, onClose }: Props) {
           )}
         </CollapsibleField>
       </View>
+      </>
+      )}
 
       {/*
         Whether this project is a list lives on its own screen now — the
@@ -948,6 +1074,52 @@ export function ProjectEditor({ visible, project, isNew, onClose }: Props) {
           onPress={() => setPickingPause(true)}
           onClear={pausedUntil ? () => setPausedUntil(null) : undefined}
         />
+        <View style={styles.sepIcon} />
+        {isList ? (
+          <TouchableOpacity
+            style={styles.optionRow}
+            onPress={() => { haptics.tap(); setShowChecked(v => !v); }}
+            activeOpacity={interaction.activeOpacity}
+            accessibilityRole="switch"
+            accessibilityLabel="Keep checked lines in view"
+            accessibilityState={{ checked: showChecked }}
+          >
+            <Ionicons name="checkmark-done-outline" size={18} color={showChecked ? colors.accent : colors.textSecondary} />
+            <View style={styles.optionContent}>
+              <Text style={styles.optionLabel}>Keep checked lines in view</Text>
+              <Text style={styles.optionHint}>
+                {showChecked
+                  ? 'Checked lines stay at the bottom, crossed out, in list order'
+                  : 'Checked lines fold away under "Show completed"'}
+              </Text>
+            </View>
+            <View style={[styles.toggle, showChecked && styles.toggleOn]}>
+              <View style={[styles.toggleKnob, showChecked && styles.toggleKnobOn]} />
+            </View>
+          </TouchableOpacity>
+        ) : (
+          <TouchableOpacity
+            style={styles.optionRow}
+            onPress={() => { haptics.tap(); setInOrder(v => !v); }}
+            activeOpacity={interaction.activeOpacity}
+            accessibilityRole="switch"
+            accessibilityLabel="Work in order"
+            accessibilityState={{ checked: inOrder }}
+          >
+            <Ionicons name="list-outline" size={18} color={inOrder ? colors.accent : colors.textSecondary} />
+            <View style={styles.optionContent}>
+              <Text style={styles.optionLabel}>Work in order</Text>
+              <Text style={styles.optionHint}>
+                {inOrder
+                  ? 'Pull and automatic scheduling only offer the first open task on the page'
+                  : 'Pull and automatic scheduling offer whichever task fits best'}
+              </Text>
+            </View>
+            <View style={[styles.toggle, inOrder && styles.toggleOn]}>
+              <View style={[styles.toggleKnob, inOrder && styles.toggleKnobOn]} />
+            </View>
+          </TouchableOpacity>
+        )}
         <View style={styles.sepIcon} />
         <TouchableOpacity
           style={styles.optionRow}
@@ -1175,6 +1347,15 @@ const makeStyles = (colors: Colors) => StyleSheet.create({
     paddingHorizontal: spacing.md, paddingVertical: 14,
   },
   destinationInput: { flex: 1, color: colors.text, fontSize: font.md, padding: 0 },
+  linkRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: spacing.smd,
+    paddingHorizontal: spacing.md,
+    minHeight: 52,
+  },
+  // Height rather than lineHeight, per the TextInput note in CLAUDE.md.
+  linkInput: { flex: 1, color: colors.text, fontSize: font.md, height: 44 },
   optionRow: {
     flexDirection: 'row', alignItems: 'center', gap: spacing.md,
     paddingHorizontal: spacing.md, paddingVertical: 14,

@@ -39,7 +39,7 @@ components below.
 - `src/screens/MoodScreen.tsx` — ContrastBars, EmptyState, HubPills, InlineAction, MilestoneSheet, MoodEntryRow, MoodExportSheet, MoodLogSheet, ScreenHeader
 - `src/screens/PeopleScreen.tsx` — ContactPickerSheet, EmptyState, Fab, HubPills, PaintSelection, PersonEditor, QuickAddNameSheet, ReorderableList, ScreenHeader, SelectionDot, SimpleBulkBar, SwipeableRow, +1 more
 - `src/screens/PersonDetailScreen.tsx` — DetailHeader, EmptyState, InlineAction, PersonEditor, PersonHistorySheet, PersonNoteSheet
-- `src/screens/ProjectDetailScreen.tsx` — ApplyTemplateSheet, BulkActionBar, DeliverablePromptQueue, DeliverablePromptSheet, DetailHeader, EmptyState, Fab, FabDropZones, GroupDropTarget, InlineAction, LinkedText, LookAheadSheet, +23 more
+- `src/screens/ProjectDetailScreen.tsx` — AddGuestsSheet, ApplyTemplateSheet, BulkActionBar, DeliverablePromptQueue, DeliverablePromptSheet, DetailHeader, EmptyState, Fab, FabDropZones, GroupDropTarget, InlineAction, LinkedText, +24 more
 - `src/screens/ProjectsScreen.tsx` — CookbookChecklistSheet, EmptyState, Fab, FabDropZones, ListBulkBar, PaintSelection, ProgressBar, ProjectCategoriesSheet, ProjectEditor, ProjectsOptionsMenu, QuickAddProjectModal, ReorderableList, +5 more
 - `src/screens/RecipeDetailScreen.tsx` — ComponentChoiceSheet, CookModeSheet, CountStepper, DetailHeader, EmptyState, IngredientCatalogMatchSheet, InlineAction, ListBulkBar, NumberPadAccessory, OverlapPickerSheet, PillGroup, PlanMealSheet, +15 more
 - `src/screens/RecipesScreen.tsx` — ActiveTripBanner, CookbookChecklistSheet, EmptyState, Fab, FabDropZones, HubPills, InventRecipeSheet, ListBulkBar, OverlapPickerSheet, PlanMealSheet, QuickAddNameSheet, RecipeCreateSheet, +9 more
@@ -66,6 +66,7 @@ components below.
 Where each component can appear.
 
 - `src/components/ActiveTripBanner.tsx` — on GroceryScreen, KitchenScreen, MealPlanScreen, RecipesScreen
+- `src/components/AddGuestsSheet.tsx` — on ProjectDetailScreen
 - `src/components/AddMealsToListSheet.tsx` — on MealPlanScreen
 - `src/components/AddTaskFab.tsx` — on TodayScreen
 - `src/components/AnimatedCollapsible.tsx` — on FoodLogScreen, ProjectDetailScreen, RecipeDetailScreen, RecipesScreen, TodayScreen

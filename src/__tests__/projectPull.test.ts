@@ -16,7 +16,8 @@ import {
   suggestPullDate,
 } from '../utils/projectPull';
 import { registerTaskSource } from '../utils/blockerRegistry';
-import type { Project, Task } from '../types';
+import { registerSectionSource } from '../utils/sectionRegistry';
+import type { Project, Task, TaskGroup } from '../types';
 
 const settingsState = { dayResetTime: '00:00', vacationMode: false, morningStart: '06:00', afternoonStart: '12:00', eveningStart: '18:00', nightStart: '21:00' };
 
@@ -193,6 +194,10 @@ const PROJECT_BASE: Project = {
   awayListId: null,
   awayListDeclinedFor: null,
   pausedUntil: null,
+  personIds: [],
+  links: [],
+  inOrder: false,
+  showChecked: false,
 };
 
 const makeProject = (overrides: Partial<Project> = {}): Project => ({ ...PROJECT_BASE, ...overrides });
@@ -1102,5 +1107,56 @@ describe('a declined project and the sheet', () => {
     const empty = diagnosePullEmpty([project], tasks, 'nudge');
     expect(empty?.reason).toBe('declined-today');
     expect(describePullEmpty(empty!)).toContain('until tomorrow');
+  });
+});
+
+describe('working a project in order', () => {
+  const section = (o: Partial<TaskGroup>): TaskGroup => ({
+    id: 's1', title: 'Walls', notes: '', tags: [], category: null, sortOrder: 5,
+    collapsed: false, onToday: false, projectId: 'p1', checklist: false, ...o,
+  });
+  afterEach(() => registerSectionSource(null));
+
+  it('offers only the first open task on the page', () => {
+    const tasks = [makeTask({ id: 'patch', sortOrder: 1 }), makeTask({ id: 'paint', sortOrder: 2, priority: 4 })];
+    expect(nextPullCandidate(makeProject({ inOrder: true }), tasks)?.id).toBe('patch');
+    const plan = buildProjectPullPlan([makeProject({ inOrder: true })], tasks, [], ['p1']);
+    expect(plan.proposals[0].candidates.map(t => t.id)).toEqual(['patch']);
+  });
+
+  it('reads the order off the page, so a section above a loose task comes first', () => {
+    registerSectionSource(() => [section({ sortOrder: 1 })]);
+    const tasks = [
+      makeTask({ id: 'loose', sortOrder: 3 }),
+      makeTask({ id: 'inSection', sortOrder: 1, groupId: 's1' }),
+    ];
+    expect(nextPullCandidate(makeProject({ inOrder: true }), tasks)?.id).toBe('inSection');
+  });
+
+  it('offers nothing while the first task is waiting, rather than letting a later one jump ahead', () => {
+    const blocker = makeTask({ id: 'elsewhere', projectId: null });
+    const tasks = [makeTask({ id: 'first', sortOrder: 1, blockedById: 'elsewhere' }), makeTask({ id: 'second', sortOrder: 2 })];
+    registerTaskSource(() => [...tasks, blocker]);
+    try {
+      expect(nextPullCandidate(makeProject({ inOrder: true }), tasks)).toBeNull();
+      expect(nextPullCandidate(makeProject(), tasks)?.id).toBe('second');
+    } finally {
+      registerTaskSource(null);
+    }
+  });
+});
+
+describe('checklist sections', () => {
+  afterEach(() => registerSectionSource(null));
+
+  it('never offers a checklist line', () => {
+    registerSectionSource(() => [{
+      id: 'pack', title: 'Packing', notes: '', tags: [], category: null, sortOrder: 0,
+      collapsed: false, onToday: false, projectId: 'p1', checklist: true,
+    }]);
+    const tasks = [makeTask({ id: 'socks', groupId: 'pack', sortOrder: 0 }), makeTask({ id: 'book', sortOrder: 5 })];
+    expect(nextPullCandidate(makeProject(), tasks)?.id).toBe('book');
+    expect(nextPullCandidate(makeProject(), [tasks[0]])).toBeNull();
+    expect(diagnosePullEmpty([makeProject()], [tasks[0]])?.reason).toBe('no-pullable');
   });
 });

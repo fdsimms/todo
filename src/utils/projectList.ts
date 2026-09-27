@@ -113,10 +113,10 @@ export function projectCardCaption(
  * open.
  */
 export function projectProgressNote(
-  project: Pick<Project, 'ongoing'>,
+  project: Pick<Project, 'ongoing'> & Partial<Pick<Project, 'kind'>>,
   progress: ProjectProgress,
 ): string | null {
-  if (progress.total === 0) return 'No tasks yet';
+  if (progress.total === 0) return project.kind === 'list' ? 'No lines yet' : 'No tasks yet';
   if (!project.ongoing) return null;
   const open = progress.total - progress.done;
   return open === 0 ? 'Nothing open' : `${open} open`;
@@ -148,6 +148,31 @@ export function projectNextStepTitle(
     if (next) return displayTitleFor(next);
   }
   return null;
+}
+
+/**
+ * A list's first few open lines, in page order, for its card: a list of
+ * books reads better as "Dune, Piranesi" than as "12 open". Waiting lines
+ * are included, since a list isn't worked in order.
+ */
+export function projectListPreview(
+  projectId: string,
+  tasks: readonly Task[],
+  groups: readonly TaskGroup[] = [],
+  count = 2,
+): string[] {
+  const live = liveProjectSteps(projectId, tasks);
+  const titles: string[] = [];
+  for (const item of buildProjectListItems(live, [...groups], projectId)) {
+    const rows = item.type === 'task'
+      ? [item.task]
+      : [...item.children].sort((a, b) => a.sortOrder - b.sortOrder);
+    for (const row of rows) {
+      titles.push(displayTitleFor(row));
+      if (titles.length >= count) return titles;
+    }
+  }
+  return titles;
 }
 
 /** The sort choices, in the order the menu offers them. */

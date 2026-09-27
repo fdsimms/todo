@@ -157,6 +157,8 @@ export function templateFromProject(
     vacationPause: task.vacationPause,
     excludeFromSuggestions: task.excludeFromSuggestions,
     deliverableKind: task.deliverableKind,
+    deliverableOptions: task.deliverableOptions ?? [],
+    deliverableSetsAway: task.deliverableSetsAway ?? false,
     chainEnabled: task.chainEnabled,
     chainItems: task.chainItems,
     subtasks: subtasks.map(title => ({ id: generateId(), title })),

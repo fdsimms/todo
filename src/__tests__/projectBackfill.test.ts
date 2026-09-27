@@ -34,6 +34,10 @@ const baseProject: Project = {
   awayListId: null,
   awayListDeclinedFor: null,
   pausedUntil: null,
+  personIds: [],
+  links: [],
+  inOrder: false,
+  showChecked: false,
 };
 
 describe('isProjectFieldMissing', () => {

@@ -107,6 +107,7 @@ export function TaskGroupEditor({ visible, group, isNew, onClose, projectId }: P
   // The stack's own home (TaskGroup.projectId), not the `projectId` prop —
   // that one is the screen the sheet was opened from.
   const [homeProjectId, setHomeProjectId] = useState<string | null>(null);
+  const [checklist, setChecklist] = useState(false);
 
   // Set while a member row is being dragged, purely to take the sheet's own
   // ScrollView out of the running for the touch (see SortableList's
@@ -142,6 +143,7 @@ export function TaskGroupEditor({ visible, group, isNew, onClose, projectId }: P
     setTags(group.tags);
     setCategory(group.category);
     setHomeProjectId(group.projectId);
+    setChecklist(group.checklist ?? false);
     setShowExistingPicker(false);
     clearExistingSearch();
     setOpenFields({});
@@ -182,6 +184,9 @@ export function TaskGroupEditor({ visible, group, isNew, onClose, projectId }: P
   // task added from Today joins a stack that sits on a project's page while
   // not being in that project.
   const filingProjectId = projectId ?? homeProjectId;
+  const checklistShown = !!homeProjectId || !!projectId
+    ? projects.find(p => p.id === (projectId ?? homeProjectId))?.kind !== 'list'
+    : false;
 
   // Same TaskGroup, two names: homed on a project it reads as "section" (the
   // vocabulary the project screen's own FAB and empty-state copy already use),
@@ -246,6 +251,7 @@ export function TaskGroupEditor({ visible, group, isNew, onClose, projectId }: P
       // tasks in one stack can sit in different projects, and this field only
       // says which project's page shows the stack when it has nothing in it.
       projectId: homeProjectId,
+      checklist,
     });
     // The stack owns its members' category, so changing it here re-files
     // them. Deliberately on save rather than as the pills are tapped: the
@@ -416,6 +422,35 @@ export function TaskGroupEditor({ visible, group, isNew, onClose, projectId }: P
           settings it can pick up later, from the same sheet, once it exists.
           The project field is left off a section opened from its own project
           page outright, since that answer is the page it was opened on. */}
+      {/* A section on a project page can be a checklist: a packing list
+          inside a trip. Only on a project's own section (not a stack on
+          Today), and not on a list project, whose lines are already undated. */}
+      {checklistShown && (
+        <View style={styles.sectionCard}>
+          <TouchableOpacity
+            style={styles.optionRow}
+            onPress={() => { haptics.tap(); setChecklist(v => !v); }}
+            activeOpacity={interaction.activeOpacity}
+            accessibilityRole="switch"
+            accessibilityLabel="Checklist"
+            accessibilityState={{ checked: checklist }}
+          >
+            <Ionicons name="checkbox-outline" size={18} color={checklist ? colors.accent : colors.textSecondary} />
+            <View style={styles.optionContent}>
+              <Text style={styles.optionLabel}>Checklist</Text>
+              <Text style={styles.optionHint}>
+                {checklist
+                  ? "Its tasks are checked off, not scheduled. They show no dates and Pull doesn't offer them"
+                  : 'Its tasks are scheduled like the rest of the project'}
+              </Text>
+            </View>
+            <View style={[styles.toggle, checklist && styles.toggleOn]}>
+              <View style={[styles.toggleKnob, checklist && styles.toggleKnobOn]} />
+            </View>
+          </TouchableOpacity>
+        </View>
+      )}
+
       {!(isNew && projectId) && (
       <View style={styles.sectionCard}>
         <CollapsibleField
@@ -636,6 +671,22 @@ const makeStyles = (colors: Colors) => StyleSheet.create({
   },
   cardSection: { paddingHorizontal: spacing.md, paddingVertical: spacing.md },
   cardSep: { height: StyleSheet.hairlineWidth, backgroundColor: colors.separator },
+  optionRow: {
+    flexDirection: 'row', alignItems: 'center', gap: spacing.md,
+    paddingHorizontal: spacing.md, paddingVertical: 14,
+  },
+  optionContent: { flex: 1 },
+  optionLabel: { color: colors.text, fontSize: font.md },
+  optionHint: { color: colors.textTertiary, fontSize: font.xs, marginTop: spacing.xxs },
+  toggle: {
+    width: 44, height: 26, borderRadius: radius.full,
+    backgroundColor: colors.bgQuaternary, padding: spacing.xxs, justifyContent: 'center',
+  },
+  toggleOn: { backgroundColor: colors.accent },
+  toggleKnob: {
+    width: 22, height: 22, borderRadius: radius.full, backgroundColor: colors.bg,
+  },
+  toggleKnobOn: { alignSelf: 'flex-end' },
   sectionLabel: {
     color: colors.textSecondary, fontSize: font.xs, fontWeight: fontWeight.bold,
     textTransform: 'uppercase', letterSpacing: 0.8, marginBottom: spacing.sm,

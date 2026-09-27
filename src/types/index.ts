@@ -25,7 +25,11 @@ export type ReminderKind = 'notification' | 'alarm' | 'persistent';
  * resolve, the same mistake `splitAlternativeNames` exists to avoid on the
  * grocery side.
  */
-export type DeliverableKind = 'text' | 'date' | 'number';
+//
+// 'yesno' and 'choice' answer with one of a fixed set: Yes/No for the first,
+// the task's own `deliverableOptions` for the second. The stored answer is the
+// option's text, so a project can count them ("12 yes, 3 no").
+export type DeliverableKind = 'text' | 'date' | 'number' | 'yesno' | 'choice';
 
 /**
  * Which direction a task's success runs in — see `Task.polarity`.
@@ -684,6 +688,12 @@ export interface TaskGroup {
   // belong to, so changing it moves no tasks — unlike `category`, which the
   // stack does own and cascades onto its members.
   projectId: string | null;
+  // A section whose rows are ticked off rather than scheduled: a packing list
+  // inside a trip. Its rows show no dates and are never offered by Pull or
+  // auto-schedule, the way a list project's lines aren't. Only meaningful on
+  // a project's section; ignored anywhere else. Optional for rows built before
+  // it existed.
+  checklist?: boolean;
 }
 
 /**
@@ -950,6 +960,13 @@ export interface UnattendedEntry {
 // from the tasks — `projectProgress` answers "how far along", which is a
 // different question, and deliberately never reaches 100% for a project holding
 // a recurring member.
+/** A link kept on a project page. `label` is optional; the page falls back to the host. */
+export interface ProjectLink {
+  id: string;
+  label: string;
+  url: string;
+}
+
 export interface Project {
   id: string;
   title: string;
@@ -1243,6 +1260,29 @@ export interface Project {
    * paused project is still one you mean to come back to.
    */
   pausedUntil: string | null;
+  /**
+   * The people this project is with or for: the planner, the contractor, the
+   * guests of honor. Shown on the project page, each opening the person.
+   * Deliberately not copied onto new tasks: a project with a contractor on it
+   * isn't a list of tasks involving the contractor, and `Task.personIds` is
+   * where a task says who it's about.
+   */
+  personIds: string[];
+  /** Links kept with the project (the booking, the shared doc), in order. */
+  links: ProjectLink[];
+  /**
+   * Work the tasks in page order: Pull and auto-schedule offer only the first
+   * open one, so "paint" never comes up before "patch the wall". Off by
+   * default, where they offer whatever is best.
+   */
+  inOrder: boolean;
+  /**
+   * On a list: checked lines stay on the page, struck through at the bottom
+   * in list order, rather than folding behind "Show N completed". A packing
+   * list is read with what's already packed in view. Presentation only, like
+   * `kind` itself.
+   */
+  showChecked: boolean;
   /**
    * Where the trip goes, as free text.
    *
@@ -2449,14 +2489,26 @@ export interface Task {
   // a stored flag would need one in each of those paths, and a missed cascade
   // leaves a task no user action can ever surface again.
   //
-  // Deliberately a single id rather than a list: "waiting on" is one thing in
-  // practice, and it keeps cycle detection a chain walk instead of a graph
-  // traversal. A JSON array is the upgrade path if that ever changes.
+  // Started as a single id on the grounds that "waiting on" is one thing in
+  // practice. It isn't always ("send invitations" waits on both the guest list
+  // and the venue), so `blockedByIds` holds the rest and the task waits for
+  // all of them. This stays the first, so everything written before the list
+  // existed reads exactly as it did. Read the set through `blockerIdsOf`.
   //
   // Note a recurring blocker unblocks its waiter permanently: completing it
   // spawns a new row with a NEW id, so this keeps pointing at the completed
   // original. That's intended — "wait for trash day to happen once".
   blockedById: string | null;
+  /**
+   * The tasks this one waits on beyond `blockedById`, and it waits for every
+   * one of them. Empty on almost every task. Never holds `blockedById` itself,
+   * and never has entries while `blockedById` is null (see `blockerFields`,
+   * the one writer that keeps both halves in step).
+   *
+   * Optional so a row built before the field existed still type-checks; every
+   * reader goes through `blockerIdsOf`, which treats a missing list as empty.
+   */
+  blockedByIds?: string[];
 
   /**
    * Somebody you are waiting on — "Waiting on Dustin to send the photos"
@@ -2535,6 +2587,21 @@ export interface Task {
    * without bound, and a scope:'series' edit would fan the text across the set.
    */
   deliverableValue: string | null;
+  /**
+   * The options a 'choice' question offers, in the order they're shown.
+   * Ignored for every other kind ('yesno' has its own two). Rides to the next
+   * occurrence with the kind, since both are the question. Read through
+   * `deliverableOptionsFor`.
+   */
+  deliverableOptions?: string[];
+  /**
+   * A 'date' answer that also becomes the project's departure (`awayStart`):
+   * "Pick dates for Lisbon" answered with the 14th makes the trip leave on the
+   * 14th. Opt-in per task, written in `completeTask` and nowhere else, and it
+   * never overwrites a departure the project already has. See
+   * `src/utils/deliverables.ts` for the terms a second destination has to meet.
+   */
+  deliverableSetsAway?: boolean;
 
   // Which generator wrote this task, and the row it was projected from — both
   // null on every task a person typed. See src/utils/generatedTasks.ts for the
@@ -3356,6 +3423,10 @@ export interface TemplateItem {
   // set by hand on every application. There is no template-side counterpart to
   // deliverableValue: the question carries, the answer doesn't.
   deliverableKind: DeliverableKind | null;
+  // The options a 'choice' question offers, and whether a date answer sets
+  // the trip's departure. Both seed the Task fields of the same names.
+  deliverableOptions?: string[];
+  deliverableSetsAway?: boolean;
 
   chainEnabled: boolean;
   chainItems: ChainItem[];

@@ -55,6 +55,7 @@ import {
   projectCardCaption,
   projectMatchesQuery,
   projectNextStepTitle,
+  projectListPreview,
   projectProgressNote,
   sortProjects,
 } from '../utils/projectList';
@@ -163,12 +164,16 @@ export function ProjectsScreen() {
   // on every render of the list, not just when the tasks actually moved. The
   // next step's title rides the same pass.
   const cardFactsByProject = useMemo(() => {
-    const map = new Map<string, { progress: { done: number; total: number }; next: string | null }>();
+    const map = new Map<string, { progress: { done: number; total: number }; next: string | null; preview: string | null }>();
     listProjects.forEach(p => map.set(p.id, {
       progress: projectProgress(p.id, allTasks),
       // Not for a list: "Next" reads as an order to work in, and a list of
       // books or gift ideas has none.
       next: projectFilter === 'active' && p.kind !== 'list' ? projectNextStepTitle(p.id, allTasks, taskGroups) : null,
+      // A list shows its first lines instead, which is what it's for.
+      preview: projectFilter === 'active' && p.kind === 'list'
+        ? projectListPreview(p.id, allTasks, taskGroups).join(', ') || null
+        : null,
     }));
     return map;
   }, [listProjects, allTasks, projectFilter, taskGroups]);
@@ -468,6 +473,12 @@ export function ProjectsScreen() {
     (navigation as any).navigate('ProjectDetail', { projectId: project.id });
   }, [selectionMode, toggleSelection, navigation]);
 
+  // Stable, like the other row callbacks, so ProjectRow's memo holds.
+  const handleAddLine = useCallback((project: Project) => {
+    haptics.tap();
+    (navigation as any).navigate('ProjectDetail', { projectId: project.id, addLine: Date.now() });
+  }, [navigation]);
+
   const handleEditProject = useCallback((project: Project) => setEditingProject(project), []);
 
   const renderRow = (item: ProjectListItem, drag?: () => void, isActive?: boolean) => {
@@ -504,6 +515,7 @@ export function ProjectsScreen() {
         captionSoon={caption?.soon ?? false}
         progressNote={projectProgressNote(project, progress)}
         nextStep={facts?.next ?? null}
+        preview={facts?.preview ?? null}
         projectFilter={projectFilter}
         allDone={allDone}
         selectionMode={selectionMode}
@@ -519,6 +531,7 @@ export function ProjectsScreen() {
         onQuickUncomplete={handleQuickUncomplete}
         onQuickComplete={handleQuickComplete}
         onEdit={handleEditProject}
+        onAddLine={handleAddLine}
       />
     );
   };
@@ -740,9 +753,9 @@ export function ProjectsScreen() {
  * follows on Today.
  */
 const ProjectRow = React.memo(function ProjectRow({
-  project, progress, pastWindow, captionText, captionOverdue, captionSoon, progressNote, nextStep, projectFilter, allDone,
+  project, progress, pastWindow, captionText, captionOverdue, captionSoon, progressNote, nextStep, preview, projectFilter, allDone,
   selectionMode, selected, isActive, drag, colors, styles,
-  onPress, onToggleSelect, onSwipeSelect, onQuickUnarchive, onQuickUncomplete, onQuickComplete, onEdit,
+  onPress, onToggleSelect, onSwipeSelect, onQuickUnarchive, onQuickUncomplete, onQuickComplete, onEdit, onAddLine,
 }: {
   project: Project;
   progress: { done: number; total: number };
@@ -756,6 +769,8 @@ const ProjectRow = React.memo(function ProjectRow({
   progressNote: string | null;
   /** The top of the project's own order, named so the card says what's up. */
   nextStep: string | null;
+  /** A list's first open lines, joined, in place of a "Next". */
+  preview: string | null;
   projectFilter: ProjectFilter;
   allDone: boolean;
   selectionMode: boolean;
@@ -771,6 +786,7 @@ const ProjectRow = React.memo(function ProjectRow({
   onQuickUncomplete: (project: Project) => void;
   onQuickComplete: (project: Project) => void;
   onEdit: (project: Project) => void;
+  onAddLine: (project: Project) => void;
 }) {
   // Excluded for the floating drag overlay's copy — it shares the dragged
   // row's id, and registering both would leave the real row's slot evicted
@@ -810,6 +826,7 @@ const ProjectRow = React.memo(function ProjectRow({
               project.title + (project.kind === 'list' ? ', list' : ''),
               progressNote ?? `${progress.done} of ${progress.total} done`,
               nextStep ? `next: ${nextStep}` : null,
+              preview,
               captionText,
             ].filter(Boolean).join(', ')
           }
@@ -817,8 +834,8 @@ const ProjectRow = React.memo(function ProjectRow({
             selectionMode
               ? 'Double tap to select project'
               : drag
-                ? 'Double tap to view tasks in this project. Long press to reorder.'
-                : 'Double tap to view tasks in this project.'
+                ? `Double tap to view ${project.kind === 'list' ? 'this list' : 'tasks in this project'}. Long press to reorder.`
+                : `Double tap to view ${project.kind === 'list' ? 'this list' : 'tasks in this project'}.`
           }
         >
           <View style={styles.projectInfo}>
@@ -869,6 +886,18 @@ const ProjectRow = React.memo(function ProjectRow({
                     <Ionicons name="checkmark-circle" size={16} color={colors.green} />
                   </TouchableOpacity>
                 )}
+                {/* Add to a list without hunting for its field: opens the
+                    list with the add field focused. */}
+                {project.kind === 'list' && projectFilter === 'active' && (
+                  <TouchableOpacity
+                    onPress={() => onAddLine(project)}
+                    hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
+                    accessibilityRole="button"
+                    accessibilityLabel={`Add a line to ${project.title}`}
+                  >
+                    <Ionicons name="add-circle-outline" size={16} color={colors.textTertiary} />
+                  </TouchableOpacity>
+                )}
                 <TouchableOpacity
                   onPress={() => onEdit(project)}
                   hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
@@ -891,6 +920,9 @@ const ProjectRow = React.memo(function ProjectRow({
                 </View>
                 <Text style={styles.progressText}>{progress.done}/{progress.total}</Text>
               </View>
+            )}
+            {preview && (
+              <Text style={styles.nextText} numberOfLines={1}>{preview}</Text>
             )}
             {nextStep && (
               <Text style={styles.nextText} numberOfLines={1}>

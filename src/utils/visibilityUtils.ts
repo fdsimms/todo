@@ -7,7 +7,7 @@ import { useSettingsStore } from '../store/useSettingsStore';
 import { useCategoryStore } from '../store/useCategoryStore';
 import { isAwayPauseInForce } from './awayDates';
 import { activeChainStep } from './chain';
-import { isBlocked, isWaitingOnPerson } from './blocking';
+import { blockerIdsOf, isBlocked, isWaitingOnPerson } from './blocking';
 import { resolveBlocker } from './blockerRegistry';
 import { resolvePerson } from './peopleRegistry';
 import { quotaRunSpan, quotaWeekSpan } from './quotaSchedule';
@@ -1048,8 +1048,10 @@ export function getVisibleAt(task: Task, pass: VisibleAtPass = beginVisibleAtPas
 function getReleasedFromHoldAt(task: Task): Date | null {
   const candidates: Date[] = [];
 
-  if (task.blockedById) {
-    const blocker = resolveBlocker(task.blockedById);
+  // Every blocker it waited on: waiting for all of them, it was let go by
+  // whichever finished last, which the latest-stamp reduce below picks out.
+  for (const blockerId of blockerIdsOf(task)) {
+    const blocker = resolveBlocker(blockerId);
     const stamp = blocker?.completed
       ? blocker.completedAt
       : blocker?.archived

@@ -29,7 +29,7 @@ name cannot say is where a component appears, and that is `docs/screen-map.md`.
 - `src/utils/appShield.ts` — AppShieldState, appShieldWanted, syncAppShield
 - `src/utils/appShieldReconcile.ts` — reconcileAppShield, gateTitlesNow
 - `src/utils/archiveMatch.ts` — findArchivedMatch
-- `src/utils/awayDates.ts` — AwaySpan, AwayPhase, AwayStatus, awayNoonIso, awaySpanOf, isAwayDay, awayNights, awayStatus, describeAwaySpan, nextAwayProject, +5 more
+- `src/utils/awayDates.ts` — AwaySpan, AwayPhase, AwayStatus, awayNoonIso, departureFromAnswer, awaySpanOf, isAwayDay, awayNights, awayStatus, describeAwaySpan, +6 more
 - `src/utils/awayShift.ts` — AwayShiftProposal, AwayShiftPlan, buildAwayShiftPlan, awayShiftUpdates, describeAwayShift, hasAnchoredMember
 - `src/utils/backfillSuggest.ts` — SuggestibleBackfillFieldId, SUGGESTIBLE_BACKFILL_FIELDS, isSuggestibleBackfillField, MAX_SUGGESTION_TASKS, MAX_SUGGESTION_EXAMPLES, SUGGESTION_NOTES_MAX_CHARS, SuggestionTask, SuggestionExample, BackfillSuggestion, TitleOf, +4 more
 - `src/utils/backgroundRefresh.ts` — BACKGROUND_REFRESH_TASK, BACKGROUND_REFRESH_INTERVAL_MINUTES, BackgroundRefreshOutcome, runBackgroundRefresh, runBackgroundSync, useBackgroundRefresh
@@ -38,7 +38,7 @@ name cannot say is where a component appears, and that is `docs/screen-map.md`.
 - `src/utils/birthdayTasks.ts` — DEFAULT_BIRTHDAY_LEAD_DAYS, DEFAULT_BIRTHDAY_GIFT_LEAD_DAYS, MAX_BIRTHDAY_LEAD_DAYS, clampBirthdayLeadDays, clampBirthdayGiftLeadDays, parseBirthdayLeadDays, parseBirthdayGiftLeadDays, birthdaySourceId, parseBirthdaySource, parseBirthdayGiftSource, +15 more
 - `src/utils/blockerRegistry.ts` — registerTaskSource, resolveBlocker, waitingCountFor
 - `src/utils/blockerStatus.ts` — BlockerWait, describeBlockerWait
-- `src/utils/blocking.ts` — TaskResolver, resolverFor, canBlock, blockerOf, isBlocked, PersonResolver, canWaitOn, personBlockerOf, isWaitingOnPerson, wouldCycle, +9 more
+- `src/utils/blocking.ts` — TaskResolver, resolverFor, canBlock, blockerIdsOf, blockerFields, liveBlockersOf, blockerOf, isBlocked, PersonResolver, canWaitOn, +12 more
 - `src/utils/bulkCompletion.ts` — tasksAskingOnCompletion, unansweredCompletionCopy
 - `src/utils/calendarBusy.ts` — BusyEvent, BusyInterval, isLiveEvent, occupiesTime, busyIntervalsIn, busyMinutesIn, freeGapsIn, freeMinutesIn, eventsIn, nextEventAfter
 - `src/utils/calendarEventImport.ts` — CalendarEventDraft, draftFromExtractedEvent, EventImportCreateFields, eventImportCreateFields, EventTaskFields, eventDayDueDate, taskFieldsFromEvent
@@ -76,7 +76,7 @@ name cannot say is where a component appears, and that is `docs/screen-map.md`.
 - `src/utils/dayTimeline.ts` — MINUTES_IN_DAY, DEFAULT_FIRST_HOUR, DEFAULT_LAST_HOUR, TimelineEntry, DayTimeline, DayTimelineInput, clockToDayMinutes, instantToDayMinutes, buildDayTimeline
 - `src/utils/deadlineCalendarSync.ts` — syncDeadlineEvent
 - `src/utils/deepLinks.ts` — AddTaskLink, parseAddTaskUrl, handleIncomingUrl, isQuickAddUrl, isAddEventUrl, isOpenAppUrl, isGroceriesUrl, groceriesUrlFinish, isRecipesUrl, isRecipeUrl, +29 more
-- `src/utils/deliverables.ts` — DELIVERABLE_TEXT_MAX_LENGTH, DELIVERABLE_META, deliverableMeta, DeliverableSource, deliverableKindFor, asksOnCompletion, chainStepDatedByAnswer, deliverableDate, normalizeDeliverableValue, formatDeliverableValue, +1 more
+- `src/utils/deliverables.ts` — DELIVERABLE_TEXT_MAX_LENGTH, DELIVERABLE_META, YES_NO_OPTIONS, DELIVERABLE_OPTIONS_MAX, RSVP_OPTIONS, parseDeliverableOptions, deliverableOptionsFor, deliverableMeta, DeliverableSource, deliverableKindFor, +6 more
 - `src/utils/deloadPlan.ts` — DeloadDestination, DeloadProposal, DeloadPlan, buildDeloadPlan
 - `src/utils/demoHold.ts` — runOrHoldForDemo, replayHeldForDemo
 - `src/utils/demoSeed.ts` — seedDemoData
@@ -213,12 +213,12 @@ name cannot say is where a component appears, and that is `docs/screen-map.md`.
 - `src/utils/projectBackfill.ts` — ProjectBackfillFieldId, ProjectBackfillFieldDef, PROJECT_BACKFILL_FIELDS, isProjectFieldMissing, isProjectBackfillDismissed, projectBackfillCandidates, projectBackfillFieldCounts, dismissProjectBackfillField
 - `src/utils/projectDateShortcuts.ts` — ProjectDateAnchor, ProjectDateShortcut, projectDateAnchor, projectDateShortcuts
 - `src/utils/projectGrouping.ts` — ProjectListItem, groupProjectsByCategory, ProjectDropResolution, resolveProjectDrop
-- `src/utils/projectList.ts` — ProjectListFilter, ProjectProgress, ProjectCardCaption, DUE_SOON_DAYS, describeProjectDeadline, projectCardCaption, projectProgressNote, projectNextStepTitle, PROJECT_SORT_OPTIONS, PROJECT_SORT_LABEL, +5 more
+- `src/utils/projectList.ts` — ProjectListFilter, ProjectProgress, ProjectCardCaption, DUE_SOON_DAYS, describeProjectDeadline, projectCardCaption, projectProgressNote, projectNextStepTitle, projectListPreview, PROJECT_SORT_OPTIONS, +6 more
 - `src/utils/projectOrder.ts` — liveProjectSteps, slotUpdates
 - `src/utils/projectPause.ts` — isPausedOn, registerPausedProjectSource, isProjectPaused
 - `src/utils/projectPull.ts` — MAX_PULLED_PROJECTS, MAX_CANDIDATES_PER_PROJECT, PULL_TODAY_BUDGET_MINUTES, StallMode, ProjectStall, PullDate, ProjectPullProposal, PullEmptyReason, PullEmptyState, ProjectPullPlan, +12 more
 - `src/utils/projectReviewTasks.ts` — MAX_PROJECT_REVIEW_TASKS, PROJECT_REVIEW_LINK_URL, projectReviewLinkUrl, projectReviewProjectId, projectReviewTitle, projectQuietDays, describeProjectQuiet, declinedToday, projectsReviewedToday, ProjectReviewWant, +2 more
-- `src/utils/projectStacks.ts` — ProjectListItem, buildProjectListItems, projectCopyText
+- `src/utils/projectStacks.ts` — ProjectListItem, buildProjectListItems, alphabeticalPageOrder, projectPageOrder, projectCopyText
 - `src/utils/projectStats.ts` — RECENT_FINISHED_LIMIT, FinishedProject, ProjectStatsSummary, projectStats
 - `src/utils/projectTemplate.ts` — BlueprintEntry, ProjectBlueprint, projectBlueprint, ProjectTemplateDraft, templateFromProject
 - `src/utils/quantity.ts` — Rational, rational, multiplyRational, rationalToNumber, rationalFromNumber, formatRational, formatQuantityAmount, unitKey, inflectUnit, SIZE_UNITS, +7 more
@@ -261,6 +261,7 @@ name cannot say is where a component appears, and that is `docs/screen-map.md`.
 - `src/utils/rhythms.ts` — SegmentBoundaries, DEFAULT_BOUNDARIES, RhythmOptions, MIN_SAMPLES, segmentOf, HourRange, RhythmProfile, buildRhythmProfile, formatHour, formatHourRange, +3 more
 - `src/utils/rhythmsSettings.ts` — rhythmOptionsFromSettings
 - `src/utils/rotation.ts` — RotationMember, RotationCarrier, MIN_ROTATION_ITEMS, isRotationTask, parseRotationItems, parseRotationLog, parseRotationLastDone, rotationPeriodStart, activeRotationLog, rotationMembers, +9 more
+- `src/utils/rsvp.ts` — parseGuestNames
 - `src/utils/savedViews.ts` — SAVED_VIEW_CLAUSE_KINDS, savedViewClauseLabel, SAVED_VIEW_ICONS, DEFAULT_SAVED_VIEW_ICON, SavedViewContext, matchesClause, matchesSavedView, isSavedViewCandidate, filterTasksForView, SavedViewLabels, +11 more
 - `src/utils/scanPortion.ts` — PackageChoice, servingsPerPackage, packageChoices, packageHelping
 - `src/utils/scanResolve.ts` — ScannedItem, ScannedGtinLink, shopperNameFor, shorterNameSuggestions, nameFromScanFor, sourceLabelFor, variantFor, scannedItemFor, pluScannedItem, unknownScannedItem, +6 more
@@ -271,6 +272,7 @@ name cannot say is where a component appears, and that is `docs/screen-map.md`.
 - `src/utils/scrollFade.ts` — SCROLL_FADE_HEIGHT, SCROLL_FADE_TOLERANCE, ScrollEdgeMetrics, hiddenBelow, hiddenAbove, edgeFadeOpacity
 - `src/utils/searchCollapse.ts` — SearchOccurrence, CollapsedOccurrence, occurrenceFamilyKey, collapseOccurrences, formatOccurrenceCount
 - `src/utils/sectionListLayout.ts` — CellLayout, sectionListCellLayout
+- `src/utils/sectionRegistry.ts` — registerSectionSource, sectionsNow, isChecklistRow
 - `src/utils/secureApiKey.ts` — API_KEY_SECURE_KEY, API_KEY_LEGACY_SETTING, loadAnthropicApiKey, saveAnthropicApiKey, FDC_KEY_SECURE_KEY, GO_UPC_KEY_SECURE_KEY, SYNC_TOKEN_SECURE_KEY, loadSecureKey, saveSecureKey
 - `src/utils/segmentColumns.ts` — segmentRows
 - `src/utils/settingsFocusScroll.ts` — SETTINGS_FOCUS_PADDING, settingsFocusScrollTarget
@@ -313,7 +315,7 @@ name cannot say is where a component appears, and that is `docs/screen-map.md`.
 - `src/utils/templateQuestions.ts` — questionsForTree, answerFromDates, defaultAnswer, resolveAnswers, placeholderValuesFor, liveConditions, itemMatchesAnswers, initialLeafSelection, reselectForAnswers, personIdsFromAnswer, +6 more
 - `src/utils/templateSchedule.ts` — TemplateRunDue, DEFAULT_TEMPLATE_SCHEDULE_TIME, defaultTemplateSchedule, periodKeyFor, triggerDayFor, scheduledRunName, dueTemplateRun, ordinal, describeTemplateSchedule
 - `src/utils/templateUtils.ts` — TemplateAnchors, normalizeTemplateItem, normalizeTemplateQuestion, resolveOffsetDate, formatMinutesOffset, buildDraftsFromTemplate, formatOffsetLabel, anchorLabel, formatOffsetWithAnchor, reachableTemplateIds, +28 more
-- `src/utils/textLinks.ts` — TextSegment, splitLinks
+- `src/utils/textLinks.ts` — TextSegment, splitLinks, parseLabelledLink, linkHost
 - `src/utils/textSelection.ts` — TextSelection, clampSelection, caretAtEnd, spliceAtSelection
 - `src/utils/textSimilar.ts` — MIN_SIMILAR_LENGTH, withinOneEdit, isSingleTransposition
 - `src/utils/timeBlock.ts` — TimeBlockFields, TimeBlockContext, canTimeBlock, proposeTimeBlockStart, timeBlockFieldsFor, timeBlockUpdateFor
@@ -332,7 +334,7 @@ name cannot say is where a component appears, and that is `docs/screen-map.md`.
 - `src/utils/useSyncOnForeground.ts` — useSyncOnForeground
 - `src/utils/useUpRecipes.ts` — UseUpRecipe, useUpRecipes, describeUseUpRecipe
 - `src/utils/visibilityUtils.ts` — isTaskBlocked, isInPausedProject, isHeldBack, VisibleAtPass, beginVisibleAtPass, isHiddenForVacation, isCategoryScheduledDay, sameTimeSegments, timeSegmentThreshold, currentTimeSegment, +35 more
-- `src/utils/waitingFollowUpTasks.ts` — MAX_WAITING_FOLLOW_UP_TASKS, WAITING_FOLLOW_UP_DECLINE_DAYS, WAITING_FOLLOW_UP_THRESHOLD_DAYS, waitingFollowUpTaskId, waitingFollowUpTitle, waitingFollowUpsHandledRecently, WaitingFollowUpWant, wantedWaitingFollowUps, staleWaitingFollowUpTasks
+- `src/utils/waitingFollowUpTasks.ts` — MAX_WAITING_FOLLOW_UP_TASKS, WAITING_FOLLOW_UP_DECLINE_DAYS, WAITING_FOLLOW_UP_THRESHOLD_DAYS, waitingFollowUpTaskId, waitingFollowUpTitle, waitingFollowUpsHandledRecently, followUpDue, WaitingFollowUpWant, wantedWaitingFollowUps, staleWaitingFollowUpTasks
 - `src/utils/waterExerciseBoost.ts` — WaterExerciseBoost, WATER_EXERCISE_BOOST_MINUTES_RANGE, WATER_EXERCISE_BOOST_ML_RANGE, parseWaterExerciseBoost, serializeWaterExerciseBoost, effectiveWaterTargetMl, waterExerciseBoostApplies
 - `src/utils/waterLog.ts` — WaterUnit, WATER_STEP_ML, WATER_MIN_ML, WATER_MAX_ML, WATER_STEP_FL_OZ, WATER_MIN_FL_OZ, WATER_MAX_FL_OZ, isWaterEntry, waterEntryOf, waterTotalMl, +8 more
 - `src/utils/weatherCondition.ts` — classifyWeather, weatherIconFor, weatherConditionAdjective, conditionNoun, weatherConditionNoun
@@ -371,7 +373,7 @@ name cannot say is where a component appears, and that is `docs/screen-map.md`.
 - `src/store/usePersonNoteStore.ts` — PersonNotePatch, usePersonNoteStore
 - `src/store/usePersonStore.ts` — blankPerson, displayNameOf, PersonPatch, usePersonStore
 - `src/store/useProjectCategoryStore.ts` — useProjectCategoryStore
-- `src/store/useProjectStore.ts` — projectProgress, projectDecisions, projectCompletedRows, isProjectPastWindow, CreateProjectOptions, useProjectStore
+- `src/store/useProjectStore.ts` — projectProgress, projectDecisions, AnswerTally, projectAnswerTallies, describeAnswerTally, projectCompletedRows, isProjectPastWindow, CreateProjectOptions, useProjectStore
 - `src/store/useRecipeStore.ts` — CookStats, useRecipeStore
 - `src/store/useSavedMealsStore.ts` — useSavedMealsStore
 - `src/store/useSavedViewStore.ts` — useSavedViewStore

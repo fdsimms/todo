@@ -66,7 +66,10 @@ export function waitingCountFor(id: string): number {
     cachedCounts = new Map();
     for (const t of tasks) {
       if (!t.blockedById || t.completed || t.archived || t.parentId) continue;
-      cachedCounts.set(t.blockedById, (cachedCounts.get(t.blockedById) ?? 0) + 1);
+      // Every task it waits on counts it: blockedById, then the rest.
+      for (const id of new Set([t.blockedById, ...(t.blockedByIds ?? [])])) {
+        cachedCounts.set(id, (cachedCounts.get(id) ?? 0) + 1);
+      }
     }
   }
   return cachedCounts!.get(id) ?? 0;

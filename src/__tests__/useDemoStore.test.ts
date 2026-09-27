@@ -19,7 +19,8 @@ import { useTaskStore } from '../store/useTaskStore';
 import { useCategoryStore } from '../store/useCategoryStore';
 import { usePersonStore } from '../store/usePersonStore';
 import { usePersonGroupStore } from '../store/usePersonGroupStore';
-import { useProjectStore, projectDecisions, projectProgress } from '../store/useProjectStore';
+import { useProjectStore, projectDecisions, projectProgress, projectAnswerTallies, describeAnswerTally } from '../store/useProjectStore';
+import { nextPullCandidate } from '../utils/projectPull';
 import { useProjectCategoryStore } from '../store/useProjectCategoryStore';
 import { isHeldBack, isQuotaOnPace, isTaskVisible } from '../utils/visibilityUtils';
 import { isMorningCheckInCandidate } from '../utils/morningCheckIn';
@@ -1402,6 +1403,38 @@ describe('demo mode', () => {
     const appliances = useTaskGroupStore.getState().groups.find(g => g.title === 'Appliance decisions');
     expect(appliances?.projectId).toBe(kitchen!.id);
     expect(useTaskStore.getState().tasks.filter(t => t.groupId === appliances!.id)).toHaveLength(0);
+  });
+
+  it('seeds RSVPs counted on the project page, and invitations waiting on two tasks', () => {
+    useDemoStore.getState().enterDemoMode();
+    const party = useProjectStore.getState().projects.find(p => p.title === "Maya's birthday party");
+    expect(party).toBeDefined();
+    const tasks = useTaskStore.getState().tasks;
+    expect(projectAnswerTallies(party!.id, tasks).map(describeAnswerTally)).toEqual(['2 Yes, 1 No, 2 waiting']);
+    const invites = tasks.find(t => t.title === 'Send the invitations');
+    expect(invites?.blockedByIds).toHaveLength(1);
+    expect(isHeldBack(invites!)).toBe(true);
+    expect(party!.personIds).toHaveLength(1);
+  });
+
+  it('seeds a checklist section, project links, a list keeping checked lines, and a project worked in order', () => {
+    useDemoStore.getState().enterDemoMode();
+    const projects = useProjectStore.getState().projects;
+    const lisbon = projects.find(p => p.title === 'Lisbon, with Mia')!;
+    const packing = useTaskGroupStore.getState().groups.find(g => g.title === 'Packing' && g.projectId === lisbon.id);
+    expect(packing?.checklist).toBe(true);
+    expect(lisbon.links).toHaveLength(1);
+    expect(projects.find(p => p.title === 'Six Seasons')?.showChecked).toBe(true);
+    const remodel = projects.find(p => p.title === 'Kitchen remodel')!;
+    expect(remodel.inOrder).toBe(true);
+    expect(nextPullCandidate(remodel, useTaskStore.getState().tasks)?.title).toBe('Get quotes from contractors');
+  });
+
+  it('seeds a wait with a follow-up date', () => {
+    useDemoStore.getState().enterDemoMode();
+    const cake = useTaskStore.getState().tasks.find(t => t.title === 'Hear back about the cake order');
+    expect(cake?.waitingOnPersonId).not.toBeNull();
+    expect(cake?.dueDate).not.toBeNull();
   });
 
   it('seeds a paused project whose tasks are held off Today', () => {

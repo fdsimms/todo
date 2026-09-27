@@ -118,6 +118,7 @@ export function ChainStepQuestionSheet({ visible, step, nextStepTitle, onSave, o
                 animateLayout();
                 setKind(next);
               }}
+              exclude={['choice']}
             />
             <Text style={styles.hint}>
               {kind

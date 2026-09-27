@@ -107,7 +107,7 @@ import {
   supplyRunOutDate,
 } from '../utils/supply';
 import { CategoryPickerList } from './CategoryPicker';
-import { deliverableMeta } from '../utils/deliverables';
+import { deliverableMeta, parseDeliverableOptions } from '../utils/deliverables';
 import { InlineAction } from './InlineAction';
 import { SearchField } from './SearchField';
 import { SheetHeader } from './SheetHeader';
@@ -121,7 +121,7 @@ import { TitleTokenAccessory } from './TitleTokenAccessory';
 import { FollowUpTaskSheet } from './FollowUpTaskSheet';
 import { CalendarChoiceSheet } from './CalendarChoiceSheet';
 import { TaskRelationPickerSheet } from './TaskRelationPickerSheet';
-import { describeBlocks } from '../utils/blocking';
+import { blockerFields, blockerIdsOf, describeBlocks } from '../utils/blocking';
 import { displayTitleFor, isMissableMealPlanTask, getVisibleAt } from '../utils/visibilityUtils';
 import { nextChainStepTitle } from '../utils/chain';
 import { RecurrencePicker } from './RecurrencePicker';
@@ -546,9 +546,15 @@ export function TaskEditor({ visible, task, initialDraft, onClose }: Props) {
   const [medicationAmount, setMedicationAmount] = useState('');
   const [medicationUnit, setMedicationUnit] = useState<string | null>(null);
   const [logMealSlot, setLogMealSlot] = useState<MealSlot | null>(null);
-  const [blockedById, setBlockedById] = useState<string | null>(null);
+  // Every task this one waits on, in order. Several are allowed, and it waits
+  // for all of them (Task.blockedByIds); stored through blockerFields on save.
+  const [blockerIds, setBlockerIds] = useState<string[]>([]);
+  const [showBlockers, setShowBlockers] = useState(false);
   const [waitingOnPersonId, setWaitingOnPersonId] = useState<string | null>(null);
   const [deliverableKind, setDeliverableKind] = useState<DeliverableKind | null>(null);
+  // Pick-one's options as typed ("Yes, No, Maybe"), parsed on save.
+  const [deliverableOptionsText, setDeliverableOptionsText] = useState('');
+  const [deliverableSetsAway, setDeliverableSetsAway] = useState(false);
   const [showBlockerPicker, setShowBlockerPicker] = useState(false);
   // The other end of the same pointer: the tasks this one holds back. Draft
   // state like every other field, but it writes to *those* rows rather than to
@@ -565,7 +571,10 @@ export function TaskEditor({ visible, task, initialDraft, onClose }: Props) {
   // Just the blocker's title, for the row's value. Selecting the one task
   // rather than the whole list keeps unrelated task changes from re-rendering
   // the editor.
-  const blockerTask = useTaskStore(s => (blockedById ? s.tasks.find(t => t.id === blockedById) : undefined));
+  const blockerTitles = useTaskStore(useShallow(s => blockerIds.map(id => {
+    const t = s.tasks.find(x => x.id === id);
+    return t ? displayTitleFor(t) : '';
+  })));
   // Archived people stay out of the picker but never off a task that already
   // names one — the same split the People field makes. `canWaitOn` has already
   // freed the wait by then, so the row reads as no longer waiting either way.
@@ -574,8 +583,8 @@ export function TaskEditor({ visible, task, initialDraft, onClose }: Props) {
   // identity: a fresh one every render would re-filter every task on every
   // keystroke in the editor behind it.
   const blocksExcludeIds = useMemo(
-    () => (blockedById ? [...blocksIds, blockedById] : blocksIds),
-    [blocksIds, blockedById],
+    () => [...blocksIds, ...blockerIds],
+    [blocksIds, blockerIds],
   );
   // Just the titles, in the draft's own order — the same reason the blocker
   // above is selected one task at a time. An id whose row has gone resolves to
@@ -837,10 +846,13 @@ export function TaskEditor({ visible, task, initialDraft, onClose }: Props) {
       setPhoneNumber(task.phoneNumber ?? null);
       setEmailAddress(task.emailAddress ?? null);
       setLocation(task.location ?? null);
-      setBlockedById(task.blockedById ?? null);
+      setBlockerIds(blockerIdsOf(task));
+      setShowBlockers(false);
       setWaitingOnPersonId(task.waitingOnPersonId ?? null);
       setBlocksIds(blockedTasksOf(task.id).map(t => t.id));
       setDeliverableKind(task.deliverableKind ?? null);
+      setDeliverableOptionsText((task.deliverableOptions ?? []).join(', '));
+      setDeliverableSetsAway(task.deliverableSetsAway ?? false);
       setFollowUpTaskEveryN(task.followUpTaskEveryN ?? null);
       setFollowUpTaskTitle(task.followUpTaskTitle ?? '');
       setFollowUpTaskDraft(task.followUpTaskDraft ?? null);
@@ -885,10 +897,13 @@ export function TaskEditor({ visible, task, initialDraft, onClose }: Props) {
       setPhoneNumber(initialDraft?.phoneNumber ?? null);
       setEmailAddress(initialDraft?.emailAddress ?? null);
       setLocation(initialDraft?.location ?? null);
-      setBlockedById(null);
+      setBlockerIds([]);
+      setShowBlockers(false);
       setWaitingOnPersonId(null);
       setBlocksIds([]);
       setDeliverableKind(null);
+      setDeliverableOptionsText('');
+      setDeliverableSetsAway(false);
       setFollowUpTaskEveryN(null);
       setFollowUpTaskTitle('');
       setFollowUpTaskOneAtATime(false);
@@ -1008,9 +1023,11 @@ export function TaskEditor({ visible, task, initialDraft, onClose }: Props) {
       phoneNumber: task ? (task.phoneNumber ?? null) : (initialDraft?.phoneNumber ?? null),
       emailAddress: task ? (task.emailAddress ?? null) : (initialDraft?.emailAddress ?? null),
       location: task ? (task.location ?? null) : (initialDraft?.location ?? null),
-      blockedById: task?.blockedById ?? null,
+      blockerIds: task ? blockerIdsOf(task) : [],
       waitingOnPersonId: task?.waitingOnPersonId ?? null,
       deliverableKind: task?.deliverableKind ?? null,
+      deliverableOptionsText: (task?.deliverableOptions ?? []).join(', '),
+      deliverableSetsAway: task?.deliverableSetsAway ?? false,
       followUpTaskEveryN: task?.followUpTaskEveryN ?? null,
       followUpTaskTitle: task?.followUpTaskTitle ?? '',
       followUpTaskDraft: task?.followUpTaskDraft ?? null,
@@ -1464,9 +1481,13 @@ export function TaskEditor({ visible, task, initialDraft, onClose }: Props) {
       phoneNumber: resolvePhoneNumber(),
       emailAddress: resolveEmailAddress(),
       location: resolveLocation(),
-      blockedById,
+      ...blockerFields(blockerIds),
       waitingOnPersonId,
       deliverableKind,
+      // Only the kind that reads each: options belong to a Pick-one, and a
+      // departure can only come from a date answered inside a project.
+      deliverableOptions: deliverableKind === 'choice' ? parseDeliverableOptions(deliverableOptionsText) : [],
+      deliverableSetsAway: deliverableKind === 'date' && project !== null && deliverableSetsAway,
       followUpTaskEveryN: followUpTaskLive ? followUpTaskEveryN : null,
       followUpTaskTitle: followUpTaskLive ? resolvedFollowUpTaskTitle : null,
       // Both follow the rule they detail rather than surviving on their own:
@@ -2075,9 +2096,11 @@ export function TaskEditor({ visible, task, initialDraft, onClose }: Props) {
       phoneNumber,
       emailAddress,
       location,
-      blockedById,
+      blockerIds,
       waitingOnPersonId,
       deliverableKind,
+      deliverableOptionsText,
+      deliverableSetsAway,
       followUpTaskEveryN,
       followUpTaskTitle,
       followUpTaskDraft,
@@ -2628,9 +2651,9 @@ export function TaskEditor({ visible, task, initialDraft, onClose }: Props) {
             // A task staged as blocked by this one can't also be what it waits
             // on — that's the one-hop loop, and neither draft is saved yet for
             // the sheet's own cycle check to see.
-            excludeIds={blocksIds}
+            excludeIds={blocksExcludeIds}
             onClose={() => setShowBlockerPicker(false)}
-            onSelect={setBlockedById}
+            onSelect={id => setBlockerIds(prev => (prev.includes(id) ? prev : [...prev, id]))}
           />
           <TaskRelationPickerSheet
             relation="blocks"
@@ -3722,6 +3745,7 @@ export function TaskEditor({ visible, task, initialDraft, onClose }: Props) {
             key: 'deliverable', label: 'Ask on completion', set: deliverableKind !== null,
             keywords: ['decision', 'decide', 'answer', 'value', 'capture', 'record', 'prompt', 'question'],
             node: (
+              <>
               <CollapsibleField
                 label="Ask on completion"
                 summary={deliverableKind ? deliverableMeta(deliverableKind).label : undefined}
@@ -3739,6 +3763,46 @@ export function TaskEditor({ visible, task, initialDraft, onClose }: Props) {
                   onChange={kind => { setDeliverableKind(kind); closeField('deliverable'); }}
                 />
               </CollapsibleField>
+              {/* Outside the collapsible, so the options stay in view once a
+                  pick closes it: a Pick-one with no options is a question
+                  with nothing to pick. */}
+              {deliverableKind === 'choice' && (
+                <TextInput
+                  style={[styles.fieldBox, styles.followUpTaskTitleInput]}
+                  value={deliverableOptionsText}
+                  onChangeText={setDeliverableOptionsText}
+                  placeholder="e.g. Yes, No, Maybe"
+                  placeholderTextColor={colors.textTertiary}
+                  returnKeyType="done"
+                  accessibilityLabel="Options to pick from, separated by commas"
+                />
+              )}
+              {deliverableKind === 'date' && project !== null && (
+                <TouchableOpacity
+                  style={styles.optionRow}
+                  onPress={() => { haptics.tap(); setDeliverableSetsAway(v => !v); }}
+                  activeOpacity={interaction.activeOpacity}
+                  accessibilityRole="switch"
+                  accessibilityState={{ checked: deliverableSetsAway }}
+                  accessibilityLabel="Use the answer as the project's leaving date"
+                >
+                  <Ionicons
+                    name="airplane-outline"
+                    size={18}
+                    color={deliverableSetsAway ? colors.accent : colors.textSecondary}
+                  />
+                  <View style={styles.optionContent}>
+                    <Text style={styles.optionLabel}>Sets the leaving date</Text>
+                    <Text style={styles.optionHint}>
+                      The date you answer becomes the project's Leaving date, if it doesn't have one yet
+                    </Text>
+                  </View>
+                  <View style={[styles.toggle, deliverableSetsAway && styles.toggleOn]}>
+                    <View style={[styles.toggleKnob, deliverableSetsAway && styles.toggleKnobOn]} />
+                  </View>
+                </TouchableOpacity>
+              )}
+              </>
             ),
           },
           // Another "what does completing this mean" question, and — like
@@ -4927,22 +4991,56 @@ export function TaskEditor({ visible, task, initialDraft, onClose }: Props) {
         onMatchCount={reportMatches}
         rows={[
           {
-            key: 'waitingOn', label: 'Waiting on', set: !!blockedById,
-            keywords: ['blocked', 'blocker', 'depends on', 'after', 'until'],
+            key: 'waitingOn', label: 'Waiting on', set: blockerIds.length > 0,
+            keywords: ['blocked', 'blocker', 'depends on', 'after', 'until', 'all of'],
             node: (
               <>
             <EditorRow
               icon="hourglass-outline"
               label="Waiting on"
-              hint="Stay hidden until another task is done."
-              value={
-                blockerTask
-                  ? displayTitleFor(blockerTask)
-                  : blockedById ? 'Task no longer exists' : undefined
-              }
-              onPress={() => setShowBlockerPicker(true)}
-              onClear={blockedById ? () => setBlockedById(null) : undefined}
+              hint="Stay hidden until other tasks are done. With several, it waits for all of them."
+              value={describeBlocks(blockerTitles)}
+              // Nothing picked yet: straight to the picker, as it always did.
+              // Once there's one, the row unfolds into the list, which is
+              // where a second is added and any is taken back off.
+              expanded={blockerIds.length > 0 ? showBlockers : undefined}
+              onPress={() => {
+                if (blockerIds.length === 0) { setShowBlockerPicker(true); return; }
+                animateLayout();
+                setShowBlockers(v => !v);
+              }}
+              onClear={blockerIds.length > 0
+                ? () => { animateLayout(); setBlockerIds([]); setShowBlockers(false); }
+                : undefined}
             />
+            {showBlockers && blockerIds.length > 0 && (
+              <View style={styles.blocksBlock}>
+                {blockerIds.map((id, i) => (
+                  <View key={id} style={styles.blocksRow}>
+                    <Ionicons name="hourglass-outline" size={16} color={colors.textSecondary} />
+                    <Text style={styles.blocksTitle} numberOfLines={1}>
+                      {blockerTitles[i] || 'Task no longer exists'}
+                    </Text>
+                    <TouchableOpacity
+                      onPress={() => { animateLayout(); setBlockerIds(prev => prev.filter(x => x !== id)); }}
+                      hitSlop={8}
+                      style={styles.blocksRemove}
+                      accessibilityRole="button"
+                      accessibilityLabel={`Stop waiting on ${blockerTitles[i] || 'this task'}`}
+                    >
+                      <Ionicons name="close" size={14} color={colors.textSecondary} />
+                    </TouchableOpacity>
+                  </View>
+                ))}
+                <InlineAction
+                  icon="add"
+                  label="Add task"
+                  accessibilityLabel="Add another task this one waits on"
+                  onPress={() => setShowBlockerPicker(true)}
+                  style={styles.addBtnSpacing}
+                />
+              </View>
+            )}
               </>
             ),
           },
@@ -4962,7 +5060,7 @@ export function TaskEditor({ visible, task, initialDraft, onClose }: Props) {
               <CollapsibleField
                 label="Waiting on someone"
                 summary={waitingPerson ? displayNameOf(waitingPerson) : undefined}
-                hint="Stay hidden until they come back to you. Nothing clears this on its own."
+                hint="Stay hidden until they come back to you. Set a date to get a follow-up task that day. Nothing clears this on its own."
                 expanded={fieldOpen('waitingOnPerson')}
                 onToggle={() => toggleField('waitingOnPerson')}
               >

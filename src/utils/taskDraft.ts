@@ -394,11 +394,14 @@ export function newTaskFromDraft(
     phoneNumber: draft.phoneNumber ?? null,
     emailAddress: draft.emailAddress ?? null,
     location: draft.location ?? null,
-    blockedById: draft.blockedById ?? null,
+    blockedById: draft.blockedById ?? draft.blockedByIds?.[0] ?? null,
+    blockedByIds: draft.blockedById ? (draft.blockedByIds ?? []) : (draft.blockedByIds ?? []).slice(1),
     waitingOnPersonId: null,
     waitingOnPersonSince: null,
     waitingFollowUpDeclinedAt: null,
     deliverableKind: draft.deliverableKind ?? null,
+    deliverableOptions: draft.deliverableOptions ?? [],
+    deliverableSetsAway: draft.deliverableSetsAway ?? false,
     // Never read off the draft: the question carries, the answer doesn't. A
     // template or a duplicate that arrived holding someone else's answer would
     // read as a decision already made.

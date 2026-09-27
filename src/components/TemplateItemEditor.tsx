@@ -46,7 +46,7 @@ import {
 import { categoryLabel } from '../utils/categoryLabel';
 import { formatHHMM, hhmmToDate, dateToHHMM } from '../utils/dateUtils';
 import { generateId } from '../utils/id';
-import { deliverableMeta } from '../utils/deliverables';
+import { deliverableMeta, parseDeliverableOptions } from '../utils/deliverables';
 import { SortableList } from './SortableList';
 import { DeliverableKindPicker } from './DeliverableKindPicker';
 import { StepMinutes } from './StepMinutes';
@@ -184,6 +184,8 @@ export function TemplateItemEditor({ visible, templateId, templateName, item, in
   const [recurrenceFromCompletion, setRecurrenceFromCompletion] = useState(false);
   const [recurrenceCount, setRecurrenceCount] = useState<number | null>(null);
   const [deliverableKind, setDeliverableKind] = useState<DeliverableKind | null>(null);
+  const [deliverableOptionsText, setDeliverableOptionsText] = useState('');
+  const [deliverableSetsAway, setDeliverableSetsAway] = useState(false);
   const [chainEnabled, setChainEnabled] = useState(false);
   const [chainItems, setChainItems] = useState<ChainItem[]>([]);
   // By id rather than index — see the same state in TaskEditor.
@@ -260,6 +262,8 @@ export function TemplateItemEditor({ visible, templateId, templateName, item, in
     setRecurrenceFromCompletion(item?.recurrenceFromCompletion ?? draft?.recurrenceFromCompletion ?? false);
     setRecurrenceCount(item?.recurrenceCount ?? draft?.recurrenceCount ?? null);
     setDeliverableKind(item?.deliverableKind ?? draft?.deliverableKind ?? null);
+    setDeliverableOptionsText((item?.deliverableOptions ?? draft?.deliverableOptions ?? []).join(', '));
+    setDeliverableSetsAway(item?.deliverableSetsAway ?? draft?.deliverableSetsAway ?? false);
     setChainEnabled(item?.chainEnabled ?? draft?.chainEnabled ?? false);
     setChainItems(item?.chainItems ?? draft?.chainItems ?? []);
     setRotationEnabled(item?.rotationEnabled ?? false);
@@ -419,6 +423,8 @@ export function TemplateItemEditor({ visible, templateId, templateName, item, in
       recurrenceFromCompletion,
       recurrenceCount: recurrenceType !== 'none' ? recurrenceCount : null,
       deliverableKind,
+      deliverableOptions: deliverableKind === 'choice' ? parseDeliverableOptions(deliverableOptionsText) : [],
+      deliverableSetsAway: deliverableKind === 'date' && tripTemplate && deliverableSetsAway,
       // A chain needs at least 2 steps — activeChainStep() (src/utils/chain.ts)
       // already treats a single-item chain as equivalent to a plain task, so
       // saving with fewer than 2 items quietly turns Chain back off rather
@@ -1579,6 +1585,39 @@ export function TemplateItemEditor({ visible, templateId, templateName, item, in
             onChange={kind => { setDeliverableKind(kind); closeField('deliverable'); }}
           />
         </CollapsibleField>
+        {deliverableKind === 'choice' && (
+          <TextInput
+            style={[styles.fieldBox, styles.deliverableOptionsInput]}
+            value={deliverableOptionsText}
+            onChangeText={setDeliverableOptionsText}
+            placeholder="e.g. Yes, No, Maybe"
+            placeholderTextColor={colors.textTertiary}
+            returnKeyType="done"
+            accessibilityLabel="Options to pick from, separated by commas"
+          />
+        )}
+        {/* Only on a trip template: "Pick dates" answered with the 14th is
+            the trip leaving on the 14th, so the project it lands in can
+            learn its Leaving date from the answer. */}
+        {deliverableKind === 'date' && tripTemplate && (
+          <TouchableOpacity
+            style={styles.optionRow}
+            onPress={() => { haptics.tap(); setDeliverableSetsAway(!deliverableSetsAway); }}
+            activeOpacity={interaction.activeOpacity}
+            accessibilityRole="switch"
+            accessibilityLabel="Use the answer as the trip's leaving date"
+            accessibilityState={{ checked: deliverableSetsAway }}
+          >
+            <Ionicons name="airplane-outline" size={18} color={deliverableSetsAway ? colors.accent : colors.textSecondary} />
+            <View style={styles.optionContent}>
+              <Text style={styles.optionLabel}>Sets the leaving date</Text>
+              <Text style={styles.optionHint}>The date you answer becomes the trip's Leaving date, if it doesn't have one yet</Text>
+            </View>
+            <View style={[styles.toggle, deliverableSetsAway && styles.toggleOn]}>
+              <View style={[styles.toggleKnob, deliverableSetsAway && styles.toggleKnobOn]} />
+            </View>
+          </TouchableOpacity>
+        )}
       </View>
 
       {/* Subtasks */}
@@ -2084,4 +2123,5 @@ const makeStyles = (colors: Colors) => StyleSheet.create({
   },
   /** Sits between the medication's name and its unit row. */
   medicationAmountInput: { marginTop: spacing.sm, marginBottom: spacing.sm },
+  deliverableOptionsInput: { marginHorizontal: spacing.md, marginVertical: spacing.sm, height: 40 },
 });

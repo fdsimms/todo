@@ -100,6 +100,50 @@ export function buildProjectListItems(
 }
 
 /**
+ * The same page sorted A to Z, for a list: the loose lines by title among the
+ * slots loose lines hold (a section stays where it is), and each section's own
+ * lines by title within it. Case and accents ignored, numbers read as numbers
+ * ("Chapter 2" before "Chapter 10"). Answers the two orders to write, top-level
+ * ids for `reorderProjectItems` and each section's for `reorderGroupChildren`.
+ */
+export function alphabeticalPageOrder(items: readonly ProjectListItem[]): {
+  top: string[];
+  sections: Array<{ groupId: string; ids: string[] }>;
+} {
+  const collator = new Intl.Collator(undefined, { sensitivity: 'base', numeric: true });
+  const byTitle = (a: Task, b: Task) => collator.compare(a.title.trim(), b.title.trim());
+  const loose = items
+    .filter((i): i is { type: 'task'; task: Task } => i.type === 'task')
+    .map(i => i.task)
+    .sort(byTitle);
+  let next = 0;
+  const top = items.map(item => (item.type === 'group' ? item.group.id : loose[next++].id));
+  const sections = items
+    .filter((i): i is { type: 'group'; group: TaskGroup; children: Task[] } => i.type === 'group')
+    .filter(i => i.children.length > 1)
+    .map(i => ({ groupId: i.group.id, ids: [...i.children].sort(byTitle).map(t => t.id) }));
+  return { top, sections };
+}
+
+/**
+ * A project's tasks in the order its page draws them, flattened: loose tasks
+ * and sections merged by their shared order, each section's own tasks in
+ * theirs. What "the first open task" means for a project worked in order.
+ */
+export function projectPageOrder(
+  tasks: readonly Task[],
+  groups: readonly TaskGroup[],
+  projectId: string,
+): Task[] {
+  const sorted = [...tasks].sort((a, b) => a.sortOrder - b.sortOrder || a.id.localeCompare(b.id));
+  return buildProjectListItems(sorted, [...groups], projectId).flatMap(item =>
+    item.type === 'task'
+      ? [item.task]
+      : [...item.children].sort((a, b) => a.sortOrder - b.sortOrder || a.id.localeCompare(b.id)),
+  );
+}
+
+/**
  * The project's open tasks as plain text, the way "Copy task names" puts them
  * on the clipboard: one line per task, in the order on screen, each section's
  * title as a heading over its own tasks, and open subtasks indented under the

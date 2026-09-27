@@ -62,6 +62,24 @@ export function awayNoonIso(date: Date): string {
 }
 
 /**
+ * The Leaving date a date answer gives a project, or null to leave it alone.
+ *
+ * "Pick dates for Lisbon" answered with the 14th: the task opted in
+ * (`Task.deliverableSetsAway`), so the trip leaves on the 14th. Only ever
+ * fills an empty Leaving date, never moves one somebody set, and refuses a
+ * day after an existing Coming back rather than write a span that ends before
+ * it starts.
+ */
+export function departureFromAnswer(
+  project: Pick<Project, 'awayStart' | 'awayEnd'>,
+  answer: Date | null,
+): string | null {
+  if (!answer || project.awayStart) return null;
+  if (project.awayEnd && getDayStart(answer).getTime() > getDayStart(new Date(project.awayEnd)).getTime()) return null;
+  return awayNoonIso(answer);
+}
+
+/**
  * The span this project actually has, or null if it has none.
  *
  * An `awayEnd` without an `awayStart` is dropped rather than promoted: on its

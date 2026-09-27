@@ -1,7 +1,8 @@
 import type { Person, Task } from '../types';
 
 /**
- * "Waiting on" — task-to-task blocking (see Task.blockedById).
+ * "Waiting on" — task-to-task blocking (see Task.blockedById). A task can wait
+ * on several, and waits for all of them (Task.blockedByIds).
  *
  * Everything here is pure and takes its task data as a parameter, matching the
  * other utils in this folder (pinSuggest, projectPull, deloadPlan). The one hot
@@ -32,16 +33,50 @@ export function canBlock(task: Task | undefined): boolean {
   return task != null && !task.completed && !task.archived;
 }
 
-/** The task this one is waiting on, or undefined if it isn't waiting. */
-export function blockerOf(task: Task, resolve: TaskResolver): Task | undefined {
-  if (!task.blockedById) return undefined;
-  const blocker = resolve(task.blockedById);
-  return canBlock(blocker) ? blocker : undefined;
+/**
+ * Every task this one waits on, in order, repeats dropped: `blockedById`
+ * first, then `blockedByIds`. The one read of the set, so no reader can treat
+ * the first as the whole of it.
+ */
+export function blockerIdsOf(task: Pick<Task, 'blockedById'> & { blockedByIds?: readonly string[] }): string[] {
+  const ids: string[] = [];
+  for (const id of [task.blockedById, ...(task.blockedByIds ?? [])]) {
+    if (id && !ids.includes(id)) ids.push(id);
+  }
+  return ids;
 }
 
-/** True while `task` is held back by another task that isn't done yet. */
+/**
+ * The two fields that store a set of blockers, in step: the first in
+ * `blockedById`, where everything written before the list existed looks, and
+ * the rest in `blockedByIds`. The one writer, so the list never has entries
+ * while the single field is empty.
+ */
+export function blockerFields(ids: readonly string[]): Pick<Task, 'blockedById'> & { blockedByIds: string[] } {
+  const unique = ids.filter((id, i) => !!id && ids.indexOf(id) === i);
+  return { blockedById: unique[0] ?? null, blockedByIds: unique.slice(1) };
+}
+
+/** The tasks still holding this one back, in order: every blocker that can still block. */
+export function liveBlockersOf(task: Task, resolve: TaskResolver): Task[] {
+  return blockerIdsOf(task).map(resolve).filter((t): t is Task => canBlock(t));
+}
+
+/**
+ * The first task this one is still waiting on, or undefined if it isn't
+ * waiting. With several, the others are `liveBlockersOf`; this is the one a
+ * row names.
+ */
+export function blockerOf(task: Task, resolve: TaskResolver): Task | undefined {
+  return liveBlockersOf(task, resolve)[0];
+}
+
+/**
+ * True while `task` is held back by another task that isn't done yet. With
+ * several blockers it waits for all of them: any one still open holds it.
+ */
 export function isBlocked(task: Task, resolve: TaskResolver): boolean {
-  return blockerOf(task, resolve) !== undefined;
+  return blockerIdsOf(task).some(id => canBlock(resolve(id)));
 }
 
 /** Resolves a person id to their row, or undefined. `peopleRegistry` supplies it. */
@@ -92,13 +127,17 @@ export function isWaitingOnPerson(task: Pick<Task, 'waitingOnPersonId'>, resolve
  * here forever, and this runs during render.
  */
 export function wouldCycle(taskId: string, blockerId: string, resolve: TaskResolver): boolean {
+  // A walk over every blocker each task has, now that a task can wait on
+  // several: the loop can close through any of them.
   const seen = new Set<string>();
-  let current: string | undefined = blockerId;
-  while (current) {
+  const stack = [blockerId];
+  while (stack.length > 0) {
+    const current = stack.pop()!;
     if (current === taskId) return true;
-    if (seen.has(current)) return false; // pre-existing loop, doesn't reach taskId
+    if (seen.has(current)) continue; // pre-existing loop, doesn't reach taskId
     seen.add(current);
-    current = resolve(current)?.blockedById ?? undefined;
+    const row = resolve(current);
+    if (row) stack.push(...blockerIdsOf(row));
   }
   return false;
 }
@@ -154,7 +193,7 @@ export function sortByBlockerAffinity(tasks: Task[], ctx: BlockerContext): Task[
  * behind this task, and a waiter that's already done or filed away isn't that.
  */
 export function waitingOn(taskId: string, tasks: Task[]): Task[] {
-  return tasks.filter(t => t.blockedById === taskId && !t.completed && !t.archived && !t.parentId);
+  return tasks.filter(t => !t.completed && !t.archived && !t.parentId && blockerIdsOf(t).includes(taskId));
 }
 
 /**
@@ -176,27 +215,24 @@ export function canBeBlockerOf(candidate: Task, taskId: string | null, resolve: 
 
 /**
  * Whether `candidate` can be offered as something `blockerId` blocks — that
- * is, whether its own `blockedById` may be pointed at `blockerId`.
+ * is, whether `blockerId` may be added to what it waits on.
  *
- * The same eligibility with the cycle check turned round, plus the one rule
- * this direction needs and the other doesn't: `blockedById` is a single
- * pointer, so a candidate already waiting on some *other* task can't be taken
- * without silently dropping a relationship set from over there. It's left out
- * of the list rather than offered and overwritten — the sheet says why, and
- * that task's own editor is still where its blocker changes.
+ * The same eligibility with the cycle check turned round. A candidate already
+ * waiting on some other task is fine: it gains this one as well and waits for
+ * both. (It used to be left out, when a task could wait on one thing only and
+ * taking it would have dropped the relationship set from over there.)
  */
 export function canBeBlockedBy(candidate: Task, blockerId: string | null, resolve: TaskResolver): boolean {
   if (candidate.parentId || candidate.completed || candidate.archived) return false;
   if (candidate.id === blockerId) return false;
-  if (candidate.blockedById && candidate.blockedById !== blockerId) return false;
   return !(blockerId && wouldCycle(candidate.id, blockerId, resolve));
 }
 
 /** The writes that make `taskIds` the set of tasks waiting on `blockerId`. */
 export interface BlocksEdit {
-  /** Tasks to point at the blocker. */
+  /** Tasks to add the blocker to. */
   link: string[];
-  /** Tasks to release, i.e. write `blockedById: null` to. */
+  /** Tasks to take the blocker off, leaving whatever else they wait on. */
   unlink: string[];
 }
 
@@ -215,7 +251,7 @@ export function resolveBlocksEdit(blockerId: string, taskIds: string[], tasks: T
   const wanted = new Set(taskIds);
   const link = [...wanted].filter(id => {
     const task = resolve(id);
-    return task != null && task.blockedById !== blockerId && canBeBlockedBy(task, blockerId, resolve);
+    return task != null && !blockerIdsOf(task).includes(blockerId) && canBeBlockedBy(task, blockerId, resolve);
   });
   const unlink = waitingOn(blockerId, tasks).filter(t => !wanted.has(t.id)).map(t => t.id);
   return { link, unlink };

@@ -324,6 +324,10 @@ one. Those three rules and the reasoning behind them are in
     `pinnedOrder` is against restamping on every unrelated re-save of an already-waiting task. Cleared
     back to null when the wait ends, and the decline stamp is cleared alongside it: a decline about
     the *previous* wait says nothing about a fresh one.
+  - **A date on the waiting task is when to ask** (`followUpDue`). "Waiting on the contractor, chase
+    it Friday" is a due date on the waiting task, and the task itself is still held back on Friday,
+    so the follow-up is the only row that can surface that day. It fires on the date whether or not
+    the threshold has run; with no date the threshold is the only way in, as before.
   - **The cap is two and the order is never re-ranked**, for `reachOut`'s own reason applied to a
     task instead of a person: sorting the due set by longest-waiting would still be the app quietly
     deciding whose wait matters most, just measured on the task rather than the person it's about.

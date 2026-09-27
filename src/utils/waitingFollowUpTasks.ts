@@ -84,6 +84,31 @@ export function waitingFollowUpsHandledRecently(
   return done;
 }
 
+/**
+ * Whether this wait has reached the point of asking about it.
+ *
+ * Two ways in. A date on the waiting task is the person saying when: "waiting
+ * on the contractor for the quote, chase it Friday". The task itself stays
+ * held back on Friday (it still can't be done), so the follow-up is the only
+ * thing that can surface that day, and it does whether or not the week has
+ * gone by. Without a date, the wait has to have run for the threshold.
+ */
+export function followUpDue(
+  task: Pick<Task, 'dueDate' | 'waitingOnPersonSince'>,
+  today: Date,
+): boolean {
+  if (task.dueDate) {
+    return differenceInCalendarDays(today, getDayStart(new Date(task.dueDate))) >= 0;
+  }
+  // No stamp is a task waiting on somebody from before this generator
+  // existed — treated as "not long enough yet" rather than guessed at,
+  // the same refusal `hasNoDateSignal`'s callers make about a field that
+  // predates the read asking about it.
+  if (!task.waitingOnPersonSince) return false;
+  const waitingDays = differenceInCalendarDays(today, getDayStart(new Date(task.waitingOnPersonSince)));
+  return waitingDays >= WAITING_FOLLOW_UP_THRESHOLD_DAYS;
+}
+
 /** One wait that should have a follow-up task sitting on the list right now. */
 export interface WaitingFollowUpWant {
   taskId: string;
@@ -119,13 +144,7 @@ export function wantedWaitingFollowUps(
     if (!canWaitOn(person)) continue;
     if (handledRecently.has(task.id)) continue;
     if (declinedRecently(task, today)) continue;
-    // No stamp is a task waiting on somebody from before this generator
-    // existed — treated as "not long enough yet" rather than guessed at,
-    // the same refusal `hasNoDateSignal`'s callers make about a field that
-    // predates the read asking about it.
-    if (!task.waitingOnPersonSince) continue;
-    const waitingDays = differenceInCalendarDays(today, getDayStart(new Date(task.waitingOnPersonSince)));
-    if (waitingDays < WAITING_FOLLOW_UP_THRESHOLD_DAYS) continue;
+    if (!followUpDue(task, today)) continue;
     wants.push({
       taskId: task.id,
       personId: person!.id,

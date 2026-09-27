@@ -3,6 +3,8 @@ import type { Project, Task } from '../types';
 import { DEFAULT_NUDGE_CADENCE_DAYS } from '../types';
 import { dayKeyOf, dayKeyToDate, getCurrentDayStart, getDayStart } from './dateUtils';
 import { isPausedOn } from './projectPause';
+import { isChecklistRow, sectionsNow } from './sectionRegistry';
+import { projectPageOrder } from './projectStacks';
 import { format } from 'date-fns/format';
 import { hasNoDateSignal, isHeldBack } from './visibilityUtils';
 import { scoreTask, type PinContext } from './pinSuggest';
@@ -320,7 +322,20 @@ function classifyProject(
   // project at once.
   if (oneOffs.some(t => t.dueDate != null)) return { reason: 'has-schedule' };
 
-  const pullable = oneOffs.filter(isPullable);
+  // A checklist section's lines are ticked off, not scheduled, so they're
+  // never the task pulled in (see TaskGroup.checklist).
+  let pullable = oneOffs.filter(t => isPullable(t) && !isChecklistRow(t));
+  // Worked in order: only the first open task on the page may be offered, and
+  // if that one can't be (it's waiting on something), nothing after it jumps
+  // the queue. Routines and checklist lines aren't steps, so they're skipped.
+  if (project.inOrder) {
+    const first = projectPageOrder(
+      members.filter(t => !isRoutine(t) && !isChecklistRow(t)),
+      sectionsNow(),
+      project.id,
+    )[0];
+    pullable = first && pullable.includes(first) ? [first] : [];
+  }
   if (pullable.length === 0) return { reason: 'no-pullable' };
 
   // Nudge-mode only, for the same reason the cadence is: this answers "should I
@@ -632,8 +647,8 @@ export function describePullEmpty(state: PullEmptyState): string {
         : `${projects(count)} of ${total} have only tasks that are waiting on another task.${rest}`;
     case 'no-pullable':
       return count === total
-        ? 'Only mid-chain steps are left, and those get their turn by being completed, not by being dated.'
-        : `${projects(count)} of ${total} have only mid-chain steps left, which can't be dated.${rest}`;
+        ? "What's left can't be pulled. Mid-chain steps and checklist lines are checked off rather than dated, and a project worked in order waits for its first open task."
+        : `${projects(count)} of ${total} have nothing that can be pulled: mid-chain steps, checklist lines, or a first task in order that's waiting.${rest}`;
     case 'no-live-tasks':
       return count === total
         ? 'Nothing left to do in any project.'

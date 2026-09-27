@@ -29,6 +29,7 @@ import {
   chainStepDatedByAnswer,
   deliverableDate,
   deliverableKindFor,
+  deliverableOptionsFor,
 } from '../utils/deliverables';
 import { SafeBlurView } from './SafeBlurView';
 import { SheetHeaderButton } from './SheetHeaderButton';
@@ -97,6 +98,10 @@ export function DeliverablePromptSheet({ visible, task, mode = 'complete', onCon
   // a day nobody chose: the answer is doing two jobs and only one of them is
   // visible from the question.
   const datesStep = chainStepDatedByAnswer(task);
+  // Yes/No and Pick-one answer with a tap on one of these. Empty for every
+  // other kind, and for a Pick-one with fewer than two options, which falls
+  // back to the text field rather than offering one button.
+  const options = deliverableOptionsFor(task);
 
   const hiddenY = useSheetHiddenOffset();
 
@@ -173,7 +178,7 @@ export function DeliverablePromptSheet({ visible, task, mode = 'complete', onCon
     // animation rather than after it, so the keyboard is up sooner — same
     // fix as QuickAddModal's (#1210). A date answers through the calendar,
     // so there's no field to focus and no keyboard wanted.
-    if (kind !== 'date') inputRef.current?.focus();
+    if (kind !== 'date' && options.length === 0) inputRef.current?.focus();
   }, [visible, task.id]);
 
   const dismiss = (after: () => void) => {
@@ -234,7 +239,27 @@ export function DeliverablePromptSheet({ visible, task, mode = 'complete', onCon
 
           <Text style={styles.label}>Answer</Text>
 
-          {kind === 'date' ? (
+          {options.length > 0 ? (
+            <View style={styles.options}>
+              {options.map(option => {
+                const chosen = draft.trim().toLowerCase() === option.toLowerCase();
+                return (
+                  <TouchableOpacity
+                    key={option}
+                    style={[styles.option, chosen && styles.optionChosen]}
+                    onPress={() => { setDraft(option); confirm(option); }}
+                    activeOpacity={interaction.activeOpacity}
+                    accessibilityRole="button"
+                    accessibilityState={{ selected: chosen }}
+                    accessibilityLabel={mode === 'edit' ? `Answer ${option}` : `Complete with ${option}`}
+                  >
+                    <Text style={[styles.optionText, chosen && styles.optionTextChosen]}>{option}</Text>
+                    {chosen && <Ionicons name="checkmark" size={iconSize.sm} color={colors.accent} />}
+                  </TouchableOpacity>
+                );
+              })}
+            </View>
+          ) : kind === 'date' ? (
             <>
               <TouchableOpacity
                 style={styles.field}
@@ -416,6 +441,19 @@ const makeStyles = (colors: Colors) => StyleSheet.create({
     backgroundColor: colors.bgTertiary,
   },
   pillText: { color: colors.text, fontSize: font.sm },
+  options: { gap: spacing.sm, paddingHorizontal: spacing.md },
+  option: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    paddingHorizontal: spacing.md,
+    height: 48,
+    borderRadius: radius.md,
+    backgroundColor: colors.bgTertiary,
+  },
+  optionChosen: { borderWidth: 1, borderColor: colors.accent },
+  optionText: { color: colors.text, fontSize: font.lg },
+  optionTextChosen: { fontWeight: fontWeight.semibold },
   skipRow: {
     alignItems: 'center',
     marginHorizontal: spacing.md,
