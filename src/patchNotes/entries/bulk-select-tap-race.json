@@ -1,0 +1,4 @@
+{
+  "message": "Fixed a bug where tapping a task's selection dot during bulk editing could mark a neighboring row instead of the one you tapped",
+  "date": "2026-09-27"
+}
