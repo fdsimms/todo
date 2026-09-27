@@ -59,7 +59,9 @@ import {
 import type { DragScroller, DropZone, FabDropIntent } from '../utils/fabDrop';
 import { useSettingsStore } from '../store/useSettingsStore';
 import { addDays } from 'date-fns/addDays';
-import { dayKeyOf } from '../utils/dateUtils';
+import { dayKeyOf, formatScheduledDate } from '../utils/dateUtils';
+import { categoryLabel } from '../utils/categoryLabel';
+import { useCategoryStore } from '../store/useCategoryStore';
 import { awayNights, awaySpanOf } from '../utils/awayDates';
 import { geocodePlace } from '../services/geocode';
 import { fetchDestinationForecast } from '../services/weatherLookup';
@@ -173,6 +175,7 @@ export function ProjectDetailScreen() {
   const reorderGroupChildren = useTaskStore(s => s.reorderGroupChildren);
   const removeFromGroup = useTaskStore(s => s.removeFromGroup);
   const dayResetTime = useSettingsStore(s => s.dayResetTime);
+  const taskCategories = useCategoryStore(useShallow(s => s.categories));
   // The summary's deadline words move with the day; see ProjectsScreen.
   useLogicalDayKey();
   const reorderProjectItems = useTaskStore(s => s.reorderProjectItems);
@@ -235,6 +238,8 @@ export function ProjectDetailScreen() {
   const [draggingSectionId, setDraggingSectionId] = useState<string | null>(null);
   const [quickAddVisible, setQuickAddVisible] = useState(false);
   const [listDraft, setListDraft] = useState('');
+  // The line just added from the list's field, named under it for a moment.
+  const [lastListAdd, setLastListAdd] = useState<string | null>(null);
   const listInputRef = useRef<TextInput>(null);
   const [templatePickerVisible, setTemplatePickerVisible] = useState(false);
   const [suggestionsVisible, setSuggestionsVisible] = useState(false);
@@ -808,10 +813,19 @@ export function ProjectDetailScreen() {
     const title = listDraft.trim();
     if (!title || !project) return;
     animateLayout();
-    addTask({ title, projectId: project.id }, undefined, { skipTitleRules: true });
+    const task = addTask({ title, projectId: project.id }, undefined, { skipTitleRules: true });
     haptics.tap();
     setListDraft('');
     listInputRef.current?.focus();
+    // The line goes to the end of the list, in the order it was written, which
+    // on a long list is off screen: the field keeps the keyboard for the next
+    // line, so scrolling down to it would take the field away instead. The
+    // row flashes for whoever can see it, and the note under the field says
+    // where it went for whoever can't.
+    if (flashTimeoutRef.current) clearTimeout(flashTimeoutRef.current);
+    setFlashTaskId(task.id);
+    setLastListAdd(title);
+    flashTimeoutRef.current = setTimeout(() => { setFlashTaskId(null); setLastListAdd(null); }, 2500);
   };
 
   const renderProjectTaskItem = (
@@ -946,7 +960,9 @@ export function ProjectDetailScreen() {
                 accessibilityRole="button"
                 accessibilityLabel="Edit project"
               >
-                <Ionicons name="ellipsis-horizontal" size={20} color={colors.textSecondary} />
+                {/* A pencil, not "…": it opens the editor straight away, and
+                    three dots promise a menu of choices first. */}
+                <Ionicons name="create-outline" size={20} color={colors.textSecondary} />
               </TouchableOpacity>
             </View>
           }
@@ -1102,7 +1118,11 @@ export function ProjectDetailScreen() {
                       {summaryProgress}
                       {summaryProgress && summaryCaption ? ' · ' : ''}
                       {summaryCaption && (
-                        <Text style={summaryCaption.overdue && pastWindow ? styles.summaryOverdue : undefined}>
+                        <Text
+                          style={summaryCaption.overdue && pastWindow
+                            ? styles.summaryOverdue
+                            : summaryCaption.soon ? styles.summarySoon : undefined}
+                        >
                           {summaryCaption.text}
                         </Text>
                       )}
@@ -1150,10 +1170,18 @@ export function ProjectDetailScreen() {
                       placeholder="e.g. Ask about the MRI results"
                       placeholderTextColor={colors.textTertiary}
                       maxLength={TITLE_MAX_LENGTH}
-                      returnKeyType="done"
+                      // "Next", not "Done": the return key adds the line and
+                      // keeps the keyboard up for another.
+                      returnKeyType="next"
                       blurOnSubmit={false}
+                      accessibilityLabel="Add a line to this list"
                     />
                   </View>
+                )}
+                {isList && !selectionMode && lastListAdd && (
+                  <Text style={styles.listAddNote} numberOfLines={1} accessibilityLiveRegion="polite">
+                    Added to the end: {lastListAdd}
+                  </Text>
                 )}
                 <ProjectDecisions
                   decisions={decisions}
@@ -1434,21 +1462,32 @@ export function ProjectDetailScreen() {
                   </Text>
                 ) : null
               }
-              renderItem={({ item }) => (
-                <TouchableOpacity
-                  style={styles.pickerRow}
-                  onPress={() => {
-                    if (project) addExistingToProject(item.id, project.id);
-                    haptics.tap();
-                  }}
-                  activeOpacity={interaction.activeOpacity}
-                  accessibilityRole="button"
-                  accessibilityLabel={`Add ${item.title} to this project`}
-                >
-                  <Text style={styles.pickerRowText} numberOfLines={1}>{item.title}</Text>
-                  <Ionicons name="add-circle-outline" size={18} color={colors.accent} />
-                </TouchableOpacity>
-              )}
+              renderItem={({ item }) => {
+                // Its date and category under the title, so two tasks with the
+                // same name can be told apart before one is picked.
+                const detail = [
+                  item.dueDate ? formatScheduledDate(item.dueDate, dayResetTime) : null,
+                  item.category ? categoryLabel(item.category, taskCategories) : null,
+                ].filter(Boolean).join(' · ');
+                return (
+                  <TouchableOpacity
+                    style={styles.pickerRow}
+                    onPress={() => {
+                      if (project) addExistingToProject(item.id, project.id);
+                      haptics.tap();
+                    }}
+                    activeOpacity={interaction.activeOpacity}
+                    accessibilityRole="button"
+                    accessibilityLabel={`Add ${item.title}${detail ? `, ${detail}` : ''} to this project`}
+                  >
+                    <View style={styles.pickerRowInfo}>
+                      <Text style={styles.pickerRowText} numberOfLines={1}>{item.title}</Text>
+                      {!!detail && <Text style={styles.pickerRowDetail} numberOfLines={1}>{detail}</Text>}
+                    </View>
+                    <Ionicons name="add-circle-outline" size={18} color={colors.accent} />
+                  </TouchableOpacity>
+                );
+              }}
               ListEmptyComponent={
                 <EmptyState icon="search" title="No matching tasks" subtitle="Tasks already in a project, or completed, won't show here" />
               }
@@ -1551,6 +1590,10 @@ export function ProjectDetailScreen() {
           projectTitle={project?.title ?? ''}
           projectNotes={project?.notes ?? ''}
           existingTitles={projectTasks.map(t => t.title)}
+          isList={isList}
+          // Same toast a template apply gets: the new rows land at the end of
+          // the list, often out of sight, and nothing else said they arrived.
+          onAdded={count => setTemplateAppliedCount(count)}
           onClose={() => setSuggestionsVisible(false)}
         />
 
@@ -1601,6 +1644,7 @@ const makeStyles = (colors: Colors) => StyleSheet.create({
   },
   summaryText: { color: colors.textSecondary, fontSize: font.sm },
   summaryOverdue: { color: colors.orange },
+  summarySoon: { color: colors.text, fontWeight: fontWeight.medium },
   summaryActions: { flexDirection: 'row', flexWrap: 'wrap', gap: spacing.sm },
   // The same drop slot Today leaves in a stack.
   sectionDropSlot: {
@@ -1631,6 +1675,14 @@ const makeStyles = (colors: Colors) => StyleSheet.create({
     // A height rather than lineHeight, which RN maps onto the iOS paragraph
     // style with no baseline compensation and draws the glyphs low in the box.
     minHeight: 44,
+  },
+  // Tucked under the field, into the gap the row's own bottom margin leaves.
+  listAddNote: {
+    color: colors.textSecondary,
+    fontSize: font.xs,
+    marginHorizontal: spacing.md + spacing.md,
+    marginTop: -spacing.xs,
+    marginBottom: spacing.sm,
   },
   listAddInput: {
     flex: 1,
@@ -1723,10 +1775,15 @@ const makeStyles = (colors: Colors) => StyleSheet.create({
     borderRadius: radius.md,
     paddingHorizontal: spacing.md,
     paddingVertical: spacing.smd,
+    gap: spacing.sm,
   },
+  pickerRowInfo: { flex: 1, gap: spacing.xxs },
   pickerRowText: {
-    flex: 1,
     color: colors.text,
     fontSize: font.md,
+  },
+  pickerRowDetail: {
+    color: colors.textSecondary,
+    fontSize: font.xs,
   },
 });

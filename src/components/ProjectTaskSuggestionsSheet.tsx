@@ -28,6 +28,14 @@ interface Props {
   projectNotes: string;
   /** Titles already in the project, so the AI doesn't suggest duplicates. */
   existingTitles: string[];
+  /**
+   * The project is a list (see Project.kind). Its lines are written down
+   * exactly as given, so title rules are skipped for these the way the list's
+   * own add field skips them.
+   */
+  isList?: boolean;
+  /** How many were added, so the screen can say so; the sheet closes itself. */
+  onAdded?: (count: number) => void;
   onClose: () => void;
 }
 
@@ -37,7 +45,9 @@ interface Props {
  * each one accepted or rejected, then adds the accepted ones to the project.
  * Modelled directly on TemplateSuggestionsSheet.
  */
-export function ProjectTaskSuggestionsSheet({ visible, projectId, projectTitle, projectNotes, existingTitles, onClose }: Props) {
+export function ProjectTaskSuggestionsSheet({
+  visible, projectId, projectTitle, projectNotes, existingTitles, isList = false, onAdded, onClose,
+}: Props) {
   const colors = useColors();
   const styles = useMemo(() => makeStyles(colors), [colors]);
   const addTask = useTaskStore(s => s.addTask);
@@ -105,10 +115,11 @@ export function ProjectTaskSuggestionsSheet({ visible, projectId, projectTitle, 
     dbTransaction(() => {
       suggestions.forEach((s, i) => {
         if (!accepted.has(i)) return;
-        addTask({ title: s.title, notes: s.notes, projectId });
+        addTask({ title: s.title, notes: s.notes, projectId }, undefined, { skipTitleRules: isList });
       });
     });
     haptics.success();
+    onAdded?.(accepted.size);
     onClose();
   };
 

@@ -14,7 +14,7 @@ import { SheetModal } from './SheetModal';
 import Ionicons from '@expo/vector-icons/Ionicons';
 import { SafeBlurView } from './SafeBlurView';
 import { WhenPicker } from './WhenPicker';
-import { InlineAction } from './InlineAction';
+import { PillGroup, type PillGroupOption } from './PillGroup';
 import { SheetScrim } from './SheetScrim';
 import { useColors, useTheme } from '../theme/ThemeContext';
 import { spacing, radius, font, fontWeight, animation, interaction, type Colors } from '../theme';
@@ -89,8 +89,6 @@ export function QuickAddProjectModal({
   const [category, setCategory] = useState<string | null>(null);
   const [deadline, setDeadline] = useState<Date | null>(null);
   const [activePanel, setActivePanel] = useState<ActivePanel>(null);
-  const [addingCategory, setAddingCategory] = useState(false);
-  const [newCategory, setNewCategory] = useState('');
   const [deadlinePickerVisible, setDeadlinePickerVisible] = useState(false);
   const [seedActive, setSeedActive] = useState(false);
   // Read only when the sheet opens: a seed that changes identity mid-edit must
@@ -134,8 +132,6 @@ export function QuickAddProjectModal({
     setSeedActive(!!seedRef.current);
     setDeadline(null);
     setActivePanel(null);
-    setAddingCategory(false);
-    setNewCategory('');
     setDeadlinePickerVisible(false);
     scaleAnim.setValue(0.95);
     translateYAnim.setValue(16);
@@ -165,15 +161,9 @@ export function QuickAddProjectModal({
 
   const archivedProjects = useMemo(() => projects.filter(p => p.archived), [projects]);
 
-  // Add/Open full can fire before the new-category field's own blur or Enter
-  // has committed it — same race TaskEditor's resolveLinkUrl guards against.
-  // Read the live text box instead of trusting stale `category` state.
-  const resolveCategory = () => {
-    const c = newCategory.trim();
-    // The stored row's name, which can differ in case from what was typed.
-    if (addingCategory && c) return addCategory(c).name;
-    return category;
-  };
+  // A new category is created and picked the moment it's submitted in the
+  // pill grid below, so there's no half-typed name left to resolve here.
+  const resolveCategory = () => category;
 
   const create = (finalTitle: string) => {
     if (submittedRef.current) return;
@@ -248,12 +238,23 @@ export function QuickAddProjectModal({
     setActivePanel(null);
   };
 
-  const commitNewCategory = () => {
-    const c = newCategory.trim();
-    setNewCategory('');
-    setAddingCategory(false);
-    if (!c) return;
-    pickCategory(addCategory(c).name);
+  // The category pool is one the user builds and has no ceiling, so it's a
+  // PillGroup: past eight it folds behind "N more" and grows a find-or-add
+  // field, where a hand-rolled row of chips took the sheet over. "None" is
+  // pinned so it's never the one buried.
+  const categoryOptions: PillGroupOption[] = [
+    { key: '__none__', label: 'None', pinned: true, selected: category === null, onPress: () => pickCategory(null) },
+    ...[...categories].sort((a, b) => a.sortOrder - b.sortOrder).map(cat => ({
+      key: cat.id,
+      label: cat.name,
+      selected: category === cat.name,
+      onPress: () => pickCategory(category === cat.name ? null : cat.name),
+    })),
+  ];
+  // addCategory answers a taken name with the existing row, so creating one
+  // that exists just picks it, in the stored case.
+  const createCategory = (name: string) => {
+    pickCategory(addCategory(name).name);
   };
 
   return (
@@ -361,43 +362,12 @@ export function QuickAddProjectModal({
 
           {activePanel === 'category' && (
             <View style={styles.panel}>
-              <View style={styles.presetRow}>
-                <TouchableOpacity
-                  style={[styles.presetChip, category === null && styles.presetChipActive]}
-                  onPress={() => pickCategory(null)}
-                  activeOpacity={interaction.activeOpacity}
-                >
-                  <Text style={[styles.presetChipText, category === null && styles.presetChipTextActive]}>None</Text>
-                </TouchableOpacity>
-                {categories.map(cat => (
-                  <TouchableOpacity
-                    key={cat.id}
-                    style={[styles.presetChip, category === cat.name && styles.presetChipActive]}
-                    onPress={() => pickCategory(category === cat.name ? null : cat.name)}
-                    activeOpacity={interaction.activeOpacity}
-                  >
-                    <Text style={[styles.presetChipText, category === cat.name && styles.presetChipTextActive]}>
-                      {cat.name}
-                    </Text>
-                  </TouchableOpacity>
-                ))}
-                {addingCategory ? (
-                  <TextInput
-                    autoFocus
-                    style={styles.categoryInput}
-                    value={newCategory}
-                    onChangeText={setNewCategory}
-                    onSubmitEditing={commitNewCategory}
-                    onBlur={commitNewCategory}
-                    placeholder="Category name"
-                    placeholderTextColor={colors.textTertiary}
-                    returnKeyType="done"
-                    autoCapitalize="words"
-                  />
-                ) : (
-                  <InlineAction icon="add" label="New" accessibilityLabel="New category" onPress={() => setAddingCategory(true)} />
-                )}
-              </View>
+              <PillGroup
+                options={categoryOptions}
+                noun="category"
+                pluralNoun="categories"
+                onCreate={createCategory}
+              />
             </View>
           )}
 
@@ -523,40 +493,6 @@ const makeStyles = (colors: Colors) => StyleSheet.create({
   panel: {
     marginBottom: spacing.sm,
     paddingTop: spacing.xs,
-  },
-  presetRow: {
-    flexDirection: 'row',
-    flexWrap: 'wrap',
-    gap: spacing.xs,
-    alignItems: 'center',
-  },
-  presetChip: {
-    paddingHorizontal: spacing.smd,
-    paddingVertical: spacing.sm,
-    borderRadius: radius.full,
-    backgroundColor: colors.bgTertiary,
-    alignItems: 'center',
-  },
-  presetChipActive: {
-    backgroundColor: colors.accentFill,
-  },
-  presetChipText: {
-    color: colors.textSecondary,
-    fontSize: font.sm,
-    fontWeight: fontWeight.medium,
-  },
-  presetChipTextActive: {
-    color: colors.onAccent,
-    fontWeight: fontWeight.semibold,
-  },
-  categoryInput: {
-    color: colors.text,
-    fontSize: font.sm,
-    borderBottomWidth: 1,
-    borderBottomColor: colors.accent,
-    paddingVertical: 4,
-    paddingHorizontal: 4,
-    minWidth: 80,
   },
   moreBtn: {
     flexDirection: 'row',

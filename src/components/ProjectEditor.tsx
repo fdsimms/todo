@@ -21,7 +21,6 @@ import { PillGroup, type PillGroupOption } from './PillGroup';
 import { useCategoryStore } from '../store/useCategoryStore';
 import { categoryLabel } from '../utils/categoryLabel';
 import { useGroceryStore } from '../store/useGroceryStore';
-import { InlineAction } from './InlineAction';
 import { SheetHeaderButton } from './SheetHeaderButton';
 import { SheetHeader } from './SheetHeader';
 import { EditorRow } from './EditorRow';
@@ -128,8 +127,6 @@ export function ProjectEditor({ visible, project, isNew, onClose }: Props) {
   // Rule 2 of simplified mode: a project that already has a trip keeps its
   // rows, whatever the switch says.
   const awayFieldShown = featureShown('awayDates', simpleMode, awayStart !== null);
-  const [addingCategory, setAddingCategory] = useState(false);
-  const [newCategory, setNewCategory] = useState('');
   // Collapsed to the chosen category until tapped, like every other editor.
   const [categoryOpen, setCategoryOpen] = useState(false);
   // The merged nudge control: one chosen answer, plus the cadence the third of
@@ -201,16 +198,9 @@ export function ProjectEditor({ visible, project, isNew, onClose }: Props) {
   // The cadence is stored in days; the picker shows it as a count and a unit.
   const cadence = toCadenceParts(nudgeCadenceDays);
 
-  // Done can fire before the new-category field's own blur or Enter has
-  // committed it — same race TaskEditor's resolveLinkUrl guards against.
-  // Read the live text box instead of trusting stale `category` state.
-  const resolveCategory = () => {
-    const c = newCategory.trim();
-    // addCategory may answer with an existing row of a different case, and
-    // that row's name is the one a project has to carry to be grouped under it.
-    if (addingCategory && c) return addCategory(c).name;
-    return category;
-  };
+  // A new category is created and picked as soon as it's submitted in the
+  // pill grid, so there's no half-typed name to resolve at save time.
+  const resolveCategory = () => category;
 
   /**
    * The departure this sheet opened on, and where it has just been moved to.
@@ -314,6 +304,47 @@ export function ProjectEditor({ visible, project, isNew, onClose }: Props) {
   // for one renamed in this session.
   const displayTitle = () => title.trim() || project?.title || 'this project';
 
+  /**
+   * Whether anything on the sheet differs from what the project holds. Read
+   * against the stored project rather than a snapshot, since nothing else
+   * writes these fields while the sheet is open.
+   */
+  const isDirty = (): boolean => {
+    if (!project) return false;
+    const iso = (d: Date | null) => (d ? d.toISOString() : null);
+    const nudge = nudgeFieldsFor(nudgeMode, nudgeCadenceDays);
+    return (
+      title.trim() !== project.title ||
+      notes !== project.notes ||
+      category !== project.category ||
+      defaultTaskCategory !== project.defaultTaskCategory ||
+      iso(deadline) !== (project.deadline ? new Date(project.deadline).toISOString() : null) ||
+      (awayStart ? awayNoonIso(awayStart) : null) !== project.awayStart ||
+      (awayStart && awayEnd ? awayNoonIso(awayEnd) : null) !== project.awayEnd ||
+      (awayStart !== null && awayPauses) !== project.awayPauses ||
+      (awayStart !== null ? awayListId : null) !== project.awayListId ||
+      (awayStart !== null && destination.trim() ? destination.trim() : null) !== project.destination ||
+      nudge.nudgeOptIn !== project.nudgeOptIn ||
+      nudge.nudgeCadenceDays !== project.nudgeCadenceDays ||
+      (nudgeMode === 'scheduled' && autoSchedule) !== project.autoSchedule ||
+      ongoing !== project.ongoing ||
+      weekendSource !== project.weekendSource
+    );
+  };
+
+  // Same confirm, in the same words, as TaskEditor's own Cancel.
+  const handleCancel = () => {
+    if (!isDirty()) { onClose(); return; }
+    Alert.alert(
+      'Discard changes?',
+      'You have unsaved changes. Are you sure you want to discard them?',
+      [
+        { text: 'Keep editing', style: 'cancel' },
+        { text: 'Discard', style: 'destructive', onPress: onClose },
+      ],
+    );
+  };
+
   const handleDelete = () => {
     if (!project) return;
     Alert.alert(
@@ -360,10 +391,22 @@ export function ProjectEditor({ visible, project, isNew, onClose }: Props) {
     );
   };
 
-  const commitNewCategory = () => {
-    const c = newCategory.trim();
-    if (c) { setCategory(addCategory(c).name); closeCategory(); }
-    setNewCategory(''); setAddingCategory(false);
+  const categoryOptions: PillGroupOption[] = [
+    {
+      key: '__none__', label: 'None', pinned: true, selected: !category,
+      onPress: () => { haptics.tap(); setCategory(null); closeCategory(); },
+    },
+    ...[...categories].sort((a, b) => a.sortOrder - b.sortOrder).map(cat => ({
+      key: cat.id,
+      label: cat.name,
+      selected: category === cat.name,
+      onPress: () => { haptics.tap(); setCategory(cat.name); closeCategory(); },
+    })),
+  ];
+  // Creating a taken name picks the existing row, in its stored case.
+  const createCategory = (name: string) => {
+    setCategory(addCategory(name).name);
+    closeCategory();
   };
 
   const handleArchive = () => {
@@ -401,15 +444,14 @@ export function ProjectEditor({ visible, project, isNew, onClose }: Props) {
       scrollStyle={styles.scroll}
       scrollContentStyle={styles.scrollContent}
       header={
+        // Cancel and Done, the pair every other editor sheet has. Done used to
+        // be the only way out, so there was no way to back out of an edit;
+        // Delete moved down to the actions at the bottom to make room.
         <SheetHeader
           bare
           title={isNew ? 'New project' : 'Edit project'}
-          left={<SheetHeaderButton label="Done" onPress={saveAndClose} />}
-          right={
-            <TouchableOpacity onPress={handleDelete} hitSlop={8} accessibilityRole="button" accessibilityLabel="Delete project">
-              <Ionicons name="trash-outline" size={20} color={colors.red} />
-            </TouchableOpacity>
-          }
+          left={<SheetHeaderButton label="Cancel" role="cancel" onPress={handleCancel} />}
+          right={<SheetHeaderButton label="Done" onPress={saveAndClose} />}
         />
       }
       footer={
@@ -617,45 +659,9 @@ export function ProjectEditor({ visible, project, isNew, onClose }: Props) {
           expanded={categoryOpen}
           onToggle={() => setCategoryOpen(v => !v)}
         >
-          <View style={styles.pillRow}>
-            <TouchableOpacity
-              style={[styles.pill, !category && styles.pillActiveNeutral]}
-              onPress={() => { haptics.tap(); setCategory(null); closeCategory(); }}
-              activeOpacity={interaction.activeOpacity}
-              accessibilityRole="button"
-              accessibilityState={{ selected: !category }}
-            >
-              <Text style={[styles.pillText, !category && styles.pillTextActive]}>None</Text>
-            </TouchableOpacity>
-            {categories.map(cat => (
-              <TouchableOpacity
-                key={cat.id}
-                style={[styles.pill, category === cat.name && styles.pillActiveNeutral]}
-                onPress={() => { haptics.tap(); setCategory(cat.name); closeCategory(); }}
-                activeOpacity={interaction.activeOpacity}
-                accessibilityRole="button"
-                accessibilityState={{ selected: category === cat.name }}
-              >
-                <Text style={[styles.pillText, category === cat.name && styles.pillTextActive]}>{cat.name}</Text>
-              </TouchableOpacity>
-            ))}
-            {addingCategory ? (
-              <TextInput
-                autoFocus
-                style={styles.tagInput}
-                value={newCategory}
-                onChangeText={setNewCategory}
-                onSubmitEditing={commitNewCategory}
-                onBlur={commitNewCategory}
-                placeholder="Category name"
-                placeholderTextColor={colors.textTertiary}
-                returnKeyType="done"
-                autoCapitalize="words"
-              />
-            ) : (
-              <InlineAction icon="add" label="New" accessibilityLabel="New category" onPress={() => setAddingCategory(true)} />
-            )}
-          </View>
+          {/* A PillGroup, for the reason the trip's shopping list below is one:
+              the pool is the user's own and has no ceiling. */}
+          <PillGroup options={categoryOptions} noun="category" pluralNoun="categories" onCreate={createCategory} />
         </CollapsibleField>
         <View style={styles.sep} />
         <CollapsibleField
@@ -859,6 +865,23 @@ export function ProjectEditor({ visible, project, isNew, onClose }: Props) {
           </TouchableOpacity>
         </View>
       )}
+
+      {!isNew && (
+        <View style={[styles.card, styles.stackedCard]}>
+          <TouchableOpacity
+            style={styles.optionRow}
+            onPress={handleDelete}
+            activeOpacity={interaction.activeOpacity}
+            accessibilityRole="button"
+            accessibilityLabel="Delete project"
+          >
+            <Ionicons name="trash-outline" size={18} color={colors.red} />
+            <View style={styles.optionContent}>
+              <Text style={[styles.optionLabel, styles.deleteLabel]}>Delete project</Text>
+            </View>
+          </TouchableOpacity>
+        </View>
+      )}
     </EditorSheet>
   );
 }
@@ -896,6 +919,7 @@ const makeStyles = (colors: Colors) => StyleSheet.create({
   // A second card under the same group label, like the away rows beneath the
   // deadline.
   stackedCard: { marginTop: spacing.md },
+  deleteLabel: { color: colors.red },
   actionsCard: { marginTop: spacing.xl },
   // Matches EditorGroup's label, which this sheet can't use directly: its
   // cards carry their own horizontal margin, and these sit on the scroll
@@ -922,11 +946,6 @@ const makeStyles = (colors: Colors) => StyleSheet.create({
   pillActiveNeutral: { backgroundColor: colors.bgQuaternary },
   pillText: { color: colors.text, fontSize: font.sm, fontWeight: fontWeight.medium },
   pillTextActive: { color: colors.text, fontWeight: fontWeight.semibold },
-  tagInput: {
-    color: colors.text, fontSize: font.sm,
-    borderBottomWidth: 1, borderBottomColor: colors.accent,
-    paddingVertical: 4, paddingHorizontal: 4, minWidth: 80,
-  },
   sep: {
     height: StyleSheet.hairlineWidth,
     backgroundColor: colors.separator,
