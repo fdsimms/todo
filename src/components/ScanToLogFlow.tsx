@@ -219,7 +219,7 @@ export function ScanToLogFlow({ visible, slot, at, mealPlanEntryId, onClose, onL
       Alert.alert(
         'No nutrition on it yet',
         `A food can be logged once its figures are the food's own rather than a guess.${
-          first ? ` You can read them off the packet for ${first.name}${
+          first ? ` You can read them off the package for ${first.name}${
             rest > 0 ? `, then the other ${rest === 1 ? 'one' : `${rest}`} the same way` : ''
           }.` : ''
         }`,

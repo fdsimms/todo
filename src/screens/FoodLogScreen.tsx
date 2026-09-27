@@ -1156,6 +1156,7 @@ export function FoodLogScreen() {
           totalCount={dayEntries.length}
           category={{
             title: 'Move to Meal',
+            noun: 'a meal',
             options: mealSlotOptions,
             onSet: handleBulkMove,
           }}

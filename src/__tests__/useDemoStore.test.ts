@@ -424,6 +424,19 @@ describe('demo mode', () => {
     expect(useGroceryStore.getState().undoStack).toHaveLength(0);
   });
 
+  it('drops the people stores\' undo history too', () => {
+    // They keep the same kind of history, and a person deleted inside the demo
+    // could otherwise be undone into the real database.
+    useDemoStore.getState().enterDemoMode();
+    usePersonStore.setState({ undoStack: [{ label: 'x', undo: () => {}, redo: () => {} } as never] });
+    usePersonGroupStore.setState({ undoStack: [{ label: 'x', undo: () => {}, redo: () => {} } as never] });
+
+    useDemoStore.getState().exitDemoMode();
+
+    expect(usePersonStore.getState().undoStack).toHaveLength(0);
+    expect(usePersonGroupStore.getState().undoStack).toHaveLength(0);
+  });
+
   it('hides real categories, tags, projects and stacks too, not just tasks', () => {
     useTaskStore.getState().addCategory('Therapy');
     useTaskStore.getState().addTag('confidential');

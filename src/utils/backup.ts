@@ -252,6 +252,12 @@ const SUMMARY_LABELS: { table: string; one: string; many: string }[] = [
   { table: 'grocery_items', one: 'grocery item', many: 'grocery items' },
   { table: 'recipes', one: 'recipe', many: 'recipes' },
   { table: 'meal_plan_entries', one: 'planned meal', many: 'planned meals' },
+  // The logs and people are replaced by a restore as surely as tasks are, so a
+  // backup holding only them read as "no tasks or projects" over a restore
+  // that was about to replace a year of food log.
+  { table: 'food_logs', one: 'food log entry', many: 'food log entries' },
+  { table: 'mood_logs', one: 'mood log entry', many: 'mood log entries' },
+  { table: 'people', one: 'person', many: 'people' },
   { table: 'templates', one: 'template', many: 'templates' },
   { table: 'categories', one: 'category', many: 'categories' },
 ];
@@ -269,7 +275,7 @@ export function summarizeBackup(backup: Backup): string {
       const n = counts[table];
       return `${n.toLocaleString()} ${n === 1 ? one : many}`;
     });
-  if (parts.length === 0) return 'no tasks or projects';
+  if (parts.length === 0) return 'nothing';
   if (parts.length === 1) return parts[0];
   return `${parts.slice(0, -1).join(', ')} and ${parts[parts.length - 1]}`;
 }

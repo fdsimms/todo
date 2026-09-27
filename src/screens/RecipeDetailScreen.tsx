@@ -2255,6 +2255,7 @@ export function RecipeDetailScreen() {
           totalCount={recipe.ingredients.length}
           category={{
             title: 'Move to Aisle',
+            noun: 'an aisle',
             options: aisleOrder,
             onSet: handleBulkSetAisle,
             onCreate: name => addAisle(name),

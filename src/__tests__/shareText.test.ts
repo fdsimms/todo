@@ -4,7 +4,7 @@ import {
   buildWeekPlanShareText,
 } from '../utils/shareText';
 
-// shareText reaches recipeUtils.ts (for describeAttribution/formatServings)
+// shareText reaches recipeUtils.ts (for describeAttribution/formatServingsRange)
 // and mealPlan.ts directly, both of which reach dateUtils.ts → the settings
 // store — which nothing here needs. Same mock as recipeUtils.test.ts and
 // mealPlanGroceries.test.ts.
@@ -111,6 +111,21 @@ describe('buildRecipeShareText', () => {
     const lines = text.split('\n');
     expect(lines[0]).toBe('Chili');
     expect(lines[1]).toBe('Serves 4-6 · 1h');
+  });
+
+  it('says the servings the scaled batch makes, the way the stepper does', () => {
+    const r = recipe('r1', 'Chili', {
+      servings: 4, servingsMax: 6, recipeYield: '24 cookies',
+      ingredients: [ing('Beans', { quantity: '2 cans' })],
+    });
+    const lines = buildRecipeShareText(r, recipeMap([r]), { scale: 2 }).split('\n');
+    expect(lines[1]).toBe('Serves 8-12 · Makes 24 cookies');
+    expect(lines).toContain('- 4 cans Beans');
+  });
+
+  it('claims no servings for a recipe that never said, at any scale', () => {
+    const r = recipe('r1', 'Chili', { servings: null, ingredients: [ing('Beans')] });
+    expect(buildRecipeShareText(r, recipeMap([r]), { scale: 2 })).not.toContain('Serves');
   });
 
   it('lists every ingredient, scaled and converted to match the screen', () => {
@@ -271,6 +286,23 @@ describe('buildGroceryListShareText', () => {
     expect(buildGroceryListShareText(items)).toBe('Grocery list\n- Eggs');
   });
 
+  it('sends an either/or as one line where its first option sits', () => {
+    const items = [
+      item('apples', { quantity: '4', choiceGroup: 'g1' }),
+      item('milk'),
+      item('pears', { quantity: '4', choiceGroup: 'g1' }),
+    ];
+    expect(buildGroceryListShareText(items)).toBe('Grocery list\n- 4 apples or 4 pears\n- milk');
+  });
+
+  it('sends the one option left once the other is checked off', () => {
+    const items = [
+      item('apples', { choiceGroup: 'g1', checked: true }),
+      item('pears', { choiceGroup: 'g1' }),
+    ];
+    expect(buildGroceryListShareText(items)).toBe('Grocery list\n- pears');
+  });
+
   it('is empty when nothing is on the list', () => {
     expect(buildGroceryListShareText([item('Milk', { checked: true })])).toBe('');
     expect(buildGroceryListShareText([])).toBe('');
@@ -321,6 +353,12 @@ describe('buildWeekPlanShareText', () => {
     const days = [new Date(2026, 7, 10)];
     const entries = [entry('2026-08-10', 'dinner', { recipeId: 'gone', title: 'Leftovers' })];
     expect(buildWeekPlanShareText(days, entries, new Map())).toContain('- Dinner: Leftovers');
+  });
+
+  it('says a leftover night is leftovers', () => {
+    const days = [new Date(2026, 7, 12)];
+    const entries = [entry('2026-08-12', 'dinner', { leftoverId: 'lo-1', title: 'Chicken stir-fry' })];
+    expect(buildWeekPlanShareText(days, entries, new Map())).toContain('- Dinner: Chicken stir-fry (leftovers)');
   });
 
   it('is empty for a week with nothing planned', () => {

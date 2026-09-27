@@ -5224,8 +5224,9 @@ export const useGroceryStore = create<GroceryStore>((set, get) => ({
    * banner from `tripShopId` an hour ago is holding a memo whose inputs haven't
    * changed, so nothing re-renders it away. Clearing the fields is what makes
    * the expiry visible rather than merely true, which is why this is wired to
-   * the grocery screen gaining focus. Same reason `checkVacationExpiry` runs on
-   * foreground: no timer is running to notice.
+   * the grocery screen gaining focus and to the app returning to the
+   * foreground (`useTripLiveActivitySync`). Same reason `checkVacationExpiry`
+   * runs on foreground: no timer is running to notice.
    */
   checkTripExpiry() {
     const { tripShopId, tripStartedAt } = get();

@@ -92,8 +92,17 @@ export function useTripLiveActivitySync(): void {
     // changes on a timer, so a resync only happens at a natural trigger
     // point. Same "no timer running to notice" reasoning checkTripExpiry
     // (useGroceryStore.ts) gives for resyncing only at natural trigger points.
+    //
+    // And the trip itself is ended here first, not just re-synced: the only
+    // other caller of checkTripExpiry is the grocery screen gaining focus,
+    // which coming back from the background isn't, so the banner, the row
+    // markers and the price chip on four screens kept acting for a store
+    // left hours ago. Ending it clears the fields every one of those reads,
+    // and the subscription above re-syncs the Live Activity off that.
     const subscription = AppState.addEventListener('change', state => {
-      if (state === 'active') sync();
+      if (state !== 'active') return;
+      useGroceryStore.getState().checkTripExpiry();
+      sync();
     });
 
     return () => {

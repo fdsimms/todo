@@ -791,6 +791,9 @@ export const useRecipeStore = create<RecipeStore>((set, get) => ({
     if (toDelete.length === 0) return;
     toDelete.forEach(r => dbDeleteRecipe(r.id));
     set(s => ({ recipes: s.recipes.filter(r => !idSet.has(r.id)) }));
+    // Their photo files too, the same cleanup deleteRecipe does: without it
+    // every recipe deleted from the bulk bar left its image on disk for good.
+    toDelete.forEach(r => deleteRecipeImage(r.imagePath));
   },
 
   bulkSetVote(ids, vote) {

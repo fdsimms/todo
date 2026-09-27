@@ -1103,7 +1103,7 @@ export function GroceryItemSheet({
                 <Text style={styles.nutritionDetail}>
                   Nothing recorded. A recipe using this ingredient counts it as uncovered
                   rather than guessing at it. Search a food database, or copy the figures
-                  off the packet.
+                  off the package.
                 </Text>
               )}
               <View style={styles.nutritionActions}>

@@ -139,6 +139,11 @@ const FACT_READERS: ReadonlyArray<(item: GroceryItem) => string> = [
   // GroceryItem.quantityFromRecipe).
   i => (i.note.trim() ? `note:${i.note.trim()}` : ''),
   i => (i.quantity && !i.quantityFromRecipe ? `qty:${i.quantity}` : ''),
+  // A label panel, typed, photographed or filed from a food log entry. A row
+  // that exists only to carry one (a food logged by name and never shopped
+  // for) is the whole record behind those log entries, not a typo, and the
+  // "Forget N unused items" sweep used to offer it as one.
+  i => (i.nutrition ? 'nutrition' : ''),
 ];
 
 /**

@@ -4,6 +4,7 @@ import { dayKeyToDate } from './dateUtils';
 import { createAllDayEvent, updateAllDayEvent, deleteCalendarEvent } from './calendarSync';
 import { useSettingsStore } from '../store/useSettingsStore';
 import { isDemoModeActive } from './demoState';
+import { mealTitleOffPlan } from './mealPlan';
 
 /**
  * What a planned meal should look like on the device calendar right now, and
@@ -37,12 +38,14 @@ import { isDemoModeActive } from './demoState';
  * Built off `entry.title` and not the live recipe name, the same call
  * `cookTaskTitle` makes and for the same reason: the entry keeps its own
  * title in step (captured at plan time, rewritten by `bulkReplaceItem`), so
- * this needs no recipe lookup and stays free of the recipe store.
+ * this needs no recipe lookup and stays free of the recipe store. A leftover
+ * says so (`mealTitleOffPlan`), since the snowflake that marks one on the plan
+ * row doesn't travel to a calendar.
  */
 export function mealEventTitle(entry: MealPlanEntry): string {
   const label = MEAL_SLOT_LABELS[entry.slot] ?? 'Meal';
   const title = entry.title.trim();
-  return title ? `${label}: ${title}` : label;
+  return title ? `${label}: ${mealTitleOffPlan(entry, title)}` : label;
 }
 
 /**
@@ -82,8 +85,8 @@ export function mealEventFields(entry: MealPlanEntry): { title: string; date: Da
  * was for dinner on Thursday, and taking it off the shared calendar would
  * quietly rewrite the household's own record of the week.
  *
- * Leftovers stay too, for the same reason: "Dinner: Leftover stir-fry" is a
- * complete answer to the question the calendar is being asked. `cookTaskFor`
+ * Leftovers stay too, for the same reason: "Dinner: Stir-fry (leftovers)" is
+ * a complete answer to the question the calendar is being asked. `cookTaskFor`
  * skips them because there is nothing to cook, which is a different question.
  */
 export async function syncMealEvent(entry: MealPlanEntry): Promise<string | null> {

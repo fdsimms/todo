@@ -2,12 +2,12 @@ import { format } from 'date-fns/format';
 import type { GroceryItem, MealPlanEntry, Recipe, RecipeIngredient } from '../types';
 import { flattenRecipeIngredients } from './recipeComponents';
 import { ingredientHeadings } from './recipeSections';
-import { describeAttribution, formatServings, totalMinutes } from './recipeUtils';
+import { describeAttribution, formatServingsRange, totalMinutes } from './recipeUtils';
 import { formatDuration } from './effort';
-import { scaleQuantity } from './recipeScale';
+import { scaleQuantity, scaleServings } from './recipeScale';
 import { convertQuantity, type UnitSystem } from './unitConvert';
 import { dayKeyOf } from './dateUtils';
-import { describeWeekRange, entriesForDay, slotLabel, titleForEntry } from './mealPlan';
+import { describeWeekRange, entriesForDay, mealTitleOffPlan, slotLabel, titleForEntry } from './mealPlan';
 
 /**
  * Plain text for RN's `Share.share` (and, for the ingredients, the
@@ -71,7 +71,13 @@ export function buildRecipeShareText(
   const lines: string[] = [recipe.name];
 
   const subtitle: string[] = [];
-  const servings = formatServings(recipe);
+  // The servings the screen's stepper shows at this scale, not the recipe's
+  // own: "Serves 4" over a doubled ingredient list reads as twice the food
+  // for the same table. The yield stays as written, since "24 cookies" is the
+  // recipe's claim and scaling a count of things it names is `recipeScale`'s
+  // refusal to make.
+  const scaled = scaleServings(recipe.servings || null, recipe.servingsMax, scale);
+  const servings = formatServingsRange(scaled.servings, scaled.servingsMax);
   if (servings) subtitle.push(`Serves ${servings}`);
   if (recipe.recipeYield) subtitle.push(`Makes ${recipe.recipeYield}`);
   const minutes = totalMinutes(recipe);
@@ -161,8 +167,38 @@ export function buildIngredientsText(
 export function buildGroceryListShareText(items: readonly GroceryItem[]): string {
   const onList = items.filter(i => i.onList && !i.checked);
   if (onList.length === 0) return '';
-  const lines = onList.map(item => `- ${item.quantity ? `${item.quantity} ` : ''}${item.name}`);
+  const lines = groceryShareLines(onList).map(line => `- ${line}`);
   return ['Grocery list', ...lines].join('\n');
+}
+
+function groceryItemText(item: GroceryItem): string {
+  return `${item.quantity ? `${item.quantity} ` : ''}${item.name}`;
+}
+
+/**
+ * One line per thing to buy, which for an either/or is one line for the
+ * whole group ("4 apples or 4 pears"), placed where its first member sits.
+ * The list screen stitches a group into one card with an "or pears" caption;
+ * sent as two ordinary lines, the person reading it buys both.
+ */
+function groceryShareLines(items: readonly GroceryItem[]): string[] {
+  const groups = new Map<string, GroceryItem[]>();
+  for (const item of items) {
+    if (!item.choiceGroup) continue;
+    const members = groups.get(item.choiceGroup);
+    if (members) members.push(item);
+    else groups.set(item.choiceGroup, [item]);
+  }
+  const lines: string[] = [];
+  const emitted = new Set<string>();
+  for (const item of items) {
+    const group = item.choiceGroup;
+    if (!group) { lines.push(groceryItemText(item)); continue; }
+    if (emitted.has(group)) continue;
+    emitted.add(group);
+    lines.push((groups.get(group) ?? [item]).map(groceryItemText).join(' or '));
+  }
+  return lines;
 }
 
 /**
@@ -176,7 +212,7 @@ export function buildGroceryListShareText(items: readonly GroceryItem[]): string
 export function buildGroceryListText(items: readonly GroceryItem[]): string {
   return items
     .filter(i => i.onList && !i.checked)
-    .map(item => `${item.quantity ? `${item.quantity} ` : ''}${item.name}`)
+    .map(groceryItemText)
     .join('\n');
 }
 
@@ -199,7 +235,7 @@ export function buildWeekPlanShareText(
     if (dayEntries.length === 0) continue;
     lines.push('', format(day, 'EEEE'));
     for (const entry of dayEntries) {
-      lines.push(`- ${slotLabel(entry.slot)}: ${titleForEntry(entry, recipesById)}`);
+      lines.push(`- ${slotLabel(entry.slot)}: ${mealTitleOffPlan(entry, titleForEntry(entry, recipesById))}`);
     }
   }
   return lines.length > 1 ? lines.join('\n') : '';

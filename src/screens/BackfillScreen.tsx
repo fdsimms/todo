@@ -2816,7 +2816,7 @@ export function BackfillScreen() {
           {active.id === 'nutrition' && (
             <View style={styles.nutritionField}>
               <Text style={styles.renameHint}>
-                Look the food up, or copy the figures off the packet. Either way you
+                Look the food up, or copy the figures off the package. Either way you
                 confirm what gets saved.
               </Text>
               <PressableScale

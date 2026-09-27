@@ -318,8 +318,15 @@ describe('summarizeBackup', () => {
     expect(summarizeBackup(backup)).toBe('1 task');
   });
 
+  it('counts the food and mood logs and people, which a restore replaces too', () => {
+    // A backup of only these used to read "no tasks or projects".
+    expect(summarizeBackup(build({ food_logs: [{ id: '1' }, { id: '2' }] }))).toBe('2 food log entries');
+    expect(summarizeBackup(build({ mood_logs: [{ id: '1' }], people: [{ id: 'p' }] })))
+      .toBe('1 mood log entry and 1 person');
+  });
+
   it('says so when there is nothing in it', () => {
-    expect(summarizeBackup(build({ tasks: [], projects: [] }))).toBe('no tasks or projects');
+    expect(summarizeBackup(build({ tasks: [], projects: [] }))).toBe('nothing');
   });
 
   it('uses the user-facing word for a stack, not the code word', () => {

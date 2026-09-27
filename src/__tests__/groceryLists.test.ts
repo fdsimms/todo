@@ -163,6 +163,25 @@ describe('itemsOnList', () => {
     expect(row.nameKey).toBe('milk');
   });
 
+  it('hands back the same object for a row whose membership has not changed', () => {
+    // A fresh object per row per call defeated GroceryRow's memo, so ticking
+    // one row re-rendered the whole list.
+    const entries = [entry('milk', 'l1'), entry('coffee', 'l1')];
+    const first = itemsOnList(items, entries, 'l1');
+    const again = itemsOnList(items, [entry('milk', 'l1'), entry('coffee', 'l1', { checked: true })], 'l1');
+    expect(again.find(i => i.id === 'milk')).toBe(first.find(i => i.id === 'milk'));
+    // ...and a new one for the row that did change.
+    expect(again.find(i => i.id === 'coffee')).not.toBe(first.find(i => i.id === 'coffee'));
+    expect(again.find(i => i.id === 'coffee')!.checked).toBe(true);
+  });
+
+  it('keeps a row on two lists apart', () => {
+    const home = itemsOnList(items, [entry('milk', null, { checked: true })], null);
+    const away = itemsOnList(items, [entry('milk', 'l1', { checked: false })], 'l1');
+    expect(home[0].checked).toBe(true);
+    expect(away[0].checked).toBe(false);
+  });
+
   it('returns the list in its own walk order', () => {
     const entries = [entry('coffee', null, { sortOrder: 1 }), entry('milk', null, { sortOrder: 2 })];
     expect(itemsOnList(items, entries, null).map(i => i.id)).toEqual(['coffee', 'milk']);

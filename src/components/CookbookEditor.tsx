@@ -11,6 +11,7 @@ import {
   Alert,
 } from 'react-native';
 import { SheetModal } from './SheetModal';
+import { useSheetSubject } from '../hooks/useSheetSubject';
 import Ionicons from '@expo/vector-icons/Ionicons';
 import { useRecipeStore } from '../store/useRecipeStore';
 import { SheetHeaderButton } from './SheetHeaderButton';
@@ -37,7 +38,12 @@ interface Props {
  * fields have nothing worth a confirm dialog over, so `onRequestClose` runs
  * the same save path "Done" does instead of needing a dirty-guard.
  */
-export function CookbookEditor({ visible, cookbookId, onClose }: Props) {
+export function CookbookEditor({ visible, cookbookId: liveCookbookId, onClose }: Props) {
+  // Held past the host clearing it on close, so the `return null` below can't
+  // unmount the presented sheet mid-dismiss (CookbooksScreen clears the id in
+  // the same commit it lowers `visible`), the unmount CLAUDE.md's SheetModal
+  // notes say freezes the screen underneath.
+  const cookbookId = useSheetSubject(liveCookbookId);
   const colors = useColors();
   const styles = useMemo(() => makeStyles(colors), [colors]);
 
@@ -57,13 +63,15 @@ export function CookbookEditor({ visible, cookbookId, onClose }: Props) {
   // half-finished edit from last time never leaks into the next one — same
   // reasoning CategoryEditor's own load effect gives.
   useEffect(() => {
-    if (!cookbook) return;
+    if (!cookbook || !visible) return;
     setTitle(cookbook.title);
     setAuthor(cookbook.author ?? '');
-    // Intentionally keyed on the id only — `cookbook` changes on every store
-    // write, and re-syncing on those would stomp an in-progress edit.
+    // Intentionally keyed on the id and the open, not on `cookbook`, which
+    // changes on every store write, and re-syncing on those would stomp an
+    // in-progress edit. The open is what reseeds the same book reopened, now
+    // that the id outlives a close.
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [cookbookId]);
+  }, [cookbookId, visible]);
 
   const saveAndClose = () => {
     Keyboard.dismiss();

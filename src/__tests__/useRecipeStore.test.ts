@@ -9,7 +9,14 @@ import {
 import type { Recipe, RecipeIngredient } from '../types';
 import { LEFTOVER_KEEP_DAYS_MAX, RECIPE_STEP_NOTE_MAX_LENGTH } from '../types';
 import { groceryNameKey } from '../utils/groceryParse';
+import { deleteRecipeImage } from '../utils/recipePhoto';
 
+// Only the file delete is stubbed, so a test can see which photos a delete
+// cleans up; everything else in the module is the real thing.
+jest.mock('../utils/recipePhoto', () => ({
+  ...jest.requireActual('../utils/recipePhoto'),
+  deleteRecipeImage: jest.fn(),
+}));
 jest.mock('../db/database', () => ({
   dbGetAllRecipes: jest.fn().mockReturnValue([]),
   dbGetAllCookbooks: jest.fn().mockReturnValue([]),
@@ -1227,6 +1234,18 @@ describe('deleteRecipe', () => {
 });
 
 describe('bulkDeleteRecipes', () => {
+  it('deletes each recipe\'s photo file, as a single delete does', () => {
+    // It used to leave every bulk-deleted recipe's image on disk for good.
+    const a = { ...makeRecipe('Ragu'), imagePath: 'recipe-images/a.jpg' };
+    const b = { ...makeRecipe('Soup'), imagePath: 'recipe-images/b.jpg' };
+    seed([a, b]);
+
+    useRecipeStore.getState().bulkDeleteRecipes([a.id]);
+
+    expect(deleteRecipeImage).toHaveBeenCalledWith('recipe-images/a.jpg');
+    expect(deleteRecipeImage).not.toHaveBeenCalledWith('recipe-images/b.jpg');
+  });
+
   it('drops every named row, in one db call each, and leaves the rest', () => {
     const a = makeRecipe('Ragu');
     const b = makeRecipe('Soup');

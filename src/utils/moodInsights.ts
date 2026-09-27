@@ -862,7 +862,7 @@ export function healthInsight(
  *   still a day of self-report, and a person who logs more carefully when they
  *   feel better has a correlation here that is about their logging.
  *
- * Which is the whole reason `NUTRIENT_INSIGHT_KEYS` is four long: this is the
+ * Which is the whole reason `NUTRIENT_INSIGHT_KEYS` is two long: this is the
  * axis where a wide search would most easily find something to say.
  */
 export function nutrientInsight(

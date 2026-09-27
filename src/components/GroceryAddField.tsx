@@ -157,12 +157,6 @@ export const GroceryAddField = forwardRef<GroceryAddFieldHandle, Props>(function
     setActivePanel(prev => (prev === panel ? null : panel));
   }, []);
 
-  const suggestions = useMemo(
-    // The "On list" pill each suggestion may carry is about the list being
-    // added to, so a thing on your list at home reads as addable here.
-    () => (focused ? rankGrocerySuggestions(text, items, new Date(), 5, inTrolley) : []),
-    [focused, text, items, inTrolley]
-  );
 
   // What committing `text` right now would actually save — the whole point is
   // showing this *before* the tap, not after, so the split is a visible
@@ -176,6 +170,17 @@ export const GroceryAddField = forwardRef<GroceryAddFieldHandle, Props>(function
       purpose: rejectedPurpose,
     });
   }, [text, rejectedQuantity, rejectedPrep, rejectedPurpose]);
+
+  const suggestions = useMemo(
+    // The "On list" pill each suggestion may carry is about the list being
+    // added to, so a thing on your list at home reads as addable here.
+    //
+    // Ranked on the name the add would save, quantity split off, rather than
+    // on the raw text: "2 milk" or "12 eggs" matched nothing and autocomplete
+    // went quiet for anybody who types the amount first.
+    () => (focused ? rankGrocerySuggestions(tokens?.name || text, items, new Date(), 5, inTrolley) : []),
+    [focused, text, tokens, items, inTrolley]
+  );
 
   // "pepper or thyme" wants to be two rows on the list, not one catalog entry
   // nothing can ever match — see splitAlternativeNames. They go on as an
@@ -694,7 +699,16 @@ export const GroceryAddField = forwardRef<GroceryAddFieldHandle, Props>(function
                   key={item.id}
                   style={styles.suggestion}
                   activeOpacity={interaction.activeOpacity}
-                  onPress={() => commit(item.name)}
+                  // The amount, note and Brand/Variant chips typed around the
+                  // name go with the suggestion, as they would with Return:
+                  // tapping one used to drop all of them.
+                  onPress={() => commit(item.name, {
+                    name: item.name,
+                    quantity: tokens?.quantityAccepted ? tokens.quantity : null,
+                    note: tokens?.note ?? null,
+                    brand: brand.trim() || null,
+                    variant: variant.trim() || null,
+                  })}
                   accessibilityRole="button"
                   accessibilityLabel={
                     [`Add ${item.name}`, product, item.aisle, onList ? 'already on the list' : null]

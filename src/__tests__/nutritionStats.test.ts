@@ -229,6 +229,23 @@ describe('mostLoggedFoods', () => {
     expect(rows.map(r => [r.label, r.count])).toEqual([['Porridge', 2], ['Toast', 1]]);
   });
 
+  it('leaves the day\'s water off the list', () => {
+    // A running total, not a food; logged daily it topped the list.
+    const rows = mostLoggedFoods(
+      [water('2026-09-07'), water('2026-09-08'), water('2026-09-09'), entry('2026-09-09', { label: 'Toast' })],
+      WINDOW,
+    );
+    expect(rows.map(r => r.label)).toEqual(['Toast']);
+  });
+
+  it('counts "Coffee" and "coffee" as one food, named as it was last typed', () => {
+    const rows = mostLoggedFoods(
+      [entry('2026-09-08', { label: 'Coffee' }), entry('2026-09-09', { label: 'coffee' })],
+      WINDOW,
+    );
+    expect(rows).toEqual([expect.objectContaining({ label: 'coffee', count: 2 })]);
+  });
+
   it('groups by the label rather than by a catalog id', () => {
     // itemId and recipeId are null for anything typed in, so grouping on those
     // would silently drop every hand-entered food from the leaderboard.
@@ -269,6 +286,24 @@ describe('mostLoggedFoods', () => {
   });
 });
 
+describe('sourceMix, water', () => {
+  it('leaves the day\'s water out of where the figures came from', () => {
+    const mix = sourceMix([water('2026-09-08'), entry('2026-09-08', { source: 'fdc' })], WINDOW);
+    expect(mix.database).toBe(1);
+    expect(mix.manual).toBe(0);
+  });
+});
+
+describe('nutritionCounts, the averaged days', () => {
+  it('counts the complete days the averages draw from, which stop at yesterday', () => {
+    // Today's complete day is complete but not averaged, so a nutrient every
+    // finished day stated no longer reads as "across fewer days".
+    const counts = nutritionCounts([...fullDay('2026-09-08'), ...fullDay('2026-09-10')], WINDOW);
+    expect(counts.daysComplete).toBe(2);
+    expect(counts.daysAveraged).toBe(1);
+  });
+});
+
 describe('sourceMix', () => {
   it('counts where the figures came from, four claims kept apart', () => {
     const mix = sourceMix(
@@ -302,6 +337,11 @@ describe('sourceMix', () => {
 });
 
 describe('hasNutritionData', () => {
+  it('has nothing to say about a record of only water', () => {
+    // It used to open the Eating card on "Days you logged 0 of 30".
+    expect(hasNutritionData(nutritionCounts([water('2026-09-08'), water('2026-09-09')], WINDOW))).toBe(false);
+  });
+
   it('separates nothing logged from nothing looked at yet', () => {
     // A null means nothing has read yet, which is a third answer and must not
     // render as a row of zeroes.

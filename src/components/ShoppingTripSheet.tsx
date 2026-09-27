@@ -394,7 +394,7 @@ export function ShoppingTripSheet({ visible, onClose, onCreate, onStart, intent 
                 {selected.length === 0 ? (
                   <>
                     <Text style={styles.suggestionTitle}>
-                      You’ve got {next[0].itemIds.length} of these {total} at {next[0].shop.name}{' '}
+                      You’ve bought {next[0].itemIds.length} of these {total} at {next[0].shop.name}{' '}
                       before, more than anywhere else.
                     </Text>
                     {next.length > 1 && (
@@ -438,7 +438,7 @@ export function ShoppingTripSheet({ visible, onClose, onCreate, onStart, intent 
                         thing; it hasn't got the one that was asked for, and
                         saying "doesn't have it" here would be false. */}
                     <Text style={styles.suggestionTitle}>
-                      {selectedNames} {selected.length > 1 ? 'haven’t' : 'hasn’t'} got the{' '}
+                      {selectedNames} {selected.length > 1 ? 'don’t' : 'doesn’t'} have the{' '}
                       {namesFor(summary.withoutProduct)} you want.
                     </Text>
                     <Text style={styles.suggestionSub}>
