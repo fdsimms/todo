@@ -322,12 +322,6 @@ export function ProjectDetailScreen() {
   }, [addLine]);
   const [templatePickerVisible, setTemplatePickerVisible] = useState(false);
   const [guestsOpen, setGuestsOpen] = useState(false);
-  // Who the project is with, as the people store has them now: an archived or
-  // deleted person drops off the page without the project being rewritten.
-  const projectPeople = usePersonStore(useShallow(s => {
-    const ids = project?.personIds ?? [];
-    return ids.length === 0 ? [] : s.people.filter(p => ids.includes(p.id) && !p.archived);
-  }));
   const [suggestionsVisible, setSuggestionsVisible] = useState(false);
   const [applyTemplate, setApplyTemplate] = useState<TaskTemplate | null>(null);
   const [templateAppliedCount, setTemplateAppliedCount] = useState<number | null>(null);
@@ -393,6 +387,14 @@ export function ProjectDetailScreen() {
   const spotlightProgress = useSpotlightProgress(expandedTaskId !== null && !selectionMode);
 
   const project = projects.find(p => p.id === projectId) ?? null;
+  // Below `project` on purpose: the selector runs during render, so above the
+  // declaration it read `project` before it existed.
+  // Who the project is with, as the people store has them now: an archived or
+  // deleted person drops off the page without the project being rewritten.
+  const projectPeople = usePersonStore(useShallow(s => {
+    const ids = project?.personIds ?? [];
+    return ids.length === 0 ? [] : s.people.filter(p => ids.includes(p.id) && !p.archived);
+  }));
   // Memoized because this walks the whole task list, and this screen
   // re-renders on any screen state change (an expanded row, entering selection
   // mode) rather than only on a task write. It also kept `copyText` below from
