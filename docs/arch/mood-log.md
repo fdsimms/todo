@@ -514,10 +514,17 @@ measurement and isn't.
   of seven entries is fine on the day's own card, where `describeFoodLogTotals`
   prints the clause saying so. Across days there is nowhere to print one and the
   coverage varies day to day, so the variation reads as variation in the food.
+  Stats' per-nutrient averages (`nutrientAverages`) apply the same rule for the
+  same reason, since a month's average is an across-days read too; there, the
+  day's water is left out of the count and feeds only the water row.
 
 Unlike the averages on Stats, **today is kept**: that window stops at yesterday
 because a partial day drags a mean down, and this one is paired rather than
-averaged with the two-meal bar already asking that question.
+averaged with the two-meal bar already asking that question. The EATING card's
+two plain figures ("calories a day", "protein a day") are the exception, because
+they are averages rather than pairings: `finishedDaysAverage` leaves today out
+as Stats does, and shows nothing below `MIN_PAIRED_DAYS` days, so a first
+afternoon of logging no longer reads as "900 calories a day".
 
 **The vocabulary is two nutrients and that is a cap, not a starting point.**
 `NUTRIENT_INSIGHT_KEYS` is calories and sugar. Caffeine was cut because an absent

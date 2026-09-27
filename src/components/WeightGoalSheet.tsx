@@ -637,6 +637,13 @@ export function WeightGoalSheet({ visible, onClose, currentKg, onLogWeight }: Pr
                     onPress={applyCalorieTarget}
                   />
                 )}
+                {/* Saving writes this figure and refreshWeight re-applies it
+                    (autoCalorieTargetKcal), so say so here rather than let a
+                    typed target change with nobody told why. */}
+                <Text style={styles.help}>
+                  Saving this goal also sets your calorie target to this figure. It is
+                  worked out again each time the Weight screen reads your weight.
+                </Text>
               </>
             )}
           </View>

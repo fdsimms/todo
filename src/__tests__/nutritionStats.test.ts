@@ -197,6 +197,52 @@ describe('nutrientAverages', () => {
     expect(fiber?.average).toBe(8);
   });
 
+  it('counts a nutrient for a day only when every food entry that day stated it', () => {
+    // Breakfast is a scanned cereal stating 3 g of fibre; lunch and dinner
+    // state none. Summing what was stated made that 3 g the day's fibre, and
+    // since every day had one such entry the "across N days" clause never
+    // appeared. The rule is foodDayInputs' coverage rule.
+    const partial = (dayKey: string) => [
+      entry(dayKey, { slot: 'breakfast', hour: 8, amounts: { calorieKcal: 300, fiberG: 3 } }),
+      entry(dayKey, { slot: 'lunch', hour: 12, amounts: { calorieKcal: 500 } }),
+      entry(dayKey, { slot: 'dinner', hour: 19, amounts: { calorieKcal: 700 } }),
+    ];
+    const rows = nutrientAverages(
+      [
+        ...partial('2026-09-07'),
+        ...partial('2026-09-08'),
+        ...fullDay('2026-09-09', { amounts: { calorieKcal: 400, fiberG: 5 } }),
+      ],
+      WINDOW,
+    );
+    expect(rows.find(r => r.key === 'calorieKcal')).toMatchObject({ days: 3 });
+    expect(rows.find(r => r.key === 'fiberG')).toEqual({ key: 'fiberG', total: 10, days: 1, average: 10 });
+  });
+
+  it('gives no row to a nutrient no day stated throughout', () => {
+    const rows = nutrientAverages(
+      [
+        entry('2026-09-08', { slot: 'breakfast', hour: 8, amounts: { calorieKcal: 300, fiberG: 3 } }),
+        entry('2026-09-08', { slot: 'dinner', hour: 19, amounts: { calorieKcal: 700 } }),
+      ],
+      WINDOW,
+    );
+    expect(rows.some(r => r.key === 'fiberG')).toBe(false);
+    expect(rows.find(r => r.key === 'calorieKcal')).toMatchObject({ days: 1, average: 1000 });
+  });
+
+  it('keeps the day\'s water out of the other nutrients\' coverage', () => {
+    // The water entry states nothing but water: counted as a food it would
+    // veto calories on every day somebody drank anything.
+    const rows = nutrientAverages(
+      [...fullDay('2026-09-08'), water('2026-09-08', 1800)],
+      WINDOW,
+    );
+    expect(rows.find(r => r.key === 'calorieKcal')).toMatchObject({ days: 1, average: 600 });
+    expect(rows.find(r => r.key === 'proteinG')).toMatchObject({ days: 1, average: 20 });
+    expect(rows.find(r => r.key === 'waterMl')).toMatchObject({ days: 1, average: 1800 });
+  });
+
   it('gives a nutrient nothing stated no average at all', () => {
     const rows = nutrientAverages(fullDay('2026-09-08'), WINDOW);
     expect(rows.some(r => r.key === 'caffeineMg')).toBe(false);

@@ -627,11 +627,27 @@ guess.
   seeded food log entry may exist for the same reason a demo task may carry
   `logHealthMetric`: the gate stops the write, not the demonstration that the
   feature exists.
-- **One trigger.** `addEntry` in `useFoodLogStore` is the only caller of
-  `logFoodEntryToHealth`, and nothing else may become one. No reconciler, no
-  sweep, no sync pass, and **no backfill**: entries logged before this shipped
-  keep their empty `healthSampleIds` for good. A pass that wrote history would
-  put samples in a medical record for meals nobody asked to share, and would
+- **Two triggers, both a person editing one entry.** `addEntry` in
+  `useFoodLogStore` writes a new entry, and `reviseEntry` (see "Correcting an
+  entry" below) rewrites one whose label or figures a person just corrected.
+  Those are the only callers of `logFoodEntryToHealth`, and nothing else may
+  become one. No reconciler, no sweep, no sync pass, and **no backfill pass**:
+  entries logged before this shipped keep their empty `healthSampleIds` unless
+  somebody corrects one of them.
+
+  That exception is what `reviseEntry` does today, and it is worth stating
+  rather than leaving to be rediscovered. When a correction changes the label
+  or a figure, it retracts whatever samples the entry had (ungated, like every
+  retraction) and then calls `logFoodEntryToHealth` for the corrected entry,
+  which applies the same gates a new entry gets. So with `healthWriteEnabled`
+  on, correcting an entry that never had samples (logged while the switch was
+  off, or before this shipped) writes that one entry for the first time. With
+  the switch off, the correction retracts the entry's old samples and the
+  write returns `off`, so the meal leaves Health until it is logged again. The
+  water stepper goes through `reviseEntry` too, so the same holds for a day's
+  water entry. It is one entry at a time, on a person's own edit, which is why
+  it is not the history pass the rule above refuses: that pass would put
+  samples in a medical record for meals nobody asked to share, and would
   duplicate whatever the person had already logged elsewhere.
 - **The sample is dated `atISO`, not `dayKey`.** HealthKit buckets by wall
   clock; the logical day is this app's own idea. The two are allowed to
@@ -1097,8 +1113,13 @@ a future reader will look for them:
   record to read against, not a task to finish.
 - **Ahead and behind are said about the user's own pace, never about them.**
   `goalPace` reports the kilograms between where the weight is and where the
-  rate *they set* would have put it. That is a fact they could read off the
-  chart, which is the standard `weightChange` already holds itself to. It
+  rate *they set* would have put it **on the day that weight was recorded**,
+  not today: measured against today, a reading three weeks old read as three
+  weeks behind however exactly it had sat on the line (`weightSinceGoalStart`
+  returns the reading's day for this, the forecast counts from it too, and the
+  card says "on Aug 22" rather than "now" once the reading isn't today's).
+  That is a fact they could read off the chart, which is the standard
+  `weightChange` already holds itself to. It
   carries no colour, no arrow and no advice, and `WeightScreen` must not add
   one.
 
@@ -1131,13 +1152,44 @@ measurement. That didn't hold: the resting half is Mifflin-St Jeor, so the
 figure was never a pure measurement, and leaving digestion out only made the
 two options answer different questions a couple of hundred calories apart.
 The sheet prints the digestion figure in its working rather than folding it in
-unannounced. And it **proposes rather than
-writes**: `WeightGoalSheet` prints the arithmetic with its own working shown
-beside it, and the figure only reaches `nutritionTargets.calorieKcal` when
-somebody presses the button under it. Nothing re-applies it as a weight
-changes. A target that silently tracked a formula would be a figure nobody
-chose driving the food log, which is exactly what `nutritionTargets`' own note
-rules out.
+unannounced.
+
+**The plain calorie figure follows the goal automatically, and that is an
+asked-for exception rather than an oversight.** This section used to say the
+figure only reached `nutritionTargets.calorieKcal` when somebody pressed the
+button under it and that nothing re-applied it as a weight changed. That is no
+longer true. `WeightGoalSheet` still prints the arithmetic with its own working
+shown beside it, but **saving the goal writes the figure** to
+`nutritionTargets.calorieKcal`, on whichever basis is on screen, and
+`useSettingsStore.syncWeightGoalCalorieTarget` re-applies it afterwards through
+`autoCalorieTargetKcal` (`weightGoal.ts`). That sync runs at the end of every
+`refreshWeight`, which is every time the Weight screen comes into focus with
+reading on and after `LogWeightSheet` records a weight, so the target moves with
+the weight, the profile and the date rather than going stale the moment the
+sheet is closed. The button under the figure ("Use as my calorie target") still
+writes it immediately, without saving the goal.
+
+It stays narrow in four ways, and each is load-bearing:
+
+- **Only while there is a goal and a complete profile.** `autoCalorieTargetKcal`
+  returns null otherwise, and a null leaves whatever is stored alone rather than
+  clearing a target somebody set some other way.
+- **The calorie figure only, never the macros.** A split is something the person
+  picked from a list that preselects nothing (see below), so re-dividing a day
+  they did not ask to have re-divided stays off the table.
+- **The re-sync always uses the multiplier basis.** The measured basis needs a
+  live read with nobody necessarily there to ask for it, so somebody who saved on
+  the Apple Health basis is moved back to the multiplier figure at the next
+  refresh.
+- **It says so where it happens.** A target typed in `NutritionTargetsSheet`
+  while a goal is set is replaced at the next refresh, which is the cost of the
+  exception, so that sheet says the calorie target follows the weight goal under
+  its calorie stepper, and the goal sheet says the same under its own figure.
+
+The rule it bends is `nutritionTargets`' own note that a figure nobody chose
+must not drive the food log. Setting a goal is taken as choosing to have this
+one figure tracked, which is why the exception stops at that figure and why it
+has to be visible on both sheets rather than only in the code.
 
 **The macro split follows the same rule and is where it was most tempting to
 break.** `MACRO_PRESETS` names four common ways to divide a day's calories and

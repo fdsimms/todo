@@ -34,6 +34,7 @@ import {
   categoryMoodContrasts,
   contextTagMoodContrasts,
   describeHealthInsight,
+  finishedDaysAverage,
   foodMoodContrasts,
   healthInsight,
   metricAverage,
@@ -243,14 +244,15 @@ export function MoodScreen() {
   );
 
   // The two figures the food log itself leads with (see `SUMMARY_KEYS`), over
-  // the days that could speak for themselves rather than over the window.
+  // the days that could speak for themselves rather than over the window, and
+  // on Stats' terms: finished days only, and none below the paired-day floor.
   const averageCalories = useMemo(
-    () => (kitchenEnabled ? metricAverage(days, 'calorieKcal') : null),
-    [days, kitchenEnabled],
+    () => (kitchenEnabled ? finishedDaysAverage(days, 'calorieKcal', todayKey) : null),
+    [days, kitchenEnabled, todayKey],
   );
   const averageProtein = useMemo(
-    () => (kitchenEnabled ? metricAverage(days, 'proteinG') : null),
-    [days, kitchenEnabled],
+    () => (kitchenEnabled ? finishedDaysAverage(days, 'proteinG', todayKey) : null),
+    [days, kitchenEnabled, todayKey],
   );
 
   // A contrast is keyed on the lowercased label, which is not what the user
@@ -628,8 +630,10 @@ export function MoodScreen() {
                 <Text style={styles.chartCaption}>
                   From your food log, over the last {FOOD_INSIGHT_DAYS} days, counting only the days
                   {' '}you logged at least two meals. A day logged more thinly says less about what
-                  {' '}you ate than it looks like it does. These are patterns between two numbers,
-                  {' '}not causes.
+                  {' '}you ate than it looks like it does.
+                  {(averageCalories !== null || averageProtein !== null)
+                    && ' The daily averages leave out today, which is still in progress.'}
+                  {' '}These are patterns between two numbers, not causes.
                 </Text>
               </View>
             </>
