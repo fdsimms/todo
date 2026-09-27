@@ -1694,12 +1694,12 @@ export function ProjectDetailScreen() {
                         </View>
                       ) : (
                         <>
-                        // The same nested list Today gives a stack's rows:
-                        // drag to reorder within the section, or past its edge
-                        // to take a task out of it. These were drawn static,
-                        // so a section's order could only be changed from
-                        // Today, and a task could only leave one through its
-                        // editor.
+                        {/* The same nested list Today gives a stack's rows:
+                            drag to reorder within the section, or past its
+                            edge to take a task out of it. These were drawn
+                            static, so a section's order could only be changed
+                            from Today, and a task could only leave one
+                            through its editor. */}
                         <SortableList
                           data={children}
                           onReorder={reordered => reorderGroupChildren(group.id, reordered.map(t => t.id))}
