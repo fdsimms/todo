@@ -18,6 +18,7 @@ import { animateLayout } from '../utils/layoutAnimation';
 import {
   buildProjectPullPlan,
   describePullEmpty,
+  describeQuietReason,
   projectPullUpdates,
   suggestPullDate,
   type ProjectPullProposal,
@@ -340,7 +341,7 @@ export function ProjectPullSheet({ visible, todaysTasks, scopeProjectIds, onOpen
         activeOpacity={interaction.activeOpacity}
         accessibilityRole="checkbox"
         accessibilityState={{ checked }}
-        accessibilityLabel={`${task.title}, from ${p.project.title}, quiet ${p.quietDays} days, schedule for ${dayLabel}`}
+        accessibilityLabel={`${task.title}, from ${p.project.title}${p.quietDays > 0 ? `, ${describeQuietReason(p.quietDays)}` : ''}, schedule for ${dayLabel}`}
         accessibilityHint="Long press to pick a different day"
       >
         <Ionicons

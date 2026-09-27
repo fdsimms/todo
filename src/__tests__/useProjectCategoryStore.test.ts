@@ -44,6 +44,20 @@ describe('addCategory', () => {
     expect(dbInsertProjectCategory).not.toHaveBeenCalled();
     expect(useProjectCategoryStore.getState().categories).toHaveLength(1);
   });
+
+  // The name is the identity, so a different case or a stray space would
+  // otherwise be a second section holding what anyone would call the same one.
+  it('matches an existing name without case or surrounding space', () => {
+    seed(cat('Travel', 1));
+    expect(useProjectCategoryStore.getState().addCategory(' travel ').name).toBe('Travel');
+    expect(dbInsertProjectCategory).not.toHaveBeenCalled();
+  });
+
+  it('trims a new name before inserting it', () => {
+    (dbInsertProjectCategory as jest.Mock).mockReturnValue(cat('Home', 1));
+    useProjectCategoryStore.getState().addCategory('  Home ');
+    expect(dbInsertProjectCategory).toHaveBeenCalledWith('Home');
+  });
 });
 
 describe('renameCategory', () => {
@@ -68,6 +82,13 @@ describe('renameCategory', () => {
     expect(useProjectCategoryStore.getState().renameCategory('Home', 'Travel')).toBe(false);
     expect(dbRenameProjectCategory).not.toHaveBeenCalled();
     expect(useProjectCategoryStore.getState().categories.map(c => c.name)).toEqual(['Travel', 'Home']);
+  });
+
+  it('refuses a name taken in another case, but lets a category re-case its own', () => {
+    seed(cat('Travel', 1), cat('Home', 2));
+    expect(useProjectCategoryStore.getState().renameCategory('Home', 'travel')).toBe(false);
+    expect(useProjectCategoryStore.getState().renameCategory('Home', 'HOME')).toBe(true);
+    expect(dbRenameProjectCategory).toHaveBeenCalledWith('c-Home', 'Home', 'HOME');
   });
 
   it('refuses a blank name, an unchanged one, and one that is not there', () => {

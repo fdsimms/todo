@@ -89,7 +89,6 @@ export function ProjectEditor({ visible, project, isNew, onClose }: Props) {
   const completeProject = useTaskStore(s => s.completeProject);
   const uncompleteProject = useTaskStore(s => s.uncompleteProject);
   const deleteProject = useTaskStore(s => s.deleteProject);
-  const allTasks = useTaskStore(s => s.tasks);
   // `project` is a snapshot handed down when the sheet was opened, so it never
   // sees its own archived flag flip back — read that one field live instead,
   // or unarchiving here leaves the toggle showing "archived" until the sheet
@@ -207,10 +206,9 @@ export function ProjectEditor({ visible, project, isNew, onClose }: Props) {
   // Read the live text box instead of trusting stale `category` state.
   const resolveCategory = () => {
     const c = newCategory.trim();
-    if (addingCategory && c) {
-      addCategory(c);
-      return c;
-    }
+    // addCategory may answer with an existing row of a different case, and
+    // that row's name is the one a project has to carry to be grouped under it.
+    if (addingCategory && c) return addCategory(c).name;
     return category;
   };
 
@@ -227,8 +225,18 @@ export function ProjectEditor({ visible, project, isNew, onClose }: Props) {
   const [shiftFrom, setShiftFrom] = useState<Date | null>(null);
   const [shiftTo, setShiftTo] = useState<Date | null>(null);
 
-  const saveAndClose = () => {
-    if (!project) { onClose(); return; }
+  /**
+   * Writes everything on the sheet. Split from the close because Mark complete
+   * and Archive also end the session, and they used to close without it: every
+   * edit made alongside was dropped, and a project fresh from quick add's "More
+   * details" still had its blank stored title, so ProjectsScreen's
+   * handleEditorClose read it as never named and deleted the row outright.
+   *
+   * Answers whether the trip's departure moved, which only the Done path acts
+   * on (a trip being completed or filed away has nothing left to prepare).
+   */
+  const commitEdits = (): { from: Date; to: Date } | null => {
+    if (!project) return null;
     const trimmed = title.trim();
     // Did the departure move? Only the start is compared: a trip that got
     // longer at the far end has not moved anything scheduled against its
@@ -284,22 +292,32 @@ export function ProjectEditor({ visible, project, isNew, onClose }: Props) {
       ongoing,
       weekendSource,
     });
+    return departureMoved && priorStart && nextStart ? { from: priorStart, to: nextStart } : null;
+  };
+
+  const saveAndClose = () => {
+    const moved = commitEdits();
     // The trip moved, so offer to bring its prepared work with it (see
     // utils/awayShift). Deliberately an offer rather than a shift: "Renew
     // passport" is anchored to the trip and "Buy a suitcase" is not, and only
     // the person who typed them knows which. The sheet closes this one.
-    if (departureMoved && priorStart && nextStart) {
-      setShiftFrom(priorStart);
-      setShiftTo(nextStart);
+    if (moved) {
+      setShiftFrom(moved.from);
+      setShiftTo(moved.to);
       return;
     }
     onClose();
   };
 
+  // The name as it reads on screen right now, for the confirms below: the
+  // snapshot's title is blank for a project fresh from quick add, and stale
+  // for one renamed in this session.
+  const displayTitle = () => title.trim() || project?.title || 'this project';
+
   const handleDelete = () => {
     if (!project) return;
     Alert.alert(
-      `Delete "${project.title}"?`,
+      `Delete "${displayTitle()}"?`,
       'Its tasks can stay in your list without a project, or be deleted with it.',
       [
         { text: 'Cancel', style: 'cancel' },
@@ -315,11 +333,15 @@ export function ProjectEditor({ visible, project, isNew, onClose }: Props) {
 
   const handleComplete = () => {
     if (!project) return;
-    const remaining = allTasks.filter(
+    // Read at the moment of asking rather than subscribed to: nothing else on
+    // the sheet needs the task list, and a subscription re-rendered the whole
+    // editor on every task write anywhere in the app.
+    const remaining = useTaskStore.getState().tasks.filter(
       t => t.projectId === project.id && t.parentId === null && !t.completed && !t.archived
     );
     const finish = (archiveRemaining: boolean) => {
       haptics.success();
+      commitEdits();
       completeProject(project.id, { archiveRemaining });
       onClose();
     };
@@ -328,7 +350,7 @@ export function ProjectEditor({ visible, project, isNew, onClose }: Props) {
       return;
     }
     Alert.alert(
-      `Complete "${project.title}"?`,
+      `Complete "${displayTitle()}"?`,
       `It still has ${remaining.length} open ${remaining.length === 1 ? 'task' : 'tasks'}.`,
       [
         { text: 'Cancel', style: 'cancel' },
@@ -336,6 +358,34 @@ export function ProjectEditor({ visible, project, isNew, onClose }: Props) {
         { text: 'Archive remaining tasks', onPress: () => finish(true) },
       ],
     );
+  };
+
+  const commitNewCategory = () => {
+    const c = newCategory.trim();
+    if (c) { setCategory(addCategory(c).name); closeCategory(); }
+    setNewCategory(''); setAddingCategory(false);
+  };
+
+  const handleArchive = () => {
+    if (!project) return;
+    haptics.success();
+    commitEdits();
+    archiveProject(project.id);
+    onClose();
+  };
+
+  // Reopening and unarchiving leave the sheet open, since the project is still
+  // the one being edited; only the flag underneath it changed.
+  const handleReopen = () => {
+    if (!project) return;
+    haptics.tap();
+    uncompleteProject(project.id);
+  };
+
+  const handleUnarchive = () => {
+    if (!project) return;
+    haptics.tap();
+    unarchiveProject(project.id);
   };
 
   if (!project) return null;
@@ -396,9 +446,6 @@ export function ProjectEditor({ visible, project, isNew, onClose }: Props) {
                 if (date && awayEnd && awayEnd <= date) setAwayEnd(null);
               }
               setPickingAway(null);
-    setAwayPauses(project.awayPauses);
-    setAwayListId(project.awayListId);
-    setDestination(project.destination ?? '');
             }}
             onClear={() => {
               if (pickingAway === 'end') setAwayEnd(null);
@@ -407,9 +454,6 @@ export function ProjectEditor({ visible, project, isNew, onClose }: Props) {
               // would show a value that no longer means anything.
               else { setAwayStart(null); setAwayEnd(null); }
               setPickingAway(null);
-    setAwayPauses(project.awayPauses);
-    setAwayListId(project.awayListId);
-    setDestination(project.destination ?? '');
             }}
             onCancel={() => setPickingAway(null)}
           />
@@ -432,6 +476,9 @@ export function ProjectEditor({ visible, project, isNew, onClose }: Props) {
         placeholderTextColor={colors.textTertiary}
         multiline
         maxLength={TITLE_MAX_LENGTH}
+        // A project fresh from quick add's "More details" arrives unnamed, and
+        // naming it is the one thing it can't be saved without.
+        autoFocus={isNew && !project.title}
       />
       <TextInput
         style={styles.notesInput}
@@ -442,74 +489,13 @@ export function ProjectEditor({ visible, project, isNew, onClose }: Props) {
         multiline
       />
 
-      <View style={styles.sectionCard}>
-        <CollapsibleField
-          label="Category"
-          summary={category ?? undefined}
-          hint="Groups this project with others of the same kind."
-          expanded={categoryOpen}
-          onToggle={() => setCategoryOpen(v => !v)}
-        >
-          <View style={styles.pillRow}>
-            <TouchableOpacity
-              style={[styles.pill, !category && styles.pillActiveNeutral]}
-              onPress={() => { haptics.tap(); setCategory(null); closeCategory(); }}
-            >
-              <Text style={[styles.pillText, !category && styles.pillTextActive]}>None</Text>
-            </TouchableOpacity>
-            {categories.map(cat => (
-              <TouchableOpacity
-                key={cat.id}
-                style={[styles.pill, category === cat.name && styles.pillActiveNeutral]}
-                onPress={() => { haptics.tap(); setCategory(cat.name); closeCategory(); }}
-              >
-                <Text style={[styles.pillText, category === cat.name && styles.pillTextActive]}>{cat.name}</Text>
-              </TouchableOpacity>
-            ))}
-            {addingCategory ? (
-              <TextInput
-                autoFocus
-                style={styles.tagInput}
-                value={newCategory}
-                onChangeText={setNewCategory}
-                onSubmitEditing={() => {
-                  const c = newCategory.trim();
-                  if (c) { addCategory(c); setCategory(c); closeCategory(); }
-                  setNewCategory(''); setAddingCategory(false);
-                }}
-                onBlur={() => {
-                  const c = newCategory.trim();
-                  if (c) { addCategory(c); setCategory(c); closeCategory(); }
-                  setNewCategory(''); setAddingCategory(false);
-                }}
-                placeholder="Category name"
-                placeholderTextColor={colors.textTertiary}
-                returnKeyType="done"
-                autoCapitalize="words"
-              />
-            ) : (
-              <InlineAction icon="add" label="New" accessibilityLabel="New category" onPress={() => setAddingCategory(true)} />
-            )}
-          </View>
-        </CollapsibleField>
-      </View>
-
-      <View style={styles.sectionCard}>
-        <CollapsibleField
-          label="Default task category"
-          summary={defaultTaskCategory ? categoryLabel(defaultTaskCategory, taskCategories) : undefined}
-          hint="A task added straight to this project starts in this category, unless it's given one of its own."
-          expanded={defaultTaskCategoryOpen}
-          onToggle={() => setDefaultTaskCategoryOpen(v => !v)}
-        >
-          <CategoryPickerList
-            value={defaultTaskCategory}
-            onSelect={cat => { setDefaultTaskCategory(cat); setDefaultTaskCategoryOpen(false); }}
-          />
-        </CollapsibleField>
-      </View>
-
-      <View style={[styles.card, { marginTop: spacing.lg }]}>
+      {/* The same card order every other editor follows (Schedule, Organize,
+          then the rarely-changed rows), under the same uppercase labels. This
+          sheet was a column of unlabelled cards in the order each field was
+          added, with the nudge's own switch floating free of the field it
+          belongs to. */}
+      <Text style={styles.groupLabel}>Schedule</Text>
+      <View style={styles.card}>
         <EditorRow
           icon="flag-outline"
           label="Deadline"
@@ -521,11 +507,9 @@ export function ProjectEditor({ visible, project, isNew, onClose }: Props) {
       {/* Same flag icon and the same word a task's own deadline uses, because
           it is the same idea one container out. It replaced a "Start date" /
           "Target date" pair whose first half had one reader in its life (see
-          Project.deadline) — #1740 had to add a paragraph here denying that
-          either of them scheduled anything, and half of that paragraph went
-          with the field it was denying. */}
+          Project.deadline). */}
       <Text style={styles.sectionFooter}>
-        Optional. Shown on the project's card, with no effect on scheduling or when tasks appear. If it passes before the project's done, nothing happens automatically; it's just flagged so you can decide what to do.
+        Shown on the project's card and flagged once it passes. It doesn't schedule anything.
       </Text>
 
       {/* The away span. Two rows rather than one range control because the end
@@ -542,7 +526,7 @@ export function ProjectEditor({ visible, project, isNew, onClose }: Props) {
           switch would be quietly changing behaviour. */}
       {awayFieldShown && (
       <>
-      <View style={[styles.card, { marginTop: spacing.lg }]}>
+      <View style={[styles.card, styles.stackedCard]}>
         <EditorRow
           icon="airplane-outline"
           label="Leaving"
@@ -619,20 +603,88 @@ export function ProjectEditor({ visible, project, isNew, onClose }: Props) {
         )}
       </View>
       <Text style={styles.sectionFooter}>
-        Only relevant if this project involves travel, so leave it blank otherwise. The days you're away from home. Look ahead uses them to show what's due while you're gone, and the project's card counts down to the day you leave. The day you come back doesn't count as a day away. Where you're going is optional, and it's only looked up if you turn on the destination forecast in Settings.
+        The days you're away from home. Look ahead shows what's due while you're gone, and the card counts down to the day you leave. The day you come back doesn't count as a day away. Leave these blank if this project isn't a trip. Where you're going is only looked up if the destination forecast is on in Settings.
       </Text>
       </>
       )}
 
+      <Text style={styles.groupLabel}>Organize</Text>
+      <View style={styles.card}>
+        <CollapsibleField
+          label="Category"
+          summary={category ?? undefined}
+          hint="Groups this project with others of the same kind on the Projects page."
+          expanded={categoryOpen}
+          onToggle={() => setCategoryOpen(v => !v)}
+        >
+          <View style={styles.pillRow}>
+            <TouchableOpacity
+              style={[styles.pill, !category && styles.pillActiveNeutral]}
+              onPress={() => { haptics.tap(); setCategory(null); closeCategory(); }}
+              activeOpacity={interaction.activeOpacity}
+              accessibilityRole="button"
+              accessibilityState={{ selected: !category }}
+            >
+              <Text style={[styles.pillText, !category && styles.pillTextActive]}>None</Text>
+            </TouchableOpacity>
+            {categories.map(cat => (
+              <TouchableOpacity
+                key={cat.id}
+                style={[styles.pill, category === cat.name && styles.pillActiveNeutral]}
+                onPress={() => { haptics.tap(); setCategory(cat.name); closeCategory(); }}
+                activeOpacity={interaction.activeOpacity}
+                accessibilityRole="button"
+                accessibilityState={{ selected: category === cat.name }}
+              >
+                <Text style={[styles.pillText, category === cat.name && styles.pillTextActive]}>{cat.name}</Text>
+              </TouchableOpacity>
+            ))}
+            {addingCategory ? (
+              <TextInput
+                autoFocus
+                style={styles.tagInput}
+                value={newCategory}
+                onChangeText={setNewCategory}
+                onSubmitEditing={commitNewCategory}
+                onBlur={commitNewCategory}
+                placeholder="Category name"
+                placeholderTextColor={colors.textTertiary}
+                returnKeyType="done"
+                autoCapitalize="words"
+              />
+            ) : (
+              <InlineAction icon="add" label="New" accessibilityLabel="New category" onPress={() => setAddingCategory(true)} />
+            )}
+          </View>
+        </CollapsibleField>
+        <View style={styles.sep} />
+        <CollapsibleField
+          label="Default task category"
+          summary={defaultTaskCategory ? categoryLabel(defaultTaskCategory, taskCategories) : undefined}
+          hint="A task added straight to this project starts in this category, unless it's given one of its own."
+          expanded={defaultTaskCategoryOpen}
+          onToggle={() => setDefaultTaskCategoryOpen(v => !v)}
+        >
+          <CategoryPickerList
+            value={defaultTaskCategory}
+            onSelect={cat => { setDefaultTaskCategory(cat); setDefaultTaskCategoryOpen(false); }}
+          />
+        </CollapsibleField>
+      </View>
+
       {/* One question, three answers. "Include in nudges" and "Review cadence"
           used to be a switch and a stepper nested inside it, which took two
           controls to say one thing and let them be set into combinations
-          nobody chose — see NudgeMode in utils/nudgeCadence. */}
-      <View style={[styles.sectionCard, { marginTop: spacing.lg }]}>
+          nobody chose — see NudgeMode in utils/nudgeCadence. Automatic
+          scheduling only exists under "Every…", so it lives inside the same
+          field rather than as a card of its own that came and went beside it. */}
+      <Text style={styles.groupLabel}>Nudges</Text>
+      <View style={styles.card}>
         <CollapsibleField
           label="Bring this up"
-          summary={describeNudge(nudgeFieldsFor(nudgeMode, nudgeCadenceDays))}
-          hint="A project's tasks only reach Today once they have a date, so a project with nothing scheduled goes quiet. This is what happens when it does."
+          summary={describeNudge(nudgeFieldsFor(nudgeMode, nudgeCadenceDays))
+            + (nudgeMode === 'scheduled' && autoSchedule ? ', automatically' : '')}
+          hint="A project's tasks only reach Today once they have a date. This is what happens when nothing in this project has one."
           expanded={cadenceOpen}
           onToggle={() => setCadenceOpen(v => !v)}
         >
@@ -670,6 +722,7 @@ export function ProjectEditor({ visible, project, isNew, onClose }: Props) {
                         haptics.tap();
                         setNudgeCadenceDays(fromCadenceParts(withCadenceUnit(cadence, unit)));
                       }}
+                      activeOpacity={interaction.activeOpacity}
                       accessibilityRole="button"
                       accessibilityState={{ selected: active }}
                     >
@@ -682,34 +735,32 @@ export function ProjectEditor({ visible, project, isNew, onClose }: Props) {
               </View>
             </View>
           )}
+
+          {nudgeMode === 'scheduled' && (
+            <TouchableOpacity
+              style={[styles.optionRow, styles.optionRowInset]}
+              onPress={() => { haptics.tap(); setAutoSchedule(v => !v); }}
+              activeOpacity={interaction.activeOpacity}
+              accessibilityRole="switch"
+              accessibilityLabel="Schedule automatically"
+              accessibilityState={{ checked: autoSchedule }}
+            >
+              <Ionicons name="play-forward-outline" size={18} color={autoSchedule ? colors.accent : colors.textSecondary} />
+              <View style={styles.optionContent}>
+                <Text style={styles.optionLabel}>Schedule automatically</Text>
+                <Text style={styles.optionHint}>
+                  {autoSchedule
+                    ? 'Dates the next task on its own instead of adding a review task'
+                    : 'Adds a review task and leaves the dates to you'}
+                </Text>
+              </View>
+              <View style={[styles.toggle, autoSchedule && styles.toggleOn]}>
+                <View style={[styles.toggleKnob, autoSchedule && styles.toggleKnobOn]} />
+              </View>
+            </TouchableOpacity>
+          )}
         </CollapsibleField>
       </View>
-
-      {nudgeMode === 'scheduled' && (
-        <View style={[styles.card, { marginTop: spacing.lg }]}>
-          <TouchableOpacity
-            style={styles.optionRow}
-            onPress={() => { haptics.tap(); setAutoSchedule(v => !v); }}
-            activeOpacity={interaction.activeOpacity}
-            accessibilityRole="switch"
-            accessibilityLabel="Keep it moving"
-            accessibilityState={{ checked: autoSchedule }}
-          >
-            <Ionicons name="play-forward-outline" size={18} color={autoSchedule ? colors.accent : colors.textSecondary} />
-            <View style={styles.optionContent}>
-              <Text style={styles.optionLabel}>Keep it moving</Text>
-              <Text style={styles.optionHint}>
-                {autoSchedule
-                  ? 'Dates the next task for you instead of asking'
-                  : 'Ask before scheduling anything from this project'}
-              </Text>
-            </View>
-            <View style={[styles.toggle, autoSchedule && styles.toggleOn]}>
-              <View style={[styles.toggleKnob, autoSchedule && styles.toggleKnobOn]} />
-            </View>
-          </TouchableOpacity>
-        </View>
-      )}
 
       {/*
         Whether this project is a list lives on its own screen now — the
@@ -717,7 +768,8 @@ export function ProjectEditor({ visible, project, isNew, onClose }: Props) {
         effect shows — not here. See Project.kind.
       */}
 
-      <View style={[styles.card, { marginTop: spacing.xl }]}>
+      <Text style={styles.groupLabel}>More</Text>
+      <View style={styles.card}>
         <TouchableOpacity
           style={styles.optionRow}
           onPress={() => { haptics.tap(); setOngoing(v => !v); }}
@@ -739,7 +791,7 @@ export function ProjectEditor({ visible, project, isNew, onClose }: Props) {
             <View style={[styles.toggleKnob, ongoing && styles.toggleKnobOn]} />
           </View>
         </TouchableOpacity>
-
+        <View style={styles.sepIcon} />
         <TouchableOpacity
           style={styles.optionRow}
           onPress={() => { haptics.tap(); setWeekendSource(v => !v); }}
@@ -763,63 +815,50 @@ export function ProjectEditor({ visible, project, isNew, onClose }: Props) {
         </TouchableOpacity>
       </View>
 
-      <View style={[styles.card, { marginTop: spacing.xl }]}>
-        <TouchableOpacity
-          style={styles.optionRow}
-          onPress={() => {
-            if (completed) {
-              uncompleteProject(project.id);
-            } else {
-              handleComplete();
-            }
-          }}
-          activeOpacity={interaction.activeOpacity}
-          accessibilityRole="switch"
-          accessibilityLabel="Mark complete"
-          accessibilityState={{ checked: completed }}
-        >
-          <Ionicons name={completed ? 'checkmark-circle' : 'checkmark-circle-outline'} size={18} color={completed ? colors.accent : colors.textSecondary} />
-          <View style={styles.optionContent}>
-            <Text style={styles.optionLabel}>Mark complete</Text>
-            <Text style={styles.optionHint}>
-              {completed ? 'Off the active list, listed under Completed' : 'Move to the completed list'}
-            </Text>
-          </View>
-          <View style={[styles.toggle, completed && styles.toggleOn]}>
-            <View style={[styles.toggleKnob, completed && styles.toggleKnobOn]} />
-          </View>
-        </TouchableOpacity>
-      </View>
-
-      <View style={[styles.card, { marginTop: spacing.xl }]}>
-        <TouchableOpacity
-          style={styles.optionRow}
-          onPress={() => {
-            if (archived) {
-              unarchiveProject(project.id);
-            } else {
-              haptics.success();
-              archiveProject(project.id);
-              onClose();
-            }
-          }}
-          activeOpacity={interaction.activeOpacity}
-          accessibilityRole="switch"
-          accessibilityLabel="Archive"
-          accessibilityState={{ checked: archived }}
-        >
-          <Ionicons name="archive-outline" size={18} color={archived ? colors.accent : colors.textSecondary} />
-          <View style={styles.optionContent}>
-            <Text style={styles.optionLabel}>Archive</Text>
-            <Text style={styles.optionHint}>
-              {archived ? 'Hidden from the active list' : 'Move to the archived list'}
-            </Text>
-          </View>
-          <View style={[styles.toggle, archived && styles.toggleOn]}>
-            <View style={[styles.toggleKnob, archived && styles.toggleKnobOn]} />
-          </View>
-        </TouchableOpacity>
-      </View>
+      {/* Actions, not settings. These were drawn as switches, but turning one
+          on closed the sheet and turning it off didn't, which no switch does.
+          A project fresh from quick add doesn't get them: completing or
+          filing away something that hasn't been named yet isn't a real want,
+          and an unnamed row is discarded on close anyway. */}
+      {!isNew && (
+        <View style={[styles.card, styles.actionsCard]}>
+          <TouchableOpacity
+            style={styles.optionRow}
+            onPress={completed ? handleReopen : handleComplete}
+            activeOpacity={interaction.activeOpacity}
+            accessibilityRole="button"
+            accessibilityLabel={completed ? 'Reopen project' : 'Mark project complete'}
+          >
+            <Ionicons
+              name={completed ? 'refresh-outline' : 'checkmark-circle-outline'}
+              size={18}
+              color={colors.textSecondary}
+            />
+            <View style={styles.optionContent}>
+              <Text style={styles.optionLabel}>{completed ? 'Reopen project' : 'Mark complete'}</Text>
+              <Text style={styles.optionHint}>
+                {completed ? 'Moves it back to the active list' : 'Moves it to the Completed list'}
+              </Text>
+            </View>
+          </TouchableOpacity>
+          <View style={styles.sepIcon} />
+          <TouchableOpacity
+            style={styles.optionRow}
+            onPress={archived ? handleUnarchive : handleArchive}
+            activeOpacity={interaction.activeOpacity}
+            accessibilityRole="button"
+            accessibilityLabel={archived ? 'Unarchive project' : 'Archive project'}
+          >
+            <Ionicons name="archive-outline" size={18} color={colors.textSecondary} />
+            <View style={styles.optionContent}>
+              <Text style={styles.optionLabel}>{archived ? 'Unarchive' : 'Archive'}</Text>
+              <Text style={styles.optionHint}>
+                {archived ? 'Moves it back out of the Archived list' : 'Moves it to the Archived list. Its tasks stay where they are'}
+              </Text>
+            </View>
+          </TouchableOpacity>
+        </View>
+      )}
     </EditorSheet>
   );
 }
@@ -840,7 +879,7 @@ const makeStyles = (colors: Colors) => StyleSheet.create({
   },
   notesInput: {
     color: colors.textSecondary, fontSize: font.md,
-    paddingBottom: spacing.lg, minHeight: 44,
+    paddingBottom: spacing.sm, minHeight: 44,
     // No lineHeight on a TextInput. RN maps it onto the iOS paragraph style's
     // minimum/maximum line height with no compensating baseline offset, so the
     // glyphs are drawn a full line height below the top of the line box rather
@@ -854,10 +893,17 @@ const makeStyles = (colors: Colors) => StyleSheet.create({
     borderRadius: radius.md,
     overflow: 'hidden',
   },
-  sectionCard: {
-    backgroundColor: colors.bgSecondary,
-    borderRadius: radius.md,
-    overflow: 'hidden',
+  // A second card under the same group label, like the away rows beneath the
+  // deadline.
+  stackedCard: { marginTop: spacing.md },
+  actionsCard: { marginTop: spacing.xl },
+  // Matches EditorGroup's label, which this sheet can't use directly: its
+  // cards carry their own horizontal margin, and these sit on the scroll
+  // content's padding instead.
+  groupLabel: {
+    color: colors.textSecondary, fontSize: font.xs, fontWeight: fontWeight.bold,
+    textTransform: 'uppercase', letterSpacing: 0.8,
+    marginHorizontal: spacing.xs, marginTop: spacing.lg, marginBottom: spacing.xs,
   },
   pillRow: { flexDirection: 'row', flexWrap: 'wrap', gap: spacing.xs },
   modeBlock: { marginTop: spacing.md, gap: spacing.sm },
@@ -874,8 +920,8 @@ const makeStyles = (colors: Colors) => StyleSheet.create({
     alignItems: 'center',
   },
   pillActiveNeutral: { backgroundColor: colors.bgQuaternary },
-  pillText: { color: colors.text, fontSize: font.sm, fontWeight: '500' },
-  pillTextActive: { color: colors.text, fontWeight: '600' },
+  pillText: { color: colors.text, fontSize: font.sm, fontWeight: fontWeight.medium },
+  pillTextActive: { color: colors.text, fontWeight: fontWeight.semibold },
   tagInput: {
     color: colors.text, fontSize: font.sm,
     borderBottomWidth: 1, borderBottomColor: colors.accent,
@@ -885,6 +931,12 @@ const makeStyles = (colors: Colors) => StyleSheet.create({
     height: StyleSheet.hairlineWidth,
     backgroundColor: colors.separator,
     marginLeft: spacing.md,
+  },
+  // Clears the 18pt icon column, the way EditorGroup's own divider does.
+  sepIcon: {
+    height: StyleSheet.hairlineWidth,
+    backgroundColor: colors.separator,
+    marginLeft: spacing.md + 18 + spacing.md,
   },
   sectionFooter: {
     color: colors.textTertiary,
@@ -901,6 +953,8 @@ const makeStyles = (colors: Colors) => StyleSheet.create({
     flexDirection: 'row', alignItems: 'center', gap: spacing.md,
     paddingHorizontal: spacing.md, paddingVertical: 14,
   },
+  // Inside a CollapsibleField, which already supplies the side padding.
+  optionRowInset: { paddingHorizontal: 0, paddingBottom: 0, marginTop: spacing.xs },
   optionContent: { flex: 1 },
   optionLabel: { color: colors.text, fontSize: font.md },
   optionHint: { color: colors.textTertiary, fontSize: font.xs, marginTop: spacing.xxs },

@@ -135,15 +135,24 @@ export function ProjectCategoriesSheet({ visible, onClose }: Props) {
     if (committedRef.current) return;
     committedRef.current = true;
     const trimmed = draft.trim();
-    setEditingName(null);
-    setDraft('');
     // Unchanged or emptied: the field closes and nothing is written. Blanking
     // a name is not a way to delete a category — the trash button is.
-    if (!trimmed || trimmed === name) return;
+    if (!trimmed || trimmed === name) {
+      setEditingName(null);
+      setDraft('');
+      return;
+    }
     if (!renameCategory(name, trimmed)) {
+      // The field stays open holding what was typed, as the store's contract
+      // asks. It used to close before the refusal was known, so the alert
+      // arrived after the text it was about had already been thrown away.
+      committedRef.current = false;
+      setDraft(trimmed);
       Alert.alert('That name is taken', `A project category named "${trimmed}" already exists.`);
       return;
     }
+    setEditingName(null);
+    setDraft('');
     haptics.tap();
   };
 
@@ -164,6 +173,13 @@ export function ProjectCategoriesSheet({ visible, onClose }: Props) {
     setNewName('');
     setAddingNew(false);
     if (!trimmed) return;
+    // addCategory answers a taken name with the existing row, which from here
+    // looked like the tap doing nothing at all.
+    const taken = categories.find(c => c.name.toLocaleLowerCase() === trimmed.toLocaleLowerCase());
+    if (taken) {
+      Alert.alert('That name is taken', `A project category named "${taken.name}" already exists.`);
+      return;
+    }
     animateLayout();
     addCategory(trimmed);
     haptics.tap();
