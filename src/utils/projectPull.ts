@@ -1,7 +1,8 @@
 import { differenceInCalendarDays } from 'date-fns/differenceInCalendarDays';
 import type { Project, Task } from '../types';
 import { DEFAULT_NUDGE_CADENCE_DAYS } from '../types';
-import { getCurrentDayStart, getDayStart } from './dateUtils';
+import { dayKeyToDate, getCurrentDayStart, getDayStart } from './dateUtils';
+import { format } from 'date-fns/format';
 import { hasNoDateSignal, isHeldBack } from './visibilityUtils';
 import { scoreTask, type PinContext } from './pinSuggest';
 import { computeSnoozeSuggestion } from './snoozeEngine';
@@ -284,7 +285,13 @@ function classifyProject(
   // One scheduled member and the project is not quiet. hasNoDateSignal is the
   // same predicate the visibility gates use, so "stalled" means precisely
   // "nothing in here can appear anywhere".
-  if (!actionable.every(hasNoDateSignal)) return { reason: 'has-schedule' };
+  //
+  // For a project member it is the due date alone, though, not every field
+  // hasNoDateSignal reads: isTaskVisible keeps a project task off every list
+  // until it has a dueDate, so one carrying only a time of day or a defer is
+  // placed nowhere. Counted as scheduled, it hid itself and silenced the whole
+  // project at once.
+  if (actionable.some(t => t.dueDate != null)) return { reason: 'has-schedule' };
 
   const pullable = actionable.filter(isPullable);
   if (pullable.length === 0) return { reason: 'no-pullable' };
@@ -434,7 +441,18 @@ export function suggestPullDate(
   allTasks: readonly Task[],
   todaysTasks: readonly Task[],
   quietDays: number,
+  /**
+   * A day (`YYYY-MM-DD`) the caller has already chosen, which wins outright:
+   * the weekend nudge's link, whose pulls belong on that Saturday. Today's
+   * budget has nothing to say about a different day.
+   */
+  landOnDayKey?: string | null,
 ): PullDate {
+  if (landOnDayKey) {
+    const date = dayKeyToDate(landOnDayKey);
+    date.setHours(12, 0, 0, 0);
+    return { date, dayLabel: format(date, 'EEEE'), reason: '' };
+  }
   if (sumEstimatedMinutes(todaysTasks) >= PULL_TODAY_BUDGET_MINUTES) {
     const suggestion = computeSnoozeSuggestion(task, allTasks as Task[]);
     return { date: suggestion.date, dayLabel: suggestion.dayLabel, reason: suggestion.reason };
@@ -610,11 +628,18 @@ export function buildProjectPullPlan(
    * project (or handful of them), not the whole board.
    */
   scopeProjectIds?: readonly string[],
+  /** Lands every proposal on this day; see suggestPullDate. */
+  landOnDayKey?: string | null,
 ): ProjectPullPlan {
-  let stalls = findProjectStalls(projects, allTasks, 'ask').filter(s => !s.project.autoSchedule);
+  let stalls = findProjectStalls(projects, allTasks, 'ask');
   if (scopeProjectIds && scopeProjectIds.length > 0) {
+    // Asked about by name, an auto-scheduling project is shown like any other:
+    // the weekend nudge links here for its nominated project, and the sheet
+    // it opened used to be empty whenever that project dated its own tasks.
     const scope = new Set(scopeProjectIds);
     stalls = stalls.filter(s => scope.has(s.project.id));
+  } else {
+    stalls = stalls.filter(s => !s.project.autoSchedule);
   }
   const ctx = pullContext();
 
@@ -630,7 +655,7 @@ export function buildProjectPullPlan(
   let working: Task[] = [...allTasks];
   const proposals = stalls.slice(0, MAX_PULLED_PROJECTS).map(stall => {
     const candidates = rankPullCandidates(stall.pullable, ctx);
-    const suggestion = suggestPullDate(candidates[0], working, landingToday, stall.quietDays);
+    const suggestion = suggestPullDate(candidates[0], working, landingToday, stall.quietDays, landOnDayKey);
     if (suggestion.dayLabel === 'Today') landingToday.push(candidates[0]);
     else {
       const pulled = { ...candidates[0], ...projectPullUpdates(suggestion.date) };
@@ -682,6 +707,21 @@ export function projectPullUpdates(date: Date): Partial<Task> {
  * store autoSchedule without one, so the gate is never load-bearing here — but
  * it's the gate that makes that invariant safe to rely on rather than assume.)
  */
+/**
+ * The task a sheet the user opens for this project would offer first, or null
+ * when it has nothing to offer. What the weekend nudge quotes in its notes, so
+ * the task it names is the one the sheet it links to puts at the top.
+ *
+ * Asked in 'ask' mode, the mode that sheet uses. dripCandidate (below) was
+ * used here, and it answers only for a project that schedules itself, so the
+ * weekend notes named no task for almost every project.
+ */
+export function nextPullCandidate(project: Project, allTasks: readonly Task[]): Task | null {
+  const stall = findProjectStalls([project], allTasks, 'ask')[0];
+  if (!stall) return null;
+  return rankPullCandidates(stall.pullable)[0] ?? null;
+}
+
 export function dripCandidate(project: Project, allTasks: readonly Task[]): Task | null {
   if (!project.autoSchedule) return null;
   const stall = findProjectStalls([project], allTasks, 'nudge')[0];

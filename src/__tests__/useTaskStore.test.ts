@@ -11255,6 +11255,16 @@ describe('completeTask auto-completing a finished project', () => {
     expect(project?.archived).toBe(false);
   });
 
+  // An ongoing project has no finish line; checking off the last line of a
+  // running list must not file it under Completed.
+  it('never completes an ongoing project', () => {
+    useSettingsStore.getState.mockReturnValue({ dayResetTime: '00:00', autoCompleteProjectsOnDone: true });
+    useProjectStore.setState({ projects: [makeProject({ id: 'p1', ongoing: true })] });
+    useTaskStore.setState({ tasks: [makeTask({ id: 'a', projectId: 'p1' })] });
+    useTaskStore.getState().completeTask('a');
+    expect(useProjectStore.getState().projects.find(p => p.id === 'p1')?.completed).toBe(false);
+  });
+
   it('does not complete the project while other tasks in it are still incomplete', () => {
     useSettingsStore.getState.mockReturnValue({ dayResetTime: '00:00', autoCompleteProjectsOnDone: true });
     useProjectStore.setState({ projects: [makeProject({ id: 'p1' })] });

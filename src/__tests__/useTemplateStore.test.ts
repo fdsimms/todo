@@ -34,8 +34,15 @@ import { awayNoonIso } from '../utils/awayDates';
 
 const mockCreateProject = jest.fn();
 const mockUpdateProject = jest.fn();
+let mockTargetProject: { id: string; awayStart: string | null; deadline: string | null } | null = null;
 jest.mock('../store/useProjectStore', () => ({
-  useProjectStore: { getState: () => ({ createProject: mockCreateProject, updateProject: mockUpdateProject }) },
+  useProjectStore: {
+    getState: () => ({
+      createProject: mockCreateProject,
+      updateProject: mockUpdateProject,
+      getProjectById: (id: string) => (mockTargetProject?.id === id ? mockTargetProject : null),
+    }),
+  },
 }));
 
 // checkScheduledTemplates reads vacationMode/weekStartsOn/dayResetTime, and
@@ -779,6 +786,37 @@ describe('applyTemplate — naming the run', () => {
     expect(mockCreateProject).not.toHaveBeenCalled();
     expect(mockAddTask.mock.calls[0][0]).toEqual(expect.objectContaining({ title: 'Denver', projectId: 'proj-1' }));
     expect(mockAddTask.mock.calls[1][0].projectId).toBeUndefined();
+  });
+});
+
+describe('applyTemplate — dates into an existing project', () => {
+  afterEach(() => { mockTargetProject = null; });
+  const start = new Date(2026, 9, 3, 12);
+  const end = new Date(2026, 9, 13, 12);
+
+  // The sheet asks for these dates either way; applied into a project that
+  // already existed, they used to be written nowhere.
+  it("fills in a trip template's span on a project that has none", () => {
+    mockTargetProject = { id: 'proj-1', awayStart: null, deadline: null };
+    useTemplateStore.setState({
+      templates: [makeTemplate({ applyContainer: 'project', anchorsAreAway: true, items: [makeItem({ id: 'a' })] })],
+    });
+    useTemplateStore.getState().applyTemplate('tpl-1', new Set(['a']), { start, end }, { targetProjectId: 'proj-1' });
+    expect(mockUpdateProject).toHaveBeenCalledWith('proj-1', expect.objectContaining({
+      awayStart: expect.any(String), awayEnd: expect.any(String),
+    }));
+  });
+
+  it("fills in the deadline from an ordinary template's end date, but never overwrites one", () => {
+    mockTargetProject = { id: 'proj-1', awayStart: null, deadline: null };
+    useTemplateStore.setState({ templates: [makeTemplate({ applyContainer: 'project', items: [makeItem({ id: 'a' })] })] });
+    useTemplateStore.getState().applyTemplate('tpl-1', new Set(['a']), { start: null, end }, { targetProjectId: 'proj-1' });
+    expect(mockUpdateProject).toHaveBeenCalledWith('proj-1', { deadline: end.toISOString() });
+
+    mockUpdateProject.mockClear();
+    mockTargetProject = { id: 'proj-1', awayStart: null, deadline: '2026-12-01T12:00:00.000Z' };
+    useTemplateStore.getState().applyTemplate('tpl-1', new Set(['a']), { start: null, end }, { targetProjectId: 'proj-1' });
+    expect(mockUpdateProject).not.toHaveBeenCalledWith('proj-1', expect.objectContaining({ deadline: expect.anything() }));
   });
 });
 

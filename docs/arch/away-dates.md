@@ -506,6 +506,13 @@ Existing trip: the project teaches the run its anchors.
 
 ### The trip you have not booked yet
 
+*Not built.* Nothing writes `awayStart` from a deliverable answer yet; the
+only writers are the editor, `createProject` and a template run (which also
+fills an existing project's empty span, see `applyTemplate`). The open question
+below is how a task is marked as the one whose answer may do it: every `'date'`
+answer in a project would let "Pick an install date" on a kitchen project turn
+vacation mode on.
+
 Both directions above assume you know the dates when you apply the template. Often
 you do not — the trip is real, the prep is real, and the dates are the *first*
 thing on the list to find out. The Trip prep template already opens with exactly

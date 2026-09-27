@@ -34,6 +34,9 @@ import { SegmentedControl, type SegmentOption } from './SegmentedControl';
 import { useColors } from '../theme/ThemeContext';
 import { spacing, radius, font, fontWeight, interaction, type Colors } from '../theme';
 import { formatDeadlineDate } from '../utils/dateUtils';
+import { addDays } from 'date-fns/addDays';
+import { differenceInCalendarDays } from 'date-fns/differenceInCalendarDays';
+import { buildAwayShiftPlan } from '../utils/awayShift';
 import { haptics } from '../utils/haptics';
 import { animateLayout } from '../utils/layoutAnimation';
 import {
@@ -75,7 +78,12 @@ interface Props {
   project: Project | null;
   /** Titles the sheet "New project" — set when arriving from quick add's "More details". */
   isNew?: boolean;
-  onClose: () => void;
+  /**
+   * `discarded` is passed when the person backed out of a project created for
+   * this sheet (isNew). The row already exists, so the host deletes it; a
+   * plain close keeps whatever was saved.
+   */
+  onClose: (outcome?: 'discarded') => void;
 }
 
 export function ProjectEditor({ visible, project, isNew, onClose }: Props) {
@@ -286,12 +294,28 @@ export function ProjectEditor({ visible, project, isNew, onClose }: Props) {
   };
 
   const saveAndClose = () => {
+    // A new project can't be saved without a name. It used to close anyway,
+    // and the host then deleted the unnamed row along with the deadline,
+    // notes and settings entered for it, without a word.
+    if (isNew && !title.trim()) {
+      Alert.alert(
+        'Name this project',
+        'A new project needs a name before it can be saved.',
+        [
+          { text: 'Keep editing', style: 'cancel' },
+          { text: 'Discard project', style: 'destructive', onPress: () => onClose('discarded') },
+        ],
+      );
+      return;
+    }
     const moved = commitEdits();
     // The trip moved, so offer to bring its prepared work with it (see
     // utils/awayShift). Deliberately an offer rather than a shift: "Renew
     // passport" is anchored to the trip and "Buy a suitcase" is not, and only
     // the person who typed them knows which. The sheet closes this one.
-    if (moved) {
+    // Only when something would move: with no dated task the sheet opened
+    // anyway, over "0 tasks" and a disabled button.
+    if (moved && buildAwayShiftPlan(projectTasks, moved.from, moved.to, useSettingsStore.getState().dayResetTime).proposals.length > 0) {
       setShiftFrom(moved.from);
       setShiftTo(moved.to);
       return;
@@ -333,14 +357,22 @@ export function ProjectEditor({ visible, project, isNew, onClose }: Props) {
   };
 
   // Same confirm, in the same words, as TaskEditor's own Cancel.
+  //
+  // On a project created for this sheet, Cancel means "don't create it": the
+  // row already exists (quick add's "More details" makes it up front), so the
+  // host is told to delete it. Only asked about when something was entered
+  // beyond the name quick add passed in.
   const handleCancel = () => {
-    if (!isDirty()) { onClose(); return; }
+    const leave = () => onClose(isNew ? 'discarded' : undefined);
+    if (!isDirty()) { leave(); return; }
     Alert.alert(
-      'Discard changes?',
-      'You have unsaved changes. Are you sure you want to discard them?',
+      isNew ? 'Discard this project?' : 'Discard changes?',
+      isNew
+        ? "It hasn't been saved yet. Are you sure you want to discard it?"
+        : 'You have unsaved changes. Are you sure you want to discard them?',
       [
         { text: 'Keep editing', style: 'cancel' },
-        { text: 'Discard', style: 'destructive', onPress: onClose },
+        { text: 'Discard', style: 'destructive', onPress: leave },
       ],
     );
   };
@@ -480,12 +512,23 @@ export function ProjectEditor({ visible, project, isNew, onClose }: Props) {
                 // entered on purpose. Backdating is still allowed for both:
                 // recording a trip that has already happened is a real thing
                 // to do, which is why allowPast is left at its default.
-                setAwayEnd(date && awayStart && date > awayStart ? date : null);
+                if (date && awayStart && date <= awayStart) {
+                  // Said rather than silently dropped, which is what this did:
+                  // the picker closed and the row stayed empty with no reason.
+                  Alert.alert('Coming back is before leaving', 'Pick a day after you leave.');
+                  return;
+                }
+                setAwayEnd(date);
               } else {
+                // Moving the departure moves the return with it, keeping the
+                // trip the same length: a flight moved three days later is the
+                // same ten-day trip. Leaving the return where it was quietly
+                // shortened the trip, or cleared the return when the new
+                // departure passed it.
+                if (date && awayStart && awayEnd) {
+                  setAwayEnd(addDays(awayEnd, differenceInCalendarDays(date, awayStart)));
+                }
                 setAwayStart(date);
-                // A return before the new departure stops meaning anything, so
-                // it goes rather than being left to be silently ignored.
-                if (date && awayEnd && awayEnd <= date) setAwayEnd(null);
               }
               setPickingAway(null);
             }}

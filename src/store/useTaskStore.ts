@@ -51,7 +51,7 @@ import { useRecipeStore } from './useRecipeStore';
 import { useMealPlanStore } from './useMealPlanStore';
 import { useLeftoverStore } from './useLeftoverStore';
 import { isLiveLeftover } from '../utils/leftovers';
-import { dripCandidate, findProjectStalls, projectPullUpdates } from '../utils/projectPull';
+import { dripCandidate, findProjectStalls, nextPullCandidate, projectPullUpdates } from '../utils/projectPull';
 import {
   projectReviewLinkUrl,
   projectReviewProjectId,
@@ -3333,7 +3333,9 @@ export const useTaskStore = create<TaskStore>((set, get) => ({
     if (!missed && task.projectId && useSettingsStore.getState().autoCompleteProjectsOnDone) {
       const progress = projectProgress(task.projectId, get().tasks);
       const project = useProjectStore.getState().getProjectById(task.projectId);
-      if (progress.total > 0 && progress.done === progress.total && project && !project.completed && !project.archived) {
+      // Never an ongoing one (Project.ongoing): a running list has no finish
+      // line, and every other "you're done" path already refuses it.
+      if (progress.total > 0 && progress.done === progress.total && project && !project.completed && !project.archived && !project.ongoing) {
         useProjectStore.getState().applyProjectCompleted(task.projectId, true);
         autoCompletedProjectId = task.projectId;
       }
@@ -6528,7 +6530,10 @@ export const useTaskStore = create<TaskStore>((set, get) => ({
       ? {
           projectId: nominated.id,
           projectTitle: nominated.title,
-          candidateTitle: dripCandidate(nominated, tasks)?.title ?? null,
+          candidateTitle: (() => {
+            const next = nextPullCandidate(nominated, tasks);
+            return next ? displayTitleFor(next) : null;
+          })(),
         }
       : null;
 
@@ -6548,7 +6553,7 @@ export const useTaskStore = create<TaskStore>((set, get) => ({
         notes: weekendNudgeNotes(suggestion),
         dueDate: dueDate.toISOString(),
         category: settings.weekendNudgeTaskCategory,
-        linkUrl: weekendNudgeLinkUrl(suggestion?.projectId ?? null),
+        linkUrl: weekendNudgeLinkUrl(suggestion?.projectId ?? null, window.saturdayKey),
         ...generatedBy('weekendNudge', window.saturdayKey),
       }),
     });

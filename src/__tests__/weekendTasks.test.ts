@@ -298,9 +298,18 @@ describe('the project it points at', () => {
     expect(weekendSourceProjects([project('a', { archived: true })])).toEqual([]);
   });
 
+  it('drops a completed project, which has nothing left to suggest', () => {
+    expect(weekendSourceProjects([project('a', { completed: true })])).toEqual([]);
+  });
+
   it('links to the pull sheet scoped to that project, and nowhere at all without one', () => {
     expect(weekendNudgeLinkUrl('p1')).toBe('dundundun://projects?pull=p1');
     expect(weekendNudgeLinkUrl(null)).toBeNull();
+  });
+
+  // So what the sheet pulls lands on the weekend, not on the day it was read.
+  it('carries the Saturday on the link', () => {
+    expect(weekendNudgeLinkUrl('p1', '2026-10-03')).toBe('dundundun://projects?pull=p1&on=2026-10-03');
   });
 });
 

@@ -347,6 +347,9 @@ export function TaskGroupEditor({ visible, group, isNew, onClose, projectId }: P
             context="unscheduled"
             seed={{ groupId: group.id, category }}
             seedLabel={title.trim() || sectionWordCap}
+            // Filed at creation rather than only in onCreated, which a burst
+            // of "Add another" never calls.
+            intoProjectId={filingProjectId}
             onCreated={task => {
               if (filingProjectId) addExistingToProject(task.id, filingProjectId);
             }}

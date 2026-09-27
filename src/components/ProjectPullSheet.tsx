@@ -44,6 +44,12 @@ interface Props {
    */
   scopeProjectIds?: readonly string[];
   /**
+   * A day (`YYYY-MM-DD`) every pull lands on instead of the sheet's own
+   * choice. Set by the weekend nudge's link, which is about that Saturday: its
+   * pulls used to land on today, a Thursday.
+   */
+  landOnDayKey?: string | null;
+  /**
    * Opens the named project's own detail screen — wired up so a review task's
    * "nothing to pull" moment still has somewhere to go look. Only rendered
    * when the sheet is scoped to exactly one project: a board-wide opening has
@@ -79,7 +85,7 @@ interface Props {
  * doesn't (outside the expanded case, which has no need for it), so it gets
  * its own visible affordance instead of a third gesture.
  */
-export function ProjectPullSheet({ visible, todaysTasks, scopeProjectIds, onOpenProject, onClose }: Props) {
+export function ProjectPullSheet({ visible, todaysTasks, scopeProjectIds, landOnDayKey, onOpenProject, onClose }: Props) {
   const colors = useColors();
   const { isDark } = useTheme();
   const styles = useMemo(() => makeStyles(colors), [colors]);
@@ -147,7 +153,7 @@ export function ProjectPullSheet({ visible, todaysTasks, scopeProjectIds, onOpen
 
   useEffect(() => {
     if (!visible) return;
-    const next = buildProjectPullPlan(projects, allTasks, todaysTasks, scopeProjectIds);
+    const next = buildProjectPullPlan(projects, allTasks, todaysTasks, scopeProjectIds, landOnDayKey);
     setPlan(next);
     setSelectedIds(initialSelectedIds(next));
     setCandidateIndex({});
@@ -223,7 +229,7 @@ export function ProjectPullSheet({ visible, todaysTasks, scopeProjectIds, onOpen
     const override = overrides[task.id];
     if (override) return { date: override, dayLabel: null, reason: 'moved by hand' };
     if (task.id === p.candidates[0].id) return p.suggestion;
-    return suggestPullDate(task, allTasks, todaysTasks, p.quietDays);
+    return suggestPullDate(task, allTasks, todaysTasks, p.quietDays, landOnDayKey);
   };
 
   const toggle = (taskId: string) => {
@@ -319,7 +325,7 @@ export function ProjectPullSheet({ visible, todaysTasks, scopeProjectIds, onOpen
     haptics.tap();
     forgivVacationStreaks();
     setVacationMode(false);
-    const next = buildProjectPullPlan(projects, allTasks, todaysTasks, scopeProjectIds);
+    const next = buildProjectPullPlan(projects, allTasks, todaysTasks, scopeProjectIds, landOnDayKey);
     setPlan(next);
     setSelectedIds(initialSelectedIds(next));
   };

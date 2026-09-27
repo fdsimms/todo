@@ -152,12 +152,17 @@ export function projectCompletedRows(projectId: string, tasks: Task[]): Task[] {
   const members = tasks.filter(t => t.projectId === projectId && t.parentId === null && !t.archived);
   const byId = new Map(members.map(t => [t.id, t]));
   const latest = new Map<string, Task>();
+  // A member with a row still open isn't finished: a repeating task's past
+  // occurrences are done, but the task is still up above among the open ones,
+  // and listing it here too made the section disagree with "X of Y done".
+  const open = new Set<string>();
   for (const member of members) {
-    if (!member.completed) continue;
     const key = memberKey(member, byId);
+    if (!member.completed) { open.add(key); continue; }
     const held = latest.get(key);
     if (!held || (member.completedAt ?? '') > (held.completedAt ?? '')) latest.set(key, member);
   }
+  for (const key of open) latest.delete(key);
   return Array.from(latest.values())
     .sort((a, b) => (b.completedAt ?? '').localeCompare(a.completedAt ?? ''));
 }

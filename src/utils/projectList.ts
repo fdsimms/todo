@@ -1,10 +1,11 @@
 import { format } from 'date-fns/format';
 import { differenceInCalendarDays } from 'date-fns/differenceInCalendarDays';
-import type { Project, ProjectSortOption, Task } from '../types';
+import type { Project, ProjectSortOption, Task, TaskGroup } from '../types';
 import { formatDeadlineDate, getCurrentDayStart } from './dateUtils';
 import { describeAwaySpan } from './awayDates';
 import { liveProjectSteps } from './projectOrder';
-import { displayTitleFor } from './visibilityUtils';
+import { buildProjectListItems } from './projectStacks';
+import { displayTitleFor, isHeldBack } from './visibilityUtils';
 
 /**
  * What the Projects screen says about each project, and the order and filter
@@ -117,13 +118,31 @@ export function projectProgressNote(
 }
 
 /**
- * The task the card names as next: the top of the project's own order, as the
- * project screen lists it. The title is the displayed one, so a chain names
+ * The task the card names as next: the first one the project page lists that
+ * can actually be done now. The title is the displayed one, so a chain names
  * the step it's on rather than the chain.
+ *
+ * Walked in the page's own order (buildProjectListItems), not by sortOrder
+ * alone. A section's tasks carry their place *within* the section (1, 2, 3…),
+ * so sorting every task on one number put a section's first task ahead of the
+ * loose tasks above it, and tied the first tasks of every section. A task
+ * waiting on another task or on a person is skipped: "Next" is what you could
+ * pick up, and the page already says what it waits on.
  */
-export function projectNextStepTitle(projectId: string, tasks: readonly Task[]): string | null {
-  const next = liveProjectSteps(projectId, tasks)[0];
-  return next ? displayTitleFor(next) : null;
+export function projectNextStepTitle(
+  projectId: string,
+  tasks: readonly Task[],
+  groups: readonly TaskGroup[] = [],
+): string | null {
+  const live = liveProjectSteps(projectId, tasks);
+  for (const item of buildProjectListItems(live, [...groups], projectId)) {
+    const rows = item.type === 'task'
+      ? [item.task]
+      : [...item.children].sort((a, b) => a.sortOrder - b.sortOrder);
+    const next = rows.find(t => !isHeldBack(t));
+    if (next) return displayTitleFor(next);
+  }
+  return null;
 }
 
 /** The sort choices, in the order the menu offers them. */

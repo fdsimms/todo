@@ -14,6 +14,7 @@ import { useShallow } from 'zustand/react/shallow';
 import { useTaskStore } from '../store/useTaskStore';
 import { useProjectStore, projectProgress, isProjectPastWindow } from '../store/useProjectStore';
 import { useProjectCategoryStore } from '../store/useProjectCategoryStore';
+import { useTaskGroupStore } from '../store/useTaskGroupStore';
 import { groupProjectsByCategory, resolveProjectDrop, type ProjectListItem } from '../utils/projectGrouping';
 import { ProjectEditor } from '../components/ProjectEditor';
 import { QuickAddProjectModal, type ProjectDraft } from '../components/QuickAddProjectModal';
@@ -103,6 +104,7 @@ export function ProjectsScreen() {
   const uncompleteProject = useTaskStore(s => s.uncompleteProject);
   const completeProject = useTaskStore(s => s.completeProject);
   const allTasks = useTaskStore(s => s.tasks);
+  const taskGroups = useTaskGroupStore(useShallow(s => s.groups));
   const projectCategories = useProjectCategoryStore(useShallow(s => s.categories));
   const addProjectCategory = useProjectCategoryStore(s => s.addCategory);
   const projectSort = useSettingsStore(s => s.projectSortOption);
@@ -164,10 +166,10 @@ export function ProjectsScreen() {
     const map = new Map<string, { progress: { done: number; total: number }; next: string | null }>();
     listProjects.forEach(p => map.set(p.id, {
       progress: projectProgress(p.id, allTasks),
-      next: projectFilter === 'active' ? projectNextStepTitle(p.id, allTasks) : null,
+      next: projectFilter === 'active' ? projectNextStepTitle(p.id, allTasks, taskGroups) : null,
     }));
     return map;
-  }, [listProjects, allTasks, projectFilter]);
+  }, [listProjects, allTasks, projectFilter, taskGroups]);
   const progressByProject = useMemo(
     () => new Map(Array.from(cardFactsByProject, ([id, facts]) => [id, facts.progress])),
     [cardFactsByProject]
@@ -415,17 +417,22 @@ export function ProjectsScreen() {
     setEditingProject(project);
   };
 
-  const handleEditorClose = () => {
+  // A project made for "More details" is kept only if it was saved with a
+  // name. When it was, the project opens, the same place the quick add's own
+  // Add button takes you; Done used to leave you on the list instead.
+  const handleEditorClose = (outcome?: 'discarded') => {
     const id = newProjectIdRef.current;
     newProjectIdRef.current = null;
-    if (id) {
-      const current = useProjectStore.getState().getProjectById(id);
-      if (current && current.title.trim() === '') {
-        animateLayout();
-        removeProjectRow(id);
-      }
-    }
     setEditingProject(null);
+    if (!id) return;
+    const current = useProjectStore.getState().getProjectById(id);
+    if (!current) return;
+    if (outcome === 'discarded' || current.title.trim() === '') {
+      animateLayout();
+      removeProjectRow(id);
+      return;
+    }
+    (navigation as any).navigate('ProjectDetail', { projectId: id });
   };
 
   // The row handlers are memoized and take the project they act on, rather

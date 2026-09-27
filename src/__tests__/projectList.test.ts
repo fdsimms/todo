@@ -9,6 +9,7 @@ import {
   sortProjects,
 } from '../utils/projectList';
 import type { Project, Task } from '../types';
+import { registerTaskSource } from '../utils/blockerRegistry';
 
 jest.mock('../store/useSettingsStore', () => ({
   useSettingsStore: { getState: () => ({ dayResetTime: '00:00', weekStartsOn: 0 }) },
@@ -134,6 +135,25 @@ describe('projectNextStepTitle', () => {
       makeTask({ id: 'f', title: 'Elsewhere', sortOrder: -1, projectId: 'p2' }),
     ];
     expect(projectNextStepTitle('p1', tasks)).toBe('Order tiles');
+  });
+
+  // A section's tasks are numbered within the section, so a flat sort put
+  // them ahead of loose tasks above the section.
+  it('follows the page order through sections, and skips a task that is waiting', () => {
+    const group = { id: 'g1', title: 'Plumbing', notes: '', tags: [], category: null, sortOrder: 10,
+      collapsed: false, onToday: false, projectId: 'p1' };
+    const tasks = [
+      makeTask({ id: 'loose', title: 'Measure the wall', sortOrder: 5 }),
+      makeTask({ id: 's1', title: 'Rough-in', sortOrder: 1, groupId: 'g1' }),
+    ];
+    expect(projectNextStepTitle('p1', tasks, [group])).toBe('Measure the wall');
+    const waiting = [
+      makeTask({ id: 'w', title: 'Install cabinets', sortOrder: 1, blockedById: 'b' } as Partial<Task>),
+      makeTask({ id: 'n', title: 'Order tiles', sortOrder: 2 }),
+      makeTask({ id: 'b', title: 'Plumbing rough-in', sortOrder: 3, projectId: 'p2' }),
+    ];
+    registerTaskSource(() => waiting);
+    expect(projectNextStepTitle('p1', waiting)).toBe('Order tiles');
   });
 
   it('is null for a project with nothing open', () => {

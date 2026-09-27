@@ -67,8 +67,11 @@ export const PROJECT_REVIEW_LINK_URL = 'dundundun://projects';
  * already established for this scheme. Falls back to the bare link for an empty
  * id, so a malformed call can't mint a URL that scopes to nothing.
  */
-export function projectReviewLinkUrl(projectId: string): string {
-  return projectId ? `${PROJECT_REVIEW_LINK_URL}?pull=${projectId}` : PROJECT_REVIEW_LINK_URL;
+export function projectReviewLinkUrl(projectId: string, onDayKey?: string | null): string {
+  if (!projectId) return PROJECT_REVIEW_LINK_URL;
+  // `on` asks the sheet to land what it pulls on that day rather than today:
+  // the weekend nudge's link, whose whole point is a free Saturday.
+  return `${PROJECT_REVIEW_LINK_URL}?pull=${projectId}${onDayKey ? `&on=${onDayKey}` : ''}`;
 }
 
 /**

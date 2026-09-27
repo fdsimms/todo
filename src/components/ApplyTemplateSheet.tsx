@@ -207,7 +207,14 @@ export function ApplyTemplateSheet({ visible, template, onClose, projectId, onAp
       // the project declared itself by having a span.
       const span = targetProject ? awaySpanOf(targetProject) : null;
       setStartAnchor(initialAnchors?.start ?? span?.start ?? null);
-      setEndAnchor(initialAnchors?.end ?? span?.end ?? null);
+      // Short of a trip, a project's deadline is its end date: a party's
+      // "N days before" items count back from the party, which the project
+      // already knows. It used to be typed in a second time here.
+      setEndAnchor(
+        initialAnchors?.end
+          ?? span?.end
+          ?? (!template.anchorsAreAway && targetProject?.deadline ? new Date(targetProject.deadline) : null),
+      );
       setCalendarTarget(null);
       setRunName(initialRunName ?? '');
       setPlaceholderValues({});

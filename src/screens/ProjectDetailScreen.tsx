@@ -1531,6 +1531,7 @@ export function ProjectDetailScreen() {
           // Project tasks are picked off over time rather than scheduled for
           // today, so the quick add opens with no due date.
           context="unscheduled"
+          intoProjectId={project?.id ?? null}
           onCreated={handleTaskCreated}
           onResumed={attachToProject}
           seed={quickAddSeed}

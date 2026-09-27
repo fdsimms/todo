@@ -140,6 +140,17 @@ interface Props {
   initialType?: TaskKind;
   /** Seeds the title field on open, e.g. handing a search query straight into a new task. */
   initialTitle?: string;
+  /**
+   * The project this sheet adds into, when it was opened from one. Every task
+   * created here is filed under it, including each one "Add another" makes,
+   * and the category field starts at the project's own default
+   * (Project.defaultTaskCategory) rather than Settings' global one.
+   *
+   * It used to be left to the caller's onCreated, which "Add another"
+   * deliberately never calls, so a burst of tasks typed on a project's page
+   * all landed in Unscheduled with no project.
+   */
+  intoProjectId?: string | null;
 }
 
 // Category is absent on purpose: it opens its own sheet rather than a panel
@@ -206,7 +217,7 @@ const RECURRENCE_UNITS: Record<Exclude<RecurrenceType, 'none'>, [string, string]
 
 export function QuickAddModal({
   visible, onClose, onOpenFull, context, onCreated, onResumed, seed, seedLabel,
-  initialType = 'task', initialTitle,
+  initialType = 'task', initialTitle, intoProjectId = null,
 }: Props) {
   const addTask = useTaskStore(s => s.addTask);
   const unarchiveTask = useTaskStore(s => s.unarchiveTask);
@@ -219,6 +230,10 @@ export function QuickAddModal({
   // Read only to name a project a title rule files into — quick add has no
   // project picker; see the projectId state below.
   const projects = useProjectStore(useShallow(s => s.projects));
+  // Read at reset time, so a default changed in the editor is picked up by
+  // the next task rather than frozen at mount.
+  const hostDefaultCategory = () =>
+    (intoProjectId ? projects.find(p => p.id === intoProjectId)?.defaultTaskCategory : null) ?? null;
   const tasks = useTaskStore(s => s.tasks);
   const dayResetTime = useSettingsStore(s => s.dayResetTime);
   const newTaskDefaults = useSettingsStore(s => s.newTaskDefaults);
@@ -463,7 +478,7 @@ export function QuickAddModal({
     setWindowEnd(null);
     setTags([]);
     setPersonOverrides({});
-    setCategory(newTaskDefaults.category);
+    setCategory(hostDefaultCategory() ?? newTaskDefaults.category);
     setSeedActive(false);
     setLinkUrl(null);
     setPhoneNumber(null);
@@ -581,7 +596,7 @@ export function QuickAddModal({
     // than those, so it wins them, and losing the match hands the field back.
     // linkUrl has no such baseline (the sheet always opens with none), so its
     // base is simply null, same as projectId.
-    const baseCategory = seedRef.current?.category ?? newTaskDefaults.category;
+    const baseCategory = seedRef.current?.category ?? hostDefaultCategory() ?? newTaskDefaults.category;
     const basePriority: Priority = newTaskDefaults.priority ?? 0;
     const baseEffort: Effort = newTaskDefaults.effort ?? 0;
     const prev = appliedRuleRef.current
@@ -1269,7 +1284,13 @@ export function QuickAddModal({
   // The burst mode itself. Gated on there being no drop seed, so the toggle is
   // neither shown nor honoured for a sheet opened by dragging the add button
   // onto a spot in the list.
-  const keepOpen = newTaskDefaults.keepOpenAfterQuickAdd && !seedActive;
+  //
+  // One seed is the exception: a section and nothing else. Filling a section
+  // is the case for adding several in a row, and every task it makes belongs
+  // in the same section, so the seed is kept for each rather than spent.
+  const sectionOnlySeed = !!seed?.groupId && seed.dueDate === undefined && !seed.timeSegments
+    && !seed.windowStart && !seed.pinned && seed.category == null;
+  const keepOpen = newTaskDefaults.keepOpenAfterQuickAdd && (!seedActive || sectionOnlySeed);
 
   const createTask = (finalTitle: string) => {
     haptics.success();
@@ -1289,7 +1310,9 @@ export function QuickAddModal({
       linkUrl: resolveLinkUrl(),
       phoneNumber: resolvePhoneNumber(),
       emailAddress: resolveEmailAddress(),
-      projectId,
+      // The project the sheet was opened in wins over one a title rule named:
+      // a task typed on a project's own page belongs to that project.
+      projectId: intoProjectId ?? projectId,
       // recurrenceType deliberately absent — it comes from `baked` above,
       // which is what turns a Target into a daily task.
       recurrenceInterval,
@@ -1329,11 +1352,15 @@ export function QuickAddModal({
     // onDone exists to avoid. Each add says where it went in the sheet instead
     // (see the burst row below), which is where the user is already looking.
     //
-    // A seeded sheet never takes this path: the drop chose a slot for one
-    // task, and positioning that task is exactly what onCreated does.
+    // A seeded sheet only takes this path for a section-only seed (see
+    // keepOpen): any other drop chose a slot for one task, and positioning
+    // that task is exactly what onCreated does. The section seed is put back
+    // after the reset, so the next task joins the same section.
     if (keepOpen) {
+      const keepSeed = seedActive && sectionOnlySeed;
       setBurstAdded(prev => [...prev, finalTitle]);
       resetDraft('');
+      if (keepSeed) setSeedActive(true);
       inputRef.current?.focus();
       return;
     }
@@ -2669,8 +2696,9 @@ export function QuickAddModal({
           {/* "Add another": the burst-capture switch. Its own row rather than
               squeezed into the footer, which in the simple form already holds
               three buttons — and so that the count beside it has somewhere to
-              sit. Hidden for a seeded sheet, where the mode doesn't apply. */}
-          {!seedActive && (
+              sit. Hidden for a seeded sheet, where the mode doesn't apply,
+              except a section-only one (see keepOpen). */}
+          {(!seedActive || sectionOnlySeed) && (
             <View style={styles.burstRow}>
               <TouchableOpacity
                 style={[styles.keepOpenChip, keepOpen && styles.keepOpenChipOn]}

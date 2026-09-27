@@ -1,0 +1,4 @@
+{
+  "message": "Fixed several project bugs. \"Add another\" in quick add now files every task into the project you're in, with its default category. Cancel on a new project discards it, and a new project asks for a name instead of quietly throwing away what you entered. Moving a trip's departure keeps its length, and a trip template applied to a project fills in its dates. The weekend suggestion now names a task, skips finished projects, and pulls onto the weekend instead of today.",
+  "date": "2026-09-27"
+}

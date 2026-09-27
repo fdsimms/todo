@@ -87,6 +87,7 @@ const makeStall = (project: Project, quietDays = 21): ProjectStall => ({
 describe('projectReviewLinkUrl', () => {
   it('scopes the pull sheet to one project', () => {
     expect(projectReviewLinkUrl('p1')).toBe('dundundun://projects?pull=p1');
+    expect(projectReviewLinkUrl('p1', '2026-10-03')).toBe('dundundun://projects?pull=p1&on=2026-10-03');
   });
 
   it('falls back to the bare link rather than minting one that scopes to nothing', () => {

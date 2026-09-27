@@ -334,16 +334,24 @@ describe('projectProgress', () => {
 describe('projectCompletedRows', () => {
   // A daily member leaves a completed row per day; the section lists the member
   // once, at its latest completion, matching what progress counts.
-  it('lists a repeating member once, at its most recent completion, newest first', () => {
+  it('lists a finished repeating member once, at its most recent completion, newest first', () => {
     const tasks = [
       makeTask({ id: 'r1', projectId: 'p1', completed: true, completedAt: '2025-01-01T09:00:00.000Z' }),
       makeTask({ id: 'r2', projectId: 'p1', completed: true, completedAt: '2025-01-02T09:00:00.000Z', previousOccurrenceId: 'r1' }),
-      makeTask({ id: 'r3', projectId: 'p1', completed: false, previousOccurrenceId: 'r2' }),
       makeTask({ id: 'once', projectId: 'p1', completed: true, completedAt: '2025-01-03T09:00:00.000Z' }),
       makeTask({ id: 'filed', projectId: 'p1', completed: true, completedAt: '2025-01-04T09:00:00.000Z', archived: true }),
       makeTask({ id: 'other', projectId: 'p2', completed: true, completedAt: '2025-01-05T09:00:00.000Z' }),
     ];
     expect(projectCompletedRows('p1', tasks).map(t => t.id)).toEqual(['once', 'r2']);
+  });
+
+  // Still repeating: it's among the open tasks, so it isn't listed as done.
+  it('leaves out a member that still has an open row', () => {
+    const tasks = [
+      makeTask({ id: 'r1', projectId: 'p1', completed: true, completedAt: '2025-01-01T09:00:00.000Z' }),
+      makeTask({ id: 'r2', projectId: 'p1', completed: false, previousOccurrenceId: 'r1' }),
+    ];
+    expect(projectCompletedRows('p1', tasks)).toEqual([]);
   });
 });
 

@@ -301,6 +301,19 @@ export function projectsUrlPullId(url: string): string | null {
   return id || null;
 }
 
+/**
+ * The day a projects link asks pulled tasks to land on (`on=YYYY-MM-DD`), or
+ * null to leave it to the sheet. A malformed value is ignored rather than
+ * trusted, since it is going to become a task's due date.
+ */
+export function projectsUrlPullDay(url: string): string | null {
+  if (typeof url !== 'string') return null;
+  const match = PROJECTS_RE.exec(url.trim());
+  if (!match) return null;
+  const day = (parseQuery(match[1] ?? '').on ?? '').trim();
+  return /^\d{4}-\d{2}-\d{2}$/.test(day) ? day : null;
+}
+
 export function isKitchenUrl(url: string): boolean {
   return typeof url === 'string' && KITCHEN_RE.test(url.trim());
 }
@@ -587,7 +600,7 @@ export function openInAppUrl(url: string | null | undefined): boolean {
     return true;
   }
   if (isProjectsUrl(url)) {
-    resetToProjectPull(projectsUrlPullId(url));
+    resetToProjectPull(projectsUrlPullId(url), projectsUrlPullDay(url));
     return true;
   }
   if (isDeloadUrl(url)) {

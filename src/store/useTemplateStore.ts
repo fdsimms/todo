@@ -488,6 +488,28 @@ export const useTemplateStore = create<TemplateStore>((set, get) => ({
         : null;
       const projectId = options?.targetProjectId ?? runProject?.id ?? null;
 
+      // Applied into a project that already exists, the same anchors fill in
+      // whatever that project hasn't got yet: the trip span for a trip
+      // template, the deadline otherwise. Only an empty field is written. The
+      // sheet asked for these dates, and they used to go nowhere unless the
+      // template made a new project; a project that already has dates keeps
+      // them, since its own dates are the ones the person set on purpose.
+      if (options?.targetProjectId) {
+        const target = useProjectStore.getState().getProjectById(options.targetProjectId);
+        if (target) {
+          if (template.anchorsAreAway) {
+            if (!target.awayStart && anchors.start) {
+              useProjectStore.getState().updateProject(target.id, {
+                awayStart: awayNoonIso(anchors.start),
+                awayEnd: anchors.end ? awayNoonIso(anchors.end) : null,
+              });
+            }
+          } else if (!target.deadline && anchors.end) {
+            useProjectStore.getState().updateProject(target.id, { deadline: anchors.end.toISOString() });
+          }
+        }
+      }
+
       // A 'task' container's parent is a real Task rather than a TaskGroup or
       // Project, created up front like they are so its id can ride in on the
       // item drafts below — as parentId rather than groupId, since every

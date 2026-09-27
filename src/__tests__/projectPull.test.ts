@@ -4,6 +4,7 @@ import {
   describePullEmpty,
   diagnosePullEmpty,
   dripCandidate,
+  nextPullCandidate,
   findProjectStalls,
   type PullEmptyReason,
   lastTouchedAt,
@@ -213,17 +214,26 @@ describe('findProjectStalls', () => {
     expect(stalls[0].overdueBy).toBe(46);
   });
 
-  // One scheduled member means the project can appear somewhere, so it isn't
-  // silent — one case per field hasNoDateSignal looks at.
+  // One dated member means the project can appear somewhere, so it isn't
+  // silent.
+  it('is not stalled when a member has a due date', () => {
+    const tasks = [makeTask({ id: 'a' }), makeTask({ id: 'b', dueDate: new Date().toISOString() })];
+
+    expect(findProjectStalls([makeProject()], tasks)).toHaveLength(0);
+  });
+
+  // The other placement fields don't put a *project* task anywhere:
+  // isTaskVisible keeps one off every list until it has a due date. These
+  // used to count as a schedule, so the member hid itself and silenced the
+  // project with it.
   it.each([
-    ['dueDate', { dueDate: new Date().toISOString() }],
     ['deferUntil', { deferUntil: new Date().toISOString() }],
     ['timeSegments', { timeSegments: ['morning' as const] }],
     ['windowStart', { windowStart: '09:00' }],
-  ])('is not stalled when a member has %s', (_label, scheduled) => {
-    const tasks = [makeTask({ id: 'a' }), makeTask({ id: 'b', ...scheduled })];
+  ])('is still stalled when a member has only %s', (_label, placement) => {
+    const tasks = [makeTask({ id: 'a' }), makeTask({ id: 'b', ...placement })];
 
-    expect(findProjectStalls([makeProject()], tasks)).toHaveLength(0);
+    expect(findProjectStalls([makeProject()], tasks)).toHaveLength(1);
   });
 
   it('is not stalled with no members at all', () => {
@@ -897,6 +907,29 @@ describe('projectPullUpdates', () => {
       dueDate: date.toISOString(),
       deferUntil: null,
     });
+  });
+});
+
+describe('nextPullCandidate', () => {
+  // What the weekend nudge quotes. dripCandidate answered only for projects
+  // that schedule themselves, so the notes named no task for any other.
+  it('names the top task for a project that does not schedule itself', () => {
+    const tasks = [makeTask({ id: 'a', sortOrder: 0 }), makeTask({ id: 'b', sortOrder: 1 })];
+    expect(nextPullCandidate(makeProject(), tasks)?.id).toBe('a');
+  });
+
+  it('is null for a project left out of every nudge', () => {
+    expect(nextPullCandidate(makeProject({ nudgeOptIn: false }), [makeTask({ id: 'a' })])).toBeNull();
+  });
+});
+
+describe('buildProjectPullPlan with a landing day', () => {
+  it('puts every proposal on that day, and shows a named auto-scheduling project', () => {
+    const project = makeProject({ id: 'p1', autoSchedule: true });
+    const plan = buildProjectPullPlan([project], [makeTask({ id: 'a', projectId: 'p1' })], [], ['p1'], '2030-10-05');
+    expect(plan.proposals).toHaveLength(1);
+    expect(plan.proposals[0].suggestion.date.getDate()).toBe(5);
+    expect(plan.proposals[0].suggestion.dayLabel).toBe('Saturday');
   });
 });
 
