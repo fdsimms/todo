@@ -18,7 +18,7 @@ import {
   type Colors,
 } from '../theme';
 import { trolleyStateFor } from '../utils/groceryLists';
-import { useGroceryStore, type PlannedRow } from '../store/useGroceryStore';
+import { describePlanAdd, useGroceryStore, type PlannedRow } from '../store/useGroceryStore';
 import { useSettingsStore } from '../store/useSettingsStore';
 import { useMealPlanStore } from '../store/useMealPlanStore';
 import {
@@ -320,13 +320,8 @@ export function AddMealsToListSheet({
 
     // Each count on its own terms, never added together — the same
     // discipline describeShops and RecipeDetailScreen's addToList keep.
-    const parts = [`Added ${result.added.length}`];
-    if (result.alreadyOnList.length > 0) parts.push(`${result.alreadyOnList.length} already on your list`);
-    if (result.skippedInCart.length > 0) parts.push(`${result.skippedInCart.length} already in your cart`);
-    Alert.alert(
-      result.added.length > 0 ? 'On the list' : 'Nothing to add',
-      parts.join(' · ')
-    );
+    const summary = describePlanAdd(result);
+    Alert.alert(summary.title, summary.message);
     onClose();
   };
 

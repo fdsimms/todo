@@ -32,7 +32,7 @@ import { PillGroup } from './PillGroup';
 import { SegmentedControl, type SegmentOption } from './SegmentedControl';
 import { EmptyState } from './EmptyState';
 import { OTHER_AISLE, isNonFoodAisle } from '../utils/groceryAisles';
-import { describeShopAisles, itemCountsByShop } from '../utils/groceryShops';
+import { describeShopAisles, describeShopDelete, itemCountsByShop } from '../utils/groceryShops';
 import { haptics } from '../utils/haptics';
 import { confirmDelete } from '../utils/confirmDelete';
 import { AISLE_NAME_MAX_LENGTH, SHOP_NAME_MAX_LENGTH, type Shop } from '../types';
@@ -196,12 +196,11 @@ export function GroceryAislesSheet({ visible, onClose }: Props) {
   };
 
   const confirmDeleteShop = (id: string, name: string) => {
-    const count = shopCounts.get(id) ?? 0;
+    // Read at the tap: the aliases and the trip matter to this message only.
+    const { storeAliases, tripShopId } = useGroceryStore.getState();
     confirmDelete({
       title: `Delete ${name}?`,
-      message: count > 0
-        ? `${count} ${count === 1 ? 'item is' : 'items are'} recorded as coming from here. Deleting the store forgets that. The items themselves stay. This can’t be undone.`
-        : 'Nothing is recorded against this store yet.',
+      message: describeShopDelete(id, items, itemShops, storeAliases, tripShopId),
       onConfirm: () => {
         deleteShop(id);
         haptics.warning();

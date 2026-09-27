@@ -11,6 +11,7 @@ import {
   itemIdsForShop,
   itemCountsByShop,
   describeShops,
+  describeShopDelete,
   withoutProductShopsFor,
 } from '../utils/groceryShops';
 import { groceryNameKey } from '../utils/groceryParse';
@@ -434,6 +435,30 @@ describe('itemCountsByShop', () => {
     const inTrolley = new Map([[items[0].id, false]]);
     expect(itemCountsByShop(items, links, inTrolley).get(costco.id)).toBe(1);
     expect(itemCountsByShop(items, links).get(costco.id)).toBe(2);
+  });
+});
+
+describe('describeShopDelete', () => {
+  it('says nothing is recorded only when nothing is', () => {
+    expect(describeShopDelete(costco.id, CATALOG, [], [], null))
+      .toBe('Nothing is recorded against this store yet.');
+  });
+
+  it('names receipt lines even with no item linked', () => {
+    expect(describeShopDelete(costco.id, CATALOG, [], [{ shopId: costco.id }, { shopId: safeway.id }], null))
+      .toBe('1 remembered receipt line goes too. This can’t be undone.');
+  });
+
+  it('names the links, the prices on them, and the trip it ends', () => {
+    const links = [
+      { ...link('milk', costco.id, 2), lastPriceMinor: 429 },
+      link('eggs', costco.id, 1),
+      { ...link('bread', safeway.id, 1), lastPriceMinor: 300 },
+    ];
+    expect(describeShopDelete(costco.id, CATALOG, links, [], costco.id)).toBe(
+      '2 items are recorded as coming from here. Deleting the store forgets that. The items themselves stay.'
+        + ' The prices recorded here for 1 item go too. Your shopping trip here ends. This can’t be undone.'
+    );
   });
 });
 

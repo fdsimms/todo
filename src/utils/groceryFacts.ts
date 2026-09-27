@@ -5,6 +5,7 @@ import type {
   ItemSubLink,
   StoreAlias,
 } from '../types';
+import { aliasKeyFor, gtinAliasText } from './storeAliases';
 
 /**
  * Everything that hangs off a catalog row rather than living on it. Passed as
@@ -161,4 +162,70 @@ const FACT_READERS: ReadonlyArray<(item: GroceryItem) => string> = [
 export function factSignature(item: GroceryItem, linked: ReadonlyMap<string, number>): string {
   const facts = FACT_READERS.map(read => read(item));
   return [...facts, `links:${linked.get(item.id) ?? 0}`].join(' ');
+}
+
+/**
+ * What forgetting these catalog rows takes with it besides the rows, as one
+ * sentence ("It also removes …."), or '' when nothing hangs off them.
+ *
+ * `dbDeleteGroceryItem` cascades to substitutes (both ends, so a standing swap
+ * naming either row goes), brands, the barcodes and receipt lines remembered
+ * against the row, and leaves any supply stocked from it pointing at nothing.
+ * The confirm used to say only "along with its history", which is how a
+ * standing swap that changed how every recipe shops went unmentioned. Named
+ * from the data the way the recipe delete names the recipes using it, and
+ * counted rather than listed past two of a kind.
+ *
+ * `supplyTitles` are the live supplies stocked from these rows (see
+ * `suppliesStockedFrom`), passed in so this module stays clear of tasks.
+ */
+export function describeForgetLoss(
+  itemIds: readonly string[],
+  relations: Pick<ItemRelations, 'products' | 'subs' | 'aliases'>,
+  items: readonly Pick<GroceryItem, 'id' | 'name'>[],
+  supplyTitles: readonly string[],
+): string {
+  const ids = new Set(itemIds);
+  const nameOf = new Map(items.map(i => [i.id, i.name]));
+  const plural = (n: number, one: string, many: string) => (n === 1 ? one : `${n} ${many}`);
+
+  const touching = relations.subs.filter(l => ids.has(l.itemId) || ids.has(l.subItemId));
+  const standing = touching.filter(l => l.standing && nameOf.has(l.itemId) && nameOf.has(l.subItemId));
+  const otherSubs = touching.length - standing.length;
+
+  const products = relations.products.filter(p => ids.has(p.itemId));
+  const aliases = relations.aliases.filter(a => ids.has(a.itemId));
+  // A barcode is remembered twice, on the product and as a store-less alias
+  // (see gtinAliasText), so the count is of distinct codes.
+  const barcodes = new Set<string>();
+  for (const p of products) if (p.gtin) barcodes.add(aliasKeyFor(gtinAliasText(p.gtin)));
+  const gtinPrefix = `${aliasKeyFor(gtinAliasText('0')).split(' ')[0]} `;
+  const receiptLines = aliases.filter(a => {
+    if (!a.rawKey.startsWith(gtinPrefix)) return true;
+    barcodes.add(a.rawKey);
+    return false;
+  }).length;
+
+  const clauses: string[] = [];
+  if (standing.length > 0 && standing.length <= 2) {
+    for (const l of standing) {
+      clauses.push(`the standing swap that uses ${nameOf.get(l.subItemId)} for ${nameOf.get(l.itemId)}`);
+    }
+  } else if (standing.length > 2) {
+    clauses.push(`${standing.length} standing swaps`);
+  }
+  if (otherSubs > 0) clauses.push(plural(otherSubs, 'a substitute', 'substitutes'));
+  if (products.length > 0) clauses.push(plural(products.length, 'a saved brand', 'saved brands'));
+  if (barcodes.size > 0) clauses.push(plural(barcodes.size, 'a remembered barcode', 'remembered barcodes'));
+  if (receiptLines > 0) clauses.push(plural(receiptLines, 'a remembered receipt line', 'remembered receipt lines'));
+  if (supplyTitles.length > 0 && supplyTitles.length <= 2) {
+    clauses.push(`the supply link on ${supplyTitles.map(t => `“${t}”`).join(' and ')}`);
+  } else if (supplyTitles.length > 2) {
+    clauses.push(`${supplyTitles.length} supply links`);
+  }
+  if (clauses.length === 0) return '';
+  const list = clauses.length === 1
+    ? clauses[0]
+    : `${clauses.slice(0, -1).join(', ')} and ${clauses[clauses.length - 1]}`;
+  return `It also removes ${list}.`;
 }

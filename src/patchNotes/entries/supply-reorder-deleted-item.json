@@ -1,0 +1,4 @@
+{
+  "message": "A supply stocked from a grocery item still asks for a reorder if that item is deleted or groceries are turned off, and its editor shows when the item was deleted. A supply running low during a trip away now goes on your home list",
+  "date": "2026-09-27"
+}

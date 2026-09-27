@@ -928,8 +928,13 @@ interface GroceryStore extends UndoHistoryActions {
    * shake labelled as something they just did. Same opt-out `addToPantry`
    * takes, and the same rule the completed-task purge follows by not going
    * through `bulkDeleteTasks`.
+   *
+   * `listId` names the list the add joins, defaulting to the active one (a
+   * tap). The supply sweep passes `null`, the home list: a supply is restocked
+   * from a home trip, and joining an away list it would be flagged low, never
+   * restocked there, and never offered to the home list afterwards.
    */
-  setRunningLow: (id: string, low: boolean, opts?: { registerUndo?: boolean }) => void;
+  setRunningLow: (id: string, low: boolean, opts?: { registerUndo?: boolean; listId?: string | null }) => void;
   /**
    * One card's answer in the pantry review deck (see
    * `src/utils/pantryReview.ts`).
@@ -1351,6 +1356,10 @@ interface GroceryStore extends UndoHistoryActions {
    * Say you're at a store. Explicit only — nothing in the app infers a trip,
    * because a wrong guess marks up the whole list in the one place it has to
    * stay scannable one-handed.
+   *
+   * `budgetMinor` omitted keeps the budget of a trip already running, which
+   * is what changing store mid-shop is: the same shop moved, not a new one
+   * with its ceiling silently cleared. Pass `null` to start with none.
    */
   startTrip: (shopId: string, budgetMinor?: number | null) => void;
   /** Set or clear the ceiling mid-shop. A no-op when no trip is running. */
@@ -1437,6 +1446,14 @@ export interface PlanAddResult {
    */
   alreadyOnList: GroceryItem[];
   /**
+   * The subset of `alreadyOnList` whose quantity this call changed, which is
+   * what ticking an "Already on your list" row asks for. Counted apart so the
+   * result can say "Updated 2 amounts" rather than "Nothing to add" after a
+   * tap that did something. A merge that only dropped the recipe credit is
+   * not counted: nothing the user sees on the row moved.
+   */
+  toppedUp: GroceryItem[];
+  /**
    * Already in the trolley, and deliberately untouched. THIS IS THE WHOLE
    * REASON THIS FUNCTION EXISTS rather than a loop over addByName at the call
    * site: addByName sets `checked: false` on a row it finds, so adding a
@@ -1445,6 +1462,31 @@ export interface PlanAddResult {
    * rows are reported and skipped.
    */
   skippedInCart: GroceryItem[];
+}
+
+/**
+ * The alert a plan add closes with, shared by the two sheets that add a
+ * recipe's or a week's ingredients. Each count is said on its own terms and
+ * never added together (the discipline describeShops keeps), and a top-up
+ * counts as having done something, so a deliberate one doesn't read
+ * "Nothing to add / Added 0".
+ */
+export function describePlanAdd(result: PlanAddResult): { title: string; message: string; changed: boolean } {
+  const added = result.added.length;
+  const toppedUp = result.toppedUp.length;
+  const untouched = result.alreadyOnList.length - toppedUp;
+  const inCart = result.skippedInCart.length;
+  const parts: string[] = [];
+  if (added > 0) parts.push(`Added ${added}`);
+  if (toppedUp > 0) parts.push(`Updated ${toppedUp} amount${toppedUp === 1 ? '' : 's'} already on your list`);
+  if (untouched > 0) parts.push(`${untouched} already on your list`);
+  if (inCart > 0) parts.push(`${inCart} already in your cart`);
+  const changed = added > 0 || toppedUp > 0;
+  return {
+    title: changed ? 'On the list' : 'Nothing to add',
+    message: parts.length > 0 ? parts.join(' · ') : 'Added 0',
+    changed,
+  };
 }
 
 /**
@@ -2080,6 +2122,7 @@ export const useGroceryStore = create<GroceryStore>((set, get) => ({
     const preexisting = new Set(get().items.map(i => i.id));
     const added: GroceryItem[] = [];
     const alreadyOnList: GroceryItem[] = [];
+    const toppedUp: GroceryItem[] = [];
     const skippedInCart: GroceryItem[] = [];
 
     // One opaque id per incoming key, minted here rather than carried from the
@@ -2116,6 +2159,7 @@ export const useGroceryStore = create<GroceryStore>((set, get) => ({
           if (merged) {
             dbUpdateGroceryItem(merged);
             set(s => ({ items: s.items.map(i => (i.id === merged.id ? merged : i)) }));
+            if (merged.quantity !== existing.quantity) toppedUp.push(merged);
           }
           alreadyOnList.push(merged ?? existing);
           continue;
@@ -2163,7 +2207,7 @@ export const useGroceryStore = create<GroceryStore>((set, get) => ({
       });
     }
 
-    return { added, alreadyOnList, skippedInCart };
+    return { added, alreadyOnList, toppedUp, skippedInCart };
   },
 
   toggleChecked(id) {
@@ -3231,12 +3275,15 @@ export const useGroceryStore = create<GroceryStore>((set, get) => ({
     const now = minor === null ? null : new Date().toISOString();
     // The quantity it's a price *for* is this row's current one — the same
     // pairing a finished trip records. Cleared with the price, so a stale
-    // quantity can never be left describing a number that's gone.
+    // quantity can never be left describing a number that's gone. A quantity
+    // a recipe wrote is a cooking amount, not a pack, so it pairs with nothing
+    // (see finishShopping's pricedQuantityById).
+    const pricedQuantity = minor === null || item.quantityFromRecipe ? null : item.quantity;
     const updated: GroceryItem = {
       ...item,
       lastPriceMinor: minor,
       lastPricedAt: now,
-      lastPriceQuantity: minor === null ? null : item.quantity,
+      lastPriceQuantity: pricedQuantity,
     };
     dbUpdateGroceryItem(updated);
     set(s => ({ items: s.items.map(i => (i.id === id ? updated : i)) }));
@@ -3253,7 +3300,7 @@ export const useGroceryStore = create<GroceryStore>((set, get) => ({
       ...link,
       lastPriceMinor: minor,
       lastPricedAt: now,
-      lastPriceQuantity: minor === null ? null : item.quantity,
+      lastPriceQuantity: pricedQuantity,
     };
     dbSetItemShopLink(nextLink);
     set(s => ({
@@ -3375,7 +3422,7 @@ export const useGroceryStore = create<GroceryStore>((set, get) => ({
   setRunningLow(id, low, opts = {}) {
     const item = get().items.find(i => i.id === id);
     if (!item || !!item.runningLowAt === low) return;
-    const listId = get().activeListId;
+    const listId = opts.listId !== undefined ? opts.listId : get().activeListId;
     // Already in the trolley you're looking at is what makes this a no-op on
     // the list, not being in some other one — a staple you're nearly out of at
     // home is worth adding to the Airbnb list too.
@@ -3826,9 +3873,14 @@ export const useGroceryStore = create<GroceryStore>((set, get) => ({
     // trolley — a price with no quantity beside it is the ambiguity
     // GroceryItem.lastPriceQuantity exists to close. Read from state rather
     // than handed back by the db so the in-memory patch below and the row it
-    // mirrors can't disagree.
+    // mirrors can't disagree. A quantity a recipe wrote ("3 cups") is the
+    // cooking amount rather than the pack that came home, so its price is
+    // recorded against nothing: recipeCost divides by this, and a gallon's
+    // price filed against "3 cups" costs every later recipe wrong.
     const pricedQuantityById = new Map(
-      get().items.filter(i => priceById[i.id] !== undefined).map(i => [i.id, i.quantity])
+      get().items
+        .filter(i => priceById[i.id] !== undefined)
+        .map(i => [i.id, i.quantityFromRecipe ? null : i.quantity])
     );
     // Snapshotted before anything is written, so undo restores the rows
     // themselves rather than reconstructing what they probably were — same
@@ -4057,11 +4109,11 @@ export const useGroceryStore = create<GroceryStore>((set, get) => ({
                   ? {
                       lastPriceMinor: priceById[i.id],
                       lastPricedAt: purchasedAt,
-                      lastPriceQuantity: i.quantity,
+                      lastPriceQuantity: pricedQuantityById.get(i.id) ?? null,
                       // Same append the db just made at the item level. An
                       // unpriced row falls through and keeps the run it had.
                       priceHistory: appendPriceObservation(i.priceHistory, {
-                        minor: priceById[i.id], quantity: i.quantity, at: purchasedAt,
+                        minor: priceById[i.id], quantity: pricedQuantityById.get(i.id) ?? null, at: purchasedAt,
                         productId: i.preferredProductId,
                       }),
                     }
@@ -4569,6 +4621,9 @@ export const useGroceryStore = create<GroceryStore>((set, get) => ({
     set(s => ({
       shops: s.shops.filter(x => x.id !== id),
       itemShops: s.itemShops.filter(l => l.shopId !== id),
+      // dbDeleteGroceryShop deletes them too; without this the in-memory copy
+      // kept matching receipt lines against a store that no longer exists.
+      storeAliases: s.storeAliases.filter(a => a.shopId !== id),
       lastShopId: wasLast ? null : s.lastShopId,
       tripShopId: wasTrip ? null : s.tripShopId,
       tripStartedAt: wasTrip ? null : s.tripStartedAt,
@@ -5197,12 +5252,15 @@ export const useGroceryStore = create<GroceryStore>((set, get) => ({
     set({ lastShopId: id });
   },
 
-  startTrip(shopId, budgetMinor = null) {
+  startTrip(shopId, requestedBudget) {
     // Resolved against live state for the same reason finishShopping re-resolves
     // its shop: the picker that offered this id may have been open while the
     // store was deleted somewhere else.
     const shop = get().shops.find(s => s.id === shopId);
     if (!shop) return;
+    const budgetMinor = requestedBudget !== undefined
+      ? requestedBudget
+      : get().activeShop() ? get().tripBudgetMinor : null;
     const startedAt = new Date().toISOString();
     dbSetTrip(shopId, startedAt, budgetMinor);
     set({ tripShopId: shopId, tripStartedAt: startedAt, tripBudgetMinor: budgetMinor });

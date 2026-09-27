@@ -4555,6 +4555,10 @@ export interface GroceryItem {
    * which inherits every refusal `parseQuantityAmount` makes ("a bunch" has no
    * per-unit price) — so the string is shown next to the price and the reader
    * does the comparing.
+   *
+   * Null rather than `quantity` when a recipe wrote that quantity
+   * (`quantityFromRecipe`): "3 cups" is what the week's cooking needed, not
+   * the pack the price was paid for, and `recipeCost` divides by this string.
    */
   lastPriceQuantity: string | null;
   /**

@@ -18,7 +18,7 @@ import {
   type Colors,
 } from '../theme';
 import { trolleyStateFor } from '../utils/groceryLists';
-import { useGroceryStore, type PlannedRow } from '../store/useGroceryStore';
+import { describePlanAdd, useGroceryStore, type PlannedRow } from '../store/useGroceryStore';
 import { useSettingsStore } from '../store/useSettingsStore';
 import {
   classifyPlanned,
@@ -472,14 +472,11 @@ export function RecipeToListSheet({
     const result = addFromPlan(rows);
     haptics.success();
 
-    const parts = [`Added ${result.added.length}`];
-    if (result.alreadyOnList.length > 0) parts.push(`${result.alreadyOnList.length} already on your list`);
-    if (result.skippedInCart.length > 0) parts.push(`${result.skippedInCart.length} already in your cart`);
-    const added = result.added.length > 0;
+    const summary = describePlanAdd(result);
     Alert.alert(
-      added ? 'On the list' : 'Nothing to add',
-      parts.join(' · '),
-      added && onAdded ? [{ text: 'OK', onPress: () => onAdded(scale) }] : undefined
+      summary.title,
+      summary.message,
+      summary.changed && onAdded ? [{ text: 'OK', onPress: () => onAdded(scale) }] : undefined
     );
     onClose();
   };

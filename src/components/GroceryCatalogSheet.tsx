@@ -30,7 +30,9 @@ import { useGroceryStore } from '../store/useGroceryStore';
 import { useRecipeStore } from '../store/useRecipeStore';
 import { useSettingsStore } from '../store/useSettingsStore';
 import { rankedCatalogItems, catalogPruneCandidates, rankGrocerySuggestions } from '../utils/grocerySuggest';
-import { linkCounts } from '../utils/groceryFacts';
+import { describeForgetLoss, linkCounts } from '../utils/groceryFacts';
+import { suppliesStockedFrom } from '../utils/supply';
+import { useTaskStore } from '../store/useTaskStore';
 import { itemIdsForShop, itemCountsByShop, primaryShopFor } from '../utils/groceryShops';
 import { formatPrice, describePriceContext, lastPriceFor } from '../utils/groceryPrice';
 import { SheetHeader } from './SheetHeader';
@@ -235,9 +237,20 @@ export function GroceryCatalogSheet({ visible, onClose }: Props) {
   const confirmForget = () => {
     const names = items.filter(i => selected.has(i.id)).map(i => i.name);
     if (names.length === 0) return;
+    // Read at the tap rather than subscribed to: nothing else on this sheet
+    // needs the tasks or the aliases. See describeForgetLoss.
+    const ids = [...selected];
+    const grocery = useGroceryStore.getState();
+    const tasks = useTaskStore.getState().tasks;
+    const loss = describeForgetLoss(
+      ids,
+      { products: grocery.itemProducts, subs: grocery.itemSubs, aliases: grocery.storeAliases },
+      items,
+      ids.flatMap(id => suppliesStockedFrom(id, tasks)).map(t => t.title),
+    );
     confirmDelete({
       title: `Forget ${names.length} ${names.length === 1 ? 'item' : 'items'}?`,
-      message: `${names.slice(0, 6).join(', ')}${names.length > 6 ? '…' : ''}\n\nThis removes them from your catalog along with their purchase history, and can’t be undone.`,
+      message: `${names.slice(0, 6).join(', ')}${names.length > 6 ? '…' : ''}\n\nThis removes them from your catalog along with their purchase history, and can’t be undone.${loss ? `\n\n${loss}` : ''}`,
       confirmLabel: 'Forget',
       onConfirm: () => {
         deleteItems([...selected]);
