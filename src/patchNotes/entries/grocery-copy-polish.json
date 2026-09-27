@@ -1,0 +1,4 @@
+{
+  "message": "The item price and trip budget fields say \"Price\" and \"Budget\" instead of a bare 0.00 that looked already filled in, the product sheet keeps an item's name as you wrote it, and a pasted list that turns up nothing no longer shows a checkmark.",
+  "date": "2026-09-27"
+}

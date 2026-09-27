@@ -120,8 +120,8 @@ export function TaskBreakdownSheet({ visible, taskId, onClose }: Props) {
   const handleCancel = () => {
     if (suggestions.length === 0) { onClose(); return; }
     Alert.alert(
-      'Discard steps?',
-      'The suggested steps will be lost.',
+      'Discard changes?',
+      'You have unsaved changes. Are you sure you want to discard them?',
       [
         { text: 'Keep editing', style: 'cancel' },
         { text: 'Discard', style: 'destructive', onPress: onClose },

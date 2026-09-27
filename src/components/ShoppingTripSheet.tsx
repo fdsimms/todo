@@ -248,7 +248,7 @@ export function ShoppingTripSheet({ visible, onClose, onCreate, onStart, intent 
     if (!dirty) { setCorrecting(null); return; }
     Alert.alert(
       'Discard changes?',
-      'What you checked off for this store will be lost.',
+      'You have unsaved changes. Are you sure you want to discard them?',
       [
         { text: 'Keep editing', style: 'cancel' },
         { text: 'Discard', style: 'destructive', onPress: () => setCorrecting(null) },

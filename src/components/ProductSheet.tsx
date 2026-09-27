@@ -276,7 +276,7 @@ export function ProductSheet({ visible, itemId, editingProductId = null, onClose
     <SheetModal visible={visible} animationType="slide" presentationStyle="pageSheet" onRequestClose={handleCancel}>
       <View style={styles.root}>
         <SheetHeader
-          title={editing ? 'Edit product' : `Which ${item.name.toLowerCase()}?`}
+          title={editing ? 'Edit product' : `Which ${item.name}?`}
           left={<SheetHeaderButton label="Cancel" role="cancel" onPress={handleCancel} minWidth={64} />}
           right={<SheetHeaderButton label="Save" onPress={handleSave} disabled={!canSave} minWidth={64} />}
         />

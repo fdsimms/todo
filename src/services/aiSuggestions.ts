@@ -2106,12 +2106,23 @@ export async function extractReceipt(source: string | RecipeImage): Promise<Extr
  * through a real calendar date before anything downstream trusts it as one.
  */
 function parseReceiptDate(raw: string): string | null {
+  return parseModelDayKey(raw);
+}
+
+/**
+ * A model's `YYYY-MM-DD` if it names a day that exists, else null. Shared by
+ * the receipt's date and a calendar event's, which are the two places a model
+ * hands back a day for the app to file something on.
+ *
+ * A date that doesn't exist ("2026-02-30") is rolled over by Date rather than
+ * refused, so a shape check and a NaN check alone would have filed it on
+ * March 2. It's only a real date if it reads back as the day, month and year
+ * it was written as.
+ */
+function parseModelDayKey(raw: string): string | null {
   const trimmed = raw.trim();
   if (!/^\d{4}-\d{2}-\d{2}$/.test(trimmed)) return null;
   const parsed = new Date(`${trimmed}T00:00:00`);
-  // A date that doesn't exist ("2026-02-30") is rolled over by Date rather
-  // than refused, so it would have filed the trip on March 2. It's only a
-  // real date if it reads back as the day, month and year it was written as.
   const [y, m, d] = trimmed.split('-').map(Number);
   if (parsed.getFullYear() !== y || parsed.getMonth() !== m - 1 || parsed.getDate() !== d) return null;
   return trimmed;
@@ -2394,16 +2405,12 @@ export async function extractCalendarEvents(source: string | RecipeImage): Promi
 }
 
 /**
- * Validates the model's date string into a real `YYYY-MM-DD`, or null — same
- * check parseReceiptDate makes above, and for the same reason: a model can
- * return well-formed-looking nonsense ("2026-13-40").
+ * Validates the model's date string into a real `YYYY-MM-DD`, or null — the
+ * same check parseReceiptDate makes above, and for the same reason: a model
+ * can return well-formed-looking nonsense ("2026-13-40", "2026-02-30").
  */
 function parseExtractedEventDate(raw: unknown): string | null {
-  if (typeof raw !== 'string') return null;
-  const trimmed = raw.trim();
-  if (!/^\d{4}-\d{2}-\d{2}$/.test(trimmed)) return null;
-  const parsed = new Date(`${trimmed}T00:00:00`);
-  return Number.isNaN(parsed.getTime()) ? null : trimmed;
+  return typeof raw === 'string' ? parseModelDayKey(raw) : null;
 }
 
 /** Validates the model's time string into a real 24-hour `HH:MM`, or null. */

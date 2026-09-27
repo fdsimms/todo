@@ -123,6 +123,11 @@ export interface ReconcileGeneratedOptions {
  * store's own equality guard drops. The one path that must not write it is a
  * source being deleted outright, which is why `dropGeneratedTask` exists
  * separately and why its callers run it *after* the source row is gone.
+ *
+ * A `wanted: false` that reverses by itself is not the source saying no
+ * either. Freezing an item or a leftover makes it unwanted until it thaws, and
+ * reconciling it here wrote the permanent "never", so `setFrozen` drops on the
+ * way in and only reconciles on the way out.
  */
 export function reconcileGeneratedTask(options: ReconcileGeneratedOptions): void {
   const { kind, sourceId, wanted, drift, draft, blocksOnFinished = false, useUpCap = null } = options;

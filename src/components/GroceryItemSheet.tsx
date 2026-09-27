@@ -1688,7 +1688,7 @@ export function GroceryItemSheet({
               }
               onBlur={() => commitPrice(priceKey)}
               onSubmitEditing={() => commitPrice(priceKey)}
-              placeholder={priceHint === null ? '0.00' : `e.g. ${priceToInput(priceHint)}`}
+              placeholder={priceHint === null ? 'Price' : `e.g. ${priceToInput(priceHint)}`}
               placeholderTextColor={colors.textTertiary}
               keyboardType="number-pad"
               // The iOS number pad has no return key, so onSubmitEditing above

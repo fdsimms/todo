@@ -357,7 +357,9 @@ export function GroceryAISheet({ visible, mode, onClose }: Props) {
       return (
         <View style={styles.centered}>
           <EmptyState
-            icon="checkmark-circle-outline"
+            // A tick is right for a list with nothing left to sort, and wrong
+            // for a paste that found nothing: that one didn't succeed.
+            icon={mode === 'tidy' ? 'checkmark-circle-outline' : 'search-outline'}
             title={mode === 'tidy' ? 'Nothing to sort' : 'Nothing found'}
             subtitle={
               mode === 'tidy'

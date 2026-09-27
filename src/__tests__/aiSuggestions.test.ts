@@ -11,6 +11,7 @@ import {
   suggestGroceryAisles,
   suggestRecipeGroceries,
   extractRecipe,
+  extractCalendarEvents,
   extractReceipt,
   suggestMealIdeas,
   draftMealRecipe,
@@ -36,6 +37,7 @@ const TEST_AI_FEATURE_CONFIG = {
   mealIdeas: { enabled: true, model: 'claude-haiku-4-5-20251001' },
   substitutes: { enabled: true, model: 'claude-haiku-4-5-20251001' },
   receiptImport: { enabled: true, model: 'claude-sonnet-5' },
+  calendarImport: { enabled: true, model: 'claude-sonnet-5' },
   nutritionLabelPhoto: { enabled: true, model: 'claude-sonnet-5' },
   recipeNutritionEstimate: { enabled: true, model: 'claude-sonnet-5' },
 };
@@ -49,6 +51,7 @@ let mockSettings: {
   anthropicApiKey: string;
   aiFeatureConfig: typeof TEST_AI_FEATURE_CONFIG;
   onDeviceAiEnabled: boolean;
+  dayResetTime: string;
 };
 
 const resetMockSettings = () => {
@@ -56,6 +59,8 @@ const resetMockSettings = () => {
     anthropicApiKey: 'test-key-does-not-hit-network',
     aiFeatureConfig: JSON.parse(JSON.stringify(TEST_AI_FEATURE_CONFIG)),
     onDeviceAiEnabled: true,
+    // extractCalendarEvents tells the model today's logical date.
+    dayResetTime: '00:00',
   };
 };
 resetMockSettings();
@@ -2156,6 +2161,21 @@ describe('extractReceipt', () => {
 // ============================================================================
 // readLabelPhotoWithAi / nutritionLabelPhotoAiAvailable
 // ============================================================================
+
+describe('extractCalendarEvents', () => {
+  it('refuses a date that does not exist rather than rolling it over', async () => {
+    // Same check as the receipt's: new Date('2026-02-30') is March 2, so the
+    // event would have been drafted two days late.
+    mockFetchOnce(toolUseResponse('extract_calendar_events', {
+      events: [
+        { title: 'Dentist', date: '2026-02-30', time: '', location: '', notes: '' },
+        { title: 'Flight', date: '2028-02-29', time: '', location: '', notes: '' },
+      ],
+    }));
+    const events = await extractCalendarEvents('Dentist Feb 30. Flight Feb 29 2028.');
+    expect(events.map(e => e.date)).toEqual([null, '2028-02-29']);
+  });
+});
 
 describe('nutritionLabelPhotoAiAvailable', () => {
   it('is true with the feature on and a key configured', () => {

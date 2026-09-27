@@ -106,7 +106,9 @@ export function TripBudgetPrompt({ visible, budgetMinor, currencySymbol, onSave,
               // app follows, so the decimal point never has to be typed.
               onChangeText={t => setText(formatPriceInput(t))}
               keyboardType="number-pad"
-              placeholder="0.00"
+              // Names the field rather than showing "0.00", which in the
+              // placeholder grey reads as a budget of nothing already saved.
+              placeholder="Budget"
               placeholderTextColor={colors.textTertiary}
               inputAccessoryViewID={Platform.OS === 'ios' ? NUMBER_PAD_ACCESSORY_ID : undefined}
               accessibilityLabel="Trip budget"

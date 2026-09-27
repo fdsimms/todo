@@ -207,8 +207,8 @@ export function GroceryCatalogSheet({ visible, onClose }: Props) {
   const handleCancel = () => {
     if (selected.size === 0) { Keyboard.dismiss(); onClose(); return; }
     Alert.alert(
-      'Discard selection?',
-      `The ${selected.size} ${selected.size === 1 ? 'item' : 'items'} you picked won’t be added to your list.`,
+      'Discard changes?',
+      'You have unsaved changes. Are you sure you want to discard them?',
       [
         { text: 'Keep editing', style: 'cancel' },
         { text: 'Discard', style: 'destructive', onPress: () => { Keyboard.dismiss(); onClose(); } },

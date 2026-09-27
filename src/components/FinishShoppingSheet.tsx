@@ -340,7 +340,7 @@ export function FinishShoppingSheet({
     if (!dirty) { Keyboard.dismiss(); onClose(); return; }
     Alert.alert(
       'Discard changes?',
-      'What you entered about this trip will be lost.',
+      'You have unsaved changes. Are you sure you want to discard them?',
       [
         { text: 'Keep editing', style: 'cancel' },
         { text: 'Discard', style: 'destructive', onPress: () => { Keyboard.dismiss(); onClose(); } },
