@@ -46,13 +46,27 @@ opens the ordinary `RecipeCreateSheet` on its link tab with the address already 
 - **One banner at a time, oldest first.** Addresses are canonicalised through
   `normalizeRecipeUrl` on the way in, so the queue holds exactly what the import would accept
   and a re-share collapses onto the entry already there rather than jumping the line.
-- **The banner is gated on `anthropicApiKey`, the same as the add button's import menu.**
-  Without a key there is no import to offer, and this would otherwise be the one route into a
-  sheet that can only end at "No API key". The extension keeps queueing either way — it's a
-  separate process and knows nothing about the keychain — and the queue persists, so a page
-  shared before a key is added turns up once there's something to import it with rather than
-  being dropped. The key lives in the keychain rather than the `settings` table, so this reads
-  the same inside demo mode as outside it.
+- **The banner follows `useAiRoute('recipeExtraction')`, the same as the add button's import
+  menu**, so it offers Import only when an import can actually run. That is the key *and*
+  Recipe import's own switch in Settings: gated on the bare key, a key holder who had turned
+  the feature off was offered a sheet that could only say so.
+- **Without a key it says so rather than disappearing.** The extension confirms every share with
+  "Open dundundun to import the recipe", because it's a separate process and can't read the
+  keychain to know better. A banner that simply wasn't there then left the page queued with
+  nothing on screen to say it was waiting or what would import it. So with no key (and Recipe
+  import still switched on) the banner stays, says a key is what's missing, and its button opens
+  the API key row in Settings; Discard works as usual. With a key and the feature switched off
+  it goes, since that user asked for no recipe import. The queue persists either way, so a page
+  shared before a key is added turns up importable once there is one. The key lives in the
+  keychain rather than the `settings` table, so this reads the same inside demo mode as outside
+  it.
+- **A link already in the recipe box is recognised before anything is fetched.** `sourceUrl` is
+  `normalizeRecipeUrl` of the address, a pure function of what was typed, so `recipeImportedFrom`
+  (`recipeUrl.ts`) can answer from the address alone. `RecipeCreateSheet` asks it before the
+  page fetch and offers Open it / Import anyway, and asks it again once the page is in hand for
+  the card under the name. Both ask the same function so they can't disagree, and Import anyway
+  waives the second for that one address: asking first and then refusing to save would spend a
+  page fetch and a paid extraction on a recipe that can't be kept.
 
 ---
 

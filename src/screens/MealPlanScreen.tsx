@@ -71,11 +71,13 @@ import {
 } from '../utils/leftovers';
 import { useGroceryStore } from '../store/useGroceryStore';
 import { useSettingsStore } from '../store/useSettingsStore';
+import { useAiRoute } from '../hooks/useOnDeviceAi';
 import { useTaskStore } from '../store/useTaskStore';
 import { useFoodLogStore } from '../store/useFoodLogStore';
 import { useColors } from '../theme/ThemeContext';
 import { spacing, font, fontWeight, lineHeight, radius, border, animation, interaction, iconSize, type Colors } from '../theme';
 import { haptics } from '../utils/haptics';
+import { featureShown, screenShown } from '../utils/simpleMode';
 import { confirmDelete } from '../utils/confirmDelete';
 import { animateLayout } from '../utils/layoutAnimation';
 import { resolveActiveTrip } from '../utils/activeTrip';
@@ -327,14 +329,17 @@ export function MealPlanScreen() {
 
   const weekStartsOn = useSettingsStore(s => s.weekStartsOn);
   // #1063's gate. Without a key the suggestion sheet is exactly the offline
-  // one it has always been — the ranking below is deliberately ungated.
-  const anthropicApiKey = useSettingsStore(s => s.anthropicApiKey);
+  // one it has always been — the ranking below is deliberately ungated. The
+  // route rather than the bare key, so turning Meal ideas off in Settings
+  // takes the Invent half away too instead of leaving it to apologise.
+  const mealIdeasRoute = useAiRoute('mealIdeas');
   const currencySymbol = useSettingsStore(s => s.currencySymbol);
   const mealSlotsEnabled = useSettingsStore(useShallow(s => s.mealSlotsEnabled));
   // Whether somebody has set a daily nutrition target: one of the two signs
   // (with a food log entry) that they track food at all. See the week
   // nutrition line below.
   const hasNutritionTargets = useSettingsStore(s => targetedNutrients(s.nutritionTargets).length > 0);
+  const simpleMode = useSettingsStore(s => s.simpleMode);
   // ==== local state (the week anchor, sheets, bulk selection, the fridge) ====
   // Any date inside the week on screen. Paging moves the anchor, never the days.
   const [anchor, setAnchor] = useState(() => getLogicalToday());
@@ -1607,7 +1612,7 @@ export function MealPlanScreen() {
   // for an acceptance to land.
   const canSuggestMeals = openDinnerDays.length > 0
     && (mealSuggestions.length > 0 || cookAgainSuggestions.length > 0
-      || fridgeSuggestions.length > 0 || !!anthropicApiKey);
+      || fridgeSuggestions.length > 0 || mealIdeasRoute !== 'unavailable');
 
   // Context for the AI half of that sheet (#1063), so an invented idea isn't
   // something already on the week or something cooked last Tuesday. Both are
@@ -1680,14 +1685,16 @@ export function MealPlanScreen() {
       // Straight into Food log's own add sheet rather than just the screen —
       // the tap is "I ate something", not "take me to my diary". See the
       // stamped-param handoff in FoodLogScreen (same shape as resetToMood's).
-      {
+      // Offered exactly while the menu offers the screen, so simplified mode
+      // can't be walked past from here into a Food log it hides.
+      ...(screenShown('FoodLog', simpleMode, { stacks: 0, templates: 0, foodLog: foodLogCount }) ? [{
         icon: 'nutrition-outline',
         onPress: () => {
           haptics.tap();
           navigation.navigate('FoodLog', { openAdd: Date.now() });
         },
         accessibilityLabel: 'Log food',
-      },
+      } satisfies ScreenHeaderAction] : []),
       {
         icon: copiedWeek ? 'checkmark' : 'copy-outline',
         onPress: () => copyWeekText(weekShareText),
@@ -1718,7 +1725,7 @@ export function MealPlanScreen() {
       });
     }
     return actions;
-  }, [onThisWeek, selectionMode, page, exitSelection, weekStartsOn, handleShareWeek, weekShareText, weekMealsLabel, copiedWeek, copyWeekText, navigation]);
+  }, [onThisWeek, selectionMode, page, exitSelection, weekStartsOn, handleShareWeek, weekShareText, weekMealsLabel, copiedWeek, copyWeekText, navigation, simpleMode, foodLogCount]);
 
   /**
    * The week a "copy" would take from, and only while this one is empty.
@@ -2147,7 +2154,10 @@ export function MealPlanScreen() {
           );
         }}
         onScale={
+          // Simplified mode takes the chips away unless this meal is already
+          // scaled, the rule RecipeDetail's own chips follow.
           selected?.recipeId && recipesById.has(selected.recipeId)
+            && featureShown('recipeScaling', simpleMode, selected.recipeScale !== 1)
             ? factor => selected && setRecipeScale(selected.id, factor)
             : undefined
         }
@@ -2238,7 +2248,7 @@ export function MealPlanScreen() {
         leftovers={suggesting?.leftovers ?? []}
         pantryByRecipeId={suggestionPantryCoverage}
         openDays={suggesting?.days ?? []}
-        aiIdeasEnabled={!!anthropicApiKey}
+        aiIdeasEnabled={mealIdeasRoute !== 'unavailable'}
         plannedTitles={plannedMealTitles}
         recentTitles={recentMealTitles}
         expiringItemHints={expiringMealHints}

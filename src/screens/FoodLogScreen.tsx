@@ -53,6 +53,7 @@ import { useHealthStore } from '../store/useHealthStore';
 import { NUTRIENT_KEYS, type NutrientKey } from '../types';
 import { haptics } from '../utils/haptics';
 import { animateLayout } from '../utils/layoutAnimation';
+import { featureHidden } from '../utils/simpleMode';
 import { useGroceryStore } from '../store/useGroceryStore';
 import { CatalogLinkSheet } from '../components/CatalogLinkSheet';
 import { ScanToLogFlow } from '../components/ScanToLogFlow';
@@ -180,6 +181,11 @@ export function FoodLogScreen() {
   const waterUnit = useSettingsStore(s => s.waterUnit);
   const setWaterUnit = useSettingsStore(s => s.setWaterUnit);
   const waterExerciseBoost = useSettingsStore(useShallow(s => s.waterExerciseBoost));
+  // Both scan entry points (the header action and the entry sheet's Scan
+  // button) go in simplified mode, the gate GroceryScreen and KitchenScreen
+  // already put on theirs.
+  const simpleMode = useSettingsStore(s => s.simpleMode);
+  const scanShown = !featureHidden('barcodeScanning', simpleMode);
   // Only a reading for the logical today counts. `today` is a snapshot that
   // outlives the day reset until the next refresh, so read raw, the first
   // minutes of a new day boosted its targets from yesterday's workout — the
@@ -898,11 +904,11 @@ export function FoodLogScreen() {
             onPress: () => { haptics.tap(); setAddingSlot(guessedSlot); setEstimateSeed(''); setAddOpen(true); setEstimateOpen(true); },
             accessibilityLabel: 'Estimate a meal from a description',
           } satisfies ScreenHeaderAction] : []),
-          {
+          ...(scanShown ? [{
             icon: 'barcode-outline',
             onPress: () => { haptics.tap(); setAddingSlot(guessedSlot); setAddOpen(true); setScanOpen(true); },
             accessibilityLabel: 'Scan a barcode to log',
-          },
+          } satisfies ScreenHeaderAction] : []),
           {
             icon: 'flag-outline',
             onPress: () => { haptics.tap(); setTargetsOpen(true); },
@@ -1183,7 +1189,7 @@ export function FoodLogScreen() {
         allowBurst
         onClose={() => { setAddOpen(false); setSeedRecipeId(null); }}
         onEstimate={estimateRoute !== 'unavailable' ? query => { setEstimateSeed(query); setEstimateOpen(true); } : undefined}
-        onScan={() => setScanOpen(true)}
+        onScan={scanShown ? () => setScanOpen(true) : undefined}
         onSavedMeal={savedMeals.length > 0 ? () => setSavedMealsOpen(true) : undefined}
         // Inside that sheet's own Modal, not beside it: as siblings these
         // presented from the root view controller, which was already

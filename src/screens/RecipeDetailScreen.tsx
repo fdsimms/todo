@@ -66,6 +66,7 @@ import { ComponentChoiceSheet } from '../components/ComponentChoiceSheet';
 import { usePlanMeal } from '../hooks/usePlanMeal';
 import { useRecipeTimer } from '../hooks/useRecipeTimer';
 import { useStepTimers } from '../hooks/useStepTimers';
+import { useAiRoute } from '../hooks/useOnDeviceAi';
 import { RecipeTimerRow } from '../components/RecipeTimerRow';
 import { NumberPadAccessory, NUMBER_PAD_ACCESSORY_ID } from '../components/NumberPadAccessory';
 import { CookModeSheet } from '../components/CookModeSheet';
@@ -160,7 +161,9 @@ export function RecipeDetailScreen() {
   const setImage = useRecipeStore(s => s.setImage);
   const addComponent = useRecipeStore(s => s.addComponent);
   const removeComponent = useRecipeStore(s => s.removeComponent);
-  const anthropicApiKey = useSettingsStore(s => s.anthropicApiKey);
+  // The route rather than the bare key, so turning Recipe import off in
+  // Settings takes the sparkle away instead of leaving it to apologise.
+  const recipeImportRoute = useAiRoute('recipeExtraction');
   const unitSystem = useSettingsStore(s => s.unitSystem);
   const currencySymbol = useSettingsStore(s => s.currencySymbol);
   const simpleMode = useSettingsStore(s => s.simpleMode);
@@ -1487,7 +1490,7 @@ export function RecipeDetailScreen() {
         onBack={() => navigation.goBack()}
         actions={
           <View style={styles.headerActions}>
-            {!selectionMode && !!anthropicApiKey && (
+            {!selectionMode && recipeImportRoute !== 'unavailable' && (
               <TouchableOpacity
                 onPress={() => { haptics.tap(); setExtractVisible(true); }}
                 hitSlop={8}

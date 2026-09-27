@@ -1,4 +1,4 @@
-import React, { useCallback, useEffect, useMemo, useState } from 'react';
+import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import {
   Alert,
   View,
@@ -282,6 +282,14 @@ export function ReceiptImportSheet({ visible, onClose, onApply, context }: Props
     if (!visible) reset();
   }, [visible, reset]);
 
+  // `run` awaits an on-device read and then a model call, and either easily
+  // outlives a cancel — the sheet stays mounted (only its Modal hides), so the
+  // reset above runs first and the answer would then land on the hidden sheet,
+  // opening next week's shop on this one's receipt. Read inside the
+  // continuation, never as a dependency. Same guard RecipeExtractSheet keeps.
+  const visibleRef = useRef(visible);
+  useEffect(() => { visibleRef.current = visible; }, [visible]);
+
   const run = useCallback(async () => {
     if (!photo) return;
     setLoading(true);
@@ -292,6 +300,7 @@ export function ReceiptImportSheet({ visible, onClose, onApply, context }: Props
       // bridge, an unreadable file, a read too thin to be a receipt — so that
       // path can only ever cost the upload it usually saves.
       const ocr = await readReceipt(photo.sourceUri);
+      if (!visibleRef.current) return;
       // On the device path there is no fallback and no second opinion: the
       // reading is the whole answer, or there isn't one.
       if (receiptRoute === 'onDevice' && !ocr) {
@@ -302,6 +311,7 @@ export function ReceiptImportSheet({ visible, onClose, onApply, context }: Props
       const result = offline
         ? extractReceiptOffline(ocr as OcrReceipt)
         : await extractReceipt(ocr?.text ?? photo);
+      if (!visibleRef.current) return;
       setReadOffline(offline);
       setReceipt(result);
       // The store has to be resolved before the lines are, since an alias is
@@ -324,7 +334,7 @@ export function ReceiptImportSheet({ visible, onClose, onApply, context }: Props
       setDateImplausible(!!result.date && !plausible);
       if (result.lines.length > 0) haptics.success();
     } catch (e) {
-      setError(describeAIError(e));
+      if (visibleRef.current) setError(describeAIError(e));
     } finally {
       setLoading(false);
     }

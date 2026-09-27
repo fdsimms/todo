@@ -25,6 +25,8 @@ import { correctableHaveReason, OUT_OF_IT_UNTIL, rankGrocerySuggestions } from '
 import { InlineAction } from './InlineAction';
 import { resolveGroceryTokens, splitAlternativeNames } from '../utils/groceryParse';
 import { haptics } from '../utils/haptics';
+import { featureShown } from '../utils/simpleMode';
+import { useSettingsStore } from '../store/useSettingsStore';
 import { animateLayout } from '../utils/layoutAnimation';
 import {
   GROCERY_NAME_MAX_LENGTH,
@@ -144,6 +146,11 @@ export const GroceryAddField = forwardRef<GroceryAddFieldHandle, Props>(function
   const [brand, setBrand] = useState('');
   const [variant, setVariant] = useState('');
   const [activePanel, setActivePanel] = useState<'brand' | 'variant' | null>(null);
+  // Simplified mode takes the Brand/Variant chips away, the gate
+  // GroceryItemSheet's own Products row already has. A value typed before the
+  // switch was flipped keeps them on show, since it will still be saved.
+  const simpleMode = useSettingsStore(s => s.simpleMode);
+  const attributesShown = featureShown('productVariants', simpleMode, !!brand || !!variant);
 
   const resetAttributes = useCallback(() => {
     setBrand('');
@@ -413,11 +420,12 @@ export const GroceryAddField = forwardRef<GroceryAddFieldHandle, Props>(function
     hasTokenChips || !!alternatives || !!status || !!pantryOffer || suggestions.length > 0;
 
   // `results` is pinned off the bottom of everything static above it — see
-  // FIELD_HEIGHT's own note. The toolbar is always there; the panel only adds
-  // to this when a chip is open.
+  // FIELD_HEIGHT's own note. The toolbar is there unless simplified mode took
+  // it away; the panel only adds to this when a chip is open.
   const resultsTop =
-    FIELD_HEIGHT + spacing.sm + TOOLBAR_HEIGHT + spacing.sm +
-    (activePanel ? ATTRIBUTE_PANEL_HEIGHT + spacing.sm : 0);
+    FIELD_HEIGHT + spacing.sm +
+    (attributesShown ? TOOLBAR_HEIGHT + spacing.sm : 0) +
+    (attributesShown && activePanel ? ATTRIBUTE_PANEL_HEIGHT + spacing.sm : 0);
 
   return (
     <View style={styles.wrap}>
@@ -472,6 +480,7 @@ export const GroceryAddField = forwardRef<GroceryAddFieldHandle, Props>(function
           it lived out here. Mirrors QuickAddModal's attribute toolbar: a chip
           per field, current value shown once set, one inline panel open at a
           time. */}
+      {attributesShown && (
       <View style={styles.toolbar}>
         <TouchableOpacity
           style={[
@@ -520,8 +529,9 @@ export const GroceryAddField = forwardRef<GroceryAddFieldHandle, Props>(function
           </Text>
         </TouchableOpacity>
       </View>
+      )}
 
-      {activePanel !== null && (
+      {attributesShown && activePanel !== null && (
         <View style={styles.attributePanel}>
           <Ionicons
             name={activePanel === 'brand' ? 'pricetag-outline' : 'layers-outline'}
