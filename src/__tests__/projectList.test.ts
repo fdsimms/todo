@@ -7,6 +7,7 @@ import {
   projectCardCaption,
   projectMatchesQuery,
   projectNextStepTitle,
+  overdueRoutines,
   projectProgressNote,
   projectListPreview,
   sortProjects,
@@ -132,6 +133,19 @@ describe('projectProgressNote', () => {
   });
 });
 
+describe('overdueRoutines', () => {
+  it("lists a project's repeating tasks dated before today, and nothing else", () => {
+    const today = new Date(2026, 5, 10);
+    const tasks = [
+      makeTask({ id: 'late', recurrenceType: 'weekly', dueDate: new Date(2026, 4, 20, 12).toISOString() } as Partial<Task>),
+      makeTask({ id: 'today', recurrenceType: 'weekly', dueDate: new Date(2026, 5, 10, 12).toISOString() } as Partial<Task>),
+      makeTask({ id: 'oneOff', dueDate: new Date(2026, 4, 20, 12).toISOString() }),
+      makeTask({ id: 'elsewhere', projectId: 'p2', recurrenceType: 'daily', dueDate: new Date(2026, 4, 20, 12).toISOString() } as Partial<Task>),
+    ];
+    expect(overdueRoutines('p1', tasks, today).map(t => t.id)).toEqual(['late']);
+  });
+});
+
 describe('projectNextStepTitle', () => {
   it('names the top of the project order, skipping done, archived and subtasks', () => {
     const tasks = [
@@ -162,6 +176,15 @@ describe('projectNextStepTitle', () => {
     ];
     registerTaskSource(() => waiting);
     expect(projectNextStepTitle('p1', waiting)).toBe('Order tiles');
+  });
+
+  it('names the first step even while it waits when the project is worked in order, as Pull does', () => {
+    const tasks = [
+      makeTask({ id: 'w', title: 'Install cabinets', sortOrder: 1, blockedById: 'b' } as Partial<Task>),
+      makeTask({ id: 'n', title: 'Order tiles', sortOrder: 2 }),
+      makeTask({ id: 'r', title: 'Water plants', sortOrder: 0, recurrenceType: 'weekly' } as Partial<Task>),
+    ];
+    expect(projectNextStepTitle('p1', tasks, [], true)).toBe('Install cabinets');
   });
 
   it('is null for a project with nothing open', () => {

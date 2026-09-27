@@ -19,6 +19,7 @@ jest.mock('../store/useCategoryStore', () => ({
 }));
 
 import { isMorningCheckInCandidate, morningCheckInTasks } from '../utils/morningCheckIn';
+import { registerPausedProjectSource } from '../utils/projectPause';
 import type { Task } from '../types';
 
 /** A local wall-clock time as the ISO instant the app stores, so the suite reads the same in any zone. */
@@ -184,6 +185,17 @@ describe('isMorningCheckInCandidate', () => {
     const dueDate = localIso('2025-06-09T00:00');
     expect(isMorningCheckInCandidate(makeTask({ dueDate, deadline: DEADLINE, completed: true }), DAY_RESET)).toBe(false);
     expect(isMorningCheckInCandidate(makeTask({ dueDate, deadline: DEADLINE, archived: true }), DAY_RESET)).toBe(false);
+  });
+
+  // Nobody could have done it, so asking would record a miss and break a streak.
+  it('is false for a task in a paused project', () => {
+    registerPausedProjectSource(() => [{ id: 'garden', pausedUntil: '2099-01-01', archived: false, completed: false }]);
+    try {
+      const task = makeTask({ dueDate: localIso('2025-06-09T00:00'), deadline: DEADLINE, projectId: 'garden' });
+      expect(isMorningCheckInCandidate(task, DAY_RESET)).toBe(false);
+    } finally {
+      registerPausedProjectSource(null);
+    }
   });
 
   it('is false for a one-off (non-recurring) task', () => {

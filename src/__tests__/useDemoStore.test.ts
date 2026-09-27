@@ -1410,7 +1410,12 @@ describe('demo mode', () => {
     const party = useProjectStore.getState().projects.find(p => p.title === "Maya's birthday party");
     expect(party).toBeDefined();
     const tasks = useTaskStore.getState().tasks;
-    expect(projectAnswerTallies(party!.id, tasks).map(describeAnswerTally)).toEqual(['2 Yes, 1 No, 2 waiting']);
+    expect(projectAnswerTallies(party!.id, tasks).map(describeAnswerTally)).toEqual(['2 Yes, 1 No, 1 Maybe, 1 waiting']);
+    // Lee's Maybe is recorded on a row still open, in a Guests checklist.
+    const lee = tasks.find(t => t.title === 'Lee' && t.projectId === party!.id);
+    expect(lee?.completed).toBe(false);
+    expect(lee?.deliverableValue).toBe('Maybe');
+    expect(useTaskGroupStore.getState().groups.find(g => g.id === lee?.groupId)?.checklist).toBe(true);
     const invites = tasks.find(t => t.title === 'Send the invitations');
     expect(invites?.blockedByIds).toHaveLength(1);
     expect(isHeldBack(invites!)).toBe(true);
@@ -1430,11 +1435,12 @@ describe('demo mode', () => {
     expect(nextPullCandidate(remodel, useTaskStore.getState().tasks)?.title).toBe('Get quotes from contractors');
   });
 
-  it('seeds a wait with a follow-up date', () => {
+  it('seeds a wait with its own follow-up day, not a due date', () => {
     useDemoStore.getState().enterDemoMode();
     const cake = useTaskStore.getState().tasks.find(t => t.title === 'Hear back about the cake order');
     expect(cake?.waitingOnPersonId).not.toBeNull();
-    expect(cake?.dueDate).not.toBeNull();
+    expect(cake?.followUpOn).toMatch(/^\d{4}-\d{2}-\d{2}$/);
+    expect(cake?.dueDate).toBeNull();
   });
 
   it('seeds a paused project whose tasks are held off Today', () => {

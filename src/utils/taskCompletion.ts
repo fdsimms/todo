@@ -577,6 +577,10 @@ export function buildCompletion(
         // and it's what turns a recurring decision task's Logbook into the
         // log of its answers rather than one answer copied forward for ever.
         deliverableValue: null,
+        // A follow-up day belongs to the occurrence whose wait it named. The
+        // wait itself carries, but last time's day has passed, and carried
+        // forward it made the new occurrence ask for its follow-up at once.
+        followUpOn: null,
         // The pushes belong to the occurrence that was pushed. postponeMuted
         // deliberately isn't reset here — it rides through on ...effective,
         // because "stop asking about this one" is a statement about the task,

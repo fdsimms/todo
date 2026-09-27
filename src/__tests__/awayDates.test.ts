@@ -1,5 +1,6 @@
 import {
   departureFromAnswer,
+  departureMoveFromAnswer,
   awayNights,
   awayListDriver,
   awayPauseDriver,
@@ -421,5 +422,20 @@ describe('departureFromAnswer', () => {
 
   it('does nothing without an answer', () => {
     expect(departureFromAnswer({ awayStart: null, awayEnd: null }, null)).toBeNull();
+  });
+});
+
+describe('departureMoveFromAnswer', () => {
+  const answer = new Date(2026, 5, 14, 12);
+  const set = new Date(2026, 5, 12, 12).toISOString();
+
+  it('offers the answered day when Leaving is set to another', () => {
+    expect(new Date(departureMoveFromAnswer({ awayStart: set, awayEnd: null }, answer)!).getDate()).toBe(14);
+  });
+
+  it('offers nothing for the same day, an empty Leaving date, or a day after Coming back', () => {
+    expect(departureMoveFromAnswer({ awayStart: new Date(2026, 5, 14, 9).toISOString(), awayEnd: null }, answer)).toBeNull();
+    expect(departureMoveFromAnswer({ awayStart: null, awayEnd: null }, answer)).toBeNull();
+    expect(departureMoveFromAnswer({ awayStart: set, awayEnd: new Date(2026, 5, 13, 12).toISOString() }, answer)).toBeNull();
   });
 });

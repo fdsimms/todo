@@ -1,7 +1,7 @@
 import { differenceInCalendarDays } from 'date-fns/differenceInCalendarDays';
 import type { Project, Task, TaskGroup, TaskTemplate, TemplateAnchor, TemplateItem, TemplateItemGroup } from '../types';
 import { generateId } from './id';
-import { getDayStart } from './dateUtils';
+import { getTaskDayStart } from './dateUtils';
 import { normalizeTemplateItem } from './templateUtils';
 
 /**
@@ -19,7 +19,7 @@ export interface BlueprintEntry {
 
 export interface ProjectBlueprint {
   /** The project's sections, in page order, with nothing left out. */
-  sections: Array<{ id: string; title: string }>;
+  sections: Array<{ id: string; title: string; checklist: boolean }>;
   /** Every task worth carrying over, in page order. */
   entries: BlueprintEntry[];
 }
@@ -93,7 +93,7 @@ export function projectBlueprint(
     .map(t => t.title);
 
   return {
-    sections: sections.map(g => ({ id: g.id, title: g.title.trim() || 'Untitled section' })),
+    sections: sections.map(g => ({ id: g.id, title: g.title.trim() || 'Untitled section', checklist: g.checklist ?? false })),
     entries: slots.flatMap(slot => slot.entries.map(task => ({
       task,
       sectionId: slot.sectionId,
@@ -125,14 +125,17 @@ export function templateFromProject(
   const anchorsAreAway = project.awayStart !== null;
   const anchor: TemplateAnchor = anchorsAreAway ? 'start' : 'end';
   const anchorIso = anchorsAreAway ? project.awayStart : project.deadline;
-  const anchorDay = anchorIso ? getDayStart(new Date(anchorIso), dayResetTime) : null;
+  // getTaskDayStart, not getDayStart: these are stored dates, and a date kept
+  // at midnight under a later dayResetTime would read as the day before.
+  const anchorDay = anchorIso ? getTaskDayStart(new Date(anchorIso), dayResetTime) : null;
   const offsetOf = (iso: string | null) =>
-    iso && anchorDay ? differenceInCalendarDays(getDayStart(new Date(iso), dayResetTime), anchorDay) : null;
+    iso && anchorDay ? differenceInCalendarDays(getTaskDayStart(new Date(iso), dayResetTime), anchorDay) : null;
 
   const itemGroups: TemplateItemGroup[] = blueprint.sections.map((s, i) => ({
     id: generateId(),
     title: s.title,
     sortOrder: i + 1,
+    ...(s.checklist ? { checklist: true } : {}),
   }));
   const groupIdFor = new Map(blueprint.sections.map((s, i) => [s.id, itemGroups[i].id]));
 
@@ -147,6 +150,9 @@ export function templateFromProject(
     priority: task.priority,
     effort: task.effort,
     timeSegments: task.timeSegments,
+    windowStart: task.windowStart,
+    windowEnd: task.windowEnd,
+    linkUrl: task.linkUrl ?? null,
     estimatedMinutes: task.estimatedMinutes,
     recurrenceType: task.recurrenceType,
     recurrenceInterval: task.recurrenceInterval,

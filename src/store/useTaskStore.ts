@@ -140,7 +140,7 @@ import { medicationFor } from '../utils/medicationLog';
 import { eventsIn } from '../utils/calendarBusy';
 import { isDemoModeActive } from '../utils/demoState';
 import type { MealSlot, Project, TaskGroup, WeatherCondition, WeatherRule } from '../types';
-import { awayPauseDriver, departureFromAnswer, isProjectAwayNow } from '../utils/awayDates';
+import { awayPauseDriver, departureFromAnswer, departureMoveFromAnswer, isProjectAwayNow } from '../utils/awayDates';
 import { generateId } from '../utils/id';
 import {
   applyTitleRulesToDraft,
@@ -154,7 +154,7 @@ import { derivedId, spawnSeed } from '../utils/syncIds';
 import { reorderSubset } from '../utils/reorder';
 import { liveProjectSteps, slotUpdates } from '../utils/projectOrder';
 import { applyMeasuredTime } from '../utils/effort';
-import { chainStepDatedByAnswer, deliverableDate, deliverableKindFor } from '../utils/deliverables';
+import { chainStepDatedByAnswer, deliverableDate, deliverableKindFor, isTentativeAnswer } from '../utils/deliverables';
 import { totalMinutes } from '../utils/recipeUtils';
 import { normalizeTargetUnit } from '../utils/quotaUnit';
 import {
@@ -170,7 +170,7 @@ import {
   supplyReorderSourceId,
   wantedSupplyReorders,
 } from '../utils/supply';
-import { getNextDueDate, getCurrentDayStart, getLogicalToday, getLogicalTomorrow, getTaskDayStart, getEffectiveTaskDate, dayKeyOf, dayKeyToDate, getDeadlineFromOffset, getDeadlineFromMonthDay, getReminderOffsetDate, getStreakOutcome, getNextSeriesDates, recurrenceAnchorDayFor, captureReminderOffset, reanchorReminderToWallClock } from '../utils/dateUtils';
+import { getNextDueDate, getCurrentDayStart, getLogicalDayKey, getLogicalToday, getLogicalTomorrow, getTaskDayStart, getEffectiveTaskDate, dayKeyOf, dayKeyToDate, getDeadlineFromOffset, getDeadlineFromMonthDay, getReminderOffsetDate, getStreakOutcome, getNextSeriesDates, recurrenceAnchorDayFor, captureReminderOffset, reanchorReminderToWallClock } from '../utils/dateUtils';
 import { entriesForSlot, shiftDayKey } from '../utils/mealPlan';
 import { MEAL_SLOT_TASK_DAYS, completesMealSlot, mealSlotSourceId, mealSlotStepTimeSegments, mealSlotTaskDraft, parseMealSlotSource } from '../utils/mealSlotTasks';
 import { wantsMealLogPrompt } from '../utils/mealLog';
@@ -190,6 +190,8 @@ import {
   isUpcomingToday,
   isHeldBack,
   isHiddenForVacation,
+  isWithheld,
+  isInPausedProject,
   isVisibleApartFromVacation,
   isTaskExpired,
   isTaskSweepable,
@@ -262,6 +264,7 @@ import { resolveBlocksEdit, waitingOn, canWaitOn, blockerFields, blockerIdsOf, b
 import {
   waitingFollowUpTaskId,
   wantedWaitingFollowUps,
+  MAX_WAITING_FOLLOW_UP_TASKS,
   waitingFollowUpsHandledRecently,
   staleWaitingFollowUpTasks,
 } from '../utils/waitingFollowUpTasks';
@@ -332,6 +335,11 @@ export const CONTENT_FIELDS: (keyof Task)[] = [
   // like progressCount and is deliberately absent, or a scope:'occurrence'
   // edit would capture one date's answer as the default for every date after.
   'deliverableKind',
+  // The rest of the question, which travels with it: a Pick one's options,
+  // and whether a date answer sets the trip's Leaving date. Left off, a set's
+  // later dates took the kind with no options and asked in free text.
+  'deliverableOptions',
+  'deliverableSetsAway',
   // Grouped with the other visibility gates (windowStart, timeSegments) rather
   // than the recurrence rule: "this occurrence waits on that one-off errand" is
   // a normal thing to want, and without this a scope:'occurrence' edit would
@@ -1280,6 +1288,34 @@ interface TaskStore extends UndoHistoryActions {
   lastAction: UndoableAction | null;
   undoStack: UndoableAction[];
   redoStack: UndoableAction[];
+  /**
+   * Tasks a completion just freed that have no day to go to: the last thing
+   * each waited on is done, but an undated task goes nowhere on its own, so
+   * "ready" would otherwise be invisible. ReadyOfferBar reads this and offers
+   * a day; `at` tells a fresh offer from the one already shown. Session-only.
+   */
+  readyOffer: { taskIds: string[]; at: number } | null;
+  /**
+   * A question about a trip's dates that a date answer raised (see
+   * `deliverableSetsAway`): ask for Coming back once Leaving has just been
+   * filled, or offer to move a Leaving date a new answer disagrees with.
+   * TripDatePrompt asks it; `at` tells a fresh one from the one shown.
+   */
+  tripDatePrompt:
+    | { kind: 'return'; projectId: string; at: number }
+    | { kind: 'moveLeaving'; projectId: string; awayStart: string; at: number }
+    | null;
+  clearTripDatePrompt: () => void;
+  clearReadyOffer: () => void;
+  /** Dates every task in the offer on `date`, undoably, and clears it. */
+  placeReadyTasks: (date: Date) => void;
+  /**
+   * Moves each repeating task to its next day on or after today, keeping its
+   * grid (`getNextDueDate`'s catch-up), or to today for one counted from
+   * completion. What a project coming off a pause offers its overdue
+   * routines (overdueRoutines). One undo step.
+   */
+  redateRoutines: (taskIds: string[]) => void;
   // Ids of tasks completed within the last COMPLETION_HOLD_MS — see
   // withHeldCompletions above.
   completionHoldIds: string[];
@@ -1931,6 +1967,45 @@ export const useTaskStore = create<TaskStore>((set, get) => ({
   lastAction: null,
   undoStack: [],
   redoStack: [],
+  readyOffer: null,
+  tripDatePrompt: null,
+  clearTripDatePrompt() {
+    set({ tripDatePrompt: null });
+  },
+  clearReadyOffer() {
+    set({ readyOffer: null });
+  },
+  redateRoutines(taskIds) {
+    const resetTime = useSettingsStore.getState().dayResetTime;
+    const today = getLogicalToday(resetTime);
+    const snapshots = get().tasks.filter(t => taskIds.includes(t.id) && !t.completed).map(t => ({ ...t }));
+    if (snapshots.length === 0) return;
+    for (const task of snapshots) {
+      const next = task.recurrenceFromCompletion ? today : getNextDueDate(task, resetTime, { catchUp: true });
+      if (!next) continue;
+      get().updateTask(task.id, { dueDate: next.toISOString(), deferUntil: null }, { skipPostponeCount: true });
+    }
+    get().setLastAction({
+      label: snapshots.length === 1 ? 'Routine moved' : `${snapshots.length} routines moved`,
+      undo: () => snapshots.forEach(snapshot => get().updateTask(snapshot.id, snapshot)),
+    });
+  },
+  placeReadyTasks(date) {
+    const offer = get().readyOffer;
+    set({ readyOffer: null });
+    if (!offer) return;
+    const snapshots = get().tasks.filter(t => offer.taskIds.includes(t.id) && !t.completed).map(t => ({ ...t }));
+    if (snapshots.length === 0) return;
+    const day = new Date(date);
+    day.setHours(12, 0, 0, 0);
+    for (const task of snapshots) {
+      get().updateTask(task.id, { dueDate: day.toISOString() }, { markSeenOnBecomeVisible: true });
+    }
+    get().setLastAction({
+      label: snapshots.length === 1 ? 'Task scheduled' : `${snapshots.length} tasks scheduled`,
+      undo: () => snapshots.forEach(snapshot => get().updateTask(snapshot.id, snapshot)),
+    });
+  },
   ...undoHistoryActions(set, get),
   completionHoldIds: [],
   completionCollapseIds: [],
@@ -2705,6 +2780,8 @@ export const useTaskStore = create<TaskStore>((set, get) => ({
               // Sam" nudge on the strength of a swipe made about "waiting on
               // Alex".
               waitingFollowUpDeclinedAt: null,
+              // Same for the day to chase it: it was about the old wait.
+              ...('followUpOn' in updates ? {} : { followUpOn: null }),
             }
           : undefined;
 
@@ -3116,7 +3193,10 @@ export const useTaskStore = create<TaskStore>((set, get) => ({
     if (!opts.skipGeneratedOptOut) writeGeneratedOptOut(task, false);
 
     get().setLastAction({
-      label: 'Task deleted',
+      // A list's rows are lines, and the page they were deleted from says so.
+      label: task.projectId && useProjectStore.getState().projects.some(p => p.id === task.projectId && p.kind === 'list')
+        ? 'Line deleted'
+        : 'Task deleted',
       destructive: true,
       redo: () => get().deleteTask(id, opts),
       undo: () => {
@@ -3199,6 +3279,16 @@ export const useTaskStore = create<TaskStore>((set, get) => ({
     // moment it's actually logged — see taskCompletion.ts's nextDeferUntil),
     // so a caller can confirm past its lock with logEarly.
     if (isRecurrenceNotYetDue(task) && !(task.recurrenceType === 'hours' && options?.logEarly)) return;
+    // "Maybe" to a pick-one question is recorded but doesn't finish the task:
+    // the guest hasn't decided, so the row stays to be answered again, and the
+    // tally counts it as Maybe meanwhile. Here rather than in the prompt so
+    // every path that answers (the bulk queue, the focus session) agrees.
+    if (!missed && deliverableKindFor(task) === 'choice' && isTentativeAnswer(options?.deliverableValue)) {
+      const snapshot = { ...task };
+      get().updateTask(id, { deliverableValue: options!.deliverableValue!.trim() }, { skipPostponeCount: true });
+      get().setLastAction({ label: `Answered ${options!.deliverableValue!.trim()}`, undo: () => get().updateTask(snapshot.id, snapshot) });
+      return;
+    }
 
     // If a timer is still running — or a countdown was paused with time banked
     // on it — stop it first so the session's time is saved.
@@ -3539,11 +3629,38 @@ export const useTaskStore = create<TaskStore>((set, get) => ({
     }
 
     // A date answer that opted into being the trip's departure fills the
-    // project's empty Leaving date. See departureFromAnswer.
+    // project's empty Leaving date. See departureFromAnswer. Remembered for
+    // this completion's undo, which empties it again.
+    let departureSet: { projectId: string; awayStart: string } | null = null;
     if (!missed && task.deliverableSetsAway && task.projectId && deliverableKindFor(task) === 'date') {
       const project = useProjectStore.getState().projects.find(p => p.id === task.projectId);
       const awayStart = project ? departureFromAnswer(project, deliverableDate(completed.deliverableValue)) : null;
-      if (project && awayStart) useProjectStore.getState().updateProject(project.id, { awayStart });
+      if (project && awayStart) {
+        useProjectStore.getState().updateProject(project.id, { awayStart });
+        departureSet = { projectId: project.id, awayStart };
+        // "Pick dates" is both ends: with the leaving day in, ask for the
+        // coming-back day while the dates are in mind (TripDatePrompt).
+        if (!project.awayEnd) set({ tripDatePrompt: { kind: 'return', projectId: project.id, at: Date.now() } });
+      } else if (project) {
+        // A trip that already has a Leaving date isn't moved by an answer on
+        // its own; a different day is offered instead.
+        const moveTo = departureMoveFromAnswer(project, deliverableDate(completed.deliverableValue));
+        if (moveTo) set({ tripDatePrompt: { kind: 'moveLeaving', projectId: project.id, awayStart: moveTo, at: Date.now() } });
+      }
+    }
+
+    // The tasks this was the last thing holding back, if they have no day of
+    // their own: ready now, but an undated task goes nowhere by itself, so
+    // nothing on screen would say so. ReadyOfferBar offers them a day. Not for
+    // a miss or an unattended completion, which nobody is watching.
+    if (!missed && !neutral) {
+      const freed = get().tasks.filter(t =>
+        !t.completed && !t.archived && !t.parentId &&
+        blockerIdsOf(t).includes(id) &&
+        !isHeldBack(t) && !isInPausedProject(t) &&
+        t.dueDate == null && t.deferUntil == null
+      );
+      if (freed.length > 0) set({ readyOffer: { taskIds: freed.map(t => t.id), at: Date.now() } });
     }
 
     // Spending the second-to-last filter is the moment the offer to order more
@@ -3639,6 +3756,14 @@ export const useTaskStore = create<TaskStore>((set, get) => ({
         if (restockBefore) {
           const { id: sourceId, ...supply } = restockBefore;
           get().updateTask(sourceId, supply, { skipPostponeCount: true });
+        }
+        // Only while the project still holds the date this completion wrote:
+        // one moved by hand since then is the person's, not this answer's.
+        if (departureSet) {
+          const project = useProjectStore.getState().projects.find(p => p.id === departureSet!.projectId);
+          if (project?.awayStart === departureSet.awayStart) {
+            useProjectStore.getState().updateProject(project.id, { awayStart: null });
+          }
         }
       },
     });
@@ -3828,6 +3953,13 @@ export const useTaskStore = create<TaskStore>((set, get) => ({
       label: value === null ? 'Answer cleared' : 'Answer saved',
       undo: () => get().setDeliverableValue(id, previous),
     });
+    // An answered "Pick dates" edited later still speaks for the trip, the
+    // same way completing it did: offered as a move, never written unasked.
+    if (task.completed && task.deliverableSetsAway && task.projectId && deliverableKindFor(task) === 'date') {
+      const project = useProjectStore.getState().projects.find(p => p.id === task.projectId);
+      const moveTo = project ? departureMoveFromAnswer(project, deliverableDate(value)) : null;
+      if (project && moveTo) set({ tripDatePrompt: { kind: 'moveLeaving', projectId: project.id, awayStart: moveTo, at: Date.now() } });
+    }
   },
 
   logSlip(id) {
@@ -3879,7 +4011,7 @@ export const useTaskStore = create<TaskStore>((set, get) => ({
         // Charging for either would be punishing somebody for the app's own
         // gate — see penaltyChargeFor, where this is a required argument
         // rather than a default precisely so it has to be answered here.
-        excused: isHeldBack(task) || isHiddenForVacation(task),
+        excused: isHeldBack(task) || isWithheld(task),
       });
       if (!charge) continue;
       charged.push({ ...task, penaltyFiredAt: charge.firedAt });
@@ -3908,7 +4040,7 @@ export const useTaskStore = create<TaskStore>((set, get) => ({
       // every other streak here makes. Read through isHiddenForVacation so a
       // category paused for vacation covers its habits too, exactly as it does
       // for the tasks the quota rollover skips.
-      const patch = cleanDayPatch(t, todayStart, { paused: isHiddenForVacation(t) });
+      const patch = cleanDayPatch(t, todayStart, { paused: isWithheld(t) });
       return patch ? [{ ...t, ...patch }] : [];
     });
     if (patched.length === 0) return;
@@ -4166,7 +4298,7 @@ export const useTaskStore = create<TaskStore>((set, get) => ({
       // rather than being closed out and silently re-spawned as a habit.
       t.recurrenceType !== 'none' &&
       // Vacation-paused tasks are protected from streak loss by design.
-      !isHiddenForVacation(t) &&
+      !isWithheld(t) &&
       // allowOvershoot tasks get their own sweep (sweepOvershootQuotas, below)
       // that goes through completeTask so an overshot count survives — this
       // manual close always writes progressCount as-is but forces
@@ -4413,7 +4545,7 @@ export const useTaskStore = create<TaskStore>((set, get) => ({
       !t.completed &&
       !t.archived &&
       t.progressCount > 0 &&
-      !isHiddenForVacation(t) &&
+      !isWithheld(t) &&
       t.dueDate !== null &&
       // Weekly targets are deliberately out of scope for the overshoot and
       // interval kinds (see Task.quotaPeriod), and this is the guard rather
@@ -4462,7 +4594,7 @@ export const useTaskStore = create<TaskStore>((set, get) => ({
       // Same protection from streak loss vacation gives everywhere else, and
       // it matters more here: a paused task is one whose run was never
       // supposed to happen.
-      if (isHiddenForVacation(t)) return false;
+      if (isWithheld(t)) return false;
       if (t.dueDate === null) return false;
       const taskDay = getTaskDayStart(new Date(t.dueDate), dayResetTime);
       // A run from an earlier day is over by definition, whatever the clock
@@ -5166,7 +5298,9 @@ export const useTaskStore = create<TaskStore>((set, get) => ({
     // Work the app invents on the strength of a wait dragging on, not
     // sunscreen — see GeneratedKindSpec.pausedOnVacation.
     if (generatorPausedForVacation('waitingFollowUp', settings.vacationMode)) return;
-    if (!settings.waitingFollowUpTasks) return;
+    // The setting gates the app asking unasked. A wait with its own follow-up
+    // day (Task.followUpOn) was asked for, so it runs either way; with the
+    // setting off, those are the only ones wanted.
 
     const tasks = get().tasks;
     const people = usePersonStore.getState().people;
@@ -5175,7 +5309,9 @@ export const useTaskStore = create<TaskStore>((set, get) => ({
     // Anything already ticked off or archived recently is left alone rather
     // than handed straight back — see waitingFollowUpsHandledRecently.
     const handled = waitingFollowUpsHandledRecently(tasks, today);
-    const wanted = wantedWaitingFollowUps(tasks, people, today, handled);
+    const wanted = wantedWaitingFollowUps(
+      tasks, people, today, handled, MAX_WAITING_FOLLOW_UP_TASKS, settings.waitingFollowUpTasks,
+    );
 
     // Clear first, create second, and never the reverse — the same ordering
     // checkProjectReviewTasks and checkReachOutTasks run on: the stale set
@@ -5220,6 +5356,9 @@ export const useTaskStore = create<TaskStore>((set, get) => ({
           // actually doing the thing.
           phoneNumber: want.phoneNumber,
           category,
+          // Filed where the wait is: chasing the contractor is part of the
+          // kitchen, and belongs on its page beside the task it's about.
+          projectId: want.projectId,
           // No personIds, for the reason the birthday and reachOut tasks
           // carry none: a task naming somebody is the record that something
           // happened with them, and ticking this off would otherwise reset a
@@ -6560,7 +6699,11 @@ export const useTaskStore = create<TaskStore>((set, get) => ({
     // through `dripCandidate` rather than by picking a member off the project,
     // so the task quoted here is the same one the pull sheet the row links to
     // will offer first.
-    const nominated = weekendSourceProjects(useProjectStore.getState().projects)[0] ?? null;
+    // The first nominated project that has something to offer, in the user's
+    // own order; only the first was ever tried, so one with nothing pullable
+    // hid the rest.
+    const sources = weekendSourceProjects(useProjectStore.getState().projects, getLogicalDayKey(new Date(), settings.dayResetTime));
+    const nominated = sources.find(p => nextPullCandidate(p, tasks) !== null) ?? sources[0] ?? null;
     const suggestion = nominated
       ? {
           projectId: nominated.id,
@@ -7932,6 +8075,7 @@ export const useTaskStore = create<TaskStore>((set, get) => ({
       }
       const order: string[] = [];
       const childrenOf = new Map<string, string[]>();
+      const copyOf = new Map<string, string>();
       for (const { task, sectionId, subtasks } of blueprint.entries) {
         const groupId = sectionId ? sectionFor.get(sectionId) ?? null : null;
         const copy = get().addTask({
@@ -7951,14 +8095,25 @@ export const useTaskStore = create<TaskStore>((set, get) => ({
           recurrenceFromCompletion: task.recurrenceFromCompletion,
           chainEnabled: task.chainEnabled,
           chainItems: task.chainItems,
+          // The whole question, not just its kind: a guest's Yes/No/Maybe
+          // copied without its options asked in free text and fell out of
+          // the tally.
           deliverableKind: task.deliverableKind,
+          deliverableOptions: task.deliverableOptions ?? [],
+          deliverableSetsAway: task.deliverableSetsAway ?? false,
+          windowStart: task.windowStart,
+          windowEnd: task.windowEnd,
+          linkUrl: task.linkUrl,
           vacationPause: task.vacationPause,
           excludeFromSuggestions: task.excludeFromSuggestions,
           projectId: created.id,
           groupId,
-          // Undated on purpose: last time's dates belong to last time.
-          dueDate: null,
+          // Last time's dates belong to last time, so one-offs start undated.
+          // A repeating task starts today instead: undated, a project task is
+          // on no list, and Pull never offers a routine, so it was stranded.
+          dueDate: task.recurrenceType !== 'none' ? getLogicalToday().toISOString() : null,
         }, undefined, { skipTitleRules: true, skipCategoryDefault: true });
+        copyOf.set(task.id, copy.id);
         subtasks.forEach(title => get().addSubtask(copy.id, title));
         if (groupId) {
           if (!childrenOf.has(groupId)) { childrenOf.set(groupId, []); order.push(groupId); }
@@ -7966,6 +8121,13 @@ export const useTaskStore = create<TaskStore>((set, get) => ({
         } else {
           order.push(copy.id);
         }
+      }
+      // What each copy waits on, pointed at the copies: "Send invitations"
+      // waits on this year's venue and guest list, not last year's done ones.
+      // A blocker outside the project isn't carried, since it was about then.
+      for (const { task } of blueprint.entries) {
+        const mapped = blockerIdsOf(task).map(id => copyOf.get(id)).filter((id): id is string => !!id);
+        if (mapped.length > 0) get().updateTask(copyOf.get(task.id)!, blockerFields(mapped));
       }
       // Sections with nothing in them keep their place at the end.
       for (const id of sectionFor.values()) if (!childrenOf.has(id)) order.push(id);
@@ -7975,7 +8137,13 @@ export const useTaskStore = create<TaskStore>((set, get) => ({
 
     get().setLastAction({
       label: 'Project copied',
-      undo: () => get().deleteProject(created.id, { cascade: true }),
+      undo: () => {
+        get().deleteProject(created.id, { cascade: true });
+        // deleteProject unfiles a project's stacks rather than deleting them,
+        // which is right for one the person built; these were only ever this
+        // copy's, and left behind they were empty stacks with no page.
+        for (const id of sectionFor.values()) useTaskGroupStore.getState().removeGroupRow(id);
+      },
     }, { replacing: historyBefore });
     return useProjectStore.getState().getProjectById(created.id) ?? created;
   },
@@ -8684,8 +8852,10 @@ export const useTaskStore = create<TaskStore>((set, get) => ({
       // another task, or on a person, sat at the top of Today with nothing the
       // user could do about it while its own ordinary row had correctly left.
       // It comes back the moment the blocker clears, exactly as that row does.
+      // A paused project's task is the other non-clock hide: the pause is the
+      // person saying "not until then", which pinning doesn't answer.
       .filter(t => !t.parentId && t.pinned && !t.completed && !t.archived
-        && !isHeldBack(t) && !(vacationMode && t.vacationPause))
+        && !isHeldBack(t) && !(vacationMode && t.vacationPause) && !isInPausedProject(t))
       // sortOrder breaks ties rather than being the sort: every row starts at
       // pinnedOrder 0, so an install that has never dragged a pin (or upgraded
       // into the column) reads exactly as it did before. See Task.pinnedOrder.

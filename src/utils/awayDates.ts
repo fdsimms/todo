@@ -80,6 +80,23 @@ export function departureFromAnswer(
 }
 
 /**
+ * The Leaving date to offer moving to, when a project already has one and a
+ * date answer (re-answered, or edited later) names a different day. Null when
+ * there's nothing to move: no answer, no Leaving date yet (that's
+ * departureFromAnswer's to fill), the same day, or a day after Coming back.
+ * Offered, never written on its own: this is a date somebody set.
+ */
+export function departureMoveFromAnswer(
+  project: Pick<Project, 'awayStart' | 'awayEnd'>,
+  answer: Date | null,
+): string | null {
+  if (!answer || !project.awayStart) return null;
+  if (getDayStart(answer).getTime() === getDayStart(new Date(project.awayStart)).getTime()) return null;
+  if (project.awayEnd && getDayStart(answer).getTime() > getDayStart(new Date(project.awayEnd)).getTime()) return null;
+  return awayNoonIso(answer);
+}
+
+/**
  * The span this project actually has, or null if it has none.
  *
  * An `awayEnd` without an `awayStart` is dropped rather than promoted: on its

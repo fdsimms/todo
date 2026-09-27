@@ -32,7 +32,7 @@ describe('projectBlueprint', () => {
       task({ id: 'sub', title: 'Chocolate', parentId: 's1', sortOrder: 1 }),
     ];
     const blueprint = projectBlueprint('p1', tasks, [group('food', 'Food', 3)]);
-    expect(blueprint.sections).toEqual([{ id: 'food', title: 'Food' }]);
+    expect(blueprint.sections).toEqual([{ id: 'food', title: 'Food', checklist: false }]);
     expect(blueprint.entries.map(e => e.task.id)).toEqual(['loose', 's2', 's1', 'r2']);
     expect(blueprint.entries.find(e => e.task.id === 's1')?.subtasks).toEqual(['Chocolate']);
   });
@@ -64,5 +64,12 @@ describe('templateFromProject', () => {
     expect(draft.itemGroups.map(g => g.title)).toEqual(['Food']);
     expect(draft.items[0].groupId).toBe(draft.itemGroups[0].id);
     expect(draft.items[0].dueOffsetDays).toBeNull();
+  });
+
+  it('keeps a checklist section a checklist, and a task its time window and link', () => {
+    const tasks = [task({ id: 's', title: 'Socks', groupId: 'pack', windowStart: '08:00', windowEnd: '10:00', linkUrl: 'https://example.com/socks' } as Partial<Task>)];
+    const draft = templateFromProject(project({}), tasks, [{ ...group('pack', 'Packing', 1), checklist: true } as TaskGroup]);
+    expect(draft.itemGroups[0].checklist).toBe(true);
+    expect(draft.items[0]).toEqual(expect.objectContaining({ windowStart: '08:00', windowEnd: '10:00', linkUrl: 'https://example.com/socks' }));
   });
 });

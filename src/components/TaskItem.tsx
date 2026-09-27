@@ -54,7 +54,7 @@ import { useHealthStore } from '../store/useHealthStore';
 import { activeSegment, segmentPhase, segmentRemaining, timerSegments } from '../utils/timerSegments';
 import { isStreakAtRecord } from '../utils/streakRecord';
 import { isTaskWindowActive, isTaskExpired, effectiveWindowEnd, isRecurrenceNotYetDue, isMissableMealPlanTask, isTaskNew, isTaskVisible, isQuotaTask, isQuotaPartial, quotaRidesOutTheDay, isOnPaceQuota, quotaLeavesTodayAfterLog, quotaNextDueAt, quotaFraction, quotaPaceFraction, quotaUnitsToPace, activeChainStepTitle, displayTitleFor } from '../utils/visibilityUtils';
-import { asksOnCompletion } from '../utils/deliverables';
+import { asksOnCompletion, deliverableKindFor, isTentativeAnswer } from '../utils/deliverables';
 import { offersMealLogOnCompletion } from '../utils/completionTap';
 import { describeTaskRecurrence } from '../utils/recurrenceLabels';
 import { chainPreview, isChainFinish, chainStepAdvancesInPlace, nextChainStep } from '../utils/chain';
@@ -1406,7 +1406,6 @@ export const TaskItem = React.memo(function TaskItem({
   // change, but returns a primitive, so an unchanged count doesn't re-render.
   const waitingCount = useTaskStore(() => waitingCountFor(task.id));
   const blockerTitle = useTaskStore(() => {
-    if (!task.blockedById) return undefined;
     // Only blockers still open: one that's done or filed away no longer holds
     // this task, so naming it would dim a row that's free. With several, the
     // first still open is named and the rest are counted.
@@ -1552,6 +1551,13 @@ export const TaskItem = React.memo(function TaskItem({
    */
   const runCompletion = async (deliverableValue?: string | null) => {
     if (completingRef.current || pacingOutRef.current) return;
+    // A "Maybe" leaves the task open (see completeTask), so it skips the
+    // send-off: the row fading out would say it had gone when it hasn't.
+    if (deliverableKindFor(task) === 'choice' && isTentativeAnswer(deliverableValue)) {
+      haptics.tap();
+      completeTask(task.id, { deliverableValue });
+      return;
+    }
     // Read and cleared here rather than taken as an argument: the deliverable
     // prompt and the completion-timer alert both call this well after
     // handleComplete set it, with no way to hand it back down through their
@@ -2612,7 +2618,15 @@ export const TaskItem = React.memo(function TaskItem({
             {!!waitingPersonName && (
               <TouchableOpacity
                 style={styles.metaChip}
-                onPress={() => { haptics.tap(); animateLayout(); updateTask(task.id, { waitingOnPersonId: null }); }}
+                onPress={() => {
+                  haptics.tap();
+                  animateLayout();
+                  // One tap on a small chip is easy to make by accident, and
+                  // it drops the wait's start and follow-up day with it.
+                  const snapshot = { ...task };
+                  updateTask(task.id, { waitingOnPersonId: null });
+                  setLastAction({ label: 'Stopped waiting', undo: () => updateTask(snapshot.id, snapshot) });
+                }}
                 activeOpacity={interaction.activeOpacity}
                 accessibilityRole="button"
                 accessibilityLabel={`Waiting on ${waitingPersonName}. Double tap to stop waiting.`}

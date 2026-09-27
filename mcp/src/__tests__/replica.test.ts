@@ -596,6 +596,24 @@ describe('the replica', () => {
     expect(result.completed.deliverableValue).toBe('Green');
   });
 
+  // A fixed set of answers takes one of them, in the option's own spelling,
+  // or the project's tally counts it as no answer.
+  it('takes one of a Pick one question\'s options, and refuses anything else', () => {
+    const task = replica.createTask({
+      title: 'Dana', deliverableKind: 'choice', deliverableOptions: ['Yes', 'No', 'Maybe'],
+    });
+    expect(() => replica.completeTask(task.id, { deliverableValue: 'Coming' })).toThrow(/Yes, No, Maybe/);
+    const result = replica.completeTask(task.id, { deliverableValue: 'maybe' });
+    expect(result.completed.deliverableValue).toBe('Maybe');
+  });
+
+  it('keeps an option that has a comma in it whole', () => {
+    const task = replica.createTask({
+      title: 'Dana', deliverableKind: 'choice', deliverableOptions: ['Yes, definitely', 'No'],
+    });
+    expect(replica.deliverableOptions(task)).toEqual(['Yes, definitely', 'No']);
+  });
+
   // The app may never *require* an answer, so declining has to get through.
   // What is refused above is a caller that never offered the choice.
   it('accepts an explicit decline', () => {

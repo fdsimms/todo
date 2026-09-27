@@ -66,6 +66,16 @@ export const YES_NO_OPTIONS = ['Yes', 'No'] as const;
 /** Most options a 'choice' question keeps. Past this it wants to be a text answer. */
 export const DELIVERABLE_OPTIONS_MAX = 8;
 
+/**
+ * Whether a pick-one answer is a "not yet" rather than an answer: Maybe, Not
+ * sure. Recorded on the task without completing it (completeTask), so a guest
+ * who said Maybe stays on the list to be asked again and counts as Maybe in
+ * the tally meanwhile. By the words, since an option is only ever text.
+ */
+export function isTentativeAnswer(value: string | null | undefined): boolean {
+  return !!value && /^(maybe|not sure|unsure|undecided|tentative|perhaps|tbd)$/i.test(value.trim());
+}
+
 /** The options RSVP tracking asks each guest. */
 export const RSVP_OPTIONS = ['Yes', 'No', 'Maybe'];
 
@@ -74,9 +84,18 @@ export const RSVP_OPTIONS = ['Yes', 'No', 'Maybe'];
  * or new lines, trimmed, blanks and repeats (ignoring case) dropped, capped.
  */
 export function parseDeliverableOptions(raw: string): string[] {
+  return cleanDeliverableOptions(raw.split(/[,\n]/));
+}
+
+/**
+ * A stored options list, tidied without splitting: trimmed, blanks and
+ * repeats (ignoring case) dropped, capped. What the reads use, since an option
+ * is allowed a comma ("Yes, definitely") once it's stored; only typing splits.
+ */
+export function cleanDeliverableOptions(options: readonly string[]): string[] {
   const seen = new Set<string>();
   const out: string[] = [];
-  for (const part of raw.split(/[,\n]/)) {
+  for (const part of options) {
     const option = part.trim().slice(0, DELIVERABLE_TEXT_MAX_LENGTH);
     if (!option || seen.has(option.toLowerCase())) continue;
     seen.add(option.toLowerCase());
@@ -95,7 +114,7 @@ export function deliverableOptionsFor(task: DeliverableSource & Pick<Task, 'deli
   const kind = deliverableKindFor(task);
   if (kind === 'yesno') return [...YES_NO_OPTIONS];
   if (kind !== 'choice') return [];
-  const options = parseDeliverableOptions((task.deliverableOptions ?? []).join('\n'));
+  const options = cleanDeliverableOptions(task.deliverableOptions ?? []);
   return options.length >= 2 ? options : [];
 }
 

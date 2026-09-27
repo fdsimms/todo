@@ -10,7 +10,7 @@ import type {
   Shop,
   Task,
 } from '../types';
-import { displayTitleFor, isHiddenForVacation } from './visibilityUtils';
+import { displayTitleFor, isHeldBack, isWithheld } from './visibilityUtils';
 import {
   itemsOnList,
   listCount,
@@ -273,11 +273,11 @@ export function buildWidgetSnapshot(input: SnapshotInput): WidgetSnapshot {
       .slice(0, MAX_PINNED_TASKS)
       .map(toWidgetTask),
     categories: [...input.categories],
-    // Vacation-hidden rows are filtered out first, exactly as the daily
-    // notification does before calling this (`notifications.ts`). The widget
-    // must not count work the app itself is currently withholding.
+    // Withheld and held-back rows are filtered out first, exactly as the
+    // daily notification does before calling this (`notifications.ts`). The
+    // widget must not count work the app itself is currently withholding.
     agenda: agendaCounts(
-      input.allTasks.filter(task => !isHiddenForVacation(task)),
+      input.allTasks.filter(task => !isWithheld(task) && !isHeldBack(task)),
       input.now,
       input.dayResetTime
     ),

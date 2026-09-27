@@ -1,4 +1,5 @@
 import { isStreakAtRecord } from '../utils/streakRecord';
+import { registerPausedProjectSource } from '../utils/projectPause';
 import { dayKeyOf, getCurrentDayStart } from '../utils/dateUtils';
 import { logTaskHealthValue, unlogTaskWaterFromFoodLog } from '../utils/healthCompletionSync';
 import { useTaskStore } from '../store/useTaskStore';
@@ -1751,6 +1752,78 @@ describe('completeTask', () => {
     expect(task?.completedAt).toBeTruthy();
   });
 
+  it('asks for Coming back once a Pick dates answer fills Leaving, and offers a move on a second answer', () => {
+    useProjectStore.setState({ projects: [makeProject({ id: 'trip', awayStart: null, awayEnd: null })] });
+    useTaskStore.setState({
+      tripDatePrompt: null,
+      tasks: [makeTask({ id: 'pick', projectId: 'trip', deliverableKind: 'date', deliverableSetsAway: true } as Partial<Task>)],
+    });
+    try {
+      useTaskStore.getState().completeTask('pick', { deliverableValue: '2025-06-20' });
+      expect(useTaskStore.getState().tripDatePrompt).toEqual(expect.objectContaining({ kind: 'return', projectId: 'trip' }));
+      useTaskStore.getState().clearTripDatePrompt();
+      useTaskStore.getState().setDeliverableValue('pick', '2025-06-22');
+      expect(useTaskStore.getState().tripDatePrompt).toEqual(expect.objectContaining({ kind: 'moveLeaving', projectId: 'trip' }));
+    } finally {
+      useProjectStore.setState({ projects: [] });
+    }
+  });
+
+  it("keeps a repeating task's wait on its successor but drops the follow-up day", () => {
+    useTaskStore.setState({
+      tasks: [makeTask({
+        id: 'r', recurrenceType: 'weekly', recurrenceInterval: 1, dueDate: new Date(2025, 5, 10, 12).toISOString(),
+        waitingOnPersonId: 'p1', followUpOn: '2025-06-08',
+      } as Partial<Task>)],
+    });
+    useTaskStore.getState().completeTask('r');
+    const next = useTaskStore.getState().tasks.find(t => t.id !== 'r')!;
+    expect(next.waitingOnPersonId).toBe('p1');
+    expect(next.followUpOn ?? null).toBeNull();
+  });
+
+  it('moves an overdue routine to its next day on its grid, and undoes it', () => {
+    // Weekly from Tuesday June 3; today is Tuesday June 10.
+    const due = new Date(2025, 4, 20, 12).toISOString();
+    useTaskStore.setState({ tasks: [makeTask({ id: 'water', recurrenceType: 'weekly', recurrenceInterval: 1, dueDate: due } as Partial<Task>)] });
+    useTaskStore.getState().redateRoutines(['water']);
+    expect(dayKeyOf(new Date(useTaskStore.getState().tasks[0].dueDate!))).toBe('2025-06-10');
+    useTaskStore.getState().lastAction?.undo();
+    expect(useTaskStore.getState().tasks[0].dueDate).toBe(due);
+  });
+
+  it('offers a day to an undated task once its last blocker is done, and dates it on the answer', () => {
+    useTaskStore.setState({
+      readyOffer: null,
+      tasks: [
+        makeTask({ id: 'b1' }),
+        makeTask({ id: 'b2' }),
+        makeTask({ id: 'w', blockedById: 'b1', blockedByIds: ['b2'] } as Partial<Task>),
+        makeTask({ id: 'dated', blockedById: 'b2', dueDate: new Date(2025, 5, 20, 12).toISOString() } as Partial<Task>),
+      ],
+    });
+    useTaskStore.getState().completeTask('b1');
+    expect(useTaskStore.getState().readyOffer).toBeNull();
+    useTaskStore.getState().completeTask('b2');
+    expect(useTaskStore.getState().readyOffer?.taskIds).toEqual(['w']);
+    useTaskStore.getState().placeReadyTasks(new Date(2025, 5, 10, 9));
+    expect(useTaskStore.getState().readyOffer).toBeNull();
+    expect(dayKeyOf(new Date(useTaskStore.getState().tasks.find(t => t.id === 'w')!.dueDate!))).toBe('2025-06-10');
+  });
+
+  it('records a Maybe to a pick-one question without completing the task, and undoes it', () => {
+    useTaskStore.setState({ tasks: [makeTask({ id: 't1', deliverableKind: 'choice', deliverableOptions: ['Yes', 'No', 'Maybe'] } as Partial<Task>)] });
+    useTaskStore.getState().completeTask('t1', { deliverableValue: 'Maybe' });
+    let task = useTaskStore.getState().tasks.find(t => t.id === 't1');
+    expect(task?.completed).toBe(false);
+    expect(task?.deliverableValue).toBe('Maybe');
+    useTaskStore.getState().lastAction?.undo();
+    task = useTaskStore.getState().tasks.find(t => t.id === 't1');
+    expect(task?.deliverableValue ?? null).toBeNull();
+    useTaskStore.getState().completeTask('t1', { deliverableValue: 'Yes' });
+    expect(useTaskStore.getState().tasks.find(t => t.id === 't1')?.completed).toBe(true);
+  });
+
   it('reconciles the deadline calendar event for the completed row', () => {
     useTaskStore.setState({ tasks: [makeTask({ id: 't1', deadline: new Date(2025, 5, 20).toISOString() })] });
     useTaskStore.getState().completeTask('t1');
@@ -2734,6 +2807,19 @@ describe('completeTask', () => {
 
       jest.advanceTimersByTime(1200);
       expect(useTaskStore.getState().pinnedTasks()).toHaveLength(0);
+    });
+  });
+
+  describe('a paused project', () => {
+    it('keeps its pinned task out of the Pinned block until the pause lifts', () => {
+      registerPausedProjectSource(() => [{ id: 'garden', pausedUntil: '2999-01-01', archived: false, completed: false }]);
+      try {
+        useTaskStore.setState({ tasks: [makeTask({ id: 't1', pinned: true, projectId: 'garden' }), makeTask({ id: 't2', pinned: true })] });
+        expect(useTaskStore.getState().pinnedTasks().map(t => t.id)).toEqual(['t2']);
+      } finally {
+        // Back to what the project store registered at load.
+        registerPausedProjectSource(() => useProjectStore.getState().projects);
+      }
     });
   });
 
@@ -4886,6 +4972,21 @@ describe('checkWaitingFollowUpTasks', () => {
     useSettingsStore.getState.mockReturnValue(settings({ waitingFollowUpTasks: false }));
     useTaskStore.getState().checkWaitingFollowUpTasks();
     expect(followUps()).toHaveLength(0);
+  });
+
+  it('still follows up on a day the person named, setting off, filed under the project', () => {
+    useSettingsStore.getState.mockReturnValue(settings({ waitingFollowUpTasks: false }));
+    const key = dayKeyOf(getCurrentDayStart());
+    useTaskStore.setState({ tasks: [waiting({ waitingOnPersonSince: daysAgo(1), followUpOn: key, projectId: 'kitchen' })] });
+    useTaskStore.getState().checkWaitingFollowUpTasks();
+    expect(followUps()).toHaveLength(1);
+    expect(followUps()[0].projectId).toBe('kitchen');
+  });
+
+  it('clears the follow-up day when the wait moves to somebody else or ends', () => {
+    useTaskStore.setState({ tasks: [waiting({ followUpOn: '2026-01-02' })] });
+    useTaskStore.getState().updateTask('w1', { waitingOnPersonId: null });
+    expect(useTaskStore.getState().tasks.find(t => t.id === 'w1')?.followUpOn ?? null).toBeNull();
   });
 
   it('does nothing while vacation mode is on — a chore, not sunscreen', () => {

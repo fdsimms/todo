@@ -9,6 +9,7 @@ import { useCalendarStore } from '../store/useCalendarStore';
 import { usePersonNoteStore } from '../store/usePersonNoteStore';
 import { useSettingsStore } from '../store/useSettingsStore';
 import { useTaskStore } from '../store/useTaskStore';
+import { useProjectStore } from '../store/useProjectStore';
 import { DetailHeader } from '../components/DetailHeader';
 import { EmptyState } from '../components/EmptyState';
 import { InlineAction } from '../components/InlineAction';
@@ -109,6 +110,16 @@ export function PersonDetailScreen() {
 
   const personId = route.params.personId;
   const tasks = useMemo(() => tasksNaming(personId), [personId, allTasks]);
+  // Projects that name this person (Project.personIds): the trip with them,
+  // the party they're helping with. Active first, then finished; filed-away
+  // ones left out. In the projects' own order, never ranked.
+  const allProjects = useProjectStore(useShallow(s => s.projects));
+  const theirProjects = useMemo(
+    () => allProjects
+      .filter(p => !p.archived && (p.personIds ?? []).includes(personId))
+      .sort((a, b) => Number(a.completed) - Number(b.completed) || a.sortOrder - b.sortOrder),
+    [allProjects, personId],
+  );
   const history = useMemo(() => personHistory(tasks), [tasks]);
   const upcoming = useMemo(() => personUpcoming(tasks), [tasks]);
 
@@ -460,6 +471,35 @@ export function PersonDetailScreen() {
                     <Text style={styles.entryTitle} numberOfLines={1}>{item.title}</Text>
                     <Text style={styles.entryDate}>{item.when}</Text>
                   </View>
+                </View>
+              ))}
+            </View>
+          </>
+        )}
+
+        {theirProjects.length > 0 && (
+          <>
+            <Text style={styles.groupLabel}>PROJECTS</Text>
+            <View style={styles.card}>
+              {theirProjects.map((project, i) => (
+                <View key={project.id}>
+                  {i > 0 && <View style={styles.sep} />}
+                  <TouchableOpacity
+                    style={styles.entryRow}
+                    onPress={() => { haptics.tap(); (navigation as any).navigate('ProjectDetail', { projectId: project.id }); }}
+                    activeOpacity={interaction.activeOpacity}
+                    accessibilityRole="button"
+                    accessibilityLabel={`Open ${project.title}${project.completed ? ', finished' : ''}`}
+                  >
+                    <Ionicons
+                      name={project.kind === 'list' ? 'list-outline' : 'folder-outline'}
+                      size={14}
+                      color={project.completed ? colors.textTertiary : colors.accent}
+                    />
+                    <Text style={styles.entryTitle} numberOfLines={1}>{project.title}</Text>
+                    {project.completed && <Text style={styles.entryDate}>Finished</Text>}
+                    <Ionicons name="chevron-forward" size={14} color={colors.textTertiary} />
+                  </TouchableOpacity>
                 </View>
               ))}
             </View>

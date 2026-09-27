@@ -44,8 +44,10 @@ export function parseLabelledLink(raw: string): { label: string; url: string } |
   const linked = splitLinks(text);
   const first = linked.findIndex(s => s.url);
   if (first >= 0) {
+    // The words around the first link, with any further links left out: a
+    // second URL is not part of the first one's name.
     const label = linked
-      .filter((_, i) => i !== first)
+      .filter(s => !s.url)
       .map(s => s.text)
       .join('')
       .replace(/\s+/g, ' ')
@@ -53,10 +55,21 @@ export function parseLabelledLink(raw: string): { label: string; url: string } |
       .trim();
     return { label, url: linked[first].url! };
   }
-  // No scheme: a single word that looks like a host, optionally with a path.
-  if (/^[a-z0-9-]+(\.[a-z0-9-]+)+(\/\S*)?$/i.test(text)) return { label: '', url: `https://${text}` };
+  // No scheme: a single word that ends in a real top-level domain, optionally
+  // with a path. The list is what keeps "Node.js", "v1.2" and "3.14" as the
+  // words they are rather than links to nowhere.
+  const bare = text.match(/^((?:[a-z0-9-]+\.)+([a-z]{2,}))(\/\S*)?$/i);
+  if (bare && BARE_TLDS.has(bare[2].toLowerCase())) return { label: '', url: `https://${text}` };
   return null;
 }
+
+/** Top-level domains a bare "example.com" may end in to be read as a link. */
+const BARE_TLDS = new Set([
+  'com', 'org', 'net', 'edu', 'gov', 'io', 'co', 'app', 'dev', 'me', 'info', 'biz',
+  'shop', 'store', 'blog', 'site', 'online', 'tv', 'ly', 'gl', 'ai',
+  'us', 'uk', 'ca', 'au', 'nz', 'ie', 'de', 'fr', 'es', 'it', 'nl', 'be', 'ch', 'at',
+  'se', 'no', 'dk', 'fi', 'pt', 'pl', 'jp', 'kr', 'in', 'mx', 'br',
+]);
 
 /** What a link is called when it has no label: its host, without "www.". */
 export function linkHost(url: string): string {

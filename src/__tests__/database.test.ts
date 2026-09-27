@@ -1607,6 +1607,7 @@ describe('Templates', () => {
     deadlineOffsetDays: null,
     windowStart: null,
     windowEnd: null,
+    linkUrl: null,
     reminderOffsetMinutes: null,
     timeSegments: [],
     tags: [],

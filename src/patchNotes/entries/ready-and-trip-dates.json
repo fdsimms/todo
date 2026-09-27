@@ -1,0 +1,4 @@
+{
+  "message": "When you finish the last thing a task was waiting on and it has no date, you're offered Today or a day to pick. Answering Pick dates for a trip asks for the Coming back date too, and a different answer later offers to move the leaving date. Resuming a paused project offers to move repeating tasks that came due while it was paused.",
+  "date": "2026-09-27"
+}

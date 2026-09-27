@@ -1110,6 +1110,17 @@ describe('a declined project and the sheet', () => {
   });
 });
 
+describe('a date further out', () => {
+  const inDays = (n: number) => { const d = new Date(); d.setDate(d.getDate() + n); d.setHours(12, 0, 0, 0); return d.toISOString(); };
+
+  it("doesn't keep a project from being pulled from, where a date this week does", () => {
+    const far = [makeTask({ id: 'booked', dueDate: inDays(30) }), makeTask({ id: 'loose', sortOrder: 2 })];
+    expect(nextPullCandidate(makeProject(), far)?.id).toBe('loose');
+    const near = [makeTask({ id: 'booked', dueDate: inDays(3) }), makeTask({ id: 'loose', sortOrder: 2 })];
+    expect(nextPullCandidate(makeProject(), near)).toBeNull();
+  });
+});
+
 describe('working a project in order', () => {
   const section = (o: Partial<TaskGroup>): TaskGroup => ({
     id: 's1', title: 'Walls', notes: '', tags: [], category: null, sortOrder: 5,
@@ -1131,6 +1142,17 @@ describe('working a project in order', () => {
       makeTask({ id: 'inSection', sortOrder: 1, groupId: 's1' }),
     ];
     expect(nextPullCandidate(makeProject({ inOrder: true }), tasks)?.id).toBe('inSection');
+  });
+
+  it('ranks in page order when not worked in order too, reading a section by its place on the page', () => {
+    // Each section numbers its own tasks, so the lower sortOrder is in the
+    // section further down the page.
+    registerSectionSource(() => [section({ id: 's1', sortOrder: 1 }), section({ id: 's2', sortOrder: 2 })]);
+    const tasks = [
+      makeTask({ id: 'upper', sortOrder: 5, groupId: 's1' }),
+      makeTask({ id: 'lower', sortOrder: 1, groupId: 's2' }),
+    ];
+    expect(rankPullCandidates(tasks).map(t => t.id)).toEqual(['upper', 'lower']);
   });
 
   it('offers nothing while the first task is waiting, rather than letting a later one jump ahead', () => {

@@ -2559,6 +2559,19 @@ export interface Task {
   waitingFollowUpDeclinedAt: string | null;
 
   /**
+   * When to follow up on this wait — a day key ("YYYY-MM-DD"), or null to
+   * leave it to `WAITING_FOLLOW_UP_THRESHOLD_DAYS`. Set beside
+   * `waitingOnPersonId` in the editor ("chase the contractor Friday"), and
+   * deliberately its own field rather than the task's `dueDate`: the task's
+   * date is when the task is due, and reading it as the follow-up day made an
+   * overdue task ask straight away the moment it started waiting. A date set
+   * here always gets its follow-up, whether or not the generator's setting is
+   * on and past its cap of two, because it was asked for. Cleared when the
+   * wait ends or moves to somebody else, like the stamps above.
+   */
+  followUpOn?: string | null;
+
+  /**
    * "Ask on completion" — a task whose completion means recording a decision
    * ("Pick a date for the trip"), not just ticking a box. Null on every
    * ordinary task, which is almost all of them.
@@ -3350,6 +3363,9 @@ export interface TemplateItem {
   deadlineOffsetDays: number | null;
   windowStart: string | null; // "HH:MM" — carried through unchanged, no date component
   windowEnd: string | null;   // "HH:MM"
+  // Task.linkUrl, seeded onto the task: a booking page, the form to fill in.
+  // Optional so a template stored before it reads as having none.
+  linkUrl?: string | null;
   // Minutes before the item's *resolved* due date. Only meaningful (and only
   // editable) when dueOffsetDays is set — there's no date to count back from
   // otherwise.
@@ -3489,6 +3505,10 @@ export interface TemplateItemGroup {
   id: string;
   title: string;
   sortOrder: number;
+  // Applied into a project, the section is a checklist (TaskGroup.checklist):
+  // a packing list saved from a trip comes back as one. Optional so templates
+  // saved before it read as ordinary sections.
+  checklist?: boolean;
 }
 
 // Where one apply of a template puts the tasks it creates. Item titles are

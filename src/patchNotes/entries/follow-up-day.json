@@ -1,0 +1,4 @@
+{
+  "message": "A task waiting on someone has its own Follow up on date, separate from the task's date. The follow-up task arrives on that day even if automatic follow-ups are off. Follow-ups are filed under the waiting task's project, and tapping the Waiting on chip can be undone.",
+  "date": "2026-09-27"
+}

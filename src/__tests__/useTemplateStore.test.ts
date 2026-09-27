@@ -26,8 +26,9 @@ jest.mock('../store/useTaskStore', () => ({
 }));
 
 const mockCreateGroup = jest.fn();
+const mockUpdateGroup = jest.fn();
 jest.mock('../store/useTaskGroupStore', () => ({
-  useTaskGroupStore: { getState: () => ({ createGroup: mockCreateGroup }) },
+  useTaskGroupStore: { getState: () => ({ createGroup: mockCreateGroup, updateGroup: mockUpdateGroup }) },
 }));
 
 import { awayNoonIso } from '../utils/awayDates';
@@ -710,6 +711,23 @@ describe('applyTemplate — naming the run', () => {
     expect(mockCreateGroup).not.toHaveBeenCalled();
     expect(mockGroupTasks).toHaveBeenCalledWith(['task-Book'], 'Flights', null);
     expect(mockAddTask.mock.calls[0][0].projectId).toBe('project-Denver');
+  });
+
+  it("homes an item group's stack on the project as a section, a checklist if saved as one", () => {
+    mockUpdateGroup.mockClear();
+    useTemplateStore.setState({
+      templates: [makeTemplate({
+        applyContainer: 'stack',
+        schedule: null,
+        scheduleLastFiredKey: null,
+        anchorsAreAway: false,
+        itemGroups: [{ id: 'g1', title: 'Packing', sortOrder: 1, checklist: true }],
+        questions: [],
+        items: [makeItem({ id: 'a', title: 'Socks', groupId: 'g1' })],
+      })],
+    });
+    useTemplateStore.getState().applyTemplate('tpl-1', new Set(['a']), { start: null, end: null }, { runName: 'Denver' });
+    expect(mockUpdateGroup).toHaveBeenCalledWith(expect.any(String), { projectId: 'project-Denver', checklist: true });
   });
 
   it('creates one run task and turns every item into a subtask of it when the template asks for a task', () => {

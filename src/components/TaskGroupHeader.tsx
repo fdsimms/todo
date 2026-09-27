@@ -225,8 +225,8 @@ export const TaskGroupHeader = React.memo(function TaskGroupHeader({
                 // "3/8" is invisible to a screen reader on its own.
                 accessibilityLabel={
                   showTally
-                    ? `${group.title} ${group.projectId ? 'section' : 'stack'}, ${doneToday} of ${totalToday} done${tallyScope === 'today' ? ' today' : ''}`
-                    : `${group.title} ${group.projectId ? 'section' : 'stack'}`
+                    ? `${group.title} ${group.checklist ? 'checklist' : group.projectId ? 'section' : 'stack'}, ${doneToday} of ${totalToday} done${tallyScope === 'today' ? ' today' : ''}`
+                    : `${group.title} ${group.checklist ? 'checklist' : group.projectId ? 'section' : 'stack'}`
                 }
                 accessibilityHint={
                   onDrag
@@ -240,6 +240,11 @@ export const TaskGroupHeader = React.memo(function TaskGroupHeader({
                 onAccessibilityAction={e => { if (e.nativeEvent.actionName === 'longpress') completeAll(); }}
               >
                 <View style={styles.titleRow}>
+                  {/* Says a section is a checklist before its rows do: its
+                      lines hide their dates and Pull passes it over. */}
+                  {group.checklist && (
+                    <Ionicons name="checkbox-outline" size={iconSize.sm} color={colors.textTertiary} />
+                  )}
                   <Text style={styles.title} numberOfLines={1}>{group.title}</Text>
                   {/* Bare type, not a filled pill: the header has no card
                       behind it any more, and a tinted capsule floating on

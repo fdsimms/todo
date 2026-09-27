@@ -9,6 +9,7 @@ import {
   formatTaskDeliverable,
   normalizeDeliverableValue,
   deliverableOptionsFor,
+  isTentativeAnswer,
   parseDeliverableOptions,
   DELIVERABLE_OPTIONS_MAX,
 } from '../utils/deliverables';
@@ -216,6 +217,16 @@ describe('parseDeliverableOptions', () => {
   it('keeps at most the cap', () => {
     const many = Array.from({ length: 20 }, (_, i) => `Option ${i}`).join(', ');
     expect(parseDeliverableOptions(many)).toHaveLength(DELIVERABLE_OPTIONS_MAX);
+  });
+});
+
+describe('isTentativeAnswer', () => {
+  it('reads Maybe and its kin as not yet, and a real answer as one', () => {
+    expect(isTentativeAnswer('Maybe')).toBe(true);
+    expect(isTentativeAnswer(' not sure ')).toBe(true);
+    expect(isTentativeAnswer('Yes')).toBe(false);
+    expect(isTentativeAnswer('Maybe later')).toBe(false);
+    expect(isTentativeAnswer(null)).toBe(false);
   });
 });
 

@@ -23,12 +23,24 @@ export function isPausedOn(project: Pick<Project, 'pausedUntil'>, todayKey: stri
 }
 
 let source: (() => readonly PausableProject[]) | null = null;
-let cache: { projects: readonly PausableProject[]; todayKey: string; paused: Set<string> } | null = null;
+let cache: { projects: readonly PausableProject[]; todayKey: string; paused: Map<string, string> } | null = null;
 
 /** Called once by useProjectStore at module load. Tests can point it at a fixture. */
 export function registerPausedProjectSource(fn: (() => readonly PausableProject[]) | null): void {
   source = fn;
   cache = null;
+}
+
+/** Paused projects on `todayKey`, each with the day key its pause lifts on. */
+function pausedOn(todayKey: string): Map<string, string> {
+  const projects = source?.();
+  if (!projects) return new Map();
+  if (!cache || cache.projects !== projects || cache.todayKey !== todayKey) {
+    const paused = new Map<string, string>();
+    for (const p of projects) if (isPausedOn(p, todayKey)) paused.set(p.id, p.pausedUntil!);
+    cache = { projects, todayKey, paused };
+  }
+  return cache.paused;
 }
 
 /**
@@ -37,12 +49,14 @@ export function registerPausedProjectSource(fn: (() => readonly PausableProject[
  * row asks it.
  */
 export function isProjectPaused(projectId: string, todayKey: string): boolean {
-  const projects = source?.();
-  if (!projects) return false;
-  if (!cache || cache.projects !== projects || cache.todayKey !== todayKey) {
-    const paused = new Set<string>();
-    for (const p of projects) if (isPausedOn(p, todayKey)) paused.add(p.id);
-    cache = { projects, todayKey, paused };
-  }
-  return cache.paused.has(projectId);
+  return pausedOn(todayKey).has(projectId);
+}
+
+/**
+ * The day key a paused project comes back on, or null when it isn't paused on
+ * `todayKey`. What "when does this task next surface" reads, so a gate armed
+ * for a paused task's time waits for the pause to lift.
+ */
+export function projectPausedUntil(projectId: string, todayKey: string): string | null {
+  return pausedOn(todayKey).get(projectId) ?? null;
 }

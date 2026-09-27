@@ -11,7 +11,7 @@ import {
   isFocusRunning,
   isFocusSessionFinished,
 } from './focusPlan';
-import { displayTitleFor, isHiddenForVacation } from './visibilityUtils';
+import { displayTitleFor, isHeldBack, isInPausedProject, isWithheld } from './visibilityUtils';
 import { agendaCounts, agendaBody, agendaSpokenBody, nextAgendaTime } from './dailyAgenda';
 import { useSettingsStore } from '../store/useSettingsStore';
 import { useCalendarStore } from '../store/useCalendarStore';
@@ -206,6 +206,9 @@ export async function scheduleTaskReminder(task: Task): Promise<void> {
   // task nobody but the demo will ever see again.
   if (isDemoModeActive()) return;
   if (!task.reminderTime || task.completed || task.archived) return;
+  // A paused project's tasks are held until the pause lifts; the reschedule
+  // pass after that day puts a still-future reminder back.
+  if (isInPausedProject(task)) return;
   let triggerDate = new Date(task.reminderTime);
   if (triggerDate <= new Date()) return;
 
@@ -349,7 +352,7 @@ export const MAX_PENDING_REMINDERS = 64;
  */
 export function upcomingReminders(tasks: Task[], now: Date = new Date()): Task[] {
   return tasks
-    .filter(t => t.reminderTime && !t.completed && !t.archived && new Date(t.reminderTime) > now)
+    .filter(t => t.reminderTime && !t.completed && !t.archived && !isInPausedProject(t) && new Date(t.reminderTime) > now)
     .sort((a, b) => new Date(a.reminderTime!).getTime() - new Date(b.reminderTime!).getTime());
 }
 
@@ -581,9 +584,11 @@ function agendaRequest(
   const when = deferPastQuietHours(
     nextAgendaTime(now, dailyAgendaTime), quietHoursStart, quietHoursEnd,
   );
-  // Vacation-hidden tasks are filtered here rather than inside agendaCounts,
-  // which stays free of store reads so it can be tested directly.
-  const counts = agendaCounts(tasks.filter(t => !isHiddenForVacation(t)), when, dayResetTime);
+  // Withheld tasks (vacation, a paused project) and ones waiting on something
+  // are filtered here rather than inside agendaCounts, which stays free of
+  // store reads so it can be tested directly. Neither can be done today, so
+  // counting them "due" and then "carried over" every morning was noise.
+  const counts = agendaCounts(tasks.filter(t => !isWithheld(t) && !isHeldBack(t)), when, dayResetTime);
   const body = agendaBody(counts);
   // Composed here and carried on the notification rather than recomputed when
   // it is tapped, which is what makes the spoken line trustworthy: it says what
@@ -845,7 +850,7 @@ export async function cancelQuotaNudges(taskId: string): Promise<void> {
 function quotaNudgeInstants(task: Task, now: Date): { index: number; time: Date }[] {
   if (!task.quotaReminders || task.completed || task.archived) return [];
   if (task.targetCount === null || task.targetCount < 2) return [];
-  if (isHiddenForVacation(task)) return [];
+  if (isWithheld(task)) return [];
 
   const { activeHoursStart, activeHoursEnd, quietHoursStart, quietHoursEnd, dayResetTime } =
     useSettingsStore.getState();

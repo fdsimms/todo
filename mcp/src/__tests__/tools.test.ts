@@ -71,6 +71,7 @@ function stubReplica(over: Partial<Replica> = {}): Replica {
     displayTitle: (t: Task) => t.title,
     estimatedMinutes: () => null,
     deliverableKind: () => null,
+    deliverableOptions: () => [],
     // A fixed "today" so the range arithmetic is assertable. The real one goes
     // through getLogicalToday; what is tested here is the counting, not the
     // clock.

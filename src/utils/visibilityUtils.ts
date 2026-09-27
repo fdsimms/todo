@@ -1,6 +1,6 @@
 import { addDays } from 'date-fns/addDays';
 import type { Task, TimeOfDay, Category } from '../types';
-import { getCurrentDayStart, getTaskDayStart, getDayStart, hhmmToDate, getNextDueDate, getLogicalDayKey } from './dateUtils';
+import { getCurrentDayStart, getTaskDayStart, getDayStart, hhmmToDate, getNextDueDate, getLogicalDayKey, dayKeyToDate } from './dateUtils';
 import { effectiveWindowEndTime } from './clockTime';
 import type { ExpiredTaskGraceDays } from './expiredTaskGrace';
 import { useSettingsStore } from '../store/useSettingsStore';
@@ -12,7 +12,7 @@ import { resolveBlocker } from './blockerRegistry';
 import { resolvePerson } from './peopleRegistry';
 import { quotaRunSpan, quotaWeekSpan } from './quotaSchedule';
 import { isNegativeTask } from './negativeHabits';
-import { isProjectPaused } from './projectPause';
+import { isProjectPaused, projectPausedUntil } from './projectPause';
 
 /**
  * True while this task is waiting on another task that isn't done yet — the
@@ -35,6 +35,18 @@ export function isTaskBlocked(task: Task): boolean {
 export function isInPausedProject(task: Pick<Task, 'projectId'>): boolean {
   if (!task.projectId) return false;
   return isProjectPaused(task.projectId, getLogicalDayKey(new Date()));
+}
+
+/**
+ * Whether the app is standing a task down for a stretch: vacation mode hiding
+ * it, or its project paused. Every pass that acts on a task because a day went
+ * by (a quota rollover, a penalty, a pace nudge, a streak) asks this, since a
+ * task nobody can see mustn't be charged, closed out or nagged about. It used
+ * to be `isHiddenForVacation` at each of those sites, and pause, added later,
+ * reached none of them.
+ */
+export function isWithheld(task: Task): boolean {
+  return isHiddenForVacation(task) || (!task.completed && isInPausedProject(task));
 }
 
 /** Whether a task isn't actionable yet — what the daily lists gate on. */
@@ -461,6 +473,9 @@ export function isTaskExpired(task: Task): boolean {
   const paused = isVacationPauseInForce();
   if (paused && task.vacationPause) return false;
   if (paused && categoryHidesOnVacation(task.category)) return false;
+  // A paused project's task isn't late for anything: the pause is the person
+  // saying "not until then", and the sweep behind this deletes what it flags.
+  if (isInPausedProject(task)) return false;
   if (!isPlacedOnADay(task)) return false;
   if (!hasDayArrived(task)) return false;
   return new Date() >= getWindowThreshold(end);
@@ -722,13 +737,13 @@ export function isVisibleApartFromVacation(task: Task): boolean {
   // exemption from it — the row *is* the reminder, and one that disappeared
   // while you were doing well would be missing at exactly the moment it earns
   // its place. Archiving is how you stop tracking one, and vacation mode (the
-  // caller's own check, above this) is how you pause it.
+  // caller's own check, above this) or pausing its project is how you pause it.
+  if (isInPausedProject(task)) return false;
   if (isNegativeTask(task)) return true;
 
   // Ahead of the time gates deliberately: being blocked isn't a "not yet" that
   // a clock resolves, so it shouldn't rank below one.
   if (isHeldBack(task)) return false;
-  if (isInPausedProject(task)) return false;
 
   const now = new Date();
   const { dayResetTime } = useSettingsStore.getState();
@@ -1009,6 +1024,13 @@ export function getVisibleAt(task: Task, pass: VisibleAtPass = beginVisibleAtPas
       const nextWindow = getNextCategoryWindowStart(cat);
       if (nextWindow && nextWindow > now) candidates.push(nextWindow);
     }
+  }
+
+  // A paused project's task comes back no earlier than the day the pause
+  // lifts, which is what a gate armed ahead of time has to wait for.
+  if (task.projectId) {
+    const until = projectPausedUntil(task.projectId, getLogicalDayKey(now, dayResetTime));
+    if (until) candidates.push(getTaskDayStart(dayKeyToDate(until), dayResetTime));
   }
 
   // An on-pace quota task comes back when its next unit falls due rather than
