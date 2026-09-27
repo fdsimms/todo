@@ -4762,6 +4762,129 @@ describe('addManyToPantry', () => {
   });
 });
 
+// A receipt or a barcode read into the Pantry is a packet that just came home,
+// so the old one's freezer, opened and running-low claims don't carry over.
+describe('addManyToPantry, acquired', () => {
+  const FROZEN_AT = '2026-06-01T09:00:00.000Z';
+
+  it('clears the previous packet’s frozen, opened and running-low claims', () => {
+    const chicken = makeItem({ name: 'Chicken breast', frozenAt: FROZEN_AT, expiresAt: '2026-06-03' });
+    const pesto = makeItem({ name: 'Pesto', openedAt: FROZEN_AT, expiresAt: '2026-06-06' });
+    const oil = makeItem({ name: 'Olive oil', runningLowAt: FROZEN_AT, expiresAt: null });
+    seed([chicken, pesto, oil]);
+
+    useGroceryStore.getState().addManyToPantry(
+      ['Chicken breast', 'Pesto', 'Olive oil'], undefined, undefined, undefined, { acquired: true }
+    );
+
+    const byName = Object.fromEntries(useGroceryStore.getState().items.map(i => [i.name, i]));
+    expect(byName['Chicken breast'].frozenAt).toBeNull();
+    expect(byName.Pesto.openedAt).toBeNull();
+    expect(byName['Olive oil'].runningLowAt).toBeNull();
+    // The day a freeze suspended, or an opening set, was the old packet's: kept,
+    // clearing the freeze would wake a stale June day on the new chicken.
+    expect(byName['Chicken breast'].expiresAt).toBeNull();
+    expect(byName.Pesto.expiresAt).toBeNull();
+  });
+
+  it('keeps a plain row’s use-by day, since nothing it was derived from went', () => {
+    const spinach = makeItem({ name: 'Spinach', runningLowAt: FROZEN_AT, expiresAt: '2026-06-10' });
+    seed([spinach]);
+
+    useGroceryStore.getState().addManyToPantry(['Spinach'], undefined, undefined, undefined, { acquired: true });
+
+    expect(useGroceryStore.getState().items[0].expiresAt).toBe('2026-06-10');
+  });
+
+  it('takes a running-low row off the home list', () => {
+    const oil = makeItem({ name: 'Olive oil', runningLowAt: FROZEN_AT, onList: true });
+    seed([oil]);
+
+    useGroceryStore.getState().addManyToPantry(['Olive oil'], undefined, undefined, undefined, { acquired: true });
+
+    expect(useGroceryStore.getState().listEntries).toHaveLength(0);
+    expect(useGroceryStore.getState().items[0].onList).toBe(false);
+  });
+
+  it('leaves a row on the list that nobody marked running low', () => {
+    const milk = makeItem({ name: 'Milk', onList: true });
+    seed([milk]);
+
+    useGroceryStore.getState().addManyToPantry(['Milk'], undefined, undefined, undefined, { acquired: true });
+
+    expect(useGroceryStore.getState().items[0].onList).toBe(true);
+  });
+
+  it('drops an opened jar’s use-up task without writing the item’s "never"', () => {
+    mockUseUpTasks = true;
+    const pesto = makeItem({ name: 'Pesto', openedAt: FROZEN_AT, expiresAt: null });
+    seed([pesto]);
+    useGroceryStore.getState().setExpiresAt(pesto.id, '2026-06-06');
+    const task = useUpTaskFor(pesto.id)!;
+    expect(task).toBeDefined();
+
+    useGroceryStore.getState().addManyToPantry(['Pesto'], undefined, undefined, undefined, { acquired: true });
+
+    expect(useUpTaskFor(pesto.id)).toBeUndefined();
+    expect(mockTaskState.deleteTask).toHaveBeenCalledWith(task.id, { skipGeneratedOptOut: true });
+  });
+
+  it('lets the scan sheet’s freezer toggle land on the new packet', () => {
+    const peas = makeItem({ name: 'Peas', frozenAt: FROZEN_AT, expiresAt: '2026-06-03' });
+    seed([peas]);
+
+    useGroceryStore.getState().addManyToPantry(
+      ['Peas'], new Set(['Peas']), undefined, undefined, { acquired: true }
+    );
+
+    const updated = useGroceryStore.getState().items[0];
+    expect(updated.frozenAt).not.toBeNull();
+    expect(updated.frozenAt).not.toBe(FROZEN_AT);
+  });
+
+  it('is off without the option, which is still a plain "Got it"', () => {
+    const chicken = makeItem({ name: 'Chicken breast', frozenAt: FROZEN_AT, expiresAt: '2026-06-03' });
+    seed([chicken]);
+
+    useGroceryStore.getState().addManyToPantry(['Chicken breast']);
+
+    expect(useGroceryStore.getState().items[0].frozenAt).toBe(FROZEN_AT);
+  });
+
+  it('undo puts back the claims, the list entry and the task', () => {
+    mockUseUpTasks = true;
+    const pesto = makeItem({ name: 'Pesto', openedAt: FROZEN_AT, expiresAt: null });
+    const oil = makeItem({ name: 'Olive oil', runningLowAt: FROZEN_AT, onList: true });
+    seed([pesto, oil]);
+    useGroceryStore.getState().setExpiresAt(pesto.id, '2026-06-06');
+    const pestoBefore = useGroceryStore.getState().itemById(pesto.id)!;
+
+    useGroceryStore.getState().addManyToPantry(
+      ['Pesto', 'Olive oil'], undefined, undefined, undefined, { acquired: true }
+    );
+    useGroceryStore.getState().undoLastAction();
+
+    expect(useGroceryStore.getState().itemById(pesto.id)).toEqual(pestoBefore);
+    expect(useGroceryStore.getState().itemById(oil.id)).toEqual(oil);
+    expect(useGroceryStore.getState().listEntries.map(e => e.itemId)).toEqual([oil.id]);
+    expect(useUpTaskFor(pesto.id)).toBeDefined();
+  });
+
+  // Two packs of the same thing on one receipt: the second line finds the row
+  // the first already cleared, and undo has to restore the row from before both.
+  it('undo restores the row from before the batch when a name appears twice', () => {
+    const chicken = makeItem({ name: 'Chicken breast', frozenAt: FROZEN_AT, expiresAt: '2026-06-03' });
+    seed([chicken]);
+
+    useGroceryStore.getState().addManyToPantry(
+      ['Chicken breast', 'Chicken breast'], undefined, undefined, undefined, { acquired: true }
+    );
+    useGroceryStore.getState().undoLastAction();
+
+    expect(useGroceryStore.getState().items[0]).toEqual(chicken);
+  });
+});
+
 describe('setStaple', () => {
   it('writes the given value and persists it', () => {
     const salt = makeItem({ name: 'Salt' });

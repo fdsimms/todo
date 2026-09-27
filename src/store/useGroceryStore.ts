@@ -84,7 +84,7 @@ import { defaultOnHandUntil, OUT_OF_IT_UNTIL } from '../utils/grocerySuggest';
 import { ensureProductFor, newItemRow, nextSortOrder, planGroceryAdd } from '../utils/groceryAdd';
 import type { PantryReviewAnswer } from '../utils/pantryReview';
 import { wantsShelfLifePrompt, type DisposalOutcome } from '../utils/itemDisposal';
-import { expiresAtForOpening, expiresAtForPurchase } from '../utils/groceryShelfLife';
+import { expiresAtForOpening, expiresAtForPurchase, liveExpiresAt } from '../utils/groceryShelfLife';
 import { useUpTaskDraft, useUpTaskDrift, wantsUseUpTask } from '../utils/groceryExpiry';
 import { dropGeneratedTask, reconcileGeneratedTask } from './generatedTaskSync';
 import {
@@ -824,6 +824,21 @@ interface GroceryStore extends UndoHistoryActions {
    * unplaced trip does. Not part of the undo snapshot on this batch's *links*
    * — the item rows revert wholesale with everything else, matching how
    * `addProduct` is already treated here.
+   *
+   * `acquired` says every name is a packet that has just come home — a
+   * receipt, or a barcode scanned off the bag — rather than a "Got it" about
+   * one already in the cupboard. A row it finds then drops the three claims a
+   * purchase refutes, the same three `finishShopping` clears: the old bag's
+   * `frozenAt`, the old jar's `openedAt`, and `runningLowAt`. A running-low
+   * row also comes off the home list, which is the one list `setRunningLow`
+   * reaches into on anyone's behalf: the thing it was on there to buy has just
+   * been bought. Still not a trip, so no purchase count and no use-by day of
+   * its own; a frozen or opened row's `expiresAt` goes with the state that set
+   * or suspended it, rather than a stale day coming back to life on the new
+   * packet. The use-up task follows the row, and undo puts back the rows, the
+   * list entries and the tasks together. The scan sheet's own freezer toggle
+   * still wins, applied after the clear, the way `finishShopping`'s
+   * `frozenIds` does.
    */
   addManyToPantry: (
     names: readonly string[],
@@ -839,7 +854,8 @@ interface GroceryStore extends UndoHistoryActions {
         nameFromScan?: boolean;
       }
     >,
-    prices?: { byName: ReadonlyMap<string, number>; shopId: string | null }
+    prices?: { byName: ReadonlyMap<string, number>; shopId: string | null },
+    opts?: { acquired?: boolean }
   ) => number;
   /**
    * The day this should be used up by, as a `YYYY-MM-DD` key, or null for
@@ -3193,10 +3209,15 @@ export const useGroceryStore = create<GroceryStore>((set, get) => ({
     return item;
   },
 
-  addManyToPantry(names, frozenNames, products, prices) {
+  addManyToPantry(names, frozenNames, products, prices, opts) {
     const addedIds: string[] = [];
     const revertRows: GroceryItem[] = [];
     const gtinLinks: ScannedGtinLink[] = [];
+    // What `acquired` changed beyond the row itself, so undo can put it back:
+    // the home-list entries it took away, and the rows whose use-up task it
+    // re-derived.
+    const removedEntries: GroceryListEntry[] = [];
+    const refreshedIds = new Set<string>();
     let count = 0;
     for (const raw of names) {
       const key = groceryNameKey(parseGroceryInput(raw).name);
@@ -3215,8 +3236,45 @@ export const useGroceryStore = create<GroceryStore>((set, get) => ({
       });
       if (!item) continue;
       count++;
-      if (before) revertRows.push(before);
-      else addedIds.push(item.id);
+      // The first snapshot of a row is the one undo wants. A receipt naming the
+      // same thing twice (two packs of chicken) reaches this row again with
+      // the first line's write already on it, and restoring that would keep
+      // the "Got it" and the cleared claims undo is meant to take back.
+      if (before) {
+        if (!revertRows.some(r => r.id === before.id)) revertRows.push(before);
+      } else addedIds.push(item.id);
+      // A new packet, so the old one's claims go (see `acquired` on the
+      // interface). Only a found row can carry any; one this batch minted
+      // starts clean. Ahead of the freezer toggle below so a fresh "into the
+      // freezer" lands on the new packet rather than being swallowed by the
+      // old one's stamp, which `setFrozen` would read as nothing to do.
+      if (opts?.acquired && before && (item.frozenAt || item.openedAt || item.runningLowAt)) {
+        const fresh: GroceryItem = {
+          ...item,
+          frozenAt: null,
+          openedAt: null,
+          runningLowAt: null,
+          // A frozen row's day was suspended and an opened jar's was set by
+          // the opening; either way it is the old packet's, and clearing the
+          // state while keeping it would wake a stale day on the new one.
+          expiresAt: item.frozenAt || item.openedAt ? null : item.expiresAt,
+        };
+        dbUpdateGroceryItem(fresh);
+        set(s => ({ items: s.items.map(i => (i.id === fresh.id ? fresh : i)) }));
+        if (item.runningLowAt) {
+          const entry = entryFor(get().listEntries, item.id, null);
+          if (entry) {
+            removedEntries.push(entry);
+            writeMembership({ remove: [{ itemId: item.id, listId: null }] });
+          }
+        }
+        // Dropped rather than reconciled when there's no live day left: a
+        // reconcile that finds nothing wanted writes the item's permanent
+        // "never", and this reason reverses on the next trip by itself.
+        if (liveExpiresAt(fresh) === null) dropUseUpTask(fresh.id);
+        else reconcileUseUpTask(fresh);
+        refreshedIds.add(fresh.id);
+      }
       // Captured before this row's own write, so undo's restore of `before`
       // (or delete of a fresh row) already reverts the freeze along with it —
       // no separate bookkeeping needed for this half of the batch.
@@ -3259,6 +3317,15 @@ export const useGroceryStore = create<GroceryStore>((set, get) => ({
           for (const b of revertRows) dbUpdateGroceryItem(b);
           const revertById = new Map(revertRows.map(b => [b.id, b]));
           set(s => ({ items: s.items.map(i => revertById.get(i.id) ?? i) }));
+          // Back on the home list with the tick and slot it had, and each task
+          // re-derived against the row as it now stands again.
+          writeMembership({ upsert: removedEntries });
+          for (const id of refreshedIds) {
+            const restored = revertById.get(id);
+            if (!restored) continue;
+            if (liveExpiresAt(restored) === null) dropUseUpTask(id);
+            else reconcileUseUpTask(restored);
+          }
           // Through deleteItems rather than a bare filter, which took the new
           // rows out of memory only: they came back on the next launch, with
           // the products and barcode links the batch attached.

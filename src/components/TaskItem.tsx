@@ -1090,6 +1090,7 @@ export const TaskItem = React.memo(function TaskItem({
   );
   const shortfallGroceryItems = useGroceryStore(s => (shortfallEntry ? s.items : EMPTY_GROCERY_ITEMS));
   const shortfallItemSubs = useGroceryStore(s => (shortfallEntry ? s.itemSubs : EMPTY_ITEM_SUBS));
+  const shortfallItemProducts = useGroceryStore(s => (shortfallEntry ? s.itemProducts : EMPTY_ITEM_PRODUCTS));
   const shortfallRecipes = useRecipeStore(s => (shortfallEntry ? s.recipes : EMPTY_RECIPES));
   const shortfallRows = useMemo(() => {
     if (!shortfallEntry) return null;
@@ -1099,9 +1100,12 @@ export const TaskItem = React.memo(function TaskItem({
       shortfallGroceryItems,
       shortfallItemSubs,
       standingSwapMap(shortfallItemSubs, shortfallGroceryItems),
-      new Date()
+      new Date(),
+      // The boxes, which the sweep that wrote this row reads too — or the chip
+      // would count a frozen packet the task itself no longer asks for.
+      shortfallItemProducts
     );
-  }, [shortfallEntry, shortfallRecipes, shortfallGroceryItems, shortfallItemSubs]);
+  }, [shortfallEntry, shortfallRecipes, shortfallGroceryItems, shortfallItemSubs, shortfallItemProducts]);
   // No chip rather than "0 to buy" — a shortfall task can outlive its own
   // reason by up to one sweep (the item got bought some other way, the
   // meal's ingredients changed), and naming a shortfall of zero would be
