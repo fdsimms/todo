@@ -771,6 +771,12 @@ math. As rows it couldn't work: `resolveDrop` derives a dropped row's category f
 header above it, so a pinned row dragged down would inherit a category and a task dragged up into
 the block would inherit none.
 
+- **The block growing mustn't move the rows either, and that's `holdRowsOnHeaderResize`**
+  (`ReorderableList`). Pinning a task far down Today grows a header that's scrolled out of view,
+  which shoved every visible row down by a row's height. iOS's `maintainVisibleContentPosition`
+  corrects it natively, anchored on the header or a zero-net-height sentinel below it and **never on
+  a row**: a row anchor makes a drag's drop scroll the list by however far the top row moved. Read
+  the prop's doc comment before changing the anchor.
 - **`pinnedOrder` is its own number space** (`Task.pinnedOrder`, `reorderPinnedTasks`), because the
   section is hand-orderable and dragging a pin must not also move the original in Work. Default `0`
   = never ranked, with `sortOrder` breaking ties, so an install that upgrades into the column reads

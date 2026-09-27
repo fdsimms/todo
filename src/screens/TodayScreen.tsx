@@ -4092,6 +4092,10 @@ export function TodayScreen() {
               (item.type === 'task' && item.task.id === expandedTaskId)
             }
             ListHeaderComponent={todayListHeader}
+            // Pinning a task far down the list grows the pinned block while
+            // it's scrolled out of view; this keeps the rows you're looking at
+            // from being shoved down by it.
+            holdRowsOnHeaderResize
             onDragBegin={() => {
               setExpandedTaskId(null);
               joinedTaskIdRef.current = null;
