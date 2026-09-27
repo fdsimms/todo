@@ -50,6 +50,12 @@
  *   one of the four steps that use it would be a claim nobody made. Naming it
  *   as the total is honest at every one of them, which matters because the cook
  *   only ever sees one of them at a time.
+ * - **A name also answers to itself with its spaces or hyphens changed**
+ *   ("corn starch" answers to "cornstarch", "self-rising flour" to "self
+ *   rising flour"). This is character-level normalization of the recipe's own
+ *   name, not a lexicon entry, so it carries the same safety rule as the
+ *   `CUTS`/`MODIFIERS` aliases above: two lines offering the same variant
+ *   both lose it.
  * - **A name two lines of one recipe share loses its amount.** Which of the two
  *   salts a step means is unanswerable, so the mention keeps only what both
  *   lines agree on.
@@ -322,6 +328,30 @@ function aliasesFor(name: string): string[] {
 }
 
 /**
+ * The same name with its spaces and hyphens changed: a recipe that writes
+ * "corn starch" but methods "cornstarch", or one that writes "self-rising
+ * flour" but methods "self rising flour". Same word, different punctuation —
+ * not a lexicon lookup, so it carries none of the risk a synonym table would.
+ *
+ * Goes through the same alias pipeline as `aliasesFor` (real names outrank
+ * these, and a variant two lines both offer is dropped), which is what keeps
+ * this as safe as that table.
+ */
+function spacingVariants(name: string): string[] {
+  const out = new Set<string>();
+  if (name.includes(' ')) {
+    out.add(name.replace(/ /g, ''));
+    out.add(name.replace(/ /g, '-'));
+  }
+  if (name.includes('-')) {
+    out.add(name.replace(/-/g, ' '));
+    out.add(name.replace(/-/g, ''));
+  }
+  out.delete(name);
+  return [...out].filter(variant => variant.length >= MIN_NAME_LENGTH);
+}
+
+/**
  * The names each recipe answers to, longest first so the longest match wins,
  * and the line's own names ahead of any alias whatever their length.
  *
@@ -372,7 +402,7 @@ function candidatesByRecipe(
       aliases = new Map<string, Candidate | null>();
       aliasesByRecipe.set(line.recipeId, aliases);
     }
-    for (const alias of aliasesFor(key)) {
+    for (const alias of [...aliasesFor(key), ...spacingVariants(key)]) {
       // Null means "two lines offered this", which is how it stays dropped even
       // if a third line offers it as well.
       aliases.set(alias, aliases.has(alias) ? null : { ...candidate, key: alias });

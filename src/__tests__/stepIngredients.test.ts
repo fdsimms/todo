@@ -150,6 +150,30 @@ describe('annotateSteps', () => {
       expect(annotateSteps(steps, [line('sweet potato', '2 lb')]).size).toBe(0);
     });
 
+    it('answers to itself with the spaces removed', () => {
+      const steps = [step('Combine the cornstarch and water in a small bowl.')];
+      expect(readOne(steps, [line('corn starch', '1 tbsp')]))
+        .toBe('Combine the cornstarch (1 tbsp) and water in a small bowl.');
+    });
+
+    it('answers to itself with a hyphen in place of the space', () => {
+      const steps = [step('Whisk in the corn-starch slurry.')];
+      expect(readOne(steps, [line('corn starch', '1 tbsp')]))
+        .toBe('Whisk in the corn-starch (1 tbsp) slurry.');
+    });
+
+    it('answers to a hyphenated name with the hyphen replaced by a space', () => {
+      const steps = [step('Sift the self rising flour into the bowl.')];
+      expect(readOne(steps, [line('self-rising flour', '250 g')]))
+        .toBe('Sift the self rising flour (250 g) into the bowl.');
+    });
+
+    it('drops a spacing variant two lines both offer', () => {
+      const steps = [step('Add the cornstarch.')];
+      const lines = [line('corn starch', '1 tbsp'), line('corn-starch', '2 tbsp')];
+      expect(annotateSteps(steps, lines).size).toBe(0);
+    });
+
     it('drops a shorter form two lines both offer', () => {
       const steps = [step('Heat the oil in a pan.')];
       const lines = [line('olive oil', '2 tbsp'), line('sesame oil', '1 tsp')];
