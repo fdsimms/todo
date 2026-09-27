@@ -298,6 +298,15 @@ describe('scheduleMoveUpdates', () => {
     expect(updates.deferUntil).toBeNull();
     expect(updates.dueDate).toBe(at(2026, 6, 10).toISOString());
   });
+
+  it('keeps a pulled-forward task\'s grid when its own day is picked again', () => {
+    // Pulled from the 12th to the 10th, then the 10th picked again (a time
+    // of day, or bulk When → Today). Leaving the anchor out let updateTask
+    // clear it, and the occurrence done early came back on the 12th.
+    const task = anchored({ recurrenceAnchorDate: at(2026, 6, 12).toISOString() });
+    const updates = scheduleMoveUpdates(task, at(2026, 6, 10));
+    expect(updates.recurrenceAnchorDate).toBe(at(2026, 6, 12).toISOString());
+  });
 });
 
 describe('pullForwardChoice', () => {

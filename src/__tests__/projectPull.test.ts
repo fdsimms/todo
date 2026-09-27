@@ -653,6 +653,21 @@ describe('buildProjectPullPlan', () => {
     expect(labels[2]).not.toBe('Today');
   });
 
+  // Past today it is the snooze engine choosing, and it has to see the pulls
+  // before this one or it names the same lightest day for all of them.
+  it('spreads pulls past a full today over different days', () => {
+    const projects = [0, 1, 2].map(i =>
+      makeProject({ id: `p${i}`, sortOrder: i, createdAt: subDays(new Date(), 60 - i).toISOString() })
+    );
+    const tasks = projects.map(p => makeTask({ id: `t-${p.id}`, projectId: p.id, estimatedMinutes: 60 }));
+    const heavy = [makeTask({ id: 'h1', estimatedMinutes: PULL_TODAY_BUDGET_MINUTES + 30 })];
+
+    const days = buildProjectPullPlan(projects, [...tasks, ...heavy], heavy)
+      .proposals.map(p => p.suggestion.date.toDateString());
+
+    expect(new Set(days).size).toBe(days.length);
+  });
+
   // Opened for one project, the sheet's empty message has to be about that
   // project, not counts drawn from the rest of the board.
   it('diagnoses a scoped empty plan over the scoped projects alone', () => {
